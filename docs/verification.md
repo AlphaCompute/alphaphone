@@ -13,7 +13,7 @@
 | Device tests | Both variants pass real Android instrumentation: renderer mount, installed-app enumeration, Eliza system status, build identity, HOME eligibility, actual keyboard open with visible input/Send, and native Settings handoff |
 | HOME | Launcher assigned HOME and resumed through the hardware HOME event; original emulator HOME holder restored after the run |
 | Offline | Local emulator Wi-Fi and cellular data disabled during both variant tests |
-| AOSP admission | Real signed launcher accepted; standalone and unsigned release rejected without staged output; six upstream admission unit tests pass |
+| AOSP admission | Real signed launcher accepted; standalone and unsigned release rejected without staged output; seven upstream admission unit tests pass at the updated pin |
 | Visual | Reviewed actual device home screens; separate product branding/layout and visible native controls |
 
 Test host: macOS arm64, Node 24.5.0, OpenJDK 21.0.10, Gradle 8.13, Android compile/target SDK 36 and build-tools 36.0.0. CI uses pinned Node 24.15.0/JDK 21. Device: disposable AOSP API 35 arm64 emulator; 1080 × 2400 pixels, density 420, portrait. No physical device was used.
@@ -35,15 +35,17 @@ The local build-input snapshot predates the CI fixture correction below. That co
 
 ## CI fixture correction
 
-A fresh hosted SDK emulator initially used `com.android.sdksetup` as HOME. Restoring that temporary setup role failed; the harness now preserves any original test failure and clears stale outputs. `prepare-ci-emulator.mjs` provisions only a disposable GitHub Actions fixture, chooses the stock Launcher3, enables the test software keyboard, wakes and keeps the fixture awake, and sets explicit product display geometry. A freshly wiped local emulator reproduced a missing keyboard while asleep; waking the fixture restores a served input window. This is fixture preparation, not evidence of production enrollment. Alpha uses 1080 × 2400 pixels at density 420; senior-care uses 1280 × 800 at density 160.
+A fresh hosted SDK emulator initially used `com.android.sdksetup` as HOME. Restoring that temporary setup role failed; the harness now preserves any original test failure and clears stale outputs. `prepare-ci-emulator.mjs` provisions only a disposable GitHub Actions fixture, chooses the stock Launcher3, enables the test software keyboard, wakes and keeps the fixture awake, and sets explicit product display geometry. A freshly wiped local emulator reproduced a missing keyboard while asleep; the fixture now explicitly wakes before testing input. The additional local retry was interrupted after a WebView timeout during heavy host load; it is not counted as a passing run. This is fixture preparation, not evidence of production enrollment. Alpha uses 1080 × 2400 pixels at density 420; senior-care uses 1280 × 800 at density 160.
 
 The first hosted Alpha instrumentation tests passed before the cleanup failure. Senior-care's keyboard assertion failed on the default small phone display; the verified senior target is the 16:10 tablet fixture. Small landscape phones are not a supported senior-care layout in this foundation. Keep the real keyboard assertion enabled on the supported tablet geometry.
+
+The dependency pin was subsequently advanced to `760ad0f18ad6e34581f696642434215e397ccbc5` to include upstream validation of action/category element roles. The original local APK evidence remains a historical build snapshot; the exact-head CI build validates the final pin.
 
 ## Hosted checks
 
 The [Android foundation workflow](https://github.com/eliza-research/alphaphone/actions/workflows/android.yml) repeats the source/web/build/APK/HOME tests on Linux with an x86_64 emulator. At the time this record was written, final hosted verification was still running. Check the run for the exact commit; local success is not a hosted result.
 
-Shared change: [elizaOS/eliza#32936](https://github.com/elizaOS/eliza/pull/32936), draft. Six focused admission tests, focused TypeScript and Biome checks passed. Upstream required checks must be evaluated at its latest head; the full monorepo `bun run verify` was not run locally.
+Shared change: [elizaOS/eliza#32936](https://github.com/elizaOS/eliza/pull/32936). Seven focused admission tests pass at the updated pin; the original change also passed focused TypeScript and Biome checks. Upstream required checks must be evaluated at its latest head; the full monorepo `bun run verify` was not run locally.
 
 ## Recovered findings
 
