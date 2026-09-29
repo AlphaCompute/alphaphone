@@ -1,24 +1,52 @@
-# Verification record
+# Verification record — 2026-09-29
 
-Status: setup validation in progress, 2026-09-29. This file will be finalized with the actual APK/device results before handoff.
+## Passed locally
 
-## Verified source and web foundation
+| Check | Result and scope |
+| --- | --- |
+| Source provenance | All 2,344 original app files and supplied design assets match SHA-256 manifests |
+| Source dependency | Clean pinned Eliza submodule; uncommitted source is rejected |
+| Web | Strict TypeScript, four foundation tests and production Vite build pass |
+| Native build | Standalone + launcher, signed debug + unsigned release, instrumentation APKs all build |
+| Android lint | Zero errors; 6 warnings in launcher debug report (tool-version/orientation, backup compatibility, generated/inherited resources, and Alpha vector complexity where applicable) |
+| APK inspection | Correct independent package ID, LAUNCHER in both modes, HOME only in launcher, local web payload, correct debug flags and valid debug signatures; removed camera/WRITE_SETTINGS permissions absent |
+| Device tests | Both variants pass real Android instrumentation: renderer mount, installed-app enumeration, Eliza system status, build identity, HOME eligibility, actual keyboard open with visible input/Send, and native Settings handoff |
+| HOME | Launcher assigned HOME and resumed through the hardware HOME event; original emulator HOME holder restored after the run |
+| Offline | Local emulator Wi-Fi and cellular data disabled during both variant tests |
+| AOSP admission | Real signed launcher accepted; standalone and unsigned release rejected without staged output; six upstream admission unit tests pass |
+| Visual | Reviewed actual device home screens; separate product branding/layout and visible native controls |
 
-- Imported design sources and all 2,344 baseline app files match recorded SHA-256 manifests.
-- Strict TypeScript, four foundation tests and the production web build pass.
-- Eliza submodule is pinned and unmodified; the new OS helper has six focused passing tests plus focused TypeScript/Biome checks.
-- Shared OS change: [elizaOS/eliza#32936](https://github.com/elizaOS/eliza/pull/32936), draft. Full upstream root verification is not claimed.
+Test host: macOS arm64, Node 24.5.0, OpenJDK 21.0.10, Gradle 8.13, Android compile/target SDK 36 and build-tools 36.0.0. CI uses pinned Node 24.15.0/JDK 21. Device: disposable AOSP API 35 arm64 emulator; 1080 × 2400 pixels, density 420, portrait. No physical device was used.
 
-## Native validation
+Evidence: [instrumentation](evidence/launcher-instrumentation.txt), [device results](evidence/result.json), [APK manifest](evidence/apk-manifest.json), [AOSP admission results](evidence/aosp-admission.json), [build input hashes](evidence/build-inputs.json), [standalone screenshot](evidence/standalone.png), [launcher screenshot](evidence/launcher.png). Hashes describe the local setup artifacts and source files at this validation point; subsequent edits/builds require fresh evidence.
 
-Native build, final APK inspection, emulator instrumentation, HOME selection and render verification are still being completed. Read the completed results here before treating this foundation as verified.
+## Local artifact hashes
 
-## Explicit remaining acceptance gates
+| Artifact | SHA-256 |
+| --- | --- |
+| standalone-debug.apk | d794032b57bd76a9d15dd1eaa80938bc44ac0abffca3608369174cdc47bc8ffd |
+| standalone-release-unsigned.apk | 932d64100a5e18a7ce8a1eded21c20b040a3ce08f689f3eb5942237ce5076fae |
+| launcher-debug.apk | 8f5e779fafd62eb33c5c19ea8957b4f9b183f8ed499963c7697e1a0edbeb2533 |
+| launcher-release-unsigned.apk | 2246b941b2ade0296d339cad1d8ae27027a7299d9024cfab17e1d221166c7860 |
 
-- Full Linux AOSP product build and Cuttlefish boot of that exact image.
-- Selected physical hardware, radios/audio/microphone, suspend/resume, accessibility, recovery and signed OTA/rollback.
-- Production app signing and distribution policy.
-- Real owner/agent pairing, conversation, voice, connectors, secure observation and product workflows.
-- Product decision gates and real-user acceptance described in the PRD and implementation plan.
+Files are generated under `artifacts/` and intentionally excluded from Git. CI uploads its independently built artifacts and reports. Release artifacts are **unsigned**, not installable production releases until controlled signing. The app is a functional local launcher shell; agent pairing, voice and domain workflows remain unconnected.
 
-A source or SDK emulator pass cannot establish these outcomes. Release APK output is unsigned; debug signing is for development only.
+## Hosted checks
+
+The [Android foundation workflow](https://github.com/eliza-research/alphaphone/actions/workflows/android.yml) repeats the source/web/build/APK/HOME tests on Linux with an x86_64 emulator. At the time this record was written, final hosted verification was still running. Check the run for the exact commit; local success is not a hosted result.
+
+Shared change: [elizaOS/eliza#32936](https://github.com/elizaOS/eliza/pull/32936), draft. Six focused admission tests, focused TypeScript and Biome checks passed. Upstream required checks must be evaluated at its latest head; the full monorepo `bun run verify` was not run locally.
+
+## Recovered findings
+
+Android lint found source-manifest merge declarations that needed explicit exported/removal treatment. Device review found a wrapping clock, inherited dark system-bar background, overlapping inset handlers, and an overly short HOME startup wait. The senior-care real-keyboard check exposed a hidden composer; the helper now keeps controls in the resized viewport with independently scrolling conversation content. These findings were fixed and the affected checks rerun.
+
+## Not established by these results
+
+- Full Linux AOSP product build and Cuttlefish boot of that exact custom image. The staged Soong/product files have not been exercised by an image build.
+- Selected physical hardware, radios/audio/microphone, suspend/resume, full accessibility acceptance, recovery and signed OTA/rollback.
+- Production app signing, official store/distribution approval or device-owner provisioning.
+- Real owner/agent pairing, conversation, voice, connectors, secure observation or product workflows.
+- Product decision gates, supported biller/provider behavior and real-user acceptance in the PRD and implementation plan.
+
+A source check, SDK emulator pass or generated AOSP overlay cannot establish those outcomes.

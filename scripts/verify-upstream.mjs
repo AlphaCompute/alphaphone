@@ -10,11 +10,11 @@ if (pin.commit !== actual)
   throw new Error(`Eliza pin mismatch: expected ${pin.commit}, got ${actual}`);
 const dirty = execFileSync(
   "git",
-  ["-C", "vendor/eliza", "status", "--porcelain", "--untracked-files=no"],
+  ["-C", "vendor/eliza", "status", "--porcelain", "--untracked-files=normal"],
   { encoding: "utf8" },
 ).trim();
 if (dirty)
   throw new Error(
-    "Eliza checkout has tracked modifications; commit and pin a reviewed upstream change.",
+    "Eliza checkout has uncommitted source changes; commit and pin a reviewed upstream change.",
   );
 console.log(`Eliza source verified: ${actual}`);

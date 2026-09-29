@@ -1,0 +1,8 @@
+
+ai.elizaresearch.alphaphone.ShellInstrumentedTest:.
+
+Time: 4.685
+
+OK (1 test)
+
+

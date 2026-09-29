@@ -41,6 +41,24 @@ public class ShellInstrumentedTest {
    Intent home = new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME).setPackage("ai.elizaresearch.alphaphone");
    boolean qualifies = InstrumentationRegistry.getInstrumentation().getTargetContext().getPackageManager().queryIntentActivities(home,0).size()>0;
    assertEquals("HOME qualification follows variant",BuildConfig.IS_LAUNCHER,qualifies);
+   evaluate(scenario,"document.querySelector('input').focus()");
+   SystemClock.sleep(200);
+   scenario.onActivity(activity -> {
+    android.view.inputmethod.InputMethodManager ime = (android.view.inputmethod.InputMethodManager) activity.getSystemService(android.content.Context.INPUT_METHOD_SERVICE);
+    ime.showSoftInput(activity.getBridge().getWebView(), android.view.inputmethod.InputMethodManager.SHOW_IMPLICIT);
+   });
+   java.util.concurrent.atomic.AtomicBoolean keyboard = new java.util.concurrent.atomic.AtomicBoolean(false);
+   for(int i=0;i<50;i++) {
+    scenario.onActivity(activity -> {
+     androidx.core.view.WindowInsetsCompat insets = androidx.core.view.ViewCompat.getRootWindowInsets(activity.getWindow().getDecorView());
+     keyboard.set(insets != null && insets.isVisible(androidx.core.view.WindowInsetsCompat.Type.ime()));
+    });
+    if(keyboard.get())break;
+    SystemClock.sleep(100);
+   }
+   assertTrue("Test keyboard must actually be visible",keyboard.get());
+   SystemClock.sleep(500);
+   assertEquals("Composer remains above the real Android keyboard", "true", evaluate(scenario,"(() => { const field=document.querySelector('input').getBoundingClientRect(); const send=document.querySelector('button[type=submit]').getBoundingClientRect(); return field.top >= 0 && field.bottom <= innerHeight && send.top >= 0 && send.bottom <= innerHeight; })()"));
    evaluate(scenario,"Capacitor.Plugins.DeviceApps.launch({packageName:'com.android.settings'})");
    boolean settingsOpened = false;
    for (int i=0; i<30; i++) {

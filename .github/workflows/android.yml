@@ -31,7 +31,7 @@ jobs:
       - run: sdkmanager 'platforms;android-36' 'build-tools;36.0.0'
       - run: npm ci
       - run: npm run verify
-      - run: node --test vendor/eliza/packages/os/scripts/__tests__/stage-launcher-overlay.test.ts
+      - run: node --test vendor/eliza/packages/os/scripts/__tests__/stage-launcher-overlay.node.test.ts
       - run: npm run android:build
       - run: npm run aosp:stage -- --apk artifacts/launcher-debug.apk --development
       - name: Enable KVM

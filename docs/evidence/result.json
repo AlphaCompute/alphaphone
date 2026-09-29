@@ -1,0 +1,18 @@
+{
+  "serial": "emulator-5580",
+  "createdAt": "2026-09-29T19:11:11.647Z",
+  "results": [
+    {
+      "variant": "standalone",
+      "instrumentation": "passed",
+      "homeRole": false,
+      "resumed": true
+    },
+    {
+      "variant": "launcher",
+      "instrumentation": "passed",
+      "homeRole": true,
+      "resumed": true
+    }
+  ]
+}
