@@ -72,18 +72,18 @@ try {
         "-n",
         `${identity.appId}/.MainActivity`,
       );
-    run("shell", "sleep", "1");
-    const activity = run("shell", "dumpsys", "activity", "activities");
-    if (
-      !activity
-        .split("\n")
-        .some(
-          (l) =>
-            /mResumedActivity|topResumedActivity/.test(l) &&
-            l.includes(identity.appId),
-        )
-    )
-      throw new Error("App not resumed");
+    let activity = "";
+    let resumed = false;
+    for (let attempt = 0; attempt < 30; attempt++) {
+      activity = run("shell", "dumpsys", "activity", "activities");
+      resumed = activity.split("\n").some(line => /mResumedActivity|topResumedActivity/.test(line) && line.includes(identity.appId));
+      if (resumed) break;
+      run("shell", "sleep", "0.5");
+    }
+    if (!resumed) throw new Error("App not resumed after HOME/start");
+    // Let the newly started WebView finish its first paint and native app query.
+    // The instrumentation above separately asserts renderer/bridge readiness.
+    run("shell", "sleep", "3");
     fs.writeFileSync(`test-results/android/${variant}-activity.txt`, activity);
     fs.writeFileSync(
       `test-results/android/${variant}.png`,

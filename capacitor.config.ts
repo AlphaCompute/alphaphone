@@ -5,6 +5,7 @@ const config: CapacitorConfig = {
   appName: identity.appName,
   webDir: "web-dist",
   loggingBehavior: "none",
+  plugins: { SystemBars: { style: "LIGHT", insetsHandling: "native" } },
   server: { androidScheme: "https" },
   android: { path: "android", allowMixedContent: false },
 };

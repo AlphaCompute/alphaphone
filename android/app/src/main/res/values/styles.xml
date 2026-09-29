@@ -6,6 +6,9 @@
   <item name="android:windowDrawsSystemBarBackgrounds">true</item>
   <item name="android:windowBackground">#FFFFFF</item>
  </style>
+ <style name="AppTheme.NoActionBar" parent="AppTheme">
+  <item name="windowActionBar">false</item><item name="windowNoTitle">true</item>
+ </style>
  <style name="AppTheme.Launch" parent="Theme.SplashScreen">
   <item name="windowSplashScreenBackground">#FFFFFF</item><item name="windowSplashScreenAnimatedIcon">@drawable/app_icon</item>
   <item name="postSplashScreenTheme">@style/AppTheme</item>
