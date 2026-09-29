@@ -1,0 +1,4 @@
+pluginManagement { repositories { google(); mavenCentral(); gradlePluginPortal() } }
+include ':app', ':capacitor-android', ':eliza-system'
+project(':capacitor-android').projectDir = new File('../node_modules/@capacitor/android/capacitor')
+project(':eliza-system').projectDir = new File('../vendor/eliza/plugins/plugin-native-system/android')

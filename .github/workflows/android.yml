@@ -1,0 +1,54 @@
+name: Android foundation
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: android-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  build-and-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+      - uses: android-actions/setup-android@v3
+      - run: sdkmanager 'platforms;android-36' 'build-tools;36.0.0'
+      - run: npm ci
+      - run: npm run verify
+      - run: node --test vendor/eliza/packages/os/scripts/__tests__/stage-launcher-overlay.test.ts
+      - run: npm run android:build
+      - run: npm run aosp:stage -- --apk artifacts/launcher-debug.apk --development
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: default
+          arch: x86_64
+          disable-animations: true
+          script: ANDROID_SERIAL=emulator-5554 npm run android:smoke
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: android-foundation
+          path: |
+            artifacts/
+            test-results/
+            android/app/build/reports/
+          retention-days: 14

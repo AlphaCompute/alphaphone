@@ -1,0 +1,19 @@
+node_modules/
+web-dist/
+artifacts/
+test-results/
+.gradle/
+**/build/
+android/local.properties
+android/app/src/main/assets/
+*.jks
+*.keystore
+.env*
+!.env.example
+.DS_Store
+
+# Capacitor sync output (regenerated from checked-in config)
+android/capacitor.settings.gradle
+android/app/capacitor.build.gradle
+android/capacitor-cordova-android-plugins/
+android/app/src/main/res/xml/config.xml

@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" xmlns:tools="http://schemas.android.com/tools">
+ <uses-permission android:name="android.permission.INTERNET" />
+ <!-- Role and settings reads use ElizaSystem. The bootstrap does not expose its camera or settings writes. -->
+ <!-- Removed inherited permission; compiled APK verification asserts it is absent. -->
+ <uses-permission android:name="android.permission.CAMERA" tools:node="remove" tools:ignore="PermissionImpliesUnsupportedChromeOsHardware" />
+ <uses-permission android:name="android.permission.WRITE_SETTINGS" tools:node="remove" />
+ <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" tools:node="remove" />
+ <queries><intent><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent></queries>
+ <application android:label="@string/app_name" android:icon="@drawable/app_icon" android:allowBackup="false" android:dataExtractionRules="@xml/data_extraction_rules" android:supportsRtl="true" android:usesCleartextTraffic="false" android:theme="@style/AppTheme">
+  <activity android:name=".MainActivity" android:exported="true" android:launchMode="singleTask" android:screenOrientation="${appOrientation}" android:windowSoftInputMode="adjustResize" android:configChanges="orientation|keyboardHidden|keyboard|screenSize|locale|smallestScreenSize|screenLayout|uiMode|density|navigation" android:theme="@style/AppTheme.Launch">
+   <intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent-filter>
+  </activity>
+ </application>
+</manifest>

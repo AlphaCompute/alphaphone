@@ -1,0 +1,92 @@
+[
+  {
+    "id": "AP-01",
+    "source": "docs/prd.md",
+    "status": "foundation only",
+    "evidence": "docs/verification.md"
+  },
+  {
+    "id": "AP-02",
+    "source": "docs/prd.md",
+    "status": "foundation only",
+    "evidence": "docs/verification.md"
+  },
+  {
+    "id": "AP-03",
+    "source": "docs/prd.md",
+    "status": "planned",
+    "evidence": null
+  },
+  {
+    "id": "AP-04",
+    "source": "docs/prd.md",
+    "status": "planned",
+    "evidence": null
+  },
+  {
+    "id": "AP-05",
+    "source": "docs/prd.md",
+    "status": "planned",
+    "evidence": null
+  },
+  {
+    "id": "AP-06",
+    "source": "docs/prd.md",
+    "status": "planned",
+    "evidence": null
+  },
+  {
+    "id": "AP-07",
+    "source": "docs/prd.md",
+    "status": "planned",
+    "evidence": null
+  },
+  {
+    "id": "AP-08",
+    "source": "docs/prd.md",
+    "status": "planned",
+    "evidence": null
+  },
+  {
+    "id": "AP-09",
+    "source": "docs/prd.md",
+    "status": "planned",
+    "evidence": null
+  },
+  {
+    "id": "AP-10",
+    "source": "docs/prd.md",
+    "status": "planned",
+    "evidence": null
+  },
+  {
+    "id": "AP-11",
+    "source": "docs/prd.md",
+    "status": "planned",
+    "evidence": null
+  },
+  {
+    "id": "AP-12",
+    "source": "docs/prd.md",
+    "status": "planned",
+    "evidence": null
+  },
+  {
+    "id": "AP-13",
+    "source": "docs/prd.md",
+    "status": "planned",
+    "evidence": null
+  },
+  {
+    "id": "AP-14",
+    "source": "docs/prd.md",
+    "status": "planned",
+    "evidence": null
+  },
+  {
+    "id": "AP-15",
+    "source": "docs/prd.md",
+    "status": "planned",
+    "evidence": null
+  }
+]

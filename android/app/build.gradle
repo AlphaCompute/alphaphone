@@ -1,0 +1,35 @@
+apply plugin: 'com.android.application'
+def identity = new groovy.json.JsonSlurper().parse(file('../../app.config.json'))
+android {
+ namespace identity.appId
+ compileSdk rootProject.ext.compileSdkVersion
+ defaultConfig {
+  applicationId identity.appId
+  minSdk rootProject.ext.minSdkVersion
+  targetSdk rootProject.ext.targetSdkVersion
+  versionCode identity.versionCode
+  versionName identity.version
+  resValue 'string', 'app_name', identity.appName
+  manifestPlaceholders = [appOrientation: identity.orientation]
+  testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'
+ }
+ buildFeatures { buildConfig true }
+ flavorDimensions += 'distribution'
+ productFlavors {
+  standalone { dimension 'distribution'; buildConfigField 'boolean', 'IS_LAUNCHER', 'false' }
+  launcher { dimension 'distribution'; buildConfigField 'boolean', 'IS_LAUNCHER', 'true' }
+ }
+ buildTypes {
+  debug { debuggable true }
+  release { minifyEnabled false }
+ }
+ compileOptions { sourceCompatibility JavaVersion.VERSION_21; targetCompatibility JavaVersion.VERSION_21 }
+}
+dependencies {
+ implementation project(':capacitor-android')
+ implementation project(':eliza-system')
+ implementation "androidx.appcompat:appcompat:$rootProject.ext.androidxAppCompatVersion"
+ implementation "androidx.core:core-splashscreen:$rootProject.ext.coreSplashScreenVersion"
+ androidTestImplementation 'androidx.test:runner:1.6.2'
+ androidTestImplementation 'androidx.test.ext:junit:1.3.0'
+}
