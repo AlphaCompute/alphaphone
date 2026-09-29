@@ -35,7 +35,7 @@ The local build-input snapshot predates the CI fixture correction below. That co
 
 ## CI fixture correction
 
-A fresh hosted SDK emulator initially used `com.android.sdksetup` as HOME. Restoring that temporary setup role failed; the harness now preserves any original test failure and clears stale outputs. `prepare-ci-emulator.mjs` provisions only a disposable GitHub Actions fixture, chooses the stock Launcher3, enables the test software keyboard and sets explicit product display geometry. This is fixture preparation, not evidence of production enrollment. Alpha uses 1080 × 2400 pixels at density 420; senior-care uses 1280 × 800 at density 160.
+A fresh hosted SDK emulator initially used `com.android.sdksetup` as HOME. Restoring that temporary setup role failed; the harness now preserves any original test failure and clears stale outputs. `prepare-ci-emulator.mjs` provisions only a disposable GitHub Actions fixture, chooses the stock Launcher3, enables the test software keyboard, wakes and keeps the fixture awake, and sets explicit product display geometry. A freshly wiped local emulator reproduced a missing keyboard while asleep; waking the fixture restores a served input window. This is fixture preparation, not evidence of production enrollment. Alpha uses 1080 × 2400 pixels at density 420; senior-care uses 1280 × 800 at density 160.
 
 The first hosted Alpha instrumentation tests passed before the cleanup failure. Senior-care's keyboard assertion failed on the default small phone display; the verified senior target is the 16:10 tablet fixture. Small landscape phones are not a supported senior-care layout in this foundation. Keep the real keyboard assertion enabled on the supported tablet geometry.
 

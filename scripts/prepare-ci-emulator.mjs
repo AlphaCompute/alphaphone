@@ -60,6 +60,10 @@ const holder = run(
 ).trim();
 if (holder !== "com.android.launcher3")
   throw new Error(`Fixture HOME is not ready: ${holder}`);
+// A booted headless emulator may still be asleep; IME requests then have no
+// served window even though the WebView can execute JavaScript.
+run("shell", "svc", "power", "stayon", "true");
+run("shell", "input", "keyevent", "KEYCODE_WAKEUP");
 run("shell", "wm", "dismiss-keyguard");
 run("shell", "input", "keyevent", "KEYCODE_HOME");
 console.log(
