@@ -49,6 +49,8 @@ ANDROID_SERIAL=emulator-5554 npm run android:smoke
 Use a disposable emulator. This installs both flavors in turn, runs real WebView
 and native bridge instrumentation, selects and verifies the launcher HOME role,
 and restores the original HOME role. Reports/screenshots go to `test-results/android`.
+CI first prepares a disposable stock-HOME fixture with explicit phone/tablet geometry;
+that setup script refuses to run outside GitHub Actions unless explicitly emulated.
 
 ## AOSP integration
 

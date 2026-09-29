@@ -31,6 +31,14 @@ Evidence: [instrumentation](evidence/launcher-instrumentation.txt), [device resu
 
 Files are generated under `artifacts/` and intentionally excluded from Git. CI uploads its independently built artifacts and reports. Release artifacts are **unsigned**, not installable production releases until controlled signing. The app is a functional local launcher shell; agent pairing, voice and domain workflows remain unconnected.
 
+The local build-input snapshot predates the CI fixture correction below. That correction changes test setup and diagnostics, not the compiled application source.
+
+## CI fixture correction
+
+A fresh hosted SDK emulator initially used `com.android.sdksetup` as HOME. Restoring that temporary setup role failed; the harness now preserves any original test failure and clears stale outputs. `prepare-ci-emulator.mjs` provisions only a disposable GitHub Actions fixture, chooses the stock Launcher3, enables the test software keyboard and sets explicit product display geometry. This is fixture preparation, not evidence of production enrollment. Alpha uses 1080 × 2400 pixels at density 420; senior-care uses 1280 × 800 at density 160.
+
+The first hosted Alpha instrumentation tests passed before the cleanup failure. Senior-care's keyboard assertion failed on the default small phone display; the verified senior target is the 16:10 tablet fixture. Small landscape phones are not a supported senior-care layout in this foundation. Keep the real keyboard assertion enabled on the supported tablet geometry.
+
 ## Hosted checks
 
 The [Android foundation workflow](https://github.com/eliza-research/alphaphone/actions/workflows/android.yml) repeats the source/web/build/APK/HOME tests on Linux with an x86_64 emulator. At the time this record was written, final hosted verification was still running. Check the run for the exact commit; local success is not a hosted result.

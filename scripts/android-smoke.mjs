@@ -21,6 +21,19 @@ const original = run(
 ).trim();
 const results = [];
 fs.mkdirSync("test-results/android", { recursive: true });
+for (const name of [
+  "result.json",
+  "failure-activity.txt",
+  "failure-crashes.txt",
+  ...["standalone", "launcher"].flatMap((variant) => [
+    `${variant}-instrumentation.txt`,
+    `${variant}-activity.txt`,
+    `${variant}.png`,
+  ]),
+]) {
+  fs.rmSync(path.join("test-results/android", name), { force: true });
+}
+let failure;
 try {
   for (const variant of ["standalone", "launcher"]) {
     run("install", "-r", `artifacts/${variant}-debug.apk`);
@@ -76,7 +89,13 @@ try {
     let resumed = false;
     for (let attempt = 0; attempt < 30; attempt++) {
       activity = run("shell", "dumpsys", "activity", "activities");
-      resumed = activity.split("\n").some(line => /mResumedActivity|topResumedActivity/.test(line) && line.includes(identity.appId));
+      resumed = activity
+        .split("\n")
+        .some(
+          (line) =>
+            /mResumedActivity|topResumedActivity/.test(line) &&
+            line.includes(identity.appId),
+        );
       if (resumed) break;
       run("shell", "sleep", "0.5");
     }
@@ -96,17 +115,42 @@ try {
       resumed: true,
     });
   }
-} finally {
-  if (original)
-    run(
-      "shell",
-      "cmd",
-      "role",
-      "add-role-holder",
-      "android.app.role.HOME",
-      original,
+} catch (error) {
+  failure = error;
+  try {
+    fs.writeFileSync(
+      "test-results/android/failure-activity.txt",
+      run("shell", "dumpsys", "activity", "activities"),
     );
+    fs.writeFileSync(
+      "test-results/android/failure-crashes.txt",
+      run("logcat", "-d", "-b", "crash"),
+    );
+  } catch (captureError) {
+    console.error(
+      "Could not collect failure diagnostics:",
+      captureError.message,
+    );
+  }
+} finally {
+  if (original) {
+    try {
+      run(
+        "shell",
+        "cmd",
+        "role",
+        "add-role-holder",
+        "android.app.role.HOME",
+        original,
+      );
+    } catch (restoreError) {
+      if (failure)
+        console.error("HOME restoration also failed:", restoreError.message);
+      else failure = restoreError;
+    }
+  }
 }
+if (failure) throw failure;
 fs.writeFileSync(
   "test-results/android/result.json",
   JSON.stringify(
