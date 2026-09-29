@@ -41,6 +41,8 @@ The first hosted Alpha instrumentation tests passed before the cleanup failure. 
 
 The dependency pin was subsequently advanced to `760ad0f18ad6e34581f696642434215e397ccbc5` to include upstream validation of action/category element roles. The original local APK evidence remains a historical build snapshot; the exact-head CI build validates the final pin.
 
+The first green hosted run had blank post-instrumentation screenshots despite passing the instrumentation assertions. The smoke harness now force-stops the instrumentation-owned process, starts the app normally, and requires product-specific accessible content before taking a screenshot. Foreground activity alone is insufficient.
+
 ## Hosted checks
 
 The [Android foundation workflow](https://github.com/eliza-research/alphaphone/actions/workflows/android.yml) repeats the source/web/build/APK/HOME tests on Linux with an x86_64 emulator. At the time this record was written, final hosted verification was still running. Check the run for the exact commit; local success is not a hosted result.

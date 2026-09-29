@@ -28,6 +28,7 @@ for (const name of [
   ...["standalone", "launcher"].flatMap((variant) => [
     `${variant}-instrumentation.txt`,
     `${variant}-activity.txt`,
+    `${variant}-hierarchy.xml`,
     `${variant}.png`,
   ]),
 ]) {
@@ -58,6 +59,8 @@ try {
       /FAILURES|INSTRUMENTATION_FAILED/.test(instrumentation)
     )
       throw new Error(instrumentation);
+    // Instrumentation owns the prior process. Exercise a fresh normal launch.
+    run("shell", "am", "force-stop", identity.appId);
     if (variant === "launcher") {
       run(
         "shell",
@@ -100,9 +103,20 @@ try {
       run("shell", "sleep", "0.5");
     }
     if (!resumed) throw new Error("App not resumed after HOME/start");
-    // Let the newly started WebView finish its first paint and native app query.
-    // The instrumentation above separately asserts renderer/bridge readiness.
-    run("shell", "sleep", "3");
+    // Foreground activity alone does not prove a rendered HOME screen. Require
+    // the product's accessible content after the fresh start before capturing.
+    const marker = identity.orientation === "landscape" ? "Talk to Eliza" : "Ask Alpha";
+    let hierarchy = "";
+    let rendered = false;
+    for (let attempt = 0; attempt < 10; attempt++) {
+      const remote = "/sdcard/launcher-smoke-hierarchy.xml";
+      run("shell", "uiautomator", "dump", remote);
+      hierarchy = run("shell", "cat", remote);
+      if (hierarchy.includes(marker)) { rendered = true; break; }
+      run("shell", "sleep", "0.5");
+    }
+    fs.writeFileSync(`test-results/android/${variant}-hierarchy.xml`, hierarchy);
+    if (!rendered) throw new Error("Foreground app did not render its accessible home content");
     fs.writeFileSync(`test-results/android/${variant}-activity.txt`, activity);
     fs.writeFileSync(
       `test-results/android/${variant}.png`,
@@ -113,6 +127,7 @@ try {
       instrumentation: "passed",
       homeRole: variant === "launcher",
       resumed: true,
+      rendered: true,
     });
   }
 } catch (error) {
