@@ -9,7 +9,10 @@ concurrency:
   group: android-${{ github.ref }}
   cancel-in-progress: true
 jobs:
-  build-and-smoke:
+  build:
+    outputs:
+      artifact_id: ${{ steps.apks.outputs.artifact-id }}
+      manifest_sha256: ${{ steps.bundle.outputs.manifest_sha256 }}
     runs-on: ubuntu-24.04
     timeout-minutes: 120
     steps:
@@ -65,51 +68,107 @@ jobs:
           python3 scripts/local-speech/install-generated.py --repository "$GITHUB_WORKSPACE"
       - run: npm run android:build
       - run: npm run aosp:stage -- --apk artifacts/launcher-debug.apk --development
-      - name: Preserve artifacts and release owned speech build intermediates
+      - name: Stage immutable six-APK smoke bundle
+        id: bundle
         run: |
-          df -h "$GITHUB_WORKSPACE" "$ANDROID_HOME" "$HOME"
           python3 - <<'PYTHON'
           from pathlib import Path
           import hashlib, json, os, shutil
           root = Path.cwd()
-          speech = root / 'scripts/local-speech'
-          evidence = root / 'test-results/emulator-disk-preflight'
-          evidence.mkdir(parents=True, exist_ok=True)
-          def digest(path):
-              value = hashlib.sha256()
-              with path.open('rb') as stream:
-                  for block in iter(lambda: stream.read(1024 * 1024), b''):
-                      value.update(block)
-              return value.hexdigest()
-          retained = []
-          for folder in ('artifacts', 'android/app/build/outputs/apk', 'android/local-speech/libs', 'android/local-speech/src/main/assets'):
-              retained.extend(p for p in (root / folder).rglob('*') if p.is_file())
-          retained.append(root / 'android/local-speech/runtime-manifest.json')
-          assert retained and all(p.is_file() and not p.is_symlink() for p in retained)
-          hashes = {str(p.relative_to(root)): digest(p) for p in retained}
-          for abi in ('arm64-v8a', 'x86_64'):
-              build = speech / ('build-' + abi)
-              for source in [build / 'build.log', *build.glob('qualification*.json')]:
-                  assert source.is_file() and not source.is_symlink()
-                  dest = evidence / abi / source.name
-                  dest.parent.mkdir(parents=True, exist_ok=True)
-                  shutil.copyfile(source, dest)
-                  assert digest(source) == digest(dest)
-                  hashes[str(dest.relative_to(root))] = digest(dest)
-          paths = ['build-arm64-v8a', 'build-x86_64', 'native-source', 'models', 'onnxruntime', 'assets-ready', 'source']
-          state = {'beforeFreeBytes': shutil.disk_usage(root).free, 'removed': paths, 'retainedHashes': hashes}
-          for relative in paths:
-              target = speech / relative
-              assert target.is_dir() and not target.is_symlink(), str(target)
-              shutil.rmtree(target)
-          assert all(digest(root / name) == expected for name, expected in hashes.items())
-          state['retainedReadbackPassed'] = True
-          state['freeBytes'] = {name: shutil.disk_usage(path).free for name, path in {'workspace': root, 'androidSdk': Path(os.environ['ANDROID_HOME']), 'avdHome': Path.home()}.items()}
-          state['requiredFreeBytes'] = 8 * 1024 ** 3
-          state['passed'] = min(state['freeBytes'].values()) >= state['requiredFreeBytes']
+          bundle = root / 'artifacts/smoke-bundle'
+          bundle.mkdir()
+          hashes = {}
+          for variant in ('standalone', 'launcher'):
+              for kind in ('debug', 'release-unsigned', 'androidTest'):
+                  name = variant + '-' + kind + '.apk'
+                  source = root / ('android/app/build/outputs/apk/androidTest/' + variant + '/debug/app-' + variant + '-debug-androidTest.apk') if kind == 'androidTest' else root / 'artifacts' / name
+                  assert source.is_file() and not source.is_symlink(), str(source)
+                  shutil.copyfile(source, bundle / name)
+                  hashes[name] = hashlib.sha256(source.read_bytes()).hexdigest()
+                  assert hashlib.sha256((bundle / name).read_bytes()).hexdigest() == hashes[name]
+          manifest = bundle / 'apk-manifest.json'
+          manifest.write_text(json.dumps(hashes, indent=2) + '\n')
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
+              output.write('manifest_sha256=' + hashlib.sha256(manifest.read_bytes()).hexdigest() + '\n')
+          PYTHON
+      - uses: actions/upload-artifact@v4
+        id: apks
+        with:
+          name: android-smoke-apks-${{ github.run_id }}-${{ github.run_attempt }}
+          path: artifacts/smoke-bundle/
+          if-no-files-found: error
+          retention-days: 14
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: android-build-evidence
+          path: |
+            artifacts/
+            test-results/
+            android/app/build/reports/
+            scripts/local-speech/build-*/build.log
+            scripts/local-speech/build-*/qualification*.json
+            scripts/local-speech/generated/lexicon-provenance.json
+            android/local-speech/runtime-manifest.json
+            android/local-speech/src/main/assets/local-speech/v1/manifest.json
+          retention-days: 14
+  smoke:
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      # Smoke imports only checked-in scripts and Node builtins; no native build.
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
+          log-accepted-android-sdk-licenses: false
+      - uses: actions/download-artifact@v4
+        with:
+          artifact-ids: ${{ needs.build.outputs.artifact_id }}
+          path: artifacts/smoke-bundle
+          merge-multiple: true
+      - name: Verify exact build-job APK bundle
+        env:
+          EXPECTED_MANIFEST_SHA256: ${{ needs.build.outputs.manifest_sha256 }}
+        run: |
+          python3 - <<'PYTHON'
+          from pathlib import Path
+          import hashlib, json, os
+          bundle = Path('artifacts/smoke-bundle')
+          manifest = bundle / 'apk-manifest.json'
+          assert hashlib.sha256(manifest.read_bytes()).hexdigest() == os.environ['EXPECTED_MANIFEST_SHA256'], 'Bundle manifest differs from build job output'
+          hashes = json.loads(manifest.read_text())
+          expected = {variant + '-' + kind + '.apk' for variant in ('standalone', 'launcher') for kind in ('debug', 'release-unsigned', 'androidTest')}
+          assert set(hashes) == expected, 'Bundle must contain exactly six approved APKs'
+          assert {p.name for p in bundle.iterdir()} == expected | {'apk-manifest.json'}, 'Unexpected or missing bundle members'
+          for name, digest in hashes.items():
+              path = bundle / name
+              assert path.is_file() and not path.is_symlink(), name
+              assert hashlib.sha256(path.read_bytes()).hexdigest() == digest, 'APK hash mismatch: ' + name
+          print('Verified all six APKs against same-run build manifest')
+          PYTHON
+      - name: Require fresh emulator capacity
+        run: |
+          df -h "$GITHUB_WORKSPACE" "$ANDROID_HOME" "$HOME"
+          python3 - <<'PYTHON'
+          from pathlib import Path
+          import json, os, shutil
+          evidence = Path('test-results/emulator-disk-preflight')
+          evidence.mkdir(parents=True)
+          free = {name: shutil.disk_usage(path).free for name, path in {'workspace': Path.cwd(), 'androidSdk': Path(os.environ['ANDROID_HOME']), 'avdHome': Path.home()}.items()}
+          state = {'freeBytes': free, 'requiredFreeBytes': 8 * 1024 ** 3}
+          state['passed'] = min(free.values()) >= state['requiredFreeBytes']
           (evidence / 'result.json').write_text(json.dumps(state, indent=2) + '\n')
-          print(json.dumps({k: v for k, v in state.items() if k != 'retainedHashes'}, indent=2))
-          assert state['passed'], 'Insufficient capacity for system image, 2 GiB AVD and reports; see disk preflight evidence'
+          print(json.dumps(state, indent=2))
+          assert state['passed'], 'Insufficient fresh-runner emulator capacity'
           PYTHON
       - name: Enable KVM
         run: |
@@ -125,18 +184,10 @@ jobs:
           disable-animations: true
           script: |
             ANDROID_SERIAL=emulator-5554 node scripts/prepare-ci-emulator.mjs
-            ANDROID_SERIAL=emulator-5554 npm run android:smoke
+            ANDROID_SERIAL=emulator-5554 ALPHA_BUILD_ARCHIVE=artifacts/smoke-bundle npm run android:smoke
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: android-foundation
-          path: |
-            artifacts/
-            test-results/
-            android/app/build/reports/
-            scripts/local-speech/build-*/build.log
-            scripts/local-speech/build-*/qualification*.json
-            scripts/local-speech/generated/lexicon-provenance.json
-            android/local-speech/runtime-manifest.json
-            android/local-speech/src/main/assets/local-speech/v1/manifest.json
+          name: android-smoke-evidence
+          path: test-results/
           retention-days: 14
