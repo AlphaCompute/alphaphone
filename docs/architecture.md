@@ -1,5 +1,7 @@
 # Architecture and ownership
 
+October 1 architecture change: the user has selected an **Android-resident agent instead of Nitro/TEE hosting**. The [on-device agent plan](on-device-agent-plan.md) supersedes cloud-only and enclave-primary requirements below. Agent execution and model inference are separate decisions; inference placement remains pending. Historical evidence is retained. Powered-off-phone execution needs explicit scope reconciliation.
+
 September 30 scope update: the [MVP report](mvp-scope-and-gap-report.md) and [completion plan](mvp-completion-plan.md) govern current priority. Earlier cloud-only/local-model statements do not waive the supplied DoD's on-device STT/TTS requirement; offline LLM and external-versus-TEE inference remain explicitly reconciled there.
 
 Status: daily-tool implementation in progress. Cloud and remote authentication adapters are implemented; the actual local Eliza/Cerebras protocol has been exercised. Live Cloud services, enclave deployment and device acceptance remain incomplete. Cloud service identity is independent of the selected agent target; see `agent-integration.md` and the flow verification record for exact scope.
@@ -29,7 +31,7 @@ The active shell derives its Capacitor activity lifecycle, splash installation, 
 
 **ADR-04: no implicit privileged bundle.** The new OS staging tool admits a custom APK separately from Eliza's full local-agent system APK. It emits an additive Soong module and product fragment after hash/signer/HOME checks. It does not replace Eliza, Launcher3, SystemUI or Chromium. Device enrollment chooses the default HOME role; production selection/rollback policy is a release gate. Do not remove the stock recovery launcher before that gate.
 
-**ADR-05: execution boundary.** Alpha is cloud-only under the reviewed Alpha issues. Reuse existing Eliza account/pairing and approved Alpha endpoint routing; do not package local model payloads. Production account/agent pairing is unfinished. Debug builds can explicitly connect to a loopback development service running pinned Eliza with a remote model; this is not production authentication. There is no fabricated chat response, OAuth login, bill payment or hidden credential collection.
+**ADR-05: execution boundary (revised October 1).** The primary agent runs on the Android device, replacing the earlier cloud-only/Nitro direction. Reuse the existing Eliza mobile runtime and native IPC subject to Alpha packaging, lifecycle and permission qualification. Keep orchestration, durable state and tool approvals local; model inference location is a separate pending decision. Hosted inference, if selected, must be explicit about outbound context. Cloud/remote pairing remains an optional path. The existing debug host-forwarded transport is not an on-device runtime. See [implementation and acceptance changes](on-device-agent-plan.md).
 
 **ADR-06: browser independence.** Assistance to third-party websites needs the isolated native browser surface or approved Chromium bridge; never expose the Capacitor bridge to arbitrary remote web content. Origin identity, observation version, consent and sensitive-field boundaries must survive every navigation. A stock launcher Activity alone cannot keep a side panel above every app. System-wide assistance needs the separate window/accessibility capability spike in the plan.
 

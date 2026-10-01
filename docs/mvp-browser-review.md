@@ -1,5 +1,7 @@
 # MVP implementation and design review — October 1, 2026
 
+October 1 architecture change: the user has selected an **Android-resident agent instead of Nitro/TEE hosting**. The [on-device agent plan](on-device-agent-plan.md) supersedes cloud-only and enclave-primary requirements below. Agent execution and model inference are separate decisions; inference placement remains pending. Historical evidence is retained. Powered-off-phone execution needs explicit scope reconciliation.
+
 ## Renewed gap attack — October 1
 
 ### Notes save-failure follow-up

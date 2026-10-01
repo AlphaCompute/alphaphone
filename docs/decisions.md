@@ -1,5 +1,7 @@
 # Architecture and product decisions
 
+October 1 architecture change: the user has selected an **Android-resident agent instead of Nitro/TEE hosting**. The [on-device agent plan](on-device-agent-plan.md) supersedes cloud-only and enclave-primary requirements below. Agent execution and model inference are separate decisions; inference placement remains pending. Historical evidence is retained. Powered-off-phone execution needs explicit scope reconciliation.
+
 ## Accepted foundation decisions
 
 1. Keep Alpha Phone and senior-care independent: separate repository, application ID, renderer, assets and release stream.
