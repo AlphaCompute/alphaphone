@@ -42,14 +42,15 @@ for (const mode of ['place', 'route', 'stale-before-approval', 'stale-after-read
           if (pathname === '/api/agents') return ok({ agents: [{ id: agentId, name: 'Recovery fixture', status: 'running' }] });
           if (pathname === '/api/client-devices/register') {
             w.mapsInstallation=input.headers['X-Eliza-Device-Id'];
-            return ok({ installationId: input.headers['X-Eliza-Device-Id'], enrollmentId: 'fixture-enrollment', capabilities: ['reminders.local-record.v1'] });
+            return ok({ installationId: input.headers['X-Eliza-Device-Id'], enrollmentId: 'fixture-enrollment', capabilities: ['reminders.local-record.v1','maps.selected-read.v1'] });
           }
           if (pathname === '/api/workflow/status') return ok({});
           if (pathname === '/api/conversations' && input.method === 'POST') return ok({ conversation: { id: 'fixture-chat', title: 'Fixture' } });
           if (pathname === '/api/conversations/fixture-chat/messages' && input.method === 'POST') {
+            if (!input.headers['X-Eliza-Device-Capabilities']?.split(',').includes('maps.selected-read.v1')) throw Error('Maps capability was not negotiated');
             fixture.posts++;
             const sent=JSON.parse(input.body);w.mapsSent=sent;
-            const target=sent.metadata.alphaPhone.context.selectedObject;
+            const target=sent.metadata.clientDevice.context.selectedObject;
             fixture.proposal={id:'fixture-proposal',digest:'a'.repeat(64),state:'pending',expiresAt:new Date(Date.now()+60000).toISOString(),subjectUserId:'fixture-owner',requestedBy:agentId,action:'device_action',payload:{action:'device_action',version:1,installationId:w.mapsInstallation,enrollmentId:'fixture-enrollment',operation:{type:'maps_read_selected',target:{kind:target.kind,id:target.id,revision:target.revision}}}};
             return ok({ text: 'The request remains incomplete because processing stopped unexpectedly. Recorded tool outcomes are preserved; remaining work has not been completed.', agentName: 'Recovery fixture', terminalFailure: { kind: 'handler_error', code: 'PLANNER_INTERRUPTED_AFTER_ACTION', transient: false } });
           }
@@ -98,6 +99,7 @@ for (const mode of ['place', 'route', 'stale-before-approval', 'stale-after-read
     expect(JSON.stringify(sent)).not.toContain('Private fixture destination');
     expect(JSON.stringify(sent)).not.toContain('43.738');
     expect(sent.metadata.alphaPhone.context.selectedObject.kind).toBe(mode==='route'?'map-route':'map-place');
+    expect(sent.metadata.clientDevice.context).toEqual(sent.metadata.alphaPhone.context);
     expect(await page.evaluate(()=>(window as any).recoveryFixture.receipts)).toBe(0);
     expect(await page.evaluate(()=>(window as any).mapsRetained)).toBeUndefined();
     await expect(page.getByText(/This shares location information/)).toBeVisible();

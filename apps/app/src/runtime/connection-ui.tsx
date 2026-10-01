@@ -164,6 +164,7 @@ async function connectRemote(kind: 'remote' | 'local', origin: string, code: str
     const registered = await request('/api/client-devices/register', { label: 'Alpha Phone', workflowProtocol: 1 }, signal) as { installationId: string; enrollmentId: string; capabilities?: string[] };
     if (registered.installationId !== credential.installationId || !/^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/.test(registered.enrollmentId)) throw new Error('Device registration was not verified');
     if(Array.isArray(registered.capabilities)&&registered.capabilities.includes("reminders.local-record.v1"))headers["X-Eliza-Device-Capabilities"]+=",reminders.local-record.v1";
+    if(Array.isArray(registered.capabilities)&&registered.capabilities.includes("maps.selected-read.v1"))headers["X-Eliza-Device-Capabilities"]+=",maps.selected-read.v1";
     credential.enrollmentId = registered.enrollmentId;
     await secureConnectionStore.write(slot, credential); signal.throwIfAborted();
     deviceHeaders = headers;
@@ -203,6 +204,7 @@ async function connectCloud(agentId: string, signal: AbortSignal, expectedOwner?
     const external=capability.externalIdentity as Record<string,unknown>|undefined,device=capability.deviceActions as Record<string,unknown>|undefined;
     if (capability.protocol!==1 || capability.agentId!==agentId || typeof capability.identityId!=='string' || !/^[a-f0-9-]{36}$/.test(capability.identityId) || external?.subject!==identity.userId || external?.organizationId!==identity.organizationId || typeof external?.issuer!=='string' || !external.issuer.startsWith('https://') || device?.protocol!==1 || !Array.isArray(device.capabilities) || !device.capabilities.includes('calendar.local-event.v1')) throw new Error('Cloud runtime owner capability was not verified');
     if(Array.isArray(device?.capabilities)&&device.capabilities.includes("reminders.local-record.v1"))target.headers["X-Eliza-Device-Capabilities"]+=",reminders.local-record.v1";
+    if(Array.isArray(device?.capabilities)&&device.capabilities.includes("maps.selected-read.v1"))target.headers["X-Eliza-Device-Capabilities"]+=",maps.selected-read.v1";
     session.ownerId=capability.identityId;
     const registered=await request('/api/client-devices/register',{label:'Alpha Phone',workflowProtocol:1},signal);
     if (registered.installationId!==credential.installationId || typeof registered.enrollmentId!=='string' || !/^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/.test(registered.enrollmentId)) throw new Error('Cloud device registration was not verified');
@@ -504,7 +506,9 @@ export const connectionController = {
         try { localStorage.setItem(CONVERSATIONS, JSON.stringify(cached)); }
         catch { update({ message: 'Conversation is connected for this session. Its selection could not be saved for restart.' }); }
       }
-      const options = { signal: requestSignal, clientMessageId: requestId, metadata: { alphaPhone: { context: message.context } } };
+      // Generic clients report an observation, never authority or permission.
+      // Retain the legacy field while older runtime deployments are supported.
+      const options = { signal: requestSignal, clientMessageId: requestId, metadata: { clientDevice: { context: message.context }, alphaPhone: { context: message.context } } };
       const reply = selected.kind === 'cloud' ? await selected.cloud.send(selected.agentId, id, message.text, options) : await selected.remote.send(id, message.text, options);
       requestSignal.throwIfAborted();
       if (generation !== epoch) throw new Error('The connection changed.');
