@@ -17,7 +17,14 @@ public final class AlphaLocalAgentPlugin extends Plugin {
  private final ExecutorService workers=Executors.newFixedThreadPool(2);
  private static String rootToken,ownerToken,ownerIdentity;
  private static long expiresAt;
+ private boolean runtimePackaged() {
+  try {
+   try(var ignored=getContext().getAssets().open("agent/agent-bundle.js")){}
+   return new File(getContext().getApplicationInfo().nativeLibraryDir,"libeliza_bun.so").isFile();
+  } catch(Exception unavailable) { return false; }
+ }
  @PluginMethod public void configureProvider(PluginCall call) {
+  if(!runtimePackaged()){call.reject("On-device agent is unavailable in this version. Connect a remote agent or use Eliza Cloud.");return;}
   String key=call.getString("apiKey",""),model=call.getString("model","");
   if(key.length()<8||key.length()>1024||key.matches(".*[\\r\\n\\s].*")||!model.matches("[A-Za-z0-9][A-Za-z0-9._/-]{0,127}")){call.reject("Enter a valid Cerebras key and model.");return;}
   workers.execute(()->{try{
@@ -41,9 +48,8 @@ public final class AlphaLocalAgentPlugin extends Plugin {
  }
  @PluginMethod public void start(PluginCall call) {
   try {
+   if(!runtimePackaged()){call.reject("On-device agent is unavailable in this version. Connect a remote agent or use Eliza Cloud.");return;}
    if(new AlphaCredentialStore(getContext()).readCredentialSlot("local-agent-provider:v1")==null){call.reject("Configure your model provider before starting the local agent.");return;}
-   try(var ignored=getContext().getAssets().open("agent/agent-bundle.js")){}
-   if(!new File(getContext().getApplicationInfo().nativeLibraryDir,"libeliza_bun.so").isFile())throw new IllegalStateException();
    // Hosted inference is distinct from an on-device language-model payload.
    getContext().getSharedPreferences("CapacitorStorage",Context.MODE_PRIVATE).edit().putString("eliza:mobile-runtime-mode","cloud-hybrid").apply();
    ElizaAgentService.start(getContext());
@@ -55,10 +61,10 @@ public final class AlphaLocalAgentPlugin extends Plugin {
     }
     call.reject("Local agent startup did not complete. Check runtime status; no chat was sent.");
    });
-  }catch(Exception error){call.reject("The local runtime is not packaged or could not start. Run the Android runtime staging step before building.");}
+  }catch(Exception error){call.reject("The on-device agent could not start. Try again or connect another agent.");}
  }
  @PluginMethod public void getStatus(PluginCall call) {
-  try{call.resolve(new JSObject(ElizaAgentService.getLocalAgentBootState(getContext()).toString()));}
+  try{boolean packaged=runtimePackaged();JSObject status=packaged?new JSObject(ElizaAgentService.getLocalAgentBootState(getContext()).toString()):new JSObject().put("state","unavailable");status.put("packaged",packaged);call.resolve(status);}
   catch(Exception error){call.reject("Local runtime status unavailable.");}
  }
  @PluginMethod public void stop(PluginCall call) {

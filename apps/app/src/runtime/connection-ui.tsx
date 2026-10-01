@@ -1,12 +1,12 @@
 import {developmentDeviceStore,developmentActionJournal} from './local-agent-storage';
-import { stopLocalAgent, configureLocalProvider, LocalAgentProtocol, localAgentAvailable, browserLocalAgentEnabled } from './local-agent';
+import { stopLocalAgent, configureLocalProvider, LocalAgentProtocol, localAgentPackaged, browserLocalAgentEnabled } from './local-agent';
 import type {DeviceRecovery} from "./device-actions";
 import type { WorkflowPhoneReview } from './workflow-device-contract';
 import { AlphaClientError } from './alpha-client';
 import { WorkflowProtocol, WorkflowHttpError } from './workflow-protocol';
 import { registerPlugin } from '@capacitor/core';
 import { DeviceActions, actionScope, type DeviceCredential, type DeviceExecutor, type ActionJournal } from './device-actions';
-import { useEffect, useRef, useSyncExternalStore } from 'react';
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { isAndroid } from '../native';
 import type { ActionProposal, OperationReceipt, ContextEnvelope, VerifiedSession } from './alpha-client';
 import { CloudProtocol, CloudProtocolError, CloudProvisionAcceptedError, type CloudAgent, type CloudEnvironment, type CloudPhoneTarget } from './cloud-protocol';
@@ -177,7 +177,8 @@ async function connectRemote(kind: 'remote' | 'local', origin: string, code: str
 
 }
 async function connectResident(signal: AbortSignal) {
-  if (!localAgentAvailable()) throw new Error('The local runtime is not configured in this build. In browser development use npm run dev:local.');
+  if (!await localAgentPackaged()) throw new Error('The local agent is unavailable here. Connect a remote agent, use Eliza Cloud, or continue in mock mode.');
+  signal.throwIfAborted();
   const client = new LocalAgentProtocol();
   const { session, name } = await client.connect(signal);
   signal.throwIfAborted();
@@ -593,6 +594,8 @@ export const connectionController = {
 
 export function ConnectionChooser() {
   const snapshot = useSyncExternalStore(connectionController.subscribe, connectionController.getSnapshot);
+  const [localPackaging,setLocalPackaging]=useState<'checking'|'available'|'unavailable'>('checking');
+  useEffect(()=>{if(!snapshot.open)return;let current=true;setLocalPackaging('checking');void localAgentPackaged().then(available=>{if(current)setLocalPackaging(available?'available':'unavailable');});return()=>{current=false;};},[snapshot.open]);
   const providerKey=useRef<HTMLInputElement>(null), providerModel=useRef<HTMLInputElement>(null);
   const panel = useRef<HTMLDivElement>(null);
   const remoteOrigin = useRef<HTMLInputElement>(null), remoteCode = useRef<HTMLInputElement>(null);
@@ -632,9 +635,10 @@ export function ConnectionChooser() {
     <p>Run your agent locally, or connect an optional remote agent. Model inference uses the provider configured for that agent.</p>
     <section><h3>{isAndroid ? 'On-device agent' : 'Agent on this computer'}</h3>
       <p>{isAndroid ? 'Agent execution and state stay on this Android device. Hosted inference, when configured, receives your prompts and selected context.' : 'The agent runs on your development computer. This browser is its interface; Android uses the native runtime instead.'}</p>
-      {isAndroid && <details><summary>Model provider</summary><p>Cerebras receives prompts and selected context for inference. Your key is stored using Android Keystore. Saving a new key takes effect after the agent restarts.</p><form onSubmit={event=>{event.preventDefault();const key=providerKey.current?.value||'';const model=providerModel.current?.value||'';if(providerKey.current)providerKey.current.value='';void connectionController.configureLocal(key,model);}}><label>Cerebras API key<input ref={providerKey} type="password" autoComplete="off" required disabled={snapshot.busy}/></label><label>Model<input ref={providerModel} defaultValue="qwen-3.8-27b" required disabled={snapshot.busy}/></label><button disabled={snapshot.busy}>Save provider</button></form></details>}
-      <button disabled={snapshot.busy || !localAgentAvailable()} onClick={() => void connectionController.startLocal()}>Start local agent</button>
-      {!localAgentAvailable() && <p>{isAndroid ? 'The native runtime is not included in this build.' : 'Start the browser and agent with npm run dev:local.'}</p>}
+      {isAndroid && localPackaging==='available' && <details><summary>Model provider</summary><p>Cerebras receives prompts and selected context for inference. Your key is stored using Android Keystore. Saving a new key takes effect after the agent restarts.</p><form onSubmit={event=>{event.preventDefault();const key=providerKey.current?.value||'';const model=providerModel.current?.value||'';if(providerKey.current)providerKey.current.value='';void connectionController.configureLocal(key,model);}}><label>Cerebras API key<input ref={providerKey} type="password" autoComplete="off" required disabled={snapshot.busy}/></label><label>Model<input ref={providerModel} defaultValue="qwen-3.8-27b" required disabled={snapshot.busy}/></label><button disabled={snapshot.busy}>Save provider</button></form></details>}
+      <button disabled={snapshot.busy || localPackaging!=='available'} onClick={() => void connectionController.startLocal()}>Start local agent</button>
+      {localPackaging==='checking' && <p role="status">Checking local agent availability…</p>}
+      {localPackaging==='unavailable' && <p>The local agent is unavailable in this version. Connect a remote agent, use Eliza Cloud, or continue in mock mode.</p>}
     </section>
     {snapshot.session && <section className="alpha-connection-current"><strong>{snapshot.name}</strong><span>Connected · {snapshot.kind === 'cloud' ? 'Eliza Cloud' : snapshot.kind === 'resident' ? (isAndroid ? 'On this device' : 'On this computer · development') : snapshot.kind === 'local' ? 'Local development' : 'Remote agent'}</span><button disabled={snapshot.busy} onClick={() => void connectionController.disconnect()}>Disconnect agent</button>{isAndroid && snapshot.kind==='resident' && <button disabled={snapshot.busy} onClick={()=>void connectionController.stopLocal()}>Stop local agent</button>}</section>}
     {snapshot.session && <details><summary>Conversation history</summary><p>Load from this agent only. Restoring replaces the visible chat and draft; it does not run past actions.</p><button disabled={snapshot.busy} onClick={() => void connectionController.listHistory()}>Load conversations</button>{snapshot.conversations.map(item => <section key={item.id} className="alpha-connection-agent"><strong>{item.title}</strong><button disabled={snapshot.busy} onClick={() => void connectionController.restoreHistory(item.id)}>Restore conversation</button></section>)}</details>}

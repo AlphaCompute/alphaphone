@@ -5,6 +5,7 @@ import type { RemoteChatReply, RemoteConversation } from './remote-protocol';
 export interface LocalAgentBridge {
   start(): Promise<unknown>;
   stop?():Promise<unknown>;
+  getStatus?():Promise<{packaged?:boolean}>;
   configureProvider?(input:{apiKey:string;model:string}):Promise<unknown>;
   request(input: { path: string; ownerId?:string; method: 'GET' | 'POST'; headers: Record<string,string>; body?: string; timeoutMs: number }, signal?:AbortSignal): Promise<{status:number;body?:string}>;
 }
@@ -12,6 +13,12 @@ const native = registerPlugin<LocalAgentBridge>('Agent');
 export const browserLocalAgentEnabled = import.meta.env?.DEV && import.meta.env?.VITE_LOCAL_AGENT === '1';
 export const localAgentAvailable = () => Capacitor.isNativePlatform()
   ? Capacitor.isPluginAvailable('Agent') : browserLocalAgentEnabled;
+/** Packaging availability only; it does not prove startup or inference readiness. */
+export async function localAgentPackaged():Promise<boolean> {
+  if(!localAgentAvailable())return false;
+  if(!Capacitor.isNativePlatform())return browserLocalAgentEnabled;
+  try{return (await native.getStatus?.())?.packaged===true;}catch{return false;}
+}
 const browserBridge: LocalAgentBridge = {
   async start() { return { state: 'host-managed' }; },
   async request(input, signal) {
@@ -103,7 +110,8 @@ export class LocalAgentProtocol {
 
 export async function configureLocalProvider(apiKey:string,model:string) {
   if(!Capacitor.isNativePlatform())throw Error('Configure the development provider on the host.');
-  if(!native.configureProvider)throw Error('Native provider setup unavailable.');
+  if(!await localAgentPackaged())throw Error('On-device agent is unavailable in this version. Connect a remote agent or use Eliza Cloud.');
+  if(!native.configureProvider)throw Error('Model provider setup is unavailable.');
   return native.configureProvider({apiKey,model});
 }
 

@@ -1,0 +1,15 @@
+{
+  "baseCommit": "760ad0f18ad6e34581f696642434215e397ccbc5",
+  "patch": "android-secure-store-api29.patch",
+  "patchSha256": "fac73b362b0c78dfa1bca6989108e32b9226fc21637d9dfb77d2ca3f51624691",
+  "files": {
+    "packages/app/platforms/android/app/src/main/java/ai/elizaos/app/AgentSecureStore.java": {
+      "sourceSha256": "d6649354add69aaf56304b13f078bee6cdb03d303bd26c2035162c248d9754bb",
+      "patchedSha256": "4b9a4f59d20f9f012e5f3248c7c1e7ab3b9ee2a09cb4f7c02cbd3f3609622b44"
+    },
+    "packages/app/platforms/android/app/src/main/java/ai/elizaos/app/SecureStoreFrameInput.java": {
+      "sourceSha256": null,
+      "patchedSha256": "d504b73f3a2ef032f7740220e49f0beac4457a05ad35887ac7adcf0174db4c8f"
+    }
+  }
+}
