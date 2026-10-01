@@ -31,7 +31,7 @@ public final class BrowserDownloadInstrumentedTest {
   ready("document.querySelector('input[aria-label=Address]').value==="+JSONObject.quote(url));
   host("document.querySelector('input[aria-label=Address]').dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}))");
  }
- private void page()throws Exception{for(int i=0;i<200;i++){if("true".equals(browser.child("document.title==='Download fixture' && document.readyState==='complete' && typeof Capacitor==='undefined'")))return;SystemClock.sleep(100);}fail("Actual isolated download fixture did not load");}
+ private void page()throws Exception{for(int i=0;i<200;i++){if("true".equals(browser.child("document.title==='Download fixture' && document.readyState==='complete' && typeof Capacitor==='undefined'")))return;SystemClock.sleep(100);}fail("Actual isolated download fixture did not load; "+browser.diagnostics());}
  private AccessibilityNodeInfo nativeNode(String text,boolean exact){
   // Android themes can expose transformed uppercase dialog button text. Search
   // a freshly obtained bounded tree, not the provider's case-sensitive index.

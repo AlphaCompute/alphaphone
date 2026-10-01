@@ -27,7 +27,7 @@ public final class BrowserContinuityInstrumentedTest {
   host("document.querySelector('input[aria-label=Address]').dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}))");
  }
  private void page(String url)throws Exception{
-  for(int i=0;i<300;i++){if("true".equals(browser.child("location.href==="+JSONObject.quote(url)+" && document.readyState==='complete' && document.title==='Example Domain' && typeof Capacitor==='undefined'")))return;SystemClock.sleep(100);}fail("Actual isolated HTTPS document not restored");
+  for(int i=0;i<300;i++){if("true".equals(browser.child("location.href==="+JSONObject.quote(url)+" && document.readyState==='complete' && document.title==='Example Domain' && typeof Capacitor==='undefined'")))return;SystemClock.sleep(100);}fail("Actual isolated HTTPS document not restored; "+browser.diagnostics());
   ready("document.querySelector('svg[aria-label=\"Secure connection\"]')");
  }
  private void saved(BrowserBookmarks store,String url,boolean expected)throws Exception{for(int i=0;i<150;i++){if(store.read().contains(url)==expected)return;SystemClock.sleep(100);}fail("Native encrypted bookmark commit did not match UI action");}

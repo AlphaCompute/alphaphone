@@ -19,6 +19,7 @@ import java.util.concurrent.*;
 @RunWith(AndroidJUnit4.class)
 public final class HostedBackgroundWorkerInstrumentedTest {
  @Test public void workerReceivesThenReplaysWithoutNewNoticeAndPreservesCiphertext()throws Exception {
+  org.junit.Assume.assumeTrue("Explicit isolated hosted campaign required", "true".equals(InstrumentationRegistry.getArguments().getString("alphaHostedBackgroundFixture")));
   Context context=InstrumentationRegistry.getInstrumentation().getTargetContext();
   assertFalse("Run only in a disposable secondary user",context.getSystemService(UserManager.class).isSystemUser());
   AlphaCredentialStore storage=new AlphaCredentialStore(context);

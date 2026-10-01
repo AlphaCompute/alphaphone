@@ -44,7 +44,7 @@ public final class BrowserAutofillInstrumentedTest {
   assertNotNull("Actual native child must be visible",found.get());return found.get();
  }
  private void childReady(String predicate)throws Exception{
-  for(int i=0;i<300;i++){if("true".equals(browser.child(predicate)))return;SystemClock.sleep(100);}fail("Autofill document condition timed out");
+  for(int i=0;i<300;i++){if("true".equals(browser.child(predicate)))return;SystemClock.sleep(100);}fail("Autofill document condition timed out; "+browser.diagnostics());
  }
  private String shell(String command)throws Exception{
   try(ParcelFileDescriptor descriptor=InstrumentationRegistry.getInstrumentation().getUiAutomation().executeShellCommand(command);

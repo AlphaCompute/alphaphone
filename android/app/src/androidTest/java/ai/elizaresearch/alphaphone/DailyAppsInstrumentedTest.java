@@ -76,13 +76,18 @@ public class DailyAppsInstrumentedTest {
   try (BoundedActivityScenario<MainActivity> scenario = BoundedActivityScenario.launch(MainActivity.class)) {
    ready(scenario); begin(scenario, "Capacitor.Plugins.DailyApps.capabilities()");
    JSONObject value = result(scenario); assertEquals("android", value.getString("platform"));
-   JSONArray actions = value.getJSONArray("actions"); assertTrue(actions.length() >= 17);
+   JSONArray actions = value.getJSONArray("actions");
+   java.util.Set<String> expected = new java.util.HashSet<>(java.util.Arrays.asList("camera", "photos", "files", "maps", "calendar", "calendar-create", "reminder", "email", "inbox", "browser", "notifications", "settings", "autofill", "voice"));
+   java.util.Set<String> actual = new java.util.HashSet<>();
    boolean files = false;
    for (int i = 0; i < actions.length(); i++) {
     JSONObject item = actions.getJSONObject(i); item.getBoolean("available");
+    assertTrue("Duplicate native action", actual.add(item.getString("action")));
     assertTrue(item.getString("mode").equals("handoff") || item.getString("mode").equals("selection"));
     if (item.getString("action").equals("files")) { files = true; assertTrue("AOSP document picker exists",item.getBoolean("available")); }
    }
+   assertEquals("Exact MVP handoff and selection inventory", expected, actual);
+   for (String deferred : new String[]{"phone", "messages", "contacts"}) assertFalse("Deferred action must remain absent: " + deferred, actual.contains(deferred));
    assertTrue(files);
   }
  }

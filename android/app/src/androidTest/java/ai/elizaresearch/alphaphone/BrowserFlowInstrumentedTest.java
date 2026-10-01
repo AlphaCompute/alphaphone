@@ -37,9 +37,34 @@ public class BrowserFlowInstrumentedTest {
   }catch(Throwable e){error.set(e);done.countDown();}});
   dispatch.await(done,"Child browser callback");if(error.get()!=null)throw new AssertionError(error.get());return answer.get();
  }
+ /** Failure-only structural diagnostics: no page text, URLs, cookies or credentials. */
+ String diagnostics(){
+  StringBuilder evidence=new StringBuilder();
+  try{
+   WebViewTestDriver.withActivity(MainActivity.class,main->{
+    android.content.pm.PackageInfo provider=WebView.getCurrentWebViewPackage();
+    evidence.append("provider=").append(provider==null?"null":provider.packageName+"@"+provider.versionName);
+    for(String feature:new String[]{androidx.webkit.WebViewFeature.MULTI_PROFILE,androidx.webkit.WebViewFeature.GET_WEB_VIEW_RENDERER,androidx.webkit.WebViewFeature.DELETE_BROWSING_DATA,androidx.webkit.WebViewFeature.MULTI_PROCESS,androidx.webkit.WebViewFeature.JS_INJECTION_IN_FRAME_AND_WORLD}){
+     try{evidence.append(",").append(feature).append("=").append(androidx.webkit.WebViewFeature.isFeatureSupported(feature));}
+     catch(Throwable error){evidence.append(",").append(feature).append("=unavailable:").append(error.getClass().getSimpleName());}
+    }
+    try{if(androidx.webkit.WebViewFeature.isFeatureSupported(androidx.webkit.WebViewFeature.MULTI_PROCESS))evidence.append(",multiProcessEnabled=").append(androidx.webkit.WebViewCompat.isMultiProcessEnabled());}
+    catch(Throwable error){evidence.append(",multiProcessEnabled=unavailable:").append(error.getClass().getSimpleName());}
+    List<WebView> children=new ArrayList<>();collect(main.getWindow().getDecorView(),children,main.getBridge().getWebView());
+    int shown=0;for(WebView child:children)if(child.isShown())shown++;
+    evidence.append(",children=").append(children.size()).append(",shown=").append(shown);
+   });
+  }catch(Throwable error){evidence.append("; native-diagnostic-unavailable:").append(error.getClass().getSimpleName());}
+  try{
+   evidence.append("; host=").append(host("JSON.stringify({activeView:document.documentElement.dataset.activeView,mode:document.documentElement.dataset.connectionMode,addressPresent:!!document.querySelector('input[aria-label=Address]'),connectionDialog:!!document.querySelector('.alpha-connection-scrim'),isolatedProfilesRejected:document.body.innerText.includes('This Android WebView does not support isolated browser profiles'),secureClearRejected:document.body.innerText.includes('This Android WebView cannot securely clear retired browser data'),createRejected:document.body.innerText.includes('Could not create an isolated browser tab'),identityRejected:document.body.innerText.includes('Invalid browser identity'),sessionRejected:document.body.innerText.includes('Expired browser session'),tabLimitRejected:document.body.innerText.includes('Close a tab before opening another')})"));
+  }catch(Throwable error){evidence.append("; host-diagnostic-unavailable:").append(error.getClass().getSimpleName());}
+  try{evidence.append("; child=").append(child("JSON.stringify({protocol:location.protocol,ready:document.readyState,body:!!document.body})"));}
+  catch(Throwable error){evidence.append("; child-diagnostic-unavailable:").append(error.getClass().getSimpleName());}
+  return evidence.toString();
+ }
  private void page(String suffix)throws Exception{
   for(int i=0;i<300;i++){if("true".equals(child("location.protocol==='https:' && location.hostname==='example.com' && location.search==="+JSONObject.quote(suffix)+" && document.readyState==='complete' && !!document.body && document.body.innerText.trim().length>20")))return;SystemClock.sleep(100);}
-  fail("Real HTTPS example.com page did not load: "+suffix+"; host="+host("document.body.innerText.slice(-1000)"));
+  fail("Real HTTPS example.com page did not load: "+suffix+"; "+diagnostics());
  }
  private boolean containsNativeText(View view,String text){
   if(view instanceof android.widget.TextView && view.isShown() && text.contentEquals(((android.widget.TextView)view).getText()))return true;
@@ -84,7 +109,7 @@ public class BrowserFlowInstrumentedTest {
   for(int action:new int[]{MotionEvent.ACTION_DOWN,MotionEvent.ACTION_UP}){MotionEvent event=MotionEvent.obtain(now,SystemClock.uptimeMillis(),action,point[0],point[1],0);event.setSource(android.view.InputDevice.SOURCE_TOUCHSCREEN);instrumentation.sendPointerSync(event);event.recycle();}
  }
  private void nativeText(String text)throws Exception{
-  AtomicBoolean found=new AtomicBoolean();for(int i=0;i<150;i++){WebViewTestDriver.withActivity(MainActivity.class,a->found.set(containsNativeText(a.getWindow().getDecorView(),text)));if(found.get())return;SystemClock.sleep(100);}fail("Missing visible browser state: "+text);
+  AtomicBoolean found=new AtomicBoolean();for(int i=0;i<150;i++){WebViewTestDriver.withActivity(MainActivity.class,a->found.set(containsNativeText(a.getWindow().getDecorView(),text)));if(found.get())return;SystemClock.sleep(100);}fail("Missing visible browser state: "+text+"; "+diagnostics());
  }
  @Test public void selectedDocumentUploadsExactBytesWithoutAppBridge()throws Exception{
   String token=UUID.randomUUID().toString(),name="alpha-upload-"+token+".txt",body="Synthetic selected browser upload "+token;
@@ -102,7 +127,7 @@ public class BrowserFlowInstrumentedTest {
   }catch(Exception error){if(server.isClosed())return;}}});
   try(BoundedActivityScenario<MainActivity> scenario=BoundedActivityScenario.launch(MainActivity.class)){
    AppNavigation.liveMode();host(AppNavigation.request("Browser"));until(AppNavigation.selected("Browser"));address("http://127.0.0.1:"+server.getLocalPort()+"/");
-   boolean ready=false;for(int i=0;i<150;i++){if("true".equals(child("document.title==='Upload fixture' && !!document.querySelector('input')"))){ready=true;break;}SystemClock.sleep(100);}assertTrue(ready);
+   boolean ready=false;for(int i=0;i<150;i++){if("true".equals(child("document.title==='Upload fixture' && !!document.querySelector('input')"))){ready=true;break;}SystemClock.sleep(100);}if(!ready)fail("Upload fixture document missing; "+diagnostics());
    assertNull("Page cannot upload before explicit selection",uploaded.get());
    assertEquals("No native bridge in upload destination","true",child("typeof Capacitor==='undefined'"));
    chooserInactiveBoundaries();assertNull("Rejected inactive callbacks never upload",uploaded.get());
@@ -151,7 +176,7 @@ public class BrowserFlowInstrumentedTest {
    until("document.documentElement.dataset.activeView");host(AppNavigation.request("Browser"));until(AppNavigation.selected("Browser"));
    address("http://127.0.0.1:"+server.getLocalPort()+"/unavailable");
    boolean visible=false;for(int i=0;i<150;i++){if("true".equals(child("document.title==='Unavailable' && !!document.querySelector('a[href=\"/retry\"]')"))){visible=true;break;}SystemClock.sleep(100);}
-   assertTrue("HTTP 503 preserves the actual website document",visible);
+   if(!visible)fail("HTTP 503 preserves the actual website document; "+diagnostics());
    assertEquals("Error document has no native bridge","true",child("typeof Capacitor==='undefined' && typeof androidBridge==='undefined'"));
    child("document.querySelector('a').click();true");
    boolean retried=false;for(int i=0;i<150;i++){if("true".equals(child("document.title==='Retried' && location.pathname==='/retry'"))){retried=true;break;}SystemClock.sleep(100);}
@@ -191,7 +216,7 @@ public class BrowserFlowInstrumentedTest {
     if("true".equals(child("location.protocol==='https:' && location.hostname==='www.google.com' && location.pathname==='/search' && new URL(location.href).searchParams.get('q')==="+JSONObject.quote(query)+" && document.readyState==='complete' && !!document.body && document.body.innerText.trim().length>20"))){loaded=true;break;}
     SystemClock.sleep(100);
    }
-   assertTrue("Search must load its actual HTTPS results page; observed="+child("JSON.stringify({host:location.hostname,path:location.pathname,title:document.title})"),loaded);
+   if(!loaded)fail("Search must load its actual HTTPS results page; "+diagnostics());
    assertEquals("Search provider cannot access app bridge","true",child("typeof Capacitor==='undefined' && typeof androidBridge==='undefined'"));
   }
  }

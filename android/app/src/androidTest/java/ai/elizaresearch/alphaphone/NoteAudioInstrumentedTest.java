@@ -22,7 +22,7 @@ public class NoteAudioInstrumentedTest {
   for(int i=0;i<200;i++){String raw=NotesSecureFixture.evaluate("window.__noteAudioResult");if(!"null".equals(raw))return new JSONObject((String)new JSONTokener(raw).nextValue());SystemClock.sleep(50);}throw new AssertionError("Note audio call timed out");
  }
  private static void ready()throws Exception {for(int i=0;i<100;i++){if("true".equals(NotesSecureFixture.evaluate("Boolean(window.Capacitor?.Plugins?.AlphaNoteAudio)")))return;SystemClock.sleep(100);}fail("Note audio bridge unavailable");}
- private static void until(String expression)throws Exception {for(int i=0;i<200;i++){if("true".equals(NotesSecureFixture.evaluate("Boolean("+expression+")")))return;SystemClock.sleep(50);}fail("Voice note UI did not reach expected state");}
+ private static void until(String expression)throws Exception {for(int i=0;i<200;i++){if("true".equals(NotesSecureFixture.evaluate("Boolean("+expression+")")))return;SystemClock.sleep(50);}fail("Voice note UI did not reach expected state: "+expression);}
  private static byte[] wav(){int n=16000;ByteBuffer b=ByteBuffer.allocate(44+n*2).order(ByteOrder.LITTLE_ENDIAN);b.put("RIFF".getBytes(StandardCharsets.US_ASCII)).putInt(36+n*2).put("WAVEfmt ".getBytes(StandardCharsets.US_ASCII)).putInt(16).putShort((short)1).putShort((short)1).putInt(8000).putInt(16000).putShort((short)2).putShort((short)16).put("data".getBytes(StandardCharsets.US_ASCII)).putInt(n*2);return b.array();}
  private static AlphaNoteAudioPlugin plugin(){for(android.app.Activity activity:ActivityLifecycleMonitorRegistry.getInstance().getActivitiesInStage(Stage.RESUMED))if(activity instanceof MainActivity)return (AlphaNoteAudioPlugin)((MainActivity)activity).getBridge().getPlugin("AlphaNoteAudio").getInstance();throw new IllegalStateException();}
  @Test public void savedAudioSurvivesDraftRemovalRecreationAndUndo()throws Exception {
@@ -60,6 +60,10 @@ public class NoteAudioInstrumentedTest {
  private static void awaitPlaybackStopped()throws Exception {for(int i=0;i<100;i++){if(!call("Capacitor.Plugins.AlphaNoteAudio.state()").getBoolean("playing"))return;SystemClock.sleep(50);}fail("Native playback did not stop after leaving note");}
  private static void observePlaybackStart()throws Exception {assertFalse(call("(async()=>{await window.__noteAudioStartedListener?.remove();window.__noteAudioStarted=null;window.__noteAudioStartedListener=await Capacitor.Plugins.AlphaNoteAudio.addListener('started',value=>{window.__noteAudioStarted=value;});return {};})()").has("error"));}
  private static void requirePlaybackStart(String audioId)throws Exception {until("window.__noteAudioStarted?.audioId==="+JSONObject.quote(audioId)+"&&window.__noteAudioStarted.playing===true");call("window.__noteAudioStartedListener.remove()");}
+ private static void chooseManualRecording()throws Exception{
+  String button="[...document.querySelectorAll('button')].find(e=>e.textContent.trim()==='Record without transcription'&&e.getClientRects().length&&!e.disabled)";
+  until(button);NotesSecureFixture.evaluate("("+button+").click()");
+ }
  private static void click(String label)throws Exception{String b="document.querySelector('button[aria-label='+"+JSONObject.quote(JSONObject.quote(label))+"+']')";until(b+"&&!"+b+".disabled");NotesSecureFixture.evaluate(b+".click()");}
  @Test public void dictationReplacesSelectionAndKeepsTextNoteAcrossRecreation()throws Exception{
   android.content.Context context=InstrumentationRegistry.getInstrumentation().getTargetContext();InstrumentationRegistry.getInstrumentation().getUiAutomation().grantRuntimePermission(context.getPackageName(),android.Manifest.permission.RECORD_AUDIO);
@@ -71,7 +75,7 @@ public class NoteAudioInstrumentedTest {
     fillEditor("Title",title);fillEditor("Note","Before OLD after");
     String saved="__notesEnvelope.records.find(n=>n.title==="+JSONObject.quote(title)+")";until(saved+"?.body==='Before OLD after'");
     NotesSecureFixture.evaluate("(()=>{const t=document.querySelector('textarea[aria-label=\"Note\"]');t.focus();t.setSelectionRange(7,10);})()");
-    click("Dictate");click("Start recording");SystemClock.sleep(1300);click("Stop recording");click("Review recording");fillEditor("Review transcript","inserted");click("Apply transcript");
+    click("Dictate");chooseManualRecording();click("Start recording");SystemClock.sleep(1300);click("Stop recording");click("Review recording");fillEditor("Review transcript","inserted");click("Apply transcript");
     until("document.querySelector('textarea[aria-label=\"Note\"]')?.value==="+JSONObject.quote(expected));
     until("document.querySelector('textarea[aria-label=\"Note\"]')?.selectionStart===15");
     JSONObject note=new JSONObject((String)new JSONTokener(NotesSecureFixture.evaluate("JSON.stringify("+saved+")")).nextValue());assertEquals("text",note.getString("kind"));assertEquals(expected,note.getString("body"));assertFalse("Dictating text must not create a saved voice asset",note.has("audio"));
@@ -94,7 +98,7 @@ public class NoteAudioInstrumentedTest {
    ready();String original=NotesSecureFixture.evaluate("localStorage.getItem('alpha.connection.selection.v1')");
    try{
     NotesSecureFixture.evaluate("localStorage.setItem('alpha.connection.selection.v1',JSON.stringify({kind:'offline'}))");scenario.recreate();ready();AppNavigation.liveMode();NotesSecureFixture.evaluate(AppNavigation.request("Notes"));until(AppNavigation.selected("Notes"));
-    click("Record and transcribe");click("Start recording");until("document.querySelector('button[aria-label=\"Stop recording\"]')");SystemClock.sleep(1300);click("Stop recording");click("Review recording");until("document.querySelector('textarea[aria-label=\"Review transcript\"]')");
+    click("Record and transcribe");chooseManualRecording();click("Start recording");until("document.querySelector('button[aria-label=\"Stop recording\"]')");SystemClock.sleep(1300);click("Stop recording");click("Review recording");until("document.querySelector('textarea[aria-label=\"Review transcript\"]')");
     NotesSecureFixture.evaluate("(()=>{const t=document.querySelector('textarea[aria-label=\"Review transcript\"]');Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value').set.call(t,"+JSONObject.quote(transcript)+");t.dispatchEvent(new Event('input',{bubbles:true}));t.dispatchEvent(new Event('change',{bubbles:true}));})()");click("Save note");
     String saved="__notesEnvelope.records.find(n=>n.body==="+JSONObject.quote(transcript)+")";until(saved+"?.audio?.audioId");
     JSONObject note=new JSONObject((String)new JSONTokener(NotesSecureFixture.evaluate("JSON.stringify("+saved+")")).nextValue());audioId=note.getJSONObject("audio").getString("audioId");noteId=note.getString("id");assertEquals("voice",note.getString("kind"));assertEquals(transcript,call("Capacitor.Plugins.AlphaNoteAudio.describe({audioId:"+JSONObject.quote(audioId)+"})").getString("transcript"));

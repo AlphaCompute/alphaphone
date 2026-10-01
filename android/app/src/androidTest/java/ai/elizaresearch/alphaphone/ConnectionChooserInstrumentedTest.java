@@ -16,7 +16,7 @@ public class ConnectionChooserInstrumentedTest {
    if("true".equals(NotesSecureFixture.evaluate("Boolean("+expression+")")))return;
    SystemClock.sleep(80);
   }
-  fail("Connection screen did not reach expected state: "+expression);
+  fail("Connection screen did not reach expected state: "+expression+"; "+new BrowserFlowInstrumentedTest().diagnostics());
  }
  private void click(String label)throws Exception{
   String expression="[...document.querySelectorAll('button')].find(e=>e.textContent.trim()==="+JSONObject.quote(label)+"&&e.getClientRects().length)";
