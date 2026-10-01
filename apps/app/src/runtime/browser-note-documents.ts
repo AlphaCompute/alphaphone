@@ -22,7 +22,7 @@ export class BrowserNoteDocuments extends WebPlugin {
         if (!file) return finish({ status: 'cancelled', message: 'No file imported.' });
         if (file.size > 2 * 1024 * 1024) return finish({ status: 'failed', message: 'Choose a text file smaller than 2 MB.' });
         try {
-          const text = new TextDecoder('utf-8', { fatal: true }).decode(await file.arrayBuffer());
+          const text = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(await file.arrayBuffer());
           if (text.includes('\0')) throw new Error('Binary file');
           finish({ status: 'read', message: 'Local text selected.', name: file.name, text });
         } catch {

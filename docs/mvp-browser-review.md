@@ -118,3 +118,7 @@ GitHub contains the exact original baseline commit `611704fdd7e7ec74ad771dd0176b
 ### Hosted delivery confirmation
 
 Browser MVP [run 36851815606](https://github.com/AlphaCompute/alphaphone/actions/runs/36851815606) completed successfully on exact implementation SHA `3f3f7a7ee04fea47c75503af0ed964ab257c4f33`: checkout, clean dependency install, Chromium installation, repository verification, browser suite and evidence upload all succeeded. Local and remote main matched that SHA on readback. The temporary object-transfer branch was deleted after confirmation. Application source still matches fingerprint `44b269cea60eea0c63a410635ffe59928f81c4c3fe9037ea605a52ccba8b343f`; the subsequent handoff commit changes documentation only and includes the concurrently updated acceptance-ledger wording.
+
+### UTF-8 preservation follow-up
+
+The expanded real-browser round-trip test reproduced loss of an imported UTF-8 BOM. The decoder now retains it as text (`ignoreBOM: true`) while still rejecting invalid UTF-8 and NUL-containing files. Raw-byte download assertions cover Unicode with CRLF, a BOM-prefixed file and an empty file. All three focused browser cases pass after the fix; repository verification passes all 21 checks, typecheck and production build. The complete browser suite now contains 42 tests; its hosted outcome must be read at the new commit rather than inherited from the earlier 40-test run. Local reproduction and verification logs are retained as `test-results/browser-campaign-logs/bom-{before,after,verify}.log`.

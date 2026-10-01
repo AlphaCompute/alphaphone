@@ -46,12 +46,11 @@ test('Notes create, edit, reload, search and delete', async ({ page }) => {
   await page.getByRole('button', { name: 'Delete note', exact: true }).click();
   await expect(page.getByText('No notes yet. Create a note to get started.')).toBeVisible();
 });
-test('Local text import and exact-byte download use real browser APIs', async ({ page }) => {
+for (const [label, text] of [['unicode CRLF', 'Local 🧪 file\r\nExact bytes\n'], ['UTF-8 BOM', '\ufeffLocal 🧪 file\r\nExact bytes\n'], ['empty', '']]) test(`Local text import and exact-byte download: ${label}`, async ({ page }) => {
   await page.goto('/');
   await page.getByRole('button', {name:'Notes',exact:true}).click();
   const chooser = page.waitForEvent('filechooser');
   await page.getByRole('button', {name:'Import text note',exact:true}).click();
-  const text='Local 🧪 file\r\nExact bytes\n';
   await (await chooser).setFiles({ name:'Owned browser note.txt', mimeType:'text/plain', buffer:Buffer.from(text) });
   await expect(page.getByRole('textbox',{name:'Note',exact:true})).toHaveValue(text.replaceAll('\r\n','\n'));
   await page.getByRole('button',{name:'Share note',exact:true}).click();
@@ -59,7 +58,7 @@ test('Local text import and exact-byte download use real browser APIs', async ({
   await page.getByRole('button',{name:'Export text file',exact:true}).click();
   const result=await download;
   expect(result.suggestedFilename()).toBe('Owned browser note.txt');
-  expect(await readFile((await result.path())!, 'utf8')).toBe(text);
+  expect(await readFile((await result.path())!)).toEqual(Buffer.from(text, 'utf8'));
 });
 test('Mock is explicit, its banner does not cover the phone, and exit restores live mode', async ({ page }) => {
   await page.goto('/?mode=mock');
