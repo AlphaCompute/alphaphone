@@ -5654,7 +5654,16 @@ class Component extends DCLogic {
     var acct = theme === "light" ? acc : (acc.toUpperCase() === "#0000FF" ? th.acct : "#9DB4FF");
     var VM = { "--bg": th.bg, "--s1": th.s1, "--s2": th.s2, "--s3": th.s3, "--line": th.line, "--fg": th.fg, "--mut": th.mut, "--acc": acc, "--acct": acct, "--scrim": th.scrim, "--shc": th.shc };
     var vars = Object.keys(VM).map(function (k) { return k + ":" + VM[k]; }).join(";");
-    var rootRef = function (el) { if (!el || !el.style) return; Object.keys(VM).forEach(function (k) { el.style.setProperty(k, VM[k]); }); };
+    var rootRef = function (el) {
+      if (!el || !el.style) return;
+      Object.keys(VM).forEach(function (k) { el.style.setProperty(k, VM[k]); });
+      // Connection and digest dialogs are siblings of the phone. Share the
+      // selected palette with their common root, including live theme changes.
+      if (P.phoneSurface && el.parentElement) {
+        var palette = { bg: th.bg, fg: th.fg, s2: th.s2, line: th.line, mut: th.mut, acc: acct };
+        Object.keys(palette).forEach(function (k) { el.parentElement.style.setProperty("--connection-" + k, palette[k]); });
+      }
+    };
     var d = new Date(S.now); var hr = d.getHours();
     var clock = (hr % 12 || 12) + ":" + pad2(d.getMinutes());
     var dateStr = DAYS[d.getDay()] + ", " + MONS[d.getMonth()].slice(0, 3) + " " + d.getDate();

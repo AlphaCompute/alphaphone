@@ -1,0 +1,74 @@
+import { test, expect } from '@playwright/test';
+
+for (const viewport of [{width:320,height:568},{width:412,height:430},{width:915,height:412},{width:1440,height:500}]) {
+  test(`Notes remains editable and navigable at ${viewport.width}x${viewport.height}`, async ({ page }, info) => {
+    await page.setViewportSize(viewport);
+    await page.goto('/');
+    await page.getByRole('button',{name:'Notes',exact:true}).click();
+    await page.getByRole('button',{name:'New note',exact:true}).click();
+    const title=page.getByRole('textbox',{name:'Title',exact:true});
+    const body=page.getByRole('textbox',{name:'Note',exact:true});
+    await title.fill('Compact viewport');
+    await body.fill('A draft that must stay reachable while the keyboard reduces available height.');
+    for(const control of [title,body,page.getByRole('button',{name:'Back to notes',exact:true})]) {
+      const box=await control.boundingBox();expect(box).not.toBeNull();
+      expect(box!.y).toBeGreaterThanOrEqual(0);
+      expect(box!.y+box!.height).toBeLessThanOrEqual(viewport.height+1);
+      expect(await control.evaluate(el=>{const r=el.getBoundingClientRect();const hit=document.elementFromPoint(r.x+r.width/2,r.y+r.height/2);return hit===el||el.contains(hit);})).toBe(true);
+    }
+    await page.screenshot({path:info.outputPath('editor.png')});
+    await page.getByRole('button',{name:'Back to notes',exact:true}).click();
+    await page.getByRole('button',{name:'Open Compact viewport',exact:true}).click();
+    await expect(body).toHaveValue('A draft that must stay reachable while the keyboard reduces available height.');
+  });
+}
+
+test('Conversation controls survive a keyboard-sized viewport and retain the draft', async ({page},info)=>{
+  await page.goto('/');
+  await page.getByRole('button',{name:'Open conversation',exact:true}).click();
+  const draft=page.locator('[data-alpha-layer="conversation"] input');
+  await draft.fill('Keep this unsent draft');
+  await page.setViewportSize({width:412,height:300});
+  const close=page.getByRole('button',{name:'Minimize chat',exact:true});
+  await expect(close).toBeInViewport();
+  await page.getByRole('button',{name:'Expand chat',exact:true}).click();
+  await expect(close).toBeInViewport();
+  await expect(draft).toBeInViewport();
+  await page.screenshot({path:info.outputPath('compact-chat.png')});
+  await close.click();
+  await page.setViewportSize({width:412,height:915});
+  await page.getByRole('button',{name:'Open conversation',exact:true}).click();
+  await expect(draft).toHaveValue('Keep this unsent draft');
+});
+
+for(const theme of ['light','dark']) test(`Scheduled digests respects ${theme} appearance`,async({page},info)=>{
+  await page.goto(`/?theme=${theme}`);
+  await page.getByRole('button',{name:'Settings',exact:true}).click();
+  await page.getByRole('button',{name:'Scheduled digests',exact:true}).click();
+  const dialog=page.getByRole('dialog',{name:'Scheduled digests',exact:true});
+  await expect(dialog).toHaveCSS('background-color',theme==='dark'?'rgb(0, 0, 0)':'rgb(255, 255, 255)');
+  await expect(dialog).toHaveCSS('color',theme==='dark'?'rgb(255, 255, 255)':'rgb(0, 0, 0)');
+  await page.screenshot({path:info.outputPath('dialog.png')});
+});
+
+test('Connection dialog follows a live theme change and remains keyboard accessible',async({page},info)=>{
+  await page.goto('/');
+  await page.getByRole('button',{name:'Settings',exact:true}).click();
+  await page.getByRole('button',{name:'Display',exact:true}).click();
+  await page.getByRole('button',{name:'Theme: Dark',exact:true}).click();
+  // Use the same native Back event as the application shell.
+  await page.evaluate(()=>window.dispatchEvent(new Event('alpha-back',{cancelable:true})));
+  await page.getByRole('button',{name:'Accounts',exact:true}).click();
+  await page.getByRole('button',{name:'Manage Cloud account',exact:true}).click();
+  const dialog=page.getByRole('dialog',{name:'Your agent. Your phone.',exact:true});
+  await expect(dialog).toHaveCSS('background-color','rgb(0, 0, 0)');
+  await page.setViewportSize({width:412,height:300});
+  await dialog.getByText('Remote agent',{exact:true}).click();
+  const address=dialog.getByRole('textbox',{name:'Agent HTTPS address',exact:true});
+  await address.fill('https://example.invalid');
+  await expect(address).toBeInViewport();
+  await page.keyboard.press('Escape');
+  await expect(dialog).toHaveCount(0);
+  await expect(page.getByRole('button',{name:'Manage Cloud account',exact:true})).toBeFocused();
+  await page.screenshot({path:info.outputPath('focus-restored.png')});
+});
