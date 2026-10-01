@@ -1,4 +1,4 @@
-import { registerPlugin } from '@capacitor/core';
+import { Capacitor, registerPlugin } from '@capacitor/core';
 import { DailyApps } from '../daily';
 import { connectionController } from '../runtime/connection-ui';
 
@@ -105,6 +105,7 @@ export function installSettingsAdapter(Component: any, views: Bag) {
     const connection = connectionController.getSnapshot();
     const account = connection.cloudAccount;
     const target = connection.session ? connection.name : 'Not connected';
+    const runtimeLocation=!connection.session?'Not connected':connection.kind==='resident'?(Capacitor.isNativePlatform()?'On this device':'On this computer · development'):'Remote agent';
     const cloudLabel = account ? `${account.environment} · ${account.userId.slice(0, 8)}` : 'Not signed in';
     const manage = (page: string) => () => void device.openSettings({ page }).catch(() => api.toast('This Android settings page is unavailable.'));
     const info = (label: string, val: string): Bag => ({ kInfo: true, label, val, hasVal: true, noAB: true });
@@ -115,7 +116,7 @@ export function installSettingsAdapter(Component: any, views: Bag) {
     const topValues: Bag = {
       'Wi-Fi': active('wifiActive'), 'Bluetooth': 'Manage in Android', 'Mobile data': active('cellularActive'),
       'Accounts': account ? 'Eliza Cloud connected' : 'Not signed in', 'Connections': gmail,
-      'Privacy & Enclave': 'Not verified',
+      'Privacy & Enclave': runtimeLocation,
       'Battery': percent, 'Models': target, 'About': facts.appVersion || 'Unavailable',
       'Notifications': typeof delivery.appEnabled !== 'boolean' ? 'Unavailable' : !delivery.appEnabled || !delivery.permissionGranted ? 'App notifications off' : delivery.channels?.some((c:Bag)=>c.blocked||c.groupBlocked) ? 'Some channels blocked' : 'App notifications allowed',
       'Sound & vibration': 'Android settings',
@@ -127,6 +128,7 @@ export function installSettingsAdapter(Component: any, views: Bag) {
         page.groups.push(group([{kNav:true,label:'Try mock mode',lbl:'Try mock mode',chev:true,noAB:true,go:()=>connectionController.mock()}]));
         for (const g of page.groups) for (const row of g.rows) if (row.label in topValues) {
           row.val = topValues[row.label]; row.hasVal = true;
+          if(row.label==='Privacy & Enclave'){row.label='Privacy & runtime';row.lbl=row.label;}
         }
         continue;
       }
@@ -145,7 +147,7 @@ export function installSettingsAdapter(Component: any, views: Bag) {
         page.groups = [group([
           info('Alpha Phone', facts.appVersion || 'Unavailable'), info('Android', facts.androidRelease || 'Unavailable'),
           info('Build', facts.build || 'Unavailable'), info('Security patch', facts.securityPatch || 'Unavailable'),
-          info('Enclave', 'Not verified'), info('Agent', target), info('Inference model', 'Not reported by agent'),
+          info('Agent execution', runtimeLocation), info('Agent', target), info('Inference model', 'Not reported by agent'),
         ]), group([nav('Android device information', 'about')])];
       } else if (page.title === 'Wi-Fi') {
         page.hasHdrTog = false; page.hdrTog = null;
@@ -191,7 +193,9 @@ export function installSettingsAdapter(Component: any, views: Bag) {
         page.groups = [group([info('Alpha notifications', topValues.Notifications),info('Do Not Disturb',interruption[delivery.interruption]||'Unavailable'),info('Delivery timing','Android battery policies may delay alerts'),nav('Manage Alpha notifications', 'notifications')]),
           ...((delivery.channels||[]).map((channel:Bag)=>group([info(channel.name,channel.blocked?'Channel blocked':channel.groupBlocked?'Channel group blocked':!delivery.appEnabled||!delivery.permissionGranted?'App notifications off':channel.importance<=2?'Silent channel':'Channel allowed'),{kNav:true,label:`Manage ${channel.name}`,lbl:`Manage ${channel.name}`,chev:true,noAB:true,go:()=>void notifications.openChannelSettings({id:channel.id}).catch(()=>api.toast('This notification channel is unavailable.'))}]))),group(crossRows)];
       } else if (page.title === 'Privacy & Enclave') {
-        page.groups = [group([info('Hardware attestation', 'Not verified'), info('On-device speech', localSpeech)]), group(Object.entries(facts.permissions || {}).map(([label, granted]) => info(label, label==='Location'?(facts.locationAccess==='precise'?'Precise location allowed':facts.locationAccess==='approximate'?'Approximate location allowed':'Not allowed'):granted ? 'Allowed for Alpha' : 'Not allowed'))), group([nav('Manage Alpha permissions', 'privacy')])];
+        page.title='Privacy & runtime';
+        page.hero={...page.hero,big:runtimeLocation,sub:'Hosted inference receives prompts and selected context. Local execution does not mean all data stays on the device.'};
+        page.groups = [group([info('Agent execution', runtimeLocation),info('Model inference',connection.kind==='resident'&&connection.session?'Configured hosted provider':'Managed by the selected agent'), info('On-device speech', localSpeech)]), group(Object.entries(facts.permissions || {}).map(([label, granted]) => info(label, label==='Location'?(facts.locationAccess==='precise'?'Precise location allowed':facts.locationAccess==='approximate'?'Approximate location allowed':'Not allowed'):granted ? 'Allowed for Alpha' : 'Not allowed'))), group([nav('Manage Alpha permissions', 'privacy')])];
       } else if (page.title === 'Sound & vibration') {
         const volume = (label: string, stream: string) => {
           const value = controls.volumes?.find((v: Bag) => v.stream === stream);

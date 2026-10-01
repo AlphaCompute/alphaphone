@@ -8,7 +8,7 @@ development endpoint, offline use and mock mode. The real local Eliza/Cerebras
 protocol is verified; live provider login, Gmail, voice and
 complete workflow execution remain acceptance work. The primary architecture is now an
 [Android-resident agent](docs/on-device-agent-plan.md), replacing Nitro/TEE hosting;
-that runtime integration is not yet implemented in Alpha. See the verification ledger for
+the native bridge, reproducible mobile payload staging and browser development host are now implemented. See [local agent setup](docs/local-agent-development.md) and the verification ledger for
 the exact tested scope rather than treating a successful APK build as acceptance.
 
 - [October 1 browser implementation and design review](docs/mvp-browser-review.md)

@@ -20,3 +20,6 @@ android/app/src/main/res/xml/config.xml
 
 # Local Android Studio workspace state
 .idea/
+
+# Reproducibly staged Android agent executables
+android/app/src/main/jniLibs/

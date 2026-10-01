@@ -24,7 +24,11 @@
     "agent:local": "node scripts/start-local-remote.mjs",
     "android:connection-smoke": "node scripts/android-connection-smoke.mjs",
     "android:local-agent-smoke": "node scripts/android-local-remote-smoke.mjs",
-    "test:browser": "playwright test"
+    "test:browser": "playwright test",
+    "dev:local": "node scripts/dev-local.mjs",
+    "agent:prepare": "node scripts/prepare-local-agent.mjs",
+    "agent:stage-android": "node scripts/stage-local-agent-runtime.mjs",
+    "android:build:local": "npm run agent:prepare && npm run agent:stage-android && npm run android:build"
   },
   "dependencies": {
     "@capacitor/android": "8.5.2",

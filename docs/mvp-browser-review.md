@@ -2,6 +2,12 @@
 
 October 1 architecture change: the user has selected an **Android-resident agent instead of Nitro/TEE hosting**. The [on-device agent plan](on-device-agent-plan.md) supersedes cloud-only and enclave-primary requirements below. Agent execution and model inference are separate decisions; inference placement remains pending. Historical evidence is retained. Powered-off-phone execution needs explicit scope reconciliation.
 
+## Local runtime implementation — October 1
+
+The primary connection now starts a local agent: native Android IPC on the device, or the real Eliza app host behind a private loopback bridge in browser development. Reproducible source preparation, Android mobile bundle/ABI staging, secure native provider configuration, local owner enrollment, conversation history and the existing device-action approval/receipt flow are wired. Browser development has durable profile-backed device enrollment and action journaling. See [commands, source pins and exact remaining acceptance](local-agent-development.md).
+
+This first implementation uses local orchestration with hosted Cerebras inference. It does not claim offline LLM operation, Android process execution, powered-off schedule execution or completion of the remaining external integration gates.
+
 ## Renewed gap attack — October 1
 
 ### Notes save-failure follow-up

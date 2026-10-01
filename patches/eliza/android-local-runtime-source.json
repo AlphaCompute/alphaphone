@@ -1,0 +1,8 @@
+{
+  "baseCommit": "4573712ebf0466daa4dfadaa4482704c209d9b8c",
+  "mvpSeries": "mvp-series",
+  "patch": "android-secure-store-socket.patch",
+  "files": {
+    "packages/app/src/security/secure-store-android.ts": "af9dbf66398a9a984b43b33d98e752f586c70a6b473b73413e1cbfe395d30974"
+  }
+}

@@ -17,3 +17,5 @@ project(':eliza-location').projectDir = new File('../vendor/eliza/plugins/plugin
 include ':notification-fixture'
 
 include ':local-speech'
+include ':eliza-network-policy'
+project(':eliza-network-policy').projectDir = new File('../vendor/eliza/plugins/plugin-native-network-policy/android')

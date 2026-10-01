@@ -1,0 +1,113 @@
+import { Capacitor, registerPlugin } from '@capacitor/core';
+import type { VerifiedSession } from './alpha-client';
+import type { RemoteChatReply, RemoteConversation } from './remote-protocol';
+
+export interface LocalAgentBridge {
+  start(): Promise<unknown>;
+  stop?():Promise<unknown>;
+  configureProvider?(input:{apiKey:string;model:string}):Promise<unknown>;
+  request(input: { path: string; ownerId?:string; method: 'GET' | 'POST'; headers: Record<string,string>; body?: string; timeoutMs: number }, signal?:AbortSignal): Promise<{status:number;body?:string}>;
+}
+const native = registerPlugin<LocalAgentBridge>('Agent');
+export const browserLocalAgentEnabled = import.meta.env?.DEV && import.meta.env?.VITE_LOCAL_AGENT === '1';
+export const localAgentAvailable = () => Capacitor.isNativePlatform()
+  ? Capacitor.isPluginAvailable('Agent') : browserLocalAgentEnabled;
+const browserBridge: LocalAgentBridge = {
+  async start() { return { state: 'host-managed' }; },
+  async request(input, signal) {
+    const response = await fetch('/__alpha-local-agent', {
+      method:'POST', headers:{'Content-Type':'application/json','X-Alpha-Local-Agent':'1'},
+      body:JSON.stringify(input), signal:signal ? AbortSignal.any([signal,AbortSignal.timeout(input.timeoutMs)]) : AbortSignal.timeout(input.timeoutMs), redirect:'error',
+    });
+    if (!response.ok) throw new Error('Local agent development bridge unavailable. Check the development server.');
+    return response.json();
+  },
+};
+function record(value:unknown):Record<string,any> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('Invalid local agent response.');
+  return value as Record<string,any>;
+}
+function identifier(value:unknown):string {
+  if (typeof value !== 'string' || !value || value.length>512) throw new Error('Invalid local agent identity.');
+  return value;
+}
+
+/** Same app-host conversation API on both platforms. The native service or
+ * development server injects credentials; no bearer token reaches the renderer. */
+export class LocalAgentProtocol {
+  readonly origin = Capacitor.isNativePlatform() ? 'https://device.alpha.invalid' : 'https://development.alpha.invalid';
+  session: VerifiedSession | null = null;
+  private generation = 0;
+  deviceHeaders:Record<string,string>={};
+  constructor(private bridge:LocalAgentBridge = Capacitor.isNativePlatform() ? native : browserBridge) {}
+  async request(path:string, body:unknown|undefined, signal:AbortSignal, headers:Record<string,string> = {}):Promise<any> {
+    signal.throwIfAborted();
+    const generation=this.generation;
+    let cancel:()=>void=()=>{};
+    const cancelled=new Promise<never>((_,reject)=>{cancel=()=>reject(signal.reason||new DOMException('Cancelled','AbortError'));});
+    signal.addEventListener('abort',cancel,{once:true});
+    let response:{status:number;body?:string};
+    try { response=await Promise.race([this.bridge.request({path,...(this.session?{ownerId:this.session.ownerId}:{}),method:body===undefined?'GET':'POST',headers:{Accept:'application/json',...this.deviceHeaders,...headers},
+      ...(body===undefined?{}:{body:JSON.stringify(body)}),timeoutMs:120000},signal),cancelled]); } finally { signal.removeEventListener('abort',cancel); }
+    signal.throwIfAborted();
+    if(generation!==this.generation)throw new Error('Local agent connection changed.');
+    if(response.status<200||response.status>=300)throw Object.assign(new Error(`Local agent request failed (HTTP ${response.status}).`),{status:response.status,data:(()=>{try{return JSON.parse(response.body||'{}');}catch{return {};}})()});
+    return JSON.parse(response.body || '{}');
+  }
+  async connect(signal:AbortSignal) {
+    signal.throwIfAborted();
+    const generation=this.generation;
+    let cancel:()=>void=()=>{};
+    const cancelled=new Promise<never>((_,reject)=>{cancel=()=>reject(signal.reason||new DOMException('Cancelled','AbortError'));});
+    signal.addEventListener('abort',cancel,{once:true});
+    try{await Promise.race([this.bridge.start(),cancelled]);}finally{signal.removeEventListener('abort',cancel);}
+    signal.throwIfAborted();
+    if(generation!==this.generation)throw Error('Local agent connection changed.');
+    const who=record(await this.request('/api/auth/me',undefined,signal));
+    const identity=record(who.identity),access=record(who.access);
+    // Only the explicitly selected native/host bridge may establish local trust.
+    if(identity.kind!=='owner'||access.role!=='OWNER'||!['local','session'].includes(access.mode))throw new Error('The local runtime did not verify local owner access.');
+    const result=record(await this.request('/api/agents',undefined,signal));
+    if(!Array.isArray(result.agents)||result.agents.length!==1)throw new Error('The local runtime must expose exactly one agent.');
+    const agent=record(result.agents[0]);
+    if(agent.status!=='running')throw Error('The local agent is still starting. Try again when it is ready.');
+    if(generation!==this.generation)throw Error('Local agent connection changed.');
+    this.session={ownerId:identifier(identity.id),agentId:identifier(agent.id),sessionId:crypto.randomUUID(),origin:this.origin};
+    return {session:this.session,name:typeof agent.name==='string'?agent.name:'Local agent'};
+  }
+  async disconnect() { this.generation++; this.session=null; }
+  private async json(path:string,body:unknown|undefined,signal?:AbortSignal) {
+    if(!this.session)throw new Error('Start the local agent first.');
+    return record(await this.request(path,body,signal||new AbortController().signal));
+  }
+  async listConversations(signal?:AbortSignal):Promise<RemoteConversation[]> {
+    const value=await this.json('/api/conversations',undefined,signal);
+    if(!Array.isArray(value.conversations))throw new Error('Invalid local conversation list.');
+    return value.conversations.map((item:unknown)=>{const row=record(item);return {...row,id:identifier(row.id)};});
+  }
+  async createConversation(title:string,signal?:AbortSignal):Promise<RemoteConversation> {
+    const value=record((await this.json('/api/conversations',{title},signal)).conversation);
+    return {...value,id:identifier(value.id)};
+  }
+  async messages(id:string,signal?:AbortSignal):Promise<{messages:Record<string,unknown>[]}> {
+    const value=await this.json(`/api/conversations/${encodeURIComponent(identifier(id))}/messages`,undefined,signal);
+    if(!Array.isArray(value.messages))throw new Error('Invalid local conversation history.');
+    return {messages:value.messages.map(record)};
+  }
+  async send(id:string,text:string,options:{metadata?:Record<string,unknown>;clientMessageId?:string;signal?:AbortSignal}={}):Promise<RemoteChatReply> {
+    const value=await this.json(`/api/conversations/${encodeURIComponent(identifier(id))}/messages`,{text,channelType:'DM',metadata:options.metadata,clientMessageId:options.clientMessageId},options.signal);
+    if(typeof value.text!=='string'||typeof value.agentName!=='string')throw new Error('Invalid local agent reply.');
+    return value as RemoteChatReply;
+  }
+}
+
+export async function configureLocalProvider(apiKey:string,model:string) {
+  if(!Capacitor.isNativePlatform())throw Error('Configure the development provider on the host.');
+  if(!native.configureProvider)throw Error('Native provider setup unavailable.');
+  return native.configureProvider({apiKey,model});
+}
+
+export async function stopLocalAgent() {
+  if(!Capacitor.isNativePlatform()||!native.stop)throw Error('Stop browser development with Ctrl-C in its terminal.');
+  await native.stop();
+}
