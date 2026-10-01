@@ -2,17 +2,14 @@ import fs from "node:fs";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
 import { androidEnv } from "./toolchain.mjs";
+import { requireHostedFixtureEnvironment, assertFixtureIdentity, prepareFixtureDisplay } from "./ci-emulator-display.mjs";
 
 const serial = process.env.ANDROID_SERIAL;
-if (process.env.GITHUB_ACTIONS !== "true" || !serial?.startsWith("emulator-")) {
-  throw new Error(
-    "This fixture setup is only for a disposable GitHub Actions emulator.",
-  );
-}
+requireHostedFixtureEnvironment(process.env, serial);
 const env = androidEnv();
 const adb = path.join(env.ANDROID_HOME, "platform-tools/adb");
 const run = (...args) =>
-  execFileSync(adb, ["-s", serial, ...args], { encoding: "utf8", env });
+  execFileSync(adb, ["-s", serial, ...args], { encoding: "utf8", env, timeout: 20000 });
 const identity = JSON.parse(fs.readFileSync("app.config.json"));
 let booted = false;
 for (let attempt = 0; attempt < 120; attempt++) {
@@ -23,6 +20,14 @@ for (let attempt = 0; attempt < 120; attempt++) {
   await new Promise(resolve => setTimeout(resolve, 500));
 }
 if (!booted) throw new Error("Disposable emulator did not finish booting");
+assertFixtureIdentity(run, { fresh: true });
+const displayEvidence = [];
+const recordDisplay = state => {
+  displayEvidence.push(state);
+  fs.mkdirSync("test-results/android-fixture", { recursive: true });
+  fs.writeFileSync("test-results/android-fixture/display-admission.json", JSON.stringify({ serial, observations: displayEvidence }, null, 2) + "\n");
+};
+await prepareFixtureDisplay(run, { serial, record: recordDisplay });
 
 // SDK images initially assign HOME to the temporary SDK setup app. Complete the
 // disposable fixture before measuring our app's HOME behavior; this is not a
@@ -78,10 +83,6 @@ fs.mkdirSync("test-results/android-fixture", { recursive: true });
 fs.writeFileSync("test-results/android-fixture/idle-policy.json", JSON.stringify({
   serial, fixtureUser, priorTimeout, installedTimeout, disposableGithubActionsAvd: true,
 }, null, 2) + "\n");
-run("shell", "svc", "power", "stayon", "true");
-run("shell", "input", "keyevent", "KEYCODE_WAKEUP");
-run("shell", "wm", "dismiss-keyguard");
-run("shell", "input", "keyevent", "KEYCODE_HOME");
 console.log(
   `Prepared disposable ${tablet ? "tablet" : "phone"} fixture; original HOME: ${holder}`,
 );

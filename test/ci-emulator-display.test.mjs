@@ -1,0 +1,73 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import { parseFixtureDisplay, prepareFixtureDisplay, requireFixtureDisplay } from "../scripts/ci-emulator-display.mjs";
+const env = { GITHUB_ACTIONS: "true", RUNNER_ENVIRONMENT: "github-hosted" };
+const policy = ({ showing = true, restricted = true, secure = false } = {}) => `KeyguardServiceDelegate
+ showing=${showing}
+ inputRestricted=false
+ secure=${secure}
+ systemIsReady=true
+ bootCompleted=true
+ screenState=SCREEN_STATE_ON
+ KeyguardStateMonitor
+ mIsShowing=${showing}
+ mInputRestricted=${restricted}
+`;
+function fixture({ secure = false, neverUnlock = false, thirdParty = false, user = "0" } = {}) {
+  const commands = []; let disabled = false, dismissed = false, displayReads = 0;
+  const run = (...args) => {
+    const cmd = args.join(" "); commands.push(cmd);
+    if (cmd === "emu avd name") return "test\nOK";
+    if (cmd === "shell getprop ro.kernel.qemu") return "1";
+    if (cmd === "shell getprop ro.build.type") return "userdebug";
+    if (cmd === "shell am get-current-user") return user;
+    if (cmd === "shell pm list users") return "Users:\n UserInfo{0:Owner:4c13} running";
+    if (cmd === "shell pm list packages -3") return thirdParty ? "package:some.existing.app" : "";
+    if (cmd === "shell dumpsys power") return " mWakefulness=Awake\n";
+    if (cmd === "shell dumpsys window policy") {
+      if (dismissed) displayReads++;
+      // A successful dismiss command does not immediately dismiss keyguard.
+      const showing = !dismissed || neverUnlock || displayReads < 3;
+      return policy({ showing, restricted: showing, secure });
+    }
+    if (cmd === "shell locksettings get-disabled --user 0") return String(disabled);
+    if (cmd === "shell locksettings set-disabled --user 0 true") { disabled = true; return "Lock screen disabled set to true"; }
+    if (cmd === "shell wm dismiss-keyguard") { dismissed = true; return ""; }
+    if (["shell svc power stayon true", "shell input keyevent KEYCODE_WAKEUP", "shell input keyevent KEYCODE_HOME"].includes(cmd)) return "";
+    throw new Error(`Unexpected command: ${cmd}`);
+  };
+  return { run, commands };
+}
+const mutations = commands => commands.filter(command => /set-disabled|stayon|keyevent|dismiss-keyguard/.test(command));
+test("actual locked CI policy remains rejected despite awake screen and delegate inputRestricted=false", () => {
+  const state = parseFixtureDisplay("mWakefulness=Awake\n", policy());
+  assert.equal(state.awake, true); assert.equal(state.displayOn, true);
+  assert.equal(state.unlocked, false); assert.equal(state.unrestricted, false);
+  assert.equal(parseFixtureDisplay("mWakefulness=Awake", "").secure, null);
+});
+test("fresh hosted fixture waits for observed consecutive unlock after successful dismissal", async () => {
+  const f = fixture(), observations = [];
+  const state = await prepareFixtureDisplay(f.run, { env, serial: "emulator-5554", sleep: async () => {}, record: value => observations.push(value) });
+  assert.equal(state.unlocked, true);
+  const admission = observations.filter(row => row.phase === "display-admission");
+  assert.deepEqual(admission.map(row => row.unlocked), [false, false, true, true]);
+  assert.equal(mutations(f.commands).filter(cmd => cmd.includes("set-disabled")).length, 1);
+  assert.deepEqual(observations.find(row => row.phase === "lockscreen-policy"), { phase: "lockscreen-policy", user: "0", priorDisabled: "false", installedDisabled: "true" });
+});
+test("secure, nonfresh and other-user fixtures fail before any mutation", async () => {
+  for (const options of [{ secure: true }, { thirdParty: true }, { user: "10" }]) {
+    const f = fixture(options);
+    await assert.rejects(prepareFixtureDisplay(f.run, { env, serial: "emulator-5554", sleep: async () => {} }));
+    assert.deepEqual(mutations(f.commands), []);
+  }
+});
+test("local, self-hosted and wrong-serial contexts execute no device command", async () => {
+  for (const options of [{ env: {}, serial: "emulator-5554" }, { env: { ...env, RUNNER_ENVIRONMENT: "self-hosted" }, serial: "emulator-5554" }, { env, serial: "emulator-5562" }]) {
+    const f = fixture(); await assert.rejects(prepareFixtureDisplay(f.run, options)); assert.deepEqual(f.commands, []);
+  }
+});
+test("read-only preflight does not repair or ignore a locked display", async () => {
+  const f = fixture({ neverUnlock: true }); let waits = 0;
+  await assert.rejects(requireFixtureDisplay(f.run, { env, serial: "emulator-5554", sleep: async () => { waits++; } }), /not observed awake/);
+  assert.equal(waits, 30); assert.deepEqual(mutations(f.commands), []);
+});

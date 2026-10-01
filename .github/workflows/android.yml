@@ -128,7 +128,7 @@ jobs:
           java-version: "21"
       - uses: android-actions/setup-android@v3
         with:
-          packages: platform-tools
+          packages: platform-tools build-tools;36.0.0
           log-accepted-android-sdk-licenses: false
       - uses: actions/download-artifact@v4
         with:
@@ -181,13 +181,19 @@ jobs:
           target: default
           arch: x86_64
           disk-size: 2048M
+          # Provider replacement is confined to this fresh disposable AOSP image.
+          emulator-options: -no-window -gpu swiftshader -no-snapshot -noaudio -no-boot-anim -writable-system
           disable-animations: true
           script: |
             ANDROID_SERIAL=emulator-5554 node scripts/prepare-ci-emulator.mjs
+            ANDROID_SERIAL=emulator-5554 ALPHA_DISPOSABLE_WEBVIEW_FIXTURE=api35-default-x86_64 node scripts/prepare-ci-webview.mjs
             ANDROID_SERIAL=emulator-5554 ALPHA_BUILD_ARCHIVE=artifacts/smoke-bundle npm run android:smoke
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: android-smoke-evidence
-          path: test-results/
+          path: |
+            test-results/
+            !test-results/ci-webview-provider/chromium.zip
+            !test-results/ci-webview-provider/SystemWebView.apk
           retention-days: 14

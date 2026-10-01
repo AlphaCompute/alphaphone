@@ -86,8 +86,17 @@ public class ActionJournalInstrumentedTest {
    activity.recreate();
    JSONObject restored=call("Capacitor.Plugins.AlphaActionJournal.get("+binding+")").getJSONObject("entry");
    assertEquals("Maps private snapshot sentinel",restored.getJSONObject("result").getJSONObject("mapsResult").getJSONObject("fields").getString("label"));
-   String history=call("Capacitor.Plugins.AlphaActionJournal.list("+new JSONObject().put("scope",scope)+")").toString();
-   assertFalse(history.contains("Maps private snapshot sentinel"));assertFalse(history.contains("43.7384"));assertTrue(history.contains("mapsReadRetained"));
+   JSONObject listed=call("Capacitor.Plugins.AlphaActionJournal.list("+new JSONObject().put("scope",scope)+")");
+   assertEquals(1,listed.getJSONArray("entries").length());
+   JSONObject summary=listed.getJSONArray("entries").getJSONObject(0).getJSONObject("result");
+   assertFalse("Passive history excludes the entire Maps result envelope",summary.has("mapsResult"));
+   assertTrue(summary.getBoolean("mapsReadRetained"));assertEquals(operationId,summary.getString("operationId"));
+   String history=listed.toString();
+   assertFalse(history.contains("Maps private snapshot sentinel"));assertFalse(history.contains("43.7384"));assertFalse(history.contains("\"coordinate\""));assertFalse(history.contains("\"latitude\""));
+   activity.recreate();
+   JSONObject afterHistory=call("Capacitor.Plugins.AlphaActionJournal.get("+binding+")").getJSONObject("entry");
+   assertEquals("History projection must not rewrite the durable replay receipt",restored.toString(),afterHistory.toString());
+   assertFalse("Identical persisted completion remains idempotent",call("Capacitor.Plugins.AlphaActionJournal.finish("+done+")").has("error"));
    String encrypted=new String(Files.readAllBytes(new File(folder,hash(entrySlot)).toPath()),StandardCharsets.ISO_8859_1);assertFalse(encrypted.contains("Maps private snapshot sentinel"));
    fields.put("label","Changed snapshot");assertTrue(call("Capacitor.Plugins.AlphaActionJournal.finish("+done+")").has("error"));
   }finally{for(String slot:new String[]{entrySlot,indexSlot})for(String suffix:new String[]{"",".bak",".new"})new File(folder,hash(slot)+suffix).delete();}

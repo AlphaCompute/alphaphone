@@ -1,3 +1,4 @@
+import { requireFixtureDisplay } from "./ci-emulator-display.mjs";
 import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
@@ -65,6 +66,13 @@ try {
       "-r",
       archive ? path.join(archive, `${variant}-androidTest.apk`) : `android/app/build/outputs/apk/androidTest/${variant}/debug/app-${variant}-debug-androidTest.apk`,
     );
+    if (process.env.GITHUB_ACTIONS === "true") {
+      const observations = [];
+      await requireFixtureDisplay(run, { serial, record: state => {
+        observations.push(state);
+        fs.writeFileSync(`${output}/${variant}-display-admission.json`, JSON.stringify({ serial, observations }, null, 2) + "\n");
+      } });
+    }
     let instrumentation;
     const instrumentationStarted = Date.now();
     try {

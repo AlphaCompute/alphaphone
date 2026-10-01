@@ -237,9 +237,9 @@ public final class AlphaConnectionPlugin extends Plugin {
  }
  static boolean validDeviceCapabilities(String value) {
   if(value==null||value.contains("\r")||value.contains("\n"))return false;
-  String[] parts=value.split(",",-1);if(parts.length<1||parts.length>3)return false;
+  String[] parts=value.split(",",-1);if(parts.length<1||parts.length>4)return false;
   java.util.HashSet<String> seen=new java.util.HashSet<>();
-  for(String part:parts){String token=part.trim();if(!Set.of("calendar.local-event.v1","notes.local-record.v1","reminders.local-record.v1").contains(token)||!seen.add(token))return false;}
+  for(String part:parts){String token=part.trim();if(!Set.of("calendar.local-event.v1","notes.local-record.v1","reminders.local-record.v1","maps.selected-read.v1").contains(token)||!seen.add(token))return false;}
   return true;
  }
  @PluginMethod public void request(PluginCall call) {
