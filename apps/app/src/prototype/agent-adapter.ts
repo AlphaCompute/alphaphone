@@ -348,7 +348,18 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
         if(this.live){originalSet.call(this,'notes',{storageStatus:'Save unconfirmed. Keep this screen open to preserve unsaved text.'});this.toast(error instanceof NotesCommitUncertain?'Save outcome unknown. Reopen to inspect saved notes; do not repeat the action.':'Notes could not be saved. Unsaved text remains on this screen.');context(this);}
         return false;
       });
-    } catch {this.toast('Notes changed or storage is unavailable. Reopen before editing.');return false;}
+    } catch (error) {
+      // Browser storage and revision checks can fail synchronously, before the
+      // optimistic state above is installed. Preserve the attempted draft just
+      // as we do for a rejected native commit, without retrying the write.
+      this.notesStorageFailed=true;
+      this.notesCommitUncertain=error instanceof NotesCommitUncertain;
+      this.notesSelectionKey=null;this.notesSelection=null;
+      originalSet.call(this,key,{...patch,storageStatus:'Save unconfirmed. Keep this screen open to preserve unsaved text.'});
+      this.toast(this.notesCommitUncertain?'Save outcome unknown. Unsaved text remains on this screen; do not repeat the action.':'Notes changed or storage is unavailable. Unsaved text remains on this screen.');
+      context(this);
+      return false;
+    }
   };
   p.api = function (key: string) {
     const api = originalApi.call(this, key);

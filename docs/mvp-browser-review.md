@@ -2,6 +2,14 @@
 
 ## Renewed gap attack — October 1
 
+### Notes save-failure follow-up
+
+The `d1e85c4` hosted [Browser MVP run 36882106470](https://github.com/AlphaCompute/alphaphone/actions/runs/36882106470) completed successfully: repository verification and all **72 browser tests** passed on that exact SHA. Local and remote `main` matched on delivery readback.
+
+A subsequent requirements-to-source audit found a remaining required Notes recovery defect: a synchronous browser storage failure or revision conflict discarded the just-entered text before the optimistic draft state was installed. Two rendered regressions reproduced the loss. The synchronous failure path now preserves the attempted draft, displays the same unconfirmed-save warning as asynchronous native failures, clears agent selection and refuses further writes. It does not overwrite a concurrent saved value or automatically repeat an uncertain write. Both cases pass after repair, including navigation away and back to the draft within the current session. Reload recovery is deliberately not claimed: the warning tells the user to keep this screen open because the draft is not confirmed durable. Original failures and corrected evidence are retained in `test-results/notes-save-recovery/`.
+
+Follow-up local verification: **22/22** repository checks, TypeScript and production build pass; the complete Notes/import subset passes **15/15**. Its first broader campaign had two immediate compact-geometry assertion failures; the checks now await the same bounds and pointer-hit conditions within five seconds instead of taking a single pre-settlement sample. No bounds or hit-test requirement was relaxed. The complete hosted suite now contains 74 cases; the prior 72-case hosted result does not certify this follow-up commit.
+
 The earlier implementation and test records below are historical snapshots, not current-head certification. The checkout has since advanced to `59255ca` with independent native/runtime work. Its Browser MVP run [36867459130](https://github.com/AlphaCompute/alphaphone/actions/runs/36867459130) passed on that exact commit. At the start of this pass, connection capability changes, Maps tests and two acceptance documents were already being edited by another workstream. That work was committed independently as `22b7475` during this review; source hashes confirm no test inputs changed during the full browser campaign. This pass does not take ownership of its native/runtime qualification.
 
 Two additional product defects were reproduced with real rendered browser tests:

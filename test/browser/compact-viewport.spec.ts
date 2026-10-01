@@ -11,10 +11,14 @@ for (const viewport of [{width:320,height:568},{width:412,height:430},{width:915
     await title.fill('Compact viewport');
     await body.fill('A draft that must stay reachable while the keyboard reduces available height.');
     for(const control of [title,body,page.getByRole('button',{name:'Back to notes',exact:true})]) {
+      // Font/layout updates can follow fill; require the actual geometry and
+      // pointer target to settle, just as locator assertions await UI updates.
+      await expect(async()=>{
       const box=await control.boundingBox();expect(box).not.toBeNull();
       expect(box!.y).toBeGreaterThanOrEqual(0);
       expect(box!.y+box!.height).toBeLessThanOrEqual(viewport.height+1);
       expect(await control.evaluate(el=>{const r=el.getBoundingClientRect();const hit=document.elementFromPoint(r.x+r.width/2,r.y+r.height/2);return hit===el||el.contains(hit);})).toBe(true);
+      }).toPass({timeout:5000});
     }
     await page.screenshot({path:info.outputPath('editor.png')});
     await page.getByRole('button',{name:'Back to notes',exact:true}).click();
