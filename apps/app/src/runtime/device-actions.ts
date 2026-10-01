@@ -1,3 +1,5 @@
+import { isMapsOperation, validateMapsOperation, validateMapsResult, type MapsOperation, type MapsResult } from './maps-contract';
+import { validateMapsSelectedObject } from '../maps/agent-context';
 import {type ReminderOperation,type ReminderResult,isReminderOperation,validateReminderOperation,validateReminderResult} from './reminder-contract';
 import {type NotesOperation,type NotesResult,isNotesOperation,validateNotesOperation,validateNotesResult} from './notes-contract';
 import {type CalendarOperation,type CalendarResult,isCalendarOperation,validateCalendarOperation,validateCalendarResult} from './calendar-contract';
@@ -5,7 +7,7 @@ import { isMvpView } from "../prototype/mvp-features";
 import { parseWorkflowBinding, parseWorkflowRead, validateWorkflowResult, assertWorkflowOperation, type WorkflowReadOperation, type WorkflowReadResult, type WorkflowDeviceBinding, type WorkflowPhoneReview } from './workflow-device-contract';
 import type { ActionProposal, ContextEnvelope, OperationReceipt, VerifiedSession } from './alpha-client';
 
-export type DeviceOperation = ReminderOperation | NotesOperation | CalendarOperation | WorkflowReadOperation | { type: 'create_note'; title: string; body: string }
+export type DeviceOperation = MapsOperation | ReminderOperation | NotesOperation | CalendarOperation | WorkflowReadOperation | { type: 'create_note'; title: string; body: string }
   | { type: 'create_reminder'; title: string; dueAt: string }
   | { type: 'open_view'; view: string } | { type: 'browser_navigate'; url: string };
 export interface DeviceCredential { installationId: string; key: string; enrollmentId?: string }
@@ -22,7 +24,7 @@ export interface ActionJournal {
   get(input: { scope: string; proposalId: string }): Promise<{ entry: JournalEntry | null }>;
   list(input: { scope: string }): Promise<{ entries: JournalEntry[] }>;
 }
-export type DeviceExecutor = (operation: DeviceOperation, operationId: string, context: ContextEnvelope, signal: AbortSignal, bindingHash: string) => Promise<{ status: 'succeeded' | 'failed' | 'unknown'; summary: string; readResult?: WorkflowReadResult; calendarResult?:CalendarResult; notesResult?:NotesResult; reminderResult?:ReminderResult }>;
+export type DeviceExecutor = (operation: DeviceOperation, operationId: string, context: ContextEnvelope, signal: AbortSignal, bindingHash: string) => Promise<{ status: 'succeeded' | 'failed' | 'unknown'; summary: string; readResult?: WorkflowReadResult; calendarResult?:CalendarResult; notesResult?:NotesResult; reminderResult?:ReminderResult; mapsResult?:MapsResult }>;
 export type DeviceRecovery = (operation:DeviceOperation,operationId:string,bindingHash:string,signal:AbortSignal)=>Promise<{status:string;reminderResult?:ReminderResult}>;
 interface Proposal { id: string; digest: string; state: string; expiresAt: number; operation: DeviceOperation; workflow?:WorkflowDeviceBinding; attemptId?: string }
 const views = new Set(['home','notes','reminders','browser','calendar','files','photos','camera','maps','inbox','settings']);
@@ -31,6 +33,7 @@ function text(value: unknown, max = 128): string { if (typeof value !== 'string'
 function id(value: unknown): string { const valueText = text(value); if (!/^[A-Za-z0-9][A-Za-z0-9_-]*$/.test(valueText)) throw new Error('Invalid device action identifier'); return valueText; }
 function operation(value: unknown): DeviceOperation {
   const p = object(value);
+  if(isMapsOperation(p))return validateMapsOperation(p);
   if(isReminderOperation(p))return validateReminderOperation(p);
   if(isNotesOperation(p))return validateNotesOperation(p);
   if(isCalendarOperation(p))return validateCalendarOperation(p);
@@ -59,6 +62,7 @@ function assertCalendarContext(operation:CalendarOperation,context:ContextEnvelo
   if(selected.kind!=='calendar-source'||selected.id!==operation.source.sourceId||selected.revision!==operation.source.sourceRevision)throw Error('Calendar source changed');
  }else if(selected.kind!=='calendar-event'||selected.id!==operation.target.eventId||selected.revision!==operation.target.revision||selected.accountId!==operation.target.sourceId||selected.sourceRevision!==operation.target.sourceRevision)throw Error('Selected calendar event changed');
 }
+function assertMapsContext(operation:MapsOperation,context:ContextEnvelope){const selected=context.selectedObject,t=operation.target;if(context.sensitive||context.view!=='maps'||!selected||selected.kind!==t.kind||selected.id!==t.id||selected.revision!==t.revision||!validateMapsSelectedObject(t))throw Error('Selected Maps context changed');}
 function assertReminderContext(operation:ReminderOperation,context:ContextEnvelope){const s=context.selectedObject,t=operation.target;if(context.sensitive||context.view!=='calendar'||!s||s.kind!=='reminder'||s.id!==t.reminderId||s.revision!==t.revision||s.accountId!==t.sourceId||s.sourceRevision!==t.sourceRevision||s.occurrenceId!==t.occurrenceId)throw Error('Selected reminder context changed');}
 function assertNotesContext(operation:NotesOperation,context:ContextEnvelope){const s=context.selectedObject,t=operation.target;if(context.sensitive||context.view!=='notes'||!s||s.kind!=='note'||s.id!==t.noteId||s.revision!==t.revision||s.accountId!==t.sourceId||s.sourceRevision!==t.sourceRevision)throw Error('Selected note context changed');}
 export async function actionScope(value: string): Promise<string> {
@@ -89,6 +93,7 @@ export class DeviceActions {
   async pending(context: ContextEnvelope, signal: AbortSignal): Promise<ActionProposal[]> {
     const pending = (await this.list(signal)).filter(p => {
       if (p.workflow || p.state !== 'pending' || p.expiresAt <= Date.now()) return false;
+      if (isMapsOperation(p.operation)) {try {assertMapsContext(p.operation,context);}catch{return false;}}
       if (isReminderOperation(p.operation)) {try {assertReminderContext(p.operation,context);}catch{return false;}}
       if (isNotesOperation(p.operation)) {try {assertNotesContext(p.operation,context);}catch{return false;}}
       if (isCalendarOperation(p.operation)) { try { assertCalendarContext(p.operation, context); } catch { return false; } }
@@ -96,12 +101,13 @@ export class DeviceActions {
     });
     signal.throwIfAborted(); this.proposals.clear();
     return pending.map(proposal => {
+      if(isMapsOperation(proposal.operation))assertMapsContext(proposal.operation,context);
       if(isReminderOperation(proposal.operation))assertReminderContext(proposal.operation,context);
       if(isNotesOperation(proposal.operation))assertNotesContext(proposal.operation,context);
       if(isCalendarOperation(proposal.operation))assertCalendarContext(proposal.operation,context);
       this.proposals.set(proposal.id, { proposal, context: structuredClone(context) });
       const op = proposal.operation;
-      const description = isReminderOperation(op) ? `${op.type.replaceAll('_',' ')} · selected reminder ${op.target.reminderId}\n${op.type==='reminder_update'?JSON.stringify(op.fields):op.type==='reminder_read_selected'?'Send this exact reminder title, details and schedule to the connected agent.':op.type==='reminder_cancel'?'Cancel this reminder and all its future repeats.':op.type==='reminder_snooze'?'Snooze this occurrence for ten minutes. Android may delay delivery.':'Complete this occurrence; a repeat advances to its next future occurrence.'}` : isNotesOperation(op) ? `${op.type.replaceAll('_',' ')} · selected note ${op.target.noteId}\n${op.type==='notes_update'?JSON.stringify(op.fields):op.type==='notes_read_selected'?'Send this exact note title and body to the connected agent.':'Delete this exact note. Attached audio files are retained.'}` : isCalendarOperation(op) ? `${op.type.replaceAll('_',' ')} · source ${(op.type==='calendar_create'?op.source:op.target).sourceId}\n${'fields' in op?JSON.stringify(op.fields):'Review the exact selected event on this phone.'}` : op.type === 'create_note' ? `Create note “${op.title}”\n${op.body}` : op.type === 'create_reminder' ? `Create reminder “${op.title}” at ${new Date(op.dueAt).toLocaleString()}` : op.type === 'open_view' ? `Open ${op.view} on this phone` : op.type==='browser_navigate'?`Open browser destination ${op.url}`:'Workflow phone read';
+      const description = isMapsOperation(op) ? 'Send the exact selected place location or route endpoints, mode and distance to the connected agent. This shares location information. It does not start navigation.' : isReminderOperation(op) ? `${op.type.replaceAll('_',' ')} · selected reminder ${op.target.reminderId}\n${op.type==='reminder_update'?JSON.stringify(op.fields):op.type==='reminder_read_selected'?'Send this exact reminder title, details and schedule to the connected agent.':op.type==='reminder_cancel'?'Cancel this reminder and all its future repeats.':op.type==='reminder_snooze'?'Snooze this occurrence for ten minutes. Android may delay delivery.':'Complete this occurrence; a repeat advances to its next future occurrence.'}` : isNotesOperation(op) ? `${op.type.replaceAll('_',' ')} · selected note ${op.target.noteId}\n${op.type==='notes_update'?JSON.stringify(op.fields):op.type==='notes_read_selected'?'Send this exact note title and body to the connected agent.':'Delete this exact note. Attached audio files are retained.'}` : isCalendarOperation(op) ? `${op.type.replaceAll('_',' ')} · source ${(op.type==='calendar_create'?op.source:op.target).sourceId}\n${'fields' in op?JSON.stringify(op.fields):'Review the exact selected event on this phone.'}` : op.type === 'create_note' ? `Create note “${op.title}”\n${op.body}` : op.type === 'create_reminder' ? `Create reminder “${op.title}” at ${new Date(op.dueAt).toLocaleString()}` : op.type === 'open_view' ? `Open ${op.view} on this phone` : op.type==='browser_navigate'?`Open browser destination ${op.url}`:'Workflow phone read';
       return { id: proposal.id, title: op.type.replaceAll('_', ' '), description, expiresAt: proposal.expiresAt, contextRevision: context.revision };
     });
   }
@@ -113,6 +119,7 @@ export class DeviceActions {
       return {id:p.id,title:op.type.replaceAll('_',' '),description:`Agent: ${this.session.origin}\nOwner: ${this.session.ownerId}\nWorkflow: ${p.workflow!.workflowId}\nRun: ${p.workflow!.runId}\nVersion: ${p.workflow!.versionId}\nStep: ${p.workflow!.stepId}\nSpec: ${p.workflow!.specDigest}\n${scope}`,expiresAt:p.expiresAt,contextRevision:context.revision};});
   }
   private async mutation(p: Proposal, suffix: string, body: Record<string, unknown>, signal: AbortSignal): Promise<Proposal> {
+    if(isMapsOperation(p.operation)&&(suffix==='receipt'||suffix==='reconciliation')&&!validateMapsSelectedObject(p.operation.target))throw Error('Maps selection changed before upload');
     const response = object(await this.request(`/api/client-devices/proposals/${p.id}/${suffix}`, { digest: p.digest, ...body }, signal));
     const result = this.parse({ ...object(response.proposal), digest: response.digest });
     if (result.id !== p.id || result.digest !== p.digest) throw new Error('Device action changed during review');
@@ -127,6 +134,7 @@ export class DeviceActions {
     try {
       if(p.workflow){if(!reviewed.workflowReview)throw new Error('Workflow step must be reviewed from its execution');assertWorkflowOperation(reviewed.workflowReview,p.workflow,{installationId:this.credential.installationId,enrollmentId:this.credential.enrollmentId!},p.operation);}
       signal.throwIfAborted();
+      if(isMapsOperation(p.operation))assertMapsContext(p.operation,context);
       if(isReminderOperation(p.operation))assertReminderContext(p.operation,context);
       if(isNotesOperation(p.operation))assertNotesContext(p.operation,context);
       if(isCalendarOperation(p.operation))assertCalendarContext(p.operation,context);
@@ -141,6 +149,8 @@ export class DeviceActions {
       let result: Awaited<ReturnType<DeviceExecutor>>;
       try { signal.throwIfAborted(); if (p.expiresAt <= Date.now()) throw new Error('Expired action'); result = await this.execute(p.operation, operationId, context, signal, await actionScope(JSON.stringify([this.scope,this.session.ownerId,this.session.agentId,this.session.sessionId,this.session.origin,this.credential.installationId,this.credential.enrollmentId,p.id,p.digest,operationId]))); }
       catch { result = { status: 'unknown', summary: 'Action outcome needs review. It will not be repeated automatically.' }; }
+      let mapsResult:MapsResult|undefined;
+      if(isMapsOperation(p.operation)){if(result.status==='succeeded')mapsResult=validateMapsResult(p.operation,result.mapsResult);else if(result.mapsResult!==undefined)throw Error('Failed Maps read cannot return content');}else if(result.mapsResult!==undefined)throw Error('Unexpected Maps result');
       let reminderResult:ReminderResult|undefined;
       if(isReminderOperation(p.operation)){if(result.status==='succeeded')reminderResult=validateReminderResult(p.operation,result.reminderResult);else if(result.reminderResult!==undefined)throw Error('Unconfirmed reminder cannot return a result');}else if(result.reminderResult!==undefined)throw Error('Unexpected reminder result');
       let notesResult:NotesResult|undefined;
@@ -153,10 +163,10 @@ export class DeviceActions {
         if(result.status==='succeeded')readResult=await validateWorkflowResult(p.operation,result.readResult);
         else if(result.readResult!==undefined)throw new Error('Failed read cannot return content');
       }else if(result.readResult!==undefined)throw new Error('Unexpected read content');
-      await this.journal.finish({ scope: this.scope, proposalId, status:result.status, summary:result.summary, result: { operationId,...(readResult?{readResult}:{}),...(calendarResult?{calendarResult}:{}),...(notesResult?{notesResult}:{}),...(reminderResult?{reminderResult}:{}) } });
+      await this.journal.finish({ scope: this.scope, proposalId, status:result.status, summary:result.summary, result: { operationId,...(mapsResult?{mapsResult}:{}),...(readResult?{readResult}:{}),...(calendarResult?{calendarResult}:{}),...(notesResult?{notesResult}:{}),...(reminderResult?{reminderResult}:{}) } });
       // A completed device effect is journaled even if the UI epoch was cancelled.
       // Receipt upload is retried only by the explicit history control.
-      try { await this.mutation(p, 'receipt', { attemptId: claimed.attemptId, receipt: { outcome: result.status === 'succeeded' ? 'applied' : result.status === 'failed' ? 'failed' : 'unknown', operationId,...(readResult?{result:readResult}:calendarResult?{result:calendarResult}:notesResult?{result:notesResult}:reminderResult?{result:reminderResult}:{}) } }, signal); }
+      try { if(isMapsOperation(p.operation))assertMapsContext(p.operation,context); await this.mutation(p, 'receipt', { attemptId: claimed.attemptId, receipt: { outcome: result.status === 'succeeded' ? 'applied' : result.status === 'failed' ? 'failed' : 'unknown', operationId,...(mapsResult?{result:mapsResult}:readResult?{result:readResult}:calendarResult?{result:calendarResult}:notesResult?{result:notesResult}:reminderResult?{result:reminderResult}:{}) } }, signal); }
       catch { return { proposalId, status: result.status, summary: `${result.summary} Server receipt is pending; check action history.` }; }
       finally {if(typeof window!=='undefined'){if(isNotesOperation(p.operation))window.dispatchEvent(new CustomEvent('alpha:notes-committed'));if(isReminderOperation(p.operation)||p.operation.type==='create_reminder')window.dispatchEvent(new CustomEvent('alpha:reminders-committed'));}}
       return { proposalId, status:result.status, summary:result.summary };
@@ -193,14 +203,24 @@ export class DeviceActions {
       if(p)entry=await this.recoverReminder(p,entry,signal);
       if (!p || entry.phase !== 'terminal' || !entry.attemptId || entry.record.digest !== p.digest || !entry.status) continue;
       if(p.workflow&&(!workflow||p.workflow.runId!==workflow.runId||p.workflow.versionId!==workflow.versionId||p.workflow.specDigest!==workflow.specDigest))continue;
+      const mapsResult=await this.savedMapsResult(p,entry);
       const readResult=await this.savedReadResult(p,entry);
       const calendarResult=await this.savedCalendarResult(p,entry);
       const notesResult=await this.savedNotesResult(p,entry);
       const reminderResult=await this.savedReminderResult(p,entry);
       if(isReminderOperation(p.operation)&&p.state==='reconciliation_required'&&entry.status==='succeeded'&&reminderResult){
         await this.mutation(p,'reconciliation',{attemptId:entry.attemptId,resolution:{confirmed:true,outcome:'applied',operationId:entry.operationId,result:reminderResult}},signal);
-      }else await this.mutation(p, 'receipt', { attemptId: entry.attemptId, receipt: { outcome: entry.status === 'succeeded' ? 'applied' : entry.status === 'failed' ? 'failed' : 'unknown', operationId: entry.operationId,...(readResult?{result:readResult}:calendarResult?{result:calendarResult}:notesResult?{result:notesResult}:reminderResult?{result:reminderResult}:{}) } }, signal);
+      }else await this.mutation(p, 'receipt', { attemptId: entry.attemptId, receipt: { outcome: entry.status === 'succeeded' ? 'applied' : entry.status === 'failed' ? 'failed' : 'unknown', operationId: entry.operationId,...(mapsResult?{result:mapsResult}:readResult?{result:readResult}:calendarResult?{result:calendarResult}:notesResult?{result:notesResult}:reminderResult?{result:reminderResult}:{}) } }, signal);
     }
+  }
+  private async savedMapsResult(p:Proposal,summary:JournalEntry):Promise<MapsResult|undefined>{
+    if(!isMapsOperation(p.operation)||summary.status!=='succeeded')return undefined;
+    const {entry}=await this.journal.get({scope:this.scope,proposalId:p.id});
+    if(!entry||entry.phase!=='terminal'||entry.status!=='succeeded'||entry.operationId!==summary.operationId||entry.record.digest!==p.digest||entry.record.ownerId!==this.session.ownerId||entry.record.agentId!==this.session.agentId||entry.record.origin!==this.session.origin||entry.record.installationId!==this.credential.installationId||entry.record.enrollmentId!==this.credential.enrollmentId||entry.record.sessionId!==this.session.sessionId)throw Error('No exact saved Maps receipt; the selection will not be read again');
+    // Replay only the already approved snapshot while its current capability is
+    // still valid. Reload/leave does not authorize a fresh read or late upload.
+    assertMapsContext(p.operation,entry.record.context as ContextEnvelope);
+    return validateMapsResult(p.operation,entry.result?.mapsResult);
   }
   private async savedCalendarResult(p:Proposal,summary:JournalEntry):Promise<CalendarResult|undefined>{
     if(!isCalendarOperation(p.operation)||summary.status!=='succeeded')return undefined;
@@ -232,6 +252,8 @@ export class DeviceActions {
     if (!p?.attemptId) throw new Error('No dispatched action to reconcile');
     let { entry } = await this.journal.get({ scope: this.scope, proposalId });
     if(entry&&outcome==='applied')entry=await this.recoverReminder(p,entry,signal);
+    const mapsResult=outcome==='applied'&&entry?await this.savedMapsResult(p,entry):undefined;
+    if(outcome==='applied'&&isMapsOperation(p.operation)&&!mapsResult)throw Error('Applied Maps read requires exact saved receipt');
     const readResult=outcome==='applied'&&entry?await this.savedReadResult(p,entry):undefined;
     const calendarResult=outcome==='applied'&&entry?await this.savedCalendarResult(p,entry):undefined;
     const notesResult=outcome==='applied'&&entry?await this.savedNotesResult(p,entry):undefined;
@@ -240,6 +262,6 @@ export class DeviceActions {
     if(outcome==='applied'&&isNotesOperation(p.operation)&&!notesResult)throw Error('Applied Notes reconciliation requires its exact saved receipt');
     if(outcome==='applied'&&isCalendarOperation(p.operation)&&!calendarResult)throw Error('Applied Calendar reconciliation requires exact saved provider receipt');
     if(outcome==='applied'&&(p.operation.type==='read_selected_notes'||p.operation.type==='read_calendar_range')&&!readResult)throw new Error('Applied read requires its exact saved result');
-    await this.mutation(p, 'reconciliation', { attemptId: p.attemptId, resolution: { confirmed: true, outcome, ...(outcome === 'applied' && entry ? { operationId: entry.operationId } : {}),...(readResult?{result:readResult}:calendarResult?{result:calendarResult}:notesResult?{result:notesResult}:reminderResult?{result:reminderResult}:{}) } }, signal);
+    await this.mutation(p, 'reconciliation', { attemptId: p.attemptId, resolution: { confirmed: true, outcome, ...(outcome === 'applied' && entry ? { operationId: entry.operationId } : {}),...(mapsResult?{result:mapsResult}:readResult?{result:readResult}:calendarResult?{result:calendarResult}:notesResult?{result:notesResult}:reminderResult?{result:reminderResult}:{}) } }, signal);
   }
 }

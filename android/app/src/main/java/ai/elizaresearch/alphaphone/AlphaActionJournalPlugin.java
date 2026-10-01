@@ -78,10 +78,16 @@ public final class AlphaActionJournalPlugin extends Plugin {
   JSONObject result=call.getObject("result");
   JSONObject retainedOperation=entry.getJSONObject("record").optJSONObject("operation");
   if("succeeded".equals(status)&&entry.getJSONObject("record").has("workflow")&&retainedOperation!=null&&Set.of("read_selected_notes","read_calendar_range").contains(retainedOperation.optString("type"))&&result==null)throw new IllegalArgumentException();
-  if("succeeded".equals(status)&&retainedOperation!=null&&Set.of("notes_read_selected","notes_update","notes_delete","reminder_read_selected","reminder_update","reminder_complete","reminder_snooze","reminder_cancel").contains(retainedOperation.optString("type"))&&result==null)throw new IllegalArgumentException();
+  if("succeeded".equals(status)&&retainedOperation!=null&&Set.of("maps_read_selected","notes_read_selected","notes_update","notes_delete","reminder_read_selected","reminder_update","reminder_complete","reminder_snooze","reminder_cancel").contains(retainedOperation.optString("type"))&&result==null)throw new IllegalArgumentException();
   if(result!=null){
    JSONObject record=entry.getJSONObject("record"),operation=record.optJSONObject("operation");String type=operation==null?"":operation.optString("type");boolean workflowRead=record.has("workflow")&&Set.of("read_selected_notes","read_calendar_range").contains(type);
-   if(Set.of("reminder_read_selected","reminder_update","reminder_complete","reminder_snooze","reminder_cancel").contains(type)){
+   if("maps_read_selected".equals(type)){
+    if(result.length()!=(result.has("mapsResult")?2:1)||!entry.getString("operationId").equals(result.optString("operationId")))throw new IllegalArgumentException();
+    JSONObject maps=result.optJSONObject("mapsResult");
+    if("succeeded".equals(status)){if(maps==null||maps.length()!=4||!type.equals(maps.optString("kind"))||maps.optInt("version")!=1||maps.optJSONObject("fields")==null||!sameJson(operation.optJSONObject("target"),maps.optJSONObject("target")))throw new IllegalArgumentException();}
+    else if(maps!=null)throw new IllegalArgumentException();
+    if(result.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8).length>8000)throw new IllegalArgumentException();
+   }else if(Set.of("reminder_read_selected","reminder_update","reminder_complete","reminder_snooze","reminder_cancel").contains(type)){
     if(result.length()!=(result.has("reminderResult")?2:1)||!entry.getString("operationId").equals(result.optString("operationId")))throw new IllegalArgumentException();
     JSONObject reminder=result.optJSONObject("reminderResult");if("succeeded".equals(status)){if(reminder==null||!type.equals(reminder.optString("kind"))||reminder.optInt("version")!=1)throw new IllegalArgumentException();}else if(reminder!=null)throw new IllegalArgumentException();
     if(result.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8).length>32768)throw new IllegalArgumentException();
@@ -128,7 +134,7 @@ public final class AlphaActionJournalPlugin extends Plugin {
   JSArray entries=new JSArray();for(int i=0;i<index.length();i++){JSONObject entry=read(store,scope,index.getString(i));if(entry!=null){
    // Passive history never expands every retained private read payload. Explicit
    // receipt recovery calls get() for one exact journal entry at a time.
-   JSONObject result=entry.optJSONObject("result");if(result!=null&&result.has("readResult")){JSONObject summary=new JSONObject(result.toString());summary.remove("readResult");summary.put("readResultRetained",true);entry.put("result",summary);}if(result!=null&&result.optJSONObject("calendarResult")!=null&&result.getJSONObject("calendarResult").has("fields")){JSONObject summary=new JSONObject(result.toString());summary.getJSONObject("calendarResult").remove("fields");summary.put("calendarReadRetained",true);entry.put("result",summary);}if(result!=null&&result.optJSONObject("notesResult")!=null&&result.getJSONObject("notesResult").has("fields")){JSONObject summary=new JSONObject(result.toString());summary.getJSONObject("notesResult").remove("fields");summary.put("notesReadRetained",true);entry.put("result",summary);}entries.put(entry);
+   JSONObject result=entry.optJSONObject("result");if(result!=null&&result.has("readResult")){JSONObject summary=new JSONObject(result.toString());summary.remove("readResult");summary.put("readResultRetained",true);entry.put("result",summary);}if(result!=null&&result.optJSONObject("calendarResult")!=null&&result.getJSONObject("calendarResult").has("fields")){JSONObject summary=new JSONObject(result.toString());summary.getJSONObject("calendarResult").remove("fields");summary.put("calendarReadRetained",true);entry.put("result",summary);}if(result!=null&&result.optJSONObject("notesResult")!=null&&result.getJSONObject("notesResult").has("fields")){JSONObject summary=new JSONObject(result.toString());summary.getJSONObject("notesResult").remove("fields");summary.put("notesReadRetained",true);entry.put("result",summary);}if(result!=null&&result.optJSONObject("mapsResult")!=null){JSONObject summary=new JSONObject(result.toString());summary.getJSONObject("mapsResult").remove("fields");summary.put("mapsReadRetained",true);entry.put("result",summary);}entries.put(entry);
   }}
   JSObject value=new JSObject();value.put("entries",entries);return value;
  });}

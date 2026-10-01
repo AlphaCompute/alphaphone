@@ -1,3 +1,5 @@
+import { isMapsOperation } from '../runtime/maps-contract';
+import { readMapsSelection } from '../maps/agent-context';
 import {isReminderOperation,validateReminderResult} from '../runtime/reminder-contract';
 import { SecureNotesStore, readLegacyDailyNotes } from '../runtime/notes-secure-store';
 import { secureConnectionStore } from '../runtime/native-connection';
@@ -222,6 +224,11 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
     connectionController.setDeviceExecutor(async (operation, operationId, expectedContext, signal, bindingHash) => {
       signal.throwIfAborted(); context(this);
       if (!this.live || JSON.stringify(alphaClient.getState().context) !== JSON.stringify(expectedContext)) throw new Error('Phone context changed');
+      if(isMapsOperation(operation)){
+        const mapsResult=readMapsSelection(operation);signal.throwIfAborted();context(this);
+        if(JSON.stringify(alphaClient.getState().context)!==JSON.stringify(expectedContext))throw Error('Maps context changed');
+        return {status:'succeeded',summary:'Shared the exact selected Maps snapshot with approval. Navigation was not started.',mapsResult};
+      }
       if(isCalendarOperation(operation)){
         const calendar=registerPlugin<{executeAgent(input:{operation:unknown;operationId:string}):Promise<{status:string;result?:unknown}>;cancelAgent(input:{operationId:string}):Promise<unknown>}>('AlphaCalendar');
         const cancel=()=>{void calendar.cancelAgent({operationId}).catch(()=>{});};signal.addEventListener('abort',cancel,{once:true});

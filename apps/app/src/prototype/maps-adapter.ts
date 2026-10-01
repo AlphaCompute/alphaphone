@@ -30,7 +30,15 @@ export function installPrototypeMapsAdapter(_Component: unknown, views: Record<s
     if (selected) {
       let identity = identities.get(selected);
       if (!identity) { identity = {}; identities.set(selected, identity); }
-      publishMapsSelection('map-place', identity, token);
+      const route = (directions || navigating) && state?.route.phase === 'ready' ? state.route.value : null;
+      const selection = selected, provider = state?.provider;
+      const read = provider?.status === 'configured' ? () => {
+        if (route && route.mode !== 'transit') return { kind: 'map-route' as const, providerId: provider.providerId, providerRevision: provider.revision, attribution: route.attribution, from: route.from, to: route.to, mode: route.mode, distanceMeters: route.distanceMeters, durationSeconds: route.durationSeconds, traffic: route.traffic };
+        return { kind: 'map-place' as const, providerId: provider.providerId, providerRevision: provider.revision, attribution: regionalMap()?.attribution || state?.selection.value?.attribution || '', label: selection.label, coordinate: selection.coordinate };
+      } : undefined;
+      // Route identity changes with origin/mode/provider updates; failed/loading
+      // routes expose no stale route read capability.
+      publishMapsSelection(route ? 'map-route' : 'map-place', identity, token, read);
     }
     else if (searching && query.trim()) publishMapsSelection('map-search', searchIdentity, token);
     else clearMapsSelection();
