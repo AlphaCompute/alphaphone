@@ -1,0 +1,1417 @@
+diff --git a/packages/agent/src/triggers/runtime.ts b/packages/agent/src/triggers/runtime.ts
+index 0701499..6a64cad 100644
+--- a/packages/agent/src/triggers/runtime.ts
++++ b/packages/agent/src/triggers/runtime.ts
+@@ -426,7 +426,12 @@ async function dispatchWorkflow(
+         eventKind: event.kind,
+         eventPayload: event.payload ?? {},
+       }
+-    : {};
++    : typeof task.metadata?.hostedVersionId === "string"
++      ? {
++          scheduledAtMs: trigger.nextRunAtMs,
++          workflowVersionId: task.metadata.hostedVersionId,
++        }
++      : {};
+   const result = await svc.execute(trigger.workflowId, payload, {
+     idempotencyKey,
+     ...(event?.triggerChainDepth !== undefined
+diff --git a/b/plugins/plugin-workflow/__tests__/integration/hosted-digests-http.test.ts b/plugins/plugin-workflow/__tests__/integration/hosted-digests-http.test.ts
+new file mode 100644
+index 0000000..541d5b9
+--- /dev/null
++++ b/plugins/plugin-workflow/__tests__/integration/hosted-digests-http.test.ts
+@@ -0,0 +1,434 @@
++import { randomUUID } from 'node:crypto';
++import { mkdtemp, rm } from 'node:fs/promises';
++import http from 'node:http';
++import { tmpdir } from 'node:os';
++import { join } from 'node:path';
++import { computeNextCronRunAtMs, ModelType, ServiceType, TaskService } from '@elizaos/core';
++import { expect, test } from 'vitest';
++import { registerTriggerTaskWorker } from '../../../../packages/agent/src/triggers/runtime.ts';
++import { createRealTestRuntime } from '../../../../packages/app/test/helpers/real-runtime.ts';
++import { embeddedExecutions, hostedResults } from '../../src/db/schema';
++import { workflowPlugin } from '../../src/index';
++import { handleWorkflowRoutes } from '../../src/routes/workflow-routes';
++import type { EmbeddedWorkflowService } from '../../src/services/embedded-workflow-service';
++import { digestDeliveryProjection } from '../../src/services/hosted-digest';
++import { resolveSmithersWorkflowDir } from '../../src/services/smithers-runtime';
++
++test('two actual scheduled hosted digests survive restart and reconnect with one persisted result each', async () => {
++  let cleanupAgent = '';
++  const directory = await mkdtemp(join(tmpdir(), 'hosted-digest-e2e-')),
++    owned: string[] = [];
++  let state: Awaited<ReturnType<typeof createRealTestRuntime>> | undefined,
++    server: http.Server | undefined,
++    origin = '',
++    modelCalls = 0;
++  const boot = async () => {
++    state = await createRealTestRuntime({
++      characterName: 'HostedDigestFixture',
++      pgliteDir: directory,
++      removePgliteDirOnCleanup: false,
++      plugins: [
++        workflowPlugin,
++        {
++          name: 'synthetic-digest-model',
++          description: 'Loopback HTTP provider fixture',
++          models: {
++            [ModelType.TEXT_LARGE]: async (_runtime, params) => {
++              const response = await fetch(origin + '/provider', {
++                method: 'POST',
++                headers: { 'content-type': 'application/json' },
++                body: JSON.stringify({ prompt: params.prompt }),
++              });
++              if (!response.ok) throw Error('Fixture provider failed');
++              return response.text();
++            },
++          },
++        },
++      ],
++    });
++    cleanupAgent = state.runtime.agentId;
++    registerTriggerTaskWorker(state.runtime);
++    if (!state.runtime.getService(ServiceType.TASK))
++      await state.runtime.registerService(TaskService);
++    server = http.createServer((req, res) => {
++      void (async () => {
++        if (req.url === '/provider') {
++          let body = '';
++          for await (const chunk of req) body += chunk;
++          const data = JSON.parse(body);
++          expect(data.prompt).toContain('snapshot');
++          modelCalls++;
++          res.end(
++            'Snapshot observed at the reviewed time: synthetic task remains open. No current phone data was read.'
++          );
++          return;
++        }
++        const token = req.headers.authorization;
++        if (
++          token !== 'Bearer fixture-owner' &&
++          token !== 'Bearer fixture-other' &&
++          token !== 'Bearer paging-owner'
++        ) {
++          res.writeHead(401);
++          res.end('{}');
++          return;
++        }
++        await handleWorkflowRoutes({
++          req,
++          res,
++          method: req.method!,
++          pathname: new URL(req.url!, 'http://localhost').pathname,
++          runtime: state!.runtime,
++          principalId:
++            token === 'Bearer fixture-owner'
++              ? 'fixture-owner'
++              : token === 'Bearer paging-owner'
++                ? 'paging-owner'
++                : 'fixture-other',
++          json: (r, value, status = 200) => {
++            r.writeHead(status, { 'content-type': 'application/json' });
++            r.end(JSON.stringify(value));
++          },
++        });
++      })().catch((error) => {
++        res.writeHead(500);
++        res.end(JSON.stringify({ error: String(error) }));
++      });
++    });
++    await new Promise<void>((resolve) => server!.listen(0, '127.0.0.1', resolve));
++    origin = `http://127.0.0.1:${(server.address() as any).port}`;
++  };
++  const stop = async () => {
++    if (server) {
++      await new Promise<void>((resolve, reject) =>
++        server!.close((error) => (error ? reject(error) : resolve()))
++      );
++      server = undefined;
++    }
++    await state?.cleanup();
++    state = undefined;
++  };
++  const call = async (path: string, body?: unknown, owner = 'fixture-owner') => {
++    const response = await fetch(origin + '/api/workflow' + path, {
++      method: body === undefined ? 'GET' : 'POST',
++      headers: { authorization: 'Bearer ' + owner, 'content-type': 'application/json' },
++      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
++    });
++    return { status: response.status, body: (await response.json()) as any };
++  };
++  try {
++    expect(
++      computeNextCronRunAtMs('30 2 * * *', Date.parse('2027-03-14T06:59:00Z'), 'America/New_York')
++    ).toBe(Date.parse('2027-03-15T06:30:00Z'));
++    expect(
++      computeNextCronRunAtMs('30 1 * * *', Date.parse('2027-11-07T04:59:00Z'), 'America/New_York')
++    ).toBe(Date.parse('2027-11-07T05:30:00Z'));
++    expect(
++      computeNextCronRunAtMs('30 1 * * *', Date.parse('2027-11-07T05:31:00Z'), 'America/New_York')
++    ).toBe(Date.parse('2027-11-08T06:30:00Z'));
++    await boot();
++    const input = {
++      id: randomUUID(),
++      kind: 'tasks',
++      label: 'Explicit synthetic tasks',
++      text: 'Synthetic task remains open. This is an explicitly reviewed snapshot.',
++      observedAt: new Date().toISOString(),
++      expiresAt: new Date(Date.now() + 3600000).toISOString(),
++      confirmed: true,
++    };
++    const source = (await call('/hosted/sources', input)).body.source;
++    expect(source.revision).toMatch(/^[a-f0-9]{64}$/);
++    expect((await call('/hosted/sources')).body.sources[0].text).toBeUndefined();
++    expect((await call('/hosted/sources', input)).body.source.revision).toBe(source.revision);
++    // Real wall-clock recurrence, not manual fire or a fake phone-presence flag.
++    const scheduledAt = Math.floor(Date.now() / 60000) * 60000 + 120000,
++      localTime = new Date(scheduledAt).toISOString().slice(11, 16),
++      receipts: any[] = [],
++      requests: any[] = [];
++    for (const template of ['morning', 'evening']) {
++      const body = {
++        mutationId: randomUUID(),
++        confirmed: true,
++        spec: {
++          version: 1,
++          template,
++          sourceId: source.id,
++          sourceRevision: source.revision,
++          timeZone: 'UTC',
++          localTime,
++          enabled: true,
++        },
++      };
++      requests.push(body);
++      const saved = await call('/hosted/loops', body);
++      expect(saved.status).toBe(200);
++      receipts.push(saved.body.receipt);
++      owned.push(saved.body.receipt.workflowId);
++      expect((await call('/hosted/loops', body)).body.receipt).toEqual(saved.body.receipt);
++    }
++    expect((await call('/hosted/loops', undefined, 'fixture-other')).body.loops).toHaveLength(0);
++    const tasks = await state!.runtime.getTasks({
++      agentIds: [state!.runtime.agentId],
++      tags: ['trigger'],
++    });
++    expect(
++      tasks.filter((t) => owned.includes(String((t.metadata?.trigger as any)?.workflowId)))
++    ).toHaveLength(2);
++    // Close real runtime and disk database before admission; recreated TaskService
++    // must consume the persisted schedules without recreating or manually firing them.
++    await stop();
++    await boot();
++    const deadline = scheduledAt + 90000;
++    let entries: any[] = [];
++    while (Date.now() < deadline) {
++      entries = (await call('/hosted/results?clientId=phone-fixture')).body.entries;
++      if (entries.length === 2) break;
++      await new Promise((resolve) => setTimeout(resolve, 500));
++    }
++    expect(entries).toHaveLength(2);
++    expect(new Set(entries.map((e) => e.runId)).size).toBe(2);
++    expect(modelCalls).toBe(2);
++    for (const entry of entries) {
++      expect(entry.status).toBe('finished');
++      expect(entry.scheduledAt).toBe(new Date(scheduledAt).toISOString());
++      expect(entry.source.type).toBe('explicit_snapshot');
++      expect(JSON.stringify(entry.output)).toContain('synthetic task');
++    }
++    const engine = state!.runtime.getService<EmbeddedWorkflowService>('embedded_workflow_service')!;
++    for (const receipt of receipts) {
++      const before = entries.find((e) => e.workflowId === receipt.workflowId);
++      const repeated = await Promise.all(
++        [1, 2].map(() =>
++          engine.startWorkflow(receipt.workflowId, {
++            mode: 'trigger',
++            triggerData: { scheduledAtMs: scheduledAt, workflowVersionId: receipt.versionId },
++          })
++        )
++      );
++      expect(repeated.map((r) => r.id)).toEqual([before.runId, before.runId]);
++    }
++    expect(modelCalls).toBe(2);
++    expect(
++      (await call('/hosted/results?clientId=phone-fixture', undefined, 'fixture-other')).body
++        .entries
++    ).toHaveLength(0);
++    expect(
++      (
++        await call(
++          '/hosted/results/ack',
++          { clientId: 'phone-fixture', cursor: entries[1].cursor, runId: entries[1].runId },
++          'fixture-other'
++        )
++      ).status
++    ).toBe(404);
++    // A disconnected reader sees the identical durable page until its local commit is acknowledged.
++    expect((await call('/hosted/results?clientId=phone-fixture')).body.entries).toEqual(entries);
++    expect(
++      (
++        await call('/hosted/results/ack', {
++          clientId: 'phone-fixture',
++          cursor: entries[1].cursor,
++          runId: entries[1].runId,
++        })
++      ).status
++    ).toBe(200);
++    await stop();
++    await boot();
++    expect((await call('/hosted/results?clientId=phone-fixture')).body.entries).toHaveLength(0);
++    expect((await call('/hosted/results?clientId=new-phone')).body.entries).toHaveLength(2);
++    expect(modelCalls).toBe(2);
++    // Boundary admission uses the same real SQL engine. These are separate from
++    // the two primary wall-clock scheduled executions above.
++    const freshEngine = state!.runtime.getService<EmbeddedWorkflowService>(
++      'embedded_workflow_service'
++    )!;
++    const currentMinute = Math.floor(Date.now() / 60000) * 60000;
++    const boundarySpec = {
++      version: 1,
++      template: 'morning',
++      sourceId: source.id,
++      sourceRevision: source.revision,
++      timeZone: 'UTC',
++      localTime: new Date(currentMinute).toISOString().slice(11, 16),
++      enabled: true,
++    };
++    const newLoop = async () => {
++      const value = (
++        await call('/hosted/loops', {
++          mutationId: randomUUID(),
++          confirmed: true,
++          spec: boundarySpec,
++        })
++      ).body.receipt;
++      owned.push(value.workflowId);
++      return value;
++    };
++    const missed = await newLoop();
++    const missedRun = await freshEngine.startWorkflow(missed.workflowId, {
++      mode: 'trigger',
++      triggerData: { scheduledAtMs: currentMinute - 86400000, workflowVersionId: missed.versionId },
++    });
++    expect((missedRun.output as any).status).toBe('missed');
++    expect(missedRun.finished).toBe(true);
++    await expect(
++      freshEngine.startWorkflow(missed.workflowId, {
++        mode: 'trigger',
++        triggerData: { scheduledAtMs: currentMinute, workflowVersionId: randomUUID() },
++      })
++    ).rejects.toThrow();
++    expect(
++      (
++        await call(`/workflows/${missed.workflowId}/run`, {
++          submissionId: randomUUID(),
++          expectedVersionId: missed.versionId,
++          input: { hostedDigest: { scheduledAt: new Date(currentMinute).toISOString() } },
++        })
++      ).status
++    ).toBe(409);
++    const overlap = await newLoop(),
++      heldId = randomUUID(),
++      held = {
++        id: heldId,
++        workflowId: overlap.workflowId,
++        workflowVersionId: overlap.versionId,
++        workflowName: 'Held synthetic occurrence',
++        mode: 'trigger',
++        status: 'running',
++        finished: false,
++        startedAt: new Date(currentMinute - 86400000).toISOString(),
++        input: {},
++        events: [],
++        approvals: [],
++      };
++    await (state!.runtime.db as any).insert(embeddedExecutions).values({
++      agentId: state!.runtime.agentId,
++      id: heldId,
++      workflowId: overlap.workflowId,
++      status: 'running',
++      mode: 'trigger',
++      finished: false,
++      startedAt: held.startedAt,
++      execution: held,
++    });
++    const overlapRun = await freshEngine.startWorkflow(overlap.workflowId, {
++      mode: 'trigger',
++      triggerData: { scheduledAtMs: currentMinute, workflowVersionId: overlap.versionId },
++    });
++    expect((overlapRun.output as any).status).toBe('overlap');
++    const expiresAt = Date.now() + 2500;
++    const expiring = (
++      await call('/hosted/sources', {
++        ...input,
++        id: randomUUID(),
++        observedAt: new Date().toISOString(),
++        expiresAt: new Date(expiresAt).toISOString(),
++      })
++    ).body.source;
++    const expiredLoop = (
++      await call('/hosted/loops', {
++        mutationId: randomUUID(),
++        confirmed: true,
++        spec: { ...boundarySpec, sourceId: expiring.id, sourceRevision: expiring.revision },
++      })
++    ).body.receipt;
++    owned.push(expiredLoop.workflowId);
++    await new Promise((resolve) => setTimeout(resolve, Math.max(0, expiresAt - Date.now() + 20)));
++    const expiredRun = await freshEngine.startWorkflow(expiredLoop.workflowId, {
++      mode: 'trigger',
++      triggerData: { scheduledAtMs: currentMinute, workflowVersionId: expiredLoop.versionId },
++    });
++    expect((expiredRun.output as any).status).toBe('unavailable');
++    const revoked = await newLoop();
++    expect((await call('/hosted/sources/revoke', { id: source.id, confirmed: true })).status).toBe(
++      200
++    );
++    expect((await call('/hosted/loops', requests[0])).body.receipt).toEqual(receipts[0]);
++    expect((await call('/hosted/sources', input)).body.source.revoked).toBe(true);
++    const unavailable = await freshEngine.startWorkflow(revoked.workflowId, {
++      mode: 'trigger',
++      triggerData: { scheduledAtMs: currentMinute, workflowVersionId: revoked.versionId },
++    });
++    expect((unavailable.output as any).status).toBe('unavailable');
++    const paused = await call('/hosted/loops', {
++      mutationId: randomUUID(),
++      confirmed: true,
++      id: revoked.workflowId,
++      expectedVersionId: revoked.versionId,
++      spec: { ...boundarySpec, enabled: false },
++    });
++    expect(paused.status).toBe(200);
++    await expect(
++      freshEngine.startWorkflow(revoked.workflowId, {
++        mode: 'trigger',
++        triggerData: {
++          scheduledAtMs: currentMinute,
++          workflowVersionId: paused.body.receipt.versionId,
++        },
++      })
++    ).rejects.toThrow();
++    expect(modelCalls).toBe(2);
++
++    expect(
++      (
++        await call('/hosted/loops', {
++          mutationId: randomUUID(),
++          confirmed: true,
++          spec: {
++            version: 1,
++            template: 'morning',
++            sourceId: source.id,
++            sourceRevision: source.revision,
++            timeZone: 'UTC',
++            localTime,
++            enabled: true,
++          },
++        })
++      ).status
++    ).toBe(409);
++    // Delivery projects oversized outputs without mutating the authoritative run.
++    const large = { ...entries[0], runId: randomUUID(), output: { text: '界'.repeat(190000) } };
++    const projected = digestDeliveryProjection(large);
++    expect((projected.output as any).status).toBe('retained_in_workflow_history');
++    expect(large.output.text).toHaveLength(190000);
++    for (let i = 0; i < 14; i++) {
++      const runId = randomUUID();
++      await (state!.runtime.db as any)
++        .insert(hostedResults)
++        .values({
++          agentId: state!.runtime.agentId,
++          ownerId: 'paging-owner',
++          runId,
++          workflowId: entries[0].workflowId,
++          result: { ...entries[0], cursor: undefined, runId, output: { text: '界'.repeat(40000) } },
++        });
++    }
++    let delivered = 0;
++    while (delivered < 14) {
++      const page = (await call('/hosted/results?clientId=paging-phone', undefined, 'paging-owner'))
++        .body.entries;
++      expect(page.length).toBeGreaterThan(0);
++      expect(page.length).toBeLessThan(14);
++      expect(Buffer.byteLength(JSON.stringify(page), 'utf8')).toBeLessThan(1000000);
++      delivered += page.length;
++      const last = page[page.length - 1];
++      expect(
++        (
++          await call(
++            '/hosted/results/ack',
++            { clientId: 'paging-phone', cursor: last.cursor, runId: last.runId },
++            'paging-owner'
++          )
++        ).status
++      ).toBe(200);
++    }
++    expect(delivered).toBe(14);
++  } finally {
++    await stop();
++    for (const id of owned)
++      await rm(resolveSmithersWorkflowDir(cleanupAgent, id), {
++        recursive: true,
++        force: true,
++      }).catch(() => {});
++    await rm(directory, { recursive: true, force: true });
++  }
++});
+diff --git a/plugins/plugin-workflow/src/db/index.ts b/plugins/plugin-workflow/src/db/index.ts
+index 09e4266..5cf5060 100644
+--- a/plugins/plugin-workflow/src/db/index.ts
++++ b/plugins/plugin-workflow/src/db/index.ts
+@@ -3,6 +3,9 @@ export {
+   embeddedExecutions,
+   embeddedTags,
+   embeddedWorkflows,
++  hostedCursors,
++  hostedResults,
++  hostedSources,
+   lifecycleMutations,
+   manualSubmissions,
+   metadataMutations,
+diff --git a/plugins/plugin-workflow/src/db/schema.ts b/plugins/plugin-workflow/src/db/schema.ts
+index 78e3152..f16fc4a 100644
+--- a/plugins/plugin-workflow/src/db/schema.ts
++++ b/plugins/plugin-workflow/src/db/schema.ts
+@@ -8,6 +8,8 @@
+  * legacy rows are quarantined under a sentinel tenant.
+  */
+ import {
++  bigint,
++  bigserial,
+   boolean,
+   index,
+   jsonb,
+@@ -242,3 +244,41 @@ export const typedMutations = workflowSchema.table(
+   },
+   (table) => ({ pk: primaryKey({ columns: [table.agentId, table.ownerId, table.mutationId] }) })
+ );
++
++/** Delivery state only. Existing embedded_executions remains execution authority. */
++export const hostedSources = workflowSchema.table(
++  'hosted_sources',
++  {
++    agentId: text('agent_id').notNull(),
++    ownerId: text('owner_id').notNull(),
++    id: text('id').notNull(),
++    source: jsonb('source').$type<import('../services/hosted-digest').DigestSource>().notNull(),
++    revoked: boolean('revoked').notNull().default(false),
++  },
++  (t) => ({ pk: primaryKey({ columns: [t.agentId, t.ownerId, t.id] }) })
++);
++export const hostedResults = workflowSchema.table(
++  'hosted_results',
++  {
++    agentId: text('agent_id').notNull(),
++    ownerId: text('owner_id').notNull(),
++    runId: text('run_id').notNull(),
++    workflowId: text('workflow_id').notNull(),
++    sequence: bigserial('sequence', { mode: 'number' }).notNull(),
++    result: jsonb('result').$type<Record<string, unknown>>().notNull(),
++  },
++  (t) => ({
++    pk: primaryKey({ columns: [t.agentId, t.runId] }),
++    cursor: index('hosted_results_cursor').on(t.agentId, t.ownerId, t.sequence),
++  })
++);
++export const hostedCursors = workflowSchema.table(
++  'hosted_cursors',
++  {
++    agentId: text('agent_id').notNull(),
++    ownerId: text('owner_id').notNull(),
++    clientId: text('client_id').notNull(),
++    cursor: bigint('cursor', { mode: 'number' }).notNull().default(0),
++  },
++  (t) => ({ pk: primaryKey({ columns: [t.agentId, t.ownerId, t.clientId] }) })
++);
+diff --git a/plugins/plugin-workflow/src/routes/workflow-routes.ts b/plugins/plugin-workflow/src/routes/workflow-routes.ts
+index 4db023d..ab397ec 100644
+--- a/plugins/plugin-workflow/src/routes/workflow-routes.ts
++++ b/plugins/plugin-workflow/src/routes/workflow-routes.ts
+@@ -9,6 +9,7 @@ import {
+   EMBEDDED_WORKFLOW_SERVICE_TYPE,
+   type EmbeddedWorkflowService,
+ } from '../services/embedded-workflow-service';
++import { digestId, digestKeys, digestRecord } from '../services/hosted-digest';
+ import { MAX_WORKFLOW_JSON_BYTES } from '../services/workflow-json';
+ import { WORKFLOW_SERVICE_TYPE, type WorkflowService } from '../services/workflow-service';
+ import type { WorkflowDefinition } from '../types/index';
+@@ -143,6 +144,69 @@ export async function handleWorkflowRoutes(ctx: WorkflowRouteContext): Promise<v
+   try {
+     const service = serviceFor(ctx);
+     const owner = ownerFor(ctx);
++    if (path.startsWith('/hosted/')) {
++      const embedded = embeddedFor(ctx),
++        url = new URL(ctx.req.url ?? ctx.pathname, 'http://localhost');
++      if (ctx.method === 'GET' && path === '/hosted/sources') {
++        ctx.json(ctx.res, { sources: await embedded.listDigestSources(owner) });
++        return;
++      }
++      if (ctx.method === 'POST' && path === '/hosted/sources') {
++        ctx.json(ctx.res, {
++          source: await embedded.saveDigestSource(owner, await readBody(ctx.req, 20000)),
++        });
++        return;
++      }
++      if (ctx.method === 'POST' && path === '/hosted/sources/revoke') {
++        const body = await readBody(ctx.req);
++        digestKeys(body, ['id', 'confirmed']);
++        if (body.confirmed !== true) throw new WorkflowApiError('Confirm source revocation', 400);
++        ctx.json(ctx.res, await embedded.revokeDigestSource(owner, digestId(body.id)));
++        return;
++      }
++      if (ctx.method === 'GET' && path === '/hosted/loops') {
++        ctx.json(ctx.res, { loops: await embedded.listHostedDigests(owner) });
++        return;
++      }
++      if (ctx.method === 'POST' && path === '/hosted/loops') {
++        const body = await readBody(ctx.req);
++        digestKeys(body, ['spec', 'id', 'expectedVersionId', 'mutationId', 'confirmed']);
++        if (body.confirmed !== true)
++          throw new WorkflowApiError('Review and confirm recurring model execution', 400);
++        ctx.json(ctx.res, {
++          receipt: await embedded.saveHostedDigest(
++            owner,
++            digestId(body.mutationId),
++            body.spec,
++            body.id === undefined ? undefined : digestId(body.id),
++            body.expectedVersionId === undefined ? undefined : digestId(body.expectedVersionId)
++          ),
++        });
++        return;
++      }
++      if (ctx.method === 'GET' && path === '/hosted/results') {
++        ctx.json(
++          ctx.res,
++          await embedded.digestResults(owner, digestId(url.searchParams.get('clientId')))
++        );
++        return;
++      }
++      if (ctx.method === 'POST' && path === '/hosted/results/ack') {
++        const body = digestRecord(await readBody(ctx.req));
++        digestKeys(body, ['clientId', 'cursor', 'runId']);
++        ctx.json(
++          ctx.res,
++          await embedded.acknowledgeDigest(
++            owner,
++            digestId(body.clientId),
++            typeof body.cursor === 'number' ? body.cursor : NaN,
++            digestId(body.runId)
++          )
++        );
++        return;
++      }
++      throw new WorkflowApiError('Hosted digest route not found', 404);
++    }
+     if (ctx.method === 'GET' && path === '/status') {
+       ctx.json(ctx.res, {
+         mode: 'cloud',
+@@ -158,6 +222,7 @@ export async function handleWorkflowRoutes(ctx: WorkflowRouteContext): Promise<v
+         metadataMutationProtocol: 1,
+         lifecycleMutationProtocol: 1,
+         typedAuthoringProtocol: 1,
++        hostedDigestProtocol: 1,
+       });
+       return;
+     }
+diff --git a/plugins/plugin-workflow/src/services/embedded-workflow-service.ts b/plugins/plugin-workflow/src/services/embedded-workflow-service.ts
+index 28572da..a942ecb 100644
+--- a/plugins/plugin-workflow/src/services/embedded-workflow-service.ts
++++ b/plugins/plugin-workflow/src/services/embedded-workflow-service.ts
+@@ -16,12 +16,15 @@ import {
+   TRIGGER_SCHEMA_VERSION,
+   type TriggerConfig,
+ } from '@elizaos/core';
+-import { and, desc, eq, notInArray, or } from 'drizzle-orm';
++import { and, asc, desc, eq, gt, notInArray, or } from 'drizzle-orm';
+ import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
+ import {
+   embeddedExecutions,
+   embeddedTags,
+   embeddedWorkflows,
++  hostedCursors,
++  hostedResults,
++  hostedSources,
+   LEGACY_UNSCOPED_WORKFLOW_AGENT_ID,
+   lifecycleMutations,
+   manualSubmissions,
+@@ -41,6 +44,22 @@ import type {
+   WorkflowTag,
+ } from '../types/index';
+ import { WORKFLOW_RUN_EVENT, WorkflowApiError } from '../types/index';
++import {
++  type DigestSource,
++  type DigestSpec,
++  digestAdmission,
++  digestCron,
++  digestHash,
++  digestId,
++  digestKeys,
++  digestPhoneSpec,
++  digestRecord,
++  digestSource,
++  digestText,
++  HOSTED_SPEC,
++  validateDigestSpec,
++  writeDigestResult,
++} from './hosted-digest';
+ import {
+   PHONE_COMPILER_KEY,
+   PHONE_COMPILER_REVISION,
+@@ -193,6 +212,7 @@ export class EmbeddedWorkflowService extends Service {
+   static async start(runtime: IAgentRuntime): Promise<EmbeddedWorkflowService> {
+     const service = new EmbeddedWorkflowService(runtime);
+     await service.recoverRemovedSchedules();
++    await service.recoverHostedSchedules();
+     await service.resumeInterruptedExecutions();
+     logger.info({ src: 'plugin:workflow:embedded' }, 'Native Smithers workflow service ready');
+     return service;
+@@ -359,12 +379,211 @@ export class EmbeddedWorkflowService extends Service {
+     };
+   }
+ 
++  private async recoverHostedSchedules() {
++    const rows = await this.getDb()
++      .select()
++      .from(embeddedWorkflows)
++      .where(eq(embeddedWorkflows.agentId, this.tenantId));
++    for (const row of rows)
++      if (row.workflow.metadata?.[HOSTED_SPEC] && !isWorkflowRemoved(row.workflow))
++        await this.syncSchedule(responseFromStored(row));
++  }
++  async saveDigestSource(ownerId: string, input: unknown) {
++    const v = digestRecord(input);
++    digestKeys(v, ['id', 'kind', 'label', 'text', 'observedAt', 'expiresAt', 'confirmed']);
++    if (v.confirmed !== true || !['tasks', 'calendar', 'email', 'notes'].includes(String(v.kind)))
++      throw new WorkflowApiError('Review and confirm the exact snapshot', 400);
++    const id = digestId(v.id),
++      observedAt = digestText(v.observedAt, 40),
++      expiresAt = digestText(v.expiresAt, 40),
++      now = Date.now();
++    const fields = {
++      id,
++      kind: v.kind as DigestSource['kind'],
++      label: digestText(v.label, 200),
++      text: digestText(v.text, 12000),
++      observedAt,
++      expiresAt,
++    };
++    if (JSON.stringify(fields).length > 15000)
++      throw new WorkflowApiError('Encoded snapshot exceeds the reviewed byte bound', 400);
++    const source = { ...fields, revision: digestHash(fields), revoked: false };
++    const [prior] = await this.getDb()
++      .select()
++      .from(hostedSources)
++      .where(
++        and(
++          eq(hostedSources.agentId, this.tenantId),
++          eq(hostedSources.ownerId, ownerId),
++          eq(hostedSources.id, id)
++        )
++      );
++    if (prior) {
++      if (prior.source.revision !== source.revision)
++        throw new WorkflowApiError('Snapshot identity conflict', 409);
++      return { ...prior.source, revoked: prior.revoked };
++    }
++    const observed = Date.parse(observedAt),
++      expires = Date.parse(expiresAt);
++    if (
++      !Number.isFinite(observed) ||
++      !Number.isFinite(expires) ||
++      observed > now + 60000 ||
++      observed < now - 7 * 86400000 ||
++      expires <= now ||
++      expires > observed + 7 * 86400000
++    )
++      throw new WorkflowApiError(
++        'Snapshot must have a valid explicit freshness window of at most seven days',
++        400
++      );
++
++    await this.getDb()
++      .insert(hostedSources)
++      .values({ agentId: this.tenantId, ownerId, id, source, revoked: false })
++      .onConflictDoNothing();
++    const saved = await digestSource(this.getDb(), this.tenantId, ownerId, id);
++    if (saved.revision !== source.revision)
++      throw new WorkflowApiError('Snapshot identity conflict', 409);
++    return saved;
++  }
++  async listDigestSources(ownerId: string) {
++    return (
++      await this.getDb()
++        .select()
++        .from(hostedSources)
++        .where(and(eq(hostedSources.agentId, this.tenantId), eq(hostedSources.ownerId, ownerId)))
++    ).map((row) => {
++      const { text: _private, ...metadata } = row.source;
++      return { ...metadata, revoked: row.revoked };
++    });
++  }
++  async revokeDigestSource(ownerId: string, id: string) {
++    await digestSource(this.getDb(), this.tenantId, ownerId, id);
++    await this.getDb()
++      .update(hostedSources)
++      .set({ revoked: true })
++      .where(
++        and(
++          eq(hostedSources.agentId, this.tenantId),
++          eq(hostedSources.ownerId, ownerId),
++          eq(hostedSources.id, id)
++        )
++      );
++    return { id, revoked: true };
++  }
++  async saveHostedDigest(
++    ownerId: string,
++    mutationId: string,
++    value: unknown,
++    id?: string,
++    expectedVersionId?: string
++  ) {
++    const spec = validateDigestSpec(value),
++      source = await digestSource(this.getDb(), this.tenantId, ownerId, spec.sourceId);
++    if (source.revision !== spec.sourceRevision)
++      throw new WorkflowApiError('Reviewed snapshot revision changed', 409);
++    const receipt = await this.typedMutation(
++      ownerId,
++      mutationId,
++      digestPhoneSpec(spec, source),
++      id,
++      expectedVersionId,
++      spec
++    );
++    await this.syncSchedule(await this.getWorkflow(receipt.workflowId));
++    return receipt;
++  }
++  async listHostedDigests(ownerId: string) {
++    return (
++      await this.getDb()
++        .select()
++        .from(embeddedWorkflows)
++        .where(eq(embeddedWorkflows.agentId, this.tenantId))
++    )
++      .filter(
++        (row) =>
++          row.workflow.metadata?.elizaOwnerEntityId === ownerId &&
++          row.workflow.metadata?.[HOSTED_SPEC]
++      )
++      .map((row) => ({
++        id: row.id,
++        versionId: row.versionId,
++        name: row.name,
++        spec: validateDigestSpec(JSON.parse(String(row.workflow.metadata![HOSTED_SPEC]))),
++        active: row.active,
++        removed: isWorkflowRemoved(row.workflow),
++      }));
++  }
++  async digestResults(ownerId: string, clientId: string) {
++    const where = and(
++      eq(hostedCursors.agentId, this.tenantId),
++      eq(hostedCursors.ownerId, ownerId),
++      eq(hostedCursors.clientId, clientId)
++    );
++    const [cursor] = await this.getDb().select().from(hostedCursors).where(where);
++    const entries = await this.getDb()
++      .select()
++      .from(hostedResults)
++      .where(
++        and(
++          eq(hostedResults.agentId, this.tenantId),
++          eq(hostedResults.ownerId, ownerId),
++          gt(hostedResults.sequence, cursor?.cursor ?? 0)
++        )
++      )
++      .orderBy(asc(hostedResults.sequence))
++      .limit(50);
++    const page: Array<Record<string, unknown>> = [];
++    let bytes = 100;
++    for (const row of entries) {
++      const entry = { cursor: row.sequence, ...row.result };
++      const size = Buffer.byteLength(JSON.stringify(entry), 'utf8') + 1;
++      if (page.length && bytes + size > 1000000) break;
++      page.push(entry);
++      bytes += size;
++    }
++    return { acknowledged: cursor?.cursor ?? 0, entries: page };
++  }
++  async acknowledgeDigest(ownerId: string, clientId: string, cursor: number, runId: string) {
++    if (!Number.isSafeInteger(cursor) || cursor < 1)
++      throw new WorkflowApiError('Invalid result cursor', 400);
++    return this.getDb().transaction(async (tx) => {
++      const [result] = await tx
++        .select()
++        .from(hostedResults)
++        .where(
++          and(
++            eq(hostedResults.agentId, this.tenantId),
++            eq(hostedResults.ownerId, ownerId),
++            eq(hostedResults.sequence, cursor),
++            eq(hostedResults.runId, runId)
++          )
++        );
++      if (!result) throw new WorkflowApiError('Result not found', 404);
++      await tx
++        .insert(hostedCursors)
++        .values({ agentId: this.tenantId, ownerId, clientId, cursor: 0 })
++        .onConflictDoNothing();
++      const where = and(
++        eq(hostedCursors.agentId, this.tenantId),
++        eq(hostedCursors.ownerId, ownerId),
++        eq(hostedCursors.clientId, clientId)
++      );
++      const [previous] = await tx.select().from(hostedCursors).where(where).for('update');
++      const acknowledged = Math.max(previous.cursor, cursor);
++      await tx.update(hostedCursors).set({ cursor: acknowledged }).where(where);
++      return { acknowledged };
++    });
++  }
++
+   async typedMutation(
+     ownerId: string,
+     mutationId: string,
+     spec: PhoneWorkflowSpec,
+     id?: string,
+-    expectedVersionId?: string
++    expectedVersionId?: string,
++    hosted?: DigestSpec
+   ) {
+     const operation = id ? ('edit' as const) : ('create' as const);
+     const requestDigest = createHash('sha256')
+@@ -374,6 +593,7 @@ export class EmbeddedWorkflowService extends Service {
+           id: id ?? null,
+           expectedVersionId: expectedVersionId ?? null,
+           spec,
++          ...(hosted ? { hosted } : {}),
+           compilerRevision: PHONE_COMPILER_REVISION,
+         })
+       )
+@@ -408,6 +628,8 @@ export class EmbeddedWorkflowService extends Service {
+           return committed.receipt;
+         }
+         requireMutable(responseFromStored(row));
++        if (Boolean(row.workflow.metadata?.[HOSTED_SPEC]) !== Boolean(hosted))
++          throw new WorkflowApiError('Use the matching reviewed editor', 409);
+         if (!row.workflow.metadata?.[PHONE_SPEC_KEY])
+           throw new WorkflowApiError('Legacy workflow has no typed specification', 409);
+         if (row.versionId !== expectedVersionId)
+@@ -418,6 +640,14 @@ export class EmbeddedWorkflowService extends Service {
+             expectedVersionId,
+           });
+       }
++      if (hosted) {
++        const source = await digestSource(tx, this.tenantId, ownerId, hosted.sourceId);
++        if (
++          source.revision !== hosted.sourceRevision ||
++          (hosted.enabled && (source.revoked || Date.parse(source.expiresAt) <= Date.now()))
++        )
++          throw new WorkflowApiError('Reviewed snapshot unavailable', 409);
++      }
+       const workflowId = id ?? randomUUID(),
+         versionId = randomUUID(),
+         appliedAt = nowIso();
+@@ -446,7 +676,21 @@ export class EmbeddedWorkflowService extends Service {
+         workflow = {
+           ...compiled,
+           id: workflowId,
+-          metadata: { ...compiled.metadata, elizaOwnerEntityId: ownerId },
++          metadata: {
++            ...compiled.metadata,
++            elizaOwnerEntityId: ownerId,
++            ...(hosted ? { [HOSTED_SPEC]: JSON.stringify(hosted) } : {}),
++          },
++          ...(hosted
++            ? {
++                active: hosted.enabled,
++                schedule: {
++                  cron: digestCron(hosted),
++                  timezone: hosted.timeZone,
++                  enabled: hosted.enabled,
++                },
++              }
++            : {}),
+         };
+       if (current) {
+         await tx
+@@ -454,7 +698,13 @@ export class EmbeddedWorkflowService extends Service {
+           .values(this.revisionValues(workflowId, current, 'update'));
+         await tx
+           .update(embeddedWorkflows)
+-          .set({ workflow, name: spec.name, active: false, versionId, updatedAt: appliedAt })
++          .set({
++            workflow,
++            name: spec.name,
++            active: hosted?.enabled ?? false,
++            versionId,
++            updatedAt: appliedAt,
++          })
+           .where(
+             and(eq(embeddedWorkflows.agentId, this.tenantId), eq(embeddedWorkflows.id, workflowId))
+           );
+@@ -463,7 +713,7 @@ export class EmbeddedWorkflowService extends Service {
+           agentId: this.tenantId,
+           id: workflowId,
+           name: spec.name,
+-          active: false,
++          active: hosted?.enabled ?? false,
+           workflow,
+           versionId,
+           createdAt: appliedAt,
+@@ -935,6 +1185,21 @@ export class EmbeddedWorkflowService extends Service {
+     }
+   }
+   private async syncActiveSchedule(workflow: WorkflowDefinitionResponse): Promise<void> {
++    if (workflow.metadata?.[HOSTED_SPEC] && workflow.active && workflow.schedule?.enabled) {
++      const tasks = await this.runtime.getTasks({
++        agentIds: [this.runtime.agentId],
++        tags: [...WORKFLOW_TRIGGER_TAGS],
++      });
++      if (
++        tasks.some(
++          (task) =>
++            task.metadata?.hostedVersionId === workflow.versionId &&
++            (task.metadata?.trigger as { workflowId?: string } | undefined)?.workflowId ===
++              workflow.id
++        )
++      )
++        return;
++    }
+     await this.removeSchedule(workflow.id);
+     const schedule = workflow.schedule;
+     if (!workflow.active || !schedule?.enabled) return;
+@@ -970,6 +1235,12 @@ export class EmbeddedWorkflowService extends Service {
+         blocking: true,
+         updatedAt: now,
+         updateInterval: Math.max(1, nextRunAtMs - now),
++        ...(workflow.metadata?.[HOSTED_SPEC]
++          ? {
++              hostedVersionId: workflow.versionId,
++              idempotencyKey: `${workflow.id}:${Math.floor(nextRunAtMs / 60000)}`,
++            }
++          : {}),
+         trigger,
+       },
+     });
+@@ -1020,6 +1291,8 @@ export class EmbeddedWorkflowService extends Service {
+       if (!row) throw new WorkflowApiError('Workflow not found', 404);
+       const workflow = responseFromStored(row);
+       authorize(workflow);
++      if (workflow.metadata?.[HOSTED_SPEC])
++        throw new WorkflowApiError('Hosted digests use their reviewed schedule', 409);
+       requireMutable(workflow);
+       const [prior] = await tx
+         .select()
+@@ -1106,6 +1379,23 @@ export class EmbeddedWorkflowService extends Service {
+         .for('update');
+       if (!row) throw new WorkflowApiError('Workflow not found', 404);
+       const workflow = responseFromStored(row);
++      let hosted: Record<string, unknown> | undefined;
++      if (workflow.metadata?.[HOSTED_SPEC]) {
++        const context = digestRecord(options.triggerData ?? options.input),
++          scheduledAt = context.scheduledAtMs;
++        if (
++          options.mode !== 'trigger' ||
++          typeof scheduledAt !== 'number' ||
++          !Number.isSafeInteger(scheduledAt) ||
++          scheduledAt > Date.now() + 1000 ||
++          context.workflowVersionId !== workflow.versionId
++        )
++          throw new WorkflowApiError('Digest requires its exact current scheduled occurrence', 409);
++        options = {
++          ...options,
++          idempotencyKey: `hosted:${workflow.id}:${workflow.versionId}:${scheduledAt}`,
++        };
++      }
+       if (options.idempotencyKey) {
+         const [prior] = await tx
+           .select()
+@@ -1123,16 +1413,42 @@ export class EmbeddedWorkflowService extends Service {
+       requireMutable(workflow);
+       if ((options.mode === 'trigger' || options.mode === 'schedule') && !workflow.active)
+         throw new WorkflowApiError('Workflow is paused', 409);
++      if (workflow.metadata?.[HOSTED_SPEC]) {
++        const scheduledAt = Number((options.triggerData ?? options.input)?.scheduledAtMs);
++        hosted = await digestAdmission(tx, this.tenantId, workflow, Date.now(), scheduledAt);
++        const [active] = await tx
++          .select()
++          .from(embeddedExecutions)
++          .where(
++            and(
++              eq(embeddedExecutions.agentId, this.tenantId),
++              eq(embeddedExecutions.workflowId, id),
++              eq(embeddedExecutions.finished, false)
++            )
++          )
++          .limit(1);
++        if (active && hosted.status === 'ready')
++          hosted = {
++            ...hosted,
++            status: 'overlap',
++            text: 'An earlier occurrence is still active. This occurrence did not run.',
++          };
++      }
+       const pending: WorkflowExecution = {
+         id: randomUUID(),
+         workflowId: id,
+         workflowVersionId: workflow.versionId,
+         workflowName: workflow.name,
+         mode: options.mode ?? 'manual',
+-        status: 'queued',
+-        finished: false,
++        status: hosted && hosted.status !== 'ready' ? 'finished' : 'queued',
++        finished: !!hosted && hosted.status !== 'ready',
++        ...(hosted && hosted.status !== 'ready' ? { stoppedAt: nowIso(), output: hosted } : {}),
+         startedAt: nowIso(),
+-        input: cloneJson(options.input ?? options.triggerData ?? {}),
++        input: cloneJson(
++          hosted
++            ? { ...options.input, ...options.triggerData, hostedDigest: hosted }
++            : (options.input ?? options.triggerData ?? {})
++        ),
+         events: [],
+         approvals: [],
+         ...(options.idempotencyKey ? { idempotencyKey: options.idempotencyKey } : {}),
+@@ -1146,14 +1462,16 @@ export class EmbeddedWorkflowService extends Service {
+         workflowId: id,
+         status: pending.status,
+         mode: pending.mode,
+-        finished: false,
++        finished: pending.finished,
++        stoppedAt: pending.stoppedAt ?? null,
+         startedAt: pending.startedAt,
+         execution: pending,
+         ...(options.idempotencyKey ? { idempotencyKey: options.idempotencyKey } : {}),
+       });
++      if (pending.finished) await writeDigestResult(tx, this.tenantId, workflow, pending);
+       return { workflow, pending, fresh: true };
+     });
+-    if (accepted.fresh) {
++    if (accepted.fresh && !accepted.pending.finished) {
+       const controller = new AbortController();
+       this.controllers.set(accepted.pending.id, controller);
+       const promise = this.runInBackground(accepted.workflow, accepted.pending, controller).finally(
+@@ -1203,6 +1521,28 @@ export class EmbeddedWorkflowService extends Service {
+       return cancelled;
+     }
+     try {
++      if (workflow.metadata?.[HOSTED_SPEC]) {
++        const context = digestRecord(pending.input.hostedDigest),
++          admission = await digestAdmission(
++            this.getDb(),
++            this.tenantId,
++            workflow,
++            Date.now(),
++            Date.parse(String(context.scheduledAt)),
++            false
++          );
++        if (admission.status !== 'ready') {
++          const unavailable: WorkflowExecution = {
++            ...running,
++            status: 'finished',
++            finished: true,
++            stoppedAt: nowIso(),
++            output: admission,
++          };
++          await this.saveExecution(unavailable);
++          return unavailable;
++        }
++      }
+       if (workflow.metadata?.[PHONE_SPEC_KEY]) {
+         const spec = validatePhoneSpec(JSON.parse(String(workflow.metadata[PHONE_SPEC_KEY])));
+         if (
+@@ -1534,6 +1874,10 @@ export class EmbeddedWorkflowService extends Service {
+   }
+ 
+   private async saveExecution(execution: WorkflowExecution): Promise<void> {
++    const hostedWorkflow =
++      execution.finished && execution.input.hostedDigest
++        ? await this.workflowVersionForExecution(execution)
++        : null;
+     await this.getDb().transaction(async (tx) => {
+       const where = and(
+         eq(embeddedExecutions.agentId, this.tenantId),
+@@ -1561,6 +1905,7 @@ export class EmbeddedWorkflowService extends Service {
+           workflowId: execution.workflowId,
+           ...values,
+         });
++      if (hostedWorkflow) await writeDigestResult(tx, this.tenantId, hostedWorkflow, execution);
+     });
+   }
+ 
+diff --git a/b/plugins/plugin-workflow/src/services/hosted-digest.ts b/plugins/plugin-workflow/src/services/hosted-digest.ts
+new file mode 100644
+index 0000000..2e08e57
+--- /dev/null
++++ b/plugins/plugin-workflow/src/services/hosted-digest.ts
+@@ -0,0 +1,252 @@
++/** Reviewed digest presets. TaskService schedules; existing workflow runs execute.
++ * Snapshots grant only use of these exact bytes until expiry/revocation, never a
++ * continuous phone read. Live connector resolution is deliberately not implied. */
++import { createHash } from 'node:crypto';
++import { computeNextCronRunAtMs } from '@elizaos/core';
++import { and, eq } from 'drizzle-orm';
++import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
++import { hostedResults, hostedSources } from '../db/schema';
++import {
++  WorkflowApiError,
++  type WorkflowDefinitionResponse,
++  type WorkflowExecution,
++} from '../types/index';
++import { type PhoneWorkflowSpec, phoneDraftDefinition } from './phone-workflow-spec';
++export const HOSTED_SPEC = 'elizaHostedDigestV1';
++export const HOSTED_TEMPLATE_VERSION = 'hosted-digest-1';
++export interface DigestSpec {
++  version: 1;
++  template: 'morning' | 'evening';
++  sourceId: string;
++  sourceRevision: string;
++  timeZone: string;
++  localTime: string;
++  enabled: boolean;
++}
++export interface DigestSource {
++  id: string;
++  revision: string;
++  kind: 'tasks' | 'calendar' | 'email' | 'notes';
++  label: string;
++  text: string;
++  observedAt: string;
++  expiresAt: string;
++  revoked: boolean;
++}
++export type DbAccess = Pick<NodePgDatabase, 'select' | 'insert' | 'update'>;
++export function digestHash(value: unknown) {
++  return createHash('sha256').update(JSON.stringify(value)).digest('hex');
++}
++export function digestRecord(value: unknown): Record<string, unknown> {
++  if (!value || typeof value !== 'object' || Array.isArray(value))
++    throw new WorkflowApiError('Expected digest object', 400);
++  return value as Record<string, unknown>;
++}
++export function digestKeys(value: Record<string, unknown>, keys: string[]) {
++  if (Object.keys(value).some((k) => !keys.includes(k)))
++    throw new WorkflowApiError('Unexpected digest field', 400);
++}
++export function digestText(value: unknown, max: number) {
++  if (typeof value !== 'string' || !value.trim() || value.length > max || value.includes('\0'))
++    throw new WorkflowApiError('Invalid digest text', 400);
++  return value;
++}
++export function digestId(value: unknown) {
++  const id = digestText(value, 128);
++  if (!/^[A-Za-z0-9][A-Za-z0-9_-]*$/.test(id))
++    throw new WorkflowApiError('Invalid digest identity', 400);
++  return id;
++}
++export function validateDigestSpec(value: unknown): DigestSpec {
++  const v = digestRecord(value);
++  digestKeys(v, [
++    'version',
++    'template',
++    'sourceId',
++    'sourceRevision',
++    'timeZone',
++    'localTime',
++    'enabled',
++  ]);
++  if (
++    v.version !== 1 ||
++    !['morning', 'evening'].includes(String(v.template)) ||
++    typeof v.enabled !== 'boolean'
++  )
++    throw new WorkflowApiError('Invalid digest preset', 400);
++  const timeZone = digestText(v.timeZone, 128),
++    localTime = digestText(v.localTime, 5),
++    sourceRevision = digestText(v.sourceRevision, 64);
++  if (!/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(localTime) || !/^[a-f0-9]{64}$/.test(sourceRevision))
++    throw new WorkflowApiError('Invalid digest schedule or source revision', 400);
++  try {
++    new Intl.DateTimeFormat('en', { timeZone }).format(0);
++  } catch {
++    throw new WorkflowApiError('Invalid IANA timezone', 400);
++  }
++  return {
++    version: 1,
++    template: v.template as DigestSpec['template'],
++    sourceId: digestId(v.sourceId),
++    sourceRevision,
++    timeZone,
++    localTime,
++    enabled: v.enabled,
++  };
++}
++export function digestCron(spec: DigestSpec) {
++  const [hour, minute] = spec.localTime.split(':').map(Number);
++  return `${minute} ${hour} * * *`;
++}
++export function digestPhoneSpec(spec: DigestSpec, source: DigestSource): PhoneWorkflowSpec {
++  return {
++    version: 1,
++    name: spec.template === 'morning' ? 'Morning digest' : 'Evening task summary',
++    description:
++      'Reviewed hosted snapshot digest. Runs without the phone; no fresh phone data is implied.',
++    trigger: { kind: 'manual' },
++    steps: [
++      {
++        id: 'source',
++        kind: 'Read',
++        operation: 'supplied_text',
++        text: JSON.stringify({
++          kind: source.kind,
++          label: source.label,
++          observedAt: source.observedAt,
++          expiresAt: source.expiresAt,
++          sourceType: 'explicit_snapshot',
++          content: source.text,
++        }),
++      },
++      {
++        id: 'summary',
++        kind: 'Write',
++        operation: 'model_draft',
++        source: 'source',
++        instruction:
++          spec.template === 'morning'
++            ? 'Write a concise morning digest using only this explicitly shared snapshot. State its observation time and that it is a snapshot, not current phone data. Identify planned priorities and uncertainty. Do not invent appointments, inbox changes, or completed tasks.'
++            : 'Write a concise evening task summary using only this explicitly shared snapshot. State its observation time and that it is a snapshot, not current phone data. Separate explicitly recorded completions from open items and unknown outcomes. Do not infer completion or fresh messages.',
++      },
++    ],
++  };
++}
++export async function digestSource(
++  db: DbAccess,
++  agentId: string,
++  ownerId: string,
++  id: string
++): Promise<DigestSource> {
++  const [row] = await db
++    .select()
++    .from(hostedSources)
++    .where(
++      and(
++        eq(hostedSources.agentId, agentId),
++        eq(hostedSources.ownerId, ownerId),
++        eq(hostedSources.id, id)
++      )
++    )
++    .for('share');
++  if (!row) throw new WorkflowApiError('Digest source not found', 404);
++  return { ...row.source, revoked: row.revoked };
++}
++export async function digestAdmission(
++  db: DbAccess,
++  agentId: string,
++  workflow: WorkflowDefinitionResponse,
++  now: number,
++  scheduledAt: number,
++  checkWindow = true
++) {
++  const spec = validateDigestSpec(JSON.parse(String(workflow.metadata?.[HOSTED_SPEC]))),
++    owner = String(workflow.metadata?.elizaOwnerEntityId || '');
++  const source = await digestSource(db, agentId, owner, spec.sourceId);
++  const base = {
++    template: spec.template,
++    templateVersion: HOSTED_TEMPLATE_VERSION,
++    scheduledAt: new Date(scheduledAt).toISOString(),
++    source: {
++      id: source.id,
++      revision: source.revision,
++      kind: source.kind,
++      label: source.label,
++      observedAt: source.observedAt,
++      expiresAt: source.expiresAt,
++      type: 'explicit_snapshot',
++    },
++  };
++  if (
++    source.revision !== spec.sourceRevision ||
++    workflow.source !== phoneDraftDefinition(digestPhoneSpec(spec, source)).source
++  )
++    throw new WorkflowApiError('Digest source integrity changed', 409);
++  if (!spec.enabled || source.revoked || Date.parse(source.expiresAt) <= now)
++    return {
++      ...base,
++      status: 'unavailable',
++      text: 'The reviewed source is revoked or expired. No fresh phone data was read.',
++    };
++  if (computeNextCronRunAtMs(digestCron(spec), scheduledAt - 60000, spec.timeZone) !== scheduledAt)
++    throw new WorkflowApiError('Digest occurrence does not match its reviewed local schedule', 409);
++  if (checkWindow && now - scheduledAt > 120000)
++    return {
++      ...base,
++      status: 'missed',
++      text: 'The scheduled time was missed. No backlog was executed.',
++    };
++  return { ...base, status: 'ready', text: '' };
++}
++/** Bound the mobile projection; the complete output remains on its workflow run. */
++export function digestDeliveryProjection(result: Record<string, unknown>) {
++  const serialized = JSON.stringify(result);
++  if (serialized.length <= 180000 && Buffer.byteLength(serialized, 'utf8') <= 240000) return result;
++  return {
++    ...result,
++    output: {
++      status: 'retained_in_workflow_history',
++      message:
++        'This output exceeds mobile delivery limits. Open the referenced workflow run for its complete result.',
++    },
++    error: typeof result.error === 'string' ? result.error.slice(0, 2000) : null,
++  };
++}
++export async function writeDigestResult(
++  db: DbAccess,
++  agentId: string,
++  workflow: WorkflowDefinitionResponse,
++  execution: WorkflowExecution
++) {
++  if (!workflow.metadata?.[HOSTED_SPEC] || !execution.finished) return;
++  const ownerId = String(workflow.metadata.elizaOwnerEntityId),
++    input = digestRecord(execution.input),
++    provenance = digestRecord(input.hostedDigest);
++  const result = {
++    runId: execution.id,
++    workflowId: workflow.id,
++    workflowVersionId: execution.workflowVersionId,
++    templateVersion: HOSTED_TEMPLATE_VERSION,
++    scheduledAt: provenance.scheduledAt,
++    source: provenance.source,
++    status: ['missed', 'overlap', 'unavailable'].includes(
++      String((execution.output as Record<string, unknown> | undefined)?.status)
++    )
++      ? String((execution.output as Record<string, unknown>).status)
++      : execution.status,
++    startedAt: execution.startedAt,
++    completedAt: execution.stoppedAt,
++    output: execution.output ?? null,
++    error: execution.error?.message ?? null,
++  };
++  await db
++    .insert(hostedResults)
++    .values({
++      agentId,
++      ownerId,
++      runId: execution.id,
++      workflowId: workflow.id,
++      result: digestDeliveryProjection(result),
++    })
++    .onConflictDoNothing();
++}
+diff --git a/b/plugins/plugin-workflow/vitest.hosted-digests.config.ts b/plugins/plugin-workflow/vitest.hosted-digests.config.ts
+new file mode 100644
+index 0000000..68632fc
+--- /dev/null
++++ b/plugins/plugin-workflow/vitest.hosted-digests.config.ts
+@@ -0,0 +1,11 @@
++import { defineConfig } from 'vitest/config';
++import { buildWorkspaceSourceAliases } from '../../packages/scripts/vitest/source-aliases.ts';
++export default defineConfig({
++  resolve: { conditions: ['eliza-source', 'node'], alias: buildWorkspaceSourceAliases() },
++  test: {
++    environment: 'node',
++    include: ['__tests__/integration/hosted-digests-http.test.ts'],
++    testTimeout: 240000,
++    hookTimeout: 120000,
++  },
++});

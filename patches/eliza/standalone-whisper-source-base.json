@@ -1,0 +1,13 @@
+{
+  "upstreamBase": "45cc570386128bd613e8cc6675d571e0b75331de",
+  "requiresPatch": "0002-paired-local-voice.patch",
+  "patchSha256": "10eed9f9473c2ea4eaf3ef7c04bf85e3116f9939fea3abdd482cbd3b75f89c05",
+  "cleanApplyCheck": true,
+  "evidence": [
+    "test-results/paired-whisper/real-http.json",
+    "test-results/paired-whisper/unavailable-http.json"
+  ],
+  "runtime": "isolated local-whisper profile port47846; primary47840 and voice47844 not restarted",
+  "scope": "Explicit independent host whisper.cpp provider, no fused ASR or text routing changes",
+  "validation": "Four changed files Biome checked; actual owner-paired HTTP and real decoder; full upstream typecheck not run"
+}

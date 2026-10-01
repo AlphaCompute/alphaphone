@@ -1,0 +1,1063 @@
+diff --git a/plugins/plugin-workflow/src/db/index.ts b/plugins/plugin-workflow/src/db/index.ts
+--- a/plugins/plugin-workflow/src/db/index.ts
++++ b/plugins/plugin-workflow/src/db/index.ts
+@@ -5,6 +5,7 @@
+   embeddedWorkflows,
+   manualSubmissions,
+   metadataMutations,
++  lifecycleMutations,
+   workflowRevisions,
+   workflowSchema,
+ } from './schema';
+diff --git a/plugins/plugin-workflow/src/db/schema.ts b/plugins/plugin-workflow/src/db/schema.ts
+--- a/plugins/plugin-workflow/src/db/schema.ts
++++ b/plugins/plugin-workflow/src/db/schema.ts
+@@ -191,3 +191,29 @@
+     mutationPk: primaryKey({ columns: [table.agentId, table.workflowId, table.mutationId] }),
+   })
+ );
++
++/** Receipt-preserving remove/restore, separate from workflow execution. */
++export const lifecycleMutations = workflowSchema.table(
++  'lifecycle_mutations',
++  {
++    agentId: text('agent_id').notNull(),
++    workflowId: text('workflow_id').notNull(),
++    mutationId: text('mutation_id').notNull(),
++    ownerId: text('owner_id').notNull(),
++    expectedVersionId: text('expected_version_id').notNull(),
++    operation: text('operation').notNull(),
++    receipt: jsonb('receipt')
++      .$type<{
++        mutationId: string;
++        workflowId: string;
++        previousVersionId: string;
++        versionId: string;
++        operation: 'remove' | 'restore';
++        appliedAt: string;
++      }>()
++      .notNull(),
++  },
++  (table) => ({
++    lifecyclePk: primaryKey({ columns: [table.agentId, table.workflowId, table.mutationId] }),
++  })
++);
+diff --git a/plugins/plugin-workflow/src/plugin-routes.ts b/plugins/plugin-workflow/src/plugin-routes.ts
+--- a/plugins/plugin-workflow/src/plugin-routes.ts
++++ b/plugins/plugin-workflow/src/plugin-routes.ts
+@@ -78,6 +78,20 @@
+ const automationsHandler = makeAutomationsHandler();
+ const workbenchTodosHandler = makeWorkbenchTodosHandler();
+ const workflowRouteList: Route[] = [
++  { type: 'GET', path: '/api/workflow/removed-workflows', rawPath: true, handler: workflowHandler },
++  {
++    type: 'POST',
++    path: '/api/workflow/workflows/:id/lifecycle',
++    rawPath: true,
++    handler: workflowHandler,
++  },
++  {
++    type: 'GET',
++    path: '/api/workflow/workflows/:id/lifecycle-mutations/:mutationId',
++    rawPath: true,
++    handler: workflowHandler,
++  },
++
+   // Status surface
+   {
+     type: 'GET',
+diff --git a/plugins/plugin-workflow/src/routes/workflow-routes.ts b/plugins/plugin-workflow/src/routes/workflow-routes.ts
+--- a/plugins/plugin-workflow/src/routes/workflow-routes.ts
++++ b/plugins/plugin-workflow/src/routes/workflow-routes.ts
+@@ -156,7 +156,12 @@
+         manualSubmissionProtocol: 1,
+         approvalReceiptProtocol: 1,
+         metadataMutationProtocol: 1,
++        lifecycleMutationProtocol: 1,
+       });
++      return;
++    }
++    if (ctx.method === 'GET' && path === '/removed-workflows') {
++      ctx.json(ctx.res, { workflows: await service.listWorkflows(owner, true) });
+       return;
+     }
+     if (ctx.method === 'GET' && path === '/workflows') {
+@@ -275,6 +280,43 @@
+       ctx.json(ctx.res, await service.getWorkflow(match.id, owner));
+       return;
+     }
++    if (ctx.method === 'POST' && match.suffix === '/lifecycle') {
++      const body = await readBody(ctx.req);
++      if (
++        Object.keys(body).some(
++          (key) => !['mutationId', 'expectedVersionId', 'operation'].includes(key)
++        ) ||
++        typeof body.mutationId !== 'string' ||
++        !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(
++          body.mutationId
++        ) ||
++        typeof body.expectedVersionId !== 'string' ||
++        !body.expectedVersionId ||
++        body.expectedVersionId.length > 200 ||
++        (body.operation !== 'remove' && body.operation !== 'restore')
++      )
++        throw new WorkflowApiError('Invalid reviewed lifecycle mutation', 400);
++      ctx.json(
++        ctx.res,
++        await service.changeLifecycle(
++          match.id,
++          body.mutationId,
++          body.expectedVersionId,
++          body.operation,
++          owner
++        )
++      );
++      return;
++    }
++    const lifecycle = /^\/lifecycle-mutations\/([0-9a-f-]+)$/.exec(match.suffix);
++    if (ctx.method === 'GET' && lifecycle) {
++      if (
++        !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(lifecycle[1])
++      )
++        throw new WorkflowApiError('Invalid mutation identity', 400);
++      ctx.json(ctx.res, await service.lifecycleReceipt(match.id, lifecycle[1], owner));
++      return;
++    }
+     if (ctx.method === 'POST' && match.suffix === '/metadata') {
+       const body = await readBody(ctx.req);
+       if (
+@@ -422,9 +464,11 @@
+     const refusal =
+       error instanceof WorkflowApiError &&
+       isRecord(error.response) &&
+-      ['WORKFLOW_VERSION_NOT_ADMITTED', 'WORKFLOW_METADATA_NOT_APPLIED'].includes(
+-        String(error.response.code)
+-      ) &&
++      [
++        'WORKFLOW_VERSION_NOT_ADMITTED',
++        'WORKFLOW_METADATA_NOT_APPLIED',
++        'WORKFLOW_LIFECYCLE_NOT_APPLIED',
++      ].includes(String(error.response.code)) &&
+       status === 409
+         ? error.response
+         : undefined;
+diff --git a/plugins/plugin-workflow/src/services/embedded-workflow-service.ts b/plugins/plugin-workflow/src/services/embedded-workflow-service.ts
+--- a/plugins/plugin-workflow/src/services/embedded-workflow-service.ts
++++ b/plugins/plugin-workflow/src/services/embedded-workflow-service.ts
+@@ -16,7 +16,7 @@
+   TRIGGER_SCHEMA_VERSION,
+   type TriggerConfig,
+ } from '@elizaos/core';
+-import { and, desc, eq } from 'drizzle-orm';
++import { and, desc, eq, or, notInArray } from 'drizzle-orm';
+ import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
+ import {
+   embeddedExecutions,
+@@ -25,6 +25,7 @@
+   LEGACY_UNSCOPED_WORKFLOW_AGENT_ID,
+   manualSubmissions,
+   metadataMutations,
++  lifecycleMutations,
+   workflowRevisions,
+ } from '../db/schema';
+ import type {
+@@ -84,12 +85,27 @@
+   return summary || title || undefined;
+ }
+ 
++const REMOVED = 'elizaPhoneRemovedAt',
++  CLEANUP = 'elizaPhoneTriggerCleanup';
++export function isWorkflowRemoved(workflow: WorkflowDefinition): boolean {
++  return typeof workflow.metadata?.[REMOVED] === 'string';
++}
++function requireMutable(workflow: WorkflowDefinition) {
++  if (isWorkflowRemoved(workflow))
++    throw new WorkflowApiError(
++      'Workflow removed; restore it explicitly before editing or running',
++      409
++    );
++}
++
+ function normalizeWorkflow(
+   workflow: WorkflowDefinition,
+   id: string | undefined,
+   fallbackActive: boolean
+ ): WorkflowDefinition {
+   const snapshot = cloneJson(workflow);
++  if (snapshot?.metadata && (REMOVED in snapshot.metadata || CLEANUP in snapshot.metadata))
++    throw new WorkflowApiError('Reserved workflow lifecycle fields', 400);
+   if (!snapshot || typeof snapshot !== 'object' || Array.isArray(snapshot)) {
+     throw new WorkflowApiError('Workflow definition must be an object', 400);
+   }
+@@ -155,12 +171,14 @@
+   static override readonly serviceType = EMBEDDED_WORKFLOW_SERVICE_TYPE;
+   override capabilityDescription = 'Native Smithers workflow persistence and execution on elizaOS.';
+ 
++  private readonly scheduleLocks = new Map<string, Promise<void>>();
+   private readonly listeners = new Map<string, Set<RunListener>>();
+   private readonly controllers = new Map<string, AbortController>();
+   private readonly running = new Map<string, Promise<WorkflowExecution>>();
+ 
+   static async start(runtime: IAgentRuntime): Promise<EmbeddedWorkflowService> {
+     const service = new EmbeddedWorkflowService(runtime);
++    await service.recoverRemovedSchedules();
+     await service.resumeInterruptedExecutions();
+     logger.info({ src: 'plugin:workflow:embedded' }, 'Native Smithers workflow service ready');
+     return service;
+@@ -394,6 +412,7 @@
+       if (!row) throw new WorkflowApiError('Workflow not found', 404);
+       const current = responseFromStored(row);
+       authorize(current);
++      requireMutable(current);
+       const [prior] = await tx
+         .select()
+         .from(metadataMutations)
+@@ -454,20 +473,186 @@
+     });
+   }
+ 
++  async lifecycleReceipt(id: string, mutationId: string, ownerId: string) {
++    const [row] = await this.getDb()
++      .select()
++      .from(lifecycleMutations)
++      .where(
++        and(
++          eq(lifecycleMutations.agentId, this.tenantId),
++          eq(lifecycleMutations.workflowId, id),
++          eq(lifecycleMutations.mutationId, mutationId),
++          eq(lifecycleMutations.ownerId, ownerId)
++        )
++      )
++      .limit(1);
++    return row?.receipt ?? null;
++  }
++  async changeLifecycle(
++    id: string,
++    mutationId: string,
++    expectedVersionId: string,
++    operation: 'remove' | 'restore',
++    ownerId: string,
++    authorize: (workflow: WorkflowDefinitionResponse) => void
++  ) {
++    const outcome = await this.getDb().transaction(async (tx) => {
++      const where = and(eq(embeddedWorkflows.agentId, this.tenantId), eq(embeddedWorkflows.id, id));
++      const [row] = await tx.select().from(embeddedWorkflows).where(where).for('update');
++      if (!row) throw new WorkflowApiError('Workflow not found', 404);
++      const current = responseFromStored(row);
++      authorize(current);
++      const [prior] = await tx
++        .select()
++        .from(lifecycleMutations)
++        .where(
++          and(
++            eq(lifecycleMutations.agentId, this.tenantId),
++            eq(lifecycleMutations.workflowId, id),
++            eq(lifecycleMutations.mutationId, mutationId)
++          )
++        )
++        .limit(1);
++      if (prior) {
++        if (prior.ownerId !== ownerId) throw new WorkflowApiError('Mutation not found', 404);
++        if (prior.operation !== operation || prior.expectedVersionId !== expectedVersionId)
++          throw new WorkflowApiError('Lifecycle mutation identity conflict', 409);
++        return { receipt: prior.receipt, applied: false };
++      }
++      if (current.versionId !== expectedVersionId)
++        throw new WorkflowApiError('Workflow changed; review again', 409, {
++          code: 'WORKFLOW_LIFECYCLE_NOT_APPLIED',
++          workflowId: id,
++          mutationId,
++          expectedVersionId,
++        });
++      if ((operation === 'remove') === isWorkflowRemoved(current))
++        throw new WorkflowApiError('Workflow lifecycle already changed; refresh', 409);
++      const unfinished = await tx
++        .select({ id: embeddedExecutions.id })
++        .from(embeddedExecutions)
++        .where(
++          and(
++            eq(embeddedExecutions.agentId, this.tenantId),
++            eq(embeddedExecutions.workflowId, id),
++            or(
++              eq(embeddedExecutions.finished, false),
++              notInArray(embeddedExecutions.status, [
++                'cancelled',
++                'continued',
++                'failed',
++                'finished',
++              ])
++            )
++          )
++        )
++        .limit(1);
++      if (unfinished.length)
++        throw new WorkflowApiError(
++          'Workflow has ongoing executions; cancel each execution explicitly first',
++          409,
++          { code: 'WORKFLOW_LIFECYCLE_NOT_APPLIED', workflowId: id, mutationId, expectedVersionId }
++        );
++      if (operation === 'restore' && current.metadata?.[CLEANUP] !== 'complete')
++        throw new WorkflowApiError('Trigger cleanup is not yet confirmed', 409, {
++          code: 'WORKFLOW_LIFECYCLE_NOT_APPLIED',
++          workflowId: id,
++          mutationId,
++          expectedVersionId,
++        });
++      const appliedAt = nowIso(),
++        versionId = randomUUID(),
++        metadata = { ...row.workflow.metadata };
++      if (operation === 'remove') {
++        metadata[REMOVED] = appliedAt;
++        metadata[CLEANUP] = 'pending';
++      } else {
++        delete metadata[REMOVED];
++        delete metadata[CLEANUP];
++      }
++      const workflow = { ...cloneJson(row.workflow), active: false, metadata };
++      await tx
++        .insert(workflowRevisions)
++        .values(this.revisionValues(id, row, operation === 'remove' ? 'delete' : 'restore'));
++      await tx
++        .update(embeddedWorkflows)
++        .set({ workflow, active: false, versionId, updatedAt: appliedAt })
++        .where(where);
++      const receipt = {
++        mutationId,
++        workflowId: id,
++        previousVersionId: expectedVersionId,
++        versionId,
++        operation,
++        appliedAt,
++      };
++      await tx.insert(lifecycleMutations).values({
++        agentId: this.tenantId,
++        workflowId: id,
++        mutationId,
++        ownerId,
++        expectedVersionId,
++        operation,
++        receipt,
++      });
++      return { receipt, applied: true };
++    });
++    if (!outcome.applied) return outcome.receipt;
++    // Failed trigger cleanup leaves the durable removal in place; startup repairs it.
++    try {
++      await this.syncSchedule(await this.getWorkflow(id));
++    } catch {
++      logger.warn(
++        { src: 'plugin:workflow:lifecycle', workflowId: id },
++        'Lifecycle trigger cleanup pending'
++      );
++    }
++    return outcome.receipt;
++  }
++  async lifecycleState(id: string) {
++    const row = await this.getStoredWorkflow(id);
++    return {
++      removed: isWorkflowRemoved(row.workflow),
++      cleanup: row.workflow.metadata?.[CLEANUP] === 'pending' ? 'pending' : 'complete',
++      versionId: row.versionId,
++    };
++  }
++  private async recoverRemovedSchedules() {
++    const rows = await this.getDb()
++      .select()
++      .from(embeddedWorkflows)
++      .where(eq(embeddedWorkflows.agentId, this.tenantId));
++    for (const row of rows) {
++      if (isWorkflowRemoved(row.workflow)) {
++        try {
++          await this.syncSchedule(responseFromStored(row));
++        } catch {
++          logger.warn(
++            { src: 'plugin:workflow:lifecycle', workflowId: row.id },
++            'Removed workflow trigger cleanup remains pending'
++          );
++        }
++      }
++    }
++  }
++
+   async updateWorkflow(
+     id: string,
+     workflow: WorkflowDefinition,
+     revisionOperation: WorkflowRevisionOperation = 'update'
+   ): Promise<WorkflowDefinitionResponse> {
+-    const current = await this.getStoredWorkflow(id);
+-    const updatedAt = nowIso();
+-    const versionId = randomUUID();
+-    const normalized = normalizeWorkflow(workflow, id, current.workflow.active === true);
+-    await this.getDb().transaction(async (transaction) => {
+-      await transaction
++    const response = await this.getDb().transaction(async (tx) => {
++      const where = and(eq(embeddedWorkflows.agentId, this.tenantId), eq(embeddedWorkflows.id, id));
++      const [current] = await tx.select().from(embeddedWorkflows).where(where).for('update');
++      if (!current) throw new WorkflowApiError('Workflow not found', 404);
++      requireMutable(current.workflow);
++      const updatedAt = nowIso(),
++        versionId = randomUUID(),
++        normalized = normalizeWorkflow(workflow, id, current.workflow.active === true);
++      await tx
+         .insert(workflowRevisions)
+         .values(this.revisionValues(id, current, revisionOperation));
+-      const updatedRows = await transaction
++      await tx
+         .update(embeddedWorkflows)
+         .set({
+           name: normalized.name,
+@@ -476,17 +661,13 @@
+           updatedAt,
+           versionId,
+         })
+-        .where(and(eq(embeddedWorkflows.agentId, this.tenantId), eq(embeddedWorkflows.id, id)))
+-        .returning({ id: embeddedWorkflows.id });
+-      if (updatedRows.length !== 1) {
+-        throw new WorkflowApiError(`Workflow not found: ${id}`, 404);
+-      }
+-    });
+-    const response = responseFromStored({
+-      workflow: normalized,
+-      createdAt: current.createdAt,
+-      updatedAt,
+-      versionId,
++        .where(where);
++      return responseFromStored({
++        workflow: normalized,
++        createdAt: current.createdAt,
++        updatedAt,
++        versionId,
++      });
+     });
+     await this.syncSchedule(response);
+     return response;
+@@ -518,13 +699,8 @@
+     return responseFromStored(await this.getStoredWorkflow(id));
+   }
+ 
+-  async deleteWorkflow(id: string): Promise<void> {
+-    const current = await this.getStoredWorkflow(id);
+-    await this.captureRevision(id, current, 'delete');
+-    await this.getDb()
+-      .delete(embeddedWorkflows)
+-      .where(and(eq(embeddedWorkflows.agentId, this.tenantId), eq(embeddedWorkflows.id, id)));
+-    await this.removeWorkflowTriggers(id);
++  async deleteWorkflow(_id: string): Promise<void> {
++    throw new WorkflowApiError('Use reviewed receipt-preserving removal', 409);
+   }
+ 
+   async activateWorkflow(id: string): Promise<WorkflowDefinitionResponse> {
+@@ -536,20 +712,22 @@
+   }
+ 
+   private async setActive(id: string, active: boolean): Promise<WorkflowDefinitionResponse> {
+-    const current = await this.getStoredWorkflow(id);
+-    await this.captureRevision(id, current, active ? 'activate' : 'deactivate');
+-    const workflow = { ...current.workflow, active };
+-    const updatedAt = nowIso();
+-    const versionId = randomUUID();
+-    await this.getDb()
+-      .update(embeddedWorkflows)
+-      .set({ active, workflow, updatedAt, versionId })
+-      .where(and(eq(embeddedWorkflows.agentId, this.tenantId), eq(embeddedWorkflows.id, id)));
+-    const response = responseFromStored({
+-      workflow,
+-      createdAt: current.createdAt,
+-      updatedAt,
+-      versionId,
++    const response = await this.getDb().transaction(async (tx) => {
++      const where = and(eq(embeddedWorkflows.agentId, this.tenantId), eq(embeddedWorkflows.id, id));
++      const [current] = await tx.select().from(embeddedWorkflows).where(where).for('update');
++      if (!current) throw new WorkflowApiError('Workflow not found', 404);
++      requireMutable(current.workflow);
++      await tx
++        .insert(workflowRevisions)
++        .values(this.revisionValues(id, current, active ? 'activate' : 'deactivate'));
++      const workflow = { ...current.workflow, active },
++        updatedAt = nowIso(),
++        versionId = randomUUID();
++      await tx
++        .update(embeddedWorkflows)
++        .set({ active, workflow, updatedAt, versionId })
++        .where(where);
++      return responseFromStored({ workflow, updatedAt, versionId, createdAt: current.createdAt });
+     });
+     await this.syncSchedule(response);
+     return response;
+@@ -581,7 +759,43 @@
+     }
+   }
+ 
+-  private async syncSchedule(workflow: WorkflowDefinitionResponse): Promise<void> {
++  private async syncSchedule(requested: WorkflowDefinitionResponse): Promise<void> {
++    const prior = this.scheduleLocks.get(requested.id) ?? Promise.resolve();
++    const work = prior
++      .catch(() => {})
++      .then(async () => {
++        const workflow = await this.getWorkflow(requested.id);
++        if (isWorkflowRemoved(workflow)) {
++          await this.removeWorkflowTriggers(workflow.id);
++          await this.getDb().transaction(async (tx) => {
++            const where = and(
++              eq(embeddedWorkflows.agentId, this.tenantId),
++              eq(embeddedWorkflows.id, workflow.id)
++            );
++            const [row] = await tx.select().from(embeddedWorkflows).where(where).for('update');
++            if (row && isWorkflowRemoved(row.workflow))
++              await tx
++                .update(embeddedWorkflows)
++                .set({
++                  workflow: {
++                    ...row.workflow,
++                    metadata: { ...row.workflow.metadata, [CLEANUP]: 'complete' },
++                  },
++                })
++                .where(where);
++          });
++          return;
++        }
++        await this.syncActiveSchedule(workflow);
++      });
++    this.scheduleLocks.set(requested.id, work);
++    try {
++      await work;
++    } finally {
++      if (this.scheduleLocks.get(requested.id) === work) this.scheduleLocks.delete(requested.id);
++    }
++  }
++  private async syncActiveSchedule(workflow: WorkflowDefinitionResponse): Promise<void> {
+     await this.removeSchedule(workflow.id);
+     const schedule = workflow.schedule;
+     if (!workflow.active || !schedule?.enabled) return;
+@@ -609,7 +823,7 @@
+       workflowId: workflow.id,
+       workflowName: workflow.name,
+     };
+-    await this.runtime.createTask({
++    const createdTaskId = await this.runtime.createTask({
+       name: WORKFLOW_TRIGGER_TASK_NAME,
+       description: trigger.displayName,
+       tags: [...WORKFLOW_TRIGGER_TAGS],
+@@ -620,6 +834,12 @@
+         trigger,
+       },
+     });
++    // Another host may remove/pause/update while its task store call is in flight.
++    // Delete only this stale task; admission independently checks the durable row.
++    const current = await this.getWorkflow(workflow.id);
++    if (isWorkflowRemoved(current) || !current.active || current.versionId !== workflow.versionId) {
++      await this.runtime.deleteTask(createdTaskId);
++    }
+   }
+ 
+   async getManualSubmission(
+@@ -661,6 +881,7 @@
+       if (!row) throw new WorkflowApiError('Workflow not found', 404);
+       const workflow = responseFromStored(row);
+       authorize(workflow);
++      requireMutable(workflow);
+       const [prior] = await tx
+         .select()
+         .from(manualSubmissions)
+@@ -738,38 +959,73 @@
+     id: string,
+     options: ExecuteWorkflowOptions = {}
+   ): Promise<WorkflowExecution> {
+-    if (options.idempotencyKey) {
+-      const prior = await this.findExecutionByIdempotencyKey(id, options.idempotencyKey);
+-      if (prior) return prior;
+-    }
+-    const workflow = await this.getWorkflow(id);
+-    const runId = randomUUID();
+-    const pending: WorkflowExecution = {
+-      id: runId,
+-      workflowId: id,
+-      workflowVersionId: workflow.versionId,
+-      workflowName: workflow.name,
+-      mode: options.mode ?? 'manual',
+-      status: 'queued',
+-      finished: false,
+-      startedAt: nowIso(),
+-      input: cloneJson(options.input ?? options.triggerData ?? {}),
+-      events: [],
+-      approvals: [],
+-      ...(options.idempotencyKey ? { idempotencyKey: options.idempotencyKey } : {}),
+-      ...(options.triggerChainDepth !== undefined
+-        ? { triggerChainDepth: options.triggerChainDepth }
+-        : {}),
+-    };
+-    await this.saveExecution(pending);
+-    const controller = new AbortController();
+-    this.controllers.set(runId, controller);
+-    const executionPromise = this.runInBackground(workflow, pending, controller).finally(() => {
+-      this.controllers.delete(runId);
+-      this.running.delete(runId);
+-    });
+-    this.running.set(runId, executionPromise);
+-    return pending;
++    const accepted = await this.getDb().transaction(async (tx) => {
++      const [row] = await tx
++        .select()
++        .from(embeddedWorkflows)
++        .where(and(eq(embeddedWorkflows.agentId, this.tenantId), eq(embeddedWorkflows.id, id)))
++        .for('update');
++      if (!row) throw new WorkflowApiError('Workflow not found', 404);
++      const workflow = responseFromStored(row);
++      if (options.idempotencyKey) {
++        const [prior] = await tx
++          .select()
++          .from(embeddedExecutions)
++          .where(
++            and(
++              eq(embeddedExecutions.agentId, this.tenantId),
++              eq(embeddedExecutions.workflowId, id),
++              eq(embeddedExecutions.idempotencyKey, options.idempotencyKey)
++            )
++          )
++          .limit(1);
++        if (prior) return { workflow, pending: cloneJson(prior.execution), fresh: false };
++      }
++      requireMutable(workflow);
++      if ((options.mode === 'trigger' || options.mode === 'schedule') && !workflow.active)
++        throw new WorkflowApiError('Workflow is paused', 409);
++      const pending: WorkflowExecution = {
++        id: randomUUID(),
++        workflowId: id,
++        workflowVersionId: workflow.versionId,
++        workflowName: workflow.name,
++        mode: options.mode ?? 'manual',
++        status: 'queued',
++        finished: false,
++        startedAt: nowIso(),
++        input: cloneJson(options.input ?? options.triggerData ?? {}),
++        events: [],
++        approvals: [],
++        ...(options.idempotencyKey ? { idempotencyKey: options.idempotencyKey } : {}),
++        ...(options.triggerChainDepth !== undefined
++          ? { triggerChainDepth: options.triggerChainDepth }
++          : {}),
++      };
++      await tx.insert(embeddedExecutions).values({
++        agentId: this.tenantId,
++        id: pending.id,
++        workflowId: id,
++        status: pending.status,
++        mode: pending.mode,
++        finished: false,
++        startedAt: pending.startedAt,
++        execution: pending,
++        ...(options.idempotencyKey ? { idempotencyKey: options.idempotencyKey } : {}),
++      });
++      return { workflow, pending, fresh: true };
++    });
++    if (accepted.fresh) {
++      const controller = new AbortController();
++      this.controllers.set(accepted.pending.id, controller);
++      const promise = this.runInBackground(accepted.workflow, accepted.pending, controller).finally(
++        () => {
++          this.controllers.delete(accepted.pending.id);
++          this.running.delete(accepted.pending.id);
++        }
++      );
++      this.running.set(accepted.pending.id, promise);
++    }
++    return accepted.pending;
+   }
+ 
+   async executeWorkflow(
+diff --git a/plugins/plugin-workflow/src/services/workflow-service.ts b/plugins/plugin-workflow/src/services/workflow-service.ts
+--- a/plugins/plugin-workflow/src/services/workflow-service.ts
++++ b/plugins/plugin-workflow/src/services/workflow-service.ts
+@@ -1,3 +1,4 @@
++import { isWorkflowRemoved } from './embedded-workflow-service';
+ /**
+  * Chat-facing facade for authoring, searching, deploying, and inspecting native
+  * Smithers workflows. Generation uses the selected elizaOS model and produces
+@@ -162,10 +163,17 @@
+   }
+ 
+   private publicWorkflow(workflow: WorkflowDefinitionResponse): WorkflowDefinitionResponse {
+-    if (!workflow.metadata || !(OWNER_METADATA_KEY in workflow.metadata)) return workflow;
+-    const { [OWNER_METADATA_KEY]: _owner, ...metadata } = workflow.metadata;
++    const {
++      [OWNER_METADATA_KEY]: _owner,
++      elizaPhoneRemovedAt: _removed,
++      elizaPhoneTriggerCleanup: _cleanup,
++      ...metadata
++    } = workflow.metadata ?? {};
+     return {
+       ...workflow,
++      removed: isWorkflowRemoved(workflow),
++      triggerCleanup:
++        workflow.metadata?.elizaPhoneTriggerCleanup === 'pending' ? 'pending' : 'complete',
+       metadata: Object.keys(metadata).length > 0 ? metadata : undefined,
+     };
+   }
+@@ -249,8 +257,13 @@
+     };
+   }
+ 
+-  async listWorkflows(ownerEntityId?: string): Promise<WorkflowDefinitionResponse[]> {
+-    const workflows = (await this.embedded().listWorkflows()).data;
++  async listWorkflows(
++    ownerEntityId?: string,
++    removed = false
++  ): Promise<WorkflowDefinitionResponse[]> {
++    const workflows = (await this.embedded().listWorkflows()).data.filter(
++      (workflow) => isWorkflowRemoved(workflow) === removed
++    );
+     const owned = ownerEntityId
+       ? workflows.filter((workflow) => this.isOwnedBy(workflow, ownerEntityId))
+       : workflows;
+@@ -279,6 +292,34 @@
+ 
+   async getWorkflow(id: string, ownerEntityId?: string): Promise<WorkflowDefinitionResponse> {
+     return this.requireOwned(await this.embedded().getWorkflow(id), ownerEntityId);
++  }
++
++  async lifecycleReceipt(id: string, mutationId: string, ownerId: string) {
++    await this.getWorkflow(id, ownerId);
++    return {
++      mutationId,
++      receipt: await this.embedded().lifecycleReceipt(id, mutationId, ownerId),
++      state: await this.embedded().lifecycleState(id),
++    };
++  }
++  async changeLifecycle(
++    id: string,
++    mutationId: string,
++    expectedVersionId: string,
++    operation: 'remove' | 'restore',
++    ownerId: string
++  ) {
++    const receipt = await this.embedded().changeLifecycle(
++      id,
++      mutationId,
++      expectedVersionId,
++      operation,
++      ownerId,
++      (workflow) => {
++        this.requireOwned(workflow, ownerId);
++      }
++    );
++    return { mutationId, receipt, state: await this.embedded().lifecycleState(id) };
+   }
+ 
+   async metadataReceipt(id: string, mutationId: string, ownerId: string) {
+@@ -399,7 +440,10 @@
+     const result = await this.embedded().listExecutions(params);
+     if (!ownerEntityId || params.workflowId) return result;
+     const workflowIds = new Set(
+-      (await this.listWorkflows(ownerEntityId)).map((workflow) => workflow.id)
++      [
++        ...(await this.listWorkflows(ownerEntityId)),
++        ...(await this.listWorkflows(ownerEntityId, true)),
++      ].map((workflow) => workflow.id)
+     );
+     return { data: result.data.filter((execution) => workflowIds.has(execution.workflowId)) };
+   }
+diff --git a/plugins/plugin-workflow/src/types/index.ts b/plugins/plugin-workflow/src/types/index.ts
+--- a/plugins/plugin-workflow/src/types/index.ts
++++ b/plugins/plugin-workflow/src/types/index.ts
+@@ -74,6 +74,8 @@
+ }
+ 
+ export interface WorkflowDefinitionResponse extends WorkflowDefinition {
++  removed?: boolean;
++  triggerCleanup?: 'pending' | 'complete';
+   id: string;
+   createdAt: string;
+   updatedAt: string;
+diff --git a/plugins/plugin-workflow/__tests__/integration/lifecycle-mutations-e2e.test.ts b/plugins/plugin-workflow/__tests__/integration/lifecycle-mutations-e2e.test.ts
+new file mode 100644
+--- /dev/null
++++ b/plugins/plugin-workflow/__tests__/integration/lifecycle-mutations-e2e.test.ts
+@@ -0,0 +1,288 @@
++import { expect, test } from 'bun:test';
++import { randomUUID } from 'node:crypto';
++import { mkdtemp, rm } from 'node:fs/promises';
++import http from 'node:http';
++import { tmpdir } from 'node:os';
++import { join } from 'node:path';
++import { PGlite } from '@electric-sql/pglite';
++import { drizzle } from 'drizzle-orm/pglite';
++import * as schema from '../../src/db/schema';
++import { handleWorkflowRoutes } from '../../src/routes/workflow-routes';
++import { EmbeddedWorkflowService } from '../../src/services/embedded-workflow-service';
++import { WorkflowService } from '../../src/services/workflow-service';
++
++test('HTTP lifecycle remove/restore: retained history, blocked admissions, pending cleanup restart and immutable receipts', async () => {
++  const directory = await mkdtemp(join(tmpdir(), 'workflow-submission-'));
++  let db = new PGlite(directory);
++  let server: http.Server | undefined;
++  const tasks = new Map<string, any>();
++  let failCleanup = false;
++  let taskReads = 0;
++  let embedded: EmbeddedWorkflowService | undefined;
++  try {
++    await db.exec(`
++    CREATE SCHEMA workflow;
++    CREATE TABLE workflow.embedded_workflows (
++      agent_id text NOT NULL,
++      id text NOT NULL,
++      name text NOT NULL,
++      active boolean NOT NULL DEFAULT false,
++      workflow jsonb NOT NULL,
++      created_at text NOT NULL,
++      updated_at text NOT NULL,
++      version_id text NOT NULL,
++      PRIMARY KEY (agent_id, id)
++    );
++    CREATE TABLE workflow.workflow_revisions (
++      agent_id text NOT NULL,
++      id text NOT NULL,
++      workflow_id text NOT NULL,
++      version_id text NOT NULL,
++      name text NOT NULL,
++      active boolean NOT NULL DEFAULT false,
++      workflow jsonb NOT NULL,
++      created_at text NOT NULL,
++      updated_at text NOT NULL,
++      captured_at text NOT NULL,
++      operation text NOT NULL,
++      PRIMARY KEY (agent_id, id),
++      UNIQUE (agent_id, workflow_id, version_id)
++    );
++    CREATE TABLE workflow.embedded_executions (
++      agent_id text NOT NULL,
++      id text NOT NULL,
++      workflow_id text NOT NULL,
++      status text NOT NULL,
++      mode text NOT NULL,
++      finished boolean NOT NULL DEFAULT false,
++      started_at text NOT NULL,
++      stopped_at text,
++      execution jsonb NOT NULL,
++      idempotency_key text,
++      PRIMARY KEY (agent_id, id)
++    );
++    CREATE TABLE workflow.embedded_tags (
++      agent_id text NOT NULL,
++      id text NOT NULL,
++      name text NOT NULL,
++      created_at text NOT NULL,
++      updated_at text NOT NULL,
++      PRIMARY KEY (agent_id, id),
++      UNIQUE (agent_id, name)
++    );
++  
++ CREATE TABLE workflow.lifecycle_mutations(agent_id text NOT NULL,workflow_id text NOT NULL,mutation_id text NOT NULL,owner_id text NOT NULL,expected_version_id text NOT NULL,operation text NOT NULL,receipt jsonb NOT NULL,PRIMARY KEY(agent_id,workflow_id,mutation_id));
++ CREATE TABLE workflow.metadata_mutations(agent_id text NOT NULL,workflow_id text NOT NULL,mutation_id text NOT NULL,owner_id text NOT NULL,expected_version_id text NOT NULL,name text NOT NULL,description text NOT NULL,receipt jsonb NOT NULL,PRIMARY KEY(agent_id,workflow_id,mutation_id));
++ CREATE TABLE workflow.manual_submissions(agent_id text NOT NULL,workflow_id text NOT NULL,submission_id text NOT NULL,owner_id text NOT NULL,version_id text NOT NULL,input jsonb NOT NULL,run_id text NOT NULL,PRIMARY KEY(agent_id,workflow_id,submission_id));`);
++    let runtime: any;
++    const boot = async () => {
++      runtime = {
++        agentId: '00000000-0000-4000-8000-000000000001',
++        db: drizzle(db, { schema }),
++        getTasks: async () => {
++          taskReads++;
++          return [...tasks.values()];
++        },
++        deleteTask: async (id: string) => {
++          if (failCleanup) throw Error('Synthetic task store unavailable');
++          tasks.delete(id);
++        },
++        createTask: async (task: any) => {
++          const id = randomUUID();
++          tasks.set(id, { ...task, id });
++          return id;
++        },
++        emitEvent: async () => {},
++        getService: (name: string) => (name === 'embedded_workflow_service' ? embedded : facade),
++      };
++      embedded = await EmbeddedWorkflowService.start(runtime);
++      const facade = new WorkflowService(runtime);
++      server = http.createServer((req, res) => {
++        void handleWorkflowRoutes({
++          req,
++          res,
++          method: req.method!,
++          pathname: new URL(req.url!, 'http://localhost').pathname,
++          runtime,
++          principalId: req.headers['x-fixture-owner'] === 'other' ? 'other' : 'owner',
++          json: (response, body, status = 200) => {
++            if (req.headers['x-fixture-drop'] === '1' && status === 200) {
++              response.destroy();
++              return;
++            }
++            response.writeHead(status, { 'content-type': 'application/json' });
++            response.end(JSON.stringify(body));
++          },
++        });
++      });
++      await new Promise<void>((resolve) => server!.listen(0, '127.0.0.1', resolve));
++      return `http://127.0.0.1:${(server.address() as any).port}/api/workflow`;
++    };
++    let origin = await boot();
++    const call = async (path: string, body?: unknown, owner = 'owner') => {
++      const response = await fetch(origin + path, {
++        method: body === undefined ? 'GET' : 'POST',
++        headers: { 'content-type': 'application/json', 'x-fixture-owner': owner },
++        ...(body === undefined ? {} : { body: JSON.stringify(body) }),
++      });
++      return { status: response.status, body: (await response.json()) as any };
++    };
++    const definition = {
++      name: 'Lifecycle fixture',
++      description: 'Retained source',
++      language: 'tsx',
++      active: false,
++      metadata: { elizaOwnerEntityId: 'owner' },
++      source: `/** @jsxImportSource smthrs */
++import {createSmithers} from 'smthrs/create';import {z} from 'zod';const {Workflow,Task,smithers,outputs}=createSmithers({answer:z.object({value:z.number()})},{dbPath:process.env.ELIZA_SMTHRS_DB_PATH});export default smithers(()=><Workflow name="lifecycle"><Task id="answer" output={outputs.answer}>{{value:56}}</Task></Workflow>);`,
++    };
++    const held = await embedded!.createWorkflow({
++      ...definition,
++      name: 'Held lifecycle fixture',
++      source: definition.source.replace(
++        'export default',
++        'await new Promise(resolve=>setTimeout(resolve,180000));export default'
++      ),
++    } as any);
++    const admitted = await call(`/workflows/${held.id}/run`, {
++      submissionId: randomUUID(),
++      expectedVersionId: held.versionId,
++      input: {},
++    });
++    expect(admitted.status).toBe(202);
++    const refused = await call(`/workflows/${held.id}/lifecycle`, {
++      mutationId: randomUUID(),
++      expectedVersionId: held.versionId,
++      operation: 'remove',
++    });
++    expect(refused.status).toBe(409);
++    expect(refused.body.code).toBe('WORKFLOW_LIFECYCLE_NOT_APPLIED');
++    expect((await call(`/workflows/${held.id}`)).body.removed).toBe(false);
++    expect((await call(`/executions/${admitted.body.execution.id}/cancel`, {})).status).toBe(202);
++    for (let i = 0; i < 100; i++) {
++      if ((await call(`/executions/${admitted.body.execution.id}`)).body.execution.finished) break;
++      await Bun.sleep(50);
++    }
++    const heldRemoval = {
++      mutationId: randomUUID(),
++      expectedVersionId: held.versionId,
++      operation: 'remove',
++    };
++    const duplicates = await Promise.all(
++      Array.from({ length: 6 }, () => call(`/workflows/${held.id}/lifecycle`, heldRemoval))
++    );
++    expect(duplicates.every((r) => r.status === 200)).toBe(true);
++    expect(new Set(duplicates.map((r) => r.body.receipt.versionId)).size).toBe(1);
++    expect((await call(`/workflows/${held.id}/revisions`)).body.revisions).toHaveLength(1);
++    expect((await call(`/executions/${admitted.body.execution.id}`)).body.execution.status).toBe(
++      'cancelled'
++    );
++    const workflow = await embedded!.createWorkflow(definition as any);
++    const started = await call(`/workflows/${workflow.id}/run`, {
++      submissionId: randomUUID(),
++      expectedVersionId: workflow.versionId,
++      input: {},
++    });
++    expect(started.status).toBe(202);
++    const runId = started.body.execution.id;
++    for (let i = 0; i < 100; i++) {
++      const r = (await call('/executions/' + runId)).body.execution;
++      if (r.finished) break;
++      await Bun.sleep(100);
++    }
++    expect((await call('/executions/' + runId)).body.execution.status).toBe('finished');
++    const taskId = randomUUID(),
++      otherTask = randomUUID();
++    tasks.set(taskId, {
++      id: taskId,
++      metadata: { trigger: { kind: 'workflow', workflowId: workflow.id } },
++    });
++    tasks.set(otherTask, {
++      id: otherTask,
++      metadata: { trigger: { kind: 'workflow', workflowId: 'unrelated' } },
++    });
++    failCleanup = true;
++    const mutationId = randomUUID(),
++      body = { mutationId, expectedVersionId: workflow.versionId, operation: 'remove' },
++      route = `/workflows/${workflow.id}/lifecycle`;
++    expect((await call(route, body, 'other')).status).toBe(404);
++    const removed = await call(route, body);
++    expect(removed.status).toBe(200);
++    expect(removed.body.state).toMatchObject({ removed: true, cleanup: 'pending' });
++    const removeReceipt = removed.body.receipt;
++    expect((await call('/workflows')).body.workflows.some((w: any) => w.id === workflow.id)).toBe(
++      false
++    );
++    expect(
++      (await call('/removed-workflows')).body.workflows.some((w: any) => w.id === workflow.id)
++    ).toBe(true);
++    expect((await call('/executions/' + runId)).status).toBe(200);
++    expect((await call('/executions/' + runId, undefined, 'other')).status).toBe(404);
++    expect((await call(`/workflows/${workflow.id}/run`, { input: {} })).status).toBe(409);
++    expect(
++      (
++        await call(`/workflows/${workflow.id}/run`, {
++          submissionId: randomUUID(),
++          expectedVersionId: removeReceipt.versionId,
++          input: {},
++        })
++      ).status
++    ).toBe(409);
++    expect((await call(`/workflows/${workflow.id}/activate`, {})).status).toBe(409);
++    await expect(embedded!.updateWorkflow(workflow.id, definition as any)).rejects.toThrow();
++    expect(
++      (
++        await call(`/workflows/${workflow.id}/metadata`, {
++          mutationId: randomUUID(),
++          expectedVersionId: removeReceipt.versionId,
++          name: 'Cannot revive',
++          description: '',
++        })
++      ).status
++    ).toBe(409);
++    expect(
++      (
++        await call(route, {
++          mutationId: randomUUID(),
++          expectedVersionId: removeReceipt.versionId,
++          operation: 'restore',
++        })
++      ).status
++    ).toBe(409);
++    expect((await call(`/workflows/${workflow.id}/executions`)).body.executions).toHaveLength(1);
++    await embedded!.stop();
++    await new Promise<void>((resolve) => server!.close(() => resolve()));
++    server = undefined;
++    await db.close();
++    failCleanup = false;
++    db = new PGlite(directory);
++    origin = await boot();
++    expect(tasks.has(taskId)).toBe(false);
++    expect(tasks.has(otherTask)).toBe(true);
++    const lookup = await call(`/workflows/${workflow.id}/lifecycle-mutations/${mutationId}`);
++    expect(lookup.body.receipt).toEqual(removeReceipt);
++    expect(lookup.body.state.cleanup).toBe('complete');
++    expect((await call(route, { ...body, operation: 'restore' })).status).toBe(409);
++    const restored = await call(route, {
++      mutationId: randomUUID(),
++      expectedVersionId: removeReceipt.versionId,
++      operation: 'restore',
++    });
++    expect(restored.status).toBe(200);
++    const current = (await call(`/workflows/${workflow.id}`)).body;
++    expect(current.removed).toBe(false);
++    expect(current.active).toBe(false);
++    expect(current.source).toBe(workflow.source);
++    expect((await call('/executions/' + runId)).status).toBe(200);
++    const readsBeforeReplay = taskReads;
++    expect((await call(route, body)).body.receipt).toEqual(removeReceipt);
++    expect(taskReads).toBe(readsBeforeReplay);
++    expect((await call(`/workflows/${workflow.id}`)).body.removed).toBe(false);
++    expect((await call(`/workflows/${workflow.id}/executions`)).body.executions).toHaveLength(1);
++  } finally {
++    await embedded?.stop();
++    if (server) await new Promise<void>((resolve) => server!.close(() => resolve()));
++    await db.close();
++    await rm(directory, { recursive: true, force: true });
++  }
++}, 120000);

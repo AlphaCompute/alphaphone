@@ -1,0 +1,14 @@
+{
+  "baseCommit": "45cc570386128bd613e8cc6675d571e0b75331de",
+  "appliesAfter": "0007-canonical-workflow-approvals.patch",
+  "sha256": "ac818c03ab318543e45168fd58bec7b82ad2f43ef509ab5c9dd0b8fd005ff75b",
+  "applyCheck": "Passed captured pre0008 files",
+  "migration": "Additive workflow.metadata_mutations table, exported in plugin DB schema for normal runtime migration; existing definitions/runs/schedules unchanged.",
+  "scope": "Owner-scoped metadata-only name/description CAS with immutable idempotent mutation receipt. No executable source, schedule or activation changes. No dispatch/syncSchedule calls.",
+  "tests": [
+    "HTTP/PGlite25 assertions: concurrent same request once, owner binding, conflict/stale refusal, source-field rejection, lost response and reopen",
+    "Real paired47854 existing profile schema migration,8 concurrent requests1revision/0executions, unchanged other fields; process restart identical receipt",
+    "Actual adapter+HTTP lost response/recreation/exact GET, typed refusal versus generic409, content-free lock and account switch during save"
+  ],
+  "nativeAcceptance": "Build72 both variants passed1POST/1GET/1revision/0executions, unchanged source/schedule/activation, proxy401 and Activity recreation; test-results/prototype-build72/workflow-metadata/result.json"
+}

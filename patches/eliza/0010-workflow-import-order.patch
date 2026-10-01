@@ -1,0 +1,55 @@
+diff --git a/plugins/plugin-workflow/src/db/index.ts b/plugins/plugin-workflow/src/db/index.ts
+index 7694469..a6c667d 100644
+--- a/plugins/plugin-workflow/src/db/index.ts
++++ b/plugins/plugin-workflow/src/db/index.ts
+@@ -3,9 +3,9 @@ export {
+   embeddedExecutions,
+   embeddedTags,
+   embeddedWorkflows,
++  lifecycleMutations,
+   manualSubmissions,
+   metadataMutations,
+-  lifecycleMutations,
+   workflowRevisions,
+   workflowSchema,
+ } from './schema';
+diff --git a/plugins/plugin-workflow/src/services/embedded-workflow-service.ts b/plugins/plugin-workflow/src/services/embedded-workflow-service.ts
+index a50fb0f..29bf17b 100644
+--- a/plugins/plugin-workflow/src/services/embedded-workflow-service.ts
++++ b/plugins/plugin-workflow/src/services/embedded-workflow-service.ts
+@@ -16,16 +16,16 @@ import {
+   TRIGGER_SCHEMA_VERSION,
+   type TriggerConfig,
+ } from '@elizaos/core';
+-import { and, desc, eq, or, notInArray } from 'drizzle-orm';
++import { and, desc, eq, notInArray, or } from 'drizzle-orm';
+ import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
+ import {
+   embeddedExecutions,
+   embeddedTags,
+   embeddedWorkflows,
+   LEGACY_UNSCOPED_WORKFLOW_AGENT_ID,
++  lifecycleMutations,
+   manualSubmissions,
+   metadataMutations,
+-  lifecycleMutations,
+   workflowRevisions,
+ } from '../db/schema';
+ import type {
+diff --git a/plugins/plugin-workflow/src/services/workflow-service.ts b/plugins/plugin-workflow/src/services/workflow-service.ts
+index c769579..b5c770b 100644
+--- a/plugins/plugin-workflow/src/services/workflow-service.ts
++++ b/plugins/plugin-workflow/src/services/workflow-service.ts
+@@ -1,4 +1,3 @@
+-import { isWorkflowRemoved } from './embedded-workflow-service';
+ /**
+  * Chat-facing facade for authoring, searching, deploying, and inspecting native
+  * Smithers workflows. Generation uses the selected elizaOS model and produces
+@@ -20,6 +19,7 @@ import {
+   EMBEDDED_WORKFLOW_SERVICE_TYPE,
+   type EmbeddedWorkflowService,
+   type ExecuteWorkflowOptions,
++  isWorkflowRemoved,
+ } from './embedded-workflow-service';
+ import { validateSmithersSource } from './smithers-runtime';
+ 

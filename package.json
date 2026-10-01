@@ -17,24 +17,31 @@
     "android:verify": "node scripts/verify-apks.mjs",
     "android:smoke": "node scripts/android-smoke.mjs",
     "aosp:stage": "node scripts/stage-aosp.mjs",
-    "upstream:verify": "node scripts/verify-upstream.mjs"
+    "upstream:verify": "node scripts/verify-upstream.mjs",
+    "agent:dev": "ALPHA_AGENT_BACKEND=eliza bun scripts/dev-agent.mjs",
+    "agent:configure-emulator": "node scripts/configure-dev-agent.mjs",
+    "agent:diagnostic": "ALPHA_AGENT_BACKEND=direct-diagnostic node scripts/dev-agent.mjs",
+    "agent:local": "node scripts/start-local-remote.mjs",
+    "android:connection-smoke": "node scripts/android-connection-smoke.mjs",
+    "android:local-agent-smoke": "node scripts/android-local-remote-smoke.mjs"
   },
   "dependencies": {
     "@capacitor/android": "8.5.2",
     "@capacitor/core": "8.5.2",
+    "maplibre-gl": "6.11.2",
     "react": "19.3.0",
     "react-dom": "19.3.0"
   },
   "devDependencies": {
     "@capacitor/cli": "8.5.2",
+    "@fontsource/atkinson-hyperlegible": "^5.2.0",
+    "@fontsource/fraunces": "^5.2.0",
+    "@fontsource/public-sans": "^5.2.0",
+    "@types/node": "^24.0.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
-    "@types/node": "^24.0.0",
-    "typescript": "7.0.2",
-    "vite": "8.3.1",
     "@vitejs/plugin-react": "6.1.1",
-    "@fontsource/atkinson-hyperlegible": "^5.2.0",
-    "@fontsource/public-sans": "^5.2.0",
-    "@fontsource/fraunces": "^5.2.0"
+    "typescript": "7.0.2",
+    "vite": "8.3.1"
   }
 }

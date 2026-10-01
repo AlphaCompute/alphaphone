@@ -17,3 +17,6 @@ android/capacitor.settings.gradle
 android/app/capacitor.build.gradle
 android/capacitor-cordova-android-plugins/
 android/app/src/main/res/xml/config.xml
+
+# Local Android Studio workspace state
+.idea/

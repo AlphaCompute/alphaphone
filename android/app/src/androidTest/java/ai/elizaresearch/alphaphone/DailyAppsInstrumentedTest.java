@@ -1,0 +1,189 @@
+package ai.elizaresearch.alphaphone;
+
+import android.os.SystemClock;
+import android.view.KeyEvent;
+import androidx.test.ext.junit.runners.AndroidJUnit4;
+import androidx.test.platform.app.InstrumentationRegistry;
+import org.json.JSONArray;
+import org.json.JSONObject;
+import org.json.JSONTokener;
+import org.junit.Test;
+import org.junit.runner.RunWith;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
+import static org.junit.Assert.*;
+
+/** Real bundled WebView -> Capacitor -> Android activity flows. No mocked plugins. */
+@RunWith(AndroidJUnit4.class)
+public class DailyAppsInstrumentedTest {
+ private String evaluate(BoundedActivityScenario<MainActivity> scenario, String js) throws Exception {
+  return WebViewTestDriver.evaluate(js);
+ }
+ private void ready(BoundedActivityScenario<MainActivity> scenario) throws Exception {
+  for (int i = 0; i < 100; i++) {
+   if ("true".equals(evaluate(scenario, "Boolean(document.querySelector('[data-screen]') && window.Capacitor?.Plugins?.DailyApps)"))) return;
+   SystemClock.sleep(100);
+  }
+  fail("DailyApps bridge did not mount");
+ }
+ private JSONObject result(BoundedActivityScenario<MainActivity> scenario) throws Exception {
+  for (int i = 0; i < 100; i++) {
+   String value = evaluate(scenario, "window.__dailyTestResult || null");
+   if (!"null".equals(value)) return new JSONObject((String)new JSONTokener(value).nextValue());
+   SystemClock.sleep(100);
+  }
+  fail("DailyApps did not resolve"); return null;
+ }
+ private void begin(BoundedActivityScenario<MainActivity> scenario, String expression) throws Exception {
+  evaluate(scenario, "window.__dailyTestResult=null; (" + expression + ").then(v=>window.__dailyTestResult=JSON.stringify(v)).catch(e=>window.__dailyTestResult=JSON.stringify({error:String(e)}))");
+ }
+ private void uiWait(BoundedActivityScenario<MainActivity> scenario, String condition) throws Exception {
+  for(int i=0;i<100;i++){if("true".equals(evaluate(scenario,"Boolean("+condition+")")))return;SystemClock.sleep(100);}
+  fail("Calendar flow condition missing: "+condition);
+ }
+ @Test public void calendarFormCreatesAndDeletesRealReminder() throws Exception {
+  android.content.Context context=InstrumentationRegistry.getInstrumentation().getTargetContext();
+  if(android.os.Build.VERSION.SDK_INT>=33) InstrumentationRegistry.getInstrumentation().getUiAutomation().grantRuntimePermission(context.getPackageName(),android.Manifest.permission.POST_NOTIFICATIONS);
+  String title="Calendar reminder "+java.util.UUID.randomUUID();
+  String reminderId=null;
+  try(BoundedActivityScenario<MainActivity> scenario=BoundedActivityScenario.launch(MainActivity.class)) {
+   ready(scenario);evaluate(scenario,AppNavigation.request("Calendar"));uiWait(scenario,AppNavigation.selected("Calendar"));
+   evaluate(scenario,"document.querySelector('button[aria-label=\"New event\"]').click()");
+   uiWait(scenario,"document.querySelector('input[aria-label=Title]')");
+   evaluate(scenario,"(()=>{const e=document.querySelector('input[aria-label=Title]');Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(e,"+JSONObject.quote(title)+");e.dispatchEvent(new Event('input',{bubbles:true}));})()");
+   uiWait(scenario,"document.querySelector('button[aria-label=Tomorrow]')");
+   evaluate(scenario,"document.querySelector('button[aria-label=Tomorrow]').click()");
+   evaluate(scenario,"[...document.querySelectorAll('button')].find(b=>b.textContent.trim()==='Reminders').click()");
+   evaluate(scenario,"document.querySelector('button[aria-label=\"Save event\"]').click()");
+   uiWait(scenario,"[...document.querySelectorAll('[data-screen] h1')].some(h=>h.textContent==="+JSONObject.quote(title)+")");
+   begin(scenario,"Capacitor.Plugins.DailyApps.listReminders()");
+   JSONArray rows=result(scenario).getJSONArray("reminders");
+   for(int i=0;i<rows.length();i++){JSONObject row=rows.getJSONObject(i);if(title.equals(row.getString("title"))){reminderId=row.getString("id");assertEquals("scheduled",row.getString("status"));assertTrue(row.getLong("at")>System.currentTimeMillis());}}
+   assertNotNull("Real native record created from Calendar form",reminderId);
+   evaluate(scenario,"document.querySelector('button[aria-label=\"Delete event\"]').click()");
+   uiWait(scenario,"!document.querySelector('button[aria-label=\"Delete event\"]')");
+   begin(scenario,"Capacitor.Plugins.DailyApps.listReminders()");rows=result(scenario).getJSONArray("reminders");
+   boolean cancelled=false;
+   for(int i=0;i<rows.length();i++){JSONObject row=rows.getJSONObject(i);if(reminderId.equals(row.getString("id")))cancelled="cancelled".equals(row.getString("status"));}
+   assertTrue("Calendar Delete cancels the real native reminder",cancelled);
+  } finally {
+   JSONArray rows=ReminderStore.list(context);
+   for(int i=0;i<rows.length();i++){JSONObject row=rows.getJSONObject(i);if(title.equals(row.optString("title")))ReminderStore.cancel(context,row.getString("id"));}
+  }
+ }
+ @Test public void nativeCapabilityInventoryIsExplicit() throws Exception {
+  try (BoundedActivityScenario<MainActivity> scenario = BoundedActivityScenario.launch(MainActivity.class)) {
+   ready(scenario); begin(scenario, "Capacitor.Plugins.DailyApps.capabilities()");
+   JSONObject value = result(scenario); assertEquals("android", value.getString("platform"));
+   JSONArray actions = value.getJSONArray("actions"); assertTrue(actions.length() >= 17);
+   boolean files = false;
+   for (int i = 0; i < actions.length(); i++) {
+    JSONObject item = actions.getJSONObject(i); item.getBoolean("available");
+    assertTrue(item.getString("mode").equals("handoff") || item.getString("mode").equals("selection"));
+    if (item.getString("action").equals("files")) { files = true; assertTrue("AOSP document picker exists",item.getBoolean("available")); }
+   }
+   assertTrue(files);
+  }
+ }
+ @Test public void dangerousBrowserTargetsAndInvalidCalendarTimesAreRejected() throws Exception {
+  try (BoundedActivityScenario<MainActivity> scenario = BoundedActivityScenario.launch(MainActivity.class)) {
+   ready(scenario);
+   for (String url : new String[]{"javascript:alert(1)", "file:///data/local/tmp/private", "content://com.android.contacts/contacts", "intent://settings", "https://user:password@example.com"}) {
+    begin(scenario, "Capacitor.Plugins.DailyApps.perform({action:'browser',url:" + JSONObject.quote(url) + "})");
+    assertEquals(url, "failed", result(scenario).getString("status"));
+   }
+   begin(scenario, "Capacitor.Plugins.DailyApps.perform({action:'calendar-create',startTime:1000,endTime:1})");
+   assertEquals("failed", result(scenario).getString("status"));
+   begin(scenario, "Capacitor.Plugins.DailyApps.perform({action:'unknown'})");
+   assertEquals("failed", result(scenario).getString("status"));
+  }
+ }
+ @Test public void documentPickerCancellationReturnsWithoutInventedSelection() throws Exception {
+  try (BoundedActivityScenario<MainActivity> scenario = BoundedActivityScenario.launch(MainActivity.class)) {
+   ready(scenario); begin(scenario, "Capacitor.Plugins.DailyApps.perform({action:'files'})");
+   boolean opened = false;
+   for (int i = 0; i < 50; i++) {
+    android.os.ParcelFileDescriptor pipe = InstrumentationRegistry.getInstrumentation().getUiAutomation().executeShellCommand("dumpsys activity activities");
+    String state;
+    try (java.io.InputStream input = new android.os.ParcelFileDescriptor.AutoCloseInputStream(pipe)) {
+     state = new String(input.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
+    }
+    opened = state.lines().anyMatch(line -> (line.contains("mResumedActivity") || line.contains("topResumedActivity")) && (line.contains("documentsui") || line.contains("DocumentsActivity")));
+    if (opened) break;
+    SystemClock.sleep(100);
+   }
+   assertTrue("Real Android document picker opened", opened);
+   WebViewTestDriver.cancelDocumentPicker();
+   SystemClock.sleep(300);
+   JSONObject value = result(scenario); assertEquals("cancelled", value.getString("status")); assertFalse(value.has("uri"));
+  }
+ }
+ @Test public void localReminderPostsRealNotificationAndTapOpensItsContext() throws Exception {
+  android.content.Context context = InstrumentationRegistry.getInstrumentation().getTargetContext();
+  if (android.os.Build.VERSION.SDK_INT >= 33) InstrumentationRegistry.getInstrumentation().getUiAutomation()
+   .grantRuntimePermission(context.getPackageName(), android.Manifest.permission.POST_NOTIFICATIONS);
+  String id = "e2e_reminder_" + System.currentTimeMillis();
+  android.app.NotificationManager notifications = context.getSystemService(android.app.NotificationManager.class);
+  try (BoundedActivityScenario<MainActivity> scenario = BoundedActivityScenario.launch(MainActivity.class)) {
+   ready(scenario);
+   evaluate(scenario, "Capacitor.Plugins.DailyApps.addListener('reminderOpened', e => window.__openedReminder=e.id)");
+   long at = System.currentTimeMillis() + 2000;
+   begin(scenario, "Capacitor.Plugins.DailyApps.scheduleReminder({id:" + JSONObject.quote(id) + ",title:" + JSONObject.quote("Device flow test " + id) + ",body:'Local reminder delivery',at:" + at + "})");
+   JSONObject scheduled = result(scenario); assertEquals(scheduled.toString(), "scheduled", scheduled.getString("status")); assertEquals("inexact", scheduled.getString("mode"));
+   android.service.notification.StatusBarNotification posted = null;
+   for (int i = 0; i < 120; i++) {
+    for (android.service.notification.StatusBarNotification item : notifications.getActiveNotifications()) if (id.equals(item.getTag())) posted = item;
+    if (posted != null) break;
+    SystemClock.sleep(500);
+   }
+   assertNotNull("Real inexact AlarmManager delivery posts a notification", posted);
+   assertEquals("Device flow test " + id, posted.getNotification().extras.getString(android.app.Notification.EXTRA_TITLE));
+   begin(scenario, "Capacitor.Plugins.DailyApps.listReminders()");
+   JSONArray records = result(scenario).getJSONArray("reminders"); boolean found = false;
+   for (int i = 0; i < records.length(); i++) if (records.getJSONObject(i).getString("id").equals(id)) {
+    found = true; assertEquals("posted",records.getJSONObject(i).getString("status")); assertTrue(records.getJSONObject(i).getLong("postedAt") >= at);
+   }
+   assertTrue(found);
+   posted.getNotification().contentIntent.send();
+   boolean opened = false;
+   for (int i = 0; i < 50; i++) {
+    if (JSONObject.quote(id).equals(evaluate(scenario, "window.__openedReminder || null"))) { opened = true; break; }
+    SystemClock.sleep(100);
+   }
+   assertTrue("Notification tap emits its exact reminder context", opened);
+   boolean detailOpened = false;
+   for (int i = 0; i < 80; i++) {
+    if ("true".equals(evaluate(scenario,"document.documentElement.dataset.activeView==='calendar' && [...document.querySelectorAll('[data-screen] h1')].some(h=>h.textContent==="+JSONObject.quote("Device flow test " + id)+") && !!document.querySelector('button[aria-label=\"Edit event\"]')"))) { detailOpened=true; break; }
+    SystemClock.sleep(100);
+   }
+   assertTrue("Notification tap opens this reminder's real Calendar detail", detailOpened);
+   begin(scenario, "Capacitor.Plugins.DailyApps.cancelReminder({id:" + JSONObject.quote(id) + "})");
+   assertEquals("cancelled", result(scenario).getString("status"));
+   for (android.service.notification.StatusBarNotification item : notifications.getActiveNotifications()) assertNotEquals(id,item.getTag());
+   begin(scenario, "Capacitor.Plugins.DailyApps.scheduleReminder({id:'past_test',title:'Past',at:1})");
+   assertEquals("past", result(scenario).getString("status"));
+  } finally { ReminderStore.cancel(context,id); }
+ }
+
+ @Test public void rootBackFinishesStandaloneAndKeepsLauncherHome() throws Exception {
+  try (BoundedActivityScenario<MainActivity> scenario = BoundedActivityScenario.launch(MainActivity.class)) {
+   ready(scenario);
+   for (int i = 0; i < 30; i++) {
+    if ("\"false\"".equals(evaluate(scenario,"document.documentElement.dataset.alphaCanGoBack"))) break;
+    SystemClock.sleep(100);
+   }
+   assertEquals("Home has no in-app back history", "\"false\"", evaluate(scenario,"document.documentElement.dataset.alphaCanGoBack"));
+   WebViewTestDriver.pressBack();
+   if (BuildConfig.IS_LAUNCHER) {
+    SystemClock.sleep(300);
+    assertEquals(androidx.lifecycle.Lifecycle.State.RESUMED, scenario.getState());
+    assertEquals("true",evaluate(scenario,"Boolean(document.querySelector('[data-screen]'))"));
+   } else {
+    for (int i = 0; i < 50 && scenario.getState() != androidx.lifecycle.Lifecycle.State.DESTROYED; i++) SystemClock.sleep(100);
+    assertEquals(androidx.lifecycle.Lifecycle.State.DESTROYED, scenario.getState());
+   }
+  }
+ }
+
+}

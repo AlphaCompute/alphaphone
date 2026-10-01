@@ -1,0 +1,20 @@
+apply plugin: 'com.android.application'
+// Disposable, synthetic cross-UID witness. Never a dependency of :app.
+android {
+ namespace 'ai.elizaresearch.notificationfixture'
+ compileSdk rootProject.ext.compileSdkVersion
+ defaultConfig { applicationId 'ai.elizaresearch.notificationfixture'; minSdk 30; targetSdk rootProject.ext.targetSdkVersion; versionCode 1; versionName 'fixture-1' }
+ flavorDimensions += 'selection'
+ productFlavors {
+  selected { dimension 'selection'; applicationIdSuffix '.selected' }
+  excluded { dimension 'selection'; applicationIdSuffix '.excluded' }
+ }
+ signingConfigs {
+  fixture {
+   def supplied = System.getenv('ALPHA_NOTIFICATION_FIXTURE_KEYSTORE')
+   if (supplied) { storeFile file(supplied); storePassword 'synthetic-fixture'; keyAlias 'fixture'; keyPassword 'synthetic-fixture' }
+  }
+ }
+ buildTypes { debug { if (System.getenv('ALPHA_NOTIFICATION_FIXTURE_KEYSTORE')) signingConfig signingConfigs.fixture } }
+ compileOptions { sourceCompatibility JavaVersion.VERSION_21; targetCompatibility JavaVersion.VERSION_21 }
+}

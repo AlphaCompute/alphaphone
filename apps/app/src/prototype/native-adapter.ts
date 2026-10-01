@@ -1,0 +1,205 @@
+import { DailyApps, type Action, type NativeResult } from '../daily';
+
+type Bag = Record<string, any>;
+type Callback = (...args: any[]) => any;
+export type PrototypeNativeOptions = {
+  /** A picker capability is process-scoped. Do not persist its URI as read authority. */
+  onSelection?: (module: string, result: NativeResult, api: Bag) => void;
+};
+const installed = new WeakSet<object>();
+const systemPages = new Set(['wifi', 'bluetooth', 'mobile', 'sound', 'notifications', 'battery', 'models', 'developer', 'privacy']);
+const externalModules = new Set(['phone', 'messages', 'inbox', 'browser', 'camera', 'photos', 'maps', 'calendar', 'contacts', 'files', 'settings', 'wallet', 'workflows']);
+const text = (value: unknown) => typeof value === 'string' ? value : '';
+
+/** Keep the prototype's render tree and local navigation; replace simulated effects.
+ * Install once before mounting. Component is accepted for the extraction seam but
+ * no component internals are patched. Agent/voice/notes persistence are separate.
+ */
+export function installPrototypeNativeAdapters(
+  _Component: unknown,
+  views: Record<string, Bag>,
+  options: PrototypeNativeOptions = {},
+): () => void {
+  if (installed.has(views)) return () => {};
+  installed.add(views);
+  const restore: Array<() => void> = [];
+  const busy = new Set<string>();
+  const notify = (api: Bag, message: string) => api.toast(message);
+  const unavailable = (api: Bag, message = 'This action needs a connected native provider. Nothing has been changed.') => () => notify(api, message);
+  async function perform(module: string, api: Bag, action: Action, payload: Bag = {}) {
+    if (busy.has(module)) return;
+    busy.add(module);
+    try {
+      const result = await DailyApps.perform({ action, ...payload });
+      if (result.status === 'selected') {
+        options.onSelection?.(module, result, api);
+        notify(api, result.name ? 'Selected ' + result.name : 'Selection received');
+      } else if (result.status === 'opened') {
+        notify(api, 'Opened the Android app. Review and complete the action there.');
+      } else notify(api, result.message || (result.status === 'cancelled' ? 'Cancelled. Nothing changed.' : 'No installed app can complete this action.'));
+    } catch {
+      notify(api, 'Native action unavailable. Use the installed Android app.');
+    } finally { busy.delete(module); }
+  }
+  function browser(module: string, api: Bag, value: unknown) {
+    const raw = text(value).trim();
+    let url: URL;
+    try {
+      if (!raw || /\s/.test(raw)) throw new Error();
+      // Never reinterpret javascript:, data:, file:, intent: or credentials as search.
+      url = new URL(/^[a-z][a-z\d+.-]*:/i.test(raw) ? raw : 'https://' + raw);
+      if (!['http:', 'https:'].includes(url.protocol) || !url.hostname || url.username || url.password) throw new Error();
+      if (url.hostname === 'example.com' || url.hostname.endsWith('.example') || url.hostname === 'search.example') {
+        notify(api, 'This is a prototype address. Enter a real website to open it.'); return;
+      }
+    } catch { notify(api, 'Enter a valid HTTP or HTTPS website without credentials.'); return; }
+    return perform(module, api, 'browser', { url: url.href });
+  }
+  const currentUrl = (st: Bag) => {
+    const tab = (st.tabs || []).find((t: Bag) => t.id === st.cur);
+    return st.addr || tab?.hist?.[tab.pos] || '';
+  };
+  const smsPayload = (st: Bag) => ({
+    // Only explicit user-entered recipients; seeded people never become real recipients.
+    query: typeof st.thread === 'string' && st.thread.startsWith('n:') ? st.thread.slice(2) : '',
+    body: text(st.text),
+  });
+  function mailPayload(st: Bag) {
+    const draft = typeof st.compose === 'object' && st.compose ? st.compose : {};
+    const recipients = Array.isArray(draft.to) ? draft.to : [draft.to];
+    const entered = recipients.concat(st.toQ || '').filter((v: unknown) => typeof v === 'string' && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v) && !v.endsWith('.example'));
+    return { query: entered.length === 1 ? entered[0] : '', title: text(draft.subject), body: text(draft.body) };
+  }
+  function calendarPayload(st: Bag) {
+    const f = st.form || {};
+    const date = new Date(); date.setHours(0, 0, 0, 0);
+    const offset = Number(f.off || 0), hour = Number(f.t), duration = Number(f.d);
+    if (!text(f.title).trim() || !Number.isFinite(offset) || !Number.isFinite(hour) || !Number.isFinite(duration) || duration <= 0) return null;
+    date.setDate(date.getDate() + offset); date.setMinutes(Math.round(hour * 60));
+    return { title: text(f.title), body: [text(f.notes), text(f.where)].filter(Boolean).join('\n'), startTime: date.getTime(), endTime: date.getTime() + duration * 3600000 };
+  }
+  function replacement(module: string, key: string, path: string, row: Bag, st: Bag, api: Bag, original: Callback): Callback | undefined {
+    if (['camera', 'photos', 'files'].includes(module) && ['ask', 'askQ', 'askSearch', 'saveSum'].includes(key)) return unavailable(api, 'Content analysis is not connected. No photo or document content has been sent.');
+    if (module === 'workflows' && ['run', 'again', 'toggle', 'save'].includes(key)) return unavailable(api, 'Workflow execution is not connected. No automation has been activated or run.');
+    const native = (action: Action, payload: Bag = {}) => () => perform(module, api, action, payload);
+    if (module === 'phone') {
+      if (key === 'dialCall') return () => perform(module, api, 'phone', { query: text(api.get('phone').dial) });
+      if (key === 'call' || key === 'play') return native('phone');
+      if (['accept', 'decline', 'endCall', 'endScreen', 'alphaAnswer', 'del'].includes(key) || path.includes('controls.') || path.includes('dkeys.')) return unavailable(api, 'Manage calls and voicemail in the Android phone app.');
+      if (key === 'send') return native('messages', { body: text(row.text) });
+    }
+    if (module === 'messages') {
+      if (key === 'send' || (key === 'go' && path.includes('.smart.'))) return () => perform(module, api, 'messages', smsPayload(api.get(module)));
+      if (key === 'onKey' && path.startsWith('t.')) return (e: KeyboardEvent) => { if (e.key === 'Enter') { e.preventDefault(); void perform(module, api, 'messages', smsPayload(api.get(module))); } };
+      if (key === 'call') return native('phone');
+      if (key === 'camera') return native('camera');
+      if (key === 'pick' && path.includes('.photos.')) return native('photos');
+    }
+    if (module === 'inbox') {
+      if (key === 'send') return () => perform(module, api, 'email', mailPayload(api.get(module)));
+      if (['archive', 'del'].includes(key)) return native('inbox');
+      if (key === 'addAcct') return native('settings');
+    }
+    if (module === 'calendar') {
+      if (key === 'save') return () => { if (api.get(module).form?.id) { void perform(module, api, 'calendar'); return; } const payload = calendarPayload(api.get(module)); if (payload) void perform(module, api, 'calendar-create', payload); else notify(api, 'Enter a title and valid event time.'); };
+      if (key === 'del' || (key === 'go' && /rsvp|responses|invite/i.test(path))) return native('calendar');
+      if (key === 'join') return unavailable(api, 'Open a real meeting link in your calendar app.');
+    }
+    if (module === 'browser') {
+      if (key === 'onAddrKey') return (e: KeyboardEvent) => { if (e.key === 'Enter') { e.preventDefault(); void browser(module, api, (e.target as HTMLInputElement)?.value); } else original(e); };
+      if (key === 'go' && !path.startsWith('people.')) return () => browser(module, api, row.url || row.host);
+      if (['openNews', 'openEnc', 'openBook'].includes(key)) return unavailable(api, 'This page is a visual prototype. Enter a real website in the address field.');
+      if (['bookNow', 'cfOk'].includes(key)) return unavailable(api, 'Booking is not connected. No reservation or payment has been made.');
+      if (key === 'readAloud') return unavailable(api, 'Read-aloud is not connected.');
+      if (key === 'copyLink') return async () => { try { const value = currentUrl(st); if (!value || value === 'newtab') throw new Error(); await navigator.clipboard.writeText(value); notify(api, 'Link copied'); } catch { notify(api, 'Clipboard unavailable'); } };
+    }
+    if (module === 'camera') {
+      if (['vfDown', 'vfUp', 'vfLeave'].includes(key)) return () => {}; // No synthetic long-press analysis timer.
+      if (key === 'openLast') return native('photos');
+      if (key === 'shutter') return native('camera');
+      if (key === 'saveFiles') return native('files');
+      if (key === 'addEvent') return native('calendar');
+      if (key === 'openLink') return unavailable(api, 'Scan a real document in the camera app first.');
+      if (['flip', 'toggleFlash'].includes(key)) return native('camera');
+    }
+    if (module === 'photos') {
+      if (key === 'selStart') return native('photos');
+      if (['save', 'del', 'selDel', 'emptyNow', 'play', 'rotate', 'crop', 'fav', 'selFav'].includes(key)) return native('photos');
+      if (key === 'send' || key === 'selShare') return unavailable(api, 'Choose and share the real photo in your Android photo app.');
+    }
+    if (module === 'maps') {
+      if (key === 'qKey') return (e: KeyboardEvent) => { if (e.key === 'Enter') { e.preventDefault(); void perform(module, api, 'maps', { query: text(api.get(module).query) }); } };
+      if (key === 'start') return native('maps', { query: text(row.name || st.query) });
+      if (key === 'call') return native('phone');
+      if (key === 'web') return unavailable(api, 'Open the real place website from the Android map app.');
+      if (['shareEta', 'voice', 'end'].includes(key)) return unavailable(api, 'Live navigation and ETA are managed by the Android map app.');
+    }
+    if (module === 'contacts') {
+      if (key === 'go' && path.startsWith('d.acts.')) {
+        if (text(row.label).startsWith('Call ')) return native('phone');
+        if (text(row.label).startsWith('Message ')) return native('messages');
+        if (text(row.label).startsWith('Email ')) return native('email');
+        if (text(row.label).startsWith('Directions ')) return native('maps');
+      }
+      if (['save', 'del', 'toggleFav'].includes(key)) return native('contacts');
+    }
+    if (module === 'files') {
+      if (key === 'go' && path.startsWith('locs.')) return native(row.name === 'Photos' ? 'photos' : 'files');
+      if (key === 'tap' && row.isFile) return native('files');
+      if (key === 'rnKey') return (e: KeyboardEvent) => { if (e.key === 'Enter') { e.preventDefault(); void perform(module, api, 'files'); } };
+      if (key === 'go' && path.startsWith('moveTo.')) return native('files');
+      if (['play', 'del', 'saveRn', 'selDel', 'move', 'selMove', 'transcribe'].includes(key)) return native('files');
+      if (['shareMsg', 'shareMail', 'selShare'].includes(key)) return unavailable(api, 'Choose and share the real file in the Android Files app.');
+      if (key === 'saveSum') return unavailable(api, 'Select a real file before summarizing it.');
+    }
+    if (module === 'wallet') {
+      if (key === 'addCal') return native('calendar');
+      if (key === 'dirs') return native('maps');
+      if (['onNum', 'onCvv', 'onExp', 'onCode', 'onName'].includes(key)) return unavailable(api, 'Payment credentials are not collected by this app.');
+      if (['pay', 'auth', 'verify', 'next', 'scan', 'reload', 'remove', 'setDef', 'startPay'].includes(key)) return unavailable(api, 'Wallet payments and verification are not connected. Nothing has been charged or verified.');
+    }
+    if (module === 'settings') {
+      if (key === 'pick' && st.page !== 'display') return unavailable(api, 'This setting needs a connected provider. No change was applied.');
+      if (key === 'onPw' || (st.adding && ['change', 'onKey', 'go', 'ok'].includes(key))) return native('settings');
+      if (key === 'ok') return st.sheet?.kind === 'wipe' ? unavailable(api, 'Memory deletion is not connected. Nothing has been erased.') : native('settings');
+      if (['toggle', 'sw', 'change', 'set'].includes(key)) {
+        if (st.page === 'display' && row.label === 'Text size') return original;
+        return native(st.page === 'notifications' ? 'notifications' : 'settings');
+      }
+      if (key === 'go' && (systemPages.has(st.page) || (st.page === 'accounts' && (st.acct || row.label === 'Add account')))) return native(st.page === 'notifications' ? 'notifications' : 'settings');
+    }
+    return undefined;
+  }
+  function walk(value: any, module: string, st: Bag, api: Bag, path = ''): any {
+    if (!value || typeof value !== 'object') return value;
+    if (Array.isArray(value)) return value.map((v, i) => walk(v, module, st, api, path + i + '.'));
+    const result: Bag = {};
+    for (const [key, child] of Object.entries(value)) {
+      result[key] = typeof child === 'function'
+        ? replacement(module, key, path + key, value, st, api, child as Callback) || child
+        : walk(child, module, st, api, path + key + '.');
+    }
+    if (module === 'settings') {
+      if (result.big === 'Sealed') { result.big = 'Not verified'; result.sub = 'Hardware attestation is not connected'; }
+      if (result.label === 'Privacy & Enclave') result.val = 'Not verified';
+      if (result.label === 'Leaves this device') result.val = 'Depends on active services';
+      if (result.label === 'On-device model') result.val = 'Not loaded';
+    }
+    return result;
+  }
+  for (const [module, definition] of Object.entries(views)) {
+    if (!externalModules.has(module) || typeof definition.render !== 'function') continue;
+    const render = definition.render, actions = definition.actions, leave = definition.onLeave, ongoing = definition.ongoing;
+    definition.render = (state: Bag, api: Bag) => {
+      // Rendering cannot start a fake phone call, navigation timer, capture or booking.
+      const renderingApi = ['phone', 'browser', 'camera', 'maps'].includes(module)
+        ? { ...api, later: () => {}, laterBg: () => {}, every: () => {}, everyBg: () => {} } : api;
+      return walk(render(state, renderingApi), module, state, api);
+    };
+    if (actions) definition.actions = Object.fromEntries(Object.keys(actions).map(key => [key, (_card: Bag, api: Bag) => notify(api, 'Use the visible app controls to review and complete this action.')]));
+    if (['phone', 'camera', 'maps', 'workflows'].includes(module)) definition.ongoing = () => null;
+    if (leave && ['phone', 'camera', 'maps'].includes(module)) definition.onLeave = () => {};
+    restore.push(() => { definition.render = render; definition.actions = actions; definition.onLeave = leave; definition.ongoing = ongoing; });
+  }
+  return () => { for (const reset of restore) reset(); installed.delete(views); };
+}

@@ -1,0 +1,775 @@
+--- a/android/app/src/main/java/ai/elizaresearch/alphaphone/AlphaConnectionPlugin.java
++++ b/android/app/src/main/java/ai/elizaresearch/alphaphone/AlphaConnectionPlugin.java
+@@ -218,11 +218,12 @@
+     Iterator<String> names = headers.keys();
+     while (names.hasNext()) {
+      String name = names.next(), normalized = name.toLowerCase(Locale.ROOT);
+-     if (!Set.of("accept", "content-type", "authorization", "x-eliza-device-id", "x-eliza-device-key", "x-eliza-device-capabilities").contains(normalized)) throw new IllegalArgumentException();
++     if (!Set.of("accept", "content-type", "authorization", "x-eliza-device-id", "x-eliza-device-key", "x-eliza-device-capabilities", "x-eliza-phone-protocol").contains(normalized)) throw new IllegalArgumentException();
+      Object raw = headers.get(name); if (!(raw instanceof String)) throw new IllegalArgumentException();
+      String value = (String) raw;
+      if (value.length() > 16384 || value.contains("\r") || value.contains("\n")) throw new IllegalArgumentException();
+      if ("x-eliza-device-capabilities".equals(normalized) && !"calendar.local-event.v1".equals(value)) throw new IllegalArgumentException();
++     if ("x-eliza-phone-protocol".equals(normalized) && !"1".equals(value)) throw new IllegalArgumentException();
+      connection.setRequestProperty(name, value);
+     }
+     String body = call.getString("body");
+--- a/android/app/src/main/java/ai/elizaresearch/alphaphone/AlphaVoiceCloudPlugin.java
++++ b/android/app/src/main/java/ai/elizaresearch/alphaphone/AlphaVoiceCloudPlugin.java
+@@ -71,12 +71,12 @@
+   boolean local=BuildConfig.DEBUG&&"http".equals(uri.getScheme())&&Set.of("127.0.0.1","10.0.2.2").contains(uri.getHost());
+   if(uri.getHost()==null||(!"https".equals(uri.getScheme())&&!local)||uri.getRawUserInfo()!=null||uri.getRawQuery()!=null||uri.getRawFragment()!=null||!"".equals(uri.getRawPath())||uri.getPort()==0||uri.getPort()>65535)throw new IllegalArgumentException();
+   AlphaConnectionPlugin store=(AlphaConnectionPlugin)getBridge().getPlugin("AlphaConnection").getInstance();
+-  JSONObject credential=new JSONObject(store.readCredentialSlot("remote:"+origin));
+-  Long expires=call.getLong("expiresAt");
+-  if(!origin.equals(credential.getString("origin"))||!required(call.getString("ownerId"),256).equals(credential.getString("identityId"))||expires==null||expires!=credential.getLong("expiresAt")||expires<=System.currentTimeMillis())throw new IOException();
+-  String token=required(credential.getString("token"),16384);if(token.contains("\r")||token.contains("\n"))throw new IllegalArgumentException();
++  PairedAgentCredential pairedCredential=PairedAgentCredential.resolve(call,store);
++  if(pairedCredential.cloud&&asr)throw new IOException("Use on-device transcription for this Cloud connection");
++  String token=pairedCredential.token;
+   HttpURLConnection c=(HttpURLConnection)new URL(origin+(asr?"/api/asr/whisper":"/api/tts/local-inference")+(status?"/status":"")).openConnection();request.connection=c;
+   c.setInstanceFollowRedirects(false);c.setConnectTimeout(20000);c.setReadTimeout(120000);c.setUseCaches(false);c.setRequestMethod(status?"GET":"POST");c.setDoOutput(!status);c.setRequestProperty("Authorization","Bearer "+token);
++  if(pairedCredential.cloud)c.setRequestProperty("X-Eliza-Phone-Protocol","1");
+   if(request.cancelled)throw new IOException();return c;
+  }
+  @PluginMethod public void pairedVoiceStatus(PluginCall call){submit(call,request->{
+--- /dev/null
++++ b/android/app/src/main/java/ai/elizaresearch/alphaphone/PairedAgentCredential.java
+@@ -0,0 +1,34 @@
++package ai.elizaresearch.alphaphone;
++
++import com.getcapacitor.PluginCall;
++import org.json.JSONObject;
++import java.io.IOException;
++
++/** Credential lookup shared by reviewed speech. No credential passes through JS. */
++final class PairedAgentCredential {
++ final String token;
++ final boolean cloud;
++ private PairedAgentCredential(String token, boolean cloud) throws IOException {
++  if(token==null||token.isBlank()||token.length()>16384||token.contains("\r")||token.contains("\n"))throw new IOException("Invalid credential");
++  this.token=token;this.cloud=cloud;
++ }
++ static PairedAgentCredential resolve(PluginCall call, AlphaConnectionPlugin store) throws Exception {
++  String origin=call.getString("origin"),owner=call.getString("ownerId"),session=call.getString("sessionId");Long expires=call.getLong("expiresAt");
++  if(origin==null||owner==null||session==null||!session.matches("[A-Za-z0-9-]{1,128}")||expires==null||expires<=System.currentTimeMillis())throw new IOException("Expired selection");
++  String saved=store.readCredentialSlot("cloud-runtime:"+session);
++  if(saved!=null){
++   JSONObject binding=new JSONObject(saved);
++   if(!origin.equals(binding.getString("origin"))||!owner.equals(binding.getString("ownerId"))||!session.equals(binding.getString("sessionId"))||expires!=binding.getLong("expiresAt"))throw new IOException("Cloud selection changed");
++   String environment=binding.getString("environment"),agent=binding.getString("agentId");
++   if(!agent.matches("[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}"))throw new IOException("Invalid agent");
++   String suffix="production".equals(environment)?"cloud.eliza.app":"staging".equals(environment)?"cloud-staging.eliza.app":null;
++   if(suffix==null||!origin.equals("https://"+agent+"."+suffix))throw new IOException("Invalid Cloud target");
++   JSONObject credential=new JSONObject(store.readCredentialSlot("cloud:"+environment));
++   if(!binding.getString("credentialId").equals(credential.getString("credentialId"))||(credential.has("expiresAt")&&credential.getLong("expiresAt")<=System.currentTimeMillis())||(credential.has("userId")&&!credential.getString("userId").equals(binding.getString("userId"))))throw new IOException("Cloud credential changed");
++   return new PairedAgentCredential(credential.getString("token"),true);
++  }
++  JSONObject credential=new JSONObject(store.readCredentialSlot("remote:"+origin));
++  if(!origin.equals(credential.getString("origin"))||!owner.equals(credential.getString("identityId"))||expires!=credential.getLong("expiresAt"))throw new IOException("Paired selection changed");
++  return new PairedAgentCredential(credential.getString("token"),false);
++ }
++}
+--- a/apps/app/src/runtime/cloud-protocol.ts
++++ b/apps/app/src/runtime/cloud-protocol.ts
+@@ -44,7 +44,7 @@
+   to: string[]; snippet: string; receivedAt: string; unread: boolean;
+ }
+ export class CloudProtocolError extends Error {
+-  constructor(readonly code: "invalid-response" | "http" | "expired" | "credentials-missing" | "credential-consumed" | "login-active", readonly status?: number) {
++  constructor(readonly code: "invalid-response" | "http" | "expired" | "credentials-missing" | "credential-consumed" | "login-active", readonly status?: number, readonly data?: unknown) {
+     super(`Eliza Cloud ${code}${status ? ` (${status})` : ""}`);
+     this.name = "CloudProtocolError";
+   }
+@@ -85,19 +85,38 @@
+   });
+ }
+ 
++export interface CloudPhoneTarget {
++  agentId: string; origin: string; userId: string; organizationId: string;
++  credentialId: string; headers: Record<string,string>;
++}
+ export class CloudProtocol {
++  private phoneTarget: CloudPhoneTarget | null = null;
++  setPhoneTarget(target: CloudPhoneTarget | null) { this.phoneTarget = target; }
++  async phoneRequest(target: CloudPhoneTarget, path: string, signal: AbortSignal, body?: unknown): Promise<Record<string,unknown>> {
++    if (!/^\/api\/(?:client-devices|workflow|conversations)(?:\/|\?|$)/.test(path) || path.includes('..') || /[\\#\s]/.test(path)) throw new Error('Invalid phone route');
++    const credential = await this.credentials.read(this.environment); signal.throwIfAborted();
++    if (!credential || credential.credentialId !== target.credentialId) throw new Error('Cloud account changed');
++    const identity = await this.identity(signal);
++    if (identity.userId !== target.userId || identity.organizationId !== target.organizationId) throw new Error('Cloud owner changed');
++    const agent = await this.agentDetail(target.agentId, signal);
++    if (agent.runtimeUrl !== target.origin || !['dedicated-lazy','dedicated-always','custom'].includes(agent.executionTier || '')) throw new Error('Verified dedicated runtime unavailable');
++    const result = await this.call(path, signal, {authenticated:true,runtimeBase:target.origin,body,timeoutMs:120000,headers:{...target.headers,'X-Eliza-Phone-Protocol':'1'},credentialId:target.credentialId});
++    if ((await this.credentials.read(this.environment))?.credentialId !== target.credentialId) throw new Error('Cloud account changed');
++    signal.throwIfAborted(); return result;
++  }
+   private activeLogin: AbortController | null = null;
+   constructor(readonly environment: CloudEnvironment, private readonly request: CloudNativeRequest,
+     private readonly credentials: CloudCredentialStore,
+     private readonly openExternal: (url: string, signal: AbortSignal) => Promise<void>) {}
+   private get authority() { return authorities[this.environment]; }
+-  private async requestData(path: string, signal: AbortSignal, options: { body?: unknown; authenticated?: boolean; runtimeBase?: string; timeoutMs?: number } = {}) {
++  private async requestData(path: string, signal: AbortSignal, options: { body?: unknown; authenticated?: boolean; runtimeBase?: string; timeoutMs?: number; headers?: Record<string,string>; credentialId?: string } = {}) {
+     signal.throwIfAborted();
+-    const headers: Record<string, string> = { Accept: "application/json" };
++    const headers: Record<string, string> = { Accept: "application/json", ...options.headers };
+     if (options.authenticated) {
+       const credential = await this.credentials.read(this.environment);
+       signal.throwIfAborted();
+       if (!credential) throw new CloudProtocolError("credentials-missing");
++      if (options.credentialId && credential.credentialId !== options.credentialId) throw new Error("Cloud account changed");
+       if (credential.expiresAt !== undefined && credential.expiresAt <= Date.now()) throw new CloudProtocolError("expired");
+       headers.Authorization = `Bearer ${credential.token}`;
+     }
+@@ -106,10 +125,10 @@
+       method: options.body === undefined ? "GET" : "POST", headers, body: options.body,
+       signal, timeoutMs: options.timeoutMs ?? 30_000, redirect: "error" });
+     signal.throwIfAborted();
+-    if (response.status < 200 || response.status >= 300) throw new CloudProtocolError("http", response.status);
++    if (response.status < 200 || response.status >= 300) throw new CloudProtocolError("http", response.status, response.data);
+     return response.data;
+   }
+-  private async call(path: string, signal: AbortSignal, options: { body?: unknown; authenticated?: boolean; runtimeBase?: string; timeoutMs?: number } = {}) {
++  private async call(path: string, signal: AbortSignal, options: { body?: unknown; authenticated?: boolean; runtimeBase?: string; timeoutMs?: number; headers?: Record<string,string>; credentialId?: string } = {}) {
+     return object(await this.requestData(path, signal, options));
+   }
+   cancelLogin(): void { this.activeLogin?.abort(new DOMException("Login cancelled", "AbortError")); }
+@@ -217,6 +236,7 @@
+     return { userId: uuid(data.id), ...(data.organization_id == null ? {} : { organizationId: uuid(data.organization_id) }) };
+   }
+   private async runtimeCall(agentId: string, path: string, signal: AbortSignal, body?: unknown) {
++    if (this.phoneTarget?.agentId === agentId) return this.phoneRequest(this.phoneTarget, path, signal, body);
+     const agent = await this.agentDetail(agentId, signal);
+     if (!agent.runtimeUrl) throw new CloudProtocolError("invalid-response");
+     // Hosted shared REST lives on the API host. Dedicated REST lives on its
+--- a/apps/app/src/runtime/connection-ui.tsx
++++ b/apps/app/src/runtime/connection-ui.tsx
+@@ -6,7 +6,7 @@
+ import { useEffect, useRef, useSyncExternalStore } from 'react';
+ import { isAndroid } from '../native';
+ import type { ActionProposal, OperationReceipt, ContextEnvelope, VerifiedSession } from './alpha-client';
+-import { CloudProtocol, CloudProvisionAcceptedError, type CloudAgent, type CloudEnvironment } from './cloud-protocol';
++import { CloudProtocol, CloudProtocolError, CloudProvisionAcceptedError, type CloudAgent, type CloudEnvironment, type CloudPhoneTarget } from './cloud-protocol';
+ import { RemoteProtocol } from './remote-protocol';
+ import { phoneContextMessage } from './phone-context';
+ import { cloudCredentialStore, remoteCredentialStore, nativeCloudRequest, nativeRemoteRequest, openConnectionBrowser, secureConnectionStore } from './native-connection';
+@@ -16,6 +16,7 @@
+ export interface CloudServiceSession { environment: CloudEnvironment; userId: string; organizationId?: string; sessionId: string; credentialId: string }
+ export interface RestoredMessage { id: string; from: 'user' | 'agent'; text: string }
+ export interface ConnectionSnapshot {
++  phoneActionsAvailable: boolean; phoneCapabilityReason: string;
+   conversations: Array<{ id: string; title: string }>;
+   history: { sessionId: string; conversationId: string; revision: number; messages: RestoredMessage[] } | null;
+   actionHistory: Array<{ id: string; state: string; description: string }>;
+@@ -24,12 +25,12 @@
+   kind: 'offline' | 'remote' | 'local' | 'cloud'; name: string;
+   session: VerifiedSession | null; agents: CloudAgent[];
+ }
+-type Active = { kind: 'remote' | 'local'; remote: RemoteProtocol; origin: string; actions?: DeviceActions } | { kind: 'cloud'; cloud: CloudProtocol; agentId: string };
++type Active = { kind: 'remote' | 'local'; remote: RemoteProtocol; origin: string; actions?: DeviceActions } | { kind: 'cloud'; cloud: CloudProtocol; agentId: string; actions?: DeviceActions; phoneTarget?: CloudPhoneTarget; voiceExpiresAt?: number };
+ const SELECTION = 'alpha.connection.selection.v1';
+ const CLOUD_SERVICE = 'alpha.connection.cloud-service.v1';
+ const CONVERSATIONS = 'alpha.connection.conversations.v1';
+ const listeners = new Set<() => void>();
+-let state: ConnectionSnapshot = { actionHistory: [], conversations: [], history: null, cloudAccount: null, open: false, busy: false, message: '', error: '', kind: 'offline', name: 'Offline', session: null, agents: [] };
++let state: ConnectionSnapshot = { phoneActionsAvailable:false, phoneCapabilityReason:'', actionHistory: [], conversations: [], history: null, cloudAccount: null, open: false, busy: false, message: '', error: '', kind: 'offline', name: 'Offline', session: null, agents: [] };
+ let active: Active | null = null, operation: AbortController | null = null;
+ let startup: Promise<void> | null = null, epoch = 0;
+ let sending: AbortController | null = null;
+@@ -57,12 +58,13 @@
+ function update(patch: Partial<ConnectionSnapshot>) { state = { ...state, ...patch }; listeners.forEach(listener => listener()); }
+ function save(selection: Selection) { localStorage.setItem(SELECTION, JSON.stringify(selection)); }
+ function retire(name = 'Offline') {
++  if (active?.kind === 'cloud') { active.cloud.setPhoneTarget(null); if (state.session) void secureConnectionStore.remove(`cloud-runtime:${state.session.sessionId}`).catch(()=>{}); }
+   actionReceipts.clear();
+   epoch++;
+   sending?.abort(new DOMException('The connection changed.', 'AbortError'));
+   sending = null;
+   active = null;
+-  update({ session: null, kind: 'offline', name, conversations: [], history: null, actionHistory: [] });
++  update({ phoneActionsAvailable:false, phoneCapabilityReason:'', session: null, kind: 'offline', name, conversations: [], history: null, actionHistory: [] });
+ }
+ function persistOffline(): string {
+   try { save({ kind: 'offline' }); return ''; }
+@@ -113,7 +115,7 @@
+ function activate(next: Active, session: VerifiedSession, name: string) {
+   actionReceipts.clear();
+   epoch++; sending?.abort(new DOMException('The connection changed.', 'AbortError')); sending = null; active = next;
+-  update({ conversations: [], history: null, kind: next.kind, name, session, open: false, message: 'Connected', error: '' });
++  update({ phoneActionsAvailable:!!next.actions, conversations: [], history: null, kind: next.kind, name, session, open: false, message: 'Connected', error: '' });
+ }
+ async function remoteIdentity(remote: RemoteProtocol, signal: AbortSignal) {
+   const credential = await remoteCredentialStore.read(remote.origin);
+@@ -169,13 +171,51 @@
+ 
+ }
+ async function connectCloud(agentId: string, signal: AbortSignal, expectedOwner?: string) {
++  const client=cloud;
++  client.setPhoneTarget(null);
+   const identity = await verifyService(cloud, signal); signal.throwIfAborted();
+   if (expectedOwner && identity.userId !== expectedOwner) throw new Error('The Cloud account has changed. Refresh agents and choose an agent for this account.');
+   const agent = await cloud.agentDetail(agentId, signal);
+   if (agent.status !== 'running' || !agent.runtimeUrl) throw new Error('This agent is not ready. Start it and refresh its status.');
+-  save({ kind: 'cloud', environment: cloud.environment, agentId, ownerId: identity.userId });
+-  activate({ kind: 'cloud', cloud, agentId }, { ownerId: identity.userId, agentId, sessionId: crypto.randomUUID(), origin: new URL(agent.runtimeUrl).origin }, agent.name || 'Eliza Cloud agent');
+-}
++  const session = {ownerId:identity.userId,agentId,sessionId:crypto.randomUUID(),origin:new URL(agent.runtimeUrl).origin};
++  const next: Extract<Active,{kind:'cloud'}> = {kind:'cloud',cloud,agentId};
++  let attached = false;
++  let reason = 'This Cloud runtime has not enabled verified phone actions, workflows or paired speech.';
++  try {
++    const auth = await cloudCredentialStore.read(cloud.environment);
++    if (!auth?.credentialId || !identity.organizationId) throw new Error('Cloud owner configuration unavailable');
++    const baseScope = await actionScope(JSON.stringify(['cloud',session.origin,identity.userId,agentId]));
++    const slot = `device:${baseScope}`;
++    let credential = await secureConnectionStore.read<DeviceCredential>(slot);
++    if (!credential) { credential={installationId:crypto.randomUUID(),key:Array.from(crypto.getRandomValues(new Uint8Array(32)),b=>b.toString(16).padStart(2,'0')).join('')}; await secureConnectionStore.write(slot,credential); }
++    if (!/^[a-f0-9]{64}$/.test(credential.key) || !/^[a-f0-9-]{36}$/.test(credential.installationId)) throw new Error('Invalid saved device identity');
++    const target: CloudPhoneTarget = {agentId,origin:session.origin,userId:identity.userId,organizationId:identity.organizationId,credentialId:auth.credentialId,headers:{'X-Eliza-Device-Id':credential.installationId,'X-Eliza-Device-Key':credential.key,'X-Eliza-Device-Capabilities':'calendar.local-event.v1'}};
++    const request = async (path:string,body:unknown|undefined,requestSignal:AbortSignal) => {
++      if(attached && state.session?.sessionId!==session.sessionId)throw new Error('Cloud agent changed');
++      const result=await client.phoneRequest(target,path,requestSignal,body);
++      if(attached && state.session?.sessionId!==session.sessionId)throw new Error('Cloud agent changed');
++      return result;
++    };
++    const capability = await request('/api/client-devices/capabilities',undefined,signal);
++    const external=capability.externalIdentity as Record<string,unknown>|undefined,device=capability.deviceActions as Record<string,unknown>|undefined;
++    if (capability.protocol!==1 || capability.agentId!==agentId || typeof capability.identityId!=='string' || !/^[a-f0-9-]{36}$/.test(capability.identityId) || external?.subject!==identity.userId || external?.organizationId!==identity.organizationId || typeof external?.issuer!=='string' || !external.issuer.startsWith('https://') || device?.protocol!==1 || !Array.isArray(device.capabilities) || !device.capabilities.includes('calendar.local-event.v1')) throw new Error('Cloud runtime owner capability was not verified');
++    session.ownerId=capability.identityId;
++    const registered=await request('/api/client-devices/register',{label:'Alpha Phone',workflowProtocol:1},signal);
++    if (registered.installationId!==credential.installationId || typeof registered.enrollmentId!=='string' || !/^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/.test(registered.enrollmentId)) throw new Error('Cloud device registration was not verified');
++    credential.enrollmentId=registered.enrollmentId; await secureConnectionStore.write(slot,credential); signal.throwIfAborted();
++    next.actions=new DeviceActions(session,credential,await actionScope(JSON.stringify([baseScope,credential.installationId])),request,actionJournal,(op,id,context,effectSignal)=>deviceExecutor(op,id,context,effectSignal));
++    next.phoneTarget=target; next.voiceExpiresAt=Math.min(auth.expiresAt ?? Infinity,Date.now()+30*60*1000);
++    await secureConnectionStore.write(`cloud-runtime:${session.sessionId}`,{environment:cloud.environment,credentialId:auth.credentialId,origin:session.origin,agentId,ownerId:session.ownerId,userId:identity.userId,organizationId:identity.organizationId,sessionId:session.sessionId,expiresAt:next.voiceExpiresAt});
++    signal.throwIfAborted(); cloud.setPhoneTarget(target); reason='';
++  } catch (error) {
++    signal.throwIfAborted();
++    if (expired(error)) throw error;
++    next.actions=undefined;next.phoneTarget=undefined;next.voiceExpiresAt=undefined;session.ownerId=identity.userId;
++  }
++  save({ kind:'cloud',environment:cloud.environment,agentId,ownerId:identity.userId });
++  activate(next,session,agent.name || 'Eliza Cloud agent'); attached=true; update({phoneCapabilityReason:reason});
++}
++
+ function conversationKey(session: VerifiedSession) { return JSON.stringify([session.origin, session.ownerId, session.agentId]); }
+ function conversations(): Record<string, string> {
+   try { const value = JSON.parse(localStorage.getItem(CONVERSATIONS) || '{}'); return value && typeof value === 'object' && !Array.isArray(value) ? value : {}; } catch { return {}; }
+@@ -209,7 +249,7 @@
+   setDeviceExecutor(executor: DeviceExecutor) { deviceExecutor = executor; },
+   async execute(proposal: ActionProposal, context: ContextEnvelope, signal: AbortSignal): Promise<OperationReceipt> {
+     const selected = active;
+-    if (!selected || selected.kind === 'cloud' || !selected.actions) return { proposalId: proposal.id, status: 'denied', summary: 'This connection does not support verified phone actions.' };
++    if (!selected || !selected.actions) return { proposalId: proposal.id, status: 'denied', summary: 'This connection does not support verified phone actions.' };
+     const sessionId = state.session!.sessionId;
+     const prior = actionReceipts.get(proposal.id);
+     if (prior?.sessionId === sessionId) return prior.result;
+@@ -217,20 +257,20 @@
+     actionReceipts.set(proposal.id, { sessionId, result });
+     return result;
+   },
+-  getWorkflowDeviceTarget(){const selected=active;if(!selected||selected.kind==='cloud'||!selected.actions||!selected.actions.credential.enrollmentId)return null;return {installationId:selected.actions.credential.installationId,enrollmentId:selected.actions.credential.enrollmentId};},
++  getWorkflowDeviceTarget(){const selected=active;if(!selected||!selected.actions||!selected.actions.credential.enrollmentId)return null;return {installationId:selected.actions.credential.installationId,enrollmentId:selected.actions.credential.enrollmentId};},
+   async workflowPhoneActions(review:WorkflowPhoneReview,context:ContextEnvelope,signal:AbortSignal){
+     const selected=active,generation=epoch,sessionId=state.session?.sessionId;
+-    if(!selected||selected.kind==='cloud'||!selected.actions||state.open||document.hidden||context.sensitive)throw new Error('Open this workflow on the selected phone agent');
++    if(!selected||!selected.actions||state.open||document.hidden||context.sensitive)throw new Error('Open this workflow on the selected phone agent');
+     const result=await selected.actions.pendingForWorkflow(review,context,signal);signal.throwIfAborted();
+     if(generation!==epoch||sessionId!==state.session?.sessionId||state.open||document.hidden)throw new Error('Workflow agent changed');return result;
+   },
+   async rejectWorkflowPhoneAction(id:string,review:WorkflowPhoneReview,context:ContextEnvelope,signal:AbortSignal){
+-    const selected=active;if(!selected||selected.kind==='cloud'||!selected.actions||state.open||document.hidden||context.sensitive)throw new Error('Open this workflow to deny its phone step');
++    const selected=active;if(!selected||!selected.actions||state.open||document.hidden||context.sensitive)throw new Error('Open this workflow to deny its phone step');
+     const proposals=await selected.actions.pendingForWorkflow(review,context,signal);if(!proposals.some(p=>p.id===id))throw new Error('Phone step is no longer pending');signal.throwIfAborted();await selected.actions.reject(id,signal);
+   },
+   async syncWorkflowPhoneReceipts(review:WorkflowPhoneReview,signal:AbortSignal){
+     const selected=active,generation=epoch;
+-    if(!selected||selected.kind==='cloud'||!selected.actions||state.open||document.hidden)throw new Error('Open this workflow to reconcile its phone receipts');
++    if(!selected||!selected.actions||state.open||document.hidden)throw new Error('Open this workflow to reconcile its phone receipts');
+     await selected.actions.syncReceipts(signal,{runId:review.runId,versionId:review.versionId,specDigest:review.specDigest});signal.throwIfAborted();if(generation!==epoch||state.open||document.hidden)throw new Error('Workflow agent changed');
+   },
+   async actionReceipt(proposalId: string, sessionId: string | undefined): Promise<OperationReceipt | null> {
+@@ -242,7 +282,7 @@
+   async actionHistory(sync = false) {
+     await work('Reading phone action history…', async signal => {
+       const selected = active, generation = epoch;
+-      if (!selected || selected.kind === 'cloud' || !selected.actions) throw new Error('Verified phone actions are unavailable on this connection.');
++      if (!selected || !selected.actions) throw new Error('Verified phone actions are unavailable on this connection.');
+       if (sync) await selected.actions.syncReceipts(signal);
+       const entries = await selected.actions.history(signal);
+       if (generation !== epoch) return;
+@@ -251,25 +291,26 @@
+   },
+   async rejectAction(id: string) {
+     await work('Rejecting phone action…', async signal => {
+-      if (!active || active.kind === 'cloud' || !active.actions) throw new Error('Device action connection unavailable');
++      if (!active || !active.actions) throw new Error('Device action connection unavailable');
+       await active.actions.reject(id, signal);
+       update({ actionHistory: [], message: 'Proposal rejected. No device action was performed.' });
+     });
+   },
+   async reconcileAction(id: string, outcome: 'applied' | 'not_applied') {
+     await work('Recording your action review…', async signal => {
+-      if (!active || active.kind === 'cloud' || !active.actions) throw new Error('Device action connection unavailable');
++      if (!active || !active.actions) throw new Error('Device action connection unavailable');
+       await active.actions.reconcile(id, outcome, signal);
+       update({ actionHistory: [], message: 'Review recorded. Refresh action history; no action was repeated.' });
+     });
+   },
+   getWorkflowClient(): { client: WorkflowProtocol; sessionId: string } | null {
+     const selected = active, session = state.session;
+-    if (!selected || selected.kind === 'cloud' || !session) return null;
++    if (!selected || !session || (selected.kind==='cloud' && !selected.phoneTarget)) return null;
+     const generation = epoch;
+     return { sessionId: session.sessionId, client: new WorkflowProtocol(async (path, body, signal) => {
+       signal.throwIfAborted();
+       if (generation !== epoch) throw new Error('Agent changed');
++      if (selected.kind==='cloud') { try { const response=await selected.cloud.phoneRequest(selected.phoneTarget!,path,signal,body); if(generation!==epoch)throw new Error('Agent changed');return response; } catch(error) { if(error instanceof CloudProtocolError && error.status)throw new WorkflowHttpError(error.status,error.data); throw error; } }
+       const credential = await remoteCredentialStore.read(selected.origin);
+       if (!credential || credential.identityId !== session.ownerId || credential.expiresAt <= Date.now()) throw new Error('Pair the agent again');
+       const response = await nativeRemoteRequest({ url: selected.origin + path, method: body === undefined ? 'GET' : 'POST', headers: { Accept: 'application/json', 'Content-Type':'application/json', Authorization: `Bearer ${credential.token}` }, ...(body===undefined?{}:{body:JSON.stringify(body)}), signal });
+@@ -279,6 +320,7 @@
+     }) };
+   },
+   getPairedVoiceBinding(): { origin: string; ownerId: string; expiresAt: number; sessionId: string } | null {
++    if (active?.kind==='cloud' && state.session && active.phoneTarget && active.voiceExpiresAt && active.voiceExpiresAt>Date.now()) return {origin:state.session.origin,ownerId:state.session.ownerId,expiresAt:active.voiceExpiresAt,sessionId:state.session.sessionId};
+     if (!active || active.kind === 'cloud' || !state.session || !active.remote.session || active.remote.session.expiresAt <= Date.now()) return null;
+     return { origin: active.origin, ownerId: state.session.ownerId, expiresAt: active.remote.session.expiresAt, sessionId: state.session.sessionId };
+   },
+@@ -470,7 +512,7 @@
+       }
+       if (typeof reply.text !== 'string') throw new Error('The agent returned an invalid response.');
+       let proposals: ActionProposal[] | undefined;
+-      if (selected.kind !== 'cloud' && selected.actions) {
++      if (selected.actions) {
+         try { proposals = await selected.actions.pending(message.context, requestSignal); }
+         catch { update({ message: 'Reply received. Phone action proposals could not be checked; use action history.' }); }
+       }
+@@ -535,7 +577,8 @@
+     <p>Sign in with Eliza Cloud or connect an agent you run. Your phone’s local apps also work offline.</p>
+     {snapshot.session && <section className="alpha-connection-current"><strong>{snapshot.name}</strong><span>Connected · {snapshot.kind === 'cloud' ? 'Eliza Cloud' : snapshot.kind === 'local' ? 'Local development' : 'Remote agent'}</span><button disabled={snapshot.busy} onClick={() => void connectionController.disconnect()}>Disconnect agent</button></section>}
+     {snapshot.session && <details><summary>Conversation history</summary><p>Load from this agent only. Restoring replaces the visible chat and draft; it does not run past actions.</p><button disabled={snapshot.busy} onClick={() => void connectionController.listHistory()}>Load conversations</button>{snapshot.conversations.map(item => <section key={item.id} className="alpha-connection-agent"><strong>{item.title}</strong><button disabled={snapshot.busy} onClick={() => void connectionController.restoreHistory(item.id)}>Restore conversation</button></section>)}</details>}
+-    {snapshot.session && snapshot.kind !== 'cloud' && <details><summary>Phone action history</summary><button disabled={snapshot.busy} onClick={() => void connectionController.actionHistory()}>Refresh actions</button><button disabled={snapshot.busy} onClick={() => void connectionController.actionHistory(true)}>Sync recorded receipts</button>{snapshot.actionHistory.map(item => <section key={item.id} className="alpha-connection-agent"><strong>{item.description}</strong><span>{item.state}</span>{item.state === 'pending' && <button disabled={snapshot.busy} onClick={() => void connectionController.rejectAction(item.id)}>Reject proposal</button>}{['executing','reconciliation_required'].includes(item.state) && <><p>After checking this phone, confirm whether this exact action happened.</p><button disabled={snapshot.busy} onClick={() => void connectionController.reconcileAction(item.id, 'applied')}>I verified it happened</button><button disabled={snapshot.busy} onClick={() => void connectionController.reconcileAction(item.id, 'not_applied')}>I verified it did not happen</button></>}</section>)}</details>}
++    {snapshot.session && snapshot.phoneCapabilityReason && <p role="status">{snapshot.phoneCapabilityReason}</p>}
++    {snapshot.session && snapshot.phoneActionsAvailable && <details><summary>Phone action history</summary><button disabled={snapshot.busy} onClick={() => void connectionController.actionHistory()}>Refresh actions</button><button disabled={snapshot.busy} onClick={() => void connectionController.actionHistory(true)}>Sync recorded receipts</button>{snapshot.actionHistory.map(item => <section key={item.id} className="alpha-connection-agent"><strong>{item.description}</strong><span>{item.state}</span>{item.state === 'pending' && <button disabled={snapshot.busy} onClick={() => void connectionController.rejectAction(item.id)}>Reject proposal</button>}{['executing','reconciliation_required'].includes(item.state) && <><p>After checking this phone, confirm whether this exact action happened.</p><button disabled={snapshot.busy} onClick={() => void connectionController.reconcileAction(item.id, 'applied')}>I verified it happened</button><button disabled={snapshot.busy} onClick={() => void connectionController.reconcileAction(item.id, 'not_applied')}>I verified it did not happen</button></>}</section>)}</details>}
+     <div role="status" aria-live="polite">{snapshot.message}</div>
+     {snapshot.error && <p role="alert" className="alpha-connection-error">{snapshot.error}</p>}
+     {snapshot.busy && <button className="alpha-connection-cancel" onClick={() => connectionController.cancel()}>Cancel</button>}
+--- a/packages/agent/src/api/device-action-routes.ts
++++ b/packages/agent/src/api/device-action-routes.ts
+@@ -81,6 +81,23 @@
+   }
+   const service = new DeviceActionService(runtime);
+   try {
++    if (method === "GET" && pathname === "/api/client-devices/capabilities") {
++      // Only the verified gateway bridge can advertise Cloud owner parity.
++      // Route presence alone must not turn a shared bearer into a Cloud owner.
++      const identity = ctx.authorization?.externalIdentity;
++      if (!identity || !ctx.authorization?.identityId) {
++        error(res, "Verified Cloud owner capabilities unavailable", 503);
++        return true;
++      }
++      json(res, {
++        protocol: 1,
++        agentId: runtime.agentId,
++        identityId: ctx.authorization.identityId,
++        externalIdentity: identity,
++        deviceActions: { protocol: 1, capabilities: ["calendar.local-event.v1"] },
++      });
++      return true;
++    }
+     if (method === "POST" && pathname === "/api/client-devices/register") {
+       const body = await ctx.readJsonBody<{
+         label: string;
+--- a/packages/agent/src/api/server.ts
++++ b/packages/agent/src/api/server.ts
+@@ -1571,6 +1571,16 @@
+     };
+   const isHostSessionAuthorized = async (): Promise<boolean> =>
+     (await resolveHostSessionAuthorization()).ok;
++  // A presented gateway proof is an exclusive authentication mode. A valid
++  // container bearer must never rescue an invalid/unsupported owner proof.
++  if (req.headers["x-eliza-cloud-owner-proof"] !== undefined) {
++    const verified = await resolveHostSessionAuthorization();
++    if (!verified.ok || !verified.externalIdentity || !verified.identityId) {
++      json(res, { error: "Verified Cloud owner session required" }, 401);
++      return;
++    }
++  }
++
+   const canonicalizeRestartReason = (reason: string): string => {
+     if (
+       reason === "primary-changed" ||
+--- a/packages/agent/src/runtime/host-bridge.ts
++++ b/packages/agent/src/runtime/host-bridge.ts
+@@ -40,6 +40,8 @@
+ 
+ /** Authenticated HTTP caller data resolved by the embedding host. */
+ export interface AgentHttpRequestAuthorization {
++  /** Cryptographically verified external owner, never copied from caller headers. */
++  externalIdentity?: {issuer:string;subject:string;organizationId:string};
+   ok: boolean;
+   role: RoleGateRole;
+   /** Present for a DB-backed browser or machine session. */
+--- a/packages/app/src/api/auth-bootstrap-routes.ts
++++ b/packages/app/src/api/auth-bootstrap-routes.ts
+@@ -32,7 +32,7 @@
+ /** 12h sliding TTL for browser sessions per plan §1.3. */
+ export const BROWSER_SESSION_TTL_MS = 12 * 60 * 60 * 1000;
+ 
+-function deriveIdentityIdFromCloudUser(cloudUserId: string): string {
++export function deriveIdentityIdFromCloudUser(cloudUserId: string): string {
+   // Stable per-cloud-user id so repeated exchanges by the same user reuse the
+   // same identity row. SHA-256 of the cloud sub keeps it opaque while still
+   // deterministic. We slice to 32 hex chars and shape as a uuid-ish string
+--- /dev/null
++++ b/packages/app/src/api/cloud-runtime-owner.ts
+@@ -0,0 +1,51 @@
++import type http from "node:http";
++import { createRemoteJWKSet, customFetch, jwtVerify, type JWTVerifyGetKey } from "jose";
++import { readRequestBodyBuffer, type IAgentRuntime } from "@elizaos/core";
++import { setCloudRuntimeRequestIdentity, CLOUD_RUNTIME_CLIENT, CLOUD_RUNTIME_SCOPE, CLOUD_RUNTIME_MAX_BODY, cloudRuntimeDigest, cloudRuntimeMethod, cloudRuntimeTarget } from "@elizaos/core/contracts/cloud-runtime-request";
++import type { AgentHttpRequestAuthorization } from "@elizaos/agent/runtime/host-bridge";
++import { authStoreForRuntime } from "../services/auth-store";
++import { getCompatApiToken, getProvidedApiToken, tokenMatches } from "./auth";
++import { deriveIdentityIdFromCloudUser } from "./auth-bootstrap-routes";
++
++export interface CloudRuntimeOwnerConfig {issuer:string;jwksUrl:string;audience:string;algorithm:"ES256"|"RS256";agentId:string;ownerId:string;organizationId:string}
++export function cloudRuntimeOwnerConfig(env:Record<string,string|undefined>):CloudRuntimeOwnerConfig|null {
++ try{
++  const issuer=env.ELIZA_CLOUD_OWNER_ISSUER!,jwksUrl=env.ELIZA_CLOUD_OWNER_JWKS_URL!,audience=env.ELIZA_CLOUD_OWNER_AUDIENCE!,algorithm=env.ELIZA_CLOUD_OWNER_ALGORITHM;
++  if(new URL(issuer).origin!==issuer||!issuer.startsWith("https://")||jwksUrl!==issuer+"/.well-known/oidc/jwks.json"||new URL(audience).origin!==audience||!audience.startsWith("https://")||!["ES256","RS256"].includes(algorithm!))return null;
++  const agentId=env.ELIZA_CLOUD_AGENT_ID!,ownerId=env.ELIZA_CLOUD_OWNER_ID!,organizationId=env.ELIZA_CLOUD_ORGANIZATION_ID!;
++  for(const value of [agentId,ownerId,organizationId])if(!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value))return null;
++  return {issuer,jwksUrl,audience,algorithm:algorithm as "ES256"|"RS256",agentId,ownerId,organizationId};
++ }catch{return null;}
++}
++const resolvers=new Map<string,JWTVerifyGetKey>();
++function resolver(config:CloudRuntimeOwnerConfig):JWTVerifyGetKey {
++ let key=resolvers.get(config.jwksUrl);if(!key){key=createRemoteJWKSet(new URL(config.jwksUrl),{cacheMaxAge:30000,cooldownDuration:1000,timeoutDuration:5000,[customFetch]:(input,init)=>fetch(input,{...init,redirect:"error"})});resolvers.set(config.jwksUrl,key);}return key;
++}
++/** Only cryptographic request validation; key injection exists for local signed HTTP tests. */
++export async function verifyCloudRuntimeOwnerProof(token:string,request:{method:string;target:string;body:Uint8Array},config:CloudRuntimeOwnerConfig,key:JWTVerifyGetKey=resolver(config)){
++ const {payload,protectedHeader}=await jwtVerify(token,key,{issuer:config.issuer,audience:config.audience,algorithms:[config.algorithm],typ:"at+jwt",maxTokenAge:30,clockTolerance:0});
++ const audiences=Array.isArray(payload.aud)?payload.aud:[payload.aud];
++ if(protectedHeader.typ!=="at+jwt"||payload.client_id!==CLOUD_RUNTIME_CLIENT||payload.scope!==CLOUD_RUNTIME_SCOPE||audiences.length!==2||!audiences.includes(CLOUD_RUNTIME_CLIENT)||!audiences.includes(config.audience)||payload.sub!==config.ownerId||payload.organization_id!==config.organizationId||payload.agent_id!==config.agentId||typeof payload.iat!=="number"||typeof payload.exp!=="number"||payload.exp-payload.iat>30||payload.exp<=payload.iat||typeof payload.request_id!=="string"||!/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(payload.request_id)||payload.request_method!==cloudRuntimeMethod(request.method)||payload.request_target!==cloudRuntimeTarget(request.target)||payload.request_body_sha256!==await cloudRuntimeDigest(request.body))throw Error("Cloud owner proof mismatch");
++ return {ownerId:config.ownerId,organizationId:config.organizationId,requestId:payload.request_id,issuer:config.issuer};
++}
++const resolved=new WeakMap<http.IncomingMessage,Promise<AgentHttpRequestAuthorization>>();
++/** A proof failure is terminal, never a fallback to the shared container principal. */
++export function resolveCloudRuntimeOwner(req:http.IncomingMessage,runtime:IAgentRuntime|null):Promise<AgentHttpRequestAuthorization>{
++ const prior=resolved.get(req);if(prior)return prior;
++ const pending=(async():Promise<AgentHttpRequestAuthorization>=>{try{
++  const config=cloudRuntimeOwnerConfig(process.env),token=req.headers["x-eliza-cloud-owner-proof"],expected=getCompatApiToken(),provided=getProvidedApiToken(req);
++  if(!config||!runtime||runtime.agentId!==config.agentId||typeof token!=="string"||token.length>16384||!expected||!provided||!tokenMatches(expected,provided))throw Error("Cloud owner unavailable");
++  const method=(req.method||"GET").toUpperCase();
++  if(method==="GET"&&(req.headers["transfer-encoding"]||Number(req.headers["content-length"]||0)!==0))throw Error("GET body refused");
++  const body=method==="GET"?new Uint8Array():await readRequestBodyBuffer(req,{maxBytes:CLOUD_RUNTIME_MAX_BODY});if(body===null||req.aborted)throw Error("Request ended");
++  const verified=await verifyCloudRuntimeOwnerProof(token,{method,target:req.url||"",body},config);
++  if (req.aborted) throw Error("Request aborted");
++  const store=authStoreForRuntime(runtime);if(!store||!await store.recordJtiSeen("cloud-runtime:"+verified.requestId))throw Error("Replay or unavailable store");
++  const identityId=deriveIdentityIdFromCloudUser(verified.ownerId);let identity=await store.findIdentity(identityId);
++  if(!identity){try{identity=await store.createIdentity({id:identityId,kind:"owner",displayName:"Cloud owner",createdAt:Date.now(),passwordHash:null,cloudUserId:verified.ownerId});}catch{identity=await store.findIdentity(identityId);}}
++  if(!identity||identity.kind!=="owner"||identity.cloudUserId!==verified.ownerId)throw Error("Cloud owner identity conflict");
++  setCloudRuntimeRequestIdentity(req, identityId);
++  // Cloud device clients receive session USER authority, never global owner bypass.
++  return {ok:true,role:"USER",identityId,externalIdentity:{issuer:verified.issuer,subject:verified.ownerId,organizationId:verified.organizationId}};
++ }catch{return {ok:false,role:"NONE"};}})();resolved.set(req,pending);return pending;
++}
+--- a/packages/app/src/runtime/install-agent-host-bridge.ts
++++ b/packages/app/src/runtime/install-agent-host-bridge.ts
+@@ -1,3 +1,4 @@
++import { resolveCloudRuntimeOwner } from "../api/cloud-runtime-owner";
+ /**
+  * Install the app implementation of the agent host bridge.
+  *
+@@ -52,6 +53,10 @@
+   const resolveHttpRequestAuthorization: NonNullable<
+     AgentHostBridge["resolveHttpRequestAuthorization"]
+   > = async (req, runtime, options) => {
++    if (req.headers["x-eliza-cloud-owner-proof"] !== undefined) {
++      if (options.allowBearerAuth === false) return {ok: false, role: "NONE"};
++      return resolveCloudRuntimeOwner(req, runtime);
++    }
+     const resolved = await resolveAuthorizedRouteRole(req, {
+       allowCookieAuth: options.allowCookieAuth,
+       allowTrustedLocalBypass: options.allowTrustedLocalBypass,
+--- a/packages/cloud/api/src/dedicated-agent-proxy.ts
++++ b/packages/cloud/api/src/dedicated-agent-proxy.ts
+@@ -1,3 +1,4 @@
++import { mintCloudRuntimeProof } from "@/lib/auth/cloud-runtime-proof";
+ /**
+  * Authentication and proxy boundary for dedicated-agent subdomains.
+  *
+@@ -73,6 +74,7 @@
+ const MANAGED_PAIR_RATE_LIMIT_RETRY_SECONDS = 60;
+ const CLOUD_ONLY_CREDENTIAL_HEADERS = [
+   "cookie",
++  "x-eliza-cloud-owner-proof",
+   "proxy-authorization",
+   "x-bootstrap-secret",
+   "x-cron-secret",
+@@ -421,12 +423,14 @@
+   injectBearer?: string,
+   injectQueryCredential?: RealtimeQueryCredentialName | null,
+   timing?: DedicatedProxyTiming,
++  ownerProof?: string,
+ ): Promise<Response> {
+   const targetUrl = new URL(request.url);
+   targetUrl.hostname = resolveOriginHost(env);
+   const headers = new Headers(request.headers);
+   headers.delete("host");
+   stripCloudOnlyCredentials(headers);
++  if(ownerProof)headers.set("x-eliza-cloud-owner-proof",ownerProof);
+   sanitizeDedicatedTraceHeaders(headers);
+   const traceId = headers.get("x-eliza-trace-id");
+   headers.set("x-forwarded-host", url.host);
+@@ -438,8 +442,10 @@
+     // headers on `new WebSocket()`); the container reads it via
+     // ELIZA_ALLOW_WS_QUERY_TOKEN. Rewrite that query param to the agent token
+     // too so the upgrade authenticates the same way the header does.
+-    for (const name of REALTIME_QUERY_CREDENTIAL_NAMES) {
+-      targetUrl.searchParams.delete(name);
++    if (!ownerProof) {
++      for (const name of REALTIME_QUERY_CREDENTIAL_NAMES) {
++        targetUrl.searchParams.delete(name);
++      }
+     }
+     if (injectQueryCredential) {
+       targetUrl.searchParams.set(injectQueryCredential, injectBearer);
+@@ -458,6 +464,7 @@
+     originHeadersTimeoutOverrideMs ??
+     dedicatedProxyOriginHeadersTimeoutMs(request.method, targetUrl.pathname);
+   const controller = new AbortController();
++  if (ownerProof) request.signal.throwIfAborted();
+   let timedOut = false;
+   const timer = setTimeout(() => {
+     timedOut = true;
+@@ -469,7 +476,7 @@
+     method: request.method,
+     headers,
+     redirect: "manual",
+-    signal: controller.signal,
++    signal: ownerProof ? AbortSignal.any([controller.signal, request.signal]) : controller.signal,
+   };
+   if (request.method !== "GET" && request.method !== "HEAD") {
+     init.body = request.body;
+@@ -1164,6 +1171,9 @@
+     });
+     if (mobileLimitResponse) return mobileLimitResponse;
+   }
++  const phoneProtocol = request.headers.get("x-eliza-phone-protocol");
++  if (phoneProtocol !== null && phoneProtocol !== "1") return Response.json({error: "Unsupported phone protocol"}, {status: 400});
++  if (phoneProtocol && queryCredentials.values.length > 0) return Response.json({error: "Phone credentials require headers"}, {status: 400});
+   let orgId: string;
+   let userId: string;
+   try {
+@@ -1180,7 +1190,7 @@
+     // distinct `agent_` namespace; Cloud-shaped custom tokens are deliberately
+     // reserved so this boundary remains unambiguous.
+     if (error instanceof AuthenticationError) {
+-      if (hasCloudCredentialShape(request, queryCredentials.values)) {
++      if (phoneProtocol || hasCloudCredentialShape(request, queryCredentials.values)) {
+         return Response.json(
+           {
+             success: false,
+@@ -1216,6 +1226,7 @@
+     );
+   }
+   let agentToken: string;
++  let ownerProof: string | undefined;
+   try {
+     // 2. Ownership — the caller's org MUST own this dedicated agent. Not
+     //    owned / not found / shared fails here. Forwarding a known-valid Cloud
+@@ -1223,6 +1234,9 @@
+     const sandbox = await timing.measure("ownership", () =>
+       agentSandboxesRepository.findByIdAndOrg(agentId, orgId),
+     );
++    if(phoneProtocol){
++      if(!sandbox||sandbox.user_id!==userId||sandbox.organization_id!==orgId)return Response.json({error:"Cloud owner required"},{status:403});
++    }
+     const routing = await timing.measure(
+       "routing",
+       async (): Promise<
+@@ -1300,6 +1314,7 @@
+     );
+     if ("response" in routing) return routing.response;
+     agentToken = routing.agentToken;
++    if (phoneProtocol) ownerProof = await mintCloudRuntimeProof(request, agentId, userId, orgId);
+   } catch (error) {
+     // error-policy:J1 a validated Cloud credential never crosses into the
+     // container when ownership or credential resolution fails.
+@@ -1320,12 +1335,9 @@
+   }
+   // Keep the origin fetch outside the resolution boundary so transport errors
+   // preserve proxy semantics instead of being mistaken for auth failures.
+-  return proxyToOrigin(
+-    request,
+-    env,
+-    url,
+-    agentToken,
+-    effectiveQueryCredential?.name ?? null,
+-    timing,
++  const forwarded=await proxyToOrigin(
++    request,env,url,agentToken,effectiveQueryCredential?.name??null,timing,ownerProof,
+   );
+-}
++  if(ownerProof&&forwarded.status>=300&&forwarded.status<400){await forwarded.body?.cancel();return Response.json({error:"Cloud runtime redirect refused"},{status:502});}
++  return forwarded;
++}
+--- /dev/null
++++ b/packages/cloud/shared/src/lib/auth/cloud-runtime-proof.ts
+@@ -0,0 +1,34 @@
++import { CLOUD_RUNTIME_CLIENT, CLOUD_RUNTIME_SCOPE, CLOUD_RUNTIME_MAX_BODY, cloudRuntimeDigest, cloudRuntimeMethod, cloudRuntimeTarget } from "@elizaos/core/contracts/cloud-runtime-request";
++import { mintOidcAccessToken } from "../oidc/tokens";
++import { resolveOidcConfig } from "../oidc/config";
++import { getCloudAwareEnv } from "../runtime/cloud-bindings";
++async function boundedBody(request: Request): Promise<Uint8Array> {
++ if (Number(request.headers.get("content-length") || 0) > CLOUD_RUNTIME_MAX_BODY) throw Error("Runtime body too large");
++ const reader = request.clone().body?.getReader();
++ if (!reader) return new Uint8Array();
++ const cancel = () => { void reader.cancel().catch(() => {}); };
++ request.signal.addEventListener("abort",cancel,{once:true});
++ const chunks: Uint8Array[] = []; let size = 0;
++ try {
++  while (true) {
++   request.signal.throwIfAborted();
++   const chunk = await reader.read(); if (chunk.done) break;
++   size += chunk.value.length;
++   if (size > CLOUD_RUNTIME_MAX_BODY) throw Error("Runtime body too large");
++   chunks.push(chunk.value);
++  }
++ } catch (error) { void reader.cancel().catch(() => {}); throw error; }
++ finally { request.signal.removeEventListener("abort",cancel); reader.releaseLock(); }
++ const bytes = new Uint8Array(size); let offset = 0;
++ for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.length; }
++ return bytes;
++}
++/** Called only after exact database owner/org and dedicated agent admission. */
++export async function mintCloudRuntimeProof(request: Request, agentId: string, ownerId: string, organizationId: string): Promise<string> {
++ const config=resolveOidcConfig(getCloudAwareEnv());
++ if(!config||!config.issuer.startsWith("https://"))throw Error("Cloud owner signing unavailable");
++ const url=new URL(request.url),method=cloudRuntimeMethod(request.method),target=cloudRuntimeTarget(url.pathname+url.search);
++ const bytes=method==="GET"?new Uint8Array():await boundedBody(request);
++ request.signal.throwIfAborted();
++ return mintOidcAccessToken({issuer:config.issuer,clientId:CLOUD_RUNTIME_CLIENT,subject:ownerId,audiences:[url.origin],scope:CLOUD_RUNTIME_SCOPE,ttlSeconds:30,claims:{agent_id:agentId,organization_id:organizationId,request_id:crypto.randomUUID(),request_method:method,request_target:target,request_body_sha256:await cloudRuntimeDigest(bytes)}});
++}
+--- a/packages/cloud/shared/src/lib/oidc/clients.ts
++++ b/packages/cloud/shared/src/lib/oidc/clients.ts
+@@ -1,3 +1,4 @@
++import { CLOUD_RUNTIME_CLIENT, CLOUD_RUNTIME_SCOPE } from "@elizaos/core/contracts/cloud-runtime-request";
+ /**
+  * Relying-party registry for the OpenID Connect provider.
+  *
+@@ -568,6 +569,9 @@
+     throw new Error(`OIDC_CLIENTS[${index}] is missing client_id`);
+   }
+   const allowedScopes = stringList(entry.allowed_scopes, "allowed_scopes", clientId);
++  if (clientId === CLOUD_RUNTIME_CLIENT || allowedScopes.includes(CLOUD_RUNTIME_SCOPE)) {
++    throw new Error("Cloud runtime owner proof identity and scope are reserved for the authenticated gateway");
++  }
+   const scopes = allowedScopes.length > 0 ? allowedScopes : [...DEFAULT_SCOPES];
+   if (!scopes.includes("openid")) scopes.unshift("openid");
+ 
+--- a/packages/core/package.json
++++ b/packages/core/package.json
+@@ -458,6 +458,12 @@
+ 			"types": "./dist/contracts/cloud-coding-containers.d.ts",
+ 			"import": "./dist/contracts/cloud-coding-containers.js",
+ 			"default": "./dist/contracts/cloud-coding-containers.js"
++		},
++		"./contracts/cloud-runtime-request": {
++			"eliza-source": "./src/contracts/cloud-runtime-request.ts",
++			"types": "./dist/contracts/cloud-runtime-request.d.ts",
++			"import": "./dist/contracts/cloud-runtime-request.js",
++			"default": "./dist/contracts/cloud-runtime-request.js"
+ 		},
+ 		"./contracts/cloud-pair": {
+ 			"eliza-source": "./src/contracts/cloud-pair.ts",
+--- /dev/null
++++ b/packages/core/src/contracts/cloud-runtime-request.ts
+@@ -0,0 +1,31 @@
++/** Narrow RFC9068 request binding for an explicitly configured Cloud owner gateway. */
++export const CLOUD_RUNTIME_SCOPE = "cloud:runtime-request";
++export const CLOUD_RUNTIME_CLIENT = "eliza-cloud-owner-gateway";
++export const CLOUD_RUNTIME_HEADER = "x-eliza-cloud-owner-proof";
++export const CLOUD_RUNTIME_MAX_BODY = 8 * 1024 * 1024;
++export function cloudRuntimeTarget(target: string): string {
++  if (!target.startsWith("/api/") || target.includes("#") || target.includes("\\") || /[\u0000-\u0020\u007f]/.test(target)) throw Error("Invalid runtime target");
++  const path = target.split("?")[0];
++  if (!/^\/api\/(?:client-devices|workflow|conversations)(?:\/|$)/.test(path) && !/^\/api\/tts\/local-inference(?:\/status)?$/.test(path)) throw Error("Unsupported Cloud owner route");
++  if (path.includes("//") || /%(?:2e|2f|5c)/i.test(path)) throw Error("Ambiguous runtime target");
++  const url = new URL(target, "https://runtime.invalid");
++  if (url.origin !== "https://runtime.invalid" || url.pathname + url.search !== target) throw Error("Noncanonical runtime target");
++  return target;
++}
++export function cloudRuntimeMethod(method: string): string {
++  if (!["GET", "POST", "PUT", "PATCH", "DELETE"].includes(method)) throw Error("Unsupported runtime method");
++  return method;
++}
++export async function cloudRuntimeDigest(bytes: Uint8Array): Promise<string> {
++  if (bytes.length > CLOUD_RUNTIME_MAX_BODY) throw Error("Runtime body too large");
++  return Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", new Uint8Array(bytes))), b => b.toString(16).padStart(2,"0")).join("");
++}
++
++const VERIFIED_IDENTITY = Symbol.for("eliza.cloud-runtime.verified-request-identity");
++export function setCloudRuntimeRequestIdentity(request: object, identityId: string): void {
++  Object.defineProperty(request, VERIFIED_IDENTITY, { value: identityId, enumerable: false, writable: false, configurable: false });
++}
++export function getCloudRuntimeRequestIdentity(request: object): string | undefined {
++  const value = (request as Record<symbol,unknown>)[VERIFIED_IDENTITY];
++  return typeof value === "string" ? value : undefined;
++}
+--- a/plugins/plugin-local-inference/src/routes/compat-helpers.ts
++++ b/plugins/plugin-local-inference/src/routes/compat-helpers.ts
+@@ -1,3 +1,4 @@
++import { readRequestBodyBuffer } from "@elizaos/core";
+ /**
+  * Shared auth and I/O helpers for the local-inference compat HTTP routes.
+  *
+@@ -258,23 +259,15 @@
+ 		return preParsed as Record<string, unknown>;
+ 	}
+ 
+-	const chunks: Buffer[] = [];
+-	let totalBytes = 0;
++	let buffered: Buffer | null;
+ 	try {
+-		for await (const chunk of req) {
+-			const buf = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+-			totalBytes += buf.length;
+-			if (totalBytes > MAX_BODY_BYTES) {
+-				req.destroy();
+-				sendJsonError(res, 413, "Request body too large");
+-				return null;
+-			}
+-			chunks.push(buf);
+-		}
+-	} catch {
+-		sendJsonError(res, 400, "Invalid request body");
++		buffered = await readRequestBodyBuffer(req, { maxBytes: MAX_BODY_BYTES });
++	} catch (error) {
++		const tooLarge = typeof error === "object" && error !== null && "code" in error && error.code === "HTTP_REQUEST_BODY_TOO_LARGE";
++		sendJsonError(res, tooLarge ? 413 : 400, tooLarge ? "Request body too large" : "Invalid request body");
+ 		return null;
+ 	}
++	const chunks = buffered && buffered.length ? [buffered] : [];
+ 
+ 	if (chunks.length === 0) return {};
+ 	try {
+--- a/plugins/plugin-workflow/src/plugin-routes.ts
++++ b/plugins/plugin-workflow/src/plugin-routes.ts
+@@ -1,3 +1,4 @@
++import { getCloudRuntimeRequestIdentity } from "@elizaos/core/contracts/cloud-runtime-request";
+ /**
+  * Workflow route plugin — registers `/api/workflow/*` route handlers with the
+  * elizaOS runtime plugin route system. The handlers run in-process against
+@@ -37,6 +38,7 @@
+       method,
+       pathname: url.pathname,
+       runtime: state.current,
++      principalId: getCloudRuntimeRequestIdentity(httpReq),
+       json: jsonResponder(httpRes),
+     });
+   };

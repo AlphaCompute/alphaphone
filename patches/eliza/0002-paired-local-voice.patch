@@ -1,0 +1,103 @@
+diff --git a/packages/app/src/api/route-auth-policy.ts b/packages/app/src/api/route-auth-policy.ts
+index 9328b9a571f1..50b3d928ab99 100644
+--- a/packages/app/src/api/route-auth-policy.ts
++++ b/packages/app/src/api/route-auth-policy.ts
+@@ -224,6 +224,12 @@ export const COMPAT_ROUTE_AUTH_POLICIES: readonly CompatRouteAuthPolicy[] = [
+     "/api/tts/local-inference/status",
+   ),
+   sessionExact("tts.local-inference", "POST", "/api/tts/local-inference"),
++  sessionExact(
++    "asr.local-inference.status",
++    "GET",
++    "/api/asr/local-inference/status",
++  ),
++  sessionExact("asr.local-inference", "POST", "/api/asr/local-inference"),
+   sessionPrefix("workbench", "/api/workbench"),
+   sessionPrefix("plugins.management", "/api/plugins"),
+   sessionPrefix("catalog", "/api/catalog"),
+diff --git a/packages/app/src/api/server.ts b/packages/app/src/api/server.ts
+index 79d055a0dccb..d97ffaceea9f 100644
+--- a/packages/app/src/api/server.ts
++++ b/packages/app/src/api/server.ts
+@@ -759,8 +759,17 @@ const COMPAT_ROUTE_CHAIN: readonly CompatRouteChainEntry[] = [
+         handleLocalInferenceTtsRoute,
+       } = await getLocalInferenceRoutes();
+       if (await handleLocalInferenceCompatRoutes(req, res, state)) return true;
+-      if (await handleLocalInferenceAsrRoute(req, res, state)) return true;
+-      if (await handleLocalInferenceTtsRoute(req, res, state)) return true;
++      // Voice routes share the app AuthStore/CSRF resolver. Configuration and
++      // sensitive model-management routes retain their existing token policy.
++      const voiceState = {
++        ...state,
++        authorizeRequest: (
++          request: Parameters<typeof ensureRouteAuthorized>[0],
++          response: http.ServerResponse,
++        ) => ensureRouteAuthorized(request, response, state),
++      };
++      if (await handleLocalInferenceAsrRoute(req, res, voiceState)) return true;
++      if (await handleLocalInferenceTtsRoute(req, res, voiceState)) return true;
+       // WebView -> agent PCM transport for live on-device speaker diarization.
+       return handleLiveDiarizationRoute(req, res, state);
+     },
+diff --git a/plugins/plugin-local-inference/src/routes/compat-helpers.ts b/plugins/plugin-local-inference/src/routes/compat-helpers.ts
+index db6a1c32655a..d2d36a0e7178 100644
+--- a/plugins/plugin-local-inference/src/routes/compat-helpers.ts
++++ b/plugins/plugin-local-inference/src/routes/compat-helpers.ts
+@@ -19,6 +19,11 @@ import { readAliasedEnv } from "@elizaos/core/utils/env";
+ const MAX_BODY_BYTES = 1_048_576;
+ 
+ export interface CompatRuntimeState {
++	/** In-process host auth resolver; never populated from request headers/body. */
++	authorizeRequest?: (
++		req: Pick<http.IncomingMessage, "headers" | "socket" | "method">,
++		res: http.ServerResponse,
++	) => Promise<boolean>;
+ 	current: AgentRuntime | null;
+ 	pendingAgentName?: string | null;
+ 	pendingRestartReasons?: string[];
+@@ -238,8 +243,9 @@ export function ensureCompatSensitiveRouteAuthorized(
+ export async function ensureRouteAuthorized(
+ 	req: Pick<http.IncomingMessage, "headers" | "socket" | "method">,
+ 	res: http.ServerResponse,
+-	_state: CompatRuntimeState,
++	state: CompatRuntimeState,
+ ): Promise<boolean> {
++	if (state.authorizeRequest) return state.authorizeRequest(req, res);
+ 	return ensureCompatApiAuthorized(req, res);
+ }
+ 
+diff --git a/plugins/plugin-local-inference/src/routes/local-inference-tts-route.ts b/plugins/plugin-local-inference/src/routes/local-inference-tts-route.ts
+index 6aca355b8911..7e3d1c7abf96 100644
+--- a/plugins/plugin-local-inference/src/routes/local-inference-tts-route.ts
++++ b/plugins/plugin-local-inference/src/routes/local-inference-tts-route.ts
+@@ -143,20 +143,18 @@ function isClosed(res: http.ServerResponse): boolean {
+ 	return res.destroyed || res.writableEnded;
+ }
+ 
+-/**
+- * True when the runtime has a TEXT_TO_SPEECH handler registered — the same
+- * signal the ASR status route uses for TRANSCRIPTION. The POST path
+- * (`useLocalInferenceTts`) then resolves the concrete on-device provider from
+- * `LOCAL_TTS_PROVIDER_IDS`; readiness only needs to know a synthesizer exists.
+- * The client TTS default-resolver probes this so a box without a staged Kokoro
+- * voice degrades to Eliza Cloud / ElevenLabs / browser SpeechSynthesis instead
+- * of picking `local-inference` and 503-ing on the first utterance.
+- */
++/** Report a registered provider the POST route can actually dispatch to. */
+ function hasLocalInferenceTtsHandler(state: CompatRuntimeState): boolean {
+-	const getModel = state.current?.getModel;
+ 	return (
+-		typeof getModel === "function" &&
+-		Boolean(getModel.call(state.current, ModelType.TEXT_TO_SPEECH))
++		state.current
++			?.getModelRegistrations?.()
++			.some(
++				(entry) =>
++					entry.modelType === ModelType.TEXT_TO_SPEECH &&
++					LOCAL_TTS_PROVIDER_IDS.some(
++						(provider) => provider === entry.provider,
++					),
++			) ?? false
+ 	);
+ }
+ 

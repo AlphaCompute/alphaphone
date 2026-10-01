@@ -1,6 +1,8 @@
 # Architecture and ownership
 
-Status: buildable product-shell foundation; agent integration is deliberately unconfigured.
+September 30 scope update: the [MVP report](mvp-scope-and-gap-report.md) and [completion plan](mvp-completion-plan.md) govern current priority. Earlier cloud-only/local-model statements do not waive the supplied DoD's on-device STT/TTS requirement; offline LLM and external-versus-TEE inference remain explicitly reconciled there.
+
+Status: daily-tool implementation in progress. Cloud and remote authentication adapters are implemented; the actual local Eliza/Cerebras protocol has been exercised. Live Cloud services, enclave deployment and device acceptance remain incomplete. Cloud service identity is independent of the selected agent target; see `agent-integration.md` and the flow verification record for exact scope.
 
 ## Repository boundaries
 
@@ -15,7 +17,7 @@ Status: buildable product-shell foundation; agent integration is deliberately un
 | `scripts` | Reproducible build, APK inspection, emulator smoke and AOSP staging |
 | `docs` | PRD, architecture decisions, implementation/test traceability |
 
-The active shell derives its Capacitor activity lifecycle, splash installation, mixed-content policy and HOME back behavior from Eliza's `packages/app/scripts/mobile/android/templates/main-activity.ts`. It compiles the actual `plugins/plugin-native-system/android` source as a Gradle project and imports its browser-safe TypeScript entry. It adds only `DeviceApps` for launcher enumeration/open and build identity. No agent, wallet, credential manager or whole `@elizaos/ui` barrel is bundled into the renderer.
+The active shell derives its Capacitor activity lifecycle, splash installation, mixed-content policy and HOME back behavior from Eliza's `packages/app/scripts/mobile/android/templates/main-activity.ts`. It compiles the actual `plugins/plugin-native-system/android` source as a Gradle project and imports its browser-safe TypeScript entry. Product bridges include `DeviceApps` for launcher enumeration/open and build identity, and `DailyApps` for native intent handoffs, document selection and device-local reminders. `DevelopmentAgent` exists only in debug source sets and uses a fixed loopback service through emulator port forwarding; it is not production account authentication. No agent, wallet, credential manager or whole `@elizaos/ui` barrel is bundled into the renderer.
 
 ## Decisions
 
@@ -27,7 +29,7 @@ The active shell derives its Capacitor activity lifecycle, splash installation, 
 
 **ADR-04: no implicit privileged bundle.** The new OS staging tool admits a custom APK separately from Eliza's full local-agent system APK. It emits an additive Soong module and product fragment after hash/signer/HOME checks. It does not replace Eliza, Launcher3, SystemUI or Chromium. Device enrollment chooses the default HOME role; production selection/rollback policy is a release gate. Do not remove the stock recovery launcher before that gate.
 
-**ADR-05: execution boundary.** Alpha is cloud-only under the reviewed Alpha issues. Reuse existing Eliza account/pairing and approved Alpha endpoint routing; do not package local model payloads. A live agent will be introduced behind explicit owner/agent scoped transport. The current UI truthfully reports it is not connected. There is no fabricated chat response, OAuth login, bill payment or hidden credential collection.
+**ADR-05: execution boundary.** Alpha is cloud-only under the reviewed Alpha issues. Reuse existing Eliza account/pairing and approved Alpha endpoint routing; do not package local model payloads. Production account/agent pairing is unfinished. Debug builds can explicitly connect to a loopback development service running pinned Eliza with a remote model; this is not production authentication. There is no fabricated chat response, OAuth login, bill payment or hidden credential collection.
 
 **ADR-06: browser independence.** Assistance to third-party websites needs the isolated native browser surface or approved Chromium bridge; never expose the Capacitor bridge to arbitrary remote web content. Origin identity, observation version, consent and sensitive-field boundaries must survive every navigation. A stock launcher Activity alone cannot keep a side panel above every app. System-wide assistance needs the separate window/accessibility capability spike in the plan.
 
@@ -39,4 +41,4 @@ The active shell derives its Capacitor activity lifecycle, splash installation, 
 4. Run source-pin verification, product typecheck/tests/build, both APK flavors and emulator bridge/HOME tests. Upgrade one product at a time.
 5. Before production, run upstream required root checks, the real auth/agent suite, signed-image build and physical-device acceptance. Reverting the submodule pin is the source rollback; installed APK/OS rollback must separately respect signing identity and Android versionCode rules.
 
-No production secrets or signing keys belong in these repos. Development app data contains no saved account credentials. Platform backup is disabled for the shell until retention/key ownership is specified.
+No production secrets or signing keys belong in these repos. Account credentials are encrypted with Android Keystore AES-GCM in the app no-backup directory. Renderer preferences contain only nonsecret connection selection and conversation identifiers. Cloud voice requests bind to a specific saved credential generation. Platform backup remains disabled until retention/key ownership is specified.

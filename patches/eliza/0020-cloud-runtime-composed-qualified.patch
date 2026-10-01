@@ -1,0 +1,2597 @@
+--- a/packages/agent/src/api/device-action-routes.ts
++++ b/packages/agent/src/api/device-action-routes.ts
+@@ -1,198 +1,218 @@
+ import type http from "node:http";
+ import type { IAgentRuntime } from "@elizaos/core";
+ import {
+-	ApprovalIdempotencyConflictError,
+-	ApprovalNotFoundError,
+-	type ApprovalRequest,
+-	ApprovalStateTransitionError,
+-	DeviceActionError,
+-	DeviceActionService,
+-	type DeviceCredential,
+-	deviceProposalDigest,
++  ApprovalIdempotencyConflictError,
++  ApprovalNotFoundError,
++  type ApprovalRequest,
++  ApprovalStateTransitionError,
++  DeviceActionError,
++  DeviceActionService,
++  type DeviceCredential,
++  deviceProposalDigest,
+ } from "@elizaos/plugin-assistant";
+ import type { AgentHttpRequestAuthorization } from "../runtime/host-bridge.ts";
+ 
+ export function requiresDeviceIdentity(
+-	req: Pick<http.IncomingMessage, "headers">,
+-	pathname: string,
++  req: Pick<http.IncomingMessage, "headers">,
++  pathname: string,
+ ): boolean {
+-	return (
+-		pathname.startsWith("/api/client-devices") ||
+-		req.headers["x-eliza-device-id"] !== undefined ||
+-		req.headers["x-eliza-device-key"] !== undefined
+-	);
++  return (
++    pathname.startsWith("/api/client-devices") ||
++    req.headers["x-eliza-device-id"] !== undefined ||
++    req.headers["x-eliza-device-key"] !== undefined
++  );
+ }
+ 
+ export function deviceRequestCredential(
+-	req: http.IncomingMessage,
+-	authorization?: AgentHttpRequestAuthorization,
++  req: http.IncomingMessage,
++  authorization?: AgentHttpRequestAuthorization,
+ ): DeviceCredential | null {
+-	const installationId = req.headers["x-eliza-device-id"];
+-	const deviceKey = req.headers["x-eliza-device-key"];
+-	if (
+-		!authorization?.ok ||
+-		(!authorization.identityId && !authorization.principal) ||
+-		!["USER", "ADMIN", "OWNER"].includes(authorization.role) ||
+-		typeof installationId !== "string" ||
+-		typeof deviceKey !== "string"
+-	)
+-		return null;
+-	const capabilityHeader = req.headers["x-eliza-device-capabilities"];
+-	if (capabilityHeader !== undefined && typeof capabilityHeader !== "string")
+-		return null;
+-	if (typeof capabilityHeader === "string" && /[\r\n]/.test(capabilityHeader))
+-		return null;
+-	const capabilities =
+-		typeof capabilityHeader === "string"
+-			? capabilityHeader.split(",").map((value) => value.trim())
+-			: [];
+-	if (
+-		capabilities.length > 2 ||
+-		new Set(capabilities).size !== capabilities.length ||
+-		capabilities.some(
+-			(value) =>
+-				!["calendar.local-event.v1", "notes.local-record.v1"].includes(value),
+-		)
+-	)
+-		return null;
+-	return {
+-		capabilities,
+-		subjectUserId:
+-			authorization.identityId ?? `gateway:${authorization.principal}`,
+-		installationId,
+-		deviceKey,
+-	};
++  const installationId = req.headers["x-eliza-device-id"];
++  const deviceKey = req.headers["x-eliza-device-key"];
++  if (
++    !authorization?.ok ||
++    (!authorization.identityId && !authorization.principal) ||
++    !["USER", "ADMIN", "OWNER"].includes(authorization.role) ||
++    typeof installationId !== "string" ||
++    typeof deviceKey !== "string"
++  )
++    return null;
++  const capabilityHeader = req.headers["x-eliza-device-capabilities"];
++  if (capabilityHeader !== undefined && typeof capabilityHeader !== "string")
++    return null;
++  if (typeof capabilityHeader === "string" && /[\r\n]/.test(capabilityHeader))
++    return null;
++  const capabilities =
++    typeof capabilityHeader === "string"
++      ? capabilityHeader.split(",").map((value) => value.trim())
++      : [];
++  if (
++    capabilities.length > 2 ||
++    new Set(capabilities).size !== capabilities.length ||
++    capabilities.some(
++      (value) =>
++        !["calendar.local-event.v1", "notes.local-record.v1"].includes(value),
++    )
++  )
++    return null;
++  return {
++    capabilities,
++    subjectUserId:
++      authorization.identityId ?? `gateway:${authorization.principal}`,
++    installationId,
++    deviceKey,
++  };
+ }
+ interface RouteContext {
+-	req: http.IncomingMessage;
+-	res: http.ServerResponse;
+-	method: string;
+-	pathname: string;
+-	runtime: IAgentRuntime | null;
+-	authorization?: AgentHttpRequestAuthorization;
+-	json(res: http.ServerResponse, value: unknown, status?: number): void;
+-	error(res: http.ServerResponse, message: string, status?: number): void;
+-	readJsonBody<T>(
+-		req: http.IncomingMessage,
+-		res: http.ServerResponse,
+-	): Promise<T | null>;
++  req: http.IncomingMessage;
++  res: http.ServerResponse;
++  method: string;
++  pathname: string;
++  runtime: IAgentRuntime | null;
++  authorization?: AgentHttpRequestAuthorization;
++  json(res: http.ServerResponse, value: unknown, status?: number): void;
++  error(res: http.ServerResponse, message: string, status?: number): void;
++  readJsonBody<T>(
++    req: http.IncomingMessage,
++    res: http.ServerResponse,
++  ): Promise<T | null>;
+ }
+ export async function handleDeviceActionRoutes(
+-	ctx: RouteContext,
++  ctx: RouteContext,
+ ): Promise<boolean> {
+-	if (!ctx.pathname.startsWith("/api/client-devices")) return false;
+-	const { req, res, method, pathname, runtime, json, error } = ctx;
+-	if (!runtime) {
+-		error(res, "Agent unavailable", 503);
+-		return true;
+-	}
+-	const credential = deviceRequestCredential(req, ctx.authorization);
+-	if (!credential) {
+-		error(res, "Authenticated device session required", 401);
+-		return true;
+-	}
+-	const service = new DeviceActionService(runtime);
+-	try {
+-		if (method === "POST" && pathname === "/api/client-devices/register") {
+-			const body = await ctx.readJsonBody<{
+-				label: string;
+-				workflowProtocol?: 0 | 1 | 2;
+-			}>(req, res);
+-			if (body)
+-				json(
+-					res,
+-					await service.register(
+-						credential,
+-						body.label,
+-						body.workflowProtocol ?? 0,
+-					),
+-				);
+-			return true;
+-		}
+-		if (method === "POST" && pathname === "/api/client-devices/revoke") {
+-			await service.revoke(credential);
+-			json(res, { revoked: true });
+-			return true;
+-		}
+-		if (method === "GET" && pathname === "/api/client-devices/proposals") {
+-			json(res, {
+-				proposals: (await service.list(credential)).map((proposal) => ({
+-					...proposal,
+-					digest: deviceProposalDigest(proposal),
+-				})),
+-			});
+-			return true;
+-		}
+-		const match =
+-			/^\/api\/client-devices\/proposals\/([A-Za-z0-9_-]+)\/(decision|claim|receipt|reconciliation)$/.exec(
+-				pathname,
+-			);
+-		if (method === "POST" && match) {
+-			const body = await ctx.readJsonBody<{
+-				digest: string;
+-				decision?: string;
+-				attemptId?: string;
+-				receipt?: unknown;
+-				resolution?: unknown;
+-			}>(req, res);
+-			if (!body) return true;
+-			let proposal: ApprovalRequest;
+-			if (match[2] === "decision") {
+-				if (body.decision !== "approve" && body.decision !== "reject")
+-					throw new DeviceActionError("Invalid decision");
+-				proposal = await service.decide(
+-					credential,
+-					match[1],
+-					body.digest,
+-					body.decision === "approve",
+-				);
+-			} else if (match[2] === "claim") {
+-				proposal = await service.claim(credential, match[1], body.digest);
+-			} else if (match[2] === "reconciliation") {
+-				proposal = await service.reconcile(
+-					credential,
+-					match[1],
+-					body.digest,
+-					body.attemptId ?? "",
+-					body.resolution,
+-				);
+-			} else {
+-				proposal = await service.receipt(
+-					credential,
+-					match[1],
+-					body.digest,
+-					body.attemptId ?? "",
+-					body.receipt,
+-				);
+-			}
+-			json(res, { proposal, digest: deviceProposalDigest(proposal) });
+-			return true;
+-		}
+-		error(res, "Device route not found", 404);
+-	} catch (cause) {
+-		if (
+-			cause instanceof DeviceActionError ||
+-			cause instanceof ApprovalIdempotencyConflictError ||
+-			cause instanceof ApprovalStateTransitionError ||
+-			cause instanceof ApprovalNotFoundError
+-		) {
+-			error(
+-				res,
+-				"Device request rejected or state changed",
+-				cause instanceof DeviceActionError &&
+-					cause.code === "DEVICE_STORE_UNAVAILABLE"
+-					? 503
+-					: 409,
+-			);
+-		} else {
+-			// Raw SQL diagnostics can contain note content. Emit only a fixed incident code.
+-			runtime.reportError(
+-				"DeviceActionService",
+-				new Error("Device store operation failed"),
+-				{ code: "DEVICE_STORE_FAILURE" },
+-			);
+-			error(res, "Device store temporarily unavailable", 503);
+-		}
+-	}
+-	return true;
+-}
++  if (!ctx.pathname.startsWith("/api/client-devices")) return false;
++  const { req, res, method, pathname, runtime, json, error } = ctx;
++  if (!runtime) {
++    error(res, "Agent unavailable", 503);
++    return true;
++  }
++  const credential = deviceRequestCredential(req, ctx.authorization);
++  if (!credential) {
++    error(res, "Authenticated device session required", 401);
++    return true;
++  }
++  const service = new DeviceActionService(runtime);
++  try {
++    if (method === "GET" && pathname === "/api/client-devices/capabilities") {
++      // Only the verified gateway bridge can advertise Cloud owner parity.
++      // Route presence alone must not turn a shared bearer into a Cloud owner.
++      const identity = ctx.authorization?.externalIdentity;
++      if (!identity || !ctx.authorization?.identityId) {
++        error(res, "Verified Cloud owner capabilities unavailable", 503);
++        return true;
++      }
++      json(res, {
++        protocol: 1,
++        agentId: runtime.agentId,
++        identityId: ctx.authorization.identityId,
++        externalIdentity: identity,
++        deviceActions: {
++          protocol: 1,
++          capabilities: ["calendar.local-event.v1", "notes.local-record.v1"],
++        },
++      });
++      return true;
++    }
++    if (method === "POST" && pathname === "/api/client-devices/register") {
++      const body = await ctx.readJsonBody<{
++        label: string;
++        workflowProtocol?: 0 | 1 | 2;
++      }>(req, res);
++      if (body)
++        json(
++          res,
++          await service.register(
++            credential,
++            body.label,
++            body.workflowProtocol ?? 0,
++          ),
++        );
++      return true;
++    }
++    if (method === "POST" && pathname === "/api/client-devices/revoke") {
++      await service.revoke(credential);
++      json(res, { revoked: true });
++      return true;
++    }
++    if (method === "GET" && pathname === "/api/client-devices/proposals") {
++      json(res, {
++        proposals: (await service.list(credential)).map((proposal) => ({
++          ...proposal,
++          digest: deviceProposalDigest(proposal),
++        })),
++      });
++      return true;
++    }
++    const match =
++      /^\/api\/client-devices\/proposals\/([A-Za-z0-9_-]+)\/(decision|claim|receipt|reconciliation)$/.exec(
++        pathname,
++      );
++    if (method === "POST" && match) {
++      const body = await ctx.readJsonBody<{
++        digest: string;
++        decision?: string;
++        attemptId?: string;
++        receipt?: unknown;
++        resolution?: unknown;
++      }>(req, res);
++      if (!body) return true;
++      let proposal: ApprovalRequest;
++      if (match[2] === "decision") {
++        if (body.decision !== "approve" && body.decision !== "reject")
++          throw new DeviceActionError("Invalid decision");
++        proposal = await service.decide(
++          credential,
++          match[1],
++          body.digest,
++          body.decision === "approve",
++        );
++      } else if (match[2] === "claim") {
++        proposal = await service.claim(credential, match[1], body.digest);
++      } else if (match[2] === "reconciliation") {
++        proposal = await service.reconcile(
++          credential,
++          match[1],
++          body.digest,
++          body.attemptId ?? "",
++          body.resolution,
++        );
++      } else {
++        proposal = await service.receipt(
++          credential,
++          match[1],
++          body.digest,
++          body.attemptId ?? "",
++          body.receipt,
++        );
++      }
++      json(res, { proposal, digest: deviceProposalDigest(proposal) });
++      return true;
++    }
++    error(res, "Device route not found", 404);
++  } catch (cause) {
++    if (
++      cause instanceof DeviceActionError ||
++      cause instanceof ApprovalIdempotencyConflictError ||
++      cause instanceof ApprovalStateTransitionError ||
++      cause instanceof ApprovalNotFoundError
++    ) {
++      error(
++        res,
++        "Device request rejected or state changed",
++        cause instanceof DeviceActionError &&
++          cause.code === "DEVICE_STORE_UNAVAILABLE"
++          ? 503
++          : 409,
++      );
++    } else {
++      // Raw SQL diagnostics can contain note content. Emit only a fixed incident code.
++      runtime.reportError(
++        "DeviceActionService",
++        new Error("Device store operation failed"),
++        { code: "DEVICE_STORE_FAILURE" },
++      );
++      error(res, "Device store temporarily unavailable", 503);
++    }
++  }
++  return true;
++}
+--- a/packages/agent/src/api/server.ts
++++ b/packages/agent/src/api/server.ts
+@@ -1571,6 +1571,16 @@
+     };
+   const isHostSessionAuthorized = async (): Promise<boolean> =>
+     (await resolveHostSessionAuthorization()).ok;
++  // A presented gateway proof is an exclusive authentication mode. A valid
++  // container bearer must never rescue an invalid/unsupported owner proof.
++  if (req.headers["x-eliza-cloud-owner-proof"] !== undefined) {
++    const verified = await resolveHostSessionAuthorization();
++    if (!verified.ok || !verified.externalIdentity || !verified.identityId) {
++      json(res, { error: "Verified Cloud owner session required" }, 401);
++      return;
++    }
++  }
++
+   const canonicalizeRestartReason = (reason: string): string => {
+     if (
+       reason === "primary-changed" ||
+--- a/packages/agent/src/runtime/host-bridge.ts
++++ b/packages/agent/src/runtime/host-bridge.ts
+@@ -40,6 +40,12 @@
+ 
+ /** Authenticated HTTP caller data resolved by the embedding host. */
+ export interface AgentHttpRequestAuthorization {
++  /** Cryptographically verified external owner, never copied from caller headers. */
++  externalIdentity?: {
++    issuer: string;
++    subject: string;
++    organizationId: string;
++  };
+   ok: boolean;
+   role: RoleGateRole;
+   /** Present for a DB-backed browser or machine session. */
+--- a/packages/app/src/api/auth-bootstrap-routes.ts
++++ b/packages/app/src/api/auth-bootstrap-routes.ts
+@@ -32,7 +32,7 @@
+ /** 12h sliding TTL for browser sessions per plan §1.3. */
+ export const BROWSER_SESSION_TTL_MS = 12 * 60 * 60 * 1000;
+ 
+-function deriveIdentityIdFromCloudUser(cloudUserId: string): string {
++export function deriveIdentityIdFromCloudUser(cloudUserId: string): string {
+   // Stable per-cloud-user id so repeated exchanges by the same user reuse the
+   // same identity row. SHA-256 of the cloud sub keeps it opaque while still
+   // deterministic. We slice to 32 hex chars and shape as a uuid-ish string
+--- /dev/null
++++ b/packages/app/src/api/cloud-runtime-owner.ts
+@@ -0,0 +1,227 @@
++import type http from "node:http";
++import type { AgentHttpRequestAuthorization } from "@elizaos/agent/runtime/host-bridge";
++import { type IAgentRuntime, readRequestBodyBuffer } from "@elizaos/core";
++import {
++  CLOUD_RUNTIME_CLIENT,
++  CLOUD_RUNTIME_MAX_BODY,
++  CLOUD_RUNTIME_SCOPE,
++  cloudRuntimeDigest,
++  cloudRuntimeMethod,
++  cloudRuntimeTarget,
++  setCloudRuntimeRequestIdentity,
++} from "@elizaos/core/contracts/cloud-runtime-request";
++import {
++  createRemoteJWKSet,
++  customFetch,
++  type JWTVerifyGetKey,
++  jwtVerify,
++} from "jose";
++import { authStoreForRuntime } from "../services/auth-store";
++import { getCompatApiToken, getProvidedApiToken, tokenMatches } from "./auth";
++import { deriveIdentityIdFromCloudUser } from "./auth-bootstrap-routes";
++
++export interface CloudRuntimeOwnerConfig {
++  issuer: string;
++  jwksUrl: string;
++  audience: string;
++  algorithm: "ES256" | "RS256";
++  agentId: string;
++  ownerId: string;
++  organizationId: string;
++}
++export function cloudRuntimeOwnerConfig(
++  env: Record<string, string | undefined>,
++): CloudRuntimeOwnerConfig | null {
++  try {
++    const issuer = env.ELIZA_CLOUD_OWNER_ISSUER!,
++      jwksUrl = env.ELIZA_CLOUD_OWNER_JWKS_URL!,
++      audience = env.ELIZA_CLOUD_OWNER_AUDIENCE!,
++      algorithm = env.ELIZA_CLOUD_OWNER_ALGORITHM;
++    if (
++      new URL(issuer).origin !== issuer ||
++      !issuer.startsWith("https://") ||
++      jwksUrl !== issuer + "/.well-known/oidc/jwks.json" ||
++      new URL(audience).origin !== audience ||
++      !audience.startsWith("https://") ||
++      !["ES256", "RS256"].includes(algorithm!)
++    )
++      return null;
++    const agentId = env.ELIZA_CLOUD_AGENT_ID!,
++      ownerId = env.ELIZA_CLOUD_OWNER_ID!,
++      organizationId = env.ELIZA_CLOUD_ORGANIZATION_ID!;
++    for (const value of [agentId, ownerId, organizationId])
++      if (
++        !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
++          value,
++        )
++      )
++        return null;
++    return {
++      issuer,
++      jwksUrl,
++      audience,
++      algorithm: algorithm as "ES256" | "RS256",
++      agentId,
++      ownerId,
++      organizationId,
++    };
++  } catch {
++    return null;
++  }
++}
++const resolvers = new Map<string, JWTVerifyGetKey>();
++function resolver(config: CloudRuntimeOwnerConfig): JWTVerifyGetKey {
++  let key = resolvers.get(config.jwksUrl);
++  if (!key) {
++    key = createRemoteJWKSet(new URL(config.jwksUrl), {
++      cacheMaxAge: 30000,
++      cooldownDuration: 1000,
++      timeoutDuration: 5000,
++      [customFetch]: (input, init) =>
++        fetch(input, { ...init, redirect: "error" }),
++    });
++    resolvers.set(config.jwksUrl, key);
++  }
++  return key;
++}
++/** Only cryptographic request validation; key injection exists for local signed HTTP tests. */
++export async function verifyCloudRuntimeOwnerProof(
++  token: string,
++  request: { method: string; target: string; body: Uint8Array },
++  config: CloudRuntimeOwnerConfig,
++  key: JWTVerifyGetKey = resolver(config),
++) {
++  const { payload, protectedHeader } = await jwtVerify(token, key, {
++    issuer: config.issuer,
++    audience: config.audience,
++    algorithms: [config.algorithm],
++    typ: "at+jwt",
++    maxTokenAge: 30,
++    clockTolerance: 0,
++  });
++  const audiences = Array.isArray(payload.aud) ? payload.aud : [payload.aud];
++  if (
++    protectedHeader.typ !== "at+jwt" ||
++    payload.client_id !== CLOUD_RUNTIME_CLIENT ||
++    payload.scope !== CLOUD_RUNTIME_SCOPE ||
++    audiences.length !== 2 ||
++    !audiences.includes(CLOUD_RUNTIME_CLIENT) ||
++    !audiences.includes(config.audience) ||
++    payload.sub !== config.ownerId ||
++    payload.organization_id !== config.organizationId ||
++    payload.agent_id !== config.agentId ||
++    typeof payload.iat !== "number" ||
++    typeof payload.exp !== "number" ||
++    payload.exp - payload.iat > 30 ||
++    payload.exp <= payload.iat ||
++    typeof payload.request_id !== "string" ||
++    !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(
++      payload.request_id,
++    ) ||
++    payload.request_method !== cloudRuntimeMethod(request.method) ||
++    payload.request_target !== cloudRuntimeTarget(request.target) ||
++    payload.request_body_sha256 !== (await cloudRuntimeDigest(request.body))
++  )
++    throw Error("Cloud owner proof mismatch");
++  return {
++    ownerId: config.ownerId,
++    organizationId: config.organizationId,
++    requestId: payload.request_id,
++    issuer: config.issuer,
++  };
++}
++const resolved = new WeakMap<
++  http.IncomingMessage,
++  Promise<AgentHttpRequestAuthorization>
++>();
++/** A proof failure is terminal, never a fallback to the shared container principal. */
++export function resolveCloudRuntimeOwner(
++  req: http.IncomingMessage,
++  runtime: IAgentRuntime | null,
++): Promise<AgentHttpRequestAuthorization> {
++  const prior = resolved.get(req);
++  if (prior) return prior;
++  const pending = (async (): Promise<AgentHttpRequestAuthorization> => {
++    try {
++      const config = cloudRuntimeOwnerConfig(process.env),
++        token = req.headers["x-eliza-cloud-owner-proof"],
++        expected = getCompatApiToken(),
++        provided = getProvidedApiToken(req);
++      if (
++        !config ||
++        !runtime ||
++        runtime.agentId !== config.agentId ||
++        typeof token !== "string" ||
++        token.length > 16384 ||
++        !expected ||
++        !provided ||
++        !tokenMatches(expected, provided)
++      )
++        throw Error("Cloud owner unavailable");
++      const method = (req.method || "GET").toUpperCase();
++      if (
++        method === "GET" &&
++        (req.headers["transfer-encoding"] ||
++          Number(req.headers["content-length"] || 0) !== 0)
++      )
++        throw Error("GET body refused");
++      const body =
++        method === "GET"
++          ? new Uint8Array()
++          : await readRequestBodyBuffer(req, {
++              maxBytes: CLOUD_RUNTIME_MAX_BODY,
++            });
++      if (body === null || req.aborted) throw Error("Request ended");
++      const verified = await verifyCloudRuntimeOwnerProof(
++        token,
++        { method, target: req.url || "", body },
++        config,
++      );
++      if (req.aborted) throw Error("Request aborted");
++      const store = authStoreForRuntime(runtime);
++      if (
++        !store ||
++        !(await store.recordJtiSeen("cloud-runtime:" + verified.requestId))
++      )
++        throw Error("Replay or unavailable store");
++      const identityId = deriveIdentityIdFromCloudUser(verified.ownerId);
++      let identity = await store.findIdentity(identityId);
++      if (!identity) {
++        try {
++          identity = await store.createIdentity({
++            id: identityId,
++            kind: "owner",
++            displayName: "Cloud owner",
++            createdAt: Date.now(),
++            passwordHash: null,
++            cloudUserId: verified.ownerId,
++          });
++        } catch {
++          identity = await store.findIdentity(identityId);
++        }
++      }
++      if (
++        !identity ||
++        identity.kind !== "owner" ||
++        identity.cloudUserId !== verified.ownerId
++      )
++        throw Error("Cloud owner identity conflict");
++      setCloudRuntimeRequestIdentity(req, identityId);
++      // Cloud device clients receive session USER authority, never global owner bypass.
++      return {
++        ok: true,
++        role: "USER",
++        identityId,
++        externalIdentity: {
++          issuer: verified.issuer,
++          subject: verified.ownerId,
++          organizationId: verified.organizationId,
++        },
++      };
++    } catch {
++      return { ok: false, role: "NONE" };
++    }
++  })();
++  resolved.set(req, pending);
++  return pending;
++}
+--- a/packages/app/src/runtime/install-agent-host-bridge.ts
++++ b/packages/app/src/runtime/install-agent-host-bridge.ts
+@@ -1,3 +1,4 @@
++import { resolveCloudRuntimeOwner } from "../api/cloud-runtime-owner";
+ /**
+  * Install the app implementation of the agent host bridge.
+  *
+@@ -61,6 +62,10 @@
+   const resolveHttpRequestAuthorization: NonNullable<
+     AgentHostBridge["resolveHttpRequestAuthorization"]
+   > = async (req, runtime, options) => {
++    if (req.headers["x-eliza-cloud-owner-proof"] !== undefined) {
++      if (options.allowBearerAuth === false) return { ok: false, role: "NONE" };
++      return resolveCloudRuntimeOwner(req, runtime);
++    }
+     const resolved = await resolveAuthorizedRouteRole(req, {
+       allowCookieAuth: options.allowCookieAuth,
+       allowTrustedLocalBypass: options.allowTrustedLocalBypass,
+--- a/packages/cloud/api/src/dedicated-agent-proxy.ts
++++ b/packages/cloud/api/src/dedicated-agent-proxy.ts
+@@ -1,3 +1,4 @@
++import { mintCloudRuntimeProof } from "@/lib/auth/cloud-runtime-proof";
+ /**
+  * Authentication and proxy boundary for dedicated-agent subdomains.
+  *
+@@ -73,6 +74,7 @@
+ const MANAGED_PAIR_RATE_LIMIT_RETRY_SECONDS = 60;
+ const CLOUD_ONLY_CREDENTIAL_HEADERS = [
+   "cookie",
++  "x-eliza-cloud-owner-proof",
+   "proxy-authorization",
+   "x-bootstrap-secret",
+   "x-cron-secret",
+@@ -421,12 +423,14 @@
+   injectBearer?: string,
+   injectQueryCredential?: RealtimeQueryCredentialName | null,
+   timing?: DedicatedProxyTiming,
++  ownerProof?: string,
+ ): Promise<Response> {
+   const targetUrl = new URL(request.url);
+   targetUrl.hostname = resolveOriginHost(env);
+   const headers = new Headers(request.headers);
+   headers.delete("host");
+   stripCloudOnlyCredentials(headers);
++  if (ownerProof) headers.set("x-eliza-cloud-owner-proof", ownerProof);
+   sanitizeDedicatedTraceHeaders(headers);
+   const traceId = headers.get("x-eliza-trace-id");
+   headers.set("x-forwarded-host", url.host);
+@@ -438,8 +442,10 @@
+     // headers on `new WebSocket()`); the container reads it via
+     // ELIZA_ALLOW_WS_QUERY_TOKEN. Rewrite that query param to the agent token
+     // too so the upgrade authenticates the same way the header does.
+-    for (const name of REALTIME_QUERY_CREDENTIAL_NAMES) {
+-      targetUrl.searchParams.delete(name);
++    if (!ownerProof) {
++      for (const name of REALTIME_QUERY_CREDENTIAL_NAMES) {
++        targetUrl.searchParams.delete(name);
++      }
+     }
+     if (injectQueryCredential) {
+       targetUrl.searchParams.set(injectQueryCredential, injectBearer);
+@@ -458,6 +464,7 @@
+     originHeadersTimeoutOverrideMs ??
+     dedicatedProxyOriginHeadersTimeoutMs(request.method, targetUrl.pathname);
+   const controller = new AbortController();
++  if (ownerProof) request.signal.throwIfAborted();
+   let timedOut = false;
+   const timer = setTimeout(() => {
+     timedOut = true;
+@@ -469,7 +476,9 @@
+     method: request.method,
+     headers,
+     redirect: "manual",
+-    signal: controller.signal,
++    signal: ownerProof
++      ? AbortSignal.any([controller.signal, request.signal])
++      : controller.signal,
+   };
+   if (request.method !== "GET" && request.method !== "HEAD") {
+     init.body = request.body;
+@@ -1164,6 +1173,17 @@
+     });
+     if (mobileLimitResponse) return mobileLimitResponse;
+   }
++  const phoneProtocol = request.headers.get("x-eliza-phone-protocol");
++  if (phoneProtocol !== null && phoneProtocol !== "1")
++    return Response.json(
++      { error: "Unsupported phone protocol" },
++      { status: 400 },
++    );
++  if (phoneProtocol && queryCredentials.values.length > 0)
++    return Response.json(
++      { error: "Phone credentials require headers" },
++      { status: 400 },
++    );
+   let orgId: string;
+   let userId: string;
+   try {
+@@ -1180,7 +1200,10 @@
+     // distinct `agent_` namespace; Cloud-shaped custom tokens are deliberately
+     // reserved so this boundary remains unambiguous.
+     if (error instanceof AuthenticationError) {
+-      if (hasCloudCredentialShape(request, queryCredentials.values)) {
++      if (
++        phoneProtocol ||
++        hasCloudCredentialShape(request, queryCredentials.values)
++      ) {
+         return Response.json(
+           {
+             success: false,
+@@ -1216,6 +1239,7 @@
+     );
+   }
+   let agentToken: string;
++  let ownerProof: string | undefined;
+   try {
+     // 2. Ownership — the caller's org MUST own this dedicated agent. Not
+     //    owned / not found / shared fails here. Forwarding a known-valid Cloud
+@@ -1223,6 +1247,17 @@
+     const sandbox = await timing.measure("ownership", () =>
+       agentSandboxesRepository.findByIdAndOrg(agentId, orgId),
+     );
++    if (phoneProtocol) {
++      if (
++        !sandbox ||
++        sandbox.user_id !== userId ||
++        sandbox.organization_id !== orgId
++      )
++        return Response.json(
++          { error: "Cloud owner required" },
++          { status: 403 },
++        );
++    }
+     const routing = await timing.measure(
+       "routing",
+       async (): Promise<
+@@ -1300,6 +1335,8 @@
+     );
+     if ("response" in routing) return routing.response;
+     agentToken = routing.agentToken;
++    if (phoneProtocol)
++      ownerProof = await mintCloudRuntimeProof(request, agentId, userId, orgId);
+   } catch (error) {
+     // error-policy:J1 a validated Cloud credential never crosses into the
+     // container when ownership or credential resolution fails.
+@@ -1320,12 +1357,21 @@
+   }
+   // Keep the origin fetch outside the resolution boundary so transport errors
+   // preserve proxy semantics instead of being mistaken for auth failures.
+-  return proxyToOrigin(
++  const forwarded = await proxyToOrigin(
+     request,
+     env,
+     url,
+     agentToken,
+     effectiveQueryCredential?.name ?? null,
+     timing,
++    ownerProof,
+   );
+-}
++  if (ownerProof && forwarded.status >= 300 && forwarded.status < 400) {
++    await forwarded.body?.cancel();
++    return Response.json(
++      { error: "Cloud runtime redirect refused" },
++      { status: 502 },
++    );
++  }
++  return forwarded;
++}
+--- /dev/null
++++ b/packages/cloud/shared/src/lib/auth/cloud-runtime-proof.ts
+@@ -0,0 +1,87 @@
++import {
++  CLOUD_RUNTIME_CLIENT,
++  CLOUD_RUNTIME_MAX_BODY,
++  CLOUD_RUNTIME_SCOPE,
++  cloudRuntimeDigest,
++  cloudRuntimeMethod,
++  cloudRuntimeTarget,
++} from "@elizaos/core/contracts/cloud-runtime-request";
++import { resolveOidcConfig } from "../oidc/config";
++import { mintOidcAccessToken } from "../oidc/tokens";
++import { getCloudAwareEnv } from "../runtime/cloud-bindings";
++
++async function boundedBody(request: Request): Promise<Uint8Array> {
++  if (Number(request.headers.get("content-length") || 0) > CLOUD_RUNTIME_MAX_BODY)
++    throw Error("Runtime body too large");
++  const reader = request.clone().body?.getReader();
++  if (!reader) return new Uint8Array();
++  const cancel = () => {
++    void reader.cancel().catch(() => {});
++  };
++  request.signal.addEventListener("abort", cancel, { once: true });
++  const chunks: Uint8Array[] = [];
++  let size = 0;
++  try {
++    while (true) {
++      request.signal.throwIfAborted();
++      const chunk = await reader.read();
++      if (chunk.done) break;
++      size += chunk.value.length;
++      if (size > CLOUD_RUNTIME_MAX_BODY) throw Error("Runtime body too large");
++      chunks.push(chunk.value);
++    }
++  } catch (error) {
++    void reader.cancel().catch(() => {});
++    throw error;
++  } finally {
++    request.signal.removeEventListener("abort", cancel);
++    reader.releaseLock();
++  }
++  const bytes = new Uint8Array(size);
++  let offset = 0;
++  for (const chunk of chunks) {
++    bytes.set(chunk, offset);
++    offset += chunk.length;
++  }
++  return bytes;
++}
++/** Called only after exact database owner/org and dedicated agent admission. */
++export async function mintCloudRuntimeProof(
++  request: Request,
++  agentId: string,
++  ownerId: string,
++  organizationId: string,
++): Promise<string> {
++  const env = getCloudAwareEnv();
++  const config = resolveOidcConfig({
++    OIDC_ENABLED: env.OIDC_ENABLED,
++    OIDC_ISSUER_URL: env.OIDC_ISSUER_URL,
++    ELIZA_ONBOARDING_LOGIN_APP_URL: env.ELIZA_ONBOARDING_LOGIN_APP_URL,
++    ELIZA_CLOUD_URL: env.ELIZA_CLOUD_URL,
++    NEXT_PUBLIC_APP_URL: env.NEXT_PUBLIC_APP_URL,
++    OIDC_WALLET_EMAIL_DOMAIN: env.OIDC_WALLET_EMAIL_DOMAIN,
++  });
++  if (!config || !config.issuer.startsWith("https://"))
++    throw Error("Cloud owner signing unavailable");
++  const url = new URL(request.url),
++    method = cloudRuntimeMethod(request.method),
++    target = cloudRuntimeTarget(url.pathname + url.search);
++  const bytes = method === "GET" ? new Uint8Array() : await boundedBody(request);
++  request.signal.throwIfAborted();
++  return mintOidcAccessToken({
++    issuer: config.issuer,
++    clientId: CLOUD_RUNTIME_CLIENT,
++    subject: ownerId,
++    audiences: [url.origin],
++    scope: CLOUD_RUNTIME_SCOPE,
++    ttlSeconds: 30,
++    claims: {
++      agent_id: agentId,
++      organization_id: organizationId,
++      request_id: crypto.randomUUID(),
++      request_method: method,
++      request_target: target,
++      request_body_sha256: await cloudRuntimeDigest(bytes),
++    },
++  });
++}
+--- a/packages/cloud/shared/src/lib/oidc/clients.ts
++++ b/packages/cloud/shared/src/lib/oidc/clients.ts
+@@ -1,3 +1,7 @@
++import {
++  CLOUD_RUNTIME_CLIENT,
++  CLOUD_RUNTIME_SCOPE,
++} from "@elizaos/core/contracts/cloud-runtime-request";
+ /**
+  * Relying-party registry for the OpenID Connect provider.
+  *
+@@ -568,6 +572,11 @@
+     throw new Error(`OIDC_CLIENTS[${index}] is missing client_id`);
+   }
+   const allowedScopes = stringList(entry.allowed_scopes, "allowed_scopes", clientId);
++  if (clientId === CLOUD_RUNTIME_CLIENT || allowedScopes.includes(CLOUD_RUNTIME_SCOPE)) {
++    throw new Error(
++      "Cloud runtime owner proof identity and scope are reserved for the authenticated gateway",
++    );
++  }
+   const scopes = allowedScopes.length > 0 ? allowedScopes : [...DEFAULT_SCOPES];
+   if (!scopes.includes("openid")) scopes.unshift("openid");
+ 
+--- a/packages/core/package.json
++++ b/packages/core/package.json
+@@ -470,6 +470,12 @@
+ 			"types": "./dist/contracts/cloud-coding-containers.d.ts",
+ 			"import": "./dist/contracts/cloud-coding-containers.js",
+ 			"default": "./dist/contracts/cloud-coding-containers.js"
++		},
++		"./contracts/cloud-runtime-request": {
++			"eliza-source": "./src/contracts/cloud-runtime-request.ts",
++			"types": "./dist/contracts/cloud-runtime-request.d.ts",
++			"import": "./dist/contracts/cloud-runtime-request.js",
++			"default": "./dist/contracts/cloud-runtime-request.js"
+ 		},
+ 		"./contracts/cloud-pair": {
+ 			"eliza-source": "./src/contracts/cloud-pair.ts",
+--- /dev/null
++++ b/packages/core/src/contracts/cloud-runtime-request.ts
+@@ -0,0 +1,65 @@
++/** Narrow RFC9068 request binding for an explicitly configured Cloud owner gateway. */
++export const CLOUD_RUNTIME_SCOPE = "cloud:runtime-request";
++export const CLOUD_RUNTIME_CLIENT = "eliza-cloud-owner-gateway";
++export const CLOUD_RUNTIME_HEADER = "x-eliza-cloud-owner-proof";
++export const CLOUD_RUNTIME_MAX_BODY = 8 * 1024 * 1024;
++export function cloudRuntimeTarget(target: string): string {
++	if (
++		!target.startsWith("/api/") ||
++		target.includes("#") ||
++		target.includes("\\") ||
++		/[\u0000-\u0020\u007f]/.test(target)
++	)
++		throw Error("Invalid runtime target");
++	const path = target.split("?")[0];
++	if (
++		!/^\/api\/(?:client-devices|workflow|conversations)(?:\/|$)/.test(path) &&
++		!/^\/api\/tts\/local-inference(?:\/status)?$/.test(path)
++	)
++		throw Error("Unsupported Cloud owner route");
++	if (path.includes("//") || /%(?:2e|2f|5c)/i.test(path))
++		throw Error("Ambiguous runtime target");
++	const url = new URL(target, "https://runtime.invalid");
++	if (
++		url.origin !== "https://runtime.invalid" ||
++		url.pathname + url.search !== target
++	)
++		throw Error("Noncanonical runtime target");
++	return target;
++}
++export function cloudRuntimeMethod(method: string): string {
++	if (!["GET", "POST", "PUT", "PATCH", "DELETE"].includes(method))
++		throw Error("Unsupported runtime method");
++	return method;
++}
++export async function cloudRuntimeDigest(bytes: Uint8Array): Promise<string> {
++	if (bytes.length > CLOUD_RUNTIME_MAX_BODY)
++		throw Error("Runtime body too large");
++	return Array.from(
++		new Uint8Array(
++			await crypto.subtle.digest("SHA-256", new Uint8Array(bytes)),
++		),
++		(b) => b.toString(16).padStart(2, "0"),
++	).join("");
++}
++
++const VERIFIED_IDENTITY = Symbol.for(
++	"eliza.cloud-runtime.verified-request-identity",
++);
++export function setCloudRuntimeRequestIdentity(
++	request: object,
++	identityId: string,
++): void {
++	Object.defineProperty(request, VERIFIED_IDENTITY, {
++		value: identityId,
++		enumerable: false,
++		writable: false,
++		configurable: false,
++	});
++}
++export function getCloudRuntimeRequestIdentity(
++	request: object,
++): string | undefined {
++	const value = (request as Record<symbol, unknown>)[VERIFIED_IDENTITY];
++	return typeof value === "string" ? value : undefined;
++}
+--- a/plugins/plugin-assistant/src/services/device-actions/notes-contract.ts
++++ b/plugins/plugin-assistant/src/services/device-actions/notes-contract.ts
+@@ -57,7 +57,10 @@
+ export function notesFields(value: unknown): NotesFields {
+   const v = object(value);
+   keys(v, ["title", "body"]);
+-  const fields = { title: text(v.title, 256, true), body: text(v.body, 32000, true) };
++  const fields = {
++    title: text(v.title, 256, true),
++    body: text(v.body, 32000, true),
++  };
+   if (new TextEncoder().encode(JSON.stringify(fields)).byteLength > 60000)
+     throw Error("Note text exceeds the reviewed transfer bound");
+   return fields;
+--- a/plugins/plugin-assistant/test/device-actions.e2e.test.ts
++++ b/plugins/plugin-assistant/test/device-actions.e2e.test.ts
+@@ -7,735 +7,735 @@
+ import { expect, test } from "vitest";
+ import { handleApprovalRoute } from "../../../packages/agent/src/api/approval-routes.ts";
+ import {
+-	handleDeviceActionRoutes,
+-	requiresDeviceIdentity,
++  handleDeviceActionRoutes,
++  requiresDeviceIdentity,
+ } from "../../../packages/agent/src/api/device-action-routes.ts";
+ import { createMachineSession } from "../../../packages/app/src/api/auth/sessions.ts";
+ import { resolveAuthorizedRouteRole } from "../../../packages/app/src/api/auth.ts";
+ import {
+-	AuthStore,
+-	type DrizzleDatabase,
++  AuthStore,
++  type DrizzleDatabase,
+ } from "../../../packages/app/src/services/auth-store.ts";
+ import { createRealTestRuntime } from "../../../packages/app/test/helpers/real-runtime.ts";
+ import {
+-	APPROVAL_SERVICE,
+-	ApprovalService,
++  APPROVAL_SERVICE,
++  ApprovalService,
+ } from "../src/services/approval/service.ts";
+ import { proposeDeviceAction } from "../src/services/device-actions/action.ts";
+ import {
+-	DeviceActionService,
+-	withDeviceActionTurn,
++  DeviceActionService,
++  withDeviceActionTurn,
+ } from "../src/services/device-actions/service.ts";
+ 
+ // Real HTTP, session authentication, registered proposal tool, SQL migrations,
+ // and on-disk PGlite. All identities and requested content are synthetic.
+ test("device approval REST lifecycle survives restart and never duplicates claims", async () => {
+-	const directory = await mkdtemp(join(tmpdir(), "device-approval-e2e-"));
+-	let runtimeState = await createRealTestRuntime({
+-		characterName: "DeviceApprovalFixture",
+-		pgliteDir: directory,
+-		removePgliteDirOnCleanup: false,
+-	});
+-	let server: Server | undefined;
+-	try {
+-		const ownerA = randomUUID();
+-		const ownerB = randomUUID();
+-		let authStore = new AuthStore(
+-			runtimeState.runtime.adapter.db as DrizzleDatabase,
+-		);
+-		const sessions: Record<string, string> = {};
+-		for (const [label, id] of [
+-			["a", ownerA],
+-			["b", ownerB],
+-		]) {
+-			await authStore.createIdentity({
+-				id,
+-				kind: "machine",
+-				displayName: `Fixture ${label}`,
+-				createdAt: Date.now(),
+-				passwordHash: null,
+-			});
+-			sessions[label] = (
+-				await createMachineSession(authStore, { identityId: id, scopes: [] })
+-			).session.id;
+-		}
+-		const device = randomUUID();
+-		const deviceKey = "a".repeat(64);
+-		const credentials = {
+-			subjectUserId: ownerA,
+-			installationId: device,
+-			deviceKey,
+-		};
+-		const start = async () => {
+-			authStore = new AuthStore(
+-				runtimeState.runtime.adapter.db as DrizzleDatabase,
+-			);
+-			await runtimeState.runtime.registerService(ApprovalService);
+-			await runtimeState.runtime.getServiceLoadPromise(APPROVAL_SERVICE);
+-			server = createServer(async (req, res) => {
+-				const resolved = await resolveAuthorizedRouteRole(req, {
+-					store: authStore,
+-					allowTrustedLocalBypass: !requiresDeviceIdentity(
+-						req,
+-						new URL(req.url ?? "/", "http://fixture").pathname,
+-					),
+-					allowCookieAuth: false,
+-					allowBearerAuth: true,
+-				});
+-				const authorization = {
+-					...resolved,
+-					role: resolved.ok ? resolved.role : ("NONE" as const),
+-				};
+-				const send = (response: typeof res, value: unknown, status = 200) => {
+-					response.writeHead(status, { "content-type": "application/json" });
+-					response.end(JSON.stringify(value));
+-				};
+-				if (req.url === "/api/approvals") {
+-					await handleApprovalRoute(
+-						req,
+-						res,
+-						"/api/approvals",
+-						"GET",
+-						{ runtime: runtimeState.runtime },
+-						{
+-							json: send,
+-							error: (response, message, status) =>
+-								send(response, { error: message }, status),
+-							readJsonBody: async () => null,
+-						},
+-					);
+-					return;
+-				}
+-				await handleDeviceActionRoutes({
+-					req,
+-					res,
+-					pathname: new URL(req.url!, "http://fixture").pathname,
+-					method: req.method!,
+-					runtime: runtimeState.runtime,
+-					authorization,
+-					json: send,
+-					error: (response, message, status) =>
+-						send(response, { error: message }, status),
+-					readJsonBody: async (request) => {
+-						let value = "";
+-						for await (const part of request) value += part;
+-						return JSON.parse(value || "{}");
+-					},
+-				});
+-			});
+-			await new Promise<void>((resolve) =>
+-				server!.listen(0, "127.0.0.1", resolve),
+-			);
+-			const address = server.address();
+-			if (!address || typeof address === "string")
+-				throw new Error("No fixture listener");
+-			return `http://127.0.0.1:${address.port}`;
+-		};
+-		let origin = await start();
+-		const request = async (
+-			path: string,
+-			body?: unknown,
+-			owner = "a",
+-			key = owner === "b" ? "b".repeat(64) : deviceKey,
+-			capabilities = "calendar.local-event.v1,notes.local-record.v1",
+-		) => {
+-			const result = await fetch(`${origin}/api/client-devices${path}`, {
+-				method: body === undefined ? "GET" : "POST",
+-				headers: {
+-					authorization: `Bearer ${sessions[owner] ?? "invalid-fixture-session"}`,
+-					"x-eliza-device-id": device,
+-					"x-eliza-device-key": key,
+-					"x-eliza-device-capabilities": capabilities,
+-					"content-type": "application/json",
+-				},
+-				...(body === undefined ? {} : { body: JSON.stringify(body) }),
+-			});
+-			return { status: result.status, body: (await result.json()) as any };
+-		};
+-		expect(
+-			(await request("/register", { label: "Fixture phone" })).status,
+-		).toBe(200);
+-		expect(
+-			(await request("/register", { label: "Fixture phone" })).status,
+-		).toBe(200);
+-		for (const capabilities of [
+-			"",
+-			"notes.local-record.v1,notes.local-record.v1",
+-			"calendar.local-event.v1,",
+-			"unknown.v1",
+-			"calendar.local-event.v1,notes.local-record.v1,unknown.v1",
+-		]) {
+-			expect(
+-				(await request("/proposals", undefined, "a", deviceKey, capabilities))
+-					.status,
+-			).toBe(401);
+-		}
+-		for (const capabilities of [
+-			"notes.local-record.v1",
+-			"calendar.local-event.v1",
+-			"notes.local-record.v1,calendar.local-event.v1",
+-		]) {
+-			expect(
+-				(await request("/proposals", undefined, "a", deviceKey, capabilities))
+-					.status,
+-			).toBe(200);
+-		}
+-		expect(
+-			(await request("/register", { label: "Hijack" }, "a", "b".repeat(64)))
+-				.status,
+-		).toBe(409);
+-		expect((await request("/proposals", undefined, "none")).status).toBe(401);
+-		expect((await request("/proposals", undefined, "b")).status).toBe(409);
+-		expect(
+-			(await request("/register", { label: "Other owner phone" }, "b")).status,
+-		).toBe(200);
+-		expect(
+-			(await request("/proposals", undefined, "b")).body.proposals,
+-		).toEqual([]);
+-		const memory = {
+-			id: randomUUID(),
+-			agentId: runtimeState.runtime.agentId,
+-			entityId: ownerA,
+-			roomId: randomUUID(),
+-			content: { text: "Create fixture note" },
+-		} as Memory;
+-		const parameters = {
+-			operation: {
+-				type: "create_note",
+-				title: "Fixture note",
+-				body: "Synthetic test data only",
+-			},
+-			operationKey: "fixture-note-1",
+-			reason: "Requested by test owner",
+-		};
+-		expect(
+-			await proposeDeviceAction.validate(runtimeState.runtime, memory),
+-		).toBe(false);
+-		const propose = () =>
+-			withDeviceActionTurn(runtimeState.runtime, credentials, async () => {
+-				expect(
+-					await proposeDeviceAction.validate(runtimeState.runtime, memory),
+-				).toBe(true);
+-				return proposeDeviceAction.handler(
+-					runtimeState.runtime,
+-					memory,
+-					undefined,
+-					{ parameters },
+-				);
+-			});
+-		await propose();
+-		await propose();
+-		let proposals = (await request("/proposals")).body.proposals;
+-		expect(proposals).toHaveLength(1);
+-		const { id, digest } = proposals[0];
+-		const aggregate = await fetch(`${origin}/api/approvals`).then((result) =>
+-			result.json(),
+-		);
+-		expect(aggregate.approvals).toEqual([]);
+-		expect(aggregate.pending).toEqual([]);
+-		expect(proposals[0].state).toBe("pending");
+-		expect(proposals[0].execution).toBeNull();
+-		expect((await request(`/proposals/${id}/claim`, { digest })).status).toBe(
+-			409,
+-		);
+-		expect(
+-			(
+-				await request(`/proposals/${id}/decision`, {
+-					digest: "wrong",
+-					decision: "approve",
+-				})
+-			).status,
+-		).toBe(409);
+-		expect(
+-			(
+-				await request(
+-					`/proposals/${id}/decision`,
+-					{ digest, decision: "approve" },
+-					"b",
+-				)
+-			).status,
+-		).toBe(409);
+-		expect(
+-			(
+-				await request(`/proposals/${id}/decision`, {
+-					digest,
+-					decision: "approve",
+-				})
+-			).status,
+-		).toBe(200);
+-		await new Promise<void>((resolve, reject) =>
+-			server!.close((error) => (error ? reject(error) : resolve())),
+-		);
+-		server = undefined;
+-		await runtimeState.cleanup();
+-		runtimeState = await createRealTestRuntime({
+-			characterName: "DeviceApprovalFixture",
+-			pgliteDir: directory,
+-			removePgliteDirOnCleanup: false,
+-		});
+-		origin = await start();
+-		proposals = (await request("/proposals")).body.proposals;
+-		expect(proposals[0].state).toBe("approved");
+-		const claims = await Promise.all([
+-			request(`/proposals/${id}/claim`, { digest }),
+-			request(`/proposals/${id}/claim`, { digest }),
+-		]);
+-		expect(claims.map((result) => result.status).sort()).toEqual([200, 409]);
+-		const claim = claims.find((result) => result.status === 200)!.body.proposal;
+-		expect(claim.execution.dispatchStartedAt).toBeTruthy();
+-		const receipt = {
+-			digest,
+-			attemptId: claim.execution.attemptId,
+-			receipt: { outcome: "applied", operationId: "fixture-native-note-1" },
+-		};
+-		expect(
+-			(
+-				await request(`/proposals/${id}/receipt`, {
+-					...receipt,
+-					attemptId: randomUUID(),
+-				})
+-			).status,
+-		).toBe(409);
+-		expect(
+-			(await request(`/proposals/${id}/receipt`, receipt)).body.proposal.state,
+-		).toBe("done");
+-		expect((await request(`/proposals/${id}/receipt`, receipt)).status).toBe(
+-			200,
+-		);
+-		expect((await request(`/proposals/${id}/claim`, { digest })).status).toBe(
+-			409,
+-		);
+-		expect(
+-			(
+-				await request(`/proposals/${id}/receipt`, {
+-					...receipt,
+-					receipt: { outcome: "unknown" },
+-				})
+-			).status,
+-		).toBe(409);
+-		await expect(
+-			new DeviceActionService(runtimeState.runtime).propose(
+-				credentials,
+-				{ type: "execute_plugin", plugin: "arbitrary" },
+-				"bad",
+-				"bad",
+-			),
+-		).rejects.toThrow();
+-		const service = new DeviceActionService(runtimeState.runtime);
+-		await expect(
+-			service.propose(
+-				credentials,
+-				{ type: "create_note", title: "Changed", body: "Different" },
+-				"fixture-note-1",
+-				"Requested by test owner",
+-			),
+-		).rejects.toThrow();
+-		const reminder = await service.propose(
+-			credentials,
+-			{
+-				type: "create_reminder",
+-				title: "Fixture reminder",
+-				dueAt: "2030-01-01T12:00:00Z",
+-			},
+-			"reminder-1",
+-			"Fixture",
+-		);
+-		const view = await service.propose(
+-			credentials,
+-			{ type: "open_view", view: "notes" },
+-			"view-1",
+-			"Fixture",
+-		);
+-		const browser = await service.propose(
+-			credentials,
+-			{ type: "browser_navigate", url: "https://example.com/" },
+-			"browser-1",
+-			"Fixture",
+-		);
+-		const pending = (await request("/proposals")).body.proposals;
+-		const reminderDigest = pending.find(
+-			(item: any) => item.id === reminder.id,
+-		).digest;
+-		expect(
+-			(
+-				await request(`/proposals/${reminder.id}/decision`, {
+-					digest: reminderDigest,
+-					decision: "reject",
+-				})
+-			).body.proposal.state,
+-		).toBe("rejected");
+-		expect(
+-			(
+-				await request(`/proposals/${reminder.id}/claim`, {
+-					digest: reminderDigest,
+-				})
+-			).status,
+-		).toBe(409);
+-		const viewDigest = pending.find((item: any) => item.id === view.id).digest;
+-		expect(
+-			(await request(`/proposals/${view.id}/claim`, { digest: viewDigest }))
+-				.status,
+-		).toBe(409);
+-		const browserDigest = pending.find(
+-			(item: any) => item.id === browser.id,
+-		).digest;
+-		await request(`/proposals/${browser.id}/decision`, {
+-			digest: browserDigest,
+-			decision: "approve",
+-		});
+-		const browserClaim = await request(`/proposals/${browser.id}/claim`, {
+-			digest: browserDigest,
+-		});
+-		expect(browserClaim.status).toBe(200);
+-		// Simulate loss of the claim response: restart while dispatch outcome is unknown.
+-		await new Promise<void>((resolve) => server!.close(() => resolve()));
+-		server = undefined;
+-		await runtimeState.cleanup();
+-		runtimeState = await createRealTestRuntime({
+-			characterName: "DeviceApprovalFixture",
+-			pgliteDir: directory,
+-			removePgliteDirOnCleanup: false,
+-		});
+-		origin = await start();
+-		expect(
+-			(
+-				await request(`/proposals/${browser.id}/claim`, {
+-					digest: browserDigest,
+-				})
+-			).status,
+-		).toBe(409);
+-		const uncertain = await request(`/proposals/${browser.id}/receipt`, {
+-			digest: browserDigest,
+-			attemptId: browserClaim.body.proposal.execution.attemptId,
+-			receipt: { outcome: "unknown", code: "claim_response_lost" },
+-		});
+-		expect(uncertain.body.proposal.state).toBe("reconciliation_required");
+-		expect(
+-			(
+-				await request(`/proposals/${browser.id}/claim`, {
+-					digest: browserDigest,
+-				})
+-			).status,
+-		).toBe(409);
+-		const reconciliation = {
+-			digest: browserDigest,
+-			attemptId: browserClaim.body.proposal.execution.attemptId,
+-			resolution: {
+-				confirmed: true,
+-				outcome: "applied",
+-				operationId: "fixture-browser-tab-1",
+-			},
+-		};
+-		expect(
+-			(
+-				await request(`/proposals/${browser.id}/reconciliation`, {
+-					...reconciliation,
+-					resolution: { ...reconciliation.resolution, confirmed: false },
+-				})
+-			).status,
+-		).toBe(409);
+-		expect(
+-			(await request(`/proposals/${browser.id}/reconciliation`, reconciliation))
+-				.body.proposal.state,
+-		).toBe("done");
+-		expect(
+-			(await request(`/proposals/${browser.id}/reconciliation`, reconciliation))
+-				.status,
+-		).toBe(200);
+-		// Calendar operations share the same real queue and immutable provider receipt path.
+-		const calendarCredentials = {
+-			...credentials,
+-			capabilities: ["calendar.local-event.v1"],
+-		};
+-		const source = { sourceId: "19", sourceRevision: "a".repeat(64) };
+-		const target = { ...source, eventId: "71", revision: "b".repeat(64) };
+-		const fields = {
+-			title: "Synthetic event",
+-			description: "Approved selected content",
+-			location: "Here",
+-			start: "2027-01-01T12:00:00.000Z",
+-			end: "2027-01-01T13:00:00.000Z",
+-			timeZone: "UTC",
+-		};
+-		const calendarService = new DeviceActionService(runtimeState.runtime);
+-		await expect(
+-			calendarService.propose(
+-				credentials,
+-				{ type: "calendar_create", source, fields },
+-				"calendar-missing-cap",
+-				"fixture",
+-			),
+-		).rejects.toThrow();
+-		for (const kind of [
+-			"calendar_create",
+-			"calendar_read_selected",
+-			"calendar_update",
+-			"calendar_delete",
+-		] as const) {
+-			const operation =
+-				kind === "calendar_create"
+-					? { type: kind, source, fields }
+-					: kind === "calendar_update"
+-						? { type: kind, target, fields }
+-						: { type: kind, target };
+-			const proposed = await calendarService.propose(
+-				calendarCredentials,
+-				operation,
+-				kind,
+-				"fixture",
+-			);
+-			const repeated = await calendarService.propose(
+-				calendarCredentials,
+-				operation,
+-				kind,
+-				"fixture",
+-			);
+-			expect(repeated.id).toBe(proposed.id);
+-			const item = (await request("/proposals")).body.proposals.find(
+-				(p: any) => p.id === proposed.id,
+-			);
+-			expect(item.state).toBe("pending");
+-			expect(item.execution).toBeNull();
+-			expect(
+-				(
+-					await request(
+-						`/proposals/${item.id}/decision`,
+-						{ digest: item.digest, decision: "approve" },
+-						"b",
+-					)
+-				).status,
+-			).toBe(409);
+-			expect(
+-				(
+-					await request(`/proposals/${item.id}/decision`, {
+-						digest: item.digest,
+-						decision: "approve",
+-					})
+-				).status,
+-			).toBe(200);
+-			const claimed = await request(`/proposals/${item.id}/claim`, {
+-				digest: item.digest,
+-			});
+-			expect(claimed.status).toBe(200);
+-			expect(
+-				(await request(`/proposals/${item.id}/claim`, { digest: item.digest }))
+-					.status,
+-			).toBe(409);
+-			const result = {
+-				version: 1,
+-				kind,
+-				sourceId: "19",
+-				eventId: "71",
+-				revision:
+-					kind === "calendar_read_selected" || kind === "calendar_delete"
+-						? target.revision
+-						: "c".repeat(64),
+-				...(kind === "calendar_read_selected" ? { fields } : {}),
+-			};
+-			const receipt = {
+-				digest: item.digest,
+-				attemptId: claimed.body.proposal.execution.attemptId,
+-				receipt: { outcome: "applied", operationId: `native-${kind}`, result },
+-			};
+-			expect(
+-				(
+-					await request(`/proposals/${item.id}/receipt`, {
+-						...receipt,
+-						receipt: {
+-							...receipt.receipt,
+-							result: { ...result, sourceId: "other" },
+-						},
+-					})
+-				).status,
+-			).not.toBe(200);
+-			expect(
+-				(await request(`/proposals/${item.id}/receipt`, receipt)).body.proposal
+-					.state,
+-			).toBe("done");
+-			expect(
+-				(await request(`/proposals/${item.id}/receipt`, receipt)).status,
+-			).toBe(200);
+-			const canonical = (await request("/proposals")).body.proposals.find(
+-				(p: any) => p.id === item.id,
+-			);
+-			expect(canonical.execution.providerReceipt.result).toEqual(result);
+-			const retrieved = await withDeviceActionTurn(
+-				runtimeState.runtime,
+-				calendarCredentials,
+-				() =>
+-					proposeDeviceAction.handler(runtimeState.runtime, memory, undefined, {
+-						parameters: { operation, operationKey: kind, reason: "fixture" },
+-					}),
+-			);
+-			expect(retrieved && retrieved.data).toMatchObject({
+-				proposalId: item.id,
+-				executed: false,
+-				result,
+-			});
+-			expect(
+-				(await request("/proposals")).body.proposals.filter(
+-					(p: any) => p.id === item.id,
+-				),
+-			).toHaveLength(1);
+-		}
+-		{
+-			// Notes operations share the same real queue and immutable provider receipt path.
+-			const notesCredentials = {
+-				...credentials,
+-				capabilities: ["notes.local-record.v1"],
+-			};
+-			const source = { sourceId: "19", sourceRevision: "a".repeat(64) };
+-			const target = { ...source, noteId: "71", revision: "b".repeat(64) };
+-			const fields = {
+-				title: "",
+-				body: "Approved selected Notes content",
+-			};
+-			const notesService = new DeviceActionService(runtimeState.runtime);
+-			await expect(
+-				notesService.propose(
+-					credentials,
+-					{ type: "notes_read_selected", target },
+-					"notes-missing-cap",
+-					"fixture",
+-				),
+-			).rejects.toThrow();
+-			for (const kind of [
+-				"notes_read_selected",
+-				"notes_update",
+-				"notes_delete",
+-			] as const) {
+-				const operation =
+-					kind === "notes_update"
+-						? { type: kind, target, fields }
+-						: { type: kind, target };
+-				const proposed = await notesService.propose(
+-					notesCredentials,
+-					operation,
+-					kind,
+-					"fixture",
+-				);
+-				const repeated = await notesService.propose(
+-					notesCredentials,
+-					operation,
+-					kind,
+-					"fixture",
+-				);
+-				expect(repeated.id).toBe(proposed.id);
+-				const item = (await request("/proposals")).body.proposals.find(
+-					(p: any) => p.id === proposed.id,
+-				);
+-				expect(item.state).toBe("pending");
+-				expect(item.execution).toBeNull();
+-				expect(
+-					(
+-						await request(
+-							`/proposals/${item.id}/decision`,
+-							{ digest: item.digest, decision: "approve" },
+-							"b",
+-						)
+-					).status,
+-				).toBe(409);
+-				expect(
+-					(
+-						await request(`/proposals/${item.id}/decision`, {
+-							digest: item.digest,
+-							decision: "approve",
+-						})
+-					).status,
+-				).toBe(200);
+-				const claimed = await request(`/proposals/${item.id}/claim`, {
+-					digest: item.digest,
+-				});
+-				expect(claimed.status).toBe(200);
+-				expect(
+-					(
+-						await request(`/proposals/${item.id}/claim`, {
+-							digest: item.digest,
+-						})
+-					).status,
+-				).toBe(409);
+-				const result = {
+-					version: 1,
+-					kind,
+-					sourceId: "19",
+-					noteId: "71",
+-					revision:
+-						kind === "notes_read_selected" || kind === "notes_delete"
+-							? target.revision
+-							: "c".repeat(64),
+-					...(kind === "notes_read_selected" ? { fields } : {}),
+-				};
+-				const receipt = {
+-					digest: item.digest,
+-					attemptId: claimed.body.proposal.execution.attemptId,
+-					receipt: {
+-						outcome: "applied",
+-						operationId: `native-${kind}`,
+-						result,
+-					},
+-				};
+-				expect(
+-					(
+-						await request(`/proposals/${item.id}/receipt`, {
+-							...receipt,
+-							receipt: {
+-								...receipt.receipt,
+-								result: { ...result, sourceId: "other" },
+-							},
+-						})
+-					).status,
+-				).not.toBe(200);
+-				expect(
+-					(await request(`/proposals/${item.id}/receipt`, receipt)).body
+-						.proposal.state,
+-				).toBe("done");
+-				expect(
+-					(await request(`/proposals/${item.id}/receipt`, receipt)).status,
+-				).toBe(200);
+-				const canonical = (await request("/proposals")).body.proposals.find(
+-					(p: any) => p.id === item.id,
+-				);
+-				expect(canonical.execution.providerReceipt.result).toEqual(result);
+-				const retrieved = await withDeviceActionTurn(
+-					runtimeState.runtime,
+-					notesCredentials,
+-					() =>
+-						proposeDeviceAction.handler(
+-							runtimeState.runtime,
+-							memory,
+-							undefined,
+-							{
+-								parameters: {
+-									operation,
+-									operationKey: kind,
+-									reason: "fixture",
+-								},
+-							},
+-						),
+-				);
+-				expect(retrieved && retrieved.data).toMatchObject({
+-					proposalId: item.id,
+-					executed: false,
+-					result,
+-				});
+-				expect(
+-					(await request("/proposals")).body.proposals.filter(
+-						(p: any) => p.id === item.id,
+-					),
+-				).toHaveLength(1);
+-			}
+-		}
+-		expect((await request("/revoke", {})).status).toBe(200);
+-		expect((await request("/proposals")).status).toBe(409);
+-		expect(
+-			(await request("/register", { label: "Reused revoked installation" }))
+-				.status,
+-		).toBe(409);
+-		await expect(propose()).rejects.toThrow();
+-	} finally {
+-		if (server)
+-			await new Promise<void>((resolve) => server!.close(() => resolve()));
+-		await runtimeState.cleanup();
+-		await rm(directory, { recursive: true, force: true });
+-	}
++  const directory = await mkdtemp(join(tmpdir(), "device-approval-e2e-"));
++  let runtimeState = await createRealTestRuntime({
++    characterName: "DeviceApprovalFixture",
++    pgliteDir: directory,
++    removePgliteDirOnCleanup: false,
++  });
++  let server: Server | undefined;
++  try {
++    const ownerA = randomUUID();
++    const ownerB = randomUUID();
++    let authStore = new AuthStore(
++      runtimeState.runtime.adapter.db as DrizzleDatabase,
++    );
++    const sessions: Record<string, string> = {};
++    for (const [label, id] of [
++      ["a", ownerA],
++      ["b", ownerB],
++    ]) {
++      await authStore.createIdentity({
++        id,
++        kind: "machine",
++        displayName: `Fixture ${label}`,
++        createdAt: Date.now(),
++        passwordHash: null,
++      });
++      sessions[label] = (
++        await createMachineSession(authStore, { identityId: id, scopes: [] })
++      ).session.id;
++    }
++    const device = randomUUID();
++    const deviceKey = "a".repeat(64);
++    const credentials = {
++      subjectUserId: ownerA,
++      installationId: device,
++      deviceKey,
++    };
++    const start = async () => {
++      authStore = new AuthStore(
++        runtimeState.runtime.adapter.db as DrizzleDatabase,
++      );
++      await runtimeState.runtime.registerService(ApprovalService);
++      await runtimeState.runtime.getServiceLoadPromise(APPROVAL_SERVICE);
++      server = createServer(async (req, res) => {
++        const resolved = await resolveAuthorizedRouteRole(req, {
++          store: authStore,
++          allowTrustedLocalBypass: !requiresDeviceIdentity(
++            req,
++            new URL(req.url ?? "/", "http://fixture").pathname,
++          ),
++          allowCookieAuth: false,
++          allowBearerAuth: true,
++        });
++        const authorization = {
++          ...resolved,
++          role: resolved.ok ? resolved.role : ("NONE" as const),
++        };
++        const send = (response: typeof res, value: unknown, status = 200) => {
++          response.writeHead(status, { "content-type": "application/json" });
++          response.end(JSON.stringify(value));
++        };
++        if (req.url === "/api/approvals") {
++          await handleApprovalRoute(
++            req,
++            res,
++            "/api/approvals",
++            "GET",
++            { runtime: runtimeState.runtime },
++            {
++              json: send,
++              error: (response, message, status) =>
++                send(response, { error: message }, status),
++              readJsonBody: async () => null,
++            },
++          );
++          return;
++        }
++        await handleDeviceActionRoutes({
++          req,
++          res,
++          pathname: new URL(req.url!, "http://fixture").pathname,
++          method: req.method!,
++          runtime: runtimeState.runtime,
++          authorization,
++          json: send,
++          error: (response, message, status) =>
++            send(response, { error: message }, status),
++          readJsonBody: async (request) => {
++            let value = "";
++            for await (const part of request) value += part;
++            return JSON.parse(value || "{}");
++          },
++        });
++      });
++      await new Promise<void>((resolve) =>
++        server!.listen(0, "127.0.0.1", resolve),
++      );
++      const address = server.address();
++      if (!address || typeof address === "string")
++        throw new Error("No fixture listener");
++      return `http://127.0.0.1:${address.port}`;
++    };
++    let origin = await start();
++    const request = async (
++      path: string,
++      body?: unknown,
++      owner = "a",
++      key = owner === "b" ? "b".repeat(64) : deviceKey,
++      capabilities = "calendar.local-event.v1,notes.local-record.v1",
++    ) => {
++      const result = await fetch(`${origin}/api/client-devices${path}`, {
++        method: body === undefined ? "GET" : "POST",
++        headers: {
++          authorization: `Bearer ${sessions[owner] ?? "invalid-fixture-session"}`,
++          "x-eliza-device-id": device,
++          "x-eliza-device-key": key,
++          "x-eliza-device-capabilities": capabilities,
++          "content-type": "application/json",
++        },
++        ...(body === undefined ? {} : { body: JSON.stringify(body) }),
++      });
++      return { status: result.status, body: (await result.json()) as any };
++    };
++    expect(
++      (await request("/register", { label: "Fixture phone" })).status,
++    ).toBe(200);
++    expect(
++      (await request("/register", { label: "Fixture phone" })).status,
++    ).toBe(200);
++    for (const capabilities of [
++      "",
++      "notes.local-record.v1,notes.local-record.v1",
++      "calendar.local-event.v1,",
++      "unknown.v1",
++      "calendar.local-event.v1,notes.local-record.v1,unknown.v1",
++    ]) {
++      expect(
++        (await request("/proposals", undefined, "a", deviceKey, capabilities))
++          .status,
++      ).toBe(401);
++    }
++    for (const capabilities of [
++      "notes.local-record.v1",
++      "calendar.local-event.v1",
++      "notes.local-record.v1,calendar.local-event.v1",
++    ]) {
++      expect(
++        (await request("/proposals", undefined, "a", deviceKey, capabilities))
++          .status,
++      ).toBe(200);
++    }
++    expect(
++      (await request("/register", { label: "Hijack" }, "a", "b".repeat(64)))
++        .status,
++    ).toBe(409);
++    expect((await request("/proposals", undefined, "none")).status).toBe(401);
++    expect((await request("/proposals", undefined, "b")).status).toBe(409);
++    expect(
++      (await request("/register", { label: "Other owner phone" }, "b")).status,
++    ).toBe(200);
++    expect(
++      (await request("/proposals", undefined, "b")).body.proposals,
++    ).toEqual([]);
++    const memory = {
++      id: randomUUID(),
++      agentId: runtimeState.runtime.agentId,
++      entityId: ownerA,
++      roomId: randomUUID(),
++      content: { text: "Create fixture note" },
++    } as Memory;
++    const parameters = {
++      operation: {
++        type: "create_note",
++        title: "Fixture note",
++        body: "Synthetic test data only",
++      },
++      operationKey: "fixture-note-1",
++      reason: "Requested by test owner",
++    };
++    expect(
++      await proposeDeviceAction.validate(runtimeState.runtime, memory),
++    ).toBe(false);
++    const propose = () =>
++      withDeviceActionTurn(runtimeState.runtime, credentials, async () => {
++        expect(
++          await proposeDeviceAction.validate(runtimeState.runtime, memory),
++        ).toBe(true);
++        return proposeDeviceAction.handler(
++          runtimeState.runtime,
++          memory,
++          undefined,
++          { parameters },
++        );
++      });
++    await propose();
++    await propose();
++    let proposals = (await request("/proposals")).body.proposals;
++    expect(proposals).toHaveLength(1);
++    const { id, digest } = proposals[0];
++    const aggregate = await fetch(`${origin}/api/approvals`).then((result) =>
++      result.json(),
++    );
++    expect(aggregate.approvals).toEqual([]);
++    expect(aggregate.pending).toEqual([]);
++    expect(proposals[0].state).toBe("pending");
++    expect(proposals[0].execution).toBeNull();
++    expect((await request(`/proposals/${id}/claim`, { digest })).status).toBe(
++      409,
++    );
++    expect(
++      (
++        await request(`/proposals/${id}/decision`, {
++          digest: "wrong",
++          decision: "approve",
++        })
++      ).status,
++    ).toBe(409);
++    expect(
++      (
++        await request(
++          `/proposals/${id}/decision`,
++          { digest, decision: "approve" },
++          "b",
++        )
++      ).status,
++    ).toBe(409);
++    expect(
++      (
++        await request(`/proposals/${id}/decision`, {
++          digest,
++          decision: "approve",
++        })
++      ).status,
++    ).toBe(200);
++    await new Promise<void>((resolve, reject) =>
++      server!.close((error) => (error ? reject(error) : resolve())),
++    );
++    server = undefined;
++    await runtimeState.cleanup();
++    runtimeState = await createRealTestRuntime({
++      characterName: "DeviceApprovalFixture",
++      pgliteDir: directory,
++      removePgliteDirOnCleanup: false,
++    });
++    origin = await start();
++    proposals = (await request("/proposals")).body.proposals;
++    expect(proposals[0].state).toBe("approved");
++    const claims = await Promise.all([
++      request(`/proposals/${id}/claim`, { digest }),
++      request(`/proposals/${id}/claim`, { digest }),
++    ]);
++    expect(claims.map((result) => result.status).sort()).toEqual([200, 409]);
++    const claim = claims.find((result) => result.status === 200)!.body.proposal;
++    expect(claim.execution.dispatchStartedAt).toBeTruthy();
++    const receipt = {
++      digest,
++      attemptId: claim.execution.attemptId,
++      receipt: { outcome: "applied", operationId: "fixture-native-note-1" },
++    };
++    expect(
++      (
++        await request(`/proposals/${id}/receipt`, {
++          ...receipt,
++          attemptId: randomUUID(),
++        })
++      ).status,
++    ).toBe(409);
++    expect(
++      (await request(`/proposals/${id}/receipt`, receipt)).body.proposal.state,
++    ).toBe("done");
++    expect((await request(`/proposals/${id}/receipt`, receipt)).status).toBe(
++      200,
++    );
++    expect((await request(`/proposals/${id}/claim`, { digest })).status).toBe(
++      409,
++    );
++    expect(
++      (
++        await request(`/proposals/${id}/receipt`, {
++          ...receipt,
++          receipt: { outcome: "unknown" },
++        })
++      ).status,
++    ).toBe(409);
++    await expect(
++      new DeviceActionService(runtimeState.runtime).propose(
++        credentials,
++        { type: "execute_plugin", plugin: "arbitrary" },
++        "bad",
++        "bad",
++      ),
++    ).rejects.toThrow();
++    const service = new DeviceActionService(runtimeState.runtime);
++    await expect(
++      service.propose(
++        credentials,
++        { type: "create_note", title: "Changed", body: "Different" },
++        "fixture-note-1",
++        "Requested by test owner",
++      ),
++    ).rejects.toThrow();
++    const reminder = await service.propose(
++      credentials,
++      {
++        type: "create_reminder",
++        title: "Fixture reminder",
++        dueAt: "2030-01-01T12:00:00Z",
++      },
++      "reminder-1",
++      "Fixture",
++    );
++    const view = await service.propose(
++      credentials,
++      { type: "open_view", view: "notes" },
++      "view-1",
++      "Fixture",
++    );
++    const browser = await service.propose(
++      credentials,
++      { type: "browser_navigate", url: "https://example.com/" },
++      "browser-1",
++      "Fixture",
++    );
++    const pending = (await request("/proposals")).body.proposals;
++    const reminderDigest = pending.find(
++      (item: any) => item.id === reminder.id,
++    ).digest;
++    expect(
++      (
++        await request(`/proposals/${reminder.id}/decision`, {
++          digest: reminderDigest,
++          decision: "reject",
++        })
++      ).body.proposal.state,
++    ).toBe("rejected");
++    expect(
++      (
++        await request(`/proposals/${reminder.id}/claim`, {
++          digest: reminderDigest,
++        })
++      ).status,
++    ).toBe(409);
++    const viewDigest = pending.find((item: any) => item.id === view.id).digest;
++    expect(
++      (await request(`/proposals/${view.id}/claim`, { digest: viewDigest }))
++        .status,
++    ).toBe(409);
++    const browserDigest = pending.find(
++      (item: any) => item.id === browser.id,
++    ).digest;
++    await request(`/proposals/${browser.id}/decision`, {
++      digest: browserDigest,
++      decision: "approve",
++    });
++    const browserClaim = await request(`/proposals/${browser.id}/claim`, {
++      digest: browserDigest,
++    });
++    expect(browserClaim.status).toBe(200);
++    // Simulate loss of the claim response: restart while dispatch outcome is unknown.
++    await new Promise<void>((resolve) => server!.close(() => resolve()));
++    server = undefined;
++    await runtimeState.cleanup();
++    runtimeState = await createRealTestRuntime({
++      characterName: "DeviceApprovalFixture",
++      pgliteDir: directory,
++      removePgliteDirOnCleanup: false,
++    });
++    origin = await start();
++    expect(
++      (
++        await request(`/proposals/${browser.id}/claim`, {
++          digest: browserDigest,
++        })
++      ).status,
++    ).toBe(409);
++    const uncertain = await request(`/proposals/${browser.id}/receipt`, {
++      digest: browserDigest,
++      attemptId: browserClaim.body.proposal.execution.attemptId,
++      receipt: { outcome: "unknown", code: "claim_response_lost" },
++    });
++    expect(uncertain.body.proposal.state).toBe("reconciliation_required");
++    expect(
++      (
++        await request(`/proposals/${browser.id}/claim`, {
++          digest: browserDigest,
++        })
++      ).status,
++    ).toBe(409);
++    const reconciliation = {
++      digest: browserDigest,
++      attemptId: browserClaim.body.proposal.execution.attemptId,
++      resolution: {
++        confirmed: true,
++        outcome: "applied",
++        operationId: "fixture-browser-tab-1",
++      },
++    };
++    expect(
++      (
++        await request(`/proposals/${browser.id}/reconciliation`, {
++          ...reconciliation,
++          resolution: { ...reconciliation.resolution, confirmed: false },
++        })
++      ).status,
++    ).toBe(409);
++    expect(
++      (await request(`/proposals/${browser.id}/reconciliation`, reconciliation))
++        .body.proposal.state,
++    ).toBe("done");
++    expect(
++      (await request(`/proposals/${browser.id}/reconciliation`, reconciliation))
++        .status,
++    ).toBe(200);
++    // Calendar operations share the same real queue and immutable provider receipt path.
++    const calendarCredentials = {
++      ...credentials,
++      capabilities: ["calendar.local-event.v1"],
++    };
++    const source = { sourceId: "19", sourceRevision: "a".repeat(64) };
++    const target = { ...source, eventId: "71", revision: "b".repeat(64) };
++    const fields = {
++      title: "Synthetic event",
++      description: "Approved selected content",
++      location: "Here",
++      start: "2027-01-01T12:00:00.000Z",
++      end: "2027-01-01T13:00:00.000Z",
++      timeZone: "UTC",
++    };
++    const calendarService = new DeviceActionService(runtimeState.runtime);
++    await expect(
++      calendarService.propose(
++        credentials,
++        { type: "calendar_create", source, fields },
++        "calendar-missing-cap",
++        "fixture",
++      ),
++    ).rejects.toThrow();
++    for (const kind of [
++      "calendar_create",
++      "calendar_read_selected",
++      "calendar_update",
++      "calendar_delete",
++    ] as const) {
++      const operation =
++        kind === "calendar_create"
++          ? { type: kind, source, fields }
++          : kind === "calendar_update"
++            ? { type: kind, target, fields }
++            : { type: kind, target };
++      const proposed = await calendarService.propose(
++        calendarCredentials,
++        operation,
++        kind,
++        "fixture",
++      );
++      const repeated = await calendarService.propose(
++        calendarCredentials,
++        operation,
++        kind,
++        "fixture",
++      );
++      expect(repeated.id).toBe(proposed.id);
++      const item = (await request("/proposals")).body.proposals.find(
++        (p: any) => p.id === proposed.id,
++      );
++      expect(item.state).toBe("pending");
++      expect(item.execution).toBeNull();
++      expect(
++        (
++          await request(
++            `/proposals/${item.id}/decision`,
++            { digest: item.digest, decision: "approve" },
++            "b",
++          )
++        ).status,
++      ).toBe(409);
++      expect(
++        (
++          await request(`/proposals/${item.id}/decision`, {
++            digest: item.digest,
++            decision: "approve",
++          })
++        ).status,
++      ).toBe(200);
++      const claimed = await request(`/proposals/${item.id}/claim`, {
++        digest: item.digest,
++      });
++      expect(claimed.status).toBe(200);
++      expect(
++        (await request(`/proposals/${item.id}/claim`, { digest: item.digest }))
++          .status,
++      ).toBe(409);
++      const result = {
++        version: 1,
++        kind,
++        sourceId: "19",
++        eventId: "71",
++        revision:
++          kind === "calendar_read_selected" || kind === "calendar_delete"
++            ? target.revision
++            : "c".repeat(64),
++        ...(kind === "calendar_read_selected" ? { fields } : {}),
++      };
++      const receipt = {
++        digest: item.digest,
++        attemptId: claimed.body.proposal.execution.attemptId,
++        receipt: { outcome: "applied", operationId: `native-${kind}`, result },
++      };
++      expect(
++        (
++          await request(`/proposals/${item.id}/receipt`, {
++            ...receipt,
++            receipt: {
++              ...receipt.receipt,
++              result: { ...result, sourceId: "other" },
++            },
++          })
++        ).status,
++      ).not.toBe(200);
++      expect(
++        (await request(`/proposals/${item.id}/receipt`, receipt)).body.proposal
++          .state,
++      ).toBe("done");
++      expect(
++        (await request(`/proposals/${item.id}/receipt`, receipt)).status,
++      ).toBe(200);
++      const canonical = (await request("/proposals")).body.proposals.find(
++        (p: any) => p.id === item.id,
++      );
++      expect(canonical.execution.providerReceipt.result).toEqual(result);
++      const retrieved = await withDeviceActionTurn(
++        runtimeState.runtime,
++        calendarCredentials,
++        () =>
++          proposeDeviceAction.handler(runtimeState.runtime, memory, undefined, {
++            parameters: { operation, operationKey: kind, reason: "fixture" },
++          }),
++      );
++      expect(retrieved && retrieved.data).toMatchObject({
++        proposalId: item.id,
++        executed: false,
++        result,
++      });
++      expect(
++        (await request("/proposals")).body.proposals.filter(
++          (p: any) => p.id === item.id,
++        ),
++      ).toHaveLength(1);
++    }
++    {
++      // Notes operations share the same real queue and immutable provider receipt path.
++      const notesCredentials = {
++        ...credentials,
++        capabilities: ["notes.local-record.v1"],
++      };
++      const source = { sourceId: "19", sourceRevision: "a".repeat(64) };
++      const target = { ...source, noteId: "71", revision: "b".repeat(64) };
++      const fields = {
++        title: "",
++        body: "Approved selected Notes content",
++      };
++      const notesService = new DeviceActionService(runtimeState.runtime);
++      await expect(
++        notesService.propose(
++          credentials,
++          { type: "notes_read_selected", target },
++          "notes-missing-cap",
++          "fixture",
++        ),
++      ).rejects.toThrow();
++      for (const kind of [
++        "notes_read_selected",
++        "notes_update",
++        "notes_delete",
++      ] as const) {
++        const operation =
++          kind === "notes_update"
++            ? { type: kind, target, fields }
++            : { type: kind, target };
++        const proposed = await notesService.propose(
++          notesCredentials,
++          operation,
++          kind,
++          "fixture",
++        );
++        const repeated = await notesService.propose(
++          notesCredentials,
++          operation,
++          kind,
++          "fixture",
++        );
++        expect(repeated.id).toBe(proposed.id);
++        const item = (await request("/proposals")).body.proposals.find(
++          (p: any) => p.id === proposed.id,
++        );
++        expect(item.state).toBe("pending");
++        expect(item.execution).toBeNull();
++        expect(
++          (
++            await request(
++              `/proposals/${item.id}/decision`,
++              { digest: item.digest, decision: "approve" },
++              "b",
++            )
++          ).status,
++        ).toBe(409);
++        expect(
++          (
++            await request(`/proposals/${item.id}/decision`, {
++              digest: item.digest,
++              decision: "approve",
++            })
++          ).status,
++        ).toBe(200);
++        const claimed = await request(`/proposals/${item.id}/claim`, {
++          digest: item.digest,
++        });
++        expect(claimed.status).toBe(200);
++        expect(
++          (
++            await request(`/proposals/${item.id}/claim`, {
++              digest: item.digest,
++            })
++          ).status,
++        ).toBe(409);
++        const result = {
++          version: 1,
++          kind,
++          sourceId: "19",
++          noteId: "71",
++          revision:
++            kind === "notes_read_selected" || kind === "notes_delete"
++              ? target.revision
++              : "c".repeat(64),
++          ...(kind === "notes_read_selected" ? { fields } : {}),
++        };
++        const receipt = {
++          digest: item.digest,
++          attemptId: claimed.body.proposal.execution.attemptId,
++          receipt: {
++            outcome: "applied",
++            operationId: `native-${kind}`,
++            result,
++          },
++        };
++        expect(
++          (
++            await request(`/proposals/${item.id}/receipt`, {
++              ...receipt,
++              receipt: {
++                ...receipt.receipt,
++                result: { ...result, sourceId: "other" },
++              },
++            })
++          ).status,
++        ).not.toBe(200);
++        expect(
++          (await request(`/proposals/${item.id}/receipt`, receipt)).body
++            .proposal.state,
++        ).toBe("done");
++        expect(
++          (await request(`/proposals/${item.id}/receipt`, receipt)).status,
++        ).toBe(200);
++        const canonical = (await request("/proposals")).body.proposals.find(
++          (p: any) => p.id === item.id,
++        );
++        expect(canonical.execution.providerReceipt.result).toEqual(result);
++        const retrieved = await withDeviceActionTurn(
++          runtimeState.runtime,
++          notesCredentials,
++          () =>
++            proposeDeviceAction.handler(
++              runtimeState.runtime,
++              memory,
++              undefined,
++              {
++                parameters: {
++                  operation,
++                  operationKey: kind,
++                  reason: "fixture",
++                },
++              },
++            ),
++        );
++        expect(retrieved && retrieved.data).toMatchObject({
++          proposalId: item.id,
++          executed: false,
++          result,
++        });
++        expect(
++          (await request("/proposals")).body.proposals.filter(
++            (p: any) => p.id === item.id,
++          ),
++        ).toHaveLength(1);
++      }
++    }
++    expect((await request("/revoke", {})).status).toBe(200);
++    expect((await request("/proposals")).status).toBe(409);
++    expect(
++      (await request("/register", { label: "Reused revoked installation" }))
++        .status,
++    ).toBe(409);
++    await expect(propose()).rejects.toThrow();
++  } finally {
++    if (server)
++      await new Promise<void>((resolve) => server!.close(() => resolve()));
++    await runtimeState.cleanup();
++    await rm(directory, { recursive: true, force: true });
++  }
+ }, 120_000);
+--- a/plugins/plugin-local-inference/src/routes/compat-helpers.ts
++++ b/plugins/plugin-local-inference/src/routes/compat-helpers.ts
+@@ -1,3 +1,4 @@
++import { readRequestBodyBuffer } from "@elizaos/core";
+ /**
+  * Shared auth and I/O helpers for the local-inference compat HTTP routes.
+  *
+@@ -258,23 +259,23 @@
+ 		return preParsed as Record<string, unknown>;
+ 	}
+ 
+-	const chunks: Buffer[] = [];
+-	let totalBytes = 0;
++	let buffered: Buffer | null;
+ 	try {
+-		for await (const chunk of req) {
+-			const buf = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+-			totalBytes += buf.length;
+-			if (totalBytes > MAX_BODY_BYTES) {
+-				req.destroy();
+-				sendJsonError(res, 413, "Request body too large");
+-				return null;
+-			}
+-			chunks.push(buf);
+-		}
+-	} catch {
+-		sendJsonError(res, 400, "Invalid request body");
++		buffered = await readRequestBodyBuffer(req, { maxBytes: MAX_BODY_BYTES });
++	} catch (error) {
++		const tooLarge =
++			typeof error === "object" &&
++			error !== null &&
++			"code" in error &&
++			error.code === "HTTP_REQUEST_BODY_TOO_LARGE";
++		sendJsonError(
++			res,
++			tooLarge ? 413 : 400,
++			tooLarge ? "Request body too large" : "Invalid request body",
++		);
+ 		return null;
+ 	}
++	const chunks = buffered && buffered.length ? [buffered] : [];
+ 
+ 	if (chunks.length === 0) return {};
+ 	try {
+--- a/plugins/plugin-workflow/__tests__/integration/hosted-digests-http.test.ts
++++ b/plugins/plugin-workflow/__tests__/integration/hosted-digests-http.test.ts
+@@ -392,15 +392,13 @@
+     expect(large.output.text).toHaveLength(190000);
+     for (let i = 0; i < 14; i++) {
+       const runId = randomUUID();
+-      await (state!.runtime.db as any)
+-        .insert(hostedResults)
+-        .values({
+-          agentId: state!.runtime.agentId,
+-          ownerId: 'paging-owner',
+-          runId,
+-          workflowId: entries[0].workflowId,
+-          result: { ...entries[0], cursor: undefined, runId, output: { text: '界'.repeat(40000) } },
+-        });
++      await (state!.runtime.db as any).insert(hostedResults).values({
++        agentId: state!.runtime.agentId,
++        ownerId: 'paging-owner',
++        runId,
++        workflowId: entries[0].workflowId,
++        result: { ...entries[0], cursor: undefined, runId, output: { text: '界'.repeat(40000) } },
++      });
+     }
+     let delivered = 0;
+     while (delivered < 14) {
+--- a/plugins/plugin-workflow/src/plugin-routes.ts
++++ b/plugins/plugin-workflow/src/plugin-routes.ts
+@@ -5,6 +5,7 @@
+  */
+ import type http from 'node:http';
+ import type { HttpPlugin as Plugin, Route } from '@elizaos/core/api/http-plugin';
++import { getCloudRuntimeRequestIdentity } from '@elizaos/core/contracts/cloud-runtime-request';
+ import { handleAutomationsRoutes } from './routes/automations';
+ import { handleWorkbenchTodosRoutes } from './routes/workbench-todos';
+ import { handleWorkflowRoutes, type WorkflowRouteContext } from './routes/workflow-routes';
+@@ -37,6 +38,7 @@
+       method,
+       pathname: url.pathname,
+       runtime: state.current,
++      principalId: getCloudRuntimeRequestIdentity(httpReq),
+       json: jsonResponder(httpRes),
+     });
+   };

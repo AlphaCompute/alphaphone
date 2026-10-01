@@ -1,0 +1,20 @@
+{
+  "baseCommit": "45cc570386128bd613e8cc6675d571e0b75331de",
+  "sourceWorktree": "/Users/shawwalters/.codex/worktrees/alpha-phone-device-actions/eliza",
+  "patch": "0004-reviewed-workflow-submissions.patch",
+  "sha256": "243cf49798db615e332c18bc43ffcb61e5e2c74b4af35d64bae6f7d69f05af66",
+  "applyCheck": "Passed exact captured pre-edit workflow files",
+  "migration": "Additive workflow.manual_submissions table composite agent/workflow/submission PK exported through db/index.ts; existing keys/rows untouched. Actual47848 normal startup provisioned table without manual SQL.",
+  "tests": [
+    "plugin typecheck passed",
+    "14 HTTP/PGlite and route-dispatch tests,59 assertions",
+    "real paired47848 eight concurrent requests admitted1run; full process restart GET same run",
+    "app typecheck and adapter HTTP legacy+advertised paths passed"
+  ],
+  "limits": [
+    "Native67 prepared not run",
+    "Local route facade canonical single-owner; trusted service principal isolation tested, no production multitenant auth claim",
+    "No exactly-once external effects claim",
+    "SSE gap/durable cancellation intent/creation editing approval UI separate"
+  ]
+}

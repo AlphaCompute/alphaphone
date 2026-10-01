@@ -1,0 +1,11 @@
+{
+  "appliesAfter": "0009-workflow-lifecycle-mutations.patch",
+  "sha256": "bea2aa98b186e621f536325a94ccdba3fc4737ab75c2284fed21cf0379c42f12",
+  "scope": "Biome organizeImports only in three workflow files; no behavior changes",
+  "validation": [
+    "plugin-workflow lint:check passed (warnings retained)",
+    "four actual HTTP/PGlite integration cases passed99 assertions after patch",
+    "reverse apply check passed on combined source"
+  ],
+  "rootVerification": "Full bun run verify passed with pinned Node24.15.0/Bun1.4.2; all284 typecheck/lint tasks and remaining package/build/security/inventory checks pass"
+}

@@ -1,0 +1,14 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+  <application>
+    <activity android:name="ai.elizaresearch.alphaphone.ShareReceiverActivity"
+      android:exported="true" android:label="Alpha share verification">
+      <intent-filter>
+        <action android:name="android.intent.action.SEND" />
+        <action android:name="android.intent.action.SEND_MULTIPLE" />
+        <category android:name="android.intent.category.DEFAULT" />
+        <data android:mimeType="text/plain" />
+        <data android:mimeType="image/jpeg" />
+      </intent-filter>
+    </activity>
+  </application>
+</manifest>

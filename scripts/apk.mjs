@@ -34,9 +34,18 @@ export function validateApk(file, identity, wantsHome) {
   if (data.home !== wantsHome || !data.launcher || !data.webPayload)
     throw new Error(`Invalid launcher/web payload contract in ${file}`);
   if (
-    data.xml.includes("android.permission.WRITE_SETTINGS") ||
-    data.xml.includes("android.permission.CAMERA")
+    data.xml.includes("android.permission.WRITE_SETTINGS")
   )
     throw new Error(`Unexpected elevated permission in ${file}`);
+  for (const permission of ['CAMERA']) {
+    if (!data.xml.includes('android.permission.' + permission)) throw new Error(`Missing native feature permission ${permission} in ${file}`);
+  }
+  // MVP-DEFERRED: Contacts is not packaged; restore only with the documented scope gate.
+  for (const permission of ['READ_CONTACTS', 'WRITE_CONTACTS']) {
+    if (data.xml.includes('android.permission.' + permission)) throw new Error(`Deferred Contacts permission ${permission} in ${file}`);
+  }
+  // aapt badging distinguishes required hardware from optional feature declarations.
+  if (/uses-feature: name='android\.hardware\.camera(?:\.any|\.autofocus)?'/.test(data.badging))
+    throw new Error(`Camera hardware must remain optional in ${file}`);
   return data;
 }

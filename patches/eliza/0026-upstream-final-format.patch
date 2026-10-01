@@ -1,0 +1,1067 @@
+--- a/packages/app/src/api/cloud-google-delegation-routes.ts
++++ b/packages/app/src/api/cloud-google-delegation-routes.ts
+@@ -3,87 +3,87 @@
+ import { type IAgentRuntime, readRequestBodyBuffer } from "@elizaos/core";
+ import { getCloudRuntimeRequestIdentity } from "@elizaos/core/contracts/cloud-runtime-request";
+ import type { CloudGoogleDelegationService } from "@elizaos/plugin-elizacloud/services/cloud-google-delegation";
++import { authStoreForRuntime } from "../services/auth-store";
+ import { resolveAuthorizedRouteRole } from "./auth";
+-import { authStoreForRuntime } from "../services/auth-store";
+ export async function handleCloudGoogleDelegationRoute(
+-	req: http.IncomingMessage,
+-	res: http.ServerResponse,
+-	runtime: IAgentRuntime | null,
++  req: http.IncomingMessage,
++  res: http.ServerResponse,
++  runtime: IAgentRuntime | null,
+ ): Promise<boolean> {
+-	const path = new URL(req.url ?? "/", "http://localhost").pathname;
+-	if (!path.startsWith("/api/workflow/hosted/cloud-delegation/")) return false;
+-	const send = (status: number, value: unknown) => {
+-		res.statusCode = status;
+-		res.setHeader("content-type", "application/json");
+-		res.setHeader("cache-control", "no-store");
+-		res.end(JSON.stringify(value));
+-	};
+-	try {
+-		if (req.method !== "POST") {
+-			send(405, { error: "POST required" });
+-			return true;
+-		}
+-		const store = authStoreForRuntime(runtime);
+-		if (!runtime || !store) {
+-			send(503, { error: "Cloud delegation unavailable" });
+-			return true;
+-		}
+-		let ownerId = getCloudRuntimeRequestIdentity(req);
+-		if (!ownerId) {
+-			const auth = await resolveAuthorizedRouteRole(req, {
+-				store,
+-				allowTrustedLocalBypass: false,
+-			});
+-			if (auth.ok) ownerId = auth.identityId;
+-		}
+-		if (!ownerId) {
+-			send(401, { error: "A verified Cloud user session is required" });
+-			return true;
+-		}
+-		const identity = await store.findIdentity(ownerId);
+-		if (!identity || identity.kind !== "owner" || !identity.cloudUserId) {
+-			send(403, { error: "Connect your verified Cloud identity first" });
+-			return true;
+-		}
+-		const service = runtime.getService<CloudGoogleDelegationService>(
+-			"cloud_google_delegation",
+-		);
+-		if (!service) {
+-			send(503, { error: "Cloud delegation unavailable" });
+-			return true;
+-		}
+-		const bytes = await readRequestBodyBuffer(req, { maxBytes: 20000 });
+-		const body = bytes ? JSON.parse(Buffer.from(bytes).toString("utf8")) : null;
+-		if (!body || typeof body !== "object" || Array.isArray(body)) {
+-			send(400, { error: "JSON object required" });
+-			return true;
+-		}
+-		const principal = { ownerId, cloudUserId: identity.cloudUserId };
+-		if (path.endsWith("/start"))
+-			send(200, await service.begin(principal, body));
+-		else if (path.endsWith("/complete"))
+-			send(200, await service.complete(principal, body));
+-		else if (path.endsWith("/status"))
+-			send(200, await service.status(principal, body));
+-		else if (path.endsWith("/cancel"))
+-			send(200, await service.cancel(principal, body));
+-		else if (path.endsWith("/revocations"))
+-            send(200, await service.revocations(ownerId));
+-		else if (path.endsWith("/revoke"))
+-			send(200, await service.revoke(ownerId, body));
+-		else send(404, { error: "Unknown delegation operation" });
+-	} catch (error) {
+-		const status =
+-			typeof error === "object" &&
+-			error &&
+-			"status" in error &&
+-			typeof error.status === "number"
+-				? error.status
+-				: 409;
+-		send(status, {
+-			error:
+-				"Cloud delegation could not complete. Review the account or reconnect.",
+-		});
+-	}
+-	return true;
++  const path = new URL(req.url ?? "/", "http://localhost").pathname;
++  if (!path.startsWith("/api/workflow/hosted/cloud-delegation/")) return false;
++  const send = (status: number, value: unknown) => {
++    res.statusCode = status;
++    res.setHeader("content-type", "application/json");
++    res.setHeader("cache-control", "no-store");
++    res.end(JSON.stringify(value));
++  };
++  try {
++    if (req.method !== "POST") {
++      send(405, { error: "POST required" });
++      return true;
++    }
++    const store = authStoreForRuntime(runtime);
++    if (!runtime || !store) {
++      send(503, { error: "Cloud delegation unavailable" });
++      return true;
++    }
++    let ownerId = getCloudRuntimeRequestIdentity(req);
++    if (!ownerId) {
++      const auth = await resolveAuthorizedRouteRole(req, {
++        store,
++        allowTrustedLocalBypass: false,
++      });
++      if (auth.ok) ownerId = auth.identityId;
++    }
++    if (!ownerId) {
++      send(401, { error: "A verified Cloud user session is required" });
++      return true;
++    }
++    const identity = await store.findIdentity(ownerId);
++    if (!identity || identity.kind !== "owner" || !identity.cloudUserId) {
++      send(403, { error: "Connect your verified Cloud identity first" });
++      return true;
++    }
++    const service = runtime.getService<CloudGoogleDelegationService>(
++      "cloud_google_delegation",
++    );
++    if (!service) {
++      send(503, { error: "Cloud delegation unavailable" });
++      return true;
++    }
++    const bytes = await readRequestBodyBuffer(req, { maxBytes: 20000 });
++    const body = bytes ? JSON.parse(Buffer.from(bytes).toString("utf8")) : null;
++    if (!body || typeof body !== "object" || Array.isArray(body)) {
++      send(400, { error: "JSON object required" });
++      return true;
++    }
++    const principal = { ownerId, cloudUserId: identity.cloudUserId };
++    if (path.endsWith("/start"))
++      send(200, await service.begin(principal, body));
++    else if (path.endsWith("/complete"))
++      send(200, await service.complete(principal, body));
++    else if (path.endsWith("/status"))
++      send(200, await service.status(principal, body));
++    else if (path.endsWith("/cancel"))
++      send(200, await service.cancel(principal, body));
++    else if (path.endsWith("/revocations"))
++      send(200, await service.revocations(ownerId));
++    else if (path.endsWith("/revoke"))
++      send(200, await service.revoke(ownerId, body));
++    else send(404, { error: "Unknown delegation operation" });
++  } catch (error) {
++    const status =
++      typeof error === "object" &&
++      error &&
++      "status" in error &&
++      typeof error.status === "number"
++        ? error.status
++        : 409;
++    send(status, {
++      error:
++        "Cloud delegation could not complete. Review the account or reconnect.",
++    });
++  }
++  return true;
+ }
+--- a/packages/app/src/api/route-auth-policy.ts
++++ b/packages/app/src/api/route-auth-policy.ts
+@@ -13,8 +13,8 @@
+  * list must stay in sync — a managed prefix with no matching policy 401s.
+  */
+ import type http from "node:http";
++import { ensureRouteAuthorized, ensureRouteMinRole } from "./auth.ts";
+ import { resolveCloudRuntimeOwner } from "./cloud-runtime-owner";
+-import { ensureRouteAuthorized, ensureRouteMinRole } from "./auth.ts";
+ import type { CompatRuntimeState } from "./compat-route-shared";
+ import { sendJsonError } from "./response";
+ 
+@@ -369,7 +369,10 @@
+ 
+   // Gateway proof authenticates the individual Cloud owner, not a shared key.
+   // Invalid proof is terminal; the handler still verifies the persisted identity.
+-  if (policy.id === "cloud.delegation" && req.headers["x-eliza-cloud-owner-proof"]) {
++  if (
++    policy.id === "cloud.delegation" &&
++    req.headers["x-eliza-cloud-owner-proof"]
++  ) {
+     const owner = await resolveCloudRuntimeOwner(req, state.current);
+     if (owner.ok) return "allowed";
+     sendJsonError(res, 401, "Unauthorized");
+--- a/packages/app/src/api/server.ts
++++ b/packages/app/src/api/server.ts
+@@ -619,7 +619,11 @@
+ // or behind a given surface splice into this array instead of editing the
+ // dispatcher body.
+ const COMPAT_ROUTE_CHAIN: readonly CompatRouteChainEntry[] = [
+-  { id: "cloud-google-delegation", handler: ({req,res,state}) => handleCloudGoogleDelegationRoute(req,res,state.current) },
++  {
++    id: "cloud-google-delegation",
++    handler: ({ req, res, state }) =>
++      handleCloudGoogleDelegationRoute(req, res, state.current),
++  },
+   {
+     // Runtime mode introspection: UI shells hit this on boot for the
+     // useRuntimeMode() hook.
+--- a/packages/cloud/shared/src/lib/services/agent-google-connector/inbox-provider.http.integration.test.ts
++++ b/packages/cloud/shared/src/lib/services/agent-google-connector/inbox-provider.http.integration.test.ts
+@@ -1,8 +1,8 @@
+ import { afterAll, expect, test } from "bun:test";
+ import { readFileSync } from "node:fs";
+ import { PGlite } from "@electric-sql/pglite";
++import { type SQL, sql } from "drizzle-orm";
+ import { PgDialect } from "drizzle-orm/pg-core";
+-import { sql, type SQL } from "drizzle-orm";
+ import { createInboxOperationRoutes } from "./inbox-operation-routes";
+ import { DefiniteProviderRejection, InboxContractError, InboxReceipts } from "./inbox-receipts";
+ 
+--- a/packages/cloud/shared/src/lib/services/managed-cloud-owner-config.integration.test.ts
++++ b/packages/cloud/shared/src/lib/services/managed-cloud-owner-config.integration.test.ts
+@@ -1,133 +1,144 @@
++import { exportJWK, generateKeyPair } from "jose";
+ import { expect, test, vi } from "vitest";
+-import { generateKeyPair, exportJWK } from "jose";
++import { _resetOidcKeyCacheForTests } from "../oidc/keys";
+ import { runWithCloudBindingsAsync } from "../runtime/cloud-bindings";
+-import { _resetOidcKeyCacheForTests } from "../oidc/keys";
+ import { MANAGED_CLOUD_OWNER_KEYS } from "./managed-cloud-owner-config";
+ import {
+-	prepareManagedElizaBaseEnvironment,
+-	findReservedManagedElizaEnvKeys,
++  findReservedManagedElizaEnvKeys,
++  prepareManagedElizaBaseEnvironment,
+ } from "./managed-eliza-config";
++
+ vi.mock("./api-keys", () => ({
+-	apiKeysService: {
+-		createForAgent: vi.fn(async () => ({
+-			plainKey: "synthetic-agent-key",
+-			revokedKeyHashes: [],
+-		})),
+-	},
++  apiKeysService: {
++    createForAgent: vi.fn(async () => ({
++      plainKey: "synthetic-agent-key",
++      revokedKeyHashes: [],
++    })),
++  },
+ }));
+ const owner = {
+-	agentSandboxId: "11111111-1111-4111-8111-111111111111",
+-	userId: "22222222-2222-4222-8222-222222222222",
+-	organizationId: "33333333-3333-4333-8333-333333333333",
++  agentSandboxId: "11111111-1111-4111-8111-111111111111",
++  userId: "22222222-2222-4222-8222-222222222222",
++  organizationId: "33333333-3333-4333-8333-333333333333",
+ };
+ test("provision, restart, transfer and removal preserve owner and isolate confidential client", async () => {
+-	const { privateKey } = await generateKeyPair("ES256", { extractable: true });
+-	const jwk = await exportJWK(privateKey);
+-	const env = {
+-		OIDC_ENABLED: "true",
+-		OIDC_ISSUER_URL: "https://identity.example.invalid",
+-		OIDC_SIGNING_JWKS: JSON.stringify([
+-			{ ...jwk, kid: "fixture", alg: "ES256" },
+-		]),
+-		ELIZA_CLOUD_AGENT_BASE_DOMAIN: "agents.example.invalid",
+-		ELIZA_CLOUD_DELEGATION_AGENT_ALLOWLIST: JSON.stringify([
+-			{
+-				agentId: owner.agentSandboxId,
+-				ownerId: owner.userId,
+-				organizationId: owner.organizationId,
+-			},
+-		]),
+-		ELIZA_CLOUD_DELEGATION_APP_ID: "44444444-4444-4444-8444-444444444444",
+-		ELIZA_CLOUD_DELEGATION_CLIENT_ID: "55555555-5555-4555-8555-555555555555",
+-		ELIZA_CLOUD_DELEGATION_CLIENT_SECRET: "synthetic-client-secret",
+-		ELIZA_CLOUD_DELEGATION_REDIRECT_URI:
+-			"https://phone.example.invalid/delegation-return.html",
+-		ELIZA_CLOUD_DELEGATION_SITE_URL: "https://cloud.example.invalid",
+-		ELIZA_CLOUD_DELEGATION_API_URL: "https://api.example.invalid/api/v1",
+-	};
+-	const prepare = (
+-		settings: Record<string, string>,
+-		identity = owner,
+-		existingEnv: Record<string, string> = {},
+-	) =>
+-		runWithCloudBindingsAsync(settings, () =>
+-			prepareManagedElizaBaseEnvironment({ ...identity, existingEnv }),
+-		);
+-	try {
+-		const fresh = await prepare(env);
+-		expect(fresh.environmentVars).toMatchObject({
+-			ELIZA_CLOUD_OWNER_ID: owner.userId,
+-			ELIZA_CLOUD_ORGANIZATION_ID: owner.organizationId,
+-			ELIZA_CLOUD_AGENT_ID: owner.agentSandboxId,
+-			ELIZA_CLOUD_OWNER_ISSUER: env.OIDC_ISSUER_URL,
+-			ELIZA_CLOUD_OWNER_JWKS_URL:
+-				env.OIDC_ISSUER_URL + "/.well-known/oidc/jwks.json",
+-			ELIZA_CLOUD_OWNER_ALGORITHM: "ES256",
+-			ELIZA_CLOUD_OWNER_AUDIENCE:
+-				"https://" + owner.agentSandboxId + ".agents.example.invalid",
+-			ELIZA_CLOUD_DELEGATION_CLIENT_SECRET: "synthetic-client-secret",
+-		});
+-		expect(fresh.environmentVars).not.toHaveProperty("OIDC_SIGNING_JWKS");
+-		expect(fresh.environmentVars).not.toHaveProperty(
+-			"ELIZA_CLOUD_DELEGATION_AGENT_ALLOWLIST",
+-		);
+-		const poisoned = {
+-			...fresh.environmentVars,
+-			ELIZA_CLOUD_OWNER_ID: "attacker",
+-			ELIZA_CLOUD_OWNER_AUDIENCE: "https://attacker.invalid",
+-			ELIZA_CLOUD_DELEGATION_CLIENT_SECRET: "attacker",
+-		};
+-		const restart = await prepare(env, owner, poisoned);
+-		expect(restart.environmentVars.ELIZA_CLOUD_OWNER_ID).toBe(owner.userId);
+-		expect(restart.environmentVars.ELIZA_CLOUD_DELEGATION_CLIENT_SECRET).toBe(
+-			"synthetic-client-secret",
+-		);
+-		expect(restart.environmentVars.ELIZA_CLOUD_OWNER_AUDIENCE).toBe(
+-			fresh.environmentVars.ELIZA_CLOUD_OWNER_AUDIENCE,
+-		);
+-		const transferred = await prepare(
+-			env,
+-			{ ...owner, userId: "66666666-6666-4666-8666-666666666666" },
+-			fresh.environmentVars,
+-		);
+-		expect(transferred.environmentVars).not.toHaveProperty(
+-			"ELIZA_CLOUD_DELEGATION_CLIENT_SECRET",
+-		);
+-		expect(transferred.environmentVars.ELIZA_CLOUD_OWNER_ID).toBe(
+-			"66666666-6666-4666-8666-666666666666",
+-		);
+-		const removed = await prepare(
+-			{ ...env, ELIZA_CLOUD_DELEGATION_AGENT_ALLOWLIST: "" },
+-			owner,
+-			fresh.environmentVars,
+-		);
+-		expect(removed.environmentVars).not.toHaveProperty(
+-			"ELIZA_CLOUD_DELEGATION_CLIENT_SECRET",
+-		);
+-		const disabled = await prepare(
+-			{ ...env, OIDC_ENABLED: "false" },
+-			owner,
+-			fresh.environmentVars,
+-		);
+-		for (const key of MANAGED_CLOUD_OWNER_KEYS)
+-			expect(disabled.environmentVars).not.toHaveProperty(key);
+-		await expect(
+-			prepare({ ...env, ELIZA_CLOUD_DELEGATION_CLIENT_SECRET: "" }),
+-		).rejects.toThrow("incomplete");
+-		expect(findReservedManagedElizaEnvKeys(MANAGED_CLOUD_OWNER_KEYS)).toEqual([
+-			...MANAGED_CLOUD_OWNER_KEYS,
+-		]);
+-	} finally {
+-		_resetOidcKeyCacheForTests();
+-	}
++  const { privateKey } = await generateKeyPair("ES256", { extractable: true });
++  const jwk = await exportJWK(privateKey);
++  const env = {
++    OIDC_ENABLED: "true",
++    OIDC_ISSUER_URL: "https://identity.example.invalid",
++    OIDC_SIGNING_JWKS: JSON.stringify([{ ...jwk, kid: "fixture", alg: "ES256" }]),
++    ELIZA_CLOUD_AGENT_BASE_DOMAIN: "agents.example.invalid",
++    ELIZA_CLOUD_DELEGATION_AGENT_ALLOWLIST: JSON.stringify([
++      {
++        agentId: owner.agentSandboxId,
++        ownerId: owner.userId,
++        organizationId: owner.organizationId,
++      },
++    ]),
++    ELIZA_CLOUD_DELEGATION_APP_ID: "44444444-4444-4444-8444-444444444444",
++    ELIZA_CLOUD_DELEGATION_CLIENT_ID: "55555555-5555-4555-8555-555555555555",
++    ELIZA_CLOUD_DELEGATION_CLIENT_SECRET: "synthetic-client-secret",
++    ELIZA_CLOUD_DELEGATION_REDIRECT_URI: "https://phone.example.invalid/delegation-return.html",
++    ELIZA_CLOUD_DELEGATION_SITE_URL: "https://cloud.example.invalid",
++    ELIZA_CLOUD_DELEGATION_API_URL: "https://api.example.invalid/api/v1",
++  };
++  const prepare = (
++    settings: Record<string, string>,
++    identity = owner,
++    existingEnv: Record<string, string> = {},
++  ) =>
++    runWithCloudBindingsAsync(settings, () =>
++      prepareManagedElizaBaseEnvironment({ ...identity, existingEnv }),
++    );
++  try {
++    const fresh = await prepare(env);
++    expect(fresh.environmentVars).toMatchObject({
++      ELIZA_CLOUD_OWNER_ID: owner.userId,
++      ELIZA_CLOUD_ORGANIZATION_ID: owner.organizationId,
++      ELIZA_CLOUD_AGENT_ID: owner.agentSandboxId,
++      ELIZA_CLOUD_OWNER_ISSUER: env.OIDC_ISSUER_URL,
++      ELIZA_CLOUD_OWNER_JWKS_URL: env.OIDC_ISSUER_URL + "/.well-known/oidc/jwks.json",
++      ELIZA_CLOUD_OWNER_ALGORITHM: "ES256",
++      ELIZA_CLOUD_OWNER_AUDIENCE: "https://" + owner.agentSandboxId + ".agents.example.invalid",
++      ELIZA_CLOUD_DELEGATION_CLIENT_SECRET: "synthetic-client-secret",
++    });
++    expect(fresh.environmentVars).not.toHaveProperty("OIDC_SIGNING_JWKS");
++    expect(fresh.environmentVars).not.toHaveProperty("ELIZA_CLOUD_DELEGATION_AGENT_ALLOWLIST");
++    const poisoned = {
++      ...fresh.environmentVars,
++      ELIZA_CLOUD_OWNER_ID: "attacker",
++      ELIZA_CLOUD_OWNER_AUDIENCE: "https://attacker.invalid",
++      ELIZA_CLOUD_DELEGATION_CLIENT_SECRET: "attacker",
++    };
++    const restart = await prepare(env, owner, poisoned);
++    expect(restart.environmentVars.ELIZA_CLOUD_OWNER_ID).toBe(owner.userId);
++    expect(restart.environmentVars.ELIZA_CLOUD_DELEGATION_CLIENT_SECRET).toBe(
++      "synthetic-client-secret",
++    );
++    expect(restart.environmentVars.ELIZA_CLOUD_OWNER_AUDIENCE).toBe(
++      fresh.environmentVars.ELIZA_CLOUD_OWNER_AUDIENCE,
++    );
++    const transferred = await prepare(
++      env,
++      { ...owner, userId: "66666666-6666-4666-8666-666666666666" },
++      fresh.environmentVars,
++    );
++    expect(transferred.environmentVars).not.toHaveProperty("ELIZA_CLOUD_DELEGATION_CLIENT_SECRET");
++    expect(transferred.environmentVars.ELIZA_CLOUD_OWNER_ID).toBe(
++      "66666666-6666-4666-8666-666666666666",
++    );
++    const removed = await prepare(
++      { ...env, ELIZA_CLOUD_DELEGATION_AGENT_ALLOWLIST: "" },
++      owner,
++      fresh.environmentVars,
++    );
++    expect(removed.environmentVars).not.toHaveProperty("ELIZA_CLOUD_DELEGATION_CLIENT_SECRET");
++    const disabled = await prepare({ ...env, OIDC_ENABLED: "false" }, owner, fresh.environmentVars);
++    for (const key of MANAGED_CLOUD_OWNER_KEYS)
++      expect(disabled.environmentVars).not.toHaveProperty(key);
++    await expect(prepare({ ...env, ELIZA_CLOUD_DELEGATION_CLIENT_SECRET: "" })).rejects.toThrow(
++      "incomplete",
++    );
++    expect(findReservedManagedElizaEnvKeys(MANAGED_CLOUD_OWNER_KEYS)).toEqual([
++      ...MANAGED_CLOUD_OWNER_KEYS,
++    ]);
++  } finally {
++    _resetOidcKeyCacheForTests();
++  }
+ }, 30000);
+ 
+-vi.mock('./field-encryption',()=>({fieldEncryption:{isEncrypted:(value:string)=>value.startsWith('enc:v1:'),encrypt:vi.fn(async(_org:string,value:string)=>'enc:v1:'+Buffer.from(value).toString('base64')),decrypt:vi.fn(async(value:string)=>Buffer.from(value.slice(7),'base64').toString())}}));
+-test('confidential registered-client secret stays encrypted across storage and materialization',async()=>{
+- const {isSensitiveAgentEnvKey,encryptAgentEnvVarsForStorage,decryptAgentEnvVars}=await import('./agent-env-crypto');
+- expect(isSensitiveAgentEnvKey('ELIZA_CLOUD_DELEGATION_CLIENT_SECRET')).toBe(true);
+- const clear={ELIZA_CLOUD_DELEGATION_CLIENT_SECRET:'synthetic-client-secret',ELIZA_CLOUD_DELEGATION_CLIENT_ID:'public-id'};
+- try{vi.stubEnv('SECRETS_MASTER_KEY','');await expect(encryptAgentEnvVarsForStorage(owner.organizationId,clear)).rejects.toThrow('requires encrypted');
+- vi.stubEnv('SECRETS_MASTER_KEY','fixture-key-present');const stored=await encryptAgentEnvVarsForStorage(owner.organizationId,clear);expect(stored.ELIZA_CLOUD_DELEGATION_CLIENT_SECRET).not.toBe(clear.ELIZA_CLOUD_DELEGATION_CLIENT_SECRET);expect(stored.ELIZA_CLOUD_DELEGATION_CLIENT_ID).toBe('public-id');expect(await encryptAgentEnvVarsForStorage(owner.organizationId,stored)).toEqual(stored);expect(await decryptAgentEnvVars(stored)).toEqual(clear);
+- }finally{vi.unstubAllEnvs();}
++vi.mock("./field-encryption", () => ({
++  fieldEncryption: {
++    isEncrypted: (value: string) => value.startsWith("enc:v1:"),
++    encrypt: vi.fn(
++      async (_org: string, value: string) => "enc:v1:" + Buffer.from(value).toString("base64"),
++    ),
++    decrypt: vi.fn(async (value: string) => Buffer.from(value.slice(7), "base64").toString()),
++  },
++}));
++test("confidential registered-client secret stays encrypted across storage and materialization", async () => {
++  const { isSensitiveAgentEnvKey, encryptAgentEnvVarsForStorage, decryptAgentEnvVars } =
++    await import("./agent-env-crypto");
++  expect(isSensitiveAgentEnvKey("ELIZA_CLOUD_DELEGATION_CLIENT_SECRET")).toBe(true);
++  const clear = {
++    ELIZA_CLOUD_DELEGATION_CLIENT_SECRET: "synthetic-client-secret",
++    ELIZA_CLOUD_DELEGATION_CLIENT_ID: "public-id",
++  };
++  try {
++    vi.stubEnv("SECRETS_MASTER_KEY", "");
++    await expect(encryptAgentEnvVarsForStorage(owner.organizationId, clear)).rejects.toThrow(
++      "requires encrypted",
++    );
++    vi.stubEnv("SECRETS_MASTER_KEY", "fixture-key-present");
++    const stored = await encryptAgentEnvVarsForStorage(owner.organizationId, clear);
++    expect(stored.ELIZA_CLOUD_DELEGATION_CLIENT_SECRET).not.toBe(
++      clear.ELIZA_CLOUD_DELEGATION_CLIENT_SECRET,
++    );
++    expect(stored.ELIZA_CLOUD_DELEGATION_CLIENT_ID).toBe("public-id");
++    expect(await encryptAgentEnvVarsForStorage(owner.organizationId, stored)).toEqual(stored);
++    expect(await decryptAgentEnvVars(stored)).toEqual(clear);
++  } finally {
++    vi.unstubAllEnvs();
++  }
+ });
+--- a/packages/cloud/shared/src/lib/services/managed-cloud-owner-config.ts
++++ b/packages/cloud/shared/src/lib/services/managed-cloud-owner-config.ts
+@@ -1,141 +1,134 @@
+ /** Trusted control-plane configuration only; never derived from user environment variables. */
++
++import { getAgentBaseDomain, getConfiguredElizaAgentPublicWebUiUrl } from "../eliza-agent-web-ui";
+ import { resolveOidcConfig } from "../oidc/config";
+ import { getOidcSigner } from "../oidc/keys";
+-import {
+-	getConfiguredElizaAgentPublicWebUiUrl,
+-	getAgentBaseDomain,
+-} from "../eliza-agent-web-ui";
+ import { getCloudAwareEnv } from "../runtime/cloud-bindings";
+ 
+ export const MANAGED_CLOUD_OWNER_KEYS = [
+-	"ELIZA_CLOUD_OWNER_ISSUER",
+-	"ELIZA_CLOUD_OWNER_JWKS_URL",
+-	"ELIZA_CLOUD_OWNER_AUDIENCE",
+-	"ELIZA_CLOUD_OWNER_ALGORITHM",
+-	"ELIZA_CLOUD_OWNER_ID",
+-	"ELIZA_CLOUD_ORGANIZATION_ID",
+-	"ELIZA_CLOUD_DELEGATION_APP_ID",
+-	"ELIZA_CLOUD_DELEGATION_CLIENT_ID",
+-	"ELIZA_CLOUD_DELEGATION_CLIENT_SECRET",
+-	"ELIZA_CLOUD_DELEGATION_REDIRECT_URI",
+-	"ELIZA_CLOUD_DELEGATION_SITE_URL",
+-	"ELIZA_CLOUD_DELEGATION_API_URL",
+-	"ELIZA_CLOUD_DELEGATION_AGENT_ALLOWLIST",
++  "ELIZA_CLOUD_OWNER_ISSUER",
++  "ELIZA_CLOUD_OWNER_JWKS_URL",
++  "ELIZA_CLOUD_OWNER_AUDIENCE",
++  "ELIZA_CLOUD_OWNER_ALGORITHM",
++  "ELIZA_CLOUD_OWNER_ID",
++  "ELIZA_CLOUD_ORGANIZATION_ID",
++  "ELIZA_CLOUD_DELEGATION_APP_ID",
++  "ELIZA_CLOUD_DELEGATION_CLIENT_ID",
++  "ELIZA_CLOUD_DELEGATION_CLIENT_SECRET",
++  "ELIZA_CLOUD_DELEGATION_REDIRECT_URI",
++  "ELIZA_CLOUD_DELEGATION_SITE_URL",
++  "ELIZA_CLOUD_DELEGATION_API_URL",
++  "ELIZA_CLOUD_DELEGATION_AGENT_ALLOWLIST",
+ ] as const;
+ const delegationKeys = MANAGED_CLOUD_OWNER_KEYS.slice(6, 12);
+-const uuid =
+-	/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
++const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+ interface Owner {
+-	agentSandboxId: string;
+-	userId: string;
+-	organizationId: string;
++  agentSandboxId: string;
++  userId: string;
++  organizationId: string;
+ }
+ function validOwner(owner: Owner) {
+-	return [owner.agentSandboxId, owner.userId, owner.organizationId].every((x) =>
+-		uuid.test(x),
+-	);
++  return [owner.agentSandboxId, owner.userId, owner.organizationId].every((x) => uuid.test(x));
+ }
+ 
+ /** A triple allowlist prevents transfer or another agent from inheriting a confidential client. */
+ export function selectedManagedDelegation(
+-	owner: Owner,
+-	env: NodeJS.ProcessEnv,
++  owner: Owner,
++  env: NodeJS.ProcessEnv,
+ ): Record<string, string> {
+-	const raw = env.ELIZA_CLOUD_DELEGATION_AGENT_ALLOWLIST;
+-	if (!raw) return {};
+-	let entries: unknown;
+-	try {
+-		entries = JSON.parse(raw);
+-	} catch {
+-		throw Error("Managed delegation allowlist is invalid");
+-	}
+-	if (
+-		!Array.isArray(entries) ||
+-		entries.length > 1000 ||
+-		entries.some(
+-			(x) =>
+-				!x ||
+-				typeof x !== "object" ||
+-				Object.keys(x).some(
+-					(k) => !["agentId", "ownerId", "organizationId"].includes(k),
+-				) ||
+-				![x.agentId, x.ownerId, x.organizationId].every(
+-					(v) => typeof v === "string" && uuid.test(v),
+-				),
+-		)
+-	)
+-		throw Error("Managed delegation allowlist is invalid");
+-	if (
+-		!entries.some(
+-			(x) =>
+-				x.agentId === owner.agentSandboxId &&
+-				x.ownerId === owner.userId &&
+-				x.organizationId === owner.organizationId,
+-		)
+-	)
+-		return {};
+-	const result: Record<string, string> = {};
+-	for (const key of delegationKeys) {
+-		const value = env[key];
+-		if (typeof value !== "string" || !value.trim() || value.length > 16384)
+-			throw Error("Managed delegation configuration is incomplete");
+-		result[key] = value;
+-	}
+-	if (
+-		!uuid.test(result.ELIZA_CLOUD_DELEGATION_APP_ID) ||
+-		!uuid.test(result.ELIZA_CLOUD_DELEGATION_CLIENT_ID)
+-	)
+-		throw Error("Managed delegation registration is invalid");
+-	for (const key of [
+-		"ELIZA_CLOUD_DELEGATION_REDIRECT_URI",
+-		"ELIZA_CLOUD_DELEGATION_SITE_URL",
+-		"ELIZA_CLOUD_DELEGATION_API_URL",
+-	]) {
+-		let u: URL;
+-		try {
+-			u = new URL(result[key]);
+-		} catch {
+-			throw Error("Managed delegation URL is invalid");
+-		}
+-		if (
+-			u.protocol !== "https:" ||
+-			u.username ||
+-			u.password ||
+-			u.hash ||
+-			u.search
+-		)
+-			throw Error("Managed delegation URL is invalid");
+-	}
+-	return result;
++  const raw = env.ELIZA_CLOUD_DELEGATION_AGENT_ALLOWLIST;
++  if (!raw) return {};
++  let entries: unknown;
++  try {
++    entries = JSON.parse(raw);
++  } catch {
++    throw Error("Managed delegation allowlist is invalid");
++  }
++  if (
++    !Array.isArray(entries) ||
++    entries.length > 1000 ||
++    entries.some(
++      (x) =>
++        !x ||
++        typeof x !== "object" ||
++        Object.keys(x).some((k) => !["agentId", "ownerId", "organizationId"].includes(k)) ||
++        ![x.agentId, x.ownerId, x.organizationId].every(
++          (v) => typeof v === "string" && uuid.test(v),
++        ),
++    )
++  )
++    throw Error("Managed delegation allowlist is invalid");
++  if (
++    !entries.some(
++      (x) =>
++        x.agentId === owner.agentSandboxId &&
++        x.ownerId === owner.userId &&
++        x.organizationId === owner.organizationId,
++    )
++  )
++    return {};
++  const result: Record<string, string> = {};
++  for (const key of delegationKeys) {
++    const value = env[key];
++    if (typeof value !== "string" || !value.trim() || value.length > 16384)
++      throw Error("Managed delegation configuration is incomplete");
++    result[key] = value;
++  }
++  if (
++    !uuid.test(result.ELIZA_CLOUD_DELEGATION_APP_ID) ||
++    !uuid.test(result.ELIZA_CLOUD_DELEGATION_CLIENT_ID)
++  )
++    throw Error("Managed delegation registration is invalid");
++  for (const key of [
++    "ELIZA_CLOUD_DELEGATION_REDIRECT_URI",
++    "ELIZA_CLOUD_DELEGATION_SITE_URL",
++    "ELIZA_CLOUD_DELEGATION_API_URL",
++  ]) {
++    let u: URL;
++    try {
++      u = new URL(result[key]);
++    } catch {
++      throw Error("Managed delegation URL is invalid");
++    }
++    if (u.protocol !== "https:" || u.username || u.password || u.hash || u.search)
++      throw Error("Managed delegation URL is invalid");
++  }
++  return result;
+ }
+ 
+ export async function prepareManagedCloudOwnerEnvironment(
+-	owner: Owner,
++  owner: Owner,
+ ): Promise<Record<string, string>> {
+-	const env = getCloudAwareEnv(),
+-		config = resolveOidcConfig({OIDC_ENABLED:env.OIDC_ENABLED,OIDC_ISSUER_URL:env.OIDC_ISSUER_URL,ELIZA_ONBOARDING_LOGIN_APP_URL:env.ELIZA_ONBOARDING_LOGIN_APP_URL,ELIZA_CLOUD_URL:env.ELIZA_CLOUD_URL,NEXT_PUBLIC_APP_URL:env.NEXT_PUBLIC_APP_URL,OIDC_WALLET_EMAIL_DOMAIN:env.OIDC_WALLET_EMAIL_DOMAIN});
+-	// An unconfigured issuer leaves proof authentication unavailable; no shared-key fallback.
+-	if (!config || !config.issuer.startsWith("https:") || !validOwner(owner))
+-		return {};
+-	const audience = getConfiguredElizaAgentPublicWebUiUrl(
+-		{ id: owner.agentSandboxId },
+-		env.ELIZA_CLOUD_AGENT_BASE_DOMAIN ?? getAgentBaseDomain(),
+-	);
+-	if (!audience || new URL(audience).protocol !== "https:") return {};
+-	let algorithm: string;
+-	try {
+-		algorithm = (await getOidcSigner()).alg;
+-	} catch {
+-		return {};
+-	}
+-	if (!["ES256", "RS256"].includes(algorithm)) return {};
+-	return {
+-		ELIZA_CLOUD_OWNER_ISSUER: config.issuer,
+-		ELIZA_CLOUD_OWNER_JWKS_URL: config.jwksUrl,
+-		ELIZA_CLOUD_OWNER_AUDIENCE: new URL(audience).origin,
+-		ELIZA_CLOUD_OWNER_ALGORITHM: algorithm,
+-		ELIZA_CLOUD_OWNER_ID: owner.userId,
+-		ELIZA_CLOUD_ORGANIZATION_ID: owner.organizationId,
+-		...selectedManagedDelegation(owner, env),
+-	};
++  const env = getCloudAwareEnv(),
++    config = resolveOidcConfig({
++      OIDC_ENABLED: env.OIDC_ENABLED,
++      OIDC_ISSUER_URL: env.OIDC_ISSUER_URL,
++      ELIZA_ONBOARDING_LOGIN_APP_URL: env.ELIZA_ONBOARDING_LOGIN_APP_URL,
++      ELIZA_CLOUD_URL: env.ELIZA_CLOUD_URL,
++      NEXT_PUBLIC_APP_URL: env.NEXT_PUBLIC_APP_URL,
++      OIDC_WALLET_EMAIL_DOMAIN: env.OIDC_WALLET_EMAIL_DOMAIN,
++    });
++  // An unconfigured issuer leaves proof authentication unavailable; no shared-key fallback.
++  if (!config || !config.issuer.startsWith("https:") || !validOwner(owner)) return {};
++  const audience = getConfiguredElizaAgentPublicWebUiUrl(
++    { id: owner.agentSandboxId },
++    env.ELIZA_CLOUD_AGENT_BASE_DOMAIN ?? getAgentBaseDomain(),
++  );
++  if (!audience || new URL(audience).protocol !== "https:") return {};
++  let algorithm: string;
++  try {
++    algorithm = (await getOidcSigner()).alg;
++  } catch {
++    return {};
++  }
++  if (!["ES256", "RS256"].includes(algorithm)) return {};
++  return {
++    ELIZA_CLOUD_OWNER_ISSUER: config.issuer,
++    ELIZA_CLOUD_OWNER_JWKS_URL: config.jwksUrl,
++    ELIZA_CLOUD_OWNER_AUDIENCE: new URL(audience).origin,
++    ELIZA_CLOUD_OWNER_ALGORITHM: algorithm,
++    ELIZA_CLOUD_OWNER_ID: owner.userId,
++    ELIZA_CLOUD_ORGANIZATION_ID: owner.organizationId,
++    ...selectedManagedDelegation(owner, env),
++  };
+ }
+--- a/packages/cloud/shared/src/lib/services/managed-eliza-config.ts
++++ b/packages/cloud/shared/src/lib/services/managed-eliza-config.ts
+@@ -1,4 +1,3 @@
+-import { MANAGED_CLOUD_OWNER_KEYS, prepareManagedCloudOwnerEnvironment } from "./managed-cloud-owner-config";
+ /** Produces managed-agent credentials, routing hints and embedding compatibility pins without migrating stored vectors. */
+ import crypto from "node:crypto";
+ import { ElizaError } from "@elizaos/core";
+@@ -8,6 +7,10 @@
+ import { CEREBRAS_DEFAULT_TEXT_LARGE_MODEL, CEREBRAS_DEFAULT_TEXT_SMALL_MODEL } from "../models";
+ import { getCloudAwareEnv } from "../runtime/cloud-bindings";
+ import { apiKeysService } from "./api-keys";
++import {
++  MANAGED_CLOUD_OWNER_KEYS,
++  prepareManagedCloudOwnerEnvironment,
++} from "./managed-cloud-owner-config";
+ import { findReservedEnvKeys, RESERVED_PLATFORM_ENV_KEYS } from "./reserved-env-keys";
+ 
+ const DEFAULT_ELIZA_APP_URL = EXTERNAL_URLS.app;
+--- a/plugins/plugin-elizacloud/__tests__/cloud-google-delegation.http.test.ts
++++ b/plugins/plugin-elizacloud/__tests__/cloud-google-delegation.http.test.ts
+@@ -1,19 +1,19 @@
+ /** Real HTTP + disk PGlite lifecycle. Cloud policy/Google responses are explicit fixtures. */
+-import { randomUUID, randomBytes } from "node:crypto";
++import { randomBytes, randomUUID } from "node:crypto";
+ import { mkdtemp, rm } from "node:fs/promises";
++import http from "node:http";
+ import { tmpdir } from "node:os";
+ import { join } from "node:path";
+-import http from "node:http";
+ import { PGlite } from "@electric-sql/pglite";
++import { AppDelegationClient } from "@elizaos/cloud-sdk/app-delegation";
++import type { UUID } from "@elizaos/core";
++import type { NodePgDatabase } from "drizzle-orm/node-postgres";
+ import { drizzle } from "drizzle-orm/pglite";
+-import type { NodePgDatabase } from "drizzle-orm/node-postgres";
+-import type { UUID } from "@elizaos/core";
+-import { AppDelegationClient } from "@elizaos/cloud-sdk/app-delegation";
+ import { expect, test } from "vitest";
++import { ConnectorCredentialStoreService } from "../../../packages/agent/src/services/connector-credential-store";
+ import { createVault, inMemoryMasterKey, type Vault } from "../../../packages/auth/src/vault/index";
+-import { ConnectorCredentialStoreService } from "../../../packages/agent/src/services/connector-credential-store";
++import { DelegationRecordStore } from "../src/db/delegation-records";
+ import { CloudGoogleDelegation } from "../src/services/cloud-google-delegation";
+-import { DelegationRecordStore } from "../src/db/delegation-records";
+ 
+ test("reviewed delegation survives database restart, rejects owner/replay/rotation and revokes before remote retry", async () => {
+   const directory = await mkdtemp(join(tmpdir(), "cloud-delegation-http-")),
+@@ -90,7 +90,7 @@
+                 connected: true,
+                 identity: { email: "fixture@example.invalid" },
+                 reason: "connected",
+-                grantedCapabilities: grantScopes.filter(s => s !== "identity"),
++                grantedCapabilities: grantScopes.filter((s) => s !== "identity"),
+               },
+             ],
+           });
+@@ -106,7 +106,21 @@
+           expect(body.body).toBeUndefined();
+           const url = new URL(body.url);
+           if (url.origin === "https://www.googleapis.com") {
+-            return send(200, url.pathname.endsWith("calendarList") ? {items:[{id:"explicit-calendar",summary:"Calendar"}]} : {items:[{id:"event1",summary:"Fixture event",start:{dateTime:new Date(now).toISOString()},end:{dateTime:new Date(now+3600000).toISOString()}}]});
++            return send(
++              200,
++              url.pathname.endsWith("calendarList")
++                ? { items: [{ id: "explicit-calendar", summary: "Calendar" }] }
++                : {
++                    items: [
++                      {
++                        id: "event1",
++                        summary: "Fixture event",
++                        start: { dateTime: new Date(now).toISOString() },
++                        end: { dateTime: new Date(now + 3600000).toISOString() },
++                      },
++                    ],
++                  }
++            );
+           }
+           expect(url.origin).toBe("https://gmail.googleapis.com");
+           return send(
+@@ -194,15 +208,20 @@
+     expect(
+       await engine.revoke(owner.ownerId, { grantId: grant.grantId, confirmed: true })
+     ).toMatchObject({ revoked: true, remoteRevocation: "retry_required" });
+-    await pg.close();await closeVault();({engine,store}=await open());
+-    expect(await engine.revocations(owner.ownerId)).toMatchObject({grants:[{grantId:grant.grantId}]});expect(await engine.revocations('other')).toEqual({grants:[]});
++    await pg.close();
++    await closeVault();
++    ({ engine, store } = await open());
++    expect(await engine.revocations(owner.ownerId)).toMatchObject({
++      grants: [{ grantId: grant.grantId }],
++    });
++    expect(await engine.revocations("other")).toEqual({ grants: [] });
+     await expect(engine.read(owner.ownerId, selection, now)).rejects.toThrow();
+     expect(reads).toBe(before);
+     revokeFails = false;
+     expect(
+       await engine.revoke(owner.ownerId, { grantId: grant.grantId, confirmed: true })
+     ).toMatchObject({ remoteRevocation: "confirmed" });
+-    expect(await engine.revocations(owner.ownerId)).toEqual({grants:[]});
++    expect(await engine.revocations(owner.ownerId)).toEqual({ grants: [] });
+     wrongSubject = true;
+     const bad = await engine.begin(owner, { confirmed: true, kinds: ["email"] });
+     await expect(
+@@ -228,12 +247,38 @@
+     );
+     expect((await rotated.list(owner.ownerId)).accounts).toHaveLength(0);
+     grantScopes = ["identity", "google.basic_identity", "google.calendar.read"];
+-    const calendarStart = await engine.begin(owner,{confirmed:true,kinds:["calendar"]});
+-    await engine.complete(owner,{state:new URL(calendarStart.authUrl).searchParams.get("state"),code:"calendar-fixture"});
+-    const calendarAccount = (await engine.list(owner.ownerId)).accounts.find(a=>a.kinds.includes("calendar"))!;
+-    expect(await engine.calendars(owner.ownerId,calendarAccount.accountId,calendarAccount.accountRevision)).toMatchObject({calendars:[{calendarId:"explicit-calendar"}]});
+-    expect(await engine.read(owner.ownerId,{...calendarAccount,kind:"calendar",calendarId:"explicit-calendar",windowHours:24,maxItems:10},now)).toMatchObject({events:[{title:"Fixture event"}]});
+-    const cancelStart=await engine.begin(owner,{confirmed:true,kinds:["calendar"]});const cancelState=new URL(cancelStart.authUrl).searchParams.get("state");await engine.cancel(owner,{state:cancelState,confirmed:true});expect(await engine.status(owner,{state:cancelState})).toEqual({status:"failed"});
++    const calendarStart = await engine.begin(owner, { confirmed: true, kinds: ["calendar"] });
++    await engine.complete(owner, {
++      state: new URL(calendarStart.authUrl).searchParams.get("state"),
++      code: "calendar-fixture",
++    });
++    const calendarAccount = (await engine.list(owner.ownerId)).accounts.find((a) =>
++      a.kinds.includes("calendar")
++    )!;
++    expect(
++      await engine.calendars(
++        owner.ownerId,
++        calendarAccount.accountId,
++        calendarAccount.accountRevision
++      )
++    ).toMatchObject({ calendars: [{ calendarId: "explicit-calendar" }] });
++    expect(
++      await engine.read(
++        owner.ownerId,
++        {
++          ...calendarAccount,
++          kind: "calendar",
++          calendarId: "explicit-calendar",
++          windowHours: 24,
++          maxItems: 10,
++        },
++        now
++      )
++    ).toMatchObject({ events: [{ title: "Fixture event" }] });
++    const cancelStart = await engine.begin(owner, { confirmed: true, kinds: ["calendar"] });
++    const cancelState = new URL(cancelStart.authUrl).searchParams.get("state");
++    await engine.cancel(owner, { state: cancelState, confirmed: true });
++    expect(await engine.status(owner, { state: cancelState })).toEqual({ status: "failed" });
+     now += 7 * 86400000 + 1;
+     await expect(
+       engine.read(owner.ownerId, { ...selection, ...nextAccount }, now)
+--- a/plugins/plugin-workflow/__tests__/integration/hosted-live-google-http.test.ts
++++ b/plugins/plugin-workflow/__tests__/integration/hosted-live-google-http.test.ts
+@@ -1,6 +1,7 @@
+ import { randomUUID } from 'node:crypto';
+ import { mkdtemp, rm } from 'node:fs/promises';
+ import http from 'node:http';
++import { createRequire } from 'node:module';
+ import { tmpdir } from 'node:os';
+ import { join } from 'node:path';
+ import {
+@@ -11,7 +12,6 @@
+   ServiceType,
+   TaskService,
+ } from '@elizaos/core';
+-import { createRequire } from 'node:module';
+ import { expect, test } from 'vitest';
+ import { registerTriggerTaskWorker } from '../../../../packages/agent/src/triggers/runtime.ts';
+ import { createRealTestRuntime } from '../../../../packages/app/test/helpers/real-runtime.ts';
+--- a/plugins/plugin-workflow/src/services/hosted-google-source.ts
++++ b/plugins/plugin-workflow/src/services/hosted-google-source.ts
+@@ -62,12 +62,40 @@
+   }>;
+ }
+ interface CloudReads {
+-  list(owner:string):Promise<{accounts:Array<{accountId:string;accountRevision:string;label:string;kinds:string[];expiresAt:string}>}>;
+-  selected(owner:string,accountId:string,revision:string,kind:'email'|'calendar'):Promise<{grant:{expiresAt:number}}>;
+-  calendars(owner:string,accountId:string,revision:string):ReturnType<GoogleReads['listCalendarPage']>;
+-  read(owner:string,selection:HostedGoogleSelection,now:number):Promise<Awaited<ReturnType<GoogleReads['searchMessages']>>|Awaited<ReturnType<GoogleReads['listEventPage']>>>;
+-}
+-function cloudService(runtime:IAgentRuntime){return runtime.getService('cloud_google_delegation') as unknown as CloudReads|null;}
++  list(
++    owner: string
++  ): Promise<{
++    accounts: Array<{
++      accountId: string;
++      accountRevision: string;
++      label: string;
++      kinds: string[];
++      expiresAt: string;
++    }>;
++  }>;
++  selected(
++    owner: string,
++    accountId: string,
++    revision: string,
++    kind: 'email' | 'calendar'
++  ): Promise<{ grant: { expiresAt: number } }>;
++  calendars(
++    owner: string,
++    accountId: string,
++    revision: string
++  ): ReturnType<GoogleReads['listCalendarPage']>;
++  read(
++    owner: string,
++    selection: HostedGoogleSelection,
++    now: number
++  ): Promise<
++    | Awaited<ReturnType<GoogleReads['searchMessages']>>
++    | Awaited<ReturnType<GoogleReads['listEventPage']>>
++  >;
++}
++function cloudService(runtime: IAgentRuntime) {
++  return runtime.getService('cloud_google_delegation') as unknown as CloudReads | null;
++}
+ function unavailable(): never {
+   throw new WorkflowApiError(
+     'Selected hosted Google source is unavailable; reconnect or review its owner and read grant',
+@@ -175,9 +203,14 @@
+   );
+ }
+ export async function listHostedGoogleSources(runtime: IAgentRuntime, owner: string) {
+-  const cloud=cloudService(runtime);
+-  let cloudAccounts:Awaited<ReturnType<CloudReads['list']>>['accounts']=[], cloudState='unattended_delegation_unavailable';
+-  if(cloud)try{cloudAccounts=(await cloud.list(owner)).accounts;cloudState='explicit_delegation_available';}catch{}
++  const cloud = cloudService(runtime);
++  let cloudAccounts: Awaited<ReturnType<CloudReads['list']>>['accounts'] = [],
++    cloudState = 'unattended_delegation_unavailable';
++  if (cloud)
++    try {
++      cloudAccounts = (await cloud.list(owner)).accounts;
++      cloudState = 'explicit_delegation_available';
++    } catch {}
+   const service = runtime.getService('google');
+   if (!service)
+     return {
+@@ -194,28 +227,46 @@
+   return {
+     available: true,
+     cloud: cloudState,
+-    accounts: [...cloudAccounts,...accounts
+-      .filter((a) => authorized(a, owner))
+-      .map((a) => ({
+-        accountId: a.id,
+-        accountRevision: accountRevision(a),
+-        label: a.label ?? a.displayHandle ?? 'Selected Google account',
+-        kinds: [
+-          ...(capabilities(a).includes('gmail.read') ? ['email'] : []),
+-          ...(capabilities(a).includes('calendar.read') ? ['calendar'] : []),
+-        ],
+-      }))
+-      .filter((a) => a.kinds.length > 0)],
++    accounts: [
++      ...cloudAccounts,
++      ...accounts
++        .filter((a) => authorized(a, owner))
++        .map((a) => ({
++          accountId: a.id,
++          accountRevision: accountRevision(a),
++          label: a.label ?? a.displayHandle ?? 'Selected Google account',
++          kinds: [
++            ...(capabilities(a).includes('gmail.read') ? ['email'] : []),
++            ...(capabilities(a).includes('calendar.read') ? ['calendar'] : []),
++          ],
++        }))
++        .filter((a) => a.kinds.length > 0),
++    ],
+   };
+ }
+ export async function assertHostedGoogleSource(
+   runtime: IAgentRuntime,
+   owner: string,
+   input: HostedGoogleSelection,
+-  validUntil?:number
++  validUntil?: number
+ ) {
+   const selected = validateHostedGoogleSelection(input);
+-  if(selected.accountId.startsWith('cloud:')){const cloud=cloudService(runtime);if(!cloud)unavailable();const proof=await cloud.selected(owner,selected.accountId,selected.accountRevision,selected.kind);if(validUntil!==undefined&&(!Number.isFinite(validUntil)||validUntil>proof.grant.expiresAt))unavailable();return selected;}
++  if (selected.accountId.startsWith('cloud:')) {
++    const cloud = cloudService(runtime);
++    if (!cloud) unavailable();
++    const proof = await cloud.selected(
++      owner,
++      selected.accountId,
++      selected.accountRevision,
++      selected.kind
++    );
++    if (
++      validUntil !== undefined &&
++      (!Number.isFinite(validUntil) || validUntil > proof.grant.expiresAt)
++    )
++      unavailable();
++    return selected;
++  }
+   const account = await getConnectorAccountManager(runtime).getAccount(
+     'google',
+     selected.accountId
+@@ -244,7 +295,7 @@
+   const now = options.now ?? Date.now();
+   const service = runtime.getService('google') as unknown as GoogleReads;
+   const operation = selected.accountId.startsWith('cloud:')
+-    ? cloudService(runtime)!.read(owner,selected,now)
++    ? cloudService(runtime)!.read(owner, selected, now)
+     : selected.kind === 'email'
+       ? service.searchMessages({
+           accountId: selected.accountId,
+@@ -349,11 +400,13 @@
+   let timer: ReturnType<typeof setTimeout> | undefined;
+   try {
+     page = await Promise.race([
+-      selected.accountId.startsWith('cloud:')?cloudService(runtime)!.calendars(owner,selected.accountId,selected.accountRevision):service.listCalendarPage({
+-        accountId: selected.accountId,
+-        maxResults: 50,
+-        minAccessRole: 'reader',
+-      }),
++      selected.accountId.startsWith('cloud:')
++        ? cloudService(runtime)!.calendars(owner, selected.accountId, selected.accountRevision)
++        : service.listCalendarPage({
++            accountId: selected.accountId,
++            maxResults: 50,
++            minAccessRole: 'reader',
++          }),
+       new Promise<never>((_, reject) => {
+         timer = setTimeout(() => reject(new Error('Read timeout')), 30000);
+       }),

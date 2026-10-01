@@ -1,0 +1,51 @@
+--- a/packages/agent/src/api/conversation-routes.ts
++++ b/packages/agent/src/api/conversation-routes.ts
+@@ -1261,8 +1261,10 @@
+ }
+ async function establishConversationConnection(
+   descriptor: ConversationConnectionDescriptor,
++  roomName: string,
+ ): Promise<void> {
+   await descriptor.runtime.ensureConnection({
++    roomName,
+     entityId: descriptor.callerEntityId,
+     roomId: descriptor.roomId,
+     worldId: descriptor.worldId,
+@@ -1305,7 +1307,7 @@
+     caller,
+   );
+   await scheduleConversationConnectionEnsure(descriptor, () =>
+-    establishConversationConnection(descriptor),
++    establishConversationConnection(descriptor, conv.title),
+   );
+   assertConversationConnectionRuntime(state.runtime, descriptor);
+   return descriptor;
+@@ -5294,7 +5296,7 @@
+       );
+       try {
+         await scheduleConversationConnectionEnsure(connectionDescriptor, () =>
+-          establishConversationConnection(connectionDescriptor),
++          establishConversationConnection(connectionDescriptor, conv.title),
+         );
+         assertConversationConnectionRuntime(
+           state.runtime,
+--- a/packages/app/src/api/conversation-restore-relaunch.test.ts
++++ b/packages/app/src/api/conversation-restore-relaunch.test.ts
+@@ -297,6 +297,9 @@
+           },
+         );
+         expect(sent.status).toBe(200);
++        expect((await first.runtime.getRoom(conv.roomId))?.name).toBe(
++          "Restart persistence proof",
++        );
+       }
+ 
+       const beforeRestart = await first.runtime.getMemories({
+@@ -328,6 +331,7 @@
+       expect(restored).toBe(1);
+       expect(restartedState.conversations.get(conv.id)).toMatchObject({
+         id: conv.id,
++        title: "Restart persistence proof",
+         roomId: conv.roomId,
+         metadata: {
+           scope: "general",

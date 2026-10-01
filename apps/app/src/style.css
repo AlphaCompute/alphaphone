@@ -242,3 +242,444 @@ header button {
   white-space: nowrap;
   font-size: clamp(34px, 11vw, 50px);
 }
+/* Product workspace: touch-first, adapts from phone to tablet. */
+.shell {
+  max-width: 1440px;
+  margin: auto;
+  padding: 16px 24px;
+  min-height: 100dvh;
+}
+.shell header {
+  padding-bottom: 16px;
+  border-bottom: 1px solid #e5e5e5;
+}
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 12px;
+  letter-spacing: 0.12em;
+}
+.connection {
+  font-size: 12px;
+  color: #555;
+}
+.workspace {
+  display: grid;
+  grid-template-columns: 170px minmax(0, 1fr);
+  gap: 28px;
+  padding-top: 20px;
+}
+nav {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  align-self: start;
+  position: sticky;
+  top: 8px;
+  max-height: calc(100dvh - 90px);
+  overflow: auto;
+}
+nav button {
+  text-align: left;
+  padding: 8px 16px;
+  border-radius: 12px;
+  font-size: 14px;
+}
+nav button[aria-current="page"] {
+  background: #0000ff;
+  color: white;
+}
+.content {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+.view {
+  min-height: 55dvh;
+}
+h1 {
+  font-family: Fraunces, serif;
+  font-size: 36px;
+  font-weight: 400;
+  margin: 8px 0;
+}
+h2 {
+  font-size: 20px;
+  font-weight: 600;
+  margin-top: 28px;
+}
+.day-card h2 {
+  font-family: Fraunces, serif;
+  font-size: 50px;
+  margin: 18px 0;
+}
+.intro {
+  max-width: 700px;
+  line-height: 1.6;
+  color: #444;
+}
+.editor {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  max-width: 680px;
+  margin-top: 20px;
+}
+.editor label {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 14px;
+}
+.editor input,
+.editor textarea {
+  width: 100%;
+  font: inherit;
+  line-height: 1.5;
+  border: 1px solid #bbb;
+  border-radius: 10px;
+  padding: 12px;
+  min-height: 48px;
+  background: #fff;
+  color: #111;
+}
+.editor textarea {
+  resize: vertical;
+}
+textarea:focus-visible {
+  outline: 3px solid #0000ff;
+  outline-offset: 2px;
+}
+.primary {
+  background: #0000ff;
+  color: white;
+  border-radius: 12px;
+  padding: 12px 18px;
+  align-self: start;
+}
+.primary:hover {
+  background: #2222be;
+}
+button:disabled {
+  opacity: 0.5;
+  cursor: wait;
+}
+.muted,
+small {
+  font-size: 12px;
+  line-height: 1.6;
+  color: #666;
+}
+.split {
+  display: grid;
+  grid-template-columns: minmax(160px, 1fr) minmax(0, 2fr);
+  gap: 24px;
+}
+.list-item {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  text-align: left;
+  width: 100%;
+  border-bottom: 1px solid #eee;
+  padding: 12px 8px;
+  overflow-wrap: anywhere;
+}
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+.card,
+.selection {
+  background: #f7f7f7;
+  border: 1px solid #eee;
+  border-radius: 18px;
+  padding: 20px;
+  margin-top: 24px;
+}
+.card h2 {
+  margin-top: 0;
+}
+.workflow-step {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border-top: 1px solid #ddd;
+  padding: 8px 0;
+  flex-wrap: wrap;
+}
+.workflow-step span {
+  flex: 1;
+  min-width: 180px;
+}
+.capabilities {
+  list-style: none;
+  padding: 0;
+  max-width: 700px;
+}
+.capabilities li {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid #eee;
+  font-size: 13px;
+}
+.receipt {
+  border-bottom: 1px solid #ddd;
+  padding: 12px 0;
+  font-size: 13px;
+}
+.receipt p {
+  margin: 6px 0;
+}
+.composer {
+  z-index: 2;
+  width: 100%;
+  box-shadow: 0 -6px 15px #fff9;
+}
+.composer .context {
+  font:
+    12px/1.5 "Public Sans",
+    sans-serif;
+  color: #555;
+}
+.composer .notice {
+  margin: 4px 0 0;
+}
+.dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  background: #0007;
+  z-index: 10;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+}
+.dialog {
+  background: white;
+  border-radius: 20px;
+  padding: 24px;
+  max-width: 520px;
+  width: 100%;
+}
+.dialog h2 {
+  margin-top: 0;
+}
+@media (min-width: 1000px) {
+  .apps {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+  }
+  .overview {
+    max-width: 900px;
+  }
+}
+@media (max-width: 700px) {
+  .shell {
+    padding: 12px;
+  }
+  .workspace {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding-top: 12px;
+  }
+  nav {
+    position: static;
+    flex-direction: row;
+    overflow-x: auto;
+    max-width: 100%;
+  }
+  nav button {
+    white-space: nowrap;
+  }
+  .connection {
+    display: none;
+  }
+  .split {
+    grid-template-columns: 1fr;
+  }
+  .split > div:first-child {
+    max-height: 180px;
+    overflow: auto;
+  }
+  .section-title {
+    flex-wrap: wrap;
+    margin-bottom: 8px;
+  }
+  .section-title button {
+    font-size: 12px;
+  }
+  h1 {
+    font-size: 30px;
+  }
+  .composer {
+    bottom: 4px;
+  }
+  .brand {
+    letter-spacing: 0.06em;
+  }
+}
+.photo-preview {
+  display: block;
+  max-width: 100%;
+  max-height: 420px;
+  object-fit: contain;
+  border-radius: 12px;
+}
+.agent-reply,
+.proposal {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 35dvh;
+  overflow: auto;
+  font:
+    14px/1.6 "Public Sans",
+    sans-serif;
+}
+.file-text {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 400px;
+  overflow: auto;
+  background: white;
+  padding: 16px;
+  border-radius: 10px;
+  font:
+    14px/1.6 "Public Sans",
+    sans-serif;
+}
+/* Keep editor actions reachable: the tool scrolls, the assistant owns its row. */
+.shell {
+  height: 100dvh;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.shell > header {
+  flex-shrink: 0;
+}
+.workspace {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+.content {
+  min-height: 0;
+  overflow: hidden;
+}
+.view {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 0 4px 20px;
+  overscroll-behavior: contain;
+}
+.composer {
+  position: relative;
+  bottom: auto;
+  margin-top: 0;
+  flex-shrink: 0;
+}
+nav {
+  position: static;
+  max-height: 100%;
+  min-height: 0;
+}
+@media (max-width: 700px) {
+  nav {
+    flex-shrink: 0;
+    max-height: 60px;
+  }
+  .content {
+    flex: 1;
+    gap: 12px;
+  }
+}
+
+.composer {
+  max-height: 65%;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.composer-top,
+.composer form {
+  flex-shrink: 0;
+}
+.composer textarea {
+  width: 100%;
+  min-width: 0;
+  min-height: 48px;
+  max-height: 110px;
+  resize: vertical;
+  background: transparent;
+  border: 0;
+}
+.conversation-history {
+  overflow: auto;
+  min-height: 0;
+  overscroll-behavior: contain;
+}
+.conversation-history .agent-reply,
+.conversation-history .proposal {
+  max-height: none;
+  overflow: visible;
+}
+.composer .notice {
+  max-height: 4.5em;
+  overflow: auto;
+  flex-shrink: 0;
+}
+.selection,
+.notice,
+.context {
+  overflow-wrap: anywhere;
+}
+
+.dialog {
+  max-height: calc(100dvh - 40px);
+  overflow: auto;
+}
+.dialog textarea {
+  width: 100%;
+  min-height: 100px;
+}
+
+.composer-top .return-app {
+  font-size: 12px;
+  padding: 6px;
+  margin-left: 0;
+}
+
+.phone-app-switcher {
+  display: none;
+}
+@media (max-width: 700px) {
+  .workspace > nav {
+    display: none;
+  }
+  .phone-app-switcher {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-shrink: 0;
+    font-weight: 600;
+  }
+  .phone-app-switcher select {
+    min-width: 0;
+    flex: 1;
+    min-height: 48px;
+    padding: 8px 12px;
+    border: 1px solid #d7d7d7;
+    border-radius: 12px;
+    background: white;
+    font: inherit;
+    color: inherit;
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "baseCommit": "45cc570386128bd613e8cc6675d571e0b75331de",
+  "appliesAfter": "0008-workflow-metadata-mutations.patch",
+  "sha256": "e2b0521bb613e5a3579cc7dd23e245ab74b431e8cf6471f9fe6f6f1b4ebf72e2",
+  "applyCheck": "Passed captured post0008 files; parent independently reconstructs4573712 plus0001-9",
+  "migration": "Additive workflow.lifecycle_mutations table. Removed definitions retained with reserved internal metadata and active=false; no receipt/history deletion.",
+  "scope": "Owner/version-bound removal and paused restore, durable mutation receipt, exact workflow trigger cleanup, admission/update/activation row locks, legacy destructive DELETE refused.",
+  "tests": [
+    "Actual HTTP/PGlite lifecycle39 assertions; all four workflow integration cases98 assertions pass",
+    "Actual owner paired47856 six concurrent identical removals one revision, retained completed arithmetic execution, blocked run and activation",
+    "Actual47856 process restart same mutation receipt and execution, explicit restore paused",
+    "Actual adapter HTTP explicit review, removal response loss, recreation, history reachability, account switch and no repeated POST"
+  ],
+  "nativeAcceptance": "Build74 both variants PASS2POST/1GET/1retained execution/2revisions, source and schedule unchanged, restored paused, proxy401 and Activity recreation. test-results/prototype-build74/workflow-lifecycle/result.json"
+}

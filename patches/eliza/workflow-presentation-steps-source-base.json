@@ -1,0 +1,49 @@
+{
+  "bytes": 20536,
+  "sha256": "e9a5c829d1a3552a77481625655669cd632d1f33c989e8a785793455e6a7a3f5",
+  "files": [
+    "packages/agent/src/api/device-action-routes.ts",
+    "plugins/plugin-assistant/src/services/device-actions/contract.ts",
+    "plugins/plugin-assistant/src/services/device-actions/service.ts",
+    "plugins/plugin-assistant/src/services/device-actions/workflow-contract.ts",
+    "plugins/plugin-assistant/src/services/device-actions/workflow-service.ts",
+    "plugins/plugin-workflow/__tests__/integration/device-bridge-e2e.test.ts",
+    "plugins/plugin-workflow/src/services/phone-workflow-spec.ts",
+    "plugins/plugin-workflow/src/services/workflow-service.ts"
+  ],
+  "baseCommit": "4573712ebf0466daa4dfadaa4482704c209d9b8c",
+  "appliesAfter": "0012-workflow-device-bridge.patch",
+  "predecessorSha256": "68fc355a5622cd9d3c0887925e0c439d36c8e676d0c2b7aca4749a33fdedff72",
+  "scope": "Workflow-bound explicitly approved app notifications and foreground read-aloud. Native execution requires enrolled protocol2.",
+  "validation": [
+    "Actual HTTP/PGlite/Smithers/canonical approval queue:60 assertions passed, including protocol downgrade refusal and Notify/Speak dispatch",
+    "Assistant and workflow typecheck/lint:four explicit exit0 results",
+    "Patch reverse apply check passed against isolated source"
+  ],
+  "notVerified": [
+    "Native receipt ingress is synthetic: actual notification posting and speech playback not tested",
+    "Protocol2 phone executor not implemented by this backend patch",
+    "Civil scheduling and remaining Send/Do capabilities remain unavailable",
+    "Whole repo verify, Android, deployed combined/cloud/enclave acceptance not performed",
+    "Earlier0011 lifecycle test timeout remains unresolved"
+  ],
+  "evidenceDirectory": "test-results/workflow-presentation-steps",
+  "wireContract": {
+    "workflowProtocol": 2,
+    "catalogRevision": "phone-workflow-catalog-3",
+    "compilerRevision": "phone-workflow-compiler-3",
+    "notify": {
+      "type": "post_notification",
+      "title": "<=200 chars",
+      "body": "<=2000 chars"
+    },
+    "speak": {
+      "type": "speak_text",
+      "text": "<=5000 chars"
+    },
+    "receipt": "Existing exact workflow bound applied receipt with operationId only after actual native completion. Unknown outcome must not replay."
+  },
+  "upgradeGate": "Do not deploy0013 alone over persisted0012 typed workflows: fixed compiler template source equality requires explicit versioned compiler compatibility patch and persisted upgrade qualification.",
+  "upgradeCompatibilityPatch": "0014-workflow-compiler-compatibility.patch",
+  "upgradeCompatibilitySha256": "e16bebc4188aa11f0d713ac508bd5e468101546182abb18fc035ba027e3295c0"
+}

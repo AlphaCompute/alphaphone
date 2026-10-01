@@ -3,6 +3,7 @@ import { DeviceApps, System, isAndroid, type InstalledApp } from "./native";
 export function useDevice() {
   const [apps, setApps] = useState<InstalledApp[]>([]);
   const [isHome, setIsHome] = useState(false);
+  const [isAssistant, setIsAssistant] = useState(false);
   const [launcher, setLauncher] = useState(false);
   const [notice, setNotice] = useState("");
   const refresh = async () => {
@@ -15,6 +16,9 @@ export function useDevice() {
       ]);
       setApps(list.apps);
       setIsHome(status.roles.some((r) => r.role === "home" && r.held));
+      setIsAssistant(
+        status.roles.some((r) => r.role === "assistant" && r.held),
+      );
       setLauncher(build.launcher);
     } catch {
       setNotice(
@@ -56,8 +60,20 @@ export function useDevice() {
       );
     }
   };
+  const makeAssistant = async () => {
+    try {
+      await System.requestRole({ role: "assistant" });
+      await refresh();
+    } catch {
+      setNotice(
+        "Assistant selection was not completed. Choose a digital assistant in Android settings.",
+      );
+    }
+  };
   return {
     apps,
+    isAssistant,
+    makeAssistant,
     isHome,
     launcher,
     notice,

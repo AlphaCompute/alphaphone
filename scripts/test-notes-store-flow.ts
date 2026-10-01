@@ -1,0 +1,30 @@
+import assert from 'node:assert/strict';
+import {mkdtempSync,readFileSync,writeFileSync,existsSync,rmSync} from 'node:fs';
+import {tmpdir} from 'node:os';
+import {join} from 'node:path';
+import {NotesStore,NotesCommitUncertain,NOTES_KEY,LEGACY_NOTES_KEY} from '../apps/app/src/runtime/notes-store';
+const dir=mkdtempSync(join(tmpdir(),'notes-flow-')),file=join(dir,'storage.json');
+const storage={getItem(key:string){return existsSync(file)?(JSON.parse(readFileSync(file,'utf8'))[key]??null):null;},setItem(key:string,value:string){const values=existsSync(file)?JSON.parse(readFileSync(file,'utf8')):{};values[key]=value;writeFileSync(file,JSON.stringify(values));}};
+const legacy=[{id:'text-1',kind:'text',title:'Original',body:'Prior body',pinned:true,metadata:{retain:'exact'}},{id:'voice-1',kind:'voice',title:'Recording',body:'Transcript',audioId:'audio-private-1',audio:{audioId:'audio-private-1',mimeType:'audio/mp4'},duration:123},{id:'list-1',kind:'list',title:'Checklist',items:[{done:false,label:'Task'}]}];
+const raw=JSON.stringify(legacy);storage.setItem(LEGACY_NOTES_KEY,raw);
+try{
+ let store=new NotesStore(storage);assert.deepEqual(store.list,legacy);assert.equal(storage.getItem(LEGACY_NOTES_KEY),raw);
+ const original=await store.target('text-1'),voice=await store.target('voice-1');
+ store=new NotesStore(storage);assert.deepEqual(await store.target('text-1'),original,'revision survives actual disk reconstruction');
+ const pendingTarget=store.target('text-1');store.replace(store.list.map(n=>n.id==='voice-1'?{...n,pinned:true}:n));assert.deepEqual(await pendingTarget,original,'unrelated edit during async hashing does not lose selection');
+ const signal=new AbortController().signal,authorized=()=>{};
+ store.replace([...store.list,{id:'untitled',kind:'text',title:'',body:'Empty title is valid'}]);const untitled=await store.execute({type:'notes_read_selected',target:await store.target('untitled')},'read-empty',signal,authorized);assert.equal(untitled.fields?.title,'');
+ const read=await store.execute({type:'notes_read_selected',target:original},'read-1',signal,authorized);assert.deepEqual(read.fields,{title:'Original',body:'Prior body'});
+ store.replace([...store.list,{id:'unrelated',kind:'text',title:'Other',body:'Other'}]);assert.deepEqual(await store.target('text-1'),original,'unrelated note does not change revision');
+ const edit=await store.execute({type:'notes_update',target:original,fields:{title:'Changed',body:'Next'}},'edit-1',signal,authorized);assert.notEqual(edit.revision,original.revision);assert.equal(store.list[0].pinned,true);assert.deepEqual(store.list[0].metadata,{retain:'exact'});
+ await assert.rejects(store.execute({type:'notes_update',target:original,fields:{title:'Stale',body:'No'}},'stale',signal,authorized));
+ await assert.rejects(store.execute({type:'notes_update',target:voice,fields:{title:'Converted',body:'No'}},'voice-edit',signal,authorized));assert.equal(store.list.find(n=>n.id==='voice-1')?.audioId,'audio-private-1');
+ const current=await store.target('text-1'),other=new NotesStore(storage);other.replace([...other.list,{id:'concurrent',kind:'text',title:'Concurrent',body:'Keep'}]);await assert.rejects(store.execute({type:'notes_delete',target:current},'raced',signal,authorized));assert.equal(new NotesStore(storage).list.some(n=>n.id==='text-1'),true);
+ store=new NotesStore(storage);const abort=new AbortController();abort.abort();await assert.rejects(store.execute({type:'notes_delete',target:await store.target('text-1')},'revoked',abort.signal,authorized));
+ const deletion=await store.execute({type:'notes_delete',target:await store.target('text-1')},'delete-1',signal,authorized);assert.equal(deletion.revision,current.revision);store=new NotesStore(storage);assert.equal(store.list.some(n=>n.id==='text-1'),false);assert.equal(store.list.find(n=>n.id==='voice-1')?.audioId,'audio-private-1');assert.equal(storage.getItem(LEGACY_NOTES_KEY),raw,'legacy archive never modified or deleted');
+ const uncertain=new NotesStore({...storage,setItem(key:string,value:string){storage.setItem(key,value);throw Error('commit acknowledgement lost');}});await assert.rejects(uncertain.execute({type:'notes_delete',target:await uncertain.target('unrelated')},'uncertain',signal,authorized),NotesCommitUncertain);assert.equal(new NotesStore(storage).list.some(n=>n.id==='unrelated'),false,'ambiguous write is not replayed');
+ const first=new NotesStore(storage),second=new NotesStore(storage),raceTarget=await first.target('concurrent');
+ const outcomes=await Promise.allSettled([first.execute({type:'notes_update',target:raceTarget,fields:{title:'First',body:'One'}},'race-1',signal,authorized),second.execute({type:'notes_update',target:raceTarget,fields:{title:'Second',body:'Two'}},'race-2',signal,authorized)]);assert.equal(outcomes.filter(v=>v.status==='fulfilled').length,1);assert.equal(outcomes.filter(v=>v.status==='rejected').length,1);assert.deepEqual(new NotesStore(storage).list.find(n=>n.id==='voice-1')?.audio,{audioId:'audio-private-1',mimeType:'audio/mp4'});
+ const saved=storage.getItem(NOTES_KEY)!;storage.setItem(NOTES_KEY,'{malformed');assert.throws(()=>new NotesStore(storage));assert.equal(storage.getItem(NOTES_KEY),'{malformed');storage.setItem(NOTES_KEY,saved);
+ console.log('PASS disk-backed Notes full flows: lossless v1 migration, restart-stable revisions, selected read/update/delete, stale/concurrent/aborted refusal, voice association preservation, ambiguous commit reporting and malformed-store preservation.');
+}finally{rmSync(dir,{recursive:true,force:true});}

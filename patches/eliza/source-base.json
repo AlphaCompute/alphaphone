@@ -1,0 +1,75 @@
+{
+  "upstreamRepository": "https://github.com/elizaOS/eliza",
+  "baseCommit": "4573712ebf0466daa4dfadaa4482704c209d9b8c",
+  "implementationCommit": "45cc570386128bd613e8cc6675d571e0b75331de",
+  "implementationBranch": "codex/alpha-phone-device-actions",
+  "patch": "0001-durable-device-actions.patch",
+  "sha256": "f617b97c8e9a53dad2ba6c1bc16b766f92c90da6b1a5da3d96ea86491acd0be2",
+  "reviewedAt": "2026-09-30T06:12:52.969727+00:00",
+  "applyCheck": {
+    "status": "passed",
+    "targetCommit": "4573712ebf0466daa4dfadaa4482704c209d9b8c"
+  },
+  "validation": {
+    "deviceActionE2E": {
+      "status": "passed",
+      "command": "bun run --cwd plugins/plugin-assistant test:device-actions",
+      "suiteCount": 1,
+      "testCount": 1,
+      "assertionCount": 43,
+      "evidence": "../../test-results/remote-device-actions/e2e.log",
+      "scope": "Real HTTP, AuthStore machine sessions, SQL migrations, disk PGlite and two runtime restarts; synthetic identities and content; no model or Android execution"
+    },
+    "assistantTypecheck": {
+      "status": "passed",
+      "command": "bun run --cwd plugins/plugin-assistant typecheck"
+    },
+    "assistantLint": {
+      "status": "passed_with_warnings",
+      "command": "bun run --cwd plugins/plugin-assistant lint:check",
+      "warningCount": 7,
+      "infoCount": 2
+    },
+    "agentTypecheck": {
+      "status": "passed",
+      "evidence": "Full root verify completed all 284 workspace tasks including agent typecheck after dependency builds"
+    },
+    "rootVerify": {
+      "status": "passed",
+      "command": "PATH=/Users/shawwalters/.nvm/versions/node/v24.15.0/bin:$PATH bun run verify",
+      "nodeVersion": "24.15.0",
+      "evidence": "../../test-results/remote-device-actions/root-verify.log"
+    },
+    "cerebrasWire": {
+      "status": "passed",
+      "model": "qwen-3.8-27b",
+      "httpStatus": 200,
+      "evidence": "../../test-results/remote-device-actions/cerebras-schema-wire.json"
+    },
+    "realModelClientFlow": {
+      "status": "passed",
+      "evidence": "../../test-results/remote-device-actions/real-model-client-flow.json",
+      "scope": "Real Cerebras model proposal, enrolled patched host, explicit approval, claim, desktop journal fixture and receipt dedupe; not Android acceptance"
+    },
+    "realOrdinaryRequestMatrix": {
+      "status": "passed",
+      "requests": 8,
+      "operations": [
+        "create_note",
+        "create_reminder",
+        "open_view",
+        "browser_navigate"
+      ],
+      "evidence": "../../test-results/remote-device-actions/real-routing-matrix.json",
+      "scope": "Two fresh ordinary requests per operation, rejected synthetic proposals, unbound control invokes no proposal tool; no native effects"
+    }
+  },
+  "notValidated": [
+    "Android client/native journal/effects",
+    "Eliza Cloud shared-runtime action transport",
+    "Cloud proxy per-user principal propagation",
+    "Deployed enclave image",
+    "Device/user acceptance"
+  ],
+  "upstreamPublished": false
+}

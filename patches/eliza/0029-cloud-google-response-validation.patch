@@ -1,0 +1,343 @@
+diff --git a/plugins/plugin-elizacloud/src/services/cloud-google-delegation.ts b/plugins/plugin-elizacloud/src/services/cloud-google-delegation.ts
+--- a/plugins/plugin-elizacloud/src/services/cloud-google-delegation.ts
++++ b/plugins/plugin-elizacloud/src/services/cloud-google-delegation.ts
+@@ -21,6 +21,44 @@
+ 	constructor(public status = 409) {
+ 		super("Cloud connection needs explicit review or reconnection");
+ 	}
++}
++// All delegated provider JSON is untrusted, including optional nested metadata.
++function isProviderObject(value: unknown): value is Record<string, unknown> {
++	return typeof value === "object" && value !== null && !Array.isArray(value);
++}
++function providerObject(value: unknown): Record<string, unknown> {
++	if (!isProviderObject(value)) throw new CloudDelegationError();
++	return value;
++}
++function providerItems(value: unknown, limit: number): unknown[] {
++	if (!Array.isArray(value) || value.length > limit)
++		throw new CloudDelegationError();
++	return value;
++}
++function providerString(value: unknown): string | undefined {
++	if (value === undefined) return undefined;
++	if (typeof value !== "string") throw new CloudDelegationError();
++	return value;
++}
++function providerId(value: unknown): string {
++	const id = providerString(value);
++	if (!id) throw new CloudDelegationError();
++	return id;
++}
++function providerDate(value: unknown): string | undefined {
++	if (value === undefined) return undefined;
++	const date = providerObject(value);
++	const dateTime = providerString(date.dateTime);
++	const day = providerString(date.date);
++	return dateTime ?? day;
++}
++function providerReceivedAt(value: unknown): string {
++	if (value === undefined) return "";
++	if (typeof value !== "string" || !/^\d+$/.test(value))
++		throw new CloudDelegationError();
++	const date = new Date(Number(value));
++	if (!Number.isFinite(date.getTime())) throw new CloudDelegationError();
++	return date.toISOString();
+ }
+ export interface VerifiedCloudPrincipal {
+ 	ownerId: string;
+@@ -339,8 +377,21 @@
+ 		return token;
+ 	}
+ 	async revocations(owner: string) {
+-        return { grants: (await this.store.getAll<Grant | Enrollment>(NS)).filter((g): g is Grant => g.type === 'grant' && g.ownerId === owner && g.revoked && !g.revocationConfirmed).map(g => ({grantId:g.id,expiresAt:new Date(g.expiresAt).toISOString()})) };
+-    }
++		return {
++			grants: (await this.store.getAll<Grant | Enrollment>(NS))
++				.filter(
++					(g): g is Grant =>
++						g.type === "grant" &&
++						g.ownerId === owner &&
++						g.revoked &&
++						!g.revocationConfirmed,
++				)
++				.map((g) => ({
++					grantId: g.id,
++					expiresAt: new Date(g.expiresAt).toISOString(),
++				})),
++		};
++	}
+ 	async revoke(owner: string, input: Record<string, unknown>) {
+ 		strictKeys(input, ["grantId", "confirmed"]);
+ 		required(input.grantId);
+@@ -371,10 +422,12 @@
+ 		connection: AppGoogleConnection,
+ 	): CloudGoogleAccount {
+ 		const kinds = [
+-			...(grant.scopes.includes("google.gmail.triage") && connection.grantedCapabilities.includes("google.gmail.triage")
++			...(grant.scopes.includes("google.gmail.triage") &&
++			connection.grantedCapabilities.includes("google.gmail.triage")
+ 				? ["email"]
+ 				: []),
+-			...(grant.scopes.includes("google.calendar.read") && connection.grantedCapabilities.includes("google.calendar.read")
++			...(grant.scopes.includes("google.calendar.read") &&
++			connection.grantedCapabilities.includes("google.calendar.read")
+ 				? ["calendar"]
+ 				: []),
+ 		];
+@@ -466,9 +519,9 @@
+ 			{ connectionId: connection.connectionId!, method: "GET", url },
+ 		);
+ 		if (!response.ok) throw new CloudDelegationError();
+-		const result = await response.json();
++		const result: unknown = await response.json();
+ 		await this.selected(owner, accountId, revision, kind);
+-		return result;
++		return providerObject(result);
+ 	}
+ 	async calendars(owner: string, accountId: string, revision: string) {
+ 		const data = await this.request(
+@@ -478,17 +531,18 @@
+ 			"calendar",
+ 			"https://www.googleapis.com/calendar/v3/users/me/calendarList?maxResults=50&minAccessRole=reader",
+ 		);
+-		if (!Array.isArray(data.items) || data.items.length > 50)
+-			throw new CloudDelegationError();
+ 		return {
+-			calendars: data.items
+-				.filter((c: any) => typeof c.id === "string" && c.id !== "primary")
+-				.map((c: any) => ({
+-					calendarId: c.id,
+-					summary: typeof c.summary === "string" ? c.summary.slice(0, 200) : "",
+-					timeZone: c.timeZone,
+-				})),
+-			nextPageToken: data.nextPageToken,
++			calendars: providerItems(data.items, 50)
++				.map((value) => {
++					const c = providerObject(value);
++					return {
++						calendarId: providerId(c.id),
++						summary: (providerString(c.summary) ?? "").slice(0, 200),
++						timeZone: providerString(c.timeZone),
++					};
++				})
++				.filter((c) => c.calendarId !== "primary"),
++			nextPageToken: providerString(data.nextPageToken),
+ 		};
+ 	}
+ 	async read(
+@@ -538,18 +592,19 @@
+ 			}))
+ 				url.searchParams.set(k, v);
+ 			const data = await call(url.href);
+-			if (!Array.isArray(data.items) || data.items.length > selected.maxItems)
+-				throw new CloudDelegationError();
+ 			return {
+-				events: data.items.map((e: any) => ({
+-					id: e.id,
+-					calendarId: selected.calendarId,
+-					title: e.summary,
+-					start: e.start?.dateTime ?? e.start?.date,
+-					end: e.end?.dateTime ?? e.end?.date,
+-					status: e.status,
+-				})),
+-				nextPageToken: data.nextPageToken,
++				events: providerItems(data.items, selected.maxItems).map((value) => {
++					const e = providerObject(value);
++					return {
++						id: providerId(e.id),
++						calendarId: selected.calendarId,
++						title: providerString(e.summary),
++						start: providerDate(e.start),
++						end: providerDate(e.end),
++						status: providerString(e.status),
++					};
++				}),
++				nextPageToken: providerString(data.nextPageToken),
+ 			};
+ 		}
+ 		const url = new URL(
+@@ -563,29 +618,34 @@
+ 		url.searchParams.set("maxResults", String(selected.maxItems));
+ 		const list = await call(url.href);
+ 		if (list.messages === undefined) return [];
+-		if (
+-			!Array.isArray(list.messages) ||
+-			list.messages.length > selected.maxItems
+-		)
+-			throw new CloudDelegationError();
+ 		const messages = [];
+-		for (const m of list.messages) {
+-			if (typeof m.id !== "string" || !/^[-\w]+$/.test(m.id))
+-				throw new CloudDelegationError();
++		for (const value of providerItems(list.messages, selected.maxItems)) {
++			const m = providerObject(value);
++			const id = providerId(m.id);
++			if (!/^[-\w]+$/.test(id)) throw new CloudDelegationError();
+ 			const d = await call(
+ 				"https://gmail.googleapis.com/gmail/v1/users/me/messages/" +
+-					m.id +
++					id +
+ 					"?format=metadata&metadataHeaders=Subject",
+ 			);
++			let subject: string | undefined;
++			if (d.payload !== undefined) {
++				const payload = providerObject(d.payload);
++				if (payload.headers !== undefined) {
++					for (const value of providerItems(payload.headers, 1000)) {
++						const header = providerObject(value);
++						const name = providerString(header.name);
++						const text = providerString(header.value);
++						if (name?.toLowerCase() === "subject" && subject === undefined)
++							subject = text;
++					}
++				}
++			}
+ 			messages.push({
+-				id: m.id,
+-				subject: d.payload?.headers?.find(
+-					(h: any) => h.name?.toLowerCase() === "subject",
+-				)?.value,
+-				snippet: d.snippet,
+-				receivedAt: Number.isFinite(Number(d.internalDate))
+-					? new Date(Number(d.internalDate)).toISOString()
+-					: "",
++				id,
++				subject,
++				snippet: providerString(d.snippet),
++				receivedAt: providerReceivedAt(d.internalDate),
+ 			});
+ 		}
+ 		return messages;
+@@ -647,7 +707,9 @@
+ 	cancel(p: VerifiedCloudPrincipal, i: Record<string, unknown>) {
+ 		return this.engine().cancel(p, i);
+ 	}
+-	revocations(owner: string) { return this.engine().revocations(owner); }
++	revocations(owner: string) {
++		return this.engine().revocations(owner);
++	}
+ 	revoke(owner: string, i: Record<string, unknown>) {
+ 		return this.engine().revoke(owner, i);
+ 	}
+diff --git a/plugins/plugin-elizacloud/__tests__/cloud-google-delegation.http.test.ts b/plugins/plugin-elizacloud/__tests__/cloud-google-delegation.http.test.ts
+--- a/plugins/plugin-elizacloud/__tests__/cloud-google-delegation.http.test.ts
++++ b/plugins/plugin-elizacloud/__tests__/cloud-google-delegation.http.test.ts
+@@ -26,6 +26,9 @@
+     reads = 0,
+     revokeFails = true,
+     wrongSubject = false;
++  let providerOverride:
++    | { path: "list" | "detail" | "calendars" | "events"; value: unknown }
++    | undefined;
+   let grantScopes = ["identity", "google.basic_identity", "google.gmail.triage"];
+   const revoked = new Set<string>();
+   let rawVault: Vault | undefined, vault: ConnectorCredentialStoreService;
+@@ -105,6 +108,15 @@
+           expect(body.method).toBe("GET");
+           expect(body.body).toBeUndefined();
+           const url = new URL(body.url);
++          const responseKind =
++            url.origin === "https://www.googleapis.com"
++              ? url.pathname.endsWith("calendarList")
++                ? "calendars"
++                : "events"
++              : url.pathname.endsWith("/messages")
++                ? "list"
++                : "detail";
++          if (providerOverride?.path === responseKind) return send(200, providerOverride.value);
+           if (url.origin === "https://www.googleapis.com") {
+             return send(
+               200,
+@@ -198,6 +210,38 @@
+     expect(await engine.read(owner.ownerId, selection, now)).toMatchObject([
+       { subject: "fixture subject", snippet: "fixture snippet" },
+     ]);
++    for (const value of [
++      null,
++      [],
++      { messages: null },
++      { messages: [null] },
++      { messages: [{ id: 1 }] },
++      { messages: Array(11).fill({ id: "mail1" }) },
++    ]) {
++      providerOverride = { path: "list", value };
++      await expect(engine.read(owner.ownerId, selection, now)).rejects.toThrow();
++    }
++    providerOverride = { path: "list", value: {} };
++    expect(await engine.read(owner.ownerId, selection, now)).toEqual([]);
++    for (const value of [
++      null,
++      [],
++      { snippet: {} },
++      { payload: null },
++      { payload: { headers: {} } },
++      { payload: { headers: [null] } },
++      { payload: { headers: [{ name: 1 }] } },
++      { internalDate: "999999999999999999999" },
++      { internalDate: {} },
++    ]) {
++      providerOverride = { path: "detail", value };
++      await expect(engine.read(owner.ownerId, selection, now)).rejects.toThrow();
++    }
++    providerOverride = { path: "detail", value: {} };
++    expect(await engine.read(owner.ownerId, selection, now)).toMatchObject([
++      { id: "mail1", receivedAt: "" },
++    ]);
++    providerOverride = undefined;
+     await pg.close();
+     await closeVault();
+     ({ engine, store } = await open());
+@@ -275,6 +319,52 @@
+         now
+       )
+     ).toMatchObject({ events: [{ title: "Fixture event" }] });
++    const calendarSelection = {
++      ...calendarAccount,
++      kind: "calendar" as const,
++      calendarId: "explicit-calendar",
++      windowHours: 24,
++      maxItems: 10,
++    };
++    for (const value of [
++      null,
++      [],
++      { items: null },
++      { items: [null] },
++      { items: [{ id: "c", timeZone: {} }] },
++      { items: [], nextPageToken: 2 },
++      { items: Array(51).fill({ id: "c" }) },
++    ]) {
++      providerOverride = { path: "calendars", value };
++      await expect(
++        engine.calendars(owner.ownerId, calendarAccount.accountId, calendarAccount.accountRevision)
++      ).rejects.toThrow();
++    }
++    for (const value of [
++      null,
++      [],
++      { items: [null] },
++      { items: [{ id: "e", start: null }] },
++      { items: [{ id: "e", end: { date: 1 } }] },
++      { items: [{ id: "e", summary: {} }] },
++      { items: [], nextPageToken: [] },
++      { items: Array(11).fill({ id: "e" }) },
++    ]) {
++      providerOverride = { path: "events", value };
++      await expect(engine.read(owner.ownerId, calendarSelection, now)).rejects.toThrow();
++    }
++    providerOverride = {
++      path: "events",
++      value: {
++        items: [{ id: "all-day", start: { date: "2026-09-30" }, end: { date: "2026-10-01" } }],
++        nextPageToken: "next",
++      },
++    };
++    expect(await engine.read(owner.ownerId, calendarSelection, now)).toMatchObject({
++      events: [{ id: "all-day", start: "2026-09-30", end: "2026-10-01" }],
++      nextPageToken: "next",
++    });
++    providerOverride = undefined;
+     const cancelStart = await engine.begin(owner, { confirmed: true, kinds: ["calendar"] });
+     const cancelState = new URL(cancelStart.authUrl).searchParams.get("state");
+     await engine.cancel(owner, { state: cancelState, confirmed: true });

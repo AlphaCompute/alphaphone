@@ -1,0 +1,325 @@
+{
+  "source": "https://alpha-phone-prototype.pages.dev/",
+  "htmlSha256": "fd1ee08878c9ae8e8e0d112cc42e3b687326f290b1f86ddaca0f737cdb79afff",
+  "htmlBytes": 816757,
+  "assets": [
+    {
+      "path": "dc-lite.js",
+      "source": "https://alpha-phone-prototype.pages.dev/dc-lite.js",
+      "bytes": 3963,
+      "sha256": "4ae5f2b7731449728f42ef686d103759f445add8a5a9caed8fe7e5e1bfa027a1"
+    },
+    {
+      "path": "denton-300.woff2",
+      "source": "https://alpha-phone-prototype.pages.dev/denton-300.woff2",
+      "bytes": 31960,
+      "sha256": "7e9341445b0bf2ec7f75e4a5d4dd4a677e9d2341f67ddcf766db92a21f310e05"
+    },
+    {
+      "path": "img/cam_park.webp",
+      "source": "https://alpha-phone-prototype.pages.dev/img/cam_park.webp",
+      "bytes": 182626,
+      "sha256": "96319fc7a60d9c3d0c9d623fc5243470576ce103216d71ba64048e9043ed6f92"
+    },
+    {
+      "path": "img/cam_poster.webp",
+      "source": "https://alpha-phone-prototype.pages.dev/img/cam_poster.webp",
+      "bytes": 86978,
+      "sha256": "f6b9d40f7c26cc35db8b76cab2a3e6803e8b2222bc321b28a047b676b087c24a"
+    },
+    {
+      "path": "img/cam_selfie.webp",
+      "source": "https://alpha-phone-prototype.pages.dev/img/cam_selfie.webp",
+      "bytes": 55474,
+      "sha256": "cbc80eaf62d89b78a697e6b352263a8278ca6bbb5c0837764bcb7b2d52226ee3"
+    },
+    {
+      "path": "img/enclave.webp",
+      "source": "https://alpha-phone-prototype.pages.dev/img/enclave.webp",
+      "bytes": 85770,
+      "sha256": "5763056831ae6a861c0f6c65093a870c8b4e5d1af0e1136eb2c3777ca07df144"
+    },
+    {
+      "path": "img/msg0.webp",
+      "source": "https://alpha-phone-prototype.pages.dev/img/msg0.webp",
+      "bytes": 59490,
+      "sha256": "51d0a1aa81c7ecaf4ab8784b9b5036bb03bce6cf0896e24862334bad333f9190"
+    },
+    {
+      "path": "img/msg1.webp",
+      "source": "https://alpha-phone-prototype.pages.dev/img/msg1.webp",
+      "bytes": 56518,
+      "sha256": "4d758911db43445e75d280919858b4b0a4eda8565beb7614910ee4ecb4ba625b"
+    },
+    {
+      "path": "img/msg2.webp",
+      "source": "https://alpha-phone-prototype.pages.dev/img/msg2.webp",
+      "bytes": 282152,
+      "sha256": "afbb19f18db42df76a3c6d8f741b66b5969966e942de1dfdd7fce0d694dffb00"
+    },
+    {
+      "path": "img/msg3.webp",
+      "source": "https://alpha-phone-prototype.pages.dev/img/msg3.webp",
+      "bytes": 89284,
+      "sha256": "125843afe3866c268306d4d2d48f776a24fce0df551b510fa9b63cda919a23ab"
+    },
+    {
+      "path": "img/news.webp",
+      "source": "https://alpha-phone-prototype.pages.dev/img/news.webp",
+      "bytes": 19532,
+      "sha256": "e34e803424efe7ef6088508527136614c4ea5c1e51719551dafd1142b23d6df5"
+    },
+    {
+      "path": "img/nopa.webp",
+      "source": "https://alpha-phone-prototype.pages.dev/img/nopa.webp",
+      "bytes": 105246,
+      "sha256": "49740a8547fe6c695be7854f3fc222bef4b85453f708616293fbff9a96a08e24"
+    },
+    {
+      "path": "img/p01.webp",
+      "source": "https://alpha-phone-prototype.pages.dev/img/p01.webp",
+      "bytes": 35078,
+      "sha256": "c804ff37db50f20440e90c8244e401436b51c03b14e16a7d62355d946931bc0b"
+    },
+    {
+      "path": "img/p02.webp",
+      "source": "https://alpha-phone-prototype.pages.dev/img/p02.webp",
+      "bytes": 110868,
+      "sha256": "00b1da3baf3ab5a2829fa0913ea552a3b1326deb1420b995aa901478e5319102"
+    },
+    {
+      "path": "img/p03.webp",
+      "source": "https://alpha-phone-prototype.pages.dev/img/p03.webp",
+      "bytes": 63480,
+      "sha256": "66385cb64247744229ebfcc7797692c4c40ab35451e9beac7666523f98b0a5fb"
+    },
+    {
+      "path": "img/p04.webp",
+      "source": "https://alpha-phone-prototype.pages.dev/img/p04.webp",
+      "bytes": 111334,
+      "sha256": "ed1764ec415ae4578486ea1734973879ef1ff3b011d7c7381c7f3e7b30b7733c"
+    },
+    {
+      "path": "img/p05.webp",
+      "source": "https://alpha-phone-prototype.pages.dev/img/p05.webp",
+      "bytes": 79268,
+      "sha256": "ec9e0b6705aaa3c8c1ed66c27a4ee2f24b7c288cf06c285e3a993906567a0fa7"
+    },
+    {
+      "path": "img/p06.webp",
+      "source": "https://alpha-phone-prototype.pages.dev/img/p06.webp",
+      "bytes": 58352,
+      "sha256": "79785428153added0b8418c76271ec7eb47dae1b430e288e4657c175096f3581"
+    },
+    {
+      "path": "img/p07.webp",
+      "source": "https://alpha-phone-prototype.pages.dev/img/p07.webp",
+      "bytes": 54448,
+      "sha256": "a83d8e7c3c65b6294e47aa5d412144835575d03472658eee9a6b5aba816b4e40"
+    },
+    {
+      "path": "img/p08.webp",
+      "source": "https://alpha-phone-prototype.pages.dev/img/p08.webp",
+      "bytes": 72208,
+      "sha256": "2592e3b1eb6ac0cd7b2486848edab31474de9197e0245cb0cbe7df48cd59efd4"
+    },
+    {
+      "path": "img/p09.webp",
+      "source": "https://alpha-phone-prototype.pages.dev/img/p09.webp",
+      "bytes": 108290,
+      "sha256": "db93f626e6e0867fef09bdbc3cb9a0949fb9165269900a6ebf0eecc4fa913fe6"
+    },
+    {
+      "path": "img/p10.webp",
+      "source": "https://alpha-phone-prototype.pages.dev/img/p10.webp",
+      "bytes": 82318,
+      "sha256": "eda03f8e9942d0c07137ae90f379f6ed15ab4df883f13a5743c88abb137a4701"
+    },
+    {
+      "path": "img/p11.webp",
+      "source": "https://alpha-phone-prototype.pages.dev/img/p11.webp",
+      "bytes": 55668,
+      "sha256": "afc6a109388e853445e21c6812a4b3cabffee1ba4a7ebf108c34027a31d85e01"
+    },
+    {
+      "path": "img/p12.webp",
+      "source": "https://alpha-phone-prototype.pages.dev/img/p12.webp",
+      "bytes": 129508,
+      "sha256": "0acea30272ba91a8aafe23898a3fd91bcfe737c1e29dc940d5cda823f36a96b6"
+    },
+    {
+      "path": "img/p13.webp",
+      "source": "https://alpha-phone-prototype.pages.dev/img/p13.webp",
+      "bytes": 57308,
+      "sha256": "5e9cfa02d4a17b6d328fea3fe23930146dd2297ceedbe4b22107ce363c35174e"
+    },
+    {
+      "path": "img/p14.webp",
+      "source": "https://alpha-phone-prototype.pages.dev/img/p14.webp",
+      "bytes": 108898,
+      "sha256": "85e1cf7e0e7b56c054f49a7092287dd6602d9b2524b626c53a82140e4c9c9dc1"
+    },
+    {
+      "path": "img/p15.webp",
+      "source": "https://alpha-phone-prototype.pages.dev/img/p15.webp",
+      "bytes": 176904,
+      "sha256": "e7242d102fcc141658d3223c4f06c65eff6586f3a55516033d9bc2bdea885129"
+    },
+    {
+      "path": "img/p16.webp",
+      "source": "https://alpha-phone-prototype.pages.dev/img/p16.webp",
+      "bytes": 281272,
+      "sha256": "9a9188b207bccc2c0c2c71cb8c155cb20c2cd39e90b2d50bb18b4834f8aa1da6"
+    },
+    {
+      "path": "img/p17.webp",
+      "source": "https://alpha-phone-prototype.pages.dev/img/p17.webp",
+      "bytes": 94876,
+      "sha256": "fe04a5302a05456987e48b63be697eb9ad2cc7544180704f89c0a4ef3d3f2cef"
+    },
+    {
+      "path": "img/p18.webp",
+      "source": "https://alpha-phone-prototype.pages.dev/img/p18.webp",
+      "bytes": 87732,
+      "sha256": "fa2bad4056fdb2d319a9a2ae6f10d20cb28dc6b4d1d9699c4ea3de7a51264f9e"
+    },
+    {
+      "path": "img/p19.webp",
+      "source": "https://alpha-phone-prototype.pages.dev/img/p19.webp",
+      "bytes": 160418,
+      "sha256": "87d87ef48fd8fbfa73d80a421394dbc1a16018f39d2731c6e9f273f48eb87b61"
+    },
+    {
+      "path": "img/p20.webp",
+      "source": "https://alpha-phone-prototype.pages.dev/img/p20.webp",
+      "bytes": 68396,
+      "sha256": "786a2794c688007c6013893856031a46264eb105e56d57e486b55b666618979b"
+    },
+    {
+      "path": "img/p21.webp",
+      "source": "https://alpha-phone-prototype.pages.dev/img/p21.webp",
+      "bytes": 102154,
+      "sha256": "5ab9ea4088a3ce6c7e406bd5d0393f95831920b830219ee66e48fe67e3b0cfe5"
+    },
+    {
+      "path": "img/p22.webp",
+      "source": "https://alpha-phone-prototype.pages.dev/img/p22.webp",
+      "bytes": 106574,
+      "sha256": "8e2b2bed829dbc10ecefb118ae8b1a46bf3adc8e9d1c5fbdf439978d5ea600b6"
+    },
+    {
+      "path": "img/p23.webp",
+      "source": "https://alpha-phone-prototype.pages.dev/img/p23.webp",
+      "bytes": 65530,
+      "sha256": "7555da20ad50e2b957a003c0fd0cd73276077f143a9313874f92d131765979bb"
+    },
+    {
+      "path": "img/p24.webp",
+      "source": "https://alpha-phone-prototype.pages.dev/img/p24.webp",
+      "bytes": 127694,
+      "sha256": "16e36b1f5745afe291e72addb9622bd8f308f96872808457d45579c7cf232f6a"
+    },
+    {
+      "path": "img/p25.webp",
+      "source": "https://alpha-phone-prototype.pages.dev/img/p25.webp",
+      "bytes": 138666,
+      "sha256": "6a5407971c3bd867b43c4dc50e7f031d261b4a6b030f669ce9deaa71631e250c"
+    },
+    {
+      "path": "img/p26.webp",
+      "source": "https://alpha-phone-prototype.pages.dev/img/p26.webp",
+      "bytes": 99954,
+      "sha256": "52ee20b78801558c945966f8a8dd0490b5361737bc067e0ab117ac8a88ea7679"
+    },
+    {
+      "path": "img/p27.webp",
+      "source": "https://alpha-phone-prototype.pages.dev/img/p27.webp",
+      "bytes": 72692,
+      "sha256": "f8b059f0042b89b66569938a3ba12590fbb8ea3696ea082c8c7286f1ce24f234"
+    },
+    {
+      "path": "img/p28.webp",
+      "source": "https://alpha-phone-prototype.pages.dev/img/p28.webp",
+      "bytes": 48212,
+      "sha256": "27e9fba35458f8683f86af29d92c0eef046cb7c1786d17732f64a2b9514bb77f"
+    },
+    {
+      "path": "img/p29.webp",
+      "source": "https://alpha-phone-prototype.pages.dev/img/p29.webp",
+      "bytes": 125682,
+      "sha256": "26d26e08bb16bf6cd9e93e6a51d9bf457c7573016dea4cb58f76f7fb510c627e"
+    },
+    {
+      "path": "img/p30.webp",
+      "source": "https://alpha-phone-prototype.pages.dev/img/p30.webp",
+      "bytes": 114198,
+      "sha256": "8287211c4d9bf5f9db3c02fe6182a7961b5fbc716c00ead38be4e9045c72a01a"
+    },
+    {
+      "path": "img/p31.webp",
+      "source": "https://alpha-phone-prototype.pages.dev/img/p31.webp",
+      "bytes": 73940,
+      "sha256": "967b040766a282399f30ededce0efb51db2e0a449c14099c3b714747a2cb572c"
+    },
+    {
+      "path": "img/p32.webp",
+      "source": "https://alpha-phone-prototype.pages.dev/img/p32.webp",
+      "bytes": 100002,
+      "sha256": "d43aefd641fba6f0e4df5a47ac4bb38ed5a578d689a5fe9479cd88303094f004"
+    },
+    {
+      "path": "logo-mark.svg",
+      "source": "https://alpha-phone-prototype.pages.dev/logo-mark.svg",
+      "bytes": 24420,
+      "sha256": "cabe36effaf3ad843870fad70458ccf4411d095ac5c842ba7bce648eac206d2d"
+    },
+    {
+      "path": "logo.svg",
+      "source": "https://alpha-phone-prototype.pages.dev/logo.svg",
+      "bytes": 24420,
+      "sha256": "2997ae0b7cf7bcc6015d60c6d550296312063468114785a33c1367aa67fe9ea4"
+    },
+    {
+      "path": "vendor/react-dom.production.min.js",
+      "source": "https://alpha-phone-prototype.pages.dev/vendor/react-dom.production.min.js",
+      "bytes": 131835,
+      "sha256": "35f4f974f4b2bcd44da73963347f8952e341f83909e4498227d4e26b98f66f0d"
+    },
+    {
+      "path": "vendor/react.production.min.js",
+      "source": "https://alpha-phone-prototype.pages.dev/vendor/react.production.min.js",
+      "bytes": 10751,
+      "sha256": "d949f1c3687aedadcedac85261865f29b17cd273997e7f6b2bfc53b2f9d4c4dd"
+    },
+    {
+      "path": "fonts/94593e69fad0885b2b0b.woff2",
+      "source": "https://fonts.gstatic.com/s/publicsans/v21/ijwRs572Xtc6ZYQws9YVwnNJfJ7Cww.woff2",
+      "bytes": 7716,
+      "sha256": "94593e69fad0885b2b0b74cd18d036c7e9cd6051b2256ab281a20f5bc9ccb46f"
+    },
+    {
+      "path": "fonts/3a00a32f0242b723dcea.woff2",
+      "source": "https://fonts.gstatic.com/s/publicsans/v21/ijwRs572Xtc6ZYQws9YVwnNIfJ7Cww.woff2",
+      "bytes": 18472,
+      "sha256": "3a00a32f0242b723dcea79935747d6d27dd93675d03ef23f470dfe274e79586a"
+    },
+    {
+      "path": "fonts/5ed4d31c988e73b25889.woff2",
+      "source": "https://fonts.gstatic.com/s/publicsans/v21/ijwRs572Xtc6ZYQws9YVwnNGfJ4.woff2",
+      "bytes": 26832,
+      "sha256": "5ed4d31c988e73b258894244f209069ebe77dc7e564861954b21198b6de90d68"
+    },
+    {
+      "path": "fonts/c3c6d103fb2c49381256.ttf",
+      "source": "https://fonts.gstatic.com/s/fraunces/v38/6NVf8FyLNQOQZAnv9ZwNjucMHVn85Ni7emAe9lKqZTnbB-gzTK0K1ChJdt9vIVYX9G37lvd9sPEKsxx664UJf1hLTf7W.ttf",
+      "bytes": 85028,
+      "sha256": "c3c6d103fb2c493812567ec8d25abf081204c4124e704eb85801256f0f09d7fa"
+    },
+    {
+      "path": "fonts/25bae1ffe157fa448306.ttf",
+      "source": "https://fonts.gstatic.com/s/fraunces/v38/6NVf8FyLNQOQZAnv9ZwNjucMHVn85Ni7emAe9lKqZTnbB-gzTK0K1ChJdt9vIVYX9G37lvd9sPEKsxx664UJf1gVTf7W.ttf",
+      "bytes": 85080,
+      "sha256": "25bae1ffe157fa448306e73c5f4928c3cbfb621d4b35a09ff1c34f4972680404"
+    }
+  ]
+}

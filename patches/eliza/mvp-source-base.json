@@ -1,0 +1,564 @@
+{
+  "schemaVersion": 1,
+  "repository": "https://github.com/elizaOS/eliza",
+  "baseCommit": "4573712ebf0466daa4dfadaa4482704c209d9b8c",
+  "seriesLength": 35,
+  "currentVendorPin": "760ad0f18ad6e34581f696642434215e397ccbc5",
+  "vendorPinIsNotTheReproductionBase": true,
+  "candidateFiles": {
+    "bun.lock": "c5e7b32aba77bf7e1c5413bb7a603760f83e810a0445c179dd442ac18091dd96",
+    "packages/agent/src/api/approval-routes.ts": "5fef337e865274ed6d4d5d87ffdd525142c2e7ec23b1b357ac728f02d3cb6850",
+    "packages/agent/src/api/conversation-routes.ts": "987d3583fba98007771d800f73c0c314279364fa5979f935121692f73187f19d",
+    "packages/agent/src/api/device-action-routes.ts": "28ddb1d62142b5458f54d8049d8245dac713984cc8e34026070e5f3c4cfde8e3",
+    "packages/agent/src/api/runtime-mode/route-mode-matrix.ts": "3a112bc631f1fe5b7667a8b2e175a9704279e0577391df5aa6685de935662fe3",
+    "packages/agent/src/api/server-helpers-auth.ts": "0575d6405010272b9c5b406e105be85b009a572fab613533935e816a279d1772",
+    "packages/agent/src/api/server.ts": "c8b57a4cc377887935c894fac46f6851a6aa2e69dcda3976f5ca440ca7b6b350",
+    "packages/agent/src/runtime/host-bridge.ts": "0cf9b675796f8cae37aee8cc995ee7e1a0db3e98b584a1647569179f71881ea3",
+    "packages/agent/src/triggers/runtime.ts": "449501573d2a7ba0b0a73600b40bc8681076f18b5cd2e1696ed51d4174b4abd4",
+    "packages/app/src/api/auth-bootstrap-routes.ts": "54b518b2fadf9562e580dc36cdb2f1bbb2dadb2ddc81ee601270d0d49f025473",
+    "packages/app/src/api/cloud-google-delegation-routes.ts": "df4e7827482154ebd7c52e6db914bb9e7fdc9777ff692cd9c1cf2752dfa44c74",
+    "packages/app/src/api/cloud-runtime-owner.ts": "0069c07a19834440dcb640f8f4b01113a095fcea11bdcec4a005179ba2d08aef",
+    "packages/app/src/api/conversation-restore-relaunch.test.ts": "cc7efd8be8cb731f1617b4c9e2a8df26ec2ef080c766a77445a3120db5da1ca0",
+    "packages/app/src/api/route-auth-policy.ts": "5915b1f75a9ac14933649d1746377721862b8a7f2b431217b7a733a0de769310",
+    "packages/app/src/api/server.ts": "6e7d96ebe3c1f13390750a097c7027dd8febbf158d256d96c58d113bbd6bc91f",
+    "packages/app/src/api/standalone-whisper-routes.ts": "df1f6c58f0847e064354e46f1e4de58d1ebd4bf02b9de13e3ed0644315a3a9a6",
+    "packages/app/src/runtime/install-agent-host-bridge.ts": "0d5397b94c866d8575b3a3cb693d7456c81e7e7a0a16f032de5e86a58c892d7e",
+    "packages/cloud/api/src/_router.generated.ts": "e1062fe8349275f455e1e80c503b425ca975e9016dd00d92cfbe319c20c10891",
+    "packages/cloud/api/src/dedicated-agent-proxy.ts": "ee271bb25578578d79807381c2f20851ada07220b81c5ab98498ab93681f32cb",
+    "packages/cloud/api/v1/eliza/google/connect/initiate/route.ts": "c340de249e298e0f269eb4d0e373b48924e4c15abf811f0113d84d1fc5ae3ea7",
+    "packages/cloud/api/v1/eliza/google/gmail/inbox-v1/route.ts": "39ed3d1b38a59839eaf3f4ec3cfb57f1045039e6b0c8195d26e2228c1b09ae92",
+    "packages/cloud/sdk/package.json": "64520ba55dac70ca32ceef27cedcda17e81026ad9c99e8730e1556ddb3f27115",
+    "packages/cloud/shared/src/db/migrations/0506_managed_gmail_operation_receipts.sql": "64d86e3a03e8ea2aed9e5da3ec96d6c1ecf0cb954521136a4124358fce6d6049",
+    "packages/cloud/shared/src/db/migrations/meta/_journal.json": "efec39cf475067eb7b072fa1c1f9981c77f309b8602a5802d429322f6aaf4c6b",
+    "packages/cloud/shared/src/db/repositories/cli-auth-sessions.ts": "df2c29cedaf1e0764621e8792b0200c8fc752776e89027b8ff7fd4d1b586c797",
+    "packages/cloud/shared/src/lib/auth/cloud-runtime-proof.ts": "389cd9ffb464c6808c02cb49788e1b6777bacd3192ecd0756a70d4c06f66f2ea",
+    "packages/cloud/shared/src/lib/oidc/clients.ts": "2ea3d42bf77f651bf05ae0a5d4ccce23f5817ed84363e83242f83bb01c1f020c",
+    "packages/cloud/shared/src/lib/services/agent-env-crypto.ts": "215fbc46b4ea17e3137e0ba10657b557e2e016b74e044d95a57b8bc47a57ac55",
+    "packages/cloud/shared/src/lib/services/agent-google-connector/gmail.ts": "879c9278a8f95fb8f2a10ccf72b005647b7c8fd5dac4dddda782e6144fa96e14",
+    "packages/cloud/shared/src/lib/services/agent-google-connector/inbox-managed.ts": "ddfeae10086a1471558629e416c7649fb700ada406f8d47b8d1c03399e2ad2e8",
+    "packages/cloud/shared/src/lib/services/agent-google-connector/inbox-operation-routes.ts": "98ce597ea5f872e1e8dff49be5dcf8bea4baf769fec150fa228d74ab1161ad0e",
+    "packages/cloud/shared/src/lib/services/agent-google-connector/inbox-provider.http.integration.test.ts": "bfb5c384799c2cf1acbdef47db93017bd6e455f19c7f72fe09fd227814c90e4a",
+    "packages/cloud/shared/src/lib/services/agent-google-connector/inbox-provider.ts": "0c25cc4e19fea3bc47668182bc094d335cb2a29a4f76ee038fd83c1cd3fcd7f1",
+    "packages/cloud/shared/src/lib/services/agent-google-connector/inbox-receipts.ts": "dcac05ead7a1cf31325d18112f4fd97090d0b35c843ced09ed437d8ded39d6f1",
+    "packages/cloud/shared/src/lib/services/agent-google-connector/shared.ts": "313043fd7d10ac92dad549b40e5067ae5b0adc0ad5f33a133572c0bd2031e305",
+    "packages/cloud/shared/src/lib/services/managed-cloud-owner-config.integration.test.ts": "e87e274faa64c91ac6451ee50f521643bff8991cc3b700b4c5466d165661f86f",
+    "packages/cloud/shared/src/lib/services/managed-cloud-owner-config.ts": "8b14049bd0f85becf0dbe29a2c4ef2782893de0b21c79159e9fb5fe2e9ae069e",
+    "packages/cloud/shared/src/lib/services/managed-eliza-config.ts": "68a09a1d14223fd691577911111065469d96dbefa8da55b81594952529949620",
+    "packages/cloud/shared/src/lib/services/reserved-env-keys.ts": "57fa14350425dfbca2a83bacac36f17bda86ed13a0a8ccbf630d1e7e721fab22",
+    "packages/core/package.json": "005f987f739d6b922a037a468ea3e8550246a8a21bf3c4ae39faaffb07259954",
+    "packages/core/src/contracts/cloud-runtime-request.ts": "df15d427eaf11e9cb4cb6f9b445724e82044356765f2fc4a1e7c8e4d9facc256",
+    "plugins/plugin-assistant/package.json": "e1a6f06b6a57a349f7c83fefa120f3aa4ae9174162e5327a9b44f564702c120a",
+    "plugins/plugin-assistant/src/features/basic-capabilities/index.ts": "789e295232ad04b4430fc0c40d8807524d2aa25b5fd134490d140dd332930fa8",
+    "plugins/plugin-assistant/src/index.ts": "7935f8f55627ab0efdd57982c2f0ad84e5dd24c9d6d90df4a304c4abe75c71a2",
+    "plugins/plugin-assistant/src/services/approval/store.ts": "73960d1b46717c3e61f91cf8a694ce3b50f6fc33489ecf208f0f80ee6be2f571",
+    "plugins/plugin-assistant/src/services/approval/types.ts": "0b07f210bb7f5c031a8f1ce05f0089d023d8b70145a32a3031e8100286e4ac25",
+    "plugins/plugin-assistant/src/services/device-actions/action.ts": "fbccc6f5262b41f08b2af0f548adde29747724df9827ae88f4077add87421081",
+    "plugins/plugin-assistant/src/services/device-actions/calendar-contract.ts": "0c956a8f5c10c9058866c326670a1cd90dcf6149eff4e2bb3e6f97118bdd75c0",
+    "plugins/plugin-assistant/src/services/device-actions/contract.ts": "6f391b3e3c9aba81cf1e814890a90807d312519960f07205ec25db11ab5bbfba",
+    "plugins/plugin-assistant/src/services/device-actions/notes-contract.ts": "abc968c45536ca93d722f3d4d4d8dd3f57b55f6593f2b2b2f7bf3225f9d2f075",
+    "plugins/plugin-assistant/src/services/device-actions/service.ts": "20be8bca8929b7bbcfdcd466d1faaa99d718f3684f4b769f995f0753ac5bcddc",
+    "plugins/plugin-assistant/src/services/device-actions/workflow-contract.ts": "9abe5012b8f5408d98a9c0be230b74d4c5628da06f4ae8e261a89b0ae5033661",
+    "plugins/plugin-assistant/src/services/device-actions/workflow-service.ts": "53783b2a9dc729dc17c984db2f6a23763b6d770012f646be5f564c36674b6d94",
+    "plugins/plugin-assistant/src/services/message/context-assembly.ts": "a8960dc3e7de9b1acff725f3fa3b07a3c35028c2c7349bdccf6c7b36d2df636a",
+    "plugins/plugin-assistant/src/services/message/pipeline.ts": "f743d8dd34251b82ff52762ee1ecd250e5f972a5ff6142e36b99cd7af8f67cbc",
+    "plugins/plugin-assistant/test/device-actions.e2e.test.ts": "467ddd7b8b8cdf8e4d1357f762c0847778abefaf374714d0fa1bf8d76658408c",
+    "plugins/plugin-assistant/vitest.device-actions.config.ts": "1fdbfee3f7238ae72ecf77098cbe26326859a7ede014f974d3669c7b865b88dd",
+    "plugins/plugin-elizacloud/__tests__/cloud-google-delegation.http.test.ts": "bc562258bf8977864c4653c4ad7cfa6839dc0a459fe1dbc708b6eb2f46ed2fca",
+    "plugins/plugin-elizacloud/package.json": "fa718428149b97399025e9f0a3d4281fd310c5d940cac5edb0f259ef7affdf8e",
+    "plugins/plugin-elizacloud/src/db/delegation-records.ts": "a3dbc44148644d47ebb1bb8c4bc59044fe018772413db40788c80428cbb54a84",
+    "plugins/plugin-elizacloud/src/index.ts": "34701b7f8c612a8478e53374918a7f7c41a3beaf6d838efd04bb51c2a6c92bf1",
+    "plugins/plugin-elizacloud/src/services/cloud-google-delegation.ts": "28277ec5e77643fd303aebd505b27b987c3409988958da52b6f9454335f216aa",
+    "plugins/plugin-elizacloud/vitest.cloud-delegation.config.ts": "ff8f187bee518efc205cc2c17c335daa4cf79894ed8afc736c0c6d90288bd87f",
+    "plugins/plugin-local-inference/src/routes/compat-helpers.ts": "f49e392f2d524f1cb981dcebdde984bbc27d6790ce3d5fd335664fe9346eade5",
+    "plugins/plugin-local-inference/src/routes/local-inference-tts-route.ts": "f6b46ebe248470dc3814c1b8214c32655ee2d9c649b3e47169665f98c1ef4e79",
+    "plugins/plugin-sql/src/index.ts": "4ac7f8ebdd0a2b0888716a31ca936da8b1948f18fda25b909a272d1586f440f3",
+    "plugins/plugin-sql/src/schema.ts": "443a17790fbe9841c858a1ede18d050faee9d722b9b003de88267f75a3200b02",
+    "plugins/plugin-sql/src/schema/clientDevices.ts": "b00f60aa40b2c8de1be65b64aebf25e0a0ad7bec0115477c627c12b92034d351",
+    "plugins/plugin-workflow/README.md": "816d333dc4eabeebf8e7167c98e3067779bf5ca125230e4a82dd1532efa77e53",
+    "plugins/plugin-workflow/__tests__/integration/approval-receipts-e2e.test.ts": "fbbb055d27cfc08d9013ae08f4f1b48071830b832954abfac2d22e6b5c2ed6c0",
+    "plugins/plugin-workflow/__tests__/integration/authoring-default-export.test.ts": "b51188108a0a29bdc4ce4aaa9f9c3a3f09ff07e27176668c20842ae5f6f71883",
+    "plugins/plugin-workflow/__tests__/integration/authoring-validation-e2e.test.ts": "335b0d526d8705fb70d71a0a7ecacf52b2a54d677519dbb4e88ebef9c2a1afe3",
+    "plugins/plugin-workflow/__tests__/integration/compiler-upgrade-e2e.test.ts": "5fbb34bf7b090d9f4fbcad735b71ee66c11311458aa599bdf779cea3b9c167b5",
+    "plugins/plugin-workflow/__tests__/integration/device-bridge-e2e.test.ts": "d48db14077607e3b9d6597e7d29c914700863c25a26b6cc4ff709101bde340b1",
+    "plugins/plugin-workflow/__tests__/integration/hosted-digests-http.test.ts": "9faaee2e3cdc78223bbd10507cb6a4cab5ea6698c3bf73694f54ff9e260feadb",
+    "plugins/plugin-workflow/__tests__/integration/hosted-live-google-http.test.ts": "cedb39a318b9c76e609a6cb9fc51738184220a1976c0b33f365478af42bc6416",
+    "plugins/plugin-workflow/__tests__/integration/lifecycle-mutations-e2e.test.ts": "6ea2be98a15e35b0ffd1503e897dc9a6dea85d929d552f394ef8f3a305f21ff7",
+    "plugins/plugin-workflow/__tests__/integration/manual-submission-e2e.test.ts": "daaf1e05d6d1ebc9cec03cbd2fbd10885358b2032b953edf363551cbd4c69af8",
+    "plugins/plugin-workflow/__tests__/integration/metadata-mutations-e2e.test.ts": "50283afb4f595596f8dd42a10ddbae8d2f169807d14b2193eff16c242268c930",
+    "plugins/plugin-workflow/__tests__/integration/typed-authoring-e2e.test.ts": "1996f9b5888880f4ab942b7e6dc14a1801eb6602964485e03c15fbae9a101ee1",
+    "plugins/plugin-workflow/package.json": "d128d16b10c6dc7d58e7b8fa88a934bd95e01b64d3f7e0b23b56660fd4da0873",
+    "plugins/plugin-workflow/src/db/index.ts": "e7d2cbf67b72f33c4f89be5236e3a3fcea88e115bb4310ba306d1fc9761c17ab",
+    "plugins/plugin-workflow/src/db/schema.ts": "d08ce0236aa1a3b4be07104c92e87791b34fade2db0af8d63a36d9de73fd72fb",
+    "plugins/plugin-workflow/src/plugin-routes.ts": "635b3bee032a4d9035f33199fed42366539600fc640e7cac9f58a73b8ed61a4d",
+    "plugins/plugin-workflow/src/routes/workflow-routes.ts": "17521a80ed906afe0a21efd28b5a4053df1c211acd2fbb5664d5e3dc7b2720a0",
+    "plugins/plugin-workflow/src/services/embedded-workflow-service.ts": "bb395c5bc43ba442473de7fa9eaae01aec81be0d85f898cd1910b4dbc1fb3ad8",
+    "plugins/plugin-workflow/src/services/hosted-digest.ts": "a0377e2d4a0ce101d38c76c5cdcc384837adef8d46dfe1d1c51994ae5941045b",
+    "plugins/plugin-workflow/src/services/hosted-google-source.ts": "bd21b0797da138a84b15d6195de48f675fc7636d04c50dc443144997d631371e",
+    "plugins/plugin-workflow/src/services/phone-workflow-compiler-v1.ts": "767f083e6d02e57bde735c94a8f00e28bb6f7e82fdd2a39b55db2d4d19864a5a",
+    "plugins/plugin-workflow/src/services/phone-workflow-compiler-v2.ts": "3f68e37e26a438ee076959470583496e4a36bebb8e13b92167aa1afdce6a9a23",
+    "plugins/plugin-workflow/src/services/phone-workflow-spec.ts": "9a439fb68234c684e6d1ba332202c7967d71a3cf206ceef3d46df65843e8405d",
+    "plugins/plugin-workflow/src/services/smithers-runtime.ts": "06b342ab2d220349032e0166383d31ad9322290affba700957445c972ba1c938",
+    "plugins/plugin-workflow/src/services/workflow-approval-receipts.ts": "57df82e63ce540292bcd8c27e0bad0b0dbbf326257ba80589a68917da3923533",
+    "plugins/plugin-workflow/src/services/workflow-service.ts": "6e73278c55d0275f12850ad9370673aae9745b063bfcae95c4a50e0ca8d94f13",
+    "plugins/plugin-workflow/src/services/workflow-source-check.ts": "2ebf6996d9a665ed99b804eee7bb685ac5d08354f94af82be912a55ace45ca05",
+    "plugins/plugin-workflow/src/types/index.ts": "12f6680ca8e5322f1bd988a791b31c604c46d1658642b90f06e1bef777c1a3ce",
+    "plugins/plugin-workflow/vitest.hosted-digests.config.ts": "1938a624429ea42b224cb2deb47d6f528627d05528ba43d2755fd87fe43d07bb",
+    "plugins/plugin-workflow/vitest.hosted-live-google.config.ts": "de8bbc26f5019295094023bb1bfa7fd3dc143beec82e0a7dab8bb5cbc01720b6",
+    "plugins/plugin-assistant/src/services/device-actions/reminder-contract.ts": "78e0772e3b6a97559a7378d733debbfda98f6e0a731b48514f9d1c4477cc525b",
+    "packages/core/src/actions/action-schema.ts": "ba1ea49d6fcf1f11bfc0ac2811efba69baaa7c46eb5b9a872813452820562d3d",
+    "packages/core/src/actions/validate-tool-args.ts": "1b31ce822c8384a33f231cc129d3e22b1160917fc06fe2fd84e1cb3cf65c078f",
+    "plugins/plugin-assistant/src/services/device-actions/action-schema.test.ts": "ef2002b4a1800c76a63eda85c06bed53a0f83e7b7dbef906f58c187355e1e444"
+  },
+  "patches": [
+    {
+      "file": "0001-durable-device-actions.patch",
+      "sha256": "f617b97c8e9a53dad2ba6c1bc16b766f92c90da6b1a5da3d96ea86491acd0be2",
+      "paths": [
+        "packages/agent/src/api/approval-routes.ts",
+        "packages/agent/src/api/conversation-routes.ts",
+        "packages/agent/src/api/device-action-routes.ts",
+        "packages/agent/src/api/server-helpers-auth.ts",
+        "packages/agent/src/api/server.ts",
+        "packages/app/src/api/route-auth-policy.ts",
+        "plugins/plugin-assistant/package.json",
+        "plugins/plugin-assistant/src/features/basic-capabilities/index.ts",
+        "plugins/plugin-assistant/src/index.ts",
+        "plugins/plugin-assistant/src/services/approval/store.ts",
+        "plugins/plugin-assistant/src/services/approval/types.ts",
+        "plugins/plugin-assistant/src/services/device-actions/action.ts",
+        "plugins/plugin-assistant/src/services/device-actions/contract.ts",
+        "plugins/plugin-assistant/src/services/device-actions/service.ts",
+        "plugins/plugin-assistant/src/services/message/context-assembly.ts",
+        "plugins/plugin-assistant/src/services/message/pipeline.ts",
+        "plugins/plugin-assistant/test/device-actions.e2e.test.ts",
+        "plugins/plugin-assistant/vitest.device-actions.config.ts",
+        "plugins/plugin-sql/src/index.ts",
+        "plugins/plugin-sql/src/schema.ts",
+        "plugins/plugin-sql/src/schema/clientDevices.ts"
+      ]
+    },
+    {
+      "file": "0002-paired-local-voice.patch",
+      "sha256": "3eca6439efb2bfaff0ae5fb8de5243dddd693c8dec6fdcc018230599ca99430b",
+      "paths": [
+        "packages/app/src/api/route-auth-policy.ts",
+        "packages/app/src/api/server.ts",
+        "plugins/plugin-local-inference/src/routes/compat-helpers.ts",
+        "plugins/plugin-local-inference/src/routes/local-inference-tts-route.ts"
+      ]
+    },
+    {
+      "file": "0003-explicit-standalone-whisper.patch",
+      "sha256": "10eed9f9473c2ea4eaf3ef7c04bf85e3116f9939fea3abdd482cbd3b75f89c05",
+      "paths": [
+        "packages/agent/src/api/runtime-mode/route-mode-matrix.ts",
+        "packages/app/src/api/route-auth-policy.ts",
+        "packages/app/src/api/server.ts",
+        "packages/app/src/api/standalone-whisper-routes.ts"
+      ]
+    },
+    {
+      "file": "0004-reviewed-workflow-submissions.patch",
+      "sha256": "243cf49798db615e332c18bc43ffcb61e5e2c74b4af35d64bae6f7d69f05af66",
+      "paths": [
+        "plugins/plugin-workflow/__tests__/integration/manual-submission-e2e.test.ts",
+        "plugins/plugin-workflow/src/db/index.ts",
+        "plugins/plugin-workflow/src/db/schema.ts",
+        "plugins/plugin-workflow/src/plugin-routes.ts",
+        "plugins/plugin-workflow/src/routes/workflow-routes.ts",
+        "plugins/plugin-workflow/src/services/embedded-workflow-service.ts",
+        "plugins/plugin-workflow/src/services/workflow-service.ts"
+      ]
+    },
+    {
+      "file": "0005-durable-workflow-cancellation.patch",
+      "sha256": "b168498a69af2066a9afc26c59aa1b96c93128c124d292614980950fdafb5911",
+      "paths": [
+        "plugins/plugin-workflow/src/services/embedded-workflow-service.ts",
+        "plugins/plugin-workflow/src/types/index.ts"
+      ]
+    },
+    {
+      "file": "0006-workflow-definite-admission-refusal.patch",
+      "sha256": "769d41e42bfffb0b9c0e3e42c7d20d8f6924ea350a2a855dc9b21de74650f980",
+      "paths": [
+        "plugins/plugin-workflow/__tests__/integration/manual-submission-e2e.test.ts",
+        "plugins/plugin-workflow/src/routes/workflow-routes.ts",
+        "plugins/plugin-workflow/src/services/embedded-workflow-service.ts"
+      ]
+    },
+    {
+      "file": "0007-canonical-workflow-approvals.patch",
+      "sha256": "55e3db069e130c7311d0ba871b392c654b16af6a35f5581168a0466d29fe332a",
+      "paths": [
+        "plugins/plugin-workflow/__tests__/integration/approval-receipts-e2e.test.ts",
+        "plugins/plugin-workflow/src/plugin-routes.ts",
+        "plugins/plugin-workflow/src/routes/workflow-routes.ts",
+        "plugins/plugin-workflow/src/services/embedded-workflow-service.ts",
+        "plugins/plugin-workflow/src/services/workflow-approval-receipts.ts",
+        "plugins/plugin-workflow/src/services/workflow-service.ts"
+      ]
+    },
+    {
+      "file": "0008-workflow-metadata-mutations.patch",
+      "sha256": "ac818c03ab318543e45168fd58bec7b82ad2f43ef509ab5c9dd0b8fd005ff75b",
+      "paths": [
+        "plugins/plugin-workflow/__tests__/integration/metadata-mutations-e2e.test.ts",
+        "plugins/plugin-workflow/src/db/index.ts",
+        "plugins/plugin-workflow/src/db/schema.ts",
+        "plugins/plugin-workflow/src/plugin-routes.ts",
+        "plugins/plugin-workflow/src/routes/workflow-routes.ts",
+        "plugins/plugin-workflow/src/services/embedded-workflow-service.ts",
+        "plugins/plugin-workflow/src/services/workflow-service.ts"
+      ]
+    },
+    {
+      "file": "0009-workflow-lifecycle-mutations.patch",
+      "sha256": "e2b0521bb613e5a3579cc7dd23e245ab74b431e8cf6471f9fe6f6f1b4ebf72e2",
+      "paths": [
+        "plugins/plugin-workflow/__tests__/integration/lifecycle-mutations-e2e.test.ts",
+        "plugins/plugin-workflow/src/db/index.ts",
+        "plugins/plugin-workflow/src/db/schema.ts",
+        "plugins/plugin-workflow/src/plugin-routes.ts",
+        "plugins/plugin-workflow/src/routes/workflow-routes.ts",
+        "plugins/plugin-workflow/src/services/embedded-workflow-service.ts",
+        "plugins/plugin-workflow/src/services/workflow-service.ts",
+        "plugins/plugin-workflow/src/types/index.ts"
+      ]
+    },
+    {
+      "file": "0010-workflow-import-order.patch",
+      "sha256": "bea2aa98b186e621f536325a94ccdba3fc4737ab75c2284fed21cf0379c42f12",
+      "paths": [
+        "plugins/plugin-workflow/src/db/index.ts",
+        "plugins/plugin-workflow/src/services/embedded-workflow-service.ts",
+        "plugins/plugin-workflow/src/services/workflow-service.ts"
+      ]
+    },
+    {
+      "file": "0011-typed-workflow-authoring.patch",
+      "sha256": "2d5b697fc19539b6824cdc973607e61e9b659d0531740b71a5a550bb118e823e",
+      "paths": [
+        "plugins/plugin-workflow/__tests__/integration/typed-authoring-e2e.test.ts",
+        "plugins/plugin-workflow/src/db/index.ts",
+        "plugins/plugin-workflow/src/db/schema.ts",
+        "plugins/plugin-workflow/src/plugin-routes.ts",
+        "plugins/plugin-workflow/src/routes/workflow-routes.ts",
+        "plugins/plugin-workflow/src/services/embedded-workflow-service.ts",
+        "plugins/plugin-workflow/src/services/phone-workflow-spec.ts",
+        "plugins/plugin-workflow/src/services/workflow-service.ts"
+      ]
+    },
+    {
+      "file": "0012-workflow-device-bridge.patch",
+      "sha256": "68fc355a5622cd9d3c0887925e0c439d36c8e676d0c2b7aca4749a33fdedff72",
+      "paths": [
+        "packages/agent/src/api/device-action-routes.ts",
+        "plugins/plugin-assistant/src/features/basic-capabilities/index.ts",
+        "plugins/plugin-assistant/src/services/device-actions/contract.ts",
+        "plugins/plugin-assistant/src/services/device-actions/service.ts",
+        "plugins/plugin-assistant/src/services/device-actions/workflow-contract.ts",
+        "plugins/plugin-assistant/src/services/device-actions/workflow-service.ts",
+        "plugins/plugin-sql/src/schema/clientDevices.ts",
+        "plugins/plugin-workflow/__tests__/integration/device-bridge-e2e.test.ts",
+        "plugins/plugin-workflow/__tests__/integration/typed-authoring-e2e.test.ts",
+        "plugins/plugin-workflow/src/plugin-routes.ts",
+        "plugins/plugin-workflow/src/routes/workflow-routes.ts",
+        "plugins/plugin-workflow/src/services/embedded-workflow-service.ts",
+        "plugins/plugin-workflow/src/services/phone-workflow-spec.ts",
+        "plugins/plugin-workflow/src/services/smithers-runtime.ts",
+        "plugins/plugin-workflow/src/services/workflow-service.ts"
+      ]
+    },
+    {
+      "file": "0013-workflow-presentation-steps.patch",
+      "sha256": "e9a5c829d1a3552a77481625655669cd632d1f33c989e8a785793455e6a7a3f5",
+      "paths": [
+        "packages/agent/src/api/device-action-routes.ts",
+        "plugins/plugin-assistant/src/services/device-actions/contract.ts",
+        "plugins/plugin-assistant/src/services/device-actions/service.ts",
+        "plugins/plugin-assistant/src/services/device-actions/workflow-contract.ts",
+        "plugins/plugin-assistant/src/services/device-actions/workflow-service.ts",
+        "plugins/plugin-workflow/__tests__/integration/device-bridge-e2e.test.ts",
+        "plugins/plugin-workflow/src/services/phone-workflow-spec.ts",
+        "plugins/plugin-workflow/src/services/workflow-service.ts"
+      ]
+    },
+    {
+      "file": "0014-workflow-compiler-compatibility.patch",
+      "sha256": "e16bebc4188aa11f0d713ac508bd5e468101546182abb18fc035ba027e3295c0",
+      "paths": [
+        "plugins/plugin-workflow/__tests__/integration/compiler-upgrade-e2e.test.ts",
+        "plugins/plugin-workflow/src/services/embedded-workflow-service.ts",
+        "plugins/plugin-workflow/src/services/phone-workflow-compiler-v1.ts",
+        "plugins/plugin-workflow/src/services/phone-workflow-compiler-v2.ts",
+        "plugins/plugin-workflow/src/services/phone-workflow-spec.ts"
+      ]
+    },
+    {
+      "file": "0015-agent-calendar-crud.patch",
+      "sha256": "4ad97acdf1399cda459555fb13efbecb2ec5be334794ce570d508b04fcc9868a",
+      "paths": [
+        "packages/agent/src/api/device-action-routes.ts",
+        "plugins/plugin-assistant/src/services/device-actions/action.ts",
+        "plugins/plugin-assistant/src/services/device-actions/calendar-contract.ts",
+        "plugins/plugin-assistant/src/services/device-actions/contract.ts",
+        "plugins/plugin-assistant/src/services/device-actions/service.ts",
+        "plugins/plugin-assistant/src/services/message/context-assembly.ts",
+        "plugins/plugin-assistant/test/device-actions.e2e.test.ts"
+      ]
+    },
+    {
+      "file": "0016-hosted-digests.patch",
+      "sha256": "8b90cc901af70619220c52ff35805442c22c63705eeace180a83a0ae51ca6c2e",
+      "paths": [
+        "packages/agent/src/triggers/runtime.ts",
+        "plugins/plugin-workflow/__tests__/integration/hosted-digests-http.test.ts",
+        "plugins/plugin-workflow/src/db/index.ts",
+        "plugins/plugin-workflow/src/db/schema.ts",
+        "plugins/plugin-workflow/src/routes/workflow-routes.ts",
+        "plugins/plugin-workflow/src/services/embedded-workflow-service.ts",
+        "plugins/plugin-workflow/src/services/hosted-digest.ts",
+        "plugins/plugin-workflow/vitest.hosted-digests.config.ts"
+      ]
+    },
+    {
+      "file": "0017-agent-notes-crud.patch",
+      "sha256": "f9d7333e971dd2eb522ab9be61ef0818d4e035408b3db2a66817ba8fc8e54a9a",
+      "paths": [
+        "packages/agent/src/api/device-action-routes.ts",
+        "plugins/plugin-assistant/src/services/device-actions/action.ts",
+        "plugins/plugin-assistant/src/services/device-actions/contract.ts",
+        "plugins/plugin-assistant/src/services/device-actions/notes-contract.ts",
+        "plugins/plugin-assistant/src/services/device-actions/service.ts",
+        "plugins/plugin-assistant/src/services/message/context-assembly.ts",
+        "plugins/plugin-assistant/test/device-actions.e2e.test.ts"
+      ]
+    },
+    {
+      "file": "0018-hosted-live-google.patch",
+      "sha256": "8253753052204d07484be340f16ae69f766a117ccd99ce7be9fda763adb74b58",
+      "paths": [
+        "plugins/plugin-workflow/__tests__/integration/hosted-live-google-http.test.ts",
+        "plugins/plugin-workflow/src/routes/workflow-routes.ts",
+        "plugins/plugin-workflow/src/services/embedded-workflow-service.ts",
+        "plugins/plugin-workflow/src/services/hosted-digest.ts",
+        "plugins/plugin-workflow/src/services/hosted-google-source.ts",
+        "plugins/plugin-workflow/vitest.hosted-live-google.config.ts"
+      ]
+    },
+    {
+      "file": "0019-cloud-session-primary-read.patch",
+      "sha256": "82cd114ffaf497477bf9c45f617982235ebe0c8181283badd262f2e949747fa0",
+      "paths": [
+        "packages/cloud/shared/src/db/repositories/cli-auth-sessions.ts"
+      ]
+    },
+    {
+      "file": "0020-cloud-runtime-composed-qualified.patch",
+      "sha256": "a0b9e36f9f2b8ef99f2eda715955be5053f26275f92c05297a7165804818c08f",
+      "paths": [
+        "packages/agent/src/api/device-action-routes.ts",
+        "packages/agent/src/api/server.ts",
+        "packages/agent/src/runtime/host-bridge.ts",
+        "packages/app/src/api/auth-bootstrap-routes.ts",
+        "packages/app/src/api/cloud-runtime-owner.ts",
+        "packages/app/src/runtime/install-agent-host-bridge.ts",
+        "packages/cloud/api/src/dedicated-agent-proxy.ts",
+        "packages/cloud/shared/src/lib/auth/cloud-runtime-proof.ts",
+        "packages/cloud/shared/src/lib/oidc/clients.ts",
+        "packages/core/package.json",
+        "packages/core/src/contracts/cloud-runtime-request.ts",
+        "plugins/plugin-assistant/src/services/device-actions/notes-contract.ts",
+        "plugins/plugin-assistant/test/device-actions.e2e.test.ts",
+        "plugins/plugin-local-inference/src/routes/compat-helpers.ts",
+        "plugins/plugin-workflow/__tests__/integration/hosted-digests-http.test.ts",
+        "plugins/plugin-workflow/src/plugin-routes.ts"
+      ]
+    },
+    {
+      "file": "0021-managed-inbox.patch",
+      "sha256": "404e8c6db8a409cb3fb9185a496b0e584cf117e530c32bd46ac6e80509938d86",
+      "paths": [
+        "packages/cloud/api/src/_router.generated.ts",
+        "packages/cloud/api/v1/eliza/google/connect/initiate/route.ts",
+        "packages/cloud/api/v1/eliza/google/gmail/inbox-v1/route.ts",
+        "packages/cloud/shared/src/db/migrations/0506_managed_gmail_operation_receipts.sql",
+        "packages/cloud/shared/src/db/migrations/meta/_journal.json",
+        "packages/cloud/shared/src/lib/services/agent-google-connector/gmail.ts",
+        "packages/cloud/shared/src/lib/services/agent-google-connector/inbox-managed.ts",
+        "packages/cloud/shared/src/lib/services/agent-google-connector/inbox-operation-routes.ts",
+        "packages/cloud/shared/src/lib/services/agent-google-connector/inbox-provider.http.integration.test.ts",
+        "packages/cloud/shared/src/lib/services/agent-google-connector/inbox-provider.ts",
+        "packages/cloud/shared/src/lib/services/agent-google-connector/inbox-receipts.ts",
+        "packages/cloud/shared/src/lib/services/agent-google-connector/shared.ts"
+      ]
+    },
+    {
+      "file": "0022-managed-inbox-format.patch",
+      "sha256": "b127896cb3d9abb4239b5957967da6945e5024858555355febfa3b4c77b8bdcd",
+      "paths": [
+        "packages/cloud/api/v1/eliza/google/gmail/inbox-v1/route.ts",
+        "packages/cloud/shared/src/lib/services/agent-google-connector/inbox-managed.ts",
+        "packages/cloud/shared/src/lib/services/agent-google-connector/inbox-operation-routes.ts",
+        "packages/cloud/shared/src/lib/services/agent-google-connector/inbox-provider.http.integration.test.ts",
+        "packages/cloud/shared/src/lib/services/agent-google-connector/inbox-provider.ts",
+        "packages/cloud/shared/src/lib/services/agent-google-connector/inbox-receipts.ts",
+        "packages/cloud/shared/src/lib/services/agent-google-connector/shared.ts"
+      ]
+    },
+    {
+      "file": "0023-managed-inbox-attachments-context.patch",
+      "sha256": "f02f3794668fffeda3da959510a8b5496ebd2fde129b706fd849c555dd50cb53",
+      "paths": [
+        "packages/cloud/api/v1/eliza/google/gmail/inbox-v1/route.ts",
+        "packages/cloud/shared/src/lib/services/agent-google-connector/inbox-operation-routes.ts",
+        "packages/cloud/shared/src/lib/services/agent-google-connector/inbox-provider.http.integration.test.ts",
+        "packages/cloud/shared/src/lib/services/agent-google-connector/inbox-provider.ts"
+      ]
+    },
+    {
+      "file": "0024-cloud-google-delegation.patch",
+      "sha256": "67044baf608b1d3a6f2d356951735d063ed749777f3fab5929e8a74ddabf5f5f",
+      "paths": [
+        "bun.lock",
+        "packages/app/src/api/cloud-google-delegation-routes.ts",
+        "packages/app/src/api/route-auth-policy.ts",
+        "packages/app/src/api/server.ts",
+        "plugins/plugin-elizacloud/__tests__/cloud-google-delegation.http.test.ts",
+        "plugins/plugin-elizacloud/package.json",
+        "plugins/plugin-elizacloud/src/db/delegation-records.ts",
+        "plugins/plugin-elizacloud/src/index.ts",
+        "plugins/plugin-elizacloud/src/services/cloud-google-delegation.ts",
+        "plugins/plugin-elizacloud/vitest.cloud-delegation.config.ts",
+        "plugins/plugin-workflow/src/services/embedded-workflow-service.ts",
+        "plugins/plugin-workflow/src/services/hosted-google-source.ts"
+      ]
+    },
+    {
+      "file": "0025-managed-cloud-owner-provisioning.patch",
+      "sha256": "07258273e68cb690401be17fb982a65f53cebbe565f8fdaeab8382c4dde5b6a1",
+      "paths": [
+        "packages/cloud/shared/src/lib/services/agent-env-crypto.ts",
+        "packages/cloud/shared/src/lib/services/managed-cloud-owner-config.integration.test.ts",
+        "packages/cloud/shared/src/lib/services/managed-cloud-owner-config.ts",
+        "packages/cloud/shared/src/lib/services/managed-eliza-config.ts",
+        "packages/cloud/shared/src/lib/services/reserved-env-keys.ts"
+      ]
+    },
+    {
+      "file": "0026-upstream-final-format.patch",
+      "sha256": "fcd633ccc036302a0bc0581e6288cc6cf29a77d36fb7ee8fa40f33da30b20d40",
+      "paths": [
+        "packages/app/src/api/cloud-google-delegation-routes.ts",
+        "packages/app/src/api/route-auth-policy.ts",
+        "packages/app/src/api/server.ts",
+        "packages/cloud/shared/src/lib/services/agent-google-connector/inbox-provider.http.integration.test.ts",
+        "packages/cloud/shared/src/lib/services/managed-cloud-owner-config.integration.test.ts",
+        "packages/cloud/shared/src/lib/services/managed-cloud-owner-config.ts",
+        "packages/cloud/shared/src/lib/services/managed-eliza-config.ts",
+        "plugins/plugin-elizacloud/__tests__/cloud-google-delegation.http.test.ts",
+        "plugins/plugin-workflow/__tests__/integration/hosted-live-google-http.test.ts",
+        "plugins/plugin-workflow/src/services/hosted-google-source.ts"
+      ]
+    },
+    {
+      "file": "0027-upstream-workflow-format.patch",
+      "sha256": "b93f1fd1f4fe4ef3d568acfd1367280c9a5d839b24878692f68f867c2e363b70",
+      "paths": [
+        "plugins/plugin-workflow/src/services/hosted-google-source.ts"
+      ]
+    },
+    {
+      "file": "0028-cloud-sdk-app-auth-export.patch",
+      "sha256": "5836a89c641e1a91d9b322ac4c6ab73e9e5439812a7e68d7df9c7794b5100166",
+      "paths": [
+        "packages/cloud/sdk/package.json"
+      ]
+    },
+    {
+      "file": "0029-cloud-google-response-validation.patch",
+      "sha256": "93b225c016ef2a908594c227cdd0d37311d416a76dd57b33a41717890c67c1f6",
+      "paths": [
+        "plugins/plugin-elizacloud/__tests__/cloud-google-delegation.http.test.ts",
+        "plugins/plugin-elizacloud/src/services/cloud-google-delegation.ts"
+      ]
+    },
+    {
+      "file": "0030-conversation-title-persistence.patch",
+      "sha256": "f64897b25defc9553e6bbea6427b02bf679e208f4361ce3155b0bcaff6dec7f1",
+      "paths": [
+        "packages/agent/src/api/conversation-routes.ts",
+        "packages/app/src/api/conversation-restore-relaunch.test.ts"
+      ]
+    },
+    {
+      "file": "0031-portable-workflow-approval-presentation.patch",
+      "sha256": "50b7876ca83c0a9126d8137a735571b4cad42a82192e30486c1552f56018b28b",
+      "paths": [
+        "plugins/plugin-workflow/src/services/workflow-approval-receipts.ts",
+        "plugins/plugin-workflow/src/services/workflow-service.ts",
+        "plugins/plugin-workflow/src/routes/workflow-routes.ts",
+        "plugins/plugin-workflow/__tests__/integration/approval-receipts-e2e.test.ts",
+        "plugins/plugin-workflow/README.md"
+      ]
+    },
+    {
+      "file": "0032-validated-workflow-authoring.patch",
+      "sha256": "2812bbc3fcc0bddc12aeb050d670230bbe61decfc3f1a87c3bd8b27f32520f48",
+      "paths": [
+        "bun.lock",
+        "plugins/plugin-workflow/README.md",
+        "plugins/plugin-workflow/__tests__/integration/authoring-default-export.test.ts",
+        "plugins/plugin-workflow/__tests__/integration/authoring-validation-e2e.test.ts",
+        "plugins/plugin-workflow/package.json",
+        "plugins/plugin-workflow/src/services/workflow-service.ts",
+        "plugins/plugin-workflow/src/services/workflow-source-check.ts"
+      ]
+    },
+    {
+      "file": "0033-workflow-authoring-public-api-contract.patch",
+      "sha256": "635288742066ce2c7909fd3040dec8eef6223e91011680fc1f5c5880ab956b70",
+      "paths": [
+        "plugins/plugin-workflow/src/services/workflow-service.ts",
+        "plugins/plugin-workflow/src/services/workflow-source-check.ts",
+        "plugins/plugin-workflow/__tests__/integration/approval-receipts-e2e.test.ts",
+        "plugins/plugin-workflow/__tests__/integration/authoring-default-export.test.ts"
+      ]
+    },
+    {
+      "file": "0034-selected-reminder-crud.patch",
+      "sha256": "86cdc666addf0844297c7ced081ae014295627515d333eb9eb9e9a6993e74061",
+      "paths": [
+        "packages/agent/src/api/device-action-routes.ts",
+        "plugins/plugin-assistant/src/services/device-actions/action.ts",
+        "plugins/plugin-assistant/src/services/device-actions/contract.ts",
+        "plugins/plugin-assistant/src/services/device-actions/reminder-contract.ts",
+        "plugins/plugin-assistant/src/services/device-actions/service.ts",
+        "plugins/plugin-assistant/src/services/message/context-assembly.ts",
+        "plugins/plugin-assistant/test/device-actions.e2e.test.ts"
+      ]
+    },
+    {
+      "file": "0035-nullable-action-schema.patch",
+      "sha256": "44c9b15256df0ad0af2fc11ac73eb2faec97d5ea5c20e980330edc799122212a",
+      "paths": [
+        "packages/core/src/actions/action-schema.ts",
+        "packages/core/src/actions/validate-tool-args.ts",
+        "plugins/plugin-assistant/src/services/device-actions/action-schema.test.ts"
+      ]
+    }
+  ],
+  "validation": {
+    "exactRecordedBaseReplay": true,
+    "exactChangedFileCount": 102,
+    "unownedChanges": 0,
+    "sourceOnlyEvidence": true,
+    "fullRootVerification": "Full root verification (284 tasks plus postchecks) passed at exact source f1129550bdcaf6994bdca4043493d333921530f87954434776c81b644434a3d4 with qualified alias baseline; owning schema catalogue/device-action flows passed. See null-schema-candidate-integration/results.json. No live/Linux/deployment acceptance inferred.",
+    "deploymentOrDeviceAcceptance": false
+  },
+  "excludedCommittedBaseDifferences": {
+    "vendorVsReproductionBaseFileCount": 88,
+    "exportedAsProductPatches": false
+  }
+}

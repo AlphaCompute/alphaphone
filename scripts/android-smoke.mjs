@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import crypto from "node:crypto";
 import { execFileSync } from "node:child_process";
 import { androidEnv } from "./toolchain.mjs";
 const env = androidEnv();
@@ -11,7 +12,10 @@ if (!serial || !serial.startsWith("emulator-"))
 const identity = JSON.parse(fs.readFileSync("app.config.json"));
 const adb = path.join(env.ANDROID_HOME, "platform-tools/adb");
 const run = (...args) =>
-  execFileSync(adb, ["-s", serial, ...args], { encoding: "utf8", env });
+  execFileSync(adb, ["-s", serial, ...args], {
+    encoding: "utf8", env,
+    timeout: args.includes("instrument") ? 600000 : args[0] === "install" ? 120000 : 30000,
+  });
 const original = run(
   "shell",
   "cmd",
@@ -19,46 +23,85 @@ const original = run(
   "get-role-holders",
   "android.app.role.HOME",
 ).trim();
+const archive = process.env.ALPHA_BUILD_ARCHIVE;
+const output = process.env.ALPHA_SMOKE_RESULTS || "test-results/android";
+const archivedManifest = archive ? JSON.parse(fs.readFileSync(path.join(archive, "apk-manifest.json"))) : null;
+const artifactHashes = {};
+if (archive) for (const variant of ["standalone", "launcher"]) for (const suffix of ["debug", "androidTest"]) {
+  const name = `${variant}-${suffix}.apk`;
+  const digest = crypto.createHash("sha256").update(fs.readFileSync(path.join(archive, name))).digest("hex");
+  if (digest !== archivedManifest[name]) throw new Error(`Archive hash mismatch: ${name}`);
+  artifactHashes[name] = digest;
+}
 const results = [];
-fs.mkdirSync("test-results/android", { recursive: true });
+const instrumentationFailures = [];
+fs.mkdirSync(output, { recursive: true });
 for (const name of [
   "result.json",
   "failure-activity.txt",
   "failure-crashes.txt",
   ...["standalone", "launcher"].flatMap((variant) => [
     `${variant}-instrumentation.txt`,
+    `${variant}-cases.json`,
     `${variant}-activity.txt`,
     `${variant}-hierarchy.xml`,
     `${variant}.png`,
   ]),
 ]) {
-  fs.rmSync(path.join("test-results/android", name), { force: true });
+  fs.rmSync(path.join(output, name), { force: true });
 }
 let failure;
 try {
   for (const variant of ["standalone", "launcher"]) {
-    run("install", "-r", `artifacts/${variant}-debug.apk`);
+    run("install", "-r", archive ? path.join(archive, `${variant}-debug.apk`) : `artifacts/${variant}-debug.apk`);
     run(
       "install",
       "-r",
-      `android/app/build/outputs/apk/androidTest/${variant}/debug/app-${variant}-debug-androidTest.apk`,
+      archive ? path.join(archive, `${variant}-androidTest.apk`) : `android/app/build/outputs/apk/androidTest/${variant}/debug/app-${variant}-debug-androidTest.apk`,
     );
     const instrumentation = run(
       "shell",
       "am",
       "instrument",
       "-w",
+      "-r",
       `${identity.appId}.test/androidx.test.runner.AndroidJUnitRunner`,
     );
     fs.writeFileSync(
-      `test-results/android/${variant}-instrumentation.txt`,
+      `${output}/${variant}-instrumentation.txt`,
       instrumentation,
     );
-    if (
-      !/OK \(1 test\)/.test(instrumentation) ||
-      /FAILURES|INSTRUMENTATION_FAILED/.test(instrumentation)
-    )
-      throw new Error(instrumentation);
+    const terminalCases = [];
+    let statusBlock = "";
+    for (const line of instrumentation.split("\n")) {
+      const code = /^INSTRUMENTATION_STATUS_CODE: (-?\d+)\s*$/.exec(line);
+      if (!code) { statusBlock += line + "\n"; continue; }
+      const testClass = /^INSTRUMENTATION_STATUS: class=(.+)$/m.exec(statusBlock)?.[1];
+      const testMethod = /^INSTRUMENTATION_STATUS: test=(.+)$/m.exec(statusBlock)?.[1];
+      const value = Number(code[1]);
+      if (testClass && testMethod && value <= 0)
+        terminalCases.push({ selector: `${testClass}#${testMethod}`, code: value });
+      statusBlock = "";
+    }
+    const testCounts = {
+      passed: terminalCases.filter(row => row.code === 0).length,
+      failed: terminalCases.filter(row => row.code === -1 || row.code === -2).length,
+      ignored: terminalCases.filter(row => row.code === -3).length,
+      assumptionSkipped: terminalCases.filter(row => row.code === -4).length,
+      unknown: terminalCases.filter(row => ![0,-1,-2,-3,-4].includes(row.code)).length,
+    };
+    const reportedCount = Number(/(?:OK \(|Tests run: )(\d+)/.exec(instrumentation)?.[1]);
+    const countsVerified = Number.isSafeInteger(reportedCount) && reportedCount > 0 &&
+      reportedCount === terminalCases.length &&
+      new Set(terminalCases.map(row => row.selector)).size === terminalCases.length &&
+      testCounts.unknown === 0;
+    fs.writeFileSync(`${output}/${variant}-cases.json`, JSON.stringify({reportedCount, countsVerified, testCounts, terminalCases}, null, 2));
+    const instrumentationPassed = countsVerified && /OK \([1-9]\d* tests?\)/.test(instrumentation) &&
+      !/FAILURES|INSTRUMENTATION_FAILED/.test(instrumentation);
+    if (!instrumentationPassed) {
+      instrumentationFailures.push(variant);
+      console.error(`${variant} instrumentation failed; preserving its log and checking the other distribution variant.`);
+    }
     // Instrumentation owns the prior process. Exercise a fresh normal launch.
     run("shell", "am", "force-stop", identity.appId);
     if (variant === "launcher") {
@@ -105,26 +148,28 @@ try {
     if (!resumed) throw new Error("App not resumed after HOME/start");
     // Foreground activity alone does not prove a rendered HOME screen. Require
     // the product's accessible content after the fresh start before capturing.
-    const marker = identity.orientation === "landscape" ? "Talk to Eliza" : "Ask Alpha";
+    const markers = ["Open conversation", "Calendar", "Camera", "Notes", "Settings"];
     let hierarchy = "";
     let rendered = false;
     for (let attempt = 0; attempt < 10; attempt++) {
       const remote = "/sdcard/launcher-smoke-hierarchy.xml";
       run("shell", "uiautomator", "dump", remote);
       hierarchy = run("shell", "cat", remote);
-      if (hierarchy.includes(marker)) { rendered = true; break; }
+      if (markers.every(marker => hierarchy.includes(`text="${marker}"`) || hierarchy.includes(`content-desc="${marker}"`))) { rendered = true; break; }
       run("shell", "sleep", "0.5");
     }
-    fs.writeFileSync(`test-results/android/${variant}-hierarchy.xml`, hierarchy);
+    fs.writeFileSync(`${output}/${variant}-hierarchy.xml`, hierarchy);
     if (!rendered) throw new Error("Foreground app did not render its accessible home content");
-    fs.writeFileSync(`test-results/android/${variant}-activity.txt`, activity);
+    fs.writeFileSync(`${output}/${variant}-activity.txt`, activity);
     fs.writeFileSync(
-      `test-results/android/${variant}.png`,
+      `${output}/${variant}.png`,
       execFileSync(adb, ["-s", serial, "exec-out", "screencap", "-p"], { env }),
     );
     results.push({
       variant,
-      instrumentation: "passed",
+      instrumentation: instrumentationPassed ? "passed" : "failed",
+      testCounts,
+      countsVerified,
       homeRole: variant === "launcher",
       resumed: true,
       rendered: true,
@@ -134,11 +179,11 @@ try {
   failure = error;
   try {
     fs.writeFileSync(
-      "test-results/android/failure-activity.txt",
+      path.join(output, "failure-activity.txt"),
       run("shell", "dumpsys", "activity", "activities"),
     );
     fs.writeFileSync(
-      "test-results/android/failure-crashes.txt",
+      path.join(output, "failure-crashes.txt"),
       run("logcat", "-d", "-b", "crash"),
     );
   } catch (captureError) {
@@ -165,13 +210,17 @@ try {
     }
   }
 }
-if (failure) throw failure;
 fs.writeFileSync(
-  "test-results/android/result.json",
+  path.join(output, "result.json"),
   JSON.stringify(
-    { serial, createdAt: new Date().toISOString(), results },
+    { serial, archive, artifactHashes, createdAt: new Date().toISOString(), results,
+      status: failure || instrumentationFailures.length ? "failed" : "passed",
+      ...(failure ? { error: failure.message } : {}) },
     null,
     2,
   ) + "\n",
 );
 console.log(JSON.stringify(results, null, 2));
+if (failure) throw failure;
+if (instrumentationFailures.length)
+  throw new Error(`Instrumentation failed for ${instrumentationFailures.join(", ")}; see the preserved per-variant logs.`);

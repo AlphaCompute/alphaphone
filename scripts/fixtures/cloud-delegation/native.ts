@@ -1,0 +1,2 @@
+export const secureConnectionStore={async read(slot:string){return JSON.parse(localStorage.getItem(slot)||'null');},async compareExchange(slot:string,expected:unknown,value:unknown){if(JSON.stringify(await this.read(slot))!==JSON.stringify(expected))return{status:'conflict'};if(value===null)localStorage.removeItem(slot);else localStorage.setItem(slot,JSON.stringify(value));return{status:'saved'};}};
+export async function openConnectionBrowser(url:string){(window as any).authorizationUrl=url;}

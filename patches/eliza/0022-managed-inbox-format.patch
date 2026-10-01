@@ -1,0 +1,2971 @@
+--- a/packages/cloud/api/v1/eliza/google/gmail/inbox-v1/route.ts
++++ b/packages/cloud/api/v1/eliza/google/gmail/inbox-v1/route.ts
+@@ -2,78 +2,87 @@
+ import { failureResponse } from "@/lib/api/cloud-worker-errors";
+ import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
+ import {
+-	managedInboxProvider,
+-	managedInboxReceipts,
++  managedInboxProvider,
++  managedInboxReceipts,
+ } from "@/lib/services/agent-google-connector/inbox-managed";
+ import { createInboxOperationRoutes } from "@/lib/services/agent-google-connector/inbox-operation-routes";
+ import {
+-	DefiniteProviderRejection,
+-	InboxContractError,
++  DefiniteProviderRejection,
++  InboxContractError,
+ } from "@/lib/services/agent-google-connector/inbox-receipts";
+ import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
+ 
+ const app = new Hono<AppEnv>();
+ async function identity(context: AppContext) {
+-	const user = await requireUserOrApiKeyWithOrg(context);
+-	return { organizationId: user.organization_id, userId: user.id };
++  const user = await requireUserOrApiKeyWithOrg(context);
++  return { organizationId: user.organization_id, userId: user.id };
+ }
+ async function selected(context: AppContext) {
+-	const user = await identity(context),
+-		grantId = context.req.query("grantId");
+-	if (
+-		!grantId ||
+-		!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+-			grantId,
+-		)
+-	)
+-		throw new InboxContractError(400, "Explicit grant UUID required");
+-	return { ...user, grantId };
++  const user = await identity(context),
++    grantId = context.req.query("grantId");
++  if (
++    !grantId ||
++    !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
++      grantId,
++    )
++  )
++    throw new InboxContractError(400, "Explicit grant UUID required");
++  return { ...user, grantId };
+ }
+ app.onError((error, context) =>
+-	error instanceof DefiniteProviderRejection
+-		? context.json(
+-				{
+-					error:
+-						"The selected Google account or message is unavailable. Reconnect Google or refresh the selection.",
+-				},
+-				error.code === "404" ? 404 : 409,
+-			)
+-		: error instanceof InboxContractError
+-			? context.json({ error: error.message }, error.status)
+-			: failureResponse(context, error),
++  error instanceof DefiniteProviderRejection
++    ? context.json(
++        {
++          error:
++            "The selected Google account or message is unavailable. Reconnect Google or refresh the selection.",
++        },
++        error.code === "404" ? 404 : 409,
++      )
++    : error instanceof InboxContractError
++      ? context.json({ error: error.message }, error.status)
++      : failureResponse(context, error),
+ );
+ app.get("/capabilities", async (context) =>
+-	context.json(
+-		await managedInboxProvider.capabilities(await selected(context)),
+-	),
++  context.json(
++    await managedInboxProvider.capabilities(await selected(context)),
++  ),
+ );
+ app.get("/thread", async (context) =>
+-	context.json(
+-		await managedInboxProvider.thread(
+-			await selected(context),
+-			context.req.query("threadId") ?? "",
+-			Number(context.req.query("offset") ?? "0"),
+-			context.req.query("historyId"),
+-		),
+-	),
++  context.json(
++    await managedInboxProvider.thread(
++      await selected(context),
++      context.req.query("threadId") ?? "",
++      Number(context.req.query("offset") ?? "0"),
++      context.req.query("historyId"),
++    ),
++  ),
+ );
+-app.get("/attachment",async context=>context.json(await managedInboxProvider.attachment(await selected(context),context.req.query("messageId")||"",context.req.query("partId")||"",context.req.query("historyId")||"")));
++app.get("/attachment", async (context) =>
++  context.json(
++    await managedInboxProvider.attachment(
++      await selected(context),
++      context.req.query("messageId") || "",
++      context.req.query("partId") || "",
++      context.req.query("historyId") || "",
++    ),
++  ),
++);
+ app.get("/draft", async (context) =>
+-	context.json(
+-		await managedInboxProvider.draft(
+-			await selected(context),
+-			context.req.query("draftId") ?? "",
+-		),
+-	),
++  context.json(
++    await managedInboxProvider.draft(
++      await selected(context),
++      context.req.query("draftId") ?? "",
++    ),
++  ),
+ );
+ app.route(
+-	"/",
+-	createInboxOperationRoutes({
+-		receipts: managedInboxReceipts,
+-		authenticate: (context) => identity(context as AppContext),
+-		review: (owner, proposal, requestId) =>
+-			managedInboxProvider.review(owner, proposal, requestId),
+-		onError: (error, context) => failureResponse(context as AppContext, error),
+-	}),
++  "/",
++  createInboxOperationRoutes({
++    receipts: managedInboxReceipts,
++    authenticate: (context) => identity(context as AppContext),
++    review: (owner, proposal, requestId) =>
++      managedInboxProvider.review(owner, proposal, requestId),
++    onError: (error, context) => failureResponse(context as AppContext, error),
++  }),
+ );
+ export default app;
+--- a/packages/cloud/shared/src/lib/services/agent-google-connector/inbox-managed.ts
++++ b/packages/cloud/shared/src/lib/services/agent-google-connector/inbox-managed.ts
+@@ -1,61 +1,45 @@
+ import { dbWrite } from "../../../db/client";
+ import { extractBody } from "../../utils/google-mcp-shared";
+-import {
+-	normalizeGoogleGmailMessage,
+-	normalizeManagedGmailBodyText,
+-} from "./gmail";
++import { normalizeGoogleGmailMessage, normalizeManagedGmailBodyText } from "./gmail";
+ import { InboxGoogleProvider } from "./inbox-provider";
+ import { InboxContractError, InboxReceipts } from "./inbox-receipts";
+-import {
+-	getGoogleAccessToken,
+-	getManagedGoogleConnectorStatus,
+-} from "./shared";
++import { getGoogleAccessToken, getManagedGoogleConnectorStatus } from "./shared";
+ 
+ export const managedInboxReceipts = new InboxReceipts(async (query) => {
+-	const result = await dbWrite.execute(query);
+-	return {
+-		rows: (Array.isArray(result) ? result : result.rows) as Record<
+-			string,
+-			unknown
+-		>[],
+-	};
++  const result = await dbWrite.execute(query);
++  return {
++    rows: (Array.isArray(result) ? result : result.rows) as Record<string, unknown>[],
++  };
+ });
+ export const managedInboxProvider = new InboxGoogleProvider({
+-	async grant(owner) {
+-		const args = { ...owner, side: "owner" as const },
+-			status = await getManagedGoogleConnectorStatus(args);
+-		if (
+-			!status.connected ||
+-			status.connectionId !== owner.grantId ||
+-			typeof status.identity?.email !== "string"
+-		)
+-			throw new InboxContractError(
+-				403,
+-				"Reconnect the selected owner Google account",
+-			);
+-		const token = await getGoogleAccessToken(args);
+-		if (token.connectionId !== owner.grantId)
+-			throw new InboxContractError(403, "Google grant changed");
+-		return {
+-			token: token.accessToken,
+-			email: status.identity.email,
+-			scopes: status.grantedScopes,
+-		};
+-	},
+-	normalizeMessage(raw, email) {
+-		const message = normalizeGoogleGmailMessage(raw, email);
+-		if (!message) return null;
+-		const payload =
+-			raw.payload &&
+-			typeof raw.payload === "object" &&
+-			!Array.isArray(raw.payload)
+-				? (raw.payload as Record<string, unknown>)
+-				: null;
+-		return {
+-			message: { ...message },
+-			bodyText: payload
+-				? normalizeManagedGmailBodyText(extractBody(payload))
+-				: "",
+-		};
+-	},
++  async grant(owner) {
++    const args = { ...owner, side: "owner" as const },
++      status = await getManagedGoogleConnectorStatus(args);
++    if (
++      !status.connected ||
++      status.connectionId !== owner.grantId ||
++      typeof status.identity?.email !== "string"
++    )
++      throw new InboxContractError(403, "Reconnect the selected owner Google account");
++    const token = await getGoogleAccessToken(args);
++    if (token.connectionId !== owner.grantId)
++      throw new InboxContractError(403, "Google grant changed");
++    return {
++      token: token.accessToken,
++      email: status.identity.email,
++      scopes: status.grantedScopes,
++    };
++  },
++  normalizeMessage(raw, email) {
++    const message = normalizeGoogleGmailMessage(raw, email);
++    if (!message) return null;
++    const payload =
++      raw.payload && typeof raw.payload === "object" && !Array.isArray(raw.payload)
++        ? (raw.payload as Record<string, unknown>)
++        : null;
++    return {
++      message: { ...message },
++      bodyText: payload ? normalizeManagedGmailBodyText(extractBody(payload)) : "",
++    };
++  },
+ });
+--- a/packages/cloud/shared/src/lib/services/agent-google-connector/inbox-operation-routes.ts
++++ b/packages/cloud/shared/src/lib/services/agent-google-connector/inbox-operation-routes.ts
+@@ -1,179 +1,154 @@
+ import { type Context, Hono } from "hono";
+ import {
+-	DefiniteProviderRejection,
+-	dispatchInboxEffect,
+-	InboxContractError,
+-	type InboxEffectKind,
+-	type InboxOwner,
+-	type InboxReceipts,
++  DefiniteProviderRejection,
++  dispatchInboxEffect,
++  InboxContractError,
++  type InboxEffectKind,
++  type InboxOwner,
++  type InboxReceipts,
+ } from "./inbox-receipts";
+ 
+ export interface InboxReviewedEffect {
+-	kind: InboxEffectKind;
+-	digest: string;
+-	review: Record<string, unknown>;
+-	perform: () => Promise<Record<string, unknown>>;
++  kind: InboxEffectKind;
++  digest: string;
++  review: Record<string, unknown>;
++  perform: () => Promise<Record<string, unknown>>;
+ }
+ export interface InboxOperationRouteDependencies {
+-	receipts: InboxReceipts;
+-	onError?(error: Error, context: Context): Response | Promise<Response>;
+-	authenticate(context: Context): Promise<Omit<InboxOwner, "grantId">>;
+-	/** Must resolve the exact managed owner grant and validate scopes/content on each call. */
+-	review(
+-		owner: InboxOwner,
+-		proposal: unknown,
+-		requestId: string,
+-	): Promise<InboxReviewedEffect>;
++  receipts: InboxReceipts;
++  onError?(error: Error, context: Context): Response | Promise<Response>;
++  authenticate(context: Context): Promise<Omit<InboxOwner, "grantId">>;
++  /** Must resolve the exact managed owner grant and validate scopes/content on each call. */
++  review(owner: InboxOwner, proposal: unknown, requestId: string): Promise<InboxReviewedEffect>;
+ }
+-const uuid =
+-	/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
++const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+ function id(value: unknown): string {
+-	if (typeof value !== "string" || !uuid.test(value))
+-		throw new InboxContractError(400, "A UUID identity is required");
+-	return value;
++  if (typeof value !== "string" || !uuid.test(value))
++    throw new InboxContractError(400, "A UUID identity is required");
++  return value;
+ }
+-async function input(
+-	context: Context,
+-	keys: string[],
+-): Promise<Record<string, unknown>> {
+-	const reader = context.req.raw.body?.getReader();
+-	if (!reader) throw new InboxContractError(400, "JSON body required");
+-	const chunks: Uint8Array[] = [];
+-	let size = 0;
+-	try {
+-		for (;;) {
+-			const next = await reader.read();
+-			if (next.done) break;
+-			size += next.value.byteLength;
+-			if (size > 96 * 1024) {
+-				await reader.cancel();
+-				throw new InboxContractError(
+-					413,
+-					"Inbox review exceeds the explicit size limit",
+-				);
+-			}
+-			chunks.push(next.value);
+-		}
+-	} finally {
+-		reader.releaseLock();
+-	}
+-	const bytes = new Uint8Array(size);
+-	let offset = 0;
+-	for (const chunk of chunks) {
+-		bytes.set(chunk, offset);
+-		offset += chunk.length;
+-	}
+-	let value: unknown;
+-	try {
+-		value = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes));
+-	} catch {
+-		throw new InboxContractError(400, "Invalid JSON");
+-	}
+-	if (!value || typeof value !== "object" || Array.isArray(value))
+-		throw new InboxContractError(400, "JSON object required");
+-	const result = value as Record<string, unknown>;
+-	if (
+-		Object.keys(result).some((key) => !keys.includes(key)) ||
+-		keys.some((key) => !(key in result))
+-	)
+-		throw new InboxContractError(400, "Unexpected or missing Inbox fields");
+-	return result;
++async function input(context: Context, keys: string[]): Promise<Record<string, unknown>> {
++  const reader = context.req.raw.body?.getReader();
++  if (!reader) throw new InboxContractError(400, "JSON body required");
++  const chunks: Uint8Array[] = [];
++  let size = 0;
++  try {
++    for (;;) {
++      const next = await reader.read();
++      if (next.done) break;
++      size += next.value.byteLength;
++      if (size > 96 * 1024) {
++        await reader.cancel();
++        throw new InboxContractError(413, "Inbox review exceeds the explicit size limit");
++      }
++      chunks.push(next.value);
++    }
++  } finally {
++    reader.releaseLock();
++  }
++  const bytes = new Uint8Array(size);
++  let offset = 0;
++  for (const chunk of chunks) {
++    bytes.set(chunk, offset);
++    offset += chunk.length;
++  }
++  let value: unknown;
++  try {
++    value = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes));
++  } catch {
++    throw new InboxContractError(400, "Invalid JSON");
++  }
++  if (!value || typeof value !== "object" || Array.isArray(value))
++    throw new InboxContractError(400, "JSON object required");
++  const result = value as Record<string, unknown>;
++  if (
++    Object.keys(result).some((key) => !keys.includes(key)) ||
++    keys.some((key) => !(key in result))
++  )
++    throw new InboxContractError(400, "Unexpected or missing Inbox fields");
++  return result;
+ }
+ /** Mounted below the managed Gmail inbox-v1 namespace. All effects require prepare then a matching explicit dispatch. */
+-export function createInboxOperationRoutes(
+-	dependencies: InboxOperationRouteDependencies,
+-) {
+-	const app = new Hono();
+-	app.onError((error, context) =>
+-		error instanceof DefiniteProviderRejection
+-			? context.json(
+-					{
+-						error:
+-							"The selected Google account or message is unavailable. Reconnect Google or refresh the selection.",
+-					},
+-					error.code === "404" ? 404 : 409,
+-				)
+-			: error instanceof InboxContractError
+-				? context.json({ error: error.message }, error.status)
+-				: dependencies.onError
+-					? dependencies.onError(error, context)
+-					: context.json(
+-							{
+-								error:
+-									"Inbox operation unavailable; inspect the canonical receipt before attempting another action.",
+-							},
+-							503,
+-						),
+-	);
+-	app.post("/operations", async (context) => {
+-		const identity = await dependencies.authenticate(context),
+-			body = await input(context, ["grantId", "requestId", "proposal"]),
+-			owner = { ...identity, grantId: id(body.grantId) },
+-			requestId = id(body.requestId);
+-		const reviewed = await dependencies.review(owner, body.proposal, requestId);
+-		const receipt = await dependencies.receipts.prepare(
+-			owner,
+-			requestId,
+-			reviewed.kind,
+-			reviewed.digest,
+-		);
+-		return context.json({
+-			version: 1,
+-			receipt,
+-			review: reviewed.review,
+-			providerExactlyOnce: false,
+-		});
+-	});
+-	app.post("/operations/:requestId/dispatch", async (context) => {
+-		const identity = await dependencies.authenticate(context),
+-			body = await input(context, ["grantId", "reviewDigest", "proposal"]),
+-			owner = { ...identity, grantId: id(body.grantId) },
+-			requestId = id(context.req.param("requestId"));
+-		if (
+-			typeof body.reviewDigest !== "string" ||
+-			!/^[a-f0-9]{64}$/.test(body.reviewDigest)
+-		)
+-			throw new InboxContractError(400, "Review digest required");
+-		const existing = await dependencies.receipts.get(owner, requestId);
+-		if (existing.reviewDigest !== body.reviewDigest)
+-			throw new InboxContractError(409, "Review changed");
+-		// Even if authorization has since expired, GET can inspect the caller's own receipt.
+-		// A repeated dispatch never retrieves new credentials or repeats the provider request.
+-		if (existing.state !== "prepared")
+-			return context.json({
+-				version: 1,
+-				receipt: existing,
+-				providerExactlyOnce: false,
+-			});
+-		const reviewed = await dependencies.review(owner, body.proposal, requestId);
+-		if (
+-			reviewed.digest !== body.reviewDigest ||
+-			reviewed.kind !== existing.kind
+-		)
+-			throw new InboxContractError(
+-				409,
+-				"Reviewed content or provider state changed",
+-			);
+-		const receipt = await dispatchInboxEffect({
+-			receipts: dependencies.receipts,
+-			owner,
+-			requestId,
+-			reviewDigest: reviewed.digest,
+-			perform: reviewed.perform,
+-		});
+-		return context.json({ version: 1, receipt, providerExactlyOnce: false });
+-	});
+-	app.get("/operations/:requestId", async (context) => {
+-		const identity = await dependencies.authenticate(context),
+-			owner = { ...identity, grantId: id(context.req.query("grantId")) };
+-		return context.json({
+-			version: 1,
+-			receipt: await dependencies.receipts.observe(
+-				owner,
+-				id(context.req.param("requestId")),
+-			),
+-			providerExactlyOnce: false,
+-		});
+-	});
+-	return app;
++export function createInboxOperationRoutes(dependencies: InboxOperationRouteDependencies) {
++  const app = new Hono();
++  app.onError((error, context) =>
++    error instanceof DefiniteProviderRejection
++      ? context.json(
++          {
++            error:
++              "The selected Google account or message is unavailable. Reconnect Google or refresh the selection.",
++          },
++          error.code === "404" ? 404 : 409,
++        )
++      : error instanceof InboxContractError
++        ? context.json({ error: error.message }, error.status)
++        : dependencies.onError
++          ? dependencies.onError(error, context)
++          : context.json(
++              {
++                error:
++                  "Inbox operation unavailable; inspect the canonical receipt before attempting another action.",
++              },
++              503,
++            ),
++  );
++  app.post("/operations", async (context) => {
++    const identity = await dependencies.authenticate(context),
++      body = await input(context, ["grantId", "requestId", "proposal"]),
++      owner = { ...identity, grantId: id(body.grantId) },
++      requestId = id(body.requestId);
++    const reviewed = await dependencies.review(owner, body.proposal, requestId);
++    const receipt = await dependencies.receipts.prepare(
++      owner,
++      requestId,
++      reviewed.kind,
++      reviewed.digest,
++    );
++    return context.json({
++      version: 1,
++      receipt,
++      review: reviewed.review,
++      providerExactlyOnce: false,
++    });
++  });
++  app.post("/operations/:requestId/dispatch", async (context) => {
++    const identity = await dependencies.authenticate(context),
++      body = await input(context, ["grantId", "reviewDigest", "proposal"]),
++      owner = { ...identity, grantId: id(body.grantId) },
++      requestId = id(context.req.param("requestId"));
++    if (typeof body.reviewDigest !== "string" || !/^[a-f0-9]{64}$/.test(body.reviewDigest))
++      throw new InboxContractError(400, "Review digest required");
++    const existing = await dependencies.receipts.get(owner, requestId);
++    if (existing.reviewDigest !== body.reviewDigest)
++      throw new InboxContractError(409, "Review changed");
++    // Even if authorization has since expired, GET can inspect the caller's own receipt.
++    // A repeated dispatch never retrieves new credentials or repeats the provider request.
++    if (existing.state !== "prepared")
++      return context.json({
++        version: 1,
++        receipt: existing,
++        providerExactlyOnce: false,
++      });
++    const reviewed = await dependencies.review(owner, body.proposal, requestId);
++    if (reviewed.digest !== body.reviewDigest || reviewed.kind !== existing.kind)
++      throw new InboxContractError(409, "Reviewed content or provider state changed");
++    const receipt = await dispatchInboxEffect({
++      receipts: dependencies.receipts,
++      owner,
++      requestId,
++      reviewDigest: reviewed.digest,
++      perform: reviewed.perform,
++    });
++    return context.json({ version: 1, receipt, providerExactlyOnce: false });
++  });
++  app.get("/operations/:requestId", async (context) => {
++    const identity = await dependencies.authenticate(context),
++      owner = { ...identity, grantId: id(context.req.query("grantId")) };
++    return context.json({
++      version: 1,
++      receipt: await dependencies.receipts.observe(owner, id(context.req.param("requestId"))),
++      providerExactlyOnce: false,
++    });
++  });
++  return app;
+ }
+--- a/packages/cloud/shared/src/lib/services/agent-google-connector/inbox-provider.http.integration.test.ts
++++ b/packages/cloud/shared/src/lib/services/agent-google-connector/inbox-provider.http.integration.test.ts
+@@ -1,132 +1,700 @@
+-import { afterAll, expect, test } from 'bun:test';
+-import { readFileSync } from 'node:fs';
+-import { PGlite } from '@electric-sql/pglite';
+-import { PgDialect } from 'drizzle-orm/pg-core';
+-import { sql, type SQL } from 'drizzle-orm';
+-import { createInboxOperationRoutes } from './inbox-operation-routes';
+-import { DefiniteProviderRejection, InboxContractError, InboxReceipts } from './inbox-receipts';
++import { afterAll, expect, test } from "bun:test";
++import { readFileSync } from "node:fs";
++import { PGlite } from "@electric-sql/pglite";
++import { type SQL, sql } from "drizzle-orm";
++import { PgDialect } from "drizzle-orm/pg-core";
++import { createInboxOperationRoutes } from "./inbox-operation-routes";
++import { DefiniteProviderRejection, InboxContractError, InboxReceipts } from "./inbox-receipts";
+ 
+-const org='00000000-0000-4000-8000-000000000001',user='00000000-0000-4000-8000-000000000002',other='00000000-0000-4000-8000-000000000003',grant='00000000-0000-4000-8000-000000000004';
+-const database=new PGlite(),dialect=new PgDialect(),orm={execute:async(query:SQL)=>{const prepared=dialect.sqlToQuery(query);return database.query(prepared.sql,prepared.params);}},receipts=new InboxReceipts(async query=>{const result=await orm.execute(query);return {rows:result.rows as Record<string,unknown>[]};});
+-let posts=0,mode:'ok'|'lost'|'rejected'='ok';
+-const provider=Bun.serve({hostname:'127.0.0.1',port:0,async fetch(request){
+- if(new URL(request.url).pathname!=='/gmail/v1/users/me/messages/send'||request.method!=='POST')return new Response('unexpected',{status:404});
+- posts++;const body=await request.json() as {raw:string};const decoded=Buffer.from(body.raw,'base64url').toString('utf8');if(!decoded.startsWith('To: synthetic@example.invalid\r\n'))return new Response('invalid MIME',{status:400});
+- if(mode==='rejected')return Response.json({error:'fixture refusal'},{status:403});
+- if(mode==='lost')return new Response('broken committed result',{status:200});
+- return Response.json({id:'synthetic-message-'+posts,threadId:'synthetic-thread'});
+-}});
+-const app=createInboxOperationRoutes({receipts,
+- async authenticate(context){const value=context.req.header('x-fixture-owner');if(value!==user&&value!==other)throw new InboxContractError(401,'Fixture authentication required');return {organizationId:org,userId:value};},
+- async review(owner,proposal){
+-  if(owner.grantId!==(owner.userId===user?grant:'00000000-0000-4000-8000-000000000005'))throw new InboxContractError(404,'Grant not found');
+-  if(!proposal||typeof proposal!=='object'||(proposal as {kind?:string}).kind!=='send'||typeof (proposal as {body?:string}).body!=='string')throw new InboxContractError(400,'Invalid reviewed proposal');
+-  const raw=Buffer.from('To: synthetic@example.invalid\r\nSubject: Synthetic\r\nMIME-Version: 1.0\r\nContent-Type: text/plain; charset=UTF-8\r\n\r\n'+(proposal as {body:string}).body).toString('base64url');
+-  const digest=Buffer.from(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(raw))).toString('hex');
+-  return {kind:'send',digest,review:{to:['synthetic@example.invalid']},perform:async()=>{const response=await fetch(`http://127.0.0.1:${provider.port}/gmail/v1/users/me/messages/send`,{method:'POST',body:JSON.stringify({raw})});if(response.status===403)throw new DefiniteProviderRejection('403');const result=await response.json() as {id:string;threadId:string};if(typeof result.id!=='string')throw Error('Invalid provider response');return result;}};
+- }});
+-const request=(path:string,body?:unknown,identity=user)=>app.request('http://fixture'+path,{method:body?'POST':'GET',headers:{'x-fixture-owner':identity,'content-type':'application/json'},...(body?{body:JSON.stringify(body)}:{})});
+-afterAll(async()=>{provider.stop(true);await database.close();});
+-test('real Hono route + PostgreSQL migration + HTTP provider: admission, response loss, no replay, owner scope and immutable receipt',async()=>{
+- await database.exec('CREATE TABLE organizations(id uuid PRIMARY KEY);CREATE TABLE users(id uuid PRIMARY KEY);');await database.query('INSERT INTO organizations VALUES ($1)',[org]);await database.query('INSERT INTO users VALUES ($1),($2)',[user,other]);
+- await database.exec(readFileSync(new URL('../../../db/migrations/0506_managed_gmail_operation_receipts.sql',import.meta.url),'utf8'));
+- const operation=crypto.randomUUID(),proposal={kind:'send',body:'Exact reviewed body'};
+- expect((await request('/operations',{grantId:grant,requestId:operation,proposal},'')).status).toBe(401);
+- expect((await request('/operations',{grantId:grant,requestId:operation,proposal},other)).status).toBe(404);
+- const foreignGrant='00000000-0000-4000-8000-000000000005';expect((await request('/operations',{grantId:foreignGrant,requestId:operation,proposal},other)).status).toBe(200);expect((await request(`/operations/${operation}?grantId=${foreignGrant}`)).status).toBe(404);
+- const prepared=await (await request('/operations',{grantId:grant,requestId:operation,proposal})).json() as any;expect(prepared.receipt.state).toBe('prepared');expect(posts).toBe(0);expect(prepared.providerExactlyOnce).toBe(false);
+- expect((await request('/operations',{grantId:grant,requestId:operation,proposal:{kind:'send',body:'changed'}})).status).toBe(409);
+- const dispatch={grantId:grant,reviewDigest:prepared.receipt.reviewDigest,proposal};
+- const responses=await Promise.all(Array.from({length:8},()=>request(`/operations/${operation}/dispatch`,dispatch)));expect(responses.every(r=>r.status===200)).toBe(true);expect(posts).toBe(1);
+- expect((await (await request(`/operations/${operation}?grantId=${grant}`)).json() as any).receipt.state).toBe('succeeded');
+- expect((await request(`/operations/${operation}?grantId=${grant}`,undefined,other)).status).toBe(404);
+- expect((await request(`/operations/${operation}/dispatch`,{...dispatch,reviewDigest:'0'.repeat(64)})).status).toBe(409);
+- await expect(orm.execute(sql`UPDATE managed_gmail_operation_receipts SET state='prepared',provider_result=NULL,dispatched_at=NULL,finished_at=NULL WHERE request_id=${operation}`)).rejects.toThrow();
+- await expect(orm.execute(sql`UPDATE managed_gmail_operation_receipts SET review_digest=${'f'.repeat(64)} WHERE request_id=${operation}`)).rejects.toThrow();
+- mode='lost';const lost=crypto.randomUUID(),p=await (await request('/operations',{grantId:grant,requestId:lost,proposal})).json() as any;
+- const lostDispatch={grantId:grant,reviewDigest:p.receipt.reviewDigest,proposal};const result=await (await request(`/operations/${lost}/dispatch`,lostDispatch)).json() as any;expect(result.receipt.state).toBe('outcome-unknown');expect(posts).toBe(2);
+- const reconstructed=new InboxReceipts(async query=>({rows:(await orm.execute(query)).rows as Record<string,unknown>[]}));expect((await reconstructed.get({organizationId:org,userId:user,grantId:grant},lost)).state).toBe('outcome-unknown');
+- for(let i=0;i<3;i++)expect((await (await request(`/operations/${lost}/dispatch`,lostDispatch)).json() as any).receipt.state).toBe('outcome-unknown');expect(posts).toBe(2);
+- mode='rejected';const denied=crypto.randomUUID(),d=await (await request('/operations',{grantId:grant,requestId:denied,proposal})).json() as any;
+- expect((await (await request(`/operations/${denied}/dispatch`,{grantId:grant,reviewDigest:d.receipt.reviewDigest,proposal})).json() as any).receipt.state).toBe('rejected');expect(posts).toBe(3);
+- expect((await request('/operations',{grantId:grant,requestId:crypto.randomUUID(),proposal,side:'agent'})).status).toBe(400);
+- const columns=await database.query<{column_name:string}>('SELECT column_name FROM information_schema.columns WHERE table_name=$1',['managed_gmail_operation_receipts']);expect(columns.rows.some(row=>/token|body|raw|recipient/.test(row.column_name))).toBe(false);
+-},30000);
++const org = "00000000-0000-4000-8000-000000000001",
++  user = "00000000-0000-4000-8000-000000000002",
++  other = "00000000-0000-4000-8000-000000000003",
++  grant = "00000000-0000-4000-8000-000000000004";
++const database = new PGlite(),
++  dialect = new PgDialect(),
++  orm = {
++    execute: async (query: SQL) => {
++      const prepared = dialect.sqlToQuery(query);
++      return database.query(prepared.sql, prepared.params);
++    },
++  },
++  receipts = new InboxReceipts(async (query) => {
++    const result = await orm.execute(query);
++    return { rows: result.rows as Record<string, unknown>[] };
++  });
++let posts = 0,
++  mode: "ok" | "lost" | "rejected" = "ok";
++const provider = Bun.serve({
++  hostname: "127.0.0.1",
++  port: 0,
++  async fetch(request) {
++    if (
++      new URL(request.url).pathname !== "/gmail/v1/users/me/messages/send" ||
++      request.method !== "POST"
++    )
++      return new Response("unexpected", { status: 404 });
++    posts++;
++    const body = (await request.json()) as { raw: string };
++    const decoded = Buffer.from(body.raw, "base64url").toString("utf8");
++    if (!decoded.startsWith("To: synthetic@example.invalid\r\n"))
++      return new Response("invalid MIME", { status: 400 });
++    if (mode === "rejected") return Response.json({ error: "fixture refusal" }, { status: 403 });
++    if (mode === "lost") return new Response("broken committed result", { status: 200 });
++    return Response.json({ id: "synthetic-message-" + posts, threadId: "synthetic-thread" });
++  },
++});
++const app = createInboxOperationRoutes({
++  receipts,
++  async authenticate(context) {
++    const value = context.req.header("x-fixture-owner");
++    if (value !== user && value !== other)
++      throw new InboxContractError(401, "Fixture authentication required");
++    return { organizationId: org, userId: value };
++  },
++  async review(owner, proposal) {
++    if (owner.grantId !== (owner.userId === user ? grant : "00000000-0000-4000-8000-000000000005"))
++      throw new InboxContractError(404, "Grant not found");
++    if (
++      !proposal ||
++      typeof proposal !== "object" ||
++      (proposal as { kind?: string }).kind !== "send" ||
++      typeof (proposal as { body?: string }).body !== "string"
++    )
++      throw new InboxContractError(400, "Invalid reviewed proposal");
++    const raw = Buffer.from(
++      "To: synthetic@example.invalid\r\nSubject: Synthetic\r\nMIME-Version: 1.0\r\nContent-Type: text/plain; charset=UTF-8\r\n\r\n" +
++        (proposal as { body: string }).body,
++    ).toString("base64url");
++    const digest = Buffer.from(
++      await crypto.subtle.digest("SHA-256", new TextEncoder().encode(raw)),
++    ).toString("hex");
++    return {
++      kind: "send",
++      digest,
++      review: { to: ["synthetic@example.invalid"] },
++      perform: async () => {
++        const response = await fetch(
++          `http://127.0.0.1:${provider.port}/gmail/v1/users/me/messages/send`,
++          { method: "POST", body: JSON.stringify({ raw }) },
++        );
++        if (response.status === 403) throw new DefiniteProviderRejection("403");
++        const result = (await response.json()) as { id: string; threadId: string };
++        if (typeof result.id !== "string") throw Error("Invalid provider response");
++        return result;
++      },
++    };
++  },
++});
++const request = (path: string, body?: unknown, identity = user) =>
++  app.request("http://fixture" + path, {
++    method: body ? "POST" : "GET",
++    headers: { "x-fixture-owner": identity, "content-type": "application/json" },
++    ...(body ? { body: JSON.stringify(body) } : {}),
++  });
++afterAll(async () => {
++  provider.stop(true);
++  await database.close();
++});
++test("real Hono route + PostgreSQL migration + HTTP provider: admission, response loss, no replay, owner scope and immutable receipt", async () => {
++  await database.exec(
++    "CREATE TABLE organizations(id uuid PRIMARY KEY);CREATE TABLE users(id uuid PRIMARY KEY);",
++  );
++  await database.query("INSERT INTO organizations VALUES ($1)", [org]);
++  await database.query("INSERT INTO users VALUES ($1),($2)", [user, other]);
++  await database.exec(
++    readFileSync(
++      new URL("../../../db/migrations/0506_managed_gmail_operation_receipts.sql", import.meta.url),
++      "utf8",
++    ),
++  );
++  const operation = crypto.randomUUID(),
++    proposal = { kind: "send", body: "Exact reviewed body" };
++  expect(
++    (await request("/operations", { grantId: grant, requestId: operation, proposal }, "")).status,
++  ).toBe(401);
++  expect(
++    (await request("/operations", { grantId: grant, requestId: operation, proposal }, other))
++      .status,
++  ).toBe(404);
++  const foreignGrant = "00000000-0000-4000-8000-000000000005";
++  expect(
++    (await request("/operations", { grantId: foreignGrant, requestId: operation, proposal }, other))
++      .status,
++  ).toBe(200);
++  expect((await request(`/operations/${operation}?grantId=${foreignGrant}`)).status).toBe(404);
++  const prepared = (await (
++    await request("/operations", { grantId: grant, requestId: operation, proposal })
++  ).json()) as any;
++  expect(prepared.receipt.state).toBe("prepared");
++  expect(posts).toBe(0);
++  expect(prepared.providerExactlyOnce).toBe(false);
++  expect(
++    (
++      await request("/operations", {
++        grantId: grant,
++        requestId: operation,
++        proposal: { kind: "send", body: "changed" },
++      })
++    ).status,
++  ).toBe(409);
++  const dispatch = { grantId: grant, reviewDigest: prepared.receipt.reviewDigest, proposal };
++  const responses = await Promise.all(
++    Array.from({ length: 8 }, () => request(`/operations/${operation}/dispatch`, dispatch)),
++  );
++  expect(responses.every((r) => r.status === 200)).toBe(true);
++  expect(posts).toBe(1);
++  expect(
++    ((await (await request(`/operations/${operation}?grantId=${grant}`)).json()) as any).receipt
++      .state,
++  ).toBe("succeeded");
++  expect(
++    (await request(`/operations/${operation}?grantId=${grant}`, undefined, other)).status,
++  ).toBe(404);
++  expect(
++    (
++      await request(`/operations/${operation}/dispatch`, {
++        ...dispatch,
++        reviewDigest: "0".repeat(64),
++      })
++    ).status,
++  ).toBe(409);
++  await expect(
++    orm.execute(
++      sql`UPDATE managed_gmail_operation_receipts SET state='prepared',provider_result=NULL,dispatched_at=NULL,finished_at=NULL WHERE request_id=${operation}`,
++    ),
++  ).rejects.toThrow();
++  await expect(
++    orm.execute(
++      sql`UPDATE managed_gmail_operation_receipts SET review_digest=${"f".repeat(64)} WHERE request_id=${operation}`,
++    ),
++  ).rejects.toThrow();
++  mode = "lost";
++  const lost = crypto.randomUUID(),
++    p = (await (
++      await request("/operations", { grantId: grant, requestId: lost, proposal })
++    ).json()) as any;
++  const lostDispatch = { grantId: grant, reviewDigest: p.receipt.reviewDigest, proposal };
++  const result = (await (
++    await request(`/operations/${lost}/dispatch`, lostDispatch)
++  ).json()) as any;
++  expect(result.receipt.state).toBe("outcome-unknown");
++  expect(posts).toBe(2);
++  const reconstructed = new InboxReceipts(async (query) => ({
++    rows: (await orm.execute(query)).rows as Record<string, unknown>[],
++  }));
++  expect(
++    (await reconstructed.get({ organizationId: org, userId: user, grantId: grant }, lost)).state,
++  ).toBe("outcome-unknown");
++  for (let i = 0; i < 3; i++)
++    expect(
++      ((await (await request(`/operations/${lost}/dispatch`, lostDispatch)).json()) as any).receipt
++        .state,
++    ).toBe("outcome-unknown");
++  expect(posts).toBe(2);
++  mode = "rejected";
++  const denied = crypto.randomUUID(),
++    d = (await (
++      await request("/operations", { grantId: grant, requestId: denied, proposal })
++    ).json()) as any;
++  expect(
++    (
++      (await (
++        await request(`/operations/${denied}/dispatch`, {
++          grantId: grant,
++          reviewDigest: d.receipt.reviewDigest,
++          proposal,
++        })
++      ).json()) as any
++    ).receipt.state,
++  ).toBe("rejected");
++  expect(posts).toBe(3);
++  expect(
++    (
++      await request("/operations", {
++        grantId: grant,
++        requestId: crypto.randomUUID(),
++        proposal,
++        side: "agent",
++      })
++    ).status,
++  ).toBe(400);
++  const columns = await database.query<{ column_name: string }>(
++    "SELECT column_name FROM information_schema.columns WHERE table_name=$1",
++    ["managed_gmail_operation_receipts"],
++  );
++  expect(columns.rows.some((row) => /token|body|raw|recipient/.test(row.column_name))).toBe(false);
++}, 30000);
+ 
+-test('managed provider review produces parseable MIME, binds reply headers, detects changed drafts and reads exact mailbox labels over HTTP',async()=>{
+- const {InboxGoogleProvider,inboxDigest}=await import('./inbox-provider');
+- const owner={organizationId:org,userId:user,grantId:grant};let sends=0,rawSaved='',draftRevision=0,wrongReplyIdentity=false;const parsedMessages:any[]=[];
+- const server=Bun.serve({hostname:'127.0.0.1',port:0,async fetch(request){
+-  const url=new URL(request.url);if(request.headers.get('authorization')!=='Bearer synthetic-only')return new Response('bad synthetic token',{status:401});
+-  if(url.pathname.endsWith('/messages/parent')&&request.method==='GET')return Response.json({id:wrongReplyIdentity?'different':'parent',threadId:'thread',historyId:'7',labelIds:['INBOX'],payload:{headers:[{name:'Subject',value:'Prior message'},{name:'Message-ID',value:'<parent@example.invalid>'},{name:'References',value:'<ancestor@example.invalid>'}]}});
+-  if(url.pathname.endsWith('/messages/parent/modify'))return Response.json({id:'parent',threadId:'thread',historyId:'8',labelIds:[]});
+-  if(url.pathname.endsWith('/messages/send')&&request.method==='POST'){
+-   sends++;const body=await request.json() as {raw:string};
+-   const parser=Bun.spawnSync(['/usr/bin/python3','-c','import sys,json,email.policy,email.parser; m=email.parser.BytesParser(policy=email.policy.default).parsebytes(sys.stdin.buffer.read()); print(json.dumps({"to":str(m["To"]),"bcc":str(m["Bcc"] or ""),"subject":str(m["Subject"]),"from":str(m["From"]),"inReplyTo":str(m["In-Reply-To"] or ""),"references":str(m["References"] or ""),"body":m.get_content(),"defects":[str(x) for x in m.defects]}))'],{stdin:Buffer.from(body.raw,'base64url')});
+-   if(parser.exitCode!==0)throw Error('Standard-library MIME parsing failed');parsedMessages.push(JSON.parse(parser.stdout.toString()));return Response.json({id:'sent'+sends,threadId:'thread'});
++test("managed provider review produces parseable MIME, binds reply headers, detects changed drafts and reads exact mailbox labels over HTTP", async () => {
++  const { InboxGoogleProvider, inboxDigest } = await import("./inbox-provider");
++  const owner = { organizationId: org, userId: user, grantId: grant };
++  let sends = 0,
++    rawSaved = "",
++    draftRevision = 0,
++    wrongReplyIdentity = false;
++  const parsedMessages: any[] = [];
++  const server = Bun.serve({
++    hostname: "127.0.0.1",
++    port: 0,
++    async fetch(request) {
++      const url = new URL(request.url);
++      if (request.headers.get("authorization") !== "Bearer synthetic-only")
++        return new Response("bad synthetic token", { status: 401 });
++      if (url.pathname.endsWith("/messages/parent") && request.method === "GET")
++        return Response.json({
++          id: wrongReplyIdentity ? "different" : "parent",
++          threadId: "thread",
++          historyId: "7",
++          labelIds: ["INBOX"],
++          payload: {
++            headers: [
++              { name: "Subject", value: "Prior message" },
++              { name: "Message-ID", value: "<parent@example.invalid>" },
++              { name: "References", value: "<ancestor@example.invalid>" },
++            ],
++          },
++        });
++      if (url.pathname.endsWith("/messages/parent/modify"))
++        return Response.json({ id: "parent", threadId: "thread", historyId: "8", labelIds: [] });
++      if (url.pathname.endsWith("/messages/send") && request.method === "POST") {
++        sends++;
++        const body = (await request.json()) as { raw: string };
++        const parser = Bun.spawnSync(
++          [
++            "/usr/bin/python3",
++            "-c",
++            'import sys,json,email.policy,email.parser; m=email.parser.BytesParser(policy=email.policy.default).parsebytes(sys.stdin.buffer.read()); print(json.dumps({"to":str(m["To"]),"bcc":str(m["Bcc"] or ""),"subject":str(m["Subject"]),"from":str(m["From"]),"inReplyTo":str(m["In-Reply-To"] or ""),"references":str(m["References"] or ""),"body":m.get_content(),"defects":[str(x) for x in m.defects]}))',
++          ],
++          { stdin: Buffer.from(body.raw, "base64url") },
++        );
++        if (parser.exitCode !== 0) throw Error("Standard-library MIME parsing failed");
++        parsedMessages.push(JSON.parse(parser.stdout.toString()));
++        return Response.json({ id: "sent" + sends, threadId: "thread" });
++      }
++      if (url.pathname.endsWith("/drafts") && request.method === "POST") {
++        const body = (await request.json()) as any;
++        rawSaved = body.message.raw;
++        draftRevision++;
++        return Response.json({ id: "draft1", message: { id: "draftmessage" + draftRevision } });
++      }
++      if (url.pathname.endsWith("/drafts/draft1") && request.method === "GET")
++        return Response.json({
++          id: "draft1",
++          message: { id: "draftmessage" + draftRevision, raw: rawSaved },
++        });
++      if (url.pathname.endsWith("/drafts/draft1") && request.method === "PUT") {
++        const body = (await request.json()) as any;
++        rawSaved = body.message.raw;
++        draftRevision++;
++        return Response.json({ id: "draft1", message: { id: "draftmessage" + draftRevision } });
++      }
++      if (url.pathname.endsWith("/drafts/draft1") && request.method === "DELETE") {
++        rawSaved = "";
++        return new Response(null, { status: 204 });
++      }
++      return new Response("unexpected synthetic provider path", { status: 404 });
++    },
++  });
++  const provider = new InboxGoogleProvider({
++    grant: async (selected) => {
++      if (selected.userId !== user || selected.grantId !== grant)
++        throw new InboxContractError(404, "Grant unavailable");
++      return {
++        token: "synthetic-only",
++        email: "owner@example.invalid",
++        scopes: ["https://www.googleapis.com/auth/gmail.modify"],
++      };
++    },
++    fetch: async (input, init) => {
++      const url = new URL(String(input));
++      expect(url.origin).toBe("https://gmail.googleapis.com");
++      return fetch(`http://127.0.0.1:${server.port}${url.pathname}${url.search}`, init);
++    },
++  });
++  try {
++    const proposal = {
++      kind: "send",
++      mode: "compose",
++      to: ["synthetic@example.invalid"],
++      bcc: ["hidden@example.invalid"],
++      subject: "Résumé — " + "long ".repeat(25),
++      bodyText: "Hello café\nSecond line",
++    };
++    const reviewed = await provider.review(owner, proposal, crypto.randomUUID());
++    expect(sends).toBe(0);
++    await reviewed.perform();
++    expect(sends).toBe(1);
++    expect(parsedMessages[0].defects).toEqual([]);
++    expect(parsedMessages[0].subject).toBe(proposal.subject);
++    expect(parsedMessages[0].body).toBe("Hello café\r\nSecond line");
++    expect(parsedMessages[0].bcc).toBe("hidden@example.invalid");
++    expect(parsedMessages[0].from).toBe("owner@example.invalid");
++    await expect(
++      provider.review(
++        owner,
++        { ...proposal, subject: "Bad\r\nBcc: attacker@example.invalid" },
++        crypto.randomUUID(),
++      ),
++    ).rejects.toThrow();
++    await expect(
++      provider.review(
++        owner,
++        { ...proposal, to: ["Display <synthetic@example.invalid>"] },
++        crypto.randomUUID(),
++      ),
++    ).rejects.toThrow();
++    const reply = await provider.review(
++      owner,
++      { ...proposal, mode: "reply", subject: "Re: Prior message", replyMessageId: "parent" },
++      crypto.randomUUID(),
++    );
++    await reply.perform();
++    expect(parsedMessages[1].inReplyTo).toBe("<parent@example.invalid>");
++    expect(parsedMessages[1].references).toBe(
++      "<ancestor@example.invalid> <parent@example.invalid>",
++    );
++    wrongReplyIdentity = true;
++    await expect(
++      provider.review(
++        owner,
++        { ...proposal, mode: "reply", subject: "Re: Prior message", replyMessageId: "parent" },
++        crypto.randomUUID(),
++      ),
++    ).rejects.toThrow("Selected message lacks safe reply headers");
++    wrongReplyIdentity = false;
++    const manyRecipients = await provider.review(
++      owner,
++      { ...proposal, to: Array.from({ length: 10 }, (_, i) => `synthetic${i}@example.invalid`) },
++      crypto.randomUUID(),
++    );
++    await manyRecipients.perform();
++    expect(parsedMessages[2].to.split(",")).toHaveLength(10);
++    const created = await (
++      await provider.review(owner, { ...proposal, kind: "draft-create" }, crypto.randomUUID())
++    ).perform();
++    expect(created.draftId).toBe("draft1");
++    expect(created.providerDigest).toBe(await inboxDigest(rawSaved));
++    rawSaved = Buffer.from("Changed externally").toString("base64url");
++    await expect(
++      provider.review(
++        owner,
++        {
++          ...proposal,
++          kind: "draft-replace",
++          draftId: "draft1",
++          expectedDigest: created.providerDigest,
++          acceptNonAtomicReplacement: true,
++        },
++        crypto.randomUUID(),
++      ),
++    ).rejects.toThrow("Provider draft changed");
++    const before = await provider.draft(owner, "draft1");
++    const replaced = await (
++      await provider.review(
++        owner,
++        {
++          ...proposal,
++          kind: "draft-replace",
++          draftId: "draft1",
++          expectedDigest: before.providerDigest,
++          acceptNonAtomicReplacement: true,
++        },
++        crypto.randomUUID(),
++      )
++    ).perform();
++    expect(replaced.atomicReplacement).toBe(false);
++    expect(
++      (
++        await (
++          await provider.review(
++            owner,
++            { kind: "archive", messageId: "parent", expectedHistoryId: "7" },
++            crypto.randomUUID(),
++          )
++        ).perform()
++      ).labelIds,
++    ).toEqual([]);
++    await expect(
++      provider.review(
++        owner,
++        { kind: "archive", messageId: "parent", expectedHistoryId: "stale" },
++        crypto.randomUUID(),
++      ),
++    ).rejects.toThrow();
++    await expect(
++      provider.review(
++        owner,
++        { kind: "draft-delete", draftId: "draft1", expectedDigest: replaced.providerDigest },
++        crypto.randomUUID(),
++      ),
++    ).rejects.toThrow();
++    expect(
++      (
++        await (
++          await provider.review(
++            owner,
++            {
++              kind: "draft-delete",
++              draftId: "draft1",
++              expectedDigest: replaced.providerDigest,
++              confirmPermanentDelete: true,
++            },
++            crypto.randomUUID(),
++          )
++        ).perform()
++      ).deleted,
++    ).toBe(true);
++  } finally {
++    server.stop(true);
+   }
+-  if(url.pathname.endsWith('/drafts')&&request.method==='POST'){const body=await request.json() as any;rawSaved=body.message.raw;draftRevision++;return Response.json({id:'draft1',message:{id:'draftmessage'+draftRevision}});}
+-  if(url.pathname.endsWith('/drafts/draft1')&&request.method==='GET')return Response.json({id:'draft1',message:{id:'draftmessage'+draftRevision,raw:rawSaved}});
+-  if(url.pathname.endsWith('/drafts/draft1')&&request.method==='PUT'){const body=await request.json() as any;rawSaved=body.message.raw;draftRevision++;return Response.json({id:'draft1',message:{id:'draftmessage'+draftRevision}});}
+-  if(url.pathname.endsWith('/drafts/draft1')&&request.method==='DELETE'){rawSaved='';return new Response(null,{status:204});}
+-  return new Response('unexpected synthetic provider path',{status:404});
+- }});
+- const provider=new InboxGoogleProvider({grant:async selected=>{if(selected.userId!==user||selected.grantId!==grant)throw new InboxContractError(404,'Grant unavailable');return {token:'synthetic-only',email:'owner@example.invalid',scopes:['https://www.googleapis.com/auth/gmail.modify']};},fetch:async(input,init)=>{const url=new URL(String(input));expect(url.origin).toBe('https://gmail.googleapis.com');return fetch(`http://127.0.0.1:${server.port}${url.pathname}${url.search}`,init);}});
+- try{
+-  const proposal={kind:'send',mode:'compose',to:['synthetic@example.invalid'],bcc:['hidden@example.invalid'],subject:'Résumé — '+('long '.repeat(25)),bodyText:'Hello café\nSecond line'};
+-  const reviewed=await provider.review(owner,proposal,crypto.randomUUID());expect(sends).toBe(0);await reviewed.perform();expect(sends).toBe(1);expect(parsedMessages[0].defects).toEqual([]);expect(parsedMessages[0].subject).toBe(proposal.subject);expect(parsedMessages[0].body).toBe('Hello café\r\nSecond line');expect(parsedMessages[0].bcc).toBe('hidden@example.invalid');expect(parsedMessages[0].from).toBe('owner@example.invalid');
+-  await expect(provider.review(owner,{...proposal,subject:'Bad\r\nBcc: attacker@example.invalid'},crypto.randomUUID())).rejects.toThrow();
+-  await expect(provider.review(owner,{...proposal,to:['Display <synthetic@example.invalid>']},crypto.randomUUID())).rejects.toThrow();
+-  const reply=await provider.review(owner,{...proposal,mode:'reply',subject:'Re: Prior message',replyMessageId:'parent'},crypto.randomUUID());await reply.perform();expect(parsedMessages[1].inReplyTo).toBe('<parent@example.invalid>');expect(parsedMessages[1].references).toBe('<ancestor@example.invalid> <parent@example.invalid>');
+-  wrongReplyIdentity=true;await expect(provider.review(owner,{...proposal,mode:'reply',subject:'Re: Prior message',replyMessageId:'parent'},crypto.randomUUID())).rejects.toThrow('Selected message lacks safe reply headers');wrongReplyIdentity=false;
+-  const manyRecipients=await provider.review(owner,{...proposal,to:Array.from({length:10},(_,i)=>`synthetic${i}@example.invalid`)},crypto.randomUUID());await manyRecipients.perform();expect(parsedMessages[2].to.split(',')).toHaveLength(10);
+-  const created=await (await provider.review(owner,{...proposal,kind:'draft-create'},crypto.randomUUID())).perform();expect(created.draftId).toBe('draft1');expect(created.providerDigest).toBe(await inboxDigest(rawSaved));
+-  rawSaved=Buffer.from('Changed externally').toString('base64url');
+-  await expect(provider.review(owner,{...proposal,kind:'draft-replace',draftId:'draft1',expectedDigest:created.providerDigest,acceptNonAtomicReplacement:true},crypto.randomUUID())).rejects.toThrow('Provider draft changed');
+-  const before=await provider.draft(owner,'draft1');const replaced=await(await provider.review(owner,{...proposal,kind:'draft-replace',draftId:'draft1',expectedDigest:before.providerDigest,acceptNonAtomicReplacement:true},crypto.randomUUID())).perform();expect(replaced.atomicReplacement).toBe(false);
+-  expect((await(await provider.review(owner,{kind:'archive',messageId:'parent',expectedHistoryId:'7'},crypto.randomUUID())).perform()).labelIds).toEqual([]);
+-  await expect(provider.review(owner,{kind:'archive',messageId:'parent',expectedHistoryId:'stale'},crypto.randomUUID())).rejects.toThrow();
+-  await expect(provider.review(owner,{kind:'draft-delete',draftId:'draft1',expectedDigest:replaced.providerDigest},crypto.randomUUID())).rejects.toThrow();
+-  expect((await(await provider.review(owner,{kind:'draft-delete',draftId:'draft1',expectedDigest:replaced.providerDigest,confirmPermanentDelete:true},crypto.randomUUID())).perform()).deleted).toBe(true);
+- }finally{server.stop(true);}
+-},30000);
++}, 30000);
+ 
+-test('actual HTTP full thread pages retain provider history identity and reject mixed snapshots',async()=>{
+- const {InboxGoogleProvider}=await import('./inbox-provider');let history='history1';
+- const server=Bun.serve({hostname:'127.0.0.1',port:0,fetch(request){expect(new URL(request.url).pathname).toBe('/gmail/v1/users/me/threads/thread');return Response.json({id:'thread',historyId:history,messages:Array.from({length:26},(_,i)=>({id:`message${25-i}`,threadId:'thread',internalDate:String(1000+25-i),payload:{body:{data:Buffer.from(`Synthetic ${25-i}`).toString('base64url')}}}))});}});
+- try{
+-  const provider=new InboxGoogleProvider({grant:async()=>({token:'synthetic-only',email:'owner@example.invalid',scopes:['https://www.googleapis.com/auth/gmail.readonly']}),fetch:async(input,init)=>{const url=new URL(String(input));expect(url.origin).toBe('https://gmail.googleapis.com');return fetch(`http://127.0.0.1:${server.port}${url.pathname}${url.search}`,init);},normalizeMessage:(raw)=>({message:{externalId:raw.id,threadId:raw.threadId},bodyText:Buffer.from(((raw.payload as any).body.data),'base64url').toString('utf8')})});
+-  const owner={organizationId:org,userId:user,grantId:grant},first=await provider.thread(owner,'thread');expect(first.total).toBe(26);expect(first.messages.length).toBe(25);expect(first.messages[0].message.externalId).toBe('message0');expect(first.nextOffset).toBe(25);
+-  const second=await provider.thread(owner,'thread',25,first.historyId);expect(second.messages[0].bodyText).toBe('Synthetic 25');expect(second.nextOffset).toBeNull();
+-  await expect(provider.thread(owner,'thread',25)).rejects.toThrow();await expect(provider.thread(owner,'thread',27,first.historyId)).rejects.toThrow();history='history2';await expect(provider.thread(owner,'thread',25,first.historyId)).rejects.toThrow('Thread changed');
+- }finally{server.stop(true);}
+-},10000);
++test("actual HTTP full thread pages retain provider history identity and reject mixed snapshots", async () => {
++  const { InboxGoogleProvider } = await import("./inbox-provider");
++  let history = "history1";
++  const server = Bun.serve({
++    hostname: "127.0.0.1",
++    port: 0,
++    fetch(request) {
++      expect(new URL(request.url).pathname).toBe("/gmail/v1/users/me/threads/thread");
++      return Response.json({
++        id: "thread",
++        historyId: history,
++        messages: Array.from({ length: 26 }, (_, i) => ({
++          id: `message${25 - i}`,
++          threadId: "thread",
++          internalDate: String(1000 + 25 - i),
++          payload: { body: { data: Buffer.from(`Synthetic ${25 - i}`).toString("base64url") } },
++        })),
++      });
++    },
++  });
++  try {
++    const provider = new InboxGoogleProvider({
++      grant: async () => ({
++        token: "synthetic-only",
++        email: "owner@example.invalid",
++        scopes: ["https://www.googleapis.com/auth/gmail.readonly"],
++      }),
++      fetch: async (input, init) => {
++        const url = new URL(String(input));
++        expect(url.origin).toBe("https://gmail.googleapis.com");
++        return fetch(`http://127.0.0.1:${server.port}${url.pathname}${url.search}`, init);
++      },
++      normalizeMessage: (raw) => ({
++        message: { externalId: raw.id, threadId: raw.threadId },
++        bodyText: Buffer.from((raw.payload as any).body.data, "base64url").toString("utf8"),
++      }),
++    });
++    const owner = { organizationId: org, userId: user, grantId: grant },
++      first = await provider.thread(owner, "thread");
++    expect(first.total).toBe(26);
++    expect(first.messages.length).toBe(25);
++    expect(first.messages[0].message.externalId).toBe("message0");
++    expect(first.nextOffset).toBe(25);
++    const second = await provider.thread(owner, "thread", 25, first.historyId);
++    expect(second.messages[0].bodyText).toBe("Synthetic 25");
++    expect(second.nextOffset).toBeNull();
++    await expect(provider.thread(owner, "thread", 25)).rejects.toThrow();
++    await expect(provider.thread(owner, "thread", 27, first.historyId)).rejects.toThrow();
++    history = "history2";
++    await expect(provider.thread(owner, "thread", 25, first.historyId)).rejects.toThrow(
++      "Thread changed",
++    );
++  } finally {
++    server.stop(true);
++  }
++}, 10000);
+ 
+-test('bounded attachments round-trip exact UTF-8 bytes and reversible mailbox changes retain identities',async()=>{
+- const {InboxGoogleProvider}=await import('./inbox-provider');
+- const bytes=Buffer.from('Exact attachment\nCafé ✓\n'),owner={organizationId:org,userId:user,grantId:grant};let labels=['INBOX'],history='1',sentRaw='';
+- const server=Bun.serve({hostname:'127.0.0.1',port:0,async fetch(request){const url=new URL(request.url);
+-  if(url.pathname.endsWith('/messages/source')&&request.method==='GET')return Response.json({id:'source',threadId:'thread',historyId:history,labelIds:labels,payload:{partId:'',body:{size:0},parts:[{partId:'1',filename:'evidence.txt',mimeType:'text/plain',body:{attachmentId:'attachment',size:bytes.length}}]}});
+-  if(url.pathname.endsWith('/attachments/attachment'))return Response.json({size:bytes.length,data:bytes.toString('base64url')});
+-  if(url.pathname.endsWith('/messages/source/modify')){const body=await request.json() as any;labels=body.addLabelIds?['INBOX']:[];history=String(Number(history)+1);return Response.json({id:'source',threadId:'thread',historyId:history,labelIds:labels});}
+-  if(url.pathname.endsWith('/messages/source/trash')){labels=['TRASH'];history=String(Number(history)+1);return Response.json({id:'source',threadId:'thread',historyId:history,labelIds:labels});}
+-  if(url.pathname.endsWith('/messages/source/untrash')){labels=[];history=String(Number(history)+1);return Response.json({id:'source',threadId:'thread',historyId:history,labelIds:labels});}
+-  if(url.pathname.endsWith('/messages/send')){sentRaw=(await request.json() as any).raw;return Response.json({id:'sent',threadId:'thread'});}return new Response('unexpected',{status:404});
+- }});
+- const provider=new InboxGoogleProvider({grant:async()=>({token:'synthetic',email:'owner@example.invalid',scopes:['https://www.googleapis.com/auth/gmail.modify']}),fetch:async(input,init)=>{const url=new URL(String(input));return fetch(`http://127.0.0.1:${server.port}${url.pathname}${url.search}`,init)}});
+- try{
+-  const received=await provider.attachment(owner,'source','1','1');expect(Buffer.from(received.dataBase64,'base64')).toEqual(bytes);await expect(provider.attachment(owner,'source','1','old')).rejects.toThrow('changed');await expect(provider.attachment(owner,'source','wrong','1')).rejects.toThrow('not found');
+-  const proposal={kind:'send',mode:'compose',to:['receiver@example.invalid'],subject:'Attached',bodyText:'Exact body',attachments:[{name:'evidence.txt',mimeType:'text/plain',dataBase64:bytes.toString('base64')}]};const reviewed=await provider.review(owner,proposal,crypto.randomUUID());expect((reviewed.review.attachments as any[])[0].size).toBe(bytes.length);await reviewed.perform();
+-  const parser=Bun.spawnSync(['/usr/bin/python3','-c','import sys,json,email.policy,email.parser,base64; m=email.parser.BytesParser(policy=email.policy.default).parsebytes(sys.stdin.buffer.read()); print(json.dumps({"body":m.get_body(preferencelist=("plain",)).get_content(),"attachments":[{"name":p.get_filename(),"data":base64.b64encode(p.get_payload(decode=True)).decode()} for p in m.iter_attachments()]}))'],{stdin:Buffer.from(sentRaw,'base64url')});expect(parser.exitCode).toBe(0);const parsed=JSON.parse(parser.stdout.toString());expect(parsed.body).toBe('Exact body');expect(parsed.attachments).toEqual([{name:'evidence.txt',data:bytes.toString('base64')}]);
+-  await expect(provider.review(owner,{...proposal,attachments:[{...proposal.attachments[0],mimeType:'text/html'}]},crypto.randomUUID())).rejects.toThrow();await expect(provider.review(owner,{...proposal,attachments:[{...proposal.attachments[0],dataBase64:Buffer.alloc(16385).toString('base64')}]},crypto.randomUUID())).rejects.toThrow();
+-  for(const kind of ['archive','unarchive','trash','untrash']){const effect=await provider.review(owner,{kind,messageId:'source',expectedHistoryId:history},crypto.randomUUID());const result=await effect.perform();expect(result.messageId).toBe('source');expect(result.historyId).toBe(history);}
+-  expect(labels).toEqual([]);
+- }finally{server.stop(true);}
+-},10000);
++test("bounded attachments round-trip exact UTF-8 bytes and reversible mailbox changes retain identities", async () => {
++  const { InboxGoogleProvider } = await import("./inbox-provider");
++  const bytes = Buffer.from("Exact attachment\nCafé ✓\n"),
++    owner = { organizationId: org, userId: user, grantId: grant };
++  let labels = ["INBOX"],
++    history = "1",
++    sentRaw = "";
++  const server = Bun.serve({
++    hostname: "127.0.0.1",
++    port: 0,
++    async fetch(request) {
++      const url = new URL(request.url);
++      if (url.pathname.endsWith("/messages/source") && request.method === "GET")
++        return Response.json({
++          id: "source",
++          threadId: "thread",
++          historyId: history,
++          labelIds: labels,
++          payload: {
++            partId: "",
++            body: { size: 0 },
++            parts: [
++              {
++                partId: "1",
++                filename: "evidence.txt",
++                mimeType: "text/plain",
++                body: { attachmentId: "attachment", size: bytes.length },
++              },
++            ],
++          },
++        });
++      if (url.pathname.endsWith("/attachments/attachment"))
++        return Response.json({ size: bytes.length, data: bytes.toString("base64url") });
++      if (url.pathname.endsWith("/messages/source/modify")) {
++        const body = (await request.json()) as any;
++        labels = body.addLabelIds ? ["INBOX"] : [];
++        history = String(Number(history) + 1);
++        return Response.json({
++          id: "source",
++          threadId: "thread",
++          historyId: history,
++          labelIds: labels,
++        });
++      }
++      if (url.pathname.endsWith("/messages/source/trash")) {
++        labels = ["TRASH"];
++        history = String(Number(history) + 1);
++        return Response.json({
++          id: "source",
++          threadId: "thread",
++          historyId: history,
++          labelIds: labels,
++        });
++      }
++      if (url.pathname.endsWith("/messages/source/untrash")) {
++        labels = [];
++        history = String(Number(history) + 1);
++        return Response.json({
++          id: "source",
++          threadId: "thread",
++          historyId: history,
++          labelIds: labels,
++        });
++      }
++      if (url.pathname.endsWith("/messages/send")) {
++        sentRaw = ((await request.json()) as any).raw;
++        return Response.json({ id: "sent", threadId: "thread" });
++      }
++      return new Response("unexpected", { status: 404 });
++    },
++  });
++  const provider = new InboxGoogleProvider({
++    grant: async () => ({
++      token: "synthetic",
++      email: "owner@example.invalid",
++      scopes: ["https://www.googleapis.com/auth/gmail.modify"],
++    }),
++    fetch: async (input, init) => {
++      const url = new URL(String(input));
++      return fetch(`http://127.0.0.1:${server.port}${url.pathname}${url.search}`, init);
++    },
++  });
++  try {
++    const received = await provider.attachment(owner, "source", "1", "1");
++    expect(Buffer.from(received.dataBase64, "base64")).toEqual(bytes);
++    await expect(provider.attachment(owner, "source", "1", "old")).rejects.toThrow("changed");
++    await expect(provider.attachment(owner, "source", "wrong", "1")).rejects.toThrow("not found");
++    const proposal = {
++      kind: "send",
++      mode: "compose",
++      to: ["receiver@example.invalid"],
++      subject: "Attached",
++      bodyText: "Exact body",
++      attachments: [
++        { name: "evidence.txt", mimeType: "text/plain", dataBase64: bytes.toString("base64") },
++      ],
++    };
++    const reviewed = await provider.review(owner, proposal, crypto.randomUUID());
++    expect((reviewed.review.attachments as any[])[0].size).toBe(bytes.length);
++    await reviewed.perform();
++    const parser = Bun.spawnSync(
++      [
++        "/usr/bin/python3",
++        "-c",
++        'import sys,json,email.policy,email.parser,base64; m=email.parser.BytesParser(policy=email.policy.default).parsebytes(sys.stdin.buffer.read()); print(json.dumps({"body":m.get_body(preferencelist=("plain",)).get_content(),"attachments":[{"name":p.get_filename(),"data":base64.b64encode(p.get_payload(decode=True)).decode()} for p in m.iter_attachments()]}))',
++      ],
++      { stdin: Buffer.from(sentRaw, "base64url") },
++    );
++    expect(parser.exitCode).toBe(0);
++    const parsed = JSON.parse(parser.stdout.toString());
++    expect(parsed.body).toBe("Exact body");
++    expect(parsed.attachments).toEqual([{ name: "evidence.txt", data: bytes.toString("base64") }]);
++    await expect(
++      provider.review(
++        owner,
++        { ...proposal, attachments: [{ ...proposal.attachments[0], mimeType: "text/html" }] },
++        crypto.randomUUID(),
++      ),
++    ).rejects.toThrow();
++    await expect(
++      provider.review(
++        owner,
++        {
++          ...proposal,
++          attachments: [
++            { ...proposal.attachments[0], dataBase64: Buffer.alloc(16385).toString("base64") },
++          ],
++        },
++        crypto.randomUUID(),
++      ),
++    ).rejects.toThrow();
++    for (const kind of ["archive", "unarchive", "trash", "untrash"]) {
++      const effect = await provider.review(
++        owner,
++        { kind, messageId: "source", expectedHistoryId: history },
++        crypto.randomUUID(),
++      );
++      const result = await effect.perform();
++      expect(result.messageId).toBe("source");
++      expect(result.historyId).toBe(history);
++    }
++    expect(labels).toEqual([]);
++  } finally {
++    server.stop(true);
++  }
++}, 10000);
+ 
+-test('large full-text thread pages stay below native transport bounds without truncation',async()=>{
+- const {InboxGoogleProvider}=await import('./inbox-provider');const text='x'.repeat(256*1024),owner={organizationId:org,userId:user,grantId:grant};
+- const server=Bun.serve({hostname:'127.0.0.1',port:0,fetch:()=>Response.json({id:'thread',historyId:'same',messages:Array.from({length:10},(_,i)=>({id:'message'+i,threadId:'thread',internalDate:String(i),historyId:'same',payload:{body:{size:0}}}))})});
+- const provider=new InboxGoogleProvider({grant:async()=>({token:'synthetic',email:'self@example.invalid',scopes:['https://www.googleapis.com/auth/gmail.readonly']}),fetch:async()=>fetch(`http://127.0.0.1:${server.port}`),normalizeMessage:raw=>({message:{externalId:raw.id,threadId:'thread'},bodyText:text})});
+- try{const first=await provider.thread(owner,'thread');expect(first.messages.length).toBeGreaterThan(0);expect(first.messages.length).toBeLessThan(10);expect(Buffer.byteLength(JSON.stringify(first))).toBeLessThan(2*1024*1024);expect(first.messages.every(m=>m.bodyText.length===text.length)).toBe(true);const second=await provider.thread(owner,'thread',first.nextOffset!,first.historyId);expect(first.messages.length+second.messages.length).toBe(10);expect(second.nextOffset).toBeNull();}finally{server.stop(true);}
++test("large full-text thread pages stay below native transport bounds without truncation", async () => {
++  const { InboxGoogleProvider } = await import("./inbox-provider");
++  const text = "x".repeat(256 * 1024),
++    owner = { organizationId: org, userId: user, grantId: grant };
++  const server = Bun.serve({
++    hostname: "127.0.0.1",
++    port: 0,
++    fetch: () =>
++      Response.json({
++        id: "thread",
++        historyId: "same",
++        messages: Array.from({ length: 10 }, (_, i) => ({
++          id: "message" + i,
++          threadId: "thread",
++          internalDate: String(i),
++          historyId: "same",
++          payload: { body: { size: 0 } },
++        })),
++      }),
++  });
++  const provider = new InboxGoogleProvider({
++    grant: async () => ({
++      token: "synthetic",
++      email: "self@example.invalid",
++      scopes: ["https://www.googleapis.com/auth/gmail.readonly"],
++    }),
++    fetch: async () => fetch(`http://127.0.0.1:${server.port}`),
++    normalizeMessage: (raw) => ({
++      message: { externalId: raw.id, threadId: "thread" },
++      bodyText: text,
++    }),
++  });
++  try {
++    const first = await provider.thread(owner, "thread");
++    expect(first.messages.length).toBeGreaterThan(0);
++    expect(first.messages.length).toBeLessThan(10);
++    expect(Buffer.byteLength(JSON.stringify(first))).toBeLessThan(2 * 1024 * 1024);
++    expect(first.messages.every((m) => m.bodyText.length === text.length)).toBe(true);
++    const second = await provider.thread(owner, "thread", first.nextOffset!, first.historyId);
++    expect(first.messages.length + second.messages.length).toBe(10);
++    expect(second.nextOffset).toBeNull();
++  } finally {
++    server.stop(true);
++  }
+ });
+--- a/packages/cloud/shared/src/lib/services/agent-google-connector/inbox-provider.ts
++++ b/packages/cloud/shared/src/lib/services/agent-google-connector/inbox-provider.ts
+@@ -1,638 +1,653 @@
+ import type { InboxReviewedEffect } from "./inbox-operation-routes";
+-import {
+-	DefiniteProviderRejection,
+-	InboxContractError,
+-	type InboxOwner,
+-} from "./inbox-receipts";
++import { DefiniteProviderRejection, InboxContractError, type InboxOwner } from "./inbox-receipts";
+ 
+ export interface InboxGoogleGrant {
+-	token: string;
+-	email: string;
+-	scopes: string[];
++  token: string;
++  email: string;
++  scopes: string[];
+ }
+ export interface InboxGoogleDependencies {
+-	grant(owner: InboxOwner): Promise<InboxGoogleGrant>;
+-	/** Production uses global fetch and the fixed Google origin below. Tests supply a closed transport. */
+-	fetch?: (...args: Parameters<typeof fetch>) => ReturnType<typeof fetch>;
+-	normalizeMessage?(
+-		message: Record<string, unknown>,
+-		selfEmail: string,
+-	): { message: Record<string, unknown>; bodyText: string } | null;
++  grant(owner: InboxOwner): Promise<InboxGoogleGrant>;
++  /** Production uses global fetch and the fixed Google origin below. Tests supply a closed transport. */
++  fetch?: (...args: Parameters<typeof fetch>) => ReturnType<typeof fetch>;
++  normalizeMessage?(
++    message: Record<string, unknown>,
++    selfEmail: string,
++  ): { message: Record<string, unknown>; bodyText: string } | null;
+ }
+ const endpoint = "https://gmail.googleapis.com/gmail/v1/users/me";
+ const fullScope = "https://mail.google.com/",
+-	scopePrefix = "https://www.googleapis.com/auth/gmail.";
++  scopePrefix = "https://www.googleapis.com/auth/gmail.";
+ const encoder = new TextEncoder();
+ export async function inboxDigest(text: string): Promise<string> {
+-	return Buffer.from(
+-		await crypto.subtle.digest("SHA-256", encoder.encode(text)),
+-	).toString("hex");
++  return Buffer.from(await crypto.subtle.digest("SHA-256", encoder.encode(text))).toString("hex");
+ }
+ function object(value: unknown): Record<string, unknown> {
+-	if (!value || typeof value !== "object" || Array.isArray(value))
+-		throw new InboxContractError(400, "Object required");
+-	return value as Record<string, unknown>;
++  if (!value || typeof value !== "object" || Array.isArray(value))
++    throw new InboxContractError(400, "Object required");
++  return value as Record<string, unknown>;
+ }
+ function text(value: unknown, max: number, headers = false): string {
+-	if (
+-		typeof value !== "string" ||
+-		value.length > max ||
+-		(headers && /[\r\n\0]/.test(value))
+-	)
+-		throw new InboxContractError(400, "Invalid mail text");
+-	return value;
++  if (typeof value !== "string" || value.length > max || (headers && /[\r\n\0]/.test(value)))
++    throw new InboxContractError(400, "Invalid mail text");
++  return value;
+ }
+ function providerId(value: unknown): string {
+-	const id = text(value, 256, true);
+-	if (!/^[A-Za-z0-9_-]+$/.test(id))
+-		throw new InboxContractError(400, "Invalid provider identity");
+-	return id;
++  const id = text(value, 256, true);
++  if (!/^[A-Za-z0-9_-]+$/.test(id)) throw new InboxContractError(400, "Invalid provider identity");
++  return id;
+ }
+ function fields(value: Record<string, unknown>, allowed: string[]) {
+-	if (Object.keys(value).some((key) => !allowed.includes(key)))
+-		throw new InboxContractError(400, "Unexpected mail field");
++  if (Object.keys(value).some((key) => !allowed.includes(key)))
++    throw new InboxContractError(400, "Unexpected mail field");
+ }
+ function mailbox(value: unknown): string {
+-	const address = text(value, 254, true);
+-	if (
+-		!/^[A-Za-z0-9.!#$%&'*+\-/=?^_`{|}~]+@[A-Za-z0-9](?:[A-Za-z0-9.-]*[A-Za-z0-9])?\.[A-Za-z]{2,63}$/.test(
+-			address,
+-		) ||
+-		address.includes("..")
+-	)
+-		throw new InboxContractError(
+-			400,
+-			"Use an unambiguous email address without a display name",
+-		);
+-	return address;
++  const address = text(value, 254, true);
++  if (
++    !/^[A-Za-z0-9.!#$%&'*+\-/=?^_`{|}~]+@[A-Za-z0-9](?:[A-Za-z0-9.-]*[A-Za-z0-9])?\.[A-Za-z]{2,63}$/.test(
++      address,
++    ) ||
++    address.includes("..")
++  )
++    throw new InboxContractError(400, "Use an unambiguous email address without a display name");
++  return address;
+ }
+ function addresses(value: unknown, required = false): string[] {
+-	if (value === undefined && !required) return [];
+-	if (!Array.isArray(value) || value.length > 50 || (required && !value.length))
+-		throw new InboxContractError(400, "Invalid recipient list");
+-	return value.map(mailbox);
+-}
+-function requireScope(
+-	grant: InboxGoogleGrant,
+-	kind: "read" | "send" | "draft" | "modify",
+-) {
+-	const allowed =
+-		kind === "read"
+-			? ["readonly", "modify"]
+-			: kind === "send"
+-				? ["send", "compose", "modify"]
+-				: kind === "draft"
+-					? ["compose", "modify"]
+-					: ["modify"];
+-	if (
+-		!grant.scopes.includes(fullScope) &&
+-		!allowed.some((scope) => grant.scopes.includes(scopePrefix + scope))
+-	)
+-		throw new InboxContractError(
+-			403,
+-			"The selected Google grant lacks this capability",
+-		);
++  if (value === undefined && !required) return [];
++  if (!Array.isArray(value) || value.length > 50 || (required && !value.length))
++    throw new InboxContractError(400, "Invalid recipient list");
++  return value.map(mailbox);
++}
++function requireScope(grant: InboxGoogleGrant, kind: "read" | "send" | "draft" | "modify") {
++  const allowed =
++    kind === "read"
++      ? ["readonly", "modify"]
++      : kind === "send"
++        ? ["send", "compose", "modify"]
++        : kind === "draft"
++          ? ["compose", "modify"]
++          : ["modify"];
++  if (
++    !grant.scopes.includes(fullScope) &&
++    !allowed.some((scope) => grant.scopes.includes(scopePrefix + scope))
++  )
++    throw new InboxContractError(403, "The selected Google grant lacks this capability");
+ }
+ function encodedSubject(subject: string): string {
+-	const chunks: string[] = [];
+-	let current = "";
+-	for (const point of subject) {
+-		if (encoder.encode(current + point).length > 42) {
+-			chunks.push(current);
+-			current = "";
+-		}
+-		current += point;
+-	}
+-	chunks.push(current);
+-	return chunks
+-		.map((chunk) => `=?UTF-8?B?${Buffer.from(chunk).toString("base64")}?=`)
+-		.join("\r\n ");
++  const chunks: string[] = [];
++  let current = "";
++  for (const point of subject) {
++    if (encoder.encode(current + point).length > 42) {
++      chunks.push(current);
++      current = "";
++    }
++    current += point;
++  }
++  chunks.push(current);
++  return chunks
++    .map((chunk) => `=?UTF-8?B?${Buffer.from(chunk).toString("base64")}?=`)
++    .join("\r\n ");
+ }
+ function recipientHeader(name: string, values: string[]): string {
+-	return `${name}: ${values.join(",\r\n ")}`;
++  return `${name}: ${values.join(",\r\n ")}`;
+ }
+ function referenceHeader(value: string): string {
+-	const identities = value.trim().split(/\s+/);
+-	if (identities.some((identity) => identity.length > 254))
+-		throw new InboxContractError(
+-			409,
+-			"Selected message has oversized reply identities",
+-		);
+-	return `References: ${identities.join("\r\n ")}`;
+-}
+-function payloadHeader(
+-	payload: Record<string, unknown>,
+-	name: string,
+-): string | null {
+-	const headers = payload.headers;
+-	if (!Array.isArray(headers)) return null;
+-	const matching = headers.filter((value) => {
+-		const row = object(value);
+-		return (
+-			typeof row.name === "string" &&
+-			row.name.toLowerCase() === name.toLowerCase()
+-		);
+-	});
+-	if (matching.length !== 1) return null;
+-	return text(object(matching[0]).value, 4096, true);
++  const identities = value.trim().split(/\s+/);
++  if (identities.some((identity) => identity.length > 254))
++    throw new InboxContractError(409, "Selected message has oversized reply identities");
++  return `References: ${identities.join("\r\n ")}`;
++}
++function payloadHeader(payload: Record<string, unknown>, name: string): string | null {
++  const headers = payload.headers;
++  if (!Array.isArray(headers)) return null;
++  const matching = headers.filter((value) => {
++    const row = object(value);
++    return typeof row.name === "string" && row.name.toLowerCase() === name.toLowerCase();
++  });
++  if (matching.length !== 1) return null;
++  return text(object(matching[0]).value, 4096, true);
+ }
+ const attachmentLimit = 16384;
+-function attachmentParts(payload: Record<string,unknown>) {
+- const result:Record<string,unknown>[]=[];let visited=0;
+- const visit=(part:Record<string,unknown>)=>{if(++visited>200)throw new InboxContractError(413,"Too many MIME parts");if(typeof part.filename==="string"&&part.filename)result.push(part);if(Array.isArray(part.parts))for(const child of part.parts)visit(object(child));};visit(payload);return result;
++function attachmentParts(payload: Record<string, unknown>) {
++  const result: Record<string, unknown>[] = [];
++  let visited = 0;
++  const visit = (part: Record<string, unknown>) => {
++    if (++visited > 200) throw new InboxContractError(413, "Too many MIME parts");
++    if (typeof part.filename === "string" && part.filename) result.push(part);
++    if (Array.isArray(part.parts)) for (const child of part.parts) visit(object(child));
++  };
++  visit(payload);
++  return result;
+ }
+ function checkedAttachment(value: unknown) {
+- const item=object(value);fields(item,["name","mimeType","dataBase64"]);
+- const name=text(item.name,80,true);if(!/^[A-Za-z0-9][A-Za-z0-9._ -]*\.txt$/i.test(name)||item.mimeType!=="text/plain")throw new InboxContractError(400,"Only named .txt UTF-8 plain text attachments are supported");
+- const data=text(item.dataBase64,22000);if(!/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(data))throw new InboxContractError(400,"Invalid attachment encoding");
+- const bytes=Buffer.from(data,"base64");if(bytes.length>attachmentLimit||bytes.toString("base64")!==data)throw new InboxContractError(413,"Attachment exceeds 16 KiB");
+- let decoded:string;try{decoded=new TextDecoder("utf-8",{fatal:true}).decode(bytes);}catch{throw new InboxContractError(400,"Attachment must be UTF-8");}if(decoded.includes("\0"))throw new InboxContractError(400,"Attachment contains unsupported null bytes");
+- return {name,mimeType:"text/plain",dataBase64:data,size:bytes.length};
++  const item = object(value);
++  fields(item, ["name", "mimeType", "dataBase64"]);
++  const name = text(item.name, 80, true);
++  if (!/^[A-Za-z0-9][A-Za-z0-9._ -]*\.txt$/i.test(name) || item.mimeType !== "text/plain")
++    throw new InboxContractError(400, "Only named .txt UTF-8 plain text attachments are supported");
++  const data = text(item.dataBase64, 22000);
++  if (!/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(data))
++    throw new InboxContractError(400, "Invalid attachment encoding");
++  const bytes = Buffer.from(data, "base64");
++  if (bytes.length > attachmentLimit || bytes.toString("base64") !== data)
++    throw new InboxContractError(413, "Attachment exceeds 16 KiB");
++  let decoded: string;
++  try {
++    decoded = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
++  } catch {
++    throw new InboxContractError(400, "Attachment must be UTF-8");
++  }
++  if (decoded.includes("\0"))
++    throw new InboxContractError(400, "Attachment contains unsupported null bytes");
++  return { name, mimeType: "text/plain", dataBase64: data, size: bytes.length };
+ }
+ /** Fixed-path, single-attempt Google transport. Timeout covers headers and bounded body consumption. */
+ export class InboxGoogleProvider {
+-	constructor(private readonly dependencies: InboxGoogleDependencies) {}
+-	private async request(
+-		grant: InboxGoogleGrant,
+-		path: string,
+-		method = "GET",
+-		body?: unknown,
+-	): Promise<Record<string, unknown>> {
+-		const controller = new AbortController(),
+-			timer = setTimeout(() => controller.abort(), 30000);
+-		try {
+-			const response = await (this.dependencies.fetch ?? fetch)(
+-				endpoint + path,
+-				{
+-					method,
+-					redirect: "error",
+-					signal: controller.signal,
+-					headers: {
+-						authorization: `Bearer ${grant.token}`,
+-						"content-type": "application/json",
+-					},
+-					...(body === undefined ? {} : { body: JSON.stringify(body) }),
+-				},
+-			);
+-			if (!response.ok) {
+-				await response.body?.cancel();
+-				if ([400, 401, 403, 404, 409, 412, 422].includes(response.status))
+-					throw new DefiniteProviderRejection(String(response.status));
+-				throw new Error("Ambiguous Google response");
+-			}
+-			if (response.status === 204) return {};
+-			const reader = response.body?.getReader();
+-			if (!reader) throw new Error("Missing Google response");
+-			const chunks: Uint8Array[] = [];
+-			let size = 0;
+-			try {
+-				for (;;) {
+-					const next = await reader.read();
+-					if (next.done) break;
+-					size += next.value.length;
+-					if (size > 8 * 1024 * 1024) {
+-						await reader.cancel();
+-						throw new InboxContractError(
+-							413,
+-							"Provider result exceeds the explicit size limit",
+-						);
+-					}
+-					chunks.push(next.value);
+-				}
+-			} finally {
+-				reader.releaseLock();
+-			}
+-			const bytes = new Uint8Array(size);
+-			let offset = 0;
+-			for (const chunk of chunks) {
+-				bytes.set(chunk, offset);
+-				offset += chunk.length;
+-			}
+-			return object(
+-				JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes)),
+-			);
+-		} finally {
+-			clearTimeout(timer);
+-		}
+-	}
+-	async capabilities(owner: InboxOwner) {
+-		const grant = await this.dependencies.grant(owner);
+-		const supported = (kind: "read" | "send" | "draft" | "modify") => {
+-			try {
+-				requireScope(grant, kind);
+-				return true;
+-			} catch {
+-				return false;
+-			}
+-		};
+-		return {
+-			version: 1,
+-			from: grant.email,
+-			threads: supported("read") && Boolean(this.dependencies.normalizeMessage),
+-			send: supported("send"),
+-			providerDrafts: supported("draft"),
+-			mailboxMutations: supported("modify"),
+-			attachments: true,
+-            attachmentPolicy: {mimeTypes:["text/plain"],maximumBytes:attachmentLimit,maximumOutgoing:1},
+-			providerExactlyOnce: false,
+-			atomicDraftReplacement: false,
+-		};
+-	}
+-	async thread(
+-		owner: InboxOwner,
+-		threadId: string,
+-		offset = 0,
+-		expectedHistoryId?: string,
+-	) {
+-		if (
+-			!Number.isSafeInteger(offset) ||
+-			offset < 0 ||
+-			offset > 2000 ||
+-			(offset > 0 && !expectedHistoryId)
+-		)
+-			throw new InboxContractError(
+-				400,
+-				"A continuation offset requires the reviewed thread history identity",
+-			);
+-		const normalizeMessage = this.dependencies.normalizeMessage;
+-		if (!normalizeMessage)
+-			throw new InboxContractError(409, "Thread decoding is unavailable");
+-		const grant = await this.dependencies.grant(owner);
+-		requireScope(grant, "read");
+-		const id = providerId(threadId),
+-			result = await this.request(grant, `/threads/${id}?format=full`);
+-		if (
+-			result.id !== id ||
+-			typeof result.historyId !== "string" ||
+-			!Array.isArray(result.messages)
+-		)
+-			throw new InboxContractError(502, "Incomplete Google thread response");
+-		if (expectedHistoryId && result.historyId !== expectedHistoryId)
+-			throw new InboxContractError(
+-				409,
+-				"Thread changed during paging; reopen it",
+-			);
+-		if (result.messages.length > 2000)
+-			throw new InboxContractError(
+-				413,
+-				"Thread exceeds the explicit 2000-message support limit",
+-			);
+-		const all = result.messages
+-			.map(object)
+-			.sort((a, b) => Number(a.internalDate) - Number(b.internalDate));
+-		if (offset > all.length)
+-			throw new InboxContractError(
+-				400,
+-				"Thread offset is outside the current snapshot",
+-			);
+-		if (
+-			all.some(
+-				(message) =>
+-					message.threadId !== id ||
+-					!Number.isFinite(Number(message.internalDate)),
+-			)
+-		)
+-			throw new InboxContractError(502, "Inconsistent Google thread messages");
+-		const messages = all.slice(offset, offset + 25).map((raw) => {
+-			const normalized = normalizeMessage(raw, grant.email);
+-			if (!normalized)
+-				throw new InboxContractError(502, "Incomplete thread message");
+-			if (encoder.encode(normalized.bodyText).length > 256 * 1024)
+-				throw new InboxContractError(
+-					413,
+-					"Message body exceeds the explicit display limit",
+-				);
+-			return { ...normalized, historyId: typeof raw.historyId === "string" ? raw.historyId : null,attachments:attachmentParts(object(raw.payload)).map(part=>{const body=object(part.body),name=typeof part.filename==='string'?part.filename:'attachment';return {partId:typeof part.partId==='string'?part.partId:'',name,mimeType:part.mimeType,size:body.size,supported:part.mimeType==='text/plain'&&typeof body.size==='number'&&body.size<=attachmentLimit&&/^[A-Za-z0-9][A-Za-z0-9._ -]*\.txt$/i.test(name)};}) };
+-		});
+-        let pageBytes=0,pageCount=0;for(const message of messages){const size=encoder.encode(JSON.stringify(message)).length;if(size>1536*1024)throw new InboxContractError(413,"Message metadata exceeds the display limit");if(pageBytes+size>1536*1024)break;pageBytes+=size;pageCount++;}messages.splice(pageCount);
+-		return {
+-			version: 1,
+-			threadId: id,
+-			historyId: result.historyId,
+-			total: all.length,
+-			offset,
+-			nextOffset:
+-				offset + messages.length < all.length ? offset + messages.length : null,
+-			messages,
+-		};
+-	}
+- async attachment(owner:InboxOwner,messageId:string,partId:string,historyId:string){
+-  const grant=await this.dependencies.grant(owner);requireScope(grant,"read");const id=providerId(messageId),message=await this.request(grant,`/messages/${id}?format=full`);
+-  if(message.id!==id||message.historyId!==historyId)throw new InboxContractError(409,"Message changed; reopen its attachments");
+-  const matching=attachmentParts(object(message.payload)).filter(part=>part.partId===partId);if(matching.length!==1)throw new InboxContractError(404,"Attachment not found");const part=matching[0],body=object(part.body);
+-  if(part.mimeType!=="text/plain"||typeof body.size!=="number"||body.size>attachmentLimit)throw new InboxContractError(413,"Only plain text attachments up to 16 KiB can be opened");
+-  const raw=body.attachmentId?await this.request(grant,`/messages/${id}/attachments/${providerId(body.attachmentId)}`):body;
+-  const encoded=text(raw.data,22000);if(!/^[A-Za-z0-9_-]*={0,2}$/.test(encoded))throw new InboxContractError(502,"Invalid provider attachment");
+-  const file=checkedAttachment({name:part.filename,mimeType:part.mimeType,dataBase64:Buffer.from(encoded,"base64url").toString("base64")});if(file.size!==body.size||raw.size!==body.size)throw new InboxContractError(502,"Attachment byte count changed");
+-  return {version:1,messageId:id,partId,historyId,...file,sha256:Buffer.from(await crypto.subtle.digest('SHA-256',Buffer.from(file.dataBase64,'base64'))).toString('hex')};
+- }
+-	async draft(owner: InboxOwner, draftId: string) {
+-		const grant = await this.dependencies.grant(owner);
+-		requireScope(grant, "draft");
+-		const selectedId = providerId(draftId);
+-		const result = await this.request(
+-				grant,
+-				`/drafts/${selectedId}?format=raw`,
+-			),
+-			message = object(result.message),
+-			raw = text(message.raw, 8 * 1024 * 1024);
+-		if (result.id !== selectedId)
+-			throw new InboxContractError(502, "Provider returned a different draft");
+-		return {
+-			id: providerId(result.id),
+-			messageId: providerId(message.id),
+-			raw,
+-			providerDigest: await inboxDigest(raw),
+-		};
+-	}
+-	async review(
+-		owner: InboxOwner,
+-		proposal: unknown,
+-		requestId: string,
+-	): Promise<InboxReviewedEffect> {
+-		const value = object(proposal),
+-			kind = value.kind,
+-			grant = await this.dependencies.grant(owner);
+-		if (kind === "archive" || kind === "unarchive" || kind === "trash" || kind === "untrash") {
+-			fields(value, ["kind", "messageId", "expectedHistoryId"]);
+-			requireScope(grant, "modify");
+-			const messageId = providerId(value.messageId),
+-				expectedHistoryId = text(value.expectedHistoryId, 100, true),
+-				current = await this.request(
+-					grant,
+-					`/messages/${messageId}?format=minimal`,
+-				);
+-			if (current.id !== messageId || current.historyId !== expectedHistoryId)
+-				throw new InboxContractError(
+-					409,
+-					"Selected message changed; review its current labels",
+-				);
+-			const review = { kind, messageId, expectedHistoryId, from: grant.email },
+-				digest = await inboxDigest(JSON.stringify(review));
+-			return {
+-				kind,
+-				digest,
+-				review,
+-				perform: async () => {
+-					const result =
+-						(kind === "archive" || kind === "unarchive")
+-							? await this.request(
+-									grant,
+-									`/messages/${messageId}/modify`,
+-									"POST",
+-									kind === "archive" ? { removeLabelIds: ["INBOX"] } : { addLabelIds: ["INBOX"] },
+-								)
+-							: await this.request(
+-									grant,
+-									`/messages/${messageId}/${kind}`,
+-									"POST",
+-								);
+-					if (
+-						result.id !== messageId ||
+-						!Array.isArray(result.labelIds) ||
+-						!result.labelIds.every((label) => typeof label === "string")
+-					)
+-						throw Error("Provider mutation readback is incomplete");
+-					const labels = result.labelIds as string[];
+-					if (
+-						(kind === "archive" && labels.includes("INBOX")) ||
+-                        (kind === "unarchive" && !labels.includes("INBOX")) ||
+-						(kind === "trash" && !labels.includes("TRASH")) ||
+-						(kind === "untrash" && labels.includes("TRASH"))
+-					)
+-						throw Error("Provider labels did not verify the requested state");
+-					return {
+-						messageId,
+-						labelIds: labels,
+-						historyId: result.historyId ?? null,
+-					};
+-				},
+-			};
+-		}
+-		if (kind === "draft-delete") {
+-			fields(value, [
+-				"kind",
+-				"draftId",
+-				"expectedDigest",
+-				"confirmPermanentDelete",
+-			]);
+-			requireScope(grant, "draft");
+-			if (value.confirmPermanentDelete !== true)
+-				throw new InboxContractError(
+-					400,
+-					"Permanent provider draft deletion requires confirmation",
+-				);
+-			const draftId = providerId(value.draftId),
+-				current = await this.draft(owner, draftId);
+-			if (current.providerDigest !== value.expectedDigest)
+-				throw new InboxContractError(409, "Provider draft changed");
+-			const review = {
+-					kind,
+-					draftId,
+-					expectedDigest: current.providerDigest,
+-					from: grant.email,
+-					permanent: true,
+-				},
+-				digest = await inboxDigest(JSON.stringify(review));
+-			return {
+-				kind,
+-				digest,
+-				review,
+-				perform: async () => {
+-					await this.request(grant, `/drafts/${draftId}`, "DELETE");
+-					return { draftId, deleted: true };
+-				},
+-			};
+-		}
+-		if (kind !== "send" && kind !== "draft-create" && kind !== "draft-replace")
+-			throw new InboxContractError(400, "Unsupported mail operation");
+-		fields(value, [
+-			"kind",
+-			"mode",
+-			"to",
+-			"cc",
+-			"bcc",
+-			"subject",
+-			"bodyText",
+-			"replyMessageId",
+-			"draftId",
+-			"expectedDigest",
+-			"acceptNonAtomicReplacement",
+-            "attachments",
+-		]);
+-		requireScope(grant, kind === "send" ? "send" : "draft");
+-		const mode = value.mode;
+-		if (!["compose", "reply", "reply-all", "forward"].includes(String(mode)))
+-			throw new InboxContractError(400, "Explicit compose mode required");
+-		const from = mailbox(grant.email),
+-			to = addresses(value.to),
+-			cc = addresses(value.cc),
+-			bcc = addresses(value.bcc),
+-			subject = text(value.subject, 500, true),
+-			bodyText = text(value.bodyText, 64000);
+-		if (kind === "send" && to.length + cc.length + bcc.length === 0) throw new InboxContractError(400,"At least one recipient is required to send");
+-		if (to.length + cc.length + bcc.length > 50)
+-			throw new InboxContractError(400, "At most 50 recipients are supported");
+-		let threadId: string | undefined,
+-			inReplyTo: string | undefined,
+-			references: string | undefined;
+-		if (mode === "reply" || mode === "reply-all") {
+-			requireScope(grant, "read");
+-			const replyMessageId = providerId(value.replyMessageId);
+-			const selected = await this.request(
+-					grant,
+-					`/messages/${replyMessageId}?format=metadata`,
+-				),
+-				payload = object(selected.payload),
+-				parentId = payloadHeader(payload, "Message-ID"),
+-				parentSubject = payloadHeader(payload, "Subject");
+-			if (
+-				selected.id !== replyMessageId ||
+-				!parentId ||
+-				parentId.length > 254 ||
+-				!/^<[^<>\s]+@[^<>\s]+>$/.test(parentId) ||
+-				parentSubject === null
+-			)
+-				throw new InboxContractError(
+-					409,
+-					"Selected message lacks safe reply headers",
+-				);
+-			const expected = /^re:/i.test(parentSubject)
+-				? parentSubject
+-				: `Re: ${parentSubject}`;
+-			if (subject !== expected)
+-				throw new InboxContractError(
+-					409,
+-					"Reply subject must match the selected message",
+-				);
+-			threadId = providerId(selected.threadId);
+-			inReplyTo = parentId;
+-			const chain = payloadHeader(payload, "References");
+-			if (chain && !/^(?:<[^<>\s]+@[^<>\s]+>\s*)+$/.test(chain))
+-				throw new InboxContractError(
+-					409,
+-					"Selected message has unsupported References",
+-				);
+-			references = chain ? `${chain} ${parentId}` : parentId;
+-		} else if (value.replyMessageId !== undefined)
+-			throw new InboxContractError(
+-				400,
+-				"Reply identity is not valid for this compose mode",
+-			);
+-        const attachments=value.attachments===undefined?[]:value.attachments;if(!Array.isArray(attachments)||attachments.length>1)throw new InboxContractError(400,"At most one plain text attachment is supported");const files=attachments.map(checkedAttachment);
+-        const attachmentReview=await Promise.all(files.map(async file=>({name:file.name,mimeType:file.mimeType,size:file.size,sha256:Buffer.from(await crypto.subtle.digest('SHA-256',Buffer.from(file.dataBase64,'base64'))).toString('hex')})));
+-        const boundary=`eliza-${requestId}`;
+-		const lines = [
+-			`From: ${from}`,
+-			recipientHeader("To", to),
+-			...(cc.length ? [recipientHeader("Cc", cc)] : []),
+-			...(bcc.length ? [recipientHeader("Bcc", bcc)] : []),
+-			`Subject: ${encodedSubject(subject)}`,
+-			`Message-ID: <eliza-${requestId}@message.invalid>`,
+-			"MIME-Version: 1.0",
+-			"Content-Type: text/plain; charset=UTF-8",
+-			"Content-Transfer-Encoding: base64",
+-			...(inReplyTo
+-				? [
+-						`In-Reply-To: ${inReplyTo}`,
+-						referenceHeader(references ?? inReplyTo),
+-					]
+-				: []),
+-			"",
+-			Buffer.from(bodyText.replace(/\r?\n/g, "\r\n"))
+-				.toString("base64")
+-				.match(/.{1,76}/g)
+-				?.join("\r\n") ?? "",
+-		];
+-        if(files.length){const content=lines.findIndex(line=>line.startsWith('Content-Type:'));const metadata=lines.filter((_,index)=>index<content||index>content+1&&index<lines.indexOf(''));const body=lines.slice(lines.indexOf('')+1).join('\r\n');lines.splice(0,lines.length,...metadata,`Content-Type: multipart/mixed; boundary="${boundary}"`,'',`--${boundary}`,'Content-Type: text/plain; charset=UTF-8','Content-Transfer-Encoding: base64','',body,...files.flatMap(file=>[`--${boundary}`,`Content-Type: text/plain; charset=UTF-8`,`Content-Disposition: attachment; filename="${file.name}"`,'Content-Transfer-Encoding: base64','',file.dataBase64.match(/.{1,76}/g)?.join('\r\n')||'']),`--${boundary}--`);}
+-		const raw = Buffer.from(lines.join("\r\n")).toString("base64url"),
+-			mimeDigest = await inboxDigest(raw);
+-		let draftId: string | undefined, expectedDigest: string | undefined;
+-		if (kind === "draft-replace") {
+-			if (value.acceptNonAtomicReplacement !== true)
+-				throw new InboxContractError(
+-					400,
+-					"Gmail has no atomic draft compare-and-swap; explicit replacement acknowledgement required",
+-				);
+-			draftId = providerId(value.draftId);
+-			expectedDigest = text(value.expectedDigest, 64, true);
+-			const current = await this.draft(owner, draftId);
+-			if (current.providerDigest !== expectedDigest)
+-				throw new InboxContractError(
+-					409,
+-					"Provider draft changed; read it before replacement",
+-				);
+-		} else if (
+-			value.draftId !== undefined ||
+-			value.expectedDigest !== undefined ||
+-			value.acceptNonAtomicReplacement !== undefined
+-		)
+-			throw new InboxContractError(
+-				400,
+-				"Draft replacement fields are not valid for this operation",
+-			);
+-		const review = {
+-				kind,
+-				mode,
+-				from,
+-				to,
+-				cc,
+-				bcc,
+-				subject,
+-				bodyText,
+-				threadId: threadId ?? null,
+-				replyMessageId: value.replyMessageId ?? null,
+-				draftId: draftId ?? null,
+-				expectedDigest: expectedDigest ?? null,
+-				mimeDigest,
+-				attachments: attachmentReview,
+-				atomicDraftReplacement: false,
+-			},
+-			digest = await inboxDigest(JSON.stringify(review));
+-		return {
+-			kind,
+-			digest,
+-			review,
+-			perform: async () => {
+-				const message = { raw, ...(threadId ? { threadId } : {}) },
+-					result =
+-						kind === "send"
+-							? await this.request(grant, "/messages/send", "POST", message)
+-							: kind === "draft-create"
+-								? await this.request(grant, "/drafts", "POST", { message })
+-								: await this.request(grant, `/drafts/${draftId}`, "PUT", {
+-										id: draftId,
+-										message,
+-									});
+-				if (kind === "send")
+-					return {
+-						messageId: providerId(result.id),
+-						threadId: providerId(result.threadId),
+-						mimeDigest,
+-					};
+-				const id = providerId(result.id),
+-					returned = object(result.message);
+-				if (draftId && id !== draftId)
+-					throw Error("Provider draft identity changed");
+-				const readback = await this.request(grant, `/drafts/${id}?format=raw`),
+-					storedRaw = text(object(readback.message).raw, 8 * 1024 * 1024);
+-				if (
+-					readback.id !== id ||
+-					!Buffer.from(storedRaw, "base64url").equals(
+-						Buffer.from(raw, "base64url"),
+-					)
+-				)
+-					throw Error(
+-						"Provider draft readback differs from reviewed MIME; inspect it before another save",
+-					);
+-				return {
+-					draftId: id,
+-					messageId: providerId(returned.id),
+-					providerDigest: await inboxDigest(storedRaw),
+-					mimeDigest,
+-					atomicReplacement: false,
+-				};
+-			},
+-		};
+-	}
+-}
++  constructor(private readonly dependencies: InboxGoogleDependencies) {}
++  private async request(
++    grant: InboxGoogleGrant,
++    path: string,
++    method = "GET",
++    body?: unknown,
++  ): Promise<Record<string, unknown>> {
++    const controller = new AbortController(),
++      timer = setTimeout(() => controller.abort(), 30000);
++    try {
++      const response = await (this.dependencies.fetch ?? fetch)(endpoint + path, {
++        method,
++        redirect: "error",
++        signal: controller.signal,
++        headers: {
++          authorization: `Bearer ${grant.token}`,
++          "content-type": "application/json",
++        },
++        ...(body === undefined ? {} : { body: JSON.stringify(body) }),
++      });
++      if (!response.ok) {
++        await response.body?.cancel();
++        if ([400, 401, 403, 404, 409, 412, 422].includes(response.status))
++          throw new DefiniteProviderRejection(String(response.status));
++        throw new Error("Ambiguous Google response");
++      }
++      if (response.status === 204) return {};
++      const reader = response.body?.getReader();
++      if (!reader) throw new Error("Missing Google response");
++      const chunks: Uint8Array[] = [];
++      let size = 0;
++      try {
++        for (;;) {
++          const next = await reader.read();
++          if (next.done) break;
++          size += next.value.length;
++          if (size > 8 * 1024 * 1024) {
++            await reader.cancel();
++            throw new InboxContractError(413, "Provider result exceeds the explicit size limit");
++          }
++          chunks.push(next.value);
++        }
++      } finally {
++        reader.releaseLock();
++      }
++      const bytes = new Uint8Array(size);
++      let offset = 0;
++      for (const chunk of chunks) {
++        bytes.set(chunk, offset);
++        offset += chunk.length;
++      }
++      return object(JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes)));
++    } finally {
++      clearTimeout(timer);
++    }
++  }
++  async capabilities(owner: InboxOwner) {
++    const grant = await this.dependencies.grant(owner);
++    const supported = (kind: "read" | "send" | "draft" | "modify") => {
++      try {
++        requireScope(grant, kind);
++        return true;
++      } catch {
++        return false;
++      }
++    };
++    return {
++      version: 1,
++      from: grant.email,
++      threads: supported("read") && Boolean(this.dependencies.normalizeMessage),
++      send: supported("send"),
++      providerDrafts: supported("draft"),
++      mailboxMutations: supported("modify"),
++      attachments: true,
++      attachmentPolicy: {
++        mimeTypes: ["text/plain"],
++        maximumBytes: attachmentLimit,
++        maximumOutgoing: 1,
++      },
++      providerExactlyOnce: false,
++      atomicDraftReplacement: false,
++    };
++  }
++  async thread(owner: InboxOwner, threadId: string, offset = 0, expectedHistoryId?: string) {
++    if (
++      !Number.isSafeInteger(offset) ||
++      offset < 0 ||
++      offset > 2000 ||
++      (offset > 0 && !expectedHistoryId)
++    )
++      throw new InboxContractError(
++        400,
++        "A continuation offset requires the reviewed thread history identity",
++      );
++    const normalizeMessage = this.dependencies.normalizeMessage;
++    if (!normalizeMessage) throw new InboxContractError(409, "Thread decoding is unavailable");
++    const grant = await this.dependencies.grant(owner);
++    requireScope(grant, "read");
++    const id = providerId(threadId),
++      result = await this.request(grant, `/threads/${id}?format=full`);
++    if (result.id !== id || typeof result.historyId !== "string" || !Array.isArray(result.messages))
++      throw new InboxContractError(502, "Incomplete Google thread response");
++    if (expectedHistoryId && result.historyId !== expectedHistoryId)
++      throw new InboxContractError(409, "Thread changed during paging; reopen it");
++    if (result.messages.length > 2000)
++      throw new InboxContractError(413, "Thread exceeds the explicit 2000-message support limit");
++    const all = result.messages
++      .map(object)
++      .sort((a, b) => Number(a.internalDate) - Number(b.internalDate));
++    if (offset > all.length)
++      throw new InboxContractError(400, "Thread offset is outside the current snapshot");
++    if (
++      all.some(
++        (message) => message.threadId !== id || !Number.isFinite(Number(message.internalDate)),
++      )
++    )
++      throw new InboxContractError(502, "Inconsistent Google thread messages");
++    const messages = all.slice(offset, offset + 25).map((raw) => {
++      const normalized = normalizeMessage(raw, grant.email);
++      if (!normalized) throw new InboxContractError(502, "Incomplete thread message");
++      if (encoder.encode(normalized.bodyText).length > 256 * 1024)
++        throw new InboxContractError(413, "Message body exceeds the explicit display limit");
++      return {
++        ...normalized,
++        historyId: typeof raw.historyId === "string" ? raw.historyId : null,
++        attachments: attachmentParts(object(raw.payload)).map((part) => {
++          const body = object(part.body),
++            name = typeof part.filename === "string" ? part.filename : "attachment";
++          return {
++            partId: typeof part.partId === "string" ? part.partId : "",
++            name,
++            mimeType: part.mimeType,
++            size: body.size,
++            supported:
++              part.mimeType === "text/plain" &&
++              typeof body.size === "number" &&
++              body.size <= attachmentLimit &&
++              /^[A-Za-z0-9][A-Za-z0-9._ -]*\.txt$/i.test(name),
++          };
++        }),
++      };
++    });
++    let pageBytes = 0,
++      pageCount = 0;
++    for (const message of messages) {
++      const size = encoder.encode(JSON.stringify(message)).length;
++      if (size > 1536 * 1024)
++        throw new InboxContractError(413, "Message metadata exceeds the display limit");
++      if (pageBytes + size > 1536 * 1024) break;
++      pageBytes += size;
++      pageCount++;
++    }
++    messages.splice(pageCount);
++    return {
++      version: 1,
++      threadId: id,
++      historyId: result.historyId,
++      total: all.length,
++      offset,
++      nextOffset: offset + messages.length < all.length ? offset + messages.length : null,
++      messages,
++    };
++  }
++  async attachment(owner: InboxOwner, messageId: string, partId: string, historyId: string) {
++    const grant = await this.dependencies.grant(owner);
++    requireScope(grant, "read");
++    const id = providerId(messageId),
++      message = await this.request(grant, `/messages/${id}?format=full`);
++    if (message.id !== id || message.historyId !== historyId)
++      throw new InboxContractError(409, "Message changed; reopen its attachments");
++    const matching = attachmentParts(object(message.payload)).filter(
++      (part) => part.partId === partId,
++    );
++    if (matching.length !== 1) throw new InboxContractError(404, "Attachment not found");
++    const part = matching[0],
++      body = object(part.body);
++    if (
++      part.mimeType !== "text/plain" ||
++      typeof body.size !== "number" ||
++      body.size > attachmentLimit
++    )
++      throw new InboxContractError(413, "Only plain text attachments up to 16 KiB can be opened");
++    const raw = body.attachmentId
++      ? await this.request(grant, `/messages/${id}/attachments/${providerId(body.attachmentId)}`)
++      : body;
++    const encoded = text(raw.data, 22000);
++    if (!/^[A-Za-z0-9_-]*={0,2}$/.test(encoded))
++      throw new InboxContractError(502, "Invalid provider attachment");
++    const file = checkedAttachment({
++      name: part.filename,
++      mimeType: part.mimeType,
++      dataBase64: Buffer.from(encoded, "base64url").toString("base64"),
++    });
++    if (file.size !== body.size || raw.size !== body.size)
++      throw new InboxContractError(502, "Attachment byte count changed");
++    return {
++      version: 1,
++      messageId: id,
++      partId,
++      historyId,
++      ...file,
++      sha256: Buffer.from(
++        await crypto.subtle.digest("SHA-256", Buffer.from(file.dataBase64, "base64")),
++      ).toString("hex"),
++    };
++  }
++  async draft(owner: InboxOwner, draftId: string) {
++    const grant = await this.dependencies.grant(owner);
++    requireScope(grant, "draft");
++    const selectedId = providerId(draftId);
++    const result = await this.request(grant, `/drafts/${selectedId}?format=raw`),
++      message = object(result.message),
++      raw = text(message.raw, 8 * 1024 * 1024);
++    if (result.id !== selectedId)
++      throw new InboxContractError(502, "Provider returned a different draft");
++    return {
++      id: providerId(result.id),
++      messageId: providerId(message.id),
++      raw,
++      providerDigest: await inboxDigest(raw),
++    };
++  }
++  async review(
++    owner: InboxOwner,
++    proposal: unknown,
++    requestId: string,
++  ): Promise<InboxReviewedEffect> {
++    const value = object(proposal),
++      kind = value.kind,
++      grant = await this.dependencies.grant(owner);
++    if (kind === "archive" || kind === "unarchive" || kind === "trash" || kind === "untrash") {
++      fields(value, ["kind", "messageId", "expectedHistoryId"]);
++      requireScope(grant, "modify");
++      const messageId = providerId(value.messageId),
++        expectedHistoryId = text(value.expectedHistoryId, 100, true),
++        current = await this.request(grant, `/messages/${messageId}?format=minimal`);
++      if (current.id !== messageId || current.historyId !== expectedHistoryId)
++        throw new InboxContractError(409, "Selected message changed; review its current labels");
++      const review = { kind, messageId, expectedHistoryId, from: grant.email },
++        digest = await inboxDigest(JSON.stringify(review));
++      return {
++        kind,
++        digest,
++        review,
++        perform: async () => {
++          const result =
++            kind === "archive" || kind === "unarchive"
++              ? await this.request(
++                  grant,
++                  `/messages/${messageId}/modify`,
++                  "POST",
++                  kind === "archive" ? { removeLabelIds: ["INBOX"] } : { addLabelIds: ["INBOX"] },
++                )
++              : await this.request(grant, `/messages/${messageId}/${kind}`, "POST");
++          if (
++            result.id !== messageId ||
++            !Array.isArray(result.labelIds) ||
++            !result.labelIds.every((label) => typeof label === "string")
++          )
++            throw Error("Provider mutation readback is incomplete");
++          const labels = result.labelIds as string[];
++          if (
++            (kind === "archive" && labels.includes("INBOX")) ||
++            (kind === "unarchive" && !labels.includes("INBOX")) ||
++            (kind === "trash" && !labels.includes("TRASH")) ||
++            (kind === "untrash" && labels.includes("TRASH"))
++          )
++            throw Error("Provider labels did not verify the requested state");
++          return {
++            messageId,
++            labelIds: labels,
++            historyId: result.historyId ?? null,
++          };
++        },
++      };
++    }
++    if (kind === "draft-delete") {
++      fields(value, ["kind", "draftId", "expectedDigest", "confirmPermanentDelete"]);
++      requireScope(grant, "draft");
++      if (value.confirmPermanentDelete !== true)
++        throw new InboxContractError(
++          400,
++          "Permanent provider draft deletion requires confirmation",
++        );
++      const draftId = providerId(value.draftId),
++        current = await this.draft(owner, draftId);
++      if (current.providerDigest !== value.expectedDigest)
++        throw new InboxContractError(409, "Provider draft changed");
++      const review = {
++          kind,
++          draftId,
++          expectedDigest: current.providerDigest,
++          from: grant.email,
++          permanent: true,
++        },
++        digest = await inboxDigest(JSON.stringify(review));
++      return {
++        kind,
++        digest,
++        review,
++        perform: async () => {
++          await this.request(grant, `/drafts/${draftId}`, "DELETE");
++          return { draftId, deleted: true };
++        },
++      };
++    }
++    if (kind !== "send" && kind !== "draft-create" && kind !== "draft-replace")
++      throw new InboxContractError(400, "Unsupported mail operation");
++    fields(value, [
++      "kind",
++      "mode",
++      "to",
++      "cc",
++      "bcc",
++      "subject",
++      "bodyText",
++      "replyMessageId",
++      "draftId",
++      "expectedDigest",
++      "acceptNonAtomicReplacement",
++      "attachments",
++    ]);
++    requireScope(grant, kind === "send" ? "send" : "draft");
++    const mode = value.mode;
++    if (!["compose", "reply", "reply-all", "forward"].includes(String(mode)))
++      throw new InboxContractError(400, "Explicit compose mode required");
++    const from = mailbox(grant.email),
++      to = addresses(value.to),
++      cc = addresses(value.cc),
++      bcc = addresses(value.bcc),
++      subject = text(value.subject, 500, true),
++      bodyText = text(value.bodyText, 64000);
++    if (kind === "send" && to.length + cc.length + bcc.length === 0)
++      throw new InboxContractError(400, "At least one recipient is required to send");
++    if (to.length + cc.length + bcc.length > 50)
++      throw new InboxContractError(400, "At most 50 recipients are supported");
++    let threadId: string | undefined, inReplyTo: string | undefined, references: string | undefined;
++    if (mode === "reply" || mode === "reply-all") {
++      requireScope(grant, "read");
++      const replyMessageId = providerId(value.replyMessageId);
++      const selected = await this.request(grant, `/messages/${replyMessageId}?format=metadata`),
++        payload = object(selected.payload),
++        parentId = payloadHeader(payload, "Message-ID"),
++        parentSubject = payloadHeader(payload, "Subject");
++      if (
++        selected.id !== replyMessageId ||
++        !parentId ||
++        parentId.length > 254 ||
++        !/^<[^<>\s]+@[^<>\s]+>$/.test(parentId) ||
++        parentSubject === null
++      )
++        throw new InboxContractError(409, "Selected message lacks safe reply headers");
++      const expected = /^re:/i.test(parentSubject) ? parentSubject : `Re: ${parentSubject}`;
++      if (subject !== expected)
++        throw new InboxContractError(409, "Reply subject must match the selected message");
++      threadId = providerId(selected.threadId);
++      inReplyTo = parentId;
++      const chain = payloadHeader(payload, "References");
++      if (chain && !/^(?:<[^<>\s]+@[^<>\s]+>\s*)+$/.test(chain))
++        throw new InboxContractError(409, "Selected message has unsupported References");
++      references = chain ? `${chain} ${parentId}` : parentId;
++    } else if (value.replyMessageId !== undefined)
++      throw new InboxContractError(400, "Reply identity is not valid for this compose mode");
++    const attachments = value.attachments === undefined ? [] : value.attachments;
++    if (!Array.isArray(attachments) || attachments.length > 1)
++      throw new InboxContractError(400, "At most one plain text attachment is supported");
++    const files = attachments.map(checkedAttachment);
++    const attachmentReview = await Promise.all(
++      files.map(async (file) => ({
++        name: file.name,
++        mimeType: file.mimeType,
++        size: file.size,
++        sha256: Buffer.from(
++          await crypto.subtle.digest("SHA-256", Buffer.from(file.dataBase64, "base64")),
++        ).toString("hex"),
++      })),
++    );
++    const boundary = `eliza-${requestId}`;
++    const lines = [
++      `From: ${from}`,
++      recipientHeader("To", to),
++      ...(cc.length ? [recipientHeader("Cc", cc)] : []),
++      ...(bcc.length ? [recipientHeader("Bcc", bcc)] : []),
++      `Subject: ${encodedSubject(subject)}`,
++      `Message-ID: <eliza-${requestId}@message.invalid>`,
++      "MIME-Version: 1.0",
++      "Content-Type: text/plain; charset=UTF-8",
++      "Content-Transfer-Encoding: base64",
++      ...(inReplyTo ? [`In-Reply-To: ${inReplyTo}`, referenceHeader(references ?? inReplyTo)] : []),
++      "",
++      Buffer.from(bodyText.replace(/\r?\n/g, "\r\n"))
++        .toString("base64")
++        .match(/.{1,76}/g)
++        ?.join("\r\n") ?? "",
++    ];
++    if (files.length) {
++      const content = lines.findIndex((line) => line.startsWith("Content-Type:"));
++      const metadata = lines.filter(
++        (_, index) => index < content || (index > content + 1 && index < lines.indexOf("")),
++      );
++      const body = lines.slice(lines.indexOf("") + 1).join("\r\n");
++      lines.splice(
++        0,
++        lines.length,
++        ...metadata,
++        `Content-Type: multipart/mixed; boundary="${boundary}"`,
++        "",
++        `--${boundary}`,
++        "Content-Type: text/plain; charset=UTF-8",
++        "Content-Transfer-Encoding: base64",
++        "",
++        body,
++        ...files.flatMap((file) => [
++          `--${boundary}`,
++          `Content-Type: text/plain; charset=UTF-8`,
++          `Content-Disposition: attachment; filename="${file.name}"`,
++          "Content-Transfer-Encoding: base64",
++          "",
++          file.dataBase64.match(/.{1,76}/g)?.join("\r\n") || "",
++        ]),
++        `--${boundary}--`,
++      );
++    }
++    const raw = Buffer.from(lines.join("\r\n")).toString("base64url"),
++      mimeDigest = await inboxDigest(raw);
++    let draftId: string | undefined, expectedDigest: string | undefined;
++    if (kind === "draft-replace") {
++      if (value.acceptNonAtomicReplacement !== true)
++        throw new InboxContractError(
++          400,
++          "Gmail has no atomic draft compare-and-swap; explicit replacement acknowledgement required",
++        );
++      draftId = providerId(value.draftId);
++      expectedDigest = text(value.expectedDigest, 64, true);
++      const current = await this.draft(owner, draftId);
++      if (current.providerDigest !== expectedDigest)
++        throw new InboxContractError(409, "Provider draft changed; read it before replacement");
++    } else if (
++      value.draftId !== undefined ||
++      value.expectedDigest !== undefined ||
++      value.acceptNonAtomicReplacement !== undefined
++    )
++      throw new InboxContractError(
++        400,
++        "Draft replacement fields are not valid for this operation",
++      );
++    const review = {
++        kind,
++        mode,
++        from,
++        to,
++        cc,
++        bcc,
++        subject,
++        bodyText,
++        threadId: threadId ?? null,
++        replyMessageId: value.replyMessageId ?? null,
++        draftId: draftId ?? null,
++        expectedDigest: expectedDigest ?? null,
++        mimeDigest,
++        attachments: attachmentReview,
++        atomicDraftReplacement: false,
++      },
++      digest = await inboxDigest(JSON.stringify(review));
++    return {
++      kind,
++      digest,
++      review,
++      perform: async () => {
++        const message = { raw, ...(threadId ? { threadId } : {}) },
++          result =
++            kind === "send"
++              ? await this.request(grant, "/messages/send", "POST", message)
++              : kind === "draft-create"
++                ? await this.request(grant, "/drafts", "POST", { message })
++                : await this.request(grant, `/drafts/${draftId}`, "PUT", {
++                    id: draftId,
++                    message,
++                  });
++        if (kind === "send")
++          return {
++            messageId: providerId(result.id),
++            threadId: providerId(result.threadId),
++            mimeDigest,
++          };
++        const id = providerId(result.id),
++          returned = object(result.message);
++        if (draftId && id !== draftId) throw Error("Provider draft identity changed");
++        const readback = await this.request(grant, `/drafts/${id}?format=raw`),
++          storedRaw = text(object(readback.message).raw, 8 * 1024 * 1024);
++        if (
++          readback.id !== id ||
++          !Buffer.from(storedRaw, "base64url").equals(Buffer.from(raw, "base64url"))
++        )
++          throw Error(
++            "Provider draft readback differs from reviewed MIME; inspect it before another save",
++          );
++        return {
++          draftId: id,
++          messageId: providerId(returned.id),
++          providerDigest: await inboxDigest(storedRaw),
++          mimeDigest,
++          atomicReplacement: false,
++        };
++      },
++    };
++  }
++}
+--- a/packages/cloud/shared/src/lib/services/agent-google-connector/inbox-receipts.ts
++++ b/packages/cloud/shared/src/lib/services/agent-google-connector/inbox-receipts.ts
+@@ -1,160 +1,147 @@
+ import { type SQL, sql } from "drizzle-orm";
+ 
+ export interface InboxOwner {
+-	organizationId: string;
+-	userId: string;
+-	grantId: string;
++  organizationId: string;
++  userId: string;
++  grantId: string;
+ }
+ export type InboxEffectKind =
+-	| "send"
+-	| "draft-create"
+-	| "draft-replace"
+-	| "draft-delete"
+-	| "archive"
++  | "send"
++  | "draft-create"
++  | "draft-replace"
++  | "draft-delete"
++  | "archive"
+   | "unarchive"
+-	| "trash"
+-	| "untrash";
++  | "trash"
++  | "untrash";
+ export type InboxReceiptState =
+-	| "prepared"
+-	| "dispatched"
+-	| "succeeded"
+-	| "rejected"
+-	| "outcome-unknown";
++  | "prepared"
++  | "dispatched"
++  | "succeeded"
++  | "rejected"
++  | "outcome-unknown";
+ export interface InboxReceipt {
+-	requestId: string;
+-	kind: InboxEffectKind;
+-	reviewDigest: string;
+-	state: InboxReceiptState;
+-	providerResult: Record<string, unknown> | null;
+-	rejectionCode: string | null;
+-	createdAt: string;
+-	dispatchedAt: string | null;
+-	finishedAt: string | null;
++  requestId: string;
++  kind: InboxEffectKind;
++  reviewDigest: string;
++  state: InboxReceiptState;
++  providerResult: Record<string, unknown> | null;
++  rejectionCode: string | null;
++  createdAt: string;
++  dispatchedAt: string | null;
++  finishedAt: string | null;
+ }
+-export type InboxDatabase = (
+-	query: SQL,
+-) => Promise<{ rows: Record<string, unknown>[] }>;
++export type InboxDatabase = (query: SQL) => Promise<{ rows: Record<string, unknown>[] }>;
+ export class InboxContractError extends Error {
+-	constructor(
+-		public readonly status: 400 | 401 | 403 | 404 | 409 | 413 | 502,
+-		message: string,
+-	) {
+-		super(message);
+-	}
++  constructor(
++    public readonly status: 400 | 401 | 403 | 404 | 409 | 413 | 502,
++    message: string,
++  ) {
++    super(message);
++  }
+ }
+ function receipt(row: Record<string, unknown>): InboxReceipt {
+-	const date = (value: unknown) =>
+-		value instanceof Date ? value.toISOString() : String(value);
+-	return {
+-		requestId: String(row.request_id),
+-		kind: row.kind as InboxEffectKind,
+-		reviewDigest: String(row.review_digest),
+-		state: row.state as InboxReceiptState,
+-		providerResult: row.provider_result as Record<string, unknown> | null,
+-		rejectionCode: row.rejection_code as string | null,
+-		createdAt: date(row.created_at),
+-		dispatchedAt: row.dispatched_at ? date(row.dispatched_at) : null,
+-		finishedAt: row.finished_at ? date(row.finished_at) : null,
+-	};
++  const date = (value: unknown) => (value instanceof Date ? value.toISOString() : String(value));
++  return {
++    requestId: String(row.request_id),
++    kind: row.kind as InboxEffectKind,
++    reviewDigest: String(row.review_digest),
++    state: row.state as InboxReceiptState,
++    providerResult: row.provider_result as Record<string, unknown> | null,
++    rejectionCode: row.rejection_code as string | null,
++    createdAt: date(row.created_at),
++    dispatchedAt: row.dispatched_at ? date(row.dispatched_at) : null,
++    finishedAt: row.finished_at ? date(row.finished_at) : null,
++  };
+ }
+ /** All reads use the writer: replica lag cannot justify a second provider effect. */
+ export class InboxReceipts {
+-	constructor(private readonly database: InboxDatabase) {}
+-	private scope(owner: InboxOwner, requestId: string) {
+-		return sql`organization_id=${owner.organizationId} AND user_id=${owner.userId} AND grant_id=${owner.grantId} AND request_id=${requestId}`;
+-	}
+-	async get(owner: InboxOwner, requestId: string): Promise<InboxReceipt> {
+-		const result = await this.database(
+-			sql`SELECT * FROM managed_gmail_operation_receipts WHERE ${this.scope(owner, requestId)}`,
+-		);
+-		if (result.rows.length !== 1)
+-			throw new InboxContractError(404, "Operation not found");
+-		return receipt(result.rows[0]);
+-	}
+-	async prepare(
+-		owner: InboxOwner,
+-		requestId: string,
+-		kind: InboxEffectKind,
+-		digest: string,
+-	): Promise<InboxReceipt> {
+-		await this.database(
+-			sql`INSERT INTO managed_gmail_operation_receipts (organization_id,user_id,grant_id,request_id,kind,review_digest) VALUES (${owner.organizationId},${owner.userId},${owner.grantId},${requestId},${kind},${digest}) ON CONFLICT DO NOTHING`,
+-		);
+-		const current = await this.get(owner, requestId);
+-		if (current.kind !== kind || current.reviewDigest !== digest)
+-			throw new InboxContractError(
+-				409,
+-				"Request ID is already bound to a different reviewed operation",
+-			);
+-		return current;
+-	}
+-	async claim(
+-		owner: InboxOwner,
+-		requestId: string,
+-		digest: string,
+-	): Promise<boolean> {
+-		const result = await this.database(
+-			sql`UPDATE managed_gmail_operation_receipts SET state='dispatched',dispatched_at=now() WHERE ${this.scope(owner, requestId)} AND review_digest=${digest} AND state='prepared' RETURNING request_id`,
+-		);
+-		return result.rows.length === 1;
+-	}
+-	async finish(
+-		owner: InboxOwner,
+-		requestId: string,
+-		state: "succeeded" | "rejected" | "outcome-unknown",
+-		result: Record<string, unknown> | null,
+-		code: string | null,
+-	): Promise<InboxReceipt> {
+-		await this.database(
+-			sql`UPDATE managed_gmail_operation_receipts SET state=${state},provider_result=${result === null ? null : JSON.stringify(result)}::jsonb,rejection_code=${code},finished_at=now() WHERE ${this.scope(owner, requestId)} AND state='dispatched'`,
+-		);
+-		return this.get(owner, requestId);
+-	}
+-	async observe(owner: InboxOwner, requestId: string): Promise<InboxReceipt> {
+-		// A process may have died on either side of provider dispatch. Never reclaim it.
+-		await this.database(
+-			sql`UPDATE managed_gmail_operation_receipts SET state='outcome-unknown',finished_at=now() WHERE ${this.scope(owner, requestId)} AND state='dispatched' AND dispatched_at<now()-interval '90 seconds'`,
+-		);
+-		return this.get(owner, requestId);
+-	}
++  constructor(private readonly database: InboxDatabase) {}
++  private scope(owner: InboxOwner, requestId: string) {
++    return sql`organization_id=${owner.organizationId} AND user_id=${owner.userId} AND grant_id=${owner.grantId} AND request_id=${requestId}`;
++  }
++  async get(owner: InboxOwner, requestId: string): Promise<InboxReceipt> {
++    const result = await this.database(
++      sql`SELECT * FROM managed_gmail_operation_receipts WHERE ${this.scope(owner, requestId)}`,
++    );
++    if (result.rows.length !== 1) throw new InboxContractError(404, "Operation not found");
++    return receipt(result.rows[0]);
++  }
++  async prepare(
++    owner: InboxOwner,
++    requestId: string,
++    kind: InboxEffectKind,
++    digest: string,
++  ): Promise<InboxReceipt> {
++    await this.database(
++      sql`INSERT INTO managed_gmail_operation_receipts (organization_id,user_id,grant_id,request_id,kind,review_digest) VALUES (${owner.organizationId},${owner.userId},${owner.grantId},${requestId},${kind},${digest}) ON CONFLICT DO NOTHING`,
++    );
++    const current = await this.get(owner, requestId);
++    if (current.kind !== kind || current.reviewDigest !== digest)
++      throw new InboxContractError(
++        409,
++        "Request ID is already bound to a different reviewed operation",
++      );
++    return current;
++  }
++  async claim(owner: InboxOwner, requestId: string, digest: string): Promise<boolean> {
++    const result = await this.database(
++      sql`UPDATE managed_gmail_operation_receipts SET state='dispatched',dispatched_at=now() WHERE ${this.scope(owner, requestId)} AND review_digest=${digest} AND state='prepared' RETURNING request_id`,
++    );
++    return result.rows.length === 1;
++  }
++  async finish(
++    owner: InboxOwner,
++    requestId: string,
++    state: "succeeded" | "rejected" | "outcome-unknown",
++    result: Record<string, unknown> | null,
++    code: string | null,
++  ): Promise<InboxReceipt> {
++    await this.database(
++      sql`UPDATE managed_gmail_operation_receipts SET state=${state},provider_result=${result === null ? null : JSON.stringify(result)}::jsonb,rejection_code=${code},finished_at=now() WHERE ${this.scope(owner, requestId)} AND state='dispatched'`,
++    );
++    return this.get(owner, requestId);
++  }
++  async observe(owner: InboxOwner, requestId: string): Promise<InboxReceipt> {
++    // A process may have died on either side of provider dispatch. Never reclaim it.
++    await this.database(
++      sql`UPDATE managed_gmail_operation_receipts SET state='outcome-unknown',finished_at=now() WHERE ${this.scope(owner, requestId)} AND state='dispatched' AND dispatched_at<now()-interval '90 seconds'`,
++    );
++    return this.get(owner, requestId);
++  }
+ }
+ export class DefiniteProviderRejection extends Error {
+-	constructor(public readonly code: string) {
+-		super("Provider rejected the operation");
+-	}
++  constructor(public readonly code: string) {
++    super("Provider rejected the operation");
++  }
+ }
+ /** Authorization and canonical review construction happen before entering this function.
+  * Persisted dispatch wins once; neither an ambiguous result nor a repeated request retries Gmail. */
+ export async function dispatchInboxEffect(input: {
+-	receipts: InboxReceipts;
+-	owner: InboxOwner;
+-	requestId: string;
+-	reviewDigest: string;
+-	perform: () => Promise<Record<string, unknown>>;
++  receipts: InboxReceipts;
++  owner: InboxOwner;
++  requestId: string;
++  reviewDigest: string;
++  perform: () => Promise<Record<string, unknown>>;
+ }): Promise<InboxReceipt> {
+-	const { receipts, owner, requestId, reviewDigest } = input,
+-		current = await receipts.get(owner, requestId);
+-	if (current.reviewDigest !== reviewDigest)
+-		throw new InboxContractError(409, "Reviewed content changed");
+-	if (
+-		current.state !== "prepared" ||
+-		!(await receipts.claim(owner, requestId, reviewDigest))
+-	)
+-		return receipts.get(owner, requestId);
+-	let result: Record<string, unknown>;
+-	try {
+-		result = await input.perform();
+-	} catch (error) {
+-		return receipts.finish(
+-			owner,
+-			requestId,
+-			error instanceof DefiniteProviderRejection
+-				? "rejected"
+-				: "outcome-unknown",
+-			null,
+-			error instanceof DefiniteProviderRejection ? error.code : null,
+-		);
+-	}
+-	// A database error after provider success must propagate, not become a new send attempt.
+-	return receipts.finish(owner, requestId, "succeeded", result, null);
++  const { receipts, owner, requestId, reviewDigest } = input,
++    current = await receipts.get(owner, requestId);
++  if (current.reviewDigest !== reviewDigest)
++    throw new InboxContractError(409, "Reviewed content changed");
++  if (current.state !== "prepared" || !(await receipts.claim(owner, requestId, reviewDigest)))
++    return receipts.get(owner, requestId);
++  let result: Record<string, unknown>;
++  try {
++    result = await input.perform();
++  } catch (error) {
++    return receipts.finish(
++      owner,
++      requestId,
++      error instanceof DefiniteProviderRejection ? "rejected" : "outcome-unknown",
++      null,
++      error instanceof DefiniteProviderRejection ? error.code : null,
++    );
++  }
++  // A database error after provider success must propagate, not become a new send attempt.
++  return receipts.finish(owner, requestId, "succeeded", result, null);
+ }
+--- a/packages/cloud/shared/src/lib/services/agent-google-connector/shared.ts
++++ b/packages/cloud/shared/src/lib/services/agent-google-connector/shared.ts
+@@ -192,8 +192,10 @@
+     if (capability === "google.gmail.send") {
+       scopes.add("https://www.googleapis.com/auth/gmail.send");
+     }
+-    if (capability === "google.gmail.drafts") scopes.add("https://www.googleapis.com/auth/gmail.compose");
+-    if (capability === "google.gmail.mailbox") scopes.add("https://www.googleapis.com/auth/gmail.modify");
++    if (capability === "google.gmail.drafts")
++      scopes.add("https://www.googleapis.com/auth/gmail.compose");
++    if (capability === "google.gmail.mailbox")
++      scopes.add("https://www.googleapis.com/auth/gmail.modify");
+     if (capability === "google.gmail.manage") {
+       scopes.add("https://www.googleapis.com/auth/gmail.modify");
+       scopes.add("https://www.googleapis.com/auth/gmail.settings.basic");
+@@ -236,8 +238,13 @@
+   ) {
+     capabilities.push("google.gmail.triage");
+   }
+-  if (granted.has("https://www.googleapis.com/auth/gmail.compose") || granted.has("https://www.googleapis.com/auth/gmail.modify")) capabilities.push("google.gmail.drafts");
+-  if (granted.has("https://www.googleapis.com/auth/gmail.modify")) capabilities.push("google.gmail.mailbox");
++  if (
++    granted.has("https://www.googleapis.com/auth/gmail.compose") ||
++    granted.has("https://www.googleapis.com/auth/gmail.modify")
++  )
++    capabilities.push("google.gmail.drafts");
++  if (granted.has("https://www.googleapis.com/auth/gmail.modify"))
++    capabilities.push("google.gmail.mailbox");
+   if (granted.has("https://www.googleapis.com/auth/gmail.send")) {
+     capabilities.push("google.gmail.send");
+   }

@@ -1,0 +1,1740 @@
+From 45cc570386128bd613e8cc6675d571e0b75331de Mon Sep 17 00:00:00 2001
+From: Shaw <shawgotbags@gmail.com>
+Date: Wed, 30 Sep 2026 02:07:47 -0400
+Subject: [PATCH] feat(agent): gate enrolled phone actions through durable
+ approvals
+
+---
+ packages/agent/src/api/approval-routes.ts     |   8 +-
+ packages/agent/src/api/conversation-routes.ts |  69 ++-
+ .../agent/src/api/device-action-routes.ts     | 168 +++++++
+ packages/agent/src/api/server-helpers-auth.ts |   2 +
+ packages/agent/src/api/server.ts              |  23 +-
+ packages/app/src/api/route-auth-policy.ts     |   2 +
+ plugins/plugin-assistant/package.json         |   1 +
+ .../src/features/basic-capabilities/index.ts  |   2 +
+ plugins/plugin-assistant/src/index.ts         |   7 +
+ .../src/services/approval/store.ts            |   5 +
+ .../src/services/approval/types.ts            |   3 +
+ .../src/services/device-actions/action.ts     |  96 ++++
+ .../src/services/device-actions/contract.ts   | 129 ++++++
+ .../src/services/device-actions/service.ts    | 394 ++++++++++++++++
+ .../src/services/message/context-assembly.ts  |  14 +
+ .../src/services/message/pipeline.ts          |  15 +
+ .../test/device-actions.e2e.test.ts           | 434 ++++++++++++++++++
+ .../vitest.device-actions.config.ts           |  15 +
+ plugins/plugin-sql/src/index.ts               |   1 +
+ plugins/plugin-sql/src/schema.ts              |   2 +
+ .../plugin-sql/src/schema/clientDevices.ts    |  19 +
+ 21 files changed, 1395 insertions(+), 14 deletions(-)
+ create mode 100644 packages/agent/src/api/device-action-routes.ts
+ create mode 100644 plugins/plugin-assistant/src/services/device-actions/action.ts
+ create mode 100644 plugins/plugin-assistant/src/services/device-actions/contract.ts
+ create mode 100644 plugins/plugin-assistant/src/services/device-actions/service.ts
+ create mode 100644 plugins/plugin-assistant/test/device-actions.e2e.test.ts
+ create mode 100644 plugins/plugin-assistant/vitest.device-actions.config.ts
+ create mode 100644 plugins/plugin-sql/src/schema/clientDevices.ts
+
+diff --git a/packages/agent/src/api/approval-routes.ts b/packages/agent/src/api/approval-routes.ts
+index db87c7287cb2..a7065995278b 100644
+--- a/packages/agent/src/api/approval-routes.ts
++++ b/packages/agent/src/api/approval-routes.ts
+@@ -356,7 +356,13 @@ export async function handleApprovalRoute(
+   };
+ 
+   const queue = getAgentApprovalQueue(state);
+-  const approvals = queue ? await queue.list(filter) : [];
++  // Device payloads require the enrollment credential and are served only by
++  // /api/client-devices; this legacy aggregate has no device authority.
++  const approvals = queue
++    ? (await queue.list(filter)).filter(
++        (approval) => approval.action !== "device_action",
++      )
++    : [];
+   const [serviceActions, taskActions, promptActions] = await Promise.all([
+     listServicePendingUserActions(state, ServiceType.APPROVAL),
+     listApprovalTaskActions(state),
+diff --git a/packages/agent/src/api/conversation-routes.ts b/packages/agent/src/api/conversation-routes.ts
+index 01e394e7e814..6df61cd54419 100644
+--- a/packages/agent/src/api/conversation-routes.ts
++++ b/packages/agent/src/api/conversation-routes.ts
+@@ -81,13 +81,14 @@ import {
+   validateUuid,
+   withStandaloneTrajectory,
+ } from "@elizaos/core";
+-
+ import {
++  DeviceActionError,
+   enforceTrustedDeliveryAudienceAtEgress,
+   evaluatePlannedReplyEgress,
+   parseReplyRecoveryHistorySelection,
+   resolvePlannedReplyEgress,
+   shouldSkipResponseMemoryPersistence,
++  withDeviceActionTurn,
+ } from "@elizaos/plugin-assistant";
+ import {
+   getScheduledTaskRunner,
+@@ -165,6 +166,7 @@ import {
+   ELIZA_TRACE_ID_HEADER,
+   resolveConversationTraceContext,
+ } from "./conversation-trace.ts";
++import { deviceRequestCredential } from "./device-action-routes.ts";
+ import { resolveHttpAccessContext } from "./http-access-context.ts";
+ import { evictOldestConversation } from "./memory-bounds.ts";
+ import { generateMessageCorpus, seedMessageCorpus } from "./message-corpus.ts";
+@@ -2906,18 +2908,63 @@ export async function handleConversationRoutes(
+     ({ method, path }) => method === ctx.method && path.test(ctx.pathname),
+   );
+   if (!endpoint) return false;
+-  return endpoint.handle({
+-    ...ctx,
+-    requestStartedAt,
+-    trustedApiPrincipal: resolveTrustedApiPrincipal(
++  const handle = () =>
++    endpoint.handle({
++      ...ctx,
++      requestStartedAt,
++      trustedApiPrincipal: resolveTrustedApiPrincipal(
++        ctx.req,
++        ctx.callerAuthorization,
++      ),
++      requestUrl: new URL(
++        ctx.req.url ?? "",
++        `http://${ctx.req.headers.host ?? "localhost"}`,
++      ),
++    });
++  if (
++    ctx.req.headers["x-eliza-device-id"] ||
++    ctx.req.headers["x-eliza-device-key"]
++  ) {
++    const credential = deviceRequestCredential(
+       ctx.req,
+       ctx.callerAuthorization,
+-    ),
+-    requestUrl: new URL(
+-      ctx.req.url ?? "",
+-      `http://${ctx.req.headers.host ?? "localhost"}`,
+-    ),
+-  });
++    );
++    if (!credential || !ctx.state.runtime) {
++      ctx.error(ctx.res, "Authenticated device session required", 401);
++      return true;
++    }
++    // The bound identity is never copied from message metadata or model parameters.
++    let authenticated = false;
++    try {
++      return await withDeviceActionTurn(
++        ctx.state.runtime,
++        credential,
++        async () => {
++          authenticated = true;
++          return handle();
++        },
++      );
++    } catch (error) {
++      if (authenticated) throw error;
++      if (!(error instanceof DeviceActionError)) {
++        ctx.state.runtime.reportError(
++          "DeviceActionService",
++          new Error("Device authentication store failed"),
++          { code: "DEVICE_STORE_FAILURE" },
++        );
++      }
++      ctx.error(
++        ctx.res,
++        "Device unavailable",
++        error instanceof DeviceActionError &&
++          error.code !== "DEVICE_STORE_UNAVAILABLE"
++          ? 403
++          : 503,
++      );
++      return true;
++    }
++  }
++  return handle();
+ }
+ async function listConversations(
+   ctx: ConversationHandlerContext,
+diff --git a/packages/agent/src/api/device-action-routes.ts b/packages/agent/src/api/device-action-routes.ts
+new file mode 100644
+index 000000000000..fffaed5329f6
+--- /dev/null
++++ b/packages/agent/src/api/device-action-routes.ts
+@@ -0,0 +1,168 @@
++import type http from "node:http";
++import type { IAgentRuntime } from "@elizaos/core";
++import {
++  ApprovalIdempotencyConflictError,
++  ApprovalNotFoundError,
++  type ApprovalRequest,
++  ApprovalStateTransitionError,
++  DeviceActionError,
++  DeviceActionService,
++  type DeviceCredential,
++  deviceProposalDigest,
++} from "@elizaos/plugin-assistant";
++import type { AgentHttpRequestAuthorization } from "../runtime/host-bridge.ts";
++
++export function requiresDeviceIdentity(
++  req: Pick<http.IncomingMessage, "headers">,
++  pathname: string,
++): boolean {
++  return (
++    pathname.startsWith("/api/client-devices") ||
++    req.headers["x-eliza-device-id"] !== undefined ||
++    req.headers["x-eliza-device-key"] !== undefined
++  );
++}
++
++export function deviceRequestCredential(
++  req: http.IncomingMessage,
++  authorization?: AgentHttpRequestAuthorization,
++): DeviceCredential | null {
++  const installationId = req.headers["x-eliza-device-id"];
++  const deviceKey = req.headers["x-eliza-device-key"];
++  if (
++    !authorization?.ok ||
++    (!authorization.identityId && !authorization.principal) ||
++    !["USER", "ADMIN", "OWNER"].includes(authorization.role) ||
++    typeof installationId !== "string" ||
++    typeof deviceKey !== "string"
++  )
++    return null;
++  return {
++    subjectUserId:
++      authorization.identityId ?? `gateway:${authorization.principal}`,
++    installationId,
++    deviceKey,
++  };
++}
++interface RouteContext {
++  req: http.IncomingMessage;
++  res: http.ServerResponse;
++  method: string;
++  pathname: string;
++  runtime: IAgentRuntime | null;
++  authorization?: AgentHttpRequestAuthorization;
++  json(res: http.ServerResponse, value: unknown, status?: number): void;
++  error(res: http.ServerResponse, message: string, status?: number): void;
++  readJsonBody<T>(
++    req: http.IncomingMessage,
++    res: http.ServerResponse,
++  ): Promise<T | null>;
++}
++export async function handleDeviceActionRoutes(
++  ctx: RouteContext,
++): Promise<boolean> {
++  if (!ctx.pathname.startsWith("/api/client-devices")) return false;
++  const { req, res, method, pathname, runtime, json, error } = ctx;
++  if (!runtime) {
++    error(res, "Agent unavailable", 503);
++    return true;
++  }
++  const credential = deviceRequestCredential(req, ctx.authorization);
++  if (!credential) {
++    error(res, "Authenticated device session required", 401);
++    return true;
++  }
++  const service = new DeviceActionService(runtime);
++  try {
++    if (method === "POST" && pathname === "/api/client-devices/register") {
++      const body = await ctx.readJsonBody<{ label: string }>(req, res);
++      if (body) json(res, await service.register(credential, body.label));
++      return true;
++    }
++    if (method === "POST" && pathname === "/api/client-devices/revoke") {
++      await service.revoke(credential);
++      json(res, { revoked: true });
++      return true;
++    }
++    if (method === "GET" && pathname === "/api/client-devices/proposals") {
++      json(res, {
++        proposals: (await service.list(credential)).map((proposal) => ({
++          ...proposal,
++          digest: deviceProposalDigest(proposal),
++        })),
++      });
++      return true;
++    }
++    const match =
++      /^\/api\/client-devices\/proposals\/([A-Za-z0-9_-]+)\/(decision|claim|receipt|reconciliation)$/.exec(
++        pathname,
++      );
++    if (method === "POST" && match) {
++      const body = await ctx.readJsonBody<{
++        digest: string;
++        decision?: string;
++        attemptId?: string;
++        receipt?: unknown;
++        resolution?: unknown;
++      }>(req, res);
++      if (!body) return true;
++      let proposal: ApprovalRequest;
++      if (match[2] === "decision") {
++        if (body.decision !== "approve" && body.decision !== "reject")
++          throw new DeviceActionError("Invalid decision");
++        proposal = await service.decide(
++          credential,
++          match[1],
++          body.digest,
++          body.decision === "approve",
++        );
++      } else if (match[2] === "claim") {
++        proposal = await service.claim(credential, match[1], body.digest);
++      } else if (match[2] === "reconciliation") {
++        proposal = await service.reconcile(
++          credential,
++          match[1],
++          body.digest,
++          body.attemptId ?? "",
++          body.resolution,
++        );
++      } else {
++        proposal = await service.receipt(
++          credential,
++          match[1],
++          body.digest,
++          body.attemptId ?? "",
++          body.receipt,
++        );
++      }
++      json(res, { proposal, digest: deviceProposalDigest(proposal) });
++      return true;
++    }
++    error(res, "Device route not found", 404);
++  } catch (cause) {
++    if (
++      cause instanceof DeviceActionError ||
++      cause instanceof ApprovalIdempotencyConflictError ||
++      cause instanceof ApprovalStateTransitionError ||
++      cause instanceof ApprovalNotFoundError
++    ) {
++      error(
++        res,
++        "Device request rejected or state changed",
++        cause instanceof DeviceActionError &&
++          cause.code === "DEVICE_STORE_UNAVAILABLE"
++          ? 503
++          : 409,
++      );
++    } else {
++      // Raw SQL diagnostics can contain note content. Emit only a fixed incident code.
++      runtime.reportError(
++        "DeviceActionService",
++        new Error("Device store operation failed"),
++        { code: "DEVICE_STORE_FAILURE" },
++      );
++      error(res, "Device store temporarily unavailable", 503);
++    }
++  }
++  return true;
++}
+diff --git a/packages/agent/src/api/server-helpers-auth.ts b/packages/agent/src/api/server-helpers-auth.ts
+index 0ed55610e337..f91cb528e6a5 100644
+--- a/packages/agent/src/api/server-helpers-auth.ts
++++ b/packages/agent/src/api/server-helpers-auth.ts
+@@ -46,6 +46,8 @@ export const CORS_ALLOWED_HEADERS = [
+   "X-Waifu-Chat-Access-Token",
+   "X-Eliza-Export-Token",
+   "X-Eliza-Client-Id",
++  "X-Eliza-Device-Id",
++  "X-Eliza-Device-Key",
+   "X-ElizaOS-Client-Id",
+   "X-Eliza-Terminal-Token",
+   "X-Eliza-Platform",
+diff --git a/packages/agent/src/api/server.ts b/packages/agent/src/api/server.ts
+index 47caf25455b1..e176e77e71dd 100644
+--- a/packages/agent/src/api/server.ts
++++ b/packages/agent/src/api/server.ts
+@@ -38,7 +38,6 @@ import {
+   writeJsonError,
+   writeJsonResponse,
+ } from "@elizaos/core";
+-
+ import { tryHandleTrajectoryReadRoutes } from "@elizaos/plugin-assistant";
+ import { walletDiagnosticDescriptor } from "@elizaos/plugin-wallet/diagnostic";
+ import { WebSocket, WebSocketServer } from "ws";
+@@ -156,6 +155,10 @@ import { resolveConnectorHealthIntervalMs } from "./connector-health.ts";
+ import { handleContextInspectorRoute } from "./context-inspector-routes.ts";
+ import { restoreConversationsFromDb as restoreConversationsFromDbImpl } from "./conversation-restore.ts";
+ import { wireCoordinatorBridgesWhenReady } from "./coordinator-wiring.ts";
++import {
++  handleDeviceActionRoutes,
++  requiresDeviceIdentity,
++} from "./device-action-routes.ts";
+ import {
+   type captureEarlyLogs,
+   flushEarlyLogs,
+@@ -1544,7 +1547,7 @@ async function handleRequestForViewClient(
+           state.runtime,
+           {
+             allowCookieAuth: allowHostCookieAuth,
+-            allowTrustedLocalBypass: true,
++            allowTrustedLocalBypass: !requiresDeviceIdentity(req, pathname),
+             allowBearerAuth: true,
+           },
+         );
+@@ -2713,6 +2716,22 @@ async function handleRequestForViewClient(
+     return;
+   }
+   // ── WhatsApp routes (/api/whatsapp/*) ────────────────────────────────────
++
++  if (pathname.startsWith("/api/client-devices")) {
++    await handleDeviceActionRoutes({
++      req,
++      res,
++      method,
++      pathname,
++      runtime: state.runtime ?? null,
++      authorization: await resolveHostSessionAuthorization(),
++      json,
++      error,
++      readJsonBody,
++    });
++    return;
++  }
++
+   // ── Notification + inbox routes (/api/notifications/*, /api/inbox/*) ──
+   // Notifications: the unified notification center backed by the runtime
+   // NotificationService (see api/notification-routes.ts). Inbox: a
+diff --git a/packages/app/src/api/route-auth-policy.ts b/packages/app/src/api/route-auth-policy.ts
+index 7c368e7e3a3f..9328b9a571f1 100644
+--- a/packages/app/src/api/route-auth-policy.ts
++++ b/packages/app/src/api/route-auth-policy.ts
+@@ -120,6 +120,7 @@ const publicRegex = (
+ });
+ 
+ export const COMPAT_ROUTE_AUTH_POLICIES: readonly CompatRouteAuthPolicy[] = [
++  sessionPrefix("client-devices", "/api/client-devices"),
+   publicExact("i18n.locale", "GET", "/api/i18n/locale"),
+   publicExact("cloud.pair-popup", "GET", "/pair"),
+   publicExact(
+@@ -266,6 +267,7 @@ export const COMPAT_ROUTE_AUTH_POLICIES: readonly CompatRouteAuthPolicy[] = [
+ ] as const;
+ 
+ const COMPAT_MANAGED_PREFIXES = [
++  "/api/client-devices",
+   "/api/auth/",
+   "/api/background/",
+   "/api/catalog",
+diff --git a/plugins/plugin-assistant/package.json b/plugins/plugin-assistant/package.json
+index 2cbd2b8cc9c6..b231f8290182 100644
+--- a/plugins/plugin-assistant/package.json
++++ b/plugins/plugin-assistant/package.json
+@@ -49,6 +49,7 @@
+     "build": "bun run build.ts",
+     "typecheck": "tsc --noEmit -p tsconfig.json",
+     "test": "vitest run",
++    "test:device-actions": "node ../../packages/scripts/run-vitest.ts run --config vitest.device-actions.config.ts",
+     "lint": "bunx @biomejs/biome check --write src",
+     "lint:check": "bunx @biomejs/biome check src",
+     "lint:fix": "bunx @biomejs/biome check --write src",
+diff --git a/plugins/plugin-assistant/src/features/basic-capabilities/index.ts b/plugins/plugin-assistant/src/features/basic-capabilities/index.ts
+index 1f3fc063869f..ee03316eacf7 100644
+--- a/plugins/plugin-assistant/src/features/basic-capabilities/index.ts
++++ b/plugins/plugin-assistant/src/features/basic-capabilities/index.ts
+@@ -1,3 +1,4 @@
++import { proposeDeviceAction } from "../../services/device-actions/action.ts";
+ /**
+  * Basic Capabilities
+  *
+@@ -1306,6 +1307,7 @@ export const basicProviders = [
+  * Basic actions - fundamental response actions
+  */
+ export const basicActions = [
++  proposeDeviceAction,
+   choiceAction,
+   generateMediaAction,
+   readAttachmentAction,
+diff --git a/plugins/plugin-assistant/src/index.ts b/plugins/plugin-assistant/src/index.ts
+index 3e2586d950d5..91cb87b9dda0 100644
+--- a/plugins/plugin-assistant/src/index.ts
++++ b/plugins/plugin-assistant/src/index.ts
+@@ -174,6 +174,13 @@ export {
+ export * from "./runtime/sub-planner.ts";
+ export * from "./runtime/trajectory-recorder";
+ export * from "./services/approval/index.ts";
++export { DeviceActionError } from "./services/device-actions/contract.ts";
++export {
++  DeviceActionService,
++  type DeviceCredential,
++  deviceProposalDigest,
++  withDeviceActionTurn,
++} from "./services/device-actions/service.ts";
+ export * from "./services/evaluator.ts";
+ export * from "./services/evaluator-priorities.ts";
+ export { getEvaluatorProgressState } from "./services/evaluator-progress.ts";
+diff --git a/plugins/plugin-assistant/src/services/approval/store.ts b/plugins/plugin-assistant/src/services/approval/store.ts
+index c6b9b3a0810b..15588fb1c596 100644
+--- a/plugins/plugin-assistant/src/services/approval/store.ts
++++ b/plugins/plugin-assistant/src/services/approval/store.ts
+@@ -1,3 +1,4 @@
++import { validateDevicePayload } from "../device-actions/contract.ts";
+ /**
+  * Persistent, subject-authorized approval state machine backed by the public
+  * `approval_requests` table. Every decision and execution mutation uses an
+@@ -92,6 +93,7 @@ const VALID_STATES: ReadonlySet<ApprovalRequestState> = new Set([
+ ]);
+ 
+ const VALID_ACTIONS: ReadonlySet<ApprovalAction> = new Set([
++  "device_action",
+   "send_message",
+   "send_email",
+   "schedule_event",
+@@ -502,6 +504,9 @@ function assertApprovalPayload(
+   label: string,
+ ): asserts record is ApprovalPayload {
+   switch (action) {
++    case "device_action":
++      validateDevicePayload(record);
++      break;
+     case "send_message":
+       if (record.familyPacketId !== undefined)
+         requireStringField(record, "familyPacketId", label);
+diff --git a/plugins/plugin-assistant/src/services/approval/types.ts b/plugins/plugin-assistant/src/services/approval/types.ts
+index 47847211f490..11eed28fb7a6 100644
+--- a/plugins/plugin-assistant/src/services/approval/types.ts
++++ b/plugins/plugin-assistant/src/services/approval/types.ts
+@@ -1,3 +1,4 @@
++import type { DeviceActionPayload } from "../device-actions/contract.ts";
+ /**
+  * Approval-queue transport types — the runtime contract for the
+  * `approval_requests` table (owned by `@elizaos/plugin-sql`, public schema).
+@@ -40,6 +41,7 @@ export interface ApprovalExecution {
+ }
+ 
+ export type ApprovalAction =
++  | "device_action"
+   | "send_message"
+   | "send_email"
+   | "schedule_event"
+@@ -106,6 +108,7 @@ type ApprovalCalendarSourceBinding = {
+ };
+ 
+ export type ApprovalPayload =
++  | DeviceActionPayload
+   | {
+       action: "send_message";
+       /** Requires family draft authorization immediately before delivery. */
+diff --git a/plugins/plugin-assistant/src/services/device-actions/action.ts b/plugins/plugin-assistant/src/services/device-actions/action.ts
+new file mode 100644
+index 000000000000..55007340e554
+--- /dev/null
++++ b/plugins/plugin-assistant/src/services/device-actions/action.ts
+@@ -0,0 +1,96 @@
++import type { Action } from "@elizaos/core";
++import { DEVICE_VIEWS, object } from "./contract.ts";
++import { DeviceActionService, getDeviceActionTurn } from "./service.ts";
++/** Native tool output is a durable proposal, never a native effect or approval. */
++export const proposeDeviceAction: Action = {
++  name: "PROPOSE_DEVICE_ACTION",
++  description:
++    "Propose a note, reminder, view change, or HTTPS browser navigation on the phone enrolled for this authenticated turn. The phone owner must explicitly review and approve. This tool does not perform the operation. Do not report the proposal as completed.",
++  contexts: ["general"],
++  parameters: [
++    {
++      name: "operation",
++      required: true,
++      description: "Exact typed phone operation to show for approval",
++      // Disjoint branches stay portable to Cerebras strict tool grammars.
++      // Service validation enforces exact keys and length bounds after decoding.
++      schema: {
++        anyOf: [
++          {
++            type: "object",
++            additionalProperties: false,
++            required: ["type", "title", "body"],
++            properties: {
++              type: { type: "string", enum: ["create_note"] },
++              title: { type: "string" },
++              body: { type: "string" },
++            },
++          },
++          {
++            type: "object",
++            additionalProperties: false,
++            required: ["type", "title", "dueAt"],
++            properties: {
++              type: { type: "string", enum: ["create_reminder"] },
++              title: { type: "string" },
++              dueAt: {
++                type: "string",
++                description: "Absolute UTC ISO timestamp",
++              },
++            },
++          },
++          {
++            type: "object",
++            additionalProperties: false,
++            required: ["type", "view"],
++            properties: {
++              type: { type: "string", enum: ["open_view"] },
++              view: { type: "string", enum: [...DEVICE_VIEWS] },
++            },
++          },
++          {
++            type: "object",
++            additionalProperties: false,
++            required: ["type", "url"],
++            properties: {
++              type: { type: "string", enum: ["browser_navigate"] },
++              url: { type: "string" },
++            },
++          },
++        ],
++      },
++    },
++    {
++      name: "operationKey",
++      required: true,
++      description:
++        "Stable identifier for this proposed operation; reuse only for an exact retry",
++      schema: { type: "string" },
++    },
++    {
++      name: "reason",
++      required: true,
++      description: "Why this operation was requested",
++      schema: { type: "string" },
++    },
++  ],
++  validate: async (runtime) => getDeviceActionTurn()?.runtime === runtime,
++  handler: async (runtime, _message, _state, options) => {
++    const context = getDeviceActionTurn();
++    if (!context || context.runtime !== runtime)
++      throw new Error("No authenticated phone is bound to this turn");
++    const p = object(options?.parameters);
++    const request = await new DeviceActionService(runtime).propose(
++      context.credential,
++      p.operation,
++      p.operationKey as string,
++      p.reason as string,
++    );
++    return {
++      success: true,
++      text: `Durable device proposal state: ${request.state}. This tool has performed no device operation.`,
++      data: { proposalId: request.id, state: request.state, executed: false },
++    };
++  },
++  examples: [],
++};
+diff --git a/plugins/plugin-assistant/src/services/device-actions/contract.ts b/plugins/plugin-assistant/src/services/device-actions/contract.ts
+new file mode 100644
+index 000000000000..9ecb900342c5
+--- /dev/null
++++ b/plugins/plugin-assistant/src/services/device-actions/contract.ts
+@@ -0,0 +1,129 @@
++export class DeviceActionError extends Error {
++  override readonly name = "DeviceActionError";
++  constructor(
++    message: string,
++    readonly code:
++      | "DEVICE_REQUEST_REJECTED"
++      | "DEVICE_STORE_UNAVAILABLE" = "DEVICE_REQUEST_REJECTED",
++  ) {
++    super(message);
++  }
++}
++/** Closed, versioned phone operations. Validation rejects rather than truncates. */
++export const DEVICE_VIEWS = [
++  "home",
++  "notes",
++  "reminders",
++  "browser",
++  "calendar",
++  "files",
++  "photos",
++  "camera",
++  "maps",
++  "inbox",
++  "settings",
++] as const;
++export type DeviceOperation =
++  | { type: "create_note"; title: string; body: string }
++  | { type: "create_reminder"; title: string; dueAt: string }
++  | { type: "open_view"; view: (typeof DEVICE_VIEWS)[number] }
++  | { type: "browser_navigate"; url: string };
++export type DeviceActionPayload = {
++  action: "device_action";
++  version: 1;
++  installationId: string;
++  enrollmentId: string;
++  operation: DeviceOperation;
++};
++export function object(value: unknown): Record<string, unknown> {
++  if (!value || typeof value !== "object" || Array.isArray(value))
++    throw new DeviceActionError("Expected an object");
++  return value as Record<string, unknown>;
++}
++export function text(value: unknown, max: number, empty = false): string {
++  if (
++    typeof value !== "string" ||
++    (!empty && !value.trim()) ||
++    value.length > max ||
++    value.includes("\0")
++  )
++    throw new DeviceActionError("Invalid text");
++  return value;
++}
++export function identifier(value: unknown): string {
++  const id = text(value, 128);
++  if (!/^[A-Za-z0-9][A-Za-z0-9_-]*$/.test(id))
++    throw new DeviceActionError("Invalid identifier");
++  return id;
++}
++export function exactKeys(
++  value: Record<string, unknown>,
++  keys: readonly string[],
++): void {
++  if (Object.keys(value).some((key) => !keys.includes(key)))
++    throw new DeviceActionError("Unexpected field");
++}
++export function validateDeviceOperation(value: unknown): DeviceOperation {
++  const p = object(value);
++  switch (p.type) {
++    case "create_note":
++      exactKeys(p, ["type", "title", "body"]);
++      return {
++        type: p.type,
++        title: text(p.title, 256),
++        body: text(p.body, 32000, true),
++      };
++    case "create_reminder": {
++      exactKeys(p, ["type", "title", "dueAt"]);
++      const dueAt = text(p.dueAt, 40);
++      if (
++        !/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d{3})?Z$/.test(dueAt) ||
++        !Number.isFinite(Date.parse(dueAt)) ||
++        new Date(dueAt).toISOString().replace(".000Z", "Z") !==
++          dueAt.replace(".000Z", "Z")
++      )
++        throw new DeviceActionError("Reminder requires an absolute UTC time");
++      return { type: p.type, title: text(p.title, 256), dueAt };
++    }
++    case "open_view":
++      exactKeys(p, ["type", "view"]);
++      if (!(DEVICE_VIEWS as readonly unknown[]).includes(p.view))
++        throw new DeviceActionError("Unsupported view");
++      return { type: p.type, view: p.view as (typeof DEVICE_VIEWS)[number] };
++    case "browser_navigate": {
++      exactKeys(p, ["type", "url"]);
++      let url: URL;
++      try {
++        url = new URL(text(p.url, 4096));
++      } catch {
++        throw new DeviceActionError("Invalid browser destination");
++      }
++      if (url.protocol !== "https:" || url.username || url.password)
++        throw new DeviceActionError(
++          "Only HTTPS browser destinations are supported",
++        );
++      return { type: p.type, url: url.href };
++    }
++    default:
++      throw new DeviceActionError("Unsupported device operation");
++  }
++}
++export function validateDevicePayload(value: unknown): DeviceActionPayload {
++  const p = object(value);
++  exactKeys(p, [
++    "action",
++    "version",
++    "installationId",
++    "enrollmentId",
++    "operation",
++  ]);
++  if (p.action !== "device_action" || p.version !== 1)
++    throw new DeviceActionError("Unsupported device protocol");
++  return {
++    action: p.action,
++    version: 1,
++    installationId: identifier(p.installationId),
++    enrollmentId: identifier(p.enrollmentId),
++    operation: validateDeviceOperation(p.operation),
++  };
++}
+diff --git a/plugins/plugin-assistant/src/services/device-actions/service.ts b/plugins/plugin-assistant/src/services/device-actions/service.ts
+new file mode 100644
+index 000000000000..39b8f361bdbe
+--- /dev/null
++++ b/plugins/plugin-assistant/src/services/device-actions/service.ts
+@@ -0,0 +1,394 @@
++import { AsyncLocalStorage } from "node:async_hooks";
++import { createHash, randomUUID, timingSafeEqual } from "node:crypto";
++import type { IAgentRuntime } from "@elizaos/core";
++import { stableStringify } from "@elizaos/core";
++import {
++  executeRawSqlTx,
++  sqlText,
++  type TransactionalDb,
++} from "../approval/sql.ts";
++import { PgApprovalQueue } from "../approval/store.ts";
++import type { ApprovalRequest } from "../approval/types.ts";
++import {
++  DeviceActionError,
++  type DeviceActionPayload,
++  exactKeys,
++  identifier,
++  object,
++  text,
++  validateDeviceOperation,
++  validateDevicePayload,
++} from "./contract.ts";
++
++export interface DeviceCredential {
++  subjectUserId: string;
++  installationId: string;
++  deviceKey: string;
++}
++interface TransactionDatabase extends TransactionalDb {
++  transaction<T>(fn: (tx: TransactionalDb) => Promise<T>): Promise<T>;
++}
++interface DeviceTurn {
++  runtime: IAgentRuntime;
++  credential: DeviceCredential;
++  active: boolean;
++}
++const turn = new AsyncLocalStorage<DeviceTurn>();
++export function getDeviceActionTurn(): DeviceTurn | undefined {
++  const current = turn.getStore();
++  return current?.active ? current : undefined;
++}
++export async function withDeviceActionTurn<T>(
++  runtime: IAgentRuntime,
++  credential: DeviceCredential,
++  fn: () => Promise<T>,
++): Promise<T> {
++  await new DeviceActionService(runtime).authenticate(credential);
++  const context = { runtime, credential, active: true };
++  try {
++    return await turn.run(context, fn);
++  } finally {
++    context.active = false;
++  }
++}
++function digest(value: unknown): string {
++  return createHash("sha256").update(stableStringify(value)).digest("hex");
++}
++function keyHash(key: string): string {
++  if (!/^[a-f0-9]{64}$/.test(key))
++    throw new DeviceActionError("Invalid device credential");
++  return createHash("sha256").update(key).digest("hex");
++}
++function scope(c: DeviceCredential, agentId: string): string {
++  return `agent_id = ${sqlText(agentId)} AND subject_user_id = ${sqlText(text(c.subjectUserId, 256))} AND installation_id = ${sqlText(identifier(c.installationId))}`;
++}
++function transactionRuntime(
++  runtime: IAgentRuntime,
++  tx: TransactionalDb,
++): IAgentRuntime {
++  const adapter = new Proxy(runtime.adapter, {
++    get(target, property) {
++      return property === "db" ? tx : Reflect.get(target, property);
++    },
++  });
++  return new Proxy(runtime, {
++    get(target, property) {
++      if (property === "adapter") return adapter;
++      const value = Reflect.get(target, property);
++      return typeof value === "function" ? value.bind(target) : value;
++    },
++  });
++}
++export function deviceProposalDigest(request: ApprovalRequest): string {
++  return digest({
++    id: request.id,
++    subjectUserId: request.subjectUserId,
++    payload: request.payload,
++    expiresAt: request.expiresAt.toISOString(),
++  });
++}
++export class DeviceActionService {
++  constructor(private readonly runtime: IAgentRuntime) {}
++  private database(): TransactionDatabase {
++    const db = this.runtime.adapter.db as TransactionDatabase;
++    if (!db || typeof db.transaction !== "function")
++      throw new DeviceActionError(
++        "Transactional device store unavailable",
++        "DEVICE_STORE_UNAVAILABLE",
++      );
++    return db;
++  }
++  async register(
++    c: DeviceCredential,
++    label: string,
++  ): Promise<{ installationId: string; enrollmentId: string }> {
++    const hash = keyHash(c.deviceKey);
++    return this.database().transaction(async (tx) => {
++      await executeRawSqlTx(
++        tx,
++        `INSERT INTO client_devices (agent_id, subject_user_id, installation_id, enrollment_id, key_hash, label) VALUES (${sqlText(this.runtime.agentId)}, ${sqlText(text(c.subjectUserId, 256))}, ${sqlText(identifier(c.installationId))}, ${sqlText(randomUUID())}, ${sqlText(hash)}, ${sqlText(text(label, 128))}) ON CONFLICT DO NOTHING`,
++      );
++      const row = await this.lock(tx, c);
++      return {
++        installationId: c.installationId,
++        enrollmentId: String(row.enrollment_id),
++      };
++    });
++  }
++  private async lock(
++    tx: TransactionalDb,
++    c: DeviceCredential,
++  ): Promise<Record<string, unknown>> {
++    const hash = keyHash(c.deviceKey);
++    const rows = await executeRawSqlTx(
++      tx,
++      `SELECT enrollment_id, key_hash, revoked FROM client_devices WHERE ${scope(c, this.runtime.agentId)} FOR UPDATE`,
++    );
++    const row = rows[0];
++    if (
++      row?.revoked !== false ||
++      typeof row.key_hash !== "string" ||
++      row.key_hash.length !== hash.length ||
++      !timingSafeEqual(Buffer.from(hash), Buffer.from(row.key_hash))
++    )
++      throw new DeviceActionError("Device unavailable");
++    return row;
++  }
++  private async access<T>(
++    c: DeviceCredential,
++    fn: (
++      queue: PgApprovalQueue,
++      row: Record<string, unknown>,
++      tx: TransactionalDb,
++    ) => Promise<T>,
++  ): Promise<T> {
++    return this.database().transaction(async (tx) => {
++      const row = await this.lock(tx, c);
++      const queue = new PgApprovalQueue(transactionRuntime(this.runtime, tx), {
++        agentId: this.runtime.agentId,
++      });
++      return fn(queue, row, tx);
++    });
++  }
++  async authenticate(c: DeviceCredential): Promise<void> {
++    await this.access(c, async () => {});
++  }
++  async revoke(c: DeviceCredential): Promise<void> {
++    await this.access(c, async (_q, _row, tx) => {
++      await executeRawSqlTx(
++        tx,
++        `UPDATE client_devices SET revoked = TRUE WHERE ${scope(c, this.runtime.agentId)}`,
++      );
++    });
++  }
++  async propose(
++    c: DeviceCredential,
++    operation: unknown,
++    operationKey: string,
++    reason: string,
++  ): Promise<ApprovalRequest> {
++    const validated = validateDeviceOperation(operation);
++    return this.access(c, async (queue, row, tx) => {
++      const payload: DeviceActionPayload = {
++        action: "device_action",
++        version: 1,
++        installationId: c.installationId,
++        enrollmentId: String(row.enrollment_id),
++        operation: validated,
++      };
++      // This is the canonical queue's transaction API: no notification or effect before commit.
++      const idempotencyKey = `device:${digest([c.subjectUserId, c.installationId, identifier(operationKey)])}`;
++      const existing = await queue.byIdempotencyKey(
++        idempotencyKey,
++        c.subjectUserId,
++      );
++      const result = await queue.enqueueTransactional(
++        {
++          requestedBy: this.runtime.agentId,
++          subjectUserId: c.subjectUserId,
++          action: "device_action",
++          payload,
++          channel: "phone",
++          reason: text(reason, 1000),
++          idempotencyKey,
++          expiresAt: existing?.expiresAt ?? new Date(Date.now() + 10 * 60_000),
++        },
++        tx,
++      );
++      return result.request;
++    });
++  }
++  async list(c: DeviceCredential): Promise<ApprovalRequest[]> {
++    return this.access(c, async (queue, row) =>
++      (
++        await queue.list({
++          subjectUserId: c.subjectUserId,
++          state: null,
++          action: "device_action",
++        })
++      ).filter(
++        (request) =>
++          request.payload.action === "device_action" &&
++          request.payload.installationId === c.installationId &&
++          request.payload.enrollmentId === row.enrollment_id,
++      ),
++    );
++  }
++  private async proposal(
++    queue: PgApprovalQueue,
++    row: Record<string, unknown>,
++    c: DeviceCredential,
++    id: string,
++    expectedDigest: string,
++  ): Promise<ApprovalRequest> {
++    const request = await queue.byId(identifier(id), c.subjectUserId);
++    if (!request) throw new DeviceActionError("Proposal unavailable");
++    const payload = validateDevicePayload(request.payload);
++    if (
++      payload.installationId !== c.installationId ||
++      payload.enrollmentId !== row.enrollment_id ||
++      deviceProposalDigest(request) !== expectedDigest
++    )
++      throw new DeviceActionError("Proposal binding changed");
++    return request;
++  }
++  async decide(
++    c: DeviceCredential,
++    id: string,
++    expectedDigest: string,
++    approve: boolean,
++  ): Promise<ApprovalRequest> {
++    return this.access(c, async (q, row) => {
++      const request = await this.proposal(q, row, c, id, expectedDigest);
++      const target = approve ? "approved" : "rejected";
++      if (request.state === target) return request;
++      if (
++        request.state !== "pending" ||
++        request.expiresAt.getTime() <= Date.now()
++      )
++        throw new DeviceActionError("Proposal is no longer pending");
++      return q[approve ? "approve" : "reject"](id, c.subjectUserId, {
++        resolvedBy: c.subjectUserId,
++        resolutionReason: `Explicit device review:${expectedDigest}`,
++      });
++    });
++  }
++  async claim(
++    c: DeviceCredential,
++    id: string,
++    expectedDigest: string,
++  ): Promise<ApprovalRequest> {
++    return this.access(c, async (q, row) => {
++      const request = await this.proposal(q, row, c, id, expectedDigest);
++      if (
++        request.state !== "approved" ||
++        request.expiresAt.getTime() <= Date.now() ||
++        request.resolvedBy !== c.subjectUserId ||
++        request.resolutionReason !== `Explicit device review:${expectedDigest}`
++      )
++        throw new DeviceActionError("Proposal cannot be claimed");
++      const claimed = await q.claimExecution({
++        requestId: id,
++        subjectUserId: c.subjectUserId,
++        provider: `device:${row.enrollment_id}`,
++        providerIdempotencyKey: id,
++      });
++      if (!claimed.execution)
++        throw new DeviceActionError(
++          "Missing execution claim",
++          "DEVICE_STORE_UNAVAILABLE",
++        );
++      // Commit dispatch before returning the permit. Lost responses require journal reconciliation, never another effect.
++      return q.markDispatchStarted({
++        requestId: id,
++        subjectUserId: c.subjectUserId,
++        attemptId: claimed.execution.attemptId,
++      });
++    });
++  }
++  async receipt(
++    c: DeviceCredential,
++    id: string,
++    expectedDigest: string,
++    attemptId: string,
++    raw: unknown,
++  ): Promise<ApprovalRequest> {
++    const value = object(raw);
++    exactKeys(value, ["outcome", "operationId", "code"]);
++    if (
++      value.outcome !== "applied" &&
++      value.outcome !== "failed" &&
++      value.outcome !== "unknown"
++    )
++      throw new DeviceActionError("Invalid receipt outcome");
++    const receipt = {
++      outcome: value.outcome,
++      ...(value.operationId === undefined
++        ? {}
++        : { operationId: identifier(value.operationId) }),
++      ...(value.code === undefined ? {} : { code: identifier(value.code) }),
++    };
++    if (receipt.outcome === "applied" && !receipt.operationId)
++      throw new DeviceActionError(
++        "Applied receipt needs a native operation identifier",
++      );
++    return this.access(c, async (q, row) => {
++      const request = await this.proposal(q, row, c, id, expectedDigest);
++      if (request.execution?.attemptId !== identifier(attemptId))
++        throw new DeviceActionError("Execution attempt mismatch");
++      if (
++        request.state === "done" ||
++        request.state === "reconciliation_required"
++      ) {
++        if (
++          stableStringify(request.execution.providerReceipt) ===
++          stableStringify(receipt)
++        )
++          return request;
++        throw new DeviceActionError("Receipt conflicts with durable outcome");
++      }
++      const mutation = {
++        requestId: id,
++        subjectUserId: c.subjectUserId,
++        attemptId,
++        providerReceipt: receipt,
++      };
++      return receipt.outcome === "applied"
++        ? q.markDone(mutation)
++        : q.markReconciliationRequired({
++            ...mutation,
++            error: `Device outcome:${receipt.outcome}`,
++          });
++    });
++  }
++  /** A separate owner review settles uncertainty; it never re-dispatches. */
++  async reconcile(
++    c: DeviceCredential,
++    id: string,
++    expectedDigest: string,
++    attemptId: string,
++    raw: unknown,
++  ): Promise<ApprovalRequest> {
++    const value = object(raw);
++    exactKeys(value, ["confirmed", "outcome", "operationId"]);
++    if (
++      value.confirmed !== true ||
++      (value.outcome !== "applied" && value.outcome !== "not_applied")
++    )
++      throw new DeviceActionError("Explicit outcome review required");
++    const receipt = {
++      outcome: value.outcome,
++      ...(value.operationId === undefined
++        ? {}
++        : { operationId: identifier(value.operationId) }),
++    };
++    if (receipt.outcome === "applied" && !receipt.operationId)
++      throw new DeviceActionError(
++        "Applied outcome needs a native operation identifier",
++      );
++    return this.access(c, async (q, row) => {
++      const request = await this.proposal(q, row, c, id, expectedDigest);
++      if (request.execution?.attemptId !== identifier(attemptId))
++        throw new DeviceActionError("Execution attempt mismatch");
++      if (
++        (request.state === "done" || request.state === "retryable") &&
++        request.execution.reconciledBy === c.subjectUserId &&
++        stableStringify(request.execution.providerReceipt) ===
++          stableStringify(receipt)
++      )
++        return request;
++      if (request.state !== "reconciliation_required")
++        throw new DeviceActionError("No uncertain outcome to reconcile");
++      return q.reconcileExecution({
++        requestId: id,
++        subjectUserId: c.subjectUserId,
++        attemptId,
++        outcome: receipt.outcome === "applied" ? "delivered" : "not_delivered",
++        reconciledBy: c.subjectUserId,
++        reconciliationReason:
++          "Explicit owner review of native operation journal",
++        providerReceipt: receipt,
++      });
++    });
++  }
++}
+diff --git a/plugins/plugin-assistant/src/services/message/context-assembly.ts b/plugins/plugin-assistant/src/services/message/context-assembly.ts
+index 1b0926b12c79..d415c11fd174 100644
+--- a/plugins/plugin-assistant/src/services/message/context-assembly.ts
++++ b/plugins/plugin-assistant/src/services/message/context-assembly.ts
+@@ -22,6 +22,7 @@ import {
+   satisfiesRoleGate,
+ } from "@elizaos/core";
+ import { v4 } from "uuid";
++import { getDeviceActionTurn } from "../device-actions/service.ts";
+ import {
+   collectV5PlannerCandidateActions,
+   type V5PlannerActionSurface,
+@@ -103,6 +104,19 @@ export async function createV5MessageContextObject(args: {
+   peerCorrectionContinuation?: boolean;
+ }): Promise<ContextObject> {
+   const events: ContextEvent[] = [];
++  // Enrollment is authenticated by the host, never inferred from user metadata.
++  // Interpret against this turn's actual capability even if older dialogue
++  // reported a deployment without phone tools. No device effect is authorized.
++  if (getDeviceActionTurn()?.runtime === args.runtime) {
++    events.push({
++      id: "authenticated-phone-capability",
++      type: "instruction",
++      source: "message-service",
++      stable: false,
++      content:
++        'This current turn is bound to an authenticated enrolled phone. The registered native tool PROPOSE_DEVICE_ACTION is available for create_note, create_reminder, open_view and browser_navigate. For requested phone operations select general planning with candidateActionNames=["PROPOSE_DEVICE_ACTION"] and pending effect status; invoke that exact tool directly. This capability is not a page or PAGE_DELEGATE child action. Prior unavailable-tool replies are historical, not the current capability state. The tool creates a durable proposal only: the phone owner must separately approve it, and only a native receipt establishes completion. Do not invoke it for unrelated requests or claim a proposal saved or executed anything.',
++    });
++  }
+   const responseDecision = args.providerPhase
+     ? args.providerPhase === "response"
+     : !args.includeTools;
+diff --git a/plugins/plugin-assistant/src/services/message/pipeline.ts b/plugins/plugin-assistant/src/services/message/pipeline.ts
+index b0eab6b1130a..ab987da88a95 100644
+--- a/plugins/plugin-assistant/src/services/message/pipeline.ts
++++ b/plugins/plugin-assistant/src/services/message/pipeline.ts
+@@ -76,6 +76,7 @@ import {
+   runPlannerLoop,
+ } from "../../runtime/planner-loop";
+ import { createJsonFileTrajectoryRecorder } from "../../runtime/trajectory-recorder";
++import { getDeviceActionTurn } from "../device-actions/service.ts";
+ import type { EvaluatorService } from "../evaluator";
+ import {
+   buildRuntimeActionLookup,
+@@ -1305,6 +1306,20 @@ export async function runV5MessageRuntimeStage1(
+           args.runtime.contexts?.get(context)?.aliases,
+       }).actions;
+     }
++    // Keep the actual enrolled-phone proposal tool visible even when Stage 1
++    // guessed a page family. The candidate collection already applied role,
++    // disclosure, connector and action-validation gates; do not bypass them.
++    if (
++      args.codingMode !== true &&
++      !deterministicPlanSelection &&
++      getDeviceActionTurn()?.runtime === args.runtime
++    ) {
++      const proposal = plannerCandidateActions.find(
++        (action) => action.name === "PROPOSE_DEVICE_ACTION",
++      );
++      if (proposal && !selectedActionFamilies.includes(proposal))
++        selectedActionFamilies.push(proposal);
++    }
+     // Discovery is planner protocol, registered below rather than in
+     // runtime.actions. An explicit request must keep it even when no domain
+     // hint resolved, or when every admitted domain action was selected.
+diff --git a/plugins/plugin-assistant/test/device-actions.e2e.test.ts b/plugins/plugin-assistant/test/device-actions.e2e.test.ts
+new file mode 100644
+index 000000000000..8d3bf505df89
+--- /dev/null
++++ b/plugins/plugin-assistant/test/device-actions.e2e.test.ts
+@@ -0,0 +1,434 @@
++import { randomUUID } from "node:crypto";
++import { mkdtemp, rm } from "node:fs/promises";
++import { createServer, type Server } from "node:http";
++import { tmpdir } from "node:os";
++import { join } from "node:path";
++import type { Memory } from "@elizaos/core";
++import { expect, test } from "vitest";
++import { handleApprovalRoute } from "../../../packages/agent/src/api/approval-routes.ts";
++import {
++  handleDeviceActionRoutes,
++  requiresDeviceIdentity,
++} from "../../../packages/agent/src/api/device-action-routes.ts";
++import { createMachineSession } from "../../../packages/app/src/api/auth/sessions.ts";
++import { resolveAuthorizedRouteRole } from "../../../packages/app/src/api/auth.ts";
++import {
++  AuthStore,
++  type DrizzleDatabase,
++} from "../../../packages/app/src/services/auth-store.ts";
++import { createRealTestRuntime } from "../../../packages/app/test/helpers/real-runtime.ts";
++import {
++  APPROVAL_SERVICE,
++  ApprovalService,
++} from "../src/services/approval/service.ts";
++import { proposeDeviceAction } from "../src/services/device-actions/action.ts";
++import {
++  DeviceActionService,
++  withDeviceActionTurn,
++} from "../src/services/device-actions/service.ts";
++
++// Real HTTP, session authentication, registered proposal tool, SQL migrations,
++// and on-disk PGlite. All identities and requested content are synthetic.
++test("device approval REST lifecycle survives restart and never duplicates claims", async () => {
++  const directory = await mkdtemp(join(tmpdir(), "device-approval-e2e-"));
++  let runtimeState = await createRealTestRuntime({
++    characterName: "DeviceApprovalFixture",
++    pgliteDir: directory,
++    removePgliteDirOnCleanup: false,
++  });
++  let server: Server | undefined;
++  try {
++    const ownerA = randomUUID();
++    const ownerB = randomUUID();
++    let authStore = new AuthStore(
++      runtimeState.runtime.adapter.db as DrizzleDatabase,
++    );
++    const sessions: Record<string, string> = {};
++    for (const [label, id] of [
++      ["a", ownerA],
++      ["b", ownerB],
++    ]) {
++      await authStore.createIdentity({
++        id,
++        kind: "machine",
++        displayName: `Fixture ${label}`,
++        createdAt: Date.now(),
++        passwordHash: null,
++      });
++      sessions[label] = (
++        await createMachineSession(authStore, { identityId: id, scopes: [] })
++      ).session.id;
++    }
++    const device = randomUUID();
++    const deviceKey = "a".repeat(64);
++    const credentials = {
++      subjectUserId: ownerA,
++      installationId: device,
++      deviceKey,
++    };
++    const start = async () => {
++      authStore = new AuthStore(
++        runtimeState.runtime.adapter.db as DrizzleDatabase,
++      );
++      await runtimeState.runtime.registerService(ApprovalService);
++      await runtimeState.runtime.getServiceLoadPromise(APPROVAL_SERVICE);
++      server = createServer(async (req, res) => {
++        const resolved = await resolveAuthorizedRouteRole(req, {
++          store: authStore,
++          allowTrustedLocalBypass: !requiresDeviceIdentity(
++            req,
++            new URL(req.url ?? "/", "http://fixture").pathname,
++          ),
++          allowCookieAuth: false,
++          allowBearerAuth: true,
++        });
++        const authorization = {
++          ...resolved,
++          role: resolved.ok ? resolved.role : ("NONE" as const),
++        };
++        const send = (response: typeof res, value: unknown, status = 200) => {
++          response.writeHead(status, { "content-type": "application/json" });
++          response.end(JSON.stringify(value));
++        };
++        if (req.url === "/api/approvals") {
++          await handleApprovalRoute(
++            req,
++            res,
++            "/api/approvals",
++            "GET",
++            { runtime: runtimeState.runtime },
++            {
++              json: send,
++              error: (response, message, status) =>
++                send(response, { error: message }, status),
++              readJsonBody: async () => null,
++            },
++          );
++          return;
++        }
++        await handleDeviceActionRoutes({
++          req,
++          res,
++          pathname: new URL(req.url!, "http://fixture").pathname,
++          method: req.method!,
++          runtime: runtimeState.runtime,
++          authorization,
++          json: send,
++          error: (response, message, status) =>
++            send(response, { error: message }, status),
++          readJsonBody: async (request) => {
++            let value = "";
++            for await (const part of request) value += part;
++            return JSON.parse(value || "{}");
++          },
++        });
++      });
++      await new Promise<void>((resolve) =>
++        server!.listen(0, "127.0.0.1", resolve),
++      );
++      const address = server.address();
++      if (!address || typeof address === "string")
++        throw new Error("No fixture listener");
++      return `http://127.0.0.1:${address.port}`;
++    };
++    let origin = await start();
++    const request = async (
++      path: string,
++      body?: unknown,
++      owner = "a",
++      key = owner === "b" ? "b".repeat(64) : deviceKey,
++    ) => {
++      const result = await fetch(`${origin}/api/client-devices${path}`, {
++        method: body === undefined ? "GET" : "POST",
++        headers: {
++          authorization: `Bearer ${sessions[owner] ?? "invalid-fixture-session"}`,
++          "x-eliza-device-id": device,
++          "x-eliza-device-key": key,
++          "content-type": "application/json",
++        },
++        ...(body === undefined ? {} : { body: JSON.stringify(body) }),
++      });
++      return { status: result.status, body: (await result.json()) as any };
++    };
++    expect(
++      (await request("/register", { label: "Fixture phone" })).status,
++    ).toBe(200);
++    expect(
++      (await request("/register", { label: "Fixture phone" })).status,
++    ).toBe(200);
++    expect(
++      (await request("/register", { label: "Hijack" }, "a", "b".repeat(64)))
++        .status,
++    ).toBe(409);
++    expect((await request("/proposals", undefined, "none")).status).toBe(401);
++    expect((await request("/proposals", undefined, "b")).status).toBe(409);
++    expect(
++      (await request("/register", { label: "Other owner phone" }, "b")).status,
++    ).toBe(200);
++    expect(
++      (await request("/proposals", undefined, "b")).body.proposals,
++    ).toEqual([]);
++    const memory = {
++      id: randomUUID(),
++      agentId: runtimeState.runtime.agentId,
++      entityId: ownerA,
++      roomId: randomUUID(),
++      content: { text: "Create fixture note" },
++    } as Memory;
++    const parameters = {
++      operation: {
++        type: "create_note",
++        title: "Fixture note",
++        body: "Synthetic test data only",
++      },
++      operationKey: "fixture-note-1",
++      reason: "Requested by test owner",
++    };
++    expect(
++      await proposeDeviceAction.validate(runtimeState.runtime, memory),
++    ).toBe(false);
++    const propose = () =>
++      withDeviceActionTurn(runtimeState.runtime, credentials, async () => {
++        expect(
++          await proposeDeviceAction.validate(runtimeState.runtime, memory),
++        ).toBe(true);
++        return proposeDeviceAction.handler(
++          runtimeState.runtime,
++          memory,
++          undefined,
++          { parameters },
++        );
++      });
++    await propose();
++    await propose();
++    let proposals = (await request("/proposals")).body.proposals;
++    expect(proposals).toHaveLength(1);
++    const { id, digest } = proposals[0];
++    const aggregate = await fetch(`${origin}/api/approvals`).then((result) =>
++      result.json(),
++    );
++    expect(aggregate.approvals).toEqual([]);
++    expect(aggregate.pending).toEqual([]);
++    expect(proposals[0].state).toBe("pending");
++    expect(proposals[0].execution).toBeNull();
++    expect((await request(`/proposals/${id}/claim`, { digest })).status).toBe(
++      409,
++    );
++    expect(
++      (
++        await request(`/proposals/${id}/decision`, {
++          digest: "wrong",
++          decision: "approve",
++        })
++      ).status,
++    ).toBe(409);
++    expect(
++      (
++        await request(
++          `/proposals/${id}/decision`,
++          { digest, decision: "approve" },
++          "b",
++        )
++      ).status,
++    ).toBe(409);
++    expect(
++      (
++        await request(`/proposals/${id}/decision`, {
++          digest,
++          decision: "approve",
++        })
++      ).status,
++    ).toBe(200);
++    await new Promise<void>((resolve, reject) =>
++      server!.close((error) => (error ? reject(error) : resolve())),
++    );
++    server = undefined;
++    await runtimeState.cleanup();
++    runtimeState = await createRealTestRuntime({
++      characterName: "DeviceApprovalFixture",
++      pgliteDir: directory,
++      removePgliteDirOnCleanup: false,
++    });
++    origin = await start();
++    proposals = (await request("/proposals")).body.proposals;
++    expect(proposals[0].state).toBe("approved");
++    const claims = await Promise.all([
++      request(`/proposals/${id}/claim`, { digest }),
++      request(`/proposals/${id}/claim`, { digest }),
++    ]);
++    expect(claims.map((result) => result.status).sort()).toEqual([200, 409]);
++    const claim = claims.find((result) => result.status === 200)!.body.proposal;
++    expect(claim.execution.dispatchStartedAt).toBeTruthy();
++    const receipt = {
++      digest,
++      attemptId: claim.execution.attemptId,
++      receipt: { outcome: "applied", operationId: "fixture-native-note-1" },
++    };
++    expect(
++      (
++        await request(`/proposals/${id}/receipt`, {
++          ...receipt,
++          attemptId: randomUUID(),
++        })
++      ).status,
++    ).toBe(409);
++    expect(
++      (await request(`/proposals/${id}/receipt`, receipt)).body.proposal.state,
++    ).toBe("done");
++    expect((await request(`/proposals/${id}/receipt`, receipt)).status).toBe(
++      200,
++    );
++    expect((await request(`/proposals/${id}/claim`, { digest })).status).toBe(
++      409,
++    );
++    expect(
++      (
++        await request(`/proposals/${id}/receipt`, {
++          ...receipt,
++          receipt: { outcome: "unknown" },
++        })
++      ).status,
++    ).toBe(409);
++    await expect(
++      new DeviceActionService(runtimeState.runtime).propose(
++        credentials,
++        { type: "execute_plugin", plugin: "arbitrary" },
++        "bad",
++        "bad",
++      ),
++    ).rejects.toThrow();
++    const service = new DeviceActionService(runtimeState.runtime);
++    await expect(
++      service.propose(
++        credentials,
++        { type: "create_note", title: "Changed", body: "Different" },
++        "fixture-note-1",
++        "Requested by test owner",
++      ),
++    ).rejects.toThrow();
++    const reminder = await service.propose(
++      credentials,
++      {
++        type: "create_reminder",
++        title: "Fixture reminder",
++        dueAt: "2030-01-01T12:00:00Z",
++      },
++      "reminder-1",
++      "Fixture",
++    );
++    const view = await service.propose(
++      credentials,
++      { type: "open_view", view: "notes" },
++      "view-1",
++      "Fixture",
++    );
++    const browser = await service.propose(
++      credentials,
++      { type: "browser_navigate", url: "https://example.com/" },
++      "browser-1",
++      "Fixture",
++    );
++    const pending = (await request("/proposals")).body.proposals;
++    const reminderDigest = pending.find(
++      (item: any) => item.id === reminder.id,
++    ).digest;
++    expect(
++      (
++        await request(`/proposals/${reminder.id}/decision`, {
++          digest: reminderDigest,
++          decision: "reject",
++        })
++      ).body.proposal.state,
++    ).toBe("rejected");
++    expect(
++      (
++        await request(`/proposals/${reminder.id}/claim`, {
++          digest: reminderDigest,
++        })
++      ).status,
++    ).toBe(409);
++    const viewDigest = pending.find((item: any) => item.id === view.id).digest;
++    expect(
++      (await request(`/proposals/${view.id}/claim`, { digest: viewDigest }))
++        .status,
++    ).toBe(409);
++    const browserDigest = pending.find(
++      (item: any) => item.id === browser.id,
++    ).digest;
++    await request(`/proposals/${browser.id}/decision`, {
++      digest: browserDigest,
++      decision: "approve",
++    });
++    const browserClaim = await request(`/proposals/${browser.id}/claim`, {
++      digest: browserDigest,
++    });
++    expect(browserClaim.status).toBe(200);
++    // Simulate loss of the claim response: restart while dispatch outcome is unknown.
++    await new Promise<void>((resolve) => server!.close(() => resolve()));
++    server = undefined;
++    await runtimeState.cleanup();
++    runtimeState = await createRealTestRuntime({
++      characterName: "DeviceApprovalFixture",
++      pgliteDir: directory,
++      removePgliteDirOnCleanup: false,
++    });
++    origin = await start();
++    expect(
++      (
++        await request(`/proposals/${browser.id}/claim`, {
++          digest: browserDigest,
++        })
++      ).status,
++    ).toBe(409);
++    const uncertain = await request(`/proposals/${browser.id}/receipt`, {
++      digest: browserDigest,
++      attemptId: browserClaim.body.proposal.execution.attemptId,
++      receipt: { outcome: "unknown", code: "claim_response_lost" },
++    });
++    expect(uncertain.body.proposal.state).toBe("reconciliation_required");
++    expect(
++      (
++        await request(`/proposals/${browser.id}/claim`, {
++          digest: browserDigest,
++        })
++      ).status,
++    ).toBe(409);
++    const reconciliation = {
++      digest: browserDigest,
++      attemptId: browserClaim.body.proposal.execution.attemptId,
++      resolution: {
++        confirmed: true,
++        outcome: "applied",
++        operationId: "fixture-browser-tab-1",
++      },
++    };
++    expect(
++      (
++        await request(`/proposals/${browser.id}/reconciliation`, {
++          ...reconciliation,
++          resolution: { ...reconciliation.resolution, confirmed: false },
++        })
++      ).status,
++    ).toBe(409);
++    expect(
++      (await request(`/proposals/${browser.id}/reconciliation`, reconciliation))
++        .body.proposal.state,
++    ).toBe("done");
++    expect(
++      (await request(`/proposals/${browser.id}/reconciliation`, reconciliation))
++        .status,
++    ).toBe(200);
++    expect((await request("/revoke", {})).status).toBe(200);
++    expect((await request("/proposals")).status).toBe(409);
++    expect(
++      (await request("/register", { label: "Reused revoked installation" }))
++        .status,
++    ).toBe(409);
++    await expect(propose()).rejects.toThrow();
++  } finally {
++    if (server)
++      await new Promise<void>((resolve) => server!.close(() => resolve()));
++    await runtimeState.cleanup();
++    await rm(directory, { recursive: true, force: true });
++  }
++}, 120_000);
+diff --git a/plugins/plugin-assistant/vitest.device-actions.config.ts b/plugins/plugin-assistant/vitest.device-actions.config.ts
+new file mode 100644
+index 000000000000..42f8a7788188
+--- /dev/null
++++ b/plugins/plugin-assistant/vitest.device-actions.config.ts
+@@ -0,0 +1,15 @@
++/** Real HTTP and disk-backed SQL device approval lifecycle. No model or device stubs. */
++import { defineConfig } from "vitest/config";
++import { buildWorkspaceSourceAliases } from "../../packages/scripts/vitest/source-aliases.ts";
++export default defineConfig({
++  resolve: {
++    conditions: ["eliza-source", "node"],
++    alias: buildWorkspaceSourceAliases(),
++  },
++  test: {
++    environment: "node",
++    include: ["test/device-actions.e2e.test.ts"],
++    testTimeout: 120000,
++    hookTimeout: 120000,
++  },
++});
+diff --git a/plugins/plugin-sql/src/index.ts b/plugins/plugin-sql/src/index.ts
+index 85eab03da121..bdf6dbff0cea 100644
+--- a/plugins/plugin-sql/src/index.ts
++++ b/plugins/plugin-sql/src/index.ts
+@@ -409,4 +409,5 @@ export { JournalStorage } from "./runtime-migrator/storage/journal-storage";
+ export { MigrationTracker } from "./runtime-migrator/storage/migration-tracker";
+ export { SnapshotStorage } from "./runtime-migrator/storage/snapshot-storage";
+ export * from "./runtime-migrator/types";
++export { clientDeviceTable } from "./schema/clientDevices";
+ export { computeIdentityPersonLinkRequestDigest } from "./services/sql-principal";
+diff --git a/plugins/plugin-sql/src/schema.ts b/plugins/plugin-sql/src/schema.ts
+index f189a8d86555..21456a935f16 100644
+--- a/plugins/plugin-sql/src/schema.ts
++++ b/plugins/plugin-sql/src/schema.ts
+@@ -11,6 +11,7 @@ import { authSessionTable } from "./schema/authSession";
+ import { cacheTable } from "./schema/cache";
+ import { channelTable } from "./schema/channel";
+ import { channelParticipantsTable } from "./schema/channelParticipant";
++import { clientDeviceTable } from "./schema/clientDevices";
+ import { componentTable } from "./schema/component";
+ import {
+   connectorAccountAuditEventsTable,
+@@ -57,6 +58,7 @@ import { worldTable } from "./schema/world";
+ import { worldRoleAuditTable } from "./schema/worldRoleAudit";
+ 
+ export const schema = {
++  clientDeviceTable,
+   agentTable,
+   approvalDispatchControlTable,
+   approvalRequestTable,
+diff --git a/plugins/plugin-sql/src/schema/clientDevices.ts b/plugins/plugin-sql/src/schema/clientDevices.ts
+new file mode 100644
+index 000000000000..2051c26233d3
+--- /dev/null
++++ b/plugins/plugin-sql/src/schema/clientDevices.ts
+@@ -0,0 +1,19 @@
++/** Enrollment only; proposals and execution receipts stay in approval_requests. */
++import { boolean, pgTable, primaryKey, text, timestamp, uuid } from "drizzle-orm/pg-core";
++import { agentTable } from "./agent";
++export const clientDeviceTable = pgTable(
++  "client_devices",
++  {
++    agentId: uuid("agent_id")
++      .notNull()
++      .references(() => agentTable.id, { onDelete: "cascade" }),
++    subjectUserId: text("subject_user_id").notNull(),
++    installationId: text("installation_id").notNull(),
++    enrollmentId: uuid("enrollment_id").notNull(),
++    keyHash: text("key_hash").notNull(),
++    label: text("label").notNull(),
++    revoked: boolean("revoked").notNull().default(false),
++    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
++  },
++  (table) => [primaryKey({ columns: [table.agentId, table.subjectUserId, table.installationId] })]
++);
+-- 
+2.50.1 (Apple Git-155)
+

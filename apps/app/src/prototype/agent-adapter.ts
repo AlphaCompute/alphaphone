@@ -1,0 +1,441 @@
+import {isReminderOperation,validateReminderResult} from '../runtime/reminder-contract';
+import { SecureNotesStore, readLegacyDailyNotes } from '../runtime/notes-secure-store';
+import { secureConnectionStore } from '../runtime/native-connection';
+import {NotesStore,NotesCommitUncertain} from '../runtime/notes-store';
+import {isNotesOperation} from '../runtime/notes-contract';
+import {isCalendarOperation,validateCalendarResult} from '../runtime/calendar-contract';
+import { isMvpView } from "./mvp-features";
+import { workflowSha, validateWorkflowResult } from '../runtime/workflow-device-contract';
+import { getMapsSelectedObject, clearMapsSelection } from '../maps/agent-context';
+import { alphaClient, type AlphaView } from '../runtime/alpha-client';
+import { createDevelopmentTransport } from '../runtime/development-transport';
+import { DailyApps } from '../daily';
+import { isAndroid } from '../native';
+import { registerPlugin, SystemBars, SystemBarsStyle } from '@capacitor/core';
+import { connectionController } from '../runtime/connection-ui';
+
+// The reference renderer is a JavaScript state machine. Its presentation API is
+// intentionally kept intact; authenticated effects are installed at this seam.
+type Shell = any;
+export function installAgentAdapter(Component: Shell, views: Shell) {
+  const p = Component.prototype;
+  const originalMount = p.componentDidMount;
+  const originalUpdate = p.componentDidUpdate;
+  const originalUnmount = p.componentWillUnmount;
+  const originalSet = p.vset;
+  const originalApi = p.api;
+  const originalVals = p.renderVals;
+  const notesRender = views.notes.render;
+  // Navigation resets transient view state, but must retain the actual storage receipt.
+  views.notes.persist = [...new Set([...(views.notes.persist || []), 'storageStatus'])];
+
+  function context(shell: Shell) {
+    const s = shell.S();
+    const view = s.view || 'home';
+    document.documentElement.dataset.activeView = view;
+    const notes = view === 'notes' ? shell.vget('notes') : null;
+    const selected = notes?.list?.find((note: Shell) => note.id === notes.open)?.id;
+    const selectedRecord=notes?.list?.find((note:Shell)=>note.id===selected);
+    const selectedKey=selectedRecord?JSON.stringify(selectedRecord):null;
+    if(shell.notesSelectionKey!==selectedKey||(selected&&!shell.notesSelection&&!shell.notesPending&&!shell.notesStorageFailed)){
+      shell.notesSelectionKey=selectedKey;shell.notesSelection=null;
+      if(selected&&shell.notesStore&&!shell.notesStorageFailed&&!shell.notesPending)void shell.notesStore.target(String(selected)).then((target:Shell)=>{
+        if(shell.live&&!shell.notesPending&&!shell.notesStorageFailed&&shell.notesSelectionKey===selectedKey){shell.notesSelection={kind:'note',id:target.noteId,revision:target.revision,accountId:target.sourceId,sourceRevision:target.sourceRevision};context(shell);}
+      }).catch(()=>{});
+    }
+
+    let providerSelection = view === 'browser' ? shell.browserSelection?.() : undefined;
+    if (view === 'workflows') providerSelection = shell.workflowSelection?.();
+    if (view === 'maps') providerSelection = getMapsSelectedObject();
+    if (view === 'photos') {
+      const state = shell.vget('photos');
+      if (state.open === state.nativePhotoSelection?.id) providerSelection = state.nativePhotoSelection;
+    }
+    if (view === 'inbox') {
+      const state = shell.vget('inbox');
+      if (state.open === state.nativeMailSelection?.id) providerSelection = state.nativeMailSelection;
+    }
+    if(view==='calendar')providerSelection=shell.calendarSelection?.();
+    if (view === 'contacts' || view==='calendar'&&!providerSelection) {
+      const state = shell.vget(view);
+      const record = (view === 'calendar' ? state.events : state.list)?.find((row: Shell) => row.id === state.open);
+      // Only native-backed rows have authority; fixture records never become
+      // agent targets. Content stays local; only identity/revision is sent.
+      if (record && (view === 'contacts' || record.alphaReminderId)) {
+        const id = String(record.alphaCalendarId || record.alphaReminderId || record.id), key = `${view}:${id}`;
+        shell.entityRevisions ||= new Map();
+        const signature = JSON.stringify(record), previous = shell.entityRevisions.get(key);
+        const revision = previous?.signature === signature ? previous.revision : (previous?.revision || 0) + 1;
+        shell.entityRevisions.set(key, { signature, revision });
+        providerSelection = { kind: view === 'contacts' ? 'contact' : record.alphaCalendarId ? 'calendar-event' : 'reminder', id, revision: String(revision) };
+        if(record.alphaReminderId){const target=shell.reminderTargets?.get(id);providerSelection=target?{kind:'reminder',id:target.reminderId,revision:target.revision,accountId:target.sourceId,sourceRevision:target.sourceRevision,occurrenceId:target.occurrenceId}:undefined;}
+      }
+    }
+    alphaClient.setViewContext({
+      view: (view === 'wallet' ? 'passwords' : view) as AlphaView,
+      // Suspension invalidates this turn and approvals, but retains the account
+      // and conversation. Visibility is not a claim about Android lock state.
+      sensitive: view === 'wallet' || s.secure === true || s.screen === 'lock' || s.screen === 'off' || document.hidden || shell.pageSuspended === true || connectionController.getSnapshot().open,
+      ...(selected && shell.notesSelection ? { selectedObject: shell.notesSelection } : providerSelection ? { selectedObject: providerSelection } : ['files','photos'].includes(view) && shell.vget(view).open === '__native_selected_document' && shell.selectedContext ? { selectedObject: shell.selectedContext } : {}),
+    });
+    document.documentElement.dataset.alphaCanGoBack = String(connectionController.getSnapshot().open || !!s.view || s.shade || s.chat === 'sheet' || s.chat === 'full' || s.voice !== 'off');
+  }
+  p.componentDidMount = function () {
+    originalMount.call(this);
+    this.live = true;
+    this.connectionSession = connectionController.getSnapshot().session?.sessionId;
+    this.connectionUnsubscribe = connectionController.subscribe(() => {
+      const session = connectionController.getSnapshot().session?.sessionId;
+      if (session !== this.connectionSession) {
+        clearMapsSelection();
+        this.connectionSession = session;
+        alphaClient.disconnect();
+        if (this.live) this.setState({ msgs: [], draft: '', typing: false });
+      }
+      const history = connectionController.getSnapshot().history;
+      if (history && history.sessionId === session && this.restoredHistory !== history) {
+        this.restoredHistory = history;
+        alphaClient.disconnect();
+        if (this.live) this.setState({ msgs: history.messages.map(message => ({ ...message, card: null })), draft: '', typing: false, chat: 'full' });
+      }
+      if (this.live) context(this);
+    });
+    this.notesStorageFailed = true;
+    this.notesPending = 0;
+    originalSet.call(this,'notes',{list:[],storageStatus:'Opening saved notes…'});
+    document.documentElement.dataset.notesStorageState='opening';
+    document.documentElement.dataset.notesRecoveryCategory='none';
+    document.documentElement.dataset.notesOpenStage='starting';
+    this.notesReady = (async()=>{
+      const initial=()=>{document.documentElement.dataset.notesOpenStage='legacy-daily-read';return readLegacyDailyNotes(localStorage);};
+      this.notesStore=isAndroid?await SecureNotesStore.open(secureConnectionStore,localStorage,initial,stage=>{document.documentElement.dataset.notesOpenStage=stage;}):new NotesStore(localStorage,initial);
+      if(!this.live)return;
+      document.documentElement.dataset.notesStorageState='ready';
+      this.notesStorageFailed=false;this.notesRaw=this.notesStore.raw;
+      originalSet.call(this,'notes',{list:this.notesStore.list,storageStatus:isAndroid?'Note text encrypted on this device':'Browser preview · notes stored unencrypted'});context(this);
+    })().catch((error)=>{if(this.live){
+      // Fixed diagnostic categories only: never expose parser/native error text or saved content.
+      const categories:Record<string,string>={
+        'Invalid legacy daily Notes':'legacy-daily-schema','Invalid legacy daily Note':'legacy-daily-note-schema',
+        'Invalid saved Notes':'notes-list-schema','Invalid saved Note':'note-record-schema','Invalid Notes envelope':'notes-envelope-schema',
+        'Invalid encrypted Notes collection. No data changed.':'encrypted-schema',
+        'Invalid legacy Notes archive':'legacy-daily-archive-schema',
+        'Plaintext Notes changed during migration. Both copies retained for recovery.':'legacy-notes-conflict',
+        'Legacy Notes changed during migration. Both copies retained for recovery.':'legacy-daily-conflict',
+        'Plaintext Notes cleanup did not complete. Reopen to retry cleanup.':'cleanup-incomplete',
+        'Notes migration changed in another view. Reopen Notes.':'migration-conflict',
+        'Secure storage read failed':'native-read-failed'
+      };
+      document.documentElement.dataset.notesStorageState='recovery';
+      document.documentElement.dataset.notesRecoveryCategory=error instanceof SyntaxError?'invalid-json':error instanceof NotesCommitUncertain?'migration-unconfirmed':(error instanceof Error&&Object.hasOwn(categories,error.message)?categories[error.message]:'unclassified');
+      originalSet.call(this,'notes',{list:[],storageStatus:'Saved notes need recovery. Original data retained.'});this.toast('Saved notes could not be opened. No new edits are allowed.');}});
+    this.notesCommittedHandler=()=>{if(this.live&&this.notesStore&&!this.notesStorageFailed&&!this.notesPending){this.notesRaw=this.notesStore.raw;originalSet.call(this,'notes',{list:this.notesStore.list,storageStatus:isAndroid?'Note text encrypted on this device':'Browser preview · notes stored unencrypted'});context(this);}};
+    window.addEventListener('alpha:notes-committed',this.notesCommittedHandler);
+    this.visibilityHandler = () => { if (this.live) context(this); };
+    this.pageHideHandler = () => { this.pageSuspended = true; if (this.live) context(this); };
+    this.pageShowHandler = () => { this.pageSuspended = false; if (this.live) context(this); };
+    document.addEventListener('visibilitychange', this.visibilityHandler);
+    window.addEventListener('pagehide', this.pageHideHandler);
+    window.addEventListener('pageshow', this.pageShowHandler);
+    this.backHandler = () => { alphaClient.cancel(); this.back(); };
+    window.addEventListener('alpha-back', this.backHandler);
+    this.homeHandler = () => { alphaClient.cancel(); this.goHome(); };
+    window.addEventListener('launcher-home', this.homeHandler);
+    this.selectionHandler = (event: CustomEvent) => { this.selectedContext = event.detail; context(this); };
+    window.addEventListener('alpha-selected-context', this.selectionHandler);
+    this.assistListener = DailyApps.addListener('assistantInvoked', () => this.setState({ chat: 'full' })).catch(() => null);
+    void DailyApps.surfaceInfo().then(r => {
+      if (!this.live) return;
+      if (Number.isFinite(r.bottomInset)) document.documentElement.style.setProperty('--native-bottom-inset', `${r.bottomInset}px`);
+      if (r.assistant) this.setState({ chat: 'full' });
+    }).catch(() => {});
+    this.connectAgent = async () => {
+      if (alphaClient.getState().connection === 'ready') return;
+      const connection = connectionController.getSnapshot();
+      if (connection.session) {
+        alphaClient.attachVerifiedTransport({
+          session: connection.session,
+          send: ({ text, context, requestId, signal }) => connectionController.send(text, context, requestId, signal),
+          // Remote text is not authority to execute device actions. This path
+          // accepts chat only until the server supports verified proposals.
+          execute: ({ proposal, context, signal }) => connectionController.execute(proposal, context, signal),
+        }, connection.kind === 'local' ? { developmentOrigin: connection.session.origin } : {});
+        return;
+      }
+      // An explicit offline choice never falls through to an old development
+      // credential that may still be installed on a test device.
+      const preference = localStorage.getItem('alpha.connection.selection.v1');
+      if (preference) {
+        connectionController.open();
+        throw new Error('Choose an agent connection to send a message.');
+      }
+      const transport = await createDevelopmentTransport(async operation => {
+        if (operation.type === 'open_view') {
+        if (!['home','reminders','notifications'].includes(operation.view) && !isMvpView(operation.view)) return {status:'failed',summary:'This app is deferred from the MVP'};
+          const target = operation.view;
+          if (target === 'home') this.goHome();
+          else if (target === 'notifications') this.setState({ shade: true });
+          else if (views[target]) this.openView(target);
+          else return { status: 'failed', summary: 'That screen is not available.' };
+          return { status: 'succeeded', summary: `Opened ${target}.` };
+        }
+      if (operation.type === 'create_reminder') {
+          if (!this.live || !Number.isSafeInteger(operation.at) || operation.at <= Date.now())
+            return { status: 'failed', summary: 'The reminder time has passed or this view closed. Request a new proposal.' };
+          const id = crypto.randomUUID();
+          try {
+            const result = await DailyApps.scheduleReminder({ id, title: operation.title, body: operation.body, at: operation.at });
+            if (result.status !== 'scheduled' || result.id !== id) {
+              const summary = result.status === 'permission-denied' ? 'Reminder was not scheduled: allow Alpha Phone notifications and its Local reminders channel.'
+                : result.status === 'past' ? 'Reminder was not scheduled: the selected time has passed.'
+                : 'Reminder scheduling was not confirmed. Check Calendar before trying again.';
+              return { status: 'failed', summary };
+            }
+            // Scheduling success is not notification-delivery evidence. Refresh
+            // the real native list only after a confirmed scheduling receipt.
+            if (this.live) await this.refreshReminders?.();
+            return { status: 'succeeded', summary: `Scheduled one reminder: ${operation.title} at ${new Date(operation.at).toLocaleString()}. Android may delay delivery.` };
+          } catch {
+            return { status: 'failed', summary: 'Reminder scheduling could not be confirmed. Check Calendar before requesting another; this action was not retried.' };
+          }
+        }
+        if (this.notesStorageFailed) return { status: 'failed', summary: 'Resolve the notes storage error before saving.' };
+        const note = { id: crypto.randomUUID(), kind: 'text', title: operation.title, body: operation.body, pinned: false, when: 'Now' };
+        const current = this.vget('notes').list;
+        const list = [note, ...current];
+        if (!await this.vset('notes', { list })) return { status: 'failed', summary: 'The note save is unconfirmed. Reopen Notes to inspect before requesting another save.' };
+        return { status: 'succeeded', summary: `Saved note: ${note.title}` };
+      });
+      if (this.live) { alphaClient.attachVerifiedTransport(transport); this.toast('Connected to the development agent'); }
+      else transport.close?.();
+    };
+    connectionController.setDeviceRecovery(async(operation,operationId,bindingHash,signal)=>{
+      signal.throwIfAborted();if(!isReminderOperation(operation))return {status:'unknown'};
+      const result=await DailyApps.reminderOperationReceipt({operation,operationId,bindingHash});signal.throwIfAborted();
+      return result.status==='succeeded'?{status:'succeeded',reminderResult:validateReminderResult(operation,result.result)}:{status:'unknown'};
+    });
+    connectionController.setDeviceExecutor(async (operation, operationId, expectedContext, signal, bindingHash) => {
+      signal.throwIfAborted(); context(this);
+      if (!this.live || JSON.stringify(alphaClient.getState().context) !== JSON.stringify(expectedContext)) throw new Error('Phone context changed');
+      if(isCalendarOperation(operation)){
+        const calendar=registerPlugin<{executeAgent(input:{operation:unknown;operationId:string}):Promise<{status:string;result?:unknown}>;cancelAgent(input:{operationId:string}):Promise<unknown>}>('AlphaCalendar');
+        const cancel=()=>{void calendar.cancelAgent({operationId}).catch(()=>{});};signal.addEventListener('abort',cancel,{once:true});
+        let result:{status:string;result?:unknown};try{signal.throwIfAborted();result=await calendar.executeAgent({operation,operationId});}finally{signal.removeEventListener('abort',cancel);}
+        if(result.status==='applied'){
+          const calendarResult=validateCalendarResult(operation,result.result);
+          // Return the receipt immediately; DeviceActions must journal it before
+          // any optional UI/provider refresh. Normal view resume refreshes rows.
+          return {status:'succeeded',summary:operation.type==='calendar_read_selected'?'Read the exact selected calendar event with approval.':'Calendar operation applied and read back from the provider.',calendarResult};
+        }
+        return {status:result.status==='unknown'?'unknown':'failed',summary:result.status==='unknown'?'Calendar outcome is unconfirmed. Inspect action history before another action.':result.status==='cancelled'?'Calendar review cancelled. Nothing was changed.':'Calendar target changed, access was denied, or the operation is unsupported. Nothing was changed.'};
+      }
+      if(isNotesOperation(operation)){
+        try{
+          if(this.notesStorageFailed||!this.notesStore)throw Error('Notes storage is unavailable');
+          const current=()=>{signal.throwIfAborted();context(this);if(!this.live||document.hidden||JSON.stringify(alphaClient.getState().context)!==JSON.stringify(expectedContext)||expectedContext.sensitive||expectedContext.view!=='notes')throw Error('Selected Notes context changed');};
+          const notesResult=await this.notesStore.execute(operation,operationId,signal,current);
+          return {status:'succeeded',summary:operation.type==='notes_read_selected'?'Read the exact selected note with approval.':'Selected Notes change committed.',notesResult};
+        }catch(error){
+          const uncertain=error instanceof NotesCommitUncertain;
+          // Cancellation or stale approval before mutation is not a storage failure.
+          if(uncertain||this.notesStore?.needsRecovery){
+            this.notesStorageFailed=true;this.notesCommitUncertain=this.notesCommitUncertain||uncertain;
+            this.notesSelectionKey=null;this.notesSelection=null;
+            if(this.live){originalSet.call(this,'notes',{storageStatus:this.notesCommitUncertain?'Save outcome unknown. Reopen the app to inspect saved notes; do not repeat.':'Notes storage needs recovery. Reopen the app to inspect saved notes before editing.'});context(this);}
+          }
+          return {status:uncertain?'unknown':'failed',summary:uncertain?'Notes outcome is uncertain. Review history; do not repeat automatically.':(error as Error).message};
+        }
+      }
+      if(operation.type==='read_selected_notes'||operation.type==='read_calendar_range'){
+        const current=()=>{signal.throwIfAborted();context(this);if(!this.live||document.hidden||JSON.stringify(alphaClient.getState().context)!==JSON.stringify(expectedContext)||expectedContext.sensitive||expectedContext.view!=='workflows'||expectedContext.selectedObject?.kind!=='workflow-run')throw new Error('Workflow read context changed');};current();
+        if(operation.type==='read_selected_notes'){
+          await this.notesStore?.assertCurrent();const raw=this.notesStore?.raw;if(this.notesStorageFailed||this.notesPending||raw!==this.notesRaw)return {status:'failed',summary:'Notes changed or storage is unavailable. Review the selected notes again.'};
+          const source=this.vget('notes').list;const snapshot=operation.notes.map(selected=>{const matches=source.filter((n:Shell)=>n.id===selected.id);if(matches.length!==1||typeof matches[0].title!=='string'||typeof matches[0].body!=='string')throw new Error('A selected note is missing');return {id:selected.id,revision:selected.revision,title:matches[0].title,text:matches[0].body};});
+          const result=await validateWorkflowResult(operation,{kind:'notes',notes:snapshot});current();await this.notesStore.assertCurrent();current();if(this.notesStore.raw!==raw)throw new Error('Notes changed while preparing the approved read');
+          return {status:'succeeded',summary:`Read ${snapshot.length} selected notes. The exact result is retained for this workflow receipt.`,readResult:result};
+        }
+        const calendar=registerPlugin<{readWorkflowRange(input:{calendarIds:string[];start:string;end:string;maximumEvents:number}):Promise<{status:string;events:Array<{id:string;calendarId:string;title:string;start:string;end:string;allDay:boolean}>}>}>('AlphaCalendar');
+        const result=await calendar.readWorkflowRange({calendarIds:operation.calendarIds,start:operation.start,end:operation.end,maximumEvents:operation.maximumEvents});current();
+        if(result.status!=='ready')return {status:'failed',summary:'Calendar read permission is unavailable. No calendar content was uploaded.'};
+        const events=await Promise.all(result.events.map(async event=>({...event,revision:await workflowSha([event.id,event.calendarId,event.title,event.start,event.end,event.allDay])})));
+        const readResult=await validateWorkflowResult(operation,{kind:'calendar',events});current();return {status:'succeeded',summary:`Read ${events.length} events within the selected calendar range.`,readResult};
+      }
+      if (operation.type === 'create_note') {
+        if (this.notesStorageFailed) return { status: 'failed', summary: 'Notes storage is unavailable. Nothing saved.' };
+        const existing = this.vget('notes').list.find((note: Shell) => note.id === operationId);
+        if (existing) return { status: 'unknown', summary: 'A note already has this action identifier; review it before resolving.' };
+        const note = { id: operationId, kind: 'text', title: operation.title, body: operation.body, pinned: false, when: 'Now' };
+        const saved = await this.vset('notes', { list: [note, ...this.vget('notes').list] });
+        return { status: saved ? 'succeeded' : this.notesCommitUncertain?'unknown':'failed', summary: saved ? `Saved note: ${operation.title}` : 'The note save is unconfirmed. Inspect saved notes before repeating.' };
+      }
+      if(isReminderOperation(operation)){
+        signal.throwIfAborted();context(this);if(JSON.stringify(alphaClient.getState().context)!==JSON.stringify(expectedContext)||expectedContext.sensitive||document.hidden)throw Error('Reminder context changed');
+        const target=await DailyApps.selectedReminder({id:operation.target.reminderId});signal.throwIfAborted();
+        if(JSON.stringify(target)!==JSON.stringify(operation.target)) { // property order is normalized below
+          for(const key of ['sourceId','sourceRevision','reminderId','occurrenceId','revision'] as const)if(target[key]!==operation.target[key])throw Error('Selected reminder changed');
+        }
+        context(this);if(JSON.stringify(alphaClient.getState().context)!==JSON.stringify(expectedContext))throw Error('Reminder context changed');
+        signal.throwIfAborted();
+        const result=await DailyApps.operateReminder({operationId,bindingHash,operation});
+        // Publish the new revision only after the receipt attempt; refreshing here
+        // cancels this context-bound action before it can acknowledge the server.
+        if(result.status!=='succeeded')return {status:'unknown',summary:'Reminder outcome requires review. It was not repeated.'};
+        const reminderResult=validateReminderResult(operation,result.result);
+        return {status:'succeeded',summary:`Reminder ${reminderResult.status}. Android delivery is approximate.`,reminderResult};
+      }
+      if (operation.type === 'create_reminder') {
+        const at = Date.parse(operation.dueAt);
+        if (!Number.isSafeInteger(at) || at <= Date.now()) return { status: 'failed', summary: 'Reminder time has passed. Nothing scheduled.' };
+        const result = await DailyApps.scheduleReminder({ id: operationId, title: operation.title, body: '', at });
+        if (result.status !== 'scheduled' || result.id !== operationId) return { status: 'failed', summary: 'Android did not confirm scheduling. Check notification permission and the reminder time.' };
+        // Publish the new revision only after the receipt attempt; refreshing here
+        // cancels this context-bound action before it can acknowledge the server.
+        return { status: 'succeeded', summary: `Scheduled reminder: ${operation.title}. Android may delay delivery.` };
+      }
+      if (operation.type === 'open_view') {
+        if (!['home','reminders','notifications'].includes(operation.view) && !isMvpView(operation.view)) return {status:'failed',summary:'This app is deferred from the MVP'};
+        // Navigation changes the view epoch; journal completion still runs after
+        // this synchronous effect even if the conversation cancels its wait.
+        const view = operation.view === 'reminders' ? 'calendar' : operation.view;
+        if (view !== 'home' && !views[view]) return { status: 'failed', summary: 'This view is unavailable.' };
+        if (view === 'home') this.goHome(); else this.openView(view);
+        return { status: 'succeeded', summary: `Opened ${operation.view} on this phone.` };
+      }
+      if (!this.browserNavigateApproved) return { status: 'failed', summary: 'Approved browser navigation is unavailable. No page opened.' };
+      await this.browserNavigateApproved(operation.url, signal);
+      return { status: 'succeeded', summary: `Opened an approved HTTPS destination in a new browser tab. Page loading is not verified.` };
+    });
+    context(this);
+  };
+  p.componentDidUpdate = function (prev: Shell) { originalUpdate.call(this, prev); context(this); };
+  p.componentWillUnmount = function () {
+    this.connectionUnsubscribe?.();
+    window.removeEventListener('alpha:notes-committed',this.notesCommittedHandler);
+    document.removeEventListener('visibilitychange', this.visibilityHandler);
+    window.removeEventListener('pagehide', this.pageHideHandler);
+    window.removeEventListener('pageshow', this.pageShowHandler);
+    this.live = false; alphaClient.disconnect(); window.removeEventListener('alpha-back', this.backHandler); window.removeEventListener('launcher-home', this.homeHandler); window.removeEventListener('alpha-selected-context', this.selectionHandler);
+    void this.assistListener?.then((l: Shell) => l?.remove()); originalUnmount.call(this);
+  };
+  p.vset = function (key: string, patch: Shell) {
+    if (key !== 'notes' || !patch.list) { originalSet.call(this,key,patch);return true; }
+    if (this.notesStorageFailed||!this.notesStore) {this.toast('Notes storage needs recovery before editing.');return false;}
+    try {
+      const pending=this.notesStore.replace(patch.list);
+      this.notesPending++;
+      this.notesSelectionKey=null;this.notesSelection=null;
+      // Text remains visible while the native commit is pending; this is not a saved receipt.
+      originalSet.call(this,key,{...patch,storageStatus:'Saving on this device…'});
+      context(this);
+      return Promise.resolve(pending).then(()=>{
+        this.notesPending--;this.notesRaw=this.notesStore.raw;
+        if(this.live&&!this.notesPending&&!this.notesStorageFailed){originalSet.call(this,'notes',{storageStatus:isAndroid?'Note text encrypted on this device':'Browser preview · notes stored unencrypted'});context(this);}
+        return true;
+      }).catch((error)=>{
+        this.notesPending--;this.notesStorageFailed=true;this.notesCommitUncertain=error instanceof NotesCommitUncertain;
+        if(this.live){originalSet.call(this,'notes',{storageStatus:'Save unconfirmed. Keep this screen open to preserve unsaved text.'});this.toast(error instanceof NotesCommitUncertain?'Save outcome unknown. Reopen to inspect saved notes; do not repeat the action.':'Notes could not be saved. Unsaved text remains on this screen.');context(this);}
+        return false;
+      });
+    } catch {this.toast('Notes changed or storage is unavailable. Reopen before editing.');return false;}
+  };
+  p.api = function (key: string) {
+    const api = originalApi.call(this, key);
+    if(key==='notes'){api.set=(patch:Shell)=>this.vset('notes',patch);api.storageReady=()=>!this.notesStorageFailed&&!this.notesPending; }
+    api.say = () => this.toast('Connect the underlying account or select real content before requesting this action.');
+    // Open the real conversation without sending a prompt or uploading content.
+    // Keep the current view/selection so a subsequent user message is scoped.
+    api.sendReviewedMail = async (text:string, expected:{sessionId:string;agentId:string;ownerId:string;origin:string}) => {
+      const current=connectionController.getSnapshot().session;
+      if(!current||JSON.stringify(current)!==JSON.stringify(expected)||document.hidden||connectionController.getSnapshot().open||document.documentElement.dataset.connectionMode==='mock')throw new Error('Agent changed. Review this message again.');
+      if(this.S().typing)throw new Error('Wait for the current agent reply before sharing this email.');
+      context(this);await this.send(text,expected);
+    };
+    api.assist = (notice: string) => {
+      context(this);
+      this.setState({ chat: 'sheet', shade: false });
+      this.agentSay(notice);
+    };
+    return api;
+  };
+  p.renderVals = function () {
+    const out = originalVals.call(this);
+    if (isAndroid) {
+      out.showStatus = false; out.showIndicator = false;
+      const style = out.sbColor === '#ffffff' || out.sbColor === '#FFFFFF' ? SystemBarsStyle.Dark : SystemBarsStyle.Light;
+      if (this.barStyle !== style) { this.barStyle = style; void SystemBars.setStyle({ style }).catch(() => {}); }
+    }
+    out.shadeN = (out.shadeN || []).filter((n: Shell) => n.id !== 'n4');
+    out.headsOk = () => this.toast('Connect Messages before replying. Nothing has been sent.');
+    out.tiles = (out.tiles || []).map((tile: Shell) => ({ ...tile, toggle: () => void DailyApps.perform({ action: 'settings' }).catch(() => this.toast('Android settings is unavailable.')) }));
+    out.onBright = () => void DailyApps.perform({ action: 'settings' }).catch(() => this.toast('Android settings is unavailable.'));
+    return out;
+  };
+  p.send = async function (argument?: string, expectedSession?: {sessionId:string;agentId:string;ownerId:string;origin:string}) {
+    const s = this.S(); const text = String(argument ?? s.draft).trim();
+    if (!text || s.typing) return;
+    context(this);
+    const revision = alphaClient.getState().context.revision;
+    this.setState({ msgs: [...s.msgs, { id: crypto.randomUUID(), from: 'user', text }], draft: '', typing: true, chat: s.chat === 'full' ? 'full' : 'sheet', shade: false });
+    try {
+      await this.connectAgent(); context(this);
+      if (alphaClient.getState().context.revision !== revision) throw new Error('The active screen changed. Please send your request again.');
+      if(expectedSession&&(JSON.stringify(connectionController.getSnapshot().session)!==JSON.stringify(expectedSession)||document.hidden))throw new Error('Agent changed. Review this message again.');
+      const reply = await alphaClient.send(text);
+      if (!this.live) return;
+      this.agentSay(reply.text);
+      for (const proposal of reply.proposals || []) this.agentSay(proposal.description, { type: 'generic', icon: 'check', title: 'Approve: ' + proposal.title, sub: 'Tap to approve this exact action', proposalId: proposal.id });
+    } catch (e) { if (this.live) this.agentSay(e instanceof Error ? e.message : 'The agent could not complete this request.'); }
+    finally { if (this.live) this.setState({ typing: false }); }
+  };
+  p.agentSay = function (text: string, card?: Shell) {
+    this.setState((previous: Shell) => ({ chat: previous.chat === 'full' ? 'full' : 'sheet', msgs: [...(previous.msgs || []), { id: crypto.randomUUID(), from: 'agent', text, card: card || null }] }));
+  };
+  p.reply = function () { return { text: 'Connect an agent to continue.' }; };
+  p.cardAct = async function (message: Shell) {
+    const card = message.card || {};
+    if (card.proposalId && !card.done) {
+      try {
+        const sessionId = connectionController.getSnapshot().session?.sessionId;
+        const beforeView = this.S().view;
+        let receipt;
+        try { receipt = await alphaClient.approve(card.proposalId); }
+        catch (error) {
+          // Navigation may cancel the context-bound chat wait after the effect.
+          // Await only that already-started journaled action; never execute again.
+          receipt = await connectionController.actionReceipt(card.proposalId, sessionId);
+          if (!receipt) throw error;
+        }
+        if (!this.live || connectionController.getSnapshot().session?.sessionId !== sessionId) return;
+        this.setState({ msgs: this.S().msgs.map((m: Shell) => m.id === message.id ? { ...m, card: { ...m.card, done: true, sub: receipt.summary, title: receipt.status === 'succeeded' ? 'Completed' : 'Not completed' } } : m) });
+        if (this.S().view !== beforeView) this.toast(receipt.summary);
+        else this.agentSay(receipt.summary);
+      } catch (e) { this.agentSay(e instanceof Error ? e.message : 'Action could not complete.'); }
+    } else if (card.go) this.openView(card.go.view, card.go.patch);
+  };
+  p.startVoice = async function () {
+    try {
+      const result = await DailyApps.perform({ action: 'voice' });
+      if (result.status === 'selected' && result.transcript) this.setState({ chat: 'sheet', draft: result.transcript });
+      else this.toast(result.message || 'Speech recognition is unavailable on this device.');
+    } catch { this.toast('Speech recognition is unavailable on this device.'); }
+  };
+  p.stopVoice = function () { alphaClient.cancel(); this.setState({ voice: 'off', typing: false }); };
+  views.notes.render = function (state: Shell, api: Shell) {
+    const out = notesRender({ ...state, record: false }, api);
+    out.storageStatus=state.storageStatus;
+    const dictate = async () => {
+      try {
+        const r = await DailyApps.perform({ action: 'voice' });
+        if (r.transcript) {
+          const latest = api.get('notes');
+          if (latest.open !== state.open) return;
+          api.set({ list: latest.list.map((n: Shell) => n.id === state.open ? { ...n, body: [n.body, r.transcript].filter(Boolean).join('\n') } : n) });
+        } else api.toast(r.message || 'Speech recognition is unavailable.');
+      } catch { api.toast('Speech recognition is unavailable.'); }
+    };
+    out.record = () => window.dispatchEvent(new CustomEvent('alpha-record-note'));
+    if (out.ed) out.ed.dictate = dictate;
+    if (out.vo) { out.vo.play = () => api.toast('No audio is available for this note.'); out.vo.toCal = () => void DailyApps.perform({ action: 'calendar-create', title: out.vo.title }).catch(() => api.toast('Calendar is unavailable.')); }
+    return out;
+  };
+}

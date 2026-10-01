@@ -1,7 +1,6 @@
 package ai.elizaresearch.alphaphone;
 import android.content.Intent;
 import android.os.SystemClock;
-import androidx.test.core.app.ActivityScenario;
 import androidx.test.ext.junit.runners.AndroidJUnit4;
 import androidx.test.platform.app.InstrumentationRegistry;
 import org.junit.Test;
@@ -14,16 +13,14 @@ import static org.junit.Assert.*;
 
 @RunWith(AndroidJUnit4.class)
 public class ShellInstrumentedTest {
- private String evaluate(ActivityScenario<MainActivity> scenario, String js) throws Exception {
-  AtomicReference<String> answer = new AtomicReference<>(); CountDownLatch latch = new CountDownLatch(1);
-  scenario.onActivity(activity -> activity.getBridge().getWebView().evaluateJavascript(js, value -> { answer.set(value); latch.countDown(); }));
-  assertTrue("WebView did not answer", latch.await(5, TimeUnit.SECONDS)); return answer.get();
+ private String evaluate(BoundedActivityScenario<MainActivity> scenario, String js) throws Exception {
+  return WebViewTestDriver.evaluate(js);
  }
  @Test public void bundledRendererAndNativeBridgesWork() throws Exception {
-  try (ActivityScenario<MainActivity> scenario = ActivityScenario.launch(MainActivity.class)) {
+  try (BoundedActivityScenario<MainActivity> scenario = BoundedActivityScenario.launch(MainActivity.class)) {
    String ready = "false";
    for(int i=0; i<100; i++) {
-    ready=evaluate(scenario,"Boolean(document.querySelector('main') && window.Capacitor)");
+    ready=evaluate(scenario,"Boolean(document.querySelector('[data-screen]') && window.Capacitor && document.documentElement.dataset.activeView)");
     if (ready.equals("true")) break;
     SystemClock.sleep(100);
    }
@@ -41,15 +38,24 @@ public class ShellInstrumentedTest {
    Intent home = new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME).setPackage("ai.elizaresearch.alphaphone");
    boolean qualifies = InstrumentationRegistry.getInstrumentation().getTargetContext().getPackageManager().queryIntentActivities(home,0).size()>0;
    assertEquals("HOME qualification follows variant",BuildConfig.IS_LAUNCHER,qualifies);
-   evaluate(scenario,"document.querySelector('input').focus()");
+   AppNavigation.liveMode();
+   evaluate(scenario,AppNavigation.request("Home"));
+   String homeReady="document.documentElement.dataset.activeView==='home'&&!document.querySelector('.alpha-connection-scrim')&&!document.querySelector('.os')?.inert";
+   for(int i=0;i<200;i++){if("true".equals(evaluate(scenario,homeReady)))break;SystemClock.sleep(100);}
+   assertEquals("Home must be interactive before opening the composer","true",evaluate(scenario,homeReady));
+   evaluate(scenario,AppNavigation.type());
+   String composer = AppNavigation.composer();
+   for (int i=0;i<50;i++) { if ("true".equals(evaluate(scenario,"!!("+composer+")"))) break; SystemClock.sleep(100); }
+   assertEquals("Actual Type control opens the agent composer", "true", evaluate(scenario,"!!("+composer+")"));
+   evaluate(scenario,"(()=>{const e=("+composer+");Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(e,'Keyboard layout check');e.dispatchEvent(new Event('input',{bubbles:true}));e.focus();})()");
    SystemClock.sleep(200);
-   scenario.onActivity(activity -> {
+   WebViewTestDriver.withActivity(MainActivity.class, activity -> {
     android.view.inputmethod.InputMethodManager ime = (android.view.inputmethod.InputMethodManager) activity.getSystemService(android.content.Context.INPUT_METHOD_SERVICE);
     ime.showSoftInput(activity.getBridge().getWebView(), android.view.inputmethod.InputMethodManager.SHOW_IMPLICIT);
    });
    java.util.concurrent.atomic.AtomicBoolean keyboard = new java.util.concurrent.atomic.AtomicBoolean(false);
    for(int i=0;i<50;i++) {
-    scenario.onActivity(activity -> {
+    WebViewTestDriver.withActivity(MainActivity.class, activity -> {
      androidx.core.view.WindowInsetsCompat insets = androidx.core.view.ViewCompat.getRootWindowInsets(activity.getWindow().getDecorView());
      keyboard.set(insets != null && insets.isVisible(androidx.core.view.WindowInsetsCompat.Type.ime()));
     });
@@ -58,20 +64,35 @@ public class ShellInstrumentedTest {
    }
    assertTrue("Test keyboard must actually be visible",keyboard.get());
    SystemClock.sleep(500);
-   assertEquals("Composer remains above the real Android keyboard", "true", evaluate(scenario,"(() => { const field=document.querySelector('input').getBoundingClientRect(); const send=document.querySelector('button[type=submit]').getBoundingClientRect(); return field.top >= 0 && field.bottom <= innerHeight && send.top >= 0 && send.bottom <= innerHeight; })()"));
+   assertEquals("Composer remains above the real Android keyboard", "true", evaluate(scenario,"(() => { const input=("+composer+"); const button=document.querySelector('button[aria-label=Send]'); if(!input||!button)return false; const field=input.getBoundingClientRect(); const send=button.getBoundingClientRect(); return field.top >= 0 && field.bottom <= innerHeight && field.width > 100 && send.top >= 0 && send.bottom <= innerHeight; })()"));
    evaluate(scenario,"Capacitor.Plugins.DeviceApps.launch({packageName:'com.android.settings'})");
    boolean settingsOpened = false;
+   String lastActivityState = "";
    for (int i=0; i<30; i++) {
     android.os.ParcelFileDescriptor pipe = InstrumentationRegistry.getInstrumentation().getUiAutomation().executeShellCommand("dumpsys activity activities");
     String activity;
     try (java.io.InputStream input = new android.os.ParcelFileDescriptor.AutoCloseInputStream(pipe)) {
      activity = new java.io.BufferedReader(new java.io.InputStreamReader(input, java.nio.charset.StandardCharsets.UTF_8)).lines().collect(java.util.stream.Collectors.joining("\n"));
     }
-    settingsOpened = activity.lines().anyMatch(line -> (line.contains("mResumedActivity") || line.contains("topResumedActivity")) && line.contains("com.android.settings"));
+    lastActivityState = activity;
+    // Launching Settings restores its existing task. A legitimate Settings child
+    // (e.g. default-app picker) belongs to PermissionController, not Settings.
+    // Require an actually resumed activity in the visible Settings task rather
+    // than accepting a background task or assuming the child's package.
+    boolean visibleSettingsTask = false;
+    for (String line : activity.split("\\n")) {
+     if (line.stripLeading().startsWith("* Task{"))
+      visibleSettingsTask = line.contains("com.android.settings") && line.contains("visible=true");
+     if (visibleSettingsTask && line.contains("topResumedActivity=ActivityRecord{")) {
+      settingsOpened = true;
+      break;
+     }
+    }
+    if (!settingsOpened) settingsOpened = activity.lines().anyMatch(line -> (line.contains("mResumedActivity") || line.contains("topResumedActivity")) && line.contains("com.android.settings"));
     if(settingsOpened)break;
     SystemClock.sleep(100);
    }
-   assertTrue("Native installed-app handoff must open Settings",settingsOpened);
+   assertTrue("Native installed-app handoff must resume the Settings task: " + lastActivityState,settingsOpened);
   }
  }
 }

@@ -1,8 +1,27 @@
 # Alpha Phone (alphaphone)
 
-Independent Android UI on Eliza. This repository contains a working launcher-shell
-foundation and the implementation plan for the complete product. Agent pairing,
-voice and domain workflows are **not connected yet**; the UI says so explicitly.
+Independent Android UI on Eliza, using the Alpha Phone prototype as its design
+reference. The current renderer includes native browser, camera,
+calendar, reminders, selected files and local notes. Phone, SMS, Contacts and Wallet
+entry points are disabled by the documented MVP profile. The connection chooser supports Cloud sign-in, remote pairing, an explicit local
+development endpoint, offline use and mock mode. The real local Eliza/Cerebras
+protocol is verified; live Cloud login, Gmail, voice, enclave deployment and
+complete workflow execution remain acceptance work. See the verification ledger for
+the exact tested scope rather than treating a successful APK build as acceptance.
+
+- [MVP scope and gap report](docs/mvp-scope-and-gap-report.md)
+- [MVP completion plan](docs/mvp-completion-plan.md)
+
+- [Current flow research](docs/research-report.md)
+- [Detailed flow PRD](docs/flow-audit-and-prd.md)
+- [Current implementation plan](docs/flow-implementation-plan.md)
+- [Prototype coverage and remaining gaps](docs/prototype-implementation-gaps.md)
+- [Current flow verification](docs/flow-verification.md)
+- [Complete current acceptance ledger](docs/current-acceptance-ledger.md)
+- [Cloud deployment and authentication findings](docs/cloud-production-validation.md)
+- [Enclave candidate and signing gates](docs/enclave-candidate-validation.md)
+- [Browser autofill and Proton integration](docs/browser-autofill-integration.md)
+- [Calendar and reminder recovery audit](docs/calendar-reminder-audit.md)
 
 - [Working PRD](docs/prd.md)
 - [Detailed implementation plan](docs/implementation-plan.md)

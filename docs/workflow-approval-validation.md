@@ -1,0 +1,32 @@
+# Workflow approval receipts and explicit decisions
+
+The phone can review an existing remote execution's engine approval after opening its receipt. It shows the request summary, disclosed operation, target, account, node/iteration and execution version. Approve and Deny require a second explicit confirmation. Missing or unsupported review fields disable approval; denial remains available. This implements an existing workflow gate, not a sandbox for arbitrary workflow source or a claim that supplied descriptions prove what arbitrary source does.
+
+## Durable contract
+
+Patch `patches/eliza/0007-canonical-workflow-approvals.patch`, with exact base/hash in `workflow-approvals-source-base.json`, applies after0006. No vendor files were changed and there is no second approval queue. `GET /api/workflow/status` advertises `approvalReceiptProtocol:1`. Older hosts retain normal receipts without phone approval controls.
+
+`GET /api/workflow/executions/:runId/approvals` checks ownership, then reads pending and decided approvals from the pinned Smithers SQLite store without evaluating workflow source. It returns exact run/workflow/version, cancellation and terminal state, and bounded request disclosures. `requestDigest` binds run, version, node, iteration and canonical request JSON. The explicit decision route `POST /api/workflow/executions/:runId/approvals/:nodeId/:iteration` accepts `approved`, `expectedVersionId`, and `requestDigest`. It locks the existing execution row, validates current canonical request, rejects cancellation/terminal/stale/conflicting decisions, and uses the existing engine control command. Identical already-recorded decisions are read back without another engine decision. Execution recovery still honors the durable cancellation intent from0005.
+
+The phone records only a nonsecret intent under origin/owner/agent/workflow/run before sending. Transport loss or generic409 leaves that decision locked. Refresh reads canonical state; it does not retry the POST. A pending read remains locked. Account/view changes abort the request and clear the visible review; an uncertain old-account intent remains scoped to that account. No background approval, activation, workflow creation, generated source execution or communication is added.
+
+## Verified evidence
+
+- Owning upstream plugin typecheck passes. Actual HTTP/PGlite plus canonical SQLite test `approval-receipts-e2e.test.ts` passes16 assertions covering cross-owner404, stale version/digest409, a committed decision with no response body, canonical readback and reopened stores. Combined with existing reviewed submissions:2 tests/35 assertions.
+- `scripts/test-workflow-approvals-host.mjs` against isolated paired47854 records `test-results/workflow-approvals/real-host.json`: unauthenticated401, no effect before approval, concurrent same-decision idempotency, conflict409, denial and cancelled-gate rejection, exactly one synthetic own-file effect. No model call or external communication.
+- `scripts/test-workflow-approval-crash.mjs --prepare` used the real engine control to commit a pending fixture decision while leaving the wrapper projection uncommitted, verified the gap, then SIGKILLed only the isolated47854 process. After normal launcher restart, `--verify` proved identical canonical receipt/digest, exactly one guarded fixture effect and no effect from duplicate decision. Evidence: `crash-prepare.json` and `crash-verify.json`. This deliberately exercises the engine/PG commit gap without adding a production crash hook.
+- `scripts/test-workflow-approval-ui-flow.mjs` runs the actual adapter and protocol over HTTP: second confirmation, lost-response lock, renderer recreation + canonical GET without POST replay, missing-disclosure refusal, explicit denial, connection switch during pending POST, old-account lock restoration, and generic409 retaining the lock.
+
+## Native acceptance — Build71 passed both variants
+
+`WorkflowApprovalInstrumentedTest#reviewedApprovalSurvivesLostResponseAndRecreation` is opt-in with `workflowApproval=true`. Run the wrapper against reviewed archived app/test APKs:
+
+```sh
+ANDROID_SERIAL=emulator-5554 ALPHA_BUILD_ARCHIVE=test-results/prototype-build71 node scripts/android-workflow-approval-smoke.mjs
+```
+
+The wrapper uses isolated47854 with a temporary47855 proxy, fixed non-loopback forwarded address and an explicit unauthenticated401 assertion. It creates an inactive workflow with a synthetic own-file effect, starts it to its genuine approval gate and verifies no effect. The actual phone pairs normally, opens the exact execution, displays required disclosures, confirms approval, encounters a deliberately dropped committed response, retains its lock across Activity recreation and reconciles by GET. The wrapper checks exactly one POST, exact run/version, canonical approved status and exactly one file effect. Original phone selection and the relevant encrypted credential slot are restored; test-owned fixture files are removed. An Activity recreation is not a phone process-restart or reboot claim.
+
+Primary47840, other local voice/maps services, Cloud and enclave deployments were not changed. Real Cloud workflow support and deployment of0007 remain separate acceptance work. Build71 terminal evidence is recorded above; later source/builds require their own qualification.
+
+Build71 terminal native evidence: `test-results/prototype-build71/workflow-approvals/result.json` records both standalone and launcher passed, each exactly1 approval POST,2 canonical GETs,1 execution and1 owned file effect, with proxy401. `cleanup.json` confirms both fixture runs terminal before effect-directory removal. Standalone app/test SHA256: `e1bb04dc8992fd53f8742d6a5f1894bebfdbea09f68fd38c886632f809cb7dc1` / `91d7a3f8b72d3da6d40d7519460e6961fd727173d499fcec640314c8ff0a766c`; launcher: `7e9a44066d6f445b78a750dc2769e802588a6da620c608b3a796d70f49fa6c9d` / `59b2970fa420b8326a246bb015226cea26aa26d38129ef008362654fcf36599a`. This is actual native local-agent approval with synthetic file effect and Activity recreation; it does not assign HOME, test a device reboot or establish Cloud/enclave acceptance.

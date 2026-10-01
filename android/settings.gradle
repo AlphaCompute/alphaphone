@@ -2,3 +2,18 @@ pluginManagement { repositories { google(); mavenCentral(); gradlePluginPortal()
 include ':app', ':capacitor-android', ':eliza-system'
 project(':capacitor-android').projectDir = new File('../node_modules/@capacitor/android/capacitor')
 project(':eliza-system').projectDir = new File('../vendor/eliza/plugins/plugin-native-system/android')
+
+include ':eliza-camera'
+project(':eliza-camera').projectDir = new File('../vendor/eliza/plugins/plugin-native-camera/android')
+
+// MVP-DEFERRED: Contacts. Restore with matching app dependency and native registration.
+// include ':eliza-contacts'
+// project(':eliza-contacts').projectDir = new File('../vendor/eliza/plugins/plugin-native-contacts/android')
+
+include ':eliza-location'
+project(':eliza-location').projectDir = new File('../vendor/eliza/plugins/plugin-native-location/android')
+
+// Explicit standalone synthetic witness; never packaged in Alpha Phone.
+include ':notification-fixture'
+
+include ':local-speech'

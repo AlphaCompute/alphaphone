@@ -1,0 +1,95 @@
+{
+  "patchSha256": "d6f3f47cbd16b0487e182427910cf7c68afc315eb62d8efc677b427f42e1ddbd",
+  "files": [
+    {
+      "path": "android/app/src/main/java/ai/elizaresearch/alphaphone/AlphaConnectionPlugin.java",
+      "before": "c0c09ca4dc70ca5c6d8d592558d59755b00201e8ed375e4fc15bc572fe283cf8",
+      "after": "6e6a7c9234c7025933278b903070125e7bd5cb320cd348bd60b7d2b127ac00e9"
+    },
+    {
+      "path": "android/app/src/main/java/ai/elizaresearch/alphaphone/AlphaVoiceCloudPlugin.java",
+      "before": "154af6641cdab27c6b435e2d31810e8c6966d075922cd023bc742a3b776fa596",
+      "after": "a1fa301496ca63af98d9acd84ad6c0ec6cf76a6b83360ba198397f23449b8489"
+    },
+    {
+      "path": "android/app/src/main/java/ai/elizaresearch/alphaphone/PairedAgentCredential.java",
+      "before": null,
+      "after": "3533f3c010a32385ee401ba8e1572bb7a7fa92abef6a58ca158f87f005c8bb22"
+    },
+    {
+      "path": "apps/app/src/runtime/cloud-protocol.ts",
+      "before": "2e428227dc6ab03f5ad92f197a928b65bff9913e7a1262829be6f0f215371d3a",
+      "after": "74dfbfc2264040bdfe15de77fe064bed07188dfb205dad2a89e1d72624b0e110"
+    },
+    {
+      "path": "apps/app/src/runtime/connection-ui.tsx",
+      "before": "d34744ec8be99c1d478fcf61e3a80af82140b5eef837f4ec2817b62be69c302c",
+      "after": "31a0b5442a76f8f280d04a5aae693c3c82c3ea72dfd9480f85491bb84d20b960"
+    },
+    {
+      "path": "packages/agent/src/api/device-action-routes.ts",
+      "before": "bb3e8153ce0ae52eafb3358c0df42c050d8e4437f1b75a80db10819dab0cab63",
+      "after": "3c6599276836b4be387acece096191eb2892e0053fd2eee71d6b608f9307a354"
+    },
+    {
+      "path": "packages/agent/src/api/server.ts",
+      "before": "60768e6262e49f27492a4c71662a4219c02f0839508d9a77facec992de450c70",
+      "after": "c8b57a4cc377887935c894fac46f6851a6aa2e69dcda3976f5ca440ca7b6b350"
+    },
+    {
+      "path": "packages/agent/src/runtime/host-bridge.ts",
+      "before": "10c35ed451d59cc3b00c297eb7928204f4a173322b798cf0806272d16e1a447c",
+      "after": "25c7369c5ac4ef7d7a6056d9aaf59104883902448080dafa2a858f39f3854926"
+    },
+    {
+      "path": "packages/app/src/api/auth-bootstrap-routes.ts",
+      "before": "be512393690db756fca24b5f59891df4fec559fb7694d637e67186a76a41702d",
+      "after": "54b518b2fadf9562e580dc36cdb2f1bbb2dadb2ddc81ee601270d0d49f025473"
+    },
+    {
+      "path": "packages/app/src/api/cloud-runtime-owner.ts",
+      "before": null,
+      "after": "71424dc52871a5a99bb5eee72ca4238984f8fd2f009342ea95bbecc99d034f87"
+    },
+    {
+      "path": "packages/app/src/runtime/install-agent-host-bridge.ts",
+      "before": "5259cff81816de6b8518037afe1ddd7ddc2c37b464ad74579cc7ea11149cb7fd",
+      "after": "d2f04d78e5fef1330eda3e665f5a2cb101c7176dbd80c683e82316fe00680dca"
+    },
+    {
+      "path": "packages/cloud/api/src/dedicated-agent-proxy.ts",
+      "before": "020f103263412c0351cf96172811a8d1aca931e5105931e96cdb0eee360a60bb",
+      "after": "cef0de7c27a5dd250313ed8d01d3b8c200e925343c57f89caa24df1591b93d75"
+    },
+    {
+      "path": "packages/cloud/shared/src/lib/auth/cloud-runtime-proof.ts",
+      "before": null,
+      "after": "a23d16f75ab35268872ca8fed7774c29da2400d90caf71f69b972fb82fe0cfa3"
+    },
+    {
+      "path": "packages/cloud/shared/src/lib/oidc/clients.ts",
+      "before": "790caf553c52e42151c6768ba41716d97167b81bfd0388bf8b7657174fdfc328",
+      "after": "0ca46d9f26cfd7b66426957c96780ce1937ca547223af45dc0a435e8cff4f003"
+    },
+    {
+      "path": "packages/core/package.json",
+      "before": "ccca52008be969372f527249f7dfd1250061fb8a4cbf6548e9a40b02a9d0165a",
+      "after": "a75644180bdf3191f6d6d0166b17d57c143f92b87d6d9812b54a2a7a3873f96c"
+    },
+    {
+      "path": "packages/core/src/contracts/cloud-runtime-request.ts",
+      "before": null,
+      "after": "3bf78f5e450a2de059770447655a566bb4ae3fb404fdda8fdbe8a15fd3394d22"
+    },
+    {
+      "path": "plugins/plugin-local-inference/src/routes/compat-helpers.ts",
+      "before": "3203651d02d32cff95a14c0c79651c1cb59b1bf085db8b4bfc05064f65a332f1",
+      "after": "9513c0a74195def67eea59c2863e393a4a69739b2ce251b7046de798e5246152"
+    },
+    {
+      "path": "plugins/plugin-workflow/src/plugin-routes.ts",
+      "before": "b832b9c0827ba1bb6b00be0c4dae8b4c96dde087680336e610f6e4a679dfdc7a",
+      "after": "d19e0ec4b0554d8e6681982f6acd646066ad39fa1485caeeb618b4a749153b48"
+    }
+  ]
+}

@@ -1,0 +1,34 @@
+import { registerPlugin } from '@capacitor/core';
+import { isAndroid } from '../native';
+import { parseDigestResult, type DigestResult, type HostedDigestProtocol } from './hosted-digests';
+interface NativeInbox {
+ beginBackground(input:{attemptId:string}):Promise<void>;
+ cancelBackground(input:{attemptId:string}):Promise<void>;
+ configureBackground(input:Record<string,unknown>):Promise<{generation:string;scope:string}>;
+ disableBackground(input?:{sessionId:string}):Promise<void>;
+ syncInbox(input:{sessionId:string}):Promise<{entries:unknown[]}>;
+ inboxHistory(input:{sessionId:string}):Promise<{entries:unknown[]}>;
+}
+const native=registerPlugin<NativeInbox>('AlphaHostedResults');
+export async function pauseHostedBackground(sessionId?:string){if(isAndroid)await native.disableBackground(sessionId?{sessionId}:undefined);}
+export async function configureHostedBackground(input:Record<string,unknown>,signal:AbortSignal):Promise<boolean>{
+ if(!isAndroid)return false;signal.throwIfAborted();
+ const attemptId=crypto.randomUUID();
+ const cancel=()=>native.cancelBackground({attemptId});
+ const abort=()=>{void cancel().catch(()=>{});};
+ try{
+  // Register cancellation only after this reservation exists. A cancelled begin
+  // is explicitly retired before any configuration can be admitted.
+  await native.beginBackground({attemptId});
+  if(signal.aborted){await cancel();signal.throwIfAborted();}
+  signal.addEventListener('abort',abort,{once:true});
+  await native.configureBackground({...input,attemptId});signal.throwIfAborted();return true;
+ }catch(error){signal.throwIfAborted();return false;}
+ finally{signal.removeEventListener('abort',abort);}
+}
+export interface ResultInbox {history():Promise<DigestResult[]>;sync(client:HostedDigestProtocol,signal:AbortSignal):Promise<DigestResult[]>;}
+export class NativeResultInbox implements ResultInbox {
+ constructor(private sessionId:string){}
+ async history(){return (await native.inboxHistory({sessionId:this.sessionId})).entries.map(parseDigestResult);}
+ async sync(_client:HostedDigestProtocol,signal:AbortSignal){signal.throwIfAborted();const result=await native.syncInbox({sessionId:this.sessionId});signal.throwIfAborted();return result.entries.map(parseDigestResult);}
+}

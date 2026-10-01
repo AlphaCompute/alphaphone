@@ -1,0 +1,50 @@
+{
+  "baseCommit": "4573712ebf0466daa4dfadaa4482704c209d9b8c",
+  "appliesAfter": "0011-typed-workflow-authoring.patch",
+  "predecessorSha256": "2d5b697fc19539b6824cdc973607e61e9b659d0531740b71a5a550bb118e823e",
+  "bytes": 74612,
+  "sha256": "68fc355a5622cd9d3c0887925e0c439d36c8e676d0c2b7aca4749a33fdedff72",
+  "files": [
+    "packages/agent/src/api/device-action-routes.ts",
+    "plugins/plugin-assistant/src/features/basic-capabilities/index.ts",
+    "plugins/plugin-assistant/src/services/device-actions/contract.ts",
+    "plugins/plugin-assistant/src/services/device-actions/service.ts",
+    "plugins/plugin-assistant/src/services/device-actions/workflow-contract.ts",
+    "plugins/plugin-assistant/src/services/device-actions/workflow-service.ts",
+    "plugins/plugin-sql/src/schema/clientDevices.ts",
+    "plugins/plugin-workflow/__tests__/integration/device-bridge-e2e.test.ts",
+    "plugins/plugin-workflow/__tests__/integration/typed-authoring-e2e.test.ts",
+    "plugins/plugin-workflow/src/plugin-routes.ts",
+    "plugins/plugin-workflow/src/routes/workflow-routes.ts",
+    "plugins/plugin-workflow/src/services/embedded-workflow-service.ts",
+    "plugins/plugin-workflow/src/services/phone-workflow-spec.ts",
+    "plugins/plugin-workflow/src/services/smithers-runtime.ts",
+    "plugins/plugin-workflow/src/services/workflow-service.ts"
+  ],
+  "scope": "Actual fixed-executor workflow device bridge using the existing canonical approval queue. Selected Notes/Calendar reads and approved Notes writes, owner/run/step/pinned-spec/device-enrollment binding, enrolled workflow protocol capability, explicit waiting-approval status, structured bounded read receipts and pinned-run review.",
+  "validation": [
+    "Actual HTTP/PGlite/Smithers bridge test:45 assertions passed, including ~50KB UTF8 selected note, three explicit canonical approvals, four-way per-step dispatch dedupe, owner and tampered-data refusals, cancellation, client protocol downgrade, pinned review after edit and receipt replay after database reopen",
+    "Typed authoring HTTP/PGlite regression:39 assertions passed",
+    "Existing authenticated device REST/session/SQL migration E2E:1 case passed",
+    "Independent Bun1.4.2 frozen install with scripts disabled completed; known dependency symlinks removed only from isolated checkout",
+    "Core build, assistant build, assistant/workflow/sql typechecks, assistant/workflow lint passed; warnings retained",
+    "Patch generated against reconstructed base plus0001\u20130011; reverse apply check passed"
+  ],
+  "evidenceDirectory": "test-results/workflow-device-bridge",
+  "notVerified": [
+    "Native receipt ingress is synthetic in server tests; no actual Notes/Calendar provider or playback/notification claim",
+    "Database close/reopen is not a whole server process restart",
+    "Not applied to running combined runtime, Cloud or enclave",
+    "Whole-repository verify and agent package typecheck not run in this isolated qualification",
+    "Earlier0011 five-suite batch lifecycle wait timeout remains failed/unresolved",
+    "Civil scheduling, Notify, Speak, Gmail Send/events and remaining Do variants remain unimplemented in this patch"
+  ],
+  "wireContract": {
+    "enrollment": "POST /api/client-devices/register body {label,workflowProtocol:1}; old clients stay0; upgraded client re-registers existing credentials",
+    "review": "GET /api/workflow/executions/:runId/phone-review resolves exact archived/current pinned version",
+    "payload": "Existing device_action/v1 payload plus workflow:{workflowId,versionId,runId,stepId,specDigest}; installation/enrollment remain mandatory",
+    "readReceipt": "Applied selected Notes/Calendar reads require result alongside outcome/operationId; exact result journaled before upload; explicit reconciliation also requires result",
+    "catalogRevision": "phone-workflow-catalog-2",
+    "compilerRevision": "phone-workflow-compiler-2"
+  }
+}

@@ -25,11 +25,29 @@ android {
  }
  compileOptions { sourceCompatibility JavaVersion.VERSION_21; targetCompatibility JavaVersion.VERSION_21 }
 }
+// Instrumentation diagnoses the same audited runtime already packaged by local-speech.
+// Extract only its Java API for compilation; do not package a second AAR/JNI runtime.
+def speechTestApiJar = layout.buildDirectory.file('generated/speech-android-test-api/classes.jar')
+def extractSpeechAndroidTestApi = tasks.register('extractSpeechAndroidTestApi', Sync) {
+ dependsOn ':local-speech:preBuild'
+ from(zipTree(file('../local-speech/libs/sherpa-onnx-1.13.8-no-espeak.aar'))) {
+  include 'classes.jar'
+ }
+ into layout.buildDirectory.dir('generated/speech-android-test-api')
+}
 dependencies {
+    implementation "androidx.work:work-runtime:2.11.0"
+ implementation project(':local-speech')
  implementation project(':capacitor-android')
  implementation project(':eliza-system')
+ implementation project(':eliza-camera')
+ // MVP-DEFERRED: Contacts provider and permissions; see docs/mvp-scope-and-gap-report.md.
+ // implementation project(':eliza-contacts')
+ implementation project(':eliza-location')
+ implementation "androidx.webkit:webkit:$rootProject.ext.androidxWebkitVersion"
  implementation "androidx.appcompat:appcompat:$rootProject.ext.androidxAppCompatVersion"
  implementation "androidx.core:core-splashscreen:$rootProject.ext.coreSplashScreenVersion"
+ androidTestCompileOnly files(speechTestApiJar).builtBy(extractSpeechAndroidTestApi)
  androidTestImplementation 'androidx.test:runner:1.6.2'
  androidTestImplementation 'androidx.test.ext:junit:1.3.0'
 }

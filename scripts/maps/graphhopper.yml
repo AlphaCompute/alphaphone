@@ -1,0 +1,31 @@
+graphhopper:
+  import.osm.ignored_highways: ""
+  datareader.file: monaco.osm.pbf
+  graph.location: graph-cache
+  profiles:
+    - name: car
+      custom_model_files: [car.json]
+    - name: foot
+      custom_model_files: [foot.json]
+    - name: bike
+      custom_model_files: [bike.json]
+  profiles_ch:
+    - profile: car
+    - profile: foot
+    - profile: bike
+  graph.encoded_values: car_access,car_average_speed,foot_access,foot_average_speed,foot_priority,bike_access,bike_average_speed,bike_priority,road_class,road_class_link,road_environment,max_speed,road_access,roundabout,bike_network,hike_rating,mtb_rating
+  routing.max_visited_nodes: 100000
+  prepare.ch.threads: 1
+server:
+  application_connectors:
+    - type: http
+      port: 47851
+      bind_host: 127.0.0.1
+  admin_connectors:
+    - type: http
+      port: 47852
+      bind_host: 127.0.0.1
+  request_log:
+    appenders: []
+logging:
+  level: WARN

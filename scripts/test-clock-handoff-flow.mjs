@@ -1,0 +1,43 @@
+// Actual renderer adapter with a controlled native boundary. No real alarms are changed.
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import vm from 'node:vm';
+import {stripTypeScriptTypes} from 'node:module';
+import {randomUUID} from 'node:crypto';
+const source=stripTypeScriptTypes(fs.readFileSync(new URL('../apps/app/src/prototype/clock-adapter.ts',import.meta.url),'utf8').replace(/^import .*?;\n/m,'').replace('export function installClockAdapter','function installClockAdapter'));
+let writes=[],store=new Map(),failStorage=false,response={status:'opened',message:'Clock request sent. Check Clock.'},hold,hidden=false;
+const document={addEventListener(){},removeEventListener(){},querySelector(){return null;},documentElement:{dataset:{connectionMode:'live'}},get hidden(){return hidden;}};
+const localStorage={getItem:k=>store.get(k)||null,setItem:(k,v)=>{if(failStorage)throw Error('full');store.set(k,v);}};
+const DailyApps={clockHandoff:async request=>{writes.push(request);if(hold)return new Promise(resolve=>hold=resolve);if(response instanceof Error)throw response;return {...response,action:request.action};}};
+function fixture(simulated=false){
+ class Shell{componentDidMount(){}componentWillUnmount(){}vset(){}}
+ const views={calendar:{render:()=>({})}};
+ vm.runInNewContext(source+'\ninstallClockAdapter(Shell,views,{simulated});',{DailyApps,Shell,views,simulated,document,window:{addEventListener(){},removeEventListener(){}},queueMicrotask,localStorage,crypto:{randomUUID},Date,Intl,console});
+ const shell=new Shell();shell.componentDidMount();const render=()=>views.calendar.render({},{});render().openClock();return {shell,render};
+}
+let f=fixture();let ui=f.render().clock;
+assert.equal(writes.length,0);ui.onTime({target:{value:'25:03'}});f.render().clock.prepare();assert.equal(f.render().clock.review,null);
+ui=f.render().clock;ui.onTime({target:{value:'06:45'}});ui.onLabel({target:{value:'Morning'}});f.render().clock.prepare();
+const first=f.render().clock.review;assert.match(first.text,/06:45/);assert.equal(writes.length,0);
+// Changing a draft invalidates an old review callback.
+f.render().clock.onLabel({target:{value:'Changed'}});await first.confirm();assert.equal(writes.length,0);
+f.render().clock.prepare();const exact=f.render().clock.review;hold=true;const pending=exact.confirm();await exact.confirm();assert.equal(writes.length,1);assert.equal(JSON.parse([...store.values()][0]).status,'opening');
+assert.deepEqual(JSON.parse(JSON.stringify(writes[0])),{action:'set',hour:6,minute:45,label:'Changed',reviewed:true});
+hold({action:'set',status:'opened',message:'Clock request sent. Check Clock.'});hold=null;await pending;assert.equal(JSON.parse([...store.values()][0]).status,'opened');await exact.confirm();assert.equal(writes.length,1);
+// All other standard intents require a fresh review; no broad alarm identity is inferred.
+for(const [name,action] of [['Show alarms','show'],['Snooze','snooze'],['Dismiss','dismiss']]){
+ f.render().clock.actions.find(a=>a.label===name).pick();f.render().clock.prepare();const review=f.render().clock.review;
+ if(action==='snooze'){assert.match(review.text,/requesting 10 minutes/);assert.match(review.text,/default duration/);assert.match(review.text,/all ringing alarms/);}
+ if(action==='dismiss')assert.match(review.text,/one-time alarm is disabled/);
+ await review.confirm();assert.equal(writes.at(-1).action,action);
+}
+assert.equal(writes[2].snoozeMinutes,10);
+response={status:'unavailable',message:'No installed Clock app handles this action'};f.render().clock.prepare();await f.render().clock.review.confirm();assert.match(f.render().clock.message,/No installed Clock/);
+for(const status of ['denied','failed']){response={status,message:`Clock ${status}`};f.render().clock.prepare();await f.render().clock.review.confirm();assert.equal(f.render().clock.message,`Clock ${status}`);}
+response=new Error('lost response');f.render().clock.prepare();await f.render().clock.review.confirm();assert.match(f.render().clock.message,/unknown/);const count=writes.length;
+f.shell.componentWillUnmount();f=fixture();assert.match(f.render().clock.message,/unknown/);assert.equal(writes.length,count,'recreation must not dispatch or retry');
+failStorage=true;f.render().clock.prepare();await f.render().clock.review.confirm();assert.equal(writes.length,count);assert.match(f.render().clock.message,/not sent/);failStorage=false;
+hidden=true;f.render().clock.prepare();await f.render().clock.review.confirm();assert.equal(writes.length,count);hidden=false;
+// Both startup mock and a mode switch during review prevent the native call.
+for(const startupMock of [true,false]){const mock=fixture(startupMock);mock.render().clock.prepare();document.documentElement.dataset.connectionMode='mock';await mock.render().clock.review.confirm();assert.equal(writes.length,count);assert.match(mock.render().clock.message,/simulated/);mock.shell.componentWillUnmount();document.documentElement.dataset.connectionMode='live';}
+console.log('PASS actual Clock adapter flow: review/snapshot, invalid input, duplicate taps, all four operations, no handler, response loss/recreation, storage failure, foreground and mock isolation. Native boundary is synthetic.');

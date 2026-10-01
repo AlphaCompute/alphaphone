@@ -1,0 +1,95 @@
+{
+  "base": "4573712ebf0466daa4dfadaa4482704c209d9b8c",
+  "worktree": "/Users/shawwalters/.codex/worktrees/alphaphone-hosted-loops-20260930",
+  "upstream": {
+    "patch": "0016-hosted-digests.patch",
+    "sha256": "8b90cc901af70619220c52ff35805442c22c63705eeace180a83a0ae51ca6c2e",
+    "files": {
+      "plugins/plugin-workflow/src/db/schema.ts": {
+        "before": "15450422357b86e0a84c53ba84d0d2dd4b50544ecd21c19ac9a763e2e2828357",
+        "after": "d08ce0236aa1a3b4be07104c92e87791b34fade2db0af8d63a36d9de73fd72fb"
+      },
+      "plugins/plugin-workflow/src/db/index.ts": {
+        "before": "dce60c9d540e60ac0daa341ef4a52059cc3baa54a395f1a13f5299af757fe417",
+        "after": "e7d2cbf67b72f33c4f89be5236e3a3fcea88e115bb4310ba306d1fc9761c17ab"
+      },
+      "plugins/plugin-workflow/src/services/embedded-workflow-service.ts": {
+        "before": "dd8b2d40e88826d51d1fd34948ace5b7554212a568e4602ffe15fb1f742d91e0",
+        "after": "4f1622c2317504a49909838e55718b249b46fcd9b9790acf2311c5588abe135f"
+      },
+      "plugins/plugin-workflow/src/routes/workflow-routes.ts": {
+        "before": "ea9eb691e1a532d234d8ab3f0a06b828b7e08517ec90eb0a62bb0df17603a538",
+        "after": "13efb2ee92db9b0de680ffcd5c854a8da4bd8fb7ed3128b0126717b62b7773ae"
+      },
+      "packages/agent/src/triggers/runtime.ts": {
+        "before": "99b59da22ec349afd42f31345d33304dbe31688652b7cf46fa52c2e428d8629a",
+        "after": "449501573d2a7ba0b0a73600b40bc8681076f18b5cd2e1696ed51d4174b4abd4"
+      },
+      "plugins/plugin-workflow/src/services/hosted-digest.ts": {
+        "before": null,
+        "after": "0a4e6637f27c3c04eb81fe9adadbd41081f8e41ac40a877fa3adc9d9b33d45a2"
+      },
+      "plugins/plugin-workflow/vitest.hosted-digests.config.ts": {
+        "before": null,
+        "after": "1938a624429ea42b224cb2deb47d6f528627d05528ba43d2755fd87fe43d07bb"
+      },
+      "plugins/plugin-workflow/__tests__/integration/hosted-digests-http.test.ts": {
+        "before": null,
+        "after": "8eb3972ff57931e79380593980fcaeadbd8f503042dea660a3327cb866e2da8a"
+      }
+    }
+  },
+  "phone": {
+    "patch": "phone-hosted-digests.patch",
+    "sha256": "f124f974ed9ba1fdeb8308b2434c4dc0fde74df0d29df746c37202ed8f395ebf",
+    "files": {
+      "apps/app/src/main.tsx": {
+        "before": "ba132e6ac6c39a3100de677c5b0cc66c5b2febb975646782f1b0807bbff0efeb",
+        "after": "14067839f4f40a8f12ef227a431eb774fbfb8081f8d0d33b8c18716f7d50dcd5"
+      },
+      "apps/app/src/runtime/hosted-digests.ts": {
+        "before": null,
+        "after": "ef3b0f4fd8224de640560346af9dd1a858e79372d4544db0d67f24a934275076"
+      },
+      "apps/app/src/runtime/workflow-protocol.ts": {
+        "before": "b79fdbdf60759acffd9b966586015cd425032cf2c276a5b4a1613df27593ad7a",
+        "after": "f7f12c04eb381828ffe8ad8a6d95ef7c4e301d0befec08ccd01d147fcf987cee"
+      },
+      "apps/app/src/runtime/hosted-digest-ui.tsx": {
+        "before": null,
+        "after": "9dc2f25b4804f3760256276d44a091c154598d8886244b42ea9bba9dd4c1c5d6"
+      },
+      "apps/app/src/prototype/settings-adapter.ts": {
+        "before": "da4e517a71de8b14ce2cac5473ec580b6db7d06a417558a0a6c825711ede073a",
+        "after": "9a1f20781cff9f56453208c13b76f4a2c296354b79895c299b8fcb19a19ee8ac"
+      }
+    }
+  },
+  "evidence": {
+    "hosted-e2e-bounded.log": {
+      "sha256": "9948ece6267c28e7a5175f0e3a1d76834b39bcf658ce908e8bb5f9e3a00c6d4b",
+      "result": "pass"
+    },
+    "hosted-e2e-final.log": {
+      "sha256": "5b85dfbdbbaa5709c9ff344310960bace8c70e41134d0931fee625f351d1a776",
+      "result": "pass"
+    },
+    "client-outbox.log": {
+      "sha256": "39bb06149c6f9934b4652f75156f597021460b4faffeb4cda6bafd17e5e543b0",
+      "result": "pass"
+    },
+    "phone-typecheck-final.log": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "result": "pass"
+    },
+    "agent-typecheck-final.log": {
+      "sha256": "70685b4df7789c854b9e1ceab7d78a6d0f9a0831c11eb0010b7b5fdbe0e50c39",
+      "result": "pass"
+    },
+    "workflow-typecheck-final.log": {
+      "sha256": "1e7364545b505adc6ef70012ce70f69a90a7eb05ebb0a0886a63cceb701bcb27",
+      "result": "pass"
+    }
+  },
+  "status": "frozen; source and synthetic E2E qualified; live/device/OS notification gates remain"
+}
