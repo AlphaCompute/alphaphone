@@ -508,12 +508,14 @@ export const connectionController = {
       const reply = selected.kind === 'cloud' ? await selected.cloud.send(selected.agentId, id, message.text, options) : await selected.remote.send(id, message.text, options);
       requestSignal.throwIfAborted();
       if (generation !== epoch) throw new Error('The connection changed.');
+      let responseFailure: Error | undefined;
       if (('failureKind' in reply && reply.failureKind) || ('terminalFailure' in reply && reply.terminalFailure)) {
         const terminal = 'terminalFailure' in reply && reply.terminalFailure;
         const rateLimited = ('failureKind' in reply && reply.failureKind === 'rate_limited') ||
           (terminal && typeof terminal === 'object' && 'kind' in terminal && terminal.kind === 'rate_limited');
-        if (rateLimited) throw new AlphaClientError('transport-failed', 'The agent provider is rate-limiting requests. Wait before sending again. Alpha Phone did not retry your message.');
-        throw new Error('The agent could not complete this response.');
+        responseFailure = rateLimited
+          ? new AlphaClientError('transport-failed', 'The agent provider is rate-limiting requests. Wait before sending again. Alpha Phone did not retry your message.')
+          : new Error('The agent could not complete this response.');
       }
       if (typeof reply.text !== 'string') throw new Error('The agent returned an invalid response.');
       let proposals: ActionProposal[] | undefined;
@@ -522,7 +524,13 @@ export const connectionController = {
         catch { update({ message: 'Reply received. Phone action proposals could not be checked; use action history.' }); }
       }
       requestSignal.throwIfAborted();
-      return { text: reply.text, ...(proposals ? { proposals } : {}) };
+      if (generation !== epoch || selected !== active || state.session?.sessionId !== session.sessionId) throw new Error('The connection changed.');
+      // A failed reply can follow a durably recorded proposal. Recover only the
+      // existing identity/context-bound review; never retry chat or execute it.
+      if (responseFailure && !proposals?.length) throw responseFailure;
+      return { text: responseFailure
+        ? `${responseFailure.message} Pending phone actions are available for separate review. Nothing has been approved or performed automatically.`
+        : reply.text, ...(proposals ? { proposals } : {}) };
     } catch (error) {
       if (error && typeof error === 'object' && 'status' in error && error.status === 429) {
         throw new AlphaClientError('transport-failed', 'The agent provider is rate-limiting requests. Wait before sending again. Alpha Phone did not retry your message.');
