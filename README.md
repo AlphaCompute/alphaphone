@@ -67,6 +67,11 @@ recognize the usual macOS Homebrew JDK/Android SDK locations. The Gradle 8.13
 wrapper is hash-pinned. No Eliza root dependency installation or package
 publication is required for this shell.
 
+Before the first Android build, reproduce the pinned speech runtime and model
+assets using [the local speech build instructions](scripts/local-speech/README.md).
+These generated inputs are intentionally absent from Git. Both ARM64 and x86_64
+runtimes are required; Android CI provisions and validates them on a clean checkout.
+
 ```sh
 npm run android:build
 # Signed debug APKs and unsigned release APKs are in artifacts/.

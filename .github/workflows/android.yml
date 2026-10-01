@@ -10,8 +10,8 @@ concurrency:
   cancel-in-progress: true
 jobs:
   build-and-smoke:
-    runs-on: ubuntu-latest
-    timeout-minutes: 40
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
         with:
@@ -28,10 +28,41 @@ jobs:
         with:
           packages: platform-tools
           log-accepted-android-sdk-licenses: false
-      - run: sdkmanager 'platforms;android-36' 'build-tools;36.0.0'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install pinned Android native toolchain
+        run: |
+          sdkmanager 'platforms;android-36' 'build-tools;36.0.0' 'ndk;28.2.13676358' 'cmake;3.22.1'
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/28.2.13676358" >> "$GITHUB_ENV"
+          echo "$ANDROID_HOME/cmake/3.22.1/bin" >> "$GITHUB_PATH"
       - run: npm ci
       - run: npm run verify
       - run: node --test vendor/eliza/packages/os/scripts/__tests__/stage-launcher-overlay.node.test.ts
+      # Cache only acquisition inputs. Every hit is size/hash verified; generated
+      # AARs, extracted sources and models are rebuilt in this clean job.
+      - uses: actions/cache@v4
+        with:
+          path: scripts/local-speech/downloads
+          key: speech-downloads-${{ runner.os }}-${{ hashFiles('scripts/local-speech/download-manifest.json') }}
+      - name: Acquire verified speech source, models and license references
+        timeout-minutes: 15
+        run: |
+          python3 scripts/local-speech/acquire-downloads.py
+          python3 scripts/local-speech/make-lexicon.py
+      - name: Build and qualify both no-eSpeak runtime ABIs
+        timeout-minutes: 65
+        run: |
+          for abi in arm64-v8a x86_64; do
+            python3 scripts/local-speech/build-no-espeak.py --abi "$abi" --ndk "$ANDROID_NDK_HOME" --jobs 2
+            python3 scripts/local-speech/strip-runtime.py --abi "$abi" --ndk "$ANDROID_NDK_HOME"
+          done
+          python3 scripts/local-speech/verify-source.py
+      - name: Assemble and verify speech APK inputs
+        run: |
+          python3 scripts/local-speech/prepare-assets.py
+          python3 scripts/local-speech/assemble-runtime.py
+          python3 scripts/local-speech/install-generated.py --repository "$GITHUB_WORKSPACE"
       - run: npm run android:build
       - run: npm run aosp:stage -- --apk artifacts/launcher-debug.apk --development
       - name: Enable KVM
@@ -56,4 +87,9 @@ jobs:
             artifacts/
             test-results/
             android/app/build/reports/
+            scripts/local-speech/build-*/build.log
+            scripts/local-speech/build-*/qualification*.json
+            scripts/local-speech/generated/lexicon-provenance.json
+            android/local-speech/runtime-manifest.json
+            android/local-speech/src/main/assets/local-speech/v1/manifest.json
           retention-days: 14
