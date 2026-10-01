@@ -7,7 +7,7 @@ const states = {
 };
 for (const theme of ['light','dark']) for(const [view,subs] of Object.entries(states)) {
   test(`design ${theme}: ${view} states`,async({page},info)=>{
-    const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));
+    const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));page.on('console',message=>{if(message.type()==='error')errors.push(message.text());});
     for(const sub of subs){
       await page.goto(`/?mode=mock&theme=${theme}&start=${view}${sub?':'+sub:''}`);
       await expect(page.locator('.mock-mode-banner')).toBeVisible();
@@ -22,7 +22,7 @@ for (const theme of ['light','dark']) for(const [view,subs] of Object.entries(st
   });
 }
 for(const theme of ['light','dark']) test(`design ${theme}: shell and conversation states`,async({page},info)=>{
-  const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));
+  const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));page.on('console',message=>{if(message.type()==='error')errors.push(message.text());});
   for(const state of ['home','boot','lock','shade','sheet','full','voice','heads']){
     await page.goto(`/?mode=mock&theme=${theme}&start=${state}`);
     await expect(page.locator('.mock-mode-banner')).toBeVisible();

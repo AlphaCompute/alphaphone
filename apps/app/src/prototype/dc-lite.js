@@ -17,6 +17,7 @@ import templateHtml from "./template.html?raw";
   }
   function interp(str, scope) { return str.replace(HOLE, function (_, p) { var v = lookup(p, scope); return v == null ? "" : String(v); }); }
   function camel(k) { if (k.indexOf("--") === 0) return k; return k.replace(/^-(webkit|moz|ms)-/, function (_, v) { return v.charAt(0).toUpperCase() + v.slice(1) + "-"; }).replace(/-([a-z])/g, function (_, c) { return c.toUpperCase(); }); }
+  const boxStyle = document.createElement("span").style;
   function parseStyle(s) {
     var o = {};
     // Native captures use data URLs, whose semicolon belongs inside url(...).
@@ -36,7 +37,17 @@ import templateHtml from "./template.html?raw";
     declarations.forEach(function (decl) {
       var i = decl.indexOf(":"); if (i < 0) return;
       var k = decl.slice(0, i).trim(); var v = decl.slice(i + 1).trim();
-      if (k && v) o[camel(k)] = v;
+      if (k && v) {
+        // React must not alternate shorthand padding/margin with longhands on
+        // reused template nodes. Expand valid box shorthands in source order.
+        if (k === "padding" || k === "margin") {
+          boxStyle.cssText = ""; boxStyle.setProperty(k, v);
+          const sides = ["top", "right", "bottom", "left"];
+          const values = sides.map(side => boxStyle.getPropertyValue(k + "-" + side));
+          if (values.every(Boolean)) { sides.forEach((side, index) => { o[camel(k + "-" + side)] = values[index]; }); return; }
+        }
+        o[camel(k)] = v;
+      }
     });
     return o;
   }
@@ -54,6 +65,10 @@ import templateHtml from "./template.html?raw";
       else if (n === "for") n = "htmlFor";
       else if (EVENTS[n]) n = EVENTS[n];
       else if (n === "viewbox") n = "viewBox";
+      else if (n === "tabindex") n = "tabIndex";
+      else if (n === "maxlength") n = "maxLength";
+      else if (n === "minlength") n = "minLength";
+      else if (n === "readonly") n = "readOnly";
       if (n === "style") { p.style = typeof val === "string" ? parseStyle(val) : val; continue; }
       if (n === "value" && el.tagName.toLowerCase() === "input") { p.value = val == null ? "" : val; continue; }
       p[n] = val;

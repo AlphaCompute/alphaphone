@@ -90,8 +90,8 @@ Theme selection previously changed only transient component state. The normal ap
 
 ### Remaining execution checklist
 
-1. Complete final frozen-source repository and browser verification, preserving earlier failures and corrections.
-2. Confirm all baseline objects and the browser follow-up commit are present on `origin/main`, then remove the temporary transfer branch.
+1. Completed final frozen-source repository and browser verification; earlier failures and corrections are preserved.
+2. Baseline and implementation history are now present on `origin/main`; final renderer follow-up and transfer-branch cleanup are recorded below.
 3. Read back the Browser MVP workflow result at the pushed SHA; do not substitute a local pass for hosted CI.
 4. Keep the listed Cloud, provider, speech, native-device and user-acceptance gates open. No Android build, emulator campaign or AOSP image work was initiated by this browser pass.
 
@@ -108,3 +108,9 @@ Implementation commit: `9802f03` (after baseline `611704f`). Node **24.15.0**. S
 - Direct baseline pushes hit HTTP408. Seventeen incremental object transfers succeeded on a temporary branch without rewriting `main` or altering working files. The normal baseline and implementation commit history is retained.
 
 The remaining external/native acceptance list above is unchanged. This delivery closes the identified browser defects and registers regression coverage; it does **not** certify the complete MVP or silently waive service, speech, hardware or user gates.
+
+### Console-clean follow-up
+
+The template renderer now normalizes React attribute names and expands padding/margin shorthand in declaration order to avoid reused-node style conflicts. The design suite now fails on console errors as well as page exceptions. After this correction, `npm run verify` passed all **21 checks**, typecheck and production build; the full browser suite passed **40/40 in 3.2 minutes**. Source fingerprint: `44b269cea60eea0c63a410635ffe59928f81c4c3fe9037ea605a52ccba8b343f` across 287 files, using the documented mapping algorithm in `test-results/browser-source-fingerprint-console-clean.json`. Follow-up logs are in `test-results/browser-campaign-logs/*console-clean.log`.
+
+GitHub contains the exact original baseline commit `611704fdd7e7ec74ad771dd0176bac9ca659877a`, assembled from already-uploaded Git objects after HTTP transport timeouts. Main advanced without force to the original baseline, then normal Git push delivered `9802f03` and `6ea5abb`. No source history was replaced.
