@@ -40,8 +40,14 @@ for (const name of [
   "result.json",
   "failure-activity.txt",
   "failure-crashes.txt",
+  "failure-power.txt",
+  "failure-window-policy.txt",
+  "failure-display.txt",
+  "failure-battery.txt",
   ...["standalone", "launcher"].flatMap((variant) => [
     `${variant}-instrumentation.txt`,
+    `${variant}-instrumentation-stderr.txt`,
+    `${variant}-instrumentation-command.json`,
     `${variant}-cases.json`,
     `${variant}-activity.txt`,
     `${variant}-hierarchy.xml`,
@@ -59,18 +65,26 @@ try {
       "-r",
       archive ? path.join(archive, `${variant}-androidTest.apk`) : `android/app/build/outputs/apk/androidTest/${variant}/debug/app-${variant}-debug-androidTest.apk`,
     );
-    const instrumentation = run(
-      "shell",
-      "am",
-      "instrument",
-      "-w",
-      "-r",
-      `${identity.appId}.test/androidx.test.runner.AndroidJUnitRunner`,
-    );
-    fs.writeFileSync(
-      `${output}/${variant}-instrumentation.txt`,
-      instrumentation,
-    );
+    let instrumentation;
+    const instrumentationStarted = Date.now();
+    try {
+      instrumentation = run(
+        "shell", "am", "instrument", "-w", "-r",
+        `${identity.appId}.test/androidx.test.runner.AndroidJUnitRunner`,
+      );
+      fs.writeFileSync(`${output}/${variant}-instrumentation.txt`, instrumentation);
+    } catch (error) {
+      // execFileSync carries complete partial output even when the command times
+      // out. Preserve it before rethrowing; never turn a timeout into a pass.
+      fs.writeFileSync(`${output}/${variant}-instrumentation.txt`, error.stdout ?? "");
+      fs.writeFileSync(`${output}/${variant}-instrumentation-stderr.txt`, error.stderr ?? "");
+      fs.writeFileSync(`${output}/${variant}-instrumentation-command.json`, JSON.stringify({
+        variant, deadlineMs: 600000, elapsedMs: Date.now() - instrumentationStarted,
+        code: error.code ?? null, status: error.status ?? null, signal: error.signal ?? null,
+        completed: false,
+      }, null, 2) + "\n");
+      throw error;
+    }
     const terminalCases = [];
     let statusBlock = "";
     for (const line of instrumentation.split("\n")) {
@@ -177,20 +191,17 @@ try {
   }
 } catch (error) {
   failure = error;
-  try {
-    fs.writeFileSync(
-      path.join(output, "failure-activity.txt"),
-      run("shell", "dumpsys", "activity", "activities"),
-    );
-    fs.writeFileSync(
-      path.join(output, "failure-crashes.txt"),
-      run("logcat", "-d", "-b", "crash"),
-    );
-  } catch (captureError) {
-    console.error(
-      "Could not collect failure diagnostics:",
-      captureError.message,
-    );
+  const diagnostics = {
+    "failure-activity.txt": ["shell", "dumpsys", "activity", "activities"],
+    "failure-crashes.txt": ["logcat", "-d", "-b", "crash"],
+    "failure-power.txt": ["shell", "dumpsys", "power"],
+    "failure-window-policy.txt": ["shell", "dumpsys", "window", "policy"],
+    "failure-display.txt": ["shell", "dumpsys", "display"],
+    "failure-battery.txt": ["shell", "dumpsys", "battery"],
+  };
+  for (const [name, args] of Object.entries(diagnostics)) {
+    try { fs.writeFileSync(path.join(output, name), run(...args)); }
+    catch (captureError) { console.error(`Could not collect ${name}:`, captureError.message); }
   }
 } finally {
   if (original) {

@@ -62,6 +62,22 @@ if (holder !== "com.android.launcher3")
   throw new Error(`Fixture HOME is not ready: ${holder}`);
 // A booted headless emulator may still be asleep; IME requests then have no
 // served window even though the WebView can execute JavaScript.
+// This entire AVD is a disposable CI fixture. A plugged-only stay-awake flag
+// does not establish that Android currently considers the emulator charging.
+// Pin its current user's idle timeout for this bounded 40-minute smoke job.
+const fixtureUser = run("shell", "am", "get-current-user").trim();
+if (!/^\d+$/.test(fixtureUser)) throw new Error("Unknown CI fixture user");
+const priorTimeout = run("shell", "settings", "--user", fixtureUser, "get", "system", "screen_off_timeout").trim();
+if (run("shell", "am", "get-current-user").trim() !== fixtureUser)
+  throw new Error("CI fixture user changed before idle configuration");
+run("shell", "settings", "--user", fixtureUser, "put", "system", "screen_off_timeout", "2400000");
+const installedTimeout = run("shell", "settings", "--user", fixtureUser, "get", "system", "screen_off_timeout").trim();
+if (installedTimeout !== "2400000" || run("shell", "am", "get-current-user").trim() !== fixtureUser)
+  throw new Error("CI fixture idle configuration not confirmed");
+fs.mkdirSync("test-results/android-fixture", { recursive: true });
+fs.writeFileSync("test-results/android-fixture/idle-policy.json", JSON.stringify({
+  serial, fixtureUser, priorTimeout, installedTimeout, disposableGithubActionsAvd: true,
+}, null, 2) + "\n");
 run("shell", "svc", "power", "stayon", "true");
 run("shell", "input", "keyevent", "KEYCODE_WAKEUP");
 run("shell", "wm", "dismiss-keyguard");
