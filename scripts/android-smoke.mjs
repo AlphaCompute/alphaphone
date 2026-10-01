@@ -1,4 +1,5 @@
 import { requireFixtureDisplay } from "./ci-emulator-display.mjs";
+import { candidate as qualifiedProvider } from "./prepare-ci-webview.mjs";
 import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
@@ -57,6 +58,24 @@ for (const name of [
 ]) {
   fs.rmSync(path.join(output, name), { force: true });
 }
+const providerSelectors = [
+  `${identity.appId}.BrowserIsolatedReadingInstrumentedTest#pageWorldTamperingCannotForgeSafeReading`,
+  `${identity.appId}.BrowserReadingNavigationInstrumentedTest#delayedSameOriginAndReloadReadyCannotAdoptOldDocument`,
+];
+function providerIdentity() {
+  const provision = JSON.parse(fs.readFileSync("test-results/ci-webview-provider/result.json"));
+  if (provision.status !== "PROVISIONED_RUNTIME_QUALIFICATION_PENDING" ||
+      Object.keys(qualifiedProvider).some(key => provision.candidate?.[key] !== qualifiedProvider[key]))
+    throw new Error("Exact pinned provider provisioning evidence required");
+  const selected = run("shell", "dumpsys", "webviewupdate");
+  const providerPath = run("shell", "pm", "path", qualifiedProvider.package).trim();
+  if (!selected.includes(`Current WebView package (name, version): (${qualifiedProvider.package}, ${qualifiedProvider.version})`) ||
+      !/^package:\/data\/app\/[A-Za-z0-9_./+=~-]+\.apk$/.test(providerPath))
+    throw new Error("Qualified provider identity changed");
+  const apkSha256 = run("shell", "sha256sum", providerPath.slice(8)).trim().split(/\s+/)[0];
+  if (apkSha256 !== qualifiedProvider.apkSha256) throw new Error("Qualified provider bytes changed");
+  return { package: qualifiedProvider.package, version: qualifiedProvider.version, apkSha256 };
+}
 let failure;
 try {
   for (const variant of ["standalone", "launcher"]) {
@@ -72,6 +91,53 @@ try {
         observations.push(state);
         fs.writeFileSync(`${output}/${variant}-display-admission.json`, JSON.stringify({ serial, observations }, null, 2) + "\n");
       } });
+    }
+    let providerQualification;
+    if (process.env.GITHUB_ACTIONS === "true") {
+      if (!archive) throw new Error("Hosted provider qualification requires immutable APK bundle");
+      const evidence = path.join(output, `${variant}-provider-qualification`);
+      fs.mkdirSync(evidence); // Never overwrite a previous qualification result.
+      const before = providerIdentity();
+      fs.writeFileSync(path.join(evidence, "provider-before.json"), JSON.stringify(before, null, 2));
+      const classes = providerSelectors.map(selector => selector.split("#")[0]).join(",");
+      const args = ["shell", "am", "instrument", "-w", "-r", "-e", "class", classes,
+        "-e", "browserIsolatedReading", "1", `${identity.appId}.test/androidx.test.runner.AndroidJUnitRunner`];
+      const started = Date.now();
+      let text;
+      try {
+        text = run(...args);
+        fs.writeFileSync(path.join(evidence, "instrumentation.txt"), text);
+        fs.writeFileSync(path.join(evidence, "command.json"), JSON.stringify({ args, deadlineMs: 600000, elapsedMs: Date.now() - started, completed: true }, null, 2));
+      } catch (error) {
+        fs.writeFileSync(path.join(evidence, "instrumentation.txt"), error.stdout ?? "");
+        fs.writeFileSync(path.join(evidence, "stderr.txt"), error.stderr ?? "");
+        fs.writeFileSync(path.join(evidence, "command.json"), JSON.stringify({ args, deadlineMs: 600000, elapsedMs: Date.now() - started, completed: false, code: error.code ?? null, status: error.status ?? null }, null, 2));
+        throw error; // Timed-out instrumentation is not safe to overlap with another run.
+      }
+      const cases = []; let block = "";
+      for (const line of text.split("\n")) {
+        const code = /^INSTRUMENTATION_STATUS_CODE: (-?\d+)\s*$/.exec(line);
+        if (!code) { block += line + "\n"; continue; }
+        const cls = /^INSTRUMENTATION_STATUS: class=(.+)$/m.exec(block)?.[1];
+        const method = /^INSTRUMENTATION_STATUS: test=(.+)$/m.exec(block)?.[1];
+        if (cls && method && Number(code[1]) <= 0) cases.push({ selector: `${cls}#${method}`, code: Number(code[1]) });
+        block = "";
+      }
+      const reportedCount = Number(/OK \((\d+) tests?\)/.exec(text)?.[1]);
+      const passed = reportedCount === providerSelectors.length && cases.length === providerSelectors.length &&
+        providerSelectors.every(selector => cases.filter(row => row.selector === selector && row.code === 0).length === 1) &&
+        !/FAILURES|INSTRUMENTATION_FAILED/.test(text);
+      providerQualification = { passed: false, casesPassed: passed, reportedCount, expectedSelectors: providerSelectors, cases,
+        artifactHashes, providerBefore: before };
+      fs.writeFileSync(path.join(evidence, "result.json"), JSON.stringify(providerQualification, null, 2));
+      const after = providerIdentity();
+      if (JSON.stringify(after) !== JSON.stringify(before)) throw new Error("Provider changed during actual native qualification");
+      providerQualification.providerAfter = after;
+      providerQualification.passed = passed;
+      fs.writeFileSync(path.join(evidence, "result.json"), JSON.stringify(providerQualification, null, 2));
+      if (!passed) instrumentationFailures.push(`${variant} provider qualification`);
+      // Qualification can change Activity state; admit the full suite separately.
+      await requireFixtureDisplay(run, { serial, record: state => fs.appendFileSync(path.join(evidence, "post-display.jsonl"), JSON.stringify(state) + "\n") });
     }
     let instrumentation;
     const instrumentationStarted = Date.now();
@@ -192,6 +258,7 @@ try {
       instrumentation: instrumentationPassed ? "passed" : "failed",
       testCounts,
       countsVerified,
+      ...(providerQualification ? { providerQualification } : {}),
       homeRole: variant === "launcher",
       resumed: true,
       rendered: true,
