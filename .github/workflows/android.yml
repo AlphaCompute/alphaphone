@@ -65,6 +65,52 @@ jobs:
           python3 scripts/local-speech/install-generated.py --repository "$GITHUB_WORKSPACE"
       - run: npm run android:build
       - run: npm run aosp:stage -- --apk artifacts/launcher-debug.apk --development
+      - name: Preserve artifacts and release owned speech build intermediates
+        run: |
+          df -h "$GITHUB_WORKSPACE" "$ANDROID_HOME" "$HOME"
+          python3 - <<'PYTHON'
+          from pathlib import Path
+          import hashlib, json, os, shutil
+          root = Path.cwd()
+          speech = root / 'scripts/local-speech'
+          evidence = root / 'test-results/emulator-disk-preflight'
+          evidence.mkdir(parents=True, exist_ok=True)
+          def digest(path):
+              value = hashlib.sha256()
+              with path.open('rb') as stream:
+                  for block in iter(lambda: stream.read(1024 * 1024), b''):
+                      value.update(block)
+              return value.hexdigest()
+          retained = []
+          for folder in ('artifacts', 'android/app/build/outputs/apk', 'android/local-speech/libs', 'android/local-speech/src/main/assets'):
+              retained.extend(p for p in (root / folder).rglob('*') if p.is_file())
+          retained.append(root / 'android/local-speech/runtime-manifest.json')
+          assert retained and all(p.is_file() and not p.is_symlink() for p in retained)
+          hashes = {str(p.relative_to(root)): digest(p) for p in retained}
+          for abi in ('arm64-v8a', 'x86_64'):
+              build = speech / ('build-' + abi)
+              for source in [build / 'build.log', *build.glob('qualification*.json')]:
+                  assert source.is_file() and not source.is_symlink()
+                  dest = evidence / abi / source.name
+                  dest.parent.mkdir(parents=True, exist_ok=True)
+                  shutil.copyfile(source, dest)
+                  assert digest(source) == digest(dest)
+                  hashes[str(dest.relative_to(root))] = digest(dest)
+          paths = ['build-arm64-v8a', 'build-x86_64', 'native-source', 'models', 'onnxruntime', 'assets-ready', 'source']
+          state = {'beforeFreeBytes': shutil.disk_usage(root).free, 'removed': paths, 'retainedHashes': hashes}
+          for relative in paths:
+              target = speech / relative
+              assert target.is_dir() and not target.is_symlink(), str(target)
+              shutil.rmtree(target)
+          assert all(digest(root / name) == expected for name, expected in hashes.items())
+          state['retainedReadbackPassed'] = True
+          state['freeBytes'] = {name: shutil.disk_usage(path).free for name, path in {'workspace': root, 'androidSdk': Path(os.environ['ANDROID_HOME']), 'avdHome': Path.home()}.items()}
+          state['requiredFreeBytes'] = 8 * 1024 ** 3
+          state['passed'] = min(state['freeBytes'].values()) >= state['requiredFreeBytes']
+          (evidence / 'result.json').write_text(json.dumps(state, indent=2) + '\n')
+          print(json.dumps({k: v for k, v in state.items() if k != 'retainedHashes'}, indent=2))
+          assert state['passed'], 'Insufficient capacity for system image, 2 GiB AVD and reports; see disk preflight evidence'
+          PYTHON
       - name: Enable KVM
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
@@ -75,6 +121,7 @@ jobs:
           api-level: 35
           target: default
           arch: x86_64
+          disk-size: 2048M
           disable-animations: true
           script: |
             ANDROID_SERIAL=emulator-5554 node scripts/prepare-ci-emulator.mjs
