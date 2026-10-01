@@ -4,7 +4,7 @@
 
 This review follows the user's instruction to review the entire MVP and design, synchronize local code, complete development in the browser, and skip Android builds. The current MVP scope report governs feature inclusion; the prototype governs visual intent. Native builds, emulator HOME behavior, AOSP boots, live integrations, physical hardware and user acceptance remain distinct evidence classes.
 
-The baseline checkout contained 979 changed/new files, including the renderer, native bridges, design assets, runtime patches and historical verification records. These were preserved in commit `611704f`. Generated artifacts, dependency directories, credentials and local Android Studio state are excluded. The configured origin is now `https://github.com/AlphaCompute/alphaphone.git`; remote confirmation is recorded below after push completion. The pinned upstream checkout and pristine app baseline are unchanged.
+The baseline checkout contained 979 changed/new files, including the renderer, native bridges, design assets, runtime patches and historical verification records. These were preserved in commit `611704f`. Generated artifacts, dependency directories, credentials and local Android Studio state are excluded. The configured origin is now `https://github.com/AlphaCompute/alphaphone.git`; remote confirmation is recorded in the final delivery record below. The pinned upstream checkout and pristine app baseline are unchanged.
 
 Initial `npm run verify` passed (TypeScript, seven repository tests, production web bundle). Historical Build122 and canonical35 results are described in `current-acceptance-ledger.md`; those results have not been repeated by this browser review. Older PRD sections describe the original foundation and are not a current feature inventory.
 
@@ -47,15 +47,15 @@ Confirmed browser defects before repair:
 
 | Item | Status | Evidence / next action |
 | --- | --- | --- |
-| Preserve and commit all intended existing source/assets | Implemented | Baseline commit `611704f`; remote push confirmation pending. |
-| Desktop and mock viewport repairs | Implemented; verification running | `main.tsx`, `prototype/phone.css`; mobile/desktop bounding checks and screenshots. |
-| Browser capability messaging | Implemented; verification running | Reminder/Calendar absent-plugin guards; existing native fixture paths remain supported. |
-| Notes empty/search state | Implemented; verification running | Explicit model/template empty text. |
-| Browser Notes import/export | Implemented; verification running | Real file picker, bounded UTF-8 decoding, object-URL download, exact-byte browser test. |
-| Reproducible browser suite | Implemented; first run in progress | Pinned Playwright dependency; `npm run test:browser`; tests and screenshots under `test-results`. |
-| Entire nested design-state review | In progress | Top-level production routes reviewed; nested reference/state and settings audit remains. |
-| Broader controller/adapter suites | Pending | Existing scripts need inventory, browser execution and registration in reproducible commands. |
-| Current-source final verification and remote readback | Pending | Run after final changes, commit and push, compare remote SHA. |
+| Preserve and commit all intended existing source/assets | Implemented | Baseline commit `611704f`; all seventeen object-transfer batches uploaded successfully. |
+| Desktop and mock viewport repairs | Verified locally | `main.tsx`, `prototype/phone.css`; mobile/desktop bounding checks and screenshots. |
+| Browser capability messaging | Verified locally | Reminder/Calendar absent-plugin guards; existing native fixture paths remain supported. |
+| Notes empty/search state | Verified locally | Explicit model/template empty text. |
+| Browser Notes import/export | Verified locally | Real file picker, bounded UTF-8 decoding, object-URL download, exact-byte browser test. |
+| Reproducible browser suite | Verified locally | Pinned Playwright dependency; `npm run test:browser`; tests and screenshots under `test-results`. |
+| Entire enabled nested design-state review | Verified locally | 102 light/dark app and shell fixture states, plus 60 production route/theme/width combinations; light/dark contact sheets visually inspected. Deferred reference features remain disabled. |
+| Broader controller/adapter suites | Verified locally | Fourteen adapter contracts added to the seven existing checks; five rendered adapter campaigns added to the browser suite. |
+| Current-source final verification and remote readback | Local verification passed; delivery record below | Frozen source `cf9a7e4f…` is unchanged across `npm run verify` and all 40 browser tests. |
 | Cloud/enclave/provider integration | Unaccepted | Needs deployed configuration, actual account authorization and service evidence. |
 | Speech/native/device/AOSP/user acceptance | Outside this browser execution pass | Keep open in current acceptance ledger; Android builds explicitly skipped. |
 
@@ -94,3 +94,17 @@ Theme selection previously changed only transient component state. The normal ap
 2. Confirm all baseline objects and the browser follow-up commit are present on `origin/main`, then remove the temporary transfer branch.
 3. Read back the Browser MVP workflow result at the pushed SHA; do not substitute a local pass for hosted CI.
 4. Keep the listed Cloud, provider, speech, native-device and user-acceptance gates open. No Android build, emulator campaign or AOSP image work was initiated by this browser pass.
+
+
+## Final local verification and delivery record
+
+Implementation commit: `9802f03` (after baseline `611704f`). Node **24.15.0**. Source fingerprint **`cf9a7e4f28c2326a4f164cfebe49f9aa6bb1bdb88d4d429a053a2d1ac82c62d2`**, covering 287 source/config/test/assets files, unchanged when rehashed after verification.
+
+- `npm run verify`: **passed** — TypeScript, **21/21** repository and adapter checks, production web build.
+- `npm run test:browser`: **passed — 40/40**, Chromium, 4.3 minutes. This includes 60 live/offline route/theme/viewport combinations, 102 disclosed app/shell mock-state captures, five rendered adapter campaigns, Notes CRUD/search/reload, exact UTF-8 file round-trip, invalid-file/cancellation handling, mock exit, modal focus/Back, explicit manual-recording selection and theme persistence/isolation.
+- Screenshots and HTML report: `test-results/browser/` and `test-results/browser-report/`. Desktop final visual: `test-results/browser-desktop-final.png`. Light/dark contact sheets were inspected; recordings and screenshots demonstrate presentation, not live providers.
+- Logs/fingerprint: `test-results/browser-campaign-logs/{verify-frozen.log,browser-frozen.log}` and `test-results/browser-source-fingerprint.json`. Earlier failing test logs are retained in the campaign-log folder. The final run used frozen source; earlier runs during source edits were not accepted as final evidence.
+- Non-failing build warnings remain for the large renderer bundle and duplicate static/dynamic Capacitor imports. Browser dev output reports duplicate plugin registrations from the existing multi-adapter registration pattern. Final tests report no unhandled-rejection messages. `npm audit` reports three moderate transitive native CLI dependency findings; no forced CLI downgrade was applied during this browser-only pass.
+- Direct baseline pushes hit HTTP408. Seventeen incremental object transfers succeeded on a temporary branch without rewriting `main` or altering working files. The normal baseline and implementation commit history is retained.
+
+The remaining external/native acceptance list above is unchanged. This delivery closes the identified browser defects and registers regression coverage; it does **not** certify the complete MVP or silently waive service, speech, hardware or user gates.

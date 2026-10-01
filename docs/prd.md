@@ -1,6 +1,6 @@
 # Alpha Phone — working PRD
 
-Version: 0.1, 2026-09-29. Derived from the supplied interactive prototype, explicit two-repository request, and the reviewed upstream Alpha issues. Product sign-off is still needed for final scope and hardware. See `sources.md` for provenance.
+Version: 0.2, 2026-10-01. Derived from the supplied interactive prototype, explicit two-repository request, and the reviewed upstream Alpha issues. Product sign-off is still needed for final scope and hardware. See `sources.md` for provenance. The current MVP scope in `mvp-scope-and-gap-report.md` supersedes the original foundation priorities below; `mvp-browser-review.md` records the October 1 implementation and browser audit.
 
 ## Outcome
 
@@ -20,14 +20,14 @@ The prototype uses white/black surfaces, electric blue `#0000FF`, Fraunces displ
 
 | ID | Requirement | Priority / acceptance |
 | --- | --- | --- |
-| AP-01 | Distinct branded home, app grid and assistant entry; independent package/storage identity | P0; current setup provides local home/apps and an explicitly unconnected composer |
+| AP-01 | Distinct branded home, app grid and assistant entry; independent package/storage identity | P0; branded shell and connection-aware composer are implemented; provider acceptance remains separately tracked |
 | AP-02 | Standalone and HOME APKs from one source; offline shell; stock settings/recovery accessible | P0; inspect final APKs, install both modes, open apps, return HOME repeatedly |
 | AP-03 | Existing Eliza sign-in/pairing with approved Alpha routing adapter, owner-scoped credentials | P0; real-device wrong-owner/origin, expired/reused token and callback tests |
 | AP-04 | Cloud-only execution, honest offline state and reconnect/history restoration | P0; no local model payloads, no duplicate messages or writes after reconnect; no inference-available claim without health evidence |
 | AP-05 | Pill, input, overlay and full assistant modes; keyboard and navigation continuity | P0; draft/scroll state survives resize and Back/Home; no keyboard obstruction |
 | AP-06 | Voice entry and cancellation with explicit mic state and typing fallback | P0; device audio tests; hardware-side-key remapping gated by platform support |
 | AP-07 | Daily overview with real agenda, attention items and briefs | P1; no placeholder results; loading/empty/stale/error states; authority and timestamps visible |
-| AP-08 | Phone, messages and contacts | P1; first launch genuine native apps, then integrate only approved role/provider bridges; SMS/dialer/assistant roles independently requested and tested; emergency calls remain system-owned |
+| AP-08 | Phone, messages and contacts | Deferred by the current MVP profile. Source retained, app entry/action paths disabled; emergency facilities remain system-owned. |
 | AP-09 | Inbox and calendar | P1; reuse Google Workspace/personal-assistant contracts; per-account isolation, consent, write confirmation, exact-once results and revoke |
 | AP-10 | Browser, camera, photos, maps, notes and files | P1; explicit Android permissions, cancellation and unsupported states; native handoff before custom replacements |
 | AP-11 | Workflow library and run history | P1; inspect, start, pause and cancel with bounded permissions and real receipts; not hard-coded prototype playback |
@@ -46,6 +46,10 @@ The source prototype has 14 app views. Their existence does not authorize claimi
 - No new identity provider; use upstream pairing. No real account credentials in the prototype. No payment processing or custody in this bootstrap.
 - Required decisions: selected hardware/Android release; managed agent endpoint and routing authority; allowed native roles; initial providers; voice privacy; wallet scope; support and rollout owners.
 
-## Current implemented versus planned
+## Current implemented versus accepted
 
-Implemented: separate render source; offline fonts; genuine installed-app enumeration/open; native settings handoff; actual HOME status/request via ElizaSystem; normal/HOME packaging; inspection and emulator tests; verified AOSP overlay generation. Unconnected composer is explicitly labeled. Agent pairing, cloud response, voice, overview data and all built-in service integrations are planned, not shipped by the setup milestone.
+Implemented source now includes the independent ten-view renderer; Cloud/remote/local-development connection adapters; context-aware conversations and reviewed actions; native speech/recording routes; encrypted native Notes and browser-local Notes; Calendar/reminder/Clock adapters; isolated native browser controls; selected files/media and Maps; Gmail drafts and provider adapters; workflow authoring/approvals/durable results; hosted digest controls; and settings/permission readback. The browser review adds fitted desktop presentation, persistent theme, local text import/download, explicit manual recording, modal keyboard/Back handling and reproducible browser/adapter regression checks.
+
+Implementation is not full acceptance. The exact historical native/runtime evidence is in `current-acceptance-ledger.md`. Live Cloud/Gmail authorization, signed enclave deployment, two remotely hosted loops while the phone is off, real password-provider integration, speech correctness/latency, maintained native browser qualification, signed image/device delivery and target-user acceptance remain open. Browser checks do not close those gates. Android builds are intentionally excluded from the October 1 browser work at the user's request.
+
+On-device STT/TTS remains required; the earlier cloud-only language describes LLM execution and must not be used to waive local speech. Pixel 10 or a similar phone is the current engineering target; final device-image qualification remains separate. Telegram/Discord and offline LLM fallback retain the scope questions documented in the current MVP report.
