@@ -23,6 +23,7 @@ type Pending = {
 	summary: string;
 };
 export function HostedDigestPanel() {
+	const panel = useRef<HTMLElement>(null);
 	const connection = useSyncExternalStore(
 		connectionController.subscribe,
 		connectionController.getSnapshot,
@@ -38,7 +39,7 @@ export function HostedDigestPanel() {
 		[review, setReview] = useState<Pending | null>(null),
 		[pending, setPending] = useState<Pending | null>(null),
 		[available, setAvailable] = useState(false);
-    useEffect(()=>{let stopped=false;const listener=delegationNative.addListener('cloudDelegationCallback',()=>{if(!stopped)setOpen(true);}).catch(()=>null);void delegationNative.readDelegationCallback().then(r=>{if(r.callback&&!stopped)setOpen(true);}).catch(()=>{});return()=>{stopped=true;void listener.then(l=>l?.remove());};},[]);
+    useEffect(()=>{if(!isAndroid)return;let stopped=false;const listener=delegationNative.addListener('cloudDelegationCallback',()=>{if(!stopped)setOpen(true);}).catch(()=>null);void delegationNative.readDelegationCallback().then(r=>{if(r.callback&&!stopped)setOpen(true);}).catch(()=>{});return()=>{stopped=true;void listener.then(l=>l?.remove());};},[]);
 	const [text, setText] = useState(""),
 		[label, setLabel] = useState("My reviewed tasks"),
 		[kind, setKind] = useState("tasks"),
@@ -209,6 +210,11 @@ export function HostedDigestPanel() {
 	}, [open]);
 	useEffect(() => {
 		if (!open) return;
+		const previous = document.activeElement as HTMLElement | null;
+		const phone = document.querySelector<HTMLElement>('.os');
+		const previousInert = phone?.inert ?? false;
+		if (phone) phone.inert = true;
+		panel.current?.focus();
 		const back = (event: Event) => {
 			event.preventDefault();
 			event.stopImmediatePropagation();
@@ -216,12 +222,21 @@ export function HostedDigestPanel() {
 		};
 		const key = (event: KeyboardEvent) => {
 			if (event.key === "Escape") back(event);
+			if (event.key === 'Tab' && panel.current) {
+				const items = Array.from(panel.current.querySelectorAll<HTMLElement>('button:not(:disabled),input:not(:disabled),select:not(:disabled),textarea:not(:disabled),summary,a[href]')).filter(item => item.getClientRects().length);
+				const first = items[0], last = items.at(-1);
+				if (!first) { event.preventDefault(); panel.current.focus(); }
+				else if (event.shiftKey && (document.activeElement === first || document.activeElement === panel.current)) { event.preventDefault(); last?.focus(); }
+				else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+			}
 		};
-		window.addEventListener("alpha:back", back);
+		window.addEventListener("alpha-back", back, true);
 		window.addEventListener("keydown", key);
 		return () => {
-			window.removeEventListener("alpha:back", back);
+			window.removeEventListener("alpha-back", back, true);
 			window.removeEventListener("keydown", key);
+			if (phone) phone.inert = previousInert;
+			previous?.focus();
 		};
 	}, [open]);
 	async function submit(value: Pending) {
@@ -310,6 +325,8 @@ export function HostedDigestPanel() {
 	return (
 		<div className="alpha-connection-scrim">
 			<section
+				ref={panel}
+				tabIndex={-1}
 				className="alpha-connection"
 				role="dialog"
 				aria-modal="true"

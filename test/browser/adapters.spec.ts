@@ -1,0 +1,15 @@
+import { test } from '@playwright/test';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
+import path from 'node:path';
+const run=promisify(execFile);
+for(const script of ['test-agent-context-browser.mjs','test-browser-bookmark-recovery.mjs','test-inbox-drafts-browser.mjs','test-maps-context-browser.mjs','test-notes-documents-browser.mjs']) {
+  test(`rendered adapter: ${script}`,async()=>{
+    test.setTimeout(60_000);
+    await run(process.execPath,[`scripts/${script}`],{timeout:55_000,env:{...process.env,
+      ALPHA_BROWSER_MODULES:path.resolve('node_modules'),
+      ALPHA_CONTEXT_TEST_URL:'http://127.0.0.1:5317',ALPHA_MAPS_TEST_URL:'http://127.0.0.1:5317',
+      ALPHA_INBOX_TEST_URL:'http://127.0.0.1:5317',ALPHA_NOTES_TEST_URL:'http://127.0.0.1:5317',
+    }});
+  });
+}

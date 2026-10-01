@@ -18,7 +18,7 @@ class Shell {
 }
 let source=fs.readFileSync(new URL('../apps/app/src/prototype/calendar-adapter.ts',import.meta.url),'utf8').replace(/^import .*\n/gm,'').replace("const calendar = registerPlugin<any>('AlphaCalendar');",'').replace('export function installCalendarAdapter','function installCalendarAdapter');
 source=stripTypeScriptTypes(source);
-vm.runInNewContext(source+'\ninstallCalendarAdapter(Shell,views);',{calendar,DailyApps,Shell,views,Date,queueMicrotask,console});
+vm.runInNewContext(source+'\ninstallCalendarAdapter(Shell,views);',{Capacitor:{getPlatform:()=> 'android'},calendar,DailyApps,Shell,views,Date,queueMicrotask,console});
 shell=new Shell();shell.componentDidMount();
 assert.equal(calls.length,1);const initial=calls[0];
 // Change the real adapter's visible range away and back before A settles.

@@ -3,6 +3,9 @@ import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import {readFile} from 'node:fs/promises';
 import {stripTypeScriptTypes} from 'node:module';
+import { InboxOperation } from '../apps/app/src/runtime/inbox-operation.ts';
+import { reviewMailAttachment } from '../apps/app/src/runtime/inbox-attachment.ts';
+import { reviewMailContext, validateMailContext } from '../apps/app/src/runtime/reviewed-mail-context.ts';
 let session='account-a',agent='remote-a',releaseSearch,reads=0,delay=false;
 const listeners=new Set(),mail={id:'mail-1',threadId:'thread',subject:'Fixture',from:'Sender',to:['fixture@example.invalid'],snippet:'Preview',receivedAt:'2026-09-30T00:00:00Z',unread:true};
 const client={gmailAccounts:async()=>[{connectionId:'grant-a',label:'Fixture account',connected:true,grantedCapabilities:['google.gmail.triage']}],gmailSearch:async()=>{reads++;if(delay)return new Promise(resolve=>{releaseSearch=resolve;});return {messages:[mail],syncedAt:'revision'};},gmailRead:async()=>({message:mail,bodyText:'Fixture body'}),initiateGmail:async()=>{throw new Error('No automatic OAuth');}};
@@ -10,7 +13,8 @@ const controller={getCloudClient:()=>session?{client,sessionId:session}:null,get
 class Shell{constructor(){this.st={q:null};}componentDidMount(){}componentWillUnmount(){}vset(_,p){Object.assign(this.st,p);}}
 const views={inbox:{state:{}}};let source=await readFile(new URL('../apps/app/src/prototype/inbox-cloud-adapter.ts',import.meta.url),'utf8');source=source.replace(/^import .*;\n/gm,'').replace('export function','function')+'\nglobalThis.install=installInboxCloudAdapter;';
 let draftSource=await readFile(new URL('../apps/app/src/prototype/inbox-drafts.ts',import.meta.url),'utf8');draftSource=draftSource.replace(/^import .*;\n/gm,'').replace('export function','function')+'\nglobalThis.inboxDrafts=inboxDrafts;';
-const sandbox={crypto:globalThis.crypto,TextEncoder,secureConnectionStore:{read:async()=>null},connectionController:controller,DailyApps:{addListener:async()=>({remove:async()=>{}})},openConnectionBrowser:async()=>{throw new Error('No automatic OAuth');},queueMicrotask,AbortController,Date,console};vm.createContext(sandbox);vm.runInContext(stripTypeScriptTypes(draftSource,{mode:'transform'}),sandbox);vm.runInContext(stripTypeScriptTypes(source,{mode:'transform'}),sandbox);sandbox.install(Shell,views);
+let providerSource=await readFile(new URL('../apps/app/src/prototype/inbox-provider-controls.ts',import.meta.url),'utf8');providerSource=providerSource.replace(/^import .*;\n/gm,'').replace('export function','function')+'\nglobalThis.inboxProviderControls=inboxProviderControls;';
+const sandbox={InboxOperation,reviewMailAttachment,reviewMailContext,validateMailContext,registerPlugin:()=>({cancel:async()=>{}}),crypto:globalThis.crypto,TextEncoder,secureConnectionStore:{read:async()=>null},connectionController:controller,DailyApps:{addListener:async()=>({remove:async()=>{}})},openConnectionBrowser:async()=>{throw new Error('No automatic OAuth');},queueMicrotask,AbortController,Date,console};vm.createContext(sandbox);vm.runInContext('{'+stripTypeScriptTypes(providerSource,{mode:'transform'})+'}',sandbox);vm.runInContext('{'+stripTypeScriptTypes(draftSource,{mode:'transform'})+'}',sandbox);vm.runInContext('{'+stripTypeScriptTypes(source,{mode:'transform'})+'}',sandbox);sandbox.install(Shell,views);
 const shell=new Shell();shell.componentDidMount();const api={get:()=>shell.st,isActive:()=>true,set:p=>shell.vset('inbox',p),toast:()=>{}};const render=()=>views.inbox.render(shell.st,api);const tick=()=>new Promise(r=>setTimeout(r,0));
 render();await tick();assert.equal(reads,0,'status load does not read mailbox');
 render().chips.find(c=>c.label==='Load Inbox').pick();await tick();assert.equal(render().rows.length,1);

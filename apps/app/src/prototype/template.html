@@ -1983,7 +1983,7 @@
     <sc-if value="{{notes.none}}" hint-placeholder-val="{{false}}">
       <div style="display: flex; flex-direction: column; align-items: center; gap: 10px; padding-top: 110px; color: var(--mut)">
         <svg class="i" viewBox="0 0 24 24" style="width: 28px; height: 28px"><path d="{{ic.search}}"></path></svg>
-        <div style="font-size: 15px">No matches</div>
+        <div style="font-size: 15px">{{notes.emptyText}}</div>
       </div>
     </sc-if>
     <div style="display: flex; gap: 10px; align-items: flex-start">
@@ -2212,7 +2212,8 @@
           </div>
         </sc-for>
       </div>
-      <sc-if value="{{notes.rec.routeChoice}}"><button aria-label="{{notes.rec.routeLabel}}" onClick="{{notes.rec.changeRoute}}" style="align-self:center;min-height:56px;flex-shrink:0;border:0;border-radius:20px;padding:10px 16px;background:var(--s2);color:var(--fg);font:inherit">{{notes.rec.routeLabel}}</button></sc-if>
+      <sc-if value="{{notes.rec.manualChoice}}"><button class="tap" onClick="{{notes.rec.recordOnly}}" style="padding:12px 16px;border-radius:24px;background:var(--s2);color:var(--fg);font-size:14px;margin-bottom:8px">Record without transcription</button></sc-if>
+        <sc-if value="{{notes.rec.routeChoice}}"><button aria-label="{{notes.rec.routeLabel}}" onClick="{{notes.rec.changeRoute}}" style="align-self:center;min-height:56px;flex-shrink:0;border:0;border-radius:20px;padding:10px 16px;background:var(--s2);color:var(--fg);font:inherit">{{notes.rec.routeLabel}}</button></sc-if>
       <div style="display: flex; align-items: center; justify-content: center; gap: 40px; padding: 20px 0 56px; flex-shrink: 0">
         <span style="width: 60px; height: 60px"></span>
         <button aria-label="{{notes.rec.primaryLabel}}" disabled="{{notes.rec.primaryDisabled}}" onClick="{{notes.rec.stop}}" style="width: 84px; height: 84px; border-radius: 42px; background: var(--acc); color: #fff; display: flex; align-items: center; justify-content: center"><svg class="i" viewBox="0 0 24 24" style="width: 28px; height: 28px; fill: currentColor"><path d="{{notes.rec.primaryIcon}}"></path></svg></button>

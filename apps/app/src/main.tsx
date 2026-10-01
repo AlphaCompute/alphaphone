@@ -34,6 +34,11 @@ const savedMock = (() => {
 // Resolve mock before mounting any native adapter, including after a cold start.
 const mock = query.get('mode') === 'mock' || savedMock;
 const fixture = mock || (import.meta.env.DEV && !isAndroid && query.get('fixture') === '1');
+const initialTheme = (() => {
+  if (query.has('theme') || fixture) return query.get('theme') === 'dark' ? 'dark' : 'light';
+  try { return localStorage.getItem('alpha.appearance.v1') === 'dark' ? 'dark' : 'light'; }
+  catch { return 'light'; }
+})();
 document.documentElement.dataset.connectionMode = mock ? 'mock' : 'live';
 installPrototypeHomeBindings(Component);
 if (!fixture) {
@@ -64,14 +69,21 @@ function Phone() {
       if (Number.isFinite(info.topInset)) document.documentElement.style.setProperty('--native-top-inset', `${info.topInset}px`);
     }).catch(() => {});
     const size = () => {
-      const scale = window.innerWidth / 412;
+      const height = window.visualViewport?.height || window.innerHeight;
+      const desktop = !isAndroid && window.innerWidth > 600;
+      const banner = !isAndroid && mock ? document.querySelector('.mock-mode-banner')?.getBoundingClientRect().height || 36 : 0;
+      const available = Math.max(1, height - banner - (desktop ? 48 : 0));
+      const scale = desktop ? Math.min(1, available / 915) : window.innerWidth / 412;
       document.documentElement.style.setProperty('--phone-scale', String(scale));
-      document.documentElement.style.setProperty('--phone-height', `${(window.visualViewport?.height || window.innerHeight) / scale}px`);
+      document.documentElement.style.setProperty('--phone-height', `${desktop ? 915 : available / scale}px`);
+      document.documentElement.style.setProperty('--phone-left', `${desktop ? (window.innerWidth - 412 * scale) / 2 : 0}px`);
+      document.documentElement.style.setProperty('--phone-top', `${banner + (desktop ? 24 : 0)}px`);
+      document.documentElement.classList.toggle('browser-desktop', desktop);
     };
     size(); window.addEventListener('resize', size); window.visualViewport?.addEventListener('resize', size);
     return () => { window.removeEventListener('resize', size); window.visualViewport?.removeEventListener('resize', size); };
   }, []);
-  return <>{mock && <div className="mock-mode-banner" role="status"><span>Mock mode · simulated data and actions</span><button onClick={() => { void connectionController.offline().then(() => { const url = new URL(location.href); url.searchParams.delete('mode'); url.searchParams.delete('start'); location.assign(url.href); }); }}>Exit mock mode</button></div>}<Component phoneSurface initial={fixture ? query.get('start') || 'home' : 'home'} theme={query.get('theme') === 'dark' ? 'dark' : 'light'} ref={(value: any) => { shell = value; }} />
+  return <>{mock && <div className="mock-mode-banner" role="status"><span>Mock mode · simulated data and actions</span><button onClick={() => { void connectionController.offline().then(() => { const url = new URL(location.href); url.searchParams.delete('mode'); url.searchParams.delete('start'); location.assign(url.href); }); }}>Exit mock mode</button></div>}<Component phoneSurface initial={fixture ? query.get('start') || 'home' : 'home'} theme={initialTheme} ref={(value: any) => { shell = value; }} />
 {!fixture && <><ConnectionChooser /><HostedDigestPanel /></>}</>;
 }
 async function mountPhone() {

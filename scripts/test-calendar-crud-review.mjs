@@ -14,7 +14,7 @@ const views={calendar:{render:()=>({events:[],hours:[],week:[],mdays:[],ev:{},f:
 const api={now:Date.now(),track:()=>'',kx:()=>0,toast:t=>toasts.push(t),set:patch=>Object.assign(state,patch),get:()=>state};
 class Shell {componentDidMount(){} componentWillUnmount(){} vget(){return state;} vset(view,patch){Object.assign(state,patch);} async refreshReminders(){state.events=this.nativeCalendarRows||[];}}
 let source=fs.readFileSync(new URL('../apps/app/src/prototype/calendar-adapter.ts',import.meta.url),'utf8').replace(/^import .*\n/gm,'').replace("const calendar = registerPlugin<any>('AlphaCalendar');",'').replace('export function installCalendarAdapter','function installCalendarAdapter');
-source=stripTypeScriptTypes(source);vm.runInNewContext(source+'\ninstallCalendarAdapter(Shell,views);',{calendar,DailyApps:{addListener:async()=>({remove(){}})},Shell,views,Date,queueMicrotask,console});
+source=stripTypeScriptTypes(source);vm.runInNewContext(source+'\ninstallCalendarAdapter(Shell,views);',{Capacitor:{getPlatform:()=> 'android'},calendar,DailyApps:{addListener:async()=>({remove(){}})},Shell,views,Date,queueMicrotask,console});
 const shell=new Shell();shell.componentDidMount();await new Promise(r=>setTimeout(r,0));
 const select=()=>{state.open=state.events[0].id;return views.calendar.render(state,api);};
 await select().ev.edit();assert.equal(state.form.expected.revision,'reviewed-revision');assert.equal(state.form.expected.title,event.title);state.form=null;

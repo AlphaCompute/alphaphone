@@ -1,6 +1,8 @@
 import {registerPlugin} from '@capacitor/core';
 type Bag=Record<string,any>;
-const documents=registerPlugin<{importText():Promise<{status:string;message:string;text?:string;name?:string}>;exportText(input:{title:string;text:string}):Promise<{status:string;message:string}>}>('AlphaNoteDocuments');
+const documents=registerPlugin<{importText():Promise<{status:string;message:string;text?:string;name?:string}>;exportText(input:{title:string;text:string}):Promise<{status:string;message:string}>}>('AlphaNoteDocuments', {
+ web: () => import('../runtime/browser-note-documents').then(module => new module.BrowserNoteDocuments()),
+});
 /** Explicit user-selected text only; existing Notes persistence owns conflict/readback checks. */
 export function installNotesDocumentAdapter(Component:any,views:Record<string,Bag>){
  const notes=views.notes,render=notes.render,leave=notes.onLeave;let busy=false,epoch=0;

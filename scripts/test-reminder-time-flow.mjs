@@ -10,8 +10,8 @@ const DailyApps={scheduleReminder:async input=>{writes.push(input);return {statu
 let state={form:null},adapter;
 class Shell{componentDidMount(){}componentWillUnmount(){}vset(){}toast(value){toasts.push(value);}}
 const views={calendar:{state:{},render:()=>({f:{cals:[]}})}};
-const source=stripTypeScriptTypes(fs.readFileSync(new URL('../apps/app/src/prototype/reminder-adapter.ts',import.meta.url),'utf8').replace(/^import .*?;\n/m,'').replace('export function installReminderAdapter','function installReminderAdapter'));
-vm.runInNewContext(source+'\ninstallReminderAdapter(Shell,views);',{DailyApps,Shell,views,Date,crypto,console});
+const source=stripTypeScriptTypes(fs.readFileSync(new URL('../apps/app/src/prototype/reminder-adapter.ts',import.meta.url),'utf8').replace(/^import .*?;\n/gm,'').replace('export function installReminderAdapter','function installReminderAdapter'));
+vm.runInNewContext(source+'\ninstallReminderAdapter(Shell,views);',{Capacitor:{getPlatform:()=> 'android'},DailyApps,Shell,views,Date,crypto,console});
 const api={get:()=>state,set:patch=>Object.assign(state,patch),toast:value=>toasts.push(value)};
 const today=new Date();
 const year=today.getFullYear()+1;

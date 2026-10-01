@@ -3420,6 +3420,7 @@ registerView("notes", {
       newNote: function () { notesNew(api, "text"); },
       record: function () { notesStartRec(api); },
       colL: colL, colR: colR, none: cards.length === 0,
+      emptyText: q ? "No matches" : "No notes yet. Create a note to get started.",
       askQ: "Ask " + api.name + ": “" + String(st.q || "").trim() + "”", hasQ: !!q,
       askSearch: function () { var qq = String(api.get("notes").q || "").trim(); api.set({ q: null }); api.send("Find my notes about " + qq); },
       isEdit: isEdit, ed: ed, isVoice: !!vo, vo: vo, isLink: !!lk, lk: lk,

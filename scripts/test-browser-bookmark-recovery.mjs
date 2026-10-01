@@ -13,7 +13,7 @@ try{
   const listeners=new Map(),prefs=new Map();window.androidBridge={};
   window.bookmarkFixture={reads:0,writes:0,failNext:true,rows:['https://example.com/?fixture=A','https://example.com/?fixture=B'],activeWrites:0,maxWrites:0,releases:[],hold:true,resume:()=>listeners.get('DailyApps:appResumed')?.forEach(cb=>cb({}))};
   const promise=name=>({name,rtype:'promise'}),callback={name:'addListener',rtype:'callback'};
-  window.Capacitor={PluginHeaders:[{name:'AlphaBrowser',methods:['bookmarks','setBookmark','present','close','removeListener'].map(promise).concat(callback)},{name:'DailyApps',methods:['surfaceInfo','removeListener'].map(promise).concat(callback)},{name:'AlphaConnection',methods:['secureRead','secureWrite','secureRemove'].map(promise)}],
+  window.Capacitor={PluginHeaders:[{name:'AlphaBrowser',methods:['bookmarks','setBookmark','present','close','removeListener'].map(promise).concat(callback)},{name:'DailyApps',methods:['surfaceInfo','removeListener'].map(promise).concat(callback)},{name:'AlphaConnection',methods:['secureRead','secureWrite','secureRemove'].map(promise).concat(callback)}],
    nativeCallback:(plugin,method,args,cb)=>{const key=plugin+':'+args.eventName;listeners.set(key,[...(listeners.get(key)||[]),cb]);return 'fixture-listener';},
    nativePromise:async(plugin,method,args)=>{
     if(method==='removeListener')return {};

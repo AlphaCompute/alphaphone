@@ -1,4 +1,5 @@
 import { DailyApps, type Reminder } from '../daily';
+import { Capacitor } from '@capacitor/core';
 type Bag = any;
 // Construct the requested civil fields independently of local DST normalization.
 function reminderWallTime(off:number,hours:number):Date|null {
@@ -20,6 +21,10 @@ export function installReminderAdapter(Component: Bag, views: Bag) {
     return { id: 'reminder:' + r.id, alphaReminderId: r.id, reminderBody:r.body, reminderAt:r.at, reminderOccurrence:r.occurrenceId, reminderRecurrence:r.recurrence, reminderHistory:r.history, reminderStatus:r.status, off: Math.round((day.getTime()-today.getTime())/86400000), t: date.getHours()+date.getMinutes()/60, d: .25, title:r.title, cal:'personal', who:[], repeat:'none', alert:r.recurrence?.leadMinutes || 0, notes:[r.body, r.snoozedAt && r.status==='scheduled' ? `Snoozed until ${new Date(r.at).toLocaleString()} · approximate delivery` : '', r.recurrence ? `${r.recurrence.rule} · ${r.recurrence.zone}. Next occurrence is scheduled after Done. Future missing clock times use the first valid time after the gap; repeated clock times use the earlier offset.` : '', r.status === 'scheduling-failed' ? 'Saved, scheduling failed. Tap Snooze 10 minutes to retry.' : '', r.status === 'completed' ? 'Completed · no further alarm scheduled' : r.status === 'posted' ? 'Notification posted' : r.status === 'permission-denied' ? 'Not delivered · notifications were disabled. Enable notifications in Android settings, then edit this reminder to choose a new time and save.' : 'Scheduled · approximate delivery'].filter(Boolean).join('\n') };
   });
   p.refreshReminders = async function (openId?: string, occurrenceId?: string) {
+    if (Capacitor.getPlatform() === 'web' && !Capacitor.isPluginAvailable('DailyApps')) {
+      this.vset('calendar', { reminderStale: false });
+      return;
+    }
     // Resume and calendar refresh may supersede the notification's fetch.
     // Keep its navigation intent until the latest successful fetch consumes it.
     if (openId) {this.pendingReminderOpenId = openId;this.pendingReminderOccurrenceId=occurrenceId;}

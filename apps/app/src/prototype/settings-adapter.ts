@@ -15,7 +15,7 @@ const system = registerPlugin<{ getDeviceSettings(): Promise<Bag> }>('ElizaSyste
 /** Keep the reference settings components; never present fixture device facts. */
 export function installSettingsAdapter(Component: any, views: Bag) {
   const definition = views.settings, render = definition.render, p = Component.prototype;
-  const mount = p.componentDidMount, unmount = p.componentWillUnmount, openView = p.openView;
+  const mount = p.componentDidMount, unmount = p.componentWillUnmount, openView = p.openView, update = p.componentDidUpdate;
   let owner: any, facts: Bag = {}, controls: Bag = {}, delivery: Bag = {}, generation = 0,scaleGeneration=0, cross:Bag={}, choices:Bag[]|null=null, history:Bag[]|null=null, notificationBusy=false;
   let capabilityAbort: AbortController | null = null;
   let gmail = 'Not checked', digests = 'Not checked', localSpeech = 'Not checked', speechChecking = false, speechGeneration = 0;
@@ -79,6 +79,14 @@ export function installSettingsAdapter(Component: any, views: Bag) {
       if (next !== lastBinding) { lastBinding = next; void refreshCapabilities(); }
     });
     this.deviceResume = DailyApps.addListener('appResumed', () => { void refresh(); void refreshCapabilities(); }).catch(() => null);
+  };
+  p.componentDidUpdate = function (previousProps: Bag, previousState: Bag) {
+    update?.call(this, previousProps, previousState);
+    const theme = this.state?.theme;
+    if ((theme === 'light' || theme === 'dark') && theme !== previousState?.theme) {
+      try { localStorage.setItem('alpha.appearance.v1', theme); }
+      catch { this.toast('Theme changed for this session, but could not be saved.'); }
+    }
   };
   p.componentWillUnmount = function () {
     if (owner === this) { capabilityAbort?.abort(); capabilityAbort = null; ++speechGeneration; owner = null; ++generation; facts = {}; controls = {}; delivery = {}; cross={}; choices=null; history=null; }

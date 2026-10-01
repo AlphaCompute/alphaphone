@@ -58,7 +58,7 @@ export function installPrototypeVoiceAdapter(Component: any, views: Record<strin
   type Driver = typeof voice | ReturnType<typeof createCloudVoice>;
   let driver: Driver = voice, cloudMode = false, deviceOnly = false;
   let pairedVoice: ReturnType<typeof createPairedVoice> = null, pairedReady = false, pairedAsrReady = false;
-  let selectedRoute: 'device' | 'agent' = 'device', preparingPaired = false;
+  let selectedRoute: 'device' | 'agent' | 'manual' = 'device', preparingPaired = false;
   let onDeviceVoice: ReturnType<typeof createOnDeviceVoice> = null, onDeviceReady = false, preparingLocal = false;
   let transcription: AbortController | undefined;
   let readiness: AbortController | undefined;
@@ -78,12 +78,13 @@ export function installPrototypeVoiceAdapter(Component: any, views: Record<strin
     if (close) { stage = 'closed'; draft = ''; destination = undefined; chatDestination = undefined; }
     refresh();
   }
-  function enter(target?: DictationTarget, preparedLocal?: ReturnType<typeof createOnDeviceVoice>, route: 'device' | 'agent' = 'device') {
+  function enter(target?: DictationTarget, preparedLocal?: ReturnType<typeof createOnDeviceVoice>, route: 'device' | 'agent' | 'manual' = 'device') {
     stopLocalSpeechPlayback(); cleanup(); destination = target; saveId = target?.id || crypto.randomUUID(); stage = 'ready'; error = ''; draft = ''; selectedRoute = route;
     cloudMode = connectionController.getCloudEnvironment() !== null;
     deviceOnly = !cloudMode && (localStorage.getItem('alpha.connection.selection.v1') !== null || !Capacitor.isPluginAvailable('DevelopmentAgent'));
     driver = cloudMode ? createCloudVoice() : deviceOnly ? deviceVoice : voice;
     onDeviceVoice = route === 'device' ? preparedLocal || createOnDeviceVoice() : null;
+    if (route === 'manual') { cloudMode = false; deviceOnly = true; driver = deviceVoice; }
     if (route === 'device') { cloudMode = false; deviceOnly = true; driver = deviceVoice; if (!onDeviceVoice) error = 'On-device speech is unavailable. Choose another voice service explicitly or use the keyboard.'; }
     if (preparedLocal) { onDeviceReady = true; cloudMode = false; deviceOnly = true; driver = deviceVoice; }
     else if (onDeviceVoice) {
@@ -308,6 +309,8 @@ export function installPrototypeVoiceAdapter(Component: any, views: Record<strin
     if (preparingLocal && stage === 'ready') { labels.ready = 'Preparing on-device speech'; messages.ready = 'Loading and checking speech models on this phone. Nothing is uploaded.'; }
     result.recording = true;
     result.rec = {
+      manualChoice: stage === 'ready' && !busy && !preparingLocal && selectedRoute !== 'manual',
+      recordOnly: () => { const target = destination, chat = chatDestination; enter(target, undefined, 'manual'); chatDestination = chat; refresh(); },
       routeChoice: stage === 'ready' && !busy && document.documentElement.dataset.connectionMode !== 'mock' && (!!connectionController.getPairedVoiceBinding() || connectionController.getCloudEnvironment() !== null),
       routeLabel: selectedRoute === 'device' ? (connectionController.getCloudEnvironment() !== null ? 'Use Eliza Cloud voice' : 'Use selected agent voice') : 'Use on-device voice',
       changeRoute: () => { if (stage !== 'ready' || busy) return; const target = destination, chat = chatDestination; enter(target, undefined, selectedRoute === 'device' ? 'agent' : 'device'); chatDestination = chat; refresh(); },

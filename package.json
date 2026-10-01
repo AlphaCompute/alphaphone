@@ -23,7 +23,8 @@
     "agent:diagnostic": "ALPHA_AGENT_BACKEND=direct-diagnostic node scripts/dev-agent.mjs",
     "agent:local": "node scripts/start-local-remote.mjs",
     "android:connection-smoke": "node scripts/android-connection-smoke.mjs",
-    "android:local-agent-smoke": "node scripts/android-local-remote-smoke.mjs"
+    "android:local-agent-smoke": "node scripts/android-local-remote-smoke.mjs",
+    "test:browser": "playwright test"
   },
   "dependencies": {
     "@capacitor/android": "8.5.2",
@@ -37,10 +38,12 @@
     "@fontsource/atkinson-hyperlegible": "^5.2.0",
     "@fontsource/fraunces": "^5.2.0",
     "@fontsource/public-sans": "^5.2.0",
+    "@playwright/test": "1.62.1",
     "@types/node": "^24.0.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "@vitejs/plugin-react": "6.1.1",
+    "tsx": "4.23.15",
     "typescript": "7.0.2",
     "vite": "8.3.1"
   }

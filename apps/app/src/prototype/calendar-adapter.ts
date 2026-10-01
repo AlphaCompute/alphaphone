@@ -1,4 +1,4 @@
-import { registerPlugin } from '@capacitor/core';
+import { Capacitor, registerPlugin } from '@capacitor/core';
 import { DailyApps } from '../daily';
 type Bag = Record<string, any>;
 const calendar = registerPlugin<any>('AlphaCalendar');
@@ -36,6 +36,11 @@ export function installCalendarAdapter(Component: any, views: Bag) {
   };
   async function refresh(request=false, force=false) {
     if(!owner || (loading&&!force))return;
+    if (Capacitor.getPlatform() === 'web' && !Capacitor.isPluginAvailable('AlphaCalendar')) {
+      desired=rangeFor(owner.vget('calendar'));attemptedKey=desired.key;
+      status='Device calendars are available in the Android app.';
+      owner.vset('calendar',{nativeCalendarStatus:status});return;
+    }
     agentSelection=undefined;agentSelectionKey='';agentSelectionEpoch++;
     const currentOwner=owner,range=desired||rangeFor(owner.vget('calendar')), token=++generation;desired=range;attemptedKey=range.key;runningToken=token;loading=true;status='Loading calendars…';
     try {

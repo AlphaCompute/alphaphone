@@ -9,6 +9,7 @@ protocol is verified; live Cloud login, Gmail, voice, enclave deployment and
 complete workflow execution remain acceptance work. See the verification ledger for
 the exact tested scope rather than treating a successful APK build as acceptance.
 
+- [October 1 browser implementation and design review](docs/mvp-browser-review.md)
 - [MVP scope and gap report](docs/mvp-scope-and-gap-report.md)
 - [MVP completion plan](docs/mvp-completion-plan.md)
 
@@ -33,12 +34,32 @@ the exact tested scope rather than treating a successful APK build as acceptance
 ## Setup
 
 ```sh
-git clone --recurse-submodules https://github.com/eliza-research/alphaphone.git
+git clone --recurse-submodules https://github.com/AlphaCompute/alphaphone.git
 cd alphaphone
 npm ci
 npm run verify
 npm run dev
 ```
+
+## Browser development and verification
+
+```sh
+npm ci
+npx playwright install chromium
+npm run verify
+npm run test:browser
+npm run dev
+```
+
+The desktop browser shows a fitted phone preview; mobile widths fill the viewport.
+Use `?mode=mock` for the clearly labeled design fixture and `?theme=dark` to
+inspect dark layouts. The normal app uses real browser-local Notes and reports
+unavailable native capabilities. Notes text import and export use the browser
+file picker and downloads; browser note storage is unencrypted and is not synced.
+The browser suite covers production navigation, durable note editing, exact-byte
+file flows, dialog accessibility, disclosed adapter fixtures and reference design
+states. Reports/screenshots are in `test-results/browser-report` and
+`test-results/browser`. Browser CI runs independently of Android qualification.
 
 Use Node 24.15.0 and JDK 21. Native builds require Android SDK platform 36 and
 build-tools 36.0.0. Set `JAVA_HOME` and `ANDROID_HOME` on Linux; the scripts also
