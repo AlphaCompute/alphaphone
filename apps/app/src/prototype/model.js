@@ -4450,7 +4450,27 @@ function wfShort(f, api) {
   var lead = f.trig && f.trig.kind === "time" ? tr : "When " + wfLc(tr);
   return main ? lead + ": " + wfLc(main.t).replace(/\.$/, "") + "." : lead + ".";
 }
-function wfFlows(api) { var st = api.get("workflows"); return st.flows || WF_SEED; }
+// MVP-DEFERRED: retain original fixtures, but do not offer or simulate flows
+// that depend on Phone/SMS/Contacts/Wallet. Restore only with the product scope gate.
+function wfAppAllowed(name) {
+  var view = { Phone: "phone", Messages: "messages", Contacts: "contacts", Wallet: "wallet" }[name];
+  return !view || isMvpView(view);
+}
+// Only explicit deferred requests are rejected here; mentions such as
+// "summarize call notes" remain valid. Saved flow admission uses typed apps/triggers.
+function wfDeferredRequest(text) {
+  return /(?:^|,)\s*(?:call|dial|sms|text)\b|\b(?:add|log|save)\b[^,]{0,60}\b(?:to|in)\s+(?:my\s+)?wallet\b|\bsend\s+(?:an?\s+)?(?:sms|text message)\b/i.test(text);
+}
+function wfAllowed(f) {
+  return !!f && !!f.trig && (f.trig.kind !== "message" || isMvpView("messages")) &&
+    Array.isArray(f.steps) && f.steps.every(function (s) { return Array.isArray(s.apps) && s.apps.every(wfAppAllowed); });
+}
+function wfPresets(kind) { return (WF_KINDS[kind].presets || []).filter(function (p) { return p[1].every(wfAppAllowed); }); }
+function wfRawFlows(api) { return api.get("workflows").flows || WF_SEED; }
+function wfFlows(api) { return wfRawFlows(api).filter(wfAllowed); }
+// Editing an enabled fixture must not erase retained out-of-scope user records.
+function wfMerge(api, enabled) { return wfRawFlows(api).filter(function (f) { return !wfAllowed(f); }).concat(enabled.filter(wfAllowed)); }
+function wfDeferred(api) { api.toast("This workflow is deferred from the MVP"); }
 function wfFind(list, id) { for (var i = 0; i < list.length; i++) if (String(list[i].id) === String(id)) return list[i]; return null; }
 function wfMatch(list, t) {
   var best = null, sc = 0;
@@ -4462,7 +4482,7 @@ function wfFromText(t, raw, api) {
   var trig = null, m;
   if ((m = t.match(/whenever\s+(\w+)\s+(texts|messages|writes|emails)/))) {
     var p = PEOPLE.filter(function (x) { return x.name.split(" ")[0].toLowerCase() === m[1]; })[0];
-    trig = p ? { kind: "message", person: p.id } : { kind: "email", match: m[1] };
+    trig = m[2] === "emails" ? { kind: "email", match: m[1] } : { kind: "message", person: p ? p.id : m[1] };
   } else if ((m = t.match(/when(?:ever)?\s+i\s+(get|arrive|leave)\s+(home|to work|work)/))) {
     trig = { kind: "location", place: m[1] === "leave" ? "I leave home" : (/work/.test(m[2]) ? "I arrive at work" : "I arrive home") };
   } else if ((m = t.match(/(?:email|mail).{0,20}(?:about|mentions|with|matching)\s+(\w+)/))) {
@@ -4480,7 +4500,8 @@ function wfFromText(t, raw, api) {
     name = "Evening wrap-up";
     steps = [{ k: "Read", t: "Today's calendar, notes and sent mail", apps: ["Calendar", "Notes", "Mail"] }, { k: "Write", t: "A short wrap-up with tomorrow's first three tasks", apps: [] }, { k: "Notify", t: "A notification", apps: [] }];
   } else if (/calendar|free|availab/.test(t) && trig.kind === "message") {
-    name = api.person(trig.person).name.split(" ")[0] + "'s scheduling";
+    var sender = api.person(trig.person);
+    name = (sender ? sender.name.split(" ")[0] : "Message") + "'s scheduling";
     steps = [{ k: "If", t: "The message asks about timing", apps: [] }, { k: "Read", t: "My calendar for the next 3 days", apps: ["Calendar"] }, { k: "Write", t: "A draft reply with two free slots", apps: [] }, { k: "Notify", t: "A notification with the draft", apps: [] }];
   } else if ((m = rest.match(/^remind me (?:to )?(.+)/i))) {
     var todo = m[1].replace(/[.!?]$/, "");
@@ -4525,12 +4546,12 @@ registerView("workflows", {
     if (sub === "new") return { create: true };
   },
   immersive: function (st) { return (st.build || st.create) && st.sheet ? { noPill: true } : null; },
-  badge: function (st) { return (st.flows || WF_SEED).some(function (f) { return f.on && f.runs && f.runs[0] && f.runs[0].status === "fail"; }); },
+  badge: function (st) { return (st.flows || WF_SEED).filter(wfAllowed).some(function (f) { return f.on && f.runs && f.runs[0] && f.runs[0].status === "fail"; }); },
   suggestions: function (st) {
-    if (st.build || st.create) return ["Every weekday at 6, wrap up my day", "Whenever Maya texts, check my calendar"];
-    var f = st.open != null ? wfFind(st.flows || WF_SEED, st.open) : null;
+    if (st.build || st.create) return ["Every weekday at 6, wrap up my day"];
+    var f = st.open != null ? wfFind((st.flows || WF_SEED).filter(wfAllowed), st.open) : null;
     if (f) return ["Run " + f.name + " now", "Why did " + f.name + " run?", "Turn off " + f.name];
-    return ["Every weekday at 6, wrap up my day", "Whenever Maya texts, check my calendar", "Why did Receipts to Files fail?"];
+    return ["Every weekday at 6, wrap up my day", "Why did Morning brief run?"];
   },
   voicePhrase: "Every weekday at 6, wrap up my day",
   back: function (st, api) {
@@ -4542,15 +4563,16 @@ registerView("workflows", {
   },
   actions: {
     enable: function (card, api) {
+      if (!wfAllowed(card.flow)) return wfDeferred(api);
       var f = Object.assign({}, card.flow, { id: Date.now(), on: true, runs: [] });
-      api.set({ flows: wfFlows(api).concat([f]) });
+      api.set({ flows: wfMerge(api, wfFlows(api).concat([f])) });
       api.toast(f.name + " is on");
     }
   },
   reply: function (t, raw, api) {
     var list = wfFlows(api); var st = api.get("workflows");
     var cur = st.open != null ? wfFind(list, st.open) : null;
-    var setFlows = function (l) { api.setView("workflows", { flows: l }); };
+    var setFlows = function (l) { api.setView("workflows", { flows: wfMerge(api, l) }); };
     var pick = function (s) { return /\b(this|it)\b/.test(s) && cur ? cur : wfMatch(list, s); };
 
     // why did X run / fail / skip
@@ -4588,16 +4610,18 @@ registerView("workflows", {
     }
     // create
     if (/^(every|whenever|each)\b|\bevery (day|weekday|morning|evening|night|week|monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b|\bwhenever\b|\bwhen i (get|arrive|leave)\b|automate|new workflow/.test(t)) {
+      if (wfDeferredRequest(raw)) return { text: "This workflow is deferred from the MVP." };
       var nf = wfFromText(t, raw, api);
+      if (!wfAllowed(nf)) return { text: "This workflow is deferred from the MVP." };
       return { text: "Here's the workflow. Turn it on?", card: { type: "flow", name: nf.name, short: nf.summary, flow: nf, act: { mod: "workflows", fn: "enable" } } };
     }
     return null;
   },
   render: function (st, api) {
-    var list = st.flows || WF_SEED;
-    var set = function (p) { api.set(p); };
+    var list = (st.flows || WF_SEED).filter(wfAllowed);
+    var set = function (p) { if (p.flows) p = Object.assign({}, p, { flows: wfMerge(api, p.flows) }); api.set(p); };
     var setFlow = function (id, p) { set({ flows: list.map(function (x) { return x.id === id ? Object.assign({}, x, p) : x; }) }); };
-    var toggle = function (f) { return function () { setFlow(f.id, { on: !f.on }); api.toast(f.name + (f.on ? " is off" : " is on")); }; };
+    var toggle = function (f) { return function () { if (!wfAllowed(f)) return wfDeferred(api); setFlow(f.id, { on: !f.on }); api.toast(f.name + (f.on ? " is off" : " is on")); }; };
     var chipsOf = function (f) { return wfApps(f).map(function (a) { return { name: a, d: IC[WF_APP_IC[a]] || IC.grid }; }); };
 
     var cards = list.map(function (f) {
@@ -4628,7 +4652,7 @@ registerView("workflows", {
     var f = st.open != null ? wfFind(list, st.open) : null;
     var D = null;
     var undo = function (label, f0, idx) {
-      api.toast(label, { undo: function () { var l = wfFlows(api).slice(); if (!wfFind(l, f0.id)) { l.splice(Math.min(idx, l.length), 0, f0); api.setView("workflows", { flows: l }); } } });
+      api.toast(label, { undo: function () { var l = wfFlows(api).slice(); if (!wfFind(l, f0.id)) { l.splice(Math.min(idx, l.length), 0, f0); api.setView("workflows", { flows: wfMerge(api, l) }); } } });
     };
     if (f) {
       var running = st.running && st.running.id === f.id ? st.running.i : null;
@@ -4651,13 +4675,15 @@ registerView("workflows", {
         edit: function () { set({ build: { id: f.id, name: f.name, trig: Object.assign({}, f.trig), steps: f.steps.map(function (s) { return Object.assign({}, s); }) } }); },
         del: function () { var idx = list.indexOf(f); set({ flows: list.filter(function (x) { return x.id !== f.id; }), open: null, run: null }); undo(f.name + " deleted", f, idx); },
         run: function () {
+          if (!wfAllowed(f)) return wfDeferred(api);
           if (st.running) return;
           var n = f.steps.length + 1;
           set({ running: { id: f.id, i: 0 } });
           for (var i = 1; i < n; i++) (function (i) { api.later(function () { api.setView("workflows", { running: { id: f.id, i: i } }); }, 550 * i); })(i);
           api.later(function () {
+            if (!wfAllowed(f)) return wfDeferred(api);
             var cur = wfFlows(api); var run = { id: "r" + Date.now(), when: wfNowLabel(api), status: "ok", sum: "Ran on request", dur: (n * 0.6).toFixed(0) + " s", log: wfRunLog(f, api), out: "" };
-            api.setView("workflows", { running: null, flows: cur.map(function (x) { return x.id === f.id ? Object.assign({}, x, { runs: [run].concat(x.runs || []) }) : x; }) });
+            api.setView("workflows", { running: null, flows: wfMerge(api, cur.map(function (x) { return x.id === f.id ? Object.assign({}, x, { runs: [run].concat(x.runs || []) }) : x; })) });
             api.toast(f.name + " ran");
           }, 550 * n + 200);
         }
@@ -4687,6 +4713,7 @@ registerView("workflows", {
 
     // builder
     var b = st.build || (st.create ? wfBlank() : null); var B = null;
+    if (b && !wfAllowed(b)) b = null; // Restored deferred drafts stay retained, never executable.
     if (b) {
       var set0 = set; set = function (p) { set0(Object.assign({ create: false }, p)); };
       var bp = function (p) { set({ build: Object.assign({}, b, p) }); };
@@ -4694,15 +4721,16 @@ registerView("workflows", {
       B = {
         fullEditor: true, metadataOnly: false, isNew: !b.id, name: b.name, onName: function (e) { bp({ name: e.target.value }); },
         steps: diagram(b.trig, b.steps, { more: true, tap: function (i) { return function () { set({ sheet: i === 0 ? { type: "trig" } : { type: "step", i: i - 1 } }); }; } }),
-        palette: WF_PALETTE.map(function (k) {
+        palette: WF_PALETTE.filter(function (k) { return wfPresets(k).length > 0; }).map(function (k) {
           return { k: k, d: IC[WF_KINDS[k].icon], label: "Add " + k + " step",
-            add: function () { var p = WF_KINDS[k].presets[0]; var steps = b.steps.concat([{ k: k, t: p[0], apps: p[1].slice() }]); set({ build: Object.assign({}, b, { steps: steps }), sheet: { type: "step", i: steps.length - 1 } }); } };
+            add: function () { var p = wfPresets(k)[0]; if (!p) return wfDeferred(api); var steps = b.steps.concat([{ k: k, t: p[0], apps: p[1].slice() }]); set({ build: Object.assign({}, b, { steps: steps }), sheet: { type: "step", i: steps.length - 1 } }); } };
         }),
         apps: chipsOf(b), hasApps: wfApps(b).length > 0, empty: b.steps.length === 0,
         saveOff: b.steps.length === 0, saveCss: b.steps.length ? "background:var(--acc);color:#fff" : "background:var(--s2);color:var(--mut)",
         describe: function () { set({ build: null }); api.chat("Every weekday at 6, "); },
         cancel: function () { set({ build: null, sheet: null }); },
         save: function () {
+          if (!wfAllowed(b)) return wfDeferred(api);
           if (!b.steps.length) return;
           var name = (b.name || "").trim() || (b.steps[b.steps.length - 1].k === "Write" ? cap(wfLc(b.steps[b.steps.length - 1].t)) : wfTrigText(b.trig, api));
           var nf = { name: name, trig: b.trig, steps: b.steps };
@@ -4717,7 +4745,7 @@ registerView("workflows", {
         var tr = b.trig; var tp = function (p) { bp({ trig: Object.assign({}, tr, p) }); };
         var chip = function (on) { return on ? "background:var(--fg);color:var(--bg)" : "background:var(--s2)"; };
         B.tr = {
-          kinds: WF_TRIG.map(function (k) { var on = tr.kind === k[0]; return { d: IC[k[1]], label: k[2], css: on ? "background:var(--acc);color:#fff" : "background:var(--s2)", pressed: on, pick: function () { bp({ trig: { kind: k[0], days: "Weekdays", t: 18, ev: WF_EVENTS[0][0], person: "maya", place: WF_PLACES[0], match: "receipt" } }); } }; }),
+          kinds: WF_TRIG.filter(function (k) { return k[0] !== "message" || isMvpView("messages"); }).map(function (k) { var on = tr.kind === k[0]; return { d: IC[k[1]], label: k[2], css: on ? "background:var(--acc);color:#fff" : "background:var(--s2)", pressed: on, pick: function () { bp({ trig: { kind: k[0], days: "Weekdays", t: 18, ev: WF_EVENTS[0][0], person: "maya", place: WF_PLACES[0], match: "receipt" } }); } }; }),
           text: wfTrigText(tr, api),
           isTime: tr.kind === "time", isEvent: tr.kind === "event", isMsg: tr.kind === "message", isPlace: tr.kind === "location", isEmail: tr.kind === "email",
           days: WF_DAYS.map(function (d) { return { label: d, css: chip(tr.days === d), pick: function () { tp({ days: d }); } }; }),
@@ -4734,7 +4762,7 @@ registerView("workflows", {
         var mv = function (dir) { return function () { var j = i + dir; if (j < 0 || j >= b.steps.length) return; var steps = b.steps.slice(); var tmp = steps[i]; steps[i] = steps[j]; steps[j] = tmp; set({ build: Object.assign({}, b, { steps: steps }), sheet: { type: "step", i: j } }); }; };
         B.sp = {
           k: s.k, d: IC[WF_KINDS[s.k].icon], text: s.t, onText: function (e) { sp({ t: e.target.value }); },
-          presets: (WF_KINDS[s.k].presets || []).map(function (p) { var on = s.t === p[0]; return { label: p[0], on: on, css: on ? "background:var(--acc);color:#fff" : "background:var(--s2)", pick: function () { sp({ t: p[0], apps: p[1].slice() }); } }; }),
+          presets: wfPresets(s.k).map(function (p) { var on = s.t === p[0]; return { label: p[0], on: on, css: on ? "background:var(--acc);color:#fff" : "background:var(--s2)", pick: function () { sp({ t: p[0], apps: p[1].slice() }); } }; }),
           canUp: i > 0, canDown: i < b.steps.length - 1, up: mv(-1), down: mv(1),
           upCss: i > 0 ? "" : "opacity:.3", downCss: i < b.steps.length - 1 ? "" : "opacity:.3",
           del: function () { set({ build: Object.assign({}, b, { steps: b.steps.filter(function (_, j) { return j !== i; }) }), sheet: null }); }
@@ -4768,12 +4796,14 @@ IC.stUndo = IC.stUndo || "M9 14L4 9l5-5M4 9h11a5 5 0 0 1 0 10h-3";
 IC.stAt = IC.stAt || "M16 12a4 4 0 1 1-8 0a4 4 0 1 1 8 0zM16 12v1.5a2.5 2.5 0 0 0 5 0V12a9 9 0 1 0-4 7.5";
 
 var ST_PROV = [
-  { id: "google", name: "Google", sub: "Gmail, Calendar, Contacts", dom: "gmail.example", web: "accounts.google.example", oauth: true },
+  { id: "google", name: "Google", sub: isMvpView("contacts") ? "Gmail, Calendar, Contacts" : "Gmail, Calendar", dom: "gmail.example", web: "accounts.google.example", oauth: true },
   { id: "microsoft", name: "Microsoft", sub: "Outlook, Exchange", dom: "outlook.example", web: "login.microsoft.example", oauth: true },
-  { id: "icloud", name: "iCloud", sub: "Mail, Calendar, Contacts", dom: "icloud.example", web: "", oauth: false },
-  { id: "other", name: "Other", sub: "IMAP · CalDAV · CardDAV", dom: "mail.example", web: "", oauth: false }
+  { id: "icloud", name: "iCloud", sub: isMvpView("contacts") ? "Mail, Calendar, Contacts" : "Mail, Calendar", dom: "icloud.example", web: "", oauth: false },
+  { id: "other", name: "Other", sub: isMvpView("contacts") ? "IMAP · CalDAV · CardDAV" : "IMAP · CalDAV", dom: "mail.example", web: "", oauth: false }
 ];
-var ST_TYPES = [["mail", "Mail", "mail"], ["calendar", "Calendar", "cal"], ["contacts", "Contacts", "user"]];
+// MVP-DEFERRED: Contacts account and permission controls follow the same profile
+// as navigation. Restore only after the scope and native acceptance gates there.
+var ST_TYPES = [["mail", "Mail", "mail"], ["calendar", "Calendar", "cal"], ["contacts", "Contacts", "user"]].filter(function (x) { return x[0] !== "contacts" || isMvpView("contacts"); });
 var ST_CONNS = [
   { id: "slack", name: "Slack", scopes: ["Read channels you're in", "Send messages you approve"] },
   { id: "github", name: "GitHub", scopes: ["Read repositories and issues", "Open issues and comment"] },
@@ -4794,7 +4824,7 @@ var ST_BT = [
   { id: "kb", name: "Keyboard K3", d: "kbd", on: false }
 ];
 var ST_VOICES = ["Warm", "Bright", "Low", "Neutral"];
-var ST_PERMS = [["mic", "Microphone", "mic"], ["loc", "Location", "pin"], ["camera", "Camera", "camera"], ["contacts", "Contacts", "user"]];
+var ST_PERMS = [["mic", "Microphone", "mic"], ["loc", "Location", "pin"], ["camera", "Camera", "camera"], ["contacts", "Contacts", "user"]].filter(function (x) { return x[0] !== "contacts" || isMvpView("contacts"); });
 var ST_PERM0 = {
   mic: { alpha: true, phone: true, camera: true, notes: true, messages: true },
   loc: { alpha: true, maps: true, camera: true, photos: true },
@@ -5060,7 +5090,7 @@ registerView("settings", {
             stNav({ label: "Leaves this device", val: st.cloud ? "Hard questions" : "Nothing", go: go("models") }),
             stNav({ label: "On-device model", val: "Loaded", go: go("models") })
           ] },
-          { rows: ST_PERMS.map(function (pm) { var n = Object.keys(st.perms[pm[0]] || {}).filter(function (k) { return st.perms[pm[0]][k] && (k === "alpha" || VIEWS[k]); }).length; return stNav({ d: IC[pm[2]], label: pm[1], val: n === 1 ? "1 app" : n + " apps", go: function () { set({ perm: pm[0] }); } }); }) },
+          { rows: ST_PERMS.map(function (pm) { var n = Object.keys(st.perms[pm[0]] || {}).filter(function (k) { return st.perms[pm[0]][k] && (k === "alpha" || isMvpView(k)); }).length; return stNav({ d: IC[pm[2]], label: pm[1], val: n === 1 ? "1 app" : n + " apps", go: function () { set({ perm: pm[0] }); } }); }) },
           { rows: [
             stNav({ d: IC.stList, label: "Activity", val: logN + " today", go: function () { set({ log: true }); } }),
             stNav({ d: IC.flow, label: "Workflow runs", go: function () { api.open("workflows"); } })
@@ -5184,7 +5214,7 @@ registerView("settings", {
       var finish = function () {
         var s2 = api.get("settings"); var pv2 = provOf(s2.addProv); var lv = s2.addLvl || { mail: "act", calendar: "act", contacts: "read" };
         var addr = stEmailOk(s2.addEmail) ? s2.addEmail.trim().toLowerCase() : "me@" + pv2.dom;
-        var nacc = { id: "a" + Date.now(), provider: pv2.id, label: "", address: addr, mail: lv.mail !== "off", calendar: lv.calendar !== "off", contacts: lv.contacts !== "off",
+        var nacc = { id: "a" + Date.now(), provider: pv2.id, label: "", address: addr, mail: lv.mail !== "off", calendar: lv.calendar !== "off", contacts: isMvpView("contacts") && lv.contacts !== "off",
           access: { mail: lv.mail === "off" ? "read" : lv.mail, calendar: lv.calendar === "off" ? "read" : lv.calendar, contacts: lv.contacts === "off" ? "read" : lv.contacts } };
         set({ accounts: s2.accounts.concat([nacc]), addStep: "done", busy: null, addEmail: addr });
         api.later(function () { var s3 = api.get("settings"); if (s3.adding && s3.addStep === "done") set({ adding: false, addStep: null, addProv: null }); }, 1600);
@@ -5227,7 +5257,7 @@ registerView("settings", {
           { rows: [stRow("kInfo", { label: "Last sync", val: "2 min ago" })] },
           { rows: [stNav({ d: IC.trash, label: "Remove account", danger: true, noChev: true, go: function () { stRemoveAcct(api, a.id); } })] }
         ] });
-    } else if (P === "privacy" && st.perm) {
+    } else if (P === "privacy" && ST_PERMS.some(function (x) { return x[0] === st.perm; })) {
       var pm = ST_PERMS.filter(function (x) { return x[0] === st.perm; })[0];
       var apps = [["alpha", name, "user"]].concat(ORDER.filter(function (k) { return k !== "settings" && !VIEWS[k].hidden; }).map(function (k) { return [k, VIEWS[k].title, VIEWS[k].icon]; }));
       p2 = page(pm[1], { back: function () { set({ perm: null }); }, groups: [{ rows: apps.map(function (ap) {
@@ -5534,11 +5564,17 @@ class Component extends DCLogic {
       var k = ORDER[i]; if (k === S.view || !VIEWS[k].reply) continue;
       r = VIEWS[k].reply(t, raw, this.api(k)); if (r) return r;
     }
-    if (/what needs|catch me up|triage|anything new|summar/.test(t)) return { text: "Three things need you. The rest I handled.", card: { type: "digest", rows: [
-      { ini: "MC", who: "Maya Chen", text: "Still on for 3? I can bring the prototype.", icon: "bubble", go: { view: "messages", patch: { thread: "maya" } } },
-      { ini: "JP", who: "Jordan Park", text: "Revised term sheet attached.", icon: "mail", go: { view: "inbox", patch: { open: 2 } } },
-      { ini: "PN", who: "Priya Nair", text: "Sent you the photos from Saturday", icon: "bubble", go: { view: "messages", patch: { thread: "priya" } } }] } };
-    return { text: "I can't do that yet. I can message, call, schedule, find, navigate, pay, and run workflows for you." };
+    if (/what needs|catch me up|triage|anything new|summar/.test(t)) {
+      // MVP-DEFERRED: SMS digest cards stay out of mock and live discovery.
+      // Keep the original fixture data available for a reviewed scope restoration.
+      var rows = [
+        { ini: "MC", who: "Maya Chen", text: "Still on for 3? I can bring the prototype.", icon: "bubble", go: { view: "messages", patch: { thread: "maya" } } },
+        { ini: "JP", who: "Jordan Park", text: "Revised term sheet attached.", icon: "mail", go: { view: "inbox", patch: { open: 2 } } },
+        { ini: "PN", who: "Priya Nair", text: "Sent you the photos from Saturday", icon: "bubble", go: { view: "messages", patch: { thread: "priya" } } }
+      ].filter(function (row) { return isMvpView(row.go.view); });
+      return { text: rows.length + (rows.length === 1 ? " item needs" : " items need") + " your attention.", card: { type: "digest", rows: rows } };
+    }
+    return { text: "I can't do that yet. Try opening " + ORDER.filter(isMvpView).map(function (key) { return VIEWS[key].title; }).join(", ") + "." };
   }
   send(textArg) {
     var S = this.S(); var text = String(textArg != null ? textArg : S.draft).trim(); if (!text) return;
@@ -5716,6 +5752,7 @@ class Component extends DCLogic {
     });
 
     return Object.assign(out, {
+      mvpMessages: isMvpView("messages"),
       ic: IC, vars: vars, rootRef: rootRef, frame: th.frame, clock: clock, dateStr: dateStr, name: name,
       isBoot: S.screen === "boot", isOff: S.screen === "off", isLock: S.screen === "lock", isOn: isOn, isView: isView,
       viewBg: imm.dark ? "#000000" : "var(--bg)", viewFg: imm.dark ? "#ffffff" : "var(--fg)", sbColor: sbColor,

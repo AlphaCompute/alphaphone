@@ -116,3 +116,54 @@ test('Display theme survives reload and mock preview does not overwrite it',asyn
   await page.goto('/');
   expect(await page.locator('.os').evaluate(el=>getComputedStyle(el).getPropertyValue('--bg').trim())).toBe('#000000');
 });
+
+test('MVP mock account and privacy journeys exclude Contacts controls', async ({page}) => {
+  const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));
+  await page.goto('/?mode=mock&start=settings:privacy');
+  await expect(page.getByRole('button',{name:'Microphone',exact:true})).toBeVisible();
+  await expect(page.getByRole('button',{name:'Contacts',exact:true})).toHaveCount(0);
+  await page.getByRole('button',{name:'Microphone',exact:true}).click();
+  await expect(page.getByRole('button',{name:'Alpha microphone',exact:true})).toBeVisible();
+  await expect(page.getByRole('button',{name:/^(Phone|Messages) microphone$/})).toHaveCount(0);
+  await page.goto('/?mode=mock&start=settings:accounts');
+  await page.getByRole('button',{name:'you@gmail.example',exact:true}).click();
+  await expect(page.getByRole('button',{name:'Calendar: Act',exact:true})).toBeVisible();
+  await expect(page.getByRole('button',{name:/^Contacts:/})).toHaveCount(0);
+  await page.goto('/?mode=mock&start=settings:adding');
+  await expect(page.getByText('Gmail, Calendar',{exact:true})).toBeVisible();
+  await expect(page.getByText(/CardDAV|Gmail, Calendar, Contacts/)).toHaveCount(0);
+  await page.getByRole('button',{name:'Google',exact:true}).click();
+  // Fixture credentials stay in the explicitly labelled mock; no account call occurs.
+  await page.getByRole('textbox',{name:'Email',exact:true}).fill('mvp-fixture@example.test');
+  await page.getByRole('textbox',{name:'Password',exact:true}).fill('mock-only');
+  await page.getByRole('button',{name:'Sign in',exact:true}).click();
+  await expect(page.getByRole('button',{name:'Mail: Act',exact:true})).toBeVisible();
+  await expect(page.getByRole('button',{name:/^Contacts:/})).toHaveCount(0);
+  expect(errors).toEqual([]);
+});
+
+test('MVP mock digest and fallback advertise only retained views', async ({page}) => {
+  await page.goto('/?mode=mock&start=sheet');
+  const composer=page.getByRole('textbox',{name:'Message Alpha',exact:true});
+  await composer.fill('zzzzzz unknown request');await composer.press('Enter');
+  await expect(page.getByText(/I can't do that yet. Try opening Inbox/)).toBeVisible();
+  await expect(page.getByText(/I can message, call|navigate, pay/)).toHaveCount(0);
+  await composer.fill('catch me up');await composer.press('Enter');
+  await expect(page.getByText('1 item needs your attention.',{exact:true})).toBeVisible();
+  await expect(page.getByRole('button',{name:/Still on for 3|Sent you the photos from Saturday/})).toHaveCount(0);
+  await page.getByRole('button',{name:/JP Jordan Park Revised term sheet attached/}).click();
+  await expect(page.getByRole('heading',{name:'Revised term sheet',exact:true})).toBeVisible();
+});
+
+test('MVP Notes sharing keeps email and export without a deferred SMS dead end',async({page})=>{
+  await page.goto('/');await page.getByRole('button',{name:'Notes',exact:true}).click();
+  await page.getByRole('button',{name:'New note',exact:true}).click();
+  await page.getByRole('textbox',{name:'Title',exact:true}).fill('MVP share scope');
+  await page.getByRole('textbox',{name:'Note',exact:true}).fill('Local test note');
+  await page.getByRole('button',{name:'Share note',exact:true}).click();
+  await expect(page.getByRole('button',{name:'Share by email',exact:true})).toBeVisible();
+  await expect(page.getByRole('button',{name:'Export text file',exact:true})).toBeVisible();
+  await expect(page.getByRole('button',{name:'Share in Messages',exact:true})).toHaveCount(0);
+  await page.getByRole('button',{name:'Close',exact:true}).click();
+  await expect(page.getByRole('textbox',{name:'Note',exact:true})).toHaveValue('Local test note');
+});

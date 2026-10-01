@@ -2183,7 +2183,10 @@
       <div style="display: flex; align-items: center; margin-right: -8px"><h2 class="serif" style="margin: 0; flex-grow: 1; font-size: 26px; font-weight: 300">Share</h2><button class="ib" aria-label="Close" onClick="{{notes.closeSheet}}"><svg class="i" viewBox="0 0 24 24"><path d="{{ic.x}}"></path></svg></button></div>
       <sc-if value="{{notes.canExportText}}"><button class="tap" aria-label="Export text file" disabled="{{notes.documentBusy}}" onClick="{{notes.exportText}}" style="width:100%;min-height:48px;margin-top:12px;border-radius:16px;background:var(--s2)">Export text file</button></sc-if>
       <div style="display: flex; gap: 12px; padding-top: 14px">
+        <!-- MVP-DEFERRED: SMS sharing follows the feature profile; restore after native SMS scope acceptance. -->
+        <sc-if value="{{mvpMessages}}">
         <button onClick="{{notes.shareMsg}}" aria-label="Share in Messages" class="tap" style="flex: 1 1 0; height: 108px; border-radius: 24px; background: var(--s2); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; font-size: 14px"><svg class="i" viewBox="0 0 24 24" style="width: 26px; height: 26px"><path d="{{ic.bubble}}"></path></svg>Messages</button>
+        </sc-if>
         <button onClick="{{notes.shareMail}}" aria-label="Share by email" class="tap" style="flex: 1 1 0; height: 108px; border-radius: 24px; background: var(--s2); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; font-size: 14px"><svg class="i" viewBox="0 0 24 24" style="width: 26px; height: 26px"><path d="{{ic.mail}}"></path></svg>Email</button>
       </div>
     </div>
@@ -2630,7 +2633,10 @@
       <div style="width: 36px; height: 4px; border-radius: 2px; background: var(--s3); margin: 0 auto 6px"></div>
       <div style="display: flex; align-items: center; margin-right: -8px"><h2 class="serif" style="margin: 0; flex-grow: 1; font-size: 26px; font-weight: 300">Share</h2><button class="ib" aria-label="Close" onClick="{{files.closeSheet}}"><svg class="i" viewBox="0 0 24 24"><path d="{{ic.x}}"></path></svg></button></div>
       <div style="display: flex; gap: 12px; padding-top: 14px">
+        <!-- MVP-DEFERRED: SMS sharing follows the feature profile; restore after native SMS scope acceptance. -->
+        <sc-if value="{{mvpMessages}}">
         <button onClick="{{files.shareMsg}}" aria-label="Share in Messages" class="tap" style="flex: 1 1 0; height: 108px; border-radius: 24px; background: var(--s2); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; font-size: 14px"><svg class="i" viewBox="0 0 24 24" style="width: 26px; height: 26px"><path d="{{ic.bubble}}"></path></svg>Messages</button>
+        </sc-if>
         <button onClick="{{files.shareMail}}" aria-label="Share by email" class="tap" style="flex: 1 1 0; height: 108px; border-radius: 24px; background: var(--s2); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; font-size: 14px"><svg class="i" viewBox="0 0 24 24" style="width: 26px; height: 26px"><path d="{{ic.mail}}"></path></svg>Email</button>
       </div>
     </div>
