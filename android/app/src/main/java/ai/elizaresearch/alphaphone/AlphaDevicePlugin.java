@@ -62,7 +62,24 @@ public final class AlphaDevicePlugin extends Plugin {
   out.put("locationAccess",fine?"precise":coarse?"approximate":"denied");
   String[][] permissions={{"Microphone",Manifest.permission.RECORD_AUDIO},{"Location",Manifest.permission.ACCESS_FINE_LOCATION},{"Camera",Manifest.permission.CAMERA},{"Contacts",Manifest.permission.READ_CONTACTS}};
   for(String[] p:permissions)grants.put(p[0],getContext().checkSelfPermission(p[1])==PackageManager.PERMISSION_GRANTED);
-  grants.put("Location",fine||coarse);out.put("permissions",grants);call.resolve(out);
+  grants.put("Location",fine||coarse);out.put("permissions",grants);
+  out.put("passwordProvider",PasswordProviderSupport.status(getContext()));call.resolve(out);
+ }
+ @PluginMethod public void openPasswordProvider(PluginCall call) {
+  String action=call.getString("action","");
+  getActivity().runOnUiThread(()->{
+   try {
+    Intent target=PasswordProviderSupport.intent(getContext(),action);
+    String destination=Settings.ACTION_REQUEST_SET_AUTOFILL_SERVICE.equals(target.getAction())?"provider-picker":"external";
+    try { getActivity().startActivity(target); }
+    catch(android.content.ActivityNotFoundException missing) {
+     if(!"settings".equals(action)||!Settings.ACTION_REQUEST_SET_AUTOFILL_SERVICE.equals(target.getAction()))throw missing;
+     getActivity().startActivity(new Intent(Settings.ACTION_SETTINGS));destination="system-settings";
+    }
+    if(Settings.ACTION_SETTINGS.equals(target.getAction()))destination="system-settings";
+    JSObject out=new JSObject();out.put("status","opened");out.put("destination",destination);call.resolve(out);
+   } catch(RuntimeException unavailable) { call.reject("Password provider setup could not be opened. No provider change is confirmed."); }
+  });
  }
  @PluginMethod public void openSettings(PluginCall call) {
   String page=call.getString("page","");String action;

@@ -1,0 +1,19 @@
+# Password-provider setup
+
+Alpha Settings → Password manager reports a read-only Android snapshot. The Browser menu opens the same detail page. The UI distinguishes an absent, disabled, publisher-unrecognized or verified Proton package; no provider, another provider, or Proton selection; and Android autofill availability. Unknown observations remain unknown. A selected package is named as verified Proton only when its publisher matches the pinned certificate. A disabled verified package is labeled disabled.
+
+The original Proton publisher SHA256 is pinned in `config/native-apps.json`. Android's rotation-aware `PackageManager.hasSigningCertificate` verifies that identity; package visibility is limited to `proton.android.pass`. No vault, passwords, form contents or unlock state is queried or sent to the agent. These metadata observations can become stale, so launch/setup authenticates the package again and the UI refreshes on app resume or explicit Refresh.
+
+Choose password provider opens Android's public provider picker when the verified provider and autofill are available. Missing picker handlers fall back to Android Settings with search guidance. Without a verified provider, the Settings handoff remains generic. Android owns confirmation, selection and cancellation. Alpha never sets secure settings, forces a grant, enables a service or treats opening the picker as successful selection. The install action opens Proton's official download page; it does not download/install an APK. Open Proton Pass requires the pinned publisher again at dispatch.
+
+Browser-only builds explain that the browser/OS manages passwords, offer no fake native installation/selection controls, and cannot report Android provider state. Explicit mock mode keeps its existing simulated UI and does not install the live setup adapter.
+
+This is onboarding, not official-provider acceptance. The embedded Alpha browser is distinct from a browser on Proton's recognized-browser list. Preserve any provider warning. Setup does not establish password saving/filling, cross-origin matching, unlock/resume, passkeys or release-signed/physical-device compatibility; those remain the acceptance gates in `browser-autofill-integration.md` and the MVP completion plan. Alpha neither restyles nor bypasses provider-owned vault/security UI.
+
+Primary references:
+
+- [AutofillManager](https://developer.android.com/reference/android/view/autofill/AutofillManager): `isAutofillSupported` and `getAutofillServiceComponentName` report device/user support and selected service. `hasEnabledAutofillServices` is deliberately not used: it asks whether the calling app itself provides the selected service.
+- [Android autofill setup](https://developer.android.com/identity/autofill/autofill-services): user enablement and public provider picker.
+- [AOSP15 CredentialsPickerActivity](https://android.googlesource.com/platform/packages/apps/Settings/+/refs/heads/android15-release/src/com/android/settings/applications/credentials/CredentialsPickerActivity.java) and [Settings manifest](https://android.googlesource.com/platform/packages/apps/Settings/+/refs/heads/android15-release/AndroidManifest.xml): exported package-scheme request action routes into the combined picker. Alpha does not infer selection from activity results.
+- [PackageManager signing verification](https://developer.android.com/reference/android/content/pm/PackageManager#hasSigningCertificate(java.lang.String,%20byte[],%20int)): publisher verification respects proof of signing-key rotation.
+- [Proton Android setup](https://proton.me/support/pass-setup-android) and the pinned provider constraints in `browser-autofill-integration.md`.

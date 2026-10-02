@@ -37,4 +37,8 @@ Alias guard/preparation simulations pass 31 tests after a clean rerun; the ENOSP
 
 ## Remaining acceptance
 
-Fresh exact-candidate APK/native qualification, live Cloud/Gmail/agent/voice, visible Pixel-class UI, physical speech and alarms, signed AOSP boot/update/rollback and device/user acceptance remain open. No local emulator was booted because local capacity remains below the campaign gate. The overall MVP goal remains active.
+Fresh exact-candidate APK/native qualification, live Cloud/Gmail/agent/voice, visible Pixel-class app flows, physical speech and alarms, signed AOSP boot/update/rollback and device/user acceptance remain open. Local capacity subsequently recovered above the gate. A fresh, dedicated Android 35 ARM64 Pixel 9 AVD (`alpha_root_52ab_pixel`, `emulator-5554`) booted and is visible through Android Studio Computer Use; no candidate APK is installed yet. The existing headless Alpha instance and other product emulators were preserved. Evidence: `test-results/pixel-visible-52ab/fresh-avd-ownership.json`. This is simulator preparation, not product acceptance. The overall MVP goal remains active.
+
+## Follow-on source audit
+
+At exact candidate `52ab225f745c8c49b83e2cda83540e8cdb4eecbc`, the Notes/audio writer inventory found no shipped UI, agent schema, import, workflow or migration path that reattaches retained audio after its note tombstone outside explicit, serialized Restore. The remaining cross-store counterexample requires an arbitrary trusted internal storage writer. Keep that API boundary explicit and require future voice association writers to join the same ownership/recovery protocol. This source audit is not new native execution evidence. Details: `test-results/notes-association-audit-52ab/REPORT.md`.
