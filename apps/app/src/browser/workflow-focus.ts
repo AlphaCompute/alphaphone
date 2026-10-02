@@ -1,7 +1,7 @@
 import {focusOwner,focusChanged} from './focus-state';
 import {registerPlugin} from '../platform-plugins';
 type Bag=Record<string,any>;
-export type FocusBlock={flowId?:string;definition?:string;notificationEpoch?:string;owner:string;phase:'active'|'ended'|'cancelled';eventId:string;begin:number;end:number;eventSignature:string;seen:string[];arrivals:Bag[]};
+export type FocusBlock={dnd?:boolean;flowId?:string;definition?:string;notificationEpoch?:string;owner:string;phase:'active'|'ended'|'cancelled';eventId:string;begin:number;end:number;eventSignature:string;seen:string[];arrivals:Bag[]};
 export const isFocusWorkflow=(flow:Bag)=>flow.trig?.kind==='event'&&flow.trig.ev==='A deep-work event starts'&&flow.steps.some((step:Bag)=>step.k==='If'&&step.t.toLowerCase()==='a message is from maya, let it through');
 const signature=(event:Bag)=>JSON.stringify([String(event.id),event.begin,event.end,event.title]);
 async function sources(api:Bag){

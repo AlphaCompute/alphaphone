@@ -1427,3 +1427,14 @@ A WebKit control run against the prior committed Files implementation failed dur
 Receipt selection now compares normalized source IDs consistently with its existing final source validation, allowing a string workflow-trigger ID to resolve a numeric Inbox ID. A new collision test verifies that adding an equivalent string ID before confirmation is rejected without a Files write. This remains a local Inbox/Files/Wallet development flow, not external mail delivery or a payment.
 
 `npm run verify` passed **114 tests**, TypeScript and the web build. Evidence: `artifacts/calendar-preferences-review/test-results/files-storage-review/` (`browser.log`, `added-browser.log`, `webkit.log`, `webkit-negative.log`, `verify.log`, frozen inputs). Android builds were skipped. Hosted results for this checkpoint are pending; the overall MVP goal remains open.
+
+
+## October 2 — Focus policy follows workflow step order
+
+The focus executor previously enabled its temporary DND policy when it persisted the run, before executing any step. Removing the DND step still silenced notifications; moving it after an interactive Write silenced them while waiting; an explicit off step did not release the temporary policy. Three retained negative controls reproduce those behaviors.
+
+Focus now owns DND only after the on step persists its policy flag. The off step clears that flag before applying the requested device setting. This preserves step order, cancellation cleanup, independent manual DND and overlapping focus ownership. Historical records with no policy flag cannot silently activate one.
+
+**48 browser cases passed** across focus, foreground triggers and workflow concurrency, including all three new ordering regressions. `npm run verify` passed **114 tests**, TypeScript and the web build. Evidence: `artifacts/calendar-preferences-review/test-results/focus-order-review/`. Android builds skipped; hosted verification pending.
+
+Hosted follow-up remains open: PR #14 push run `37064572768`, shard-2 job `111029042033`, passed 303 cases and failed `dev-notifications.spec.ts` while waiting for “Select Mail (browser.mail)”. The terminal job log is retained in the same evidence directory. Its cause is not yet established; other jobs were still running when inspected. This is not an all-green hosted checkpoint.
