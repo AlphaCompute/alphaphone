@@ -1,3 +1,4 @@
+import {stampNoteChanges} from '../runtime/note-dates';
 import { Capacitor } from '@capacitor/core';
 import { isMapsOperation } from '../runtime/maps-contract';
 import { readMapsSelection } from '../maps/agent-context';
@@ -211,7 +212,7 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
           }
         }
         if (this.notesStorageFailed) return { status: 'failed', summary: 'Resolve the notes storage error before saving.' };
-        const note = { id: crypto.randomUUID(), kind: 'text', title: operation.title, body: operation.body, pinned: false, when: 'Now' };
+        const note = { id: crypto.randomUUID(), kind: 'text', title: operation.title, body: operation.body, pinned: false, when: 'Now', createdAt:Date.now(), modifiedAt:Date.now() };
         const current = this.vget('notes').list;
         const list = [note, ...current];
         if (!await this.vset('notes', { list })) return { status: 'failed', summary: 'The note save is unconfirmed. Reopen Notes to inspect before requesting another save.' };
@@ -280,7 +281,7 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
         if (this.notesStorageFailed) return { status: 'failed', summary: 'Notes storage is unavailable. Nothing saved.' };
         const existing = this.vget('notes').list.find((note: Shell) => note.id === operationId);
         if (existing) return { status: 'unknown', summary: 'A note already has this action identifier; review it before resolving.' };
-        const note = { id: operationId, kind: 'text', title: operation.title, body: operation.body, pinned: false, when: 'Now' };
+        const note = { id: operationId, kind: 'text', title: operation.title, body: operation.body, pinned: false, when: 'Now', createdAt:Date.now(), modifiedAt:Date.now() };
         const saved = await this.vset('notes', { list: [note, ...this.vget('notes').list] });
         return { status: saved ? 'succeeded' : this.notesCommitUncertain?'unknown':'failed', summary: saved ? `Saved note: ${operation.title}` : 'The note save is unconfirmed. Inspect saved notes before repeating.' };
       }
@@ -337,6 +338,7 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
     if (key !== 'notes' || !patch.list) { originalSet.call(this,key,patch);return true; }
     if (this.notesStorageFailed||!this.notesStore) {this.toast('Notes storage needs recovery before editing.');return false;}
     try {
+      if(!isAndroid)patch={...patch,list:stampNoteChanges(this.notesStore.list,patch.list)};
       const pending=this.notesStore.replace(patch.list);
       this.notesPending++;
       this.notesSelectionKey=null;this.notesSelection=null;

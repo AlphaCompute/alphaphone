@@ -35,6 +35,7 @@ export function installSimulatedApps(Component:any,views:Bag,original:Bag){
  const set=Component.prototype.vset;
  Component.prototype.vset=function(name:string,patch:Bag){
   if(simulatorNeedsRecovery(name)){showSimulatorRecovery();throw Error('Saved app data needs recovery.');}
+  if(name==='inbox'&&Array.isArray(patch.mails)){const known=new Set(this.vget('inbox').mails.map((mail:Bag)=>String(mail.id)));patch={...patch,mails:patch.mails.map((mail:Bag)=>known.has(String(mail.id))?mail:{...mail,receivedAt:Number.isFinite(mail.receivedAt)?mail.receivedAt:Date.now()})};}
   const fields=views[name]?.persist||[];
   if(names.includes(name)&&fields.some((key:string)=>Object.prototype.hasOwnProperty.call(patch,key))){
     const value={...this.vget(name),...patch},stored:Bag={};for(const key of fields)stored[key]=value[key];

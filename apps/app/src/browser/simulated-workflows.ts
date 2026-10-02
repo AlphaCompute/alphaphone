@@ -1,3 +1,4 @@
+import {readDatedWorkflowSource} from './workflow-dated-sources';
 import {openWorkflowHistory} from './workflow-history';
 import {readWorkflowMessages} from './workflow-messages';
 import {workflowCalendarRange,readWorkflowCalendar,workflowInMeeting} from './workflow-calendar';
@@ -22,8 +23,9 @@ export function installSimulatedWorkflows(view:Bag){
   if(item.k==='Send')return sendWorkflowLocal(item,input,operationId,api,signal,context.messages);
   if(item.k==='Write'&&text==='a note in notes'){await api.localWorkflowNotes({operationId,text:input},signal);return {output:input,detail:'Note saved ('+operationId+')'};}
   if(item.k==='Read'){
-   delete context.messages;let output:string;const range=workflowCalendarRange(text);
-   if(text==='messages'||text==='new messages'){const messages=readWorkflowMessages(api,text==='new messages');output=JSON.stringify(messages);if(output.length<=16000)context.messages=messages;}
+   delete context.messages;let output:string;const range=workflowCalendarRange(text);const dated=await readDatedWorkflowSource(text,api,calendar,signal);
+   if(dated)output=JSON.stringify(dated);
+   else if(text==='messages'||text==='new messages'){const messages=readWorkflowMessages(api,text==='new messages');output=JSON.stringify(messages);if(output.length<=16000)context.messages=messages;}
    else if(text==='inbox')output=JSON.stringify(api.get('inbox').mails);
    else if(text==='contacts')output=JSON.stringify(api.get('contacts').list);
    else if(text==='files'||text==='recent files')output=JSON.stringify(await files.workflowFiles({recent:text==='recent files'},signal));
