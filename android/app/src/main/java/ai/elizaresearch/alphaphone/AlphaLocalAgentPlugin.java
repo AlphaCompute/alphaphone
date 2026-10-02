@@ -156,6 +156,17 @@ public final class AlphaLocalAgentPlugin extends Plugin {
    catch(Exception unavailable){call.reject("Stop requested locally, but native shutdown could not be confirmed. Check runtime status.");}
   }
  }
+ // Native callers may bind background result reads to an existing enrollment.
+ // This is deliberately not a Capacitor method and never initiates pairing.
+ static JSONObject captureResultSession(String expectedOwner) throws Exception {
+  synchronized(lifecycleLock){
+   String currentRoot=ElizaAgentService.localAgentToken();
+   if(!accepting||stopping||rootToken==null||!rootToken.equals(currentRoot)||
+      ownerIdentity==null||!ownerIdentity.equals(expectedOwner)||ownerToken==null||
+      expiresAt<=System.currentTimeMillis()+30000)throw new SecurityException("Reconnect the local agent before binding results");
+   return ResidentResultSession.snapshot(ownerIdentity,ownerToken,expiresAt,currentRoot);
+  }
+ }
  private static JSONObject raw(String path,String method,String body,String token,JSONObject supplied) throws Exception {
   JSONObject headers=new JSONObject();headers.put("Accept","application/json");headers.put("Content-Type","application/json");
   if(token!=null)headers.put("Authorization","Bearer "+token);

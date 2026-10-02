@@ -120,7 +120,7 @@ public final class AlphaConnectionPlugin extends Plugin {
  @PluginMethod public void secureWrite(PluginCall call) {
   submit(call,() -> {
    try {
-    writeCredentialSlot(call.getString("slot"), call.getString("value"));
+    writeCredentialSlot(RendererCredentialSlots.requireAllowed(call.getString("slot")), call.getString("value"));
     call.resolve();
    } catch (Exception error) { call.reject("Secure storage write failed"); }
   });
@@ -173,7 +173,7 @@ public final class AlphaConnectionPlugin extends Plugin {
  }
  @PluginMethod public void secureRead(PluginCall call) {
   submit(call,()->{
-   try{String value=readCredentialSlot(call.getString("slot"));JSObject result=new JSObject();result.put("value",value==null?JSONObject.NULL:value);call.resolve(result);}
+   try{String value=readCredentialSlot(RendererCredentialSlots.requireAllowed(call.getString("slot")));JSObject result=new JSObject();result.put("value",value==null?JSONObject.NULL:value);call.resolve(result);}
    catch(Exception error){call.reject("Secure storage read failed");}
   });
  }
@@ -181,7 +181,7 @@ public final class AlphaConnectionPlugin extends Plugin {
  @PluginMethod public void secureCompareExchange(PluginCall call) {
   submit(call,()->{
    try {
-    String name=call.getString("slot");
+    String name=RendererCredentialSlots.requireAllowed(call.getString("slot"));
     if(name==null||!(name.startsWith("inbox-drafts:v1:")||name.matches("inbox-operation:v1:[a-f0-9]{64}")||name.matches("workflow-draft:v1:[a-f0-9]{64}")||name.equals("notes-records:v1:device")||name.matches("cloud-delegation:v1:[a-f0-9]{64}"))||!call.getData().has("expectedValue")||!call.getData().has("value"))throw new IllegalArgumentException();
     for(String field:new String[]{"expectedValue","value"})if(!call.getData().isNull(field)&&!(call.getData().get(field) instanceof String))throw new IllegalArgumentException();
     String expected=call.getString("expectedValue"), value=call.getString("value");
@@ -208,7 +208,7 @@ public final class AlphaConnectionPlugin extends Plugin {
  @PluginMethod public void secureRemove(PluginCall call) {
   submit(call,() -> {
    try {
-    String slot = slotHash(call.getString("slot"));
+    String slot = slotHash(RendererCredentialSlots.requireAllowed(call.getString("slot")));
     synchronized (storageLock) {
      AtomicFile file = slotFile(slot); file.delete();
      if (file.getBaseFile().exists() || new File(file.getBaseFile().getPath() + ".bak").exists() || new File(file.getBaseFile().getPath() + ".new").exists()) throw new IllegalStateException();

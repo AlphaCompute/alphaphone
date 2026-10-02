@@ -25,6 +25,8 @@ public final class ResidentResultTransportTest {
  static JSONObject result(){String now="2026-10-02T00:00:00Z";return new JSONObject().put("cursor",1).put("runId","run-one").put("workflowId","workflow").put("workflowVersionId","version").put("templateVersion","template").put("scheduledAt",now).put("startedAt",now).put("completedAt",now).put("source",new JSONObject().put("kind","tasks")).put("status","completed").put("output","Synthetic result").put("error",JSONObject.NULL);}
  static final class Store implements HostedInbox.Store,HostedResultNotices.Storage {final Map<String,String> values=new HashMap<>();public String read(String key){return values.get(key);}public void write(String key,String value){values.put(key,value);}public void remove(String key){values.remove(key);}}
  public static void main(String[] args)throws Exception {
+  for(String slot:new String[]{"resident-results:v1:credential","resident-results:future","local-agent-provider:v1",null,""})rejects(()->RendererCredentialSlots.requireAllowed(slot));
+  require(RendererCredentialSlots.requireAllowed("device:fixture").equals("device:fixture"));
   Channel c=new Channel();ResidentResultTransport t=c.transport();
   for(String path:new String[]{"/api/auth/pair","/api/workflow/execute","/api/workflow/hosted/loops","https://other.invalid","/api/workflow/hosted/results?clientId=x&extra=y"})rejects(()->t.request(path,null));require(c.paths.isEmpty());
   JSONObject ack=new JSONObject().put("clientId","client").put("runId","run-one").put("cursor",1);
@@ -43,6 +45,24 @@ public final class ResidentResultTransportTest {
   Channel recovery=new Channel();recovery.loseAck=true;recovery.beforeAck=()->{try{require(inbox.history(slot).length()==1);}catch(Exception error){throw new AssertionError(error);}};
   rejects(()->inbox.sync(binding,recovery.transport(),()->{}));String original=store.read(slot+":run-one");require(original!=null&&!recovery.acknowledged);
   require(inbox.sync(binding,recovery.transport(),()->{}).length()==1);require(recovery.acknowledged&&original.equals(store.read(slot+":run-one")));
+  Store credentials=new Store();String root="native-runtime-root";
+  JSONObject snapshot=ResidentResultSession.snapshot("owner","session",System.currentTimeMillis()+60000,root);
+  credentials.write("resident",snapshot.toString());JSONObject device=new JSONObject().put("installationId","11111111-1111-1111-1111-111111111111").put("key","a".repeat(64)).put("enrollmentId","enrollment");credentials.write("device",device.toString());
+  JSONObject pinned=new JSONObject().put("ownerId","owner").put("agentId","agent").put("credentialSlot","resident").put("credentialDigest",HostedResultNotices.hash(snapshot.toString())).put("deviceSlot","device").put("deviceDigest",HostedResultNotices.hash(device.toString()));
+  Channel service=new Channel();String[] currentRoot={root};boolean[] current={true};
+  ResidentResultSession.Runtime runtime=new ResidentResultSession.Runtime(){public String rootToken(){return currentRoot[0];}public JSONObject exchange(JSONObject request)throws Exception{
+   require(request.getJSONObject("headers").getString("Authorization").equals("Bearer session"));String path=request.getString("path");
+   if(path.startsWith("/api/workflow/"))require(request.getJSONObject("headers").getString("X-Eliza-Device-Key").equals("a".repeat(64)));
+   return service.exchange(path,request.getString("method"),request.has("body")?new JSONObject(request.getString("body")):null,request.getInt("timeoutMs"));
+  }};
+  ResidentResultSession.Guard guard=()->{if(!current[0])throw new SecurityException("Binding retired");};
+  ResidentResultTransport bound=ResidentResultSession.open(credentials,pinned,runtime,guard);bound.verify();int verifiedCalls=service.paths.size();
+  currentRoot[0]="replacement-runtime";rejects(bound::verify);require(service.paths.size()==verifiedCalls);currentRoot[0]=root;
+  current[0]=false;rejects(bound::verify);require(service.paths.size()==verifiedCalls);current[0]=true;
+  credentials.write("resident",new JSONObject(snapshot.toString()).put("token","rotated").toString());rejects(bound::verify);require(service.paths.size()==verifiedCalls);credentials.write("resident",snapshot.toString());
+  credentials.write("device",new JSONObject(device.toString()).put("enrollmentId","replaced").toString());rejects(bound::verify);require(service.paths.size()==verifiedCalls);credentials.write("device",device.toString());
+  credentials.remove("resident");rejects(bound::verify);require(service.paths.size()==verifiedCalls);
+  rejects(()->ResidentResultSession.snapshot("owner","session",1,root));
   System.out.println("PASS resident owner/session/agent checks, bounded IPC, route denial, cancellation, commit-before-ack and lost-ack recovery");
  }
 }

@@ -7,7 +7,7 @@ import java.util.function.LongSupplier;
 import org.json.*;
 
 /** Resident result reads use an existing native-owned session. Never enrolls or starts an agent. */
-final class ResidentResultTransport implements HostedInbox.Transport, AutoCloseable {
+final class ResidentResultTransport implements HostedInbox.DeliveryTransport {
  interface Channel {
   // The channel supplies credentials and generation checks; none come from result data.
   JSONObject exchange(String path, String method, JSONObject body, int timeoutMs) throws Exception;
@@ -41,7 +41,7 @@ final class ResidentResultTransport implements HostedInbox.Transport, AutoClosea
   if(raw.getBytes(StandardCharsets.UTF_8).length>1100000)throw new IOException("Resident result response too large");
   return new JSONObject(raw);
  }
- void verify()throws Exception {
+ public void verify()throws Exception {
   JSONObject me=call("/api/auth/me",null),identity=me.getJSONObject("identity"),access=me.getJSONObject("access"),auth=me.getJSONObject("session");
   if(!owner.equals(identity.getString("id"))||!"owner".equals(identity.getString("kind"))||
      !"OWNER".equals(access.getString("role"))||!"session".equals(access.getString("mode"))||

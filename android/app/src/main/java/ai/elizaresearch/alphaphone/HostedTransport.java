@@ -7,7 +7,7 @@ import java.util.concurrent.*;
 import org.json.*;
 
 /** Bounded read/receipt transport. No login, refresh, registration, execution or provider grants. */
-final class HostedTransport implements HostedInbox.Transport,AutoCloseable {
+final class HostedTransport implements HostedInbox.DeliveryTransport {
  interface Guard {void check()throws Exception;}
  interface Connections {HttpURLConnection open(URL url)throws Exception;}
  private final Connections connections;
@@ -31,7 +31,7 @@ final class HostedTransport implements HostedInbox.Transport,AutoCloseable {
   }finally{c.disconnect();if(connection==c)connection=null;}
  }
  private static JSONObject success(JSONObject value)throws Exception {if(!value.getBoolean("success"))throw new SecurityException("Cloud identity unavailable");return value.getJSONObject("data");}
- void verify()throws Exception {
+ public void verify()throws Exception {
   String base=binding.getString("origin");origin(base,binding.getString("mode").equals("local"));JSONObject auth=credential();String owner=binding.getString("ownerId"),agent=binding.getString("agentId");
   if(binding.getString("mode").equals("cloud")){
    String env=binding.getString("environment"),api=env.equals("production")?"https://api.eliza.app":env.equals("staging")?"https://api-staging.eliza.app":null;if(api==null)throw new SecurityException("Invalid Cloud environment");if(!auth.getString("credentialId").equals(binding.getString("credentialId")))throw new SecurityException("Cloud account changed");

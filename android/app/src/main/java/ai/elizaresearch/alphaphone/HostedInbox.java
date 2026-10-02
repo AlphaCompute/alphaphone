@@ -7,6 +7,7 @@ import org.json.*;
 final class HostedInbox {
  interface Store { String read(String slot)throws Exception; void write(String slot,String value)throws Exception; void remove(String slot)throws Exception; }
  interface Transport { JSONObject request(String path,JSONObject body)throws Exception; void check()throws Exception; }
+ interface DeliveryTransport extends Transport,AutoCloseable { void verify()throws Exception; void close(); }
  interface Fence { void check()throws Exception; }
  private final Store store;
  private final Object gate;
