@@ -22,4 +22,21 @@ The inspected source is the prepared `artifacts/local-agent-digests` checkout, c
 3. Enable the mobile plugin and remove its bundle stub only when those artifacts and contracts are present. Keep missing payloads visibly unavailable.
 4. Run source/contract and browser checks. A later authorized Android qualification must cover both variants, actual native process/IPC behavior and physical-device acceptance; do not infer those results from the host tests.
 
+## Worker dependency artifact implemented
+
+`scripts/build-workflow-worker.ts` now builds a relocatable worker dependency artifact from the authenticated prepared source and installed frozen dependencies. It retains shared chunks for Smithers, Effect and React, exposes the package paths used by compiled phone workflows and control workers, and includes the engine's dynamic React/components, graph, scheduler and SQLite imports. The manifest hashes every output file and records source-stamp and lock hashes. `dependencies.json` records bundled package versions, source paths and package-manifest hashes; available license/notice files are copied alongside it. Missing upstream notices still require a distribution review before release.
+
+Build and exercise it without assembling an APK (Node 24 and Bun on PATH):
+
+```sh
+export ALPHA_LOCAL_AGENT_SOURCE_DIR="$PWD/artifacts/local-agent-digests"
+export ALPHA_WORKFLOW_WORKER_OUTPUT="$PWD/artifacts/mobile-workflow-worker-qualified"
+npm run agent:build-workflow-worker
+npm run agent:test-workflow-worker
+```
+
+Choose a fresh output path for each build; the builder refuses to overwrite an existing artifact. The test verifies hashes, rejects symlinks, copies the artifact into an isolated temporary directory and runs a real SQLite-backed Smithers workflow with Bun package installation disabled. It then starts a second worker with the same run ID and database and requires both runs to finish with exactly one task execution. The fixture uses only synthetic local text and a temporary execution marker, with no provider credentials or external action.
+
+This closes the demonstrated dependency-resolution/replay prerequisite on the host. It does not stage the artifact into the mobile payload, enable the mobile workflow plugin, exercise approval/denial/cancellation control behavior, or establish Android executable/loader, lifecycle or physical-device acceptance. Those remain the next implementation and qualification boundaries above.
+
 Open product boundary: an on-device executor cannot execute while the phone is powered off. Current digest scheduling skips missed occurrences rather than replaying a backlog. A different catch-up policy or optional remote executor requires an explicit product decision and separate implementation evidence.
