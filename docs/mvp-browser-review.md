@@ -1416,3 +1416,14 @@ Retained failing controls show the previous capture kept stale message/email con
 All 59 integrated browser cases passed, including focus reconciliation/lifecycle, concurrency and newly covered queued-agent contention, trigger dispatch and notification policy. Evidence is in `test-results/focus-reconciliation-review/`. PR #12's terminal browser failure was also inspected: it is the same delayed Calendar fixture timeout corrected in PR #14, not a new lock-control failure. Hosted verification of the current combined changes remains pending; Android builds remain skipped.
 
 Repository verification passed all 114 tests, TypeScript and the web build.
+
+
+## October 2 — Files byte storage and receipt source matching
+
+New browser Files imports and workflow attachments now store ArrayBuffer bytes in IndexedDB and reconstruct Blob objects for selection, text/PDF reads, downloads and attachments. Older Blob-backed entries remain readable; public file metadata excludes both payload representations. Directory reads finish before the atomic write so a failed or cancelled read leaves no partial folder. Mutation transaction errors now preserve an available underlying storage error.
+
+A WebKit control run against the prior committed Files implementation failed during the binary import. The revised implementation passed **38 Chromium cases and 38 WebKit cases**, covering exact binary bytes across rename/move/reload, cancelled delayed file and directory reads, failed directory reads, PDF rendering, legacy upgrade/retry, receipt rollback, and replay tombstones. The Chromium campaign comprised the existing 34 cases plus four added cases; WebKit ran all 38 together. Historical Blob compatibility is exercised in Chromium; WebKit upgrade fixtures use byte-backed rows because this tested WebKit environment cannot persist the old Blob representation.
+
+Receipt selection now compares normalized source IDs consistently with its existing final source validation, allowing a string workflow-trigger ID to resolve a numeric Inbox ID. A new collision test verifies that adding an equivalent string ID before confirmation is rejected without a Files write. This remains a local Inbox/Files/Wallet development flow, not external mail delivery or a payment.
+
+`npm run verify` passed **114 tests**, TypeScript and the web build. Evidence: `artifacts/calendar-preferences-review/test-results/files-storage-review/` (`browser.log`, `added-browser.log`, `webkit.log`, `webkit-negative.log`, `verify.log`, frozen inputs). Android builds were skipped. Hosted results for this checkpoint are pending; the overall MVP goal remains open.
