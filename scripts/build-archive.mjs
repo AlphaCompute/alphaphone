@@ -9,6 +9,12 @@ assert.ok(destination && path.resolve(destination).startsWith(path.resolve('test
 assert.ok(!fs.existsSync(destination), 'Archive already exists; preserve earlier evidence');
 fs.mkdirSync(destination,{recursive:true});
 const snapshot=()=>JSON.parse(execFileSync(process.execPath,['scripts/source-snapshot.mjs'],{encoding:'utf8'}));
+// Generated native Java is a build input: finish its normal source admission
+// before freezing the baseline. Gradle repeats this stage; final equality below
+// still rejects any non-deterministic regeneration or later source drift.
+const nativeStageLog=fs.openSync(path.join(destination,'native-source-prestage.log'),'wx');
+try{execFileSync(process.execPath,['scripts/stage-local-agent-sources.mjs'],{stdio:['ignore',nativeStageLog,nativeStageLog],timeout:180000});}
+finally{fs.closeSync(nativeStageLog);}
 const before=snapshot();
 fs.writeFileSync(path.join(destination,'inputs-before.json'),JSON.stringify(before,null,2));
 fs.writeFileSync(path.join(destination,'configuration.json'),JSON.stringify({mapsConfigured:Boolean(process.env.VITE_MAPS_BASE_URL),startedAt:new Date().toISOString()},null,2));

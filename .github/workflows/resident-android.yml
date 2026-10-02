@@ -1,0 +1,159 @@
+name: Resident Android exact source
+on:
+  push:
+    branches: [codex/resident-ci-qualification]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: resident-${{ github.sha }}
+  cancel-in-progress: false
+jobs:
+  build:
+    outputs:
+      artifact_id: ${{ steps.apks.outputs.artifact-id }}
+      source_sha: ${{ github.sha }}
+      manifest_sha256: ${{ steps.freeze.outputs.sha256 }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.4.2"
+      - name: Admit exact tools and fresh source paths
+        run: |
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test "$(node --version)" = "v24.15.0"
+          test "$(bun --version)" = "1.4.2"
+          python3 -c 'import shutil; assert shutil.disk_usage(".").free >= 10*1024**3'
+          echo "ALPHA_LOCAL_AGENT_SOURCE_DIR=$GITHUB_WORKSPACE/artifacts/resident-ci-92fc" >> "$GITHUB_ENV"
+          echo "ALPHA_WORKFLOW_WORKER_OUTPUT=$GITHUB_WORKSPACE/artifacts/worker-ci-92fc" >> "$GITHUB_ENV"
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
+          log-accepted-android-sdk-licenses: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Qualify supervisor on real Linux processes
+        timeout-minutes: 10
+        run: python3 scripts/ci/test-resident-phase.py
+      - name: Install pinned Android native toolchain
+        run: |
+          python3 scripts/ci/resident-phase.py --name android-toolchain --seconds 1200 sdkmanager 'platforms;android-36' 'build-tools;36.0.0' 'ndk;28.2.13676358' 'cmake;3.22.1'
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/28.2.13676358" >> "$GITHUB_ENV"
+          echo "$ANDROID_HOME/cmake/3.22.1/bin" >> "$GITHUB_PATH"
+      - run: python3 scripts/ci/resident-phase.py --name product-install --seconds 600 npm ci
+      - run: node --test vendor/eliza/packages/os/scripts/__tests__/stage-launcher-overlay.node.test.ts
+      # Cache only acquisition inputs. Every hit is size/hash verified; generated
+      # AARs, extracted sources and models are rebuilt in this clean job.
+      - uses: actions/cache@v4
+        with:
+          path: scripts/local-speech/downloads
+          key: speech-downloads-${{ runner.os }}-${{ hashFiles('scripts/local-speech/download-manifest.json') }}
+      - name: Acquire verified speech source, models and license references
+        timeout-minutes: 15
+        run: |
+          python3 scripts/ci/resident-phase.py --name speech-downloads --seconds 900 python3 scripts/local-speech/acquire-downloads.py
+          python3 scripts/ci/resident-phase.py --name lexicon --seconds 600 python3 scripts/local-speech/make-lexicon.py
+      - name: Build and qualify both no-eSpeak runtime ABIs
+        timeout-minutes: 65
+        run: |
+          for abi in arm64-v8a x86_64; do
+            python3 scripts/ci/resident-phase.py --name speech-build-$abi --seconds 3900 python3 scripts/local-speech/build-no-espeak.py --abi "$abi" --ndk "$ANDROID_NDK_HOME" --jobs 2
+            python3 scripts/ci/resident-phase.py --name strip-$abi --seconds 600 python3 scripts/local-speech/strip-runtime.py --abi "$abi" --ndk "$ANDROID_NDK_HOME"
+          done
+          python3 scripts/ci/resident-phase.py --name speech-verify --seconds 600 python3 scripts/local-speech/verify-source.py
+      - name: Assemble and verify speech APK inputs
+        run: |
+          python3 scripts/ci/resident-phase.py --name speech-assets --seconds 600 python3 scripts/local-speech/prepare-assets.py
+          python3 scripts/ci/resident-phase.py --name speech-assemble --seconds 600 python3 scripts/local-speech/assemble-runtime.py
+          python3 scripts/ci/resident-phase.py --name speech-install --seconds 600 python3 scripts/local-speech/install-generated.py --repository "$GITHUB_WORKSPACE"
+      - name: Prepare and qualify fresh resident source with normal hooks
+        run: |
+          python3 scripts/ci/resident-phase.py --name prepare --seconds 3600 npm run agent:prepare
+          python3 scripts/ci/resident-phase.py --name worker-build --seconds 900 npm run agent:build-workflow-worker
+          python3 scripts/ci/resident-phase.py --name compiler-flow --seconds 600 npm run agent:test-workflow-compiler
+          python3 scripts/ci/resident-phase.py --name worker-flow --seconds 600 npm run agent:test-workflow-worker
+          python3 scripts/ci/resident-phase.py --name runtime-stage --seconds 1800 npm run agent:stage-android
+          python3 scripts/ci/resident-phase.py --name mobile-bundle --seconds 300 npm run agent:test-mobile-workflow-bundle
+          python3 scripts/ci/resident-phase.py --name archive --seconds 3000 node scripts/build-archive.mjs test-results/resident-ci-archive
+      - name: Preserve native generated provenance
+        run: cp android/app/build/generated/local-agent/source-manifest.json test-results/resident-ci-archive/native-generated-source-manifest.json
+      - name: Anchor exact archive manifest
+        id: freeze
+        run: echo "sha256=$(sha256sum test-results/resident-ci-archive/apk-manifest.json | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@v4
+        id: apks
+        with:
+          name: resident-archive-${{ github.sha }}-${{ github.run_id }}
+          path: test-results/resident-ci-archive/
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: resident-build-evidence-${{ github.run_id }}
+          path: |
+            test-results/resident-ci-supervisor/
+            test-results/resident-ci/
+            test-results/resident-ci-archive/
+            android/app/build/reports/
+  native:
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 100
+    env:
+      ALPHA_RESIDENT_MANIFEST_SHA256: ${{ needs.build.outputs.manifest_sha256 }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.build.outputs.source_sha }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+      - uses: android-actions/setup-android@v3
+      - uses: actions/download-artifact@v4
+        with:
+          artifact-ids: ${{ needs.build.outputs.artifact_id }}
+          path: test-results/resident-ci-archive
+      - name: Require fresh capacity and KVM
+        run: |
+          python3 -c 'import shutil; assert shutil.disk_usage(".").free >= 10*1024**3'
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: default
+          arch: x86_64
+          profile: pixel_7
+          disk-size: 4096M
+          emulator-options: -no-window -gpu swiftshader -no-snapshot -noaudio -no-boot-anim
+          disable-animations: true
+          script: |
+            ANDROID_SERIAL=emulator-5554 python3 scripts/ci/resident-phase.py --name prepare-phone --seconds 300 node scripts/prepare-ci-emulator.mjs
+            ANDROID_SERIAL=emulator-5554 ALPHA_RESIDENT_DISPOSABLE_CI=1 python3 scripts/ci/resident-phase.py --name native --seconds 5400 python3 scripts/ci/resident-native.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: resident-native-evidence-${{ github.run_id }}
+          path: |
+            test-results/resident-ci-supervisor/
+            test-results/resident-ci/
+            test-results/resident-ci-native/

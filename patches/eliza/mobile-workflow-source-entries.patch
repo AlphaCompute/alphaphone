@@ -26,21 +26,6 @@
    const srcDir = existsSync(path.join(packageDir, "src"))
      ? path.join(packageDir, "src")
      : packageDir;
---- a/packages/app/src/mobile-agent-entry.ts
-+++ b/packages/app/src/mobile-agent-entry.ts
-@@ -1,5 +1,6 @@
- /** The application host composes its Android receiver before starting the portable agent. */
- 
-+import { workflowPlugin } from "@elizaos/plugin-workflow";
- import { browserPlugin } from "@elizaos/plugin-browser";
- import { STATIC_ELIZA_PLUGINS } from "../../agent/src/runtime/plugin-types";
- import { mobileRemoteTargetPlugin } from "./mobile-remote-target";
-@@ -8,4 +9,5 @@
-   default: mobileRemoteTargetPlugin,
- };
- STATIC_ELIZA_PLUGINS["@elizaos/plugin-browser"] = { default: browserPlugin };
-+STATIC_ELIZA_PLUGINS["@elizaos/plugin-workflow"] = { default: workflowPlugin };
- await import("../../agent/src/bin");
 --- /dev/null
 +++ b/packages/agent/test/mobile-workspace-exports.test.ts
 @@ -0,0 +1,17 @@

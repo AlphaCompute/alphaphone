@@ -1,34 +1,30 @@
 {
-  "baseCommit": "4573712ebf0466daa4dfadaa4482704c209d9b8c",
+  "baseCommit": "92fc988bbc2502b6dab5976014973bbe510b5045",
   "mvpSeries": "mvp-series",
   "files": {
-    "packages/app/src/security/secure-store-android.ts": "af9dbf66398a9a984b43b33d98e752f586c70a6b473b73413e1cbfe395d30974",
+    "packages/agent/scripts/build-mobile-bundle.ts": "8866366ab6c2648763ea7f9347a40b02d60f7f64bbe249df89fc4455055b5fcc",
+    "packages/agent/scripts/mobile-workspace-entry.ts": "cf894b21ca28a540f90042f5a361453b85c1cb918a91cd772debee0ce738d52e",
+    "packages/agent/src/runtime/eliza.ts": "b37555788a53dd9bdcdf2f58dbb51d9e714d991f979732fdd6de494290e6002c",
     "packages/agent/src/runtime/plugin-collector.ts": "7becd751d0616c5466506a1dabd48cc4a23d5ca393cf65e9cf0c9a47401c2e9b",
     "packages/agent/test/lean-chat-workflows.test.ts": "d6d937c5882e3683281cf40f84ccde3efc7bdf8c146b5a0426a0b693f519f337",
-    "plugins/plugin-workflow/src/plugin-routes.ts": "3edae66b214358367db08c3fb435bf12508c374efa691c51b71ce0ff01acf69e",
-    "plugins/plugin-workflow/__tests__/hosted-route-registration.test.ts": "fff3297e97e13c5929bff141c045a10153a5166eb93bd06dc84f5deb098135ac",
-    "plugins/plugin-workflow/src/services/smithers-runtime.ts": "2dce0d172cd9513d5fdc0eac38f46c6d6341eafe4a4fdb7a8622f46475b6a814",
-    "plugins/plugin-workflow/src/services/smithers-process.ts": "eb0217674c8504d975ef6375ebe484707b15033476cd8665c5c686e877102ae4",
-    "plugins/plugin-workflow/__tests__/smithers-process.test.ts": "7900cdee216732c0d02c98e126cfea40cc20a13d4865d3258850c38e75f8fbd7",
-    "plugins/plugin-workflow/__tests__/smithers-packaged-worker.test.ts": "7e7e5d2f5b51c6a5d2d51108436db215c9573338f14d5965a1cc389e5c1ceceb",
-    "plugins/plugin-workflow/src/services/workflow-approval-receipts.ts": "9f820b4092a7e2c6095dae3d6f99b5ac1ed8c674c4ffdf5dc8648a89a80dd05d",
-    "plugins/plugin-workflow/src/services/workflow-source-check.ts": "c5c76c06a7d6b3fa63c0085d3b2f85b31ee08a4cec230839fab3832d5ccc6c00",
-    "plugins/plugin-workflow/__tests__/workflow-packaged-compiler.test.ts": "fb5e076709021c26e17ef7142cd659336af36ce66a6f1493c99d64538416340e",
-    "packages/agent/src/runtime/eliza.ts": "b37555788a53dd9bdcdf2f58dbb51d9e714d991f979732fdd6de494290e6002c",
-    "packages/agent/scripts/build-mobile-bundle.ts": "8866366ab6c2648763ea7f9347a40b02d60f7f64bbe249df89fc4455055b5fcc",
     "packages/agent/test/mobile-workflows.test.ts": "93d753ea18233078d67050f4c16b1e22450b548dcc2b22558a2c344c8fa98618",
-    "packages/agent/scripts/mobile-workspace-entry.ts": "cf894b21ca28a540f90042f5a361453b85c1cb918a91cd772debee0ce738d52e",
-    "packages/app/src/mobile-agent-entry.ts": "3e234e47d5780006b09c3b8b26c012a475c441e35eb76d6dd97ec76bf0b0f4e0",
-    "packages/agent/test/mobile-workspace-exports.test.ts": "26606028fbd3deb1274a2c8801ea49dccaddb3c806e499607a523f38f5ef76e5"
+    "packages/agent/test/mobile-workspace-exports.test.ts": "26606028fbd3deb1274a2c8801ea49dccaddb3c806e499607a523f38f5ef76e5",
+    "packages/app/src/security/secure-store-android.ts": "af9dbf66398a9a984b43b33d98e752f586c70a6b473b73413e1cbfe395d30974",
+    "plugins/plugin-workflow/__tests__/hosted-route-registration.test.ts": "fff3297e97e13c5929bff141c045a10153a5166eb93bd06dc84f5deb098135ac",
+    "plugins/plugin-workflow/src/plugin-routes.ts": "3edae66b214358367db08c3fb435bf12508c374efa691c51b71ce0ff01acf69e"
   },
   "patches": [
     "android-secure-store-socket.patch",
     "lean-chat-workflows.patch",
     "hosted-digest-route-registration.patch",
-    "packaged-workflow-worker.patch",
-    "packaged-approval-receipts.patch",
-    "packaged-workflow-compiler.patch",
     "mobile-workflow-enablement.patch",
     "mobile-workflow-source-entries.patch"
-  ]
+  ],
+  "patchHashes": {
+    "android-secure-store-socket.patch": "457ea3d0b91c80c53c4bd3db25bb85cea6079d87c5ee2b02a96757e0a31ae900",
+    "lean-chat-workflows.patch": "a8ca2f7cda01dfee7d9542ac1263c55b66e9f6496315382329bd490bb95e0faf",
+    "hosted-digest-route-registration.patch": "13da9b7847cfbcbe8ca6dd606740df6a5e2789faa8b0999480258a27542d7b2e",
+    "mobile-workflow-enablement.patch": "127471d5f767546f7c6de7fe1e2e72cbbeb10561ef59ee48b23818b7efd26bbe",
+    "mobile-workflow-source-entries.patch": "15b3bf811f45c6a2c00625b5051ec7d74a17f0c5202a1155c6a668ff5a680ce6"
+  }
 }

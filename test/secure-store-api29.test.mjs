@@ -4,18 +4,30 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import {execFileSync} from 'node:child_process';
+import {sourceDirectory} from '../scripts/local-agent-source.mjs';
 const root=path.resolve(import.meta.dirname,'..');
 
 test('pinned generated secure-store helper reads bounded actual bytes on the Java 8 API',()=>{
-  const fixture=fs.mkdtempSync(path.join(os.tmpdir(),'alpha-frame-test-'));
+  const fixture=fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(),'alpha-frame-test-')));
   try {
-    for(const relative of ['scripts/stage-local-agent-sources.mjs','patches/eliza/android-secure-store-api29.patch','patches/eliza/android-secure-store-api29-source.json','patches/eliza/android-stream-cancellation.patch','patches/eliza/android-stream-cancellation-source.json','upstream.lock.json','app.config.json']) {
+    for(const relative of ['scripts/stage-local-agent-sources.mjs','patches/eliza/android-secure-store-api29.patch','patches/eliza/android-secure-store-api29-source.json','patches/eliza/android-native-runtime-source.json','patches/eliza/mvp-source-base.json','patches/eliza/android-local-runtime-source.json','scripts/local-agent-source.mjs','upstream.lock.json','app.config.json']) {
       fs.mkdirSync(path.dirname(path.join(fixture,relative)),{recursive:true});
       fs.copyFileSync(path.join(root,relative),path.join(fixture,relative));
     }
     fs.mkdirSync(path.join(fixture,'vendor'));
     fs.symlinkSync(fs.realpathSync(path.join(root,'vendor/eliza')),path.join(fixture,'vendor/eliza'));
-    execFileSync(process.execPath,[path.join(fixture,'scripts/stage-local-agent-sources.mjs')],{timeout:20000});
+    // Native lifecycle sources must be physical, admitted runtime files; a vendor
+    // symlink alone cannot stand in for their independent committed provenance.
+    const runtimeBase=JSON.parse(fs.readFileSync(path.join(root,'patches/eliza/mvp-source-base.json')));
+    const extra=JSON.parse(fs.readFileSync(path.join(root,'patches/eliza/android-local-runtime-source.json')));
+    const runtimeSource=sourceDirectory(root);
+    const runtimeFixture=path.join(fixture,'artifacts/local-agent-source');
+    fs.mkdirSync(path.dirname(runtimeFixture),{recursive:true});
+    execFileSync('git',['clone','--shared','--no-checkout',runtimeSource,runtimeFixture],{stdio:'pipe',timeout:20000});
+    execFileSync('git',['checkout','--detach',runtimeBase.baseCommit],{cwd:runtimeFixture,stdio:'pipe',timeout:20000});
+    for(const patch of [...runtimeBase.patches.map(p=>p.file),...extra.patches])execFileSync('git',['apply',path.join(root,'patches/eliza',patch)],{cwd:runtimeFixture,stdio:'pipe',timeout:20000});
+    const stageEnv={...process.env,ALPHA_LOCAL_AGENT_SOURCE_DIR:runtimeFixture};
+    execFileSync(process.execPath,[path.join(fixture,'scripts/stage-local-agent-sources.mjs')],{timeout:60000,env:stageEnv});
     const identity=JSON.parse(fs.readFileSync(path.join(fixture,'app.config.json'))).appId;
     const generated=path.join(fixture,'android/app/build/generated/local-agent');
     const target=path.join(generated,'java',...identity.split('.'));
@@ -23,13 +35,20 @@ test('pinned generated secure-store helper reads bounded actual bytes on the Jav
     assert.ok(!store.includes('readNBytes('));
     assert.equal(store.match(/SecureStoreFrameInput.readBounded/g)?.length,2);
     const manifest=JSON.parse(fs.readFileSync(path.join(generated,'source-manifest.json')));
-    assert.deepEqual(manifest.patches.map(p=>p.patch),['android-secure-store-api29.patch','android-stream-cancellation.patch']);
-    for(const name of ['android-secure-store-api29-source.json','android-stream-cancellation-source.json']){
+    assert.deepEqual(manifest.patches.map(p=>p.patch),['android-secure-store-api29.patch']);
+    for(const name of ['android-secure-store-api29-source.json']){
       const expected=JSON.parse(fs.readFileSync(path.join(root,'patches/eliza',name)));
       assert.deepEqual(manifest.patches.find(p=>p.patch===expected.patch),expected);
       for(const [relative,hashes] of Object.entries(expected.files)){
         const entry=manifest.files.find(f=>f.path===relative);assert.equal(entry.sourceSha256,hashes.sourceSha256);assert.equal(entry.sha256,hashes.patchedSha256);
       }
+    }
+    const nativeSource=JSON.parse(fs.readFileSync(path.join(root,'patches/eliza/android-native-runtime-source.json')));
+    assert.equal(nativeSource.commit,runtimeBase.baseCommit);
+    assert.deepEqual(manifest.runtimeSource,nativeSource);
+    for(const [relative,hash] of Object.entries(nativeSource.files)){
+      const entry=manifest.files.find(f=>f.path===relative);
+      assert.equal(entry.sourceSha256,hash);assert.equal(entry.sha256,hash);
     }
     assert.equal(manifest.files.find(f=>f.path.endsWith('/SecureStoreFrameInput.java')).sourceSha256,null);
     const harness=`package ${identity};
@@ -74,6 +93,6 @@ public class FrameReadTest {
     assert.match(execFileSync(binary('java'),['-cp',fixture,identity+'.FrameReadTest'],{encoding:'utf8',timeout:20000}),/^PASS bounded/);
     // Provenance drift must stop staging, not silently apply a modified patch.
     fs.appendFileSync(path.join(fixture,'patches/eliza/android-secure-store-api29.patch'),'\n');
-    assert.throws(()=>execFileSync(process.execPath,[path.join(fixture,'scripts/stage-local-agent-sources.mjs')],{stdio:'pipe',timeout:20000}),/Unexpected secure-store compatibility patch provenance/);
+    assert.throws(()=>execFileSync(process.execPath,[path.join(fixture,'scripts/stage-local-agent-sources.mjs')],{stdio:'pipe',timeout:60000,env:stageEnv}),/Unexpected secure-store compatibility patch provenance/);
   } finally { fs.rmSync(fixture,{recursive:true,force:true}); }
 });

@@ -15,6 +15,8 @@ import org.json.JSONObject;
 @CapacitorPlugin(name="Agent")
 public final class AlphaLocalAgentPlugin extends Plugin {
  private final ExecutorService workers=Executors.newFixedThreadPool(2);
+ // Set only from in-process debug instrumentation; no route, intent or preference activation.
+ static volatile java.net.ServerSocket instrumentationRecoveryEndpoint;
  private static String rootToken,ownerToken,ownerIdentity;
  private static long expiresAt;
  private static final Object lifecycleLock=new Object(), enrollmentLock=new Object();
@@ -81,6 +83,16 @@ public final class AlphaLocalAgentPlugin extends Plugin {
   env.put("ELIZAOS_CLOUD_USE_INFERENCE","false");
   env.put("ELIZA_DISABLE_PERSONAL_ASSISTANT","1");
   env.put("ELIZA_DISTRIBUTION_PROFILE","store");
+  java.net.ServerSocket fixture=instrumentationRecoveryEndpoint;
+  if(fixture!=null){
+   if(!BuildConfig.DEBUG||android.os.Process.myUid()/100000<=0||fixture.isClosed()
+      ||!fixture.isBound()||!"127.0.0.1".equals(fixture.getInetAddress().getHostAddress())
+      ||fixture.getLocalPort()<=0||!"synthetic-resident-recovery-only".equals(provider.getString("key")))
+    throw new java.io.IOException("Invalid resident recovery fixture endpoint");
+   String endpoint="http://127.0.0.1:"+fixture.getLocalPort()+"/v1";
+   env.put("CEREBRAS_BASE_URL",endpoint);env.put("OPENAI_BASE_URL",endpoint);
+   env.put("OPENAI_API_KEY","synthetic-resident-recovery-only");env.put("ELIZA_PROVIDER","cerebras");
+  }
   } catch(Exception error) {throw new java.io.IOException("Local model provider unavailable");}
  }
  @PluginMethod public void start(PluginCall call) {
@@ -111,7 +123,7 @@ public final class AlphaLocalAgentPlugin extends Plugin {
     long deadline=android.os.SystemClock.elapsedRealtime()+90000;
     boolean ready=false;
     while(android.os.SystemClock.elapsedRealtime()<deadline){
-     try{String root=ElizaAgentService.localAgentToken();if(root==null||root.isEmpty())throw new IllegalStateException();enrollmentJson(epoch,"/api/auth/status","GET",null,root).getString("instanceId");ready=true;break;}
+     try{if(rejectStartupRefusal(call,epoch,ElizaAgentService.getLocalAgentBootState(getContext())))return;String root=ElizaAgentService.localAgentToken();if(root==null||root.isEmpty())throw new IllegalStateException();enrollmentJson(epoch,"/api/auth/status","GET",null,root).getString("instanceId");ready=true;break;}
      catch(Superseded stale){rejectSuperseded(call);return;}
      catch(Exception unavailable){try{Thread.sleep(1000);}catch(InterruptedException interrupted){Thread.currentThread().interrupt();break;}}
     }
@@ -124,6 +136,18 @@ public final class AlphaLocalAgentPlugin extends Plugin {
     rejectPending(call,"Local agent startup did not complete. Check runtime status; no chat was sent.");
    });
   }catch(Exception error){synchronized(lifecycleLock){pending.remove(call);}call.reject("The on-device agent could not start. Try again or connect another agent.");}
+ }
+ static String startupRefusalMessage(String reason){
+  if("ipc-recovery-retention-limit".equals(reason))return "Local startup is blocked because retained recovery records reached their limit. Your records were preserved. Waiting or repeated starts will not clear this limit. Use another connection while recovery records are reviewed; do not clear app data.";
+  if("ipc-recovery-required".equals(reason))return "Local startup could not safely identify an interrupted agent or workflow. Your records were preserved. Use another connection while the runtime is inspected; do not clear app data or rerun unfinished work.";
+  if("runtime-identity-unavailable".equals(reason))return "Local startup could not verify its runtime files. Your records were preserved. Check the installed runtime before reconnecting.";
+  return null;
+ }
+ private boolean rejectStartupRefusal(PluginCall call,long epoch,JSONObject status) throws Superseded {
+  String reason=status.optString("reason");
+  String message=startupRefusalMessage(reason);
+  if(message==null)return false;
+  synchronized(lifecycleLock){requireCurrent(epoch);if(pending.remove(call))call.reject(message,reason);return true;}
  }
  private static boolean shutdownConfirmed(JSONObject status){
   return status!=null&&"dead".equals(status.optString("state"))&&!status.optBoolean("serviceActive",true)&&!status.optBoolean("socketListening",true);
