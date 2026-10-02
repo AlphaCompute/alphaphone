@@ -18,7 +18,12 @@ export function installSimulatedApps(Component:any,views:Bag,original:Bag){
  const set=Component.prototype.vset;
  Component.prototype.vset=function(name:string,patch:Bag){
   if(simulatorNeedsRecovery(name)){showSimulatorRecovery();throw Error('Saved app data needs recovery.');}
-  if(names.includes(name)){const value={...this.vget(name),...patch},stored:Bag={};for(const key of views[name].persist||[])stored[key]=value[key];localStorage.setItem('alpha.dev.app.'+name,JSON.stringify(stored));}
+  const fields=views[name]?.persist||[];
+  if(names.includes(name)&&fields.some((key:string)=>Object.prototype.hasOwnProperty.call(patch,key))){
+    const value={...this.vget(name),...patch},stored:Bag={};for(const key of fields)stored[key]=value[key];
+    try{localStorage.setItem('alpha.dev.app.'+name,JSON.stringify(stored));}
+    catch{this.toast('Could not save '+views[name].title+'. Your changes are still here. Try again after freeing browser storage.');throw Error('Development app save failed.');}
+  }
   return set.call(this,name,patch);
  };
 }

@@ -1,6 +1,6 @@
 # MVP implementation and design review — updated October 2, 2026
 
-Latest full integration checkpoint: **245/245 browser tests and 82/82 repository tests** at `a9845d0` on October 2. Subsequent targeted corrections are recorded below. See [the integrated report and remaining work](#october-2--integrated-browser-runtime-device-and-media-review) below. Earlier entries are historical evidence for their stated snapshots. The MVP goal remains open.
+Latest full integration checkpoint: **274/274 browser tests and 82/82 repository tests** in the [simulator-save checkpoint](#october-2--simulator-save-recovery-and-full-browser-checkpoint), based on `3f7a665` plus the recorded simulator fix. Earlier entries are historical evidence for their stated snapshots. The MVP goal remains open.
 
 Latest targeted browser checkpoint: [Calendar conversion and cancellation](#october-2--calendar-conversion-and-cancellation). Evidence below is scoped to its recorded revision; newer implementation checkpoints supersede earlier unavailable-feature statements only for the capabilities explicitly verified. The MVP remains incomplete.
 
@@ -699,3 +699,41 @@ previous editor. Evidence and source hashes: `test-results/calendar-conversion/`
 Concurrent recurrence work was preserved in the shared checkout but excluded from
 this qualification. No Android build ran. The remaining MVP and acceptance ledger
 stays open.
+
+
+## October 2 — simulator save recovery and full browser checkpoint
+
+The browser development simulators previously persisted their entire app document
+on every state change, including navigation, search and unsaved form edits. A full
+or unavailable storage area could therefore prevent users from even opening an
+editor. Only patches that change a persisted field now attempt a durable write.
+This applies to Phone, Messages, Contacts, Inbox, Workflows and Wallet simulators.
+
+Failed persistent changes show actionable storage guidance and abort the handler
+before publishing success or replacing the current state. The rendered Contacts
+journey verifies opening and typing with storage denied, retaining the original
+bytes and unsaved draft on failure, then saving exactly once after retry and
+retaining the new contact across reload. The failure still propagates as a
+sanitized event-handler error in the development console; the shell stays usable.
+These are development simulations and make no external calls or provider writes.
+
+Qualification on an isolated snapshot based on `3f7a665`:
+
+- **16/16** focused browser checks: save recovery, damaged-data recovery and browser
+  parity. Both new regressions fail against the previous simulator adapter.
+- **82/82** repository tests, typecheck and production web build.
+- Final complete browser run: **274/274 passed**. The first complete run had 271
+  passes and three interaction failures: agent-context fixture state disappeared,
+  a bookmark menu became unstable, and a Clock button detached. All three passed
+  an unchanged isolated rerun and the unchanged complete rerun. The cause of these
+  intermittent failures is not established; both full logs are retained.
+- Evidence: `test-results/simulator-save/`, including the initial/final full logs,
+  focused investigation, before-fix failures and source SHA-256 manifest.
+
+Calendar recurrence implementation is advancing separately in the shared checkout
+and was excluded from this frozen snapshot. Remaining work includes its rendered
+create/edit/delete-series integration, event invitations/video/alerts, actual local
+agent reminder/Calendar/restart journeys, deeper simulator record validation and
+cross-tab mutation behavior, complete simulated action flows, multi-page scanning,
+live providers and device acceptance. No Android build ran in this pass. A complete
+browser-suite pass does not establish completion of the entire MVP/design ledger.
