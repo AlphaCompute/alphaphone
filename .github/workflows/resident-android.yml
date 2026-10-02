@@ -20,6 +20,22 @@ jobs:
       - uses: actions/checkout@v4
         with:
           submodules: true
+      # Fresh hosted image provisioning only. Never prune source, dependency
+      # caches, Android tools or generated artifacts to pass a running phase.
+      - name: Provision build capacity on the disposable hosted runner
+        run: |
+          test "$GITHUB_ACTIONS" = "true"
+          test "$RUNNER_ENVIRONMENT" = "github-hosted"
+          df -h "$GITHUB_WORKSPACE"
+          for unused in /usr/share/dotnet /usr/local/.ghcup /usr/local/swift /opt/ghc /usr/local/share/powershell; do
+            if [ -e "$unused" ]; then
+              test "$(realpath "$unused")" = "$unused"
+              sudo du -sh "$unused"
+              sudo rm -rf -- "$unused"
+            fi
+          done
+          df -h "$GITHUB_WORKSPACE"
+          python3 -c 'import shutil; assert shutil.disk_usage(".").free >= 20*1024**3, "Fresh runner needs at least 20GiB for resident qualification"'
       - uses: actions/setup-node@v4
         with:
           node-version-file: .nvmrc
