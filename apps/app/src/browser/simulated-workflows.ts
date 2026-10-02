@@ -1,3 +1,4 @@
+import {workflowAwayFromHome} from './workflow-location';
 import {requestWorkflowReceipt,receiptAttachment,recordWorkflowExpense,type ReceiptInput} from './workflow-receipts';
 import {readDatedWorkflowSource} from './workflow-dated-sources';
 import {openWorkflowHistory} from './workflow-history';
@@ -38,6 +39,7 @@ export function installSimulatedWorkflows(view:Bag){
   }
   if(item.k==='Write'){progress('Waiting for step result');const output=await requestWorkflowResult(String(item.t),input,signal);progress('Step result supplied');return {output,detail:'Supplied development result'};}
   if(item.k==='If'){
+   if(text.replaceAll('’',"'")=="i'm not at home"){progress('Checking location');const result=await workflowAwayFromHome(signal);return {output:input,skip:!result.away,detail:result.detail};}
    if(text.replaceAll('’',"'")=="i'm in a meeting")return {output:input,skip:!await workflowInMeeting(calendar,signal),detail:'An active timed Calendar event has guests or a meeting link.'};
    if(/money/.test(text))return {output:input,skip:!/(\$|\b(amount|price|payment|invoice)\b)/i.test(input)};
    if(/favorite|from maya/.test(text)){const messages=context.messages;if(!messages)throw Error('Read messages before checking their sender.');const ids=/from maya/.test(text)?['maya']:api.get('contacts').list.filter((p:Bag)=>p.fav).map((p:Bag)=>p.id);const matches=Object.fromEntries(Object.entries(messages).filter(([id,rows])=>ids.includes(id)&&rows.some((message:Bag)=>!message.me)));context.messages=matches;return {output:input===JSON.stringify(messages)?JSON.stringify(matches):input,skip:!Object.keys(matches).length};}
