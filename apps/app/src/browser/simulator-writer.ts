@@ -12,6 +12,7 @@ export class SimulatorWriter {
    await new Promise<void>(resolve=>this.release=resolve);this.owned=false;
   }).catch(()=>{this.owned=false;this.state='unsupported';});
  }
+ get ready(){return this.owned&&!this.retired;}
  write(key:string,value:string){
   if(!this.owned){
    if(this.state==='busy')throw Error('Another development tab owns saved app changes. Close it and reload this tab before saving. Your draft is still here.');
