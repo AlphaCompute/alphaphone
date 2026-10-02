@@ -73,6 +73,26 @@ export function installReminderAdapter(Component: Bag, views: Bag) {
         if(current?.alphaReminderId&&(api.get('calendar').reminderStale||owner?.reminderRefreshFailed)){api.toast('Refresh reminders before changing this saved reminder.');void owner?.refreshReminders();return;}
         if(!current?.title?.trim())return;
 
+        if(current.reminderEditSession?.uncertain){api.toast('The previous save is unconfirmed. Cancel and reopen this reminder to review saved state.');return;}
+        const unchangedSchedule=current.alphaReminderId&&current.reminderEditSchedule&&JSON.stringify([current.off,current.t,current.repeat,current.alert])===JSON.stringify(current.reminderEditSchedule);
+        if(unchangedSchedule){
+          if(!current.reminderEditTarget){api.toast('Refresh and reopen this reminder before saving.');return;}
+          const editSession=current.reminderEditSession,saveOwner=owner;
+          if(saveOwner)saveOwner.reminderSaving=true;
+          try{
+            const operation={type:'reminder_update' as const,target:current.reminderEditTarget,fields:{title:current.title.trim(),body:current.notes||''}};
+            const bindingHash=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(JSON.stringify(operation))))).map(v=>v.toString(16).padStart(2,'0')).join('');
+            if(!saveOwner?.live||owner!==saveOwner||document.hidden||api.get('calendar').form?.reminderEditSession!==editSession)return;
+            // A metadata edit must not replace the occurrence, snooze or saved civil schedule.
+            const result=await DailyApps.operateReminder({operationId:crypto.randomUUID(),bindingHash,operation});
+            if(result.status!=='succeeded')throw Error('Unconfirmed reminder update');
+            const sameEditor=owner===saveOwner&&saveOwner.live&&api.get('calendar').form?.reminderEditSession===editSession;
+            if(sameEditor)api.set({form:null});
+            if(owner===saveOwner&&saveOwner.live)await saveOwner.refreshReminders(sameEditor?current.alphaReminderId:undefined);if(sameEditor)api.toast('Reminder updated. Schedule unchanged.');
+          }catch{editSession.uncertain=true;if(api.get('calendar').form?.reminderEditSession===editSession)api.toast('The reminder save could not be confirmed. Cancel and reopen it to review saved state.');}
+          finally{if(saveOwner)saveOwner.reminderSaving=false;}
+          return;
+        }
         const date=reminderWallTime(Number(current.off||0),Number(current.t)),lead=Number(current.alert||0);
         if(!date||!Number.isFinite(lead)||lead<0){api.toast('This local time does not exist because the clocks change. Choose another reminder time. Nothing was saved.');return;}
         // Alert lead is elapsed time before a valid event instant, including across DST.
@@ -115,7 +135,7 @@ export function installReminderAdapter(Component: Bag, views: Bag) {
         finally{if(owner)owner.reminderSaving=false;}
       };
       out.ev.reminderDone=()=>decide('done');out.ev.reminderSnooze=()=>decide('snooze');
-      out.ev.edit=()=>{if(!requireFresh())return;api.set({form:{...event,repeat:event.reminderRecurrence?.rule || 'none',id:event.id,cal:'alpha-reminders',where:'',video:false,who:[],notes:event.reminderBody||'',alphaReminderId:event.alphaReminderId}});};
+      out.ev.edit=()=>{if(!requireFresh())return;const repeat=event.reminderRecurrence?.rule||'none',target=owner?.reminderTargets?.get(event.alphaReminderId);api.set({form:{...event,repeat,id:event.id,cal:'alpha-reminders',where:'',video:false,who:[],notes:event.reminderBody||'',alphaReminderId:event.alphaReminderId,reminderEditSession:{uncertain:false},reminderEditTarget:target?structuredClone(target):undefined,reminderEditSchedule:[event.off,event.t,repeat,event.alert]}});};
       out.ev.del=async()=>{
         if(!requireFresh())return;
         try {const result=await DailyApps.cancelReminder({id:event.alphaReminderId});if(result.status==='failed')throw Error();api.set({open:null});await owner?.refreshReminders();api.toast('Reminder cancelled');}

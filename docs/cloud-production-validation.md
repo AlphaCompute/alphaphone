@@ -12,6 +12,12 @@ The source-confirmed `/cloud/agents` page then displayed the authenticated accou
 
 This establishes normal website Google sign-in, not the phone's CLI-session credential exchange, owner-bound agent connection, Gmail OAuth, voice, or restart acceptance. The earlier Gmail token-exchange HTTP401 remains unresolved. A request to approve bounded dedicated hosting and the separate 90-day organization credential grant is pending; no organization key was minted or retrieved. The live browser offer is preserved for continuation.
 
+### Phone creation compatibility gap
+
+The October 2 source audit identifies a concrete mismatch: Alpha sends `{agentName, forceCreate:true, autoProvision:false}` without a tier, while both inspected Cloud repositories default to Shared and reject `forceCreate` for Shared. The synthetic loopback test currently asserts that body and fabricates success. This is a source-contract finding, not an observed failure against the deployed endpoint.
+
+The supported personal-agent onboarding conductor reads personal identity, reviews a current activation/adoption quote, requires explicit price confirmation, reattaches accepted work, polls provisioning and completes history cutover. Alpha currently has generic list/create/provision operations but does not implement that conductor. Replace creation/start onboarding with the reusable personal flow while retaining native CLI authentication and owner-bound credential storage; never infer no agents from a failed read or silently add paid hosting to the old create request. Validate deployed compatibility, then real login/reuse-or-activation/chat/restart. Exact source pins and flow mapping: `test-results/cloud-login-current-review/REPORT.md` and `source-pins.json`.
+
 ## Confirmed deployment
 
 Railway CLI is authenticated as Shaw (`shawmakesmagic@gmail.com`). Its `eliza-cloud` project is `42973b82-c563-47ce-8bec-a7d90f5b358f`; production environment is `94a9662c-2682-4a71-99d1-df0e016edfba`, staging is `c07f0df1-4602-4735-83f0-0d8e7ac6a64d`.
