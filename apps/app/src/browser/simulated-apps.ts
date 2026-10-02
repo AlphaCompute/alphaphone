@@ -1,3 +1,4 @@
+import {installSimulatedMessages} from './simulated-messages';
 import {installSimulatedVoicemail} from './simulated-voicemail';
 import {SimulatorWriter} from './simulator-writer';
 import {installSimulatedInbox} from './simulated-inbox';
@@ -9,11 +10,13 @@ const names=['phone','messages','contacts','inbox','workflows','wallet'];
 export function captureSimulatedApps(views:Bag){return Object.fromEntries(names.map(name=>[name,{...views[name],state:structuredClone(views[name].state)}]));}
 export function installSimulatedApps(Component:any,views:Bag,original:Bag){
  if(!browserDevProfile)return;
+ original.messages.persist=[...original.messages.persist,'localDrafts'];original.messages.state.localDrafts={};
  original.inbox.persist=[...original.inbox.persist,'localDrafts'];original.inbox.state.localDrafts=[];
  const snapshots=new Map<string,string|null>();
  for(const name of names){Object.assign(views[name],original[name]);views[name].state={...views[name].state,...loadSimulatedState(name,original[name],raw=>snapshots.set('alpha.dev.app.'+name,raw))};}
  const writer=new SimulatorWriter(snapshots);
  installSimulatedInbox(views.inbox);
+ const disposeMessages=installSimulatedMessages(views.messages);
  const disposeVoicemail=installSimulatedVoicemail(views.phone);
  const walletRender=views.wallet.render;
  views.wallet.render=(state:Bag,api:Bag)=>{
@@ -23,7 +26,7 @@ export function installSimulatedApps(Component:any,views:Bag,original:Bag){
  };
  const mount=Component.prototype.componentDidMount,unmount=Component.prototype.componentWillUnmount;
  Component.prototype.componentDidMount=function(){mount?.call(this);this.devIncomingCall=()=>{const state=this.vget('phone');if(state.incoming||state.callWho||state.call||state.num){this.openView('phone');return;}this.openView('phone',{incoming:'maya',ring:'ring',scrN:0,rs:false});};window.addEventListener('alpha:dev-incoming-call',this.devIncomingCall);};
- Component.prototype.componentWillUnmount=function(){disposeVoicemail();window.removeEventListener('alpha:dev-incoming-call',this.devIncomingCall);unmount?.call(this);};
+ Component.prototype.componentWillUnmount=function(){disposeMessages();disposeVoicemail();window.removeEventListener('alpha:dev-incoming-call',this.devIncomingCall);unmount?.call(this);};
  const open=Component.prototype.openView;
  Component.prototype.openView=function(name:string,...args:any[]){if(simulatorNeedsRecovery(name)){showSimulatorRecovery();return;}return open.call(this,name,...args);};
  const set=Component.prototype.vset;

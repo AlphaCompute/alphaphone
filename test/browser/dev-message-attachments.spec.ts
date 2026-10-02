@@ -1,0 +1,33 @@
+import {test,expect,Page} from '@playwright/test';
+async function open(page:Page){await page.getByRole('button',{name:'Messages',exact:true}).click();await page.getByRole('button',{name:/^(Unread, )?Maya Chen$/}).click();}
+async function attach(page:Page){const picker=page.waitForEvent('filechooser');await page.getByRole('button',{name:'Attach PDF, image or TXT',exact:true}).click();await (await picker).setFiles({name:'message.txt',mimeType:'text/plain',buffer:Buffer.from('Café\r\nExact message bytes')});await expect(page.getByRole('button',{name:'Remove message.txt',exact:true})).toBeVisible();}
+test.beforeEach(async({page})=>{await page.addInitScript(()=>localStorage.setItem('alpha.connection.selection.v1',JSON.stringify({kind:'offline'})));await page.goto('/?mode=dev');await open(page);});
+test('save restore send and reload retain exact attachment bytes and preview',async({page})=>{
+ const external:string[]=[];page.on('request',r=>{if(/^https?:/.test(r.url())&&!r.url().startsWith('http://127.0.0.1:'))external.push(r.url());});await attach(page);await page.getByRole('textbox',{name:'Message',exact:true}).fill('Message with file');await page.getByRole('button',{name:'Save draft locally',exact:true}).click();await expect(page.getByText('Draft saved locally',{exact:true})).toBeVisible();await page.reload();await open(page);await page.getByRole('button',{name:'Restore saved draft',exact:true}).click();await expect(page.getByRole('textbox',{name:'Message',exact:true})).toHaveValue('Message with file');await page.getByRole('button',{name:'Send message',exact:true}).click();await expect(page.getByRole('button',{name:'Open message.txt',exact:true})).toBeVisible();const saved=await page.evaluate(()=>JSON.parse(localStorage.getItem('alpha.dev.app.messages')!));expect(saved.localDrafts.maya).toBeUndefined();expect(Buffer.from(saved.threads.maya.find((m:any)=>m.file==='message.txt').browserAttachment.dataBase64,'base64').toString()).toBe('Café\r\nExact message bytes');await page.reload();await open(page);await page.getByRole('button',{name:'Open message.txt',exact:true}).click();await expect(page.getByRole('dialog',{name:'Reviewed attachment'})).toContainText('Exact message bytes');expect(external).toEqual([]);
+});
+test('failed send retains selected bytes and text and retry stores one attachment',async({page})=>{
+ await attach(page);await page.getByRole('textbox',{name:'Message',exact:true}).fill('Retry attached message');await page.evaluate(()=>{const set=Storage.prototype.setItem;(window as any).restore=()=>Storage.prototype.setItem=set;Storage.prototype.setItem=function(k,v){if(k==='alpha.dev.app.messages')throw Error('Full');return set.call(this,k,v);};});await page.getByRole('button',{name:'Send message',exact:true}).click();await expect(page.getByRole('button',{name:'Remove message.txt',exact:true})).toBeVisible();await expect(page.getByRole('textbox',{name:'Message',exact:true})).toHaveValue('Retry attached message');await page.evaluate(()=>(window as any).restore());await page.getByRole('button',{name:'Send message',exact:true}).click();const rows=await page.evaluate(()=>JSON.parse(localStorage.getItem('alpha.dev.app.messages')!).threads.maya);expect(rows.filter((m:any)=>m.file==='message.txt')).toHaveLength(1);expect(rows.filter((m:any)=>m.text==='Retry attached message')).toHaveLength(1);
+});
+test('late selection after Home is discarded and invalid replacement keeps existing file',async({page})=>{
+ const picker=page.waitForEvent('filechooser');await page.getByRole('button',{name:'Attach PDF, image or TXT',exact:true}).click();const choice=await picker;await page.evaluate(()=>window.dispatchEvent(new Event('launcher-home')));await choice.setFiles({name:'late.txt',mimeType:'text/plain',buffer:Buffer.from('late')});await open(page);await expect(page.getByRole('button',{name:'Remove late.txt',exact:true})).toHaveCount(0);await attach(page);const second=page.waitForEvent('filechooser');await page.getByRole('button',{name:'Attach PDF, image or TXT',exact:true}).click();await (await second).setFiles({name:'bad.txt',mimeType:'text/plain',buffer:Buffer.from([0,255])});await expect(page.getByRole('button',{name:'Attach PDF, image or TXT',exact:true})).toBeEnabled();await expect(page.getByRole('button',{name:'Remove message.txt',exact:true})).toBeVisible();
+});
+test('a restored text-only draft is removed atomically when sent',async({page})=>{
+ await page.getByRole('textbox',{name:'Message',exact:true}).fill('Saved text-only draft');await page.getByRole('button',{name:'Save draft locally',exact:true}).click();await page.reload();await open(page);await page.getByRole('button',{name:'Restore saved draft',exact:true}).click();await page.getByRole('button',{name:'Send message',exact:true}).click();const saved=await page.evaluate(()=>JSON.parse(localStorage.getItem('alpha.dev.app.messages')!));expect(saved.localDrafts.maya).toBeUndefined();expect(saved.threads.maya.filter((m:any)=>m.text==='Saved text-only draft')).toHaveLength(1);
+});
+
+test('device retirement rejects a late file selection and unlocks attachment controls',async({page})=>{
+ const picker=page.waitForEvent('filechooser');await page.getByRole('button',{name:'Attach PDF, image or TXT',exact:true}).click();const choice=await picker;
+ await page.evaluate(()=>window.dispatchEvent(new Event('alpha:device-state')));
+ await choice.setFiles({name:'retired.txt',mimeType:'text/plain',buffer:Buffer.from('Retired selection')});
+ await expect(page.getByRole('button',{name:'Attach PDF, image or TXT',exact:true})).toBeEnabled();
+ await expect(page.getByRole('button',{name:'Remove retired.txt',exact:true})).toHaveCount(0);
+ await attach(page);
+});
+test('device retirement during attachment review prevents late adoption',async({page})=>{
+ await page.evaluate(()=>{const digest=crypto.subtle.digest.bind(crypto.subtle);let release:()=>void;const gate=new Promise<void>(resolve=>release=resolve);(window as any).releaseReview=()=>release();crypto.subtle.digest=async(...args:any[])=>{(window as any).reviewWaiting=true;await gate;return (digest as any)(...args);};});
+ const picker=page.waitForEvent('filechooser');await page.getByRole('button',{name:'Attach PDF, image or TXT',exact:true}).click();await (await picker).setFiles({name:'reviewing.txt',mimeType:'text/plain',buffer:Buffer.from('Review pending')});
+ await expect.poll(()=>page.evaluate(()=>(window as any).reviewWaiting)).toBe(true);
+ await page.evaluate(()=>{window.dispatchEvent(new Event('alpha:device-state'));(window as any).releaseReview();});
+ await expect(page.getByRole('button',{name:'Attach PDF, image or TXT',exact:true})).toBeEnabled();
+ await expect(page.getByRole('button',{name:'Remove reviewing.txt',exact:true})).toHaveCount(0);
+});

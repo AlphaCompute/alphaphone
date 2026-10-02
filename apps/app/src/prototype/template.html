@@ -479,6 +479,11 @@
             </sc-for>
           </div>
         </sc-if>
+        <sc-if value="{{messages.t.local}}"><div style="display:flex;gap:12px;flex-wrap:wrap;padding:6px 0">
+          <button disabled="{{messages.t.busy}}" onClick="{{messages.t.attachFile}}">Attach PDF, image or TXT</button>
+          <button disabled="{{messages.t.busy}}" onClick="{{messages.t.saveDraft}}">Save draft locally</button>
+          <sc-if value="{{messages.t.hasSavedDraft}}"><button disabled="{{messages.t.busy}}" onClick="{{messages.t.restoreDraft}}">Restore saved draft</button></sc-if>
+        </div></sc-if>
         <sc-if value="{{messages.t.hasAtts}}" hint-placeholder-val="{{false}}">
           <div class="scr" style="display: flex; gap: 6px; padding: 2px 0 10px; overflow-x: auto">
             <sc-for list="{{messages.t.atts}}" as="a" hint-placeholder-count="1">
