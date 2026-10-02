@@ -14,9 +14,15 @@ This establishes normal website Google sign-in, not the phone's CLI-session cred
 
 ### Phone creation compatibility gap
 
-The October 2 source audit identifies a concrete mismatch: Alpha sends `{agentName, forceCreate:true, autoProvision:false}` without a tier, while both inspected Cloud repositories default to Shared and reject `forceCreate` for Shared. The synthetic loopback test currently asserts that body and fabricates success. This is a source-contract finding, not an observed failure against the deployed endpoint.
+The October 2 source audit identifies a concrete mismatch: Alpha sends `{agentName, forceCreate:true, autoProvision:false}` without a tier, while both inspected Cloud repositories default to Shared and reject `forceCreate` for Shared. The former synthetic loopback test asserted that body and fabricated success; that path and its fabricated success coverage are now removed. This is a source-contract finding, not an observed failure against the deployed endpoint.
 
-The supported personal-agent onboarding conductor reads personal identity, reviews a current activation/adoption quote, requires explicit price confirmation, reattaches accepted work, polls provisioning and completes history cutover. Alpha currently has generic list/create/provision operations but does not implement that conductor. Replace creation/start onboarding with the reusable personal flow while retaining native CLI authentication and owner-bound credential storage; never infer no agents from a failed read or silently add paid hosting to the old create request. Validate deployed compatibility, then real login/reuse-or-activation/chat/restart. Exact source pins and flow mapping: `test-results/cloud-login-current-review/REPORT.md` and `source-pins.json`.
+The supported personal-agent onboarding conductor reads personal identity, reviews a current activation/adoption quote, requires explicit price confirmation, reattaches accepted work, polls provisioning and completes history cutover. Alpha now implements that personal conductor in the phone connection chooser, retaining native CLI authentication and owner-bound credential storage; never infer no agents from a failed read or silently add paid hosting to the old create request. Validate deployed compatibility, then real login/reuse-or-activation/chat/restart. Exact source pins and flow mapping: `test-results/cloud-login-current-review/REPORT.md` and `source-pins.json`.
+
+### Implemented personal onboarding and bounded qualification
+
+The new flow reviews current price/target data, stores a nonsecret owner-scoped write intent before dispatch, and never automatically repeats uncertain activation or cutover. Refresh reads status. Sleeping/stopped personal agents retain the same target. Account, organization, credential generation and runtime origin are checked before connection. Generic Create/Start controls are removed with a deferral comment. Management opens the verified Cloud account site through the native browser handoff.
+
+All14 frozen-renderer full flows pass, plus17 loopback protocol scenarios. The browser suite covers accepted/lost responses, reload, changed quotes, failed persistence, stopped-agent recovery, explicit adoption and account changes. Repository verification passes. Evidence: `test-results/cloud-personal-isolated/RESULT.md` and source hashes. These controlled checks do not establish deployed onboarding, native login, paid hosting, Gmail, voice or live Cerebras model use. Live grants remain pending.
 
 ## Confirmed deployment
 

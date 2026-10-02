@@ -11,7 +11,7 @@ const { CloudProtocol } = await import('../apps/app/src/runtime/cloud-protocol.t
 const id = '72475cd0-e135-4c42-a9e2-fb5fe0820ada';
 const sessionId = 'd32f7f34-962b-47b7-8f0d-f2fe7f12610a';
 const token = 'synthetic-cloud-session';
-let mode = 'ok', creates = 0, provisions = 0, polls = 0, saved = null;
+let mode = 'ok', agentReads = 0, polls = 0, saved = null;
 const runtimeTargets = [];
 const mail = { externalId: 'mail/id', threadId: 'thread', subject: 'Synthetic subject', from: 'Fixture sender', fromEmail: 'sender@example.invalid', to: ['owner@example.invalid'], snippet: 'Synthetic preview', receivedAt: '2026-09-29T12:00:00Z', isUnread: true };
 const grant = 'grant/one';
@@ -35,8 +35,8 @@ const server = http.createServer(async (req, res) => {
       else data = { status: 'authenticated', token, apiKey: 'synthetic-legacy-key', expiresAt: new Date(Date.now() + 60000).toISOString() };
     } else {
       assert.equal(req.headers.authorization, `Bearer ${token}`);
-      if (mode === 'provision-detail-fails' && req.url === `/api/v1/eliza/agents/${id}`) { status = 503; data = {}; }
-      else if (mode === 'outage') { status = 503; data = {}; }
+      if (req.url === '/api/v1/eliza/agents') agentReads++;
+      if (mode === 'outage') { status = 503; data = {}; }
       else if (req.url === '/api/v1/user') data = { success: true, data: { id, organization_id: sessionId } };
       else if (req.url.endsWith('/api/conversations') && req.method === 'POST') data = { conversation: { id: conversationId, title: body.title } };
       else if (req.url.endsWith('/api/conversations')) data = { conversations: [{ id: conversationId, title: 'Fixture' }] };
@@ -46,13 +46,8 @@ const server = http.createServer(async (req, res) => {
         assert.equal(body.clientMessageId, 'synthetic-message');
         data = { text: 'Synthetic response', agentName: 'Fixture' };
       }
-      else if (req.url === '/api/v1/eliza/agents' && req.method === 'POST') {
-        creates++; assert.deepEqual(body, { agentName: 'Synthetic agent', forceCreate: true, autoProvision: false });
-        data = { success: true, created: true, data: agent() };
-      } else if (req.url === '/api/v1/eliza/agents') data = { success: true, data: [agent()] };
-      else if (req.url === `/api/v1/eliza/agents/${id}/provision`) {
-        provisions++; assert.equal(req.method, 'POST'); data = { success: true, data: { jobId: 'synthetic-job' } };
-      } else if (req.url === `/api/v1/eliza/agents/${id}`) data = { success: true, data: agent() };
+      else if (req.url === '/api/v1/eliza/agents') { assert.equal(req.method, 'GET'); data = { success: true, data: [agent()] }; }
+      else if (req.url === `/api/v1/eliza/agents/${id}`) { assert.equal(req.method, 'GET'); data = { success: true, data: agent() }; }
       else if (req.url === '/api/v1/eliza/google/connect/initiate') {
         assert.deepEqual(body, { side: 'owner', capabilities: ['google.basic_identity', 'google.gmail.triage'] });
         data = { authUrl: mode === 'foreign-oauth' ? 'https://attacker.invalid/' : 'https://accounts.google.com/o/oauth2/v2/auth?state=synthetic' };
@@ -104,8 +99,6 @@ try {
   await client.send(id, conversationId, 'Hello', { clientMessageId: 'synthetic-message', signal: signal() });
   assert.equal(runtimeTargets.at(-1), `https://api.eliza.app/api/v1/eliza/agents/${id}/api/conversations/${conversationId}/messages`);
   mode = 'ok';
-  assert.equal((await client.createAgent('Synthetic agent', signal())).id, id);
-  assert.equal((await client.provisionAgent(id, signal())).runtimeUrl, `https://${id}.cloud.eliza.app`);
   assert.equal((await make().agentDetail(id, signal())).id, id, 'new client restores injected credentials');
   assert.match(await client.initiateGmail(signal()), /^https:\/\/accounts.google.com\//);
   assert.equal((await client.gmailStatus(signal())).connected, false);
@@ -115,11 +108,9 @@ try {
   assert.equal((await client.gmailRead(grant, mail.externalId, signal())).bodyText, '<script>plain untrusted email text</script>');
   mode = 'foreign-runtime'; await assert.rejects(client.listAgents(signal()), error => error.code === 'invalid-response');
   mode = 'foreign-oauth'; await assert.rejects(client.initiateGmail(signal()), error => error.code === 'invalid-response');
-  mode = 'provision-detail-fails';
-  await assert.rejects(client.provisionAgent(id, signal()), error => error.name === 'CloudProvisionAcceptedError' && error.agentId === id);
-  assert.equal(provisions, 2);
-  mode = 'outage'; await assert.rejects(client.createAgent('Synthetic agent', signal()), error => error.status === 503);
-  assert.equal(creates, 1); assert.equal(provisions, 2); assert.ok(saved);
+  const readsBeforeOutage = agentReads;
+  mode = 'outage'; await assert.rejects(client.listAgents(signal()), error => error.status === 503);
+  assert.equal(agentReads, readsBeforeOutage + 1); assert.ok(saved);
   await client.disconnect(); assert.equal(saved, null);
   await assert.rejects(client.listAgents(signal()), error => error.code === 'credentials-missing');
   mode = 'consumed'; await assert.rejects(client.login(signal()), error => error.code === 'credential-consumed');
@@ -138,7 +129,7 @@ try {
   mode = 'ok'; await make('staging').login(signal());
   assert.equal(opened.at(-1), `https://staging.eliza.app/auth/cli-login?session=${sessionId}`);
   await client.disconnect();
-  process.stdout.write('PASS: synthetic HTTP Cloud login, credential preference/storage, restart, agent list/create/provision, dedicated/shared conversation routing and send, Gmail scopes/status/account/search/read, URL rejection, outage without retry, consumed claim, expiry, cancellation and staging routing. No live account acceptance.\n');
+  process.stdout.write('PASS: synthetic HTTP Cloud login, credential preference/storage, restart, agent list/detail, dedicated/shared conversation routing and send, Gmail scopes/status/account/search/read, URL rejection, outage without retry, consumed claim, expiry, cancellation and staging routing. No live account acceptance.\n');
 } finally {
   server.closeAllConnections(); await new Promise(resolve => server.close(resolve));
 }

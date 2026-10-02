@@ -1,3 +1,4 @@
+import { CloudPersonalProtocol, PersonalProtocolError } from './cloud-personal-protocol.ts';
 import { reviewMailAttachment, type MailAttachment } from './inbox-attachment.ts';
 /** Narrow Alpha adapter for Eliza Cloud. Contracts inspected in v3's
  * cloud/api/auth/cli-session, cloud/api/v1/eliza/{agents,google}, and
@@ -59,13 +60,6 @@ export class CloudProtocolError extends Error {
     this.name = "CloudProtocolError";
   }
 }
-/** The write succeeded; callers must refresh instead of repeating it. */
-export class CloudProvisionAcceptedError extends Error {
-  constructor(readonly agentId: string) {
-    super('Agent start was accepted. Refresh its status before requesting another start.');
-    this.name = 'CloudProvisionAcceptedError';
-  }
-}
 type ObjectValue = Record<string, unknown>;
 function object(value: unknown): ObjectValue {
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new CloudProtocolError("invalid-response");
@@ -119,7 +113,7 @@ export class CloudProtocol {
     private readonly credentials: CloudCredentialStore,
     private readonly openExternal: (url: string, signal: AbortSignal) => Promise<void>) {}
   private get authority() { return authorities[this.environment]; }
-  private async requestData(path: string, signal: AbortSignal, options: { body?: unknown; authenticated?: boolean; runtimeBase?: string; timeoutMs?: number; headers?: Record<string,string>; credentialId?: string } = {}) {
+  private async requestData(path: string, signal: AbortSignal, options: { body?: unknown; authenticated?: boolean; runtimeBase?: string; timeoutMs?: number; headers?: Record<string,string>; credentialId?: string; onStatus?: (status:number)=>void } = {}) {
     signal.throwIfAborted();
     const headers: Record<string, string> = { Accept: "application/json", ...options.headers };
     if (options.authenticated) {
@@ -136,10 +130,48 @@ export class CloudProtocol {
       signal, timeoutMs: options.timeoutMs ?? 30_000, redirect: "error" });
     signal.throwIfAborted();
     if (response.status < 200 || response.status >= 300) throw new CloudProtocolError("http", response.status, response.data);
+    options.onStatus?.(response.status);
     return response.data;
   }
   private async call(path: string, signal: AbortSignal, options: { body?: unknown; authenticated?: boolean; runtimeBase?: string; timeoutMs?: number; headers?: Record<string,string>; credentialId?: string } = {}) {
     return object(await this.requestData(path, signal, options));
+  }
+  /** Scoped personal onboarding, using the existing native credential transport. */
+  async personal(signal: AbortSignal): Promise<CloudPersonalProtocol> {
+    const credential = await this.credentials.read(this.environment);
+    if (!credential?.credentialId) throw new PersonalProtocolError('account-changed');
+    const identity = await this.identity(signal);
+    if (!identity.organizationId) throw new PersonalProtocolError('account-changed');
+    const owner = Object.freeze({ environment:this.environment, credentialId:credential.credentialId,
+      userId:identity.userId, organizationId:identity.organizationId });
+    const assertCurrent = async () => {
+      signal.throwIfAborted();
+      const current = await this.credentials.read(this.environment);
+      if (current?.credentialId !== owner.credentialId) throw new PersonalProtocolError('account-changed');
+    };
+    await assertCurrent();
+    return new CloudPersonalProtocol(owner, async (path, requestSignal, body) => {
+      await assertCurrent(); requestSignal.throwIfAborted();
+      const currentOwner=await this.identity(requestSignal);
+      await assertCurrent();
+      if(currentOwner.userId!==owner.userId||currentOwner.organizationId!==owner.organizationId)throw new PersonalProtocolError('account-changed');
+      let status=200;
+      try {
+        const data=await this.requestData(path,requestSignal,{authenticated:true,credentialId:owner.credentialId,body,onStatus:value=>{status=value;}});
+        await assertCurrent(); requestSignal.throwIfAborted(); return {status,data};
+      } catch(error) {
+        await assertCurrent(); requestSignal.throwIfAborted();
+        if(error instanceof CloudProtocolError && error.code==='http')return {status:error.status!,data:error.data};
+        throw error;
+      }
+    }, async (target, requestSignal, expectedApiBase) => {
+      await assertCurrent();
+      const agent=await this.agentDetail(target,requestSignal);
+      await assertCurrent();
+      if(!['dedicated-lazy','dedicated-always','custom'].includes(agent.executionTier??'') ||
+        (expectedApiBase!==undefined && (this.runtimeUrl(expectedApiBase,target,agent.executionTier)!==expectedApiBase || (agent.runtimeUrl!==null && agent.runtimeUrl!==expectedApiBase))) || (agent.status==='running'&&!agent.runtimeUrl)) throw new PersonalProtocolError('invalid-response');
+      return agent.status;
+    });
   }
   cancelLogin(): void { this.activeLogin?.abort(new DOMException("Login cancelled", "AbortError")); }
   /** Only one poller may claim the server's single-consumption credential. A
@@ -223,22 +255,6 @@ export class CloudProtocol {
     const agent = this.agent(this.success(await this.call(`/api/v1/eliza/agents/${uuid(id)}`, signal, { authenticated: true })));
     if (agent.id !== id) throw new CloudProtocolError("invalid-response");
     return agent;
-  }
-  /** No automatic retry: a failed response may still have created a record.
-   * Re-list before another attempt. Provisioning is an explicit second action. */
-  async createAgent(name: string, signal: AbortSignal): Promise<CloudAgent> {
-    if (!name.trim() || name.trim().length > 100) throw new TypeError("Agent name must contain 1–100 characters");
-    const response = await this.call("/api/v1/eliza/agents", signal, { authenticated: true,
-      body: { agentName: name.trim(), forceCreate: true, autoProvision: false } });
-    const agent = this.agent(this.success(response));
-    if (response.created !== true) throw new CloudProtocolError("invalid-response");
-    return agent;
-  }
-  async provisionAgent(id: string, signal: AbortSignal): Promise<CloudAgent> {
-    this.success(await this.call(`/api/v1/eliza/agents/${uuid(id)}/provision`, signal, { authenticated: true, body: {} }));
-    // Read authoritative detail; an accepted provision request is not readiness.
-    try { return await this.agentDetail(id, signal); }
-    catch { throw new CloudProvisionAcceptedError(id); }
   }
   /** Authenticated identity is server-derived, never inferred from entered email. */
   async identity(signal: AbortSignal): Promise<{ userId: string; organizationId?: string }> {

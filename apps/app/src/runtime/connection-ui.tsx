@@ -1,3 +1,5 @@
+import { CloudPersonalSetup, personalIntent, savePersonalIntent, clearPersonalIntent, type PersonalSetupState } from './cloud-personal-setup';
+import { PersonalProtocolError, type CloudPersonalProtocol, type PersonalView, type PersonalOwner } from './cloud-personal-protocol';
 import { holdPhoneInert } from './modal-inert';
 import { pauseHostedBackground } from './hosted-background';
 import {developmentDeviceStore,developmentActionJournal} from './local-agent-storage';
@@ -11,7 +13,7 @@ import { DeviceActions, actionScope, type DeviceCredential, type DeviceExecutor,
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { isAndroid } from '../native';
 import type { ActionProposal, OperationReceipt, ContextEnvelope, VerifiedSession } from './alpha-client';
-import { CloudProtocol, CloudProtocolError, CloudProvisionAcceptedError, type CloudAgent, type CloudEnvironment, type CloudPhoneTarget } from './cloud-protocol';
+import { CloudProtocol, CloudProtocolError, type CloudAgent, type CloudEnvironment, type CloudPhoneTarget } from './cloud-protocol';
 import { RemoteProtocol } from './remote-protocol';
 import { phoneContextMessage } from './phone-context';
 import { cloudCredentialStore, remoteCredentialStore, nativeCloudRequest, nativeRemoteRequest, openConnectionBrowser, secureConnectionStore } from './native-connection';
@@ -21,6 +23,7 @@ type Selection = { kind: 'resident' } | { kind: 'offline' } | { kind: 'none' } |
 export interface CloudServiceSession { environment: CloudEnvironment; userId: string; organizationId?: string; sessionId: string; credentialId: string }
 export interface RestoredMessage { id: string; from: 'user' | 'agent'; text: string }
 export interface ConnectionSnapshot {
+  cloudPersonal?: PersonalSetupState;
   phoneActionsAvailable: boolean; phoneCapabilityReason: string;
   conversations: Array<{ id: string; title: string }>;
   history: { sessionId: string; conversationId: string; revision: number; messages: RestoredMessage[] } | null;
@@ -46,18 +49,55 @@ let deviceExecutor: DeviceExecutor = async () => ({ status: 'failed', summary: '
 const actionJournal = registerPlugin<ActionJournal>('AlphaActionJournal');
 let cloud = makeCloud('production');
 let service: { client: CloudProtocol; identity: CloudServiceSession } | null = null;
-function detachService() { service = null; update({ cloudAccount: null }); }
+function detachService() { clearPersonalSetup(); service = null; update({ cloudAccount: null }); }
 async function verifyService(client: CloudProtocol, signal: AbortSignal) {
   const credential = await cloudCredentialStore.read(client.environment); signal.throwIfAborted();
   if (!credential?.credentialId) throw new Error('Cloud credentials are unavailable. Sign in again.');
   const identity = await client.identity(signal); signal.throwIfAborted();
   if ((await cloudCredentialStore.read(client.environment))?.credentialId !== credential.credentialId) throw new Error('Cloud account changed. Try again.');
   signal.throwIfAborted();
-  const same = service?.identity.environment === client.environment && service.identity.userId === identity.userId && service.identity.credentialId === credential.credentialId;
+  const same = service?.identity.environment === client.environment && service.identity.userId === identity.userId && service.identity.organizationId === identity.organizationId && service.identity.credentialId === credential.credentialId;
   const account = { ...identity, credentialId: credential.credentialId, environment: client.environment, sessionId: same ? service!.identity.sessionId : crypto.randomUUID() };
   localStorage.setItem(CLOUD_SERVICE, client.environment);
   service = { client, identity: account }; update({ cloudAccount: account });
   return identity;
+}
+let personalSetup: { client:CloudPersonalProtocol; serviceId:string } | null = null;
+let personalGeneration=0;
+function clearPersonalSetup(){personalGeneration++;personalSetup=null;update({cloudPersonal:undefined});}
+function personalCurrent(binding:NonNullable<typeof personalSetup>,generation:number){return generation===personalGeneration&&personalSetup===binding&&service?.identity.sessionId===binding.serviceId&&service.identity.credentialId===binding.client.owner.credentialId&&service.identity.environment===binding.client.owner.environment&&service.identity.userId===binding.client.owner.userId&&service.identity.organizationId===binding.client.owner.organizationId;}
+async function inspectPersonal(signal:AbortSignal){
+ const generation=personalGeneration,serviceId=service?.identity.sessionId;
+ if(!serviceId)throw Error('Sign in with Eliza Cloud first.');
+ const client=await cloud.personal(signal);signal.throwIfAborted();
+ if(generation!==personalGeneration||service?.identity.sessionId!==serviceId||service.identity.credentialId!==client.owner.credentialId||service.identity.userId!==client.owner.userId||service.identity.organizationId!==client.owner.organizationId)throw Error('Cloud account changed. Refresh status.');
+ const binding={client,serviceId};personalSetup=binding;
+ const view=await client.inspect(signal);signal.throwIfAborted();
+ if(!personalCurrent(binding,generation))return;
+ publishPersonal(binding,view);
+}
+function publishPersonal(binding:NonNullable<typeof personalSetup>,view:PersonalView){
+ let intent=personalIntent(binding.client.owner);
+ if(intent?.phase==='activation'&&intent.state==='accepted'&&(view.kind==='review'||view.kind==='unavailable')&&intent.personalElizaId===view.review.personalElizaId&&intent.dedicatedAgentId&&intent.dedicatedAgentId===view.review.dedicatedAgentId&&['stopped','sleeping','error'].includes(view.review.status||'')){clearPersonalIntent(binding.client.owner);intent=null;}
+ if(intent&&view.kind==='ready'){
+  if(intent.personalElizaId!==view.identity.personalElizaId||(intent.dedicatedAgentId&&intent.dedicatedAgentId!==view.identity.activeAgentId))throw Error('Cloud setup returned a different target. Review the account before connecting.');
+  clearPersonalIntent(binding.client.owner);
+ }
+ const blocked=!!intent&&view.kind!=='ready'&&(view.kind!=='pending'||intent.phase==='cutover'||intent.personalElizaId!==view.receipt.personalElizaId||(!!intent.dedicatedAgentId&&intent.dedicatedAgentId!==view.receipt.dedicatedAgentId));
+ update({cloudPersonal:{view,blocked,declined:false},message:view.kind==='ready'?'Your personal Cloud agent is ready.':view.kind==='pending'?'Setup accepted. Check status to continue.':'Cloud account connected. Review Dedicated hosting before starting setup.',error:''});
+}
+async function personalWork(message:string,action:(binding:NonNullable<typeof personalSetup>,view:PersonalView,signal:AbortSignal)=>Promise<void>){
+ await work(message,async signal=>{
+  const binding=personalSetup,view=state.cloudPersonal?.view,generation=personalGeneration;
+  if(!binding||!view||!personalCurrent(binding,generation))throw Error('Refresh Cloud status before continuing.');
+  try{await action(binding,view,signal);}
+  catch(error){
+   if(!personalCurrent(binding,generation))return;
+   let blocked=true;try{blocked=!!personalIntent(binding.client.owner);}catch{/* Invalid persistence refuses further setup writes. */}
+   if(signal.aborted&&!blocked){update({cloudPersonal:undefined,message:'Cloud setup check stopped.',error:''});personalGeneration++;personalSetup=null;return;}
+   update({cloudPersonal:{view:state.cloudPersonal?state.cloudPersonal.view:view,blocked,declined:false},message:blocked?'Setup could not be confirmed. Check status before taking another action.':'',error:blocked?'':error instanceof PersonalProtocolError&&error.code==='account-changed'?'Cloud account changed. Refresh status.':'Cloud setup is unavailable. Refresh status to review the current state.'});
+  }
+ });
 }
 function detachCloudTarget() { if (active?.kind === 'cloud') retire(); }
 function makeCloud(environment: CloudEnvironment) { return new CloudProtocol(environment, nativeCloudRequest, cloudCredentialStore, openConnectionBrowser); }
@@ -212,19 +252,28 @@ async function connectResident(signal: AbortSignal) {
   activate({kind:'resident',remote:client,origin:client.origin,actions},session,name);
   if(reason)update({phoneCapabilityReason:reason});
 }
-async function connectCloud(agentId: string, signal: AbortSignal, expectedOwner?: string) {
+async function connectCloud(agentId: string, signal: AbortSignal, expectedOwner?: string, expectedOrigin?:string, expectedPersonalOwner?:Readonly<PersonalOwner>) {
   const client=cloud;
   client.setPhoneTarget(null);
   const identity = await verifyService(cloud, signal); signal.throwIfAborted();
+  const verifyPersonalOwner=async()=>{
+    if(!expectedPersonalOwner)return;
+    const credential=await cloudCredentialStore.read(client.environment);signal.throwIfAborted();
+    if(cloud!==client||client.environment!==expectedPersonalOwner.environment||credential?.credentialId!==expectedPersonalOwner.credentialId||identity.userId!==expectedPersonalOwner.userId||identity.organizationId!==expectedPersonalOwner.organizationId||service?.identity.credentialId!==expectedPersonalOwner.credentialId||service.identity.userId!==expectedPersonalOwner.userId||service.identity.organizationId!==expectedPersonalOwner.organizationId)throw Error('Cloud account changed. Refresh your personal agent before connecting.');
+  };
+  await verifyPersonalOwner();
   if (expectedOwner && identity.userId !== expectedOwner) throw new Error('The Cloud account has changed. Refresh agents and choose an agent for this account.');
   const agent = await cloud.agentDetail(agentId, signal);
-  if (agent.status !== 'running' || !agent.runtimeUrl) throw new Error('This agent is not ready. Start it and refresh its status.');
+  await verifyPersonalOwner();
+  if (agent.status !== 'running' || !agent.runtimeUrl) throw new Error('This agent is not ready. Refresh its status.');
+  if(expectedOrigin&&new URL(agent.runtimeUrl).origin!==new URL(expectedOrigin).origin)throw Error('The personal Cloud runtime changed. Refresh its status.');
   const session = {ownerId:identity.userId,agentId,sessionId:crypto.randomUUID(),origin:new URL(agent.runtimeUrl).origin};
   const next: Extract<Active,{kind:'cloud'}> = {kind:'cloud',cloud,agentId};
   let attached = false;
   let reason = 'This Cloud runtime has not enabled verified phone actions, workflows or paired speech.';
   try {
     const auth = await cloudCredentialStore.read(cloud.environment);
+    await verifyPersonalOwner();
     if (!auth?.credentialId || !identity.organizationId) throw new Error('Cloud owner configuration unavailable');
     const baseScope = await actionScope(JSON.stringify(['cloud',session.origin,identity.userId,agentId]));
     const slot = `device:${baseScope}`;
@@ -256,6 +305,7 @@ async function connectCloud(agentId: string, signal: AbortSignal, expectedOwner?
     if (expired(error)) throw error;
     next.actions=undefined;next.phoneTarget=undefined;next.voiceExpiresAt=undefined;session.ownerId=identity.userId;
   }
+  await verifyPersonalOwner();signal.throwIfAborted();
   save({ kind:'cloud',environment:cloud.environment,agentId,ownerId:identity.userId });
   activate(next,session,agent.name || 'Eliza Cloud agent'); attached=true; update({phoneCapabilityReason:reason});
 }
@@ -381,7 +431,7 @@ export const connectionController = {
     return true;
   },
   open() { update({ open: true, error: '' }); },
-  close() { if (!state.busy) update({ open: false }); },
+  close() { if (!state.busy) {clearPersonalSetup();update({ open: false });} },
   cancel() { operation?.abort(new DOMException('Cancelled', 'AbortError')); cloud.cancelLogin(); },
   async initialize() {
     if (startup) return startup;
@@ -400,8 +450,12 @@ export const connectionController = {
         if (!saved || saved.kind === 'none') { update({ open: !service, message: 'Choose where to run your agent.' }); return; }
         if (saved.kind === 'cloud') {
           cloud = makeCloud(saved.environment);
-          if (!saved.ownerId) { await verifyService(cloud, signal); update({ agents: await cloud.listAgents(signal), message: 'Choose your Cloud agent to confirm this saved connection.' }); return; }
-          await connectCloud(saved.agentId, signal, saved.ownerId);
+          const identity=await verifyService(cloud,signal);
+          if(saved.ownerId&&identity.userId!==saved.ownerId)throw Error('The Cloud account changed. Review your personal agent before connecting.');
+          await inspectPersonal(signal);
+          const current=state.cloudPersonal;
+          if(saved.ownerId&&current?.view?.kind==='ready'&&!current.blocked)await connectCloud(current.view.identity.activeAgentId!,signal,saved.ownerId,current.view.identity.apiBase,personalSetup?.client.owner);
+          else update({open:true});
         }
         else await connectRemote(saved.kind, saved.origin, '', signal);
       });
@@ -430,7 +484,7 @@ export const connectionController = {
       await cloud.login(signal, () => update({ message: 'Use the newly opened browser tab to sign in and approve this phone. If the link expires, cancel here and start a fresh sign-in.' }));
       await verifyService(cloud, signal);
       if (!active) save({ kind: 'none' });
-      update({ agents: await cloud.listAgents(signal), message: 'Cloud services connected. Choose an agent, or keep your current agent.' });
+      await inspectPersonal(signal);
     });
   },
   async cloudList(environment: CloudEnvironment) {
@@ -440,30 +494,44 @@ export const connectionController = {
       try { await verifyService(cloud, signal); }
       catch (error) { if (previous) connectionController.rejectCloudSession(previous, error); throw error; }
       if (!active) save({ kind: 'none' });
-      update({ agents: await cloud.listAgents(signal), message: 'Choose an agent.' }); });
+      await inspectPersonal(signal); });
   },
   cloudEnvironment(environment: CloudEnvironment) {
     if (operation) return;
-    cloud = makeCloud(environment); update({ agents: [], message: '', error: '' });
+    clearPersonalSetup(); cloud = makeCloud(environment); update({ agents: [], message: '', error: '' });
   },
   async cloudChoose(id: string) { await work('Verifying your Cloud agent…', signal => { retire(); return connectCloud(id, signal); }); },
-  async cloudCreate(name: string) {
-    await work('Creating your agent…', async signal => {
-      const agent = await cloud.createAgent(name, signal);
-      update({ agents: [...state.agents.filter(item => item.id !== agent.id), agent], message: `${agent.name || 'Agent'} created. Start it when you are ready.` });
-      try { update({ agents: await cloud.listAgents(signal) }); }
-      catch { update({ message: `${agent.name || 'Agent'} was created. Refresh to update its status; do not create it again.` }); }
-    });
-  },
-  async cloudProvision(id: string) {
-    await work('Starting your agent…', async signal => {
-      try { await cloud.provisionAgent(id, signal); }
-      catch (error) { if (!(error instanceof CloudProvisionAcceptedError)) throw error; }
-      update({ agents: state.agents.map(agent => agent.id === id ? { ...agent, status: 'starting', runtimeUrl: null } : agent), message: 'Start accepted. Refresh to check status before requesting another start.' });
-      try { update({ agents: await cloud.listAgents(signal) }); }
-      catch { /* The accepted write remains visible even when status refresh fails. */ }
-    });
-  },
+  // Generic create/provision onboarding is deferred: personal Dedicated setup requires a current quote.
+  cloudPersonalDecline(){if(operation)return;personalGeneration++;personalSetup=null;update({cloudPersonal:{view:null,blocked:false,declined:true},message:'Cloud account connected. Dedicated setup was not started.',error:''});},
+  async cloudPersonalAccept(){await personalWork('Submitting the reviewed setup…',async(binding,view,signal)=>{
+   if(view.kind!=='review'||state.cloudPersonal?.blocked||personalIntent(binding.client.owner))throw Error('Refresh setup status before continuing.');
+   const generation=personalGeneration;
+   savePersonalIntent(binding.client.owner,{phase:'activation',personalElizaId:view.review.personalElizaId,dedicatedAgentId:view.review.dedicatedAgentId,state:'attempting'});
+   let next:PersonalView;
+   try{next=await binding.client.accept(view.review,signal);}
+   catch(error){if(error instanceof PersonalProtocolError&&error.code==='http'&&error.status!==undefined&&error.status>=400&&error.status<500){clearPersonalIntent(binding.client.owner);if(personalCurrent(binding,generation))update({cloudPersonal:{view:null,blocked:false,declined:false}});}throw error;}
+   if(next.kind==='review'||next.kind==='unavailable')clearPersonalIntent(binding.client.owner);
+   else if(next.kind==='pending')savePersonalIntent(binding.client.owner,{phase:'activation',personalElizaId:next.receipt.personalElizaId,dedicatedAgentId:next.receipt.dedicatedAgentId,state:'accepted'});
+   if(personalCurrent(binding,generation)){publishPersonal(binding,next);if(next.kind==='review')update({message:'The hosting terms changed. Review the current quote before continuing.'});}
+  });},
+  async cloudPersonalPoll(){await personalWork('Checking setup status…',async(binding,view,signal)=>{const generation=personalGeneration;const next=view.kind==='pending'?await binding.client.poll(view.receipt,signal):await binding.client.inspect(signal);if(personalCurrent(binding,generation))publishPersonal(binding,next);});},
+  async cloudPersonalFinalize(){await personalWork('Completing personal agent setup…',async(binding,view,signal)=>{
+   if(view.kind!=='pending'||view.phase!=='cutover'||state.cloudPersonal?.blocked)throw Error('Check setup status before continuing.');
+   const prior=personalIntent(binding.client.owner);if(prior?.phase==='cutover')throw Error('Check the previous setup outcome before continuing.');
+   const generation=personalGeneration;
+   savePersonalIntent(binding.client.owner,{phase:'cutover',personalElizaId:view.receipt.personalElizaId,dedicatedAgentId:view.receipt.dedicatedAgentId,state:'attempting'});
+   const next=await binding.client.finalize(view.receipt,signal);
+   // A returned pending state is the protocol's explicit non-ambiguous retry permission.
+   if(next.kind==='pending')savePersonalIntent(binding.client.owner,{phase:'activation',personalElizaId:next.receipt.personalElizaId,dedicatedAgentId:next.receipt.dedicatedAgentId,state:'accepted'});
+   else if(next.kind==='review'||next.kind==='unavailable')savePersonalIntent(binding.client.owner,{phase:'activation',personalElizaId:view.receipt.personalElizaId,dedicatedAgentId:view.receipt.dedicatedAgentId,state:'accepted'});
+   if(personalCurrent(binding,generation))publishPersonal(binding,next);
+  });},
+  async cloudManage(environment:CloudEnvironment){await work('Opening Cloud account…',signal=>openConnectionBrowser(environment==='staging'?'https://cloud-staging.eliza.app/cloud/agents':'https://cloud.eliza.app/cloud/agents',signal));},
+  async cloudPersonalConnect(){await personalWork('Verifying your personal Cloud agent…',async(binding,_view,signal)=>{
+   const generation=personalGeneration,next=await binding.client.inspect(signal);if(!personalCurrent(binding,generation))return;publishPersonal(binding,next);
+   if(next.kind!=='ready'||state.cloudPersonal?.blocked)throw Error('Your personal Cloud agent is not ready.');
+   await connectCloud(next.identity.activeAgentId!,signal,binding.client.owner.userId,next.identity.apiBase,binding.client.owner);
+  });},
   async disconnect() {
     await work('Disconnecting…', async () => {
       const previous = active; const retirement=retire();
@@ -607,7 +675,7 @@ export function ConnectionChooser() {
   const panel = useRef<HTMLDivElement>(null);
   const remoteOrigin = useRef<HTMLInputElement>(null), remoteCode = useRef<HTMLInputElement>(null);
   const localOrigin = useRef<HTMLInputElement>(null), localCode = useRef<HTMLInputElement>(null);
-  const name = useRef<HTMLInputElement>(null), environment = useRef<HTMLSelectElement>(null);
+  const environment = useRef<HTMLSelectElement>(null);
   useEffect(() => { void connectionController.initialize(); }, []);
   useEffect(() => {
     if (!snapshot.open) return;
@@ -653,13 +721,13 @@ export function ConnectionChooser() {
     {snapshot.session && snapshot.phoneActionsAvailable && <details><summary>Phone action history</summary><button disabled={snapshot.busy} onClick={() => void connectionController.actionHistory()}>Refresh actions</button><button disabled={snapshot.busy} onClick={() => void connectionController.actionHistory(true)}>Sync recorded receipts</button>{snapshot.actionHistory.map(item => <section key={item.id} className="alpha-connection-agent"><strong>{item.description}</strong><span>{item.state}</span>{item.state === 'pending' && <button disabled={snapshot.busy} onClick={() => void connectionController.rejectAction(item.id)}>Reject proposal</button>}{['executing','reconciliation_required'].includes(item.state) && <><p>After checking this phone, confirm whether this exact action happened.</p><button disabled={snapshot.busy} onClick={() => void connectionController.reconcileAction(item.id, 'applied')}>I verified it happened</button><button disabled={snapshot.busy} onClick={() => void connectionController.reconcileAction(item.id, 'not_applied')}>I verified it did not happen</button></>}</section>)}</details>}
     <div role="status" aria-live="polite">{snapshot.message}</div>
     {snapshot.error && <p role="alert" className="alpha-connection-error">{snapshot.error}</p>}
-    {snapshot.busy && <button className="alpha-connection-cancel" onClick={() => connectionController.cancel()}>Cancel</button>}
-    <details><summary>Eliza Cloud</summary><p>Use your existing account and agent, or create an agent after signing in.</p>
+    {snapshot.busy && <button className="alpha-connection-cancel" onClick={() => connectionController.cancel()}>{snapshot.cloudPersonal?.view?'Stop waiting':'Cancel'}</button>}
+    <details><summary>Eliza Cloud</summary><p>Connect your personal Eliza. Dedicated hosting requires a reviewed setup before it starts.</p>
       {snapshot.cloudAccount && <section className="alpha-connection-current"><strong>Cloud services connected</strong><span>{snapshot.cloudAccount.environment} · verified account {snapshot.cloudAccount.userId.slice(0, 8)}</span><p>Gmail and speech use this account independently of your agent.</p><button disabled={snapshot.busy} onClick={() => void connectionController.cloudSignOut()}>Sign out of Eliza Cloud</button></section>}
-      <label>Environment<select ref={environment} disabled={snapshot.busy} defaultValue="production" onChange={() => connectionController.cloudEnvironment(env())}><option value="production">Production</option><option value="staging">Staging</option></select></label>
-      <div className="alpha-connection-actions"><button disabled={snapshot.busy} onClick={() => void connectionController.cloudLogin(env())}>Sign in with Eliza Cloud</button><button disabled={snapshot.busy} onClick={() => void connectionController.cloudList(env())}>Refresh agents</button></div>
-      {snapshot.agents.map(agent => <section className="alpha-connection-agent" key={agent.id}><strong>{agent.name || 'Unnamed agent'}</strong><span>{agent.status}</span><button disabled={snapshot.busy || agent.status !== 'running' || !agent.runtimeUrl} onClick={() => void connectionController.cloudChoose(agent.id)}>Use this agent</button>{agent.status !== 'running' && <button disabled={snapshot.busy || ['provisioning', 'starting', 'pending'].includes(agent.status)} onClick={() => void connectionController.cloudProvision(agent.id)}>Start agent</button>}</section>)}
-      <form onSubmit={event => { event.preventDefault(); void connectionController.cloudCreate(name.current?.value || ''); }}><label>New agent name<input ref={name} maxLength={100} placeholder="My Alpha agent" required disabled={snapshot.busy} /></label><button disabled={snapshot.busy}>Create agent</button></form>
+      <label>Environment<select aria-label="Environment" ref={environment} disabled={snapshot.busy} defaultValue="production" onChange={() => connectionController.cloudEnvironment(env())}><option value="production">Production</option><option value="staging">Staging</option></select></label>
+      <div className="alpha-connection-actions"><button disabled={snapshot.busy} onClick={() => void connectionController.cloudLogin(env())}>Sign in with Eliza Cloud</button><button disabled={snapshot.busy} onClick={() => void connectionController.cloudList(env())}>Refresh agent status</button></div>
+      {snapshot.cloudPersonal&&<CloudPersonalSetup setup={snapshot.cloudPersonal} busy={snapshot.busy} onAccept={()=>void connectionController.cloudPersonalAccept()} onDecline={()=>connectionController.cloudPersonalDecline()} onPoll={()=>void connectionController.cloudPersonalPoll()} onFinalize={()=>void connectionController.cloudPersonalFinalize()} onConnect={()=>void connectionController.cloudPersonalConnect()}/>}
+      <button disabled={snapshot.busy} onClick={()=>void connectionController.cloudManage(env())}>Manage Cloud account</button>
     </details>
     <details><summary>Remote agent</summary><form onSubmit={event => { event.preventDefault(); void connectionController.pair('remote', remoteOrigin.current?.value || '', remoteCode.current?.value || ''); if (remoteCode.current) remoteCode.current.value = ''; }}>
       <label>Agent HTTPS address<input ref={remoteOrigin} type="url" autoCapitalize="none" spellCheck={false} placeholder="https://your-agent.example" required disabled={snapshot.busy} /></label>
