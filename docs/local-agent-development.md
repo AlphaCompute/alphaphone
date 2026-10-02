@@ -40,15 +40,24 @@ The staging command builds the Android mobile agent bundle, runs upstream's host
 
 When an APK build is wanted, `npm run android:build:local` performs preparation, staging and the existing build/verification of both standalone and launcher variants. The ordinary `android:build` uses whatever payload has already been staged; an APK without the runtime payload reports that it must be staged rather than pretending a host-forwarded agent is running on the phone.
 
-In the Android connection chooser, expand **Model provider**, enter a Cerebras key and model, and save. The native bridge stores the configuration encrypted with Android Keystore and injects it into the child process environment at startup. It never returns the provider key to the renderer. Then select **Start local agent**. **Stop local agent** explicitly stops it; disconnecting the UI alone does not imply background execution has stopped. Changed provider settings take effect after a stop/start.
+In the Android connection chooser, expand **Model provider**, enter a Cerebras key and model, and save. The native bridge stores the configuration encrypted with Android Keystore and injects it into the child process environment at startup. It never returns the provider key to the renderer. Then select **Start local agent**. **Stop local agent** requests native shutdown and waits for stopped process/service/socket status before reporting success; disconnecting the UI alone does not imply background execution has stopped. Changed provider settings take effect after a stop/start.
 
 The native bridge enrolls and verifies its own local owner session. Conversation, workflow and device-action calls retain the existing review, selected-context, journal, receipt and reconciliation boundaries. Both environments select the upstream store capability policy, independently of build-channel selection. Browser development uses the lean plugin profile; Android uses the mobile allow-list. Desktop coding/PTY surfaces are excluded. Runtime location does not waive action approvals or provider consent.
 
 ## Reproducible source boundaries
 
 - `vendor/eliza` stays pinned and unchanged at the repository's `upstream.lock.json` revision. Its Android lifecycle sources are generated into Gradle's ignored build directory with Alpha's identity and socket namespace. A generated SHA-256 manifest records inputs and outputs.
-- The existing 35-patch MVP series reproduces against `4573712ebf0466daa4dfadaa4482704c209d9b8c`, which differs from the vendor pin. `agent:prepare` creates an isolated checkout in `artifacts/local-agent-source`, checks every patch hash, applies the exact series, and checks all recorded output hashes. It then applies the Android secure-store socket and lean workflow patches listed in `android-local-runtime-source.json`, checking their recorded output hashes too.
-- Cached preparations are checked for changed recorded files and unexpected tracked changes. Preparation never resets or overwrites a mismatched checkout. `ALPHA_RUNTIME_GIT_CACHE` may point to an existing Git repository containing the recorded base, avoiding a network fetch; it does not change the required commit.
+- The original 35-patch MVP series is preserved; patch36 advances the complete composed tree to qualified runtime `ab8f9a7110ae7ddc5edd6a1e323f77e0362ec9d3`. The series reproduces against `4573712ebf0466daa4dfadaa4482704c209d9b8c`, which differs from the vendor pin. `agent:prepare` creates an isolated checkout in `artifacts/local-agent-source`, checks every patch hash, applies the exact series, and checks all recorded output hashes. It then applies the Android secure-store socket and lean workflow patches listed in `android-local-runtime-source.json`, checking their recorded output hashes too.
+- Cached preparations authenticate unchanged base files, candidate bytes/modes, deleted-path absence, and unexpected tracked or untracked source, including ignored files. Generated outputs are limited to authenticated workspace/Turbo declarations. Source stamps pin the manifests, patches, preparer and guard. Preparation never resets or overwrites a mismatched checkout. `ALPHA_RUNTIME_GIT_CACHE` may point to an existing Git repository containing the recorded base, avoiding a network fetch; it does not change the required commit.
+For an existing preparation that no longer matches the source stamp, preserve it and select a fresh directory for every preparation, test, development and staging command:
+
+```sh
+export ALPHA_LOCAL_AGENT_SOURCE_DIR="$PWD/artifacts/local-agent-ab8f9a"
+npm run agent:prepare
+npm run agent:test
+npm run agent:stage-android
+```
+
 - Runtime preparation skips the unrelated fused local language-model engine setup. The mobile bundler and staged artifact manifest retain their own validation/provenance.
 
 ## Verification and remaining acceptance

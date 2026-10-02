@@ -1,0 +1,96 @@
+import { test, expect } from '@playwright/test';
+
+// Real rendered connection UI/controller; only the native IPC boundary is synthetic.
+// No runtime, provider key, model request or external account is used.
+for (const scenario of ['confirmed', 'incomplete-timeout'] as const) {
+  test(`Stop local agent waits for native shutdown: ${scenario}`, async ({ page }) => {
+    await page.addInitScript(() => {
+      const w = window as any;
+      w.androidBridge = {};
+      const store = new Map();
+      w.stopFixture = { starts: 0, stops: 0, polls: 0, status: { state: 'stopping', serviceActive: true, socketListening: true }, unexpected: [] as string[] };
+      const methods = (names: string[]) => names.map(name => ({ name, rtype: 'promise' }));
+      w.Capacitor = {
+        PluginHeaders: [
+          { name: 'Agent', methods: methods(['getStatus', 'start', 'stop', 'request']) },
+          { name: 'AlphaConnection', methods: methods(['secureRead', 'secureWrite', 'secureRemove', 'cancel', 'addListener', 'removeListener', 'pauseNotificationCollection']) },
+          { name: 'AlphaActionJournal', methods: methods(['list']) },
+          { name: 'DeviceApps', methods: methods(['buildInfo']) },
+        ],
+        nativePromise: async (plugin: string, method: string, input: any) => {
+          const f = w.stopFixture;
+          if (plugin === 'Agent') {
+            if (method === 'getStatus') {
+              if (f.stops) { f.polls++; return { packaged: true, ...f.status }; }
+              return { packaged: true, state: 'stopped', serviceActive: false, socketListening: false };
+            }
+            if (method === 'start') { f.starts++; return { state: 'ready' }; }
+            if (method === 'stop') { f.stops++; return { state: 'stopping' }; }
+            if (method === 'request') {
+              let body: any;
+              if (input.path === '/api/auth/me') body = { identity: { kind: 'owner', id: 'fixture-owner' }, access: { role: 'OWNER', mode: 'session' } };
+              else if (input.path === '/api/agents') body = { agents: [{ id: 'fixture-agent', name: 'Resident fixture', status: 'running' }] };
+              else if (input.path === '/api/client-devices/register') body = { installationId: input.headers['X-Eliza-Device-Id'], enrollmentId: 'fixture-enrollment', capabilities: [] };
+              else if (input.path === '/api/conversations') body = { conversations: [] };
+              else if (input.path === '/api/workflow/status') body = { status: 'unavailable' };
+              else { f.unexpected.push(input.path); throw Error('Unexpected local request'); }
+              return { status: 200, body: JSON.stringify(body) };
+            }
+          }
+          if (plugin === 'AlphaConnection') {
+            if (method === 'secureRead') return { value: store.get(input.slot) ?? null };
+            if (method === 'secureWrite') { store.set(input.slot, input.value); return {}; }
+            if (method === 'secureRemove') { store.delete(input.slot); return {}; }
+            if (['cancel', 'addListener', 'removeListener', 'pauseNotificationCollection'].includes(method)) return {};
+          }
+          if (plugin === 'AlphaActionJournal' && method === 'list') return { entries: [] };
+          if (plugin === 'DeviceApps' && method === 'buildInfo') return { launcher: false, version: 'fixture' };
+          f.unexpected.push(plugin + '.' + method); throw Error('Unexpected native operation');
+        },
+      };
+    });
+    await page.goto('/');
+    if (!await page.locator('.alpha-connection-scrim').isVisible())
+      await page.getByRole('button', { name: 'Agent connection', exact: true }).click();
+    let chooser = page.locator('.alpha-connection');
+    await chooser.getByRole('button', { name: 'Start local agent', exact: true }).click();
+    await expect(page.locator('.alpha-connection-scrim')).toHaveCount(0);
+    await page.getByRole('button', { name: 'Settings', exact: true }).click();
+    await page.getByRole('button', { name: /Agent connection/ }).click();
+    chooser = page.locator('.alpha-connection');
+    const stop = chooser.getByRole('button', { name: 'Stop local agent', exact: true });
+    await expect(stop).toBeEnabled();
+    await page.clock.install();
+    await stop.click();
+    await expect(chooser.getByText('Stopping the local agent…', { exact: true })).toBeVisible();
+    await expect(stop).toBeDisabled();
+    await expect(chooser.getByText('Local agent stopped.', { exact: true })).toHaveCount(0);
+    if (scenario === 'confirmed') {
+      for (const status of [
+        { state: 'stopped' },
+        { state: 'stopped', serviceActive: true, socketListening: false },
+        { state: 'stopped', serviceActive: false, socketListening: true },
+      ]) {
+        await page.evaluate(status => { (window as any).stopFixture.status = status; }, status);
+        await page.clock.runFor(400);
+        await expect(stop).toBeDisabled();
+        await expect(chooser.getByText('Resident fixture', { exact: true })).toBeVisible();
+        await expect(chooser.getByText('Local agent stopped.', { exact: true })).toHaveCount(0);
+      }
+      await page.evaluate(() => { (window as any).stopFixture.status = { state: 'stopped', serviceActive: false, socketListening: false }; });
+      await page.clock.runFor(400);
+      await expect(chooser.getByText('Local agent stopped.', { exact: true })).toBeVisible();
+      await expect(stop).toHaveCount(0);
+      await expect(chooser.getByRole('button', { name: 'Start local agent', exact: true })).toBeEnabled();
+    } else {
+      await page.evaluate(() => { (window as any).stopFixture.status = { state: 'stopped' }; });
+      await page.clock.runFor(30_100);
+      await expect(chooser.getByText('Shutdown is still pending. Check local agent status before starting again.', { exact: true })).toBeVisible();
+      await expect(stop).toBeEnabled();
+      await expect(chooser.getByText('Resident fixture', { exact: true })).toBeVisible();
+      await expect(chooser.getByText('Local agent stopped.', { exact: true })).toHaveCount(0);
+    }
+    const fixture = await page.evaluate(() => (window as any).stopFixture);
+    expect(fixture.starts).toBe(1); expect(fixture.stops).toBe(1); expect(fixture.polls).toBeGreaterThan(1); expect(fixture.unexpected).toEqual([]);
+  });
+}

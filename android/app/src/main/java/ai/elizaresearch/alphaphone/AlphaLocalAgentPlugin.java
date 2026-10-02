@@ -17,6 +17,30 @@ public final class AlphaLocalAgentPlugin extends Plugin {
  private final ExecutorService workers=Executors.newFixedThreadPool(2);
  private static String rootToken,ownerToken,ownerIdentity;
  private static long expiresAt;
+ private static final Object lifecycleLock=new Object(), enrollmentLock=new Object();
+ private static long lifecycleEpoch;
+ private static boolean accepting=true,stopping;
+ private volatile boolean disposed;
+ private static final java.util.Set<PluginCall> pending=new java.util.HashSet<>();
+ private static void invalidateCalls(){
+  for(PluginCall call:pending)call.reject("Local agent connection changed. A dispatched operation may still have completed; inspect its receipt before retrying.","LOCAL_AGENT_EPOCH_CHANGED");
+  pending.clear();
+ }
+ private static void rejectPending(PluginCall call,String message){synchronized(lifecycleLock){if(pending.remove(call))call.reject(message);}}
+
+ private static final class Superseded extends Exception {}
+ private static void clearEnrollment(){rootToken=null;ownerToken=null;ownerIdentity=null;expiresAt=0;}
+ private void requireCurrent(long epoch) throws Superseded {
+  synchronized(lifecycleLock){if(disposed||!accepting||epoch!=lifecycleEpoch)throw new Superseded();}
+ }
+ private long admittedEpoch() throws Superseded {
+  synchronized(lifecycleLock){requireCurrent(lifecycleEpoch);return lifecycleEpoch;}
+ }
+ private void resolveCurrent(PluginCall call,long epoch,JSObject result) throws Superseded {
+  synchronized(lifecycleLock){requireCurrent(epoch);if(pending.remove(call))call.resolve(result);}
+ }
+ private static void rejectSuperseded(PluginCall call){synchronized(lifecycleLock){if(pending.remove(call))call.reject("Local agent connection changed. A dispatched operation may still have completed; inspect its receipt before retrying.","LOCAL_AGENT_EPOCH_CHANGED");}}
+
  private boolean runtimePackaged() {
   try {
    try(var ignored=getContext().getAssets().open("agent/agent-bundle.js")){}
@@ -52,24 +76,65 @@ public final class AlphaLocalAgentPlugin extends Plugin {
    if(new AlphaCredentialStore(getContext()).readCredentialSlot("local-agent-provider:v1")==null){call.reject("Configure your model provider before starting the local agent.");return;}
    // Hosted inference is distinct from an on-device language-model payload.
    getContext().getSharedPreferences("CapacitorStorage",Context.MODE_PRIVATE).edit().putString("eliza:mobile-runtime-mode","cloud-hybrid").apply();
-   ElizaAgentService.start(getContext());
+   final long epoch;
+   long admitted=-1;
+   for(int attempt=0;attempt<3;attempt++){
+    final long observedEpoch;
+    final boolean needsShutdownObservation;
+    synchronized(lifecycleLock){observedEpoch=lifecycleEpoch;needsShutdownObservation=stopping;}
+    JSONObject nativeState=needsShutdownObservation?ElizaAgentService.getLocalAgentBootState(getContext()):null;
+    synchronized(lifecycleLock){
+     if(observedEpoch!=lifecycleEpoch)continue;
+     if(disposed){call.reject("Local agent bridge is closed.");return;}
+     if(stopping&&shutdownConfirmed(nativeState))stopping=false;
+     if(stopping){call.reject("Local agent is stopping; wait for stopped status before starting.");return;}
+     invalidateCalls();admitted=++lifecycleEpoch;accepting=true;clearEnrollment();pending.add(call);
+     ElizaAgentService.start(getContext());break;
+    }
+   }
+   if(admitted<0){call.reject("Local agent connection changed; check status before starting again.");return;}
+   epoch=admitted;
    workers.execute(()->{
-    long deadline=System.currentTimeMillis()+90000;
-    while(System.currentTimeMillis()<deadline){
-     try{enroll();call.resolve(new JSObject().put("state","ready"));return;}
+    long deadline=android.os.SystemClock.elapsedRealtime()+90000;
+    while(android.os.SystemClock.elapsedRealtime()<deadline){
+     try{enroll(epoch);resolveCurrent(call,epoch,new JSObject().put("state","ready"));return;}
+     catch(Superseded stale){rejectSuperseded(call);return;}
      catch(Exception unavailable){try{Thread.sleep(1000);}catch(InterruptedException interrupted){Thread.currentThread().interrupt();break;}}
     }
-    call.reject("Local agent startup did not complete. Check runtime status; no chat was sent.");
+    rejectPending(call,"Local agent startup did not complete. Check runtime status; no chat was sent.");
    });
-  }catch(Exception error){call.reject("The on-device agent could not start. Try again or connect another agent.");}
+  }catch(Exception error){synchronized(lifecycleLock){pending.remove(call);}call.reject("The on-device agent could not start. Try again or connect another agent.");}
+ }
+ private static boolean shutdownConfirmed(JSONObject status){
+  return status!=null&&"dead".equals(status.optString("state"))&&!status.optBoolean("serviceActive",true)&&!status.optBoolean("socketListening",true);
  }
  @PluginMethod public void getStatus(PluginCall call) {
-  try{boolean packaged=runtimePackaged();JSObject status=packaged?new JSObject(ElizaAgentService.getLocalAgentBootState(getContext()).toString()):new JSObject().put("state","unavailable");status.put("packaged",packaged);call.resolve(status);}
-  catch(Exception error){call.reject("Local runtime status unavailable.");}
+  try{
+   boolean packaged=runtimePackaged();
+   for(int attempt=0;attempt<3;attempt++){
+    final long observedEpoch;
+    synchronized(lifecycleLock){observedEpoch=lifecycleEpoch;}
+    // Native socket observation must never delay stop's epoch invalidation.
+    JSObject status=packaged?new JSObject(ElizaAgentService.getLocalAgentBootState(getContext()).toString()):new JSObject().put("state","unavailable");
+    synchronized(lifecycleLock){
+     if(observedEpoch!=lifecycleEpoch)continue;
+     if(stopping||!accepting){
+      boolean stopped=shutdownConfirmed(status);
+      if(stopped)stopping=false;
+      status.put("state",stopped?"stopped":"stopping");
+     }
+     status.put("packaged",packaged);call.resolve(status);return;
+    }
+   }
+   call.reject("Local runtime changed while checking status; check again.");
+  }catch(Exception error){call.reject("Local runtime status unavailable.");}
  }
  @PluginMethod public void stop(PluginCall call) {
-  ElizaAgentService.stop(getContext());synchronized(AlphaLocalAgentPlugin.class){ownerToken=null;rootToken=null;expiresAt=0;}
-  call.resolve(new JSObject().put("state","stopped"));
+  synchronized(lifecycleLock){
+   invalidateCalls();++lifecycleEpoch;accepting=false;stopping=true;clearEnrollment();
+   try{ElizaAgentService.stop(getContext());call.resolve(new JSObject().put("state","stopping"));}
+   catch(Exception unavailable){call.reject("Stop requested locally, but native shutdown could not be confirmed. Check runtime status.");}
+  }
  }
  private static JSONObject raw(String path,String method,String body,String token,JSONObject supplied) throws Exception {
   JSONObject headers=new JSONObject();headers.put("Accept","application/json");headers.put("Content-Type","application/json");
@@ -86,18 +151,26 @@ public final class AlphaLocalAgentPlugin extends Plugin {
   if(response.getInt("status")!=200)throw new IllegalStateException("Local enrollment unavailable");
   return new JSONObject(response.getString("body"));
  }
- private static synchronized String enroll() throws Exception {
+ private JSONObject enrollmentJson(long epoch,String path,String method,JSONObject body,String token) throws Exception {
+  requireCurrent(epoch);
+  // Admission precedes dispatch. In-flight native requests are not claimed cancelled.
+  JSONObject result=json(path,method,body,token);requireCurrent(epoch);return result;
+ }
+ private String enroll(long epoch) throws Exception {
+  synchronized(enrollmentLock){
+  requireCurrent(epoch);
   String root=ElizaAgentService.localAgentToken();
   if(root==null||root.isEmpty())throw new IllegalStateException();
-  if(root.equals(rootToken)&&ownerToken!=null&&expiresAt>System.currentTimeMillis()+30000)return ownerToken;
-  JSONObject status=json("/api/auth/status","GET",null,root);
-  JSONObject code=json("/api/auth/pair-code","GET",null,root);
-  JSONObject paired=json("/api/auth/pair","POST",new JSONObject().put("code",code.getString("code")).put("instanceId",status.getString("instanceId")),root);
+  synchronized(lifecycleLock){requireCurrent(epoch);if(root.equals(rootToken)&&ownerToken!=null&&expiresAt>System.currentTimeMillis()+30000)return ownerToken;}
+  JSONObject status=enrollmentJson(epoch,"/api/auth/status","GET",null,root);
+  JSONObject code=enrollmentJson(epoch,"/api/auth/pair-code","GET",null,root);
+  JSONObject paired=enrollmentJson(epoch,"/api/auth/pair","POST",new JSONObject().put("code",code.getString("code")).put("instanceId",status.getString("instanceId")),root);
   if(!"owner".equals(paired.getString("access"))||!status.getString("instanceId").equals(paired.getString("instanceId")))throw new IllegalStateException();
-  String token=paired.getString("token");JSONObject who=json("/api/auth/me","GET",null,token);
+  String token=paired.getString("token");JSONObject who=enrollmentJson(epoch,"/api/auth/me","GET",null,token);
   if(!"OWNER".equals(who.getJSONObject("access").getString("role"))||!paired.getString("identityId").equals(who.getJSONObject("identity").getString("id"))||!token.equals(who.getJSONObject("session").getString("id")))throw new IllegalStateException();
   long expiry=who.getJSONObject("session").getLong("expiresAt");if(expiry<=System.currentTimeMillis())throw new IllegalStateException();
-  rootToken=root;ownerToken=token;ownerIdentity=paired.getString("identityId");expiresAt=expiry;return token;
+  synchronized(lifecycleLock){requireCurrent(epoch);rootToken=root;ownerToken=token;ownerIdentity=paired.getString("identityId");expiresAt=expiry;return token;}
+  }
  }
  @PluginMethod public void request(PluginCall call) {
   String path=call.getString("path",""),method=call.getString("method","GET"),body=call.getString("body");
@@ -105,15 +178,21 @@ public final class AlphaLocalAgentPlugin extends Plugin {
    call.reject("Unsupported local agent request.");return;
   }
   JSONObject headers=call.getObject("headers");
-  workers.execute(()->{try{
-   String token=enroll();
+  final long epoch;
+  try{synchronized(lifecycleLock){epoch=admittedEpoch();pending.add(call);}}catch(Superseded stale){call.reject("Local agent is stopped or unavailable.","LOCAL_AGENT_EPOCH_CHANGED");return;}
+  try{workers.execute(()->{try{
+   String token=enroll(epoch);
    String expectedOwner=call.getString("ownerId");
-   synchronized(AlphaLocalAgentPlugin.class){if(expectedOwner!=null&&!expectedOwner.equals(ownerIdentity)){call.resolve(new JSObject().put("status",409).put("body","{\"error\":\"Local owner changed; reconnect before continuing\"}"));return;}}
+   synchronized(lifecycleLock){requireCurrent(epoch);if(expectedOwner!=null&&!expectedOwner.equals(ownerIdentity)){resolveCurrent(call,epoch,new JSObject().put("status",409).put("body","{\"error\":\"Local owner changed; reconnect before continuing\"}"));return;}}
+   requireCurrent(epoch);
    JSONObject result=raw(path,method,body,token,headers);
-   if(result.getInt("status")==401)synchronized(AlphaLocalAgentPlugin.class){ownerToken=null;}
+   requireCurrent(epoch);
+   if(result.getInt("status")==401)synchronized(lifecycleLock){requireCurrent(epoch);clearEnrollment();}
    if(path.equals("/api/auth/me")&&result.getInt("status")==200){JSONObject who=new JSONObject(result.getString("body"));who.getJSONObject("session").put("id","native-owned-session");result.put("body",who.toString());result.remove("bodyBase64");}
-   call.resolve(new JSObject(result.toString()));
-  }catch(Exception error){call.reject("Local agent request failed. No automatic retry was made.");}});
+   resolveCurrent(call,epoch,new JSObject(result.toString()));
+  }catch(Superseded stale){rejectSuperseded(call);}
+  catch(Exception error){rejectPending(call,"Local agent request failed. No automatic retry was made.");}});}
+  catch(java.util.concurrent.RejectedExecutionException closed){rejectPending(call,"Local agent bridge is closed.");}
  }
- @Override protected void handleOnDestroy(){workers.shutdownNow();super.handleOnDestroy();}
+ @Override protected void handleOnDestroy(){synchronized(lifecycleLock){disposed=true;invalidateCalls();++lifecycleEpoch;clearEnrollment();}workers.shutdownNow();super.handleOnDestroy();}
 }

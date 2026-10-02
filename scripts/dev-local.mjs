@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import {sourceDirectory} from './local-agent-source.mjs';
 // Owns only the two processes it starts. Credentials stay in the host profile.
 import {spawn,execFileSync} from 'node:child_process';
 import {resolve,join} from 'node:path';
@@ -8,7 +9,7 @@ import {createServer} from 'node:net';
 const profile=resolve(process.env.ALPHA_REMOTE_PROFILE||join(homedir(),'.local/share/alphaphone/browser-agent'));
 const port=Number(process.env.ALPHA_REMOTE_PORT||47849);
 if(!Number.isInteger(port)||port<1024||port>65535)throw Error('Invalid local agent port');
-const source=resolve(process.env.ALPHA_ELIZA_SOURCE||'artifacts/local-agent-source');
+const source=process.env.ALPHA_ELIZA_SOURCE?resolve(process.env.ALPHA_ELIZA_SOURCE):sourceDirectory(resolve(import.meta.dirname,'..'));
 if(!process.env.ALPHA_ELIZA_SOURCE)execFileSync(process.execPath,['scripts/prepare-local-agent.mjs','--source-only'],{stdio:'inherit'});
 if(!existsSync(join(source,'node_modules')))throw Error('Install the pinned Eliza runtime dependencies in a prepared source checkout, then set ALPHA_ELIZA_SOURCE to that checkout. Do not edit vendor/eliza.');
 await new Promise((resolve,reject)=>{const server=createServer();server.once('error',reject);server.listen(port,'127.0.0.1',()=>server.close(resolve));});

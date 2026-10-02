@@ -1,11 +1,12 @@
 #!/usr/bin/env node
+import {sourceDirectory} from './local-agent-source.mjs';
 // Runs the real, unmodified Eliza app host with an isolated private profile.
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import {spawn, execFileSync} from 'node:child_process';
-const source = path.resolve(process.env.ALPHA_ELIZA_SOURCE || 'artifacts/local-agent-source');
+const source = process.env.ALPHA_ELIZA_SOURCE ? path.resolve(process.env.ALPHA_ELIZA_SOURCE) : sourceDirectory(path.resolve(import.meta.dirname,'..'));
 const profile = path.resolve(process.env.ALPHA_REMOTE_PROFILE || path.join(os.homedir(), '.local/share/alphaphone/local-remote'));
 const port = Number(process.env.ALPHA_REMOTE_PORT || 47839);
 if (!Number.isInteger(port) || port < 1024 || port > 65535) throw new Error('Invalid port');
