@@ -4,6 +4,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import {execFileSync} from 'node:child_process';
 import {androidEnv} from './toolchain.mjs';
+import {requireInstrumentationSuccess} from './instrumentation-result.mjs';
 const env=androidEnv(), serial=process.env.ANDROID_SERIAL;
 if(!/^emulator-\d+$/.test(serial||''))throw Error('Set ANDROID_SERIAL to the disposable phone emulator.');
 const adb=path.join(env.ANDROID_HOME,'platform-tools/adb');
@@ -25,15 +26,16 @@ for(const variant of ['standalone','launcher']){
   const groups=isolated?classes.map(name=>[name]):[classes];
   const outputs=[];passed=true;
   for(const group of groups){
-   const output=run('shell','am','instrument','-w','-e','class',group.join(','),`${appId}.test/androidx.test.runner.AndroidJUnitRunner`);
+   const output=run('shell','am','instrument','-w','-r','-e','class',group.join(','),`${appId}.test/androidx.test.runner.AndroidJUnitRunner`);
    outputs.push(output);
+   fs.writeFileSync(path.join(out,`${variant}.txt`),outputs.join('\n'));
    if(isolated)fs.writeFileSync(path.join(out,`${variant}-${group[0].split('.').at(-1)}.txt`),output);
-   passed=passed&&new RegExp(`OK \\(${group.length} tests?\\)`).test(output)&&!/FAILURES|INSTRUMENTATION_FAILED|Process crashed/.test(output);
+   requireInstrumentationSuccess(output,group);
   }
   fs.writeFileSync(path.join(out,`${variant}.txt`),outputs.join('\n'));
 
   if(!passed)error='Scoped native instrumentation failed.';
- }catch{error='Install or instrumentation failed or timed out.';}
+ }catch{passed=false;error='Install or instrumentation failed or timed out.';}
  results.push({variant,sha256,passed,...(error?{error}:{})});
  fs.writeFileSync(path.join(out,'result.json'),JSON.stringify({serial,isolatedProcesses:isolated,emulatorMode:process.env.ALPHA_EMULATOR_MODE||'unspecified',createdAt:new Date().toISOString(),scope:'Synthetic calendar, encrypted credentials/HTTP, chooser/mock lifecycle, Cloud audio transport and durable native action journal; not live Cloud or enclave acceptance',results},null,2)+'\n');
  console.log(`${variant}: ${passed?'passed':'failed'}`);
