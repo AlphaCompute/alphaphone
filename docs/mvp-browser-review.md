@@ -1392,3 +1392,17 @@ Repository verification passed 114 tests, TypeScript and the web build. Hosted v
 Before publication, incorporated the newer focus-policy epoch recheck after asynchronous source reads and workflow-definition validation while waiting for summary review. The combined frozen candidate passed **89 browser cases, including 13 focus cases**, with coverage for external notification revocation, connected fixture summary timing, lock redaction, Calendar edits and failed focus-intent persistence. The phone-width summary-review screenshot was inspected; all fields and actions remain within the viewport. The earlier 84-case run remains historical evidence for the initial candidate.
 
 Combined-candidate repository verification also passed all 114 tests, TypeScript and web build.
+
+## Hosted browser follow-up: recovery polling and Calendar test gate (October 2)
+
+PR #11 browser runs split failures across two cases: the pull-request run `37060659132` failed dismissal of saved-app recovery, while push run `37060636037` timed out in delayed Calendar navigation. Other shards passed independently; this was not a single all-green hosted run. Downloaded terminal logs are retained in `test-results/hosted-followup-review/`.
+
+A deterministic regression reproduced recovery reopening after the user dismissed it and foreground polling resumed with an invalid workflow store. The scheduler now checks workflow recovery readiness before polling; explicit recovery remains available and original bytes are preserved. Healthy workflow scheduling is separately exercised. A second controlled regression reproduced the Calendar fixture deadlock by overlapping another list call: each call replaced the sole release callback. The fixture now shares one gate across reads and still requires the delayed open to return cancelled after Home. This is a fixture correction, not evidence of a Calendar application race fix.
+
+Calendar/recovery suites passed five repetitions (50 executions), followed by 33 healthy trigger/focus cases. Both original failing controls are retained. A disk-full test launch was recovered by removing reinstallable node_modules from four inactive review checkouts (`browser-video-review`, `camera-controls-review`, `photo-albums-review`, `clock-sync-review`); source and evidence were retained. The active local-agent source and dependencies were preserved, and its browser bridge subsequently returned HTTP 200. Android builds remain skipped; new hosted verification remains pending.
+
+Repository verification passed all 114 tests, TypeScript and the production web build.
+
+The shared branch then advanced with `deada57` (Calendar/reminder creation and audio-deletion recovery). Rebased this correction onto that commit, retaining its explicit Calendar creation identity in the test. The combined browser run passed **89 cases**, including creation readback, lost-response reconciliation, audio deletion/restoration, native-fence fixtures, trigger/focus scheduling and both CI corrections. This verifies the browser and mocked boundary cases in the combined source; it does not independently qualify the parent's native instrumentation or APK. Earlier repeated runs remain evidence for the pre-rebase candidate.
+
+Combined-source repository verification passed all 114 tests, TypeScript and web build.
