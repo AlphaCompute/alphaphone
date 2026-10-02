@@ -1490,3 +1490,13 @@ The isolated agent returned `ready:true` and transcribed “Please remember to w
 This closes host ASR startup configuration only. Browser-to-agent binary voice transport, actual speech-output readiness, Android microphone/runtime execution and device acceptance remain open. The browser's manual transcript-review fallback does not establish agent ASR parity. Android builds remain skipped at the user's direction.
 
 `npm run verify` passed **116 tests**, TypeScript and the web build for this checkpoint. The runtime test passed against an isolated agent on port 47859; it did not restart the live development agent or establish hosted CI status.
+
+## October 2 — Browser development ASR transport
+
+The host-owned development bridge now accepts only the exact Whisper status and transcription routes for speech. Transcription carries bounded canonical base64 WAV bytes through the browser's same-origin JSON envelope and forwards raw bytes with a request ID to the authenticated agent. Speech requests require the selected owner ID; mismatches fail before dispatch. Credentials stay on the host. The bridge rejects malformed payloads, route/method confusion and oversized audio, bounds speech responses to 128 KiB, and aborts the upstream request when the browser disconnects.
+
+Synthetic HTTP contracts verify exact bytes (including a 2 MiB boundary payload), owner rejection, cross-origin rejection, canonical encoding, required request IDs and upstream cancellation. A separate real-service run passes synthetic spoken audio through this bridge to the actual isolated Whisper agent: the expected sentence was transcribed, duplicate requests returned 409 and malformed/silent WAV returned 422. Invalid credentials were independently rejected by the agent with 401. Reproduce the latter with `node --import tsx scripts/test-agent-asr.mjs --bridge` and the isolated profile/port environment described above. Evidence: `artifacts/calendar-preferences-review/test-results/agent-speech-bridge-review/`.
+
+This transport is not yet wired into the rendered recording flow. Browser PCM conversion and voice selection, actual agent TTS and Android/device acceptance remain open. The live development stack was restarted with verified host ASR enabled and its renderer returned HTTP 200 on port 5317; that restart preceded this transport checkpoint. No Android builds were run.
+
+`npm run verify` passed **117 tests**, TypeScript and the web build on the frozen transport checkpoint. Hosted verification remains separate and pending.
