@@ -19,7 +19,7 @@ export function zonedTimeToEpoch(local:unknown,timeZone:unknown):number|null{
  // Neither skipped times nor repeated times identify one unambiguous reminder instant.
  return candidates.length===1?candidates[0]:null;
 }
-const views=new Set(['home','maps','camera','photos','notes','calendar','notifications','reminders','workflows','files','inbox','browser','phone','messages','contacts','passwords','settings']);
+const views=new Set(['home','maps','camera','photos','notes','calendar','notifications','reminders','workflows','files','inbox','browser',/* MVP-DEFERRED: 'phone','messages','contacts'; docs/mvp-completion-plan.md scope freeze. Restore only after approved scope and native permission/recipient/role/return-to-HOME acceptance. */'passwords','settings']);
 const proposalAction:Action={
  name:'PREPARE_ALPHA_ACTION',contexts:['general','messaging'],roleGate:{minRole:'USER'},
  description:'When the user asks to create or save a note, create a one-time reminder, or open an Alpha Phone view, prepare a local action for explicit user approval. This only prepares a proposal; it NEVER saves, opens, or executes anything. Use kind create_note with title and body, kind create_reminder with title, body, localDateTime and timeZone, or kind open_view with view. Never claim the operation happened.',
