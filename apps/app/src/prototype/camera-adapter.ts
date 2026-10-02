@@ -506,6 +506,7 @@ export function installPrototypeCameraAdapter(_Component: unknown, views: Record
     data.shutter = () => { void capture(); };
     data.importAvailable=browserMode&&!recording&&!recordingStarting&&!finalizing;data.importImage=chooseImage;
     data.flip = () => { const next = direction === 'back' ? 'front' : 'back'; void control(() => camera.switchCamera({ direction: next }), () => { direction = next; flash = false; currentApi.set({ front: next === 'front', flash: false, ...(browserMode?{zoom:1}:{}) }); }); };
+    if(browserMode)data.flashLabel=browserCamera.lightingLabel(flash);
     data.toggleFlash = () => { const next = !flash; void control(() => camera.setSettings({ settings: { flash: next ? 'on' : 'off' } }), () => { flash = next; currentApi.set({ flash: next }); }); };
     data.zooms = (data.zooms || []).map((z: Bag, i: number) => ({ ...z, pick: () => { const ratio = parseFloat(z.label); void control(() => camera.setZoom({ zoom: ratio }), () => currentApi.set({ zoom: i })); } }));
     data.vfDown = () => {};

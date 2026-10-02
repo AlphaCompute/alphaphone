@@ -2,7 +2,7 @@
 
 Latest full integration checkpoint: **310/310 browser tests and 82/82 repository tests**, plus typecheck and production web build, in the [complex Calendar guest checkpoint](#october-2--complex-calendar-guests-and-integration-review), based on `04d5b8a` plus the recorded guest-editor changes. Earlier entries are historical evidence for their stated snapshots. The MVP goal remains open.
 
-Latest targeted checkpoint: [Inbox triage and independent saved drafts](#october-2--inbox-triage-and-independent-saved-drafts). Its 19 browser checks and repository verification cover the recorded frozen snapshot; the full 310-case checkpoint above predates these additions. The MVP remains incomplete.
+Latest targeted checkpoint: [Camera screen light and reminder edit cancellation](#october-2--camera-screen-light-and-reminder-edit-cancellation). Its 33 browser checks and repository verification cover the recorded frozen snapshot; the full 310-case checkpoint above predates these additions. The MVP remains incomplete.
 
 October 1 architecture change: the user has selected an **Android-resident agent instead of Nitro/TEE hosting**. The [on-device agent plan](on-device-agent-plan.md) supersedes cloud-only and enclave-primary requirements below. Agent execution and model inference are separate: the current implementation runs orchestration locally and uses hosted Cerebras inference. Historical evidence is retained. Powered-off-phone execution needs explicit scope reconciliation.
 
@@ -916,3 +916,16 @@ A new regression reproduced a data-loss defect: save one draft, close its compos
 Verification: **13/13 Inbox browser journeys** and **6/6 simulator save/recovery checks**, plus **82/82 repository tests**, typecheck and production build. The new separate-message regression fails on the previous implementation and passes with the fix; additional cases cover two saved drafts, discarding one, and restoring/updating a legacy draft. Frozen input hashes matched after verification. Logs and source manifest are retained in `test-results/inbox-triage-sync/`.
 
 Newer Camera, reminder and Cloud work in the shared checkout is preserved and is outside this tested snapshot. The dated Cloud validation records normal website sign-in separately from phone credential exchange and identifies a personal-agent onboarding contract gap; neither this browser Inbox fixture nor that website login closes Cloud phone acceptance. Simulator cross-tab writes and deep recovery, Calendar repair, live local-agent actions/restart, provider and device gates remain open. No Android build ran in this pass, and the full MVP goal remains active.
+
+
+## October 2 — Camera screen light and reminder edit cancellation
+
+The frozen snapshot starts from `3687b67` and includes the pending Camera and reminder changes. In the explicit browser development profile, a camera without torch capability now offers **Screen light**. The owned white viewfinder illumination is separate from the captured pixels; normal browser mode still rejects unsupported hardware torch activation. Off, Home, camera replacement, page retirement, visibility loss and source termination remove the overlay. The phone-width screenshot was inspected and the controls remain visible. Display illumination efficacy and physical camera behavior are not established by the synthetic stream test.
+
+Reminder title/body edits with an unchanged schedule use the selected-record update contract rather than rescheduling. They preserve the saved time zone, recurrence, occurrence identity, snooze and history, including a resolved DST gap. Explicit time edits still select a new schedule. Stale targets reject; an unconfirmed response blocks another save until the reminder is reopened for review.
+
+The review reproduced an additional cancellation race: closing the editor while the operation hash was being prepared still dispatched the mutation. The controller now checks the same live component/editor and visible page immediately before dispatch. A retired save also releases its original owner's busy state rather than a replacement component's state. The regression expected zero dispatches, observed one before the fix and passes afterward. It does not promise cancellation after a mutation has already been dispatched.
+
+Verification: **33/33 browser checks** covering reminder recurrence/edit boundaries, cancellation, reminder assistant actions, Camera lighting/controls and video; **82/82 repository tests**, TypeScript and production build. Input hashes matched after the runs. Evidence and the screen-light screenshot are retained in `test-results/camera-reminder-sync/`. Concurrent commit `e62ca37` incorporated the exact tested reminder source/test changes; this integration preserves that commit. No Android build ran in this browser pass.
+
+Current multi-page Scan work appearing after the freeze remains pending. Camera focus interaction and video editing, simulator concurrency/deep recovery, Calendar repair, live local-agent and Cloud onboarding acceptance, provider integrations and device gates remain open. The full goal stays active.
