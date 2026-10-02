@@ -27,3 +27,8 @@ test('device retirement clears playback state and permits immediate explicit rep
  await page.getByRole('button',{name:'Read voicemail',exact:true}).click();
  await expect.poll(()=>page.evaluate(()=>(window as any).speechTest.spoken.length)).toBe(2);
 });
+
+test('leaving replaced voicemail does not stop another consumer',async({page})=>{
+ await page.getByRole('button',{name:'Read voicemail',exact:true}).click();await expect.poll(()=>page.evaluate(()=>(window as any).speechTest.spoken.length)).toBe(1);
+ await page.evaluate(async()=>{const {registerPlugin}=await import('/src/platform-plugins.ts');const voice=registerPlugin<any>('AlphaVoiceCloud');await voice.play(await voice.synthesizeLocal({text:'Other consumer'}));});const before=await page.evaluate(()=>(window as any).speechTest.cancelled);await page.evaluate(()=>window.dispatchEvent(new Event('launcher-home')));expect(await page.evaluate(()=>(window as any).speechTest.cancelled)).toBe(before);
+});

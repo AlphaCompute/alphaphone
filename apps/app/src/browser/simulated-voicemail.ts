@@ -1,25 +1,17 @@
-import {registerPlugin} from '../platform-plugins';
+import {speakLocalText} from '../local-speech-playback';
 type Bag=Record<string,any>;
 /** Local seed messages have transcripts rather than recordings. Read them with the local voice. */
 export function installSimulatedVoicemail(phone:Bag){
- const Voice=registerPlugin<any>('AlphaVoiceCloud');
- let generation=0,owned=false,id:string|undefined,api:Bag|undefined;
- let listeners:Array<{remove:()=>Promise<void>}>=[];
+ let generation=0,owner:AbortController|undefined,api:Bag|undefined;
  const stop=(finished=false)=>{
-  generation++;id=undefined;const old=listeners;listeners=[];for(const listener of old)void listener.remove();
-  if(owned){owned=false;void Voice.stopPlayback().catch(()=>{});}
+  generation++;owner?.abort();owner=undefined;
   api?.set({playing:null,vpos:finished?1:0});
  };
  const play=async(row:Bag,currentApi:Bag)=>{
   if(currentApi.get('phone').playing===row.id){stop();return;}
-  stop();api=currentApi;const epoch=generation;owned=true;api.set({playing:row.id,vpos:0});
+  stop();api=currentApi;const epoch=generation;const speech=new AbortController();owner=speech;api.set({playing:row.id,vpos:0});
   try{
-   for(const event of ['playbackEnded','playbackFailed']){
-    const listener=await Voice.addListener(event,(result:Bag)=>{if(epoch!==generation||result.playbackId!==id)return;stop(event==='playbackEnded');if(event==='playbackFailed')currentApi.toast('Read the voicemail transcript or try playback again.');});
-    if(epoch!==generation){void listener.remove();return;}listeners.push(listener);
-   }
-   const prepared=await Voice.synthesizeLocal({text:row.text});if(epoch!==generation)return;id=prepared.playbackId;
-   await Voice.play({playbackId:id});
+   await speakLocalText(row.text,speech.signal);if(epoch===generation)stop(true);
   }catch{if(epoch===generation){stop();currentApi.toast('Read the voicemail transcript or try playback again.');}}
  };
  const render=phone.render,leave=phone.onLeave,back=phone.back;

@@ -1,7 +1,7 @@
 import {Capacitor} from '@capacitor/core';
 import {registerPlugin} from './platform-plugins';
 /** Wait for this utterance's terminal event; never stop a replacement owned by another consumer. */
-export async function speakLocalText(text:string,signal:AbortSignal){
+export async function speakLocalText(text:string,signal:AbortSignal,onStarted?:()=>void){
  signal.throwIfAborted();const voice=registerPlugin<any>('AlphaVoiceCloud');
  const requestId=crypto.randomUUID();let playbackId:string|undefined;
  const listeners:Array<{remove:()=>Promise<void>}>=[];let settle:(error?:Error)=>void=()=>{};
@@ -18,7 +18,7 @@ export async function speakLocalText(text:string,signal:AbortSignal){
   }
   signal.throwIfAborted();
   timer=setTimeout(()=>settle(Error('Speech did not finish. Try the step again.')),20*60*1000);
-  await voice.play({playbackId});await finished;
+  await voice.play({playbackId});signal.throwIfAborted();onStarted?.();await finished;
  }finally{
   clearTimeout(timer);signal.removeEventListener('abort',cancel);
   await Promise.allSettled(listeners.map(listener=>listener.remove()));
