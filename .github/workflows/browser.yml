@@ -10,8 +10,13 @@ concurrency:
   cancel-in-progress: true
 jobs:
   browser:
+    name: Browser MVP (shard ${{ matrix.shard }}/3)
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3]
     steps:
       - uses: actions/checkout@v4
         with:
@@ -23,11 +28,11 @@ jobs:
       - run: npm ci
       - run: npx playwright install --with-deps chromium
       - run: npm run verify
-      - run: npm run test:browser
+      - run: npm run test:browser -- --shard=${{ matrix.shard }}/3
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: browser-mvp
+          name: browser-mvp-shard-${{ matrix.shard }}-of-3
           path: |
             test-results/browser/
             test-results/browser-report/
