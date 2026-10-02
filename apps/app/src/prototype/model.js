@@ -855,7 +855,7 @@ function inboxAttOf(api, ids) {
   return (ids || []).map(function (id) { var f = fl.filter(function (x) { return x.id === id; })[0]; return f ? { name: f.name, size: f.size, file: f.id } : null; }).filter(Boolean);
 }
 function inboxRecips(to) { if (!to) return []; return Array.isArray(to) ? to.slice() : [to]; }
-function inboxRecipName(api, r) { var p = inboxPerson(api, r); return p ? p.name : r; }
+function inboxRecipName(api, r) { if (typeof r === "string" && r.indexOf("@") >= 0) return r; var p = inboxPerson(api, r); return p ? p.name : r; }
 function inboxMarkRead(api, id) {
   var st = api.get("inbox");
   api.set({ mails: (st.mails || []).map(function (m) { return String(m.id) === String(id) && m.unread ? Object.assign({}, m, { unread: false }) : m; }) });

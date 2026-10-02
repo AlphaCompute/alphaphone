@@ -1,3 +1,4 @@
+import {installSimulatedInbox} from './simulated-inbox';
 import {loadSimulatedState,simulatorNeedsRecovery,showSimulatorRecovery} from './simulator-recovery';
 import { browserDevProfile } from './dev-profile';
 type Bag=Record<string,any>;
@@ -6,7 +7,9 @@ const names=['phone','messages','contacts','inbox','workflows','wallet'];
 export function captureSimulatedApps(views:Bag){return Object.fromEntries(names.map(name=>[name,{...views[name],state:structuredClone(views[name].state)}]));}
 export function installSimulatedApps(Component:any,views:Bag,original:Bag){
  if(!browserDevProfile)return;
+ original.inbox.persist=[...original.inbox.persist,'localDrafts'];original.inbox.state.localDrafts=[];
  for(const name of names){Object.assign(views[name],original[name]);views[name].state={...views[name].state,...loadSimulatedState(name,original[name])};}
+ installSimulatedInbox(views.inbox);
  const walletRender=views.wallet.render;
  views.wallet.render=(state:Bag,api:Bag)=>{
   // Dev cards are predefined tokens; the simulator never collects card credentials.

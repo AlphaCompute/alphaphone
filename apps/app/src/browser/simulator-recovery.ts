@@ -8,7 +8,7 @@ export function loadSimulatedState(name:string,view:Bag){
  let raw:string|null|undefined;
  try{
   raw=localStorage.getItem(key(name));if(raw===null)return {};
-  if(raw.length>2_000_000)throw Error('Saved app is too large');
+  if(raw.length>(name==='inbox'?12_000_000:2_000_000))throw Error('Saved app is too large');
   const saved=JSON.parse(raw);if(!object(saved))throw Error('Invalid saved app');
   for(const [field,value] of Object.entries(saved)){
    if(!view.persist.includes(field))throw Error('Unknown saved field');const initial=view.state[field];
