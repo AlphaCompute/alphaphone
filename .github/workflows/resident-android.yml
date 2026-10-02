@@ -10,6 +10,12 @@ concurrency:
   cancel-in-progress: false
 jobs:
   build:
+    # All consumers select the reviewed NDK before unused image SDKs are removed.
+    env:
+      ANDROID_NDK: /usr/local/lib/android/sdk/ndk/28.2.13676358
+      ANDROID_NDK_HOME: /usr/local/lib/android/sdk/ndk/28.2.13676358
+      ANDROID_NDK_ROOT: /usr/local/lib/android/sdk/ndk/28.2.13676358
+      ANDROID_NDK_LATEST_HOME: /usr/local/lib/android/sdk/ndk/28.2.13676358
     outputs:
       artifact_id: ${{ steps.apks.outputs.artifact-id }}
       source_sha: ${{ github.sha }}
@@ -21,13 +27,20 @@ jobs:
         with:
           submodules: true
       # Fresh hosted image provisioning only. Never prune source, dependency
-      # caches, Android tools or generated artifacts to pass a running phase.
+      # caches, selected Android tools or generated artifacts during a running phase.
       - name: Provision build capacity on the disposable hosted runner
         run: |
           test "$GITHUB_ACTIONS" = "true"
           test "$RUNNER_ENVIRONMENT" = "github-hosted"
+          test "$ANDROID_NDK_HOME" = /usr/local/lib/android/sdk/ndk/28.2.13676358
+          test "$ANDROID_NDK" = "$ANDROID_NDK_HOME"
+          test "$ANDROID_NDK_ROOT" = "$ANDROID_NDK_HOME"
+          test "$ANDROID_NDK_LATEST_HOME" = "$ANDROID_NDK_HOME"
+          test "$(realpath "$ANDROID_NDK_HOME")" = "$ANDROID_NDK_HOME"
+          grep -Eq '^Pkg.Revision *= *28\.2\.13676358[[:space:]]*$' "$ANDROID_NDK_HOME/source.properties"
+          python3 -c 'import shutil; print("freshCapacityBeforeBytes="+str(shutil.disk_usage(".").free))'
           df -h "$GITHUB_WORKSPACE"
-          for unused in /usr/share/dotnet /usr/local/.ghcup /usr/local/swift /opt/ghc /usr/local/share/powershell; do
+          for unused in /usr/share/dotnet /usr/local/.ghcup /usr/local/swift /opt/ghc /usr/local/share/powershell /opt/hostedtoolcache/CodeQL; do
             if [ -e "$unused" ]; then
               test "$(realpath "$unused")" = "$unused"
               sudo du -sh "$unused"
@@ -35,7 +48,21 @@ jobs:
             fi
           done
           df -h "$GITHUB_WORKSPACE"
-          python3 -c 'import shutil; assert shutil.disk_usage(".").free >= 20*1024**3, "Fresh runner needs at least 20GiB for resident qualification"'
+          # Exact preinstalled image versions only; neither is the selected 28.2 NDK.
+          for revision in 27.3.13750724 29.0.14206865; do
+            unused="/usr/local/lib/android/sdk/ndk/$revision"
+            if [ -e "$unused" ]; then
+              test "$unused" != "$ANDROID_NDK_HOME"
+              test "$(realpath "$unused")" = "$unused"
+              actual=$(sed -n 's/^Pkg.Revision *= *//p' "$unused/source.properties" | tr -d '\r')
+              test "$actual" = "$revision"
+              sudo du -sh "$unused"
+              sudo rm -rf -- "$unused"
+            fi
+          done
+          grep -Eq '^Pkg.Revision *= *28\.2\.13676358[[:space:]]*$' "$ANDROID_NDK_HOME/source.properties"
+          python3 -c 'import shutil; free=shutil.disk_usage(".").free; print("freshCapacityAfterBytes="+str(free)); assert free >= 32*1024**3, "Fresh runner needs at least 32GiB for resident archive headroom"'
+          df -h "$GITHUB_WORKSPACE"
       - uses: actions/setup-node@v4
         with:
           node-version-file: .nvmrc
