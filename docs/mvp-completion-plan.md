@@ -1,6 +1,14 @@
 # Alpha Phone MVP completion plan
 
-## Current checkpoint — October 2, approved Clock integration
+## Current checkpoint — October 2, browser registration and fresh CI qualification
+
+Candidate `468617bf849db1d707b39b86f7618e2249bc34c7` includes the reviewed browser initialization-order repair, guarded cleanup of four unused hosted SDK build-tools revisions, and bounded failure diagnostics for the stock WebView backup. The previous `b9db50ee` resident run failed initial capacity by 184,320 bytes; no runtime build or native test started. The new resident run [37055260691](https://github.com/AlphaCompute/alphaphone/actions/runs/37055260691) passes that unchanged capacity gate and remains in progress. Build-tools 35.0.0 and 36.0.0, the selected NDK, and all 32/10/4 GiB floors are retained.
+
+The previous browser run failed five flows. Four reproduce from registering native-only plugins before their browser implementations. Moving browser registration first passes all 46 flows across the five affected specs and repository verification in 13.9 seconds with 3,670 source hashes unchanged. The remaining hosted stale-session failure does not reproduce locally; its exact cause is unproven and no assertions or deadlines were weakened. The matching main repair is `8e6359f`; the candidate contains the same import order. Exact push [browser37055260716](https://github.com/AlphaCompute/alphaphone/actions/runs/37055260716) and [foundation37055260817](https://github.com/AlphaCompute/alphaphone/actions/runs/37055260817) are pending/in progress, not accepted. Prior b9 foundation successfully completed both APK variants; native smoke acceptance remains open.
+
+Evidence: `test-results/browser-b9-terminal/`, `test-results/resident-ci-staging/browser-capacity-combined/`, `test-results/resident-ci-staging/build-tools-capacity-fix/`, and `test-results/stock-backup-diagnostics-staged/`. The existing Clock interception fixture is currently skipped by foundation CI; a separate reviewed opt-in packet is staged, unpublished, at `test-results/clock-intercept-ci-fix/`. It does not exercise actual alarm delivery. The MVP remains incomplete; native recovery, live integrations, visible Pixel, physical speech/alarms and signed AOSP acceptance remain separate gates.
+
+## Earlier checkpoint — October 2, approved Clock integration
 
 Product `313070d0844e216a2f36fe39cca35f9d246420aa` integrates reviewed agent-to-Clock handoffs, current timezone binding, modal context invalidation and durable no-replay through the existing action journal. Old hosts and ordinary browser development do not advertise native Clock execution. The Alpha AOSP overlay explicitly includes DeskClock; actual overlay staging passes. An opened result means only that Clock opened for review, never that an alarm exists or rang. Date, recurrence and DST-fold selection remain in Clock's UI.
 
