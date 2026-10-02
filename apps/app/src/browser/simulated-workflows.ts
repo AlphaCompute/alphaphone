@@ -1,3 +1,4 @@
+import {assessWorkflowUrgency,type UrgencyDecision} from './workflow-urgency';
 import {workflowAwayFromHome} from './workflow-location';
 import {requestWorkflowReceipt,receiptAttachment,recordWorkflowExpense,type ReceiptInput} from './workflow-receipts';
 import {readDatedWorkflowSource} from './workflow-dated-sources';
@@ -10,7 +11,7 @@ import {publishWorkflowNotice} from './workflow-notices';
 import {sendWorkflowLocal} from './workflow-local-send';
 import {registerPlugin} from '../platform-plugins';
 type Bag=Record<string,any>;
-type Run={id:string;flowId:string|number;definition:string;workflow:Bag;status:string;when:string;sum:string;dur:string;log:string[][];out:string;cursor:number;inflight:number|null;started:number;context:{messages?:Record<string,Bag[]>;receipt?:ReceiptInput}};
+type Run={id:string;flowId:string|number;definition:string;workflow:Bag;status:string;when:string;sum:string;dur:string;log:string[][];out:string;cursor:number;inflight:number|null;started:number;context:{messages?:Record<string,Bag[]>;receipt?:ReceiptInput;urgency?:Record<string,UrgencyDecision>}};
 const definition=(flow:Bag)=>JSON.stringify({name:flow.name,trig:flow.trig,steps:flow.steps});
 /** Persist intent and each completed local step; never derive success from a label alone. */
 export function installSimulatedWorkflows(view:Bag){
@@ -21,6 +22,7 @@ export function installSimulatedWorkflows(view:Bag){
  const step=async(item:Bag,input:string,api:Bag,signal:AbortSignal,operationId:string,progress:(message:string)=>void,context:Run['context']):Promise<{output:string;skip?:boolean;detail?:string}>=>{
   signal.throwIfAborted();const text=String(item.t).toLowerCase();
   if(item.k==='Speak'&&(text==='read it aloud'||text==='speak it when i pick up the phone')){if(text!=='read it aloud'){progress('Waiting for pickup');await waitForWorkflowPickup(signal);}progress('Reading aloud');await speakWorkflowText(input,signal);return {output:input,detail:'Finished reading aloud'};}
+  if(item.k==='Notify'&&text==='a notification, only if urgent'){progress('Checking urgency');const decision=await assessWorkflowUrgency(input,(instruction,input,signal)=>api.localWorkflowText(instruction,input,signal),signal);context.urgency={...context.urgency,[operationId]:decision};progress(decision.urgent?'Urgent notification ready':'Not urgent');if(decision.urgent)await publishWorkflowNotice(operationId,input,signal);return {output:input,detail:(decision.urgent?'Notification saved':'Notification not posted')+' · '+decision.source+': '+decision.reason};}
   if(item.k==='Notify'&&text==='a notification'){await publishWorkflowNotice(operationId,input,signal);return {output:input,detail:'Notification saved ('+operationId+')'};}
   if(item.k==='Send')return sendWorkflowLocal(item,input,operationId,api,signal,context.messages);
   if(item.k==='Write'&&text==='a note in notes'){await api.localWorkflowNotes({operationId,text:input},signal);return {output:input,detail:'Note saved ('+operationId+')'};}
