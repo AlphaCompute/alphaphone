@@ -200,19 +200,18 @@ function pnEnd(api, opt) {
   /* started from another app's detail (e.g. a contact): hang up returns there, and drop it from the back stack */
   if (s.ret && api.isActive()) { var stack = (api.S.stack || []).slice(); if (stack[stack.length - 1] === s.ret.view) stack.pop(); api.open(s.ret.view, s.ret.patch); api.shell({ stack: stack }); }
 }
-function pnRingEnd(api, entry) {
-  api.stopBg();
+function pnRingEnd(api, entry, patch) {
   var s = api.get("phone");
-  api.set({ incoming: null, ring: null, rs: false, scrN: 0, recents: [Object.assign({ id: "r" + Date.now(), pid: s.incoming, at: Date.now(), dur: 0 }, entry)].concat(s.recents || []) });
+  if (!s.incoming) return;
+  api.set(Object.assign({}, patch || {}, { incoming: null, ring: null, rs: false, scrN: 0, recents: [Object.assign({ id: "r" + crypto.randomUUID(), pid: s.incoming, at: Date.now(), dur: 0 }, entry)].concat(s.recents || []) }));
+  api.stopBg();
 }
 function pnDecline(api, why) {
   var s = api.get("phone"); var pid = s.incoming;
-  pnRingEnd(api, { dir: "missed", note: why || "" });
-  if (!why) api.laterBg(function () {
-    var s2 = api.get("phone");
-    api.set({ vms: [{ id: "v" + Date.now(), pid: pid, at: Date.now(), dur: 12, heard: false, gist: "she's running ten minutes late", text: "Hey, it's Maya. Running ten minutes late for three. See you soon!" }].concat(s2.vms || []) });
-    api.toast("New voicemail from " + pnFirst(pnWho(api, pid)));
-  }, 2600);
+  if (!pid) return;
+  var patch = why ? {} : { vms: [{ id: "v" + crypto.randomUUID(), pid: pid, at: Date.now(), dur: 12, heard: false, gist: "she's running ten minutes late", text: "Hey, it's Maya. Running ten minutes late for three. See you soon!" }].concat(s.vms || []) };
+  pnRingEnd(api, { dir: "missed", note: why || "" }, patch);
+  if (!why) api.toast("New voicemail from " + pnFirst(pnWho(api, pid)));
 }
 
 registerView("phone", {
@@ -368,7 +367,13 @@ registerView("phone", {
         del: function () {
           var s = api.get("phone"); api.stop();
           api.set({ vms: s.vms.filter(function (x) { return x.id !== v.id; }), vmOpen: null, playing: null, vpos: 0 });
-          api.toast("Voicemail from " + (p ? pnFirst(p) : (v.label || v.num)) + " deleted", { undo: function () { var s2 = api.get("phone"); var l = (s2.vms || []).slice(); l.splice(Math.min(i, l.length), 0, v); api.set({ vms: l }); } });
+          var restore = function () {
+            var l = (api.get("phone").vms || []).slice();
+            if (!l.some(function (item) { return item.id === v.id; })) l.splice(Math.min(i, l.length), 0, v);
+            try { api.set({ vms: l }); }
+            catch (error) { api.toast("Voicemail could not be restored. Try Undo again.", { undo: restore }); }
+          };
+          api.toast("Voicemail from " + (p ? pnFirst(p) : (v.label || v.num)) + " deleted", { undo: restore });
         }
       };
     });

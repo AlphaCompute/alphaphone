@@ -3,7 +3,7 @@
 Latest full integration checkpoint: **412/412 browser tests and 83/83 repository tests**, plus TypeScript and production web build, in the [October 2 full browser integration checkpoint](#october-2--full-browser-integration-checkpoint). The frozen source is `2846ee2` plus the hosted-result fixture cleanup recorded below. Earlier failures and checkpoints remain historical evidence; newer concurrent changes require separate validation. The MVP goal remains open.
 
 
-Latest targeted checkpoint: [Simulator writer ownership](#october-2--simulator-writer-ownership) passed 20 simulator checks and 17 Inbox/conflict checks, plus repository verification. This postdates the full 412-case snapshot.
+Latest targeted checkpoint: [Development incoming calls and voicemail recovery](#october-2--development-incoming-calls-and-voicemail-recovery) passed 19 browser checks plus repository verification. This postdates the full 412-case snapshot.
 
 October 1 architecture change: the user has selected an **Android-resident agent instead of Nitro/TEE hosting**. The [on-device agent plan](on-device-agent-plan.md) supersedes cloud-only and enclave-primary requirements below. Agent execution and model inference are separate: the current implementation runs orchestration locally and uses hosted Cerebras inference. Historical evidence is retained. Powered-off-phone execution needs explicit scope reconciliation.
 
@@ -1044,3 +1044,16 @@ Every write also compares the stored bytes with the exact snapshot parsed at sta
 Validation on the isolated snapshot based on `f18a7ce`: **20/20 simulator browser checks** (Contacts, Phone/Messages, Wallet, save/recovery and the two-tab journey), followed by **17/17 Inbox and conflict checks**. Four ownership tests cover stale-tab rejection plus handoff, out-of-band replacement, missing Web Locks and page retirement. **83/83 repository tests**, TypeScript and production build passed. An exploratory pre-fix run failed the stale-tab draft assertion; source changed before its process completed, so it is not treated as a clean negative-control run. Logs and final source hashes are in `test-results/simulator-concurrency-sync/`. No Android build ran.
 
 Concurrent incoming-call changes in the shared simulator file are preserved but excluded from this snapshot. Deep saved-record validation, richer simulator journeys, actual local-agent/provider execution, Scan correction/searchable PDF and device/user acceptance remain open. The full 412-case run predates this writer change. The full goal stays active.
+
+
+## October 2 — Development incoming calls and voicemail recovery
+
+Device controls can inject a local incoming call. Repeated injection brings the existing incoming or active call forward instead of starting a second one. Answer/end records one incoming history entry; decline commits missed-call history and its simulated voicemail together. Screening retains its local transcript after a rejected save and permits explicit retry. Reload restores saved history and voicemail without reviving an active call. These are development simulations, not carrier calls, real caller screening or external message delivery.
+
+Review reproduced a voicemail Undo defect: a failed restore consumed the retry action. Restore now offers Undo again on failure and checks the original identity before inserting. A rendered regression failed before the fix and passed afterward, confirming unchanged storage after failure and exactly one restored original record after explicit retry and reload.
+
+The isolated snapshot based on `7a551d2` passed **19/19 browser checks** covering incoming calls, voicemail, Phone/Messages, simulator ownership, save failure and saved-data recovery. **83/83 repository tests**, TypeScript and the production web build passed. Source hashes, logs and the negative-control screenshot are retained in `test-results/incoming-call-sync/`. An earlier four-test shared-checkout run also passed but is supplementary evidence only; it included unrelated pending voicemail playback and copy changes. The frozen checkpoint excludes those changes. The subsequent rebase adds only completion-plan documentation from `955c939`. No Android build ran.
+
+The requested development restart was also completed: Vite on 5317 and the real local Eliza host on 47849 are listening, with authenticated browser-bridge owner lookup returning HTTP 200. Local orchestration still uses hosted inference. This is connection evidence, not live model/tool or physical-device acceptance.
+
+Remaining work includes actual voicemail audio/playback ownership, deeper simulator record validation and message/workflow journeys, live local-agent/provider actions, Scan correction/searchable PDF, browser-family media qualification, and native/device/user acceptance. Concurrent confidentiality-copy, provider/model, proposal, research and native changes remain outside this checkpoint. The full 412-case browser run predates this change; the entire MVP goal remains active.
