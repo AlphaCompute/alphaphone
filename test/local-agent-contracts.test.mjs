@@ -10,3 +10,7 @@ test('local agent streaming and cancellation contracts',()=>{
 test('local browser digest persistence and recovery',()=>{
  execFileSync(process.execPath,['--import','tsx','scripts/test-local-digest-storage.mjs'],{cwd:new URL('..',import.meta.url),timeout:60000,stdio:'pipe'});
 });
+
+test('digest cancellation preserves replay recovery',()=>{
+ execFileSync(process.execPath,['--import','tsx','scripts/test-digest-cancellation.mjs'],{cwd:new URL('..',import.meta.url),timeout:60000,stdio:'pipe'});
+});

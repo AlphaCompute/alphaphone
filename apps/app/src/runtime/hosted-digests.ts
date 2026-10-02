@@ -375,7 +375,20 @@ export class DigestInbox {
 	): Promise<DigestResult[]> {
 		const work = (inboxQueues.get(this.scope) || Promise.resolve()).then(
 			async () => {
-				let index = await this.storage.read<{
+				// Cancellation cannot undo a dispatched write; stop before the next
+				// operation and let a later replay recover any committed record.
+				const guarded = async <T>(operation: () => Promise<T>): Promise<T> => {
+					signal.throwIfAborted();
+					const value = await operation();
+					signal.throwIfAborted();
+					return value;
+				};
+				const storage: DigestStorage = {
+					read: <T>(slot: string) => guarded(() => this.storage.read<T>(slot)),
+					write: (slot, value) => guarded(() => this.storage.write(slot, value)),
+					remove: (slot) => guarded(() => this.storage.remove(slot)),
+				};
+				let index = await storage.read<{
 					clientId: string;
 					ids: string[];
 					pendingRemoval?: string[];
@@ -383,25 +396,25 @@ export class DigestInbox {
 				}>(this.scope);
 				if (!index) {
 					index = { clientId: crypto.randomUUID(), ids: [] };
-					await this.storage.write(this.scope, index);
+					await storage.write(this.scope, index);
 				}
 				// Recover cleanup after a lost ack or process exit; only evicted history is removed.
 				for (const run of index.pendingRemoval ?? []) {
 					if (!index.ids.includes(run))
-						await this.storage.remove(this.scope + ":" + run);
+						await storage.remove(this.scope + ":" + run);
 				}
 				index.pendingRemoval = [];
-				await this.storage.write(this.scope, index);
+				await storage.write(this.scope, index);
 				const drainNotices = async () => {
 					if (!this.afterCommit) return;
 					for (const run of [...(index!.pendingNotices ?? [])]) {
 						signal.throwIfAborted();
 						const saved = index!.ids.includes(run)
-							? await this.storage.read<DigestResult>(this.scope + ":" + run)
+							? await storage.read<DigestResult>(this.scope + ":" + run)
 							: null;
 						try {
 							if (saved)
-								await this.afterCommit(parseDigestResult(saved), signal);
+								await guarded(() => this.afterCommit!(parseDigestResult(saved), signal));
 						} catch {
 							signal.throwIfAborted();
 							continue;
@@ -409,20 +422,20 @@ export class DigestInbox {
 						index!.pendingNotices = (index!.pendingNotices ?? []).filter(
 							(id) => id !== run,
 						);
-						await this.storage.write(this.scope, index);
+						await storage.write(this.scope, index);
 					}
 				};
 				await drainNotices();
 				for (let page = 0; page < 20; page++) {
 					signal.throwIfAborted();
-					const entries = await client.results(index.clientId, signal);
+					const entries = await guarded(() => client.results(index.clientId, signal));
 					if (!entries.length) break;
 					for (const entry of entries) {
 						const key = this.scope + ":" + entry.runId,
-							existing = await this.storage.read<DigestResult>(key);
+							existing = await storage.read<DigestResult>(key);
 						if (existing && !sameResultValue(existing, entry))
 							throw Error("Saved digest result changed");
-						if (!existing) await this.storage.write(key, entry);
+						if (!existing) await storage.write(key, entry);
 						if (!index.ids.includes(entry.runId)) {
 							index.ids.push(entry.runId);
 							index.pendingNotices = [
@@ -441,19 +454,19 @@ export class DigestInbox {
 					index.pendingRemoval = [
 						...new Set([...(index.pendingRemoval ?? []), ...removed]),
 					];
-					await this.storage.write(this.scope, index);
+					await storage.write(this.scope, index);
 					await drainNotices();
 					signal.throwIfAborted();
-					await client.ack(index.clientId, entries[entries.length - 1], signal);
+					await guarded(() => client.ack(index.clientId, entries[entries.length - 1], signal));
 					for (const run of index.pendingRemoval)
-						await this.storage.remove(this.scope + ":" + run);
+						await storage.remove(this.scope + ":" + run);
 					index.pendingNotices = (index.pendingNotices ?? []).filter((run) =>
 						index!.ids.includes(run),
 					);
 					index.pendingRemoval = [];
-					await this.storage.write(this.scope, index);
+					await storage.write(this.scope, index);
 				}
-				return this.history();
+				return guarded(() => this.history());
 			},
 		);
 		const tail = work.catch(() => {});
