@@ -1,27 +1,21 @@
+import { BrowserAudioCapture } from './audio-capture';
 import { WebPlugin } from '@capacitor/core';
 // Browser media is retained locally; no provider credentials or uploads.
 export class BrowserVoice extends WebPlugin {
- private recorder?:MediaRecorder;
- private stream?:MediaStream;
- private started=0;
- private recordingId='';
- private clip?:Promise<Blob>;
- private clips=new Map<string,{blob:Blob;durationMs:number}>();
+ private capture=new BrowserAudioCapture(event=>{void this.notifyListeners('recordingStopped',event);});
  private speech=new Map<string,string>();
  private audio?:HTMLAudioElement;
  private audioId?:string;
- private generation=0;
- private timer?:ReturnType<typeof setTimeout>;
- async localSpeechStatus(){return {ready:true,execution:'browser'};}
- async startRecording(input:{maxDurationMs?:number}={}){
-  await this.cancelRecording();const generation=this.generation;const stream=await navigator.mediaDevices.getUserMedia({audio:true});if(generation!==this.generation){stream.getTracks().forEach(track=>track.stop());throw new DOMException('Recording cancelled','AbortError');}this.stream=stream;const recorder=this.recorder=new MediaRecorder(stream),id=this.recordingId=crypto.randomUUID();this.started=Date.now();const chunks:Blob[]=[];
-  this.clip=new Promise((resolve,reject)=>{recorder.ondataavailable=event=>chunks.push(event.data);recorder.onerror=()=>reject(Error('Recording interrupted.'));recorder.onstop=()=>{clearTimeout(this.timer);stream.getTracks().forEach(track=>track.stop());resolve(new Blob(chunks,{type:recorder.mimeType}));};});
-  recorder.start();const maxDurationMs=input.maxDurationMs||59000;this.timer=setTimeout(()=>{void this.stopRecording().then(result=>this.notifyListeners('recordingStopped',result));},maxDurationMs);return {recordingId:id,maxDurationMs};
+ constructor(){super();
+  document.addEventListener('visibilitychange',()=>{if(document.hidden)void this.cancel();});
+  window.addEventListener('pagehide',()=>{void this.cancel();});
  }
- async stopRecording(){const id=this.recordingId;if(!this.recorder||!this.clip)throw Error('Start a recording first.');if(this.recorder.state==='recording')this.recorder.stop();const blob=await this.clip,durationMs=Date.now()-this.started;this.clips.set(id,{blob,durationMs});this.recorder=undefined;this.clip=undefined;return {recordingId:id,durationMs};}
- async cancelRecording(){++this.generation;clearTimeout(this.timer);if(this.recorder?.state==='recording')this.recorder.stop();this.stream?.getTracks().forEach(track=>track.stop());this.stream=undefined;this.recorder=undefined;this.clip=undefined;}
+ async localSpeechStatus(){return {ready:!!navigator.mediaDevices?.getUserMedia&&typeof MediaRecorder!=='undefined',execution:'browser'};}
+ startRecording(input:{maxDurationMs?:number}={}){return this.capture.start(input);}
+ stopRecording(){return this.capture.stop();}
+ async cancelRecording(){this.capture.cancel();}
  async transcribeLocalRecording(input:{recordingId:string}){
-  if(!this.clips.has(input.recordingId))throw Error('Record a clip first.');
+  if(!this.capture.get(input.recordingId))throw Error('Record a clip first.');
   const text=await new Promise<string>((resolve,reject)=>{const dialog=document.createElement('dialog');dialog.setAttribute('aria-label','Recording transcript');const label=document.createElement('label');label.textContent='Transcript';const field=document.createElement('textarea');label.append(field);const done=document.createElement('button');done.textContent='Use transcript';done.onclick=()=>{if(field.value.trim()){resolve(field.value.trim());dialog.close();}};const cancel=document.createElement('button');cancel.textContent='Cancel';cancel.onclick=()=>dialog.close();dialog.onclose=()=>{dialog.remove();reject(new DOMException('Cancelled','AbortError'));};dialog.append(label,done,cancel);document.body.append(dialog);dialog.showModal();field.focus();});
   return {text,local:true,execution:'browser'};
  }
@@ -34,11 +28,11 @@ export class BrowserVoice extends WebPlugin {
  async stopPlayback(){window.speechSynthesis?.cancel();if(this.audio){this.audio.pause();URL.revokeObjectURL(this.audio.src);this.audio=undefined;}this.audioId=undefined;}
  stop(){return this.stopPlayback();}
  async state(){return {playing:!!this.audio&&!this.audio.paused,audioId:this.audioId,positionMs:(this.audio?.currentTime||0)*1000};}
- async saveRecording(input:{recordingId:string;noteId:string;transcript:string}){const clip=this.clips.get(input.recordingId);if(!clip)throw Error('Record a clip first.');const audioId=crypto.randomUUID();await audioWrite({audioId,noteId:input.noteId,...clip});return {audioId,noteId:input.noteId,durationMs:clip.durationMs,transcript:input.transcript};}
+ async saveRecording(input:{recordingId:string;noteId:string;transcript:string}){const clip=this.capture.get(input.recordingId);if(!clip)throw Error('Record a clip first.');const audioId=crypto.randomUUID();await audioWrite({audioId,noteId:input.noteId,...clip});return {audioId,noteId:input.noteId,durationMs:clip.durationMs,transcript:input.transcript};}
  async remove(){await this.stopPlayback();} // Retain audio while its owning note is in recoverable trash.
  async restore(){}
  async cancel(){await this.cancelRecording();await this.stopPlayback();document.querySelector<HTMLDialogElement>('dialog[aria-label="Recording transcript"]')?.close();}
- async releaseLocalSpeech(){await this.cancel();this.speech.clear();}
+ async releaseLocalSpeech(){await this.cancel();this.speech.clear();this.capture.clear();}
 }
 let database:Promise<IDBDatabase>|undefined;
 function db(){return database??=new Promise((resolve,reject)=>{const r=indexedDB.open('alpha.browser.audio.v1',1);r.onupgradeneeded=()=>r.result.createObjectStore('audio',{keyPath:'audioId'});r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error);});}
