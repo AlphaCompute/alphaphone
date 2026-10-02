@@ -26,7 +26,7 @@ const zodPackage=require.resolve('zod/package.json');
 const zodMetadata=JSON.parse(readFileSync(zodPackage,'utf8'));
 const zodEntry=resolve(dirname(zodPackage),zodMetadata.exports['.'].import);
 const entries:Record<string,string>={
- 'smthrs':`export {runWorkflow,approveNode,denyNode,signalRun} from ${JSON.stringify(require.resolve('smthrs'))};`,
+ 'smthrs':`export {runWorkflow,approveNode,denyNode,signalRun,approvalDecisionSchema} from ${JSON.stringify(require.resolve('smthrs'))};`,
  'create':`export * from ${JSON.stringify(require.resolve('smthrs/create'))};`,
  'store':`export * from ${JSON.stringify(require.resolve('smthrs/openSmithersStore'))};`,
  'jsx-runtime':`export * from ${JSON.stringify(require.resolve('smthrs/jsx-runtime'))};`,
