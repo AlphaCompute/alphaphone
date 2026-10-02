@@ -53,12 +53,17 @@ For an existing preparation that no longer matches the source stamp, preserve it
 
 ```sh
 export ALPHA_LOCAL_AGENT_SOURCE_DIR="$PWD/artifacts/local-agent-workers"
+export ALPHA_WORKFLOW_WORKER_OUTPUT="$PWD/artifacts/mobile-workflow-worker-current"
 npm run agent:prepare
+npm run agent:build-workflow-worker
+npm run agent:test-workflow-worker
 npm run agent:test
 npm run agent:stage-android
 ```
 
 - Runtime preparation skips the unrelated fused local language-model engine setup. The mobile bundler and staged artifact manifest retain their own validation/provenance.
+
+Worker builds require a fresh output directory. `agent:stage-workflow-worker` can independently validate and stage that artifact without a mobile bundle or APK build. `agent:stage-android` now checks the worker artifact's source/lock identity before staging the full runtime and includes its verified files. Native startup extracts the worker through a bounded hash-checked index before setting its runtime resource path. This prepares worker resources; the mobile workflow plugin remains disabled pending compiler/approval-reader integration and bundle qualification.
 
 The consumer series now also includes `packaged-workflow-worker.patch`. It preserves browser workflow database paths, separates packaged Android resources from durable state, uses the native loader/Bun/library environment for worker and control launches, and repairs dependency links after installation moves. See the [worker packaging report](mobile-workflow-packaging.md) for artifact commands and remaining native staging/plugin requirements. Set `ALPHA_WORKFLOW_WORKER_OUTPUT` to an existing verified worker artifact when running `agent:test` to include its real packaged-executor integration case; without that artifact, the case is explicitly skipped.
 

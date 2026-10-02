@@ -61,6 +61,14 @@ public final class AlphaLocalAgentPlugin extends Plugin {
   }catch(Exception error){call.reject("Provider could not be saved securely.");}});
  }
  static void configureEnvironment(Context context,java.util.Map<String,String> env) throws java.io.IOException {
+  java.io.InputStream workerIndex=null;
+  try {workerIndex=context.getAssets().open("agent/workflow-worker/files.sha256");}
+  catch(java.io.FileNotFoundException absent) { /* Older payloads do not contain a workflow worker. */ }
+  if(workerIndex!=null){
+   String root=env.get("AGENT_ROOT");if(root==null){workerIndex.close();throw new java.io.IOException("Agent resource directory unavailable");}
+   java.io.File worker=WorkflowWorkerAssets.install(new java.io.File(root),workerIndex,path->context.getAssets().open("agent/workflow-worker/"+path));
+   env.put("ELIZA_SMTHRS_RUNTIME_DIR",worker.getAbsolutePath());
+  }
   try {
   String saved=new AlphaCredentialStore(context).readCredentialSlot("local-agent-provider:v1");
   if(saved==null)throw new IllegalStateException("Configure a model provider before starting the local agent");
