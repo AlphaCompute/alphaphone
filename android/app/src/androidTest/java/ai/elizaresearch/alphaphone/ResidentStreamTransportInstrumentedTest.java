@@ -17,7 +17,12 @@ import static org.junit.Assert.*;
 
 /** Controlled Android socket transport only: never launches an agent or contacts a provider. */
 public final class ResidentStreamTransportInstrumentedTest {
- private static final String NAME="ai.elizaresearch.alphaphone.agent.v1";
+ private static String socketPath()throws Exception {
+  File home=InstrumentationRegistry.getInstrumentation().getTargetContext().getFilesDir().getCanonicalFile();
+  File directory=new File(home,"ipc");android.system.StructStat d=android.system.Os.lstat(directory.getPath());
+  assertEquals(Process.myUid(),d.st_uid);assertTrue(android.system.OsConstants.S_ISDIR(d.st_mode));assertEquals(0700,d.st_mode&0777);assertEquals(directory.getPath(),directory.getCanonicalPath());
+  return new File(directory,"a.sock").getPath();
+ }
  private static void await(CountDownLatch latch,String label)throws Exception {assertTrue(label,latch.await(5,TimeUnit.SECONDS));}
  private static String request(String id)throws Exception {return new JSONObject().put("path","/api/stream-fixture").put("method","POST").put("timeoutMs",10000).put("headers",new JSONObject().put("Authorization","Bearer synthetic-native-transport-fixture")).put("body",new JSONObject().put("fixtureId",id).toString()).toString();}
  private static void send(LocalSocket socket,String value)throws Exception {
@@ -49,7 +54,10 @@ public final class ResidentStreamTransportInstrumentedTest {
   void close()throws Exception {handle.cancel();thread.join(5000);assertFalse("client thread stopped; state="+thread.getState()+" stack="+Arrays.toString(thread.getStackTrace()),thread.isAlive());}
  }
  private static final class Peer implements AutoCloseable {
-  final LocalServerSocket server=new LocalServerSocket(NAME);
+  final LocalSocket bound;
+  final LocalServerSocket server;
+  final String endpoint;
+  final long inode;
   final List<LocalSocket> sockets=Collections.synchronizedList(new ArrayList<>());
   final AtomicInteger accepted=new AtomicInteger(),posts=new AtomicInteger();
   final AtomicReference<Throwable> failure=new AtomicReference<>();
@@ -57,6 +65,11 @@ public final class ResidentStreamTransportInstrumentedTest {
   volatile boolean closed,clientReturned;
   final Thread thread;
   Peer(String id,String mode)throws Exception {
+   endpoint=socketPath();
+   try {android.system.Os.lstat(endpoint);throw new AssertionError("Existing endpoint must be preserved");}catch(android.system.ErrnoException absent){assertEquals(android.system.OsConstants.ENOENT,absent.errno);}
+   bound=new LocalSocket();bound.bind(new android.net.LocalSocketAddress(endpoint,android.net.LocalSocketAddress.Namespace.FILESYSTEM));
+   android.system.Os.chmod(endpoint,0600);android.system.StructStat st=android.system.Os.lstat(endpoint);assertEquals(Process.myUid(),st.st_uid);assertTrue(android.system.OsConstants.S_ISSOCK(st.st_mode));assertEquals(0600,st.st_mode&0777);inode=st.st_ino;
+   server=new LocalServerSocket(bound.getFileDescriptor());
    thread=new Thread(()->{try{while(!closed){android.system.StructPollfd poll=new android.system.StructPollfd();poll.fd=server.getFileDescriptor();poll.events=(short)android.system.OsConstants.POLLIN;if(android.system.Os.poll(new android.system.StructPollfd[]{poll},100)==0){if(clientReturned)drained.countDown();continue;}if(closed)break;LocalSocket socket=server.accept();sockets.add(socket);accepted.incrementAndGet();socket.setSoTimeout(5000);
     assertEquals("only same UID peer",Process.myUid(),socket.getPeerCredentials().getUid());
     JSONObject frame=new JSONObject(readLine(socket));assertEquals("http_request_stream",frame.getString("method"));assertTrue(frame.getBoolean("stream"));JSONObject payload=frame.getJSONObject("payload");assertEquals("POST",payload.getString("method"));assertEquals(id,new JSONObject(payload.getString("body")).getString("fixtureId"));posts.incrementAndGet();received.countDown();
@@ -68,7 +81,7 @@ public final class ResidentStreamTransportInstrumentedTest {
     else {assertEquals("cancel",mode);await(released,"test permits peer EOF observation");assertEquals("cancellation closes actual socket",-1,socket.getInputStream().read());peerEof.countDown();quiet(socket);}
    }}catch(Throwable error){if(!closed)failure.set(error);}},"resident-stream-fixture-peer");thread.start();
   }
-  public void close()throws Exception {closed=true;released.countDown();synchronized(sockets){for(LocalSocket socket:sockets)quiet(socket);}thread.join(5000);server.close();assertFalse("peer thread stopped",thread.isAlive());if(failure.get()!=null)throw new AssertionError("controlled peer failed",failure.get());}
+  public void close()throws Exception {closed=true;released.countDown();synchronized(sockets){for(LocalSocket socket:sockets)quiet(socket);}thread.join(5000);server.close();quiet(bound);android.system.StructStat st=android.system.Os.lstat(endpoint);assertEquals("owned fixture inode",inode,st.st_ino);assertEquals(Process.myUid(),st.st_uid);assertTrue(android.system.OsConstants.S_ISSOCK(st.st_mode));java.nio.file.Files.delete(new File(endpoint).toPath());assertFalse("peer thread stopped",thread.isAlive());if(failure.get()!=null)throw new AssertionError("controlled peer failed",failure.get());}
  }
  private void scenario(String mode)throws Exception {
   System.out.println("RESIDENT_STREAM_SCENARIO_BEGIN "+mode);
@@ -88,7 +101,7 @@ public final class ResidentStreamTransportInstrumentedTest {
   Assume.assumeTrue("Explicit resident stream fixture required","1".equals(InstrumentationRegistry.getArguments().getString("residentStreamFixture")));assertTrue(BuildConfig.DEBUG);assertTrue("disposable user only",Process.myUid()/100000>0);
   assertTrue("explicit supervisor admission required",InstrumentationRegistry.getArguments().getString("residentStreamRunId","").matches("[0-9a-f-]{36}"));
   JSONObject status=ElizaAgentService.getLocalAgentBootState(InstrumentationRegistry.getInstrumentation().getTargetContext());assertFalse(status.getBoolean("serviceActive"));assertFalse(status.getBoolean("socketListening"));
-  java.lang.reflect.Field socketName=ElizaAgentService.class.getDeclaredField("LOCAL_AGENT_SOCKET_NAME");socketName.setAccessible(true);assertEquals("staged product namespace",NAME,socketName.get(null));
+  java.lang.reflect.Method pathMethod=ElizaAgentService.class.getDeclaredMethod("localSocketPath");pathMethod.setAccessible(true);assertEquals("private product endpoint",socketPath(),pathMethod.invoke(null));
   scenario("complete");
   scenario("cancel");
   scenario("eof");
