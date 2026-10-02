@@ -3,7 +3,7 @@
 Latest full integration checkpoint: **454/454 browser tests** on committed `18969d2`, covering all browser tests then present. See [October 2 simulator integration and reminder-time review](#october-2--simulator-integration-and-reminder-time-review). Pending shared-checkout changes remain outside this evidence. The MVP goal remains open.
 
 
-Latest targeted checkpoint: [Real workflow list controls](#october-2--real-workflow-list-controls): 23 targeted browser checks, 88 repository tests, TypeScript and web build passed. Live local-agent list also visually inspected.
+Latest targeted checkpoint: [Host model selection](#october-2--host-model-selection): actual-launcher model/profile regression, 91 repository tests, TypeScript and web build passed. Real workflow UI evidence remains in the preceding section.
 
 October 1 architecture change: the user has selected an **Android-resident agent instead of Nitro/TEE hosting**. The [on-device agent plan](on-device-agent-plan.md) supersedes cloud-only and enclave-primary requirements below. Agent execution and model inference are separate: the current implementation runs orchestration locally and uses hosted Cerebras inference. Historical evidence is retained. Powered-off-phone execution needs explicit scope reconciliation.
 
@@ -1136,3 +1136,12 @@ Live browser inspection found on/off controls attached to status/loading, remove
 The real-renderer regression fails before repair and passes afterward. **23/23 targeted browser checks** passed across execution context, approved workflow navigation, mock authoring/scope and the local executor; **88/88 repository tests**, TypeScript and production web build passed. The actual local-agent list was reloaded and visually inspected with its retained paused draft and no false switches. Evidence and source hashes are in `test-results/workflow-list-review/`.
 
 A stale live transformed module initially hid the change. Updating the copied source files' modification times refreshed the server and browser; the existing source-edit/reload regression passed separately (**1/1**). No reload-plugin defect or repair is claimed. Pending model selection, redaction and research changes remain outside this checkpoint, and the overall remaining-gap ledger remains open. No Android build or live workflow execution ran.
+
+
+## October 2 — Host model selection
+
+The pending shared model default is integrated across the development, local app-host, voice, reviewed-workflow and combined launchers. Review found a configuration mismatch: an existing profile could retain one model while the child environment received the new default/override. The host launchers now derive both small/large environment values from saved direct Cerebras routing. New profiles use the shared selection consistently. Malformed model IDs and explicit overrides conflicting with saved routing fail before spawning a runtime; existing profile bytes are preserved. The standalone development-backend wrapper preserves the more specific ALPHA_DEV_MODEL selection.
+
+Three regression cases execute the real local app-host launcher with a temporary Git source/profile, synthetic key and recording child process. They verify new-profile selection, distinct saved small/large models without rewriting the profile, and refusal of malformed/conflicting overrides before any child starts. The uncorrected pending launchers fail the regression; the final snapshot passes **91/91 repository tests**, TypeScript, production web build and launcher syntax checks. Evidence/source manifests are in `test-results/model-selection-review/`. No model-provider call, Android build or new device acceptance is claimed. Historical provider discovery evidence in the agent integration document is not replaced by current defaults.
+
+Remaining work includes the concurrent generative local-workflow and redaction changes, full real-agent/provider execution journeys, deep saved-state validation, Scan correction/searchable PDF, browser media qualification, research review and native/device/user acceptance. The full goal remains active.

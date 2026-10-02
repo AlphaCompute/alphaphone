@@ -6,6 +6,7 @@ import { mkdir, writeFile, chmod, unlink } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { localAsrAvailable, MAX_AUDIO_BYTES, transcribeLocal } from "./local-asr.mjs";
+import { AGENT_MODEL } from "./agent-model.mjs";
 
 const key = process.env.CEREBRAS_API_KEY;
 const base = process.env.CEREBRAS_BASE_URL?.replace(/\/$/, "");
@@ -40,7 +41,7 @@ try {
     "Could not discover provider models. Check configured provider credentials.",
   );
 }
-const preferred = process.env.ALPHA_DEV_MODEL || "qwen-3.8-27b";
+const preferred = process.env.ALPHA_DEV_MODEL || AGENT_MODEL;
 const model = models?.includes(preferred) ? preferred : null;
 if (!model || (process.env.ALPHA_DEV_MODEL && model !== preferred))
   throw new Error("Requested provider model is unavailable.");
