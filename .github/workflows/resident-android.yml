@@ -97,6 +97,9 @@ jobs:
           python3 scripts/ci/resident-phase.py --name speech-assemble --seconds 600 python3 scripts/local-speech/assemble-runtime.py
           python3 scripts/ci/resident-phase.py --name speech-install --seconds 600 python3 scripts/local-speech/install-generated.py --repository "$GITHUB_WORKSPACE"
       - name: Prepare and qualify fresh resident source with normal hooks
+        env:
+          NODE_OPTIONS: --max-old-space-size=4096
+          RUN_TURBO_CONCURRENCY: "1"
         run: |
           python3 scripts/ci/resident-phase.py --name prepare --seconds 3600 npm run agent:prepare
           python3 scripts/ci/resident-phase.py --name worker-build --seconds 900 npm run agent:build-workflow-worker
