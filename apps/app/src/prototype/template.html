@@ -1356,7 +1356,7 @@
 
   <div style="position: absolute; left: 0; right: 0; top: 44px; height: 52px; display: flex; align-items: center; justify-content: space-between; padding: 0 10px; z-index: 2">
     <button class="ib" aria-label="{{camera.flashLabel}}" onClick="{{camera.toggleFlash}}"><svg class="i" viewBox="0 0 24 24"><path d="{{camera.flashIcon}}"></path></svg></button>
-    <sc-if value="{{camera.importAvailable}}"><button aria-label="Choose image" onClick="{{camera.importImage}}" style="min-height:44px;padding:0 16px;border-radius:22px;background:rgba(255,255,255,.16);color:#fff;font:inherit">Choose image</button></sc-if>
+    <sc-if value="{{camera.importAvailable}}"><button aria-label="Choose image" onClick="{{camera.importImage}}" style="min-height:44px;padding:0 16px;border-radius:22px;background:rgba(255,255,255,.16);color:#fff;font:inherit">Choose image</button><button aria-label="Scan document" onClick="{{camera.scanDocument}}" style="min-height:44px;padding:0 12px;border-radius:22px;background:rgba(255,255,255,.16);color:#fff;font:inherit">Scan document</button></sc-if>
     <sc-if value="{{camera.rec}}" hint-placeholder-val="{{false}}">
       <span style="display: flex; align-items: center; gap: 8px; height: 30px; padding: 0 12px; border-radius: 15px; background: #E53935; font-size: 14px; font-weight: 600; font-variant-numeric: tabular-nums"><span class="dot" style="width: 7px; height: 7px; border-radius: 4px; background: #ffffff"></span>{{camera.recTime}}</span>
     </sc-if>
