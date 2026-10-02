@@ -16,6 +16,10 @@ Saved-reminder metadata edits are corrected at producte62ca37: title/body change
 
 Workflow execution chat context is corrected at productdbe3226: an open historical execution now supplies its exact run/version to the real composer without copying displayed output. One frozen rendered full flow and all83 repository checks/build pass. Android acceptance for this renderer remains pending.
 
+Product11e5073 adds Workflows to the approved navigation allowlist. Three frozen rendered flows pass for explicit approval, wrong owner and expiry; the positive case journals one navigation and explicitly synchronizes its receipt without replay. All83 repository checks/build pass. The corresponding generic upstream contract and real approval/claim/receipt test are staged, not yet integrated or deployed, so end-to-end agent discovery remains open.
+
+A secret-free resident Android CI candidate is under review to remove the local-capacity dependency. It includes normal fresh preparation, dual-ABI payloads, both APK variants and exact native IPC/recovery fixtures on a disposable phone emulator. Cleanup, cancellation, source/artifact provenance and disk-floor coverage must pass review before dispatch. This is not a completed Android run and does not replace live provider or physical-device acceptance.
+
 The MVP remains incomplete. Next: fix and qualify resident recovery, integrate the consumer, then validate both native distributions and visible Pixel journeys. Fresh Cloud login/agent readiness/chat/restart precedes Gmail and Cloud voice. Official password-provider behavior, physical speech quality/latency, natural background scheduling, full AOSP boot and physical/user acceptance remain separate gates. The [on-device plan](on-device-agent-plan.md) controls; optional enclave hosting is not a prerequisite for resident mode. Calls, SMS, Contacts and Wallet remain explicitly deferred and commented out.
 
 The current flow matrix is `test-results/mvp-visible-flow-audit-20261002/REPORT.md`; its source pins distinguish concurrent Calendar work from previously tested artifacts. Older checkpoints below retain their original payload scope.
