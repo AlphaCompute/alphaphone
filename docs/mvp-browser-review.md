@@ -464,3 +464,41 @@ frozen snapshots: a newly captured item appears after refreshing the first page;
 concurrent filter/membership changes can change later pages. Batch selection/share,
 remaining broader MVP gaps, concurrent browser parity work and real device/provider
 acceptance remain open. Android builds were intentionally excluded from this pass.
+
+
+## October 2 — browser Photos batch selection and outcomes
+
+The rendered batch journey exposed two product defects: Select photos changed only
+prototype state, causing real media taps to open the viewer, and the assistant pill
+covered Favorite selected. The production adapter now owns button-initiated selection;
+the toolbar sits above the pill with enough library/album scroll clearance. Compact
+360×640 light and dark controls were exercised; the dark screenshot was visually
+inspected for overlap.
+
+Browser batch operations now validate 1–20 distinct identities/revisions and an
+explicit favorite/trash/restore operation before editing. Unknown operations can no
+longer fall through to restore. Valid item mutations commit in one IndexedDB
+transaction: storage failure rolls back all writes and rejects the receipt. Stale or
+missing items return individual conflicts; unchanged items keep their revisions.
+Favorites cannot mutate trashed items. Batch downloads validate the entire selection
+in one read transaction and use those captured rows, removing the later unvalidated
+reread. The renderer reports downloads requested and tells the user to check Downloads
+and allow multiple downloads if their browser asks. This is not a guaranteed download
+completion receipt or a native share-sheet claim.
+
+Verification in an isolated source snapshot:
+
+- `npm run verify`: typecheck, 82 host tests, production build; zero test failures/skips.
+- 11 browser tests passed: visible select/favorite/download/trash/undo/reload journey,
+  compact themes, invalid/duplicate/oversized selections, stale revisions, unchanged
+  revisions, transaction abort rollback, stale-share rejection, album lifecycle and
+  chronological pagination regressions.
+- The visible journey observed two distinct Chromium download events. It does not
+  establish download policy compatibility in every browser.
+- Restoring the original browser adapter makes both new invalid-operation and
+  transaction-rollback regressions fail. Earlier rendered attempts caught and drove
+  the selection-state and toolbar-overlap fixes rather than bypassing blocked clicks.
+- Local evidence: `test-results/photo-batch/` logs and SHA-256 source manifest.
+
+The broader MVP review, concurrent browser parity integration and real device/provider
+acceptance remain active. Android builds were intentionally excluded from this pass.

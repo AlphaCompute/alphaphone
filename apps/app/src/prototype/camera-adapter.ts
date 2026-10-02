@@ -35,7 +35,7 @@ const nativeLibrary = registerPlugin<{
   share(options: { id: string }): Promise<{ status: string; message?: string }>;
   setFavorite(options: {id:string;revision:string;favorite:boolean}): Promise<SavedPhoto>;
   changeMany(options:{operation:'favorite'|'trash'|'restore';items:{id:string;revision:string}[]}):Promise<{status:string;outcomes:{id:string;status:string;item?:SavedPhoto}[]}>;
-  shareMany(options:{items:{id:string;revision:string}[]}): Promise<{status:string;count:number}>;
+  shareMany(options:{items:{id:string;revision:string}[]}): Promise<{status:string;count:number;message?:string}>;
   albums(): Promise<{items:OwnedAlbum[]}>;
   changeAlbum(options:Record<string,unknown>): Promise<{status:string;id:string;revision:string}>;
   summary(): Promise<{favorites:number;videos:number;trash:number;canFavorite:boolean}>;
@@ -175,7 +175,7 @@ export function installPrototypeCameraAdapter(_Component: unknown, views: Record
   };}
   async function shareSelection(owner:Bag){
     if(!selection?.length||sharing||mutating)return;const chosen=selection;sharing=true;owner.set({nativeMultiSelection:Date.now()});
-    try{await library.shareMany({items:chosen.map(row=>({id:nativeId(row.id),revision:row.mutationRevision||''}))});}
+    try{const result=await library.shareMany({items:chosen.map(row=>({id:nativeId(row.id),revision:row.mutationRevision||''}))});if(owner.isActive()&&result.message)owner.toast(result.message);}
     catch(error){if(owner.isActive())owner.toast(error instanceof Error?error.message:'Selection could not be shared. Reselect the items.');}
     finally{sharing=false;if(!disposed)owner.set({nativeMultiSelection:Date.now()});}
   }
@@ -541,6 +541,7 @@ export function installPrototypeCameraAdapter(_Component: unknown, views: Record
       managing:!!manager.album,naming:!!manager.creating||!!manager.album&&!manager.confirmDelete,info:!!manager.media&&!manager.creating&&!manager.choosing,description:manager.media?`${manager.media.width} × ${manager.media.height} · ${manager.media.kind==='video'?'Video':'Photo'} · ${browserMode?'saved in this browser':'saved to Android Photos'}`:'',choose:()=>{if(manager){manager.choosing=true;currentApi.set({nativeAlbumDraft:Date.now()});}},choosing:!!manager.media&&!!manager.choosing&&!manager.creating,confirming:!!manager.confirmDelete,error:st.nativeAlbumsError||'',busy:mutating,
       items:customAlbums.map(album=>({name:album.name,label:(album.memberIds.includes(nativeId(manager?.media?.id||''))?'Remove from ':'Add to ')+album.name,go:()=>{void mutateAlbum(currentApi,album.memberIds.includes(nativeId(selectedManager.media?.id||''))?'remove':'add',album);}})),
       create:()=>{if(manager){manager.creating=true;manager.name='';currentApi.set({nativeAlbumDraft:Date.now()});}},save:()=>{void mutateAlbum(currentApi,selectedManager.creating?'create':'rename');},askDelete:()=>{if(manager){manager.confirmDelete=true;currentApi.set({nativeAlbumDraft:Date.now()});}},delete:()=>{void mutateAlbum(currentApi,'delete');},close:()=>{manager=undefined;currentApi.set({sheet:null});}};}
+    data.selStart=()=>{if(mutating||sharing)return;selection=[];swallowedTap='';endHold();currentApi.set({sel:null,open:null,nativePhotoSelection:null,nativeMultiSelection:Date.now()});};
     if(selection){data.hdr=false;data.selecting=true;data.selN=selection.length?String(selection.length):'Select';data.selNone=!selection.length;data.selDim=!selection.length||sharing||mutating?'opacity:.35;pointer-events:none':'';data.selCancel=()=>{selection=undefined;swallowedTap='';endHold();currentApi.set({nativeMultiSelection:Date.now()});};data.selShare=()=>{void shareSelection(currentApi);};data.selFav=()=>{void changeSelection(currentApi,'favorite');};data.selDel=()=>{void changeSelection(currentApi,'trash');};}
     data.mutationBusy = mutating;
     data.emptyOpen = st.sheet==='empty' && !!prepared;

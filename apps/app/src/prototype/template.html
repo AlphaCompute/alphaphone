@@ -1464,7 +1464,7 @@
         </button>
       </div>
     </sc-if>
-    <div class="scr" style="flex-grow: 1; overflow-y: auto; touch-action: pan-y; padding-bottom: 130px">
+    <div class="scr" style="flex-grow: 1; overflow-y: auto; touch-action: pan-y; padding-bottom: 180px">
       <sc-for list="{{photos.groups}}" as="g" hint-placeholder-count="3">
         <div style="display: flex; align-items: baseline; gap: 8px; padding: 14px 20px 8px">
           <span style="font-size: 14px; font-weight: 600">{{g.label}}</span>
@@ -1513,7 +1513,7 @@
   </sc-if>
 
   <sc-if value="{{photos.isAlb}}" hint-placeholder-val="{{false}}">
-    <div class="scr" style="flex-grow: 1; overflow-y: auto; touch-action: pan-y; padding-bottom: 130px">
+    <div class="scr" style="flex-grow: 1; overflow-y: auto; touch-action: pan-y; padding-bottom: 180px">
       <sc-if value="{{photos.hasPeople}}" hint-placeholder-val="{{true}}">
         <div class="scr" style="display: flex; gap: 16px; overflow-x: auto; padding: 8px 20px 22px; touch-action: pan-x">
           <sc-for list="{{photos.people}}" as="pp" hint-placeholder-count="5">
@@ -1557,7 +1557,7 @@
           <button class="ib" aria-label="Delete all forever" onClick="{{photos.alb.emptyTrash}}"><svg class="i" viewBox="0 0 24 24"><path d="{{ic.trash}}"></path></svg></button>
         </sc-if>
       </div>
-      <div class="scr" style="flex-grow: 1; overflow-y: auto; touch-action: pan-y; padding: 8px 0 130px">
+      <div class="scr" style="flex-grow: 1; overflow-y: auto; touch-action: pan-y; padding: 8px 0 180px">
         <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 2px">
           <sc-for list="{{photos.alb.items}}" as="p" hint-placeholder-count="6">
             <button data-owned-media-id="{{p.nativeMediaId}}" aria-label="{{p.alt}}" onClick="{{p.tap}}" onPointerDown="{{p.pd}}" onPointerUp="{{p.pu}}" onPointerLeave="{{p.pu}}" onPointerCancel="{{p.pu}}" style="position: relative; display: block; aspect-ratio: 1; overflow: hidden; background: var(--s2); {{p.dim}}">
@@ -1586,7 +1586,7 @@
   </sc-if>
 
   <sc-if value="{{photos.selecting}}" hint-placeholder-val="{{false}}">
-    <div style="position: absolute; left: 0; right: 0; bottom: 0; height: 96px; z-index: 6; background: var(--bg); box-shadow: 0 -1px 0 var(--line); display: flex; align-items: flex-start; justify-content: space-around; padding: 12px 40px 0; box-sizing: border-box; {{photos.selDim}}">
+    <div style="position: absolute; left: 0; right: 0; bottom: 96px; height: 64px; z-index: 6; background: var(--bg); box-shadow: 0 -1px 0 var(--line); display: flex; align-items: flex-start; justify-content: space-around; padding: 12px 40px 0; box-sizing: border-box; {{photos.selDim}}">
       <button class="ib" aria-label="Share selected" onClick="{{photos.selShare}}"><svg class="i" viewBox="0 0 24 24"><path d="{{ic.share}}"></path></svg></button>
       <button class="ib" aria-label="Favorite selected" onClick="{{photos.selFav}}"><svg class="i" viewBox="0 0 24 24"><path d="{{ic.heart}}"></path></svg></button>
       <button class="ib" aria-label="Delete selected" onClick="{{photos.selDel}}"><svg class="i" viewBox="0 0 24 24"><path d="{{ic.trash}}"></path></svg></button>

@@ -130,13 +130,27 @@ async function savePhotoEdit(input:EditParameters&{sessionId:string}):Promise<Ed
 type Album={id:string;name:string;revision:string;count:number;memberIds:string[]};
 const mediaId=()=>Date.now().toString().padStart(13,'0')+Array.from(crypto.getRandomValues(new Uint8Array(12)),n=>String(n%10)).join('');
 const prepared=new Map<string,{id:string;revision:string}[]>();
+type SelectedMedia={id:string;revision:string};
+function selectedMedia(items:SelectedMedia[]){
+ if(!Array.isArray(items)||items.length<1||items.length>20||items.some(item=>!item||typeof item.id!=='string'||!item.id||typeof item.revision!=='string'||!item.revision)||new Set(items.map(item=>item.id)).size!==items.length)throw Error('Select between 1 and 20 distinct items again.');
+ return items.map(item=>({id:item.id,revision:item.revision}));
+}
+function downloadPhoto(row:Row){
+ const link=document.createElement('a');link.href=row.path||row.image;link.download=`Alpha-photo-${row.id}.${row.kind==='video'?(row.path?.startsWith('data:video/mp4;')?'mp4':'webm'):'jpg'}`;document.body.append(link);try{link.click();}finally{link.remove();}
+}
 export const browserPhotoLibrary={
  beginEdit:beginPhotoEdit,previewEdit:previewPhotoEdit,saveEdit:savePhotoEdit,editResult:resultPhotoEdit,cancelEdit:cancelPhotoEdit,
  async list(options:{before?:string;trashed?:boolean;album?:string}={}){const result=await rows(options);return {items:result.slice(0,40),next:result.length>40?pageCursor(result[39]):''};},
  async read(input:{id:string}){return read(input.id);},
  async summary(){const all=await rows({},true);return {favorites:all.filter(r=>!r.trashed&&r.favorite).length,videos:all.filter(r=>!r.trashed&&r.kind==='video').length,trash:all.filter(r=>r.trashed).length,canFavorite:true};},
  async albums(){const live=new Set((await rows({},true)).filter(row=>!row.trashed).map(row=>row.id));return {items:readStore<Album[]>('alpha.browser.albums.v1',()=>[]).map(album=>({...album,count:album.memberIds.filter(id=>live.has(id)).length}))};},
- async shareMany(input:{items:{id:string;revision:string}[]}){for(const item of input.items){const row=await read(item.id);if(row.mutationRevision!==item.revision||row.trashed)throw Error('Selection changed.');}for(const item of input.items)await browserPhotoLibrary.share(item);return {status:'opened',count:input.items.length};},
+ async shareMany(input:{items:SelectedMedia[]}){
+  const items=selectedMedia(input.items);
+  const selected=await transaction<Row[]>('readonly',(store,set,fail)=>{const result:Row[]=[];set(result);for(const item of items){const request=store.get(item.id);request.onsuccess=()=>{const row=request.result as Row|undefined;if(!row||!['image','video'].includes(row.kind)||row.mutationRevision!==item.revision||row.trashed){fail(Error('Selection changed. Reselect the items.'));return;}result.push(row);};}});
+  // Validate the entire selection in one snapshot before requesting any download.
+  for(const row of selected)downloadPhoto(row);
+  return {status:'opened',count:selected.length,message:`${selected.length} downloads requested. Your browser may ask to allow multiple downloads; check Downloads to confirm.`};
+ },
  async changeAlbum(input:Record<string,unknown>){
   if(!['create','rename','delete','add','remove'].includes(String(input.operation)))throw Error('Unknown album operation.');
   const name=typeof input.name==='string'?input.name.trim():'';
@@ -157,11 +171,22 @@ export const browserPhotoLibrary={
  },
  async setFavorite(input:{id:string;revision:string;favorite:boolean}){return change(input,{favorite:input.favorite});},
  async setTrashed(input:{id:string;revision:string;trashed:boolean}){return {...await change(input,{trashed:input.trashed}),status:'updated'};},
- async changeMany(input:{operation:'favorite'|'trash'|'restore';items:{id:string;revision:string}[]}){
-  const outcomes=[];for(const item of input.items){try{const row=await change(item,input.operation==='favorite'?{favorite:true}:{trashed:input.operation==='trash'});outcomes.push({id:item.id,status:'updated',item:row});}catch{outcomes.push({id:item.id,status:'conflict'});}}return {status:'complete',outcomes};
+ async changeMany(input:{operation:'favorite'|'trash'|'restore';items:SelectedMedia[]}){
+  if(!['favorite','trash','restore'].includes(input.operation))throw Error('Unknown photo operation.');
+  const items=selectedMedia(input.items),patch=input.operation==='favorite'?{favorite:true}:{trashed:input.operation==='trash'};
+  return transaction<{status:string;outcomes:{id:string;status:string;item?:Row}[]}>('readwrite',(store,set)=>{
+   const result={status:'complete',outcomes:[] as {id:string;status:string;item?:Row}[]};set(result);
+   for(const item of items){const request=store.get(item.id);request.onsuccess=()=>{
+    const row=request.result as Row|undefined;
+    if(!row||!['image','video'].includes(row.kind)||row.mutationRevision!==item.revision||input.operation==='favorite'&&row.trashed){result.outcomes.push({id:item.id,status:'conflict'});return;}
+    const unchanged=Object.entries(patch).every(([key,value])=>row[key as 'favorite'|'trashed']===value);
+    const updated=unchanged?row:{...row,...patch,mutationRevision:revision()};if(!unchanged)store.put(updated);
+    result.outcomes.push({id:item.id,status:unchanged?'unchanged':'updated',item:updated});
+   };}
+  });
  },
- async share(input:{id:string}){const row=await read(input.id);if(row.trashed)throw Error('Restore this photo before downloading.');
-  const link=document.createElement('a');link.href=row.path||row.image;link.download=`Alpha-photo-${row.id}.${row.kind==='video'?(row.path?.startsWith('data:video/mp4;')?'mp4':'webm'):'jpg'}`;document.body.append(link);link.click();link.remove();return {status:'opened',message:'Photo download requested. Check your browser downloads.'};
+ async share(input:{id:string;revision?:string}){const row=await read(input.id);if(row.trashed)throw Error('Restore this photo before downloading.');if(input.revision&&input.revision!==row.mutationRevision)throw Error('Photo changed. Reselect it.');
+  downloadPhoto(row);return {status:'opened',message:'Photo download requested. Check your browser downloads.'};
  },
  async prepareDeleteTrash(){const confirmation=revision();prepared.clear();const selected=(await rows({},true)).filter(r=>r.trashed).map(r=>({id:r.id,revision:r.mutationRevision}));prepared.set(confirmation,selected);return {confirmation,count:selected.length};},
  async cancelDeleteTrash(input:{confirmation:string}){prepared.delete(input.confirmation);},
