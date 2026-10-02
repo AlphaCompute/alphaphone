@@ -351,3 +351,7 @@ Browser evidence covers actual OCR execution, no remote OCR requests, worker can
 Scan review now previews the captured page and exports a real single-page image PDF. Browser export uses Downloads; Android source uses the system document picker and exact provider readback before confirmed success. Reviewed OCR corrections remain a separate Notes save. The dialog keeps its action controls visible while the review content scrolls. See [the export contract and qualification limits](local-ocr.md#photo-pdf-export).
 
 This implements single-page photo-to-PDF export. Automatic insertion into browser-managed Files, multipage capture, searchable PDF text, document boundaries and semantic event/link actions remain open. Android plugin wiring is implemented; only its pure-Java byte validation/readback helper is exercised here, not the Android picker or an APK.
+
+## October 2 — reviewed links from Camera Scan
+
+Camera Scan now derives explicit website links from actual OCR or user corrections, displays the complete normalized addresses under Review links, and opens only the selected current address after a click. Browser tabs have no opener/referrer; Android uses the existing system-browser handoff. No automatic navigation, prefetch, agent upload or canned poster URL is involved. The browser journey verifies a real OCR URL, user correction, removal of the old destination, and one explicit navigation to an intercepted test page. See [link behavior and remaining Scan requirements](local-ocr.md#reviewed-website-links).
