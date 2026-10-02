@@ -52,7 +52,7 @@ The native bridge enrolls and verifies its own local owner session. Conversation
 For an existing preparation that no longer matches the source stamp, preserve it and select a fresh directory for every preparation, test, development and staging command:
 
 ```sh
-export ALPHA_LOCAL_AGENT_SOURCE_DIR="$PWD/artifacts/local-agent-receipts-final"
+export ALPHA_LOCAL_AGENT_SOURCE_DIR="$PWD/artifacts/local-agent-compiler"
 export ALPHA_WORKFLOW_WORKER_OUTPUT="$PWD/artifacts/mobile-workflow-worker-current"
 npm run agent:prepare
 npm run agent:build-workflow-worker
@@ -83,3 +83,5 @@ Local evidence for this pass is retained in `test-results/local-agent-qualificat
 Browser scheduled digests use the private host profile for results and pending mutations, with bounded compare-and-exchange and commit-before-ack recovery. This development storage is unencrypted. The consumer `hosted-digest-route-registration.patch` registers the implemented digest endpoints on the actual plugin router; `agent:test` checks those registrations and owner-bound dispatch. Use a fresh `ALPHA_LOCAL_AGENT_SOURCE_DIR` after changing the consumer manifest. Local schedules require the host/device agent process to remain running; browser result sync does not qualify real scheduled execution or Android lifecycle recovery.
 
 Resident digest results now synchronize through the selected local workflow client into the existing encrypted Android connection store while the app is open. They no longer require the remote background-delivery session. Browser development uses the same inbox logic with its disclosed private-host store. Remote Android connections retain their native background inbox. Resident background result notifications and polling are not implemented; the panel says so. This transport selection is covered by persistence/recovery contract tests, not a new Android execution result.
+
+The consumer `packaged-workflow-compiler.patch` now routes semantic checks through the packaged compiler and the shared Bun/native-loader configuration when a runtime resource directory is selected. Missing packaged compiler files fail explicitly; the checker does not fall back to source dependencies. Browser development retains its existing Node/TypeScript path. The 15-second deadline, source/output bounds, allowed imports and default-export contract remain enforced. Run `agent:test` with the worker artifact to include production-checker integration; the packaged case is explicitly skipped without it.

@@ -1,0 +1,110 @@
+--- a/plugins/plugin-workflow/src/services/workflow-source-check.ts
++++ b/plugins/plugin-workflow/src/services/workflow-source-check.ts
+@@ -2,6 +2,9 @@
+ import { spawn } from 'node:child_process';
+ import { createRequire } from 'node:module';
+ import { fileURLToPath } from 'node:url';
++import { accessSync, constants } from 'node:fs';
++import { join } from 'node:path';
++import { smithersProcessConfig } from './smithers-process';
+ import { WorkflowApiError } from '../types/index';
+ 
+ const require = createRequire(import.meta.url);
+@@ -58,16 +61,33 @@
+ export async function checkWorkflowSource(source: string): Promise<string[]> {
+   if (Buffer.byteLength(source, 'utf8') > MAX_SOURCE_BYTES)
+     return ['Workflow source exceeds 65536 bytes'];
++  const pluginRoot = fileURLToPath(new URL('../../', import.meta.url));
+   let compiler: string;
++  let anchor = pluginRoot;
++  let command = 'node';
++  let prefix = ['--max-old-space-size=512'];
++  let cwd: string | undefined;
++  let env: NodeJS.ProcessEnv = { PATH: process.env.PATH ?? '', NODE_NO_WARNINGS: '1' };
+   try {
+-    compiler = require.resolve('typescript');
++    const config = smithersProcessConfig(pluginRoot);
++    if (config.packaged) {
++      anchor = join(config.cwd, 'compiler');
++      compiler = join(anchor, 'node_modules/typescript/lib/typescript.js');
++      accessSync(compiler, constants.R_OK);
++      accessSync(join(anchor, 'node_modules/smthrs/package.json'), constants.R_OK);
++      command = config.command;
++      prefix = [...config.prefix, '--no-install'];
++      cwd = anchor;
++      env = config.env;
++    } else {
++      compiler = require.resolve('typescript');
++    }
+   } catch {
+     throw new WorkflowApiError('Workflow compiler unavailable', 503);
+   }
+-  const anchor = fileURLToPath(new URL('../../', import.meta.url));
+   return new Promise((resolve, reject) => {
+-    const child = spawn('node', ['--max-old-space-size=512', '-e', COMPILER_PROGRAM, compiler], {
+-      env: { PATH: process.env.PATH ?? '', NODE_NO_WARNINGS: '1' },
++    const child = spawn(command, [...prefix, '-e', COMPILER_PROGRAM, compiler], {
++      cwd, env,
+       stdio: ['pipe', 'pipe', 'pipe'],
+     });
+     let output = '';
+@@ -82,10 +102,11 @@
+     const timer = setTimeout(() => stop('Workflow compiler deadline exceeded'), DEADLINE_MS);
+     child.on('error', () => stop('Workflow compiler unavailable'));
+     child.stdin.on('error', () => stop('Workflow compiler input failed'));
+-    child.stdout.on('data', (chunk: Buffer) => {
+-      bytes += chunk.length;
++    child.stdout.setEncoding('utf8');
++    child.stdout.on('data', (chunk: string) => {
++      bytes += Buffer.byteLength(chunk, 'utf8');
+       if (bytes > MAX_OUTPUT_BYTES) stop('Workflow compiler output limit exceeded');
+-      else output += chunk.toString('utf8');
++      else output += chunk;
+     });
+     child.stderr.on('data', (chunk: Buffer) => {
+       bytes += chunk.length;
+--- /dev/null
++++ b/plugins/plugin-workflow/__tests__/workflow-packaged-compiler.test.ts
+@@ -0,0 +1,42 @@
++import {test, expect} from 'bun:test';
++import {mkdtemp, cp, rm, rename, writeFile, readFile, realpath} from 'node:fs/promises';
++import {tmpdir} from 'node:os';
++import {join} from 'node:path';
++import {checkWorkflowSource} from '../src/services/workflow-source-check';
++
++const valid = `import {createSmithers} from 'smthrs/create';import {z} from 'zod';
++const {Workflow,Task,smithers,outputs}=createSmithers({result:z.object({text:z.string()})},{dbPath:process.env.ELIZA_SMTHRS_DB_PATH});
++export default smithers(()=><Workflow name="synthetic"><Task id="result" output={outputs.result}>{()=>({text:'synthetic'})}</Task></Workflow>);`;
++
++test.skipIf(!process.env.ALPHA_WORKFLOW_WORKER_OUTPUT)('production checker uses packaged compiler, survives moves and fails closed', async()=>{
++ const temporary=await realpath(await mkdtemp(join(tmpdir(),'eliza-packaged-compiler-')));
++ const keys=['ELIZA_SMTHRS_RUNTIME_DIR','BUN_BIN','ELIZA_PLATFORM','AGENT_ROOT','LD_PATH','BUN_PATH','LD_LIBRARY_PATH'];
++ const before=Object.fromEntries(keys.map(key=>[key,process.env[key]]));
++ try{
++  const original=join(temporary,'original'),moved=join(temporary,'moved');
++  await cp(join(process.env.ALPHA_WORKFLOW_WORKER_OUTPUT!,'compiler'),join(original,'compiler'),{recursive:true});
++  const launches=join(temporary,'launches.txt'),wrapper=join(temporary,'bun-wrapper');
++  const quote=(value:string)=>"'"+value.replaceAll("'","'\"'\"'")+"'";
++  await writeFile(wrapper,'#!/bin/sh\npwd >> '+quote(launches)+'\nexec '+quote(process.execPath)+' "$@"\n',{mode:0o700});
++  process.env.BUN_BIN=wrapper;process.env.ELIZA_SMTHRS_RUNTIME_DIR=original;
++  expect(await checkWorkflowSource(valid)).toEqual([]);
++  expect((await readFile(launches,'utf8')).trim()).toBe(join(original,'compiler'));
++  expect(await checkWorkflowSource("import {CodexAgent} from 'smthrs';\n"+valid)).not.toEqual([]);
++  expect(await checkWorkflowSource("const wrong:number='no';\n"+valid)).not.toEqual([]);
++  expect(await checkWorkflowSource("throw new Error('DRAFT_EXECUTED');\n"+valid)).toEqual([]);
++  await rename(original,moved);process.env.ELIZA_SMTHRS_RUNTIME_DIR=moved;
++  expect(await checkWorkflowSource(valid)).toEqual([]);
++  expect((await readFile(launches,'utf8')).trim().split('\n').at(-1)).toBe(join(moved,'compiler'));
++  await rm(join(moved,'compiler/node_modules/typescript/lib/typescript.js'));
++  await expect(checkWorkflowSource(valid)).rejects.toThrow('Workflow compiler unavailable');
++  delete process.env.ELIZA_SMTHRS_RUNTIME_DIR;
++  expect(await checkWorkflowSource(valid)).toEqual([]);
++  expect(await checkWorkflowSource('export default 42;')).not.toEqual([]);
++  process.env.ELIZA_PLATFORM='android';process.env.AGENT_ROOT=temporary;
++  delete process.env.LD_PATH;delete process.env.BUN_PATH;delete process.env.LD_LIBRARY_PATH;
++  await expect(checkWorkflowSource(valid)).rejects.toThrow('Workflow compiler unavailable');
++ }finally{
++  for(const key of keys){if(before[key]===undefined)delete process.env[key];else process.env[key]=before[key];}
++  await rm(temporary,{recursive:true,force:true});
++ }
++},120000);

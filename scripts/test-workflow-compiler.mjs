@@ -35,7 +35,7 @@ try{
  const descriptor=JSON.parse(readFileSync(join(anchor,'compiler.json'),'utf8'));
  assert.deepEqual(descriptor,verified.manifest.compiler);
  for(const [name,text,valid] of cases){
-  const result=JSON.parse(execFileSync(process.env.ALPHA_BUN||'bun',['--no-install','-e',program,join(anchor,descriptor.compilerModule)],{cwd:temporary,env:{HOME:temporary,TMPDIR:temporary},input:JSON.stringify({source:text,anchor}),encoding:'utf8',timeout:15000,maxBuffer:16384}));
+  const result=JSON.parse(execFileSync(process.env.ALPHA_BUN||'bun',['--no-install','-e',program,join(anchor,descriptor.compilerModule)],{cwd:temporary,env:{PATH:process.env.PATH,HOME:temporary,TMPDIR:temporary},input:JSON.stringify({source:text,anchor}),encoding:'utf8',timeout:15000,maxBuffer:16384}));
   assert.equal(result.ok,valid,`${name}: ${JSON.stringify(result.diagnostics)}`);
   console.log(`${name}: passed`);
  }

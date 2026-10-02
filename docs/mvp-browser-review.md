@@ -227,3 +227,7 @@ Evidence is retained in `test-results/browser-gap-review/`: original defect repr
 ### Local workflow compiler packaging follow-up
 
 The worker artifact now includes a symlink-free TypeScript compiler and narrowed declarations: 1,091 indexed files, 33,919,183 bytes, within the existing native extractor bounds. All twelve isolated semantic checks pass, alongside real worker controls/replay, host-JVM extraction of the full artifact and the 46-check repository verification. The compiler does not execute drafts. Source-checker subprocess integration and mobile plugin/bundle/device qualification remain open; see `docs/mobile-workflow-packaging.md`. Android builds remain excluded from this browser development pass.
+
+### Production packaged compiler follow-up
+
+The semantic checker now launches the packaged compiler through the shared Bun/native-loader configuration, with explicit missing-resource failures and unchanged validation bounds. Fresh composed-source tests pass ten cases/105 assertions; the browser compiler regression passes five assertions; plugin source typechecking and all 46 repository checks pass. Browser dev is running on the new source with renderer, bridge and workflow status HTTP 200. The next runtime gap is mobile plugin collection/bundle inclusion, followed by native execution qualification. See `docs/mobile-workflow-packaging.md` for the evidence boundaries.

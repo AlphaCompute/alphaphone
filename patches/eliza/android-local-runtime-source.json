@@ -11,13 +11,16 @@
     "plugins/plugin-workflow/src/services/smithers-process.ts": "eb0217674c8504d975ef6375ebe484707b15033476cd8665c5c686e877102ae4",
     "plugins/plugin-workflow/__tests__/smithers-process.test.ts": "7900cdee216732c0d02c98e126cfea40cc20a13d4865d3258850c38e75f8fbd7",
     "plugins/plugin-workflow/__tests__/smithers-packaged-worker.test.ts": "7e7e5d2f5b51c6a5d2d51108436db215c9573338f14d5965a1cc389e5c1ceceb",
-    "plugins/plugin-workflow/src/services/workflow-approval-receipts.ts": "9f820b4092a7e2c6095dae3d6f99b5ac1ed8c674c4ffdf5dc8648a89a80dd05d"
+    "plugins/plugin-workflow/src/services/workflow-approval-receipts.ts": "9f820b4092a7e2c6095dae3d6f99b5ac1ed8c674c4ffdf5dc8648a89a80dd05d",
+    "plugins/plugin-workflow/src/services/workflow-source-check.ts": "c5c76c06a7d6b3fa63c0085d3b2f85b31ee08a4cec230839fab3832d5ccc6c00",
+    "plugins/plugin-workflow/__tests__/workflow-packaged-compiler.test.ts": "fb5e076709021c26e17ef7142cd659336af36ce66a6f1493c99d64538416340e"
   },
   "patches": [
     "android-secure-store-socket.patch",
     "lean-chat-workflows.patch",
     "hosted-digest-route-registration.patch",
     "packaged-workflow-worker.patch",
-    "packaged-approval-receipts.patch"
+    "packaged-approval-receipts.patch",
+    "packaged-workflow-compiler.patch"
   ]
 }
