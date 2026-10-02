@@ -1,3 +1,4 @@
+import {drawCameraFrame} from '../browser/camera-frame';
 import {BrowserVideoCapture} from '../browser/video-capture';
 import {editStore,readStore} from '../browser/store';
 
@@ -152,6 +153,7 @@ let videoSession=0;
 let videoSave:Promise<{path:string;duration:number;width:number;height:number;fileSize:number}>|undefined;
 let preview:HTMLVideoElement|null=null,stream:MediaStream|null=null,generation=0;
 let starting:AbortController|undefined;
+let zoom=1,mirror=false;
 function release(video:HTMLVideoElement|null,media:MediaStream|null){media?.getTracks().forEach(track=>track.stop());if(video){video.pause();video.srcObject=null;video.remove();}}
 export function mountBrowserCamera(){const frame=document.querySelector<HTMLElement>(finder);if(preview&&frame&&preview.parentElement!==frame)frame.prepend(preview);}
 export const browserCamera={
@@ -165,7 +167,7 @@ export const browserCamera={
    const frame=document.querySelector<HTMLElement>(finder);if(!frame)throw Error('Camera view is closed.');
    ownVideo=document.createElement('video');ownVideo.srcObject=ownStream;ownVideo.autoplay=true;ownVideo.playsInline=true;ownVideo.muted=true;
    ownVideo.style.cssText='position:absolute;inset:0;width:100%;height:100%;object-fit:cover;pointer-events:none;z-index:1'+(options.mirror?';transform:scaleX(-1)':'');
-   preview=ownVideo;stream=ownStream;frame.prepend(ownVideo);
+   preview=ownVideo;stream=ownStream;zoom=1;mirror=options.mirror;frame.prepend(ownVideo);
    await new Promise<void>((resolve,reject)=>{
     const finish=(error?:unknown)=>{clearTimeout(timeout);controller.signal.removeEventListener('abort',abort);error?reject(error):resolve();};
     const abort=()=>finish(new DOMException('Camera cancelled.','AbortError'));
@@ -181,8 +183,7 @@ export const browserCamera={
  async stopPreview(){++generation;++videoSession;videoCapture.cancel();starting?.abort();starting=undefined;release(preview,stream);preview=null;stream=null;},
  async capturePhoto(){const token=generation,video=preview;if(!video||!stream||video.readyState<2)throw Error('Camera is not ready.');
   const width=video.videoWidth,height=video.videoHeight;if(width<=0||height<=0||width*height>32_000_000)throw Error('Unsupported photo dimensions.');
-  const canvas=document.createElement('canvas');canvas.width=width;canvas.height=height;
-  const context=canvas.getContext('2d');if(!context)throw Error('Photo encoding is unavailable.');context.drawImage(video,0,0,width,height);
+  const canvas=drawCameraFrame(video,{zoom,mirror});
   const image=canvas.toDataURL('image/jpeg',0.85);if(!image.startsWith('data:image/jpeg;base64,'))throw Error('Photo encoding failed.');
   const photo={base64:image.slice('data:image/jpeg;base64,'.length),format:'jpeg',width,height};if(token!==generation)throw Error('Camera view changed.');
   if(!photo.base64||photo.base64.length>12_000_000)throw Error('Photo is too large to save in this browser.');
@@ -193,10 +194,17 @@ export const browserCamera={
   return {...photo,path:'browser-photo:///'+id};
  },
  async switchCamera(options:{direction:'front'|'back'}){return browserCamera.startPreview({...options,resolution:{width:1280,height:720},mirror:options.direction==='front'});},
- async setZoom(input:{zoom:number}){if(preview)preview.style.transform=`scale(${Math.max(1,Math.min(8,input.zoom))})`;},
- async setSettings(input:{settings:{flash:string}}){if(preview)preview.style.filter=input.settings.flash==='on'?'brightness(1.2)':'none';},
- async setFocusPoint(){},
- async startRecording(input:{audio?:boolean;maxDuration:number;maxFileSize:number}){if(!preview)throw Error('Start camera first.');++videoSession;videoSave=undefined;await videoCapture.start(preview,input);},
+ async setZoom(input:{zoom:number}){if(!preview)throw Error('Start camera first.');if(!Number.isFinite(input.zoom)||input.zoom<1||input.zoom>8)throw Error('Digital zoom must be between 1× and 8×.');if(videoCapture.state().isRecording)throw Error('Stop recording before changing zoom.');zoom=input.zoom;preview.style.transform=`scale(${mirror?-zoom:zoom},${zoom})`;},
+ async setSettings(input:{settings:{flash:string}}){
+  if(!['on','off'].includes(input.settings.flash))throw Error('Choose flash on or off.');
+  const track=stream?.getVideoTracks()[0],token=generation,enabled=input.settings.flash==='on';if(!track)throw Error('Start camera first.');
+  if(!(track.getCapabilities() as MediaTrackCapabilities&{torch?:boolean}).torch){if(enabled)throw Error('This camera does not expose a torch.');return;}
+  await track.applyConstraints({advanced:[{torch:enabled} as MediaTrackConstraintSet&{torch:boolean}]});
+  if(token!==generation)throw Error('Camera changed.');
+  if((track.getSettings() as MediaTrackSettings&{torch?:boolean}).torch!==enabled){await track.applyConstraints({advanced:[{torch:false} as MediaTrackConstraintSet&{torch:boolean}]});throw Error('The camera could not confirm its torch setting.');}
+ },
+ async setFocusPoint(){throw Error('Manual focus is not exposed by this browser camera.');},
+ async startRecording(input:{audio?:boolean;maxDuration:number;maxFileSize:number}){if(!preview)throw Error('Start camera first.');++videoSession;videoSave=undefined;await videoCapture.start(preview,input,{zoom,mirror});},
  stopRecording(){
   if(videoSave)return videoSave;
   const token=generation,session=videoSession;

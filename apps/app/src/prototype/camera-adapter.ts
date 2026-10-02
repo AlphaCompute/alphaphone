@@ -408,7 +408,7 @@ export function installPrototypeCameraAdapter(_Component: unknown, views: Record
       if (token !== epoch || !active()) return;
       await camera.startPreview({ direction, resolution: { width: 1280, height: 720 }, mirror: direction === 'front' });
       if (token !== epoch || !active()) return;
-      phase = 'ready'; mask(true); message('');
+      phase = 'ready';if(browserMode){flash=false;api?.set({zoom:1,flash:false});}mask(true); message('');
     } catch {
       if (token !== epoch) return;
       phase = 'error'; mask(false); message('Camera unavailable or permission denied. Tap the shutter to retry.');
@@ -492,7 +492,7 @@ export function installPrototypeCameraAdapter(_Component: unknown, views: Record
     data.drift = ''; data.zoomCss = ''; data.scanFound = false; data.scanning = false; data.rec = recording; data.recTime = `${Math.floor(duration / 60)}:${String(Math.floor(duration % 60)).padStart(2, '0')}`; data.flOp = 0;
     if(st.mode==='scan')data.shutterLabel='Scan text';
     data.shutter = () => { void capture(); };
-    data.flip = () => { const next = direction === 'back' ? 'front' : 'back'; void control(() => camera.switchCamera({ direction: next }), () => { direction = next; flash = false; currentApi.set({ front: next === 'front', flash: false }); }); };
+    data.flip = () => { const next = direction === 'back' ? 'front' : 'back'; void control(() => camera.switchCamera({ direction: next }), () => { direction = next; flash = false; currentApi.set({ front: next === 'front', flash: false, ...(browserMode?{zoom:1}:{}) }); }); };
     data.toggleFlash = () => { const next = !flash; void control(() => camera.setSettings({ settings: { flash: next ? 'on' : 'off' } }), () => { flash = next; currentApi.set({ flash: next }); }); };
     data.zooms = (data.zooms || []).map((z: Bag, i: number) => ({ ...z, pick: () => { const ratio = parseFloat(z.label); void control(() => camera.setZoom({ zoom: ratio }), () => currentApi.set({ zoom: i })); } }));
     data.vfDown = () => {};
