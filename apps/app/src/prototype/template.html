@@ -1956,10 +1956,11 @@
 
 
 <sc-if value="{{is.notes}}" hint-placeholder-val="{{false}}">
-<div style="display: flex; flex-direction: column; height: 100%; position: relative">
-  <sc-if value="{{notes.storageStatus}}"><div role="status" aria-live="polite" style="position:absolute;top:20px;left:24px;right:24px;z-index:6;pointer-events:none;font-size:11px;line-height:12px;color:var(--mut)">{{notes.storageStatus}}</div></sc-if>
+<div class="notes-layout" style="display: flex; flex-direction: column; height: 100%; position: relative; padding-top: 44px; box-sizing: border-box">
+  <sc-if value="{{notes.storageStatus}}"><div class="notes-storage-status" role="status" aria-live="polite" style="flex-shrink:0;padding:0 24px 6px;font-size:12px;line-height:16px;color:var(--mut);overflow-wrap:anywhere">{{notes.storageStatus}}</div></sc-if>
+  <div class="notes-workspace" style="position:relative;display:flex;flex-direction:column;flex:1;min-height:0">
   <sc-if value="{{notes.notSearching}}" hint-placeholder-val="{{true}}">
-    <div style="display: flex; align-items: center; height: 56px; margin-top: 44px; padding: 0 8px 0 20px; gap: 2px; flex-shrink: 0">
+    <div style="display: flex; align-items: center; height: 56px; margin-top: 0; padding: 0 8px 0 20px; gap: 2px; flex-shrink: 0">
       <h1 class="serif" style="margin: 0; font-size: 32px; flex-grow: 1; letter-spacing: -.01em">Notes</h1>
       <button class="ib" aria-label="Record and transcribe" onClick="{{notes.record}}"><svg class="i" viewBox="0 0 24 24" style="width: 20px; height: 20px"><path d="{{ic.notesWave}}"></path></svg></button>
       <sc-if value="{{notes.canImportText}}"><button class="ib" aria-label="Import text note" disabled="{{notes.documentBusy}}" onClick="{{notes.importText}}"><svg class="i" viewBox="0 0 24 24"><path d="M12 3v12M7 10l5 5 5-5M5 16v5h14v-5"></path></svg></button></sc-if>
@@ -1967,7 +1968,7 @@
     </div>
   </sc-if>
   <sc-if value="{{notes.searching}}" hint-placeholder-val="{{false}}">
-    <div style="display: flex; align-items: center; height: 56px; margin-top: 44px; padding: 0 8px 0 12px; gap: 4px; flex-shrink: 0">
+    <div style="display: flex; align-items: center; height: 56px; margin-top: 0; padding: 0 8px 0 12px; gap: 4px; flex-shrink: 0">
       <div style="flex-grow: 1; display: flex; align-items: center; gap: 10px; height: 48px; padding: 0 16px; border-radius: 24px; background: var(--s2)">
         <svg class="i" viewBox="0 0 24 24" style="width: 18px; height: 18px; color: var(--mut)"><path d="{{ic.search}}"></path></svg>
         <input aria-label="Search notes" placeholder="Search" value="{{notes.q}}" onChange="{{notes.onQ}}" style="flex-grow: 1; min-width: 0; height: 44px; border: 0; outline: 0; background: transparent; color: var(--fg); font-size: 16px">
@@ -2052,7 +2053,7 @@
   
   <sc-if value="{{notes.isEdit}}" hint-placeholder-val="{{false}}">
     <div class="enter" style="position: absolute; inset: 0; background: var(--bg); display: flex; flex-direction: column; z-index: 4">
-      <div style="display: flex; align-items: center; height: 56px; margin-top: 44px; padding: 0 8px; gap: 2px; flex-shrink: 0">
+      <div style="display: flex; align-items: center; height: 56px; margin-top: 0; padding: 0 8px; gap: 2px; flex-shrink: 0">
         <button class="ib" aria-label="Back to notes" onClick="{{notes.ed.close}}"><svg class="i" viewBox="0 0 24 24"><path d="{{ic.back}}"></path></svg></button>
         <div style="flex-grow: 1"></div>
         <button class="ib" aria-label="{{notes.ed.dictLabel}}" onClick="{{notes.ed.dictate}}" style="{{notes.ed.dictCss}}"><svg class="i" viewBox="0 0 24 24" style="width: 20px; height: 20px"><path d="{{ic.mic}}"></path></svg></button>
@@ -2088,7 +2089,7 @@
   
   <sc-if value="{{notes.isVoice}}" hint-placeholder-val="{{false}}">
     <div class="enter" style="position: absolute; inset: 0; background: var(--bg); display: flex; flex-direction: column; z-index: 4">
-      <div style="display: flex; align-items: center; height: 56px; margin-top: 44px; padding: 0 8px; gap: 2px; flex-shrink: 0">
+      <div style="display: flex; align-items: center; height: 56px; margin-top: 0; padding: 0 8px; gap: 2px; flex-shrink: 0">
         <button class="ib" aria-label="Back to notes" onClick="{{notes.vo.close}}"><svg class="i" viewBox="0 0 24 24"><path d="{{ic.back}}"></path></svg></button>
         <div style="flex-grow: 1"></div>
         <button class="ib" aria-label="{{notes.vo.pinLabel}}" onClick="{{notes.vo.pin}}" style="{{notes.vo.pinCss}}"><svg class="i" viewBox="0 0 24 24"><path d="{{ic.notesPin}}"></path></svg></button>
@@ -2156,7 +2157,7 @@
   
   <sc-if value="{{notes.isLink}}" hint-placeholder-val="{{false}}">
     <div class="enter" style="position: absolute; inset: 0; background: var(--bg); display: flex; flex-direction: column; z-index: 4">
-      <div style="display: flex; align-items: center; height: 56px; margin-top: 44px; padding: 0 8px; gap: 2px; flex-shrink: 0">
+      <div style="display: flex; align-items: center; height: 56px; margin-top: 0; padding: 0 8px; gap: 2px; flex-shrink: 0">
         <button class="ib" aria-label="Back to notes" onClick="{{notes.lk.close}}"><svg class="i" viewBox="0 0 24 24"><path d="{{ic.back}}"></path></svg></button>
         <div style="flex-grow: 1"></div>
         <button class="ib" aria-label="{{notes.lk.pinLabel}}" onClick="{{notes.lk.pin}}" style="{{notes.lk.pinCss}}"><svg class="i" viewBox="0 0 24 24"><path d="{{ic.notesPin}}"></path></svg></button>
@@ -2194,7 +2195,7 @@
 
   
   <sc-if value="{{notes.recording}}" hint-placeholder-val="{{false}}">
-    <div class="enter" style="position: absolute; inset: 0; z-index: 10; background: var(--bg); display: flex; flex-direction: column; padding: 44px 24px 0; box-sizing: border-box">
+    <div class="enter" style="position: absolute; inset: 0; z-index: 10; background: var(--bg); display: flex; flex-direction: column; padding: 0 24px; box-sizing: border-box">
       <div style="display: flex; align-items: center; height: 56px; margin: 0 -16px 8px">
         <button class="ib" aria-label="Discard recording" onClick="{{notes.rec.discard}}"><svg class="i" viewBox="0 0 24 24"><path d="{{ic.x}}"></path></svg></button>
       </div>
@@ -2224,6 +2225,7 @@
       </div>
     </div>
   </sc-if>
+</div>
 </div>
 </sc-if>
 
