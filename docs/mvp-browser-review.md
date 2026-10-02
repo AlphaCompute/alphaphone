@@ -1438,3 +1438,12 @@ Focus now owns DND only after the on step persists its policy flag. The off step
 **48 browser cases passed** across focus, foreground triggers and workflow concurrency, including all three new ordering regressions. `npm run verify` passed **114 tests**, TypeScript and the web build. Evidence: `artifacts/calendar-preferences-review/test-results/focus-order-review/`. Android builds skipped; hosted verification pending.
 
 Hosted follow-up remains open: PR #14 push run `37064572768`, shard-2 job `111029042033`, passed 303 cases and failed `dev-notifications.spec.ts` while waiting for “Select Mail (browser.mail)”. The terminal job log is retained in the same evidence directory. Its cause is not yet established; other jobs were still running when inspected. This is not an all-green hosted checkpoint.
+
+
+## October 2 — Notification settings acknowledge pending writes
+
+Investigation of PR #14's hosted app-choice timeout found that notification settings ignored subsequent clicks while a policy write/refresh was pending, while still rendering those controls as enabled. A deterministic held-write regression reproduces that enabled state. This is consistent with the hosted symptom; the log alone does not prove its exact timing.
+
+Notification policy controls now expose a native disabled state and “Working…” while the operation is pending, then rerender as enabled after success or failure. A handler guard also prevents stale handlers from changing choices during that interval. Other Settings navigation rows remain enabled.
+
+The notification suite passed **30 executions** (10 cases repeated three times), including the previously failing full settings-to-shade journey, delayed policy persistence and failed-write recovery. **25 additional Settings/sensor/MVP navigation cases passed**, covering light/dark and compact/wide layouts. `npm run verify` passed **114 tests**, TypeScript and the web build. Evidence: `artifacts/calendar-preferences-review/test-results/notification-settings-review/` with retained negative control and frozen inputs. Android builds skipped; new hosted verification remains pending.
