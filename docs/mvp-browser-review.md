@@ -1458,3 +1458,14 @@ PR #14 pull run `37064595888` also completed all three browser shards successful
 All **11 notification-history cases passed** after that adjustment. `npm run verify` passed **114 tests**, TypeScript and the web build. Evidence: `test-results/history-budget-review/` in the review checkout. Android builds skipped. Newer pending source and native/provider/user acceptance remain outside the 927-case checkpoint; the overall MVP goal remains open.
 
 The report/test-budget checkpoint was then rebased onto `54a8229`, which adds browser reading restrictions and password-provider setup. The combined source passed **73 affected browser cases** (reading, provider setup, notifications and history) and all **114 repository tests**, TypeScript and web build. This targeted qualification does not expand the earlier 927-case claim to the newer source. Native/provider fixtures do not establish installed Proton or Android execution. Rebased logs are retained under `test-results/history-budget-review/`.
+
+
+## October 2 — Timestamp-based video export
+
+Browser video editing now uses pinned Mediabunny 1.61.0 with WebCodecs to encode selected media timestamps independently of playback acknowledgment and audio-clock delays. It trims, rotates and crops locally, retains source audio, and preserves the existing media-element/MediaRecorder fallback when timestamp codec support is unavailable. Blob URLs are owned and revoked by export/review lifecycles. MPL license and source-location notices ship under the public licenses directory.
+
+A known-color/known-tone source verifies only the selected green frames and 880 Hz interval survive a 0.25–0.75 second trim, including decoded output at 0, 0.2 and 0.45 seconds and bounded audio duration. With the timestamp path removed but the revised loading path retained, the control fails because the exported clip has no decoded frame at 0.45 seconds. A separate control against the prior committed source also fails. These logs are retained, not replaced by the passing result.
+
+**37 Chromium browser cases passed** across video edits, source preservation, exact receipt replay, transactional failure, cancellation/reload, codec fallback with audio, Photos edits/albums and camera controls. The boundary case passed again after improving its missing-frame diagnostic. `npm run verify` passed **114 tests**, TypeScript and the web build. Evidence: `artifacts/calendar-preferences-review/test-results/video-timestamp-review/`, including frozen inputs, dependency installation, negative controls and terminal checks.
+
+These synthetic media fixtures exercise real browser codecs and storage, not physical-camera quality or Android encoding. Cross-browser timestamp-codec support and fallback precision remain bounded by the available engines; this campaign does not claim WebKit or device acceptance. Android builds skipped; hosted verification pending.
