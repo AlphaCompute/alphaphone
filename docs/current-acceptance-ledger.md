@@ -1,5 +1,13 @@
 # Current Alpha Phone acceptance ledger
 
+## Latest checkpoint: October 2, Clock integration and resident CI
+
+Exact product `313070d` passes repository verification and 26 rendered Clock flows with all 3,670 source hashes unchanged. Upstream `28ee31f8fc69` passes full root verification and the authenticated Clock lifecycle. The complete patched product runtime also passes that lifecycle at its unchanged deadline. Native Java compilation and actual DeskClock overlay staging pass separately; no native alarm execution or ringing is inferred.
+
+Resident `475be719` run 37045552334 is terminal failure after a successful build/archive: obsolete SDK package `tools` stops native setup before emulator startup. Combined `b9db50ee` fixes that setup and includes current Clock/mock/scope work, resident92fc and bounded keyguard diagnostics. Its resident 37052049349, foundation 37052049472 and browser 37052049231 runs are active/pending. Keep native, live integration, AOSP and physical acceptance open. See the current checkpoint in [the completion plan](mvp-completion-plan.md) for exact sources and evidence paths.
+
+## Earlier checkpoints (historical evidence)
+
 October 2 Windows file-launch checkpoint: exactce4 run36990523408 is terminal failed, independently reproducing108's `ENAMETOOLONG` at Smithers child spawn. Both core jobs, native primitives and both backend survivor flows pass; actual Smithers reports4passes/2failures. The native lease is absent because spawning failed, not because survivor recovery succeeded. Exact-source/log evidence is in `test-results/windows-ce4-terminal-review/ce4-terminal-report.md`.
 
 The reviewed external upstream fix78685cedd1a9748e3b5ad2669bc994b28900bcb6 retains the early host configuration lock and publishes the Windows bootstrap as immutable content-addressed bytes, then uses a short file-URL import instead of oversized command-line source. It passes10 real process-host cases/17assertions and standard root verification/final audits in59.66seconds with unchanged source (`combined-mobile-repaired-root-run019`). The independently dispatched exact78685 Windows run36992235398 is pending. Our alternative staging patch was superseded before integration because it moved the early configuration lock across awaits. No Windows full acceptance or new Android payload acceptance is claimed.

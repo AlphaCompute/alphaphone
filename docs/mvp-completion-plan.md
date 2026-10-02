@@ -1,6 +1,18 @@
 # Alpha Phone MVP completion plan
 
-## Current checkpoint — October 2, Build155 with Build156 preparation pending
+## Current checkpoint — October 2, approved Clock integration
+
+Product `313070d0844e216a2f36fe39cca35f9d246420aa` integrates reviewed agent-to-Clock handoffs, current timezone binding, modal context invalidation and durable no-replay through the existing action journal. Old hosts and ordinary browser development do not advertise native Clock execution. The Alpha AOSP overlay explicitly includes DeskClock; actual overlay staging passes. An opened result means only that Clock opened for review, never that an alarm exists or rang. Date, recurrence and DST-fold selection remain in Clock's UI.
+
+The exact combined product source passes `npm run verify` in 13.14 seconds and all 26 rendered Clock flows in 32.2 seconds, with 3,670 source hashes unchanged. Native Java compilation passes separately. Concurrent uncommitted edits were preserved and excluded from this qualification. Generic upstream `28ee31f8fc69cb3610aa92e6ae2601c496419d03` passes its real HTTP/PGlite lifecycle, typecheck, package lint and full root verification in 758.3 seconds with 29,825 source files unchanged. The product's full patched runtime also passes its actual lifecycle in 65.33 seconds at the unchanged deadline; the first timed-out attempt is retained without an established cause. Evidence: `test-results/agent-clock-product/combined-candidate/`, `test-results/clock-handoff-upstream-staged/` and `test-results/clock-handoff-consumer-staged/runtime-validation/`.
+
+Prior resident run 37045552334 at exact `475be719` is terminal failure: its complete build/archive stage passes, but native SDK setup requests unavailable package `tools`; no emulator or native test ran. Prior push browser CI passes 641 tests. Foundation 37045552403 passes build then refuses a secure keyguard before WebView preparation. Bounded raw keyguard diagnostics retain the strict refusal; primary AOSP source permits a conservative cached state, but that is not an established cause of the observed failure.
+
+Combined candidate `b9db50eead5fb54346d107440b846ed82ea25f4d` now includes exact product 313070d, resident runtime 92fc, all nine remaining patches, both egress patches, raw keyguard diagnostics and explicit native SDK packages. Current push runs are resident 37052049349, foundation 37052049472 and browser 37052049231; they are pending/in progress, not acceptance. The separate diagnostic foundation run 37049156156 remains independent. Evidence: `test-results/resident-ci-staging/clock-combined/` and `test-results/resident-ci-staging/resident-475-terminal/`.
+
+MVP remains incomplete. Fresh native Clock execution and resident recovery, real Cloud/Gmail/voice journeys, physical alarm/audio behavior, full signed AOSP boot and device/user acceptance remain distinct gates. The prior owned Alpha Pixel emulator was absent at the last inventory; other product emulators were not used.
+
+## Prior checkpoints — Build155 and Build156 preparation
 
 Product `a061608` removes deferred Phone/Messages/Contacts offers from development-agent schema and transport validation while preserving browser development simulation. Actual handler-to-approval-to-dispatch flows pass for supported views; deferred injection, stale context and replay reject. Product `e4c2537` gates mock entry and cold startup on both native notification and hosted-delivery pause barriers, including original-session retirement, with accessible pending/error/retry states. Fourteen rendered flows and exact repository verification pass (17.43seconds,3656 product files unchanged, clean pinned vendor). These two fixes still require current native qualification. Evidence: `test-results/mvp-deferred-discovery-staged/` and `test-results/mock-background-admission-fix/`.
 
