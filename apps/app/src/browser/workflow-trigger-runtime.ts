@@ -1,3 +1,4 @@
+import {isFocusWorkflow} from './workflow-focus';
 import {detectWorkflowTriggers,triggerDefinition,type TriggerCursor,type TriggerOccurrence,type TriggerSnapshot} from './workflow-triggers';
 import {registerPlugin} from '../platform-plugins';
 import {readLocationSimulation} from './location-simulation';
@@ -32,7 +33,7 @@ export async function hydrateTriggerJob(job:TriggerJob,api:Bag,signal:AbortSigna
  return {input,messages,mail,event:source.kind==='event'?structuredClone(row):undefined};
 }
 const workflowUsesAgent=(flow:Bag)=>flow.steps.some((step:Bag)=>step.k==='Write'&&step.t.toLowerCase()!=='a note in notes'||step.k==='Notify'&&step.t.toLowerCase()==='a notification, only if urgent');
-export function workflowNeedsReview(flow:Bag,connected=false){return flow.steps.some((step:Bag)=>step.k==='Speak'&&!['read it aloud','speak it when i pick up the phone'].includes(step.t.toLowerCase())||!connected&&step.k==='Write'&&step.t.toLowerCase()!=='a note in notes'||step.k==='Notify'&&step.t.toLowerCase()!=='a notification'&&(!connected||step.t.toLowerCase()!=='a notification, only if urgent')||step.k==='Do'&&/attachment|amount/i.test(step.t)||step.k==='If'&&/not at home/i.test(step.t));}
+export function workflowNeedsReview(flow:Bag,connected=false){if(isFocusWorkflow(flow))return false;return flow.steps.some((step:Bag)=>step.k==='Speak'&&!['read it aloud','speak it when i pick up the phone'].includes(step.t.toLowerCase())||!connected&&step.k==='Write'&&step.t.toLowerCase()!=='a note in notes'||step.k==='Notify'&&step.t.toLowerCase()!=='a notification'&&(!connected||step.t.toLowerCase()!=='a notification, only if urgent')||step.k==='Do'&&/attachment|amount/i.test(step.t)||step.k==='If'&&/not at home/i.test(step.t));}
 /** The caller supplies the existing simulator writer lease and atomic run-claim operation. */
 export class WorkflowTriggerRuntime {
  private timer?:ReturnType<typeof setInterval>;private scanning=false;private stopped=false;private blocked=false;private api?:()=>Bag;private ready?:()=>boolean;

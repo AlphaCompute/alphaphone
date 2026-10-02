@@ -1378,3 +1378,17 @@ Added a shared browser lock-control visibility check that examines every matchin
 All 105 related browser cases passed: notifications, hosted results, location, Clock, local transcript review, workflow result/urgency/receipt review and the new edge-case regression. Failed and passing controls are retained under `test-results/browser-foreground-review/`. These browser DOM checks do not establish physical Android lock-screen acceptance.
 
 Repository verification passed 114 tests, TypeScript and the web build. Hosted checks for this checkpoint remain pending; Android builds were skipped.
+
+## Calendar-bound browser focus workflow (October 2)
+
+Implemented the development deep-work workflow: an active Calendar block owns a temporary focus policy, incoming Maya messages can appear, other arrivals are retained for the end summary, and the supported end notification contains the supplied/generated summary. Focus policy is separate from manual Do Not Disturb, so cancellation or expiry cannot undo the user's manual setting. Overlapping runs retain their independent ownership and deduplicate the allowed message. Reload retires the old policy and marks its run interrupted rather than replaying a summary. Calendar deletion, workflow edits and disabling release focus. Offline summary input waits until the owner opens the workflow; connected summary generation follows the existing agent path.
+
+Review reproduced and corrected two issues: sent mail was treated as missed incoming activity, and malformed workflow storage propagated exceptions into otherwise independent device-state reads. Outgoing mail is excluded. An unreadable focus policy now cannot own device state, while its source bytes remain available for recovery. The first summary test also used a text-content assertion for a textarea; it now checks the actual input value.
+
+All 84 integrated browser cases passed, including eight focus cases and existing concurrency, trigger, notification, Clock, executor and simulator-recovery cases. Original failures and the final campaign are retained in `test-results/workflow-focus-review/`. This qualifies the local development workflow and reviewed offline summary; it does not establish real incoming provider delivery, physical Android focus enforcement, closed-browser scheduling or live-model focus-summary acceptance.
+
+Repository verification passed 114 tests, TypeScript and the web build. Hosted verification remains pending. Android builds remain skipped.
+
+Before publication, incorporated the newer focus-policy epoch recheck after asynchronous source reads and workflow-definition validation while waiting for summary review. The combined frozen candidate passed **89 browser cases, including 13 focus cases**, with coverage for external notification revocation, connected fixture summary timing, lock redaction, Calendar edits and failed focus-intent persistence. The phone-width summary-review screenshot was inspected; all fields and actions remain within the viewport. The earlier 84-case run remains historical evidence for the initial candidate.
+
+Combined-candidate repository verification also passed all 114 tests, TypeScript and web build.
