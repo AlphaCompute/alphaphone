@@ -3518,18 +3518,21 @@ function ctSave(api) {
   if (s.edit) {
     api.set({ list: l.map(function (x) { return x.id === s.edit ? ctMake(Object.assign({}, x, clean)) : x; }), edit: null, add: null, form: null, open: s.edit });
   } else {
-    var np = ctMake(Object.assign({ id: (clean.first || clean.last || "c").toLowerCase().replace(/\W/g, "") + (Date.now() % 100000), fav: false }, clean));
+    var np = ctMake(Object.assign({ id: "contact-" + crypto.randomUUID(), fav: false }, clean));
     api.set({ list: l.concat([np]), edit: null, add: null, form: null, open: np.id, q: "" });
   }
   api.toast("Saved");
   return true;
 }
 function ctDeleted(api, p, idx) {
-  api.toast(p.name + " deleted", { undo: function () {
-    var l = ctList(api).slice(); l.splice(idx < 0 ? l.length : Math.min(idx, l.length), 0, p);
-    api.setView("contacts", { list: l });
+  var restore = function () {
+    var l = ctList(api).slice();
+    if (!ctGet(l, p.id)) l.splice(idx < 0 ? l.length : Math.min(idx, l.length), 0, p);
+    try { api.setView("contacts", { list: l }); }
+    catch (error) { api.toast("Contact could not be restored. Try Undo again.", { undo: restore }); return; }
     if (api.isActive()) api.setView("contacts", { open: p.id });
-  } });
+  };
+  api.toast(p.name + " deleted", { undo: restore });
 }
 
 registerView("contacts", {
@@ -3567,7 +3570,7 @@ registerView("contacts", {
       var name = raw.replace(em, "").replace(ph, "").replace(/^.*?\bcontact\b\s*(for|named|called)?\s*/i, "").replace(/\b(with|number|phone|email|at|and)\b/gi, " ").replace(/[^A-Za-z' -]/g, " ").replace(/\s+/g, " ").trim();
       if (!name && !ph) return { text: "Opening a new contact.", nav: { view: "contacts", patch: { add: true, open: null } } };
       var parts = name.split(" ").filter(Boolean).map(function (w) { return w.charAt(0).toUpperCase() + w.slice(1); });
-      var np = ctMake({ id: (parts[0] || "c").toLowerCase().replace(/\W/g, "") + (Date.now() % 100000), first: parts[0] || "", last: parts.slice(1).join(" "), phone: ph && typeof pnFmt === "function" ? pnFmt(ph) : ph.trim(), email: em, address: "", birthday: "", note: "", fav: false });
+      var np = ctMake({ id: "contact-" + crypto.randomUUID(), first: parts[0] || "", last: parts.slice(1).join(" "), phone: ph && typeof pnFmt === "function" ? pnFmt(ph) : ph.trim(), email: em, address: "", birthday: "", note: "", fav: false });
       return { text: "Saved " + np.name + ".", card: { type: "generic", icon: "user", title: np.name, sub: np.phone || np.email || "No number yet", go: { view: "contacts", patch: { open: np.id } } },
         then: function () { api.setView("contacts", { list: ctList(api).concat([np]) }); } };
     }
