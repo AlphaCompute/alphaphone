@@ -3,7 +3,7 @@
 Latest full integration checkpoint: **454/454 browser tests** on committed `18969d2`, covering all browser tests then present. See [October 2 simulator integration and reminder-time review](#october-2--simulator-integration-and-reminder-time-review). Pending shared-checkout changes remain outside this evidence. The MVP goal remains open.
 
 
-Latest targeted checkpoint: [Host model selection](#october-2--host-model-selection): actual-launcher model/profile regression, 91 repository tests, TypeScript and web build passed. Real workflow UI evidence remains in the preceding section.
+Latest targeted checkpoint: [Workflow Notes and notification actions](#october-2--workflow-notes-and-notification-actions): durable Notes writes/reads, retained notification receipts, cancellation at the storage boundary, 42 affected browser checks and 91 repository tests.
 
 October 1 architecture change: the user has selected an **Android-resident agent instead of Nitro/TEE hosting**. The [on-device agent plan](on-device-agent-plan.md) supersedes cloud-only and enclave-primary requirements below. Agent execution and model inference are separate: the current implementation runs orchestration locally and uses hosted Cerebras inference. Historical evidence is retained. Powered-off-phone execution needs explicit scope reconciliation.
 
@@ -1145,3 +1145,16 @@ The pending shared model default is integrated across the development, local app
 Three regression cases execute the real local app-host launcher with a temporary Git source/profile, synthetic key and recording child process. They verify new-profile selection, distinct saved small/large models without rewriting the profile, and refusal of malformed/conflicting overrides before any child starts. The uncorrected pending launchers fail the regression; the final snapshot passes **91/91 repository tests**, TypeScript, production web build and launcher syntax checks. Evidence/source manifests are in `test-results/model-selection-review/`. No model-provider call, Android build or new device acceptance is claimed. Historical provider discovery evidence in the agent integration document is not replaced by current defaults.
 
 Remaining work includes the concurrent generative local-workflow and redaction changes, full real-agent/provider execution journeys, deep saved-state validation, Scan correction/searchable PDF, browser media qualification, research review and native/device/user acceptance. The full goal remains active.
+
+
+## October 2 — Workflow Notes and notification actions
+
+Development workflows can read the durable Notes store and save an explicit Note step using the normal persistence path. Step IDs bind receipts to exact content: replay returns the same saved note, changed content under the same ID is rejected, failed saves do not record a completed step, and a newer Notes revision is preserved. This stores supplied prior-step output; generative summaries still require the separate connected-agent implementation.
+
+Notify steps retain their exact text and operation identity in a browser notification journal. Notices appear in the normal shade, open Workflows, and retain opened/dismissed state across reload and matching replay. Locked/background views redact content and refuse actions; disabled delivery refuses both open and dismiss. These are browser-local notifications, not evidence of physical Android/background delivery.
+
+A targeted regression reproduced cancellation after notification preparation but before the actual storage write. The shared browser store accepts an optional cancellation signal, checks it before work and immediately before commit, and passes it to the Web Lock request so queued cancellation settles without waiting for the lock holder. Existing callers keep their prior behavior. The failing pre-repair result saved a notice after cancellation; the repaired test leaves storage untouched.
+
+The corrected affected subset passed **42/42 browser checks** across workflow execution, notifications/queue behavior and Notes save recovery. The first broader run passed 39 checks and failed one new UI test because it expected an external-notification combined label for an own notification; the assertion now follows the real separate title/body markup. **91/91 repository tests**, TypeScript and production web build passed. Evidence, original failures and source manifests are in `test-results/workflow-actions-review/`. The four additional concurrently supplied notification cases also passed (**4/4**), covering retained/opened replay, queued cancellation, shade Clear all and failed persistence.
+
+The notification journal is bounded at 200 retained receipts and currently has no archive/export UI; it refuses additional publication at capacity. Deep saved-record validation, generative workflow steps, real-agent/provider acceptance, redaction integration, Scan correction/searchable PDF and native/device/user acceptance remain open. Concurrent runtime and research changes remain outside this checkpoint. Android builds remain skipped; the full MVP goal remains active.
