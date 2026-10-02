@@ -729,6 +729,7 @@
     </sc-if>
   </div>
 
+  <sc-if value="{{calendar.reminderCreateUnknown}}"><div role="status" style="padding:12px;color:var(--mut)">{{calendar.reminderCreateUnknown}} new reminder(s) await confirmation.<button class="tap" aria-label="Check new reminder status" onClick="{{calendar.checkReminderCreations}}" style="padding:8px;color:var(--acc)">Check new reminder status</button></div></sc-if>
   <sc-if value="{{calendar.reminderDeleteUnknown}}"><div role="status" style="padding:12px;color:var(--mut)">{{calendar.reminderDeleteUnknown}} reminder action(s) await confirmation.<button class="tap" aria-label="Check reminder action status" onClick="{{calendar.checkReminderDeletions}}" style="padding:8px;color:var(--acc)">Check action status</button></div></sc-if>
   <sc-if value="{{calendar.clock}}" hint-placeholder-val="{{false}}">
     <div role="dialog" aria-modal="true" aria-label="Clock alarms" style="position:absolute;inset:0;z-index:35;background:var(--bg);display:flex;flex-direction:column;padding:{{calendar.clock.topPadding}} 24px 120px;overflow:auto;box-sizing:border-box">
@@ -743,6 +744,7 @@
     </div>
   </sc-if>
   <sc-if value="{{calendar.browserRecovery}}" hint-placeholder-val="{{false}}"><button aria-label="Recover browser calendar" onClick="{{calendar.openBrowserRecovery}}" style="margin:0 16px 8px;padding:12px;border-radius:12px;background:var(--s2);color:var(--fg)">Calendar recovery</button></sc-if>
+  <sc-if value="{{calendar.creationRecovery}}" hint-placeholder-val="{{false}}"><div role="status" style="margin: 0 16px 8px; padding: 12px; border-radius: 12px; background: var(--s2); font-size: 13px"><p>{{calendar.creationRecoveryText}}</p><button onClick="{{calendar.checkCreations}}" style="padding: 8px">Check event creation receipts</button><button onClick="{{calendar.separateCreation}}" style="padding: 8px">Create a separate event</button></div></sc-if>
   <sc-if value="{{calendar.nativeStatusLabel}}" hint-placeholder-val="{{false}}"><button aria-label="Retry calendar and reminders" onClick="{{calendar.nativeStatusRetry}}" style="margin: 0 16px 8px; padding: 10px 12px; border-radius: 12px; background: var(--s2); color: var(--fg); text-align: left; font-size: 13px">{{calendar.nativeStatusLabel}}</button></sc-if>
   <div style="display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); padding: 4px 12px 8px; flex-shrink: 0">
     <sc-for list="{{calendar.week}}" as="w" hint-placeholder-count="7">
@@ -1969,6 +1971,7 @@
 
 <sc-if value="{{is.notes}}" hint-placeholder-val="{{false}}">
 <div class="notes-layout" style="display: flex; flex-direction: column; height: 100%; position: relative; padding-top: 44px; box-sizing: border-box">
+  <sc-if value="{{notes.audioDeletionUnknown}}"><div role="status" style="padding:8px 24px;font-size:13px">Voice note deletion needs review. No deletion will be repeated.<button class="tap" onClick="{{notes.checkAudioDeletion}}">Check deletion status</button><sc-for list="{{notes.audioDeletionPending}}" as="pending"><div>{{pending.title}} <button class="tap" onClick="{{pending.restore}}">Restore note and recording</button></div></sc-for></div></sc-if>
   <sc-if value="{{notes.storageStatus}}"><div class="notes-storage-status" role="status" aria-live="polite" style="flex-shrink:0;padding:0 24px 6px;font-size:12px;line-height:16px;color:var(--mut);overflow-wrap:anywhere">{{notes.storageStatus}}</div></sc-if>
   <div class="notes-workspace" style="position:relative;display:flex;flex-direction:column;flex:1;min-height:0">
   <sc-if value="{{notes.notSearching}}" hint-placeholder-val="{{true}}">

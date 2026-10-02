@@ -1,5 +1,5 @@
 import {browserMediaVolume} from './audio-settings';
-import {audioRecord,audioMetadata,retainAudio,changeAudioDeleted,migrateAudio} from './note-audio-store';
+import {audioRecord,audioMetadata,retainAudio,changeAudioDeleted,audioDeletionStatus,migrateAudio} from './note-audio-store';
 import { BrowserTranscriptReview } from './transcript-review';
 import { BrowserAudioCapture } from './audio-capture';
 import { WebPlugin } from '@capacitor/core';
@@ -108,8 +108,9 @@ export class BrowserVoice extends WebPlugin {
  }
  async describe(input:{audioId:string}){return audioMetadata(await audioRecord(input.audioId,true));}
  migrationStatus(){return migrateAudio();}
- async remove(input:{audioId:string;noteId:string}){await changeAudioDeleted(input.audioId,input.noteId,true);if([this.audioId,this.pendingAudioId].includes(input.audioId))await this.stopPlayback();this.audioChanges?.postMessage({audioId:input.audioId,deleted:true});}
- async restore(input:{audioId:string;noteId:string}){await changeAudioDeleted(input.audioId,input.noteId,false);}
+ async deletionStatus(input:{audioId:string;noteId:string;operationId:string}){return audioDeletionStatus(input.audioId,input.noteId,input.operationId);}
+ async remove(input:{audioId:string;noteId:string;operationId:string}){const result=await changeAudioDeleted(input.audioId,input.noteId,true,input.operationId);if(result.status==='removed'){if([this.audioId,this.pendingAudioId].includes(input.audioId))await this.stopPlayback();this.audioChanges?.postMessage({audioId:input.audioId,deleted:true});}return result;}
+ async restore(input:{audioId:string;noteId:string;operationId:string}){return changeAudioDeleted(input.audioId,input.noteId,false,input.operationId);}
  async cancel(){this.transcript.cancel();this.capture.cancel();await this.stopPlayback();}
  async releaseLocalSpeech(){await this.cancel();this.speech.clear();this.capture.clear();}
 }

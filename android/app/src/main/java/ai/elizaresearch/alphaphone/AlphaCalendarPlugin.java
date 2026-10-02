@@ -193,6 +193,14 @@ public class AlphaCalendarPlugin extends Plugin {
   Uri inserted=getContext().getContentResolver().insert(uri,v);if(inserted==null)throw new IllegalStateException("Calendar insert returned no URI");return ContentUris.parseId(inserted);
  }
  private boolean writable(long id){try(Cursor row=getContext().getContentResolver().query(ContentUris.withAppendedId(CalendarContract.Calendars.CONTENT_URI,id),new String[]{CalendarContract.Calendars.CALENDAR_ACCESS_LEVEL},null,null,null)){return row!=null&&row.moveToFirst()&&row.getInt(0)>=CalendarContract.Calendars.CAL_ACCESS_CONTRIBUTOR;}}
+ @PluginMethod public void pendingCreations(PluginCall c){
+  if(!allowed()){status(c,"permission-required");return;}
+  try{c.resolve(CalendarCreationStore.pendingCreations(getContext()));}catch(Exception unavailable){c.reject("Calendar creation recovery unavailable. Nothing was retried.");}
+ }
+ @PluginMethod public void acknowledgeCreation(PluginCall c){
+  if(!allowed()){status(c,"permission-required");return;}
+  try{CalendarCreationStore.acknowledge(getContext(),c.getString("creationId"));status(c,"acknowledged");}catch(Exception unavailable){c.reject("Calendar creation receipt could not be acknowledged.");}
+ }
  @PluginMethod public synchronized void save(PluginCall c){
   if(!allowed()){status(c,"permission-required");return;}
   String title=c.getString("title",""),body=c.getString("body",""),location=c.getString("location",""),calendar=c.getString("calendarId","local"),id=c.getString("id","");
@@ -205,7 +213,7 @@ public class AlphaCalendarPlugin extends Plugin {
    ContentValues values=new ContentValues();values.put(CalendarContract.Events.TITLE,title.trim());values.put(CalendarContract.Events.DESCRIPTION,body);values.put(CalendarContract.Events.EVENT_LOCATION,location);values.put(CalendarContract.Events.DTSTART,begin);values.put(CalendarContract.Events.DTEND,end);values.put(CalendarContract.Events.EVENT_TIMEZONE,TimeZone.getDefault().getID());
    values.put(CalendarContract.Events.CALENDAR_ID,calendarId);
    Uri uri;
-   if(id.isEmpty())uri=getContext().getContentResolver().insert(CalendarContract.Events.CONTENT_URI,values);
+   if(id.isEmpty()){c.resolve(CalendarCreationStore.create(getContext(),c.getString("creationId"),values,Boolean.TRUE.equals(c.getBoolean("separateCreation"))));return;}
    else {
     long eventId=Long.parseLong(id);if(eventId<=0)throw new IllegalArgumentException();
     JSObject expected=c.getObject("expected");
