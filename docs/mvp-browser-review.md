@@ -1,6 +1,6 @@
 # MVP implementation and design review — updated October 2, 2026
 
-Latest integrated browser checkpoint: **245/245 browser tests and 82/82 repository tests** on October 2. See [the integrated report and remaining work](#october-2--integrated-browser-runtime-device-and-media-review) below. Earlier entries are historical evidence for their stated snapshots. The MVP goal remains open.
+Latest full integration checkpoint: **245/245 browser tests and 82/82 repository tests** at `a9845d0` on October 2. Subsequent targeted corrections are recorded below. See [the integrated report and remaining work](#october-2--integrated-browser-runtime-device-and-media-review) below. Earlier entries are historical evidence for their stated snapshots. The MVP goal remains open.
 
 Latest browser checkpoint: [Notes status layout](#notes-storage-status-layout--2026-10-02). Evidence below is scoped to its recorded revision; newer implementation checkpoints supersede earlier unavailable-feature statements only for the capabilities explicitly verified. The MVP remains incomplete.
 
@@ -556,3 +556,42 @@ remain in the shared checkout; they are not certified by the frozen 245-case run
 The complete MVP/design goal remains active. This checkpoint synchronizes qualified
 browser implementation; it does not claim that every implementation or acceptance
 item is finished.
+
+
+## October 2 — recover damaged simulator storage without losing other apps
+
+The separate startup probe from the integration review is now fixed. Browser dev
+simulators previously parsed saved app JSON without a guard; one malformed Inbox
+record prevented the whole shell from rendering. Each simulator now loads only its
+persisted fields and validates saved root/container types before installing them.
+Malformed JSON, oversized records, unknown saved fields, incompatible lists/maps and
+unreadable storage isolate that app for recovery. The original record is retained;
+other apps and Home remain usable. Attempts to open or write the affected app enter
+recovery instead of overwriting its original data with examples.
+
+The Saved app recovery dialog is available through Device controls and when opening
+a damaged app. It downloads the captured original data, then offers a separate
+explicit reset confirmation for that app. Before removal it checks that the saved
+value still matches the captured record. Changed values and failed/unconfirmed
+removals retain actionable recovery guidance; unreadable records cannot be reset or
+exported. Reset reloads the shell and preserves the other app records. The dialog
+supports Back, returns focus, and opens at its explanation rather than scrolling to
+the last control. Compact 360×640 light and dark layouts were visually inspected.
+
+Verification: **14/14** focused Chromium cases passed (four new recovery journeys and
+ten existing browser parity cases), plus **82/82** repository tests, typecheck and
+production build. Tests verify actual backup download contents, attempted writes to
+blocked apps, all six incompatible simulator records, healthy Contacts access,
+reload, explicit reset, replacement detection, failed removal and unreadable storage.
+Restoring the original startup loader makes the new malformed-data regression fail.
+Evidence is retained under `test-results/simulator-recovery/` with logs, screenshots
+and source hashes. This is a targeted follow-up to the full 245-case integration;
+it is not a claim that that entire suite was rerun on this correction. Android builds
+remain skipped.
+
+This closes the reproduced malformed-JSON startup crash and incompatible-container
+cases. Complete nested record-schema validation, ordinary simulator mutation failure
+and cross-tab behavior, and the remaining Inbox/workflow/call/message/contact/wallet
+action matrix still require review. Concurrent Clock changes remain separate local
+work pending their own qualification and synchronization. The broader MVP goal is
+still active.

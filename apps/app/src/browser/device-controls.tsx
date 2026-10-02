@@ -1,3 +1,5 @@
+import {browserDevProfile} from './dev-profile';
+import {showSimulatorRecovery} from './simulator-recovery';
 import { useEffect, useRef, useState } from 'react';
 import { registerPlugin } from '../platform-plugins';
 type Command='home'|'back'|'power'|'unlock'|'boot'|'assistant'|'shade'|'background'|'resume';
@@ -10,6 +12,7 @@ export function BrowserDeviceControls({command}:{command:(command:Command)=>void
  <h2>Device controls</h2><div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
  {([['home','Home'],['back','Back'],['power','Power'],['unlock','Unlock'],['boot','Restart'],['assistant','Assistant'],['shade','Notifications'],['background','Background'],['resume','Resume']] as [Command,string][]).map(([action,label])=><button key={action} onClick={()=>run(action)}>{label}</button>)}
  <button onClick={()=>location.reload()}>Reload app</button>
+ {browserDevProfile&&<button onClick={()=>{dialog.current?.close();showSimulatorRecovery();}}>Saved app recovery</button>}
  <button onClick={()=>{dialog.current?.close();void registerPlugin<{compose():Promise<void>}>('AlphaNotifications').compose();}}>Post notification</button>
  {['home','assistant','dialer','sms'].map(value=><button key={value} onClick={()=>{void registerPlugin<{requestRole(input:{role:string}):Promise<unknown>}>('ElizaSystem').requestRole({role:value}).then(()=>setRole(`${value} selected`));}}>Use as {value}</button>)}
  </div><p role="status">{role}</p><button onClick={()=>dialog.current?.close()}>Done</button>
