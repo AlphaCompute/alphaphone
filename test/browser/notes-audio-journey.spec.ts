@@ -4,7 +4,7 @@ test('Notes records, reviews, saves, reloads, plays and restores the same retain
  await page.goto('/');
  await page.evaluate(async()=>{
   const ctx=new AudioContext(),osc=ctx.createOscillator(),gain=ctx.createGain(),sink=ctx.createMediaStreamDestination();gain.gain.value=0;osc.connect(gain);gain.connect(sink);osc.start();await ctx.resume();
-  Object.defineProperty(navigator.mediaDevices,'getUserMedia',{value:async()=>sink.stream,configurable:true});(window as any).fixture={ctx,osc};
+  Object.defineProperty(navigator,'mediaDevices',{value:{getUserMedia:async()=>sink.stream},configurable:true});(window as any).fixture={ctx,osc};
  });
  await page.getByRole('button',{name:'Notes',exact:true}).click();
  await page.getByRole('button',{name:'Record and transcribe',exact:true}).click();

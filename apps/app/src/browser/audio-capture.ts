@@ -32,7 +32,8 @@ export class BrowserAudioCapture {
   const stream=await microphone.open();
   if(generation!==this.generation||document.hidden){microphone.close();stream.getTracks().forEach(track=>track.stop());throw cancelled();}
   try {
-   const recorder=new MediaRecorder(stream),id=crypto.randomUUID();let resolve!:(blob:Blob)=>void,reject!:(error:Error)=>void;
+   const mimeType=['audio/webm;codecs=opus','audio/ogg;codecs=opus','audio/mp4'].find(type=>MediaRecorder.isTypeSupported(type));
+   const recorder=new MediaRecorder(stream,mimeType?{mimeType}:undefined),id=crypto.randomUUID();let resolve!:(blob:Blob)=>void,reject!:(error:Error)=>void;
    const done=new Promise<Blob>((yes,no)=>{resolve=yes;reject=no;});void done.catch(()=>{});
    const session:Session={id,generation,stream,recorder,started:Date.now(),done,reject,settled:false};
    this.current=session;const chunks:Blob[]=[];let bytes=0;
