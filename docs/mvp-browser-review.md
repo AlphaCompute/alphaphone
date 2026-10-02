@@ -636,3 +636,43 @@ Clock snapshot. Its remaining work includes visibility/color settings, richer ev
 fields/recurrence/alerts, exact multi-day/all-day/DST editing and selected-event
 navigation. The simulator action/schema matrix and live/device acceptance gates also
 remain open; the full MVP goal remains active.
+
+
+## October 2 — Calendar preferences, date editing and exact navigation
+
+Browser Calendar visibility and color now persist atomically, update the rendered
+agenda, and synchronize across tabs. Failed writes keep the saved preference and
+show retry guidance. Hiding a calendar changes presentation without deleting events
+or changing the agent's selected source identity.
+
+All-day, multi-day and daylight-saving-spanning events have a browser editor with
+explicit time zone, inclusive all-day end dates, revision checks and cancellation.
+Unchanged repeated clock times retain their original occurrence; edited ambiguous
+times use the first occurrence, and nonexistent civil times require correction.
+The editor preserves event metadata and reload persistence. Recurrence and event
+alert delivery remain separate unfinished work.
+
+Opening an event by ID loads its actual date and selects its detail, including an
+explicit request for a hidden-calendar event. Returning to the agenda preserves the
+hidden preference. Missing events reject the request, and delayed navigation is
+cancelled when the user leaves Calendar. Successful assistant mutations refresh the
+Calendar after the action journal finish and receipt attempt.
+
+Qualification used an isolated snapshot based on `6db9306`:
+
+- **26/26** browser journeys: preferences, complex dates, exact event navigation,
+  assistant create/cancel/read/update/delete and existing browser parity.
+- **82/82** repository tests, typecheck and production web build.
+- Existing native Calendar CRUD and delayed-query adapter fixtures passed in the
+  host; these use synthetic platform boundaries.
+- The exact future-event navigation regression fails against the original browser
+  Calendar implementation. The verified source was restored afterward.
+- The editor screenshot was inspected at 412 × 915. Evidence and SHA-256 source
+  manifest are retained in `test-results/calendar-sync/`.
+
+The first incomplete snapshot failed because the imported editor file was missing;
+its failure is superseded by the complete-source results above. No Android build
+ran in this synchronization pass. Live-agent acceptance, Calendar recurrence,
+invitations/video/alerts, reminder assistant journeys, simulator mutation/schema
+coverage and the broader provider/device acceptance ledger remain open. The latest
+full browser-suite checkpoint remains `a9845d0`; this is a targeted qualification.

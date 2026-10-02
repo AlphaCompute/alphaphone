@@ -282,3 +282,23 @@ and **82** repository tests, typecheck and build. The built-web Clock handoff fi
 also passed in Chromium with simulated native transport. See the corresponding
 October 2 section of [the MVP report](mvp-browser-review.md) for boundaries and
 remaining Calendar editor work. No Android build ran in this synchronization pass.
+
+
+### Complex browser Calendar editing (15)
+
+Browser multi-day, all-day and daylight-saving-spanning events now open an accessible browser editor instead of the Android Calendar handoff. The editor keeps the saved IANA time zone, exact original instants (including the second occurrence of an overlapping clock time), description and location. Users can edit start/end dates, title, description, location, time zone and all-day status. All-day end dates are inclusive in the editor and remain exclusive UTC boundaries in storage. Edited ambiguous clock times choose the earlier occurrence; nonexistent civil times are rejected for correction.
+
+The save locks and checks the original event revision before replacing that row, preserves other event metadata and assigns a new revision. Cancellation, Back, hiding the page and device lifecycle events retire the dialog; a retired editor cannot begin a queued write. Failed/stale writes retain input and display recovery guidance. This does not implement recurring series editing or event-alert delivery; those gates remain open.
+
+Research: browser `datetime-local` inputs contain no time-zone field and can accept civil times that fall in a daylight-saving gap ([MDN datetime-local](https://developer.mozilla.org/en-US/docs/Web/HTML/Reference/Elements/input/datetime-local)). The browser editor therefore resolves input against its explicit saved zone and validates it separately from the HTML control.
+
+Checkpoint 15 verification: **11/11** isolated integrated Calendar scenarios and **4/4** strengthened final editor scenarios passed, including changed all-day/multi-day end dates, exact overlap preservation, DST-gap rejection, stale-save rejection, cancellation and reload. Root verification passed **82/82**, typecheck and web build; standalone/launcher debug and unsigned-release Android packaging passed. The dialog was visually inspected. Logs, screenshot, source/APK hashes and drift are retained in `test-results/browser-dev-parity/checkpoint-15/`. No emulator HOME-role, AOSP image boot or physical-device acceptance is implied; the remaining parity ledger keeps the goal active.
+
+
+### Exact Calendar event navigation (16)
+
+Browser `AlphaCalendar.open({id})` now resolves the persisted event, moves Calendar to its civil date, loads the required month range, and selects that exact provider record. Missing records are rejected. An absent/retired surface or a user navigation that supersedes the request returns cancelled rather than reporting a successful open. The async selection checks surface ownership, request order, page visibility, current view and selected day after loading.
+
+Explicit event navigation can show an event from a hidden calendar without altering its visibility preference; returning to the day view still hides its events. Future and all-day destinations use their correct local/civil dates. Successful assistant Calendar mutations publish a refresh event only after the action journal finish and receipt attempt, avoiding a pre-journal context change. Read-only and failed actions do not trigger that refresh. This completes the browser provider's exact event-open route and post-mutation refresh; it does not close the remaining recurrence, event-alert or reminder-assistant gates.
+
+Checkpoint 16 verification: all **16/16** isolated Calendar navigation/editor/preferences/assistant scenarios passed, including navigation away while a range load is pending. Root verification passed **82/82**, typecheck and production build; both standalone/launcher debug and unsigned-release Android packaging completed successfully. Evidence, source/APK hashes and changed/added drift are retained in `test-results/browser-dev-parity/checkpoint-16/`. These remain browser and packaging results; the broader goal stays active.

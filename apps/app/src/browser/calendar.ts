@@ -1,9 +1,10 @@
+import { editCalendarEvent } from './calendar-editor';
 import { BrowserReviews } from './review';
 import { validateCalendarOperation, type CalendarFields, type CalendarResult } from '../runtime/calendar-contract';
 import { WebPlugin } from '@capacitor/core';
 import { editStore, readStore, revision } from './store';
 type EventRow={id:string;calendarId:string;title:string;body:string;location:string;begin:number;end:number;revision:string;allDay?:boolean;timeZone?:string};
-type State={sourceRevision:string;events:EventRow[];receipts?:Record<string,{binding:string;result:CalendarResult}>};
+type State={preferences?:{visible:boolean;color:'acc'|'fg'|'mut'};sourceRevision:string;events:EventRow[];receipts?:Record<string,{binding:string;result:CalendarResult}>};
 const key='alpha.browser.calendar.v1',initial=():State=>({sourceRevision:revision(),events:[]});
 const source={id:'local',name:'Browser calendar',account:'Alpha Phone',local:true,writable:true};
 const matches=(row:EventRow,expected:Partial<EventRow>|undefined)=>!!expected&&(['title','body','location','begin','end'] as const).every(k=>row[k]===expected[k]);
@@ -49,10 +50,28 @@ ${reviewed.description}`);
       });
     } finally {if(this.active.get(input.operationId)===ticket)this.active.delete(input.operationId);}
   }
+  async changePreferences(input:{action:'visibility'|'color'}) {
+    if(!['visibility','color'].includes(input.action))throw Error('Invalid calendar preference.');
+    const result=await editStore(key,initial,data=>{
+      const preferences=data.preferences??={visible:true,color:'acc'};
+      if(input.action==='visibility')preferences.visible=!preferences.visible;
+      else {const colors=['acc','fg','mut'] as const;preferences.color=colors[(colors.indexOf(preferences.color)+1)%colors.length];}
+      return {...preferences};
+    });
+    window.dispatchEvent(new Event('alpha:calendar-preferences'));
+    return result;
+  }
+  async edit(input:{id:string;revision:string}) {
+    const row=readStore(key,initial).events.find(e=>e.id===input.id);
+    if(!row||row.revision!==input.revision)throw Error('This event changed. Reopen it before editing.');
+    return editCalendarEvent(row,async(next,current)=>{
+      await editStore(key,initial,data=>{if(!current())throw Error('Editing cancelled.');const index=data.events.findIndex(e=>e.id===input.id);if(index<0||data.events[index].revision!==input.revision)throw Error('This event changed. Reopen it before editing.');data.events[index]={...data.events[index],...next,revision:revision()};});
+    });
+  }
   async requestAccess(){return {status:'granted'};}
   async requestWorkflowReadAccess(){return {status:'granted'};}
   async workflowCalendars(){return {status:'ready',calendars:[source]};}
-  async list(input:{begin:number;end:number}) {return editStore(key,initial,data=>({status:'ready',calendars:[source],events:data.events.filter(e=>e.begin<input.end&&e.end>input.begin),truncated:false}));}
+  async list(input:{begin:number;end:number}) {return editStore(key,initial,data=>({status:'ready',calendars:[{...source,...(data.preferences??{visible:true,color:'acc'})}],events:data.events.filter(e=>e.begin<input.end&&e.end>input.begin),truncated:false}));}
   async prepareAgentSource(){return editStore(key,initial,data=>({status:'ready',sourceId:'local',sourceRevision:data.sourceRevision}));}
   async save(input:Partial<EventRow>&{expected?:Partial<EventRow>}) {
     if(!input.title?.trim()||!Number.isFinite(input.begin)||!Number.isFinite(input.end)||input.end!<=input.begin!||input.calendarId!=='local')throw Error('Review the event title, calendar and dates.');
@@ -66,5 +85,11 @@ ${reviewed.description}`);
   async inspect(input:{id:string;calendarId:string;expected?:Partial<EventRow>}) {const data=readStore(key,initial),row=data.events.find(e=>e.id===input.id&&e.calendarId===input.calendarId);return row&&matches(row,input.expected)?{status:'ready',revision:row.revision,sourceRevision:data.sourceRevision}:{status:'conflict'};}
   async remove(input:{id:string;calendarId:string;expected:Partial<EventRow>;revision:string}) {return editStore(key,initial,data=>{const row=data.events.find(e=>e.id===input.id&&e.calendarId===input.calendarId);if(!row||row.revision!==input.revision||!matches(row,input.expected))return {status:'conflict'};data.events=data.events.filter(e=>e!==row);return {status:'deleted'};});}
   async readWorkflowRange(input:{calendarIds:string[];start:string;end:string;maximumEvents:number}) {const {events}=await this.list({begin:Date.parse(input.start),end:Date.parse(input.end)});return {status:'ready',events:events.filter(e=>input.calendarIds.includes(e.calendarId)).slice(0,input.maximumEvents).map(e=>({...e,start:new Date(e.begin).toISOString(),end:new Date(e.end).toISOString(),allDay:!!e.allDay}))};}
-  async open(){window.dispatchEvent(new CustomEvent('alpha:browser-open-view',{detail:'calendar'}));return {status:'opened'};}
+  async open(input?:{id?:string}){
+    const row=input?.id?readStore(key,initial).events.find(e=>e.id===input.id):undefined;
+    if(input?.id&&!row)throw Error('This event no longer exists.');
+    window.dispatchEvent(new CustomEvent('alpha:browser-open-view',{detail:'calendar'}));
+    if(!row)return {status:'opened'};
+    return new Promise<{status:'opened'|'cancelled'}>(resolve=>{const event=new CustomEvent('alpha:calendar-open',{cancelable:true,detail:{id:row.id,begin:row.begin,allDay:!!row.allDay,complete:(opened:boolean)=>resolve({status:opened?'opened':'cancelled'})}});window.dispatchEvent(event);if(!event.defaultPrevented)resolve({status:'cancelled'});});
+  }
 }
