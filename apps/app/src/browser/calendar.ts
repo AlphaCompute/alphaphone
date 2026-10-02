@@ -28,7 +28,7 @@ export class BrowserCalendar extends WebPlugin {
       const data=readStore(key,initial),row=operation.type==='calendar_create'?undefined:calendarRecord(data.events,operation.target.eventId);
       if(identity.sourceId!=='local'||identity.sourceRevision!==data.sourceRevision||operation.type!=='calendar_create'&&(!row||row.revision!==operation.target.revision))return {status:'conflict'};
       const reviewed='fields' in operation?operation.fields:fields(row!);
-      const approved=await this.reviews.confirm(input.operationId,operation.type==='calendar_read_selected'?'Share calendar event with agent?':'Review calendar change',`${operation.type.replaceAll('_',' ')}
+      const approved=await this.reviews.confirm(input.operationId,operation.type==='calendar_read_selected'?'Share calendar event with agent?':'Review calendar change',`${operation.type.replaceAll('_',' ')}${row?.seriesId?' · This occurrence only':''}
 ${reviewed.title}
 ${reviewed.start} — ${reviewed.end}
 ${reviewed.timeZone}

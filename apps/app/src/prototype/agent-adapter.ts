@@ -1,3 +1,4 @@
+import { Capacitor } from '@capacitor/core';
 import { isMapsOperation } from '../runtime/maps-contract';
 import { readMapsSelection } from '../maps/agent-context';
 import {isReminderOperation,validateReminderResult} from '../runtime/reminder-contract';
@@ -287,7 +288,7 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
         signal.throwIfAborted();context(this);if(JSON.stringify(alphaClient.getState().context)!==JSON.stringify(expectedContext)||expectedContext.sensitive||document.hidden)throw Error('Reminder context changed');
         const target=await DailyApps.selectedReminder({id:operation.target.reminderId});signal.throwIfAborted();
         if(JSON.stringify(target)!==JSON.stringify(operation.target)) { // property order is normalized below
-          for(const key of ['sourceId','sourceRevision','reminderId','occurrenceId','revision'] as const)if(target[key]!==operation.target[key])throw Error('Selected reminder changed');
+          for(const key of ['sourceId','sourceRevision','reminderId','occurrenceId','revision'] as const)if(target[key]!==operation.target[key])return {status:'failed',summary:'This reminder changed. Review it again before applying the action.'};
         }
         context(this);if(JSON.stringify(alphaClient.getState().context)!==JSON.stringify(expectedContext))throw Error('Reminder context changed');
         signal.throwIfAborted();
@@ -296,16 +297,16 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
         // cancels this context-bound action before it can acknowledge the server.
         if(result.status!=='succeeded')return {status:'unknown',summary:'Reminder outcome requires review. It was not repeated.'};
         const reminderResult=validateReminderResult(operation,result.result);
-        return {status:'succeeded',summary:`Reminder ${reminderResult.status}. Android delivery is approximate.`,reminderResult};
+        return {status:'succeeded',summary:`Reminder ${reminderResult.status}.${Capacitor.isNativePlatform()?' Android delivery is approximate.':''}`,reminderResult};
       }
       if (operation.type === 'create_reminder') {
         const at = Date.parse(operation.dueAt);
         if (!Number.isSafeInteger(at) || at <= Date.now()) return { status: 'failed', summary: 'Reminder time has passed. Nothing scheduled.' };
         const result = await DailyApps.scheduleReminder({ id: operationId, title: operation.title, body: '', at });
-        if (result.status !== 'scheduled' || result.id !== operationId) return { status: 'failed', summary: 'Android did not confirm scheduling. Check notification permission and the reminder time.' };
+        if (result.status !== 'scheduled' || result.id !== operationId) return { status: 'failed', summary: 'Scheduling was not confirmed. Check notification settings and the reminder time.' };
         // Publish the new revision only after the receipt attempt; refreshing here
         // cancels this context-bound action before it can acknowledge the server.
-        return { status: 'succeeded', summary: `Scheduled reminder: ${operation.title}. Android may delay delivery.` };
+        return { status: 'succeeded', summary: `Scheduled reminder: ${operation.title}.${Capacitor.isNativePlatform()?' Android may delay delivery.':''}` };
       }
       if (operation.type === 'open_view') {
         if (!['home','reminders','notifications'].includes(operation.view) && !isMvpView(operation.view)) return {status:'failed',summary:'This app is deferred from the MVP'};

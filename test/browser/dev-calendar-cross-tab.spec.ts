@@ -1,0 +1,10 @@
+import {test,expect} from '@playwright/test';
+test('another browser tab changing the series prevents a stale occurrence editor from saving',async({page,context})=>{
+ await context.addInitScript(()=>localStorage.setItem('alpha.connection.selection.v1',JSON.stringify({kind:'offline'})));
+ await page.goto('/?mode=dev');const other=await context.newPage();await other.goto('/?mode=dev');
+ await page.evaluate(async()=>{const {registerPlugin}=await import('/src/platform-plugins.ts');const cal=registerPlugin<any>('AlphaCalendar'),begin=Date.now()+3600000;await cal.save({calendarId:'local',title:'Original series',body:'',location:'',begin,end:begin+3600000,repeat:'daily',timeZone:'UTC'});const row=(await cal.list({begin,end:begin+1})).events[0];(window as any).editing=cal.edit({id:row.id,revision:row.revision});});
+ const dialog=page.getByRole('dialog',{name:'Edit calendar event'});await expect(dialog).toBeVisible();await dialog.getByLabel('Event title',{exact:true}).fill('Stale occurrence');
+ await other.evaluate(async()=>{const {registerPlugin}=await import('/src/platform-plugins.ts');const row=JSON.parse(localStorage.getItem('alpha.browser.calendar.v1')!).events[0];await registerPlugin<any>('AlphaCalendar').save({...row,expected:row,title:'New series in other tab'});});
+ await dialog.getByRole('button',{name:'Save event',exact:true}).click();await expect(dialog.getByRole('status')).toContainText('This event changed');await dialog.getByRole('button',{name:'Cancel',exact:true}).click();expect(await page.evaluate(()=>(window as any).editing)).toEqual({status:'cancelled'});
+ const stored=await other.evaluate(()=>JSON.parse(localStorage.getItem('alpha.browser.calendar.v1')!).events);expect(stored).toHaveLength(1);expect(stored[0].title).toBe('New series in other tab');await page.reload();expect(await page.evaluate(()=>JSON.parse(localStorage.getItem('alpha.browser.calendar.v1')!).events)).toEqual(stored);await other.close();
+});
