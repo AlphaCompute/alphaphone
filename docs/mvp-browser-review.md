@@ -1406,3 +1406,13 @@ Repository verification passed all 114 tests, TypeScript and the production web 
 The shared branch then advanced with `deada57` (Calendar/reminder creation and audio-deletion recovery). Rebased this correction onto that commit, retaining its explicit Calendar creation identity in the test. The combined browser run passed **89 cases**, including creation readback, lost-response reconciliation, audio deletion/restoration, native-fence fixtures, trigger/focus scheduling and both CI corrections. This verifies the browser and mocked boundary cases in the combined source; it does not independently qualify the parent's native instrumentation or APK. Earlier repeated runs remain evidence for the pre-rebase candidate.
 
 Combined-source repository verification passed all 114 tests, TypeScript and web build.
+
+## Focus-source reconciliation and notification history minimization (October 2)
+
+Focus now refreshes previously captured incoming messages from their current records and removes archived/deleted incoming mail from the active capture. It checks the Messages/Inbox storage snapshots again after asynchronous notification reads; changed sources are retried instead of committing stale contents. External notifications contribute app/receipt metadata with a generic received marker rather than copying notification title/body into new workflow captures. Collection-policy revocation still removes their captured entries. This does not rewrite historical run records.
+
+Retained failing controls show the previous capture kept stale message/email contents, copied external notification text into run history, and retained a stale message when it changed during a held notification read. The first race fixture attempted to intercept the Capacitor proxy and did not intercept the implementation; it was corrected to instrument the browser implementation before deriving the race evidence.
+
+All 59 integrated browser cases passed, including focus reconciliation/lifecycle, concurrency and newly covered queued-agent contention, trigger dispatch and notification policy. Evidence is in `test-results/focus-reconciliation-review/`. PR #12's terminal browser failure was also inspected: it is the same delayed Calendar fixture timeout corrected in PR #14, not a new lock-control failure. Hosted verification of the current combined changes remains pending; Android builds remain skipped.
+
+Repository verification passed all 114 tests, TypeScript and the web build.
