@@ -1,3 +1,4 @@
+import {browserScreenLocked} from './screen-locked';
 import {WebPlugin} from '@capacitor/core';
 import type {HostedResultBinding,HostedResultRoute} from '../runtime/hosted-result-notices';
 import {editStore,readStore,revision} from './store';
@@ -8,7 +9,7 @@ const key='alpha.browser.hosted-results.v1';
 const initial=():State=>({enabled:true,polling:true,rows:[]});
 const hash=async(value:string)=>Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(value))),byte=>byte.toString(16).padStart(2,'0')).join('');
 function canonical(value:unknown):string{return JSON.stringify(value,(_key,item)=>item&&typeof item==='object'&&!Array.isArray(item)?Object.fromEntries(Object.keys(item).sort().map(key=>[key,item[key]])):item);}
-const blocked=()=>document.hidden||document.documentElement.dataset.devBackground==='true'||!!document.querySelector('[aria-label="Unlock with fingerprint"], [aria-label="Wake"]')?.getClientRects().length;
+const blocked=()=>document.hidden||document.documentElement.dataset.devBackground==='true'||!!browserScreenLocked();
 const matches=(a:HostedResultRoute,b:HostedResultBinding)=>a.scope===b.scope&&a.origin===b.origin&&a.ownerId===b.ownerId&&a.agentId===b.agentId;
 /** Redacted browser notice ledger. Result bodies stay in the authenticated digest store. */
 export class BrowserHostedResults extends WebPlugin {

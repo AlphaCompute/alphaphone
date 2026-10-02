@@ -1,3 +1,4 @@
+import {browserScreenLocked} from './screen-locked';
 import {listWorkflowNotices,actOnWorkflowNotice} from './workflow-notices';
 import {BrowserCalendar} from './calendar';
 import { browserHostedResults } from './hosted-results';
@@ -15,7 +16,7 @@ type DeviceEvent = Notice & {packageName:string;sourceKey:string;autoCancel:bool
 type Identity = {id:string;revision:string;source?:string};
 const key='alpha.browser.notifications.v2';
 const initial=():State=>({revision:revision(),epoch:revision(),enabled:false,paused:false,history:false,accessGranted:true,apps:[],events:[],dismissed:[],appEnabled:true,channels:{reminders:true},...readStore('alpha.browser.notification-policy.v1',()=>({}))});
-const locked=()=>document.hidden||document.documentElement.dataset.devBackground==='true'||!!document.querySelector('[aria-label="Unlock with fingerprint"], [aria-label="Wake"]')?.getClientRects().length;
+const locked=()=>document.hidden||document.documentElement.dataset.devBackground==='true'||!!browserScreenLocked();
 function trim(state:State){state.deviceEvents??=[];state.events=state.history&&state.enabled&&state.accessGranted&&!state.paused?state.events.filter(event=>event.at>Date.now()-86400000).slice(-100):[];state.dismissed=state.dismissed.slice(-500);}
 function record(state:State,row:Notice,event:string){trim(state);if(state.history&&row.packageName){state.events.push({id:crypto.randomUUID(),appLabel:row.appLabel,packageName:row.packageName,at:Date.now(),state:event});trim(state);}}
 

@@ -1368,3 +1368,13 @@ Six concurrency cases cover pickup plus unrelated progress, simultaneous Notes d
 Hosted browser runs `37056781954` (PR #8) and `37058387118` (PR #9) each failed the same two older assertions: a Contacts save test counted unrelated scheduler persistence, and a run-history export test compared the definition/run export with the entire state including newly persisted trigger cursors. Updated the Contacts injection to its actual store, retaining failed-save/draft/retry assertions and the separate transient-write test. Stabilized the history clock and baseline, compared the documented export fields, and explicitly asserted that cleanup leaves trigger state intact. Failed hosted logs and repeated local evidence are retained in `test-results/workflow-concurrency-review/`; these local corrections do not establish a new hosted pass.
 
 Repository verification passed 114 tests, TypeScript and the web build. Android builds remain skipped. Hosted verification and the broader outstanding acceptance work remain open.
+
+## Browser lock-control visibility consistency (October 2)
+
+Audited notification privacy through actual power, Wake and fingerprint controls. The ordinary power-off path passed unchanged. A separate DOM edge-case regression then inserted a hidden matching lock button before the visible Wake control: the old first-match guard returned workflow text with `canOpen: true` and admitted notice actions. This is evidence for the hidden-control ordering case, not evidence that ordinary power-off already leaked content.
+
+Added a shared browser lock-control visibility check that examines every matching control. Applied it to workflow/ordinary/hosted notification guards, location admission, transcription and workflow review dialogs, Clock foreground admission and hosted-result synchronization. Existing background/visibility/mock and Android branches remain in place. The regression verifies redaction and rejected open/dismiss while powered off, then restoration of the unchanged notice after wake and unlock.
+
+All 105 related browser cases passed: notifications, hosted results, location, Clock, local transcript review, workflow result/urgency/receipt review and the new edge-case regression. Failed and passing controls are retained under `test-results/browser-foreground-review/`. These browser DOM checks do not establish physical Android lock-screen acceptance.
+
+Repository verification passed 114 tests, TypeScript and the web build. Hosted checks for this checkpoint remain pending; Android builds were skipped.

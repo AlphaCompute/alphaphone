@@ -1,3 +1,4 @@
+import {browserScreenLocked} from './screen-locked';
 import {editStore,readStore,revision} from './store';
 type Row={id:string;revision:string;title:string;text:string;at:number;phase:'posted'|'dismissed'|'opened'};
 const key='alpha.browser.workflow-notices.v1';
@@ -26,7 +27,7 @@ export async function compactWorkflowNotices(expected:string|null,signal:AbortSi
   state.archived=[...state.archived||[],...receipts];state.rows=state.rows.filter(row=>row.phase==='posted');return rows.length;
  },signal);changed();return count;
 }
-const blocked=()=>document.hidden||document.documentElement.dataset.devBackground==='true'||!!document.querySelector('[aria-label="Unlock with fingerprint"], [aria-label="Wake"]')?.getClientRects().length;
+const blocked=()=>document.hidden||document.documentElement.dataset.devBackground==='true'||!!browserScreenLocked();
 const changed=()=>window.dispatchEvent(new Event('focus'));
 export async function publishWorkflowNotice(id:string,text:string,signal:AbortSignal){
  signal.throwIfAborted();if(!/^[\w-]{1,128}$/.test(id)||!text.trim()||text.length>16000)throw Error('Choose notification text between 1 and 16000 characters.');

@@ -1,3 +1,4 @@
+import {browserScreenLocked} from './screen-locked';
 type Recognition={processLocally:boolean;lang:string;continuous:boolean;interimResults:boolean;onstart:(()=>void)|null;onresult:((event:any)=>void)|null;onerror:(()=>void)|null;onend:(()=>void)|null;start:(track:MediaStreamTrack)=>void;abort:()=>void};
 type Provider={new():Recognition;available?:(input:{langs:string[];processLocally:true})=>Promise<string>;install?:(input:{langs:string[];processLocally:true})=>Promise<boolean>};
 const abort=()=>new DOMException('Transcript review cancelled','AbortError');
@@ -6,7 +7,7 @@ export class BrowserTranscriptReview {
  private close?:()=>void;
  cancel(){this.close?.();}
  open(blob:Blob):Promise<string>{
-  this.cancel();if(document.hidden||document.documentElement.dataset.devBackground==='true'||document.querySelector('[aria-label="Unlock with fingerprint"], [aria-label="Wake"]')?.getClientRects().length)return Promise.reject(abort());return new Promise((resolve,reject)=>{
+  this.cancel();if(document.hidden||document.documentElement.dataset.devBackground==='true'||browserScreenLocked())return Promise.reject(abort());return new Promise((resolve,reject)=>{
    let settled=false,generation=0,recognition:Recognition|undefined,context:AudioContext|undefined,source:AudioBufferSourceNode|undefined,track:MediaStreamTrack|undefined,timer:ReturnType<typeof setTimeout>|undefined;
    const dialog=document.createElement('dialog');dialog.setAttribute('aria-label','Recording transcript');dialog.style.cssText='box-sizing:border-box;width:min(380px,90vw);max-height:85dvh;overflow:auto;border:0;border-radius:20px;padding:24px;background:var(--bg,#fff);color:var(--fg,#111);font:16px/1.5 system-ui';
    const shell=document.querySelector('.os');if(shell){const theme=getComputedStyle(shell);for(const name of ['--bg','--fg','--s2'])dialog.style.setProperty(name,theme.getPropertyValue(name));}

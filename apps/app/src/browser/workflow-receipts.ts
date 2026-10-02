@@ -1,3 +1,4 @@
+import {browserScreenLocked} from './screen-locked';
 import {reviewMailAttachment,type MailAttachment} from '../runtime/inbox-attachment';
 type Bag=Record<string,any>;
 export type ReceiptInput={mailId:string;sent:boolean;index:number;name:string;mimeType:string;sha256:string;merchant?:string;cents?:number;cardId?:string};
@@ -39,6 +40,6 @@ export function requestWorkflowReceipt(api:Bag,needsWallet:boolean,signal:AbortS
  const close=()=>finish(),hidden=()=>{if(document.hidden)close();},back=(event:Event)=>{event.preventDefault();event.stopImmediatePropagation();close();},events=['pagehide','alpha:device-state','launcher-home','alpha:dev-incoming-call'];
  use.onclick=async()=>{if(busy||!valid())return;busy=true;update();for(const field of [select,merchant,amount,card])field.disabled=true;try{const choice=choices[Number(select.value)],checked=await reviewMailAttachment(choice.file);const result:ReceiptInput={mailId:String(choice.mail.id),sent:choice.sent,index:choice.index,name:checked.name,mimeType:checked.mimeType,sha256:checked.sha256,...(needsWallet?{merchant:merchant.value.trim(),cents:cents(),cardId:card.value}:{})};await receiptAttachment(result,api,signal);if(!settled)finish(result);}catch(error){if(!settled)status.textContent=error instanceof Error?error.message:'Choose another attachment.';}finally{busy=false;for(const field of [select,merchant,amount,card])field.disabled=false;update();}};
  cancel.onclick=close;dialog.onclose=close;signal.addEventListener('abort',close,{once:true});window.addEventListener('alpha-back',back,true);for(const event of events)window.addEventListener(event,close);document.addEventListener('visibilitychange',hidden);document.body.append(dialog);
- if(signal.aborted||document.hidden||document.documentElement.dataset.devBackground==='true'||document.querySelector('[aria-label="Unlock with fingerprint"], [aria-label="Wake"]')?.getClientRects().length){close();return;}try{dialog.showModal();select.focus();}catch{close();}
+ if(signal.aborted||document.hidden||document.documentElement.dataset.devBackground==='true'||browserScreenLocked()){close();return;}try{dialog.showModal();select.focus();}catch{close();}
  });
 }
