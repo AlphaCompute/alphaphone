@@ -52,7 +52,7 @@ The native bridge enrolls and verifies its own local owner session. Conversation
 For an existing preparation that no longer matches the source stamp, preserve it and select a fresh directory for every preparation, test, development and staging command:
 
 ```sh
-export ALPHA_LOCAL_AGENT_SOURCE_DIR="$PWD/artifacts/local-agent-compiler"
+export ALPHA_LOCAL_AGENT_SOURCE_DIR="$PWD/artifacts/local-agent-mobile-workflows-v3"
 export ALPHA_WORKFLOW_WORKER_OUTPUT="$PWD/artifacts/mobile-workflow-worker-current"
 npm run agent:prepare
 npm run agent:build-workflow-worker
@@ -64,7 +64,7 @@ npm run agent:stage-android
 
 - Runtime preparation skips the unrelated fused local language-model engine setup. The mobile bundler and staged artifact manifest retain their own validation/provenance.
 
-Worker builds require a fresh output directory. `agent:stage-workflow-worker` can independently validate and stage that artifact without a mobile bundle or APK build. `agent:stage-android` now checks the worker artifact's source/lock identity before staging the full runtime and includes its verified files. Native startup extracts the worker through a bounded hash-checked index before setting its runtime resource path. This prepares worker resources; the mobile workflow plugin remains disabled pending compiler integration and bundle qualification. Canonical approval receipts now use the packaged worker launch contract through `packaged-approval-receipts.patch`.
+Worker builds require a fresh output directory. `agent:stage-workflow-worker` can independently validate and stage that artifact without a mobile bundle or APK build. `agent:stage-android` now checks the worker artifact's source/lock identity before staging the full runtime and includes its verified files. Native startup extracts the worker through a bounded hash-checked index before setting its runtime resource path. Android startup enables the workflow plugin when verified extraction includes its compiler resources; older worker-only payloads leave it disabled. Canonical approval receipts now use the packaged worker launch contract through `packaged-approval-receipts.patch`.
 
 The consumer series now also includes `packaged-workflow-worker.patch`. It preserves browser workflow database paths, separates packaged Android resources from durable state, uses the native loader/Bun/library environment for worker and control launches, and repairs dependency links after installation moves. See the [worker packaging report](mobile-workflow-packaging.md) for artifact commands and remaining native staging/plugin requirements. Set `ALPHA_WORKFLOW_WORKER_OUTPUT` to an existing verified worker artifact when running `agent:test` to include its real packaged-executor integration case; without that artifact, the case is explicitly skipped.
 
@@ -76,7 +76,7 @@ A native APK installation and real on-device Bun process/chat run, process-death
 
 Powered-off-phone execution is unavailable with a device-only executor. Persisted schedules, explicit missed-occurrence policy and catch-up need their own acceptance; no browser check proves them. Cloud-backed Inbox/account integrations still require separate sign-in and live acceptance. Moving the agent does not complete every item in the broader MVP report.
 
-The current mobile bundler stubs the workflow package and its mobile plugin collector excludes it. Browser development's workflow opt-in fixes the host profile only; Android workflow execution still needs an implemented and qualified mobile dependency closure. The presence of native workflow forwarding does not prove that a workflow engine is packaged.
+The Android bundle includes the workflow plugin and its routes, while native startup opts into it only with extracted compiler resources. Browser development retains its lean workflow opt-in. Isolated host bundle loading and worker/compiler checks pass; actual Android service initialization and workflow execution still require device qualification. Run `npm run agent:test-mobile-workflow-bundle` after building the mobile JavaScript bundle to verify its route registration outside the checkout.
 
 Local evidence for this pass is retained in `test-results/local-agent-qualification/`: repository verification passed 39 tests; the clean browser suite passed 74 tests; both native Java variants compiled; mobile staging and its module-load smoke passed. The final live privacy copy was inspected separately after that browser suite. Against the prepared source, the real browser returned `72` for `8 × 9`, proposed and saved the synthetic **Local runtime check** note only after approval, and retained exactly one note plus its successful journal entry after reload. No provider credential is included in these evidence files.
 

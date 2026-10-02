@@ -44,6 +44,11 @@ public class WorkerAssetTest {
   File assets=new File(args[0]),root=new File(args[1]);byte[] index=Files.readAllBytes(new File(assets,"files.sha256").toPath());
   WorkflowWorkerAssets.Source source=p->new FileInputStream(new File(assets,p));
   File installed=WorkflowWorkerAssets.install(root,new ByteArrayInputStream(index),source);
+  java.util.Map<String,String> env=new java.util.HashMap<>();env.put("ELIZA_MOBILE_WORKFLOWS","stale");
+  WorkflowWorkerAssets.configureEnvironment(installed,env);
+  if(!installed.getAbsolutePath().equals(env.get("ELIZA_SMTHRS_RUNTIME_DIR")))throw new AssertionError("wrong resource path");
+  boolean compiler=new File(installed,"compiler/node_modules/typescript/lib/typescript.js").isFile()&&new File(installed,"compiler/node_modules/smthrs/package.json").isFile();
+  if(compiler?!"1".equals(env.get("ELIZA_MOBILE_WORKFLOWS")):env.containsKey("ELIZA_MOBILE_WORKFLOWS"))throw new AssertionError("incorrect compiler enablement");
   byte[] prior=Files.readAllBytes(new File(installed,"manifest.json").toPath());
   WorkflowWorkerAssets.install(root,new ByteArrayInputStream(index),source);
   WorkflowWorkerAssets.Source corrupt=p->p.equals("manifest.json")?new ByteArrayInputStream(new byte[]{1,2,3}):source.open(p);

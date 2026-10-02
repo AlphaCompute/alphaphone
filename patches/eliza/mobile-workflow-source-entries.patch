@@ -1,0 +1,63 @@
+--- a/packages/agent/scripts/mobile-workspace-entry.ts
++++ b/packages/agent/scripts/mobile-workspace-entry.ts
+@@ -53,6 +53,25 @@
+ 
+ /** Resolves unbuilt workspace imports from the same platform source entry used by the mobile bundle. */
+ export function findWorkspaceSourceEntry(packageDir, subpath, target = "bun") {
++  // Export aliases can point into nested source directories; guessing src/<subpath>
++  // loses those mappings in a clean checkout without distribution outputs.
++  if (target !== "browser") {
++    const manifest = JSON.parse(readFileSync(path.join(packageDir, "package.json"), "utf8"));
++    let exported;
++    try {
++      exported = resolveExports(manifest, subpath ? `./${subpath}` : ".", {
++        conditions: ["eliza-source", "bun", "node"], unsafe: true,
++      });
++    } catch (error) {
++      if (!error.message.startsWith("Missing ") && !error.message.startsWith("No known conditions ")) throw error;
++    }
++    for (const candidate of exported ?? []) {
++      const entry = path.resolve(packageDir, candidate);
++      if (/\.(?:[cm]?ts|tsx)$/.test(candidate) && !candidate.endsWith(".d.ts") &&
++          existsSync(entry) && statSync(entry).isFile() &&
++          realpathSync(entry).startsWith(`${realpathSync(packageDir)}${path.sep}`)) return entry;
++    }
++  }
+   const srcDir = existsSync(path.join(packageDir, "src"))
+     ? path.join(packageDir, "src")
+     : packageDir;
+--- a/packages/app/src/mobile-agent-entry.ts
++++ b/packages/app/src/mobile-agent-entry.ts
+@@ -1,5 +1,6 @@
+ /** The application host composes its Android receiver before starting the portable agent. */
+ 
++import { workflowPlugin } from "@elizaos/plugin-workflow";
+ import { browserPlugin } from "@elizaos/plugin-browser";
+ import { STATIC_ELIZA_PLUGINS } from "../../agent/src/runtime/plugin-types";
+ import { mobileRemoteTargetPlugin } from "./mobile-remote-target";
+@@ -8,4 +9,5 @@
+   default: mobileRemoteTargetPlugin,
+ };
+ STATIC_ELIZA_PLUGINS["@elizaos/plugin-browser"] = { default: browserPlugin };
++STATIC_ELIZA_PLUGINS["@elizaos/plugin-workflow"] = { default: workflowPlugin };
+ await import("../../agent/src/bin");
+--- /dev/null
++++ b/packages/agent/test/mobile-workspace-exports.test.ts
+@@ -0,0 +1,17 @@
++import {test,expect} from 'bun:test';
++import {mkdtempSync,mkdirSync,writeFileSync,rmSync} from 'node:fs';
++import {tmpdir} from 'node:os';
++import {join} from 'node:path';
++import {findWorkspaceSourceEntry} from '../scripts/mobile-workspace-entry';
++test('mobile source fallback follows declared subpaths and preserves browser selection',()=>{
++ const root=mkdtempSync(join(tmpdir(),'mobile-workspace-export-'));
++ try{
++  mkdirSync(join(root,'src/nested'),{recursive:true});writeFileSync(join(root,'src/nested/entry.ts'),'export {};');
++  writeFileSync(join(root,'src/index.browser.ts'),'export {};');
++  writeFileSync(join(root,'package.json'),JSON.stringify({name:'@elizaos/fixture',exports:{'./alias':{'eliza-source':'./src/nested/entry.ts',import:'./dist/missing.js'},'.':{'eliza-source':'./src/nested/entry.ts',browser:'./src/index.browser.ts'}}}));
++  expect(findWorkspaceSourceEntry(root,'alias')).toBe(join(root,'src/nested/entry.ts'));
++  expect(findWorkspaceSourceEntry(root,'')).toBe(join(root,'src/nested/entry.ts'));
++  expect(findWorkspaceSourceEntry(root,'','browser')).toBe(join(root,'src/index.browser.ts'));
++  expect(findWorkspaceSourceEntry(root,'absent')).toBeUndefined();
++ }finally{rmSync(root,{recursive:true,force:true});}
++});

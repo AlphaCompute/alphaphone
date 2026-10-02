@@ -231,3 +231,7 @@ The worker artifact now includes a symlink-free TypeScript compiler and narrowed
 ### Production packaged compiler follow-up
 
 The semantic checker now launches the packaged compiler through the shared Bun/native-loader configuration, with explicit missing-resource failures and unchanged validation bounds. Fresh composed-source tests pass ten cases/105 assertions; the browser compiler regression passes five assertions; plugin source typechecking and all 46 repository checks pass. Browser dev is running on the new source with renderer, bridge and workflow status HTTP 200. The next runtime gap is mobile plugin collection/bundle inclusion, followed by native execution qualification. See `docs/mobile-workflow-packaging.md` for the evidence boundaries.
+
+### Android workflow inclusion follow-up
+
+The Android runtime now includes the real workflow plugin and enables it after extracting verified compiler resources. Explicit workflow disables remain effective; desktop actuators and the iOS workflow path remain excluded. Clean workspace export resolution was fixed for the mobile bundle. The actual bundle passes isolated module and 48-route loading outside the source checkout; 13 composed runtime tests/120 assertions and all 46 repository checks pass. Native service, loader and workflow execution remain device acceptance gates. No APK was built in this pass.
