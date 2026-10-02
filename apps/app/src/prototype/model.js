@@ -188,13 +188,13 @@ function pnStart(api, pid, num, opt) {
 function pnEnd(api, opt) {
   opt = opt || {};
   if (!PN.live) return;
-  PN.live = null; api.stopBg();
   var s = api.get("phone");
   var dur = s.liveAt ? Math.round((Date.now() - s.liveAt) / 1000) : 0;
   var sc = PN_SCRIPT[s.call] || PN_SCRIPT._;
   var note = s.ai && s.aiN > 0 ? sc.sum : "";
   var e = { id: "r" + Date.now(), pid: s.call || null, num: s.num || "", dir: s.dir || "out", at: Date.now(), dur: dur, note: note };
   api.set({ recents: [e].concat(s.recents || []), call: null, num: "", callWho: null, callAt: null, liveAt: null, ai: false, aiN: 0, kp: false, min: false, hold: false, mute: false, spk: false, ret: null, tab: PN.lastTab || s.tab });
+  PN.live = null; api.stopBg();
   if (opt.quiet) return;
   if (note) api.toast(api.name + " saved notes from the call");
   /* started from another app's detail (e.g. a contact): hang up returns there, and drop it from the back stack */
@@ -715,7 +715,7 @@ registerView("messages", {
       var send = function (text) {
         var s2 = api.get("messages"); var fs = text != null ? [] : msgFiles(api, s2.attach);
         var tx = String(text != null ? text : s2.text).trim(); if (!tx && !fs.length) return;
-        api.set({ text: "", tray: false, attach: text != null ? s2.attach : null }); msgSend(api, tp, tx, null, fs);
+        msgSend(api, tp, tx, null, fs); api.set({ text: "", tray: false, attach: text != null ? s2.attach : null });
       };
       th = {
         name: w.name, ini: w.ini, bubbles: bubbles, typing: st.typing === tp,
