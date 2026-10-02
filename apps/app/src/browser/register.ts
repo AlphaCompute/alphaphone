@@ -28,9 +28,10 @@ if (!Capacitor.isNativePlatform()) {
   const daily = new BrowserDaily(files);
   registerPlugin('DailyApps', { web: () => daily });
   registerPlugin('AlphaHostedResults', { web: () => browserHostedResults });
-  const notifications=new BrowserNotifications(daily);
+  const calendar=new BrowserCalendar();
+  const notifications=new BrowserNotifications(daily,calendar);
   registerPlugin('AlphaNotifications', { web: () => notifications });
   new BrowserClock(daily,notifications);
-  registerPlugin('AlphaCalendar', { web: () => new BrowserCalendar() });
+  registerPlugin('AlphaCalendar', { web: () => calendar });
   registerPlugin('AlphaBrowser', { web: () => new BrowserSurface() });
 }

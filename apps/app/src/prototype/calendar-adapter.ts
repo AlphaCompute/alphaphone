@@ -33,7 +33,7 @@ export function installCalendarAdapter(Component: any, views: Bag) {
       d:allDay?0:Math.max(.25,(civilDay(end)-civilDay(begin))/DAY*24+end.getHours()+end.getMinutes()/60-begin.getHours()-begin.getMinutes()/60),
       nativeAllDayEndOff:allDay?off+Math.max(1,Math.ceil((event.end-event.begin)/DAY)):undefined,
       title:event.title||'Untitled event',notes:event.body||'',where:event.location||'',
-      cal:'personal',who:event.who||[],video:event.video?'Local meeting room':false,repeat:'none',alert:null,allDay};
+      cal:'personal',who:event.who||[],video:event.video?'Local meeting room':false,repeat:'none',alert:event.alert??null,allDay};
   };
   async function refresh(request=false, force=false) {
     if(!owner || (loading&&!force))return;
@@ -154,13 +154,13 @@ export function installCalendarAdapter(Component: any, views: Bag) {
         if(owner?.calendarWriteUncertain){api.toast('Refresh device calendars and check the previous event before saving again.');return;}
         const current=api.get('calendar').form,currentOwner=owner;
         if(!current?.title?.trim()||!currentOwner)return;
-        if((Capacitor.isNativePlatform()&&(current.repeat!=='none'||current.video||current.who?.length))||current.alert!=null){api.toast('Recurring events, invitations, video calls and alerts currently require Android Calendar.');return;}
+        if((Capacitor.isNativePlatform()&&(current.repeat!=='none'||current.video||current.who?.length||current.alert!=null))){api.toast('Recurring events, invitations, video calls and alerts currently require Android Calendar.');return;}
         const date=wallTime(Number(current.off||0),Number(current.t)),end=wallTime(Number(current.off||0),Number(current.t)+Number(current.d));
         if(!date||!end||end.getTime()<=date.getTime()){api.toast('This local time does not exist because the clocks change. Choose another start or end time. Nothing was saved.');return;}
         currentOwner.calendarSaving=true;
         try{
           const permission=await calendar.requestAccess();if(permission.status!=='granted'){api.toast('Calendar access was not granted. Nothing was saved.');return;}
-          const result=await calendar.save({id:current.alphaCalendarId || '',expected:current.expected,calendarId:current.cal.slice(7),title:current.title.trim(),body:current.notes||'',location:current.where||'',begin:date.getTime(),end:end.getTime(),...(!Capacitor.isNativePlatform()?{repeat:current.repeat,who:current.who||[],video:!!current.video,timeZone:Intl.DateTimeFormat().resolvedOptions().timeZone}:{})});
+          const result=await calendar.save({id:current.alphaCalendarId || '',expected:current.expected,calendarId:current.cal.slice(7),title:current.title.trim(),body:current.notes||'',location:current.where||'',begin:date.getTime(),end:end.getTime(),...(!Capacitor.isNativePlatform()?{repeat:current.repeat,who:current.who||[],video:!!current.video,alert:current.alert??null,timeZone:Intl.DateTimeFormat().resolvedOptions().timeZone}:{})});
           if(result.status==='conflict'){api.toast('This event changed or requires Android Calendar. Reload it before editing. Nothing was overwritten.');return;}
           if(result.status!=='saved')throw Error('Unconfirmed calendar write');
           if(owner===currentOwner){
@@ -217,7 +217,7 @@ export function installCalendarAdapter(Component: any, views: Bag) {
           if(owner!==currentOwner||api.get('calendar').open!==selected.id)return;
           if(inspected.status==='external'){api.toast('Edit this event in Android Calendar.');external();return;}
           if(inspected.status!=='ready'){api.toast('This event changed or access is unavailable. Refresh before editing.');await refresh(false,true);return;}
-          api.set({form:{...selected,id:selected.id,alphaCalendarId:event.id,expected:{...expected,revision:inspected.revision},cal:`native:${event.calendarId}`,video:!Capacitor.isNativePlatform()&&!!event.video,who:!Capacitor.isNativePlatform()?event.who||[]:[],repeat:'none',alert:null}});
+          api.set({form:{...selected,id:selected.id,alphaCalendarId:event.id,expected:{...expected,revision:inspected.revision},cal:`native:${event.calendarId}`,video:!Capacitor.isNativePlatform()&&!!event.video,who:!Capacitor.isNativePlatform()?event.who||[]:[],repeat:'none',alert:!Capacitor.isNativePlatform()?event.alert??null:null}});
         }catch{api.toast('Calendar review unavailable. Nothing was changed.');}
       };
       if(!Capacitor.isNativePlatform()&&selected.nativeEvent.seriesId){

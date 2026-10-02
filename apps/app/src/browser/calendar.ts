@@ -1,3 +1,4 @@
+import {calendarAlerts} from './calendar-alerts';
 import {editCalendarResponse,calendarResponses} from './calendar-response';
 import {openCalendarMeeting} from './calendar-meeting';
 import {calendarRecord,calendarRange,remapCalendarExclusions,replaceCalendarRecord,deleteCalendarRecord,type CalendarRecord} from './calendar-records';
@@ -7,7 +8,7 @@ import { validateCalendarOperation, type CalendarFields, type CalendarResult } f
 import { WebPlugin } from '@capacitor/core';
 import { editStore, readStore, revision } from './store';
 type EventRow=CalendarRecord;
-type State={preferences?:{visible:boolean;color:'acc'|'fg'|'mut'};sourceRevision:string;events:EventRow[];receipts?:Record<string,{binding:string;result:CalendarResult}>};
+type State={alertDismissed?:Record<string,number>;preferences?:{visible:boolean;color:'acc'|'fg'|'mut'};sourceRevision:string;events:EventRow[];receipts?:Record<string,{binding:string;result:CalendarResult}>};
 const key='alpha.browser.calendar.v1',initial=():State=>({sourceRevision:revision(),events:[]});
 const source={id:'local',name:'Browser calendar',account:'Alpha Phone',local:true,writable:true};
 const matches=(row:EventRow,expected:Partial<EventRow>|undefined)=>!!expected&&(!expected.revision||expected.revision===row.revision)&&(['title','body','location','begin','end'] as const).every(k=>row[k]===expected[k]);
@@ -97,6 +98,14 @@ ${reviewed.description}`);
     if(!row||row.revision!==input.revision||!row.video)throw Error('This meeting changed. Reopen the event.');
     return openCalendarMeeting(row.title,(input.people||row.who||[]).slice(0,100));
   }
+  async listAlerts(){const data=readStore(key,initial);return {items:calendarAlerts(data.events,data.alertDismissed||{})};}
+  async alertAction(input:{id:string;revision:string;open:boolean}){
+    const data=readStore(key,initial),alert=calendarAlerts(data.events,data.alertDismissed||{}).find(row=>row.id===input.id&&row.revision===input.revision);
+    if(!alert)throw Error('Calendar alert changed.');
+    if(input.open){const result=await this.open({id:alert.eventId});if(result.status!=='opened')throw Error('Calendar navigation was cancelled.');}
+    await editStore(key,initial,current=>{const active=calendarAlerts(current.events,current.alertDismissed||{}).find(row=>row.id===input.id&&row.revision===input.revision);if(!active)throw Error('Calendar alert changed.');current.alertDismissed=Object.fromEntries(Object.entries(current.alertDismissed||{}).filter(([,at])=>at>Date.now()-2*86400000));current.alertDismissed[active.receipt]=Date.now();});
+    return {status:input.open?'opened':'dismissed'};
+  }
   async requestAccess(){return {status:'granted'};}
   async requestWorkflowReadAccess(){return {status:'granted'};}
   async workflowCalendars(){return {status:'ready',calendars:[source]};}
@@ -104,6 +113,7 @@ ${reviewed.description}`);
   async prepareAgentSource(){return editStore(key,initial,data=>({status:'ready',sourceId:'local',sourceRevision:data.sourceRevision}));}
   async save(input:Partial<EventRow>&{expected?:Partial<EventRow>}) {
     if(!input.title?.trim()||!Number.isFinite(input.begin)||!Number.isFinite(input.end)||input.end!<=input.begin!||input.calendarId!=='local')throw Error('Review the event title, calendar and dates.');
+    if(input.alert!==undefined&&input.alert!==null&&![0,10,60].includes(input.alert))throw Error('Choose an event alert.');
     if(input.who!==undefined&&(!Array.isArray(input.who)||input.who.length>100||input.who.some(id=>typeof id!=='string'||!id||id.length>128)))throw Error('Review the event attendees.');
     if(input.video!==undefined&&typeof input.video!=='boolean')throw Error('Invalid meeting option.');
     if(input.allDay!==undefined&&typeof input.allDay!=='boolean')throw Error('Invalid all-day setting.');
@@ -114,7 +124,7 @@ ${reviewed.description}`);
       if(input.id&&(!old||!matches(old,input.expected)))return {status:'conflict'};
       const allDay=input.allDay??old?.allDay??false;
       if(allDay&&(input.begin!%86400000!==0||input.end!%86400000!==0))throw Error('All-day events require whole calendar dates.');
-      const row:EventRow={...old,id:old?.id||crypto.randomUUID(),calendarId:'local',title:input.title!.trim(),body:input.body||'',location:input.location||'',begin:input.begin!,end:input.end!,allDay,revision:revision(),timeZone:old?.timeZone||input.timeZone||Intl.DateTimeFormat().resolvedOptions().timeZone,repeat:old?.seriesId?'none':input.repeat||old?.repeat||'none',who:input.who?[...new Set(input.who)]:old?.who||[],video:input.video??old?.video??false};
+      const row:EventRow={...old,id:old?.id||crypto.randomUUID(),calendarId:'local',title:input.title!.trim(),body:input.body||'',location:input.location||'',begin:input.begin!,end:input.end!,allDay,revision:revision(),timeZone:old?.timeZone||input.timeZone||Intl.DateTimeFormat().resolvedOptions().timeZone,repeat:old?.seriesId?'none':input.repeat||old?.repeat||'none',who:input.who?[...new Set(input.who)]:old?.who||[],video:input.video??old?.video??false,alert:input.alert===undefined?old?.alert??null:input.alert};
       if(row.responses)row.responses=Object.fromEntries(Object.entries(row.responses).filter(([person])=>row.who?.includes(person)));
       replaceCalendarRecord(data.events,row);return {status:'saved',id:row.repeat&&row.repeat!=='none'?calendarRange([row],{begin:row.begin,end:row.begin+8*86400000}).events[0].id:row.id};
     });

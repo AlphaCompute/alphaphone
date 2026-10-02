@@ -2,7 +2,7 @@
 
 Latest full integration checkpoint: **274/274 browser tests and 82/82 repository tests** in the [simulator-save checkpoint](#october-2--simulator-save-recovery-and-full-browser-checkpoint), based on `3f7a665` plus the recorded simulator fix. Earlier entries are historical evidence for their stated snapshots. The MVP goal remains open.
 
-Latest targeted browser checkpoint: [Calendar meeting preview and local responses](#october-2--calendar-meeting-preview-and-local-responses). Evidence below is scoped to its recorded revision; newer implementation checkpoints supersede earlier unavailable-feature statements only for the capabilities explicitly verified. The MVP remains incomplete.
+Latest targeted browser checkpoint: [Calendar alerts and notification isolation](#october-2--calendar-alerts-and-notification-isolation). Evidence below is scoped to its recorded revision; newer implementation checkpoints supersede earlier unavailable-feature statements only for the capabilities explicitly verified. The MVP remains incomplete.
 
 October 1 architecture change: the user has selected an **Android-resident agent instead of Nitro/TEE hosting**. The [on-device agent plan](on-device-agent-plan.md) supersedes cloud-only and enclave-primary requirements below. Agent execution and model inference are separate: the current implementation runs orchestration locally and uses hosted Cerebras inference. Historical evidence is retained. Powered-off-phone execution needs explicit scope reconciliation.
 
@@ -825,3 +825,46 @@ Attendee/video editing in the complex-date editor, Calendar event alerts, real
 provider invitations/conferencing, broader assistant/restart and cross-tab journeys,
 and the rest of the MVP/design acceptance ledger remain open. The latest full-suite
 checkpoint is still the 274-case simulator-save run. No Android build ran in this pass.
+
+
+## October 2 — Calendar alerts and notification isolation
+
+Browser Calendar now saves None, At start, 10 minutes before and 1 hour before
+alerts from the event form and complex-date editor. Due alerts appear in the existing
+notification shade and open the exact event. The Calendar channel can suppress them.
+Dismissing a repeating alert affects one occurrence, survives reload and does not
+replay merely because the title changes. Rescheduling invalidates an old notice.
+All-day alerts resolve the civil date in the saved time zone, falling back to the
+browser zone for older records without one; western and eastern zone boundaries are
+covered. Notices catch up within a bounded 24-hour window while the browser is open.
+This does not establish background delivery after closing the browser or on a device.
+
+Review reproduced a separate availability defect: malformed Calendar storage made
+the entire notification list throw, blocking unrelated reminders and actions. The
+notification provider now reports Calendar availability separately and preserves
+other notices. The shade shows a Calendar-specific warning once per failure episode.
+The damaged bytes remain untouched; dismissal of a healthy reminder still works.
+Calendar data repair and deeper schema recovery remain separate work.
+
+Qualification used an isolated snapshot based on `519bf5d`:
+
+- **48/48** focused browser checks: alerts, all-day boundaries/reload, damaged-data
+  isolation and visible warning, guest responses, series/editor/conversion,
+  Clock, notification queue and policy.
+- **82/82** repository tests, typecheck and production web build.
+- Calendar CRUD and delayed-range native-adapter host fixtures pass.
+- The storage-isolation regression fails against the previous notification provider.
+  The frozen snapshot already included the all-day timing correction and passed
+  both new zone-boundary tests before the isolation fix.
+- The initial focused run had 43 passes and two series interaction timeouts; traces
+  show mid-test page reloads. Separate build and verification probes did not reproduce
+  them. The complete focused rerun passed unchanged. Root cause remains unresolved;
+  initial and final evidence is retained in `test-results/calendar-alerts-sync/`
+  alongside source hashes and the before-fix failure.
+
+Newer complex-event guest editing and additional alert tests in the shared checkout
+were preserved outside this frozen snapshot. Remaining work includes their
+qualification, fuller assistant/restart and cross-tab coverage, production provider
+invitation/conferencing, browser data recovery, scanning and the broader MVP/device
+acceptance ledger. The latest full-suite checkpoint remains the 274-case run at the
+simulator-save checkpoint. No Android build ran; the overall goal remains active.
