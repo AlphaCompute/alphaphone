@@ -10,7 +10,7 @@ Selecting **Not now** displayed “Couldn't open your Eliza” and “Dedicated 
 
 The source-confirmed `/cloud/agents` page then displayed the authenticated account menu and an **Eliza · Shared · Free** card, with **Upgrade to Dedicated** and an explanation that signed-in chat requires dedicated hosting. This is live evidence of the visible shared-agent account state, not proof that every organization agent row is absent. No upgrade or provisioning action was taken.
 
-This establishes normal website Google sign-in, not the phone's CLI-session credential exchange, owner-bound agent connection, Gmail OAuth, voice, or restart acceptance. The earlier Gmail token-exchange HTTP401 remains unresolved. A request to approve bounded dedicated hosting and the separate 90-day organization credential grant is pending; no organization key was minted or retrieved. The live browser offer is preserved for continuation.
+This establishes normal website Google sign-in, not the phone's CLI-session credential exchange, owner-bound agent connection, Gmail OAuth, voice, or restart acceptance. The earlier Gmail token-exchange HTTP401 remains unresolved. A request to approve bounded dedicated hosting and the separate 90-day organization credential grant is pending; no organization key was minted or retrieved. The original live browser tab is no longer available at the later October 2 check. Resume from the official sign-in/account page after the pending grants are answered; do not treat the earlier visible offer as current authorization or provisioning.
 
 ### Phone creation compatibility gap
 
