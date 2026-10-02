@@ -17,6 +17,7 @@ export function BrowserDeviceControls({command}:{command:(command:Command)=>void
  {browserDevProfile&&<button onClick={()=>{dialog.current?.close();try{openLocationControls();}catch(error){setRole(error instanceof Error?error.message:'Location could not be opened.');dialog.current?.showModal();}}}>Location</button>}
  {browserDevProfile&&<button onClick={()=>{dialog.current?.close();window.dispatchEvent(new Event('alpha:dev-pickup'));}}>Pick up phone</button>}
  {browserDevProfile&&<button onClick={()=>{dialog.current?.close();window.dispatchEvent(new Event('alpha:dev-incoming-call'));}}>Incoming call</button>}
+ {browserDevProfile&&(['message','email'] as const).map(kind=><button key={kind} onClick={()=>{dialog.current?.close();window.dispatchEvent(new CustomEvent('alpha:dev-incoming-data',{detail:kind}));}}>Incoming {kind}</button>)}
  <button onClick={()=>{dialog.current?.close();openCalendarRecovery();}}>Calendar recovery</button>
  {browserDevProfile&&<button onClick={()=>{dialog.current?.close();showSimulatorRecovery();}}>Saved app recovery</button>}
  <button onClick={()=>{dialog.current?.close();void registerPlugin<{compose():Promise<void>}>('AlphaNotifications').compose();}}>Post notification</button>

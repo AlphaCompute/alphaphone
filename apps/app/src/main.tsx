@@ -1,3 +1,4 @@
+// Register browser implementations before any runtime module claims plugin identity.
 import './browser/register';
 import { pauseLiveActivityForMock } from './runtime/mock-admission';
 import { installBrowserDeviceAdapter } from './browser/device-adapter';

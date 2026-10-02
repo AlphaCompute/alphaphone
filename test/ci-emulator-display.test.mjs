@@ -10,6 +10,7 @@ const policy = ({ showing = true, restricted = true, secure = false } = {}) => `
  bootCompleted=true
  screenState=SCREEN_STATE_ON
  KeyguardStateMonitor
+ mCurrentUserId=0
  mIsShowing=${showing}
  mInputRestricted=${restricted}
 `;
@@ -94,4 +95,44 @@ test("initial true remains fail-closed even when later fixture reads would be fa
     );
     assert.deepEqual(mutations(f.commands), []);
   }
+});
+
+import fs from 'node:fs';
+const unbound = fs.readFileSync(new URL('./fixtures/keyguard-unbound-637c28d.txt', import.meta.url), 'utf8');
+test('captured637 delegate defaults are unready until user0 monitor binds', async () => {
+  const parsed = parseFixtureDisplay('mWakefulness=Awake', unbound);
+  assert.equal(parsed.secure, true); assert.equal(parsed.monitorBound, false); assert.equal(parsed.ready, false);
+  const f = fixture(); let reads = 0, waits = 0;
+  const run = (...args) => args.join(' ') === 'shell dumpsys window policy' && reads++ < 2 ? unbound : f.run(...args);
+  const result = await prepareFixtureDisplay(run, { env, serial: 'emulator-5554', sleep: async () => { waits++; assert.ok(waits <= 30); } });
+  assert.equal(result.unlocked, true); assert.ok(waits >= 2);
+});
+test('unbound malformed and bound-secure observations never permit mutations', async () => {
+  for (const value of [policy().replace('secure=false', 'secure=unknown'), policy().replace('mInputRestricted=true', 'mInputRestricted=unknown'), unbound, unbound.replace('secure=true', 'secure=false'), policy().replace('mCurrentUserId=0', 'mCurrentUserId=10'), policy({secure:true})]) {
+    const f = fixture(); let waits = 0;
+    const run = (...args) => args.join(' ') === 'shell dumpsys window policy' ? value : f.run(...args);
+    await assert.rejects(prepareFixtureDisplay(run, {env, serial:'emulator-5554', sleep:async()=>{waits++;}}));
+    assert.deepEqual(mutations(f.commands), []);
+    assert.equal(waits, value === unbound ? 30 : 0);
+  }
+});
+test('readiness and unlock share the original30-attempt admission budget', async () => {
+  const f = fixture({neverUnlock:true}); let reads = 0, waits = 0;
+  const run = (...args) => args.join(' ') === 'shell dumpsys window policy' && reads++ < 20 ? unbound : f.run(...args);
+  await assert.rejects(prepareFixtureDisplay(run, {env, serial:'emulator-5554', sleep:async()=>{waits++;}}), /not observed awake/);
+  assert.equal(waits, 29); //20 startup waits +9 remaining unlock attempts; ready observation consumes one.
+});
+test('malformed prewrite observation cannot mutate an initially ready fixture', async () => {
+ const f=fixture();let reads=0;
+ const run=(...args)=>args.join(' ')==='shell dumpsys window policy'&&++reads===2?policy().replace('mInputRestricted=true','mInputRestricted=unknown'):f.run(...args);
+ await assert.rejects(prepareFixtureDisplay(run,{env,serial:'emulator-5554',sleep:async()=>{}}),/admission changed/);
+ assert.deepEqual(mutations(f.commands),[]);
+});
+test('independent readonly admission rejects persistent sentinel and bound secure state',async()=>{
+ for(const [value,expectedWaits]of [[unbound,30],[policy({secure:true}),0]]){
+  const f=fixture();let waits=0;
+  const run=(...args)=>args.join(' ')==='shell dumpsys window policy'?value:f.run(...args);
+  await assert.rejects(requireFixtureDisplay(run,{env,serial:'emulator-5554',sleep:async()=>{waits++;}}));
+  assert.equal(waits,expectedWaits);assert.deepEqual(mutations(f.commands),[]);
+ }
 });

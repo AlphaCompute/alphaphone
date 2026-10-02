@@ -383,6 +383,17 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
   p.api = function (key: string) {
     const api = originalApi.call(this, key);
     if(key==='workflows'&&!isAndroid){
+      api.localWorkflowText=async(instruction:string,input:string,signal:AbortSignal)=>{
+        signal.throwIfAborted();
+        if(alphaClient.getState().connection!=='ready'&&!connectionController.getSnapshot().session)return undefined;
+        context(this);
+        if(!this.live||this.S().view!=='workflows'||alphaClient.getState().context.sensitive)throw Error('Open the workflow to generate its result.');
+        const expectedSession=alphaClient.getState().session||connectionController.getSnapshot().session,expectedRevision=alphaClient.getState().context.revision;
+        await this.connectAgent();signal.throwIfAborted();context(this);
+        if(!this.live||this.S().view!=='workflows'||alphaClient.getState().context.revision!==expectedRevision||JSON.stringify(alphaClient.getState().session)!==JSON.stringify(expectedSession))throw Error('The workflow or agent connection changed. Run the step again.');
+        return alphaClient.generateWorkflowText(instruction,input,signal);
+      };
+
       api.localWorkflowNotes=async(input:{operationId?:string;text?:string},signal:AbortSignal)=>{
         signal.throwIfAborted();
         if(this.notesStorageFailed||this.notesPending||!this.notesStore)throw Error('Reopen Notes before running this step.');

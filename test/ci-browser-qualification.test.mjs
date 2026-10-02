@@ -42,7 +42,7 @@ case "$*" in
  'shell am get-current-user') echo 0;;
  'shell pm list users') echo 'UserInfo{0:Owner:4c13}';;
  'shell dumpsys power') echo 'mWakefulness=Awake';;
- 'shell dumpsys window policy') printf '%s\\n' showing=false mIsShowing=false inputRestricted=false mInputRestricted=false secure=false systemIsReady=true bootCompleted=true screenState=SCREEN_STATE_ON;;
+ 'shell dumpsys window policy') printf '%s\\n' KeyguardStateMonitor mCurrentUserId=0 showing=false mIsShowing=false inputRestricted=false mInputRestricted=false secure=false systemIsReady=true bootCompleted=true screenState=SCREEN_STATE_ON;;
  'shell dumpsys webviewupdate') echo 'Current WebView package (name, version): (${candidate.package}, ${candidate.version})';;
  'shell pm path ${candidate.package}') echo package:/data/app/fixture/base.apk;;
  'shell sha256sum '*) echo '${candidate.apkSha256} /data/app/fixture/base.apk';;
@@ -51,7 +51,7 @@ case "$*" in
  'shell am instrument '*browserIsolatedReading*)
   test "$*" = 'shell am instrument -w -r -e class ${methods.map(x => app+'.'+x.split('#')[0]).join(',')} -e browserIsolatedReading 1 ${app}.test/androidx.test.runner.AndroidJUnitRunner' || exit 7
   printf '%s\\n' ${emit(rows).map(x => "'"+x+"'").join(' ')} 'OK (2 tests)';;
- 'shell am instrument '*) printf '%s\\n' ${emit([['OrdinarySuite#case',0]]).map(x => "'"+x+"'").join(' ')} 'OK (1 test)';;
+ 'shell am instrument '*) printf '%s\\n' ${emit([['OrdinarySuite#case',0],['ClockHandoffInstrumentedTest#visibleReviewConstructsFourStandardClockIntentsWithoutDeliveringThem',1],['ClockHandoffInstrumentedTest#visibleReviewConstructsFourStandardClockIntentsWithoutDeliveringThem',0],['RealClockInstrumentedTest#realClockSetFireSnoozeDismissAndDelete',-4]]).map(x => "'"+x+"'").join(' ')} 'OK (3 tests)';;
  'shell dumpsys activity activities') echo 'mResumedActivity: ${app}';;
  'shell cat /sdcard/'*) echo '<nodes text="Open conversation" text="Calendar" text="Camera" text="Notes" text="Settings"/>';;
  install*|'shell am force-stop '*|'shell am start '*|'shell input '*|'shell uiautomator '*|'shell cmd role add-role-holder '*|'exec-out screencap -p') :;;
@@ -71,7 +71,7 @@ test('smoke invokes both actual opt-in classes before each unchanged ordinary su
  const r=exercise('pass'); assert.equal(r.code,0,r.stderr);assert.equal(r.summary.status,'passed');
  assert.deepEqual(r.phases.map(p=>p.passed),[true,true]);
  for(const p of r.phases){assert.equal(p.cases.length,2);assert.deepEqual(p.providerBefore,p.providerAfter);assert.equal(Object.keys(p.artifactHashes).length,4);}
- const runs=r.commands.filter(a=>a.includes('instrument'));assert.equal(runs.length,4);assert.deepEqual(runs.map(a=>a.includes('browserIsolatedReading')),[true,false,true,false]);
+ const runs=r.commands.filter(a=>a.includes('instrument'));assert.equal(runs.length,4);assert.deepEqual(runs.map(a=>a.includes('browserIsolatedReading')),[true,false,true,false]);assert.deepEqual(runs.map(a=>a.includes('clockHandoff')),[false,true,false,true]);assert.ok(runs.every(a=>!a.includes('realClock')&&!a.includes('clockExclusive')));
 });
 for(const mode of ['skip','duplicate','wrong-count'])test(`qualification rejects ${mode} while retaining both variant outcomes`,()=>{
  const r=exercise(mode);assert.notEqual(r.code,0);assert.equal(r.summary.status,'failed');assert.deepEqual(r.phases.map(p=>p.passed),[false,false]);
