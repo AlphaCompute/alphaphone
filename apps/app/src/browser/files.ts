@@ -2,7 +2,7 @@ import {runFilePicker,inputFiles} from './file-picker';
 import pdfWorkerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import { WebPlugin } from '@capacitor/core';
 import { revision } from './store';
-type Entry={id:string;parentId:string;name:string;mimeType:string;directory:boolean;size:number;revision:string;blob?:Blob};
+type Entry={id:string;parentId:string;name:string;mimeType:string;directory:boolean;size:number;revision:string;createdAt?:number;modifiedAt?:number;blob?:Blob};
 let database:Promise<IDBDatabase>|undefined;
 function db(){return database??=new Promise((resolve,reject)=>{const r=indexedDB.open('alpha.browser.files.v1',1);r.onupgradeneeded=()=>r.result.createObjectStore('entries',{keyPath:'id'});r.onsuccess=()=>resolve(r.result);r.onerror=()=>{database=undefined;reject(r.error);};});}
 async function entries(){const d=await db();return new Promise<Entry[]>((resolve,reject)=>{const r=d.transaction('entries').objectStore('entries').getAll();r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error);});}
@@ -11,21 +11,46 @@ async function transaction<T>(action:(all:Entry[],store:IDBObjectStore)=>T){cons
 const root:Entry={id:'root',parentId:'',name:'Browser files',mimeType:'',directory:true,size:0,revision:'root'};
 const publicEntry=({blob,...entry}:Entry)=>({...entry,canCreate:entry.directory,canRename:entry.id!=='root',canDelete:entry.id!=='root',canMove:entry.id!=='root'});
 const validName=(name:string)=>{if(!name.trim()||/[\\/\0]/.test(name)||['.','..'].includes(name)||name.length>240)throw Error('Choose a valid file name.');return name.trim();};
+function waitForFileRead<T>(work:Promise<T>,signal?:AbortSignal):Promise<T>{
+ if(!signal)return work;
+ return new Promise((resolve,reject)=>{let settled=false;const finish=(error:unknown,value?:T)=>{if(settled)return;settled=true;signal.removeEventListener('abort',cancel);error?reject(error):resolve(value!);};const cancel=()=>finish(new DOMException('Files read cancelled','AbortError'));signal.addEventListener('abort',cancel,{once:true});work.then(value=>finish(null,value),error=>finish(error));if(signal.aborted)cancel();});
+}
 export class BrowserFiles extends WebPlugin {
  private selection=new Map<string,{id:string;revision:string}>();
  private previews=new Map<string,string>();
  private viewers=new Map<string,HTMLDialogElement>();
  private urls=new Map<string,string>();
  async choose(){return this.list({});}
- async importDirectory(files:{path:string;file:File}[],name:string,signal?:AbortSignal){const folder:Entry={id:crypto.randomUUID(),parentId:'root',name:validName(name),mimeType:'',directory:true,size:0,revision:revision()},rows:Entry[]=[folder],directories=new Map<string,string>([['',folder.id]]);for(const item of files){const parts=item.path.split('/').map(validName);let path='',parentId=folder.id;for(const part of parts.slice(0,-1)){path=path?path+'/'+part:part;let id=directories.get(path);if(!id){id=crypto.randomUUID();directories.set(path,id);rows.push({id,parentId,name:part,mimeType:'',directory:true,size:0,revision:revision()});}parentId=id;}rows.push({id:crypto.randomUUID(),parentId,name:parts.at(-1)!,mimeType:item.file.type||'application/octet-stream',directory:false,size:item.file.size,revision:revision(),blob:item.file});}await transaction((all,store)=>{signal?.throwIfAborted();if(all.some(e=>e.parentId==='root'&&e.name===folder.name))throw Error('A folder with this name already exists.');const names=new Set<string>();for(const row of rows){const key=row.parentId+'/'+row.name;if(names.has(key))throw Error('Duplicate folder entry.');names.add(key);store.add(row);}});return this.list({id:folder.id});}
+ async workflowFiles(input:{recent:boolean},signal?:AbortSignal){
+  signal?.throwIfAborted();
+  const choose=(all:Entry[])=>all.filter(row=>!row.directory).sort((a,b)=>(b.modifiedAt||0)-(a.modifiedAt||0)||a.id.localeCompare(b.id)).slice(0,input.recent?20:2000);
+  const all=await waitForFileRead(entries(),signal),rows=choose(all);signal?.throwIfAborted();
+  if(!input.recent&&all.filter(row=>!row.directory).length>2000)throw Error('Choose a smaller Files source.');
+  const result=[];
+  for(const row of rows){
+   signal?.throwIfAborted();let text:string|undefined,contentStatus='binary';
+   if(row.mimeType.startsWith('text/')||['application/json','application/xml','application/javascript'].includes(row.mimeType)){
+    if(row.size>16000)contentStatus='too-large';
+    else if(row.blob){try{text=new TextDecoder('utf-8',{fatal:true}).decode(await waitForFileRead(row.blob.arrayBuffer(),signal));if(text.includes('\0')){text=undefined;contentStatus='binary';}else contentStatus='text';}catch(error){if(!(error instanceof TypeError))throw error;contentStatus='binary';}}
+   }
+   result.push({id:row.id,parentId:row.parentId,name:row.name,mimeType:row.mimeType,size:row.size,revision:row.revision,createdAt:row.createdAt??null,modifiedAt:row.modifiedAt??null,contentStatus,...(text===undefined?{}:{text})});
+  }
+  signal?.throwIfAborted();const latest=await waitForFileRead(entries(),signal);signal?.throwIfAborted();
+  if(!input.recent&&latest.filter(row=>!row.directory).length>2000)throw Error('Choose a smaller Files source.');
+  const current=choose(latest);
+  if(JSON.stringify(current.map(row=>[row.id,row.revision]))!==JSON.stringify(rows.map(row=>[row.id,row.revision])))throw Error('Files changed during the read. Run the step again.');
+  return {scope:input.recent?'20 most recently imported or changed files':'All managed files',files:result};
+ }
+
+ async importDirectory(files:{path:string;file:File}[],name:string,signal?:AbortSignal){const folder:Entry={id:crypto.randomUUID(),parentId:'root',name:validName(name),mimeType:'',directory:true,size:0,revision:revision()},rows:Entry[]=[folder],directories=new Map<string,string>([['',folder.id]]);for(const item of files){const parts=item.path.split('/').map(validName);let path='',parentId=folder.id;for(const part of parts.slice(0,-1)){path=path?path+'/'+part:part;let id=directories.get(path);if(!id){id=crypto.randomUUID();directories.set(path,id);rows.push({id,parentId,name:part,mimeType:'',directory:true,size:0,revision:revision()});}parentId=id;}rows.push({id:crypto.randomUUID(),parentId,name:parts.at(-1)!,mimeType:item.file.type||'application/octet-stream',directory:false,size:item.file.size,revision:revision(),blob:item.file});}await transaction((all,store)=>{signal?.throwIfAborted();if(all.some(e=>e.parentId==='root'&&e.name===folder.name))throw Error('A folder with this name already exists.');const names=new Set<string>();for(const row of rows){const key=row.parentId+'/'+row.name;if(names.has(key))throw Error('Duplicate folder entry.');names.add(key);store.add({...row,createdAt:Date.now(),modifiedAt:Date.now()});}});return this.list({id:folder.id});}
  async importFolder(){return runFilePicker<any>(async signal=>{const picker=(window as any).showDirectoryPicker;if(picker){const directory=await picker.call(window,{mode:'read'});signal.throwIfAborted();const files:{path:string;file:File}[]=[];const walk=async(handle:any,prefix='')=>{for await(const entry of handle.values()){signal.throwIfAborted();const path=prefix+entry.name;if(entry.kind==='directory')await walk(entry,path+'/');else files.push({path,file:await entry.getFile()});}};await walk(directory);signal.throwIfAborted();return this.importDirectory(files,directory.name,signal);}const files=await inputFiles(signal,{directory:true});signal.throwIfAborted();if(!files.length)return {status:'cancelled'};const name=files[0].webkitRelativePath.split('/')[0];return this.importDirectory(files.map(file=>({path:file.webkitRelativePath.split('/').slice(1).join('/'),file})),name,signal);},{status:'cancelled'});}
  async list(input:{id?:string}){const all=await entries(),folder=input.id&&input.id!=='root'?all.find(e=>e.id===input.id):root;if(!folder?.directory)throw Error('Choose a folder.');return {status:'ready',message:'',rootId:'root',folder:publicEntry(folder),entries:all.filter(e=>e.parentId===folder.id).map(publicEntry)};}
- private insert(row:Entry,signal?:AbortSignal){return transaction((all,store)=>{signal?.throwIfAborted();if(row.parentId!=='root'&&!all.some(e=>e.id===row.parentId&&e.directory))throw Error('Choose a folder.');if(all.some(e=>e.parentId===row.parentId&&e.name===row.name))throw Error('Choose a different name.');store.add(row);});}
+ private insert(row:Entry,signal?:AbortSignal){return transaction((all,store)=>{signal?.throwIfAborted();if(row.parentId!=='root'&&!all.some(e=>e.id===row.parentId&&e.directory))throw Error('Choose a folder.');if(all.some(e=>e.parentId===row.parentId&&e.name===row.name))throw Error('Choose a different name.');store.add({...row,createdAt:Date.now(),modifiedAt:Date.now()});});}
  async createFolder(input:{id:string;name:string}){await this.insert({id:crypto.randomUUID(),parentId:input.id,name:validName(input.name),mimeType:'',directory:true,size:0,revision:revision()});return {status:'created',message:'Folder created.'};}
  async importFile(file:File,parentId='root',signal?:AbortSignal){const row:Entry={id:crypto.randomUUID(),parentId,name:validName(file.name),mimeType:file.type||'application/octet-stream',directory:false,size:file.size,revision:revision(),blob:file};await this.insert(row,signal);signal?.throwIfAborted();const selected=await this.select({id:row.id});if(signal?.aborted){await this.forgetSelected(selected);signal.throwIfAborted();}return selected;}
  async pick(photos=false){const cancelled={status:'cancelled',action:photos?'photos':'files'};return runFilePicker<any>(async signal=>{const files=await inputFiles(signal,{photos});signal.throwIfAborted();if(!files.length)return cancelled;try{return await this.importFile(files[0],'root',signal);}catch(error){if(signal.aborted)throw error;return {status:'failed',action:cancelled.action,message:'File could not be imported. Try again.'};}},cancelled);}
  private async mutate(input:{id:string;expectedRevision:string},change:(row:Entry,all:Entry[])=>Entry|null){
-  const parentId=await transaction((all,store)=>{const row=all.find(e=>e.id===input.id);if(!row||row.revision!==input.expectedRevision)throw Error('This file changed. Refresh and try again.');const updated=change(row,all);if(updated&&all.some(e=>e.id!==row.id&&e.parentId===updated.parentId&&e.name===updated.name))throw Error('Choose a different name.');if(updated)store.put({...updated,revision:revision()});else store.delete(row.id);return updated?.parentId||row.parentId;});return {status:'changed',message:'File updated.',parentId};
+  const parentId=await transaction((all,store)=>{const row=all.find(e=>e.id===input.id);if(!row||row.revision!==input.expectedRevision)throw Error('This file changed. Refresh and try again.');const updated=change(row,all);if(updated&&all.some(e=>e.id!==row.id&&e.parentId===updated.parentId&&e.name===updated.name))throw Error('Choose a different name.');if(updated)store.put({...updated,revision:revision(),modifiedAt:Date.now()});else store.delete(row.id);return updated?.parentId||row.parentId;});return {status:'changed',message:'File updated.',parentId};
  }
  async rename(input:{id:string;expectedRevision:string;name:string}){await this.mutate(input,row=>({...row,name:validName(input.name)}));return {status:'renamed',message:'Renamed.'};}
  async delete(input:{id:string;expectedRevision:string;confirmPermanent:boolean}){if(!input.confirmPermanent)throw Error('Confirm deletion.');await this.mutate(input,(row,all)=>{if(all.some(e=>e.parentId===row.id))throw Error('Empty this folder before deleting it.');return null;});return {status:'deleted',message:'Deleted.'};}

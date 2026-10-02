@@ -10,6 +10,16 @@
     "packages/agent/test/mobile-workflows.test.ts": "93d753ea18233078d67050f4c16b1e22450b548dcc2b22558a2c344c8fa98618",
     "packages/agent/test/mobile-workspace-exports.test.ts": "26606028fbd3deb1274a2c8801ea49dccaddb3c806e499607a523f38f5ef76e5",
     "packages/app/src/security/secure-store-android.ts": "af9dbf66398a9a984b43b33d98e752f586c70a6b473b73413e1cbfe395d30974",
+    "packages/core/src/__tests__/swap-control-objects.test.ts": "2a3cd5464d53f791d16bf4cae4d179b818f27599b212b5bfa8106a015536bd6a",
+    "packages/core/src/__tests__/swap-user-reply.test.ts": "f3853504d2cd0ef0806b5649edbd8bd17410d8bc1ee314eee77c9c56dc9efa08",
+    "packages/core/src/runtime.ts": "44536e4e519bc573511f3dbb3136c04d6b8bc2f48bfcd972ca326946606b08e2",
+    "packages/core/src/security/guarded-stream.ts": "7b8908f0b04ce822e02e4e9a98ca61b41d59658357a6c2acca85c5aecb8d987f",
+    "packages/core/src/security/pii-pseudonymizer.ts": "bffc53238d2580c5ad2d436e0e247ac425189487bf482e51b5917567f29ee111",
+    "packages/core/src/security/runtime-abort-signal.ts": "da3bb65a56334a249399c0a2ec4e0f9d227c8e09e3566237609f679de76b0d78",
+    "packages/core/src/security/secret-swap.ts": "7a4d9fed214761e714d9e7b208d1b655dadfc744c3733255bcd9ac88960e8133",
+    "plugins/plugin-assistant/src/services/device-actions/contract.ts": "414922c6cb149dcf2d80178ec358b2b6cd22bc930db9837d4dbe9c7328b2d998",
+    "plugins/plugin-assistant/src/services/message/reply-policy.ts": "6258737cf79a623f58988d6788462b9b5d12ae54b6916b5e198dc873197ee40c",
+    "plugins/plugin-assistant/test/device-actions.e2e.test.ts": "5d6fde6af9cf2f1cb27298cae08f0811872faa3e83db784088840f669a054eed",
     "plugins/plugin-workflow/__tests__/hosted-route-registration.test.ts": "fff3297e97e13c5929bff141c045a10153a5166eb93bd06dc84f5deb098135ac",
     "plugins/plugin-workflow/src/plugin-routes.ts": "3edae66b214358367db08c3fb435bf12508c374efa691c51b71ce0ff01acf69e"
   },
@@ -18,13 +28,19 @@
     "lean-chat-workflows.patch",
     "hosted-digest-route-registration.patch",
     "mobile-workflow-enablement.patch",
-    "mobile-workflow-source-entries.patch"
+    "mobile-workflow-source-entries.patch",
+    "egress-swap-control-objects.patch",
+    "egress-user-reply-restoration.patch",
+    "approved-workflows-navigation.patch"
   ],
   "patchHashes": {
     "android-secure-store-socket.patch": "457ea3d0b91c80c53c4bd3db25bb85cea6079d87c5ee2b02a96757e0a31ae900",
     "lean-chat-workflows.patch": "a8ca2f7cda01dfee7d9542ac1263c55b66e9f6496315382329bd490bb95e0faf",
     "hosted-digest-route-registration.patch": "13da9b7847cfbcbe8ca6dd606740df6a5e2789faa8b0999480258a27542d7b2e",
     "mobile-workflow-enablement.patch": "127471d5f767546f7c6de7fe1e2e72cbbeb10561ef59ee48b23818b7efd26bbe",
-    "mobile-workflow-source-entries.patch": "15b3bf811f45c6a2c00625b5051ec7d74a17f0c5202a1155c6a668ff5a680ce6"
+    "mobile-workflow-source-entries.patch": "15b3bf811f45c6a2c00625b5051ec7d74a17f0c5202a1155c6a668ff5a680ce6",
+    "egress-swap-control-objects.patch": "6ecd2d688b0c2a8973ee5c71aabab3cc43fef8a19077516f36c27ba2bc00602c",
+    "egress-user-reply-restoration.patch": "39904adafddc8841e74b268aad8fdac00a94481ba43f3acd7b18383d53b32ee8",
+    "approved-workflows-navigation.patch": "2202d04675531633db4b1ce3a2e49e3e870c259c341acaf20b17bbef6be99c9a"
   }
 }

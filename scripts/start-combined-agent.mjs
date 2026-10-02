@@ -7,6 +7,7 @@ import net from 'node:net';
 import crypto from 'node:crypto';
 import {spawn,execFileSync} from 'node:child_process';
 import {sourceManifest,sha} from './combined-agent-source.mjs';
+import {AGENT_MODEL,agentModelEnvironment} from './agent-model.mjs';
 const nodeBin=process.env.ALPHA_NODE_BIN,bunBin=process.env.ALPHA_BUN;
 if(!nodeBin||!bunBin||!path.isAbsolute(nodeBin)||!path.isAbsolute(bunBin)||path.basename(nodeBin)!=='node')throw Error('Explicit absolute ALPHA_NODE_BIN (named node) and ALPHA_BUN required');
 if(execFileSync(nodeBin,['--version'],{encoding:'utf8'}).trim()!=='v24.15.0'||execFileSync(bunBin,['--version'],{encoding:'utf8'}).trim()!=='1.4.2')throw Error('Combined runtime requires Node24.15.0 and Bun1.4.2');
@@ -28,18 +29,19 @@ const voice={};for(const name of ['ELIZA_INFERENCE_LIBRARY','ELIZA_KOKORO_MODEL_
 const binaryDigest=process.env.ELIZA_WHISPER_BINARY_SHA256;
 if(!/^[a-f0-9]{64}$/.test(binaryDigest||'')||sha(fs.readFileSync(voice.ELIZA_WHISPER_BINARY))!==binaryDigest)throw Error('Whisper executable differs from explicitly reviewed digest');
 if(sha(fs.readFileSync(voice.ELIZA_WHISPER_MODEL))!=='4baf807ea95de42a7f9df96e24a36fe835ac8fb5b6ca20d7539ef521c42e6a2b')throw Error('Expected supported tiny.en model bytes');
-const configValue={cloud:{enabled:false},serviceRouting:{llmText:{backend:'cerebras',transport:'direct',smallModel:'qwen-3.8-27b',largeModel:'qwen-3.8-27b'}},plugins:{entries:{scheduling:{enabled:false},'personal-assistant':{enabled:false}}}};
+const configValue={cloud:{enabled:false},serviceRouting:{llmText:{backend:'cerebras',transport:'direct',smallModel:AGENT_MODEL,largeModel:AGENT_MODEL}},plugins:{entries:{scheduling:{enabled:false},'personal-assistant':{enabled:false}}}};
 if(fs.existsSync(profile)){privatePath(profile,true);if(!fs.existsSync(path.join(profile,'combined-profile.json')))throw Error('Refuse adoption of another existing profile');}
 if(process.argv.includes('--validate-only')){console.log(JSON.stringify({validated:true,port,revision:actual.revision,contentSha256:actual.contentSha256,launched:false}));process.exit(0);}
 fs.mkdirSync(profile,{recursive:true,mode:0o700});privatePath(profile,true);
 const marker=path.join(profile,'combined-profile.json');if(!fs.existsSync(marker))fs.writeFileSync(marker,JSON.stringify({kind:'alphaphone-combined',port})+'\n',{mode:0o600,flag:'wx'});privatePath(marker);
 const markerValue=JSON.parse(fs.readFileSync(marker,'utf8'));if(markerValue.kind!=='alphaphone-combined'||markerValue.port!==port)throw Error('Wrong profile marker');
 const config=path.join(profile,'eliza.json');if(!fs.existsSync(config))fs.writeFileSync(config,JSON.stringify(configValue)+'\n',{mode:0o600,flag:'wx'});privatePath(config);if(JSON.stringify(JSON.parse(fs.readFileSync(config,'utf8')))!==JSON.stringify(configValue))throw Error('Profile routing differs; review migration explicitly');
+const modelEnvironment=agentModelEnvironment(JSON.parse(fs.readFileSync(config,'utf8')));
 const tokenPath=path.join(profile,'owner-token');if(!fs.existsSync(tokenPath))fs.writeFileSync(tokenPath,crypto.randomBytes(32).toString('hex'),{mode:0o600,flag:'wx'});privatePath(tokenPath);
 const token=fs.readFileSync(tokenPath,'utf8').trim(),key=fs.readFileSync(keyPath,'utf8').trim();if(!token||!key)throw Error('Required private credential is empty');
 const logPath=path.join(profile,'server.log');if(fs.existsSync(logPath))privatePath(logPath);const log=fs.openSync(logPath,'a',0o600);
 const base=Object.fromEntries(['PATH','TMPDIR','LANG','SHELL','USER','LOGNAME','HOME'].filter(k=>process.env[k]).map(k=>[k,process.env[k]]));
-const env={...base,PATH:runtimePath,...voice,ELIZA_WHISPER_ENABLED:'1',ELIZA_WHISPER_BINARY_SHA256:binaryDigest,ELIZA_HEADLESS:'1',ELIZA_REQUIRE_LOCAL_AUTH:'1',ELIZA_API_BIND:'127.0.0.1',ELIZA_ALLOWED_HOSTS:'10.0.2.2',ELIZA_API_PORT:String(port),ELIZA_API_EXPOSE_PORT:'1',ELIZA_STATE_DIR:profile,ELIZA_CONFIG_PATH:config,ELIZA_API_TOKEN:token,CEREBRAS_API_KEY:key,CEREBRAS_MODEL:'qwen-3.8-27b',CEREBRAS_SMALL_MODEL:'qwen-3.8-27b',CEREBRAS_LARGE_MODEL:'qwen-3.8-27b',ELIZAOS_CLOUD_USE_INFERENCE:'false'};
+const env={...base,PATH:runtimePath,...voice,ELIZA_WHISPER_ENABLED:'1',ELIZA_WHISPER_BINARY_SHA256:binaryDigest,ELIZA_HEADLESS:'1',ELIZA_REQUIRE_LOCAL_AUTH:'1',ELIZA_API_BIND:'127.0.0.1',ELIZA_ALLOWED_HOSTS:'10.0.2.2',ELIZA_API_PORT:String(port),ELIZA_API_EXPOSE_PORT:'1',ELIZA_STATE_DIR:profile,ELIZA_CONFIG_PATH:config,ELIZA_API_TOKEN:token,CEREBRAS_API_KEY:key,...modelEnvironment,ELIZAOS_CLOUD_USE_INFERENCE:'false'};
 const child=spawn(bunBin,['--conditions=eliza-source','--tsconfig-override',path.join(realSource,'tsconfig.json'),entry],{cwd:profile,env,stdio:['ignore',log,log]});
 const metadata={pid:child.pid,port,nodeVersion:'24.15.0',bunVersion:'1.4.2',nodeBinarySha256:sha(fs.readFileSync(nodeBin)),bunBinarySha256:sha(fs.readFileSync(bunBin)),source:realSource,revision:actual.revision,contentSha256:actual.contentSha256,startedAt:new Date().toISOString()};fs.writeFileSync(path.join(profile,'process.json'),JSON.stringify(metadata,null,2),{mode:0o600});console.log(JSON.stringify(metadata));
 for(const signal of ['SIGINT','SIGTERM'])process.on(signal,()=>child.kill(signal));child.on('error',()=>{console.error('Combined runtime launch failed; inspect owner-only log');process.exitCode=1;});child.on('exit',code=>{fs.closeSync(log);process.exitCode=code??1;});

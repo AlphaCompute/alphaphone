@@ -58,6 +58,53 @@ export function verifyMetadata(signature, badging, manifest) {
   require(manifest.includes('com.android.webview.WebViewLibrary') && manifest.includes('libwebviewchromium.so') && !manifest.includes('E: uses-static-library'), 'Unexpected external provider dependency');
 }
 
+// Failure evidence only: one shared budget, no retries, mutations or guessed block targets.
+export function collectOverlayFailureDiagnostics({ environment, sdkEnvironment, execute, now = Date.now, hostPaths = { workspace: process.cwd(), androidSdk: sdkEnvironment.ANDROID_HOME, home: process.env.HOME }, statfs = fs.statfsSync, userspaceOnly = false }) {
+  const deadline = now() + 20000;
+  const evidence = { host: {}, guest: {}, budgetMilliseconds: 20000 };
+  for (const [name, location] of Object.entries(hostPaths)) {
+    try { const value = statfs(location); evidence.host[name] = { availableBytes: value.bavail * value.bsize, freeBytes: value.bfree * value.bsize }; }
+    catch (error) { evidence.host[name] = { unavailable: String(error.message).slice(0, 512) }; }
+  }
+  let sourceFd;
+  try {
+    const source = path.join(sdkEnvironment.ANDROID_HOME, 'system-images/android-35/default/x86_64/source.properties');
+    sourceFd = fs.openSync(source, 'r');
+    const bytes = Buffer.alloc(8192);
+    evidence.host.imageSourceProperties = bytes.subarray(0, fs.readSync(sourceFd, bytes, 0, bytes.length, 0)).toString('utf8');
+  } catch (error) { evidence.host.imageSourceProperties = { unavailable: String(error.message).slice(0, 512) }; }
+  finally { if (sourceFd !== undefined) fs.closeSync(sourceFd); }
+  const read = (...args) => {
+    const remaining = deadline - now();
+    require(remaining > 0, 'Failure diagnostic deadline exceeded');
+    return execute(path.join(sdkEnvironment.ANDROID_HOME, 'platform-tools/adb'), ['-s', environment.ANDROID_SERIAL, ...args], {
+      env: sdkEnvironment, encoding: 'utf8', timeout: Math.min(2000, remaining), maxBuffer: 256 * 1024,
+    });
+  };
+  for (const [name, args] of [
+    ['userspaceStorageLog', ['shell', 'logcat', '-d', '-b', 'all', '-t', '400']],
+    ['fingerprint', ['shell', 'getprop', 'ro.build.fingerprint']],
+    ['deviceMapperNames', ['shell', 'dmctl', 'list', 'devices']],
+    ['blockNames', ['shell', 'ls', '-l', '/dev/block/by-name']],
+    ['superMetadata', ['shell', 'lpdump', '/dev/block/by-name/super']],
+    ['capacity', ['shell', 'df', '-k', '/data', '/metadata', '/product']],
+    ['partitions', ['shell', 'cat', '/proc/partitions']],
+    ['kernel', ['shell', 'dmesg']],
+  ]) {
+    if (userspaceOnly && name !== 'userspaceStorageLog') continue;
+    // Admission uses the same bounded executor and performs one complete attempt.
+    try { requireProviderFixture(read, environment, {}, () => { throw Error('Failure diagnostic admission unavailable'); }); }
+    catch (error) { evidence.admissionStopped = String(error.message).slice(0, 512); break; }
+    try {
+      const result = read(...args);
+      evidence.guest[name] = (['userspaceStorageLog', 'kernel'].includes(name) ? result.split('\n').filter(line => /gsid|fiemap|scratch|overlay|mkfs|f2fs|ext4|device.mapper/i.test(line)).join('\n') : result).slice(-65536);
+    } catch (error) {
+      evidence.guest[name] = { unavailable: String(error.message).slice(0, 512), status: error.status ?? null, signal: error.signal ?? null, code: error.code ?? null, stdout: String(error.stdout ?? '').slice(-4096), stderr: String(error.stderr ?? '').slice(-4096) };
+    }
+  }
+  return evidence;
+}
+
 export async function main({ environment = process.env, execute = execFileSync, sdkEnvironment, outputDirectory, sleep = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds)), now = Date.now, fileDigest = sha } = {}) {
   const serial = environment.ANDROID_SERIAL;
   requireHostedFixtureEnvironment(environment, serial); // Before download or device access.
@@ -142,7 +189,13 @@ export async function main({ environment = process.env, execute = execFileSync, 
     state.status = 'preparing-overlay-storage'; save();
     captureStorage('before');
     configureScratch();
-    run('disable-verity'); run('reboot'); run('wait-for-device'); await boot();
+    run('disable-verity');
+    // disable-verity can report overlay failure with exit zero; retain its logs before reboot.
+    try {
+      const diagnostics = collectOverlayFailureDiagnostics({ environment, sdkEnvironment: env, execute, now, userspaceOnly: true });
+      fs.writeFileSync(path.join(output, 'overlay-pre-reboot-diagnostics.json'), JSON.stringify(diagnostics, null, 2) + '\n');
+    } catch (diagnosticError) { state.preRebootDiagnosticError = String(diagnosticError.message).slice(0, 512); }
+    safe(); run('reboot'); run('wait-for-device'); await boot();
     run('root'); run('wait-for-device'); safe();
     configureScratch(); // Non-persistent property is reset by reboot.
     const remount = run('remount');
@@ -185,8 +238,11 @@ export async function main({ environment = process.env, execute = execFileSync, 
     fs.unlinkSync(archive); fs.unlinkSync(apk);
   } catch (error) {
     if (state.status === 'preparing-overlay-storage') {
-      try { safe(); captureStorage('failed'); } catch { /* Do not inspect a fixture whose identity no longer matches. */ }
+      try {
+        const diagnostics = collectOverlayFailureDiagnostics({ environment, sdkEnvironment: env, execute, now });
+        fs.writeFileSync(path.join(output, 'overlay-failure-diagnostics.json'), JSON.stringify(diagnostics, null, 2) + '\n');
+      } catch (diagnosticError) { state.diagnosticError = String(diagnosticError.message).slice(0, 512); }
     }
-    state.failedAt = state.status; state.status = 'FAIL'; state.error = error.message; save(); throw error; }
+    state.failedAt = state.status; state.status = 'FAIL'; state.error = error.message; try { save(); } catch { /* Evidence failure must not replace the original provisioning error. */ } throw error; }
 }
 if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href) await main();

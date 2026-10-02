@@ -41,7 +41,7 @@ test('play startup timeout settles and cleans its player',async()=>{
 });
 test('speech selects a local voice and ignores stale speech events after replacement',async()=>{
  const h=harness();h.engine.voices.unshift({localService:false,lang:'en-US',default:true});const a=await h.voice.synthesizeLocal({text:'First'});await h.voice.play(a);assert.equal(h.spoken[0].voice.localService,true);const late=h.spoken[0].onend;
- const b=await h.voice.synthesizeLocal({text:'Second'});await h.voice.play(b);late();assert.equal(h.events.length,0);h.spoken[1].onend();assert.equal(h.events[0].playbackId,b.playbackId);
+ const b=await h.voice.synthesizeLocal({text:'Second'});await h.voice.play(b);late();assert.deepEqual(h.events,[{name:'playbackStopped',playbackId:a.playbackId}]);h.spoken[1].onend();assert.deepEqual(h.events[1],{name:'playbackEnded',playbackId:b.playbackId});
 });
 test('remote-only speech fails without speaking; cancellation removes voice loading listeners and timers',async()=>{
  const h=harness();h.engine.voices=[{localService:false,lang:'en-US'}];const prepared=await h.voice.synthesizeLocal({text:'Keep local'});

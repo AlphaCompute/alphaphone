@@ -181,8 +181,9 @@
             <div style="padding: 0 12px 14px 12px">
               <div style="display: flex; align-items: center; gap: 12px">
                 <button aria-label="{{v.playLabel}}" onClick="{{v.play}}" style="width: 44px; height: 44px; border-radius: 22px; background: var(--acc); color: #fff; display: flex; align-items: center; justify-content: center; flex-shrink: 0"><svg class="i" viewBox="0 0 24 24" style="width: 18px; height: 18px; fill: currentColor"><path d="{{v.playD}}"></path></svg></button>
-                <div style="flex-grow: 1; height: 4px; border-radius: 2px; background: var(--s3); overflow: hidden"><div style="height: 100%; width: {{v.prog}}%; background: var(--fg); border-radius: 2px"></div></div>
-                <span style="font-size: 12px; color: var(--mut); font-variant-numeric: tabular-nums; white-space: nowrap">{{v.posT}} / {{v.dur}}</span>
+                <div style="flex-grow: 1; height: 4px; border-radius: 2px; background: var(--s3); overflow: hidden; {{v.recordingOnlyCss}}"><div style="height: 100%; width: {{v.prog}}%; background: var(--fg); border-radius: 2px"></div></div>
+                <span style="font-size: 12px; color: var(--mut); font-variant-numeric: tabular-nums; white-space: nowrap; {{v.recordingOnlyCss}}">{{v.posT}} / {{v.dur}}</span>
+                <sc-if value="{{v.readingLabel}}"><span style="font-size: 12px; color: var(--mut)">{{v.readingLabel}}</span></sc-if>
               </div>
               <div style="display: flex; gap: 4px; margin-top: 8px; margin-left: 46px">
                 <button class="ib" aria-label="Call back {{v.who}}" onClick="{{v.call}}"><svg class="i" viewBox="0 0 24 24" style="width: 20px; height: 20px"><path d="{{ic.phone}}"></path></svg></button>
@@ -478,6 +479,11 @@
             </sc-for>
           </div>
         </sc-if>
+        <sc-if value="{{messages.t.local}}"><div style="display:flex;gap:12px;flex-wrap:wrap;padding:6px 0">
+          <button disabled="{{messages.t.busy}}" onClick="{{messages.t.attachFile}}">Attach PDF, image or TXT</button>
+          <button disabled="{{messages.t.busy}}" onClick="{{messages.t.saveDraft}}">Save draft locally</button>
+          <sc-if value="{{messages.t.hasSavedDraft}}"><button disabled="{{messages.t.busy}}" onClick="{{messages.t.restoreDraft}}">Restore saved draft</button></sc-if>
+        </div></sc-if>
         <sc-if value="{{messages.t.hasAtts}}" hint-placeholder-val="{{false}}">
           <div class="scr" style="display: flex; gap: 6px; padding: 2px 0 10px; overflow-x: auto">
             <sc-for list="{{messages.t.atts}}" as="a" hint-placeholder-count="1">
@@ -723,6 +729,7 @@
     </sc-if>
   </div>
 
+  <sc-if value="{{calendar.reminderDeleteUnknown}}"><div role="status" style="padding:12px;color:var(--mut)">{{calendar.reminderDeleteUnknown}} reminder deletion(s) await confirmation.<button class="tap" aria-label="Check reminder deletion status" onClick="{{calendar.checkReminderDeletions}}" style="padding:8px;color:var(--acc)">Check deletion status</button></div></sc-if>
   <sc-if value="{{calendar.clock}}" hint-placeholder-val="{{false}}">
     <div role="dialog" aria-modal="true" aria-label="Clock alarms" style="position:absolute;inset:0;z-index:35;background:var(--bg);display:flex;flex-direction:column;padding:{{calendar.clock.topPadding}} 24px 120px;overflow:auto;box-sizing:border-box">
       <div style="display:flex;align-items:center;gap:12px;margin-bottom:24px"><button class="ib" aria-label="Close Clock" aria-disabled="{{calendar.clock.busy}}" onClick="{{calendar.clock.close}}"><svg class="i" viewBox="0 0 24 24"><path d="{{ic.back}}"></path></svg></button><h2 class="serif" style="font-size:32px;margin:0">Clock</h2></div>
@@ -2982,9 +2989,12 @@
             <span>{{f.short}}</span>
           </div>
         </button>
+        <sc-if value="{{workflows.listToggles}}">
         <button aria-label="Turn {{f.name}} on or off" aria-pressed="{{f.on}}" onClick="{{f.toggle}}" style="position: relative; width: 52px; height: 32px; border-radius: 16px; flex-shrink: 0; transition: background .25s; {{f.track}}">
           <span style="position: absolute; top: 3px; left: 3px; width: 26px; height: 26px; border-radius: 13px; background: #ffffff; box-shadow: 0 1px 3px rgba(0,0,0,.2); transition: transform .25s cubic-bezier(.19,1,.22,1); transform: translateX({{f.kx}}px)"></span>
         </button>
+        </sc-if>
+        <sc-if value="{{f.statusLabel}}"><span style="font-size:13px;color:var(--mut);padding-top:3px">{{f.statusLabel}}</span></sc-if>
       </div>
     </sc-for>
   </div>
@@ -3043,6 +3053,7 @@
           </sc-if>
         </div>
 
+        <sc-if value="{{workflows.fd.localExecutor}}"><sc-if value="{{workflows.fd.isRunning}}"><button onClick="{{workflows.fd.cancelRun}}" style="padding:12px">Cancel run</button></sc-if></sc-if>
         <sc-if value="{{workflows.fd.hasRuns}}" hint-placeholder-val="{{true}}">
           <div style="display: flex; flex-direction: column; margin-top: 26px; border-top: 1px solid var(--line); padding-top: 8px">
             <sc-for list="{{workflows.fd.runs}}" as="r" hint-placeholder-count="3">

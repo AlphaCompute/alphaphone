@@ -15,6 +15,7 @@ export class BrowserVoice extends WebPlugin {
  private playbackGeneration=0;
  private playbackAbort?:AbortController;
  private utterance?:SpeechSynthesisUtterance;
+ private activeSpeechId?:string;
  constructor(){super();
   window.addEventListener('alpha:device-settings',()=>{if(this.audio)this.audio.volume=browserMediaVolume();});
   if(this.audioChanges)this.audioChanges.onmessage=event=>{if(event.data?.deleted&&[this.audioId,this.pendingAudioId].includes(event.data.audioId))void this.stopPlayback();};
@@ -49,6 +50,7 @@ export class BrowserVoice extends WebPlugin {
   if(document.hidden)throw new DOMException('Playback cancelled','AbortError');
   if(!!input.playbackId===!!input.audioId)throw Error('Choose one recording or prepared speech.');
   if(input.playbackId){
+   this.activeSpeechId=input.playbackId;
    const text=this.speech.get(input.playbackId);if(text===undefined)throw Error('Prepare speech first.');
    const engine=window.speechSynthesis;if(!engine)throw Error('Local speech is unavailable. Read the reply as text.');
    const voices=()=>engine.getVoices().filter(voice=>voice.localService===true);
@@ -63,7 +65,7 @@ export class BrowserVoice extends WebPlugin {
    const voice=local.find(v=>v.lang===navigator.language)||local.find(v=>v.lang.split('-')[0]===language)||local[0];
    if(!voice)throw Error('No local browser voice is available. Read the reply as text.');
    const speech=this.utterance=new SpeechSynthesisUtterance(text);speech.voice=voice;speech.volume=browserMediaVolume();
-   const finish=(event:'playbackEnded'|'playbackFailed')=>{if(!current()||this.utterance!==speech)return;this.utterance=undefined;speech.onend=null;speech.onerror=null;void this.notifyListeners(event,{playbackId:input.playbackId});};
+   const finish=(event:'playbackEnded'|'playbackFailed')=>{if(!current()||this.utterance!==speech)return;this.utterance=undefined;this.activeSpeechId=undefined;speech.onend=null;speech.onerror=null;void this.notifyListeners(event,{playbackId:input.playbackId});};
    speech.onend=()=>finish('playbackEnded');speech.onerror=()=>finish('playbackFailed');
    try{engine.speak(speech);}catch(error){finish('playbackFailed');throw error;}return;
   }
@@ -83,10 +85,13 @@ export class BrowserVoice extends WebPlugin {
    const receipt={audioId:input.audioId,playing:!audio.paused,positionMs:audio.currentTime*1000};void this.notifyListeners('started',receipt);return receipt;
   }catch(error){if(this.audio===audio)finish('playbackFailed');throw error;}
  }
- async stopPlayback(){
+ async stopPlayback(input?:{playbackId:string}){
+  if(input&&this.activeSpeechId!==input.playbackId)return;
+  const stopped=this.activeSpeechId;this.activeSpeechId=undefined;
   ++this.playbackGeneration;this.pendingAudioId=undefined;this.playbackAbort?.abort();this.playbackAbort=undefined;
   if(this.utterance){this.utterance.onend=null;this.utterance.onerror=null;this.utterance=undefined;}
   window.speechSynthesis?.cancel();if(this.audio)this.releaseAudio(this.audio);
+  if(stopped)void this.notifyListeners('playbackStopped',{playbackId:stopped});
  }
  stop(){return this.stopPlayback();}
  async state(){return {playing:!!this.audio&&!this.audio.paused&&!this.audio.ended,audioId:this.audioId,positionMs:(this.audio?.currentTime||0)*1000};}

@@ -106,8 +106,13 @@ public class DailyAppsPlugin extends Plugin {
   catch (RuntimeException | org.json.JSONException error) { call.reject("Saved reminders could not be read"); }
  }
  @PluginMethod public void cancelReminder(PluginCall call) {
-  try { reminderResult(call, ReminderStore.cancel(getContext(), call.getString("id")) ? "cancelled" : "not-found", ""); }
-  catch (RuntimeException | org.json.JSONException error) { reminderResult(call, "failed", "The reminder could not be cancelled"); }
+  try {
+   org.json.JSONObject target=call.getObject("target");
+   if(target==null||!target.getString("reminderId").equals(call.getString("id")))throw new IllegalArgumentException("Reviewed target required");
+   org.json.JSONObject operation=new org.json.JSONObject().put("type","reminder_cancel").put("target",target);
+   org.json.JSONObject response=ReminderStore.operate(getContext(),call.getString("operationId"),call.getString("bindingHash"),operation);
+   reminderResult(call,"succeeded".equals(response.optString("status"))?"cancelled":"unknown","");
+  } catch (RuntimeException | org.json.JSONException error) { call.reject("Cancellation requires the exact reviewed target; inspect saved state before retrying"); }
  }
  private void reminderResult(PluginCall call, String status, String message) {
   JSObject value = new JSObject(); value.put("id", call.getString("id", "")); value.put("status", status); value.put("mode", "inexact"); value.put("message", message); call.resolve(value);

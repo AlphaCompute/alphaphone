@@ -52,7 +52,7 @@ test('provider provenance rejects altered signer ABI and dependency metadata', (
 
 import os from 'node:os';
 import path from 'node:path';
-import { main } from '../scripts/prepare-ci-webview.mjs';
+import { main, collectOverlayFailureDiagnostics } from '../scripts/prepare-ci-webview.mjs';
 
 async function simulate({ drift, neverBoot = false, neverReady = false } = {}) {
   const parent = fs.mkdtempSync(path.join(os.tmpdir(), 'alpha-provider-sequence-'));
@@ -116,6 +116,7 @@ test('full provider command sequence survives one offline reboot and delayed REL
   const r = await simulate(); assert.ifError(r.error);
   assert.equal(r.result.status, 'PROVISIONED_RUNTIME_QUALIFICATION_PENDING');
   assert.equal(r.result.runtimeFeaturesQualified, false);
+  assert.ok(r.calls.indexOf('shell logcat -d -b all -t 400') < r.calls.indexOf('reboot'));
   assert.equal(r.calls.filter(c => c === 'shell setprop fs_mgr.overlayfs.data_scratch_size_mb 512').length, 2);
   assert.ok(r.calls.indexOf('shell setprop fs_mgr.overlayfs.data_scratch_size_mb 512') < r.calls.indexOf('disable-verity'));
   assert.equal(r.selectionReads, 2); assert.equal(r.stopped, false);
@@ -159,4 +160,22 @@ test('remount failure preserves cause and collects bounded read-only storage evi
   const failed = r.result.commands.find(c => !c.success && c.args.at(-1) === 'remount');
   assert.match(failed.stderr, /make f2fs return=65280/);
   assert.equal(r.calls.filter(c => c === 'shell dmesg').length, 2);
+});
+
+
+test('diagnostics re-admit every query with finite time and output bounds', () => {
+ let elapsed=0, admissions=0;
+ const result=collectOverlayFailureDiagnostics({environment:env,sdkEnvironment:{ANDROID_HOME:'/sdk'},now:()=>elapsed,hostPaths:{fixture:'/owned'},statfs:()=>({bavail:3,bfree:4,bsize:4096}),execute:(file,args,options)=>{
+  assert.ok(options.timeout>0&&options.timeout<=2000);assert.equal(options.maxBuffer,256*1024);
+  const key=args.slice(2).join(' ');
+  if(key in responses){if(key==='shell dumpsys activity processes')admissions++;return responses[key];}
+  assert.equal(admissions,1);admissions--;assert.ok(!/remount|setprop|reboot|mkfs| rm /.test(key));elapsed+=3000;return 'gsid scratch detail\n'.repeat(6000);
+ }});
+ assert.equal(result.host.fixture.availableBytes,12288);
+ for(const v of Object.values(result.guest))if(typeof v==='string')assert.ok(v.length<=65536);
+ assert.match(result.admissionStopped,/deadline/);assert.ok(elapsed<=21000);
+});
+test('diagnostics reject drift before device details and retain host errors',()=>{
+ const result=collectOverlayFailureDiagnostics({environment:env,sdkEnvironment:{ANDROID_HOME:'/sdk'},hostPaths:{bad:'/absent'},statfs:()=>{throw Error('unavailable');},execute:(file,args)=>{assert.equal(args.slice(2).join(' '),'emu avd name');return 'personal';}});
+ assert.ok(result.admissionStopped);assert.deepEqual(result.guest,{});assert.equal(result.host.bad.unavailable,'unavailable');
 });

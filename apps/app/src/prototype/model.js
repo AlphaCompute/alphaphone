@@ -200,19 +200,18 @@ function pnEnd(api, opt) {
   /* started from another app's detail (e.g. a contact): hang up returns there, and drop it from the back stack */
   if (s.ret && api.isActive()) { var stack = (api.S.stack || []).slice(); if (stack[stack.length - 1] === s.ret.view) stack.pop(); api.open(s.ret.view, s.ret.patch); api.shell({ stack: stack }); }
 }
-function pnRingEnd(api, entry) {
-  api.stopBg();
+function pnRingEnd(api, entry, patch) {
   var s = api.get("phone");
-  api.set({ incoming: null, ring: null, rs: false, scrN: 0, recents: [Object.assign({ id: "r" + Date.now(), pid: s.incoming, at: Date.now(), dur: 0 }, entry)].concat(s.recents || []) });
+  if (!s.incoming) return;
+  api.set(Object.assign({}, patch || {}, { incoming: null, ring: null, rs: false, scrN: 0, recents: [Object.assign({ id: "r" + crypto.randomUUID(), pid: s.incoming, at: Date.now(), dur: 0 }, entry)].concat(s.recents || []) }));
+  api.stopBg();
 }
 function pnDecline(api, why) {
   var s = api.get("phone"); var pid = s.incoming;
-  pnRingEnd(api, { dir: "missed", note: why || "" });
-  if (!why) api.laterBg(function () {
-    var s2 = api.get("phone");
-    api.set({ vms: [{ id: "v" + Date.now(), pid: pid, at: Date.now(), dur: 12, heard: false, gist: "she's running ten minutes late", text: "Hey, it's Maya. Running ten minutes late for three. See you soon!" }].concat(s2.vms || []) });
-    api.toast("New voicemail from " + pnFirst(pnWho(api, pid)));
-  }, 2600);
+  if (!pid) return;
+  var patch = why ? {} : { vms: [{ id: "v" + crypto.randomUUID(), pid: pid, at: Date.now(), dur: 12, heard: false, gist: "she's running ten minutes late", text: "Hey, it's Maya. Running ten minutes late for three. See you soon!" }].concat(s.vms || []) };
+  pnRingEnd(api, { dir: "missed", note: why || "" }, patch);
+  if (!why) api.toast("New voicemail from " + pnFirst(pnWho(api, pid)));
 }
 
 registerView("phone", {
@@ -368,7 +367,13 @@ registerView("phone", {
         del: function () {
           var s = api.get("phone"); api.stop();
           api.set({ vms: s.vms.filter(function (x) { return x.id !== v.id; }), vmOpen: null, playing: null, vpos: 0 });
-          api.toast("Voicemail from " + (p ? pnFirst(p) : (v.label || v.num)) + " deleted", { undo: function () { var s2 = api.get("phone"); var l = (s2.vms || []).slice(); l.splice(Math.min(i, l.length), 0, v); api.set({ vms: l }); } });
+          var restore = function () {
+            var l = (api.get("phone").vms || []).slice();
+            if (!l.some(function (item) { return item.id === v.id; })) l.splice(Math.min(i, l.length), 0, v);
+            try { api.set({ vms: l }); }
+            catch (error) { api.toast("Voicemail could not be restored. Try Undo again.", { undo: restore }); }
+          };
+          api.toast("Voicemail from " + (p ? pnFirst(p) : (v.label || v.num)) + " deleted", { undo: restore });
         }
       };
     });
@@ -549,13 +554,16 @@ function msgSend(api, pid, text, photo, files) {
   if (photo != null) out.push({ me: true, photo: photo });
   else if (text && text !== names) out.push({ me: true, text: text });
   if (!out.length) return;
+  out = out.map(function (m) { return Object.assign({ id: crypto.randomUUID() }, m); });
+  var sentId = out[out.length - 1].id;
   msgPush(api, pid, out);
+  var stillSent = function () { return (api.get("messages").threads[pid] || []).some(function (m) { return m.id === sentId; }); };
   var st = api.get("messages");
   var bot = MSG_BOT[pid]; if (!bot) return;
   var n = (st.botI || {})[pid] || 0; if (n >= bot.length) return;
   var bi = Object.assign({}, st.botI); bi[pid] = n + 1; api.set({ botI: bi });
-  api.later(function () { api.set({ typing: pid }); }, 900);
-  api.later(function () { api.set({ typing: null }); msgPush(api, pid, { me: false, text: bot[n] }); }, 2600);
+  api.later(function () { if (stillSent()) api.set({ typing: pid }); }, 900);
+  api.later(function () { if (!stillSent()) return; api.set({ typing: null }); msgPush(api, pid, { me: false, text: bot[n] }); }, 2600);
 }
 function msgDraftCard(api, pid) {
   var st = api.get("messages"); var p = msgWho(api, pid, st);
@@ -578,7 +586,7 @@ registerView("messages", {
     if (sub === "new") return { compose: true };
   },
   badge: function (st) { var u = st.unread || {}; return Object.keys(u).some(function (k) { return u[k] > 0; }); },
-  immersive: function (st) { return (st.thread || typeof st.compose === "string") ? { noPill: true } : null; },
+  immersive: function (st) { return (st.thread || typeof st.compose === "string") ? { noPill: true, toastBottom: 104 } : null; },
   back: function (st, api) {
     if (st.tray) { api.set({ tray: false }); return true; }
     // Opened from this app's list: back to the list. Deep-linked (contacts, shade, chat, share): hand back to the shell's stack.
@@ -669,10 +677,19 @@ registerView("messages", {
         if (dx < 0) {
           api.set({ slide: { id: id, x: -412 } });
           api.later(function () {
-            var s2 = api.get("messages"); var snap = { threads: s2.threads, unread: s2.unread };
+            var s2 = api.get("messages"); var savedThread = s2.threads[id], savedUnread = s2.unread[id];
             var th = Object.assign({}, s2.threads); delete th[id]; var uu = Object.assign({}, s2.unread); delete uu[id];
-            api.set({ slide: null, threads: th, unread: uu });
-            api.toast("Conversation with " + msgFirst(w) + " deleted", { undo: function () { if (api.isActive()) api.set(snap); else api.open("messages", snap); } });
+            try { api.set({ slide: null, threads: th, unread: uu, typing: s2.typing === id ? null : s2.typing }); }
+            catch (error) { api.set({ slide: null }); api.toast("Conversation could not be deleted. Try again."); return; }
+            var restore = function () {
+              var current = api.get("messages");
+              if (current.threads[id]) { api.toast("A new conversation already exists. Your newer messages were kept."); return; }
+              var restored = Object.assign({}, current.threads); restored[id] = savedThread;
+              var restoredUnread = Object.assign({}, current.unread); if (savedUnread !== undefined) restoredUnread[id] = savedUnread;
+              try { api.setView("messages", { threads: restored, unread: restoredUnread }); }
+              catch (error) { api.toast("Conversation could not be restored. Try Undo again.", { undo: restore }); }
+            };
+            api.toast("Conversation with " + msgFirst(w) + " deleted", { undo: restore });
           }, 260);
         } else {
           var s3 = api.get("messages"); var uu2 = Object.assign({}, s3.unread);
@@ -734,7 +751,7 @@ registerView("messages", {
         tray: !!st.tray, trayCss: st.tray ? "background:var(--fg);color:var(--bg);transform:rotate(45deg)" : "background:var(--s2);color:var(--fg)",
         toggleTray: function () { api.set({ tray: !api.get("messages").tray }); },
         camera: function () { api.open("camera", { mode: "photo" }); },
-        photos: MSG_PHOTOS.map(function (g, i) { return { css: "background:" + imgBg("msg" + i, g), label: "Send photo " + (i + 1), pick: function () { api.set({ tray: false }); msgSend(api, tp, null, i); } }; })
+        photos: MSG_PHOTOS.map(function (g, i) { return { css: "background:" + imgBg("msg" + i, g), label: "Send photo " + (i + 1), pick: function () { msgSend(api, tp, null, i); api.set({ tray: false }); } }; })
       };
     }
 
@@ -797,7 +814,7 @@ var INBOX_SEED = [
     body: "We're doing tacos at ours on Friday around 7. Bring nothing but yourself. Sam's coming too.\n\nL",
     gist: "Tacos at hers Friday at 7", draft: "Count me in. See you Friday at 7!" },
   { id: 5, pid: "sam", acct: "work", k: 588, time: "9:48 AM", unread: false, subj: "Standup notes",
-    body: "Quick notes from standup:\n\n- Build 0.9 goes to beta testers Thursday\n- Enclave attestation is green on all devices\n- Maya owns the onboarding copy\n\nSam",
+    body: "Quick notes from standup:\n\n- Build 0.9 goes to beta testers Thursday\n- Redaction eval is green on all devices\n- Maya owns the onboarding copy\n\nSam",
     gist: "Standup notes, beta build Thursday", draft: "Thanks Sam, all good on my side." },
   { id: 3, name: "GPU Reserve", ini: "GR", email: "no-reply@gpureserve.example", acct: "work", k: 545, time: "9:05 AM", unread: false, subj: "Reservation confirmed · Oct 2",
     body: "Your reservation for 8 × H200 on October 2, 09:00 to 21:00 PT is confirmed.\n\nReference GR-20417.",
@@ -4777,7 +4794,7 @@ registerView("workflows", {
     }
 
     return {
-      cards: cards,
+      cards: cards, listToggles: true,
       newFlow: function () { set({ build: wfBlank(), sheet: null }); },
       detail: !!D, fd: D,
       runOpen: !!R, r: R,
@@ -4844,13 +4861,13 @@ var ST_MODELS = [
 ];
 var ST_LOG = [
   ["2:15", "Drafted a reply to Maya", "bubble"], ["1:12", "Filed Jordan's term sheet", "mail"], ["12:40", "Moved Gym to 7:30 PM", "cal"],
-  ["9:02", "Summarized 14 emails", "inbox"], ["7:10", "Ran Morning brief", "flow"], ["6:00", "Attestation passed", "shield"]
+  ["9:02", "Summarized 14 emails", "inbox"], ["7:10", "Ran Morning brief", "flow"], ["6:00", "Redaction receipt saved", "shield"]
 ];
 var ST_DEVLOG = [
   ["14:15:02", "agent  reply ok 412ms  tokens 188"], ["14:15:01", "memory recall  k=6  hits 4"], ["14:04:11", "npu  load core-7b-q4  1.9s"],
-  ["13:12:40", "action calendar.move  signed"], ["06:00:00", "enclave attest  pass"]
+  ["13:12:40", "action calendar.move  signed"], ["06:00:00", "redaction receipt  saved"]
 ];
-var ST_TOP = { accounts: "Accounts", character: "Character", privacy: "Privacy & Enclave", notifications: "Notifications", wifi: "Wi-Fi", bluetooth: "Bluetooth", mobile: "Mobile data", display: "Display", sound: "Sound & vibration", battery: "Battery", about: "About", developer: "Developer", connections: "Connections", models: "Models" };
+var ST_TOP = { accounts: "Accounts", character: "Character", privacy: "Privacy & data", notifications: "Notifications", wifi: "Wi-Fi", bluetooth: "Bluetooth", mobile: "Mobile data", display: "Display", sound: "Sound & vibration", battery: "Battery", about: "About", developer: "Developer", connections: "Connections", models: "Models" };
 
 function stRow(kind, o) { var r = Object.assign({ label: "", sub: "", val: "" }, o); r[kind] = true; if (kind === 'kSlider') r.valueLabel = r.v; r.hasSub = !!r.sub; r.hasIcon = !!r.d; r.hasVal = !!r.val; return r; }
 function stNav(o) { var r = stRow("kNav", o); if (o.bold) r.labCss0 = "font-weight:600"; r.hasTile = !!r.tile; r.hasTrail = !!r.trail; r.chev = !r.trail && !r.noChev; r.lbl = r.aria || r.label; r.labCss = r.danger ? "color:var(--fg);font-weight:600" : (r.accent ? "color:var(--acct);font-weight:600" : ""); return r; }
@@ -4942,7 +4959,7 @@ registerView("settings", {
       var cs = ST_CONNS.filter(function (c) { return (st.conns || {})[c.id]; }).map(function (c) { return c.name; });
       bl.push(cs.length ? "Apps: " + cs.join(", ") : "No connected apps");
       bl.push(st.cloud ? "Cloud fallback on, per request" : "Nothing leaves this phone");
-      return { text: "Here's everything I can reach. All of it stays in the enclave.", card: { type: "summary", bullets: bl, go: { view: "settings", patch: { page: "privacy" } } } };
+      return { text: "Here's everything I can reach. Hosted requests get only the context each task needs.", card: { type: "summary", bullets: bl, go: { view: "settings", patch: { page: "privacy" } } } };
     }
     if (/\b(remove|delete|disconnect) (my )?(work|personal) (email|account|mail)\b/.test(t)) {
       var wk = /work/.test(t) ? "Work" : "Personal";
@@ -5036,7 +5053,7 @@ registerView("settings", {
         { rows: [
           stNav({ d: IC.stAt, label: "Accounts", val: String(accts.length), go: go("accounts") }),
           stNav({ d: IC.link, label: "Connections", val: nConn ? String(nConn) : "", go: go("connections") }),
-          stNav({ d: IC.shield, label: "Privacy & Enclave", val: st.cloud ? "Fallback on" : "Sealed", go: go("privacy") })
+          stNav({ d: IC.shield, label: "Privacy & data", val: st.cloud ? "Fallback on" : "Redaction on", go: go("privacy") })
         ] },
         { rows: [
           stNav({ d: IC.wifi, label: "Wi-Fi", val: S.q.wifi ? (ST_NETS.filter(function (n) { return n.id === st.wifiCur; })[0] || { name: "On" }).name : "Off", go: go("wifi") }),
@@ -5089,8 +5106,8 @@ registerView("settings", {
       }) }] });
     } else if (P === "privacy") {
       var logN = ST_LOG.length + (api.get("browser").booked ? 1 : 0);
-      p1 = page("Privacy & Enclave", {
-        hero: { kBig: true, hasIcon: true, d: IC.shield, iconCss: "background:var(--acc);color:#fff", big: "Sealed", sub: "Attested 6:00 AM · keys in hardware" },
+      p1 = page("Privacy & data", {
+        hero: { kBig: true, hasIcon: true, d: IC.shield, iconCss: "background:var(--acc);color:#fff", big: "Redaction on", sub: "Identifiers replaced before hosted requests" },
         groups: [
           { rows: [
             stNav({ label: "Leaves this device", val: st.cloud ? "Hard questions" : "Nothing", go: go("models") }),
@@ -5203,7 +5220,7 @@ registerView("settings", {
       ] });
     } else if (P === "about") {
       p1 = page("About", { hero: { kBig: true, big: "Alpha Compute phone", sub: "Powered by elizaOS" }, groups: [
-        { rows: [stRow("kInfo", { label: "elizaOS", val: "2.1.0" }), stRow("kInfo", { label: "Android", val: "17 · AOSP" }), stRow("kInfo", { label: "Build", val: "AC1.260915" }), stRow("kInfo", { label: "Enclave", val: "4.2 · attested" }), stRow("kInfo", { label: "Model", val: "Core 7B" })] },
+        { rows: [stRow("kInfo", { label: "elizaOS", val: "2.1.0" }), stRow("kInfo", { label: "Android", val: "17 · AOSP" }), stRow("kInfo", { label: "Build", val: "AC1.260915" }), stRow("kInfo", { label: "Redaction", val: "4.2" }), stRow("kInfo", { label: "Model", val: "Core 7B" })] },
         { rows: [stNav({ label: st.busy === "upd" ? "Checking…" : "Check for updates", accent: true, noChev: true, go: function () { set({ busy: "upd" }); api.later(function () { set({ busy: null }); api.toast("Up to date"); }, 1000); } })] }
       ] });
     }
@@ -5248,7 +5265,7 @@ registerView("settings", {
         var lv = st.addLvl || { mail: "act", calendar: "act", contacts: "read" };
         p2 = page(name + " can", { back: back2, backLabel: "Back to sign in", groups: [
           { rows: ST_TYPES.map(function (x) { return stSeg({ d: IC[x[2]], label: x[1] }, [["off", "Off"], ["read", "Read"], ["act", "Act"]], lv[x[0]], function (v) { var o = Object.assign({}, lv); o[x[0]] = v; set({ addLvl: o }); }); }) },
-          { plain: true, cap: "Synced into the enclave. Act always asks before sending.", rows: [stRow("kBtn", { label: "Connect", primary: true, dis: false, css: "background:var(--acc);color:#fff", go: finish })] }
+          { plain: true, cap: "Stored on this phone. Act always asks before sending.", rows: [stRow("kBtn", { label: "Connect", primary: true, dis: false, css: "background:var(--acc);color:#fff", go: finish })] }
         ] });
       } else {
         p2 = page("", { back: closeAdd, hero: { kBig: true, hasIcon: true, d: IC.check, iconCss: "background:var(--acc);color:#fff", big: "Added", sub: st.addEmail }, groups: [{ plain: true, rows: [stRow("kBtn", { label: "Done", primary: true, dis: false, css: "background:var(--acc);color:#fff", go: closeAdd })] }] });
@@ -5542,6 +5559,8 @@ class Component extends DCLogic {
         var o = self.scale(e.currentTarget);
         var px = (e.clientX - o.r.left) / o.s, py = (e.clientY - o.r.top) / o.s;
         if (px < 30 || px > 382 || py < 90 || py > 872) { self.cg = null; return; }   // system gesture zones belong to the shell
+        // A fresh pointer gesture is a deliberate action, not the previous swipe click.
+        self.swallow = 0;
         e.stopPropagation(); self.cg = { x: e.clientX, y: e.clientY, s: o.s, g: { x: px, y: py, cx: e.clientX, cy: e.clientY, s: o.s } };
       },
       up: function (e) {
@@ -5696,7 +5715,7 @@ class Component extends DCLogic {
       { id: "n1", d: IC.bubble, who: "Maya Chen", text: "Still on for 3? I can bring the prototype.", time: "2:04", go: { view: "messages", patch: { thread: "maya" } } },
       { id: "n2", d: IC.mail, who: "Jordan Park", text: "Revised term sheet attached", time: "1:12", go: { view: "inbox", patch: { open: 2 } } },
       { id: "n3", d: IC.cal, who: "Design review", text: "3:00 PM", time: "2:15", go: { view: "calendar", patch: { open: "c4" } } },
-      { id: "n4", d: IC.shield, who: "Attestation passed", text: "Keys never left the device.", time: "6:00", go: { view: "settings", patch: { page: "privacy" } } }
+      { id: "n4", d: IC.shield, who: "Redaction receipt", text: "3 identifiers replaced before the morning brief.", time: "6:00", go: { view: "settings", patch: { page: "privacy" } } }
     ];
     var shadeN = NOTIF.filter(function (n) { return isMvpView(n.go.view) && S.nGone.indexOf(n.id) < 0; }).map(function (n) {
       var s = self.sw(function (dx, dy) { self.setState({ nSlide: n.id }); self.later(function () { var S2 = self.S(); self.setState({ nGone: S2.nGone.concat([n.id]), nSlide: null }); }, 250); }, { axis: "x" });

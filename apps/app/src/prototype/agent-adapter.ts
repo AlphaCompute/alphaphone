@@ -367,6 +367,24 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
   };
   p.api = function (key: string) {
     const api = originalApi.call(this, key);
+    if(key==='workflows'&&!isAndroid){
+      api.localWorkflowNotes=async(input:{operationId?:string;text?:string},signal:AbortSignal)=>{
+        signal.throwIfAborted();
+        if(this.notesStorageFailed||this.notesPending||!this.notesStore)throw Error('Reopen Notes before running this step.');
+        await this.notesStore.assertCurrent();signal.throwIfAborted();
+        if(this.notesPending||this.notesRaw!==this.notesStore.raw)throw Error('Notes changed during this step.');
+        const list=this.notesStore.list;
+        if(!input.operationId)return list;
+        const text=input.text||'';
+        if(!text.trim()||text.length>32000)throw Error('Choose note content between 1 and 32000 characters.');
+        const existing=list.find((note:Shell)=>note.id===input.operationId);
+        if(existing){if(existing.body!==text||existing.workflowStep!==input.operationId)throw Error('Saved note receipt does not match this step.');return existing;}
+        const note={id:input.operationId,kind:'text',title:'Workflow note',body:text,pinned:false,when:'Today',createdAt:Date.now(),workflowStep:input.operationId};
+        signal.throwIfAborted();
+        if(await this.vset('notes',{list:[note,...list]})!==true)throw Error('Note save is unconfirmed. Reopen Notes to inspect it before retrying.');
+        return note;
+      };
+    }
     if(key==='notes'){api.set=(patch:Shell)=>this.vset('notes',patch);api.storageReady=()=>!this.notesStorageFailed&&!this.notesPending; }
     api.say = () => this.toast('Connect the underlying account or select real content before requesting this action.');
     // Open the real conversation without sending a prompt or uploading content.
