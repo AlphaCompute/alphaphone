@@ -78,7 +78,11 @@ export class BrowserVoice extends WebPlugin {
  }
  stop(){return this.stopPlayback();}
  async state(){return {playing:!!this.audio&&!this.audio.paused&&!this.audio.ended,audioId:this.audioId,positionMs:(this.audio?.currentTime||0)*1000};}
- async saveRecording(input:{recordingId:string;noteId:string;transcript:string}){const clip=this.capture.get(input.recordingId);if(!clip)throw Error('Record a clip first.');const audioId=crypto.randomUUID();await audioWrite({audioId,noteId:input.noteId,...clip});return {audioId,noteId:input.noteId,durationMs:clip.durationMs,transcript:input.transcript};}
+ async saveRecording(input:{recordingId:string;noteId:string;transcript:string}){
+  if(!input.recordingId||input.recordingId.length>128||!input.noteId||input.noteId.length>128||typeof input.transcript!=='string')throw Error('Invalid recording destination.');
+  const saved=await retainAudio(input.recordingId,input.noteId,this.capture.get(input.recordingId));
+  return {audioId:saved.audioId,noteId:saved.noteId,durationMs:saved.durationMs,transcript:input.transcript};
+ }
  async remove(){await this.stopPlayback();} // Retain audio while its owning note is in recoverable trash.
  async restore(){}
  async cancel(){await this.cancelRecording();await this.stopPlayback();document.querySelector<HTMLDialogElement>('dialog[aria-label="Recording transcript"]')?.close();}
@@ -86,7 +90,19 @@ export class BrowserVoice extends WebPlugin {
 }
 let database:Promise<IDBDatabase>|undefined;
 function db(){return database??=new Promise((resolve,reject)=>{const r=indexedDB.open('alpha.browser.audio.v1',1);r.onupgradeneeded=()=>r.result.createObjectStore('audio',{keyPath:'audioId'});r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error);});}
-async function audioWrite(value:{audioId:string;noteId:string;blob:Blob;durationMs:number}){const d=await db();return new Promise<void>((resolve,reject)=>{const tx=d.transaction('audio','readwrite');tx.objectStore('audio').put(value);tx.oncomplete=()=>resolve();tx.onabort=tx.onerror=()=>reject(tx.error||Error('Audio could not be saved.'));});}
+async function retainAudio(audioId:string,noteId:string,clip?:{blob:Blob;durationMs:number}){
+ const d=await db();return new Promise<{audioId:string;noteId:string;durationMs:number}>((resolve,reject)=>{
+  const tx=d.transaction('audio','readwrite'),store=tx.objectStore('audio');let result:{audioId:string;noteId:string;durationMs:number}|undefined,failure:Error|undefined;
+  tx.oncomplete=()=>result?resolve(result):reject(Error('Recording was not saved.'));
+  tx.onabort=tx.onerror=()=>reject(failure||tx.error||Error('Audio could not be saved.'));
+  const request=store.get(audioId);request.onsuccess=()=>{
+   const prior=request.result;
+   if(prior){if(prior.noteId!==noteId){failure=Error('This recording belongs to another note.');tx.abort();return;}result={audioId,noteId,durationMs:prior.durationMs};return;}
+   if(!clip){failure=Error('Record a clip first.');tx.abort();return;}
+   result={audioId,noteId,durationMs:clip.durationMs};store.add({...result,blob:clip.blob});
+  };
+ });
+}
 async function audioRecord(id:string){const d=await db();return new Promise<{blob:Blob}>((resolve,reject)=>{const r=d.transaction('audio').objectStore('audio').get(id);r.onsuccess=()=>r.result?resolve(r.result):reject(Error('Recording not found.'));r.onerror=()=>reject(r.error);});}
 
 function playbackWait<T>(work:Promise<T>,signal:AbortSignal):Promise<T>{

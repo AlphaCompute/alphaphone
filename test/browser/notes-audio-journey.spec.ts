@@ -1,0 +1,43 @@
+import {test,expect} from '@playwright/test';
+test('Notes records, reviews, saves, reloads, plays and restores the same retained audio',async({page})=>{
+ await page.addInitScript(()=>localStorage.setItem('alpha.connection.selection.v1',JSON.stringify({kind:'offline'})));
+ await page.goto('/');
+ await page.evaluate(async()=>{
+  const ctx=new AudioContext(),osc=ctx.createOscillator(),gain=ctx.createGain(),sink=ctx.createMediaStreamDestination();gain.gain.value=0;osc.connect(gain);gain.connect(sink);osc.start();await ctx.resume();
+  Object.defineProperty(navigator.mediaDevices,'getUserMedia',{value:async()=>sink.stream,configurable:true});(window as any).fixture={ctx,osc};
+ });
+ await page.getByRole('button',{name:'Notes',exact:true}).click();
+ await page.getByRole('button',{name:'Record and transcribe',exact:true}).click();
+ await page.getByRole('button',{name:'Record without transcription',exact:true}).click();
+ await page.getByRole('button',{name:'Start recording',exact:true}).click();
+ await expect(page.getByRole('button',{name:'Stop recording',exact:true})).toBeVisible();
+ await page.waitForTimeout(800);
+ await page.getByRole('button',{name:'Stop recording',exact:true}).click();
+ await page.getByRole('button',{name:'Review transcript',exact:true}).click();
+ await page.getByRole('textbox',{name:'Review transcript',exact:true}).fill('A recorded note saved through the real Notes interface.');
+ await page.getByRole('button',{name:'Save note',exact:true}).click();
+ await expect(page.getByRole('button',{name:'Play recording',exact:true})).toBeVisible();
+ await page.getByRole('textbox',{name:'Title',exact:true}).fill('Browser audio journey');
+ await page.evaluate(async()=>{const {ctx,osc}=(window as any).fixture;osc.stop();await ctx.close();});
+ await page.reload();await page.getByRole('button',{name:'Notes',exact:true}).click();await page.getByRole('button',{name:'Open Browser audio journey',exact:true}).click();
+ await expect(page.getByText('A recorded note saved through the real Notes interface.',{exact:true}).first()).toBeVisible();
+ const note=await page.evaluate(()=>JSON.parse(localStorage.getItem('alphaphone:notes:v2')!).records.find((n:any)=>n.title==='Browser audio journey'));
+ const replay=await page.evaluate(async(note)=>{
+  const {registerPlugin}=await import('/src/platform-plugins.ts');const voice=registerPlugin<any>('AlphaVoiceCloud');
+  const result=await voice.saveRecording({recordingId:note.audio.audioId,noteId:note.id,transcript:note.body});
+  let wrongOwner=false;try{await voice.saveRecording({recordingId:note.audio.audioId,noteId:'different-note',transcript:note.body});}catch{wrongOwner=true;}
+  const db=await new Promise<IDBDatabase>(resolve=>{const r=indexedDB.open('alpha.browser.audio.v1');r.onsuccess=()=>resolve(r.result);});
+  const count=await new Promise<number>(resolve=>{const r=db.transaction('audio').objectStore('audio').count();r.onsuccess=()=>resolve(r.result);});db.close();return {audioId:result.audioId,wrongOwner,count};
+ },note);
+ expect(replay).toEqual({audioId:note.audio.audioId,wrongOwner:true,count:1});
+ await page.getByRole('button',{name:'Play recording',exact:true}).click();
+ await expect(page.getByRole('button',{name:'Stop recording playback',exact:true})).toBeVisible();
+ await expect(page.getByRole('button',{name:'Play recording',exact:true})).toBeVisible();
+ await page.getByRole('button',{name:'Delete note',exact:true}).click();
+ await page.getByRole('button',{name:'Undo',exact:true}).click();
+ await page.getByRole('button',{name:'Open Browser audio journey',exact:true}).click();
+ await page.getByRole('button',{name:'Play recording',exact:true}).click();await expect(page.getByRole('button',{name:'Stop recording playback',exact:true})).toBeVisible();
+ await page.getByRole('button',{name:'Stop recording playback',exact:true}).click();
+ await expect(page.getByRole('button',{name:'Play recording',exact:true})).toBeVisible();
+ await page.screenshot({path:test.info().outputPath('restored-voice-note.png')});
+});

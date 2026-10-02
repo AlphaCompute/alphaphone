@@ -17,9 +17,9 @@ test('browser voice encodes audio, reviews a transcript, persists audio and relo
  await page.getByRole('textbox',{name:'Transcript',exact:true}).fill('Reviewed local audio');await page.getByRole('button',{name:'Use transcript',exact:true}).click();
  const saved=await page.evaluate(async(id)=>{
   const {registerPlugin}=await import('/src/platform-plugins.ts');const voice=registerPlugin<any>('AlphaVoiceCloud'),transcript=await (window as any).transcript;
-  const put=IDBObjectStore.prototype.put;let failed=false;
-  IDBObjectStore.prototype.put=function(...args:any[]){const request=put.apply(this,args as any);if(this.name==='audio')this.transaction.abort();return request;};
-  try{await voice.saveRecording({recordingId:id,noteId:'audio-test-note',transcript:transcript.text});}catch{failed=true;}finally{IDBObjectStore.prototype.put=put;}
+  const put=IDBObjectStore.prototype.add;let failed=false;
+  IDBObjectStore.prototype.add=function(...args:any[]){const request=put.apply(this,args as any);if(this.name==='audio')this.transaction.abort();return request;};
+  try{await voice.saveRecording({recordingId:id,noteId:'audio-test-note',transcript:transcript.text});}catch{failed=true;}finally{IDBObjectStore.prototype.add=put;}
   if(!failed)throw Error('Aborted storage transaction did not reject');
   const result=await voice.saveRecording({recordingId:id,noteId:'audio-test-note',transcript:transcript.text});
   const fixture=(window as any).audioFixture;const stopped=fixture.stream.getTracks().every((t:MediaStreamTrack)=>t.readyState==='ended');fixture.osc.stop();await fixture.ctx.close();
