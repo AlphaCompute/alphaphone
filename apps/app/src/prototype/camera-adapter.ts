@@ -1,3 +1,4 @@
+import {openVideoEditReview} from './video-edit-review';
 import {openCameraImageImport} from './browser-image-import';
 import {openScanReview} from './scan-review';
 import {browserCamera,browserLibrary,browserPhotoLibrary,mountBrowserCamera,importBrowserPhoto} from './browser-camera';
@@ -46,7 +47,7 @@ const nativeLibrary = registerPlugin<{
 const browserMode=!Capacitor.isNativePlatform();
 const camera:typeof nativeCamera=browserMode?browserCamera:nativeCamera;
 // Check every implemented browser method against the native port contract.
-browserPhotoLibrary satisfies Pick<typeof nativeLibrary,keyof typeof browserPhotoLibrary>;
+browserPhotoLibrary satisfies Pick<typeof nativeLibrary,Exclude<keyof typeof browserPhotoLibrary,'saveVideoCopy'>>;
 const library=browserMode?browserLibrary as unknown as typeof nativeLibrary:nativeLibrary;
 const libraryAvailable=()=>browserMode||Capacitor.isPluginAvailable('AlphaPhotos');
 type EditPreview={sessionId:string;operationId:string;image:string;width:number;height:number;reduced:boolean;maxEdge:number;filter:string};
@@ -89,8 +90,13 @@ export function installPrototypeCameraAdapter(_Component: unknown, views: Record
   let preview: SavedPhoto | undefined, reading = '', sharing = false;
   let edit: (EditPreview & {source:string;rotation:number;crop:boolean;busy:boolean;uncertain?:boolean})|undefined,editEpoch=0;
   const editPendingKey='alpha.photos.pending-copy.v1';
-  function cancelEdit(){++editEpoch;const old=edit;edit=undefined;if(old)void library.cancelEdit({sessionId:old.sessionId}).catch(()=>{});}
+  let closeVideoEdit:(()=>void)|undefined,videoEditSource:string|undefined;
+  function cancelEdit(){closeVideoEdit?.();closeVideoEdit=undefined;videoEditSource=undefined;++editEpoch;const old=edit;edit=undefined;if(old)void library.cancelEdit({sessionId:old.sessionId}).catch(()=>{});}
   async function beginEdit(row:SavedPhoto,owner:Bag){
+    if(row.kind==='video'&&browserMode){
+      if(!row.mutationRevision||localStorage.getItem(editPendingKey)){void recoverEdit(owner);return;}cancelEdit();closeVideo();const token=editEpoch;
+      try{const source=await browserPhotoLibrary.read({id:nativeId(row.id)});if(disposed||token!==editEpoch||!owner.isActive()||owner.get('photos').open!==row.id)return;if(!source.path||!source.duration)throw Error('Video has no playable source.');const operationId=crypto.randomUUID();videoEditSource=row.id;closeVideoEdit=openVideoEditReview({path:source.path,duration:source.duration},async(parameters,signal)=>{automaticEditRecovery=operationId;localStorage.setItem(editPendingKey,operationId);const ticket={token:operationId,epoch:token,source:row.id};try{const receipt=await browserPhotoLibrary.saveVideoCopy({id:source.id,revision:row.mutationRevision!,operationId,edit:parameters},signal);await finishEdit(receipt,owner,ticket);return receipt.status==='saved';}catch{await recoverEdit(owner,ticket);return false;}},()=>{if(editEpoch===token){++editEpoch;closeVideoEdit=undefined;videoEditSource=undefined;}});}catch(error){owner.toast(error instanceof Error?error.message:'Video could not open.');}return;
+    }
     if(row.kind==='video'){owner.toast('Video editing is not available. Your video is unchanged.');return;}
     if(!row.mutationRevision||edit||mutating)return;
     if(localStorage.getItem(editPendingKey)){owner.toast('Checking a previous saved-copy outcome…');void recoverEdit(owner);return;}
@@ -591,7 +597,7 @@ export function installPrototypeCameraAdapter(_Component: unknown, views: Record
     return data;
   };
   if (views.photos) views.photos.back = (st: Bag, currentApi: Bag) => { if(edit){cancelEdit();currentApi.set({nativeEditRevision:Date.now()});return true;}if(selection){selection=undefined;endHold();currentApi.set({nativeMultiSelection:Date.now()});return true;}if(st.sheet==='owned-album'){manager=undefined;currentApi.set({sheet:null});return true;}if(st.sheet==='empty'){cancelPermanent(currentApi);return true;}if(st.sheet)return photosBack?.(st,currentApi); if (preview?.id === st.open || captures.some(c => c.id === st.open) || albumRows.some(c => c.id === st.open)) { currentApi.set({ open: null, nativePhotoSelection: null }); preview = undefined; closeVideo(); return true; } return photosBack?.(st, currentApi); };
-  if(views.photos)views.photos.onLeave=(owner:Bag)=>{automaticEditRecovery='';selection=undefined;swallowedTap='';endHold();manager=undefined;const old=prepared;prepared=undefined;if(old)void library.cancelDeleteTrash({confirmation:old.confirmation}).catch(()=>{});owner.set({sheet:null});photosLeave?.(owner);};
+  if(views.photos)views.photos.onLeave=(owner:Bag)=>{cancelEdit();automaticEditRecovery='';selection=undefined;swallowedTap='';endHold();manager=undefined;const old=prepared;prepared=undefined;if(old)void library.cancelDeleteTrash({confirmation:old.confirmation}).catch(()=>{});owner.set({sheet:null});photosLeave?.(owner);};
   async function playVideo(selected: SavedPhoto, owner: Bag) {
     if (selected.kind !== 'video') return;
     try {
@@ -627,7 +633,7 @@ export function installPrototypeCameraAdapter(_Component: unknown, views: Record
     finally { polling = false; }
   }, 500);
   let queued = false;
-  const sync = () => { queued = false;if(edit&&(!photosApi?.isActive()||photosApi.get('photos').open!==edit.source))cancelEdit(); mountVideo(); if (active()) { if (phase === 'off') void start(); else if (phase === 'ready') mask(true); } else if (phase !== 'off') void stop(); };
+  const sync = () => { queued = false;if((edit||videoEditSource)&&(!photosApi?.isActive()||photosApi.get('photos').open!==(edit?.source??videoEditSource)))cancelEdit(); mountVideo(); if (active()) { if (phase === 'off') void start(); else if (phase === 'ready') mask(true); } else if (phase !== 'off') void stop(); };
   const schedule = () => { if (!queued && !disposed) { queued = true; requestAnimationFrame(sync); } };
   const observer = new MutationObserver(schedule); observer.observe(document.body, { childList: true, subtree: true });
   const resize = () => { if (phase === 'ready') mask(true); schedule(); };

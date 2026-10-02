@@ -1,3 +1,4 @@
+import {renderVideoEdit,validateVideoEdit,type VideoEdit} from '../browser/video-edit';
 import {BrowserCameraFocus} from '../browser/camera-focus';
 import {browserDevProfile} from '../browser/dev-profile';
 import type {ImportedCameraImage} from './browser-image-import';
@@ -140,7 +141,20 @@ function selectedMedia(items:SelectedMedia[]){
 function downloadPhoto(row:Row){
  const link=document.createElement('a');link.href=row.path||row.image;link.download=`Alpha-photo-${row.id}.${row.kind==='video'?(row.path?.startsWith('data:video/mp4;')?'mp4':'webm'):'jpg'}`;document.body.append(link);try{link.click();}finally{link.remove();}
 }
+async function saveVideoCopy(input:{id:string;revision:string;operationId:string;edit:VideoEdit},signal:AbortSignal):Promise<EditResult>{
+ const key=editKey(input.operationId),edit={...input.edit},source=await read(input.id);signal.throwIfAborted();
+ if(source.kind!=='video'||!source.path||!source.duration)throw Error('Select a saved video.');validateVideoEdit(edit,source.duration);
+ const encoded=JSON.stringify([edit.start,edit.end,edit.rotation,edit.crop]);
+ const claimed=await transaction<EditRecord>('readwrite',(store,set,fail)=>{signal.throwIfAborted();const request=store.get(key);request.onsuccess=()=>{const old=request.result as EditRecord|undefined;if(old){if(old.sourceId!==input.id||old.sourceRevision!==input.revision||old.parameters!==encoded){fail(Error('This operation belongs to another edit.'));return;}if(old.status==='saving'){fail(Error('Video save is in progress.'));return;}set(old);return;}const record:EditRecord={id:key,kind:'edit-receipt',operationId:input.operationId,sourceId:input.id,sourceRevision:input.revision,copyId:'v:'+photoId(),parameters:encoded,status:'saving'};store.add(record);set(record);};});
+ if(claimed.status!=='saving')return outcome(claimed);
+ try{
+  if(source.trashed||source.mutationRevision!==input.revision)throw Error('Video changed. Reopen it before editing.');
+  const rendered=await renderVideoEdit({path:source.path,duration:source.duration},edit,signal);signal.throwIfAborted();
+  return await transaction<EditResult>('readwrite',(store,set,fail)=>{const request=store.get(key);request.onsuccess=()=>{const record=request.result as EditRecord;if(record.status!=='saving'){set(outcome(record));return;}const original=store.get(input.id);original.onsuccess=()=>{const row=original.result as Row|undefined;if(signal.aborted||!row||row.trashed||row.mutationRevision!==input.revision){record.status='failed';store.put(record);set(outcome(record));return;}try{store.add({id:record.copyId,kind:'video',...rendered,date:Date.now(),revision:revision(),mutationRevision:revision(),favorite:false,trashed:false});record.status='saved';store.put(record);set(outcome(record));}catch(error){fail(error instanceof Error?error:Error('Video copy could not be saved.'));}};};});
+ }catch(error){await transaction<void>('readwrite',(store,set)=>{const request=store.get(key);request.onsuccess=()=>{const record=request.result as EditRecord;if(record.status==='saving'){record.status='failed';store.put(record);}set(undefined);};});throw error;}
+}
 export const browserPhotoLibrary={
+ saveVideoCopy,
  beginEdit:beginPhotoEdit,previewEdit:previewPhotoEdit,saveEdit:savePhotoEdit,editResult:resultPhotoEdit,cancelEdit:cancelPhotoEdit,
  async list(options:{before?:string;trashed?:boolean;album?:string}={}){const result=await rows(options);return {items:result.slice(0,40),next:result.length>40?pageCursor(result[39]):''};},
  async read(input:{id:string}){return read(input.id);},
