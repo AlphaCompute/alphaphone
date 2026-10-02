@@ -1,3 +1,4 @@
+import {requestWorkflowReceipt,receiptAttachment,recordWorkflowExpense,type ReceiptInput} from './workflow-receipts';
 import {readDatedWorkflowSource} from './workflow-dated-sources';
 import {openWorkflowHistory} from './workflow-history';
 import {readWorkflowMessages} from './workflow-messages';
@@ -8,7 +9,7 @@ import {publishWorkflowNotice} from './workflow-notices';
 import {sendWorkflowLocal} from './workflow-local-send';
 import {registerPlugin} from '../platform-plugins';
 type Bag=Record<string,any>;
-type Run={id:string;flowId:string|number;definition:string;workflow:Bag;status:string;when:string;sum:string;dur:string;log:string[][];out:string;cursor:number;inflight:number|null;started:number;context:{messages?:Record<string,Bag[]>}};
+type Run={id:string;flowId:string|number;definition:string;workflow:Bag;status:string;when:string;sum:string;dur:string;log:string[][];out:string;cursor:number;inflight:number|null;started:number;context:{messages?:Record<string,Bag[]>;receipt?:ReceiptInput}};
 const definition=(flow:Bag)=>JSON.stringify({name:flow.name,trig:flow.trig,steps:flow.steps});
 /** Persist intent and each completed local step; never derive success from a label alone. */
 export function installSimulatedWorkflows(view:Bag){
@@ -42,6 +43,7 @@ export function installSimulatedWorkflows(view:Bag){
    if(/favorite|from maya/.test(text)){const messages=context.messages;if(!messages)throw Error('Read messages before checking their sender.');const ids=/from maya/.test(text)?['maya']:api.get('contacts').list.filter((p:Bag)=>p.fav).map((p:Bag)=>p.id);const matches=Object.fromEntries(Object.entries(messages).filter(([id,rows])=>ids.includes(id)&&rows.some((message:Bag)=>!message.me)));context.messages=matches;return {output:input===JSON.stringify(messages)?JSON.stringify(matches):input,skip:!Object.keys(matches).length};}
    throw Error('Choose a condition with local input for this run.');
   }
+  if(item.k==='Do'&&(text==='save the attachment to files'||text==='add the amount to wallet')){if(!context.receipt)throw Error('Choose a receipt for this run.');const attachment=await receiptAttachment(context.receipt,api,signal);if(text==='save the attachment to files'){const saved=await files.saveWorkflowAttachment({...attachment,operationId},signal);return {output:JSON.stringify(saved),detail:'Attachment saved in Files / Receipts ('+saved.name+')'};}recordWorkflowExpense(context.receipt,operationId,api,signal);return {output:JSON.stringify({merchant:context.receipt.merchant,amount:context.receipt.cents!/100,currency:'USD'}),detail:'Receipt recorded in local Wallet ('+operationId+')'};}
   if(item.k==='Do'&&/^turn (on|off) do not disturb$/.test(text)){const enabled=text.startsWith('turn on');await device.setSensor({field:'doNotDisturb',enabled});return {output:'Do Not Disturb '+(enabled?'on':'off')};}
   throw Error('This step needs its local action configured: '+item.t);
  };
@@ -52,6 +54,7 @@ export function installSimulatedWorkflows(view:Bag){
   try{
    persist(api,run);
    if(!run.workflow.steps.length)throw Error('Add a step before running this workflow.');
+   if(run.workflow.steps.some((item:Bag)=>item.k==='Do'&&/^(save the attachment to files|add the amount to wallet)$/i.test(item.t))){run.sum='Waiting for receipt';persist(api,run);run.context.receipt=await requestWorkflowReceipt(api,run.workflow.steps.some((item:Bag)=>item.k==='Do'&&/^add the amount to wallet$/i.test(item.t)),abort.signal);persist(api,run);}
    for(let index=0;index<run.workflow.steps.length;index++){
     abort.signal.throwIfAborted();const current=savedState(api).flows.find((f:Bag)=>String(f.id)===String(run.flowId));if(!current||definition(current)!==run.definition)throw Error('Workflow changed during this run. Completed steps were retained.');
     run.inflight=index;persist(api,run,128_000);const item=run.workflow.steps[index];const result=await step(item,run.out,api,abort.signal,run.id+'-'+index,message=>{abort.signal.throwIfAborted();const current=savedState(api).flows.find((f:Bag)=>String(f.id)===String(run.flowId));if(!current||definition(current)!==run.definition)throw Error('Workflow changed during this run. Completed steps were retained.');run.sum=message;persist(api,run);},run.context);
