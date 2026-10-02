@@ -56,10 +56,36 @@ export async function main({ environment = process.env, execute = execFileSync, 
   const save = () => fs.writeFileSync(path.join(output, 'result.json'), JSON.stringify(state, null, 2) + '\n');
   const command = (file, args, timeout = 20000) => {
     try { const result = execute(file, args, { env, encoding: 'utf8', timeout, maxBuffer: 16 * 1024 * 1024 }); state.commands.push({ file, args, success: true }); save(); return result; }
-    catch (error) { state.commands.push({ file, args, success: false }); save(); throw error; }
+    catch (error) { state.commands.push({ file, args, success: false, stdout: String(error.stdout ?? '').slice(-65536), stderr: String(error.stderr ?? '').slice(-65536) }); save(); throw error; }
   };
   const run = (...args) => command(path.join(sdk, 'platform-tools/adb'), ['-s', serial, ...args]);
   const safe = (installed = false) => requireProviderFixture(run, environment, { installed });
+  const scratchProperty = 'fs_mgr.overlayfs.data_scratch_size_mb';
+  const configureScratch = () => {
+    safe(); // Every property mutation is confined to the fresh hosted fixture.
+    const previous = run('shell', 'getprop', scratchProperty).trim();
+    require(previous === '' || previous === '512', 'Unexpected existing scratch size policy');
+    run('shell', 'setprop', scratchProperty, '512');
+    require(run('shell', 'getprop', scratchProperty).trim() === '512', 'Scratch size policy did not apply');
+    state.scratchPolicy = { property: scratchProperty, previous, megabytes: 512 }; save();
+  };
+  const captureStorage = label => {
+    const details = {};
+    // Fixed read-only commands; never run a formatter or infer a target dm-N device.
+    for (const [name, args] of [
+      ['capacity', ['shell', 'df', '-k', '/data', '/metadata', '/product']],
+      ['mounts', ['shell', 'cat', '/proc/mounts']],
+      ['partitions', ['shell', 'cat', '/proc/partitions']],
+      ['logicalPartitions', ['shell', 'lpdump']],
+      ['kernel', ['shell', 'dmesg']],
+    ]) {
+      try {
+        const value = run(...args);
+        details[name] = (name === 'kernel' ? value.split('\n').filter(line => /fiemap|f2fs|ext4|device.mapper|dm-|scratch|overlay|gsid/i.test(line)).join('\n') : value).slice(-65536);
+      } catch (error) { details[name] = { unavailable: error.message.slice(0, 512) }; }
+    }
+    fs.writeFileSync(path.join(output, `storage-${label}.json`), JSON.stringify(details, null, 2) + '\n');
+  };
   const boot = async () => {
     const end = now() + 180000;
     while (now() < end) {
@@ -99,10 +125,15 @@ export async function main({ environment = process.env, execute = execFileSync, 
     // Chromium's Q+ removal helper targets Google/Trichrome and Chrome. We do
     // not execute it: only the single verified AOSP file below may be removed.
     safe(); run('root'); run('wait-for-device'); safe();
+    state.status = 'preparing-overlay-storage'; save();
+    captureStorage('before');
+    configureScratch();
     run('disable-verity'); run('reboot'); run('wait-for-device'); await boot();
     run('root'); run('wait-for-device'); safe();
+    configureScratch(); // Non-persistent property is reset by reboot.
     const remount = run('remount');
     require(/remount succeeded/i.test(remount) && !/reboot/i.test(remount), 'Remount requires manual review');
+    captureStorage('remounted');
     safe();
     require(stockPath(run('shell', 'pm', 'path', candidate.package), run('shell', 'dumpsys', 'package', candidate.package)) === stock, 'Stock path changed');
     require(run('shell', 'sha256sum', stock).trim().split(/\s+/)[0] === stockHash && fileDigest(backup) === stockHash && fileDigest(apk) === candidate.apkSha256, 'Provider bytes changed before removal');
@@ -138,6 +169,10 @@ export async function main({ environment = process.env, execute = execFileSync, 
     state.status = 'PROVISIONED_RUNTIME_QUALIFICATION_PENDING'; save();
     // APKs are reproducible via pinned URL/hash; keep compact provenance in CI artifacts.
     fs.unlinkSync(archive); fs.unlinkSync(apk);
-  } catch (error) { state.failedAt = state.status; state.status = 'FAIL'; state.error = error.message; save(); throw error; }
+  } catch (error) {
+    if (state.status === 'preparing-overlay-storage') {
+      try { safe(); captureStorage('failed'); } catch { /* Do not inspect a fixture whose identity no longer matches. */ }
+    }
+    state.failedAt = state.status; state.status = 'FAIL'; state.error = error.message; save(); throw error; }
 }
 if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href) await main();

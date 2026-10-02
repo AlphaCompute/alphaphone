@@ -61,6 +61,7 @@ async function simulate({ drift, neverBoot = false, neverReady = false } = {}) {
   const stock = '/product/app/webview/webview.apk', stockHash = 'a'.repeat(64);
   const signature = `Verified using v2 scheme (APK Signature Scheme v2): true\nSigner #1 certificate SHA-256 digest: ${candidate.certificateSha256}`;
   const badging = `package: name='com.android.webview' versionCode='808300007' versionName='157.0.8083.0'\nsdkVersion:'29'\ntargetSdkVersion:'37'\nnative-code: 'x86_64'`;
+  let scratch = '';
   const execute = (file, args) => {
     const name = path.basename(file);
     if (name === 'curl') { const fd = fs.openSync(args.at(-1), 'wx'); fs.ftruncateSync(fd, candidate.size); fs.closeSync(fd); return ''; }
@@ -69,12 +70,16 @@ async function simulate({ drift, neverBoot = false, neverReady = false } = {}) {
     if (name === 'aapt') return args.includes('badging') ? badging : 'com.android.webview.WebViewLibrary libwebviewchromium.so';
     assert.equal(name, 'adb'); assert.deepEqual(args.slice(0, 2), ['-s', 'emulator-5554']);
     const a = args.slice(2), key = a.join(' '); calls.push(key);
-    if (key === 'reboot') { rebooted = true; offline = 1; return ''; }
+    if (key === 'reboot') { rebooted = true; offline = 1; scratch = ''; return ''; }
     if (key === 'shell getprop sys.boot_completed') {
       if (offline-- > 0 || neverBoot) throw Error('device offline');
       return '1';
     }
     if (key.startsWith('shell service check ')) return `Service ${a.at(-1)}: found`;
+    if (key === 'shell getprop fs_mgr.overlayfs.data_scratch_size_mb') return drift === 'scratch-existing' ? '2048' : drift === 'scratch-unapplied' ? '' : scratch;
+    if (key === 'shell setprop fs_mgr.overlayfs.data_scratch_size_mb 512') { scratch = '512'; return ''; }
+    if (['shell df -k /data /metadata /product', 'shell cat /proc/mounts', 'shell cat /proc/partitions', 'shell lpdump', 'shell dmesg'].includes(key)) return 'synthetic bounded storage diagnostics';
+    if (key === 'remount' && drift === 'remount-failed') { const failure = new Error('remount failed'); failure.stderr = 'Failed to map scratch; make f2fs return=65280'; throw failure; }
     if (key === 'remount') return drift === 'remount' ? 'reboot required' : 'remount succeeded';
     if (['root', 'wait-for-device', 'disable-verity'].includes(key)) return '';
     if (key === 'shell stop') { stopped = true; return ''; }
@@ -111,6 +116,8 @@ test('full provider command sequence survives one offline reboot and delayed REL
   const r = await simulate(); assert.ifError(r.error);
   assert.equal(r.result.status, 'PROVISIONED_RUNTIME_QUALIFICATION_PENDING');
   assert.equal(r.result.runtimeFeaturesQualified, false);
+  assert.equal(r.calls.filter(c => c === 'shell setprop fs_mgr.overlayfs.data_scratch_size_mb 512').length, 2);
+  assert.ok(r.calls.indexOf('shell setprop fs_mgr.overlayfs.data_scratch_size_mb 512') < r.calls.indexOf('disable-verity'));
   assert.equal(r.selectionReads, 2); assert.equal(r.stopped, false);
   assert.ok(r.calls.indexOf('shell stop') < r.calls.indexOf('shell rm /product/app/webview/webview.apk'));
   assert.ok(r.calls.indexOf('shell rm /product/app/webview/webview.apk') < r.calls.indexOf('shell start'));
@@ -134,4 +141,22 @@ test('framework starts again when stopped-provider hash check refuses deletion',
   assert.match(r.error.message, /Stopped provider changed/);
   assert.equal(r.stopped, false); assert.equal(r.removed, false);
   assert.ok(r.calls.includes('shell start')); assert.equal(r.installed, false);
+});
+
+test('scratch policy refuses drift before verity or provider mutations', async () => {
+  for (const drift of ['scratch-existing', 'scratch-unapplied']) {
+    const r = await simulate({ drift });
+    assert.match(r.error.message, /scratch size policy|Scratch size policy/);
+    assert.equal(r.calls.includes('disable-verity'), false);
+    assert.equal(r.removed, false); assert.equal(r.installed, false);
+  }
+});
+test('remount failure preserves cause and collects bounded read-only storage evidence', async () => {
+  const r = await simulate({ drift: 'remount-failed' });
+  assert.match(r.error.message, /remount failed/);
+  assert.equal(r.result.failedAt, 'preparing-overlay-storage');
+  assert.equal(r.removed, false); assert.equal(r.installed, false);
+  const failed = r.result.commands.find(c => !c.success && c.args.at(-1) === 'remount');
+  assert.match(failed.stderr, /make f2fs return=65280/);
+  assert.equal(r.calls.filter(c => c === 'shell dmesg').length, 2);
 });
