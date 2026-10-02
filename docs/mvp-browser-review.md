@@ -3,7 +3,7 @@
 Latest full integration checkpoint: **412/412 browser tests and 83/83 repository tests**, plus TypeScript and production web build, in the [October 2 full browser integration checkpoint](#october-2--full-browser-integration-checkpoint). The frozen source is `2846ee2` plus the hosted-result fixture cleanup recorded below. Earlier failures and checkpoints remain historical evidence; newer concurrent changes require separate validation. The MVP goal remains open.
 
 
-Latest targeted checkpoint: [Development Contacts persistence](#october-2--development-contacts-persistence) passed 14 browser checks and repository verification. This postdates the full 412-case snapshot.
+Latest targeted checkpoint: [Simulator writer ownership](#october-2--simulator-writer-ownership) passed 20 simulator checks and 17 Inbox/conflict checks, plus repository verification. This postdates the full 412-case snapshot.
 
 October 1 architecture change: the user has selected an **Android-resident agent instead of Nitro/TEE hosting**. The [on-device agent plan](on-device-agent-plan.md) supersedes cloud-only and enclave-primary requirements below. Agent execution and model inference are separate: the current implementation runs orchestration locally and uses hosted Cerebras inference. Historical evidence is retained. Powered-off-phone execution needs explicit scope reconciliation.
 
@@ -1033,3 +1033,14 @@ Review reproduced an additional recovery defect: Undo cleared its action before 
 The frozen snapshot based on `8dc086b` passed **14/14 browser tests** across Contacts, Phone/Messages and simulator save/recovery. **83/83 repository tests**, TypeScript and production build passed. Evidence, source hashes and before-fix failure artifacts are retained in `test-results/contacts-sync/`. This pass performs no external contact sync or telecom action and skips Android builds. The full 412-case integration checkpoint predates these changes.
 
 Remaining work includes simulator cross-tab concurrency and deep saved-record validation, remaining incoming/message/workflow actions, real local-agent/provider journeys, Scan page correction/searchable PDF, browser-family media qualification and physical/user acceptance. Concurrent model/connection, proposal, research and native work remains outside this snapshot. The full goal stays active.
+
+
+## October 2 — Simulator writer ownership
+
+The synchronous development app reducers previously wrote complete saved documents without cross-tab ownership. One development tab now holds an origin-wide Web Lock for Phone, Messages, Contacts, Inbox, Workflows and Wallet writes. Other tabs can read; saves are refused with an explanation, preserving the local draft. Closing the writer and reloading another tab acquires fresh ownership and reads the current saved data. Page retirement immediately revokes the old writer, and unavailable Web Locks refuse persistence.
+
+Every write also compares the stored bytes with the exact snapshot parsed at startup or last written by that owner. An out-of-band replacement is retained, with a reload/copy-draft message instead of overwriting it. This is single-writer protection, not concurrent multi-tab editing or automatic merge. Those broader capabilities remain separate work. Calendar, Notes and other dedicated browser stores retain their existing storage contracts.
+
+Validation on the isolated snapshot based on `f18a7ce`: **20/20 simulator browser checks** (Contacts, Phone/Messages, Wallet, save/recovery and the two-tab journey), followed by **17/17 Inbox and conflict checks**. Four ownership tests cover stale-tab rejection plus handoff, out-of-band replacement, missing Web Locks and page retirement. **83/83 repository tests**, TypeScript and production build passed. An exploratory pre-fix run failed the stale-tab draft assertion; source changed before its process completed, so it is not treated as a clean negative-control run. Logs and final source hashes are in `test-results/simulator-concurrency-sync/`. No Android build ran.
+
+Concurrent incoming-call changes in the shared simulator file are preserved but excluded from this snapshot. Deep saved-record validation, richer simulator journeys, actual local-agent/provider execution, Scan correction/searchable PDF and device/user acceptance remain open. The full 412-case run predates this writer change. The full goal stays active.

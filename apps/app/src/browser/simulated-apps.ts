@@ -1,3 +1,4 @@
+import {SimulatorWriter} from './simulator-writer';
 import {installSimulatedInbox} from './simulated-inbox';
 import {loadSimulatedState,simulatorNeedsRecovery,showSimulatorRecovery} from './simulator-recovery';
 import { browserDevProfile } from './dev-profile';
@@ -8,7 +9,9 @@ export function captureSimulatedApps(views:Bag){return Object.fromEntries(names.
 export function installSimulatedApps(Component:any,views:Bag,original:Bag){
  if(!browserDevProfile)return;
  original.inbox.persist=[...original.inbox.persist,'localDrafts'];original.inbox.state.localDrafts=[];
- for(const name of names){Object.assign(views[name],original[name]);views[name].state={...views[name].state,...loadSimulatedState(name,original[name])};}
+ const snapshots=new Map<string,string|null>();
+ for(const name of names){Object.assign(views[name],original[name]);views[name].state={...views[name].state,...loadSimulatedState(name,original[name],raw=>snapshots.set('alpha.dev.app.'+name,raw))};}
+ const writer=new SimulatorWriter(snapshots);
  installSimulatedInbox(views.inbox);
  const walletRender=views.wallet.render;
  views.wallet.render=(state:Bag,api:Bag)=>{
@@ -24,8 +27,8 @@ export function installSimulatedApps(Component:any,views:Bag,original:Bag){
   const fields=views[name]?.persist||[];
   if(names.includes(name)&&fields.some((key:string)=>Object.prototype.hasOwnProperty.call(patch,key))){
     const value={...this.vget(name),...patch},stored:Bag={};for(const key of fields)stored[key]=value[key];
-    try{localStorage.setItem('alpha.dev.app.'+name,JSON.stringify(stored));}
-    catch{this.toast('Could not save '+views[name].title+'. Your changes are still here. Try again after freeing browser storage.');throw Error('Development app save failed.');}
+    try{writer.write('alpha.dev.app.'+name,JSON.stringify(stored));}
+    catch(error){this.toast(error instanceof Error&&/development|Saved app data changed/.test(error.message)?error.message:'Could not save '+views[name].title+'. Your changes are still here. Try again after freeing browser storage.');throw Error('Development app save failed.');}
   }
   return set.call(this,name,patch);
  };

@@ -4,10 +4,10 @@ const failures=new Map<string,Failure>();
 const key=(name:string)=>'alpha.dev.app.'+name;
 const object=(value:unknown):value is Bag=>!!value&&typeof value==='object'&&!Array.isArray(value);
 /** Only persisted fields can enter a simulator; damaged records stay untouched. */
-export function loadSimulatedState(name:string,view:Bag){
+export function loadSimulatedState(name:string,view:Bag,onRead?:(raw:string|null)=>void){
  let raw:string|null|undefined;
  try{
-  raw=localStorage.getItem(key(name));if(raw===null)return {};
+  raw=localStorage.getItem(key(name));onRead?.(raw);if(raw===null)return {};
   if(raw.length>(name==='inbox'?12_000_000:2_000_000))throw Error('Saved app is too large');
   const saved=JSON.parse(raw);if(!object(saved))throw Error('Invalid saved app');
   for(const [field,value] of Object.entries(saved)){
