@@ -16,8 +16,8 @@ import org.junit.Assume;
 import org.junit.Test;
 import static org.junit.Assert.*;
 
-/** Opt-in real packaged ARM64 runtime. No host agent, model mock, or bearer in test output. */
-public final class ResidentAgentInstrumentedTest {
+/** Opt-in service-only resident test. No Activity, WebView, UI acceptance, or ordinary background-start claim. */
+public final class ResidentServiceInstrumentedTest {
  private Context context;
  private JSONObject fixture;
  private static String hash(byte[] bytes)throws Exception {StringBuilder value=new StringBuilder();for(byte b:MessageDigest.getInstance("SHA-256").digest(bytes))value.append(String.format(Locale.ROOT,"%02x",b&255));return value.toString();}
@@ -28,18 +28,38 @@ public final class ResidentAgentInstrumentedTest {
   StringBuilder value=new StringBuilder();for(byte b:digest.digest())value.append(String.format(Locale.ROOT,"%02x",b&255));return value.toString();
  }
  private static String fileHash(File file)throws Exception {try(InputStream in=new FileInputStream(file)){MessageDigest digest=MessageDigest.getInstance("SHA-256");byte[] buf=new byte[65536];int n;while((n=in.read(buf))!=-1)digest.update(buf,0,n);StringBuilder s=new StringBuilder();for(byte b:digest.digest())s.append(String.format(Locale.ROOT,"%02x",b&255));return s.toString();}}
- private JSONObject invoke(String method,JSONObject input,long timeout)throws Exception {
-  assertTrue(method.matches("[A-Za-z]+"));
-  WebViewTestDriver.evaluateSensitive("window.__residentResult=null;Capacitor.Plugins.Agent."+method+"("+input+").then(value=>window.__residentResult=JSON.stringify({value}),()=>window.__residentResult=JSON.stringify({rejected:true}))");
-  long end=SystemClock.elapsedRealtime()+timeout;
-  while(SystemClock.elapsedRealtime()<end){String raw=WebViewTestDriver.evaluateSensitive("window.__residentResult");if(!"null".equals(raw)){JSONObject result=new JSONObject((String)new JSONTokener(raw).nextValue());WebViewTestDriver.evaluateSensitive("delete window.__residentResult");return result;}SystemClock.sleep(100);}
-  throw new AssertionError("Resident bridge deadline; ambiguous effects must not be resubmitted");
+ private String ownerBearer;
+ private JSONObject nativeCall(String path,String method,JSONObject body,String bearer)throws Exception {
+  JSONObject headers=new JSONObject();if(bearer!=null)headers.put("Authorization","Bearer "+bearer);
+  JSONObject args=new JSONObject().put("path",path).put("method",method).put("headers",headers).put("timeoutMs",path.startsWith("/api/auth/")?10000:120000);
+  if(body!=null)args.put("body",body.toString());
+  JSONObject result=new JSONObject(ElizaAgentService.requestLocalAgent(args.toString()));
+  if(result.getInt("status")!=200)throw new IOException("Resident API status "+result.getInt("status"));return new JSONObject(result.getString("body"));
  }
- private JSONObject call(String method,JSONObject input,long timeout)throws Exception {JSONObject value=invoke(method,input,timeout);assertFalse("Resident bridge rejected",value.optBoolean("rejected"));return value.getJSONObject("value");}
- private JSONObject request(String path,JSONObject body)throws Exception {
-  JSONObject args=new JSONObject().put("path",path).put("method",body==null?"GET":"POST").put("headers",new JSONObject()).put("timeoutMs",120000);
-  if(body!=null)args.put("body",body.toString());JSONObject reply=call("request",args,125000);assertEquals("Resident API rejected",200,reply.getInt("status"));return new JSONObject(reply.getString("body"));
+ private JSONObject request(String path,JSONObject body)throws Exception {return nativeCall(path,body==null?"GET":"POST",body,ownerBearer);}
+ private void startAndEnroll()throws Exception {
+  ownerBearer=null;
+  assertTrue(context.getSharedPreferences("CapacitorStorage",Context.MODE_PRIVATE).edit().putString("eliza:mobile-runtime-mode","cloud-hybrid").commit());
+  ElizaAgentService.start(context);
+  long deadline=SystemClock.elapsedRealtime()+90000;
+  String root=null;JSONObject status=null;
+  while(SystemClock.elapsedRealtime()<deadline){
+   try {
+    root=ElizaAgentService.localAgentToken(context);
+    if(root!=null&&!root.isEmpty()){status=nativeCall("/api/auth/status","GET",null,root);status.getString("instanceId");break;}
+   } catch(IOException|JSONException unavailable){status=null;}
+   SystemClock.sleep(250);
+  }
+  if(status==null)throw new AssertionError("Resident service readiness deadline; inspect OS FGS admission and boot diagnostics, do not retry blindly");
+  // Pair-code issuance and pairing are deliberately outside readiness polling: never replay an ambiguous enrollment.
+  JSONObject code=nativeCall("/api/auth/pair-code","GET",null,root);
+  JSONObject paired=nativeCall("/api/auth/pair","POST",new JSONObject().put("code",code.getString("code")).put("instanceId",status.getString("instanceId")),root);
+  assertEquals("owner",paired.getString("access"));assertEquals(status.getString("instanceId"),paired.getString("instanceId"));
+  ownerBearer=paired.getString("token");JSONObject who=request("/api/auth/me",null);
+  assertTrue("Paired native session must match",ownerBearer.equals(who.getJSONObject("session").getString("id")));
+  assertEquals(paired.getString("identityId"),who.getJSONObject("identity").getString("id"));
  }
+
  private JSONObject nativeGet(String path,String bearer)throws Exception {
   JSONObject headers=new JSONObject();if(bearer!=null)headers.put("Authorization","Bearer "+bearer);
   return new JSONObject(ElizaAgentService.requestLocalAgent(new JSONObject().put("path",path).put("method","GET").put("headers",headers).put("timeoutMs",10000).toString()));
@@ -61,11 +81,11 @@ public final class ResidentAgentInstrumentedTest {
  }
  private void stopped(JSONObject child)throws Exception {
   long end=SystemClock.elapsedRealtime()+30000;
-  while(SystemClock.elapsedRealtime()<end){boolean gone=!new File("/proc/"+child.getInt("pid")).exists();if(!gone)try{gone=!processStart(child.getInt("pid")).equals(child.getString("start"));}catch(IOException raced){gone=true;}
+  while(SystemClock.elapsedRealtime()<end){boolean gone=child==null||!new File("/proc/"+child.getInt("pid")).exists();if(!gone)try{gone=!processStart(child.getInt("pid")).equals(child.getString("start"));}catch(IOException raced){gone=true;}
    JSONObject status=ElizaAgentService.getLocalAgentBootState(context);if(gone&&!status.optBoolean("socketListening")&&!status.optBoolean("serviceActive"))return;SystemClock.sleep(100);}
   fail("Resident process/socket did not stop within30s");
  }
- private JSONObject owner()throws Exception {JSONObject who=request("/api/auth/me",null);assertEquals("owner",who.getJSONObject("identity").getString("kind"));assertEquals("OWNER",who.getJSONObject("access").getString("role"));assertEquals("native-owned-session",who.getJSONObject("session").getString("id"));return who;}
+ private JSONObject owner()throws Exception {JSONObject who=request("/api/auth/me",null);assertEquals("owner",who.getJSONObject("identity").getString("kind"));assertEquals("OWNER",who.getJSONObject("access").getString("role"));assertTrue("Native owner session mismatch",ownerBearer.equals(who.getJSONObject("session").getString("id")));who.getJSONObject("session").put("id","native-service-session");return who;}
  private JSONObject agent()throws Exception {JSONArray agents=request("/api/agents",null).getJSONArray("agents");assertEquals(1,agents.length());JSONObject agent=agents.getJSONObject(0);assertEquals("running",agent.getString("status"));return agent;}
  private JSONArray history(String id)throws Exception{return request("/api/conversations/"+id+"/messages",null).getJSONArray("messages");}
  private JSONObject trace(String room,String messageId)throws Exception {
@@ -79,42 +99,43 @@ public final class ResidentAgentInstrumentedTest {
    SystemClock.sleep(250);
   }throw new AssertionError("Correlated initial resident trajectory not complete");
  }
- @Test public void bootAuthenticatedChatAndRestartPersists()throws Exception {
-  Assume.assumeTrue("Explicit resident fixture required","1".equals(InstrumentationRegistry.getArguments().getString("residentAgent")));
+ @Test public void serviceBootAuthenticatedChatAndRestartPersists()throws Throwable {
+  Assume.assumeTrue("Explicit resident fixture required","1".equals(InstrumentationRegistry.getArguments().getString("residentService")));
   assertTrue(BuildConfig.DEBUG);assertEquals("arm64-v8a",Build.SUPPORTED_ABIS[0]);assertTrue("Never run in user0",Process.myUid()/100000>0);
-  context=InstrumentationRegistry.getInstrumentation().getTargetContext();File input=new File(context.getFilesDir(),"resident-provider-input.json");assertTrue(input.isFile());assertEquals(0,Os.stat(input.getPath()).st_mode&0077);assertEquals(Process.myUid(),Os.stat(input.getPath()).st_uid);
+  context=InstrumentationRegistry.getInstrumentation().getTargetContext();assertTrue("Fixture user must be unlocked",context.getSystemService(android.os.UserManager.class).isUserUnlocked());File input=new File(context.getFilesDir(),"resident-provider-input.json");assertTrue(input.isFile());assertEquals(0,Os.stat(input.getPath()).st_mode&0077);assertEquals(Process.myUid(),Os.stat(input.getPath()).st_uid);
   try(InputStream stream=new FileInputStream(input)){fixture=new JSONObject(new String(bounded(stream,16384),StandardCharsets.UTF_8));}assertTrue(input.delete());
   assertEquals(InstrumentationRegistry.getArguments().getString("residentRunId"),fixture.getString("runId"));assertNull("Fresh credential slot",new AlphaCredentialStore(context).readCredentialSlot("local-agent-provider:v1"));
   File bun=new File(context.getApplicationInfo().nativeLibraryDir,"libeliza_bun.so");assertEquals(fixture.getString("bunSha256"),fileHash(bun));
   try(InputStream in=new FileInputStream(bun)){byte[] h=new byte[20];assertEquals(20,in.read(h));assertEquals(0x7f,h[0]&255);assertEquals('E',h[1]);assertEquals('L',h[2]);assertEquals('F',h[3]);assertEquals(2,h[4]);assertEquals(1,h[5]);assertEquals(183,(h[18]&255)|((h[19]&255)<<8));}
   try(InputStream in=context.getAssets().open("agent/agent-bundle.js")){assertEquals(fixture.getString("bundleSha256"),boundedHash(in,128L*1024*1024));}
   try(InputStream in=context.getAssets().open("agent/alpha-source.json")){assertEquals(fixture.getString("sourceSha256"),boundedHash(in,8L*1024*1024));}
-  JSONObject child=null,proof=new JSONObject().put("runId",fixture.getString("runId")).put("passed",false);
-  try(BoundedActivityScenario<MainActivity> scenario=BoundedActivityScenario.launch(MainActivity.class)) {
-   try {
-    long bridgeDeadline=SystemClock.elapsedRealtime()+15000;
-    while(!"true".equals(WebViewTestDriver.evaluateSensitive("Boolean(window.Capacitor&&Capacitor.Plugins&&Capacitor.Plugins.Agent)"))){assertTrue("Native bridge not ready",SystemClock.elapsedRealtime()<bridgeDeadline);SystemClock.sleep(100);}
-    assertTrue(call("getStatus",new JSONObject(),15000).getBoolean("packaged"));assertFalse(ElizaAgentService.getLocalAgentBootState(context).optBoolean("socketListening"));
-    assertTrue("Missing provider must reject",invoke("start",new JSONObject(),15000).optBoolean("rejected"));
+  JSONObject child=null,proof=new JSONObject().put("runId",fixture.getString("runId")).put("scope","native-service-instrumentation").put("uiAcceptance",false).put("ordinaryBackgroundStartAcceptance",false).put("passed",false);
+  Throwable failure=null;
+  try {
     assertFalse(ElizaAgentService.getLocalAgentBootState(context).optBoolean("socketListening"));
-    JSONObject provider=new JSONObject().put("apiKey",fixture.getString("apiKey")).put("model","qwen-3.8-27b");assertTrue(call("configureProvider",provider,15000).getBoolean("configured"));fixture.remove("apiKey");provider.remove("apiKey");
-    assertEquals("ready",call("start",new JSONObject(),95000).getString("state"));child=ownedChild();proof.put("firstProcess",child);
+    new AlphaCredentialStore(context).writeCredentialSlot("local-agent-provider:v1",new JSONObject().put("key",fixture.getString("apiKey")).put("model","qwen-3.8-27b").toString());fixture.remove("apiKey");
+    startAndEnroll();child=ownedChild();proof.put("firstProcess",child);
     assertEquals(fixture.getString("bundleSha256"),fileHash(new File(context.getFilesDir(),"agent/agent-bundle.js")));
     JSONObject who=owner(),agent=agent();String ownerId=who.getJSONObject("identity").getString("id"),agentId=agent.getString("id");
     int denied=nativeGet("/api/conversations","synthetic-invalid-bearer").getInt("status");assertTrue("Explicit invalid bearer must deny",denied==401||denied==403);
-    JSONObject wrong=call("request",new JSONObject().put("path","/api/auth/me").put("method","GET").put("ownerId","wrong-owner"),15000);assertEquals(409,wrong.getInt("status"));
+
     String label="Resident fixture "+fixture.getString("runId");JSONObject conversation=request("/api/conversations",new JSONObject().put("title",label)).getJSONObject("conversation");String id=conversation.getString("id"),room=conversation.getString("roomId");assertTrue(id.matches("[A-Za-z0-9_-]+"));assertTrue(room.matches("[A-Za-z0-9_-]+"));assertEquals(0,history(id).length());
     JSONObject reply=request("/api/conversations/"+id+"/messages",new JSONObject().put("text",label+": Reply with the value of seven times eight. Do not use tools or create anything.").put("channelType","DM").put("clientMessageId",UUID.randomUUID().toString()));assertFalse("Actual resident reply required",reply.getString("text").trim().isEmpty());assertTrue(reply.getString("text").contains("56"));
     proof.put("model",trace(room,reply.getString("userMessageId")));JSONArray before=history(id);assertTrue(before.length()>=2);String historyHash=hash(before.toString().getBytes(StandardCharsets.UTF_8));
-    call("stop",new JSONObject(),15000);stopped(child);JSONObject old=child;child=null;
-    assertEquals("ready",call("start",new JSONObject(),95000).getString("state"));child=ownedChild();assertNotEquals("Real native process restart",old.getInt("pid"),child.getInt("pid"));
+    ElizaAgentService.stop(context);stopped(child);ownerBearer=null;JSONObject old=child;child=null;
+    startAndEnroll();child=ownedChild();assertNotEquals("Real native process restart",old.getInt("pid"),child.getInt("pid"));
     assertEquals(ownerId,owner().getJSONObject("identity").getString("id"));assertEquals(agentId,agent().getString("id"));assertEquals(historyHash,hash(history(id).toString().getBytes(StandardCharsets.UTF_8)));
     proof.put("secondProcess",child).put("ownerId",ownerId).put("agentId",agentId).put("conversationId",id).put("historySha256",historyHash).put("passed",true);
-   } finally {
-    ElizaAgentService.stop(context);if(child!=null)stopped(child);
-    proof.put("socketStopped",!ElizaAgentService.getLocalAgentBootState(context).optBoolean("socketListening"));
-    try(FileOutputStream output=context.openFileOutput("resident-complete.json",Context.MODE_PRIVATE)){output.write(proof.toString().getBytes(StandardCharsets.UTF_8));}
-   }
+  } catch(Throwable error) {failure=error;} finally {
+    try {ElizaAgentService.stop(context);stopped(child);proof.put("socketStopped",true).put("serviceStopped",true);}
+    catch(Throwable cleanup) {if(failure==null)failure=cleanup;else failure.addSuppressed(cleanup);proof.put("cleanupFailed",true);}
+    // Write a scoped failure record even if stop verification failed; never replace the primary failure.
+    try {
+      proof.put("passed",failure==null&&proof.optBoolean("passed"));
+      try(FileOutputStream output=context.openFileOutput("resident-service-complete.json",Context.MODE_PRIVATE)){output.write(proof.toString().getBytes(StandardCharsets.UTF_8));}
+    } catch(Throwable write) {if(failure==null)failure=write;else failure.addSuppressed(write);}
+    ownerBearer=null;
   }
+  if(failure!=null)throw failure;
  }
 }
