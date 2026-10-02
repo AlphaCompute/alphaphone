@@ -147,6 +147,7 @@ jobs:
         with:
           artifact-ids: ${{ needs.build.outputs.artifact_id }}
           path: test-results/resident-ci-archive
+          merge-multiple: true
       - name: Require fresh capacity and KVM
         run: |
           python3 -c 'import shutil; assert shutil.disk_usage(".").free >= 10*1024**3'
