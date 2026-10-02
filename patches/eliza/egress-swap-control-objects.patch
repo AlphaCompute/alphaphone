@@ -1,0 +1,299 @@
+diff --git a/packages/core/src/__tests__/swap-control-objects.test.ts b/packages/core/src/__tests__/swap-control-objects.test.ts
+new file mode 100644
+index 0000000..9855cf6
+--- /dev/null
++++ b/packages/core/src/__tests__/swap-control-objects.test.ts
+@@ -0,0 +1,183 @@
++/**
++ * Secret and PII swap walk every model request before it leaves the runtime.
++ * Provider params also carry runtime control objects such as the request
++ * AbortSignal. Normalizing one into a plain record makes fetch reject it, so
++ * enabling either swap must not break cancellation or the request itself.
++ *
++ * The dispatcher cases drive a real AgentRuntime + SQLiteDatabaseAdapter with a
++ * registered model handler that records exactly what a provider would receive.
++ */
++import { createSQLiteTestRuntime } from "@elizaos/testing";
++import { afterEach, describe, expect, it } from "vitest";
++import { RegexEntityRecognizer } from "../security/entity-recognizer.ts";
++import { PseudonymSession } from "../security/pii-pseudonymizer.ts";
++import { SecretSwapSession } from "../security/secret-swap.ts";
++import type { Character } from "../types/agent.ts";
++import { ModelType } from "../types/model.ts";
++
++const EMAIL = "jane.okafor@acmecapital.com";
++const CARD = "4111 1111 1111 1111";
++const SSN = "123-45-6789";
++const ADDRESS = "1600 Pennsylvania Avenue NW";
++const PROMPT = `Follow up with ${EMAIL} about card ${CARD}, SSN ${SSN}, at ${ADDRESS}.`;
++
++describe("swap sessions preserve runtime control objects", () => {
++	it("keeps the AbortSignal identity through PII substitute and restore", async () => {
++		const controller = new AbortController();
++		const session = new PseudonymSession({
++			recognizer: new RegexEntityRecognizer(),
++		});
++		await session.learn(PROMPT);
++		const swapped = session.substituteInValue({
++			prompt: PROMPT,
++			signal: controller.signal,
++		});
++		expect(swapped.signal).toBe(controller.signal);
++		expect(swapped.prompt).not.toContain(ADDRESS);
++		const restored = session.restoreInValue(swapped);
++		expect(restored.signal).toBe(controller.signal);
++		expect(restored.prompt).toBe(PROMPT);
++	});
++
++	it("keeps the AbortSignal identity through secret substitute and restore", () => {
++		const controller = new AbortController();
++		const session = new SecretSwapSession({ knownSecrets: {} });
++		const swapped = session.substituteInValue({
++			prompt: PROMPT,
++			signal: controller.signal,
++		});
++		expect(swapped.signal).toBe(controller.signal);
++		for (const value of [EMAIL, CARD, SSN]) {
++			expect(swapped.prompt).not.toContain(value);
++		}
++		const restored = session.restoreInValue(swapped);
++		expect(restored.signal).toBe(controller.signal);
++		expect(restored.prompt).toBe(PROMPT);
++	});
++
++	it("still normalizes ordinary class instances so their text is swapped", () => {
++		class Envelope {
++			constructor(public body: string) {}
++		}
++		const session = new SecretSwapSession({ knownSecrets: {} });
++		const swapped = session.substituteInValue({
++			wrapped: new Envelope(PROMPT),
++		});
++		expect(JSON.stringify(swapped)).not.toContain(EMAIL);
++	});
++});
++
++describe("model dispatch with swaps enabled", () => {
++	const saved = {
++		secret: process.env.ELIZA_SECRET_SWAP_ENABLED,
++		pii: process.env.ELIZA_PII_SWAP_ENABLED,
++	};
++	afterEach(() => {
++		for (const [key, value] of [
++			["ELIZA_SECRET_SWAP_ENABLED", saved.secret],
++			["ELIZA_PII_SWAP_ENABLED", saved.pii],
++		] as const) {
++			if (value === undefined) delete process.env[key];
++			else process.env[key] = value;
++		}
++	});
++
++	async function dispatch(settings: Record<string, string>) {
++		const runtime = createSQLiteTestRuntime({
++			character: { name: "SwapDispatch", bio: "test", settings } as Character,
++			logLevel: "fatal",
++		});
++		let received: Record<string, unknown> | undefined;
++		runtime.registerModel(
++			ModelType.TEXT_LARGE,
++			async (_runtime, params) => {
++				received = params as Record<string, unknown>;
++				return "ok";
++			},
++			"swap-test-provider",
++		);
++		const controller = new AbortController();
++		await runtime.useModel(ModelType.TEXT_LARGE, {
++			prompt: PROMPT,
++			signal: controller.signal,
++		} as never);
++		if (!received) throw new Error("model handler was not invoked");
++		return { received, signal: controller.signal };
++	}
++
++	it("hands the provider the real AbortSignal and no swapped identifiers", async () => {
++		const { received, signal } = await dispatch({
++			ELIZA_SECRET_SWAP_ENABLED: "true",
++			ELIZA_PII_SWAP_ENABLED: "true",
++		});
++		expect(received.signal).toBe(signal);
++		expect(received.signal).toBeInstanceOf(AbortSignal);
++		const wire = String(received.prompt);
++		for (const value of [EMAIL, CARD, SSN, ADDRESS]) {
++			expect(wire).not.toContain(value);
++		}
++	});
++
++	it("enables both swaps from the host environment when no setting is present", async () => {
++		process.env.ELIZA_SECRET_SWAP_ENABLED = "true";
++		process.env.ELIZA_PII_SWAP_ENABLED = "true";
++		const { received, signal } = await dispatch({});
++		expect(received.signal).toBe(signal);
++		const wire = String(received.prompt);
++		for (const value of [EMAIL, CARD, SSN, ADDRESS]) {
++			expect(wire).not.toContain(value);
++		}
++	});
++
++	it("lets an explicit runtime setting override the host environment", async () => {
++		process.env.ELIZA_SECRET_SWAP_ENABLED = "true";
++		process.env.ELIZA_PII_SWAP_ENABLED = "true";
++		const { received } = await dispatch({
++			ELIZA_SECRET_SWAP_ENABLED: "false",
++			ELIZA_PII_SWAP_ENABLED: "false",
++		});
++		expect(received.prompt).toBe(PROMPT);
++	});
++
++	it("leaves the request untouched when both swaps are disabled", async () => {
++		const { received, signal } = await dispatch({});
++		expect(received.signal).toBe(signal);
++		expect(received.prompt).toBe(PROMPT);
++	});
++});
++
++describe('untrusted control-shaped values stay inside the redaction boundary',()=>{
++ it('does not exempt a forged AbortSignal prototype from secret swapping',()=>{
++  const forged=Object.assign(Object.create(AbortSignal.prototype),{body:PROMPT});
++  const result=new SecretSwapSession({knownSecrets:{}}).substituteInValue({payload:forged});
++  expect(result.payload).not.toBe(forged);expect(JSON.stringify(result)).not.toContain(EMAIL);
++ });
++ it('does not exempt a forged AbortSignal prototype from PII swapping',async()=>{
++  const session=new PseudonymSession({recognizer:new RegexEntityRecognizer()});await session.learn(PROMPT);
++  const forged=Object.assign(Object.create(AbortSignal.prototype),{body:PROMPT});const result=session.substituteInValue({payload:forged});
++  expect(result.payload).not.toBe(forged);expect(JSON.stringify(result)).not.toContain(ADDRESS);
++ });
++ it('does not inspect an untrusted proxy prototype or read its properties',()=>{
++  let calls=0;const value=new Proxy({body:PROMPT},{getPrototypeOf(){calls++;throw Error('Prototype executed');},get(){calls++;throw Error('Getter executed');}});
++  const result=new SecretSwapSession({knownSecrets:{}}).substituteInValue(value);expect(calls).toBe(0);expect(JSON.stringify(result)).not.toContain(EMAIL);
++ });
++ it('does not pass through a genuine signal carrying added serializable text',()=>{
++  const signal=Object.assign(new AbortController().signal,{body:PROMPT});const result=new SecretSwapSession({knownSecrets:{}}).substituteInValue({signal});
++  expect(result.signal).not.toBe(signal);expect(JSON.stringify(result)).not.toContain(EMAIL);
++ });
++});
++
++describe('clean cancellation controls and accessor safety',()=>{
++ it('preserves cancellation through native controller and combined signals',()=>{
++  const controller=new AbortController();const signals=[controller.signal,AbortSignal.any([controller.signal])];const session=new SecretSwapSession({knownSecrets:{}});
++  const result=session.substituteInValue({signals,prompt:PROMPT});expect(result.signals[0]).toBe(signals[0]);expect(result.signals[1]).toBe(signals[1]);controller.abort();expect(result.signals.every(signal=>signal.aborted)).toBe(true);
++ });
++ it('does not execute an accessor attached to a control-shaped object',()=>{
++  let calls=0;const value=Object.create(AbortSignal.prototype);Object.defineProperty(value,Symbol('private'),{get(){calls++;return true;}});Object.defineProperty(value,'body',{value:PROMPT,enumerable:true});
++  const result=new SecretSwapSession({knownSecrets:{}}).substituteInValue(value);expect(calls).toBe(0);expect(JSON.stringify(result)).not.toContain(EMAIL);
++ });
++ it('PII swapping does not execute proxy prototype or property traps',async()=>{
++  let calls=0;const session=new PseudonymSession({recognizer:new RegexEntityRecognizer()});await session.learn(PROMPT);
++  const value=new Proxy({body:PROMPT},{getPrototypeOf(){calls++;throw Error('Prototype executed');},get(){calls++;throw Error('Getter executed');}});const result=session.substituteInValue(value);expect(calls).toBe(0);expect(JSON.stringify(result)).not.toContain(ADDRESS);
++ });
++});
+diff --git a/packages/core/src/runtime.ts b/packages/core/src/runtime.ts
+index 133985d..954faa8 100644
+--- a/packages/core/src/runtime.ts
++++ b/packages/core/src/runtime.ts
+@@ -369,6 +369,17 @@ const NON_CREDENTIAL_SECRET_KEYS: ReadonlySet<string> = new Set([
+ // Its immutable stores retain nested runtimes only for the originating async chain.
+ const errorReportScopes = new AsyncLocalStorage<ReadonlySet<AgentRuntime>>();
+ 
++/**
++ * Egress swap master switches may come from the host process environment.
++ * `getSetting` reads only character/runtime settings, and hosts forward
++ * environment keys into settings through allowlists that reject any key
++ * containing "SECRET", so without this fallback a host could never enable the
++ * secret swap. An explicit runtime setting still wins.
++ */
++function swapEnvSetting(key: string): string | undefined {
++	return typeof process === "undefined" ? undefined : process.env?.[key];
++}
++
+ export class AgentRuntime implements IAgentRuntime {
+ 	private readonly dataMutations = new RuntimeDataMutations(this, {
+ 		invalidateTurnEntityDetails: (...args) =>
+@@ -805,7 +816,9 @@ export class AgentRuntime implements IAgentRuntime {
+ 
+ 	private isSecretSwapEnabled(): boolean {
+ 		return (
+-			parseBooleanValue(this.getSetting(SECRET_SWAP_ENABLED_SETTING)) ?? false
++			parseBooleanValue(this.getSetting(SECRET_SWAP_ENABLED_SETTING)) ??
++			parseBooleanValue(swapEnvSetting(SECRET_SWAP_ENABLED_SETTING)) ??
++			false
+ 		);
+ 	}
+ 
+@@ -852,7 +865,9 @@ export class AgentRuntime implements IAgentRuntime {
+ 
+ 	private isPiiSwapEnabled(): boolean {
+ 		return (
+-			parseBooleanValue(this.getSetting(PII_SWAP_ENABLED_SETTING)) ?? false
++			parseBooleanValue(this.getSetting(PII_SWAP_ENABLED_SETTING)) ??
++			parseBooleanValue(swapEnvSetting(PII_SWAP_ENABLED_SETTING)) ??
++			false
+ 		);
+ 	}
+ 
+diff --git a/packages/core/src/security/pii-pseudonymizer.ts b/packages/core/src/security/pii-pseudonymizer.ts
+index 1f63229..a2de16c 100644
+--- a/packages/core/src/security/pii-pseudonymizer.ts
++++ b/packages/core/src/security/pii-pseudonymizer.ts
+@@ -1,3 +1,4 @@
++import { isRuntimeAbortSignal } from "./runtime-abort-signal";
+ /**
+  * PII pseudonymization for the model-call boundary (#10469 / #7007).
+  *
+@@ -493,6 +494,10 @@ function walkPiiPseudonymValue(
+ 	if (value === null || typeof value !== "object") {
+ 		return value;
+ 	}
++	// Preserve a clean native cancellation signal, never control-shaped payload data.
++	if (isRuntimeAbortSignal(value)) {
++		return value;
++	}
+ 	if (depth > MAX_PII_PSEUDONYM_WALK_DEPTH) {
+ 		failPiiPseudonymUnbounded({
+ 			depth,
+diff --git a/packages/core/src/security/runtime-abort-signal.ts b/packages/core/src/security/runtime-abort-signal.ts
+new file mode 100644
+index 0000000..99ad9e1
+--- /dev/null
++++ b/packages/core/src/security/runtime-abort-signal.ts
+@@ -0,0 +1,20 @@
++import { types } from "node:util";
++
++const signalPrototype = typeof AbortSignal === "undefined" ? undefined : AbortSignal.prototype;
++const abortedGetter = signalPrototype && Object.getOwnPropertyDescriptor(signalPrototype, "aborted")?.get;
++
++/** Only undecorated native control objects bypass a data-only redaction walk.
++ * Reject proxies before prototype/property inspection; Node signal getters use
++ * internal symbol reads and must never run against an untrusted proxy/accessor.
++ * All other values stay in the existing bounded descriptor-only walker.
++ */
++export function isRuntimeAbortSignal(value: object): boolean {
++  if (!signalPrototype || !abortedGetter || types.isProxy(value)) return false;
++  if (Object.getPrototypeOf(value) !== signalPrototype) return false;
++  for (const key of Reflect.ownKeys(value)) {
++    const descriptor = Object.getOwnPropertyDescriptor(value, key)!;
++    if (typeof key === "string" || !("value" in descriptor)) return false;
++  }
++  try { return typeof abortedGetter.call(value) === "boolean"; }
++  catch { return false; }
++}
+diff --git a/packages/core/src/security/secret-swap.ts b/packages/core/src/security/secret-swap.ts
+index fda3495..c00ca0a 100644
+--- a/packages/core/src/security/secret-swap.ts
++++ b/packages/core/src/security/secret-swap.ts
+@@ -1,3 +1,4 @@
++import { isRuntimeAbortSignal } from "./runtime-abort-signal";
+ /**
+  * Session-scoped secret-swap layer that sits between the agent and the model:
+  * on ingress it detects secrets/PII in text and structured params and replaces
+@@ -256,6 +257,10 @@ function walkSecretSwapValue(
+ 	if (value === null || typeof value !== "object") {
+ 		return value;
+ 	}
++	// Preserve a clean native cancellation signal, never control-shaped payload data.
++	if (isRuntimeAbortSignal(value)) {
++		return value;
++	}
+ 	if (depth > MAX_SECRET_SWAP_WALK_DEPTH) {
+ 		failSecretSwapUnbounded({
+ 			depth,

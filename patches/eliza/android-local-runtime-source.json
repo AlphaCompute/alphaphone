@@ -19,7 +19,12 @@
     "packages/agent/test/mobile-workflows.test.ts": "93d753ea18233078d67050f4c16b1e22450b548dcc2b22558a2c344c8fa98618",
     "packages/agent/scripts/mobile-workspace-entry.ts": "cf894b21ca28a540f90042f5a361453b85c1cb918a91cd772debee0ce738d52e",
     "packages/app/src/mobile-agent-entry.ts": "3e234e47d5780006b09c3b8b26c012a475c441e35eb76d6dd97ec76bf0b0f4e0",
-    "packages/agent/test/mobile-workspace-exports.test.ts": "26606028fbd3deb1274a2c8801ea49dccaddb3c806e499607a523f38f5ef76e5"
+    "packages/agent/test/mobile-workspace-exports.test.ts": "26606028fbd3deb1274a2c8801ea49dccaddb3c806e499607a523f38f5ef76e5",
+    "packages/core/src/__tests__/swap-control-objects.test.ts": "2a3cd5464d53f791d16bf4cae4d179b818f27599b212b5bfa8106a015536bd6a",
+    "packages/core/src/runtime.ts": "44536e4e519bc573511f3dbb3136c04d6b8bc2f48bfcd972ca326946606b08e2",
+    "packages/core/src/security/pii-pseudonymizer.ts": "bffc53238d2580c5ad2d436e0e247ac425189487bf482e51b5917567f29ee111",
+    "packages/core/src/security/secret-swap.ts": "a178f31ecdab1ed5c9c1329b0163f4bc40c9379764b7a5e3be23e71b723d763a",
+    "packages/core/src/security/runtime-abort-signal.ts": "da3bb65a56334a249399c0a2ec4e0f9d227c8e09e3566237609f679de76b0d78"
   },
   "patches": [
     "android-secure-store-socket.patch",
@@ -29,6 +34,7 @@
     "packaged-approval-receipts.patch",
     "packaged-workflow-compiler.patch",
     "mobile-workflow-enablement.patch",
-    "mobile-workflow-source-entries.patch"
+    "mobile-workflow-source-entries.patch",
+    "egress-swap-control-objects.patch"
   ]
 }

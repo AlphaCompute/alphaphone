@@ -96,3 +96,10 @@ Browser development also supports Camera photo preview/capture and a local Photo
 The host launchers share the new-profile default `qwen-3.8-27b`. Set `ALPHA_AGENT_MODEL` to select a model for a new private profile; availability still depends on the configured provider. Existing direct Cerebras profiles retain their saved `serviceRouting.llmText.smallModel` and `largeModel`, and the child environment now matches those values. An explicit override that disagrees with either saved model is rejected before launch. Update the reviewed profile routing or select a separate profile instead of silently replacing it. The combined launcher retains its stricter full-profile equality check.
 
 For the separate development-backend launcher, `ALPHA_DEV_MODEL` takes precedence over the shared default. This host configuration does not change Android's encrypted provider/model settings, load an offline LLM, or establish current provider availability. The launcher regression uses synthetic credentials and a recording child process; it does not call a provider.
+
+
+## Egress redaction prerequisite
+
+The composed source includes `egress-swap-control-objects.patch`. It preserves clean native cancellation signals while keeping forged/decorated objects inside the secret/PII data walkers, and supports host environment fallback for `ELIZA_SECRET_SWAP_ENABLED` and `ELIZA_PII_SWAP_ENABLED`. Explicit runtime settings take precedence. Fresh preparation is required after this manifest change; do not modify or reuse a differently stamped prepared checkout.
+
+Source-level Node/Bun checks and full-series replay qualify this prerequisite. They do not establish that the running browser agent has redaction enabled or that every PII category/provider/action path is covered. Keep the current Privacy disclosure until enabled runtime and end-to-end restoration evidence support changing it. No Android build is needed to reproduce source preparation.
