@@ -1,6 +1,16 @@
 # Alpha Phone MVP completion plan
 
-## Current checkpoint — October 2, reviewed reminder decisions
+## Current checkpoint — October 2, durable creation and audio recovery
+
+Product `deada57cdd0d45b1553467b48b478bf0f461d66e` adds durable Calendar/reminder creation identities and receipt-only recovery after uncertain results. Voice-note deletion retains exact Notes snapshots and coordinates explicit restoration; native audio UUID receipts prevent a delayed deletion from undoing a restore. Explicit restoration of unambiguous older recording tombstones remains supported. A reproduced Calendar edit regression was fixed without removing navigation or newer-draft guards.
+
+The final product composition passes `npm run verify`, 67 owning rendered flows, and native Java compilation, with all 3,701 source hashes unchanged. The preceding broader composition passes 147 rendered flows. The initial combined campaign failed one Calendar edit flow (136 passed); the failure reproduced three times and is retained with the correction evidence. These results do not establish installed Android behavior. See [recovery qualification](mvp-recovery-qualification.md) and `test-results/mvp-recovery-integration/`.
+
+Exact prior candidate `bccd6b2` is terminal failure: browser37057417139 failed two obsolete fixture assertions, foundation37057417095 built both distributions but failed WebView scratch provisioning, and resident37057417188 built successfully but failed the native job's unchanged 10 GiB admission after emulator boot. Current product already contains the reviewed browser fixture repairs. A separate candidate packet repairs the authenticated missing userdata backing alias, provisions fresh native runner capacity, and adds an independent owned-secondary-user recovery campaign for both distributions. These are staged/source-qualified repairs, not hosted acceptance. All nine resident runtime patches and strict provider/device gates remain required.
+
+The MVP remains incomplete. Current APK/native qualification, live Cloud/Gmail/voice journeys, visible Pixel-class flows, physical alarms/audio, signed AOSP and device/user acceptance remain distinct open gates. Local ENOSPC interrupted CI-fixture testing; only byte-identical copied fixture assets were replaced with links to preserved originals, and the clean CI-fixture checks then passed. Local space remains below the 10 GiB emulator gate; no local boot or large APK build was attempted.
+
+## Earlier checkpoint — October 2, reviewed reminder decisions
 
 Exact product `c350ba46fc89ba99a5c2dce78e997491d4490f33` passes `npm run verify` in 11.63 seconds and all 41 owning reminder flows, with 3,681 source hashes unchanged. Direct Calendar Done/Snooze now binds to the rendered revision, persists the operation before dispatch, and reconciles uncertain outcomes through receipts without repeating effects. Late responses preserve the current screen. Legacy pending cancellations remain readable. Native rejection without an authoritative no-effect receipt remains conservatively unknown. Evidence: `test-results/reminder-decisions/exact-main/`.
 
