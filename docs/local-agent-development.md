@@ -93,7 +93,7 @@ Browser development also supports Camera photo preview/capture and a local Photo
 
 ## Host model selection
 
-The host launchers share the new-profile default `qwen-3.8-27b`. Set `ALPHA_AGENT_MODEL` to select a model for a new private profile; availability still depends on the configured provider. Existing direct Cerebras profiles retain their saved `serviceRouting.llmText.smallModel` and `largeModel`, and the child environment now matches those values. An explicit override that disagrees with either saved model is rejected before launch. Update the reviewed profile routing or select a separate profile instead of silently replacing it. The combined launcher retains its stricter full-profile equality check.
+The host launchers share the new-profile default `qwen-3.8-27b`. Set upstream `CEREBRAS_MODEL` to select a model for a new private profile; availability still depends on the configured provider. Existing direct Cerebras profiles retain their saved `serviceRouting.llmText.smallModel` and `largeModel`, and the child environment now matches those values. An explicit override that disagrees with either saved model is rejected before launch. Update the reviewed profile routing or select a separate profile instead of silently replacing it. The combined launcher retains its stricter full-profile equality check.
 
 For the separate development-backend launcher, `ALPHA_DEV_MODEL` takes precedence over the shared default. This host configuration does not change Android's encrypted provider/model settings, load an offline LLM, or establish current provider availability. The launcher regression uses synthetic credentials and a recording child process; it does not call a provider.
 
@@ -107,7 +107,7 @@ Source-level Node/Bun checks and full-series replay qualify this prerequisite. T
 
 ## Guarded host redaction qualification (October 2)
 
-`ALPHA_EGRESS_REDACTION=all` now opts the browser host launcher into both swap layers only after full composed-source verification. Invalid selections and unqualified source fail before profile creation or child launch. The default remains off; process metadata records the requested mode, not a coverage claim.
+Setting both upstream switches `ELIZA_SECRET_SWAP_ENABLED=true` and `ELIZA_PII_SWAP_ENABLED=true` now opts the browser host launcher into both swap layers only after full composed-source verification. Invalid or partial selections and unqualified source fail before profile creation or child launch. The default remains off; process metadata records the requested mode, not a coverage claim.
 
 Fresh pinned dependency installation and source re-verification succeeded. The isolated real host authenticated through the production Vite bridge and completed chat, but the synthetic email drafting probe returned a `__ELIZA_SECRET_…__` placeholder. A repeat request was also refused as a credential. This is a failed restoration acceptance check: the assistant reply boundary restores PII surrogates but does not restore secret-swap placeholders. Do not enable both layers in the user-facing session until safe reply restoration is implemented and tested, including protection against restoring actual provider credentials. Device enablement remains unqualified and was not included in this checkpoint.
 
