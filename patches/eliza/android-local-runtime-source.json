@@ -27,7 +27,9 @@
     "packages/core/src/security/runtime-abort-signal.ts": "da3bb65a56334a249399c0a2ec4e0f9d227c8e09e3566237609f679de76b0d78",
     "plugins/plugin-assistant/src/services/message/reply-policy.ts": "6258737cf79a623f58988d6788462b9b5d12ae54b6916b5e198dc873197ee40c",
     "packages/core/src/__tests__/swap-user-reply.test.ts": "f3853504d2cd0ef0806b5649edbd8bd17410d8bc1ee314eee77c9c56dc9efa08",
-    "packages/core/src/security/guarded-stream.ts": "7b8908f0b04ce822e02e4e9a98ca61b41d59658357a6c2acca85c5aecb8d987f"
+    "packages/core/src/security/guarded-stream.ts": "7b8908f0b04ce822e02e4e9a98ca61b41d59658357a6c2acca85c5aecb8d987f",
+    "plugins/plugin-assistant/src/services/device-actions/contract.ts": "414922c6cb149dcf2d80178ec358b2b6cd22bc930db9837d4dbe9c7328b2d998",
+    "plugins/plugin-assistant/test/device-actions.e2e.test.ts": "9751cef6f05cc8b075a33f43ef8ca711d5ee4541c32940f218ccc8201d846e39"
   },
   "patches": [
     "android-secure-store-socket.patch",
@@ -39,6 +41,10 @@
     "mobile-workflow-enablement.patch",
     "mobile-workflow-source-entries.patch",
     "egress-swap-control-objects.patch",
-    "egress-user-reply-restoration.patch"
-  ]
+    "egress-user-reply-restoration.patch",
+    "approved-workflows-navigation.patch"
+  ],
+  "patchHashes": {
+    "approved-workflows-navigation.patch": "2202d04675531633db4b1ce3a2e49e3e870c259c341acaf20b17bbef6be99c9a"
+  }
 }

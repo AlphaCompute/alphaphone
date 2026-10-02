@@ -1,0 +1,59 @@
+diff --git a/plugins/plugin-assistant/src/services/device-actions/contract.ts b/plugins/plugin-assistant/src/services/device-actions/contract.ts
+index 7224c345eef1..45a6b89758a6 100644
+--- a/plugins/plugin-assistant/src/services/device-actions/contract.ts
++++ b/plugins/plugin-assistant/src/services/device-actions/contract.ts
+@@ -42,6 +42,7 @@ export const DEVICE_VIEWS = [
+   "maps",
+   "inbox",
+   "settings",
++  "workflows",
+ ] as const;
+ export type DeviceOperation =
+   | MapsOperation
+diff --git a/plugins/plugin-assistant/test/device-actions.e2e.test.ts b/plugins/plugin-assistant/test/device-actions.e2e.test.ts
+index 718ae818033a..8a1057b04f8f 100644
+--- a/plugins/plugin-assistant/test/device-actions.e2e.test.ts
++++ b/plugins/plugin-assistant/test/device-actions.e2e.test.ts
+@@ -508,7 +508,7 @@ test("device approval REST lifecycle survives restart and never duplicates claim
+     );
+     const view = await service.propose(
+       credentials,
+-      { type: "open_view", view: "notes" },
++      { type: "open_view", view: "workflows" },
+       "view-1",
+       "Fixture",
+     );
+@@ -542,6 +542,33 @@ test("device approval REST lifecycle survives restart and never duplicates claim
+       (await request(`/proposals/${view.id}/claim`, { digest: viewDigest }))
+         .status,
+     ).toBe(409);
++    expect(
++      pending.find((item: any) => item.id === view.id).payload.operation,
++    ).toEqual({ type: "open_view", view: "workflows" });
++    expect(
++      (
++        await request(`/proposals/${view.id}/decision`, {
++          digest: viewDigest,
++          decision: "approve",
++        })
++      ).status,
++    ).toBe(200);
++    const viewClaim = await request(`/proposals/${view.id}/claim`, {
++      digest: viewDigest,
++    });
++    expect(viewClaim.status).toBe(200);
++    expect(viewClaim.body.proposal.state).toBe("executing");
++    const viewReceipt = await request(`/proposals/${view.id}/receipt`, {
++      digest: viewDigest,
++      attemptId: viewClaim.body.proposal.execution.attemptId,
++      receipt: { outcome: "applied", operationId: "fixture-open-workflows-1" },
++    });
++    expect(viewReceipt.status).toBe(200);
++    expect(viewReceipt.body.proposal.state).toBe("done");
++    expect(
++      (await request(`/proposals/${view.id}/claim`, { digest: viewDigest }))
++        .status,
++    ).toBe(409);
+     const browserDigest = pending.find(
+       (item: any) => item.id === browser.id,
+     ).digest;
