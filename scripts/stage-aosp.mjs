@@ -3,6 +3,7 @@ import path from "node:path";
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { androidEnv, tool } from "./toolchain.mjs";
+import { clockProductRequirement } from "./aosp-clock-contract.mjs";
 const args = process.argv.slice(2);
 const get = (key) => {
   const i = args.indexOf(key);
@@ -85,6 +86,7 @@ execFileSync(
   ],
   { stdio: "inherit", env },
 );
+fs.appendFileSync(path.join(output, "product.mk"), clockProductRequirement);
 console.log(
   `Add under vendor/${identity.slug.replaceAll("-", "_")} and inherit product.mk from the selected AOSP product. This is staging evidence, not an image boot.`,
 );

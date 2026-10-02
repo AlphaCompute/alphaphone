@@ -28,8 +28,13 @@
     "plugins/plugin-assistant/src/services/message/reply-policy.ts": "6258737cf79a623f58988d6788462b9b5d12ae54b6916b5e198dc873197ee40c",
     "packages/core/src/__tests__/swap-user-reply.test.ts": "f3853504d2cd0ef0806b5649edbd8bd17410d8bc1ee314eee77c9c56dc9efa08",
     "packages/core/src/security/guarded-stream.ts": "7b8908f0b04ce822e02e4e9a98ca61b41d59658357a6c2acca85c5aecb8d987f",
-    "plugins/plugin-assistant/src/services/device-actions/contract.ts": "414922c6cb149dcf2d80178ec358b2b6cd22bc930db9837d4dbe9c7328b2d998",
-    "plugins/plugin-assistant/test/device-actions.e2e.test.ts": "9751cef6f05cc8b075a33f43ef8ca711d5ee4541c32940f218ccc8201d846e39"
+    "plugins/plugin-assistant/src/services/device-actions/contract.ts": "1cb1868981ec118366cb1186744c3790462dc2820d381da54174eba37bd6a13b",
+    "plugins/plugin-assistant/test/device-actions.e2e.test.ts": "8d7b58ba3c83dd582bcab7007136d74c367df947fcaed473893d1ea99a6b67a7",
+    "plugins/plugin-assistant/src/services/device-actions/clock-contract.ts": "4a068849386f1e3f81391840c60ea74e0ad488b1102d4b6d8c8dc1bf1616cfaf",
+    "plugins/plugin-assistant/src/services/device-actions/action.ts": "5dadeb7828819b490faa46e93fd0a6628165c018a2d2cc80b258a3fb428a30f4",
+    "plugins/plugin-assistant/src/services/device-actions/effect-receipts.ts": "52fcf108e42ac6c85f4f1b60b0eb5a18b956178c693528a92fedfdae4d69d4ca",
+    "plugins/plugin-assistant/src/services/device-actions/service.ts": "c821593e90af9a95ceba3f4931e66f7496c24c58613fabd1bda6c01f8ffbd747",
+    "packages/agent/src/api/device-action-routes.ts": "1e61d0695828a7ae5a210783cc45dbfdee507579351bcee75a142c88a4c4b5bb"
   },
   "patches": [
     "android-secure-store-socket.patch",
@@ -42,9 +47,11 @@
     "mobile-workflow-source-entries.patch",
     "egress-swap-control-objects.patch",
     "egress-user-reply-restoration.patch",
-    "approved-workflows-navigation.patch"
+    "approved-workflows-navigation.patch",
+    "clock-handoff.patch"
   ],
   "patchHashes": {
-    "approved-workflows-navigation.patch": "2202d04675531633db4b1ce3a2e49e3e870c259c341acaf20b17bbef6be99c9a"
+    "approved-workflows-navigation.patch": "2202d04675531633db4b1ce3a2e49e3e870c259c341acaf20b17bbef6be99c9a",
+    "clock-handoff.patch": "32245531af0928e7bd8a394ac588370790700abdf778cde644f54e1dda5388f2"
   }
 }

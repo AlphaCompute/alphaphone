@@ -47,7 +47,7 @@ export type NativeResult = {
   mimeType?: string;
   transcript?: string;
 };
-export type ClockRequest = {action:'set';hour:number;minute:number;label:string;reviewed:true} | {action:'show'|'dismiss';reviewed:true} | {action:'snooze';snoozeMinutes:number;reviewed:true};
+export type ClockRequest = {action:'set';hour:number;minute:number;label:string;timeZone?:string;reviewed:true} | {action:'show'|'dismiss';reviewed:true} | {action:'snooze';snoozeMinutes:number;reviewed:true};
 export type ClockResult = {action:ClockRequest['action'];status:'opened'|'unavailable'|'denied'|'failed'|'unknown';message:string};
 export const DailyApps = registerPlugin<{
   clockHandoff(options:ClockRequest):Promise<ClockResult>;

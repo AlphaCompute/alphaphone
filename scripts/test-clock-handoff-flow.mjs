@@ -4,7 +4,8 @@ import fs from 'node:fs';
 import vm from 'node:vm';
 import {stripTypeScriptTypes} from 'node:module';
 import {randomUUID} from 'node:crypto';
-const source=stripTypeScriptTypes(fs.readFileSync(new URL('../apps/app/src/prototype/clock-adapter.ts',import.meta.url),'utf8').replace(/^import .*?;\n/m,'').replace('export function installClockAdapter','function installClockAdapter'));
+import {currentClockTimeZone} from '../apps/app/src/runtime/clock-contract.ts';
+const source=stripTypeScriptTypes(fs.readFileSync(new URL('../apps/app/src/prototype/clock-adapter.ts',import.meta.url),'utf8').replace(/^import .*?;\n/gm,'').replace('export function installClockAdapter','function installClockAdapter'));
 let writes=[],store=new Map(),failStorage=false,response={status:'opened',message:'Clock request sent. Check Clock.'},hold,hidden=false;
 const document={addEventListener(){},removeEventListener(){},querySelector(){return null;},documentElement:{dataset:{connectionMode:'live'}},get hidden(){return hidden;}};
 const localStorage={getItem:k=>store.get(k)||null,setItem:(k,v)=>{if(failStorage)throw Error('full');store.set(k,v);}};
@@ -12,7 +13,7 @@ const DailyApps={clockHandoff:async request=>{writes.push(request);if(hold)retur
 function fixture(simulated=false){
  class Shell{componentDidMount(){}componentWillUnmount(){}vset(){}}
  const views={calendar:{render:()=>({})}};
- vm.runInNewContext(source+'\ninstallClockAdapter(Shell,views,{simulated});',{DailyApps,Shell,views,simulated,document,window:{addEventListener(){},removeEventListener(){}},queueMicrotask,localStorage,crypto:{randomUUID},Date,Intl,console});
+ vm.runInNewContext(source+'\ninstallClockAdapter(Shell,views,{simulated});',{currentClockTimeZone,DailyApps,Shell,views,simulated,document,window:{addEventListener(){},removeEventListener(){}},queueMicrotask,localStorage,crypto:{randomUUID},Date,Intl,console});
  const shell=new Shell();shell.componentDidMount();const render=()=>views.calendar.render({},{});render().openClock();return {shell,render};
 }
 let f=fixture();let ui=f.render().clock;
@@ -22,7 +23,7 @@ const first=f.render().clock.review;assert.match(first.text,/06:45/);assert.equa
 // Changing a draft invalidates an old review callback.
 f.render().clock.onLabel({target:{value:'Changed'}});await first.confirm();assert.equal(writes.length,0);
 f.render().clock.prepare();const exact=f.render().clock.review;hold=true;const pending=exact.confirm();await exact.confirm();assert.equal(writes.length,1);assert.equal(JSON.parse([...store.values()][0]).status,'opening');
-assert.deepEqual(JSON.parse(JSON.stringify(writes[0])),{action:'set',hour:6,minute:45,label:'Changed',reviewed:true});
+assert.deepEqual(JSON.parse(JSON.stringify(writes[0])),{action:'set',hour:6,minute:45,label:'Changed',timeZone:currentClockTimeZone(),reviewed:true});
 hold({action:'set',status:'opened',message:'Clock request sent. Check Clock.'});hold=null;await pending;assert.equal(JSON.parse([...store.values()][0]).status,'opened');await exact.confirm();assert.equal(writes.length,1);
 // All other standard intents require a fresh review; no broad alarm identity is inferred.
 for(const [name,action] of [['Show alarms','show'],['Snooze','snooze'],['Dismiss','dismiss']]){

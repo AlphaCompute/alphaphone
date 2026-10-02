@@ -1,3 +1,4 @@
+import {Capacitor} from '@capacitor/core';
 import { CloudPersonalSetup, personalIntent, savePersonalIntent, clearPersonalIntent, type PersonalSetupState } from './cloud-personal-setup';
 import { PersonalProtocolError, type CloudPersonalProtocol, type PersonalView, type PersonalOwner } from './cloud-personal-protocol';
 import { holdPhoneInert } from './modal-inert';
@@ -213,6 +214,7 @@ async function connectRemote(kind: 'remote' | 'local', origin: string, code: str
     if (registered.installationId !== credential.installationId || !/^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/.test(registered.enrollmentId)) throw new Error('Device registration was not verified');
     if(Array.isArray(registered.capabilities)&&registered.capabilities.includes("reminders.local-record.v1"))headers["X-Eliza-Device-Capabilities"]+=",reminders.local-record.v1";
     if(Array.isArray(registered.capabilities)&&registered.capabilities.includes("maps.selected-read.v1"))headers["X-Eliza-Device-Capabilities"]+=",maps.selected-read.v1";
+    if(Capacitor.getPlatform()==='android'&&registered.capabilities?.includes("clock.handoff.v1"))headers["X-Eliza-Device-Capabilities"]+=",clock.handoff.v1";
     credential.enrollmentId = registered.enrollmentId;
     await secureConnectionStore.write(slot, credential); signal.throwIfAborted();
     deviceHeaders = headers;
@@ -245,6 +247,7 @@ async function connectResident(signal: AbortSignal) {
     if(registered.installationId!==credential.installationId||typeof registered.enrollmentId!=='string'||!/^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/.test(registered.enrollmentId))throw Error('Device registration was not verified');
     if(registered.capabilities?.includes('reminders.local-record.v1'))headers['X-Eliza-Device-Capabilities']+=',reminders.local-record.v1';
     if(registered.capabilities?.includes('maps.selected-read.v1'))headers['X-Eliza-Device-Capabilities']+=',maps.selected-read.v1';
+    if(Capacitor.getPlatform()==='android'&&registered.capabilities?.includes("clock.handoff.v1"))headers["X-Eliza-Device-Capabilities"]+=",clock.handoff.v1";
     credential.enrollmentId=registered.enrollmentId;await store.write(slot,credential);signal.throwIfAborted();
     client.deviceHeaders=headers;
     actions=new DeviceActions(session,credential,await actionScope(JSON.stringify([baseScope,credential.installationId])),request,journal,(op,id,context,effectSignal,bindingHash)=>deviceExecutor(op,id,context,effectSignal,bindingHash),(op,id,binding,recoverySignal)=>deviceRecovery?deviceRecovery(op,id,binding,recoverySignal):Promise.resolve({status:'unknown'}));
@@ -292,10 +295,12 @@ async function connectCloud(agentId: string, signal: AbortSignal, expectedOwner?
     const external=capability.externalIdentity as Record<string,unknown>|undefined,device=capability.deviceActions as Record<string,unknown>|undefined;
     if (capability.protocol!==1 || capability.agentId!==agentId || typeof capability.identityId!=='string' || !/^[a-f0-9-]{36}$/.test(capability.identityId) || external?.subject!==identity.userId || external?.organizationId!==identity.organizationId || typeof external?.issuer!=='string' || !external.issuer.startsWith('https://') || device?.protocol!==1 || !Array.isArray(device.capabilities) || !device.capabilities.includes('calendar.local-event.v1')) throw new Error('Cloud runtime owner capability was not verified');
     if(Array.isArray(device?.capabilities)&&device.capabilities.includes("reminders.local-record.v1"))target.headers["X-Eliza-Device-Capabilities"]+=",reminders.local-record.v1";
+    if(Capacitor.getPlatform()==='android'&&device?.capabilities?.includes("clock.handoff.v1"))target.headers["X-Eliza-Device-Capabilities"]+=",clock.handoff.v1";
     if(Array.isArray(device?.capabilities)&&device.capabilities.includes("maps.selected-read.v1"))target.headers["X-Eliza-Device-Capabilities"]+=",maps.selected-read.v1";
     session.ownerId=capability.identityId;
     const registered=await request('/api/client-devices/register',{label:'Alpha Phone',workflowProtocol:1},signal);
     if (registered.installationId!==credential.installationId || typeof registered.enrollmentId!=='string' || !/^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/.test(registered.enrollmentId)) throw new Error('Cloud device registration was not verified');
+
     credential.enrollmentId=registered.enrollmentId; await secureConnectionStore.write(slot,credential); signal.throwIfAborted();
     next.actions=new DeviceActions(session,credential,await actionScope(JSON.stringify([baseScope,credential.installationId])),request,actionJournal,(op,id,context,effectSignal,bindingHash)=>deviceExecutor(op,id,context,effectSignal,bindingHash),(op,id,binding,signal)=>deviceRecovery?deviceRecovery(op,id,binding,signal):Promise.resolve({status:"unknown"}));
     next.phoneTarget=target; next.voiceExpiresAt=Math.min(auth.expiresAt ?? Infinity,Date.now()+30*60*1000);

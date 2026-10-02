@@ -128,7 +128,7 @@ public class ConnectionInstrumentedTest {
    JSONObject response = invoke("request", request);
    assertTrue(response.getBoolean("ok")); assertEquals(200, response.getJSONObject("value").getInt("status"));
    assertTrue(response.getJSONObject("value").getJSONObject("data").getBoolean("fixture"));
-   String negotiatedCapabilities="calendar.local-event.v1,notes.local-record.v1,reminders.local-record.v1,maps.selected-read.v1";
+   String negotiatedCapabilities="calendar.local-event.v1,notes.local-record.v1,reminders.local-record.v1,maps.selected-read.v1,clock.handoff.v1";
    for(String capabilities:new String[]{"calendar.local-event.v1","notes.local-record.v1","calendar.local-event.v1,notes.local-record.v1","notes.local-record.v1,calendar.local-event.v1","maps.selected-read.v1","calendar.local-event.v1,notes.local-record.v1,maps.selected-read.v1",negotiatedCapabilities}){
     int before=requestHits.get();
     JSONObject accepted=invoke("request",new JSONObject().put("requestId",java.util.UUID.randomUUID().toString()).put("url",base+"/api/conversations").put("method","GET").put("headers",new JSONObject().put("X-Eliza-Device-Capabilities",capabilities)));
@@ -136,7 +136,7 @@ public class ConnectionInstrumentedTest {
     assertTrue(accepted.getJSONObject("value").getJSONObject("data").getBoolean("fixture"));
     assertEquals("Accepted capability header must reach the HTTP peer exactly once",before+1,requestHits.get());assertEquals(capabilities,lastCapabilities.get());
    }
-   for(String capabilities:new String[]{"calendar.local-event.v1,calendar.local-event.v1","notes.local-record.v1,","unknown","calendar.local-event.v1,notes.local-record.v1,unknown","notes.local-record.v1\r\nX-Injected: yes","maps.selected-read.v1,maps.selected-read.v1","calendar.local-event.v1,notes.local-record.v1,reminders.local-record.v1,unknown",negotiatedCapabilities+",maps.selected-read.v1",negotiatedCapabilities+",unknown",negotiatedCapabilities+"\nX-Injected: yes"}){
+   for(String capabilities:new String[]{"calendar.local-event.v1,calendar.local-event.v1","notes.local-record.v1,","unknown","calendar.local-event.v1,notes.local-record.v1,unknown","notes.local-record.v1\r\nX-Injected: yes","maps.selected-read.v1,maps.selected-read.v1","calendar.local-event.v1,notes.local-record.v1,reminders.local-record.v1,unknown",negotiatedCapabilities+",maps.selected-read.v1",negotiatedCapabilities+",clock.handoff.v1",negotiatedCapabilities+",unknown",negotiatedCapabilities+"\nX-Injected: yes"}){
     int before=requestHits.get();assertFalse(invoke("request",new JSONObject().put("requestId",java.util.UUID.randomUUID().toString()).put("url",base+"/capabilities-invalid").put("method","GET").put("headers",new JSONObject().put("X-Eliza-Device-Capabilities",capabilities))).getBoolean("ok"));assertEquals("Invalid capability header must not reach HTTP peer",before,requestHits.get());
    }
    assertFalse(invoke("request", new JSONObject().put("requestId", "fixture-redirect").put("url", base + "/redirect").put("method", "GET")).getBoolean("ok"));
