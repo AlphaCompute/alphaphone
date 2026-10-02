@@ -31,7 +31,8 @@ export async function hydrateTriggerJob(job:TriggerJob,api:Bag,signal:AbortSigna
  const input=source.kind==='time'?'':JSON.stringify(messages||mail||row);if(input.length>16000)throw Error('The trigger input is too large for this run.');
  return {input,messages,mail,event:source.kind==='event'?structuredClone(row):undefined};
 }
-export function workflowNeedsReview(flow:Bag){return flow.steps.some((step:Bag)=>step.k==='Speak'||step.k==='Write'&&step.t.toLowerCase()!=='a note in notes'||step.k==='Notify'&&step.t.toLowerCase()!=='a notification'||step.k==='Do'&&/attachment|amount/i.test(step.t)||step.k==='If'&&/not at home/i.test(step.t));}
+const workflowUsesAgent=(flow:Bag)=>flow.steps.some((step:Bag)=>step.k==='Write'&&step.t.toLowerCase()!=='a note in notes'||step.k==='Notify'&&step.t.toLowerCase()==='a notification, only if urgent');
+export function workflowNeedsReview(flow:Bag,connected=false){return flow.steps.some((step:Bag)=>step.k==='Speak'&&!['read it aloud','speak it when i pick up the phone'].includes(step.t.toLowerCase())||!connected&&step.k==='Write'&&step.t.toLowerCase()!=='a note in notes'||step.k==='Notify'&&step.t.toLowerCase()!=='a notification'&&(!connected||step.t.toLowerCase()!=='a notification, only if urgent')||step.k==='Do'&&/attachment|amount/i.test(step.t)||step.k==='If'&&/not at home/i.test(step.t));}
 /** The caller supplies the existing simulator writer lease and atomic run-claim operation. */
 export class WorkflowTriggerRuntime {
  private timer?:ReturnType<typeof setInterval>;private scanning=false;private stopped=false;private blocked=false;private api?:()=>Bag;private ready?:()=>boolean;
@@ -78,7 +79,7 @@ export class WorkflowTriggerRuntime {
   }catch(error){this.blocked=true;const message=error instanceof Error?error.message:'Workflow triggers could not be checked.';if(message!==this.report){this.report=message;api.setView('workflows',{localTriggerError:message});}}
   finally{this.scanning=false;}
   if(!this.stopped&&!this.busy()&&foreground()){
-   const state=app(api,'workflows'),job=(state.triggerState?.queue||[]).find((job:TriggerJob)=>{const flow=state.flows.find((flow:Bag)=>flow.on&&String(flow.id)===job.flowId&&triggerDefinition(flow)===job.definition);return flow&&(!workflowNeedsReview(flow)||api.isActive()&&String(state.open)===job.flowId&&!document.querySelector('dialog[open]'));});
+   const state=app(api,'workflows'),job=(state.triggerState?.queue||[]).find((job:TriggerJob)=>{const flow=state.flows.find((flow:Bag)=>flow.on&&String(flow.id)===job.flowId&&triggerDefinition(flow)===job.definition);return flow&&!(workflowUsesAgent(flow)&&api.localWorkflowBusy?.())&&(!workflowNeedsReview(flow,api.localWorkflowReady?.())||api.isActive()&&String(state.open)===job.flowId&&!document.querySelector('dialog[open]'));});
    if(job){const flow=state.flows.find((flow:Bag)=>String(flow.id)===job.flowId);void this.dispatch(flow,api,job).finally(()=>{this.blocked=!!app(api,'workflows').triggerState?.queue.some((pending:TriggerJob)=>pending.id===job.id);if(!this.blocked)void this.tick();}).catch(()=>{this.blocked=true;});}
   }
  }

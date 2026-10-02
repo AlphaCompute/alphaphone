@@ -44,9 +44,14 @@ export class BrowserVoice extends WebPlugin {
   audio.onended=null;audio.onerror=null;audio.pause();const url=audio.src;audio.removeAttribute('src');audio.load();URL.revokeObjectURL(url);
   if(this.audio===audio){this.audio=undefined;this.audioId=undefined;}
  }
- async play(input:{playbackId?:string;audioId?:string}){
+ async play(input:{playbackId?:string;audioId?:string;replace?:boolean}){
+  if(input.replace===false){
+   if(document.hidden||document.documentElement.dataset.devBackground==='true'||Array.from(document.querySelectorAll('[aria-label="Unlock with fingerprint"], [aria-label="Wake"]')).some(element=>element.getClientRects().length))throw new DOMException('Playback cancelled','AbortError');
+   if(this.activeSpeechId||this.audio||this.pendingAudioId)throw Object.assign(Error('Playback is busy.'),{code:'playback-busy'});
+  }
   void this.stopPlayback();const generation=this.playbackGeneration,abort=new AbortController();this.playbackAbort=abort;
   const current=()=>generation===this.playbackGeneration&&!abort.signal.aborted;
+  try{
   if(document.hidden)throw new DOMException('Playback cancelled','AbortError');
   if(!!input.playbackId===!!input.audioId)throw Error('Choose one recording or prepared speech.');
   if(input.playbackId){
@@ -84,6 +89,7 @@ export class BrowserVoice extends WebPlugin {
    if(!current())throw new DOMException('Playback cancelled','AbortError');
    const receipt={audioId:input.audioId,playing:!audio.paused,positionMs:audio.currentTime*1000};void this.notifyListeners('started',receipt);return receipt;
   }catch(error){if(this.audio===audio)finish('playbackFailed');throw error;}
+  }catch(error){if(current())await this.stopPlayback();throw error;}
  }
  async stopPlayback(input?:{playbackId:string}){
   if(input&&this.activeSpeechId!==input.playbackId)return;
