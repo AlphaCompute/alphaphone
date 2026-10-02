@@ -1,3 +1,4 @@
+import {openScanReview} from './scan-review';
 import {browserCamera,browserLibrary,browserPhotoLibrary,mountBrowserCamera} from './browser-camera';
 import { registerPlugin } from '../platform-plugins';
 import { Capacitor } from '@capacitor/core';
@@ -59,6 +60,20 @@ export function installPrototypeCameraAdapter(_Component: unknown, views: Record
   if (!module) return () => {};
   const render = module.render, leave = module.onLeave, cameraBack = module.back;
   const photosRender = views.photos?.render, photosBack = views.photos?.back, photosLeave = views.photos?.onLeave;
+  const prototype=(_Component as any)?.prototype, originalApi=prototype?.api;
+  const scanApi=typeof originalApi==='function'?function(this:Bag,key:string){
+    const value=originalApi.call(this,key);
+    if(key==='camera')value.saveScannedNote=async(text:string,id:string)=>{
+      if(this.notesStorageFailed||this.notesPending||!this.notesStore)return false;
+      const list=this.vget('notes').list||[];
+      if(list.some((note:Bag)=>note.id===id))return false;
+      return await this.vset('notes',{list:[{id,kind:'text',title:text.split('\n')[0].slice(0,100)||'Scanned text',body:text,when:'Now',pinned:false},...list]})===true;
+    };
+    return value;
+  }:undefined;
+  if(scanApi)prototype.api=scanApi;
+  let closeScan:(()=>void)|undefined;
+  const cancelScan=()=>{closeScan?.();closeScan=undefined;};
   let api: Bag | undefined;
   let phase: 'off' | 'starting' | 'ready' | 'error' = 'off';
   let epoch = 0, controlBusy = false, capturing = false, direction: 'front' | 'back' = 'back';
@@ -379,7 +394,7 @@ export function installPrototypeCameraAdapter(_Component: unknown, views: Record
   const active = () => !disposed && !document.hidden && !!api?.isActive() && !['sheet', 'full'].includes(api?.S.chat) && !!document.querySelector(finder);
   const message = (value: string) => { api?.set({ said: value }); };
   async function stop() {
-    ++epoch; phase = 'off'; controlBusy = false; mask(false);
+    cancelScan(); ++epoch; phase = 'off'; controlBusy = false; mask(false);
     if (recording || finalizing) await finishVideo();
     stopping = stopping.then(async () => { try { if (browserMode || Capacitor.isPluginAvailable('ElizaCamera')) await camera.stopPreview(); } catch { /* startPreview resets native state before retrying. */ } });
     await stopping;
@@ -442,7 +457,8 @@ export function installPrototypeCameraAdapter(_Component: unknown, views: Record
     if (phase !== 'ready') { await start(true); return; }
     if (!api || capturing || controlBusy) return;
     if (api.get('camera').mode === 'video') { await record(); return; }
-    if (api.get('camera').mode !== 'photo') { message('Document scanning is not integrated. Choose Photo or Video.'); return; }
+    const scanning=api.get('camera').mode==='scan';
+    cancelScan();
     capturing = true; const token = epoch; const owner = api;
     message('Saving photo…');
     try {
@@ -460,7 +476,10 @@ export function installPrototypeCameraAdapter(_Component: unknown, views: Record
       captures = [item, ...captures.filter(row => row.id !== item.id)];
       loaded = false;
       owner.setView('photos', { nativeCaptureRevision: item.id });
-      if (token === epoch && active()) message(browserMode?'Photo saved in this browser. Clearing site data removes saved photos.':'Photo saved to Android Photos.');
+      if (token === epoch && active()) {
+        if(scanning){const bytes=Uint8Array.from(atob(photo.base64),char=>char.charCodeAt(0));closeScan=openScanReview(new Blob([bytes],{type:'image/jpeg'}),(text,id)=>owner.saveScannedNote?.(text,id)??Promise.resolve(false));}
+        message(browserMode?'Photo saved in this browser. Clearing site data removes saved photos.':'Photo saved to Android Photos.');
+      }
     } catch { if (token === epoch && active()) message('Photo could not be saved. No successful capture was confirmed.'); }
     finally { capturing = false; }
   }
@@ -471,6 +490,7 @@ export function installPrototypeCameraAdapter(_Component: unknown, views: Record
     const data = render(st, currentApi);
     data.bg = 'transparent'; data.vfBg = phase === 'ready' ? 'transparent' : '#000000';
     data.drift = ''; data.zoomCss = ''; data.scanFound = false; data.scanning = false; data.rec = recording; data.recTime = `${Math.floor(duration / 60)}:${String(Math.floor(duration % 60)).padStart(2, '0')}`; data.flOp = 0;
+    if(st.mode==='scan')data.shutterLabel='Scan text';
     data.shutter = () => { void capture(); };
     data.flip = () => { const next = direction === 'back' ? 'front' : 'back'; void control(() => camera.switchCamera({ direction: next }), () => { direction = next; flash = false; currentApi.set({ front: next === 'front', flash: false }); }); };
     data.toggleFlash = () => { const next = !flash; void control(() => camera.setSettings({ settings: { flash: next ? 'on' : 'off' } }), () => { flash = next; currentApi.set({ flash: next }); }); };
@@ -478,7 +498,7 @@ export function installPrototypeCameraAdapter(_Component: unknown, views: Record
     data.vfDown = () => {};
     data.vfUp = (event: PointerEvent) => { void control(() => camera.setFocusPoint({ x: Math.max(0, Math.min(1, event.clientX / window.innerWidth)), y: Math.max(0, Math.min(1, event.clientY / window.innerHeight)) }), () => message('')); };
     data.vfLeave = () => {};
-    data.modes = (data.modes || []).map((m: Bag) => ({ ...m, pick: () => { if (recording || recordingStarting || finalizing || capturing) return; const mode = m.label.toLowerCase(); if (mode === 'photo' || mode === 'video') currentApi.set({ mode, rec: false, found: false }); else message('Document scanning is not integrated. Photo and video capture are available.'); } }));
+    data.modes = (data.modes || []).map((m: Bag) => ({ ...m, pick: () => { if (recording || recordingStarting || finalizing || capturing) return; const mode = m.label.toLowerCase(); if (['photo','video','scan'].includes(mode)){cancelScan();currentApi.set({ mode, rec: false, found: false });if(mode==='scan')message('Hold text steady, then tap Scan text. English recognition runs locally.');} } }));
     data.ask = () => currentApi.assist('You can ask Alpha here. Camera image analysis is not connected, and the live camera feed is not shared.');
     if (captures[0]) {
       data.hasLast = true; data.noLast = false; data.lastBg = `url("${captures[0].image}") center / cover no-repeat`; data.lastTf = ''; data.lastFlt = '';
@@ -598,5 +618,5 @@ export function installPrototypeCameraAdapter(_Component: unknown, views: Record
   const resize = () => { if (phase === 'ready') mask(true); schedule(); };
   const visibility = () => { if (document.hidden) { cancelEdit();closeVideo(); void stop(); } else { loaded = false; if (photosApi?.isActive()) void refresh(); schedule(); } };
   document.addEventListener('visibilitychange', visibility); window.addEventListener('pagehide', stop); window.addEventListener('resize', resize); schedule();
-  return () => { disposed = true;cancelEdit();endHold();selection=undefined; clearInterval(timer); closeVideo(); observer.disconnect(); document.removeEventListener('visibilitychange', visibility); window.removeEventListener('pagehide', stop); window.removeEventListener('resize', resize); void stop(); style.remove(); captures = []; module.render = render; module.onLeave = leave; module.back = cameraBack; if (views.photos) { views.photos.render = photosRender; views.photos.back = photosBack; views.photos.onLeave = photosLeave; } };
+  return () => { if(scanApi&&prototype.api===scanApi)prototype.api=originalApi;disposed = true;cancelEdit();endHold();selection=undefined; clearInterval(timer); closeVideo(); observer.disconnect(); document.removeEventListener('visibilitychange', visibility); window.removeEventListener('pagehide', stop); window.removeEventListener('resize', resize); void stop(); style.remove(); captures = []; module.render = render; module.onLeave = leave; module.back = cameraBack; if (views.photos) { views.photos.render = photosRender; views.photos.back = photosBack; views.photos.onLeave = photosLeave; } };
 }

@@ -1,10 +1,11 @@
+import {localOcrAssets} from './scripts/local-ocr-assets.ts';
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import { fileURLToPath } from "node:url";
 import { localAgentDevBridge } from './scripts/local-agent-dev-bridge.ts';
 export default defineConfig({
   root: "apps/app",
-  plugins: [react(), localAgentDevBridge()],
+  plugins: [localOcrAssets(), react(), localAgentDevBridge()],
   resolve: {
     alias: {
       "@eliza-system": fileURLToPath(
