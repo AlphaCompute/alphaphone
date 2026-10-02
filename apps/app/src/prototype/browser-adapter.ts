@@ -44,6 +44,14 @@ export function installPrototypeBrowserAdapter(Component: any, views: Record<str
   async function readPage() {
     if(reading){stopReading();shell?.toast('Reading stopped');return;}
     const id=state()?.cur, info=metadata.get(id), revision=documentRevisions.get(id);
+    if(!Capacitor.isNativePlatform()){
+      if(!info?.committed || info.loading || info.error){report(new Error('Load a page before reading.'));return;}
+      const controller=new AbortController();reading=controller;
+      const valid=()=>{controller.signal.throwIfAborted();if(disposed||document.hidden||document.documentElement.hasAttribute('data-dev-background')||shell.S().screen!=='home'||shell.S().view!=='browser'||state()?.cur!==id||documentRevisions.get(id)!==revision||connectionController.getSnapshot().open)throw new DOMException('Reading cancelled','AbortError');};
+      try{shell.vset('browser',{menu:false});const {reviewBrowserReading}=await import('../browser/reading-review');valid();await reviewBrowserReading(info.url,controller.signal,valid);}
+      catch(error){if(!controller.signal.aborted)report(error);}finally{if(reading===controller)reading=undefined;}
+      return;
+    }
     const voice=createPairedVoice(), binding=connectionController.getPairedVoiceBinding();
     if(!voice || !binding){report(new Error('Connect a paired agent with voice to read this page.'));return;}
     if(!info?.committed || info.loading || info.error){report(new Error('Load an HTTPS page before reading.'));return;}
@@ -187,7 +195,7 @@ export function installPrototypeBrowserAdapter(Component: any, views: Record<str
     const s=state(), S=shell?.S();
     const element=document.querySelector('[data-native-browser-viewport]') as HTMLElement|null;
     const hidden=!s || !element || !element.isConnected || !element.getClientRects().length || S?.view!=='browser' || s.editing || s.tabsOpen || s.menu || s.lib || s.share || s.ag || s.confirm || S?.shade || S?.screen !== 'home' || ['sheet','full'].includes(S?.chat) || document.hidden;
-    if(reading && (disposed || document.hidden || S?.view!=='browser' || s?.tabsOpen || s?.editing || S?.shade || ['sheet','full'].includes(S?.chat)))stopReading();
+    if(reading && (disposed || document.hidden || document.documentElement.hasAttribute('data-dev-background') || S?.screen!=='home' || S?.view!=='browser' || s?.tabsOpen || s?.editing || S?.shade || ['sheet','full'].includes(S?.chat)))stopReading();
     const rect=element?.getBoundingClientRect();
     const composer=document.querySelector('[aria-label="Open conversation"]')?.parentElement?.getBoundingClientRect();
     const height=rect ? Math.max(0,Math.min(rect.bottom,composer && composer.height ? composer.top-8 : rect.bottom)-rect.top) : 0;

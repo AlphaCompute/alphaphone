@@ -80,3 +80,12 @@ This prepared campaign does not establish passing results, extracted publisher
 content, navigation/account-switch acceptance, ASR, production Cloud voice or
 physical-device behavior. Its Node syntax check passed; root must compile and
 execute it before recording acceptance.
+
+
+### October 2 — browser-local reviewed excerpt speech
+
+Browser Menu → Read aloud now works without agent pairing through an explicit excerpt review. The sandboxed frame retains its opaque origin; it does not expose an extraction bridge or fetch a second copy of the page. The user pastes up to 5,000 characters, reviews the source origin and processing disclosure, then presses Read locally. The existing browser voice port selects only voices declaring `localService`; absence of a local voice is an actionable error, with no remote fallback. The exact trimmed reviewed excerpt is passed to speech. Text is not persisted or sent to the agent. Android keeps its existing native extraction/paired-speech route.
+
+The review supports Stop, retry, completion/error state, Close/Escape/Back and page lifecycle cancellation. Adapter ownership also binds it to the tab, document revision and active Browser view; lock, simulated background, chooser and assistant overlays retire reading. Light and compact dark layouts use the active phone theme, scrolling without horizontal overflow. This is a safe manual excerpt fallback, not automatic cross-origin article extraction.
+
+On fixed base `a4bc62b`, 82 repository tests plus TypeScript/build pass. Fifteen focused browser cases pass, including five new speech/review cases and ten existing device/browser parity cases. The rendered Browser-menu journey works while the connection is offline and Home closes the review. Voice and website fixtures are synthetic: exact text, explicit confirmation, remote-voice rejection, stale callbacks, cancellation, compact layout and page-hide cleanup are verified; audible output quality and physical device acceptance are not. An earlier combined run timed out clicking the existing Resume control; that case passed separately and all 15 passed in the final serial run. Evidence: `test-results/browser-reading/`. No Android build ran. Automatic extraction, actual installed-voice quality and the broader MVP ledger remain open.
