@@ -3,8 +3,8 @@
   "mvpSeries": "mvp-series",
   "files": {
     "packages/app/src/security/secure-store-android.ts": "af9dbf66398a9a984b43b33d98e752f586c70a6b473b73413e1cbfe395d30974",
-    "packages/agent/src/runtime/plugin-collector.ts": "48d6c82a5f5f13da8436188db2b547c2eccb1126e55639a5109883471ef1e612",
-    "packages/agent/test/lean-chat-workflows.test.ts": "f470618b6b0b5ccbd612e359679675db599629768ec0203b0c2201b0d71a1828"
+    "packages/agent/src/runtime/plugin-collector.ts": "63707a42d9d6bc7d4528b1da0c9deae6f7d2a3ac8d2d3a0ccfc50345c8af4825",
+    "packages/agent/test/lean-chat-workflows.test.ts": "d6d937c5882e3683281cf40f84ccde3efc7bdf8c146b5a0426a0b693f519f337"
   },
   "patches": [
     "android-secure-store-socket.patch",

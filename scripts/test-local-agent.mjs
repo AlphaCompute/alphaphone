@@ -71,6 +71,16 @@ try{
  const rejected=new LocalAgentProtocol({start:async()=>{},request:async()=>({status:200,body:JSON.stringify({identity:{id:'x',kind:'guest'},access:{role:'OWNER',mode:'local'}})})});await assert.rejects(rejected.connect(signal),/owner access/);
  const scope='b'.repeat(64),entry={scope,proposalId:'proposal',operationId:'operation',operationHash:'c'.repeat(64),record:{description:'Synthetic'}};
  const storage=input=>localAgentStorage(join(directory,'journal'),input);
+ const draftSlot='workflow-draft:v1:'+'e'.repeat(64), draftText=JSON.stringify({format:1,spec:{name:'Synthetic draft'}});
+ assert.equal(storage({operation:'draftRead',slot:draftSlot}).value,null);
+ assert.equal(storage({operation:'draftCompareExchange',slot:draftSlot,expectedValue:null,value:draftText}).status,'saved');
+ assert.equal(storage({operation:'draftCompareExchange',slot:draftSlot,expectedValue:null,value:'stale tab'}).status,'conflict');
+ assert.equal(localAgentStorage(join(directory,'journal'),{operation:'draftRead',slot:draftSlot}).value,draftText);
+ assert.equal(storage({operation:'draftRead',slot:'workflow-draft:v1:'+'f'.repeat(64)}).value,null);
+ assert.throws(()=>storage({operation:'draftCompareExchange',slot:draftSlot,expectedValue:draftText,value:'x'.repeat(100001)}),/Invalid workflow draft/);
+ assert.throws(()=>storage({operation:'draftCompareExchange',slot:'device:'+'e'.repeat(64),expectedValue:null,value:'wrong namespace'}),/Invalid local storage scope/);
+ assert.equal(storage({operation:'draftCompareExchange',slot:draftSlot,expectedValue:draftText,value:null}).status,'saved');
+ assert.equal(storage({operation:'draftRead',slot:draftSlot}).value,null);
  assert.equal(storage({...entry,operation:'reserve'}).created,true);
  assert.equal(storage({...entry,operation:'reserve'}).created,false);
  assert.throws(()=>storage({...entry,operation:'reserve',operationHash:'d'.repeat(64)}),/conflict/);

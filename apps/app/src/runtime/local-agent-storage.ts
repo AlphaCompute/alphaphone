@@ -7,6 +7,10 @@ export const developmentDeviceStore={
  async read<T>(slot:string):Promise<T|null>{return (await operation({operation:'read',slot})).value;},
  async write(slot:string,value:unknown){await operation({operation:'write',slot,value});},
 };
+export const developmentWorkflowDraftStore={
+ secureRead:(input:{slot:string})=>operation({...input,operation:'draftRead'}),
+ secureCompareExchange:(input:{slot:string;expectedValue:string|null;value:string|null})=>operation({...input,operation:'draftCompareExchange'}),
+};
 export const developmentActionJournal:ActionJournal={
  reserve:input=>operation({...input,operation:'reserve'}),
  markApplying:input=>operation({...input,operation:'markApplying'}),
