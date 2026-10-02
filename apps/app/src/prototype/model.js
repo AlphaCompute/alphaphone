@@ -4794,7 +4794,7 @@ registerView("workflows", {
     }
 
     return {
-      cards: cards,
+      cards: cards, listToggles: true,
       newFlow: function () { set({ build: wfBlank(), sheet: null }); },
       detail: !!D, fd: D,
       runOpen: !!R, r: R,

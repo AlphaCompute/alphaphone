@@ -3,7 +3,7 @@
 Latest full integration checkpoint: **454/454 browser tests** on committed `18969d2`, covering all browser tests then present. See [October 2 simulator integration and reminder-time review](#october-2--simulator-integration-and-reminder-time-review). Pending shared-checkout changes remain outside this evidence. The MVP goal remains open.
 
 
-Latest targeted checkpoint: [Development workflow execution and recovery](#october-2--development-workflow-execution-and-recovery): durable local step receipts, cancellation/reload recovery, bounded local delivery and truthful unsupported-step failures. The complete MVP remains unfinished.
+Latest targeted checkpoint: [Real workflow list controls](#october-2--real-workflow-list-controls): 23 targeted browser checks, 88 repository tests, TypeScript and web build passed. Live local-agent list also visually inspected.
 
 October 1 architecture change: the user has selected an **Android-resident agent instead of Nitro/TEE hosting**. The [on-device agent plan](on-device-agent-plan.md) supersedes cloud-only and enclave-primary requirements below. Agent execution and model inference are separate: the current implementation runs orchestration locally and uses hosted Cerebras inference. Historical evidence is retained. Powered-off-phone execution needs explicit scope reconciliation.
 
@@ -1127,3 +1127,12 @@ The executor passed **11/11 initial browser checks**, then **14/14** with the pe
 The stopped development services were restarted with the prepared local Eliza source. Authenticated owner lookup and `/api/workflow/status` returned 200 (OWNER, smthrs, manual-submission protocol 1). The existing in-app browser was reloaded and its real Workflows listing displayed the retained paused development draft. No draft was executed and no external message was sent. This proves restored live availability, not a new live workflow execution or device acceptance.
 
 Pending model-selection, opt-in runtime redaction and research edits remain separate. Remaining development includes deep nested saved-record validation, real-agent author/run/cancel/restart journeys and supported writing/actions, privacy inventory and redaction integration, Scan correction/searchable PDF, browser-family media qualification, and provider/native/device/user acceptance. Android builds remain skipped at the user's direction; the goal remains active.
+
+
+## October 2 — Real workflow list controls
+
+Live browser inspection found on/off controls attached to status/loading, removed-history navigation and workflow rows whose click merely opened a review. The real-agent list now shows Active/Paused/Removed status text only for actual workflows; status and navigation cards no longer imply an activation state. Detail-view activation and its review remain in place. Mock and development lists retain their functional local switches.
+
+The real-renderer regression fails before repair and passes afterward. **23/23 targeted browser checks** passed across execution context, approved workflow navigation, mock authoring/scope and the local executor; **88/88 repository tests**, TypeScript and production web build passed. The actual local-agent list was reloaded and visually inspected with its retained paused draft and no false switches. Evidence and source hashes are in `test-results/workflow-list-review/`.
+
+A stale live transformed module initially hid the change. Updating the copied source files' modification times refreshed the server and browser; the existing source-edit/reload regression passed separately (**1/1**). No reload-plugin defect or repair is claimed. Pending model selection, redaction and research changes remain outside this checkpoint, and the overall remaining-gap ledger remains open. No Android build or live workflow execution ran.
