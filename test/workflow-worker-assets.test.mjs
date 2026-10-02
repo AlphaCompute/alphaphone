@@ -46,7 +46,9 @@ public class WorkerAssetTest {
   File installed=WorkflowWorkerAssets.install(root,new ByteArrayInputStream(index),source);
   java.util.Map<String,String> env=new java.util.HashMap<>();env.put("ELIZA_MOBILE_WORKFLOWS","stale");
   WorkflowWorkerAssets.configureEnvironment(installed,env);
-  if(!installed.getAbsolutePath().equals(env.get("ELIZA_SMTHRS_RUNTIME_DIR")))throw new AssertionError("wrong resource path");
+  if(!installed.getCanonicalPath().equals(env.get("ELIZA_SMTHRS_RUNTIME_DIR")))throw new AssertionError("wrong resource path");
+  Path alias=new File(root,"worker-alias").toPath();Files.createSymbolicLink(alias,installed.toPath());
+  try{WorkflowWorkerAssets.configureEnvironment(alias.toFile(),env);if(!installed.getCanonicalPath().equals(env.get("ELIZA_SMTHRS_RUNTIME_DIR"))||!Files.isSameFile(alias,installed.toPath()))throw new AssertionError("worker alias did not preserve canonical resource identity");}finally{Files.delete(alias);}
   boolean compiler=new File(installed,"compiler/node_modules/typescript/lib/typescript.js").isFile()&&new File(installed,"compiler/node_modules/smthrs/package.json").isFile();
   if(compiler?!"1".equals(env.get("ELIZA_MOBILE_WORKFLOWS")):env.containsKey("ELIZA_MOBILE_WORKFLOWS"))throw new AssertionError("incorrect compiler enablement");
   byte[] prior=Files.readAllBytes(new File(installed,"manifest.json").toPath());

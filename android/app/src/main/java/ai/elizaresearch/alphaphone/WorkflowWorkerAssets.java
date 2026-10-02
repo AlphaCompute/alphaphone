@@ -10,8 +10,8 @@ import java.util.*;
 /** Extract the signed APK's bounded worker index before starting any worker. */
 final class WorkflowWorkerAssets {
  /** Called only after install has authenticated every extracted file. */
- static void configureEnvironment(File installed, Map<String,String> env) {
-  env.put("ELIZA_SMTHRS_RUNTIME_DIR",installed.getAbsolutePath());
+ static void configureEnvironment(File installed, Map<String,String> env) throws IOException {
+  env.put("ELIZA_SMTHRS_RUNTIME_DIR",installed.getCanonicalPath());
   boolean compiler=new File(installed,"compiler/node_modules/typescript/lib/typescript.js").isFile()
    &&new File(installed,"compiler/node_modules/smthrs/package.json").isFile();
   if(compiler)env.put("ELIZA_MOBILE_WORKFLOWS","1");else env.remove("ELIZA_MOBILE_WORKFLOWS");
