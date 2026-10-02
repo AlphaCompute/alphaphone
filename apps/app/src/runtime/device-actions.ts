@@ -27,7 +27,7 @@ export interface ActionJournal {
 export type DeviceExecutor = (operation: DeviceOperation, operationId: string, context: ContextEnvelope, signal: AbortSignal, bindingHash: string) => Promise<{ status: 'succeeded' | 'failed' | 'unknown'; summary: string; readResult?: WorkflowReadResult; calendarResult?:CalendarResult; notesResult?:NotesResult; reminderResult?:ReminderResult; mapsResult?:MapsResult }>;
 export type DeviceRecovery = (operation:DeviceOperation,operationId:string,bindingHash:string,signal:AbortSignal)=>Promise<{status:string;reminderResult?:ReminderResult}>;
 interface Proposal { id: string; digest: string; state: string; expiresAt: number; operation: DeviceOperation; workflow?:WorkflowDeviceBinding; attemptId?: string }
-const views = new Set(['home','notes','reminders','browser','calendar','files','photos','camera','maps','inbox','settings']);
+const views = new Set(['home','notes','reminders','browser','calendar','files','photos','camera','maps','inbox','settings','workflows']);
 function object(value: unknown): Record<string, any> { if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('Invalid device action response'); return value as Record<string, any>; }
 function text(value: unknown, max = 128): string { if (typeof value !== 'string' || !value.trim() || value.length > max || value.includes('\0')) throw new Error('Invalid device action field'); return value; }
 function id(value: unknown): string { const valueText = text(value); if (!/^[A-Za-z0-9][A-Za-z0-9_-]*$/.test(valueText)) throw new Error('Invalid device action identifier'); return valueText; }
