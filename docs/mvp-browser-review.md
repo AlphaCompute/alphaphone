@@ -36,6 +36,8 @@ Browser digest results and uncertain mutation requests now use bounded private-h
 
 Local verification passed 44 repository checks with TypeScript/build, 82 full browser cases, and three focused digest UI cases after the final presentation cleanup. The live source is `artifacts/local-agent-digests`, derived from the qualified runtime manifest plus the explicit consumer patches. Frozen dependency installation was still waiting on its ffmpeg postinstall download during live qualification; the available dependencies passed the five runtime tests and started the host. This is not a full dependency-install success claim. Native workflow packaging, native result-inbox binding, real local scheduled occurrences/restart recovery, Cloud delegation and physical acceptance remain open. No recurring schedule or external account grant was enabled by this repair.
 
+Follow-up acceptance evidence: the live browser reviewed and saved **Synthetic local digest recovery**, containing only synthetic task text. The source reappeared after a full browser reload and local connection restoration, with **Synced with this agent** visible. No recurring schedule was enabled in the normal development profile. The complete `npm run agent:test` command, including source revalidation, passed all five checks. The frozen install progressed past ffmpeg into workspace builds; full installation remains pending until its terminal result. A separate temporary-database scheduled-digest test is running to verify wall-clock recurrence and runtime restart; no success is claimed before its result.
+
 ## Renewed gap attack — October 1
 
 ### Notes save-failure follow-up
