@@ -1,6 +1,6 @@
 # MVP implementation and design review — updated October 2, 2026
 
-Latest full integration checkpoint: **454/454 browser tests** on committed `18969d2`, covering all browser tests then present. See [October 2 simulator integration and reminder-time review](#october-2--simulator-integration-and-reminder-time-review). Pending shared-checkout changes remain outside this evidence. The MVP goal remains open.
+Latest full integration checkpoint: **927/927 browser tests passed** on committed `2d6c424f87af4baa151f1714a486009e04ad006a`, covering every browser test present in that snapshot. See [October 2 full browser qualification](#october-2--full-browser-qualification-and-history-test-budget). Pending shared-checkout changes remain outside this evidence. The MVP goal remains open.
 
 
 Latest targeted checkpoint: [Redaction control-object boundary](#october-2--redaction-control-object-boundary): repaired source patch, 14 runtime tests, Bun boundary checks and fresh full-series preparation. Runtime enablement and complete redaction acceptance remain open.
@@ -1447,3 +1447,14 @@ Investigation of PR #14's hosted app-choice timeout found that notification sett
 Notification policy controls now expose a native disabled state and “Working…” while the operation is pending, then rerender as enabled after success or failure. A handler guard also prevents stale handlers from changing choices during that interval. Other Settings navigation rows remain enabled.
 
 The notification suite passed **30 executions** (10 cases repeated three times), including the previously failing full settings-to-shade journey, delayed policy persistence and failed-write recovery. **25 additional Settings/sensor/MVP navigation cases passed**, covering light/dark and compact/wide layouts. `npm run verify` passed **114 tests**, TypeScript and the web build. Evidence: `artifacts/calendar-preferences-review/test-results/notification-settings-review/` with retained negative control and frozen inputs. Android builds skipped; new hosted verification remains pending.
+
+
+## October 2 — Full browser qualification and history test budget
+
+The complete committed snapshot `2d6c424f87af4baa151f1714a486009e04ad006a` passed **927/927 browser tests in 17.1 minutes**, with two workers and an isolated renderer on port 5388. Evidence: `artifacts/calendar-preferences-review/test-results/full-browser-2d6c424/`. Live development renderer and authenticated local-agent bridge both returned HTTP 200 during the campaign. The suite uses browser fixtures where documented; it does not establish physical-device or real-provider acceptance.
+
+PR #14 pull run `37064595888` also completed all three browser shards successfully at its exact head `a3b6ff702edf837488d85b4892b6c80a69e00c9e`. Its separate push run had two failures. The notification-choice race was addressed in PR #18. The shard-3 trace shows all 399 notification writes and compaction returning the expected values in 23.7 seconds, followed by a 3.4-second reload; the 30-second overall test deadline expired during final replay evaluation. The full-capacity scenario now has a scoped 60-second budget with every operation and assertion retained. No production behavior or performance target was changed.
+
+All **11 notification-history cases passed** after that adjustment. `npm run verify` passed **114 tests**, TypeScript and the web build. Evidence: `test-results/history-budget-review/` in the review checkout. Android builds skipped. Newer pending source and native/provider/user acceptance remain outside the 927-case checkpoint; the overall MVP goal remains open.
+
+The report/test-budget checkpoint was then rebased onto `54a8229`, which adds browser reading restrictions and password-provider setup. The combined source passed **73 affected browser cases** (reading, provider setup, notifications and history) and all **114 repository tests**, TypeScript and web build. This targeted qualification does not expand the earlier 927-case claim to the newer source. Native/provider fixtures do not establish installed Proton or Android execution. Rebased logs are retained under `test-results/history-budget-review/`.
