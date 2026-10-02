@@ -15,6 +15,12 @@ const snapshot=()=>JSON.parse(execFileSync(process.execPath,['scripts/source-sna
 const nativeStageLog=fs.openSync(path.join(destination,'native-source-prestage.log'),'wx');
 try{execFileSync(process.execPath,['scripts/stage-local-agent-sources.mjs'],{stdio:['ignore',nativeStageLog,nativeStageLog],timeout:180000});}
 finally{fs.closeSync(nativeStageLog);}
+// Capacitor generates res/xml/config.xml, an authenticated native build input.
+// Complete normal sync before freezing; the build repeats sync and equality
+// below still rejects drift in this file or any other captured input.
+const capacitorStageLog=fs.openSync(path.join(destination,'capacitor-prestage.log'),'wx');
+try{execFileSync('npm',['run','android:sync'],{stdio:['ignore',capacitorStageLog,capacitorStageLog],timeout:600000});}
+finally{fs.closeSync(capacitorStageLog);}
 const before=snapshot();
 fs.writeFileSync(path.join(destination,'inputs-before.json'),JSON.stringify(before,null,2));
 fs.writeFileSync(path.join(destination,'configuration.json'),JSON.stringify({mapsConfigured:Boolean(process.env.VITE_MAPS_BASE_URL),startedAt:new Date().toISOString()},null,2));
