@@ -224,7 +224,7 @@ Remaining sound/clock work: connect DND and ring/alarm volumes to actual Alpha-o
 Checkpoint 11 evidence is retained in `test-results/browser-dev-parity/checkpoint-11/`: original full-suite log, corrected parity run, root **82/82** verification/build, both Android variant builds, source/APK hashes, drift and a visually inspected Privacy dialog. Current source drift includes concurrent Camera ordering work and the two corrected tests; policy application files match the frozen snapshot. Ring/alarm/DND, browser Clock, assistant proposals, Files/Inbox and complete simulation journeys remain outstanding. The goal remains active.
 
 
-### Browser Clock and alert audio checkpoint (12, final matrix running)
+### Browser Clock and alert audio checkpoint (12)
 
 The Calendar Clock action now opens a browser-owned alarm list rather than Android handoff copy. Users can create labeled alarms, reload the same list, delete scheduled alarms, choose a snooze duration, snooze ringing alarms and dismiss them. All records remain in the existing reminder store. Row actions bind the rendered revision; stale actions do not change a replacement occurrence. Inputs and reviewed handoffs are validated before writes. Dismissal uses the shared recurrence engine, so repeated alarms advance instead of being erased. Failed writes retain the prior alarm and show retry guidance.
 
@@ -232,7 +232,7 @@ A foreground checker posts due reminders without requiring the notification shad
 
 DND now persists between shade and Sound controls, reports actual local suppression in notification status, and silences both notification and alarm tones. Alarm and Ring volume settings control their respective tones. AudioContext is primed only by a user gesture; visual alarm controls remain available if browser audio is suspended. Notification sound receipts use stable source revisions and persist across sessions, avoiding replay of existing notices on reload. Muted notices are recorded without being replayed after DND is disabled.
 
-Seven focused Clock scenarios pass, including rendered CRUD/reload, custom snooze, repeat advancement, stale revisions, rejected/failed writes, cross-tab ownership transfer, DND/volume routing and stable external-notification sound receipts. The integrated 30-case Clock/notification/network/sensor run passed before the final custom-snooze addition. Existing native Clock adapter contract tests still pass. Root verification passed 82 tests, typecheck and build; both Android variants rebuilt successfully. The final full browser matrix and a rendered synthetic-native handoff check are running. Browser Clock was visually inspected.
+Seven focused Clock scenarios pass, including rendered CRUD/reload, custom snooze, repeat advancement, stale revisions, rejected/failed writes, cross-tab ownership transfer, DND/volume routing and stable external-notification sound receipts. The integrated 30-case Clock/notification/network/sensor run passed before the final custom-snooze addition. Existing native Clock adapter contract tests still pass. Root verification passed 82 tests, typecheck and build; both Android variants rebuilt successfully. The frozen full browser matrix passed **245/245**. A later bounded sound-ledger fix preserves every active notice while trimming old history; all **33 integrated** Clock/notification/device cases passed afterward. The final schedule-receipt guard prevents a rejected time from reporting success; all **10 final Clock scenarios** passed with it. The rendered synthetic-native fixture also passed all four reviewed handoffs and mock isolation after its missing listener declaration was corrected. Browser Clock was visually inspected.
 
 
 ### October 2 integrated browser snapshot
@@ -242,3 +242,43 @@ and **82 repository tests**, typecheck and build. See the latest integration sec
 in [the MVP report](mvp-browser-review.md#october-2--integrated-browser-runtime-device-and-media-review)
 for exact scope, post-freeze Clock edits, the reproduced simulator startup defect
 and remaining development work. No Android build was run by this integration pass.
+
+
+Clock research references: [MDN Web Audio best practices](https://developer.mozilla.org/en-US/docs/Web/API/Web_Audio_API/Best_practices) describes creating/resuming audio contexts within user gestures and exposing sound controls; [MDN Web Locks](https://developer.mozilla.org/en-US/docs/Web/API/Web_Locks_API) describes origin-scoped coordination. The implementation uses those APIs for bounded local tones and one foreground alarm owner. Audio parameter tests use a controlled context; they do not assert physical-speaker acceptance.
+
+
+Checkpoint 12 final evidence is retained in `test-results/browser-dev-parity/checkpoint-12/`: full 245-case frozen run, 33-case integrated follow-up, final 10 Clock cases, clean native contract/rendered fixtures, final root **82/82** verification with typecheck/build, and successful standalone/launcher debug and unsigned-release packaging. The full snapshot precedes the bounded sound-ledger and schedule-acknowledgment corrections; the focused runs qualify those corrections. Final Clock source hashes, APK hashes and original-snapshot changed/added drift are recorded separately. These are browser and packaging results, not emulator HOME-role, AOSP boot or physical-device acceptance. The overall parity goal remains active.
+
+
+### Calendar assistant follow-through and remaining editor work (13)
+
+The rendered assistant journey now has dedicated browser scenarios for create, cancel, selected-event read, update and delete. The scenarios pair through the connection UI, navigate Calendar, select an actual source/event, submit a conversation request, review the returned proposal, confirm/cancel the browser provider dialog, inspect the stored event and durable effect receipt, and reload to verify persistence. Connection HTTP and journal boundaries are controlled fixtures; Calendar selection, proposal orchestration, provider review and browser Calendar storage are production code. This is not live-agent or external-provider acceptance.
+
+The current Calendar adapter audit identifies additional editor parity gaps that remain in scope:
+
+1. Calendar visibility and color controls still hand off through Android-only toast messages. Add persisted browser calendar preferences, use them for the list/timeline and controls, synchronize open views across tabs, and verify reload and failed-write rollback.
+2. Event creation rejects recurrence, invitees, video and alerts. Extend the browser event record and editor mapping to preserve these fields. Expand recurring occurrences using civil dates in the saved IANA zone, with bounded range queries and explicit series/occurrence edit semantics. Keep invitations and meeting links local development data with reviewable local receipts; never send invitations externally. Connect event alerts to the existing local reminder/notification lifecycle. Test recurrence boundaries, timezone changes, reload, edits, cancellation and quota rollback.
+3. Multi-day, all-day and DST-spanning event edits currently hand off to Android Calendar. Provide browser date/time editing that preserves exact start/end/zone and all-day semantics rather than rounding these records into the single-day prototype controls. Verify cross-midnight and DST gap/overlap edits without changing unrelated event fields.
+4. Browser `open` currently routes to Calendar but does not select its requested event. Add explicit event navigation and refresh selection after agent changes. Exercise UI read/update/delete with stale revision and cancellation during provider review, plus receipt retry without a second mutation.
+5. Replace platform-only failure text only alongside its equivalent capability. Keep genuine conflict/recovery guidance actionable. Complete selected-reminder assistant journeys separately; Calendar action tests do not establish reminder action parity.
+
+These gaps keep the broader goal active even when the current Calendar action tests pass.
+
+Checkpoint 13 validation: all **5 rendered Calendar assistant scenarios passed** in the isolated source snapshot. Exact source manifest, changed/added drift and terminal log are retained in `test-results/browser-dev-parity/checkpoint-13/`. Initial selected-event fixtures were corrected to seed before the mount-time Calendar load and target the visible Calendar event button, rather than the hidden Home agenda. This checkpoint adds tests and the expanded implementation ledger only; it does not claim a new repository-wide or Android build result. The overall goal remains active.
+
+
+### Browser calendar preferences (14)
+
+The browser calendar's visibility and color controls now save preferences atomically in its existing Calendar document. Visibility removes its events from the day timeline and calendar occupancy calculation without deleting records or altering agent source/event revisions. Color cycles through the renderer's existing accent/foreground/muted palette and applies to event stripes and detail indicators. The native Calendar control path remains unchanged.
+
+Committed preference changes refresh the current Calendar view. Other tabs refresh only when stored preferences differ, avoiding a storage-event loop from the provider's range-query writes. Failed writes keep the previous control state and show retry guidance. The rendered tests cover hide/show, color effect, reload persistence, cross-tab changes and storage failure. This completes the local browser calendar preference controls from checkpoint 13; recurrence/invitations/video/alerts, complex event editing and exact event navigation remain open.
+
+Checkpoint 14 verification: **17/17** isolated Calendar/preferences/assistant/browser-parity scenarios, **82/82** repository tests, typecheck and production build passed. Both standalone/launcher debug and unsigned-release Android packaging passed. Native Calendar fixtures now declare the existing Capacitor platform API accurately. Logs, frozen source manifest, post-run drift and APK hashes are retained in `test-results/browser-dev-parity/checkpoint-14/`. These results do not establish emulator HOME-role, AOSP boot or device acceptance. The broader implementation ledger remains open.
+
+
+Clock synchronization follow-up: the two post-integration Clock corrections and the
+five Calendar assistant scenarios passed an isolated **39-case** browser campaign
+and **82** repository tests, typecheck and build. The built-web Clock handoff fixture
+also passed in Chromium with simulated native transport. See the corresponding
+October 2 section of [the MVP report](mvp-browser-review.md) for boundaries and
+remaining Calendar editor work. No Android build ran in this synchronization pass.

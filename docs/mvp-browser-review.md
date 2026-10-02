@@ -595,3 +595,44 @@ and cross-tab behavior, and the remaining Inbox/workflow/call/message/contact/wa
 action matrix still require review. Concurrent Clock changes remain separate local
 work pending their own qualification and synchronization. The broader MVP goal is
 still active.
+
+
+## October 2 — Clock follow-up and Calendar assistant qualification
+
+The remaining Clock corrections are now qualified for synchronization. The bounded
+notification sound ledger keeps currently active notices while evicting older
+inactive receipts, preventing an active notice from sounding again merely because
+its receipt fell out of the 500-entry history. Notification lists are themselves
+bounded to 100 entries. Clock set requests now require the existing scheduler's
+`scheduled` acknowledgment before reporting success; a rejected/past time produces
+an actionable failure instead of a false saved-alarm receipt.
+
+Five additional rendered Calendar journeys use the real connection chooser,
+conversation/proposal handling, Calendar selection, browser provider review and local
+Calendar storage. They cover create, cancel, selected-event read, update and delete,
+including the durable effect receipt and event persistence after reload. The request
+contains selected identity/revision rather than private event description before
+approval. Connection responses and the journal boundary are fixtures. These tests do
+not establish a live model/provider, device IPC, or journal persistence across actual
+process death.
+
+Verification in an isolated snapshot based on `b31552d`:
+
+- `npm run verify`: **82/82** host tests, typecheck and production build.
+- **39/39** focused browser tests: Clock, notification policy/queue, network, sensors
+  and all five Calendar assistant journeys.
+- Built-web Calendar→Clock fixture: explicit review before set/show/snooze/dismiss,
+  zero native effects in mock mode, and Escape cleanup. Its synthetic native transport
+  metadata now includes the listener methods used by the current connection adapter.
+  This ran entirely in Chromium against the built web assets; no APK was built.
+- Both new Clock regressions fail when the original Clock/scheduler-adapter code is
+  restored, then the tested fixed source is restored without other edits.
+- Evidence: `test-results/clock-sync/` logs and source SHA-256 manifest.
+
+Generated `.eliza/` workflow runtime state is now explicitly ignored by Git. It is not
+product source and was not published. The concurrent Calendar editor/preferences
+work is preserved separately in the shared checkout and is not covered by this
+Clock snapshot. Its remaining work includes visibility/color settings, richer event
+fields/recurrence/alerts, exact multi-day/all-day/DST editing and selected-event
+navigation. The simulator action/schema matrix and live/device acceptance gates also
+remain open; the full MVP goal remains active.

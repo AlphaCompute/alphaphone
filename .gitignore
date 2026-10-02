@@ -23,3 +23,6 @@ android/app/src/main/res/xml/config.xml
 
 # Reproducibly staged Android agent executables
 android/app/src/main/jniLibs/
+
+# Generated local agent/workflow runtime state
+.eliza/
