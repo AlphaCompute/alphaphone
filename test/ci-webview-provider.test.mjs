@@ -61,7 +61,7 @@ async function simulate({ drift, neverBoot = false, neverReady = false } = {}) {
   const stock = '/product/app/webview/webview.apk', stockHash = 'a'.repeat(64);
   const signature = `Verified using v2 scheme (APK Signature Scheme v2): true\nSigner #1 certificate SHA-256 digest: ${candidate.certificateSha256}`;
   const badging = `package: name='com.android.webview' versionCode='808300007' versionName='157.0.8083.0'\nsdkVersion:'29'\ntargetSdkVersion:'37'\nnative-code: 'x86_64'`;
-  let scratch = '', backingAlias = 'MISSING';
+  let scratch = '', backingAlias = 'MISSING', remounts = 0, reboots = 0;
   const execute = (file, args) => {
     const name = path.basename(file);
     if (name === 'curl') { const fd = fs.openSync(args.at(-1), 'wx'); fs.ftruncateSync(fd, candidate.size); fs.closeSync(fd); return ''; }
@@ -70,15 +70,17 @@ async function simulate({ drift, neverBoot = false, neverReady = false } = {}) {
     if (name === 'aapt') return args.includes('badging') ? badging : 'com.android.webview.WebViewLibrary libwebviewchromium.so';
     assert.equal(name, 'adb'); assert.deepEqual(args.slice(0, 2), ['-s', 'emulator-5554']);
     const a = args.slice(2), key = a.join(' '); calls.push(key);
-    if (key === 'reboot') { rebooted = true; offline = 1; scratch = ''; backingAlias = 'MISSING'; return ''; }
+    if (key === 'reboot') { reboots++; rebooted = true; offline = 1; scratch = ''; backingAlias = 'MISSING'; return ''; }
     if (key === 'shell getprop sys.boot_completed') {
-      if (offline-- > 0 || neverBoot) throw Error('device offline');
+      if (offline-- > 0 || neverBoot || (drift==='overlay-never-boot'&&reboots>1)) throw Error('device offline');
       return '1';
     }
     if (key.startsWith('shell service check ')) return `Service ${a.at(-1)}: found`;
     if (key === 'shell dmctl list devices') return `Available Device Mapper Devices:\n${rebooted || drift === 'cached-scratch' ? 'scratch : 254:5\n' : ''}`;
     if (key === 'shell ls -1 /sys/dev/block/254:5/slaves') return drift === 'super-scratch' ? 'vda2' : 'vdc';
     if (key === 'shell cat /sys/dev/block/254:5/dm/name') return 'scratch';
+    if (key === 'shell cat /sys/dev/block/254:5/size' && drift==='overlay-before-size')return '92280';
+    if (key === 'shell cat /sys/dev/block/254:5/size' && drift==='overlay-size' && reboots>1)return '92280';
     if (key === 'shell cat /sys/dev/block/254:5/size') return drift === 'small-scratch' || drift === 'cached-scratch' ? '92280' : '1048576';
     if (key === 'shell getprop ro.build.fingerprint') return 'Android/sdk_phone64_x86_64/emu64x:15/AE3A.240806.019/12368160:userdebug/test-keys';
     if (key === 'shell cat /proc/mounts') return '/dev/block/dm-43 /data ext4 rw 0 0';
@@ -87,6 +89,7 @@ async function simulate({ drift, neverBoot = false, neverReady = false } = {}) {
     if (key === 'shell cat /sys/class/block/vdc/dev') return '253:32';
     if (key === 'shell stat -c %t:%T /dev/block/vdc') return 'fd:20';
     if (key === 'shell test -b /dev/block/vdc') return '';
+    if (key.startsWith('shell sh -c ') && drift==='overlay-alias' && reboots>1)return '/dev/block/vdd';
     if (key.startsWith('shell sh -c ')) return drift === 'backing-alias' ? '/dev/block/vdd' : backingAlias;
     if (key === 'shell ln -sT /dev/block/vdc /dev/block/by-name/vdc') { assert.equal(backingAlias, 'MISSING'); backingAlias = '/dev/block/vdc'; return ''; }
     if (key === 'shell readlink -f /dev/block/by-name') return '/dev/block/by-name';
@@ -95,7 +98,12 @@ async function simulate({ drift, neverBoot = false, neverReady = false } = {}) {
     if (key === 'shell setprop fs_mgr.overlayfs.data_scratch_size_mb 512') { scratch = '512'; return ''; }
     if (['shell df -k /data /metadata /product', 'shell cat /proc/mounts', 'shell cat /proc/partitions', 'shell lpdump', 'shell dmesg'].includes(key)) return 'synthetic bounded storage diagnostics';
     if (key === 'remount' && drift === 'remount-failed') { const failure = new Error('remount failed'); failure.stderr = 'Failed to map scratch; make f2fs return=65280'; throw failure; }
-    if (key === 'remount') return drift === 'remount' ? 'reboot required' : 'remount succeeded';
+    if (key === 'remount') {
+      remounts++;
+      if (['overlay-reboot','overlay-repeat','overlay-identity','overlay-stock','overlay-size','overlay-alias','overlay-before-size','overlay-never-boot'].includes(drift) && (remounts===1||drift==='overlay-repeat'))return fs.readFileSync('test/fixtures/remount-52ab-overlay-reboot.txt','utf8');
+      if(drift==='overlay-unknown')return 'Remount succeeded\nNow reboot your device for settings to take effect\nAnother reboot is required\n';
+      return drift === 'remount' ? 'reboot required' : 'remount succeeded';
+    }
     if (['root', 'wait-for-device', 'disable-verity'].includes(key)) return '';
     if (key === 'shell stop') { stopped = true; return ''; }
     if (key === 'shell start') { stopped = false; return ''; }
@@ -109,10 +117,10 @@ async function simulate({ drift, neverBoot = false, neverReady = false } = {}) {
     }
     if (key === 'shell pm path com.android.webview') return installed ? 'package:/data/app/provider/base.apk' : `package:${stock}`;
     if (key === 'shell dumpsys package com.android.webview') return 'versionName=124.0.6367.219';
-    if (key.startsWith('shell sha256sum ')) return `${installed ? candidate.apkSha256 : ((drift === 'stock' && rebooted) || (drift === 'stopped-stock' && stopped)) ? 'b'.repeat(64) : stockHash}  ${a.at(-1)}`;
+    if (key.startsWith('shell sha256sum ')) return `${installed ? candidate.apkSha256 : ((drift === 'stock' && rebooted) || (drift === 'overlay-stock' && reboots>1) || (drift === 'stopped-stock' && stopped)) ? 'b'.repeat(64) : stockHash}  ${a.at(-1)}`;
     if (key === 'shell pm list packages com.android.webview') return removed ? '' : 'package:com.android.webview';
     if (key === 'shell pm list packages -3') return installed ? 'package:com.android.webview' : '';
-    if (key === 'emu avd name' && drift === 'identity' && rebooted) return 'personal';
+    if (key === 'emu avd name' && ((drift === 'identity' && rebooted)||(drift==='overlay-identity'&&reboots>1))) return 'personal';
     assert.ok(key in responses, `Unexpected command: ${key}`);
     return responses[key];
   };
@@ -255,4 +263,13 @@ test('cached or undersized scratch never qualifies provider replacement', async 
       assert.equal(r.calls.some(call => call.startsWith('shell ln ')), false);
     }
   }
+});
+
+test('one authenticated requested overlay activation reboot completes provider flow', async()=>{
+ const r=await simulate({drift:'overlay-reboot'});assert.ifError(r.error);assert.equal(r.result.status,'PROVISIONED_RUNTIME_QUALIFICATION_PENDING');assert.equal(r.calls.filter(c=>c==='reboot').length,2);assert.equal(r.calls.filter(c=>c==='remount').length,2);assert.equal(r.result.scratchBackingAliases.length,3);assert.equal(r.result.scratchBytes,512*1024*1024);assert.equal(r.installed,true);
+});
+test('requested overlay reboot refuses repeat, unknown wording, changed identity, stock, backing and size',async()=>{
+ for(const drift of ['overlay-repeat','overlay-unknown','overlay-identity','overlay-stock','overlay-size','overlay-alias','overlay-before-size','overlay-never-boot']){
+  const r=await simulate({drift});assert.ok(r.error,drift);assert.equal(r.installed,false,drift);assert.equal(r.removed,false,drift);assert.ok(r.calls.filter(c=>c==='reboot').length<=2,drift);
+ }
 });
