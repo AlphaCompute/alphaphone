@@ -1,3 +1,4 @@
+import {installSimulatedVoicemail} from './simulated-voicemail';
 import {SimulatorWriter} from './simulator-writer';
 import {installSimulatedInbox} from './simulated-inbox';
 import {loadSimulatedState,simulatorNeedsRecovery,showSimulatorRecovery} from './simulator-recovery';
@@ -13,6 +14,7 @@ export function installSimulatedApps(Component:any,views:Bag,original:Bag){
  for(const name of names){Object.assign(views[name],original[name]);views[name].state={...views[name].state,...loadSimulatedState(name,original[name],raw=>snapshots.set('alpha.dev.app.'+name,raw))};}
  const writer=new SimulatorWriter(snapshots);
  installSimulatedInbox(views.inbox);
+ const disposeVoicemail=installSimulatedVoicemail(views.phone);
  const walletRender=views.wallet.render;
  views.wallet.render=(state:Bag,api:Bag)=>{
   // Dev cards are predefined tokens; the simulator never collects card credentials.
@@ -21,7 +23,7 @@ export function installSimulatedApps(Component:any,views:Bag,original:Bag){
  };
  const mount=Component.prototype.componentDidMount,unmount=Component.prototype.componentWillUnmount;
  Component.prototype.componentDidMount=function(){mount?.call(this);this.devIncomingCall=()=>{const state=this.vget('phone');if(state.incoming||state.callWho||state.call||state.num){this.openView('phone');return;}this.openView('phone',{incoming:'maya',ring:'ring',scrN:0,rs:false});};window.addEventListener('alpha:dev-incoming-call',this.devIncomingCall);};
- Component.prototype.componentWillUnmount=function(){window.removeEventListener('alpha:dev-incoming-call',this.devIncomingCall);unmount?.call(this);};
+ Component.prototype.componentWillUnmount=function(){disposeVoicemail();window.removeEventListener('alpha:dev-incoming-call',this.devIncomingCall);unmount?.call(this);};
  const open=Component.prototype.openView;
  Component.prototype.openView=function(name:string,...args:any[]){if(simulatorNeedsRecovery(name)){showSimulatorRecovery();return;}return open.call(this,name,...args);};
  const set=Component.prototype.vset;

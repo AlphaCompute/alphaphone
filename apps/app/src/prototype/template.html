@@ -181,8 +181,9 @@
             <div style="padding: 0 12px 14px 12px">
               <div style="display: flex; align-items: center; gap: 12px">
                 <button aria-label="{{v.playLabel}}" onClick="{{v.play}}" style="width: 44px; height: 44px; border-radius: 22px; background: var(--acc); color: #fff; display: flex; align-items: center; justify-content: center; flex-shrink: 0"><svg class="i" viewBox="0 0 24 24" style="width: 18px; height: 18px; fill: currentColor"><path d="{{v.playD}}"></path></svg></button>
-                <div style="flex-grow: 1; height: 4px; border-radius: 2px; background: var(--s3); overflow: hidden"><div style="height: 100%; width: {{v.prog}}%; background: var(--fg); border-radius: 2px"></div></div>
-                <span style="font-size: 12px; color: var(--mut); font-variant-numeric: tabular-nums; white-space: nowrap">{{v.posT}} / {{v.dur}}</span>
+                <div style="flex-grow: 1; height: 4px; border-radius: 2px; background: var(--s3); overflow: hidden; {{v.recordingOnlyCss}}"><div style="height: 100%; width: {{v.prog}}%; background: var(--fg); border-radius: 2px"></div></div>
+                <span style="font-size: 12px; color: var(--mut); font-variant-numeric: tabular-nums; white-space: nowrap; {{v.recordingOnlyCss}}">{{v.posT}} / {{v.dur}}</span>
+                <sc-if value="{{v.readingLabel}}"><span style="font-size: 12px; color: var(--mut)">{{v.readingLabel}}</span></sc-if>
               </div>
               <div style="display: flex; gap: 4px; margin-top: 8px; margin-left: 46px">
                 <button class="ib" aria-label="Call back {{v.who}}" onClick="{{v.call}}"><svg class="i" viewBox="0 0 24 24" style="width: 20px; height: 20px"><path d="{{ic.phone}}"></path></svg></button>

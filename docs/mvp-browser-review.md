@@ -3,7 +3,7 @@
 Latest full integration checkpoint: **412/412 browser tests and 83/83 repository tests**, plus TypeScript and production web build, in the [October 2 full browser integration checkpoint](#october-2--full-browser-integration-checkpoint). The frozen source is `2846ee2` plus the hosted-result fixture cleanup recorded below. Earlier failures and checkpoints remain historical evidence; newer concurrent changes require separate validation. The MVP goal remains open.
 
 
-Latest targeted checkpoint: [Development incoming calls and voicemail recovery](#october-2--development-incoming-calls-and-voicemail-recovery) passed 19 browser checks plus repository verification. This postdates the full 412-case snapshot.
+Latest targeted checkpoint: [Development voicemail transcript reading](#october-2--development-voicemail-transcript-reading) passed 26 browser checks, followed by 13 affected checks after the display correction, plus repository verification. This postdates the full 412-case snapshot.
 
 October 1 architecture change: the user has selected an **Android-resident agent instead of Nitro/TEE hosting**. The [on-device agent plan](on-device-agent-plan.md) supersedes cloud-only and enclave-primary requirements below. Agent execution and model inference are separate: the current implementation runs orchestration locally and uses hosted Cerebras inference. Historical evidence is retained. Powered-off-phone execution needs explicit scope reconciliation.
 
@@ -1057,3 +1057,14 @@ The isolated snapshot based on `7a551d2` passed **19/19 browser checks** coverin
 The requested development restart was also completed: Vite on 5317 and the real local Eliza host on 47849 are listening, with authenticated browser-bridge owner lookup returning HTTP 200. Local orchestration still uses hosted inference. This is connection evidence, not live model/tool or physical-device acceptance.
 
 Remaining work includes actual voicemail audio/playback ownership, deeper simulator record validation and message/workflow journeys, live local-agent/provider actions, Scan correction/searchable PDF, browser-family media qualification, and native/device/user acceptance. Concurrent confidentiality-copy, provider/model, proposal, research and native changes remain outside this checkpoint. The full 412-case browser run predates this change; the entire MVP goal remains active.
+
+
+## October 2 — Development voicemail transcript reading
+
+Development voicemail now reads its exact stored transcript through the existing local browser voice implementation. The control says Read voicemail/Stop reading, accepts only local-service voices and returns to a retryable state on unavailable speech. It does not fetch or play a carrier recording. Leaving Phone, deleting or switching the selected message, changing tabs, page retirement, hidden-page state and incoming calls retire playback. Stale completion callbacks cannot end a newer read.
+
+Review reproduced a device-state mismatch: the shared voice engine stopped while voicemail continued to show Stop reading. The new regression fails before repair. Device-state retirement now clears the voicemail owner and UI state, permitting explicit replay. Visual review also caught the fixed prototype recording duration and progress bar, which did not measure text-to-speech playback. Development transcript reading now displays Local transcript/Reading transcript instead. The prototype recording presentation remains available for its original reference flow.
+
+The isolated snapshot based on `d50f55b` passed **26/26 browser checks** spanning voicemail, incoming calls, Notes audio lifecycle and reviewed reading. After the display correction, **13/13 affected voicemail/incoming-call checks** passed; **83/83 repository tests**, TypeScript and production web build passed again. Speech-engine fixtures prove lifecycle behavior and exact transcript selection, not acoustic output or actual device voice availability. Evidence and before-fix screenshot are retained in `test-results/voicemail-audio-sync/`. The rebase adds only completion-plan documentation from `7c92213`. No Android build ran.
+
+Remaining scope includes carrier voicemail integration and acoustic/browser-family acceptance, deeper simulator validation and message/workflow flows, actual local-agent/provider action journeys, Scan correction/searchable PDF, and native/device/user acceptance. Concurrent Messages, confidentiality-copy, provider/model, proposal and research edits are preserved outside this snapshot. The full 412-case integration checkpoint predates these changes; the entire MVP remains unfinished.
