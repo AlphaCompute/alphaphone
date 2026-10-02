@@ -1,6 +1,14 @@
 # Current Alpha Phone acceptance ledger
 
-## Current checkpoint — October 2, browser registration and fresh CI qualification
+## Current checkpoint — October 2, reviewed reminder decisions
+
+Exact product `c350ba46fc89ba99a5c2dce78e997491d4490f33` passes `npm run verify` in 11.63 seconds and all 41 owning reminder flows, with 3,681 source hashes unchanged. Direct Calendar Done/Snooze now binds to the rendered revision, persists the operation before dispatch, and reconciles uncertain outcomes through receipts without repeating effects. Late responses preserve the current screen. Legacy pending cancellations remain readable. Native rejection without an authoritative no-effect receipt remains conservatively unknown. Evidence: `test-results/reminder-decisions/exact-main/`.
+
+Prior exact candidate `468617bf` passes all 739 hosted browser tests in [run37055260716](https://github.com/AlphaCompute/alphaphone/actions/runs/37055260716). New combined candidate `bccd6b2ac1f1d63dd9770fdaa6d1a03399c5430d` merges the current committed product, all nine resident runtime patches, bounded keyguard readiness, and explicit intercepted Clock acceptance for both distributions. It preserves strict secure-device refusal and requires the real-alarm fixture to remain skipped. The two source conflicts were resolved using exact reviewed product files; runtime and resident workflow identities are unchanged. [Resident37057417188](https://github.com/AlphaCompute/alphaphone/actions/runs/37057417188), [browser37057417139](https://github.com/AlphaCompute/alphaphone/actions/runs/37057417139) and [foundation37057417095](https://github.com/AlphaCompute/alphaphone/actions/runs/37057417095) are active/pending, not acceptance. Prior resident468 remains independently in progress. Evidence: `test-results/resident-ci-staging/current-product-merge/`.
+
+The complete product checkout passes the updated supervisor fixtures; captured startup keyguard defaults never authorize mutations. Targeted cleanup recovered 1,888,133,120 bytes while preserving active emulator tools, archives, outputs, sources and evidence. Last measured free space is 9,313,185,792 bytes, below the 10 GiB local campaign gate; no local boot was attempted. The MVP remains incomplete: resident/native execution, live integrations, visible Pixel, physical speech/alarms and signed AOSP acceptance remain open.
+
+## Earlier checkpoint — October 2, browser registration and fresh CI qualification
 
 Candidate `468617bf849db1d707b39b86f7618e2249bc34c7` includes the reviewed browser initialization-order repair, guarded cleanup of four unused hosted SDK build-tools revisions, and bounded failure diagnostics for the stock WebView backup. The previous `b9db50ee` resident run failed initial capacity by 184,320 bytes; no runtime build or native test started. The new resident run [37055260691](https://github.com/AlphaCompute/alphaphone/actions/runs/37055260691) passes that unchanged capacity gate and remains in progress. Build-tools 35.0.0 and 36.0.0, the selected NDK, and all 32/10/4 GiB floors are retained.
 
