@@ -1,6 +1,16 @@
 # Cloud production validation
 
-Read-only inspection on 2026-09-30. No account was created, no Cloud organization credential was minted or consumed, and no credits or deployments were changed.
+Initial read-only inspection on 2026-09-30; subsequent observations are dated below. No account was created, no Cloud organization credential was minted or consumed, and no credits or deployments were changed by this validation.
+
+## October 2: normal Google browser login succeeds
+
+Using the official `eliza.app` Sign in link and Google account chooser, the authorized `shawmakesmagic@gmail.com` account reached Cloud's authenticated dedicated-hosting offer. The visible page showed a $9,999.40 balance, $0.24/day ($0.01/hour) pricing, and a $0.72 starting minimum. These supersede the September 30 balance observation only; no administrative balance grant was performed in this validation.
+
+Selecting **Not now** displayed “Couldn't open your Eliza” and “Dedicated setup was not started.” **Try again** returned to the same hosting offer. No **Start Dedicated** action was taken. The page does not establish whether the account has an existing reusable agent; source/account inspection remains necessary. The transient “Starting your Dedicated agent…” loading text is not evidence that provisioning happened.
+
+The source-confirmed `/cloud/agents` page then displayed the authenticated account menu and an **Eliza · Shared · Free** card, with **Upgrade to Dedicated** and an explanation that signed-in chat requires dedicated hosting. This is live evidence of the visible shared-agent account state, not proof that every organization agent row is absent. No upgrade or provisioning action was taken.
+
+This establishes normal website Google sign-in, not the phone's CLI-session credential exchange, owner-bound agent connection, Gmail OAuth, voice, or restart acceptance. The earlier Gmail token-exchange HTTP401 remains unresolved. A request to approve bounded dedicated hosting and the separate 90-day organization credential grant is pending; no organization key was minted or retrieved. The live browser offer is preserved for continuation.
 
 ## Confirmed deployment
 

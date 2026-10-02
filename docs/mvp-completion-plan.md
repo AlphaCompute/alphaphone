@@ -1,12 +1,14 @@
 # Alpha Phone MVP completion plan
 
-## Current checkpoint — October 2, Build155
+## Current checkpoint — October 2, Build155 with Build156 preparation pending
 
 Build155 passes repository verification, both Android distributions/lint, six archived APKs and four static scans with unchanged fingerprint `9567a337986785598315595b44f4f4056ed5729b96b1cfc7a2d9195746220d29`. Its isolated runtime consumer pins exact upstream9dd3. Build152's rejected source drift, Build153's socket failure and Build154's verification timeout remain retained in the [acceptance ledger](current-acceptance-ledger.md).
 
-Actual Pixel recovery testing now authenticates the trusted worker, then fails resident readiness after the deliberate crash. Cleanup restored the original APKs and permissions and removed user33 without changing the foreground. A stale detached-running start guard is the leading source-supported diagnosis; full recovery remains unaccepted. Main runtime assets have not switched to this candidate.
+Actual Pixel recovery testing authenticates the trusted worker, then fails resident readiness after the deliberate crash. Cleanup restored the original APKs and permissions and removed user33 without changing the foreground. The stale detached-running start guard is corrected in published upstream92fc; host regression checks pass, but fresh Android recovery remains unaccepted. Build156 source manifests and trusted-worker fixture select92fc. Fresh preparation requires10GiB free; approximately3.9GiB is available at this checkpoint. Main runtime assets have not switched to this candidate.
 
-Windows exactb84 core and native primitives pass, and abandonment without replay passes. Survivor publication still fails canonical-path validation; actual Smithers acceptance is not reached. Build147's earlier live resident-service checks qualify only that earlier payload.
+Windows exact0c42 passes both core jobs, native primitives and both backend survivor/no-replay flows, then fails actual Smithers cases at lease inspection and a publication fixture deadline. Publishedce4 adds bounded diagnostics and fixture corrections; its standard upstream root verification passes all284 tasks/final audits with unchanged source. Trusted workflow run36990523408 is still running and is not full Windows acceptance. Build147's earlier live resident-service checks qualify only that earlier payload.
+
+Normal website Google sign-in for the authorized Cloud account now succeeds and reaches the dedicated-hosting offer. No hosting was started or organization credential granted. Phone login, owner-bound agent reuse/provisioning, chat/restart, Gmail and voice remain unverified; see [the dated Cloud validation](cloud-production-validation.md).
 
 The MVP remains incomplete. Next: fix and qualify resident recovery, integrate the consumer, then validate both native distributions and visible Pixel journeys. Fresh Cloud login/agent readiness/chat/restart precedes Gmail and Cloud voice. Official password-provider behavior, physical speech quality/latency, natural background scheduling, full AOSP boot and physical/user acceptance remain separate gates. The [on-device plan](on-device-agent-plan.md) controls; optional enclave hosting is not a prerequisite for resident mode. Calls, SMS, Contacts and Wallet remain explicitly deferred and commented out.
 
