@@ -19,7 +19,19 @@ export const candidate = Object.freeze({
 });
 const require = (condition, message) => { if (!condition) throw new Error(message); };
 const sha = file => createHash('sha256').update(fs.readFileSync(file)).digest('hex');
-export function requireProviderFixture(run, env, { installed = false } = {}) {
+// Exit 255 with a partial process dump is an unavailable observation, never
+// proof of no instrumentation. Retry only that failure; refresh every read-only
+// identity/package check each time. command() retains all failed observations.
+export function requireProviderFixture(run, env, options = {}, wait = () => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 250)) {
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try { return providerFixtureAttempt(run, env, options); }
+    catch (error) {
+      if (!error.providerInventoryUnavailable || error.status !== 255 || error.signal != null || attempt === 2) throw error;
+      wait();
+    }
+  }
+}
+function providerFixtureAttempt(run, env, { installed = false } = {}) {
   requireHostedFixtureEnvironment(env, env.ANDROID_SERIAL);
   assertFixtureIdentity(run);
   for (const [key, value] of [['ro.build.version.sdk', '35'], ['ro.product.cpu.abi', 'x86_64']])
@@ -29,7 +41,9 @@ export function requireProviderFixture(run, env, { installed = false } = {}) {
   require(packages.every(p => installed && p === 'package:com.android.webview'), 'Unexpected fixture applications');
   const all = run('shell', 'pm', 'list', 'packages');
   require(!/package:(?:com\.google\.android\.(?:gms|webview)|com\.android\.chrome|ai\.elizaresearch\.)/.test(all), 'Not a fresh default AOSP provider fixture');
-  const processes = run('shell', 'dumpsys', 'activity', 'processes');
+  let processes;
+  try { processes = run('shell', 'dumpsys', 'activity', 'processes'); }
+  catch (error) { error.providerInventoryUnavailable = true; throw error; }
   require(processes.includes('ACTIVITY MANAGER') && !/ActiveInstrumentation\{|InstrumentationRecord\{|mInstr=(?!null\b)/.test(processes), 'Active or unknown instrumentation');
 }
 export function stockPath(paths, dump) {
@@ -56,7 +70,7 @@ export async function main({ environment = process.env, execute = execFileSync, 
   const save = () => fs.writeFileSync(path.join(output, 'result.json'), JSON.stringify(state, null, 2) + '\n');
   const command = (file, args, timeout = 20000) => {
     try { const result = execute(file, args, { env, encoding: 'utf8', timeout, maxBuffer: 16 * 1024 * 1024 }); state.commands.push({ file, args, success: true }); save(); return result; }
-    catch (error) { state.commands.push({ file, args, success: false, stdout: String(error.stdout ?? '').slice(-65536), stderr: String(error.stderr ?? '').slice(-65536) }); save(); throw error; }
+    catch (error) { state.commands.push({ file, args, success: false, status: error.status ?? null, signal: error.signal ?? null, code: error.code ?? null, stdout: String(error.stdout ?? '').slice(-65536), stderr: String(error.stderr ?? '').slice(-65536) }); save(); throw error; }
   };
   const run = (...args) => command(path.join(sdk, 'platform-tools/adb'), ['-s', serial, ...args]);
   const safe = (installed = false) => requireProviderFixture(run, environment, { installed });

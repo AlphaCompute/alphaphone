@@ -118,6 +118,8 @@ jobs:
           python3 scripts/ci/resident-phase.py --name runtime-stage --seconds 1800 npm run agent:stage-android
           python3 scripts/ci/resident-phase.py --name mobile-bundle --seconds 300 npm run agent:test-mobile-workflow-bundle
           python3 scripts/ci/resident-phase.py --name archive --seconds 3000 node scripts/build-archive.mjs test-results/resident-ci-archive
+      - name: Build and anchor private endpoint helper
+        run: python3 scripts/ci/build-private-peer.py
       - name: Preserve native generated provenance
         run: cp android/app/build/generated/local-agent/source-manifest.json test-results/resident-ci-archive/native-generated-source-manifest.json
       - name: Anchor exact archive manifest
@@ -156,6 +158,8 @@ jobs:
           distribution: temurin
           java-version: "21"
       - uses: android-actions/setup-android@v3
+      - name: Install exact APK inspection tools
+        run: sdkmanager "build-tools;36.0.0"
       - uses: actions/download-artifact@v4
         with:
           artifact-ids: ${{ needs.build.outputs.artifact_id }}
