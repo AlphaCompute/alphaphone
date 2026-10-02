@@ -1,3 +1,5 @@
+import {distanceToRoute} from '../maps/route-distance';
+import {NavigationVoice} from '../maps/navigation-voice';
 import {placeShare,routeShare,shareMap,type MapShare} from '../maps/share';
 import { MapPlane } from '../maps/map-plane';
 import { initializeRegionalMaps, regionalMap, regionalDiagnostics } from '../maps/regional-provider';
@@ -24,6 +26,7 @@ export function installPrototypeMapsAdapter(_Component: unknown, views: Record<s
   let query = '', searching = false, message = '', disposed = false, revision = 0, locating = false;
   const lifecycle={releases:0,hidden:0,permissionHeld:0,providerActivations:0,lastRelease:''};
   let initialization: Promise<void> | undefined, searchIntent = 0;
+  const navigationVoice=new NavigationVoice(()=>{message='Voice guidance paused. Tap Enable voice guidance to retry.';invalidate();});
   const searchIdentity = {};
   let sharing: {abort:AbortController;current:()=>boolean}|undefined;
   function share(data:MapShare,current:()=>boolean){
@@ -56,6 +59,7 @@ export function installPrototypeMapsAdapter(_Component: unknown, views: Record<s
     if (controller) return controller;
     const connection = mapsConnection(); controller = new MapsController(connection.config, connection.provider);
     unsubscribe = controller.subscribe(next => {
+      if(navigating&&(next.route.phase!=='ready'||next.route.value?.id!==state?.route.value?.id)){navigationVoice.pause();navigating=false;void navigationLocation.stop().catch(()=>{});}
       state = next;
       if (locating && next.position.phase === 'ready' && next.position.value) {
         const position = next.position.value; locating = false;
@@ -69,7 +73,7 @@ export function installPrototypeMapsAdapter(_Component: unknown, views: Record<s
     return controller;
   }
   function release(cancelIntent=true) {
-    sharing?.abort.abort();sharing=undefined;
+    sharing?.abort.abort();sharing=undefined;navigationVoice.pause();
     lifecycle.releases++;lifecycle.lastRelease=cancelIntent?'leave-or-background':'provider-switch';message='';
     if(cancelIntent)++searchIntent;
     plane?.destroy(); plane=undefined; planeElement=undefined; directions=false; navigating=false; void navigationLocation.stop().catch(()=>{});
@@ -116,7 +120,7 @@ export function installPrototypeMapsAdapter(_Component: unknown, views: Record<s
     } catch (error) { message = failure(error).message; }
     invalidate();
   }
-  const back = () => { ++searchIntent;if(directions||navigating){directions=false;navigating=false;void navigationLocation.stop().catch(()=>{});message='';invalidate();return true;} if (selected) { selected = undefined; message = ''; invalidate(); return true; } if (searching || query) { searching = false; query = ''; message = ''; void ensure().search(''); invalidate(); return true; } return false; };
+  const back = () => { ++searchIntent;if(directions||navigating){navigationVoice.pause();directions=false;navigating=false;void navigationLocation.stop().catch(()=>{});message='';invalidate();return true;} if (selected) { selected = undefined; message = ''; invalidate(); return true; } if (searching || query) { searching = false; query = ''; message = ''; void ensure().search(''); invalidate(); return true; } return false; };
   module.back = back; module.onLeave = () => release(); module.ongoing = () => null;
   module.reply = () => null;
   module.suggestions = () => regionalMap() ? ['Help me with this place', 'Explain regional map coverage'] : ['Help me choose a Maps provider', 'Explain location permissions'];
@@ -177,11 +181,11 @@ export function installPrototypeMapsAdapter(_Component: unknown, views: Record<s
       const plan=()=>{try{const values=originText.split(',').map(Number);if(values.length!==2||!originText.trim())throw new Error();ensure().setOrigin(coordinate({latitude:values[0],longitude:values[1]}));message='';void ensure().planRoute();}catch{message='Enter origin latitude, longitude.';invalidate();}};
       data.originText=originText;data.onOrigin=(event:Event)=>{originText=(event.target as HTMLInputElement).value;ensure().clearOrigin();message='Press Enter to calculate a route from this origin.';invalidate();};data.originKey=(event:KeyboardEvent)=>{if(event.key==='Enter'){event.preventDefault();plan();}};data.originLocation=locate;
       const distance=(a:Coordinate,b:Coordinate)=>{const r=Math.PI/180,dlat=(a.latitude-b.latitude)*r,dlon=(a.longitude-b.longitude)*r;return 6371000*2*Math.asin(Math.min(1,Math.sqrt(Math.sin(dlat/2)**2+Math.cos(a.latitude*r)*Math.cos(b.latitude*r)*Math.sin(dlon/2)**2)));};
-      const end=()=>{navigating=false;void navigationLocation.stop().catch(error=>{message=failure(error).message;invalidate();});invalidate();};
+      const end=()=>{navigationVoice.pause();navigating=false;void navigationLocation.stop().catch(error=>{message=failure(error).message;invalidate();});invalidate();};
       data.dr={name:selected.label,close:()=>back(),min:route?Math.max(1,Math.round(route.durationSeconds/60))+' min':snapshot.route.phase==='loading'?'Planning…':'No route',meta:route?(route.distanceMeters/1000).toFixed(1)+' km · no live traffic':'Regional route',via:route?.steps[0]?.instruction||'Choose a real origin to calculate a route.',shareLabel:'Share route',shareEta:()=>{if(route&&snapshot.route.phase==='ready'){const target=selected;share(routeShare(target!.label,route),()=>!disposed&&!!api?.isActive()&&selected===target&&!!directions&&state?.route.phase==='ready'&&state.route.value===route);}},
        modes:data.nativeModeMetadata.map((reference:{mode:'drive'|'walk'|'bike'|'transit';label:string;d:string})=>{const mode=reference.mode==='bike'?'bicycle':reference.mode;const {label,d}=reference;return {label,t:label,d,css:snapshot.mode===mode?'background:var(--acc);color:#fff':'background:var(--s2);color:var(--fg)',go:()=>{if(!ensure().capabilities().modes.includes(mode)){message='Transit schedules are not available for this region.';invalidate();return;}ensure().setMode(mode);message='';if(snapshot.origin)void ensure().planRoute();}};}),
-       start:()=>{if(!route){message='Calculate a route before starting navigation.';invalidate();return;}navStep=0;arrived=false;navigating=true;message='Waiting for a fresh location fix. Foreground guidance only.';void navigationLocation.start(false,fix=>{if(!navigating)return;if(fix.accuracyMeters>50){message='Location is too approximate for turn guidance.';invalidate();return;}navDistance=distance(fix.coordinate,route.to);arrived=navDistance<25&&fix.accuracyMeters<=30;if(arrived){message='Destination reached.';void navigationLocation.stop();}else{const nearest=Math.min(...route.geometry.map(p=>distance(fix.coordinate,p)));message=nearest>Math.max(75,fix.accuracyMeters*2)?'Off route. Stop and calculate a new route.':'Foreground guidance · location accuracy ±'+Math.ceil(fix.accuracyMeters)+' m';while(navStep<route.steps.length-1&&distance(fix.coordinate,route.steps[navStep].coordinate)<40)navStep++;}invalidate();},error=>{message=failure(error).message;navigating=false;invalidate();});invalidate();},
-       nav:{going:!arrived,arrived,dist:arrived?'Arrived':navDistance?Math.round(navDistance)+' m':'Locating…',street:route?.steps[navStep]?.instruction||'Waiting for location',icon:PIN,hasThen:false,left:arrived?'Arrived':'Foreground guidance',meta:'Distance shown is direct to destination',end,ask:()=>currentApi.send('Help me with this route.'),voiceLabel:'Voice guidance unavailable',voice:()=>currentApi.toast('Native voice guidance is not connected.'),voiceD:PIN}};
+       start:()=>{if(!route){message='Calculate a route before starting navigation.';invalidate();return;}navigationVoice.pause();navStep=0;arrived=false;navigating=true;message='Waiting for a fresh location fix. Foreground guidance only.';void navigationLocation.start(false,fix=>{if(!navigating)return;if(state?.route.phase!=='ready'||state.route.value?.id!==route.id){navigationVoice.pause();navigating=false;void navigationLocation.stop();invalidate();return;}if(fix.accuracyMeters>50){navigationVoice.pause();message='Location is too approximate for turn guidance.';invalidate();return;}navDistance=distance(fix.coordinate,route.to);arrived=navDistance<25&&fix.accuracyMeters<=30;if(arrived){navigationVoice.pause();message='Destination reached.';void navigationLocation.stop();}else{const nearest=distanceToRoute(fix.coordinate,route.geometry);message=nearest>Math.max(75,fix.accuracyMeters*2)?'Off route. Stop and calculate a new route.':'Foreground guidance · location accuracy ±'+Math.ceil(fix.accuracyMeters)+' m';while(navStep<route.steps.length-1&&distance(fix.coordinate,route.steps[navStep].coordinate)<40)navStep++;if(nearest>Math.max(75,fix.accuracyMeters*2))navigationVoice.pause();else if(route.steps[navStep])navigationVoice.update(route.id+':'+navStep,route.steps[navStep].instruction);}invalidate();},error=>{navigationVoice.pause();message=failure(error).message;navigating=false;invalidate();});invalidate();},
+       nav:{going:!arrived,arrived,dist:arrived?'Arrived':navDistance?Math.round(navDistance)+' m':'Locating…',street:route?.steps[navStep]?.instruction||'Waiting for location',icon:PIN,hasThen:false,left:arrived?'Arrived':'Foreground guidance',meta:'Distance shown is direct to destination',end,ask:()=>currentApi.send('Help me with this route.'),voiceLabel:navigationVoice.enabled?'Mute voice guidance':'Enable voice guidance',voice:()=>{navigationVoice.toggle();invalidate();},voiceD:PIN}};
     }
     return data;
   };
@@ -191,7 +195,7 @@ export function installPrototypeMapsAdapter(_Component: unknown, views: Record<s
     else release(false);
     invalidate();
   });
-  const retireShare=()=>{sharing?.abort.abort();sharing=undefined;};
+  const retireShare=()=>{sharing?.abort.abort();sharing=undefined;navigationVoice.pause();};
   const shareEvents=['launcher-home','alpha:device-state','alpha:dev-incoming-call'];for(const event of shareEvents)window.addEventListener(event,retireShare);
   const visibility = () => { if(document.hidden){retireShare();lifecycle.hidden++;if(controller?.awaitingLocationPermission()||navigationLocation.awaitingPermission()){lifecycle.permissionHeld++;invalidate();return;}release();}else invalidate(); };
   const pagehide=()=>release();window.addEventListener('pagehide', pagehide); document.addEventListener('visibilitychange', visibility);
