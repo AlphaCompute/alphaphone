@@ -21,9 +21,19 @@ if(fs.existsSync('scripts/local-speech'))for(const name of fs.readdirSync('scrip
  const entry=path.join('scripts/local-speech',name);
  if(fs.lstatSync(entry).isFile() && /\.(?:py|json|patch|md)$/.test(name))roots.push(entry);
 }
+// Resident payload and generated Java are consumed directly by Gradle. Capture
+// their exact bytes, provenance and reproduction inputs, excluding web assets/dependencies.
+roots.push('android/app/src/main/assets/agent','android/app/src/main/jniLibs',
+ 'android/app/build/generated/local-agent/java',
+ 'android/app/build/generated/local-agent/source-manifest.json',
+ 'upstream.lock.json','patches/eliza',
+ 'scripts/prepare-local-agent.mjs','scripts/local-agent-source.mjs',
+ 'scripts/stage-local-agent-runtime.mjs','scripts/stage-local-agent-sources.mjs',
+ 'vendor/eliza/packages/app/platforms/android/app/src/main/java/ai/elizaos/app',
+ 'vendor/eliza/plugins/plugin-native-browser-surface/android/src/main/java/ai/eliza/plugins/browsersurface/ChromiumBrowserIdentity.java');
 const files=[];
 function walk(entry){if(!fs.existsSync(entry))return;const stat=fs.lstatSync(entry);if(stat.isDirectory())for(const name of fs.readdirSync(entry).sort())walk(path.join(entry,name));else if(stat.isFile())files.push(entry);}
 roots.forEach(walk);
 const hashes=Object.fromEntries(files.sort().map(file=>[file,crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex')]));
 const digest=crypto.createHash('sha256').update(JSON.stringify(hashes)).digest('hex');
-console.log(JSON.stringify({schemaVersion:3,digest,files:hashes},null,2));
+console.log(JSON.stringify({schemaVersion:4,digest,files:hashes},null,2));
