@@ -1,3 +1,4 @@
+import {openScanDocument} from './scan-document';
 import {createScanEventReview} from './scan-event-review';
 import type {ScanEventDraft} from './scan-event';
 import {createScanLinkReview} from './scan-link-review';
@@ -16,6 +17,8 @@ export function openScanReview(image:Blob,save:(text:string,id:string)=>Promise<
   const field=document.createElement('textarea');field.setAttribute('aria-label','Scanned text');field.rows=9;field.maxLength=100000;field.disabled=true;field.style.cssText='box-sizing:border-box;width:100%;font:inherit;background:inherit;color:inherit;padding:12px;border:1px solid currentColor;border-radius:8px';
   const actions=document.createElement('div');actions.style.cssText='flex-shrink:0;display:flex;flex-wrap:wrap;gap:12px;margin-top:16px';
   const button=(label:string)=>{const value=document.createElement('button');value.type='button';value.textContent=label;value.style.cssText='font:inherit;min-height:44px;padding:8px 16px;border-radius:8px;border:1px solid var(--bd,#aaa);background:var(--s2,#eee);color:inherit;cursor:pointer';actions.append(value);return value;};
+  let closeDocument:(()=>void)|undefined;
+  if(!Capacitor.isNativePlatform()){const document=button('Build multi-page PDF');document.onclick=()=>{closeDocument?.();closeDocument=openScanDocument(image);};}
   const pdf=button(Capacitor.isNativePlatform()?'Save photo PDF':'Download photo PDF');
   const copy=button('Copy text'),commit=button('Save to Notes'),close=button('Cancel scan');copy.disabled=true;commit.disabled=true;
   const pdfStatus=document.createElement('p');pdfStatus.setAttribute('role','status');pdfStatus.setAttribute('aria-label','PDF export status');
@@ -23,8 +26,8 @@ export function openScanReview(image:Blob,save:(text:string,id:string)=>Promise<
   const previewUrl=URL.createObjectURL(image),preview=document.createElement('img');preview.src=previewUrl;preview.alt=source==='captured'?'Captured page for PDF export':'Selected image for PDF export';preview.style.cssText='display:block;width:100%;max-height:160px;object-fit:contain;background:var(--s2,#eee);border-radius:8px';
   const pdfDisclosure=document.createElement('p');pdfDisclosure.textContent='Photo PDF exports this image. Text corrections are saved separately to Notes.';
   let closed=false,attempted=false;const noteId='scan-'+crypto.randomUUID();
-  const dispose=()=>{if(closed)return;closed=true;controller.abort();URL.revokeObjectURL(previewUrl);dialog.remove();window.removeEventListener('alpha-back',back,true);window.removeEventListener('pagehide',dispose);document.removeEventListener('visibilitychange',visibility);if(previous instanceof HTMLElement&&previous.isConnected)previous.focus();};
-  const back=(event:Event)=>{event.preventDefault();event.stopImmediatePropagation();dispose();};
+  const dispose=()=>{if(closed)return;closed=true;closeDocument?.();controller.abort();URL.revokeObjectURL(previewUrl);dialog.remove();window.removeEventListener('alpha-back',back,true);window.removeEventListener('pagehide',dispose);document.removeEventListener('visibilitychange',visibility);if(previous instanceof HTMLElement&&previous.isConnected)previous.focus();};
+  const back=(event:Event)=>{if(document.querySelector('dialog[aria-label="Review scan document"]'))return;event.preventDefault();event.stopImmediatePropagation();dispose();};
   const visibility=()=>{if(document.hidden)dispose();};
   close.onclick=dispose;dialog.addEventListener('cancel',event=>{event.preventDefault();dispose();});
   window.addEventListener('alpha-back',back,true);window.addEventListener('pagehide',dispose);document.addEventListener('visibilitychange',visibility);
