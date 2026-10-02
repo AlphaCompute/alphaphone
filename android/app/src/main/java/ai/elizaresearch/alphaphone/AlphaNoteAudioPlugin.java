@@ -112,7 +112,7 @@ public class AlphaNoteAudioPlugin extends Plugin {
   if(!receipts.has(operation)&&receipts.length()>=128)throw new IOException("Recording operation history full");
   boolean legacyRestore=!deleted&&record.optLong("deletedAt",0)>0&&!record.has("activeDeletionOperation")&&!record.has("deletionOperations");
   if(record.has("deletedAt")&&!operation.equals(record.optString("activeDeletionOperation"))&&!legacyRestore)throw new IOException("Another deletion owns recording");
-  if(legacyRestore&&System.currentTimeMillis()-record.getLong("deletedAt")>30L*24*60*60*1000)throw new IOException("Recording expired");
+  if(!deleted&&record.optLong("deletedAt",0)>0&&System.currentTimeMillis()-record.getLong("deletedAt")>30L*24*60*60*1000)throw new IOException("Recording expired");
   if(key.equals(playingId))stop();
   if(deleted){record.put("deletedAt",System.currentTimeMillis());record.put("activeDeletionOperation",operation);}
   else {if(!audio(key).isFile())throw new IOException();record.remove("deletedAt");record.remove("activeDeletionOperation");}

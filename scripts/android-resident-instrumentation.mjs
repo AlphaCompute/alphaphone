@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Drives ResidentServiceInstrumentedTest on a disposable emulator in a fresh secondary user.
-// Usage: ANDROID_SERIAL=<disposable arm64 emulator, >=4 GB RAM> node scripts/android-resident-instrumentation.mjs <app.apk> <androidTest.apk>
+// Usage: ALPHA_RESIDENT_DISPOSABLE_EMULATOR=1 ANDROID_SERIAL=<fresh arm64 emulator, >=4 GB RAM> node scripts/android-resident-instrumentation.mjs <app.apk> <androidTest.apk>
 // RESIDENT_TEST selects the class (default: the egress redaction test). Removes the fixture user afterwards.
 // Emulator evidence only; not physical-device or image acceptance.
 import {execFileSync} from 'node:child_process';
@@ -8,11 +8,15 @@ import {createHash, randomUUID} from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { admitResidentEmulator } from './resident-emulator-admission.mjs';
 const [apk, testApk] = process.argv.slice(2);
 const serial = process.env.ANDROID_SERIAL;
 if (!serial || !apk || !testApk) throw Error('ANDROID_SERIAL, app APK and test APK are required');
 const adb = (args, opts = {}) => execFileSync('adb', ['-s', serial, ...args], {encoding: 'utf8', maxBuffer: 64 << 20, ...opts}).trim();
 const pkg = 'ai.elizaresearch.alphaphone';
+// Installation replaces package code across users. A secondary user alone does
+// not protect an existing installation, and must not admit a physical phone.
+admitResidentEmulator(process.env, adb);
 const sha = buf => createHash('sha256').update(buf).digest('hex');
 const entry = name => execFileSync('unzip', ['-p', apk, name], {maxBuffer: 1 << 30});
 const runId = randomUUID();
@@ -36,7 +40,7 @@ try {
     '-e', 'class', test, `${pkg}.test/androidx.test.runner.AndroidJUnitRunner`], {timeout: 900000});
   let proof = null;
   try { proof = JSON.parse(adb(['shell', 'run-as', pkg, '--user', user, 'cat', proofFile])); } catch {}
-  result = {...result, passed: /OK \(1 test\)/.test(output) && proof?.passed === true, proof, instrumentation: output.split('\n').slice(-25).join('\n')};
+  result = {...result, passed: /OK \(1 test\)/.test(output) && proof?.passed === true && proof?.runId === runId, proof, instrumentation: output.split('\n').slice(-25).join('\n')};
 } finally {
   try { adb(['shell', 'pm', 'remove-user', user]); } catch {}
 }
