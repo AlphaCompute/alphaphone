@@ -59,12 +59,16 @@ export function verifyMetadata(signature, badging, manifest) {
 }
 
 // Failure evidence only: one shared budget, no retries, mutations or guessed block targets.
-export function collectOverlayFailureDiagnostics({ environment, sdkEnvironment, execute, now = Date.now, hostPaths = { workspace: process.cwd(), androidSdk: sdkEnvironment.ANDROID_HOME, home: process.env.HOME }, statfs = fs.statfsSync, userspaceOnly = false }) {
+export function collectOverlayFailureDiagnostics({ environment, sdkEnvironment, execute, now = Date.now, hostPaths = { workspace: process.cwd(), androidSdk: sdkEnvironment.ANDROID_HOME, home: process.env.HOME }, statfs = fs.statfsSync, userspaceOnly = false, stockBackup }) {
   const deadline = now() + 20000;
   const evidence = { host: {}, guest: {}, budgetMilliseconds: 20000 };
   for (const [name, location] of Object.entries(hostPaths)) {
     try { const value = statfs(location); evidence.host[name] = { availableBytes: value.bavail * value.bsize, freeBytes: value.bfree * value.bsize }; }
     catch (error) { evidence.host[name] = { unavailable: String(error.message).slice(0, 512) }; }
+  }
+  if (stockBackup) {
+    try { evidence.host.partialBackupBytes = fs.statSync(stockBackup.backup).size; }
+    catch (error) { evidence.host.partialBackup = { unavailable: String(error.message).slice(0, 512) }; }
   }
   let sourceFd;
   try {
@@ -81,7 +85,13 @@ export function collectOverlayFailureDiagnostics({ environment, sdkEnvironment, 
       env: sdkEnvironment, encoding: 'utf8', timeout: Math.min(2000, remaining), maxBuffer: 256 * 1024,
     });
   };
-  for (const [name, args] of [
+  const reads = stockBackup ? [
+    ['adbVersion', ['version']],
+    ['deviceState', ['get-state']],
+    ['fingerprint', ['shell', 'getprop', 'ro.build.fingerprint']],
+    ['stockStat', ['shell', 'stat', '-c', '%s', stockBackup.stock]],
+    ['capacity', ['shell', 'df', '-k', '/data', '/metadata', '/product']],
+  ] : [
     ['userspaceStorageLog', ['shell', 'logcat', '-d', '-b', 'all', '-t', '400']],
     ['fingerprint', ['shell', 'getprop', 'ro.build.fingerprint']],
     ['deviceMapperNames', ['shell', 'dmctl', 'list', 'devices']],
@@ -90,7 +100,8 @@ export function collectOverlayFailureDiagnostics({ environment, sdkEnvironment, 
     ['capacity', ['shell', 'df', '-k', '/data', '/metadata', '/product']],
     ['partitions', ['shell', 'cat', '/proc/partitions']],
     ['kernel', ['shell', 'dmesg']],
-  ]) {
+  ];
+  for (const [name, args] of reads) {
     if (userspaceOnly && name !== 'userspaceStorageLog') continue;
     // Admission uses the same bounded executor and performs one complete attempt.
     try { requireProviderFixture(read, environment, {}, () => { throw Error('Failure diagnostic admission unavailable'); }); }
@@ -116,8 +127,9 @@ export async function main({ environment = process.env, execute = execFileSync, 
   const state = { status: 'preflight', candidate, productionApproved: false, runtimeFeaturesQualified: false, commands: [] };
   const save = () => fs.writeFileSync(path.join(output, 'result.json'), JSON.stringify(state, null, 2) + '\n');
   const command = (file, args, timeout = 20000) => {
+    const started = now();
     try { const result = execute(file, args, { env, encoding: 'utf8', timeout, maxBuffer: 16 * 1024 * 1024 }); state.commands.push({ file, args, success: true }); save(); return result; }
-    catch (error) { state.commands.push({ file, args, success: false, status: error.status ?? null, signal: error.signal ?? null, code: error.code ?? null, stdout: String(error.stdout ?? '').slice(-65536), stderr: String(error.stderr ?? '').slice(-65536) }); save(); throw error; }
+    catch (error) { state.commands.push({ file, args, durationMilliseconds: Math.max(0, now() - started), success: false, status: error.status ?? null, signal: error.signal ?? null, code: error.code ?? null, stdout: String(error.stdout ?? '').slice(-65536), stderr: String(error.stderr ?? '').slice(-65536) }); save(); throw error; }
   };
   const run = (...args) => command(path.join(sdk, 'platform-tools/adb'), ['-s', serial, ...args]);
   const safe = (installed = false) => requireProviderFixture(run, environment, { installed });
@@ -170,8 +182,16 @@ export async function main({ environment = process.env, execute = execFileSync, 
     const stockHash = run('shell', 'sha256sum', stock).trim().split(/\s+/)[0];
     require(/^[a-f0-9]{64}$/.test(stockHash), 'Invalid stock hash');
     const backup = path.join(output, 'stock-webview.apk');
-    run('pull', stock, backup); require(fileDigest(backup) === stockHash, 'Stock backup mismatch');
-    state.stock = { path: stock, sha256: stockHash };
+    state.stock = { path: stock, sha256: stockHash }; save();
+    try {
+      run('pull', stock, backup); require(fileDigest(backup) === stockHash, 'Stock backup mismatch');
+    } catch (error) {
+      try {
+        const diagnostics = collectOverlayFailureDiagnostics({ environment, sdkEnvironment: env, execute, now, stockBackup: { stock, backup } });
+        fs.writeFileSync(path.join(output, 'stock-backup-failure-diagnostics.json'), JSON.stringify(diagnostics, null, 2) + '\n');
+      } catch (diagnosticError) { state.diagnosticError = String(diagnosticError.message).slice(0, 512); }
+      throw error;
+    }
     const archive = path.join(output, 'chromium.zip'), apk = path.join(output, 'SystemWebView.apk');
     command('curl', ['--fail', '--location', '--silent', '--show-error', '--connect-timeout', '20', '--max-time', '600', candidate.url, '--output', archive], 610000);
     require(fs.statSync(archive).size === candidate.size && fileDigest(archive) === candidate.archiveSha256, 'Official archive bytes changed');

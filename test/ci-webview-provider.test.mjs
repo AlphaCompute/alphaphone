@@ -179,3 +179,40 @@ test('diagnostics reject drift before device details and retain host errors',()=
  const result=collectOverlayFailureDiagnostics({environment:env,sdkEnvironment:{ANDROID_HOME:'/sdk'},hostPaths:{bad:'/absent'},statfs:()=>{throw Error('unavailable');},execute:(file,args)=>{assert.equal(args.slice(2).join(' '),'emu avd name');return 'personal';}});
  assert.ok(result.admissionStopped);assert.deepEqual(result.guest,{});assert.equal(result.host.bad.unavailable,'unavailable');
 });
+
+test('stock backup failure retains original error, provenance and bounded read-only evidence', async () => {
+  for (const mode of ['normal', 'drift', 'expired']) {
+    const parent = fs.mkdtempSync(path.join(os.tmpdir(), 'stock-diagnostic-'));
+    const output = path.join(parent, 'evidence'), calls = [];
+    let failed = false, tick = 0;
+    const original = Object.assign(new Error('pull failure'), { status: 1, signal: null, code: null, stdout: '', stderr: '' });
+    const execute = (file, args, opts) => {
+      assert.equal(path.basename(file), 'adb');
+      const a = args.slice(2), key = a.join(' '); calls.push(key);
+      if (a[0] === 'pull') {
+        assert.equal(opts.timeout, 20000);
+        assert.deepEqual(JSON.parse(fs.readFileSync(path.join(output, 'result.json'))).stock, { path: '/product/app/webview/webview.apk', sha256: 'a'.repeat(64) });
+        fs.writeFileSync(a[2], 'partial'); failed = true; tick += 13; throw original;
+      }
+      if (failed) { assert.ok(opts.timeout > 0 && opts.timeout <= 2000); if (mode === 'drift' && key === 'emu avd name') return 'personal'; }
+      if (key in responses) return responses[key];
+      if (key === 'shell pm path com.android.webview') return 'package:/product/app/webview/webview.apk';
+      if (key === 'shell dumpsys package com.android.webview') return 'versionName=124.0.6367.219';
+      if (key === 'shell sha256sum /product/app/webview/webview.apk') return 'a'.repeat(64);
+      assert.ok(['version', 'get-state', 'shell getprop ro.build.fingerprint', 'shell stat -c %s /product/app/webview/webview.apk', 'shell df -k /data /metadata /product'].includes(key), key);
+      return 'readonly evidence';
+    };
+    try {
+      await assert.rejects(main({ environment: { ...env, ALPHA_DISPOSABLE_WEBVIEW_FIXTURE: 'api35-default-x86_64' }, sdkEnvironment: { ANDROID_HOME: parent }, outputDirectory: output, execute, now: () => { if (failed && mode === 'expired') tick += 25000; return tick; } }), e => e === original);
+      const r = JSON.parse(fs.readFileSync(path.join(output, 'result.json'))), d = JSON.parse(fs.readFileSync(path.join(output, 'stock-backup-failure-diagnostics.json')));
+      assert.equal(r.status, 'FAIL'); assert.equal(r.failedAt, 'preflight');
+      const pull = r.commands.find(c => c.args[2] === 'pull');
+      assert.equal(pull.status, 1); assert.equal(pull.signal, null); assert.equal(pull.code, null); assert.ok(pull.durationMilliseconds >= 13);
+      assert.equal(d.host.partialBackupBytes, 7); assert.equal(d.budgetMilliseconds, 20000); assert.ok(Object.hasOwn(d.host, 'imageSourceProperties'));
+      assert.equal(calls.filter(c => c.startsWith('pull ')).length, 1);
+      if (mode === 'normal') assert.deepEqual(Object.keys(d.guest), ['adbVersion', 'deviceState', 'fingerprint', 'stockStat', 'capacity']);
+      else { assert.ok(d.admissionStopped); assert.deepEqual(d.guest, {}); }
+      assert.ok(!calls.some(c => /^(root|remount|reboot|install|shell (rm|setprop|stop|start))\b/.test(c)));
+    } finally { fs.rmSync(parent, { recursive: true, force: true }); }
+  }
+});

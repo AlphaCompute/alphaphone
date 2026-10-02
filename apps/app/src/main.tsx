@@ -1,7 +1,7 @@
+import './browser/register';
 import { pauseLiveActivityForMock } from './runtime/mock-admission';
 import { installBrowserDeviceAdapter } from './browser/device-adapter';
 import { BrowserDeviceControls } from './browser/device-controls';
-import './browser/register';
 import { browserDevProfile } from './browser/dev-profile';
 import { captureSimulatedApps, installSimulatedApps } from './browser/simulated-apps';
 import {HostedDigestPanel} from './runtime/hosted-digest-ui';
