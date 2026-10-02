@@ -1,5 +1,6 @@
+import {openCameraImageImport} from './browser-image-import';
 import {openScanReview} from './scan-review';
-import {browserCamera,browserLibrary,browserPhotoLibrary,mountBrowserCamera} from './browser-camera';
+import {browserCamera,browserLibrary,browserPhotoLibrary,mountBrowserCamera,importBrowserPhoto} from './browser-camera';
 import { registerPlugin } from '../platform-plugins';
 import { Capacitor } from '@capacitor/core';
 
@@ -483,6 +484,17 @@ export function installPrototypeCameraAdapter(_Component: unknown, views: Record
     } catch { if (token === epoch && active()) message('Photo could not be saved. No successful capture was confirmed.'); }
     finally { capturing = false; }
   }
+  function chooseImage(){
+    if(!browserMode||!api||!active()||recording||recordingStarting||finalizing||capturing)return;
+    cancelScan();const owner=api,token=epoch;
+    closeScan=openCameraImageImport(async(image,signal)=>{
+      if(token!==epoch||!active())throw Error('Camera closed.');const row=await importBrowserPhoto(image,signal);loaded=false;
+      if(token===epoch&&active()){captures=[normalize(row),...captures.filter(item=>nativeId(item.id)!==row.id)];owner.setView('photos',{nativeCaptureRevision:row.id});message('Image copy saved in Photos.');}
+    },image=>{
+      if(token!==epoch||!active())return;
+      closeScan=openScanReview(image,(text,id)=>owner.saveScannedNote?.(text,id)??Promise.resolve(false),draft=>{if(token!==epoch||!active())return false;owner.open('calendar',{form:draft,open:null,month:null,day:draft.off},'hidden');return true;},'selected');
+    });
+  }
   module.render = (st: Bag, currentApi: Bag) => {
     api = currentApi;
     queueMicrotask(schedule);
@@ -492,6 +504,7 @@ export function installPrototypeCameraAdapter(_Component: unknown, views: Record
     data.drift = ''; data.zoomCss = ''; data.scanFound = false; data.scanning = false; data.rec = recording; data.recTime = `${Math.floor(duration / 60)}:${String(Math.floor(duration % 60)).padStart(2, '0')}`; data.flOp = 0;
     if(st.mode==='scan')data.shutterLabel='Scan text';
     data.shutter = () => { void capture(); };
+    data.importAvailable=browserMode&&!recording&&!recordingStarting&&!finalizing;data.importImage=chooseImage;
     data.flip = () => { const next = direction === 'back' ? 'front' : 'back'; void control(() => camera.switchCamera({ direction: next }), () => { direction = next; flash = false; currentApi.set({ front: next === 'front', flash: false, ...(browserMode?{zoom:1}:{}) }); }); };
     data.toggleFlash = () => { const next = !flash; void control(() => camera.setSettings({ settings: { flash: next ? 'on' : 'off' } }), () => { flash = next; currentApi.set({ flash: next }); }); };
     data.zooms = (data.zooms || []).map((z: Bag, i: number) => ({ ...z, pick: () => { const ratio = parseFloat(z.label); void control(() => camera.setZoom({ zoom: ratio }), () => currentApi.set({ zoom: i })); } }));

@@ -6,12 +6,12 @@ import {Capacitor} from '@capacitor/core';
 import {recognizeLocalText} from './local-ocr';
 
 /** A scan is draft text until the user reviews it and receives a Notes commit. */
-export function openScanReview(image:Blob,save:(text:string,id:string)=>Promise<boolean>,reviewEvent?:(draft:ScanEventDraft)=>boolean):()=>void {
+export function openScanReview(image:Blob,save:(text:string,id:string)=>Promise<boolean>,reviewEvent?:(draft:ScanEventDraft)=>boolean,source:'captured'|'selected'='captured'):()=>void {
   const controller=new AbortController();const previous=document.activeElement;
   const dialog=document.createElement('dialog');dialog.setAttribute('aria-label','Review scanned text');
   dialog.style.cssText='box-sizing:border-box;width:min(92vw,560px);max-height:85dvh;display:flex;flex-direction:column;overflow:hidden;border:1px solid var(--bd,#aaa);border-radius:20px;padding:24px;background:var(--bg,#fff);color:var(--fg,#111);font:inherit;line-height:1.45';
   const heading=document.createElement('h2');heading.textContent='Scan text';
-  const disclosure=document.createElement('p');disclosure.textContent='English text recognition runs on this device. Check the result before saving. The captured photo remains in Photos.';
+  const disclosure=document.createElement('p');disclosure.textContent='English text recognition runs on this device. Check the result before saving. '+(source==='captured'?'The captured photo remains in Photos.':'The selected file stays unchanged and is not copied to Photos.');
   const status=document.createElement('p');status.setAttribute('role','status');status.setAttribute('aria-label','Scan status');status.textContent='Starting local scan…';
   const field=document.createElement('textarea');field.setAttribute('aria-label','Scanned text');field.rows=9;field.maxLength=100000;field.disabled=true;field.style.cssText='box-sizing:border-box;width:100%;font:inherit;background:inherit;color:inherit;padding:12px;border:1px solid currentColor;border-radius:8px';
   const actions=document.createElement('div');actions.style.cssText='flex-shrink:0;display:flex;flex-wrap:wrap;gap:12px;margin-top:16px';
@@ -20,7 +20,7 @@ export function openScanReview(image:Blob,save:(text:string,id:string)=>Promise<
   const copy=button('Copy text'),commit=button('Save to Notes'),close=button('Cancel scan');copy.disabled=true;commit.disabled=true;
   const pdfStatus=document.createElement('p');pdfStatus.setAttribute('role','status');pdfStatus.setAttribute('aria-label','PDF export status');
   let pdfAttempted=false;
-  const previewUrl=URL.createObjectURL(image),preview=document.createElement('img');preview.src=previewUrl;preview.alt='Captured page for PDF export';preview.style.cssText='display:block;width:100%;max-height:160px;object-fit:contain;background:var(--s2,#eee);border-radius:8px';
+  const previewUrl=URL.createObjectURL(image),preview=document.createElement('img');preview.src=previewUrl;preview.alt=source==='captured'?'Captured page for PDF export':'Selected image for PDF export';preview.style.cssText='display:block;width:100%;max-height:160px;object-fit:contain;background:var(--s2,#eee);border-radius:8px';
   const pdfDisclosure=document.createElement('p');pdfDisclosure.textContent='Photo PDF exports this image. Text corrections are saved separately to Notes.';
   let closed=false,attempted=false;const noteId='scan-'+crypto.randomUUID();
   const dispose=()=>{if(closed)return;closed=true;controller.abort();URL.revokeObjectURL(previewUrl);dialog.remove();window.removeEventListener('alpha-back',back,true);window.removeEventListener('pagehide',dispose);document.removeEventListener('visibilitychange',visibility);if(previous instanceof HTMLElement&&previous.isConnected)previous.focus();};

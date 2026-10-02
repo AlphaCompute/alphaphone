@@ -1,3 +1,4 @@
+import type {ImportedCameraImage} from './browser-image-import';
 import {drawCameraFrame} from '../browser/camera-frame';
 import {BrowserVideoCapture} from '../browser/video-capture';
 import {editStore,readStore} from '../browser/store';
@@ -146,6 +147,10 @@ export const browserPhotoLibrary={
   return transaction<{status:string;deletedIds:string[];skippedIds:string[];failedIds:string[]}>('readwrite',(store,set)=>{const result={status:'complete',deletedIds:[] as string[],skippedIds:[] as string[],failedIds:[] as string[]};set(result);for(const item of selected){const r=store.get(item.id);r.onsuccess=()=>{const row=r.result as Row|undefined;if(row?.trashed&&row.mutationRevision===item.revision){store.delete(item.id);result.deletedIds.push(item.id);}else result.skippedIds.push(item.id);};}});
  },
 };
+export async function importBrowserPhoto(image:ImportedCameraImage,signal:AbortSignal){
+ signal.throwIfAborted();const row:Row={id:photoId(),kind:'image',image:image.image,width:image.width,height:image.height,date:Date.now(),revision:revision(),mutationRevision:revision(),favorite:false,trashed:false};
+ await transaction<void>('readwrite',(store,set)=>{signal.throwIfAborted();store.add(row);set(undefined);});return row;
+}
 const unavailable=async()=>{throw Error('This operation is not available for browser photos. The original is unchanged.');};
 export const browserLibrary=new Proxy(browserPhotoLibrary,{get(target,key){return Reflect.get(target,key)??unavailable;}});
 const videoCapture=new BrowserVideoCapture();
