@@ -26,14 +26,15 @@ try {
  await assert.rejects(first.write(scope+':large','x'.repeat(800001)),/Invalid digest/);
  assert.equal(await store().read('hosted-digests:v1:'+'b'.repeat(64)),null);
  const now=new Date().toISOString();
- const result={cursor:1,runId:'run-one',workflowId:'workflow',workflowVersionId:'version',templateVersion:'template',scheduledAt:now,source:{kind:'tasks'},status:'completed',startedAt:now,completedAt:now,output:'Synthetic digest',error:null};
+ const result={cursor:1,runId:'run-one',workflowId:'workflow',workflowVersionId:'version',templateVersion:'template',scheduledAt:now,source:{kind:'tasks',selection:{label:'Synthetic tasks',ids:['one','two']}},status:'completed',startedAt:now,completedAt:now,output:'Synthetic digest',error:null};
  let nativeCalls=0;
  const nativeInbox={history:async()=>[],sync:async()=>{nativeCalls++;return [];}};
  const resident=()=>createDigestInbox({android:true,resident:true,storage:store(),scope,native:()=>{throw Error('Resident must not use remote polling');}});
  const remote=createDigestInbox({android:true,resident:false,storage:store(),scope,native:()=>nativeInbox});
  await remote.sync({},new AbortController().signal);assert.equal(nativeCalls,1);
  let acked=false,ackAttempts=0;
- const client={results:async()=>acked?[]:[result],ack:async()=>{
+ const replay={...result,source:{selection:{ids:['one','two'],label:'Synthetic tasks'},kind:'tasks'}};
+ const client={results:async()=>acked?[]:[ackAttempts?replay:result],ack:async()=>{
   // Inspect a fresh store before allowing the host to advance its cursor.
   assert.deepEqual(await new DigestInbox(store(),scope).history(),[result]);
   if(++ackAttempts===1)throw Error('Lost synthetic ack');
@@ -42,6 +43,12 @@ try {
  await assert.rejects(resident().sync(client,new AbortController().signal),/Lost synthetic ack/);
  assert.deepEqual(await resident().sync(client,new AbortController().signal),[result]);
  assert.equal(ackAttempts,2);
+ assert.equal(JSON.stringify(await store().read(scope+':run-one')),JSON.stringify(result),'Replay must preserve originally saved bytes');
+ for(const source of [{...replay.source,selection:{...replay.source.selection,label:'Changed'}},{...replay.source,selection:{...replay.source.selection,ids:['two','one']}}]){
+  let changedAck=false;
+  await assert.rejects(resident().sync({results:async()=>[{...replay,source}],ack:async()=>{changedAck=true;}},new AbortController().signal),/Saved digest result changed/);
+  assert.equal(changedAck,false);assert.deepEqual(await resident().history(),[result]);
+ }
  let falseAck=false;
  const failingStore=developmentDigestStore(async input=>{
   if(input.operation==='digestCompareExchange'&&input.slot.endsWith(':run-two'))throw Error('Synthetic disk failure');

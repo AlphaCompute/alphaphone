@@ -330,6 +330,21 @@ export class HostedDigestProtocol {
 }
 /** Serialize callers. Commit exact private results locally before advancing the
  * server cursor. A lost ack simply replays the same IDs, never a workflow run. */
+// JSON objects may arrive with a different property order after reconnect.
+// Array order and every value remain part of the immutable receipt identity.
+function sameResultValue(left: unknown, right: unknown): boolean {
+	if (left === right) return true;
+	if (left === null || right === null || typeof left !== "object" || typeof right !== "object")
+		return false;
+	if (Array.isArray(left) || Array.isArray(right))
+		return Array.isArray(left) && Array.isArray(right) &&
+			left.length === right.length &&
+			left.every((value, index) => sameResultValue(value, right[index]));
+	const a = left as Record<string, unknown>, b = right as Record<string, unknown>;
+	const keys = Object.keys(a);
+	return keys.length === Object.keys(b).length &&
+		keys.every((key) => Object.hasOwn(b, key) && sameResultValue(a[key], b[key]));
+}
 const inboxQueues = new Map<string, Promise<unknown>>();
 export class DigestInbox {
 	constructor(
@@ -405,9 +420,9 @@ export class DigestInbox {
 					for (const entry of entries) {
 						const key = this.scope + ":" + entry.runId,
 							existing = await this.storage.read<DigestResult>(key);
-						if (existing && JSON.stringify(existing) !== JSON.stringify(entry))
+						if (existing && !sameResultValue(existing, entry))
 							throw Error("Saved digest result changed");
-						await this.storage.write(key, entry);
+						if (!existing) await this.storage.write(key, entry);
 						if (!index.ids.includes(entry.runId)) {
 							index.ids.push(entry.runId);
 							index.pendingNotices = [
