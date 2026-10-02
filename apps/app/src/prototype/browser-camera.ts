@@ -22,9 +22,12 @@ async function transaction<T>(mode:IDBTransactionMode,action:(store:IDBObjectSto
  });
 }
 async function rows(options:{before?:string;trashed?:boolean;album?:string}={},metadata=false){
+ const custom=options.album&&!['favorites','videos'].includes(options.album)?readStore<Album[]>('alpha.browser.albums.v1',()=>[]).find(a=>a.id===options.album!.replace(/^custom:/,'')):undefined;
+ if(options.album&&!['favorites','videos'].includes(options.album)&&!custom)throw Error('Album no longer available.');
+ const members=new Set(custom?.memberIds||[]);
  return transaction<Row[]>('readonly',(store,set)=>{const result:Row[]=[];const request=store.openCursor(undefined,'prev');
   request.onsuccess=()=>{const cursor=request.result;if(!cursor){set(result);return;}const row=cursor.value as Row;if(row.kind!=='image'&&row.kind!=='video'){cursor.continue();return;}
-   if((!options.before||row.id<options.before)&&(metadata||(!!row.trashed===!!options.trashed&&(!options.album||options.album==='favorites'&&row.favorite||options.album==='videos'&&row.kind==='video'||readStore<Album[]>('alpha.browser.albums.v1',()=>[]).find(a=>a.id===options.album)?.memberIds.includes(row.id)))))result.push(metadata?{...row,image:''}:row);
+   if((!options.before||row.id<options.before)&&(metadata||(!!row.trashed===!!options.trashed&&(!options.album||options.album==='favorites'&&row.favorite||options.album==='videos'&&row.kind==='video'||members.has(row.id)))))result.push(metadata?{...row,image:'',path:undefined}:row);
    if(!metadata&&result.length>=41){set(result);return;}cursor.continue();
   };
  });
@@ -123,16 +126,26 @@ export const browserPhotoLibrary={
  async list(options:{before?:string;trashed?:boolean;album?:string}={}){const result=await rows(options);return {items:result.slice(0,40),next:result.length>40?result[39].id:''};},
  async read(input:{id:string}){return read(input.id);},
  async summary(){const all=await rows({},true);return {favorites:all.filter(r=>!r.trashed&&r.favorite).length,videos:all.filter(r=>!r.trashed&&r.kind==='video').length,trash:all.filter(r=>r.trashed).length,canFavorite:true};},
- async albums(){return {items:readStore<Album[]>('alpha.browser.albums.v1',()=>[])};},
+ async albums(){const live=new Set((await rows({},true)).filter(row=>!row.trashed).map(row=>row.id));return {items:readStore<Album[]>('alpha.browser.albums.v1',()=>[]).map(album=>({...album,count:album.memberIds.filter(id=>live.has(id)).length}))};},
  async shareMany(input:{items:{id:string;revision:string}[]}){for(const item of input.items){const row=await read(item.id);if(row.mutationRevision!==item.revision||row.trashed)throw Error('Selection changed.');}for(const item of input.items)await browserPhotoLibrary.share(item);return {status:'opened',count:input.items.length};},
- async changeAlbum(input:Record<string,unknown>){return editStore<Album[],{status:string;id:string;revision:string}>('alpha.browser.albums.v1',()=>[],async albums=>{
-  if(input.operation==='create'){const album:Album={id:crypto.randomUUID(),name:String(input.name||'Album'),revision:revision(),count:0,memberIds:[]};albums.push(album);return {status:'updated',id:album.id,revision:album.revision};}
-  const album=albums.find(a=>a.id===input.id);if(!album||album.revision!==input.revision)throw Error('Album changed. Reopen it.');
-  if(input.operation==='delete')albums.splice(albums.indexOf(album),1);
-  else if(input.operation==='rename')album.name=String(input.name||'Album');
-  else {const row=await read(String(input.mediaId));if(row.mutationRevision!==input.mediaRevision||row.trashed)throw Error('Photo changed. Reopen it.');album.memberIds=album.memberIds.filter(id=>id!==row.id);if(input.operation==='add')album.memberIds.push(row.id);}
-  album.revision=revision();album.count=album.memberIds.length;return {status:'updated',id:album.id,revision:album.revision};
- });},
+ async changeAlbum(input:Record<string,unknown>){
+  if(!['create','rename','delete','add','remove'].includes(String(input.operation)))throw Error('Unknown album operation.');
+  const name=typeof input.name==='string'?input.name.trim():'';
+  if(['create','rename'].includes(String(input.operation))&&(!name||name.length>80||/[\u0000-\u001f\u007f]/.test(name)))throw Error('Choose an album name between 1 and 80 characters.');
+  return editStore<Album[],{status:string;id:string;revision:string}>('alpha.browser.albums.v1',()=>[],async albums=>{
+   let media:Row|undefined;
+   if(input.operation==='add'||input.operation==='remove'||input.operation==='create'&&(input.mediaId!==undefined||input.mediaRevision!==undefined)){
+    if(typeof input.mediaId!=='string'||typeof input.mediaRevision!=='string')throw Error('Select the photo again.');
+    media=await read(input.mediaId);if(media.mutationRevision!==input.mediaRevision||media.trashed)throw Error('Photo changed. Reopen it.');
+   }
+   if(input.operation==='create'){const memberIds=media?[media.id]:[],album:Album={id:crypto.randomUUID(),name,revision:revision(),count:memberIds.length,memberIds};albums.push(album);return {status:'updated',id:album.id,revision:album.revision};}
+   const album=albums.find(a=>a.id===input.id);if(!album||album.revision!==input.revision)throw Error('Album changed. Reopen it.');
+   if(input.operation==='delete')albums.splice(albums.indexOf(album),1);
+   else if(input.operation==='rename')album.name=name;
+   else {album.memberIds=album.memberIds.filter(id=>id!==media!.id);if(input.operation==='add')album.memberIds.push(media!.id);}
+   album.revision=revision();album.count=album.memberIds.length;return {status:'updated',id:album.id,revision:album.revision};
+  });
+ },
  async setFavorite(input:{id:string;revision:string;favorite:boolean}){return change(input,{favorite:input.favorite});},
  async setTrashed(input:{id:string;revision:string;trashed:boolean}){return {...await change(input,{trashed:input.trashed}),status:'updated'};},
  async changeMany(input:{operation:'favorite'|'trash'|'restore';items:{id:string;revision:string}[]}){
