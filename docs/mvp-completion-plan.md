@@ -1,5 +1,17 @@
 # Alpha Phone MVP completion plan
 
+## Current checkpoint — October 2, Build147/148
+
+Build147 now passes both distributions' actual resident-service owner enrollment, invalid-token rejection, real Cerebras reply, graceful shutdown, new-process restart and retained history. Evidence: `test-results/resident-service-build147-run001/RESULT.md`. This closes those service checks for that exact payload; it does not qualify the forthcoming combined private-IPC/workflow/crash-recovery payload, visible UI, or ordinary background startup.
+
+Build148 separately passes repository verification (68 tests), both Android builds/lint, six archived APKs and four static scans, with unchanged fingerprint `bd91ddedd80c7a1c5995a7b316fc7f06da5131f25266ee01aab18b8dbb474acb`. It includes the Cloud playback cancellation repair but has no device acceptance. See `test-results/mvp-build148/RESULT.md` and the [current acceptance ledger](current-acceptance-ledger.md).
+
+The full MVP remains incomplete. Next: qualify and integrate the combined resident runtime, verify crash recovery with a surviving real workflow and exactly one effect, then run both native distributions and visible Pixel journeys. Fresh Cloud login/agent readiness/chat/restart precedes Gmail and Cloud voice acceptance. Official password-provider behavior, physical speech quality/latency, natural background scheduling, full AOSP boot and physical/user acceptance remain separate gates. The Android-resident architecture in the [on-device plan](on-device-agent-plan.md) controls; optional enclave hosting is not a prerequisite for resident mode. Calls, SMS, Contacts and Wallet remain explicitly deferred and commented out.
+
+Detailed read-only gap matrix: `test-results/mvp-release-gap-audit-staging/REPORT.md`. Older checkpoints below describe their historical payloads; statements that resident service startup/restart is wholly untested are superseded by Build147, not erased or generalized to later binaries.
+
+## Prior checkpoints and implementation requirements
+
 October 2 current native checkpoint: `40a6a97` integrates full-UID socket peer authentication and shutdown-before-close cancellation. Build140 passes repository verification, both Android distribution builds/lint and stable archive fingerprint `abad768bfc207c547376238b8d1fbed663ca2ebd47a365b7d4a9801fff7d76db`. Actual Android transport checks now pass on standalone and launcher, including split framing, cancellation/peer EOF, error handling and no POST replay. Background fixture users were removed and the exact original APKs, permissions and foreground user restored. Build138's native failure and Build139's generated-input archive rejection remain retained. The separate cross-UID isolated-service test failed before peer authentication; it is not a security acceptance pass. See the [current acceptance ledger](current-acceptance-ledger.md) for exact evidence and later checkpoints.
 
 The paired narrowed workflow runtime and compiler artifacts pass17 host full-flow cases197assertions plus seven semantic surface checks outside the checkout. Their Android packaging/execution and the actual resident-agent startup/chat/restart journey remain open, as do live Cloud/Gmail, physical voice/password-provider, full AOSP and user acceptance. Historical paragraphs below retain their original evidence scope rather than superseding these latest results. The full MVP objective remains incomplete.
