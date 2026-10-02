@@ -4,6 +4,6 @@ import {resolve} from 'node:path';
 import {sourceDirectory} from './local-agent-source.mjs';
 const root=resolve(import.meta.dirname,'..');
 execFileSync(process.execPath,['scripts/prepare-local-agent.mjs','--source-only'],{cwd:root,stdio:'inherit'});
-execFileSync(process.env.ALPHA_BUN||'bun',['--no-install','--conditions=eliza-source','test','./packages/agent/test/lean-chat-workflows.test.ts'],{
+execFileSync(process.env.ALPHA_BUN||'bun',['--no-install','--conditions=eliza-source','test','./packages/agent/test/lean-chat-workflows.test.ts','./plugins/plugin-workflow/__tests__/hosted-route-registration.test.ts'],{
   cwd:sourceDirectory(root),stdio:'inherit',
 });

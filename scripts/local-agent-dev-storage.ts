@@ -8,12 +8,21 @@ export function localAgentStorage(directory:string,input:any):unknown {
  const {operation}=input;
  const scoped=typeof input.scope==='string'&&/^[a-f0-9]{64}$/.test(input.scope);
  const identified=typeof input.proposalId==='string'&&/^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/.test(input.proposalId);
+ const digestOperation=operation==='digestRead'||operation==='digestCompareExchange';
  const draftOperation=operation==='draftRead'||operation==='draftCompareExchange';
- const slot=operation==='read'||operation==='write'||draftOperation?input.slot:`journal:${input.scope}`;
- if(typeof slot!=='string'||!(draftOperation?/^workflow-draft:v1:[a-f0-9]{64}$/:/^(device|journal):[a-f0-9]{64}$/).test(slot))throw Error('Invalid local storage scope');
+ const slot=operation==='read'||operation==='write'||draftOperation||digestOperation?input.slot:`journal:${input.scope}`;
+ if(typeof slot!=='string'||!(digestOperation?/^hosted-digests:v1:[a-f0-9]{64}(?::[A-Za-z0-9][A-Za-z0-9_-]{0,127})?$/:draftOperation?/^workflow-draft:v1:[a-f0-9]{64}$/:/^(device|journal):[a-f0-9]{64}$/).test(slot))throw Error('Invalid local storage scope');
  const file=join(directory,createHash('sha256').update(slot).digest('hex')+'.json');
  const saved=existsSync(file)?JSON.parse(readFileSync(file,'utf8')):null;
  const write=(value:unknown)=>{const bytes=JSON.stringify(value);if(Buffer.byteLength(bytes)>2*1024*1024)throw Error('Local storage limit');const temporary=file+'.'+randomUUID();writeFileSync(temporary,bytes,{mode:0o600,flag:'wx'});renameSync(temporary,file);};
+ if(digestOperation){
+  const valid=(value:unknown)=>value===null||(typeof value==='string'&&Buffer.byteLength(value)<=800000);
+  if(!valid(saved))throw Error('Invalid saved digest record');
+  if(operation==='digestRead')return {value:saved};
+  if(!valid(input.expectedValue)||!valid(input.value))throw Error('Invalid digest record');
+  if(saved!==input.expectedValue)return {status:'conflict'};
+  write(input.value);return {status:'saved'};
+ }
  if(draftOperation){
   const valid=(value:unknown)=>value===null||(typeof value==='string'&&Buffer.byteLength(value)<=100000);
   if(!valid(saved))throw Error('Invalid saved workflow draft');

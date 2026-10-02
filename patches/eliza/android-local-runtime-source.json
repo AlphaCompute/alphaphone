@@ -4,10 +4,13 @@
   "files": {
     "packages/app/src/security/secure-store-android.ts": "af9dbf66398a9a984b43b33d98e752f586c70a6b473b73413e1cbfe395d30974",
     "packages/agent/src/runtime/plugin-collector.ts": "63707a42d9d6bc7d4528b1da0c9deae6f7d2a3ac8d2d3a0ccfc50345c8af4825",
-    "packages/agent/test/lean-chat-workflows.test.ts": "d6d937c5882e3683281cf40f84ccde3efc7bdf8c146b5a0426a0b693f519f337"
+    "packages/agent/test/lean-chat-workflows.test.ts": "d6d937c5882e3683281cf40f84ccde3efc7bdf8c146b5a0426a0b693f519f337",
+    "plugins/plugin-workflow/src/plugin-routes.ts": "3edae66b214358367db08c3fb435bf12508c374efa691c51b71ce0ff01acf69e",
+    "plugins/plugin-workflow/__tests__/hosted-route-registration.test.ts": "fff3297e97e13c5929bff141c045a10153a5166eb93bd06dc84f5deb098135ac"
   },
   "patches": [
     "android-secure-store-socket.patch",
-    "lean-chat-workflows.patch"
+    "lean-chat-workflows.patch",
+    "hosted-digest-route-registration.patch"
   ]
 }

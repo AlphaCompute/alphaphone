@@ -41,7 +41,7 @@ export function CloudDelegationPanel({
 	const [pending, setPending] = useState<Pending | null>(null),
 		[busy, setBusy] = useState(false),
 		[message, setMessage] = useState(
-			"Allow this agent to read selected Google data while your phone is off. Access expires within seven days.",
+			"Allow this agent to read selected Google data when this agent is running. Access expires within seven days.",
 		);
 	const [email, setEmail] = useState(true),
 		[calendar, setCalendar] = useState(false),

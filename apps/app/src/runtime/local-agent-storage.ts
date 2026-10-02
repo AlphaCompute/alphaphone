@@ -18,3 +18,22 @@ export const developmentActionJournal:ActionJournal={
  get:input=>operation({...input,operation:'get'}),
  list:input=>operation({...input,operation:'list'}),
 };
+
+// One store per selected connection. CAS prevents stale tabs from overwriting
+// result indexes or clearing another tab's uncertain mutation recovery record.
+export function developmentDigestStore(request:typeof operation=operation) {
+ const observed=new Map<string,string|null>();
+ async function read<T>(slot:string):Promise<T|null>{
+  const {value}=await request({operation:'digestRead',slot});
+  observed.set(slot,value);return value===null?null:JSON.parse(value) as T;
+ }
+ async function save(slot:string,value:string|null){
+  if(!observed.has(slot))await read(slot);
+  const expectedValue=observed.get(slot)!;
+  if(slot.endsWith(':pending')&&expectedValue!==null&&value!==null&&expectedValue!==value)throw Error('A digest request is already awaiting recovery');
+  const result=await request({operation:'digestCompareExchange',slot,expectedValue,value});
+  if(result.status!=='saved')throw Error('Digest storage changed in another tab. Refresh before continuing.');
+  observed.set(slot,value);
+ }
+ return {read,write:(slot:string,value:unknown)=>save(slot,JSON.stringify(value)),remove:(slot:string)=>save(slot,null)};
+}

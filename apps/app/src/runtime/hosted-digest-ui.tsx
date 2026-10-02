@@ -1,8 +1,10 @@
+import { developmentDigestStore } from './local-agent-storage';
+import { browserLocalAgentEnabled } from './local-agent';
 import { NativeResultInbox, type ResultInbox } from './hosted-background';
 import { isAndroid } from '../native';
 import { delegationNative } from "./cloud-delegation-ui";
 import { HostedLiveSourcePicker } from "./hosted-live-source-ui";
-import { hostedResultNative, publishHostedResult, resolveHostedResultTap, type HostedResultBinding } from "./hosted-result-notices";
+import { hostedResultNative, resolveHostedResultTap, type HostedResultBinding } from "./hosted-result-notices";
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { connectionController } from "./connection-ui";
 import { secureConnectionStore } from "./native-connection";
@@ -15,6 +17,7 @@ import {
 	type DigestResult,
 	type DigestTemplate,
 	type HostedDigestProtocol,
+ type DigestStorage,
 } from "./hosted-digests";
 import { DailyApps } from "../daily";
 type Pending = {
@@ -51,6 +54,7 @@ export function HostedDigestPanel() {
 		[morning, setMorning] = useState("08:00"),
 		[evening, setEvening] = useState("18:00");
 	const binding = useRef<{
+		storage: DigestStorage;
 		notices: HostedResultBinding;
 		client: HostedDigestProtocol;
 		inbox: ResultInbox;
@@ -71,7 +75,7 @@ export function HostedDigestPanel() {
 		};
 	}, []);
     const checkTap = async (requestSignal?:AbortSignal) => {
-        if(document.hidden)return;
+        if(!isAndroid||document.hidden)return;
         const b=binding.current;
         try {
             const result=await resolveHostedResultTap(hostedResultNative,b?.notices ?? null,requestSignal ?? b?.controller.signal ?? new AbortController().signal);
@@ -82,7 +86,7 @@ export function HostedDigestPanel() {
             else setMessage(result.kind==='other-account'?'Connect the matching account and agent to open this saved result. No account was switched.':'This result link needs a verified connection and retained history. No workflow was restarted.');
         } catch { if(!b || binding.current===b)setMessage('Result link is waiting for a verified connection.'); }
     };
-    useEffect(()=>{const listener=hostedResultNative.addListener('pendingResult',()=>{void checkTap();}).catch(()=>null);void checkTap();return()=>{void listener.then(value=>value?.remove());};},[]);
+    useEffect(()=>{if(!isAndroid)return;const listener=hostedResultNative.addListener('pendingResult',()=>{void checkTap();}).catch(()=>null);void checkTap();return()=>{void listener.then(value=>value?.remove());};},[]);
     useEffect(()=>{
         if(!open||!tap||binding.current?.sessionId!==tap.sessionId)return;
         const node=document.getElementById('hosted-result-'+tap.runId);if(!node)return;node.scrollIntoView({block:'nearest'});node.focus();
@@ -106,14 +110,14 @@ export function HostedDigestPanel() {
 			if (binding.current !== b || document.hidden) return;
 			setAvailable(supported);
 			if (!supported) {
-				setMessage("This agent has not enabled hosted digests.");
+				setMessage("This agent has not enabled scheduled digests.");
 				return;
 			}
 			const [ss, ll, rr, pp] = await Promise.all([
 				b.client.sources(signal),
 				b.client.loops(signal),
 				b.inbox.sync(b.client, signal),
-				secureConnectionStore.read<Pending>(b.slot + ":pending"),
+				b.storage.read<Pending>(b.slot + ":pending"),
 			]);
 			signal.throwIfAborted();
 			if (binding.current !== b || document.hidden) return;
@@ -127,7 +131,7 @@ export function HostedDigestPanel() {
 		} catch {
 			if (binding.current === b && (timedOut || !signal.aborted) && !document.hidden)
 				setMessage(
-					"Sync unavailable. Saved results remain on this phone; no loop was restarted.",
+					"Sync unavailable. Previously saved results remain in this environment; no loop was restarted.",
 				);
 		}
 		}).finally(() => {
@@ -151,7 +155,7 @@ export function HostedDigestPanel() {
 		setSourceId("");
 		if (!selected || !connection.session) {
 			setMessage(
-				"Connect an agent with verified hosted digest support. Results remain scoped to that account and agent.",
+				"Connect an agent with verified scheduled digest support. Results remain scoped to that account and agent.",
 			);
 			return;
 		}
@@ -166,10 +170,11 @@ export function HostedDigestPanel() {
 					));
 			if (disposed) return;
             const client=selected.client.hosted();let inbox:ResultInbox;
+            const storage=!isAndroid&&browserLocalAgentEnabled&&connection.kind==='resident'?developmentDigestStore():secureConnectionStore;
             const notices:HostedResultBinding={scope:slot.slice('hosted-digests:v1:'.length),origin:session.origin,ownerId:session.ownerId,agentId:session.agentId,current:()=>!disposed&&binding.current?.sessionId===session.sessionId&&connectionController.getSnapshot().session?.sessionId===session.sessionId,revalidate:signal=>client.available(signal),history:()=>inbox.history()};
-            inbox=isAndroid?new NativeResultInbox(session.sessionId):new DigestInbox(secureConnectionStore,slot,(result,signal)=>publishHostedResult(hostedResultNative,notices,result,signal).then(()=>{}));
+            inbox=isAndroid?new NativeResultInbox(session.sessionId):new DigestInbox(storage,slot);
 			const b = {
-                notices,
+                storage, notices,
 				client,
 				inbox,
 				slot,
@@ -247,19 +252,19 @@ export function HostedDigestPanel() {
 			refreshFlight.current?.controller.abort();
 			await refreshFlight.current?.promise;
 			if (binding.current !== b) return;
-			await secureConnectionStore.write(b.slot + ":pending", value);
+			await b.storage.write(b.slot + ":pending", value);
 			if (binding.current !== b) return;
 			setPending(value);
 			await b.client.mutate(value.path, value.body, b.controller.signal);
 			if (binding.current !== b) return;
-			await secureConnectionStore.remove(b.slot + ":pending");
+			await b.storage.remove(b.slot + ":pending");
 			setPending(null);
 			setReview(null);
 			setText("");
 			await refresh(true);
 		} catch (error) {
       if(error instanceof HostedSourceRejected && binding.current===b){
-        try { await secureConnectionStore.remove(b.slot + ":pending"); } catch {setMessage("Source was not saved, but its local recovery record could not be cleared. Retry to clear it safely.");return;}
+        try { await b.storage.remove(b.slot + ":pending"); } catch {setMessage("Source was not saved, but its local recovery record could not be cleared. Retry to clear it safely.");return;}
         if(binding.current!==b)return;
         setPending(null);setReview(null);await refresh(true);setMessage(error.message);return;
       }
@@ -343,13 +348,13 @@ export function HostedDigestPanel() {
 				</header>
 				<h1 id="digest-title">Scheduled digests</h1>
 				<p>
-					Hosted morning and evening summaries keep running when this phone is
-					off. Choose an expiring snapshot or review a read-only source from an account already connected to this agent.
+					Schedules run where your selected agent runs. An on-device agent cannot run while the phone is off; browser development requires this computer and its agent process to stay running. Optional remote schedules require their host to remain available. Choose an expiring snapshot or review a read-only source from an account already connected to this agent.
 				</p>
 				<p role="status">{message}</p>
+                {!isAndroid&&browserLocalAgentEnabled&&connection.kind==='resident'&&<p>Development results and pending requests are saved unencrypted in this computer’s private agent profile. Browser notifications are unavailable.</p>}
                 {isAndroid&&<p>Background checks are {backgroundEnabled?'on':'off'}. Android may delay checks beyond 15 minutes. Results remain available when you reopen the app. <button onClick={()=>void hostedResultNative.setBackgroundPolling({enabled:!backgroundEnabled}).then(value=>setBackgroundEnabled(value.backgroundEnabled===true)).catch(()=>setMessage('Background preference could not be saved.'))}>{backgroundEnabled?'Pause background checks':'Enable background checks'}</button></p>}
                 <p>{noticeEnabled?'Result notifications are enabled.':'Result notifications are off or unavailable. Saved results remain here.'}</p>
-                <button onClick={()=>void hostedResultNative.enable().then(()=>hostedResultNative.status()).then(value=>setNoticeEnabled(value.enabled)).catch(()=>setMessage('Enable result notifications in Android settings; history remains available.'))}>Notification settings</button>
+                {isAndroid&&<button onClick={()=>void hostedResultNative.enable().then(()=>hostedResultNative.status()).then(value=>setNoticeEnabled(value.enabled)).catch(()=>setMessage('Enable result notifications in Android settings; history remains available.'))}>Notification settings</button>}
 				<button disabled={busy} onClick={() => void refresh()}>
 					Refresh
 				</button>
@@ -538,7 +543,7 @@ export function HostedDigestPanel() {
 				)}
 				<h2>Results</h2>
 				<p>
-					Latest 100 results retained on this phone. Delivery acknowledgement
+					Latest 100 results retained in this environment. Delivery acknowledgement
 					does not mark a task complete.
 				</p>
 				{(binding.current?.sessionId===connection.session?.sessionId ? results : [])

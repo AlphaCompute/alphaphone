@@ -31,7 +31,7 @@ export function HostedLiveSourcePicker({
 		[calendarId, setCalendarId] = useState(""),
 		[pending, setPending] = useState(false),
 		[message, setMessage] = useState(
-			"Choose a server-connected Google account. No Google token is copied from this phone.",
+			"Choose a Google account connected to this agent. No Google token is copied from this phone.",
 		),
 		[windowHours, setWindowHours] = useState(24),
 		[expiresHours, setExpiresHours] = useState(24),
@@ -125,7 +125,7 @@ export function HostedLiveSourcePicker({
 					...(kind === "calendar" ? { calendarId: calendar!.calendarId } : {}),
 				},
 			},
-			summary: `Allow scheduled read-only access to ${label} through this agent until ${new Date(expiresAt).toLocaleString()}. Each run may read up to ${maxItems} ${kind === "email" ? "inbox subjects and snippets from the previous" : "events from the next"} ${windowHours} hours. ${kind === "email" ? "Message bodies and attachments are excluded." : "Only this calendar is included."} Reads continue while the phone is off. This does not send mail or change calendar events. Enabling a schedule is a separate review.`,
+			summary: `Allow scheduled read-only access to ${label} through this agent until ${new Date(expiresAt).toLocaleString()}. Each run may read up to ${maxItems} ${kind === "email" ? "inbox subjects and snippets from the previous" : "events from the next"} ${windowHours} hours. ${kind === "email" ? "Message bodies and attachments are excluded." : "Only this calendar is included."} Reads require this agent to be running. An on-device agent cannot read while the phone is off. This does not send mail or change calendar events. Enabling a schedule is a separate review.`,
 		});
 	}
 	return (

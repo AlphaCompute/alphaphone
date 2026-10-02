@@ -87,6 +87,10 @@ test('Scheduled digests traps focus, closes on native Back, and restores the tri
   await trigger.click();
   const dialog=page.getByRole('dialog',{name:'Scheduled digests',exact:true});
   await expect(dialog).toBeVisible();await expect(dialog).toBeFocused();
+  await expect(dialog.getByRole('button',{name:'Notification settings',exact:true})).toHaveCount(0);
+  await expect(dialog).not.toContainText('Result link is waiting for a verified connection.');
+  await expect(dialog).toContainText('An on-device agent cannot run while the phone is off');
+  await expect(dialog).toContainText('browser development requires this computer and its agent process to stay running');
   await expect(page.locator('.os')).toHaveAttribute('inert','');
   await page.keyboard.press('Shift+Tab');
   expect(await dialog.evaluate(el=>el.contains(document.activeElement))).toBe(true);
