@@ -10,7 +10,7 @@ const root=path.resolve(import.meta.dirname,'..');
 test('pinned generated secure-store helper reads bounded actual bytes on the Java 8 API',()=>{
   const fixture=fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(),'alpha-frame-test-')));
   try {
-    for(const relative of ['scripts/stage-local-agent-sources.mjs','patches/eliza/android-secure-store-api29.patch','patches/eliza/android-secure-store-api29-source.json','patches/eliza/android-native-runtime-source.json','patches/eliza/mvp-source-base.json','patches/eliza/android-local-runtime-source.json','scripts/local-agent-source.mjs','upstream.lock.json','app.config.json']) {
+    for(const relative of ['scripts/prepare-local-agent.mjs','scripts/stage-local-agent-sources.mjs','patches/eliza/android-secure-store-api29.patch','patches/eliza/android-secure-store-api29-source.json','patches/eliza/android-native-runtime-source.json','patches/eliza/mvp-source-base.json','patches/eliza/android-local-runtime-source.json','scripts/local-agent-source.mjs','upstream.lock.json','app.config.json']) {
       fs.mkdirSync(path.dirname(path.join(fixture,relative)),{recursive:true});
       fs.copyFileSync(path.join(root,relative),path.join(fixture,relative));
     }
@@ -22,11 +22,17 @@ test('pinned generated secure-store helper reads bounded actual bytes on the Jav
     const extra=JSON.parse(fs.readFileSync(path.join(root,'patches/eliza/android-local-runtime-source.json')));
     const runtimeSource=sourceDirectory(root);
     const runtimeFixture=path.join(fixture,'artifacts/local-agent-source');
-    fs.mkdirSync(path.dirname(runtimeFixture),{recursive:true});
-    execFileSync('git',['clone','--shared','--no-checkout',runtimeSource,runtimeFixture],{stdio:'pipe',timeout:20000});
-    execFileSync('git',['checkout','--detach',runtimeBase.baseCommit],{cwd:runtimeFixture,stdio:'pipe',timeout:20000});
-    for(const patch of [...runtimeBase.patches.map(p=>p.file),...extra.patches])execFileSync('git',['apply',path.join(root,'patches/eliza',patch)],{cwd:runtimeFixture,stdio:'pipe',timeout:20000});
-    const stageEnv={...process.env,ALPHA_LOCAL_AGENT_SOURCE_DIR:runtimeFixture};
+    for(const patch of [...runtimeBase.patches.map(p=>p.file),...extra.patches]) {
+      const destination=path.join(fixture,'patches/eliza',patch);
+      fs.mkdirSync(path.dirname(destination),{recursive:true});
+      fs.copyFileSync(path.join(root,'patches/eliza',patch),destination);
+    }
+    // Exercise the real source preparer even on a clean checkout. This fixture
+    // compiles Java only; dependency installation remains the runtime build's job.
+    // An existing source is an object cache, never trusted as prepared test input.
+    const stageEnv={...process.env,ALPHA_LOCAL_AGENT_SOURCE_DIR:runtimeFixture,
+      ALPHA_RUNTIME_GIT_CACHE:fs.existsSync(runtimeSource)?runtimeSource:runtimeBase.repository};
+    execFileSync(process.execPath,[path.join(fixture,'scripts/prepare-local-agent.mjs'),'--source-only'],{stdio:'pipe',timeout:180000,env:stageEnv});
     execFileSync(process.execPath,[path.join(fixture,'scripts/stage-local-agent-sources.mjs')],{timeout:60000,env:stageEnv});
     const identity=JSON.parse(fs.readFileSync(path.join(fixture,'app.config.json'))).appId;
     const generated=path.join(fixture,'android/app/build/generated/local-agent');

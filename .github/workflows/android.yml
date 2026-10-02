@@ -66,6 +66,8 @@ jobs:
           python3 scripts/local-speech/prepare-assets.py
           python3 scripts/local-speech/assemble-runtime.py
           python3 scripts/local-speech/install-generated.py --repository "$GITHUB_WORKSPACE"
+      - name: Prepare pinned native lifecycle sources
+        run: node scripts/prepare-local-agent.mjs --source-only
       - run: npm run android:build
       - run: npm run aosp:stage -- --apk artifacts/launcher-debug.apk --development
       - name: Stage immutable six-APK smoke bundle
