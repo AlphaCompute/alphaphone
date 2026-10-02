@@ -901,6 +901,7 @@
             </sc-for>
           </div>
         </sc-if>
+        <sc-if value="{{calendar.ev.browserSeries}}" hint-placeholder-val="{{false}}"><div style="display:flex;gap:12px;margin-top:20px"><button onClick="{{calendar.ev.editSeries}}" style="padding:12px;border-radius:16px;background:var(--s2)">Edit series</button><button onClick="{{calendar.ev.deleteSeries}}" style="padding:12px;border-radius:16px;background:var(--s2)">Delete series</button></div></sc-if>
         <sc-if value="{{calendar.ev.noPrep}}" hint-placeholder-val="{{true}}">
           <button onClick="{{calendar.ev.ask}}" aria-label="Ask {{name}} to prep me" style="display: flex; align-items: center; gap: 8px; margin-top: 24px; height: 36px; padding: 0 16px 0 14px; border-radius: 18px; background: var(--s2); font-size: 14px; font-weight: 600">
             <span style="font-family: Denton, Fraunces, Georgia, serif; font-style: italic; font-size: 19px; line-height: 1; color: var(--acct)"><span class="al">α</span></span>Prep me

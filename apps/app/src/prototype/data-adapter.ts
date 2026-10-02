@@ -60,11 +60,14 @@ export function installPrototypeDataAdapter(Component: any, views: Record<string
     const now = Date.now();
     const agenda = (this.vget('calendar').events || [])
       .filter((event: Bag) => event.reminderStatus !== 'completed')
-      .map((event: Bag) => ({ event, begin: Number(event.nativeEvent?.begin ?? event.reminderAt), end: Number(event.nativeEvent?.end ?? event.reminderAt) }))
-      .filter((item: Bag) => Number.isFinite(item.begin) && Number.isFinite(item.end) && item.end >= now)
+      .map((event: Bag) => {
+        const instant=(value:number)=>{const date=new Date(value);return event.nativeEvent?.allDay?new Date(date.getUTCFullYear(),date.getUTCMonth(),date.getUTCDate()).getTime():Number(value);};
+        return {event,begin:instant(event.nativeEvent?.begin??event.reminderAt),end:instant(event.nativeEvent?.end??event.reminderAt)};
+      })
+      .filter((item: Bag) => Number.isFinite(item.begin) && Number.isFinite(item.end) && (item.event.nativeEvent?.allDay?item.end>now:item.end>=now))
       .sort((a: Bag, b: Bag) => a.begin - b.begin)[0];
     const day = agenda ? new Date(agenda.begin) : null;
-    const time = day ? (agenda.begin <= now ? 'Now' : day.toDateString() === new Date(now).toDateString()
+    const time = day ? (agenda.begin <= now ? (agenda.event.nativeEvent?.allDay?'All day':'Now') : day.toDateString() === new Date(now).toDateString()
       ? day.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
       : day.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' })) : 'Calendar';
     return {

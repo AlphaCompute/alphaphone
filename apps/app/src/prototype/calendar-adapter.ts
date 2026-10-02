@@ -154,13 +154,13 @@ export function installCalendarAdapter(Component: any, views: Bag) {
         if(owner?.calendarWriteUncertain){api.toast('Refresh device calendars and check the previous event before saving again.');return;}
         const current=api.get('calendar').form,currentOwner=owner;
         if(!current?.title?.trim()||!currentOwner)return;
-        if(current.repeat!=='none'||current.video||current.who?.length||current.alert!=null){api.toast('Recurring events, invitations, video calls and alerts currently require Android Calendar.');return;}
+        if((Capacitor.isNativePlatform()&&current.repeat!=='none')||current.video||current.who?.length||current.alert!=null){api.toast('Recurring events, invitations, video calls and alerts currently require Android Calendar.');return;}
         const date=wallTime(Number(current.off||0),Number(current.t)),end=wallTime(Number(current.off||0),Number(current.t)+Number(current.d));
         if(!date||!end||end.getTime()<=date.getTime()){api.toast('This local time does not exist because the clocks change. Choose another start or end time. Nothing was saved.');return;}
         currentOwner.calendarSaving=true;
         try{
           const permission=await calendar.requestAccess();if(permission.status!=='granted'){api.toast('Calendar access was not granted. Nothing was saved.');return;}
-          const result=await calendar.save({id:current.alphaCalendarId || '',expected:current.expected,calendarId:current.cal.slice(7),title:current.title.trim(),body:current.notes||'',location:current.where||'',begin:date.getTime(),end:end.getTime()});
+          const result=await calendar.save({id:current.alphaCalendarId || '',expected:current.expected,calendarId:current.cal.slice(7),title:current.title.trim(),body:current.notes||'',location:current.where||'',begin:date.getTime(),end:end.getTime(),...(!Capacitor.isNativePlatform()?{repeat:current.repeat,timeZone:Intl.DateTimeFormat().resolvedOptions().timeZone}:{})});
           if(result.status==='conflict'){api.toast('This event changed or requires Android Calendar. Reload it before editing. Nothing was overwritten.');return;}
           if(result.status!=='saved')throw Error('Unconfirmed calendar write');
           if(owner===currentOwner){
@@ -204,7 +204,7 @@ export function installCalendarAdapter(Component: any, views: Bag) {
         const begin=new Date(event.begin),end=new Date(event.end);
         const representedBegin=wallTime(selected.off,selected.t),representedEnd=wallTime(selected.off,selected.t+selected.d);
         const complex=civilDay(begin)!==civilDay(end)||begin.getTimezoneOffset()!==end.getTimezoneOffset()||representedBegin?.getTime()!==event.begin||representedEnd?.getTime()!==event.end;
-        if(!Capacitor.isNativePlatform()&&(event.allDay||complex)){
+        if(!Capacitor.isNativePlatform()&&(event.seriesId||event.allDay||complex)){
           try{const result=await calendar.edit({id:event.id,revision:event.revision});if(result.status==='saved'){api.set({open:null,openDay:null});await refresh(false,true);api.toast('Event saved.');}}catch{api.toast('This event changed or could not be opened. Refresh and try again.');}return;
         }
         if(!source?.local||source.account!=='Alpha Phone'||event.recurring||event.allDay||complex){
@@ -220,6 +220,11 @@ export function installCalendarAdapter(Component: any, views: Bag) {
           api.set({form:{...selected,id:selected.id,alphaCalendarId:event.id,expected:{...expected,revision:inspected.revision},cal:`native:${event.calendarId}`,video:false,who:[],repeat:'none',alert:null}});
         }catch{api.toast('Calendar review unavailable. Nothing was changed.');}
       };
+      if(!Capacitor.isNativePlatform()&&selected.nativeEvent.seriesId){
+        out.ev.day+=' · Repeating event · edits and deletion apply to this occurrence';out.ev.browserSeries=true;
+        const seriesAction=async(remove:boolean)=>{try{const event=selected.nativeEvent;const result=await (remove?calendar.removeSeries({id:event.id,revision:event.revision}):calendar.editSeries({id:event.id,revision:event.revision}));if(result.status==='saved'||result.status==='deleted'){api.set({open:null,openDay:null});await refresh(false,true);}else if(result.status==='conflict')api.toast('This series changed. Refresh and try again.');}catch{api.toast('The series could not be changed. Refresh and try again.');}};
+        out.ev.editSeries=()=>void seriesAction(false);out.ev.deleteSeries=()=>void seriesAction(true);
+      }
       out.ev.busy=Boolean(owner?.calendarSaving||owner?.calendarWriteUncertain);
       out.ev.del=async()=>{
         if(!owner||owner.calendarSaving||owner.calendarWriteUncertain)return;

@@ -1,13 +1,14 @@
+import {calendarRecord,calendarRange,remapCalendarExclusions,replaceCalendarRecord,deleteCalendarRecord,type CalendarRecord} from './calendar-records';
 import { editCalendarEvent } from './calendar-editor';
 import { BrowserReviews } from './review';
 import { validateCalendarOperation, type CalendarFields, type CalendarResult } from '../runtime/calendar-contract';
 import { WebPlugin } from '@capacitor/core';
 import { editStore, readStore, revision } from './store';
-type EventRow={id:string;calendarId:string;title:string;body:string;location:string;begin:number;end:number;revision:string;allDay?:boolean;timeZone?:string};
+type EventRow=CalendarRecord;
 type State={preferences?:{visible:boolean;color:'acc'|'fg'|'mut'};sourceRevision:string;events:EventRow[];receipts?:Record<string,{binding:string;result:CalendarResult}>};
 const key='alpha.browser.calendar.v1',initial=():State=>({sourceRevision:revision(),events:[]});
 const source={id:'local',name:'Browser calendar',account:'Alpha Phone',local:true,writable:true};
-const matches=(row:EventRow,expected:Partial<EventRow>|undefined)=>!!expected&&(['title','body','location','begin','end'] as const).every(k=>row[k]===expected[k]);
+const matches=(row:EventRow,expected:Partial<EventRow>|undefined)=>!!expected&&(!expected.revision||expected.revision===row.revision)&&(['title','body','location','begin','end'] as const).every(k=>row[k]===expected[k]);
 export class BrowserCalendar extends WebPlugin {
   private reviews=new BrowserReviews();
   private active=new Map<string,{cancelled:boolean}>();
@@ -21,7 +22,7 @@ export class BrowserCalendar extends WebPlugin {
     const ticket={cancelled:false};this.active.set(input.operationId,ticket);
     const fields=(row:EventRow):CalendarFields=>({title:row.title,description:row.body,location:row.location,start:new Date(row.begin).toISOString(),end:new Date(row.end).toISOString(),timeZone:row.timeZone||Intl.DateTimeFormat().resolvedOptions().timeZone});
     try {
-      const data=readStore(key,initial),row=operation.type==='calendar_create'?undefined:data.events.find(e=>e.id===operation.target.eventId);
+      const data=readStore(key,initial),row=operation.type==='calendar_create'?undefined:calendarRecord(data.events,operation.target.eventId);
       if(identity.sourceId!=='local'||identity.sourceRevision!==data.sourceRevision||operation.type!=='calendar_create'&&(!row||row.revision!==operation.target.revision))return {status:'conflict'};
       const reviewed='fields' in operation?operation.fields:fields(row!);
       const approved=await this.reviews.confirm(input.operationId,operation.type==='calendar_read_selected'?'Share calendar event with agent?':'Review calendar change',`${operation.type.replaceAll('_',' ')}
@@ -34,16 +35,16 @@ ${reviewed.description}`);
       return await editStore(key,initial,current=>{
         if(ticket.cancelled||document.hidden)return {status:'cancelled'};
         const receipt=current.receipts?.[input.operationId];if(receipt)return receipt.binding===binding?{status:'applied',result:receipt.result}:{status:'conflict'};
-        const before=operation.type==='calendar_create'?undefined:current.events.find(e=>e.id===operation.target.eventId);
+        const before=operation.type==='calendar_create'?undefined:calendarRecord(current.events,operation.target.eventId);
         if(current.sourceRevision!==identity.sourceRevision||operation.type!=='calendar_create'&&(!before||before.revision!==operation.target.revision))return {status:'conflict'};
         let result:CalendarResult;
         if(operation.type==='calendar_create'||operation.type==='calendar_update'){
-          const f=operation.fields,event:EventRow={id:before?.id||crypto.randomUUID(),calendarId:'local',title:f.title,body:f.description,location:f.location,begin:Date.parse(f.start),end:Date.parse(f.end),timeZone:f.timeZone,revision:revision()};
-          current.events=current.events.filter(e=>e.id!==event.id);current.events.push(event);
+          const f=operation.fields,event:EventRow={...before,id:before?.id||crypto.randomUUID(),calendarId:'local',title:f.title,body:f.description,location:f.location,begin:Date.parse(f.start),end:Date.parse(f.end),timeZone:f.timeZone,revision:revision()};
+          replaceCalendarRecord(current.events,event);
           result={version:1,kind:operation.type,sourceId:'local',eventId:event.id,revision:event.revision};
         }else{
           result={version:1,kind:operation.type,sourceId:'local',eventId:before!.id,revision:before!.revision};
-          if(operation.type==='calendar_delete')current.events=current.events.filter(e=>e!==before);
+          if(operation.type==='calendar_delete')current.events=deleteCalendarRecord(current.events,before!,revision());
           else result.fields=fields(before!);
         }
         (current.receipts??={})[input.operationId]={binding,result};return {status:'applied',result};
@@ -62,31 +63,48 @@ ${reviewed.description}`);
     return result;
   }
   async edit(input:{id:string;revision:string}) {
-    const row=readStore(key,initial).events.find(e=>e.id===input.id);
+    const row=calendarRecord(readStore(key,initial).events,input.id);
     if(!row||row.revision!==input.revision)throw Error('This event changed. Reopen it before editing.');
-    return editCalendarEvent(row,async(next,current)=>{
-      await editStore(key,initial,data=>{if(!current())throw Error('Editing cancelled.');const index=data.events.findIndex(e=>e.id===input.id);if(index<0||data.events[index].revision!==input.revision)throw Error('This event changed. Reopen it before editing.');data.events[index]={...data.events[index],...next,revision:revision()};});
+    return editCalendarEvent({...row,...(row.seriesId?{repeat:'none' as const}:{})},async(next,current)=>{
+      await editStore(key,initial,data=>{if(!current())throw Error('Editing cancelled.');const before=calendarRecord(data.events,input.id);if(!before||before.revision!==input.revision)throw Error('This event changed. Reopen it before editing.');const updated={...before,...next,revision:revision()};if(!before.seriesId&&before.repeat&&before.repeat!=='none')updated.excluded=remapCalendarExclusions(data.events,before,updated);replaceCalendarRecord(data.events,updated);});
     });
+  }
+  async editSeries(input:{id:string;revision:string}){
+    const data=readStore(key,initial),occurrence=calendarRecord(data.events,input.id),series=data.events.find(row=>row.id===occurrence?.seriesId);
+    if(!occurrence||occurrence.revision!==input.revision||!series)throw Error('This series changed. Reopen it before editing.');
+    if(!await this.reviews.confirm('edit-series-'+series.id,'Edit repeating series',`${series.title}\nChanges apply to the repeating schedule. Existing occurrence edits are kept.`))return {status:'cancelled'};
+    return this.edit({id:series.id,revision:series.revision});
+  }
+  async removeSeries(input:{id:string;revision:string}){
+    const data=readStore(key,initial),occurrence=calendarRecord(data.events,input.id),series=data.events.find(row=>row.id===occurrence?.seriesId);
+    if(!occurrence||occurrence.revision!==input.revision||!series)return {status:'conflict'};
+    if(!await this.reviews.confirm('delete-series-'+series.id,'Delete repeating series',`${series.title}\nDelete every occurrence, including edited dates?`))return {status:'cancelled'};
+    return editStore(key,initial,current=>{const row=current.events.find(row=>row.id===series.id),selected=calendarRecord(current.events,input.id);if(!row||row.revision!==series.revision||selected?.revision!==input.revision)return {status:'conflict'};current.events=deleteCalendarRecord(current.events,row,revision());return {status:'deleted'};});
   }
   async requestAccess(){return {status:'granted'};}
   async requestWorkflowReadAccess(){return {status:'granted'};}
   async workflowCalendars(){return {status:'ready',calendars:[source]};}
-  async list(input:{begin:number;end:number}) {return editStore(key,initial,data=>({status:'ready',calendars:[{...source,...(data.preferences??{visible:true,color:'acc'})}],events:data.events.filter(e=>e.begin<input.end&&e.end>input.begin),truncated:false}));}
+  async list(input:{begin:number;end:number}) {return editStore(key,initial,data=>({status:'ready',calendars:[{...source,...(data.preferences??{visible:true,color:'acc'})}],...calendarRange(data.events,input)}));}
   async prepareAgentSource(){return editStore(key,initial,data=>({status:'ready',sourceId:'local',sourceRevision:data.sourceRevision}));}
   async save(input:Partial<EventRow>&{expected?:Partial<EventRow>}) {
     if(!input.title?.trim()||!Number.isFinite(input.begin)||!Number.isFinite(input.end)||input.end!<=input.begin!||input.calendarId!=='local')throw Error('Review the event title, calendar and dates.');
+    if(input.allDay!==undefined&&typeof input.allDay!=='boolean')throw Error('Invalid all-day setting.');
+    if(input.timeZone!==undefined)new Intl.DateTimeFormat('en',{timeZone:input.timeZone});
+    if(input.repeat!==undefined&&!['none','daily','weekdays','weekly'].includes(input.repeat))throw Error('Invalid event repeat rule.');
     return editStore(key,initial,data=>{
-      const old=data.events.find(e=>e.id===input.id);
+      const old=input.id?calendarRecord(data.events,input.id):undefined;
       if(input.id&&(!old||!matches(old,input.expected)))return {status:'conflict'};
-      const row:EventRow={id:old?.id||crypto.randomUUID(),calendarId:'local',title:input.title!.trim(),body:input.body||'',location:input.location||'',begin:input.begin!,end:input.end!,revision:revision(),timeZone:old?.timeZone||Intl.DateTimeFormat().resolvedOptions().timeZone};
-      data.events=data.events.filter(e=>e.id!==row.id);data.events.push(row);return {status:'saved',id:row.id};
+      const allDay=input.allDay??old?.allDay??false;
+      if(allDay&&(input.begin!%86400000!==0||input.end!%86400000!==0))throw Error('All-day events require whole calendar dates.');
+      const row:EventRow={...old,id:old?.id||crypto.randomUUID(),calendarId:'local',title:input.title!.trim(),body:input.body||'',location:input.location||'',begin:input.begin!,end:input.end!,allDay,revision:revision(),timeZone:old?.timeZone||input.timeZone||Intl.DateTimeFormat().resolvedOptions().timeZone,repeat:old?.seriesId?'none':input.repeat||old?.repeat||'none'};
+      replaceCalendarRecord(data.events,row);return {status:'saved',id:row.repeat&&row.repeat!=='none'?calendarRange([row],{begin:row.begin,end:row.begin+8*86400000}).events[0].id:row.id};
     });
   }
-  async inspect(input:{id:string;calendarId:string;expected?:Partial<EventRow>}) {const data=readStore(key,initial),row=data.events.find(e=>e.id===input.id&&e.calendarId===input.calendarId);return row&&matches(row,input.expected)?{status:'ready',revision:row.revision,sourceRevision:data.sourceRevision}:{status:'conflict'};}
-  async remove(input:{id:string;calendarId:string;expected:Partial<EventRow>;revision:string}) {return editStore(key,initial,data=>{const row=data.events.find(e=>e.id===input.id&&e.calendarId===input.calendarId);if(!row||row.revision!==input.revision||!matches(row,input.expected))return {status:'conflict'};data.events=data.events.filter(e=>e!==row);return {status:'deleted'};});}
+  async inspect(input:{id:string;calendarId:string;expected?:Partial<EventRow>}) {const data=readStore(key,initial),row=calendarRecord(data.events,input.id);return row&&row.calendarId===input.calendarId&&matches(row,input.expected)?{status:'ready',revision:row.revision,sourceRevision:data.sourceRevision}:{status:'conflict'};}
+  async remove(input:{id:string;calendarId:string;expected:Partial<EventRow>;revision:string}) {return editStore(key,initial,data=>{const row=calendarRecord(data.events,input.id);if(!row||row.calendarId!==input.calendarId||row.revision!==input.revision||!matches(row,input.expected))return {status:'conflict'};data.events=deleteCalendarRecord(data.events,row,revision());return {status:'deleted'};});}
   async readWorkflowRange(input:{calendarIds:string[];start:string;end:string;maximumEvents:number}) {const {events}=await this.list({begin:Date.parse(input.start),end:Date.parse(input.end)});return {status:'ready',events:events.filter(e=>input.calendarIds.includes(e.calendarId)).slice(0,input.maximumEvents).map(e=>({...e,start:new Date(e.begin).toISOString(),end:new Date(e.end).toISOString(),allDay:!!e.allDay}))};}
   async open(input?:{id?:string}){
-    const row=input?.id?readStore(key,initial).events.find(e=>e.id===input.id):undefined;
+    const row=input?.id?calendarRecord(readStore(key,initial).events,input.id):undefined;
     if(input?.id&&!row)throw Error('This event no longer exists.');
     window.dispatchEvent(new CustomEvent('alpha:browser-open-view',{detail:'calendar'}));
     if(!row)return {status:'opened'};

@@ -2,7 +2,7 @@
 
 Latest full integration checkpoint: **274/274 browser tests and 82/82 repository tests** in the [simulator-save checkpoint](#october-2--simulator-save-recovery-and-full-browser-checkpoint), based on `3f7a665` plus the recorded simulator fix. Earlier entries are historical evidence for their stated snapshots. The MVP goal remains open.
 
-Latest targeted browser checkpoint: [Calendar conversion and cancellation](#october-2--calendar-conversion-and-cancellation). Evidence below is scoped to its recorded revision; newer implementation checkpoints supersede earlier unavailable-feature statements only for the capabilities explicitly verified. The MVP remains incomplete.
+Latest targeted browser checkpoint: [Calendar series and all-day agenda](#october-2--calendar-series-and-all-day-agenda). Evidence below is scoped to its recorded revision; newer implementation checkpoints supersede earlier unavailable-feature statements only for the capabilities explicitly verified. The MVP remains incomplete.
 
 October 1 architecture change: the user has selected an **Android-resident agent instead of Nitro/TEE hosting**. The [on-device agent plan](on-device-agent-plan.md) supersedes cloud-only and enclave-primary requirements below. Agent execution and model inference are separate: the current implementation runs orchestration locally and uses hosted Cerebras inference. Historical evidence is retained. Powered-off-phone execution needs explicit scope reconciliation.
 
@@ -737,3 +737,51 @@ agent reminder/Calendar/restart journeys, deeper simulator record validation and
 cross-tab mutation behavior, complete simulated action flows, multi-page scanning,
 live providers and device acceptance. No Android build ran in this pass. A complete
 browser-suite pass does not establish completion of the entire MVP/design ledger.
+
+
+## October 2 — Calendar series and all-day agenda
+
+Browser Calendar now persists daily, weekday and weekly series and expands the
+requested range into stable occurrence identities. Creation uses the existing
+repeat controls. Individual occurrence edits and deletions preserve sibling dates;
+explicitly reviewed Edit series and Delete series controls operate on the whole
+schedule. Edited occurrences remain intact when the schedule moves, and deleted or
+overridden dates are excluded from regeneration. Whole-series deletion removes
+its overrides. Series revisions reject conflicting changes made during review.
+
+Selected-occurrence agent operations retain the exact target identity; replay
+returns the existing durable receipt. The rendered application journeys and direct
+browser-provider review tests establish those local paths, not a live-model or
+Android-provider result. Range expansion is bounded, includes overlapping events,
+and retains saved time-zone behavior over spring gaps, autumn overlaps, half-hour
+transitions and quarter-hour zones. Workflow reads use the expanded range.
+
+This review also found and fixed two all-day defects: new provider records dropped
+the all-day flag, and Home rendered the previous date in western time zones and
+expired those events at UTC midnight. Provider writes now retain the flag and reject
+invalid all-day types or partial-day boundaries. Home uses local civil-day boundaries
+for all-day scheduling, displays the intended date, and keeps the event visible
+through the local evening. A Los Angeles browser journey verifies single and daily
+all-day events across reload, including the spring transition weekend.
+
+Qualification on an isolated snapshot based on `9f5e121`:
+
+- **43/43** focused browser journeys: recurrence calculation, rendered series
+  creation/occurrence changes/reload, explicit series scope/cancellation/conflicts,
+  all-day provider/Home behavior, prior Calendar editor/navigation/preferences,
+  assistant fixtures and browser parity.
+- **82/82** repository tests, typecheck and production web build.
+- Existing Calendar CRUD and delayed-range native-adapter host fixtures pass.
+- New all-day provider regressions fail against the pre-fix save path, and the Home
+  agenda regression fails against the previous Home adapter. A duplicate-text
+  selector and the test's simulated date-transition refresh were corrected before
+  the final passing browser run.
+- Evidence: `test-results/calendar-series-sync/`, with logs and source SHA-256
+  manifest. The last full-suite result remains the 274-case simulator-save checkpoint.
+
+Newer meeting/invitation work is preserved locally and excluded from this frozen
+snapshot. Remaining Calendar and MVP work includes event-alert delivery, meeting
+and invitation equivalents, fuller recurring-target assistant and cross-tab
+lifecycle journeys, complete simulator behavior/schema coverage, actual local-agent
+restart acceptance, scanning and the provider/device gates. No Android build ran in
+this qualification pass; the overall goal remains active.
