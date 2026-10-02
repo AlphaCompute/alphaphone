@@ -8,6 +8,14 @@ The primary connection now starts a local agent: native Android IPC on the devic
 
 This first implementation uses local orchestration with hosted Cerebras inference. It does not claim offline LLM operation, Android process execution, powered-off schedule execution or completion of the remaining external integration gates.
 
+### Local development restart and integration audit
+
+At source `ce57cbf`, the browser and agent were restarted together with `npm run dev:local`. Both loopback listeners returned, and the actual connection chooser restored **Connected · On this computer · development** without Cloud sign-in. Local and remote `main` matched that source before this report update.
+
+The same live audit uncovered an unresolved integration defect: opening **Workflows** reports a request failure. A read-only request through the development bridge to `/api/workflow/status` returns upstream HTTP **404**, even though the private host log reports that the workflow service initialized and its route plugin registered. The transport is wired, but that does **not** establish working local workflow management. Next work is to trace the composed host's route dispatch, reproduce the failure in the owning runtime test, and deliver a tested explicit patch if required. Do not bypass authentication or substitute a synthetic workflow response.
+
+Additional local-runtime work remains: streamed chat responses are not exposed by the consumer bridge; the home workflow card still uses a fixed disconnected label; workflow presentation still contains remote-only wording. Native process execution and recovery remain unqualified. The historical remote-loop and enclave rows below are superseded for the primary executor by the on-device plan; they must not be counted as requirements to deploy Nitro. Local schedule catch-up and optional powered-off remote execution remain separate acceptance decisions.
+
 ## Renewed gap attack — October 1
 
 ### Notes save-failure follow-up
