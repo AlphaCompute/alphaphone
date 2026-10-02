@@ -1568,6 +1568,7 @@ registerView("calendar", {
     }
 
     return {
+      attendeeChoices: calPeople(api).map(function (person) { return { id: person.id, name: person.name }; }),
       month: monthOpen ? MONS[mBase.getMonth()] + (mBase.getFullYear() !== today.getFullYear() ? " " + mBase.getFullYear() : "") : MONS[selDate.getMonth()] + (selDate.getFullYear() !== today.getFullYear() ? " " + selDate.getFullYear() : ""),
       dayMode: !monthOpen,
       dayName: calDayName(api, sel),

@@ -161,7 +161,7 @@ export function installCalendarAdapter(Component: any, views: Bag) {
         try{
           const permission=await calendar.requestAccess();if(permission.status!=='granted'){api.toast('Calendar access was not granted. Nothing was saved.');return;}
           const result=await calendar.save({id:current.alphaCalendarId || '',expected:current.expected,calendarId:current.cal.slice(7),title:current.title.trim(),body:current.notes||'',location:current.where||'',begin:date.getTime(),end:end.getTime(),...(!Capacitor.isNativePlatform()?{repeat:current.repeat,who:current.who||[],video:!!current.video,alert:current.alert??null,timeZone:Intl.DateTimeFormat().resolvedOptions().timeZone}:{})});
-          if(result.status==='conflict'){api.toast('This event changed or requires Android Calendar. Reload it before editing. Nothing was overwritten.');return;}
+          if(result.status==='conflict'){api.toast('This event changed. Reload it before editing. Nothing was overwritten.');return;}
           if(result.status!=='saved')throw Error('Unconfirmed calendar write');
           if(owner===currentOwner){
             api.set({form:null,day:Number(current.off||0),month:null});desired=rangeFor({...currentOwner.vget('calendar'),day:Number(current.off||0),month:null});await refresh(false,true);
@@ -205,7 +205,7 @@ export function installCalendarAdapter(Component: any, views: Bag) {
         const representedBegin=wallTime(selected.off,selected.t),representedEnd=wallTime(selected.off,selected.t+selected.d);
         const complex=civilDay(begin)!==civilDay(end)||begin.getTimezoneOffset()!==end.getTimezoneOffset()||representedBegin?.getTime()!==event.begin||representedEnd?.getTime()!==event.end;
         if(!Capacitor.isNativePlatform()&&(event.seriesId||event.allDay||complex)){
-          try{const result=await calendar.edit({id:event.id,revision:event.revision});if(result.status==='saved'){api.set({open:null,openDay:null});await refresh(false,true);api.toast('Event saved.');}}catch{api.toast('This event changed or could not be opened. Refresh and try again.');}return;
+          try{const result=await calendar.edit({id:event.id,revision:event.revision,people:out.attendeeChoices||[]});if(result.status==='saved'){api.set({open:null,openDay:null});await refresh(false,true);api.toast('Event saved.');}}catch{api.toast('This event changed or could not be opened. Refresh and try again.');}return;
         }
         if(!source?.local||source.account!=='Alpha Phone'||event.recurring||event.allDay||complex){
           api.toast('Edit this event in Android Calendar to preserve its dates and time zone.');external();return;
@@ -222,7 +222,7 @@ export function installCalendarAdapter(Component: any, views: Bag) {
       };
       if(!Capacitor.isNativePlatform()&&selected.nativeEvent.seriesId){
         out.ev.day+=' · Repeating event · edits and deletion apply to this occurrence';out.ev.browserSeries=true;
-        const seriesAction=async(remove:boolean)=>{try{const event=selected.nativeEvent;const result=await (remove?calendar.removeSeries({id:event.id,revision:event.revision}):calendar.editSeries({id:event.id,revision:event.revision}));if(result.status==='saved'||result.status==='deleted'){api.set({open:null,openDay:null});await refresh(false,true);}else if(result.status==='conflict')api.toast('This series changed. Refresh and try again.');}catch{api.toast('The series could not be changed. Refresh and try again.');}};
+        const seriesAction=async(remove:boolean)=>{try{const event=selected.nativeEvent;const result=await (remove?calendar.removeSeries({id:event.id,revision:event.revision}):calendar.editSeries({id:event.id,revision:event.revision,people:out.attendeeChoices||[]}));if(result.status==='saved'||result.status==='deleted'){api.set({open:null,openDay:null});await refresh(false,true);}else if(result.status==='conflict')api.toast('This series changed. Refresh and try again.');}catch{api.toast('The series could not be changed. Refresh and try again.');}};
         out.ev.editSeries=()=>void seriesAction(false);out.ev.deleteSeries=()=>void seriesAction(true);
       }
       if(!Capacitor.isNativePlatform())out.ev.people=(out.ev.people||[]).map((person:Bag,index:number)=>{const event=selected.nativeEvent,id=event.who?.[index],labels:Record<string,string>={added:'Added',invited:'Invited',yes:'Going',maybe:'Maybe',no:'Declined'};return {...person,st:labels[event.responses?.[id]||'added'],canRespond:true,response:async()=>{try{const result=await calendar.editResponse({id:event.id,revision:event.revision,person:id,name:person.name});if(result.status==='saved')await refresh(false,true);}catch{api.toast('This guest list changed. Reopen the event.');}}};});

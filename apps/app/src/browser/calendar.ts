@@ -65,18 +65,19 @@ ${reviewed.description}`);
     window.dispatchEvent(new Event('alpha:calendar-preferences'));
     return result;
   }
-  async edit(input:{id:string;revision:string}) {
+  async edit(input:{id:string;revision:string;people?:{id:string;name:string}[]}) {
     const row=calendarRecord(readStore(key,initial).events,input.id);
     if(!row||row.revision!==input.revision)throw Error('This event changed. Reopen it before editing.');
+    if(input.people!==undefined&&(!Array.isArray(input.people)||input.people.length>1000||input.people.some(p=>!p||typeof p.id!=='string'||!p.id||p.id.length>128||typeof p.name!=='string'||p.name.length>300)))throw Error('Review the attendee list.');
     return editCalendarEvent({...row,...(row.seriesId?{repeat:'none' as const}:{})},async(next,current)=>{
-      await editStore(key,initial,data=>{if(!current())throw Error('Editing cancelled.');const before=calendarRecord(data.events,input.id);if(!before||before.revision!==input.revision)throw Error('This event changed. Reopen it before editing.');const updated={...before,...next,revision:revision()};if(!before.seriesId&&before.repeat&&before.repeat!=='none')updated.excluded=remapCalendarExclusions(data.events,before,updated);replaceCalendarRecord(data.events,updated);});
-    });
+      await editStore(key,initial,data=>{if(!current())throw Error('Editing cancelled.');const before=calendarRecord(data.events,input.id);if(!before||before.revision!==input.revision)throw Error('This event changed. Reopen it before editing.');if((next.who?.length||0)>100)throw Error('Choose at most 100 attendees.');const updated={...before,...next,revision:revision()};if(updated.responses)updated.responses=Object.fromEntries(Object.entries(updated.responses).filter(([person])=>updated.who?.includes(person)));if(!before.seriesId&&before.repeat&&before.repeat!=='none')updated.excluded=remapCalendarExclusions(data.events,before,updated);replaceCalendarRecord(data.events,updated);});
+    },input.people);
   }
-  async editSeries(input:{id:string;revision:string}){
+  async editSeries(input:{id:string;revision:string;people?:{id:string;name:string}[]}){
     const data=readStore(key,initial),occurrence=calendarRecord(data.events,input.id),series=data.events.find(row=>row.id===occurrence?.seriesId);
     if(!occurrence||occurrence.revision!==input.revision||!series)throw Error('This series changed. Reopen it before editing.');
     if(!await this.reviews.confirm('edit-series-'+series.id,'Edit repeating series',`${series.title}\nChanges apply to the repeating schedule. Existing occurrence edits are kept.`))return {status:'cancelled'};
-    return this.edit({id:series.id,revision:series.revision});
+    return this.edit({id:series.id,revision:series.revision,people:input.people});
   }
   async removeSeries(input:{id:string;revision:string}){
     const data=readStore(key,initial),occurrence=calendarRecord(data.events,input.id),series=data.events.find(row=>row.id===occurrence?.seriesId);
