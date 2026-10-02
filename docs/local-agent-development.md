@@ -103,3 +103,12 @@ For the separate development-backend launcher, `ALPHA_DEV_MODEL` takes precedenc
 The composed source includes `egress-swap-control-objects.patch`. It preserves clean native cancellation signals while keeping forged/decorated objects inside the secret/PII data walkers, and supports host environment fallback for `ELIZA_SECRET_SWAP_ENABLED` and `ELIZA_PII_SWAP_ENABLED`. Explicit runtime settings take precedence. Fresh preparation is required after this manifest change; do not modify or reuse a differently stamped prepared checkout.
 
 Source-level Node/Bun checks and full-series replay qualify this prerequisite. They do not establish that the running browser agent has redaction enabled or that every PII category/provider/action path is covered. Keep the current Privacy disclosure until enabled runtime and end-to-end restoration evidence support changing it. No Android build is needed to reproduce source preparation.
+
+
+## Guarded host redaction qualification (October 2)
+
+`ALPHA_EGRESS_REDACTION=all` now opts the browser host launcher into both swap layers only after full composed-source verification. Invalid selections and unqualified source fail before profile creation or child launch. The default remains off; process metadata records the requested mode, not a coverage claim.
+
+Fresh pinned dependency installation and source re-verification succeeded. The isolated real host authenticated through the production Vite bridge and completed chat, but the synthetic email drafting probe returned a `__ELIZA_SECRET_…__` placeholder. A repeat request was also refused as a credential. This is a failed restoration acceptance check: the assistant reply boundary restores PII surrogates but does not restore secret-swap placeholders. Do not enable both layers in the user-facing session until safe reply restoration is implemented and tested, including protection against restoring actual provider credentials. Device enablement remains unqualified and was not included in this checkpoint.
+
+Validation: five launcher tests pass, and product verification passes (93 tests, TypeScript and browser bundle). Evidence is in `test-results/redaction-boundary-review/launcher-verify.log`, `launcher-tests.log`, `install.log`, and `live-bridge.json`. No Android build or provider-wire capture was performed. The earlier pairing probe was unsuitable for this host's machine-session path; the production bridge was used for the decisive result.
