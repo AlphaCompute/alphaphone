@@ -3,7 +3,7 @@
 Latest full integration checkpoint: **412/412 browser tests and 83/83 repository tests**, plus TypeScript and production web build, in the [October 2 full browser integration checkpoint](#october-2--full-browser-integration-checkpoint). The frozen source is `2846ee2` plus the hosted-result fixture cleanup recorded below. Earlier failures and checkpoints remain historical evidence; newer concurrent changes require separate validation. The MVP goal remains open.
 
 
-Latest targeted checkpoint: [Phone and Messages persistence](#october-2--phone-and-messages-persistence) passed 16 browser checks and repository verification. This postdates the full 412-case snapshot.
+Latest targeted checkpoint: [Development Wallet persistence](#october-2--development-wallet-persistence) passed 15 browser checks and repository verification. This postdates the full 412-case snapshot.
 
 October 1 architecture change: the user has selected an **Android-resident agent instead of Nitro/TEE hosting**. The [on-device agent plan](on-device-agent-plan.md) supersedes cloud-only and enclave-primary requirements below. Agent execution and model inference are separate: the current implementation runs orchestration locally and uses hosted Cerebras inference. Historical evidence is retained. Powered-off-phone execution needs explicit scope reconciliation.
 
@@ -1011,3 +1011,14 @@ Development Phone now clears active-call ownership and stops its background time
 Both failure-path regressions fail against the previous implementation: End call remains visible after retry, and the failed message text is empty. Restoring the tested source reproduces the passing frozen hash. The combined Phone/Messages, Inbox triage, Contacts save and saved-app recovery suite passed **16/16 browser tests**. **83/83 repository tests**, TypeScript and production build passed. Successful Phone/Messages journeys assert no external HTTP traffic. Evidence and before-fix failures are retained in `test-results/phone-messages-sync/`.
 
 This source is based on `78dba2e` plus two ordering changes and new tests. The full 412-case checkpoint predates these changes. The parity document retains another campaign's separately scoped packaging evidence; this pass skipped Android builds. Concurrent Wallet, model-selection, connection, reminder-proposal and native-test work is preserved outside this snapshot. Incoming/voicemail flows, richer message/contact actions, Wallet/workflow simulation, simulator concurrency/deep validation, live-agent/provider acceptance and physical/user qualification remain open. The full goal stays active.
+
+
+## October 2 — Development Wallet persistence
+
+Development Wallet now saves transit credit with its matching transaction, and simulated payment completion with the transaction and payment count. Each operation uses one persisted state update. Card add/lock/default/remove and reload journeys use predefined development tokens and collect no card credentials. Shipping payments remain deferred.
+
+Review found an additional failure: a rejected simulated payment save remained on the processing screen indefinitely. A new rendered regression fails before repair. On failure, the simulator now cancels pending completion timers and returns to confirmation, preserving stored bytes and requiring explicit retry. The regression verifies unchanged storage after failure and exactly one transaction/count after retry.
+
+The frozen snapshot based on `8983362` passed **15/15 browser checks** across Wallet, Phone/Messages, Contacts save and saved-app recovery. **83/83 repository tests**, TypeScript and production web build passed. Logs, source hashes and the failing regression are retained in `test-results/wallet-sync/`. Rebase onto `6b29d12` adds only completion-plan documentation. No real payment service, carrier operation or Android build ran in this pass. Historical packaging evidence in the parity document remains scoped to its author's snapshot.
+
+The full 412-case checkpoint predates these simulator changes. Cross-tab simulator concurrency and deep validation, remaining message/contact/workflow actions, actual local-agent/provider journeys, Scan correction/searchable PDF and physical/user acceptance remain open. Concurrent Contacts, connection/model, proposal, research and native work is preserved separately. The full goal remains active.

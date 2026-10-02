@@ -4074,9 +4074,9 @@ function walWeek(cards, only) {
   var top = Object.keys(by).sort(function (a, b) { return by[b] - by[a]; });
   return { total: total, n: n, top: top, by: by };
 }
-function walAddTx(api, cardId, tx) {
+function walAddTx(api, cardId, tx, patch) {
   var cards = api.get("wallet").cards.map(function (c) { return c.id === cardId ? Object.assign({}, c, { tx: [tx].concat(c.tx) }) : c; });
-  api.set({ cards: cards });
+  api.set(Object.assign({}, patch || {}, { cards: cards }));
 }
 function walFmtNum(v) { var d = v.replace(/\D/g, "").slice(0, 19); return d.replace(/(\d{4})(?=\d)/g, "$1 "); }
 function walLuhn(d) { var sum = 0; for (var i = 0; i < d.length; i++) { var x = +d.charAt(d.length - 1 - i); if (i % 2) { x *= 2; if (x > 9) x -= 9; } sum += x; } return d.length > 0 && sum % 10 === 0; }
@@ -4209,8 +4209,9 @@ registerView("wallet", {
       trips: (st.trips || []).map(function (r) { return { m: r.m, sub: walDay(r.d, now), amt: "−" + walMoney(r.a) }; }),
       reload: function () {
         var s2 = api.get("wallet"); var dc = walDefault(s2.cards);
-        set({ transit: Math.round((s2.transit + 20) * 100) / 100 });
-        if (dc) walAddTx(api, dc.id, { id: "t" + Date.now(), m: "Transit reload", a: 20, d: 0, icon: "walBus" });
+        var credit = { transit: Math.round((s2.transit + 20) * 100) / 100 };
+        if (dc) walAddTx(api, dc.id, { id: "t" + Date.now(), m: "Transit reload", a: 20, d: 0, icon: "walBus" }, credit);
+        else set(credit);
         api.toast("Added $20.00" + (dc ? " from " + dc.name : ""));
       },
       close: function () { set({ open: null }); }
@@ -4244,8 +4245,9 @@ registerView("wallet", {
           set({ stage: "hold", card: cid });
           api.later(function () {
             var s2 = api.get("wallet"); if (!s2.pay && !secure) return;
-            walAddTx(api, cid, { id: "p" + Date.now(), m: mer[0], a: mer[1], d: 0, icon: mer[2] });
-            api.set({ stage: "done", paid: { m: mer[0], a: mer[1] }, pays: (s2.pays || 0) + 1 });
+            try {
+            walAddTx(api, cid, { id: "p" + Date.now(), m: mer[0], a: mer[1], d: 0, icon: mer[2] }, { stage: "done", paid: { m: mer[0], a: mer[1] }, pays: (s2.pays || 0) + 1 });
+            } catch (error) { api.stop(); set({ stage: "auth", paid: null }); api.toast("Simulated payment was not saved. Review and try again."); }
           }, 1900);
           api.later(function () { var s3 = api.get("wallet"); if (s3.stage === "done") closePay(); }, 5200);
         },
