@@ -2,7 +2,7 @@
 
 Latest full integration checkpoint: **245/245 browser tests and 82/82 repository tests** at `a9845d0` on October 2. Subsequent targeted corrections are recorded below. See [the integrated report and remaining work](#october-2--integrated-browser-runtime-device-and-media-review) below. Earlier entries are historical evidence for their stated snapshots. The MVP goal remains open.
 
-Latest browser checkpoint: [Notes status layout](#notes-storage-status-layout--2026-10-02). Evidence below is scoped to its recorded revision; newer implementation checkpoints supersede earlier unavailable-feature statements only for the capabilities explicitly verified. The MVP remains incomplete.
+Latest targeted browser checkpoint: [Calendar conversion and cancellation](#october-2--calendar-conversion-and-cancellation). Evidence below is scoped to its recorded revision; newer implementation checkpoints supersede earlier unavailable-feature statements only for the capabilities explicitly verified. The MVP remains incomplete.
 
 October 1 architecture change: the user has selected an **Android-resident agent instead of Nitro/TEE hosting**. The [on-device agent plan](on-device-agent-plan.md) supersedes cloud-only and enclave-primary requirements below. Agent execution and model inference are separate: the current implementation runs orchestration locally and uses hosted Cerebras inference. Historical evidence is retained. Powered-off-phone execution needs explicit scope reconciliation.
 
@@ -676,3 +676,26 @@ ran in this synchronization pass. Live-agent acceptance, Calendar recurrence,
 invitations/video/alerts, reminder assistant journeys, simulator mutation/schema
 coverage and the broader provider/device acceptance ledger remain open. The latest
 full browser-suite checkpoint remains `a9845d0`; this is a targeted qualification.
+
+
+## October 2 — Calendar conversion and cancellation
+
+Review found that changing a timed event to all-day subtracted 24 hours from its
+end and used UTC dates instead of the displayed civil dates. A short evening event
+could acquire an end before its start. Toggling also restored the original values,
+discarding unsaved date edits. Converting all-day back to timed could shift the
+selected dates into the preceding local day.
+
+The editor now converts the current displayed dates, treats midnight ends as
+exclusive, preserves the unsaved timed draft across an unchanged toggle round trip,
+and creates local midnight boundaries when the all-day dates change. Its selected
+time zone persists through conversion. A spring daylight-saving day correctly
+becomes a 23-hour timed interval. Cancellation while waiting for the Calendar Web
+Lock is verified to leave the stored event unchanged.
+
+On isolated base `3b85ba6`, **15/15** browser checks and **82/82** repository tests,
+typecheck and production build pass. Three conversion regressions fail against the
+previous editor. Evidence and source hashes: `test-results/calendar-conversion/`.
+Concurrent recurrence work was preserved in the shared checkout but excluded from
+this qualification. No Android build ran. The remaining MVP and acceptance ledger
+stays open.
