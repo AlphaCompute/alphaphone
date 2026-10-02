@@ -1,6 +1,6 @@
 import { developmentDigestStore } from './local-agent-storage';
 import { browserLocalAgentEnabled } from './local-agent';
-import { NativeResultInbox } from './hosted-background';
+import { NativeResultInbox, configureHostedBackground } from './hosted-background';
 import { createDigestInbox, type ResultInbox } from './digest-inbox';
 import { isAndroid } from '../native';
 import { delegationNative } from "./cloud-delegation-ui";
@@ -31,6 +31,7 @@ export function HostedDigestPanel() {
 		connectionController.subscribe,
 		connectionController.getSnapshot,
 	);
+	const [nativeReady,setNativeReady]=useState(false);
 	const [backgroundEnabled,setBackgroundEnabled]=useState(false);
 	const [noticeEnabled,setNoticeEnabled]=useState(false), [focusedRun,setFocusedRun]=useState<string|null>(null), [tap,setTap]=useState<{token:string;runId:string;sessionId:string}|null>(null);
 	const [open, setOpen] = useState(false),
@@ -145,7 +146,7 @@ export function HostedDigestPanel() {
 		const selected = connectionController.getWorkflowClient();
 		binding.current?.controller.abort();
 		binding.current = null;
-		setAvailable(false);
+		setAvailable(false);setNativeReady(false);setBackgroundEnabled(false);setNoticeEnabled(false);
 		setResults([]);setFocusedRun(null);setTap(null);
 		setSources([]);
 		setLoops([]);
@@ -172,7 +173,16 @@ export function HostedDigestPanel() {
             const client=selected.client.hosted();let inbox:ResultInbox;
             const storage=!isAndroid&&browserLocalAgentEnabled&&connection.kind==='resident'?developmentDigestStore():secureConnectionStore;
             const notices:HostedResultBinding={scope:slot.slice('hosted-digests:v1:'.length),origin:session.origin,ownerId:session.ownerId,agentId:session.agentId,current:()=>!disposed&&binding.current?.sessionId===session.sessionId&&connectionController.getSnapshot().session?.sessionId===session.sessionId,revalidate:signal=>client.available(signal),history:()=>inbox.history()};
-            inbox=createDigestInbox({android:isAndroid,resident:connection.kind==='resident',storage,scope:slot,native:()=>new NativeResultInbox(session.sessionId)});
+            let ready=false;
+            if(isAndroid){
+                const cloud=connection.kind==='cloud'?await secureConnectionStore.read<Record<string,unknown>>(`cloud-runtime:${session.sessionId}`):null;
+                controller.signal.throwIfAborted();
+                if(connectionController.getSnapshot().session?.sessionId!==session.sessionId)return;
+                ready=await configureHostedBackground({...cloud,mode:connection.kind,origin:session.origin,ownerId:session.ownerId,agentId:session.agentId,sessionId:session.sessionId},controller.signal);
+            }
+            controller.signal.throwIfAborted();if(disposed)return;
+            setNativeReady(ready);
+            inbox=createDigestInbox({android:isAndroid,nativeReady:ready,storage,scope:slot,native:()=>new NativeResultInbox(session.sessionId)});
 			const b = {
                 storage, notices,
 				client,
@@ -188,7 +198,7 @@ export function HostedDigestPanel() {
 			} catch {}
 			await refreshFlight.current?.promise;
 			if (!disposed && binding.current === b) await refresh();
-		})();
+		})().catch(()=>{if(!disposed)setMessage('Result storage could not be connected. Reconnect the agent to try again.');});
 		const resume = () => {
 			if (document.hidden) { refreshFlight.current?.controller.abort(); return; }
 			void (async () => { await refreshFlight.current?.promise; if (!disposed && !document.hidden) await refresh(); })();
@@ -352,9 +362,9 @@ export function HostedDigestPanel() {
 				</p>
 				<p role="status">{message}</p>
                 {!isAndroid&&browserLocalAgentEnabled&&connection.kind==='resident'&&<p>Development results and pending requests are saved unencrypted in this computer’s private agent profile. Browser notifications are unavailable.</p>}
-                {isAndroid&&connection.kind!=='resident'&&<p>Background checks are {backgroundEnabled?'on':'off'}. Android may delay checks beyond 15 minutes. Results remain available when you reopen the app. <button onClick={()=>void hostedResultNative.setBackgroundPolling({enabled:!backgroundEnabled}).then(value=>setBackgroundEnabled(value.backgroundEnabled===true)).catch(()=>setMessage('Background preference could not be saved.'))}>{backgroundEnabled?'Pause background checks':'Enable background checks'}</button></p>}
-                {isAndroid&&connection.kind==='resident'?<p>Local results sync while this app is open and are saved in encrypted device storage. Background result checks and notifications are not available for this connection.</p>:<p>{noticeEnabled?'Result notifications are enabled.':'Result notifications are off or unavailable. Saved results remain here.'}</p>}
-                {isAndroid&&connection.kind!=='resident'&&<button onClick={()=>void hostedResultNative.enable().then(()=>hostedResultNative.status()).then(value=>setNoticeEnabled(value.enabled)).catch(()=>setMessage('Enable result notifications in Android settings; history remains available.'))}>Notification settings</button>}
+                {isAndroid&&nativeReady&&<p>Background checks are {backgroundEnabled?'on':'off'}. Android may delay checks beyond 15 minutes. Results remain available when you reopen the app. <button onClick={()=>void hostedResultNative.setBackgroundPolling({enabled:!backgroundEnabled}).then(value=>setBackgroundEnabled(value.backgroundEnabled===true)).catch(()=>setMessage('Background preference could not be saved.'))}>{backgroundEnabled?'Pause background checks':'Enable background checks'}</button></p>}
+                {isAndroid&&!nativeReady?<p>Results sync while this app is open and are saved in encrypted device storage. Background delivery could not be verified for this connection. Reconnect to try again.</p>:<p>{noticeEnabled?'Result notifications are enabled.':'Result notifications are off or unavailable. Saved results remain here.'}</p>}
+                {isAndroid&&nativeReady&&<button onClick={()=>void hostedResultNative.enable().then(()=>hostedResultNative.status()).then(value=>setNoticeEnabled(value.enabled)).catch(()=>setMessage('Enable result notifications in Android settings; history remains available.'))}>Notification settings</button>}
 				<button disabled={busy} onClick={() => void refresh()}>
 					Refresh
 				</button>

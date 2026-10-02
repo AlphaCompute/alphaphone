@@ -10,9 +10,16 @@ interface NativeInbox {
  inboxHistory(input:{sessionId:string}):Promise<{entries:unknown[]}>;
 }
 const native=registerPlugin<NativeInbox>('AlphaHostedResults');
-export async function pauseHostedBackground(sessionId?:string){if(isAndroid)await native.disableBackground(sessionId?{sessionId}:undefined);}
+const configuring=new Map<AbortController,string>();
+export async function pauseHostedBackground(sessionId?:string){
+ for(const [controller,session] of configuring)if(!sessionId||sessionId===session)controller.abort();
+ if(isAndroid)await native.disableBackground(sessionId?{sessionId}:undefined);
+}
 export async function configureHostedBackground(input:Record<string,unknown>,signal:AbortSignal):Promise<boolean>{
  if(!isAndroid)return false;signal.throwIfAborted();
+ const external=signal,controller=new AbortController();
+ const forwardAbort=()=>controller.abort();external.addEventListener('abort',forwardAbort,{once:true});
+ signal=controller.signal;configuring.set(controller,String(input.sessionId));
  const attemptId=crypto.randomUUID();
  const cancel=()=>native.cancelBackground({attemptId});
  const abort=()=>{void cancel().catch(()=>{});};
@@ -23,8 +30,8 @@ export async function configureHostedBackground(input:Record<string,unknown>,sig
   if(signal.aborted){await cancel();signal.throwIfAborted();}
   signal.addEventListener('abort',abort,{once:true});
   await native.configureBackground({...input,attemptId});signal.throwIfAborted();return true;
- }catch(error){signal.throwIfAborted();return false;}
- finally{signal.removeEventListener('abort',abort);}
+ }catch(error){await cancel();signal.throwIfAborted();return false;}
+ finally{signal.removeEventListener('abort',abort);external.removeEventListener('abort',forwardAbort);configuring.delete(controller);}
 }
 export interface ResultInbox {history():Promise<DigestResult[]>;sync(client:HostedDigestProtocol,signal:AbortSignal):Promise<DigestResult[]>;}
 export class NativeResultInbox implements ResultInbox {

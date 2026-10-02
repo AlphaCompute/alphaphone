@@ -29,8 +29,8 @@ try {
  const result={cursor:1,runId:'run-one',workflowId:'workflow',workflowVersionId:'version',templateVersion:'template',scheduledAt:now,source:{kind:'tasks',selection:{label:'Synthetic tasks',ids:['one','two']}},status:'completed',startedAt:now,completedAt:now,output:'Synthetic digest',error:null};
  let nativeCalls=0;
  const nativeInbox={history:async()=>[],sync:async()=>{nativeCalls++;return [];}};
- const resident=()=>createDigestInbox({android:true,resident:true,storage:store(),scope,native:()=>{throw Error('Resident must not use remote polling');}});
- const remote=createDigestInbox({android:true,resident:false,storage:store(),scope,native:()=>nativeInbox});
+ const resident=()=>createDigestInbox({android:true,nativeReady:false,storage:store(),scope,native:()=>{throw Error('Unverified session must not use native polling');}});
+ const remote=createDigestInbox({android:true,nativeReady:true,storage:store(),scope,native:()=>nativeInbox});
  await remote.sync({},new AbortController().signal);assert.equal(nativeCalls,1);
  let acked=false,ackAttempts=0;
  const replay={...result,source:{selection:{ids:['one','two'],label:'Synthetic tasks'},kind:'tasks'}};

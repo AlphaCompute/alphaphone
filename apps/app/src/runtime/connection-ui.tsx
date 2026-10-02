@@ -1,3 +1,4 @@
+import { pauseHostedBackground } from './hosted-background';
 import {developmentDeviceStore,developmentActionJournal} from './local-agent-storage';
 import { stopLocalAgent, configureLocalProvider, LocalAgentProtocol, localAgentPackaged, browserLocalAgentEnabled } from './local-agent';
 import type {DeviceRecovery} from "./device-actions";
@@ -62,6 +63,8 @@ function makeCloud(environment: CloudEnvironment) { return new CloudProtocol(env
 function update(patch: Partial<ConnectionSnapshot>) { state = { ...state, ...patch }; listeners.forEach(listener => listener()); }
 function save(selection: Selection) { localStorage.setItem(SELECTION, JSON.stringify(selection)); }
 function retire(name = 'Offline') {
+  const retirement=state.session?pauseHostedBackground(state.session.sessionId):Promise.resolve();
+  void retirement.catch(()=>update({error:'Background delivery could not be retired. Reconnect to reset it.'}));
   if (active?.kind === 'cloud') { active.cloud.setPhoneTarget(null); if (state.session) void secureConnectionStore.remove(`cloud-runtime:${state.session.sessionId}`).catch(()=>{}); }
   actionReceipts.clear();
   epoch++;
@@ -69,6 +72,7 @@ function retire(name = 'Offline') {
   sending = null;
   active = null;
   update({ phoneActionsAvailable:false, phoneCapabilityReason:'', session: null, kind: 'offline', name, conversations: [], history: null, actionHistory: [] });
+  return retirement;
 }
 function persistOffline(): string {
   try { save({ kind: 'offline' }); return ''; }
@@ -461,8 +465,9 @@ export const connectionController = {
   },
   async disconnect() {
     await work('Disconnecting…', async () => {
-      const previous = active; retire();
+      const previous = active; const retirement=retire();
       save({ kind: 'none' });
+      await retirement;
       if (previous && previous.kind !== 'cloud') await previous.remote.disconnect();
       update({ message: 'Agent disconnected. Cloud services keep their separate sign-in.', error: '', agents: [] });
     });
