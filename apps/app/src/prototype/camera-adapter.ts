@@ -100,7 +100,7 @@ export function installPrototypeCameraAdapter(_Component: unknown, views: Record
     if(value.status==='saved'&&value.id){owner.toast('Saved a copy. Original unchanged.');void refresh();await openSaved('native-camera-'+value.id,owner);}
     else{owner.toast(value.status==='failed'?'Copy was not saved. Original unchanged.':'No copy was created. Original unchanged.');owner.set({nativeEditRevision:Date.now()});}return true;
   }
-  let recoveringEdit=false;
+  let recoveringEdit=false,automaticEditRecovery='';
   async function recoverEdit(owner:Bag,original?:EditCompletion){
     const token=localStorage.getItem(editPendingKey);if(!token||recoveringEdit||(original&&original.token!==token))return;
     const ticket=original||{token,epoch:editEpoch,source:owner.get('photos').open};recoveringEdit=true;
@@ -489,6 +489,11 @@ export function installPrototypeCameraAdapter(_Component: unknown, views: Record
   module.onLeave = () => { void stop(); };
   if (photosRender) views.photos.render = (st: Bag, currentApi: Bag) => {
     photosApi = currentApi;
+    // Once per Photos entry, reconcile the persisted operation without reissuing a save.
+    if(currentApi.isActive()&&!edit){
+      let pending:string|null=null;try{pending=localStorage.getItem(editPendingKey);}catch{}
+      if(pending&&automaticEditRecovery!==pending){automaticEditRecovery=pending;queueMicrotask(()=>{if(!disposed&&currentApi.isActive())void recoverEdit(currentApi);});}
+    }
     if (!loaded && !loading) queueMicrotask(() => { void refresh(); });
     const data = photosRender(st, currentApi);
     if (!trashLoaded && !trashLoading && !st.nativeTrashError && libraryAvailable()) queueMicrotask(() => { void loadTrash(currentApi); });
@@ -550,7 +555,7 @@ export function installPrototypeCameraAdapter(_Component: unknown, views: Record
     return data;
   };
   if (views.photos) views.photos.back = (st: Bag, currentApi: Bag) => { if(edit){cancelEdit();currentApi.set({nativeEditRevision:Date.now()});return true;}if(selection){selection=undefined;endHold();currentApi.set({nativeMultiSelection:Date.now()});return true;}if(st.sheet==='owned-album'){manager=undefined;currentApi.set({sheet:null});return true;}if(st.sheet==='empty'){cancelPermanent(currentApi);return true;}if(st.sheet)return photosBack?.(st,currentApi); if (preview?.id === st.open || captures.some(c => c.id === st.open) || albumRows.some(c => c.id === st.open)) { currentApi.set({ open: null, nativePhotoSelection: null }); preview = undefined; closeVideo(); return true; } return photosBack?.(st, currentApi); };
-  if(views.photos)views.photos.onLeave=(owner:Bag)=>{selection=undefined;swallowedTap='';endHold();manager=undefined;const old=prepared;prepared=undefined;if(old)void library.cancelDeleteTrash({confirmation:old.confirmation}).catch(()=>{});owner.set({sheet:null});photosLeave?.(owner);};
+  if(views.photos)views.photos.onLeave=(owner:Bag)=>{automaticEditRecovery='';selection=undefined;swallowedTap='';endHold();manager=undefined;const old=prepared;prepared=undefined;if(old)void library.cancelDeleteTrash({confirmation:old.confirmation}).catch(()=>{});owner.set({sheet:null});photosLeave?.(owner);};
   async function playVideo(selected: SavedPhoto, owner: Bag) {
     if (selected.kind !== 'video') return;
     try {

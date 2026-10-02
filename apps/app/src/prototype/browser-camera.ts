@@ -19,21 +19,101 @@ async function transaction<T>(mode:IDBTransactionMode,action:(store:IDBObjectSto
 }
 async function rows(options:{before?:string;trashed?:boolean;album?:string}={},metadata=false){
  return transaction<Row[]>('readonly',(store,set)=>{const result:Row[]=[];const request=store.openCursor(undefined,'prev');
-  request.onsuccess=()=>{const cursor=request.result;if(!cursor){set(result);return;}const row=cursor.value as Row;
+  request.onsuccess=()=>{const cursor=request.result;if(!cursor){set(result);return;}const row=cursor.value as Row;if(row.kind!=='image'){cursor.continue();return;}
    if((!options.before||row.id<options.before)&&(metadata||(!!row.trashed===!!options.trashed&&(!options.album||options.album==='favorites'&&row.favorite))))result.push(metadata?{...row,image:''}:row);
    if(!metadata&&result.length>=41){set(result);return;}cursor.continue();
   };
  });
 }
-async function read(id:string){return transaction<Row>('readonly',(store,set,fail)=>{const r=store.get(id);r.onsuccess=()=>r.result?set(r.result):fail(Error('Photo no longer available.'));});}
+async function read(id:string){return transaction<Row>('readonly',(store,set,fail)=>{const r=store.get(id);r.onsuccess=()=>r.result?.kind==='image'?set(r.result):fail(Error('Photo no longer available.'));});}
 async function change(input:{id:string;revision:string},patch:Partial<Pick<Row,'favorite'|'trashed'>>){
  return transaction<Row>('readwrite',(store,set,fail)=>{const r=store.get(input.id);r.onsuccess=()=>{const row=r.result as Row|undefined;
-  if(!row||row.mutationRevision!==input.revision){fail(Error('Photo changed in another tab. Reopen it and try again.'));return;}
+  if(!row||row.kind!=='image'||row.mutationRevision!==input.revision){fail(Error('Photo changed in another tab. Reopen it and try again.'));return;}
   const updated={...row,...patch,mutationRevision:revision()};store.put(updated);set(updated);
  };});
 }
+type EditParameters={rotation:number;crop:boolean;filter:string};
+type EditSession={id:string;source:Row;active:boolean;expiresAt:number};
+type EditRecord={id:string;kind:'edit-receipt';operationId:string;sourceId:string;sourceRevision:string;copyId:string;status:'prepared'|'saving'|'saved'|'failed'|'cancelled'|'unchanged';parameters?:string;attempt?:string};
+type EditResult={status:string;operationId:string;id?:string};
+const edits=new Map<string,EditSession>();
+const filters:Record<string,string>={none:'none',vivid:'saturate(1.55) contrast(1.08)',warm:'sepia(.3) saturate(1.35) hue-rotate(-8deg)',cool:'saturate(1.1) hue-rotate(14deg) brightness(1.03)',mono:'grayscale(1) contrast(1.05)',fade:'contrast(.78) brightness(1.12) saturate(.75)',noir:'grayscale(1) contrast(1.55) brightness(.88)'};
+const photoId=()=>Date.now().toString().padStart(13,'0')+Array.from(crypto.getRandomValues(new Uint8Array(12)),n=>String(n%10)).join('');
+function editKey(id:string){if(!/^[a-f0-9-]{36}$/.test(id))throw Error('Invalid edit identity.');return 'edit:'+id;}
+function parameters(input:EditParameters){if(![0,90,180,270].includes(input.rotation)||typeof input.crop!=='boolean'||!Object.hasOwn(filters,input.filter))throw Error('Invalid photo transform.');return JSON.stringify([input.rotation,input.crop,input.filter]);}
+function session(id:string){const value=edits.get(id);if(!value?.active||Date.now()>value.expiresAt)throw Error('Reopen the photo editor.');return value;}
+function outcome(record:EditRecord):EditResult{return {operationId:record.operationId,status:record.status==='saved'?'saved':record.status==='failed'?'failed':record.status==='unchanged'?'unchanged':'not-started',...(record.status==='saved'?{id:record.copyId}:{})};}
+async function renderEdit(value:EditSession,input:EditParameters){
+ input={rotation:input.rotation,crop:input.crop,filter:input.filter};
+ parameters(input);session(value.id);
+ const image=new Image();image.src=value.source.image;await image.decode();session(value.id);
+ if(image.naturalWidth!==value.source.width||image.naturalHeight!==value.source.height)throw Error('Photo dimensions changed.');
+ const crop=input.crop?1.3:1,sw=image.naturalWidth/crop,sh=image.naturalHeight/crop;
+ const rotated=input.rotation===90||input.rotation===270,scale=Math.min(1,2048/Math.max(sw,sh));
+ const canvas=document.createElement('canvas');canvas.width=Math.max(1,Math.round((rotated?sh:sw)*scale));canvas.height=Math.max(1,Math.round((rotated?sw:sh)*scale));
+ const context=canvas.getContext('2d');if(!context)throw Error('Photo editing is unavailable.');
+ if(input.filter!=='none'&&!('filter' in context))throw Error('Photo filters are unavailable in this browser.');
+ context.filter=filters[input.filter];context.translate(canvas.width/2,canvas.height/2);context.rotate(input.rotation*Math.PI/180);
+ context.drawImage(image,(image.naturalWidth-sw)/2,(image.naturalHeight-sh)/2,sw,sh,-sw*scale/2,-sh*scale/2,sw*scale,sh*scale);
+ const encoded=canvas.toDataURL('image/jpeg',0.9);if(!encoded.startsWith('data:image/jpeg;base64,')||encoded.length>12_000_000)throw Error('Edited photo could not be encoded.');
+ return {sessionId:value.id,operationId:value.id,image:encoded,width:canvas.width,height:canvas.height,reduced:scale<1,maxEdge:2048,filter:input.filter};
+}
+async function beginPhotoEdit(input:{id:string;revision:string}){
+ for(const value of edits.values())if(Date.now()>value.expiresAt)await cancelPhotoEdit({sessionId:value.id});
+ if(edits.size>=4)throw Error('Close another photo editor first.');
+ const source=await read(input.id);if(source.trashed||source.mutationRevision!==input.revision)throw Error('Photo changed. Reopen it before editing.');
+ const id=revision(),value:EditSession={id,source,active:true,expiresAt:Date.now()+15*60*1000};edits.set(id,value);
+ try{
+  const preview=await renderEdit(value,{rotation:0,crop:false,filter:'none'});
+  const record:EditRecord={id:editKey(id),kind:'edit-receipt',operationId:id,sourceId:source.id,sourceRevision:source.mutationRevision,copyId:photoId(),status:'prepared'};
+  await transaction<void>('readwrite',(store,set)=>{store.add(record);set(undefined);});return preview;
+ }catch(error){edits.delete(id);value.active=false;throw error;}
+}
+async function previewPhotoEdit(input:EditParameters&{sessionId:string}){return renderEdit(session(input.sessionId),input);}
+async function resultPhotoEdit(input:{operationId:string}):Promise<EditResult>{
+ // Reading an uncommitted outcome retires its authority in the same transaction.
+ // A suspended save cannot commit later after recovery reported no copy.
+ return transaction<EditResult>('readwrite',(store,set)=>{const request=store.get(editKey(input.operationId));request.onsuccess=()=>{
+  const record=request.result as EditRecord|undefined;
+  if(!record){set({status:'not-started',operationId:input.operationId});return;}
+  if(record.status==='prepared'||record.status==='saving'){record.status='cancelled';store.put(record);}
+  set(outcome(record));
+ };});
+}
+async function cancelPhotoEdit(input:{sessionId:string}){const value=edits.get(input.sessionId);if(value)value.active=false;edits.delete(input.sessionId);await resultPhotoEdit({operationId:input.sessionId});}
+async function savePhotoEdit(input:EditParameters&{sessionId:string}):Promise<EditResult>{
+ input={sessionId:input.sessionId,rotation:input.rotation,crop:input.crop,filter:input.filter};
+ const encodedParameters=parameters(input),key=editKey(input.sessionId),attempt=revision();
+ const claimed=await transaction<EditRecord>('readwrite',(store,set,fail)=>{const request=store.get(key);request.onsuccess=()=>{
+  const record=request.result as EditRecord|undefined;
+  if(!record){fail(Error('Reopen the photo editor.'));return;}
+  if(record.parameters&&record.parameters!==encodedParameters){fail(Error('This save already refers to another edit.'));return;}
+  if(record.status==='saved'||record.status==='failed'||record.status==='cancelled'||record.status==='unchanged'){set(record);return;}
+  if(record.status==='saving'){fail(Error('Save is already in progress. Check its existing outcome.'));return;}
+  record.status=input.rotation===0&&!input.crop&&input.filter==='none'?'unchanged':'saving';record.parameters=encodedParameters;record.attempt=attempt;store.put(record);set(record);
+ };});
+ if(claimed.status!=='saving')return outcome(claimed);
+ try{
+  const value=session(input.sessionId),rendered=await renderEdit(value,input);session(input.sessionId);
+  return await transaction<EditResult>('readwrite',(store,set)=>{const request=store.get(key);request.onsuccess=()=>{
+   const record=request.result as EditRecord;
+   if(record.status!=='saving'||record.attempt!==attempt){set(outcome(record));return;}
+   const original=store.get(record.sourceId);original.onsuccess=()=>{
+    const source=original.result as Row|undefined;
+    if(!value.active||Date.now()>value.expiresAt||!source||source.trashed||source.mutationRevision!==record.sourceRevision){record.status='failed';store.put(record);set(outcome(record));return;}
+    const copy:Row={id:record.copyId,kind:'image',image:rendered.image,width:rendered.width,height:rendered.height,date:Date.now(),revision:revision(),mutationRevision:revision(),favorite:false,trashed:false};
+    // Copy and receipt either both commit or neither does. The original is never written.
+    store.add(copy);record.status='saved';store.put(record);set(outcome(record));
+   };
+  };});
+ }catch(error){
+  await transaction<void>('readwrite',(store,set)=>{const request=store.get(key);request.onsuccess=()=>{const record=request.result as EditRecord|undefined;if(record?.status==='saving'&&record.attempt===attempt){record.status='failed';store.put(record);}set(undefined);};});throw error;
+ }
+}
+
 const prepared=new Map<string,{id:string;revision:string}[]>();
 export const browserPhotoLibrary={
+ beginEdit:beginPhotoEdit,previewEdit:previewPhotoEdit,saveEdit:savePhotoEdit,editResult:resultPhotoEdit,cancelEdit:cancelPhotoEdit,
  async list(options:{before?:string;trashed?:boolean;album?:string}={}){const result=await rows(options);return {items:result.slice(0,40),next:result.length>40?result[39].id:''};},
  async read(input:{id:string}){return read(input.id);},
  async summary(){const all=await rows({},true);return {favorites:all.filter(r=>!r.trashed&&r.favorite).length,videos:0,trash:all.filter(r=>r.trashed).length,canFavorite:true};},
@@ -91,7 +171,7 @@ export const browserCamera={
   const photo={base64:image.slice('data:image/jpeg;base64,'.length),format:'jpeg',width,height};if(token!==generation)throw Error('Camera view changed.');
   if(!photo.base64||photo.base64.length>12_000_000)throw Error('Photo is too large to save in this browser.');
   // Decimal time plus random suffix is sortable and keeps the existing receipt parser.
-  const id=Date.now().toString().padStart(13,'0')+Array.from(crypto.getRandomValues(new Uint8Array(12)),n=>String(n%10)).join('');
+  const id=photoId();
   const row:Row={id,kind:'image',image:'data:image/jpeg;base64,'+photo.base64,width:photo.width,height:photo.height,date:Date.now(),revision:revision(),mutationRevision:revision(),favorite:false,trashed:false};
   await transaction<void>('readwrite',(store,set)=>{store.add(row);set(undefined);});
   return {...photo,path:'browser-photo:///'+id};
