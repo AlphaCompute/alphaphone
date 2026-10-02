@@ -12,6 +12,8 @@ try {
  const page = await browser.newPage({ viewport: { width: 412, height: 915 } });
  page.setDefaultTimeout(12000);
  await page.addInitScript(() => {
+  window.androidBridge = {};
+  localStorage.setItem('alpha.connection.selection.v1',JSON.stringify({kind:'offline'}));
   const media = { id: 'video-fixture-71', kind: 'video', revision: 'revision-2', width: 640, height: 480, duration: 2, date: 1700000000000, image: 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg"/>', path: 'content://PRIVATE_VIDEO_URI_CANARY', privateCaption: 'PRIVATE_VIDEO_CONTENT_CANARY' };
   window.Capacitor = { PluginHeaders: [{ name: 'AlphaPhotos', methods: ['list','read'].map(name => ({ name, rtype: 'promise' })) }], nativePromise: async (plugin, method) => {
    if (plugin !== 'AlphaPhotos') throw Error('Unexpected native access');
