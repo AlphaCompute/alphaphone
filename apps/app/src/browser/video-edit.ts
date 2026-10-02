@@ -1,3 +1,4 @@
+import {videoRecorders} from './video-codecs';
 export type VideoEdit={start:number;end:number;rotation:number;crop:boolean};
 export function validateVideoEdit(edit:VideoEdit,duration:number){
  if(!Number.isFinite(duration)||duration<=0||duration>300||!Number.isFinite(edit.start)||!Number.isFinite(edit.end)||edit.start<0||edit.end>duration+.05||edit.end-edit.start<.1||![0,90,180,270].includes(edit.rotation)||typeof edit.crop!=='boolean')throw Error('Choose a valid video range of at least 0.1 seconds.');
@@ -15,13 +16,18 @@ export async function renderVideoEdit(source:{path:string;duration:number},edit:
   if(edit.start>0)await wait('seeked',()=>{video.currentTime=edit.start;});signal.throwIfAborted();
   const canvas=drawEditedVideo(video,edit),draw=()=>{drawEditedVideo(video,edit,canvas);};const image=canvas.toDataURL('image/jpeg',.85);
   output=canvas.captureStream(30);audio=new AudioContext();const sourceNode=audio.createMediaElementSource(video),destination=audio.createMediaStreamDestination();sourceNode.connect(destination);output.addTrack(destination.stream.getAudioTracks()[0]);await new Promise<void>((resolve,reject)=>{const finish=(error?:unknown)=>{clearTimeout(timeout);signal.removeEventListener('abort',abort);error?reject(error):resolve();},abort=()=>finish(signal.reason),timeout=setTimeout(()=>finish(Error('Video audio startup timed out.')),15000);signal.addEventListener('abort',abort,{once:true});if(signal.aborted){abort();return;}void audio!.resume().then(()=>finish(),finish);});signal.throwIfAborted();
-  const mime=['video/webm;codecs=vp9,opus','video/webm;codecs=vp8,opus','video/mp4'].find(type=>MediaRecorder.isTypeSupported(type));if(!mime)throw Error('No local video encoder is available.');recorder=new MediaRecorder(output,{mimeType:mime});
+
   const blob=await new Promise<Blob>((resolve,reject)=>{
-   const chunks:Blob[]=[];let bytes=0,settled=false;const finish=(error?:unknown)=>{if(settled)return;settled=true;clearTimeout(deadline);clearInterval(timer);signal.removeEventListener('abort',abort);video.pause();video.onended=null;video.onerror=null;if(recorder!.state!=='inactive')recorder!.stop();error?reject(error):bytes?resolve(new Blob(chunks,{type:mime.split(';')[0]})):reject(Error('Edited video is empty.'));};
+   const chunks:Blob[]=[];let bytes=0,settled=false;const finish=(error?:unknown)=>{if(settled)return;settled=true;clearTimeout(deadline);clearInterval(timer);signal.removeEventListener('abort',abort);video.pause();video.onended=null;video.onerror=null;if(recorder&&recorder.state!=='inactive')recorder.stop();error?reject(error):bytes?resolve(new Blob(chunks,{type:(recorder?.mimeType||chunks[0]?.type||'').split(';')[0]})):reject(Error('Edited video is empty.'));};
    const abort=()=>finish(signal.reason),stop=()=>{video.pause();if(recorder!.state!=='inactive')recorder!.stop();};
    const deadline=setTimeout(()=>finish(Error('Video export timed out.')),(edit.end-edit.start)*1000+15000);signal.addEventListener('abort',abort,{once:true});
-   recorder!.ondataavailable=e=>{if(settled)return;bytes+=e.data.size;if(bytes>100*1024*1024){finish(Error('Edited video exceeds 100 MB.'));return;}chunks.push(e.data);};recorder!.onstop=()=>finish();recorder!.onerror=()=>finish(Error('Video encoding interrupted.'));video.onerror=()=>finish(Error('Video decoding interrupted.'));video.onended=stop;
-   try{recorder!.start(200);timer=setInterval(()=>{try{draw();if(video.currentTime>=edit.end)stop();}catch(error){finish(error);}},20);void video.play().catch(finish);}catch(error){finish(error);}
+   const attach=()=>{recorder!.ondataavailable=e=>{if(settled)return;bytes+=e.data.size;if(bytes>100*1024*1024){finish(Error('Edited video exceeds 100 MB.'));return;}chunks.push(e.data);};recorder!.onstop=()=>finish();recorder!.onerror=()=>finish(Error('Video encoding interrupted.'));video.onerror=()=>finish(Error('Video decoding interrupted.'));video.onended=stop;};
+   try{
+    signal.throwIfAborted();let started=false;
+    for(const candidate of videoRecorders(output!)){signal.throwIfAborted();recorder=candidate;attach();try{recorder.start(200);started=true;break;}catch{recorder.ondataavailable=null;recorder.onstop=null;recorder.onerror=null;if(recorder.state!=='inactive')recorder.stop();chunks.length=0;bytes=0;}}
+    if(!started)throw Error('Video export could not start. Close other media and try again.');
+    timer=setInterval(()=>{try{draw();if(video.currentTime>=edit.end)stop();}catch(error){finish(error);}},20);void video.play().catch(finish);
+   }catch(error){finish(error);}
   });
   signal.throwIfAborted();const path=await new Promise<string>((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(String(reader.result));reader.onerror=()=>reject(reader.error);reader.readAsDataURL(blob);});signal.throwIfAborted();return {path,image,width:canvas.width,height:canvas.height,duration:edit.end-edit.start};
  }finally{clearInterval(timer);if(recorder?.state==='recording')recorder.stop();output?.getTracks().forEach(t=>t.stop());await audio?.close().catch(()=>{});video.pause();video.removeAttribute('src');video.load();}
