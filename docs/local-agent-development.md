@@ -57,6 +57,7 @@ export ALPHA_WORKFLOW_WORKER_OUTPUT="$PWD/artifacts/mobile-workflow-worker-curre
 npm run agent:prepare
 npm run agent:build-workflow-worker
 npm run agent:test-workflow-worker
+npm run agent:test-workflow-compiler
 npm run agent:test
 npm run agent:stage-android
 ```

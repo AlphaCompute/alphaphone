@@ -29,6 +29,7 @@
     "agent:prepare": "node scripts/prepare-local-agent.mjs",
     "agent:test": "node scripts/test-local-agent-source.mjs",
     "agent:build-workflow-worker": "bun scripts/build-workflow-worker.ts",
+    "agent:test-workflow-compiler": "node scripts/test-workflow-compiler.mjs",
     "agent:test-workflow-worker": "node scripts/test-workflow-worker.mjs",
     "agent:stage-workflow-worker": "node scripts/stage-workflow-worker.mjs",
     "agent:stage-android": "node scripts/stage-local-agent-runtime.mjs",

@@ -6,6 +6,7 @@ import {mkdtempSync,mkdirSync,readFileSync,writeFileSync,existsSync,readdirSync,
 import {resolve,join,relative,dirname} from 'node:path';
 import {createHash} from 'node:crypto';
 import {sourceDirectory} from './local-agent-source.mjs';
+import {buildWorkflowCompiler} from './build-workflow-compiler.mjs';
 const root=resolve(import.meta.dir,'..'),source=sourceDirectory(root);
 execFileSync(process.env.ALPHA_NODE||'node',[join(root,'scripts/prepare-local-agent.mjs'),'--source-only'],{cwd:root,stdio:'inherit'});
 const output=resolve(process.env.ALPHA_WORKFLOW_WORKER_OUTPUT||join(root,'artifacts/mobile-workflow-worker'));
@@ -79,6 +80,7 @@ for(const input of Object.keys(meta.inputs)){
  }
 }
 writeFileSync(join(output,'dependencies.json'),JSON.stringify([...packages.values()],null,2)+'\n');
+const compiler=buildWorkflowCompiler(source,output);
 const files:Record<string,string>={};function inventory(dir:string){for(const name of readdirSync(dir)){const p=join(dir,name);if(statSync(p).isDirectory())inventory(p);else files[relative(output,p)]=hash(p);}}inventory(output);
-writeFileSync(join(output,'manifest.json'),JSON.stringify({version:1,purpose:'Reviewed phone workflow worker dependencies; not a general smthrs distribution',sourceStampSha256:hash(join(source,'.alpha-runtime-source.json')),lockSha256:hash(join(source,'bun.lock')),files},null,2)+'\n');
+writeFileSync(join(output,'manifest.json'),JSON.stringify({version:1,purpose:'Reviewed phone workflow worker dependencies; not a general smthrs distribution',sourceStampSha256:hash(join(source,'.alpha-runtime-source.json')),lockSha256:hash(join(source,'bun.lock')),compiler,files},null,2)+'\n');
 console.log(`Worker dependency artifact: ${output}`);
