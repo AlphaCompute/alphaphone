@@ -33,6 +33,15 @@ export class BrowserNoteDocuments extends WebPlugin {
     });
   }
 
+  async exportPdf({title,dataBase64}:{title:string;dataBase64:string}) {
+    if(typeof dataBase64!=='string'||dataBase64.length>11184812||!dataBase64.length||dataBase64.length%4!==0||!/^[A-Za-z0-9+/]*={0,2}$/.test(dataBase64))throw Error('Invalid PDF export.');
+    const raw=atob(dataBase64);if(raw.length>8*1024*1024||!raw.startsWith('%PDF-'))throw Error('Invalid PDF export.');
+    const url=URL.createObjectURL(new Blob([Uint8Array.from(raw,char=>char.charCodeAt(0))],{type:'application/pdf'}));
+    const link=document.createElement('a');link.href=url;link.download=(String(title).replace(/[<>:"/\\|?*\u0000-\u001f]/g,'_').slice(0,100)||'Alpha scan')+'.pdf';
+    try{document.body.append(link);link.click();}finally{link.remove();setTimeout(()=>URL.revokeObjectURL(url),60000);}
+    return {status:'requested',message:'PDF download requested. Check your browser downloads.'};
+  }
+
   async exportText({ title, text }: { title: string; text: string }) {
     const url = URL.createObjectURL(new Blob([text], { type: 'text/plain;charset=utf-8' }));
     const link = document.createElement('a');

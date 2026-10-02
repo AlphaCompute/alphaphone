@@ -345,3 +345,9 @@ Six new browser cases assert that the status is below the notch and outside the 
 The Camera Scan gap now has an implemented English OCR path using locally packaged Tesseract worker, WASM and language data. Capturing retains the real photo; recognition opens editable text and requires an explicit Save to Notes with a confirmed persistence receipt. Copy is explicit, cancellation owns worker shutdown from startup onward, and unconfirmed saves retain text without allowing duplicate submissions. See [local OCR implementation and remaining design requirements](local-ocr.md).
 
 Browser evidence covers actual OCR execution, no remote OCR requests, worker cancellation, the full Camera-to-Notes/reload journey using a synthetic camera stream, and retained draft text after an injected unconfirmed save. Android execution, hardware accuracy, document boundary detection, semantic event/link actions, PDF export and additional languages remain open. This closes basic local text extraction and reviewed Notes saving only; it does not establish complete Scan design acceptance or MVP completion.
+
+## October 2 — scan photo PDF export
+
+Scan review now previews the captured page and exports a real single-page image PDF. Browser export uses Downloads; Android source uses the system document picker and exact provider readback before confirmed success. Reviewed OCR corrections remain a separate Notes save. The dialog keeps its action controls visible while the review content scrolls. See [the export contract and qualification limits](local-ocr.md#photo-pdf-export).
+
+This implements single-page photo-to-PDF export. Automatic insertion into browser-managed Files, multipage capture, searchable PDF text, document boundaries and semantic event/link actions remain open. Android plugin wiring is implemented; only its pure-Java byte validation/readback helper is exercised here, not the Android picker or an APK.

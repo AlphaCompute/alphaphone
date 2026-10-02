@@ -47,7 +47,7 @@ test('Camera Scan reviews real OCR and commits only corrected text to durable No
   const dialog=page.getByRole('dialog',{name:'Review scanned text'});await expect(dialog).toBeVisible();
   const text=dialog.getByRole('textbox',{name:'Scanned text'});await expect(text).toHaveValue(/Alpha local scan/,{timeout:60000});
   expect(await page.evaluate(()=>JSON.parse(localStorage.getItem('alphaphone:notes:v2')||'{"records":[]}').records.filter((n:any)=>n.id.startsWith('scan-')).length)).toBe(0);
-  await text.fill('Reviewed scan title\nCorrected by the user.');await dialog.getByRole('button',{name:'Save to Notes',exact:true}).click();await expect(dialog.getByRole('status')).toHaveText('Saved to Notes.');
+  await text.fill('Reviewed scan title\nCorrected by the user.');await dialog.getByRole('button',{name:'Save to Notes',exact:true}).click();await expect(dialog.getByRole('status',{name:'Scan status'})).toHaveText('Saved to Notes.');
   await page.screenshot({path:info.outputPath('scan-review.png'),animations:'disabled'});
   await dialog.getByRole('button',{name:'Close scan',exact:true}).click();await page.reload();
   const saved=await page.evaluate(()=>JSON.parse(localStorage.getItem('alphaphone:notes:v2')!).records.filter((n:any)=>n.id.startsWith('scan-')));
@@ -63,7 +63,7 @@ test('an unconfirmed Notes save retains reviewed text and cannot duplicate the w
   openScanReview(blob,async()=>{(window as any).scanWrites++;return false;});
  });
  const dialog=page.getByRole('dialog',{name:'Review scanned text'});const field=dialog.getByRole('textbox',{name:'Scanned text'});await expect(field).toBeEnabled({timeout:60000});await field.fill('Keep my corrected draft');await dialog.getByRole('button',{name:'Save to Notes',exact:true}).click();
- await expect(dialog.getByRole('status')).toContainText('Save unconfirmed');await expect(field).toHaveValue('Keep my corrected draft');await expect(dialog.getByRole('button',{name:'Save unconfirmed',exact:true})).toBeDisabled();expect(await page.evaluate(()=>(window as any).scanWrites)).toBe(1);
+ await expect(dialog.getByRole('status',{name:'Scan status'})).toContainText('Save unconfirmed');await expect(field).toHaveValue('Keep my corrected draft');await expect(dialog.getByRole('button',{name:'Save unconfirmed',exact:true})).toBeDisabled();expect(await page.evaluate(()=>(window as any).scanWrites)).toBe(1);
 });
 
 test('closing Scan during model load terminates the worker without late reopening',async({page})=>{

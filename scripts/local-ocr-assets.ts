@@ -15,6 +15,7 @@ export function localOcrAssets():Plugin {
     add('eng.traineddata.gz','@tesseract.js-data/eng','4.0.0_best_int/eng.traineddata.gz','application/gzip');
     add('tesseract-LICENSE.txt','tesseract.js','LICENSE.md','text/plain');
     add('core-LICENSE.txt','tesseract.js-core','LICENSE','text/plain');
+    add('pdf-lib-LICENSE.txt','pdf-lib','LICENSE.md','text/plain');
     files.set('tessdata-LICENSE.txt',{source:readFileSync(new URL('../licenses/tessdata-APACHE-2.0.txt',import.meta.url)),type:'text/plain'});
   };
   return {name:'alpha-local-ocr-assets',
