@@ -3049,6 +3049,7 @@
           </sc-if>
         </div>
 
+        <sc-if value="{{workflows.fd.localExecutor}}"><sc-if value="{{workflows.fd.isRunning}}"><button onClick="{{workflows.fd.cancelRun}}" style="padding:12px">Cancel run</button></sc-if></sc-if>
         <sc-if value="{{workflows.fd.hasRuns}}" hint-placeholder-val="{{true}}">
           <div style="display: flex; flex-direction: column; margin-top: 26px; border-top: 1px solid var(--line); padding-top: 8px">
             <sc-for list="{{workflows.fd.runs}}" as="r" hint-placeholder-count="3">
