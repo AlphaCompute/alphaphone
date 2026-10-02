@@ -10,10 +10,10 @@ const native = registerPlugin<{
   transcribeRecording(input: { recordingId: string; requestId: string; environment: string; credentialId: string }): Promise<{ text: string; local: false }>;
   synthesize(input: { text: string; requestId: string; environment: string; credentialId: string }): Promise<{ playbackId: string }>;
   play(input: { playbackId: string }): Promise<void>;
-  stopPlayback(): Promise<void>;
+  stopPlayback(input?: { requestId: string }): Promise<void>;
   cancel(input: { requestId: string }): Promise<void>;
   addListener(event: 'recordingStopped', callback: (clip: VoiceClip) => void): Promise<PluginListenerHandle>;
-  addListener(event: 'playbackEnded' | 'playbackFailed', callback: () => void): Promise<PluginListenerHandle>;
+  addListener(event: 'playbackEnded' | 'playbackFailed', callback: (event: { playbackId?: string }) => void): Promise<PluginListenerHandle>;
 }>('AlphaVoiceCloud');
 
 /** Binds all audio to the explicitly selected account. Native code owns the
@@ -43,36 +43,67 @@ export function createCloudVoice() {
     async speak(text: string, signal: AbortSignal) {
       check(); signal.throwIfAborted();
       const requestId = crypto.randomUUID();
-      let rejectInterrupted: (reason: unknown) => void = () => {};
-      let resolveEnded: () => void = () => {};
-      let rejectPlayback: (reason: unknown) => void = () => {};
+      let active = true, playbackId: string | undefined;
+      let cleanup: Promise<void> | undefined;
+      const handles = new Set<PluginListenerHandle>();
+      const bounded = (operation: () => Promise<unknown>) => new Promise<void>(resolve => {
+        const timer = setTimeout(resolve, 500);
+        Promise.resolve().then(operation).catch(() => {}).finally(() => { clearTimeout(timer); resolve(); });
+      });
+      const remove = (handle: PluginListenerHandle) => bounded(() => handle.remove());
+      let rejectInterrupted!: (reason: unknown) => void;
       const interrupted = new Promise<never>((_, reject) => { rejectInterrupted = reject; });
       void interrupted.catch(() => {});
+      let resolveEnded!: () => void, rejectPlayback!: (reason: unknown) => void;
       const playback = new Promise<void>((resolve, reject) => { resolveEnded = resolve; rejectPlayback = reject; });
-      // Playback may fail before synthesis settles; observe the promise now.
       void playback.catch(() => {});
-      const cancel = () => {
-        void native.cancel({ requestId }).catch(() => {});
-        void native.stopPlayback().catch(() => {});
-        rejectInterrupted(signal.reason || new DOMException('Playback cancelled', 'AbortError'));
+      const dispose = () => {
+        if (cleanup) return cleanup;
+        active = false;
+        // Request-scoped native stop cannot clear a newer account's playback.
+        cleanup = Promise.all([
+          bounded(() => native.cancel({ requestId })),
+          bounded(() => native.stopPlayback({ requestId })),
+          ...Array.from(handles, remove),
+        ]).then(() => {});
+        handles.clear();
+        return cleanup;
       };
-      signal.addEventListener('abort', cancel, { once: true });
-      const handles: PluginListenerHandle[] = [];
+      const cancel = (reason: unknown) => {
+        rejectInterrupted(reason || new DOMException('Playback cancelled', 'AbortError'));
+        void dispose();
+      };
+      const onAbort = () => cancel(signal.reason);
+      signal.addEventListener('abort', onAbort, { once: true });
+      const unsubscribe = connectionController.subscribe(() => {
+        try { check(); } catch (error) { cancel(error); }
+      });
+      const listen = async (event: 'playbackEnded' | 'playbackFailed') => {
+        const pending = native.addListener(event, value => {
+          if (!active || !playbackId || value.playbackId !== playbackId) return;
+          try { check(); } catch (error) { cancel(error); return; }
+          if (event === 'playbackEnded') resolveEnded();
+          else rejectPlayback(new Error('Audio playback failed.'));
+        }).then(handle => {
+          if (!active) void remove(handle);
+          else handles.add(handle);
+        });
+        await Promise.race([pending, interrupted]);
+      };
       try {
-        handles.push(await native.addListener('playbackEnded', resolveEnded));
-        handles.push(await native.addListener('playbackFailed', () => rejectPlayback(new Error('Audio playback failed.'))));
+        await listen('playbackEnded');
+        await listen('playbackFailed');
         signal.throwIfAborted(); check();
-        const synthesis = native.synthesize({ text, requestId, environment, credentialId });
-        if (signal.aborted) cancel();
-        const result = await Promise.race([synthesis, interrupted]);
+        const result = await Promise.race([native.synthesize({ text, requestId, environment, credentialId }), interrupted]);
         check(); signal.throwIfAborted();
-        await Promise.race([native.play({ playbackId: result.playbackId }), interrupted]);
+        playbackId = result.playbackId;
+        await Promise.race([native.play({ playbackId }), interrupted]);
         await Promise.race([playback, interrupted]);
         check();
       } finally {
-        signal.removeEventListener('abort', cancel);
-        await Promise.all(handles.map(handle => handle.remove()));
-        await native.stopPlayback().catch(() => {});
+        signal.removeEventListener('abort', onAbort);
+        unsubscribe();
+        await dispose();
       }
     },
   };
