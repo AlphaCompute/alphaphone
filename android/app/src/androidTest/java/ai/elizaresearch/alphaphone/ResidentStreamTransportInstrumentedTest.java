@@ -46,7 +46,7 @@ public final class ResidentStreamTransportInstrumentedTest {
    int terminals=0; synchronized(events){for(JSONObject event:events)if("complete".equals(event.optString("type"))){terminals++;assertEquals("terminal error contract",error,event.has("error")&&!event.optString("error").isEmpty());}}
    assertEquals("one terminal event",1,terminals);
   }
-  void close()throws Exception {handle.cancel();thread.join(5000);assertFalse("client thread stopped",thread.isAlive());}
+  void close()throws Exception {handle.cancel();thread.join(5000);assertFalse("client thread stopped; state="+thread.getState()+" stack="+Arrays.toString(thread.getStackTrace()),thread.isAlive());}
  }
  private static final class Peer implements AutoCloseable {
   final LocalServerSocket server=new LocalServerSocket(NAME);
@@ -68,10 +68,11 @@ public final class ResidentStreamTransportInstrumentedTest {
     else {assertEquals("cancel",mode);await(released,"test permits peer EOF observation");assertEquals("cancellation closes actual socket",-1,socket.getInputStream().read());peerEof.countDown();quiet(socket);}
    }}catch(Throwable error){if(!closed)failure.set(error);}},"resident-stream-fixture-peer");thread.start();
   }
-  public void close()throws Exception {closed=true;released.countDown();synchronized(sockets){for(LocalSocket socket:sockets)quiet(socket);}thread.join(5000);server.close();assertFalse("peer thread stopped",thread.isAlive());assertNull(failure.get());}
+  public void close()throws Exception {closed=true;released.countDown();synchronized(sockets){for(LocalSocket socket:sockets)quiet(socket);}thread.join(5000);server.close();assertFalse("peer thread stopped",thread.isAlive());if(failure.get()!=null)throw new AssertionError("controlled peer failed",failure.get());}
  }
  private void scenario(String mode)throws Exception {
-  String id=UUID.randomUUID().toString();Client client=null;
+  System.out.println("RESIDENT_STREAM_SCENARIO_BEGIN "+mode);
+  String id=UUID.randomUUID().toString();Client client=null;Throwable primary=null;
   try(Peer peer=new Peer(id,mode)) {
    try {client=new Client(id);await(peer.received,"exact POST observed");await(client.chunk,"native chunk witnessed before terminal/cancel");
     if("cancel".equals(mode)){client.handle.cancel();peer.released.countDown();await(peer.peerEof,"peer sees cancelled connection EOF");}
@@ -79,7 +80,8 @@ public final class ResidentStreamTransportInstrumentedTest {
     assertEquals("response first","response",client.events.get(0).getString("type"));assertEquals("chunk second","chunk",client.events.get(1).getString("type"));assertEquals("split frame content","aGVsbG8=",client.events.get(1).getString("dataBase64"));assertEquals(3,client.events.size());
     // Client method has returned; all its retry/control paths are finished. Keep peer bound through that point.
     peer.clientReturned=true;await(peer.drained,"listener backlog drained after client return");assertEquals("exactly one connection; no replay",1,peer.accepted.get());assertEquals("exactly one POST; no replay",1,peer.posts.get());
-   }finally{if(client!=null)client.close();}
+   }catch(Throwable error){primary=error;throw error;}finally{if(client!=null)try{client.close();}catch(Throwable cleanup){if(primary!=null)primary.addSuppressed(cleanup);else throw cleanup;}}
+   System.out.println("RESIDENT_STREAM_SCENARIO_PASS "+mode);
   }
  }
  @Test public void splitFramesCancellationAndNoReplay()throws Exception {
@@ -87,7 +89,10 @@ public final class ResidentStreamTransportInstrumentedTest {
   assertTrue("explicit supervisor admission required",InstrumentationRegistry.getArguments().getString("residentStreamRunId","").matches("[0-9a-f-]{36}"));
   JSONObject status=ElizaAgentService.getLocalAgentBootState(InstrumentationRegistry.getInstrumentation().getTargetContext());assertFalse(status.getBoolean("serviceActive"));assertFalse(status.getBoolean("socketListening"));
   java.lang.reflect.Field socketName=ElizaAgentService.class.getDeclaredField("LOCAL_AGENT_SOCKET_NAME");socketName.setAccessible(true);assertEquals("staged product namespace",NAME,socketName.get(null));
-  scenario("complete");scenario("cancel");scenario("eof");scenario("error");
+  scenario("complete");
+  scenario("cancel");
+  scenario("eof");
+  scenario("error");
   // No listener: observe the production retry delay on the actual client thread, then cancel.
   Client client=new Client(UUID.randomUUID().toString());
   try {boolean witnessed=false;long deadline=SystemClock.elapsedRealtime()+3000;
