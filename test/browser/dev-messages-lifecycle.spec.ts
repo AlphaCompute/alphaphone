@@ -39,3 +39,13 @@ test('failed swipe deletion returns the stored conversation onscreen for retry',
  await expect(row(page,'Maya Chen')).toBeInViewport();expect(await page.evaluate(()=>localStorage.getItem('alpha.dev.app.messages'))).toBe(before);
  await page.evaluate(()=>(window as any).restoreDelete());await remove(page,'Maya Chen');await page.reload();expect(await page.evaluate(()=>JSON.parse(localStorage.getItem('alpha.dev.app.messages')!).threads.maya)).toBeUndefined();
 });
+
+
+test('a fresh conversation tap is not swallowed by the previous swipe guard',async({page})=>{
+ // Hold the guard clock inside its suppression window; a new pointerdown must release it.
+ await page.evaluate(()=>{const now=Date.now();Date.now=()=>now;});
+ await remove(page,'Maya Chen');
+ await expect(page.getByRole('textbox',{name:'Message',exact:true})).toHaveCount(0);
+ await row(page,'Jordan Park').click();
+ await expect(page.getByRole('textbox',{name:'Message',exact:true})).toBeVisible();
+});

@@ -5559,6 +5559,8 @@ class Component extends DCLogic {
         var o = self.scale(e.currentTarget);
         var px = (e.clientX - o.r.left) / o.s, py = (e.clientY - o.r.top) / o.s;
         if (px < 30 || px > 382 || py < 90 || py > 872) { self.cg = null; return; }   // system gesture zones belong to the shell
+        // A fresh pointer gesture is a deliberate action, not the previous swipe click.
+        self.swallow = 0;
         e.stopPropagation(); self.cg = { x: e.clientX, y: e.clientY, s: o.s, g: { x: px, y: py, cx: e.clientX, cy: e.clientY, s: o.s } };
       },
       up: function (e) {

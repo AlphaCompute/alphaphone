@@ -1,3 +1,4 @@
+import {placeShare,routeShare,shareMap,type MapShare} from '../maps/share';
 import { MapPlane } from '../maps/map-plane';
 import { initializeRegionalMaps, regionalMap, regionalDiagnostics } from '../maps/regional-provider';
 import { NativeMapsLocation } from '../maps/native-location';
@@ -24,8 +25,14 @@ export function installPrototypeMapsAdapter(_Component: unknown, views: Record<s
   const lifecycle={releases:0,hidden:0,permissionHeld:0,providerActivations:0,lastRelease:''};
   let initialization: Promise<void> | undefined, searchIntent = 0;
   const searchIdentity = {};
+  let sharing: {abort:AbortController;current:()=>boolean}|undefined;
+  function share(data:MapShare,current:()=>boolean){
+    if(!current()||document.hidden)return;sharing?.abort.abort();const owner={abort:new AbortController(),current};sharing=owner;
+    void shareMap(data,owner.abort.signal).then(result=>{if(sharing===owner&&current()&&result==='copied')api?.toast('Copied');}).catch(()=>{}).finally(()=>{if(sharing===owner)sharing=undefined;});
+  }
   const identities = new WeakMap<Selection, object>();
   const invalidate = () => {
+    if(sharing&&!sharing.current()){sharing.abort.abort();sharing=undefined;}
     const token = ++revision;
     if (selected) {
       let identity = identities.get(selected);
@@ -62,6 +69,7 @@ export function installPrototypeMapsAdapter(_Component: unknown, views: Record<s
     return controller;
   }
   function release(cancelIntent=true) {
+    sharing?.abort.abort();sharing=undefined;
     lifecycle.releases++;lifecycle.lastRelease=cancelIntent?'leave-or-background':'provider-switch';message='';
     if(cancelIntent)++searchIntent;
     plane?.destroy(); plane=undefined; planeElement=undefined; directions=false; navigating=false; void navigationLocation.stop().catch(()=>{});
@@ -155,7 +163,7 @@ export function installPrototypeMapsAdapter(_Component: unknown, views: Record<s
         saveLabel: existing ? 'Remove from saved' : 'Save', starCss: existing ? 'color:var(--acct)' : '', starFill: existing ? 'fill:currentColor' : '',
         close: () => { selected = undefined; message = ''; invalidate(); }, save,
         dirs: () => { if(unconfigured){message='Connect a Maps provider to plan a route. No route has been calculated.';}else{directions=true; message='Enter an origin latitude, longitude and press Enter, or explicitly use current location.'; if(item.origin!=='provider')void ensure().select({providerId:'alpha-osm-monaco',id:item.providerPlaceId||'manual',name:item.label,coordinate:item.coordinate,attribution:regionalMap()!.attribution,fetchedAt:Date.now()},false);} invalidate(); },
-        share: () => currentApi.assist('Place sharing is not connected. Nothing was sent.'),
+        share: () => share(placeShare(item.label,item.coordinate),()=>!disposed&&!!api?.isActive()&&selected===item),
         nativeName: item.label, nativeEditing: !!item.editingName,
         nativeTitleRole: 'button', nativeTitleTabIndex: 0, nativeTitleLabel: 'Rename place',
         nativeEdit: () => { item.editingName = true; invalidate(); },
@@ -170,7 +178,7 @@ export function installPrototypeMapsAdapter(_Component: unknown, views: Record<s
       data.originText=originText;data.onOrigin=(event:Event)=>{originText=(event.target as HTMLInputElement).value;ensure().clearOrigin();message='Press Enter to calculate a route from this origin.';invalidate();};data.originKey=(event:KeyboardEvent)=>{if(event.key==='Enter'){event.preventDefault();plan();}};data.originLocation=locate;
       const distance=(a:Coordinate,b:Coordinate)=>{const r=Math.PI/180,dlat=(a.latitude-b.latitude)*r,dlon=(a.longitude-b.longitude)*r;return 6371000*2*Math.asin(Math.min(1,Math.sqrt(Math.sin(dlat/2)**2+Math.cos(a.latitude*r)*Math.cos(b.latitude*r)*Math.sin(dlon/2)**2)));};
       const end=()=>{navigating=false;void navigationLocation.stop().catch(error=>{message=failure(error).message;invalidate();});invalidate();};
-      data.dr={name:selected.label,close:()=>back(),min:route?Math.max(1,Math.round(route.durationSeconds/60))+' min':snapshot.route.phase==='loading'?'Planning…':'No route',meta:route?(route.distanceMeters/1000).toFixed(1)+' km · no live traffic':'Regional route',via:route?.steps[0]?.instruction||'Choose a real origin to calculate a route.',shareLabel:'Share route',shareEta:()=>currentApi.toast('Route sharing is not connected. Nothing was sent.'),
+      data.dr={name:selected.label,close:()=>back(),min:route?Math.max(1,Math.round(route.durationSeconds/60))+' min':snapshot.route.phase==='loading'?'Planning…':'No route',meta:route?(route.distanceMeters/1000).toFixed(1)+' km · no live traffic':'Regional route',via:route?.steps[0]?.instruction||'Choose a real origin to calculate a route.',shareLabel:'Share route',shareEta:()=>{if(route&&snapshot.route.phase==='ready'){const target=selected;share(routeShare(target!.label,route),()=>!disposed&&!!api?.isActive()&&selected===target&&!!directions&&state?.route.phase==='ready'&&state.route.value===route);}},
        modes:data.nativeModeMetadata.map((reference:{mode:'drive'|'walk'|'bike'|'transit';label:string;d:string})=>{const mode=reference.mode==='bike'?'bicycle':reference.mode;const {label,d}=reference;return {label,t:label,d,css:snapshot.mode===mode?'background:var(--acc);color:#fff':'background:var(--s2);color:var(--fg)',go:()=>{if(!ensure().capabilities().modes.includes(mode)){message='Transit schedules are not available for this region.';invalidate();return;}ensure().setMode(mode);message='';if(snapshot.origin)void ensure().planRoute();}};}),
        start:()=>{if(!route){message='Calculate a route before starting navigation.';invalidate();return;}navStep=0;arrived=false;navigating=true;message='Waiting for a fresh location fix. Foreground guidance only.';void navigationLocation.start(false,fix=>{if(!navigating)return;if(fix.accuracyMeters>50){message='Location is too approximate for turn guidance.';invalidate();return;}navDistance=distance(fix.coordinate,route.to);arrived=navDistance<25&&fix.accuracyMeters<=30;if(arrived){message='Destination reached.';void navigationLocation.stop();}else{const nearest=Math.min(...route.geometry.map(p=>distance(fix.coordinate,p)));message=nearest>Math.max(75,fix.accuracyMeters*2)?'Off route. Stop and calculate a new route.':'Foreground guidance · location accuracy ±'+Math.ceil(fix.accuracyMeters)+' m';while(navStep<route.steps.length-1&&distance(fix.coordinate,route.steps[navStep].coordinate)<40)navStep++;}invalidate();},error=>{message=failure(error).message;navigating=false;invalidate();});invalidate();},
        nav:{going:!arrived,arrived,dist:arrived?'Arrived':navDistance?Math.round(navDistance)+' m':'Locating…',street:route?.steps[navStep]?.instruction||'Waiting for location',icon:PIN,hasThen:false,left:arrived?'Arrived':'Foreground guidance',meta:'Distance shown is direct to destination',end,ask:()=>currentApi.send('Help me with this route.'),voiceLabel:'Voice guidance unavailable',voice:()=>currentApi.toast('Native voice guidance is not connected.'),voiceD:PIN}};
@@ -183,7 +191,9 @@ export function installPrototypeMapsAdapter(_Component: unknown, views: Record<s
     else release(false);
     invalidate();
   });
-  const visibility = () => { if(document.hidden){lifecycle.hidden++;if(controller?.awaitingLocationPermission()||navigationLocation.awaitingPermission()){lifecycle.permissionHeld++;invalidate();return;}release();}else invalidate(); };
+  const retireShare=()=>{sharing?.abort.abort();sharing=undefined;};
+  const shareEvents=['launcher-home','alpha:device-state','alpha:dev-incoming-call'];for(const event of shareEvents)window.addEventListener(event,retireShare);
+  const visibility = () => { if(document.hidden){retireShare();lifecycle.hidden++;if(controller?.awaitingLocationPermission()||navigationLocation.awaitingPermission()){lifecycle.permissionHeld++;invalidate();return;}release();}else invalidate(); };
   const pagehide=()=>release();window.addEventListener('pagehide', pagehide); document.addEventListener('visibilitychange', visibility);
-  return () => { disposed = true; changed(); release(); window.removeEventListener('pagehide', pagehide); document.removeEventListener('visibilitychange', visibility); Object.assign(module, original); };
+  return () => { disposed = true; for(const event of shareEvents)window.removeEventListener(event,retireShare); changed(); release(); window.removeEventListener('pagehide', pagehide); document.removeEventListener('visibilitychange', visibility); Object.assign(module, original); };
 }
