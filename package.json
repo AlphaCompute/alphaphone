@@ -42,6 +42,7 @@
     "@tesseract.js-data/eng": "1.0.0",
     "maplibre-gl": "6.11.2",
     "pdf-lib": "1.17.1",
+    "pdfjs-dist": "6.3.289",
     "react": "19.3.0",
     "react-dom": "19.3.0",
     "tesseract.js": "7.0.0"

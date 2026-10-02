@@ -50,8 +50,8 @@ export function installSelectedDocumentAdapter(_Component: unknown, views: Recor
     try {
       const response = await DailyApps.pdfSelected({selectionId: selected.result.selectionId!, page});
       if (current !== selected) return;
-      if (response.status === 'rendered' && response.imageUri?.startsWith('file://') && Number.isInteger(response.pageCount) && Number.isInteger(response.page)) {
-        current = {...selected, pdf: {page:response.page!, count:response.pageCount!, image:Capacitor.convertFileSrc(response.imageUri) + '?page=' + page + '&v=' + Date.now()}, status: response.message || 'PDF loaded'};
+      if (response.status === 'rendered' && (response.imageUri?.startsWith('file://') || (!Capacitor.isNativePlatform() && response.imageUri?.startsWith('blob:'))) && Number.isInteger(response.pageCount) && Number.isInteger(response.page)) {
+        current = {...selected, pdf: {page:response.page!, count:response.pageCount!, image:response.imageUri!.startsWith('blob:') ? response.imageUri! : Capacitor.convertFileSrc(response.imageUri!) + '?page=' + page + '&v=' + Date.now()}, status: response.message || 'PDF loaded'};
       } else { current = {...selected, pdf: undefined, status: response.message || 'PDF preview unavailable'}; }
       refresh();
     } catch { if(current === selected){current={...selected,pdf:undefined,status:'PDF preview unavailable. Select this document again.'};refresh();} }

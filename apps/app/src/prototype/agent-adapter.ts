@@ -143,6 +143,8 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
     this.backHandler = () => {
       // A modal owns Back while the underlying phone is inert. Window-targeted
       // native events must not navigate the shell before its dialog closes.
+      const dialog = Array.from(document.querySelectorAll<HTMLDialogElement>('dialog[open]')).at(-1);
+      if (dialog) { dialog.close(); return; }
       if (document.querySelector<HTMLElement>('.os')?.inert) return;
       alphaClient.cancel(); this.back();
     };

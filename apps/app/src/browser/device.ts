@@ -1,12 +1,15 @@
+import { browserApps } from './apps';
 import { WebPlugin } from '@capacitor/core';
 import { editStore, readStore } from './store';
 const key='alpha.browser.device.v1';
 const initial=()=>({wifiActive:true,bluetoothActive:false,cellularActive:false,powerSave:false,batteryPercent:100,charging:true,textScalePercent:100,brightness:100,music:70,ring:70,alarm:70});
 export class BrowserDevice extends WebPlugin {
+ async getStatus(){const roles=readStore<Record<string,boolean>>('alpha.browser.roles.v1',()=>({}));return {packageName:'ai.elizaresearch.alphaphone',roles:['home','assistant','dialer','sms'].map(role=>({role,androidRole:role,held:!!roles[role],holders:roles[role]?['ai.elizaresearch.alphaphone']:[],available:true}))};}
+ async requestRole(input:{role:string}){if(!['home','assistant','dialer','sms'].includes(input.role))throw Error('Choose a device role.');await editStore<Record<string,boolean>,void>('alpha.browser.roles.v1',()=>({}),roles=>{roles[input.role]=true;});return {role:input.role,held:true,resultCode:-1};}
  async snapshot(){return {...readStore(key,initial),readAt:Date.now(),model:'Browser development device',manufacturer:navigator.platform,appVersion:'0.1.0',androidRelease:'Browser',build:'Development',securityPatch:'Browser managed',uptimeMs:performance.now(),permissions:{Camera:true,Microphone:true,Location:true},locationAccess:'approximate'};}
  async setTextScale(input:{percent:number}){const percent=Math.max(75,Math.min(150,Math.round(input.percent)));await editStore(key,initial,data=>{data.textScalePercent=percent;});document.documentElement.style.setProperty('--browser-text-scale',String(percent/100));return {textScalePercent:percent,effectiveTextZoom:percent};}
  async getDeviceSettings(){const data=readStore(key,initial);return {volumes:['music','ring','alarm'].map(stream=>({stream,current:data[stream as 'music'],max:100}))};}
- async openSettings(input:{page:string}) {
+ async openSettings(input:{page:string}={page:'device'}) {
   document.querySelector('[data-browser-settings]')?.remove();
   const dialog=document.createElement('dialog');dialog.dataset.browserSettings='true';dialog.setAttribute('aria-label',`${input.page} settings`);dialog.style.cssText='border:0;border-radius:18px;padding:24px;width:min(320px,85vw);background:var(--bg,#fff);color:var(--fg,#111);font:16px system-ui';
   const title=document.createElement('h2');title.textContent=input.page[0].toUpperCase()+input.page.slice(1);dialog.append(title);
@@ -16,7 +19,7 @@ export class BrowserDevice extends WebPlugin {
   if(!fields[input.page]){const text=document.createElement('p');text.textContent=input.page==='privacy'?'Camera, microphone and location permissions are managed by your browser.':'Browser development device';dialog.append(text);}
   const close=document.createElement('button');close.textContent='Done';close.onclick=()=>dialog.close();dialog.append(close);dialog.onclose=()=>{dialog.remove();window.dispatchEvent(new Event('focus'));};document.body.append(dialog);dialog.showModal();return {status:'opened'};
  }
- async list(){return {apps:['browser','calendar','camera','photos','files','maps','notes','settings'].map(name=>({packageName:`browser.${name}`,label:name[0].toUpperCase()+name.slice(1)}))};}
- async launch(input:{packageName:string}){const name=input.packageName.replace(/^browser\./,'');if(!(await this.list()).apps.some(a=>a.packageName===input.packageName))throw Error('Choose an installed development app.');window.dispatchEvent(new CustomEvent('alpha:browser-open-view',{detail:name}));}
+ async list(){return {apps:browserApps.map(({view,...app})=>app)};}
+ async launch(input:{packageName:string}){const app=browserApps.find(app=>app.packageName===input.packageName);if(!app)throw Error('Choose an installed development app.');window.dispatchEvent(new CustomEvent('alpha:browser-open-view',{detail:app.view}));}
  async buildInfo(){return {launcher:false,version:'0.1.0'};}
 }

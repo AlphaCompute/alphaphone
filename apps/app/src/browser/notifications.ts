@@ -1,0 +1,121 @@
+import { browserApps } from './apps';
+import { WebPlugin } from '@capacitor/core';
+import type { BrowserDaily } from './daily';
+import { editStore, readStore, revision } from './store';
+
+const apps=browserApps;
+type Selection = {packageName:string;preview:boolean};
+type History = {id:string;appLabel:string;packageName:string;at:number;state:string};
+type State = {revision:string;epoch:string;enabled:boolean;paused:boolean;history:boolean;accessGranted:boolean;apps:Selection[];events:History[];dismissed:string[];appEnabled:boolean;channels:Record<string,boolean>;deviceEvents?:DeviceEvent[]};
+type Notice = {id:string;revision:string;source:'own'|'external';appLabel:string;title:string;text:string;at:number;clearable:boolean;canOpen:boolean;packageName?:string;epoch?:string};
+type DeviceEvent = Notice & {packageName:string;sourceKey:string;autoCancel:boolean;secret:boolean};
+type Identity = {id:string;revision:string;source?:string};
+const key='alpha.browser.notifications.v2';
+const initial=():State=>({revision:revision(),epoch:revision(),enabled:false,paused:false,history:false,accessGranted:true,apps:[],events:[],dismissed:[],appEnabled:true,channels:{reminders:true},...readStore('alpha.browser.notification-policy.v1',()=>({}))});
+const locked=()=>document.hidden||document.documentElement.dataset.devBackground==='true'||!!document.querySelector('[aria-label="Unlock with fingerprint"], [aria-label="Wake"]')?.getClientRects().length;
+function trim(state:State){state.deviceEvents??=[];state.events=state.history&&state.enabled&&state.accessGranted&&!state.paused?state.events.filter(event=>event.at>Date.now()-86400000).slice(-100):[];state.dismissed=state.dismissed.slice(-500);}
+function record(state:State,row:Notice,event:string){trim(state);if(state.history&&row.packageName){state.events.push({id:crypto.randomUUID(),appLabel:row.appLabel,packageName:row.packageName,at:Date.now(),state:event});trim(state);}}
+
+/** Synthetic device events persist; Alpha observations and redacted history remain separate. */
+export class BrowserNotifications extends WebPlugin {
+ private session=revision();
+ constructor(private daily:BrowserDaily){super();window.addEventListener('storage',event=>{if(event.key===key)this.changed();});const retire=()=>{this.session=revision();};window.addEventListener('alpha:device-state',retire);window.addEventListener('blur',retire);window.addEventListener('pagehide',retire);window.addEventListener('pageshow',retire);document.addEventListener('visibilitychange',retire);}
+ private async state(){return editStore(key,initial,state=>{trim(state);return state;});}
+ private allowed(state:State,row:Notice){return state.enabled&&!state.paused&&state.accessGranted&&apps.some(app=>app.packageName===row.packageName)&&state.apps.some(app=>app.packageName===row.packageName);}
+ private observe(state:State,row:DeviceEvent):Notice {
+  const hidden=locked()||row.secret||!state.apps.find(app=>app.packageName===row.packageName)?.preview;
+  return {id:row.id,revision:`${row.revision}:${state.epoch}:${this.session}`,source:'external',packageName:row.packageName,appLabel:row.appLabel,title:hidden?row.appLabel:row.title,text:hidden?'':row.text,at:row.at,clearable:row.clearable,canOpen:!locked()&&!row.secret&&row.canOpen};
+ }
+ private changed(){window.dispatchEvent(new Event('focus'));void this.notifyListeners('changed',{});}
+ async crossAppStatus(){const state=await this.state();const {events,dismissed,deviceEvents,...policy}=state;return {...policy,apps:state.apps.map(app=>({...app,label:apps.find(value=>value.packageName===app.packageName)?.label||app.packageName.replace('browser.',''),available:apps.some(value=>value.packageName===app.packageName)})),connected:state.accessGranted};}
+ async notificationApps(){return {apps:apps.map(({view,...app})=>app)};}
+ async setNotificationPolicy(input:{expectedRevision:string;enabled?:boolean;history?:boolean;apps?:Selection[]}){
+  await editStore(key,initial,state=>{
+   if(state.revision!==input.expectedRevision)throw Error('Settings changed. Refresh and try again.');
+   for(const flag of ['enabled','history'] as const)if(input[flag]!==undefined){if(typeof input[flag]!=='boolean')throw Error('Invalid notification policy.');state[flag]=input[flag]!;}
+   if(input.apps!==undefined){if(!Array.isArray(input.apps)||input.apps.length>apps.length||new Set(input.apps.map(app=>app.packageName)).size!==input.apps.length||input.apps.some(app=>!apps.some(known=>known.packageName===app.packageName)||typeof app.preview!=='boolean'))throw Error('Choose a development app.');state.apps=input.apps.map(({packageName,preview})=>({packageName,preview}));}
+   state.revision=revision();state.epoch=revision();state.events=[];trim(state);
+  });
+  this.changed();return this.crossAppStatus();
+ }
+ async resumeCrossApp(input:{expectedRevision:string}){await editStore(key,initial,state=>{if(state.revision!==input.expectedRevision)throw Error('Settings changed. Refresh and try again.');state.paused=false;state.epoch=revision();state.revision=revision();});this.changed();return this.crossAppStatus();}
+ async notificationHistory(){const state=await this.state();return {items:[...state.events].reverse()};}
+ async clearNotificationHistory(){await editStore(key,initial,state=>{state.events=[];state.epoch=revision();});this.changed();}
+ async status(){const state=await this.state();return {appEnabled:state.appEnabled,permissionGranted:true,interruption:'all',channels:Object.entries(state.channels).map(([id,enabled])=>({id,name:id==='reminders'?'Reminders':id,importance:enabled?3:0,blocked:!enabled})),scope:'browser'};}
+ async inject(input:{packageName:string;title:string;text:string;id?:string;clearable?:boolean;autoCancel?:boolean;secret?:boolean;canOpen?:boolean}){
+  const app=apps.find(app=>app.packageName===input.packageName);if(!app||typeof input.title!=='string'||typeof input.text!=='string'||input.title.length>200||input.text.length>2000||input.id!==undefined&&!/^[\w-]{1,128}$/.test(input.id))throw Error('Review the event fields.');
+  for(const flag of ['clearable','autoCancel','secret','canOpen'] as const)if(input[flag]!==undefined&&typeof input[flag]!=='boolean')throw Error('Review the event options.');
+  const observed=readStore(key,initial).epoch,sourceKey=`${app.packageName}/${input.id||crypto.randomUUID()}`;
+  const result=await editStore(key,initial,state=>{
+   trim(state);const previous=state.deviceEvents!.find(row=>row.sourceKey===sourceKey);
+   const row:DeviceEvent={sourceKey,id:previous?.id||crypto.randomUUID(),revision:revision(),source:'external',appLabel:app.label,title:input.title,text:input.text,at:Date.now(),clearable:input.clearable!==false,autoCancel:input.autoCancel!==false,secret:input.secret===true,canOpen:input.canOpen!==false,packageName:app.packageName};
+   state.deviceEvents=[...state.deviceEvents!.filter(event=>event.sourceKey!==sourceKey),row].slice(-100);
+   const collected=this.allowed(state,row);
+   // A source event still exists on the simulated device when collection is off.
+   // A prior observation cannot cross a policy/history boundary into the new history.
+   if(state.epoch===observed&&collected)record(state,row,previous?'updated':'posted');
+   return {status:'posted',collected,id:row.id,revision:this.observe(state,row).revision};
+  });
+  this.changed();return result;
+ }
+ async list(){
+  const {reminders}=await this.daily.listReminders(),state=await this.state(),hidden=locked();
+  const own:Notice[]=state.appEnabled&&state.channels.reminders?reminders.filter(row=>row.status==='posted'&&!state.dismissed.includes(row.occurrenceId!)).map(row=>({id:row.id,revision:row.occurrenceId!,source:'own',appLabel:'Alpha Phone',title:hidden?'Alpha Phone':row.title,text:hidden?'':row.body||'',at:row.postedAt||row.at,clearable:true,canOpen:!hidden})):[];
+  const external=state.deviceEvents!.filter(row=>this.allowed(state,row)).map(row=>this.observe(state,row));
+  return {scope:'browser',items:[...own,...external].sort((a,b)=>b.at-a.at).slice(0,100)};
+ }
+ private async external(input:Identity,opening:boolean){
+  const view=await editStore(key,initial,state=>{
+   trim(state);const row=state.deviceEvents!.find(row=>row.id===input.id);
+   if(!row||!this.allowed(state,row)||locked()||this.observe(state,row).revision!==input.revision||(!opening&&!row.clearable)||(opening&&!this.observe(state,row).canOpen))throw Error('Notification changed.');
+   record(state,row,opening?'opened':'dismissed');
+   if(!opening||row.autoCancel)state.deviceEvents=state.deviceEvents!.filter(event=>event.id!==row.id);
+   return apps.find(app=>app.packageName===row.packageName)!.view;
+  });
+  if(opening)window.dispatchEvent(new CustomEvent('alpha:browser-open-view',{detail:view}));this.changed();
+ }
+ async open(input:Identity){if(input.source==='external')return this.external(input,true);if(locked())throw Error('Unlock to open this notification.');const {items}=await this.list();if(!items.some(row=>row.source==='own'&&row.id===input.id&&row.revision===input.revision))throw Error('Notification changed.');window.dispatchEvent(new CustomEvent('alpha:browser-open-view',{detail:'calendar'}));await this.daily.notifyReminder(input.id,input.revision);}
+ async dismiss(input:Identity){if(input.source==='external')return this.external(input,false);if(locked())throw Error('Unlock to dismiss this notification.');const {items}=await this.list();if(!items.some(row=>row.source==='own'&&row.id===input.id&&row.revision===input.revision))throw Error('Notification changed.');await editStore(key,initial,state=>{state.dismissed.push(input.revision);trim(state);});this.changed();}
+ async clear(input:{items:Identity[]}){if(!Array.isArray(input.items)||input.items.length>100)throw Error('Refresh notifications.');const outcomes=[];for(const item of input.items){try{await this.dismiss(item);outcomes.push({id:item.id,status:'requested'});}catch{outcomes.push({id:item.id,status:'unavailable'});}}return {outcomes};}
+ async deviceEvents(){const state=await this.state();return {items:state.deviceEvents!.map(row=>({id:row.id,revision:row.revision,appLabel:row.appLabel,packageName:row.packageName,notificationId:row.sourceKey.slice(row.packageName.length+1),title:row.title,text:row.text,clearable:row.clearable,autoCancel:row.autoCancel,secret:row.secret}))};}
+ async removeDeviceEvent(input:{id:string;revision:string}){await editStore(key,initial,state=>{trim(state);const row=state.deviceEvents!.find(row=>row.id===input.id);if(!row||row.revision!==input.revision)throw Error('The device event changed.');state.deviceEvents=state.deviceEvents!.filter(event=>event.id!==row.id);if(this.allowed(state,row))record(state,row,'removed');});this.changed();}
+ private show(dialog:HTMLDialogElement){
+  dialog.classList.add('alpha-notification-dialog');
+  const shell=document.querySelector('.os');if(shell){const theme=getComputedStyle(shell);for(const name of ['--bg','--fg','--s2','--line','--acc'])dialog.style.setProperty(name,theme.getPropertyValue(name));}
+  const style=document.createElement('style');style.textContent=`
+   .alpha-notification-dialog{box-sizing:border-box;font:14px/1.5 'Public Sans',system-ui,sans-serif;box-shadow:0 16px 60px #0003}
+   .alpha-notification-dialog::backdrop{background:#0005}
+   .alpha-notification-dialog h2{font-size:22px;line-height:1.2;margin:0 0 20px}
+   .alpha-notification-dialog h3{font-size:16px;margin:24px 0 12px}
+   .alpha-notification-dialog input:not([type=checkbox]),.alpha-notification-dialog select,.alpha-notification-dialog textarea{box-sizing:border-box;width:100%;min-width:0;min-height:42px;border:1px solid var(--line,#ddd);border-radius:8px;padding:8px 10px;font:inherit;color:inherit;background:var(--s2,#f3f3f3)}
+   .alpha-notification-dialog textarea{min-height:72px;resize:vertical}
+   .alpha-notification-dialog input[type=checkbox]{width:18px;height:18px;flex-shrink:0;accent-color:var(--acc,#00f)}
+   .alpha-notification-dialog button{min-height:44px;border:1px solid var(--line,#ddd);border-radius:9px;padding:8px 12px;font:inherit;color:inherit;background:var(--s2,#f3f3f3);cursor:pointer;overflow-wrap:anywhere}
+   .alpha-notification-dialog button:disabled{opacity:.5;cursor:wait}
+   .alpha-notification-dialog :focus-visible{outline:2px solid var(--acc,#00f);outline-offset:2px}
+   .alpha-notification-dialog [role=status]:empty{display:none}
+  `;dialog.prepend(style);
+  const previous=document.activeElement as HTMLElement|null;const back=(event:Event)=>{event.preventDefault();event.stopImmediatePropagation();dialog.close();};window.addEventListener('alpha-back',back,true);dialog.addEventListener('close',()=>{window.removeEventListener('alpha-back',back,true);if(previous?.isConnected)previous.focus();},{once:true});document.body.append(dialog);dialog.showModal();
+ }
+ async compose(){
+  const dialog=document.createElement('dialog');dialog.setAttribute('aria-label','Development notification');dialog.style.cssText='width:min(340px,85vw);max-height:85dvh;overflow:auto;border:0;border-radius:18px;padding:24px;background:var(--bg,#fff);color:var(--fg,#111)';const heading=document.createElement('h2');heading.textContent='Post notification';dialog.append(heading);
+  const app=document.createElement('select');for(const choice of apps){const option=document.createElement('option');option.value=choice.packageName;option.textContent=choice.label;app.append(option);}
+  const eventId=document.createElement('input');eventId.maxLength=128;eventId.placeholder='New event';
+  const title=document.createElement('input');title.value='Development event';title.maxLength=200;const body=document.createElement('textarea');body.value='Ready for review.';body.maxLength=2000;
+  for(const [name,control] of [['App',app],['Event ID',eventId],['Title',title],['Message',body]] as const){const label=document.createElement('label');label.textContent=name;label.style.cssText='display:grid;gap:6px;margin:14px 0';label.append(control);dialog.append(label);}
+  const ongoing=document.createElement('input'),keep=document.createElement('input'),secret=document.createElement('input');for(const [name,control] of [['Ongoing notification',ongoing],['Keep after opening',keep],['Secret notification',secret]] as const){control.type='checkbox';const label=document.createElement('label');label.style.cssText='display:flex;gap:12px;margin:12px 0';label.append(control,document.createTextNode(name));dialog.append(label);}
+  const status=document.createElement('p');status.setAttribute('role','status');const post=document.createElement('button');post.textContent='Post';post.onclick=async()=>{post.disabled=true;try{const result=await this.inject({packageName:app.value,title:title.value,text:body.value,...(eventId.value?{id:eventId.value}:{}),clearable:!ongoing.checked,autoCancel:!keep.checked,secret:secret.checked});await render();status.textContent=result.collected?'Posted to notification center.':'Posted to device. Select this app in notification settings to show it in Alpha.';}catch{status.textContent='The event could not be saved. Try again.';}finally{post.disabled=false;}};
+  const done=document.createElement('button');done.textContent='Done';done.onclick=()=>dialog.close();dialog.onclose=()=>dialog.remove();const actions=document.createElement('div');actions.style.cssText='display:flex;gap:10px;margin:18px 0';post.style.cssText='background:var(--acc,#00f);color:white;border-color:transparent;flex:1';done.style.flex='1';actions.append(post,done);dialog.append(status,actions);
+  const source=document.createElement('section');dialog.append(source);
+  const render=async()=>{const {items}=await this.deviceEvents();source.replaceChildren();const heading=document.createElement('h3');heading.textContent='Active device events';source.append(heading);for(const row of items){const entry=document.createElement('div');entry.style.cssText='display:grid;gap:8px;margin:16px 0';const text=document.createElement('span');text.textContent=`${row.appLabel} · ${row.title}`;const edit=document.createElement('button');edit.textContent=`Edit ${row.title}`;edit.onclick=()=>{app.value=row.packageName;eventId.value=row.notificationId;title.value=row.title;body.value=row.text;ongoing.checked=!row.clearable;keep.checked=!row.autoCancel;secret.checked=row.secret;};const remove=document.createElement('button');remove.textContent=`Remove ${row.title}`;remove.onclick=async()=>{remove.disabled=true;try{await this.removeDeviceEvent(row);await render();}catch{status.textContent='The event changed. Reopen device events.';remove.disabled=false;}};entry.append(text,edit,remove);source.append(entry);}if(!items.length){const empty=document.createElement('p');empty.textContent='No active device events';source.append(empty);}};
+  this.show(dialog);await render();
+ }
+ private async controls(title:string,fields:{label:string;checked:boolean;change:(checked:boolean)=>Promise<void>}[]){
+  const dialog=document.createElement('dialog');dialog.setAttribute('aria-label',title);dialog.style.cssText='width:min(340px,85vw);max-height:85dvh;overflow:auto;border:0;border-radius:18px;padding:24px;background:var(--bg,#fff);color:var(--fg,#111)';const heading=document.createElement('h2');heading.textContent=title;dialog.append(heading);
+  for(const field of fields){const label=document.createElement('label'),control=document.createElement('input');label.textContent=field.label;label.style.cssText='display:flex;gap:20px;align-items:center;margin:20px 0';control.type='checkbox';control.checked=field.checked;control.onchange=async()=>{control.disabled=true;try{await field.change(control.checked);this.changed();}catch{control.checked=!control.checked;}finally{control.disabled=false;}};label.append(control);dialog.append(label);}
+  const done=document.createElement('button');done.textContent='Done';done.onclick=()=>dialog.close();dialog.onclose=()=>{dialog.remove();this.changed();};dialog.append(done);this.show(dialog);return {status:'opened'};
+ }
+ async openNotificationAccess(){const state=await this.state();return this.controls('Notification access',[{label:'Allow development app events',checked:state.accessGranted,change:async enabled=>{await editStore(key,initial,state=>{state.accessGranted=enabled;state.epoch=revision();state.revision=revision();trim(state);});}}]);}
+ async openChannelSettings(input:{id:string}){const state=await this.state();if(!(input.id in state.channels))throw Error('Choose a notification channel.');return this.controls('Reminders notifications',[{label:'Show reminders',checked:state.channels[input.id],change:async enabled=>{await editStore(key,initial,state=>{state.channels[input.id]=enabled;});}}]);}
+ async openAppSettings(){const state=await this.state();return this.controls('Alpha notifications',[{label:'Show Alpha notifications',checked:state.appEnabled,change:async enabled=>{await editStore(key,initial,state=>{state.appEnabled=enabled;});}}]);}
+}

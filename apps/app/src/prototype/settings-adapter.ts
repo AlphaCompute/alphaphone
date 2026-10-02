@@ -9,7 +9,7 @@ const device = registerPlugin<{
   openSettings(input: { page: string }): Promise<{ status: string }>;
   setTextScale(input:{percent:number}):Promise<{textScalePercent:number;effectiveTextZoom:number}>;
 }>('AlphaDevice');
-const notifications = registerPlugin<{status():Promise<Bag>;openChannelSettings(input:{id:string}):Promise<{status:string}>;crossAppStatus():Promise<Bag>;notificationApps():Promise<{apps:Bag[]}>;setNotificationPolicy(input:Bag):Promise<Bag>;resumeCrossApp(input:{expectedRevision:string}):Promise<Bag>;openNotificationAccess():Promise<Bag>;notificationHistory():Promise<{items:Bag[]}>;clearNotificationHistory():Promise<void>}>('AlphaNotifications');
+const notifications = registerPlugin<{status():Promise<Bag>;openAppSettings():Promise<Bag>;openChannelSettings(input:{id:string}):Promise<{status:string}>;crossAppStatus():Promise<Bag>;notificationApps():Promise<{apps:Bag[]}>;setNotificationPolicy(input:Bag):Promise<Bag>;resumeCrossApp(input:{expectedRevision:string}):Promise<Bag>;openNotificationAccess():Promise<Bag>;notificationHistory():Promise<{items:Bag[]}>;clearNotificationHistory():Promise<void>}>('AlphaNotifications');
 const speech = registerPlugin<{localSpeechStatus(input:{requestId:string}):Promise<{ready:boolean;execution:string}>}>('AlphaVoiceCloud');
 const system = registerPlugin<{ getDeviceSettings(): Promise<Bag> }>('ElizaSystem');
 
@@ -62,13 +62,13 @@ export function installSettingsAdapter(Component: any, views: Bag) {
   async function refresh() {
     const instance = owner, token = ++generation;
     if (!instance) return;
-    const [state, settings, noticeState, crossState] = await Promise.allSettled([device.snapshot(), system.getDeviceSettings(), notifications.status(), notifications.crossAppStatus()]);
+    const [state, settings, noticeState, crossState, metadata] = await Promise.allSettled([device.snapshot(), system.getDeviceSettings(), notifications.status(), notifications.crossAppStatus(), history===null?Promise.resolve(null):notifications.notificationHistory()]);
     if (owner !== instance || generation !== token) return;
     facts = state.status === 'fulfilled' ? state.value : {};
     controls = settings.status === 'fulfilled' ? settings.value : {};
     delivery = noticeState.status === 'fulfilled' ? noticeState.value : {};
     cross = crossState.status === 'fulfilled' ? crossState.value : {};
-    history=null;
+    if(metadata.status==='fulfilled'&&metadata.value!==null)history=metadata.value.items;
     instance.vset('settings', { nativeReadAt: Date.now() });
   }
   p.componentDidMount = function () {
@@ -167,31 +167,31 @@ export function installSettingsAdapter(Component: any, views: Bag) {
       } else if (page.title === 'Notifications') {
         const custom = (label:string,go:()=>void):Bag=>({kNav:true,label,lbl:label,chev:true,noAB:true,go});
         const run = async (task:()=>Promise<void>)=>{if(notificationBusy)return;notificationBusy=true;const current=owner;try{await task();if(owner===current)await refresh();}catch{if(owner===current)api.toast('Notification settings changed or are unavailable. Refresh and try again.');}finally{notificationBusy=false;}};
-        const policy = (changes:Bag)=>void run(async()=>{await notifications.setNotificationPolicy({expectedRevision:cross.revision,...changes});});
+        const policy = (changes:Bag)=>void run(async()=>{await notifications.setNotificationPolicy({expectedRevision:cross.revision,...changes});if(changes.history===false)history=[];});
         const selected:Bag[]=cross.apps||[];
-        const crossRows:Bag[]=[info('Other apps',typeof cross.accessGranted!=='boolean'?'Unavailable':!cross.enabled?'Collection off':cross.paused?'Paused after mock mode':!cross.accessGranted?'Android access not granted':!cross.connected?'Waiting for Android listener':'Selected apps connected'),info('Notification privacy','Android grants broad access. Alpha reads only selected apps; previews and history are separate choices.'),info('Agent access','Notification content is not sent to your agent')];
+        const crossRows:Bag[]=[info('Other apps',typeof cross.accessGranted!=='boolean'?'Unavailable':!cross.enabled?'Collection off':cross.paused?'Paused after mock mode':!cross.accessGranted?'Android access not granted':!cross.connected?'Waiting for Android listener':'Selected apps connected'),info('Notification privacy',Capacitor.isNativePlatform()?'Android grants broad access. Alpha reads only selected apps; previews and history are separate choices.':'Development events are stored in this browser. Previews and metadata history are separate choices.'),info('Agent access','Notification content is not sent to your agent')];
         if(cross.revision){
           crossRows.push(custom(cross.enabled?'Turn off other-app collection':'Enable selected-app collection',()=>{
-            if(!cross.enabled&&!window.confirm('Enable collection for your selected apps? Android grants broad notification access. Alpha filters to your selection before reading text. Previews and local metadata history remain separate choices.'))return;
+            if(Capacitor.isNativePlatform()&&!cross.enabled&&!window.confirm('Enable collection for your selected apps? Android grants broad notification access. Alpha filters to your selection before reading text. Previews and local metadata history remain separate choices.'))return;
             policy({enabled:!cross.enabled});
-          }),custom('Manage notification access in Android',()=>void run(async()=>{await notifications.openNotificationAccess();})),custom(choices?'Hide app choices':'Choose notification apps',()=>{
+          }),custom(Capacitor.isNativePlatform()?'Manage notification access in Android':'Manage development notification access',()=>void run(async()=>{await notifications.openNotificationAccess();})),custom(choices?'Hide app choices':'Choose notification apps',()=>{
             if(choices){choices=null;owner?.vset('settings',{notificationChanged:Date.now()});return;}
             void run(async()=>{const next=await notifications.notificationApps();choices=next.apps;});
           }));
           if(cross.paused)crossRows.push(custom('Resume selected-app collection',()=>void run(async()=>{if(window.confirm('Resume collection of notifications from your selected apps?'))await notifications.resumeCrossApp({expectedRevision:cross.revision});})));
           for(const app of selected)crossRows.push(info(app.label,app.available===false?'App changed: remove and select again':app.preview?'Current title and text allowed':'Content hidden'),custom(`Remove ${app.label}`,()=>policy({apps:selected.filter(a=>a.packageName!==app.packageName).map(({packageName,preview})=>({packageName,preview}))})),custom(`${app.preview?'Hide':'Allow'} previews: ${app.label}`,()=>{
-            if(!app.preview&&!window.confirm(`Allow current notification titles and text from ${app.label} while unlocked? They stay on this phone and are not stored in history or sent to the agent.`))return;
+            if(Capacitor.isNativePlatform()&&!app.preview&&!window.confirm(`Allow current notification titles and text from ${app.label} while unlocked? They stay on this phone and are not stored in history or sent to the agent.`))return;
             policy({apps:selected.map(a=>({packageName:a.packageName,preview:a.packageName===app.packageName?!app.preview:a.preview}))});
           }));
           for(const app of choices||[])if(!selected.some(a=>a.packageName===app.packageName))crossRows.push(custom(`Select ${app.label} (${app.packageName})`,()=>policy({apps:[...selected.map(({packageName,preview})=>({packageName,preview})),{packageName:app.packageName,preview:false}]})));
           crossRows.push(info('Local metadata history',cross.historyUnavailable?'Unavailable; clear local history to reset':cross.history?'On · 100 events, 24 hours · no message text':'Off'),custom(cross.history?'Turn off local metadata history':'Enable local metadata history',()=>{
-            if(!cross.history&&!window.confirm('Keep up to 100 redacted notification events for 24 hours in encrypted storage on this phone? Only selected app identity, event times and status are saved. No title or message text is stored.'))return;
+            if(Capacitor.isNativePlatform()&&!cross.history&&!window.confirm('Keep up to 100 redacted notification events for 24 hours in encrypted storage on this phone? Only selected app identity, event times and status are saved. No title or message text is stored.'))return;
             policy({history:!cross.history});
-          }),custom('View local metadata history',()=>{if(notificationBusy)return;notificationBusy=true;const current=owner;void notifications.notificationHistory().then(result=>{if(owner===current){history=result.items;owner?.vset('settings',{notificationChanged:Date.now()});}}).catch(()=>api.toast('Local notification history is unavailable.')).finally(()=>{notificationBusy=false;});}),custom('Clear local metadata history',()=>{if(window.confirm('Permanently clear local notification metadata history?'))void run(()=>notifications.clearNotificationHistory());}));
+          }),custom('View local metadata history',()=>{if(notificationBusy)return;notificationBusy=true;const current=owner;void notifications.notificationHistory().then(result=>{if(owner===current){history=result.items;owner?.vset('settings',{notificationChanged:Date.now()});}}).catch(()=>api.toast('Local notification history is unavailable.')).finally(()=>{notificationBusy=false;});}),custom('Clear local metadata history',()=>{if(window.confirm('Permanently clear local notification metadata history?'))void run(async()=>{await notifications.clearNotificationHistory();history=[];});}));
           if(history!==null){if(!history.length)crossRows.push(info('History','No retained events'));for(const row of history)crossRows.push(info(row.appLabel,`${row.state} · ${new Date(row.at).toLocaleString()} · no action available`));}
         }
         const interruption:Bag={all:'No DND suppression reported',priority:'Priority interruptions only',alarms:'Alarms only',none:'Interruptions suppressed',unknown:'Unavailable'};
-        page.groups = [group([info('Alpha notifications', topValues.Notifications),info('Do Not Disturb',interruption[delivery.interruption]||'Unavailable'),info('Delivery timing','Android battery policies may delay alerts'),nav('Manage Alpha notifications', 'notifications')]),
+        page.groups = [group([info('Alpha notifications', topValues.Notifications),info('Do Not Disturb',interruption[delivery.interruption]||'Unavailable'),info('Delivery timing','Android battery policies may delay alerts'),Capacitor.isNativePlatform()?nav('Manage Alpha notifications', 'notifications'):custom('Manage Alpha notifications',()=>void run(async()=>{await notifications.openAppSettings();}))]),
           ...((delivery.channels||[]).map((channel:Bag)=>group([info(channel.name,channel.blocked?'Channel blocked':channel.groupBlocked?'Channel group blocked':!delivery.appEnabled||!delivery.permissionGranted?'App notifications off':channel.importance<=2?'Silent channel':'Channel allowed'),{kNav:true,label:`Manage ${channel.name}`,lbl:`Manage ${channel.name}`,chev:true,noAB:true,go:()=>void notifications.openChannelSettings({id:channel.id}).catch(()=>api.toast('This notification channel is unavailable.'))}]))),group(crossRows)];
       } else if (page.title === 'Privacy & Enclave') {
         page.title='Privacy & runtime';
@@ -219,10 +219,9 @@ export function installSettingsAdapter(Component: any, views: Bag) {
     }
     if(!Capacitor.isNativePlatform()) {
       for(const page of out.stack){
-        if(page.title==='Notifications')page.groups=[group([info('Notification center','Browser reminders'),info('Delivery','While Alpha is open'),info('Other apps','Local development events')])];
         if(page.title==='About')page.groups=[group([info('Alpha Phone','0.1.0'),info('Runtime','Browser development'),info('Storage','This browser profile')])];
       }
-      const browserLabels=(value:any):any=>{if(typeof value==='string')return value.replaceAll('Unavailable','Browser managed').replaceAll('Manage in Android','Browser device').replaceAll('in Android','in browser').replaceAll('Android settings','Browser device settings').replaceAll('Android Calendar','Browser calendar').replaceAll('Android device information','Browser device information').replaceAll('Android developer settings','Browser developer settings').replaceAll('Device accounts in Android','Browser accounts').replaceAll('On this phone','In this browser').replaceAll('on this phone','in this browser').replaceAll('Android battery policies may delay alerts','Alerts appear while Alpha is open').replaceAll('Native setting unavailable','Browser setting').replaceAll('Wi-Fi transport · network names stay in Android settings','Development network');if(Array.isArray(value))return value.map(browserLabels);if(value&&typeof value==='object')return Object.fromEntries(Object.entries(value).map(([k,v])=>[k,browserLabels(v)]));return value;};
+      const browserLabels=(value:any):any=>{if(typeof value==='string')return value.replaceAll('Unavailable','Browser managed').replaceAll('Manage in Android','Browser device').replaceAll('in Android','in browser').replaceAll('Android settings','Browser device settings').replaceAll('Android Calendar','Browser calendar').replaceAll('Android device information','Browser device information').replaceAll('Android developer settings','Browser developer settings').replaceAll('Device accounts in Android','Browser accounts').replaceAll('On this phone','In this browser').replaceAll('on this phone','in this browser').replaceAll('Android access not granted','Development event access off').replaceAll('Waiting for Android listener','Waiting for local events').replaceAll('Selected apps connected','Selected development apps connected').replaceAll('Android battery policies may delay alerts','Alerts appear while Alpha is open').replaceAll('Native setting unavailable','Browser setting').replaceAll('Wi-Fi transport · network names stay in Android settings','Development network');if(Array.isArray(value))return value.map(browserLabels);if(value&&typeof value==='object')return Object.fromEntries(Object.entries(value).map(([k,v])=>[k,browserLabels(v)]));return value;};
       return browserLabels(out);
     }
     return out;

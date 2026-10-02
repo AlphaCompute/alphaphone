@@ -1,3 +1,4 @@
+import { BrowserDeviceControls } from './browser/device-controls';
 import './browser/register';
 import { browserDevProfile } from './browser/dev-profile';
 import { captureSimulatedApps, installSimulatedApps } from './browser/simulated-apps';
@@ -88,7 +89,19 @@ function Phone() {
     size(); window.addEventListener('resize', size); window.visualViewport?.addEventListener('resize', size);
     return () => { window.removeEventListener('resize', size); window.visualViewport?.removeEventListener('resize', size); };
   }, []);
-  return <>{import.meta.env.DEV&&!isAndroid&&!mock&&<button style={{position:'fixed',right:8,bottom:8,zIndex:90,fontSize:12}} onClick={()=>{const url=new URL(location.href);if(browserDevProfile)url.searchParams.delete('mode');else url.searchParams.set('mode','dev');location.assign(url.href);}}>{browserDevProfile?'Dev device · local data':'Dev device'}</button>}{mock && <div className="mock-mode-banner" role="status"><span>Mock mode · simulated data and actions</span><button onClick={() => { void connectionController.offline().then(() => { const url = new URL(location.href); url.searchParams.delete('mode'); url.searchParams.delete('start'); location.assign(url.href); }); }}>Exit mock mode</button></div>}<Component phoneSurface initial={fixture ? query.get('start') || 'home' : 'home'} theme={initialTheme} ref={(value: any) => { shell = value; }} />
+  return <>{import.meta.env.DEV&&!isAndroid&&!mock&&<BrowserDeviceControls command={action=>{
+    if(!shell)return;
+    if(action==='home')window.dispatchEvent(new Event('launcher-home'));
+    else if(action==='back')window.dispatchEvent(new Event('alpha-back',{cancelable:true}));
+    else if(action==='power'){shell.leave();shell.power();}
+    else if(action==='unlock'){shell.unlock();window.dispatchEvent(new Event('focus'));}
+    else if(action==='boot'){shell.leave();shell.runBoot();}
+    else if(action==='shade'){shell.unlock();shell.setState({shade:true});}
+    else if(action==='assistant'){shell.unlock();shell.setState({chat:'full'});}
+    else if(action==='background'){shell.leave();shell.setState({screen:'off',voice:'off',chat:'input',shade:false});document.documentElement.dataset.devBackground='true';window.dispatchEvent(new Event('blur'));}
+    else if(action==='resume'){delete document.documentElement.dataset.devBackground;shell.unlock();window.dispatchEvent(new Event('focus'));}
+    if(['power','unlock','boot','background','resume'].includes(action))window.dispatchEvent(new Event('alpha:device-state'));
+  }}/>}{import.meta.env.DEV&&!isAndroid&&!mock&&<button style={{position:'fixed',right:8,bottom:8,zIndex:90,fontSize:12}} onClick={()=>{const url=new URL(location.href);if(browserDevProfile)url.searchParams.delete('mode');else url.searchParams.set('mode','dev');location.assign(url.href);}}>{browserDevProfile?'Dev device · local data':'Dev device'}</button>}{mock && <div className="mock-mode-banner" role="status"><span>Mock mode · simulated data and actions</span><button onClick={() => { void connectionController.offline().then(() => { const url = new URL(location.href); url.searchParams.delete('mode'); url.searchParams.delete('start'); location.assign(url.href); }); }}>Exit mock mode</button></div>}<Component phoneSurface initial={fixture ? query.get('start') || 'home' : 'home'} theme={initialTheme} ref={(value: any) => { shell = value; }} />
 {!fixture && <><ConnectionChooser /><HostedDigestPanel /></>}</>;
 }
 async function mountPhone() {

@@ -77,6 +77,7 @@ export class BrowserDaily extends WebPlugin {
     return {action:input.action,status:'opened',message:input.action==='show'?(alarms.map(r=>`${r.title} · ${new Date(r.at).toLocaleTimeString()}`).join('\n')||'No alarms'):input.action==='dismiss'?'Alarm dismissed.':'Alarm snoozed.'};
   }
   async capabilities(){return {platform:'web',actions:['calendar','reminder','browser','files','photos','maps','settings','notifications'].map(action=>({action,available:true,mode:'browser'}))};}
+  pdfSelected(input:{selectionId:string;page:number}){return this.files.pdfSelected(input);}
   readSelected(input:{selectionId:string}){return this.files.readSelected(input);}
   openSelected(input:{selectionId:string}){return this.files.openSelected(input);}
   shareSelected(input:{selectionId:string}){return this.files.shareSelected(input);}
@@ -84,21 +85,4 @@ export class BrowserDaily extends WebPlugin {
   forgetSelected(input:{selectionId:string}){return this.files.forgetSelected(input);}
   restoreSelected(){return this.files.restoreSelected();}
   async perform(input:{action:string;url?:string}){if(input.action==='files'||input.action==='photos')return this.files.pick(input.action==='photos');if(input.action==='browser'&&input.url){const url=new URL(input.url);if(!['https:','http:'].includes(url.protocol)||url.username||url.password)throw Error('Enter an HTTP or HTTPS address.');window.open(url.href,'_blank','noopener,noreferrer');}else window.dispatchEvent(new CustomEvent('alpha:browser-open-view',{detail:input.action==='reminder'?'calendar':input.action}));return {status:'opened',action:input.action,message:''};}
-}
-export class BrowserNotifications extends WebPlugin {
-  constructor(private daily:BrowserDaily){super();}
-  async list(){const {reminders}=await this.daily.listReminders();const dismissed=readStore<string[]>('alpha.browser.dismissed-notices.v1',()=>[]);return {scope:'browser',items:reminders.filter(r=>r.status==='posted'&&!dismissed.includes(r.occurrenceId!)).map(r=>({id:r.id,revision:r.occurrenceId,source:'own',appLabel:'Alpha Phone',title:r.title,text:r.body,at:r.postedAt,clearable:true,canOpen:true}))};}
-  async open(input:{id:string;revision:string}){const {reminders}=await this.daily.listReminders();if(!reminders.some(r=>r.id===input.id&&r.occurrenceId===input.revision))throw Error('Notification changed.');window.dispatchEvent(new CustomEvent('alpha:browser-open-view',{detail:'calendar'}));await this.daily.notifyReminder(input.id,input.revision);}
-  async dismiss(input:{id:string;revision:string}){const {items}=await this.list();if(!items.some(r=>r.id===input.id&&r.revision===input.revision))throw Error('Notification changed.');await editStore<string[],void>('alpha.browser.dismissed-notices.v1',()=>[],data=>{data.push(input.revision);});}
-  async clear(input:{items:{id:string;revision:string}[]}){const outcomes=[];for(const item of input.items){try{await this.dismiss(item);outcomes.push({status:'dismissed'});}catch{outcomes.push({status:'unavailable'});}}return {outcomes};}
-  private policy(){return readStore('alpha.browser.notification-policy.v1',()=>({revision:revision(),enabled:false,paused:false,history:false,apps:[] as {packageName:string;preview:boolean;label?:string}[]}));}
-  async crossAppStatus(){return {...this.policy(),accessGranted:true,connected:true};}
-  async notificationApps(){return {apps:['Mail','Calendar','Messages'].map(label=>({packageName:'browser.'+label.toLowerCase(),label}))};}
-  async setNotificationPolicy(input:{expectedRevision:string;enabled?:boolean;history?:boolean;apps?:{packageName:string;preview:boolean}[]}){return editStore('alpha.browser.notification-policy.v1',()=>this.policy(),data=>{if(data.revision!==input.expectedRevision)throw Error('Settings changed. Refresh and try again.');if(input.enabled!==undefined)data.enabled=input.enabled;if(input.history!==undefined)data.history=input.history;if(input.apps)data.apps=input.apps.map(app=>({...app,label:app.packageName.replace('browser.','')}));data.revision=revision();return data;});}
-  async resumeCrossApp(input:{expectedRevision:string}){return this.setNotificationPolicy({...input,enabled:true});}
-  async openNotificationAccess(){return {status:'opened'};}
-  async notificationHistory(){return {items:[]};}
-  async clearNotificationHistory(){}
-  async openChannelSettings(){return {status:'opened'};}
-  async status(){return {appEnabled:true,permissionGranted:true,interruption:'all',channels:[{id:'reminders',name:'Reminders',importance:3,blocked:false}]};}
 }

@@ -9,9 +9,11 @@ export function installNotificationsAdapter(Component: any) {
  p.componentDidMount=function(){mount?.call(this);this.alphaNotices=[];this.alphaNoticesLive=true;this.alphaNoticeEpoch=0;
   this.alphaNoticeVisibility=()=>{this.alphaNoticeEpoch++;if(document.hidden){this.alphaNotices=[];this.setState({nativeNoticeRevision:Date.now()});}else if(this.S().shade)void this.refreshAlphaNotices();};
   document.addEventListener('visibilitychange',this.alphaNoticeVisibility);
+  this.alphaNoticeDeviceState=()=>{this.alphaNoticeEpoch++;this.alphaNotices=[];this.setState({nativeNoticeRevision:Date.now()});};
+  if(!Capacitor.isNativePlatform())window.addEventListener('alpha:device-state',this.alphaNoticeDeviceState);
   this.alphaNoticeTimer=window.setInterval(()=>{if(this.alphaNoticesLive&&this.S().shade&&!document.hidden)void this.refreshAlphaNotices();},1000);
  };
- p.componentWillUnmount=function(){this.alphaNoticesLive=false;this.alphaNoticeEpoch++;document.removeEventListener('visibilitychange',this.alphaNoticeVisibility);clearInterval(this.alphaNoticeTimer);unmount?.call(this);};
+ p.componentWillUnmount=function(){this.alphaNoticesLive=false;this.alphaNoticeEpoch++;document.removeEventListener('visibilitychange',this.alphaNoticeVisibility);window.removeEventListener('alpha:device-state',this.alphaNoticeDeviceState);clearInterval(this.alphaNoticeTimer);unmount?.call(this);};
  p.refreshAlphaNotices=async function(){
   if(this.alphaNoticesBusy||!this.alphaNoticesLive||document.hidden)return;this.alphaNoticesBusy=true;const epoch=this.alphaNoticeEpoch;
   try{const result=await native.list();if(!this.alphaNoticesLive||document.hidden||epoch!==this.alphaNoticeEpoch)return;const next=result.items;if(JSON.stringify(next)!==JSON.stringify(this.alphaNotices)){this.alphaNotices=next;this.setState({nativeNoticeRevision:Date.now()});}this.alphaNoticeError=false;}

@@ -1,8 +1,10 @@
 import { BrowserLocation } from './location';
 import { BrowserVoice } from './voice';
+import { BrowserMailAttachments } from './mail-attachments';
 import { BrowserFiles } from './files';
 import { BrowserDevice } from './device';
-import { BrowserDaily, BrowserNotifications } from './daily';
+import { BrowserDaily } from './daily';
+import { BrowserNotifications } from './notifications';
 import { registerPlugin } from '../platform-plugins';
 import { Capacitor } from '@capacitor/core';
 import { BrowserCalendar } from './calendar';
@@ -20,6 +22,7 @@ if (!Capacitor.isNativePlatform()) {
   registerPlugin('DeviceApps', { web: () => device });
   const files = new BrowserFiles();
   registerPlugin('AlphaFiles', { web: () => files });
+  registerPlugin('AlphaMailAttachments', { web: () => new BrowserMailAttachments(files) });
   const daily = new BrowserDaily(files);
   registerPlugin('DailyApps', { web: () => daily });
   registerPlugin('AlphaNotifications', { web: () => new BrowserNotifications(daily) });

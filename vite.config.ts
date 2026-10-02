@@ -1,11 +1,13 @@
 import {localOcrAssets} from './scripts/local-ocr-assets.ts';
+import { browserPdfAssets } from './scripts/browser-pdf-assets.ts';
+import { browserFullReload } from './scripts/browser-full-reload.ts';
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import { fileURLToPath } from "node:url";
 import { localAgentDevBridge } from './scripts/local-agent-dev-bridge.ts';
 export default defineConfig({
   root: "apps/app",
-  plugins: [localOcrAssets(), react(), localAgentDevBridge()],
+  plugins: [localOcrAssets(), browserPdfAssets(), browserFullReload(), react(), localAgentDevBridge()],
   resolve: {
     alias: {
       "@eliza-system": fileURLToPath(
