@@ -2,7 +2,8 @@ import {Capacitor} from '@capacitor/core';
 import {secureConnectionStore} from './native-connection';
 import {validateReminderOperation,validateReminderResult,type ReminderTarget} from './reminder-contract';
 import {DailyApps} from '../daily';
-export type PendingReminderDeletion={operationId:string;bindingHash:string;operation:{type:'reminder_cancel';target:ReminderTarget}};
+export type PendingReminderDeletion={operationId:string;bindingHash:string;operation:{type:'reminder_cancel'|'reminder_complete'|'reminder_snooze';target:ReminderTarget}};
+// Legacy deletion slot retained: old cancel records remain readable alongside reviewed decisions.
 const slot='reminder-deletions:v1:device',webKey='alpha.browser.reminder-deletions.v1';
 type Pending=Record<string,PendingReminderDeletion>;
 function validate(raw:Pending|null):Pending{
@@ -11,7 +12,7 @@ function validate(raw:Pending|null):Pending{
  if(!raw||typeof raw!=='object'||Array.isArray(raw)||Object.keys(raw).length>100)throw Error('Invalid pending deletion store');
  for(const [id,input] of Object.entries(raw)){
   const op=validateReminderOperation(input.operation);
-  if(op.type!=='reminder_cancel'||input.operationId!==id||!/^[A-Za-z0-9_-]{1,128}$/.test(input.operationId)||!/^[a-f0-9]{64}$/.test(input.bindingHash))throw Error('Invalid pending deletion');
+  if(!['reminder_cancel','reminder_complete','reminder_snooze'].includes(op.type)||input.operationId!==id||!/^[A-Za-z0-9_-]{1,128}$/.test(input.operationId)||!/^[a-f0-9]{64}$/.test(input.bindingHash))throw Error('Invalid pending deletion');
  }
  return raw;
 }
@@ -38,7 +39,7 @@ async function changeLocked(id:string,expected:PendingReminderDeletion|null,valu
 export async function retainReminderDeletion(input:PendingReminderDeletion){await change(input.operationId,null,input);}
 /** Only the creating live handler may call this before it has invoked operateReminder. */
 export async function discardUndispatchedReminderDeletion(input:PendingReminderDeletion){await change(input.operationId,input,null);}
-export async function acknowledgeReminderDeletion(input:PendingReminderDeletion,result:unknown){validateReminderResult(input.operation,result);await change(input.operationId,input,null);}
+export async function acknowledgeReminderDeletion(input:PendingReminderDeletion,result:unknown){const checked=validateReminderResult(input.operation,result);if(input.operation.type==='reminder_snooze'&&!['scheduled','permission-denied','scheduling-failed'].includes(checked.status))throw Error('Invalid snooze outcome');if(input.operation.type==='reminder_complete'&&!['completed','scheduled','permission-denied','scheduling-failed'].includes(checked.status))throw Error('Invalid completion outcome');await change(input.operationId,input,null);}
 export async function reconcileReminderDeletions(){
  const pending=await pendingReminderDeletions();
  for(const input of Object.values(pending))try{

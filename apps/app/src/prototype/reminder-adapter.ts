@@ -126,17 +126,47 @@ export function installReminderAdapter(Component: Bag, views: Bag) {
       out.ev.reminderActionable=!!event.reminderOccurrence&&event.reminderStatus!=='completed';
       out.ev.reminderPolicy=event.reminderRecurrence ? `Repeats ${event.reminderRecurrence.rule} in ${event.reminderRecurrence.zone}. Next occurrence is scheduled after Done. Last 32 completion receipts are retained.` : event.reminderStatus==='completed'?'Completed · no further alarm scheduled. Last 32 completion receipts are retained.':'One-time reminder. Done completes it without scheduling another alarm.';
       out.ev.reminderHistory=(event.reminderHistory||[]).map((h:Bag)=>({text:`Completed ${new Date(h.completedAt).toLocaleString()} · due ${new Date(h.dueAt).toLocaleString()}${h.skippedDates?` · ${h.skippedDates} elapsed repeat dates skipped`:''}`}));
+      const renderedDecisionTarget=event.reminderTarget?structuredClone(event.reminderTarget):undefined;
       const decide=async(action:'done'|'snooze')=>{
-        if(!requireFresh())return;
-        if(owner?.reminderSaving)return;
-        if(owner)owner.reminderSaving=true;
-        try {
-          const result=await DailyApps.reminderDecision({id:event.alphaReminderId,occurrenceId:event.reminderOccurrence,action});
-          if(result.status==='failed')throw Error();
-          await owner?.refreshReminders(event.alphaReminderId);
-          api.toast(result.status==='stale'?'This occurrence changed. Refreshed the reminder.':result.status==='permission-denied'?'Saved, notifications disabled. Enable notifications then tap Snooze 10 minutes to retry.':result.status==='scheduling-failed'?'Saved, scheduling failed. Tap Snooze 10 minutes to retry.':action==='done'?(event.reminderRecurrence?'Completed. Next occurrence scheduled.':'Completed. No further alarm scheduled.'):'Snoozed 10 minutes · approximate delivery');
-        }catch{api.toast('The reminder action could not be saved.');}
-        finally{if(owner)owner.reminderSaving=false;}
+        if(!requireFresh()||owner?.reminderSaving)return;
+        if(!renderedDecisionTarget){api.toast('Refresh and reopen this reminder before changing it.');return;}
+        const decisionOwner=owner;
+        const stillSelected=()=>owner===decisionOwner&&decisionOwner?.live&&!document.hidden&&api.isActive()&&api.get('calendar').open===event.id&&!api.get('calendar').form;
+        if(!stillSelected())return;
+        decisionOwner.reminderSaving=true;
+        let createdInput:Bag=null,dispatched=false;
+        try{
+          const operation={type:action==='done'?'reminder_complete' as const:'reminder_snooze' as const,target:renderedDecisionTarget};
+          const pending=Object.values(await pendingReminderDeletions()).find(input=>Object.keys(renderedDecisionTarget).every(key=>input.operation.target[key as keyof typeof input.operation.target]===renderedDecisionTarget[key]));
+          if(pending&&pending.operation.type!==operation.type)throw Error('Another action on this revision is unconfirmed');
+          let input=pending;
+          if(!input){
+            const current=await DailyApps.selectedReminder({id:event.alphaReminderId});
+            if(Object.keys(renderedDecisionTarget).some(key=>current[key as keyof typeof current]!==renderedDecisionTarget[key])){await decisionOwner.refreshReminders();api.toast('This reminder changed. Review it again before changing it.');return;}
+            if(!stillSelected())return;
+            const bindingHash=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(JSON.stringify(operation))))).map(v=>v.toString(16).padStart(2,'0')).join('');
+            if(!stillSelected())return;
+            input={operationId:crypto.randomUUID(),bindingHash,operation};createdInput=input;
+            await retainReminderDeletion(input);
+            if(!stillSelected())return;
+          }
+          let response;
+          if(pending)response=await DailyApps.reminderOperationReceipt(input);
+          else try{dispatched=true;response=await DailyApps.operateReminder(input);}catch{response=await DailyApps.reminderOperationReceipt(input);}
+          if(response.status!=='succeeded'||!response.result)throw Error('Unconfirmed reminder action');
+          await acknowledgeReminderDeletion(input,response.result);
+          if(owner===decisionOwner&&decisionOwner.live){
+            await decisionOwner.refreshReminders();
+            const status=response.result.status;
+            api.toast(status==='permission-denied'?'Saved, notifications disabled. Enable notifications then review this reminder again.':status==='scheduling-failed'?'Saved, scheduling failed. Review this reminder before retrying.':action==='snooze'?'Snoozed 10 minutes · approximate delivery':status==='completed'?'Completed. No further alarm scheduled.':'Completed. Next occurrence scheduled.');
+          }
+        }catch{
+          if(owner===decisionOwner&&decisionOwner.live)api.toast('Reminder action is unconfirmed. Check action status in Calendar; it will not be repeated.');
+        }finally{
+          if(createdInput&&!dispatched)try{await discardUndispatchedReminderDeletion(createdInput);}catch{/* Preserve uncertain storage; never clear another operation. */}
+          if(owner===decisionOwner&&decisionOwner.live)try{decisionOwner.reminderDeleteUnknown=Object.keys(await pendingReminderDeletions()).length;api.set({reminderDeleteUnknown:decisionOwner.reminderDeleteUnknown});}catch{}
+          decisionOwner.reminderSaving=false;
+        }
       };
       out.ev.reminderDone=()=>decide('done');out.ev.reminderSnooze=()=>decide('snooze');
       out.ev.edit=()=>{if(!requireFresh())return;const repeat=event.reminderRecurrence?.rule||'none',target=owner?.reminderTargets?.get(event.alphaReminderId);api.set({form:{...event,repeat,id:event.id,cal:'alpha-reminders',where:'',video:false,who:[],notes:event.reminderBody||'',alphaReminderId:event.alphaReminderId,reminderEditSession:{uncertain:false},reminderEditTarget:target?structuredClone(target):undefined,reminderEditSchedule:[event.off,event.t,repeat,event.alert]}});};
@@ -151,10 +181,11 @@ export function installReminderAdapter(Component: Bag, views: Bag) {
         let createdInput:Bag=null,dispatched=false;
         try {
           const pending=Object.values(await pendingReminderDeletions()).find(input=>Object.keys(renderedTarget).every(key=>input.operation.target[key as keyof typeof input.operation.target]===renderedTarget[key]));
+          if(pending&&pending.operation.type!=='reminder_cancel')throw Error('Another action on this revision is unconfirmed');
           let input=pending;
           if(!input){
             const current=await DailyApps.selectedReminder({id:event.alphaReminderId});
-            if(Object.keys(renderedTarget).some(key=>current[key as keyof typeof current]!==renderedTarget[key])){await deleteOwner.refreshReminders(event.alphaReminderId);api.toast('This reminder changed. Review it again before deleting.');return;}
+            if(Object.keys(renderedTarget).some(key=>current[key as keyof typeof current]!==renderedTarget[key])){await deleteOwner.refreshReminders();api.toast('This reminder changed. Review it again before deleting.');return;}
             if(!stillSelected())return;
             const operation={type:'reminder_cancel' as const,target:renderedTarget};
             const bindingHash=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(JSON.stringify(operation))))).map(v=>v.toString(16).padStart(2,'0')).join('');
@@ -175,7 +206,7 @@ export function installReminderAdapter(Component: Bag, views: Bag) {
         }catch{
           if(owner===deleteOwner&&deleteOwner.live){
             api.set({reminderDeleteUnknown:Object.keys(await pendingReminderDeletions()).length});
-            api.toast('Deletion is unconfirmed. Check deletion status in Calendar; no cancellation will be repeated.');
+            api.toast('Deletion is unconfirmed. Check action status in Calendar; no cancellation will be repeated.');
           }
         }finally{
           if(createdInput&&!dispatched)try{await discardUndispatchedReminderDeletion(createdInput);}catch{/* Preserve uncertain storage; never clear another operation. */}
