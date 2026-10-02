@@ -3,7 +3,7 @@
 Latest full integration checkpoint: **412/412 browser tests and 83/83 repository tests**, plus TypeScript and production web build, in the [October 2 full browser integration checkpoint](#october-2--full-browser-integration-checkpoint). The frozen source is `2846ee2` plus the hosted-result fixture cleanup recorded below. Earlier failures and checkpoints remain historical evidence; newer concurrent changes require separate validation. The MVP goal remains open.
 
 
-Latest targeted checkpoint: [Development Wallet persistence](#october-2--development-wallet-persistence) passed 15 browser checks and repository verification. This postdates the full 412-case snapshot.
+Latest targeted checkpoint: [Development Contacts persistence](#october-2--development-contacts-persistence) passed 14 browser checks and repository verification. This postdates the full 412-case snapshot.
 
 October 1 architecture change: the user has selected an **Android-resident agent instead of Nitro/TEE hosting**. The [on-device agent plan](on-device-agent-plan.md) supersedes cloud-only and enclave-primary requirements below. Agent execution and model inference are separate: the current implementation runs orchestration locally and uses hosted Cerebras inference. Historical evidence is retained. Powered-off-phone execution needs explicit scope reconciliation.
 
@@ -1022,3 +1022,14 @@ Review found an additional failure: a rejected simulated payment save remained o
 The frozen snapshot based on `8983362` passed **15/15 browser checks** across Wallet, Phone/Messages, Contacts save and saved-app recovery. **83/83 repository tests**, TypeScript and production web build passed. Logs, source hashes and the failing regression are retained in `test-results/wallet-sync/`. Rebase onto `6b29d12` adds only completion-plan documentation. No real payment service, carrier operation or Android build ran in this pass. Historical packaging evidence in the parity document remains scoped to its author's snapshot.
 
 The full 412-case checkpoint predates these simulator changes. Cross-tab simulator concurrency and deep validation, remaining message/contact/workflow actions, actual local-agent/provider journeys, Scan correction/searchable PDF and physical/user acceptance remain open. Concurrent Contacts, connection/model, proposal, research and native work is preserved separately. The full goal remains active.
+
+
+## October 2 — Development Contacts persistence
+
+Development Contacts creates UUID-backed identities in both form and local intent creation, preventing same-name contacts created at the same clock value from colliding. Rendered checks cover creation, editing fields, favorite state, deletion, Undo and reload. A failed edit retains the typed draft while the stored original remains unchanged.
+
+Review reproduced an additional recovery defect: Undo cleared its action before trying to restore a deleted contact, so storage failure removed the retry route. Contact restore now catches that failed write and presents a fresh Undo action. It checks for the original identity before inserting, preserving exactly one record. The regression fails before repair and passes afterward, verifying that failed restoration leaves the stored contact absent and explicit retry restores its original identity and fields.
+
+The frozen snapshot based on `8dc086b` passed **14/14 browser tests** across Contacts, Phone/Messages and simulator save/recovery. **83/83 repository tests**, TypeScript and production build passed. Evidence, source hashes and before-fix failure artifacts are retained in `test-results/contacts-sync/`. This pass performs no external contact sync or telecom action and skips Android builds. The full 412-case integration checkpoint predates these changes.
+
+Remaining work includes simulator cross-tab concurrency and deep saved-record validation, remaining incoming/message/workflow actions, real local-agent/provider journeys, Scan page correction/searchable PDF, browser-family media qualification and physical/user acceptance. Concurrent model/connection, proposal, research and native work remains outside this snapshot. The full goal stays active.
