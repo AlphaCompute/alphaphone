@@ -25,7 +25,7 @@ final class BrowserReading {
    host=host.toLowerCase(java.util.Locale.ROOT);if(host.endsWith("."))host=host.substring(0,host.length()-1);
    for(String provider:new String[]{"pass.proton.me","account.proton.me","accounts.google.com","passwords.google.com","bitwarden.com","bitwarden.eu","1password.com","lastpass.com","dashlane.com","keepersecurity.com","nordpass.com","passbolt.com"})if(host.equals(provider)||host.endsWith("."+provider))return true;
    String route=java.net.URLDecoder.decode(value,"UTF-8").toLowerCase(java.util.Locale.ROOT);
-   return java.util.regex.Pattern.compile("(?:^|[^a-z0-9])(?:vault|passwords?|passphrase|signin|sign-in|login|log-in|logout|auth|oauth|sso|account|accounts|security|mfa|2fa|otp|recovery|reset-password|credentials?|access_token|id_token|refresh_token|secret|token)(?:$|[^a-z0-9])").matcher(route).find();
+   return java.util.regex.Pattern.compile("(?:^|[^a-z0-9])(?:api[\\s_-]*key|vault|passwords?|passphrase|signin|sign-in|login|log-in|logout|auth|oauth|sso|account|accounts|security|mfa|2fa|otp|recovery|reset-password|credentials?|access_token|id_token|refresh_token|secret|token)(?:$|[^a-z0-9])").matcher(route).find();
   }catch(Exception error){return true;}
  }
  // Fixed traversal prunes excluded subtrees before reading text. Bounds include
@@ -36,7 +36,7 @@ final class BrowserReading {
  // Scan the whole document before selecting an article: a vault/OTP sidebar
  // must not be omitted by choosing a harmless-looking main element.
  const deny=()=>({blocked:true});
- const sensitive=/(?:password|passphrase|passcode|credential|vault|one[\\s-]*time[\\s-]*(?:password|code)|verification[\\s-]*code|security[\\s-]*code|authentication[\\s-]*code|recovery[\\s-]*(?:code|key|phrase)|backup[\\s-]*(?:code|key)|seed[\\s-]*phrase|secret[\\s-]*key|private[\\s-]*key|authenticator|two[\\s-]*factor|multi[\\s-]*factor|sign[\\s-]*in|log[\\s-]*in|\\botp\\b|\\bmfa\\b|\\b2fa\\b)/i;
+ const sensitive=/(?:api[\\s_-]*key|access[\\s_-]*token|refresh[\\s_-]*token|password|passphrase|passcode|credential|vault|one[\\s-]*time[\\s-]*(?:password|code)|verification[\\s-]*code|security[\\s-]*code|authentication[\\s-]*code|recovery[\\s-]*(?:code|key|phrase)|backup[\\s-]*(?:code|key)|seed[\\s-]*phrase|secret[\\s-]*key|private[\\s-]*key|authenticator|two[\\s-]*factor|multi[\\s-]*factor|sign[\\s-]*in|log[\\s-]*in|\\botp\\b|\\bmfa\\b|\\b2fa\\b)/i;
  const normalize=value=>value.normalize('NFKC').replace(/[\\u200B-\\u200D\\uFEFF]/g,'');
  const pending=[document.documentElement];let inspected=0,characters=0,scanText='';
  while(pending.length){

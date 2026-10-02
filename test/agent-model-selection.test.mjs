@@ -5,14 +5,14 @@ import {tmpdir} from 'node:os';
 import {join,resolve} from 'node:path';
 import {spawnSync,execFileSync} from 'node:child_process';
 
-function launch({route,override,redaction}={}) {
+function launch({route,override,swaps}={}) {
  const dir=mkdtempSync(join(tmpdir(),'alpha-model-')),profile=join(dir,'profile'),source=join(dir,'source'),receipt=join(dir,'models.json'),bun=join(dir,'fake-bun');
  mkdirSync(profile);mkdirSync(join(source,'packages/app/src/runtime'),{recursive:true});writeFileSync(join(source,'packages/app/src/runtime/dev-server.ts'),'');
  execFileSync('git',['init','-q',source]);execFileSync('git',['-C',source,'-c','user.name=Fixture','-c','user.email=fixture@example.invalid','commit','--allow-empty','-qm','fixture']);
  writeFileSync(bun,`#!/usr/bin/env node\nrequire('node:fs').writeFileSync(${JSON.stringify(receipt)},JSON.stringify(Object.fromEntries(['CEREBRAS_MODEL','CEREBRAS_SMALL_MODEL','CEREBRAS_LARGE_MODEL'].map(k=>[k,process.env[k]]))));`,{mode:0o700});
  const config=join(profile,'eliza.json');if(route)writeFileSync(config,JSON.stringify({serviceRouting:{llmText:route},fixtureKeep:'preserve'}),{mode:0o600});
  const before=existsSync(config)?readFileSync(config,'utf8'):null;
- const env={...process.env,ALPHA_ELIZA_SOURCE:source,ALPHA_REMOTE_PROFILE:profile,ALPHA_REMOTE_PORT:'47999',ALPHA_BUN:bun,CEREBRAS_API_KEY:'synthetic-fixture-key'};delete env.ALPHA_EGRESS_REDACTION;if(redaction!==undefined)env.ALPHA_EGRESS_REDACTION=redaction;delete env.ALPHA_AGENT_MODEL;if(override!==undefined)env.ALPHA_AGENT_MODEL=override;
+ const env={...process.env,ALPHA_ELIZA_SOURCE:source,ALPHA_REMOTE_PROFILE:profile,ALPHA_REMOTE_PORT:'47999',ALPHA_BUN:bun,CEREBRAS_API_KEY:'synthetic-fixture-key'};for(const key of ['ELIZA_SECRET_SWAP_ENABLED','ELIZA_PII_SWAP_ENABLED','CEREBRAS_MODEL'])delete env[key];Object.assign(env,swaps||{});if(override!==undefined)env.CEREBRAS_MODEL=override;
  try {
   const result=spawnSync(process.execPath,[resolve('scripts/start-local-remote.mjs')],{env,encoding:'utf8',timeout:15000});
   return {status:result.status,error:result.stderr,models:existsSync(receipt)?JSON.parse(readFileSync(receipt,'utf8')):null,before,after:existsSync(config)?readFileSync(config,'utf8'):null};
@@ -29,8 +29,10 @@ test('conflicting or malformed explicit model selection fails before a child sta
 });
 
 test('redaction rejects unqualified source before starting a child or creating configuration',()=>{
- const r=launch({redaction:'all'});assert.notEqual(r.status,0);assert.equal(r.models,null);assert.equal(r.after,null);assert.match(r.error,/Prepared runtime base commit changed/);
+ const r=launch({swaps:{ELIZA_SECRET_SWAP_ENABLED:'true',ELIZA_PII_SWAP_ENABLED:'true'}});assert.notEqual(r.status,0);assert.equal(r.models,null);assert.equal(r.after,null);assert.match(r.error,/Prepared runtime base commit changed/);
 });
-test('invalid redaction selection cannot silently start an unprotected agent',()=>{
- const r=launch({redaction:'pii'});assert.notEqual(r.status,0);assert.equal(r.models,null);assert.equal(r.after,null);assert.match(r.error,/ALPHA_EGRESS_REDACTION must be off or all/);
+test('invalid or partial redaction selection cannot silently start an unprotected agent',()=>{
+ for(const [swaps,error] of [[{ELIZA_PII_SWAP_ENABLED:'true'},/Set ELIZA_SECRET_SWAP_ENABLED and ELIZA_PII_SWAP_ENABLED together/],[{ELIZA_SECRET_SWAP_ENABLED:'yes',ELIZA_PII_SWAP_ENABLED:'true'},/must be true or false/]]){
+  const r=launch({swaps});assert.notEqual(r.status,0);assert.equal(r.models,null);assert.equal(r.after,null);assert.match(r.error,error);
+ }
 });

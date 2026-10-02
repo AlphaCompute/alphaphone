@@ -21,7 +21,10 @@ public final class PrivateResidentSocketInstrumentedTest {
  }
  private static void positive(LocalServerSocket server,String path)throws Exception{
   try(LocalSocket client=new LocalSocket()){
-   client.connect(new LocalSocketAddress(path,LocalSocketAddress.Namespace.FILESYSTEM),2000);
+   // API 35 connect(address, timeout) is unsupported. SO_TIMEOUT sets send and receive deadlines.
+   client.getInputStream(); // Supported API initializes the lazily created descriptor; no read occurs.
+   client.setSoTimeout(2000);
+   client.connect(new LocalSocketAddress(path,LocalSocketAddress.Namespace.FILESYSTEM));
    try(LocalSocket accepted=server.accept()){
     assertEquals(Process.myUid(),accepted.getPeerCredentials().getUid());
     assertEquals(Process.myUid(),client.getPeerCredentials().getUid());

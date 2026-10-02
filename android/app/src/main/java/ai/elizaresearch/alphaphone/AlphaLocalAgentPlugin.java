@@ -93,6 +93,9 @@ public final class AlphaLocalAgentPlugin extends Plugin {
    env.put("CEREBRAS_BASE_URL",endpoint);env.put("OPENAI_BASE_URL",endpoint);
    env.put("OPENAI_API_KEY","synthetic-resident-recovery-only");env.put("ELIZA_PROVIDER","cerebras");
   }
+  // Pseudonymize secrets and PII in every hosted model request; needs patches/eliza/egress-swap-control-objects.patch.
+  env.put("ELIZA_SECRET_SWAP_ENABLED","true");
+  env.put("ELIZA_PII_SWAP_ENABLED","true");
   } catch(Exception error) {throw new java.io.IOException("Local model provider unavailable");}
  }
  @PluginMethod public void start(PluginCall call) {

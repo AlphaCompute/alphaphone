@@ -8,8 +8,11 @@ import crypto from 'node:crypto';
 import {spawn, execFileSync} from 'node:child_process';
 import {AGENT_MODEL,agentModelEnvironment} from './agent-model.mjs';
 const source = process.env.ALPHA_ELIZA_SOURCE ? path.resolve(process.env.ALPHA_ELIZA_SOURCE) : sourceDirectory(path.resolve(import.meta.dirname,'..'));
-const redaction = process.env.ALPHA_EGRESS_REDACTION;
-if (redaction !== undefined && !['off', 'all'].includes(redaction)) throw new Error('ALPHA_EGRESS_REDACTION must be off or all');
+// Upstream's own swap switches. Only both together are qualified, and only on verified patched source.
+const swapFlags = ['ELIZA_SECRET_SWAP_ENABLED', 'ELIZA_PII_SWAP_ENABLED'].map(key => process.env[key]);
+for (const value of swapFlags) if (value !== undefined && !['true', 'false'].includes(value)) throw new Error('ELIZA_SECRET_SWAP_ENABLED and ELIZA_PII_SWAP_ENABLED must be true or false');
+if ((swapFlags[0] === 'true') !== (swapFlags[1] === 'true')) throw new Error('Set ELIZA_SECRET_SWAP_ENABLED and ELIZA_PII_SWAP_ENABLED together');
+const redaction = swapFlags[0] === 'true' ? 'all' : 'off';
 if (redaction === 'all') {
   const patches = path.resolve(import.meta.dirname, '../patches/eliza');
   verifySource(source, JSON.parse(fs.readFileSync(path.join(patches, 'mvp-source-base.json'), 'utf8')), JSON.parse(fs.readFileSync(path.join(patches, 'android-local-runtime-source.json'), 'utf8')));
@@ -45,7 +48,7 @@ if (redaction === 'all') {
 // so its location cannot supply the workspace's eliza-source condition.
 const child = spawn(process.env.ALPHA_BUN || 'bun', ['--no-install', '--conditions=eliza-source', entry], {cwd:profile, env, stdio:['ignore',log,log]});
 const sourceManifest=path.join(source,'.alpha-runtime-source.json');
-const metadata = {egressRedactionRequested:redaction || 'off',sourceManifestSha256:fs.existsSync(sourceManifest)?crypto.createHash('sha256').update(fs.readFileSync(sourceManifest)).digest('hex'):null,pid:child.pid, port, profile, source, revision:execFileSync('git',['rev-parse','HEAD'],{cwd:source,encoding:'utf8'}).trim(), startedAt:new Date().toISOString()};
+const metadata = {egressRedactionRequested:redaction,sourceManifestSha256:fs.existsSync(sourceManifest)?crypto.createHash('sha256').update(fs.readFileSync(sourceManifest)).digest('hex'):null,pid:child.pid, port, profile, source, revision:execFileSync('git',['rev-parse','HEAD'],{cwd:source,encoding:'utf8'}).trim(), startedAt:new Date().toISOString()};
 fs.writeFileSync(path.join(profile,'process.json'), JSON.stringify(metadata,null,2), {mode:0o600});
 console.log(JSON.stringify({...metadata, log:path.join(profile,'server.log')}));
 for (const signal of ['SIGINT','SIGTERM']) process.on(signal,()=>child.kill(signal));

@@ -287,8 +287,22 @@ export async function main({ environment = process.env, execute = execFileSync, 
     safe(); run('reboot'); run('wait-for-device'); await boot();
     run('root'); run('wait-for-device'); safe();
     configureScratch(); // Non-persistent property is reset by reboot.
-    const remount = run('remount');
-    require(/remount succeeded/i.test(remount) && !/reboot/i.test(remount), 'Remount requires manual review');
+    let remount = run('remount');
+    state.overlayRemountOutputs = [remount.slice(-65536)]; save();
+    const rebootNotice = /^Now reboot your device for settings to take effect\r?$/m;
+    if (/^Remount succeeded\r?$/mi.test(remount) && rebootNotice.test(remount)) {
+      require(!/reboot/i.test(remount.replace(rebootNotice, '')), 'Unrecognized remount reboot request');
+      safe();
+      require(scratchBackingBytes(run, { requireDataBacking: true }) === 512 * 1024 * 1024, 'Expected 512MiB data scratch before overlay reboot');
+      state.overlayRebootRequested = true; save();
+      // Exactly one documented first-overlay activation reboot; never loop or ignore it.
+      run('reboot'); run('wait-for-device'); await boot();
+      run('root'); run('wait-for-device'); safe();
+      configureScratch(); // Reauthenticate userdata alias and reset the volatile property.
+      remount = run('remount');
+      state.overlayRemountOutputs.push(remount.slice(-65536)); save();
+    }
+    require(/^remount succeeded\r?$/mi.test(remount) && !/reboot/i.test(remount), 'Remount requires manual review');
     safe();
     state.scratchBytes = scratchBackingBytes(run, { requireDataBacking: true });
     require(state.scratchBytes === 512 * 1024 * 1024, 'Expected 512MiB data scratch was not established');

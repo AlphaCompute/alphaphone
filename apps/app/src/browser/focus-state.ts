@@ -13,7 +13,7 @@ export function activeFocusBlocks(){
   return (Object.values(state.localRuns) as Bag[]).filter(run=>{
    if(!run||typeof run!=='object')return false;
    const f=run.context?.focus,flow=state.flows.find((item:Bag)=>item&&String(item.id)===String(run.flowId));
-   return !retired.has(run.id)&&run.status==='running'&&f?.owner===focusOwner&&f.phase==='active'&&Number.isFinite(f.begin)&&Number.isFinite(f.end)&&Array.isArray(f.arrivals)&&f.arrivals.every((row:unknown)=>row&&typeof row==='object')&&f.begin<=Date.now()&&f.end>Date.now()&&flow?.on&&JSON.stringify({name:flow.name,trig:flow.trig,steps:flow.steps})===run.definition;
+   return !retired.has(run.id)&&run.status==='running'&&f?.owner===focusOwner&&f.phase==='active'&&f.dnd===true&&Number.isFinite(f.begin)&&Number.isFinite(f.end)&&Array.isArray(f.arrivals)&&f.arrivals.every((row:unknown)=>row&&typeof row==='object')&&f.begin<=Date.now()&&f.end>Date.now()&&flow?.on&&JSON.stringify({name:flow.name,trig:flow.trig,steps:flow.steps})===run.definition;
   });
  }catch{return [];}
 }

@@ -32,7 +32,10 @@ public final class PrivateSocketProbeService extends Service {
     try{Os.lstat(path);}catch(ErrnoException denied){statErrno=denied.errno;}
     boolean connected=false;
     try(LocalSocket socket=new LocalSocket()){
-     try{socket.connect(new LocalSocketAddress(path,LocalSocketAddress.Namespace.FILESYSTEM),2000);connected=true;}catch(IOException denied){}
+     // API 35 SO_TIMEOUT sets SO_SNDTIMEO, bounding the supported filesystem connect.
+     socket.getInputStream(); // Supported API initializes the lazily created descriptor; no read occurs.
+     socket.setSoTimeout(2000);
+     try{socket.connect(new LocalSocketAddress(path,LocalSocketAddress.Namespace.FILESYSTEM));connected=true;}catch(IOException denied){}
     }
     // No write API is invoked, including when the unexpected connection succeeds.
     out.writeInt(Process.myUid());out.writeString(runId);out.writeString(path);out.writeInt(statErrno);out.writeInt(connected?1:0);

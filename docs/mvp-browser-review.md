@@ -1182,7 +1182,7 @@ The final product snapshot passed **91/91 repository tests**, TypeScript and pro
 
 ## Guarded host redaction qualification (October 2)
 
-`ALPHA_EGRESS_REDACTION=all` now opts the browser host launcher into both swap layers only after full composed-source verification. Invalid selections and unqualified source fail before profile creation or child launch. The default remains off; process metadata records the requested mode, not a coverage claim.
+Setting both upstream switches `ELIZA_SECRET_SWAP_ENABLED=true` and `ELIZA_PII_SWAP_ENABLED=true` now opts the browser host launcher into both swap layers only after full composed-source verification. Invalid or partial selections and unqualified source fail before profile creation or child launch. The default remains off; process metadata records the requested mode, not a coverage claim.
 
 Fresh pinned dependency installation and source re-verification succeeded. The isolated real host authenticated through the production Vite bridge and completed chat, but the synthetic email drafting probe returned a `__ELIZA_SECRET_…__` placeholder. A repeat request was also refused as a credential. This is a failed restoration acceptance check: the assistant reply boundary restores PII surrogates but does not restore secret-swap placeholders. Do not enable both layers in the user-facing session until safe reply restoration is implemented and tested, including protection against restoring actual provider credentials. Device enablement remains unqualified and was not included in this checkpoint.
 
@@ -1392,3 +1392,58 @@ Repository verification passed 114 tests, TypeScript and the web build. Hosted v
 Before publication, incorporated the newer focus-policy epoch recheck after asynchronous source reads and workflow-definition validation while waiting for summary review. The combined frozen candidate passed **89 browser cases, including 13 focus cases**, with coverage for external notification revocation, connected fixture summary timing, lock redaction, Calendar edits and failed focus-intent persistence. The phone-width summary-review screenshot was inspected; all fields and actions remain within the viewport. The earlier 84-case run remains historical evidence for the initial candidate.
 
 Combined-candidate repository verification also passed all 114 tests, TypeScript and web build.
+
+## Hosted browser follow-up: recovery polling and Calendar test gate (October 2)
+
+PR #11 browser runs split failures across two cases: the pull-request run `37060659132` failed dismissal of saved-app recovery, while push run `37060636037` timed out in delayed Calendar navigation. Other shards passed independently; this was not a single all-green hosted run. Downloaded terminal logs are retained in `test-results/hosted-followup-review/`.
+
+A deterministic regression reproduced recovery reopening after the user dismissed it and foreground polling resumed with an invalid workflow store. The scheduler now checks workflow recovery readiness before polling; explicit recovery remains available and original bytes are preserved. Healthy workflow scheduling is separately exercised. A second controlled regression reproduced the Calendar fixture deadlock by overlapping another list call: each call replaced the sole release callback. The fixture now shares one gate across reads and still requires the delayed open to return cancelled after Home. This is a fixture correction, not evidence of a Calendar application race fix.
+
+Calendar/recovery suites passed five repetitions (50 executions), followed by 33 healthy trigger/focus cases. Both original failing controls are retained. A disk-full test launch was recovered by removing reinstallable node_modules from four inactive review checkouts (`browser-video-review`, `camera-controls-review`, `photo-albums-review`, `clock-sync-review`); source and evidence were retained. The active local-agent source and dependencies were preserved, and its browser bridge subsequently returned HTTP 200. Android builds remain skipped; new hosted verification remains pending.
+
+Repository verification passed all 114 tests, TypeScript and the production web build.
+
+The shared branch then advanced with `deada57` (Calendar/reminder creation and audio-deletion recovery). Rebased this correction onto that commit, retaining its explicit Calendar creation identity in the test. The combined browser run passed **89 cases**, including creation readback, lost-response reconciliation, audio deletion/restoration, native-fence fixtures, trigger/focus scheduling and both CI corrections. This verifies the browser and mocked boundary cases in the combined source; it does not independently qualify the parent's native instrumentation or APK. Earlier repeated runs remain evidence for the pre-rebase candidate.
+
+Combined-source repository verification passed all 114 tests, TypeScript and web build.
+
+## Focus-source reconciliation and notification history minimization (October 2)
+
+Focus now refreshes previously captured incoming messages from their current records and removes archived/deleted incoming mail from the active capture. It checks the Messages/Inbox storage snapshots again after asynchronous notification reads; changed sources are retried instead of committing stale contents. External notifications contribute app/receipt metadata with a generic received marker rather than copying notification title/body into new workflow captures. Collection-policy revocation still removes their captured entries. This does not rewrite historical run records.
+
+Retained failing controls show the previous capture kept stale message/email contents, copied external notification text into run history, and retained a stale message when it changed during a held notification read. The first race fixture attempted to intercept the Capacitor proxy and did not intercept the implementation; it was corrected to instrument the browser implementation before deriving the race evidence.
+
+All 59 integrated browser cases passed, including focus reconciliation/lifecycle, concurrency and newly covered queued-agent contention, trigger dispatch and notification policy. Evidence is in `test-results/focus-reconciliation-review/`. PR #12's terminal browser failure was also inspected: it is the same delayed Calendar fixture timeout corrected in PR #14, not a new lock-control failure. Hosted verification of the current combined changes remains pending; Android builds remain skipped.
+
+Repository verification passed all 114 tests, TypeScript and the web build.
+
+
+## October 2 — Files byte storage and receipt source matching
+
+New browser Files imports and workflow attachments now store ArrayBuffer bytes in IndexedDB and reconstruct Blob objects for selection, text/PDF reads, downloads and attachments. Older Blob-backed entries remain readable; public file metadata excludes both payload representations. Directory reads finish before the atomic write so a failed or cancelled read leaves no partial folder. Mutation transaction errors now preserve an available underlying storage error.
+
+A WebKit control run against the prior committed Files implementation failed during the binary import. The revised implementation passed **38 Chromium cases and 38 WebKit cases**, covering exact binary bytes across rename/move/reload, cancelled delayed file and directory reads, failed directory reads, PDF rendering, legacy upgrade/retry, receipt rollback, and replay tombstones. The Chromium campaign comprised the existing 34 cases plus four added cases; WebKit ran all 38 together. Historical Blob compatibility is exercised in Chromium; WebKit upgrade fixtures use byte-backed rows because this tested WebKit environment cannot persist the old Blob representation.
+
+Receipt selection now compares normalized source IDs consistently with its existing final source validation, allowing a string workflow-trigger ID to resolve a numeric Inbox ID. A new collision test verifies that adding an equivalent string ID before confirmation is rejected without a Files write. This remains a local Inbox/Files/Wallet development flow, not external mail delivery or a payment.
+
+`npm run verify` passed **114 tests**, TypeScript and the web build. Evidence: `artifacts/calendar-preferences-review/test-results/files-storage-review/` (`browser.log`, `added-browser.log`, `webkit.log`, `webkit-negative.log`, `verify.log`, frozen inputs). Android builds were skipped. Hosted results for this checkpoint are pending; the overall MVP goal remains open.
+
+
+## October 2 — Focus policy follows workflow step order
+
+The focus executor previously enabled its temporary DND policy when it persisted the run, before executing any step. Removing the DND step still silenced notifications; moving it after an interactive Write silenced them while waiting; an explicit off step did not release the temporary policy. Three retained negative controls reproduce those behaviors.
+
+Focus now owns DND only after the on step persists its policy flag. The off step clears that flag before applying the requested device setting. This preserves step order, cancellation cleanup, independent manual DND and overlapping focus ownership. Historical records with no policy flag cannot silently activate one.
+
+**48 browser cases passed** across focus, foreground triggers and workflow concurrency, including all three new ordering regressions. `npm run verify` passed **114 tests**, TypeScript and the web build. Evidence: `artifacts/calendar-preferences-review/test-results/focus-order-review/`. Android builds skipped; hosted verification pending.
+
+Hosted follow-up remains open: PR #14 push run `37064572768`, shard-2 job `111029042033`, passed 303 cases and failed `dev-notifications.spec.ts` while waiting for “Select Mail (browser.mail)”. The terminal job log is retained in the same evidence directory. Its cause is not yet established; other jobs were still running when inspected. This is not an all-green hosted checkpoint.
+
+
+## October 2 — Notification settings acknowledge pending writes
+
+Investigation of PR #14's hosted app-choice timeout found that notification settings ignored subsequent clicks while a policy write/refresh was pending, while still rendering those controls as enabled. A deterministic held-write regression reproduces that enabled state. This is consistent with the hosted symptom; the log alone does not prove its exact timing.
+
+Notification policy controls now expose a native disabled state and “Working…” while the operation is pending, then rerender as enabled after success or failure. A handler guard also prevents stale handlers from changing choices during that interval. Other Settings navigation rows remain enabled.
+
+The notification suite passed **30 executions** (10 cases repeated three times), including the previously failing full settings-to-shade journey, delayed policy persistence and failed-write recovery. **25 additional Settings/sensor/MVP navigation cases passed**, covering light/dark and compact/wide layouts. `npm run verify` passed **114 tests**, TypeScript and the web build. Evidence: `artifacts/calendar-preferences-review/test-results/notification-settings-review/` with retained negative control and frozen inputs. Android builds skipped; new hosted verification remains pending.

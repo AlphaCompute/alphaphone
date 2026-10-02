@@ -27,7 +27,7 @@ export function recordWorkflowExpense(input:ReceiptInput,operationId:string,api:
 export function requestWorkflowReceipt(api:Bag,needsWallet:boolean,signal:AbortSignal,mailId?:string|number):Promise<ReceiptInput>{
  signal.throwIfAborted();return new Promise((resolve,reject)=>{
  const inbox=state(api,'inbox'),choices:({file:MailAttachment;mail:Bag;sent:boolean;index:number})[]=[];
- for(const sent of [false,true])for(const mail of inbox[sent?'sent':'mails']||[])for(const [index,file] of (mail.atts||[]).entries())if(!mail.del&&(mailId===undefined||!sent&&mail.id===mailId)&&file.browserAttachment)choices.push({file,mail,sent,index});
+ for(const sent of [false,true])for(const mail of inbox[sent?'sent':'mails']||[])for(const [index,file] of (mail.atts||[]).entries())if(!mail.del&&file.browserAttachment&&(mailId===undefined||!sent&&String(mail.id)===String(mailId)))choices.push({file,mail,sent,index});
  const previous=document.activeElement as HTMLElement|null,dialog=document.createElement('dialog');dialog.setAttribute('aria-label','Workflow receipt');dialog.style.cssText='box-sizing:border-box;width:min(380px,92vw);max-height:85dvh;overflow:auto;border:0;border-radius:20px;padding:24px;background:var(--bg,#fff);color:var(--fg,#111);font:16px/1.5 system-ui';
  const shell=document.querySelector('.os');if(shell){const theme=getComputedStyle(shell);for(const name of ['--bg','--fg','--s2'])dialog.style.setProperty(name,theme.getPropertyValue(name));}
  const title=document.createElement('h2');title.textContent='Workflow receipt';const info=document.createElement('p');info.textContent=choices.length?'Select an Inbox attachment for this run.':'Attach a receipt in Inbox, then run this workflow again.';dialog.append(title,info);

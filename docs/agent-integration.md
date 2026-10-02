@@ -71,7 +71,7 @@ Navigation can invalidate the active request's context. The product must reconci
 
 ### Verification evidence and remaining limits
 
-`node --check scripts/dev-agent.mjs` and product typecheck pass. The real configured provider's discovery returned `qwen-3.8-27b` and `gpt-oss-120b`. A real chat returned HTTP 200 with model-generated text; unauthenticated health returned 401, repeated request ID 409, and password-screen context 400.
+`node --check scripts/dev-agent.mjs` and product typecheck pass. The real configured provider's discovery returned `qwen-3.8-27b`. A real chat returned HTTP 200 with model-generated text; unauthenticated health returned 401, repeated request ID 409, and password-screen context 400.
 
 Run `ALPHA_DEV_TOKEN_FILE=<server token file> node scripts/test-dev-agent.mjs` for real-provider integration. It requests an exact UUID-tagged note, verifies the returned proposal, verifies no file exists before explicit test approval, writes only a temporary host fixture after approval, reads its exact contents and removes it. The result is saved to `test-results/development-agent.json` without secrets. This passed with real `qwen-3.8-27b` output on 2026-09-29. It proves host/provider/proposal plus an explicitly approved host fixture write, **not Android UI execution**.
 

@@ -1,6 +1,12 @@
 # Alpha Phone MVP completion plan
 
-## Current checkpoint — October 2, durable creation and audio recovery
+## Current checkpoint — October 2, reading privacy and password setup
+
+Two concrete MVP gaps are now implemented: browser read-aloud rejects recognized credential-sensitive sources and explicit API-key URLs before fetching/speaking, and Settings/Browser expose an honest password-provider setup/status flow. Android and Proton own provider selection and vault UI; no forced enablement or successful filling is inferred. Combined repository verification and 84 rendered flows pass on an isolated composition. Exact source identities, review corrections and remaining gates are in [reading/provider qualification](mvp-reading-provider-qualification.md).
+
+Candidate `52ab225f` has a 911-test successful PR-triggered browser run and a separate failed push run caused by a reproduced Calendar test-gate race. The committed shared-gate correction passes 15 repeated Calendar flows. Both Android distributions build, but Foundation native smoke stops at an Android-requested overlay reboot; its bounded recovery is under repair. A fresh Pixel 9 simulator is visible through Computer Use, with current APK/native execution still pending. The MVP remains incomplete.
+
+## Earlier checkpoint — October 2, durable creation and audio recovery
 
 Product `deada57cdd0d45b1553467b48b478bf0f461d66e` adds durable Calendar/reminder creation identities and receipt-only recovery after uncertain results. Voice-note deletion retains exact Notes snapshots and coordinates explicit restoration; native audio UUID receipts prevent a delayed deletion from undoing a restore. Explicit restoration of unambiguous older recording tombstones remains supported. A reproduced Calendar edit regression was fixed without removing navigation or newer-draft guards.
 
@@ -8,7 +14,7 @@ The final product composition passes `npm run verify`, 67 owning rendered flows,
 
 Exact prior candidate `bccd6b2` is terminal failure: browser37057417139 failed two obsolete fixture assertions, foundation37057417095 built both distributions but failed WebView scratch provisioning, and resident37057417188 built successfully but failed the native job's unchanged 10 GiB admission after emulator boot. Current product already contains the reviewed browser fixture repairs. A separate candidate packet repairs the authenticated missing userdata backing alias, provisions fresh native runner capacity, and adds an independent owned-secondary-user recovery campaign for both distributions. These are staged/source-qualified repairs, not hosted acceptance. All nine resident runtime patches and strict provider/device gates remain required.
 
-The MVP remains incomplete. Current APK/native qualification, live Cloud/Gmail/voice journeys, visible Pixel-class flows, physical alarms/audio, signed AOSP and device/user acceptance remain distinct open gates. Local ENOSPC interrupted CI-fixture testing; only byte-identical copied fixture assets were replaced with links to preserved originals, and the clean CI-fixture checks then passed. Local space remains below the 10 GiB emulator gate; no local boot or large APK build was attempted.
+The MVP remains incomplete. Current APK/native qualification, live Cloud/Gmail/voice journeys, visible Pixel-class flows, physical alarms/audio, signed AOSP and device/user acceptance remain distinct open gates. Local ENOSPC interrupted CI-fixture testing; only byte-identical copied fixture assets were replaced with links to preserved originals, and the clean CI-fixture checks then passed. Local capacity later recovered above the 10 GiB gate; a fresh dedicated Android 35 ARM64 Pixel 9 now boots visibly in Android Studio. It has no candidate APK installed yet, so this establishes simulator readiness only. See the updated recovery qualification record.
 
 ## Earlier checkpoint — October 2, reviewed reminder decisions
 

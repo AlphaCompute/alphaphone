@@ -6,6 +6,7 @@ import { connectionController } from '../runtime/connection-ui';
 type Bag = Record<string, any>;
 const device = registerPlugin<{
   snapshot(): Promise<Bag>;
+  openPasswordProvider(input:{action:string}):Promise<{status:string;destination?:string}>;
   openSettings(input: { page: string }): Promise<{ status: string }>;
   setTextScale(input:{percent:number}):Promise<{textScalePercent:number;effectiveTextZoom:number}>;
 }>('AlphaDevice');
@@ -18,6 +19,7 @@ export function installSettingsAdapter(Component: any, views: Bag) {
   const definition = views.settings, render = definition.render, p = Component.prototype;
   const mount = p.componentDidMount, unmount = p.componentWillUnmount, openView = p.openView, update = p.componentDidUpdate;
   let owner: any, facts: Bag = {}, controls: Bag = {}, delivery: Bag = {}, generation = 0,scaleGeneration=0, cross:Bag={}, choices:Bag[]|null=null, history:Bag[]|null=null, notificationBusy=false;
+  let passwordOpening=false;
   let capabilityAbort: AbortController | null = null;
   let gmail = 'Not checked', digests = 'Not checked', localSpeech = 'Not checked', speechChecking = false, speechGeneration = 0;
   const changed = () => owner?.vset('settings', { capabilityReadAt: Date.now() });
@@ -124,6 +126,25 @@ export function installSettingsAdapter(Component: any, views: Bag) {
     };
     for (const page of out.stack) {
       if (page.isTop) {
+        const native=Capacitor.isNativePlatform(), provider=facts.passwordProvider||{};
+        const installation:Bag={installed:'Installed · publisher verified',disabled:'Installed but disabled',absent:'Not installed','unrecognized-publisher':'Installed · publisher not recognized',unknown:'Not checked'};
+        const selection:Bag={proton:provider.installation==='installed'?'Proton Pass selected':provider.installation==='disabled'?'Proton Pass selected · app disabled':'Provider package selected · publisher not verified',other:'Another provider selected',none:'No provider selected',unknown:'Selection unavailable'};
+        const action=(label:string,kind:string):Bag=>({kNav:true,label,lbl:passwordOpening?'Opening…':label,chev:true,noAB:true,go:async()=>{
+          if(passwordOpening)return;passwordOpening=true;const instance=owner;changed();
+          try{const result=await device.openPasswordProvider({action:kind});if(result?.status!=='opened')throw Error('Unconfirmed provider handoff');if(owner===instance)api.toast(result.destination==='system-settings'?'Opened Android settings. Search for passwords or autofill, then choose your provider.':'Opened provider setup. Complete or cancel there; no change is confirmed yet.');}
+          catch{if(owner===instance)api.toast('Password provider setup is unavailable. No provider change is confirmed.');}
+          finally{passwordOpening=false;if(owner===instance){changed();void refresh();}}
+        }});
+        const passwordGroup=group([
+          info('Proton Pass',native?(installation[provider.installation]||'Status unavailable'):'Managed by your browser and operating system'),
+          info('Selection',native?(selection[provider.selection]||'Selection unavailable'):'Native provider status is unavailable here'),
+          info('Autofill',native?(provider.support==='available'?'Available on this device':provider.support==='unavailable'?'Unavailable for this device or user':'Availability not checked'):'Use your browser’s password settings'),
+          info('Vault','Confirm unlock, saved passwords and filling in your provider.'),
+          info('Compatibility','Proton may show a browser warning. Check the website address before filling.'),
+          ...(native?[action('Choose password provider in Android','settings'),...(provider.installation==='installed'?[action('Open Proton Pass','open')]:provider.installation==='absent'?[action('Get Proton Pass from Proton','install')]:[]),{kNav:true,label:'Refresh password provider status',lbl:'Refresh password provider status',chev:true,noAB:true,go:()=>void refresh()}]:[]),
+        ]);
+        page.groups.push(group([{kNav:true,label:'Password manager',lbl:'Password manager',chev:true,noAB:true,go:()=>api.set({page:'password-provider'})}]));
+        if(state.page==='password-provider')out.stack.push({isTop:false,notTop:true,cls:'enter',z:4,title:'Password manager',hasTitle:true,backLabel:'Back to Settings',back:()=>api.set({page:null}),hero:{},groups:[passwordGroup]});
         page.groups.push(group([{kNav:true,label:'Scheduled digests',lbl:'Scheduled digests',chev:true,noAB:true,go:()=>window.dispatchEvent(new Event('alpha:hosted-digests'))}]));
         page.groups.push(group([{kNav:true,label:'Agent connection',lbl:'Agent connection',val:connectionController.getSnapshot().name,hasVal:true,chev:true,noAB:true,go:()=>connectionController.open()}]));
         page.groups.push(group([{kNav:true,label:'Try mock mode',lbl:'Try mock mode',chev:true,noAB:true,go:()=>connectionController.mock()}]));
@@ -165,8 +186,8 @@ export function installSettingsAdapter(Component: any, views: Bag) {
       } else if (page.title === 'Developer') {
         page.groups = [group([info('App version', facts.appVersion || 'Unavailable'), info('Device uptime', typeof facts.uptimeMs === 'number' ? `${Math.floor(facts.uptimeMs / 60000)} min` : 'Unavailable'), info('NPU usage', 'Unavailable'), info('Agent memory', 'Not connected')]), group([nav('Android developer settings', 'developer')])];
       } else if (page.title === 'Notifications') {
-        const custom = (label:string,go:()=>void):Bag=>({kNav:true,label,lbl:label,chev:true,noAB:true,go});
-        const run = async (task:()=>Promise<void>)=>{if(notificationBusy)return;notificationBusy=true;const current=owner;try{await task();if(owner===current)await refresh();}catch{if(owner===current)api.toast('Notification settings changed or are unavailable. Refresh and try again.');}finally{notificationBusy=false;}};
+        const custom = (label:string,go:()=>void):Bag=>({kNav:true,label,lbl:label,chev:true,noAB:true,busy:notificationBusy,hasVal:notificationBusy,val:'Working…',go:()=>{if(!notificationBusy)go();}});
+        const run = async (task:()=>Promise<void>)=>{if(notificationBusy)return;notificationBusy=true;changed();const current=owner;try{await task();if(owner===current)await refresh();}catch{if(owner===current)api.toast('Notification settings changed or are unavailable. Refresh and try again.');}finally{notificationBusy=false;if(owner===current)changed();}};
         const policy = (changes:Bag)=>void run(async()=>{await notifications.setNotificationPolicy({expectedRevision:cross.revision,...changes});if(changes.history===false)history=[];});
         const selected:Bag[]=cross.apps||[];
         const crossRows:Bag[]=[info('Other apps',typeof cross.accessGranted!=='boolean'?'Unavailable':!cross.enabled?'Collection off':cross.paused?'Paused after mock mode':!cross.accessGranted?'Android access not granted':!cross.connected?'Waiting for Android listener':'Selected apps connected'),info('Notification privacy',Capacitor.isNativePlatform()?'Android grants broad access. Alpha reads only selected apps; previews and history are separate choices.':'Development events are stored in this browser. Previews and metadata history are separate choices.'),info('Agent access','Notification content is not sent to your agent')];
