@@ -1,8 +1,7 @@
 # MVP implementation and design review — updated October 2, 2026
 
-Latest full integration checkpoint: **310/310 browser tests and 82/82 repository tests**, plus typecheck and production web build, in the [complex Calendar guest checkpoint](#october-2--complex-calendar-guests-and-integration-review), based on `04d5b8a` plus the recorded guest-editor changes. Earlier entries are historical evidence for their stated snapshots. The MVP goal remains open.
+Latest full integration checkpoint: **412/412 browser tests and 83/83 repository tests**, plus TypeScript and production web build, in the [October 2 full browser integration checkpoint](#october-2--full-browser-integration-checkpoint). The frozen source is `2846ee2` plus the hosted-result fixture cleanup recorded below. Earlier failures and checkpoints remain historical evidence; newer concurrent changes require separate validation. The MVP goal remains open.
 
-Latest targeted checkpoint: [Scan drafts and retakes](#october-2--scan-drafts-and-retakes). Its 17 browser checks and 83 repository tests passed; four retake checks also passed after merging a concurrent test improvement. The latest complete passing full-suite checkpoint remains the 310-case run above. Later integration failures and storage interruptions remain recorded below. The MVP remains incomplete.
 
 October 1 architecture change: the user has selected an **Android-resident agent instead of Nitro/TEE hosting**. The [on-device agent plan](on-device-agent-plan.md) supersedes cloud-only and enclave-primary requirements below. Agent execution and model inference are separate: the current implementation runs orchestration locally and uses hosted Cerebras inference. Historical evidence is retained. Powered-off-phone execution needs explicit scope reconciliation.
 
@@ -990,3 +989,14 @@ Verification on the frozen snapshot based on `4e2eb43`: **17/17 browser tests**,
 Remaining Scan work includes page-edge correction, searchable PDF/language quality, richer document organization and browser-family/physical camera qualification. The complete current-source browser suite, simulator concurrency/deep recovery, actual local-agent workflow/action journeys, provider integration and device/user acceptance remain open. Concurrent workflow changes are preserved separately. The full goal stays active.
 
 Final synchronization: rebased onto `11e5073`, which admits reviewed workflow navigation. **20/20 combined Scan and workflow-navigation browser checks** passed, followed by **83/83 repository tests**, TypeScript and production build. The full-suite gate remains open.
+
+
+## October 2 — Full browser integration checkpoint
+
+The isolated snapshot based on `2846ee2` completed one uninterrupted **412/412 browser test run** in 5.7 minutes. Trace recording was disabled to reduce disk pressure; assertions and screenshot output remained enabled. A subsequent **83/83 repository test run**, TypeScript and production web build passed. This supersedes the previous incomplete full runs for this source snapshot, including Calendar recovery, Clock writes, video copies, Scan drafts/retakes, Inbox journeys, design states and workflow context/navigation fixtures.
+
+The only executable change beyond that commit is hosted-result test cleanup: release a held route, wait for route handlers to drain, close the page, then remove its temporary storage. This prevents asynchronous route callbacks from accessing a deleted fixture directory. Input hashes still match the frozen files. Evidence is retained in `test-results/current-browser-integration/browser.log`, `verify.log`, `input.json` and the integration screenshot directory. The separate parity document's historical native/package campaigns remain attributable to their recorded snapshots; no Android build ran here.
+
+Read-only live-host checks also returned authenticated HTTP 200 for owner identity, workflow status and workflow listing. The local workflow engine reported ready with manual submission protocol 1 and one saved workflow. This is service readiness evidence, not a successful live author/edit/run/cancel/restart journey. In-app browser attachment timed out, so no rendered live-host acceptance is claimed by this checkpoint.
+
+Remaining work includes current Phone/Messages simulator persistence and failure paths, deeper simulator validation and concurrency, Scan page correction/searchable PDF/language quality, browser-family media qualification, actual local-agent workflow and selected-action journeys, production provider integration and device/user acceptance. Newly appearing model-selection, connection UI, simulator and native-test edits are excluded from the frozen run and preserved for follow-up. The complete MVP/design goal remains active.
