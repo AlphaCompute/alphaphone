@@ -1,8 +1,13 @@
 {
   "baseCommit": "4573712ebf0466daa4dfadaa4482704c209d9b8c",
   "mvpSeries": "mvp-series",
-  "patch": "android-secure-store-socket.patch",
   "files": {
-    "packages/app/src/security/secure-store-android.ts": "af9dbf66398a9a984b43b33d98e752f586c70a6b473b73413e1cbfe395d30974"
-  }
+    "packages/app/src/security/secure-store-android.ts": "af9dbf66398a9a984b43b33d98e752f586c70a6b473b73413e1cbfe395d30974",
+    "packages/agent/src/runtime/plugin-collector.ts": "48d6c82a5f5f13da8436188db2b547c2eccb1126e55639a5109883471ef1e612",
+    "packages/agent/test/lean-chat-workflows.test.ts": "f470618b6b0b5ccbd612e359679675db599629768ec0203b0c2201b0d71a1828"
+  },
+  "patches": [
+    "android-secure-store-socket.patch",
+    "lean-chat-workflows.patch"
+  ]
 }

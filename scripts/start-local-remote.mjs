@@ -27,7 +27,10 @@ fs.fchmodSync(log, 0o600);
 const baseEnv = Object.fromEntries(['PATH','TMPDIR','LANG','SHELL','USER','LOGNAME','HOME'].filter(key=>process.env[key]).map(key=>[key,process.env[key]]));
 const env = {...baseEnv, ELIZA_HEADLESS:'1', ELIZA_DISTRIBUTION_PROFILE:'store', ELIZA_PLUGIN_SET:'lean-chat', ELIZA_REQUIRE_LOCAL_AUTH:'1', ELIZA_API_BIND:'127.0.0.1', ELIZA_ALLOWED_HOSTS:'10.0.2.2', ELIZA_API_PORT:String(port), ELIZA_API_EXPOSE_PORT:'1', ELIZA_STATE_DIR:profile, ELIZA_CONFIG_PATH:config, ELIZA_API_TOKEN:fs.readFileSync(tokenPath,'utf8').trim(), CEREBRAS_API_KEY:providerKey, CEREBRAS_MODEL:'qwen-3.8-27b', CEREBRAS_SMALL_MODEL:'qwen-3.8-27b', CEREBRAS_LARGE_MODEL:'qwen-3.8-27b', ELIZAOS_CLOUD_USE_INFERENCE:'false'};
 for (const key of ['ELIZAOS_CLOUD_API_KEY','OPENAI_API_KEY','ANTHROPIC_API_KEY']) delete env[key];
-const child = spawn(process.env.ALPHA_BUN || 'bun', [entry], {cwd:profile, env, stdio:['ignore',log,log]});
+env.ELIZA_LEAN_CHAT_WORKFLOWS = '1';
+// Match upstream's source-checkout launcher. The private profile is the cwd,
+// so its location cannot supply the workspace's eliza-source condition.
+const child = spawn(process.env.ALPHA_BUN || 'bun', ['--no-install', '--conditions=eliza-source', entry], {cwd:profile, env, stdio:['ignore',log,log]});
 const sourceManifest=path.join(source,'.alpha-runtime-source.json');
 const metadata = {sourceManifestSha256:fs.existsSync(sourceManifest)?crypto.createHash('sha256').update(fs.readFileSync(sourceManifest)).digest('hex'):null,pid:child.pid, port, profile, source, revision:execFileSync('git',['rev-parse','HEAD'],{cwd:source,encoding:'utf8'}).trim(), startedAt:new Date().toISOString()};
 fs.writeFileSync(path.join(profile,'process.json'), JSON.stringify(metadata,null,2), {mode:0o600});

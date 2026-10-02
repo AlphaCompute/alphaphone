@@ -8,7 +8,8 @@ const directory=path.join(root,'artifacts/local-agent-source');
 const patches=path.join(root,'patches/eliza');
 const manifest=JSON.parse(fs.readFileSync(path.join(patches,'mvp-source-base.json'),'utf8'));
 const digest=file=>createHash('sha256').update(fs.readFileSync(file)).digest('hex');
-const extras=['android-secure-store-socket.patch'];
+const extraManifest=JSON.parse(fs.readFileSync(path.join(patches,'android-local-runtime-source.json'),'utf8'));
+const extras=extraManifest.patches;
 const stamp={base:manifest.baseCommit,patches:[...manifest.patches.map(p=>({file:p.file,sha256:p.sha256})),...extras.map(file=>({file,sha256:digest(path.join(patches,file))}))]};
 const run=(command,args,cwd=directory)=>execFileSync(command,args,{cwd,stdio:'inherit',env:{...process.env,ELIZA_SKIP_FUSED_INFERENCE_SETUP:'1'}});
 for(const patch of stamp.patches)if(digest(path.join(patches,patch.file))!==patch.sha256)throw Error(`Patch hash mismatch: ${patch.file}`);
@@ -27,7 +28,6 @@ if(fs.existsSync(directory)){
 }
 // Recheck generated source on every invocation, including cached preparations.
 if(execFileSync('git',['rev-parse','HEAD'],{cwd:directory,encoding:'utf8'}).trim()!==manifest.baseCommit)throw Error('Prepared runtime base commit changed');
-const extraManifest=JSON.parse(fs.readFileSync(path.join(patches,'android-local-runtime-source.json'),'utf8'));
 const expectedFiles={...manifest.candidateFiles,...extraManifest.files};
 for(const [file,hash] of Object.entries(expectedFiles))if(digest(path.join(directory,file))!==hash)throw Error(`Prepared source changed: ${file}`);
 const modified=execFileSync('git',['diff','--name-only','HEAD'],{cwd:directory,encoding:'utf8'}).trim().split('\n').filter(Boolean);

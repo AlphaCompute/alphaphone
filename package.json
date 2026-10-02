@@ -27,6 +27,7 @@
     "test:browser": "playwright test",
     "dev:local": "node scripts/dev-local.mjs",
     "agent:prepare": "node scripts/prepare-local-agent.mjs",
+    "agent:test": "node scripts/test-local-agent-source.mjs",
     "agent:stage-android": "node scripts/stage-local-agent-runtime.mjs",
     "android:build:local": "npm run agent:prepare && npm run agent:stage-android && npm run android:build"
   },

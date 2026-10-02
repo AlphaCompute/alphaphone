@@ -73,7 +73,7 @@ export function installPrototypeDataAdapter(Component: any, views: Record<string
       homeCalendarLabel: agenda ? `Open calendar event: ${agenda.event.title}` : 'Open your calendar',
       homeCalendarTime: time, homeCalendarTitle: agenda?.event.title || 'Your calendar',
       homeAttentionLabel: 'Accounts are not connected', homeAttentionCount: '—',
-      homeWorkflowLabel: 'Workflows are not connected', homeWorkflowTitle: 'Workflows', homeWorkflowTime: 'Not connected', homePeopleVisibility: 'hidden',
+      homeWorkflowLabel: 'Open workflows', homeWorkflowTitle: 'Workflows', homeWorkflowTime: 'Review', homePeopleVisibility: 'hidden',
       goCalendar: () => this.openView('calendar', agenda ? {open:agenda.event.id, day:agenda.event.off, openDay:agenda.event.off} : undefined),
       goFlows: () => this.openView('workflows'),
       goTriage: () => this.toast('Connect your accounts to review what needs your attention.'),
