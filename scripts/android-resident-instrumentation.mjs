@@ -8,7 +8,7 @@ import {createHash, randomUUID} from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { admitResidentEmulator } from './resident-emulator-admission.mjs';
+import { admitResidentEmulator, removeResidentFixtureUser } from './resident-emulator-admission.mjs';
 const [apk, testApk] = process.argv.slice(2);
 const serial = process.env.ANDROID_SERIAL;
 if (!serial || !apk || !testApk) throw Error('ANDROID_SERIAL, app APK and test APK are required');
@@ -27,8 +27,9 @@ if ((fs.statSync(keyPath).mode & 0o077) !== 0) throw Error('Provider key must be
 const bun = sha(entry('lib/arm64-v8a/libeliza_bun.so'));
 const fixture = {runId, apiKey: fs.readFileSync(keyPath, 'utf8').trim(), bunSha256: bun, processExecutableSha256: process.env.RESIDENT_EXE_SHA256 || bun,
   bundleSha256: sha(entry('assets/agent/agent-bundle.js')), sourceSha256: sha(entry('assets/agent/alpha-source.json'))};
-const created = adb(['shell', 'pm', 'create-user', `alpha-resident-${runId.slice(0, 8)}`]);
-const user = /id (\d+)/.exec(created)?.[1];
+const fixtureName = `alpha-resident-${runId}`;
+const created = adb(['shell', 'pm', 'create-user', fixtureName]);
+const user = /^Success: created user id ([1-9]\d*)$/.exec(created)?.[1];
 if (!user) throw Error('Could not create fixture user: ' + created);
 let result = {runId, user, test, passed: false};
 try {
@@ -42,7 +43,8 @@ try {
   try { proof = JSON.parse(adb(['shell', 'run-as', pkg, '--user', user, 'cat', proofFile])); } catch {}
   result = {...result, passed: /OK \(1 test\)/.test(output) && proof?.passed === true && proof?.runId === runId, proof, instrumentation: output.split('\n').slice(-25).join('\n')};
 } finally {
-  try { adb(['shell', 'pm', 'remove-user', user]); } catch {}
+  // A passing test cannot hide a retained credential-bearing fixture.
+  removeResidentFixtureUser(adb, user, fixtureName);
 }
 console.log(JSON.stringify(result, null, 2));
 process.exitCode = result.passed ? 0 : 1;
