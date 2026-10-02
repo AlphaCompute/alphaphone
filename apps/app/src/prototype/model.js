@@ -554,13 +554,16 @@ function msgSend(api, pid, text, photo, files) {
   if (photo != null) out.push({ me: true, photo: photo });
   else if (text && text !== names) out.push({ me: true, text: text });
   if (!out.length) return;
+  out = out.map(function (m) { return Object.assign({ id: crypto.randomUUID() }, m); });
+  var sentId = out[out.length - 1].id;
   msgPush(api, pid, out);
+  var stillSent = function () { return (api.get("messages").threads[pid] || []).some(function (m) { return m.id === sentId; }); };
   var st = api.get("messages");
   var bot = MSG_BOT[pid]; if (!bot) return;
   var n = (st.botI || {})[pid] || 0; if (n >= bot.length) return;
   var bi = Object.assign({}, st.botI); bi[pid] = n + 1; api.set({ botI: bi });
-  api.later(function () { api.set({ typing: pid }); }, 900);
-  api.later(function () { api.set({ typing: null }); msgPush(api, pid, { me: false, text: bot[n] }); }, 2600);
+  api.later(function () { if (stillSent()) api.set({ typing: pid }); }, 900);
+  api.later(function () { if (!stillSent()) return; api.set({ typing: null }); msgPush(api, pid, { me: false, text: bot[n] }); }, 2600);
 }
 function msgDraftCard(api, pid) {
   var st = api.get("messages"); var p = msgWho(api, pid, st);
@@ -583,7 +586,7 @@ registerView("messages", {
     if (sub === "new") return { compose: true };
   },
   badge: function (st) { var u = st.unread || {}; return Object.keys(u).some(function (k) { return u[k] > 0; }); },
-  immersive: function (st) { return (st.thread || typeof st.compose === "string") ? { noPill: true } : null; },
+  immersive: function (st) { return (st.thread || typeof st.compose === "string") ? { noPill: true, toastBottom: 104 } : null; },
   back: function (st, api) {
     if (st.tray) { api.set({ tray: false }); return true; }
     // Opened from this app's list: back to the list. Deep-linked (contacts, shade, chat, share): hand back to the shell's stack.
@@ -674,10 +677,19 @@ registerView("messages", {
         if (dx < 0) {
           api.set({ slide: { id: id, x: -412 } });
           api.later(function () {
-            var s2 = api.get("messages"); var snap = { threads: s2.threads, unread: s2.unread };
+            var s2 = api.get("messages"); var savedThread = s2.threads[id], savedUnread = s2.unread[id];
             var th = Object.assign({}, s2.threads); delete th[id]; var uu = Object.assign({}, s2.unread); delete uu[id];
-            api.set({ slide: null, threads: th, unread: uu });
-            api.toast("Conversation with " + msgFirst(w) + " deleted", { undo: function () { if (api.isActive()) api.set(snap); else api.open("messages", snap); } });
+            try { api.set({ slide: null, threads: th, unread: uu, typing: s2.typing === id ? null : s2.typing }); }
+            catch (error) { api.set({ slide: null }); api.toast("Conversation could not be deleted. Try again."); return; }
+            var restore = function () {
+              var current = api.get("messages");
+              if (current.threads[id]) { api.toast("A new conversation already exists. Your newer messages were kept."); return; }
+              var restored = Object.assign({}, current.threads); restored[id] = savedThread;
+              var restoredUnread = Object.assign({}, current.unread); if (savedUnread !== undefined) restoredUnread[id] = savedUnread;
+              try { api.setView("messages", { threads: restored, unread: restoredUnread }); }
+              catch (error) { api.toast("Conversation could not be restored. Try Undo again.", { undo: restore }); }
+            };
+            api.toast("Conversation with " + msgFirst(w) + " deleted", { undo: restore });
           }, 260);
         } else {
           var s3 = api.get("messages"); var uu2 = Object.assign({}, s3.unread);
@@ -739,7 +751,7 @@ registerView("messages", {
         tray: !!st.tray, trayCss: st.tray ? "background:var(--fg);color:var(--bg);transform:rotate(45deg)" : "background:var(--s2);color:var(--fg)",
         toggleTray: function () { api.set({ tray: !api.get("messages").tray }); },
         camera: function () { api.open("camera", { mode: "photo" }); },
-        photos: MSG_PHOTOS.map(function (g, i) { return { css: "background:" + imgBg("msg" + i, g), label: "Send photo " + (i + 1), pick: function () { api.set({ tray: false }); msgSend(api, tp, null, i); } }; })
+        photos: MSG_PHOTOS.map(function (g, i) { return { css: "background:" + imgBg("msg" + i, g), label: "Send photo " + (i + 1), pick: function () { msgSend(api, tp, null, i); api.set({ tray: false }); } }; })
       };
     }
 
