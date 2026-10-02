@@ -517,7 +517,7 @@ export const connectionController = {
         message: saved ? 'Returned history restored. Older messages may remain on the agent.' : 'History restored for this session; restart selection could not be saved.' });
     });
   },
-  async send(text: string, context: ContextEnvelope, requestId: string, signal: AbortSignal): Promise<{ text: string; proposals?: ActionProposal[] }> {
+  async send(text: string, context: ContextEnvelope, requestId: string, signal: AbortSignal, onText?:(text:string)=>void): Promise<{ text: string; proposals?: ActionProposal[] }> {
     if (operation) throw new Error('Finish the connection or history operation before sending.');
     const message = phoneContextMessage(text, context);
     if (sending) throw new Error('Wait for the current reply before sending another message.');
@@ -547,7 +547,8 @@ export const connectionController = {
       // Generic clients report an observation, never authority or permission.
       // Retain the legacy field while older runtime deployments are supported.
       const options = { signal: requestSignal, clientMessageId: requestId, metadata: { clientDevice: { context: message.context }, alphaPhone: { context: message.context } } };
-      const reply = selected.kind === 'cloud' ? await selected.cloud.send(selected.agentId, id, message.text, options) : await selected.remote.send(id, message.text, options);
+      const progress=(value:string)=>{requestSignal.throwIfAborted();if(generation!==epoch||selected!==active||state.session?.sessionId!==session.sessionId)throw Error('The connection changed.');onText?.(value);};
+      const reply = selected.kind === 'cloud' ? await selected.cloud.send(selected.agentId, id, message.text, options) : selected.kind==='resident'?await selected.remote.send(id,message.text,{...options,onText:progress}):await selected.remote.send(id, message.text, options);
       requestSignal.throwIfAborted();
       if (generation !== epoch) throw new Error('The connection changed.');
       let responseFailure: Error | undefined;

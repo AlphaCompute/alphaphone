@@ -1,4 +1,5 @@
 import {dirname,join} from 'node:path';
+import {once} from 'node:events';
 import {localAgentStorage} from './local-agent-dev-storage.ts';
 import type { Plugin } from 'vite';
 import { readFileSync, statSync } from 'node:fs';
@@ -8,7 +9,7 @@ export const LOCAL_AGENT_BRIDGE_PATH='/__alpha-local-agent';
 const LIMIT=2*1024*1024;
 export function localAgentPathAllowed(path:unknown):path is string {
   if(typeof path!=='string'||path.length>2048||/[\\#%\r\n]/.test(path)||path.includes('..'))return false;
-  return /^\/api\/(auth\/me|agents|status|conversations(?:\/[A-Za-z0-9_-]+(?:\/messages)?)?|client-devices\/[A-Za-z0-9_/-]+|workflow(?:\/[A-Za-z0-9_/?=&-]+)?)$/.test(path);
+  return /^\/api\/(auth\/me|agents|status|conversations(?:\/[A-Za-z0-9_-]+(?:\/messages(?:\/stream)?)?)?|client-devices\/[A-Za-z0-9_/-]+|workflow(?:\/[A-Za-z0-9_/?=&-]+)?)$/.test(path);
 }
 export function createLocalAgentDevHandler(options:{origin:string;tokenFile:string;request?:typeof fetch}) {
   const origin=new URL(options.origin);
@@ -53,18 +54,31 @@ export function createLocalAgentDevHandler(options:{origin:string;tokenFile:stri
       if(!localAgentPathAllowed(input.path)||!['GET','POST'].includes(input.method)||
          (input.body!==undefined&&typeof input.body!=='string')||
          (input.method==='GET'&&input.body!==undefined)) {fail(400,'Unsupported local request');return;}
+      const streamPath=/^\/api\/conversations\/[A-Za-z0-9_-]+\/messages\/stream$/.test(input.path);
+      if((input.stream===true)!==streamPath||(streamPath&&(input.method!=='POST'||typeof input.ownerId!=='string'))){fail(400,'Unsupported streaming request');return;}
       const stat=statSync(options.tokenFile);
       if(!stat.isFile()||(stat.mode&0o077)!==0)throw new Error('Private runtime credential required');
       const token=readFileSync(options.tokenFile,'utf8').trim();
       if(!/^[a-f0-9]{64}$/.test(token))throw new Error('Invalid runtime credential');
       const credential=await session(token);
       if(input.ownerId!==undefined&&input.ownerId!==credential.ownerId){fail(409,'Local owner changed; reconnect before continuing');return;}
-      const headers:Record<string,string>={Accept:'application/json','Content-Type':'application/json',Authorization:`Bearer ${credential.token}`};
+      const headers:Record<string,string>={Accept:input.stream===true?'text/event-stream':'application/json','Content-Type':'application/json',Authorization:`Bearer ${credential.token}`};
       for(const key of ['X-Eliza-Device-Id','X-Eliza-Device-Key','X-Eliza-Device-Capabilities']){
         const value=input.headers?.[key];if(value!==undefined){if(typeof value!=='string'||value.length>2048||/[\r\n]/.test(value))throw new Error('Invalid device header');headers[key]=value;}
       }
       const result=await request(origin.origin+input.path,{method:input.method,headers,body:input.body,redirect:'error',
         signal:AbortSignal.any([abort.signal,AbortSignal.timeout(120000)])});
+      if(input.stream===true){
+        if(result.status===401)pairing=undefined;
+        if(!result.ok||!result.body||!result.headers.get('content-type')?.startsWith('text/event-stream')){
+          await result.body?.cancel();fail(result.ok?502:result.status,'Local agent stream unavailable. No automatic retry was made.');return;
+        }
+        res.writeHead(200,{'Content-Type':'text/event-stream','Cache-Control':'no-store, no-transform','X-Content-Type-Options':'nosniff'});res.flushHeaders();
+        const reader=result.body.getReader();let received=0;
+        try{while(true){const part=await reader.read();if(part.done)break;received+=part.value.byteLength;if(received>LIMIT)throw Error('Stream too large');if(!res.write(part.value))await once(res,'drain',{signal:abort.signal});}}
+        finally{await reader.cancel().catch(()=>{});}
+        if(!abort.signal.aborted)res.end();return;
+      }
       const reader=result.body?.getReader();let received=0;const output:Uint8Array[]=[];
       if(reader)try{while(true){const item=await reader.read();if(item.done)break;received+=item.value.length;if(received>LIMIT)throw new Error('Response too large');output.push(item.value);}}finally{await reader.cancel();}
       if(abort.signal.aborted)return;
@@ -74,7 +88,7 @@ export function createLocalAgentDevHandler(options:{origin:string;tokenFile:stri
       if(input.path==='/api/auth/me'&&result.status===200){const who=JSON.parse(body);if(who.session)who.session.id='host-owned-session';body=JSON.stringify(who);}
       if(result.status===401)pairing=undefined; // Never replay the failed request.
       res.end(JSON.stringify({status:result.status,body}));
-    }catch{if(!res.headersSent&&!abort.signal.aborted)fail(503,'Local runtime unavailable. Check the private host log.');}
+    }catch{if(!abort.signal.aborted){if(!res.headersSent)fail(503,'Local runtime unavailable. Check the private host log.');else res.destroy();}}
     finally{res.off('close',onClose);}
   };
 }

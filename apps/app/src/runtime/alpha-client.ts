@@ -69,6 +69,7 @@ export interface VerifiedSessionTransport {
     text: string;
     context: ContextEnvelope;
     signal: AbortSignal;
+    onText?:(text:string)=>void;
   }): Promise<AgentReply>;
   /** Server must revalidate ownership, context/preconditions, approval and dedupe. */
   execute(input: {
@@ -273,15 +274,17 @@ export class AlphaClient {
       }
     }
   }
-  async send(text: string): Promise<AgentReply> {
+  async send(text: string, onText?:(text:string)=>void): Promise<AgentReply> {
     if (!text.trim()) throw new Error("Enter a message.");
     return this.run(async (transport, context, signal) => {
-      const result = await transport.send({
+      let accepting=true;let result:AgentReply;
+      try { result = await transport.send({
         requestId: crypto.randomUUID(),
         text: text.trim(),
         context,
         signal,
-      });
+        onText:value=>{if(!accepting||signal.aborted)return;if(typeof value!=='string'||value.length>200000)throw new AlphaClientError('invalid-response','Invalid streamed reply.');onText?.(value);},
+      }); } finally {accepting=false;}
       if (signal.aborted)
         throw new AlphaClientError("cancelled", "Request cancelled.");
       if (

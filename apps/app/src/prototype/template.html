@@ -3521,6 +3521,7 @@
   <div style="display: flex; align-items: center; gap: 12px; padding: 0 10px 8px 20px; flex-shrink: 0">
     <span style="width: 34px; height: 34px; border-radius: 17px; background: var(--acc); color: #fff; display: flex; align-items: center; justify-content: center; font-family: Denton, Fraunces, Georgia, serif; font-style: italic; font-size: 19px"><span class="al">α</span></span>
     <span style="flex-grow: 1; font-weight: 600; font-size: 16px">{{name}}</span>
+    <sc-if value="{{canStopReply}}" hint-placeholder-val="{{false}}"><button class="tap" aria-label="Stop reply" onClick="{{stopReply}}" style="min-height:44px;padding:0 12px;color:var(--acct);font-weight:600">Stop</button></sc-if>
     <button class="ib" aria-label="{{sizeLabel}}" onClick="{{grabTap}}"><svg class="i" viewBox="0 0 24 24" style="width: 18px; height: 18px"><path d="{{sizeIcon}}"></path></svg></button>
     <button class="ib" aria-label="Minimize chat" onClick="{{closeChat}}"><svg class="i" viewBox="0 0 24 24" style="width: 20px; height: 20px"><path d="{{ic.down}}"></path></svg></button>
   </div>

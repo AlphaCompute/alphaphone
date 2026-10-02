@@ -162,7 +162,7 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
       if (connection.session) {
         alphaClient.attachVerifiedTransport({
           session: connection.session,
-          send: ({ text, context, requestId, signal }) => connectionController.send(text, context, requestId, signal),
+          send: ({ text, context, requestId, signal, onText }) => connectionController.send(text, context, requestId, signal, onText),
           // Remote text is not authority to execute device actions. This path
           // accepts chat only until the server supports verified proposals.
           execute: ({ proposal, context, signal }) => connectionController.execute(proposal, context, signal),
@@ -382,6 +382,8 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
   };
   p.renderVals = function () {
     const out = originalVals.call(this);
+    out.canStopReply=!!this.S().typing&&alphaClient.getState().pending;
+    out.stopReply=()=>alphaClient.cancel();
     if (isAndroid) {
       out.showStatus = false; out.showIndicator = false;
       const style = out.sbColor === '#ffffff' || out.sbColor === '#FFFFFF' ? SystemBarsStyle.Dark : SystemBarsStyle.Light;
@@ -398,16 +400,22 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
     if (!text || s.typing) return;
     context(this);
     const revision = alphaClient.getState().context.revision;
+    const streamedId=crypto.randomUUID();let streamed=false;
+    const replaceStream=(value:string,streaming=true)=>this.setState((previous:Shell)=>({msgs:previous.msgs.map((message:Shell)=>message.id===streamedId?{...message,text:value,streaming}:message)}));
     this.setState({ msgs: [...s.msgs, { id: crypto.randomUUID(), from: 'user', text }], draft: '', typing: true, chat: s.chat === 'full' ? 'full' : 'sheet', shade: false });
     try {
       await this.connectAgent(); context(this);
       if (alphaClient.getState().context.revision !== revision) throw new Error('The active screen changed. Please send your request again.');
       if(expectedSession&&(JSON.stringify(connectionController.getSnapshot().session)!==JSON.stringify(expectedSession)||document.hidden))throw new Error('Agent changed. Review this message again.');
-      const reply = await alphaClient.send(text);
+      const reply = await alphaClient.send(text,value=>{
+        if(!this.live)return;
+        if(streamed)replaceStream(value);
+        else{streamed=true;this.setState((previous:Shell)=>({msgs:[...previous.msgs,{id:streamedId,from:'agent',text:value,card:null,streaming:true}]}));}
+      });
       if (!this.live) return;
-      this.agentSay(reply.text);
+      if(streamed)replaceStream(reply.text,false);else this.agentSay(reply.text);
       for (const proposal of reply.proposals || []) this.agentSay(proposal.description, { type: 'generic', icon: 'check', title: 'Approve: ' + proposal.title, sub: 'Tap to approve this exact action', proposalId: proposal.id });
-    } catch (e) { if (this.live) this.agentSay(e instanceof Error ? e.message : 'The agent could not complete this request.'); }
+    } catch (e) { if (this.live) {const message=e instanceof Error?e.message:'The agent could not complete this request.';if(streamed)this.setState((previous:Shell)=>({msgs:previous.msgs.map((item:Shell)=>item.id===streamedId?{...item,streaming:false,interrupted:true,text:`${item.text}\n\nResponse interrupted. ${message}`} :item)}));else this.agentSay(message);} }
     finally { if (this.live) this.setState({ typing: false }); }
   };
   p.agentSay = function (text: string, card?: Shell) {

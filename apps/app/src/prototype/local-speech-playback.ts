@@ -38,7 +38,7 @@ export function installLocalSpeechPlayback(Component: Shell) {
     const available = createOnDeviceVoice() !== null;
     out.msgs = (out.msgs || []).map((message: Shell, index: number) => {
       const entry = source[index];
-      if (!available || !entry || entry.from !== 'agent' || entry.text !== message.text || typeof entry.id !== 'string') return message;
+      if (!available || !entry || entry.streaming || entry.interrupted || entry.from !== 'agent' || entry.text !== message.text || typeof entry.id !== 'string') return message;
       const selected = state?.id === entry.id;
       return { ...message, localSpeechAvailable: true, localSpeechLabel: selected && state?.controller ? 'Stop reading' : 'Listen on phone', localSpeechMessage: selected ? state?.message : '', localSpeechNotice: !!selected, localSpeech: () => { void listen(this, entry.id, entry.text); } };
     });

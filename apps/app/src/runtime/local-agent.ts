@@ -1,15 +1,20 @@
 import { Capacitor, registerPlugin } from '@capacitor/core';
 import type { VerifiedSession } from './alpha-client';
 import type { RemoteChatReply, RemoteConversation } from './remote-protocol';
+import { readLocalAgentStream } from './local-agent-stream';
 
 export interface LocalAgentBridge {
   start(): Promise<unknown>;
   stop?():Promise<unknown>;
-  getStatus?():Promise<{packaged?:boolean}>;
+  getStatus?():Promise<{packaged?:boolean;state?:string;serviceActive?:boolean;socketListening?:boolean}>;
   configureProvider?(input:{apiKey:string;model:string}):Promise<unknown>;
   request(input: { path: string; ownerId?:string; method: 'GET' | 'POST'; headers: Record<string,string>; body?: string; timeoutMs: number }, signal?:AbortSignal): Promise<{status:number;body?:string}>;
+  stream?(input:{path:string;ownerId:string;headers:Record<string,string>;body:string},signal:AbortSignal,onText:(text:string)=>void):Promise<RemoteChatReply>;
 }
 const native = registerPlugin<LocalAgentBridge>('Agent');
+// Capacitor proxies synthesize functions for unknown methods. Do not use that
+// proxy to feature-detect streaming before the native IPC adapter implements it.
+const nativeBridge:LocalAgentBridge={start:()=>native.start(),request:input=>native.request(input)};
 export const browserLocalAgentEnabled = import.meta.env?.DEV && import.meta.env?.VITE_LOCAL_AGENT === '1';
 export const localAgentAvailable = () => Capacitor.isNativePlatform()
   ? Capacitor.isPluginAvailable('Agent') : browserLocalAgentEnabled;
@@ -21,6 +26,12 @@ export async function localAgentPackaged():Promise<boolean> {
 }
 const browserBridge: LocalAgentBridge = {
   async start() { return { state: 'host-managed' }; },
+  async stream(input,signal,onText){
+    const bounded=AbortSignal.any([signal,AbortSignal.timeout(120000)]);
+    const response=await fetch('/__alpha-local-agent',{method:'POST',headers:{'Content-Type':'application/json','X-Alpha-Local-Agent':'1'},
+      body:JSON.stringify({...input,method:'POST',stream:true}),signal:bounded,redirect:'error'});
+    return readLocalAgentStream(response,bounded,onText);
+  },
   async request(input, signal) {
     const response = await fetch('/__alpha-local-agent', {
       method:'POST', headers:{'Content-Type':'application/json','X-Alpha-Local-Agent':'1'},
@@ -46,7 +57,7 @@ export class LocalAgentProtocol {
   session: VerifiedSession | null = null;
   private generation = 0;
   deviceHeaders:Record<string,string>={};
-  constructor(private bridge:LocalAgentBridge = Capacitor.isNativePlatform() ? native : browserBridge) {}
+  constructor(private bridge:LocalAgentBridge = Capacitor.isNativePlatform() ? nativeBridge : browserBridge) {}
   async request(path:string, body:unknown|undefined, signal:AbortSignal, headers:Record<string,string> = {}):Promise<any> {
     signal.throwIfAborted();
     const generation=this.generation;
@@ -101,7 +112,16 @@ export class LocalAgentProtocol {
     if(!Array.isArray(value.messages))throw new Error('Invalid local conversation history.');
     return {messages:value.messages.map(record)};
   }
-  async send(id:string,text:string,options:{metadata?:Record<string,unknown>;clientMessageId?:string;signal?:AbortSignal}={}):Promise<RemoteChatReply> {
+  async send(id:string,text:string,options:{metadata?:Record<string,unknown>;clientMessageId?:string;signal?:AbortSignal;onText?:(text:string)=>void}={}):Promise<RemoteChatReply> {
+    if(this.bridge.stream&&options.onText){
+      if(!this.session)throw Error('Start the local agent first.');
+      const generation=this.generation,session=this.session,signal=options.signal||new AbortController().signal;
+      const valid=()=>{signal.throwIfAborted();if(generation!==this.generation||session!==this.session)throw Error('Local agent connection changed.');};
+      valid();
+      const result=await this.bridge.stream({path:`/api/conversations/${encodeURIComponent(identifier(id))}/messages/stream`,ownerId:session.ownerId,headers:this.deviceHeaders,
+        body:JSON.stringify({text,channelType:'DM',streamProtocol:'delta-v2',metadata:options.metadata,clientMessageId:options.clientMessageId})},signal,value=>{valid();options.onText!(value);});
+      valid();return result;
+    }
     const value=await this.json(`/api/conversations/${encodeURIComponent(identifier(id))}/messages`,{text,channelType:'DM',metadata:options.metadata,clientMessageId:options.clientMessageId},options.signal);
     if(typeof value.text!=='string'||typeof value.agentName!=='string')throw new Error('Invalid local agent reply.');
     return value as RemoteChatReply;
@@ -118,4 +138,11 @@ export async function configureLocalProvider(apiKey:string,model:string) {
 export async function stopLocalAgent() {
   if(!Capacitor.isNativePlatform()||!native.stop)throw Error('Stop browser development with Ctrl-C in its terminal.');
   await native.stop();
+  const deadline=performance.now()+30000;
+  while(performance.now()<deadline){
+    const status=await native.getStatus?.();
+    if(status?.state==='stopped'&&status.serviceActive===false&&status.socketListening===false)return;
+    await new Promise(resolve=>setTimeout(resolve,200));
+  }
+  throw Error('Shutdown is still pending. Check local agent status before starting again.');
 }
