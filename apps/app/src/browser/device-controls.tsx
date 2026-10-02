@@ -1,3 +1,4 @@
+import {openLocationControls} from './location-simulation';
 import {openCalendarRecovery} from './calendar-recovery';
 import {browserDevProfile} from './dev-profile';
 import {showSimulatorRecovery} from './simulator-recovery';
@@ -13,6 +14,7 @@ export function BrowserDeviceControls({command}:{command:(command:Command)=>void
  <h2>Device controls</h2><div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
  {([['home','Home'],['back','Back'],['power','Power'],['unlock','Unlock'],['boot','Restart'],['assistant','Assistant'],['shade','Notifications'],['background','Background'],['resume','Resume']] as [Command,string][]).map(([action,label])=><button key={action} onClick={()=>run(action)}>{label}</button>)}
  <button onClick={()=>location.reload()}>Reload app</button>
+ {browserDevProfile&&<button onClick={()=>{dialog.current?.close();try{openLocationControls();}catch(error){setRole(error instanceof Error?error.message:'Location could not be opened.');dialog.current?.showModal();}}}>Location</button>}
  {browserDevProfile&&<button onClick={()=>{dialog.current?.close();window.dispatchEvent(new Event('alpha:dev-pickup'));}}>Pick up phone</button>}
  {browserDevProfile&&<button onClick={()=>{dialog.current?.close();window.dispatchEvent(new Event('alpha:dev-incoming-call'));}}>Incoming call</button>}
  <button onClick={()=>{dialog.current?.close();openCalendarRecovery();}}>Calendar recovery</button>

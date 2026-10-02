@@ -8,6 +8,7 @@
   },
   "scripts": {
     "dev": "vite --host 127.0.0.1",
+    "dev:maps": "node scripts/maps/dev.mjs",
     "build": "vite build",
     "typecheck": "tsc --noEmit",
     "test": "node --test test/*.test.mjs",

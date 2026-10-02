@@ -2,13 +2,13 @@ import {test,expect} from '@playwright/test';
 
 // Production renderer and connection controller; native IPC and storage are controlled.
 // No model, provider, real notification, or workflow execution is involved.
-for(const scenario of ['ready','rejected','late'] as const){
+for(const scenario of ['ready','rejected','late','mock-ready','mock-retire-rejected'] as const){
  test(`resident background result binding: ${scenario}`,async({page},info)=>{
   await page.addInitScript(scenario=>{
    const w=window as any;w.androidBridge={};
    localStorage.setItem('alpha.connection.selection.v1',JSON.stringify({kind:'offline'}));
    const store=new Map();
-   const f=w.deliveryFixture={configured:0,cancelled:0,disabled:[] as string[],nativeSync:0,foregroundSync:0,polling:true,enabled:false,notifications:false,events:[] as string[],input:null as any,release:null as any,holdRetire:false,retireRelease:null as any};
+   const f=w.deliveryFixture={configured:0,cancelled:0,disabled:[] as string[],nativeSync:0,foregroundSync:0,polling:true,enabled:false,notifications:false,events:[] as string[],input:null as any,release:null as any,holdRetire:false,retireRelease:null as any,mockHold:false,mockReleases:{} as Record<string,()=>void>,removed:[] as string[]};
    const methods=(names:string[])=>names.map(name=>({name,rtype:'promise'}));
    w.Capacitor={PluginHeaders:[
     {name:'Agent',methods:methods(['getStatus','start','request'])},
@@ -38,7 +38,8 @@ for(const scenario of ['ready','rejected','late'] as const){
     if(plugin==='AlphaConnection'){
      if(method==='secureRead')return {value:store.get(input.slot)??null};
      if(method==='secureWrite'){store.set(input.slot,input.value);return {};}
-     if(method==='secureRemove'){store.delete(input.slot);return {};}
+     if(method==='secureRemove'){f.removed.push(input.slot);store.delete(input.slot);return {};}
+     if(method==='pauseNotificationCollection'&&f.mockHold){await new Promise<void>(resolve=>{f.mockReleases.notifications=resolve;});return {};}
      return {};
     }
     if(plugin==='AlphaActionJournal')return {entries:[]};
@@ -51,7 +52,7 @@ for(const scenario of ['ready','rejected','late'] as const){
       f.enabled=true;return {generation:'fixture-generation',scope:'a'.repeat(64)};
      }
      if(method==='cancelBackground'){f.cancelled++;f.enabled=false;f.events.push('cancel');return {};}
-     if(method==='disableBackground'){f.disabled.push(input.sessionId);if(f.holdRetire)await new Promise(resolve=>{f.retireRelease=resolve;});f.enabled=false;return {};}
+     if(method==='disableBackground'){f.disabled.push(input?.sessionId);if(f.mockHold){const kind=input?.sessionId?'scoped':'unscoped';await new Promise<void>(resolve=>{f.mockReleases[kind]=resolve;});if(kind==='scoped'&&scenario==='mock-retire-rejected')throw Error('Synthetic session retirement rejection');}if(f.holdRetire)await new Promise(resolve=>{f.retireRelease=resolve;});f.enabled=false;return {};}
      if(method==='inboxHistory'||method==='syncInbox'){if(method==='syncInbox')f.nativeSync++;return {entries:[]};}
      if(method==='status')return {enabled:f.notifications,backgroundEnabled:f.enabled&&f.polling};
      if(method==='setBackgroundPolling'){f.polling=input.enabled;return {backgroundEnabled:f.enabled&&f.polling};}
@@ -70,6 +71,32 @@ for(const scenario of ['ready','rejected','late'] as const){
   const input=await page.evaluate(()=>(window as any).deliveryFixture.input);
   expect(input).toMatchObject({mode:'resident',origin:'https://device.alpha.invalid',ownerId:'fixture-owner',agentId:'fixture-agent'});
   expect(input).not.toHaveProperty('token');
+  if(scenario==='mock-ready'||scenario==='mock-retire-rejected'){
+   const errors:string[]=[];page.on('pageerror',error=>errors.push(error.message));
+   await page.evaluate(()=>(window as any).deliveryFixture.mockHold=true);
+   await page.getByRole('button',{name:/Agent connection/}).click();
+   await page.locator('.alpha-connection-scrim summary').filter({hasText:/^Mock mode$/}).click();
+   await page.getByRole('button',{name:'Enter mock mode',exact:true}).click();
+   await expect.poll(()=>page.evaluate(()=>Object.keys((window as any).deliveryFixture.mockReleases).sort())).toEqual(['notifications','scoped','unscoped']);
+   const unentered=async()=>{
+    expect(await page.evaluate(()=>JSON.parse(localStorage.getItem('alpha.connection.selection.v1')!).kind)).toBe('resident');
+    await expect(page).not.toHaveURL(/mode=mock/);
+    await expect(page.getByText('Mock mode · simulated data and actions')).toHaveCount(0);
+   };
+   await unentered();
+   await page.evaluate(()=>(window as any).deliveryFixture.mockReleases.unscoped());await unentered();
+   await page.evaluate(()=>(window as any).deliveryFixture.mockReleases.notifications());await unentered();
+   // Only the original active session retirement is still held here.
+   expect(await page.evaluate(()=>(window as any).deliveryFixture.removed)).toEqual([]);
+   await page.evaluate(()=>(window as any).deliveryFixture.mockReleases.scoped());
+   if(scenario==='mock-retire-rejected'){
+    await expect(page.getByText('Live background activity could not be paused. Retry before opening mock mode.',{exact:true})).toBeVisible();await unentered();
+   }else{
+    await expect(page).toHaveURL(/mode=mock/);
+    await expect(page.getByText('Mock mode · simulated data and actions')).toBeVisible();
+   }
+   expect(errors).toEqual([]);return;
+  }
   if(scenario==='late'){
    await page.getByRole('button',{name:/Agent connection/}).click();
    await page.getByRole('button',{name:'Disconnect agent',exact:true}).click();

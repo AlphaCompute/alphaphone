@@ -141,9 +141,10 @@ public class DailyAppsPlugin extends Plugin {
  @PluginMethod public void clockHandoff(PluginCall call) {
   try {
    JSObject data=call.getData();java.util.Iterator<String> keys=data.keys();
-   while(keys.hasNext()){String key=keys.next();if(!java.util.Arrays.asList("action","hour","minute","label","snoozeMinutes","reviewed").contains(key))throw new IllegalArgumentException("Unexpected Clock option");}
+   while(keys.hasNext()){String key=keys.next();if(!java.util.Arrays.asList("action","hour","minute","label","snoozeMinutes","reviewed","timeZone").contains(key))throw new IllegalArgumentException("Unexpected Clock option");}
+   if(data.has("timeZone")&&(!(data.opt("timeZone") instanceof String)||((String)data.opt("timeZone")).length()>100))throw new IllegalArgumentException("Invalid Clock time zone");
    Object label=data.opt("label");if(label!=null&&label!=org.json.JSONObject.NULL&&!(label instanceof String))throw new IllegalArgumentException("Invalid Clock label");
-   call.resolve(ClockHandoff.launch(getActivity(),call.getString("action"),clockInteger(data,"hour"),clockInteger(data,"minute"),label instanceof String?(String)label:null,clockInteger(data,"snoozeMinutes"),Boolean.TRUE.equals(data.opt("reviewed"))));
+   call.resolve(ClockHandoff.launch(getActivity(),call.getString("action"),clockInteger(data,"hour"),clockInteger(data,"minute"),label instanceof String?(String)label:null,clockInteger(data,"snoozeMinutes"),Boolean.TRUE.equals(data.opt("reviewed")),call.getString("timeZone")));
   }catch(IllegalArgumentException invalid){call.resolve(ClockHandoff.result(call.getString("action"),"failed",invalid.getMessage()));}
  }
  @PluginMethod public void capabilities(PluginCall call) {

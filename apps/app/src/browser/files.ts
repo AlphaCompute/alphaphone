@@ -2,9 +2,10 @@ import {runFilePicker,inputFiles} from './file-picker';
 import pdfWorkerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import { WebPlugin } from '@capacitor/core';
 import { revision } from './store';
+import {reviewMailAttachment,type MailAttachment} from '../runtime/inbox-attachment';
 type Entry={id:string;parentId:string;name:string;mimeType:string;directory:boolean;size:number;revision:string;createdAt?:number;modifiedAt?:number;blob?:Blob};
 let database:Promise<IDBDatabase>|undefined;
-function db(){return database??=new Promise((resolve,reject)=>{const r=indexedDB.open('alpha.browser.files.v1',1);r.onupgradeneeded=()=>r.result.createObjectStore('entries',{keyPath:'id'});r.onsuccess=()=>resolve(r.result);r.onerror=()=>{database=undefined;reject(r.error);};});}
+function db(){return database??=new Promise((resolve,reject)=>{let blocked=false;const r=indexedDB.open('alpha.browser.files.v1',2);r.onblocked=()=>{blocked=true;database=undefined;reject(Error('Close other Alpha tabs and retry Files.'));};r.onupgradeneeded=()=>{if(!r.result.objectStoreNames.contains('entries'))r.result.createObjectStore('entries',{keyPath:'id'});r.result.createObjectStore('workflowReceipts',{keyPath:'id'});};r.onsuccess=()=>{if(blocked){r.result.close();return;}r.result.onversionchange=()=>{r.result.close();database=undefined;};resolve(r.result);};r.onerror=()=>{database=undefined;reject(r.error);};});}
 async function entries(){const d=await db();return new Promise<Entry[]>((resolve,reject)=>{const r=d.transaction('entries').objectStore('entries').getAll();r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error);});}
 /** Read, validate, and mutate in one transaction, including across tabs. */
 async function transaction<T>(action:(all:Entry[],store:IDBObjectStore)=>T){const d=await db();return new Promise<T>((resolve,reject)=>{const tx=d.transaction('entries','readwrite'),store=tx.objectStore('entries');let result:T;let failure:unknown;tx.oncomplete=()=>resolve(result);tx.onabort=tx.onerror=()=>reject(failure||tx.error);const request=store.getAll();request.onsuccess=()=>{try{result=action(request.result,store);}catch(error){failure=error;tx.abort();}};});}
@@ -16,6 +17,23 @@ function waitForFileRead<T>(work:Promise<T>,signal?:AbortSignal):Promise<T>{
  return new Promise((resolve,reject)=>{let settled=false;const finish=(error:unknown,value?:T)=>{if(settled)return;settled=true;signal.removeEventListener('abort',cancel);error?reject(error):resolve(value!);};const cancel=()=>finish(new DOMException('Files read cancelled','AbortError'));signal.addEventListener('abort',cancel,{once:true});work.then(value=>finish(null,value),error=>finish(error));if(signal.aborted)cancel();});
 }
 export class BrowserFiles extends WebPlugin {
+ /** File and durable operation receipt commit together; deletion never permits replay to recreate it. */
+ async saveWorkflowAttachment(input:MailAttachment&{operationId:string},signal:AbortSignal){
+  input={...input};signal.throwIfAborted();if(!/^[a-zA-Z0-9_-]{1,120}$/.test(input.operationId))throw Error('Invalid workflow operation.');
+  const checked=await reviewMailAttachment(input),name=validName(input.name),fingerprint=JSON.stringify([name,input.mimeType,checked.sha256]);
+  const bytes=Uint8Array.from(atob(input.dataBase64),c=>c.charCodeAt(0)),d=await db();signal.throwIfAborted();
+  return new Promise<{id:string;name:string;sha256:string}>((resolve,reject)=>{
+   const tx=d.transaction(['entries','workflowReceipts'],'readwrite'),store=tx.objectStore('entries'),receipts=tx.objectStore('workflowReceipts');let result:{id:string;name:string;sha256:string},failure:unknown;
+   const cancel=()=>{try{tx.abort();}catch{}};signal.addEventListener('abort',cancel,{once:true});
+   tx.oncomplete=()=>{signal.removeEventListener('abort',cancel);resolve(result);};tx.onabort=tx.onerror=()=>{signal.removeEventListener('abort',cancel);reject(failure||tx.error||new DOMException('Cancelled','AbortError'));};
+   const receipt=receipts.get(input.operationId);receipt.onsuccess=()=>{try{signal.throwIfAborted();if(receipt.result){if(receipt.result.fingerprint!==fingerprint)throw Error('Saved file receipt does not match this step.');result=receipt.result.result;return;}
+    const all=store.getAll();all.onsuccess=()=>{try{signal.throwIfAborted();const rows=all.result as Entry[];let folder=rows.find(row=>row.parentId==='root'&&row.name==='Receipts');if(folder&&!folder.directory)throw Error('A file named Receipts already exists. Rename it before saving receipts.');const now=Date.now();if(!folder){folder={id:crypto.randomUUID(),parentId:'root',name:'Receipts',mimeType:'',directory:true,size:0,revision:revision(),createdAt:now,modifiedAt:now};store.add(folder);}
+     let savedName=name;for(let n=2;rows.some(row=>row.parentId===folder!.id&&row.name===savedName);n++){const dot=name.lastIndexOf('.');savedName=dot>0?name.slice(0,dot)+' ('+n+')'+name.slice(dot):name+' ('+n+')';}
+     result={id:crypto.randomUUID(),name:savedName,sha256:checked.sha256};store.add({...result,parentId:folder.id,mimeType:input.mimeType,directory:false,size:checked.size,revision:revision(),createdAt:now,modifiedAt:now,blob:new Blob([bytes],{type:input.mimeType})});receipts.add({id:input.operationId,fingerprint,result});
+    }catch(error){failure=error;tx.abort();}};
+   }catch(error){failure=error;tx.abort();}};
+  });
+ }
  private selection=new Map<string,{id:string;revision:string}>();
  private previews=new Map<string,string>();
  private viewers=new Map<string,HTMLDialogElement>();

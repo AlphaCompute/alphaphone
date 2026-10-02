@@ -21,7 +21,7 @@ export function sendWorkflowLocal(step:Bag,text:string,operationId:string,api:Ba
  if(action==='an email to me'){
   const state=current('inbox'),existing=state.sent.find((mail:Bag)=>mail.id===operationId);
   if(existing){if(existing.body!==text||existing.to?.[0]!=='you@alpha.local')throw Error('Saved email receipt does not match this step.');return {output:text,detail:'Local email saved ('+operationId+')'};}
-  save('inbox',{sent:[{id:operationId,sent:true,to:['you@alpha.local'],cc:[],bcc:[],acct:'personal',subj:'Workflow output',body:text,time:'Now',k:Date.now(),atts:[],workflowStep:operationId},...state.sent]});
+  save('inbox',{sent:[{id:operationId,sent:true,sentAt:Date.now(),to:['you@alpha.local'],cc:[],bcc:[],acct:'personal',subj:'Workflow output',body:text,time:'Now',k:Date.now(),atts:[],workflowStep:operationId},...state.sent]});
   return {output:text,detail:'Local email saved ('+operationId+')'};
  }
  throw Error('Choose a recipient for this local send step.');

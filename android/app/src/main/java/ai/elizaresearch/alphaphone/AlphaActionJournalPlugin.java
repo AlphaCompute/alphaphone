@@ -78,10 +78,20 @@ public final class AlphaActionJournalPlugin extends Plugin {
   JSONObject result=call.getObject("result");
   JSONObject retainedOperation=entry.getJSONObject("record").optJSONObject("operation");
   if("succeeded".equals(status)&&entry.getJSONObject("record").has("workflow")&&retainedOperation!=null&&Set.of("read_selected_notes","read_calendar_range").contains(retainedOperation.optString("type"))&&result==null)throw new IllegalArgumentException();
-  if("succeeded".equals(status)&&retainedOperation!=null&&Set.of("maps_read_selected","notes_read_selected","notes_update","notes_delete","reminder_read_selected","reminder_update","reminder_complete","reminder_snooze","reminder_cancel").contains(retainedOperation.optString("type"))&&result==null)throw new IllegalArgumentException();
+  if("succeeded".equals(status)&&retainedOperation!=null&&Set.of("clock_handoff","maps_read_selected","notes_read_selected","notes_update","notes_delete","reminder_read_selected","reminder_update","reminder_complete","reminder_snooze","reminder_cancel").contains(retainedOperation.optString("type"))&&result==null)throw new IllegalArgumentException();
   if(result!=null){
    JSONObject record=entry.getJSONObject("record"),operation=record.optJSONObject("operation");String type=operation==null?"":operation.optString("type");boolean workflowRead=record.has("workflow")&&Set.of("read_selected_notes","read_calendar_range").contains(type);
-   if("maps_read_selected".equals(type)){
+   if("clock_handoff".equals(type)){
+    if(result.length()!=(result.has("clockResult")?2:1)||!entry.getString("operationId").equals(result.optString("operationId")))throw new IllegalArgumentException();
+    JSONObject clock=result.optJSONObject("clockResult");
+    if(clock==null){if("succeeded".equals(status))throw new IllegalArgumentException();}
+    else{
+     String outcome=clock.optString("status");
+     if(clock.length()!=3||!"clock-handoff".equals(clock.optString("kind"))||!operation.optString("action").equals(clock.optString("action"))||!Set.of("opened","unavailable","denied","failed","unknown").contains(outcome))throw new IllegalArgumentException();
+     String expected="opened".equals(outcome)?"succeeded":"unknown".equals(outcome)?"unknown":"failed";
+     if(!expected.equals(status))throw new IllegalArgumentException();
+    }
+   }else if("maps_read_selected".equals(type)){
     if(result.length()!=(result.has("mapsResult")?2:1)||!entry.getString("operationId").equals(result.optString("operationId")))throw new IllegalArgumentException();
     JSONObject maps=result.optJSONObject("mapsResult");
     if("succeeded".equals(status)){if(maps==null||maps.length()!=4||!type.equals(maps.optString("kind"))||maps.optInt("version")!=1||maps.optJSONObject("fields")==null||!sameJson(operation.optJSONObject("target"),maps.optJSONObject("target")))throw new IllegalArgumentException();}

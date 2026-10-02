@@ -1,3 +1,4 @@
+import {clockTimeZone} from './clock-contract.ts';
 import {reminderTarget} from './reminder-contract.ts';
 import {notesTarget} from './notes-contract.ts';
 import { calendarSource, calendarTarget } from './calendar-contract.ts';
@@ -5,7 +6,7 @@ import { validateMapsSelectedObject } from '../maps/agent-context.ts';
 import type { ContextEnvelope } from './alpha-client';
 
 const views = new Set(['home', 'assistant', 'apps', 'maps', 'camera', 'photos', 'notes', 'calendar', 'notifications', 'reminders', 'workflows', 'files', 'inbox', 'browser', 'phone', 'messages', 'contacts', 'settings']);
-const kinds = new Set(['note', 'document', 'photo', 'video', 'browser-tab', 'calendar-event', 'calendar-source', 'event', 'reminder', 'contact', 'email', 'file', 'workflow', 'workflow-run', 'map-place', 'map-route', 'map-search']);
+const kinds = new Set(['note', 'document', 'photo', 'video', 'browser-tab', 'calendar-event', 'calendar-source', 'event', 'reminder', 'contact', 'email', 'file', 'workflow', 'workflow-run', 'map-place', 'map-route', 'map-search','clock-draft']);
 function opaque(value: unknown): string {
   // Identifiers only: no prose, control characters, URLs, query strings or email.
   if (typeof value !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$/.test(value)) throw new Error('The selected object has an unsupported identifier.');
@@ -16,9 +17,11 @@ export function sanitizePhoneContext(input: ContextEnvelope): ContextEnvelope {
   if (!input || input.sensitive || !views.has(input.view)) throw new Error('This screen cannot share agent context.');
   if (!Number.isSafeInteger(input.revision) || input.revision < 0) throw new Error('The screen observation has an invalid revision.');
   const result: ContextEnvelope = { view: input.view, revision: input.revision, sensitive: false };
+  if(input.timeZone!==undefined)result.timeZone=clockTimeZone(input.timeZone);
   if (input.selectedObject) {
     const selected = input.selectedObject;
     if (!kinds.has(selected.kind)) throw new Error('This selected object cannot share agent context.');
+    if(selected.kind==='clock-draft'&&(input.view!=='calendar'||!selected.revision||selected.accountId!==undefined||selected.sourceRevision!==undefined||selected.occurrenceId!==undefined))throw Error('Clock context changed');
     if(selected.kind==='workflow-run'){
       if(input.view!=='workflows'||selected.revision===undefined||selected.accountId!==undefined||selected.sourceRevision!==undefined||selected.occurrenceId!==undefined)throw new Error('The workflow execution observation is no longer current.');
       opaque(selected.id);opaque(selected.revision);

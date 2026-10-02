@@ -53,10 +53,15 @@ npm run test:browser
 npm run dev
 ```
 
+For configured regional Maps, prepare the data once as described in
+[regional Maps setup](docs/maps-regional-validation.md), then run `npm run dev:maps`.
+This starts the local router, gateway and app together; use `-- --port 5194` to
+choose the app port. Ctrl-C stops the services owned by that command.
+
 The desktop browser shows a fitted phone preview; mobile widths fill the viewport.
 Use `?mode=mock` for the clearly labeled design fixture and `?theme=dark` to
-inspect dark layouts. The normal app uses real browser-local Notes and reports
-unavailable native capabilities. Notes text import and export use the browser
+inspect dark layouts. Use `?mode=dev` for the browser development profile with durable local app data
+and device controls. The normal app uses browser-local Notes. Notes text import and export use the browser
 file picker and downloads; browser note storage is unencrypted and is not synced.
 The browser suite covers production navigation, durable note editing, exact-byte
 file flows, dialog accessibility, disclosed adapter fixtures and reference design

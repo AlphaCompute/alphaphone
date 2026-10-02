@@ -32,7 +32,7 @@ test('summary step cannot report success from a truncated input',async({page})=>
  await expect(page.getByRole('dialog',{name:'Workflow step result'})).toBeVisible();expect((await journal(page))[0].status).toBe('running');expect((await journal(page))[0].cursor).toBe(0);expect((await journal(page))[0].log).toEqual([]);await page.getByRole('dialog',{name:'Workflow step result'}).getByRole('button',{name:'Cancel run',exact:true}).click();await expect.poll(async()=>(await journal(page))[0]?.status).toBe('cancelled');
 });
 
-for(const source of ['Calendar next 90 years','Unsupported mailbox','Overnight inbox'])test('unsupported read does not silently widen or narrow '+source,async({page})=>{
+for(const source of ['Calendar next 90 years','Unsupported mailbox'])test('unsupported read does not silently widen or narrow '+source,async({page})=>{
  await page.evaluate(source=>{const s=JSON.parse(localStorage.getItem('alpha.dev.app.workflows')!);s.flows[0].steps=[{k:'Read',t:source,apps:[]}];localStorage.setItem('alpha.dev.app.workflows',JSON.stringify(s));},source);
  await page.reload();await open(page);await page.getByRole('button',{name:'Run now',exact:true}).click();await expect.poll(async()=>(await journal(page))[0]?.status).toBe('fail');expect((await journal(page))[0].cursor).toBe(0);expect((await journal(page))[0].sum).toContain('not supported');
 });

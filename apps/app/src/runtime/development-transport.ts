@@ -51,9 +51,11 @@ const allowedViews = new Set<AlphaView>([
   "files",
   "inbox",
   "browser",
-  "phone",
-  "messages",
-  "contacts",
+  // MVP-DEFERRED: docs/mvp-completion-plan.md scope freeze.
+  // Restore only after approved scope and native permission/recipient/role/return-to-HOME acceptance.
+  // "phone",
+  // "messages",
+  // "contacts",
   "passwords",
   "settings",
 ]);

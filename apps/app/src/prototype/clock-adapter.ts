@@ -1,3 +1,4 @@
+import {currentClockTimeZone} from '../runtime/clock-contract';
 import { DailyApps, type ClockRequest, type ClockResult } from '../daily';
 type Bag=Record<string,any>;
 const KEY='alphaphone:clock-handoff:v1';
@@ -5,9 +6,11 @@ const actions=['set','show','snooze','dismiss'] as const;
 /** A reviewed handoff, never a local alarm database or a provider-success claim. */
 export function installClockAdapter(Component:any,views:Bag,options:{simulated:boolean;browser?:boolean}) {
  const p=Component.prototype,render=views.calendar.render;
+ const draftId=crypto.randomUUID();let draftRevision=0;
+ const selection=()=>open?{kind:'clock-draft',id:draftId,revision:String(draftRevision)}:undefined;
  let owner:any,open=false,action:ClockRequest['action']='set',time='07:00',label='',snooze='10',review:ClockRequest|null=null,busy=false,message='',generation=0;
  const simulated=()=>options.simulated||document.documentElement.dataset.connectionMode==='mock';
- const publish=()=>owner?.vset('calendar',{});
+ const publish=()=>{++draftRevision;owner?.vset('calendar',{});};
  const restore=()=>{
   if(simulated())return;
   try {const last=JSON.parse(localStorage.getItem(KEY)||'null');if(last&&actions.includes(last.action)&&typeof last.status==='string')message=last.status==='opening'||last.status==='unknown'?'Previous Clock result is unknown. Check Clock before repeating a request.':'Previous request was a handoff. Check Clock for its result.';}
@@ -24,13 +27,13 @@ export function installClockAdapter(Component:any,views:Bag,options:{simulated:b
   }
  };
  const mount=p.componentDidMount,unmount=p.componentWillUnmount;
- p.componentDidMount=function(){mount.call(this);owner=this;restore();window.addEventListener('alpha-back',back,true);document.addEventListener('keydown',key,true);};
- p.componentWillUnmount=function(){if(owner===this){window.removeEventListener('alpha-back',back,true);document.removeEventListener('keydown',key,true);owner=null;open=false;review=null;++generation;}unmount.call(this);};
+ p.componentDidMount=function(){mount.call(this);owner=this;this.clockSelection=selection;restore();window.addEventListener('alpha-back',back,true);document.addEventListener('keydown',key,true);};
+ p.componentWillUnmount=function(){if(owner===this){window.removeEventListener('alpha-back',back,true);document.removeEventListener('keydown',key,true);delete this.clockSelection;owner=null;open=false;review=null;++generation;}unmount.call(this);};
  const change=(fn:()=>void)=>{if(busy)return;fn();review=null;publish();};
  const build=():ClockRequest=>{
   if(action==='set'){
    if(!/^([01]\d|2[0-3]):[0-5]\d$/.test(time)||label.length>200||label.includes('\0'))throw Error('Choose a valid time and a label up to 200 characters.');
-   const [hour,minute]=time.split(':').map(Number);return {action,hour,minute,label:label.trim(),reviewed:true};
+   const [hour,minute]=time.split(':').map(Number);return {action,hour,minute,label:label.trim(),timeZone:currentClockTimeZone(),reviewed:true};
   }
   if(action==='snooze'){
    if(!/^\d{1,2}$/.test(snooze)||Number(snooze)<1||Number(snooze)>60)throw Error('Choose 1 to 60 snooze minutes.');
@@ -43,6 +46,7 @@ export function installClockAdapter(Component:any,views:Bag,options:{simulated:b
   if(busy||review!==request)return;
   if(document.hidden){message='Return to Alpha Phone and review again.';review=null;publish();return;}
   if(simulated()){message='Mock mode: Clock request simulated. No alarm was changed and no app was opened.';review=null;publish();return;}
+  if(request.action==='set'&&request.timeZone!==currentClockTimeZone()){message='Phone time zone changed. Review the Clock request again.';review=null;publish();return;}
   const id=crypto.randomUUID(),token=generation;
   try {localStorage.setItem(KEY,JSON.stringify({id,action:request.action,status:'opening',at:new Date().toISOString()}));}
   catch {message='Clock request was not sent because its handoff record could not be saved.';publish();return;}

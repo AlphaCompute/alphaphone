@@ -195,7 +195,8 @@ export class NotesStore {
 				body: original.body,
 			});
 		if (op.type === "notes_update") {
-			const next = { ...original, ...op.fields };
+			const next: NoteRecord = { ...original, ...op.fields };
+			if (next.title !== original.title || next.body !== original.body) next.modifiedAt = Date.now();
 			result.revision = await hash([this.envelope.collectionId, next]);
 			list = list.map((n) => (n.id === target.noteId ? next : n));
 		}

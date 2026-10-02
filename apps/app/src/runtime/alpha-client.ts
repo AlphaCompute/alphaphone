@@ -22,6 +22,7 @@ export type AlphaView =
   | "settings";
 export interface ViewContext {
   view: AlphaView;
+  timeZone?: string;
   /** Opaque provider IDs only. Never put document bodies or credentials here. */
   selectedObject?: {
     kind: string;
@@ -110,6 +111,7 @@ const copyContext = (
 ): ContextEnvelope => ({
   view: context.view,
   sensitive: context.sensitive === true,
+  ...(context.timeZone === undefined ? {} : {timeZone:context.timeZone}),
   ...(context.selectedObject
     ? { selectedObject: { ...context.selectedObject } }
     : {}),

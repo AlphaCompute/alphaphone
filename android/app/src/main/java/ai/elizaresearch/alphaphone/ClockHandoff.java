@@ -35,6 +35,9 @@ final class ClockHandoff {
   JSObject out=new JSObject();out.put("action",action);out.put("status",status);out.put("message",message);return out;
  }
  static JSObject launch(Activity activity,String action,Integer hour,Integer minute,String label,Integer snoozeMinutes,boolean reviewed) {
+  return launch(activity,action,hour,minute,label,snoozeMinutes,reviewed,null);
+ }
+ static JSObject launch(Activity activity,String action,Integer hour,Integer minute,String label,Integer snoozeMinutes,boolean reviewed,String timeZone) {
   if(!reviewed)return result(action,"failed","Review the Clock request before continuing");
   try {
    Intent target=intent(action,hour,minute,label,snoozeMinutes);
@@ -42,6 +45,11 @@ final class ClockHandoff {
    KeyguardManager guard=(KeyguardManager)activity.getSystemService(Context.KEYGUARD_SERVICE);
    if(guard!=null&&guard.isKeyguardLocked())return result(action,"failed","Unlock the phone before continuing to Clock");
    if(target.resolveActivity(activity.getPackageManager())==null)return result(action,"unavailable","No installed Clock app handles this action");
+   if(timeZone!=null){
+    String requested=android.icu.util.TimeZone.getCanonicalID(timeZone);
+    String current=android.icu.util.TimeZone.getCanonicalID(java.util.TimeZone.getDefault().getID());
+    if(!"set".equals(action)||requested==null||!requested.equals(current))return result(action,"failed","Phone time zone changed. Review the Clock request again.");
+   }
    activity.startActivity(target);
    return result(action,"opened","Clock request sent. Check the Clock app; Alpha cannot confirm an alarm was changed.");
   } catch(ActivityNotFoundException missing) {return result(action,"unavailable","The Clock app is no longer available");}

@@ -1,3 +1,7 @@
+import {workflowAwayFromHome} from './workflow-location';
+import {requestWorkflowReceipt,receiptAttachment,recordWorkflowExpense,type ReceiptInput} from './workflow-receipts';
+import {readDatedWorkflowSource} from './workflow-dated-sources';
+import {openWorkflowHistory} from './workflow-history';
 import {readWorkflowMessages} from './workflow-messages';
 import {workflowCalendarRange,readWorkflowCalendar,workflowInMeeting} from './workflow-calendar';
 import {requestWorkflowResult} from './workflow-result-input';
@@ -6,14 +10,14 @@ import {publishWorkflowNotice} from './workflow-notices';
 import {sendWorkflowLocal} from './workflow-local-send';
 import {registerPlugin} from '../platform-plugins';
 type Bag=Record<string,any>;
-type Run={id:string;flowId:string|number;definition:string;workflow:Bag;status:string;when:string;sum:string;dur:string;log:string[][];out:string;cursor:number;inflight:number|null;started:number;context:{messages?:Record<string,Bag[]>}};
+type Run={id:string;flowId:string|number;definition:string;workflow:Bag;status:string;when:string;sum:string;dur:string;log:string[][];out:string;cursor:number;inflight:number|null;started:number;context:{messages?:Record<string,Bag[]>;receipt?:ReceiptInput}};
 const definition=(flow:Bag)=>JSON.stringify({name:flow.name,trig:flow.trig,steps:flow.steps});
 /** Persist intent and each completed local step; never derive success from a label alone. */
 export function installSimulatedWorkflows(view:Bag){
  const device=registerPlugin<any>('AlphaDevice'),calendar=registerPlugin<any>('AlphaCalendar'),files=registerPlugin<any>('AlphaFiles');
  const live=new Map<string,{abort:AbortController;run:Run}>();let recoveryAttempted=false;
  const savedState=(api:Bag)=>({...api.get('workflows'),...JSON.parse(localStorage.getItem('alpha.dev.app.workflows')||'{}')});
- const persist=(api:Bag,run:Run,reserve=0)=>{const state=savedState(api);const patch={localRuns:{...state.localRuns,[run.id]:structuredClone(run)},flows:state.flows.map((flow:Bag)=>String(flow.id)===String(run.flowId)?{...flow,runs:[structuredClone(run),...(flow.runs||[]).filter((old:Bag)=>old.id!==run.id)]}:flow)};if(JSON.stringify(patch).length+reserve>2_000_000)throw Error('Workflow history is full. Export or remove older runs before starting more work.');api.setView('workflows',patch);};
+ const persist=(api:Bag,run:Run,reserve=0)=>{const state=savedState(api);const patch={localRuns:{...state.localRuns,[run.id]:structuredClone(run)},flows:state.flows.map((flow:Bag)=>String(flow.id)===String(run.flowId)?{...flow,runs:[structuredClone(run),...(flow.runs||[]).filter((old:Bag)=>old.id!==run.id)]}:flow)};if(JSON.stringify(patch).length+reserve>2_000_000)throw Error('Workflow history is full. Open Workflow history to download or remove finished runs before starting more work.');api.setView('workflows',patch);};
  const step=async(item:Bag,input:string,api:Bag,signal:AbortSignal,operationId:string,progress:(message:string)=>void,context:Run['context']):Promise<{output:string;skip?:boolean;detail?:string}>=>{
   signal.throwIfAborted();const text=String(item.t).toLowerCase();
   if(item.k==='Speak'&&(text==='read it aloud'||text==='speak it when i pick up the phone')){if(text!=='read it aloud'){progress('Waiting for pickup');await waitForWorkflowPickup(signal);}progress('Reading aloud');await speakWorkflowText(input,signal);return {output:input,detail:'Finished reading aloud'};}
@@ -21,8 +25,9 @@ export function installSimulatedWorkflows(view:Bag){
   if(item.k==='Send')return sendWorkflowLocal(item,input,operationId,api,signal,context.messages);
   if(item.k==='Write'&&text==='a note in notes'){await api.localWorkflowNotes({operationId,text:input},signal);return {output:input,detail:'Note saved ('+operationId+')'};}
   if(item.k==='Read'){
-   delete context.messages;let output:string;const range=workflowCalendarRange(text);
-   if(text==='messages'||text==='new messages'){const messages=readWorkflowMessages(api,text==='new messages');output=JSON.stringify(messages);if(output.length<=16000)context.messages=messages;}
+   delete context.messages;let output:string;const range=workflowCalendarRange(text);const dated=await readDatedWorkflowSource(text,api,calendar,signal);
+   if(dated)output=JSON.stringify(dated);
+   else if(text==='messages'||text==='new messages'){const messages=readWorkflowMessages(api,text==='new messages');output=JSON.stringify(messages);if(output.length<=16000)context.messages=messages;}
    else if(text==='inbox')output=JSON.stringify(api.get('inbox').mails);
    else if(text==='contacts')output=JSON.stringify(api.get('contacts').list);
    else if(text==='files'||text==='recent files')output=JSON.stringify(await files.workflowFiles({recent:text==='recent files'},signal));
@@ -34,11 +39,13 @@ export function installSimulatedWorkflows(view:Bag){
   }
   if(item.k==='Write'){progress('Waiting for step result');const output=await requestWorkflowResult(String(item.t),input,signal);progress('Step result supplied');return {output,detail:'Supplied development result'};}
   if(item.k==='If'){
+   if(text.replaceAll('’',"'")=="i'm not at home"){progress('Checking location');const result=await workflowAwayFromHome(signal);return {output:input,skip:!result.away,detail:result.detail};}
    if(text.replaceAll('’',"'")=="i'm in a meeting")return {output:input,skip:!await workflowInMeeting(calendar,signal),detail:'An active timed Calendar event has guests or a meeting link.'};
    if(/money/.test(text))return {output:input,skip:!/(\$|\b(amount|price|payment|invoice)\b)/i.test(input)};
    if(/favorite|from maya/.test(text)){const messages=context.messages;if(!messages)throw Error('Read messages before checking their sender.');const ids=/from maya/.test(text)?['maya']:api.get('contacts').list.filter((p:Bag)=>p.fav).map((p:Bag)=>p.id);const matches=Object.fromEntries(Object.entries(messages).filter(([id,rows])=>ids.includes(id)&&rows.some((message:Bag)=>!message.me)));context.messages=matches;return {output:input===JSON.stringify(messages)?JSON.stringify(matches):input,skip:!Object.keys(matches).length};}
    throw Error('Choose a condition with local input for this run.');
   }
+  if(item.k==='Do'&&(text==='save the attachment to files'||text==='add the amount to wallet')){if(!context.receipt)throw Error('Choose a receipt for this run.');const attachment=await receiptAttachment(context.receipt,api,signal);if(text==='save the attachment to files'){const saved=await files.saveWorkflowAttachment({...attachment,operationId},signal);return {output:JSON.stringify(saved),detail:'Attachment saved in Files / Receipts ('+saved.name+')'};}recordWorkflowExpense(context.receipt,operationId,api,signal);return {output:JSON.stringify({merchant:context.receipt.merchant,amount:context.receipt.cents!/100,currency:'USD'}),detail:'Receipt recorded in local Wallet ('+operationId+')'};}
   if(item.k==='Do'&&/^turn (on|off) do not disturb$/.test(text)){const enabled=text.startsWith('turn on');await device.setSensor({field:'doNotDisturb',enabled});return {output:'Do Not Disturb '+(enabled?'on':'off')};}
   throw Error('This step needs its local action configured: '+item.t);
  };
@@ -49,6 +56,7 @@ export function installSimulatedWorkflows(view:Bag){
   try{
    persist(api,run);
    if(!run.workflow.steps.length)throw Error('Add a step before running this workflow.');
+   if(run.workflow.steps.some((item:Bag)=>item.k==='Do'&&/^(save the attachment to files|add the amount to wallet)$/i.test(item.t))){run.sum='Waiting for receipt';persist(api,run);run.context.receipt=await requestWorkflowReceipt(api,run.workflow.steps.some((item:Bag)=>item.k==='Do'&&/^add the amount to wallet$/i.test(item.t)),abort.signal);persist(api,run);}
    for(let index=0;index<run.workflow.steps.length;index++){
     abort.signal.throwIfAborted();const current=savedState(api).flows.find((f:Bag)=>String(f.id)===String(run.flowId));if(!current||definition(current)!==run.definition)throw Error('Workflow changed during this run. Completed steps were retained.');
     run.inflight=index;persist(api,run,128_000);const item=run.workflow.steps[index];const result=await step(item,run.out,api,abort.signal,run.id+'-'+index,message=>{abort.signal.throwIfAborted();const current=savedState(api).flows.find((f:Bag)=>String(f.id)===String(run.flowId));if(!current||definition(current)!==run.definition)throw Error('Workflow changed during this run. Completed steps were retained.');run.sum=message;persist(api,run);},run.context);
@@ -66,7 +74,7 @@ export function installSimulatedWorkflows(view:Bag){
  view.render=(state:Bag,api:Bag)=>{
   if(!recoveryAttempted){recoveryAttempted=true;const pending=Object.values(state.localRuns||{}).filter((run:any)=>run.status==='running');if(pending.length)api.later(()=>{const current=api.get('workflows'),runs={...current.localRuns};for(const old of pending as Run[])if(!live.has(old.id))runs[old.id]={...old,status:'interrupted',sum:'Interrupted; inspect completed steps before running again'};try{api.setView('workflows',{localRuns:runs,flows:current.flows.map((flow:Bag)=>({...flow,runs:(flow.runs||[]).map((run:Bag)=>runs[run.id]||run)}))});}catch{api.toast('Could not save interrupted run recovery.');}},0);}
   const out=render(state,api),flow=state.flows.find((f:Bag)=>String(f.id)===String(state.open));
-  if(out.fd&&flow){const active=[...live.values()].find(item=>String(item.run.flowId)===String(flow.id));out.fd={...out.fd,localExecutor:true,isRunning:!!active,notRunning:!active,run:()=>void start(flow,api),cancelRun:()=>active?.abort.abort(),last:active?active.run.sum:out.fd.last};out.fd.runs=out.fd.runs.map((row:Bag,index:number)=>({...row,label:flow.runs[index].when+', '+flow.runs[index].status}));}
+  if(out.fd&&flow){const active=[...live.values()].find(item=>String(item.run.flowId)===String(flow.id));out.fd={...out.fd,localExecutor:true,history:()=>openWorkflowHistory(()=>{const state=api.get('workflows');return {flows:state.flows,localRuns:state.localRuns||{}};},patch=>api.setView('workflows',patch),()=>live.size>0),isRunning:!!active,notRunning:!active,run:()=>void start(flow,api),cancelRun:()=>active?.abort.abort(),last:active?active.run.sum:out.fd.last};out.fd.runs=out.fd.runs.map((row:Bag,index:number)=>({...row,label:flow.runs[index].when+', '+flow.runs[index].status}));}
   if(out.r&&flow){const record=state.run==='latest'?flow.runs?.[0]:flow.runs?.find((run:Bag)=>run.id===state.run),active=[...live.values()].find(item=>String(item.run.flowId)===String(flow.id));out.r={...out.r,status:record?.status==='ok'?'Succeeded':record?.status==='fail'?'Failed':record?.status==='skip'?'Skipped':record?.status==='cancelled'?'Cancelled':record?.status==='interrupted'?'Interrupted':'Running',hasFix:!!record&&record.status!=='ok',fix:record?.sum||'',againLabel:active?'Cancel run':'Run again',againAria:active?'Cancel run':'Run again',again:()=>{if(active)active.abort.abort();else{api.set({run:null});void start(flow,api);}}};}
   return out;
  };

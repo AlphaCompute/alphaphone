@@ -185,6 +185,9 @@ jobs:
           distribution: temurin
           java-version: "21"
       - uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools build-tools;36.0.0
+          log-accepted-android-sdk-licenses: false
       - name: Install exact APK inspection tools
         run: sdkmanager "build-tools;36.0.0"
       - uses: actions/download-artifact@v4

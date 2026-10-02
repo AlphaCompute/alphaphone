@@ -7,14 +7,15 @@ export type Position = Readonly<{ coordinate: Coordinate; accuracyMeters: number
 type Fix = { coords: { latitude: number; longitude: number; accuracy: number; timestamp: number }; cached: boolean };
 const location = registerPlugin<{
   checkPermissions(): Promise<Permission>;
-  requestPermissions(): Promise<Permission>;
+  requestPermissions(input?:{requestId:string}): Promise<Permission>;
+  cancelPermissionRequest(input:{requestId:string}):Promise<void>;
   watchPosition(options: { accuracy: 'high'; minInterval: number; minDistance: number }): Promise<{ watchId: string }>;
   clearWatch(options: { watchId: string }): Promise<void>;
   addListener(name: 'locationChange', callback: (fix: Fix) => void): Promise<PluginListenerHandle>;
   addListener(name: 'error', callback: (error: { code: string }) => void): Promise<PluginListenerHandle>;
 }>('ElizaLocation');
 
-type Session = { aborted: boolean; handles: PluginListenerHandle[]; watchId?: string; timer?: ReturnType<typeof setTimeout>; cancelForegroundWait?:()=>void };
+type Session = { aborted: boolean; handles: PluginListenerHandle[]; watchId?: string; permissionRequestId?: string; timer?: ReturnType<typeof setTimeout>; cancelForegroundWait?:()=>void };
 /** One owner per Maps controller. The upstream event contract has no watchId. */
 export class NativeMapsLocation {
   private session?: Session;
@@ -30,6 +31,7 @@ export class NativeMapsLocation {
     current.aborted = true; clearTimeout(current.timer);current.cancelForegroundWait?.();
     const results = await Promise.allSettled([
       ...current.handles.map(handle => handle.remove()),
+      ...(current.permissionRequestId && !Capacitor.isNativePlatform() ? [location.cancelPermissionRequest({requestId:current.permissionRequestId})] : []),
       ...(current.watchId ? [location.clearWatch({ watchId: current.watchId })] : []),
     ]);
     // Report a native cleanup failure rather than claiming the watch stopped.
@@ -52,7 +54,9 @@ export class NativeMapsLocation {
       if (!active()) return;
       if (permission.location !== 'granted') {
         this.requestingPermission=true;
-        permission = await location.requestPermissions();
+        if(!Capacitor.isNativePlatform())current.permissionRequestId=crypto.randomUUID();
+        permission = await location.requestPermissions(current.permissionRequestId?{requestId:current.permissionRequestId}:undefined);
+        current.permissionRequestId=undefined;
         // Android's permission surface may temporarily hide a launcher WebView.
         // Preserve the explicit request, but never start GPS while hidden.
         if(active()&&permission.location==='granted'&&document.hidden){
