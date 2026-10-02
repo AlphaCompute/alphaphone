@@ -369,3 +369,10 @@ A fixed source snapshot now passes **82 repository tests**, typecheck, productio
 The integration review also fixed two gaps: PDF.js font/decoder/package licenses now ship byte-for-byte with their assets, and reviewed attachment previews release their dialog/object URL on shell Back, pagehide and visibility loss. A new Back test failed before the cleanup fix and passed afterward; a replaced dialog's late close cannot retire the current preview. Evidence is retained under `test-results/parity-sync/` and the fixed candidate's `test-results/` directory.
 
 This is browser/host evidence, with synthetic device and provider fixtures where documented. No Android build ran in this pass. Concurrent hosted-result delivery edits were excluded from the snapshot and remain local pending qualification; the active report's hosted-result delivery sequence remains unfinished. Full browser parity, live-provider acceptance, device/background behavior, document boundaries and the remaining design/MVP ledger are not closed by this checkpoint.
+
+
+### October 2 — browser store serialization
+
+The shared local browser store now requires an exclusive Web Lock before reading or editing persisted state. The old unlocked fallback could lose concurrent updates when Web Locks was unavailable. Unsupported contexts now reject before initialization or mutation, with guidance to use a browser supporting Web Locks on localhost or HTTPS; existing readable data remains intact. This intentionally does not implement a weaker process-local locking fallback.
+
+On a fixed snapshot based on `edf9f6d`, root verification passes 82 tests, TypeScript and production build. Twenty focused browser checks pass, including real same-origin cross-tab serialization, tab closure during an uncommitted edit, failed editor and quota-write recovery, and existing calendar/reminder/notification behavior. The missing-lock regression fails against the original code and passes after repair. Evidence: `test-results/browser-store/`. No Android build ran; browser storage remains subject to browser retention policy, and the broader MVP/provider/device ledger is still open.
