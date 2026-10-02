@@ -1,9 +1,9 @@
 # MVP implementation and design review — updated October 2, 2026
 
-Latest full integration checkpoint: **412/412 browser tests and 83/83 repository tests**, plus TypeScript and production web build, in the [October 2 full browser integration checkpoint](#october-2--full-browser-integration-checkpoint). The frozen source is `2846ee2` plus the hosted-result fixture cleanup recorded below. Earlier failures and checkpoints remain historical evidence; newer concurrent changes require separate validation. The MVP goal remains open.
+Latest full integration checkpoint: **454/454 browser tests** on committed `18969d2`, covering all browser tests then present. See [October 2 simulator integration and reminder-time review](#october-2--simulator-integration-and-reminder-time-review). Pending shared-checkout changes remain outside this evidence. The MVP goal remains open.
 
 
-Latest targeted checkpoint: [Development Messages attachments and drafts](#october-2--development-messages-attachments-and-drafts) passed 20 browser checks and repository verification. This postdates the full 412-case snapshot.
+Latest targeted checkpoint: the development reminder proposal path resolves wall-clock time in code and rejects ambiguous instants. Five isolated tests pass; final repository verification is recorded below.
 
 October 1 architecture change: the user has selected an **Android-resident agent instead of Nitro/TEE hosting**. The [on-device agent plan](on-device-agent-plan.md) supersedes cloud-only and enclave-primary requirements below. Agent execution and model inference are separate: the current implementation runs orchestration locally and uses hosted Cerebras inference. Historical evidence is retained. Powered-off-phone execution needs explicit scope reconciliation.
 
@@ -1090,3 +1090,16 @@ The picker already rejected late selection after Home or device-state retirement
 The frozen snapshot based on `23e06af` passed **20/20 browser checks** across six attachment/draft journeys, Messages lifecycle, Phone/Messages and saved-app recovery. Checks include exact UTF-8/CRLF bytes through save/reload/send/preview, failed send plus explicit retry, invalid replacement preserving the existing file, text-only draft removal, late picker selection and late validation. **83/83 repository tests**, TypeScript and production web build passed. Evidence, source hashes and the failing validation-race screenshot are in `test-results/message-attachments-sync/`. Rebase adds only completion-plan documentation from `f5c4c94`. No carrier transport, external recipient or Android build ran.
 
 Remaining scope includes deep saved-record validation, broader independent-draft and large-media acceptance, actual local-agent/provider action journeys, Scan correction/searchable PDF, browser-family media qualification, and native/device/user acceptance. Concurrent confidentiality-copy, provider/model, proposal and research changes are preserved outside this snapshot. The full 412-case integration checkpoint predates these changes; the entire MVP remains unfinished.
+
+
+## October 2 — Simulator integration and reminder-time review
+
+The complete committed browser suite passed **454/454 tests in 10.3 minutes** on `18969d2`. The checkout stayed frozen through the run; this integrates all committed Phone, Messages, Contacts, Wallet, writer-ownership and prior browser functionality, including the new voicemail and attachment paths. Evidence, source identity and retained artifacts are in `test-results/browser-integration-18969d2/`. This supersedes the earlier 412-case checkpoint for committed browser coverage, but does not cover pending root edits, real providers, physical hardware or user acceptance.
+
+The pending development-backend reminder action now accepts localDateTime plus timeZone instead of asking the model to calculate epoch milliseconds. Review reproduced an ambiguity: the same fall-back wall time identified two different instants, yet the resolver silently chose one. The resolver now compares candidates from neighboring zone offsets, accepts exactly one matching instant, and rejects skipped, impossible or repeated local times. Ambiguous input returns a clarification request and adds no proposal. The runtime prompt and proposal acceptance harness use the same parameter contract.
+
+Five isolated tests cover ordinary seasonal offsets, a fractional-hour zone, malformed/skipped times, one-hour and half-hour repeated times, rejection without a proposal, and an exact future proposal with preserved context revision. The ambiguity regression fails before repair and passes afterward. The final integrated candidate passed **88/88 repository tests**, TypeScript and the production web build. Rebase adds only completion-plan documentation from `bdcd6a6`. Evidence and source hashes are in `test-results/reminder-time-review/`. This is the development backend proposal path; no live model request, actual scheduling or Android build is claimed here.
+
+A separate live availability check found the previous dev process had exited with code 143. The local stack was restarted; browser-bridge owner lookup and workflow status both returned HTTP 200, with owner role and workflow manual-submission protocol 1. That establishes recovered authenticated availability, not an executed workflow or a live approved device action. Initial failure and recovered status evidence are retained separately.
+
+Concurrent confidentiality-copy, provider/model, redaction and research changes remain outside this checkpoint. Deep saved-record validation, full real-agent/provider journeys, Scan correction/searchable PDF, browser-family media qualification, native process/device and user acceptance remain open. The full MVP goal remains active.
