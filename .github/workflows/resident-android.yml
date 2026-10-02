@@ -105,6 +105,16 @@ jobs:
           python3 scripts/ci/resident-phase.py --name worker-build --seconds 900 npm run agent:build-workflow-worker
           python3 scripts/ci/resident-phase.py --name compiler-flow --seconds 600 npm run agent:test-workflow-compiler
           python3 scripts/ci/resident-phase.py --name worker-flow --seconds 600 npm run agent:test-workflow-worker
+      - name: Acquire hash-pinned Android Bun with step-only authentication
+        timeout-minutes: 12
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/ci/resident-phase.py --name bun-downloads --seconds 600 python3 scripts/ci/acquire-resident-bun.py
+      - name: Stage and archive qualified resident runtime
+        env:
+          NODE_OPTIONS: --max-old-space-size=4096
+          RUN_TURBO_CONCURRENCY: "1"
+        run: |
           python3 scripts/ci/resident-phase.py --name runtime-stage --seconds 1800 npm run agent:stage-android
           python3 scripts/ci/resident-phase.py --name mobile-bundle --seconds 300 npm run agent:test-mobile-workflow-bundle
           python3 scripts/ci/resident-phase.py --name archive --seconds 3000 node scripts/build-archive.mjs test-results/resident-ci-archive
