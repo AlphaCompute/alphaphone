@@ -885,6 +885,7 @@
                 <span style="flex-grow: 1; font-size: 15px">{{p.name}}</span>
                 <span style="font-size: 13px; color: var(--mut)">{{p.st}}</span>
               </button>
+              <sc-if value="{{p.canRespond}}" hint-placeholder-val="{{false}}"><button aria-label="Set response for {{p.name}}" onClick="{{p.response}}" style="align-self:flex-end;padding:8px 12px;border-radius:12px;background:var(--s2)">Response</button></sc-if>
             </sc-for>
           </div>
         </sc-if>

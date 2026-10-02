@@ -1,3 +1,5 @@
+import {editCalendarResponse,calendarResponses} from './calendar-response';
+import {openCalendarMeeting} from './calendar-meeting';
 import {calendarRecord,calendarRange,remapCalendarExclusions,replaceCalendarRecord,deleteCalendarRecord,type CalendarRecord} from './calendar-records';
 import { editCalendarEvent } from './calendar-editor';
 import { BrowserReviews } from './review';
@@ -81,6 +83,20 @@ ${reviewed.description}`);
     if(!await this.reviews.confirm('delete-series-'+series.id,'Delete repeating series',`${series.title}\nDelete every occurrence, including edited dates?`))return {status:'cancelled'};
     return editStore(key,initial,current=>{const row=current.events.find(row=>row.id===series.id),selected=calendarRecord(current.events,input.id);if(!row||row.revision!==series.revision||selected?.revision!==input.revision)return {status:'conflict'};current.events=deleteCalendarRecord(current.events,row,revision());return {status:'deleted'};});
   }
+  async editResponse(input:{id:string;revision:string;person:string;name:string}){
+    const row=calendarRecord(readStore(key,initial).events,input.id);
+    if(!row||row.revision!==input.revision||!row.who?.includes(input.person))throw Error('This guest list changed. Reopen the event.');
+    return editCalendarResponse(input.name,row.responses?.[input.person]||'added',async(response,active)=>{
+      if(!Object.hasOwn(calendarResponses,response))throw Error('Choose a guest response.');
+      await editStore(key,initial,data=>{if(!active())throw Error('Response editing cancelled.');const before=calendarRecord(data.events,input.id);if(!before||before.revision!==input.revision||!before.who?.includes(input.person))throw Error('This guest list changed. Reopen the event.');replaceCalendarRecord(data.events,{...before,responses:{...before.responses,[input.person]:response},revision:revision()});});
+    });
+  }
+  async joinMeeting(input:{id:string;revision:string;people?:string[]}){
+    if(input.people!==undefined&&(!Array.isArray(input.people)||input.people.length>100||input.people.some(name=>typeof name!=='string'||name.length>300)))throw Error('Invalid meeting attendees.');
+    const row=calendarRecord(readStore(key,initial).events,input.id);
+    if(!row||row.revision!==input.revision||!row.video)throw Error('This meeting changed. Reopen the event.');
+    return openCalendarMeeting(row.title,(input.people||row.who||[]).slice(0,100));
+  }
   async requestAccess(){return {status:'granted'};}
   async requestWorkflowReadAccess(){return {status:'granted'};}
   async workflowCalendars(){return {status:'ready',calendars:[source]};}
@@ -88,6 +104,8 @@ ${reviewed.description}`);
   async prepareAgentSource(){return editStore(key,initial,data=>({status:'ready',sourceId:'local',sourceRevision:data.sourceRevision}));}
   async save(input:Partial<EventRow>&{expected?:Partial<EventRow>}) {
     if(!input.title?.trim()||!Number.isFinite(input.begin)||!Number.isFinite(input.end)||input.end!<=input.begin!||input.calendarId!=='local')throw Error('Review the event title, calendar and dates.');
+    if(input.who!==undefined&&(!Array.isArray(input.who)||input.who.length>100||input.who.some(id=>typeof id!=='string'||!id||id.length>128)))throw Error('Review the event attendees.');
+    if(input.video!==undefined&&typeof input.video!=='boolean')throw Error('Invalid meeting option.');
     if(input.allDay!==undefined&&typeof input.allDay!=='boolean')throw Error('Invalid all-day setting.');
     if(input.timeZone!==undefined)new Intl.DateTimeFormat('en',{timeZone:input.timeZone});
     if(input.repeat!==undefined&&!['none','daily','weekdays','weekly'].includes(input.repeat))throw Error('Invalid event repeat rule.');
@@ -96,7 +114,8 @@ ${reviewed.description}`);
       if(input.id&&(!old||!matches(old,input.expected)))return {status:'conflict'};
       const allDay=input.allDay??old?.allDay??false;
       if(allDay&&(input.begin!%86400000!==0||input.end!%86400000!==0))throw Error('All-day events require whole calendar dates.');
-      const row:EventRow={...old,id:old?.id||crypto.randomUUID(),calendarId:'local',title:input.title!.trim(),body:input.body||'',location:input.location||'',begin:input.begin!,end:input.end!,allDay,revision:revision(),timeZone:old?.timeZone||input.timeZone||Intl.DateTimeFormat().resolvedOptions().timeZone,repeat:old?.seriesId?'none':input.repeat||old?.repeat||'none'};
+      const row:EventRow={...old,id:old?.id||crypto.randomUUID(),calendarId:'local',title:input.title!.trim(),body:input.body||'',location:input.location||'',begin:input.begin!,end:input.end!,allDay,revision:revision(),timeZone:old?.timeZone||input.timeZone||Intl.DateTimeFormat().resolvedOptions().timeZone,repeat:old?.seriesId?'none':input.repeat||old?.repeat||'none',who:input.who?[...new Set(input.who)]:old?.who||[],video:input.video??old?.video??false};
+      if(row.responses)row.responses=Object.fromEntries(Object.entries(row.responses).filter(([person])=>row.who?.includes(person)));
       replaceCalendarRecord(data.events,row);return {status:'saved',id:row.repeat&&row.repeat!=='none'?calendarRange([row],{begin:row.begin,end:row.begin+8*86400000}).events[0].id:row.id};
     });
   }

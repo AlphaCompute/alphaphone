@@ -2,7 +2,7 @@
 
 Latest full integration checkpoint: **274/274 browser tests and 82/82 repository tests** in the [simulator-save checkpoint](#october-2--simulator-save-recovery-and-full-browser-checkpoint), based on `3f7a665` plus the recorded simulator fix. Earlier entries are historical evidence for their stated snapshots. The MVP goal remains open.
 
-Latest targeted browser checkpoint: [Calendar series and all-day agenda](#october-2--calendar-series-and-all-day-agenda). Evidence below is scoped to its recorded revision; newer implementation checkpoints supersede earlier unavailable-feature statements only for the capabilities explicitly verified. The MVP remains incomplete.
+Latest targeted browser checkpoint: [Calendar meeting preview and local responses](#october-2--calendar-meeting-preview-and-local-responses). Evidence below is scoped to its recorded revision; newer implementation checkpoints supersede earlier unavailable-feature statements only for the capabilities explicitly verified. The MVP remains incomplete.
 
 October 1 architecture change: the user has selected an **Android-resident agent instead of Nitro/TEE hosting**. The [on-device agent plan](on-device-agent-plan.md) supersedes cloud-only and enclave-primary requirements below. Agent execution and model inference are separate: the current implementation runs orchestration locally and uses hosted Cerebras inference. Historical evidence is retained. Powered-off-phone execution needs explicit scope reconciliation.
 
@@ -785,3 +785,43 @@ and invitation equivalents, fuller recurring-target assistant and cross-tab
 lifecycle journeys, complete simulator behavior/schema coverage, actual local-agent
 restart acceptance, scanning and the provider/device gates. No Android build ran in
 this qualification pass; the overall goal remains active.
+
+
+## October 2 — Calendar meeting preview and local responses
+
+Browser Calendar saves attendee selections and the video option, retains them during
+normal event editing, and displays the saved values after reload. Join opens an
+owned local media preview. The visible disclosure states that other people are not
+connected and camera/microphone media stay on the page. This is browser development
+functionality; no invitations, guest messages, recording or remote call transport
+are created, and it does not establish production conferencing or invitation support.
+
+Camera and microphone access requires explicit controls. Leave, Back, background,
+replacement and device lifecycle cleanup retire owned streams; late camera grants
+are stopped. Ended camera and microphone tracks now reset their controls so the user
+can make a fresh request. Microphone capture uses the existing shared sensor-policy
+lease. The inspected phone-width dialog keeps its disclosure and controls visible.
+
+A local guest-response editor records Added, Invited, Going, Maybe or Declined only
+after Save; its disclosure makes clear that no invitation or response is sent.
+Cancellation preserves the prior value. Revision checks reject changed guest lists,
+failed writes preserve the record, removing a guest removes their saved response,
+and changing a recurring guest response affects only the selected occurrence.
+
+Qualification on an isolated snapshot based on `a1603e6`:
+
+- **36/36** browser checks, covering rendered attendee/video creation and editing,
+  response changes/removal/reload, recurring occurrence isolation, stale responses,
+  failed writes, owned media lifecycle, existing Calendar flows and sensor policy.
+- **82/82** repository tests, typecheck and production web build.
+- Calendar CRUD and delayed-range native-adapter host fixtures pass.
+- The ended-track recovery regression fails when the cleanup listeners are removed.
+- The new response fixture was corrected to use a minute-aligned event for the
+  standard editor and wait for committed storage after removing a guest.
+- Evidence: `test-results/calendar-meeting-sync/`, including terminal logs, source
+  SHA-256 manifest and the inspected meeting screenshot.
+
+Attendee/video editing in the complex-date editor, Calendar event alerts, real
+provider invitations/conferencing, broader assistant/restart and cross-tab journeys,
+and the rest of the MVP/design acceptance ledger remain open. The latest full-suite
+checkpoint is still the 274-case simulator-save run. No Android build ran in this pass.

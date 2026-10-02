@@ -1,6 +1,7 @@
+import type {CalendarResponse} from './calendar-response';
 import {calendarInstant,calendarWall} from './calendar-editor';
 import {expandCalendarSeries,type CalendarRepeat} from './calendar-recurrence';
-export type CalendarRecord={id:string;calendarId:string;title:string;body:string;location:string;begin:number;end:number;revision:string;allDay?:boolean;timeZone?:string;repeat?:CalendarRepeat;seriesId?:string;occurrenceBegin?:number;excluded?:number[]};
+export type CalendarRecord={id:string;calendarId:string;title:string;body:string;location:string;begin:number;end:number;revision:string;allDay?:boolean;timeZone?:string;repeat?:CalendarRepeat;who?:string[];responses?:Record<string,CalendarResponse>;video?:boolean;seriesId?:string;occurrenceBegin?:number;excluded?:number[]};
 export function calendarRecord(rows:CalendarRecord[],id:string):CalendarRecord|undefined{
  const direct=rows.find(row=>row.id===id);if(direct)return direct;
  const match=/^(.*):occ:(-?\d+)$/.exec(id);if(!match)return;
