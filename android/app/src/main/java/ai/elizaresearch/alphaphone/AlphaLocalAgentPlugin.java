@@ -81,6 +81,9 @@ public final class AlphaLocalAgentPlugin extends Plugin {
   env.put("ELIZAOS_CLOUD_USE_INFERENCE","false");
   env.put("ELIZA_DISABLE_PERSONAL_ASSISTANT","1");
   env.put("ELIZA_DISTRIBUTION_PROFILE","store");
+  // Pseudonymize secrets and PII in every hosted model request; needs patches/eliza/egress-swap-control-objects.patch.
+  env.put("ELIZA_SECRET_SWAP_ENABLED","true");
+  env.put("ELIZA_PII_SWAP_ENABLED","true");
   } catch(Exception error) {throw new java.io.IOException("Local model provider unavailable");}
  }
  @PluginMethod public void start(PluginCall call) {

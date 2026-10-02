@@ -250,3 +250,12 @@ no Cloud deployment or vendor checkout is changed by storing this patch.
 ## Agent Notes CRUD
 
 `0017-agent-notes-crud.patch` follows the numbered chain through0016. It adds selected Notes read/update/delete to the existing device approval and receipt contract, with a closed Calendar/Notes capability set. `agent-notes-crud-source-base.json` records provenance. Scoped actual HTTP/Auth/PGlite and phone store/action flows pass; latest composed runtime and full native user-flow acceptance remain separate.
+
+## Egress secret and PII swap
+
+`egress-swap-control-objects.patch` is an Android runtime extra (`android-local-runtime-source.json`) applied after the MVP series. It fixes two upstream defects that kept the secret and PII swaps from protecting hosted model requests:
+
+- Both swap walkers normalized every non-plain object, including the request `AbortSignal`, into a plain record. With either swap on, fetch rejected every model call (`signal is not of type AbortSignal`). The walkers now pass the live `AbortSignal` through.
+- `isSecretSwapEnabled`/`isPiiSwapEnabled` read only runtime settings, and host env forwarding rejects any key containing `SECRET`, so a host could never enable the secret swap. Both now fall back to the upstream `ELIZA_SECRET_SWAP_ENABLED` / `ELIZA_PII_SWAP_ENABLED` process environment; an explicit runtime setting still wins.
+
+`AlphaLocalAgentPlugin` sets both switches for the resident agent. `packages/core/src/__tests__/swap-control-objects.test.ts` adds seven cases; without the source change the four defect cases fail. Evidence and coverage limits are in [redaction integration](../../docs/market-research/13-redaction-integration.md): the regex layer replaces email, phone, card, SSN, IBAN, known secrets and street addresses; person names need a registered NER recognizer. The desktop `backend/` builds from the unpatched vendor pin and forwards each switch only when it is `true`; enabling either there fails closed until the vendor pin includes this fix.
