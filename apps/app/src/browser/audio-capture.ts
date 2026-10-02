@@ -1,3 +1,4 @@
+import {BrowserMicrophone} from './sensor-policy';
 type Clip = {recordingId:string;durationMs:number};
 type Session = {
  id:string;generation:number;stream:MediaStream;recorder:MediaRecorder;started:number;stopped?:number;
@@ -7,6 +8,7 @@ type Session = {
 const cancelled=()=>new DOMException('Recording cancelled','AbortError');
 /** Own each microphone stream, timer and stop promise independently of later sessions. */
 export class BrowserAudioCapture {
+ private microphone?:BrowserMicrophone;
  private generation=0;
  private current?:Session;
  private clips=new Map<string,{blob:Blob;durationMs:number}>();
@@ -14,6 +16,7 @@ export class BrowserAudioCapture {
  get(id:string){return this.clips.get(id);}
  clear(){this.cancel();this.clips.clear();}
  cancel(){
+  this.microphone?.close();this.microphone=undefined;
   ++this.generation;const session=this.current;this.current=undefined;
   if(!session)return;
   clearTimeout(session.timer);session.settled=true;session.reject(cancelled());
@@ -25,8 +28,9 @@ export class BrowserAudioCapture {
   const duration=input.maxDurationMs??59000;
   if(!Number.isFinite(duration)||duration<1||duration>59000)throw Error('Recording duration must be between 1 and 59000 milliseconds.');
   if(document.hidden)throw cancelled();
-  const stream=await navigator.mediaDevices.getUserMedia({audio:true});
-  if(generation!==this.generation||document.hidden){stream.getTracks().forEach(track=>track.stop());throw cancelled();}
+  const microphone=this.microphone=new BrowserMicrophone(()=>{const id=this.current?.id;this.cancel();if(id)this.stopped({recordingId:id,durationMs:null});});
+  const stream=await microphone.open();
+  if(generation!==this.generation||document.hidden){microphone.close();stream.getTracks().forEach(track=>track.stop());throw cancelled();}
   try {
    const recorder=new MediaRecorder(stream),id=crypto.randomUUID();let resolve!:(blob:Blob)=>void,reject!:(error:Error)=>void;
    const done=new Promise<Blob>((yes,no)=>{resolve=yes;reject=no;});void done.catch(()=>{});
@@ -34,7 +38,7 @@ export class BrowserAudioCapture {
    this.current=session;const chunks:Blob[]=[];let bytes=0;
    const finish=(error?:Error)=>{
     if(session.settled)return;session.settled=true;clearTimeout(session.timer);
-    stream.getTracks().forEach(track=>track.stop());
+    microphone.close();stream.getTracks().forEach(track=>track.stop());
     if(!error&&!bytes)error=Error('Recording contains no audio.');
     if(error){session.failed=true;reject(error);if(this.current===session&&generation===this.generation)this.stopped({recordingId:id,durationMs:null});}
     else resolve(new Blob(chunks,{type:recorder.mimeType}));
@@ -51,7 +55,7 @@ export class BrowserAudioCapture {
    session.timer=setTimeout(automatic,duration);
    return {recordingId:id,maxDurationMs:duration};
   }catch(error){
-   stream.getTracks().forEach(track=>track.stop());
+   microphone.close();stream.getTracks().forEach(track=>track.stop());
    if(this.current?.generation===generation){this.current.reject(error instanceof Error?error:Error('Recording failed.'));this.current=undefined;}
    throw error;
   }
@@ -70,7 +74,7 @@ export class BrowserAudioCapture {
     this.clips.set(session.id,{blob,durationMs});
     while(this.clips.size>4)this.clips.delete(this.clips.keys().next().value!);
     return {recordingId:session.id,durationMs};
-   }finally{session.stream.getTracks().forEach(track=>track.stop());if(this.current===session)this.current=undefined;}
+   }finally{session.stream.getTracks().forEach(track=>track.stop());if(this.current===session){this.microphone?.close();this.current=undefined;}}
   })();
   return session.finishing;
  }

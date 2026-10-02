@@ -1,3 +1,5 @@
+import {BrowserClock} from './clock';
+import { browserHostedResults } from './hosted-results';
 import { BrowserLocation } from './location';
 import { BrowserVoice } from './voice';
 import { BrowserMailAttachments } from './mail-attachments';
@@ -25,7 +27,10 @@ if (!Capacitor.isNativePlatform()) {
   registerPlugin('AlphaMailAttachments', { web: () => new BrowserMailAttachments(files) });
   const daily = new BrowserDaily(files);
   registerPlugin('DailyApps', { web: () => daily });
-  registerPlugin('AlphaNotifications', { web: () => new BrowserNotifications(daily) });
+  registerPlugin('AlphaHostedResults', { web: () => browserHostedResults });
+  const notifications=new BrowserNotifications(daily);
+  registerPlugin('AlphaNotifications', { web: () => notifications });
+  new BrowserClock(daily,notifications);
   registerPlugin('AlphaCalendar', { web: () => new BrowserCalendar() });
   registerPlugin('AlphaBrowser', { web: () => new BrowserSurface() });
 }

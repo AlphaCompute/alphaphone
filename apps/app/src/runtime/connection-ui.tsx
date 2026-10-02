@@ -1,3 +1,4 @@
+import { holdPhoneInert } from './modal-inert';
 import { pauseHostedBackground } from './hosted-background';
 import {developmentDeviceStore,developmentActionJournal} from './local-agent-storage';
 import { stopLocalAgent, configureLocalProvider, LocalAgentProtocol, localAgentPackaged, browserLocalAgentEnabled } from './local-agent';
@@ -612,8 +613,8 @@ export function ConnectionChooser() {
     if (!snapshot.open) return;
     const previous = document.activeElement as HTMLElement | null;
     const phone = document.querySelector<HTMLElement>('.os');
-    const previousInert = phone?.inert ?? false;
-    if (phone) phone.inert = true;
+    const releaseInert = holdPhoneInert(phone);
+
     if (phone && panel.current) {
       const theme = getComputedStyle(phone);
       for (const key of ['bg', 'fg', 's2', 'line', 'mut', 'acc']) panel.current.style.setProperty(`--connection-${key}`, theme.getPropertyValue(`--${key}`));
@@ -631,7 +632,7 @@ export function ConnectionChooser() {
       }
     };
     document.addEventListener('keydown', key);
-    return () => { document.removeEventListener('keydown', key); window.removeEventListener('alpha-back', back, true); if (phone) phone.inert = previousInert; previous?.focus(); };
+    return () => { document.removeEventListener('keydown', key); window.removeEventListener('alpha-back', back, true); releaseInert(); previous?.focus(); };
   }, [snapshot.open, snapshot.busy]);
   if (!snapshot.open) return null;
   const env = () => environment.current?.value === 'staging' ? 'staging' : 'production';

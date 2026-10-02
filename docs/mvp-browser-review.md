@@ -1,5 +1,7 @@
 # MVP implementation and design review — updated October 2, 2026
 
+Latest integrated browser checkpoint: **245/245 browser tests and 82/82 repository tests** on October 2. See [the integrated report and remaining work](#october-2--integrated-browser-runtime-device-and-media-review) below. Earlier entries are historical evidence for their stated snapshots. The MVP goal remains open.
+
 Latest browser checkpoint: [Notes status layout](#notes-storage-status-layout--2026-10-02). Evidence below is scoped to its recorded revision; newer implementation checkpoints supersede earlier unavailable-feature statements only for the capabilities explicitly verified. The MVP remains incomplete.
 
 October 1 architecture change: the user has selected an **Android-resident agent instead of Nitro/TEE hosting**. The [on-device agent plan](on-device-agent-plan.md) supersedes cloud-only and enclave-primary requirements below. Agent execution and model inference are separate: the current implementation runs orchestration locally and uses hosted Cerebras inference. Historical evidence is retained. Powered-off-phone execution needs explicit scope reconciliation.
@@ -502,3 +504,55 @@ Verification in an isolated source snapshot:
 
 The broader MVP review, concurrent browser parity integration and real device/provider
 acceptance remain active. Android builds were intentionally excluded from this pass.
+
+
+## October 2 — integrated browser runtime, device and media review
+
+This delivery brings the previously local browser parity work into the repository
+alongside the qualified Camera/Photos work. The source/test snapshot was frozen at
+`e081193` plus the changes identified in the local source manifest. It includes:
+
+| Area | Integrated behavior | Evidence boundary |
+|---|---|---|
+| Agent results | Account/agent-bound retained result notices, publish-after-storage, durable pending taps, notification/poll preferences, disconnect and lock/resume recovery | Rendered authenticated-protocol fixture; no live account grants or workflow execution |
+| Notes audio | Owner-bound metadata, exact recording retention, recoverable trash/restore, migration/expiry status, cross-tab playback retirement, editable local transcript review | Real browser recording/storage/playback; recognition-provider fixtures and manual fallback do not prove acoustic accuracy |
+| Device controls | Shared shade/Settings radios, airplane restore, sensor policy, brightness/text scale, Alpha media volume and local DND/alert tones | Browser-local device model; does not control host radios or host OS volume |
+| Clock | Alarm creation/list/reload/delete, due foreground handling, snooze/dismiss, revision checks, single-tab ringing ownership, recurrence advancement and bounded alert audio | Browser open/foreground lifetime; repeated schedule advancement is tested, not a complete repeat-authoring UI |
+| Existing MVP/design | Full light/dark navigation, compact layouts, retained Notes/Files, Camera/photo/video/scan, media edits/albums/batches/pagination, browser navigation/read-aloud, Maps selection and workflow/approval recovery regressions | Actual renderer with real browser APIs and explicitly scoped fixtures |
+
+Final verification passed `npm run verify` (82 tests, zero failures/skips,
+typecheck and production build) and the complete **245/245 Chromium browser suite**
+in 4.2 minutes on isolated port 5383. The final snapshot had its own dependencies.
+Clock, hosted-result and large-text Settings screens were inspected; browser
+Brightness and Sound settings labels were shortened to avoid unnecessary truncation.
+No Android build ran in this review.
+
+The first full run had 238 passes, one failure and three serially skipped cases.
+The failing test reloaded immediately after clicking Pause result checks, before
+its asynchronous storage commit was reflected by Enable result checks. It now
+waits for that existing committed-state confirmation and still verifies recovery
+after reload. All four connected-result journeys ran and passed in the final suite.
+The revised Clock/DND ownership and notification sound identity changes were also
+included before the final freeze.
+
+Evidence is retained under `test-results/browser-integration/`: initial and final
+logs, source manifests, post-run drift, Clock/result/large-text screenshots and a
+separate simulator-corruption probe. The private `.eliza/` runtime directory is
+excluded from source delivery. Later edits to Clock, its tests and related source
+remain in the shared checkout; they are not certified by the frozen 245-case run.
+
+### Remaining development and acceptance work after this integration
+
+| Open area | Current evidence and next action |
+|---|---|
+| Simulator startup recovery | A disposable browser with malformed `alpha.dev.app.inbox` fails with a JSON parse error and renders no Home button. Preserve damaged data, isolate recovery per app, and add startup/reload/storage-failure regressions. This defect is outside the passing 245-case suite. |
+| Complete simulator actions | Qualify Inbox draft/attachment/send/triage receipts, workflow edit/run/cancel/reload, and dev-only Phone/SMS/Contacts/Wallet transitions. Navigation coverage alone is insufficient; keep all simulated effects local. |
+| Latest Clock changes | Qualify and sync post-freeze sound-ledger retention and scheduling-rejection follow-ups; inspect repeat authoring, multiple alarms and lifecycle/error paths. |
+| Actual assistant operations | Exercise Calendar/reminder/selected-content proposals through the local agent, including approve, cancel, stale context, restart and ambiguous receipts; direct port tests are not full-agent evidence. |
+| Browser/device edge coverage | Continue full simulator lifecycle/media and settings review, browser-family compatibility, permission/eviction recovery, speech-route quality and document/scan boundaries. Camera/photo work has advanced substantially; arbitrary image analysis and multi-page scanning remain separate requirements. |
+| Live integrations | Owner login/revoke/restart, Gmail/provider grants and specifically authorized mutations, password-provider browsing, production Maps coverage and real speech latency/accuracy remain separate from fixtures. |
+| Device runtime and release | Follow the current acceptance ledger for packaged on-device runtime startup/recovery, authenticated IPC, background/Doze, signing/update/rollback, AOSP and physical acceptance. This browser pass does not substitute for those gates. |
+
+The complete MVP/design goal remains active. This checkpoint synchronizes qualified
+browser implementation; it does not claim that every implementation or acceptance
+item is finished.

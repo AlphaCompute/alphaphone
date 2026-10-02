@@ -115,7 +115,7 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
       if(!this.live)return;
       document.documentElement.dataset.notesStorageState='ready';
       this.notesStorageFailed=false;this.notesRaw=this.notesStore.raw;
-      originalSet.call(this,'notes',{list:this.notesStore.list,storageStatus:isAndroid?'Note text encrypted on this device':'Browser preview · notes stored unencrypted'});context(this);
+      originalSet.call(this,'notes',{list:this.notesStore.list,storageStatus:isAndroid?'Note text encrypted on this device':''});context(this);
     })().catch((error)=>{if(this.live){
       // Fixed diagnostic categories only: never expose parser/native error text or saved content.
       const categories:Record<string,string>={
@@ -132,7 +132,7 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
       document.documentElement.dataset.notesStorageState='recovery';
       document.documentElement.dataset.notesRecoveryCategory=error instanceof SyntaxError?'invalid-json':error instanceof NotesCommitUncertain?'migration-unconfirmed':(error instanceof Error&&Object.hasOwn(categories,error.message)?categories[error.message]:'unclassified');
       originalSet.call(this,'notes',{list:[],storageStatus:'Saved notes need recovery. Original data retained.'});this.toast('Saved notes could not be opened. No new edits are allowed.');}});
-    this.notesCommittedHandler=()=>{if(this.live&&this.notesStore&&!this.notesStorageFailed&&!this.notesPending){this.notesRaw=this.notesStore.raw;originalSet.call(this,'notes',{list:this.notesStore.list,storageStatus:isAndroid?'Note text encrypted on this device':'Browser preview · notes stored unencrypted'});context(this);}};
+    this.notesCommittedHandler=()=>{if(this.live&&this.notesStore&&!this.notesStorageFailed&&!this.notesPending){this.notesRaw=this.notesStore.raw;originalSet.call(this,'notes',{list:this.notesStore.list,storageStatus:isAndroid?'Note text encrypted on this device':''});context(this);}};
     window.addEventListener('alpha:notes-committed',this.notesCommittedHandler);
     this.visibilityHandler = () => { if (this.live) context(this); };
     this.pageHideHandler = () => { this.pageSuspended = true; if (this.live) context(this); };
@@ -344,7 +344,7 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
       context(this);
       return Promise.resolve(pending).then(()=>{
         this.notesPending--;this.notesRaw=this.notesStore.raw;
-        if(this.live&&!this.notesPending&&!this.notesStorageFailed){originalSet.call(this,'notes',{storageStatus:isAndroid?'Note text encrypted on this device':'Browser preview · notes stored unencrypted'});context(this);}
+        if(this.live&&!this.notesPending&&!this.notesStorageFailed){originalSet.call(this,'notes',{storageStatus:isAndroid?'Note text encrypted on this device':''});context(this);}
         return true;
       }).catch((error)=>{
         this.notesPending--;this.notesStorageFailed=true;this.notesCommitUncertain=error instanceof NotesCommitUncertain;

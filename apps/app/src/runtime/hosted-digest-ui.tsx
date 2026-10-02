@@ -1,3 +1,5 @@
+import { holdPhoneInert } from './modal-inert';
+import { browserHostedResults } from '../browser/hosted-results';
 import { developmentDigestStore } from './local-agent-storage';
 import { browserLocalAgentEnabled } from './local-agent';
 import { NativeResultInbox, configureHostedBackground } from './hosted-background';
@@ -5,7 +7,7 @@ import { createDigestInbox, type ResultInbox } from './digest-inbox';
 import { isAndroid } from '../native';
 import { delegationNative } from "./cloud-delegation-ui";
 import { HostedLiveSourcePicker } from "./hosted-live-source-ui";
-import { hostedResultNative, resolveHostedResultTap, type HostedResultBinding } from "./hosted-result-notices";
+import { hostedResultNative, publishHostedResult, resolveHostedResultTap, type HostedResultBinding } from "./hosted-result-notices";
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { connectionController } from "./connection-ui";
 import { secureConnectionStore } from "./native-connection";
@@ -25,6 +27,7 @@ type Pending = {
 	body: Record<string, unknown>;
 	summary: string;
 };
+function canSyncResults(){return !document.hidden&&(isAndroid||(document.documentElement.dataset.devBackground!=='true'&&!document.querySelector('[aria-label="Unlock with fingerprint"], [aria-label="Wake"]')?.getClientRects().length));}
 export function HostedDigestPanel() {
 	const panel = useRef<HTMLElement>(null);
 	const connection = useSyncExternalStore(
@@ -75,27 +78,27 @@ export function HostedDigestPanel() {
 			window.removeEventListener("alpha:hosted-digests", show);
 		};
 	}, []);
+    useEffect(()=>{if(isAndroid)return;let live=true;const update=()=>{void hostedResultNative.status().then(value=>{if(live){setNoticeEnabled(value.enabled);setBackgroundEnabled(value.backgroundEnabled===true);}}).catch(()=>{});};update();window.addEventListener('alpha:hosted-notices-changed',update);return()=>{live=false;window.removeEventListener('alpha:hosted-notices-changed',update);};},[]);
     const checkTap = async (requestSignal?:AbortSignal) => {
-        if(!isAndroid||document.hidden)return;
+        if(!canSyncResults())return;
         const b=binding.current;
         try {
             const result=await resolveHostedResultTap(hostedResultNative,b?.notices ?? null,requestSignal ?? b?.controller.signal ?? new AbortController().signal);
-            if(result.kind==='none'||document.hidden||requestSignal?.aborted)return;
+            if(result.kind==='none'||!canSyncResults()||requestSignal?.aborted)return;
             if(b && binding.current!==b)return;
-            setOpen(true);
-            if(result.kind==='ready' && b){const history=await b.inbox.history();if(binding.current!==b)return;setResults(history);setFocusedRun(result.result.runId);setTap({token:result.token,runId:result.result.runId,sessionId:b.sessionId});setMessage('Opened the saved result from this account and agent.');}
-            else setMessage(result.kind==='other-account'?'Connect the matching account and agent to open this saved result. No account was switched.':'This result link needs a verified connection and retained history. No workflow was restarted.');
+            if(result.kind==='ready' && b){const history=await b.inbox.history();if(binding.current!==b||!canSyncResults())return;setOpen(true);setResults(history);setFocusedRun(result.result.runId);setTap({token:result.token,runId:result.result.runId,sessionId:b.sessionId});setMessage('Opened the saved result from this account and agent.');}
+            else {setOpen(true);setMessage(result.kind==='other-account'?'Connect the matching account and agent to open this saved result. No account was switched.':'This result link needs a verified connection and retained history. No workflow was restarted.');}
         } catch { if(!b || binding.current===b)setMessage('Result link is waiting for a verified connection.'); }
     };
-    useEffect(()=>{if(!isAndroid)return;const listener=hostedResultNative.addListener('pendingResult',()=>{void checkTap();}).catch(()=>null);void checkTap();return()=>{void listener.then(value=>value?.remove());};},[]);
+    useEffect(()=>{const listener=hostedResultNative.addListener('pendingResult',()=>{void checkTap();}).catch(()=>null);void checkTap();return()=>{void listener.then(value=>value?.remove());};},[]);
     useEffect(()=>{
-        if(!open||!tap||binding.current?.sessionId!==tap.sessionId)return;
+        if(!open||!tap||!canSyncResults()||binding.current?.sessionId!==tap.sessionId)return;
         const node=document.getElementById('hosted-result-'+tap.runId);if(!node)return;node.scrollIntoView({block:'nearest'});node.focus();
         void hostedResultNative.consumeResult({token:tap.token}).then(()=>setTap(current=>current?.token===tap.token?null:current)).catch(()=>{});
     },[open,tap,results]);
 	const refresh = (afterMutation=false):Promise<void> => {
 		const b = binding.current;
-		if (!b || document.hidden || (mutationBusy.current && !afterMutation)) return Promise.resolve();
+		if (!b || !canSyncResults() || (mutationBusy.current && !afterMutation)) return Promise.resolve();
 		if (refreshFlight.current) return refreshFlight.current.promise;
 		const controller = new AbortController();
 		const abort = () => controller.abort();
@@ -162,6 +165,7 @@ export function HostedDigestPanel() {
 		}
 		const controller = new AbortController();
 		let disposed = false;
+        let releaseBrowser:undefined|(()=>void);
 		void (async () => {
 			const session = connection.session!,
 				slot =
@@ -182,7 +186,7 @@ export function HostedDigestPanel() {
             }
             controller.signal.throwIfAborted();if(disposed)return;
             setNativeReady(ready);
-            inbox=createDigestInbox({android:isAndroid,nativeReady:ready,storage,scope:slot,native:()=>new NativeResultInbox(session.sessionId)});
+            inbox=createDigestInbox({android:isAndroid,nativeReady:ready,storage,scope:slot,native:()=>new NativeResultInbox(session.sessionId),afterCommit:!isAndroid?async(result,signal)=>{await publishHostedResult(hostedResultNative,notices,result,signal);}:undefined});
 			const b = {
                 storage, notices,
 				client,
@@ -192,6 +196,7 @@ export function HostedDigestPanel() {
 				controller,
 			};
 			binding.current = b;
+            if(!isAndroid)releaseBrowser=browserHostedResults.bind(session.sessionId,notices);
 			try {
 				const old = await b.inbox.history();
 				if (binding.current === b) setResults(old);
@@ -200,22 +205,26 @@ export function HostedDigestPanel() {
 			if (!disposed && binding.current === b) await refresh();
 		})().catch(()=>{if(!disposed)setMessage('Result storage could not be connected. Reconnect the agent to try again.');});
 		const resume = () => {
-			if (document.hidden) { refreshFlight.current?.controller.abort(); return; }
+			if (!canSyncResults()) { refreshFlight.current?.controller.abort(); return; }
 			void (async () => { await refreshFlight.current?.promise; if (!disposed && !document.hidden) await refresh(); })();
 		};
 		// Foreground freshness only; Android background delivery is a separate transport.
-		const poll = setInterval(() => { if (!document.hidden) void refresh(); }, 15000);
+		const poll = setInterval(() => { if (canSyncResults()) void (async()=>{if(isAndroid||(await hostedResultNative.status()).backgroundEnabled)await refresh();})().catch(()=>{}); }, 15000);
 		window.addEventListener("online", resume);
+        let deviceFrame=0;const deviceResume=()=>{refreshFlight.current?.controller.abort();cancelAnimationFrame(deviceFrame);deviceFrame=requestAnimationFrame(resume);};
+        window.addEventListener("alpha:device-state",deviceResume);
 		document.addEventListener("visibilitychange", resume);
 		const listener = DailyApps.addListener("appResumed", resume).catch(
 			() => null,
 		);
 		return () => {
 			disposed = true;
+            releaseBrowser?.();
 			clearInterval(poll);
 			controller.abort();
 			binding.current = null;
 			window.removeEventListener("online", resume);
+            window.removeEventListener("alpha:device-state",deviceResume);cancelAnimationFrame(deviceFrame);
 			document.removeEventListener("visibilitychange", resume);
 			void listener.then((value) => value?.remove());
 		};
@@ -227,8 +236,8 @@ export function HostedDigestPanel() {
 		if (!open) return;
 		const previous = document.activeElement as HTMLElement | null;
 		const phone = document.querySelector<HTMLElement>('.os');
-		const previousInert = phone?.inert ?? false;
-		if (phone) phone.inert = true;
+		const releaseInert = holdPhoneInert(phone);
+
 		panel.current?.focus();
 		const back = (event: Event) => {
 			event.preventDefault();
@@ -250,7 +259,7 @@ export function HostedDigestPanel() {
 		return () => {
 			window.removeEventListener("alpha-back", back, true);
 			window.removeEventListener("keydown", key);
-			if (phone) phone.inert = previousInert;
+			releaseInert();
 			previous?.focus();
 		};
 	}, [open]);
@@ -365,10 +374,11 @@ export function HostedDigestPanel() {
                 <p>Choose an expiring snapshot or review a read-only source from an account already connected to this agent.
 				</p>
 				<p role="status">{message}</p>
-                {!isAndroid&&browserLocalAgentEnabled&&connection.kind==='resident'&&<p>Development results and pending requests are saved unencrypted in this computer’s private agent profile. Browser notifications are unavailable.</p>}
+                {!isAndroid&&<p>Result checks are {backgroundEnabled?'on':'off'} while this browser is open. <button onClick={()=>void hostedResultNative.setBackgroundPolling({enabled:!backgroundEnabled}).then(value=>setBackgroundEnabled(value.backgroundEnabled===true)).catch(()=>setMessage('Check preference could not be saved.'))}>{backgroundEnabled?'Pause result checks':'Enable result checks'}</button></p>}
                 {isAndroid&&nativeReady&&<p>Background checks are {backgroundEnabled?'on':'off'}. Android may delay checks beyond 15 minutes. Results remain available when you reopen the app. <button onClick={()=>void hostedResultNative.setBackgroundPolling({enabled:!backgroundEnabled}).then(value=>setBackgroundEnabled(value.backgroundEnabled===true)).catch(()=>setMessage('Background preference could not be saved.'))}>{backgroundEnabled?'Pause background checks':'Enable background checks'}</button></p>}
-                {isAndroid&&!nativeReady?<p>Results sync while this app is open and are saved in encrypted device storage. Background delivery could not be verified for this connection. Reconnect to try again.</p>:<p>{noticeEnabled?'Result notifications are enabled.':'Result notifications are off or unavailable. Saved results remain here.'}</p>}
+                {isAndroid&&!nativeReady?<p>Results sync while this app is open and are saved in encrypted device storage. Background delivery could not be verified for this connection. Reconnect to try again.</p>:<p>{noticeEnabled?'Result notifications are enabled.':isAndroid?'Result notifications are off or unavailable. Saved results remain here.':'Result notifications are off. Saved results remain here.'}</p>}
                 {isAndroid&&nativeReady&&<button onClick={()=>void hostedResultNative.enable().then(()=>hostedResultNative.status()).then(value=>setNoticeEnabled(value.enabled)).catch(()=>setMessage('Enable result notifications in Android settings; history remains available.'))}>Notification settings</button>}
+                {!isAndroid&&<button aria-pressed={noticeEnabled} onClick={()=>void browserHostedResults.setNotifications({enabled:!noticeEnabled}).catch(()=>setMessage('Notification preference could not be saved.'))}>Result notifications</button>}
 				<button disabled={busy} onClick={() => void refresh()}>
 					Refresh
 				</button>

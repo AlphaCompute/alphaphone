@@ -69,12 +69,27 @@ export class BrowserDaily extends WebPlugin {
     const row=data.reminders.find(r=>r.id===input.id);if(!row||row.occurrenceId!==input.occurrenceId||['completed','cancelled'].includes(row.status))return {status:'stale'};
     return {status:decide(row,input.action)};
   });}
+  async clockDecision(input:{id:string;revision:string;action:'cancel'|'dismiss'|'snooze';minutes?:number}){
+    if(!['cancel','dismiss','snooze'].includes(input.action)||input.action==='snooze'&&(!Number.isInteger(input.minutes)||input.minutes!<1||input.minutes!>60))throw Error('Choose 1 to 60 snooze minutes.');
+    return editStore(key,initial,data=>{const row=data.reminders.find(r=>r.id===input.id&&r.id.startsWith('alarm_'));if(!row||row.revision!==input.revision)return {status:'stale'};
+      if(input.action==='cancel'){row.status='cancelled';row.cancelledAt=Date.now();row.revision=revision();}
+      else if(row.status!=='posted')return {status:'stale'};
+      else if(input.action==='dismiss')decide(row,'done');
+      else{row.at=Date.now()+input.minutes!*60000;row.snoozedAt=Date.now();row.status='scheduled';delete row.postedAt;row.revision=revision();}
+      return {status:'applied'};
+    });
+  }
   async clockHandoff(input:ClockRequest){
-    if(input.action==='set'){const date=new Date();date.setHours(input.hour,input.minute,0,0);if(date.getTime()<=Date.now())date.setDate(date.getDate()+1);await this.scheduleReminder({id:'alarm_'+crypto.randomUUID(),title:input.label||'Alarm',at:date.getTime()});return {action:input.action,status:'opened',message:'Alarm saved.'};}
-    const {reminders}=await this.listReminders(),alarms=reminders.filter(r=>r.id.startsWith('alarm_'));
-    if(input.action==='dismiss')for(const row of alarms.filter(r=>r.status==='posted'))await this.cancelReminder({id:row.id});
-    if(input.action==='snooze')await editStore(key,initial,data=>{for(const row of data.reminders.filter(r=>r.id.startsWith('alarm_')&&r.status==='posted')){row.at=Date.now()+input.snoozeMinutes*60000;row.status='scheduled';row.revision=revision();}});
-    return {action:input.action,status:'opened',message:input.action==='show'?(alarms.map(r=>`${r.title} · ${new Date(r.at).toLocaleTimeString()}`).join('\n')||'No alarms'):input.action==='dismiss'?'Alarm dismissed.':'Alarm snoozed.'};
+    if(input.reviewed!==true||!['set','show','dismiss','snooze'].includes(input.action))throw Error('Review the alarm action first.');
+    if(input.action==='set'){
+      if(!Number.isInteger(input.hour)||input.hour<0||input.hour>23||!Number.isInteger(input.minute)||input.minute<0||input.minute>59||typeof input.label!=='string'||input.label.length>200||input.label.includes('\0'))throw Error('Choose a valid alarm time and label.');
+      const date=new Date();date.setHours(input.hour,input.minute,0,0);if(date.getTime()<=Date.now())date.setDate(date.getDate()+1);await this.scheduleReminder({id:'alarm_'+crypto.randomUUID(),title:input.label||'Alarm',at:date.getTime()});
+    }else if(input.action==='show')window.dispatchEvent(new Event('alpha:clock-open'));
+    else{
+      if(input.action==='snooze'&&(!Number.isInteger(input.snoozeMinutes)||input.snoozeMinutes<1||input.snoozeMinutes>60))throw Error('Choose 1 to 60 snooze minutes.');
+      await editStore(key,initial,data=>{for(const row of data.reminders.filter(r=>r.id.startsWith('alarm_')&&r.status==='posted')){if(input.action==='dismiss')decide(row,'done');else if(input.action==='snooze'){row.at=Date.now()+input.snoozeMinutes*60000;row.snoozedAt=Date.now();row.status='scheduled';delete row.postedAt;row.revision=revision();}}});
+    }
+    window.dispatchEvent(new Event('alpha:alarms-changed'));return {action:input.action,status:'opened',message:input.action==='set'?'Alarm saved.':input.action==='show'?'Alarms':input.action==='dismiss'?'Alarm dismissed.':'Alarm snoozed.'};
   }
   async capabilities(){return {platform:'web',actions:['calendar','reminder','browser','files','photos','maps','settings','notifications'].map(action=>({action,available:true,mode:'browser'}))};}
   pdfSelected(input:{selectionId:string;page:number}){return this.files.pdfSelected(input);}

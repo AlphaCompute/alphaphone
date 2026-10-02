@@ -34,7 +34,10 @@ test('Notes records, reviews, saves, reloads, plays and restores the same retain
  await expect(page.getByRole('button',{name:'Stop recording playback',exact:true})).toBeVisible();
  await expect(page.getByRole('button',{name:'Play recording',exact:true})).toBeVisible();
  await page.getByRole('button',{name:'Delete note',exact:true}).click();
+ await expect(page.getByRole('button',{name:'Undo',exact:true})).toBeVisible();
+ expect(await page.evaluate(async(id)=>{const {registerPlugin}=await import('/src/platform-plugins.ts');return (await registerPlugin<any>('AlphaNoteAudio').describe({audioId:id})).deletedAt;},note.audio.audioId)).toBeGreaterThan(0);
  await page.getByRole('button',{name:'Undo',exact:true}).click();
+ await expect.poll(()=>page.evaluate(async(id)=>{const {registerPlugin}=await import('/src/platform-plugins.ts');return (await registerPlugin<any>('AlphaNoteAudio').describe({audioId:id})).deletedAt;},note.audio.audioId)).toBeUndefined();
  await page.getByRole('button',{name:'Open Browser audio journey',exact:true}).click();
  await page.getByRole('button',{name:'Play recording',exact:true}).click();await expect(page.getByRole('button',{name:'Stop recording playback',exact:true})).toBeVisible();
  await page.getByRole('button',{name:'Stop recording playback',exact:true}).click();

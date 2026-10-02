@@ -3,7 +3,7 @@ type Bag=Record<string,any>;
 const KEY='alphaphone:clock-handoff:v1';
 const actions=['set','show','snooze','dismiss'] as const;
 /** A reviewed handoff, never a local alarm database or a provider-success claim. */
-export function installClockAdapter(Component:any,views:Bag,options:{simulated:boolean}) {
+export function installClockAdapter(Component:any,views:Bag,options:{simulated:boolean;browser?:boolean}) {
  const p=Component.prototype,render=views.calendar.render;
  let owner:any,open=false,action:ClockRequest['action']='set',time='07:00',label='',snooze='10',review:ClockRequest|null=null,busy=false,message='',generation=0;
  const simulated=()=>options.simulated||document.documentElement.dataset.connectionMode==='mock';
@@ -58,7 +58,7 @@ export function installClockAdapter(Component:any,views:Bag,options:{simulated:b
  };
  views.calendar.render=(state:Bag,api:Bag)=>{
   const out=render(state,api);
-  out.openClock=()=>{if(busy)return;open=true;review=null;restore();publish();queueMicrotask(()=>document.querySelector<HTMLButtonElement>('button[aria-label="Close Clock"]')?.focus());};
+  out.openClock=()=>{if(busy)return;if(options.browser&&!simulated()){void DailyApps.clockHandoff({action:'show',reviewed:true}).catch(()=>api.toast('Clock could not be opened. Try again.'));return;}open=true;review=null;restore();publish();queueMicrotask(()=>document.querySelector<HTMLButtonElement>('button[aria-label="Close Clock"]')?.focus());};
   const currentReview=review;
   out.clock=open?{
    title:'Clock',topPadding:simulated()?'76px':'44px',message,busy,isSet:action==='set',isSnooze:action==='snooze',time,label,snooze,

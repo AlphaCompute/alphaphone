@@ -1,3 +1,4 @@
+import { browserHostedResults } from './hosted-results';
 import { browserApps } from './apps';
 import { WebPlugin } from '@capacitor/core';
 import type { BrowserDaily } from './daily';
@@ -7,7 +8,7 @@ const apps=browserApps;
 type Selection = {packageName:string;preview:boolean};
 type History = {id:string;appLabel:string;packageName:string;at:number;state:string};
 type State = {revision:string;epoch:string;enabled:boolean;paused:boolean;history:boolean;accessGranted:boolean;apps:Selection[];events:History[];dismissed:string[];appEnabled:boolean;channels:Record<string,boolean>;deviceEvents?:DeviceEvent[]};
-type Notice = {id:string;revision:string;source:'own'|'external';appLabel:string;title:string;text:string;at:number;clearable:boolean;canOpen:boolean;packageName?:string;epoch?:string};
+type Notice = {id:string;revision:string;source:'own'|'external'|'hosted';appLabel:string;title:string;text:string;at:number;clearable:boolean;canOpen:boolean;packageName?:string;epoch?:string};
 type DeviceEvent = Notice & {packageName:string;sourceKey:string;autoCancel:boolean;secret:boolean};
 type Identity = {id:string;revision:string;source?:string};
 const key='alpha.browser.notifications.v2';
@@ -41,7 +42,7 @@ export class BrowserNotifications extends WebPlugin {
  async resumeCrossApp(input:{expectedRevision:string}){await editStore(key,initial,state=>{if(state.revision!==input.expectedRevision)throw Error('Settings changed. Refresh and try again.');state.paused=false;state.epoch=revision();state.revision=revision();});this.changed();return this.crossAppStatus();}
  async notificationHistory(){const state=await this.state();return {items:[...state.events].reverse()};}
  async clearNotificationHistory(){await editStore(key,initial,state=>{state.events=[];state.epoch=revision();});this.changed();}
- async status(){const state=await this.state();return {appEnabled:state.appEnabled,permissionGranted:true,interruption:'all',channels:Object.entries(state.channels).map(([id,enabled])=>({id,name:id==='reminders'?'Reminders':id,importance:enabled?3:0,blocked:!enabled})),scope:'browser'};}
+ async status(){const state=await this.state();return {appEnabled:state.appEnabled,permissionGranted:true,interruption:readStore<{doNotDisturb?:boolean}>('alpha.browser.device.v1',()=>({})).doNotDisturb?'none':'all',channels:Object.entries(state.channels).map(([id,enabled])=>({id,name:id==='reminders'?'Reminders':id,importance:enabled?3:0,blocked:!enabled})),scope:'browser'};}
  async inject(input:{packageName:string;title:string;text:string;id?:string;clearable?:boolean;autoCancel?:boolean;secret?:boolean;canOpen?:boolean}){
   const app=apps.find(app=>app.packageName===input.packageName);if(!app||typeof input.title!=='string'||typeof input.text!=='string'||input.title.length>200||input.text.length>2000||input.id!==undefined&&!/^[\w-]{1,128}$/.test(input.id))throw Error('Review the event fields.');
   for(const flag of ['clearable','autoCancel','secret','canOpen'] as const)if(input[flag]!==undefined&&typeof input[flag]!=='boolean')throw Error('Review the event options.');
@@ -62,7 +63,7 @@ export class BrowserNotifications extends WebPlugin {
   const {reminders}=await this.daily.listReminders(),state=await this.state(),hidden=locked();
   const own:Notice[]=state.appEnabled&&state.channels.reminders?reminders.filter(row=>row.status==='posted'&&!state.dismissed.includes(row.occurrenceId!)).map(row=>({id:row.id,revision:row.occurrenceId!,source:'own',appLabel:'Alpha Phone',title:hidden?'Alpha Phone':row.title,text:hidden?'':row.body||'',at:row.postedAt||row.at,clearable:true,canOpen:!hidden})):[];
   const external=state.deviceEvents!.filter(row=>this.allowed(state,row)).map(row=>this.observe(state,row));
-  return {scope:'browser',items:[...own,...external].sort((a,b)=>b.at-a.at).slice(0,100)};
+  return {scope:'browser',items:[...own,...external,...await browserHostedResults.list()].sort((a,b)=>b.at-a.at).slice(0,100)};
  }
  private async external(input:Identity,opening:boolean){
   const view=await editStore(key,initial,state=>{
@@ -74,8 +75,8 @@ export class BrowserNotifications extends WebPlugin {
   });
   if(opening)window.dispatchEvent(new CustomEvent('alpha:browser-open-view',{detail:view}));this.changed();
  }
- async open(input:Identity){if(input.source==='external')return this.external(input,true);if(locked())throw Error('Unlock to open this notification.');const {items}=await this.list();if(!items.some(row=>row.source==='own'&&row.id===input.id&&row.revision===input.revision))throw Error('Notification changed.');window.dispatchEvent(new CustomEvent('alpha:browser-open-view',{detail:'calendar'}));await this.daily.notifyReminder(input.id,input.revision);}
- async dismiss(input:Identity){if(input.source==='external')return this.external(input,false);if(locked())throw Error('Unlock to dismiss this notification.');const {items}=await this.list();if(!items.some(row=>row.source==='own'&&row.id===input.id&&row.revision===input.revision))throw Error('Notification changed.');await editStore(key,initial,state=>{state.dismissed.push(input.revision);trim(state);});this.changed();}
+ async open(input:Identity){if(input.source==='hosted')return browserHostedResults.action(input,true);if(input.source==='external')return this.external(input,true);if(locked())throw Error('Unlock to open this notification.');const {items}=await this.list();if(!items.some(row=>row.source==='own'&&row.id===input.id&&row.revision===input.revision))throw Error('Notification changed.');window.dispatchEvent(new CustomEvent('alpha:browser-open-view',{detail:'calendar'}));await this.daily.notifyReminder(input.id,input.revision);}
+ async dismiss(input:Identity){if(input.source==='hosted')return browserHostedResults.action(input,false);if(input.source==='external')return this.external(input,false);if(locked())throw Error('Unlock to dismiss this notification.');const {items}=await this.list();if(!items.some(row=>row.source==='own'&&row.id===input.id&&row.revision===input.revision))throw Error('Notification changed.');await editStore(key,initial,state=>{state.dismissed.push(input.revision);trim(state);});this.changed();}
  async clear(input:{items:Identity[]}){if(!Array.isArray(input.items)||input.items.length>100)throw Error('Refresh notifications.');const outcomes=[];for(const item of input.items){try{await this.dismiss(item);outcomes.push({id:item.id,status:'requested'});}catch{outcomes.push({id:item.id,status:'unavailable'});}}return {outcomes};}
  async deviceEvents(){const state=await this.state();return {items:state.deviceEvents!.map(row=>({id:row.id,revision:row.revision,appLabel:row.appLabel,packageName:row.packageName,notificationId:row.sourceKey.slice(row.packageName.length+1),title:row.title,text:row.text,clearable:row.clearable,autoCancel:row.autoCancel,secret:row.secret}))};}
  async removeDeviceEvent(input:{id:string;revision:string}){await editStore(key,initial,state=>{trim(state);const row=state.deviceEvents!.find(row=>row.id===input.id);if(!row||row.revision!==input.revision)throw Error('The device event changed.');state.deviceEvents=state.deviceEvents!.filter(event=>event.id!==row.id);if(this.allowed(state,row))record(state,row,'removed');});this.changed();}

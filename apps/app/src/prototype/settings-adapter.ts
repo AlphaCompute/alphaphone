@@ -196,7 +196,7 @@ export function installSettingsAdapter(Component: any, views: Bag) {
       } else if (page.title === 'Privacy & Enclave') {
         page.title='Privacy & runtime';
         page.hero={...page.hero,big:runtimeLocation,sub:'Hosted inference receives prompts and selected context. Local execution does not mean all data stays on the device.'};
-        page.groups = [group([info('Agent execution', runtimeLocation),info('Model inference',connection.kind==='resident'&&connection.session?'Configured hosted provider':'Managed by the selected agent'), info('On-device speech', localSpeech)]), group(Object.entries(facts.permissions || {}).map(([label, granted]) => info(label, label==='Location'?(facts.locationAccess==='precise'?'Precise location allowed':facts.locationAccess==='approximate'?'Approximate location allowed':'Not allowed'):granted ? 'Allowed for Alpha' : 'Not allowed'))), group([nav('Manage Alpha permissions', 'privacy')])];
+        page.groups = [group([info('Agent execution', runtimeLocation),info('Model inference',connection.kind==='resident'&&connection.session?'Configured hosted provider':'Managed by the selected agent'), info('On-device speech', localSpeech)]), group(Object.entries(facts.permissions || {}).map(([label, granted]) => info(label, !Capacitor.isNativePlatform()&&facts.permissionStates?.[label]?({granted:'Granted in browser',prompt:'Ask when used',denied:'Blocked in browser',unknown:'Managed by browser'} as Bag)[facts.permissionStates[label]]:label==='Location'?(facts.locationAccess==='precise'?'Precise location allowed':facts.locationAccess==='approximate'?'Approximate location allowed':'Not allowed'):granted ? 'Allowed for Alpha' : 'Not allowed'))), group([nav('Manage Alpha permissions', 'privacy')])];
       } else if (page.title === 'Sound & vibration') {
         const volume = (label: string, stream: string) => {
           const value = controls.volumes?.find((v: Bag) => v.stream === stream);
@@ -204,13 +204,13 @@ export function installSettingsAdapter(Component: any, views: Bag) {
         };
         page.groups = [group([volume('Media', 'music'), volume('Ring', 'ring'), volume('Alarm', 'alarm')]), group([nav('Manage sound in Android', 'sound')])];
       } else if (page.title === 'Display') {
-        page.hero={...page.hero,sub:'Alpha app text · Android accessibility scale also applies',subCss:'font-size:13px;color:var(--fg)'};
+        page.hero={...page.hero,sub:Capacitor.isNativePlatform()?'Alpha app text · Android accessibility scale also applies':'Alpha app text size',subCss:'font-size:13px;color:var(--fg)'};
         for (const g of page.groups) g.rows = g.rows.map((row: Bag) => {
           if(row.label==='Brightness')return nav('Manage brightness in Android','display');
           if(row.label!=='Text size')return row;
           if(!Number.isInteger(facts.textScalePercent))return info('Text size','Native setting unavailable');
           const percent=facts.textScalePercent;
-          return {...row,v:percent<=100?(percent-75)*2:percent-50,set:(event:Event)=>{
+          return {...row,valueLabel:`${percent}%`,v:percent<=100?(percent-75)*2:percent-50,set:(event:Event)=>{
             const value=Number((event.target as HTMLInputElement).value),requested=Math.round(value<=50?75+value/2:value+50),token=++scaleGeneration,instance=owner;
             ++generation;void device.setTextScale({percent:requested}).then(result=>{if(owner===instance&&token===scaleGeneration){facts={...facts,...result};instance?.vset('settings',{nativeReadAt:Date.now()});}}).catch(()=>{if(owner===instance&&token===scaleGeneration)api.toast('Text size could not be saved.');});
           }};
@@ -221,7 +221,7 @@ export function installSettingsAdapter(Component: any, views: Bag) {
       for(const page of out.stack){
         if(page.title==='About')page.groups=[group([info('Alpha Phone','0.1.0'),info('Runtime','Browser development'),info('Storage','This browser profile')])];
       }
-      const browserLabels=(value:any):any=>{if(typeof value==='string')return value.replaceAll('Unavailable','Browser managed').replaceAll('Manage in Android','Browser device').replaceAll('in Android','in browser').replaceAll('Android settings','Browser device settings').replaceAll('Android Calendar','Browser calendar').replaceAll('Android device information','Browser device information').replaceAll('Android developer settings','Browser developer settings').replaceAll('Device accounts in Android','Browser accounts').replaceAll('On this phone','In this browser').replaceAll('on this phone','in this browser').replaceAll('Android access not granted','Development event access off').replaceAll('Waiting for Android listener','Waiting for local events').replaceAll('Selected apps connected','Selected development apps connected').replaceAll('Android battery policies may delay alerts','Alerts appear while Alpha is open').replaceAll('Native setting unavailable','Browser setting').replaceAll('Wi-Fi transport · network names stay in Android settings','Development network');if(Array.isArray(value))return value.map(browserLabels);if(value&&typeof value==='object')return Object.fromEntries(Object.entries(value).map(([k,v])=>[k,browserLabels(v)]));return value;};
+      const browserLabels=(value:any):any=>{if(typeof value==='string')return value.replaceAll('Manage brightness in Android','Brightness').replaceAll('Manage sound in Android','Sound settings').replaceAll('Unavailable','Browser managed').replaceAll('Manage in Android','Browser device').replaceAll('in Android','in browser').replaceAll('Android settings','Browser device settings').replaceAll('Android Calendar','Browser calendar').replaceAll('Android device information','Browser device information').replaceAll('Android developer settings','Browser developer settings').replaceAll('Device accounts in Android','Browser accounts').replaceAll('On this phone','In this browser').replaceAll('on this phone','in this browser').replaceAll('Android access not granted','Development event access off').replaceAll('Waiting for Android listener','Waiting for local events').replaceAll('Selected apps connected','Selected development apps connected').replaceAll('Android battery policies may delay alerts','Alerts appear while Alpha is open').replaceAll('Native setting unavailable','Browser setting').replaceAll('Wi-Fi transport · network names stay in Android settings','Development network');if(Array.isArray(value))return value.map(browserLabels);if(value&&typeof value==='object')return Object.fromEntries(Object.entries(value).map(([k,v])=>[k,browserLabels(v)]));return value;};
       return browserLabels(out);
     }
     return out;

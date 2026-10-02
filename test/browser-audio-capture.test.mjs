@@ -15,7 +15,8 @@ function harness(){
   finish(){this.ondataavailable?.({data:new Blob(['audio'])});this.onstop?.();}
  }
  const context={navigator:{mediaDevices:{getUserMedia:()=>{const d=deferred();requests.push(d);return d.promise;}}},document:{hidden:false},MediaRecorder:Recorder,Blob,crypto:globalThis.crypto,DOMException,Date,Error,setTimeout:(fn,delay)=>{timers.set(++token,{fn,delay});return token;},clearTimeout:id=>timers.delete(id)};
- const source=readFileSync(new URL('../apps/app/src/browser/audio-capture.ts',import.meta.url),'utf8').replace('export class','class');
+ context.BrowserMicrophone=class{open(){return context.navigator.mediaDevices.getUserMedia();}close(){}};
+ const source=readFileSync(new URL('../apps/app/src/browser/audio-capture.ts',import.meta.url),'utf8').replace(/^import .*\n/gm,'').replace('export class','class');
  vm.runInNewContext(stripTypeScriptTypes(source,{mode:'transform'})+'\nglobalThis.Capture=BrowserAudioCapture;',context);
  const capture=new context.Capture(e=>events.push(e));
  return {capture,streams,recorders,requests,events,timers,context,stream,setFail:v=>fail=v,hold:v=>held=v,async start(){const p=capture.start();requests.at(-1).resolve(stream());return p;}};

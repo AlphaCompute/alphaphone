@@ -1,3 +1,4 @@
+import { installBrowserDeviceAdapter } from './browser/device-adapter';
 import { BrowserDeviceControls } from './browser/device-controls';
 import './browser/register';
 import { browserDevProfile } from './browser/dev-profile';
@@ -63,11 +64,12 @@ if (!fixture) {
   installNotesDocumentAdapter(Component, VIEWS);
   installPrototypeBrowserAdapter(Component, VIEWS);
   installSettingsAdapter(Component, VIEWS);
+  if(!isAndroid)installBrowserDeviceAdapter(Component);
   if(!browserDevProfile) installInboxCloudAdapter(Component, VIEWS);
   if(!browserDevProfile) installWorkflowAdapter(Component, VIEWS);
 }
 installSimulatedApps(Component,VIEWS,simulatedApps);
-installClockAdapter(Component, VIEWS, { simulated: fixture });
+installClockAdapter(Component, VIEWS, { simulated: fixture, browser: !isAndroid });
 let shell: any;
 function Phone() {
   useEffect(() => {

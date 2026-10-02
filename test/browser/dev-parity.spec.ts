@@ -62,7 +62,7 @@ test('browser files keep exact bytes across reload, rename and move',async({page
 });
 test('browser device setting controls persist across reload',async({page})=>{
  await page.goto('/');await page.evaluate(async()=>{const {registerPlugin}=await import('/src/platform-plugins.ts');await registerPlugin<any>('AlphaDevice').openSettings({page:'wifi'});});
- const checkbox=page.getByRole('dialog',{name:'wifi settings'}).getByRole('checkbox');await expect(checkbox).toBeChecked();await checkbox.uncheck();await page.getByRole('button',{name:'Done',exact:true}).click();await page.reload();
+ const checkbox=page.getByRole('dialog',{name:'wifi settings'}).getByRole('checkbox',{name:'wifi Active',exact:true});await expect(checkbox).toBeChecked();await checkbox.uncheck();await expect(checkbox).toBeEnabled();await page.getByRole('button',{name:'Done',exact:true}).click();await page.reload();
  expect(await page.evaluate(async()=>{const {registerPlugin}=await import('/src/platform-plugins.ts');return (await registerPlugin<any>('AlphaDevice').snapshot()).wifiActive;})).toBe(false);
 });
 test('calendar agent review cancels, rejects stale changes and replays one durable receipt',async({page})=>{

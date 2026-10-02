@@ -1,10 +1,10 @@
 import {test,expect} from '@playwright/test';
 for(const theme of ['light','dark'])for(const viewport of [{width:360,height:740},{width:412,height:915},{width:1440,height:500}]){
- test(`Notes status has its own space: ${theme} ${viewport.width}x${viewport.height}`,async({page})=>{
+ test(`Notes storage failure has its own space: ${theme} ${viewport.width}x${viewport.height}`,async({page})=>{
   await page.setViewportSize(viewport);
   await page.addInitScript((theme)=>{localStorage.setItem('alpha.connection.selection.v1',JSON.stringify({kind:'offline'}));localStorage.setItem('alpha.appearance.v1',theme);},theme);
   await page.goto(`/?theme=${theme}`);await expect(page.locator('[data-screen]')).toHaveCSS('background-color',theme==='dark'?'rgb(0, 0, 0)':'rgb(255, 255, 255)');await page.getByRole('button',{name:'Notes',exact:true}).click();
-  const status=page.locator('.notes-storage-status');await expect(status).toContainText('Browser preview');
+  const status=page.locator('.notes-storage-status');await expect(status).toHaveCount(0);
   const check=async()=>{
    const result=await page.evaluate(()=>{
     const status=document.querySelector('.notes-storage-status')!,workspace=document.querySelector('.notes-workspace')!,layout=document.querySelector('.notes-layout')!;
@@ -12,7 +12,7 @@ for(const theme of ['light','dark'])for(const viewport of [{width:360,height:740
     return {belowStatusBar:a.top-document.querySelector('[data-screen]>div:first-child')!.getBoundingClientRect().bottom,overlap:a.bottom-b.top,height:a.height,overflow:status.scrollHeight>status.clientHeight||status.scrollWidth>status.clientWidth};
    });expect(result.belowStatusBar).toBeGreaterThan(0);expect(result.overlap).toBeLessThanOrEqual(.5);expect(result.height).toBeGreaterThan(0);expect(result.overflow).toBe(false);
   };
-  await check();await page.getByRole('button',{name:'New note',exact:true}).click();
+  await page.getByRole('button',{name:'New note',exact:true}).click();
   await page.getByRole('textbox',{name:'Title',exact:true}).fill('Status layout');await page.getByRole('textbox',{name:'Note',exact:true}).fill('Original');
   await page.evaluate(()=>{const set=Storage.prototype.setItem;Storage.prototype.setItem=function(key,value){if(key==='alphaphone:notes:v2')throw new DOMException('Full','QuotaExceededError');return set.call(this,key,value);};});
   await page.getByRole('textbox',{name:'Note',exact:true}).fill('Keep this unsaved text');

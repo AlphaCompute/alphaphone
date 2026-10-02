@@ -1,0 +1,10 @@
+import {registerPlugin} from '../platform-plugins';
+import {browserDeviceState} from './device';
+/** Share the shade brightness control with the browser device settings store. */
+export function installBrowserDeviceAdapter(Component:any){
+ const device=registerPlugin<{setSensor(input:{field:string;enabled?:boolean}):Promise<unknown>;setNetwork(input:{field:string;enabled?:boolean}):Promise<unknown>;setBrightness(input:{percent:number}):Promise<unknown>}>('AlphaDevice');
+ const p=Component.prototype,mount=p.componentDidMount,unmount=p.componentWillUnmount,render=p.renderVals;
+ p.componentDidMount=function(){mount?.call(this);this.browserDisplayChanged=()=>this.setState({browserDisplayRevision:Date.now()});window.addEventListener('alpha:device-settings',this.browserDisplayChanged);};
+ p.componentWillUnmount=function(){window.removeEventListener('alpha:device-settings',this.browserDisplayChanged);unmount?.call(this);};
+ p.renderVals=function(){const out=render.call(this),state=browserDeviceState(),fields:Record<string,'wifiActive'|'bluetoothActive'|'airplaneMode'|'microphoneEnabled'|'locationEnabled'|'doNotDisturb'>={'Wi-Fi':'wifiActive','Bluetooth':'bluetoothActive','Airplane mode':'airplaneMode','Agent can listen':'microphoneEnabled','Location':'locationEnabled','Do not disturb':'doNotDisturb'};const tiles=out.tiles.map((tile:any)=>{const field=fields[tile.label];if(!field)return tile;const on=state[field];return {...tile,on,css:on?'background:var(--acc);color:#fff':'background:var(--s2);color:var(--fg)',toggle:()=>{void (field==='microphoneEnabled'||field==='locationEnabled'||field==='doNotDisturb'?device.setSensor({field}):device.setNetwork({field})).catch(()=>this.toast('The device setting could not be saved.'));}};});return {...out,tiles,sbWifi:state.wifiActive,sbPlane:state.airplaneMode,bright:state.brightness,onBright:(event:Event)=>{void device.setBrightness({percent:Number((event.target as HTMLInputElement).value)}).catch(()=>this.toast('Brightness could not be saved.'));}};};
+}

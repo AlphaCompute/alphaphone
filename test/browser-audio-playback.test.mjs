@@ -7,13 +7,12 @@ const deferred=()=>{let resolve,reject;const promise=new Promise((a,b)=>{resolve
 const tick=()=>new Promise(resolve=>setImmediate(resolve));
 function harness(){
  let source=readFileSync(new URL('../apps/app/src/browser/voice.ts',import.meta.url),'utf8').replace(/^import .*\n/gm,'').replace('export class','class');
- source=source.slice(0,source.indexOf('let database:'))+source.slice(source.indexOf('function playbackWait'));
  const reads=[],audio=[],revoked=[],events=[],spoken=[],timers=new Map();let id=0;
  const document=Object.assign(new EventTarget(),{hidden:false,querySelector:()=>null});
  const engine=Object.assign(new EventTarget(),{voices:[{localService:true,lang:'en-US'}],getVoices(){return this.voices;},cancel(){},speak(value){spoken.push(value);}});
  class Audio{paused=true;ended=false;currentTime=0;constructor(src){this.src=src;this.pending=deferred();audio.push(this);}play(){return this.pending.promise.then(()=>{this.paused=false;});}pause(){this.paused=true;}removeAttribute(){this.src='';}load(){}}
- class WebPlugin{notifyListeners(name,value){events.push({name,...value});return Promise.resolve();}}
- const context={BrowserAudioCapture:class{},WebPlugin,Audio,document,window:Object.assign(new EventTarget(),{speechSynthesis:engine}),navigator:{language:'en-US'},SpeechSynthesisUtterance:class{constructor(text){this.text=text;}},AbortController,DOMException,Error,crypto:globalThis.crypto,
+ class WebPlugin{notifyListeners(name,value){if(name.startsWith('playback'))events.push({name,...value});return Promise.resolve();}}
+ const context={browserMediaVolume:()=>.7,migrateAudio:async()=>({state:"complete",failedRecords:0}),BrowserTranscriptReview:class{cancel(){}},BrowserAudioCapture:class{},WebPlugin,Audio,document,window:Object.assign(new EventTarget(),{speechSynthesis:engine}),navigator:{language:'en-US'},SpeechSynthesisUtterance:class{constructor(text){this.text=text;}},AbortController,DOMException,Error,crypto:globalThis.crypto,
   URL:{createObjectURL:()=>`blob:${++id}`,revokeObjectURL:url=>revoked.push(url)},setTimeout:(fn,delay)=>{timers.set(++id,{fn,delay});return id;},clearTimeout:id=>timers.delete(id),audioRecord:()=>{const request=deferred();reads.push(request);return request.promise;}};
  vm.runInNewContext(stripTypeScriptTypes(source,{mode:'transform'})+'\nglobalThis.Voice=BrowserVoice;',context);
  const voice=new context.Voice();return {voice,reads,audio,revoked,events,spoken,engine,timers,context,async prepare(name='clip'){const playing=voice.play({audioId:name});reads.at(-1).resolve({blob:{}});await tick();return {playing,element:audio.at(-1)};}};
