@@ -1,0 +1,98 @@
+--- a/packages/app/platforms/android/app/src/main/java/ai/elizaos/app/ElizaAgentService.java
++++ b/packages/app/platforms/android/app/src/main/java/ai/elizaos/app/ElizaAgentService.java
+@@ -465,11 +465,28 @@
+      * (which carries the cold-load connect retry), so non-idempotent POSTs are
+      * never replayed here. Runs on the caller's thread (AgentPlugin spawns one).
+      */
++    /** Closes this transport only; committed runtime effects are not rolled back. */
++    public static final class LocalStreamHandle {
++        private LocalSocket socket;
++        private boolean closed;
++        public synchronized void cancel() { closed = true; closeQuietly(socket); socket = null; }
++        private synchronized void attach(LocalSocket value) throws IOException {
++            if (closed) { closeQuietly(value); throw new IOException("Stream transport closed"); }
++            socket = value;
++        }
++        private synchronized void check() throws IOException {
++            if (closed) throw new IOException("Stream transport closed");
++        }
++    }
+     public static void requestLocalAgentStream(String requestJson, java.util.function.Consumer<String> onEvent) {
++        requestLocalAgentStream(requestJson, onEvent, new LocalStreamHandle());
++    }
++    public static void requestLocalAgentStream(String requestJson, java.util.function.Consumer<String> onEvent, LocalStreamHandle handle) {
+         try {
+             LocalAgentRequest req = parseLocalAgentRequest(requestJson);
+             JSONObject payload = buildRequestPayload(req);
+-            streamOverSocket(payload, req.timeoutMs, onEvent);
++            handle.check();
++            streamOverSocket(payload, req.timeoutMs, onEvent, handle);
+         } catch (Exception error) {
+             emitStreamComplete(onEvent, error.getMessage() == null ? "Local agent stream failed" : error.getMessage());
+         }
+@@ -486,7 +503,7 @@
+     private static void streamOverSocket(
+         JSONObject payload,
+         int timeoutMs,
+-        java.util.function.Consumer<String> onEvent
++        java.util.function.Consumer<String> onEvent, LocalStreamHandle handle
+     ) throws IOException, JSONException {
+         JSONObject frame = new JSONObject()
+             .put("id", nextFrameId())
+@@ -495,8 +512,9 @@
+             .put("payload", payload);
+ 
+         long deadlineElapsedMs = SystemClock.elapsedRealtime() + timeoutMs;
+-        LocalSocket socket = connectLocalAgentSocket(deadlineElapsedMs);
++        LocalSocket socket = connectLocalAgentSocket(deadlineElapsedMs, handle);
+         try {
++            handle.attach(socket);
+             writeFrameLine(socket.getOutputStream(), frame);
+             InputStream in = socket.getInputStream();
+             for (
+@@ -530,8 +548,8 @@
+                     return;
+                 }
+             }
+-            // Socket closed without a terminal frame — treat as completion.
+-            emitStreamComplete(onEvent, null);
++            // Transport EOF is not proof of completed runtime work.
++            emitStreamComplete(onEvent, "Stream ended without terminal frame; outcome unknown");
+         } finally {
+             closeQuietly(socket);
+         }
+@@ -608,12 +626,17 @@
+      * connected {@link LocalSocket}; the caller owns closing it.
+      */
+     private static LocalSocket connectLocalAgentSocket(long deadlineElapsedMs) throws IOException {
++        return connectLocalAgentSocket(deadlineElapsedMs, null);
++    }
++    private static LocalSocket connectLocalAgentSocket(long deadlineElapsedMs, LocalStreamHandle handle) throws IOException {
+         final int connectRetries = 15;
+         IOException lastError = null;
+         for (int attempt = 0; attempt <= connectRetries; attempt++) {
++            if (handle != null) handle.check();
+             remainingSocketTimeout(deadlineElapsedMs);
+             LocalSocket socket = new LocalSocket();
+             try {
++                if (handle != null) handle.attach(socket);
+                 socket.connect(new LocalSocketAddress(
+                     LOCAL_AGENT_SOCKET_NAME, LocalSocketAddress.Namespace.ABSTRACT));
+                 return socket;
+@@ -628,7 +651,15 @@
+                 }
+                 long retryDelayMs = Math.min(250L * (attempt + 1), remainingMs);
+                 try {
+-                    Thread.sleep(retryDelayMs);
++                    if (handle == null) Thread.sleep(retryDelayMs);
++                    else {
++                        long until = SystemClock.elapsedRealtime() + retryDelayMs;
++                        while (SystemClock.elapsedRealtime() < until) {
++                            handle.check();
++                            Thread.sleep(Math.min(50L, Math.max(1L, until - SystemClock.elapsedRealtime())));
++                        }
++                        handle.check();
++                    }
+                 } catch (InterruptedException interrupted) {
+                     Thread.currentThread().interrupt();
+                     throw lastError;

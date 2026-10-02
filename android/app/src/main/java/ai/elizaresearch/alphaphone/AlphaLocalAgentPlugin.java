@@ -22,7 +22,11 @@ public final class AlphaLocalAgentPlugin extends Plugin {
  private static boolean accepting=true,stopping;
  private volatile boolean disposed;
  private static final java.util.Set<PluginCall> pending=new java.util.HashSet<>();
+ private static final java.util.Map<String,ElizaAgentService.LocalStreamHandle> streams=new java.util.HashMap<>();
+ private static final java.util.Map<String,Runnable> streamInvalidators=new java.util.HashMap<>();
  private static void invalidateCalls(){
+  for(var notify:streamInvalidators.values())notify.run();streamInvalidators.clear();
+  for(var handle:streams.values())handle.cancel();streams.clear();
   for(PluginCall call:pending)call.reject("Local agent connection changed. A dispatched operation may still have completed; inspect its receipt before retrying.","LOCAL_AGENT_EPOCH_CHANGED");
   pending.clear();
  }
@@ -193,6 +197,30 @@ public final class AlphaLocalAgentPlugin extends Plugin {
   }catch(Superseded stale){rejectSuperseded(call);}
   catch(Exception error){rejectPending(call,"Local agent request failed. No automatic retry was made.");}});}
   catch(java.util.concurrent.RejectedExecutionException closed){rejectPending(call,"Local agent bridge is closed.");}
+ }
+ /** Cancellation acknowledges transport closure, never server-effect cancellation. */
+ @PluginMethod public void cancelStream(PluginCall call) {
+  String id=call.getString("streamId","");
+  synchronized(lifecycleLock){var handle=streams.remove(id);streamInvalidators.remove(id);if(handle!=null)handle.cancel();}
+  call.resolve(new JSObject().put("transportClosed",true).put("outcome","unknown"));
+ }
+ @PluginMethod public void requestStream(PluginCall call) {
+  String id=call.getString("streamId",""),path=call.getString("path",""),owner=call.getString("ownerId",""),body=call.getString("body","");
+  if(!id.matches("[A-Za-z0-9-]{16,64}")||!path.matches("^/api/conversations/[A-Za-z0-9_-]+/messages/stream$")||owner.isEmpty()||body.isEmpty()||body.length()>2*1024*1024){call.reject("Unsupported local stream.");return;}
+  final long epoch;final var handle=new ElizaAgentService.LocalStreamHandle();
+  try{synchronized(lifecycleLock){epoch=admittedEpoch();if(streams.size()>=2||streams.containsKey(id))throw new IllegalStateException();streams.put(id,handle);streamInvalidators.put(id,()->notifyListeners("alphaAgentStream",new JSObject().put("streamId",id).put("event",new JSObject().put("type","complete").put("error","Local connection changed. Outcome unknown; check history before retrying."))));}}
+  catch(Exception unavailable){call.reject("Local stream unavailable.");return;}
+  final JSONObject supplied=call.getObject("headers");
+  call.resolve(new JSObject().put("streamId",id));
+  try{workers.execute(()->{try{
+   String token=enroll(epoch);JSONObject headers=new JSONObject().put("Authorization","Bearer "+token).put("Accept","text/event-stream").put("Content-Type","application/json");
+   if(supplied!=null)for(String key:new String[]{"X-Eliza-Device-Id","X-Eliza-Device-Key","X-Eliza-Device-Capabilities"})if(supplied.has(key)){String value=supplied.getString(key);if(value.length()>2048||value.contains("\r")||value.contains("\n"))throw new IllegalArgumentException();headers.put(key,value);}
+   synchronized(lifecycleLock){requireCurrent(epoch);if(!owner.equals(ownerIdentity)||streams.get(id)!=handle)throw new Superseded();}
+   JSONObject input=new JSONObject().put("path",path).put("method","POST").put("body",body).put("headers",headers).put("timeoutMs",120000);
+   ElizaAgentService.requestLocalAgentStream(input.toString(),event->{synchronized(lifecycleLock){try{requireCurrent(epoch);if(streams.get(id)!=handle)return;JSONObject value=new JSONObject(event);if("response".equals(value.optString("type"))&&value.optInt("status")==401)clearEnrollment();notifyListeners("alphaAgentStream",new JSObject().put("streamId",id).put("event",value));}catch(Exception ignored){}}},handle);
+  }catch(Exception error){synchronized(lifecycleLock){if(streams.get(id)==handle)notifyListeners("alphaAgentStream",new JSObject().put("streamId",id).put("event",new JSObject().put("type","complete").put("error","Stream interrupted. Outcome unknown; check history before retrying.")));}}
+  finally{synchronized(lifecycleLock){if(streams.get(id)==handle){streams.remove(id);streamInvalidators.remove(id);}handle.cancel();}}});}
+  catch(java.util.concurrent.RejectedExecutionException closed){synchronized(lifecycleLock){streams.remove(id);streamInvalidators.remove(id);handle.cancel();}notifyListeners("alphaAgentStream",new JSObject().put("streamId",id).put("event",new JSObject().put("type","complete").put("error","Stream unavailable.")));}
  }
  @Override protected void handleOnDestroy(){synchronized(lifecycleLock){disposed=true;invalidateCalls();++lifecycleEpoch;clearEnrollment();}workers.shutdownNow();super.handleOnDestroy();}
 }

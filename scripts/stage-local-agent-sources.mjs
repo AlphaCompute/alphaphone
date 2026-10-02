@@ -34,10 +34,27 @@ try {
     patchedInputs.set(relative,input);
   }
 } finally { fs.rmSync(scratch,{recursive:true,force:true}); }
+// Independently hash-pinned stream transport correction. Vendor remains pristine.
+const streamProvenance=JSON.parse(fs.readFileSync(path.join(root,'patches/eliza/android-stream-cancellation-source.json'),'utf8'));
+const streamPatch=path.join(root,'patches/eliza',streamProvenance.patch);
+if(streamProvenance.baseCommit!==pin||digest(fs.readFileSync(streamPatch))!==streamProvenance.patchSha256)throw Error('Stream patch provenance drift');
+const streamScratch=fs.mkdtempSync(path.join(os.tmpdir(),'alpha-native-stream-'));
+try{
+ for(const [relative,hashes] of Object.entries(streamProvenance.files)){
+  if(patchedInputs.has(relative))throw Error('Overlapping native patches require explicit composition');
+  const input=fs.readFileSync(path.join(upstream,relative));if(digest(input)!==hashes.sourceSha256)throw Error('Stream source drift');
+  const destination=path.join(streamScratch,relative);fs.mkdirSync(path.dirname(destination),{recursive:true});fs.writeFileSync(destination,input);
+ }
+ execFileSync('git',['apply','--check',streamPatch],{cwd:streamScratch,stdio:'pipe',timeout:20000});
+ execFileSync('git',['apply',streamPatch],{cwd:streamScratch,stdio:'pipe',timeout:20000});
+ for(const [relative,hashes] of Object.entries(streamProvenance.files)){
+  const input=fs.readFileSync(path.join(streamScratch,relative),'utf8');if(digest(input)!==hashes.patchedSha256)throw Error('Stream patch output drift');patchedInputs.set(relative,input);
+ }
+}finally{fs.rmSync(streamScratch,{recursive:true,force:true});}
 const classes=['SecureStoreFrameInput','AgentSecureStore','DeviceRamTierPolicy','ElizaAgentService','ElizaAgentWatchdogPolicy','ElizaAssetExtractionPolicy','ElizaBionicInferenceServer','ElizaStartupTrace','ElizaWorkScheduler','ElizaTasksWorker','InferenceMemoryPolicy','RuntimeInstallationIdentity','ChromiumBrowserConnection','BionicDecodeLoop','ElizaVoiceNative','BgeEmbeddingSession'];
 const output=path.join(root,'android/app/build/generated/local-agent/java');
 const target=path.join(output,...identity.split('.'));fs.mkdirSync(target,{recursive:true});
-const manifest={pin,identity,patches:[provenance],files:[]};
+const manifest={pin,identity,patches:[provenance,streamProvenance],files:[]};
 for(const name of classes){
   const relative=`packages/app/platforms/android/app/src/main/java/ai/elizaos/app/${name}.java`;
   const input=patchedInputs.get(relative)??fs.readFileSync(path.join(upstream,relative),'utf8');
@@ -50,7 +67,7 @@ for(const name of classes){
     value=value.replace(anchor,anchor+`\n            agentEnv.put("ELIZA_ANDROID_SECURE_STORE_SOCKET", "${identity}.secure-store");\n            try { AlphaLocalAgentPlugin.configureEnvironment(this, agentEnv); } catch (java.io.IOException unavailable) { currentStatus = "provider-unavailable"; updateNotification(); return; }`);
   }
   fs.writeFileSync(path.join(target,name+'.java'),value);
-  manifest.files.push({path:relative,sourceSha256:provenance.files[relative]?.sourceSha256??(patchedInputs.has(relative)?null:digest(input)),sha256:digest(input),generatedSha256:createHash('sha256').update(value).digest('hex')});
+  manifest.files.push({path:relative,sourceSha256:streamProvenance.files[relative]?.sourceSha256??provenance.files[relative]?.sourceSha256??(patchedInputs.has(relative)?null:digest(input)),sha256:digest(input),generatedSha256:createHash('sha256').update(value).digest('hex')});
 }
 const identitySource='plugins/plugin-native-browser-surface/android/src/main/java/ai/eliza/plugins/browsersurface/ChromiumBrowserIdentity.java';
 const browserTarget=path.join(output,'ai/eliza/plugins/browsersurface');fs.mkdirSync(browserTarget,{recursive:true});

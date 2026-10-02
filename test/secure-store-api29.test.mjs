@@ -9,7 +9,7 @@ const root=path.resolve(import.meta.dirname,'..');
 test('pinned generated secure-store helper reads bounded actual bytes on the Java 8 API',()=>{
   const fixture=fs.mkdtempSync(path.join(os.tmpdir(),'alpha-frame-test-'));
   try {
-    for(const relative of ['scripts/stage-local-agent-sources.mjs','patches/eliza/android-secure-store-api29.patch','patches/eliza/android-secure-store-api29-source.json','upstream.lock.json','app.config.json']) {
+    for(const relative of ['scripts/stage-local-agent-sources.mjs','patches/eliza/android-secure-store-api29.patch','patches/eliza/android-secure-store-api29-source.json','patches/eliza/android-stream-cancellation.patch','patches/eliza/android-stream-cancellation-source.json','upstream.lock.json','app.config.json']) {
       fs.mkdirSync(path.dirname(path.join(fixture,relative)),{recursive:true});
       fs.copyFileSync(path.join(root,relative),path.join(fixture,relative));
     }
@@ -23,7 +23,14 @@ test('pinned generated secure-store helper reads bounded actual bytes on the Jav
     assert.ok(!store.includes('readNBytes('));
     assert.equal(store.match(/SecureStoreFrameInput.readBounded/g)?.length,2);
     const manifest=JSON.parse(fs.readFileSync(path.join(generated,'source-manifest.json')));
-    assert.equal(manifest.patches.length,1);
+    assert.deepEqual(manifest.patches.map(p=>p.patch),['android-secure-store-api29.patch','android-stream-cancellation.patch']);
+    for(const name of ['android-secure-store-api29-source.json','android-stream-cancellation-source.json']){
+      const expected=JSON.parse(fs.readFileSync(path.join(root,'patches/eliza',name)));
+      assert.deepEqual(manifest.patches.find(p=>p.patch===expected.patch),expected);
+      for(const [relative,hashes] of Object.entries(expected.files)){
+        const entry=manifest.files.find(f=>f.path===relative);assert.equal(entry.sourceSha256,hashes.sourceSha256);assert.equal(entry.sha256,hashes.patchedSha256);
+      }
+    }
     assert.equal(manifest.files.find(f=>f.path.endsWith('/SecureStoreFrameInput.java')).sourceSha256,null);
     const harness=`package ${identity};
 import java.io.*;
