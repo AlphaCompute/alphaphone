@@ -735,6 +735,7 @@
       <p role="status" aria-live="polite" style="font-size:14px;line-height:1.5;margin-top:18px">{{calendar.clock.message}}</p>
     </div>
   </sc-if>
+  <sc-if value="{{calendar.browserRecovery}}" hint-placeholder-val="{{false}}"><button aria-label="Recover browser calendar" onClick="{{calendar.openBrowserRecovery}}" style="margin:0 16px 8px;padding:12px;border-radius:12px;background:var(--s2);color:var(--fg)">Calendar recovery</button></sc-if>
   <sc-if value="{{calendar.nativeStatusLabel}}" hint-placeholder-val="{{false}}"><button aria-label="Retry calendar and reminders" onClick="{{calendar.nativeStatusRetry}}" style="margin: 0 16px 8px; padding: 10px 12px; border-radius: 12px; background: var(--s2); color: var(--fg); text-align: left; font-size: 13px">{{calendar.nativeStatusLabel}}</button></sc-if>
   <div style="display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); padding: 4px 12px 8px; flex-shrink: 0">
     <sc-for list="{{calendar.week}}" as="w" hint-placeholder-count="7">

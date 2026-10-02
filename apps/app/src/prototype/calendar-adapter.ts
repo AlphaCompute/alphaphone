@@ -1,3 +1,4 @@
+import {openCalendarRecovery} from '../browser/calendar-recovery';
 import { registerPlugin } from '../platform-plugins';
 import { Capacitor } from '@capacitor/core';
 import { DailyApps } from '../daily';
@@ -18,7 +19,7 @@ function wallTime(off:number,hours:number):Date|null {
 export function installCalendarAdapter(Component: any, views: Bag) {
   const p=Component.prototype, mount=p.componentDidMount, unmount=p.componentWillUnmount;
   const render=views.calendar.render;
-  let owner:any, calendars:Bag[]=[], status='Not connected', loading=false, generation=0;
+  let owner:any, calendars:Bag[]=[], status='Not connected', loading=false, generation=0, loadFailed=false;
   let agentSelection:Bag|undefined,agentSelectionKey='',agentSelectionEpoch=0;
   p.calendarSelection=function(){const state=this.vget('calendar');if(agentSelection?.kind==='calendar-source')return state.form?.cal===agentSelection.formCal?{kind:'calendar-source',id:agentSelection.id,revision:agentSelection.revision,accountId:agentSelection.id,sourceRevision:agentSelection.revision}:undefined;return agentSelection&&state.open===agentSelection.open?{kind:'calendar-event',id:agentSelection.id,revision:agentSelection.revision,accountId:agentSelection.accountId,sourceRevision:agentSelection.sourceRevision}:undefined;};
   type Range={begin:number;end:number;key:string};
@@ -43,7 +44,7 @@ export function installCalendarAdapter(Component: any, views: Bag) {
       owner.vset('calendar',{nativeCalendarStatus:status});return;
     }
     agentSelection=undefined;agentSelectionKey='';agentSelectionEpoch++;
-    const currentOwner=owner,range=desired||rangeFor(owner.vget('calendar')), token=++generation;desired=range;attemptedKey=range.key;runningToken=token;loading=true;status='Loading calendars…';
+    const currentOwner=owner,range=desired||rangeFor(owner.vget('calendar')), token=++generation;desired=range;attemptedKey=range.key;runningToken=token;loading=true;loadFailed=false;status='Loading calendars…';
     try {
       if(request) {const permission=await calendar.requestAccess();if(owner!==currentOwner||token!==generation)return;if(permission.status!=='granted'){loadedKey='';status='Calendar access denied';calendars=[];currentOwner.nativeCalendarRows=[];await currentOwner.refreshReminders();return;}}
       const result=await calendar.list({begin:range.begin,end:range.end});
@@ -53,7 +54,7 @@ export function installCalendarAdapter(Component: any, views: Bag) {
       currentOwner.nativeCalendarRows=result.events.map(mapEvent);
       await currentOwner.refreshReminders();
       if(request)currentOwner.calendarWriteUncertain=false;
-    }catch{if(owner===currentOwner&&token===generation){loadedKey='';status='Calendar range could not be loaded. Open device calendars to retry.';}}
+    }catch{if(owner===currentOwner&&token===generation){loadedKey='';loadFailed=true;status=Capacitor.isNativePlatform()?'Calendar range could not be loaded. Open device calendars to retry.':'Browser calendar could not be loaded. Retry or open Calendar recovery.';}}
     finally{if(runningToken===token){loading=false;if(token!==generation&&attemptedKey===range.key)attemptedKey='';}if(owner===currentOwner){currentOwner.vset('calendar',{nativeCalendarStatus:status});if(desired?.key!==attemptedKey)schedule();}}
   }
   let navigationEpoch=0;
@@ -88,6 +89,7 @@ export function installCalendarAdapter(Component: any, views: Bag) {
     out.emptyText=rangeReady?(truncated?'Calendar results incomplete. Some events may be missing.':reminderStale?'Reminders unavailable. Retry before relying on this schedule.':'Free all day'):status;
     out.nativeStatusLabel=[rangeReady&&truncated?'Calendar results incomplete. Some events may be missing.':'',reminderStale?'Reminders may be out of date. Tap to retry.':''].filter(Boolean).join(' ');
     out.nativeStatusRetry=()=>{void refresh(false,true);void owner?.refreshReminders();};
+    out.browserRecovery=!Capacitor.isNativePlatform()&&loadFailed&&!loading;out.openBrowserRecovery=openCalendarRecovery;
     if(!rangeReady&&!state.open&&!state.form)out.empty=true;
     const allDay=(state.events||[]).filter((e:Bag)=>e.alphaCalendarId&&e.allDay);
     const day=Number(state.day||0),onDay=(off:number)=>allDay.filter((e:Bag)=>off>=e.off&&off<e.nativeAllDayEndOff);
