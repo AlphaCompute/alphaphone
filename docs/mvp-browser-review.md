@@ -3,7 +3,7 @@
 Latest full integration checkpoint: **454/454 browser tests** on committed `18969d2`, covering all browser tests then present. See [October 2 simulator integration and reminder-time review](#october-2--simulator-integration-and-reminder-time-review). Pending shared-checkout changes remain outside this evidence. The MVP goal remains open.
 
 
-Latest targeted checkpoint: the development reminder proposal path resolves wall-clock time in code and rejects ambiguous instants. Five isolated tests pass; final repository verification is recorded below.
+Latest targeted checkpoint: [Privacy copy and real navigation coverage](#october-2--privacy-copy-and-real-navigation-coverage) passed 90 corrected browser checks, then 28 affected real-screen checks and two settled visual checks, plus repository verification.
 
 October 1 architecture change: the user has selected an **Android-resident agent instead of Nitro/TEE hosting**. The [on-device agent plan](on-device-agent-plan.md) supersedes cloud-only and enclave-primary requirements below. Agent execution and model inference are separate: the current implementation runs orchestration locally and uses hosted Cerebras inference. Historical evidence is retained. Powered-off-phone execution needs explicit scope reconciliation.
 
@@ -1103,3 +1103,14 @@ Five isolated tests cover ordinary seasonal offsets, a fractional-hour zone, mal
 A separate live availability check found the previous dev process had exited with code 143. The local stack was restarted; browser-bridge owner lookup and workflow status both returned HTTP 200, with owner role and workflow manual-submission protocol 1. That establishes recovered authenticated availability, not an executed workflow or a live approved device action. Initial failure and recovered status evidence are retained separately.
 
 Concurrent confidentiality-copy, provider/model, redaction and research changes remain outside this checkpoint. Deep saved-record validation, full real-agent/provider journeys, Scan correction/searchable PDF, browser-family media qualification, native process/device and user acceptance remain open. The full MVP goal remains active.
+
+
+## October 2 — Privacy copy and real navigation coverage
+
+Settings now calls the page Privacy & data, matching local-agent architecture rather than enclave hosting. Reference/mock seed copy no longer asserts enclave sealing or passed attestation. Outside mock mode, the actual Privacy page states that redaction is not connected and the on-device model is not loaded. Prototype permission counts, activity totals and memory sizes are replaced with Review access/Not connected. This is disclosure correction, not implementation of redaction, privacy inventory, memory management or offline inference. Mock mode remains explicitly labeled simulated data and actions.
+
+Review found a material test-coverage error in the pending confidentiality suite: `start=` is honored only in fixture/mock mode, so non-mock cases were repeatedly checking Home. The corrected real-mode tests click visible controls and assert the active view, then navigate Settings pages explicitly. Mock-state checks remain separate. The original interrupted run is not treated as broad real-screen evidence.
+
+On the frozen snapshot based on `7130ead`, **90/90 corrected browser checks** passed: 28 real production/development journeys, 54 labeled mock previews and eight Messages attachment tests. After removing the additional unverified Privacy counts, **28/28 affected real-screen checks** passed. Screenshots initially caught transitions; two final Privacy checks wait for finite animations, pass, and produce visually inspected settled layouts. **88/88 repository tests**, TypeScript and web build passed. The added PNG test verifies retained binary bytes and decoded dimensions after reload; the PDF test verifies the downloaded original bytes and one-page document. Evidence and source hashes are in `test-results/privacy-copy-sync/`. Rebase adds only completion-plan documentation from `a6a5078`.
+
+The full 454-case browser checkpoint predates these changes. Pending local Workflow execution, provider/model, runtime redaction and research changes remain outside this snapshot. Actual privacy inventory/redaction integration, deep saved-record validation, live agent/provider journeys, Scan correction/searchable PDF, browser-family media qualification and native/device/user acceptance remain open. No Android build ran, and the full MVP goal remains active.

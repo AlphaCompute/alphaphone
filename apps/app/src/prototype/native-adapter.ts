@@ -181,10 +181,12 @@ export function installPrototypeNativeAdapters(
         : walk(child, module, st, api, path + key + '.');
     }
     if (module === 'settings') {
-      if (result.big === 'Sealed') { result.big = 'Not verified'; result.sub = 'Hardware attestation is not connected'; }
-      if (result.label === 'Privacy & Enclave') result.val = 'Not verified';
+      if (result.big === 'Redaction on') { result.big = 'Not active'; result.sub = 'Pre-egress redaction is not connected'; }
+      if (result.label === 'Privacy & data') result.val = 'Review';
       if (result.label === 'Leaves this device') result.val = 'Depends on active services';
       if (result.label === 'On-device model') result.val = 'Not loaded';
+      if (st.page === 'privacy' && ['Microphone','Location','Camera','Contacts'].includes(result.label)) result.val = 'Review access';
+      if (st.page === 'privacy' && ['Activity','Memory'].includes(result.label)) result.val = 'Not connected';
     }
     return result;
   }
