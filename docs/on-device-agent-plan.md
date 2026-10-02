@@ -6,7 +6,7 @@ The user has replaced the Nitro/TEE agent-hosting direction with an agent runnin
 
 The target puts orchestration, conversation state, tool policy, approvals, receipts and scheduling on the phone. The Alpha renderer remains separate from the runtime and keeps its existing native selected-content boundaries. Cloud login must not be required merely to start the local agent. External accounts still require their own consent, and external inference still requires an explicitly configured provider.
 
-**Inference is a separate decision awaiting clarification.** The proposed first slice runs the agent locally with an explicitly selected hosted model, reusing the existing provider integration. It must disclose that selected prompt/context leaves the device. A fully local language model needs a separately qualified engine/model, memory and thermal measurements, and offline task-quality evidence. On-device speech remains required either way. This document does not choose or download a model.
+**Execution and inference remain separate.** The implemented first slice runs the agent locally with an explicitly configured hosted Cerebras model, reusing the existing provider integration. This describes the current implementation, not acceptance of a fully offline model. It must disclose that selected prompt/context leaves the device. A fully local language model needs a separately qualified engine/model, memory and thermal measurements, and offline task-quality evidence. On-device speech remains required either way. This document does not choose or download a model.
 
 ## Current source evidence
 

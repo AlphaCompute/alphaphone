@@ -358,7 +358,11 @@ export function HostedDigestPanel() {
 				</header>
 				<h1 id="digest-title">Scheduled digests</h1>
 				<p>
-					Schedules run where your selected agent runs. An on-device agent cannot run while the phone is off; browser development requires this computer and its agent process to stay running. Optional remote schedules require their host to remain available. Choose an expiring snapshot or review a read-only source from an account already connected to this agent.
+					{connection.kind==='resident'
+                        ? (isAndroid?'Your agent runs schedules on this phone. It cannot run while the phone is off.':'Schedules run on this computer while the local agent process is running.')
+                        : connection.session ? 'Schedules run on your connected agent’s host, which must remain available.' : 'Choose where your agent runs to set up scheduled digests.'}
+                </p>
+                <p>Choose an expiring snapshot or review a read-only source from an account already connected to this agent.
 				</p>
 				<p role="status">{message}</p>
                 {!isAndroid&&browserLocalAgentEnabled&&connection.kind==='resident'&&<p>Development results and pending requests are saved unencrypted in this computer’s private agent profile. Browser notifications are unavailable.</p>}
