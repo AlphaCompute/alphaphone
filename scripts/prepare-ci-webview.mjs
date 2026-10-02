@@ -58,6 +58,69 @@ export function verifyMetadata(signature, badging, manifest) {
   require(manifest.includes('com.android.webview.WebViewLibrary') && manifest.includes('libwebviewchromium.so') && !manifest.includes('E: uses-static-library'), 'Unexpected external provider dependency');
 }
 
+// Device-mapper indices vary across boots; resolve only the named scratch device.
+export function scratchBackingBytes(run, { requireDataBacking = false } = {}) {
+  const inventory = run('shell', 'dmctl', 'list', 'devices');
+  require(inventory.startsWith('Available Device Mapper Devices:'), 'Unknown device-mapper inventory');
+  const rows = inventory.split(/\r?\n/).filter(line => /^\s*scratch(?=\s|:|$)/.test(line));
+  require(rows.length <= 1, 'Ambiguous scratch mapping');
+  if (!rows.length) return null;
+  const match = /^scratch\s*:\s*(\d+):(\d+)\s*$/.exec(rows[0]);
+  require(match, 'Malformed scratch mapping');
+  const sysPath = `/sys/dev/block/${match[1]}:${match[2]}`;
+  require(run('shell', 'cat', `${sysPath}/dm/name`).trim() === 'scratch', 'Scratch mapping identity drift');
+  if (requireDataBacking) {
+    require(run('shell', 'ls', '-1', `${sysPath}/slaves`).trim() === 'vdc',
+      'Scratch is not on the proven userdata backing device');
+  }
+  const sectors = run('shell', 'cat', `${sysPath}/size`).trim();
+  require(/^[0-9]+$/.test(sectors) && Number.isSafeInteger(Number(sectors) * 512), 'Unknown scratch size');
+  return Number(sectors) * 512;
+}
+
+// This SDK image omits the whole-device by-name alias needed by liblp when
+// ImageManager maps /data-backed scratch. Derive its identity from the mounted
+// userdata device; never format or relabel a guessed dm-N device.
+export function ensureScratchBackingAlias(run, admit) {
+  admit();
+  require(run('shell', 'getprop', 'ro.build.fingerprint').trim() ===
+    'Android/sdk_phone64_x86_64/emu64x:15/AE3A.240806.019/12368160:userdebug/test-keys',
+  'Unreviewed image for scratch backing alias repair');
+  const mounts = run('shell', 'cat', '/proc/mounts').trim().split(/\r?\n/)
+    .map(line => line.split(/\s+/)).filter(fields => fields[1] === '/data');
+  require(mounts.length === 1 && mounts[0][2] === 'ext4' &&
+    /^\/dev\/block\/dm-[0-9]+$/.test(mounts[0][0]), 'Unexpected userdata mount');
+  const device = path.basename(mounts[0][0]);
+  require(run('shell', 'cat', `/sys/class/block/${device}/dm/name`).trim() === 'userdata',
+    'Mounted data is not the userdata mapper');
+  require(run('shell', 'ls', '-1', `/sys/class/block/${device}/slaves`).trim() === 'vdc',
+    'Unexpected userdata backing devices');
+  const physical = '/dev/block/vdc';
+  const alias = '/dev/block/by-name/vdc';
+  require(run('shell', 'readlink', '-f', '/dev/block/by-name').trim() === '/dev/block/by-name',
+    'Unexpected backing alias directory');
+  const sysDevice = run('shell', 'cat', '/sys/class/block/vdc/dev').trim();
+  const statDevice = run('shell', 'stat', '-c', '%t:%T', physical).trim();
+  require(/^\d+:\d+$/.test(sysDevice) && /^[0-9a-f]+:[0-9a-f]+$/i.test(statDevice) &&
+    statDevice.split(':').map(value => parseInt(value, 16)).join(':') === sysDevice,
+  'Backing block node identity mismatch');
+  run('shell', 'test', '-b', physical);
+  const inspect = () => run('shell', 'sh', '-c',
+    "'if [ -L /dev/block/by-name/vdc ]; then readlink /dev/block/by-name/vdc; elif [ -e /dev/block/by-name/vdc ]; then echo NON_SYMLINK; else echo MISSING; fi'").trim();
+  let previous = inspect();
+  require(previous === 'MISSING' || previous === physical, 'Conflicting scratch backing alias');
+  if (previous === 'MISSING') {
+    admit(); // Re-admit immediately before the only mutation.
+    require(inspect() === 'MISSING', 'Scratch backing alias changed during admission');
+    // -T refuses a raced directory; omitting -f prevents replacement of any entry.
+    run('shell', 'ln', '-sT', physical, alias);
+  }
+  require(inspect() === physical && run('shell', 'readlink', '-f', alias).trim() === physical,
+    'Scratch backing alias did not resolve to the proven userdata backing device');
+  return { image: 'AE3A.240806.019/12368160', userdataMapper: device,
+    backingDevice: physical, deviceNumber: sysDevice, alias, created: previous === 'MISSING' };
+}
+
 // Failure evidence only: one shared budget, no retries, mutations or guessed block targets.
 export function collectOverlayFailureDiagnostics({ environment, sdkEnvironment, execute, now = Date.now, hostPaths = { workspace: process.cwd(), androidSdk: sdkEnvironment.ANDROID_HOME, home: process.env.HOME }, statfs = fs.statfsSync, userspaceOnly = false, stockBackup }) {
   const deadline = now() + 20000;
@@ -136,6 +199,12 @@ export async function main({ environment = process.env, execute = execFileSync, 
   const scratchProperty = 'fs_mgr.overlayfs.data_scratch_size_mb';
   const configureScratch = () => {
     safe(); // Every property mutation is confined to the fresh hosted fixture.
+    if (!state.scratchBackingAliases) {
+      require(scratchBackingBytes(run) === null, 'Existing scratch requires a fresh disposable fixture');
+    }
+    state.scratchBackingAliases ??= [];
+    state.scratchBackingAliases.push(ensureScratchBackingAlias(run, safe));
+    save();
     const previous = run('shell', 'getprop', scratchProperty).trim();
     require(previous === '' || previous === '512', 'Unexpected existing scratch size policy');
     run('shell', 'setprop', scratchProperty, '512');
@@ -220,6 +289,10 @@ export async function main({ environment = process.env, execute = execFileSync, 
     configureScratch(); // Non-persistent property is reset by reboot.
     const remount = run('remount');
     require(/remount succeeded/i.test(remount) && !/reboot/i.test(remount), 'Remount requires manual review');
+    safe();
+    state.scratchBytes = scratchBackingBytes(run, { requireDataBacking: true });
+    require(state.scratchBytes === 512 * 1024 * 1024, 'Expected 512MiB data scratch was not established');
+    save();
     captureStorage('remounted');
     safe();
     require(stockPath(run('shell', 'pm', 'path', candidate.package), run('shell', 'dumpsys', 'package', candidate.package)) === stock, 'Stock path changed');

@@ -61,7 +61,7 @@ async function simulate({ drift, neverBoot = false, neverReady = false } = {}) {
   const stock = '/product/app/webview/webview.apk', stockHash = 'a'.repeat(64);
   const signature = `Verified using v2 scheme (APK Signature Scheme v2): true\nSigner #1 certificate SHA-256 digest: ${candidate.certificateSha256}`;
   const badging = `package: name='com.android.webview' versionCode='808300007' versionName='157.0.8083.0'\nsdkVersion:'29'\ntargetSdkVersion:'37'\nnative-code: 'x86_64'`;
-  let scratch = '';
+  let scratch = '', backingAlias = 'MISSING';
   const execute = (file, args) => {
     const name = path.basename(file);
     if (name === 'curl') { const fd = fs.openSync(args.at(-1), 'wx'); fs.ftruncateSync(fd, candidate.size); fs.closeSync(fd); return ''; }
@@ -70,12 +70,27 @@ async function simulate({ drift, neverBoot = false, neverReady = false } = {}) {
     if (name === 'aapt') return args.includes('badging') ? badging : 'com.android.webview.WebViewLibrary libwebviewchromium.so';
     assert.equal(name, 'adb'); assert.deepEqual(args.slice(0, 2), ['-s', 'emulator-5554']);
     const a = args.slice(2), key = a.join(' '); calls.push(key);
-    if (key === 'reboot') { rebooted = true; offline = 1; scratch = ''; return ''; }
+    if (key === 'reboot') { rebooted = true; offline = 1; scratch = ''; backingAlias = 'MISSING'; return ''; }
     if (key === 'shell getprop sys.boot_completed') {
       if (offline-- > 0 || neverBoot) throw Error('device offline');
       return '1';
     }
     if (key.startsWith('shell service check ')) return `Service ${a.at(-1)}: found`;
+    if (key === 'shell dmctl list devices') return `Available Device Mapper Devices:\n${rebooted || drift === 'cached-scratch' ? 'scratch : 254:5\n' : ''}`;
+    if (key === 'shell ls -1 /sys/dev/block/254:5/slaves') return drift === 'super-scratch' ? 'vda2' : 'vdc';
+    if (key === 'shell cat /sys/dev/block/254:5/dm/name') return 'scratch';
+    if (key === 'shell cat /sys/dev/block/254:5/size') return drift === 'small-scratch' || drift === 'cached-scratch' ? '92280' : '1048576';
+    if (key === 'shell getprop ro.build.fingerprint') return 'Android/sdk_phone64_x86_64/emu64x:15/AE3A.240806.019/12368160:userdebug/test-keys';
+    if (key === 'shell cat /proc/mounts') return '/dev/block/dm-43 /data ext4 rw 0 0';
+    if (key === 'shell cat /sys/class/block/dm-43/dm/name') return 'userdata';
+    if (key === 'shell ls -1 /sys/class/block/dm-43/slaves') return drift === 'backing-device' ? 'vdd' : 'vdc';
+    if (key === 'shell cat /sys/class/block/vdc/dev') return '253:32';
+    if (key === 'shell stat -c %t:%T /dev/block/vdc') return 'fd:20';
+    if (key === 'shell test -b /dev/block/vdc') return '';
+    if (key.startsWith('shell sh -c ')) return drift === 'backing-alias' ? '/dev/block/vdd' : backingAlias;
+    if (key === 'shell ln -sT /dev/block/vdc /dev/block/by-name/vdc') { assert.equal(backingAlias, 'MISSING'); backingAlias = '/dev/block/vdc'; return ''; }
+    if (key === 'shell readlink -f /dev/block/by-name') return '/dev/block/by-name';
+    if (key === 'shell readlink -f /dev/block/by-name/vdc') return '/dev/block/vdc';
     if (key === 'shell getprop fs_mgr.overlayfs.data_scratch_size_mb') return drift === 'scratch-existing' ? '2048' : drift === 'scratch-unapplied' ? '' : scratch;
     if (key === 'shell setprop fs_mgr.overlayfs.data_scratch_size_mb 512') { scratch = '512'; return ''; }
     if (['shell df -k /data /metadata /product', 'shell cat /proc/mounts', 'shell cat /proc/partitions', 'shell lpdump', 'shell dmesg'].includes(key)) return 'synthetic bounded storage diagnostics';
@@ -119,6 +134,9 @@ test('full provider command sequence survives one offline reboot and delayed REL
   assert.ok(r.calls.indexOf('shell logcat -d -b all -t 400') < r.calls.indexOf('reboot'));
   assert.equal(r.calls.filter(c => c === 'shell setprop fs_mgr.overlayfs.data_scratch_size_mb 512').length, 2);
   assert.ok(r.calls.indexOf('shell setprop fs_mgr.overlayfs.data_scratch_size_mb 512') < r.calls.indexOf('disable-verity'));
+  assert.equal(r.calls.filter(c => c === 'shell ln -sT /dev/block/vdc /dev/block/by-name/vdc').length, 2);
+  assert.ok(r.calls.indexOf('shell ln -sT /dev/block/vdc /dev/block/by-name/vdc') < r.calls.indexOf('disable-verity'));
+  assert.equal(r.result.scratchBackingAliases.length, 2);
   assert.equal(r.selectionReads, 2); assert.equal(r.stopped, false);
   assert.ok(r.calls.indexOf('shell stop') < r.calls.indexOf('shell rm /product/app/webview/webview.apk'));
   assert.ok(r.calls.indexOf('shell rm /product/app/webview/webview.apk') < r.calls.indexOf('shell start'));
@@ -214,5 +232,27 @@ test('stock backup failure retains original error, provenance and bounded read-o
       else { assert.ok(d.admissionStopped); assert.deepEqual(d.guest, {}); }
       assert.ok(!calls.some(c => /^(root|remount|reboot|install|shell (rm|setprop|stop|start))\b/.test(c)));
     } finally { fs.rmSync(parent, { recursive: true, force: true }); }
+  }
+});
+
+test('provider preparation refuses userdata or alias drift before verity/provider changes', async () => {
+  for (const drift of ['backing-device', 'backing-alias']) {
+    const r = await simulate({ drift });
+    assert.ok(r.error);
+    assert.equal(r.calls.includes('disable-verity'), false);
+    assert.equal(r.calls.some(call => call.startsWith('shell ln ')), false);
+    assert.equal(r.removed, false); assert.equal(r.installed, false);
+  }
+});
+
+test('cached or undersized scratch never qualifies provider replacement', async () => {
+  for (const drift of ['cached-scratch', 'small-scratch', 'super-scratch']) {
+    const r = await simulate({ drift });
+    assert.match(r.error.message, /Existing scratch|512MiB data scratch|proven userdata backing/);
+    assert.equal(r.removed, false); assert.equal(r.installed, false);
+    if (drift === 'cached-scratch') {
+      assert.equal(r.calls.includes('disable-verity'), false);
+      assert.equal(r.calls.some(call => call.startsWith('shell ln ')), false);
+    }
   }
 });

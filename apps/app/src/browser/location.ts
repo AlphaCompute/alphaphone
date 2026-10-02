@@ -1,7 +1,8 @@
+import {browserScreenLocked} from './screen-locked';
 import {readLocationSimulation,locationSimulationKey} from './location-simulation';
 import { WebPlugin } from '@capacitor/core';
 import {browserSensorEnabled} from './sensor-policy';
-const foreground=()=>!document.hidden&&document.documentElement.dataset.devBackground!=='true'&&!document.querySelector('[aria-label="Unlock with fingerprint"], [aria-label="Wake"]')?.getClientRects().length;
+const foreground=()=>!document.hidden&&document.documentElement.dataset.devBackground!=='true'&&!browserScreenLocked();
 export class BrowserLocation extends WebPlugin {
  private watches=new Map<string,{id:number;active:boolean;simulated?:boolean}>();
  private pending=new Map<string,()=>void>();

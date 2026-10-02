@@ -207,6 +207,30 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ needs.build.outputs.source_sha }}
+      # Fresh native job has its own stock hosted image; build-job cleanup does
+      # not carry over. Provision before tools, artifacts or the AVD are created.
+      - name: Provision native capacity on the disposable hosted runner
+        run: |
+          test "$GITHUB_ACTIONS" = "true"
+          test "$RUNNER_ENVIRONMENT" = "github-hosted"
+          # Fixed unused language installations only; preserve every Android SDK,
+          # source checkout, dependency cache and downloaded build artifact.
+          for unused in /usr/share/dotnet /usr/local/.ghcup /usr/local/swift /usr/share/swift /opt/ghc /usr/local/share/powershell /opt/hostedtoolcache/CodeQL; do
+            test ! -L "$unused"
+            if [ -e "$unused" ]; then
+              test -d "$unused"
+              test "$(realpath "$unused")" = "$unused"
+            fi
+          done
+          python3 -c 'import shutil; print("nativeFreshCapacityBeforeBytes="+str(shutil.disk_usage(".").free))'
+          for unused in /usr/share/dotnet /usr/local/.ghcup /usr/local/swift /usr/share/swift /opt/ghc /usr/local/share/powershell /opt/hostedtoolcache/CodeQL; do
+            if [ -e "$unused" ]; then
+              sudo du -sh "$unused"
+              sudo rm -rf -- "$unused"
+            fi
+          done
+          python3 -c 'import shutil; free=shutil.disk_usage(".").free; print("nativeFreshCapacityAfterBytes="+str(free)); assert free >= 24*1024**3, "Fresh native runner needs 24GiB before SDK, archive and AVD provisioning"'
+          # Existing 10GiB admission and 4GiB runtime floor remain unchanged.
       - uses: actions/setup-node@v4
         with:
           node-version-file: .nvmrc
@@ -251,3 +275,85 @@ jobs:
             test-results/resident-ci-supervisor/
             test-results/resident-ci/
             test-results/resident-ci-native/
+
+  recovery-ui:
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 55
+    env:
+      ALPHA_RESIDENT_MANIFEST_SHA256: ${{ needs.build.outputs.manifest_sha256 }}
+      ALPHA_RECOVERY_SOURCE_SHA: ${{ needs.build.outputs.source_sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.build.outputs.source_sha }}
+      # Fresh native job has its own stock hosted image; build-job cleanup does
+      # not carry over. Provision before tools, artifacts or the AVD are created.
+      - name: Provision native capacity on the disposable hosted runner
+        run: |
+          test "$GITHUB_ACTIONS" = "true"
+          test "$RUNNER_ENVIRONMENT" = "github-hosted"
+          # Fixed unused language installations only; preserve every Android SDK,
+          # source checkout, dependency cache and downloaded build artifact.
+          for unused in /usr/share/dotnet /usr/local/.ghcup /usr/local/swift /usr/share/swift /opt/ghc /usr/local/share/powershell /opt/hostedtoolcache/CodeQL; do
+            test ! -L "$unused"
+            if [ -e "$unused" ]; then
+              test -d "$unused"
+              test "$(realpath "$unused")" = "$unused"
+            fi
+          done
+          python3 -c 'import shutil; print("nativeFreshCapacityBeforeBytes="+str(shutil.disk_usage(".").free))'
+          for unused in /usr/share/dotnet /usr/local/.ghcup /usr/local/swift /usr/share/swift /opt/ghc /usr/local/share/powershell /opt/hostedtoolcache/CodeQL; do
+            if [ -e "$unused" ]; then
+              sudo du -sh "$unused"
+              sudo rm -rf -- "$unused"
+            fi
+          done
+          python3 -c 'import shutil; free=shutil.disk_usage(".").free; print("nativeFreshCapacityAfterBytes="+str(free)); assert free >= 24*1024**3, "Fresh native runner needs 24GiB before SDK, archive and AVD provisioning"'
+          # Existing 10GiB admission and 4GiB runtime floor remain unchanged.
+      - name: Qualify owned secondary recovery guards
+        run: python3 scripts/ci/test-recovery-ui-guard.py
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools build-tools;36.0.0
+          log-accepted-android-sdk-licenses: false
+      - name: Install exact APK inspection tools
+        run: sdkmanager "build-tools;36.0.0"
+      - uses: actions/download-artifact@v4
+        with:
+          artifact-ids: ${{ needs.build.outputs.artifact_id }}
+          path: test-results/resident-ci-archive
+          merge-multiple: true
+      - name: Require fresh capacity and KVM
+        run: |
+          python3 -c 'import shutil; assert shutil.disk_usage(".").free >= 10*1024**3'
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: default
+          arch: x86_64
+          profile: pixel_7
+          disk-size: 4096M
+          emulator-options: -no-window -gpu swiftshader -no-snapshot -noaudio -no-boot-anim
+          disable-animations: true
+          script: |
+            ANDROID_SERIAL=emulator-5554 python3 scripts/ci/resident-phase.py --name prepare-phone --seconds 300 node scripts/prepare-ci-emulator.mjs
+            ANDROID_SERIAL=emulator-5554 ALPHA_RESIDENT_DISPOSABLE_CI=1 python3 scripts/ci/resident-phase.py --name pending-recovery-ui --seconds 2400 python3 scripts/ci/pending-recovery-ui.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: pending-recovery-ui-evidence-${{ github.run_id }}
+          path: |
+            test-results/resident-ci-supervisor/
+            test-results/resident-ci/
+            test-results/pending-recovery-ui-native/

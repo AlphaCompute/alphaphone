@@ -1,3 +1,4 @@
+import {browserScreenLocked} from '../browser/screen-locked';
 import { holdPhoneInert } from './modal-inert';
 import { browserHostedResults } from '../browser/hosted-results';
 import { developmentDigestStore } from './local-agent-storage';
@@ -27,7 +28,7 @@ type Pending = {
 	body: Record<string, unknown>;
 	summary: string;
 };
-function canSyncResults(){return !document.hidden&&(isAndroid||(document.documentElement.dataset.devBackground!=='true'&&!document.querySelector('[aria-label="Unlock with fingerprint"], [aria-label="Wake"]')?.getClientRects().length));}
+function canSyncResults(){return !document.hidden&&(isAndroid||(document.documentElement.dataset.devBackground!=='true'&&!browserScreenLocked()));}
 export function HostedDigestPanel() {
 	const panel = useRef<HTMLElement>(null);
 	const connection = useSyncExternalStore(

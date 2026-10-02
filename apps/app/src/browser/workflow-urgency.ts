@@ -1,3 +1,4 @@
+import {browserScreenLocked} from './screen-locked';
 export type UrgencyDecision={urgent:boolean;reason:string;source:'agent'|'development-review'};
 const instruction='Decide whether the supplied workflow input needs immediate attention or prompt action. Routine informational content is not urgent. Consider the actual meaning, including negation, quoted text and deadlines; the presence of the word urgent alone is insufficient. Return exactly one JSON object with only urgent (a boolean) and reason (a brief string). Do not return Markdown or propose actions.';
 export async function assessWorkflowUrgency(input:string,generate:(instruction:string,input:string,signal:AbortSignal)=>Promise<string|undefined>,signal:AbortSignal):Promise<UrgencyDecision>{
@@ -9,7 +10,7 @@ export async function assessWorkflowUrgency(input:string,generate:(instruction:s
  return {urgent:value.urgent,reason:value.reason.trim(),source:'agent'};
 }
 function reviewUrgency(input:string,signal:AbortSignal):Promise<UrgencyDecision>{
- signal.throwIfAborted();const blocked=()=>document.hidden||document.documentElement.dataset.devBackground==='true'||!!document.querySelector('[aria-label="Unlock with fingerprint"], [aria-label="Wake"]')?.getClientRects().length;
+ signal.throwIfAborted();const blocked=()=>document.hidden||document.documentElement.dataset.devBackground==='true'||!!browserScreenLocked();
  if(blocked())return Promise.reject(new DOMException('Urgency review cancelled','AbortError'));
  return new Promise((resolve,reject)=>{
   const previous=document.activeElement as HTMLElement|null,dialog=document.createElement('dialog');dialog.setAttribute('aria-label','Workflow urgency');dialog.style.cssText='box-sizing:border-box;width:min(380px,92vw);max-height:85dvh;overflow:auto;border:0;border-radius:20px;padding:20px;background:var(--bg,#fff);color:var(--fg,#111);font:16px/1.4 system-ui';

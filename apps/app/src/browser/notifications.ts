@@ -1,3 +1,5 @@
+import {browserScreenLocked} from './screen-locked';
+import {focusActive,focusHoldsNotice,focusAllowedNotices} from './focus-state';
 import {listWorkflowNotices,actOnWorkflowNotice} from './workflow-notices';
 import {BrowserCalendar} from './calendar';
 import { browserHostedResults } from './hosted-results';
@@ -15,7 +17,7 @@ type DeviceEvent = Notice & {packageName:string;sourceKey:string;autoCancel:bool
 type Identity = {id:string;revision:string;source?:string};
 const key='alpha.browser.notifications.v2';
 const initial=():State=>({revision:revision(),epoch:revision(),enabled:false,paused:false,history:false,accessGranted:true,apps:[],events:[],dismissed:[],appEnabled:true,channels:{reminders:true},...readStore('alpha.browser.notification-policy.v1',()=>({}))});
-const locked=()=>document.hidden||document.documentElement.dataset.devBackground==='true'||!!document.querySelector('[aria-label="Unlock with fingerprint"], [aria-label="Wake"]')?.getClientRects().length;
+const locked=()=>document.hidden||document.documentElement.dataset.devBackground==='true'||!!browserScreenLocked();
 function trim(state:State){state.deviceEvents??=[];state.events=state.history&&state.enabled&&state.accessGranted&&!state.paused?state.events.filter(event=>event.at>Date.now()-86400000).slice(-100):[];state.dismissed=state.dismissed.slice(-500);}
 function record(state:State,row:Notice,event:string){trim(state);if(state.history&&row.packageName){state.events.push({id:crypto.randomUUID(),appLabel:row.appLabel,packageName:row.packageName,at:Date.now(),state:event});trim(state);}}
 
@@ -44,7 +46,7 @@ export class BrowserNotifications extends WebPlugin {
  async resumeCrossApp(input:{expectedRevision:string}){await editStore(key,initial,state=>{if(state.revision!==input.expectedRevision)throw Error('Settings changed. Refresh and try again.');state.paused=false;state.epoch=revision();state.revision=revision();});this.changed();return this.crossAppStatus();}
  async notificationHistory(){const state=await this.state();return {items:[...state.events].reverse()};}
  async clearNotificationHistory(){await editStore(key,initial,state=>{state.events=[];state.epoch=revision();});this.changed();}
- async status(){const state=await this.state();return {appEnabled:state.appEnabled,permissionGranted:true,interruption:readStore<{doNotDisturb?:boolean}>('alpha.browser.device.v1',()=>({})).doNotDisturb?'none':'all',channels:Object.entries(state.channels).map(([id,enabled])=>({id,name:id==='reminders'?'Reminders':id==='calendar'?'Calendar':id,importance:enabled?3:0,blocked:!enabled})),scope:'browser'};}
+ async status(){const state=await this.state();return {appEnabled:state.appEnabled,permissionGranted:true,interruption:readStore<{doNotDisturb?:boolean}>('alpha.browser.device.v1',()=>({})).doNotDisturb||focusActive()?'none':'all',channels:Object.entries(state.channels).map(([id,enabled])=>({id,name:id==='reminders'?'Reminders':id==='calendar'?'Calendar':id,importance:enabled?3:0,blocked:!enabled})),scope:'browser'};}
  async inject(input:{packageName:string;title:string;text:string;id?:string;clearable?:boolean;autoCancel?:boolean;secret?:boolean;canOpen?:boolean}){
   const app=apps.find(app=>app.packageName===input.packageName);if(!app||typeof input.title!=='string'||typeof input.text!=='string'||input.title.length>200||input.text.length>2000||input.id!==undefined&&!/^[\w-]{1,128}$/.test(input.id))throw Error('Review the event fields.');
   for(const flag of ['clearable','autoCancel','secret','canOpen'] as const)if(input[flag]!==undefined&&typeof input[flag]!=='boolean')throw Error('Review the event options.');
@@ -61,14 +63,16 @@ export class BrowserNotifications extends WebPlugin {
   });
   this.changed();return result;
  }
- async list(){
+ async list(){return this.readNotices(true);}
+ async focusSnapshot(){return this.readNotices(false);}
+ private async readNotices(applyFocus:boolean){
   const {reminders}=await this.daily.listReminders(),state=await this.state(),hidden=locked();
   const own:Notice[]=state.appEnabled&&state.channels.reminders?reminders.filter(row=>row.status==='posted'&&!state.dismissed.includes(row.occurrenceId!)).map(row=>({id:row.id,revision:row.occurrenceId!,source:'own',appLabel:'Alpha Phone',title:hidden?'Alpha Phone':row.title,text:hidden?'':row.body||'',at:row.postedAt||row.at,clearable:true,canOpen:!hidden})):[];
   let calendar:Notice[]=[],calendarStatus:'ready'|'unavailable'|'disabled'='disabled';
   if(state.appEnabled&&state.channels.calendar){try{calendar=(await this.calendar.listAlerts()).items.map(row=>({id:row.id,revision:row.revision,source:'own',appLabel:'Calendar',title:hidden?'Calendar':row.title,text:hidden?'':row.text,at:row.at,clearable:true,canOpen:!hidden}));calendarStatus='ready';}catch{calendarStatus='unavailable';}}
 
-  const external=state.deviceEvents!.filter(row=>this.allowed(state,row)).map(row=>this.observe(state,row));
-  return {scope:'browser',calendarStatus,items:[...own,...calendar,...external,...(state.appEnabled?listWorkflowNotices():[]),...await browserHostedResults.list()].sort((a,b)=>b.at-a.at).slice(0,100)};
+  const external=state.deviceEvents!.filter(row=>this.allowed(state,row)).map(row=>({...this.observe(state,row),...(!applyFocus?{revision:row.revision}:{})}));
+  return {scope:'browser',calendarStatus,items:[...[...own,...calendar,...external,...(state.appEnabled?listWorkflowNotices():[]),...await browserHostedResults.list()].filter(row=>!applyFocus||!focusHoldsNotice(row.at)),...(applyFocus&&state.appEnabled?focusAllowedNotices().filter(row=>!state.dismissed.includes(row.id)).map(row=>({...row,title:hidden?'Messages':row.title,text:hidden?'':row.text,canOpen:!hidden})):[])].sort((a,b)=>b.at-a.at).slice(0,100)};
  }
  private async external(input:Identity,opening:boolean){
   const view=await editStore(key,initial,state=>{
@@ -80,8 +84,9 @@ export class BrowserNotifications extends WebPlugin {
   });
   if(opening)window.dispatchEvent(new CustomEvent('alpha:browser-open-view',{detail:view}));this.changed();
  }
- async open(input:Identity){if(input.source==='own'&&input.id.startsWith('workflow:')){if(!(await this.state()).appEnabled)throw Error('Notifications are disabled.');return actOnWorkflowNotice(input,true);}if(input.source==='hosted')return browserHostedResults.action(input,true);if(input.source==='external')return this.external(input,true);if(locked())throw Error('Unlock to open this notification.');const {items}=await this.list();if(!items.some(row=>row.source==='own'&&row.id===input.id&&row.revision===input.revision))throw Error('Notification changed.');if(input.id.startsWith('calendar:')){await this.calendar.alertAction({...input,open:true});this.changed();return;}window.dispatchEvent(new CustomEvent('alpha:browser-open-view',{detail:'calendar'}));await this.daily.notifyReminder(input.id,input.revision);}
- async dismiss(input:Identity){if(input.source==='own'&&input.id.startsWith('workflow:')){if(!(await this.state()).appEnabled)throw Error('Notifications are disabled.');return actOnWorkflowNotice(input,false);}if(input.source==='hosted')return browserHostedResults.action(input,false);if(input.source==='external')return this.external(input,false);if(locked())throw Error('Unlock to dismiss this notification.');const {items}=await this.list();if(!items.some(row=>row.source==='own'&&row.id===input.id&&row.revision===input.revision))throw Error('Notification changed.');if(input.id.startsWith('calendar:')){await this.calendar.alertAction({...input,open:false});this.changed();return;}await editStore(key,initial,state=>{state.dismissed.push(input.revision);trim(state);});this.changed();}
+ async open(input:Identity){if(input.id.startsWith('focus:'))return this.focusAction(input,true);if(input.source==='own'&&input.id.startsWith('workflow:')){if(!(await this.state()).appEnabled)throw Error('Notifications are disabled.');return actOnWorkflowNotice(input,true);}if(input.source==='hosted')return browserHostedResults.action(input,true);if(input.source==='external')return this.external(input,true);if(locked())throw Error('Unlock to open this notification.');const {items}=await this.list();if(!items.some(row=>row.source==='own'&&row.id===input.id&&row.revision===input.revision))throw Error('Notification changed.');if(input.id.startsWith('calendar:')){await this.calendar.alertAction({...input,open:true});this.changed();return;}window.dispatchEvent(new CustomEvent('alpha:browser-open-view',{detail:'calendar'}));await this.daily.notifyReminder(input.id,input.revision);}
+ async dismiss(input:Identity){if(input.id.startsWith('focus:'))return this.focusAction(input,false);if(input.source==='own'&&input.id.startsWith('workflow:')){if(!(await this.state()).appEnabled)throw Error('Notifications are disabled.');return actOnWorkflowNotice(input,false);}if(input.source==='hosted')return browserHostedResults.action(input,false);if(input.source==='external')return this.external(input,false);if(locked())throw Error('Unlock to dismiss this notification.');const {items}=await this.list();if(!items.some(row=>row.source==='own'&&row.id===input.id&&row.revision===input.revision))throw Error('Notification changed.');if(input.id.startsWith('calendar:')){await this.calendar.alertAction({...input,open:false});this.changed();return;}await editStore(key,initial,state=>{state.dismissed.push(input.revision);trim(state);});this.changed();}
+ async focusAction(input:Identity,open:boolean){if(locked()||!(await this.list()).items.some(row=>row.id===input.id&&row.revision===input.revision))throw Error('Notification changed.');await editStore(key,initial,state=>{state.dismissed.push(input.id);trim(state);});if(open)window.dispatchEvent(new CustomEvent('alpha:browser-open-view',{detail:'messages'}));this.changed();}
  async clear(input:{items:Identity[]}){if(!Array.isArray(input.items)||input.items.length>100)throw Error('Refresh notifications.');const outcomes=[];for(const item of input.items){try{await this.dismiss(item);outcomes.push({id:item.id,status:'requested'});}catch{outcomes.push({id:item.id,status:'unavailable'});}}return {outcomes};}
  async deviceEvents(){const state=await this.state();return {items:state.deviceEvents!.map(row=>({id:row.id,revision:row.revision,appLabel:row.appLabel,packageName:row.packageName,notificationId:row.sourceKey.slice(row.packageName.length+1),title:row.title,text:row.text,clearable:row.clearable,autoCancel:row.autoCancel,secret:row.secret}))};}
  async removeDeviceEvent(input:{id:string;revision:string}){await editStore(key,initial,state=>{trim(state);const row=state.deviceEvents!.find(row=>row.id===input.id);if(!row||row.revision!==input.revision)throw Error('The device event changed.');state.deviceEvents=state.deviceEvents!.filter(event=>event.id!==row.id);if(this.allowed(state,row))record(state,row,'removed');});this.changed();}

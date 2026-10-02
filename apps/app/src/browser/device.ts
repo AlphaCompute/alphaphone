@@ -1,3 +1,4 @@
+import {focusActive} from './focus-state';
 import {installBrowserAudioSettings} from './audio-settings';
 import {installBrowserDisplay,applyBrowserDisplay} from './display';
 import { browserApps } from './apps';
@@ -5,7 +6,7 @@ import { WebPlugin } from '@capacitor/core';
 import { editStore, readStore } from './store';
 const key='alpha.browser.device.v1';
 const initial=()=>({wifiActive:true,bluetoothActive:false,cellularActive:false,airplaneMode:false,microphoneEnabled:true,locationEnabled:true,doNotDisturb:false,preAirplane:null as null|{wifiActive:boolean;bluetoothActive:boolean;cellularActive:boolean},powerSave:false,batteryPercent:100,charging:true,textScalePercent:100,brightness:100,music:70,ring:70,alarm:70});
-export const browserDeviceState=()=>({...initial(),...readStore(key,initial)});
+export const browserDeviceState=()=>{const state={...initial(),...readStore(key,initial)};return {...state,doNotDisturb:state.doNotDisturb||focusActive()};};
 export class BrowserDevice extends WebPlugin {
  constructor(){super();installBrowserAudioSettings();installBrowserDisplay();applyBrowserDisplay(readStore(key,initial));window.addEventListener('storage',event=>{if(event.key===key){applyBrowserDisplay(readStore(key,initial));window.dispatchEvent(new Event('alpha:device-settings'));window.dispatchEvent(new Event('focus'));}});}
  async setBrightness(input:{percent:number}){if(!Number.isFinite(input.percent))throw Error('Choose a brightness value.');const percent=Math.max(0,Math.min(100,Math.round(input.percent)));await editStore(key,initial,data=>{data.brightness=percent;});applyBrowserDisplay(readStore(key,initial));window.dispatchEvent(new Event('alpha:device-settings'));return {brightness:percent};}
@@ -28,7 +29,7 @@ export class BrowserDevice extends WebPlugin {
  async requestRole(input:{role:string}){if(!['home','assistant','dialer','sms'].includes(input.role))throw Error('Choose a device role.');await editStore<Record<string,boolean>,void>('alpha.browser.roles.v1',()=>({}),roles=>{roles[input.role]=true;});return {role:input.role,held:true,resultCode:-1};}
  async snapshot(){
   const permissionStates:Record<string,string>={};for(const [label,name] of [['Camera','camera'],['Microphone','microphone'],['Location','geolocation']]){try{permissionStates[label]=(await navigator.permissions.query({name:name as PermissionName})).state;}catch{permissionStates[label]='unknown';}}
-  return {...readStore(key,initial),readAt:Date.now(),model:'Browser development device',manufacturer:navigator.platform,appVersion:'0.1.0',androidRelease:'Browser',build:'Development',securityPatch:'Browser managed',uptimeMs:performance.now(),permissionStates,permissions:Object.fromEntries(Object.entries(permissionStates).map(([name,state])=>[name,state==='granted'])),locationAccess:permissionStates.Location==='granted'?'browser':'none'};
+  return {...browserDeviceState(),readAt:Date.now(),model:'Browser development device',manufacturer:navigator.platform,appVersion:'0.1.0',androidRelease:'Browser',build:'Development',securityPatch:'Browser managed',uptimeMs:performance.now(),permissionStates,permissions:Object.fromEntries(Object.entries(permissionStates).map(([name,state])=>[name,state==='granted'])),locationAccess:permissionStates.Location==='granted'?'browser':'none'};
  }
 
  async setTextScale(input:{percent:number}){if(!Number.isFinite(input.percent))throw Error('Choose a text size.');const percent=Math.max(75,Math.min(150,Math.round(input.percent)));await editStore(key,initial,data=>{data.textScalePercent=percent;});applyBrowserDisplay(readStore(key,initial));return {textScalePercent:percent,effectiveTextZoom:percent};}

@@ -1,3 +1,4 @@
+import {reminderCreations,retainReminderCreation,discardUndispatchedCreation,checkReminderCreation,reconcileReminderCreations,type ReminderCreation} from '../runtime/reminder-creations';
 import { DailyApps, type Reminder } from '../daily';
 import { pendingReminderDeletions,retainReminderDeletion,acknowledgeReminderDeletion,reconcileReminderDeletions,discardUndispatchedReminderDeletion } from '../runtime/reminder-deletions';
 import { Capacitor } from '@capacitor/core';
@@ -28,7 +29,11 @@ export function installReminderAdapter(Component: Bag, views: Bag) {
     const generation = this.reminderRefreshGeneration = (this.reminderRefreshGeneration || 0) + 1;
     try {
       const reminderDeleteUnknown=await reconcileReminderDeletions();
+      let reminderCreateUnknown=Object.values(await reminderCreations()).filter(r=>r.state==='pending').length;
+      try{reminderCreateUnknown=await reconcileReminderCreations();}catch{/* Retain creation uncertainty when readback is unavailable. */}
       if (!this.live || generation !== this.reminderRefreshGeneration) return;
+      this.reminderCreateUnknown=reminderCreateUnknown;
+      this.vset('calendar',{reminderCreateUnknown});
       this.reminderDeleteUnknown=reminderDeleteUnknown;
       this.vset('calendar',{reminderDeleteUnknown});
       if (Capacitor.getPlatform() === 'web' && !Capacitor.isPluginAvailable('DailyApps')) {this.vset('calendar',{reminderStale:false});return;}
@@ -68,6 +73,8 @@ export function installReminderAdapter(Component: Bag, views: Bag) {
     const out = render(state,api);
     out.reminderDeleteUnknown=Number(owner?.reminderDeleteUnknown??state.reminderDeleteUnknown??0);
     out.checkReminderDeletions=()=>void owner?.refreshReminders();
+    out.reminderCreateUnknown=Number(owner?.reminderCreateUnknown??state.reminderCreateUnknown??0);
+    out.checkReminderCreations=()=>void owner?.refreshReminders();
     if(out.f) {
       const f=state.form;
       out.f.cals.push({name:'Reminders',dot:'var(--acc)',css:f.cal==='alpha-reminders'?'background:var(--fg);color:var(--bg)':'background:var(--bg)',pick:()=>api.set({form:{...api.get('calendar').form,cal:'alpha-reminders',repeat:'none',alert:0}})});
@@ -107,6 +114,45 @@ export function installReminderAdapter(Component: Bag, views: Bag) {
         };
         if(recurrence?.rule==='weekdays' && [0,6].includes(date.getDay())){api.toast('Choose a weekday for the first reminder. Nothing was saved.');return;}
         date.setTime(date.getTime()-lead*60000);
+        if(!current.alphaReminderId){
+          const createOwner=owner;if(!createOwner)return;
+          createOwner.reminderSaving=true;
+          const id=current.reminderCreationId||crypto.randomUUID();
+          const request={id,title:current.title.trim(),body:current.notes||'',at:date.getTime(),...(recurrence?{recurrence}:{})};
+          const signature=JSON.stringify([current.title,current.notes,current.off,current.t,current.repeat,current.alert,current.cal]);
+          let matchesAttempt=true;
+          const active=()=>matchesAttempt&&owner===createOwner&&createOwner.live&&!document.hidden&&api.isActive()&&api.get('calendar').form?.reminderCreationId===id&&JSON.stringify([api.get('calendar').form.title,api.get('calendar').form.notes,api.get('calendar').form.off,api.get('calendar').form.t,api.get('calendar').form.repeat,api.get('calendar').form.alert,api.get('calendar').form.cal])===signature;
+          let created:ReminderCreation|null=null,dispatched=false,scheduled=false;
+          try{
+            if(!current.reminderCreationId){
+              const pending=Object.values(await reminderCreations()).filter(row=>row.state==='pending');
+              if(owner!==createOwner||!createOwner.live||!api.isActive()||api.get('calendar').form!==current||document.hidden)return;
+              if(pending.length&&!window.confirm('A previous reminder creation is unconfirmed and may already exist. Create a separate new reminder? The previous attempt will remain available for status checks.'))return;
+              if(owner!==createOwner||!createOwner.live||!api.isActive()||api.get('calendar').form!==current||document.hidden)return;
+              api.set({form:{...current,reminderCreationId:id}});
+              created={id,request,state:'pending'};
+              await retainReminderCreation(created);
+              if(!active())return;
+              dispatched=true;
+              try{const response=await DailyApps.scheduleReminder(request);scheduled=response.status==='scheduled'&&response.id===id;}catch{/* Recovery reads only; never reschedule an unknown attempt. */}
+            }
+            const retained=(await reminderCreations())[id];
+            matchesAttempt=!!retained&&JSON.stringify(retained.request)===JSON.stringify(request);
+            const found=await checkReminderCreation(id);
+            if(found!=='found')throw Error('Creation outcome unknown');
+            if(active())api.set({form:null});
+            if(owner===createOwner&&createOwner.live){await createOwner.refreshReminders();api.toast(!matchesAttempt?'The previous reminder was found. This edited draft was not saved. Close it to start a separate reminder.':scheduled?'Reminder scheduled · approximate delivery':'The saved reminder was found. Delivery is not verified.');}
+          }catch{
+            if(owner===createOwner&&createOwner.live)api.toast('Reminder creation is unconfirmed. Check new reminder status in Calendar; it will not be created again automatically.');
+          }finally{
+            if(created&&!dispatched){
+              try{await discardUndispatchedCreation(created);if(owner===createOwner&&api.get('calendar').form?.reminderCreationId===id)api.set({form:{...api.get('calendar').form,reminderCreationId:undefined}});}catch{/* Preserve uncertain persistence; never create again automatically. */}
+            }
+            if(owner===createOwner&&createOwner.live)try{createOwner.reminderCreateUnknown=Object.values(await reminderCreations()).filter(row=>row.state==='pending').length;api.set({reminderCreateUnknown:createOwner.reminderCreateUnknown});}catch{}
+            createOwner.reminderSaving=false;
+          }
+          return;
+        }
         const id=current.alphaReminderId||crypto.randomUUID();
         if(owner)owner.reminderSaving=true;
         try {
