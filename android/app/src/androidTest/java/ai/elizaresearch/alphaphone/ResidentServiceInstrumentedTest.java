@@ -20,6 +20,7 @@ import static org.junit.Assert.*;
 public final class ResidentServiceInstrumentedTest {
  private Context context;
  private JSONObject fixture;
+ private final JSONArray traceDiagnostics=new JSONArray();
  private static String hash(byte[] bytes)throws Exception {StringBuilder value=new StringBuilder();for(byte b:MessageDigest.getInstance("SHA-256").digest(bytes))value.append(String.format(Locale.ROOT,"%02x",b&255));return value.toString();}
  private static byte[] bounded(InputStream input,int max)throws Exception {ByteArrayOutputStream out=new ByteArrayOutputStream();byte[] buf=new byte[8192];int n;while((n=input.read(buf))!=-1){assertTrue("Input exceeds bound",out.size()+n<=max);out.write(buf,0,n);}return out.toByteArray();}
  private static String boundedHash(InputStream input,long max)throws Exception {
@@ -95,7 +96,7 @@ public final class ResidentServiceInstrumentedTest {
     if(meta==null||!messageId.equals(meta.optString("messageId"))||meta.has("taskId"))continue;
     assertNull("Ambiguous initial trajectory",found);found=detail;
    }
-   if(found!=null&&!found.getJSONObject("trajectory").isNull("endTime")){assertEquals("completed",found.getJSONObject("trajectory").getString("status"));assertTrue(found.getBoolean("payloadsIncluded"));assertEquals(room,found.getJSONObject("trajectory").getString("roomId"));JSONArray calls=found.getJSONArray("llmCalls");assertTrue(calls.length()>0&&calls.length()<=12);for(int i=0;i<calls.length();i++){JSONObject c=calls.getJSONObject(i);assertEquals("qwen-3.8-27b",c.getString("model"));assertTrue(c.getString("provider").toLowerCase(Locale.ROOT).contains("cerebras"));assertEquals(found.getJSONObject("trajectory").getString("id"),c.getString("trajectoryId"));assertFalse(c.optString("response").isEmpty());}return new JSONObject().put("trajectoryId",found.getJSONObject("trajectory").getString("id")).put("modelCalls",calls.length());}
+   if(found!=null&&!found.getJSONObject("trajectory").isNull("endTime")){assertEquals("completed",found.getJSONObject("trajectory").getString("status"));assertTrue(found.getBoolean("payloadsIncluded"));assertEquals(room,found.getJSONObject("trajectory").getString("roomId"));JSONArray calls=found.getJSONArray("llmCalls");assertTrue(calls.length()>0&&calls.length()<=12);for(int i=0;i<calls.length();i++){JSONObject c=calls.getJSONObject(i);assertEquals("qwen-3.8-27b",c.getString("model"));assertTrue(c.getString("provider").toLowerCase(Locale.ROOT).contains("cerebras"));assertEquals(found.getJSONObject("trajectory").getString("id"),c.getString("trajectoryId"));traceDiagnostics.put(new JSONObject().put("index",i).put("model",c.optString("model")).put("provider",c.optString("provider")).put("responsePresent",c.has("response")).put("responseLength",c.optString("response").length()).put("toolCallCount",c.optJSONArray("toolCalls")==null?0:c.getJSONArray("toolCalls").length()).put("promptTokens",c.optLong("promptTokens",-1)).put("completionTokens",c.optLong("completionTokens",-1)).put("finishReason",c.optString("finishReason")).put("trajectoryStatus",found.getJSONObject("trajectory").optString("status")));assertFalse("Empty recorded response; see traceDiagnostics",c.optString("response").isEmpty());}return new JSONObject().put("trajectoryId",found.getJSONObject("trajectory").getString("id")).put("modelCalls",calls.length());}
    SystemClock.sleep(250);
   }throw new AssertionError("Correlated initial resident trajectory not complete");
  }
@@ -114,13 +115,13 @@ public final class ResidentServiceInstrumentedTest {
   try {
     assertFalse(ElizaAgentService.getLocalAgentBootState(context).optBoolean("socketListening"));
     new AlphaCredentialStore(context).writeCredentialSlot("local-agent-provider:v1",new JSONObject().put("key",fixture.getString("apiKey")).put("model","qwen-3.8-27b").toString());fixture.remove("apiKey");
-    startAndEnroll();child=ownedChild();proof.put("firstProcess",child);
+    startAndEnroll();proof.put("ownerEnrollmentCompleted",true);child=ownedChild();proof.put("firstProcess",child);
     assertEquals(fixture.getString("bundleSha256"),fileHash(new File(context.getFilesDir(),"agent/agent-bundle.js")));
-    JSONObject who=owner(),agent=agent();String ownerId=who.getJSONObject("identity").getString("id"),agentId=agent.getString("id");
-    int denied=nativeGet("/api/conversations","synthetic-invalid-bearer").getInt("status");assertTrue("Explicit invalid bearer must deny",denied==401||denied==403);
+    JSONObject who=owner(),agent=agent();proof.put("ownerAuthenticated",true);String ownerId=who.getJSONObject("identity").getString("id"),agentId=agent.getString("id");
+    int denied=nativeGet("/api/conversations","synthetic-invalid-bearer").getInt("status");assertTrue("Explicit invalid bearer must deny",denied==401||denied==403);proof.put("invalidBearerDenied",true);
 
     String label="Resident fixture "+fixture.getString("runId");JSONObject conversation=request("/api/conversations",new JSONObject().put("title",label)).getJSONObject("conversation");String id=conversation.getString("id"),room=conversation.getString("roomId");assertTrue(id.matches("[A-Za-z0-9_-]+"));assertTrue(room.matches("[A-Za-z0-9_-]+"));assertEquals(0,history(id).length());
-    JSONObject reply=request("/api/conversations/"+id+"/messages",new JSONObject().put("text",label+": Reply with the value of seven times eight. Do not use tools or create anything.").put("channelType","DM").put("clientMessageId",UUID.randomUUID().toString()));assertFalse("Actual resident reply required",reply.getString("text").trim().isEmpty());assertTrue(reply.getString("text").contains("56"));
+    JSONObject reply=request("/api/conversations/"+id+"/messages",new JSONObject().put("text",label+": Reply with the value of seven times eight. Do not use tools or create anything.").put("channelType","DM").put("clientMessageId",UUID.randomUUID().toString()));assertFalse("Actual resident reply required",reply.getString("text").trim().isEmpty());assertTrue(reply.getString("text").contains("56"));proof.put("syntheticReplyValidated",true).put("replyLength",reply.getString("text").length()).put("replySha256",hash(reply.getString("text").getBytes(StandardCharsets.UTF_8)));
     proof.put("model",trace(room,reply.getString("userMessageId")));JSONArray before=history(id);assertTrue(before.length()>=2);String historyHash=hash(before.toString().getBytes(StandardCharsets.UTF_8));
     ElizaAgentService.stop(context);stopped(child);ownerBearer=null;JSONObject old=child;child=null;
     startAndEnroll();child=ownedChild();assertNotEquals("Real native process restart",old.getInt("pid"),child.getInt("pid"));
@@ -131,7 +132,7 @@ public final class ResidentServiceInstrumentedTest {
     catch(Throwable cleanup) {if(failure==null)failure=cleanup;else failure.addSuppressed(cleanup);proof.put("cleanupFailed",true);}
     // Write a scoped failure record even if stop verification failed; never replace the primary failure.
     try {
-      proof.put("passed",failure==null&&proof.optBoolean("passed"));
+      proof.put("traceDiagnostics",traceDiagnostics);proof.put("passed",failure==null&&proof.optBoolean("passed"));
       try(FileOutputStream output=context.openFileOutput("resident-service-complete.json",Context.MODE_PRIVATE)){output.write(proof.toString().getBytes(StandardCharsets.UTF_8));}
     } catch(Throwable write) {if(failure==null)failure=write;else failure.addSuppressed(write);}
     ownerBearer=null;
