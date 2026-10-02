@@ -90,8 +90,8 @@ public final class ResidentServiceInstrumentedTest {
  private JSONArray history(String id)throws Exception{return request("/api/conversations/"+id+"/messages",null).getJSONArray("messages");}
  private JSONObject trace(String room,String messageId)throws Exception {
   long end=SystemClock.elapsedRealtime()+30000;
-  while(SystemClock.elapsedRealtime()<end){JSONObject response=nativeGet("/api/trajectories?limit=100&roomId="+room,null);assertEquals(200,response.getInt("status"));JSONObject list=new JSONObject(response.getString("body"));JSONArray entries=list.getJSONArray("trajectories");assertEquals(list.getInt("total"),entries.length());JSONObject found=null;
-   for(int i=0;i<entries.length();i++){String id=entries.getJSONObject(i).getString("id");assertTrue(id.matches("[A-Za-z0-9_-]+"));JSONObject detail=new JSONObject(nativeGet("/api/trajectories/"+id+"?includePayloads=1",null).getString("body"));JSONObject trajectory=detail.getJSONObject("trajectory"),meta=trajectory.optJSONObject("metadata");
+  while(SystemClock.elapsedRealtime()<end){JSONObject response=nativeGet("/api/trajectories?limit=100&roomId="+room,ownerBearer);assertEquals(200,response.getInt("status"));JSONObject list=new JSONObject(response.getString("body"));JSONArray entries=list.getJSONArray("trajectories");assertEquals(list.getInt("total"),entries.length());JSONObject found=null;
+   for(int i=0;i<entries.length();i++){String id=entries.getJSONObject(i).getString("id");assertTrue(id.matches("[A-Za-z0-9_-]+"));JSONObject detail=new JSONObject(nativeGet("/api/trajectories/"+id+"?includePayloads=1",ownerBearer).getString("body"));JSONObject trajectory=detail.getJSONObject("trajectory"),meta=trajectory.optJSONObject("metadata");
     if(meta==null||!messageId.equals(meta.optString("messageId"))||meta.has("taskId"))continue;
     assertNull("Ambiguous initial trajectory",found);found=detail;
    }

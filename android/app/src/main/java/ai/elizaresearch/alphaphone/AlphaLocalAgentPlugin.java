@@ -109,10 +109,17 @@ public final class AlphaLocalAgentPlugin extends Plugin {
    epoch=admitted;
    workers.execute(()->{
     long deadline=android.os.SystemClock.elapsedRealtime()+90000;
+    boolean ready=false;
     while(android.os.SystemClock.elapsedRealtime()<deadline){
-     try{enroll(epoch);resolveCurrent(call,epoch,new JSObject().put("state","ready"));return;}
+     try{String root=ElizaAgentService.localAgentToken();if(root==null||root.isEmpty())throw new IllegalStateException();enrollmentJson(epoch,"/api/auth/status","GET",null,root).getString("instanceId");ready=true;break;}
      catch(Superseded stale){rejectSuperseded(call);return;}
      catch(Exception unavailable){try{Thread.sleep(1000);}catch(InterruptedException interrupted){Thread.currentThread().interrupt();break;}}
+    }
+    if(ready){
+     // Never poll enrollment: a failed response may follow a committed pairing POST.
+     try{enroll(epoch);resolveCurrent(call,epoch,new JSObject().put("state","ready"));return;}
+     catch(Superseded stale){rejectSuperseded(call);return;}
+     catch(Exception uncertain){rejectPending(call,"Local enrollment did not complete. Check runtime status before reconnecting.");return;}
     }
     rejectPending(call,"Local agent startup did not complete. Check runtime status; no chat was sent.");
    });
