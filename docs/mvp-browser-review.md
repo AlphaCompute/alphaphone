@@ -2,7 +2,7 @@
 
 Latest full integration checkpoint: **310/310 browser tests and 82/82 repository tests**, plus typecheck and production web build, in the [complex Calendar guest checkpoint](#october-2--complex-calendar-guests-and-integration-review), based on `04d5b8a` plus the recorded guest-editor changes. Earlier entries are historical evidence for their stated snapshots. The MVP goal remains open.
 
-Latest targeted checkpoint: [Multi-page Scan documents](#october-2--multi-page-scan-documents). Its 28 browser checks and repository verification cover the recorded frozen snapshot; the full 310-case checkpoint above predates these additions. The MVP remains incomplete.
+Latest targeted checkpoint: [Camera focus and driver ordering](#october-2--camera-focus-and-driver-ordering). Its 28 browser checks and repository verification cover the recorded frozen snapshot; the full 310-case checkpoint above predates these additions. The MVP remains incomplete.
 
 October 1 architecture change: the user has selected an **Android-resident agent instead of Nitro/TEE hosting**. The [on-device agent plan](on-device-agent-plan.md) supersedes cloud-only and enclave-primary requirements below. Agent execution and model inference are separate: the current implementation runs orchestration locally and uses hosted Cerebras inference. Historical evidence is retained. Powered-off-phone execution needs explicit scope reconciliation.
 
@@ -940,3 +940,14 @@ The builder owns its preview URLs, pending picker and conversion cancellation. C
 Verification: **23/23 document, picker, single-page PDF, Scan link and Calendar-draft browser cases**, plus **5/5 local OCR cases**; **82/82 repository tests**, TypeScript and production web build. The real downloaded two-page fixture was rendered with Poppler and visually inspected: blue landscape followed by red portrait, with intact image geometry and margins. The review screenshot was also inspected. Input hashes matched after testing. Logs, PDF, renderings, screenshot and source manifest are retained in `test-results/scan-document-sync/`.
 
 This is browser/host evidence. No Android build ran in this synchronization pass. New Camera focus work in the shared checkout is preserved separately. Durable multi-page drafts, direct camera retakes, page-edge correction, searchable PDF/language quality, video editing, simulator concurrency/recovery, Calendar repair and live-agent/provider/device acceptance remain open. The full goal remains active.
+
+
+## October 2 — Camera focus and driver ordering
+
+Based on `9d58a23`, browser Camera taps now select a viewfinder-relative focus target. The hardware request accounts for the cover crop, zoom and front-camera mirror. A matching reported focus mode and point are required before displaying confirmed camera focus. Otherwise the development target remains an explicitly local interaction; no optical refocusing or image-pixel change is claimed. Replacement, zoom, Home, page retirement, hidden pages and ended streams remove the owned target.
+
+A new rapid-selection regression found that retiring old UI replies was insufficient: two driver requests could finish out of order, leaving the hardware on the old point while the newest indicator showed success. Requests now serialize per camera track. Retired queued targets do not dispatch; a replacement track has its own queue and can proceed while the old driver is pending. The regression failed with the old final point and passes with the latest point after repair. A separate case verifies retirement and independent replacement-track progress.
+
+Verification: **28/28 browser Camera focus/lighting/control/video/import cases**, **82/82 repository tests**, TypeScript and production build. The phone-width focus indicator screenshot was inspected. Final source hashes matched after testing; logs, before-fix regression and screenshot are retained in `test-results/camera-focus-sync/`. No Android build ran in this pass. Hardware lens quality and browser-family behavior still need actual device evidence.
+
+New browser video-editing files appeared after the snapshot and remain separate pending work. Durable scan drafts/direct retakes, page correction/searchable PDF, simulator concurrency/deep recovery, Calendar repair and live-agent/provider/device acceptance remain open. The full goal stays active.

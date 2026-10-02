@@ -1,3 +1,4 @@
+import {BrowserCameraFocus} from '../browser/camera-focus';
 import {browserDevProfile} from '../browser/dev-profile';
 import type {ImportedCameraImage} from './browser-image-import';
 import {drawCameraFrame} from '../browser/camera-frame';
@@ -207,10 +208,11 @@ let videoSave:Promise<{path:string;duration:number;width:number;height:number;fi
 let preview:HTMLVideoElement|null=null,stream:MediaStream|null=null,generation=0;
 let starting:AbortController|undefined;
 let zoom=1,mirror=false;
+const cameraFocus=new BrowserCameraFocus();
 let screenLight:HTMLDivElement|undefined;
 function clearScreenLight(){screenLight?.remove();screenLight=undefined;}
 function setScreenLight(enabled:boolean){clearScreenLight();if(!enabled)return;const light=screenLight=document.createElement('div');light.dataset.alphaCameraLight='screen';light.setAttribute('aria-hidden','true');light.style.cssText='position:absolute;inset:0;z-index:2;pointer-events:none;box-shadow:inset 0 0 0 28px white,inset 0 0 70px 40px rgba(255,255,255,.8)';document.querySelector(finder)?.append(light);}
-window.addEventListener('pagehide',clearScreenLight);document.addEventListener('visibilitychange',()=>{if(document.hidden)clearScreenLight();});
+window.addEventListener('pagehide',()=>{clearScreenLight();cameraFocus.clear();});document.addEventListener('visibilitychange',()=>{if(document.hidden){clearScreenLight();cameraFocus.clear();}});
 
 function release(video:HTMLVideoElement|null,media:MediaStream|null){media?.getTracks().forEach(track=>track.stop());if(video){video.pause();video.srcObject=null;video.remove();}}
 export function mountBrowserCamera(){const frame=document.querySelector<HTMLElement>(finder);if(preview&&frame&&preview.parentElement!==frame)frame.prepend(preview);}
@@ -234,12 +236,12 @@ export const browserCamera={
     if(controller.signal.aborted){abort();return;}ownVideo!.play().then(()=>finish(),finish);
    });
    controller.signal.throwIfAborted();
-   ownStream.getVideoTracks()[0].addEventListener('ended',()=>{if(token===generation)clearScreenLight();},{once:true});
+   ownStream.getVideoTracks()[0].addEventListener('ended',()=>{if(token===generation){clearScreenLight();cameraFocus.clear();}},{once:true});
    const settings=ownStream.getVideoTracks()[0].getSettings();return {width:ownVideo.videoWidth,height:ownVideo.videoHeight,deviceId:settings.deviceId??''};
   }catch(error){release(ownVideo,ownStream);if(preview===ownVideo){preview=null;stream=null;}throw error;}
   finally{if(starting===controller)starting=undefined;}
  },
- async stopPreview(){clearScreenLight();++generation;++videoSession;videoCapture.cancel();starting?.abort();starting=undefined;release(preview,stream);preview=null;stream=null;},
+ async stopPreview(){cameraFocus.clear();clearScreenLight();++generation;++videoSession;videoCapture.cancel();starting?.abort();starting=undefined;release(preview,stream);preview=null;stream=null;},
  async capturePhoto(){const token=generation,video=preview;if(!video||!stream||video.readyState<2)throw Error('Camera is not ready.');
   const width=video.videoWidth,height=video.videoHeight;if(width<=0||height<=0||width*height>32_000_000)throw Error('Unsupported photo dimensions.');
   const canvas=drawCameraFrame(video,{zoom,mirror});
@@ -253,7 +255,7 @@ export const browserCamera={
   return {...photo,path:'browser-photo:///'+id};
  },
  async switchCamera(options:{direction:'front'|'back'}){return browserCamera.startPreview({...options,resolution:{width:1280,height:720},mirror:options.direction==='front'});},
- async setZoom(input:{zoom:number}){if(!preview)throw Error('Start camera first.');if(!Number.isFinite(input.zoom)||input.zoom<1||input.zoom>8)throw Error('Digital zoom must be between 1× and 8×.');if(videoCapture.state().isRecording)throw Error('Stop recording before changing zoom.');zoom=input.zoom;preview.style.transform=`scale(${mirror?-zoom:zoom},${zoom})`;},
+ async setZoom(input:{zoom:number}){if(!preview)throw Error('Start camera first.');if(!Number.isFinite(input.zoom)||input.zoom<1||input.zoom>8)throw Error('Digital zoom must be between 1× and 8×.');if(videoCapture.state().isRecording)throw Error('Stop recording before changing zoom.');cameraFocus.clear();zoom=input.zoom;preview.style.transform=`scale(${mirror?-zoom:zoom},${zoom})`;},
  lightingLabel(enabled:boolean){const torch=stream?.getVideoTracks()[0]?.getCapabilities() as (MediaTrackCapabilities&{torch?:boolean})|undefined;return `${browserDevProfile&&!torch?.torch?'Screen light':'Flash'} ${enabled?'on':'off'}`;},
  async setSettings(input:{settings:{flash:string}}){
   if(!['on','off'].includes(input.settings.flash))throw Error('Choose flash on or off.');
@@ -263,7 +265,7 @@ export const browserCamera={
   if(token!==generation)throw Error('Camera changed.');
   if((track.getSettings() as MediaTrackSettings&{torch?:boolean}).torch!==enabled){await track.applyConstraints({advanced:[{torch:false} as MediaTrackConstraintSet&{torch:boolean}]});throw Error('The camera could not confirm its torch setting.');}
  },
- async setFocusPoint(){throw Error('Manual focus is not exposed by this browser camera.');},
+ async setFocusPoint(input:{x:number;y:number}){const frame=document.querySelector<HTMLElement>(finder),track=stream?.getVideoTracks()[0];if(!frame||!preview||!track)throw Error('Start camera first.');await cameraFocus.select(input,{frame,video:preview,track,zoom,mirror,development:browserDevProfile});},
  async startRecording(input:{audio?:boolean;maxDuration:number;maxFileSize:number}){if(!preview)throw Error('Start camera first.');++videoSession;videoSave=undefined;await videoCapture.start(preview,input,{zoom,mirror});},
  stopRecording(){
   if(videoSave)return videoSave;
