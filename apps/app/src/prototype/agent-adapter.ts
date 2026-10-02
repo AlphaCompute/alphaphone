@@ -385,6 +385,13 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
     if(key==='workflows'&&!isAndroid){
       api.localWorkflowReady=()=>{context(this);return this.live&&!alphaClient.getState().pending&&!alphaClient.getState().context.sensitive&&(alphaClient.getState().connection==='ready'||!!connectionController.getSnapshot().session);};
       api.localWorkflowBusy=()=>alphaClient.getState().pending;
+      api.localWorkflowIdle=(signal:AbortSignal)=>new Promise<void>((resolve,reject)=>{
+        signal.throwIfAborted();let unsubscribe=()=>{};
+        const finish=(error?:Error)=>{unsubscribe();signal.removeEventListener('abort',cancel);error?reject(error):resolve();};
+        const cancel=()=>finish(new DOMException('Workflow cancelled','AbortError'));
+        const check=()=>{const state=alphaClient.getState();if(state.context.sensitive)finish(Error('Return to the device before generating a workflow result.'));else if(!state.pending)finish();};
+        unsubscribe=alphaClient.subscribe(check);signal.addEventListener('abort',cancel,{once:true});check();
+      });
       api.localWorkflowText=async(instruction:string,input:string,signal:AbortSignal,automatic=false)=>{
         signal.throwIfAborted();
         if(alphaClient.getState().connection!=='ready'&&!connectionController.getSnapshot().session)return undefined;

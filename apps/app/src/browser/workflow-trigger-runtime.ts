@@ -37,7 +37,7 @@ export function workflowNeedsReview(flow:Bag,connected=false){return flow.steps.
 export class WorkflowTriggerRuntime {
  private timer?:ReturnType<typeof setInterval>;private scanning=false;private stopped=false;private blocked=false;private api?:()=>Bag;private ready?:()=>boolean;
  private location=new NativeMapsLocation();private position?:Position;private watching=false;private report='';
- constructor(private busy:()=>boolean,private dispatch:(flow:Bag,api:Bag,job:TriggerJob)=>Promise<void>){ }
+ constructor(private busy:(flowId:string)=>boolean,private dispatch:(flow:Bag,api:Bag,job:TriggerJob)=>Promise<void>){ }
  connect(api:()=>Bag,ready:()=>boolean){this.api=api;this.ready=ready;this.timer=setInterval(()=>void this.tick(),1000);for(const event of this.events)window.addEventListener(event,this.wake);document.addEventListener('visibilitychange',this.wake);void this.tick();}
  private events=['alpha:dev-app-change','alpha:dev-location','alpha:device-state','focus'];
  private wake=()=>{this.blocked=false;void this.tick();};
@@ -78,8 +78,8 @@ export class WorkflowTriggerRuntime {
    if(this.report){this.report='';api.setView('workflows',{localTriggerError:''});}
   }catch(error){this.blocked=true;const message=error instanceof Error?error.message:'Workflow triggers could not be checked.';if(message!==this.report){this.report=message;api.setView('workflows',{localTriggerError:message});}}
   finally{this.scanning=false;}
-  if(!this.stopped&&!this.busy()&&foreground()){
-   const state=app(api,'workflows'),job=(state.triggerState?.queue||[]).find((job:TriggerJob)=>{const flow=state.flows.find((flow:Bag)=>flow.on&&String(flow.id)===job.flowId&&triggerDefinition(flow)===job.definition);return flow&&!(workflowUsesAgent(flow)&&api.localWorkflowBusy?.())&&(!workflowNeedsReview(flow,api.localWorkflowReady?.())||api.isActive()&&String(state.open)===job.flowId&&!document.querySelector('dialog[open]'));});
+  if(!this.stopped&&foreground()){
+   const state=app(api,'workflows'),job=(state.triggerState?.queue||[]).find((job:TriggerJob)=>{const flow=state.flows.find((flow:Bag)=>flow.on&&String(flow.id)===job.flowId&&triggerDefinition(flow)===job.definition);return flow&&!this.busy(job.flowId)&&!(workflowUsesAgent(flow)&&api.localWorkflowBusy?.())&&(!workflowNeedsReview(flow,api.localWorkflowReady?.())||api.isActive()&&String(state.open)===job.flowId&&!document.querySelector('dialog[open]'));});
    if(job){const flow=state.flows.find((flow:Bag)=>String(flow.id)===job.flowId);void this.dispatch(flow,api,job).finally(()=>{this.blocked=!!app(api,'workflows').triggerState?.queue.some((pending:TriggerJob)=>pending.id===job.id);if(!this.blocked)void this.tick();}).catch(()=>{this.blocked=true;});}
   }
  }

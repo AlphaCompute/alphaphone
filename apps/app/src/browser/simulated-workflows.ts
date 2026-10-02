@@ -1,3 +1,4 @@
+import {withWorkflowResource} from './workflow-resources';
 import {WorkflowTriggerRuntime,hydrateTriggerJob,type TriggerJob} from './workflow-trigger-runtime';
 import {assessWorkflowUrgency,type UrgencyDecision} from './workflow-urgency';
 import {workflowAwayFromHome} from './workflow-location';
@@ -22,11 +23,11 @@ export function installSimulatedWorkflows(view:Bag){
  const persist=(api:Bag,run:Run,reserve=0)=>{const state=savedState(api);const claiming=!!run.trigger&&!state.localRuns?.[run.id];if(claiming&&!state.triggerState?.queue.some((job:TriggerJob)=>job.id===run.id&&job.definition===run.definition))throw Error('The queued trigger changed before its run started.');const patch={triggerState:claiming?{...state.triggerState,queue:state.triggerState.queue.filter((job:TriggerJob)=>job.id!==run.id)}:state.triggerState,localRuns:{...state.localRuns,[run.id]:structuredClone(run)},flows:state.flows.map((flow:Bag)=>String(flow.id)===String(run.flowId)?{...flow,runs:[structuredClone(run),...(flow.runs||[]).filter((old:Bag)=>old.id!==run.id)]}:flow)};if(JSON.stringify(patch).length+reserve>2_000_000)throw Error('Workflow history is full. Open Workflow history to download or remove finished runs before starting more work.');api.setView('workflows',patch);};
  const step=async(item:Bag,input:string,api:Bag,signal:AbortSignal,operationId:string,progress:(message:string)=>void,context:Run['context']):Promise<{output:string;skip?:boolean;detail?:string}>=>{
   signal.throwIfAborted();const text=String(item.t).toLowerCase();
-  if(item.k==='Speak'&&(text==='read it aloud'||text==='speak it when i pick up the phone')){if(text!=='read it aloud'){progress('Waiting for pickup');await waitForWorkflowPickup(signal);}progress(context.triggerAt!==undefined?'Waiting for speaker':'Reading aloud');await speakWorkflowText(input,signal,()=>progress('Reading aloud'),context.triggerAt!==undefined);return {output:input,detail:'Finished reading aloud'};}
+  if(item.k==='Speak'&&(text==='read it aloud'||text==='speak it when i pick up the phone')){if(text!=='read it aloud'){progress('Waiting for pickup');await waitForWorkflowPickup(signal);}progress(context.triggerAt!==undefined?'Waiting for speaker':'Reading aloud');const speak=()=>speakWorkflowText(input,signal,()=>progress('Reading aloud'),context.triggerAt!==undefined);await (context.triggerAt!==undefined?withWorkflowResource('speech',signal,speak):speak());return {output:input,detail:'Finished reading aloud'};}
   if(item.k==='Notify'&&text==='a notification, only if urgent'){progress('Checking urgency');const decision=await assessWorkflowUrgency(input,(instruction,input,signal)=>api.localWorkflowText(instruction,input,signal),signal);context.urgency={...context.urgency,[operationId]:decision};progress(decision.urgent?'Urgent notification ready':'Not urgent');if(decision.urgent)await publishWorkflowNotice(operationId,input,signal);return {output:input,detail:(decision.urgent?'Notification saved':'Notification not posted')+' · '+decision.source+': '+decision.reason};}
   if(item.k==='Notify'&&text==='a notification'){await publishWorkflowNotice(operationId,input,signal);return {output:input,detail:'Notification saved ('+operationId+')'};}
   if(item.k==='Send')return sendWorkflowLocal(item,input,operationId,api,signal,context.messages);
-  if(item.k==='Write'&&text==='a note in notes'){await api.localWorkflowNotes({operationId,text:input},signal);return {output:input,detail:'Note saved ('+operationId+')'};}
+  if(item.k==='Write'&&text==='a note in notes'){await withWorkflowResource('notes',signal,()=>api.localWorkflowNotes({operationId,text:input},signal));return {output:input,detail:'Note saved ('+operationId+')'};}
   if(item.k==='Read'){
    context.messages=context.triggerMessages;let output:string;const when=new Date(context.triggerAt??Date.now()),range=workflowCalendarRange(text,when);const dated=await readDatedWorkflowSource(text,api,calendar,signal,when);
    if(dated)output=JSON.stringify(dated);
@@ -53,7 +54,7 @@ export function installSimulatedWorkflows(view:Bag){
   throw Error('This step needs its local action configured: '+item.t);
  };
  const start=async(flow:Bag,api:Bag,job?:TriggerJob)=>{
-  if(job){const original=api.localWorkflowText;api={...api,localWorkflowText:async(instruction:string,input:string,signal:AbortSignal)=>{const result=await original(instruction,input,signal,true);if(result===undefined&&!api.isActive())throw Error('Open the workflow to provide its step result.');return result;}};}
+  if(job){const original=api.localWorkflowText;api={...api,localWorkflowText:async(instruction:string,input:string,signal:AbortSignal)=>{const result=await withWorkflowResource('agent',signal,async()=>{await api.localWorkflowIdle?.(signal);return original(instruction,input,signal,true);});if(result===undefined&&!api.isActive())throw Error('Open the workflow to provide its step result.');return result;}};}
   if([...live.values()].some(item=>String(item.run.flowId)===String(flow.id)))return;
   const run:Run={id:job?.id||crypto.randomUUID(),...(job?{trigger:job}:{}),flowId:flow.id,definition:definition(flow),workflow:structuredClone(flow),status:'running',when:new Date().toLocaleString(),sum:'Running locally',dur:'',log:[],out:'',cursor:0,inflight:null,started:Date.now(),context:{}};delete run.workflow.runs;
   const abort=new AbortController();live.set(run.id,{abort,run});
@@ -72,7 +73,7 @@ export function installSimulatedWorkflows(view:Bag){
   }catch(error){const cancelled=abort.signal.aborted||error instanceof DOMException&&error.name==='AbortError';run.status=cancelled?'cancelled':'fail';run.sum=cancelled?'Cancelled; completed steps retained':error instanceof Error?error.message:'Local run failed';}
   finally{run.dur=((Date.now()-run.started)/1000).toFixed(1)+' s';try{persist(api,run);}catch{api.toast('Run state could not be saved. Reload to inspect its last saved step.');}live.delete(run.id);api.setView('workflows',{localRunRevision:crypto.randomUUID()});}
  };
- const scheduler=new WorkflowTriggerRuntime(()=>live.size>0,(flow,api,job)=>start(flow,api,job));
+ const scheduler=new WorkflowTriggerRuntime(flowId=>[...live.values()].some(item=>String(item.run.flowId)===flowId),(flow,api,job)=>start(flow,api,job));
  const render=view.render,reply=view.reply,badge=view.badge;view.badge=(state:Bag,...args:any[])=>state.triggerState?.queue.length?true:badge?.(state,...args);
  view.reply=(text:string,raw:string,api:Bag)=>{
   const match=text.match(/^run\s+(.+?)(?:\s+now)?$/);if(match){const flows=api.get('workflows').flows,flow=flows.find((f:Bag)=>f.name.toLowerCase()===match[1]||/^(this|it)$/.test(match[1])&&f.id===api.get('workflows').open);if(flow)return {text:'Starting '+flow.name+'.',nav:{view:'workflows',patch:{open:flow.id}},then:()=>void start(flow,api)};return {text:'Choose the workflow to run.',nav:{view:'workflows'}};}return reply(text,raw,api);
