@@ -92,7 +92,7 @@ export function installSelectedDocumentAdapter(_Component: unknown, views: Recor
       const name = selected.result.name || 'Selected document';
       const mime = selected.result.mimeType || 'application/octet-stream';
       const uri = selected.result.uri;
-      const image = mime.startsWith('image/') && uri?.startsWith('content://') ? Capacitor.convertFileSrc(uri) : undefined;
+      const image = mime.startsWith('image/') && (uri?.startsWith('content://') || (!Capacitor.isNativePlatform() && uri?.startsWith('blob:'))) ? Capacitor.convertFileSrc(uri) : undefined;
       const close = () => { clear(); api.set({ open: null }); };
       if (module === 'files') {
         const rows = selected.text === undefined

@@ -13,7 +13,8 @@ import { alphaClient, type AlphaView } from '../runtime/alpha-client';
 import { createDevelopmentTransport } from '../runtime/development-transport';
 import { DailyApps } from '../daily';
 import { isAndroid } from '../native';
-import { registerPlugin, SystemBars, SystemBarsStyle } from '@capacitor/core';
+import { registerPlugin } from '../platform-plugins';
+import { SystemBars, SystemBarsStyle } from '@capacitor/core';
 import { connectionController } from '../runtime/connection-ui';
 
 // The reference renderer is a JavaScript state machine. Its presentation API is

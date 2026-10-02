@@ -1,4 +1,5 @@
-import { Capacitor, registerPlugin } from '@capacitor/core';
+import { registerPlugin } from '../platform-plugins';
+import { Capacitor } from '@capacitor/core';
 import { DailyApps } from '../daily';
 import { createPairedVoice } from '../runtime/paired-voice';
 import { connectionController } from '../runtime/connection-ui';
@@ -68,7 +69,6 @@ export function installPrototypeBrowserAdapter(Component: any, views: Record<str
     return created.get(id)!;
   }
   async function navigate(raw: string, newTab = false, approvedSignal?: AbortSignal) {
-    if (!Capacitor.isNativePlatform()) { if (approvedSignal) throw new Error('Native browsing requires Android.'); report(new Error('Native browsing requires Android.')); return; }
     let url: URL;
     try {
       const input = raw.trim();
@@ -147,7 +147,7 @@ export function installPrototypeBrowserAdapter(Component: any, views: Record<str
   const oldRender = Component.prototype.renderVals;
   Component.prototype.renderVals = function(){shell=this;
     const browserActive = this.S().view === 'browser';
-    if (Capacitor.isNativePlatform() && (!initialBookmarkRead || (browserActive && !browserWasActive))) { initialBookmarkRead = true; refreshBookmarks(); }
+    if (!initialBookmarkRead || (browserActive && !browserWasActive)) { initialBookmarkRead = true; refreshBookmarks(); }
     browserWasActive = browserActive;
     this.browserNavigateApproved = async (raw: string, signal: AbortSignal) => {
       const url = new URL(raw);
@@ -195,8 +195,10 @@ export function installPrototypeBrowserAdapter(Component: any, views: Record<str
     const next=JSON.stringify(payload);
     if(next!==lastGeometry){lastGeometry=next;return Browser.present(payload).catch(()=>{lastGeometry='';});}
   };
+  const openBrowserView = (event: Event) => shell?.openView((event as CustomEvent<string>).detail);
+  window.addEventListener('alpha:browser-open-view', openBrowserView);
   const timer=window.setInterval(update,100);
   const visibility = () => { lastGeometry=''; update(); if (!document.hidden && shell?.S().view === 'browser') refreshBookmarks(); };
   window.addEventListener('resize',update);document.addEventListener('visibilitychange',visibility);
-  return ()=>{stopReading();unsubscribeReading();disposed=true;clearInterval(timer);window.removeEventListener('resize',update);document.removeEventListener('visibilitychange',visibility);void resumeListener?.remove();void listener?.remove();for(const id of created.keys())void Browser.close({session,id}).catch(()=>{});};
+  return ()=>{window.removeEventListener('alpha:browser-open-view',openBrowserView);stopReading();unsubscribeReading();disposed=true;clearInterval(timer);window.removeEventListener('resize',update);document.removeEventListener('visibilitychange',visibility);void resumeListener?.remove();void listener?.remove();for(const id of created.keys())void Browser.close({session,id}).catch(()=>{});};
 }

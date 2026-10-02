@@ -1,5 +1,6 @@
 import { installLocalSpeechPlayback, stopLocalSpeechPlayback } from './local-speech-playback';
-import { Capacitor, registerPlugin, type PluginListenerHandle } from '@capacitor/core';
+import { registerPlugin } from '../platform-plugins';
+import { Capacitor, type PluginListenerHandle } from '@capacitor/core';
 import { createOnDeviceVoice } from '../runtime/local-voice';
 import { createPairedVoice } from '../runtime/paired-voice';
 import { createCloudVoice } from '../runtime/cloud-voice';
@@ -307,6 +308,13 @@ export function installPrototypeVoiceAdapter(Component: any, views: Record<strin
     if (selectedRoute === 'device' && !onDeviceReady && !preparingLocal && stage === 'ready') labels.ready = 'On-device speech unavailable';
     if (preparingPaired && stage === 'ready') { labels.ready = 'Checking selected agent voice'; messages.ready = 'Checking transcription and playback on your selected agent. No audio is uploaded.'; }
     if (preparingLocal && stage === 'ready') { labels.ready = 'Preparing on-device speech'; messages.ready = 'Loading and checking speech models on this phone. Nothing is uploaded.'; }
+    if(!Capacitor.isNativePlatform()) {
+      labels.recorded='Review transcript';
+      messages.ready='Record audio in this browser. You can add a transcript manually and save without signing in.';
+      messages.recorded='Microphone is off. Enter the transcript to save with this recording.';
+      messages.transcribing='Review the recording transcript.';
+      messages.review='Edit the transcript, listen, or save the recording in this browser.';
+    }
     result.recording = true;
     result.rec = {
       manualChoice: stage === 'ready' && !busy && !preparingLocal && selectedRoute !== 'manual',

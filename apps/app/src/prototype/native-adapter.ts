@@ -1,3 +1,4 @@
+import { Capacitor } from '@capacitor/core';
 import { DailyApps, type Action, type NativeResult } from '../daily';
 
 type Bag = Record<string, any>;
@@ -35,7 +36,7 @@ export function installPrototypeNativeAdapters(
         options.onSelection?.(module, result, api);
         notify(api, result.name ? 'Selected ' + result.name : 'Selection received');
       } else if (result.status === 'opened') {
-        notify(api, 'Opened the Android app. Review and complete the action there.');
+        if(Capacitor.isNativePlatform()) notify(api, 'Opened the Android app. Review and complete the action there.');
       } else notify(api, result.message || (result.status === 'cancelled' ? 'Cancelled. Nothing changed.' : 'No installed app can complete this action.'));
     } catch {
       notify(api, 'Native action unavailable. Use the installed Android app.');

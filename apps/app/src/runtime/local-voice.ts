@@ -1,5 +1,6 @@
 import { planLocalSpeech } from './local-speech-text';
-import { Capacitor, registerPlugin, type PluginListenerHandle } from '@capacitor/core';
+import { registerPlugin } from '../platform-plugins';
+import { Capacitor, type PluginListenerHandle } from '@capacitor/core';
 import { connectionController } from './connection-ui';
 const native = registerPlugin<{
   localSpeechStatus(input: { requestId: string }): Promise<{ ready: boolean; execution: string }>;
@@ -26,7 +27,7 @@ function installReleaseWatcher() {
 }
 /** On-device CPU speech. No origin, credential, provider API, or HTTP fallback. */
 export function createOnDeviceVoice() {
-  if (!Capacitor.isNativePlatform() || !Capacitor.isPluginAvailable('AlphaVoiceCloud') || document.documentElement.dataset.connectionMode === 'mock') return null;
+  if (!Capacitor.isPluginAvailable('AlphaVoiceCloud') || document.documentElement.dataset.connectionMode === 'mock') return null;
   installReleaseWatcher();
   const binding = () => [connectionController.getSnapshot().session?.sessionId, connectionController.getCloudClient()?.sessionId, document.documentElement.dataset.connectionMode].join(':');
   const selected = binding();
@@ -47,8 +48,8 @@ export function createOnDeviceVoice() {
     finally { modeChanged?.disconnect(); signal.removeEventListener('abort', cancel); document.removeEventListener('visibilitychange', visibility); unsubscribe(); }
   }
   return {
-    async ready(signal: AbortSignal) { return operation(signal, async (requestId, interrupted) => { const result = await Promise.race([native.localSpeechStatus({ requestId }), interrupted]); return result.ready === true && result.execution === 'device'; }); },
-    async transcribe(recordingId: string, signal: AbortSignal) { return operation(signal, async (requestId, interrupted) => { const result = await Promise.race([native.transcribeLocalRecording({ recordingId, requestId }), interrupted]); if (result.execution !== 'device' || result.local !== true || typeof result.text !== 'string' || !result.text.trim()) throw new Error('No usable on-device transcript'); return result; }); },
+    async ready(signal: AbortSignal) { return operation(signal, async (requestId, interrupted) => { const result = await Promise.race([native.localSpeechStatus({ requestId }), interrupted]); return result.ready === true && result.execution === (Capacitor.isNativePlatform()?'device':'browser'); }); },
+    async transcribe(recordingId: string, signal: AbortSignal) { return operation(signal, async (requestId, interrupted) => { const result = await Promise.race([native.transcribeLocalRecording({ recordingId, requestId }), interrupted]); if (result.execution !== (Capacitor.isNativePlatform()?'device':'browser') || result.local !== true || typeof result.text !== 'string' || !result.text.trim()) throw new Error('No usable on-device transcript'); return result; }); },
     async speak(text: string, signal: AbortSignal) {
       const chunks = planLocalSpeech(text);
       return operation(signal, async (requestId, interrupted) => {
@@ -63,7 +64,7 @@ export function createOnDeviceVoice() {
             check(); signal.throwIfAborted();
             const completed = new Promise<void>((resolve, reject) => { ended = resolve; failed = reject; }); void completed.catch(() => {});
             const result = await Promise.race([native.synthesizeLocal({ text: chunk, requestId }), interrupted]);
-            if (result.execution !== 'device' || !result.playbackId) throw new Error('Invalid on-device speech result');
+            if (result.execution !== (Capacitor.isNativePlatform()?'device':'browser') || !result.playbackId) throw new Error('Invalid on-device speech result');
             expected = result.playbackId; check(); signal.throwIfAborted();
             await Promise.race([native.play({ playbackId: expected }), interrupted]);
             await Promise.race([completed, interrupted]);

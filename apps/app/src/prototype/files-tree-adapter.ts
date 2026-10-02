@@ -1,4 +1,5 @@
-import { registerPlugin } from '@capacitor/core';
+import { Capacitor } from '@capacitor/core';
+import { registerPlugin } from '../platform-plugins';
 import { DailyApps, type NativeResult } from '../daily';
 type Bag=Record<string,any>;
 type Entry={id:string;parentId?:string;name:string;mimeType:string;directory:boolean;size:number;revision:string;canCreate:boolean;canRename:boolean;canDelete:boolean;canMove:boolean};
@@ -48,7 +49,7 @@ export function installFilesTreeAdapter(views:Bag,accept:(module:string,result:N
  async function moveFolder(id?:string){if(!dialog||dialog.kind!=='move'||busy)return;busy=true;dialog={...dialog,folder:undefined,rows:[],error:undefined};repaint();try{const value=await tree.list({id});if(value.status==='ready'&&dialog?.kind==='move'){dialog={...dialog,folder:value.folder,rows:value.entries?.filter(e=>e.directory)};}else api?.toast(value.message);}catch{api?.toast('Destination folder unavailable.');}finally{busy=false;repaint();}}
  module.render=(state:Bag,currentApi:Bag)=>{
   api=currentApi;const out=render(state,currentApi);
-  out.locs=[...(out.locs||[]),{nativeTree:true,name:'Choose folder',d:FOLDER,sub:'Android folder access',go:choose}];
+  out.locs=[...(out.locs||[]),{nativeTree:true,name:'Choose folder',d:FOLDER,sub:Capacitor.isNativePlatform()?'Android folder access':'Browser files',go:choose}];
   if(!listing)out.locs.push({nativeTree:true,name:'Saved folder',d:FOLDER,sub:'Restore selected access',go:()=>{currentApi.set({folder:'__native_tree'});void load();}});
   else out.locs.push({nativeTree:true,name:listing.folder?.name||'Selected folder',d:FOLDER,sub:'Browse selected folder',go:()=>{currentApi.set({folder:'__native_tree'});void load(listing?.folder?.id);}});
   if(state.folder==='__native_tree'){

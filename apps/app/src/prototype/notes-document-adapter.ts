@@ -1,4 +1,4 @@
-import {registerPlugin} from '@capacitor/core';
+import { registerPlugin } from '../platform-plugins';
 type Bag=Record<string,any>;
 const documents=registerPlugin<{importText():Promise<{status:string;message:string;text?:string;name?:string}>;exportText(input:{title:string;text:string}):Promise<{status:string;message:string}>}>('AlphaNoteDocuments', {
  web: () => import('../runtime/browser-note-documents').then(module => new module.BrowserNoteDocuments()),

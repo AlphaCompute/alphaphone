@@ -1,5 +1,5 @@
 import { sanitizePhoneContext } from './phone-context';
-import { registerPlugin } from "@capacitor/core";
+import { registerPlugin } from '../platform-plugins';
 import type {
   ActionProposal,
   AlphaView,

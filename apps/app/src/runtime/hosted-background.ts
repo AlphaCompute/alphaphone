@@ -1,4 +1,4 @@
-import { registerPlugin } from '@capacitor/core';
+import { registerPlugin } from '../platform-plugins';
 import { isAndroid } from '../native';
 import { parseDigestResult, type DigestResult, type HostedDigestProtocol } from './hosted-digests';
 interface NativeInbox {

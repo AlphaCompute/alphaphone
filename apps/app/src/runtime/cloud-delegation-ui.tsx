@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import { registerPlugin, type PluginListenerHandle } from "@capacitor/core";
+import { registerPlugin } from '../platform-plugins';
+import { type PluginListenerHandle } from '@capacitor/core';
 import {
 	secureConnectionStore,
 	openConnectionBrowser,

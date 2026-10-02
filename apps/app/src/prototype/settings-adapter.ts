@@ -1,4 +1,5 @@
-import { Capacitor, registerPlugin } from '@capacitor/core';
+import { registerPlugin } from '../platform-plugins';
+import { Capacitor } from '@capacitor/core';
 import { DailyApps } from '../daily';
 import { connectionController } from '../runtime/connection-ui';
 
@@ -54,7 +55,7 @@ export function installSettingsAdapter(Component: any, views: Bag) {
     speechChecking = true; localSpeech = 'Checking on this phone…'; changed();
     try {
       const status = await speech.localSpeechStatus({requestId:crypto.randomUUID()});
-      if (owner === instance && token === speechGeneration) localSpeech = status.ready === true && status.execution === 'device' ? 'Last check: ready on this phone' : 'Last check: not ready';
+      if (owner === instance && token === speechGeneration) localSpeech = status.ready === true && status.execution === (Capacitor.isNativePlatform()?'device':'browser') ? (Capacitor.isNativePlatform()?'Last check: ready on this phone':'Browser audio ready') : 'Last check: not ready';
     } catch { if (owner === instance && token === speechGeneration) localSpeech = 'Not ready; try again'; }
     finally { if (owner === instance && token === speechGeneration) { speechChecking = false; changed(); } }
   }
@@ -114,12 +115,12 @@ export function installSettingsAdapter(Component: any, views: Bag) {
     const percent = typeof facts.batteryPercent === 'number' ? `${facts.batteryPercent}%` : 'Unavailable';
     const active = (key: string) => typeof facts[key] === 'boolean' ? facts[key] ? 'Active connection' : 'Not active' : 'Unavailable';
     const topValues: Bag = {
-      'Wi-Fi': active('wifiActive'), 'Bluetooth': 'Manage in Android', 'Mobile data': active('cellularActive'),
+      'Wi-Fi': active('wifiActive'), 'Bluetooth': Capacitor.isNativePlatform()?'Manage in Android':active('bluetoothActive'), 'Mobile data': active('cellularActive'),
       'Accounts': account ? 'Eliza Cloud connected' : 'Not signed in', 'Connections': gmail,
       'Privacy & Enclave': runtimeLocation,
       'Battery': percent, 'Models': target, 'About': facts.appVersion || 'Unavailable',
       'Notifications': typeof delivery.appEnabled !== 'boolean' ? 'Unavailable' : !delivery.appEnabled || !delivery.permissionGranted ? 'App notifications off' : delivery.channels?.some((c:Bag)=>c.blocked||c.groupBlocked) ? 'Some channels blocked' : 'App notifications allowed',
-      'Sound & vibration': 'Android settings',
+      'Sound & vibration': Capacitor.isNativePlatform()?'Android settings':'Browser device settings',
     };
     for (const page of out.stack) {
       if (page.isTop) {
@@ -215,6 +216,14 @@ export function installSettingsAdapter(Component: any, views: Bag) {
           }};
         });
       }
+    }
+    if(!Capacitor.isNativePlatform()) {
+      for(const page of out.stack){
+        if(page.title==='Notifications')page.groups=[group([info('Notification center','Browser reminders'),info('Delivery','While Alpha is open'),info('Other apps','Local development events')])];
+        if(page.title==='About')page.groups=[group([info('Alpha Phone','0.1.0'),info('Runtime','Browser development'),info('Storage','This browser profile')])];
+      }
+      const browserLabels=(value:any):any=>{if(typeof value==='string')return value.replaceAll('Unavailable','Browser managed').replaceAll('Manage in Android','Browser device').replaceAll('in Android','in browser').replaceAll('Android settings','Browser device settings').replaceAll('Android Calendar','Browser calendar').replaceAll('Android device information','Browser device information').replaceAll('Android developer settings','Browser developer settings').replaceAll('Device accounts in Android','Browser accounts').replaceAll('On this phone','In this browser').replaceAll('on this phone','in this browser').replaceAll('Android battery policies may delay alerts','Alerts appear while Alpha is open').replaceAll('Native setting unavailable','Browser setting').replaceAll('Wi-Fi transport · network names stay in Android settings','Development network');if(Array.isArray(value))return value.map(browserLabels);if(value&&typeof value==='object')return Object.fromEntries(Object.entries(value).map(([k,v])=>[k,browserLabels(v)]));return value;};
+      return browserLabels(out);
     }
     return out;
   };

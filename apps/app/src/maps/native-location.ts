@@ -1,4 +1,5 @@
-import { Capacitor, registerPlugin, type PluginListenerHandle } from '@capacitor/core';
+import { registerPlugin } from '../platform-plugins';
+import { Capacitor, type PluginListenerHandle } from '@capacitor/core';
 import { coordinate, MapsFailure, type Coordinate } from './contracts';
 
 type Permission = { location: 'granted' | 'denied' | 'prompt'; accuracy?: 'precise' | 'approximate' | 'none' };
@@ -21,7 +22,7 @@ export class NativeMapsLocation {
   private generation = 0;
   private requestingPermission = false;
   awaitingPermission() { return this.requestingPermission && !!this.session && !this.session.aborted; }
-  available() { return Capacitor.isNativePlatform() && Capacitor.isPluginAvailable('ElizaLocation'); }
+  available() { return Capacitor.isPluginAvailable('ElizaLocation'); }
   async stop(): Promise<void> {
     ++this.generation;
     const current = this.session; this.session = undefined;

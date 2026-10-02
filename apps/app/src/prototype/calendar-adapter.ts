@@ -1,4 +1,5 @@
-import { Capacitor, registerPlugin } from '@capacitor/core';
+import { registerPlugin } from '../platform-plugins';
+import { Capacitor } from '@capacitor/core';
 import { DailyApps } from '../daily';
 type Bag = Record<string, any>;
 const calendar = registerPlugin<any>('AlphaCalendar');
@@ -122,8 +123,8 @@ export function installCalendarAdapter(Component: any, views: Bag) {
     };
     if(out.f&&state.form){
       const f=state.form;
-      const destinations=[{id:'local',name:'On this phone'},...calendars.filter(c=>c.writable&&!c.local).map(c=>({id:c.id,name:c.name}))];
-      out.f.cals=f.alphaCalendarId ? [{name:'On this phone',dot:'var(--acc)',css:'background:var(--fg);color:var(--bg)',pick:()=>{}}] : [...out.f.cals.filter((c:Bag)=>c.name==='Reminders'),...destinations.map(c=>({name:c.name,dot:'var(--acc)',css:f.cal===`native:${c.id}`?'background:var(--fg);color:var(--bg)':'background:var(--bg)',pick:()=>api.set({form:{...api.get('calendar').form,cal:`native:${c.id}`,alert:null}})}))];
+      const destinations=[{id:'local',name:(Capacitor.isNativePlatform()?'On this phone':'In this browser')},...calendars.filter(c=>c.writable&&!c.local).map(c=>({id:c.id,name:c.name}))];
+      out.f.cals=f.alphaCalendarId ? [{name:(Capacitor.isNativePlatform()?'On this phone':'In this browser'),dot:'var(--acc)',css:'background:var(--fg);color:var(--bg)',pick:()=>{}}] : [...out.f.cals.filter((c:Bag)=>c.name==='Reminders'),...destinations.map(c=>({name:c.name,dot:'var(--acc)',css:f.cal===`native:${c.id}`?'background:var(--fg);color:var(--bg)':'background:var(--bg)',pick:()=>api.set({form:{...api.get('calendar').form,cal:`native:${c.id}`,alert:null}})}))];
       if(f.cal?.startsWith('native:'))out.f.save=async()=>{
         if(owner?.calendarSaving)return;
         if(owner?.calendarWriteUncertain){api.toast('Refresh device calendars and check the previous event before saving again.');return;}
@@ -143,7 +144,7 @@ export function installCalendarAdapter(Component: any, views: Bag) {
             if(owner!==currentOwner)return;
             const saved=currentOwner.nativeCalendarRows?.find((e:Bag)=>e.alphaCalendarId===result.id);
             if(saved)api.set({open:saved.id,day:saved.off,openDay:saved.off});
-            api.toast('Event saved and verified in Android Calendar.');
+            api.toast(Capacitor.isNativePlatform()?'Event saved and verified in Android Calendar.':'Event saved.');
           }
         }catch{currentOwner.calendarWriteUncertain=true;api.toast('The calendar write was not confirmed. Refresh Calendar and check before creating another event.');}
         finally{currentOwner.calendarSaving=false;if(owner===currentOwner)api.set({});}

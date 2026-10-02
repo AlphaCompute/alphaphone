@@ -1,4 +1,5 @@
-import { registerPlugin, type PluginListenerHandle } from '@capacitor/core';
+import { registerPlugin } from '../platform-plugins';
+import { type PluginListenerHandle } from '@capacitor/core';
 import type { DigestResult } from './hosted-digests';
 export interface HostedResultRoute { scope:string;origin:string;ownerId:string;agentId:string;runId:string;workflowId:string;workflowVersionId:string }
 export interface HostedResultNative {

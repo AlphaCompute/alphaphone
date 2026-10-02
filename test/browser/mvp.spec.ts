@@ -97,10 +97,10 @@ test('Scheduled digests traps focus, closes on native Back, and restores the tri
   await expect(dialog).toHaveCount(0);await expect(trigger).toBeFocused();
   await expect(page.locator('html')).toHaveAttribute('data-active-view','settings');
 });
-test('Manual voice recording is an explicit choice when transcription is unavailable',async({page})=>{
+test('Browser recording supports an explicit manual transcript route',async({page})=>{
   await page.goto('/');await page.getByRole('button',{name:'Notes',exact:true}).click();
   await page.getByRole('button',{name:'Record and transcribe',exact:true}).click();
-  await expect(page.getByRole('button',{name:'On-device speech unavailable',exact:true})).toBeDisabled();
+  await expect(page.getByRole('button',{name:'Start recording',exact:true})).toBeEnabled();
   await page.getByRole('button',{name:'Record without transcription',exact:true}).click();
   await expect(page.getByRole('button',{name:'Start recording',exact:true})).toBeEnabled();
   await expect(page.getByText(/You can add a transcript manually and save without signing in/)).toBeVisible();

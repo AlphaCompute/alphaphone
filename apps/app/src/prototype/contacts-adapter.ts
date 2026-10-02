@@ -1,5 +1,6 @@
 import { isMvpView } from "./mvp-features";
-import { Capacitor, registerPlugin } from '@capacitor/core';
+import { registerPlugin } from '../platform-plugins';
+import { Capacitor } from '@capacitor/core';
 import { DailyApps } from '../daily';
 
 type Bag = Record<string, any>;

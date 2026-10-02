@@ -1,10 +1,10 @@
-import { Capacitor, registerPlugin } from '@capacitor/core';
+import { registerPlugin } from '../platform-plugins';
+import { Capacitor } from '@capacitor/core';
 type Bag = Record<string, any>;
 type Notice = { id: string; revision:string; source:'own'|'external'; appLabel:string; title: string; text: string; at: number; clearable: boolean; canOpen: boolean };
 const native = registerPlugin<{list(): Promise<{items: Notice[]; scope: string}>;open(options:{id:string;revision:string;source:string}):Promise<void>;dismiss(options:{id:string;revision:string;source:string}):Promise<void>;clear(options:{items:Array<{id:string;revision:string;source:string}>}):Promise<{outcomes:Array<{status:string}>}>}>('AlphaNotifications');
 /** Active rows only. Android access and per-app opt-in are enforced natively. */
 export function installNotificationsAdapter(Component: any) {
- if (!Capacitor.isNativePlatform()) return;
  const p=Component.prototype, render=p.renderVals, mount=p.componentDidMount, unmount=p.componentWillUnmount;
  p.componentDidMount=function(){mount?.call(this);this.alphaNotices=[];this.alphaNoticesLive=true;this.alphaNoticeEpoch=0;
   this.alphaNoticeVisibility=()=>{this.alphaNoticeEpoch++;if(document.hidden){this.alphaNotices=[];this.setState({nativeNoticeRevision:Date.now()});}else if(this.S().shade)void this.refreshAlphaNotices();};

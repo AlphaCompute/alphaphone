@@ -1,4 +1,5 @@
-import { Capacitor, registerPlugin } from '@capacitor/core';
+import { registerPlugin } from '../platform-plugins';
+import { Capacitor } from '@capacitor/core';
 import type { VerifiedSession } from './alpha-client';
 import type { RemoteChatReply, RemoteConversation } from './remote-protocol';
 import { readLocalAgentStream } from './local-agent-stream';

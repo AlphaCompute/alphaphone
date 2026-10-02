@@ -1,4 +1,4 @@
-import { registerPlugin } from '@capacitor/core';
+import { registerPlugin } from '../platform-plugins';
 import type { CloudNativeRequest, CloudCredentialStore, CloudCredential } from './cloud-protocol';
 import type { RemoteRequester, RemoteCredentialStore } from './remote-protocol';
 

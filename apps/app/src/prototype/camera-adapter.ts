@@ -1,5 +1,6 @@
 import {browserCamera,browserLibrary,browserPhotoLibrary,mountBrowserCamera} from './browser-camera';
-import { Capacitor, registerPlugin } from '@capacitor/core';
+import { registerPlugin } from '../platform-plugins';
+import { Capacitor } from '@capacitor/core';
 
 type Bag = Record<string, any>;
 type VideoReceipt = { path: string; duration: number; width: number; height: number; fileSize: number };
@@ -412,14 +413,14 @@ export function installPrototypeCameraAdapter(_Component: unknown, views: Record
       message('Saving video…');
       try {
         const receipt = await camera.stopRecording();
-        if (!/^content:\/\/media\//.test(receipt.path) || receipt.duration <= 0 || receipt.fileSize <= 0) throw new Error('Incomplete recording');
+        if (!/^(content:\/\/media\/|browser-video:\/\/\/)/.test(receipt.path) || receipt.duration <= 0 || receipt.fileSize <= 0) throw new Error('Incomplete recording');
         const id = receipt.path.split('/').pop();
         if (!id || !/^\d+$/.test(id)) throw new Error('Missing video identity');
         const item = normalize(await library.read({ id: 'v:' + id }));
         if (disposed) return;
         captures = [item, ...captures.filter(row => row.id !== item.id)]; loaded = false;
         api?.setView('photos', { nativeCaptureRevision: item.id });
-        message('Video saved to Android Photos.');
+        message(browserMode?'Video saved.':'Video saved to Android Photos.');
       } catch { if (!disposed) message('Video could not be finalized. No successful recording was confirmed.'); }
       finally { finalizing = undefined; }
     })();
@@ -440,7 +441,7 @@ export function installPrototypeCameraAdapter(_Component: unknown, views: Record
   async function capture() {
     if (phase !== 'ready') { await start(true); return; }
     if (!api || capturing || controlBusy) return;
-    if (api.get('camera').mode === 'video') { if(browserMode){message('Browser video capture is not available. Choose Photo.');return;}await record(); return; }
+    if (api.get('camera').mode === 'video') { await record(); return; }
     if (api.get('camera').mode !== 'photo') { message('Document scanning is not integrated. Choose Photo or Video.'); return; }
     capturing = true; const token = epoch; const owner = api;
     message('Saving photo…');
@@ -477,7 +478,7 @@ export function installPrototypeCameraAdapter(_Component: unknown, views: Record
     data.vfDown = () => {};
     data.vfUp = (event: PointerEvent) => { void control(() => camera.setFocusPoint({ x: Math.max(0, Math.min(1, event.clientX / window.innerWidth)), y: Math.max(0, Math.min(1, event.clientY / window.innerHeight)) }), () => message('')); };
     data.vfLeave = () => {};
-    data.modes = (data.modes || []).filter((m:Bag)=>!browserMode||m.label.toLowerCase()==='photo').map((m: Bag) => ({ ...m, pick: () => { if (recording || recordingStarting || finalizing || capturing) return; const mode = m.label.toLowerCase(); if (mode === 'photo' || mode === 'video') currentApi.set({ mode, rec: false, found: false }); else message('Document scanning is not integrated. Photo and video capture are available.'); } }));
+    data.modes = (data.modes || []).map((m: Bag) => ({ ...m, pick: () => { if (recording || recordingStarting || finalizing || capturing) return; const mode = m.label.toLowerCase(); if (mode === 'photo' || mode === 'video') currentApi.set({ mode, rec: false, found: false }); else message('Document scanning is not integrated. Photo and video capture are available.'); } }));
     data.ask = () => currentApi.assist('You can ask Alpha here. Camera image analysis is not connected, and the live camera feed is not shared.');
     if (captures[0]) {
       data.hasLast = true; data.noLast = false; data.lastBg = `url("${captures[0].image}") center / cover no-repeat`; data.lastTf = ''; data.lastFlt = '';

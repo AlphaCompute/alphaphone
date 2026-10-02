@@ -1,5 +1,6 @@
 import type {ReminderOperation,ReminderTarget,ReminderResult} from './runtime/reminder-contract';
-import { registerPlugin, type PluginListenerHandle } from "@capacitor/core";
+import { registerPlugin } from './platform-plugins';
+import { type PluginListenerHandle } from '@capacitor/core';
 export type Action =
   | "camera"
   | "photos"

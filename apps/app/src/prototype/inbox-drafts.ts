@@ -1,4 +1,4 @@
-import {registerPlugin} from '@capacitor/core';
+import { registerPlugin } from '../platform-plugins';
 const attachmentNative=registerPlugin<{readSelected(input:{selectionId:string}):Promise<MailAttachment & {size:number;sha256:string}>}>('AlphaMailAttachments');
 import {DailyApps} from '../daily';
 import {reviewMailAttachment,type MailAttachment} from '../runtime/inbox-attachment';

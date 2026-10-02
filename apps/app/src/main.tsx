@@ -1,3 +1,6 @@
+import './browser/register';
+import { browserDevProfile } from './browser/dev-profile';
+import { captureSimulatedApps, installSimulatedApps } from './browser/simulated-apps';
 import {HostedDigestPanel} from './runtime/hosted-digest-ui';
 import { installClockAdapter } from './prototype/clock-adapter';
 import { installNotesDocumentAdapter } from './prototype/notes-document-adapter';
@@ -40,6 +43,7 @@ const initialTheme = (() => {
   catch { return 'light'; }
 })();
 document.documentElement.dataset.connectionMode = mock ? 'mock' : 'live';
+const simulatedApps=captureSimulatedApps(VIEWS);
 installPrototypeHomeBindings(Component);
 if (!fixture) {
   let selected: ReturnType<typeof installSelectedDocumentAdapter> | undefined;
@@ -58,9 +62,10 @@ if (!fixture) {
   installNotesDocumentAdapter(Component, VIEWS);
   installPrototypeBrowserAdapter(Component, VIEWS);
   installSettingsAdapter(Component, VIEWS);
-  installInboxCloudAdapter(Component, VIEWS);
-  installWorkflowAdapter(Component, VIEWS);
+  if(!browserDevProfile) installInboxCloudAdapter(Component, VIEWS);
+  if(!browserDevProfile) installWorkflowAdapter(Component, VIEWS);
 }
+installSimulatedApps(Component,VIEWS,simulatedApps);
 installClockAdapter(Component, VIEWS, { simulated: fixture });
 let shell: any;
 function Phone() {
@@ -83,12 +88,12 @@ function Phone() {
     size(); window.addEventListener('resize', size); window.visualViewport?.addEventListener('resize', size);
     return () => { window.removeEventListener('resize', size); window.visualViewport?.removeEventListener('resize', size); };
   }, []);
-  return <>{mock && <div className="mock-mode-banner" role="status"><span>Mock mode · simulated data and actions</span><button onClick={() => { void connectionController.offline().then(() => { const url = new URL(location.href); url.searchParams.delete('mode'); url.searchParams.delete('start'); location.assign(url.href); }); }}>Exit mock mode</button></div>}<Component phoneSurface initial={fixture ? query.get('start') || 'home' : 'home'} theme={initialTheme} ref={(value: any) => { shell = value; }} />
+  return <>{import.meta.env.DEV&&!isAndroid&&!mock&&<button style={{position:'fixed',right:8,bottom:8,zIndex:90,fontSize:12}} onClick={()=>{const url=new URL(location.href);if(browserDevProfile)url.searchParams.delete('mode');else url.searchParams.set('mode','dev');location.assign(url.href);}}>{browserDevProfile?'Dev device · local data':'Dev device'}</button>}{mock && <div className="mock-mode-banner" role="status"><span>Mock mode · simulated data and actions</span><button onClick={() => { void connectionController.offline().then(() => { const url = new URL(location.href); url.searchParams.delete('mode'); url.searchParams.delete('start'); location.assign(url.href); }); }}>Exit mock mode</button></div>}<Component phoneSurface initial={fixture ? query.get('start') || 'home' : 'home'} theme={initialTheme} ref={(value: any) => { shell = value; }} />
 {!fixture && <><ConnectionChooser /><HostedDigestPanel /></>}</>;
 }
 async function mountPhone() {
   if (mock && isAndroid) {
-    try { await (await import('@capacitor/core')).registerPlugin<{pauseNotificationCollection():Promise<void>}>('AlphaConnection').pauseNotificationCollection(); }
+    try { await (await import('./platform-plugins')).registerPlugin<{pauseNotificationCollection():Promise<void>}>('AlphaConnection').pauseNotificationCollection(); }
     catch { document.getElementById('root')!.textContent='Mock mode could not pause notification collection. Reopen Alpha Phone to try again.'; return; }
   }
   createRoot(document.getElementById('root')!).render(<Phone />);

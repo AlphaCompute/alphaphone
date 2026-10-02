@@ -1,4 +1,5 @@
-import { registerPlugin, type PluginListenerHandle } from '@capacitor/core';
+import { registerPlugin } from '../platform-plugins';
+import { type PluginListenerHandle } from '@capacitor/core';
 import { connectionController } from './connection-ui';
 type Binding = { origin: string; ownerId: string; expiresAt: number; sessionId: string };
 const native = registerPlugin<{

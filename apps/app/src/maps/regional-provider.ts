@@ -1,4 +1,5 @@
-import { Capacitor, registerPlugin } from '@capacitor/core';
+import { registerPlugin } from '../platform-plugins';
+import { Capacitor } from '@capacitor/core';
 import { DailyApps } from '../daily';
 import { configureMapsProvider } from './runtime';
 import { MapsFailure, type Coordinate, type MapsProvider, type Place, type Route, type TravelMode } from './contracts';

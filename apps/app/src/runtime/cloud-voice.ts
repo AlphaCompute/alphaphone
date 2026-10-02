@@ -1,4 +1,5 @@
-import { registerPlugin, type PluginListenerHandle } from '@capacitor/core';
+import { registerPlugin } from '../platform-plugins';
+import { type PluginListenerHandle } from '@capacitor/core';
 import { connectionController } from './connection-ui';
 
 export type VoiceClip = { recordingId: string; durationMs: number };

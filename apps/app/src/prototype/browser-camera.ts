@@ -1,5 +1,6 @@
+import {editStore,readStore} from '../browser/store';
 
-type Row={id:string;kind:'image';image:string;width:number;height:number;date:number;revision:string;mutationRevision:string;favorite:boolean;trashed:boolean};
+type Row={id:string;kind:'image'|'video';path?:string;duration?:number;operationId?:string;image:string;width:number;height:number;date:number;revision:string;mutationRevision:string;favorite:boolean;trashed:boolean};
 const finder='[aria-label="Viewfinder. Tap to focus, hold to ask Alpha, swipe to change mode"]';
 const revision=()=>crypto.randomUUID();
 let database:Promise<IDBDatabase>|undefined;
@@ -19,16 +20,16 @@ async function transaction<T>(mode:IDBTransactionMode,action:(store:IDBObjectSto
 }
 async function rows(options:{before?:string;trashed?:boolean;album?:string}={},metadata=false){
  return transaction<Row[]>('readonly',(store,set)=>{const result:Row[]=[];const request=store.openCursor(undefined,'prev');
-  request.onsuccess=()=>{const cursor=request.result;if(!cursor){set(result);return;}const row=cursor.value as Row;if(row.kind!=='image'){cursor.continue();return;}
-   if((!options.before||row.id<options.before)&&(metadata||(!!row.trashed===!!options.trashed&&(!options.album||options.album==='favorites'&&row.favorite))))result.push(metadata?{...row,image:''}:row);
+  request.onsuccess=()=>{const cursor=request.result;if(!cursor){set(result);return;}const row=cursor.value as Row;if(row.kind!=='image'&&row.kind!=='video'){cursor.continue();return;}
+   if((!options.before||row.id<options.before)&&(metadata||(!!row.trashed===!!options.trashed&&(!options.album||options.album==='favorites'&&row.favorite||options.album==='videos'&&row.kind==='video'||readStore<Album[]>('alpha.browser.albums.v1',()=>[]).find(a=>a.id===options.album)?.memberIds.includes(row.id)))))result.push(metadata?{...row,image:''}:row);
    if(!metadata&&result.length>=41){set(result);return;}cursor.continue();
   };
  });
 }
-async function read(id:string){return transaction<Row>('readonly',(store,set,fail)=>{const r=store.get(id);r.onsuccess=()=>r.result?.kind==='image'?set(r.result):fail(Error('Photo no longer available.'));});}
+async function read(id:string){return transaction<Row>('readonly',(store,set,fail)=>{const r=store.get(id);r.onsuccess=()=>['image','video'].includes(r.result?.kind)?set(r.result):fail(Error('Photo no longer available.'));});}
 async function change(input:{id:string;revision:string},patch:Partial<Pick<Row,'favorite'|'trashed'>>){
  return transaction<Row>('readwrite',(store,set,fail)=>{const r=store.get(input.id);r.onsuccess=()=>{const row=r.result as Row|undefined;
-  if(!row||row.kind!=='image'||row.mutationRevision!==input.revision){fail(Error('Photo changed in another tab. Reopen it and try again.'));return;}
+  if(!row||!['image','video'].includes(row.kind)||row.mutationRevision!==input.revision){fail(Error('Photo changed in another tab. Reopen it and try again.'));return;}
   const updated={...row,...patch,mutationRevision:revision()};store.put(updated);set(updated);
  };});
 }
@@ -111,20 +112,31 @@ async function savePhotoEdit(input:EditParameters&{sessionId:string}):Promise<Ed
  }
 }
 
+type Album={id:string;name:string;revision:string;count:number;memberIds:string[]};
+const mediaId=()=>Date.now().toString().padStart(13,'0')+Array.from(crypto.getRandomValues(new Uint8Array(12)),n=>String(n%10)).join('');
 const prepared=new Map<string,{id:string;revision:string}[]>();
 export const browserPhotoLibrary={
  beginEdit:beginPhotoEdit,previewEdit:previewPhotoEdit,saveEdit:savePhotoEdit,editResult:resultPhotoEdit,cancelEdit:cancelPhotoEdit,
  async list(options:{before?:string;trashed?:boolean;album?:string}={}){const result=await rows(options);return {items:result.slice(0,40),next:result.length>40?result[39].id:''};},
  async read(input:{id:string}){return read(input.id);},
- async summary(){const all=await rows({},true);return {favorites:all.filter(r=>!r.trashed&&r.favorite).length,videos:0,trash:all.filter(r=>r.trashed).length,canFavorite:true};},
- async albums(){return {items:[]};},
+ async summary(){const all=await rows({},true);return {favorites:all.filter(r=>!r.trashed&&r.favorite).length,videos:all.filter(r=>!r.trashed&&r.kind==='video').length,trash:all.filter(r=>r.trashed).length,canFavorite:true};},
+ async albums(){return {items:readStore<Album[]>('alpha.browser.albums.v1',()=>[])};},
+ async shareMany(input:{items:{id:string;revision:string}[]}){for(const item of input.items){const row=await read(item.id);if(row.mutationRevision!==item.revision||row.trashed)throw Error('Selection changed.');}for(const item of input.items)await browserPhotoLibrary.share(item);return {status:'opened',count:input.items.length};},
+ async changeAlbum(input:Record<string,unknown>){return editStore<Album[],{status:string;id:string;revision:string}>('alpha.browser.albums.v1',()=>[],async albums=>{
+  if(input.operation==='create'){const album:Album={id:crypto.randomUUID(),name:String(input.name||'Album'),revision:revision(),count:0,memberIds:[]};albums.push(album);return {status:'updated',id:album.id,revision:album.revision};}
+  const album=albums.find(a=>a.id===input.id);if(!album||album.revision!==input.revision)throw Error('Album changed. Reopen it.');
+  if(input.operation==='delete')albums.splice(albums.indexOf(album),1);
+  else if(input.operation==='rename')album.name=String(input.name||'Album');
+  else {const row=await read(String(input.mediaId));if(row.mutationRevision!==input.mediaRevision||row.trashed)throw Error('Photo changed. Reopen it.');album.memberIds=album.memberIds.filter(id=>id!==row.id);if(input.operation==='add')album.memberIds.push(row.id);}
+  album.revision=revision();album.count=album.memberIds.length;return {status:'updated',id:album.id,revision:album.revision};
+ });},
  async setFavorite(input:{id:string;revision:string;favorite:boolean}){return change(input,{favorite:input.favorite});},
  async setTrashed(input:{id:string;revision:string;trashed:boolean}){return {...await change(input,{trashed:input.trashed}),status:'updated'};},
  async changeMany(input:{operation:'favorite'|'trash'|'restore';items:{id:string;revision:string}[]}){
   const outcomes=[];for(const item of input.items){try{const row=await change(item,input.operation==='favorite'?{favorite:true}:{trashed:input.operation==='trash'});outcomes.push({id:item.id,status:'updated',item:row});}catch{outcomes.push({id:item.id,status:'conflict'});}}return {status:'complete',outcomes};
  },
  async share(input:{id:string}){const row=await read(input.id);if(row.trashed)throw Error('Restore this photo before downloading.');
-  const link=document.createElement('a');link.href=row.image;link.download=`Alpha-photo-${row.id}.jpg`;document.body.append(link);link.click();link.remove();return {status:'opened',message:'Photo download requested. Check your browser downloads.'};
+  const link=document.createElement('a');link.href=row.path||row.image;link.download=`Alpha-photo-${row.id}.${row.kind==='video'?'webm':'jpg'}`;document.body.append(link);link.click();link.remove();return {status:'opened',message:'Photo download requested. Check your browser downloads.'};
  },
  async prepareDeleteTrash(){const confirmation=revision();prepared.clear();const selected=(await rows({},true)).filter(r=>r.trashed).map(r=>({id:r.id,revision:r.mutationRevision}));prepared.set(confirmation,selected);return {confirmation,count:selected.length};},
  async cancelDeleteTrash(input:{confirmation:string}){prepared.delete(input.confirmation);},
@@ -134,6 +146,7 @@ export const browserPhotoLibrary={
 };
 const unavailable=async()=>{throw Error('This operation is not available for browser photos. The original is unchanged.');};
 export const browserLibrary=new Proxy(browserPhotoLibrary,{get(target,key){return Reflect.get(target,key)??unavailable;}});
+let recorder:MediaRecorder|undefined,recorded:Promise<Blob>|undefined,recordingStarted=0,recordTimer:ReturnType<typeof setTimeout>|undefined;
 let preview:HTMLVideoElement|null=null,stream:MediaStream|null=null,generation=0;
 let starting:AbortController|undefined;
 function release(video:HTMLVideoElement|null,media:MediaStream|null){media?.getTracks().forEach(track=>track.stop());if(video){video.pause();video.srcObject=null;video.remove();}}
@@ -177,5 +190,10 @@ export const browserCamera={
   return {...photo,path:'browser-photo:///'+id};
  },
  async switchCamera(options:{direction:'front'|'back'}){return browserCamera.startPreview({...options,resolution:{width:1280,height:720},mirror:options.direction==='front'});},
- setZoom:unavailable,setSettings:unavailable,setFocusPoint:unavailable,startRecording:unavailable,stopRecording:unavailable,getRecordingState:unavailable,
+ async setZoom(input:{zoom:number}){if(preview)preview.style.transform=`scale(${Math.max(1,Math.min(8,input.zoom))})`;},
+ async setSettings(input:{settings:{flash:string}}){if(preview)preview.style.filter=input.settings.flash==='on'?'brightness(1.2)':'none';},
+ async setFocusPoint(){},
+ async startRecording(input:{maxDuration:number;maxFileSize:number}){if(!preview?.srcObject||recorder?.state==='recording')throw Error('Start camera first.');const stream=preview.srcObject as MediaStream;recorder=new MediaRecorder(stream);const current=recorder,chunks:Blob[]=[];let size=0;recordingStarted=Date.now();recorded=new Promise((resolve,reject)=>{current.ondataavailable=e=>{chunks.push(e.data);size+=e.data.size;if(size>=input.maxFileSize&&current.state==='recording')current.stop();};current.onstop=()=>{clearTimeout(recordTimer);resolve(new Blob(chunks,{type:current.mimeType}));};current.onerror=()=>reject(Error('Video recording failed.'));});current.start(250);recordTimer=setTimeout(()=>{if(current.state==='recording')current.stop();},input.maxDuration*1000);},
+ async stopRecording(){if(!recorder||!recorded||!preview)throw Error('No recording.');if(recorder.state==='recording')recorder.stop();const blob=await recorded;recorded=undefined;recorder=undefined;const duration=(Date.now()-recordingStarted)/1000,id=mediaId();const canvas=document.createElement('canvas');canvas.width=preview.videoWidth;canvas.height=preview.videoHeight;canvas.getContext('2d')!.drawImage(preview,0,0);const path=await new Promise<string>((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(String(reader.result));reader.onerror=()=>reject(reader.error);reader.readAsDataURL(blob);});const row:Row={id:'v:'+id,kind:'video',path,duration,image:canvas.toDataURL('image/jpeg'),width:canvas.width,height:canvas.height,date:Date.now(),revision:revision(),mutationRevision:revision(),favorite:false,trashed:false};await transaction<void>('readwrite',(store,set)=>{store.add(row);set(undefined);});return {path:'browser-video:///'+id,duration,width:row.width,height:row.height,fileSize:blob.size};},
+ async getRecordingState(){return {isRecording:recorder?.state==='recording',duration:(Date.now()-recordingStarted)/1000,fileSize:0};},
 };

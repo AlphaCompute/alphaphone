@@ -1,4 +1,4 @@
-import { registerPlugin } from '@capacitor/core';
+import { registerPlugin } from '../platform-plugins';
 import { browserLocalAgentEnabled } from '../runtime/local-agent';
 import { developmentWorkflowDraftStore } from '../runtime/local-agent-storage';
 import { connectionController } from '../runtime/connection-ui';
