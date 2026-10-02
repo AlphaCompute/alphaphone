@@ -9,7 +9,7 @@ async function seed(page:Page,width=240,height=120){
   const canvas=document.createElement('canvas');canvas.width=width;canvas.height=height;const ctx=canvas.getContext('2d')!;
   ctx.fillStyle='#d22';ctx.fillRect(0,0,width/2,height);ctx.fillStyle='#2c4';ctx.fillRect(width/2,0,width/2,height);
   const original={id:'1000',kind:'image',image:canvas.toDataURL('image/jpeg',.9),width,height,date:1700000000000,revision:'original-pixels',mutationRevision:'original-metadata',favorite:false,trashed:false};
-  await new Promise<void>((resolve,reject)=>{const request=indexedDB.open('alpha.browser.photos.v1',1);request.onsuccess=()=>{const db=request.result,tx=db.transaction('photos','readwrite');tx.objectStore('photos').add(original);tx.oncomplete=()=>{db.close();resolve();};tx.onabort=()=>reject(tx.error);};request.onerror=()=>reject(request.error);});
+  await new Promise<void>((resolve,reject)=>{const request=indexedDB.open('alpha.browser.photos.v1');request.onsuccess=()=>{const db=request.result,tx=db.transaction('photos','readwrite');tx.objectStore('photos').add(original);tx.oncomplete=()=>{db.close();resolve();};tx.onabort=()=>reject(tx.error);};request.onerror=()=>reject(request.error);});
   return original;
  },{width,height});
 }

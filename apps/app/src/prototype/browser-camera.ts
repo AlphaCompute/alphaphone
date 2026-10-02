@@ -8,8 +8,11 @@ const finder='[aria-label="Viewfinder. Tap to focus, hold to ask Alpha, swipe to
 const revision=()=>crypto.randomUUID();
 let database:Promise<IDBDatabase>|undefined;
 function db(){return database??=new Promise<IDBDatabase>((resolve,reject)=>{
- const request=indexedDB.open('alpha.browser.photos.v1',1);
- request.onupgradeneeded=()=>request.result.createObjectStore('photos',{keyPath:'id'});
+ const request=indexedDB.open('alpha.browser.photos.v1',2);
+ request.onupgradeneeded=()=>{
+  const store=request.result.objectStoreNames.contains('photos')?request.transaction!.objectStore('photos'):request.result.createObjectStore('photos',{keyPath:'id'});
+  if(!store.indexNames.contains('chronological'))store.createIndex('chronological',['date','id']);
+ };
  request.onsuccess=()=>{request.result.onversionchange=()=>{request.result.close();database=undefined;};resolve(request.result);};
  request.onerror=()=>{database=undefined;reject(request.error);};
  request.onblocked=()=>{database=undefined;reject(Error('Close other Alpha tabs to open photo storage.'));};
@@ -21,13 +24,19 @@ async function transaction<T>(mode:IDBTransactionMode,action:(store:IDBObjectSto
   try{action(tx.objectStore('photos'),v=>{value=v;},e=>{error=e;tx.abort();});}catch(e){error=e as Error;tx.abort();}
  });
 }
+function pageCursor(row:Row){return 'date:'+JSON.stringify([row.date,row.id]);}
+function pageBoundary(value:string){
+ try{const key=JSON.parse(value.slice(5));if(value.startsWith('date:')&&Array.isArray(key)&&key.length===2&&Number.isFinite(key[0])&&typeof key[1]==='string'&&key[1])return key as [number,string];}catch{}
+ throw Error('Photo page changed. Reopen the library.');
+}
 async function rows(options:{before?:string;trashed?:boolean;album?:string}={},metadata=false){
  const custom=options.album&&!['favorites','videos'].includes(options.album)?readStore<Album[]>('alpha.browser.albums.v1',()=>[]).find(a=>a.id===options.album!.replace(/^custom:/,'')):undefined;
  if(options.album&&!['favorites','videos'].includes(options.album)&&!custom)throw Error('Album no longer available.');
  const members=new Set(custom?.memberIds||[]);
- return transaction<Row[]>('readonly',(store,set)=>{const result:Row[]=[];const request=store.openCursor(undefined,'prev');
+ const boundary=options.before?pageBoundary(options.before):undefined;
+ return transaction<Row[]>('readonly',(store,set)=>{const result:Row[]=[];const request=store.index('chronological').openCursor(boundary?IDBKeyRange.upperBound(boundary,true):undefined,'prev');
   request.onsuccess=()=>{const cursor=request.result;if(!cursor){set(result);return;}const row=cursor.value as Row;if(row.kind!=='image'&&row.kind!=='video'){cursor.continue();return;}
-   if((!options.before||row.id<options.before)&&(metadata||(!!row.trashed===!!options.trashed&&(!options.album||options.album==='favorites'&&row.favorite||options.album==='videos'&&row.kind==='video'||members.has(row.id)))))result.push(metadata?{...row,image:'',path:undefined}:row);
+   if(metadata||(!!row.trashed===!!options.trashed&&(!options.album||options.album==='favorites'&&row.favorite||options.album==='videos'&&row.kind==='video'||members.has(row.id))))result.push(metadata?{...row,image:'',path:undefined}:row);
    if(!metadata&&result.length>=41){set(result);return;}cursor.continue();
   };
  });
@@ -123,7 +132,7 @@ const mediaId=()=>Date.now().toString().padStart(13,'0')+Array.from(crypto.getRa
 const prepared=new Map<string,{id:string;revision:string}[]>();
 export const browserPhotoLibrary={
  beginEdit:beginPhotoEdit,previewEdit:previewPhotoEdit,saveEdit:savePhotoEdit,editResult:resultPhotoEdit,cancelEdit:cancelPhotoEdit,
- async list(options:{before?:string;trashed?:boolean;album?:string}={}){const result=await rows(options);return {items:result.slice(0,40),next:result.length>40?result[39].id:''};},
+ async list(options:{before?:string;trashed?:boolean;album?:string}={}){const result=await rows(options);return {items:result.slice(0,40),next:result.length>40?pageCursor(result[39]):''};},
  async read(input:{id:string}){return read(input.id);},
  async summary(){const all=await rows({},true);return {favorites:all.filter(r=>!r.trashed&&r.favorite).length,videos:all.filter(r=>!r.trashed&&r.kind==='video').length,trash:all.filter(r=>r.trashed).length,canFavorite:true};},
  async albums(){const live=new Set((await rows({},true)).filter(row=>!row.trashed).map(row=>row.id));return {items:readStore<Album[]>('alpha.browser.albums.v1',()=>[]).map(album=>({...album,count:album.memberIds.filter(id=>live.has(id)).length}))};},

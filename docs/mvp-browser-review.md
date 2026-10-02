@@ -432,3 +432,35 @@ Custom album listing now recognizes the renderer's `custom:` identity prefix. Cr
 Album counts are derived from current nontrashed media, so trash, restore and permanent deletion agree with listed contents. Membership survives trash/restore; deleting an album preserves its media. Metadata queries discard image and video data strings from retained results instead of keeping all video payloads merely to count them.
 
 On fixed base `6665e62`, 82 repository checks, TypeScript and build pass. All 12 focused browser cases pass: the complete rendered create-with-photo → rename → reload → remove → add → delete-album flow, count/content behavior across trash/restore/permanent deletion, invalid/stale operations, and existing capture/import regressions. The original album implementation fails the new regression. Evidence: `test-results/photo-albums/`. No Android build ran. Batch-selection/share journeys, broader media scalability and the full remaining MVP/provider/device ledger are still open.
+
+
+## October 2 — chronological browser Photos pagination
+
+The browser library previously iterated primary IDs in descending order. Video IDs
+start with `v:`, so every video appeared before every photo regardless of capture
+date, and pagination inherited that incorrect ordering. Browser Photos now uses
+an IndexedDB compound date/identity index, created by an in-place version-1 to
+version-2 migration. All media views use descending capture time with deterministic
+identity ordering for equal timestamps. Page cursors retain both values, so deleting
+the boundary item does not invalidate the next page. Invalid or old cursor formats
+reject and require reopening the library rather than silently returning the wrong page.
+
+Verification used an isolated source snapshot with its own dependencies:
+
+- `npm run verify`: typecheck, 82 host tests (zero failures/skips), production build.
+- 15 browser tests passed across chronological pagination, album lifecycle, photo
+  editing/recovery and camera persistence/permission/cancellation.
+- The new migration regression seeds a real version-1 database, then verifies 120
+  mixed photo/video items across three rendered Load more pages, exact ordering,
+  no duplicates, end-of-list and reload. Additional tests cover deletion of the
+  cursor item, a newer insertion, malformed cursor rejection, and filtered Favorites,
+  Videos, Trash and custom albums.
+- Restoring the original implementation makes the chronological regression fail.
+- Local evidence: `test-results/photo-order/` (verification, browser and baseline
+  logs plus SHA-256 source manifest).
+
+This qualifies browser storage and renderer behavior. Pages are live queries, not
+frozen snapshots: a newly captured item appears after refreshing the first page;
+concurrent filter/membership changes can change later pages. Batch selection/share,
+remaining broader MVP gaps, concurrent browser parity work and real device/provider
+acceptance remain open. Android builds were intentionally excluded from this pass.
