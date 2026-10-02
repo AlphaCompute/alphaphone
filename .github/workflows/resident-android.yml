@@ -40,7 +40,7 @@ jobs:
           grep -Eq '^Pkg.Revision *= *28\.2\.13676358[[:space:]]*$' "$ANDROID_NDK_HOME/source.properties"
           python3 -c 'import shutil; print("freshCapacityBeforeBytes="+str(shutil.disk_usage(".").free))'
           df -h "$GITHUB_WORKSPACE"
-          for unused in /usr/share/dotnet /usr/local/.ghcup /usr/local/swift /opt/ghc /usr/local/share/powershell /opt/hostedtoolcache/CodeQL; do
+          for unused in /usr/share/dotnet /usr/local/.ghcup /usr/local/swift /usr/share/swift /opt/ghc /usr/local/share/powershell /opt/hostedtoolcache/CodeQL; do
             if [ -e "$unused" ]; then
               test "$(realpath "$unused")" = "$unused"
               sudo du -sh "$unused"
