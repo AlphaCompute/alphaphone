@@ -1,3 +1,4 @@
+import {BrowserVideoCapture} from '../browser/video-capture';
 import {editStore,readStore} from '../browser/store';
 
 type Row={id:string;kind:'image'|'video';path?:string;duration?:number;operationId?:string;image:string;width:number;height:number;date:number;revision:string;mutationRevision:string;favorite:boolean;trashed:boolean};
@@ -136,7 +137,7 @@ export const browserPhotoLibrary={
   const outcomes=[];for(const item of input.items){try{const row=await change(item,input.operation==='favorite'?{favorite:true}:{trashed:input.operation==='trash'});outcomes.push({id:item.id,status:'updated',item:row});}catch{outcomes.push({id:item.id,status:'conflict'});}}return {status:'complete',outcomes};
  },
  async share(input:{id:string}){const row=await read(input.id);if(row.trashed)throw Error('Restore this photo before downloading.');
-  const link=document.createElement('a');link.href=row.path||row.image;link.download=`Alpha-photo-${row.id}.${row.kind==='video'?'webm':'jpg'}`;document.body.append(link);link.click();link.remove();return {status:'opened',message:'Photo download requested. Check your browser downloads.'};
+  const link=document.createElement('a');link.href=row.path||row.image;link.download=`Alpha-photo-${row.id}.${row.kind==='video'?(row.path?.startsWith('data:video/mp4;')?'mp4':'webm'):'jpg'}`;document.body.append(link);link.click();link.remove();return {status:'opened',message:'Photo download requested. Check your browser downloads.'};
  },
  async prepareDeleteTrash(){const confirmation=revision();prepared.clear();const selected=(await rows({},true)).filter(r=>r.trashed).map(r=>({id:r.id,revision:r.mutationRevision}));prepared.set(confirmation,selected);return {confirmation,count:selected.length};},
  async cancelDeleteTrash(input:{confirmation:string}){prepared.delete(input.confirmation);},
@@ -146,7 +147,9 @@ export const browserPhotoLibrary={
 };
 const unavailable=async()=>{throw Error('This operation is not available for browser photos. The original is unchanged.');};
 export const browserLibrary=new Proxy(browserPhotoLibrary,{get(target,key){return Reflect.get(target,key)??unavailable;}});
-let recorder:MediaRecorder|undefined,recorded:Promise<Blob>|undefined,recordingStarted=0,recordTimer:ReturnType<typeof setTimeout>|undefined;
+const videoCapture=new BrowserVideoCapture();
+let videoSession=0;
+let videoSave:Promise<{path:string;duration:number;width:number;height:number;fileSize:number}>|undefined;
 let preview:HTMLVideoElement|null=null,stream:MediaStream|null=null,generation=0;
 let starting:AbortController|undefined;
 function release(video:HTMLVideoElement|null,media:MediaStream|null){media?.getTracks().forEach(track=>track.stop());if(video){video.pause();video.srcObject=null;video.remove();}}
@@ -175,7 +178,7 @@ export const browserCamera={
   }catch(error){release(ownVideo,ownStream);if(preview===ownVideo){preview=null;stream=null;}throw error;}
   finally{if(starting===controller)starting=undefined;}
  },
- async stopPreview(){++generation;starting?.abort();starting=undefined;release(preview,stream);preview=null;stream=null;},
+ async stopPreview(){++generation;++videoSession;videoCapture.cancel();starting?.abort();starting=undefined;release(preview,stream);preview=null;stream=null;},
  async capturePhoto(){const token=generation,video=preview;if(!video||!stream||video.readyState<2)throw Error('Camera is not ready.');
   const width=video.videoWidth,height=video.videoHeight;if(width<=0||height<=0||width*height>32_000_000)throw Error('Unsupported photo dimensions.');
   const canvas=document.createElement('canvas');canvas.width=width;canvas.height=height;
@@ -193,7 +196,17 @@ export const browserCamera={
  async setZoom(input:{zoom:number}){if(preview)preview.style.transform=`scale(${Math.max(1,Math.min(8,input.zoom))})`;},
  async setSettings(input:{settings:{flash:string}}){if(preview)preview.style.filter=input.settings.flash==='on'?'brightness(1.2)':'none';},
  async setFocusPoint(){},
- async startRecording(input:{maxDuration:number;maxFileSize:number}){if(!preview?.srcObject||recorder?.state==='recording')throw Error('Start camera first.');const stream=preview.srcObject as MediaStream;recorder=new MediaRecorder(stream);const current=recorder,chunks:Blob[]=[];let size=0;recordingStarted=Date.now();recorded=new Promise((resolve,reject)=>{current.ondataavailable=e=>{chunks.push(e.data);size+=e.data.size;if(size>=input.maxFileSize&&current.state==='recording')current.stop();};current.onstop=()=>{clearTimeout(recordTimer);resolve(new Blob(chunks,{type:current.mimeType}));};current.onerror=()=>reject(Error('Video recording failed.'));});current.start(250);recordTimer=setTimeout(()=>{if(current.state==='recording')current.stop();},input.maxDuration*1000);},
- async stopRecording(){if(!recorder||!recorded||!preview)throw Error('No recording.');if(recorder.state==='recording')recorder.stop();const blob=await recorded;recorded=undefined;recorder=undefined;const duration=(Date.now()-recordingStarted)/1000,id=mediaId();const canvas=document.createElement('canvas');canvas.width=preview.videoWidth;canvas.height=preview.videoHeight;canvas.getContext('2d')!.drawImage(preview,0,0);const path=await new Promise<string>((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(String(reader.result));reader.onerror=()=>reject(reader.error);reader.readAsDataURL(blob);});const row:Row={id:'v:'+id,kind:'video',path,duration,image:canvas.toDataURL('image/jpeg'),width:canvas.width,height:canvas.height,date:Date.now(),revision:revision(),mutationRevision:revision(),favorite:false,trashed:false};await transaction<void>('readwrite',(store,set)=>{store.add(row);set(undefined);});return {path:'browser-video:///'+id,duration,width:row.width,height:row.height,fileSize:blob.size};},
- async getRecordingState(){return {isRecording:recorder?.state==='recording',duration:(Date.now()-recordingStarted)/1000,fileSize:0};},
+ async startRecording(input:{audio?:boolean;maxDuration:number;maxFileSize:number}){if(!preview)throw Error('Start camera first.');++videoSession;videoSave=undefined;await videoCapture.start(preview,input);},
+ stopRecording(){
+  if(videoSave)return videoSave;
+  const token=generation,session=videoSession;
+  videoSave=(async()=>{
+   const clip=await videoCapture.stop(),id=mediaId();
+   const path=await new Promise<string>((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(String(reader.result));reader.onerror=()=>reject(reader.error);reader.readAsDataURL(clip.blob);});
+   const row:Row={id:'v:'+id,kind:'video',path,duration:clip.duration,image:clip.image,width:clip.width,height:clip.height,date:Date.now(),revision:revision(),mutationRevision:revision(),favorite:false,trashed:false};
+   await transaction<void>('readwrite',(store,set)=>{if(token!==generation||session!==videoSession)throw new DOMException('Video save cancelled.','AbortError');store.add(row);set(undefined);});
+   return {path:'browser-video:///'+id,duration:clip.duration,width:clip.width,height:clip.height,fileSize:clip.blob.size};
+  })();return videoSave;
+ },
+ async getRecordingState(){return videoCapture.state();},
 };
