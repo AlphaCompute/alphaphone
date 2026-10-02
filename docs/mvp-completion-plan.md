@@ -1,14 +1,16 @@
 # Alpha Phone MVP completion plan
 
-## Current checkpoint — October 2, Build147/148
+## Current checkpoint — October 2, Build153
 
-Build147 now passes both distributions' actual resident-service owner enrollment, invalid-token rejection, real Cerebras reply, graceful shutdown, new-process restart and retained history. Evidence: `test-results/resident-service-build147-run001/RESULT.md`. This closes those service checks for that exact payload; it does not qualify the forthcoming combined private-IPC/workflow/crash-recovery payload, visible UI, or ordinary background startup.
+Build153 passes repository verification, both Android distributions/lint, six archived APKs and four static scans with unchanged fingerprint `415b69bf37d509d52812914402c5b77722ac7472a3c9240b3622c66ccf185425`. Its native source/generated mappings and worker resources are pinned to exact upstream deeab. Build152 was rejected because native generation occurred after its archive baseline; normal native staging now precedes the fresh snapshot, and a permanent archive-ordering fix is staged.
 
-Build148 separately passes repository verification (68 tests), both Android builds/lint, six archived APKs and four static scans, with unchanged fingerprint `bd91ddedd80c7a1c5995a7b316fc7f06da5131f25266ee01aab18b8dbb474acb`. It includes the Cloud playback cancellation repair but has no device acceptance. See `test-results/mvp-build148/RESULT.md` and the [current acceptance ledger](current-acceptance-ledger.md).
+Actual Pixel recovery testing passed the earlier loader/Bun identity refusal, then failed at an Android socket timeout set before descriptor creation. Original APKs, permissions and foreground user were restored, and disposable user32 was removed. The socket initialization/deadline correction is now integrated upstream for qualification; native crash/survivor/canonical replay is not accepted. See the [current acceptance ledger](current-acceptance-ledger.md) and `test-results/resident-recovery-build153-run001`.
 
-The full MVP remains incomplete. Next: qualify and integrate the combined resident runtime, verify crash recovery with a surviving real workflow and exactly one effect, then run both native distributions and visible Pixel journeys. Fresh Cloud login/agent readiness/chat/restart precedes Gmail and Cloud voice acceptance. Official password-provider behavior, physical speech quality/latency, natural background scheduling, full AOSP boot and physical/user acceptance remain separate gates. The Android-resident architecture in the [on-device plan](on-device-agent-plan.md) controls; optional enclave hosting is not a prerequisite for resident mode. Calls, SMS, Contacts and Wallet remain explicitly deferred and commented out.
+Build147's earlier resident-service owner enrollment, invalid-token rejection, real Cerebras reply, graceful shutdown, new-process restart and history checks remain accepted only for that earlier payload. The corrected combined payload still needs those service journeys and visible Pixel flows. Windows backend acceptance remains open after the diagnostic ownership failure and its pending correction.
 
-Detailed read-only gap matrix: `test-results/mvp-release-gap-audit-staging/REPORT.md`. Older checkpoints below describe their historical payloads; statements that resident service startup/restart is wholly untested are superseded by Build147, not erased or generalized to later binaries.
+The full MVP remains incomplete. Next: finish combined resident recovery, integrate the qualified consumer, then run both native distributions and visible Pixel journeys. Fresh Cloud login/agent readiness/chat/restart precedes Gmail and Cloud voice acceptance. Official password-provider behavior, physical speech quality/latency, natural background scheduling, full AOSP boot and physical/user acceptance remain separate gates. The Android-resident architecture in the [on-device plan](on-device-agent-plan.md) controls; optional enclave hosting is not a prerequisite for resident mode. Calls, SMS, Contacts and Wallet remain explicitly deferred and commented out.
+
+Detailed read-only gap matrix: `test-results/mvp-release-gap-audit-staging/REPORT.md`. Older checkpoints below retain their original payload scope; none establishes acceptance for later binaries.
 
 ## Prior checkpoints and implementation requirements
 
