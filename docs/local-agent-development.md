@@ -52,13 +52,15 @@ The native bridge enrolls and verifies its own local owner session. Conversation
 For an existing preparation that no longer matches the source stamp, preserve it and select a fresh directory for every preparation, test, development and staging command:
 
 ```sh
-export ALPHA_LOCAL_AGENT_SOURCE_DIR="$PWD/artifacts/local-agent-ab8f9a"
+export ALPHA_LOCAL_AGENT_SOURCE_DIR="$PWD/artifacts/local-agent-workers"
 npm run agent:prepare
 npm run agent:test
 npm run agent:stage-android
 ```
 
 - Runtime preparation skips the unrelated fused local language-model engine setup. The mobile bundler and staged artifact manifest retain their own validation/provenance.
+
+The consumer series now also includes `packaged-workflow-worker.patch`. It preserves browser workflow database paths, separates packaged Android resources from durable state, uses the native loader/Bun/library environment for worker and control launches, and repairs dependency links after installation moves. See the [worker packaging report](mobile-workflow-packaging.md) for artifact commands and remaining native staging/plugin requirements. Set `ALPHA_WORKFLOW_WORKER_OUTPUT` to an existing verified worker artifact when running `agent:test` to include its real packaged-executor integration case; without that artifact, the case is explicitly skipped.
 
 ## Verification and remaining acceptance
 

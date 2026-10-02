@@ -6,11 +6,16 @@
     "packages/agent/src/runtime/plugin-collector.ts": "63707a42d9d6bc7d4528b1da0c9deae6f7d2a3ac8d2d3a0ccfc50345c8af4825",
     "packages/agent/test/lean-chat-workflows.test.ts": "d6d937c5882e3683281cf40f84ccde3efc7bdf8c146b5a0426a0b693f519f337",
     "plugins/plugin-workflow/src/plugin-routes.ts": "3edae66b214358367db08c3fb435bf12508c374efa691c51b71ce0ff01acf69e",
-    "plugins/plugin-workflow/__tests__/hosted-route-registration.test.ts": "fff3297e97e13c5929bff141c045a10153a5166eb93bd06dc84f5deb098135ac"
+    "plugins/plugin-workflow/__tests__/hosted-route-registration.test.ts": "fff3297e97e13c5929bff141c045a10153a5166eb93bd06dc84f5deb098135ac",
+    "plugins/plugin-workflow/src/services/smithers-runtime.ts": "2dce0d172cd9513d5fdc0eac38f46c6d6341eafe4a4fdb7a8622f46475b6a814",
+    "plugins/plugin-workflow/src/services/smithers-process.ts": "eb0217674c8504d975ef6375ebe484707b15033476cd8665c5c686e877102ae4",
+    "plugins/plugin-workflow/__tests__/smithers-process.test.ts": "7900cdee216732c0d02c98e126cfea40cc20a13d4865d3258850c38e75f8fbd7",
+    "plugins/plugin-workflow/__tests__/smithers-packaged-worker.test.ts": "e77438bef4a3780b7e4cf3dc60b2b93638a502de58930efe1638a742afc9de8f"
   },
   "patches": [
     "android-secure-store-socket.patch",
     "lean-chat-workflows.patch",
-    "hosted-digest-route-registration.patch"
+    "hosted-digest-route-registration.patch",
+    "packaged-workflow-worker.patch"
   ]
 }
