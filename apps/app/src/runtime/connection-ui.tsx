@@ -2,6 +2,7 @@ import { CloudPersonalSetup, personalIntent, savePersonalIntent, clearPersonalIn
 import { PersonalProtocolError, type CloudPersonalProtocol, type PersonalView, type PersonalOwner } from './cloud-personal-protocol';
 import { holdPhoneInert } from './modal-inert';
 import { pauseHostedBackground } from './hosted-background';
+import { pauseLiveActivityForMock } from './mock-admission';
 import {developmentDeviceStore,developmentActionJournal} from './local-agent-storage';
 import { stopLocalAgent, configureLocalProvider, LocalAgentProtocol, localAgentPackaged, browserLocalAgentEnabled } from './local-agent';
 import type {DeviceRecovery} from "./device-actions";
@@ -551,11 +552,13 @@ export const connectionController = {
     });
   },
   async mock() {
-    await work('Pausing live notification collection…', async signal => {
-      if (isAndroid) await registerPlugin<{pauseNotificationCollection():Promise<void>}>('AlphaConnection').pauseNotificationCollection();
+    await work('Pausing live services before mock mode…', async signal => {
+      // Retire renderer actions immediately, then await both live native barriers.
+      const results=await Promise.allSettled([retire(),pauseLiveActivityForMock()]);
+      if(results.some(result=>result.status==='rejected'))throw Error('Live background activity could not be paused. Retry before opening mock mode.');
       signal.throwIfAborted();
       save({ kind: 'mock' });
-      retire(); detachService(); const url = new URL(location.href); url.searchParams.set('mode', 'mock'); location.assign(url.href);
+      detachService(); const url = new URL(location.href); url.searchParams.set('mode', 'mock'); location.assign(url.href);
     });
   },
   async listHistory() {

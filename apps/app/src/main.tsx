@@ -1,3 +1,4 @@
+import { pauseLiveActivityForMock } from './runtime/mock-admission';
 import { installBrowserDeviceAdapter } from './browser/device-adapter';
 import { BrowserDeviceControls } from './browser/device-controls';
 import './browser/register';
@@ -108,8 +109,17 @@ function Phone() {
 }
 async function mountPhone() {
   if (mock && isAndroid) {
-    try { await (await import('./platform-plugins')).registerPlugin<{pauseNotificationCollection():Promise<void>}>('AlphaConnection').pauseNotificationCollection(); }
-    catch { document.getElementById('root')!.textContent='Mock mode could not pause notification collection. Reopen Alpha Phone to try again.'; return; }
+    const root=document.getElementById('root')!;
+    root.setAttribute('role','status');
+    root.textContent='Pausing live background activity before opening mock mode…';
+    try { await pauseLiveActivityForMock(); }
+    catch {
+      root.setAttribute('role','alert');
+      root.textContent='Live background activity could not be paused. Retry before opening mock mode.';
+      const retry=document.createElement('button');retry.textContent='Retry mock mode';
+      retry.onclick=()=>{retry.disabled=true;void mountPhone();};root.append(retry);return;
+    }
+    root.removeAttribute('role');
   }
   createRoot(document.getElementById('root')!).render(<Phone />);
 }

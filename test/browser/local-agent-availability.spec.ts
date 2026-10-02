@@ -14,6 +14,7 @@ for (const mode of ['checking', 'unavailable', 'available'] as const) {
         PluginHeaders: [
           { name: 'Agent', methods: methods(['getStatus', 'configureProvider', 'start']) },
           { name: 'AlphaConnection', methods: methods(['secureRead', 'secureWrite', 'secureRemove', 'request', 'cancel', 'addListener', 'removeListener', 'pauseNotificationCollection']) },
+          { name: 'AlphaHostedResults', methods: methods(['disableBackground','addListener','removeListener','pendingResult','status']) },
           { name: 'AlphaActionJournal', methods: methods(['list']) },
           { name: 'DeviceApps', methods: methods(['buildInfo']) },
         ],
@@ -33,6 +34,7 @@ for (const mode of ['checking', 'unavailable', 'available'] as const) {
             if (['cancel','addListener','removeListener','pauseNotificationCollection'].includes(method)) return {};
             w.packagingFixture.requests++; throw Error('No live request is permitted');
           }
+          if (plugin === 'AlphaHostedResults' && ['disableBackground','addListener','removeListener','pendingResult','status'].includes(method)) return {};
           if (plugin === 'AlphaActionJournal' && method === 'list') return { entries: [] };
           if (plugin === 'DeviceApps' && method === 'buildInfo') return { launcher: false, version: 'fixture' };
           throw Error('Unexpected native operation: ' + plugin + '.' + method);
