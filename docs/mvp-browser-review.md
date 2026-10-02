@@ -355,3 +355,9 @@ This implements single-page photo-to-PDF export. Automatic insertion into browse
 ## October 2 — reviewed links from Camera Scan
 
 Camera Scan now derives explicit website links from actual OCR or user corrections, displays the complete normalized addresses under Review links, and opens only the selected current address after a click. Browser tabs have no opener/referrer; Android uses the existing system-browser handoff. No automatic navigation, prefetch, agent upload or canned poster URL is involved. The browser journey verifies a real OCR URL, user correction, removal of the old destination, and one explicit navigation to an intercepted test page. See [link behavior and remaining Scan requirements](local-ocr.md#reviewed-website-links).
+
+## October 2 — Scan to reviewed Calendar draft
+
+Camera Scan's event action now opens editable event details and hands them to the existing Calendar composer. It preserves corrected scan text as notes, suggests only explicit unambiguous ISO date/24-hour local time formats, and leaves other dates/times for review. Review in Calendar creates no event; Save event remains the explicit mutation. Browser qualification covers actual Camera/OCR, zero writes before Save, one saved event after reload, and rejection/correction of a nonexistent DST start time. See [draft behavior and semantic-extraction gaps](local-ocr.md#reviewed-event-drafts).
+
+Final event-draft qualification: 80 repository checks, production web build, 14 combined Scan browser cases and two light/dark Calendar design-state campaigns passed. Visual inspection also prompted a full selected-date label and multiline notes in the existing Calendar composer. Android build/device acceptance remains excluded from this pass.

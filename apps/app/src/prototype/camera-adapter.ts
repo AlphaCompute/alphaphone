@@ -477,7 +477,7 @@ export function installPrototypeCameraAdapter(_Component: unknown, views: Record
       loaded = false;
       owner.setView('photos', { nativeCaptureRevision: item.id });
       if (token === epoch && active()) {
-        if(scanning){const bytes=Uint8Array.from(atob(photo.base64),char=>char.charCodeAt(0));closeScan=openScanReview(new Blob([bytes],{type:'image/jpeg'}),(text,id)=>owner.saveScannedNote?.(text,id)??Promise.resolve(false));}
+        if(scanning){const bytes=Uint8Array.from(atob(photo.base64),char=>char.charCodeAt(0));closeScan=openScanReview(new Blob([bytes],{type:'image/jpeg'}),(text,id)=>owner.saveScannedNote?.(text,id)??Promise.resolve(false),draft=>{if(token!==epoch||!active())return false;owner.open('calendar',{form:draft,open:null,month:null,day:draft.off},'hidden');return true;});}
         message(browserMode?'Photo saved in this browser. Clearing site data removes saved photos.':'Photo saved to Android Photos.');
       }
     } catch { if (token === epoch && active()) message('Photo could not be saved. No successful capture was confirmed.'); }

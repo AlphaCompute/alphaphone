@@ -1,0 +1,23 @@
+import {test,expect} from '@playwright/test';
+
+test('Camera Scan opens a reviewed event draft and persists only after Calendar Save',async({page},info)=>{
+ await page.addInitScript(()=>{
+  localStorage.setItem('alpha.connection.selection.v1',JSON.stringify({kind:'offline'}));
+  navigator.mediaDevices.getUserMedia=async()=>{const canvas=document.createElement('canvas');canvas.width=1000;canvas.height=700;const c=canvas.getContext('2d')!;const draw=()=>{c.fillStyle='white';c.fillRect(0,0,1000,700);c.fillStyle='black';c.font='58px Arial';c.fillText('Open studio',60,140);c.fillText('Review event details',60,260);};draw();const stream=canvas.captureStream(10);const timer=setInterval(draw,100);stream.getTracks()[0].addEventListener('ended',()=>clearInterval(timer));return stream;};
+ });
+ await page.goto('/?mode=dev');await page.getByRole('button',{name:'Camera',exact:true}).click();const video=page.locator('[aria-label^="Viewfinder."] video');await expect.poll(()=>video.evaluate((v:HTMLVideoElement)=>v.readyState)).toBeGreaterThanOrEqual(2);await page.getByRole('button',{name:'Scan mode',exact:true}).click();await page.getByRole('button',{name:'Scan text',exact:true}).click();
+ const dialog=page.getByRole('dialog',{name:'Review scanned text'}),text=dialog.getByRole('textbox',{name:'Scanned text'});await expect(text).toBeEnabled({timeout:60000});await text.fill('Open studio\n2026-10-10\n18:30\nMain hall');await dialog.locator('summary').filter({hasText:'Create event draft'}).click();
+ await expect(dialog.getByLabel('Event title',{exact:true})).toHaveValue('Open studio');await expect(dialog.getByLabel('Event date',{exact:true})).toHaveValue('2026-10-10');await expect(dialog.getByLabel('Event start time',{exact:true})).toHaveValue('18:30');
+ await dialog.getByLabel('Event title',{exact:true}).fill('Reviewed studio visit');await dialog.getByLabel('Event location',{exact:true}).fill('Main hall');await dialog.getByLabel('Event duration in minutes',{exact:true}).fill('90');
+ const rows=()=>page.evaluate(()=>JSON.parse(localStorage.getItem('alpha.browser.calendar.v1')||'{"events":[]}').events);expect(await rows()).toHaveLength(0);
+ await dialog.getByRole('button',{name:'Review in Calendar',exact:true}).click();await expect(dialog).toHaveCount(0);await expect(page.getByRole('textbox',{name:'Title',exact:true})).toHaveValue('Reviewed studio visit');await expect(page.getByRole('textbox',{name:'Location',exact:true})).toHaveValue('Main hall');expect(await rows()).toHaveLength(0);await expect(page.getByLabel('Selected event date',{exact:true})).toHaveText('Saturday, October 10, 2026');await expect(page.getByRole('textbox',{name:'Notes',exact:true})).toHaveValue('Open studio\n2026-10-10\n18:30\nMain hall');
+ await page.screenshot({path:info.outputPath('calendar-draft.png'),animations:'disabled'});await page.getByRole('button',{name:'Save event',exact:true}).click();await expect.poll(async()=>(await rows()).length).toBe(1);const saved=(await rows())[0];expect(saved.title).toBe('Reviewed studio visit');expect(saved.body).toBe('Open studio\n2026-10-10\n18:30\nMain hall');expect(saved.end-saved.begin).toBe(90*60000);await page.reload();expect(await rows()).toHaveLength(1);
+});
+
+test('event review rejects nonexistent DST time and can be corrected before handoff',async({page})=>{
+ await page.goto('/');await page.evaluate(async()=>{const {createScanEventReview}=await import('/src/prototype/scan-event-review.ts');(window as any).drafts=[];const details=createScanEventReview(()=>'Clock change event',()=>true,draft=>{(window as any).drafts.push(draft);return true;});const dialog=document.createElement('dialog');dialog.append(details);document.body.append(dialog);dialog.showModal();details.open=true;});
+ await expect(page.getByLabel('Event title',{exact:true})).toHaveValue('Clock change event');await page.getByLabel('Event date',{exact:true}).fill('2026-03-08');await page.getByLabel('Event start time',{exact:true}).fill('02:30');await page.getByRole('button',{name:'Review in Calendar',exact:true}).click();await expect(page.getByRole('status',{name:'Event draft status'})).toContainText('does not exist');expect(await page.evaluate(()=>(window as any).drafts)).toHaveLength(0);
+ await page.getByLabel('Event start time',{exact:true}).fill('03:30');await page.getByRole('button',{name:'Review in Calendar',exact:true}).click();expect(await page.evaluate(()=>(window as any).drafts)).toHaveLength(1);
+});
+
+test.use({timezoneId:'America/New_York'});
