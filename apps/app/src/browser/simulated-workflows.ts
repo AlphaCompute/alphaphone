@@ -1,3 +1,4 @@
+import {speakWorkflowText} from './workflow-speech';
 import {publishWorkflowNotice} from './workflow-notices';
 import {sendWorkflowLocal} from './workflow-local-send';
 import {registerPlugin} from '../platform-plugins';
@@ -12,6 +13,7 @@ export function installSimulatedWorkflows(view:Bag){
  const persist=(api:Bag,run:Run,reserve=0)=>{const state=savedState(api);const patch={localRuns:{...state.localRuns,[run.id]:structuredClone(run)},flows:state.flows.map((flow:Bag)=>String(flow.id)===String(run.flowId)?{...flow,runs:[structuredClone(run),...(flow.runs||[]).filter((old:Bag)=>old.id!==run.id)]}:flow)};if(JSON.stringify(patch).length+reserve>2_000_000)throw Error('Workflow history is full. Export or remove older runs before starting more work.');api.setView('workflows',patch);};
  const step=async(item:Bag,input:string,api:Bag,signal:AbortSignal,operationId:string):Promise<{output:string;skip?:boolean;detail?:string}>=>{
   signal.throwIfAborted();const text=String(item.t).toLowerCase();
+  if(item.k==='Speak'&&text==='read it aloud'){await speakWorkflowText(input,signal);return {output:input,detail:'Finished reading aloud'};}
   if(item.k==='Notify'&&text==='a notification'){await publishWorkflowNotice(operationId,input,signal);return {output:input,detail:'Notification saved ('+operationId+')'};}
   if(item.k==='Send')return sendWorkflowLocal(item,input,operationId,api,signal);
   if(item.k==='Write'&&text==='a note in notes'){await api.localWorkflowNotes({operationId,text:input},signal);return {output:input,detail:'Note saved ('+operationId+')'};}
