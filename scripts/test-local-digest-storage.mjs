@@ -4,6 +4,7 @@ import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {localAgentStorage} from './local-agent-dev-storage.ts';
 import {developmentDigestStore} from '../apps/app/src/runtime/local-agent-storage.ts';
+import {createDigestInbox} from '../apps/app/src/runtime/digest-inbox.ts';
 import {DigestInbox} from '../apps/app/src/runtime/hosted-digests.ts';
 const dir=mkdtempSync(join(tmpdir(),'alpha-digests-'));
 const scope='hosted-digests:v1:'+'a'.repeat(64);
@@ -26,6 +27,11 @@ try {
  assert.equal(await store().read('hosted-digests:v1:'+'b'.repeat(64)),null);
  const now=new Date().toISOString();
  const result={cursor:1,runId:'run-one',workflowId:'workflow',workflowVersionId:'version',templateVersion:'template',scheduledAt:now,source:{kind:'tasks'},status:'completed',startedAt:now,completedAt:now,output:'Synthetic digest',error:null};
+ let nativeCalls=0;
+ const nativeInbox={history:async()=>[],sync:async()=>{nativeCalls++;return [];}};
+ const resident=()=>createDigestInbox({android:true,resident:true,storage:store(),scope,native:()=>{throw Error('Resident must not use remote polling');}});
+ const remote=createDigestInbox({android:true,resident:false,storage:store(),scope,native:()=>nativeInbox});
+ await remote.sync({},new AbortController().signal);assert.equal(nativeCalls,1);
  let acked=false,ackAttempts=0;
  const client={results:async()=>acked?[]:[result],ack:async()=>{
   // Inspect a fresh store before allowing the host to advance its cursor.
@@ -33,8 +39,8 @@ try {
   if(++ackAttempts===1)throw Error('Lost synthetic ack');
   acked=true;
  }};
- await assert.rejects(new DigestInbox(store(),scope).sync(client,new AbortController().signal),/Lost synthetic ack/);
- assert.deepEqual(await new DigestInbox(store(),scope).sync(client,new AbortController().signal),[result]);
+ await assert.rejects(resident().sync(client,new AbortController().signal),/Lost synthetic ack/);
+ assert.deepEqual(await resident().sync(client,new AbortController().signal),[result]);
  assert.equal(ackAttempts,2);
  let falseAck=false;
  const failingStore=developmentDigestStore(async input=>{

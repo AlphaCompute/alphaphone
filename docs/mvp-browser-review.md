@@ -38,6 +38,8 @@ Local verification passed 44 repository checks with TypeScript/build, 82 full br
 
 Follow-up acceptance evidence: the live browser reviewed and saved **Synthetic local digest recovery**, containing only synthetic task text. The source reappeared after a full browser reload and local connection restoration, with **Synced with this agent** visible. No recurring schedule was enabled in the normal development profile. The complete `npm run agent:test` command, including source revalidation, passed all five checks. The frozen install progressed past ffmpeg into workspace builds; full installation remains pending until its terminal result. A separate temporary-database scheduled-digest test is running to verify wall-clock recurrence and runtime restart; no success is claimed before its result.
 
+Resident inbox follow-up: source review found that Android local connections incorrectly selected `NativeResultInbox`, whose native methods require a separately configured remote delivery session. Local connections now use `DigestInbox` through the bound local workflow client and existing encrypted Android storage; remote Android connections retain native background delivery. The contract test rejects any remote-inbox construction for a resident connection, then exercises saved-result recovery and lost acknowledgements through the selected local inbox. The UI explicitly identifies resident results as foreground synchronization without background notifications. Native runtime/device qualification and mobile workflow packaging remain open.
+
 ## Renewed gap attack — October 1
 
 ### Notes save-failure follow-up
