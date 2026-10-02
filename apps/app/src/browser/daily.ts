@@ -39,7 +39,7 @@ export class BrowserDaily extends WebPlugin {
     return editStore(key,initial,data=>{const previous=data.reminders.find(r=>r.id===input.id);data.reminders=data.reminders.filter(r=>r.id!==input.id);data.reminders.push({...input,body:input.body||'',mode:'inexact',createdAt:previous?.createdAt||Date.now(),status:'scheduled',occurrenceId:crypto.randomUUID(),dueAt,history:previous?.history||[],revision:revision()});return {status:'scheduled',id:input.id,mode:'inexact'};});
   }
   async listReminders(){return editStore(key,initial,data=>{for(const row of data.reminders)if(row.status==='scheduled'&&row.at<=Date.now()){row.status='posted';row.postedAt=Date.now();row.revision=revision();}return {reminders:data.reminders.filter(r=>r.status!=='cancelled').map(r=>({...r,target:{sourceId:'browser-reminders',sourceRevision:data.sourceRevision,reminderId:r.id,occurrenceId:r.occurrenceId!,revision:r.revision}})),notificationsEnabled:true};});}
-  async cancelReminder(input:{id:string}){return editStore(key,initial,data=>{const row=data.reminders.find(r=>r.id===input.id);if(!row)return {status:'not-found',id:input.id};row.status='cancelled';row.cancelledAt=Date.now();row.revision=revision();return {status:'cancelled',id:input.id};});}
+  async cancelReminder(input:{id:string;target:ReminderTarget;operationId:string;bindingHash:string}){if(input.target?.reminderId!==input.id)throw Error('Reviewed reminder target required.');const response=await this.operateReminder({...input,operation:{type:'reminder_cancel',target:input.target}});return {status:response.status==='succeeded'?'cancelled':'unknown',id:input.id};}
   async selectedReminder(input:{id:string}):Promise<ReminderTarget>{const data=readStore(key,initial),row=data.reminders.find(r=>r.id===input.id);if(!row)throw Error('Reminder no longer exists.');return target(data,row);}
   async reminderOperationReceipt(input:{operationId:string;bindingHash:string;operation:ReminderOperation}) {
     const operation=validateReminderOperation(input.operation),binding=operationBinding(input,operation),receipt=readStore(key,initial).receipts?.[input.operationId];
@@ -52,7 +52,7 @@ export class BrowserDaily extends WebPlugin {
       if(document.hidden)throw Error('Return to Alpha to review the reminder.');
       const row=data.reminders.find(r=>r.id===operation.target.reminderId);
       if(!row||Object.entries(target(data,row)).some(([k,v])=>operation.target[k as keyof ReminderTarget]!==v))throw Error('Reminder changed. Review it again.');
-      if(operation.type!=='reminder_read_selected'&&['completed','cancelled'].includes(row.status))throw Error('Reminder is no longer active.');
+      if(operation.type!=='reminder_read_selected'&&(row.status==='cancelled'||row.status==='completed'&&operation.type!=='reminder_cancel'))throw Error('Reminder is no longer active.');
       if(operation.type==='reminder_update'){
         row.title=operation.fields.title;row.body=operation.fields.body;
         if(operation.fields.schedule){const schedule=operation.fields.schedule;if(schedule.at<=Date.now())throw Error('Choose a future reminder time.');row.at=schedule.at;row.recurrence=schedule.recurrence||undefined;row.dueAt=schedule.recurrence?initialReminderDue(schedule.recurrence,schedule.at):schedule.at;row.occurrenceId=crypto.randomUUID();row.status='scheduled';}

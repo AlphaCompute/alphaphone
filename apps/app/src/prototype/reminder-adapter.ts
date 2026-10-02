@@ -1,4 +1,5 @@
 import { DailyApps, type Reminder } from '../daily';
+import { pendingReminderDeletions,retainReminderDeletion,acknowledgeReminderDeletion,reconcileReminderDeletions,discardUndispatchedReminderDeletion } from '../runtime/reminder-deletions';
 import { Capacitor } from '@capacitor/core';
 type Bag = any;
 // Construct the requested civil fields independently of local DST normalization.
@@ -18,24 +19,25 @@ export function installReminderAdapter(Component: Bag, views: Bag) {
   const events = (rows: Reminder[]) => rows.filter(r => r.status === 'completed' || r.status === 'scheduled' || r.status === 'posted' || r.status === 'permission-denied' || r.status === 'scheduling-failed').map(r => {
     const date = new Date(r.dueAt || r.at), today = new Date(); today.setHours(0,0,0,0);
     const day = new Date(date); day.setHours(0,0,0,0);
-    return { id: 'reminder:' + r.id, alphaReminderId: r.id, reminderBody:r.body, reminderAt:r.at, reminderOccurrence:r.occurrenceId, reminderRecurrence:r.recurrence, reminderHistory:r.history, reminderStatus:r.status, off: Math.round((day.getTime()-today.getTime())/86400000), t: date.getHours()+date.getMinutes()/60, d: .25, title:r.title, cal:'personal', who:[], repeat:'none', alert:r.recurrence?.leadMinutes || 0, notes:[r.body, r.snoozedAt && r.status==='scheduled' ? `Snoozed until ${new Date(r.at).toLocaleString()} · approximate delivery` : '', r.recurrence ? `${r.recurrence.rule} · ${r.recurrence.zone}. Next occurrence is scheduled after Done. Future missing clock times use the first valid time after the gap; repeated clock times use the earlier offset.` : '', r.status === 'scheduling-failed' ? 'Saved, scheduling failed. Tap Snooze 10 minutes to retry.' : '', r.status === 'completed' ? 'Completed · no further alarm scheduled' : r.status === 'posted' ? 'Notification posted' : r.status === 'permission-denied' ? 'Not delivered · notifications were disabled. Enable notifications in Android settings, then edit this reminder to choose a new time and save.' : 'Scheduled · approximate delivery'].filter(Boolean).join('\n') };
+    return { id: 'reminder:' + r.id, alphaReminderId: r.id, reminderBody:r.body, reminderAt:r.at, reminderOccurrence:r.occurrenceId, reminderRecurrence:r.recurrence, reminderHistory:r.history, reminderStatus:r.status, reminderTarget:r.target, off: Math.round((day.getTime()-today.getTime())/86400000), t: date.getHours()+date.getMinutes()/60, d: .25, title:r.title, cal:'personal', who:[], repeat:'none', alert:r.recurrence?.leadMinutes || 0, notes:[r.body, r.snoozedAt && r.status==='scheduled' ? `Snoozed until ${new Date(r.at).toLocaleString()} · approximate delivery` : '', r.recurrence ? `${r.recurrence.rule} · ${r.recurrence.zone}. Next occurrence is scheduled after Done. Future missing clock times use the first valid time after the gap; repeated clock times use the earlier offset.` : '', r.status === 'scheduling-failed' ? 'Saved, scheduling failed. Tap Snooze 10 minutes to retry.' : '', r.status === 'completed' ? 'Completed · no further alarm scheduled' : r.status === 'posted' ? 'Notification posted' : r.status === 'permission-denied' ? 'Not delivered · notifications were disabled. Enable notifications in Android settings, then edit this reminder to choose a new time and save.' : 'Scheduled · approximate delivery'].filter(Boolean).join('\n') };
   });
   p.refreshReminders = async function (openId?: string, occurrenceId?: string) {
-    if (Capacitor.getPlatform() === 'web' && !Capacitor.isPluginAvailable('DailyApps')) {
-      this.vset('calendar', { reminderStale: false });
-      return;
-    }
     // Resume and calendar refresh may supersede the notification's fetch.
     // Keep its navigation intent until the latest successful fetch consumes it.
     if (openId) {this.pendingReminderOpenId = openId;this.pendingReminderOccurrenceId=occurrenceId;}
     const generation = this.reminderRefreshGeneration = (this.reminderRefreshGeneration || 0) + 1;
     try {
+      const reminderDeleteUnknown=await reconcileReminderDeletions();
+      if (!this.live || generation !== this.reminderRefreshGeneration) return;
+      this.reminderDeleteUnknown=reminderDeleteUnknown;
+      this.vset('calendar',{reminderDeleteUnknown});
+      if (Capacitor.getPlatform() === 'web' && !Capacitor.isPluginAvailable('DailyApps')) {this.vset('calendar',{reminderStale:false});return;}
       const result = await DailyApps.listReminders();
       if (!this.live || generation !== this.reminderRefreshGeneration) return;
       this.reminderTargets=new Map(result.reminders.map(r=>[r.id,r.target]));
       const rows = [...(this.nativeCalendarRows || []), ...events(result.reminders)];
       this.reminderRefreshFailed = false;
-      this.vset('calendar', { events: rows, reminderStale:false });
+      this.vset('calendar', { events: rows, reminderStale:false, reminderDeleteUnknown });
       const pendingOpenId = this.pendingReminderOpenId;
       if (pendingOpenId) {
         const target = rows.find(e => e.alphaReminderId === pendingOpenId && (!this.pendingReminderOccurrenceId || e.reminderOccurrence===this.pendingReminderOccurrenceId));
@@ -64,6 +66,8 @@ export function installReminderAdapter(Component: Bag, views: Bag) {
   };
   views.calendar.render = function (state: Bag, api: Bag) {
     const out = render(state,api);
+    out.reminderDeleteUnknown=Number(owner?.reminderDeleteUnknown??state.reminderDeleteUnknown??0);
+    out.checkReminderDeletions=()=>void owner?.refreshReminders();
     if(out.f) {
       const f=state.form;
       out.f.cals.push({name:'Reminders',dot:'var(--acc)',css:f.cal==='alpha-reminders'?'background:var(--fg);color:var(--bg)':'background:var(--bg)',pick:()=>api.set({form:{...api.get('calendar').form,cal:'alpha-reminders',repeat:'none',alert:0}})});
@@ -136,10 +140,48 @@ export function installReminderAdapter(Component: Bag, views: Bag) {
       };
       out.ev.reminderDone=()=>decide('done');out.ev.reminderSnooze=()=>decide('snooze');
       out.ev.edit=()=>{if(!requireFresh())return;const repeat=event.reminderRecurrence?.rule||'none',target=owner?.reminderTargets?.get(event.alphaReminderId);api.set({form:{...event,repeat,id:event.id,cal:'alpha-reminders',where:'',video:false,who:[],notes:event.reminderBody||'',alphaReminderId:event.alphaReminderId,reminderEditSession:{uncertain:false},reminderEditTarget:target?structuredClone(target):undefined,reminderEditSchedule:[event.off,event.t,repeat,event.alert]}});};
+      const renderedTarget=event.reminderTarget?structuredClone(event.reminderTarget):undefined;
       out.ev.del=async()=>{
-        if(!requireFresh())return;
-        try {const result=await DailyApps.cancelReminder({id:event.alphaReminderId});if(result.status==='failed')throw Error();api.set({open:null});await owner?.refreshReminders();api.toast('Reminder cancelled');}
-        catch {api.toast('The reminder could not be cancelled.');}
+        if(!requireFresh()||owner?.reminderSaving)return;
+        if(!renderedTarget){api.toast('Refresh and reopen this reminder before deleting.');return;}
+        const deleteOwner=owner;
+        const stillSelected=()=>owner===deleteOwner&&deleteOwner?.live&&!document.hidden&&api.isActive()&&api.get('calendar').open===event.id;
+        if(!stillSelected())return;
+        deleteOwner.reminderSaving=true;
+        let createdInput:Bag=null,dispatched=false;
+        try {
+          const pending=Object.values(await pendingReminderDeletions()).find(input=>Object.keys(renderedTarget).every(key=>input.operation.target[key as keyof typeof input.operation.target]===renderedTarget[key]));
+          let input=pending;
+          if(!input){
+            const current=await DailyApps.selectedReminder({id:event.alphaReminderId});
+            if(Object.keys(renderedTarget).some(key=>current[key as keyof typeof current]!==renderedTarget[key])){await deleteOwner.refreshReminders(event.alphaReminderId);api.toast('This reminder changed. Review it again before deleting.');return;}
+            if(!stillSelected())return;
+            const operation={type:'reminder_cancel' as const,target:renderedTarget};
+            const bindingHash=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(JSON.stringify(operation))))).map(v=>v.toString(16).padStart(2,'0')).join('');
+            if(!stillSelected())return;
+            input={operationId:crypto.randomUUID(),bindingHash,operation};
+            createdInput=input;
+            await retainReminderDeletion(input);
+            if(!stillSelected()){api.set({reminderDeleteUnknown:Object.keys(await pendingReminderDeletions()).length});return;}
+          }
+          // A repeat click reconciles the original receipt; it never replays an unknown effect.
+          let result;
+          if(pending)result=await DailyApps.reminderOperationReceipt(input);
+          else try{dispatched=true;result=await DailyApps.operateReminder(input);}catch{result=await DailyApps.reminderOperationReceipt(input);}
+          if(result.status!=='succeeded'||!result.result)throw Error('Unconfirmed reminder cancellation');
+          await acknowledgeReminderDeletion(input,result.result);
+          if(stillSelected())api.set({open:null});
+          if(owner===deleteOwner&&deleteOwner.live){await deleteOwner.refreshReminders();api.toast('Reminder cancelled');}
+        }catch{
+          if(owner===deleteOwner&&deleteOwner.live){
+            api.set({reminderDeleteUnknown:Object.keys(await pendingReminderDeletions()).length});
+            api.toast('Deletion is unconfirmed. Check deletion status in Calendar; no cancellation will be repeated.');
+          }
+        }finally{
+          if(createdInput&&!dispatched)try{await discardUndispatchedReminderDeletion(createdInput);}catch{/* Preserve uncertain storage; never clear another operation. */}
+          if(owner===deleteOwner&&deleteOwner.live)try{deleteOwner.reminderDeleteUnknown=Object.keys(await pendingReminderDeletions()).length;api.set({reminderDeleteUnknown:deleteOwner.reminderDeleteUnknown});}catch{}
+          deleteOwner.reminderSaving=false;
+        }
       };
     }
     return out;

@@ -163,7 +163,7 @@ public class DailyAppsInstrumentedTest {
     SystemClock.sleep(100);
    }
    assertTrue("Notification tap opens this reminder's real Calendar detail", detailOpened);
-   begin(scenario, "Capacitor.Plugins.DailyApps.cancelReminder({id:" + JSONObject.quote(id) + "})");
+   begin(scenario, "(async()=>{const d=Capacitor.Plugins.DailyApps,id="+JSONObject.quote(id)+";const target=await d.selectedReminder({id});const operation={type:\"reminder_cancel\",target};const bindingHash=Array.from(new Uint8Array(await crypto.subtle.digest(\"SHA-256\",new TextEncoder().encode(JSON.stringify(operation))))).map(v=>v.toString(16).padStart(2,\"0\")).join(\"\");return d.cancelReminder({id,target,operationId:crypto.randomUUID(),bindingHash});})()");
    assertEquals("cancelled", result(scenario).getString("status"));
    for (android.service.notification.StatusBarNotification item : notifications.getActiveNotifications()) assertNotEquals(id,item.getTag());
    begin(scenario, "Capacitor.Plugins.DailyApps.scheduleReminder({id:'past_test',title:'Past',at:1})");

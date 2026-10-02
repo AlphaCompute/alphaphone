@@ -729,6 +729,7 @@
     </sc-if>
   </div>
 
+  <sc-if value="{{calendar.reminderDeleteUnknown}}"><div role="status" style="padding:12px;color:var(--mut)">{{calendar.reminderDeleteUnknown}} reminder deletion(s) await confirmation.<button class="tap" aria-label="Check reminder deletion status" onClick="{{calendar.checkReminderDeletions}}" style="padding:8px;color:var(--acc)">Check deletion status</button></div></sc-if>
   <sc-if value="{{calendar.clock}}" hint-placeholder-val="{{false}}">
     <div role="dialog" aria-modal="true" aria-label="Clock alarms" style="position:absolute;inset:0;z-index:35;background:var(--bg);display:flex;flex-direction:column;padding:{{calendar.clock.topPadding}} 24px 120px;overflow:auto;box-sizing:border-box">
       <div style="display:flex;align-items:center;gap:12px;margin-bottom:24px"><button class="ib" aria-label="Close Clock" aria-disabled="{{calendar.clock.busy}}" onClick="{{calendar.clock.close}}"><svg class="i" viewBox="0 0 24 24"><path d="{{ic.back}}"></path></svg></button><h2 class="serif" style="font-size:32px;margin:0">Clock</h2></div>
