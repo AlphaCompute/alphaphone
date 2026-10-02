@@ -1,6 +1,6 @@
 # Alpha Phone market research — manifest
 
-Research date: 2026-09-30. Owner: product/strategy. Status: manifest issued; sections are filled by parallel research workstreams and consolidated in [REPORT.md](REPORT.md).
+Research date: 2026-09-30. **Revised 2026-10-02:** the agent is now Android-resident (not Nitro); Alpha forks AOSP and does not need banking apps, Play Integrity or GMS; inference stays on Qwen; workstreams 12–15 were added (AOSP always-on listening, redaction integration, SOC 2, open-gap technical plan) and 01–11 were fact-checked. The baseline table below is the original 2026-09-30 snapshot. Owner: product/strategy. Status: manifest issued; sections are filled by parallel research workstreams and consolidated in [REPORT.md](REPORT.md).
 
 This is market research, not engineering acceptance. Product capability statements come from the repository's own evidence ledger (`docs/mvp-scope-and-gap-report.md`, `docs/current-acceptance-ledger.md`, `docs/enclave-candidate-validation.md`). Where the product is only planned, the research says so.
 
