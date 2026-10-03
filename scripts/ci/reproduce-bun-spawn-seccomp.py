@@ -14,6 +14,8 @@ revision = subprocess.check_output(['bun', '--revision'], text=True).strip()
 assert revision.startswith('1.4.2+') and '744846f' in revision, revision
 output = pathlib.Path('test-results/bun-spawn-seccomp')
 output.mkdir(parents=True, exist_ok=True)
+for previous in output.glob('trap-spawn.trace.*'):
+    previous.unlink()
 with tempfile.TemporaryDirectory(prefix='alpha-bun-seccomp-') as temporary:
     root = pathlib.Path(temporary)
     (root / 'filter.c').write_text(r'''
@@ -64,6 +66,27 @@ child.on('close',(code,signal)=>console.log(JSON.stringify({code,signal,ready:ou
 ''')
     subprocess.run(['cc', '-O2', str(root/'filter.c'), '-o', str(root/'filter')], check=True)
     subprocess.run(['cc', '-O2', '-shared', '-fPIC', str(root/'handler.c'), '-o', str(root/'handler.so')], check=True)
+    # Experimental control only: preserve the installed compatibility handler
+    # when the pre-exec child resets signal dispositions. This does not change
+    # Android artifacts, seccomp policy, or the production shim.
+    (root/'preserve.c').write_text(r'''
+#define _GNU_SOURCE
+#include <dlfcn.h>
+#include <signal.h>
+#include <unistd.h>
+static int (*real_sigaction)(int, const struct sigaction *, struct sigaction *);
+__attribute__((constructor)) static void resolve(void) {
+ real_sigaction=dlsym(RTLD_NEXT,"sigaction");
+ if(!real_sigaction)_exit(125);
+}
+int sigaction(int signal, const struct sigaction *action, struct sigaction *old) {
+ if(!real_sigaction)resolve();
+ if(signal==SIGSYS && action && action->sa_handler==SIG_DFL)
+  return real_sigaction(signal,0,old);
+ return real_sigaction(signal,action,old);
+}
+''')
+    subprocess.run(['cc', '-O2', '-shared', '-fPIC', str(root/'preserve.c'), '-ldl', '-o', str(root/'preserve.so')], check=True)
     env = {'PATH': os.environ['PATH'], 'HOME': temporary, 'TMPDIR': temporary,
            'LD_PRELOAD': str(root/'handler.so'), 'BUN_FEATURE_FLAG_DISABLE_IO_POOL': '1',
            'BUN_FEATURE_FLAG_FORCE_WAITER_THREAD': '1', 'BUN_FEATURE_FLAG_DISABLE_SPAWNSYNC_FAST_PATH': '1'}
@@ -72,10 +95,14 @@ child.on('close',(code,signal)=>console.log(JSON.stringify({code,signal,ready:ou
              'trap_spawn': ['strace', '-ff', '-o', str(output.resolve()/'trap-spawn.trace'),
                             '-e', 'trace=close_range,rt_sigaction,rt_sigprocmask,clone,clone3,execve,wait4,waitid',
                             '-e', 'signal=SIGSYS', str(root/'filter'), '1', 'bun', str(root/'spawn.mjs')],
-             'errno_spawn': [str(root/'filter'), '0', 'bun', str(root/'spawn.mjs')]}
+             'errno_spawn': [str(root/'filter'), '0', 'bun', str(root/'spawn.mjs')],
+             'preserved_handler_spawn': [str(root/'filter'), '1', 'bun', str(root/'spawn.mjs')]}
     results = {'revision': revision, 'syntheticLinuxRestriction': True, 'androidAcceptance': False, 'cases': {}}
     for name, command in cases.items():
-        process = subprocess.Popen(command, env=env, text=True, stdout=subprocess.PIPE,
+        case_env = dict(env)
+        if name == 'preserved_handler_spawn':
+            case_env['LD_PRELOAD'] = str(root/'preserve.so')+':'+str(root/'handler.so')
+        process = subprocess.Popen(command, env=case_env, text=True, stdout=subprocess.PIPE,
                                    stderr=subprocess.PIPE, start_new_session=True)
         try:
             stdout, stderr = process.communicate(timeout=30)
@@ -94,7 +121,7 @@ child.on('close',(code,signal)=>console.log(JSON.stringify({code,signal,ready:ou
         'execve(' not in trace for trace in child_traces)
     (output/'result.json').write_text(json.dumps(results, indent=2)+'\n')
     print(json.dumps(results, indent=2))
-    for name in ['baseline', 'errno_spawn']:
+    for name in ['baseline', 'errno_spawn', 'preserved_handler_spawn']:
         case=results['cases'][name]
         assert case.get('returncode') == 0 and json.loads(case['stdout'].strip()) == {'code': 0, 'signal': None, 'ready': True, 'stderrBytes': 0}, name
     assert results['cases']['trap_start'].get('returncode') == 0
