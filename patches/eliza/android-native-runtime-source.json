@@ -8,7 +8,7 @@
   },
   "compatibilityPatch": {
     "patch": "android-resident-exact-stop.patch",
-    "patchSha256": "aa8ec9f2d3bbc9d61ed7ce6735ef5c11483c3ed24d74d3e30896b9de864ba0d5",
+    "patchSha256": "d8d89b491a8f2fd33ca884a59e536360d6662bf85ad6a51e578aae4b7d1f2a35",
     "files": {
       "packages/app/platforms/android/app/src/main/java/ai/elizaos/app/ElizaAgentService.java": {
         "sourceSha256": "8959c145e0066518626ff02730513fc02f606f0efa75bf5abd62bb59ac0c4431",
@@ -16,7 +16,7 @@
       },
       "packages/app/platforms/android/app/src/main/java/ai/elizaos/app/WorkflowSurvivorInventory.java": {
         "sourceSha256": "9ad1015c3dd7882538dc03b76e259f6cce7fc7083bae8e298d535c8b429d3b9e",
-        "patchedSha256": "773955d3892bd69da45b448ea716dc5085c55de0b8b24d89efa074786d9f0255"
+        "patchedSha256": "cf148c23ff208426c183003d21e55dcb67e702e62a31b6ae23be6f0b0a708ebf"
       }
     }
   }

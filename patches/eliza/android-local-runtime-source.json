@@ -17,16 +17,16 @@
     "packages/core/src/security/pii-pseudonymizer.ts": "bffc53238d2580c5ad2d436e0e247ac425189487bf482e51b5917567f29ee111",
     "packages/core/src/security/runtime-abort-signal.ts": "da3bb65a56334a249399c0a2ec4e0f9d227c8e09e3566237609f679de76b0d78",
     "packages/core/src/security/secret-swap.ts": "bf3e37b89b5ed16bf726b01da962c6dc441030918f97f99a725550d3a38e396d",
-    "plugins/plugin-assistant/src/services/device-actions/contract.ts": "885fac153520e119742bcd886c11ce81261e60837306d46708156ceef8c8f0f5",
+    "plugins/plugin-assistant/src/services/device-actions/contract.ts": "7820c4230677f7f84a0066df577c06e95f905bf89b7a6fde412a0794ea97de74",
     "plugins/plugin-assistant/src/services/message/reply-policy.ts": "6258737cf79a623f58988d6788462b9b5d12ae54b6916b5e198dc873197ee40c",
-    "plugins/plugin-assistant/test/device-actions.e2e.test.ts": "6b2f688039a2626a87e51af8cd17c09f084afab52ed6913f7a9c8acafce154ff",
+    "plugins/plugin-assistant/test/device-actions.e2e.test.ts": "ecf07e1bfa6d4e00d023bbbd7360872755e1646f98f7f5362854b1165b42b924",
     "plugins/plugin-workflow/__tests__/hosted-route-registration.test.ts": "fff3297e97e13c5929bff141c045a10153a5166eb93bd06dc84f5deb098135ac",
     "plugins/plugin-workflow/src/plugin-routes.ts": "517b20534f8c9eab6fd0ac354a0425fd5acfd58b20393a7c0382812bd9f7d000",
     "plugins/plugin-assistant/src/services/device-actions/clock-contract.ts": "4a068849386f1e3f81391840c60ea74e0ad488b1102d4b6d8c8dc1bf1616cfaf",
     "plugins/plugin-assistant/src/services/device-actions/action.ts": "d51554a393e821bd61c445fc3b780402678e4a2aca3abfd58cd6fab6ee9f63ad",
     "plugins/plugin-assistant/src/services/device-actions/effect-receipts.ts": "a3b43839a9b462fc84a74168f5c1f3d478c9f777abe9c7b77c9525628921ab5d",
-    "plugins/plugin-assistant/src/services/device-actions/service.ts": "48b419809434f202510040f43fd6b0bbea8abaa92310914180fd46689d523e99",
-    "packages/agent/src/api/device-action-routes.ts": "32502da8711fc432d71f13e3791d2489673b8b567a45a34a16dcdea529462235",
+    "plugins/plugin-assistant/src/services/device-actions/service.ts": "56ee79596c08731cbfdae22164f7c87a38e36c620c8c2abe91dafb695e59e207",
+    "packages/agent/src/api/device-action-routes.ts": "1f4ee808c46115fe091dd5de12a6cee59aacdcbaff0b3ba714c0d327a142e9a8",
     "packages/app/src/api/server.ts": "abe49c0fa56477c8f5b8e7ba0f1998e14dc45b54c61e2bd1ae315ddc1b236b68",
     "packages/app/src/api/route-auth-policy.ts": "03ceedd4a061c53766f27fbca7842fcb9c6489cc750957fffd4f2a4d2a218558",
     "packages/agent/src/api/runtime-mode/route-mode-matrix.ts": "23b7233d607342d4e77698513a7686ad87750d1cd72429f33816bdcd1dc8cf1c",
@@ -36,14 +36,14 @@
     "packages/core/src/security/log-redaction.ts": "f836bf328b75908f3c9f0a7b6cd6e156d2bb7eb0f06fc554904113de0a147061",
     "packages/core/src/__tests__/swap-credential-assignment.test.ts": "f8dd81b1f02f2e5b206e9b8dd7e57f687ac4d6a011e6258eddfe821b490f4cb3",
     "packages/agent/src/api/workflow-device-owner.ts": "c9cb104f1b4fd052d34ad2b88b60fe96eb464c3de4b4285376b48a8d5d468f61",
-    "plugins/plugin-sql/src/schema/clientDevices.ts": "a2b27ee5e093b5462652296a5431181a7232f1bdefc22cc6c1995dfd5f5dac84",
-    "plugins/plugin-assistant/test/workflow-owner-enrollment.test.ts": "168fde5f1d5871d39f3bf462135745107442e79847773b87475b20caed4e0bdf",
-    "plugins/plugin-assistant/test/workflow-owner-dispatch.test.ts": "aeb29060516a6e25b11f5f32b73b5f382221dcc59d4434511f9dad8c417569c0",
-    "plugins/plugin-assistant/test/workflow-owner-receipt-review.test.ts": "36c9eb65be81339889f126a28860f05f52cff29215afd4061750c29629126e11",
-    "plugins/plugin-assistant/test/workflow-owner-migration-review.test.ts": "32c9ae7fbbcd3d9fbfc575e925d29d05433a10c09ae005a030f4e5d1147a5727",
+    "plugins/plugin-sql/src/schema/clientDevices.ts": "cc9c428a8162d9240622712258c5d25c7552b5fff7f954cbe9e71fbfe773187f",
+    "plugins/plugin-assistant/test/workflow-owner-enrollment.test.ts": "99e21e3af4baff6bbb6dfe22bf0ed3292de43e0c66bae8fcfa3fddfbfce635da",
+    "plugins/plugin-assistant/test/workflow-owner-dispatch.test.ts": "f17fbff58cfa423c43a66f07d4b312174ee7e9ee275041f8e46c004c73d28fb7",
+    "plugins/plugin-assistant/test/workflow-owner-receipt-review.test.ts": "7bffaf0c18d7436161ff0bf8d1affed009e3cb7b5ad0f9930a92756d86070411",
+    "plugins/plugin-assistant/test/workflow-owner-migration-review.test.ts": "94433d2f15bba94a7b164dd59f8adde05e4e9d5e162cdd89a9ac338daceb8e0c",
     "packages/app/scripts/lib/stage-android-agent.ts": "e0da570ee3fac62ba8c416044ba8de4397dc452b6d08f3313e22092ae3107ffd",
     "plugins/plugin-assistant/src/services/device-actions/reminder-contract.ts": "c8d7c16f96a7d80d3b8ee32c87a9fe9bb8a93ffe7b930a9fe8b2d8754c4b171d",
-    "plugins/plugin-assistant/src/services/message/context-assembly.ts": "cef5fc478e3457fe98069ad134a09b3bb2c9072730b4cf007801e7a482cdafa1",
+    "plugins/plugin-assistant/src/services/message/context-assembly.ts": "8fc8533a61e77c5110f1a2391d60c06b495806c0cc0793829f7540434c1e2a0a",
     "plugins/plugin-workflow/src/services/smithers-runtime.ts": "96eddf37e728809da61f0056356784e64156b029cbe35dba67c115639795da78",
     "plugins/plugin-workflow/src/services/workflow-source-publication.ts": "eb7adbeebe71afde252488af2f5b6cb8d073162335cd32dc1f08fbd065d864e4",
     "plugins/plugin-workflow/src/services/phone-workflow-generation.ts": "629dce92af9fdb1685cd8cc72bd7400abd13b2f6283fa8f6ff5b0dc075228b98",
@@ -64,7 +64,11 @@
     "plugins/plugin-assistant/src/services/device-actions/reminder-create-contract.ts": "9545607e3b54a96c34cdf129a8cb4fc3de4476dc23857a3986c0e8174ceea4ed",
     "packages/core/src/__tests__/swap-contact-reference.test.ts": "73405dfc0d73d7d5ce58a48a0cfc65e7748b079279be2c40181440f768765ffa",
     "packages/core/src/runtime/model-dispatch/dispatcher.ts": "14420d660bf8df4103d9d99dd18728e01931269e155b9a69d7d21436c79505d3",
-    "packages/core/src/__tests__/swap-short-credentials.test.ts": "b3710be380701c44bcdd7106b042c254c600d62c9baf8f7436fdb932ac019ed8"
+    "packages/core/src/__tests__/swap-short-credentials.test.ts": "b3710be380701c44bcdd7106b042c254c600d62c9baf8f7436fdb932ac019ed8",
+    "packages/app/src/api/server-cors.ts": "f23ecba89e70a83be0df2a5ce4aed9813b9cca5570a8db4656fbea63e75700e4",
+    "plugins/plugin-assistant/src/index.ts": "1e17329f5805693238c2a5768ddfd2962f55910f64c2071d5c2968c01a5194ea",
+    "plugins/plugin-assistant/src/services/device-actions/view-profile.ts": "83bb2e07b28be9afe9c9c2ea5e6ed5021214871df9d480974faee1a753f1a5f0",
+    "plugins/plugin-workflow/__tests__/integration/device-bridge-e2e.test.ts": "47fa645374fafbcf1d7dfba697d553294c3a3507e6b5bed4b6896c88556de4cd"
   },
   "patches": [
     "android-secure-store-socket.patch",
@@ -92,7 +96,8 @@
     "workflow-worker-crash-identity-diagnostic.patch",
     "egress-contact-references.patch",
     "egress-contact-guidance.patch",
-    "egress-short-credentials.patch"
+    "egress-short-credentials.patch",
+    "authenticated-enabled-views.patch"
   ],
   "patchHashes": {
     "android-secure-store-socket.patch": "457ea3d0b91c80c53c4bd3db25bb85cea6079d87c5ee2b02a96757e0a31ae900",
@@ -119,6 +124,7 @@
     "workflow-worker-crash-identity-diagnostic.patch": "7b546b7bef4703dbf4035f7f87d57a7059ad201f1f3f306dfaadffd9451276d3",
     "egress-contact-references.patch": "8cdd5bcf6d64c40d2488219b8fcdb3dda776fca0bc6537de2bb2007b982b36e5",
     "egress-contact-guidance.patch": "69557e411bd7952c77916353998fb3dd2d3befd707c2078dbc3719531618436e",
-    "egress-short-credentials.patch": "0a1b80d101760c311318bacc852ee695904cbe0db9d38b53f85ce26e7e60c23e"
+    "egress-short-credentials.patch": "0a1b80d101760c311318bacc852ee695904cbe0db9d38b53f85ce26e7e60c23e",
+    "authenticated-enabled-views.patch": "3947ef246ff65e520d8870315222b463c15a49dfb56cbd6784acd06b2ba3a2f1"
   }
 }

@@ -1,6 +1,8 @@
+diff --git a/packages/app/platforms/android/app/src/main/java/ai/elizaos/app/ElizaAgentService.java b/packages/app/platforms/android/app/src/main/java/ai/elizaos/app/ElizaAgentService.java
+index 2526d92..c859ef6 100644
 --- a/packages/app/platforms/android/app/src/main/java/ai/elizaos/app/ElizaAgentService.java
 +++ b/packages/app/platforms/android/app/src/main/java/ai/elizaos/app/ElizaAgentService.java
-@@ -3007,26 +3007,14 @@
+@@ -3007,26 +3007,14 @@ public class ElizaAgentService extends Service {
          File abiDir = agentAbiDir(abi);
          File bun = preferPackagedExecutable(new File(abiDir, BUN_BINARY), "libeliza_bun.so");
          File bundle = new File(agentRoot(), AGENT_BUNDLE_NAME);
@@ -34,9 +36,11 @@
          }
      }
  
+diff --git a/packages/app/platforms/android/app/src/main/java/ai/elizaos/app/WorkflowSurvivorInventory.java b/packages/app/platforms/android/app/src/main/java/ai/elizaos/app/WorkflowSurvivorInventory.java
+index 0e9fbb8..73864a8 100644
 --- a/packages/app/platforms/android/app/src/main/java/ai/elizaos/app/WorkflowSurvivorInventory.java
 +++ b/packages/app/platforms/android/app/src/main/java/ai/elizaos/app/WorkflowSurvivorInventory.java
-@@ -14,7 +14,7 @@
+@@ -14,7 +14,7 @@ import java.security.MessageDigest;
  import java.util.*;
  import org.json.JSONObject;
  
@@ -45,10 +49,24 @@
  final class WorkflowSurvivorInventory {
   private static IOException refused(String message){return new IOException("IPC recovery required: "+message);}
   private static void check(boolean value,String message)throws IOException {if(!value)throw refused(message);}
-@@ -42,6 +42,46 @@
-  private static Identity processIdentity(int pid,long deadline)throws Exception {
+@@ -43,6 +43,63 @@ final class WorkflowSurvivorInventory {
    File proc=new File("/proc/"+pid);StructStat before=Os.stat(proc.getPath());String stat=new String(bounded(new File(proc,"stat"),16384),StandardCharsets.UTF_8);int end=stat.lastIndexOf(')');check(end>=0,"malformed worker process");String[] fields=stat.substring(end+2).trim().split("\\s+");check(fields.length>19&&fields[19].matches("[0-9]+"),"missing worker start time");
    File link=new File(proc,"exe");String executable=Os.readlink(link.getPath());check(executable.startsWith("/")&&!executable.endsWith(" (deleted)"),"invalid worker executable");StructStat exe=Os.stat(link.getPath());String digest=hash(link,deadline);StructStat after=Os.stat(proc.getPath());check(before.st_uid==after.st_uid&&before.st_ino==after.st_ino,"worker process changed");return new Identity(pid,before.st_uid,fields[19],executable,String.valueOf(exe.st_dev),String.valueOf(exe.st_ino),digest);
+  }
++ interface ProcessObservation<T> { T read()throws Exception; }
++ interface ProcessPresence { void stat(int pid)throws Exception; }
++ /** An observation failure is benign only when a fresh kernel lookup proves absence. */
++ static <T> T observePresent(int pid,ProcessObservation<T> observation,ProcessPresence presence)throws Exception {
++  try{return observation.read();}
++  catch(Exception failure){
++   try{presence.stat(pid);}
++   catch(android.system.ErrnoException absent){if(absent.errno==OsConstants.ENOENT)return null;throw failure;}
++   catch(Exception uncertain){throw failure;}
++   throw failure;
++  }
++ }
++ private static <T> T observePresent(int pid,ProcessObservation<T> observation)throws Exception {
++  return observePresent(pid,observation,value->{Os.stat("/proc/"+value);});
 + }
 + /** Only the exact resident command is signalable; shared-runtime siblings are preserved. */
 + static boolean residentArguments(byte[] bytes,String bun,String loader,String bundle)throws Exception {
@@ -71,24 +89,27 @@
 +   if(!entry.getName().matches("[0-9]+"))continue;
 +   StructStat stat;try{stat=Os.stat(entry.getPath());}catch(android.system.ErrnoException gone){if(gone.errno==OsConstants.ENOENT)continue;throw gone;}
 +   if(stat.st_uid!=Process.myUid()||entry.getName().equals(String.valueOf(Process.myPid())))continue;
-+   byte[] args;try{args=bounded(new File(entry,"cmdline"),65536);}catch(FileNotFoundException gone){if(!entry.exists())continue;throw gone;}
++   final int pid=Integer.parseInt(entry.getName());
++   byte[] args=observePresent(pid,()->bounded(new File(entry,"cmdline"),65536));if(args==null)continue;
 +   if(!residentArguments(args,bun,loader,bundle))continue;
 +   check(selected==null,"multiple resident processes; preserve all");
-+   Identity identity=processIdentity(Integer.parseInt(entry.getName()),deadline);
++   Identity identity=observePresent(pid,()->processIdentity(pid,deadline));if(identity==null)continue;
 +   check(identity.uid==Process.myUid()&&identity.executable.equals(loader)&&identity.sha256.equals(loaderHash)
 +    &&identity.device.equals(String.valueOf(packaged.st_dev))&&identity.inode.equals(String.valueOf(packaged.st_ino)),"resident deployment changed");
-+   mappedBunIdentity(identity.pid,bun,deadline);selected=identity;selectedArgs=args;
++   if(observePresent(pid,()->mappedBunIdentity(pid,bun,deadline))==null)continue;selected=identity;selectedArgs=args;
 +  }
 +  if(selected==null)return;
-+  check(selected.key().equals(processIdentity(selected.pid,deadline).key())&&Arrays.equals(selectedArgs,bounded(new File("/proc/"+selected.pid+"/cmdline"),65536)),"resident changed before signal");
++  final Identity target=selected;final byte[] targetArgs=selectedArgs;
++  if(observePresent(target.pid,()->{check(target.key().equals(processIdentity(target.pid,deadline).key())&&Arrays.equals(targetArgs,bounded(new File("/proc/"+target.pid+"/cmdline"),65536)),"resident changed before signal");return Boolean.TRUE;})==null)return;
 +  // The full UID/start/executable identity is rechecked immediately before signaling.
-+  Os.kill(selected.pid,OsConstants.SIGTERM);
++  if(observePresent(target.pid,()->{Os.kill(target.pid,OsConstants.SIGTERM);return Boolean.TRUE;})==null)return;
 +  while(SystemClock.elapsedRealtime()<deadline){
-+   try{Identity current=processIdentity(selected.pid,deadline);check(selected.key().equals(current.key()),"resident PID changed after signal");}
-+   catch(android.system.ErrnoException gone){if(gone.errno==OsConstants.ENOENT)return;throw gone;}
++   Identity current=observePresent(target.pid,()->processIdentity(target.pid,deadline));if(current==null)return;
++   check(target.key().equals(current.key()),"resident PID changed after signal");
 +   SystemClock.sleep(50);
 +  }
 +  throw refused("resident stop unconfirmed; preserve processes");
-  }
++ }
   private static Map<Integer,Identity> processes(long deadline)throws Exception {
    File[] entries=new File("/proc").listFiles();check(entries!=null&&entries.length>=20,"incomplete process inventory");Map<Integer,Identity> result=new TreeMap<>();
+   for(File entry:entries){if(!entry.getName().matches("[0-9]+"))continue;StructStat stat;
