@@ -21,7 +21,7 @@
     "plugins/plugin-assistant/src/services/message/reply-policy.ts": "6258737cf79a623f58988d6788462b9b5d12ae54b6916b5e198dc873197ee40c",
     "plugins/plugin-assistant/test/device-actions.e2e.test.ts": "5f43b35ad06dfd4e86b5419cc43de1342735bb4e3fab5b9f940668cb26edb09d",
     "plugins/plugin-workflow/__tests__/hosted-route-registration.test.ts": "fff3297e97e13c5929bff141c045a10153a5166eb93bd06dc84f5deb098135ac",
-    "plugins/plugin-workflow/src/plugin-routes.ts": "3edae66b214358367db08c3fb435bf12508c374efa691c51b71ce0ff01acf69e",
+    "plugins/plugin-workflow/src/plugin-routes.ts": "517b20534f8c9eab6fd0ac354a0425fd5acfd58b20393a7c0382812bd9f7d000",
     "plugins/plugin-assistant/src/services/device-actions/clock-contract.ts": "4a068849386f1e3f81391840c60ea74e0ad488b1102d4b6d8c8dc1bf1616cfaf",
     "plugins/plugin-assistant/src/services/device-actions/action.ts": "0e04ba03416da5985ff707b53a4dd984696885f551b80f09c7ccecc532221943",
     "plugins/plugin-assistant/src/services/device-actions/effect-receipts.ts": "52fcf108e42ac6c85f4f1b60b0eb5a18b956178c693528a92fedfdae4d69d4ca",
@@ -45,7 +45,12 @@
     "plugins/plugin-assistant/src/services/device-actions/reminder-contract.ts": "c8d7c16f96a7d80d3b8ee32c87a9fe9bb8a93ffe7b930a9fe8b2d8754c4b171d",
     "plugins/plugin-assistant/src/services/message/context-assembly.ts": "cef5fc478e3457fe98069ad134a09b3bb2c9072730b4cf007801e7a482cdafa1",
     "plugins/plugin-workflow/src/services/smithers-runtime.ts": "79e59adfc3284323db6c7e0082fdaf7b06c93e301bfd6913ae42c0f08f64c3c9",
-    "plugins/plugin-workflow/src/services/workflow-source-publication.ts": "eb7adbeebe71afde252488af2f5b6cb8d073162335cd32dc1f08fbd065d864e4"
+    "plugins/plugin-workflow/src/services/workflow-source-publication.ts": "eb7adbeebe71afde252488af2f5b6cb8d073162335cd32dc1f08fbd065d864e4",
+    "plugins/plugin-workflow/src/services/phone-workflow-generation.ts": "629dce92af9fdb1685cd8cc72bd7400abd13b2f6283fa8f6ff5b0dc075228b98",
+    "plugins/plugin-workflow/src/services/workflow-service.ts": "f843af50aef4bf34da4f91cc0bcd8402319d9e127c29de2dda62eae367f45af9",
+    "plugins/plugin-workflow/src/routes/workflow-routes.ts": "6b5801e9488df87e25803df22ef787126545bce3a2220120900ae5bdcb4ccee8",
+    "plugins/plugin-workflow/__tests__/phone-workflow-generation.test.ts": "121d844a337ede32ccca3630ea416842fe75292a3b962323d966710cbe2172a3",
+    "plugins/plugin-workflow/__tests__/phone-workflow-generation-route.test.ts": "c4965339fbc6bcf80d7ac1e0e66eca3e2ed54e27bc85737ce104e2123d36ef77"
   },
   "patches": [
     "android-secure-store-socket.patch",
@@ -64,7 +69,8 @@
     "calendar-tool-format-guidance.patch",
     "device-operation-key-guidance.patch",
     "reminder-explicit-timing.patch",
-    "android-workflow-source-publication.patch"
+    "android-workflow-source-publication.patch",
+    "typed-workflow-generation.patch"
   ],
   "patchHashes": {
     "android-secure-store-socket.patch": "457ea3d0b91c80c53c4bd3db25bb85cea6079d87c5ee2b02a96757e0a31ae900",
@@ -83,6 +89,7 @@
     "calendar-tool-format-guidance.patch": "64f38f9b7da7fe4773ce13bd1751a36accf494788f7fb1cd34878655218e43fe",
     "device-operation-key-guidance.patch": "78ff3fa0477fbd5f20a9fee1e288306ccacb15e87383d8b1ab7c87f190170902",
     "reminder-explicit-timing.patch": "ff58f690d2214d6de435f7698377971f20c86931e2f4e674ada3ab8e265871d2",
-    "android-workflow-source-publication.patch": "8ad19433f9a600f2a03becc94c7b73f021d697a7dc763bc0f2b87c87fde29dd1"
+    "android-workflow-source-publication.patch": "8ad19433f9a600f2a03becc94c7b73f021d697a7dc763bc0f2b87c87fde29dd1",
+    "typed-workflow-generation.patch": "c6b3840f2860542e5411dc0a98e2e7191643a3b8ac32de2534cebf9fbfc1625e"
   }
 }
