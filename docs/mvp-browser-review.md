@@ -1,9 +1,8 @@
 # MVP implementation and design review — updated October 3, 2026
 
-Latest full integration checkpoint: **927/927 browser tests passed** on committed `2d6c424f87af4baa151f1714a486009e04ad006a`, covering every browser test present in that snapshot. See [October 2 full browser qualification](#october-2--full-browser-qualification-and-history-test-budget). Pending shared-checkout changes remain outside this evidence. The MVP goal remains open.
+Latest full integration checkpoint: **988 browser tests passed, 10 skipped** in hosted run **37097712208**, at exact commit `c67082c74c7a0cefbea552e718f2c8c26d81a86d` (PR #31). All three shards succeeded. The skipped cases require a local speech host; 11 separate local speech cases passed against the restarted host. This qualifies the registration repair, not the subsequent scan, redaction or pending development bundle. The MVP goal remains open.
 
-
-Latest targeted checkpoint: [Browser registration repair](#october-3--browser-registration-cycle-and-hosted-failure-repair), published as PR #31. Local device, retained-output, camera and speech checks passed; hosted requalification is pending. An unchanged frozen combination with pending development work passed 24 device/notification/retained-output cases and 11 speech cases when run serially. Earlier combined failures and duplicate module-version evidence remain recorded below. Redaction runtime enablement and complete acceptance remain open.
+Latest targeted checkpoint: a frozen 53-file pending browser-development bundle passed **85/85** cases with the content-aware reload repair below. Its first run passed 67 and failed 18; both results are retained. The pending bundle has not yet been fully reviewed or published. Redaction runtime enablement and complete acceptance remain open.
 
 October 1 architecture change: the user has selected an **Android-resident agent instead of Nitro/TEE hosting**. The [on-device agent plan](on-device-agent-plan.md) supersedes cloud-only and enclave-primary requirements below. Agent execution and model inference are separate: the current implementation runs orchestration locally and uses hosted Cerebras inference. Historical evidence is retained. Powered-off-phone execution needs explicit scope reconciliation.
 
@@ -1652,3 +1651,11 @@ The new owned host started at **2026-10-03T05:05:02.597Z**, PID **22364**, port 
 All **11 browser speech cases** passed against this restarted live host, including actual synthetic microphone capture/transcription, synthesized playback, stop/cancel and session retirement. Evidence, sanitized process metadata, readiness readback and the actual connection screenshot are under `artifacts/calendar-preferences-review/test-results/runtime-restart-review/`. The renderer includes separately pending development edits; this focused connection/speech result does not qualify that entire bundle.
 
 Both swap switches remain off pending broader redaction acceptance. Orchestration and speech run locally; the configured text model still uses hosted inference. This restart does not establish offline LLM, Android execution or physical-device acceptance. No Android build ran.
+
+## October 3 — content-aware development reloads
+
+The pending development bundle's initial 85-case campaign failed 18 connection/workflow cases. Traces recorded unexpected document reloads and timestamped module imports while the frozen source bytes and mtimes remained unchanged. Delayed filesystem notifications are consistent with this evidence; their operating-system origin was not independently instrumented.
+
+The Vite reload hook now fingerprints the initial source tree and ignores unchanged file notifications. Actual non-CSS edits still reload bootstrap; actual CSS edits still update in place. A new regression fails against the original hook and passes after repair, alongside the existing real-edit/state-preservation test (2/2). The frozen bundle rerun passes 85/85 in 2.3 minutes. This demonstrates the reproduced notification repair and this campaign, not every historical reload cause.
+
+Evidence: `test-results/dev-bundle-review/` contains the original and repaired browser campaigns, frozen path/byte snapshots, reload regression evidence, hosted registration results and repository verification. The 53 pending paths were restored out of the review checkout after qualification; this repair does not silently publish their product changes. Android builds and device acceptance were not run.
