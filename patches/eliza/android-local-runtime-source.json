@@ -26,7 +26,13 @@
     "plugins/plugin-assistant/src/services/device-actions/action.ts": "5dadeb7828819b490faa46e93fd0a6628165c018a2d2cc80b258a3fb428a30f4",
     "plugins/plugin-assistant/src/services/device-actions/effect-receipts.ts": "52fcf108e42ac6c85f4f1b60b0eb5a18b956178c693528a92fedfdae4d69d4ca",
     "plugins/plugin-assistant/src/services/device-actions/service.ts": "c821593e90af9a95ceba3f4931e66f7496c24c58613fabd1bda6c01f8ffbd747",
-    "packages/agent/src/api/device-action-routes.ts": "1e61d0695828a7ae5a210783cc45dbfdee507579351bcee75a142c88a4c4b5bb"
+    "packages/agent/src/api/device-action-routes.ts": "1e61d0695828a7ae5a210783cc45dbfdee507579351bcee75a142c88a4c4b5bb",
+    "packages/app/src/api/server.ts": "abe49c0fa56477c8f5b8e7ba0f1998e14dc45b54c61e2bd1ae315ddc1b236b68",
+    "packages/app/src/api/route-auth-policy.ts": "03ceedd4a061c53766f27fbca7842fcb9c6489cc750957fffd4f2a4d2a218558",
+    "packages/agent/src/api/runtime-mode/route-mode-matrix.ts": "23b7233d607342d4e77698513a7686ad87750d1cd72429f33816bdcd1dc8cf1c",
+    "packages/app/src/api/standalone-kokoro-routes.ts": "30efea1236029fa7500f8a2ca8d461086cdd4c8bc1a751cbdf93d4483b42da03",
+    "packages/app/src/api/standalone-kokoro-service.ts": "db09fd0788a5c236cd5253b235f932fefb7695bb81458f7ba1959c6aa48272f6",
+    "plugins/plugin-local-inference/src/host-tts-worker.ts": "562fa4bd1a076dfff31f5583e0025ccb31fc0aa0d067f4a87c81b873dbca7b48"
   },
   "patches": [
     "android-secure-store-socket.patch",
@@ -37,7 +43,8 @@
     "egress-swap-control-objects.patch",
     "egress-user-reply-restoration.patch",
     "approved-workflows-navigation.patch",
-    "clock-handoff.patch"
+    "clock-handoff.patch",
+    "standalone-kokoro-host.patch"
   ],
   "patchHashes": {
     "android-secure-store-socket.patch": "457ea3d0b91c80c53c4bd3db25bb85cea6079d87c5ee2b02a96757e0a31ae900",
@@ -48,6 +55,7 @@
     "egress-swap-control-objects.patch": "6ecd2d688b0c2a8973ee5c71aabab3cc43fef8a19077516f36c27ba2bc00602c",
     "egress-user-reply-restoration.patch": "39904adafddc8841e74b268aad8fdac00a94481ba43f3acd7b18383d53b32ee8",
     "approved-workflows-navigation.patch": "2202d04675531633db4b1ce3a2e49e3e870c259c341acaf20b17bbef6be99c9a",
-    "clock-handoff.patch": "32245531af0928e7bd8a394ac588370790700abdf778cde644f54e1dda5388f2"
+    "clock-handoff.patch": "32245531af0928e7bd8a394ac588370790700abdf778cde644f54e1dda5388f2",
+    "standalone-kokoro-host.patch": "ae87186fdd0c3ab6ebd2d67f2621495592b3462345955fd7d8a70226ca6f5396"
   }
 }
