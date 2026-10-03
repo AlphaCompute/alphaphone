@@ -285,7 +285,14 @@ export function installCalendarAdapter(Component: any, views: Bag) {
           dispatched=true;
           const result=await calendar.remove({id:event.id,calendarId:event.calendarId,expected,revision:inspected.revision});
           if(owner!==currentOwner)return;
-          if(result.status==='deleted'){api.set({open:null,openDay:null});await refresh(false,true);api.toast('Local event deleted and verified.');}
+          if(result.status==='deleted'){
+            // The receipt belongs to the deleted event, not a newer detail or draft.
+            const current=api.get('calendar');
+            if(!document.hidden&&api.isActive()&&current.open===selected.id&&!current.form){
+              api.set({open:null,openDay:null});api.toast('Local event deleted and verified.');
+            }
+            await refresh(false,true);
+          }
           else if(result.status==='conflict'){api.toast('This event changed. Nothing was deleted.');await refresh(false,true);}
           else if(result.status==='unknown'){currentOwner.calendarWriteUncertain=true;api.toast('Deletion could not be confirmed. Refresh and check before another change.');}
           else if(result.status!=='cancelled')api.toast('Calendar deletion unavailable. Nothing was deleted.');
