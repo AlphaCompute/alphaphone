@@ -22,3 +22,7 @@ node scripts/test-native-calendar-consumer.mjs
 ```
 
 The runner refuses mismatched AVDs, a non-owner initial user, or pre-existing fixture packages. It creates a secondary user, installs only the fixture, grants its Calendar permissions, executes the provider test, restores user 0, stops/removes the secondary user, removes fixture packages and records APK hashes plus cleanup results. It never runs the provider test in user 0. Do not interpret a provider-only pass as permission-dialog, renderer, process-death or upgrade acceptance.
+
+Use `--bridge` for the WebView-to-Capacitor flow: initially ungranted Calendar permission, reviewed create/read/update/delete, stale revisions, a provider edit while confirmation is open, Cancel, and pause dismissal. Use `--workflow-permission` in a separate fresh fixture user for the read-only permission callback. These modes do not pregrant Calendar permission; they interact with the system permission dialog. The host refuses existing fixture registrations across all users before any shared APK code replacement.
+
+The fixture disables Gradle VFS watching after a local incremental run reused the previous instrumentation APK despite a source edit. When changing native tests, inspect the resulting APK hash and use `--rerun-tasks --no-watch-fs` if source/compiled identity is uncertain. Preserve earlier APK results rather than attributing them to new source.

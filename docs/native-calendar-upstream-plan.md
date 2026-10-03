@@ -48,3 +48,13 @@ The independent Gradle consumer at `scripts/fixtures/native-calendar-consumer` i
 - Product verification passes 225 checks plus typecheck and web build. This is not acceptance of the new library through Alpha: production still uses its original Calendar implementation.
 
 Remaining gates include the initial transient result diagnosis, registered bridge permission/dialog/lifecycle flows, actual process death, TypeScript/publication contract, production adapter wiring, both distribution builds and lossless upgrade validation. Do not mark MVP step 13 complete from this evidence.
+
+### Registered bridge qualification
+
+The independent consumer now passes the actual WebView → registered `ConsumerCalendar` → inherited Java plugin path. The complete flow starts with no Calendar permission, accepts the system permission dialog, creates/reads/updates/deletes provider events under native confirmation, rejects a stale revision, rejects deletion after a provider edit while confirmation is open, and cancels on both Cancel and Activity pause. The test verifies the review gate and dialog are released before accepting terminal results. Evidence: `test-results/native-calendar-consumer-1791063146790` (owned user 41).
+
+The separate workflow read-permission callback also passes from an ungranted state, followed by actual `workflowCalendars`; it is not inferred from already-granted permission. Evidence: `test-results/native-calendar-consumer-1791063182878` (owned user 42). Both campaigns restored/resumed user 0, stopped/removed the exact owned user, and removed the fixture packages. The shared instrumentation APK hash is `50667c608fe34226491a8e3ca971eec3b96c8a006974f1ebf90c73d238321bd2`.
+
+Retained failures: user 39 submitted a later request before Activity focus returned and received `unavailable`. The test now waits for actual focus between operations. User 40 still used the preceding instrumentation APK because the incremental build reused it; that result cannot validate the changed fixture. A forced rebuild, disabled VFS watching, and inspection of compiled methods established the tested source before users 41/42. The cleanup runner now waits for the original Activity to resume before stopping the owned user. Its preflight checks retained package registrations across all users to avoid replacing another user's shared fixture code.
+
+These results close registered bridge permission, reviewed CRUD, conflict and pause checks for this external consumer. They do not close the earlier transient creation investigation, process-death/upgrade acceptance, Alpha migration, both product distributions or the public TypeScript/package contract.
