@@ -66,3 +66,5 @@ The MVP is **not complete**. This is the current requirement/evidence index; [th
 This order preserves the full MVP goal. It is not a smaller definition of completion, and this document does not mark any missing gate as waived.
 
 October 3 browser subview update: the local guest-response dialog now supports bounded scrolling, visible save/cancel actions, themed controls and long names at 150% text. Fourteen focused Chromium/WebKit checks and repository verification passed; see the browser review for evidence. Other subview audits and current-head hosted qualification remain open.
+
+October 3 meeting subview update: long-title/guest horizontal overflow was reproduced and fixed. The local browser preview has bounded themed content and a persistent Leave meeting action. All 24 owning Chromium/WebKit cases and repository verification pass; physical media and real connected meetings are not inferred from this local-only preview.
