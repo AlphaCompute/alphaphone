@@ -35,6 +35,8 @@ The MVP is **not complete**. This is the current requirement/evidence index; [th
 
 ## Verification checkpoints
 
+- Run `37123865828` succeeded at exact head `4c825c6b952ffc34c2f64c9039a524cae758ad26`, including the source-repair fixture. Later dialog/viewer and reading lifecycle changes still require current-head hosted qualification.
+
 - Run `37123330883` succeeded at exact head `d2455c6f3fe05ad2ce20108e8c64cba2c86724eb`, including stored/encoded credential protection. It predates the source-repair fixture and later dialog/viewer changes; their current-head hosted qualification remains open.
 
 - Run `37122135848` succeeded at exact head `21337dc6aa0a34ae9bfa9e32a80d2128f248ce08`, including URI credentials. Stored/encoded credential and fixture changes remain newer than this checkpoint. Android foundation smoke failures remain separate and outside the requested browser pass.
@@ -74,3 +76,9 @@ October 3 meeting subview update: long-title/guest horizontal overflow was repro
 October 3 selected-document update: bounded themed chrome and keyboard-scrollable filenames replace the overflowing viewer; Done stays available and owned cleanup handles dismissal, background, replacement and forgotten selections. The 28-case Chromium/WebKit campaign preserves sandboxed imported-HTML behavior and passes alongside repository verification. Current native file-provider acceptance remains open.
 
 October 3 current-source privacy/action qualification: consumer manifest `e413f3cd45433c1d47abda5d32f4c227118b48240ff88d625cc6c9a9a4167836` passes a real Cerebras reviewed local-note journey in an isolated profile with both swaps enabled. Zero notes before approval, one afterward and the same record after reload; exact contacts restored, credential excluded. All nine captured outbound checks exclude the raw synthetic contact/credential values. Source verification passes before/after. This closes the prior-action snapshot gap; native/broad task qualification and default enablement remain open, and the live user's switches remain off.
+
+### Open implementation gap: resident native Browser reading
+
+Source inspection on October 3 confirms that native Browser Read aloud still obtains `createPairedVoice()` and `getPairedVoiceBinding()` in `prototype/browser-adapter.ts`; the latter explicitly returns null for the resident connection. Consequently a resident user reaches the paired-agent requirement rather than local reading. This is an implementation gap, not only a physical-device acceptance gap.
+
+Repair must retain the native isolated-document extraction and explicit review in `BrowserReading`, introduce a distinct device-local approval binding and token-consumption route, preflight the entire reviewed passage before local speech, and preserve request-scoped Stop/navigation/background/owner-change cancellation. The existing native local engine accepts bounded text chunks; passing an entire 5,000-character excerpt into its 500-character entrypoint or exporting unreviewed text would not complete the requirement. Verify renderer selection with controlled native ports and native token/chunk lifecycle source harnesses; keep Android builds excluded and physical playback acceptance separate. This now precedes additional cosmetic subview work.
