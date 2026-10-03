@@ -1,3 +1,5 @@
+> Historical series documentation. The current numbered series is empty; see [upstream migration](../../docs/upstream-patch-migration.md) and `mvp-source-base.json` for current status. Do not replay this historical series onto current upstream.
+
 # Eliza phone integration patch series
 
 Apply this series to a clean Eliza checkout at commit `4573712ebf0466daa4dfadaa4482704c209d9b8c`. This is the exact reproduction base, not the Alpha product's existing vendor pin. Do not apply a historical mixed Cloud review artifact as an additional patch: its resolved upstream changes are already represented by0020.

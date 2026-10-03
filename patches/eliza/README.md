@@ -1,6 +1,6 @@
 # Eliza phone-device action patch
 
-Current complete MVP series: [MVP-README.md](MVP-README.md), with exact ordered filenames in `mvp-series` and hashes in `mvp-source-base.json`. The historical sections below describe earlier increments.
+Upstream migration is tracked in [the migration ledger](../../docs/upstream-patch-migration.md). The current `mvp-series` is empty: `mvp-source-base.json` admits committed runtime source at `92fc988bbc2502b6dab5976014973bbe510b5045`, with active consumer extras tracked separately. [MVP-README.md](MVP-README.md) and the sections below describe historical increments, not a current instruction to replay the numbered series. Keep patch provenance until merged upstream coverage and product adoption are verified.
 
 `0001-durable-device-actions.patch` applies to upstream commit
 `4573712ebf0466daa4dfadaa4482704c209d9b8c`. It was implemented and tested in an
