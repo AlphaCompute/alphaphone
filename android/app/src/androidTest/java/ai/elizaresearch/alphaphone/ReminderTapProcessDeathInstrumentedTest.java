@@ -59,6 +59,20 @@ public final class ReminderTapProcessDeathInstrumentedTest {
   for(StatusBarNotification row:manager.getActiveNotifications())if(id.equals(row.getTag())&&row.getId()==0)return row;
   throw new AssertionError("Original reminder notification absent");
  }
+ private static android.view.accessibility.AccessibilityNodeInfo visibleNode(android.view.accessibility.AccessibilityNodeInfo node,String label){
+  if(node==null)return null;
+  if(node.isVisibleToUser()&&(label.contentEquals(node.getText()==null?"":node.getText())||label.contentEquals(node.getContentDescription()==null?"":node.getContentDescription())))return node;
+  for(int i=0;i<node.getChildCount();i++){android.view.accessibility.AccessibilityNodeInfo found=visibleNode(node.getChild(i),label);if(found!=null)return found;}
+  return null;
+ }
+ private static android.view.accessibility.AccessibilityNodeInfo awaitVisible(String label)throws Exception{
+  long end=SystemClock.elapsedRealtime()+20000;
+  do{android.view.accessibility.AccessibilityNodeInfo root=InstrumentationRegistry.getInstrumentation().getUiAutomation().getRootInActiveWindow();
+   if(root!=null&&APP.contentEquals(root.getPackageName())){android.view.accessibility.AccessibilityNodeInfo found=visibleNode(root,label);if(found!=null)return found;}
+   SystemClock.sleep(100);
+  }while(SystemClock.elapsedRealtime()<end);
+  throw new AssertionError("Reminder recovery control unavailable: "+label);
+ }
  @Test public void capturedReminderTapSurvivesMainDeathWithoutAnotherNotificationIntent()throws Exception {
   org.junit.Assume.assumeTrue("Explicit isolated reminder process-death campaign","1".equals(InstrumentationRegistry.getArguments().getString("reminderTapProcessDeath")));
   assertEquals(APP+":workflowNoticeTest",Application.getProcessName());assertTrue(android.os.Process.myUid()/100000>0);
@@ -104,7 +118,19 @@ public final class ReminderTapProcessDeathInstrumentedTest {
    JSONObject recovered=new ReminderTaps(context).pending();assertEquals(token,recovered.getString("token"));assertTrue(recovered.getBoolean("retained"));assertTrue(ReminderTaps.same(captured.getJSONObject("target"),recovered.getJSONObject("target")));
    assertEquals(committed,storage.readCredentialSlot(ReminderTaps.SLOT));
    assertEquals(original.getPostTime(),notice(manager,id).getPostTime());
-   android.os.Bundle evidence=new android.os.Bundle();evidence.putString("reminderTapProcessDeath",new JSONObject().put("beforePid",before.pid).put("beforeStart",before.start).put("afterPid",after.pid).put("afterStart",after.start).put("uid",after.uid).put("postTime",original.getPostTime()).put("notificationSends",1).put("recoveryLaunch","launcher-without-reminder-data").toString());InstrumentationRegistry.getInstrumentation().addResults(evidence);
+   // Complete the real fresh-user recovery journey through the visible chooser.
+   // This is one user action, not another notification intent or direct route injection.
+   android.view.accessibility.AccessibilityNodeInfo offline=awaitVisible("Continue offline");
+   assertTrue(offline.isEnabled());assertTrue(offline.isClickable());
+   assertTrue(offline.performAction(android.view.accessibility.AccessibilityNodeInfo.ACTION_CLICK));
+   awaitVisible("Retained reminder tap");awaitVisible("Complete reminder occurrence");
+   long consumedEnd=SystemClock.elapsedRealtime()+10000;boolean consumed=false;
+   do{JSONObject rows=new JSONObject(storage.readCredentialSlot(ReminderTaps.SLOT));consumed="consumed".equals(rows.getJSONObject(token).getString("state"));if(!consumed)SystemClock.sleep(50);}while(!consumed&&SystemClock.elapsedRealtime()<consumedEnd);
+   assertTrue("Exact captured route must be acknowledged after detail render",consumed);
+   assertFalse(new ReminderTaps(context).pending().has("token"));
+   assertEquals("Opening detail must not complete the reminder","posted",ReminderStore.read(context,id).getString("status"));
+   assertTrue(ReminderTaps.same(captured.getJSONObject("target"),ReminderStore.selected(context,id)));
+   android.os.Bundle evidence=new android.os.Bundle();evidence.putString("reminderTapProcessDeath",new JSONObject().put("beforePid",before.pid).put("beforeStart",before.start).put("afterPid",after.pid).put("afterStart",after.start).put("uid",after.uid).put("postTime",original.getPostTime()).put("notificationSends",1).put("detailVisible",true).put("routeConsumed",true).put("recoveryLaunch","launcher-without-reminder-data").toString());InstrumentationRegistry.getInstrumentation().addResults(evidence);
   }finally{manager.cancel(id,0);/* Fresh-user supervisor owns all durable cleanup. */}
  }
 }
