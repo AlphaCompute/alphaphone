@@ -73,7 +73,11 @@
     "packages/core/src/__tests__/swap-uri-credentials.test.ts": "97dc0ff77711587fdfb4b92c7b367d0fef595a8c98a13d587422262b7f0696bf",
     "packages/core/src/__tests__/swap-encoded-credentials.test.ts": "4a48d5bbd2f9a4cd9d53de0ddfc3793bb71ee1fbd22412045340a5278c51f4bd",
     "packages/core/src/security/incoming-message-security.ts": "dcb8e5dce41d26258fb8c17134f7fd858c79c8e23f147dd3912a346f4b47af24",
-    "packages/core/src/__tests__/message-runtime-stage1.test.ts": "1c97828c1ca4c340f2ef2270c4006f69a439a1f21d59d41cbbd37bf5d9ae3901"
+    "packages/core/src/__tests__/message-runtime-stage1.test.ts": "1c97828c1ca4c340f2ef2270c4006f69a439a1f21d59d41cbbd37bf5d9ae3901",
+    "packages/app/scripts/aosp/seccomp-shim/sigsys-handler.c": "41aa61829efcf93e39943701c6e553bb7e2af1648828611b9150b75f06e02ae7",
+    "packages/app/scripts/aosp/seccomp-shim/sigsys-handler-arm64.c": "6ecab1907ba87fa7a64cb6756283c48581fb29fedc3bd618676d7f2babc07986",
+    "packages/app/scripts/aosp/seccomp-shim/sigsys-handler-riscv64.c": "93c500c5a89783a2c138cf9d39a0ce5173b0de5014ce725c4afb3bf77293673f",
+    "packages/app/scripts/aosp/seccomp-shim/preserve-sigsys.h": "12569a6dcb28510d34eba1cb1afe9bff0bfd3e4187b1bfae02913e8d01e7af20"
   },
   "patches": [
     "android-secure-store-socket.patch",
@@ -106,7 +110,8 @@
     "egress-quoted-credentials.patch",
     "egress-uri-credentials.patch",
     "egress-encoded-credentials.patch",
-    "stage1-source-repair-fixture.patch"
+    "stage1-source-repair-fixture.patch",
+    "android-preserve-sigsys.patch"
   ],
   "patchHashes": {
     "android-secure-store-socket.patch": "457ea3d0b91c80c53c4bd3db25bb85cea6079d87c5ee2b02a96757e0a31ae900",
@@ -138,6 +143,7 @@
     "egress-quoted-credentials.patch": "010eeaeede83b1e8359f10457d1c8fc5188b94dbbba3e12eb3b9f39f14b244da",
     "egress-uri-credentials.patch": "dc77b4df7ae9b83a52b051dc4573ef63cf244c3f662947692e17e7b5631e1f5d",
     "egress-encoded-credentials.patch": "1c740c08eefba62ec74a7622172c52feb22b7ed2bc6fdf17f3574473b21021e5",
-    "stage1-source-repair-fixture.patch": "5a09e5aa81580bd3f66c8c2483a715f7f7675d52e5a1bea3886c170575a44444"
+    "stage1-source-repair-fixture.patch": "5a09e5aa81580bd3f66c8c2483a715f7f7675d52e5a1bea3886c170575a44444",
+    "android-preserve-sigsys.patch": "1395125689f6e7789c0e11f8e928f38b80cb1fee9d47f1269027912dc789d8d2"
   }
 }
