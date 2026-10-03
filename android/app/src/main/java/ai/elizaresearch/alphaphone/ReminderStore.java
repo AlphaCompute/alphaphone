@@ -195,8 +195,8 @@ final class ReminderStore {
    if (!allowed(context)) {
     value.put("status", "permission-denied"); if(!prefs(context).edit().putString(id, value.toString()).commit())throw new IllegalStateException("Reminder state could not be saved"); return;
    }
-   postNotification(context,id,value,occurrence);
    value.put("status", "posted").put("postedAt", System.currentTimeMillis());
+   postNotification(context,id,value,occurrence);
    if(!prefs(context).edit().putString(id, value.toString()).commit())throw new IllegalStateException("Reminder state could not be saved");
   } catch (RuntimeException | JSONException ignored) {
    // The persisted record stays unresolved if the provider/system fails; no false delivered receipt.
@@ -204,8 +204,11 @@ final class ReminderStore {
  }
 
  private static void postNotification(Context context,String id,JSONObject value,String occurrence)throws JSONException{
-   Intent open = new Intent(context, MainActivity.class).setAction("ai.elizaresearch.alphaphone.OPEN_REMINDER")
-    .setData(Uri.parse("alpha-reminder-open:" + id + (occurrence==null?"":"/"+occurrence))).putExtra(OPEN_ID, id).putExtra(OCCURRENCE,occurrence).addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+   final String token;
+   try { token = new ReminderTaps(context).prepare(selectedRow(context, id, value)); }
+   catch (Exception unavailable) { throw new IllegalStateException("Reminder route could not be saved", unavailable); }
+   Intent open = new Intent(context, MainActivity.class).setAction(ReminderTaps.ACTION)
+    .setData(Uri.parse(ReminderTaps.PREFIX + token)).addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
    PendingIntent tap = PendingIntent.getActivity(context, 0, open, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
    Notification publicVersion = new Notification.Builder(context, CHANNEL).setSmallIcon(android.R.drawable.ic_popup_reminder)
     .setContentTitle("Alpha Phone reminder").build();
@@ -213,7 +216,7 @@ final class ReminderStore {
     .setContentTitle(value.getString("title")).setContentText(value.getString("body"))
     .setStyle(new Notification.BigTextStyle().bigText(value.getString("body")))
     .setVisibility(Notification.VISIBILITY_PRIVATE).setPublicVersion(publicVersion)
-     .setContentIntent(tap).setOnlyAlertOnce(true).setAutoCancel(true).setCategory(Notification.CATEGORY_REMINDER);
+     .setContentIntent(tap).setOnlyAlertOnce(true).setAutoCancel(false).setCategory(Notification.CATEGORY_REMINDER);
    if(occurrence!=null){
     builder.addAction(new Notification.Action.Builder(null,"Done",decisionIntent(context,id,occurrence,"done")).build());
     builder.addAction(new Notification.Action.Builder(null,"Snooze 10 minutes",decisionIntent(context,id,occurrence,"snooze")).build());
@@ -289,6 +292,9 @@ final class ReminderStore {
  private static void exactKeys(JSONObject v,String...keys)throws JSONException{java.util.Set<String> expected=new java.util.HashSet<>(java.util.Arrays.asList(keys));if(v.length()!=expected.size())throw new IllegalArgumentException("Unexpected reminder fields");for(String key:keys)if(!v.has(key))throw new IllegalArgumentException("Missing reminder field");}
  static synchronized JSONObject selected(Context context,String id)throws JSONException{
   if(!validId(id))throw new IllegalArgumentException("Invalid reminder ID");JSONObject row=read(context,id);if(row==null)throw new IllegalArgumentException("Reminder not found");
+  return selectedRow(context, id, row);
+ }
+ private static JSONObject selectedRow(Context context, String id, JSONObject row) throws JSONException {
   String source=envelope(context).active().getString("source");JSONObject target=new JSONObject().put("sourceId",source).put("sourceRevision",digest(source)).put("reminderId",id).put("occurrenceId",row.getString("occurrenceId")).put("revision",digest(canonical(row)));if(row.has("alertMinutes"))target.put("timingVersion",2);return target;
  }
  private static JSONObject operationResult(Context context,String type,String id)throws JSONException{

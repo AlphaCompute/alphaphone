@@ -12,6 +12,7 @@ import static org.junit.Assert.*;
 
 /** Explicit disposable secondary-user campaign; real notification permission is runner-owned. */
 public final class WorkflowNoticeTapInstrumentedTest {
+ private java.util.concurrent.CountDownLatch coldReadinessQueued;
  private JSONObject call(String expression)throws Exception{
   WebViewTestDriver.evaluate("window.__workflowNoticeTap=null;Promise.resolve().then(()=>"+expression+").then(v=>window.__workflowNoticeTap=JSON.stringify(v||{}),()=>window.__workflowNoticeTap=JSON.stringify({error:true}))");
   long end=SystemClock.elapsedRealtime()+15000;
@@ -30,7 +31,8 @@ public final class WorkflowNoticeTapInstrumentedTest {
     main.getBridge().getWebView().evaluateJavascript("Boolean(window.Capacitor?.Plugins?.AlphaNotifications?.pendingWorkflowTap)",value->{ready.set("true".equals(value));done.countDown();});return;
    }
    done.countDown();}catch(Throwable error){failure.set(error);done.countDown();}
-  },Math.max(1,Math.min(1000,remaining)));
+  },Math.max(1,remaining));
+  if(coldReadinessQueued!=null)coldReadinessQueued.countDown();
   dispatch.await(done,"Read-only notification Activity/bridge readiness");if(failure.get()!=null)throw new AssertionError("Notification readiness observation failed",failure.get());return ready.get();
  }
  private JSONObject pending(String token)throws Exception{
@@ -69,7 +71,41 @@ public final class WorkflowNoticeTapInstrumentedTest {
     cold=notice(manager,first).contentIntent;warm=notice(manager,second).contentIntent;assertNotEquals(cold,warm);
     firstToken=WorkflowNoticeTapsFactory.create(context).token(first);secondToken=WorkflowNoticeTapsFactory.create(context).token(second);assertNotEquals(firstToken,secondToken);
    }
-   cold.send();JSONObject one=pending(firstToken);assertEquals(first,one.getString("runId"));assertTrue(one.getBoolean("retained"));
+   // Hold only this fixture's main looper until its read-only observer is queued.
+   // Releasing 1.5 s afterward deterministically exceeds the obsolete 1 s cap.
+   java.util.concurrent.CountDownLatch holdEntered=new java.util.concurrent.CountDownLatch(1),releaseHold=new java.util.concurrent.CountDownLatch(1),holdFinished=new java.util.concurrent.CountDownLatch(1);
+   java.util.concurrent.atomic.AtomicBoolean holdExpired=new java.util.concurrent.atomic.AtomicBoolean();
+   java.util.concurrent.atomic.AtomicReference<Throwable> holdFailure=new java.util.concurrent.atomic.AtomicReference<>();
+   coldReadinessQueued=new java.util.concurrent.CountDownLatch(1);
+   final java.util.concurrent.CountDownLatch observationQueued=coldReadinessQueued;
+   android.os.Handler handler=new android.os.Handler(android.os.Looper.getMainLooper());
+   Runnable hold=()->{
+    holdEntered.countDown();
+    try{if(!releaseHold.await(5000,java.util.concurrent.TimeUnit.MILLISECONDS))holdExpired.set(true);}
+    catch(InterruptedException error){Thread.currentThread().interrupt();holdFailure.set(error);}
+    finally{holdFinished.countDown();}
+   };
+   Thread release=new Thread(()->{
+    try{
+     if(!observationQueued.await(2500,java.util.concurrent.TimeUnit.MILLISECONDS))throw new AssertionError("Cold readiness observation was not queued");
+     SystemClock.sleep(1500);
+    }catch(Throwable error){holdFailure.set(error);}
+    finally{releaseHold.countDown();}
+   },"alpha-cold-notice-main-release");
+   release.setDaemon(true);
+   try{
+    assertTrue("Owned main-thread hold was posted",handler.post(hold));
+    assertTrue("Owned main-thread hold started",holdEntered.await(2000,java.util.concurrent.TimeUnit.MILLISECONDS));
+    release.start();
+    cold.send();
+    JSONObject one=pending(firstToken);assertEquals(first,one.getString("runId"));assertTrue(one.getBoolean("retained"));
+    assertFalse("Owned hold exceeded its safety bound",holdExpired.get());assertNull("Owned hold released normally",holdFailure.get());
+   }finally{
+    releaseHold.countDown();handler.removeCallbacks(hold);coldReadinessQueued=null;
+    if(release.isAlive()){release.interrupt();release.join(2000);}
+    assertFalse("Fixture release thread stopped",release.isAlive());
+    if(holdEntered.getCount()==0)assertTrue("Owned main-thread hold finished",holdFinished.await(2000,java.util.concurrent.TimeUnit.MILLISECONDS));
+   }
    String delivery=store.readCredentialSlot(WorkflowNoticeDelivery.SLOT);JSONObject uncertain=new JSONObject(delivery);uncertain.getJSONObject(first).put("status","unknown");store.writeCredentialSlot(WorkflowNoticeDelivery.SLOT,uncertain.toString());
    cold.send();assertFalse(pending(firstToken).getBoolean("retained"));
    String saved=store.readCredentialSlot(WorkflowNoticeTaps.SLOT);store.writeCredentialSlot(WorkflowNoticeTaps.SLOT,"[]");

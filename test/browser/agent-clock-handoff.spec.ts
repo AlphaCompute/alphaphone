@@ -3,12 +3,12 @@ import { test, expect } from '@playwright/test';
 // Real renderer, pairing, connection controller, proposal parser and journal
 // orchestration. Auth, transcript, durable journal and native Clock are controlled
 // boundaries: no model call, physical microphone, Android Intent or real alarm.
-for (const mode of ['confirm','transcribed','zone','modal','unknown','receipt-loss','unavailable','denied','failed','show','snooze','dismiss','browser','old-host','duplicate'] as const) {
+for (const mode of ['confirm','transcribed','zone','modal','unknown','receipt-loss','unavailable','denied','failed','show','snooze','dismiss','browser','old-host','duplicate','review-cancel','review-owner','review-context','review-cancel-failure'] as const) {
   test(`agent Clock handoff: ${mode}`, async ({ page }) => {
     await page.addInitScript((mode) => {
       const w = window as any, store = new Map(JSON.parse(localStorage.getItem('fixture-secure')||'[]'));w.calendarEntry=JSON.parse(localStorage.getItem('fixture-journal')||'null');
       const agentId = '12345678-1234-4234-8234-123456789abc';
-      const fixture = w.recoveryFixture = { posts: 0, lists: 0, decisions: 0, claims: 0, receipts: 0, effects: Number(localStorage.getItem('fixture-effects')||0), journal: [] as string[], proposal: null as any };
+      const fixture = w.recoveryFixture = { posts: 0, lists: 0, decisions: 0, claims: 0, receipts: 0, reviews:0,cancellations:0,effects: Number(localStorage.getItem('fixture-effects')||0), journal: [] as string[], proposal: null as any };
       const methods = (names: string[]) => names.map(name => ({ name, rtype: 'promise' }));
       if(mode!=='browser')w.androidBridge={};
       w.Capacitor = {
@@ -16,7 +16,7 @@ for (const mode of ['confirm','transcribed','zone','modal','unknown','receipt-lo
           {name:'AlphaVoiceCloud',methods:methods(['localSpeechStatus','transcribeLocalRecording','startRecording','stopRecording','releaseLocalSpeech','cancel','cancelRecording','stopPlayback','addListener','removeListener'])},
           {name:'DailyApps',methods:methods(['clockHandoff','perform','surfaceInfo','addListener','removeListener'])},
           { name: 'AlphaConnection', methods: methods(['request', 'cancel', 'secureRead', 'secureWrite', 'secureRemove','addListener','removeListener']) },
-          { name: 'AlphaActionJournal', methods: methods(['reserve', 'markApplying', 'finish', 'get', 'list']) },
+          { name: 'AlphaActionJournal', methods: methods(['reserve', 'markApplying', 'finish', 'get', 'list','reviewClock','confirmClock','cancelClock']) },
         ],
         nativeCallback:()=> 'fixture-listener',
         nativePromise: async (plugin: string, method: string, input: any) => {
@@ -25,6 +25,20 @@ for (const mode of ['confirm','transcribed','zone','modal','unknown','receipt-lo
           if(plugin==='DailyApps'){if(method==='surfaceInfo')return {developmentBuild:true,assistant:false};if(method==='perform')return {status:'selected',transcript:'Set an alarm for 07:00; await my review.'};if(method==='clockHandoff'){fixture.effects++;localStorage.setItem('fixture-effects',String(fixture.effects));if(mode==='unknown')throw Error('Lost native bridge response');return {action:input.action,status:mode==='unavailable'?'unavailable':mode==='denied'?'denied':mode==='failed'?'failed':'opened',message:'Clock request sent'};}throw Error('Unexpected DailyApps method');}
           if (plugin === 'AlphaActionJournal') {
             fixture.journal.push(method);
+            if(method==='reviewClock'){
+              if(input.scope!==w.calendarEntry.scope||input.proposalId!==w.calendarEntry.proposalId||input.operationId!==w.calendarEntry.operationId||JSON.stringify(input.operation)!==JSON.stringify(w.calendarEntry.record.operation)||w.calendarEntry.phase!=='applying')throw Error('Wrong exact native journal');
+              fixture.reviews++;
+              if(mode==='review-cancel')return {result:{kind:'clock-handoff',action:input.operation.action,status:'failed'}};
+              if(mode==='review-owner'||mode==='review-context'||mode==='review-cancel-failure')return new Promise(resolve=>{w.releaseReview=()=>resolve({reviewToken:'native-owner-consent'});});
+              return {reviewToken:'native-owner-consent'};
+            }
+            if(method==='cancelClock'){fixture.cancellations++;if(mode==='review-cancel-failure'&&fixture.cancellations<=2)throw Error('Unconfirmed native cancellation');if(mode==='review-owner'||mode==='review-cancel-failure')return new Promise(resolve=>{w.releaseCancel=()=>resolve({});});return {};}
+            if(method==='confirmClock'){
+              if(input.reviewToken!=='native-owner-consent'||input.operationId!==w.calendarEntry.operationId)throw Error('Missing native consent');
+              fixture.effects++;localStorage.setItem('fixture-effects',String(fixture.effects));if(mode==='unknown')throw Error('Lost native bridge response');
+              return {result:{kind:'clock-handoff',action:w.calendarEntry.record.operation.action,status:mode==='unavailable'?'unavailable':mode==='denied'?'denied':mode==='failed'?'failed':'opened'}};
+            }
+
             if (method === 'reserve') { if(w.calendarEntry)return {created:false,entry:structuredClone(w.calendarEntry)};w.calendarEntry={...structuredClone(input),phase:'reserved'}; localStorage.setItem('fixture-journal',JSON.stringify(w.calendarEntry));return { created: true }; }
             if (method === 'markApplying') { Object.assign(w.calendarEntry,{phase:'applying',attemptId:input.attemptId});return {}; }
             if(method==='get')return {entry:structuredClone(w.calendarEntry)};
@@ -110,6 +124,44 @@ for (const mode of ['confirm','transcribed','zone','modal','unknown','receipt-lo
     await page.getByText('Approve: clock handoff',{exact:true}).click();
     if(mode==='zone'){await expect(page.getByText('Phone time zone changed. Review the Clock request again.',{exact:true}).first()).toBeVisible();expect(await page.evaluate(()=>(window as any).recoveryFixture.effects)).toBe(0);return;}
 
+    if(mode==='review-cancel'){
+      await expect.poll(()=>page.evaluate(()=>(window as any).recoveryFixture.receipts)).toBe(1);
+      expect(await page.evaluate(()=>(window as any).recoveryFixture.effects)).toBe(0);
+      expect(await page.evaluate(()=>(window as any).calendarRetained.result.clockResult.status)).toBe('failed');return;
+    }
+    if(mode==='review-cancel-failure'){
+      await expect.poll(()=>page.evaluate(()=>(window as any).recoveryFixture.reviews)).toBe(1);
+      await page.evaluate(async()=>{await (await import('/src/runtime/connection-ui.tsx')).connectionController.disconnect();});
+      await page.evaluate(()=>(window as any).releaseReview());
+      await expect.poll(()=>page.evaluate(()=>(window as any).calendarRetained?.status)).toBe('unknown');
+      expect(await page.evaluate(()=>(window as any).recoveryFixture.cancellations)).toBe(1);
+      expect(await page.evaluate(async()=>{try{await (await import('/src/runtime/clock-agent-review.ts')).retireClockReviews();return false;}catch{return true;}})).toBe(true);
+      expect(await page.evaluate(()=>(window as any).recoveryFixture.cancellations)).toBe(2);
+      await page.evaluate(async()=>{(window as any).retired=false;(window as any).retirement=(await import('/src/runtime/connection-ui.tsx')).connectionController.disconnect().then(()=>{(window as any).retired=true;});});
+      await expect.poll(()=>page.evaluate(()=>(window as any).recoveryFixture.cancellations)).toBe(3);
+      expect(await page.evaluate(()=>(window as any).retired)).toBe(false);
+      expect(await page.evaluate(()=>(window as any).recoveryFixture.effects)).toBe(0);
+      await page.evaluate(()=>(window as any).releaseCancel());await page.evaluate(()=>(window as any).retirement);
+      await page.evaluate(async()=>{await (await import('/src/runtime/clock-agent-review.ts')).retireClockReviews();});
+      expect(await page.evaluate(()=>(window as any).recoveryFixture.cancellations)).toBe(3);return;
+    }
+    if(mode==='review-owner'||mode==='review-context'){
+      await expect.poll(()=>page.evaluate(()=>(window as any).recoveryFixture.reviews)).toBe(1);
+      if(mode==='review-owner'){
+        await page.evaluate(async()=>{const controller=(await import('/src/runtime/connection-ui.tsx')).connectionController;(window as any).retired=false;(window as any).retirement=controller.disconnect().then(()=>{(window as any).retired=true;});});
+        await expect.poll(()=>page.evaluate(()=>(window as any).recoveryFixture.cancellations)).toBe(1);
+        await page.evaluate(()=>(window as any).releaseReview());
+        expect(await page.evaluate(()=>(window as any).retired)).toBe(false);
+        await page.evaluate(()=>(window as any).releaseCancel());
+        await page.evaluate(()=>(window as any).retirement);
+      }else{
+        await page.evaluate(()=>Object.defineProperty(document,'hidden',{configurable:true,get:()=>true}));
+        await page.evaluate(()=>(window as any).releaseReview());
+      }
+      await expect.poll(()=>page.evaluate(()=>(window as any).calendarRetained?.status)).toBe('unknown');
+      expect(await page.evaluate(()=>(window as any).recoveryFixture.effects)).toBe(0);
+      expect(await page.evaluate(()=>(window as any).recoveryFixture.cancellations)).toBe(1);return;
+    }
     await expect.poll(()=>page.evaluate(()=>(window as any).recoveryFixture.effects)).toBe(1);
     await expect.poll(()=>page.evaluate(()=>(window as any).recoveryFixture.receipts)).toBe(1);
     if(mode==='receipt-loss'){

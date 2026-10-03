@@ -35,7 +35,9 @@ const nativeCloudRequest = async input => {
   const response = await fetch(`http://127.0.0.1:${server.address().port}${url.pathname}${url.search}`, { method: input.method, headers: input.headers, signal: input.signal, body: input.body ? JSON.stringify(input.body) : undefined });
   return { status: response.status, data: await response.json() };
 };
-const sandbox = { workflowPresentationProtocol:async()=>2, browserDevProfile:false, secureConnectionStore:{read:async()=>null,write:async()=>{},remove:async()=>{}}, pauseHostedBackground:async()=>{}, configureHostedBackground:async()=>{}, registerPlugin: () => ({}), CloudProtocol, CloudProvisionAcceptedError, phoneContextMessage, nativeCloudRequest,
+let clockRetirements=0,heldClockRetirement=null,clockRetirementStarted=null;
+const retireClockReviews=async()=>{clockRetirements++;clockRetirementStarted?.();if(heldClockRetirement)await heldClockRetirement;};
+const sandbox = { retireClockReviews, workflowPresentationProtocol:async()=>2, browserDevProfile:false, secureConnectionStore:{read:async()=>null,write:async()=>{},remove:async()=>{}}, pauseHostedBackground:async()=>{}, configureHostedBackground:async()=>{}, registerPlugin: () => ({}), CloudProtocol, CloudProvisionAcceptedError, phoneContextMessage, nativeCloudRequest,
   cloudCredentialStore: { read: async () => credential, write: async (_environment, value) => { credential = value; }, clear: async () => { credential = null; } },
   openConnectionBrowser: async () => { throw new Error('Unexpected browser effect'); },
   isAndroid: false, localStorage: { getItem: key => memory.get(key) ?? null, setItem: (key, value) => memory.set(key, value), removeItem: key => memory.delete(key) },
@@ -50,6 +52,8 @@ try {
   await controller.cloudList('production');
   assert.ok(controller.getSnapshot().cloudAccount);
   await controller.cloudChoose(agent);
+  assert.equal(controller.getSnapshot().error,'','Cloud activation must succeed before history assertions');
+  assert.ok(controller.getSnapshot().session,'Cloud agent session is active');
   await controller.listHistory();
   assert.equal(controller.getSnapshot().conversations[0].id, conversation);
   await controller.restoreHistory('not-authorized');
@@ -63,7 +67,15 @@ try {
   assert.equal(sends, 0, 'restoring history never sends or executes actions');
   await controller.send('New question', { view: 'home', revision: 1, sensitive: false }, 'synthetic-id', new AbortController().signal);
   assert.equal(sends, 1, 'next send uses the explicitly restored conversation');
-  await controller.disconnect();
+  const beforeRetirements=clockRetirements;
+  let releaseClockRetirement;heldClockRetirement=new Promise(resolve=>{releaseClockRetirement=resolve;});
+  const retirementStarted=new Promise(resolve=>{clockRetirementStarted=resolve;});
+  let disconnected=false;const disconnect=controller.disconnect().then(()=>{disconnected=true;});
+  await retirementStarted;
+  assert.equal(clockRetirements,beforeRetirements+1,'disconnect retires the native Clock owner once');
+  assert.equal(disconnected,false,'connection retirement must await the native Clock acknowledgement');
+  releaseClockRetirement();await disconnect;heldClockRetirement=null;
+
   assert.equal(controller.getSnapshot().session, null);
   assert.ok(controller.getCloudClient(), 'agent disconnect retains Cloud services');
   const bound = controller.getCloudClient();
