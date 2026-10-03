@@ -35,7 +35,7 @@ The MVP is **not complete**. This is the current requirement/evidence index; [th
 
 ## Verification checkpoints
 
-- Latest confirmed full Browser MVP checkpoint: run `37110104825`, exact head `8190682c711111498ff280c711566cb1331578d3`, **1,115 passed / 12 skipped**, all three shards successful. Its repository checks had two additional platform-dependent skips. It predates native presentation/voice changes.
+- Recorded full Browser MVP checkpoint: run `37110104825`, exact head `8190682c711111498ff280c711566cb1331578d3`, **1,115 passed / 12 skipped**, all three shards successful. Its repository checks had two additional platform-dependent skips. It predates native presentation/voice changes.
 - Native presentation code `99a0590`: **138 repository tests**, TypeScript/build and **64 targeted browser cases** passed. Current run `37112124559` was still in progress when checked for this audit; it is not counted as a pass.
 - Resident voice code `89b8b3e`, evidence head `a564ed4`: **144 repository tests**, TypeScript/build, **50 targeted browser cases**, plus actual browser-host Kokoro readiness/playback. No Android build ran in these two checkpoints.
 - The source browser audit reported concurrent uncommitted `README.md` and `docs/browser-dev-parity.md` edits in its checkout. Those edits were excluded from its pushes. This is checkout-specific historical evidence, not a claim about every worktree.
