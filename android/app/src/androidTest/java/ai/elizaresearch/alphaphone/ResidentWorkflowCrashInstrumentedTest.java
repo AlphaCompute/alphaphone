@@ -31,7 +31,7 @@ public final class ResidentWorkflowCrashInstrumentedTest {
   StringBuilder value=new StringBuilder();for(byte b:digest.digest())value.append(String.format(Locale.ROOT,"%02x",b&255));return value.toString();
  }
  private static String fileHash(File file)throws Exception {try(InputStream in=new FileInputStream(file)){MessageDigest digest=MessageDigest.getInstance("SHA-256");byte[] buf=new byte[65536];int n;while((n=in.read(buf))!=-1)digest.update(buf,0,n);StringBuilder s=new StringBuilder();for(byte b:digest.digest())s.append(String.format(Locale.ROOT,"%02x",b&255));return s.toString();}}
- private String ownerBearer;
+ private String ownerBearer, ownerIdentityId;
  private JSONObject nativeCall(String path,String method,JSONObject body,String bearer)throws Exception {
   JSONObject headers=new JSONObject();if(bearer!=null)headers.put("Authorization","Bearer "+bearer);
   JSONObject args=new JSONObject().put("path",path).put("method",method).put("headers",headers).put("timeoutMs",path.startsWith("/api/auth/")?10000:120000);
@@ -83,7 +83,6 @@ public final class ResidentWorkflowCrashInstrumentedTest {
   }
  }
  private void startAndEnroll()throws Exception {
-  ownerBearer=null;
   assertTrue(context.getSharedPreferences("CapacitorStorage",Context.MODE_PRIVATE).edit().putString("eliza:mobile-runtime-mode","cloud-hybrid").commit());
   reportRamAdmission();
   ElizaAgentService.start(context);
@@ -92,16 +91,29 @@ public final class ResidentWorkflowCrashInstrumentedTest {
   while(SystemClock.elapsedRealtime()<deadline){
    try {
     root=ElizaAgentService.localAgentToken(context);
-    if(root!=null&&!root.isEmpty()){status=nativeCall("/api/auth/status","GET",null,root);status.getString("instanceId");break;}
+    if(root!=null&&!root.isEmpty()){
+     status=nativeCall("/api/auth/status","GET",null,ownerBearer==null?root:ownerBearer);
+     if(ownerBearer!=null&&!status.optBoolean("authenticated"))status=null;
+     else {status.getString("instanceId");break;}
+    }
    } catch(IOException|JSONException unavailable){status=null;}
    SystemClock.sleep(250);
   }
   if(status==null){AssertionError failure=new AssertionError("Resident service readiness deadline; inspect OS FGS admission and boot diagnostics, do not retry blindly");captureReadinessTimeout(started,failure);throw failure;}
+  // Restart preserves the owner session. A bootstrap bearer cannot mint another
+  // owner session after the first owner has claimed the runtime.
+  if(ownerBearer!=null){
+   JSONObject who=request("/api/auth/me",null);
+   assertTrue("Restarted native session must match",ownerBearer.equals(who.getJSONObject("session").getString("id")));
+   assertEquals(ownerIdentityId,who.getJSONObject("identity").getString("id"));
+   assertEquals("owner",who.getJSONObject("identity").getString("kind"));
+   return;
+  }
   // Pair-code issuance and pairing are deliberately outside readiness polling: never replay an ambiguous enrollment.
   JSONObject code=nativeCall("/api/auth/pair-code","GET",null,root);
   JSONObject paired=nativeCall("/api/auth/pair","POST",new JSONObject().put("code",code.getString("code")).put("instanceId",status.getString("instanceId")),root);
   assertEquals("owner",paired.getString("access"));assertEquals(status.getString("instanceId"),paired.getString("instanceId"));
-  ownerBearer=paired.getString("token");JSONObject who=request("/api/auth/me",null);
+  ownerBearer=paired.getString("token");ownerIdentityId=paired.getString("identityId");JSONObject who=request("/api/auth/me",null);
   assertTrue("Paired native session must match",ownerBearer.equals(who.getJSONObject("session").getString("id")));
   assertEquals(paired.getString("identityId"),who.getJSONObject("identity").getString("id"));
  }
@@ -266,7 +278,7 @@ public final class ResidentWorkflowCrashInstrumentedTest {
    finally {
     try {if(!rpc)releaseLocal(false);model.release.countDown();if(submitted&&worker==null)throw new IOException("Submitted worker identity unobserved; preserve for disposable-user teardown");boolean workerGone=worker==null;long end=SystemClock.elapsedRealtime()+20000;while(!workerGone&&SystemClock.elapsedRealtime()<end){try{workerGone=!worker.key().equals(WorkflowSurvivorInventory.processIdentity(worker.pid).key());}catch(Exception gone){workerGone=!new File("/proc/"+worker.pid).exists();}if(!workerGone)SystemClock.sleep(100);}if(!workerGone)throw new IOException("Owned worker remains alive; preserve for disposable-user teardown");ElizaAgentService.stop(context);stopped(resident);proof.put("cleanupComplete",true);}
     catch(Throwable cleanup){if(failure==null)failure=cleanup;else failure.addSuppressed(cleanup);proof.put("cleanupFailed",true);}
-    finally {hook.set(null,null);ownerBearer=null;}
+    finally {hook.set(null,null);ownerBearer=null;ownerIdentityId=null;}
    }
   } catch(Throwable outer){if(failure==null)failure=outer;else failure.addSuppressed(outer);}
   proof.put("passed",failure==null&&proof.optBoolean("passed"));try{if(readinessTimeoutDiagnostic!=null)proof.put("readinessTimeoutDiagnostic",readinessTimeoutDiagnostic);write(new File(context.getFilesDir(),"resident-recovery-complete.json"),proof.toString());}catch(Throwable outputFailure){if(failure==null)failure=outputFailure;else failure.addSuppressed(outputFailure);}if(failure!=null)throw failure;
@@ -295,7 +307,7 @@ public final class ResidentWorkflowCrashInstrumentedTest {
     ElizaAgentService.stop(context);stopped(resident);resident=null;startAndEnroll();resident=ownedChild();JSONObject replay=trusted.replay();assertEquals(output,replay.getJSONArray("output").toString());assertEquals(0,replay.getInt("calls"));assertEquals(1,model.calls.get());assertNull(model.failure);
     proof.put("firstProcess",original).put("secondProcess",replacement).put("finalProcess",resident).put("oldIpcPreserved",retained).put("workflowVersionId","trusted-v1").put("executionId",trusted.runId).put("sourceSha256",hash(module.getBytes(StandardCharsets.UTF_8))).put("workerPid",worker.pid).put("workerStartTicks",worker.start).put("modelRequests",1).put("canonicalOutput",result.getJSONArray("output")).put("workerIndexSha256",fixture.getString("workerIndexSha256")).put("workerManifestSha256",fixture.getString("workerManifestSha256")).put("compilerManifestSha256",fixture.getString("compilerManifestSha256")).put("freshCanonicalReplay",true).put("passed",true);
    }catch(Throwable error){failure=error;}
-   finally{try{model.release.countDown();if(trusted!=null){if(trusted.process.isAlive())trusted.finish();trusted.close();}ElizaAgentService.stop(context);stopped(resident);proof.put("cleanupComplete",true);}catch(Throwable cleanup){if(failure==null)failure=cleanup;else failure.addSuppressed(cleanup);proof.put("cleanupFailed",true);}finally{hook.set(null,null);ownerBearer=null;}}
+   finally{try{model.release.countDown();if(trusted!=null){if(trusted.process.isAlive())trusted.finish();trusted.close();}ElizaAgentService.stop(context);stopped(resident);proof.put("cleanupComplete",true);}catch(Throwable cleanup){if(failure==null)failure=cleanup;else failure.addSuppressed(cleanup);proof.put("cleanupFailed",true);}finally{hook.set(null,null);ownerBearer=null;ownerIdentityId=null;}}
   }catch(Throwable outer){if(failure==null)failure=outer;else failure.addSuppressed(outer);}
   proof.put("passed",failure==null&&proof.optBoolean("passed"));try{if(readinessTimeoutDiagnostic!=null)proof.put("readinessTimeoutDiagnostic",readinessTimeoutDiagnostic);write(new File(context.getFilesDir(),"resident-recovery-complete.json"),proof.toString());}catch(Throwable outputFailure){if(failure==null)failure=outputFailure;else failure.addSuppressed(outputFailure);}if(failure!=null)throw failure;
  }
