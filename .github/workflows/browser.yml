@@ -12,7 +12,7 @@ jobs:
   browser:
     name: Browser MVP (shard ${{ matrix.shard }}/3)
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:

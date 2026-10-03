@@ -59,6 +59,8 @@ for (const name of [
   fs.rmSync(path.join(output, name), { force: true });
 }
 const providerSelectors = [
+  `${identity.appId}.BrowserShareInstrumentedTest#exactCurrentPageChooserCancellationAndStalePageRejection`,
+  `${identity.appId}.BrowserSensitiveReadingInstrumentedTest#sensitivePagesRejectBeforeReviewTokenOrOutboundSpeech`,
   `${identity.appId}.BrowserIsolatedReadingInstrumentedTest#pageWorldTamperingCannotForgeSafeReading`,
   `${identity.appId}.BrowserReadingNavigationInstrumentedTest#delayedSameOriginAndReloadReadyCannotAdoptOldDocument`,
 ];
@@ -101,7 +103,7 @@ try {
       fs.writeFileSync(path.join(evidence, "provider-before.json"), JSON.stringify(before, null, 2));
       const classes = providerSelectors.map(selector => selector.split("#")[0]).join(",");
       const args = ["shell", "am", "instrument", "-w", "-r", "-e", "class", classes,
-        "-e", "browserIsolatedReading", "1", `${identity.appId}.test/androidx.test.runner.AndroidJUnitRunner`];
+        "-e", "browserIsolatedReading", "1", "-e", "browserSensitiveReading", "1", "-e", "browserShareLive", "1", `${identity.appId}.test/androidx.test.runner.AndroidJUnitRunner`];
       const started = Date.now();
       let text;
       try {

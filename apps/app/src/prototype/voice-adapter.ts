@@ -408,6 +408,13 @@ export function installPrototypeVoiceAdapter(Component: any, views: Record<strin
       messages.transcribing='Review the recording transcript.';
       messages.review='Edit the transcript, listen, or save the recording in this browser.';
     }
+    if(onDeviceReady&&connectionController.getBrowserSpeechAgent()){
+      labels.recorded='Transcribe on this computer';
+      messages.ready='Record in this browser. English transcription runs on the local agent on this computer when you choose Transcribe.';
+      messages.recorded='Microphone is off. Transcribe on this computer sends this recording to your local development agent.';
+      messages.transcribing='Transcribing on this computer. Nothing has been saved.';
+      messages.review='Review the transcript, listen using a local browser voice, or save it with the recording. No chat message has been sent.';
+    }
     result.recording = true;
     result.rec = {
       manualChoice: stage === 'ready' && !busy && !preparingLocal && selectedRoute !== 'manual',

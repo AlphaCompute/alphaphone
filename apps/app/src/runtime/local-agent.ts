@@ -10,7 +10,7 @@ export interface LocalAgentBridge {
   stop?():Promise<unknown>;
   getStatus?():Promise<{packaged?:boolean;state?:string;serviceActive?:boolean;socketListening?:boolean}>;
   configureProvider?(input:{apiKey:string;model:string}):Promise<unknown>;
-  request(input: { path: string; ownerId?:string; method: 'GET' | 'POST'; headers: Record<string,string>; body?: string; timeoutMs: number }, signal?:AbortSignal): Promise<{status:number;body?:string}>;
+  request(input: { path: string; audioBase64?:string;requestId?:string;ownerId?:string; method: 'GET' | 'POST'; headers: Record<string,string>; body?: string; timeoutMs: number }, signal?:AbortSignal): Promise<{status:number;body?:string}>;
   stream?(input:{path:string;ownerId:string;headers:Record<string,string>;body:string},signal:AbortSignal,onText:(text:string)=>void):Promise<RemoteChatReply>;
 }
 const native = registerPlugin<LocalAgentBridge & NativeStreamPort>('Agent');
@@ -95,6 +95,31 @@ export class LocalAgentProtocol {
     if(generation!==this.generation)throw Error('Local agent connection changed.');
     this.session={ownerId:identifier(identity.id),agentId:identifier(agent.id),sessionId:crypto.randomUUID(),origin:this.origin};
     return {session:this.session,name:typeof agent.name==='string'?agent.name:'Local agent'};
+  }
+  get browserSpeechAvailable(){return browserLocalAgentEnabled&&this.bridge===browserBridge;}
+  async speechRequest(audio:Uint8Array|undefined,signal:AbortSignal){
+    if(!this.browserSpeechAvailable||!this.session)throw Error('Connect the local development agent first.');
+    const session=this.session,generation=this.generation,controller=new AbortController();
+    this.streams.add(controller);
+    const bounded=AbortSignal.any([signal,controller.signal]);
+    try{
+      bounded.throwIfAborted();
+      let audioBase64:string|undefined;
+      if(audio){
+        if(!audio.byteLength||audio.byteLength>2*1024*1024)throw Error('Recording is too large.');
+        let binary='';for(let i=0;i<audio.length;i+=8192)binary+=String.fromCharCode(...audio.subarray(i,i+8192));
+        audioBase64=btoa(binary);
+      }
+      const requestId=audio?crypto.randomUUID():undefined;
+      const response=await this.bridge.request({path:'/api/asr/whisper'+(audio?'':'/status'),method:audio?'POST':'GET',ownerId:session.ownerId,
+        headers:{},timeoutMs:120000,...(audio?{audioBase64,requestId}:{})},bounded);
+      bounded.throwIfAborted();
+      if(session!==this.session||generation!==this.generation)throw new DOMException('Voice selection changed','AbortError');
+      if(response.status!==200)throw Error(`Local speech failed (HTTP ${response.status}).`);
+      const result=JSON.parse(response.body||'{}');
+      if(result.provider!=='standalone-whisper.cpp'||(audio&&(result.local!==true||result.requestId!==requestId||typeof result.text!=='string'||!result.text.trim()||result.text.length>16000)))throw Error('Invalid local speech response.');
+      return result;
+    }finally{this.streams.delete(controller);}
   }
   async disconnect() { this.generation++; this.session=null; for(const controller of this.streams)controller.abort();this.streams.clear(); }
   private async json(path:string,body:unknown|undefined,signal?:AbortSignal) {

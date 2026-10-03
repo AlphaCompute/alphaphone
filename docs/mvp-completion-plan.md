@@ -1,6 +1,10 @@
 # Alpha Phone MVP completion plan
 
-## Current checkpoint — October 3, native renderer startup
+## Current checkpoint — October 3, browser speech and required native flows
+
+The combined follow-up fixes a reproduced browser transcription import-order regression and requires native sensitive-reading and share/cancel execution in Foundation CI. The standalone bookmark runner now rejects skipped/wrong-method results and defers cleanup after uncertain instrumentation transport. Combined verification passes 160 repository checks, both Android distributions/lint, 66 rendered flows, four additional recording flows and actual production-bundle startup with all 3,761 source identities unchanged. One real-provider case remains explicitly skipped. Both e4d hosted browser runs hit the 20-minute job limit; the next whole-job budget is 30 minutes with unchanged per-test deadlines. Native/live/physical acceptance remains open. See [browser and native flow qualification](browser-native-flow-qualification-2026-10-03.md).
+
+## Earlier checkpoint — October 3, native renderer startup
 
 The blank installed Android screen is traced to legacy Capacitor listener handles escaping the shared plugin helper. The reviewed proxy repair passes repository verification, 24 owning rendered flows, both distribution builds/lint, and visible Pixel startup/offline Notes creation. Exact `12f348e` hosted browser runs each pass 963 cases; resident/foundation builds pass, but native execution remains failed. Reviewed repairs address stderr-only remount notices and Android's hidden app-data root semantics without weakening admission or socket-liveness checks. The next composition also includes committed product `0d9a8e5` and passes 151 repository checks, 57 rendered flows and both distribution builds/lint with all 3,756 source identities unchanged. Fresh hosted qualification is pending. See [native startup qualification](native-startup-qualification-2026-10-03.md). The MVP remains incomplete.
 

@@ -1,10 +1,12 @@
+import {recordingPcmWav} from './recording-pcm';
 import {browserMediaVolume} from './audio-settings';
 import {audioRecord,audioMetadata,retainAudio,changeAudioDeleted,audioDeletionStatus,migrateAudio} from './note-audio-store';
 import { BrowserTranscriptReview } from './transcript-review';
 import { BrowserAudioCapture } from './audio-capture';
 import { WebPlugin } from '@capacitor/core';
-// Browser media is retained locally; no provider credentials or uploads.
+// Recordings stay local; explicit host-agent transcription keeps credentials on the host.
 export class BrowserVoice extends WebPlugin {
+ private speechRequest?:AbortController;
  private capture=new BrowserAudioCapture(event=>{void this.notifyListeners('recordingStopped',event);});
  private transcript=new BrowserTranscriptReview();
  private speech=new Map<string,string>();
@@ -24,13 +26,22 @@ export class BrowserVoice extends WebPlugin {
   window.addEventListener('pagehide',()=>{void this.cancel();});
   window.addEventListener('alpha:device-state',()=>{void this.cancel();});
  }
- async localSpeechStatus(){return {ready:!!navigator.mediaDevices?.getUserMedia&&typeof MediaRecorder!=='undefined',execution:'browser'};}
+ async localSpeechStatus(){return this.withAgentSpeech(async signal=>{
+  // Browser factories must register before connection modules request their proxies.
+  const {connectionController}=await import('../runtime/connection-ui');signal.throwIfAborted();
+  const agent=connectionController.getBrowserSpeechAgent();if(agent){const result=await agent.speechRequest(undefined,signal);return {ready:result.ready===true,execution:'browser'};}return {ready:!!navigator.mediaDevices?.getUserMedia&&typeof MediaRecorder!=='undefined',execution:'browser'};
+ });}
  startRecording(input:{maxDurationMs?:number}={}){return this.capture.start(input);}
  stopRecording(){return this.capture.stop();}
  async cancelRecording(){this.capture.cancel();}
  async transcribeLocalRecording(input:{recordingId:string}){
   const clip=this.capture.get(input.recordingId);if(!clip)throw Error('Record a clip first.');
-  const text=await this.transcript.open(clip.blob);return {text,local:true,execution:'browser'};
+  return this.withAgentSpeech(async signal=>{
+   const {connectionController}=await import('../runtime/connection-ui');signal.throwIfAborted();
+   const agent=connectionController.getBrowserSpeechAgent();
+   if(agent){const selectedSession=agent.session;const audio=await recordingPcmWav(clip.blob,signal);if(connectionController.getBrowserSpeechAgent()!==agent||agent.session!==selectedSession)throw new DOMException('Voice selection changed','AbortError');const result=await agent.speechRequest(audio,signal);return {text:result.text,local:true,execution:'browser'};}
+   const text=await this.transcript.open(clip.blob);signal.throwIfAborted();return {text,local:true,execution:'browser'};
+  });
  }
 
  transcribeRecording(input:{recordingId:string}){return this.transcribeLocalRecording(input);}
@@ -111,7 +122,11 @@ export class BrowserVoice extends WebPlugin {
  async deletionStatus(input:{audioId:string;noteId:string;operationId:string}){return audioDeletionStatus(input.audioId,input.noteId,input.operationId);}
  async remove(input:{audioId:string;noteId:string;operationId:string}){const result=await changeAudioDeleted(input.audioId,input.noteId,true,input.operationId);if(result.status==='removed'){if([this.audioId,this.pendingAudioId].includes(input.audioId))await this.stopPlayback();this.audioChanges?.postMessage({audioId:input.audioId,deleted:true});}return result;}
  async restore(input:{audioId:string;noteId:string;operationId:string}){return changeAudioDeleted(input.audioId,input.noteId,false,input.operationId);}
- async cancel(){this.transcript.cancel();this.capture.cancel();await this.stopPlayback();}
+ private async withAgentSpeech<T>(run:(signal:AbortSignal)=>Promise<T>){
+  this.speechRequest?.abort();const controller=this.speechRequest=new AbortController();
+  try{return await run(controller.signal);}finally{if(this.speechRequest===controller)this.speechRequest=undefined;}
+ }
+ async cancel(){this.speechRequest?.abort();this.speechRequest=undefined;this.transcript.cancel();this.capture.cancel();await this.stopPlayback();}
  async releaseLocalSpeech(){await this.cancel();this.speech.clear();this.capture.clear();}
 }
 function playbackWait<T>(work:Promise<T>,signal:AbortSignal):Promise<T>{
