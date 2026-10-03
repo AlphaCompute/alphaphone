@@ -9,3 +9,11 @@ test('calendar visibility and color affect the timeline and persist across reloa
 test('calendar preferences synchronize across tabs and failed writes preserve saved controls',async({page,context})=>{
  await open(page);const other=await context.newPage();await open(other);const toggle=other.getByRole('button',{name:'Show Browser calendar calendar',exact:true});await page.getByRole('button',{name:'Show Browser calendar calendar',exact:true}).click();await expect(toggle).toHaveAttribute('aria-pressed','false');await other.evaluate(()=>{const original=Storage.prototype.setItem;Storage.prototype.setItem=function(key,value){if(key==='alpha.browser.calendar.v1')throw Error('Full');return original.call(this,key,value);};});await toggle.click();await expect(other.getByText('Calendar settings could not be saved. Try again.',{exact:true})).toBeVisible();await expect(toggle).toHaveAttribute('aria-pressed','false');expect(await other.evaluate(()=>JSON.parse(localStorage.getItem('alpha.browser.calendar.v1')!).preferences.visible)).toBe(false);await other.close();
 });
+
+for(const date of ['2026-02-15T12:00:00Z','2026-08-15T12:00:00Z'])test(`month toggle stays reachable for pointer and keyboard at large text: ${date}`,async({page},info)=>{
+ await page.setViewportSize({width:360,height:640});await page.clock.install({time:new Date(date)});await open(page);
+ await page.evaluate(async()=>{const {BrowserDevice}=await import('/src/browser/device.ts');await BrowserDevice.prototype.setTextScale({percent:150});});
+ const toggle=page.getByRole('button',{name:'Month view',exact:true});await expect(toggle).toHaveAttribute('aria-expanded','true');
+ await page.screenshot({path:info.outputPath('month-open-large-text.png'),animations:'disabled'});await toggle.click();await expect(toggle).toHaveAttribute('aria-expanded','false');await expect(page.getByRole('button',{name:'Close month',exact:true})).toHaveCount(0);
+ await toggle.focus();await page.keyboard.press('Enter');await expect(toggle).toHaveAttribute('aria-expanded','true');await page.keyboard.press('Enter');await expect(toggle).toHaveAttribute('aria-expanded','false');
+});
