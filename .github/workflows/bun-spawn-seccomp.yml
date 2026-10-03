@@ -1,0 +1,21 @@
+name: Bun spawn seccomp reproduction
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  reproduce:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.4.2"
+      - run: python3 scripts/ci/reproduce-bun-spawn-seccomp.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: bun-spawn-seccomp-${{ github.run_id }}
+          path: test-results/bun-spawn-seccomp/
+          if-no-files-found: error
