@@ -153,6 +153,15 @@ public final class AlphaActionJournalPlugin extends Plugin {
    .put("result",new JSONObject().put("operationId",entry.getString("operationId")).put("reminderResult",receipt.getJSONObject("result")));
   store.writeCredentialSlot(key(scope,id),entry.toString());return response(entry);
  });}
+ private final android.os.Handler clockMain = new android.os.Handler(android.os.Looper.getMainLooper());
+ private <T> T clockUi(java.util.concurrent.Callable<T> action) throws Exception {
+  if (android.os.Looper.myLooper() == android.os.Looper.getMainLooper()) throw new IllegalStateException("Clock storage must run off main thread");
+  java.util.concurrent.FutureTask<T> task = new java.util.concurrent.FutureTask<>(() -> { if (destroyed) throw new IllegalStateException(); return action.call(); });
+  if (!clockMain.post(task)) throw new IllegalStateException("Activity unavailable");
+  try { return task.get(5, java.util.concurrent.TimeUnit.SECONDS); }
+  catch (InterruptedException interrupted) { task.cancel(false); clockMain.removeCallbacks(task); Thread.currentThread().interrupt(); throw interrupted; }
+  catch (Exception unavailable) { task.cancel(false); clockMain.removeCallbacks(task); throw unavailable; }
+ }
  private JSONObject clockEntry(AlphaConnectionPlugin store,String scope,String id,String operationId)throws Exception{
   if(destroyed)throw new IllegalStateException();
   JSONObject entry=read(store,scope,id);
@@ -176,16 +185,14 @@ public final class AlphaActionJournalPlugin extends Plugin {
     if(entry.has("clockReview")){call.resolve(clockReply(entry.getJSONObject("clockReview"),approved.getString("action")));return;}
     entry.put("clockReview",clockMarker(entry,"reviewing"));store.writeCredentialSlot(key(scope,id),entry.toString());
    }
-   getActivity().runOnUiThread(()->{try{
-    if(destroyed)return;
-    // Re-read after crossing threads. Cancellation may have retired this review already.
-    synchronized(LOCK){JSONObject entry=clockEntry(store,scope,id,operationId);if(!"reviewing".equals(entry.getJSONObject("clockReview").getString("phase"))){call.resolve(clockReply(entry.getJSONObject("clockReview"),approved.getString("action")));return;}}
-    ClockAgentReview.show(getActivity(),scope+":"+id,approved,accepted->{if(destroyed)return;worker.execute(()->{if(destroyed)return;try{synchronized(LOCK){JSONObject entry=clockEntry(store,scope,id,operationId),clock=entry.getJSONObject("clockReview");
+   clockUi(()->{
+    ClockAgentReview.show(getActivity(),scope+":"+id,approved,accepted->{if(destroyed)return;try{worker.execute(()->{if(destroyed)return;try{synchronized(LOCK){JSONObject entry=clockEntry(store,scope,id,operationId),clock=entry.getJSONObject("clockReview");
       if(!"reviewing".equals(clock.getString("phase"))){call.resolve(clockReply(clock,approved.getString("action")));return;}
       JSObject reply=new JSObject();if(accepted){String token=java.util.UUID.randomUUID().toString();clock.put("phase","approved").put("reviewToken",token);reply.put("reviewToken",token);}else{clock.put("phase","cancelled").put("result",ClockAgentReview.result(approved.getString("action"),"failed"));reply=clockReply(clock,approved.getString("action"));}
       store.writeCredentialSlot(key(scope,id),entry.toString());call.resolve(reply);
-     }}catch(Exception refusal){if(!destroyed)call.reject("Clock review expired or was retired");}});});
-   }catch(Exception refusal){call.reject("Clock review could not be displayed; no request was sent");}});
+     }}catch(Exception refusal){if(!destroyed)call.reject("Clock review expired or was retired");}});}catch(java.util.concurrent.RejectedExecutionException retired){call.reject("Clock review retired");}});
+    return null;
+   });
   }catch(Exception refusal){call.reject("Exact approved Clock review unavailable");}});
  }
  @PluginMethod public void cancelClock(PluginCall call){work(call,true,(store,scope,id)->{
@@ -197,16 +204,18 @@ public final class AlphaActionJournalPlugin extends Plugin {
   getActivity().runOnUiThread(()->ClockAgentReview.dismiss(scope+":"+id));return clockReply(clock,operation.getString("action"));
  });}
  @PluginMethod public void confirmClock(PluginCall call){
-  // Dispatch runs on the UI thread and rechecks the persisted exact entry at the final boundary.
-  getActivity().runOnUiThread(()->{try{synchronized(LOCK){
+  // Serialize exact approval and durable dispatch intent on the journal worker.
+  // Only the foreground check and Android handoff run on the Activity thread.
+  worker.execute(()->{try{synchronized(LOCK){
    if(destroyed)throw new IllegalStateException();
    String scope=field(call.getString("scope"),"[a-f0-9]{64}"),id=field(call.getString("proposalId"),"[A-Za-z0-9_-]{1,128}"),operationId=field(call.getString("operationId"),"[A-Za-z0-9_-]{1,128}");
    AlphaConnectionPlugin store=(AlphaConnectionPlugin)getBridge().getPlugin("AlphaConnection").getInstance();JSONObject entry=clockEntry(store,scope,id,operationId),clock=entry.getJSONObject("clockReview"),operation=entry.getJSONObject("record").getJSONObject("operation");
    if(!"approved".equals(clock.getString("phase"))){call.resolve(clockReply(clock,operation.getString("action")));return;}
    if(!clock.getString("reviewToken").equals(call.getString("reviewToken")))throw new IllegalStateException();
-   ClockAgentReview.foreground(getActivity());ClockAgentReview.zone(operation);
+   clockUi(()->{ClockAgentReview.foreground(getActivity());ClockAgentReview.zone(operation);return null;});
    clock.put("phase","dispatching").remove("reviewToken");store.writeCredentialSlot(key(scope,id),entry.toString());
-   JSObject result=ClockAgentReview.dispatch(getActivity(),operation);clock.put("phase","finished").put("result",result);store.writeCredentialSlot(key(scope,id),entry.toString());call.resolve(clockReply(clock,operation.getString("action")));
+   long expiresAt=entry.getJSONObject("record").getLong("expiresAt");
+   JSObject result=clockUi(()->{if(expiresAt<=System.currentTimeMillis())return ClockAgentReview.result(operation.getString("action"),"failed");return ClockAgentReview.dispatch(getActivity(),operation);});clock.put("phase","finished").put("result",result);store.writeCredentialSlot(key(scope,id),entry.toString());call.resolve(clockReply(clock,operation.getString("action")));
   }}catch(Exception uncertain){call.reject("Clock handoff result is unconfirmed; do not repeat it");}});
  }
  @PluginMethod public void get(PluginCall call){work(call,true,(store,scope,id)->response(read(store,scope,id)));}
@@ -219,5 +228,5 @@ public final class AlphaActionJournalPlugin extends Plugin {
   }}
   JSObject value=new JSObject();value.put("entries",entries);return value;
  });}
- @Override protected void handleOnDestroy(){synchronized(LOCK){destroyed=true;}ClockAgentReview.abandon();worker.shutdown();super.handleOnDestroy();}
+ @Override protected void handleOnDestroy(){destroyed=true;ClockAgentReview.abandon();worker.shutdown();super.handleOnDestroy();}
 }
