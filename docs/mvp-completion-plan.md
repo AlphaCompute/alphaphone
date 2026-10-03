@@ -1,5 +1,9 @@
 # Alpha Phone MVP completion plan
 
+## Current checkpoint — October 3, regional dataset identity
+
+Maps capability revisions now bind the actual prepared place database, tiles, router, routing configuration and graph files. Startup requires an explicitly sealed manifest; live changes, active SQLite journals and changes during a request are refused. Immutable reads retain compatibility with closed checkpointed WAL databases. The synthetic HTTP lifecycle and actual Monaco search/detail/tiles/three-mode routing pass, followed by all 225 repository checks, TypeScript and production build. See [dataset qualification and remaining deployment limits](maps-regional-validation.md#runtime-dataset-identity--october-3). Public hosting, latest-source Android/native and physical acceptance remain open. The full MVP is not complete.
+
 ## Current checkpoint — October 3, voice preparation ownership
 
 A rendered negative control reproduces stale speech-readiness rejection opening Notes after navigation or account change. Preparation now retains full connection and screen ownership across success and failure; navigation away and back also retires the request. All 12 preparation/save/dictation browser cases and all 224 repository checks, TypeScript and production build pass. [Evidence and limits](mvp-voice-preparation-ownership-2026-10-03.md). New Android/native, live voice and physical acceptance remain open. The full MVP is not complete.

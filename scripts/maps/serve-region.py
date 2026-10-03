@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 """Loopback-only regional maps gateway; bounded requests, no public API fallback."""
+from dataset_manifest import verify, snapshot
 import http.server,urllib.parse,urllib.request,sqlite3,json,pathlib,os,time,math,hashlib
 ROOT=pathlib.Path(os.environ.get('ALPHA_MAPS_DATA',str(pathlib.Path.home()/'.local/share/alphaphone-maps/monaco'))).resolve()
 ATTR='© OpenStreetMap contributors (ODbL); OpenMapTiles (CC-BY 4.0)'
 BOUNDS=[7.409,43.724,7.449,43.752]
 PROVIDER='alpha-osm-monaco'
-REV=hashlib.sha256((ROOT/'source-manifest.json').read_bytes()).hexdigest()[:24]
+REV,DATASET=verify(ROOT)
 def inside(p):return len(p)==2 and all(math.isfinite(v) for v in p) and BOUNDS[0]<=p[1]<=BOUNDS[2] and BOUNDS[1]<=p[0]<=BOUNDS[3]
 def place(row):
  ident,name,lat,lon,tags=row;tags=json.loads(tags)
@@ -16,6 +17,10 @@ def place(row):
 class Handler(http.server.BaseHTTPRequestHandler):
  def log_message(self,*args):pass # Queries/coordinates are not access-log data.
  def answer(self,value,status=200,mime='application/json',gzip=False):
+  # Recheck after database/router reads, before publishing any captured response.
+  try:
+   if snapshot(ROOT)!=DATASET:raise ValueError()
+  except (OSError,ValueError):value,status,mime,gzip={'error':'Regional dataset changed; restart after review.'},503,'application/json',False
   data=value if isinstance(value,bytes) else json.dumps(value).encode()
   self.send_response(status);self.send_header('Content-Type',mime);self.send_header('Content-Length',str(len(data)))
   origin=self.headers.get('Origin','')
@@ -25,13 +30,16 @@ class Handler(http.server.BaseHTTPRequestHandler):
   if gzip:self.send_header('Content-Encoding','gzip')
   self.end_headers();self.wfile.write(data)
  def do_GET(self):
+  try:
+   if snapshot(ROOT)!=DATASET:raise ValueError()
+  except (OSError,ValueError):return self.answer({'error':'Regional dataset changed; restart after review.'},503)
   if len(self.path)>5000:return self.answer({'error':'Request too large'},414)
   if self.headers.get('Host','').split(':')[0] not in ['127.0.0.1','localhost','10.0.2.2']:return self.answer({'error':'Host rejected'},403)
   parsed=urllib.parse.urlsplit(self.path);query=urllib.parse.parse_qs(parsed.query)
   try:
    if parsed.path=='/capabilities':return self.answer({'providerId':PROVIDER,'connectionId':'conn_alpha_regional_monaco_001','revision':REV,'region':'Monaco · regional OSM data','bounds':BOUNDS,'attribution':ATTR,'capabilities':{'map':True,'search':True,'placeDetails':True,'modes':['drive','walk','bicycle'],'traffic':'none','transit':'none','offline':{'map':False,'search':False,'routing':False}}})
    if parsed.path in ['/search','/place']:
-    with sqlite3.connect('file:'+str(ROOT/'places.sqlite')+'?mode=ro',uri=True) as db:
+    with sqlite3.connect((ROOT/'places.sqlite').as_uri()+'?mode=ro&immutable=1',uri=True) as db:
      if parsed.path=='/place':
       rows=db.execute('SELECT * FROM places WHERE id=?',(query.get('id',[''])[0][:512],)).fetchall();return self.answer(place(rows[0]) if rows else None)
      text=query.get('q',[''])[0].strip()
@@ -43,7 +51,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
    if parsed.path.startswith('/tiles/'):
     parts=parsed.path.split('/');z,x,y=int(parts[2]),int(parts[3]),int(parts[4].replace('.pbf',''))
     if len(parts)!=5 or not 0<=z<=14 or not 0<=x<2**z or not 0<=y<2**z:raise ValueError()
-    with sqlite3.connect('file:'+str(ROOT/'monaco.mbtiles')+'?mode=ro',uri=True) as db:row=db.execute('SELECT tile_data FROM tiles WHERE zoom_level=? AND tile_column=? AND tile_row=?',(z,x,2**z-1-y)).fetchone()
+    with sqlite3.connect((ROOT/'monaco.mbtiles').as_uri()+'?mode=ro&immutable=1',uri=True) as db:row=db.execute('SELECT tile_data FROM tiles WHERE zoom_level=? AND tile_column=? AND tile_row=?',(z,x,2**z-1-y)).fetchone()
     if not row:return self.answer(b'',204,'application/x-protobuf')
     return self.answer(row[0],mime='application/x-protobuf',gzip=row[0][:2]==b'\x1f\x8b')
    if parsed.path=='/route':
@@ -63,4 +71,5 @@ class Handler(http.server.BaseHTTPRequestHandler):
   except urllib.error.HTTPError:self.answer({'error':'No route available for these endpoints.'},422)
   except (TimeoutError,ConnectionError,urllib.error.URLError):self.answer({'error':'Regional routing service unavailable.'},503)
   except Exception:self.answer({'error':'Invalid regional request or unavailable data.'},400)
-http.server.ThreadingHTTPServer(('127.0.0.1',47850),Handler).serve_forever()
+if __name__ == '__main__':
+ http.server.ThreadingHTTPServer(('127.0.0.1',47850),Handler).serve_forever()
