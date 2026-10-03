@@ -1,5 +1,11 @@
 # Alpha Phone MVP completion plan
 
+## Current checkpoint — October 3, mail draft and Calendar completion ownership
+
+Cancelling a mailbox read now preserves unsaved local drafts and edits to saved drafts without saving or sending them. Six rendered cancellation flows pass after a negative control reproduces the loss. Calendar deletion completion now preserves a newer event, navigation or draft; three new rendered cases and three existing save-completion cases pass. The composed source passes all 224 repository checks, TypeScript and the production build. New-source Android/native and live-provider acceptance remain open. See [mail evidence](mvp-mail-read-cancellation-2026-10-03.md) and [Calendar evidence](calendar-reminder-audit.md).
+
+Fresh provider diagnostics identify SystemUI startup waiting on SurfaceFlinger GPU context priority; this is a graphics-initialization lead, not a proven driver defect. A separate provider-only SwANGLE experiment retains all existing ANR, identity, provider and resource checks. Earlier runtime/native campaigns remain scoped to their own source. Resident runtime, visible Pixel flows, real providers, signed-image/OTA and the physical pilot are not yet accepted. The full MVP is not complete.
+
 ## Current checkpoint — October 3, cold-launch observer
 
 A controlled native negative test reproduces the one-second notification observer timeout. The remaining-budget repair passes the original notification flow in standalone and launcher on the task-owned Pixel-class emulator, with complete cleanup and3,902 source identities unchanged. Production APKs are the previously qualified c7 inputs; only test APKs were rebuilt. Six parent crash-classification checks also pass, but resident SIGSYS remains unresolved. Full combined verification/build awaits disk capacity; live, visible, physical and signed-image gates remain open. See [bounded evidence and remaining requirements](mvp-notification-readiness-qualification-2026-10-03.md). The full MVP is not complete.
