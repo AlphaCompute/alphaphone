@@ -254,7 +254,17 @@ public final class ResidentWorkflowCrashInstrumentedTest {
     String workflowId=workflow.getString("id"),version=workflow.getString("versionId"),submission=UUID.randomUUID().toString();model.expectRequest=rpc;
     assertTrue(agentId.matches("[a-zA-Z0-9_.-]+")&&workflowId.matches("[a-zA-Z0-9_.-]+"));control=new File(context.getFilesDir(),".eliza/smthrs/"+agentId+"/"+workflowId);assertEquals(control.getPath(),control.getCanonicalPath());if(!control.isDirectory())assertTrue(control.mkdirs());Os.chmod(control.getPath(),0700);assertFalse(new File(control,"recovery-effect").exists());write(new File(control,"recovery-effect"),"0");if(!rpc)Os.mkfifo(new File(control,"recovery-release").getPath(),0600);
     submitted=true;JSONObject accepted=request("/api/workflow/workflows/"+workflowId+"/run",new JSONObject().put("submissionId",submission).put("expectedVersionId",version).put("input",new JSONObject())).getJSONObject("execution");String executionId=accepted.getString("id");
-    if(rpc){assertTrue(model.received.await(60,java.util.concurrent.TimeUnit.SECONDS));assertNull(model.failure);assertEquals(1,model.calls.get());}else{untilFile(new File(control,"recovery-ready"),60000);effectOnce();}File journal=findOwner(new File(context.getFilesDir(),".eliza/smthrs"),executionId);assertNotNull("Real owner journal",journal);worker=witness(journal);JSONObject ownerRecord=new JSONObject(readUtf8(journal.toPath()));assertEquals(digest,ownerRecord.getString("sourceSha256"));assertEquals(version,ownerRecord.getString("versionId"));assertEquals(executionId,ownerRecord.getString("runId"));
+    if(rpc){
+     boolean arrived=model.received.await(60,java.util.concurrent.TimeUnit.SECONDS);
+     if(!arrived||model.failure!=null){
+      // This fixture owns the synthetic workflow and provider. Retain bounded
+      // execution state, never provider credentials, prompts, output or argv.
+      JSONObject state=execution(executionId),diagnostic=new JSONObject().put("modelRequests",model.calls.get()).put("received",arrived).put("status",state.optString("status")).put("finished",state.optBoolean("finished"));
+      JSONObject error=state.optJSONObject("error");if(error!=null){String message=error.optString("message","").replaceAll("(?i)(bearer|api[_-]?key|token|secret|password)[=: ]+[^\\s,;]+","$1=[redacted]");diagnostic.put("executionError",message.substring(0,Math.min(2048,message.length())));}
+      if(model.failure!=null)diagnostic.put("modelFailureClass",model.failure.getClass().getSimpleName());
+      proof.put("beforeModelRequest",diagnostic);
+     }
+     assertTrue("Synthetic model request must arrive; inspect beforeModelRequest proof",arrived);assertNull(model.failure);assertEquals(1,model.calls.get());}else{untilFile(new File(control,"recovery-ready"),60000);effectOnce();}File journal=findOwner(new File(context.getFilesDir(),".eliza/smthrs"),executionId);assertNotNull("Real owner journal",journal);worker=witness(journal);JSONObject ownerRecord=new JSONObject(readUtf8(journal.toPath()));assertEquals(digest,ownerRecord.getString("sourceSha256"));assertEquals(version,ownerRecord.getString("versionId"));assertEquals(executionId,ownerRecord.getString("runId"));
     if(rpc){assertTrue(model.received.await(30,java.util.concurrent.TimeUnit.SECONDS));assertNull(model.failure);assertEquals(1,model.calls.get());}else {assertEquals(0,model.calls.get());assertNull(model.failure);}
     long oldIpc=Os.lstat(new File(context.getFilesDir(),"ipc").getPath()).st_ino;JSONObject oldResident=resident;assertNotEquals(worker.pid,resident.getInt("pid"));crash(resident);resident=null;
     if(!rpc)exactAlive(worker);else model.release.countDown();
