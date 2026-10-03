@@ -16,7 +16,7 @@
     "packages/core/src/security/guarded-stream.ts": "7f12512d8baea1dbc7a86229dcf18c8048ff1113b89915c319dc3202056ff334",
     "packages/core/src/security/pii-pseudonymizer.ts": "bffc53238d2580c5ad2d436e0e247ac425189487bf482e51b5917567f29ee111",
     "packages/core/src/security/runtime-abort-signal.ts": "da3bb65a56334a249399c0a2ec4e0f9d227c8e09e3566237609f679de76b0d78",
-    "packages/core/src/security/secret-swap.ts": "7466b76b24c27e8c3d76b1d0fb616cb0ae722555c01fe6dc62c462076ed2cee3",
+    "packages/core/src/security/secret-swap.ts": "3ad15d799ac025f25a638aa9c3ec0d007753be6a2e4349df223474c61368322c",
     "plugins/plugin-assistant/src/services/device-actions/contract.ts": "7820c4230677f7f84a0066df577c06e95f905bf89b7a6fde412a0794ea97de74",
     "plugins/plugin-assistant/src/services/message/reply-policy.ts": "6258737cf79a623f58988d6788462b9b5d12ae54b6916b5e198dc873197ee40c",
     "plugins/plugin-assistant/test/device-actions.e2e.test.ts": "ecf07e1bfa6d4e00d023bbbd7360872755e1646f98f7f5362854b1165b42b924",
@@ -69,7 +69,8 @@
     "plugins/plugin-assistant/src/index.ts": "1e17329f5805693238c2a5768ddfd2962f55910f64c2071d5c2968c01a5194ea",
     "plugins/plugin-assistant/src/services/device-actions/view-profile.ts": "83bb2e07b28be9afe9c9c2ea5e6ed5021214871df9d480974faee1a753f1a5f0",
     "plugins/plugin-workflow/__tests__/integration/device-bridge-e2e.test.ts": "47fa645374fafbcf1d7dfba697d553294c3a3507e6b5bed4b6896c88556de4cd",
-    "packages/core/src/__tests__/swap-quoted-credentials.test.ts": "7adb7cb914057810e639291cbc6413e58bf2d4104f68887f3a043f980284a47b"
+    "packages/core/src/__tests__/swap-quoted-credentials.test.ts": "7adb7cb914057810e639291cbc6413e58bf2d4104f68887f3a043f980284a47b",
+    "packages/core/src/__tests__/swap-uri-credentials.test.ts": "97dc0ff77711587fdfb4b92c7b367d0fef595a8c98a13d587422262b7f0696bf"
   },
   "patches": [
     "android-secure-store-socket.patch",
@@ -99,7 +100,8 @@
     "egress-contact-guidance.patch",
     "egress-short-credentials.patch",
     "authenticated-enabled-views.patch",
-    "egress-quoted-credentials.patch"
+    "egress-quoted-credentials.patch",
+    "egress-uri-credentials.patch"
   ],
   "patchHashes": {
     "android-secure-store-socket.patch": "457ea3d0b91c80c53c4bd3db25bb85cea6079d87c5ee2b02a96757e0a31ae900",
@@ -128,6 +130,7 @@
     "egress-contact-guidance.patch": "69557e411bd7952c77916353998fb3dd2d3befd707c2078dbc3719531618436e",
     "egress-short-credentials.patch": "0a1b80d101760c311318bacc852ee695904cbe0db9d38b53f85ce26e7e60c23e",
     "authenticated-enabled-views.patch": "3947ef246ff65e520d8870315222b463c15a49dfb56cbd6784acd06b2ba3a2f1",
-    "egress-quoted-credentials.patch": "010eeaeede83b1e8359f10457d1c8fc5188b94dbbba3e12eb3b9f39f14b244da"
+    "egress-quoted-credentials.patch": "010eeaeede83b1e8359f10457d1c8fc5188b94dbbba3e12eb3b9f39f14b244da",
+    "egress-uri-credentials.patch": "dc77b4df7ae9b83a52b051dc4573ef63cf244c3f662947692e17e7b5631e1f5d"
   }
 }
