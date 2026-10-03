@@ -10,6 +10,7 @@ import android.os.Parcel;
 import android.os.Process;
 import android.system.ErrnoException;
 import android.system.Os;
+import android.system.StructStat;
 import java.io.File;
 import java.io.IOException;
 
@@ -27,7 +28,12 @@ public final class PrivateSocketProbeService extends Service {
     if(Binder.getCallingUid()!=owner||owner==Process.myUid()||owner/100000!=Process.myUid()/100000)throw new SecurityException("Wrong controller UID");
     if(!runId.equals(in.readString())||attempted)throw new SecurityException("Run mismatch or duplicate probe");
     attempted=true;
-    String path=new File(getPackageManager().getApplicationInfo(ALPHA,0).dataDir,"files/ipc/a.sock").getPath();
+    String targetRoot=getPackageManager().getApplicationInfo(ALPHA,0).dataDir;
+    String ownRoot=getApplicationInfo().dataDir;
+    StructStat own=Os.lstat(ownRoot);
+    int rootErrno=0;
+    try{Os.lstat(targetRoot);}catch(ErrnoException hidden){rootErrno=hidden.errno;}
+    String path=new File(targetRoot,"files/ipc/a.sock").getPath();
     int statErrno=0;
     try{Os.lstat(path);}catch(ErrnoException denied){statErrno=denied.errno;}
     boolean connected=false;
@@ -39,8 +45,10 @@ public final class PrivateSocketProbeService extends Service {
     }
     // No write API is invoked, including when the unexpected connection succeeds.
     out.writeInt(Process.myUid());out.writeString(runId);out.writeString(path);out.writeInt(statErrno);out.writeInt(connected?1:0);
+    out.writeString(targetRoot);out.writeInt(rootErrno);out.writeString(ownRoot);out.writeInt(own.st_uid);out.writeInt(own.st_mode);
     return true;
    }catch(android.content.pm.PackageManager.NameNotFoundException missing){throw new SecurityException("Alpha missing",missing);}
+   catch(ErrnoException invalidOwnRoot){throw new IllegalStateException("Peer own data root unavailable",invalidOwnRoot);}
    catch(IOException cleanup){throw new IllegalStateException("Probe cleanup failed",cleanup);}
   }
  };

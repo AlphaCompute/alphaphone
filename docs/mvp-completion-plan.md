@@ -1,5 +1,9 @@
 # Alpha Phone MVP completion plan
 
+## Current checkpoint — October 3, native renderer startup
+
+The blank installed Android screen is traced to legacy Capacitor listener handles escaping the shared plugin helper. The reviewed proxy repair passes repository verification, 24 owning rendered flows, both distribution builds/lint, and visible Pixel startup/offline Notes creation. Exact `12f348e` hosted browser runs each pass 963 cases; resident/foundation builds pass, but native execution remains failed. Reviewed repairs address stderr-only remount notices and Android's hidden app-data root semantics without weakening admission or socket-liveness checks. The next composition also includes committed product `0d9a8e5` and passes 151 repository checks, 57 rendered flows and both distribution builds/lint with all 3,756 source identities unchanged. Fresh hosted qualification is pending. See [native startup qualification](native-startup-qualification-2026-10-03.md). The MVP remains incomplete.
+
 ## Current checkpoint — October 2, reading privacy and password setup
 
 Two concrete MVP gaps are now implemented: browser read-aloud rejects recognized credential-sensitive sources and explicit API-key URLs before fetching/speaking, and Settings/Browser expose an honest password-provider setup/status flow. Android and Proton own provider selection and vault UI; no forced enablement or successful filling is inferred. Combined repository verification and 84 rendered flows pass on an isolated composition. Exact source identities, review corrections and remaining gates are in [reading/provider qualification](mvp-reading-provider-qualification.md).

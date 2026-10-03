@@ -19,6 +19,10 @@ public final class PrivateResidentSocketInstrumentedTest {
   StructStat st=Os.lstat(path);assertEquals(Process.myUid(),st.st_uid);assertEquals(bits,st.st_mode&0777);
   assertTrue(socket?OsConstants.S_ISSOCK(st.st_mode):OsConstants.S_ISDIR(st.st_mode));
  }
+ static boolean denied(int socketErrno,int rootErrno){
+  return socketErrno==OsConstants.EACCES||socketErrno==OsConstants.EPERM
+   ||(socketErrno==OsConstants.ENOENT&&rootErrno==OsConstants.ENOENT);
+ }
  private static void positive(LocalServerSocket server,String path)throws Exception{
   try(LocalSocket client=new LocalSocket()){
    // API 35 connect(address, timeout) is unsupported. SO_TIMEOUT sets send and receive deadlines.
@@ -48,6 +52,7 @@ public final class PrivateResidentSocketInstrumentedTest {
   CountDownLatch ready=new CountDownLatch(1);IBinder[] peer=new IBinder[1];boolean binding=false;
   ServiceConnection connection=new ServiceConnection(){public void onServiceConnected(ComponentName name,IBinder binder){peer[0]=binder;ready.countDown();}public void onServiceDisconnected(ComponentName name){peer[0]=null;}};
   Throwable primary=null;
+  int peerErrno=0,peerConnected=-1,peerRootErrno=0;
   try{
    bound.bind(new LocalSocketAddress(path,LocalSocketAddress.Namespace.FILESYSTEM));Os.chmod(path,0600);mode(path,0600,true);inode=Os.lstat(path).st_ino;
    server=new LocalServerSocket(bound.getFileDescriptor());positive(server,path);
@@ -58,18 +63,21 @@ public final class PrivateResidentSocketInstrumentedTest {
     in.writeString(runId);assertTrue(peer[0].transact(IBinder.FIRST_CALL_TRANSACTION,in,out,0));
     int uid=out.readInt();assertNotEquals(Process.myUid(),uid);assertEquals(Process.myUid()/100000,uid/100000);
     assertEquals(context.getPackageManager().getPackageUid("ai.elizaresearch.alphaphone.peerfixture",0),uid);
-    assertEquals(runId,out.readString());assertEquals(path,out.readString());int errno=out.readInt();
-    // Android app-data mount namespaces may hide the owner's directory entirely (ENOENT).
-    // The exact path, live same-UID controls before/after, stable inode, and empty accept
-    // queue below distinguish that isolation from an absent endpoint or failed fixture.
-    assertTrue("Cross-UID filesystem isolation, errno="+errno,
-      errno==OsConstants.EACCES||errno==OsConstants.EPERM||errno==OsConstants.ENOENT);
-    assertEquals("Cross-UID socket connect must fail",0,out.readInt());
+    assertEquals(runId,out.readString());assertEquals(path,out.readString());peerErrno=out.readInt();peerConnected=out.readInt();
+    assertEquals(context.getApplicationInfo().dataDir,out.readString());peerRootErrno=out.readInt();
+    assertEquals(context.getPackageManager().getApplicationInfo("ai.elizaresearch.alphaphone.peerfixture",0).dataDir,out.readString());
+    assertEquals("Peer can stat its own app data root",uid,out.readInt());
+    assertTrue("Peer own app data root is a directory",OsConstants.S_ISDIR(out.readInt()));
    }finally{in.recycle();out.recycle();}
    StructPollfd poll=new StructPollfd();poll.fd=server.getFileDescriptor();poll.events=(short)OsConstants.POLLIN;
    assertEquals("No hostile connection queued after synchronous probe returned",0,Os.poll(new StructPollfd[]{poll},100));
    mode(directory.getPath(),0700,false);mode(path,0600,true);assertEquals(inode,Os.lstat(path).st_ino);
    positive(server,path);
+   // Classify only after the exact inode, modes, and live byte control survive the probe.
+   // Android app-data isolation hides unrelated roots with ENOENT, unlike DAC rejection.
+   assertEquals("Cross-UID socket connect must fail",0,peerConnected);
+   assertTrue("Expected permission denial or hidden app-data root; socket="+peerErrno+", root="+peerRootErrno,
+    denied(peerErrno,peerRootErrno));
   }catch(Exception|AssertionError failure){primary=failure;throw failure;}finally{
    java.util.List<Throwable> failures=new java.util.ArrayList<>();
    try{if(binding)context.unbindService(connection);}catch(Throwable error){failures.add(error);}

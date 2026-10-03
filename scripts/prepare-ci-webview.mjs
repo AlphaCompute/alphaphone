@@ -19,18 +19,6 @@ export const candidate = Object.freeze({
 });
 const require = (condition, message) => { if (!condition) throw new Error(message); };
 const sha = file => createHash('sha256').update(fs.readFileSync(file)).digest('hex');
-// AOSP fs_mgr logs remount success and reboot requests to stderr. Preserve both
-// streams for that command only; identity queries must retain stdout semantics.
-export function executeProviderCommand(file, args, { mergeOutput = false, ...options }) {
-  if (!mergeOutput) return execFileSync(file, args, options);
-  const result = spawnSync(file, args, { ...options, stdio: ['ignore', 'pipe', 'pipe'] });
-  if (result.error || result.status !== 0) {
-    throw Object.assign(result.error ?? new Error(`Command failed: ${file}`), {
-      status: result.status, signal: result.signal, stdout: result.stdout, stderr: result.stderr,
-    });
-  }
-  return `${result.stdout ?? ''}\n${result.stderr ?? ''}`;
-}
 // Exit 255 with a partial process dump is an unavailable observation, never
 // proof of no instrumentation. Retry only that failure; refresh every read-only
 // identity/package check each time. command() retains all failed observations.
@@ -191,7 +179,7 @@ export function collectOverlayFailureDiagnostics({ environment, sdkEnvironment, 
   return evidence;
 }
 
-export async function main({ environment = process.env, execute = executeProviderCommand, sdkEnvironment, outputDirectory, sleep = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds)), now = Date.now, fileDigest = sha } = {}) {
+export async function main({ environment = process.env, execute = execFileSync, executeRemount = spawnSync, sdkEnvironment, outputDirectory, sleep = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds)), now = Date.now, fileDigest = sha } = {}) {
   const serial = environment.ANDROID_SERIAL;
   requireHostedFixtureEnvironment(environment, serial); // Before download or device access.
   require(environment.ALPHA_DISPOSABLE_WEBVIEW_FIXTURE === 'api35-default-x86_64', 'Explicit disposable provider fixture required');
@@ -203,9 +191,22 @@ export async function main({ environment = process.env, execute = executeProvide
   const save = () => fs.writeFileSync(path.join(output, 'result.json'), JSON.stringify(state, null, 2) + '\n');
   const command = (file, args, timeout = 20000) => {
     const started = now();
-    try { const result = execute(file, args, { env, encoding: 'utf8', timeout, maxBuffer: 16 * 1024 * 1024,
-      mergeOutput: path.basename(file) === 'adb' && args.length === 3 && args[2] === 'remount',
-    }); state.commands.push({ file, args, success: true }); save(); return result; }
+    try {
+      const options = { env, encoding: 'utf8', timeout, maxBuffer: 16 * 1024 * 1024 };
+      let result;
+      if (args.length === 3 && args[2] === 'remount') {
+        // adb remount reports its result on stderr on this API35 image.
+        // Capture both channels only here; preserve transport failures.
+        const captured = executeRemount(file, args, options);
+        if (captured.error || captured.status !== 0 || captured.signal) {
+          const error = captured.error || new Error('adb remount failed');
+          Object.assign(error, { status: captured.status, signal: captured.signal, stdout: captured.stdout, stderr: captured.stderr });
+          throw error;
+        }
+        result = [captured.stdout, captured.stderr].filter(value => value).join('\n');
+      } else result = execute(file, args, options);
+      state.commands.push({ file, args, success: true }); save(); return result;
+    }
     catch (error) { state.commands.push({ file, args, durationMilliseconds: Math.max(0, now() - started), success: false, status: error.status ?? null, signal: error.signal ?? null, code: error.code ?? null, stdout: String(error.stdout ?? '').slice(-65536), stderr: String(error.stderr ?? '').slice(-65536) }); save(); throw error; }
   };
   const run = (...args) => command(path.join(sdk, 'platform-tools/adb'), ['-s', serial, ...args]);
