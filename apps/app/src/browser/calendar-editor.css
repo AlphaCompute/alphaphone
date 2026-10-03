@@ -1,0 +1,24 @@
+.alpha-calendar-editor{width:480px;max-width:calc(100vw - 24px);max-height:calc(100dvh - 24px);box-sizing:border-box;padding:0;border:1px solid var(--editor-line,#ccc);border-radius:20px;background:var(--editor-bg,#fff);color:var(--editor-fg,#111);font:400 16px/1.4 'Public Sans',sans-serif;overflow:hidden}
+.alpha-calendar-editor[open]{display:flex;flex-direction:column}
+.alpha-calendar-editor::backdrop{background:#0008}
+.alpha-calendar-editor header{display:flex;align-items:center;gap:12px;padding:16px;flex-shrink:0;border-bottom:1px solid var(--editor-line,#ccc)}
+.alpha-calendar-editor h2{flex:1;min-width:0;margin:0;font-size:20px;line-height:1.2;overflow-wrap:anywhere}
+.alpha-calendar-fields{min-height:0;overflow:auto;overscroll-behavior:contain;padding:0 16px;scroll-padding:12px}
+.alpha-calendar-field{display:flex;flex-direction:column;gap:6px;margin:16px 0;min-width:0}
+.alpha-calendar-editor input:not([type=checkbox]),.alpha-calendar-editor textarea,.alpha-calendar-editor select{display:block;width:100%;min-width:0;max-width:100%;min-height:44px;box-sizing:border-box;border:1px solid var(--editor-line,#ccc);border-radius:10px;padding:10px;background:var(--editor-s2,#f3f3f3);color:var(--editor-fg,#111);font:inherit}
+.alpha-calendar-editor textarea{resize:vertical;min-height:100px}
+.alpha-calendar-checkbox{flex-direction:row;align-items:center;justify-content:space-between;min-height:44px}
+.alpha-calendar-editor input[type=checkbox]{flex-shrink:0;width:24px;height:24px;margin:0;accent-color:#0000ff}
+.alpha-calendar-editor fieldset{min-width:0;margin:16px 0;padding:12px;border:1px solid var(--editor-line,#ccc);border-radius:12px}
+.alpha-calendar-person{display:flex;align-items:center;gap:12px;min-height:44px;padding:6px 0;overflow-wrap:anywhere}
+.alpha-calendar-hint{font-size:13px;color:var(--editor-mut,#666)}
+.alpha-calendar-error:empty{display:none}
+.alpha-calendar-error{overflow-wrap:anywhere}
+.alpha-calendar-editor footer{display:flex;flex-wrap:wrap;gap:10px;padding:12px 16px;border-top:1px solid var(--editor-line,#ccc);flex-shrink:0}
+.alpha-calendar-editor button{min-width:44px;min-height:44px;box-sizing:border-box;border:1px solid var(--editor-line,#ccc);border-radius:12px;padding:10px 14px;background:var(--editor-s2,#f3f3f3);color:var(--editor-fg,#111);font:inherit;overflow-wrap:anywhere}
+.alpha-calendar-editor .alpha-calendar-dismiss{flex-shrink:0;width:44px;padding:6px;font-size:24px;line-height:1}
+.alpha-calendar-editor footer button:first-child{background:#0000ff;color:#fff;border-color:#0000ff}
+.alpha-calendar-editor button:disabled{opacity:.6;cursor:wait}
+.alpha-calendar-editor :is(button,input,textarea,select):focus-visible{outline:3px solid #7777ff;outline-offset:2px}
+
+.alpha-calendar-field :is(input,textarea,select){scroll-margin-block-start:2em}
