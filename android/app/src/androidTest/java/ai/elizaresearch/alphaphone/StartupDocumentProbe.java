@@ -44,7 +44,7 @@ final class StartupDocumentProbe implements AutoCloseable {
      // Do not query the old document while its replacement is visibly loading.
      if(!awaitingNavigation&&web.getProgress()==100){
       final long request=epoch.issue(SystemClock.elapsedRealtime()),document=epoch.generation();
-      if(request!=0)web.evaluateJavascript("(()=>{const d=document.documentElement,m=d.dataset.connectionMode;return document.readyState==='complete'&&d.dataset.activeView&&(m==='mock'||m==='live')?m:null})()",value->{
+      if(request!=0)web.evaluateJavascript("(()=>{const d=document.documentElement,m=d.dataset.connectionMode;const ready=m==='live'?!!d.dataset.activeView:m==='mock'&&!!document.querySelector('[data-screen]')&&!!document.querySelector('.mock-mode-banner button');return document.readyState==='complete'&&ready?m:null})()",value->{
        if(closed||waitId!=thisWait||!epoch.complete(document,request))return;
        if("\"live\"".equals(value)||(!requireLive&&"\"mock\"".equals(value))){answer.set("\"live\"".equals(value)?"live":"mock");waitId++;done.countDown();}
        else last="Renderer has not reached "+(requireLive?"live":"live/mock")+" readiness";
