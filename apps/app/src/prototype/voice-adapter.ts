@@ -256,28 +256,45 @@ export function installPrototypeVoiceAdapter(Component: any, views: Record<strin
   }
   const originalStartVoice = Component.prototype.startVoice;
   let composerProbe = 0;
+  const composerBinding = () => JSON.stringify([
+    connectionController.getSnapshot().session?.sessionId,
+    connectionController.getCloudClient()?.sessionId,
+    connectionController.getCloudClient()?.credentialId,
+    connectionController.getCloudEnvironment(),
+    document.documentElement.dataset.connectionMode,
+  ]);
+  // A navigation away and back still retires preparation for the original screen.
+  for (const method of ['openView', 'goHome', 'back']) {
+    const original = Component.prototype[method];
+    if (typeof original === 'function') Component.prototype[method] = function (...args: any[]) {
+      ++composerProbe; return original.apply(this, args);
+    };
+  }
   Component.prototype.startVoice = async function (...args: any[]) {
-    const probe = ++composerProbe, view = this.S().view || null;
+    const probe = ++composerProbe, view = this.S().view || null, selected = composerBinding();
+    const current = () => probe === composerProbe && selected === composerBinding()
+      && (this.S().view || null) === view && this.live !== false
+      && !document.hidden && !connectionController.getSnapshot().open;
+    if (!current()) return;
     const local = createOnDeviceVoice();
     if (local) {
-      const session = connectionController.getSnapshot().session?.sessionId;
       try {
         this.toast('Preparing on-device speech.');
         const ready = await local.ready(new AbortController().signal);
-        if (probe !== composerProbe || session !== connectionController.getSnapshot().session?.sessionId || (this.S().view || null) !== view || document.hidden) return;
+        if (!current()) return;
         if (ready) { this.openView('notes'); enter(undefined, local); onDeviceVoice = local; onDeviceReady = true; cloudMode = false; deviceOnly = true; driver = deviceVoice; chatDestination = { shell: this, view }; refresh(); return; }
-      } catch { /* Keep the existing explicitly labelled voice choice. */ }
+      } catch { /* Only the still-owned request may offer its fallback. */ }
     }
+    if (!current()) return;
     if (connectionController.getCloudEnvironment() === null) {
       const paired = createPairedVoice();
       if (paired) {
-        const session = connectionController.getSnapshot().session?.sessionId;
         try {
           const ready = await paired.transcriptionReady(new AbortController().signal);
-          if (probe !== composerProbe || session !== connectionController.getSnapshot().session?.sessionId || (this.S().view || null) !== view || document.hidden) return;
+          if (!current()) return;
           if (!ready) { this.toast('Standalone Whisper transcription is unavailable on this agent. Use the keyboard or record a note with a manual transcript.'); return; }
           this.openView('notes'); enter(); pairedAsrReady = true; chatDestination = { shell: this, view }; refresh(); return;
-        } catch { if (probe === composerProbe) this.toast('Agent transcription is unavailable. Check this connection or use the keyboard.'); return; }
+        } catch { if (current()) this.toast('Agent transcription is unavailable. Check this connection or use the keyboard.'); return; }
       }
       if (localStorage.getItem('alpha.connection.selection.v1') !== null) { this.toast('Sign in to Eliza Cloud to use voice with this agent, or use the keyboard.'); return; }
       return originalStartVoice?.apply(this, args);
@@ -451,20 +468,20 @@ export function installPrototypeVoiceAdapter(Component: any, views: Record<strin
   notes.onLeave = (current: Bag) => { cleanup(); leave?.(current); };
   const visibility = () => {
     if (!document.hidden) return;
-    stopSaved();
+    ++composerProbe; stopSaved();
     if (playing) { playback?.abort(); playing = false; refresh(); }
     if (['recording', 'transcribing'].includes(stage)) { cleanup(false); stage = 'ready'; error = 'Voice stopped when the app left the foreground. Record again to continue.'; refresh(); }
   };
-  const pagehide = () => { if (stage !== 'closed') cleanup(); };
-  const binding = () => [connectionController.getCloudClient()?.sessionId, connectionController.getSnapshot().session?.sessionId].join(':');
+  const pagehide = () => { ++composerProbe; if (stage !== 'closed') cleanup(); };
+  const binding = composerBinding;
   let account = binding();
   const unsubscribe = connectionController.subscribe(() => {
     const next = binding();
-    if (connectionController.getSnapshot().open && stage !== 'closed') { cleanup(); }
-    if (next !== account) { account = next; stopSaved(); if (stage !== 'closed') cleanup(); }
+    if (connectionController.getSnapshot().open) { ++composerProbe; if (stage !== 'closed') cleanup(); }
+    if (next !== account) { ++composerProbe; account = next; stopSaved(); if (stage !== 'closed') cleanup(); }
   });
   document.addEventListener('visibilitychange', visibility);
   window.addEventListener('pagehide', pagehide);
   const unmount = Component.prototype.componentWillUnmount;
-  Component.prototype.componentWillUnmount = function () { api = undefined; cleanup(); unsubscribe(); document.removeEventListener('visibilitychange', visibility); window.removeEventListener('pagehide', pagehide); unmount?.call(this); };
+  Component.prototype.componentWillUnmount = function () { ++composerProbe; api = undefined; cleanup(); unsubscribe(); document.removeEventListener('visibilitychange', visibility); window.removeEventListener('pagehide', pagehide); unmount?.call(this); };
 }

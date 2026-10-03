@@ -1,5 +1,9 @@
 # Alpha Phone MVP completion plan
 
+## Current checkpoint — October 3, voice preparation ownership
+
+A rendered negative control reproduces stale speech-readiness rejection opening Notes after navigation or account change. Preparation now retains full connection and screen ownership across success and failure; navigation away and back also retires the request. All 12 preparation/save/dictation browser cases and all 224 repository checks, TypeScript and production build pass. [Evidence and limits](mvp-voice-preparation-ownership-2026-10-03.md). New Android/native, live voice and physical acceptance remain open. The full MVP is not complete.
+
 ## Current checkpoint — October 3, mail draft and Calendar completion ownership
 
 Cancelling a mailbox read now preserves unsaved local drafts and edits to saved drafts without saving or sending them. Six rendered cancellation flows pass after a negative control reproduces the loss. Calendar deletion completion now preserves a newer event, navigation or draft; three new rendered cases and three existing save-completion cases pass. The composed source passes all 224 repository checks, TypeScript and the production build. New-source Android/native and live-provider acceptance remain open. See [mail evidence](mvp-mail-read-cancellation-2026-10-03.md) and [Calendar evidence](calendar-reminder-audit.md).
