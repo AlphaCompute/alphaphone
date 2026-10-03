@@ -1,3 +1,4 @@
+import {isReminderCreate,validateReminderCreate,validateReminderCreateResult,type ReminderCreateOperation,type ReminderCreateResult} from './reminder-create-contract';
 import {isClockOperation,validateClockOperation,validateClockResult,assertClockTimeZone,describeClockHandoff,type ClockOperation,type ClockHandoffResult} from './clock-contract.ts';
 import { isMapsOperation, validateMapsOperation, validateMapsResult, type MapsOperation, type MapsResult } from './maps-contract';
 import { validateMapsSelectedObject } from '../maps/agent-context';
@@ -9,7 +10,7 @@ import { parseWorkflowBinding, parseWorkflowRead, validateWorkflowResult, assert
 import type { ActionProposal, ContextEnvelope, OperationReceipt, VerifiedSession } from './alpha-client';
 
 export type WorkflowPresentationOperation = {type:'post_notification';title:string;body:string}|{type:'speak_text';text:string};
-export type DeviceOperation = WorkflowPresentationOperation | ClockOperation | MapsOperation | ReminderOperation | NotesOperation | CalendarOperation | WorkflowReadOperation | { type: 'create_note'; title: string; body: string }
+export type DeviceOperation = ReminderCreateOperation | WorkflowPresentationOperation | ClockOperation | MapsOperation | ReminderOperation | NotesOperation | CalendarOperation | WorkflowReadOperation | { type: 'create_note'; title: string; body: string }
   | { type: 'create_reminder'; title: string; dueAt: string }
   | { type: 'open_view'; view: string } | { type: 'browser_navigate'; url: string };
 export interface DeviceCredential { installationId: string; key: string; enrollmentId?: string }
@@ -27,8 +28,8 @@ export interface ActionJournal {
   list(input: { scope: string }): Promise<{ entries: JournalEntry[] }>;
 }
 export interface WorkflowNoticeRoute {scope:string;origin:string;ownerId:string;agentId:string;workflowId:string;runId:string;versionId:string}
-export type DeviceExecutor = (operation: DeviceOperation, operationId: string, context: ContextEnvelope, signal: AbortSignal, bindingHash: string, workflowRoute?:WorkflowNoticeRoute) => Promise<{ status: 'succeeded' | 'failed' | 'unknown'; summary: string; readResult?: WorkflowReadResult; calendarResult?:CalendarResult; notesResult?:NotesResult; reminderResult?:ReminderResult; mapsResult?:MapsResult;clockResult?:ClockHandoffResult }>;
-export type DeviceRecovery = (operation:DeviceOperation,operationId:string,bindingHash:string,signal:AbortSignal)=>Promise<{status:string;reminderResult?:ReminderResult}>;
+export type DeviceExecutor = (operation: DeviceOperation, operationId: string, context: ContextEnvelope, signal: AbortSignal, bindingHash: string, workflowRoute?:WorkflowNoticeRoute) => Promise<{ status: 'succeeded' | 'failed' | 'unknown'; summary: string; readResult?: WorkflowReadResult; calendarResult?:CalendarResult; notesResult?:NotesResult; reminderResult?:ReminderResult|ReminderCreateResult; mapsResult?:MapsResult;clockResult?:ClockHandoffResult }>;
+export type DeviceRecovery = (operation:DeviceOperation,operationId:string,bindingHash:string,signal:AbortSignal)=>Promise<{status:string;reminderResult?:ReminderResult|ReminderCreateResult}>;
 interface Proposal { id: string; digest: string; state: string; expiresAt: number; operation: DeviceOperation; workflow?:WorkflowDeviceBinding; attemptId?: string }
 const views = new Set(['home','notes','reminders','browser','calendar','files','photos','camera','maps','inbox','settings','workflows']);
 function object(value: unknown): Record<string, any> { if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('Invalid device action response'); return value as Record<string, any>; }
@@ -36,6 +37,7 @@ function text(value: unknown, max = 128): string { if (typeof value !== 'string'
 function id(value: unknown): string { const valueText = text(value); if (!/^[A-Za-z0-9][A-Za-z0-9_-]*$/.test(valueText)) throw new Error('Invalid device action identifier'); return valueText; }
 export function validateDeviceOperation(value: unknown): DeviceOperation {
   const p = object(value);
+  if(isReminderCreate(p))return validateReminderCreate(p);
   if(isClockOperation(p))return validateClockOperation(p);
   if(isMapsOperation(p))return validateMapsOperation(p);
   if(isReminderOperation(p))return validateReminderOperation(p);
@@ -49,6 +51,7 @@ export function validateDeviceOperation(value: unknown): DeviceOperation {
     return { type: p.type, title: text(p.title, 256), body: p.body };
   }
   if (p.type === 'create_reminder') {
+    if(Object.keys(p).length!==3||Object.keys(p).some(k=>!['type','title','dueAt'].includes(k)))throw Error('Unexpected legacy reminder fields');
     const dueAt = text(p.dueAt, 40), time = Date.parse(dueAt);
     if (!Number.isFinite(time) || !/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d{3})?Z$/.test(dueAt) || new Date(time).toISOString().replace('.000Z','Z') !== dueAt.replace('.000Z','Z')) throw new Error('Invalid reminder time');
     return { type: p.type, title: text(p.title, 200), dueAt };
@@ -81,13 +84,14 @@ export class DeviceActions {
   private busy = false;
   constructor(readonly session: VerifiedSession, readonly credential: DeviceCredential, readonly scope: string,
     private request: (path: string, body: unknown | undefined, signal: AbortSignal) => Promise<unknown>,
-    private journal: ActionJournal, private execute: DeviceExecutor, private recover?:DeviceRecovery, private reminderV2=false) {}
+    private journal: ActionJournal, private execute: DeviceExecutor, private recover?:DeviceRecovery, private reminderV2=false, private reminderCreate=false) {}
   private parse(value: unknown): Proposal {
     const p = object(value), payload = object(p.payload);
     if (p.subjectUserId !== this.session.ownerId || p.requestedBy !== this.session.agentId || p.action !== 'device_action' || payload.action !== 'device_action' || payload.version !== 1 || payload.installationId !== this.credential.installationId || payload.enrollmentId !== this.credential.enrollmentId) throw new Error('Device action belongs to another identity');
     const expiresAt = Date.parse(text(p.expiresAt, 40)), digest = text(p.digest, 64);
     if (!Number.isFinite(expiresAt) || !/^[a-f0-9]{64}$/.test(digest)) throw new Error('Invalid action expiry or digest');
     const workflow=payload.workflow===undefined?undefined:parseWorkflowBinding(payload.workflow),op=validateDeviceOperation(payload.operation);
+    if(isReminderCreate(op)&&!this.reminderCreate)throw Error('This agent does not support reviewed reminder creation. Reconnect to a compatible agent.');
     if(isReminderOperation(op)&&(op.target.timingVersion===2||op.type==='reminder_update'&&op.fields.schedule?.alertMinutes!==undefined)&&!this.reminderV2)throw Error('This agent does not support this reminder timing. Reconnect to a compatible agent.');
     if((['read_selected_notes','read_calendar_range','post_notification','speak_text'].includes(op.type))&&!workflow)throw new Error('Workflow binding required for phone reads');
     return { id: id(p.id), digest, state: text(p.state, 32), expiresAt, operation:op,...(workflow?{workflow}:{}), ...(p.execution?.attemptId ? { attemptId: id(p.execution.attemptId) } : {}) };
@@ -116,7 +120,7 @@ export class DeviceActions {
       if(isCalendarOperation(proposal.operation))assertCalendarContext(proposal.operation,context);
       this.proposals.set(proposal.id, { proposal, context: structuredClone(context) });
       const op = proposal.operation;
-      const description = isClockOperation(op) ? describeClockHandoff(op) : isMapsOperation(op) ? 'Send the exact selected place location or route endpoints, mode and distance to the connected agent. This shares location information. It does not start navigation.' : isReminderOperation(op) ? `${op.type.replaceAll('_',' ')} · selected reminder ${op.target.reminderId}\n${op.type==='reminder_update'?JSON.stringify(op.fields):op.type==='reminder_read_selected'?'Send this exact reminder title, details and schedule to the connected agent.':op.type==='reminder_cancel'?'Cancel this reminder and all its future repeats.':op.type==='reminder_snooze'?'Snooze this occurrence for ten minutes.':'Complete this occurrence; a repeat advances to its next future occurrence.'}` : isNotesOperation(op) ? `${op.type.replaceAll('_',' ')} · selected note ${op.target.noteId}\n${op.type==='notes_update'?JSON.stringify(op.fields):op.type==='notes_read_selected'?'Send this exact note title and body to the connected agent.':'Delete this exact note. Attached audio files are retained.'}` : isCalendarOperation(op) ? `${op.type.replaceAll('_',' ')} · source ${(op.type==='calendar_create'?op.source:op.target).sourceId}\n${'fields' in op?JSON.stringify(op.fields):'Review the exact selected event on this phone.'}` : op.type === 'create_note' ? `Create note “${op.title}”\n${op.body}` : op.type === 'create_reminder' ? `Create reminder “${op.title}” at ${new Date(op.dueAt).toLocaleString()}` : op.type === 'open_view' ? `Open ${op.view} on this phone` : op.type==='browser_navigate'?`Open browser destination ${op.url}`:'Workflow phone read';
+      const description = isReminderCreate(op)?`Create reminder · ${JSON.stringify(op.fields)} · ${op.fields.schedule.alertMinutes===null?'No alert; saved task only.':'Approximate notification delivery.'}`:isClockOperation(op) ? describeClockHandoff(op) : isMapsOperation(op) ? 'Send the exact selected place location or route endpoints, mode and distance to the connected agent. This shares location information. It does not start navigation.' : isReminderOperation(op) ? `${op.type.replaceAll('_',' ')} · selected reminder ${op.target.reminderId}\n${op.type==='reminder_update'?JSON.stringify(op.fields):op.type==='reminder_read_selected'?'Send this exact reminder title, details and schedule to the connected agent.':op.type==='reminder_cancel'?'Cancel this reminder and all its future repeats.':op.type==='reminder_snooze'?'Snooze this occurrence for ten minutes.':'Complete this occurrence; a repeat advances to its next future occurrence.'}` : isNotesOperation(op) ? `${op.type.replaceAll('_',' ')} · selected note ${op.target.noteId}\n${op.type==='notes_update'?JSON.stringify(op.fields):op.type==='notes_read_selected'?'Send this exact note title and body to the connected agent.':'Delete this exact note. Attached audio files are retained.'}` : isCalendarOperation(op) ? `${op.type.replaceAll('_',' ')} · source ${(op.type==='calendar_create'?op.source:op.target).sourceId}\n${'fields' in op?JSON.stringify(op.fields):'Review the exact selected event on this phone.'}` : op.type === 'create_note' ? `Create note “${op.title}”\n${op.body}` : op.type === 'create_reminder' ? `Create reminder “${op.title}” at ${new Date(op.dueAt).toLocaleString()}` : op.type === 'open_view' ? `Open ${op.view} on this phone` : op.type==='browser_navigate'?`Open browser destination ${op.url}`:'Workflow phone read';
       return { id: proposal.id, title: op.type.replaceAll('_', ' '), description, expiresAt: proposal.expiresAt, contextRevision: context.revision };
     });
   }
@@ -167,8 +171,8 @@ export class DeviceActions {
       }else if(result.clockResult!==undefined)throw Error('Unexpected Clock handoff result');
       let mapsResult:MapsResult|undefined;
       if(isMapsOperation(p.operation)){if(result.status==='succeeded')mapsResult=validateMapsResult(p.operation,result.mapsResult);else if(result.mapsResult!==undefined)throw Error('Failed Maps read cannot return content');}else if(result.mapsResult!==undefined)throw Error('Unexpected Maps result');
-      let reminderResult:ReminderResult|undefined;
-      if(isReminderOperation(p.operation)){if(result.status==='succeeded')reminderResult=validateReminderResult(p.operation,result.reminderResult);else if(result.reminderResult!==undefined)throw Error('Unconfirmed reminder cannot return a result');}else if(result.reminderResult!==undefined)throw Error('Unexpected reminder result');
+      let reminderResult:ReminderResult|ReminderCreateResult|undefined;
+      if(isReminderCreate(p.operation)){if(result.status==='succeeded')reminderResult=validateReminderCreateResult(p.operation,result.reminderResult,operationId);else if(result.reminderResult!==undefined)throw Error('Unconfirmed creation cannot return a result');}else if(isReminderOperation(p.operation)){if(result.status==='succeeded')reminderResult=validateReminderResult(p.operation,result.reminderResult);else if(result.reminderResult!==undefined)throw Error('Unconfirmed reminder cannot return a result');}else if(result.reminderResult!==undefined)throw Error('Unexpected reminder result');
       let notesResult:NotesResult|undefined;
       if(isReminderOperation(p.operation))assertReminderContext(p.operation,context);
       if(isNotesOperation(p.operation)){if(result.status==='succeeded')notesResult=validateNotesResult(p.operation,result.notesResult);else if(result.notesResult!==undefined)throw Error('Failed Notes action cannot return content');}else if(result.notesResult!==undefined)throw Error('Unexpected Notes result');
@@ -184,7 +188,7 @@ export class DeviceActions {
       // Receipt upload is retried only by the explicit history control.
       try { if(isMapsOperation(p.operation))assertMapsContext(p.operation,context); await this.mutation(p, 'receipt', { attemptId: claimed.attemptId, receipt: { outcome: result.status === 'succeeded' ? 'applied' : result.status === 'failed' ? 'failed' : 'unknown', operationId,...(clockResult?{result:clockResult}:mapsResult?{result:mapsResult}:readResult?{result:readResult}:calendarResult?{result:calendarResult}:notesResult?{result:notesResult}:reminderResult?{result:reminderResult}:{}) } }, signal); }
       catch { return { proposalId, status: result.status, summary: `${result.summary} Server receipt is pending; check action history.` }; }
-      finally {if(typeof window!=='undefined'){if(isCalendarOperation(p.operation)&&p.operation.type!=='calendar_read_selected'&&result.status==='succeeded')window.dispatchEvent(new CustomEvent('alpha:calendar-committed'));if(isNotesOperation(p.operation))window.dispatchEvent(new CustomEvent('alpha:notes-committed'));if(isReminderOperation(p.operation)||p.operation.type==='create_reminder')window.dispatchEvent(new CustomEvent('alpha:reminders-committed'));}}
+      finally {if(typeof window!=='undefined'){if(isCalendarOperation(p.operation)&&p.operation.type!=='calendar_read_selected'&&result.status==='succeeded')window.dispatchEvent(new CustomEvent('alpha:calendar-committed'));if(isNotesOperation(p.operation))window.dispatchEvent(new CustomEvent('alpha:notes-committed'));if(isReminderOperation(p.operation)||isReminderCreate(p.operation)||p.operation.type==='create_reminder')window.dispatchEvent(new CustomEvent('alpha:reminders-committed'));}}
       return { proposalId, status:result.status, summary:result.summary };
     } catch {
       return { proposalId, status: 'unknown', summary: 'Action did not reach a confirmed result. Check action history before requesting it again.' };
@@ -201,14 +205,14 @@ export class DeviceActions {
     return proposals.map(p => ({ id: p.id, state: p.state, operation: p.operation, local: local.entries.find(entry => entry.proposalId === p.id) }));
   }
   private async recoverReminder(p:Proposal,entry:JournalEntry,signal:AbortSignal):Promise<JournalEntry>{
-    if(!this.recover||!isReminderOperation(p.operation)||entry.status==='succeeded'||!entry.attemptId||entry.record.digest!==p.digest||entry.record.ownerId!==this.session.ownerId||entry.record.agentId!==this.session.agentId||entry.record.origin!==this.session.origin||entry.record.installationId!==this.credential.installationId||entry.record.enrollmentId!==this.credential.enrollmentId||typeof entry.record.sessionId!=='string')return entry;
+    if(!this.recover||!(isReminderOperation(p.operation)||isReminderCreate(p.operation))||entry.status==='succeeded'||!entry.attemptId||entry.record.digest!==p.digest||entry.record.ownerId!==this.session.ownerId||entry.record.agentId!==this.session.agentId||entry.record.origin!==this.session.origin||entry.record.installationId!==this.credential.installationId||entry.record.enrollmentId!==this.credential.enrollmentId||typeof entry.record.sessionId!=='string')return entry;
     const bindingHash=await actionScope(JSON.stringify([this.scope,this.session.ownerId,this.session.agentId,entry.record.sessionId,this.session.origin,this.credential.installationId,this.credential.enrollmentId,p.id,p.digest,entry.operationId]));
     signal.throwIfAborted();const result=await this.recover(p.operation,entry.operationId,bindingHash,signal);signal.throwIfAborted();
     if(result.status!=='succeeded')return entry;
-    validateReminderResult(p.operation,result.reminderResult);
+    isReminderCreate(p.operation)?validateReminderCreateResult(p.operation,result.reminderResult,entry.operationId):validateReminderResult(p.operation,result.reminderResult);
     if(!this.journal.recoverReminder)return entry;
     const recovered=await this.journal.recoverReminder({scope:this.scope,proposalId:p.id,bindingHash});
-    if(recovered.entry?.status==='succeeded')validateReminderResult(p.operation,recovered.entry.result?.reminderResult);
+    if(recovered.entry?.status==='succeeded'){if(isReminderCreate(p.operation))validateReminderCreateResult(p.operation,recovered.entry.result?.reminderResult,entry.operationId);else validateReminderResult(p.operation,recovered.entry.result?.reminderResult);}
     return recovered.entry ?? entry;
   }
   async syncReceipts(signal: AbortSignal, workflow?:{runId:string;versionId:string;specDigest:string}): Promise<void> {
@@ -225,7 +229,7 @@ export class DeviceActions {
       const calendarResult=await this.savedCalendarResult(p,entry);
       const notesResult=await this.savedNotesResult(p,entry);
       const reminderResult=await this.savedReminderResult(p,entry);
-      if(isReminderOperation(p.operation)&&p.state==='reconciliation_required'&&entry.status==='succeeded'&&reminderResult){
+      if((isReminderOperation(p.operation)||isReminderCreate(p.operation))&&p.state==='reconciliation_required'&&entry.status==='succeeded'&&reminderResult){
         await this.mutation(p,'reconciliation',{attemptId:entry.attemptId,resolution:{confirmed:true,outcome:'applied',operationId:entry.operationId,result:reminderResult}},signal);
       }else await this.mutation(p, 'receipt', { attemptId: entry.attemptId, receipt: { outcome: entry.status === 'succeeded' ? 'applied' : entry.status === 'failed' ? 'failed' : 'unknown', operationId: entry.operationId,...(clockResult?{result:clockResult}:mapsResult?{result:mapsResult}:readResult?{result:readResult}:calendarResult?{result:calendarResult}:notesResult?{result:notesResult}:reminderResult?{result:reminderResult}:{}) } }, signal);
     }
@@ -252,11 +256,11 @@ export class DeviceActions {
     if(!entry||entry.phase!=='terminal'||entry.status!=='succeeded'||entry.operationId!==summary.operationId||entry.record.digest!==p.digest||entry.record.ownerId!==this.session.ownerId||entry.record.agentId!==this.session.agentId||entry.record.origin!==this.session.origin)throw Error('No exact saved Calendar receipt; operation will not be repeated');
     return validateCalendarResult(p.operation,entry.result?.calendarResult);
   }
-  private async savedReminderResult(p:Proposal,summary:JournalEntry):Promise<ReminderResult|undefined>{
-    if(!isReminderOperation(p.operation)||summary.status!=='succeeded')return undefined;
+  private async savedReminderResult(p:Proposal,summary:JournalEntry):Promise<ReminderResult|ReminderCreateResult|undefined>{
+    if(!(isReminderOperation(p.operation)||isReminderCreate(p.operation))||summary.status!=='succeeded')return undefined;
     const {entry}=await this.journal.get({scope:this.scope,proposalId:p.id});
     if(!entry||entry.phase!=='terminal'||entry.status!=='succeeded'||entry.operationId!==summary.operationId||entry.record.digest!==p.digest||entry.record.ownerId!==this.session.ownerId||entry.record.agentId!==this.session.agentId||entry.record.origin!==this.session.origin)throw Error('No exact saved Reminder receipt; operation will not be repeated');
-    return validateReminderResult(p.operation,entry.result?.reminderResult);
+    return isReminderCreate(p.operation)?validateReminderCreateResult(p.operation,entry.result?.reminderResult,entry.operationId):validateReminderResult(p.operation,entry.result?.reminderResult);
   }
   private async savedNotesResult(p:Proposal,summary:JournalEntry):Promise<NotesResult|undefined>{
     if(!isNotesOperation(p.operation)||summary.status!=='succeeded')return undefined;
@@ -284,7 +288,7 @@ export class DeviceActions {
     const calendarResult=outcome==='applied'&&entry?await this.savedCalendarResult(p,entry):undefined;
     const notesResult=outcome==='applied'&&entry?await this.savedNotesResult(p,entry):undefined;
     const reminderResult=outcome==='applied'&&entry?await this.savedReminderResult(p,entry):undefined;
-    if(outcome==='applied'&&isReminderOperation(p.operation)&&!reminderResult)throw Error('Applied reminder reconciliation requires exact saved receipt');
+    if(outcome==='applied'&&(isReminderOperation(p.operation)||isReminderCreate(p.operation))&&!reminderResult)throw Error('Applied reminder reconciliation requires exact saved receipt');
     if(outcome==='applied'&&isNotesOperation(p.operation)&&!notesResult)throw Error('Applied Notes reconciliation requires its exact saved receipt');
     if(outcome==='applied'&&isCalendarOperation(p.operation)&&!calendarResult)throw Error('Applied Calendar reconciliation requires exact saved provider receipt');
     if(outcome==='applied'&&(p.operation.type==='read_selected_notes'||p.operation.type==='read_calendar_range')&&!readResult)throw new Error('Applied read requires its exact saved result');

@@ -1,3 +1,4 @@
+import {isReminderCreate,validateReminderCreate,validateReminderCreateResult,type ReminderCreateOperation,type ReminderCreateResult} from '../runtime/reminder-create-contract';
 import { validateReminderOperation, reminderFields, reminderTiming, type ReminderOperation, type ReminderResult, type ReminderTarget } from '../runtime/reminder-contract';
 import { BrowserFiles } from './files';
 import { initialReminderDue, nextReminderOccurrence } from './reminder-recurrence';
@@ -5,10 +6,10 @@ import { WebPlugin } from '@capacitor/core';
 import type { Reminder, ClockRequest } from '../daily';
 import { editStore, readStore, revision } from './store';
 type Row=Reminder & {revision:string};
-type State={sourceRevision:string;reminders:Row[];receipts?:Record<string,{binding:string;result:ReminderResult}>};
+type State={sourceRevision:string;reminders:Row[];receipts?:Record<string,{binding:string;result:ReminderResult|ReminderCreateResult}>};
 const key='alpha.browser.reminders.v1',initial=():State=>({sourceRevision:revision(),reminders:[]});
 function target(data:State,row:Row):ReminderTarget {return {...(row.alertMinutes!==undefined?{timingVersion:2 as const}:{}),sourceId:'browser-reminders',sourceRevision:data.sourceRevision,reminderId:row.id,occurrenceId:row.occurrenceId!,revision:row.revision};}
-function operationBinding(input:{operationId:string;bindingHash:string},operation:ReminderOperation) {
+function operationBinding(input:{operationId:string;bindingHash:string},operation:ReminderOperation|ReminderCreateOperation) {
   if(!/^[A-Za-z0-9_-]{1,128}$/.test(input.operationId)||!/^[a-f0-9]{64}$/.test(input.bindingHash))throw Error('Invalid reminder operation binding.');
   return JSON.stringify([input.bindingHash,operation]);
 }
@@ -30,7 +31,7 @@ function decide(row:Row,action:'done'|'snooze') {
 export class BrowserDaily extends WebPlugin {
   constructor(private files:BrowserFiles){super();window.addEventListener('focus',()=>void this.notifyListeners('appResumed',{}));}
   async notifyReminder(id:string,occurrenceId:string){await this.notifyListeners('reminderOpened',{id,occurrenceId});}
-  async surfaceInfo(){return {developmentBuild:true,assistant:false,reminderTimingVersion:2 as const,topInset:0,bottomInset:0};}
+  async surfaceInfo(){return {developmentBuild:true,assistant:false,reminderCreationVersion:1 as const,reminderTimingVersion:2 as const,topInset:0,bottomInset:0};}
   async closeAssistant(){window.dispatchEvent(new Event('alpha-back',{cancelable:true}));return {closed:true};}
   async scheduleReminder(input:{id:string;title:string;body?:string;at:number;recurrence?:Reminder['recurrence'];dueAt?:number;alertMinutes?:number|null}) {
     if(!Number.isSafeInteger(input.at)||input.at<=Date.now())return {status:'past',id:input.id,mode:'inexact'};
@@ -44,15 +45,24 @@ export class BrowserDaily extends WebPlugin {
   async listReminders(){return editStore(key,initial,data=>{for(const row of data.reminders)if(row.status==='scheduled'&&row.at<=Date.now()){row.status='posted';row.postedAt=Date.now();row.revision=revision();}return {reminders:data.reminders.filter(r=>r.status!=='cancelled').map(r=>({...r,target:target(data,r)})),notificationsEnabled:true};});}
   async cancelReminder(input:{id:string;target:ReminderTarget;operationId:string;bindingHash:string}){if(input.target?.reminderId!==input.id)throw Error('Reviewed reminder target required.');const response=await this.operateReminder({...input,operation:{type:'reminder_cancel',target:input.target}});return {status:response.status==='succeeded'?'cancelled':'unknown',id:input.id};}
   async selectedReminder(input:{id:string}):Promise<ReminderTarget>{const data=readStore(key,initial),row=data.reminders.find(r=>r.id===input.id);if(!row)throw Error('Reminder no longer exists.');return target(data,row);}
-  async reminderOperationReceipt(input:{operationId:string;bindingHash:string;operation:ReminderOperation}) {
-    const operation=validateReminderOperation(input.operation),binding=operationBinding(input,operation),receipt=readStore(key,initial).receipts?.[input.operationId];
+  async reminderOperationReceipt(input:{operationId:string;bindingHash:string;operation:ReminderOperation|ReminderCreateOperation}) {
+    const operation=isReminderCreate(input.operation)?validateReminderCreate(input.operation):validateReminderOperation(input.operation),binding=operationBinding(input,operation),receipt=readStore(key,initial).receipts?.[input.operationId];
     if(!receipt)return {status:'unknown'};if(receipt.binding!==binding)throw Error('Reminder receipt binding changed.');return {status:'succeeded',result:receipt.result};
   }
-  async operateReminder(input:{operationId:string;bindingHash:string;operation:ReminderOperation}) {
-    const operation=validateReminderOperation(input.operation),binding=operationBinding(input,operation);
+  async operateReminder(input:{operationId:string;bindingHash:string;operation:ReminderOperation|ReminderCreateOperation}) {
+    const operation=isReminderCreate(input.operation)?validateReminderCreate(input.operation):validateReminderOperation(input.operation),binding=operationBinding(input,operation);
     return editStore(key,initial,data=>{
       const receipt=data.receipts?.[input.operationId];if(receipt){if(receipt.binding!==binding)throw Error('Reminder receipt binding changed.');return {status:'succeeded',result:receipt.result};}
       if(document.hidden)throw Error('Return to Alpha to review the reminder.');
+      if(isReminderCreate(operation)){
+        if(!/^[A-Za-z0-9_-]{1,100}$/.test(input.operationId)||data.reminders.some(r=>r.id===input.operationId))throw Error('Reminder creation identity already exists');
+        if(Object.keys(data.receipts||{}).length>=500)throw Error('Reminder receipt history is full');
+        const {title,body,schedule}=operation.fields;
+        if(schedule.at<=Date.now()||schedule.recurrence&&initialReminderDue(schedule.recurrence,schedule.at)!==schedule.dueAt)throw Error('Choose a valid future reminder schedule');
+        const row:Row={id:input.operationId,title,body,at:schedule.at,dueAt:schedule.dueAt,alertMinutes:schedule.alertMinutes,...(schedule.recurrence?{recurrence:schedule.recurrence}:{}),mode:schedule.alertMinutes===null?'none':'inexact',status:schedule.alertMinutes===null?'pending':'scheduled',createdAt:Date.now(),occurrenceId:crypto.randomUUID(),revision:revision(),history:[]};
+        const result=validateReminderCreateResult(operation,{version:1,kind:operation.type,sourceId:'browser-reminders',reminderId:row.id,occurrenceId:row.occurrenceId,revision:row.revision,status:row.status,at:row.at,dueAt:row.dueAt,alertMinutes:row.alertMinutes,fields:operation.fields},input.operationId);
+        data.reminders.push(row);(data.receipts??={})[input.operationId]={binding,result};return {status:'succeeded',result};
+      }
       const row=data.reminders.find(r=>r.id===operation.target.reminderId);
       if(!row||operation.target.timingVersion!==target(data,row).timingVersion||Object.entries(target(data,row)).some(([k,v])=>operation.target[k as keyof ReminderTarget]!==v))throw Error('Reminder changed. Review it again.');
       if(operation.type!=='reminder_read_selected'&&(row.status==='cancelled'||row.status==='completed'&&operation.type!=='reminder_cancel'&&operation.type!=='reminder_update'))throw Error('Reminder is no longer active.');

@@ -1,6 +1,11 @@
 # Current Alpha Phone acceptance ledger
 
 
+## Current checkpoint — October 3, reviewed reminder creation and process death
+
+Explicit no-alert, timed and recurring agent reminder creation now has a distinct generic capability, atomic native receipt and immutable recovery. Both Android variants pass no-alert/permission-denied, granted timing, native HTTP negotiation and original-notification relaunch after confirmed main-process death. Forty rendered flows, 218 checks and both Android builds pass. Source comparisons retain exact qualified reminder/transport bytes; all disposable users and packages are removed. Hosted resident failure now identifies SIGSYS before model RPC; numeric-only exact-worker diagnostics are added, but the forbidden syscall and runtime repair remain open. See [qualification, retained failures and remaining gates](mvp-reminder-process-qualification-2026-10-03.md). The full MVP is not complete.
+
+
 ## Current checkpoint — October 3, native workflow notification taps
 
 Workflow notices now retain exact owner/agent/execution routes and distinct opaque tap identities, with durable failed-capture recovery and no implicit execution. Both standalone and launcher pass the actual Android cold/warm notification test on a fresh Pixel-class emulator, including encrypted-store failure, receipt drift and consumed-tap replay. Both disposable users and packages are cleaned up. All 218 checks, both Android builds and 27 rendered flows pass; 3,884 qualified source identities remain unchanged. Actual app-process restart, real hosted delivery, live providers and physical/signed-image acceptance remain open. See [evidence, retained failures and capacity limits](mvp-workflow-notification-qualification-2026-10-03.md). The MVP is not complete.

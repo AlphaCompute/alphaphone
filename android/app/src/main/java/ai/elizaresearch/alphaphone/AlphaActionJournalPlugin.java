@@ -78,7 +78,7 @@ public final class AlphaActionJournalPlugin extends Plugin {
   JSONObject result=call.getObject("result");
   JSONObject retainedOperation=entry.getJSONObject("record").optJSONObject("operation");
   if("succeeded".equals(status)&&entry.getJSONObject("record").has("workflow")&&retainedOperation!=null&&Set.of("read_selected_notes","read_calendar_range").contains(retainedOperation.optString("type"))&&result==null)throw new IllegalArgumentException();
-  if("succeeded".equals(status)&&retainedOperation!=null&&Set.of("clock_handoff","maps_read_selected","notes_read_selected","notes_update","notes_delete","reminder_read_selected","reminder_update","reminder_complete","reminder_snooze","reminder_cancel").contains(retainedOperation.optString("type"))&&result==null)throw new IllegalArgumentException();
+  if("succeeded".equals(status)&&retainedOperation!=null&&Set.of("clock_handoff","maps_read_selected","notes_read_selected","notes_update","notes_delete","reminder_create","reminder_read_selected","reminder_update","reminder_complete","reminder_snooze","reminder_cancel").contains(retainedOperation.optString("type"))&&result==null)throw new IllegalArgumentException();
   if(result!=null){
    JSONObject record=entry.getJSONObject("record"),operation=record.optJSONObject("operation");String type=operation==null?"":operation.optString("type");boolean workflowRead=record.has("workflow")&&Set.of("read_selected_notes","read_calendar_range").contains(type);
    if("clock_handoff".equals(type)){
@@ -97,9 +97,16 @@ public final class AlphaActionJournalPlugin extends Plugin {
     if("succeeded".equals(status)){if(maps==null||maps.length()!=4||!type.equals(maps.optString("kind"))||maps.optInt("version")!=1||maps.optJSONObject("fields")==null||!sameJson(operation.optJSONObject("target"),maps.optJSONObject("target")))throw new IllegalArgumentException();}
     else if(maps!=null)throw new IllegalArgumentException();
     if(result.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8).length>8000)throw new IllegalArgumentException();
-   }else if(Set.of("reminder_read_selected","reminder_update","reminder_complete","reminder_snooze","reminder_cancel").contains(type)){
+   }else if(Set.of("reminder_create","reminder_read_selected","reminder_update","reminder_complete","reminder_snooze","reminder_cancel").contains(type)){
     if(result.length()!=(result.has("reminderResult")?2:1)||!entry.getString("operationId").equals(result.optString("operationId")))throw new IllegalArgumentException();
     JSONObject reminder=result.optJSONObject("reminderResult");if("succeeded".equals(status)){if(reminder==null||!type.equals(reminder.optString("kind"))||reminder.optInt("version")!=1)throw new IllegalArgumentException();}else if(reminder!=null)throw new IllegalArgumentException();
+    if("reminder_create".equals(type)&&reminder!=null){
+     JSONObject fields=operation.getJSONObject("fields"),schedule=fields.getJSONObject("schedule");
+     if(reminder.length()!=11||!entry.getString("operationId").equals(reminder.optString("reminderId"))||!sameJson(fields,reminder.optJSONObject("fields"))||!sameJson(schedule.get("at"),reminder.opt("at"))||!sameJson(schedule.get("dueAt"),reminder.opt("dueAt"))||!sameJson(schedule.get("alertMinutes"),reminder.opt("alertMinutes")))throw new IllegalArgumentException();
+     if(!(reminder.opt("version") instanceof Number)||reminder.getDouble("version")!=1||!(reminder.opt("revision") instanceof String)||!reminder.getString("revision").matches("[a-f0-9]{64}"))throw new IllegalArgumentException();
+     for(String identity:new String[]{"sourceId","reminderId","occurrenceId"})if(!(reminder.opt(identity) instanceof String)||!reminder.getString(identity).matches("[A-Za-z0-9][A-Za-z0-9._:-]{0,127}"))throw new IllegalArgumentException();
+     if(schedule.isNull("alertMinutes")?!"pending".equals(reminder.optString("status")):!Set.of("scheduled","permission-denied","scheduling-failed").contains(reminder.optString("status")))throw new IllegalArgumentException();
+    }
     if(result.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8).length>32768)throw new IllegalArgumentException();
    }else if(Set.of("notes_read_selected","notes_update","notes_delete").contains(type)){
     if(result.length()!=(result.has("notesResult")?2:1)||!entry.getString("operationId").equals(result.optString("operationId")))throw new IllegalArgumentException();
@@ -129,7 +136,7 @@ public final class AlphaActionJournalPlugin extends Plugin {
  @PluginMethod public void recoverReminder(PluginCall call){work(call,true,(store,scope,id)->{
   JSONObject entry=read(store,scope,id);if(entry==null)throw new IllegalStateException();
   JSONObject operation=entry.getJSONObject("record").getJSONObject("operation");
-  if(!Set.of("reminder_read_selected","reminder_update","reminder_complete","reminder_snooze","reminder_cancel").contains(operation.optString("type")))throw new IllegalArgumentException();
+  if(!Set.of("reminder_create","reminder_read_selected","reminder_update","reminder_complete","reminder_snooze","reminder_cancel").contains(operation.optString("type")))throw new IllegalArgumentException();
   if("terminal".equals(entry.optString("phase"))&&!"unknown".equals(entry.optString("status")))return response(entry);
   if(!"applying".equals(entry.optString("phase"))&&!"unknown".equals(entry.optString("status")))throw new IllegalStateException();
   JSONObject receipt=ReminderStore.operationReceipt(getContext(),entry.getString("operationId"),call.getString("bindingHash"),operation);

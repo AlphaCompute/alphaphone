@@ -1,3 +1,4 @@
+import {isReminderCreate,validateReminderCreate,validateReminderCreateResult} from '../apps/app/src/runtime/reminder-create-contract.ts';
 import {validateReminderOperation,validateReminderResult} from '../apps/app/src/runtime/reminder-contract.ts';
 import {mkdirSync,readFileSync,writeFileSync,renameSync,existsSync,chmodSync} from 'node:fs';
 import {join} from 'node:path';
@@ -60,10 +61,10 @@ export function localAgentStorage(directory:string,input:any):unknown {
   if(JSON.stringify(previous)!==JSON.stringify(input.expectedEntry))throw Error('Reminder journal changed. Refresh history.');
   if(previous.phase==='terminal'&&previous.status!=='unknown')return {entry:previous};
   if(!previous.attemptId||previous.phase!=='applying'&&previous.status!=='unknown')throw Error('Reminder recovery requires an admitted attempt');
-  const effect=validateReminderOperation(previous.record.operation),hash=(value:unknown)=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
+  const effect=isReminderCreate(previous.record.operation)?validateReminderCreate(previous.record.operation):validateReminderOperation(previous.record.operation),hash=(value:unknown)=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
   const binding=hash([input.scope,previous.record.ownerId,previous.record.agentId,previous.record.sessionId,previous.record.origin,previous.record.installationId,previous.record.enrollmentId,input.proposalId,previous.record.digest,previous.operationId]);
   if(binding!==input.bindingHash||hash(effect)!==previous.operationHash)throw Error('Reminder recovery binding changed');
-  const reminderResult=validateReminderResult(effect,input.reminderResult);
+  const reminderResult=isReminderCreate(effect)?validateReminderCreateResult(effect,input.reminderResult,previous.operationId):validateReminderResult(effect,input.reminderResult);
   const entry={...previous,phase:'terminal',status:'succeeded',summary:'Recovered the original saved reminder receipt. No action was repeated.',result:{operationId:previous.operationId,reminderResult}};
   entries[input.proposalId]=entry;write(entries);return {entry};
  }

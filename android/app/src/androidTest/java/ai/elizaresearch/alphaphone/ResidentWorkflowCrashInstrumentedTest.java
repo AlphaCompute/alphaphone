@@ -233,6 +233,10 @@ public final class ResidentWorkflowCrashInstrumentedTest {
    if(termination!=null){Object code=termination.opt("exitCode"),signal=termination.opt("signal");JSONObject fixed=new JSONObject();
     fixed.put("exitCode",(code instanceof Integer||code instanceof Long)&&((Number)code).longValue()>=0&&((Number)code).longValue()<=255?code:JSONObject.NULL);
     fixed.put("signal",signal==JSONObject.NULL?JSONObject.NULL:signal instanceof String&&Arrays.asList("SIGHUP","SIGINT","SIGQUIT","SIGILL","SIGTRAP","SIGABRT","SIGBUS","SIGFPE","SIGKILL","SIGSEGV","SIGPIPE","SIGALRM","SIGTERM","SIGSYS","SIGXCPU","SIGXFSZ").contains(signal)?signal:"unrecognized");
+    JSONObject identity=termination.optJSONObject("identity");
+    if(identity!=null){Object pid=identity.opt("pid"),uid=identity.opt("uid"),started=identity.opt("startedAt");
+     if((pid instanceof Integer||pid instanceof Long)&&(uid instanceof Integer||uid instanceof Long)&&(started instanceof Integer||started instanceof Long)&&((Number)pid).longValue()>0&&((Number)pid).longValue()<=Integer.MAX_VALUE&&((Number)uid).longValue()>=0&&((Number)uid).longValue()<=Integer.MAX_VALUE&&((Number)started).longValue()>0&&((Number)started).longValue()<=8640000000000000L)fixed.put("identity",new JSONObject().put("pid",pid).put("uid",uid).put("startedAt",started));
+    }
     safe.put("workerTermination",fixed);
    }
   }
@@ -263,7 +267,9 @@ public final class ResidentWorkflowCrashInstrumentedTest {
    JSONObject response=new JSONObject(ElizaAgentService.requestLocalAgent(args.toString()));
    safe.put("httpStatus",response.getInt("status"));
    String body=response.optString("body","");if(body.length()>65536){safe.put("bodyExceedsDiagnosticBound",true);return;}
-   if(response.getInt("status")==200){JSONObject value=new JSONObject(body).getJSONObject("execution");safe.put("execution",safeExecutionDiagnostic(value,executionId,workflowId,version)).put("executionReadAvailable",true);}
+   if(response.getInt("status")==200){JSONObject value=new JSONObject(body).getJSONObject("execution");JSONObject projected=safeExecutionDiagnostic(value,executionId,workflowId,version);safe.put("execution",projected).put("executionReadAvailable",true);
+    JSONObject termination=projected.optJSONObject("workerTermination");
+    if(projected.getBoolean("executionMatches")&&projected.getBoolean("workflowMatches")&&projected.getBoolean("versionMatches")&&termination!=null&&"SIGSYS".equals(termination.optString("signal"))&&termination.optJSONObject("identity")!=null)safe.put("workerCrash",WorkerCrashDiagnostic.capture(context,termination.getJSONObject("identity")));}
   } catch(Throwable unavailable){primary.addSuppressed(new AssertionError("Sanitized execution snapshot unavailable"));}
  }
  private JSONObject execution(String id)throws Exception{return request("/api/workflow/executions/"+id,null).getJSONObject("execution");}
