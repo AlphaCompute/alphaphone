@@ -2,6 +2,8 @@
 
 ## Current plan — October 3, resident agent and browser development
 
+The [combined-source report](mvp-stack-convergence.md) records the browser workstream integration; the native qualifications below remain separate.
+
 Use the [current requirement/evidence matrix](mvp-current-status.md) and [browser implementation review](mvp-browser-review.md) for the active plan. The primary agent is Android-resident, with the same real agent hosted locally for browser development. Cloud/remote services are optional; Nitro admission is not a prerequisite. Local scheduling requires honest missed-occurrence/restart recovery. Replacing the former powered-off hosted-execution requirement remains an explicit product acceptance decision, as recorded in the on-device plan; this review does not waive it. Hosted Cerebras text inference remains distinct from local orchestration and speech.
 
 Current work proceeds through notification receipt recovery, remaining speech ownership paths, actual local digest/reconnect qualification, redaction qualification and full current-source browser/design coverage. The source browser workstream skipped Android builds; that does not waive repository verification. The reviewed integration at `e8d6838f90307d201eb530cbfbc9a0d27f776b09` passes 218 repository tests, TypeScript/web verification, 74 targeted browser cases and both Android distribution builds. Hosted native qualification remains pending. Physical device and real-provider acceptance remain open. The older checkpoints below preserve historical results and do not override this current direction.

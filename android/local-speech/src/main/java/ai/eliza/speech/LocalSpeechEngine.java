@@ -58,6 +58,10 @@ public final class LocalSpeechEngine implements AutoCloseable {
  public synchronized Audio synthesize(String text,java.util.function.BooleanSupplier cancellation){
   return synthesizeInternal(text,Objects.requireNonNull(cancellation));
  }
+ /** Reviewed text never leaves this engine; unsupported trailing chunks fail before synthesis. */
+ public synchronized byte[] synthesizePassage(String text,java.util.function.BooleanSupplier cancellation){
+  check();return SpeechPassage.synthesize(text,chunk->SpeechText.prepare(chunk,words),chunk->{Audio audio=synthesizeInternal(chunk,cancellation);return new SpeechPassage.Pcm(audio.samples,audio.sampleRate);},cancellation);
+ }
  private Audio synthesizeInternal(String text,java.util.function.BooleanSupplier cancellation){
   check();
   if(cancellation!=null&&cancellation.getAsBoolean())throw new java.util.concurrent.CancellationException("Speech cancelled");

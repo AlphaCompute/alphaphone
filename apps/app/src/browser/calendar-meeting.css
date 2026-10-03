@@ -1,0 +1,11 @@
+.alpha-calendar-meeting{box-sizing:border-box;width:440px;max-width:calc(100vw - 24px);max-height:calc(100dvh - 24px);padding:0;border:1px solid var(--meeting-line,#ccc);border-radius:20px;background:var(--meeting-bg,#fff);color:var(--meeting-fg,#111);font:16px/1.4 'Public Sans',sans-serif;overflow:hidden}
+.alpha-calendar-meeting[open]{display:flex;flex-direction:column}
+.alpha-calendar-meeting::backdrop{background:#0008}
+.alpha-meeting-content{min-height:0;overflow:auto;overscroll-behavior:contain;padding:0 20px;overflow-wrap:anywhere}
+.alpha-calendar-meeting h2{font-size:20px;line-height:1.2}
+.alpha-meeting-controls{display:flex;flex-wrap:wrap;gap:10px}
+.alpha-calendar-meeting footer{flex-shrink:0;padding:12px 20px;border-top:1px solid var(--meeting-line,#ccc)}
+.alpha-calendar-meeting button{max-width:100%;min-height:44px;min-width:44px;padding:10px 12px;border:1px solid var(--meeting-line,#ccc);border-radius:12px;background:var(--meeting-s2,#eee);color:inherit;font:inherit;overflow-wrap:anywhere}
+.alpha-calendar-meeting footer button{width:100%;background:#0000ff;color:#fff;border-color:#0000ff}
+.alpha-calendar-meeting button:disabled{opacity:.6;cursor:wait}
+.alpha-calendar-meeting button:focus-visible{outline:3px solid #7777ff;outline-offset:2px}

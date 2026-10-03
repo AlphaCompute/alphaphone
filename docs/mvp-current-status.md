@@ -2,6 +2,8 @@
 
 The MVP is **not complete**. This is the current requirement/evidence index; [the browser review](mvp-browser-review.md) retains the chronological implementation record and failed attempts. Older build and enclave checkpoints are historical evidence, not the current acceptance checklist.
 
+See the [combined resident/browser implementation report](mvp-stack-convergence.md) for the current integration candidate and its exact runtime evidence. The combined implementation is published in PR 133 and promoted to local development; hosted checks and remote-main integration remain pending.
+
 ## Architecture and task boundaries
 
 - The primary agent runs on the Android device. Browser development runs the real agent on this computer through the private local bridge. Cloud and remote pairing remain optional connection paths. Neither Cloud login nor Nitro/KMS admission is required to start the primary local agent.
@@ -16,7 +18,7 @@ The MVP is **not complete**. This is the current requirement/evidence index; [th
 
 | Requirement | Current evidence | What remains / what would close it |
 | --- | --- | --- |
-| Local startup, ownership and runtime location | Native bridge/payload preparation and browser local-host transport are implemented. The live browser stack uses source manifest `383de39c44aa5be6b99dffb91d285ca21b1055a86dff6ba4b70cf701998846ac`; actual owner enrollment, conversations and workflow execution have been exercised. Workflow status now identifies embedded agent-runtime execution without asserting Cloud connectivity or local model inference; actual host status and retained digest UI pass after restart. See [local setup](local-agent-development.md). | Current native IPC/process lifecycle on the intended image; installed variant identity; start/stop, reboot and owner isolation under real device conditions. |
+| Local startup, ownership and runtime location | Native bridge/payload preparation and browser local-host transport are implemented. The live browser stack uses source manifest `7c80a10cbaecde14a627739e01e7b4e68f2e7e006dd140a3da9e3f9d626a49c7`; actual owner enrollment, conversations and workflow execution have been exercised. Workflow status now identifies embedded agent-runtime execution without asserting Cloud connectivity or local model inference; actual host status and retained digest UI pass after restart. See [local setup](local-agent-development.md). | Current native IPC/process lifecycle on the intended image; installed variant identity; start/stop, reboot and owner isolation under real device conditions. |
 | Browser/device development parity | The renderer shares reviewed device-action contracts; browser development provides disclosed native substitutes and durable local profile storage. [Parity ledger](browser-dev-parity.md) distinguishes those fixtures. | Complete current-source campaigns rather than combining passes from different snapshots. Native OS permission/provider behavior remains outside browser evidence. |
 | Typed/spoken chat and retained context | Live hosted-text conversations and selected Notes/Calendar/Reminder actions are recorded in the browser review. Interruption, context revision, enrollment and duplicate-operation handling are implemented. | Broad task quality, missing-detail clarification and performance on the target device; complete cross-view physical user journey. |
 | Speech, recording and Listen | Resident Listen now uses the shared owned driver, preserves execution-location checks and rejects late/stale completion. 144 repository tests and 50 owning browser cases pass at code `89b8b3e`. Real host Kokoro playback through the resident entry point completed once with zero errors. | Physical microphone/audio quality, unsupported-language behavior, Bluetooth/echo and measured latency. Paired/Cloud speech now shares the owned playback driver; controlled-port tests cover identity, cancellation, replacement and credential rotation. Real authenticated provider/audio acceptance remains separate. |
@@ -34,6 +36,10 @@ The MVP is **not complete**. This is the current requirement/evidence index; [th
 | Source delivery and release | Reviewed changes are pushed in stacked PRs; the pinned vendor and pristine baseline remain untouched. Explicit patches reproduce the runtime. | Upstream review/consolidation, release/license handoff, current exact-head hosted qualification, clean independent setup and the physical pilot acceptance package. Open PRs are not merged delivery. |
 
 ## Verification checkpoints
+
+- Run `37123865828` succeeded at exact head `4c825c6b952ffc34c2f64c9039a524cae758ad26`, including the source-repair fixture. Later dialog/viewer and reading lifecycle changes still require current-head hosted qualification.
+
+- Run `37123330883` succeeded at exact head `d2455c6f3fe05ad2ce20108e8c64cba2c86724eb`, including stored/encoded credential protection. It predates the source-repair fixture and later dialog/viewer changes; their current-head hosted qualification remains open.
 
 - Run `37122135848` succeeded at exact head `21337dc6aa0a34ae9bfa9e32a80d2128f248ce08`, including URI credentials. Stored/encoded credential and fixture changes remain newer than this checkpoint. Android foundation smoke failures remain separate and outside the requested browser pass.
 
@@ -68,3 +74,18 @@ The MVP is **not complete**. This is the current requirement/evidence index; [th
 This order preserves the full MVP goal. It is not a smaller definition of completion, and this document does not mark any missing gate as waived.
 
 October 3 browser subview update: the local guest-response dialog now supports bounded scrolling, visible save/cancel actions, themed controls and long names at 150% text. Fourteen focused Chromium/WebKit checks and repository verification passed; see the browser review for evidence. Other subview audits and current-head hosted qualification remain open.
+
+October 3 meeting subview update: long-title/guest horizontal overflow was reproduced and fixed. The local browser preview has bounded themed content and a persistent Leave meeting action. All 24 owning Chromium/WebKit cases and repository verification pass; physical media and real connected meetings are not inferred from this local-only preview.
+
+October 3 selected-document update: bounded themed chrome and keyboard-scrollable filenames replace the overflowing viewer; Done stays available and owned cleanup handles dismissal, background, replacement and forgotten selections. The 28-case Chromium/WebKit campaign preserves sandboxed imported-HTML behavior and passes alongside repository verification. Current native file-provider acceptance remains open.
+
+October 3 current-source privacy/action qualification: consumer manifest `e413f3cd45433c1d47abda5d32f4c227118b48240ff88d625cc6c9a9a4167836` passes a real Cerebras reviewed local-note journey in an isolated profile with both swaps enabled. Zero notes before approval, one afterward and the same record after reload; exact contacts restored, credential excluded. All nine captured outbound checks exclude the raw synthetic contact/credential values. Source verification passes before/after. This closes the prior-action snapshot gap; native/broad task qualification and default enablement remain open, and the live user's switches remain off.
+
+### Resident native Browser reading: identified gap and source repair
+
+Source inspection on October 3 confirms that native Browser Read aloud still obtains `createPairedVoice()` and `getPairedVoiceBinding()` in `prototype/browser-adapter.ts`; the latter explicitly returns null for the resident connection. Consequently a resident user reaches the paired-agent requirement rather than local reading. This is an implementation gap, not only a physical-device acceptance gap.
+
+Repair must retain the native isolated-document extraction and explicit review in `BrowserReading`, introduce a distinct device-local approval binding and token-consumption route, preflight the entire reviewed passage before local speech, and preserve request-scoped Stop/navigation/background/owner-change cancellation. The existing native local engine accepts bounded text chunks; passing an entire 5,000-character excerpt into its 500-character entrypoint or exporting unreviewed text would not complete the requirement. Verify renderer selection with controlled native ports and native token/chunk lifecycle source harnesses; keep Android builds excluded and physical playback acceptance separate. The implementation and source qualification below address this route; installed-device acceptance remains open.
+
+
+Resident Browser reading source repair: the renderer now chooses a device-bound route for a resident session. Native review labels on-device execution; the one-use token remains bound to route, owner/session, expiry and current document. Reviewed text stays native and uses bounded local chunk synthesis with full preflight before any audio generation. Stop/navigation/background/connection changes retain request ownership. Twenty-four owning checks, 86 browser reading/privacy checks and repository verification (164 tests, zero skips, TypeScript/web build) pass. Four changed Java sources compile against the existing SDK/dependency outputs. This is not an APK build, clean native build, or physical speech/latency acceptance.
