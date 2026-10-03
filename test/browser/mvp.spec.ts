@@ -146,6 +146,12 @@ test('MVP mock account and privacy journeys exclude Contacts controls', async ({
 });
 
 test('MVP mock digest and fallback advertise only retained views', async ({page}) => {
+  await page.goto('/?mode=mock');
+  const attention=page.getByRole('button',{name:'1 item needs your attention',exact:true});
+  await expect(attention).toHaveText(/1\s*JP/);
+  await expect(attention).not.toContainText(/MC|PN/);
+  await attention.click();
+  await expect(page.getByText('1 item needs your attention.',{exact:true})).toBeVisible();
   await page.goto('/?mode=mock&start=sheet');
   const composer=page.getByRole('textbox',{name:'Message Alpha',exact:true});
   await composer.fill('zzzzzz unknown request');await composer.press('Enter');
