@@ -25,6 +25,6 @@ Evidence is retained under `artifacts/calendar-preferences-review/test-results/s
 
 ## Remaining delivery and acceptance
 
-The combined branch must be published and its exact-head hosted browser campaign must reach a terminal result. Remote main is not synchronized merely by opening a PR. Browser development should restart on this verified combined runtime while retaining the existing profile and current redaction defaults.
+The combined implementation is published in [PR 133](https://github.com/AlphaCompute/alphaphone/pull/133), implementation commit `ca40a0566d81844820b7ac3ceba29e98a12a8d9d`. Its hosted browser campaign is pending; remote main is not synchronized merely by opening a PR. The root checkout has been fast-forwarded and browser development restarted on the verified combined runtime at port 5317, retaining the existing profile and redaction-off defaults. On October 3 at 20:36 UTC, owner authentication, one agent, embedded workflows, Whisper and Kokoro all reported ready. Initial readiness returned 503 during startup; the subsequent completed check passed.
 
 The [current status matrix](mvp-current-status.md) remains the complete requirement index. Current native IPC/lifecycle, installed distribution identity, physical speech/alarms, actual authorized Cloud/Gmail journeys, signed AOSP and device/user acceptance remain separate open gates. Android builds remain excluded by the current request. Browser/controlled-port fixtures do not close these gates.
