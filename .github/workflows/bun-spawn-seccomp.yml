@@ -54,7 +54,7 @@ jobs:
           docker run --rm --cap-add SYS_PTRACE \
             -v "$GITHUB_WORKSPACE:$GITHUB_WORKSPACE" -v "$RUNNER_TEMP:$RUNNER_TEMP" \
             -w "$GITHUB_WORKSPACE" -e ALPHA_REPRO_BUN alpine:3.21 \
-            sh -ec 'apk add --no-cache python3 gcc musl-dev linux-headers libstdc++ strace git; python3 scripts/ci/reproduce-bun-spawn-seccomp.py'
+            sh -ec 'apk add --no-cache python3 gcc musl-dev linux-headers libstdc++ strace git; git config --global --add safe.directory "$PWD/vendor/eliza"; python3 scripts/ci/reproduce-bun-spawn-seccomp.py'
       - uses: actions/upload-artifact@v4
         if: always()
         with:
