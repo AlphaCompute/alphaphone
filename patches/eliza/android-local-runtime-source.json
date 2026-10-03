@@ -82,7 +82,8 @@
     "plugins/plugin-assistant/build.ts": "299312aa315bcab9dfe9fa22cdece81dbd95daa757fc406c918dd4fd2f874407",
     "plugins/plugin-assistant/src/services/device-actions/clock-review-executor.ts": "b12138a2d3b64b6694f6505051542cb14d8d53491818cab70d8feff9193df13f",
     "plugins/plugin-assistant/test/clock-review-export.integration.test.ts": "d2cf48d33770cc3281398787241c910cc9adb363cf5cf3fe6cfc872a6181c324",
-    "plugins/plugin-assistant/vitest.clock-review.config.ts": "9f6158e9f05de7fe550c6b4523b9e8f8bcb26e886f74feabed8eac694ac4851c"
+    "plugins/plugin-assistant/vitest.clock-review.config.ts": "9f6158e9f05de7fe550c6b4523b9e8f8bcb26e886f74feabed8eac694ac4851c",
+    "packages/app/src/api/standalone-whisper-routes.ts": "883c7894fc4c9ad52674a7fec3d9c3fa10f4029e27fedd2e54cfd858a2609ae9"
   },
   "patches": [
     "android-secure-store-socket.patch",
@@ -117,7 +118,8 @@
     "egress-encoded-credentials.patch",
     "stage1-source-repair-fixture.patch",
     "android-preserve-sigsys.patch",
-    "clock-native-reviewed-executor.patch"
+    "clock-native-reviewed-executor.patch",
+    "standalone-whisper-backend.patch"
   ],
   "patchHashes": {
     "android-secure-store-socket.patch": "457ea3d0b91c80c53c4bd3db25bb85cea6079d87c5ee2b02a96757e0a31ae900",

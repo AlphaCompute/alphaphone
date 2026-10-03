@@ -55,6 +55,9 @@ for(const outcome of ['review','cancel','disconnect'] as const)test(`rendered br
 });
 
 test('real browser capture transcribes synthetic speech through the actual local agent',async({page})=>{
+ // This journey records, transcribes, and synthesizes three separate playbacks.
+ // Preserve each stage's deadline without truncating it at the suite's 30s default.
+ test.setTimeout(120000);
  test.skip(!process.env.ALPHA_SPEECH_FIXTURE,'Provide a locally generated synthetic WAV for the real host service check');
  await attach(page,true);
  const bytes=readFileSync(process.env.ALPHA_SPEECH_FIXTURE!).toString('base64');
