@@ -11,7 +11,8 @@ test('native workflow notices preserve at-most-once delivery across crashes and 
  const root=resolve(import.meta.dirname,'..'),temporary=mkdtempSync(join(tmpdir(),'workflow-notice-'));
  const java=process.env.JAVA_HOME||(process.platform==='darwin'?'/opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home':'');const binary=name=>java?join(java,'bin',name):name;
  try{
-  execFileSync(binary('javac'),['--release','11','-cp',jsonJar,'-d',temporary,join(root,'android/app/src/main/java/ai/elizaresearch/alphaphone/WorkflowNoticeDelivery.java'),join(root,'test/fixtures/WorkflowNoticeDeliveryTest.java')],{timeout:20000});
+  execFileSync(binary('javac'),['--release','11','-cp',jsonJar,'-d',temporary,join(root,'android/app/src/main/java/ai/elizaresearch/alphaphone/WorkflowNoticeDelivery.java'),join(root,'test/fixtures/WorkflowNoticeDeliveryTest.java'),join(root,'android/app/src/main/java/ai/elizaresearch/alphaphone/WorkflowNoticeRecovery.java'),join(root,'test/fixtures/WorkflowNoticeRecoveryTest.java')],{timeout:20000});
   assert.match(execFileSync(binary('java'),['-cp',temporary+':'+jsonJar,'ai.elizaresearch.alphaphone.WorkflowNoticeDeliveryTest'],{encoding:'utf8',timeout:20000}),/^PASS workflow notices/);
+  assert.match(execFileSync(binary('java'),['-cp',temporary+':'+jsonJar,'ai.elizaresearch.alphaphone.WorkflowNoticeRecoveryTest'],{encoding:'utf8',timeout:20000}),/^PASS workflow recovery/);
  }finally{rmSync(temporary,{recursive:true,force:true});}
 });
