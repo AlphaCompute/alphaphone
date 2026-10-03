@@ -1,0 +1,34 @@
+import {recognizeLocalText} from '../prototype/local-ocr';
+/** Review local source text before placing it in the conversation composer. */
+export function reviewContentQuestion(input:{name:string;text:string;current:()=>boolean;compose:(text:string)=>void;image?:(signal:AbortSignal)=>Promise<Blob>}) {
+ const dialog=document.createElement('dialog');dialog.setAttribute('aria-label','Ask about selected content');
+ dialog.style.cssText='width:min(560px,90vw);max-height:85dvh;overflow:auto;box-sizing:border-box;padding:24px;border-radius:20px;background:var(--bg,#fff);color:var(--fg,#111);font:inherit';
+ const heading=document.createElement('h2');heading.textContent='Ask about '+input.name;
+ const description=document.createElement('p');description.textContent='Review the excerpt and your question. Continue places them in your conversation draft; Send shares that draft with your selected agent.';
+ const controller=new AbortController();let previewUrl:string|undefined;
+ const question=document.createElement('textarea');question.setAttribute('aria-label','Question about content');question.value=input.image?'Help me understand this image text or description.':'Summarize this excerpt.';question.maxLength=2000;question.rows=2;
+ const excerpt=document.createElement('textarea');excerpt.setAttribute('aria-label','Content excerpt');excerpt.value=input.text.slice(0,12000);excerpt.maxLength=12000;excerpt.rows=10;
+ for(const field of [question,excerpt])field.style.cssText='box-sizing:border-box;width:100%;font:inherit;background:inherit;color:inherit;padding:12px;margin-bottom:12px';
+ const status=document.createElement('p');status.setAttribute('role','status');status.textContent=input.text.length>12000?'Showing the first 12,000 characters. Edit the excerpt to choose what to discuss.':'Edit the excerpt to choose what to discuss.';
+ const proceed=document.createElement('button');proceed.textContent='Use in conversation';
+ const cancel=document.createElement('button');cancel.textContent='Cancel';
+ for(const button of [proceed,cancel]){button.type='button';button.style.cssText='min-height:44px;margin:4px;padding:8px 16px;font:inherit';}
+ let closed=false;const previous=document.activeElement;
+ const close=()=>{if(closed)return;closed=true;controller.abort();if(previewUrl)URL.revokeObjectURL(previewUrl);dialog.remove();window.removeEventListener('pagehide',close);window.removeEventListener('alpha-back',back,true);document.removeEventListener('visibilitychange',visibility);if(previous instanceof HTMLElement&&previous.isConnected)previous.focus();};
+ const back=(event:Event)=>{event.preventDefault();event.stopImmediatePropagation();close();};
+ const visibility=()=>{if(document.hidden)close();};
+ const update=()=>{proceed.disabled=excerpt.disabled||!question.value.trim()||!excerpt.value.trim();};question.oninput=update;excerpt.oninput=update;update();
+ proceed.onclick=()=>{if(closed||proceed.disabled)return;if(!input.current()){status.textContent='Selection changed. Close this review and select the content again.';proceed.disabled=true;return;}const draft=question.value.trim()+'\n\nSource: '+input.name+'\n\n'+excerpt.value.trim();close();input.compose(draft);};
+ cancel.onclick=close;dialog.addEventListener('cancel',event=>{event.preventDefault();close();});window.addEventListener('pagehide',close);window.addEventListener('alpha-back',back,true);document.addEventListener('visibilitychange',visibility);
+ dialog.append(heading,description);
+ if(input.image){
+  const preview=document.createElement('img');preview.alt='Image for question review';preview.style.cssText='display:block;width:100%;max-height:180px;object-fit:contain';preview.hidden=true;
+  const extract=document.createElement('button');extract.type='button';extract.textContent='Extract text locally';extract.disabled=true;extract.style.cssText='min-height:44px;margin:8px;padding:8px 16px;font:inherit';
+  const explanation=document.createElement('p');explanation.textContent='Describe the image below or extract its English text on this device. Only the text you review goes into the question.';
+  dialog.append(preview,explanation,extract);let image:Blob|undefined;
+  status.textContent='Preparing image…';
+  void input.image(controller.signal).then(blob=>{if(closed)return;if(!input.current()){close();return;}image=blob;previewUrl=URL.createObjectURL(blob);preview.src=previewUrl;preview.hidden=false;extract.disabled=false;status.textContent='Describe the image or choose Extract text locally.';},()=>{if(!closed)status.textContent='Enter a description below, or close and select the image again.';});
+  extract.onclick=()=>{if(!image||closed||extract.disabled||!input.current())return;extract.disabled=true;excerpt.disabled=true;proceed.disabled=true;status.textContent='Reading image text locally…';void recognizeLocalText(image,controller.signal,progress=>{if(!closed)status.textContent=`Reading locally · ${Math.round(progress.progress*100)}%`;}).then(result=>{if(closed)return;if(!input.current()){close();return;}excerpt.value=result.text.slice(0,12000);status.textContent=result.text?'Review and correct the extracted text before continuing.':'Describe the image below or enter the text you want to discuss.';},()=>{if(!closed)status.textContent='Enter the text or describe the image below.';}).finally(()=>{if(!closed){extract.disabled=false;excerpt.disabled=false;update();}});};
+ }
+ dialog.append(question,excerpt,status,proceed,cancel);(document.querySelector('.os')||document.body).append(dialog);dialog.showModal();question.focus();return close;
+}

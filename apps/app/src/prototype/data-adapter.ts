@@ -1,3 +1,4 @@
+import {browserDevProfile} from '../browser/dev-profile';
 type Bag = Record<string, any>;
 const installed = new WeakSet<object>();
 
@@ -57,6 +58,7 @@ export function installPrototypeDataAdapter(Component: any, views: Record<string
       : view === 'files' || view === 'browser' || view === 'inbox' ? 'Open Notes'
       : view === 'phone' || view === 'messages' ? 'Open Contacts' : 'Open Calendar';
     const suggestions = ['Create a note', 'Set a reminder', first];
+    const unread=browserDevProfile?(this.vget('inbox').mails||[]).filter((mail:Bag)=>mail.unread&&!mail.arch&&!mail.del).length:0;
     const now = Date.now();
     const agenda = (this.vget('calendar').events || [])
       .filter((event: Bag) => event.reminderStatus !== 'completed')
@@ -75,11 +77,11 @@ export function installPrototypeDataAdapter(Component: any, views: Record<string
       sugg: suggestions.map(label => ({ label, go: () => this.send(label) })),
       homeCalendarLabel: agenda ? `Open calendar event: ${agenda.event.title}` : 'Open your calendar',
       homeCalendarTime: time, homeCalendarTitle: agenda?.event.title || 'Your calendar',
-      homeAttentionLabel: 'Accounts are not connected', homeAttentionCount: '—',
+      homeAttentionLabel: browserDevProfile?'Open Inbox: '+unread+' unread email'+(unread===1?'':'s'):'Accounts are not connected', homeAttentionCount: browserDevProfile?String(unread):'—',
       homeWorkflowLabel: 'Open workflows', homeWorkflowTitle: 'Workflows', homeWorkflowTime: 'Review', homePeopleVisibility: 'hidden',
       goCalendar: () => this.openView('calendar', agenda ? {open:agenda.event.id, day:agenda.event.off, openDay:agenda.event.off} : undefined),
       goFlows: () => this.openView('workflows'),
-      goTriage: () => this.toast('Connect your accounts to review what needs your attention.'),
+      goTriage: () => browserDevProfile?this.openView('inbox',{acct:'all',open:null,q:null}):this.toast('Connect your accounts to review what needs your attention.'),
       clearAll: () => this.setState({ shade: false }),
     };
   };
