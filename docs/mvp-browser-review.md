@@ -2137,3 +2137,10 @@ Validation: **24 owning source/controlled-port checks**, **86 Chromium/WebKit re
 The reviewed attachment dialog now uses bounded themed chrome, wrapping and keyboard-scrollable filenames/text, and persistent Done/Download actions. A capture-phase Back handler dismisses only its owned viewer before underlying navigation and restores originating focus. Replacement, cancellation and background cleanup preserve exact object-URL ownership. Existing attachment byte/hash checks and sandboxed non-text previews are unchanged.
 
 All 48 owning Chromium/WebKit cases pass, including eight compact light/dark, 150%-text cases, exact downloaded bytes, reload and replacement cleanup. The 360px-height dark WebKit result was visually inspected. Repository verification passes 223 tests with zero skips, TypeScript and the production web build. Evidence: review worktree `test-results/attachment-review/`, `test-results/attachment-review.log` and `test-results/attachment-verify.log`. This is browser implementation evidence, not real-provider delivery or native attachment acceptance. No Android build ran.
+
+
+### Shared operation review accessibility — October 3
+
+The browser operation confirmation used by Calendar now has theme-aware controls of at least 44px, wrapping review text and a bounded scroll region with persistent Confirm/Cancel actions. Keyboard users can scroll the detail region. Background and device-state transitions cancel the pending review, and hidden/background/locked admission refuses confirmation. Existing Back cancellation and focus restoration remain owned by the dialog.
+
+Validation: 110 Chromium/WebKit layout and reminder-review cases plus 32 direct Calendar assistant/recurring-series cases pass; repository verification passes 223 tests, zero skips, TypeScript and web build. The compact dark WebKit screenshot was inspected with 150% text. Evidence: `test-results/operation-review/`, `operation-review.log`, `operation-calendar.log` and `operation-verify.log` in the review worktree. No Android build or physical-provider acceptance is claimed.
