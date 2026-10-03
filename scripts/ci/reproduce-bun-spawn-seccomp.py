@@ -4,6 +4,7 @@ import os
 import pathlib
 import platform
 import resource
+import signal
 import subprocess
 import tempfile
 
@@ -68,15 +69,21 @@ child.on('close',(code,signal)=>console.log(JSON.stringify({code,signal,ready:ou
            'BUN_FEATURE_FLAG_FORCE_WAITER_THREAD': '1', 'BUN_FEATURE_FLAG_DISABLE_SPAWNSYNC_FAST_PATH': '1'}
     cases = {'baseline': ['bun', str(root/'spawn.mjs')],
              'trap_start': [str(root/'filter'), '1', 'bun', '--version'],
-             'trap_spawn': [str(root/'filter'), '1', 'bun', str(root/'spawn.mjs')],
+             'trap_spawn': ['strace', '-ff', '-o', str(output.resolve()/'trap-spawn.trace'),
+                            '-e', 'trace=close_range,rt_sigaction,rt_sigprocmask,clone,clone3,execve,wait4,waitid',
+                            '-e', 'signal=SIGSYS', str(root/'filter'), '1', 'bun', str(root/'spawn.mjs')],
              'errno_spawn': [str(root/'filter'), '0', 'bun', str(root/'spawn.mjs')]}
     results = {'revision': revision, 'syntheticLinuxRestriction': True, 'androidAcceptance': False, 'cases': {}}
     for name, command in cases.items():
+        process = subprocess.Popen(command, env=env, text=True, stdout=subprocess.PIPE,
+                                   stderr=subprocess.PIPE, start_new_session=True)
         try:
-            result = subprocess.run(command, env=env, text=True, capture_output=True, timeout=30)
-            results['cases'][name] = {'returncode': result.returncode, 'stdout': result.stdout[:4096], 'stderr': result.stderr[:4096]}
+            stdout, stderr = process.communicate(timeout=30)
+            results['cases'][name] = {'returncode': process.returncode, 'stdout': stdout[:4096], 'stderr': stderr[:4096]}
         except subprocess.TimeoutExpired:
-            results['cases'][name] = {'timedOut': True}
+            os.killpg(process.pid, signal.SIGKILL)
+            stdout, stderr = process.communicate()
+            results['cases'][name] = {'timedOut': True, 'stdout': stdout[:4096], 'stderr': stderr[:4096]}
     (output/'result.json').write_text(json.dumps(results, indent=2)+'\n')
     print(json.dumps(results, indent=2))
     for name in ['baseline', 'errno_spawn']:
