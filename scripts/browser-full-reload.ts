@@ -7,7 +7,11 @@ export function browserFullReload():Plugin {
  const fingerprints=new Map<string,string>();
  const fingerprint=(file:string)=>createHash('sha256').update(readFileSync(file)).digest('hex');
  const snapshot=(directory:string)=>{for(const entry of readdirSync(directory,{withFileTypes:true})){const file=path.join(directory,entry.name);if(entry.isDirectory())snapshot(file);else if(entry.isFile())fingerprints.set(file,fingerprint(file));}};
- return {name:'alpha-browser-full-reload',enforce:'pre',configureServer(server){
+ return {name:'alpha-browser-full-reload',enforce:'pre',config(){
+   // Native macOS notifications can miss edits and Git's atomic replacements.
+   // Polling also lets Vite invalidate its module graph before the reload hook.
+   if(process.platform==='darwin')return {server:{watch:{usePolling:true,interval:250}}};
+ },configureServer(server){
    // macOS can deliver queued filesystem notifications after the new server starts.
    // Compare bytes, not event timestamps, so real edits with preserved mtimes still work.
    snapshot(path.join(realpathSync(server.config.root),'src'));
