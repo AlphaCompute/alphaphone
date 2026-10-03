@@ -12,6 +12,7 @@ test('native readiness accepts rendered mock mode and requires the live navigati
  await expect.poll(()=>page.evaluate(query)).toBe('mock');
  await page.getByRole('button',{name:'Exit mock mode',exact:true}).click();
  await expect.poll(()=>page.evaluate(query)).toBe('live');
- await page.evaluate(()=>{delete document.documentElement.dataset.activeView;});
- expect(await page.evaluate(query)).toBeNull();
+ // Keep marker removal and the exact native query in one browser task: the
+ // live renderer is allowed to republish its navigation marker between tasks.
+ expect(await page.evaluate(query=>{delete document.documentElement.dataset.activeView;return (0,eval)(query);},query)).toBeNull();
 });

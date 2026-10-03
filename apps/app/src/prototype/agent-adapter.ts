@@ -232,7 +232,7 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
       const result=await DailyApps.reminderOperationReceipt({operation,operationId,bindingHash});signal.throwIfAborted();
       return result.status==='succeeded'?{status:'succeeded',reminderResult:validateReminderResult(operation,result.result)}:{status:'unknown'};
     });
-    connectionController.setDeviceExecutor(async (operation, operationId, expectedContext, signal, bindingHash) => {
+    connectionController.setDeviceExecutor(async (operation, operationId, expectedContext, signal, bindingHash, workflowRoute) => {
       signal.throwIfAborted(); context(this);
       if (!this.live || JSON.stringify(alphaClient.getState().context) !== JSON.stringify(expectedContext)) throw new Error('Phone context changed');
       if(isClockOperation(operation)){
@@ -297,9 +297,9 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
         if(connectionController.getWorkflowPresentationProtocol()!==2)return {status:'failed',summary:'This device has not negotiated workflow presentation support.'};
         signal.throwIfAborted();context(this);if(!this.live||document.hidden||JSON.stringify(alphaClient.getState().context)!==JSON.stringify(expectedContext)||expectedContext.sensitive||expectedContext.view!=='workflows')throw Error('Workflow review context changed');
         if(operation.type==='post_notification'&&Capacitor.isNativePlatform()){
-          const notices=registerPlugin<{postWorkflow(input:{operationId:string;bindingHash:string;title:string;body:string}):Promise<{status:unknown}>}>('AlphaNotifications');
-          if(!bindingHash)throw Error('Workflow notification binding is missing');
-          const result=await notices.postWorkflow({operationId,bindingHash,title:operation.title,body:operation.body});
+          const notices=registerPlugin<{postWorkflow(input:{operationId:string;bindingHash:string;title:string;body:string;route:NonNullable<typeof workflowRoute>}):Promise<{status:unknown}>}>('AlphaNotifications');
+          if(!bindingHash||!workflowRoute)throw Error('Workflow notification binding is missing');
+          const result=await notices.postWorkflow({operationId,bindingHash,title:operation.title,body:operation.body,route:workflowRoute});
           signal.throwIfAborted();
           const status=result.status==='succeeded'?'succeeded':result.status==='failed'?'failed':'unknown';
           return {status,summary:status==='succeeded'?'Posted the reviewed notification on this device.':status==='failed'?'Notification delivery is unavailable on this device.':'Notification outcome is unconfirmed. It will not be repeated automatically.'};
