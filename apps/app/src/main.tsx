@@ -4,7 +4,7 @@ import {bindBrowserSpeechConnection} from './browser/agent-speech';
 import { pauseLiveActivityForMock } from './runtime/mock-admission';
 import { installBrowserDeviceAdapter } from './browser/device-adapter';
 import { BrowserDeviceControls } from './browser/device-controls';
-import { browserDevProfile } from './browser/dev-profile';
+import { browserDevProfile,developmentAgentWorkflows } from './browser/dev-profile';
 import { captureSimulatedApps, installSimulatedApps } from './browser/simulated-apps';
 import {HostedDigestPanel} from './runtime/hosted-digest-ui';
 import { installClockAdapter } from './prototype/clock-adapter';
@@ -73,6 +73,7 @@ if (!fixture) {
   if(!browserDevProfile) installWorkflowAdapter(Component, VIEWS);
 }
 installSimulatedApps(Component,VIEWS,simulatedApps);
+if(developmentAgentWorkflows)installWorkflowAdapter(Component,VIEWS);
 installClockAdapter(Component, VIEWS, { simulated: fixture, browser: !isAndroid });
 let shell: any;
 function Phone() {
