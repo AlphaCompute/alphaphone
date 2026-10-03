@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "commit": "92fc988bbc2502b6dab5976014973bbe510b5045",
+  "files": {
+    "packages/app/platforms/android/app/src/main/java/ai/elizaos/app/ElizaAgentService.java": "8959c145e0066518626ff02730513fc02f606f0efa75bf5abd62bb59ac0c4431",
+    "packages/app/platforms/android/app/src/main/java/ai/elizaos/app/IpcStartupRecovery.java": "47145e25d52398c5b9d8737fd1ef6e841ce7e4c0efc6218cfa3c1858d5874f4f",
+    "packages/app/platforms/android/app/src/main/java/ai/elizaos/app/WorkflowSurvivorInventory.java": "9ad1015c3dd7882538dc03b76e259f6cce7fc7083bae8e298d535c8b429d3b9e"
+  },
+  "compatibilityPatch": {
+    "patch": "android-resident-exact-stop.patch",
+    "patchSha256": "aa8ec9f2d3bbc9d61ed7ce6735ef5c11483c3ed24d74d3e30896b9de864ba0d5",
+    "files": {
+      "packages/app/platforms/android/app/src/main/java/ai/elizaos/app/ElizaAgentService.java": {
+        "sourceSha256": "8959c145e0066518626ff02730513fc02f606f0efa75bf5abd62bb59ac0c4431",
+        "patchedSha256": "990f1c10f3000a6d30ea51c2432ae34ccba62122b7424c8926ecf0b31e9e8bdd"
+      },
+      "packages/app/platforms/android/app/src/main/java/ai/elizaos/app/WorkflowSurvivorInventory.java": {
+        "sourceSha256": "9ad1015c3dd7882538dc03b76e259f6cce7fc7083bae8e298d535c8b429d3b9e",
+        "patchedSha256": "773955d3892bd69da45b448ea716dc5085c55de0b8b24d89efa074786d9f0255"
+      }
+    }
+  }
+}

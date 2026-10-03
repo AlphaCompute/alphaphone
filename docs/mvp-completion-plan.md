@@ -2,6 +2,8 @@
 
 ## Current plan — October 3, resident agent and browser development
 
+The [combined-source report](mvp-stack-convergence.md) tracks integration of the previously separate resident/browser branches.
+
 Use the [current requirement/evidence matrix](mvp-current-status.md) and [browser implementation review](mvp-browser-review.md) for the active plan. The primary agent is Android-resident, with the same real agent hosted locally for browser development. Cloud/remote services are optional; Nitro admission is not a prerequisite. Local scheduling requires honest missed-occurrence/restart recovery, not a claim that a powered-off phone runs code. Hosted Cerebras text inference remains distinct from local orchestration and speech.
 
 Current work proceeds through notification receipt recovery, remaining speech ownership paths, actual local digest/reconnect qualification, redaction qualification and full current-source browser/design coverage. Android builds remain skipped for this browser-focused pass. Physical device and real-provider acceptance remain open. The older checkpoints below preserve historical results and do not override this current direction.

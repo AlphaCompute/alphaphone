@@ -30,11 +30,14 @@ test('Home cancels proposal authoring queued behind storage without publishing i
 for(const action of ['set','show','dismiss','snooze'] as const)test(`approved development Clock ${action} reaches the browser Clock`,async({page})=>{
  await setup(page);
  const operation=await page.evaluate(action=>action==='set'?{type:'clock_handoff',action,hour:7,minute:30,label:'Agent alarm',timeZone:Intl.DateTimeFormat().resolvedOptions().timeZone}:action==='snooze'?{type:'clock_handoff',action,snoozeMinutes:12}:{type:'clock_handoff',action},action);
- if(action==='dismiss'||action==='snooze')await page.evaluate(async()=>{const {DailyApps}=await import('/src/daily.ts');await DailyApps.scheduleReminder({id:'alarm_reviewed',title:'Ringing alarm',at:Date.now()+60000});const key='alpha.browser.reminders.v1',data=JSON.parse(localStorage.getItem(key)!);data.reminders[0].status='posted';data.reminders[0].at=Date.now()-1000;localStorage.setItem(key,JSON.stringify(data));});
- // A posted alarm opens its own modal asynchronously. Close its presentation
- // before reviewing the agent action; the alarm remains posted for the handoff.
- if(action==='dismiss'||action==='snooze'){const alarm=page.getByRole('dialog',{name:'Clock alarms',exact:true});await expect(alarm).toBeVisible();await alarm.getByRole('button',{name:'Close Clock',exact:true}).click();await expect(alarm).toHaveCount(0);expect(await page.evaluate(()=>JSON.parse(localStorage.getItem('alpha.browser.reminders.v1')!).reminders[0].status)).toBe('posted');}
  await page.getByRole('textbox',{name:'Action JSON'}).fill(JSON.stringify(operation));await queue(page);await page.getByRole('button',{name:'Close connection settings'}).click();await page.getByRole('button',{name:'Home',exact:true}).click();await page.getByRole('textbox',{name:'Ask Alpha',exact:true}).fill('Review Clock action');await page.getByRole('textbox',{name:'Ask Alpha',exact:true}).press('Enter');await expect(page.getByText('Approve: clock handoff',{exact:true})).toBeVisible();
+ // Seed the ringing alarm after navigation, then close its modal explicitly.
+ // Closing Clock silences its UI without dismissing or snoozing the alarm.
+ if(action==='dismiss'||action==='snooze'){
+  await page.evaluate(async()=>{const {DailyApps}=await import('/src/daily.ts');await DailyApps.scheduleReminder({id:'alarm_reviewed',title:'Ringing alarm',at:Date.now()+60000});const key='alpha.browser.reminders.v1',data=JSON.parse(localStorage.getItem(key)!);data.reminders[0].status='posted';data.reminders[0].at=Date.now()-1000;localStorage.setItem(key,JSON.stringify(data));});
+  const clock=page.getByRole('dialog',{name:'Clock alarms',exact:true});await expect(clock).toBeVisible();await clock.getByRole('button',{name:'Close Clock',exact:true}).click();await expect(clock).toHaveCount(0);
+  expect(await page.evaluate(()=>JSON.parse(localStorage.getItem('alpha.browser.reminders.v1')!).reminders[0].status)).toBe('posted');
+ }
  expect((await state(page)).journal).toHaveLength(0);await page.getByText('Approve: clock handoff',{exact:true}).click();await expect.poll(async()=>(await state(page)).proposals[0].state).toBe('completed');expect((await state(page)).journal[0].result.clockResult).toEqual({kind:'clock-handoff',action,status:'opened'});
  if(action==='show')await expect(page.getByRole('dialog',{name:'Clock alarms',exact:true})).toBeVisible();
  else{const rows=await page.evaluate(()=>JSON.parse(localStorage.getItem('alpha.browser.reminders.v1')!).reminders);expect(rows).toHaveLength(1);expect(rows[0].status).toBe(action==='dismiss'?'completed':'scheduled');if(action==='set')expect(rows[0].title).toBe('Agent alarm');if(action==='snooze')expect(rows[0].at-Date.now()).toBeGreaterThan(11*60000);}

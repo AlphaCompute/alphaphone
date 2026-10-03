@@ -2,9 +2,10 @@
 // fixture only. This is not a production provider or a retail-device installer.
 import fs from 'node:fs';
 import path from 'node:path';
-import { createHash } from 'node:crypto';
-import { execFileSync } from 'node:child_process';
+import { createHash, randomUUID } from 'node:crypto';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
+import { readBootDeviceIdentity } from './ci-webview-boot-device.mjs';
 import { androidEnv } from './toolchain.mjs';
 import { requireHostedFixtureEnvironment, assertFixtureIdentity } from './ci-emulator-display.mjs';
 
@@ -19,7 +20,19 @@ export const candidate = Object.freeze({
 });
 const require = (condition, message) => { if (!condition) throw new Error(message); };
 const sha = file => createHash('sha256').update(fs.readFileSync(file)).digest('hex');
-export function requireProviderFixture(run, env, { installed = false } = {}) {
+// Exit 255 with a partial process dump is an unavailable observation, never
+// proof of no instrumentation. Retry only that failure; refresh every read-only
+// identity/package check each time. command() retains all failed observations.
+export function requireProviderFixture(run, env, options = {}, wait = () => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 250)) {
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try { return providerFixtureAttempt(run, env, options); }
+    catch (error) {
+      if (!error.providerInventoryUnavailable || error.status !== 255 || error.signal != null || attempt === 2) throw error;
+      wait();
+    }
+  }
+}
+function providerFixtureAttempt(run, env, { installed = false } = {}) {
   requireHostedFixtureEnvironment(env, env.ANDROID_SERIAL);
   assertFixtureIdentity(run);
   for (const [key, value] of [['ro.build.version.sdk', '35'], ['ro.product.cpu.abi', 'x86_64']])
@@ -29,7 +42,9 @@ export function requireProviderFixture(run, env, { installed = false } = {}) {
   require(packages.every(p => installed && p === 'package:com.android.webview'), 'Unexpected fixture applications');
   const all = run('shell', 'pm', 'list', 'packages');
   require(!/package:(?:com\.google\.android\.(?:gms|webview)|com\.android\.chrome|ai\.elizaresearch\.)/.test(all), 'Not a fresh default AOSP provider fixture');
-  const processes = run('shell', 'dumpsys', 'activity', 'processes');
+  let processes;
+  try { processes = run('shell', 'dumpsys', 'activity', 'processes'); }
+  catch (error) { error.providerInventoryUnavailable = true; throw error; }
   require(processes.includes('ACTIVITY MANAGER') && !/ActiveInstrumentation\{|InstrumentationRecord\{|mInstr=(?!null\b)/.test(processes), 'Active or unknown instrumentation');
 }
 export function stockPath(paths, dump) {
@@ -44,7 +59,156 @@ export function verifyMetadata(signature, badging, manifest) {
   require(manifest.includes('com.android.webview.WebViewLibrary') && manifest.includes('libwebviewchromium.so') && !manifest.includes('E: uses-static-library'), 'Unexpected external provider dependency');
 }
 
-export async function main({ environment = process.env, execute = execFileSync, sdkEnvironment, outputDirectory, sleep = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds)), now = Date.now, fileDigest = sha } = {}) {
+// Device-mapper indices vary across boots; resolve only the named scratch device.
+export function scratchBackingBytes(run, { requireDataBacking = false } = {}) {
+  const inventory = run('shell', 'dmctl', 'list', 'devices');
+  require(inventory.startsWith('Available Device Mapper Devices:'), 'Unknown device-mapper inventory');
+  const rows = inventory.split(/\r?\n/).filter(line => /^\s*scratch(?=\s|:|$)/.test(line));
+  require(rows.length <= 1, 'Ambiguous scratch mapping');
+  if (!rows.length) return null;
+  const match = /^scratch\s*:\s*(\d+):(\d+)\s*$/.exec(rows[0]);
+  require(match, 'Malformed scratch mapping');
+  const sysPath = `/sys/dev/block/${match[1]}:${match[2]}`;
+  require(run('shell', 'cat', `${sysPath}/dm/name`).trim() === 'scratch', 'Scratch mapping identity drift');
+  if (requireDataBacking) {
+    require(run('shell', 'ls', '-1', `${sysPath}/slaves`).trim() === 'vdc',
+      'Scratch is not on the proven userdata backing device');
+  }
+  const sectors = run('shell', 'cat', `${sysPath}/size`).trim();
+  require(/^[0-9]+$/.test(sectors) && Number.isSafeInteger(Number(sectors) * 512), 'Unknown scratch size');
+  return Number(sectors) * 512;
+}
+
+// This pinned SDK emulator can request the same overlay reboot again. Admit
+// that case only after proving the live product overlay in both shell and init
+// namespaces, its bounded scratch backing, and an owned reversible write.
+export function proveLiveProductOverlay(run, admit, probeId = randomUUID()) {
+  admit();
+  require(run('shell', 'getprop', 'ro.build.fingerprint').trim() ===
+    'Android/sdk_phone64_x86_64/emu64x:15/AE3A.240806.019/12368160:userdebug/test-keys', 'Unreviewed overlay image');
+  const devices = run('shell', 'dmctl', 'list', 'devices');
+  require(devices.startsWith('Available Device Mapper Devices:') &&
+    !/^\s*\S+-verity\s*:/m.test(devices), 'Active or unknown verity mappings');
+  require(scratchBackingBytes(run, { requireDataBacking: true }) === 512 * 1024 * 1024, 'Unexpected live scratch backing');
+  for (const location of ['/proc/mounts', '/proc/1/mounts']) {
+    const rows = run('shell', 'cat', location).trim().split(/\r?\n/).map(line => line.split(/\s+/));
+    const product = rows.filter(row => row[1] === '/product').at(-1);
+    const options = new Set(product?.[3]?.split(',') ?? []);
+    require(product?.[2] === 'overlay' && options.has('rw') && !options.has('ro') &&
+      options.has('lowerdir=/product') && options.has('upperdir=/mnt/scratch/overlay/product/upper') &&
+      options.has('workdir=/mnt/scratch/overlay/product/work'), 'Product overlay is not writable in ' + location);
+    const scratch = rows.filter(row => row[1] === '/mnt/scratch').at(-1);
+    require(/^\/dev\/block\/dm-\d+$/.test(scratch?.[0] ?? '') && ['f2fs', 'ext4'].includes(scratch?.[2]) &&
+      scratch[3].split(',').includes('rw') && !scratch[3].split(',').includes('ro'), 'Scratch mount unavailable');
+    require(run('shell', 'cat', `/sys/class/block/${path.basename(scratch[0])}/dm/name`).trim() === 'scratch', 'Scratch mount identity drift');
+  }
+  require(/^[0-9a-f-]{36}$/.test(probeId), 'Invalid overlay probe identity');
+  const probe = '/product/app/webview/.alpha-ci-probe-' + probeId;
+  const marker = 'alpha-ci-overlay-' + probeId;
+  admit();
+  run('shell', 'test', '!', '-e', probe); run('shell', 'test', '!', '-L', probe);
+  run('shell', `set -C; printf %s ${marker} > ${probe}`);
+  // Never remove a preexisting or changed file. Failure leaves this disposable
+  // fixture rejected, before any provider file is removed.
+  require(run('shell', 'cat', probe).trim() === marker, 'Overlay write probe mismatch');
+  admit(); run('shell', 'rm', probe); run('shell', 'test', '!', '-e', probe);
+  return { namespaces: ['shell', 'init'], scratchBytes: 512 * 1024 * 1024, writeProbeRemoved: true };
+}
+
+// Verify the alias created by boot-time device discovery; never create it late.
+export function ensureScratchBackingAlias(run, admit) {
+  admit();
+  require(run('shell', 'getprop', 'ro.build.fingerprint').trim() ===
+    'Android/sdk_phone64_x86_64/emu64x:15/AE3A.240806.019/12368160:userdebug/test-keys',
+  'Unreviewed image for scratch backing alias repair');
+  const mounts = run('shell', 'cat', '/proc/mounts').trim().split(/\r?\n/)
+    .map(line => line.split(/\s+/)).filter(fields => fields[1] === '/data');
+  require(mounts.length === 1 && mounts[0][2] === 'ext4' &&
+    /^\/dev\/block\/dm-[0-9]+$/.test(mounts[0][0]), 'Unexpected userdata mount');
+  const device = path.basename(mounts[0][0]);
+  require(run('shell', 'cat', `/sys/class/block/${device}/dm/name`).trim() === 'userdata',
+    'Mounted data is not the userdata mapper');
+  require(run('shell', 'ls', '-1', `/sys/class/block/${device}/slaves`).trim() === 'vdc',
+    'Unexpected userdata backing devices');
+  const physical = '/dev/block/vdc';
+  const alias = '/dev/block/by-name/vdc';
+  require(run('shell', 'readlink', '-f', '/dev/block/by-name').trim() === '/dev/block/by-name',
+    'Unexpected backing alias directory');
+  const sysDevice = run('shell', 'cat', '/sys/class/block/vdc/dev').trim();
+  const statDevice = run('shell', 'stat', '-c', '%t:%T', physical).trim();
+  require(/^\d+:\d+$/.test(sysDevice) && /^[0-9a-f]+:[0-9a-f]+$/i.test(statDevice) &&
+    statDevice.split(':').map(value => parseInt(value, 16)).join(':') === sysDevice,
+  'Backing block node identity mismatch');
+  run('shell', 'test', '-b', physical);
+  const inspect = () => run('shell', 'sh', '-c',
+    "'if [ -L /dev/block/by-name/vdc ]; then readlink /dev/block/by-name/vdc; elif [ -e /dev/block/by-name/vdc ]; then echo NON_SYMLINK; else echo MISSING; fi'").trim();
+  const previous = inspect();
+  require(previous === physical, 'Missing or conflicting boot-time scratch backing alias');
+  require(inspect() === physical && run('shell', 'readlink', '-f', alias).trim() === physical,
+    'Scratch backing alias did not resolve to the proven userdata backing device');
+  return { image: 'AE3A.240806.019/12368160', userdataMapper: device,
+    backingDevice: physical, deviceNumber: sysDevice, alias, created: false };
+}
+
+// Failure evidence only: one shared budget, no retries, mutations or guessed block targets.
+export function collectOverlayFailureDiagnostics({ environment, sdkEnvironment, execute, now = Date.now, hostPaths = { workspace: process.cwd(), androidSdk: sdkEnvironment.ANDROID_HOME, home: process.env.HOME }, statfs = fs.statfsSync, userspaceOnly = false, stockBackup }) {
+  const deadline = now() + 20000;
+  const evidence = { host: {}, guest: {}, budgetMilliseconds: 20000 };
+  for (const [name, location] of Object.entries(hostPaths)) {
+    try { const value = statfs(location); evidence.host[name] = { availableBytes: value.bavail * value.bsize, freeBytes: value.bfree * value.bsize }; }
+    catch (error) { evidence.host[name] = { unavailable: String(error.message).slice(0, 512) }; }
+  }
+  if (stockBackup) {
+    try { evidence.host.partialBackupBytes = fs.statSync(stockBackup.backup).size; }
+    catch (error) { evidence.host.partialBackup = { unavailable: String(error.message).slice(0, 512) }; }
+  }
+  let sourceFd;
+  try {
+    const source = path.join(sdkEnvironment.ANDROID_HOME, 'system-images/android-35/default/x86_64/source.properties');
+    sourceFd = fs.openSync(source, 'r');
+    const bytes = Buffer.alloc(8192);
+    evidence.host.imageSourceProperties = bytes.subarray(0, fs.readSync(sourceFd, bytes, 0, bytes.length, 0)).toString('utf8');
+  } catch (error) { evidence.host.imageSourceProperties = { unavailable: String(error.message).slice(0, 512) }; }
+  finally { if (sourceFd !== undefined) fs.closeSync(sourceFd); }
+  const read = (...args) => {
+    const remaining = deadline - now();
+    require(remaining > 0, 'Failure diagnostic deadline exceeded');
+    return execute(path.join(sdkEnvironment.ANDROID_HOME, 'platform-tools/adb'), ['-s', environment.ANDROID_SERIAL, ...args], {
+      env: sdkEnvironment, encoding: 'utf8', timeout: Math.min(2000, remaining), maxBuffer: 256 * 1024,
+    });
+  };
+  const reads = stockBackup ? [
+    ['adbVersion', ['version']],
+    ['deviceState', ['get-state']],
+    ['fingerprint', ['shell', 'getprop', 'ro.build.fingerprint']],
+    ['stockStat', ['shell', 'stat', '-c', '%s', stockBackup.stock]],
+    ['capacity', ['shell', 'df', '-k', '/data', '/metadata', '/product']],
+  ] : [
+    ['userspaceStorageLog', ['shell', 'logcat', '-d', '-b', 'all', '-t', '400']],
+    ['fingerprint', ['shell', 'getprop', 'ro.build.fingerprint']],
+    ['deviceMapperNames', ['shell', 'dmctl', 'list', 'devices']],
+    ['blockNames', ['shell', 'ls', '-l', '/dev/block/by-name']],
+    ['superMetadata', ['shell', 'lpdump', '/dev/block/by-name/super']],
+    ['capacity', ['shell', 'df', '-k', '/data', '/metadata', '/product']],
+    ['partitions', ['shell', 'cat', '/proc/partitions']],
+    ['kernel', ['shell', 'dmesg']],
+  ];
+  for (const [name, args] of reads) {
+    if (userspaceOnly && name !== 'userspaceStorageLog') continue;
+    // Admission uses the same bounded executor and performs one complete attempt.
+    try { requireProviderFixture(read, environment, {}, () => { throw Error('Failure diagnostic admission unavailable'); }); }
+    catch (error) { evidence.admissionStopped = String(error.message).slice(0, 512); break; }
+    try {
+      const result = read(...args);
+      evidence.guest[name] = (['userspaceStorageLog', 'kernel'].includes(name) ? result.split('\n').filter(line => /gsid|fiemap|scratch|overlay|mkfs|f2fs|ext4|device.mapper/i.test(line)).join('\n') : result).slice(-65536);
+    } catch (error) {
+      evidence.guest[name] = { unavailable: String(error.message).slice(0, 512), status: error.status ?? null, signal: error.signal ?? null, code: error.code ?? null, stdout: String(error.stdout ?? '').slice(-4096), stderr: String(error.stderr ?? '').slice(-4096) };
+    }
+  }
+  return evidence;
+}
+
+export async function main({ environment = process.env, execute = execFileSync, executeRemount = spawnSync, sdkEnvironment, outputDirectory, sleep = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds)), now = Date.now, fileDigest = sha } = {}) {
   const serial = environment.ANDROID_SERIAL;
   requireHostedFixtureEnvironment(environment, serial); // Before download or device access.
   require(environment.ALPHA_DISPOSABLE_WEBVIEW_FIXTURE === 'api35-default-x86_64', 'Explicit disposable provider fixture required');
@@ -55,14 +219,51 @@ export async function main({ environment = process.env, execute = execFileSync, 
   const state = { status: 'preflight', candidate, productionApproved: false, runtimeFeaturesQualified: false, commands: [] };
   const save = () => fs.writeFileSync(path.join(output, 'result.json'), JSON.stringify(state, null, 2) + '\n');
   const command = (file, args, timeout = 20000) => {
-    try { const result = execute(file, args, { env, encoding: 'utf8', timeout, maxBuffer: 16 * 1024 * 1024 }); state.commands.push({ file, args, success: true }); save(); return result; }
-    catch (error) { state.commands.push({ file, args, success: false, stdout: String(error.stdout ?? '').slice(-65536), stderr: String(error.stderr ?? '').slice(-65536) }); save(); throw error; }
+    const started = now();
+    try {
+      const options = { env, encoding: 'utf8', timeout, maxBuffer: 16 * 1024 * 1024 };
+      let result;
+      if (args.length === 3 && args[2] === 'remount') {
+        // adb remount reports its result on stderr on this API35 image.
+        // Capture both channels only here; preserve transport failures.
+        const captured = executeRemount(file, args, options);
+        if (captured.error || captured.status !== 0 || captured.signal) {
+          const error = captured.error || new Error('adb remount failed');
+          Object.assign(error, { status: captured.status, signal: captured.signal, stdout: captured.stdout, stderr: captured.stderr });
+          throw error;
+        }
+        result = [captured.stdout, captured.stderr].filter(value => value).join('\n');
+      } else result = execute(file, args, options);
+      state.commands.push({ file, args, success: true }); save(); return result;
+    }
+    catch (error) { state.commands.push({ file, args, durationMilliseconds: Math.max(0, now() - started), success: false, status: error.status ?? null, signal: error.signal ?? null, code: error.code ?? null, stdout: String(error.stdout ?? '').slice(-65536), stderr: String(error.stderr ?? '').slice(-65536) }); save(); throw error; }
   };
   const run = (...args) => command(path.join(sdk, 'platform-tools/adb'), ['-s', serial, ...args]);
   const safe = (installed = false) => requireProviderFixture(run, environment, { installed });
+  const bootIdentity = () => {
+    safe();
+    const deadline = now() + 15000;
+    const observations = readBootDeviceIdentity((...args) => {
+      const remaining = deadline - now();
+      require(remaining > 0, 'Boot-device readback deadline exceeded');
+      return command(path.join(sdk, 'platform-tools/adb'), ['-s', serial, ...args], Math.min(2000, remaining));
+    }, readback => {
+      state.bootDeviceReadbacks ??= [];
+      state.bootDeviceReadbacks.push(readback); save();
+    });
+    state.bootDeviceAdmissions ??= [];
+    state.bootDeviceAdmissions.push(observations); save();
+  };
   const scratchProperty = 'fs_mgr.overlayfs.data_scratch_size_mb';
   const configureScratch = () => {
+    bootIdentity(); // Require persistent boot-time identity after every reboot.
     safe(); // Every property mutation is confined to the fresh hosted fixture.
+    if (!state.scratchBackingAliases) {
+      require(scratchBackingBytes(run) === null, 'Existing scratch requires a fresh disposable fixture');
+    }
+    state.scratchBackingAliases ??= [];
+    state.scratchBackingAliases.push(ensureScratchBackingAlias(run, safe));
+    save();
     const previous = run('shell', 'getprop', scratchProperty).trim();
     require(previous === '' || previous === '512', 'Unexpected existing scratch size policy');
     run('shell', 'setprop', scratchProperty, '512');
@@ -86,13 +287,15 @@ export async function main({ environment = process.env, execute = execFileSync, 
     }
     fs.writeFileSync(path.join(output, `storage-${label}.json`), JSON.stringify(details, null, 2) + '\n');
   };
+  // sys.boot_completed can remain 1 across stop/start; wait for the new user lifecycle too.
   const boot = async () => {
     const end = now() + 180000;
     while (now() < end) {
       try {
         if (run('shell', 'getprop', 'sys.boot_completed').trim() === '1' &&
             /Service package: found/.test(run('shell', 'service', 'check', 'package')) &&
-            /Service activity: found/.test(run('shell', 'service', 'check', 'activity'))) return;
+            /Service activity: found/.test(run('shell', 'service', 'check', 'activity')) &&
+            run('shell', 'cmd', 'activity', 'get-started-user-state', '0').trim() === 'RUNNING_UNLOCKED') return;
       } catch (error) {
         // Offline and unavailable binder services are expected during reboot.
         // The timeout never extends; normal fixture admission follows readiness.
@@ -104,13 +307,23 @@ export async function main({ environment = process.env, execute = execFileSync, 
   };
   save();
   try {
+    // Shell cannot read /proc/bootconfig. Full boot admission follows the
+    // existing adb-root step in configureScratch, before any overlay mutation.
     safe();
     const stock = stockPath(run('shell', 'pm', 'path', candidate.package), run('shell', 'dumpsys', 'package', candidate.package));
     const stockHash = run('shell', 'sha256sum', stock).trim().split(/\s+/)[0];
     require(/^[a-f0-9]{64}$/.test(stockHash), 'Invalid stock hash');
     const backup = path.join(output, 'stock-webview.apk');
-    run('pull', stock, backup); require(fileDigest(backup) === stockHash, 'Stock backup mismatch');
-    state.stock = { path: stock, sha256: stockHash };
+    state.stock = { path: stock, sha256: stockHash }; save();
+    try {
+      run('pull', stock, backup); require(fileDigest(backup) === stockHash, 'Stock backup mismatch');
+    } catch (error) {
+      try {
+        const diagnostics = collectOverlayFailureDiagnostics({ environment, sdkEnvironment: env, execute, now, stockBackup: { stock, backup } });
+        fs.writeFileSync(path.join(output, 'stock-backup-failure-diagnostics.json'), JSON.stringify(diagnostics, null, 2) + '\n');
+      } catch (diagnosticError) { state.diagnosticError = String(diagnosticError.message).slice(0, 512); }
+      throw error;
+    }
     const archive = path.join(output, 'chromium.zip'), apk = path.join(output, 'SystemWebView.apk');
     command('curl', ['--fail', '--location', '--silent', '--show-error', '--connect-timeout', '20', '--max-time', '600', candidate.url, '--output', archive], 610000);
     require(fs.statSync(archive).size === candidate.size && fileDigest(archive) === candidate.archiveSha256, 'Official archive bytes changed');
@@ -128,11 +341,42 @@ export async function main({ environment = process.env, execute = execFileSync, 
     state.status = 'preparing-overlay-storage'; save();
     captureStorage('before');
     configureScratch();
-    run('disable-verity'); run('reboot'); run('wait-for-device'); await boot();
+    run('disable-verity');
+    // disable-verity can report overlay failure with exit zero; retain its logs before reboot.
+    try {
+      const diagnostics = collectOverlayFailureDiagnostics({ environment, sdkEnvironment: env, execute, now, userspaceOnly: true });
+      fs.writeFileSync(path.join(output, 'overlay-pre-reboot-diagnostics.json'), JSON.stringify(diagnostics, null, 2) + '\n');
+    } catch (diagnosticError) { state.preRebootDiagnosticError = String(diagnosticError.message).slice(0, 512); }
+    safe(); run('reboot'); run('wait-for-device'); await boot();
     run('root'); run('wait-for-device'); safe();
     configureScratch(); // Non-persistent property is reset by reboot.
-    const remount = run('remount');
-    require(/remount succeeded/i.test(remount) && !/reboot/i.test(remount), 'Remount requires manual review');
+    let remount = run('remount');
+    state.overlayRemountOutputs = [remount.slice(-65536)]; save();
+    const rebootNotice = /^Now reboot your device for settings to take effect\r?$/m;
+    if (/^Remount succeeded\r?$/mi.test(remount) && rebootNotice.test(remount)) {
+      require(!/reboot/i.test(remount.replace(rebootNotice, '')), 'Unrecognized remount reboot request');
+      safe();
+      require(scratchBackingBytes(run, { requireDataBacking: true }) === 512 * 1024 * 1024, 'Expected 512MiB data scratch before overlay reboot');
+      state.overlayRebootRequested = true; save();
+      // Exactly one documented first-overlay activation reboot; never loop or ignore it.
+      run('reboot'); run('wait-for-device'); await boot();
+      run('root'); run('wait-for-device'); safe();
+      configureScratch(); // Reauthenticate userdata alias and reset the volatile property.
+      remount = run('remount');
+      state.overlayRemountOutputs.push(remount.slice(-65536)); save();
+    }
+    if (state.overlayRebootRequested && rebootNotice.test(remount) &&
+        remount.trim() === state.overlayRemountOutputs[0].trim()) {
+      // No further reboot: the existing stop/start below recreates framework
+      // processes after the proven live overlay and exact provider replacement.
+      state.liveOverlayProof = proveLiveProductOverlay(run, safe); save();
+    }
+    require(/^remount succeeded\r?$/mi.test(remount) &&
+      (!/reboot/i.test(remount) || state.liveOverlayProof), 'Remount requires manual review');
+    safe();
+    state.scratchBytes = scratchBackingBytes(run, { requireDataBacking: true });
+    require(state.scratchBytes === 512 * 1024 * 1024, 'Expected 512MiB data scratch was not established');
+    save();
     captureStorage('remounted');
     safe();
     require(stockPath(run('shell', 'pm', 'path', candidate.package), run('shell', 'dumpsys', 'package', candidate.package)) === stock, 'Stock path changed');
@@ -171,8 +415,11 @@ export async function main({ environment = process.env, execute = execFileSync, 
     fs.unlinkSync(archive); fs.unlinkSync(apk);
   } catch (error) {
     if (state.status === 'preparing-overlay-storage') {
-      try { safe(); captureStorage('failed'); } catch { /* Do not inspect a fixture whose identity no longer matches. */ }
+      try {
+        const diagnostics = collectOverlayFailureDiagnostics({ environment, sdkEnvironment: env, execute, now });
+        fs.writeFileSync(path.join(output, 'overlay-failure-diagnostics.json'), JSON.stringify(diagnostics, null, 2) + '\n');
+      } catch (diagnosticError) { state.diagnosticError = String(diagnosticError.message).slice(0, 512); }
     }
-    state.failedAt = state.status; state.status = 'FAIL'; state.error = error.message; save(); throw error; }
+    state.failedAt = state.status; state.status = 'FAIL'; state.error = error.message; try { save(); } catch { /* Evidence failure must not replace the original provisioning error. */ } throw error; }
 }
 if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href) await main();

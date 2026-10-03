@@ -86,15 +86,12 @@ test("false then true at the final credential check refuses every mutation", asy
   );
   assert.deepEqual(mutations(f.commands), []);
 });
-test("initial true remains fail-closed even when later fixture reads would be false", async () => {
-  for (const secure of [[true, true], [true, false]]) {
-    const f = fixture({ secure });
-    await assert.rejects(
-      prepareFixtureDisplay(f.run, { env, serial: "emulator-5554", sleep: async () => {} }),
-      /Secure credential state/,
-    );
-    assert.deepEqual(mutations(f.commands), []);
-  }
+test("persistent secure state times out without mutation; transient state must become false", async () => {
+  const secureFixture = fixture({ secure: true }); let waits = 0;
+  await assert.rejects(prepareFixtureDisplay(secureFixture.run, {env,serial:"emulator-5554",sleep:async()=>{waits++;}}),/Unsecured keyguard service not ready/);
+  assert.equal(waits,30);assert.deepEqual(mutations(secureFixture.commands),[]);
+  const f=fixture({secure:[true,false,false]});
+  await prepareFixtureDisplay(f.run,{env,serial:"emulator-5554",sleep:async()=>{}});
 });
 
 import fs from 'node:fs';
@@ -113,7 +110,7 @@ test('unbound malformed and bound-secure observations never permit mutations', a
     const run = (...args) => args.join(' ') === 'shell dumpsys window policy' ? value : f.run(...args);
     await assert.rejects(prepareFixtureDisplay(run, {env, serial:'emulator-5554', sleep:async()=>{waits++;}}));
     assert.deepEqual(mutations(f.commands), []);
-    assert.equal(waits, value === unbound ? 30 : 0);
+    assert.equal(waits, value === unbound || value === policy({secure:true}) ? 30 : 0);
   }
 });
 test('readiness and unlock share the original30-attempt admission budget', async () => {
@@ -129,10 +126,44 @@ test('malformed prewrite observation cannot mutate an initially ready fixture', 
  assert.deepEqual(mutations(f.commands),[]);
 });
 test('independent readonly admission rejects persistent sentinel and bound secure state',async()=>{
- for(const [value,expectedWaits]of [[unbound,30],[policy({secure:true}),0]]){
+ for(const [value,expectedWaits]of [[unbound,30],[policy({secure:true}),30]]){
   const f=fixture();let waits=0;
   const run=(...args)=>args.join(' ')==='shell dumpsys window policy'?value:f.run(...args);
   await assert.rejects(requireFixtureDisplay(run,{env,serial:'emulator-5554',sleep:async()=>{waits++;}}));
   assert.equal(waits,expectedWaits);assert.deepEqual(mutations(f.commands),[]);
  }
+});
+
+const capturedTransition=JSON.parse(fs.readFileSync(new URL('./fixtures/keyguard-secure-transition-e09b.json',import.meta.url),'utf8'));
+test('captured e09b bound secure observation waits read-only until later raw false',async()=>{
+ const f=fixture();let reads=0;const records=[];
+ const rawFalse=capturedTransition.policy;
+ assert.equal(parseFixtureDisplay(capturedTransition.power,rawFalse).secure,false);
+ // Only parsed secure=true observation was retained. Reconstruct that one field
+ // on the later raw dump and verify every recorded parsed property agrees.
+ const boundTrue=rawFalse.replace(/^([ \t]*secure=)false$/m,'$1true');
+ const reconstructed=parseFixtureDisplay(capturedTransition.power,boundTrue);
+ for(const [key,value] of Object.entries(capturedTransition.observations[6]))if(!['phase','attempt'].includes(key))assert.equal(reconstructed[key],value,key);
+ const sequence=[...Array(6).fill(unbound),boundTrue,rawFalse,rawFalse];
+ const run=(...args)=>{
+  if(args.join(' ')==='shell dumpsys window policy')return sequence[Math.min(reads++,sequence.length-1)];
+  if(/set-disabled|stayon|keyevent|dismiss-keyguard/.test(args.join(' ')))assert.ok(reads>=9,'No mutation before false and immediate false recheck');
+  return f.run(...args);
+ };
+ await prepareFixtureDisplay(run,{env,serial:'emulator-5554',sleep:async()=>{},record:value=>records.push(value)});
+ assert.equal(records.filter(row=>row.phase==='system-ready').length,8);
+ assert.equal(mutations(f.commands).filter(cmd=>cmd.includes('set-disabled')).length,1);
+});
+test('secure wait detects fixture identity drift before mutation',async()=>{
+ const f=fixture({secure:true});let waited=false;
+ const run=(...args)=>args.join(' ')==='shell am get-current-user'&&waited?'10':f.run(...args);
+ await assert.rejects(prepareFixtureDisplay(run,{env,serial:'emulator-5554',sleep:async()=>{waited=true;}}),/identity or user/);
+ assert.deepEqual(mutations(f.commands),[]);
+});
+test('readonly secure transition still requires two consecutive false observations',async()=>{
+ const f=fixture();let reads=0;
+ const sequence=[true,false,true,false,false];
+ const run=(...args)=>args.join(' ')==='shell dumpsys window policy'?policy({showing:false,restricted:false,secure:sequence[Math.min(reads++,4)]}):f.run(...args);
+ await requireFixtureDisplay(run,{env,serial:'emulator-5554',sleep:async()=>{}});
+ assert.equal(reads,5);assert.deepEqual(mutations(f.commands),[]);
 });

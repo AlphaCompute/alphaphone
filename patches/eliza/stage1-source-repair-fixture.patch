@@ -1,6 +1,8 @@
+diff --git a/packages/core/src/__tests__/message-runtime-stage1.test.ts b/packages/core/src/__tests__/message-runtime-stage1.test.ts
+index 61ea66ce..5cdb9470 100644
 --- a/packages/core/src/__tests__/message-runtime-stage1.test.ts
 +++ b/packages/core/src/__tests__/message-runtime-stage1.test.ts
-@@ -942,7 +942,9 @@
+@@ -942,7 +942,9 @@ describe("runV5MessageRuntimeStage1", () => {
  		{ invalid: false, transport: "native" },
  		{ invalid: true, transport: "native" },
  		{ invalid: false, transport: "json" },
@@ -10,15 +12,12 @@
  	])(
  		"resolves original-message parts before fields ($transport, invalid=$invalid)",
  		async ({ invalid, transport }) => {
-@@ -976,12 +978,16 @@
- 				},
- 			});
+@@ -978,11 +980,14 @@ describe("runV5MessageRuntimeStage1", () => {
  			const before = JSON.stringify(raw);
--			const runtime = makeRuntime([raw]);
+ 			// An invalid source gets one repair attempt; reject again before fields run.
+ 			const runtime = makeRuntime(invalid ? [raw, raw] : [raw]);
 -			if (transport !== "native")
 -				vi.mocked(runtime.useModel).mockImplementationOnce(async () => {
-+			// A source quote has one turn-wide repair attempt before rejection.
-+			const runtime = makeRuntime(invalid ? [raw, raw] : [raw]);
 +			if (transport !== "native") {
 +				let remaining = invalid ? 2 : 1;
 +				vi.mocked(runtime.useModel).mockImplementation(async () => {
@@ -30,7 +29,7 @@
  
  			const dispatch = vi.spyOn(
  				runtime.responseHandlerFieldRegistry,
-@@ -1003,6 +1009,8 @@
+@@ -1004,6 +1009,8 @@ describe("runV5MessageRuntimeStage1", () => {
  				await expect(run).rejects.toMatchObject({
  					code: "STAGE1_INVALID_SOURCE_REPLY",
  				});
@@ -39,12 +38,3 @@
  				expect(dispatch).not.toHaveBeenCalled();
  			} else {
  				const result = await run;
-@@ -1019,7 +1027,7 @@
- 				]);
- 				expect(dispatch).toHaveBeenCalledTimes(1);
- 			}
--			expect(runtime.useModel).toHaveBeenCalledTimes(1);
-+			expect(runtime.useModel).toHaveBeenCalledTimes(invalid ? 2 : 1);
- 			expect(JSON.stringify(raw)).toBe(before);
- 			const params = useModelCalls(runtime)[0][1] as {
- 				responseSkeleton: { spans: { key?: string; kind: string }[] };

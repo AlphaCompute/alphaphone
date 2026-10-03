@@ -103,6 +103,8 @@ async function personalWork(message:string,action:(binding:NonNullable<typeof pe
   try{await action(binding,view,signal);}
   catch(error){
    if(!personalCurrent(binding,generation))return;
+   // Expiration detaches this exact service, without clearing durable setup intent.
+   if((error instanceof CloudProtocolError||error instanceof PersonalProtocolError)&&expired(error)&&connectionController.rejectCloudSession(binding.serviceId,error))return;
    let blocked=true;try{blocked=!!personalIntent(binding.client.owner);}catch{/* Invalid persistence refuses further setup writes. */}
    if(signal.aborted&&!blocked){update({cloudPersonal:undefined,message:'Cloud setup check stopped.',error:''});personalGeneration++;personalSetup=null;return;}
    update({cloudPersonal:{view:state.cloudPersonal?state.cloudPersonal.view:view,blocked,declined:false},message:blocked?'Setup could not be confirmed. Check status before taking another action.':'',error:blocked?'':error instanceof PersonalProtocolError&&error.code==='account-changed'?'Cloud account changed. Refresh status.':'Cloud setup is unavailable. Refresh status to review the current state.'});

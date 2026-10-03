@@ -111,6 +111,22 @@ public class NoteAudioInstrumentedTest {
  }
 
 
+ @Test public void expiredOwnedDeletionCannotRestoreBeforeMigration()throws Exception {
+  android.content.Context context=InstrumentationRegistry.getInstrumentation().getTargetContext();
+  String audioId=UUID.randomUUID().toString(),noteId=UUID.randomUUID().toString(),operation=UUID.randomUUID().toString();
+  File fixture=File.createTempFile("audio-expiry-",".wav",context.getCacheDir());java.nio.file.Files.write(fixture.toPath(),wav());
+  String input=new JSONObject().put("audioId",audioId).put("noteId",noteId).put("operationId",operation).toString();
+  try(BoundedActivityScenario<MainActivity> scenario=BoundedActivityScenario.launch(MainActivity.class)){
+   ready();BoundedActivityScenario.main(()->{try{plugin().retain(fixture,audioId,noteId,2000,"Synthetic retention fixture");}catch(Exception e){throw new RuntimeException(e);}});
+   assertEquals("removed",call("Capacitor.Plugins.AlphaNoteAudio.remove("+input+")").getString("status"));
+   // Age the durable tombstone while the activity remains alive: expiry must
+   // hold even before the next startup migration removes the audio bytes.
+   BoundedActivityScenario.main(()->{try{AlphaConnectionPlugin storage=(AlphaConnectionPlugin)plugin().getBridge().getPlugin("AlphaConnection").getInstance();String slot="note-audio-metadata:v1:"+audioId;JSONObject record=new JSONObject(storage.readCredentialSlot(slot));record.put("deletedAt",System.currentTimeMillis()-31L*24*60*60*1000);storage.writeCredentialSlot(slot,record.toString());}catch(Exception e){throw new RuntimeException(e);}});
+   assertTrue(call("Capacitor.Plugins.AlphaNoteAudio.restore("+input+")").has("error"));
+   assertEquals("removed",call("Capacitor.Plugins.AlphaNoteAudio.deletionStatus("+input+")").getString("status"));
+   assertTrue(call("Capacitor.Plugins.AlphaNoteAudio.play("+input+")").has("error"));
+  }finally{fixture.delete();new AlphaCredentialStore(context).removeCredentialSlot("note-audio-metadata:v1:"+audioId);for(String suffix:new String[]{".audio",".json",".json.bak",".pending"})new File(context.getNoBackupFilesDir(),"note-audio/"+audioId+suffix).delete();}
+ }
  @Test public void optInRetiredDeletionCannotArriveAfterReloadAndRestore()throws Exception {
   org.junit.Assume.assumeTrue("Explicit native audio fence fixture opt-in", "true".equals(InstrumentationRegistry.getArguments().getString("audioFence")));
   android.content.Context context=InstrumentationRegistry.getInstrumentation().getTargetContext();String audioId=UUID.randomUUID().toString(),noteId=UUID.randomUUID().toString(),operation=UUID.randomUUID().toString();

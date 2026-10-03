@@ -230,7 +230,7 @@ new file mode 100644
 index 0000000..26b46b2
 --- /dev/null
 +++ b/packages/app/src/api/standalone-kokoro-service.ts
-@@ -0,0 +1,176 @@
+@@ -0,0 +1,178 @@
 +import { type ChildProcess, spawn } from "node:child_process";
 +import type { Readable } from "node:stream";
 +import { fileURLToPath } from "node:url";
@@ -305,6 +305,8 @@ index 0000000..26b46b2
 +      };
 +      child.once("error", failed);
 +      child.once("exit", failed);
++      child.stdin?.on("error", failed);
++      (child.stdio[3] as Readable).on("error", failed);
 +      (child.stdio[3] as Readable).on("data", (bytes: Buffer) => {
 +        if (this.child !== child) return;
 +        text += bytes.toString("utf8");

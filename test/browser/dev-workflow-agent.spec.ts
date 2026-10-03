@@ -12,7 +12,19 @@ test('workflow edits during generation cannot accept its old instruction result'
  await page.evaluate(async()=>{const {Component}=await import('/src/prototype/model.js');const original=Component.prototype.api;Component.prototype.api=function(key:string){const api=original.call(this,key);if(key==='workflows')(window as any).workflowApi=api;return api;};});await begin(page);
  await page.evaluate(()=>{const api=(window as any).workflowApi;api.setView('workflows',{flows:api.get('workflows').flows.map((flow:any)=>({...flow,steps:flow.steps.map((step:any,index:number)=>index===1?{...step,t:'Changed instruction'}:step)}))});(window as any).generation.finish({text:'Old instruction answer'});});await expect.poll(async()=>(await run(page))?.status).toBe('fail');expect((await run(page)).cursor).toBe(1);expect((await run(page)).sum).toContain('Workflow changed');
 });
-test('external storage edits are preserved when generation finishes',async({page})=>{await begin(page);const external=await page.evaluate(()=>{const key='alpha.dev.app.workflows',state=JSON.parse(localStorage.getItem(key)!);state.flows[0].steps[1].t='External instruction';const raw=JSON.stringify(state);localStorage.setItem(key,raw);(window as any).generation.finish({text:'Old instruction answer'});return raw;});await expect(page.getByText('Run state could not be saved. Reload to inspect its last saved step.',{exact:true})).toBeVisible();expect(await page.evaluate(()=>localStorage.getItem('alpha.dev.app.workflows'))).toBe(external);expect(await page.evaluate(()=>JSON.parse(localStorage.getItem('alphaphone:notes:v2')!).records.some((note:any)=>note.body==='Old instruction answer'))).toBe(false);});
+test('external storage edits are preserved when generation finishes',async({page})=>{
+ await page.evaluate(async()=>{const {Component}=await import('/src/prototype/model.js');const original=Component.prototype.api;Component.prototype.api=function(key:string){const api=original.call(this,key);if(key==='workflows')(window as any).workflowApi=api;return api;};});
+ await begin(page);
+ const external=await page.evaluate(()=>{const key='alpha.dev.app.workflows',state=JSON.parse(localStorage.getItem(key)!);state.flows[0].steps[1].t='External instruction';const raw=JSON.stringify(state);localStorage.setItem(key,raw);(window as any).generation.finish({text:'Old instruction answer'});return raw;});
+ await expect(page.getByRole('button',{name:'Run now',exact:true})).toBeVisible();
+ // Trigger polling can replace the transient toast. The run must retain its recovery guidance.
+ await page.evaluate(()=>window.dispatchEvent(new Event('focus')));
+ await expect.poll(()=>page.evaluate(()=>(window as any).workflowApi.get('workflows').localTriggerError)).toBe('Development app save failed.');
+ await page.evaluate(()=>(window as any).workflowApi.toast('Unrelated status'));
+ await expect(page.getByRole('status',{name:'Workflow run status',exact:true})).toHaveText('Run state could not be saved. Reload to inspect its last saved step.');
+ expect(await page.evaluate(()=>localStorage.getItem('alpha.dev.app.workflows'))).toBe(external);
+ expect(await page.evaluate(()=>JSON.parse(localStorage.getItem('alphaphone:notes:v2')!).records.some((note:any)=>note.body==='Old instruction answer'))).toBe(false);
+});
 
 test('long workflow instructions remain within the phone width',async({page})=>{
  await page.addInitScript(()=>{const key='alpha.dev.app.workflows',state=JSON.parse(localStorage.getItem(key)!);state.flows[0].steps[1].t='X'.repeat(512);localStorage.setItem(key,JSON.stringify(state));});await page.reload();await page.getByRole('button',{name:'Workflows',exact:true}).click();await page.getByText('Agent summary',{exact:true}).click();const instruction=page.getByText('X'.repeat(512),{exact:true});const box=await instruction.boundingBox();expect(box!.x+box!.width).toBeLessThanOrEqual(412);expect(await instruction.evaluate(element=>element.scrollWidth<=element.clientWidth)).toBe(true);

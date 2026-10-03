@@ -3048,7 +3048,7 @@
         </div>
 
         <div style="display: flex; align-items: center; gap: 8px; margin-top: 14px">
-          <span style="flex-grow: 1; font-size: 13px; color: var(--mut)">{{workflows.fd.last}}</span>
+          <span role="status" aria-label="Workflow run status" style="flex-grow: 1; font-size: 13px; color: var(--mut)">{{workflows.fd.last}}</span>
           <button onClick="{{workflows.fd.edit}}" style="height: 44px; padding: 0 18px; border-radius: 22px; background: var(--s2); font-weight: 600; font-size: 14px">Change</button>
           <sc-if value="{{workflows.fd.notRunning}}" hint-placeholder-val="{{true}}">
             <button aria-label="Run now" onClick="{{workflows.fd.run}}" style="height: 44px; padding: 0 18px; border-radius: 22px; background: var(--acc); color: #fff; font-weight: 600; font-size: 14px; display: flex; align-items: center; gap: 8px"><svg class="i" viewBox="0 0 24 24" style="width: 14px; height: 14px; fill: currentColor"><path d="{{ic.play}}"></path></svg>Run</button>

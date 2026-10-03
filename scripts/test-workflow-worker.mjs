@@ -1,10 +1,11 @@
+import {workerArtifactDirectory} from './local-agent-source.mjs';
 import assert from 'node:assert/strict';
 import {mkdtempSync,readFileSync,writeFileSync,cpSync,rmSync,readdirSync,lstatSync,existsSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join,resolve,relative} from 'node:path';
 import {createHash,randomUUID} from 'node:crypto';
 import {execFileSync} from 'node:child_process';
-const artifact=resolve(process.env.ALPHA_WORKFLOW_WORKER_OUTPUT||'artifacts/mobile-workflow-worker');
+const artifact=workerArtifactDirectory(resolve(import.meta.dirname,'..'));
 const manifest=JSON.parse(readFileSync(join(artifact,'manifest.json'),'utf8'));
 assert.equal(manifest.version,1);
 const seen=new Set();function verify(dir){for(const name of readdirSync(dir)){const file=join(dir,name),stat=lstatSync(file);assert.ok(!stat.isSymbolicLink(),'Artifact must not depend on external symlinks');if(stat.isDirectory())verify(file);else{assert.ok(stat.isFile(),'Only regular artifact files are supported');const rel=relative(artifact,file);if(rel==='manifest.json')continue;assert.equal(createHash('sha256').update(readFileSync(file)).digest('hex'),manifest.files[rel],rel);seen.add(rel);}}}verify(artifact);assert.equal(seen.size,Object.keys(manifest.files).length);

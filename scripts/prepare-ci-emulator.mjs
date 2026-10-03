@@ -4,6 +4,8 @@ import { execFileSync } from "node:child_process";
 import { androidEnv } from "./toolchain.mjs";
 import { requireHostedFixtureEnvironment, assertFixtureIdentity, prepareFixtureDisplay } from "./ci-emulator-display.mjs";
 
+import { captureFixtureDisplayEvidence } from "./ci-emulator-diagnostics.mjs";
+
 const serial = process.env.ANDROID_SERIAL;
 requireHostedFixtureEnvironment(process.env, serial);
 const env = androidEnv();
@@ -27,7 +29,32 @@ const recordDisplay = state => {
   fs.mkdirSync("test-results/android-fixture", { recursive: true });
   fs.writeFileSync("test-results/android-fixture/display-admission.json", JSON.stringify({ serial, observations: displayEvidence }, null, 2) + "\n");
 };
-await prepareFixtureDisplay(run, { serial, record: recordDisplay });
+const recordRawDisplay = phase => {
+  // Diagnostics must never replace the original admission failure.
+  try {
+    const boundedRun = (args, timeout) => execFileSync(adb, ["-s", serial, ...args], {
+      encoding: "utf8",
+      env,
+      timeout,
+      maxBuffer: 128 * 1024,
+    });
+    const evidence = captureFixtureDisplayEvidence(boundedRun);
+    fs.mkdirSync("test-results/android-fixture", { recursive: true });
+    fs.writeFileSync(
+      `test-results/android-fixture/display-${phase}.json`,
+      JSON.stringify({ serial, ...evidence }, null, 2) + "\n",
+    );
+  } catch {
+    // Existing safety refusal remains authoritative.
+  }
+};
+recordRawDisplay("before-admission");
+try {
+  await prepareFixtureDisplay(run, { serial, record: recordDisplay });
+} catch (error) {
+  recordRawDisplay("admission-failure");
+  throw error;
+}
 
 // SDK images initially assign HOME to the temporary SDK setup app. Complete the
 // disposable fixture before measuring our app's HOME behavior; this is not a

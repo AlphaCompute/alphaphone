@@ -2,6 +2,8 @@
 
 The MVP is **not complete**. This is the current requirement/evidence index; [the browser review](mvp-browser-review.md) retains the chronological implementation record and failed attempts. Older build and enclave checkpoints are historical evidence, not the current acceptance checklist.
 
+See the [combined resident/browser implementation report](mvp-stack-convergence.md) for the current integration candidate and its exact runtime evidence. Earlier checkpoints below remain historical until the combined branch is published and promoted.
+
 ## Architecture and task boundaries
 
 - The primary agent runs on the Android device. Browser development runs the real agent on this computer through the private local bridge. Cloud and remote pairing remain optional connection paths. Neither Cloud login nor Nitro/KMS admission is required to start the primary local agent.
