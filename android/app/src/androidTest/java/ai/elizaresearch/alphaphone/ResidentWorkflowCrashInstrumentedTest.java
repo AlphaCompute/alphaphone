@@ -228,6 +228,8 @@ public final class ResidentWorkflowCrashInstrumentedTest {
   JSONObject error=value.optJSONObject("error");safe.put("errorPresent",error!=null);
   if(error!=null){String message=error.optString("message","");String category="unclassified";
    for(String known:new String[]{"Smithers worker exited without a result","Workflow source digest mismatch","Default export is not a Smithers workflow","Workflow source publication identity mismatch","Workflow device dispatcher unavailable","Parent unavailable; model request not sent"})if(known.equals(message)){category=known;break;}
+   java.util.regex.Matcher exit=java.util.regex.Pattern.compile("^Smithers worker exited without a result \\(exit=(unknown|-?[0-9]{1,10}); signal=(none|SIG[A-Z0-9]{1,12})\\)(?::.*)?$",java.util.regex.Pattern.DOTALL).matcher(message);
+   if(exit.matches()){category="Smithers worker exited without a result";safe.put("workerExitCode",exit.group(1)).put("workerExitSignal",exit.group(2));}
    safe.put("errorCategory",category);
   }
   return safe;

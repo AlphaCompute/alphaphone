@@ -44,13 +44,15 @@
     "packages/app/scripts/lib/stage-android-agent.ts": "e0da570ee3fac62ba8c416044ba8de4397dc452b6d08f3313e22092ae3107ffd",
     "plugins/plugin-assistant/src/services/device-actions/reminder-contract.ts": "c8d7c16f96a7d80d3b8ee32c87a9fe9bb8a93ffe7b930a9fe8b2d8754c4b171d",
     "plugins/plugin-assistant/src/services/message/context-assembly.ts": "cef5fc478e3457fe98069ad134a09b3bb2c9072730b4cf007801e7a482cdafa1",
-    "plugins/plugin-workflow/src/services/smithers-runtime.ts": "79e59adfc3284323db6c7e0082fdaf7b06c93e301bfd6913ae42c0f08f64c3c9",
+    "plugins/plugin-workflow/src/services/smithers-runtime.ts": "bd5d198ba396e1f3603478fba7e1e43b31cd7d2e5a89947d96e2fbce37806507",
     "plugins/plugin-workflow/src/services/workflow-source-publication.ts": "eb7adbeebe71afde252488af2f5b6cb8d073162335cd32dc1f08fbd065d864e4",
     "plugins/plugin-workflow/src/services/phone-workflow-generation.ts": "629dce92af9fdb1685cd8cc72bd7400abd13b2f6283fa8f6ff5b0dc075228b98",
     "plugins/plugin-workflow/src/services/workflow-service.ts": "f843af50aef4bf34da4f91cc0bcd8402319d9e127c29de2dda62eae367f45af9",
     "plugins/plugin-workflow/src/routes/workflow-routes.ts": "6b5801e9488df87e25803df22ef787126545bce3a2220120900ae5bdcb4ccee8",
     "plugins/plugin-workflow/__tests__/phone-workflow-generation.test.ts": "121d844a337ede32ccca3630ea416842fe75292a3b962323d966710cbe2172a3",
-    "plugins/plugin-workflow/__tests__/phone-workflow-generation-route.test.ts": "c4965339fbc6bcf80d7ac1e0e66eca3e2ed54e27bc85737ce104e2123d36ef77"
+    "plugins/plugin-workflow/__tests__/phone-workflow-generation-route.test.ts": "c4965339fbc6bcf80d7ac1e0e66eca3e2ed54e27bc85737ce104e2123d36ef77",
+    "plugins/plugin-workflow/__tests__/fixtures/smithers-worker-lifecycle-fixture.mjs": "9c90aa298d422335c52a7f6721c203a1c9a48737e196aa7f9600b5d218ca146e",
+    "plugins/plugin-workflow/__tests__/unit/smithers-worker-lifecycle.test.ts": "12e179e668ca28aac4eff114de9a7b22aede8b3909aa368e2f4ba4f8dec822d3"
   },
   "patches": [
     "android-secure-store-socket.patch",
@@ -70,7 +72,8 @@
     "device-operation-key-guidance.patch",
     "reminder-explicit-timing.patch",
     "android-workflow-source-publication.patch",
-    "typed-workflow-generation.patch"
+    "typed-workflow-generation.patch",
+    "workflow-worker-exit-evidence.patch"
   ],
   "patchHashes": {
     "android-secure-store-socket.patch": "457ea3d0b91c80c53c4bd3db25bb85cea6079d87c5ee2b02a96757e0a31ae900",
@@ -90,6 +93,7 @@
     "device-operation-key-guidance.patch": "78ff3fa0477fbd5f20a9fee1e288306ccacb15e87383d8b1ab7c87f190170902",
     "reminder-explicit-timing.patch": "ff58f690d2214d6de435f7698377971f20c86931e2f4e674ada3ab8e265871d2",
     "android-workflow-source-publication.patch": "8ad19433f9a600f2a03becc94c7b73f021d697a7dc763bc0f2b87c87fde29dd1",
-    "typed-workflow-generation.patch": "c6b3840f2860542e5411dc0a98e2e7191643a3b8ac32de2534cebf9fbfc1625e"
+    "typed-workflow-generation.patch": "c6b3840f2860542e5411dc0a98e2e7191643a3b8ac32de2534cebf9fbfc1625e",
+    "workflow-worker-exit-evidence.patch": "1c26ead686ff8a8dc00dd395422e9935d9c676c4ff7fbdcdfd943bebb47ea772"
   }
 }
