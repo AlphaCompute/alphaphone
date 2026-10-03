@@ -61,3 +61,5 @@ After the owned emulator restart, the same upstream Calendar APKs passed `permis
 - Kokoro is ported locally with real native WAV synthesis and authenticated HTTP/SQLite lifecycle checks. Review corrected optional ABI capability probing; the final flow is rerunning before publication.
 
 No incorporated patch has yet been retired from Alpha: merged commit adoption and both distribution qualifications are still required.
+
+Latest follow-up: reminder permission/bridge test failed because it could not locate the system denial control; cleanup passed and engine acceptance remains separate. Kokoro final HTTP rerun failed readiness while direct native-worker initialization passed; this discrepancy must be resolved before voice qualification or merge. Earlier passes do not close either failure.
