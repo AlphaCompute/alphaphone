@@ -1,29 +1,35 @@
 import {Capacitor} from '@capacitor/core';
 import {registerPlugin} from './platform-plugins';
-/** Wait for this utterance's terminal event; never stop a replacement owned by another consumer. */
+import {planLocalSpeech} from './runtime/local-speech-text';
+/** Preflight the complete native passage, then await every owned chunk. */
 export async function speakLocalText(text:string,signal:AbortSignal,onStarted?:()=>void,queue=false){
- signal.throwIfAborted();const voice=registerPlugin<any>('AlphaVoiceCloud');
- const requestId=crypto.randomUUID();let playbackId:string|undefined;
- const listeners:Array<{remove:()=>Promise<void>}>=[];let settle:(error?:Error)=>void=()=>{};
- let timer:ReturnType<typeof setTimeout>|undefined;
- const finished=new Promise<void>((resolve,reject)=>{settle=error=>error?reject(error):resolve();});
- void finished.catch(()=>{});
- const cancel=()=>{settle(new DOMException('Speech cancelled','AbortError'));if(Capacitor.isNativePlatform())void voice.cancel({requestId}).catch(()=>{});if(playbackId||Capacitor.isNativePlatform())void voice.stopPlayback({playbackId,requestId}).catch(()=>{});};
- signal.addEventListener('abort',cancel,{once:true});
- try{
-  signal.throwIfAborted();({playbackId}=await voice.synthesizeLocal({text,requestId}));signal.throwIfAborted();
-  for(const event of ['playbackEnded','playbackFailed','playbackStopped']){
-   listeners.push(await voice.addListener(event,(value:{playbackId:string})=>{if(value.playbackId!==playbackId)return;settle(event==='playbackEnded'?undefined:Error(event==='playbackStopped'?'Speech was stopped before completion.':'Speech playback failed.'));}));
-   signal.throwIfAborted();
-  }
-  signal.throwIfAborted();
-  let timedOut=false;timer=setTimeout(()=>{timedOut=true;settle(Error('Speech did not finish. Try the step again.'));},20*60*1000);
-  for(;;){signal.throwIfAborted();if(timedOut)throw Error('Speech did not finish. Try the step again.');try{await voice.play({playbackId,...(queue&&!Capacitor.isNativePlatform()?{replace:false}:{})});break;}catch(error){if(!queue||(error as {code?:string}).code!=='playback-busy')throw error;await new Promise<void>((resolve,reject)=>{const stop=()=>{clearTimeout(wait);reject(new DOMException('Speech cancelled','AbortError'));};const wait=setTimeout(()=>{signal.removeEventListener('abort',stop);resolve();},100);signal.addEventListener('abort',stop,{once:true});if(signal.aborted)stop();});}}
-  signal.throwIfAborted();onStarted?.();await finished;
- }finally{
-  clearTimeout(timer);signal.removeEventListener('abort',cancel);
-  await Promise.allSettled(listeners.map(listener=>listener.remove()));
-  if(playbackId||Capacitor.isNativePlatform())await voice.stopPlayback({playbackId,requestId});
- }
+ signal.throwIfAborted();const native=Capacitor.isNativePlatform(),chunks=native?planLocalSpeech(text):[text],voice=registerPlugin<any>('AlphaVoiceCloud');
+ const controller=new AbortController(),cancel=()=>controller.abort(signal.reason);signal.addEventListener('abort',cancel,{once:true});if(signal.aborted)cancel();
+ const timer=setTimeout(()=>controller.abort(Error('Speech did not finish.')),20*60*1000);let started=false;
+ try{for(const chunk of chunks){controller.signal.throwIfAborted();await speakChunk(voice,native,chunk,controller.signal,()=>{if(!started){started=true;onStarted?.();}},queue);}}
+ finally{clearTimeout(timer);signal.removeEventListener('abort',cancel);}
 }
-
+async function speakChunk(voice:any,native:boolean,text:string,signal:AbortSignal,onStarted:()=>void,queue:boolean){
+ const requestId=crypto.randomUUID();let playbackId:string|undefined,active=true,cleanup:Promise<void>|undefined;
+ const handles=new Set<{remove:()=>Promise<void>}>();
+ const bounded=(run:()=>Promise<unknown>)=>new Promise<void>(resolve=>{const timer=setTimeout(resolve,500);Promise.resolve().then(run).catch(()=>{}).finally(()=>{clearTimeout(timer);resolve();});});
+ let interrupt!:(reason:unknown)=>void,ended!:()=>void,failed!:(error:Error)=>void;
+ const interrupted=new Promise<never>((_,reject)=>interrupt=reject),finished=new Promise<void>((resolve,reject)=>{ended=resolve;failed=reject;});void interrupted.catch(()=>{});void finished.catch(()=>{});
+ const dispose=()=>{if(cleanup)return cleanup;active=false;cleanup=Promise.all([...Array.from(handles,h=>bounded(()=>h.remove())),...(native?[bounded(()=>voice.cancel({requestId}))]:[]),...(playbackId||native?[bounded(()=>voice.stopPlayback({playbackId,requestId}))]:[])]).then(()=>{});handles.clear();return cleanup;};
+ const abort=()=>{interrupt(signal.reason??new DOMException('Speech cancelled','AbortError'));void dispose();};signal.addEventListener('abort',abort,{once:true});if(signal.aborted)abort();
+ const wait=(prepared=false)=>Promise.race([new Promise<void>(resolve=>setTimeout(resolve,100)),interrupted,...(prepared?[finished.then(()=>{throw Error('Speech finished while waiting for playback.');})]:[])]);
+ try{
+  for(const event of ['playbackEnded','playbackFailed','playbackStopped']){
+   const pending=voice.addListener(event,(value:{playbackId:string})=>{if(!active||!playbackId||value.playbackId!==playbackId)return;if(event==='playbackEnded')ended();else failed(Error(event==='playbackStopped'?'Speech was stopped before completion.':'Speech playback failed.'));}).then((handle:{remove:()=>Promise<void>})=>{if(active)handles.add(handle);else void bounded(()=>handle.remove());});
+   await Promise.race([pending,interrupted]);signal.throwIfAborted();
+  }
+  for(;;){signal.throwIfAborted();try{
+   const pending=voice.synthesizeLocal({text,requestId,...(queue&&native?{replace:false}:{})}).then((result:{playbackId:string})=>{if(!active&&result.playbackId)void bounded(()=>voice.stopPlayback({playbackId:result.playbackId,requestId}));return result;});
+   ({playbackId}=await Promise.race([pending,interrupted]));if(typeof playbackId!=='string'||!playbackId)throw Error('Speech preparation returned no playback identity');break;
+  }catch(error){if(!queue||!native||(error as {code?:string}).code!=='playback-busy')throw error;await wait();}}
+  // Admission owns its precise refusal; cleanup can emit stopped before play rejects.
+  // Terminal events still retire a prepared utterance while it waits for a busy speaker.
+  for(;;){signal.throwIfAborted();try{await Promise.race([voice.play({playbackId,...(queue?{replace:false}:{})}),interrupted]);break;}catch(error){if(!queue||(error as {code?:string}).code!=='playback-busy')throw error;await wait(true);}}
+  signal.throwIfAborted();onStarted();await Promise.race([finished,interrupted]);signal.throwIfAborted();
+ }finally{signal.removeEventListener('abort',abort);await dispose();}
+}
