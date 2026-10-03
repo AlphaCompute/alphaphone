@@ -61,7 +61,7 @@ async function simulate({ drift, neverBoot = false, neverReady = false, remountC
   const stock = '/product/app/webview/webview.apk', stockHash = 'a'.repeat(64);
   const signature = `Verified using v2 scheme (APK Signature Scheme v2): true\nSigner #1 certificate SHA-256 digest: ${candidate.certificateSha256}`;
   const badging = `package: name='com.android.webview' versionCode='808300007' versionName='157.0.8083.0'\nsdkVersion:'29'\ntargetSdkVersion:'37'\nnative-code: 'x86_64'`;
-  let scratch = '', backingAlias = 'MISSING', remounts = 0, reboots = 0;
+  let scratch = '', backingAlias = 'MISSING', remounts = 0, reboots = 0, probe = null, probeMarker = null;
   const execute = (file, args) => {
     const name = path.basename(file);
     if (name === 'curl') { const fd = fs.openSync(args.at(-1), 'wx'); fs.ftruncateSync(fd, candidate.size); fs.closeSync(fd); return ''; }
@@ -83,7 +83,28 @@ async function simulate({ drift, neverBoot = false, neverReady = false, remountC
     if (key === 'shell cat /sys/dev/block/254:5/size' && drift==='overlay-size' && reboots>1)return '92280';
     if (key === 'shell cat /sys/dev/block/254:5/size') return drift === 'small-scratch' || drift === 'cached-scratch' ? '92280' : '1048576';
     if (key === 'shell getprop ro.build.fingerprint') return 'Android/sdk_phone64_x86_64/emu64x:15/AE3A.240806.019/12368160:userdebug/test-keys';
-    if (key === 'shell cat /proc/mounts') return '/dev/block/dm-43 /data ext4 rw 0 0';
+    if (key === 'shell cat /proc/mounts' || key === 'shell cat /proc/1/mounts') {
+      let mounts = '/dev/block/dm-43 /data ext4 rw 0 0';
+      if (drift?.startsWith('overlay-live')) {
+        const readOnly = drift === 'overlay-live-ro' || (drift === 'overlay-live-init-ro' && key.includes('/proc/1/'));
+        mounts += `\noverlay /product overlay ${readOnly?'ro':'rw'},lowerdir=/product,upperdir=/mnt/scratch/overlay/product/upper,workdir=/mnt/scratch/overlay/product/work 0 0\n/dev/block/dm-5 /mnt/scratch f2fs rw 0 0`;
+      }
+      return mounts;
+    }
+    if (key === 'shell cat /sys/class/block/dm-5/dm/name') return drift === 'overlay-live-wrong-backing' ? 'userdata' : 'scratch';
+    if (a[0] === 'shell' && a[1]?.startsWith('set -C; printf %s alpha-ci-overlay-')) {
+      const match = /^set -C; printf %s (alpha-ci-overlay-[0-9a-f-]{36}) > (\/product\/app\/webview\/\.alpha-ci-probe-[0-9a-f-]{36})$/.exec(a[1]);
+      assert.ok(match);assert.equal(probe,null);probeMarker=match[1];probe=match[2];return '';
+    }
+    if (a[0] === 'shell' && a[1] === 'test' && a.at(-1).startsWith('/product/app/webview/.alpha-ci-probe-')) {
+      assert.notEqual(probe,a.at(-1));return '';
+    }
+    if (a[0] === 'shell' && a[1] === 'cat' && a[2].startsWith('/product/app/webview/.alpha-ci-probe-')) {
+      assert.equal(a[2],probe);return drift === 'overlay-live-probe-mismatch' ? 'foreign' : probeMarker;
+    }
+    if (a[0] === 'shell' && a[1] === 'rm' && a[2].startsWith('/product/app/webview/.alpha-ci-probe-')) {
+      assert.equal(a[2],probe);if(drift === 'overlay-live-cleanup-failed')throw Error('probe cleanup failed');probe=null;return '';
+    }
     if (key === 'shell cat /sys/class/block/dm-43/dm/name') return 'userdata';
     if (key === 'shell ls -1 /sys/class/block/dm-43/slaves') return drift === 'backing-device' ? 'vdd' : 'vdc';
     if (key === 'shell cat /sys/class/block/vdc/dev') return '253:32';
@@ -100,7 +121,7 @@ async function simulate({ drift, neverBoot = false, neverReady = false, remountC
     if (key === 'remount' && drift === 'remount-failed') { const failure = new Error('remount failed'); failure.stderr = 'Failed to map scratch; make f2fs return=65280'; throw failure; }
     if (key === 'remount') {
       remounts++;
-      if (['overlay-reboot','overlay-repeat','overlay-identity','overlay-stock','overlay-size','overlay-alias','overlay-before-size','overlay-never-boot'].includes(drift) && (remounts===1||drift==='overlay-repeat'))return fs.readFileSync('test/fixtures/remount-52ab-overlay-reboot.txt','utf8');
+      if (drift?.startsWith('overlay-live') || (['overlay-reboot','overlay-repeat','overlay-identity','overlay-stock','overlay-size','overlay-alias','overlay-before-size','overlay-never-boot'].includes(drift) && (remounts===1||drift==='overlay-repeat')))return fs.readFileSync('test/fixtures/remount-52ab-overlay-reboot.txt','utf8');
       if(drift==='overlay-unknown')return 'Remount succeeded\nNow reboot your device for settings to take effect\nAnother reboot is required\n';
       return drift === 'remount' ? 'reboot required' : 'remount succeeded';
     }
@@ -286,5 +307,19 @@ test('successful-looking remount stderr never overrides failed exit or terminati
  for(const option of [{remountStatus:1},{remountStatus:null,remountSignal:'SIGTERM'}]){
   const r=await simulate({remountChannel:'stderr',...option});assert.match(r.error.message,/remount failed/);assert.equal(r.removed,false);assert.equal(r.installed,false);
   const failed=r.result.commands.find(c=>!c.success&&c.args.at(-1)==='remount');assert.match(failed.stderr,/remount succeeded/);
+ }
+});
+
+test('repeated emulator reboot advisory requires live overlay proof and removed write probe', async()=>{
+ const r=await simulate({drift:'overlay-live',remountChannel:'stderr'});assert.ifError(r.error);
+ assert.equal(r.calls.filter(c=>c==='reboot').length,2);assert.equal(r.calls.filter(c=>c==='remount').length,2);
+ assert.deepEqual(r.result.liveOverlayProof,{namespaces:['shell','init'],scratchBytes:512*1024*1024,writeProbeRemoved:true});
+ const removedProbe=r.calls.findIndex(c=>c.startsWith('shell rm /product/app/webview/.alpha-ci-probe-'));
+ assert.ok(removedProbe>0&&removedProbe<r.calls.indexOf('shell rm /product/app/webview/webview.apk'));
+ assert.equal(r.installed,true);
+});
+test('live overlay admission refuses namespace, backing and write-probe failures before provider removal', async()=>{
+ for(const drift of ['overlay-live-ro','overlay-live-init-ro','overlay-live-wrong-backing','overlay-live-probe-mismatch','overlay-live-cleanup-failed']){
+  const r=await simulate({drift});assert.ok(r.error,drift);assert.equal(r.removed,false,drift);assert.equal(r.installed,false,drift);
  }
 });
