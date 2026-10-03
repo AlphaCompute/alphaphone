@@ -54,10 +54,27 @@ final class ReminderStore {
    .setData(Uri.parse("alpha-reminder:" + id + (occurrence==null?"":"/"+occurrence))).putExtra(OPEN_ID, id).putExtra(OCCURRENCE,occurrence);
   return PendingIntent.getBroadcast(context, 0, intent, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
  }
+ static boolean noAlert(JSONObject record){return record!=null&&record.has("alertMinutes")&&record.isNull("alertMinutes");}
+ /** Explicit timing is opt-in; legacy calls/receipts retain their original shape. */
+ static JSONObject explicitTiming(JSONObject input,long at,JSONObject recurrence)throws JSONException {
+  boolean due=input.has("dueAt"),alert=input.has("alertMinutes");
+  if(!due&&!alert)return null;
+  if(!due||!alert)throw new IllegalArgumentException("Reminder timing requires dueAt and alertMinutes together");
+  Object raw=input.get("dueAt");
+  if(!(raw instanceof Number)||!Double.isFinite(((Number)raw).doubleValue())||((Number)raw).doubleValue()<0||((Number)raw).doubleValue()>8640000000000000L||((Number)raw).doubleValue()!=((Number)raw).longValue())throw new IllegalArgumentException("Invalid reminder due time");
+  long dueAt=((Number)raw).longValue();Object minutes=input.get("alertMinutes");int lead=0;
+  if(minutes!=JSONObject.NULL){
+   if(!(minutes instanceof Number)||!Double.isFinite(((Number)minutes).doubleValue())||((Number)minutes).doubleValue()<0||((Number)minutes).doubleValue()>10080||((Number)minutes).doubleValue()!=((Number)minutes).intValue())throw new IllegalArgumentException("Invalid reminder alert lead");
+   lead=((Number)minutes).intValue();
+  }
+  if(at!=dueAt-lead*60000L)throw new IllegalArgumentException("Reminder alert time differs from due time");
+  if(recurrence!=null){Object repeatLead=recurrence.get("leadMinutes");if(!(repeatLead instanceof Number)||((Number)repeatLead).doubleValue()!=lead)throw new IllegalArgumentException("Repeat alert lead differs");}
+  return new JSONObject().put("dueAt",dueAt).put("alertMinutes",minutes==JSONObject.NULL?JSONObject.NULL:lead);
+ }
  private static void arm(Context context, String id, long at) {
   // Inexact alarms deliberately avoid the privileged/user-granted exact-alarm capability.
   String occurrence=null;
-  try { JSONObject record=read(context,id);if(record!=null)occurrence=record.optString("occurrenceId",null); }
+  try { JSONObject record=read(context,id);if(noAlert(record))return;if(record!=null)occurrence=record.optString("occurrenceId",null); }
   catch(JSONException error){throw new IllegalStateException("Reminder could not be read",error);}
   final String selectedOccurrence=occurrence;
   effect(()->context.getSystemService(AlarmManager.class).setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, Math.max(at, System.currentTimeMillis() + 1000), pending(context,id,selectedOccurrence)));
@@ -66,6 +83,10 @@ final class ReminderStore {
   return schedule(context,id,title,body,at,null);
  }
  static synchronized JSONObject schedule(Context context, String id, String title, String body, long at, JSONObject recurrence) throws JSONException {
+  return schedule(context,id,title,body,at,recurrence,null);
+ }
+ static synchronized JSONObject schedule(Context context, String id, String title, String body, long at, JSONObject recurrence, JSONObject timing) throws JSONException {
+  if(timing!=null)timing=explicitTiming(timing,at,recurrence);
   if (!validId(id) || title == null || title.trim().isEmpty() || title.length() > 200 || body == null || body.length() > 4000) throw new IllegalArgumentException("Use a valid reminder ID, title up to 200 characters, and details up to 4000 characters");
   if (at <= System.currentTimeMillis()) throw new IllegalArgumentException("Choose a future reminder time");
   SharedPreferences preferences = prefs(context);
@@ -87,12 +108,14 @@ final class ReminderStore {
    if (reclaimedId == null) throw new IllegalArgumentException("Reminder storage is full. Complete or cancel an existing reminder before adding another.");
   }
   JSONObject previous = read(context, id);
+  if(previous!=null&&previous.has("alertMinutes")&&timing==null)throw new IllegalArgumentException("Explicit reminder timing must be preserved");
   JSONObject record = new JSONObject().put("id", id).put("title", title.trim()).put("body", body).put("at", at)
    .put("status", "scheduled").put("mode", "inexact").put("createdAt", System.currentTimeMillis());
   if(recurrence!=null) {
    initializeRecurrence(record,recurrence,at);
   }
   if(recurrence==null)record.put("occurrenceId",UUID.randomUUID().toString()).put("dueAt",at).put("history",new JSONArray());
+  if(timing!=null){if(recurrence!=null&&record.getLong("dueAt")!=timing.getLong("dueAt"))throw new IllegalArgumentException("Repeat due time differs");record.put("dueAt",timing.getLong("dueAt")).put("alertMinutes",timing.get("alertMinutes"));if(noAlert(record))record.put("status","pending").put("mode","none");}
   if(previous!=null)record.put("history",previous.optJSONArray("history")==null?new JSONArray():previous.getJSONArray("history")).put("createdAt",previous.optLong("createdAt",System.currentTimeMillis()));
   SharedPreferences.Editor write = preferences.edit().putString(id, record.toString());
   if (reclaimedId != null) write.remove(reclaimedId);
@@ -105,8 +128,7 @@ final class ReminderStore {
    if(!editor.commit())throw new IllegalStateException("Reminder rollback failed",error); throw error;
   }
   if(previous!=null && !java.util.Objects.equals(previous.optString("occurrenceId",null),record.optString("occurrenceId",null))) cancelAlarm(context,id,previous.optString("occurrenceId",null));
-  cancelAlarm(context,id,null);
-  cancelNotification(context,id);
+  if(previous!=null||!noAlert(record)){cancelAlarm(context,id,null);cancelNotification(context,id);}
   return record;
  }
  static synchronized JSONObject read(Context context, String id) throws JSONException {
@@ -147,7 +169,7 @@ final class ReminderStore {
   for (String key : prefs(context).getAll().keySet()) {
    try {
     JSONObject value=read(context,key);
-    if(value!=null && "scheduled".equals(value.optString("status"))) arm(context,value.getString("id"),value.getLong("at"));
+    if(value!=null && !noAlert(value) && "scheduled".equals(value.optString("status"))) arm(context,value.getString("id"),value.getLong("at"));
    } catch (RuntimeException | JSONException ignored) { /* Keep this record for inspection; continue recovery. */ }
   }
  }
@@ -156,7 +178,7 @@ final class ReminderStore {
   if (!validId(id)) return;
   try {
    JSONObject value = read(context, id);
-   if (value == null || !"scheduled".equals(value.optString("status"))) return;
+   if (value == null || noAlert(value) || !"scheduled".equals(value.optString("status"))) return;
    if(value.has("occurrenceId")&&!value.getString("occurrenceId").equals(occurrence)){
     if(occurrence!=null||!value.optBoolean("legacyAlarm"))return;
    }
@@ -219,6 +241,7 @@ final class ReminderStore {
   JSONObject value=read(context,id);
   if(value==null||!occurrence.equals(value.optString("occurrenceId"))||"cancelled".equals(value.optString("status"))||"completed".equals(value.optString("status")))return new JSONObject().put("status","stale");
   if(!action.equals("done")&&!action.equals("snooze"))throw new IllegalArgumentException("Unknown reminder action");
+  if(action.equals("snooze")&&noAlert(value))throw new IllegalArgumentException("Edit this reminder to enable a reviewed alert before snoozing");
   if(action.equals("snooze")&&"scheduled".equals(value.optString("status"))&&value.has("snoozedAt"))return new JSONObject().put("status","unchanged");
   long now=System.currentTimeMillis();
   if(action.equals("done")&&!value.has("recurrence")){
@@ -251,7 +274,7 @@ final class ReminderStore {
    value.remove("snoozedAt");value.remove("postedAt");
   }else value.put("at",now+600000L).put("snoozedAt",now);
   value.remove("legacyAlarm");
-  value.put("status",allowed(context)?"scheduled":"permission-denied");
+  value.put("status",noAlert(value)?"pending":allowed(context)?"scheduled":"permission-denied");
   if(!prefs(context).edit().putString(id,value.toString()).commit())throw new IllegalStateException("Reminder action could not be saved");
   cancelAlarm(context,id,occurrence);cancelAlarm(context,id,null);cancelNotification(context,id);
   if("scheduled".equals(value.getString("status")))try{arm(context,id,value.getLong("at"));}catch(RuntimeException error){value.put("status","scheduling-failed");if(!prefs(context).edit().putString(id,value.toString()).commit())throw new IllegalStateException("Reminder failure state could not be saved");}
@@ -262,12 +285,14 @@ final class ReminderStore {
  private static void exactKeys(JSONObject v,String...keys)throws JSONException{java.util.Set<String> expected=new java.util.HashSet<>(java.util.Arrays.asList(keys));if(v.length()!=expected.size())throw new IllegalArgumentException("Unexpected reminder fields");for(String key:keys)if(!v.has(key))throw new IllegalArgumentException("Missing reminder field");}
  static synchronized JSONObject selected(Context context,String id)throws JSONException{
   if(!validId(id))throw new IllegalArgumentException("Invalid reminder ID");JSONObject row=read(context,id);if(row==null)throw new IllegalArgumentException("Reminder not found");
-  String source=envelope(context).active().getString("source");return new JSONObject().put("sourceId",source).put("sourceRevision",digest(source)).put("reminderId",id).put("occurrenceId",row.getString("occurrenceId")).put("revision",digest(canonical(row)));
+  String source=envelope(context).active().getString("source");JSONObject target=new JSONObject().put("sourceId",source).put("sourceRevision",digest(source)).put("reminderId",id).put("occurrenceId",row.getString("occurrenceId")).put("revision",digest(canonical(row)));if(row.has("alertMinutes"))target.put("timingVersion",2);return target;
  }
  private static JSONObject operationResult(Context context,String type,String id)throws JSONException{
   JSONObject row=read(context,id),target=selected(context,id);
   JSONObject result=new JSONObject().put("version",1).put("kind",type).put("sourceId",target.getString("sourceId")).put("reminderId",id).put("occurrenceId",target.getString("occurrenceId")).put("revision",target.getString("revision")).put("status",row.getString("status")).put("at",row.getLong("at"));
+  if(row.has("alertMinutes"))result.put("dueAt",row.getLong("dueAt")).put("alertMinutes",row.get("alertMinutes"));
   if(type.equals("reminder_read_selected"))result.put("fields",new JSONObject().put("title",row.getString("title")).put("body",row.getString("body")).put("schedule",new JSONObject().put("at",row.getLong("at")).put("recurrence",row.has("recurrence")?row.getJSONObject("recurrence"):JSONObject.NULL)));
+  if(type.equals("reminder_read_selected")&&row.has("alertMinutes"))result.getJSONObject("fields").getJSONObject("schedule").put("at",row.getLong("dueAt")-(row.isNull("alertMinutes")?0:row.getInt("alertMinutes")*60000L)).put("dueAt",row.getLong("dueAt")).put("alertMinutes",row.get("alertMinutes"));
   return result;
  }
  static synchronized JSONObject operationReceipt(Context context,String operationId,String bindingHash,JSONObject operation)throws JSONException{
@@ -283,7 +308,7 @@ final class ReminderStore {
   if(operationId==null||!operationId.matches("[A-Za-z0-9_-]{1,128}")||bindingHash==null||!bindingHash.matches("[a-f0-9]{64}"))throw new IllegalArgumentException("Invalid reminder operation binding");
   String type=operation.getString("type");if(!java.util.Arrays.asList("reminder_read_selected","reminder_update","reminder_complete","reminder_snooze","reminder_cancel").contains(type))throw new IllegalArgumentException("Unsupported reminder operation");
   if(type.equals("reminder_update"))exactKeys(operation,"type","target","fields");else exactKeys(operation,"type","target");
-  JSONObject target=operation.getJSONObject("target");exactKeys(target,"sourceId","sourceRevision","reminderId","occurrenceId","revision");
+  JSONObject target=operation.getJSONObject("target");if(target.has("timingVersion")){exactKeys(target,"sourceId","sourceRevision","reminderId","occurrenceId","revision","timingVersion");if(!(target.get("timingVersion") instanceof Number)||target.getDouble("timingVersion")!=2)throw new IllegalArgumentException("Invalid reminder timing version");}else exactKeys(target,"sourceId","sourceRevision","reminderId","occurrenceId","revision");
   ReminderEnvelope store=new ReminderEnvelope(context);String argumentHash=digest(bindingHash+":"+canonical(operation));JSONObject receipts=store.value.getJSONObject("operations");
   if(receipts.has(operationId)){JSONObject saved=receipts.getJSONObject(operationId);if(!argumentHash.equals(saved.getString("argumentHash")))throw new IllegalArgumentException("Reminder operation binding changed");return new JSONObject(saved.getJSONObject("response").toString());}
   if(receipts.length()>=500)throw new IllegalStateException("Reminder operation storage full");
@@ -295,7 +320,7 @@ final class ReminderStore {
     if("cancelled".equals(row.optString("status")))throw new IllegalArgumentException("Reminder is no longer active");
     JSONObject fields=operation.getJSONObject("fields");if(fields.has("schedule"))exactKeys(fields,"title","body","schedule");else exactKeys(fields,"title","body");
     if(!(fields.opt("title") instanceof String)||!(fields.opt("body") instanceof String))throw new IllegalArgumentException("Invalid reminder fields");String title=fields.getString("title"),body=fields.getString("body");if(title.trim().isEmpty()||title.length()>200||body.length()>4000||title.indexOf(0)>=0||body.indexOf(0)>=0)throw new IllegalArgumentException("Invalid reminder text");
-    if(fields.has("schedule")){JSONObject schedule=fields.getJSONObject("schedule");exactKeys(schedule,"at","recurrence");Object at=schedule.get("at");if(!(at instanceof Number)||!Double.isFinite(((Number)at).doubleValue())||((Number)at).doubleValue()>8640000000000000L||((Number)at).doubleValue()<0||((Number)at).doubleValue()!=((Number)at).longValue())throw new IllegalArgumentException("Invalid reminder instant");JSONObject recurrence=schedule.isNull("recurrence")?null:schedule.getJSONObject("recurrence");if(recurrence!=null){exactKeys(recurrence,"rule","zone","date","time","leadMinutes");Object lead=recurrence.get("leadMinutes");if(!(lead instanceof Number)||((Number)lead).doubleValue()!=((Number)lead).intValue())throw new IllegalArgumentException("Invalid reminder lead");}if(!allowed(context))throw new IllegalStateException("Reminder notification permission required");schedule(context,id,title,body,((Number)at).longValue(),recurrence);}
+    if(fields.has("schedule")){JSONObject schedule=fields.getJSONObject("schedule");if(schedule.has("dueAt")||schedule.has("alertMinutes"))exactKeys(schedule,"at","recurrence","dueAt","alertMinutes");else exactKeys(schedule,"at","recurrence");Object at=schedule.get("at");if(!(at instanceof Number)||!Double.isFinite(((Number)at).doubleValue())||((Number)at).doubleValue()>8640000000000000L||((Number)at).doubleValue()<0||((Number)at).doubleValue()!=((Number)at).longValue())throw new IllegalArgumentException("Invalid reminder instant");JSONObject recurrence=schedule.isNull("recurrence")?null:schedule.getJSONObject("recurrence");if(recurrence!=null){exactKeys(recurrence,"rule","zone","date","time","leadMinutes");Object lead=recurrence.get("leadMinutes");if(!(lead instanceof Number)||((Number)lead).doubleValue()!=((Number)lead).intValue())throw new IllegalArgumentException("Invalid reminder lead");}JSONObject timing=explicitTiming(schedule,((Number)at).longValue(),recurrence);if(target.has("timingVersion")&&timing==null)throw new IllegalArgumentException("Explicit reminder timing must be preserved");if(!noAlert(timing)&&!allowed(context))throw new IllegalStateException("Reminder notification permission required");schedule(context,id,title,body,((Number)at).longValue(),recurrence,timing);}
     else{row.put("title",title.trim()).put("body",body);if(!prefs(context).edit().putString(id,row.toString()).commit())throw new IllegalStateException("Reminder save failed");if("posted".equals(row.optString("status")))effect(()->{try{postNotification(context,id,row,row.getString("occurrenceId"));}catch(JSONException e){throw new IllegalStateException(e);}});}
    }else if(type.equals("reminder_cancel"))cancel(context,id);
    else if(type.equals("reminder_complete")||type.equals("reminder_snooze")){JSONObject result=decide(context,id,target.getString("occurrenceId"),type.equals("reminder_complete")?"done":"snooze");if(result.optString("status").equals("stale"))throw new IllegalArgumentException("Reminder occurrence changed");}

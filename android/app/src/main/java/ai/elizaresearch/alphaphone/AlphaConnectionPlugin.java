@@ -239,7 +239,7 @@ public final class AlphaConnectionPlugin extends Plugin {
   if(value==null||value.contains("\r")||value.contains("\n"))return false;
   String[] parts=value.split(",",-1);if(parts.length<1||parts.length>5)return false;
   java.util.HashSet<String> seen=new java.util.HashSet<>();
-  for(String part:parts){String token=part.trim();if(!Set.of("calendar.local-event.v1","notes.local-record.v1","reminders.local-record.v1","maps.selected-read.v1","clock.handoff.v1").contains(token)||!seen.add(token))return false;}
+  for(String part:parts){String token=part.trim();if(!Set.of("calendar.local-event.v1","notes.local-record.v1","reminders.local-record.v1","reminders.local-record.v2","maps.selected-read.v1","clock.handoff.v1").contains(token)||!seen.add(token))return false;}
   return true;
  }
  @PluginMethod public void request(PluginCall call) {

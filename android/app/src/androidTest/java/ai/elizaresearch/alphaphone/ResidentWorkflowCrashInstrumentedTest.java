@@ -92,7 +92,13 @@ public final class ResidentWorkflowCrashInstrumentedTest {
   while(SystemClock.elapsedRealtime()<deadline){
    try {
     root=ElizaAgentService.localAgentToken(context);
-    if(root!=null&&!root.isEmpty()){status=nativeCall("/api/auth/status","GET",null,root);status.getString("instanceId");break;}
+    if(root!=null&&!root.isEmpty()){
+     status=nativeCall("/api/auth/status","GET",null,root);
+     // Status is public: an instance ID alone does not authenticate this boot token.
+     // Re-read the native token to reject a rotation while the probe was in flight.
+     if(Boolean.TRUE.equals(status.opt("authenticated"))&&root.equals(ElizaAgentService.localAgentToken(context))){status.getString("instanceId");break;}
+     status=null;
+    }
    } catch(IOException|JSONException unavailable){status=null;}
    SystemClock.sleep(250);
   }

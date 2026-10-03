@@ -61,7 +61,7 @@ for name in ['ElizaAgentService','IpcStartupRecovery','WorkflowSurvivorInventory
 
 assert run('emu','avd','name').strip().splitlines()[0]=='test'
 assert run('shell','getprop','ro.build.type').strip() in ('userdebug','eng')
-PHASES=[('pending-storage','ReminderDeletionStorageInstrumentedTest','reminderDeletionSlotUsesEncryptedCompareExchange','pendingActionStorageFixture','1'),('calendar-recovery','CalendarCreationRecoveryInstrumentedTest','committedMarkerRecoveryAndMissingMarkerNeverReplay','calendarCreationRecovery','1'),('audio-fence','NoteAudioInstrumentedTest','optInRetiredDeletionCannotArriveAfterReloadAndRestore','audioFence','true'),('reminder-edit','ReminderAgentInstrumentedTest','selectedCrudPersistsExactReceiptsAndRejectsChangedBindings','reminderAgent','1')]
+PHASES=[('reminder-no-alert','ReminderTimingInstrumentedTest','noAlertBridgeWithoutPermissionRestoresAndCompletesWithoutDelivery','reminderTiming','none'),('reminder-alert-timing','ReminderTimingInstrumentedTest','numericLeadDueTimeStaleTargetsAndLegacyReceiptsRemainBound','reminderTiming','numeric'),('pending-storage','ReminderDeletionStorageInstrumentedTest','reminderDeletionSlotUsesEncryptedCompareExchange','pendingActionStorageFixture','1'),('calendar-recovery','CalendarCreationRecoveryInstrumentedTest','committedMarkerRecoveryAndMissingMarkerNeverReplay','calendarCreationRecovery','1'),('audio-fence','NoteAudioInstrumentedTest','optInRetiredDeletionCannotArriveAfterReloadAndRestore','audioFence','true'),('reminder-edit','ReminderAgentInstrumentedTest','selectedCrudPersistsExactReceiptsAndRejectsChangedBindings','reminderAgent','1'),('reminder-v2-transport','ConnectionInstrumentedTest','encryptedCredentialsAndHttpSurviveRecreationWithCancellationAndRedirectRejection','reminderTransport','v2')]
 for _,cls,_,_,_ in PHASES:
  relative='android/app/src/androidTest/java/ai/elizaresearch/alphaphone/'+cls+'.java'
  assert relative in frozen and h(Path(relative).read_bytes())==frozen[relative]
@@ -102,7 +102,7 @@ for variant in ['standalone','launcher']:
      run('shell','cmd','package','install-existing','--user',user,pkg);installed(pkg,user,manifest[variant+'-'+kind+'.apk'])
     if phase=='calendar-recovery':
      for permission in ['android.permission.READ_CALENDAR','android.permission.WRITE_CALENDAR']:run('shell','pm','grant','--user',user,APP,permission)
-    if phase=='reminder-edit':run('shell','pm','grant','--user',user,APP,'android.permission.POST_NOTIFICATIONS')
+    if phase in ('reminder-edit','reminder-alert-timing'):run('shell','pm','grant','--user',user,APP,'android.permission.POST_NOTIFICATIONS')
     switch(user,user,name)
     # A switched but not yet bound policy is a retained diagnostic failure, never user0 fallback.
     def display_record(value):
@@ -144,4 +144,4 @@ for variant in ['standalone','launcher']:
    (out/(variant+'-cleanup-incomplete.json')).write_text(json.dumps({'cleanupComplete':False,'errorType':type(error).__name__})+'\n')
    if primary is None:raise
    primary.add_note('Package cleanup unconfirmed; preserve')
-(out/'result.json').write_text(json.dumps({'passed':True,'variants':['standalone','launcher'],'methods':4,'nativeRecoveryUI':True,'liveProvider':False,'physicalAcceptance':False})+'\n')
+(out/'result.json').write_text(json.dumps({'passed':True,'variants':['standalone','launcher'],'methods':7,'nativeRecoveryUI':True,'liveProvider':False,'physicalAcceptance':False})+'\n')

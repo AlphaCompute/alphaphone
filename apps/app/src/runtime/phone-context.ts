@@ -34,12 +34,12 @@ export function sanitizePhoneContext(input: ContextEnvelope): ContextEnvelope {
         if (selected.accountId !== selected.id || selected.sourceRevision !== selected.revision) throw new Error('The Calendar source changed.');
       } else calendarTarget({ sourceId: selected.accountId, sourceRevision: selected.sourceRevision, eventId: selected.id, revision: selected.revision });
     }
-    if(selected.kind==='reminder'){if(input.view!=='calendar')throw Error('Reminder context changed');reminderTarget({sourceId:selected.accountId,sourceRevision:selected.sourceRevision,reminderId:selected.id,occurrenceId:selected.occurrenceId,revision:selected.revision});}
+    if(selected.kind==='reminder'){if(input.view!=='calendar')throw Error('Reminder context changed');reminderTarget({sourceId:selected.accountId,sourceRevision:selected.sourceRevision,reminderId:selected.id,occurrenceId:selected.occurrenceId,revision:selected.revision,...(selected.timingVersion===undefined?{}:{timingVersion:selected.timingVersion})});}
     if(selected.kind==='note'&&selected.accountId!==undefined){if(input.view!=='notes')throw Error('Notes context changed');notesTarget({sourceId:selected.accountId,sourceRevision:selected.sourceRevision,noteId:selected.id,revision:selected.revision});}
     result.selectedObject = { kind: selected.kind, id: opaque(selected.id),
       ...(selected.revision === undefined ? {} : { revision: opaque(selected.revision) }),
       ...(selected.accountId === undefined ? {} : { accountId: opaque(selected.accountId) }),
-      ...(selected.kind==='reminder'?{occurrenceId:opaque(selected.occurrenceId)}:{}),
+      ...(selected.kind==='reminder'?{occurrenceId:opaque(selected.occurrenceId),...(selected.timingVersion===2?{timingVersion:2 as const}:{})}:{}),
       ...(selected.sourceRevision === undefined ? {} : { sourceRevision: opaque(selected.sourceRevision) }),
     };
   }

@@ -61,13 +61,14 @@ import os from 'node:os';
 import path from 'node:path';
 import { main, collectOverlayFailureDiagnostics } from '../scripts/prepare-ci-webview.mjs';
 
-async function simulate({ drift, neverBoot = false, neverReady = false, remountChannel = 'stdout', remountStatus = 0, remountSignal = null } = {}) {
+async function simulate({ framework = 'ready', drift, neverBoot = false, neverReady = false, remountChannel = 'stdout', remountStatus = 0, remountSignal = null } = {}) {
   const parent = fs.mkdtempSync(path.join(os.tmpdir(), 'alpha-provider-sequence-'));
   const output = path.join(parent, 'evidence'), calls = [];
   let elapsed = 0, installed = false, removed = false, stopped = false, rebooted = false, offline = 0, selectionReads = 0, rooted = false;
   const stock = '/product/app/webview/webview.apk', stockHash = 'a'.repeat(64);
   const signature = `Verified using v2 scheme (APK Signature Scheme v2): true\nSigner #1 certificate SHA-256 digest: ${candidate.certificateSha256}`;
   const badging = `package: name='com.android.webview' versionCode='808300007' versionName='157.0.8083.0'\nsdkVersion:'29'\ntargetSdkVersion:'37'\nnative-code: 'x86_64'`;
+  let frameworkReads=0, pidReads=0, frameworkReady=false;
   let scratch = '', backingAlias = '/dev/block/vdc', remounts = 0, reboots = 0;
   const execute = (file, args, options) => {
     const name = path.basename(file);
@@ -79,13 +80,33 @@ async function simulate({ drift, neverBoot = false, neverReady = false, remountC
     const a = args.slice(2), key = a.join(' '); calls.push(key);
     if (['shell cat /proc/bootconfig','shell getprop ro.boot.boot_devices','shell readlink -f /sys/class/block/vdc','shell readlink -f /sys/class/block/vda','shell readlink -f /sys/class/block/vdd'].includes(key)) { assert.ok(options.timeout > 0 && options.timeout <= 2000); if(drift==='boot-budget')elapsed+=4000; }
     if(key==='shell cat /proc/bootconfig'&&!rooted)throw Error('cat: /proc/bootconfig: Permission denied');
-    if(key==='root'){if(drift==='root-unavailable')throw Error('adbd root unavailable');rooted=true;return '';}
+    if(key==='root'){if(drift==='root-unavailable'||drift==='boot-root-denied'&&rebooted)throw Error('adbd root unavailable');rooted=true;return '';}
     if (key === 'reboot') { rooted=false;reboots++; rebooted = true; offline = 1; scratch = ''; backingAlias = '/dev/block/vdc'; return ''; }
     if (key === 'shell getprop sys.boot_completed') {
       if (offline-- > 0 || neverBoot || (drift==='overlay-never-boot'&&reboots>1)) throw Error('device offline');
       return '1';
     }
     if (key.startsWith('shell service check ')) return `Service ${a.at(-1)}: found`;
+    if (key === 'shell id -u') return rooted ? '0' : '2000';
+    if (key === 'shell pidof system_server') {
+      pidReads++;
+      if (removed && framework === 'rotating') return String(200 + pidReads % 2);
+      return removed && framework !== 'stale-server' ? '200' : '100';
+    }
+    if (/^shell cat \/proc\/[0-9]+\/stat$/.test(key)) {
+      assert.equal(rooted,true,'system_server stat must only run after authenticated adb root');
+      const pid=a.at(-1).split('/')[2];
+      return `${pid} (system_server) S ${Array(18).fill('0').join(' ')} ${pid==='100'?'1000':'2000'} 0`;
+    }
+    if (key === 'shell dumpsys activity -a processes') {
+      if(removed)frameworkReads++;
+      frameworkReady = !removed || framework !== 'never-ready' && (framework !== 'delayed' || frameworkReads >= 3);
+      const row=`  mProcessesReady=${frameworkReady} mSystemReady=${frameworkReady} mBooted=${frameworkReady} mFactoryTest=0`;
+      if(removed&&framework==='missing-flags')return 'ACTIVITY MANAGER RUNNING PROCESSES';
+      if(removed&&framework==='duplicate-flags')return row+'\n'+row;
+      return row;
+    }
+
     if (key === 'shell dmctl list devices') return `Available Device Mapper Devices:\n${rebooted || drift === 'cached-scratch' ? 'scratch : 254:5\n' : ''}`;
     if (key === 'shell ls -1 /sys/dev/block/254:5/slaves') return drift === 'super-scratch' ? 'vda2' : 'vdc';
     if (key === 'shell cat /sys/dev/block/254:5/dm/name') return 'scratch';
@@ -120,7 +141,7 @@ async function simulate({ drift, neverBoot = false, neverReady = false, remountC
     if (key === 'shell start') { stopped = false; return ''; }
     if (key === `shell rm ${stock}`) { assert.equal(stopped, true); removed = true; return ''; }
     if (a[0] === 'pull') { fs.writeFileSync(a[2], 'stock'); return ''; }
-    if (a[0] === 'install') { assert.equal(removed, true); assert.equal(stopped, false); installed = true; return 'Success'; }
+    if (a[0] === 'install') { assert.equal(frameworkReady, true, 'Framework must complete before install');if(framework==='install-fails')throw Error('recorded install failure');assert.equal(removed, true); assert.equal(stopped, false); installed = true; return 'Success'; }
     if (key === 'shell cmd webviewupdate set-webview-implementation com.android.webview') return 'Success';
     if (key === 'shell dumpsys webviewupdate') {
       selectionReads++;
@@ -176,7 +197,7 @@ test('offline boot and incomplete RELRO have fixed deadlines', async () => {
   assert.match(offline.error.message, /boot deadline/); assert.equal(offline.elapsed, 180000); assert.equal(offline.removed, false);
   const relro = await simulate({ neverReady: true });
   assert.match(relro.error.message, /RELRO readiness deadline/); assert.equal(relro.result.status, 'FAIL');
-  assert.equal(relro.elapsed, 61000); assert.equal(relro.result.runtimeFeaturesQualified, false);
+  assert.equal(relro.elapsed, 62000); assert.equal(relro.result.runtimeFeaturesQualified, false);
 });
 
 test('framework starts again when stopped-provider hash check refuses deletion', async () => {
@@ -316,4 +337,27 @@ test('root-unavailable fixture fails before privileged boot read or any provider
  assert.equal(r.result.status,'FAIL');assert.equal(r.removed,false);assert.equal(r.installed,false);
  assert.ok(!r.calls.includes('shell cat /proc/bootconfig'));
  assert.ok(!r.calls.some(c=>/^(disable-verity|remount|reboot|install|shell (rm|setprop|stop|start))\b/.test(c)));
+});
+
+test('framework restart waits past published binders and stale boot property before installing once',async()=>{
+ const r=await simulate({framework:'delayed'});assert.ifError(r.error);assert.equal(r.installed,true);
+ const start=r.calls.indexOf('shell start'),install=r.calls.findIndex(call=>call.startsWith('install '));
+ assert.ok(start>=0&&install>start);assert.equal(r.calls.filter(call=>call.startsWith('install ')).length,1);
+ assert.equal(r.calls.slice(start,install).filter(call=>call==='shell dumpsys activity -a processes').length,3);
+ const admission=r.result.frameworkAdmissions.at(-1);assert.equal(admission.ready,true);assert.notDeepEqual(admission.previousServer,admission.after);assert.deepEqual(admission.before,admission.after);
+});
+test('framework incomplete, stale generation or rotating identity never dispatches install',async()=>{
+ for(const framework of ['never-ready','stale-server','rotating','missing-flags','duplicate-flags']){
+  const r=await simulate({framework});assert.match(r.error.message,/boot deadline exceeded/);assert.equal(r.removed,true);assert.equal(r.installed,false);assert.ok(!r.calls.some(call=>call.startsWith('install ')));
+  assert.ok(r.calls.filter(call=>call==='shell dumpsys activity -a processes').length<=181);assert.equal(r.elapsed,182000);
+ }
+});
+test('a failed provider install is never retried after successful framework admission',async()=>{
+ const r=await simulate({framework:'install-fails'});assert.match(r.error.message,/recorded install failure/);assert.equal(r.calls.filter(call=>call.startsWith('install ')).length,1);
+});
+
+test('postreboot root refusal is never replayed and never reaches privileged stat or install',async()=>{
+ const r=await simulate({drift:'boot-root-denied'});assert.match(r.error.message,/boot deadline exceeded/);assert.equal(r.removed,false);assert.equal(r.installed,false);
+ const after=r.calls.slice(r.calls.indexOf('reboot')+1);assert.equal(after.filter(call=>call==='root').length,1);
+ assert.ok(!after.some(call=>/^shell cat \/proc\/[0-9]+\/stat$/.test(call)));assert.ok(!after.some(call=>call.startsWith('install ')));
 });

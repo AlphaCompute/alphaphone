@@ -1,5 +1,11 @@
 # Alpha Phone MVP completion plan
 
+## Current checkpoint — October 3, explicit reminder timing
+
+The composed repair passes 123 rendered flows, TypeScript, production build, 24 WebView preparation scenarios, 20 recovery-supervisor scenarios, and compilation of the seven affected native Java sources. All 3,786 source identities remained unchanged during qualification. Due time and alert lead now persist independently; “None” creates a pending task without requesting notification permission or scheduling delivery. Explicit timing requires v2 agent capability and native version admission. Resident readiness checks current-token authentication; workflow save warnings survive scheduler failures and concurrent runs.
+
+The required full `npm run verify` was attempted but stopped with exit 7; its cause remains unproven. The affected 24-case file passes unchanged separately. Available local storage dropped below 0.5 GiB, so no new local Android build or emulator acceptance is claimed. Fresh hosted verification, both APK variants, v2 authenticated HTTP/SQL flows, native execution, live providers, physical and signed AOSP acceptance remain open. Exact previous `955d109` completed eight native recovery executions across both variants, but resident pairing failed with 401 and Foundation smoke failed during framework initialization. See [timing and recovery qualification](mvp-reminder-timing-2026-10-03.md). The MVP is not complete.
+
 ## Current checkpoint — October 3, reminder and session recovery
 
 Saved reminder edits now use durable revision-bound operations, and Cloud/Gmail status follows confirmed session/grant availability. Final composition verification passes 169 checks; the product changes pass 45 rendered flows. The earlier exact52 browser campaign passes 973 cases with four explicit skips; exactc7 executes all six native recovery cases across both distributions. Resident restart still fails because a shared-runtime worker disappears; the identified blanket process-kill correction now passes fresh-source qualification and awaits actual Android execution. New APK/native, live provider, physical and signed AOSP acceptance remain open. See [current recovery evidence](mvp-edit-session-recovery-2026-10-03.md). The MVP is not complete.

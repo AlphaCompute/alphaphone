@@ -159,6 +159,7 @@ jobs:
           RUN_TURBO_CONCURRENCY: "1"
         run: |
           python3 scripts/ci/resident-phase.py --name prepare --seconds 3600 npm run agent:prepare
+          python3 scripts/ci/resident-phase.py --name device-timing-flow --seconds 600 npm run agent:test-device-timing
           python3 scripts/ci/resident-phase.py --name worker-build --seconds 900 npm run agent:build-workflow-worker
           python3 scripts/ci/resident-phase.py --name compiler-flow --seconds 600 npm run agent:test-workflow-compiler
           python3 scripts/ci/resident-phase.py --name worker-flow --seconds 600 npm run agent:test-workflow-worker

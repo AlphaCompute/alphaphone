@@ -1,4 +1,4 @@
-import { validateReminderOperation, reminderFields, type ReminderOperation, type ReminderResult, type ReminderTarget } from '../runtime/reminder-contract';
+import { validateReminderOperation, reminderFields, reminderTiming, type ReminderOperation, type ReminderResult, type ReminderTarget } from '../runtime/reminder-contract';
 import { BrowserFiles } from './files';
 import { initialReminderDue, nextReminderOccurrence } from './reminder-recurrence';
 import { WebPlugin } from '@capacitor/core';
@@ -7,7 +7,7 @@ import { editStore, readStore, revision } from './store';
 type Row=Reminder & {revision:string};
 type State={sourceRevision:string;reminders:Row[];receipts?:Record<string,{binding:string;result:ReminderResult}>};
 const key='alpha.browser.reminders.v1',initial=():State=>({sourceRevision:revision(),reminders:[]});
-function target(data:State,row:Row):ReminderTarget {return {sourceId:'browser-reminders',sourceRevision:data.sourceRevision,reminderId:row.id,occurrenceId:row.occurrenceId!,revision:row.revision};}
+function target(data:State,row:Row):ReminderTarget {return {...(row.alertMinutes!==undefined?{timingVersion:2 as const}:{}),sourceId:'browser-reminders',sourceRevision:data.sourceRevision,reminderId:row.id,occurrenceId:row.occurrenceId!,revision:row.revision};}
 function operationBinding(input:{operationId:string;bindingHash:string},operation:ReminderOperation) {
   if(!/^[A-Za-z0-9_-]{1,128}$/.test(input.operationId)||!/^[a-f0-9]{64}$/.test(input.bindingHash))throw Error('Invalid reminder operation binding.');
   return JSON.stringify([input.bindingHash,operation]);
@@ -15,12 +15,13 @@ function operationBinding(input:{operationId:string;bindingHash:string},operatio
 function decide(row:Row,action:'done'|'snooze') {
   const now=Date.now();
   if(action==='snooze'){
+    if(row.alertMinutes===null)throw Error('No-alert reminders cannot be snoozed. Edit the alert first.');
     if(row.status==='scheduled'&&row.snoozedAt!==undefined)return 'unchanged';
     row.at=now+600000;row.snoozedAt=now;row.status='scheduled';
   } else {
     const next=row.recurrence?nextReminderOccurrence(row.recurrence,now):undefined;
     row.history=[...(row.history||[]),{occurrenceId:row.occurrenceId!,dueAt:row.dueAt||row.at,completedAt:now,skippedDates:next?.skippedDates||0}].slice(-32);
-    if(next){row.recurrence!.date=next.date;row.dueAt=next.dueAt;row.at=next.at;row.occurrenceId=crypto.randomUUID();row.status='scheduled';delete row.completedAt;}
+    if(next){row.recurrence!.date=next.date;row.dueAt=next.dueAt;row.at=next.at;row.occurrenceId=crypto.randomUUID();row.status=row.alertMinutes===null?'pending':'scheduled';delete row.completedAt;}
     else {row.status='completed';row.completedAt=now;}
     delete row.snoozedAt;delete row.postedAt;
   }
@@ -29,16 +30,18 @@ function decide(row:Row,action:'done'|'snooze') {
 export class BrowserDaily extends WebPlugin {
   constructor(private files:BrowserFiles){super();window.addEventListener('focus',()=>void this.notifyListeners('appResumed',{}));}
   async notifyReminder(id:string,occurrenceId:string){await this.notifyListeners('reminderOpened',{id,occurrenceId});}
-  async surfaceInfo(){return {developmentBuild:true,assistant:false,topInset:0,bottomInset:0};}
+  async surfaceInfo(){return {developmentBuild:true,assistant:false,reminderTimingVersion:2 as const,topInset:0,bottomInset:0};}
   async closeAssistant(){window.dispatchEvent(new Event('alpha-back',{cancelable:true}));return {closed:true};}
-  async scheduleReminder(input:{id:string;title:string;body?:string;at:number;recurrence?:Reminder['recurrence']}) {
+  async scheduleReminder(input:{id:string;title:string;body?:string;at:number;recurrence?:Reminder['recurrence'];dueAt?:number;alertMinutes?:number|null}) {
     if(!Number.isSafeInteger(input.at)||input.at<=Date.now())return {status:'past',id:input.id,mode:'inexact'};
     if(!/^[A-Za-z0-9_-]{1,100}$/.test(input.id))throw Error('Invalid reminder identity.');
-    reminderFields({title:input.title,body:input.body||'',schedule:{at:input.at,recurrence:input.recurrence||null}});
-    const dueAt=input.recurrence?initialReminderDue(input.recurrence,input.at):input.at;
-    return editStore(key,initial,data=>{const previous=data.reminders.find(r=>r.id===input.id);data.reminders=data.reminders.filter(r=>r.id!==input.id);data.reminders.push({...input,body:input.body||'',mode:'inexact',createdAt:previous?.createdAt||Date.now(),status:'scheduled',occurrenceId:crypto.randomUUID(),dueAt,history:previous?.history||[],revision:revision()});return {status:'scheduled',id:input.id,mode:'inexact'};});
+    reminderFields({title:input.title,body:input.body||'',schedule:{at:input.at,recurrence:input.recurrence||null,...(input.dueAt!==undefined||input.alertMinutes!==undefined?{dueAt:input.dueAt,alertMinutes:input.alertMinutes}:{})}});
+    const dueAt=input.dueAt??(input.recurrence?initialReminderDue(input.recurrence,input.at):input.at);
+    if(input.recurrence&&initialReminderDue(input.recurrence,input.at)!==dueAt)throw Error('Reminder civil time changed');
+    const status=input.alertMinutes===null?'pending':'scheduled',mode=input.alertMinutes===null?'none':'inexact';
+    return editStore(key,initial,data=>{const previous=data.reminders.find(r=>r.id===input.id);if(previous?.alertMinutes!==undefined&&input.alertMinutes===undefined)throw Error('Explicit reminder timing cannot be discarded');data.reminders=data.reminders.filter(r=>r.id!==input.id);data.reminders.push({...input,body:input.body||'',mode,createdAt:previous?.createdAt||Date.now(),status,occurrenceId:crypto.randomUUID(),dueAt,history:previous?.history||[],revision:revision()});return {status,id:input.id,mode};});
   }
-  async listReminders(){return editStore(key,initial,data=>{for(const row of data.reminders)if(row.status==='scheduled'&&row.at<=Date.now()){row.status='posted';row.postedAt=Date.now();row.revision=revision();}return {reminders:data.reminders.filter(r=>r.status!=='cancelled').map(r=>({...r,target:{sourceId:'browser-reminders',sourceRevision:data.sourceRevision,reminderId:r.id,occurrenceId:r.occurrenceId!,revision:r.revision}})),notificationsEnabled:true};});}
+  async listReminders(){return editStore(key,initial,data=>{for(const row of data.reminders)if(row.status==='scheduled'&&row.at<=Date.now()){row.status='posted';row.postedAt=Date.now();row.revision=revision();}return {reminders:data.reminders.filter(r=>r.status!=='cancelled').map(r=>({...r,target:target(data,r)})),notificationsEnabled:true};});}
   async cancelReminder(input:{id:string;target:ReminderTarget;operationId:string;bindingHash:string}){if(input.target?.reminderId!==input.id)throw Error('Reviewed reminder target required.');const response=await this.operateReminder({...input,operation:{type:'reminder_cancel',target:input.target}});return {status:response.status==='succeeded'?'cancelled':'unknown',id:input.id};}
   async selectedReminder(input:{id:string}):Promise<ReminderTarget>{const data=readStore(key,initial),row=data.reminders.find(r=>r.id===input.id);if(!row)throw Error('Reminder no longer exists.');return target(data,row);}
   async reminderOperationReceipt(input:{operationId:string;bindingHash:string;operation:ReminderOperation}) {
@@ -51,16 +54,16 @@ export class BrowserDaily extends WebPlugin {
       const receipt=data.receipts?.[input.operationId];if(receipt){if(receipt.binding!==binding)throw Error('Reminder receipt binding changed.');return {status:'succeeded',result:receipt.result};}
       if(document.hidden)throw Error('Return to Alpha to review the reminder.');
       const row=data.reminders.find(r=>r.id===operation.target.reminderId);
-      if(!row||Object.entries(target(data,row)).some(([k,v])=>operation.target[k as keyof ReminderTarget]!==v))throw Error('Reminder changed. Review it again.');
+      if(!row||operation.target.timingVersion!==target(data,row).timingVersion||Object.entries(target(data,row)).some(([k,v])=>operation.target[k as keyof ReminderTarget]!==v))throw Error('Reminder changed. Review it again.');
       if(operation.type!=='reminder_read_selected'&&(row.status==='cancelled'||row.status==='completed'&&operation.type!=='reminder_cancel'&&operation.type!=='reminder_update'))throw Error('Reminder is no longer active.');
       if(operation.type==='reminder_update'){
         row.title=operation.fields.title;row.body=operation.fields.body;
-        if(operation.fields.schedule){const schedule=operation.fields.schedule;if(schedule.at<=Date.now())throw Error('Choose a future reminder time.');row.at=schedule.at;row.recurrence=schedule.recurrence||undefined;row.dueAt=schedule.recurrence?initialReminderDue(schedule.recurrence,schedule.at):schedule.at;row.occurrenceId=crypto.randomUUID();row.status='scheduled';delete row.snoozedAt;delete row.postedAt;delete row.completedAt;}
+        if(operation.fields.schedule){const schedule=operation.fields.schedule;if(schedule.at<=Date.now())throw Error('Choose a future reminder time.');row.at=schedule.at;row.recurrence=schedule.recurrence||undefined;row.dueAt=schedule.dueAt??(schedule.recurrence?initialReminderDue(schedule.recurrence,schedule.at):schedule.at);if(schedule.recurrence&&initialReminderDue(schedule.recurrence,schedule.at)!==row.dueAt)throw Error('Reminder civil time changed');if(schedule.alertMinutes===undefined)delete row.alertMinutes;else row.alertMinutes=schedule.alertMinutes;row.mode=row.alertMinutes===null?'none':'inexact';row.occurrenceId=crypto.randomUUID();row.status=row.alertMinutes===null?'pending':'scheduled';delete row.snoozedAt;delete row.postedAt;delete row.completedAt;}
         row.revision=revision();
       }else if(operation.type==='reminder_cancel'){row.status='cancelled';row.cancelledAt=Date.now();row.revision=revision();}
       else if(operation.type==='reminder_complete'||operation.type==='reminder_snooze')decide(row,operation.type==='reminder_complete'?'done':'snooze');
-      const result:ReminderResult={version:1,kind:operation.type,sourceId:'browser-reminders',reminderId:row.id,occurrenceId:row.occurrenceId!,revision:row.revision,status:row.status,at:row.at};
-      if(operation.type==='reminder_read_selected')result.fields={title:row.title,body:row.body,schedule:{at:row.at,recurrence:row.recurrence||null}};
+      const result:ReminderResult={...reminderTiming(row),version:1,kind:operation.type,sourceId:'browser-reminders',reminderId:row.id,occurrenceId:row.occurrenceId!,revision:row.revision,status:row.status,at:row.at};
+      if(operation.type==='reminder_read_selected')result.fields={title:row.title,body:row.body,schedule:{at:row.alertMinutes===undefined?row.at:row.dueAt!-(row.alertMinutes??0)*60000,recurrence:row.recurrence||null,...reminderTiming(row)}};
       (data.receipts??={})[input.operationId]={binding,result};return {status:'succeeded',result};
     });
   }

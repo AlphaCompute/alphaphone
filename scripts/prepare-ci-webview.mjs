@@ -251,16 +251,61 @@ export async function main({ environment = process.env, execute = execFileSync, 
     }
     fs.writeFileSync(path.join(output, `storage-${label}.json`), JSON.stringify(details, null, 2) + '\n');
   };
-  const boot = async () => {
+  const serverIdentity = (read = run) => {
+    const pid = read('shell', 'pidof', 'system_server').trim();
+    require(/^[1-9][0-9]*$/.test(pid), 'Expected one system_server process');
+    const stat = read('shell', 'cat', `/proc/${pid}/stat`).trim();
+    const match = stat.match(/^([1-9][0-9]*) \(system_server\) ([^\n]+)$/);
+    const fields = match?.[2].split(/\s+/);
+    require(match?.[1] === pid && fields?.length >= 20 && /^[0-9]+$/.test(fields[19]),
+      'Unknown system_server process identity');
+    return { pid, startTicks: fields[19] };
+  };
+  const sameServer = (a, b) => a.pid === b.pid && a.startTicks === b.startTicks;
+  const boot = async (previousServer = null) => {
     const end = now() + 180000;
+    let rootRequested = false;
+    const read = (...args) => {
+      const remaining = end - now();
+      require(remaining > 0, 'Provider fixture boot deadline exceeded');
+      return command(path.join(sdk, 'platform-tools/adb'), ['-s', serial, ...args], Math.min(2000, remaining));
+    };
     while (now() < end) {
       try {
-        if (run('shell', 'getprop', 'sys.boot_completed').trim() === '1' &&
-            /Service package: found/.test(run('shell', 'service', 'check', 'package')) &&
-            /Service activity: found/.test(run('shell', 'service', 'check', 'activity'))) return;
+        if (read('shell', 'getprop', 'sys.boot_completed').trim() === '1' &&
+            /Service package: found/.test(read('shell', 'service', 'check', 'package')) &&
+            /Service activity: found/.test(read('shell', 'service', 'check', 'activity'))) {
+          // Reboot drops adbd privileges. Authenticate the complete disposable
+          // fixture before restoring root; never assume shell can inspect /proc.
+          const uid = read('shell', 'id', '-u').trim();
+          if (uid !== '0') {
+            if (!rootRequested) {
+              try {
+                require(uid === '2000', 'Unexpected provider fixture shell identity');
+                requireProviderFixture(read, environment);
+              } catch (error) { error.providerFixtureRefusal = true; throw error; }
+              rootRequested = true; // An ambiguous or refused root request is never replayed.
+              read('root'); read('wait-for-device');
+            }
+            await sleep(1000);
+            continue;
+          }
+          const before = serverIdentity(read);
+          const processes = read('shell', 'dumpsys', 'activity', '-a', 'processes');
+          const after = serverIdentity(read);
+          const rows = processes.split(/\r?\n/).filter(line => /\bmSystemReady=/.test(line));
+          const ready = rows.length === 1 && /^\s*mProcessesReady=true mSystemReady=true mBooted=true mFactoryTest=[0-9]+\s*$/.test(rows[0]);
+          state.lastFrameworkReadiness = { before, after, previousServer, ready, row: rows.join('\n').slice(0, 512) }; save();
+          if (ready && sameServer(before, after) && (!previousServer || !sameServer(previousServer, after))) {
+            state.frameworkAdmissions ??= [];
+            state.frameworkAdmissions.push(state.lastFrameworkReadiness); save();
+            return after;
+          }
+        }
       } catch (error) {
-        // Offline and unavailable binder services are expected during reboot.
-        // The timeout never extends; normal fixture admission follows readiness.
+        if (error.providerFixtureRefusal) throw error;
+        // Offline, incomplete framework initialization and binder replacement
+        // are read-only readiness failures; never retry provider installation.
         state.lastBootReadError = error.message;
       }
       await sleep(1000);
@@ -337,14 +382,16 @@ export async function main({ environment = process.env, execute = execFileSync, 
     require(stockPath(run('shell', 'pm', 'path', candidate.package), run('shell', 'dumpsys', 'package', candidate.package)) === stock, 'Stock path changed');
     require(run('shell', 'sha256sum', stock).trim().split(/\s+/)[0] === stockHash && fileDigest(backup) === stockHash && fileDigest(apk) === candidate.apkSha256, 'Provider bytes changed before removal');
     state.status = 'removing-exact-stock-file'; save();
+    const previousServer = serverIdentity();
     run('shell', 'stop');
     try {
       require(run('emu', 'avd', 'name').trim().split(/\r?\n/)[0] === 'test' && run('shell', 'getprop', 'ro.kernel.qemu').trim() === '1', 'Fixture changed while stopped');
       require(run('shell', 'sha256sum', stock).trim().split(/\s+/)[0] === stockHash, 'Stopped provider changed');
       run('shell', 'rm', stock);
     } finally { run('shell', 'start'); }
-    await boot(); safe();
+    const admittedServer = await boot(previousServer); safe();
     require(!run('shell', 'pm', 'list', 'packages', candidate.package).trim(), 'Conflicting provider remains');
+    require(sameServer(admittedServer, serverIdentity()), 'Framework changed before provider installation');
     command(path.join(sdk, 'platform-tools/adb'), ['-s', serial, 'install', '--no-incremental', apk], 120000);
     safe(true);
     run('shell', 'cmd', 'webviewupdate', 'set-webview-implementation', candidate.package);
