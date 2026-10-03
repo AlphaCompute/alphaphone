@@ -1,6 +1,12 @@
 # Alpha Phone MVP completion plan
 
-## Current checkpoint — October 2, reading privacy and password setup
+## Current plan — October 3, resident agent and browser development
+
+Use the [current requirement/evidence matrix](mvp-current-status.md) and [browser implementation review](mvp-browser-review.md) for the active plan. The primary agent is Android-resident, with the same real agent hosted locally for browser development. Cloud/remote services are optional; Nitro admission is not a prerequisite. Local scheduling requires honest missed-occurrence/restart recovery, not a claim that a powered-off phone runs code. Hosted Cerebras text inference remains distinct from local orchestration and speech.
+
+Current work proceeds through notification receipt recovery, remaining speech ownership paths, actual local digest/reconnect qualification, redaction qualification and full current-source browser/design coverage. Android builds remain skipped for this browser-focused pass. Physical device and real-provider acceptance remain open. The older checkpoints below preserve historical results and do not override this current direction.
+
+## Earlier checkpoint — October 2, reading privacy and password setup
 
 Two concrete MVP gaps are now implemented: browser read-aloud rejects recognized credential-sensitive sources and explicit API-key URLs before fetching/speaking, and Settings/Browser expose an honest password-provider setup/status flow. Android and Proton own provider selection and vault UI; no forced enablement or successful filling is inferred. Combined repository verification and 84 rendered flows pass on an isolated composition. Exact source identities, review corrections and remaining gates are in [reading/provider qualification](mvp-reading-provider-qualification.md).
 
