@@ -2033,3 +2033,10 @@ The calendar preference test timed out in hosted run `37118912268` because the c
 Eight Chromium/WebKit cases pass, including preference persistence/failure recovery and pointer/Enter open-close cycles at 150% text in February and August. Compact final-state screenshots were inspected; the screenshot harness finishes CSS animations before capturing with its frozen clock. Repository verification passes all 157 tests, zero skips, TypeScript and build. Evidence: `artifacts/calendar-preferences-review/test-results/calendar-close-review/`. Exact-head hosted success remains pending.
 
 The user-facing local stack was restarted on short-credential manifest `d570c03df74303368ed3e9ffeae4f1dbde1c7529136d1c806ef54e5d03394e3a`; owner authentication, one agent, embedded workflows, Whisper and Kokoro all report ready. Default swaps remain off. No Android build ran.
+
+
+## October 3 — calendar editor accessibility and multiline preservation
+
+Audited Notes, new-event and calendar-edit forms at 150% text in both themes. The calendar editor silently stripped description newlines through a single-line input. It now uses a textarea, themed controls and native color scheme, 44px action/checkbox-label targets, persistent Close/Save/Cancel, visible focused labels and inline save errors retaining the draft.
+
+All 32 selected Chromium/WebKit cases pass, including 360px-wide layouts at 640px and 360px heights, both themes at 150%, exact multiline preservation, focus return, failed saves, timezone overlap/gap behavior, stale saves, all-day boundaries and meeting lifecycle. Final screenshots were inspected. Repository verification passes 157 tests, zero skips, TypeScript and build. Evidence: `artifacts/calendar-preferences-review/test-results/daily-editor-audit/`. Intermediate focus failures remain in logs. Current-head full hosted qualification and remaining design states are still open. Android builds were skipped.
