@@ -1,3 +1,4 @@
+import {isReminderCreate,validateReminderCreateResult} from '../runtime/reminder-create-contract';
 import type {WorkflowDeviceBinding} from '../runtime/workflow-device-contract';
 import {developmentIdentity,assertDevelopmentIdentity,type DevelopmentIdentity} from './development-identity';
 import {isReminderOperation,validateReminderResult} from '../runtime/reminder-contract';
@@ -50,10 +51,10 @@ export function developmentJournal(profile:DevelopmentProfile,identity=developme
   recoverReminder:async input=>{
    const entry=find(validate(readStore(key(identity),initial)),input);if(!entry)throw Error('Reminder journal is missing.');
    if(entry.phase==='terminal'&&entry.status!=='unknown')return {entry};
-   const operation=validateDeviceOperation(entry.record.operation);if(!isReminderOperation(operation)||!entry.attemptId||entry.phase!=='applying'&&entry.status!=='unknown')throw Error('Reminder recovery requires an admitted attempt.');
+   const operation=validateDeviceOperation(entry.record.operation);if(!(isReminderOperation(operation)||isReminderCreate(operation))||!entry.attemptId||entry.phase!=='applying'&&entry.status!=='unknown')throw Error('Reminder recovery requires an admitted attempt.');
    const expected=await actionScope(JSON.stringify([input.scope,entry.record.ownerId,entry.record.agentId,entry.record.sessionId,entry.record.origin,entry.record.installationId,entry.record.enrollmentId,input.proposalId,entry.record.digest,entry.operationId]));
    if(expected!==input.bindingHash||await actionScope(JSON.stringify(operation))!==entry.operationHash)throw Error('Reminder recovery binding changed.');
-   const {DailyApps}=await import('../daily');const receipt=await DailyApps.reminderOperationReceipt({operationId:entry.operationId,bindingHash:input.bindingHash,operation});if(receipt.status!=='succeeded')return {entry};const reminderResult=validateReminderResult(operation,receipt.result);
+   const {DailyApps}=await import('../daily');const receipt=await DailyApps.reminderOperationReceipt({operationId:entry.operationId,bindingHash:input.bindingHash,operation});if(receipt.status!=='succeeded')return {entry};const reminderResult=isReminderCreate(operation)?validateReminderCreateResult(operation,receipt.result,entry.operationId):validateReminderResult(operation,receipt.result);
    return edit(data=>{const current=find(data,input);if(JSON.stringify(current)!==JSON.stringify(entry))throw Error('Reminder journal changed. Refresh history.');const proposal=data.proposals.find(p=>p.id===input.proposalId);if(!proposal||proposal.digest!==entry.record.digest||proposal.execution?.attemptId!==entry.attemptId)throw Error('Reminder claim changed.');Object.assign(current!,{phase:'terminal',status:'succeeded',summary:'Recovered the original saved reminder receipt. No action was repeated.',result:{operationId:entry.operationId,reminderResult}});return {entry:current!};});
   },
   get:async input=>({entry:find(validate(readStore(key(identity),initial)),input)||null}),

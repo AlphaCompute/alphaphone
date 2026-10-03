@@ -60,3 +60,28 @@ test('development selected no-alert reminder completes only after approval and k
  await page.getByText('Approve: reminder complete',{exact:true}).click();await expect.poll(async()=>(await state(page)).proposals[0].state).toBe('completed');expect((await rows())[0].status).toBe('completed');expect((await rows())[0].alertMinutes).toBeNull();expect((await state(page)).journal).toHaveLength(1);expect((await state(page)).journal[0].phase).toBe('terminal');const recorded=await rows();
  await page.reload();await open(page);await page.getByText('Development device actions',{exact:true}).click();await page.getByRole('button',{name:'Sync recorded receipts'}).click();await expect(page.getByText('completed',{exact:true})).toBeVisible();expect(await rows()).toEqual(recorded);expect((await state(page)).journal).toHaveLength(1);
 });
+
+test('agent legacy reminder refuses unsupported no-alert intent before approval',async({page})=>{
+ await page.clock.setFixedTime(new Date('2026-10-02T12:00:00Z'));await setup(page);
+ await page.getByRole('textbox',{name:'Action JSON'}).fill(JSON.stringify({type:'create_reminder',title:'Silent requested task',dueAt:'2026-10-02T13:00:00Z',alertMinutes:null}));
+ await page.getByRole('button',{name:'Queue action for review'}).click();
+ await expect(page.getByRole('alert')).toBeVisible();
+ expect(await page.evaluate(key=>localStorage.getItem(key),key)).toBeNull();
+ expect(await page.evaluate(()=>JSON.parse(localStorage.getItem('alpha.browser.reminders.v1')||'{"reminders":[]}').reminders)).toEqual([]);
+});
+
+for(const mode of ['none','lead','repeat','lost-response','old-native'] as const)test(`reviewed reminder creation preserves ${mode} through approval and restart`,async({page})=>{
+ await page.clock.setFixedTime(new Date('2026-10-02T12:00:00Z'));await setup(page);
+ const schedule={at:Date.parse('2026-10-02T13:00:00Z')-(mode==='lead'?600000:0),dueAt:Date.parse('2026-10-02T13:00:00Z'),alertMinutes:mode==='lead'?10:null,recurrence:mode==='repeat'?{rule:'daily',zone:'UTC',date:'2026-10-02',time:'13:00',leadMinutes:0}:null};
+ const operation={type:'reminder_create',fields:{title:'Reviewed creation',body:'Exact private details',schedule}};
+ await page.getByRole('textbox',{name:'Action JSON'}).fill(JSON.stringify(operation));await queue(page);await page.getByRole('button',{name:'Close connection settings'}).click();await page.getByRole('button',{name:'Home',exact:true}).click();await page.getByRole('textbox',{name:'Ask Alpha',exact:true}).fill('Review reminder creation');await page.getByRole('textbox',{name:'Ask Alpha',exact:true}).press('Enter');await expect(page.getByText('Approve: reminder create',{exact:true})).toBeVisible();
+ expect(await page.evaluate(()=>JSON.parse(localStorage.getItem('alpha.browser.reminders.v1')||'{"reminders":[]}').reminders)).toEqual([]);
+ if(mode==='lost-response'||mode==='old-native')await page.evaluate(async mode=>{const {BrowserDaily}=await import('/src/browser/daily.ts');const DailyApps=BrowserDaily.prototype;if(mode==='old-native'){(DailyApps as any).surfaceInfo=async()=>({reminderTimingVersion:2});return;}const original=DailyApps.operateReminder;(DailyApps as any).operateReminder=async function(input:any){await original.call(this,input);throw Error('Lost native response');};},mode);
+ await page.getByText('Approve: reminder create',{exact:true}).click();
+ if(mode==='old-native'){await expect.poll(async()=>(await state(page)).journal[0]?.phase).toBe('terminal');expect((await state(page)).journal[0].status).toBe('failed');expect(await page.evaluate(()=>JSON.parse(localStorage.getItem('alpha.browser.reminders.v1')||'{"reminders":[]}').reminders)).toEqual([]);return;}
+ await expect.poll(()=>page.evaluate(()=>JSON.parse(localStorage.getItem('alpha.browser.reminders.v1')||'{"reminders":[]}').reminders.length)).toBe(1);
+ if(mode==='lost-response')await expect.poll(async()=>(await state(page)).journal[0]?.status).toBe('unknown');else await expect.poll(async()=>(await state(page)).proposals[0].state).toBe('completed');
+ const before=await page.evaluate(()=>JSON.parse(localStorage.getItem('alpha.browser.reminders.v1')!));expect(before.reminders[0]).toMatchObject({title:operation.fields.title,body:operation.fields.body,at:schedule.at,dueAt:schedule.dueAt,alertMinutes:schedule.alertMinutes,status:mode==='lead'?'scheduled':'pending'});if(mode==='repeat')expect(before.reminders[0].recurrence).toEqual(schedule.recurrence);
+ expect(Object.keys(before.receipts)).toHaveLength(1);
+ await page.reload();await open(page);await page.getByText('Development device actions',{exact:true}).click();await page.getByRole('button',{name:'Sync recorded receipts'}).click();await expect.poll(async()=>(await state(page)).proposals[0].state).toBe('completed');expect(await page.evaluate(()=>JSON.parse(localStorage.getItem('alpha.browser.reminders.v1')!))).toEqual(before);await page.getByRole('button',{name:'Sync recorded receipts'}).click();expect(await page.evaluate(()=>JSON.parse(localStorage.getItem('alpha.browser.reminders.v1')!))).toEqual(before);
+});

@@ -1,3 +1,4 @@
+import {isReminderCreate,validateReminderCreateResult} from '../runtime/reminder-create-contract';
 import {publishWorkflowNotice} from '../browser/workflow-notices';
 import {speakLocalText} from '../local-speech-playback';
 import {browserDevProfile} from '../browser/dev-profile';
@@ -228,9 +229,9 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
       else transport.close?.();
     };
     connectionController.setDeviceRecovery(async(operation,operationId,bindingHash,signal)=>{
-      signal.throwIfAborted();if(!isReminderOperation(operation))return {status:'unknown'};
+      signal.throwIfAborted();if(!isReminderOperation(operation)&&!isReminderCreate(operation))return {status:'unknown'};
       const result=await DailyApps.reminderOperationReceipt({operation,operationId,bindingHash});signal.throwIfAborted();
-      return result.status==='succeeded'?{status:'succeeded',reminderResult:validateReminderResult(operation,result.result)}:{status:'unknown'};
+      return result.status==='succeeded'?{status:'succeeded',reminderResult:isReminderCreate(operation)?validateReminderCreateResult(operation,result.result,operationId):validateReminderResult(operation,result.result)}:{status:'unknown'};
     });
     connectionController.setDeviceExecutor(async (operation, operationId, expectedContext, signal, bindingHash, workflowRoute) => {
       signal.throwIfAborted(); context(this);
@@ -315,6 +316,15 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
         const note = { id: operationId, kind: 'text', title: operation.title, body: operation.body, pinned: false, when: 'Now', createdAt:Date.now(), modifiedAt:Date.now() };
         const saved = await this.vset('notes', { list: [note, ...this.vget('notes').list] });
         return { status: saved ? 'succeeded' : this.notesCommitUncertain?'unknown':'failed', summary: saved ? `Saved note: ${operation.title}` : 'The note save is unconfirmed. Inspect saved notes before repeating.' };
+      }
+      if(isReminderCreate(operation)){
+        const support=await DailyApps.surfaceInfo();signal.throwIfAborted();
+        context(this);if(!this.live||JSON.stringify(alphaClient.getState().context)!==JSON.stringify(expectedContext))throw Error('Phone context changed');
+        if(support.reminderCreationVersion!==1)return {status:'failed',summary:'This phone does not support reviewed reminder creation. Nothing was created.'};
+        const result=await DailyApps.operateReminder({operationId,bindingHash,operation});
+        if(result.status!=='succeeded')return {status:'unknown',summary:'Reminder creation outcome is unknown. Check action history; it will not be repeated.'};
+        const reminderResult=validateReminderCreateResult(operation,result.result,operationId);
+        return {status:'succeeded',reminderResult,summary:reminderResult.status==='pending'?'Reminder saved with no alert.':reminderResult.status==='scheduled'?'Reminder saved with approximate notification delivery.':reminderResult.status==='permission-denied'?'Reminder saved; notifications are disabled.':'Reminder saved; notification scheduling failed.'};
       }
       if(isReminderOperation(operation)){
         signal.throwIfAborted();context(this);if(JSON.stringify(alphaClient.getState().context)!==JSON.stringify(expectedContext)||expectedContext.sensitive||document.hidden)throw Error('Reminder context changed');
