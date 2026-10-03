@@ -1,9 +1,10 @@
+import {startRecordingMeter} from './audio-levels';
 import {BrowserMicrophone} from './sensor-policy';
 type Clip = {recordingId:string;durationMs:number};
 type Session = {
  id:string;generation:number;stream:MediaStream;recorder:MediaRecorder;started:number;stopped?:number;
  done:Promise<Blob>;reject:(error:Error)=>void;timer?:ReturnType<typeof setTimeout>;
- finishing?:Promise<Clip>;settled:boolean;failed?:boolean;
+ releaseMeter?:()=>void;finishing?:Promise<Clip>;settled:boolean;failed?:boolean;
 };
 const cancelled=()=>new DOMException('Recording cancelled','AbortError');
 /** Own each microphone stream, timer and stop promise independently of later sessions. */
@@ -19,7 +20,7 @@ export class BrowserAudioCapture {
   this.microphone?.close();this.microphone=undefined;
   ++this.generation;const session=this.current;this.current=undefined;
   if(!session)return;
-  clearTimeout(session.timer);session.settled=true;session.reject(cancelled());
+  session.releaseMeter?.();clearTimeout(session.timer);session.settled=true;session.reject(cancelled());
   try{if(session.recorder.state!=='inactive')session.recorder.stop();}catch{}
   session.stream.getTracks().forEach(track=>track.stop());
  }
@@ -32,12 +33,13 @@ export class BrowserAudioCapture {
   const stream=await microphone.open();
   if(generation!==this.generation||document.hidden){microphone.close();stream.getTracks().forEach(track=>track.stop());throw cancelled();}
   try {
-   const recorder=new MediaRecorder(stream),id=crypto.randomUUID();let resolve!:(blob:Blob)=>void,reject!:(error:Error)=>void;
+   const mimeType=['audio/webm;codecs=opus','audio/ogg;codecs=opus','audio/mp4'].find(type=>MediaRecorder.isTypeSupported(type));
+   const recorder=new MediaRecorder(stream,mimeType?{mimeType}:undefined),id=crypto.randomUUID();let resolve!:(blob:Blob)=>void,reject!:(error:Error)=>void;
    const done=new Promise<Blob>((yes,no)=>{resolve=yes;reject=no;});void done.catch(()=>{});
    const session:Session={id,generation,stream,recorder,started:Date.now(),done,reject,settled:false};
    this.current=session;const chunks:Blob[]=[];let bytes=0;
    const finish=(error?:Error)=>{
-    if(session.settled)return;session.settled=true;clearTimeout(session.timer);
+    if(session.settled)return;session.settled=true;session.releaseMeter?.();clearTimeout(session.timer);
     microphone.close();stream.getTracks().forEach(track=>track.stop());
     if(!error&&!bytes)error=Error('Recording contains no audio.');
     if(error){session.failed=true;reject(error);if(this.current===session&&generation===this.generation)this.stopped({recordingId:id,durationMs:null});}
@@ -52,11 +54,12 @@ export class BrowserAudioCapture {
    const automatic=()=>{if(this.current!==session)return;void this.stop().then(clip=>{if(generation===this.generation)this.stopped(clip);}).catch(()=>{if(generation===this.generation)this.stopped({recordingId:id,durationMs:null});});};
    recorder.onstop=()=>{finish();if(session.stopped===undefined&&!session.failed)automatic();};
    recorder.start(250);
+   session.releaseMeter=startRecordingMeter(id,stream);
    session.timer=setTimeout(automatic,duration);
    return {recordingId:id,maxDurationMs:duration};
   }catch(error){
    microphone.close();stream.getTracks().forEach(track=>track.stop());
-   if(this.current?.generation===generation){this.current.reject(error instanceof Error?error:Error('Recording failed.'));this.current=undefined;}
+   if(this.current?.generation===generation){this.current.releaseMeter?.();this.current.reject(error instanceof Error?error:Error('Recording failed.'));this.current=undefined;}
    throw error;
   }
  }
@@ -74,7 +77,7 @@ export class BrowserAudioCapture {
     this.clips.set(session.id,{blob,durationMs});
     while(this.clips.size>4)this.clips.delete(this.clips.keys().next().value!);
     return {recordingId:session.id,durationMs};
-   }finally{session.stream.getTracks().forEach(track=>track.stop());if(this.current===session){this.microphone?.close();this.current=undefined;}}
+   }finally{session.releaseMeter?.();session.stream.getTracks().forEach(track=>track.stop());if(this.current===session){this.microphone?.close();this.current=undefined;}}
   })();
   return session.finishing;
  }

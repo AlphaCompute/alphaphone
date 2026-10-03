@@ -1,163 +1,220 @@
-# Alpha Phone — market, competitive and opportunity research
+# Alpha Phone — market, competitive, opportunity and technical research
 
-Research date: 2026-09-30. There are about 94,000 words across 11 workstreams. The scope and the checklist of topics the original request did not name are in the [manifest](00-manifest.md). This file gives the consolidated findings and recommendations; the linked sections hold the evidence, tables and citations.
+Version 2, 2026-10-02. This version supersedes the 2026-09-30 report. There are 15 workstreams, about 140,000 words. The scope and blind-spot checklist are in the [manifest](00-manifest.md); every section has its tables, citations and open questions. This file is the consolidated view.
 
-> **Evidence quality.** Eleven research agents ran in parallel and shared a 200-search web budget, which ran out partway through. Later workstreams relied on direct page fetches of primary sources. Figures that could not be re-checked are marked `(unverified)`, `[R]` or `[kb]`, and estimates are marked `(est.)`. Verify any figure before using it externally, especially funding rounds, legal-case details, and the corporate and token facts in section 8. This is not legal or investment advice.
+**Decisions reflected in this version**
+
+- Alpha **forks AOSP** for its own signed image. Banking apps, Play Integrity and GMS are **not** requirements.
+- Hosted inference **stays on Qwen** (`qwen-3.8-27b` via Cerebras). Buyer concerns about the model's origin are answered with Qwen-specific controls (§7.8 of [15](15-open-gap-technical-plan.md)), not by changing models.
+- Since 2026-10-01 the **agent runs on the phone** (Android-resident), not in Nitro Enclaves. Only model requests leave the device ([decisions](../decisions.md)).
+- Public and in-product wording follows the **claims ladder** below ([decisions](../decisions.md) item 7).
+
+> **Evidence quality.** Sections 01–11 were fact-checked on 2026-10-02. Each one ends with a "Verification log" that lists corrections, "(verified 2026-10-02)" items and "(could not verify)" items. The 200-search budget ran out again during that pass, so some items still rely on direct page fetches or remain unverified. Nothing in sections 12–15 has been built or measured yet. This report is not legal or investment advice.
 
 ## Sections
 
 | # | Section | Headline |
 | --- | --- | --- |
-| 01 | [Transcription devices and meeting AI](01-transcription-competitors.md) | Plaud leads (2M+ devices, ~$250M run-rate, ~bootstrapped). All recorders are cloud-first. Otter, Fireflies and Granola face wiretap and BIPA suits, and IT departments are banning note-takers. |
-| 02 | [Agentic phones and AI devices](02-agentic-phones-devices.md) | Humane sold to HP for $116M after raising ~$230M. Rabbit's r1 had ~5K daily users. Banking and payment apps blocked the Doubao phone. Only 12% of buyers upgrade for AI. |
-| 03 | [Secure phones and confidential AI](03-secure-phones-confidential-ai.md) | Secure-phone hardware is a shrinking niche, and DoD is moving to BYOD plus Hypori. Apple PCC and Google Private AI Compute set the pattern. **Alpha's inference leaves the enclave.** |
-| 04 | [Redaction technology and design](04-redaction.md) | No one redacts at the microphone. Typed role-annotated pseudonyms plus an on-device vault preserve value. NER alone leaks 15%. The M&A wave ran $160M–$500M per deal. |
-| 05 | [Regulation and compliance](05-regulation-compliance.md) | Consent litigation is the top risk. Finance must retain originals and redact copies. The roadmap runs from <$100k to $3–8M. |
-| 06 | [Vertical deep-dives](06-vertical-markets.md) | Wealth advisors rank #1. Government sells chat at $1, so the government opening is edge transcription. The Qwen model's Chinese origin blocks defense. |
-| 07 | [TAM / SAM / SOM](07-tam-sam-som.md) | $29.3B TAM, $2.18B SAM and $85M ARR by year 5 (base case). |
-| 08 | [Investors, funding and M&A](08-investors-funding-ma.md) | 84-investor list, M&A comps and non-dilutive funding. **The parent-company and token situation is a diligence issue.** |
-| 09 | [Distribution, partners and unit economics](09-distribution-partners-economics.md) | Sell software on stock Pixels via MDM first. Gross margin is 54–81% at $59–129/user/month. The archivers are the finance channel. |
-| 10 | [Always-on technical feasibility](10-always-on-tech-feasibility.md) | Parakeet ASR is near cloud accuracy. Always-on capture needs a privileged image. pKVM audio isolation is the differentiator. |
-| 11 | [Fit, GTM, risks and blind spots](11-fit-gtm-risks.md) | Beachhead is SEC-registered advisers. 42-risk register, 30 blind spots and a 12-month roadmap. |
+| 01 | [Transcription devices and meeting AI](01-transcription-competitors.md) | Plaud leads with 2M+ devices and a >$1B valuation (its CEO told the WSJ). Every recorder is cloud-first. Otter's wiretap/BIPA claims survived dismissal on 2026-08-13 and Granola was sued 2026-07-30. IT departments are banning note-takers. |
+| 02 | [Agentic phones and AI devices](02-agentic-phones-devices.md) | HP bought Humane for $116M. Rabbit is a cautionary tale. Doubao was blocked by apps it drove. Only privileged system apps can call AppFunctions, so Alpha's own image can and a launcher cannot. |
+| 03 | [Secure phones and confidential AI](03-secure-phones-confidential-ai.md) | Secure-phone hardware is a shrinking niche. The PCC pattern is attestation, a transparency log, relays and audits. Cerebras has no attestation offering. |
+| 04 | [Redaction technology and design](04-redaction.md) | No one redacts at the microphone. Use typed, role-annotated pseudonyms and an on-device vault. The AI-security M&A wave ran about $160–500M per deal. |
+| 05 | [Regulation and compliance](05-regulation-compliance.md) | Consent litigation is the top risk. California SB 690 (signed 2026-09-30) does **not** help recorders. Finance must retain originals and redact copies. |
+| 06 | [Vertical deep-dives](06-vertical-markets.md) | Wealth advisors rank #1. Government prices chat at about $1, so its opening is edge transcription. |
+| 07 | [TAM/SAM/SOM](07-tam-sam-som.md) | $29.3B TAM, $2.18B SAM and $85M ARR at year 5 (base case). Inputs re-checked; arithmetic unchanged. |
+| 08 | [Investors, funding, M&A](08-investors-funding-ma.md) | 84 investors, M&A comps and non-dilutive programs. **Parent company and token facts were corrected against SEC EDGAR.** |
+| 09 | [Distribution, partners, economics](09-distribution-partners-economics.md) | Qwen on Cerebras costs $0.99/$1.49 per M tokens (verified), about $13/user/month. Reasoning tokens are a cost risk. Archivers are the finance channel. |
+| 10 | [Always-on feasibility](10-always-on-tech-feasibility.md) | Parakeet runs near cloud accuracy. Pixel 10 has 3 mics and a 4,970 mAh battery. Canary is non-commercial, so it is excluded. |
+| 11 | [Fit, GTM, risks, blind spots](11-fit-gtm-risks.md) | Beachhead: SEC-registered advisers. 42-item risk register, rescored for the AOSP fork. |
+| 12 | [**AOSP always-on listening**](12-aosp-always-on-listening.md) | A privileged, no-network `sense` package. Use the HOTWORD source for non-intrusive concurrency. Stock AOSP has three indicator-bypass paths to close. Pixel 10 builds via adevtool. 36–55 engineer-weeks. |
+| 13 | [**Redaction integration**](13-redaction-integration.md) | Upstream detectors, pseudonyms, secret-swap and audio redaction exist but are unwired. Exact egress points are mapped. 12 work packages, 7 upstream patches. |
+| 14 | [**SOC 2 technical plan**](14-soc2-technical-plan.md) | Security, Availability and Confidentiality first. 20 repo gaps found. Type 1 around 2027-01-15, Type 2 around June 2027. Year-one cost $110–170k likely. |
+| 15 | [**Open-gap technical plan**](15-open-gap-technical-plan.md) | Four pillars behind one egress gate, two Qwen lanes (fast and confidential), a claims ladder and a nine-month path to "audited". |
 
 ## Executive summary
 
-1. **There is a real, open gap in the market.** Every shipping transcription product, from Plaud and a dozen $159–199 recorders to Otter, Fireflies, Granola, Zoom and Teams, sends raw audio to a vendor cloud before anything is redacted ([01](01-transcription-competitors.md), [04](04-redaction.md)). Courts now treat that as possible third-party eavesdropping: the Otter wiretap, CIPA and BIPA claims survived dismissal on 2026-08-13 ([05](05-regulation-compliance.md)). Enterprises are banning outside note-takers. No product combines on-device ASR, pre-egress redaction, built-in consent and verifiable cloud processing. That combination is Alpha's category: **a confidential AI scribe and agent for regulated conversations.**
+1. **The gap is real, and it is an integration gap.** No shipping product combines four things behind one enforced egress gate with a per-request receipt:
+   - on-device transcription;
+   - pre-egress redaction;
+   - built-in, per-participant consent;
+   - verifiable cloud processing.
 
-2. **Consumer "agent phones" are the wrong fight.** Humane, Rabbit, Friend and the Limitless and Bee acquisitions show that devices meant to replace the phone fail. Big platforms bundle AI for free (Gemini on 800M devices, Apple Intelligence, Galaxy AI), and only 12% of buyers upgrade for AI ([02](02-agentic-phones-devices.md)). Agents that drive other apps' screens get blocked (Doubao). Sell a **governed, auditable agent for regulated work**, not a phone that replaces apps.
+   Courts are treating vendor-cloud audio as possible eavesdropping (Otter, Granola, Fireflies BIPA). IT departments are banning outside note-takers ([01](01-transcription-competitors.md), [05](05-regulation-compliance.md)). Every component exists somewhere; the composition is the product ([15](15-open-gap-technical-plan.md)).
 
-3. **Beachhead: SEC/FINRA-regulated advisers**, meaning independent RIAs, multi-family offices and PE/VC IR teams. This group had the strongest consensus across [06](06-vertical-markets.md), [07](07-tam-sam-som.md), [09](09-distribution-partners-economics.md) and [11](11-fit-gtm-risks.md):
-   - **Need:** off-channel enforcement has cost firms more than $2–3B since 2021, and FINRA enforcement continues.
-   - **Budget:** Jump raised $105M and serves 27K+ advisors at $75–200 per advisor per month, but it is cloud-only.
-   - **Low certification bar:** SOC 2 is enough.
-   - **Ready channel:** the compliance archivers (Smarsh, Global Relay, Theta Lake, LeapXpert).
-   - Beachhead size is about $425M/yr, with a base-case year-3 ARR of $8.5M ([07](07-tam-sam-som.md)).
+2. **Forking AOSP turns policy into enforcement.** A launcher can only ask for privacy properties; the image can make them true ([12](12-aosp-always-on-listening.md), [15](15-open-gap-technical-plan.md)):
+   - The capture package holds the microphone in an SELinux domain with **no network access**.
+   - ASR and redaction run in an isolated child process.
+   - **Only redacted text** crosses a signature-protected interface to the agent app.
+   - The SystemUI "Listening" chip is driven by what audioserver is actually capturing and cannot be hidden.
 
-   **Follow-on markets:** law firms and M&A/PE deal teams (privilege and MNPI), executives, boardrooms and HR investigations, then behavioral and home health (BAA, EHR). **Government and defense are an R&D and non-dilutive lane, not a near-term sales target.**
+   Stock AOSP has three ways to record without an indicator: exempt ambient-audio roles, the HOTWORD source without `ro.hotword.detection_service_required`, and HotwordDetectionService attribution. The fork must close all three.
 
-4. **Redacting without losing business value is solvable, and the design is specified in [04](04-redaction.md):**
-   - Use **short-lived typed pseudonyms with roles** (`PERSON_2 {role: counterparty CFO}`) that stay consistent within a session.
-   - **Generalize** quasi-identifiers: amounts become ranges, dates become relative, ages become bands.
-   - Keep an **on-device vault**. Exact arithmetic runs locally, and the cloud answer is re-hydrated with real names on the phone.
-   - Apply **four policy tiers**: local-only, summarize-then-send, redact-then-send, and send.
-   - Stop and purge the buffer when a classification marking is spoken.
-   - For finance, keep a **split record**: a tamper-evident original goes to the firm's archive under a customer-held key, and the model sees only the redacted copy. Legal hold overrides deletion.
+   - **Background capture:** `persistent` gets past the background-start rules.
+   - **Concurrency:** the `HOTWORD` source never steals the microphone from calls or other apps.
+   - **Power:** the main processor cannot sleep while capturing, about 5–10% of battery per day (est.).
+   - **Hardware:** Pixel 10 builds via GrapheneOS adevtool even though Google stopped publishing device trees.
+   - **Effort:** about 36–55 engineer-weeks.
+   - **ADR change needed:** ADR-04's non-privileged rule must be superseded for the listener package. The legal right to redistribute Pixel vendor blobs needs review.
 
-   Context-based re-identification remains the hard residual. Even with local rephrasing, 43.6% leaked in the one systematic study, so publish **leakage rates on a spoken-meeting eval set** rather than NER F1 scores. The pinned elizaOS upstream already contains PII detectors, typed pseudonyms, secret-swap and fail-closed audio redaction that the Alpha app does not call yet ([11](11-fit-gtm-risks.md)). Wiring that in is the single highest-leverage engineering move.
+3. **The redaction tooling largely exists upstream and is unwired** ([13](13-redaction-integration.md)).
+   - **Reusable modules** in `vendor/eliza/packages/core/src/security/`:
+     - `pii-detectors.ts` (24 kinds, checksum-validated);
+     - `pii-pseudonymizer.ts`;
+     - `secret-swap.ts`;
+     - `guarded-stream.ts` (streamed rehydration);
+     - `confidential-inference.ts` (audit gate).
+   - **Audio redaction** with re-transcription verification is in `packages/core/src/audio-redaction*.ts`.
+   - **Corrections to earlier research:**
+     - Pseudonyms are realistic fake names, not typed tokens.
+     - The audit record does not cover redaction.
+     - The core PII modules have no unit tests.
+     - Upstream redaction is off by default and runs only at the agent's model boundary.
+   - **Quickest real win:** the resident agent sends unredacted prompts straight to Cerebras. Enabling `ELIZA_SECRET_SWAP_ENABLED` and `ELIZA_PII_SWAP_ENABLED` in `AlphaLocalAgentPlugin.configureEnvironment` protects the only routine cloud path today.
+   - **Full plan:**
+     - a renderer and native detection layer, with a GLiNER-PII ONNX model behind upstream's `PiiEntityRecognizer`;
+     - a Java gate that refuses any request body without a matching redaction receipt;
+     - a Keystore vault;
+     - four policy tiers;
+     - a signed, hash-chained receipt schema;
+     - a spoken-meeting eval set.
 
-5. **The confidentiality claim must be fixed before it is marketed** ([03](03-secure-phones-confidential-ai.md), [10](10-always-on-tech-feasibility.md), [11](11-fit-gtm-risks.md)):
-   - The agent runs in AWS Nitro Enclaves, but Nitro has no GPU. Every model call leaves the enclave as plaintext to Cerebras, which is covered only by a privacy policy.
-   - The temporary Cloudflare quick tunnel and the paired voice host are also plaintext paths.
+     Estimated effort: about 12 engineer-weeks for a standard-tier gate, and 22–26 for the full confidential tier.
 
-   **Say today:** "attested agent runtime with a no-retention inference partner." To earn "data never leaves the trust boundary," Alpha needs:
-   - on-device ASR and redaction, so that only redacted text egresses
-   - the phone verifying the enclave's attestation and encrypting end to end
-   - confidential-GPU inference: self-hosted H100/Blackwell CC, Privatemode, or Tinfoil (<7% overhead)
-   - a public transparency log of image measurements and reproducible builds
-   - multi-party control of the KMS and signing policy
-   - an external audit
+4. **Confidentiality claim: corrected and now enforced in code.** The agent is on the phone, so the routine cloud plaintext path is model inference: Cerebras running Qwen, protected by a no-retention commitment that is contractual, not attested. The claims ladder ([15](15-open-gap-technical-plan.md) §9) is now the single source of truth.
 
-   Attestation proves only which code booted. Physical attacks such as TEE.fail and DDRop (2025–2026) are out of scope for Intel, AMD and NVIDIA.
+   | Rung | Earned by | Permitted wording |
+   | --- | --- | --- |
+   | **L0 (today)** | — | "The assistant runs on your phone. Model requests send prompts and selected context over TLS to Cerebras (US) running Qwen. Alibaba does not receive your data. No-retention is contractual." Never say sealed, attested, enclave-protected or "never leaves". |
+   | L1 | Physical-device ASR evidence | "Conversations are transcribed on the phone; audio is not uploaded." |
+   | L2 | Published leak-rate report | "Identifiers are replaced before anything leaves; measured leak rate X%." |
+   | L3 | Consent evidence (OS-enforced only after image boot on a device) | "Announced, per-participant consent with a signed record." |
+   | L4 | Confidential lane live | "Your phone verifies the server hardware and the exact Qwen weights hash before sending." |
+   | L5 | Transparency log, reproducible builds, multi-party release, external audit | "Independently verifiable and audited." |
+   | L6 | Customer-held keys | "Your organization holds the keys and can veto releases." |
 
-6. **Replace or add a model for regulated buyers.** Cerebras `qwen-3.8-27b` is an Alibaba-origin model, which is likely disqualifying for defense, IC and federal buyers and a question for finance ([05](05-regulation-compliance.md), [06](06-vertical-markets.md)). Offer a US or EU open-weight option.
+   **Implemented on 2026-10-02:**
+   - Mock-mode copy that claimed "Sealed · Attested", "Attestation passed · Keys never left the device" and "stays in the enclave" now describes planned redaction features.
+   - The real-mode adapter shows "Not active" for redaction.
+   - A new browser test, `test/browser/confidentiality-claims.spec.ts`, fails if any real or mock screen asserts sealing, attestation or data locality. A negative control proved it catches the old copy.
 
-7. **Technical feasibility is good, but platform policy is the constraint** ([10](10-always-on-tech-feasibility.md)):
-   - **Models:**
-     - ASR: Parakeet TDT v2 at 6.05% WER is within ~0.2 points of the best cloud ASR.
-     - Streaming: Moonshine or Zipformer.
-     - Diarization: Sortformer plus pyannote.
-     - PII detection: GLiNER-PII.
-     - TTS: Kokoro.
-     - Runtime: all via sherpa-onnx/LiteRT.
-   - **Current state:** the shipped tiny.en model on a paired host is two generations behind.
-   - **Background capture:** Android 14/15 blocks starting the mic in the background. Always-on requires a privileged image or the assistant role, so the launcher add-on cannot do it.
-   - **Differentiator:** run VAD, ASR, diarization and redaction inside a **pKVM protected VM**, so that only redacted text exits the VM.
-   - **Battery:** an estimated 5–15% per day, to be measured on a Pixel 10 in month 1.
-   - **Build or buy:** build on open weights, with Argmax Pro SDK (~$1/device/month) as the buy option.
+5. **Qwen stays, and its origin is answered rather than hidden** ([15](15-open-gap-technical-plan.md) §7.8):
+   - A self-hosted **confidential lane** runs Alpha's pinned Qwen weights on confidential H100/H200. The phone verifies the CPU+GPU attestation, including the weights hash, encrypts end to end (HPKE) and sends through an OHTTP relay. Alibaba is never a data recipient.
+   - Redaction applies on every lane.
+   - Provenance is documented in a model BOM with independent re-hashes.
+   - The model has no egress or autonomous tools.
+   - Admission tests are published per release.
 
-8. **Distribution: software on stock hardware first** ([09](09-distribution-partners-economics.md)):
-   - **Why stock:** a custom AOSP image fails Play Integrity, which breaks banking and Wallet. It forfeits NIAP and DISA status. It is not on Intune's AOSP list. A custom phone costs $3–8M up front and breaks even at about 30–80K units.
-   - **Enterprise path:** Intune or Workspace ONE can push Alpha as the HOME launcher on corporate-owned Pixels (est., needs validation).
-   - **Price tiers:** $99–149/user/month software, $229/month managed-device tier, and $150–750K/yr sovereign licenses.
-   - **Channels:**
-     - Finance: archivers plus AWS Marketplace.
-     - Government: Carahsoft plus a DIU CSO/OTA.
-     - Healthcare: Epic and GPOs later.
-   - **Signed Alpha image:** keep it for sovereign or air-gapped anchor customers of 20K+ units, using NDAA/TAA-clean ODMs only.
+   **Stated limits:** testing cannot prove the absence of a backdoor, and some defense and IC buyers will refuse PRC-origin models as a matter of policy. The FY2026 NDAA's DeepSeek removal is a precedent ([11](11-fit-gtm-risks.md)).
 
-9. **Economics work at regulated price points, but not for consumers** ([09](09-distribution-partners-economics.md)):
-   - **Inference:** about $13 per user per month for typical use on Cerebras (est.).
-   - **Tier margins:**
-     - Prosumer at $30/month: about 1%.
-     - Business at $59/month: 54%.
-     - Finance or health at $129/month: 77–81%.
-     - Sovereign license: 51% in year 1, then 71%.
-   - **Open architecture question:** whether each owner needs a dedicated enclave ($97–147/month).
+   **Costs (est.):**
 
-10. **Market size:** $29.3B global TAM, $2.18B SAM and $85M ARR by 2031 in the base case (range $13M–$367M). Pitch the SAM and SOM, not the TAM ([07](07-tam-sam-som.md)). The biggest drivers are seats won, price per user and Android acceptance among professionals. Every SOM case assumes on-device ASR, redaction and a qualified device ship by 2027, and none of those exists today.
+   | Option | Cost per user | Notes |
+   | --- | --- | --- |
+   | Cerebras Qwen | about $13.22/month | Verified list price. Reasoning-heavy output can push it to $15.90 ([09](09-distribution-partners-economics.md)). |
+   | Self-hosted on Phala H200 | about $11.70 | Parity at about 400 active users. The throughput estimate must be measured. |
 
-11. **Corporate and capital issues come before investor outreach** ([08](08-investors-funding-ma.md), unverified; confirm internally):
-    - The web-visible issuer appears to be a Nasdaq microcap with very little cash.
-    - The elizaOS token is reported as wound down after litigation.
-    - A BVI parent would likely fail SBIR's US-ownership test and trigger FOCI review.
+   Confidential GPUs are slower per user, so background summaries go first.
 
-    **Recommendation:**
-    - Form a **US Delaware entity with majority-US ownership** that licenses IP from the parent and elizaOS.
-    - Raise a **$4–8M seed (est.) led by security or defense investors**, with one silicon or telecom corporate VC and no crypto lead.
-    - Package redaction as a separable SDK, which also makes it an acquisition asset.
-    - Disclose the parent and token history in the data room upfront.
-    - Keep the elizaOS/crypto brand away from government and regulated sales.
+6. **Beachhead unchanged: SEC/FINRA-regulated advisers** (RIAs, MFOs, PE/VC IR teams), then law firms and deal teams, executives and HR investigations, then behavioral and home health ([06](06-vertical-markets.md), [11](11-fit-gtm-risks.md)).
+   - **Verification caveat:** SEC Chair Atkins has de-emphasized recordkeeping cases, so "fear of fines" is a weaker lever than in 2021–24. FINRA enforcement continues. Lead with a clean archive, privilege protection and IT approval rather than fines.
+   - **Competitor funding:** Jump raised an $80M Series B in February 2026 and serves 27,000 advisors.
 
-## Opportunity ranking (consolidated)
+7. **SOC 2 is the first market-access gate** ([14](14-soc2-technical-plan.md)).
+   - **Scope:** start with Security, Availability and Confidentiality. Add Privacy once the recording beta precedes the observation window. Add Processing Integrity only after redaction has a published accuracy target.
+   - **Subservice organizations:** Cerebras (it has a SOC 2 Type 2), AWS, Cloudflare and GitHub are carved out.
+   - **High-severity repo gaps:**
+     - no branch protection on `main`;
+     - no second reviewer and unsigned commits;
+     - no Dependabot, CodeQL or SBOM;
+     - unsigned release APKs;
+     - a missing enclave signer;
+     - a temporary `trycloudflare.com` tunnel;
+     - admin accounts on personal Gmail;
+     - no policies or registers.
+   - **Signing-key custody:** app, platform, AVB, OTA and enclave keys are the Alpha-specific control area.
+   - **Timeline and cost (est.):** Type 1 as of about 2027-01-15, a 3-month Type 2 window to about 2027-04-16, and the report around June 2027. Year one costs $110–170k plus a fractional security lead and **a second engineer, who is also the only way to get independent code review**.
 
-| Rank | Market | Why | Gate to sell |
+8. **Distribution: software first, then Alpha's image** ([09](09-distribution-partners-economics.md)).
+   - With banking apps out of scope, **Play Integrity is no longer a blocker** for the custom image.
+   - **The remaining blocker is enterprise MDM.** Intune's AOSP device list still contains only the HMD Terra M, so a managed fleet of Alpha-image phones needs Android Enterprise work or partner validation.
+   - **Sequence:**
+     1. Design partners on Alpha-image Pixels plus the app.
+     2. Finance channels through archivers and AWS Marketplace.
+     3. Carahsoft and a DIU CSO.
+     4. Sovereign deals.
+   - **Margins (est.):** 54–81% at $59–129/user/month.
+
+9. **Market size:** base-case TAM $29.3B, SAM $2.18B, SOM $85M ARR by 2031 ([07](07-tam-sam-som.md)). Every SOM case depends on L1–L3 shipping by 2027.
+
+10. **Corporate and capital (corrected against SEC EDGAR, [08](08-investors-funding-ma.md)).** Verify internally before external use.
+    - **The parent:** Alpha Compute Corp (NASDAQ: ALP), formerly AlphaTON Capital (until April 2026) and Portage Biotech (until September 2025).
+      - Market cap is about **$7.0M** (2026-10-02), not $2.29M.
+      - A 1:50 reverse split on 2026-09-09 was followed by regained compliance on 2026-09-25.
+      - The FY2026 20-F/A carries a **going-concern** paragraph.
+      - The filings do not mention Alpha Phone or elizaOS.
+    - **The token:**
+      - The class action is *Doe v. Walters*, 1:26-cv-03238 (S.D.N.Y., filed 2026-04-22). Its settlement terms are known only from public statements.
+      - Peak market cap was about $2.39B (2025-01-02).
+      - The AI16Z→ELIZAOS migration in November 2025 was 1:6.
+      - a16z demanded the project stop using its branding in January 2025.
+    - **Recommendation unchanged:** a US Delaware entity with majority-US ownership (for SBIR, which is confirmed to require it, and for FOCI), a security- or defense-led seed, redaction as a separable SDK, and full disclosure in the data room.
+
+## Consolidated opportunity ranking
+
+| Rank | Market | Why | Gate |
 | --- | --- | --- | --- |
-| 1 | Independent RIAs, MFOs and PE/VC IR teams | Fine-driven urgency, proven budget ($75–200/advisor), cloud-only incumbents, archiver channel | On-device ASR, redaction, archive connector, SOC 2 Type 1 |
-| 2 | Law firms (small and mid-size), M&A and deal teams | Privilege waiver fear. Harvey serves BigLaw, which leaves the rest open | + legal hold, ABA 512 posture, counsel memo |
-| 3 | Executives, boardrooms, HR investigations | "Clean-room meeting mode," trade-secret leaks (Samsung) | + managed-device tier, travel mode |
-| 4 | Crypto-native and privacy-first high-net-worth buyers | Can buy today and brand-aligned. Kept on a separate brand | Consumer polish; keep separate from regulated brand |
-| 5 | Behavioral and home health | Highly sensitive content, in-person and offline sessions, weaker incumbents | + BAA chain (AWS, Cerebras), EHR integration |
-| 6 | Defense and government edge (SOCOM disconnected transcription, detective interviews) | Non-dilutive money, DIU fast path | US model, US entity, app on NIAP-listed Samsung or Pixel, then FedRAMP 20x |
-| 7 | Sovereign (Gulf, EU) | Large deals, local-model requirement | Anchor customer, local hosting, 12–36-month cycles |
-| — | Deprioritize: physician scribing (Abridge at $5.3B, Epic and DAX bundled), K-12, IC, consumer agent phone | | |
+| 1 | Independent RIAs, MFOs, PE/VC IR | Proven budget ($75–200/advisor), cloud-only incumbents, archiver channel | L1+L2, archive connector, SOC 2 Type 1 |
+| 2 | Small/mid law firms, M&A and deal teams | Fear of privilege waiver. Harvey (BigLaw) and Legora ($5.55B) leave the rest open | + legal hold, counsel memo |
+| 3 | Executives, boardrooms, HR investigations | Clean-room meetings, trade secrets | + Alpha-image device tier, travel mode |
+| 4 | Privacy-first prosumers | Can buy now | Separate brand from regulated sales |
+| 5 | Behavioral and home health | Highly sensitive, in-person, weaker incumbents | + BAA chain (Cerebras BAA not confirmed), EHR |
+| 6 | Defense and government edge | Non-dilutive funding, DIU | US entity. Qwen origin is a hard policy question for some buyers |
+| 7 | Sovereign | Large deals | Confidential lane (L4+), local hosting |
 
-## Consolidated 12-month plan
+## Consolidated plan (next 9 months, est.)
 
-| Quarter | Product | Trust and compliance | GTM and capital |
+| Window | Product and platform | Trust and compliance | GTM and capital |
 | --- | --- | --- | --- |
-| Q4 2026 | Parakeet on-device ASR on a physical Pixel 10 (measure WER, latency and battery). Wire in the upstream redaction. Single egress gate | Correct the confidentiality wording. Consent, indicator and retention features. Published biometric policy. US-model option. Freedom-to-operate review of the redaction patents | Form a US entity. 10 design partners (RIAs and MFOs). Cerebras enterprise terms (ZDR, BAA) |
-| Q1 2027 | Vault and rehydration, split archive record, anonymous diarization. Android Enterprise managed-app and launcher deployment | SOC 2 Type 1. Enclave attestation verified by the phone, replacing the quick tunnel | Paid pilots. Theta Lake and Smarsh connector. AWS Marketplace. Seed raise |
-| Q2 2027 | pKVM-isolated audio pipeline on a privileged image. Always-on mode with an unhideable indicator | Confidential-GPU inference tier. Transparency log. External security audit | Legal and deal-team expansion. SBIR/AFWERX or a DIU CSO via the US entity |
-| Q3 2027 | Managed-device "clean-room" tier. Legal hold and e-discovery export | SOC 2 Type 2. BAA chain. EU pack (works council, no emotion inference) | Behavioral health pilots. Carahsoft. Scope FedRAMP 20x Moderate |
+| Oct–Nov 2026 | Pixel 10 Alpha image bring-up (adevtool, `avb_custom_key`). Parakeet on-device ASR measured on a physical device (**L1**). Enable upstream PII/secret swap on the resident agent | Claims ladder enforced (done). Branch protection, second reviewer, Dependabot/CodeQL, SBOM. Signing-key custody plan | US entity. 10 design partners. Cerebras DPA and BAA |
+| Dec 2026–Jan 2027 | `sense` package (no-network SELinux domain, HOTWORD capture, SystemUI chip). Redaction gate, vault and receipts. Spoken-meeting eval (**L2**) | SOC 2 Type 1 (about 2027-01-15). Consent ledger and jurisdiction packs (**L3**) | Paid pilots. Archiver connector. Seed |
+| Feb–Apr 2027 | Confidential Qwen lane on Tinfoil or Phala. Phone-side attestation and HPKE/OHTTP (**L4**) | Type 2 window. Transparency log, reproducible builds, 3-of-5 release policy | Legal and deal-team expansion. DIU CSO/SBIR via the US entity |
+| May–Jun 2027 | DSP/NPU/pKVM spikes. Signed OTA with 7-day dogfood | External audit (**L5**). Type 2 report. Customer-held keys pilot (**L6**) | Behavioral health pilots. Sovereign scoping |
 
-## Top risks (see the 42-item register in [11](11-fit-gtm-risks.md))
+## Top risks
 
-1. The confidentiality overclaim is found in diligence or a security review. Fix the wording now and fix the architecture in Q1–Q2.
-2. On-device ASR, redaction and a physical device have not shipped. Every revenue case depends on them.
-3. A redaction false negative leaks MNPI, PHI or a card number. Keep the model tier conservative, route anything uncertain to local-only, and measure leakage.
-4. Recording-consent and BIPA class actions. Default to all-party consent, visible indicators, no stored voiceprints, and no training on customer data.
-5. Apple and Google give private transcription away for free. Win on compliance, archiving, admin control and verifiability, not on summaries.
-6. Corporate, token and brand history with regulated buyers and investors. Use a separate entity and brand, and disclose upfront.
-7. Focus: 14 prototype modules and a sibling product against a single wedge. Scope the MVP to scribe plus agent actions for one buyer.
+1. Overclaiming confidentiality. This is now mitigated by the claims ladder and the automated test; every new screen and every sales deck must stay within the earned rung.
+2. On-device ASR, redaction and the Alpha image are not yet built or measured. Every revenue case depends on them.
+3. A redaction false negative. The mitigation is fail-closed tiers, leak-rate gating and redaction in front of every lane.
+4. Consent and BIPA litigation. Use an all-party default, anonymous per-session diarization, no voiceprints and no training on customer data.
+5. Qwen origin for defense, IC and some federal or finance buyers. The answer is the confidential lane and model BOM; some buyers will still refuse.
+6. Platform risks:
+   - Pixel vendor-blob redistribution rights;
+   - Google's twice-yearly AOSP cadence and slow kernel source releases;
+   - MDM support for a custom image;
+   - battery cost of always-on capture.
+7. Parent company going concern and the token history in diligence.
+8. Team capacity: about 11–13 FTE for the full plan against a very small team today. SOC 2 itself requires a second engineer.
 
-## Things the original request did not ask about (details in [00](00-manifest.md) and [11](11-fit-gtm-risks.md))
+## Not asked about, but material
 
-- Retention duties in finance and legal conflict with redaction. The answer is a split record.
-- The redaction manifest can be sold as compliance *evidence* to the CISO and CCO.
-- Live captions for deaf and hard-of-hearing employees are an ADA wedge that is easy to approve.
-- Travel and border mode (55K device searches by CBP in FY2025). Duress wipe.
-- EU works councils, and the ban on workplace emotion recognition since 2025-02-02.
-- Export classification (EAR 5A002/ENC). NDAA §889 and TAA for any hardware.
-- Trademark clearance for "Alpha". elizaOS is MIT-licensed, so the moat is evals, certifications and integrations rather than code.
-- Vendor-death and acquisition risk (Limitless, Humane). Offer customer-held keys, export and a local fallback.
-- Publish Android AppFunctions so other assistants call Alpha rather than block it.
+- Retention collides with redaction, which a split record solves. The redaction receipt can be sold to the CCO and CISO as compliance evidence.
+- Live captions for deaf and hard-of-hearing employees are an easy-approval ADA wedge.
+- Travel and border mode, and duress wipe.
+- Works councils, and the EU ban on workplace emotion inference.
+- EAR 5A002/ENC export classification.
+- NVIDIA Canary and Piiranha are non-commercial, and Piper is GPL, so all three are excluded.
+- Two existing US patents (12229313, 12189817) require a freedom-to-operate review.
+- Trademark clearance for "Alpha".
+- elizaOS is MIT-licensed, so the moat is evals, certifications and integrations.
+- Vendor-death insurance: customer-held keys, export and local fallback.
+- Publish AppFunctions so other assistants call into Alpha.
 
 
 ---
 
 # Alpha Phone market research — manifest
 
-Research date: 2026-09-30. Owner: product/strategy. Status: manifest issued; sections are filled by parallel research workstreams and consolidated in [REPORT.md](REPORT.md).
+Research date: 2026-09-30. **Revised 2026-10-02:** the agent is now Android-resident (not Nitro); Alpha forks AOSP and does not need banking apps, Play Integrity or GMS; inference stays on Qwen; workstreams 12–15 were added (AOSP always-on listening, redaction integration, SOC 2, open-gap technical plan) and 01–11 were fact-checked. The baseline table below is the original 2026-09-30 snapshot. Owner: product/strategy. Status: manifest issued; sections are filled by parallel research workstreams and consolidated in [REPORT.md](REPORT.md).
 
 This is market research, not engineering acceptance. Product capability statements come from the repository's own evidence ledger (`docs/mvp-scope-and-gap-report.md`, `docs/current-acceptance-ledger.md`, `docs/enclave-candidate-validation.md`). Where the product is only planned, the research says so.
 
@@ -225,7 +282,7 @@ Research date: 2026-09-30. Workstream 1 of the [manifest](00-manifest.md). Scope
 ## How to read this file
 
 - Every number has a source URL next to it or in the table's source column. A figure marked **(est.)** is a third-party estimate or my own arithmetic.
-- A figure marked **(unverified)** comes from background knowledge. I could not re-confirm it in this session because the shared web-search budget ran out partway through. Treat these as leads to confirm, not facts. They are listed again under Open questions.
+- A figure marked **(unverified)** comes from background knowledge. I could not re-confirm it in this session because the shared web-search budget ran out partway through. Treat these as leads to confirm, not facts. They are listed again under Open questions. **Update 2026-10-02:** a verification pass with working web search replaced most of these with citations marked "(verified 2026-10-02)" or "(could not verify)"; see the Verification log at the end.
 - Where sources disagree, both figures are given and the disagreement is noted. There is a list in [§13](#13-source-contradictions-and-data-quality-flags).
 - Company claims such as "SOC 2" or "HIPAA compliant" are the vendors' own statements. I did not audit them.
 - Several useful 2026 articles come from competitors' blogs (Basil AI, tl;dv, Hedy, Voibe, Routines). They are cited only for facts that can be checked, such as case numbers and dates, and are labeled as such.
@@ -268,21 +325,21 @@ Prices are USD list prices at launch or current retail. "Free tier" means the tr
 
 | Device (company) | Price | Subscription | Funding / last round (date, lead) | Valuation | Revenue / units | Build: capture → ASR → LLM | Privacy posture | Status | Sources |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| **Plaud Note / Note Pro / NotePin / NotePin S** (Plaud, SF/Shenzhen; founded 2021) | Note $159; Note Pro $179 (Oct 2025); NotePin $159; NotePin S $179 (CES 2026) | Starter free (300 min/mo); Pro $99.99/yr; Unlimited $239.99/yr; 3,000-min add-on $59.99 | Mostly self-funded. Sacra lists a ~$4.75M convertible note (2025-04-24, "Carbide Ventures") — **possibly a different entity, see §13**. A reported Tencent round was **denied by both parties** | Rumoured $1B (mid-2025) → ~$2B (36Kr; denied) | 2024 revenue ~$56M at ~20% margin; 2025 target $250M; 1M units by Jul 2025, 1.5M by Jan 2026, 2M+ by Jun 2026; software ARR $100M+ (Jun 2026); ~50% of device users pay; 2026 sales target $500M | Card / pin form, 2–4 MEMS mics (NotePin S: 2 mics, 64 GB, 20 h); phone app + desktop app; **cloud ASR** ("multiple enterprise-grade models… proprietary fine-tuned"); LLMs **GPT-5.5, Claude Sonnet 4.6, Gemini 3.1 Pro**; EU users get EU-hosted subprocessors | SOC 2 Type II, HIPAA, ISO 27001/27701, GDPR, EN 18031 (self-reported); AES-256 at rest; AWS in US/Frankfurt/Japan/Singapore; **no training by default** (opt-in); ZDR with LLM vendors; "audio and transcription remain local unless Cloud Sync" | Market leader. "Plaud Teams" launched May 2026; an agent wearable with possible cellular is due later in 2026 | [Techmeme/Forbes](https://www.techmeme.com/250902/p30), [36Kr](https://eu.36kr.com/en/p/3799129165863937), [KrASIA](https://kr-asia.com/tencents-rumored-plaud-deal-points-to-looming-ai-hardware-contest), [Sacra](https://sacra.com/c/plaud/), [TC 2026-01](https://techcrunch.com/2026/01/04/plaud-launches-a-new-ai-pin-and-a-desktop-meeting-notetaker/), [TC 2026-06](https://techcrunch.com/2026/06/16/plaud-says-its-software-business-topped-100m-in-arr-after-shipping-over-2m-ai-notetakers/), [Plaud Intelligence](https://www.plaud.ai/pages/plaud-intelligence), [Plaud Trust](https://www.plaud.ai/pages/trust), [Android Authority](https://www.androidauthority.com/plaud-new-ai-agent-wearable-3678336/) |
+| **Plaud Note / Note Pro / NotePin / NotePin S** (Plaud, SF/Shenzhen; founded 2021) | Note $159; Note Pro $179 (Oct 2025); NotePin $159; NotePin S $179 (CES 2026) | Starter free (300 min/mo); Pro $99.99/yr; Unlimited $239.99/yr; 3,000-min add-on $59.99 | Mostly self-funded, but **Vertex Holdings (Temasek-owned) is named as an investor** in a WSJ-sourced report ([TFN, 2026-09-18](https://techfundingnews.com/plaud-eyes-2028-us-ipo-after-crossing-1b-valuation/)) (verified 2026-10-02). Sacra lists a ~$4.75M convertible note (2025-04-24, "Carbide Ventures") — **possibly a different entity, see §13**. A reported Tencent round was **denied by both parties** | **CEO Nathan Xu told the WSJ Plaud was valued at more than $1B in 2025** (verified 2026-10-02); ~$2B (36Kr; denied). Targets a **US IPO in 2028** once revenue passes $1B | 2024 revenue ~$56M at ~20% margin; 2025 target $250M; 1M units by Jul 2025, 1.5M by Jan 2026, 2M+ by Jun 2026; 2.5M+ users in 170+ countries, US+Europe ~2/3 of revenue, profitable (Sept 2026, [TFN](https://techfundingnews.com/plaud-eyes-2028-us-ipo-after-crossing-1b-valuation/)); software ARR $100M+ (Jun 2026); ~50% of device users pay; 2026 sales target $500M | Card / pin form, 2–4 MEMS mics (NotePin S: 2 mics, 64 GB, 20 h); phone app + desktop app; **cloud ASR** ("multiple enterprise-grade models… proprietary fine-tuned"); LLMs **GPT-5.5, Claude Sonnet 4.6, Gemini 3.1 Pro**; EU users get EU-hosted subprocessors | SOC 2 Type II, HIPAA, ISO 27001/27701, GDPR, EN 18031 (self-reported); AES-256 at rest; AWS in US/Frankfurt/Japan/Singapore; **no training by default** (opt-in); ZDR with LLM vendors; "audio and transcription remain local unless Cloud Sync" | Market leader. "Plaud Teams" launched May 2026; an agent wearable with possible cellular is due later in 2026 | [Techmeme/Forbes](https://www.techmeme.com/250902/p30), [36Kr](https://eu.36kr.com/en/p/3799129165863937), [KrASIA](https://kr-asia.com/tencents-rumored-plaud-deal-points-to-looming-ai-hardware-contest), [Sacra](https://sacra.com/c/plaud/), [TC 2026-01](https://techcrunch.com/2026/01/04/plaud-launches-a-new-ai-pin-and-a-desktop-meeting-notetaker/), [TC 2026-06](https://techcrunch.com/2026/06/16/plaud-says-its-software-business-topped-100m-in-arr-after-shipping-over-2m-ai-notetakers/), [Plaud Intelligence](https://www.plaud.ai/pages/plaud-intelligence), [Plaud Trust](https://www.plaud.ai/pages/trust), [Android Authority](https://www.androidauthority.com/plaud-new-ai-agent-wearable-3678336/) |
 | **Limitless Pendant** (Limitless, formerly Rewind) | $99 | Free (10 h AI/mo); Pro $20/mo | ~$33M total (a16z, NEA, First Round, Sam Altman); $15M at $350M valuation (May 2023) | $350M (2023) | ARR ~$2.0M Apr 2025 (Sacra est.) | Clip pendant → phone → cloud ASR/LLM; integrated with Zoom, Meet and Slack | "Consent mode" required notice and consent from recorded people (Sacra) | **Acquired by Meta on 2025-12-05** (Reality Labs acqui-hire). Sales halted; one year of support; EU/UK users cut off. Rewind Mac app capture disabled **2025-12-19** | [CNBC](https://www.cnbc.com/2025/12/05/meta-limitless-ai-wearable.html), [Sacra co](https://sacra.com/c/limitless/), [Sacra research](https://sacra.com/research/why-meta-bought-limitless/), [Hedy (competitor blog)](https://www.hedy.ai/post/meta-acquires-limitless-ai-privacy/) |
 | **Bee Pioneer** (Bee, SF) | $49.99 bracelet; Apple Watch app | $19/mo | $7M disclosed (2024; Exor-led per reports) | Undisclosed | Undisclosed | Wrist mic, always on unless muted, 160+ h battery, 40 languages; "combination of AI models"; Amazon models may be added | **Audio discarded after transcription**, "not… used for AI training"; plans on-device processing and voice-consent-only recording | **Acquired by Amazon (announced 2025-07-22)**. Eight-person team inside Amazon devices/Alexa; terms undisclosed | [TechCrunch 2025-07](https://techcrunch.com/2025/07/22/amazon-acquires-bee-the-ai-wearable-that-records-everything-you-say/), [TechCrunch 2026-01](https://techcrunch.com/2026/01/12/why-amazon-bought-bee-an-ai-wearable/), [Entrepreneur](https://www.entrepreneur.com/business-news/amazon-acquires-bee-startup-behind-eavesdropping-wearable/494971) |
 | **Omi** (Based Hardware, SF) | $89 (TechCrunch) / $129 promo, $179 list (omi.me) | Free plan; paid tiers optional | $2M (announced 2025-01-30; Tim Draper; 468 Capital, Embedding VC, Dropbox co-founder) | Undisclosed | "300,000+ professionals" (company claim) | nRF-based pendant on Zephyr (C firmware); Omi Glass on ESP32-S3; Flutter phone apps + Mac/Windows; **Deepgram** is the primary STT; **MIT-licensed, self-hostable backend**; 13.6k GitHub stars; 250+ community apps | SOC 2 and HIPAA claimed; open source so it can run locally | Independent; pivoting toward desktop "sees your screen" and a BCI dev kit | [Omi blog](https://www.omi.me/blogs/news/omi-raises-2m), [omi.me](https://www.omi.me/), [GitHub](https://github.com/BasedHardware/omi), [TC roundup](https://techcrunch.com/2026-03-20/ai-notetaker-hardware-devices-pins-pendants-record-transcribe) |
-| **Friend** (Friend.com, Avi Schiffmann) | $129 (gen 1); $249 reported for a talk-back gen 2 | None at launch | ~$8M (Protos) / $10M (CNN) — **conflict**; investors incl. Austin Rief, Anatoly Yakovenko | $50M (reported) | ~1,000 units / ~$150K (Protos, Oct 2025) vs $348K sales (Sacra, Sept 2025) vs "5,000 units" (secondary) — **conflict** | Pendant mic → phone app texts back; cloud LLM ("ChatGPT and other models") | Always listening; widely criticised for bystander surveillance | Spent $1.8M on the domain and $1M+ on NYC subway ads (Sept 2025). Ads were vandalised. Pivoted to a free web chatbot | [Wikipedia](https://en.wikipedia.org/wiki/Friend_(product)), [CNN](https://www.cnn.com/2025/11/16/tech/friend-ai-device-backlash-ceo-avi-schiffmann), [Protos](https://protos.com/friend-ai-spent-millions-on-mimicking-friendship-now-its-just-another-chatbot/), [Sacra](https://sacra.com/research/why-meta-bought-limitless/), [BigGo](https://finance.biggo.com/news/66fa0f9b-a0f9-44a7-ae2f-d3561168f5df) |
+| **Friend** (Friend.com, Avi Schiffmann) | $129 (gen 1); $249 reported for a talk-back gen 2 | None at launch | Pre-seed $2.5M at a **$50M valuation** (2024; [Decrypt](https://decrypt.co/242629/friend-necklace-avi-schiffmann)) (verified 2026-10-02); later totals ~$8M (Protos) / $10M (CNN) — **conflict** (could not verify later total); investors incl. Austin Rief, Anatoly Yakovenko, Aravind Srinivas | $50M (2024) (verified 2026-10-02) | ~1,000 units / ~$150K (Protos, Oct 2025) vs $348K sales (Sacra, Sept 2025) vs "5,000 units" (secondary) — **conflict** | Pendant mic → phone app texts back; cloud LLM ("ChatGPT and other models") | Always listening; widely criticised for bystander surveillance | Spent $1.8M on the domain and $1M+ on NYC subway ads (Sept 2025). Ads were vandalised. Pivoted to a free web chatbot | [Wikipedia](https://en.wikipedia.org/wiki/Friend_(product)), [CNN](https://www.cnn.com/2025/11/16/tech/friend-ai-device-backlash-ceo-avi-schiffmann), [Protos](https://protos.com/friend-ai-spent-millions-on-mimicking-friendship-now-its-just-another-chatbot/), [Sacra](https://sacra.com/research/why-meta-bought-limitless/), [BigGo](https://finance.biggo.com/news/66fa0f9b-a0f9-44a7-ae2f-d3561168f5df) |
 | **Stream ring** (Sandbar, ex-Meta CTRL-Labs) | $249 silver / $299 gold | Pro $10/mo | $36M total: pre-seed $3M (2024, Upfront/Betaworks), seed $10M (early 2025, True Ventures), **Series A $23M (2026-03-10, Adjacent + Kindred)** | Undisclosed | Pre-orders from Nov 2025; shipping summer 2026 | Ring with a proximity-tuned mic, **off by default**, push-and-hold to talk (whisper-level pickup); iOS app with a chat LLM (vendor undisclosed); haptics; media controls | Encryption at rest and in transit; export (Notion); intent-gated capture, so it is not ambient | Shipping | [TC 2025-11](https://techcrunch.com/2025/11/05/former-meta-employees-launch-stream-a-smart-ring-that-takes-voice-notes-and-controls-music/), [TC 2026-03](https://techcrunch.com/2026/03/10/sandbar-secures-23m-series-a-for-its-ai-note-taking-ring/), [UC Today](https://uctoday.com/sandbar-ai-voice-note-taking-ring) |
-| **TicNote** (Mobvoi) | $159.99 (launch promo $99.99) | Free 300 credits/mo (Mobvoi) or 600 min/mo (TechCrunch) — **conflict**; Pro up to 1,500 credits/mo | Parent Mobvoi (Google-backed historically; unverified) | n/a | n/a | 3 mics, 25 h continuous, 120+ languages; "agentic" "Shadow AI" assistant; cloud | Not documented in sources reviewed | Shipping (2025) | [Yahoo/PR](https://finance.yahoo.com/news/mobvoi-launches-ticnote-worlds-first-120000010.html), [TicNote](https://ticnote.ai/products/ai-voice-recorder-us), [TC roundup](https://techcrunch.com/2026-03-20/ai-notetaker-hardware-devices-pins-pendants-record-transcribe) |
-| **HiDock P1 / P1 mini / H1 dock** (HiDock) | P1 $169 MSRP; KS early bird $89–$149 | "Unlimited free AI transcription"; paid upgrades | Kickstarter: P1 raised **HK$10.03M** (~US$1.29M est.; 2025-03-20 to 2025-05-08); H1 dock HK$4.86M from 2,646 backers | n/a | n/a | "BlueCatch" intercepts **Bluetooth earphone call audio** + 2 mics, 64 GB; H1 is a desk dock with a recorder; cloud | Not documented | Shipping | [Kicktraq](https://www.kicktraq.com/projects/hidock/hidock-p1-ai-voice-recorder-for-meeting-anywhere/), [HiDock](https://www.hidock.com/products/hidock-p1-ai-voice-recorder), [Points with a Crew](https://www.pointswithacrew.com/kickstarter-hidock-ai-voice-recorder/) |
-| **RecDot earbuds** (Viaim) | $199.99 | 600 free min/mo included | Undisclosed (not found) | n/a | n/a | Earbuds with hybrid ANC (48 dB) that record calls and in-person audio; 78 languages; real-time transcription; cloud | "AES-256 secure" (marketing) | Shipping; CES Innovation Award | [Amazon listing](https://us.amazon.com/dp/B0F7KMG9F5), [SoundGuys](https://www.soundguys.com/viaim-recdot-review-ai-earbuds-for-note-taking-156528/), [Viaim](https://store.viaim.ai/products/viaim-recdot) |
+| **TicNote** (Mobvoi) | $159.99 (launch promo $99.99) | Free 300 credits/mo (Mobvoi) or 600 min/mo (TechCrunch) — **conflict**; Pro up to 1,500 credits/mo | Parent Mobvoi: Google invested in 2015 ([CNBC](https://www.cnbc.com/2015/10/20/google-invests-in-chinas-mobvoi-as-it-eyes-return-to-market.html)); Volkswagen put US$180M into a 50:50 JV in 2017 ([TechCrunch](https://techcrunch.com/2017/04/06/volkswagen-mobvoi-china)) (verified 2026-10-02) | n/a | n/a | 3 mics, 25 h continuous, 120+ languages; "agentic" "Shadow AI" assistant; cloud | Not documented in sources reviewed | Shipping (2025) | [Yahoo/PR](https://finance.yahoo.com/news/mobvoi-launches-ticnote-worlds-first-120000010.html), [TicNote](https://ticnote.ai/products/ai-voice-recorder-us), [TC roundup](https://techcrunch.com/2026-03-20/ai-notetaker-hardware-devices-pins-pendants-record-transcribe) |
+| **HiDock P1 / P1 mini / H1 dock** (HiDock) | P1 $169 MSRP; KS early bird $89–$149 | "Unlimited free AI transcription"; paid upgrades | Kickstarter: P1 raised **HK$10.03M** (~US$1.29M est.; 2025-03-20 to 2025-05-08); H1 dock HK$4.86M from 2,646 backers. No VC funding listed; Hong Kong-based ([Tracxn](https://tracxn.com/d/companies/hidock/__yarY8q1RVHWj-ya_HyU6r85Emy23c_QdXR2TP3I61OY)) | n/a | n/a | "BlueCatch" intercepts **Bluetooth earphone call audio** + 2 mics, 64 GB; H1 is a desk dock with a recorder; cloud | Not documented | Shipping | [Kicktraq](https://www.kicktraq.com/projects/hidock/hidock-p1-ai-voice-recorder-for-meeting-anywhere/), [HiDock](https://www.hidock.com/products/hidock-p1-ai-voice-recorder), [Points with a Crew](https://www.pointswithacrew.com/kickstarter-hidock-ai-voice-recorder/) |
+| **RecDot earbuds** (Viaim) | $199.99 | 600 free min/mo included | **RMB 100M-level A+ round with Transsion as strategic investor (2026-05-27)** ([GlobeNewswire](https://www.globenewswire.com/news-release/2026/05/27/3301686/0/en/viaim-Closes-RMB-100-Million-A-Round-With-Transsion-to-Accelerate-Proactive-AI-Agent-Hardware.html)) (verified 2026-10-02) | n/a | n/a | Earbuds with hybrid ANC (48 dB) that record calls and in-person audio; 78 languages; real-time transcription; cloud | "AES-256 secure" (marketing) | Shipping; CES Innovation Award | [Amazon listing](https://us.amazon.com/dp/B0F7KMG9F5), [SoundGuys](https://www.soundguys.com/viaim-recdot-review-ai-earbuds-for-note-taking-156528/), [Viaim](https://store.viaim.ai/products/viaim-recdot) |
 | **Soundcore Work** (Anker) | $159–$160 (one source says $99.99) | 300 free min/mo; $16/mo subscription | Anker is public (Shenzhen) | n/a | n/a | Coin-sized (0.91") pin; 8 h, 32 h with case; 5 m range; **GPT-4o** summaries (per TechBuzz headline) | Not documented | Shipping from Sept 2025 (IFA) | [Android Police](https://www.androidpolice.com/anker-soundcore-work-ai-voice-recorder/), [9to5Toys](https://9to5toys.com/2025/09/04/anker-reveals-new-mini-ai-powered-voice-recorder-wearable/), [TechBuzz](https://www.techbuzz.ai/articles/anker-shrinks-ai-voice-recorder-to-coin-size-with-gpt-4o), [TC roundup](https://techcrunch.com/2026-03-20/ai-notetaker-hardware-devices-pins-pendants-record-transcribe) |
 | **Pocket** | $199 | Core free; premium $19.99/mo | n/a | n/a | n/a | 64 GB, 4-day battery, 15 m range, 120+ languages | n/a | Shipping 2026 | [TC roundup](https://techcrunch.com/2026-03-20/ai-notetaker-hardware-devices-pins-pendants-record-transcribe) |
 | **Genspark Secondbrain** | $179 | 300 free min/mo | Genspark (AI agent co.) | n/a | n/a | 2.95 mm, 26 g, 5 mics (4 + 1 bone-conduction VPU) | n/a | 2026 | [TC roundup](https://techcrunch.com/2026-03-20/ai-notetaker-hardware-devices-pins-pendants-record-transcribe) |
 | **Comulytic Note Pro / Comu Action Pro** | $159 / $257 | Unlimited basic; Advanced $15/mo or $119/yr | n/a | n/a | n/a | 45 h battery; Action Pro has 6 mics, 70 h, "agentic workflows" | n/a | 2026 | [TC roundup](https://techcrunch.com/2026-03-20/ai-notetaker-hardware-devices-pins-pendants-record-transcribe) |
 | **DingTalk A1; Anker × ByteDance device** (China) | n/a | n/a | Alibaba / ByteDance | n/a | n/a | Recording cards tied to DingTalk/Feishu workplace suites | n/a | A1 Aug 2025; Anker×ByteDance Jan 2026 | [KrASIA](https://kr-asia.com/tencents-rumored-plaud-deal-points-to-looming-ai-hardware-contest) |
-| **Humane AI Pin** (voice angle only) | $699 → $499 (Oct 2024) | $24/mo | $230M by Nov 2023 | Undisclosed ($850M reported; unverified) | ~10,000 units by Aug 2024 | Voice-first projector pin; cloud LLM | n/a | **Sold to HP for $116M (Feb 2025)**; servers shut **2025-02-28** | [Wikipedia](https://en.wikipedia.org/wiki/Humane_Inc.), [Sacra](https://sacra.com/research/why-meta-bought-limitless/) |
+| **Humane AI Pin** (voice angle only) | $699 → $499 (Oct 2024) | $24/mo | $230M by Nov 2023 | $850M (2023 round, as reported by The Information; [Yahoo Finance](https://finance.yahoo.com/news/humanes-ai-pin-doomed-company-153016768.html)) (verified 2026-10-02). Sought $750M–$1B in a 2024 sale; sold for $116M | ~10,000 units by Aug 2024 | Voice-first projector pin; cloud LLM | n/a | **Sold to HP for $116M (Feb 2025)**; servers shut **2025-02-28** | [Wikipedia](https://en.wikipedia.org/wiki/Humane_Inc.), [Sacra](https://sacra.com/research/why-meta-bought-limitless/) |
 | **iyO One** (iyO) | Not published | n/a | n/a | n/a | n/a | "Agentic computer you can talk to" (audio earpiece) | n/a | Still pre-order in Sept 2026 | [iyo.ai](https://www.iyo.ai/) |
 | **Rewind** (Mac/iOS software, predecessor of Limitless) | Was freemium | — | (see Limitless) | — | — | **Local-first**: screen OCR + audio + local LLM search on the Mac | Local storage | Capture disabled 2025-12-19 after the Meta deal | [Sacra search summary](https://sacra.com/c/limitless/), [Hedy](https://www.hedy.ai/post/meta-acquires-limitless-ai-privacy/) |
 
@@ -290,7 +347,7 @@ Prices are USD list prices at launch or current retail. "Free tier" means the tr
 
 - **The price is fixed at about $159–$179 and the minutes are fixed at 300/month.** That convergence ([TechCrunch roundup](https://techcrunch.com/2026-03-20/ai-notetaker-hardware-devices-pins-pendants-record-transcribe)) means the device is a customer-acquisition cost for a subscription. Plaud's roughly 50% paid conversion ([TechCrunch 2026-06](https://techcrunch.com/2026/06/16/plaud-says-its-software-business-topped-100m-in-arr-after-shipping-over-2m-ai-notetakers/)) is exceptional against Otter's ~3% freemium conversion ([Sacra](https://sacra.com/research/otter-at-100m-arr/)). A dedicated purchase selects for committed users.
 - **All of the recorders are "dumb capture + cloud brain".** Plaud says audio stays local unless Cloud Sync is on ([Plaud Trust](https://www.plaud.ai/pages/trust)), but transcription and summaries need the cloud. No vendor documents on-device ASR or on-device redaction.
-- **Capture paths are getting creative.** HiDock intercepts Bluetooth earphone audio. Plaud Note uses a vibration-conduction sensor for phone calls (background; unverified in this session). Plaud Desktop and Granola capture system audio. Each path widens what is captured, and with it the consent exposure.
+- **Capture paths are getting creative.** HiDock intercepts Bluetooth earphone audio. Plaud Note uses a vibration-conduction sensor attached to the back of the phone to capture call audio ([Plaud](https://www.plaud.ai/products/plaud-note-ai-voice-recorder)) (verified 2026-10-02). Plaud Desktop and Granola capture system audio. Each path widens what is captured, and with it the consent exposure.
 - **Intent-gated capture is the counter-trend.** Sandbar's mic is off by default and uses push-to-talk ([TechCrunch](https://techcrunch.com/2025/11/05/former-meta-employees-launch-stream-a-smart-ring-that-takes-voice-notes-and-controls-music/)). Bee promised voice-consent-only recording ([TechCrunch](https://techcrunch.com/2025/07/22/amazon-acquires-bee-the-ai-wearable-that-records-everything-you-say/)). Limitless shipped a consent mode ([Sacra](https://sacra.com/research/why-meta-bought-limitless/)).
 - **Big tech wants the teams, not the pendants.** Sacra concludes that "AI pendant experiences will live inside glasses, earbuds, watches, and phones" ([Sacra](https://sacra.com/research/why-meta-bought-limitless/)). Plaud is the counter-example: it wins as a *work tool* (recorder), not as a *companion*.
 
@@ -301,8 +358,8 @@ Prices are USD list prices at launch or current retail. "Free tier" means the tr
 | Product | Price | On-device vs cloud | Consent / notification | Notes | Source |
 | --- | --- | --- | --- | --- | --- |
 | **Apple Phone and Notes recording + Apple Intelligence summaries** (iOS 18.1+) | Free with a supported iPhone | Many models on device; heavier requests go to **Private Cloud Compute**, where "data is never stored or shared with Apple" and independent experts can inspect server code | **Participants are automatically notified** when call recording starts | Sets the consumer baseline: free, private, with consent built in | [Apple Newsroom, Oct 2024](https://www.apple.com/newsroom/2024/10/apple-intelligence-is-available-today-on-iphone-ipad-and-mac/) |
-| **Google Pixel Recorder** | Free on Pixel | Transcription **on device** since Pixel 4 (2019); speaker labels on Pixel 6+; summaries via **Gemini Nano** on recent Pixels (unverified this session) | n/a (a local recorder) | The only mainstream recorder that has been fully on-device for years. It is the closest technical analogue to Alpha's planned on-device STT on Pixel hardware | [Pixel help index](https://support.google.com/pixelphone/answer/9516618?hl=en) (feature pages not retrieved; unverified) |
-| **Samsung Voice Recorder / Galaxy AI Transcript Assist** | Free on Galaxy S24+ | Galaxy AI has a "process data only on device" setting (unverified this session) | n/a | Enterprise Knox angle | (unverified) |
+| **Google Pixel Recorder** | Free on Pixel | Transcription **on device** since Pixel 4 (2019); speaker labels on Pixel 6+; summaries via **Gemini Nano** on device (Pixel 9 uses Gemini Nano with Multimodality for longer recordings) ([Android Developers Blog](https://android-developers.googleblog.com/2024/08/recorder-app-on-pixel-sees-boost-in-engagement-with-gemini-nano.html), [9to5Google](https://9to5google.com/2024/09/01/pixel-recorder-gemini-nano-multimodality/)) (verified 2026-10-02) | n/a (a local recorder) | The only mainstream recorder that has been fully on-device for years. It is the closest technical analogue to Alpha's planned on-device STT on Pixel hardware | [Pixel help index](https://support.google.com/pixelphone/answer/9516618?hl=en), [Android Developers Blog](https://android-developers.googleblog.com/2024/08/recorder-app-on-pixel-sees-boost-in-engagement-with-gemini-nano.html) |
+| **Samsung Voice Recorder / Galaxy AI Transcript Assist** | Free on Galaxy S24+ | Galaxy AI has a "Process data only on device" master switch (Settings > Galaxy AI). With it on, Transcript Assist transcribes locally but **summaries stop working** because they need the cloud (verified 2026-10-02) | n/a | Enterprise Knox angle | [9to5Google](https://9to5google.com/2025/02/20/how-to-turn-on-galaxy-ai-on-device-processing/), [Tom's Guide](https://www.tomsguide.com/phones/samsung-phones/how-to-use-on-device-ai-only-on-samsung-galaxy-s24) |
 
 **Implication:** consumers now get recording, transcription and summaries free on their phone. A paid device must justify itself on **work**: meeting capture, integrations, compliance and admin controls.
 
@@ -317,14 +374,14 @@ Prices are USD list prices at launch or current retail. "Free tier" means the tr
 | **Granola** (London; founded 2023) | Basic free (30-day history); Business $14; Enterprise $35 | **$192M total**; Series C **$125M (2026-03-25, Index Ventures)** with Kleiner, Lightspeed, Spark, NFDG; Series B $43M (May 2025, $250M valuation); Series A Oct 2024 | **$1.5B** (Mar 2026) | Revenue undisclosed; +250% revenue in the quarter before the Series C; 5,000 weekly users at Series A → ~80–100k WAU (est.) | **Bot-free**: desktop app captures mic + system audio → **Deepgram / AssemblyAI** → LLMs **OpenAI, Anthropic** (+ xAI, Google, Fireworks per a third-party audit); AWS US; MCP and APIs | SOC 2 Type II (Jul 2025); **no HIPAA BAA** except "HIPAA-compliant workspaces" on Enterprise (sources conflict); **audio not retained**; **training on by default** for Free/Business (opt-out), off for Enterprise; notes kept indefinitely by default | *Chamberlain v. Granola* (N.D. Cal., filed **2026-07-30**): ECPA, CIPA and training by default. Complaint cites marketing that others "won't know it's there"; CMC 2026-10-28. AssemblyAI key exposure affected 333 beta testers (per third-party audit) | [TNW](https://thenextweb.com/news/granola-series-c-meeting-ai-enterprise-context), [Sifted](https://sifted.eu/articles/ai-notetaking-startup-granola-hits-unicorn-status), [Granola pricing](https://www.granola.ai/pricing), [Granola subprocessors](https://trust.granola.ai/subprocessors), [Routines audit](https://getroutines.ai/transparency/granola-ai), [ToolDirectory](https://tooldirectory.ai/blog/ai-notetaker-lawsuits-2026), [Sacra](https://sacra.com/c/granola/) |
 | **Fathom** (YC) | Generous free tier; paid tiers (not re-verified) | $30M+; Series A $17M (2024-09-19) | $94M (2024, PitchBook) | 400k+ MAU; 1M+ people have recorded | Bot / Zoom app | n/a | **Acquired by Superhuman (Sept 2026)**, terms undisclosed | [TechCrunch](https://techcrunch.com/2026/09/14/superhuman-acquires-yc-backed-notetaker-fathom-as-productivity-platforms-push-for-agentic-work/), [Wikipedia AI notetaker](https://en.wikipedia.org/wiki/AI_notetaker) |
 | **Read AI** (Seattle) | Free (5 meetings); Pro $15 annual / $19.75 monthly; Enterprise $22.50 / $29.75; Enterprise+ $29.75 / $39.75 (HIPAA, SSO, retention) | **$81M total**; Series B **$50M (Oct 2024, Smash Capital)**; Series A $21M (2024) | **$450M** (Oct 2024) | "Millions"; +720% active users in 12 months to Oct 2024 | Bot + app; cross-platform "copilot" | HIPAA on Enterprise+ | Known for aggressive auto-join and viral invites (common user complaint; see §9) | [Yahoo Finance](https://finance.yahoo.com/news/ai-startup-read-announces-funding-120358434.html), [Read pricing](https://www.read.ai/pricing) |
-| **tl;dv** (Aachen, DE) | Freemium (pricing page not retrievable) | Not verified | — | — | Bot for Meet/Zoom/Teams; EU-hosted (unverified) | GDPR positioning (unverified) | Publishes content on lawsuit compliance | [tl;dv blog](https://tldv.io/blog/ai-meeting-recorder-lawsuits/) |
-| **Krisp** (Berkeley / Yerevan) | Core $8 annual / $16 monthly; Advanced $15 / $30; Enterprise custom; Call Center from $15/agent | Not verified this session | — | — | **Bot-free**, desktop audio layer; noise cancellation and accent conversion run on device; **Enterprise tier offers "Private Transcription & Recordings (On-device)"** | SOC 2 report and HIPAA on Enterprise | — | [Krisp pricing](https://krisp.ai/pricing/) |
+| **tl;dv** (Aachen, DE) | Freemium (pricing page not retrievable) | ~$4.5M–$8M total; seed 2022-06-16; bridge ~$0.93M (Nov 2023). Databases disagree ([Tracxn](https://tracxn.com/d/companies/tldv/__PM-rlqNoAjpqedTJS9tA7onDXsfzmuI_4toKLP4l0Ns/funding-and-investors), [Seedtable](https://www.seedtable.com/startups/tldv-io)) (could not verify exact total) | — | ~$4.5M revenue 2024 (Latka, est.) | Bot for Meet/Zoom/Teams; EU-hosted (could not verify) | GDPR positioning (could not verify) | Publishes content on lawsuit compliance | [tl;dv blog](https://tldv.io/blog/ai-meeting-recorder-lawsuits/) |
+| **Krisp** (Berkeley / Yerevan) | Core $8 annual / $16 monthly; Advanced $15 / $30; Enterprise custom; Call Center from $15/agent | ~$19.5M total; Series A $9M (Feb 2021, RTP Global) per funding databases ([Signalbase](https://www.trysignalbase.com/news/funding/krisp-raises-90m-series), [Startupintros](https://startupintros.com/orgs/krisp)) (verified 2026-10-02) (database-level confidence) | — | — | **Bot-free**, desktop audio layer; noise cancellation and accent conversion run on device; **Enterprise tier offers "Private Transcription & Recordings (On-device)"** | SOC 2 report and HIPAA on Enterprise | — | [Krisp pricing](https://krisp.ai/pricing/) |
 | **Jamie** (Germany) | Free (10 notes); Plus €21; Pro €39; Team €33; Enterprise custom | Not verified | — | — | **Bot-free** desktop capture | **EU-hosted, GDPR, "no model training on your data"** | — | [Jamie pricing](https://www.meetjamie.ai/pricing) |
 | **Supernormal** | Credit-based: free 15 credits/mo; Team and Business pooled credits; "No bot on calls. No per-seat pricing." | Not verified | — | — | Bot-free | GDPR, HIPAA, SOC 2 (self-reported) | Pivoted to credit pricing and "generate presentations" | [Supernormal pricing](https://www.supernormal.com/pricing) |
 | **Avoma** | Startup $19; Organization $24; Enterprise $39 per recorder seat (annual); add-ons $19–$29 | Not verified | — | — | Bot + CRM; conversation and revenue intelligence | HIPAA on Enterprise | — | [Avoma pricing](https://www.avoma.com/pricing) |
 | **Gong** (revenue intelligence) | Enterprise, undisclosed | **$584M total**; Series E 2021 at $7.25B | **$4.5B (Nov 2025 secondary)** | **$500M ARR (May 2026)**; $298M (2024) | Records sales calls; "Mission Andromeda" AI platform (Feb 2026) | Enterprise-grade (not reviewed) | Down-round-style secondary pricing | [Sacra](https://sacra.com/c/gong/) |
-| **Microsoft Teams Premium / Microsoft 365 Copilot** | Copilot $30 (unverified); Teams Premium ~$10 (unverified) | — | — | — | Intelligent recap, Copilot in Teams; Azure OpenAI | Enterprise data-protection commitments | Nuance acquired for $19.7B (closed 2022-03-04) → Dragon Copilot for clinicians | [Wikipedia/Nuance](https://en.wikipedia.org/wiki/Nuance_Communications); Microsoft pages timed out |
-| **Zoom AI Companion** (the product page currently renders as "ZoomMate") | Basic tier includes 3 summaries/mo; the page shows a paid tier at "~$30–40" with 2,200 AI credits (**low confidence; verify**) | — | — | — | Notes for Zoom and third-party platforms ("My Notes"); Zoom's stated "federated" model approach (unverified) | Zoom says it does not train on customer content (policy after the 2023 ToS backlash; unverified this session) | Zoom Ventures is an investor in Suki and Fathom | [Zoom product page](https://www.zoom.com/en/products/ai-assistant/) |
+| **Microsoft Teams Premium / Microsoft 365 Copilot** | Microsoft 365 Copilot $30 (annual; $31.50 if paid monthly) on top of a base M365 licence; Copilot Business $21 for SMBs; Teams Premium $10 add-on (verified 2026-10-02) via pricing guides ([Redress Compliance](https://redresscompliance.com/microsoft-365-copilot-pricing-2026), [Jotform](https://www.jotform.com/blog/microsoft-teams-pricing/)); Microsoft's own pages not fetched | — | — | — | Intelligent recap, Copilot in Teams; Azure OpenAI | Enterprise data-protection commitments | Nuance acquired for $19.7B (closed 2022-03-04) → Dragon Copilot for clinicians | [Wikipedia/Nuance](https://en.wikipedia.org/wiki/Nuance_Communications); Microsoft pages timed out |
+| **Zoom AI Companion** (the product page currently renders as "ZoomMate") | AI Companion included with paid Zoom Workplace plans; Custom AI Companion add-on $12/user/mo; **ZoomMate** (agentic tier, launched **2026-06-01**) from **$20/user/mo** in North America with 2,200 AI credits ([Investing.com](https://www.investing.com/news/company-news/zoom-launches-ai-assistant-zoommate-at-20-per-user-monthly-93CH-4719422), [eesel](https://www.eesel.ai/blog/zoom-ai)) (verified 2026-10-02). The earlier "~$30–40" reading was wrong | — | — | — | Notes for Zoom and third-party platforms ("My Notes"); Zoom's stated "federated" model approach (could not verify) | Zoom says it does not use customer audio, video, chat, screen share, attachments or other communications-like content to train Zoom or third-party models ([Zoom AI Companion privacy](https://www.zoom.com/en/products/ai-assistant/resources/privacy-security/)) (verified 2026-10-02) | Zoom Ventures is an investor in Suki and Fathom | [Zoom product page](https://www.zoom.com/en/products/ai-assistant/) |
 | **Google Meet — Gemini "Take notes for me"** | In Workspace Standard $14 and above (Starter $7 has Gemini in Gmail only) | — | — | — | Gemini in Meet | Workspace data terms | — | [Workspace pricing](https://workspace.google.com/pricing) |
 | **Notion AI Meeting Notes** | Business $20 (full); Free and Plus limited trial | — | — | — | "No bot needed" transcription and summary | Notion enterprise terms | — | [Notion pricing](https://www.notion.com/pricing) |
 | **Plaud Desktop** | Within the Plaud subscription | — | — | — | Mac system audio → Plaud cloud | As Plaud | Blurs hardware and software | [TechCrunch](https://techcrunch.com/2026/01/04/plaud-launches-a-new-ai-pin-and-a-desktop-meeting-notetaker/) |
@@ -343,7 +400,7 @@ Prices are USD list prices at launch or current retail. "Free tier" means the tr
 | Company | Funding / last round | Valuation | Revenue | Source |
 | --- | --- | --- | --- | --- |
 | **Abridge** | Series D $250M (Feb 2025); **Series E $300M (Jun 2025, a16z)**; Series E extension $316M (Apr 2026) | $2.75B (Feb 2025) → **$5.3B (Jun 2025)** | ARR $60M (end 2024) → $100M (May 2025); contracted ARR $117M (Q1 2025) | [Sacra](https://sacra.com/c/abridge/) |
-| **Ambience Healthcare** | Series C ~$243M (Jul 2025, co-led by Oak HC/FT and a16z) — **unverified** | ~$1.25B — **unverified** | n/a | Company site had no figures ([Ambience](https://www.ambiencehealthcare.com/)) |
+| **Ambience Healthcare** | Series C **$243M** (Jul 2025, co-led by Oak HC/FT and a16z); $345M raised to date (verified 2026-10-02) | **$1.25B** (verified 2026-10-02) | n/a | [Fierce Healthcare](https://www.fiercehealthcare.com/health-tech/ambience-banks-243m-series-c-investors-continue-bet-big-ambient-ai), [Becker's](https://www.beckershospitalreview.com/healthcare-information-technology/ai/ambience-healthcare-reaches-1-25b-valuation/) |
 | **Nuance DAX / Microsoft Dragon Copilot** | Acquired by Microsoft for **$19.7B** (announced 2021-04-12, closed 2022-03-04) | — | — | [Wikipedia](https://en.wikipedia.org/wiki/Nuance_Communications) |
 | **Suki** | **$168M total**; Series D $70M (Oct 2024, Hedosophia); Series C $55M (Dec 2021, March Capital) | $500M (2025) | n/a | [Sacra](https://sacra.com/c/suki/) |
 
@@ -394,9 +451,9 @@ Sources: [Plaud Trust](https://www.plaud.ai/pages/trust), [Otter pricing](https:
 | --- | --- | --- | --- | --- |
 | 2022 | Otter | A journalist got an Otter survey that referenced the title of an interview with a Uyghur activist, raising surveillance fears | Reputational | [Wikipedia](https://en.wikipedia.org/wiki/Otter.ai) |
 | n/a | Otter | Banned by UMass for violating all-party-consent law; users report OtterPilot joining meetings without authorisation | Institutional ban | [Wikipedia](https://en.wikipedia.org/wiki/Otter.ai) |
-| 2025-08-15 → 2025-10-22 | Otter | *Brewer v. Otter.ai* plus three more suits consolidated as *In re Otter.AI Privacy Litigation* (ECPA, CIPA, CFAA, BIPA) | **2026-08-13:** Wiretap, CIPA §631, BIPA, unjust enrichment and UCL claims survive; CFAA, CDAFA and Washington claims dismissed with leave to amend. Discovery under way; answer filed 2026-09-17 | [OpenClassActions](https://openclassactions.com/lawsuits/otter-ai-privacy-wiretap-class-action.php), [RecordingLaw](https://www.recordinglaw.com/news/otter-ai-wiretap-lawsuit-explained/), [ToolDirectory](https://tooldirectory.ai/blog/ai-notetaker-lawsuits-2026) |
-| 2025-12-18; Mar 2026 | Fireflies | *Cruz*, *Fricker*, *Martinez* and *Parrinello* BIPA suits over speaker-recognition voiceprints | MTD fully briefed 2026-08-26; pending | [EBG](https://www.ebglaw.com/insights/publications/ai-meeting-assistants-and-biometric-privacy-lessons-from-the-fireflies-ai-lawsuit), [ToolDirectory](https://tooldirectory.ai/blog/ai-notetaker-lawsuits-2026) |
-| 2026-07-30 | Granola | *Chamberlain v. Granola*: no notice to participants, training by default, "won't know it's there" marketing | CMC 2026-10-28 (Judge Chen) | [ToolDirectory](https://tooldirectory.ai/blog/ai-notetaker-lawsuits-2026), [Routines](https://getroutines.ai/transparency/granola-ai) |
+| 2025-08-15 → 2025-10-22 | Otter | *Brewer v. Otter.ai* plus three more suits consolidated as *In re Otter.AI Privacy Litigation* (ECPA, CIPA, CFAA, BIPA) | **2026-08-13:** Wiretap, CIPA §631, BIPA, unjust enrichment and UCL claims survive; CFAA, CDAFA and Washington claims dismissed with leave to amend. Ruling by Judge Lee confirmed ([FindLaw opinion](https://caselaw.findlaw.com/court/us-dis-crt-n-d-cal/322025.html), [Sheppard Mullin](https://www.sheppard.com/insights/blogs/when-ai-takes-notes-court-allows-privacy-claims-against-otterai-to-proceed)) (verified 2026-10-02). Discovery under way; answer filed 2026-09-17 (could not verify); no settlement announced as of 2026-10-02 | [OpenClassActions](https://openclassactions.com/lawsuits/otter-ai-privacy-wiretap-class-action.php), [RecordingLaw](https://www.recordinglaw.com/news/otter-ai-wiretap-lawsuit-explained/), [ToolDirectory](https://tooldirectory.ai/blog/ai-notetaker-lawsuits-2026) |
+| 2025-12-18; Mar 2026 | Fireflies | *Cruz*, *Fricker*, *Martinez* and *Parrinello* BIPA suits over speaker-recognition voiceprints | *Fricker* and *Martinez* related and placed before one judge (Apr 2026); response deadlines were stayed pending consolidation ([CourtListener](https://www.courtlistener.com/docket/72385478/fricker-v-firefliesai-corp/)) (verified 2026-10-02). "MTD fully briefed 2026-08-26" (could not verify). No merits ruling found | [EBG](https://www.ebglaw.com/insights/publications/ai-meeting-assistants-and-biometric-privacy-lessons-from-the-fireflies-ai-lawsuit), [ToolDirectory](https://tooldirectory.ai/blog/ai-notetaker-lawsuits-2026) |
+| 2026-07-30 | Granola | *Chamberlain v. Granola*: no notice to participants, training by default, "won't know it's there" marketing | No. 3:26-cv-07926 (N.D. Cal.) ([Holland & Knight](https://www.hklaw.com/en/insights/publications/2026/08/the-wave-continues-to-build)) (verified 2026-10-02); no ruling yet. CMC 2026-10-28 (Judge Chen) (could not verify) | [ToolDirectory](https://tooldirectory.ai/blog/ai-notetaker-lawsuits-2026), [Routines](https://getroutines.ai/transparency/granola-ai) |
 | Sept–Nov 2025 | Friend | NYC subway campaign ($1M+) vandalised ("AI is not your friend"); The Atlantic called the CEO the "most reviled" in NYC | Pivot to web chatbot | [CNN](https://www.cnn.com/2025/11/16/tech/friend-ai-device-backlash-ceo-avi-schiffmann), [Futurism](https://futurism.com/artificial-intelligence/friend-ceo-photoshoot-ads) |
 | 2025-12 | Limitless / Meta | EU/UK users cut off; Rewind capture disabled | Customer trust damage; data-export scramble | [Hedy](https://www.hedy.ai/post/meta-acquires-limitless-ai-privacy/) |
 | 2025-02 | Humane | Service shutdown; $699 devices bricked | HP $116M | [Wikipedia](https://en.wikipedia.org/wiki/Humane_Inc.) |
@@ -457,18 +514,18 @@ Synthesized from the sources above. The frequency ranking is my judgment, not a 
 
 | Topic | Conflict | Treatment |
 | --- | --- | --- |
-| Plaud funding | Sacra lists a ~$4.75M convertible note (2025-04-24) led by "Carbide Ventures", with J12 Ventures and an Irish angel ([Sacra](https://sacra.com/c/plaud/)). This pattern looks like an Irish startup of a similar name. Startup Fortune says Plaud reached $250M "without a single venture dollar" ([Startup Fortune](https://startupfortune.com/plaud-reached-250-million-in-recurring-revenue-without-a-single-venture-dollar-and-is-now-targeting-500-million-in-2026-sales/)). 36Kr reported Tencent at $1B → $2B, but both parties said the report was "untrue" ([36Kr](https://eu.36kr.com/en/p/3799129165863937)) | Treat Plaud as **effectively bootstrapped**. Valuation unconfirmed |
+| Plaud funding | Sacra lists a ~$4.75M convertible note (2025-04-24) led by "Carbide Ventures", with J12 Ventures and an Irish angel ([Sacra](https://sacra.com/c/plaud/)). This pattern looks like an Irish startup of a similar name. Startup Fortune says Plaud reached $250M "without a single venture dollar" ([Startup Fortune](https://startupfortune.com/plaud-reached-250-million-in-recurring-revenue-without-a-single-venture-dollar-and-is-now-targeting-500-million-in-2026-sales/)). 36Kr reported Tencent at $1B → $2B, but both parties said the report was "untrue" ([36Kr](https://eu.36kr.com/en/p/3799129165863937)) | **Updated 2026-10-02:** Plaud is mostly self-funded but not purely bootstrapped: Vertex Holdings (Temasek) is an investor, and the CEO told the WSJ it was valued at more than $1B in 2025 ([TFN](https://techfundingnews.com/plaud-eyes-2028-us-ipo-after-crossing-1b-valuation/)). The Tencent/$2B report remains denied |
 | Plaud revenue | $250M annualized (Sept 2025) vs $100M ARR (June 2026) | Not a contradiction: $100M is **software subscription ARR**; $250M is total including hardware. Sacra's framing as a decline is misleading |
 | Plaud units | 1M (Jul 2025), 1.5M (Jan 2026), 2M+ (Jun 2026) | Consistent growth |
-| Friend sales | ~1,000 units / ~$150K ([Protos](https://protos.com/friend-ai-spent-millions-on-mimicking-friendship-now-its-just-another-chatbot/)) vs $348K ([Sacra](https://sacra.com/research/why-meta-bought-limitless/)) vs 5,000 units (secondary) | Order of magnitude: **low thousands of units, <$0.5M revenue** (est.) |
-| Friend funding | ~$8M (Protos) vs $10M (CNN via search) vs $2.5M (early) | ~$8–10M (est.) |
+| Friend sales | ~1,000 units / ~$150K ([Protos](https://protos.com/friend-ai-spent-millions-on-mimicking-friendship-now-its-just-another-chatbot/)) vs $348K ([Sacra](https://sacra.com/research/why-meta-bought-limitless/)) vs 5,000 units (secondary) | Order of magnitude: **low thousands of units, <$0.5M revenue** (est.; could not verify further) |
+| Friend funding | ~$8M (Protos) vs $10M (CNN via search) vs $2.5M (early) | $2.5M pre-seed at $50M valuation confirmed ([Decrypt](https://decrypt.co/242629/friend-necklace-avi-schiffmann)) (verified 2026-10-02); later ~$8–10M total (est.; could not verify) |
 | Otter valuation | Latka "$66.9M" | Not credible for a $100M-ARR company; **unknown** |
 | Otter users | 25M (Mar 2025) vs 35M+ (Dec 2025 recap) | Growth over 2025 |
 | Fireflies revenue | ~$10.9M (Latka, 2024) vs ~$15M ARR (Sacra) | Both likely understated given the $1B tender (est.) |
 | TicNote free tier | 300 credits (Mobvoi) vs 600 min (TechCrunch) | Unresolved |
 | Soundcore Work price | $160 vs $99.99 | $159–$160 is list; $99.99 is likely a promo |
 | Omi price | $89 (TechCrunch) vs $129 promo / $179 list (omi.me) | Price has changed over time |
-| Granola HIPAA | Pricing page says HIPAA workspaces on Enterprise; third-party audit (Aug 2026) says no BAAs | Unresolved; confirm with Granola |
+| Granola HIPAA | Pricing page says HIPAA workspaces on Enterprise; third-party audit (Aug 2026) says no BAAs | Unresolved (could not verify); confirm with Granola |
 | Otter MTD | One search summary said "under submission mid-2026"; later sources give the **2026-08-13 ruling** | Use the ruling date |
 
 ---
@@ -515,9 +572,9 @@ Synthesized from the sources above. The frequency ranking is my judgment, not a 
 
 ## Open questions
 
-1. **Plaud's true capital structure and valuation.** Is it genuinely bootstrapped? Is the Sacra "Carbide Ventures" note a mis-attribution? Did any 2026 round happen?
-2. **Otter's post-ruling trajectory.** Will it settle, change its training default, or add all-party-consent features? Settlement terms would set the industry norm.
-3. **Unverified numbers to confirm** (web-search budget exhausted): Microsoft 365 Copilot and Teams Premium pricing; Zoom AI Companion / "ZoomMate" pricing and training policy; Pixel Recorder on-device and Gemini Nano specifics; Samsung on-device-only setting; Ambience Series C terms; tl;dv and Krisp funding; Viaim and HiDock funding; Humane valuation; Mobvoi's investor base.
+1. **Plaud's true capital structure and valuation.** *Partly resolved 2026-10-02:* the CEO told the WSJ it was valued at >$1B in 2025, Vertex Holdings is an investor, and it targets a 2028 US IPO ([TFN](https://techfundingnews.com/plaud-eyes-2028-us-ipo-after-crossing-1b-valuation/)). Still open: round sizes, and whether the Sacra "Carbide Ventures" note is a mis-attribution.
+2. **Otter's post-ruling trajectory.** (No settlement announced as of 2026-10-02.) Will it settle, change its training default, or add all-party-consent features? Settlement terms would set the industry norm.
+3. **Previously unverified numbers.** *Resolved 2026-10-02* (see Verification log): Microsoft Copilot/Teams Premium pricing, Zoom AI Companion/ZoomMate pricing and training policy, Pixel Recorder Gemini Nano, Samsung on-device switch, Ambience Series C, Krisp and Viaim funding, HiDock (no VC), Humane valuation, Mobvoi investors. Still open: tl;dv exact funding total (databases disagree), Zoom's "federated" model claim.
 4. **What speech and LLM stacks do Chinese recorders (TicNote, HiDock, Viaim, Soundcore) use, and where is data processed?** This matters for any "China-free" procurement comparison (workstream 3/5).
 5. **Would enterprise IT actually approve an on-device + enclave notetaker where it bans Otter and Fireflies?** This needs 10–20 CISO and DPO interviews. It is the core GTM hypothesis.
 6. **Can phone-class microphones match a 3–4-mic Plaud card in conference rooms?** Is an accessory needed? (workstream 10)
@@ -532,6 +589,40 @@ Synthesized from the sources above. The frequency ranking is my judgment, not a 
 ### Method note
 
 This file draws on about 30 web searches and about 50 page fetches made on 2026-09-30. The session's shared web-search budget ran out before the Microsoft, Google Pixel, Samsung, Zoom-policy, Ambience and tl;dv checks could be done. Those items are marked **(unverified)** above and repeated in Open questions.
+
+---
+
+## Verification log (2026-10-02)
+
+Web search was available for this pass. Every item below was checked against the cited source; items that could not be confirmed are marked **(could not verify)** in the body.
+
+**Corrections and confirmations**
+
+| Item | Earlier claim | Finding | Source |
+| --- | --- | --- | --- |
+| Zoom AI Companion / ZoomMate pricing | Paid tier "~$30–40" (low confidence) | **Corrected.** Custom AI Companion add-on $12/user/mo; ZoomMate launched 2026-06-01 at **$20/user/mo** (North America) with 2,200 AI credits | [Investing.com](https://www.investing.com/news/company-news/zoom-launches-ai-assistant-zoommate-at-20-per-user-monthly-93CH-4719422), [eesel](https://www.eesel.ai/blog/zoom-ai) |
+| Zoom training policy | No training on customer content (unverified) | Confirmed: no training of Zoom or third-party models on audio, video, chat, screen share, attachments | [Zoom](https://www.zoom.com/en/products/ai-assistant/resources/privacy-security/) |
+| Plaud valuation / funding | "Effectively bootstrapped", valuation unconfirmed | **Corrected.** CEO told WSJ valued >$1B in 2025; Vertex Holdings (Temasek) investor; 2.5M+ users; profitable; 2028 US IPO target | [TFN 2026-09-18](https://techfundingnews.com/plaud-eyes-2028-us-ipo-after-crossing-1b-valuation/) |
+| Plaud Note call capture | Vibration-conduction sensor (unverified) | Confirmed | [Plaud](https://www.plaud.ai/products/plaud-note-ai-voice-recorder) |
+| Microsoft 365 Copilot / Teams Premium | $30 / ~$10 (unverified) | Confirmed via pricing guides; added Copilot Business $21 | [Redress](https://redresscompliance.com/microsoft-365-copilot-pricing-2026), [Jotform](https://www.jotform.com/blog/microsoft-teams-pricing/) |
+| Pixel Recorder | Gemini Nano summaries (unverified) | Confirmed on-device transcription + Gemini Nano summaries | [Android Developers Blog](https://android-developers.googleblog.com/2024/08/recorder-app-on-pixel-sees-boost-in-engagement-with-gemini-nano.html) |
+| Samsung on-device setting | Unverified | Confirmed; added that summaries stop working on-device-only | [9to5Google](https://9to5google.com/2025/02/20/how-to-turn-on-galaxy-ai-on-device-processing/) |
+| Ambience Series C | ~$243M at ~$1.25B (unverified) | Confirmed; $345M total raised | [Fierce Healthcare](https://www.fiercehealthcare.com/health-tech/ambience-banks-243m-series-c-investors-continue-bet-big-ambient-ai) |
+| Humane valuation | $850M (unverified) | Confirmed as reported by The Information (2023); 2024 sale ask $750M–$1B | [Yahoo Finance](https://finance.yahoo.com/news/humanes-ai-pin-doomed-company-153016768.html) |
+| Mobvoi investors | Google-backed (unverified) | Confirmed: Google (2015); VW $180M JV (2017) | [CNBC](https://www.cnbc.com/2015/10/20/google-invests-in-chinas-mobvoi-as-it-eyes-return-to-market.html), [TechCrunch](https://techcrunch.com/2017/04/06/volkswagen-mobvoi-china) |
+| Krisp funding | Not verified | ~$19.5M total; $9M Series A (Feb 2021, RTP Global) per databases | [Signalbase](https://www.trysignalbase.com/news/funding/krisp-raises-90m-series) |
+| tl;dv funding | Not verified | ~$4.5M–$8M; databases disagree (could not verify exact) | [Tracxn](https://tracxn.com/d/companies/tldv/__PM-rlqNoAjpqedTJS9tA7onDXsfzmuI_4toKLP4l0Ns/funding-and-investors) |
+| Viaim funding | Undisclosed | **New:** RMB 100M-level A+ round with Transsion (2026-05-27) | [GlobeNewswire](https://www.globenewswire.com/news-release/2026/05/27/3301686/0/en/viaim-Closes-RMB-100-Million-A-Round-With-Transsion-to-Accelerate-Proactive-AI-Agent-Hardware.html) |
+| HiDock funding | Not found | Tracxn lists Hong Kong-based, unfunded | [Tracxn](https://tracxn.com/d/companies/hidock/__yarY8q1RVHWj-ya_HyU6r85Emy23c_QdXR2TP3I61OY) |
+| Friend funding | ~$8M vs $10M conflict | $2.5M pre-seed at $50M valuation confirmed; later total still could not verify | [Decrypt](https://decrypt.co/242629/friend-necklace-avi-schiffmann) |
+| Otter MTD ruling 2026-08-13 | As stated | Confirmed (Judge Lee; Wiretap, CIPA, BIPA survive). "Answer filed 2026-09-17" could not verify. No settlement as of 2026-10-02 | [FindLaw](https://caselaw.findlaw.com/court/us-dis-crt-n-d-cal/322025.html), [Sheppard Mullin](https://www.sheppard.com/insights/blogs/when-ai-takes-notes-court-allows-privacy-claims-against-otterai-to-proceed) |
+| Fireflies BIPA MTD | "Fully briefed 2026-08-26" | **Could not verify.** Docket shows *Fricker*/*Martinez* related (Apr 2026) with response deadlines stayed pending consolidation | [CourtListener](https://www.courtlistener.com/docket/72385478/fricker-v-firefliesai-corp/) |
+| Granola suit | Filed 2026-07-30; CMC 2026-10-28 | Filing and case number 3:26-cv-07926 confirmed; CMC date could not verify | [Holland & Knight](https://www.hklaw.com/en/insights/publications/2026/08/the-wave-continues-to-build) |
+
+**New 2026 developments added:** ZoomMate launch (2026-06-01, $20/user); Plaud >$1B valuation statement and 2028 IPO target; Viaim–Transsion A+ round (a phone OEM backing AI-recorder hardware); Granola added 32-language support and Apple Watch in Sept 2026 ([Granola updates](https://www.granola.ai/updates)); Amazon showcased Bee at CES 2026 ([TechCrunch](https://techcrunch.com/2026/01/12/why-amazon-bought-bee-an-ai-wearable/)).
+
+**Founder decisions:** this file does not discuss Play Integrity/GMS or the inference model, so no changes were needed. (Alpha forks AOSP without GMS, Play Integrity or banking apps; the Qwen model on Cerebras is retained. See files 03 and 05.)
+
 
 
 ---
@@ -549,7 +640,7 @@ This file covers every major attempt since 2023 to build an agent-first phone or
 ## 1. Executive summary
 
 1. **Standalone AI gadgets that replace the phone have failed commercially.** Humane raised about $230–240M, shipped about 10,000 Pins, and sold its assets to HP for $116M ([Wikipedia](https://en.wikipedia.org/wiki/Humane_Inc.), [TechCrunch](https://techcrunch.com/2025/02/22/the-fallout-of-hps-humane-acquisition/)). Rabbit sold about 130,000 r1s, but only about 5,000 were in daily use by September 2024 ([Wikipedia](https://en.wikipedia.org/wiki/Rabbit_r1)). In September 2026 Rabbit moved its agent (OS3) off its own hardware onto users' PCs and messaging apps ([Help Net Security](https://helpnetsecurity.com/2026/09/23/rabbit-os3-ai-agent-now-available)).
-2. **Agents built into the platform are winning distribution.** Samsung reports 400M Galaxy AI devices and expects Gemini on 800M devices in 2026 ([CNBC](https://www.cnbc.com/2026/02/25/samsung-s26-launch-gemini-ai-apple-siri.html)). Gemini screen automation shipped on the Galaxy S26 and Pixel 10 in March 2026 ([9to5Google](https://9to5google.com/2026/02/25/gemini-automation-android/)). Apple's rebuilt Siri runs on a custom Gemini model under a deal reported at about $1B a year ([The Next Web](https://thenextweb.com/news/apple-wwdc-2026-siri-ai-gemini-ios-27)).
+2. **Agents built into the platform are winning distribution.** Samsung reports 400M Galaxy AI devices and expects Gemini on 800M devices in 2026 ([CNBC](https://www.cnbc.com/2026/02/25/samsung-s26-launch-gemini-ai-apple-siri.html); co-CEO T.M. Roh to [Reuters via Yahoo](https://finance.yahoo.com/news/exclusive-samsung-double-mobile-devices-030312758.html)) (verified 2026-10-02). Gemini screen automation shipped on the Galaxy S26 and Pixel 10 in March 2026 ([9to5Google](https://9to5google.com/2026/02/25/gemini-automation-android/)). Apple's rebuilt Siri runs on a custom Gemini model under a deal reported at about $1B a year ([The Next Web](https://thenextweb.com/news/apple-wwdc-2026-siri-ai-gemini-ios-27)).
 3. **An agent that works by driving other apps' screens gets blocked by those apps.** The ByteDance/ZTE Doubao phone (Nubia M153, ¥3,499) sold out its first batch of about 30,000 units on 1–2 December 2025 ([36Kr](https://eu.36kr.com/en/p/3579074640558978)). Within days WeChat, Alipay, Taobao and banking apps blocked it because it simulated taps through INJECT_EVENTS ([Lawfare](https://www.lawfaremedia.org/article/china-s-agentic-ai-controversy)). The second generation (WAIC, July 2026) reportedly moves to MCP/A2A-style integration instead ([Silicon Review](https://thesiliconreview.com/2026/07/nubia-ai-agent-smartphone-launch-waic-2026)).
 4. **OpenAI is the most important new entrant, but it will not ship before late February 2027.** It acquired io for about $6.5B (May 2025) ([TechCrunch](https://techcrunch.com/2025/05/21/jony-ive-to-lead-openais-design-work-following-6-5b-acquisition-of-his-company)). It told a court it will not ship before the end of February 2027 ([MacRumors](https://www.macrumors.com/2026/02/10/openais-jony-ive-designed-device-delayed-to-2027/)). Kuo reports an agent phone as well, with mass production dates that conflict between 1H 2027 and 2028 ([9to5Mac](https://9to5mac.com/2026/05/05/openais-new-phone-being-fast-tracked-to-launch-next-year-per-report/), [TechCrunch](https://techcrunch.com/2026/04/27/openai-could-be-making-a-phone-with-ai-agents-replacing-apps/)).
 5. **Consumer demand for AI as a reason to buy a phone is weak.** In a CNET survey (n=2,407, April–May 2026), only 12% of US owners cited AI as a reason to upgrade. Price (55%) and battery (52%) dominate ([MacRumors](https://www.macrumors.com/2026/05/13/few-users-care-about-foldables-or-ai/)). **Inference:** the paying, differentiated demand is in regulated and enterprise use, where privacy, audit and control matter more than novelty. That demand is largely unaddressed by the devices in this file.
@@ -562,20 +653,20 @@ This file covers every major attempt since 2023 to build an agent-first phone or
 | Company / product | Form factor | Price | Funding (total; last round, date, lead) | Valuation / exit | Units / users | Architecture (device vs cloud; LLM) | Privacy posture | Status (2026-09-30) |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | **Humane AI Pin** | Clip-on wearable with laser projector | $699 + $24/mo; cut to $499 in Oct 2024 ([Wikipedia](https://en.wikipedia.org/wiki/Humane_Inc.)) | $230M by Nov 2023 ([Wikipedia](https://en.wikipedia.org/wiki/Humane_Inc.)); $240M per [TechCrunch](https://techcrunch.com/2025/02/22/the-fallout-of-hps-humane-acquisition/) (**conflict**); Series C $100M, Mar 2023 | Asked $750M–1B (May 2024). Sold to HP for **$116M** (announced 18 Feb 2025) ([Wikipedia](https://en.wikipedia.org/wiki/Humane_Inc.), [Bloomberg](https://www.bloomberg.com/news/articles/2025-02-18/hp-116-million-deal-for-humane-includes-ip-but-no-ai-pin-device)) | About 10,000 shipped against a 100,000 goal. About 7,000 still with buyers by Aug 2024 ([Gizmodo](https://gizmodo.com/humanes-ai-pin-is-seeing-more-returns-than-sales-report-says-2000484327)) | Cloud for nearly everything; CosmOS; OpenAI models (GPT-4, later GPT-4o) on Microsoft cloud ([Medium](https://medium.com/@aadilmahmoodofficial/the-humane-ai-pin-apparently-runs-gpt-4-and-flashes-a-trust-light-when-it-s-recording-f38930ea85ed), [inkl](https://www.inkl.com/news/humane-switches-to-gpt-4o-promises-more-responsive-answers-from-the-pin)) | "Trust Light" LED while recording | Dead. Devices stopped connecting after 28 Feb 2025; HP kept the team, CosmOS and 300+ patents |
-| **Rabbit r1 / OS3** | Pocket handheld (Teenage Engineering); now cloud agent software | $199 at launch (widely reported; not re-verified) | $20M, Oct 2023 (Khosla, Synergis, Kakao) + $10M, Dec 2023 ([Wikipedia](https://en.wikipedia.org/wiki/Rabbit_r1), [BusinessWire](https://www.businesswire.com/news/home/20231004956501/en/rabbit-Secures-20M-Funding-Round-Introducing-Large-Action-Model-LAM)); "over $59M" total per [Clay](https://www.clay.com/dossier/rabbit-funding-2) (est.) | Not disclosed | 130,000 sold by June 2024 ([Forbes](https://www.forbes.com/sites/johnkoetsier/2024/06/18/rabbit-sells-130000-r1-units-says-early-bugs-mostly-fixed/)); about 5,000 daily active users in Sept 2024 ([Wikipedia](https://en.wikipedia.org/wiki/Rabbit_r1)) | rabbitOS on Android 13; Perplexity for search; marketed "LAM". OS3 (Sep 2026) is a cloud agent plus a local agent on up to 5 PCs/VMs, with bring-your-own model keys ([Help Net Security](https://helpnetsecurity.com/2026/09/23/rabbit-os3-ai-agent-now-available)) | Weak: hard-coded API keys leaked (Jun 2024); chats could not be deleted (Jul 2024) ([Wikipedia](https://en.wikipedia.org/wiki/Rabbit_r1)). OS3 routes task data through Rabbit's servers | Hardware is a side line; no R2 planned ([remio](https://remio.ai/post/rabbit-os3-ai-agent-leaves-the-r1-hardware-behind)). A "cyberdeck" for vibe coding is teased ([Inc.](https://www.inc.com/ben-sherry/rabbit-founder-is-hoping-for-redemption-by-creating-a-cyberdeck-device-for-vibe-coding/91296655)) |
+| **Rabbit r1 / OS3** | Pocket handheld (Teenage Engineering); now cloud agent software | $199 at launch ([rabbit](https://www.rabbit.tech/newsroom/introducing-r1)) (verified 2026-10-02) | $20M, Oct 2023 (Khosla, Synergis, Kakao) + $10M, Dec 2023 ([Wikipedia](https://en.wikipedia.org/wiki/Rabbit_r1), [BusinessWire](https://www.businesswire.com/news/home/20231004956501/en/rabbit-Secures-20M-Funding-Round-Introducing-Large-Action-Model-LAM)); "over $59M" total per [Clay](https://www.clay.com/dossier/rabbit-funding-2) (est.); databases range $34.4M–$64.7M ([Tracxn](https://tracxn.com/d/companies/rabbit/__vdiumaOhng69zFAReD7J2IkrQzC1JfP5BrQcwvsWVhM)); $30M by Jan 2024 is confirmed ([Voicebot](https://voicebot.ai/2024/01/08/generative-ai-hardware-startup-rabbit-reaches-30m-in-funding-round/)) (verified 2026-10-02) | Not disclosed | 130,000 sold by June 2024 ([Forbes](https://www.forbes.com/sites/johnkoetsier/2024/06/18/rabbit-sells-130000-r1-units-says-early-bugs-mostly-fixed/)); about 5,000 daily active users in Sept 2024 ([Wikipedia](https://en.wikipedia.org/wiki/Rabbit_r1)) | rabbitOS on Android 13; Perplexity for search; marketed "LAM". OS3 (Sep 2026) is a cloud agent plus a local agent on up to 5 PCs/VMs, with bring-your-own model keys ([Help Net Security](https://helpnetsecurity.com/2026/09/23/rabbit-os3-ai-agent-now-available)) | Weak: hard-coded API keys leaked (Jun 2024); chats could not be deleted (Jul 2024) ([Wikipedia](https://en.wikipedia.org/wiki/Rabbit_r1)). OS3 routes task data through Rabbit's servers | Hardware is a side line; no R2 planned ([remio](https://remio.ai/post/rabbit-os3-ai-agent-leaves-the-r1-hardware-behind)). A "cyberdeck" for vibe coding is teased ([Inc.](https://www.inc.com/ben-sherry/rabbit-founder-is-hoping-for-redemption-by-creating-a-cyberdeck-device-for-vibe-coding/91296655)) |
 | **OpenAI device(s)** (ex-io, Jony Ive / LoveFrom) | First a screenless pocket or ear device ("Sweetpea"); later a reported agent phone | Not announced | Part of OpenAI | io acquired for about **$6.5B** all-stock (May 2025). OpenAI already held 23%, so the incremental price was about $5B ([GSMArena](https://m.gsmarena.com/openai_to_acquire_jony_ives_ai_hardware_startup_for_65b-amp-67914.php)) | Reported target of 40–50M first-year units ([TechCrunch](https://techcrunch.com/2026/01/21/openai-aims-to-ship-its-first-device-in-2026-and-it-could-be-earbuds/)) (est.); about 30M phones in 2027–28 per Kuo ([9to5Mac](https://9to5mac.com/2026/05/05/openais-new-phone-being-fast-tracked-to-launch-next-year-per-report/)) (est.) | Custom 2nm silicon with local processing plus cloud (reported). The phone is reported to use a custom MediaTek Dimensity 9600, dual NPU, pKVM | Unknown; "always listening" context is the premise ([MacDailyNews](https://macdailynews.com/2026/01/21/openais-jony-ive-designed-always-listening-ai-device-on-track-for-late-2026/)) | Will not ship before end of Feb 2027 (court filing) and will not use the "io" name ([MacRumors](https://www.macrumors.com/2026/02/10/openais-jony-ive-designed-device-delayed-to-2027/)) |
 | **Deutsche Telekom AI Phone (T Phone 3)** | Budget Android phone + tablet | €149 phone / €199 tablet; €1 with a tariff ([Telekom](https://www.telekom.com/en/media/media-information/archive/our-ai-phone-brings-ai-for-everyone-1095198)) | Carrier program | n/a | Not disclosed. On sale in 10 European markets from 14 Aug 2025 ([Light Reading](https://www.lightreading.com/smartphones-devices/deutsche-telekom-s-ai-phone-is-now-on-sale-in-ten-markets)) | Cloud: Perplexity Assistant behind a "magenta button"; plus Google Cloud AI, ElevenLabs and Picsart | Standard consumer. 18-month Perplexity Pro bundle, worth about $360 ([TechRadar](https://www.techradar.com/pro/one-of-the-worlds-biggest-mobile-firms-has-launched-a-usd170-ai-smartphone-that-includes-a-free-18-month-subs-to-perplexity-pro-worth-usd360-i-wonder-what-happens-on-month-19)) | Shipping. It uses an assistant-first launcher on a stock phone, not an "app-less" OS |
 | **Brain.ai Natural AI** (DT concept) | Generative, app-less interface on T Phone | Concept demo at MWC Feb 2024 | $60M total (Laurene Powell Jobs, Goodwater, Scott Cook, WTT) ([GlobeNewswire](https://www.globenewswire.com/news-release/2024/02/15/2830140/0/en/Deutsche-Telekom-and-Brain-ai-Unveil-Revolutionary-App-less-Phone-at-Mobile-World-Congress.html)) | Not disclosed | None disclosed | Generative UI, with details not public; Qualcomm was a demo partner ([Telekom](https://www.telekom.com/en/media/media-information/archive/deutsche-telekom-frees-smartphones-from-apps-1060272)) | Not documented | **Inference:** superseded. DT's 2025 production phone used Perplexity, not Natural AI |
-| **ByteDance Doubao phone (ZTE Nubia M153)** | Flagship Android with a system-level agent | ¥3,499 (about $490) "engineering prototype", 1 Dec 2025 ([Pandaily](https://pandaily.com/doubao-phone-assistant-technical-preview-debuts-as-first-true-system-level-ai-nubia-demo-phone-priced-at-3-499-rmb)) | ByteDance / ZTE internal | n/a | First batch of about 30,000 sold out by 2 Dec 2025 ([36Kr](https://eu.36kr.com/en/p/3579074640558978)). One report cites an initial stock of 500,000 ([Longbridge](https://longbridge.com/en/news/268073470)) (**conflict**; 30k is the better-sourced figure) | Cloud Doubao LLM with GUI agent (screen reading plus INJECT_EVENTS simulated taps); Snapdragon 8 Elite, 16GB/512GB ([Silicon Review](https://thesiliconreview.com/2026/07/nubia-ai-agent-smartphone-launch-waic-2026)) | Contested: videos showed financial screens visible, raising questions about cloud transmission ([Lawfare](https://www.lawfaremedia.org/article/china-s-agentic-ai-controversy)) | Blocked by WeChat, Alipay, Taobao and banks. Gen-2 "mass-produced" Nubia AI Agent phone shown at WAIC, 17–20 Jul 2026, reportedly moving to MCP/A2A and on-device inference ([Silicon Review](https://thesiliconreview.com/2026/07/nubia-ai-agent-smartphone-launch-waic-2026)) |
+| **ByteDance Doubao phone (ZTE Nubia M153)** | Flagship Android with a system-level agent | ¥3,499 (about $490) "engineering prototype", 1 Dec 2025 ([Pandaily](https://pandaily.com/doubao-phone-assistant-technical-preview-debuts-as-first-true-system-level-ai-nubia-demo-phone-priced-at-3-499-rmb)) | ByteDance / ZTE internal | n/a | First batch of about 30,000 sold out by 2 Dec 2025 ([36Kr](https://eu.36kr.com/en/p/3579074640558978), [Caixin](https://www.caixinglobal.com/2025-12-19/in-depth-bytedance-riles-smartphone-ecosystem-with-ai-pitch-102395098.html)) (verified 2026-10-02). One report cites an initial stock of 500,000 ([Longbridge](https://longbridge.com/en/news/268073470)) (**conflict**; 30k is the better-sourced figure) | Cloud Doubao LLM with GUI agent (screen reading plus INJECT_EVENTS simulated taps); Snapdragon 8 Elite, 16GB/512GB ([Silicon Review](https://thesiliconreview.com/2026/07/nubia-ai-agent-smartphone-launch-waic-2026)) | Contested: videos showed financial screens visible, raising questions about cloud transmission ([Lawfare](https://www.lawfaremedia.org/article/china-s-agentic-ai-controversy)) | Blocked by WeChat, Alipay, Taobao and banks. Gen-2 "mass-produced" Nubia AI Agent phone shown at WAIC, 17–20 Jul 2026, reportedly moving to MCP/A2A and on-device inference ([Silicon Review](https://thesiliconreview.com/2026/07/nubia-ai-agent-smartphone-launch-waic-2026)) |
 | **StepFun StepX Neo** | "Agentic phone" on Step AOS (Android + Linux + RTOS) | About $1,000 in China (est.) ([FoneClaw](https://www.foneclaw.ai/stepfun-agentic-phone.html)) | StepFun is Tencent-backed ([SCMP](https://www.scmp.com/tech/big-tech/article/3360544/chinas-stepfun-claims-it-has-unveiled-worlds-first-ai-smartphone)) | Not disclosed | None | "Step Amoo" agent; own models | Not documented | Unveiled July 2026; specs and pricing largely unconfirmed ([Beebom](https://gadgets.beebom.com/news/chinese-ai-startup-stepfun-unveils-stepx-neo-first-agentic-phone)) |
 | **Honor YOYO / Robot Phone** | Mainstream OEM Android; Robot Phone has a 4-DoF gimbal camera | Robot Phone ¥9,999 (about $1,483) to ¥12,999, China only, 12 Aug 2026 ([9to5Google](https://9to5google.com/2026/08/12/honor-finally-launches-robot-phone-starting-at-around-1500/)) | Honor's "Alpha Plan": **$10B over 5 years**, MWC Mar 2025 ([Techweez](https://techweez.com/2025/03/03/honor-unveils-alpha-plan-10-billion-investment-in-ai-at-mwc-2025/)) | n/a | Not disclosed | GUI agent plus MCP-style partner integrations ([36Kr](https://eu.36kr.com/en/p/3893434239957888)); Gemini partnership ([Mobile ID World](https://mobileidworld.com/honor-announces-10b-ai-investment-plans-gemini-powered-agentic-smartphone/)); YOYO Pro claims 100+ consecutive steps ([TechNode](https://technode.com/2026/08/13/honor-launches-robot-phone-with-gimbal-camera-and-ai-agent-features/)) | OEM standard | Shipping in China |
-| **Nothing** | Phones, audio; "AI-native" device and own OS planned | Phones mid-range | $200M Series C, Sep 2025, led by Tiger Global, with Qualcomm Ventures, GV, EQT, Highland ([ArcticStartup](https://arcticstartup.com/nothing-raises-200-million-series-c/)) | **$1.3B** post-money ([GSMArena](https://www.gsmarena.com/nothing_usd_200_million_series_c_funding-news-69515.php)) | Not disclosed here | Android today; plans its own OS "for phones and beyond" with agents ([9to5Google](https://9to5google.com/2025/09/16/nothing-will-make-its-own-os-for-phones-and-beyond-first-ai-native-devices-in-2026/)) | Brand-led | First AI-native device (not a phone) promised for 2026. Shipment status not verified in this pass |
+| **Nothing** | Phones, audio; "AI-native" device and own OS planned | Phones mid-range | $200M Series C, Sep 2025, led by Tiger Global, with Qualcomm Ventures, GV, EQT, Highland ([ArcticStartup](https://arcticstartup.com/nothing-raises-200-million-series-c/)) | **$1.3B** post-money ([GSMArena](https://www.gsmarena.com/nothing_usd_200_million_series_c_funding-news-69515.php)) | Not disclosed here | Android today; plans its own OS "for phones and beyond" with agents ([9to5Google](https://9to5google.com/2025/09/16/nothing-will-make-its-own-os-for-phones-and-beyond-first-ai-native-devices-in-2026/)) | Brand-led | First AI-native device (not a phone) promised for 2026. **No launch found as of 2026-10-02** (searched; could not verify any shipment). Pei said in Mar 2026 that agents will replace apps ([TechTimes](https://www.techtimes.com/articles/315286/20260319/nothing-ceo-carl-pei-says-ai-agents-are-replacing-apps-your-phone-whether-you-like-it-not.htm)) |
 | **Solana Saga / Seeker** | Crypto-native Android phones | Saga $1,000, cut to $599; Seeker $450–500 ([Startup Fortune](https://startupfortune.com/solana-seekers-150k-pre-orders-mask-a-hardware-product-nobody-actually-wants/)) | Solana Labs / Solana Mobile (not broken out) | n/a | Saga about 20,000 units; Seeker 150k+ pre-orders, about $67.5M implied revenue (est.) ([Startup Fortune](https://startupfortune.com/solana-seekers-150k-pre-orders-mask-a-hardware-product-nobody-actually-wants/)) | Stock-ish Android + Seed Vault (TEE key custody) + dApp Store + SKR token + "TEEPIN" ([Cryptopolitan](https://www.cryptopolitan.com/solana-mobiles-seeker-smartphone/)) | Hardware key custody; no AI agent focus | Seeker shipping since 4 Aug 2025; Saga support ended ([Edgen](https://www.edgen.tech/news/crypto/solana-mobile-ends-saga-support-after-two-years-pivots-to-seeker-amid-security-concerns)) |
 | **Light Phone III** | Minimalist "anti-smartphone" | $399 early → $599 pre-order → $799 retail ([Wikipedia](https://en.wikipedia.org/wiki/Light_Phone_III)); $899 unlocked by Aug 2026 per one blog (est.) ([learnofchrist](https://learnofchrist.com/resources/light-phone)) | About $11M from 80+ investors, 2015–2024 (est.) (same source) | n/a | Not disclosed | No AI; Foxconn-built | Privacy by omission | Shipping since Mar 2025 |
 | **Punkt MC02 / MC03 (Apostrophy)** | Swiss privacy Android (AphyOS, GrapheneOS-derived) | MC02 $749 pre-order ([Liliputing](https://liliputing.com/punkt-mc02-smartphone-with-apostrophy-os-is-up-for-pre-order-for-749/)); MC03 $699, first year included then $12/mo ([BigGo](https://biggo.com/news/202601021220_punkt-mc03-privacy-phone-us-launch-germany-proton)) | Not disclosed | n/a | Not disclosed | No cloud AI; de-Googled | Strong. Subscription-funded privacy services (CHF 14.99/mo on MC02) ([The Register](https://www.theregister.com/2024/08/05/mc02_swiss_private_phone/)) | MC03 launched Jan 2026, assembled in Germany ([Dezeen](https://www.dezeen.com/2026/01/05/punkt-privacy-mc03-smartphone-design/)) |
 | **Friend** | AI companion pendant | $129; about 5,000 sold ([CNN](https://www.cnn.com/2025/11/16/tech/friend-ai-device-backlash-ceo-avi-schiffmann)) | Not verified | n/a | About 5,000 | Cloud LLM; always listening | Backlash; subway ads (over $1M) defaced ([TechCrunch](https://techcrunch.com/2025/09/27/ai-startup-friend-spent-more-than-1m-on-all-those-subway-ads)) | Niche/controversial |
 | **Limitless Pendant** | Meeting/life recorder pendant | $99 | Over $33M (a16z, NEA, First Round, Altman) ([KuCoin summary](https://www.kucoin.com/news/flash/meta-acquires-ai-pendant-maker-limitless-to-boost-hardware-strategy)) (est.) | Acquired by Meta, 5 Dec 2025 (price undisclosed) ([CNBC](https://www.cnbc.com/2025/12/05/meta-limitless-ai-wearable.html)) | n/a | Cloud | Customers "spooked" by the Big Tech takeover ([SF Standard](https://sfstandard.com/2025/12/14/big-tech-scooping-ai-wearable-startups-customers-spooked/)) | Sales halted; covered in workstream 1 |
-| **Sesame** | Voice AI companion + glasses | Beta app | $250M Series B, Oct 2025, led by Sequoia and Spark; $307.6M total ([Road to VR](https://www.roadtovr.com/former-oculus-ai-smart-glasses-startup-sesame-raises-250m/)) | $1.5B+ reported (est.) ([Techbuzz](https://www.techbuzz.ai/articles/oculus-founder-s-sesame-raises-250m-for-ai-smart-glasses)) | Beta | Own conversational speech model; glasses unreleased | Not documented | Pre-hardware |
+| **Sesame** | Voice AI companion + glasses | Beta app | $250M Series B, Oct 2025, led by Sequoia and Spark; $307.6M total ([Road to VR](https://www.roadtovr.com/former-oculus-ai-smart-glasses-startup-sesame-raises-250m/)) | About $1.5B post-money (about $940M pre-money) ([Techbuzz](https://www.techbuzz.ai/articles/oculus-founder-s-sesame-raises-250m-for-ai-smart-glasses), [Dataconomy](https://dataconomy.com/2025/10/22/sesame-ai-secures-250-million-series-b-to-redefine-conversational-wearables/)) (verified 2026-10-02) | Beta | Own conversational speech model; glasses unreleased | Not documented | Pre-hardware |
 | **Meta Ray-Ban / Display** | Camera/audio AI glasses; Display adds an in-lens display and neural wristband | Ray-Ban Display $799 ([Yahoo](https://finance.yahoo.com/news/essilorluxottica-sales-boosted-meta-ai-180222988.html)); €899 in IT/FR/DE ([pillitteri](https://pasqualepillitteri.it/en/news/18058/meta-ray-ban-display-launches-italy-france-germany-899-euro)) | Meta Reality Labs lost $4.62B in Q2 2026 on $431M revenue ([Spatial Insiders](https://spatialinsiders.com/stories/meta-ai-glasses-q2-2026-data)) | n/a | 7M+ AI glasses sold in 2025 ([CNBC](https://www.cnbc.com/2026/02/11/ray-ban-maker-essilorluxottica-triples-sales-of-meta-ai-glasses.html)); Display about 20k units in 2025 (est.) ([Treeview](https://treeview.studio/blog/xr-spatial-computing-smart-glasses-market-statistics-report)) | Phone-tethered; Meta AI in the cloud (Llama) | Recurrent bystander-privacy concerns | Growing. Meta sought to double capacity to 20M+ units in 2026 ([Road to VR](https://roadtovr.com/meta-ray-ban-smart-glasses-sales-tripled-2025/)) |
 
 ---
@@ -615,7 +706,7 @@ This file covers every major attempt since 2023 to build an agent-first phone or
 | 27 Apr 2026 | Kuo: an OpenAI **smartphone** in which agents replace apps. MediaTek/Qualcomm silicon, Luxshare design and manufacturing, mass production in 2028. It would "continuously understand users' context" with on-device and cloud models | [TechCrunch](https://techcrunch.com/2026/04/27/openai-could-be-making-a-phone-with-ai-agents-replacing-apps/) |
 | 5 May 2026 | Kuo update: fast-tracked to mass production in 1H 2027 and launch around fall 2027. Custom Dimensity 9600, dual NPU, pKVM, about 30M units across 2027–28 (est.) | [9to5Mac](https://9to5mac.com/2026/05/05/openais-new-phone-being-fast-tracked-to-launch-next-year-per-report/) |
 
-**Conflict:** mass production is given as 2028 in one Kuo note and 1H 2027 in another. Treat both as unconfirmed. **Implication:** from 2027, a well-funded, first-party "agent replaces apps" phone could reset expectations for what an agentic phone is. It will be consumer-first, cloud-backed by OpenAI and always listening. It will not be attested-enclave-first or enterprise-controlled. That leaves the regulated-enterprise lane open, but it also raises the bar on consumer UX.
+**Update (verified 2026-10-02):** as of late July 2026 the first device reported is a screenless, camera-equipped AI speaker at $200–$300 slipping to early 2027, plus the agent phone (1H 2027) and later glasses/lamp/earbuds. **OpenAI has officially announced none of these** ([MacRumors, 2026-07-28](https://www.macrumors.com/2026/07/28/openai-first-devices/)). **Conflict:** mass production is given as 2028 in one Kuo note and 1H 2027 in another. Treat both as unconfirmed. **Implication:** from 2027, a well-funded, first-party "agent replaces apps" phone could reset expectations for what an agentic phone is. It will be consumer-first, cloud-backed by OpenAI and always listening. It will not be attested-enclave-first or enterprise-controlled. That leaves the regulated-enterprise lane open, but it also raises the bar on consumer UX.
 
 ### 3.4 Deutsche Telekom AI Phone and Brain.ai
 
@@ -654,16 +745,16 @@ StepFun is a Tencent-backed LLM start-up founded in 2023. In July 2026 it unveil
 | --- | --- | --- | --- | --- |
 | Magic Cue (Pixel 10, Aug 2025) | Proactive suggestions from on-screen and app context: flight details, photos, and so on | Gemini Nano on Tensor G5, with growing use of cloud models through **Private AI Compute** | Shipping; may be renamed "Proactive Assistance" | [Google blog](https://blog.google/products-and-platforms/devices/pixel/google-pixel-10-ai-features-updates/), [DeepLearning.AI](https://www.deeplearning.ai/the-batch/inside-magic-cue-googles-new-ai-assistant-for-pixel-10), [Android Authority](https://www.androidauthority.com/gemini-proactive-assistance-magic-cue-3686018/) |
 | Gemini screen automation ("computer use" on Android) | Multi-step tasks in selected food, grocery and rideshare apps. Gemini asks the user to tap the final buy button | Runs the app in a "secure, virtual window". Reasoning happens in the cloud. The window cannot access the rest of the device | Galaxy S26 from 11 Mar 2026 and Pixel 10 from Mar 2026; US and Korea beta | [9to5Google](https://9to5google.com/2026/02/25/gemini-automation-android/), [9to5Google QPR3](https://9to5google.com/2026/01/15/android-16-qpr3-screen-automation/) |
-| Usage caps | Reported as 5 requests/day free and up to 120/day on AI Ultra (est.) | — | — | [Android Central](https://www.androidcentral.com/phones/google-pixel/gemini-screen-automation-expands-to-pixel-10-series) |
+| Usage caps | At launch (Mar 2026): 5 requests/day free, 12 on AI Plus, 20 on AI Pro, 120 on AI Ultra (verified 2026-10-02). In May 2026 Google moved the Gemini app to compute-based limits and cut AI Ultra to $100, so per-feature caps may since have changed | — | — | [9to5Google](https://9to5google.com/2026/03/13/gemini-screen-automation-limits/), [9to5Google May 2026](https://9to5google.com/2026/05/19/google-ai-ultra-100/), [Android Central](https://www.androidcentral.com/phones/google-pixel/gemini-screen-automation-expands-to-pixel-10-series) |
 | "Gemini Intelligence" (Android Show, May 2026) | Rebrands Android as an "action layer", combining app automation and proactive help | Mixed on-device and cloud | Rolling out with Android 17 | [Engadget](https://www.engadget.com/2170770/gemini-intelligence-brings-app-automation-to-android/), [Forbes](https://www.forbes.com/sites/ewanspence/2026/05/14/google-android-show-gemini-intelligence-operating-system-intelligence-system-consumer-feedback/) |
 
 **Important for Alpha's "launcher on stock Pixel" option:** Google is building the same functions into the OS: a proactive home surface, cross-app actions and privileged agent registration. Google's agents get **system-privileged** permissions that a third-party launcher cannot get on a stock, locked Pixel (see §4.1). On stock Pixel, Alpha will always have less access to the device than Gemini.
 
 ### 3.10 Apple Intelligence and Siri: delay, then a Gemini-powered rebuild
 
-- **Delay:** Apple delayed the personalised Siri promised at WWDC 2024. It reportedly settled claims over those undelivered features for **$250M** in May 2026 ([The Next Web](https://thenextweb.com/news/apple-wwdc-2026-siri-ai-gemini-ios-27)).
-- **Gemini deal:** a multi-year partnership was confirmed on 12 January 2026, reported at about $1B a year for a custom Gemini model of about 1.2T parameters ([The Next Web](https://thenextweb.com/news/apple-wwdc-2026-siri-ai-gemini-ios-27), [MLQ](https://mlq.ai/news/reports-claim-apple-committing-1-billion-yearly-to-google-for-siri-ai-upgrade/)).
-- **WWDC, 8 June 2026:** Siri AI becomes a standalone app with personal context across Messages, Mail, Photos and Files, multi-step actions across apps and on-screen awareness. It uses a **three-tier privacy stack**: on-device models, then Private Cloud Compute, then Google Cloud for the hardest reasoning, "statelessly". **iOS 27 Extensions** let users set Claude, ChatGPT or Gemini as the backend for Apple Intelligence features. General release is in autumn 2026 ([The Next Web](https://thenextweb.com/news/apple-wwdc-2026-siri-ai-gemini-ios-27), [DEV](https://dev.to/akaranjkar08/apple-wwdc-2026-rebuilt-siri-the-extensions-api-and-what-claude-on-14-billion-iphones-means-for-1c1l)). The same source reports that Tim Cook handed the CEO role to John Ternus on 1 September 2026.
+- **Delay:** Apple delayed the personalised Siri promised at WWDC 2024. It settled the false-advertising class action over those undelivered features for **$250M**, without admitting wrongdoing; claims opened 2026-09-21 and close 2026-12-21, at $25–$95 per covered iPhone 16 / 15 Pro ([CBS News](https://www.cbsnews.com/news/apple-settlement-iphone-siri-claim/), [Top Class Actions](https://topclassactions.com/lawsuit-settlements/lawsuit-news/apple-agrees-to-250m-settlement-over-claims-it-overhyped-iphone-ai-features/)) (verified 2026-10-02).
+- **Gemini deal:** a multi-year, non-exclusive partnership was confirmed on 12 January 2026 ([CNN](https://www.cnn.com/2026/01/12/tech/apple-google-gemini-siri)) (verified 2026-10-02), reported at about $1B a year for a custom Gemini model of about 1.2T parameters (price and size are reports, not disclosed terms) ([The Next Web](https://thenextweb.com/news/apple-wwdc-2026-siri-ai-gemini-ios-27), [MLQ](https://mlq.ai/news/reports-claim-apple-committing-1-billion-yearly-to-google-for-siri-ai-upgrade/)).
+- **WWDC, 8 June 2026:** Siri AI becomes a standalone app with personal context across Messages, Mail, Photos and Files, multi-step actions across apps and on-screen awareness. It uses a **three-tier privacy stack**: on-device models, then Private Cloud Compute, then Google Cloud for the hardest reasoning, "statelessly". **iOS 27 Extensions** let users set Claude, ChatGPT or Gemini as the backend for Apple Intelligence features. General release is in autumn 2026 ([The Next Web](https://thenextweb.com/news/apple-wwdc-2026-siri-ai-gemini-ios-27), [DEV](https://dev.to/akaranjkar08/apple-wwdc-2026-rebuilt-siri-the-extensions-api-and-what-claude-on-14-billion-iphones-means-for-1c1l)). Tim Cook handed the CEO role to John Ternus on 1 September 2026 and became executive chairman; the change was announced on 20 April 2026 ([TechCrunch](https://techcrunch.com/2026/04/20/tim-cook-stepping-down-as-apple-ceo-john-ternus-taking-over/), [9to5Mac](https://9to5mac.com/2026/08/31/tim-cook-last-day-john-ternus-apple-ceo/)) (verified 2026-10-02).
 - **Mechanism:** App Intents is Apple's sanctioned way for apps to expose actions to Siri and Shortcuts. It is the iOS counterpart of AppFunctions.
 - **Relevance:** Apple has made **"verifiable private cloud"** a mainstream consumer expectation. It is also the first major OS vendor to route some queries to a *third party's* cloud (Google). Alpha's attested-enclave story lands better with buyers who already understand PCC. The differentiator Alpha can claim is customer-controlled attestation and key release, not the concept itself.
 
@@ -673,7 +764,7 @@ The 2025 Razr line (announced 24 April 2025) shipped Gemini as the default assis
 
 ### 3.12 Nothing
 
-Nothing raised a $200M Series C in September 2025 at a $1.3B valuation. Tiger Global led, with Qualcomm Ventures, Nikhil Kamath, GV, EQT, Highland Europe, Latitude and Tapestry ([ArcticStartup](https://arcticstartup.com/nothing-raises-200-million-series-c/), [GSMArena](https://www.gsmarena.com/nothing_usd_200_million_series_c_funding-news-69515.php)). Nothing plans its own OS "for phones and beyond" that is "hyper-personalised" with agents, and a first AI-native device (not a phone) in 2026 ([9to5Google](https://9to5google.com/2025/09/16/nothing-will-make-its-own-os-for-phones-and-beyond-first-ai-native-devices-in-2026/)). Whether it has shipped by 30 September 2026 is **unverified**. **Relevance:** Nothing shows that design-led Android challengers can raise significant capital. It also shows how hard it is to replace Android. Nothing keeps Android compatibility in the near term, just as Alpha does.
+Nothing raised a $200M Series C in September 2025 at a $1.3B valuation. Tiger Global led, with Qualcomm Ventures, Nikhil Kamath, GV, EQT, Highland Europe, Latitude and Tapestry ([ArcticStartup](https://arcticstartup.com/nothing-raises-200-million-series-c/), [GSMArena](https://www.gsmarena.com/nothing_usd_200_million_series_c_funding-news-69515.php)). Nothing plans its own OS "for phones and beyond" that is "hyper-personalised" with agents, and a first AI-native device (not a phone) in 2026 ([9to5Google](https://9to5google.com/2025/09/16/nothing-will-make-its-own-os-for-phones-and-beyond-first-ai-native-devices-in-2026/)). No shipped AI-native device was found as of 2 October 2026 (could not verify any launch). **Relevance:** Nothing shows that design-led Android challengers can raise significant capital. It also shows how hard it is to replace Android. Nothing keeps Android compatibility in the near term, just as Alpha does.
 
 ### 3.13 Solana Saga and Seeker: the crypto-native comparator
 
@@ -761,9 +852,9 @@ App Intents exposes app actions to Siri, Spotlight and Shortcuts. iOS 27 adds **
 ### 6.1 Consumer
 
 - 12% of US owners cite AI as an upgrade reason. Price (55%), battery (52%) and storage (38%) dominate (CNET, n=2,407, 29 April–1 May 2026) ([MacRumors](https://www.macrumors.com/2026/05/13/few-users-care-about-foldables-or-ai/)).
-- Only 3% would pay extra for AI features, and 41% worry about privacy with AI on phones (CNET 2025 survey, as summarised) ([Gadget Hacks](https://smartphones.gadgethacks.com/news/smartphone-upgrade-survey-foldables-ai-trail-price-and-battery/)) (figures not re-verified at the primary source; est.).
+- Only 3% would pay extra for AI features (down from 6%), and 41% worry about privacy with AI on phones (up from 34%) (CNET/YouGov, n=2,201, 13–15 May 2025) ([Yahoo/CNET](https://tech.yahoo.com/phones/articles/cnet-survey-just-11-people-120000107.html), [Cybernews](https://cybernews.com/ai-news/ai-features-smartphones-survey/)) (verified 2026-10-02).
 - The market's answer is bundling AI into existing prices: DT at €149 with Perplexity, Samsung's core features "free forever", and Motorola's free Perplexity Pro months.
-- Gemini screen automation is rationed: 5 tasks a day free versus 120 on Ultra (est.) ([Android Central](https://www.androidcentral.com/phones/google-pixel/gemini-screen-automation-expands-to-pixel-10-series)). Agent actions are costly to serve and not yet trusted for payments.
+- Gemini screen automation is rationed: 5 tasks a day free versus 120 on Ultra at launch ([9to5Google](https://9to5google.com/2026/03/13/gemini-screen-automation-limits/)) (verified 2026-10-02). Agent actions are costly to serve and not yet trusted for payments.
 
 **Inference:** a consumer agent phone from a start-up competes with free, OS-level agents on 800M+ devices. Only communities with a separate motive buy such phones: token airdrops (Solana), design and brand (Nothing, Light), or a political/privacy stance (Punkt).
 
@@ -782,7 +873,7 @@ App Intents exposes app actions to Siri, Spotlight and Shortcuts. iOS 27 adds **
 | --- | --- | --- | --- | --- |
 | **App on stock Android/iOS** (BYOD) | The elizaOS agent app plus AppFunctions/App-Intents tool provider | Perplexity, ChatGPT, Rabbit OS3, Comet | Fastest distribution; no hardware capital; works with MDM app deployment | Cannot capture always-on audio reliably under OS limits; no privileged agent role; the OS assistant owns the button; limited redaction guarantees |
 | **HOME launcher on stock Pixel** (Alpha's current HOME flavor) | Replaces the home screen; agent-first surface | DT AI Phone (Magenta button), Brain.ai concept, Nova-style launchers | Owns the daily surface; no image signing; carriers and OEMs can bundle it | Google's Gemini Intelligence and Magic Cue compete on the same surface with more privileges. Users can switch back in one tap. Still no system-privileged AppFunctions caller (see §4.1) |
-| **Signed AOSP / vendor image on Pixel or ODM hardware** (Alpha's generated vendor add-on) | Full device: Alpha agent as the privileged system agent; redaction in the capture path | Doubao/Nubia, StepX Neo, Solana Seeker, Punkt, GrapheneOS-derived phones | Privileged agent role; control of capture, redaction and attestation end to end; strongest enterprise and sovereign story | Hardware capital; GMS/Play Integrity breakage (banking apps); certification timelines; Humane-style vendor-death risk unless mitigated |
+| **Signed AOSP / vendor image on Pixel or ODM hardware** (Alpha's generated vendor add-on) | Full device: Alpha agent as the privileged system agent; redaction in the capture path | Doubao/Nubia, StepX Neo, Solana Seeker, Punkt, GrapheneOS-derived phones | Privileged agent role; control of capture, redaction and attestation end to end; strongest enterprise and sovereign story | Hardware capital; certification timelines; Humane-style vendor-death risk unless mitigated. *GMS/Play Integrity breakage (banking apps) is a non-issue by founder decision (2026-10-02): Alpha forks AOSP and does not need GMS, Play Integrity or banking apps* |
 | **Companion device** (pendant or desk puck) paired with any phone | Always-on capture with on-device redaction, feeding the agent | Plaud, Limitless, Meta glasses (complement, not replace) | Avoids replacing the phone; clear always-on story | Bystander backlash (Friend); acquirer risk (Limitless); a second device to manage |
 
 **Recommendation (inference):** run a **three-layer product line**. The **agent** (cloud enclave plus elizaOS) is the product. The **app and launcher** are distribution to BYOD and pilots. The **signed image on managed hardware** is the premium SKU for regulated buyers who need the capture-and-redaction path under their control. Do not lead with "a phone that replaces apps". That is the Humane/Rabbit/Doubao lane, and OpenAI (2027) and Google/Samsung (now) will own it.
@@ -800,12 +891,13 @@ App Intents exposes app actions to Siri, Spotlight and Shortcuts. iOS 27 adds **
 | Rabbit | Extension | Dec 2023 | $10M | — | n/d | [Synthedia](https://synthedia.substack.com/p/rabbit-launches-r1-device-for-genai) |
 | io (Ive) | Acquired by OpenAI | 21 May 2025 | about $6.5B (all stock) | OpenAI | — | [TechCrunch](https://techcrunch.com/2025/05/21/jony-ive-to-lead-openais-design-work-following-6-5b-acquisition-of-his-company) |
 | Brain.ai | Cumulative | as of Feb 2024 | $60M | Laurene Powell Jobs, Goodwater, Scott Cook, WTT | n/d | [GlobeNewswire](https://www.globenewswire.com/news-release/2024/02/15/2830140/0/en/Deutsche-Telekom-and-Brain-ai-Unveil-Revolutionary-App-less-Phone-at-Mobile-World-Congress.html) |
-| Nothing | Series C | Sep 2025 | $200M | Tiger Global (lead), Qualcomm Ventures, GV, EQT | $1.3B | [ArcticStartup](https://arcticstartup.com/nothing-raises-200-million-series-c/) |
-| Sesame | Series B | Oct 2025 | $250M | Sequoia, Spark | about $1.5B (est.) | [Road to VR](https://roadtovr.com/former-oculus-ai-smart-glasses-startup-sesame-raises-250m/), [Techbuzz](https://www.techbuzz.ai/articles/oculus-founder-s-sesame-raises-250m-for-ai-smart-glasses) |
+| Nothing | Series C | Sep 2025 | $200M | Tiger Global (lead), Qualcomm Ventures, GV, EQT | $1.3B (verified 2026-10-02) | [ArcticStartup](https://arcticstartup.com/nothing-raises-200-million-series-c/), [Digit](https://www.digit.in/news/general/nothing-to-launch-first-ai-native-devices-in-2026-ceo-hints-they-wont-be-phones.html) |
+| Sesame | Series B | Oct 2025 | $250M | Sequoia, Spark | about $1.5B (verified 2026-10-02) | [Road to VR](https://roadtovr.com/former-oculus-ai-smart-glasses-startup-sesame-raises-250m/), [Techbuzz](https://www.techbuzz.ai/articles/oculus-founder-s-sesame-raises-250m-for-ai-smart-glasses) |
 | Limitless | Acquired by Meta | 5 Dec 2025 | undisclosed; over $33M previously raised (est.) | Meta | — | [CNBC](https://www.cnbc.com/2025/12/05/meta-limitless-ai-wearable.html) |
 | Honor | Alpha Plan (corporate commitment) | Mar 2025 | $10B over 5 years | Partners: Google, Qualcomm | — | [Techweez](https://techweez.com/2025/03/03/honor-unveils-alpha-plan-10-billion-investment-in-ai-at-mwc-2025/) |
 | Light | Cumulative | 2015–2024 | about $11M (est.) | Bullish, Biz Stone, John Zimmer | n/d | [learnofchrist](https://learnofchrist.com/resources/light-phone) |
-| Apple → Google | Gemini licence for Siri | confirmed 12 Jan 2026 | about $1B/yr (reported) | — | — | [The Next Web](https://thenextweb.com/news/apple-wwdc-2026-siri-ai-gemini-ios-27) |
+| Apple → Google | Gemini licence for Siri | confirmed 12 Jan 2026 (verified 2026-10-02) | about $1B/yr (reported) | — | — | [CNN](https://www.cnn.com/2026/01/12/tech/apple-google-gemini-siri), [The Next Web](https://thenextweb.com/news/apple-wwdc-2026-siri-ai-gemini-ios-27) |
+| Apple | Siri/Apple Intelligence false-advertising settlement | 2026 (claims 21 Sep–21 Dec 2026) | $250M | — | — | [CBS News](https://www.cbsnews.com/news/apple-settlement-iphone-siri-claim/) |
 
 ---
 
@@ -832,20 +924,48 @@ App Intents exposes app actions to Siri, Spotlight and Shortcuts. iOS 27 adds **
 7. **Treat the crypto community as launch fuel, not the market.** Seeker shows 150k+ units are reachable through airdrop incentives. The elizaOS/ai16z association helps with those buyers and hurts with government buyers. Consider a separate brand or SKU so the enterprise product is insulated from token dynamics.
 8. **Keep the phone basics good.** Punkt's "not great phone" reviews and Humane's heat and battery problems show that trust products fail when they are bad phones. Deferred items (phone, SMS, contacts) and on-device STT/TTS will be judged against a Pixel 10 baseline.
 9. **Carriers and OEMs are a real channel.** DT's AI Phone, Motorola's Perplexity deal and Samsung's multi-agent S26 show OEMs pre-installing third-party agents. An enterprise-carrier bundle (DT Business, T-Mobile T-Priority) or an OEM preload is plausible for the launcher and app layers (workstream 9).
-10. **Plan for OpenAI's 2027 device.** Expect it to reset consumer expectations for voice and ambient UX. Alpha should compete on sovereignty, auditability and model choice (Cerebras/Qwen in an enclave, BYO model), not on consumer charm.
+10. **Plan for OpenAI's 2027 device.** Expect it to reset consumer expectations for voice and ambient UX. Alpha should compete on sovereignty, auditability and model choice (Cerebras/Qwen in an enclave, BYO model), not on consumer charm. *Note (2026-10-02): today Qwen runs at Cerebras, outside the attested enclave (workstream 3). The sovereignty claim depends on self-hosting the open Qwen weights inside the trust boundary, redacting before egress, and documenting model provenance.*
 
 ## Open questions
 
-1. On Android 17 with a stock, locked Pixel, can a user-installed app or default launcher ever hold the privileged "intelligence system" agent role and call other apps' AppFunctions? Or is that limited to system/OEM-signed agents? This decides the value of the app/launcher tier versus the image tier.
+1. On Android 17 with a stock, locked Pixel, can a user-installed app or default launcher ever hold the privileged "intelligence system" agent role and call other apps' AppFunctions? *Largely answered 2026-10-02:* `EXECUTE_APP_FUNCTIONS` is an `internal|privileged` permission granted only to privileged system apps (Gemini, OEM assistants) ([developer.android.com](https://developer.android.com/ai/appfunctions), [remio](https://www.remio.ai/post/google-android-app-functions-built-a-security-cage-but-most-ai-agents-remain-out)). A user-installed app cannot call other apps' AppFunctions on a stock device. On Alpha's own AOSP fork it can be granted as a privileged system app. Still open: whether Android 17's new access levels add any user-grantable path.
 2. Will Google, or Knox for enterprise, let an MDM administrator designate a **non-Google default agent** on managed devices? This would be the enterprise analogue of iOS 27 Extensions.
 3. What are actual sell-through and retention for DT's AI Phone, Samsung S26 agent features, and the Doubao gen-2 phone? None has disclosed usage. Gemini automation's daily caps suggest that serving cost and trust limit usage.
-4. Did Nothing ship its "AI-native device" in 2026, and does its OS expose an agent API that a third party could target?
+4. Did Nothing ship its "AI-native device" in 2026, and does its OS expose an agent API that a third party could target? (No launch found as of 2026-10-02.)
 5. What will OpenAI's phone disclose about privacy architecture (on-device vs cloud, attestation)? Does it support enterprise management?
 6. Can Alpha show, with a reproducible test, that on-device redaction plus enclave inference stops prompt-injection exfiltration of the kind CometJacking showed in agentic browsing?
 7. Is there enterprise willingness to pay for a dedicated agent device, compared with an agent app on existing managed Galaxies and iPhones? Workstreams 6, 7 and 11 should test this with pilots, not surveys.
 8. How would Chinese regulators' proposed rules (AI control suspended during sensitive transactions, local processing of sensitive data) influence EU and US norms for agent phones? Could Alpha's approval-and-receipt model be positioned as compliant ahead of time?
 9. Is a companion capture device (desk puck or pendant) with on-device redaction a better first SKU for "always-on office assistant" than a full phone, given the Meta-glasses lesson that complements beat replacements?
 10. How much of the Solana Seeker's 150k was real phone demand, and how much was airdrop arbitrage? What does that imply for an elizaOS-community pre-order?
+
+---
+
+## Verification log (2026-10-02)
+
+Web search was available for this pass. Items that could not be confirmed are marked **(could not verify)** in the body.
+
+| Item | Earlier claim | Finding | Source |
+| --- | --- | --- | --- |
+| Tim Cook → John Ternus | "Same source reports" (single blog) | **Confirmed**: announced 2026-04-20, effective 2026-09-01; Cook becomes executive chairman | [TechCrunch](https://techcrunch.com/2026/04/20/tim-cook-stepping-down-as-apple-ceo-john-ternus-taking-over/), [9to5Mac](https://9to5mac.com/2026/08/31/tim-cook-last-day-john-ternus-apple-ceo/) |
+| Apple Siri settlement | "Reportedly" $250M (May 2026) | **Confirmed** $250M; no admission; claims 2026-09-21 to 2026-12-21; $25–$95/device | [CBS News](https://www.cbsnews.com/news/apple-settlement-iphone-siri-claim/) |
+| Apple–Google Gemini deal | Confirmed 12 Jan 2026, ~$1B/yr | Announcement date confirmed; non-exclusive. $1B/yr and 1.2T parameters remain press reports | [CNN](https://www.cnn.com/2026/01/12/tech/apple-google-gemini-siri) |
+| OpenAI device | Court filing: not before end Feb 2027 | Confirmed; added July 2026 reports (AI speaker $200–$300 early 2027; phone 1H 2027). No official product announcement | [MacRumors](https://www.macrumors.com/2026/07/28/openai-first-devices/) |
+| Nothing AI-native device | Shipment unverified | No launch found as of 2026-10-02 (could not verify any shipment) | [Digit](https://www.digit.in/news/general/nothing-to-launch-first-ai-native-devices-in-2026-ceo-hints-they-wont-be-phones.html) |
+| Sesame valuation | ~$1.5B (est.) | Confirmed ~$1.5B post / ~$940M pre | [Dataconomy](https://dataconomy.com/2025/10/22/sesame-ai-secures-250-million-series-b-to-redefine-conversational-wearables/) |
+| Rabbit r1 price / funding | $199 not re-verified; "over $59M" | $199 confirmed; funding totals range $34.4M–$64.7M by database; $30M by Jan 2024 confirmed | [rabbit](https://www.rabbit.tech/newsroom/introducing-r1), [Voicebot](https://voicebot.ai/2024/01/08/generative-ai-hardware-startup-rabbit-reaches-30m-in-funding-round/) |
+| Samsung 800M Gemini devices | CNBC | Confirmed via Reuters interview with co-CEO T.M. Roh | [Yahoo/Reuters](https://finance.yahoo.com/news/exclusive-samsung-double-mobile-devices-030312758.html) |
+| Gemini screen-automation caps | 5 free / 120 Ultra (est.) | Confirmed at launch, plus 12 (AI Plus) and 20 (AI Pro). May 2026 move to compute-based limits may have changed them | [9to5Google](https://9to5google.com/2026/03/13/gemini-screen-automation-limits/) |
+| CNET 3% / 41% | Not re-verified (est.) | Confirmed; corrected source detail to CNET/YouGov n=2,201, May 2025 | [Yahoo/CNET](https://tech.yahoo.com/phones/articles/cnet-survey-just-11-people-120000107.html) |
+| Doubao first batch | ~30k | Confirmed by Caixin and supply-chain reports | [Caixin](https://www.caixinglobal.com/2025-12-19/in-depth-bytedance-riles-smartphone-ecosystem-with-ai-pitch-102395098.html) |
+| AppFunctions caller (Open Q1) | Open | `EXECUTE_APP_FUNCTIONS` is `internal|privileged`, held only by privileged system apps; a user-installed app cannot hold it on stock devices | [developer.android.com](https://developer.android.com/ai/appfunctions) |
+
+**Not re-checked (left as marked):** Light Phone funding (~$11M, est.), Ray-Ban Display ~20k units (est.), Limitless >$33M (est.), Humane $230M vs $240M conflict.
+
+**Founder decisions applied:**
+- §7 table: GMS/Play Integrity/banking-app breakage is marked a **non-issue**. Alpha forks AOSP and does not need GMS, Play Integrity or banking apps.
+- Implication 10: the inference model stays **Qwen** (founder decision, revised 2026-10-02). A note was added that "Cerebras/Qwen in an enclave" is not yet accurate, because Cerebras inference sits outside the enclave. Mitigation is framed around Qwen itself: self-hosted open weights inside the trust boundary, redaction before egress, and provenance documentation.
+
 
 
 ---
@@ -856,7 +976,7 @@ Research date: 2026-09-30. Workstream #3 of the [manifest](00-manifest.md). This
 
 **Method notes**
 
-- Every number has a source URL next to it. Figures marked **(est.)** are analyst estimates or modelled values. Figures marked **(unverified)** are widely reported, but no primary source could be retrieved in this session. The session's web-search budget ran out part-way through Part B, and several publisher domains blocked fetches. Verify these figures before using them externally.
+- Every number has a source URL next to it. Figures marked **(est.)** are analyst estimates or modelled values. Figures marked **(unverified)** are widely reported, but no primary source could be retrieved in this session. The session's web-search budget ran out part-way through Part B, and several publisher domains blocked fetches. Verify these figures before using them externally. **Update 2026-10-02:** a verification pass with working web search resolved most of these (marked "(verified 2026-10-02)" or "(could not verify)"); see the Verification log at the end.
 - Funding rounds carry the announcement date.
 - Where sources disagree, both values are shown and the disagreement is flagged.
 
@@ -884,8 +1004,8 @@ Research date: 2026-09-30. Workstream #3 of the [manifest](00-manifest.md). This
 | **Purism Librem 5** | USA | PureOS (Linux), hardware kill switches, no Android | **$799+** ([Purism](https://puri.sm/products/librem-5-usa/)); sale prices of $599–$699 ([flash sale](https://puri.sm/posts/librem-5-flash-sale-at-599/)) | Privacy enthusiasts; small government pilots (volumes not public) | Crowdfunded and privately held; no recent institutional round found | Shipping; niche |
 | **Purism Liberty Phone** (Librem 5 USA) | USA | Same as above, with electronics made in USA | **$1,999+** (4 GB/128 GB) ([Purism](https://puri.sm/products/librem-5-usa/)) | Supply-chain-sensitive buyers | — | Shipping |
 | **Armadillo Phone 3** | Canada (Vancouver) | Hardened **Pixel 8a** running Armadillo OS. Camera/mic removal option, "deniable encryption" ([armadillophone.com](https://armadillophone.com/armadillo-phone-product)) | Not published | "Businesses around the world" (unnamed) | Founded 2014, incorporated 2016 ([Who we are](https://www.armadillophone.com/who)) | Active. Its sales model resembles the criminal-market cryptophone channel; see A5 |
-| **Sirin Labs Finney** | Israel/Switzerland | Android with a crypto cold wallet | **$999** at launch, Nov 2018 ([CoinGeek](https://coingeek.com/sirin-labs-lays-off-quarter-of-workforce/)) | Poor sales; laid off **15 of 60** staff in Apr 2019 ([CoinDesk](https://www.coindesk.com/markets/2019/04/16/sirin-labs-lays-off-25-of-staff-amid-poor-blockchain-phone-sales)). Foxconn sued for **~$5.9M** unpaid ([Nasdaq](https://www.nasdaq.com/articles/sirin-labs-founder-sued-over-unpaid-$6m-factory-bill-for-finney-blockchain-phone-2020-08)) | ~$157M ICO, Dec 2017 (unverified) | Defunct as a phone maker; cautionary tale |
-| **Boeing Black** | USA | Android; wipes itself and becomes inoperable if the case is opened ([ABC News](https://abcnews.com/Technology/mess-boeings-smartphone-destruct/story?id=22701080)) | Never public | Government and contractors, invite-only (2014) | — | No product activity found after about 2016; treat as discontinued (est.) |
+| **Sirin Labs Finney** | Israel/Switzerland | Android with a crypto cold wallet | **$999** at launch, Nov 2018 ([CoinGeek](https://coingeek.com/sirin-labs-lays-off-quarter-of-workforce/)) | Poor sales; laid off **15 of 60** staff in Apr 2019 ([CoinDesk](https://www.coindesk.com/markets/2019/04/16/sirin-labs-lays-off-25-of-staff-amid-poor-blockchain-phone-sales)). Foxconn sued for **~$5.9M** unpaid ([Nasdaq](https://www.nasdaq.com/articles/sirin-labs-founder-sued-over-unpaid-$6m-factory-bill-for-finney-blockchain-phone-2020-08)) | ~$157.9M ICO, 12–25 Dec 2017, then the 4th-largest ICO ([Cointelegraph](https://cointelegraph.com/news/10-ico-tokens-fundraising-eos-telegram), [Herzog Fox & Neeman](https://herzoglaw.co.il/en/news-and-insights/hfn-represented-sirin-labs-in-their-ico-the-4th-largest-ico-in-history/)) (verified 2026-10-02) | Defunct as a phone maker; cautionary tale |
+| **Boeing Black** | USA | Android; wipes itself and becomes inoperable if the case is opened ([ABC News](https://abcnews.com/Technology/mess-boeings-smartphone-destruct/story?id=22701080)) | Never public | Government and contractors, invite-only (2014) | — | No product activity found after about 2016; treat as discontinued (est.; could not verify a formal end-of-life) |
 | **Silent Circle / Blackphone** | USA/Switzerland | Silent Phone app plus the Blackphone handset. Bought the Blackphone JV for ~$50M in 2015 ([TechTimes](https://www.techtimes.com/articles/36044/20150228/silent-circle-spends-50-million-for-blackphone-maker-heres-its-plans.htm)) | — | Enterprise | Acquired by **Privoro**, Feb 2023 ([Tracxn](https://tracxn.com/d/companies/silent-circle/__Qt6OuRATdLUw7iyqcqRQGU1wxW0M_RxI-ZS7xa5KZzs)) | Handset abandoned. Now a software feature inside Privoro |
 | **Cog Systems (D4)**, **SecurePhone** | — | — | — | — | Not researched in depth in this session (search budget exhausted) | Open question |
 
@@ -897,10 +1017,10 @@ Research date: 2026-09-30. Workstream #3 of the [manifest](00-manifest.md). This
 | **Samsung Galaxy Tactical Edition** (S23 TE, XCover6 Pro TE) | Commercial device plus a custom ROM for military use: TAK, night-vision mode, tactical radios ([Samsung](https://www.samsung.com/us/business/solutions/industries/government/tactical-edition/)) | Used by "all branches" of the US military ([Samsung Newsroom](https://news.samsung.com/us/samsung-galaxy-s23-tactical-edition-samsung-galaxy-xcover-6-pro-tactical-edition-help-military-personnel-make-informed-decisions-achieve-objectives-securely-share-mission-data/)) | Quote-only ([GetGoTAK](https://getgotak.com/products/samsung-s23-tactical-edition)) | As of Sept 2026, Samsung's public page still lists the S23 TE, not an S25 TE |
 | **Google Pixel for government** | Titan M2 plus stock Android | **NIAP MDFPP**: Pixel 9/10 families validated on Android 17. Prior validation IDs VID11545 (Android 15) and VID11647 (Android 16) ([Google Pixel help](https://support.google.com/pixelphone/answer/11062200?hl=en)). Pixel added to **DoDIN APL**; Pixel 10 not yet listed there ([Google Cloud blog](https://cloud.google.com/blog/topics/public-sector/google-pixel-phones-achieve-dodin-apl-certification-secure-mission-ready-mobile-technology-for-federal-agencies); [Android Central](https://www.androidcentral.com/phones/google-pixel/google-pixel-phones-earn-department-of-defense-approval)) | Retail | **Most relevant to Alpha**: Alpha targets Pixel 10. NIAP validation covers *stock* Android. A custom HOME launcher or AOSP image would need its own evaluation |
 | **Thales / Ercom Cryptosmart** | Hardened Samsung plus Cryptosmart encryption (calls, SMS, data). Hybrid post-quantum (CRYSTALS-Kyber) pilot ([Thales](https://cds.thalesgroup.com/en/ercom/cryptosmart-mobile); [BusinessWire 2023](https://www.businesswire.com/news/home/20230224005027/en/Thales-pioneers-Post-Quantum-Cryptography-with-a-successful-world-first-pilot-on-phone-calls)) | Only ANSSI-certified "Restricted" solution. Used by the French Ministry of Defence and the Élysée ([Thales](https://cds.thalesgroup.com/en/hot-topics/ministry-defense-and-office-president-republic-france-have-selected-ercom-secure-their)) | Per-seat licence, not public | National champion model |
-| **BlackBerry Secusmart / SecuSUITE** | Secure voice and messaging on commodity phones; BSI-approved in Germany | German government anchor. **Government of Canada** renewed and expanded SecuSUITE plus UEM via Shared Services Canada ([Yahoo Finance](https://finance.yahoo.com/sectors/technology/articles/blackberry-expands-government-canada-secure-141800341.html)) | BlackBerry Secure Communications revenue was **$67M in Q3 FY2026**. Company FY27 guidance **$270–280M** revenue ([Yahoo Finance](https://finance.yahoo.com/news/blackberry-ltd-bb-q3-2026-050104931.html); [Yahoo/Zacks](https://finance.yahoo.com/markets/stocks/articles/blackberry-secure-comms-business-rebounds-141800869.html)). Secure Comms is expected to return to growth in FY27 for the first time in six years (same source) | Shows the durable business is *software on commodity devices* with a sovereign accreditation |
+| **BlackBerry Secusmart / SecuSUITE** | Secure voice and messaging on commodity phones; BSI-approved in Germany | German government anchor. **Government of Canada** renewed and expanded SecuSUITE plus UEM via Shared Services Canada ([Yahoo Finance](https://finance.yahoo.com/sectors/technology/articles/blackberry-expands-government-canada-secure-141800341.html)) | BlackBerry Secure Communications revenue was **$67M in Q3 FY2026** ([Yahoo Finance](https://finance.yahoo.com/news/blackberry-ltd-bb-q3-2026-050104931.html)). **Corrected 2026-10-02:** $270–280M was the *Secure Communications segment* FY27 guidance, not company revenue. In Sept 2026 (Q2 FY27) BlackBerry **cut** Secure Comms FY27 guidance to **$260–270M**, citing US federal uncertainty and Canada–US trade tensions, while **raising company FY27 revenue guidance to $616–636M** on QNX. Secure Comms Q2 FY27 revenue $60.9M; ARR $221M ([Yahoo/Zacks](https://finance.yahoo.com/markets/stocks/articles/bb-q2-earnings-top-sales-130400989.html), [Seeking Alpha](https://seekingalpha.com/news/4646823-blackberry-forecasts-fy2027-revenue-of-616m-636m-while-lifting-adjusted-ebitda-outlook-to)) (verified 2026-10-02) | Shows the durable business is *software on commodity devices* with a sovereign accreditation |
 | **Airbus secure mobile** | Airbus sells Tetrapol/Tactilon secure-mobility products | Not researched in depth | — | Open question |
 
-**Contradiction flag.** The Yahoo/Zacks item describes FY27 guidance of "$270–280M" as company revenue, and it appears to be company-wide. The Secure Communications segment's quarterly run rate (~$67M × 4 ≈ $268M) is close to that number, so the source may be mixing segment and company figures. Verify against the 10-Q ([SEC](https://www.sec.gov/Archives/edgar/data/1070235/000107023524000156/bbry-20241130.htm)).
+**Contradiction resolved (2026-10-02).** The "$270–280M" figure was Secure Communications segment guidance, as suspected. Company-wide FY27 guidance is $616–636M, and segment guidance was cut to $260–270M in September 2026 ([Seeking Alpha](https://seekingalpha.com/news/4646823-blackberry-forecasts-fy2027-revenue-of-616m-636m-while-lifting-adjusted-ebitda-outlook-to), [Yahoo/Zacks](https://finance.yahoo.com/markets/stocks/articles/bb-q2-earnings-top-sales-130400989.html)).
 
 ## A3. De-Googled and privacy operating systems (consumer/prosumer)
 
@@ -958,7 +1078,7 @@ Research date: 2026-09-30. Workstream #3 of the [manifest](00-manifest.md). This
 | --- | --- | --- | --- | --- | --- | --- |
 | **Apple Private Cloud Compute** | 10 Jun 2024 ([Apple Security](https://security.apple.com/blog/private-cloud-compute/)) | Custom Apple-silicon servers with Secure Enclave and Secure Boot. Data-volume keys are re-randomized at every reboot (cryptographic erasure) | Devices send data only to nodes that attest to software listed in an **append-only public transparency log**. Binaries are published within 90 days. **Virtual Research Environment** and source for CloudAttestation and Thimble ([Apple](https://security.apple.com/blog/private-cloud-compute/); [BleepingComputer](https://www.bleepingcomputer.com/news/apple/apple-creates-private-cloud-compute-vm-to-let-researchers-find-bugs/)) | OHTTP third-party relays, RSA blind signatures, "non-targetability" | Bounty **$50k–$1M** ([SecurityWeek](https://www.securityweek.com/apple-opens-private-cloud-compute-for-public-security-inspection/)) | Apple Intelligence server models |
 | **Meta WhatsApp Private Processing** | 29 Apr 2025 ([Meta Engineering](https://engineering.fb.com/2025/04/29/security/whatsapp-private-processing-ai-tools/)) | **AMD SEV-SNP** CVMs plus GPU TEE | RA-TLS; published measurements ([Meta whitepaper](https://ai.meta.com/static-resource/private-processing-technical-whitepaper)) | **OHTTP via Fastly** as a third-party relay | **NCC Group, 115 person-days**. Residual risk: anonymity depends on Meta not colluding with the relay ([NCC report](https://www.nccgroup.com/media/ymskbe40/ncc_group_metaplatforms_whatsapp-message_summarization_report_2025-08-27_v10.pdf); [CyberInsider](https://cyberinsider.com/whatsapps-ai-system-passes-security-audit-but-with-asterisks/)) | Message summaries, writing help |
-| **Google Private AI Compute** | **11 Nov 2025** per most sources ([emergingai.pro](https://www.emergingai.pro/blog/google-private-ai-compute-announcement-nov-11-2025-what-it-is-why-it-matters/)). InfoQ gives 30 Nov 2025 ([InfoQ](https://www.infoq.com/news/2025/11/google-private-ai-compute-tee)). **Contradiction; the earlier date is likely the announcement** | AMD-based TEE for CPU. **Titanium Intelligence Enclaves** extended to **Trillium TPUs** | Attested nodes; Noise and ALTS channels; admin access removed ([InfoQ](https://www.infoq.com/news/2025/11/google-private-ai-compute-tee)) | Third-party IP-blinding relays | NCC Group assessment of architecture, Oak session library and relays (same) | **Pixel 10 Magic Cue; Recorder summaries** (same) |
+| **Google Private AI Compute** | **11 Nov 2025**, in a post by Jay Yagnik ([MacRumors](https://www.macrumors.com/2025/11/12/google-announces-version-of-private-cloud-compute/), [PYMNTS](https://www.pymnts.com/news/artificial-intelligence/2025/google-debuts-private-ai-compute-system-gemini-models)) (verified 2026-10-02). InfoQ's 30 Nov date is its own article date | AMD-based TEE for CPU. **Titanium Intelligence Enclaves** extended to **Trillium TPUs** | Attested nodes; Noise and ALTS channels; admin access removed ([InfoQ](https://www.infoq.com/news/2025/11/google-private-ai-compute-tee)) | Third-party IP-blinding relays | NCC Group assessment of architecture, Oak session library and relays (same) | **Pixel 10 Magic Cue; Recorder summaries** (same) |
 | **Microsoft Azure confidential GPU (NCC H100 v5)** | GA Sept 2024 ([Microsoft](https://techcommunity.microsoft.com/blog/azureconfidentialcomputingblog/general-availability-azure-confidential-vms-with-nvidia-h100-tensor-core-gpus/4242644)) | AMD SEV-SNP CVM plus NVIDIA H100 in CC mode. The TEE spans CPU and GPU | CPU and GPU attestation | — | — | IaaS; Azure was the first cloud with CC-mode H100 (same) |
 | **AWS Nitro Enclaves** | 2020 | **Nitro Hypervisor and Nitro cards.** Isolation comes from the hypervisor. Enclave memory is not encrypted by the CPU to defend against a physical attacker; AWS is the trusted operator | Attestation document signed by the Nitro Hypervisor with PCR0–4 and PCR8. **Native KMS condition keys** ([AWS docs](https://docs.aws.amazon.com/enclaves/latest/user/set-up-attestation.html)) | **No network**; vsock to the parent only | NCC Group affirmed in 2023 that there is "no mechanism" for AWS operators to access hosts ([AWS blog, 9 May 2023](https://aws.amazon.com/blogs/compute/aws-nitro-system-gets-independent-affirmation-of-its-confidential-compute-capabilities/)) | CPU-only secrets processing. **No GPU or PCI devices; "no workaround"** ([OneUptime](https://oneuptime.com/blog/post/2026-02-12-aws-nitro-enclaves-sensitive-data-processing/view); [VoltageGPU](https://voltagegpu.com/compare/aws-nitro-enclaves-vs-confidential-gpu)) |
 | **AWS SEV-SNP instances / NitroTPM** | — | AMD SEV-SNP on M6a/C6a/R6a; NitroTPM plus Attestable AMIs ([Ubuntu docs](https://documentation.ubuntu.com/aws/aws-how-to/instances/launch-and-attest-amd-sev-snp-instances/); [AWS](https://aws.amazon.com/confidential-computing/)) | — | — | — | CPU CVMs. Several sources say AWS offers **no GPU confidential computing with GPU attestation** as of 2026 ([decryptiondigest](https://www.decryptiondigest.com/blog/confidential-computing-ai-model-protection-nitro-azure-nvidia); [NVIDIA nvtrust issue on P5](https://github.com/NVIDIA/nvtrust/issues/65)) |
@@ -978,16 +1098,16 @@ Research date: 2026-09-30. Workstream #3 of the [manifest](00-manifest.md). This
 | **OPAQUE** (Opaque Systems) | Confidential AI platform for enterprise agents and data | TEEs (Intel/AMD/NVIDIA). Spun out of UC Berkeley RISELab | **$24M Series B, 12 Feb 2026**, led by Walden Catalyst (Intel Capital, Race, Storm, Thomvest, ATRC). Total **$55.5M** | **~$300M post** | Enterprise (unnamed) | [PR Newswire](https://www.prnewswire.com/news-releases/opaque-raises-24m-series-b-at-300m-valuation-to-advance-confidential-ai-for-the-enterprise-302685635.html); [FinSMEs](https://www.finsmes.com/2026/02/opaque-raises-24m-in-series-b-at-300m-valuation.html) |
 | **Fortanix** | Key management, DSM, Confidential AI | SGX/TDX/SEV | **$90M Series C, Aug–Sept 2022**, led by Goldman Sachs. Total **~$122M**; CB Insights says $135M (**contradiction**) | n/a | **$24.9M revenue in 2024 (est., Latka)**; ~248 staff | [SiliconANGLE](https://siliconangle.com/2022/09/15/fortanix-raises-90m-advance-confidential-computing-based-data-security/); [Tracxn](https://tracxn.com/d/companies/fortanix/__s4LI92Fn15KqXirjpX7ZASS-SYo3MRZVc-YSPAFy4vE); [Latka](https://getlatka.com/companies/fortanix) |
 | **Anjuna** | Seaglass "universal" CC platform; runs on Nitro, Azure H100, and others | Nitro/SEV/TDX/SGX | **$25M Series B2, Aug 2024**, led by M Ventures, SineWave and AI Capital Partners. Total ~$85M (est.) | n/a | Partner with Azure H100 CC | [Yahoo Finance](https://finance.yahoo.com/news/anjuna-raises-25m-funding-fuel-130000244.html); [StartupHub](https://www.startuphub.ai/startups/anjuna-security); [Anjuna blog](https://www.anjuna.io/blog/unlocking-the-future-of-ai-nvidia-h100-gpu-instances-on-microsoft-azure-with-anjuna-seaglass) |
-| **Edgeless Systems** (Germany) | **Privatemode** (formerly Continuum AI) confidential inference; **Contrast** confidential containers. Constellation discontinued Oct 2025 | NVIDIA H100 CC plus SEV-SNP. EU-hosted. Reproducible builds and transparency logs. **BSI C5:2026 "very strong attestation"** claim | **€5M seed, 7 Mar 2023**. Total ~$6.7M | n/a | Site logos: Airbus, Capgemini, NVIDIA, GitLab, City of Munich (logo list; relationship type unverified). Models: GLM, gpt-oss, Qwen, Mistral, DeepSeek | [Edgeless](https://www.edgeless.systems/edgeless-systems-raises-5m-to-advance-confidential-computing); [Tracxn](https://tracxn.com/d/companies/edgeless-systems/__vNgQQCunL-K5btzYFwaIqz-aUi6A0QVZ_XglNGMn5JU); [privatemode.ai](https://www.privatemode.ai/); [Edgeless blog](https://www.edgeless.systems/blog/from-constellation-to-contrast) |
-| **Tinfoil** | Private chat, OpenAI-compatible API, Tinfoil Containers | NVIDIA Hopper/Blackwell CC plus SEV-SNP. Transparency logs and automated builds | **YC Spring 2025**. Seed ~$500K reported. **Revenue ~$660K in first year (unverified)**. One aggregator lists "$504M raised", which is almost certainly an error | <$5M (2025, stale) | 5-person team. Joined the Confidential Computing Consortium in July 2025. Ran a 744B-parameter model audit in enclaves (June 2026 blog) | [YC](https://www.ycombinator.com/companies/tinfoil); [PitchBook](https://pitchbook.com/profiles/company/770982-94); [CCC](https://confidentialcomputing.io/2025/07/21/welcoming-tinfoil-to-the-confidential-computing-consortium/); [Tinfoil blog](https://tinfoil.sh/blog); [IntelPilot](https://www.intelpilot.ai/company/tinfoil/6a028ccea6715bdc30963ab7) |
+| **Edgeless Systems** (Germany) | **Privatemode** (formerly Continuum AI) confidential inference; **Contrast** confidential containers. Constellation discontinued Oct 2025 | NVIDIA H100 CC plus SEV-SNP. EU-hosted. Reproducible builds and transparency logs. **BSI C5:2026 "very strong attestation"** claim | **€5M seed, 7 Mar 2023**. Total ~$6.7M | n/a | Site logos: Airbus, Capgemini, NVIDIA, GitLab, City of Munich (logo list; relationship type unverified). Models include Qwen, Mistral, GLM and DeepSeek | [Edgeless](https://www.edgeless.systems/edgeless-systems-raises-5m-to-advance-confidential-computing); [Tracxn](https://tracxn.com/d/companies/edgeless-systems/__vNgQQCunL-K5btzYFwaIqz-aUi6A0QVZ_XglNGMn5JU); [privatemode.ai](https://www.privatemode.ai/); [Edgeless blog](https://www.edgeless.systems/blog/from-constellation-to-contrast) |
+| **Tinfoil** | Private chat, OpenAI-compatible API, Tinfoil Containers | NVIDIA Hopper/Blackwell CC plus SEV-SNP. Transparency logs and automated builds | **YC Spring 2025** ($125K). Total funding $500–750K; an early-VC round (Tekedia Capital) in May 2026 per [Dealroom](https://app.dealroom.co/companies/tinfoil) (verified 2026-10-02) (database-level). Revenue ~$660K in first year (could not verify). One aggregator lists "$500M+ raised", which is almost certainly an error | <$5M (2025, stale) | 5-person team. Joined the Confidential Computing Consortium in July 2025. Ran a 744B-parameter model audit in enclaves (June 2026 blog) | [YC](https://www.ycombinator.com/companies/tinfoil); [PitchBook](https://pitchbook.com/profiles/company/770982-94); [CCC](https://confidentialcomputing.io/2025/07/21/welcoming-tinfoil-to-the-confidential-computing-consortium/); [Tinfoil blog](https://tinfoil.sh/blog); [IntelPilot](https://www.intelpilot.ai/company/tinfoil/6a028ccea6715bdc30963ab7) |
 | **Confident Security** | **OpenPCC**, an open-source, PCC-style standard (Apache-2.0/FSL), released **5 Nov 2025** | OHTTP, attested TEEs, transparency | **$4.2M seed, 17 Jul 2025** (Decibel, South Park Commons, Ex/Ante, Swyx). Another source says $5M (**contradiction**) | n/a | Plans an independent foundation | [TechCrunch](https://techcrunch.com/2025/07/17/confident-security-the-signal-for-ai-comes-out-of-stealth-with-4-2m/); [BusinessWire](https://www.businesswire.com/news/home/20251105013372/en/Confident-Security-Launches-OpenPCC-an-Open-Source-Standard-that-Protects-Data-Shared-with-AI-Models) |
 | **Phala Network** | Phala Cloud, **dstack**; GPU TEE (H100/H200/B300); models on **OpenRouter** | TDX plus NVIDIA CC. **Shut down SGX infrastructure after WireTap (30 Sept 2025)** | Token-funded (PHA); equity rounds not verified | n/a | Named as affected in the TEE.fail paper's forged-attestation case study | [Phala](https://phala.com/posts/response-to-wiretap-sgx-deprecation); [Phala GPU TEE](https://phala.com/gpu-tee); [Phala/OpenRouter](https://phala.com/posts/GPU-TEEs-is-Alive-on-OpenRouter) |
 | **Super Protocol** | Multi-party confidential AI "cloud" | TEEs; cites NVIDIA Blackwell CC | Not disclosed on site | n/a | Logo partners (NVIDIA, Google Cloud, Intel, AMD, Arm) | [superprotocol.com](https://superprotocol.com/) |
 | **Secret Network** | Privacy smart contracts | Intel SGX | Token-funded | n/a | **SGX.fail (2022)**: xAPIC/MMIO leaks could expose the **consensus seed**, a master decryption key for all private transactions. Registration freeze on 4 Oct 2022 | [sgx.fail](https://sgx.fail/) |
-| **Nillion** | "Blind computation" / encrypted markets | MPC plus TEE | ~$25M round, 2024 (unverified) | n/a | Token (NIL) | [nillion.com](https://nillion.com/) |
-| **Zama** (France) | FHE libraries (Concrete, TFHE-rs); fhEVM confidential blockchain protocol; $ZAMA token | FHE | **$73M Series A, Mar 2024** (Multicoin, Protocol Labs) (unverified). **$57M Series B, Jun 2025** (Blockchange, Pantera) at a **>$1B valuation**, the first FHE unicorn (unverified) | >$1B (unverified) | Protocol partners listed on site: Morpho, T-REX, GSR and others | [zama.org](https://www.zama.org/) (site confirms token and partners; funding not retrievable this session) |
-| **Duality Technologies** | FHE/PET data collaboration | FHE, MPC, TEE | ~$30M Series B, 2021 (unverified) | n/a | Site lists DARPA, Scotiabank, WEF, AWS, Azure, Google Cloud, Intel, IBM, NVIDIA | [dualitytech.com](https://dualitytech.com/about-us/) |
-| **Enveil** | ZeroReveal encrypted search and analytics | Homomorphic encryption | ~$25M Series B, 2022; In-Q-Tel backed (unverified) | n/a | US government / IC | Not retrieved |
+| **Nillion** | "Blind computation" / encrypted markets | MPC plus TEE | **$25M, Oct 2024, led by Hack VC**; >$50M total including a $20M round in Dec 2023 ([SiliconANGLE](https://siliconangle.com/2024/10/30/data-privacy-focused-nillion-network-raises-25m-expand-decentralized-solutions/), [Cointelegraph](https://cointelegraph.com/news/nillion-network-funding-decentralized-privacy-solutions)) (verified 2026-10-02) | n/a | Token (NIL) | [nillion.com](https://nillion.com/) |
+| **Zama** (France) | FHE libraries (Concrete, TFHE-rs); fhEVM confidential blockchain protocol; $ZAMA token | FHE | **$73M Series A, Mar 2024** (Multicoin, Protocol Labs). **$57M Series B, 25 Jun 2025** (Blockchange, Pantera) at a **>$1B valuation**, the first FHE unicorn; >$150M total ([CoinDesk](https://www.coindesk.com/tech/2025/06/25/zama-raises-57m-becomes-first-unicorn-involved-with-fully-homomorphic-encryption), [Tech.eu](https://tech.eu/2025/06/25/zama-becomes-1st-i-fhe-unicorn-with-57m-raise-led-by-pantera-and-blockchange/)) (verified 2026-10-02) | >$1B (verified 2026-10-02) | Protocol partners listed on site: Morpho, T-REX, GSR and others | [zama.org](https://www.zama.org/) (site confirms token and partners; funding not retrievable this session) |
+| **Duality Technologies** | FHE/PET data collaboration | FHE, MPC, TEE | **$30M Series B, 5 Oct 2021**, led by LG Technology Ventures (Intel Capital, Hearst, Team8 followed on) ([TechCrunch](https://techcrunch.com/2021/10/05/duality-nabs-30m-for-its-privacy-focused-data-collaboration-tools-built-using-homomorphic-encryption/)) (verified 2026-10-02) | n/a | Site lists DARPA, Scotiabank, WEF, AWS, Azure, Google Cloud, Intel, IBM, NVIDIA | [dualitytech.com](https://dualitytech.com/about-us/) |
+| **Enveil** | ZeroReveal encrypted search and analytics | Homomorphic encryption | **$25M Series B, 27 Apr 2022**, led by USAA; existing investors include In-Q-Tel, Mastercard, Capital One Ventures ([BusinessWire](https://www.businesswire.com/news/home/20220427005268/en/Enveil-Secures-%2425-Million-in-Series-B-Funding)) (verified 2026-10-02) | n/a | US government / IC | [TechCrunch](https://techcrunch.com/2022/04/27/enveil-a-provider-of-encrypted-privacy-focused-search-and-analytics-tools-raises-25m/) |
 | **Lucid** and others | Hardware-attestation startups for AI chips (e.g., export-control location proofs) | — | Not researched in depth | — | — | Open question |
 
 **Pattern.** Small teams with seed-to-Series-B funding (Tinfoil, Confident Security, Edgeless: $0.5M–$7M) have shipped credible PCC-style services by combining NVIDIA CC GPUs, SEV-SNP or TDX, transparency logs and reproducible builds. The capability is no longer exotic, and Alpha can buy it or build it.
@@ -1014,7 +1134,7 @@ Research date: 2026-09-30. Workstream #3 of the [manifest](00-manifest.md). This
 | **Battering RAM** (KU Leuven/Birmingham) | Sept–Oct 2025 | SGX and SEV-SNP on DDR4 | Active interposer **<$50** | Arbitrary plaintext access and ciphertext replay | [Kaspersky](https://www.kaspersky.com/blog/wiretap-battering-ram-tee-attacks/54598/); [Keysight](https://www.keysight.com/blogs/en/tech/nwvs/2025/10/22/security-highlight-dram-interposer-attacks-on-confidential-computing) |
 | **TEE.fail** (Georgia Tech/Purdue; IEEE S&P '26) | 28 Oct 2025 | **TDX, SGX, SEV-SNP (incl. ciphertext hiding) on DDR5**, and through them **NVIDIA GPU CC** | **<$1,000** interposer | Extracted attestation keys. Forged quotes pass Intel verification at the highest trust level. Attested "confidential GPU" workloads can be faked on non-TEE hardware. Case studies: BuilderNet, Phala dstack, Secret Network | [tee.fail](https://tee.fail/); [BleepingComputer](https://www.bleepingcomputer.com/news/security/teefail-attack-breaks-confidential-computing-on-intel-amd-nvidia-cpus/); [SecurityWeek](https://www.securityweek.com/new-attack-targets-ddr5-memory-to-steal-keys-from-intel-and-amd-tees/) |
 | **MilanLaunchy / BadFuse** | 13 May 2026 | AMD EPYC Milan SEV-SNP | **Software-only** | Extracted the root VCEK seed, allowing forged attestation for any firmware version | [arXiv 2605.12990](https://arxiv.org/abs/2605.12990) |
-| **DDRop** (KU Leuven, ETH Zurich, Durham, Google) | Sept 2026 | TDX, Scalable SGX, SEV-SNP on DDR5 | **~$159** interposer plus host control | Drops writes to replay stale ciphertext. Disclosed TDX memory, enabled TDX debug mode, **forged launch measurements** | [ddropattack.eu](https://ddropattack.eu/); [SC World](https://www.scworld.com/brief/ddrop-attack-bypasses-intel-and-amd-confidential-computing-defenses) |
+| **DDRop** (KU Leuven, ETH Zurich, Durham, Google) | Sept 2026 | TDX, Scalable SGX, SEV-SNP on DDR5 | **~$159** interposer plus host control | Drops writes to replay stale ciphertext. Disclosed TDX memory, enabled TDX debug mode, **forged launch measurements** | [ddropattack.eu](https://ddropattack.eu/); [SC World](https://www.scworld.com/brief/ddrop-attack-bypasses-intel-and-amd-confidential-computing-defenses); [GitHub](https://github.com/ddropattack/ddrop) (verified 2026-10-02). Requires host software control plus brief physical access |
 
 Vendor responses: Intel (security announcement, 28 Oct 2025) and AMD (AMD-SB-3040) say interposer attacks are outside their threat model and that physical security of the data center is the mitigation ([tee.fail](https://tee.fail/); [ddropattack.eu](https://ddropattack.eu/)). Related research shows that CVM attestation does not prove *where* code runs, which enables relay/proxy attacks. "Proof of Cloud" proposes binding CVM attestation to the platform TPM ([arXiv 2510.12469](https://arxiv.org/abs/2510.12469)).
 
@@ -1061,9 +1181,9 @@ Alpha's differentiator is not "a secure phone." Bittium and Samsung own that. It
 Facts from the repo ([enclave-candidate-validation.md](../enclave-candidate-validation.md)) and sources:
 
 1. The elizaOS agent runs inside a Nitro Enclave. Its image is measured (PCR0/1/2), signed (PCR8), and bound to an IAM role (PCR3). KMS releases the data key only to enclaves matching the key policy.
-2. Text inference is **direct Cerebras `qwen-3.8-27b`**, and the cloud inference proxy is disabled (`ELIZAOS_CLOUD_USE_INFERENCE=false`).
+2. Text inference is **direct Cerebras `qwen-3.8-27b`**, and the cloud inference proxy is disabled (`ELIZAOS_CLOUD_USE_INFERENCE=false`). *Founder decision (2026-10-02): Qwen stays as the model. Because Qwen is open-weight, the mitigation is to self-host it inside an attested boundary (Option C), redact before any Cerebras hop (Option B), and document weight provenance (hashes of the exact checkpoint used). Qwen's PRC origin stays a buyer concern for some segments (workstream 5).*
 3. Nitro Enclaves have no network interface and no PCI/GPU access ([AWS/OneUptime](https://oneuptime.com/blog/post/2026-02-12-aws-nitro-enclaves-sensitive-data-processing/view)). All egress, including calls to Cerebras, goes over vsock to the parent EC2 instance, which forwards it.
-4. Cerebras's privacy policy says it does not retain inference inputs or outputs and deletes logs "when they are no longer necessary" ([Cerebras privacy policy](https://www.cerebras.ai/privacy-policy)). No public Cerebras confidential-computing or attestation offering was found in this research (absence of evidence; verify).
+4. Cerebras's privacy policy (effective 27 Aug 2024) says it does "not retain inputs and outputs" of inference and deletes logs "when they are no longer necessary" ([Cerebras privacy policy](https://www.cerebras.ai/privacy-policy)) (verified 2026-10-02). Cerebras advertises SOC 2 Type 2 and HIPAA through its [Trust Center](https://trust.cerebras.ai/) (vendor claim) and is listed as a zero-data-retention provider by [TrustedRouter](https://trustedrouter.com/providers), which marks its confidential inference as **not verified**. A second search on 2026-10-02 again found **no public Cerebras TEE or attestation offering** (absence of evidence). About 85% of Cerebras capacity is in the US (Santa Clara, Stockton, Dallas, Minneapolis, Oklahoma City), plus Montreal and a planned European site ([BusinessWire, Mar 2025](https://www.businesswire.com/news/home/20250311115186/en/Cerebras-Announces-Six-New-AI-Datacenters-Across-North-America-and-Europe-to-Deliver-Industry-s-Largest-Dedicated-AI-Inference-Cloud)).
 5. ASR/TTS (whisper.cpp, Kokoro) currently run on a **paired host**, outside the enclave (manifest baseline).
 6. The temporary public ingress is a Cloudflare quick tunnel (`*.trycloudflare.com`), per the validation doc.
 
@@ -1091,7 +1211,7 @@ What follows, in order of severity:
 | --- | --- | --- | --- | --- | --- |
 | **A. Keep Cerebras; fix the language** | As today, plus a Cerebras DPA/ZDR contract | Contractual | Best latency (Cerebras) | Low | "Attested agent runtime; no-retention inference partner" |
 | **B. Redact before Cerebras** | Typed pseudonymization in the enclave (see workstream 04); only tokenized prompts leave; rehydrate inside the enclave | Partial. Reduces identifiers, not semantics | Small overhead | Medium; ADR-02 redaction is not built yet | "Identifiers never leave the enclave" (with measured recall) |
-| **C. Attested confidential-GPU inference** | Self-host open-weight Qwen (27B fits on one 80 GB H100/H200 in BF16 (est.)) on **Azure NCC H100 v5** or equivalent. Alternatively, call an attested provider (Tinfoil, Privatemode, Phala). The enclave verifies the GPU/CVM attestation and pins its measurement before sending, then terminates TLS inside both TEEs | Cryptographic, with the hardware caveats in B4 | Throughput cost <5% ([arXiv](https://arxiv.org/html/2409.03992v3)), but loses Cerebras speed. GPU capacity cost (est. $2–10/GPU-hour, unverified) | Medium-high. Cross-cloud (AWS↔Azure) attestation chaining | "Prompts are processed only inside attested hardware" |
+| **C. Attested confidential-GPU inference** | Self-host open-weight Qwen (27B fits on one 80 GB H100/H200 in BF16 (est.)) on **Azure NCC H100 v5** or equivalent, with the exact weight hashes published as provenance. Privatemode already lists Qwen among its models. Alternatively, call an attested provider (Tinfoil, Privatemode, Phala). The enclave verifies the GPU/CVM attestation and pins its measurement before sending, then terminates TLS inside both TEEs | Cryptographic, with the hardware caveats in B4 | Throughput cost <5% ([arXiv](https://arxiv.org/html/2409.03992v3)), but loses Cerebras speed. GPU capacity cost: Azure NCC40ads H100 v5 about **$8.90/hr** on demand vs about $6.98 for the non-confidential NCads H100 v5 (per a competitor's comparison, [VoltageGPU](https://voltagegpu.com/compare/confidential-gpu-clouds); not checked against Azure's price sheet) | Medium-high. Cross-cloud (AWS↔Azure) attestation chaining | "Prompts are processed only inside attested hardware" |
 | **D. Move the whole agent into a CPU+GPU CVM** | Replace Nitro with SEV-SNP/TDX CVM plus NVIDIA CC on one host (the Azure, Google and Meta pattern) | Cryptographic, one attestation domain | As in C | High (re-platform) | Same as C, simpler chain |
 | **E. On-device inference / hybrid** | Small model plus ASR/TTS on the Pixel 10 Tensor G5 (workstream 10); cloud only for hard tasks, routed through C | Strongest for on-device tasks | Battery and quality limits | High | "Most requests never leave the phone" |
 
@@ -1122,13 +1242,40 @@ What follows, in order of severity:
 1. Does the Alpha phone verify the Nitro attestation document itself (root chain, PCRs, nonce), or does it trust the endpoint? Where does TLS from the phone terminate: at the Cloudflare edge, on the parent host, or inside the enclave?
 2. Does the TLS session to Cerebras terminate inside the enclave (with the parent only proxying bytes over vsock), or on the parent instance?
 3. What exactly does each Cerebras call contain (memory, notes, email, transcripts)? Is there a signed DPA or zero-retention addendum beyond the public privacy policy? Where are Cerebras's inference data centers?
-4. Does Cerebras have any roadmap for TEE or attestation on its inference service? No public evidence was found.
+4. Does Cerebras have any roadmap for TEE or attestation on its inference service? No public evidence was found (re-checked 2026-10-02). Its privacy policy confirms no retention of inputs/outputs; a signed DPA/BAA must still be obtained directly.
 5. Who can change the KMS key policy and the PCR8 signer? Can those changes be published to a user-visible log, or made subject to multi-party approval?
 6. Is Qwen-class quality and latency on confidential H100/H200/B200 acceptable against Cerebras for Alpha's UX? What is the cost per active user per month (est.)?
 7. Would Alpha's own configuration (custom HOME launcher / AOSP add-on on Pixel 10) keep the Pixel's NIAP MDFPP status, or need a new evaluation? What about DoDIN APL, given that Pixel 10 is not listed yet?
-8. Is a GrapheneOS/Motorola-based variant (2027) a better base for a hardened Alpha SKU than stock Pixel?
-9. Unverified figures to confirm: Zama rounds and valuation, Nillion, Duality, Enveil, Tinfoil funding, Sirin ICO size, Boeing Black end-of-life, BlackBerry segment versus company guidance, and the Google PAC announcement date (11 Nov vs 30 Nov 2025).
+8. Is a GrapheneOS/Motorola-based variant (2027) a better base for a hardened Alpha SKU than stock Pixel? (Partnership confirmed at MWC 2026; first Motorola devices in 2027, non-folding first ([Android Central](https://www.androidcentral.com/phones/motorola/waiting-for-grapheneos-motorolas-2027-phones-are-up-first-and-foldables-are-included)) (verified 2026-10-02).) *Note (founder decision 2026-10-02): Alpha forks AOSP and does not need GMS, Play Integrity or banking apps, so the usual GrapheneOS-style objection (banking apps failing Play Integrity) is a non-issue for Alpha.*
+9. *Resolved 2026-10-02:* Zama, Nillion, Duality, Enveil, Sirin ICO, BlackBerry segment vs company guidance, Google PAC date (11 Nov 2025), Tinfoil funding (database-level). Still could not verify: Boeing Black end-of-life, Tinfoil first-year revenue.
 10. Not covered in depth (search budget exhausted): Cog Systems, SecurePhone, Airbus secure mobile, Zebra/Getac, Lucid, and CSfC Mobile Access Capability Package specifics. Assign follow-up if these matter for vertical 06.
+
+---
+
+## Verification log (2026-10-02)
+
+| Item | Earlier claim | Finding | Source |
+| --- | --- | --- | --- |
+| BlackBerry guidance | "$270–280M company FY27 revenue" (flagged contradiction) | **Corrected.** $270–280M was Secure Comms segment guidance; cut to **$260–270M** in Sept 2026. Company FY27 guidance raised to **$616–636M** | [Seeking Alpha](https://seekingalpha.com/news/4646823-blackberry-forecasts-fy2027-revenue-of-616m-636m-while-lifting-adjusted-ebitda-outlook-to), [Yahoo/Zacks](https://finance.yahoo.com/markets/stocks/articles/bb-q2-earnings-top-sales-130400989.html) |
+| Google Private AI Compute date | 11 Nov vs 30 Nov 2025 | **11 Nov 2025** confirmed | [MacRumors](https://www.macrumors.com/2025/11/12/google-announces-version-of-private-cloud-compute/) |
+| Zama | $73M A / $57M B, >$1B (unverified) | Confirmed; Series B 25 Jun 2025; >$150M total | [CoinDesk](https://www.coindesk.com/tech/2025/06/25/zama-raises-57m-becomes-first-unicorn-involved-with-fully-homomorphic-encryption) |
+| Nillion | ~$25M, 2024 (unverified) | Confirmed: $25M Oct 2024, Hack VC; >$50M total | [SiliconANGLE](https://siliconangle.com/2024/10/30/data-privacy-focused-nillion-network-raises-25m-expand-decentralized-solutions/) |
+| Duality | ~$30M B, 2021 (unverified) | Confirmed: 5 Oct 2021, LG Technology Ventures | [TechCrunch](https://techcrunch.com/2021/10/05/duality-nabs-30m-for-its-privacy-focused-data-collaboration-tools-built-using-homomorphic-encryption/) |
+| Enveil | ~$25M B, 2022, In-Q-Tel (unverified) | Confirmed: 27 Apr 2022, led by USAA; In-Q-Tel an existing investor | [BusinessWire](https://www.businesswire.com/news/home/20220427005268/en/Enveil-Secures-%2425-Million-in-Series-B-Funding) |
+| Sirin Labs ICO | ~$157M (unverified) | Confirmed ~$157.9M, Dec 2017 | [Cointelegraph](https://cointelegraph.com/news/10-ico-tokens-fundraising-eos-telegram) |
+| Tinfoil | Seed ~$500K; revenue ~$660K (unverified) | Funding $500–750K incl. YC $125K and a May 2026 early-VC round (database). Revenue could not verify | [Dealroom](https://app.dealroom.co/companies/tinfoil) |
+| DDRop (Sept 2026) | As stated | Confirmed ($159 interposer; KU Leuven/ETH/Durham/Google; TDX debug mode and forged launch measurements) | [Cybersecurity News](https://cybersecuritynews.com/new-ddrop-attack/), [GitHub](https://github.com/ddropattack/ddrop) |
+| GrapheneOS–Motorola | MWC Mar 2026; devices 2027 | Confirmed | [Android Authority](https://www.androidauthority.com/grapheneos-motorola-partnership-announced-3645710/) |
+| Cerebras retention / TEE | Privacy policy no-retention; no TEE found | Policy confirmed (effective 27 Aug 2024). SOC 2 Type 2 / HIPAA claimed via Trust Center. Still **no public TEE/attestation offering**. Data-centre footprint ~85% US | [Cerebras](https://www.cerebras.ai/privacy-policy), [Trust Center](https://trust.cerebras.ai/), [BusinessWire](https://www.businesswire.com/news/home/20250311115186/en/Cerebras-Announces-Six-New-AI-Datacenters-Across-North-America-and-Europe-to-Deliver-Industry-s-Largest-Dedicated-AI-Inference-Cloud) |
+| Confidential GPU cost | $2–10/GPU-hr (unverified) | ~$8.90/hr Azure NCC40ads H100 v5 per one competitor comparison (not checked on Azure's price sheet) | [VoltageGPU](https://voltagegpu.com/compare/confidential-gpu-clouds) |
+| Boeing Black EOL | est. discontinued | Could not verify a formal end-of-life | — |
+
+**Founder decisions applied:**
+- **Model (revised 2026-10-02):** Qwen stays. C2 fact 2 now notes that the mitigation is self-hosting the open Qwen weights inside an attested boundary, redacting before egress, and publishing weight provenance. Option C and Implication 3 keep Qwen. The core finding is unchanged: inference at Cerebras is outside the attested boundary.
+- **AOSP fork without GMS:** Open Q8 notes that Play Integrity and banking-app breakage, the usual objection to GrapheneOS-style bases, is a non-issue for Alpha.
+
+**Not re-checked:** Bittium, Katim, Purism, Hypori, Sonim, EncroChat/Sky ECC/ANOM figures, Fortanix, Anjuna, OPAQUE and Edgeless rounds, and the market-size reports. These already carried source links and were not flagged unverified.
+
 
 
 ---
@@ -1139,7 +1286,7 @@ Research date: 2026-09-30. Workstream 4 of the [manifest](00-manifest.md). This 
 
 Conventions: every number carries a source URL. `(est.)` marks analyst estimates or figures derived here. Funding rounds are dated. Vendor accuracy claims are vendor claims unless an independent source is named, and vendors' benchmarks usually favour the vendor.
 
-**Method note.** This workstream ran 30+ web searches and about 40 page fetches. The session's shared search budget ran out before every gap could be closed, so a few items below are marked "not verified in this session". Those items should be checked before anyone quotes them externally.
+**Method note.** This workstream ran 30+ web searches and about 40 page fetches. The session's shared search budget ran out before every gap could be closed, so a few items below are marked "not verified in this session". Those items should be checked before anyone quotes them externally. **Update 2026-10-02:** a verification pass closed most of them; see the Verification log at the end.
 
 ---
 
@@ -1166,16 +1313,16 @@ Conventions: every number carries a source URL. `(est.)` marks analyst estimates
 | **AWS Comprehend PII / Comprehend Medical / Macie** | Comprehend detects PII in text. Macie discovers sensitive data in S3. | Hosted models | n/a (AWS) | Comprehend PII: $0.0001 per 100-character unit for the first 10M units ([CloudZero](https://www.cloudzero.com/blog/amazon-comprehend-pricing/)). Macie: $1.00/GB for the first 50 TB/month ([Vantage](https://handbook.vantage.sh/aws/services/macie-pricing/)) | Comprehend: F1 0.88, R 0.90 (Tonic, [link](https://www.tonic.ai/ai-model-benchmarks/textual-benchmark)) but recall 0.698 in Limina's test ([Limina](https://www.getlimina.ai/en/research/pii-benchmark-report)). **The two vendor benchmarks contradict each other.** Comprehend Medical micro-F1 0.96 on i2b2 ([JSL](https://www.johnsnowlabs.com/clinical-de-identification-benchmarks-2026-john-snow-labs-against-openai-databricks-presidio-and-llm-apis/)) | Cloud. Relevant because Alpha's enclave runs on AWS: Comprehend could be a *second-pass* checker inside the same account boundary, though not inside the enclave. | — |
 | **Nightfall AI** | Cloud and SaaS DLP. Watches prompts to ChatGPT, Claude, Copilot and others. "Nyx" autonomous DLP agent launched **30 Jul 2025** | LLM plus computer-vision classifiers, plus data lineage ([VentureBeat](https://venturebeat.com/ai/nightfall-launches-nyx-an-ai-that-automates-data-loss-prevention-at-enterprise-scale)) | $40M Series B, **10 Aug 2022**, led by WestBridge; about $60–65M total ([Nightfall](https://www.nightfall.ai/blog/nightfall-ai-raises-40-million-series-b-to-expand-cloud-data-protection-platform); [TechCrunch](https://techcrunch.com/2022/08/10/nightfall-raises-cash-for-its-ai-that-detects-sensitive-data-across-apps/)) | Not public | CEO claims "90, 95%" accuracy against 10–20% for legacy DLP, and false alerts cut from about 80% to 5% ([VentureBeat](https://venturebeat.com/ai/nightfall-launches-nyx-an-ai-that-automates-data-loss-prevention-at-enterprise-scale)) | SaaS | Independent. Serves "many hundreds" of enterprises. |
 | **Skyflow** — Data Privacy Vault / LLM Privacy Vault | Isolates sensitive data in a vault. Detokenises for authorised uses, including restoring LLM outputs. | Tokenization plus "polymorphic encryption", with a global network of regional vaults ([Skyflow](https://www.skyflow.com/product/llm-privacy-vault); [Finovate](https://finovate.com/data-privacy-vault-skyflow-secures-30-million-in-new-funding/)) | $45M Series B, **19 Oct 2021** ([BusinessWire](https://www.businesswire.com/news/home/20211019005320/en/Data-Privacy-API-Company-Skyflow-Raises-$45M-Series-B-Funding-to-Help-Fintech-and-Healthtech-Companies-Ship-Faster)). $30M Series B extension, **23 Apr 2024**, led by Khosla. $100M total equity ([Finovate](https://finovate.com/data-privacy-vault-skyflow-secures-30-million-in-new-funding/)) | Not public | Not a detection-accuracy vendor. Claims about 1B records and more than 2B API calls per quarter ([Finovate](https://finovate.com/data-privacy-vault-skyflow-secures-30-million-in-new-funding/)) | Cloud vault, with data-residency regions | The **closest architectural analogue** to Alpha's proposed vault, except Skyflow's vault is in the cloud and Alpha's would be on the device. |
-| **Protecto** | "AI data control plane". Masks PII and PHI with format- and context-preserving tokens for LLMs, agents and MCP | Its own NER plus tokenization and context-based access control ([Protecto](https://www.protecto.ai/)) | Funding not found in this session | Not public | Vendor claims "99.9%" PII/PHI detection ([Protecto](https://www.protecto.ai/)). Its benchmark shows higher precision than Comprehend and Presidio, with recall "largely comparable" ([Protecto PDF](https://protecto.ai/wp-content/uploads/2024/07/6646f1564c513545cbf9d2f9_Quantitative-Benchmark-Study-PII-Identification-1.pdf)) | SaaS or VPC. Sells "Sovereign AI for banks" ([Protecto](https://www.protecto.ai/industry/sovereign-ai-for-banks/)) | Independent |
+| **Protecto** | "AI data control plane". Masks PII and PHI with format- and context-preserving tokens for LLMs, agents and MCP | Its own NER plus tokenization and context-based access control ([Protecto](https://www.protecto.ai/)) | Backers named on its site: Together Fund, Arali Ventures, Better Capital, Special Invest, Fortytwo VC, Zapier. Round sizes and dates not disclosed ([Protecto](https://www.protecto.ai/about-us)) (verified 2026-10-02) (amounts could not verify) | Not public | Vendor claims "99.9%" PII/PHI detection ([Protecto](https://www.protecto.ai/)). Its benchmark shows higher precision than Comprehend and Presidio, with recall "largely comparable" ([Protecto PDF](https://protecto.ai/wp-content/uploads/2024/07/6646f1564c513545cbf9d2f9_Quantitative-Benchmark-Study-PII-Identification-1.pdf)) | SaaS or VPC. Sells "Sovereign AI for banks" ([Protecto](https://www.protecto.ai/industry/sovereign-ai-for-banks/)) | Independent |
 | **Strac** | DSPM plus DLP across SaaS, GenAI, endpoints and MCP. Redacts PII, PHI and PCI inline. | Proprietary ML detectors | About $4M seed (YC, FUSE) ([Crunchbase via search](https://www.crunchbase.com/organization/strac-e784)). About 12 employees as of Jun 2026 ([Tracxn via search](https://tracxn.com/d/companies/strac/__-umEOvBgD8FHLYGr3Z585mqFCHoR96-FS2u1-AJp-AM)) | Custom quote scoped by surfaces and seats ([Strac](https://www.strac.io/pricing)) | — | SaaS | Small |
-| **Harmonic Security** | Governs "shadow AI". Classifies what employees paste into GenAI tools. | Pre-trained specialised small language models ([VentureBeat](https://venturebeat.com/business/harmonic-security-raises-17-5-million-series-a-to-accelerate-zero-touch-data-protection-to-market)). Browser extension plus endpoint deployment through Intune, JAMF and others ([Harmonic](https://www.harmonic.security/)) | $17.5M Series A, **2 Oct 2024**, led by Next47; more than $26M total ([VentureBeat](https://venturebeat.com/business/harmonic-security-raises-17-5-million-series-a-to-accelerate-zero-touch-data-protection-to-market)). A 2025–26 round was not verified. | Not public | No public accuracy numbers | Endpoint and browser | Independent; a likely acquisition target. |
+| **Harmonic Security** | Governs "shadow AI". Classifies what employees paste into GenAI tools. | Pre-trained specialised small language models ([VentureBeat](https://venturebeat.com/business/harmonic-security-raises-17-5-million-series-a-to-accelerate-zero-touch-data-protection-to-market)). Browser extension plus endpoint deployment through Intune, JAMF and others ([Harmonic](https://www.harmonic.security/)) | $17.5M Series A, **2 Oct 2024**, led by Next47; more than $26M total ([VentureBeat](https://venturebeat.com/business/harmonic-security-raises-17-5-million-series-a-to-accelerate-zero-touch-data-protection-to-market)). No 2025–26 round was found as of 2026-10-02 ([Crunchbase](https://www.crunchbase.com/organization/harmonic-security)); do not confuse it with Harmonic (the math-AI lab), which raised a $100M Series B and a $120M Series C in 2025. | Not public | No public accuracy numbers | Endpoint and browser | Independent; a likely acquisition target. |
 | **Credal** | Governed gateway for enterprise agents and MCP. Permission-aware context, audit, human approvals | Connectors (1,000+) and permission sync ([Credal](https://www.credal.ai/)) | $4.8M seed, **Oct 2023**, led by Spark Capital ([SaaS News](https://www.thesaasnews.com/news/credal-ai-raises-4-8-million-in-seed-round/)). Crunchbase lists a Series A with an undisclosed amount ([Crunchbase](https://www.crunchbase.com/organization/credal-ai)). | Not public | Claims "−87% context per query" ([Credal](https://www.credal.ai/)) | SaaS | Shows that *minimising context* is a DLP control in its own right. |
 | **Liminal** (Liminal AI, GenAI data security) | Secure GenAI workspace for regulated industries, with sensitive-data protection | Model-agnostic gateway | Additional $5M seed ([Pulse 2.0](https://pulse2.com/liminal-gen-ai-data-security-company-raises-5-million-in-additional-funding/); date not confirmed). Tracxn and CB Insights list a Seed II of $4M on **13 Nov 2025** ([Tracxn](https://tracxn.com/d/companies/liminal/__nqdi5JHfSJTo3oqZEGAMkSCZsmWM2hQZyj3yQKHz9BM)). **Caution:** an unrelated market-intelligence "Liminal" raised an $8.5M Series A in Apr 2025 ([liminal.co](https://liminal.co/articles/series-a-funding-liminal-intelligence-platform/)), and the two are often mixed up. | Not public | — | SaaS | Small |
 | **Veritone Redact** | Redaction of video, audio and documents for law-enforcement evidence and FOIA | Face, plate and object detection, plus transcription and keyword-based audio redaction | Veritone is public (NASDAQ: VERI) | From $100 per hour of media, falling with volume ([Police Magazine](https://www.policemag.com/articles/artificial-intelligence-and-faster-digital-evidence-redaction)). About $9,522/yr for 100 hours (about $95/hr) ([GetApp/search summary](https://www.getapp.com/legal-law-software/a/veritone-redact/)). Manual redaction costs $250–500/hr ([Police Magazine](https://www.policemag.com/articles/artificial-intelligence-and-faster-digital-evidence-redaction)) | — | Cloud (AWS/Azure Gov) | A public-sector audio-redaction benchmark for pricing |
 | **CaseGuard Studio** | Redaction of documents, images, video and audio, with transcription and translation | Desktop and on-prem AI | Private; funding not found | $279, $299 and $379 per user per month (Doc, Media and Ultimate suites) ([Capterra via search](https://www.capterra.com/p/10030197/CaseGuard)) | — | Runs locally, which is a selling point for police and courts | — |
 | **Pimloc — Secure Redact** (UK) | Irreversible anonymisation of faces, plates, on-screen text and audio entities | Vision and speech models. Audio redaction added **Apr 2025** ([Wikipedia](https://en.wikipedia.org/wiki/Pimloc)) | About $1.8M seed, **Oct 2020**; about $7.5M extension, **Jan 2022**; $5M, **Jul 2025** ([Wikipedia](https://en.wikipedia.org/wiki/Pimloc)) | Not public | — | Cloud | Pilot with Sussex Police ([Wikipedia](https://en.wikipedia.org/wiki/Pimloc)) |
 | **John Snow Labs — Healthcare NLP de-identification** | Clinical de-identification (PHI) | Domain NER plus rules | Private | Licensed | Vendor benchmark, **27 Aug 2026**: PHI F1 0.96 on expert-annotated notes and micro-F1 0.98 on i2b2 2014. Prompted frontier LLMs score 0.86–0.91 ([JSL](https://www.johnsnowlabs.com/clinical-de-identification-benchmarks-2026-john-snow-labs-against-openai-databricks-presidio-and-llm-apis/)) | On-prem | The accuracy bar for any clinical use of Alpha |
-| **Pangiam** | *Not a redaction vendor.* Face biometrics and vision for travel and security screening. Reportedly acquired by BigBear.ai (all-stock, announced late 2023). **Not verified in this session.** | — | — | — | — | — | Relevant only for the biometric taxonomy (§B). Listed because the brief named it. |
+| **Pangiam** | *Not a redaction vendor.* Face biometrics and vision for travel and security screening. Acquired by BigBear.ai in an all-stock deal (61.8M shares, about $70M enterprise value) that **closed 29 Feb 2024** ([Defense Daily](https://www.defensedaily.com/bigbear-ai-closes-70-million-acquisition-of-pangiam-adding-to-computer-vision-expertise/business-financial/), [BigBear.ai 10-K](https://www.sec.gov/Archives/edgar/data/1836981/000162828025014752/bbai-20241231.htm)) (verified 2026-10-02). | — | — | — | — | — | Relevant only for the biometric taxonomy (§B). Listed because the brief named it. |
 
 **Synthetic-data vendors** matter for *training and evaluating* Alpha's detectors, not for runtime redaction:
 
@@ -1183,13 +1330,13 @@ Conventions: every number carries a source URL. `(est.)` marks analyst estimates
 |---|---|---|---|
 | **Gretel** | Acquired by **NVIDIA, reported 19 Mar 2025**. The price was "nine figures", said to exceed Gretel's last valuation of $320M. Gretel had raised more than $67M from Anthos, Greylock and Moonshots, and had about 80 staff. | — | [TechCrunch](https://techcrunch.com/2025/03/19/nvidia-reportedly-acquires-synthetic-data-startup-gretel/), [SiliconANGLE](https://siliconangle.com/2025/03/19/nvidia-reportedly-acquires-gretel-320m-strengthen-ai-training-tools/) |
 | **Hazy** | SAS acquired Hazy's *principal software assets* on **12 Nov 2024** for an undisclosed sum, folding them into SAS Data Maker | — | [SAS](https://www.sas.com/en_us/news/press-releases/2024/november/hazy-syntheticdata.html) |
-| **MOSTLY AI** | $25M Series B, **11 Jan 2022**, led by Molten Ventures. Open-source synthetic-data SDK with differential-privacy options released **23 Jan 2025**. The site is now branded "MOSTLY AI powered by Syntho", and the nature of that relationship could not be confirmed. | $25M Series B | [MOSTLY AI](https://mostly.ai/news/mostly-ai-raises-25m-to-bring-synthetic-data-to-every-enterprise), [BigDATAwire](https://www.hpcwire.com/bigdatawire/this-just-in/mostly-ai-unveils-open-source-toolkit-for-synthetic-data-generation/) |
+| **MOSTLY AI** | $25M Series B, **11 Jan 2022**, led by Molten Ventures. Open-source synthetic-data SDK with differential-privacy options released **23 Jan 2025**. The site is now titled "MOSTLY AI powered by Syntho", but the page gives no acquisition or merger details ([mostly.ai](https://mostly.ai/), checked 2026-10-02). The relationship still could not verify. | $25M Series B | [MOSTLY AI](https://mostly.ai/news/mostly-ai-raises-25m-to-bring-synthetic-data-to-every-enterprise), [BigDATAwire](https://www.hpcwire.com/bigdatawire/this-just-in/mostly-ai-unveils-open-source-toolkit-for-synthetic-data-generation/) |
 
 ### A.2 Open-source detection models and datasets
 
 | Model / dataset | Size / licence | Coverage | Reported accuracy | Caveats | Source |
 |---|---|---|---|---|---|
-| **OpenAI Privacy Filter** (released **22 Apr 2026**) | 1.5B total parameters, about 50M active (sparse MoE, 128 experts, top-4). Bidirectional token classifier derived from gpt-oss. Apache-2.0. 128k context. | 8 labels: private person, email, phone, address, URL, date, account number, secret | F1 96.0% (P 94.04, R 98.04) on PII-Masking-300k. F1 97.43% on the corrected set. | Fixed labels, not zero-shot. OpenAI itself says it "may miss uncommon identifiers or ambiguous references". Independent results: F1 0.855 on AI4Privacy but 0.464 on SPY-medical, 0.04 on Arabic and 0.03 on Cyrillic; names 0.40, addresses 0.49; precision 0.31–0.54 across domains. Clinical F1 0.55. Covers only 8 of the 18 HIPAA identifiers. | [Help Net Security](https://www.helpnetsecurity.com/2026/04/23/openai-privacy-filter-personally-identifiable-information/), [Grepture](https://grepture.com/blog/openai-privacy-filter-pii-redaction), [arXiv 2608.02616](https://arxiv.org/abs/2608.02616), [JSL](https://www.johnsnowlabs.com/clinical-de-identification-benchmarks-2026-john-snow-labs-against-openai-databricks-presidio-and-llm-apis/), [Limina](https://www.getlimina.ai/en/research/pii-benchmark-report) |
+| **OpenAI Privacy Filter** (released **22 Apr 2026**) | 1.5B total parameters, about 50M active (sparse MoE, 128 experts, top-4). Bidirectional token classifier. Apache-2.0. 128k context. | 8 labels: private person, email, phone, address, URL, date, account number, secret | F1 96.0% (P 94.04, R 98.04) on PII-Masking-300k. F1 97.43% on the corrected set. | Fixed labels, not zero-shot. OpenAI itself says it "may miss uncommon identifiers or ambiguous references". Independent results: F1 0.855 on AI4Privacy but 0.464 on SPY-medical, 0.04 on Arabic and 0.03 on Cyrillic; names 0.40, addresses 0.49; precision 0.31–0.54 across domains. Clinical F1 0.55. Covers only 8 of the 18 HIPAA identifiers. | [Help Net Security](https://www.helpnetsecurity.com/2026/04/23/openai-privacy-filter-personally-identifiable-information/), [Grepture](https://grepture.com/blog/openai-privacy-filter-pii-redaction), [arXiv 2608.02616](https://arxiv.org/abs/2608.02616), [JSL](https://www.johnsnowlabs.com/clinical-de-identification-benchmarks-2026-john-snow-labs-against-openai-databricks-presidio-and-llm-apis/), [Limina](https://www.getlimina.ai/en/research/pii-benchmark-report) |
 | **GLiNER2-PII** (Fastino; Zaratiana et al., May 2026) | 0.3B, multilingual, Apache-2.0 | 42 entity types at character-span resolution | SPY average F1 **0.471**, against 0.391 for NVIDIA GLiNER-PII, 0.384 for urchade, 0.373 for OpenAI PF and 0.368 for knowledgator. Recall 0.722 on legal and 0.681 on medical text. | SPY is a hard benchmark, so absolute scores are low for every system | [arXiv 2605.09973](https://arxiv.org/abs/2605.09973), [Fastino](https://fastino.ai/blog/gliner2-pii-open-source-privacy-filtering-with-pii-detection) |
 | **knowledgator gliner-pii** (edge, small, base, large) | Apache-2.0. ONNX base is 330 MB at FP16 and 197 MB at UINT8. | 60+ types, zero-shot labels | Base F1 80.99 (P 79.28 / R 82.78). Edge F1 75.50 (R 72.34). Large F1 83.25. | The Rust runtime is about 4× faster than Python on CPU | [HF card](https://huggingface.co/knowledgator/gliner-pii-base-v1.0) |
 | **NVIDIA GLiNER-PII** | Open | 55+ types, including PHI | F1 about 0.81 | — | [Grepture](https://grepture.com/blog/best-open-source-models-pii-redaction) |
@@ -1224,7 +1371,7 @@ Conventions: every number carries a source URL. `(est.)` marks analyst estimates
 | 5 Aug 2025 (closed 5 Sep 2025) | Prompt Security | SentinelOne | Reported at $250–300M. **Contradiction:** SEC filings show about $133.6M cash, plus 1,555,099 shares and 415,109 assumed options. Total about $160–170M (est.) at a share price of about $17–20 (est.). | $5M seed (Jan 2024) plus $18M Series A (Nov 2024), about $23M | GenAI usage control, including **sanitising sensitive data from prompts** | [SiliconANGLE](https://siliconangle.com/2025/08/05/sentinelone-acquires-ai-security-startup-prompt-security/), [SEC 8-K](https://www.sec.gov/Archives/edgar/data/1583708/000110465925088079/tm2525181d1_8k.htm), [SEC 10-Q](https://www.sec.gov/Archives/edgar/data/1583708/000158370825000159/s-20251031.htm), [Wikipedia](https://en.wikipedia.org/wiki/Prompt_Security) |
 | 3 Sep 2025 | Aim Security | Cato Networks | $300–350M in cash and shares (reported) | About $28M (Canaan, YL Ventures) | Shadow-AI governance and AI agents inside SASE. Cato had raised $359M at a $4.8B valuation in Jun 2025. | [Calcalist](https://www.calcalistech.com/ctechnews/article/7pzhe3mrd), [SiliconANGLE](https://siliconangle.com/2025/09/03/cato-networks-acquires-aim-security-expand-ai-security-capabilities/) |
 | Sep 2025 (closed 22 Oct 2025) | Lakera | Check Point | About $300M (reported) | — | Prompt-injection and data-leak runtime guard (Lakera Guard) and red-teaming | [SecurityWeek](https://www.securityweek.com/check-point-to-acquire-ai-security-firm-lakera/), [Calcalist](https://www.calcalistech.com/ctechnews/article/rj5bc1vige), [MarketScreener](https://www.marketscreener.com/news/check-point-software-technologies-ltd-completed-the-acquisition-of-lakera-ai-ag-ce7d5dd2dc80f22d) |
-| Sep 2025 | Pangea | CrowdStrike | Price not verified in this session | — | AI guardrails, including redaction APIs | [SecurityWeek](https://www.securityweek.com/check-point-to-acquire-ai-security-firm-lakera/) (reported alongside Lakera) |
+| Sep 2025 (closed 26 Sep 2025) | Pangea | CrowdStrike | **About $260M (reported)**. CrowdStrike's 10-Q shows about $212.1M cash (net of $9.4M acquired) plus about $10.6M of replacement awards (verified 2026-10-02) | About $51M | AI detection and response (AIDR), AI guardrails including redaction APIs | [BankInfoSecurity](https://www.bankinfosecurity.com/crowdstrike-buys-pangea-for-260m-to-guard-enterprise-ai-use-a-29480), [SecurityWeek](https://www.securityweek.com/crowdstrike-to-acquire-pangea-to-launch-ai-detection-and-response-aidr/), [SEC 10-Q](https://www.sec.gov/Archives/edgar/data/1535527/000153552725000033/crwd-20251031.htm) |
 | Sep 2025 (closed 29 Sep 2025) | CalypsoAI | F5 | About $180M | — | Runtime AI guardrails | [Wikipedia: F5](https://en.wikipedia.org/wiki/F5,_Inc.) |
 | Oct 2025 | Securiti AI | Veeam | $1.725B in cash and stock | — | DSPM plus AI data governance | [Wikipedia: Veeam](https://en.wikipedia.org/wiki/Veeam) |
 | Jan 2026 | Seraphic Security | CrowdStrike | $420M | — | Browser runtime security, the enforcement point for GenAI data egress | [Wikipedia: CrowdStrike](https://en.wikipedia.org/wiki/CrowdStrike) |
@@ -1526,7 +1673,29 @@ Patentability requires counsel and a prior-art search. Speech-redaction patents 
 8. What leakage rate is commercially acceptable per vertical, and can it be insured? (Workstream 11.)
 9. Freedom to operate: do existing speech-redaction patents (US 12229313, US 12189817 and others) read on lattice-aware or phonetic gazetteer redaction?
 10. Should Alpha license a commercial detector (Limina or Tonic) for HIPAA-grade coverage and Expert Determination support, or build its own? What are the OEM terms and the per-device cost? (Not public; requires vendor contact.)
-11. Unverified items to close: the Pangea/CrowdStrike price, the Pangiam/BigBear.ai details, Protecto's funding, Harmonic's 2025–26 funding, the MOSTLY AI and Syntho relationship, and the reconciled total consideration for Prompt Security (reported $250–300M against about $160–170M (est.) from SEC filings).
+11. *Mostly resolved 2026-10-02:* Pangea/CrowdStrike (~$260M reported; ~$222M per the 10-Q), Pangiam/BigBear.ai ($70M all-stock, closed Feb 2024), Harmonic Security (no 2025–26 round found), Protecto investors (amounts undisclosed). Still open: the MOSTLY AI–Syntho relationship, and the reconciled total for Prompt Security (reported $250–300M against about $160–170M (est.) from SEC filings).
+
+---
+
+## Verification log (2026-10-02)
+
+The web-search budget for this pass ran out partway through this file. Items below were checked with search or direct page fetches; everything else keeps its original source and marking.
+
+| Item | Earlier claim | Finding | Source |
+| --- | --- | --- | --- |
+| Pangea → CrowdStrike | Price not verified | **~$260M reported**; 10-Q: ~$212.1M cash net of $9.4M acquired, plus ~$10.6M replacement awards; closed 26 Sep 2025; Pangea had raised ~$51M | [BankInfoSecurity](https://www.bankinfosecurity.com/crowdstrike-buys-pangea-for-260m-to-guard-enterprise-ai-use-a-29480), [SEC 10-Q](https://www.sec.gov/Archives/edgar/data/1535527/000153552725000033/crwd-20251031.htm) |
+| Pangiam → BigBear.ai | "Reportedly, announced late 2023", not verified | **Confirmed**: all-stock, ~$70M EV, 61.8M shares, closed 29 Feb 2024 | [Defense Daily](https://www.defensedaily.com/bigbear-ai-closes-70-million-acquisition-of-pangiam-adding-to-computer-vision-expertise/business-financial/) |
+| Harmonic Security 2025–26 round | Not verified | None found. Last round remains the Oct 2024 Series A (~$17.5–18M). Name clash with Harmonic (math AI) noted | [Crunchbase](https://www.crunchbase.com/organization/harmonic-security) |
+| Protecto funding | Not found | Investors named on its site; amounts undisclosed (could not verify) | [Protecto](https://www.protecto.ai/about-us) |
+| MOSTLY AI / Syntho | Relationship unconfirmed | Site title confirms "powered by Syntho"; nature of the deal could not verify | [mostly.ai](https://mostly.ai/) |
+| Prompt Security total consideration | $250–300M reported vs ~$160–170M (est.) from SEC filings | Not re-checked (search budget exhausted); conflict stands | — |
+
+**Not re-checked (budget exhausted):** vendor accuracy benchmarks, Limina/Tonic/Nightfall/Skyflow/Credal/Liminal/Pimloc rounds, the remaining M&A rows (Protect AI, Aim, Lakera, CalypsoAI, Securiti, Seraphic, Koi, Portkey), and arXiv figures. These carried source links in the original and were not marked unverified.
+
+**Founder decisions applied:**
+- **Model:** this file does not name Alpha's inference model; Qwen stays (founder decision, revised 2026-10-02). The design here (redaction before egress, on-device vault, attested enclave) is part of the Qwen mitigation described in workstreams 3 and 5.
+- **AOSP fork without GMS/Play Integrity/banking apps:** not discussed in this file. No change needed. The on-device vault relies on Android Keystore/StrongBox, which AOSP provides without GMS.
+
 
 
 ---
@@ -1543,6 +1712,7 @@ Research date: 2026-09-30. Workstream #5 of the [manifest](00-manifest.md). Owne
 - **Citations.** Every rule and number has a URL. Sources are marked by how they were checked:
   - no marker: fetched or returned by search in this session (2026-09-30);
   - **[kb]**: a canonical primary-source URL that was **not re-fetched** in this session. The shared session web-search budget ran out after 24 searches, so these rest on the analyst's background knowledge and the canonical source. Verify them before relying on them.
+  - **Update 2026-10-02:** a verification pass re-fetched the highest-impact items. Those now read "(verified 2026-10-02)". Any **[kb]** marker that remains could **not** be verified in that pass, because the web-search budget ran out again; treat it as "(could not verify)". See the Verification log at the end.
 - **(est.)** marks an analyst estimate, such as a certification cost or timeline, or a figure that no primary source states.
 - Where sources contradict each other, the conflict is flagged inline.
 
@@ -1554,8 +1724,8 @@ Research date: 2026-09-30. Workstream #5 of the [manifest](00-manifest.md). Owne
 2. **The minimum viable compliance feature set for any recording SKU** is a visible recording indicator, an audible or spoken announcement, all-party consent capture and logging, no training on customer data, speaker diarization that does **not** persist voiceprints unless there is written BIPA consent, retention and deletion controls, legal hold, and an immutable audit log. These features are cheap to build and unlock almost every US commercial buyer.
 3. **Retention and redaction conflict.** Finance (SEC 17a-4, FINRA 4511, MiFID II Art. 16(7)) requires firms to *keep* original business communications, tamper-evident, for 3–7 years. Healthcare, legal and privacy regimes push to *minimize*. Alpha needs a dual-record architecture: an **immutable, access-controlled original in the customer's archive** plus **redacted derivatives** for AI and everyday use, with policy set per tenant. It must never redact destructively in regulated tenants.
 4. **Cheapest, fastest unlocks, in order:** (a) the consent and retention feature set plus a published biometric policy; (b) SOC 2 Type II on the enclave cloud; (c) a HIPAA BAA program; (d) a 17a-4-compatible export to Smarsh/Global Relay-class archives; (e) GDPR DPA plus EU data residency; (f) EAR encryption self-classification. Together these open enterprise, healthcare, wealth management, law firms and the EU for roughly **$250k–$600k and 9–15 months (est.)**.
-5. **Government and defense is a multi-year, multi-million-dollar path.** It needs FedRAMP (20x Moderate is now real: first authorizations came on Mar 6, 2026 ([fedramp.gov/20x](https://www.fedramp.gov/20x/))), FIPS 140-3 validated crypto (206 modules sit in the CMVP process list as of 2026-09-30 ([CMVP](https://csrc.nist.gov/projects/cryptographic-module-validation-program/modules-in-process/modules-in-process-list))), a NIAP MDF evaluation of the device, a DISA STIG, and possibly CSfC. A custom AOSP build forfeits the NIAP and STIG status that stock Pixel and Samsung devices already have. **Also note that `qwen-3.8-27b` is a Chinese-origin model**, which is likely disqualifying for many US federal, state and defense buyers regardless of where it is hosted (see §7.10).
-6. **The EU AI Act prohibits emotion recognition in the workplace** (Art. 5(1)(f), applicable since Feb 2, 2025, with a medical/safety exception only) ([AI Act Art. 5](https://artificialintelligenceact.eu/article/5/)). An office assistant must not infer mood, stress or sentiment of workers in the EU. Annex III high-risk obligations, which include some employment uses, have been pushed to **Dec 2, 2027** by the Digital Omnibus ([timeline](https://artificialintelligenceact.eu/implementation-timeline/)).
+5. **Government and defense is a multi-year, multi-million-dollar path.** It needs FedRAMP (20x Moderate is now real: first authorizations came on Mar 6, 2026 ([fedramp.gov/20x](https://www.fedramp.gov/20x/))), FIPS 140-3 validated crypto (206 modules sit in the CMVP process list as of 2026-09-30 ([CMVP](https://csrc.nist.gov/projects/cryptographic-module-validation-program/modules-in-process/modules-in-process-list))), a NIAP MDF evaluation of the device, a DISA STIG, and possibly CSfC. A custom AOSP build forfeits the NIAP and STIG status that stock Pixel and Samsung devices already have. **Also note that `qwen-3.8-27b` is a Chinese-origin model**, which is likely disqualifying for many US federal, state and defense buyers regardless of where it is hosted (see §7.7). Founder decision (2026-10-02): Qwen stays. The mitigation is to self-host the open Qwen weights inside Alpha's trust boundary, redact before any egress, and document provenance. That narrows the concern but may not remove it for every buyer.
+6. **The EU AI Act prohibits emotion recognition in the workplace** (Art. 5(1)(f), applicable since Feb 2, 2025, with a medical/safety exception only) ([AI Act Art. 5](https://artificialintelligenceact.eu/article/5/)). An office assistant must not infer mood, stress or sentiment of workers in the EU. Annex III high-risk obligations, which include some employment uses, have been pushed to **Dec 2, 2027** (full compliance by Aug 2, 2028) by the Digital Omnibus ([timeline](https://artificialintelligenceact.eu/implementation-timeline/)) (verified 2026-10-02).
 
 ---
 
@@ -1566,7 +1736,7 @@ Research date: 2026-09-30. Workstream #5 of the [manifest](00-manifest.md). Owne
 | Rule | Requirement | Source |
 | --- | --- | --- |
 | Federal Wiretap Act (ECPA Title I), 18 U.S.C. §2511(2)(d) | One-party consent: interception is lawful if the interceptor is a party or one party consents, **unless** it is done "for the purpose of committing any criminal or tortious act". The Otter order applied this "crime-tort" carve-out to alleged training on conversations. | [18 U.S.C. §2511](https://www.law.cornell.edu/uscode/text/18/2511) [kb]; [Otter order p.10–11](https://www.courthousenews.com/wp-content/uploads/2026/08/otter-ai-privacy-class-action.pdf) |
-| ECPA civil remedy, 18 U.S.C. §2520 | Greater of actual damages or statutory damages of $100/day or $10,000, plus punitive damages and fees | [18 U.S.C. §2520](https://www.law.cornell.edu/uscode/text/18/2520) [kb] |
+| ECPA civil remedy, 18 U.S.C. §2520 | Greater of actual damages or statutory damages of $100/day or $10,000, plus punitive damages and fees | [18 U.S.C. §2520(c)(2)](https://www.law.cornell.edu/uscode/text/18/2520) (verified 2026-10-02) |
 | Stored Communications Act | Governs stored transcripts and recordings held by a provider, which matters for Alpha's cloud | [18 U.S.C. §2701 et seq.](https://www.law.cornell.edu/uscode/text/18/part-I/chapter-121) [kb] |
 
 ### 1.2 All-party-consent states
@@ -1575,7 +1745,7 @@ Eleven states require all-party consent as of 2026: **California, Delaware, Flor
 
 | State | Scope notes relevant to an office assistant | Source |
 | --- | --- | --- |
-| California | Penal Code §631 covers wiretapping and third-party eavesdropping (the "capability test" battleground). §632 covers recording *confidential* communications without all-party consent. §637.2 gives a private right of action at **$5,000 per violation** | [Cal. Penal Code §631–637.2](https://leginfo.legislature.ca.gov/faces/codes_displaySection.xhtml?lawCode=PEN&sectionNum=637.2) [kb] |
+| California | Penal Code §631 covers wiretapping and third-party eavesdropping (the "capability test" battleground). §632 covers recording *confidential* communications without all-party consent. §637.2 gives a private right of action at the greater of **$5,000 per violation** or three times actual damages | [Cal. Penal Code §637.2](https://leginfo.legislature.ca.gov/faces/codes_displaySection.xhtml?lawCode=PEN&sectionNum=637.2) (verified 2026-10-02) |
 | Illinois | Eavesdropping Act, 720 ILCS 5/14: all-party consent for *private* conversations. Also has BIPA (see §2) | [720 ILCS 5/14-2](https://www.ilga.gov/legislation/ilcs/fulltext.asp?DocName=072000050K14-2) [kb] |
 | Florida | Fla. Stat. §934.03: all-party consent where there is an expectation of privacy; unlawful recording is a felony | [Fla. Stat. 934.03](http://www.leg.state.fl.us/statutes/index.cfm?App_mode=Display_Statute&URL=0900-0999/0934/Sections/0934.03.html) [kb] |
 | Washington | RCW 9.73.030: all-party consent for private conversations. Consent is deemed given where an announcement is recorded | [RCW 9.73.030](https://app.leg.wa.gov/rcw/default.aspx?cite=9.73.030) [kb] |
@@ -1598,7 +1768,7 @@ Eleven states require all-party consent as of 2026: **California, Delaware, Flor
 
 - **Party exception versus third-party eavesdropper.** Vendors are "parties" only if they act as a mere extension of the user, like a tape recorder. Using data for their own purposes, or under Ambriz merely *being able to*, makes them third parties ([ZwillGen](https://www.zwillgen.com/privacy/federal-judge-allows-google-customer-service-ai-class-action-to-proceed/)).
 - **Training on customer audio** is the hook. It supplies the "tortious purpose" under ECPA ([Otter order](https://www.courthousenews.com/wp-content/uploads/2026/08/otter-ai-privacy-class-action.pdf)) and the "capability" under CIPA. Commentators recommend off-by-default training, narrow retention, all-party notice, easy refusal for non-account participants, and audit logs of consent and vendor access ([Captain Compliance](https://captaincompliance.com/education/old-wiretapping-laws-new-ai-tools-what-brewer-v-otter-ai-and-ambriz-v-google-mean-for-ai-transcription-services/); [Fisher Phillips](https://www.fisherphillips.com/en/insights/insights/new-lawsuit-highlights-concerns-about-ai-notetakers)).
-- **Pending legislative relief:** California SB 690 (2025) would exempt "commercial business purposes" from CIPA. It passed the Senate in 2025 but was held in the Assembly; its 2026 status is unverified [kb] ([bill page](https://leginfo.legislature.ca.gov/faces/billNavClient.xhtml?bill_id=202520260SB690)). **Do not plan around it.**
+- **California SB 690: enacted, but narrower than the original bill (corrected 2026-10-02).** The Governor approved SB 690 on **Sept 30, 2026** (Chapter 976). The chaptered text amends **only Penal Code §637.2**. It makes the **Attorney General the only party** who can sue a private actor for a **§638.51 (pen-register / trap-and-trace) violation** arising on a website, online application or mobile application. It applies retroactively to pending claims in actions filed within two years before the operative date. It does **not** contain the earlier "commercial business purpose" exemption, and it does **not** change §631 or §632 or private actions under them ([bill page](https://leginfo.legislature.ca.gov/faces/billNavClient.xhtml?bill_id=202520260SB690), [chaptered text](https://leginfo.legislature.ca.gov/faces/billTextClient.xhtml?bill_id=202520260SB690)) (verified 2026-10-02). The effective date of a non-urgency bill is normally Jan 1 of the following year (could not verify for this bill). **For an in-room recorder or meeting notetaker, the §631/§632 wiretap exposure that drives Otter-style suits is unchanged.**
 
 **Alpha opportunity (inference):** an attested Nitro Enclave whose measured image provably has no persistent write path for plaintext audio, no training export and customer-scoped KMS keys is the strongest technical rebuttal to the capability test that any vendor could offer. It should be documented as a **"no-capability attestation"** with the PCR values published. Whether courts accept this is untested.
 
@@ -1609,7 +1779,7 @@ Eleven states require all-party consent as of 2026: **California, Delaware, Flor
 | New York Civil Rights Law §52-c (eff. May 7, 2022) | Prior written or electronic notice at hire to employees whose phone, email or internet use is monitored; employee acknowledgment; conspicuous posting | Admin-side notice template, employee acknowledgment capture, and posting export. Note that §52-c text targets phone, email and internet; in-room audio also triggers eavesdropping law | [NY Senate §52-C*2](https://www.nysenate.gov/legislation/laws/CVR/52-C*2); [Harris Beach](https://www.harrisbeachmurtha.com/insights/big-brother-hold-on-new-york-employers-must-advise-employees-and-prospective-employees-if-electronic-activities-will-be-monitored/) |
 | Connecticut Gen. Stat. §31-48d | Prior written notice of electronic monitoring | Same | [CGA §31-48d](https://www.cga.ct.gov/current/pub/chap_557.htm#sec_31-48d) [kb] |
 | Delaware 19 Del. C. §705 | Notice of monitoring of phone, email and internet | Same | [Del. Code §705](https://delcode.delaware.gov/title19/c007/sc01/index.html) [kb] |
-| California CCPA/CPRA (employees in scope since Jan 1, 2023); CPPA ADMT and risk-assessment regulations (finalized 2025) | Notice at collection; risk assessments; automated decision-making technology (ADMT) rights for significant employment decisions | Privacy notice, DSAR tooling, and a ban on using transcripts for automated employment decisions without an ADMT workflow | [CPPA regulations](https://cppa.ca.gov/regulations/) [kb] |
+| California CCPA/CPRA (employees in scope since Jan 1, 2023); CPPA ADMT and risk-assessment regulations (finalized 2025) | Notice at collection; risk assessments; automated decision-making technology (ADMT) rights for significant employment decisions | Privacy notice, DSAR tooling, and a ban on using transcripts for automated employment decisions without an ADMT workflow | [CPPA regulations](https://cppa.ca.gov/regulations/ccpa_updates.html): ADMT, risk-assessment and cybersecurity-audit rules approved by OAL **Sept 22, 2025**, effective **Jan 1, 2026** (verified 2026-10-02). Requirement-specific phase-in dates could not verify |
 | Illinois HB 3773 (Human Rights Act AI amendment, eff. Jan 1, 2026) | Notice of AI use in employment decisions; no discriminatory effect | Do not market transcripts for performance evaluation without controls | [ILGA HB3773](https://www.ilga.gov/legislation/BillStatus.asp?DocNum=3773&GAID=17&DocTypeID=HB&SessionID=112) [kb] |
 | NLRA §7 (US) | Surveillance of protected concerted activity can be an unfair labor practice. The 2022 GC memo was rescinded in 2025 [kb] | Office mode must not be deployable for covert monitoring of employee discussions | [NLRB](https://www.nlrb.gov/guidance/memos-research/general-counsel-memos) [kb] |
 
@@ -1675,13 +1845,13 @@ Diarization (who spoke when) is not per se biometric. **Speaker identification a
 
 | Rule | Requirement | Retention | What Alpha must implement | Source |
 | --- | --- | --- | --- | --- |
-| **SEC Rule 17a-4** (broker-dealers) | Preserve business-related communications. The 2022 amendments allow **either WORM or an audit-trail alternative** that can re-create an original record after modification or deletion. The designated-third-party undertaking was replaced by a "designated executive officer" or third party | Communications: 3 years (first 2 easily accessible) under 17a-4(b)(4); other records 6 years [kb on periods] | Never destructively redact the original in BD tenants. Export originals plus metadata to a 17a-4-compliant archive (Smarsh, Global Relay, Theta Lake, Proofpoint), or have Alpha's own store meet the audit-trail standard | [Federal Register 2022-22670](https://www.federalregister.gov/documents/2022/11/03/2022-22670/electronic-recordkeeping-requirements-for-broker-dealers-security-based-swap-dealers-and-major); [ACA](https://www.acaglobal.com/industry-insights/amendments-rule-17a-4-electronic-recordkeeping-requirement/) |
-| **Advisers Act Rule 204-2** (RIAs) | Written communications about advice and recommendations | 5 years (first 2 in office) [kb] | Same as above | [17 CFR 275.204-2](https://www.ecfr.gov/current/title-17/chapter-II/part-275/section-275.204-2) [kb] |
+| **SEC Rule 17a-4** (broker-dealers) | Preserve business-related communications. The 2022 amendments allow **either WORM or an audit-trail alternative** that can re-create an original record after modification or deletion. The designated-third-party undertaking was replaced by a "designated executive officer" or third party | Communications: 3 years (first 2 easily accessible) under 17a-4(b)(4); 17a-4(a) records 6 years ([17 CFR 240.17a-4](https://www.law.cornell.edu/cfr/text/17/240.17a-4)) (verified 2026-10-02) | Never destructively redact the original in BD tenants. Export originals plus metadata to a 17a-4-compliant archive (Smarsh, Global Relay, Theta Lake, Proofpoint), or have Alpha's own store meet the audit-trail standard | [Federal Register 2022-22670](https://www.federalregister.gov/documents/2022/11/03/2022-22670/electronic-recordkeeping-requirements-for-broker-dealers-security-based-swap-dealers-and-major); [ACA](https://www.acaglobal.com/industry-insights/amendments-rule-17a-4-electronic-recordkeeping-requirement/) |
+| **Advisers Act Rule 204-2** (RIAs) | Written communications about advice and recommendations | 5 years from end of fiscal year of last entry (first 2 in an office of the adviser) (verified 2026-10-02) | Same as above | [17 CFR 275.204-2(e)(1)](https://www.law.cornell.edu/cfr/text/17/275.204-2) |
 | **FINRA Rule 4511** | Make and preserve books and records per FINRA and SEA rules | **6 years** where no other period is specified | Same as above | [Concentric](https://concentric.ai/finra-4511-compliance-with-concentric-ai/); [FINRA 4511](https://www.finra.org/rules-guidance/rulebooks/finra-rules/4511) [kb] |
 | **FINRA Rule 3110** | Supervisory system; risk-based review of correspondence; principal approval for some communications | — | Supervisor review queue and lexicon or AI surveillance hooks; exports to surveillance vendors | [FINRA 3110](https://www.finra.org/rules-guidance/rulebooks/finra-rules/3110) [kb] |
 | **FINRA 2026 Annual Regulatory Oversight Report** (Dec 9, 2025) | First dedicated GenAI section. "Summarization and information extraction" is the top member use case. AI outputs tied to business must be governed | — | Model and version provenance on every summary; human review; record the prompt, output and source | [Wealthtech Today](https://wealthtechtoday.com/2025/07/29/ai-notetakers-and-compliance-in-wealth-management-what-firms-need-to-know/); [Fellow](https://fellow.ai/blog/how-regulated-firms-govern-meeting-ai/) |
 | AI artifacts as records | Recording, transcript, summary and action items each become records if they document regulated activity or are relied on as a business record | Per the underlying rule | Classify each artifact type; apply retention to derivatives consistently | [Global Relay](https://www.globalrelay.com/resources/the-compliance-hub/compliance-insights/ai-meeting-records-explained-which-record-does-your-firm-need-to-keep/) |
-| CFTC Reg. 1.31 / 1.35 | Futures commission merchants and swap dealers: records 5 years; **oral communications leading to a trade** 1 year | 1–5 years | Same as above | [17 CFR 1.35](https://www.ecfr.gov/current/title-17/chapter-I/part-1/subject-group-ECFR2d6a5b1c4a8e2d1/section-1.35) [kb] |
+| CFTC Reg. 1.31 / 1.35 | Futures commission merchants and swap dealers: records 5 years; **oral communications** 1 year (§1.35 records are kept per §1.31) | 1–5 years | Same as above | [17 CFR 1.31](https://www.law.cornell.edu/cfr/text/17/1.31) (verified 2026-10-02); [17 CFR 1.35](https://www.ecfr.gov/current/title-17/chapter-I/part-1/subject-group-ECFR2d6a5b1c4a8e2d1/section-1.35) |
 
 ### 4.2 The off-channel communications sweep
 
@@ -1730,11 +1900,11 @@ Diarization (who spoke when) is not per se biometric. **Speaker identification a
 | Topic | Rule or case | Implication | Source |
 | --- | --- | --- | --- |
 | **ABA Formal Opinion 512** (July 29, 2024) | Lawyers using GenAI must meet their duties of competence (1.1), confidentiality (1.6), communication (1.4), supervision (5.1/5.3), candor and reasonable fees (1.5). **Informed client consent** is needed before inputting confidential information into *self-learning* tools that could disclose it; boilerplate engagement-letter consent is not enough | No training on client data; per-matter isolation; vendor terms that forbid reuse; audit logs; the ability to show the lawyer what the tool does with data | [ABA Formal Op. 512 (PDF)](https://www.americanbar.org/content/dam/aba/administrative/professional_responsibility/ethics-opinions/aba-formal-opinion-512.pdf) [kb; the ABA site returned 403] |
-| Privilege and third-party AI: ***United States v. Heppner*** (S.D.N.Y., Feb 2026, Rakoff, J.) | Reported holding: a criminal defendant's exchanges with a **consumer** AI chatbot (Anthropic's Claude) were **not protected** by attorney-client privilege or work product. There was no attorney involved, and the provider's terms defeated any expectation of confidentiality | Consumer-grade AI terms can waive privilege. **Enterprise terms, no provider access, and attestation** support a confidentiality argument. Attorney direction (a *Kovel*-style arrangement) matters | [kb, verify: the ruling was not re-fetched in this session] |
-| Contrasting view: *Warner v. Gilbarco* (E.D. Mich., 2026) | Reported: a pro se litigant's AI-assisted materials were protected as work product | The case law is unsettled | [kb, verify] |
+| Privilege and third-party AI: ***United States v. Heppner*** (S.D.N.Y., Feb 2026, Rakoff, J.) | Reported holding: a criminal defendant's exchanges with a **consumer** AI chatbot (Anthropic's Claude) were **not protected** by attorney-client privilege or work product. There was no attorney involved, and the provider's terms defeated any expectation of confidentiality | Consumer-grade AI terms can waive privilege. **Enterprise terms, no provider access, and attestation** support a confidentiality argument. Attorney direction (a *Kovel*-style arrangement) matters | [kb] (could not verify on 2026-10-02: web-search budget exhausted and court-search sites blocked fetches). Confirm with counsel before citing |
+| Contrasting view: *Warner v. Gilbarco* (E.D. Mich., 2026) | Reported: a pro se litigant's AI-assisted materials were protected as work product | The case law is unsettled | [kb] (could not verify on 2026-10-02) |
 | Waiver doctrine generally | Disclosure to a third party that is not necessary for legal advice can waive privilege. Cloud-vendor cases generally find no waiver where there are reasonable confidentiality precautions | Alpha should give law firms a "privileged mode" with an enclave-only path, no human access, and per-matter keys | [FRE 502](https://www.law.cornell.edu/rules/fre/rule_502) [kb] |
 | **Recording of privileged meetings** | Bystander third parties present, or an AI vendor with *capability*, may break confidentiality | Auto-suppress capture when a "privileged" meeting tag or legal hold is detected, or require explicit attorney-controlled capture | Inference |
-| **E-discovery and legal hold** | FRCP 26(b)(1) and 34: transcripts and AI summaries are ESI, so they are discoverable. FRCP 37(e) sanctions apply for failing to preserve. In *NYT v. OpenAI* (S.D.N.Y.), a **May 13, 2025** order required OpenAI to preserve output logs it would otherwise delete. It was later narrowed or lifted in fall 2025 [kb] | Legal hold per custodian, matter or keyword that suspends deletion; defensible export (load files with metadata); chain-of-custody hashing | [FRCP 37](https://www.law.cornell.edu/rules/frcp/rule_37) [kb]; [kb, verify NYT v. OpenAI order dates] |
+| **E-discovery and legal hold** | FRCP 26(b)(1) and 34: transcripts and AI summaries are ESI, so they are discoverable. FRCP 37(e) sanctions apply for failing to preserve. In *NYT v. OpenAI* (S.D.N.Y.), a **May 13, 2025** order required OpenAI to preserve output logs it would otherwise delete. It was later narrowed or lifted in fall 2025 [kb] | Legal hold per custodian, matter or keyword that suspends deletion; defensible export (load files with metadata); chain-of-custody hashing | [FRCP 37](https://www.law.cornell.edu/rules/frcp/rule_37) [kb]; NYT v. OpenAI order dates: (could not verify on 2026-10-02) |
 | Deletion as spoliation | Ephemeral-by-default designs risk sanctions once litigation is reasonably anticipated | The retention engine must be hold-aware | [FRCP 37(e)](https://www.law.cornell.edu/rules/frcp/rule_37) [kb] |
 
 **Source caveat:** because the search budget ran out, the privilege cases (Heppner and Warner) are recorded from the analyst's knowledge and need legal verification.
@@ -1746,7 +1916,7 @@ Diarization (who spoke when) is not per se biometric. **Speaker identification a
 | Rule | Requirement | What Alpha must implement | Source |
 | --- | --- | --- | --- |
 | **FERPA** (20 U.S.C. §1232g; 34 CFR 99) | Education records may be disclosed to vendors under the "school official" exception (§99.31(a)(1)(i)(B)) only if the vendor is under direct control, uses data only for the authorized purpose and does not redisclose | Contract terms (DPA); no secondary use or training; deletion on termination; parent and eligible-student access workflows | [34 CFR 99.31](https://www.ecfr.gov/current/title-34/subtitle-A/part-99/subpart-D/section-99.31) [kb] |
-| **COPPA 2025 amendments** (published **Apr 22, 2025**; effective **June 23, 2025**; general compliance date **Apr 22, 2026**) | **Separate verifiable parental consent** for third-party disclosures, including for targeted advertising; **written data-retention policy** (no indefinite retention); written infosec program; **biometric identifiers** (including voiceprints) and government IDs added to "personal information"; Safe Harbor transparency | Voice capture of under-13s is personal information. Get school authorization or parental consent; publish a retention policy; do not deploy recording in K-8 classrooms without a specific design | [FTC press release](https://www.ftc.gov/news-events/news/press-releases/2025/01/ftc-finalizes-changes-childrens-privacy-rule-limiting-companies-ability-monetize-kids-data); [Federal Register 2025-05904 (API)](https://www.federalregister.gov/api/v1/documents/2025-05904.json) |
+| **COPPA 2025 amendments** (published **Apr 22, 2025**; effective **June 23, 2025**; general compliance date **Apr 22, 2026**) | **Separate verifiable parental consent** for third-party disclosures, including for targeted advertising; **written data-retention policy** (no indefinite retention); written infosec program; **biometric identifiers** (including voiceprints) and government IDs added to "personal information"; Safe Harbor transparency | Voice capture of under-13s is personal information. Get school authorization or parental consent; publish a retention policy; do not deploy recording in K-8 classrooms without a specific design | [FTC press release](https://www.ftc.gov/news-events/news/press-releases/2025/01/ftc-finalizes-changes-childrens-privacy-rule-limiting-companies-ability-monetize-kids-data); [Federal Register 2025-05904 (API)](https://www.federalregister.gov/api/v1/documents/2025-05904.json) (verified 2026-10-02) (publication Apr 22, 2025; effective Jun 23, 2025; biometric identifiers added; separate consent for third-party disclosure) |
 | State student-privacy laws | California SOPIPA (Bus. & Prof. Code §22584), NY Education Law §2-d (with a Parents' Bill of Rights and a DPA), Illinois SOPPA, and 100+ other state laws. The Student Data Privacy Consortium's National DPA is the de facto contract | Sign the NDPA; list subprocessors; no targeted ads or profiling | [SDPC](https://privacy.a4l.org/) [kb]; [NYSED 2-d](https://www.nysed.gov/data-privacy-security) [kb] |
 | **CIPA (Children's Internet Protection Act) / E-rate** | E-rate-funded schools must have internet-safety policies and filtering. E-rate funds connectivity, not end-user handsets. The FCC's 2024 Wi-Fi hotspot lending eligibility was **rescinded by the FCC in Sept 2025** [kb] | E-rate is **not** a realistic funding path for Alpha devices. A school deployment would need content filtering on the browser and agent | [FCC E-rate](https://www.fcc.gov/general/e-rate-schools-libraries-usf-program) [kb] |
 | EU AI Act Art. 5(1)(f) | No emotion inference in **education institutions** | Disable affect features entirely for education tenants | [AI Act Art. 5](https://artificialintelligenceact.eu/article/5/) |
@@ -1776,7 +1946,7 @@ Diarization (who spoke when) is not per se biometric. **Speaker identification a
 | Rule | Requirement | Dates | Cost (est.) | Source |
 | --- | --- | --- | --- | --- |
 | **CMMC 2.0**: 32 CFR Part 170 (program rule) | L1: 15 FAR 52.204-21 requirements, annual self-assessment (Wikipedia says "14 practices", but the rule text has 15). L2: 110 NIST SP 800-171 Rev 2 requirements, self-assessment or **C3PAO** triennially. L3: plus 24 selected SP 800-172 requirements, DIBCAC assessment | Program rule effective **Dec 16, 2024** | L2 C3PAO roughly $100–120k per assessment in DoD's regulatory impact analysis, plus remediation of $100k–$1M+ (est.) | [Federal Register 2024-22905](https://www.federalregister.gov/documents/2024/10/15/2024-22905/cybersecurity-maturity-model-certification-cmmc-program); [Wikipedia](https://en.wikipedia.org/wiki/Cybersecurity_Maturity_Model_Certification) |
-| **CMMC 48 CFR (DFARS) rule** (DFARS Case 2019-D041) | Puts CMMC level requirements into contracts (252.204-7021/-7025) | Published Sept 10, 2025; **effective Nov 10, 2025** (Phase 1: self-assessments). Phase 2 (C3PAO L2) was scheduled for Nov 10, 2026. **On July 13, 2026 DoD reportedly paused Phase 2** pending a CMMC Reform Task Force review | — | [Federal Register 2025-17359 (API)](https://www.federalregister.gov/api/v1/documents/2025-17359.json); [Wikipedia citing DefenseScoop, July 13, 2026](https://en.wikipedia.org/wiki/Cybersecurity_Maturity_Model_Certification) |
+| **CMMC 48 CFR (DFARS) rule** (DFARS Case 2019-D041) | Puts CMMC level requirements into contracts (252.204-7021/-7025) | Published Sept 10, 2025; **effective Nov 10, 2025** (verified 2026-10-02) (Phase 1: self-assessments). Phase 2 (C3PAO L2) was scheduled for Nov 10, 2026. **On July 13, 2026 DoD reportedly paused Phase 2**, calling the process too bureaucratic and burdensome, pending a CMMC Reform Task Force review (Wikipedia citing DefenseScoop; re-checked 2026-10-02, still a secondary source) | — | [Federal Register 2025-17359 (API)](https://www.federalregister.gov/api/v1/documents/2025-17359.json); [Wikipedia citing DefenseScoop, July 13, 2026](https://en.wikipedia.org/wiki/Cybersecurity_Maturity_Model_Certification) |
 | **DFARS 252.204-7012** | Safeguard covered defense information with NIST SP 800-171; **report cyber incidents within 72 hours**; cloud providers handling CDI must meet **FedRAMP Moderate equivalent** (DoD memo Dec 2023) | In force | — | [DFARS 252.204-7012](https://www.acquisition.gov/dfars/252.204-7012-safeguarding-covered-defense-information-and-cyber-incident-reporting.) [kb] |
 | **NIST SP 800-171 Rev 3** (May 2024) / **800-172** | Rev 3 is published, but DoD's class deviation keeps **Rev 2** for CMMC assessments [kb] | — | — | [NIST SP 800-171r3](https://csrc.nist.gov/pubs/sp/800/171/r3/final) [kb] |
 | **CUI** (32 CFR 2002; NARA CUI Registry) | Marking, safeguarding and dissemination controls | — | — | [NARA CUI](https://www.archives.gov/cui) [kb] |
@@ -1817,7 +1987,7 @@ Diarization (who spoke when) is not per se biometric. **Speaker identification a
 | --- | --- | --- | --- |
 | **EO 14179** "Removing Barriers to American Leadership in AI" (signed Jan 23, 2025; published Jan 31, 2025) | Revoked EO 14110; ordered an AI Action Plan | Less federal AI red tape overall | [Federal Register 2025-02172](https://www.federalregister.gov/documents/2025/01/31/2025-02172/removing-barriers-to-american-leadership-in-artificial-intelligence) |
 | **OMB M-25-21** (Apr 3, 2025) | Chief AI Officers (60 days), AI governance boards (90 days), AI strategies (180 days), GenAI policies (270 days). **Minimum risk-management practices for "high-impact AI"** documented within 365 days (pre-deployment testing, impact assessment, human oversight, monitoring) | An office assistant is unlikely to be "high-impact" unless its output is a principal basis for decisions on rights or safety. Buyers will still ask for testing evidence and model cards | [M-25-21 PDF (whitehouse.gov)](https://www.whitehouse.gov/wp-content/uploads/2025/02/M-25-21-Accelerating-Federal-Use-of-AI-through-Innovation-Governance-and-Public-Trust.pdf) |
-| **OMB M-25-22** "Driving Efficient Acquisition of AI in Government" (Apr 3, 2025) | Contract terms: **no vendor training on non-public government data** without consent, data portability and anti-lock-in, American-made AI preference, and performance testing | Matches Alpha's no-training design; needs export and portability | [M-25-22 PDF](https://www.whitehouse.gov/wp-content/uploads/2025/02/M-25-22-Driving-Efficient-Acquisition-of-Artificial-Intelligence-in-Government.pdf) [kb] |
+| **OMB M-25-22** "Driving Efficient Acquisition of AI in Government" (Apr 3, 2025) | Contract terms: **no vendor training on non-public government data** without consent, data portability and anti-lock-in, American-made AI preference, and performance testing | Matches Alpha's no-training design; needs export and portability | [M-25-22 PDF](https://www.whitehouse.gov/wp-content/uploads/2025/02/M-25-22-Driving-Efficient-Acquisition-of-Artificial-Intelligence-in-Government.pdf) (verified 2026-10-02): dated Apr 3, 2025; contracts must "permanently prohibit" training on non-public agency data absent explicit consent; policy "to maximize the use of AI products and services that are developed and produced in the United States"; vendor lock-in and portability protections |
 | **EO 14319** "Preventing Woke AI in the Federal Government" (July 23, 2025) | "Unbiased AI Principles" (truth-seeking, ideological neutrality) for **federally procured LLMs**. OMB guidance within 120 days. Contract terms include vendor-paid decommissioning for non-compliance | Alpha's LLM choice and system prompts must be documentable to federal buyers. Implementing OMB memo M-26-04 (Dec 2025) [kb] | [Federal Register 2025-14217](https://www.federalregister.gov/documents/2025/07/28/2025-14217/preventing-woke-ai-in-the-federal-government) |
 | **EO 14365** "Ensuring a National Policy Framework for AI" (Dec 11, 2025) | DOJ AI Litigation Task Force to challenge state AI laws; Commerce list of "onerous" state laws; BEAD funding conditions; FTC and FCC actions; draft preemption legislation. **Carve-outs:** child safety, data-center infrastructure, and **state procurement** | Wiretap, BIPA and privacy laws are *not* AI-specific and remain. State AI laws (for example Colorado) may be challenged | [Federal Register 2025-23092](https://www.federalregister.gov/documents/2025/12/16/2025-23092/ensuring-a-national-policy-framework-for-artificial-intelligence) |
 | **EO 14409** "Promoting Advanced AI Innovation and Security" (June 2, 2026) | Voluntary frontier-model assessment framework; AI-enabled cyber defense of federal and national-security systems; Treasury AI cybersecurity clearinghouse. Expressly **no mandatory licensing** | No direct product obligation; possible sales hook for secure-agent tooling | [Federal Register 2026-11415](https://www.federalregister.gov/documents/2026/06/05/2026-11415/promoting-advanced-artificial-intelligence-innovation-and-security) |
@@ -1826,11 +1996,19 @@ Diarization (who spoke when) is not per se biometric. **Speaker identification a
 
 The manifest's inference model is **Qwen** (Alibaba, PRC). There is no single statute that bans Qwen for federal use as of this writing. However:
 
-- M-25-22 prefers American AI [kb].
+- M-25-22 sets a policy to "maximize the use of AI products and services that are developed and produced in the United States" ([M-25-22](https://www.whitehouse.gov/wp-content/uploads/2025/02/M-25-22-Driving-Efficient-Acquisition-of-Artificial-Intelligence-in-Government.pdf)) (verified 2026-10-02).
 - Multiple federal agencies and states banned DeepSeek in 2025 [kb].
 - Defense and intelligence buyers apply supply-chain risk management (SCRM) scrutiny to foreign-origin software (FASCSA) ([FAR 52.204-30](https://www.acquisition.gov/far/52.204-30) [kb]).
 
-**Inference:** for government, defense and many regulated-finance buyers, Alpha needs a **US- or allied-origin model option** (such as Llama-family, Mistral for the EU, or US frontier APIs inside the enclave pattern) before any procurement conversation. This is a product decision, not a certification.
+**Inference:** for government, defense and many regulated-finance buyers, Qwen's PRC origin is a real procurement concern and will be raised early.
+
+**Founder decision (2026-10-02): Qwen stays.** The mitigation is framed around Qwen itself, not a model switch:
+
+1. **Self-host the open Qwen weights inside Alpha's trust boundary** (attested confidential GPU, or a GovCloud/sovereign region for public-sector tenants). No prompt goes to a PRC-linked service, and Alibaba never sees customer data.
+2. **Redact before any egress** (workstream 4), so identifiers and Axis-2 content do not reach any third-party inference hop.
+3. **Document provenance:** publish hashes of the exact checkpoint, its source and licence, an AI bill of materials, the evaluation and red-team results, and the attested measurement of the serving image.
+
+These steps answer the data-flow and SCRM questions. They may not satisfy a buyer whose policy (or M-25-22's American-made preference) excludes foreign-origin models outright. Treat those buyers as out of scope until that changes. This is a product decision, not a certification.
 
 ---
 
@@ -1842,8 +2020,8 @@ The manifest's inference model is **Qwen** (Alibaba, PRC). There is no single st
 | --- | --- | --- | --- |
 | Prohibitions (Art. 5), including **emotion recognition in the workplace and education** (5(1)(f)) and sensitive biometric categorization (5(1)(g)). AI literacy (Art. 4) | **Feb 2, 2025** | An office assistant **must not infer emotions** of workers in the EU. The only exception is medical or safety reasons. Penalties up to €35M or 7% of turnover | [Art. 5](https://artificialintelligenceact.eu/article/5/); [timeline](https://artificialintelligenceact.eu/implementation-timeline/) |
 | **GPAI model obligations** (Arts. 53–55) and penalties | **Aug 2, 2025**. Models already on the market before then have until **Aug 2, 2027** | These fall on the **model provider** (Alibaba for Qwen), not Alpha, unless Alpha fine-tunes substantially (then Alpha may become a provider). Alpha is a *deployer or downstream provider* | [timeline](https://artificialintelligenceact.eu/implementation-timeline/) |
-| Transparency (Art. 50): disclose AI interaction; label synthetic audio and content | Aug 2, 2026 (the Digital Omnibus may have adjusted parts; verify) | The agent must disclose that it is AI when it speaks to third parties (for example on phone calls). TTS output needs marking | [AI Act Art. 50](https://artificialintelligenceact.eu/article/50/) [kb] |
-| **High-risk (Annex III)**, including employment uses (recruitment, task allocation, monitoring and evaluation of performance) | **Dec 2, 2027** (delayed by the Digital Omnibus) | If Alpha is used to monitor or evaluate workers, it becomes high-risk: conformity assessment, risk management, logging, human oversight | [timeline](https://artificialintelligenceact.eu/implementation-timeline/) |
+| Transparency (Art. 50): disclose AI interaction; label synthetic audio and content | **Aug 2, 2026**; providers of systems that generate synthetic content have until **Dec 2, 2026** for the marking obligation ([timeline](https://artificialintelligenceact.eu/implementation-timeline/)) (verified 2026-10-02) | The agent must disclose that it is AI when it speaks to third parties (for example on phone calls). TTS output needs marking | [AI Act Art. 50](https://artificialintelligenceact.eu/article/50/) [kb] |
+| **High-risk (Annex III)**, including employment uses (recruitment, task allocation, monitoring and evaluation of performance) | **Dec 2, 2027**, with full compliance by Aug 2, 2028 (delayed by the Digital Omnibus) (verified 2026-10-02) | If Alpha is used to monitor or evaluate workers, it becomes high-risk: conformity assessment, risk management, logging, human oversight | [timeline](https://artificialintelligenceact.eu/implementation-timeline/) |
 | High-risk (Annex I, product safety) | Aug 2, 2028 | Probably not applicable | [timeline](https://artificialintelligenceact.eu/implementation-timeline/) |
 
 **Positioning rule (inference):** in EU marketing and contracts, restrict the intended purpose to **"personal productivity and meeting documentation, not worker monitoring or evaluation"** to stay out of Annex III.
@@ -1906,7 +2084,7 @@ The Digital Personal Data Protection Act 2023 and the DPDP Rules 2025 were phase
 | **FIPS 140-3 validated crypto mode** | FISMA/FedRAMP; CMMC; CJIS | P2 (gov) | Low if inherited | Use BoringCrypto, AWS-LC and KMS |
 | **MDM/EMM manageability** (Android Enterprise, managed configurations, work profile) | DISA STIG; NIAP MDF (MDM module); bank TPRM | P1 | Medium | Required for any fleet sale |
 | **Configurable breach-notification workflows** | HIPAA (60 days), GLBA (30 days to FTC), NYDFS (72 hours), DFARS 7012 (72 hours), GDPR (72 hours), DPDP | P1 | Low | Runbooks plus tenant contact registry |
-| **US-origin model option** | M-25-22 preference; federal and defense SCRM | P1 (gov) | Medium | See §7.7 |
+| **Model provenance pack for Qwen** (self-hosted weights inside the trust boundary, checkpoint hashes, AI-BOM, eval results, attested serving image) | M-25-22 preference; federal and defense SCRM | P1 (gov) | Medium | See §7.7. Founder decision 2026-10-02: Qwen stays; no model switch |
 
 ---
 
@@ -1948,7 +2126,7 @@ All costs are estimates (est.) for a startup-scale scope. Ranges combine auditor
 3. Write the **"no-capability" attestation brief**: PCR measurements, a code-path audit showing no plaintext audio persistence outside customer scope, and KMS policy. Get outside counsel's view of how it maps to Ambriz and Otter.
 4. Geofence or disable voiceprint enrollment in Illinois, Texas and Washington until the written-release flow exists. Disable emotion and sentiment features globally (this also keeps the EU clean).
 5. File the **EAR encryption self-classification** (by Feb 1 for the prior year's exports) and set up restricted-party screening.
-6. Decide the model roadmap: add a **US-origin model option** alongside Qwen.
+6. Prepare the **Qwen provenance and data-flow pack** (§7.7): self-hosted weights inside the trust boundary, redaction before egress, checkpoint hashes and an AI-BOM. Founder decision 2026-10-02: Qwen stays.
 
 *Unlocks:* legal defensibility for a US prosumer and SMB beta; a credible answer to "are you the next Otter lawsuit?"
 
@@ -1991,8 +2169,8 @@ All costs are estimates (est.) for a startup-scale scope. Ranges combine auditor
 4. **Default to all-party consent everywhere.** A phone cannot know which state's or country's law governs each voice in the room.
 5. **Speaker identification is the biometric tripwire.** Keep diarization anonymous and ephemeral by default. Offer named speaker memory only after a written release from each enrolled person.
 6. **Do not build worker-monitoring or emotion features.** In the EU, emotion inference at work is prohibited. Monitoring and evaluation pulls Alpha into Annex III (from Dec 2027) and triggers works councils. In the US it is litigation bait.
-7. **The custom-OS route is expensive for government.** Stock Pixel and Samsung devices already carry NIAP, STIG and CSfC eligibility. For public sector, **Alpha as an evaluated app on a listed device** is roughly 5–10x cheaper (est.) than certifying Alpha's own AOSP image. The HOME-launcher and AOSP flavors should be treated as a commercial and sovereign play, not a DoD one.
-8. **Model origin is a hidden blocker.** Qwen may be acceptable for consumer and some enterprise use but will likely stall federal, defense and some finance deals. A US-origin model option inside the same enclave should be on the roadmap before government pipeline work begins.
+7. **The custom-OS route is expensive for government.** Stock Pixel and Samsung devices already carry NIAP, STIG and CSfC eligibility. For public sector, **Alpha as an evaluated app on a listed device** is roughly 5–10x cheaper (est.) than certifying Alpha's own AOSP image. The HOME-launcher and AOSP flavors should be treated as a commercial and sovereign play, not a DoD one. *Founder decision (2026-10-02): Alpha forks AOSP and ships without GMS, so Google's GMS licensing (MADA) and Play certification obligations do not apply, and Play Integrity or banking-app breakage is a non-issue. This does not change the NIAP/STIG point: the fork still needs its own evaluation.*
+8. **Model origin is a hidden blocker.** Qwen may be acceptable for consumer and some enterprise use but will likely stall federal, defense and some finance deals. Qwen stays (founder decision, 2026-10-02), so the answer has to be built around it: self-host the open weights inside the attested boundary, redact before egress, and publish provenance (§7.7). Do this before government pipeline work begins, and expect some buyers to remain out of reach.
 9. **Sequence buyers by cost-to-unlock:** US prosumer and SMB (Phase 0), then healthcare, legal, wealth management, EU enterprise and higher education (Phase 1, SOC 2 plus BAA plus EU), then state, local and federal civilian (FedRAMP 20x), then defense (CMMC, IL5, NIAP, CSfC). K-12 is not recommended.
 10. **Plan hiring:** a fractional GRC lead and privacy counsel in Phase 0; a full-time compliance engineer and an external auditor relationship in Phase 1; a federal compliance lead with FedRAMP and NIAP experience in Phase 2 (est.).
 
@@ -2000,16 +2178,55 @@ All costs are estimates (est.) for a startup-scale scope. Ranges combine auditor
 
 1. Will courts accept a remote-attestation-backed "no capability" showing as defeating CIPA §631 third-party status? This is untested; outside counsel should be asked for a memo.
 2. Does Alpha's diarization or speaker embedding, even if ephemeral, count as a "voiceprint" under BIPA? The Otter order turned on *stored* profiles used for future recognition. Ephemeral in-session clustering has not been ruled on.
-3. Nitro Enclaves and KMS attestation inside the FedRAMP High / IL5 boundary in GovCloud: confirm the service-level authorization status and whether Cerebras inference can run inside that boundary. If not, which US-origin model can?
-4. Does Cerebras sign HIPAA BAAs and agree to no-retention and no-training terms? Is its hosting in the EU or Gulf available for residency?
+3. Nitro Enclaves and KMS attestation inside the FedRAMP High / IL5 boundary in GovCloud: confirm the service-level authorization status and whether Cerebras inference can run inside that boundary. If not, can self-hosted Qwen weights run on confidential GPUs inside GovCloud (or another authorized boundary)?
+4. Does Cerebras sign HIPAA BAAs and agree to no-retention and no-training terms? Is its hosting in the EU or Gulf available for residency? *Partly answered 2026-10-02:* its privacy policy says it does not retain inference inputs or outputs ([Cerebras](https://www.cerebras.ai/privacy-policy)); its [Trust Center](https://trust.cerebras.ai/) claims SOC 2 Type 2 and HIPAA (vendor claim); about 85% of capacity is in the US, plus Montreal and a planned European site ([BusinessWire](https://www.businesswire.com/news/home/20250311115186/en/Cerebras-Announces-Six-New-AI-Datacenters-Across-North-America-and-Europe-to-Deliver-Industry-s-Largest-Dedicated-AI-Inference-Cloud)). No Gulf site found. A signed BAA still has to be obtained directly.
 5. For finance tenants, will Alpha be the system of record (meeting the 17a-4 audit-trail alternative itself) or always export to a partner archive? This drives both cost and liability.
-6. Is the California SB 690 CIPA "commercial purpose" exemption moving in 2026? What is the final disposition of the CMMC Phase 2 pause reported for July 13, 2026?
+6. ~~Is SB 690 moving?~~ *Resolved 2026-10-02:* SB 690 was signed Sept 30, 2026, but only limits §638.51 private suits for websites and apps; §631/§632 exposure is unchanged (§1.3). Still open: the final disposition of the CMMC Phase 2 pause reported for July 13, 2026.
 7. The status of the privilege cases (*United States v. Heppner* and *Warner v. Gilbarco*) and any appellate treatment of AI and privilege needs verification by counsel. These were recorded from background knowledge after the search budget ran out.
-8. Did the EU Digital Omnibus change Art. 50 transparency dates or the GPAI grace periods beyond the Annex III and Annex I delays captured here?
+8. Did the EU Digital Omnibus change Art. 50 transparency dates or the GPAI grace periods beyond the Annex III and Annex I delays captured here? *Partly answered 2026-10-02:* Art. 50 applies Aug 2, 2026, with a Dec 2, 2026 deadline for synthetic-content providers; the GPAI pre-market grace period is unchanged at Aug 2, 2027 ([timeline](https://artificialintelligenceact.eu/implementation-timeline/)).
 9. What exactly will the phone ship as for government pilots: the app flavor on a stock NIAP-listed Pixel, or the HOME-launcher / AOSP add-on? The certification path differs by an order of magnitude.
 10. Should the product offer an "attorney-directed capture" mode and a "clinical documentation" mode as separately scoped SKUs, each with a narrower intended purpose that simplifies FDA, privilege and AI Act analysis?
 11. Insurance: availability and price of tech E&O and cyber cover that includes wiretap and BIPA class-action defense. Several carriers have added biometric exclusions [kb], so check before launch.
-12. Verification backlog. The following figures are marked [kb] and need primary-source confirmation: CA §637.2 damages; retention periods under 17a-4(b)(4), 204-2 and CFTC 1.35; FAR clause specifics; NIAP MDF version; CJIS v6.0 details; DPDP maximum penalty; OMB M-25-22 and M-26-04 contents; the FCC hotspot rescission; the NYT v. OpenAI preservation order.
+12. Verification backlog. *Closed 2026-10-02:* CA §637.2 damages; 17a-4, 204-2 and CFTC 1.31 retention periods; OMB M-25-22 contents. *Still could not verify:* FAR clause specifics, NIAP MDF version, CJIS v6.0 details, DPDP maximum penalty, M-26-04, the FCC hotspot rescission, the NYT v. OpenAI preservation order, *Heppner* and *Warner*.
+
+---
+
+## Verification log (2026-10-02)
+
+The web-search budget ran out early in this pass, so file 05 was checked mainly by fetching primary sources directly (statutes, eCFR/Cornell LII, leginfo, Federal Register, CPPA, OMB). Remaining **[kb]** markers count as **(could not verify)**.
+
+**Material corrections**
+
+| Item | Earlier claim | Finding | Source |
+| --- | --- | --- | --- |
+| **California SB 690** | "Would exempt commercial business purposes from CIPA… held in the Assembly; 2026 status unverified" | **Corrected.** Signed **Sept 30, 2026** (Ch. 976). The final text amends only §637.2: **AG-only enforcement of §638.51 (pen-register/trap-and-trace) claims** over website and app conduct, retroactive to pending claims filed within the prior two years. **No commercial-purpose exemption; §631/§632 private actions unchanged.** No relief for in-room recording or notetakers | [leginfo bill](https://leginfo.legislature.ca.gov/faces/billNavClient.xhtml?bill_id=202520260SB690), [text](https://leginfo.legislature.ca.gov/faces/billTextClient.xhtml?bill_id=202520260SB690) |
+| EU AI Act Art. 50 | Aug 2, 2026; "Omnibus may have adjusted" | Aug 2, 2026 confirmed; synthetic-content providers have until **Dec 2, 2026** | [timeline](https://artificialintelligenceact.eu/implementation-timeline/) |
+| EU AI Act Annex III | Dec 2, 2027 | Confirmed; full compliance Aug 2, 2028 | same |
+| Cross-reference | "see §7.10" | Fixed to §7.7 (no §7.10 exists) | — |
+
+**Confirmed (marker replaced)**
+
+| Item | Source |
+| --- | --- |
+| CA Penal Code §637.2: greater of $5,000 per violation or 3× actual damages | [leginfo](https://leginfo.legislature.ca.gov/faces/codes_displaySection.xhtml?lawCode=PEN&sectionNum=637.2) |
+| 18 U.S.C. §2520(c)(2): greater of $100/day or $10,000 | [Cornell LII](https://www.law.cornell.edu/uscode/text/18/2520) |
+| 17a-4(b)(4) 3 years (first 2 easily accessible); 17a-4(a) 6 years | [Cornell LII](https://www.law.cornell.edu/cfr/text/17/240.17a-4) |
+| 204-2(e)(1) 5 years (first 2 in office) | [Cornell LII](https://www.law.cornell.edu/cfr/text/17/275.204-2) |
+| CFTC §1.31: oral communications 1 year; other records 5 years | [Cornell LII](https://www.law.cornell.edu/cfr/text/17/1.31) |
+| CPPA ADMT/risk-assessment/audit rules: OAL approval Sept 22, 2025; effective Jan 1, 2026 | [CPPA](https://cppa.ca.gov/regulations/ccpa_updates.html) |
+| COPPA amendments: published Apr 22, 2025; effective Jun 23, 2025; voiceprints added; separate third-party consent | [Federal Register](https://www.federalregister.gov/api/v1/documents/2025-05904.json), [FTC](https://www.ftc.gov/news-events/news/press-releases/2025/01/ftc-finalizes-changes-childrens-privacy-rule-limiting-companies-ability-monetize-kids-data) |
+| CMMC DFARS rule: published Sept 10, 2025; effective Nov 10, 2025 | [Federal Register](https://www.federalregister.gov/api/v1/documents/2025-17359.json) |
+| CMMC Phase 2 pause (July 13, 2026) | Still secondary only (Wikipedia citing DefenseScoop) |
+| OMB M-25-22 (Apr 3, 2025): no training on non-public agency data without consent; American-made AI policy; lock-in and portability | [M-25-22 PDF](https://www.whitehouse.gov/wp-content/uploads/2025/02/M-25-22-Driving-Efficient-Acquisition-of-Artificial-Intelligence-in-Government.pdf) |
+| *In re Otter.AI* MTD order Aug 13, 2026 (Judge Lee) | [FindLaw](https://caselaw.findlaw.com/court/us-dis-crt-n-d-cal/322025.html) (checked for file 01) |
+| Cerebras retention and footprint (Open Q4, partial) | [Cerebras privacy policy](https://www.cerebras.ai/privacy-policy), [BusinessWire](https://www.businesswire.com/news/home/20250311115186/en/Cerebras-Announces-Six-New-AI-Datacenters-Across-North-America-and-Europe-to-Deliver-Industry-s-Largest-Dedicated-AI-Inference-Cloud) |
+
+**Could not verify (search budget exhausted or fetch blocked):** *United States v. Heppner* and *Warner v. Gilbarco* (privilege), NYT v. OpenAI preservation-order dates, Illinois HB 3773 (ILGA certificate error), FAR clause specifics, NIAP MDF version, CJIS v6.0, DPDP penalty schedule, OMB M-26-04, the FCC hotspot rescission, GovRAMP rename, the Gulf hosting rules, and the remaining [kb] statutory citations. *Basich v. Microsoft* remains single-source.
+
+**Founder decisions applied:**
+- **Qwen stays** (revised 2026-10-02). Qwen's PRC origin is kept as a fact and a buyer concern (exec summary, §7.7, Implication 8). Recommendations to add a US-origin model were replaced with mitigations built around Qwen: self-hosted open weights inside the trust boundary, redaction before egress, and provenance documentation (§7.7, §9 feature table, Phase 0 step 6, Open Q3).
+- **AOSP fork without GMS:** Implication 7 notes that GMS licensing (MADA) and Play certification obligations do not apply, and that Play Integrity and banking-app breakage is a non-issue. The NIAP/STIG cost of certifying a custom OS image is unchanged.
+
 
 
 ---
@@ -2025,6 +2242,8 @@ Workstream 6 of the Alpha Phone market research ([manifest](00-manifest.md)). Re
   - **[V]** means the figure was checked in this session (2026-09-30) through web search or a direct fetch of the cited page.
   - **[R]** means the figure is recalled from prior published reporting and the URL is the best-known source. It was **not** re-fetched in this session.
   - **(est.)** marks an analyst estimate or derived figure.
+  - **Fact-check pass (2026-10-02).** Items re-checked on 2026-10-02 are marked "(verified 2026-10-02)" or corrected in place. **Any [R] tag still present could not be verified in that pass** (web search budget ran out mid-pass; many primary pages returned 403/404). See the verification log at the end.
+  - **Founder decisions (2026-10-02).** Alpha keeps Qwen (`qwen-3.8-27b` on Cerebras); this file records buyer objections to Qwen as facts, and frames mitigation around Qwen itself (self-hosted open weights inside the trust boundary, redaction before egress, provenance documentation) rather than a model swap. Alpha's own AOSP image does not need banking apps, Play Integrity or GMS.
 - **Search coverage.** The shared session search budget ran out after 19 searches in this workstream, which is short of the 40+ target. Coverage was topped up with about 30 direct page fetches (Wikipedia, press, GSA, DefenseScoop, AT&T/FirstNet, DoD IG). **Re-verify every [R] figure before it goes into an investor or customer document.**
 - **Product baseline** (from the repo, not from marketing):
   - The phone is an Android UI in app and HOME-launcher flavors. The full signed AOSP image has not been qualified on hardware.
@@ -2035,7 +2254,7 @@ Workstream 6 of the Alpha Phone market research ([manifest](00-manifest.md)). Re
 Two findings from the product baseline change the scores in almost every regulated vertical:
 
 1. **"Confidential compute" is only partly true today.** The enclave protects the orchestration and keys, but the prompt text leaves the enclave for Cerebras. A regulated buyer's security review will find this in the first data-flow diagram.
-2. **The model is Qwen**, from Alibaba, a PRC company. That is a hard blocker for defense and IC buyers, a likely blocker for federal civilian, state/local law enforcement and critical infrastructure buyers, and a question for regulated finance and pharma. Several US states and agencies banned PRC-origin AI (DeepSeek) in 2025 [R] ([example: Texas ban on DeepSeek/RedNote, Jan 2025](https://gov.texas.gov/news/post/governor-abbott-bans-chinese-communist-party-based-ai-and-social-media-apps)). Offering a swappable US or EU open-weight model is a precondition for verticals 1–3 and 9.
+2. **The model is Qwen**, from Alibaba, a PRC company. That is a hard blocker for defense and IC buyers, a likely blocker for federal civilian, state/local law enforcement and critical infrastructure buyers, and a question for regulated finance and pharma. Several US states and agencies banned PRC-origin AI (DeepSeek) in 2025 [R] ([example: Texas ban on DeepSeek/RedNote, Jan 2025](https://gov.texas.gov/news/post/governor-abbott-bans-chinese-communist-party-based-ai-and-social-media-apps); page returned 404 on 2026-10-02). The **FY2026 NDAA** directs DoD and the IC to remove and exclude AI developed by DeepSeek from their devices, with research and CI/CT exceptions ([Wikipedia](https://en.wikipedia.org/wiki/DeepSeek); verified 2026-10-02). It names DeepSeek, not Qwen, but signals how buyers treat PRC-origin models. **Mitigation without changing models (founder decision 2026-10-02):** for verticals 1–3 and 9, offer Qwen open weights self-hosted inside the customer's or Alpha's attested boundary (no third-party inference egress), redact before any prompt leaves the device or enclave, and ship a provenance file (weights source and hashes, licence, evaluation and red-team results, attestation of the loaded model). Expect some defense, IC and federal buyers to reject a PRC-origin model regardless; record those as lost segments, not as a reason to swap.
 
 ---
 
@@ -2183,7 +2402,7 @@ Fit is scored 1–5, where 5 means Alpha can win a paid pilot with what exists. 
   - NSA CSfC/NIAP requirements for the device.
   - DoD CIO mobile policy.
   - OPSEC/COMSEC, which will object to "always-on microphone" by default.
-  - Supply-chain risk management: TAA, Section 889 and model provenance. **Qwen is disqualifying.** The Anthropic designation shows the Pentagon will act on vendor-level supply-chain risk ([V](https://www.mayerbrown.com/en/insights/publications/2026/03/pentagon-designates-anthropic-a-supply-chain-risk-what-government-contractors-need-to-know)).
+  - Supply-chain risk management: TAA, Section 889 and model provenance. **Qwen is disqualifying for many of these reviewers** (buyer concern; the FY2026 NDAA already requires DoD/IC removal of DeepSeek AI, verified 2026-10-02). The Anthropic designation shows the Pentagon will act on vendor-level supply-chain risk ([V](https://www.mayerbrown.com/en/insights/publications/2026/03/pentagon-designates-anthropic-a-supply-chain-risk-what-government-contractors-need-to-know)).
   - Brand diligence on elizaOS/ai16z crypto associations.
 
 ### 2.4 Budget, deal size, procurement
@@ -2194,7 +2413,7 @@ Fit is scored 1–5, where 5 means Alpha can win a paid pilot with what exists. 
   - NATO DIANA challenge programs and the NATO Innovation Fund.
   - UK DASA.
   - Germany and the Bundeswehr, where secure phones come from Secusmart/HENSOLDT [R].
-  - France, where the Ministry of Armed Forces signed a framework agreement with Mistral (2026) [R](https://en.wikipedia.org/wiki/Mistral_AI). Mistral is the reference for "sovereign model plus defense." Wikipedia notes Mensch's public stance against dependence on foreign AI for French defense ([V](https://en.wikipedia.org/wiki/Mistral_AI)).
+  - France, where the Ministry of Armed Forces reportedly signed a framework agreement with Mistral (2026) [R](https://en.wikipedia.org/wiki/Mistral_AI) (not found on the cited page 2026-10-02; could not verify). In May 2026 Mistral's CEO told the National Assembly France should not become a US "vassal state" through reliance on foreign AI in its armed forces (verified on Wikipedia 2026-10-02). Mistral is the reference for "sovereign model plus defense." Wikipedia notes Mensch's public stance against dependence on foreign AI for French defense ([V](https://en.wikipedia.org/wiki/Mistral_AI)).
 
 ### 2.5 Incumbents
 
@@ -2204,14 +2423,14 @@ Fit is scored 1–5, where 5 means Alpha can win a paid pilot with what exists. 
 | Hypori | Virtual mobile (BYOD) | Army contracts | [R](https://www.hypori.com/) |
 | Google (Gemini for Govt, GenAI.mil) | Enterprise AI | Included in GenAI.mil | [V](https://www.defenseone.com/defense-systems/2026/04/pentagon-adds-googles-latest-model-genaimil-usage-soars/413126/) |
 | OpenAI / xAI | ChatGPT Mil, Grok on GenAI.mil (Aug 31, 2026) | CDAO awards | [V](https://shattered.io/pentagon-chatgpt-grok-genai-mil-2026/) |
-| Ask Sage, Scale AI (Donovan), Palantir (AIP, Army enterprise agreement ~$10B/10 yr, Aug 2025) | Gov GenAI and data platforms | — | [R](https://www.army.mil/article/287506/) |
+| Ask Sage, Scale AI (Donovan), Palantir (AIP; Army Enterprise Service Agreement **up to $10B over 10 years, 2025-07-31**, consolidating 75 contracts; verified 2026-10-02) | Gov GenAI and data platforms | — | [Wikipedia](https://en.wikipedia.org/wiki/Palantir_Technologies), [Army](https://www.army.mil/article/287506/) |
 | Anduril (Lattice), Palantir | NGC2, SOCOM autonomy ($86M, Mar 2025) | — | [V](https://defensescoop.com/2025/03/26/anduril-socom-contract-award-autonomy-software-86m/) |
 | TAK ecosystem (TAK Product Center) | Free GOTS | Free to government | [V](https://tak.gov/products) |
 
 ### 2.6 Fit
 
 - **Today: 1/5.** Qwen, inference outside the TEE, no CSfC/NIAP, an always-on mic and a crypto association.
-- **After: 2/5.** On-device ASR, translation and redaction exactly match the SOCOM SSE requirement. Winning it needs a disconnected mode (an offline LLM, which the product has deferred), a US/allied model, ATAK plugin interoperability and a defense prime or integrator partner.
+- **After: 2/5.** On-device ASR, translation and redaction exactly match the SOCOM SSE requirement. Winning it needs a disconnected mode (an offline LLM, which the product has deferred), a model-provenance answer that a DoD AO will accept for self-hosted Qwen weights (uncertain; many will not), ATAK plugin interoperability and a defense prime or integrator partner.
 - **Realistic path:** a SOFWERX/DIU prototype with a software-only build (an ATAK plugin or app on Samsung Tactical), **not** the Alpha phone hardware.
 
 ---
@@ -2358,10 +2577,10 @@ Axon's body-camera share among major-city departments was 85% (2017) ([V](https:
 | Company | Latest funding (date, lead) | Valuation | Scale | Price | Source |
 | --- | --- | --- | --- | --- | --- |
 | Abridge | $250M Series D (Feb 2025) at $2.75B; **$300M Series E (June 24, 2025, a16z; Khosla)** | $5.3B | 150+ large health systems; Q1 2025 contracted ARR $117M | Enterprise (est. $200–$600/clinician/mo) | [V](https://techcrunch.com/2025/06/24/in-just-4-months-ai-medical-scribe-abridge-doubles-valuation-to-5-3b/) |
-| Ambience Healthcare | $243M Series C (July 2025, Oak HC/FT + a16z) | ~$1.25B | Houston Methodist, MultiCare (92% adoption), Ardent | Enterprise | [R](https://www.ambiencehealthcare.com/), customers [V](https://www.ambiencehealthcare.com/) |
-| Microsoft Dragon Copilot (Nuance DAX) | Microsoft acquired Nuance for $19.7B (closed Mar 4, 2022) | — | Dragon Copilot launched Mar 2025 [R] | Enterprise, bundled | [V](https://en.wikipedia.org/wiki/Nuance_Communications), [R](https://news.microsoft.com/2025/03/03/microsoft-dragon-copilot-provides-the-healthcare-industrys-first-unified-voice-ai-assistant-that-enables-clinicians-to-streamline-clinical-documentation-surface-information-and-automate-task/) |
-| Suki | $70M Series D (Oct 2024, Hedosophia) | ~$500M (est.) | Health systems | Enterprise | [R](https://www.suki.ai/news/) |
-| Nabla | $70M Series C (June 2025, HV Capital) | Not verified | 85,000+ clinicians, 130+ orgs, 20M+ encounters/yr | Enterprise + individual | [R](https://www.nabla.com/blog/), scale [V](https://www.nabla.com/) |
+| Ambience Healthcare | $243M Series C (July 2025, Oak HC/FT + a16z; verified 2026-10-02) | ~$1.25B | Houston Methodist, MultiCare (92% adoption), Ardent | Enterprise | [MedCity](https://medcitynews.com/2025/07/healthcare-documentation-startup-unicorn/), customers [V](https://www.ambiencehealthcare.com/) |
+| Microsoft Dragon Copilot (Nuance DAX) | Microsoft acquired Nuance for $19.7B (closed Mar 4, 2022) | — | Dragon Copilot announced 2025-03-03, GA May 2025 in US/Canada, then UK, DE, FR, NL (verified 2026-10-02) | Enterprise, bundled | [V](https://en.wikipedia.org/wiki/Nuance_Communications), [V](https://news.microsoft.com/2025/03/03/microsoft-dragon-copilot-provides-the-healthcare-industrys-first-unified-voice-ai-assistant-that-enables-clinicians-to-streamline-clinical-documentation-surface-information-and-automate-task/) |
+| Suki | $70M Series D (Oct 2024, Hedosophia; verified 2026-10-02) | ~$500M (aggregator est.) | Health systems | Enterprise | [Healthcare Dive](https://www.healthcaredive.com/news/suki-70-million-Series-D-funding/729573/) |
+| Nabla | $70M Series C (June 2025, HV Capital; total $120M; verified 2026-10-02) | Not disclosed | 85,000+ clinicians, 130+ orgs, 20M+ encounters/yr | Enterprise + individual | [Nabla](https://www.nabla.com/blog/70m-series-c), scale [V](https://www.nabla.com/) |
 | Heidi Health | $65M Series B (Oct 2025, Point72 Private Investments) | ~$465M | 175M+ patient interactions, 190+ countries, 77 languages; free tier | Free/individual/enterprise | [R](https://www.heidihealth.com/blog), scale [V](https://www.heidihealth.com/) |
 | Freed | $30M Series A (Mar 2025, Sequoia) | Not verified | ~20K paying clinicians (est.) | ~$99/clinician/mo (est.) | [R](https://www.getfreed.ai/) |
 | Commure (Augmedix) | $200M growth financing (June 2025, Hercules Capital); acquired Augmedix (~$139M, 2024) | Not verified | Ambient + RCM | Enterprise | [R](https://www.commure.com/) |
@@ -2381,7 +2600,7 @@ Market note: Wikipedia counts **50+ AI scribe products** (2024) priced from "mid
 
 ### 5.3 Hospital device fleets
 
-- **Stryker bought Vocera** (announced Jan 2022, ~$2.97B) [R](https://www.stryker.com/us/en/about/news/2022/stryker-completes-acquisition-of-vocera-communications.html). Vocera is now inside Stryker's portfolio ([V](https://en.wikipedia.org/wiki/Vocera_Communications)). Vocera's badges and smartphone apps are the incumbent clinical-communications layer.
+- **Stryker bought Vocera** (announced 2022-01-06, $2.97B; verified 2026-10-02 via [Wikipedia](https://en.wikipedia.org/wiki/Vocera_Communications)). Vocera is now inside Stryker's portfolio ([V](https://en.wikipedia.org/wiki/Vocera_Communications)). Vocera's badges and smartphone apps are the incumbent clinical-communications layer.
 - **Hospital-issued smartphones:** Zebra (Android, the rugged healthcare line), Spectralink (Android), Apple iPhone fleets under Epic Rover/Haiku/Limerick, and Ascom. Many hospitals already issue **Android** devices for nurses (est.). An AOSP phone faces a hospital MDM (SOTI, Intune, Workspace ONE) that expects certified Android Enterprise devices.
 
 ### 5.4 Personas
@@ -2417,14 +2636,14 @@ Market note: Wikipedia counts **50+ AI scribe products** (2024) priced from "mid
 - **Privilege and confidentiality.** ABA Model Rule 1.6 and ABA Formal Opinion 512 (July 2024) on generative AI both apply: lawyers must understand the risks of self-learning tools and get informed consent before inputting client information [R](https://www.americanbar.org/content/dam/aba/administrative/professional_responsibility/ethics-opinions/aba-formal-opinion-512.pdf).
 - **AI conversations may not be privileged.** In United States v. Heppner (S.D.N.Y., Feb 2026), the court reportedly held that a defendant's own consumer-AI conversations were not privileged [R](https://www.reuters.com/legal/). This is a strong argument for **attorney-controlled, confidential** AI tooling.
 - **Court reporting shortage.** BLS counted ~21,300 court reporters in 2022, versus an earlier projection of 27,700, and some states saw an 85% fall in certification applicants over five years ([V](https://en.wikipedia.org/wiki/Court_reporter)). Depositions, client interviews and witness prep need accurate, privileged capture.
-- **Recording-consent law.** Two-party-consent states constrain lawyer–client and witness recordings (see workstream 5). Otter.ai faces a 2025 class action over recording without consent [R](https://www.npr.org/2025/08/15/nx-s1-5503200/otter-ai-lawsuit).
+- **Recording-consent law.** Two-party-consent states constrain lawyer–client and witness recordings (see workstream 5). Otter.ai faces a 2025 class action over recording without consent (N.D. Cal. No. 5:25-cv-06911, filed Aug 2025; ECPA, CIPA and Illinois BIPA claims over OtterPilot auto-joining meetings and using recordings for training; no resolution reported as of Aug 2026; verified 2026-10-02 via [Wikipedia](https://en.wikipedia.org/wiki/Otter.ai); [NPR](https://www.npr.org/2025/08/15/nx-s1-5503200/otter-ai-lawsuit)).
 
 ### 6.2 Incumbents and funding
 
 | Company | Funding (date, lead) | Valuation | Metrics | Source |
 | --- | --- | --- | --- | --- |
 | Harvey | $300M (Feb 2025, Sequoia) at $3B; $300M (June 2025, Kleiner/Coatue) at $5B; $160M (Dec 2025, a16z) at $8B; $200M (Mar 2026, GIC/Sequoia) at $11B; **$550M (Sept 2026, Diffusion/Lightspeed) at $15.5B** | $15.5B | 2025 revenue ~$190M | [V](https://en.wikipedia.org/wiki/Harvey_(software)) |
-| Legora | $80M Series B (May 2025); $150M Series C (Oct 2025) at ~$1.8B | ~$1.8B | Europe/US firms | [R](https://legora.com/) |
+| Legora | $80M Series B (May 2025); $150M Series C (Oct 2025) at $1.8B; **$550M Series D (Mar 2026, Accel) at $5.55B**; $100M ARR by Apr 2026; reported talks at ≥$10B (Aug 2026) | **$5.55B** (corrected from ~$1.8B; verified 2026-10-02) | Europe/US firms | [Wikipedia](https://en.wikipedia.org/wiki/Legora) |
 | Thomson Reuters CoCounsel (Casetext, $650M acquisition 2023) | — | — | Bundled with Westlaw | [R](https://www.thomsonreuters.com/en/press-releases/2023/june/thomson-reuters-completes-acquisition-of-casetext-inc.html) |
 | Clio (acquired vLex ~$1B, 2025) | — | — | SMB law firms; Clio Duo AI | [R](https://www.clio.com/) |
 | EvenUp (PI demand letters) | Series E (Oct 2025) ~$2B val. | ~$2B | Plaintiff firms | [R](https://www.evenuplaw.com/) |
@@ -2493,7 +2712,7 @@ Market note: Wikipedia counts **50+ AI scribe products** (2024) priced from "mid
 - **HR and investigations.** Interviews in harassment and whistleblower investigations need accurate transcripts, strict access and redaction for release. They are subject to state recording-consent law.
 - **M&A deal rooms.** Clean-team rules, NDAs and HSR gun-jumping concerns.
 - **Engineering and IP-heavy firms.** Trade secrets appear in design reviews, and export-controlled technical data appears in meetings.
-- **Bystander and consent risk.** Consumer recorders and bots create legal exposure: the 2025 class action against Otter.ai [R](https://www.npr.org/2025/08/15/nx-s1-5503200/otter-ai-lawsuit).
+- **Bystander and consent risk.** Consumer recorders and bots create legal exposure: the 2025 class action against Otter.ai (N.D. Cal. 5:25-cv-06911; verified 2026-10-02) ([NPR](https://www.npr.org/2025/08/15/nx-s1-5503200/otter-ai-lawsuit)).
 
 ### 8.2 Incumbents
 
@@ -2563,7 +2782,7 @@ Market note: Wikipedia counts **50+ AI scribe products** (2024) priced from "mid
   - Microsoft invested $1.5B in G42 in April 2024 ([V](https://en.wikipedia.org/wiki/G42_(company))).
   - Core42 is the sovereign cloud arm, and G42 launched "Digital Embassies" in Jan 2026 ([V](https://en.wikipedia.org/wiki/G42_(company))).
   - EDGE Group's KATIM makes secure phones (workstream 3) [R](https://www.katim.com/).
-- **Saudi Arabia:** PIF launched HUMAIN in May 2025. Reported partnerships include NVIDIA (18,000 GB300 chips initially), AMD ($10B) and AWS (>$5B "AI Zone") [R](https://www.humain.com/).
+- **Saudi Arabia:** PIF launched HUMAIN on 2025-05-12; NVIDIA allocated about 18,000 top chips initially (verified 2026-10-02 via [Wikipedia](https://en.wikipedia.org/wiki/Humain)). Reported AMD ($10B) and AWS (>$5B "AI Zone") sizes [R](https://www.humain.com/) could not be verified; Qualcomm is also a partner. HUMAIN's flagship model is the Arabic-first ALLaM.
 - **Buyers:** sovereign-AI entities (G42/Core42, HUMAIN), ministries, royal courts and family offices, and national champions (Aramco, ADNOC, e&, stc).
 - **Pain:** Arabic-first on-device ASR, data residency, and sovereign control of keys and models.
 - **Deal sizes:** partner-led programs of $5–$50M+ (est.). Cycle 12–36 months.
@@ -2576,14 +2795,14 @@ Market note: Wikipedia counts **50+ AI scribe products** (2024) priced from "mid
   - €600M at €5.8B (June 2024).
   - €2B at €12B (Sept 2025), with ASML investing €1.3B for ~11% and becoming its top shareholder.
   - $830M for data centers (Mar 2026).
-  - Samsung Electronics stake in a €3B transaction at €21B (Sept 2026) — **single-source; re-verify**.
+  - Samsung Electronics stake in a €3B transaction at €21B (Sept 2026) (re-checked on Wikipedia 2026-10-02; still no primary release fetched). Mistral employs 1,000+ people.
 - **InvestAI:** the EU Commission announced €200B, including €20B for AI gigafactories (Feb 2025) [R](https://ec.europa.eu/commission/presscorner/detail/en/ip_25_467).
 - **Rules:** the EU AI Act, whose GPAI obligations began Aug 2025 [R](https://artificialintelligenceact.eu/), and the GDPR/Schrems-driven preference for EU hosting.
 - **Secure-phone incumbents:** Bittium (Finland), Secusmart (Germany), Thales (France), Murena//e/OS (France), Purism (US) — workstream 3.
-- **Pain:** US CLOUD Act exposure. **AWS Nitro in an AWS region is still a US provider**, although AWS launched the European Sovereign Cloud (Brandenburg, 2025–26) [R](https://aws.amazon.com/compliance/europe-digital-sovereignty/). Alpha would need EU-owned hosting or AWS ESC plus an EU model (Mistral).
+- **Pain:** US CLOUD Act exposure. **AWS Nitro in an AWS region is still a US provider**, although AWS launched the European Sovereign Cloud (Brandenburg, 2025–26) [R](https://aws.amazon.com/compliance/europe-digital-sovereignty/). Alpha would need EU-owned hosting or AWS ESC. Some EU sovereign buyers will also prefer or require an EU model (Mistral); that is a buyer requirement Alpha will not meet by design. Alpha's answer is EU-hosted, self-managed Qwen weights with provenance documentation and redaction before egress, accepting that some tenders will be lost.
 - **Buyers:** national ministries (Interior, Defence), EU institutions, regulated enterprises, and works-council-heavy employers (Germany).
 - **Cycle:** 12–24 months with public tenders (TED).
-- **Fit:** today 1 → after 3, with EU hosting, a Mistral-class model and a GDPR DPIA pack.
+- **Fit:** today 1 → after 3, with EU hosting, self-hosted Qwen weights plus provenance documentation, and a GDPR DPIA pack. Tenders that mandate an EU-origin model are out of reach.
 
 ### 10.3 India
 
@@ -2715,13 +2934,13 @@ The composite is the product of the three (max 125). All scores are analyst esti
 | 4 | **Legal (solo/small/mid firms, T&E, family-office counsel)** | 3 | 2→4 (3.4) | 3 | 31 | Privilege makes confidential AI decisive; Harvey's $15.5B valuation ([V](https://en.wikipedia.org/wiki/Harvey_(software))) proves legal AI spend but targets big firms; court-reporter shortage ([V](https://en.wikipedia.org/wiki/Court_reporter)). |
 | 5 | **PE/VC deal teams** (finance sub-segment) | 3 | 2→4 (3.4) | 4 | 41* | *Scores high but the market is small (thousands of firms). Bundle with #1/#2 rather than build a separate GTM. |
 | 6 | **Behavioral health + home health** | 4 | 1→3 (2.4) | 3 | 29 | Sensitive content, in-person/offline, weaker EHR-native competition. Needs BAA/HIPAA. Avoid physician scribing (Abridge $5.3B ([V](https://techcrunch.com/2025/06/24/in-just-4-months-ai-medical-scribe-abridge-doubles-valuation-to-5-3b/)), Epic, Microsoft). |
-| 7 | **Pharma/biotech R&D + exec** | 3 | 1→3 (2.4) | 2 | 14 | IP-paranoid, rich buyers; the Qwen swap and Part 11 slow it. |
+| 7 | **Pharma/biotech R&D + exec** | 3 | 1→3 (2.4) | 2 | 14 | IP-paranoid, rich buyers; Qwen-provenance review (answered with self-hosted weights and redaction) and Part 11 slow it. |
 | 8 | **Law enforcement (detectives/interviews), EMS** | 3 | 1→3 (2.4) | 2 | 14 | Real pain, FirstNet channel (8.4M connections ([V](https://www.firstnet.com/content/dam/firstnet/white-papers/firstnet-by-the-numbers.pdf))); CJIS, Axon lock-in and disclosure laws slow it. |
 | 9 | **International sovereign (Gulf first, then EU)** | 5 | 1→3 (2.4) | 1 | 12 | Enormous budgets; partner-led white-label; long cycles and local-hosting and model requirements. |
 | 10 | **State/local caseworkers & inspectors** | 3 | 1→2 (1.7) | 2 | 10 | Genuine mobile need; StateRAMP and public-records constraints; small pilots possible. |
-| 11 | **Defense (SOF/tactical via DIU/SOFWERX)** | 5 | 1→2 (1.7) | 1 | 9 | SOCOM's SSE requirement matches on-device ASR/translation ([V](https://sam.gov/workspace/contract/opp/11b9f31e57e940999defcd7a93f2e8dd/view)), but Qwen, crypto branding, CSfC and 18–48 month cycles make it a 2028+ market. Pursue SBIR only with a US model. |
+| 11 | **Defense (SOF/tactical via DIU/SOFWERX)** | 5 | 1→2 (1.7) | 1 | 9 | SOCOM's SSE requirement matches on-device ASR/translation ([V](https://sam.gov/workspace/contract/opp/11b9f31e57e940999defcd7a93f2e8dd/view)), but Qwen origin (a buyer objection that self-hosting may not overcome), crypto branding, CSfC and 18–48 month cycles make it a 2028+ market. Pursue SBIR only where the topic accepts self-hosted open weights with provenance documentation. |
 | 12 | **Federal civilian** | 4 | 1→2 (1.7) | 1 | 7 | $1 frontier chat anchors prices ([V](https://fedscoop.com/anthropic-government-agencies-onegov-general-services-administration-artificial-intelligence/)); FedRAMP gates everything; vendor politics are volatile (Anthropic designation ([V](https://www.cnbc.com/2026/09/25/pentagon-anthropic-ai-risk-appeals-court.html))). |
-| 13 | **Critical infrastructure (utilities/O&G)** | 3 | 1→2 (1.7) | 1 | 5 | Needs rugged/intrinsically-safe hardware and a non-PRC model; OT culture is slow. |
+| 13 | **Critical infrastructure (utilities/O&G)** | 3 | 1→2 (1.7) | 1 | 5 | Needs rugged/intrinsically-safe hardware; many buyers will ask for a non-PRC model (buyer concern; Alpha answers with on-prem Qwen weights and provenance); OT culture is slow. |
 | 14 | **Physician ambient scribing** | 5 | 1→2 (1.7) | 1 | 9 → deprioritize | Huge but saturated by >50 products ([V](https://en.wikipedia.org/wiki/AI_scribe)) and EHR bundling. |
 | 15 | **K-12 education** | 2 | 1→2 (1.7) | 2 | 7 | Free incumbents, low budgets, FERPA/COPPA. Higher-ed research security is a small exception. |
 | 16 | **Intelligence community** | 5 | 1→1 | 1 | 5 | SCIF device rules; software or reference-architecture route only (IQT). |
@@ -2730,7 +2949,7 @@ The composite is the product of the three (max 125). All scores are analyst esti
 
 ## Implications for Alpha Phone
 
-1. **Swap the model before any institutional sale.** The Cerebras `qwen-3.8-27b` route is a disqualifier for defense, IC and federal buyers, and a likely one for law enforcement, critical infrastructure and many regulated enterprises. Ship a model-agnostic router with a US-origin or allied open-weight default (Llama or Mistral-class), and document model provenance. Government AI vendor politics now move fast: the Anthropic supply-chain designation went from directive to appellate ruling in seven months ([V](https://www.cnbc.com/2026/09/25/pentagon-anthropic-ai-risk-appeals-court.html)). Being model-agnostic is itself a sales feature.
+1. **Answer the Qwen objection before any institutional sale, without swapping models (founder decision 2026-10-02).** Buyers in defense, IC and federal government treat PRC-origin models as disqualifying, and law enforcement, critical infrastructure and many regulated enterprises are likely to raise it; the FY2026 NDAA's DeepSeek exclusion shows the direction. The mitigation is about Qwen itself: (a) for regulated and sovereign tiers, run Qwen open weights self-hosted inside the attested boundary rather than through third-party inference; (b) redact before any prompt leaves the device or enclave; (c) publish a provenance file (weights source and hash, licence, evaluations, red-team results) and attest the loaded model hash. Accept that some defense and IC buyers will still say no. Government AI vendor politics move fast: the Anthropic supply-chain designation went from directive to appellate ruling in seven months ([V](https://www.cnbc.com/2026/09/25/pentagon-anthropic-ai-risk-appeals-court.html)).
 2. **Word the confidential claim precisely, or close the gap.** Today the enclave covers orchestration and keys, not inference (`docs/mvp-scope-and-gap-report.md`). In legal, executive, crypto and sovereign sales, "attested private inference" is the purchase reason. Either run inference in an attested TEE (GPU confidential computing, or a self-hosted model in enclave-adjacent infrastructure) or state the Cerebras boundary plainly. An overstated claim found in a security review ends the deal and the reference.
 3. **Redaction must be retention-aware.** Finance (17a-4/FINRA), government (the Federal Records Act, FOIA), law enforcement (SB 524 requires keeping every draft ([V](https://resources.truleo.co/blog/new-law-regulates-ai-police-reports))) and legal holds all require keeping originals. Design the pipeline as **"redact for the model, retain for the record"**: raw audio and transcript go to a customer-controlled WORM/archive (Smarsh, Global Relay, customer S3 Object Lock), and only redacted text reaches inference.
 4. **Beachhead: in-person professional conversations in regulated, fast-buying firms.** That means wealth advisors first, then legal (small/mid firms) and executive/HR/deal teams. These buyers pay $75–$200/user/month today ([V](https://jump.ai/pricing)), buy in 1–6 months and value on-device capture for exactly the meetings Zoom bots miss.
@@ -2739,24 +2958,24 @@ The composite is the product of the three (max 125). All scores are analyst esti
 7. **On-device ASR is the unlock for the largest markets.** SOCOM SSE, home health, law-enforcement interviews and all sovereign markets require disconnected or local-language capture. Prioritize on-device ASR with diarization, local-language support (Arabic, Hindi and other Indic languages, Japanese, Korean) and a visible recording indicator for consent.
 8. **Use a software-first route for government and defense.** Institutional buyers issue certified Samsung/Apple/Zebra devices and will not adopt a new AOSP handset without NIAP/CSfC. Package Alpha's agent, redaction and enclave as an **app or SDK that runs on certified devices** (Android Enterprise, Samsung Knox, ATAK plugin). Keep the Alpha phone for prosumer, executive and SMB segments.
 9. **Build distribution through compliance incumbents.** Archiving vendors (finance), EHR marketplaces (health), DMS (legal: iManage, NetDocuments), FirstNet Ready certification (public safety), Carahsoft/OneGov (government) and sovereign-cloud partners (G42/Core42, HUMAIN, AWS European Sovereign Cloud, Mistral).
-10. **Price as a compliance product, not an AI product.** Chat is free in government and bundled in the enterprise. Alpha's price must be justified by avoided fines (>$3B in off-channel penalties since 2021 ([V](https://www.globalrelay.com/resources/thought-leadership/new-year-same-sec-as-12-firms-hit-with-63-million-in-off-channel-communications-fines/))), privilege protection and hours saved, and delivered as hardware-as-a-service plus per-seat compliance software.
+10. **Price as a compliance product, not an AI product.** Chat is free in government and bundled in the enterprise. Alpha's price must be justified by avoided fines (>$3B in off-channel penalties since 2021 across SEC and CFTC ([V](https://www.globalrelay.com/resources/thought-leadership/new-year-same-sec-as-12-firms-hit-with-63-million-in-off-channel-communications-fines/)); about $2B of that from the SEC across 100+ firms per [FINRA](https://www.finra.org/media-center/blog/sec-off-channel-communications-settlements-sro-collateral-consequences), with SEC Chair Atkins now de-emphasizing recordkeeping cases, verified 2026-10-02), privilege protection and hours saved, and delivered as hardware-as-a-service plus per-seat compliance software.
 
 ## Open questions
 
 1. **Inference boundary.** Can Alpha run a competitive model inside an attested TEE (for example NVIDIA H100/Blackwell confidential computing) at acceptable latency and cost? Or does Cerebras offer attested or private-tenancy inference? This single answer moves fit scores in 5+ verticals.
-2. **Model provenance.** Which non-PRC open-weight model gives Qwen-class quality at 27B-class size on Cerebras, and can the enclave image pin and attest the model hash?
+2. **Model provenance.** Can the enclave image pin and attest the Qwen weights hash, and what provenance package (source, licence, evaluations, red-team results) will a DoD Authorizing Official or bank model-risk team accept for self-hosted Qwen? Which buyer segments reject PRC-origin weights regardless?
 3. **Retention architecture.** Which archive (Smarsh, Global Relay, Theta Lake) will partner for a 17a-4-compliant mobile capture integration, and what does their certification cost?
 4. **Consent UX.** How does the always-on assistant handle all-party-consent states and EU employee monitoring (works councils) without killing the use case? Does a visible hardware indicator suffice legally?
 5. **Device vs software.** For each institutional vertical, will buyers accept a new AOSP device, or must Alpha ship as an app on Samsung Knox/Android Enterprise first? Validate this with 5–10 CISO interviews.
 6. **Anthropic/government volatility.** The Claude OneGov listing (extended to Oct 31, 2026) conflicts with the Feb 2026 directive to cease use ([V](https://www.washingtontechnology.com/contracts/2026/09/google-extends-gemini-onegov-deal-november/416338/), [V](https://www.npr.org/2026/03/06/g-s1-112713/pentagon-labels-ai-company-anthropic-a-supply-chain-risk)). What does this imply for any vendor's model choice in government sales?
 7. **Brand separation.** How much does the elizaOS/ai16z association cost in regulated diligence, and does a separate corporate entity (Alpha Compute) sufficiently firewall it?
 8. **Unverified figures to re-check.** Every [R] item needs re-verification, especially:
-   - Ambience, Suki, Nabla, Heidi, Freed and Commure rounds and valuations.
+   - Heidi, Freed and Commure rounds and valuations (Ambience, Suki and Nabla verified 2026-10-02).
    - Epic AI Charting timing.
    - The Harvey Sept 2026 round (single source: Wikipedia).
-   - Mistral–Samsung (single source).
+   - Mistral–Samsung (now confirmed on Wikipedia; primary release not fetched).
    - Seeker pre-orders.
-   - HUMAIN partnership sizes.
+   - HUMAIN AMD and AWS partnership sizes (launch date and NVIDIA allocation verified).
    - IndiaAI budget.
    - Gallup teacher AI data.
    - The US v. Heppner holding.
@@ -2765,6 +2984,40 @@ The composite is the product of the three (max 125). All scores are analyst esti
 9. **Wealth-advisor saturation.** With Jump (27K advisors) and Zocks funded and prices compressing toward $50 ([V](https://www.investmentnews.com/advisor-tech/is-50-the-new-120-price-compression-comes-to-ai-notetakers/264773)), is a device-plus-software offer differentiated enough? Or should Alpha partner with (or be the hardware for) Jump or Zocks?
 10. **Behavioral-health liability.** What are the liability and insurance requirements for AI-generated therapy notes (42 CFR Part 2, state mental-health confidentiality laws), and will malpractice carriers cover them?
 11. **Sovereign partners.** Which partner (G42/Core42, HUMAIN, an EU telco) would white-label the stack, and what local-hosting and local-model obligations would they impose on the enclave design?
+
+---
+
+## Verification log (2026-10-02)
+
+Web search was available for part of this pass and then exhausted; the rest used direct fetches, many of which returned 403/404. Items not listed here keep their [R] tag and should be read as "could not verify".
+
+| # | Claim (as first written) | Result | Source |
+| --- | --- | --- | --- |
+| 1 | Qwen origin is a blocker for defense/IC/federal; "swap the model" | **Kept as a buyer concern; recommendation changed** per founder decision: no model swap. Mitigation reframed to self-hosted Qwen weights inside the trust boundary, redaction before egress and provenance documentation (summary, §2.3, §2.6, §10.2, ranking table, implication 1, open question 2) | founder decision |
+| 2 | PRC-model bans | **Added:** FY2026 NDAA directs DoD/IC to remove DeepSeek AI. Texas ban page returned 404 (could not verify) | [Wikipedia](https://en.wikipedia.org/wiki/DeepSeek) |
+| 3 | Palantir Army enterprise agreement ~$10B/10 yr | Confirmed: up to $10B over 10 years, 2025-07-31, 75 contracts consolidated | [Wikipedia](https://en.wikipedia.org/wiki/Palantir_Technologies) |
+| 4 | Legora ~$1.8B | **Corrected:** $550M Series D at $5.55B (Mar 2026); $100M ARR (Apr 2026); talks at ≥$10B (Aug 2026) | [Wikipedia](https://en.wikipedia.org/wiki/Legora) |
+| 5 | Ambience $243M C at ~$1.25B | Confirmed | [MedCity](https://medcitynews.com/2025/07/healthcare-documentation-startup-unicorn/) |
+| 6 | Suki $70M D (Hedosophia) | Confirmed | [Healthcare Dive](https://www.healthcaredive.com/news/suki-70-million-Series-D-funding/729573/) |
+| 7 | Nabla $70M C (HV Capital) | Confirmed; total $120M | [Nabla](https://www.nabla.com/blog/70m-series-c) |
+| 8 | Dragon Copilot launched Mar 2025 | Confirmed (announced 2025-03-03; GA May 2025) | [Microsoft](https://news.microsoft.com/2025/03/03/microsoft-dragon-copilot-provides-the-healthcare-industrys-first-unified-voice-ai-assistant-that-enables-clinicians-to-streamline-clinical-documentation-surface-information-and-automate-task/) |
+| 9 | Stryker–Vocera ~$2.97B, Jan 2022 | Confirmed (announced 2022-01-06) | [Wikipedia](https://en.wikipedia.org/wiki/Vocera_Communications) |
+| 10 | Otter.ai 2025 class action | Confirmed and detailed (N.D. Cal. 5:25-cv-06911; ECPA, CIPA, BIPA) | [Wikipedia](https://en.wikipedia.org/wiki/Otter.ai) |
+| 11 | Mistral–Samsung €21B (single source) | Confirmed on Wikipedia; primary not fetched | [Wikipedia](https://en.wikipedia.org/wiki/Mistral_AI) |
+| 12 | French Armed Forces framework agreement with Mistral | Could not verify (not on cited page) | — |
+| 13 | HUMAIN launch and partners | Launch 2025-05-12 and ~18,000 NVIDIA chips confirmed; AMD $10B and AWS $5B could not verify | [Wikipedia](https://en.wikipedia.org/wiki/Humain) |
+| 14 | Off-channel penalties >$3B | Kept (SEC + CFTC); **added** SEC ≈$2B across 100+ firms and the Atkins-era de-emphasis | [FINRA](https://www.finra.org/media-center/blog/sec-off-channel-communications-settlements-sro-collateral-consequences) |
+| 15 | Jump 27K advisors | Confirmed ($80M Series B, Feb 2026, Insight) | [WealthManagement](https://www.wealthmanagement.com/artificial-intelligence/jump_secures_series_b) |
+| 16 | Personal financial advisors 299,400 | Confirmed (BLS 2025) | [BLS](https://www.bls.gov/ooh/business-and-financial/personal-financial-advisors.htm) |
+| 17 | ~1.32M lawyers (ABA) | Could not verify (ABA page 403). BLS counts 863,700 lawyer jobs in 2025, a different measure (employment vs. licensed resident attorneys) | [BLS](https://www.bls.gov/ooh/legal/lawyers.htm) |
+| 18 | Army BYOD / Hypori | **Added context:** Army required GFE phones to be disenrolled from DMUC by 2026-05-30, moving users to Hypori or Army MAM | [DVIDS](https://www.dvidshub.net/news/564961/army-sets-deadline-dmuc-device-turn-in-moves-new-mobility-program) |
+| 19 | Anduril NGC2 ~$100M (July 2025) | Could not verify (Anduril page 404; not on Wikipedia) | — |
+| 20 | CDAO $200M frontier-AI awards | Could not verify (ai.mil 403) | — |
+| 21 | Solana Seeker 150K+ pre-orders; Saga price | Could not verify (pages 404) | — |
+| 22 | US v. Heppner (S.D.N.Y., Feb 2026) | Could not verify | — |
+| 23 | Remaining [R] items (OMB M-25-21, USAi, PA pilot, CJIS, NAIC, Gallup, NCES IDEA, MagicSchool, Brisk, CSU ChatGPT Edu, InvestAI, EU AI Act dates, AWS ESC, IndiaAI, DPDP, Japan, Korea, Veeva, Harmonic, JPMorgan LLM Suite) | Could not verify in this pass | — |
+| 24 | Founder decision: AOSP fork without banking apps / Play Integrity / GMS | No blocker of that kind was stated in this file; no change needed | founder decision |
+
 
 
 ---
@@ -2778,6 +3031,8 @@ Research date: 2026-09-30. Workstream 7 of the [manifest](00-manifest.md). This 
 - Market-research-firm figures ("syndicated reports") are not audited and often disagree by 2–10x. They are used here only to bracket the size of the space. The bottom-up model drives the headline numbers.
 - "ARPU" means annual revenue per user, including hardware amortized over 3 years where a device is sold. It is not gross hardware revenue in the year of sale.
 - Year 1 of the SOM curve is 2027. Year 5 is 2031.
+- **Fact-check pass (2026-10-02).** Key inputs were re-checked against primary pages where reachable. No population or price input changed enough to alter the TAM/SAM/SOM arithmetic, so the headline numbers stand. New context (Army device policy, SEC enforcement posture, Jump's advisor count) is added where it affects interpretation. See the verification log at the end.
+- **Founder decision (2026-10-02).** Alpha's own AOSP image does not need banking apps, Play Integrity or GMS. That does not change this sizing; the reach factor below is about whether professionals will carry an Android or second device, not about app compatibility.
 
 ---
 
@@ -2812,9 +3067,9 @@ Where a firm's attribution came only from a search-result snippet and was not ve
 | AI speech-to-text tools | Market Research Future | $3.86B (2025) | $36.91B (2035) | 25.32% | [MRFR](https://www.marketresearchfuture.com/reports/ai-speech-to-text-tool-market-12209) |
 | AI speech-to-text tools | Technavio | +$8.29B increment 2024–29 | — | 28.8% | [Technavio](https://www.technavio.com/report/ai-speech-to-text-tool-market-industry-analysis) |
 | Speech-to-text API | Allied Market Research | $5B (2024) | $21B (2034) | 15.2% | [PR Newswire](https://www.prnewswire.com/news-releases/speech-to-text-api-market-to-reach-5-billion-by-2024-in-the-short-term-and-21-billion-by-2034-globally-at-15-2-cagr-allied-market-research-302452178.html) |
-| **AI meeting assistants** | Precedence Research | ~$1.20B (2025) (attribution unverified) | $6.28B (2035) | ~18% | [Precedence](https://www.precedenceresearch.com/ai-in-meeting-assistants-market) |
+| **AI meeting assistants** | Precedence Research | $1.20B (2025) (verified on the Precedence page 2026-10-02) | $6.28B (2035) | 18% (2026–35) | [Precedence](https://www.precedenceresearch.com/ai-in-meeting-assistants-market) |
 | AI meeting assistants | Grand View Research | not retrieved (page returned 403) | 2033 | 25.8% (2026–33) | [GVR](https://www.grandviewresearch.com/industry-analysis/ai-meeting-assistant-market-report) |
-| AI meeting assistants | Research&Markets / TBRC / Dataintelo / MRI | $3.14–3.8B (2025) (attribution unverified) | 2030–34 | 19–25% | [R&M](https://www.researchandmarkets.com/reports/6226248/ai-powered-meeting-assistants-market-report), [TBRC](https://www.thebusinessresearchcompany.com/report/artificial-intelligence-ai-powered-meeting-assistants-global-market-report), [Dataintelo](https://dataintelo.com/report/ai-meeting-assistants-market) |
+| AI meeting assistants | Research&Markets (verified 2026-10-02: $3.14B 2025, $3.91B 2026, $9.33B 2030, 24.3% CAGR); TBRC / Dataintelo / MRI up to $3.8B (could not verify) | $3.14–3.8B (2025) | 2030–34 | 19–25% | [R&M](https://www.researchandmarkets.com/reports/6226248/ai-powered-meeting-assistants-market-report), [TBRC](https://www.thebusinessresearchcompany.com/report/artificial-intelligence-ai-powered-meeting-assistants-global-market-report), [Dataintelo](https://dataintelo.com/report/ai-meeting-assistants-market) |
 | Horizontal AI copilots (enterprise spend) | Menlo Ventures (Dec 2025) | $8.4B (2025), of which general-purpose copilots $7.2B | — | — | [Menlo Enterprise 2025](https://menlovc.com/perspective/2025-the-state-of-generative-ai-in-the-enterprise/) |
 | **AI voice recorders (hardware)** | No credible syndicated report. Best proxy is the leader's revenue: Plaud | Plaud revenue ~$250M (2025, expected); ~$56M (2024) | Target $500M sales (2026) | ~3x YoY (2025) | [KrASIA](https://kr-asia.com/tencents-rumored-plaud-deal-points-to-looming-ai-hardware-contest), [Sacra](https://sacra.com/c/plaud/) |
 | AI voice recorders | Plaud (company, via TechCrunch, June 2026) | >2M devices shipped; software ARR >$100M; ~50% of owners pay | — | — | [TechCrunch](https://techcrunch.com/2026/06/16/plaud-says-its-software-business-topped-100m-in-arr-after-shipping-over-2m-ai-notetakers/) |
@@ -2822,10 +3077,10 @@ Where a firm's attribution came only from a search-result snippet and was not ve
 | **GenAI smartphones** (units) | IDC (Jul 2024) | 234.2M (2024, 19% share) | >370M (2025, 30%), 912M (2028, >70%) | 78.4% (2024–28) | [IDC](https://my.idc.com/getdoc.jsp?containerId=prUS52478124), [RCR](https://www.rcrwireless.com/20240801/featured/idc-predicts-912-million-gen-ai-smartphone-shipments-by-2028) |
 | GenAI smartphones (units) | Counterpoint (Mar 2025; Jun 2026) | >400M (2025, ~1/3 share) | 45% share (2026), 52% (2027) | — | [Counterpoint 2025](https://counterpointresearch.com/en/insights/genai-smartphone-shipments-to-exceed-400-million-in-2025-capturing-onethird-of-global-market), [Counterpoint 2026](https://counterpointresearch.com/en/insights/genai-smartphone-share-to-rise-to-45-percent-of-global-shipments-in-2026) |
 | Total smartphones | IDC (2025) | ~+1% growth in 2025 | — | — | [IDC](https://my.idc.com/getdoc.jsp?containerId=prUS53767725) |
-| **Ultra-secure smartphones** | IMARC | $4.91B (2025) | $24.04B (2034) | 17.68% | [IMARC](https://www.imarcgroup.com/ultra-secure-smartphone-market) |
-| Ultra-secure smartphones | Second firm (SkyQuest/MRFR; attribution unverified) | $4.06B (2025) | $13.41B (2033) | 16.1% | [SkyQuest](https://www.skyquestt.com/report/ultra-secure-smartphone-market) |
+| **Ultra-secure smartphones** | IMARC (verified 2026-10-02; Android 68.6% share; government 46.6% of demand) | $4.91B (2025) | $24.04B (2034) | 17.68% | [IMARC](https://www.imarcgroup.com/ultra-secure-smartphone-market) |
+| Ultra-secure smartphones | SkyQuest (verified on the SkyQuest page 2026-10-02) | $4.06B (2025) | $13.41B (2033) | 16.1% | [SkyQuest](https://www.skyquestt.com/report/ultra-secure-smartphone-market) |
 | Encrypted phones | Verified Market Reports | $1.39B (2025) | $8.57B (2034) | 22.4% | [VMR](https://www.verifiedmarketreports.com/product/encrypted-phone-market-size-and-forecast/) |
-| **Rugged phones** | Coherent / Technavio / others (attribution unverified) | $3.5–5.8B (2025) | 2030–32 | 4.5–11.1% | [Coherent](https://www.coherentmarketinsights.com/industry-reports/rugged-phones-market), [Technavio](https://www.technavio.com/report/rugged-smartphone-market-analysis) |
+| **Rugged phones** | Coherent / Technavio / others (could not verify 2026-10-02) | $3.5–5.8B (2025) | 2030–32 | 4.5–11.1% | [Coherent](https://www.coherentmarketinsights.com/industry-reports/rugged-phones-market), [Technavio](https://www.technavio.com/report/rugged-smartphone-market-analysis) |
 | **Enterprise mobility management** | Grand View Research | $19.0B (2024) | $69.1B (2030) | 24.1% | [GVR press release](https://www.grandviewresearch.com/press-release/global-enterprise-mobility-management-emm-market) |
 | Enterprise mobility management | Mordor Intelligence | $33.9B (2025) | $94.47B (2031) | 18.62% | [Mordor](https://www.mordorintelligence.com/industry-reports/enterprise-mobility-management-market) |
 | **Confidential computing** | Grand View Research | $5.5B (2023) | $153.8B (2030) | 61.1% | [GVR](https://www.grandviewresearch.com/industry-analysis/confidential-computing-market-report) |
@@ -2835,10 +3090,10 @@ Where a firm's attribution came only from a search-result snippet and was not ve
 | Data loss prevention | Straits Research | $3.33B (2025) | 2034 | 22.09% | [Straits](https://straitsresearch.com/report/data-loss-prevention-market) |
 | Data loss prevention | 360iResearch | $6.39B (2025) | 2032 | — | [360i](https://www.360iresearch.com/library/intelligence/data-loss-prevention) |
 | **AI-specific data security (GenAI cyber)** | MarketsandMarkets | $8.65B (2025) | $35.5B (2031) | 26.5% | [M&M](https://www.marketsandmarkets.com/Market-Reports/generative-ai-cybersecurity-market-164202814.html) |
-| AI security (all) | Via Lakera blog (firm attribution unverified) | $24.3B (2024), $30.1B (2025) | $133.8B (2030) | 21.9% | [Lakera](https://www.lakera.ai/blog/ai-security-trends) |
+| AI security (all) | Via Lakera blog (firm attribution could not verify 2026-10-02) | $24.3B (2024), $30.1B (2025) | $133.8B (2030) | 21.9% | [Lakera](https://www.lakera.ai/blog/ai-security-trends) |
 | AI cybersecurity spend | Gartner (Jan 2026, via secondary) | $51B (2026) | — | — | [Digital Applied compilation](https://www.digitalapplied.com/blog/ai-spending-forecasts-2026-gartner-idc-stanford-compiled) |
 | Shadow-AI risk (qualitative driver) | Gartner | >40% of enterprises will have shadow-AI incidents by 2030 | — | — | [Petri](https://petri.com/shadow-ai-enterprise-threat-2030/) |
-| **Ambient clinical documentation** | Menlo Ventures (Oct 2025) | $600M (2025), 2.4x YoY. Shares: Microsoft/Nuance 33%, Abridge 30%, Ambience 13%, Suki 10% | — | — | [Menlo Healthcare 2025](https://menlovc.com/perspective/2025-the-state-of-ai-in-healthcare/), [Becker's](https://www.beckershospitalreview.com/healthcare-information-technology/ai/ambient-ai-scribes-by-market-share/) |
+| **Ambient clinical documentation** | Menlo Ventures (Oct 2025) | $600M (2025), 2.4x YoY. Shares: Microsoft/Nuance 33%, Abridge 30%, Ambience 13% (verified on the Menlo page 2026-10-02); Suki ~10% per Becker's (Menlo groups the rest as "others 24%") | — | — | [Menlo Healthcare 2025](https://menlovc.com/perspective/2025-the-state-of-ai-in-healthcare/), [Becker's](https://www.beckershospitalreview.com/healthcare-information-technology/ai/ambient-ai-scribes-by-market-share/) |
 | Ambient scribe | Astute Analytica | $1.2B (2025) | 2035 | — | [Astute](https://www.astuteanalytica.com/industry-report/ai-clinical-documentation-ambient-scribe-market) |
 | Ambient scribe | Growth Market Reports | $1.75B (2025) | $12.04B (2034) | — | [GMR](https://growthmarketreports.com/report/ambient-ai-scribe-market) |
 | Ambient clinical intelligence | DataM Intelligence | $2.34B (2025) | — | — | [DataM](https://www.datamintelligence.com/research-report/ambient-clinical-intelligence-voice-ai-for-ehr-market) |
@@ -2904,17 +3159,17 @@ Growing at the blended ~20–25% CAGR that the firms report, this adjacency reac
 | H4 | Healthcare / BH | Substance abuse, behavioral and mental-health counselors | 533,400 (2025) | [BLS OOH](https://www.bls.gov/ooh/community-and-social-service/substance-abuse-behavioral-disorder-and-mental-health-counselors.htm) | Growing 18% to 2035 |
 | H5 | Healthcare / BH | Clinical and counseling psychologists | 81,300 (2025) | [BLS OOH](https://www.bls.gov/ooh/life-physical-and-social-science/psychologists.htm) | |
 | | **Healthcare total** | | **1,982,700 (der.)** | | |
-| F1 | Finance | FINRA-registered securities representatives | ~625,000 (Mar 2026); 3,250+ firms | [Wikipedia (FINRA)](https://en.wikipedia.org/wiki/Financial_Industry_Regulatory_Authority) | FINRA's own 2025 Industry Snapshot PDF could not be retrieved. Treat as secondary. |
+| F1 | Finance | FINRA-registered securities representatives | ~625,000 (Mar 2026); 3,250+ firms | [Wikipedia (FINRA)](https://en.wikipedia.org/wiki/Financial_Industry_Regulatory_Authority) | Re-checked 2026-10-02: Wikipedia still cites these figures (March 2026). FINRA's 2025 Industry Snapshot page exists but its PDF did not load, so the primary figure could not be verified. Treat as secondary. |
 | F1a | Finance (cross-check) | Personal financial advisors | 299,400 (2025) | [BLS OOH](https://www.bls.gov/ooh/business-and-financial/personal-financial-advisors.htm) | Overlaps F1. Not added. |
 | F1b | Finance (cross-check) | Securities, commodities and financial services sales agents | 531,000 (2025) | [BLS OOH](https://www.bls.gov/ooh/sales/securities-commodities-and-financial-services-sales-agents.htm) | Overlaps F1. Not added. |
 | | **Finance total** | | **625,000** | | Excludes insurance underwriters (125,600, [BLS](https://www.bls.gov/ooh/business-and-financial/insurance-underwriters.htm)) and bank staff. Conservative. |
 | L1 | Legal | Lawyers | 863,700 (2025) | [BLS OOH](https://www.bls.gov/ooh/legal/lawyers.htm) | |
 | L2 | Legal | Paralegals and legal assistants | 404,900 (2025) | [BLS OOH](https://www.bls.gov/ooh/legal/paralegals-and-legal-assistants.htm) | |
 | | **Legal total** | | **1,268,600 (der.)** | | |
-| G1 | Government | Federal civilian employees (ex-USPS) | ~2.4M (Nov 2024) → **2.2M used (est.)** after 2025 reductions | [Pew Research](https://www.pewresearch.org/short-reads/2025/01/07/what-the-data-says-about-federal-workers/) | The ~8% haircut for 2025 workforce cuts is an estimate |
-| G2 | Defense | Active-duty military | 1,294,191 (Jun 2024) | [Wikipedia (DoD)](https://en.wikipedia.org/wiki/United_States_Department_of_Defense) | Only **30% counted (est.)** as office/staff knowledge workers → 388,300 (der.) |
+| G1 | Government | Federal civilian employees (ex-USPS) | ~2.4M (Nov 2024) → **2.2M used** after 2025 reductions | [Pew Research](https://www.pewresearch.org/short-reads/2025/01/07/what-the-data-says-about-federal-workers/), [Wikipedia (2025 federal layoffs)](https://en.wikipedia.org/wiki/2025_United_States_federal_mass_layoffs) | The ~8% haircut is consistent with reports that about 9% of the federal workforce had been eliminated by March 2026 (2.4M × 0.91 ≈ 2.18M; checked 2026-10-02) |
+| G2 | Defense | Active-duty military | 1,294,191 (Jun 2024; still the latest figure on the cited page, 2026-10-02) | [Wikipedia (DoD)](https://en.wikipedia.org/wiki/United_States_Department_of_Defense) | Only **30% counted (est.)** as office/staff knowledge workers → 388,300 (der.) |
 | G3 | Defense (cross-check) | DoD civilians | 789,594 (Jun 2024) | [Wikipedia (DoD)](https://en.wikipedia.org/wiki/United_States_Department_of_Defense) | Inside G1. Not added. |
-| G4 | Cleared (cross-check) | Top Secret clearance holders | ~1.25M (2019) | [Wikipedia (Classified information)](https://en.wikipedia.org/wiki/Classified_information_in_the_United_States) | Overlaps G1/G2 plus contractors. Not added. The total cleared population (~4M) is widely cited from ODNI reports but could not be retrieved (est.). |
+| G4 | Cleared (cross-check) | Top Secret clearance holders | ~1.25M (2019) | [Wikipedia (Classified information)](https://en.wikipedia.org/wiki/Classified_information_in_the_United_States) | Overlaps G1/G2 plus contractors. Not added. The total cleared population (~4M) is widely cited from ODNI reports but could not be retrieved (could not verify 2026-10-02). |
 | | **Government/defense total** | | **2,588,300 (der./est.)** | | Excludes state and local government (~20M workers, est.) |
 | E1 | Education | Public K-12 teachers | 3.8M (2020–21) | [NCES](https://nces.ed.gov/programs/coe/indicator/clr/public-school-teachers) | Stale year. Private-school teachers excluded. |
 | E2 | Education | Postsecondary teachers | ~1.4M (2025) | [BLS OOH](https://www.bls.gov/ooh/education-training-and-library/postsecondary-teachers.htm) | |
@@ -3065,12 +3320,13 @@ Base SAM is $2.18B and base Y5 SOM is $84.8M. Each driver is varied alone.
 | Personal financial advisors (BLS, cross-check) | 299,400 | [BLS](https://www.bls.gov/ooh/business-and-financial/personal-financial-advisors.htm) |
 | SEC-registered RIA firms (2019, dated) | ~12,993 firms; 88% have <50 employees | [Wikipedia (RIA)](https://en.wikipedia.org/wiki/Registered_investment_adviser) |
 | Independent channel share | 40% → **250,000 reachable advisors/reps** | (est.) |
+| Penetration comp | Jump reached **27,000 advisors** in under two years and raised an $80M Series B (2026-02) | [WealthManagement](https://www.wealthmanagement.com/artificial-intelligence/jump_secures_series_b) (verified 2026-10-02) |
 | ARPU | $100/mo software ([Jump](https://jump.ai/pricing)) + $500/yr device = **$1,700/yr** | (est.) |
 | **Beachhead market** | **$425M/yr** | (der.) |
 | Year-3 capture, cons./base/aggr. | 1% / 2% / 4% = 2,500 / 5,000 / 10,000 seats | (est.) |
 | **Year-3 ARR** | **$3.0M** ($1,200 software only) / **$8.5M** / **$26.3M** ($2,633) | (der.) |
 
-**Why this beachhead.** Advisors already pay $100+/mo for AI meeting notes. The regulator requires that business communications be *retained*, and in-person and mobile conversations are the gap in that coverage. A device that captures, redacts client PII before cloud inference, and exports to the compliance archive fits the buyer's need. **Caveat:** retention obligations conflict with "redact everything." The product must keep an unredacted archive copy under the firm's control (see 04 and 05).
+**Why this beachhead.** Advisors already pay $100+/mo for AI meeting notes; Jump's 27,000 advisors at ~$100/mo imply roughly $30M+ of annualized software spend with one vendor (der.), so the base Y3 capture of 5,000 seats is about a fifth of what one competitor has already reached. The regulator requires that business communications be *retained*, and in-person and mobile conversations are the gap in that coverage. A device that captures, redacts client PII before cloud inference, and exports to the compliance archive fits the buyer's need. **Caveat:** retention obligations conflict with "redact everything." The product must keep an unredacted archive copy under the firm's control (see 04 and 05). **Enforcement caveat (2026-10-02):** the SEC's off-channel sweep produced about $2B in penalties across 100+ firms (2021–24), but Chair Atkins has signalled lower priority for recordkeeping cases. The rules are unchanged, so the archive requirement still drives purchase, but fear of new fines is a weaker sales lever than in 2024 ([FINRA](https://www.finra.org/media-center/blog/sec-off-channel-communications-settlements-sro-collateral-consequences), [Bond Buyer](https://www.bondbuyer.com/news/secs-atkins-criticizes-off-channel-comms-enforcement)).
 
 ### 5.2 Beachhead B — behavioral health and private clinics
 
@@ -3099,9 +3355,10 @@ Base SAM is $2.18B and base Y5 SOM is $84.8M. Each driver is varied alone.
 | **Beachhead market** | **$548M/yr** | (der.) |
 | Year-3 pilot seats, cons./base/aggr. | 500 / 2,000 / 5,000 | (est.) |
 | **Year-3 revenue** | **$1.3M / $5.3M / $13.2M**, plus SBIR/DIU/AFWERX non-dilutive funding (see 08) | (der.) |
-| Market context | Ultra-secure phones $4.1–4.9B (2025), government = 46.6% of end-user demand | [IMARC](https://www.imarcgroup.com/ultra-secure-smartphone-market) |
+| Market context | Ultra-secure phones $4.1–4.9B (2025), government = 46.6% of end-user demand (verified 2026-10-02) | [IMARC](https://www.imarcgroup.com/ultra-secure-smartphone-market) |
+| Device-policy context | The Army required commands to disenroll government-furnished phones from DMUC and return them by **2026-05-30**, moving users to BYOD with Hypori or Army MAM; dedicated government phones only by general-officer exception | [DVIDS](https://www.dvidshub.net/news/564961/army-sets-deadline-dmuc-device-turn-in-moves-new-mobility-program) (verified 2026-10-02) |
 
-**Why this beachhead.** It carries the highest strategic value and is the best reference customer for sovereign buyers abroad. The attested-enclave architecture fits zero-trust doctrine. **Caveat:** production scale needs NIAP MDF, CSfC and IL5/FedRAMP, each of which takes 12–24 months (see 05). The crypto association of elizaOS is a trust liability here (see 11). Treat this as a funded pilot track, not the revenue engine.
+**Why this beachhead.** It carries the highest strategic value and is the best reference customer for sovereign buyers abroad. The attested-enclave architecture fits zero-trust doctrine. **Caveat:** production scale needs NIAP MDF, CSfC and IL5/FedRAMP, each of which takes 12–24 months (see 05). The Army's 2026 move away from government-furnished phones toward BYOD also means the hardened-device ARPU ($2,633) applies only to exception users; a BYOD app tier is the likelier route for most Army staff. The base pilot seat counts (2,000 by Y3) are small enough to survive this, but a device-based government model would shrink. The crypto association of elizaOS is a trust liability here (see 11). Treat this as a funded pilot track, not the revenue engine.
 
 ### 5.4 Runner-up — executives and small/mid law firms
 
@@ -3131,13 +3388,39 @@ The reachable population is 780,900 executives and executive assistants ([BLS](h
 
 1. **Global headcount inputs.** The number of physicians (WHO), lawyers (CCBE/IBA) and licensed advisors outside the US could not be retrieved in this pass. The 2.5x global spend multiplier is an estimate and should be replaced with sourced counts.
 2. **FINRA primary source.** Confirm the ~625k registered reps and the split between the independent BD/RIA channel and the wirehouse channel from FINRA's 2025 Industry Snapshot and the IAA/NRS *Evolution Revolution* 2025 report. Neither document could be retrieved.
-3. **DoD mobile device counts.** The DoD Mobility Unclassified and Classified capability device counts, and the total cleared population (~4M per ODNI, est.), were not verified. They would allow a device-based rather than personnel-based government model.
+3. **DoD mobile device counts.** The DoD Mobility Unclassified and Classified capability device counts, and the total cleared population (~4M per ODNI, est.), could not be verified on 2026-10-02. *New context:* the Army ended DMUC government-furnished phones by 2026-05-30 in favour of BYOD plus Hypori/MAM, so a device-based model would now undercount BYOD demand and overcount hardened-device demand.
 4. **Android acceptance (reach factor).** What share of target professionals would carry an Android device or a second device? Primary research is needed: a survey of 50–100 advisors and clinicians.
 5. **Willingness to pay for a device.** Would advisors or clinicians pay $1,000–2,500 for a hardened device, or only accept a firm-provided or free device with a subscription?
-6. **Meeting-assistant market attribution.** Several syndicated figures ($3.14–3.8B) could not be tied to a specific firm on the page, and the Grand View page returned 403. Verify before quoting any single number in an investor deck.
+6. **Meeting-assistant market attribution.** *Partly resolved 2026-10-02:* Precedence ($1.20B) and Research&Markets ($3.14B) are now verified on their own pages. TBRC, Dataintelo and Grand View figures remain unverified.
 7. **Retention versus redaction.** How do FINRA/SEC recordkeeping and HIPAA's minimum-necessary rule interact with a redact-before-inference pipeline? This changes whether finance is in the SAM at all (see 04 and 05).
 8. **International sovereign demand.** Could Gulf, EU or UK government pilots be larger and faster than US DoD, given the $80B sovereign cloud IaaS spend in 2026 ([Gartner](https://www.gartner.com/en/newsroom/press-releases/2026-02-09-gartner-says-worldwide-sovereign-cloud-iaas-spending-will-total-us-dollars-80-billion-in-2026))? The SAM international multiplier (1.3x) may understate this.
 9. **Competitive price compression.** Apple, Google and Microsoft bundle free or cheap transcription. How much of the $80–150/mo vertical ARPU survives by 2029?
+
+---
+
+## Verification log (2026-10-02)
+
+| # | Claim (as first written) | Result | Source |
+| --- | --- | --- | --- |
+| 1 | BLS 2025 counts (physicians 862,800; lawyers 863,700; personal financial advisors 299,400) | Confirmed (OOH, 2025 base year) | [BLS physicians](https://www.bls.gov/ooh/healthcare/physicians-and-surgeons.htm), [BLS lawyers](https://www.bls.gov/ooh/legal/lawyers.htm), [BLS PFA](https://www.bls.gov/ooh/business-and-financial/personal-financial-advisors.htm) |
+| 2 | FINRA ~625,000 reps, 3,250+ firms (March 2026) | Secondary source confirmed; FINRA primary PDF could not be loaded (could not verify primary) | [Wikipedia](https://en.wikipedia.org/wiki/Financial_Industry_Regulatory_Authority), [FINRA 2025 Snapshot page](https://www.finra.org/media-center/reports-studies/2025-industry-snapshot) |
+| 3 | SEC-registered RIAs ~12,993 (2019) | Still the only figure retrievable; current IAA/NASAA counts could not be loaded (could not verify) | [Wikipedia](https://en.wikipedia.org/wiki/Registered_investment_adviser) |
+| 4 | Federal civilian workforce 2.2M after ~8% cut (est.) | Consistent with ~9% eliminated by March 2026 (≈2.18M). No change | [Wikipedia](https://en.wikipedia.org/wiki/2025_United_States_federal_mass_layoffs) |
+| 5 | DoD 1,294,191 active duty, 789,594 civilians (Jun 2024) | Confirmed as latest on cited page | [Wikipedia (DoD)](https://en.wikipedia.org/wiki/United_States_Department_of_Defense) |
+| 6 | DoD mobile device counts; ODNI ~4M cleared | Could not verify. **Added** Army DMUC turn-in deadline (2026-05-30) and BYOD/Hypori shift | [DVIDS](https://www.dvidshub.net/news/564961/army-sets-deadline-dmuc-device-turn-in-moves-new-mobility-program) |
+| 7 | Menlo ambient scribe $600M, shares 33/30/13 | Confirmed; Suki 10% is from Becker's, not Menlo | [Menlo](https://menlovc.com/perspective/2025-the-state-of-ai-in-healthcare/) |
+| 8 | Healthcare AI spend $1.4B (2025) | Confirmed | [Menlo](https://menlovc.com/perspective/2025-the-state-of-ai-in-healthcare/) |
+| 9 | Precedence meeting assistants $1.20B (attribution unverified) | Confirmed | [Precedence](https://www.precedenceresearch.com/ai-in-meeting-assistants-market) |
+| 10 | R&M et al. $3.14–3.8B (attribution unverified) | R&M $3.14B confirmed; others could not verify | [R&M](https://www.researchandmarkets.com/reports/6226248/ai-powered-meeting-assistants-market-report) |
+| 11 | Ultra-secure phones IMARC $4.91B; second firm $4.06B (attribution unverified) | Both confirmed; second firm is SkyQuest | [IMARC](https://www.imarcgroup.com/ultra-secure-smartphone-market), [SkyQuest](https://www.skyquestt.com/report/ultra-secure-smartphone-market) |
+| 12 | Plaud >2M devices, software ARR >$100M, ~50% pay | Confirmed (TechCrunch, June 2026) | [TechCrunch](https://techcrunch.com/2026/06/16/plaud-says-its-software-business-topped-100m-in-arr-after-shipping-over-2m-ai-notetakers/) |
+| 13 | Jump $100/advisor/month anchor | Confirmed; **added** 27,000 advisors and $80M Series B (Feb 2026) | [Jump](https://jump.ai/pricing), [WealthManagement](https://www.wealthmanagement.com/artificial-intelligence/jump_secures_series_b) |
+| 14 | Otter Business $19.99–30 | Confirmed | [Otter](https://otter.ai/pricing) |
+| 15 | SEC off-channel enforcement as a demand driver | **Added caveat:** ≈$2B across 100+ firms (2021–24); Atkins-era de-emphasis | [FINRA](https://www.finra.org/media-center/blog/sec-off-channel-communications-settlements-sro-collateral-consequences) |
+| 16 | Rugged-phone and AI-security firm attributions | Could not verify | — |
+| 17 | TAM/SAM/SOM arithmetic | No input changed materially; no recomputation needed | — |
+| 18 | Global headcount multiplier (2.5x) | Still an estimate; WHO/IBA counts not retrieved (web search budget exhausted mid-pass) | — |
+
 
 
 ---
@@ -3150,15 +3433,16 @@ Research date: **2026-09-30**. Workstream #8 of the [manifest](00-manifest.md). 
 
 - **Evidence labels.** Every figure has a source URL. Figures marked **(est.)** are analyst estimates, derived multiples or check-size ranges. Figures marked **(unverified)** come from earlier press coverage that this session could not re-fetch. Confirm them before they appear in a deck. **(reported)** marks press reports that the company did not confirm. **(denied)** marks reports that the company denied.
 - **Method limit.** The session's shared web-search quota ran out after 12 searches. The rest of the research used about 80 direct page fetches (TechCrunch article and tag pages, Wikipedia, company sites, SEC EDGAR, stockanalysis.com, CoinGecko, The Block, and government program sites). For some companies no primary page could be fetched, including Even Realities, Halliday, Fathom, Jump, Anjuna, Tinfoil, Katim and Sirin. Those rows say what is missing and do not guess.
-- **Dates.** Round dates are announcement dates unless marked otherwise. Stock and token prices are as of 2026-09-30.
+- **Dates.** Round dates are announcement dates unless marked otherwise. Stock and token prices were refreshed on 2026-10-02.
+- **Fact-check pass (2026-10-02).** Web search was available for a second pass. Items marked "(verified 2026-10-02)" were confirmed against SEC EDGAR, company releases or reputable press; "(could not verify)" marks items still unconfirmed. See the verification log at the end.
 - **Facts versus inference.** Sections 1–6 are facts with sources. Sections 7–10 are analysis and recommendations.
 
 ---
 
 ## 0. Executive summary
 
-1. **The issuer is a Nasdaq microcap, and that is the capital-strategy problem to solve first.** `alphatoncapital.com` 301-redirects to `alphacompute.ai` ([fetch](https://alphatoncapital.com)). SEC EDGAR lists **Alpha Compute Corp** (CIK 0001095435), formerly AlphaTON Capital Corp (the name was in use through April 2026) and before that Portage Biotech, Bontan and DealCheck.com ([EDGAR](https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=0001095435&type=&dateb=&owner=include&count=40)). On 2026-09-30 the company (NASDAQ: ALP) had a **$2.29M market cap**, **$507K cash**, **−$20.55M TTM operating cash flow**, **$97K TTM revenue**, **2 employees** and a **1:50 reverse split on 2026-09-09** ([stockanalysis statistics](https://stockanalysis.com/stocks/alp/statistics/)). The repository's brand assets come from alphacompute.ai (`design-assets/README.md`). *Inference:* the phone is very likely an Alpha Compute Corp product. The parent cannot fund a phone program from its balance sheet, so Alpha Phone needs its own financing vehicle.
-2. **elizaOS token heritage is now a liability to disclose, not a funding source.** A federal class action (Burwick Law, S.D.N.Y., April 2026) was settled by transferring the remaining treasury. On **2026-08-05** Shaw Walters declared the token "dead" and said the foundation would wind down ([The Block](https://www.theblock.co/post/410774/eliza-labs-native-token-dead)). ELIZAOS trades at a **$1.23M market cap**, down 98.5% from its all-time high ([CoinGecko](https://www.coingecko.com/en/coins/elizaos)). The open-source framework continues ([elizaresearch.ai](https://elizaresearch.ai/)).
+1. **The issuer is a Nasdaq microcap, and that is the capital-strategy problem to solve first.** `alphatoncapital.com` 301-redirects to `alphacompute.ai` ([fetch](https://alphatoncapital.com)). SEC EDGAR lists **Alpha Compute Corp** (CIK 0001095435), formerly AlphaTON Capital Corp (legal name changed effective 2026-04-14; ticker ATON → ALP on 2026-04-21), before that Portage Biotech (name used until 2025-09), Bontan and DealCheck.com ([EDGAR](https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=0001095435&type=&dateb=&owner=include&count=40), [20-F/A](https://www.sec.gov/Archives/edgar/data/0001095435/000117184326005284/f20fa_072626.htm); verified 2026-10-02). The FY2026 (year to 2026-03-31) 20-F/A carries an auditor **going-concern** paragraph and a **−$38.6M net loss**. On 2026-10-02 the company (NASDAQ: ALP) had a **≈$7.0M market cap** (about 1.55M shares at $4.54; the 2026-09-30 figure of $2.29M used a stale 469K share count), **$507K cash** (last reported balance sheet), **−$20.55M TTM operating cash flow**, **$97K TTM revenue** and **2 employees** (data-aggregator figures; employee count not confirmed in filings) ([stockanalysis statistics](https://stockanalysis.com/stocks/alp/statistics/)). A **1:50 reverse split took effect 2026-09-09** and Nasdaq bid-price compliance was regained on 2026-09-25 ([6-K](https://www.sec.gov/Archives/edgar/data/0001095435/000117184326006237/exh_991.htm); verified 2026-10-02). The repository's brand assets come from alphacompute.ai (`design-assets/README.md`). *Inference:* the phone is very likely an Alpha Compute Corp product. The parent cannot fund a phone program from its balance sheet, so Alpha Phone needs its own financing vehicle.
+2. **elizaOS token heritage is now a liability to disclose, not a funding source.** A federal class action (*Doe v. Walters*, No. 1:26-cv-03238, S.D.N.Y., filed 2026-04-22 by Burwick Law) was, per Walters' public statements, settled by transferring the remaining foundation treasury to the plaintiff group; settlement amounts were not disclosed. On **2026-08-05** Shaw Walters declared the token "dead" and said the foundation would wind down ([The Block](https://www.theblock.co/post/410774/eliza-labs-native-token-dead), [CoinDesk](https://www.coindesk.com/markets/2026/08/05/ai-agent-token-once-worth-usd2-4-billion-ends-with-founder-calling-it-dead), [Burwick](https://www.burwick.law/insights/burwick-law-files-class-action-over-ai16z-and-elizaos-tokens); verified 2026-10-02). ELIZAOS trades at about a **$1.17M market cap** (2026-10-02), down 98.5% from its all-time high ([CoinGecko](https://www.coingecko.com/en/coins/elizaos)). The open-source framework continues ([elizaresearch.ai](https://elizaresearch.ai/)).
 3. **Device comps split sharply by outcome.** Humane raised $230M and sold its assets for $116M, about 0.5x capital ([TechCrunch](https://techcrunch.com/2025/02/18/humanes-ai-pin-is-dead-as-hp-buys-startups-assets-for-116m/)). Limitless (>$33M raised) and Bee ($7M raised) were acqui-hired at undisclosed prices ([TC](https://techcrunch.com/2025/12/05/meta-acquires-ai-device-startup-limitless/), [TC](https://techcrunch.com/2025/07/22/amazon-acquires-bee-the-ai-wearable-that-records-everything-you-say/)). Plaud reached about $250M annualized revenue on roughly $5M of outside capital ([Sacra](https://sacra.com/c/plaud/)). io sold to OpenAI for $6.5B ([Bloomberg](https://www.bloomberg.com/news/articles/2025-07-09/openai-closes-6-5-billion-deal-to-buy-jony-ive-s-device-startup)).
 4. **Software-plus-workflow comps carry the richest multiples.** Abridge raised at **$5.3B** on **$117M contracted ARR**, about 45x (est.) ([TC](https://techcrunch.com/2025/06/24/in-just-4-months-ai-medical-scribe-abridge-doubles-valuation-to-5-3b/)). Granola raised at **$1.5B**, 6x its prior round in under a year ([TC](https://techcrunch.com/2026/03/25/granola-raises-125m-hits-1-5b-valuation-as-it-expands-from-meeting-notetaker-to-enterprise-ai-app/)).
 5. **Defense capital is abundant, and the SBIR lapse is over.** SBIR/STTR authority lapsed for about 6 months. It was reauthorized in April 2026 by the Small Business Innovation and Economic Security Act and now runs **through 2031-09-30** ([DefenseScoop](https://defensescoop.com/2026/04/29/sbir-sttr-americas-seed-fund-is-being-revamped-for-modern-warfare/)). Anduril raised $5B at $61B in May 2026 ([TC](https://techcrunch.com/2026/05/13/anduril-raises-5b-doubles-valuation-to-61b/)). **Eligibility is the catch.** A subsidiary of a BVI-incorporated public parent may fail SBIR's US ownership test and DoD foreign-ownership (FOCI) review unless it is structured for them.
@@ -3172,44 +3456,45 @@ Research date: **2026-09-30**. Workstream #8 of the [manifest](00-manifest.md). 
 
 | Item | Value | Date | Source |
 | --- | --- | --- | --- |
-| Legal name / CIK | Alpha Compute Corp / 0001095435. Former names: AlphaTON Capital Corp, Portage Biotech Inc, Bontan Corp, DealCheck.com | 2026-09 | [SEC EDGAR](https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=0001095435&type=&dateb=&owner=include&count=40) |
-| Renamed from AlphaTON | April 2026 | 2026-04 | [stockanalysis profile](https://stockanalysis.com/stocks/alp/company/) |
-| Domicile / filer type | Road Town, Tortola, BVI. Foreign private issuer (files 6-K and 20-F) | 2026-09 | [SEC EDGAR](https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=0001095435&type=&dateb=&owner=include&count=40) |
-| CEO / other officers | Brittany Kaiser (CEO); Wesley Allen Levitt (CFO); Logan Ryan Golema (CTO); Dr. Robert A. Kramer (CSO) | 2026-09 | [stockanalysis profile](https://stockanalysis.com/stocks/alp/company/) |
+| Legal name / CIK | Alpha Compute Corp / 0001095435. Former names: AlphaTON Capital Corp (to 2026-04-20), Portage Biotech Inc (to 2025-09-03), Bontan Corp (to 2013), DealCheck.com (to 2003). Fiscal year ends 31 March. EDGAR SIC 6199 (finance services), "Crypto Assets" office (verified 2026-10-02) | 2026-10 | [SEC EDGAR](https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=0001095435&type=&dateb=&owner=include&count=40) |
+| Renamed from AlphaTON | Legal name effective 2026-04-14; ticker ATON → ALP 2026-04-21 (verified 2026-10-02) | 2026-04 | [20-F/A](https://www.sec.gov/Archives/edgar/data/0001095435/000117184326005284/f20fa_072626.htm), [Yahoo/GlobeNewswire](https://finance.yahoo.com/sectors/technology/articles/alphaton-capital-rebrands-alpha-compute-113000875.html) |
+| Domicile / filer type | Road Town, Tortola, BVI (press releases say headquarters in BVI and Delaware, offices in NY, LA, Miami, Amsterdam, Toronto). Foreign private issuer (files 6-K and 20-F) | 2026-09 | [SEC EDGAR](https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=0001095435&type=&dateb=&owner=include&count=40) |
+| CEO / other officers | Brittany Kaiser (CEO, confirmed in 2026 company press releases); Wesley (Wes) Levitt (CFO, signs 6-K releases); Logan Ryan Golema (CTO) and Dr. Robert A. Kramer (CSO) per stockanalysis (could not verify) | 2026-09 | [stockanalysis profile](https://stockanalysis.com/stocks/alp/company/), [Yahoo/GlobeNewswire](https://finance.yahoo.com/technology/ai/articles/alpha-compute-ceo-brittany-kaiser-133000519.html) |
 | Segments | "Digital & Compute" (GPU leasing, GPU-as-a-Service, "AI confidential compute") and legacy "Immuno-Oncology" | 2026-09 | [stockanalysis profile](https://stockanalysis.com/stocks/alp/company/) |
-| Share price / market cap / EV | $4.87 / $2.29M / $1.92M | 2026-09-30 | [stockanalysis](https://stockanalysis.com/stocks/alp/statistics/) |
-| Shares outstanding | 469,417. Insiders hold 25.29%, institutions 12.36%, short interest 26.69% | 2026-09-30 | [stockanalysis](https://stockanalysis.com/stocks/alp/statistics/) |
-| Reverse split | 1:50 on 2026-09-09. The 52-week range is $3.20–$690 split-adjusted | 2026-09 | [stockanalysis](https://stockanalysis.com/stocks/alp/statistics/), [overview](https://stockanalysis.com/stocks/aton/) |
-| TTM revenue / net income | $97K / −$38.63M | TTM to 2026-09 | [stockanalysis](https://stockanalysis.com/stocks/alp/) |
+| Share price / market cap / EV | $4.54 / $7.04M / $6.67M (2026-10-02 intraday). The 2026-09-30 snapshot showed $4.87 / $2.29M / $1.92M on a stale share count | 2026-10-02 | [stockanalysis](https://stockanalysis.com/stocks/alp/statistics/) |
+| Shares outstanding | ≈1.55M post-split (2026-10-02). Insiders 6.89%, institutions 4.51%, short interest 8.08% (the 2026-09-30 snapshot showed 469,417 shares and 25.3% / 12.4% / 26.7%; the provider updated the share count) | 2026-10-02 | [stockanalysis](https://stockanalysis.com/stocks/alp/statistics/) |
+| Reverse split | 1:50, effective 2026-09-09 (announced 2026-09-03; moved from 09-08). Nasdaq had flagged the sub-$1 bid on 2026-03-02. An earlier 1:20 split took effect 2024-08-15 (verified 2026-10-02 via 6-K and 20-F/A). The 52-week range is $3.20–$690 split-adjusted | 2026-09 | [stockanalysis](https://stockanalysis.com/stocks/alp/statistics/), [overview](https://stockanalysis.com/stocks/aton/) |
+| TTM revenue / net income | $97K / −$38.63M (net loss matches the FY2026 20-F/A figure of −$38,627K, verified 2026-10-02) | FY to 2026-03-31 | [stockanalysis](https://stockanalysis.com/stocks/alp/), [20-F/A](https://www.sec.gov/Archives/edgar/data/0001095435/000117184326005284/f20fa_072626.htm) |
+| Going concern | **Yes.** The auditor's report includes an explanatory paragraph on "substantial doubt" about the company's ability to continue as a going concern (verified 2026-10-02). The filing says FY2026 was funded through private placements, at-the-market offerings and registered direct offerings | FY2026 | [20-F/A](https://www.sec.gov/Archives/edgar/data/0001095435/000117184326004784/f20fa_071626.htm) |
 | Cash / operating CF / FCF | $507K / −$20.55M / −$30.90M | TTM | [stockanalysis](https://stockanalysis.com/stocks/alp/statistics/) |
 | Altman Z-score | −24.14 (distress zone) | 2026-09 | [stockanalysis](https://stockanalysis.com/stocks/alp/statistics/) |
-| Employees | 2 | 2026-09 | [stockanalysis](https://stockanalysis.com/stocks/alp/company/) |
-| Recent events | Regained Nasdaq compliance (2026-09-25). Binding agreement to buy Pennsylvania oil and gas assets for about $5.5M to power a planned 200 MW data center. July 2026 revenue of $1.57M from GPU clusters (company claim). Mike Huskins (ex-Twilio) joined the board in Aug 2026 | 2026-07→09 | [stockanalysis](https://stockanalysis.com/stocks/alp/) |
+| Employees | 2 (data-aggregator figure; not found in the 20-F/A excerpt, could not verify) | 2026-09 | [stockanalysis](https://stockanalysis.com/stocks/alp/company/) |
+| Recent events | Regained Nasdaq bid-price compliance (6-K dated 2026-09-25, verified 2026-10-02). Binding agreement to buy Pennsylvania oil and gas assets for about $5.5M to power a planned 200 MW data center. July 2026 revenue of $1.57M from GPU clusters (company claim). Mike Huskins (ex-Twilio) joined the board in Aug 2026 | 2026-07→09 | [stockanalysis](https://stockanalysis.com/stocks/alp/) |
 | Filings | Multiple 6-Ks, 20-F and 20-F/A (Jul–Aug 2026), 424B3 prospectuses (shelf or resale), Form 4s and 13Gs | 2026 | [SEC EDGAR](https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=0001095435&type=&dateb=&owner=include&count=40) |
-| Phone or elizaOS mentioned on the corporate site? | **No.** The homepage shows no phone, elizaOS, TON or product pages, only IR and press contacts | 2026-09-30 | [alphacompute.ai](https://www.alphacompute.ai/) |
+| Phone or elizaOS mentioned on the corporate site or in filings? | **No.** The homepage shows no phone, elizaOS, TON or product pages, only IR and press contacts. The FY2026 20-F/A contains no mention of a phone, Alpha Phone, elizaOS, Eliza or Shaw Walters, and no related-party disclosure involving them (checked 2026-10-02) | 2026-10 | [alphacompute.ai](https://www.alphacompute.ai/), [20-F/A](https://www.sec.gov/Archives/edgar/data/0001095435/000117184326005284/f20fa_072626.htm) |
 
 **No disclosed financing specific to Alpha Phone was found.** Neither the corporate site nor the investor page describes a phone program or its funding ([alphacompute.ai/investors](https://alphacompute.ai/investors)). The 424B3 filings show that the parent sells registered securities. Their amounts and uses were not extracted in this pass (open question).
 
 **Why this matters (inference):**
-- **Dilution and signalling.** At a $2.3M market cap, any meaningful phone budget, even $5M (est.), is more than twice the parent's equity value. Funding it at the parent would be heavily dilutive and would signal distress to enterprise and government buyers.
+- **Dilution and signalling.** At a ≈$7M market cap with a going-concern opinion, any meaningful phone budget, even $5M (est.), is roughly 70% of the parent's equity value. Funding it at the parent would be heavily dilutive and would signal distress to enterprise and government buyers.
 - **Disclosure.** A public parent must disclose material developments (6-K). Pilots with government customers and fundraising talks become material-information management problems.
-- **Foreign ownership (FOCI) and SBIR.** SBIR/STTR awardees must be majority-owned and controlled by US citizens or permanent residents (or eligible US entities), with 500 or fewer employees including affiliates (program rule, unverified this session; [sbir.gov](https://www.sbir.gov/)). A wholly owned subsidiary of a BVI parent is likely ineligible. For DoD classified work, a BVI parent triggers FOCI mitigation. The US subsidiary needs a US-person majority, or at least a proxy or SSA-style mitigation plan (inference).
+- **Foreign ownership (FOCI) and SBIR.** SBIR/STTR awardees must be majority-owned and controlled by US citizens or permanent residents (or eligible US entities), with 500 or fewer employees including affiliates. Majority ownership by multiple VC/PE firms is allowed only if no single fund owns more than 50% (program rule, verified 2026-10-02; [SBA eligibility guide](https://www.sbir.gov/sites/default/files/elig_size_compliance_guide.pdf), [Army SBIR](https://armysbir.army.mil/eligibility/)). A wholly owned subsidiary of a BVI parent is likely ineligible. For DoD classified work, a BVI parent triggers FOCI mitigation. The US subsidiary needs a US-person majority, or at least a proxy or SSA-style mitigation plan (inference).
 - **Reputation.** The CEO is publicly known for the Cambridge Analytica whistleblowing and later data-rights and open-source-AI advocacy. In Feb 2025 she co-founded the Open Source AI Foundation ([Wikipedia](https://en.wikipedia.org/wiki/Brittany_Kaiser)). That can be an asset in a privacy narrative. Government and regulated buyers will diligence it either way, so be ready for questions.
 
 ### 1.2 elizaOS / ai16z (the heritage)
 
 | Item | Value | Date | Source |
 | --- | --- | --- | --- |
-| AI16Z token all-time high | $2.47 per token | peak (late 2024 / early 2025, unverified) | [CoinGecko ai16z](https://www.coingecko.com/en/coins/ai16z) |
-| Implied peak market cap | ≈$2.7B, assuming ~1.1B supply (est.) | — | derived from the ATH above; the supply figure is unverified |
-| Rebrand / migration | AI16Z → ELIZAOS on a new contract (Solana, plus Ethereum, Base and BSC) about 327 days before the fetch (≈ late Oct / early Nov 2025, est.) | ~2025-11 (est.) | [CoinGecko ai16z](https://www.coingecko.com/en/coins/ai16z) |
+| AI16Z token all-time high | $2.47 per token | early January 2025 | [CoinGecko ai16z](https://www.coingecko.com/en/coins/ai16z) |
+| Peak market cap | **≈$2.39B on 2025-01-02** per CoinDesk; the Burwick complaint says ≈$2.5B (corrected from a ≈$2.7B estimate; verified 2026-10-02) | 2025-01-02 | [CoinDesk](https://www.coindesk.com/markets/2026/08/05/ai-agent-token-once-worth-usd2-4-billion-ends-with-founder-calling-it-dead), [Burwick](https://www.burwick.law/insights/burwick-law-files-class-action-over-ai16z-and-elizaos-tokens) |
+| Rebrand / migration | AI16Z → ELIZAOS at **1 AI16Z = 6 ELIZAOS**, total supply ≈1.1B → 11B, on Solana plus Ethereum, Base and BSC. Exchange swaps completed around 2025-11-06 to 2025-11-13 (verified 2026-10-02). The complaint alleges 40% of newly minted tokens went to defendant-controlled entities (allegation, not a finding) | 2025-11 | [Bitget](https://www.bitget.com/support/articles/12560603842595), [KuCoin](https://www.kucoin.com/news/flash/elizaos-rebranding-launches-ai16z-token-swap-and-expansion), [Burwick](https://www.burwick.law/insights/burwick-law-files-class-action-over-ai16z-and-elizaos-tokens) |
 | ELIZAOS supply | Circulating 7.48B, total 9.38B, max 11B | 2026-09-30 | [CoinGecko elizaos](https://www.coingecko.com/en/coins/elizaos) |
-| ELIZAOS price / market cap / FDV | $0.0001648 / $1.23M / $1.55M, down 98.5% from ATH | 2026-09-30 | [CoinGecko elizaos](https://www.coingecko.com/en/coins/elizaos) |
-| Class action | Burwick Law filed in S.D.N.Y. in April 2026 against Walters and Eliza Labs, alleging false advertising, deceptive practices, negligent misrepresentation and unjust enrichment. Claims included "autonomously managed" marketing and holder dilution in the migration. **Settled** by transferring the remaining treasury funds to claimants | 2026-04 → settled by 2026-08 | [The Block](https://www.theblock.co/post/410774/eliza-labs-native-token-dead) |
+| ELIZAOS price / market cap | $0.000157 / $1.17M, down 98.5% from ATH (2026-10-02; the 2026-09-30 snapshot was $0.0001648 / $1.23M / FDV $1.55M) | 2026-10-02 | [CoinGecko elizaos](https://www.coingecko.com/en/coins/elizaos) |
+| Class action | *Doe v. Walters*, No. 1:26-cv-03238 (S.D.N.Y.), filed 2026-04-22 by Burwick Law. Defendants: Shaw Walters, Eliza Labs, Inc., Sebastian Quinn-Watson, the ai16z DAO, DAOs.fun and several pseudonymous individuals. Claims under NY GBL §349 and §350, negligent misrepresentation and unjust enrichment, including "autonomous, AI-run venture fund" marketing and dilution in the migration. **Settled** (per Walters, as reported) by transferring the remaining treasury to the plaintiff group; terms and amounts undisclosed. Walters: "we didn't have the capital to legally fight it" (verified 2026-10-02) | 2026-04-22 → settled by 2026-08 | [Burwick](https://www.burwick.law/insights/burwick-law-files-class-action-over-ai16z-and-elizaos-tokens), [CoinDesk](https://www.coindesk.com/markets/2026/08/05/ai-agent-token-once-worth-usd2-4-billion-ends-with-founder-calling-it-dead), [The Block](https://www.theblock.co/post/410774/eliza-labs-native-token-dead) |
 | Foundation wind-down | No further support, buybacks or supply measures. Walters said there will be no new Eliza token, that he keeps the IP, and that he is "starting over" with a focus on the open-source framework | 2026-08-05 | [The Block](https://www.theblock.co/post/410774/eliza-labs-native-token-dead) |
 | Current steward | Eliza Research (elizaresearch.ai). Products: Eliza (personal agent) and slop.cash. The site mentions no token, DAO or funding | 2026-09-30 | [elizaresearch.ai](https://elizaresearch.ai/) |
 | Venture funding for Eliza Labs or Eliza Research | **Nothing found** in this session. Do not claim any | — | — |
-| Name confusion | The "ai16z" name parodied a16z (Andreessen Horowitz). a16z has **no known** investment in ai16z or elizaOS (unverified; nothing found). Decks must not imply an a16z connection | — | inference |
+| Name confusion | The "ai16z" name parodied a16z (Andreessen Horowitz). According to the complaint and CoinDesk, a16z **publicly demanded on 2025-01-28 that the project stop using its branding**, which drove the rename to elizaOS. No a16z investment in ai16z or elizaOS was found (searched 2026-10-02). Decks must not imply an a16z connection | 2025-01 | [CoinDesk](https://www.coindesk.com/markets/2026/08/05/ai-agent-token-once-worth-usd2-4-billion-ends-with-founder-calling-it-dead), [Burwick](https://www.burwick.law/insights/burwick-law-files-class-action-over-ai16z-and-elizaos-tokens) |
 
 **Investor-facing framing (inference):** elizaOS is an MIT-licensed, widely forked agent framework with a large developer community. That is useful as distribution and talent. The token is dead and litigated. Say so plainly in the data room. Do not market "crypto-native" to government, defense, healthcare or finance buyers. Crypto funds may still like the developer community, but the Burwick case makes token-linked terms (warrants, airdrops) non-starters. **Do not issue a token.**
 
@@ -3222,8 +3507,8 @@ Research date: **2026-09-30**. Workstream #8 of the [manifest](00-manifest.md). 
 | Company | Round | Amount | Date | Lead / other investors | Post-money valuation | Status (2026-09) | Source |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | Humane (AI Pin) | Series B | $100M | 2021-09 | — | n/d | Assets sold to HP for $116M (2025-02). Device bricked 2025-02-28 | [Wikipedia](https://en.wikipedia.org/wiki/Humane_Inc.) |
-| Humane | Series C | $100M | 2023-03 | Investors incl. Marc Benioff, Sam Altman, Tiger Global, SoftBank, Qualcomm, Microsoft, LG, Volvo, Salesforce | ≈$850M (unverified) | Total raised >$230M | [Wikipedia](https://en.wikipedia.org/wiki/Humane_Inc.), [TC](https://techcrunch.com/2025/02/18/humanes-ai-pin-is-dead-as-hp-buys-startups-assets-for-116m/) |
-| Rabbit (r1) | Seed / A | $20M + $10M | 2023-10, 2023-12 | Khosla Ventures (lead); Synergis Capital, Kakao Investment | n/d | ~130K units sold, only ~5K daily actives (Sep 2024). rabbitOS 2 shipped Sep 2025. Clay reports $64.7M total raised (unverified) | [Wikipedia](https://en.wikipedia.org/wiki/Rabbit_r1), [rabbit.tech](https://www.rabbit.tech/newsroom/rabbit-raises-20m), [Clay](https://www.clay.com/dossier/rabbit-funding-2) |
+| Humane | Series C | $100M | 2023-03 | **Led by Kindred Ventures**, with SK Networks, Microsoft, LG Technology Ventures, Volvo Cars Tech Fund (cumulative backers also include Sam Altman, Marc Benioff, Tiger Global, SoftBank, Qualcomm) | ≈$850M (Statista, Aug 2023; verified 2026-10-02) | Total raised >$230M | [Wikipedia](https://en.wikipedia.org/wiki/Humane_Inc.), [TC](https://techcrunch.com/2025/02/18/humanes-ai-pin-is-dead-as-hp-buys-startups-assets-for-116m/) |
+| Rabbit (r1) | Seed / A | $20M + $10M | 2023-10, 2023-12 | Khosla Ventures (lead); Synergis Capital, Kakao Investment | n/d | ~130K units sold, only ~5K daily actives (Sep 2024). rabbitOS 2 shipped Sep 2025. Tracxn and Clay report $64.7M total raised over 5 rounds (aggregator figure, verified 2026-10-02) | [Wikipedia](https://en.wikipedia.org/wiki/Rabbit_r1), [rabbit.tech](https://www.rabbit.tech/newsroom/rabbit-raises-20m), [Clay](https://www.clay.com/dossier/rabbit-funding-2) |
 | Limitless (formerly Rewind) | Multiple | >$33M total | to 2024 | a16z, First Round, NEA, Sam Altman | n/d | Acquired by Meta 2025-12-05 | [TC](https://techcrunch.com/2025/12/05/meta-acquires-ai-device-startup-limitless/) |
 | Bee | Seed | $7M | 2024 | n/d | n/d | Acquired by Amazon (announced 2025-07-22) | [TC](https://techcrunch.com/2025/07/22/amazon-acquires-bee-the-ai-wearable-that-records-everything-you-say/) |
 | Plaud | Convertible note | $4.75M | 2025-04-24 | Carbide Ventures (lead); J12 Ventures, Patrick Kavanagh | n/d | ~$250M annualized revenue (Sep 2025). Software ARR $100M+ (Jun 2026). >2M units | [Sacra](https://sacra.com/c/plaud/), [TC tag](https://techcrunch.com/tag/plaud/) |
@@ -3235,9 +3520,9 @@ Research date: **2026-09-30**. Workstream #8 of the [manifest](00-manifest.md). 
 | Sesame | Series B | $250M (total $307.6M) | 2025-10-21 | Sequoia and Spark (co-leads) | ≈$1.19B (reported) | Voice AI plus glasses. 1M+ users of the voice demo | [TC](https://techcrunch.com/2025/10/21/sesame-the-conversational-ai-startup-from-oculus-founders-raises-250m-and-launches-beta/), [aiwiki](https://aiwiki.ai/wiki/sesame) |
 | Nothing | Series C | $200M (total >$450M) | 2025-09-15 | Tiger Global (lead, Matt Wachter); GV, Highland Europe, EQT, Latitude, I2BF, Tapestry, Nikhil Kamath, **Qualcomm Ventures** | $1.3B | >$1B cumulative sales. AI-native device planned for 2026 | [TC](https://techcrunch.com/2025/09/15/nothing-closes-200m-series-c-led-by-tiger-global-plans-ai-first-device-launch/) |
 | io (Jony Ive) | Acquisition (not a round) | $6.5B all-stock (OpenAI already held 23%) | announced 2025-05-21, closed 2025-07-09 | OpenAI | $6.5B | ~55 staff joined OpenAI | [Bloomberg](https://www.bloomberg.com/news/articles/2025-07-09/openai-closes-6-5-billion-deal-to-buy-jony-ive-s-device-startup), [duperrin](https://www.duperrin.com/english/2025/05/27/openai-acquires-io/) |
-| Brilliant Labs | Seed | ≈$3M (unverified) | 2024-02 | John Hanke (Niantic) and others | n/d | Open-source AI glasses | [TC](https://techcrunch.com/2024/02/08/ar-glasses-with-multimodal-ai-attracts-funding-from-pokemon-go-founder/) |
-| Even Realities | — | **not found** | — | — | — | Swiss/Chinese display-glasses maker. No verified round found | — |
-| Halliday | — | **not found** | — | — | — | Crowdfunded display glasses. No verified VC round found | — |
+| Brilliant Labs | Seed (3 rounds) | ≈$6M total; $3M seed 2023-06; Feb 2024 round led by John Hanke (aggregator data, verified 2026-10-02) | 2023-06 → 2024-02 | John Hanke (Niantic), Brendan Iribe, Adam Cheyer, Eric Migicovsky, Wayfarer Foundation | n/d | Open-source AI glasses | [TC](https://techcrunch.com/2024/02/08/ar-glasses-with-multimodal-ai-attracts-funding-from-pokemon-go-founder/) |
+| Even Realities | Pre-Series B | **$150M** (total >$160M) | 2026-07-06 | **Meituan and Tencent** (leads); Hillhouse, Sequoia China, Northern Light | **$1B** | Shenzhen-based, camera-free display glasses; founder Will Wang (ex-Apple). Chinese strategic capital (verified 2026-10-02) | [TC](https://techcrunch.com/2026/07/06/smart-glasses-maker-even-realities-hits-1b-valuation-with-150m-funding-led-by-meituan-tencent/), [CNBC](https://www.cnbc.com/2026/07/06/apple-veteran-takes-on-meta-with-1-billion-smart-glasses-maker.html) |
+| Halliday | Crowdfunding only | ≈$3.3M Kickstarter (8,000+ backers, Jan–Mar 2025) plus a similar Indiegogo run | 2025 | — | — | No venture round found (verified 2026-10-02) | [Kickstarter](https://www.kickstarter.com/projects/halliday-ai-glasses/halliday-proactive-ai-glasses-with-invisible-display), [AndroidGuys](https://androidguys.com/news/halliday-smart-glasses-break-records-with-2-million-raised-on-kickstarter/) |
 | SiMa.ai (context: edge AI silicon) | — | n/d | 2026-09-28 | — | $1.45B | Evidence of physical-AI and edge silicon appetite | [TC](https://techcrunch.com/2026/09/28/physical-ai-chip-developer-sima-ai-hits-1-45b-valuation/) |
 | Oura (context) | IPO | $2.2B valuation target | IPO **shelved** 2026-09-29 | — | — | Public-market window for hardware is weak | [TC](https://techcrunch.com/2026/09/29/oura-shelves-its-2-2b-ipo-citing-uncertainty-in-the-market/) |
 
@@ -3245,14 +3530,14 @@ Research date: **2026-09-30**. Workstream #8 of the [manifest](00-manifest.md). 
 
 | Company | Round | Amount | Date | Lead / others | Valuation | Notes | Source |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| Otter.ai | Series B (per TC) | $50M | 2021-02-25 | n/d this pass | n/d | Earlier $10M (2020-01) incl. NTT Docomo Ventures. **~$100M ARR claimed in 2025 (unverified)** | [TC tag](https://techcrunch.com/tag/otter-ai/), [TC 2021](https://techcrunch.com/2021/02/25/boosted-by-the-pandemic-meeting-transcription-service-otter-ai-raises-50m/) |
-| Fireflies.ai | Series A | $14M | 2021-05-24 | n/d | n/d | **$1B valuation via 2025 tender (unverified)** | [TC 2021](https://techcrunch.com/2021/05/24/fireflies-ai-raises-14m-for-its-meeting-transcription-and-automation-service/) |
+| Otter.ai | Series B (per TC) | $50M | 2021-02-25 | n/d this pass | n/d | Earlier $10M (2020-01) incl. NTT Docomo Ventures. **Company says it passed $100M ARR in March 2025** (from $81M at end-2024), with <200 staff and 35M users (company claim, verified 2026-10-02; [Otter](https://otter.ai/blog/otter-ai-breaks-100m-arr-barrier-and-transforms-business-meetings-launching-industry-first-ai-meeting-agent-suite)) | [TC tag](https://techcrunch.com/tag/otter-ai/), [TC 2021](https://techcrunch.com/2021/02/25/boosted-by-the-pandemic-meeting-transcription-service-otter-ai-raises-50m/) |
+| Fireflies.ai | Series A | $14M | 2021-05-24 | n/d | n/d | **>$1B valuation via its first employee tender offer, June 2025** (company announcement; profitable since 2023, no primary raise since 2021; verified 2026-10-02; [UrbanGeekz](https://urbangeekz.com/2025/06/fireflies-ai-unicorn-status-perplexity/)) | [TC 2021](https://techcrunch.com/2021/05/24/fireflies-ai-raises-14m-for-its-meeting-transcription-and-automation-service/) |
 | Granola | Seed ext. | $20M | 2024-10-23 | n/d | n/d | — | [TC](https://techcrunch.com/2024/10/23/vcs-love-using-the-ai-meeting-notepad-granola-so-they-gave-it-20m/) |
 | Granola | Series B | $43M | 2025-05-14 | n/d | $250M | — | [TC](https://techcrunch.com/2025/05/14/ai-note-taking-app-granola-raises-43m-at-250m-valuation-launches-collaborative-features/) |
 | Granola | Series C | $125M (total $192M) | 2026-03-25 | Index (Danny Rimer) and Kleiner Perkins (Mamoon Hamid); Lightspeed, Spark, NFDG | $1.5B | 6x step-up in under 12 months. Enterprise customers include Vanta, Gusto and Asana | [TC](https://techcrunch.com/2026/03/25/granola-raises-125m-hits-1-5b-valuation-as-it-expands-from-meeting-notetaker-to-enterprise-ai-app/) |
-| Read AI | Series B | $50M | 2024-10-28 | Smith Point Capital (unverified) | n/d | Earlier $10M (2021-09) | [TC](https://techcrunch.com/2024/10/28/read-ai-raises-50m-to-integrate-its-bot-with-slack-email-and-more/) |
-| Fathom | — | **not verified this pass** | — | — | — | — | — |
-| Jump (advisor meeting AI for wealth management) | — | **not verified this pass** | — | — | — | The most relevant finance-vertical comp. Verify | — |
+| Read AI | Series B | $50M | 2024-10-28 | **Smash Capital** (lead; corrected from Smith Point), Madrona, Goodwater | $450M | Earlier $10M (2021-09); $81M total (verified 2026-10-02; [GeekWire](https://www.geekwire.com/2024/seattle-startup-read-ai-raises-50m-to-fuel-copilot-everywhere-vision-for-enterprise-software/)) | [TC](https://techcrunch.com/2024/10/28/read-ai-raises-50m-to-integrate-its-bot-with-slack-email-and-more/) |
+| Fathom | Series A | $17M (incl. ≈$2M via Wefunder) | 2024-09 | Telescope Partners (lead) | n/d | Earlier $4.7M seed (verified 2026-10-02) | [Yahoo](https://www.yahoo.com/news/ai-notetaker-fathom-raises-17m-130000080.html) |
+| Jump (advisor meeting AI for wealth management) | Series B | **$80M** (total $105M; $20M A in 2025-02) | 2026-02 | **Insight Partners** (lead); F-Prime, Allianz Life Ventures, TIAA Ventures, Peterson Partners, Battery, Sorenson, Pelion, **Citi Ventures** | n/d | **27,000 advisors** in under two years. The most relevant finance-vertical comp (verified 2026-10-02) | [WealthManagement](https://www.wealthmanagement.com/artificial-intelligence/jump_secures_series_b), [FinTech Global](https://fintech.global/2026/02/20/jump-secures-80m-series-b-to-scale-ai-for-advisors/) |
 
 ### 2.3 Healthcare ambient scribes
 
@@ -3260,9 +3545,9 @@ Research date: **2026-09-30**. Workstream #8 of the [manifest](00-manifest.md). 
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | Abridge | Series D | $250M | 2025-02 | n/d this pass | $2.75B | — | [TC](https://techcrunch.com/2025/06/24/in-just-4-months-ai-medical-scribe-abridge-doubles-valuation-to-5-3b/) |
 | Abridge | Series E | $300M | 2025-06-24 | a16z (lead); Khosla | $5.3B | $117M contracted ARR (Q1 2025). 150+ health systems. Epic integration | [TC](https://techcrunch.com/2025/06/24/in-just-4-months-ai-medical-scribe-abridge-doubles-valuation-to-5-3b/) |
-| Ambience Healthcare | Series B | $70M | 2024-02-06 | OpenAI Startup Fund and Kleiner Perkins | n/d | **Series C of $243M at $1.25B (Jul 2025) is unverified** | [TC](https://techcrunch.com/2024/02/06/ambience-healthcare-raises-70m-for-its-ai-assistant-led-by-openai-and-kleiner-perkins/) |
-| Suki | Series A | $20M | 2018-05-01 | n/d | n/d | Zoom partnership (2024-10). **$70M Series D (Oct 2024) unverified** | [TC](https://techcrunch.com/2018/05/01/suki-raises-20m-to-create-a-voice-assistant-for-doctors/), [TC](https://techcrunch.com/2024/10/22/zoom-partners-with-suki-to-offer-ai-powered-medical-note-taking/) |
-| Nabla | Series B | $24M | 2024-01-05 | n/d | n/d | **$70M Series C (Jun 2025) unverified** | [TC](https://techcrunch.com/2024/01/05/nabla-raises-another-24-million-for-its-ai-assistant-for-doctors/) |
+| Ambience Healthcare | Series B | $70M | 2024-02-06 | OpenAI Startup Fund and Kleiner Perkins | n/d | **Series C $243M at ≈$1.25B (2025-07), co-led by Oak HC/FT and a16z**; ≈$345M raised in total (verified 2026-10-02; [MedCity](https://medcitynews.com/2025/07/healthcare-documentation-startup-unicorn/), [Fierce](https://www.fiercehealthcare.com/health-tech/ambience-banks-243m-series-c-investors-continue-bet-big-ambient-ai)) | [TC](https://techcrunch.com/2024/02/06/ambience-healthcare-raises-70m-for-its-ai-assistant-led-by-openai-and-kleiner-perkins/) |
+| Suki | Series A | $20M | 2018-05-01 | n/d | n/d | Zoom partnership (2024-10). **$70M Series D (2024-10) led by Hedosophia**, total $165M; ≈$500M valuation per aggregators (verified 2026-10-02; [Healthcare Dive](https://www.healthcaredive.com/news/suki-70-million-Series-D-funding/729573/)) | [TC](https://techcrunch.com/2018/05/01/suki-raises-20m-to-create-a-voice-assistant-for-doctors/), [TC](https://techcrunch.com/2024/10/22/zoom-partners-with-suki-to-offer-ai-powered-medical-note-taking/) |
+| Nabla | Series B | $24M | 2024-01-05 | n/d | n/d | **$70M Series C (2025-06) led by HV Capital** with Highland Europe and DST Global; total $120M; 130+ health organizations (verified 2026-10-02; [Nabla](https://www.nabla.com/blog/70m-series-c)) | [TC](https://techcrunch.com/2024/01/05/nabla-raises-another-24-million-for-its-ai-assistant-for-doctors/) |
 | Heidi Health | Series B | $65M (total $96.6M) | 2025-10-05 | Point72 Private Investments (lead); Headline, Blackbird, Possible, Archangel | n/d | 2M+ clinicians weekly. 70M patient visits in 116 countries | [TC](https://techcrunch.com/2025/10/05/heidi-health-raises-65m-series-b-led-by-steve-cohens-point72/) |
 
 ### 2.4 Confidential compute, privacy and AI security
@@ -3270,15 +3555,15 @@ Research date: **2026-09-30**. Workstream #8 of the [manifest](00-manifest.md). 
 | Company | Round | Amount | Date | Lead / others | Valuation | Notes | Source |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | Opaque Systems | Series A | n/d | 2022-06-28 | n/d | n/d | — | [TC](https://techcrunch.com/2022/06/28/opaque-systems-secures-cash-to-keep-data-private-while-enabling-collaboration/) |
-| Opaque Systems | Series B | $24M | company site gives 2026-02-12. **Earlier coverage placed it in 2025. Verify** | Accenture (strategic, 2025-03-13) | $300M | Customers listed include ServiceNow, Accenture, Wells Fargo, Encore, Ant Group, Microsoft and Anthropic | [opaque.co](https://www.opaque.co/) |
-| Fortanix | Series C | ≈$90M (unverified) | 2022-09-15 | Goldman Sachs (unverified) | n/d | Confidential computing and key management | [TC](https://techcrunch.com/2022/09/15/cybersecurity-firm-fortanix-secures-capital-to-provide-confidential-computing-services/) |
+| Opaque Systems | Series B | $24M (total $55.5M) | **2026-02-12** (verified 2026-10-02) | **Walden Catalyst** (lead); Intel Capital, Race Capital, Storm, Thomvest, and Abu Dhabi's ATRC (new). Accenture strategic investment 2025-03-13 | $300M post | Opaque later bought cryptographic AI technology from Abu Dhabi's TII. [FinSMEs](https://www.finsmes.com/2026/02/opaque-raises-24m-in-series-b-at-300m-valuation.html) | Customers listed include ServiceNow, Accenture, Wells Fargo, Encore, Ant Group, Microsoft and Anthropic | [opaque.co](https://www.opaque.co/) |
+| Fortanix | Series C | $90M (total >$122M) | 2022-09-15 | Goldman Sachs Asset Management growth equity (lead); Intel Capital, **In-Q-Tel**, Foundation Capital, GiantLeap, Neotribe | n/d | Confidential computing and key management (verified 2026-10-02; [BusinessWire](https://www.businesswire.com/news/home/20220915005348/en/Fortanix-Raises-$90M-in-Series-C-Funding-Led-by-Goldman-Sachs-Asset-Management-to-Accelerate-Leadership-in-the-Data-Security-Market)) | [TC](https://techcrunch.com/2022/09/15/cybersecurity-firm-fortanix-secures-capital-to-provide-confidential-computing-services/) |
 | Anjuna | — | not verified | — | — | — | Customers include the U.S. Navy and international banks | [anjuna.io](https://www.anjuna.io/) |
 | Tinfoil | — | not verified (no funding on site) | — | — | — | Enclave inference API; $20/month private chat; SOC 2; NVIDIA Inception | [tinfoil.sh](https://tinfoil.sh/) |
-| Confident Security | Seed | not verified (≈$4.2M reported 2025, unverified) | — | Affiliated with South Park Commons (site) | n/d | OpenPCC, an open standard in the style of Apple's Private Cloud Compute | [confident.security](https://confident.security/) |
-| Zama (FHE) | Series B | ≈$57M, >$1B (unverified) | 2025-06 (unverified) | Blockchange and Pantera (unverified) | ≈$1B+ (unverified) | Crypto-rail FHE products | [zama.org](https://www.zama.org/) |
+| Confident Security | Seed | $4.2M | 2025-07-17 | Decibel, South Park Commons, Ex Ante, swyx (verified 2026-10-02; [TC](https://techcrunch.com/2025/07/17/confident-security-the-signal-for-ai-comes-out-of-stealth-with-4-2m/)) | n/d | OpenPCC, an open standard in the style of Apple's Private Cloud Compute | [confident.security](https://confident.security/) |
+| Zama (FHE) | Series B | $57M (total >$150M) | 2025-06-25 | Blockchange and Pantera (co-leads) | >$1B | Crypto-rail FHE products; first FHE unicorn (verified 2026-10-02) | [CoinDesk](https://www.coindesk.com/tech/2025/06/25/zama-raises-57m-becomes-first-unicorn-involved-with-fully-homomorphic-encryption), [Tech.eu](https://tech.eu/2025/06/25/zama-becomes-1st-i-fhe-unicorn-with-57m-raise-led-by-pantera-and-blockchange/) |
 | Skyflow | Series B / B ext. | $45M / $30M (with a $17.5M earlier round, $92.5M across these three) | 2021-10-19 / 2024-03-28 | n/d | n/d | Data-privacy vault; AI demand | [TC](https://techcrunch.com/2024/03/28/skyflow-raises-30m-ai-spikes-privacy-business/), [TC](https://techcrunch.com/2021/10/19/skyflows-data-privacy-api-business-raises-45m-series-b/) |
 | Gretel | Series A / B | $12M / $50M (>$67M total) | 2020-11 / 2021-10 | Anthos, Greylock, Moonshots | $320M (last) | Acquired by NVIDIA in 2025 | [TC](https://techcrunch.com/2025/03/19/nvidia-reportedly-acquires-synthetic-data-startup-gretel/) |
-| Private AI | Series A | ≈$8M (unverified) | 2022 (unverified) | BDC (unverified) | n/d | PII redaction (see 04) | — |
+| Private AI | Series A | $8M (C$10.7M) | 2022-11 | BDC Capital Thrive fund (lead); M12 (Microsoft), Differential, Forum | n/d | PII redaction (see 04) (verified 2026-10-02) | [Private AI](https://www.private-ai.com/en/blog/private-ai-secures-8m-usd-series-a) |
 
 ### 2.5 Secure mobile and defense tech
 
@@ -3286,14 +3571,14 @@ Research date: **2026-09-30**. Workstream #8 of the [manifest](00-manifest.md). 
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | Anduril | Series F | $1.5B | 2024-08 | Founders Fund, Sands Capital | $14B | — | [Wikipedia](https://en.wikipedia.org/wiki/Anduril_Industries) |
 | Anduril | Series G | $2.5B | 2025-06 | Founders Fund, 1789 Capital | $30.5B | — | [Wikipedia](https://en.wikipedia.org/wiki/Anduril_Industries) |
-| Anduril | 2026 round | $5B | 2026-05-13 | Thrive, a16z | $61B | Reported talks at a **$100B** valuation (2026-07-24) | [TC](https://techcrunch.com/2026/05/13/anduril-raises-5b-doubles-valuation-to-61b/), [TC](https://techcrunch.com/2026/07/24/anduril-reportedly-in-talks-to-raise-funding-at-100b-valuation-more-than-3x-last-years-mark/) |
+| Anduril | Series H | $5B | 2026-05-13 | Thrive, a16z | $61B | Reported talks at a **$100B** valuation (2026-07-24) | [TC](https://techcrunch.com/2026/05/13/anduril-raises-5b-doubles-valuation-to-61b/), [TC](https://techcrunch.com/2026/07/24/anduril-reportedly-in-talks-to-raise-funding-at-100b-valuation-more-than-3x-last-years-mark/) |
 | Shield AI | Series F / G | $200M; then $1.5B + $500M preferred | 2023-10; 2026-03 | 2023: USIT and Riot Ventures | $2.7B → $12.7B | Autonomy. Only relevant as a defense-capital signal | [Wikipedia](https://en.wikipedia.org/wiki/Shield_AI) |
 | Helsing | — | $1.2B (reported, raising) | 2026-05-11 | Daniel Ek-backed | $18B | European defense AI | [TC](https://techcrunch.com/2026/05/11/daniel-ek-backed-defense-tech-helsing-to-raise-1-2b-at-18b-valuation/) |
 | Mach Industries | — | n/d | 2026-09-10 | — | $3.7B (doubled in 3 months) | — | [TC](https://techcrunch.com/2026/09/10/defense-tech-mach-industries-doubles-valuation-to-3-7b-in-3-months/) |
 | Castelion | — | n/d | 2026-08-20 | — | $13B | — | [TC](https://techcrunch.com/2026/08/20/castelion-hits-13b-valuation-to-mass-produce-hypersonic-missiles/) |
 | Terra Industries | Seed | $52M | 2026-08-17 | — | n/d | Defense infrastructure for the Global South. Large seed rounds are now normal in defense | [TC](https://techcrunch.com/2026/08/17/terra-industries-closes-52m-seed-round-to-build-defense-infrastructure-for-the-global-south/) |
 | Hypori (virtual mobile) | — | not found | — | — | — | FedRAMP High and IL4/5. Air Combat Command deploys Hypori Lyte secure messaging. **Direct competitor/partner for BYOD** | [hypori.com](https://www.hypori.com/) |
-| Sirin Labs | ICO | ≈$158M (unverified, 2017) | 2017-12 (unverified) | Token sale | — | Cautionary crypto-phone comp; the Finney phone flopped | — |
+| Sirin Labs | ICO | ≈$157.9M | 2017-12 | Token sale | — | Cautionary crypto-phone comp. The $1,000 Finney shipped 2018-11, sold poorly; 25% layoffs in 2019 and SRN fell ~99% (verified 2026-10-02) | [CoinDesk](https://www.coindesk.com/markets/2018/01/12/blockchain-in-your-pocket-the-phone-behind-sirins-157-million-ico) |
 | Katim (EDGE Group, UAE) | Corporate subsidiary | n/a | — | EDGE Group (state-owned) | — | Sovereign secure phone. Potential Gulf partner or competitor | — |
 
 ### 2.6 Agent and OS startups (context)
@@ -3327,34 +3612,34 @@ Research date: **2026-09-30**. Workstream #8 of the [manifest](00-manifest.md). 
 | --- | --- | --- | --- | --- | --- | --- |
 | **HP – Humane** | 2025-02-18 | $116M (assets: team, CosmOS, 300+ patents and applications. AI Pin excluded) | >$230M | ≈0.5x capital. ≈$0.39M per patent or application (est.) | Forms the **HP IQ** AI lab for "future of work" devices. Team and IP buy | [TC](https://techcrunch.com/2025/02/18/humanes-ai-pin-is-dead-as-hp-buys-startups-assets-for-116m/), [Wikipedia](https://en.wikipedia.org/wiki/Humane_Inc.) |
 | **OpenAI – io** | 2025-05-21 / 2025-07-09 | $6.5B all-stock (OpenAI already held 23%) | n/d | ≈$118M per employee (55 staff, est.) | Design and hardware team for OpenAI's device family | [Bloomberg](https://www.bloomberg.com/news/articles/2025-07-09/openai-closes-6-5-billion-deal-to-buy-jony-ive-s-device-startup), [duperrin](https://www.duperrin.com/english/2025/05/27/openai-acquires-io/) |
-| **OpenAI – Glass Imaging** | 2026-09-14 (reported) | >$300M (WSJ) | ≈$30M | ≈10x capital raised | Neural camera pipeline. Supports rumored **OpenAI smartphone** and earbuds | [TC](https://techcrunch.com/2026/09/14/openai-buys-smartphone-camera-maker-glass-imaging-for-300-million-report-says/) |
+| **OpenAI – Glass Imaging** | 2026-09-14 (reported by WSJ; neither company has confirmed) | >$300M (WSJ), up from a ≈$100M valuation the prior year (verified 2026-10-02) | ≈$30M (could not verify) | ≈10x capital raised (est.) | Neural camera pipeline. Supports rumored **OpenAI smartphone** and earbuds | [TC](https://techcrunch.com/2026/09/14/openai-buys-smartphone-camera-maker-glass-imaging-for-300-million-report-says/) |
 | **Meta – Limitless** | 2025-12-05 | undisclosed (acqui-hire) | >$33M | n/d | Moves pendant functionality into Ray-Ban Meta glasses and Reality Labs "personal superintelligence" | [TC](https://techcrunch.com/2025/12/05/meta-acquires-ai-device-startup-limitless/), [Sacra](https://sacra.com/research/why-meta-bought-limitless/) |
 | **Amazon – Bee** | 2025-07-22 | undisclosed | $7M | n/d | Ambient wearable for Alexa+. Staff offered jobs | [TC](https://techcrunch.com/2025/07/22/amazon-acquires-bee-the-ai-wearable-that-records-everything-you-say/) |
 | **Meta – PlayAI / WaveForms** | 2025-07-11 / 2025-08-08 | undisclosed | — | — | Voice AI talent for Meta Superintelligence Labs | [Wikipedia list](https://en.wikipedia.org/wiki/List_of_mergers_and_acquisitions_by_Meta_Platforms) |
 | **Meta – Manus** | 2025-12-29 | $500M–$1B (reported) | — | — | Agent product and talent | [Wikipedia list](https://en.wikipedia.org/wiki/List_of_mergers_and_acquisitions_by_Meta_Platforms) |
-| **Apple – Q.ai** | 2026-01-29 | ≈$2B | n/d | — | AI company. Apple's largest AI deal to date. See open questions | [Wikipedia list](https://en.wikipedia.org/wiki/List_of_mergers_and_acquisitions_by_Apple) |
+| **Apple – Q.ai** | 2026-01-29 | ≈$2B (reported) | n/d | — | Israeli startup whose ML interprets whispered and silently mouthed speech (from facial micro-movements) and enhances audio in noisy settings. Apple's second-largest deal after Beats. **A direct voice-interface comp** (verified 2026-10-02; [SiliconANGLE](https://siliconangle.com/2026/01/29/apple-acquires-ai-startup-q-ai-reported-2b/), [Macworld](https://www.macworld.com/article/3047434/apple-just-made-its-second-biggest-aquisition-ever.html)) | [Wikipedia list](https://en.wikipedia.org/wiki/List_of_mergers_and_acquisitions_by_Apple) |
 | Apple – Xnor.ai / Voysis | 2020-01 / 2020-04 | ≈$200M / n/d | — | — | On-device ML and a voice assistant (privacy-first edge AI) | [Wikipedia list](https://en.wikipedia.org/wiki/List_of_mergers_and_acquisitions_by_Apple) |
 | **NVIDIA – Gretel** | 2025-03-19 | nine figures, above the $320M last valuation | >$67M | >4.8x capital | Synthetic and privacy-preserving data for NVIDIA gen-AI developer services | [TC](https://techcrunch.com/2025/03/19/nvidia-reportedly-acquires-synthetic-data-startup-gretel/) |
-| **SentinelOne – Prompt Security** | 2025-08 (announced) | cash and stock, undisclosed. **≈$250M reported (unverified)** | — | — | GenAI and agentic-AI usage visibility, DLP and prompt-injection defense on the endpoint | [SentinelOne](https://www.sentinelone.com/press/sentinelone-to-acquire-prompt-security-to-advance-genai-security/) |
-| **Check Point – Lakera** | 2025-09-16 | undisclosed. **≈$300M reported (unverified)** | — | — | Runtime AI security. Becomes Check Point's Global AI Security Center of Excellence | [Check Point](https://www.checkpoint.com/press-releases/check-point-acquires-lakera-to-deliver-end-to-end-ai-security-for-enterprises/) |
-| **Cato Networks – Aim Security** | 2025-09 | undisclosed. **≈$350M reported (unverified)** | — | — | Cato's first M&A: AI security added to SASE, alongside a $50M G round at >$4.8B and >$300M ARR | [Wikipedia](https://en.wikipedia.org/wiki/Cato_Networks) |
-| **Microsoft – Nuance** | 2021-04-12 / 2022-03-04 | $19.7B incl. debt ($56 per share, a 22% premium) | public | ≈13x revenue (est.; revenue unverified) | Healthcare ambient documentation (DAX), now the Dragon Copilot line | [Wikipedia](https://en.wikipedia.org/wiki/Nuance_Communications) |
-| **Qualcomm – Edge Impulse** | 2025-03 (unverified) | undisclosed | — | — | Edge-AI developer tooling | — |
+| **SentinelOne – Prompt Security** | 2025-08-05 (announced) | cash and stock, **≈$250M reported** (Calcalist, CyberWire; verified 2026-10-02) | ≈$23M | ≈11x capital (est.) | GenAI and agentic-AI usage visibility, DLP and prompt-injection defense on the endpoint | [SentinelOne](https://www.sentinelone.com/press/sentinelone-to-acquire-prompt-security-to-advance-genai-security/) |
+| **Check Point – Lakera** | 2025-09-16 | undisclosed; **≈$300M reported** (Calcalist, Ynet; verified 2026-10-02) | — | — | Runtime AI security. Becomes Check Point's Global AI Security Center of Excellence | [Check Point](https://www.checkpoint.com/press-releases/check-point-acquires-lakera-to-deliver-end-to-end-ai-security-for-enterprises/) |
+| **Cato Networks – Aim Security** | 2025-09-03 | undisclosed; **≈$300–350M reported** in cash and shares (Calcalist, Axios; verified 2026-10-02) | ≈$28M | ≈11–12x capital (est.) | Cato's first M&A: AI security added to SASE, alongside a $50M G round at >$4.8B and >$300M ARR | [Wikipedia](https://en.wikipedia.org/wiki/Cato_Networks) |
+| **Microsoft – Nuance** | 2021-04-12 / 2022-03-04 | $19.7B incl. debt ($56 per share, a 22% premium) | public | ≈13x revenue (est.; revenue base could not verify this pass) | Healthcare ambient documentation (DAX), now the Dragon Copilot line | [Wikipedia](https://en.wikipedia.org/wiki/Nuance_Communications) |
+| **Qualcomm – Edge Impulse** | announced 2025-03-10 (verified 2026-10-02) | undisclosed | — | — | Edge-AI developer tooling | [Edge Impulse](https://www.edgeimpulse.com/blog/edge-impulse-qualcomm-acquisition/) |
 | **Qualcomm – Arduino** | 2025-10 | undisclosed | — | — | Developer ecosystem and robotics ("Uno Q" on a Qualcomm SoC) | [Wikipedia](https://en.wikipedia.org/wiki/Arduino), [Qualcomm](https://en.wikipedia.org/wiki/Qualcomm) |
 | **Qualcomm – Movian AI (VinAI gen-AI unit)** | 2025-04 | undisclosed | — | — | On-device gen-AI talent | [Wikipedia](https://en.wikipedia.org/wiki/Qualcomm) |
 | **Qualcomm – Alphawave / Ventana / Modular** | 2025-06 / 2025-12 / 2026 | $2.4B / n/d / $3.9B | — | — | Data-center connectivity, RISC-V CPUs, and the AI software stack (Modular) | [Wikipedia](https://en.wikipedia.org/wiki/Qualcomm) |
-| **Samsung – Viv Labs / Oxford Semantic** | 2016-10 / 2024-07 | ≈$215M (unverified) / n/d | — | — | Bixby agent platform; on-device knowledge graph for Galaxy AI | not verified (Samsung's Wikipedia page lacks them) |
+| **Samsung – Viv Labs / Oxford Semantic** | 2016-10 / 2024-07 | ≈$215M (₩238.9B per Samsung's regulatory filing, verified 2026-10-02) / n/d | — | — | Bixby agent platform (Siri creators); on-device knowledge graph for Galaxy AI | [VentureBeat](https://venturebeat.com/ai/samsung-paid-around-215-million-for-virtual-assistant-startup-viv) |
 | **Google – Wiz** | 2025 | $32B | — | — | Cloud security. Shows the price paid for a security platform | [Wikipedia](https://en.wikipedia.org/wiki/List_of_mergers_and_acquisitions_by_Alphabet) |
 | **Anduril – Klas** | 2025-07 | undisclosed | — | — | **Tactical edge communications and compute** (Voyager), the closest Anduril deal to secure comms | [Wikipedia](https://en.wikipedia.org/wiki/Anduril_Industries) |
 | Anduril – Numerica (radar/C2), American Infrared Solutions, ExoAnalytic | 2024-12, 2025-10, 2026-03 | undisclosed | — | — | Sensor, C2 and space roll-up | [Wikipedia](https://en.wikipedia.org/wiki/Anduril_Industries) |
 | Shield AI – Aechelon | 2026 (pending) | n/d | — | — | Simulation | [Wikipedia](https://en.wikipedia.org/wiki/Shield_AI) |
 | Palantir | — | Few acquisitions (Kimono Labs and Silk, 2016). ≈$400M invested in ~20 SPACs as customer-investor deals | — | — | Palantir partners and invests rather than acquiring | [Wikipedia](https://en.wikipedia.org/wiki/Palantir_Technologies) |
-| AMD – World Labs (context) | 2026-09-28 | $8.2B | — | — | Chip makers are buying AI model and software companies | [TC headline via tag page](https://techcrunch.com/tag/lakera/) |
+| AMD – World Labs (context) | 2026-09-28 (definitive agreement; close expected by end-2026) | ≈$8.2B all-stock | — | — | Chip makers are buying AI model and software companies; Fei-Fei Li becomes AMD chief scientist (verified 2026-10-02) | [CNBC](https://www.cnbc.com/2026/09/28/amd-fei-fei-li-world-labs.html), [Bloomberg](https://www.bloomberg.com/news/articles/2026-09-28/amd-to-buy-fei-fei-li-s-world-labs-ai-startup-for-8-2-billion) |
 
 ### 3.1 Patterns
 
 1. **Wearable-recorder exits are acqui-hires.** Meta–Limitless and Amazon–Bee did not disclose prices, and the hardware was killed. HP–Humane recovered about half the capital raised. The asset bought was **team plus IP plus data pipeline**, not the device business ([Sacra](https://sacra.com/research/why-meta-bought-limitless/)).
-2. **AI-security tuck-ins cluster at about $250–350M (unverified reports) for Series A/B companies** (Prompt, Lakera, Aim) with a runtime AI-DLP, prompt-injection or agent-governance product. That is the strongest precedent for a **redaction plus agent-governance layer** (see [04](04-redaction.md), when written) as a standalone exit path.
+2. **AI-security tuck-ins cluster at about $250–350M (press reports, verified 2026-10-02) for companies that had raised roughly $20–30M** (Prompt ≈$23M raised, Aim ≈$28M, Lakera) with a runtime AI-DLP, prompt-injection or agent-governance product. That is the strongest precedent for a **redaction plus agent-governance layer** (see [04](04-redaction.md), when written) as a standalone exit path.
 3. **Strategic premiums go to scarce teams in platform races.** Examples are io ($6.5B), Q.ai (≈$2B), Manus ($0.5–1B) and Glass Imaging (>$300M, about 10x capital). OpenAI's reported phone effort (Glass Imaging) and Meta's wearables push are live demand signals for **phone-level agent and OS talent**.
 4. **Healthcare documentation carries the largest precedent in the space.** Microsoft–Nuance at $19.7B anchors any healthcare-scribe exit story.
 5. **Defense primes and neo-primes prefer tuck-ins of comms, edge compute and sensors** (Anduril–Klas). A hardened, attested agent endpoint fits this pattern if it holds DoD accreditation (NIAP, CSfC). Without accreditation it does not.
@@ -3366,7 +3651,7 @@ Research date: **2026-09-30**. Workstream #8 of the [manifest](00-manifest.md). 
 | 1 | **Hypori** or a secure-mobility consolidator (e.g., Samsung Knox / Samsung Tactical, BlackBerry-style secure comms) | Adds an attested agent and on-device redaction to a FedRAMP High, IL4/5 virtual-mobile base | NIAP / CSfC path started; DoD pilot | [hypori.com](https://www.hypori.com/) |
 | 2 | **Anduril** (Lattice ecosystem) or **Palantir** (partnership or minority stake more likely) | A trusted edge agent endpoint for warfighter or analyst workflows | Tactical use case, ATO | Anduril–Klas ([Wikipedia](https://en.wikipedia.org/wiki/Anduril_Industries)) |
 | 3 | **Qualcomm** | Showcase for on-device agent and confidential compute on Snapdragon. Developer-ecosystem buyer (Arduino, Edge Impulse, Modular) | Snapdragon-first build; developer traction via elizaOS | [Wikipedia](https://en.wikipedia.org/wiki/Qualcomm) |
-| 4 | **Samsung** (Knox / Galaxy AI) | A privacy-first enterprise agent layer for Knox and Tactical Edition | Android portability; Knox integration | Viv Labs (unverified) |
+| 4 | **Samsung** (Knox / Galaxy AI) | A privacy-first enterprise agent layer for Knox and Tactical Edition | Android portability; Knox integration | Viv Labs (≈$215M, 2016) |
 | 5 | **OpenAI** | Rumored phone program (io, Glass Imaging) needs Android and agent-OS talent | Team quality; shipped device software | [TC](https://techcrunch.com/2026/09/14/openai-buys-smartphone-camera-maker-glass-imaging-for-300-million-report-says/) |
 | 6 | **Meta / Amazon / Google** | Agent and ambient talent; acqui-hire pattern | Unlikely at a premium (they buy teams, then kill products) | Limitless, Bee |
 | 7 | **HP (HP IQ) / Dell / Lenovo** | Future-of-work device ecosystem; HP already owns CosmOS | Enterprise pilots | HP–Humane |
@@ -3411,15 +3696,15 @@ Partner names come from public firm pages or press coverage. **Check sizes and s
 | 18 | Anthos Capital / Moonshots Capital | Gretel | — (Moonshots is veteran-led) | $1–10M; seed–B | [TC](https://techcrunch.com/2025/03/19/nvidia-reportedly-acquires-synthetic-data-startup-gretel/) |
 | 19 | Accenture Ventures (strategic) | Opaque | — | $1–10M; A–C; comes with a channel | [opaque.co](https://www.opaque.co/) |
 | 20 | South Park Commons | Confident Security | — | $0.4–1M; pre-seed | [confident.security](https://confident.security/) |
-| 21 | Goldman Sachs Growth / Alternatives | Fortanix (unverified lead) | — | $20–100M; C+ | [TC](https://techcrunch.com/2022/09/15/cybersecurity-firm-fortanix-secures-capital-to-provide-confidential-computing-services/) |
-| 22 | Insight Partners | Skyflow B (unverified lead) | — | $10–100M; A–growth | [TC](https://techcrunch.com/2021/10/19/skyflows-data-privacy-api-business-raises-45m-series-b/) |
+| 21 | Goldman Sachs Growth / Alternatives | Fortanix (C lead, verified) | — | $20–100M; C+ | [TC](https://techcrunch.com/2022/09/15/cybersecurity-firm-fortanix-secures-capital-to-provide-confidential-computing-services/) |
+| 22 | Insight Partners | **Jump B lead (2026-02, verified)**; Skyflow B lead (could not verify) | — | $10–100M; A–growth | [TC](https://techcrunch.com/2021/10/19/skyflows-data-privacy-api-business-raises-45m-series-b/) |
 | 23 | Team8 | Israeli cyber foundry | — | $2–15M; seed–A | [team8.vc](https://team8.vc/) |
 | 24 | YL Ventures | Cyber seed | — | $2–10M; seed | [ylventures.com](https://www.ylventures.com/) |
 | 25 | Cyberstarts | Cyber seed | Gili Raanan | $3–20M; seed–A | [cyberstarts.com](https://www.cyberstarts.com/) |
 | 26 | Ten Eleven Ventures | Cyber-only | Alex Doll | $3–20M; seed–B | [1011vc.com](https://www.1011vc.com/) |
 | 27 | Evolution Equity Partners | Cyber and AI security | — | $5–50M; A–C | [evolutionequity.com](https://evolutionequity.com/) |
 | 28 | Forgepoint Capital | Cyber | — | $3–25M; seed–B | [forgepointcap.com](https://forgepointcap.com/) |
-| 29 | Decibel | Security / dev infra (reported Confident Security investor, unverified) | — | $1–5M; seed | [decibel.vc](https://www.decibel.vc/) |
+| 29 | Decibel | Security / dev infra; Confident Security seed investor (verified) | — | $1–5M; seed | [decibel.vc](https://www.decibel.vc/) |
 
 ### 4.3 Defense and national security
 
@@ -3437,7 +3722,7 @@ Partner names come from public firm pages or press coverage. **Check sizes and s
 | 39 | Squadra Ventures | National-security seed | — (verify) | $0.5–3M; seed | — |
 | 40 | Decisive Point | Defense, energy and infrastructure deep tech; partner in the NSIN Propel accelerator | — | $0.5–5M; seed | [decisivepoint.com](https://www.decisivepoint.com/) |
 | 41 | In-Q-Tel (IQT) | Anduril, Databricks, GitLab, Rocket Lab | CEO Steve Bowsher | Strategic; paired with a technical "work program" (est. $0.5–3M) | [iqt.org](https://www.iqt.org/), [Wikipedia](https://en.wikipedia.org/wiki/In-Q-Tel) |
-| 42 | NSIN (National Security Innovation Network) | Accelerators (Propel) | — | Non-dilutive programs. **nsin.mil did not resolve on 2026-09-30. Status unverified** | [decisivepoint.com](https://www.decisivepoint.com/) |
+| 42 | NSIN (National Security Innovation Network) | Accelerators (Propel) | — | Non-dilutive programs. **NSIN (and NSIC) were folded into DIU; integration completed in fall 2024** (verified 2026-10-02). Approach through DIU | [Wikipedia](https://en.wikipedia.org/wiki/National_Security_Innovation_Network), [GAO-25-106856](https://files.gao.gov/reports/GAO-25-106856/index.html) |
 | 43 | Riot Ventures | Shield AI (2023 co-lead) | — | $1–20M; seed–C | [Wikipedia](https://en.wikipedia.org/wiki/Shield_AI) |
 | 44 | USIT (U.S. Innovative Technology Fund) | Shield AI (2023 co-lead) | Thomas Tull | $10–100M; B+ | [Wikipedia](https://en.wikipedia.org/wiki/Shield_AI) |
 | 45 | 1789 Capital | Anduril (2025 co-lead) | — | $10–100M+; growth | [Wikipedia](https://en.wikipedia.org/wiki/Anduril_Industries) |
@@ -3452,7 +3737,7 @@ Partner names come from public firm pages or press coverage. **Check sizes and s
 | 49 | OpenAI Startup Fund | Ambience (B co-lead) | — | $1–20M; seed–B | [TC](https://techcrunch.com/2024/02/06/ambience-healthcare-raises-70m-for-its-ai-assistant-led-by-openai-and-kleiner-perkins/) |
 | 50 | Headline | Heidi | — | $2–30M; seed–B | [TC](https://techcrunch.com/2025/10/05/heidi-health-raises-65m-series-b-led-by-steve-cohens-point72/) |
 | 51 | Blackbird Ventures | Heidi | — | $1–20M; seed–B (ANZ) | [TC](https://techcrunch.com/2023/10/25/heidi-health/) |
-| 52 | Oak HC/FT | Health and fintech (reported Ambience C co-lead, unverified) | — | $10–75M; A–C | [oakhcft.com](https://www.oakhcft.com/) |
+| 52 | Oak HC/FT | Health and fintech; Ambience C co-lead with a16z (verified) | — | $10–75M; A–C | [oakhcft.com](https://www.oakhcft.com/) |
 | 53 | Possible Ventures | Heidi | — | $1–10M; seed–B | [TC](https://techcrunch.com/2025/10/05/heidi-health-raises-65m-series-b-led-by-steve-cohens-point72/) |
 
 ### 4.5 Fintech and regtech (compliance capture, off-channel communications)
@@ -3461,7 +3746,7 @@ Partner names come from public firm pages or press coverage. **Check sizes and s
 | --- | --- | --- | --- | --- |
 | 54 | Ribbit Capital | Fintech infrastructure | $5–50M; A–growth | [ribbitcap.com](https://ribbitcap.com/) |
 | 55 | QED Investors | Fintech; operator-heavy | $2–30M; seed–C | [qedinvestors.com](https://www.qedinvestors.com/) |
-| 56 | Citi Ventures | Strategic; bank security and compliance | $2–15M; A–C | [citi.com/ventures](https://www.citi.com/ventures) |
+| 56 | Citi Ventures | Strategic; bank security and compliance; Jump investor (verified) | $2–15M; A–C | [citi.com/ventures](https://www.citi.com/ventures) |
 | 57 | Goldman Sachs Growth | See #21. Bank-grade security buyer and investor | $20M+; C+ | [TC](https://techcrunch.com/2022/09/15/cybersecurity-firm-fortanix-secures-capital-to-provide-confidential-computing-services/) |
 
 ### 4.6 Crypto-AI (use only for developer-ecosystem or decentralized-compute angles; see §1.2)
@@ -3471,7 +3756,7 @@ Partner names come from public firm pages or press coverage. **Check sizes and s
 | 58 | Paradigm | Crypto research and AI infrastructure | $1–100M; seed–growth | [paradigm.xyz](https://www.paradigm.xyz/) |
 | 59 | Polychain Capital | Crypto-AI and decentralized compute | $1–25M; seed–B | [polychain.capital](https://polychain.capital/) |
 | 60 | Coinbase Ventures | Broad crypto; x402 / agent payments ecosystem (inference) | $0.25–3M; seed | [coinbase.com/ventures](https://www.coinbase.com/ventures) |
-| 61 | Pantera Capital | Zama (reported co-lead, unverified) | $1–25M; seed–B | [panteracapital.com](https://panteracapital.com/) |
+| 61 | Pantera Capital | Zama B co-lead (verified) | $1–25M; seed–B | [panteracapital.com](https://panteracapital.com/) |
 | 62 | Delphi Ventures | Crypto-AI agents | $0.25–3M; seed | [delphiventures.io](https://delphiventures.io/) |
 | 63 | Solana Ventures / Solana ecosystem | Solana founders backed Friend. ELIZAOS lives on Solana | $0.25–5M; seed | [Decrypt](https://decrypt.co/242629/friend-necklace-avi-schiffmann) |
 | 64 | Multicoin / Framework / Hack VC / Dragonfly | Crypto-AI thesis funds | $1–15M; seed–A | [multicoin.capital](https://multicoin.capital/) |
@@ -3494,7 +3779,7 @@ Partner names come from public firm pages or press coverage. **Check sizes and s
 | 76 | SoftBank (Vision Fund) | Humane investor | $50M+; growth | [Wikipedia](https://en.wikipedia.org/wiki/Humane_Inc.) |
 | 77 | NTT Docomo Ventures | Otter investor; Japan carrier | $1–10M | [TC](https://techcrunch.com/2020/01/27/a-i-powered-voice-transcription-app-otter-raises-10m-including-from-new-strategic-investor-ntt-docomo/) |
 | 78 | Kakao Investment | Rabbit investor | $1–5M | [rabbit.tech](https://www.rabbit.tech/newsroom/rabbit-raises-20m) |
-| 79 | Tencent | Plaud (reported, denied) | strategic | [36Kr](https://eu.36kr.com/en/p/3799129165863937) (**avoid** for US government positioning) |
+| 79 | Tencent | Plaud (reported, denied); Even Realities co-lead (2026-07, verified) | strategic | [36Kr](https://eu.36kr.com/en/p/3799129165863937) (**avoid** for US government positioning) |
 
 ### 4.8 Sovereign and Gulf funds (for a sovereign-phone thesis; mind CFIUS and FOCI)
 
@@ -3514,7 +3799,7 @@ Partner names come from public firm pages or press coverage. **Check sizes and s
 
 | Program | Amount | Eligibility | Timeline | Status (2026-09-30) | Source |
 | --- | --- | --- | --- | --- | --- |
-| **SBIR/STTR (all agencies)** | Phase I typically ≈$150–300K; Phase II ≈$1–2M (agency-specific, est.). DoD's cumulative SBIR/STTR investment exceeds $41B across 80K awards | US small business (≤500 employees including affiliates), majority US-owned (rule unverified this pass). STTR also needs a research-institution partner | Solicitations run on agency cycles. Awards take roughly 3–9 months (est.) | **Lapsed about 6 months** (authority expired 2025-09-30, est.). **Reauthorized April 2026** by the Small Business Innovation and Economic Security Act **through 2031-09-30**. DoD CTO Emil Michael is pushing anti-"gaming" reforms | [DefenseScoop](https://defensescoop.com/2026/04/29/sbir-sttr-americas-seed-fund-is-being-revamped-for-modern-warfare/) |
+| **SBIR/STTR (all agencies)** | Phase I typically ≈$150–300K; Phase II ≈$1–2M (agency-specific, est.). DoD's cumulative SBIR/STTR investment exceeds $41B across 80K awards | US small business (≤500 employees including affiliates), more than 50% owned and controlled by US citizens or permanent residents (or eligible US firms), or by multiple VC/PE funds with none above 50% (verified 2026-10-02). STTR also needs a research-institution partner | Solicitations run on agency cycles. Awards take roughly 3–9 months (est.) | **Lapsed about 6 months** (authority expired 2025-09-30, est.). **Reauthorized April 2026** by the Small Business Innovation and Economic Security Act **through 2031-09-30**. DoD CTO Emil Michael is pushing anti-"gaming" reforms | [DefenseScoop](https://defensescoop.com/2026/04/29/sbir-sttr-americas-seed-fund-is-being-revamped-for-modern-warfare/) |
 | **AFWERX / SpaceWERX** (Air Force SBIR/STTR; STRATFI/TACFI) | Phase I, D2P2 and Phase II. STRATFI/TACFI matched follow-ons of several $M (est.) | As SBIR | Topics **26.BZ, 26.BX and 26.TZ Release 6 are open now** | Open | [afwerx.com](https://afwerx.com/) |
 | **Army xTech** | Prize competitions plus SBIR follow-ons (amounts per competition) | US small business. Some challenges accept allied or foreign firms (e.g., xTech Disrupt Endurance) | White paper → pitch → proof of concept | **xTechSearch 10 open.** Other competitions active | [xtech.army.mil](https://www.xtech.army.mil/) |
 | **DIU Commercial Solutions Opening (CSO)** | Prototype Other Transaction awards (typical $0.5–5M, est.) with a production-OT follow-on path | Commercial solution; no small-business requirement | Area of Interest → solution brief → pitch → prototype award, 60–90 days target (est.) | Active (submission page 404'd this pass; verify at diu.mil) | [diu.mil](https://www.diu.mil/) |
@@ -3525,7 +3810,7 @@ Partner names come from public firm pages or press coverage. **Check sizes and s
 | **CHIPS Act** | Fab and R&D incentives | Semiconductor manufacturing and R&D | — | **Low relevance** (Alpha is not a chip or fab company) | inference |
 | **EU EIC Accelerator** | Grant up to **€2.5M** plus equity **€1–10M** (more via STEP Scale-Up) | EU or Horizon-associated SMEs. Third-country applicants may relocate | 2026 cut-offs: 7 Jan, 4 Mar, 6 May, 8 Jul, 2 Sep, **4 Nov 2026**. Results in 4–9 weeks | Open | [EIC](https://eic.ec.europa.eu/eic-funding-opportunities/eic-accelerator_en) |
 | **UK DASA → UK Defence Innovation (UKDI)** | Themed competitions (e.g., up to £1.5M for conflict wound care, 2026-01-27) | UK and international suppliers (competition-specific) | Rolling | **DASA became part of UKDI in Feb 2026** | [gov.uk](https://www.gov.uk/government/organisations/defence-and-security-accelerator) |
-| **NATO DIANA** | Challenge-programme grants (≈€100K phase 1, ≈€300K phase 2, est.; verify) | Companies in NATO nations | Annual calls | diana.nato.int returned 403. Verify directly | — |
+| **NATO DIANA** | **€100K** phase-1 contract funding (six-month accelerator); up to **€300K** more in phase 2 (verified 2026-10-02) | Companies in NATO nations | Annual calls; the 2026 cohort (largest yet) started January 2026. The next call date could not be verified | Active | [DIANA](https://www.diana.nato.int/accelerator-programme.html), [Innovate UK](https://iuk-business-connect.org.uk/opportunities/nato-defence-innovation-accelerator-diana-2026-cohort/) |
 | **NATO Innovation Fund** | €1B+ equity fund backed by 24 allies | Deep tech in 9 areas incl. AI and next-gen comms | VC process | Active | [nif.fund](https://www.nif.fund/) |
 
 **Sequencing (inference):** (1) Submit to the open AFWERX Release 6 topics and the DIU CSO for a "trusted mobile agent / attested AI endpoint" once a US-eligible entity exists. (2) Apply to NSF SBIR for the on-device redaction research (Phase I). (3) Treat IQT as a warm-intro target after a first government pilot. (4) Use EIC (4 Nov 2026 cut-off) only if an EU entity is created.
@@ -3568,9 +3853,9 @@ Partner names come from public firm pages or press coverage. **Check sizes and s
 
 ## 7. Implications for Alpha Phone
 
-1. **Fix the vehicle before the pitch.** The parent (ALP) has $507K cash, a $2.3M market cap and −$20.6M operating cash flow. Create a **US Delaware C-corp for Alpha Phone** with a US-person majority, an IP license from the parent, MIT-licensed elizaOS, and a board seat for the parent. This makes SBIR, DIU and IQT eligibility possible, isolates the product from parent distress and 6-K disclosure noise, and gives VCs a clean cap table. Alternatives are a carve-out JV with a strategic (Qualcomm, Samsung, Hypori) or a licensing-first model.
+1. **Fix the vehicle before the pitch.** The parent (ALP) has $507K cash (last reported), a ≈$7M market cap, −$20.6M operating cash flow and an auditor going-concern paragraph in its FY2026 20-F/A. Create a **US Delaware C-corp for Alpha Phone** with a US-person majority, an IP license from the parent, MIT-licensed elizaOS, and a board seat for the parent. This makes SBIR, DIU and IQT eligibility possible, isolates the product from parent distress and 6-K disclosure noise, and gives VCs a clean cap table. Alternatives are a carve-out JV with a strategic (Qualcomm, Samsung, Hypori) or a licensing-first model.
 2. **Target raise: $4–8M seed (est.)** plus $1–3M non-dilutive in the first 12 months. Syndicate: one security or defense seed lead (Shield Capital, Decisive Point, Ten Eleven, Cyberstarts, 8VC), one strategic corporate VC (Qualcomm Ventures, Intel Capital or NVentures for confidential compute), and angels from the confidential-compute community. **Do not lead with crypto funds or a token.**
-3. **Position against the right comps.** Use the Opaque ($300M), Abridge (≈45x ARR) and AI-security tuck-in comps (≈$250–350M, unverified) for valuation logic. Avoid Humane and Rabbit comparisons by presenting a software and governance company with a reference device.
+3. **Position against the right comps.** Use the Opaque ($300M), Abridge (≈45x ARR), Jump ($80M B, 27K advisors) and AI-security tuck-in comps (≈$250–350M reported) for valuation logic. Avoid Humane and Rabbit comparisons by presenting a software and governance company with a reference device.
 4. **Treat redaction and agent governance as a separable asset.** The Prompt, Lakera and Aim acquisitions show that security platforms pay nine figures for runtime AI-DLP. Build the redaction contract (ADR-02) as a standalone SDK. It protects the downside and widens the acquirer pool.
 5. **Map acquirers early.** Hypori or secure-mobility players, Qualcomm, Samsung Knox, Anduril or Palantir partners, and cybersecurity platforms are the realistic buyers. Big-tech consumer buyers typically acqui-hire and shut the product down.
 6. **Run the government lane in parallel, and do it honestly.** AFWERX Release 6 is open, xTech is running, and SBIR is secure through 2031. Every submission must separate APK, emulator, AOSP-image and real-device evidence, as `AGENTS.md` requires, and must say that on-device STT/TTS and redaction are not yet built.
@@ -3580,13 +3865,13 @@ Partner names come from public firm pages or press coverage. **Check sizes and s
 ## 8. Open questions
 
 1. **Entity:** Which legal entity owns Alpha Phone's IP today: Alpha Compute Corp (BVI), a US subsidiary, or Eliza Research? What license terms apply between them?
-2. **Parent financing:** What were the amounts and uses in the 2026 424B3 prospectuses and 20-F? Is any capital earmarked for the phone? Is there a going-concern qualification in the 20-F?
+2. **Parent financing:** What were the amounts and uses in the 2026 424B3 prospectuses (four filed 2026-05-22, one 2026-06-04) and the Form D (2026-05-29)? Is any capital earmarked for the phone? *Partly answered 2026-10-02:* the FY2026 20-F/A **does** carry a going-concern paragraph, says the year was funded by private placements, ATM and registered direct offerings, and does not mention a phone.
 3. **Relationship:** What is the contractual relationship between Alpha Compute and Eliza Research / Shaw Walters (equity, services, revenue share)? Does the Burwick settlement bind or release any successor entities or IP?
 4. **Eligibility:** Could a US NewCo meet the SBIR ownership test and FOCI requirements if the parent keeps a minority stake? What mitigation would DCSA require?
-5. **Unverified comps to confirm before deck use:** Otter ARR; Fireflies' $1B valuation; Ambience Series C; Suki Series D; Nabla Series C; Zama Series B; the prices of Prompt, Lakera and Aim; the Edge Impulse date; Samsung–Viv; Fathom and Jump rounds; Even Realities and Halliday funding; Opaque Series B date (company site 2026-02 vs. earlier 2025 reports).
-6. **Apple–Q.ai (≈$2B, 2026-01-29):** What does Q.ai do? If it is audio or voice-interface technology, it is a direct strategic comp. Confirm.
-7. **NSIN status:** nsin.mil did not resolve. Has the program been closed or folded into DIU?
-8. **NATO DIANA:** What are the 2026 challenge dates and grant amounts? The site returned 403.
+5. **Unverified comps:** *Resolved 2026-10-02* for Otter, Fireflies, Ambience, Suki, Nabla, Zama, Prompt/Lakera/Aim (press-reported prices), Edge Impulse, Samsung–Viv, Fathom, Jump, Even Realities, Halliday and Opaque (2026-02-12). Still open: Nuance revenue base for the 13x multiple; Glass Imaging capital raised; Skyflow lead investor; the Alpha Compute employee count.
+6. **Apple–Q.ai (≈$2B, 2026-01-29):** *Answered 2026-10-02:* whispered and silent-speech recognition plus noisy-environment audio enhancement. It is a direct voice-interface comp.
+7. **NSIN status:** *Answered 2026-10-02:* folded into DIU (completed fall 2024).
+8. **NATO DIANA:** *Partly answered:* €100K phase 1, up to €300K phase 2; the 2026 cohort started January 2026. Next call date still open.
 9. **Investor contacts:** Current partner assignments at Razor's Edge, Squadra, Point72 Hyperscale and Shield Capital. Some firm sites did not resolve.
 10. **Strategic partners:** Would Qualcomm, Samsung Knox or Hypori take a commercial-plus-equity partnership ahead of a priced round?
 11. **Token overhang:** Should holders of the old ELIZAOS token receive any disclosure or communication when Alpha Phone fundraises, to avoid claims of an implied connection?
@@ -3638,6 +3923,56 @@ Partner names come from public firm pages or press coverage. **Check sizes and s
 - Investors: https://a16z.com/american-dynamism/ · https://www.shieldcap.com/ · https://www.decisivepoint.com/
 - Brittany Kaiser: https://en.wikipedia.org/wiki/Brittany_Kaiser
 
+---
+
+## Verification log (2026-10-02)
+
+| # | Claim (as first written) | Result | Source |
+| --- | --- | --- | --- |
+| 1 | Alpha Compute Corp, CIK 0001095435, BVI, formerly AlphaTON / Portage / Bontan / DealCheck | Confirmed. Added dates: Portage to 2025-09-03, AlphaTON to 2026-04-20; legal name effective 2026-04-14; ticker ATON → ALP 2026-04-21; FY ends 31 March | [EDGAR](https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=0001095435&type=&dateb=&owner=include&count=40), [20-F/A](https://www.sec.gov/Archives/edgar/data/0001095435/000117184326005284/f20fa_072626.htm) |
+| 2 | Market cap $2.29M, 469,417 shares (2026-09-30) | **Corrected:** ≈$7.04M, ≈1.55M shares at $4.54 (2026-10-02). The earlier share count was stale | [stockanalysis](https://stockanalysis.com/stocks/alp/statistics/) |
+| 3 | Going-concern qualification (open question) | **Confirmed:** auditor's going-concern paragraph in the FY2026 20-F/A | [20-F/A](https://www.sec.gov/Archives/edgar/data/0001095435/000117184326004784/f20fa_071626.htm) |
+| 4 | Net loss −$38.63M | Confirmed (−$38,627K in the 20-F/A) | [20-F/A](https://www.sec.gov/Archives/edgar/data/0001095435/000117184326005284/f20fa_072626.htm) |
+| 5 | 1:50 reverse split 2026-09-09; Nasdaq compliance regained 2026-09-25 | Confirmed (Nasdaq notice dated 2026-03-02; prior 1:20 split 2024-08-15) | [6-K](https://www.sec.gov/Archives/edgar/data/0001095435/000117184326006237/exh_991.htm), [TipRanks](https://www.tipranks.com/news/company-announcements/alpha-compute-changes-effective-date-for-1-for-50-reverse-share-split-to-september-9-2026) |
+| 6 | CEO Brittany Kaiser, CFO Wes Levitt | Confirmed via company press releases. CTO and CSO names could not verify | [Yahoo/GlobeNewswire](https://finance.yahoo.com/technology/ai/articles/alpha-compute-ceo-brittany-kaiser-133000519.html) |
+| 7 | 2 employees; $507K cash | Could not verify in filings (aggregator figures retained and labelled) | [stockanalysis](https://stockanalysis.com/stocks/alp/statistics/) |
+| 8 | No phone or elizaOS in parent disclosures | Confirmed for the FY2026 20-F/A (no phone, Eliza, elizaOS or Walters related-party mentions) | [20-F/A](https://www.sec.gov/Archives/edgar/data/0001095435/000117184326005284/f20fa_072626.htm) |
+| 9 | Burwick class action, S.D.N.Y., April 2026, settled with treasury transfer | Confirmed and detailed: *Doe v. Walters*, 1:26-cv-03238, filed 2026-04-22; settlement terms undisclosed and known only from Walters' statements | [Burwick](https://www.burwick.law/insights/burwick-law-files-class-action-over-ai16z-and-elizaos-tokens), [CoinDesk](https://www.coindesk.com/markets/2026/08/05/ai-agent-token-once-worth-usd2-4-billion-ends-with-founder-calling-it-dead) |
+| 10 | AI16Z implied peak ≈$2.7B (est.) | **Corrected:** ≈$2.39B on 2025-01-02 (CoinDesk); ≈$2.5B per complaint | [CoinDesk](https://www.coindesk.com/markets/2026/08/05/ai-agent-token-once-worth-usd2-4-billion-ends-with-founder-calling-it-dead) |
+| 11 | Migration ≈ late Oct / early Nov 2025 (est.) | **Corrected:** November 2025, 1 AI16Z = 6 ELIZAOS, supply ≈1.1B → 11B | [Bitget](https://www.bitget.com/support/articles/12560603842595) |
+| 12 | a16z has no known involvement | Confirmed no investment found; **added** that a16z demanded the project stop using its branding (2025-01-28) | [CoinDesk](https://www.coindesk.com/markets/2026/08/05/ai-agent-token-once-worth-usd2-4-billion-ends-with-founder-calling-it-dead) |
+| 13 | ELIZAOS $1.23M market cap | Updated: ≈$1.17M (2026-10-02) | [CoinGecko](https://www.coingecko.com/en/coins/elizaos) |
+| 14 | Humane C ≈$850M valuation | Confirmed (Statista); **corrected** lead to Kindred Ventures | [FinSMEs](https://www.finsmes.com/2023/03/humane-raises-100m-in-series-c-funding.html) |
+| 15 | Rabbit $64.7M total | Confirmed as an aggregator figure | [Tracxn](https://tracxn.com/d/companies/rabbit/__vdiumaOhng69zFAReD7J2IkrQzC1JfP5BrQcwvsWVhM) |
+| 16 | Brilliant Labs ≈$3M | **Corrected:** ≈$6M over three seed rounds | [Tracxn](https://tracxn.com/d/companies/brilliant-labs/__obA2Pvm8VG-b_S6JCw6N6fdZbqfy0CI8-7yYgjxkS4M/funding-and-investors) |
+| 17 | Even Realities: not found | **Added:** $150M at $1B, 2026-07, led by Meituan and Tencent | [TC](https://techcrunch.com/2026/07/06/smart-glasses-maker-even-realities-hits-1b-valuation-with-150m-funding-led-by-meituan-tencent/) |
+| 18 | Halliday: not found | **Added:** crowdfunding only (≈$3.3M Kickstarter) | [Kickstarter](https://www.kickstarter.com/projects/halliday-ai-glasses/halliday-proactive-ai-glasses-with-invisible-display) |
+| 19 | Otter ≈$100M ARR | Confirmed (company: March 2025) | [Otter](https://otter.ai/blog/otter-ai-breaks-100m-arr-barrier-and-transforms-business-meetings-launching-industry-first-ai-meeting-agent-suite) |
+| 20 | Fireflies $1B via tender | Confirmed (June 2025) | [UrbanGeekz](https://urbangeekz.com/2025/06/fireflies-ai-unicorn-status-perplexity/) |
+| 21 | Read AI B led by Smith Point | **Corrected:** Smash Capital, $450M valuation | [GeekWire](https://www.geekwire.com/2024/seattle-startup-read-ai-raises-50m-to-fuel-copilot-everywhere-vision-for-enterprise-software/) |
+| 22 | Fathom, Jump: not verified | **Added:** Fathom $17M A (2024-09); Jump $80M B (2026-02, Insight) | [Yahoo](https://www.yahoo.com/news/ai-notetaker-fathom-raises-17m-130000080.html), [WealthManagement](https://www.wealthmanagement.com/artificial-intelligence/jump_secures_series_b) |
+| 23 | Ambience C $243M at $1.25B | Confirmed; co-leads Oak HC/FT and a16z | [MedCity](https://medcitynews.com/2025/07/healthcare-documentation-startup-unicorn/) |
+| 24 | Suki D $70M; Nabla C $70M | Confirmed (Hedosophia; HV Capital) | [Healthcare Dive](https://www.healthcaredive.com/news/suki-70-million-Series-D-funding/729573/), [Nabla](https://www.nabla.com/blog/70m-series-c) |
+| 25 | Opaque B date | Confirmed 2026-02-12; lead Walden Catalyst; Abu Dhabi ATRC participated | [FinSMEs](https://www.finsmes.com/2026/02/opaque-raises-24m-in-series-b-at-300m-valuation.html) |
+| 26 | Fortanix ≈$90M, Goldman | Confirmed; In-Q-Tel and Intel Capital also participated | [BusinessWire](https://www.businesswire.com/news/home/20220915005348/en/Fortanix-Raises-$90M-in-Series-C-Funding-Led-by-Goldman-Sachs-Asset-Management-to-Accelerate-Leadership-in-the-Data-Security-Market) |
+| 27 | Confident Security ≈$4.2M | Confirmed (2025-07, Decibel and SPC) | [TC](https://techcrunch.com/2025/07/17/confident-security-the-signal-for-ai-comes-out-of-stealth-with-4-2m/) |
+| 28 | Zama $57M B at >$1B | Confirmed (2025-06-25) | [CoinDesk](https://www.coindesk.com/tech/2025/06/25/zama-raises-57m-becomes-first-unicorn-involved-with-fully-homomorphic-encryption) |
+| 29 | Private AI ≈$8M A, BDC | Confirmed (2022-11) | [Private AI](https://www.private-ai.com/en/blog/private-ai-secures-8m-usd-series-a) |
+| 30 | Sirin ≈$158M ICO | Confirmed ($157.9M, Dec 2017) | [CoinDesk](https://www.coindesk.com/markets/2018/01/12/blockchain-in-your-pocket-the-phone-behind-sirins-157-million-ico) |
+| 31 | Prompt ≈$250M, Lakera ≈$300M, Aim ≈$350M | Confirmed as press reports (Aim $300–350M) | [Calcalist](https://www.calcalistech.com/ctechnews/article/im5ma59bu), [Calcalist](https://www.calcalistech.com/ctechnews/article/rj5bc1vige), [Calcalist](https://www.calcalistech.com/ctechnews/article/7pzhe3mrd) |
+| 32 | Apple–Q.ai: business unknown | **Answered:** silent and whispered speech plus noisy-audio ML | [SiliconANGLE](https://siliconangle.com/2026/01/29/apple-acquires-ai-startup-q-ai-reported-2b/) |
+| 33 | Edge Impulse 2025-03 | Confirmed (announced 2025-03-10) | [Edge Impulse](https://www.edgeimpulse.com/blog/edge-impulse-qualcomm-acquisition/) |
+| 34 | Samsung–Viv ≈$215M | Confirmed | [VentureBeat](https://venturebeat.com/ai/samsung-paid-around-215-million-for-virtual-assistant-startup-viv) |
+| 35 | AMD–World Labs $8.2B | Confirmed (all-stock, 2026-09-28) | [CNBC](https://www.cnbc.com/2026/09/28/amd-fei-fei-li-world-labs.html) |
+| 36 | OpenAI–Glass Imaging >$300M | Confirmed as a WSJ report, unconfirmed by the companies | [SiliconANGLE](https://siliconangle.com/2026/09/14/openai-reportedly-buys-ai-camera-startup-glass-imaging-for-more-than-300m/) |
+| 37 | Anduril $5B at $61B; $100B talks | Confirmed (round is Series H) | [Defense News](https://www.defensenews.com/industry/techwatch/2026/07/24/anduril-in-talks-to-raise-funding-at-about-100-billion-valuation/) |
+| 38 | Plaud ≈$2B valuation (reported, denied) | Unchanged; no confirmed new round found | [36Kr](https://eu.36kr.com/en/p/3799129165863937) |
+| 39 | SBIR ownership and size rule | Confirmed (>50% US citizen/PR ownership; ≤500 employees incl. affiliates; multi-VC exception) | [SBA guide](https://www.sbir.gov/sites/default/files/elig_size_compliance_guide.pdf) |
+| 40 | NSIN status | **Answered:** folded into DIU, fall 2024 | [Wikipedia](https://en.wikipedia.org/wiki/National_Security_Innovation_Network) |
+| 41 | NATO DIANA amounts (est.) | Confirmed: €100K phase 1, up to €300K phase 2 | [DIANA](https://www.diana.nato.int/accelerator-programme.html) |
+| 42 | Microsoft–Nuance ≈13x revenue | Could not verify revenue base | — |
+
+
 
 ---
 
@@ -3656,7 +3991,9 @@ On-device STT/TTS is required for the MVP but not yet built.
 ## Method and evidence quality
 
 - **Search budget.** The session's shared web-search quota ran out after two searches. The rest of the research used about 110 direct fetches of primary pages: vendor pricing pages, AWS and Microsoft documentation, FAR/GSAM clauses, SEC releases, Wikipedia infoboxes and Sacra profiles. About half the fetches succeeded. Carrier pages, SEWP, FCC, Reuters and The Verge were blocked or returned 403/404.
-- **Labels.** Every number has a URL. **(est.)** marks an analyst estimate, and the basis is stated. **(unverified)** marks a widely reported figure that could not be re-fetched this session; its usual primary source is linked.
+- **Labels.** Every number has a URL. **(est.)** marks an analyst estimate, and the basis is stated. **(unverified)** marked a widely reported figure that could not be re-fetched in the first pass; after the 2026-10-02 pass these read "(verified 2026-10-02)" or "(could not verify 2026-10-02)".
+- **Fact-check pass (2026-10-02).** A second pass with web access re-checked the decision-relevant numbers. "(verified 2026-10-02)" marks confirmed items; "(could not verify)" marks items still open. See the verification log at the end.
+- **Founder decisions applied (2026-10-02).** (1) Alpha forks AOSP for its own image and does **not** need banking apps, Google Play Integrity or GMS, so those are no longer treated as blockers for the custom image. MDM support for AOSP devices remains a real constraint. (2) Cloud inference stays on Qwen (`qwen-3.8-27b` on Cerebras); no model switch is planned.
 - **Reuse from workstream 3.** Some figures come from the sibling file [03-secure-phones-confidential-ai.md](03-secure-phones-confidential-ai.md), with that file's original URLs.
 - **BOM data.** The Pixel 10 teardowns from TechInsights are paywalled ([Pixel 10](https://www.techinsights.com/blog/summary-google-pixel-10-glbw0-deep-dive-teardown), [Pixel 10 Pro](https://www.techinsights.com/blog/inside-google-pixel-10-pro-most-comprehensive-teardown-available)), and no public Counterpoint BOM for Pixel 10 could be retrieved. BOM figures below are therefore **estimates**, bounded by Google's official repair-part prices.
 
@@ -3664,13 +4001,12 @@ On-device STT/TTS is required for the MVP but not yet built.
 
 ## Executive summary
 
-1. **Start with software, not hardware.** A Pixel 10 costs $799–$1,199 ([Google](https://blog.google/products/pixel/google-pixel-10-pro-xl/)) and is already FCC-, PTCRB- and carrier-certified, with 7 years of updates. Alpha can ride that for $0 in certification. A custom ODM phone adds NRE, MOQ and certification costs of **$1.5–6M (est.)** before the first unit ships.
-2. **The custom AOSP image carries a channel cost as well as an engineering cost.**
-   - An image signed with Alpha's keys fails Play Integrity device and strong integrity ([GrapheneOS](https://grapheneos.org/articles/attestation-compatibility-guide)) and shows a boot warning ([AOSP](https://source.android.com/docs/security/features/verifiedboot/device-state)).
-   - It cannot legitimately carry GMS on Pixel hardware (est.).
-   - It falls outside Intune's AOSP management, which covers only an allow-list of OEM devices. The only phone on that list is the HMD Terra M ([Microsoft Learn](https://learn.microsoft.com/en-us/mem/intune/fundamentals/android-os-project-supported-devices)).
-   - Android Enterprise, zero-touch and managed Google Play are the main enterprise MDM channels, and they assume a GMS device. Keep the AOSP add-on for sovereign and on-prem deals.
-3. **Inference, not hardware, sets the margin.** At Cerebras' listed $0.99/M input and $1.49/M output for Qwen3.8 27B ([pricepertoken](https://pricepertoken.com/endpoints/cerebras)), a typical agent user costs **~$13/month in tokens (est.)**, and a heavy user **~$40 (est.)**. Shared Nitro compute adds **~$3–6 (est.)**. Nitro Enclaves carry no surcharge ([AWS](https://aws.amazon.com/ec2/nitro/nitro-enclaves/faqs/)). A **dedicated enclave per owner costs at least $97–147/month** in instance fees alone (est., from [Vantage m7i.xlarge](https://instances.vantage.sh/aws/ec2/m7i.xlarge)). That tier works only for executives and sovereign customers.
+1. **Start with software, not hardware.** A Pixel 10 costs $799–$1,199 ([Google](https://blog.google/products/pixel/google-pixel-10-pro-xl/)) and is already FCC-, PTCRB- and carrier-certified, with 7 years of updates. *2026 update:* the Pixel 11 launched on 2026-08-12 (shipping 2026-08-20) from **$899** with 256 GB base storage, Tensor G6, 12 GB RAM and 7 years of updates ([Engadget](https://www.engadget.com/2234844/google-pixel-11-announced-specs-availability/); verified 2026-10-02). Pro and Pro XL prices of $1,099 and $1,299 were reported by secondary sources (could not verify). Alpha can ride that for $0 in certification. A custom ODM phone adds NRE, MOQ and certification costs of **$1.5–6M (est.)** before the first unit ships.
+2. **The custom AOSP image carries a channel cost as well as an engineering cost, but not the one usually assumed.**
+   - An image signed with Alpha's keys fails Play Integrity device and strong integrity ([GrapheneOS](https://grapheneos.org/articles/attestation-compatibility-guide)), shows a boot warning ([AOSP](https://source.android.com/docs/security/features/verifiedboot/device-state)) and cannot carry GMS. **Founder decision (2026-10-02): Alpha's own AOSP image does not need banking apps, Google Wallet, Play Integrity or GMS, so these are not blockers for the custom image.** Partner apps can verify Alpha devices with hardware key attestation instead.
+   - **What remains a real constraint is MDM.** Intune's AOSP management covers only an allow-list of OEM devices. As of the page's 2026 revision, the only phone on that list is still the HMD Terra M; the rest are headsets plus the Zebra WS50 ([Microsoft Learn](https://learn.microsoft.com/en-us/mem/intune/fundamentals/android-os-project-supported-devices); verified 2026-10-02).
+   - Android Enterprise, zero-touch and managed Google Play are the main enterprise MDM channels, and they assume a GMS device. A custom-image fleet therefore needs either an MDM vendor that will allow-list Alpha's build or Alpha's own device-management path. The stock-Pixel app/launcher remains the fastest route into fleets already run on Intune or Workspace ONE.
+3. **Inference, not hardware, sets the margin.** At Cerebras' listed $0.99/M input and $1.49/M output for Qwen3.8 27B ([Cerebras docs](https://inference-docs.cerebras.ai/models/qwen-3.8-27b), [pricepertoken](https://pricepertoken.com/endpoints/cerebras); verified 2026-10-02), a typical agent user costs **~$13/month in tokens (est.)**, and a heavy user **~$40 (est.)**. Shared Nitro compute adds **~$3–6 (est.)**. Nitro Enclaves carry no surcharge ([AWS](https://aws.amazon.com/ec2/nitro/nitro-enclaves/faqs/)). A **dedicated enclave per owner costs at least $97–147/month** in instance fees alone (est., from [Vantage m7i.xlarge](https://instances.vantage.sh/aws/ec2/m7i.xlarge)). That tier works only for executives and sovereign customers.
 4. **Pricing anchors are wide.**
    - Otter Business: $19.99/user/month billed annually ([Otter](https://otter.ai/pricing)).
    - Plaud: $159 device plus $99.99–$239.99/year ([Plaud](https://www.plaud.ai/products/plaud-note-ai-voice-recorder); [Sacra](https://sacra.com/c/plaud/)).
@@ -3678,7 +4014,7 @@ On-device STT/TTS is required for the MVP but not yet built.
    - Abridge: ~$2,500/clinician/year ([Sacra](https://sacra.com/c/abridge/)).
    - Bittium Tough Mobile 2C: $4,499.99 from one reseller ([welectronics via 03](https://welectronics.com/shop/gsm-phones/bittium-tough-mobile-2c-64gb-4gb-ram-gsm-unlocked-phone-qualcomm-snapdragon-670-detail)).
    - A general "AI notes" seat cannot carry Alpha's inference costs. A **vertical agent at $79–149/user/month** can.
-5. **Finance is the fastest channel.** It has a regulator-created budget: $392.75M in SEC off-channel fines across 26 firms in one August 2024 action ([SEC](https://www.sec.gov/newsroom/press-releases/2024-98)). It also has ready partners: Theta Lake (100+ integrations, including Verizon, AT&T and AI tools, per [Theta Lake](https://thetalake.com/integrations/)), Smarsh (sold on AWS Marketplace, per [Smarsh](https://www.smarsh.com/partners/)) and LeapXpert, whose archive partners are Smarsh, Global Relay and Theta Lake ([LeapXpert](https://www.leapxpert.com/partners/)).
+5. **Finance is the fastest channel.** It has a regulator-created budget: $392.75M in SEC off-channel fines across 26 firms in one August 2024 action ([SEC](https://www.sec.gov/newsroom/press-releases/2024-98)), and about **$2B across 100+ firms** over the Dec 2021–Oct 2024 sweep ([FINRA](https://www.finra.org/media-center/blog/sec-off-channel-communications-settlements-sro-collateral-consequences); verified 2026-10-02). **2025–26 caveat:** SEC Chair Paul Atkins has said recordkeeping cases consumed resources "not commensurate with any measure of investor harm", and January 2025 settlements carried lighter terms. The SEC still refused (2025-04-14) to soften earlier settlements, and the recordkeeping rules are unchanged, but the *new-fine* driver is weakening ([Bond Buyer](https://www.bondbuyer.com/news/secs-atkins-criticizes-off-channel-comms-enforcement), [Harvard CorpGov](https://corpgov.law.harvard.edu/2026/01/21/sec-enforcement-2025-year-in-review/)). Sell on compliance hygiene and archive integration, not fear of fines. It also has ready partners: Theta Lake (100+ integrations, including Verizon, AT&T and AI tools, per [Theta Lake](https://thetalake.com/integrations/)), Smarsh (sold on AWS Marketplace, per [Smarsh](https://www.smarsh.com/partners/)) and LeapXpert, whose archive partners are Smarsh, Global Relay and Theta Lake ([LeapXpert](https://www.leapxpert.com/partners/)).
 6. **The fastest government channel is Carahsoft plus an OTA, not GSA MAS first.** DIU awards prototype OTAs "in as few as 60–90 days" ([DIU](https://www.diu.mil/work-with-us)). Carahsoft supports 3,000+ resellers and integrators ([Wikipedia](https://en.wikipedia.org/wiki/Carahsoft)) and invested in Hypori ([Hypori PR via 03](https://www.hypori.com/news-and-media/hypori-secures-strategic-series-b-extension-funding)). The Army is moving users from government-furnished phones to BYOD plus Hypori ([DVIDS via 03](https://www.dvidshub.net/news/564961/army-sets-deadline-dmuc-device-turn-in-moves-new-mobility-program)), which undercuts a "second secure phone" pitch to DoD.
 
 ---
@@ -3689,9 +4025,9 @@ On-device STT/TTS is required for the MVP but not yet built.
 
 | Carrier program | What it is | Scale and facts | Relevance to Alpha | Source |
 | --- | --- | --- | --- | --- |
-| **AT&T FirstNet** | Public-safety network on Band 14 (20 MHz at 700 MHz) with priority and preemption. Congress funded it in 2012; the AT&T award was March 2017; the initial build finished 30 March 2023 | **$7B** federal funding. Serves law enforcement, fire, EMS, 911 centers, healthcare, utilities and school safety | Devices sold into FirstNet go through **FirstNet Ready/Certified** device programs (details not retrievable; unverified). A stock Pixel app needs no certification. A custom image would need device certification | [Wikipedia](https://en.wikipedia.org/wiki/FirstNet); [firstnet.com](https://www.firstnet.com/); [firstnet.gov](https://www.firstnet.gov/network) |
+| **AT&T FirstNet** | Public-safety network on Band 14 (20 MHz at 700 MHz) with priority and preemption. Congress funded it in 2012; the AT&T award was March 2017; the initial build finished 30 March 2023 | **$7B** federal funding. Serves law enforcement, fire, EMS, 911 centers, healthcare, utilities and school safety | Devices sold into FirstNet go through **FirstNet Ready/Certified** device programs (details not retrievable; could not verify 2026-10-02). A stock Pixel app needs no certification. A custom image would need device certification | [Wikipedia](https://en.wikipedia.org/wiki/FirstNet); [firstnet.com](https://www.firstnet.com/); [firstnet.gov](https://www.firstnet.gov/network) |
 | **Verizon Frontline** | Priority and preemption, a 5G **Frontline Network Slice** with "guaranteed, dedicated bandwidth", Push-to-Talk Plus, and a crisis response team | "Over **45,000** agencies" | Carries rugged devices (for example, Sonim). A route to public-safety agencies for an *app* through Verizon's app and solution marketplace (est.) | [Verizon](https://www.verizon.com/business/solutions/public-sector/public-safety/) |
-| **T-Mobile T-Priority / T-Mobile for Government** | 5G standalone network slice for first responders | Launch 2025; pricing not retrievable (the page returned 403) (unverified) | Same pattern as Verizon | [T-Mobile](https://www.t-mobile.com/business/government/public-safety/t-priority) |
+| **T-Mobile T-Priority / T-Mobile for Government** | 5G standalone network slice for first responders | Launch 2025; pricing not retrievable (the page returned 403; could not verify 2026-10-02) | Same pattern as Verizon | [T-Mobile](https://www.t-mobile.com/business/government/public-safety/t-priority) |
 | **Carrier business channels** (all three) | Sell Pixels, Samsung and rugged devices bundled with lines. They resell EMM and zero-touch | — | A **device-as-a-service bundle** can use a carrier as the Pixel logistics and zero-touch reseller, with Alpha provisioned by EMM. The phone needs no certification of its own | [Android zero-touch](https://www.android.com/enterprise/management/zero-touch/) |
 
 **Carrier and device certification**
@@ -3701,7 +4037,7 @@ On-device STT/TTS is required for the MVP but not yet built.
 | FCC equipment authorization through a TCB (Part 15/22/24/27, SAR) | Any new radio device | **$15k–$60k** lab and TCB fees per SKU (est.) | 4–8 weeks (est.) | [FCC EA overview](https://www.fcc.gov/engineering-technology/laboratory-division/general/equipment-authorization) (403 this session) |
 | **PTCRB** (CTIA-administered; NA operators may block uncertified devices) | Cellular devices on AT&T and T-Mobile; also used by others | Certification fee **$1,500–$15,000**. Lab testing is priced separately by each lab: **$50k–$250k (est.)** for a new phone design | Depends on how much related-device evidence can be reused; 6–12 weeks (est.) | [PTCRB](https://www.ptcrb.com/); [Wikipedia](https://en.wikipedia.org/wiki/PTCRB) |
 | Operator acceptance (Verizon ODI, AT&T, T-Mobile technical acceptance; IMS/VoLTE, WEA, 911) | Any device sold or supported by the carrier | **$100k–$500k** per carrier including engineering (est.) | 3–6 months per carrier (est.) | Inference; no public fee schedule found |
-| FirstNet Ready / Certified | Band 14 public-safety devices | Not public (unverified) | — | [firstnet.com](https://www.firstnet.com/) |
+| FirstNet Ready / Certified | Band 14 public-safety devices | Not public (could not verify 2026-10-02) | — | [firstnet.com](https://www.firstnet.com/) |
 | Stock Pixel 10 running Alpha as an app or launcher | — | **$0** incremental: Google already certified the hardware and OS | 0 | [Google](https://blog.google/products/pixel/google-pixel-10-pro-xl/) |
 | Pixel running Alpha's **custom AOSP image** | — | Radio firmware and IMEI stay Google's, but the software build differs. Carriers treat custom ROMs as unsupported. VoLTE, VoWiFi and emergency-call provisioning must be re-tested (est.) | — | Inference from [android-and-aosp.md](../android-and-aosp.md) |
 
@@ -3709,8 +4045,8 @@ On-device STT/TTS is required for the MVP but not yet built.
 
 | Vendor | Android price | Custom-AOSP support | Notes | Source |
 | --- | --- | --- | --- | --- |
-| **Microsoft Intune** | Plan 1 **$8/user/month** (included in M365 E3 at $39 and E5 at $60). Plan 2 add-on $4. Intune Suite $10 | **AOSP management is limited to allow-listed OEM devices** (mostly AR/VR headsets, Zebra WS50). The only listed phone is the **HMD Terra M** | Largest installed base in regulated enterprises. Alpha should ship as a **managed Google Play app** with managed configuration. An AOSP Pixel image would need Microsoft to allow-list it | [Intune pricing](https://www.microsoft.com/en-us/security/business/microsoft-intune-pricing); [Intune AOSP devices](https://learn.microsoft.com/en-us/mem/intune/fundamentals/android-os-project-supported-devices) |
-| **Omnissa Workspace ONE UEM** | Mobile Essentials **$3.00/device** or $5.40/user; UEM Essentials $5.25; Enterprise $10; Platinum $15.63/device/month | Supports "closed network"/AOSP enrollment for specific OEMs (unverified) | Strong with federal and healthcare customers | [Omnissa](https://www.omnissa.com/products/workspace-one-unified-endpoint-management/) |
+| **Microsoft Intune** | Plan 1 **$8/user/month** (included in M365 E3 at $39 and E5 at $60). Plan 2 add-on $4. Intune Suite $10. From July 2026 some advanced capabilities move into E3/E5 (verified 2026-10-02) | **AOSP management is limited to allow-listed OEM devices** (AR/VR headsets, Zebra WS50). The only listed phone is still the **HMD Terra M** (verified 2026-10-02) | Largest installed base in regulated enterprises. On stock Pixels, Alpha ships as a **managed Google Play app** with managed configuration. Alpha's AOSP image would need Microsoft to allow-list it; this is the main remaining channel cost of the fork | [Intune pricing](https://www.microsoft.com/en-us/security/business/microsoft-intune-pricing); [Intune AOSP devices](https://learn.microsoft.com/en-us/mem/intune/fundamentals/android-os-project-supported-devices) |
+| **Omnissa Workspace ONE UEM** | Mobile Essentials **$3.00/device** or $5.40/user; UEM Essentials $5.25; Enterprise $10; Platinum $15.63/device/month | Supports "closed network"/AOSP enrollment for specific OEMs (could not verify 2026-10-02; Omnissa docs returned 403) | Strong with federal and healthcare customers | [Omnissa](https://www.omnissa.com/products/workspace-one-unified-endpoint-management/) |
 | **Jamf** | Apple-focused. **Not an Android channel** | — | Taken private by Francisco Partners for **$2.2B**, closed 30 Jan 2026. 2024 revenue $627.4M | [Wikipedia](https://en.wikipedia.org/wiki/Jamf) |
 | **Samsung Knox Suite** | Price not retrievable this session. Typically a few dollars per device per month (est.) | Samsung devices only | Knox is on the NSA CSfC component list ([FedScoop via 03](https://fedscoop.com/samsung-knox-nsa/)). The main hardened-Android competitor, and a porting target (see §2) | [Knox](https://www.samsungknox.com/en/knox-suite) |
 | **Google Android Enterprise** | Free to use. Zero-touch works on "all Android 9.0+ devices" and "may be subject to reseller fees in certain countries" | Zero-touch and managed Play need GMS devices (est.) | The partner directory has **Silver** and **Gold** tiers. Silver is a base level of business, product and performance requirements; Gold doubles the certifications and requires year-over-year growth | [Zero-touch](https://www.android.com/enterprise/management/zero-touch/); [Partner directory](https://androidenterprisepartners.withgoogle.com/) |
@@ -3734,8 +4070,8 @@ Pixel already meets these. A custom ODM device would need Google validation. Tha
 | **Immix Group (Arrow)** | Government distributor, a Carahsoft alternative | Not retrieved | Similar | [immixgroup.com](https://www.immixgroup.com/) (not fetched) |
 | **CDW / CDW-G** | Largest US IT VAR | CDW 2025 revenue **$22.4B** (government share not in source) | Vendor onboarding plus a Pixel/zero-touch reseller relationship | [Wikipedia](https://en.wikipedia.org/wiki/CDW) |
 | **SHI** | Large private VAR; the largest minority- and woman-owned business enterprise in the US | ~6,000 staff, 17,000 customers. Holds **NASA SEWP V** and **Army ITES-SW2** | As above | [Wikipedia](https://en.wikipedia.org/wiki/SHI_International_Corp.) |
-| **GSA MAS** | Federal schedule | IFF is "a percentage of total quarterly sales… set at the discretion of GSA's FAS". Commonly **0.75%** (unverified; see VSC). Requires **TAA-compliant** products: China, India and Vietnam are *not* designated countries | Own schedule: 6–12 months (est.). Riding Carahsoft's is faster | [GSAM 552.238-80](https://www.acquisition.gov/gsam/552.238-80); [vsc.gsa.gov](https://vsc.gsa.gov/); [FAR 52.225-5](https://www.acquisition.gov/far/52.225-5) |
-| **NASA SEWP** | Government-wide IT products and services vehicle | Fee commonly cited as **0.34%** (unverified; site blocked) | Access through SEWP holders such as SHI | [sewp.nasa.gov](https://www.sewp.nasa.gov/) |
+| **GSA MAS** | Federal schedule | IFF is "a percentage of total quarterly sales… set at the discretion of GSA's FAS". **0.75%** for MAS (verified 2026-10-02 via [VSC IFF rates](https://vsc.gsa.gov/drupal/node/203)). Transactional Data Reporting is now mandatory across MAS (could not verify on a GSA page). Requires **TAA-compliant** products: China, India and Vietnam are *not* designated countries | Own schedule: 6–12 months (est.). Riding Carahsoft's is faster | [GSAM 552.238-80](https://www.acquisition.gov/gsam/552.238-80); [vsc.gsa.gov](https://vsc.gsa.gov/); [FAR 52.225-5](https://www.acquisition.gov/far/52.225-5) |
+| **NASA SEWP** | Government-wide IT products and services vehicle | **0.34%** fee on task orders, built into the holder's price (verified 2026-10-02 via secondary guides; sewp.nasa.gov still blocked). **SEWP VI** was awarded in June 2026 to a much larger pool (reported ≈2,100 awards across ≈1,500 vendors); ordering opens **2026-11-01** and runs to 2036-10-31 ([GovEagle](https://www.goveagle.com/blog/nasa-sewp-contract-guide); could not verify on a NASA page) | Access through SEWP holders such as SHI; with the larger SEWP VI pool, a direct small-business award may be achievable in a later on-ramp (est.) | [sewp.nasa.gov](https://www.sewp.nasa.gov/) |
 | **DoD ESI** | DoD Enterprise Software Initiative BPAs for COTS software | Not retrieved (connection reset) | Needs demand from DoD components first | [esi.mil](https://www.esi.mil/) |
 | **OTA / DIU CSO** | 10 USC 4022 prototype OTAs, awarded "in as few as 60–90 days". A **Success Memo** "allows any Federal agency to use the solution without re-competition". Companies generally keep their IP | Prototype sizes are typically $0.5–5M (est.) | 2–6 months | [DIU](https://www.diu.mil/work-with-us) |
 | **TD SYNNEX** (international) | Largest IT distributor | **$62.5B** revenue (2025), 100+ countries, ~1,500 vendors | Useful only after product-market fit | [Wikipedia](https://en.wikipedia.org/wiki/TD_Synnex) |
@@ -3765,7 +4101,7 @@ SIs rarely resell a startup's product without a program to attach it to. The usu
 | Channel | Facts | Fit | Source |
 | --- | --- | --- | --- |
 | **Epic** (Showroom: Connection Hub, Toolbox, Workshop) | Largest EHR vendor, **325M+** patient records. Faces antitrust suits from Particle (allowed to proceed Sept 2025), CureIS (May 2025) and the Texas AG (Dec 2025) | Ambient documentation is crowded (Abridge, Microsoft DAX, Epic's own tools). Alpha should not lead with a scribe. A Connection Hub listing is a low-cost credibility step once FHIR write-back exists (est.) | [Wikipedia](https://en.wikipedia.org/wiki/Epic_Systems); [Showroom](https://showroom.epic.com/) |
-| **Oracle Health** | Not retrieved this session | Second EHR ecosystem; VA and DoD footprint through MHS Genesis (unverified) | — |
+| **Oracle Health** | Not retrieved this session | Second EHR ecosystem; VA and DoD footprint through MHS Genesis (could not verify 2026-10-02) | — |
 | **Vizient** GPO | **5,000+** members including **1,360** acute-care hospitals | Contracts favor established vendors. Pursue in year 2+ | [Wikipedia](https://en.wikipedia.org/wiki/Vizient) |
 | **Premier** GPO | Taken private by Patient Square for **$2.6B** (Nov 2025). Sold its non-healthcare business to **OMNIA Partners for $800M** (2023) | Same | [Wikipedia](https://en.wikipedia.org/wiki/Premier,_Inc.) |
 | Benchmark: **Abridge** | ~**$2,500/clinician/year**. $100M ARR (May 2025). $5.3B valuation (June 2025). Kaiser has 24,600 physicians | Shows what health systems pay per clinician for an AI workflow tied to the EHR | [Sacra](https://sacra.com/c/abridge/) |
@@ -3776,15 +4112,15 @@ SIs rarely resell a startup's product without a program to attach it to. The usu
 | --- | --- | --- | --- |
 | **Envestnet** | **$6.5T** platform assets, **111,000+** advisors. Taken private for **$4.5B** by Bain, with BlackRock, Fidelity, Franklin and State Street (closed Nov 2024) | Largest RIA tech distribution. Partnership is realistic after 20+ RIA references (est.) | [Wikipedia](https://en.wikipedia.org/wiki/Envestnet) |
 | **Custodians** (Schwab, Fidelity) | Integration marketplaces for advisors (not retrieved) | Integrations for read-only account context. Not a sales channel at first | — |
-| **CRM marketplaces** (Salesforce FSC AppExchange, Redtail, Wealthbox) | AppExchange ISV revenue share is commonly **15%** (unverified; partner page 404) | Jump syncs to CRMs; Alpha must too | [Jump](https://jump.ai/pricing) |
+| **CRM marketplaces** (Salesforce FSC AppExchange, Redtail, Wealthbox) | AppExchange ISV revenue share is commonly **15%** (could not verify 2026-10-02; partner page 404) | Jump syncs to CRMs; Alpha must too | [Jump](https://jump.ai/pricing) |
 | **Compliance archivers** (Smarsh, Global Relay, Theta Lake, LeapXpert) | Smarsh has technology, referral, consulting and **reseller** partner types and sells on **AWS Marketplace**. Theta Lake has **100+** integrations, including **Verizon, AT&T, Movius, CellTrust** mobile capture and **OpenAI, Claude and Copilot**. LeapXpert's archive partners are Smarsh, Global Relay and Theta Lake | **Critical path.** Every Alpha transcript, message and agent action a regulated firm produces must land in the firm's archive. A certified Theta Lake or Smarsh connector is a prerequisite for sale and a co-sell route | [Smarsh](https://www.smarsh.com/partners/); [Theta Lake](https://thetalake.com/integrations/); [LeapXpert](https://www.leapxpert.com/partners/) |
-| Demand driver | SEC: **$392.75M**, **26 firms**, Aug 2024 (Ameriprise, Edward Jones, LPL and Raymond James paid **$50M** each) | Compliance urgency | [SEC](https://www.sec.gov/newsroom/press-releases/2024-98) |
+| Demand driver | SEC: **$392.75M**, **26 firms**, Aug 2024 (Ameriprise, Edward Jones, LPL and Raymond James paid **$50M** each); ≈$2B across 100+ firms over the whole sweep. Under Chair Atkins (2025–) the SEC signals lower priority for recordkeeping cases, though rules are unchanged (verified 2026-10-02) | Compliance hygiene rather than fine avoidance | [SEC](https://www.sec.gov/newsroom/press-releases/2024-98) |
 | Benchmark: **Jump** | **$100/advisor/month** (monthly) or about $80 (annual). Onboard and Grow add-ons are $50 each (about $40 annual) | Price anchor for the finance vertical | [Jump](https://jump.ai/pricing) |
 
 ### 1.7 Education
 
 - **E-rate** funds Category One (data transmission and internet access) and Category Two (internal connections) for educational purposes ([USAC ESL](https://www.usac.org/e-rate/applicant-process/before-you-begin/eligible-services-list/)).
-- Voice and handsets are not eligible (est., based on the phase-out of voice support; unverified this session). **E-rate is not a channel for Alpha.**
+- Voice and handsets are not eligible (est. USAC's current Eligible Services List covers only data transmission/internet access and internal connections, and its VoIP guidance applies only to FY2014 and earlier, consistent with the voice phase-out; checked 2026-10-02). **E-rate is not a channel for Alpha.**
 - **State purchasing cooperatives** can supply a vehicle if a K-12 or higher-education use case appears. These include Sourcewell, OMNIA Partners (which absorbed Premier's non-healthcare GPO; [Wikipedia](https://en.wikipedia.org/wiki/Premier,_Inc.)), NASPO ValuePoint and TIPS.
 - FERPA and COPPA exposure makes student-facing use unattractive. Only staff-facing use is plausible (est.).
 
@@ -3801,9 +4137,9 @@ SIs rarely resell a startup's product without a program to attach it to. The usu
 | Partner | What Alpha needs | Terms and facts | Risk | Source |
 | --- | --- | --- | --- | --- |
 | **Google: Pixel hardware** | The reference device | Pixel 10 **$799**, 10 Pro **$999**, 10 Pro XL **$1,199**. **7 years** of OS and security updates. 10 Pro has 16 GB RAM. Tensor G5 is made on TSMC N3E, with an Exynos 5400 modem | Google competes with Gemini on-device and Recorder features | [Google](https://blog.google/products/pixel/google-pixel-10-pro-xl/); [Wikipedia](https://en.wikipedia.org/wiki/Pixel_10) |
-| **Google: Play and managed Play** | App distribution to consumers and enterprises | Play service fee in the US: subscriptions **10% + 5% billing fee**. Globally, subscriptions are 15%. Enterprise invoices outside Play carry no fee | App-review policy on accessibility and default-HOME behavior | [Play fees](https://support.google.com/googleplay/android-developer/answer/112622) |
-| **Google: GMS/MADA** | Only needed for a custom-image device with Play | GMS is licensed "without any licensing fees except in the EU". The EU fee after the 2018 ruling was reported as **up to $40 per device** (unverified). Requires CTS/GTS and approval | Not available for re-signed Pixel images (est.) | [Wikipedia](https://en.wikipedia.org/wiki/Google_Mobile_Services); [The Verge](https://www.theverge.com/2018/10/19/18000484/google-android-eu-licensing-fees-antitrust-ruling) (unverified) |
-| **Google: Play Integrity** | Banking, wallet and some enterprise apps depend on it | Custom verified-boot keys **fail device and strong integrity**. Apps can instead check hardware attestation (`verifiedBootState = SelfSigned` plus a pinned key fingerprint). Relocked custom-key devices boot in **YELLOW** state with a warning screen | The AOSP image breaks Google Wallet and many banking apps. Plan for a separate "Alpha attestation allow-list" program with partner apps | [GrapheneOS](https://grapheneos.org/articles/attestation-compatibility-guide); [AOSP](https://source.android.com/docs/security/features/verifiedboot/device-state) |
+| **Google: Play and managed Play** | App distribution to consumers and enterprises | Play service fee in the US: subscriptions **10% service fee + 5% Google Play Billing fee**. Since **2026-06-30** (US, UK, EEA) developers may use their own billing or link to web checkout and pay the 10% service fee plus their own processor costs instead of the 5% billing fee (verified 2026-10-02; [Android Developers Blog](https://android-developers.googleblog.com/2026/06/play-expanded-billing.html)). Enterprise invoices outside Play carry no fee | App-review policy on accessibility and default-HOME behavior | [Play fees](https://support.google.com/googleplay/android-developer/answer/112622) |
+| **Google: GMS/MADA** | **Not needed** (founder decision 2026-10-02: Alpha's AOSP image ships without GMS) | GMS is licensed "without any licensing fees except in the EU". The EU fee after the 2018 ruling was reported as **up to $40 per device** for high-ppi devices in top-tier countries ($2.50–$40 by tier; verified 2026-10-02 via 9to5Google's report of documents obtained by The Verge). Requires CTS/GTS and approval | Not available for re-signed Pixel images; not pursued | [Wikipedia](https://en.wikipedia.org/wiki/Google_Mobile_Services); [9to5Google](https://9to5google.com/2018/10/19/android-eu-deal-google-app-suite-cost/) |
+| **Google: Play Integrity** | Banking, wallet and some enterprise apps depend on it | Custom verified-boot keys **fail device and strong integrity**. Apps can instead check hardware attestation (`verifiedBootState = SelfSigned` plus a pinned key fingerprint). Relocked custom-key devices boot in **YELLOW** state with a warning screen | **Not a blocker** (founder decision 2026-10-02: no banking or Wallet apps on Alpha's image). Remaining work: document the YELLOW boot screen for buyers, and offer an "Alpha attestation allow-list" to partner apps that need device trust | [GrapheneOS](https://grapheneos.org/articles/attestation-compatibility-guide); [AOSP](https://source.android.com/docs/security/features/verifiedboot/device-state) |
 | **Google: Android Enterprise partner** | Listing in the solutions directory | **Silver** and **Gold** tiers | Low cost, high credibility | [Partners](https://androidenterprisepartners.withgoogle.com/) |
 | **Qualcomm** | On-device ASR/TTS for non-Pixel and rugged devices | AI Hub offers **300+** optimized models, device-cloud profiling on **50+** Qualcomm devices, and Argmax WhisperKit on Qualcomm | Pixel uses Tensor, not Snapdragon, so porting doubles the work | [AI Hub](https://aihub.qualcomm.com/) |
 | **MediaTek** | Low-cost ODM devices | Not researched in depth this session | Chinese-ODM supply chains dominate | — |
@@ -3814,7 +4150,7 @@ SIs rarely resell a startup's product without a program to attach it to. The usu
 | **Sonim** | Rugged, carrier-certified | Revenue: Q1 2025 **$16.7M**, Q2 **$11.2M**, Q3 **$16.2M**. FirstNet-certified XP3plus. **Social Mobile** agreed to acquire it | Social Mobile is a US-based custom-device maker and a candidate US ODM (est.) | [Sonim IR via 03](https://ir.sonimtech.com/news-events/press-releases/detail/276/sonim-technologies-reports-third-quarter-2025-financial) |
 | **Zebra** | Enterprise rugged Android with Snapdragon | 2025 revenue **$5.40B**. Bought Elo for **$1.3B** (Aug 2025). Zebra WS50 is Intune-AOSP-listed | Frontline healthcare and logistics. Alpha as an app | [Wikipedia](https://en.wikipedia.org/wiki/Zebra_Technologies) |
 | **Foxconn/FIH, Huaqin, Wingtech** | Mass ODM | FIH runs a Hanoi plant and makes HMD devices. **Wingtech was Entity-Listed Dec 2024** and the Dutch government took control of its Nexperia unit (Oct 2025) | China and entity-list exposure. Not for government products | [FIH](https://en.wikipedia.org/wiki/FIH_Mobile); [Wingtech](https://en.wikipedia.org/wiki/Wingtech) |
-| **Cerebras** | Inference | Qwen3.8 27B **$0.99/M in, $1.49/M out**; gpt-oss-120b $0.35/$0.75 ([pricepertoken](https://pricepertoken.com/endpoints/cerebras)). Free, pay-as-you-go and enterprise tiers ([costbench](https://costbench.com/software/llm-api-providers/cerebras-inference/)). 2025 revenue **$510M**. **IPO 14 May 2026** raised $5.55B. **AWS partnership (Mar 2026)** puts CS-3 behind Bedrock. OpenAI deal worth **$10B** | Customer concentration. Inference is **outside** the Nitro trust boundary: prompts leave the enclave in plaintext to Cerebras (see 03). A Bedrock route could simplify GovCloud and procurement (est.) | [Wikipedia](https://en.wikipedia.org/wiki/Cerebras) |
+| **Cerebras** | Inference | `qwen-3.8-27b` **$0.99/M in, $1.49/M out**, ~1,850 tokens/s, 128K context on paid tiers, prompt caching supported, production status; Qwen runs at high reasoning intensity by default ([Cerebras docs](https://inference-docs.cerebras.ai/models/qwen-3.8-27b); verified 2026-10-02). Cerebras states zero data retention for inference prompts and outputs, with US-based datacenters ([Cerebras support](https://support.cerebras.net/articles/1811589793-does-cerebras-retain-my-data); verified 2026-10-02, contract terms still needed). 2025 revenue **$510M** (+76%), with **86% from UAE entities** (MBZUAI 62%, G42 24%). **IPO 14 May 2026** on Nasdaq (CBRS): 30M shares at $185, **$5.55B** raised. **AWS collaboration (2026-03-13)** pairs Trainium3 prefill with CS-3 decode behind Amazon Bedrock. OpenAI deal reported at >$10B; the S-1 backlog of $24.6B is mostly an OpenAI order for 750 MW through 2028 (all verified 2026-10-02) | Customer concentration. Inference is **outside** the Nitro trust boundary: prompts leave the enclave in plaintext to Cerebras (see 03). Whether Qwen3.8 is offered through Bedrock or GovCloud could not be verified | [CNBC](https://www.cnbc.com/2026/05/14/cerebras-cbrs-stock-trade-nasdaq-ipo.html), [TechTimes](https://www.techtimes.com/articles/316698/20260515/cerebras-raises-555-billion-ai-chip-ipo-86-revenue-dependence-uae-entities-unresolved.htm), [AWS](https://press.aboutamazon.com/aws/2026/3/aws-and-cerebras-collaboration-aims-to-set-a-new-standard-for-ai-inference-speed-and-performance-in-the-cloud), [Wikipedia](https://en.wikipedia.org/wiki/Cerebras) |
 | **AWS** | Nitro, GovCloud, Marketplace | Nitro Enclaves carry **no extra charge** and are unsupported on bare-metal, burstable and single-core instances. **GovCloud supports Nitro Enclave attestation**: the `aws-us-gov` partition has its own attestation PKI root, but the Nitro Enclaves Developer AMI is not on GovCloud Marketplace. Marketplace fees: SaaS **3%**; private offers **3% / 2% / 1.5%** by contract value (<$1M / $1–10M / ≥$10M); renewals 1.5%; **CPPO +0.5%** | Marketplace listings let customers spend down committed AWS budgets, which shortens procurement | [Nitro FAQ](https://aws.amazon.com/ec2/nitro/nitro-enclaves/faqs/); [GovCloud EC2](https://docs.aws.amazon.com/govcloud-us/latest/UserGuide/govcloud-ec2.html); [Marketplace fees](https://docs.aws.amazon.com/marketplace/latest/userguide/listing-fees.html) |
 | **Speech vendors** (fallback before on-device is ready) | ASR/TTS | Deepgram streaming **$0.0048–$0.0078/min**; TTS $0.045/1K characters. AssemblyAI streaming **$0.15/hr**; Pro realtime $0.45/hr; streaming diarization +$0.12/hr; PII redaction +$0.08/hr. ElevenLabs Scribe v2 **$0.22/hr**, realtime $0.39/hr; Flash TTS **$0.04/1K characters** | Every hour of audio sent to a vendor weakens the privacy claim. Use only as an opt-in fallback | [Deepgram](https://deepgram.com/pricing); [AssemblyAI](https://www.assemblyai.com/pricing); [ElevenLabs](https://elevenlabs.io/pricing/api) |
 
@@ -3860,16 +4196,18 @@ Repair prices are from [9to5Google](https://9to5google.com/2025/10/03/pixel-10-r
 
 **Workload assumptions (est.).** Agent turns carry about 8k input tokens (system prompt, memory, tool schemas, conversation) and about 600 output tokens. Prompt-caching discounts are not assumed; Cerebras's caching terms were not confirmed.
 
-| Profile | Turns per day | Monthly tokens (in / out) | Cerebras Qwen3.8 27B cost | Same traffic with 60% routed to gpt-oss-120b |
+| Profile | Turns per day | Monthly tokens (in / out) | Cerebras Qwen3.8 27B cost | Sensitivity only (not planned): 60% of traffic on a cheaper model |
 | --- | --- | --- | --- | --- |
 | Light | 15 | 3.6M / 0.27M | **$3.97** | $2.46 |
 | Typical | 50 | 12M / 0.9M | **$13.22** | $8.21 |
 | Heavy | 150 | 36M / 2.7M | **$39.67** | $24.64 |
 | Meeting digests, extra (2 h/day of transcripts, ~1.5M tokens in / 0.1M out a month) | — | — | **$1.63** | — |
 
-Prices are $0.99/M in and $1.49/M out ([pricepertoken](https://pricepertoken.com/endpoints/cerebras)); gpt-oss-120b is $0.35/M in and $0.75/M out (same source). Worked example for the typical profile: 12 × 0.99 + 0.9 × 1.49 = $13.22. The routing mix is est.
+Prices are $0.99/M in and $1.49/M out ([Cerebras docs](https://inference-docs.cerebras.ai/models/qwen-3.8-27b); verified 2026-10-02). Worked example for the typical profile: 12 × 0.99 + 0.9 × 1.49 = $13.22. The right-hand column is a sensitivity using pricepertoken's other Cerebras listing; the founder decision (2026-10-02) keeps Qwen, so it is not a plan.
 
-**Contradiction flag.** costbench (verified 6 Aug 2026) lists Llama 3.3 70B, Llama 3.1 8B and Qwen 3 32B at $0.10–$1.20/M, and no Qwen3.8 ([costbench](https://costbench.com/software/llm-api-providers/cerebras-inference/)). pricepertoken lists only gpt-oss-120b and Qwen3.8 27B. Cerebras's own pricing page did not render. Confirm the price for `qwen-3.8-27b` in the enterprise contract.
+**Two sensitivities that matter more.** (1) **Reasoning tokens.** Cerebras notes Qwen3.8 runs at high reasoning intensity by default, and reasoning tokens bill as output. If output tokens triple (600 → 1,800 a turn), typical-user cost rises from $13.22 to 12 × 0.99 + 2.7 × 1.49 = **$15.90**, and heavy from $39.67 to **$47.71** (est.). (2) **Prompt caching.** Cerebras lists prompt caching as supported for Qwen3.8; its discount was not published on the pages fetched. Because ~90% of cost here is input tokens, a cached system prompt and tool schema could cut cost materially. Measure both in the pilot.
+
+**Contradiction resolved (2026-10-02).** costbench's older list (Llama 3.3 70B, Llama 3.1 8B, Qwen 3 32B) is out of date. Cerebras's model catalog now lists two shared-inference models, including `qwen-3.8-27b`, and the Qwen3.8 model page gives $0.99/M in and $1.49/M out ([Cerebras catalog](https://inference-docs.cerebras.ai/models/overview), [Qwen3.8 page](https://inference-docs.cerebras.ai/models/qwen-3.8-27b)). Enterprise contract pricing may differ.
 
 **Nitro Enclave hosting**
 
@@ -3905,11 +4243,11 @@ Prices are $0.99/M in and $1.49/M out ([pricepertoken](https://pricepertoken.com
 | Pro (prosumer and SMB) | $30 | Play 15% = $4.50 ([Play](https://support.google.com/googleplay/android-developer/answer/112622)) | $25.23 | **$0.27 (1%)** | **−$26 (loss)** |
 | Business (direct or AWS Marketplace) | $59 | 3% = $1.77 ([AWS](https://docs.aws.amazon.com/marketplace/latest/userguide/listing-fees.html)) | $25.23 | **$32.00 (54%)** | $5.55 (9%) |
 | Regulated vertical (finance or health) | $129 | 3.5% CPPO = $4.52 | $25.23 | **$99.25 (77%)** | $72.80 (56%) |
-| Same vertical with 60% model routing | $129 | $4.52 | $20.22 | **$104.26 (81%)** | — |
+| Same vertical, reasoning output tripled (sensitivity) | $129 | $4.52 | $27.91 | **$96.57 (75%)** | — |
 
 The regulated-vertical price sits between Jump ($80–100) and Abridge (~$208/month equivalent) ([Jump](https://jump.ai/pricing); [Sacra](https://sacra.com/c/abridge/)).
 
-**Takeaway.** A prosumer tier priced like Otter ($8.33–$19.99; [Otter](https://otter.ai/pricing)) or Plaud ($99.99–$239.99 a year; [Sacra](https://sacra.com/c/plaud/)) **loses money** at Alpha's token intensity unless it has hard usage caps and routes most traffic to a cheaper model.
+**Takeaway.** A prosumer tier priced like Otter ($8.33–$19.99; [Otter](https://otter.ai/pricing), verified 2026-10-02) or Plaud ($99.99–$239.99 a year; [Plaud](https://www.plaud.ai/products/plaud-notepro-unlimited-plan), verified 2026-10-02) **loses money** at Alpha's token intensity unless it has hard usage caps and effective prompt caching.
 
 **(b) Device-as-a-service bundle (Pixel 10 plus Alpha, 36-month term)**
 
@@ -3922,7 +4260,8 @@ The regulated-vertical price sits between Jump ($80–100) and Abridge (~$208/mo
 | MDM (Workspace ONE Mobile Essentials, if Alpha supplies it) | 3.00 | [Omnissa](https://www.omnissa.com/products/workspace-one-unified-endpoint-management/) |
 | Software COGS (typical user) | 25.23 | above |
 | **Total COGS** | **57.41** | |
-| **Price: $149/month** (excluding the carrier line) | GM **$91.59 (61%)** after 3% fees; 59% (est.) | |
+| **Price: $149/month** (excluding the carrier line) | GM **$91.59 (61%)** before fees; ≈$87.12 (58%) after 3% fees (est.) | |
+| Sensitivity: Pixel 11 at $899 instead of Pixel 10 at $799 | +≈$3.44/month (amortization, capital and reserve scale with price); GM after fees ≈$83.68 (56%) (est.) | [Engadget](https://www.engadget.com/2234844/google-pixel-11-announced-specs-availability/) |
 | Price with an Alpha-built ODM device at $260 BOM plus $1.5M NRE over 20k units ($75) | Hardware amortization ≈ $9.3/month. GM improves by ~$10/month, but only at ≥20k units and with the certification risk above | §3.1 |
 
 **(c) Sovereign or on-prem enterprise licence (customer-hosted enclaves and inference)**
@@ -3980,29 +4319,60 @@ The customer supplies inference capacity. Options include a GPU server running o
 
 ## Implications for Alpha Phone
 
-1. **Ship on stock Pixel as a managed app plus launcher; that is the product.** The AOSP add-on is a sovereign SKU, not the default. A re-signed image fails Play Integrity, shows a YELLOW boot warning, loses GMS and falls outside Intune's AOSP allow-list. Each of those closes a channel.
-2. **Price by vertical at $99–149/user/month, with token budgets.** At Cerebras list prices, inference alone costs about $13/month for a typical user and $40 for a heavy user. Prosumer pricing in the $8–20 range cannot cover it without caps and routing to cheaper models.
+1. **Ship on stock Pixel as a managed app plus launcher for fleets that already run Intune or Workspace ONE; ship Alpha's own AOSP image where Alpha controls the device.** Per the founder decision (2026-10-02), the image does not need banking apps, Play Integrity or GMS, so those are not blockers. The channel cost that remains is MDM: Intune's AOSP allow-list still contains only one phone (HMD Terra M), so a custom-image fleet needs an MDM partner allow-list or Alpha-provided management, plus buyer documentation of the YELLOW boot screen.
+2. **Price by vertical at $99–149/user/month, with token budgets.** At Cerebras list prices, inference alone costs about $13/month for a typical user and $40 for a heavy user. Prosumer pricing in the $8–20 range cannot cover it without usage caps and prompt caching.
 3. **Architecture decides margin.** A dedicated Nitro Enclave per owner costs about $100–150/month before any tokens. Build multi-tenant enclaves with per-owner cryptographic isolation for standard tiers, and reserve dedicated enclaves for an executive or sovereign price of $399+.
 4. **On-device speech is required for margin as well as privacy.** Cloud ASR for an always-on user costs $26–69/month.
 5. **Treat the compliance-archive integration as a distribution partnership.** Theta Lake, Smarsh and Global Relay already capture Verizon/AT&T mobile, Copilot and Claude. An Alpha connector turns "AI on a phone" from a compliance risk into a captured channel, and gives Alpha co-sell partners.
 6. **Government: OTA plus Carahsoft, pitched as an agent on NIAP/CSfC-listed commodity devices, not a new phone.** Samsung Knox is the fastest route to CSfC-eligible hardware. TAA and §889 rule out Chinese-ODM custom hardware.
-7. **The Cerebras dependency is also a channel.** The AWS partnership (Bedrock) and the G42/MBZUAI concentration open GovCloud and UAE doors. But inference leaves the enclave trust boundary, and customers and procurement will ask about that. Negotiate zero-retention and data-processing terms now.
+7. **The Cerebras dependency is also a channel.** The AWS collaboration (Bedrock) and the G42/MBZUAI concentration (86% of 2025 revenue from UAE entities) open GovCloud and UAE doors, and may raise questions from US government buyers. Inference leaves the enclave trust boundary, and customers and procurement will ask about that. Cerebras publicly states zero data retention; get it in the contract with data-processing terms. Some buyers will also raise Qwen's Chinese origin (Alibaba). The answer is about Qwen itself, not a model swap: offer self-hosted Qwen open weights inside the customer's or Alpha's trust boundary for sovereign tiers, redact before any prompt leaves the device or enclave, and keep a provenance file (weights source, hashes, licence, evaluation results).
 8. **Custom hardware is a year-2 option that needs a customer.** $3–8M in fixed costs and $1.5–4M a year in maintenance (est.) require about 30k–80k units, which means an anchor order.
 
 ## Open questions
 
-1. What is Cerebras's contracted price for `qwen-3.8-27b`? Does it offer prompt caching, batch or zero-retention terms? Is Qwen3.8 available through AWS Bedrock or in GovCloud?
+1. *Partly answered 2026-10-02:* list price is $0.99/M in and $1.49/M out; prompt caching is supported (discount not published); Cerebras states zero data retention. Still open: the contracted enterprise price, the caching discount, batch pricing, and whether Qwen3.8 is offered through AWS Bedrock or in GovCloud.
 2. What is the actual agent footprint (RAM/vCPU) per owner, and can one enclave safely host several owners? This decides whether standard-tier compute costs $4 or $120 per user.
 3. Will Google allow an AOSP image with Alpha keys on Pixel for enterprise fleets? Is any Pixel-for-Business or Android Partner path available to a third-party OS?
 4. Will Microsoft or Omnissa add an Alpha AOSP build to their AOSP device lists, and what does that cost?
 5. What does it cost to certify archive connectors with Theta Lake, Smarsh and Global Relay, and what are their revenue shares?
-6. Current GSA IFF and SEWP fees, and whether Carahsoft will onboard a pre-FedRAMP product. Both fee pages were blocked this session.
+6. *Fees answered 2026-10-02:* GSA MAS IFF 0.75%, SEWP 0.34%. Still open: whether Carahsoft will onboard a pre-FedRAMP product.
 7. Real Pixel 10 BOM (TechInsights or Counterpoint licence) and actual MOQ/NRE quotes from HMD Secure, Social Mobile or Sonim.
 8. Knox Suite pricing and Samsung partner-program terms.
 9. Actual carrier-acceptance cost and time for a custom-software Pixel. Is PTCRB re-certification triggered by an OS change without a radio change?
 10. Hypori's per-seat price (a GSA Advantage price list), for anchoring BYOD government pricing.
 11. The FirstNet Ready and T-Priority device and app programs: requirements and fees. Both pages were blocked this session.
 12. Measured per-user token usage from the MVP pilot, which replaces all the usage profiles above.
+
+---
+
+## Verification log (2026-10-02)
+
+| # | Claim (as first written) | Result | Source |
+| --- | --- | --- | --- |
+| 1 | Cerebras `qwen-3.8-27b` $0.99/M in, $1.49/M out (pricepertoken only; contradiction with costbench) | **Confirmed** on Cerebras's own model page; ~1,850 tok/s, 128K context (paid), prompt caching supported, production status, high reasoning intensity by default. Contradiction resolved (costbench list outdated). All Qwen cost math unchanged | [Cerebras docs](https://inference-docs.cerebras.ai/models/qwen-3.8-27b), [catalog](https://inference-docs.cerebras.ai/models/overview), [pricepertoken](https://pricepertoken.com/endpoints/cerebras) |
+| 2 | Founder decision: Qwen stays | Applied. Inference math stays on Qwen. Pre-existing cheaper-model column relabelled as a sensitivity, not a plan. Buyer concern about Qwen's origin kept; mitigation reframed (self-hosted open weights inside the trust boundary, redaction before egress, provenance file) | founder decision |
+| 3 | Founder decision: AOSP fork without banking apps, Play Integrity or GMS | Applied. Removed as blockers in the executive summary, technology-partner table and implications. MDM (Intune AOSP allow-list) kept as the remaining channel constraint | founder decision |
+| 4 | Intune AOSP list: only phone is HMD Terra M | Confirmed (page revised 2026) | [Microsoft Learn](https://learn.microsoft.com/en-us/mem/intune/fundamentals/android-os-project-supported-devices) |
+| 5 | Intune $8 / E3 $39 / E5 $60 / Suite $10 | Confirmed; advanced capabilities move into E3/E5 from July 2026 | [Microsoft](https://www.microsoft.com/en-us/security/business/microsoft-intune-pricing) |
+| 6 | Cerebras 2025 revenue $510M; MBZUAI 62%, G42 24% | Confirmed; UAE entities 86% of revenue | [TechTimes](https://www.techtimes.com/articles/316698/20260515/cerebras-raises-555-billion-ai-chip-ipo-86-revenue-dependence-uae-entities-unresolved.htm), [Yahoo](https://finance.yahoo.com/markets/stocks/articles/breaking-down-ai-chipmaker-cerebras-225603481.html) |
+| 7 | Cerebras IPO 14 May 2026, $5.55B | Confirmed (30M shares at $185, Nasdaq CBRS) | [CNBC](https://www.cnbc.com/2026/05/14/cerebras-cbrs-stock-trade-nasdaq-ipo.html) |
+| 8 | AWS partnership (Mar 2026) puts CS-3 behind Bedrock | Confirmed (2026-03-13; Trainium3 prefill + CS-3 decode) | [AWS](https://press.aboutamazon.com/aws/2026/3/aws-and-cerebras-collaboration-aims-to-set-a-new-standard-for-ai-inference-speed-and-performance-in-the-cloud) |
+| 9 | OpenAI deal worth $10B | Partly confirmed: reported >$10B; S-1 backlog $24.6B mostly OpenAI (750 MW through 2028) | [Yahoo](https://finance.yahoo.com/markets/stocks/articles/breaking-down-ai-chipmaker-cerebras-225603481.html) |
+| 10 | Cerebras data terms | **Added:** Cerebras states zero data retention for inference | [Cerebras support](https://support.cerebras.net/articles/1811589793-does-cerebras-retain-my-data) |
+| 11 | Qwen3.8 on Bedrock / GovCloud | Could not verify | — |
+| 12 | Pixel 10 $799 / $999 / $1,199 | Unchanged. **Added:** Pixel 11 launched 2026-08-12 at $899 (256 GB, Tensor G6, 12 GB RAM, 7 years). Pro/XL prices could not verify | [Engadget](https://www.engadget.com/2234844/google-pixel-11-announced-specs-availability/) |
+| 13 | Play subscriptions 10% + 5% billing fee | Confirmed; since 2026-06-30 (US/UK/EEA) own billing or web checkout allowed, dropping the 5% billing fee | [Play help](https://support.google.com/googleplay/android-developer/answer/112622), [Android Developers Blog](https://android-developers.googleblog.com/2026/06/play-expanded-billing.html) |
+| 14 | GMS EU fee up to $40/device | Confirmed ($2.50–$40 by country tier and ppi) | [9to5Google](https://9to5google.com/2018/10/19/android-eu-deal-google-app-suite-cost/) |
+| 15 | GSA IFF 0.75% | Confirmed | [VSC](https://vsc.gsa.gov/drupal/node/203) |
+| 16 | SEWP fee 0.34% | Confirmed via secondary sources; **added** SEWP VI ordering from 2026-11-01 | [GovEagle](https://www.goveagle.com/blog/nasa-sewp-contract-guide) |
+| 17 | SEC off-channel $392.75M, 26 firms | Confirmed; **added** ≈$2B across 100+ firms overall and the Atkins-era de-emphasis | [FINRA](https://www.finra.org/media-center/blog/sec-off-channel-communications-settlements-sro-collateral-consequences), [Bond Buyer](https://www.bondbuyer.com/news/secs-atkins-criticizes-off-channel-comms-enforcement) |
+| 18 | Jump $100/advisor/month, ~$80 annual, add-ons $50 | Confirmed (annual saves up to 20%) | [Jump](https://jump.ai/pricing) |
+| 19 | Otter Pro $8.33/$16.99, Business $19.99/$30 | Confirmed | [Otter](https://otter.ai/pricing) |
+| 20 | Plaud $159 device, $99.99 / $239.99 a year | Confirmed (Note Pro is $189) | [Plaud](https://www.plaud.ai/products/plaud-notepro-unlimited-plan) |
+| 21 | Abridge ~$2,500/clinician/year | Confirmed as an estimate (Sacra); market estimates range to $7,200+ | [Sacra](https://sacra.com/c/abridge/) |
+| 22 | DaaS gross margin "61%; 59%" | Clarified arithmetic: 61% before fees, 58% after 3% fees; Pixel 11 sensitivity added (56%) | recomputed |
+| 23 | FirstNet Ready, T-Priority, Omnissa AOSP, AppExchange share, MHS Genesis | Could not verify (pages blocked; search budget exhausted) | — |
+
 
 
 ---
@@ -4016,6 +4386,7 @@ This is market and technology research, not engineering acceptance. Alpha Phone'
 **Method and evidence caveats.**
 - The shared web-search quota for this research session was exhausted before this workstream started. The page-fetch quota ran out partway through. Every number here comes from a primary page fetched during this workstream, and the URL is given inline.
 - Some items could not be re-fetched: Pixel 10 battery capacity, Titan M2 details, the BIPA 2024 amendment, Picovoice list pricing, XMOS/puck BOMs, and some competitor pipelines. These are marked **(unverified)** or **(est.)** and listed under Open questions. Do not quote them externally until they are checked.
+- **Fact-check pass (2026-10-02).** A second pass re-checked these items; results are marked "(verified 2026-10-02)" or "(could not verify)" and summarized in the verification log at the end. **Founder decisions applied:** Alpha's own AOSP image does not ship banking apps, Play Integrity or GMS (so AICore/ML Kit GenAI are simply absent on that image, not a blocker to solve), and cloud inference stays on Qwen on Cerebras.
 - Phone real-time factors (RTF) for most open models are **not published** for Tensor G5. The phone figures below are engineering estimates, marked (est.), and should be replaced by the measurement harness in the roadmap.
 - The Open ASR Leaderboard figures are GPU throughput (RTFx, batch processing) on English short-form sets. They rank accuracy well. They do **not** predict phone latency or power.
 
@@ -4039,7 +4410,7 @@ This is market and technology research, not engineering acceptance. Alpha Phone'
    - run inference only when the app is the top foreground app, and are subject to quotas ([ML Kit GenAI overview](https://developers.google.com/ml-kit/genai));
    - depend on the Google AICore service.
 
-   The platform `SpeechRecognizer` on-device mode is documented as not intended for continuous listening ([SpeechRecognizer reference](https://developer.android.com/reference/android/speech/SpeechRecognizer)). All of this conflicts with a custom-image, always-on product.
+   The platform `SpeechRecognizer` on-device mode is documented as not intended for continuous listening ([SpeechRecognizer reference](https://developer.android.com/reference/android/speech/SpeechRecognizer)). All of this conflicts with a custom-image, always-on product. Per the founder decision (2026-10-02), Alpha's AOSP image ships without GMS, so these Google services are not available there by design; the on-device stack must be Alpha's own (sherpa-onnx, LiteRT-LM).
 4. **Always-on capture is feasible only as a policy-privileged or visibly foreground mode.**
    - A third-party app cannot start a microphone foreground service from the background (Android 14+). It cannot start one from `BOOT_COMPLETED` either (Android 15+).
    - The exemptions are system components, `VoiceInteractionService` providers, and holders of the privileged `START_ACTIVITIES_FROM_BACKGROUND` permission ([FGS background-start restrictions](https://developer.android.com/develop/background-work/services/fgs/restrictions-bg-start)).
@@ -4050,8 +4421,8 @@ This is market and technology research, not engineering acceptance. Alpha Phone'
    - The Android Virtualization Framework (pKVM protected VMs) already runs Google's own on-device content-safety classification for Play Protect live threat detection. OPPO uses it for an "AI private computing space" ([AVF use cases](https://source.android.com/docs/core/virtualization/usecases)).
    - Limits: pVMs need the privileged `MANAGE_VIRTUAL_MACHINE` permission, and Microdroid has no HALs or graphics ([AVF overview](https://source.android.com/docs/core/virtualization), [Microdroid](https://source.android.com/docs/core/virtualization/microdroid)). In-VM ML is therefore **CPU-only** today.
    - A small ASR model plus a redaction model running inside a pVM, with only redacted text crossing the boundary, is a credible and rare claim (est.). It needs a privileged system image.
-7. **Cloud fallback: Nitro Enclaves are CPU-only.** An enclave talks only to its parent over vsock, with no GPU ([Nitro Enclaves](https://docs.aws.amazon.com/enclaves/latest/user/nitro-enclave.html)). Today's Cerebras inference path therefore sits **outside** the attested boundary unless Cerebras provides its own attestation (unverified). GPU confidential computing (H100 CC) adds under 7% overhead for typical LLM queries ([Zhu et al. 2024](https://arxiv.org/abs/2409.03992)). It is the realistic "attested inference" option.
-8. **Build or license:** build on open weights. Keep one commercial option open: Argmax Pro SDK for Android, GA March 18, 2026, $1.00–$1.33 per device per month with a 1,000-device minimum ([Argmax blog](https://www.argmaxinc.com/blog), [Argmax pricing](https://www.argmaxinc.com/pricing)). It is the fastest path to NPU-accelerated Parakeet and diarization.
+7. **Cloud fallback: Nitro Enclaves are CPU-only.** An enclave talks only to its parent over vsock, with no GPU ([Nitro Enclaves](https://docs.aws.amazon.com/enclaves/latest/user/nitro-enclave.html)). Today's Cerebras inference path (`qwen-3.8-27b`) therefore sits **outside** the attested boundary. No Cerebras attestation or TEE product was found on 2026-10-02; Cerebras does publicly state zero data retention for inference prompts and outputs ([Cerebras support](https://support.cerebras.net/articles/1811589793-does-cerebras-retain-my-data)), which is a contractual control, not an attested one. GPU confidential computing (H100 CC) adds under 7% overhead for typical LLM queries ([Zhu et al. 2024](https://arxiv.org/abs/2409.03992)). It is the realistic "attested inference" option, using self-hosted Qwen open weights so the model stays the same across tiers.
+8. **Build or license:** build on open weights. Keep one commercial option open: Argmax Pro SDK for Android, GA March 18, 2026, $1.00 (yearly) to $1.33 (monthly) per device per month with a 1,000-license minimum; Enterprise from 10,000 licences (verified 2026-10-02 on [Argmax blog](https://www.argmaxinc.com/blog) and [Argmax pricing](https://www.argmaxinc.com/pricing)). It is the fastest path to NPU-accelerated Parakeet and diarization.
 
 ---
 
@@ -4066,14 +4437,14 @@ Open ASR Leaderboard facts:
 
 | Model | Params / size | Licence | Languages | Streaming | Open ASR avg WER (EN short-form) | GPU RTFx | Notes and source |
 |---|---|---|---|---|---|---|---|
-| IBM Granite Speech 4.0 1B | ~1B | not verified (IBM usually Apache-2.0, unverified) | multilingual (unverified) | no (est.) | **5.52** | 280 | [Table 3](https://arxiv.org/html/2510.06961) |
+| IBM Granite Speech 4.0 1B | ~1B | Apache-2.0 for the Granite Speech family (verified on the 3.3 card 2026-10-02; 4.0 card not fetched) | EN, FR, DE, ES, PT on 3.3 (4.0 scope could not verify) | no (est.) | **5.52** | 280 | [Table 3](https://arxiv.org/html/2510.06961) |
 | NVIDIA Canary-Qwen 2.5B | 2.5B (FastConformer + Qwen 1.7B LLM) | CC-BY-4.0 | English only | no; 40 s max input | **5.63** | 418 | [model card](https://huggingface.co/nvidia/canary-qwen-2.5b) |
-| Microsoft Phi-4-multimodal-instruct | ~5.6B (unverified) | MIT (unverified) | multi | no | 6.02 | 151 | [Table 3](https://arxiv.org/html/2510.06961) |
+| Microsoft Phi-4-multimodal-instruct | 5.6B (verified 2026-10-02) | MIT (verified 2026-10-02) | speech in EN, ZH, DE, FR, IT, JA, ES, PT | no | 6.02 | 151 | [Table 3](https://arxiv.org/html/2510.06961) |
 | **NVIDIA Parakeet TDT 0.6B v2** | 600M; ≥2 GB RAM to load (NeMo) | CC-BY-4.0 | English | chunked streaming via NeMo | **6.05** | 3,386 | LS-clean 1.69, LS-other 3.19, **AMI 11.16**, **Earnings-22 11.15**; up to 24 min per pass ([card](https://huggingface.co/nvidia/parakeet-tdt-0.6b-v2)) |
 | **NVIDIA Parakeet TDT 0.6B v3** | 600M | CC-BY-4.0 | **25 European languages** | chunked streaming | 6.32 | 3,333 | FLEURS EN 4.85, ES 3.45, IT 3.00; released 2025-08-14; word timestamps ([card](https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3)) |
-| NVIDIA Canary 1B | 1B | CC-BY (unverified) | EN/DE/ES/FR (unverified) | no | 6.50 | 235 | [Table 3](https://arxiv.org/html/2510.06961) |
+| NVIDIA Canary 1B | 1B | **CC-BY-NC-4.0: non-commercial only** (corrected 2026-10-02; not usable in a commercial product) | EN/DE/ES/FR (verified) | no | 6.50 | 235 | [Table 3](https://arxiv.org/html/2510.06961) |
 | Distil-Whisper large-v3.5 | 756M | MIT | English | no (buffered) | 7.21 (leaderboard); card: 7.08 short-form OOD, 11.39 long-form OOD | 202 | ~1.5× faster than turbo; works as a speculative-decoding draft for large-v3 ([card](https://huggingface.co/distil-whisper/distil-large-v3.5)) |
-| OpenAI Whisper large-v3 | 1.55B (unverified) | MIT | 99 | no | 7.44 | 146 | [Table 3](https://arxiv.org/html/2510.06961) |
+| OpenAI Whisper large-v3 | 1.55B (verified 2026-10-02) | MIT (code); the Hugging Face model card lists Apache-2.0 | 99 | no | 7.44 | 146 | [Table 3](https://arxiv.org/html/2510.06961) |
 | OpenAI Whisper large-v3-turbo | 809M (decoder cut from 32 to 4 layers) | MIT | 99 | no | 7.83 | 200 | **AMI 16.13** ([card](https://huggingface.co/openai/whisper-large-v3-turbo)) |
 | Kyutai STT 1B (en/fr) | ~1B | CC-BY-4.0 weights; MIT (Python) / Apache-2.0 (Rust) code | EN, FR | **native streaming, 0.5 s delay**, semantic VAD | not retrieved | H100: 400 real-time streams | handles up to 2 h of audio; MLX on-device for Apple ([card](https://huggingface.co/kyutai/stt-1b-en_fr), [repo](https://github.com/kyutai-labs/delayed-streams-modeling)) |
 | Kyutai STT 2.6B (en) | ~2.6B | CC-BY-4.0 | EN | streaming, 2.5 s delay | not retrieved | — | [repo](https://github.com/kyutai-labs/delayed-streams-modeling) |
@@ -4107,7 +4478,7 @@ The best open 0.6B on-device-sized model (Parakeet v2, 6.05) is therefore **with
 | Pixel Recorder | on-device transcription, speaker labels; cloud summaries expanding via Private AI Compute | none published | bundled | competitor benchmark; its language expansion now uses Private AI Compute | [Private AI Compute announcement](https://blog.google/technology/ai/google-private-ai-compute/) |
 | **Apple SpeechAnalyzer** (iOS 26) | on-device; model lives in system storage outside the app; long-form and distant audio; volatile and final results | Earnings-22 **14.0% WER, 70× real time** on an M4 Mac mini | free to iOS apps; no custom vocabulary | iOS-only; the benchmark bar for "free platform ASR" | [WWDC25 session 277](https://developer.apple.com/videos/play/wwdc2025/277/), [Argmax benchmark](https://www.argmaxinc.com/blog/apple-and-argmax) |
 | **Argmax WhisperKit / Pro SDK** | iOS, macOS; **Android Pro SDK GA 2026-03-18, Kotlin-first on Google LiteRT**; WhisperKit Android with Qualcomm since 2024-10-22 | Earnings-22: WhisperKit base.en 15.2% at 111×; small.en 12.8% at 35×; **Pro 11.7% at 359×**; Parakeet v2 real-time latency **160 ms** | Basic MIT (free); **Pro $1.33/device/mo monthly or $1.00 yearly, minimum 1,000 devices**; Enterprise custom beyond 10k | the strongest "buy" option for NPU-accelerated Parakeet plus diarization on Android | [benchmark](https://www.argmaxinc.com/blog/apple-and-argmax), [blog index](https://www.argmaxinc.com/blog), [pricing](https://www.argmaxinc.com/pricing) |
-| **Picovoice Leopard / Cheetah** | on-device batch (Leopard) and streaming (Cheetah); Android, iOS, web, Raspberry Pi | English avg WER: **Leopard 9.7%**, **Cheetah 10.1%** (vs Amazon 4.3% batch and 5.6% streaming); Leopard **37 MB, 0.026 core-hours per audio hour** vs Whisper Medium 1.52 core-hours / 1,457 MB | SDK Apache-2.0, but **an AccessKey is required and usage is account-limited**; list prices could not be retrieved (unverified) | cheap CPU footprint, but accuracy lags 2025–26 open models by ~3–4 WER points | [Picovoice benchmark repo](https://github.com/Picovoice/speech-to-text-benchmark), [Leopard repo](https://github.com/Picovoice/leopard) |
+| **Picovoice Leopard / Cheetah** | on-device batch (Leopard) and streaming (Cheetah); Android, iOS, web, Raspberry Pi | English avg WER: **Leopard 9.7%**, **Cheetah 10.1%** (vs Amazon 4.3% batch and 5.6% streaming); Leopard **37 MB, 0.026 core-hours per audio hour** vs Whisper Medium 1.52 core-hours / 1,457 MB | SDK Apache-2.0, but **an AccessKey is required and usage is account-limited**; list prices could not be retrieved (picovoice.ai/pricing did not render on 2026-10-02; could not verify) | cheap CPU footprint, but accuracy lags 2025–26 open models by ~3–4 WER points | [Picovoice benchmark repo](https://github.com/Picovoice/speech-to-text-benchmark), [Leopard repo](https://github.com/Picovoice/leopard) |
 | **Speechmatics** | cloud, on-prem **and on-device**; 55+ languages; code-switching; diarization | Open ASR "Enhanced" 6.91; vendor-cited Pipecat pooled WER 1.07% (Aug 2026, vendor-reported, not comparable) | usage-based; $100 free credit; ISO 27001, SOC 2 Type II, HIPAA | a commercial on-device option; get an on-device SDK quote | [Speechmatics](https://www.speechmatics.com/), [Table 3](https://arxiv.org/html/2510.06961) |
 | **sherpa-onnx (k2-fsa)** | framework: streaming Zipformer/Paraformer, non-streaming Whisper/Moonshine, VAD, KWS, diarization, speaker ID, TTS; Android, iOS; **Qualcomm/Rockchip/Ascend/Axera NPU backends** | model-dependent | open source (15.1k stars) | **recommended runtime** for the open stack | [repo](https://github.com/k2-fsa/sherpa-onnx) |
 
@@ -4116,7 +4487,7 @@ The best open 0.6B on-device-sized model (Parakeet v2, 6.05) is therefore **with
 - SpeakerKit launched 2025-03-07.
 - A pyannoteAI partnership was announced 2025-06-23.
 - Pro SDK 3, with real-time STT plus speakers plus custom vocabulary, shipped 2026-09-23 (same source).
-- No later round was found (unverified; the search quota was exhausted).
+- No later round was found; the Argmax blog lists no funding news after the Nov 2024 seed (checked 2026-10-02).
 
 ### 2.3 Phone real-time factor on a Pixel 10-class device (estimates)
 
@@ -4149,7 +4520,7 @@ There are no published third-party RTF figures for these models on Tensor G5. Th
 | pyannote **community-1** | segmentation plus embedding (~tens of MB, est.) | **CC-BY-4.0** (gated HF token) | AISHELL-4 11.7%, **AMI-IHM 17.0%**, DIHARD3 20.2% (legacy 3.1: 12.2 / 18.8 / 21.4) | offline | CPU OK for post-meeting passes (est.) | [card](https://huggingface.co/pyannote/speaker-diarization-community-1) |
 | pyannoteAI **precision-2** | hosted/commercial | commercial | AISHELL-4 11.4%, **AMI-IHM 12.9%**, DIHARD3 14.7% | — | cloud or licence; also via Argmax SDK partnership | [card](https://huggingface.co/pyannote/speaker-diarization-community-1), [Argmax blog](https://www.argmaxinc.com/blog) |
 | NVIDIA **Streaming Sortformer 4spk v2** | **117M** | **CC-BY-4.0** | DIHARD III 1–4 speakers **13.24%**; ≥5 speakers **42.56%** | profiles: 30.4 s (RTF 0.002), 10 s (0.005), **1.04 s (RTF 0.093)**, **0.32 s (RTF 0.180)**, measured on GPU | good for ≤4 people; fails for large meetings | [card](https://huggingface.co/nvidia/diar_streaming_sortformer_4spk-v2) |
-| Argmax **SpeakerKit** | **~10 MB** | commercial subscription | "matches pyannote across 13 datasets" (vendor; SDBench) | ~1 s to diarize 4 min of audio on iPhone | iOS/macOS; Android was "coming soon" at launch (unverified now) | [SpeakerKit](https://www.argmaxinc.com/blog/speakerkit) |
+| Argmax **SpeakerKit** | **~10 MB** | commercial subscription | "matches pyannote across 13 datasets" (vendor; SDBench) | ~1 s to diarize 4 min of audio on iPhone | iOS/macOS; Argmax's platform docs list Android support without detail, and the Pro plan bundles "SpeakerKit Pro"; a dedicated SpeakerKit Android release was not found (could not verify, 2026-10-02) | [SpeakerKit](https://www.argmaxinc.com/blog/speakerkit) |
 | sherpa-onnx diarization | pyannote segmentation plus 3D-Speaker/NeMo embeddings (ONNX) | open source | model-dependent | offline | runs on Android CPU | [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx) |
 
 **Recommendation:**
@@ -4159,9 +4530,9 @@ There are no published third-party RTF figures for these models on Tensor G5. Th
 
 ### 3.2 BIPA and voiceprints
 
-- Illinois BIPA (740 ILCS 14) names "voiceprint" among biometric identifiers ([statute](https://www.ilga.gov/legislation/ilcs/ilcs3.asp?ActID=3004&ChapterID=57); the statute page could not be fetched over TLS here, so the voiceprint wording is **unverified in this session** but widely reported).
+- Illinois BIPA (740 ILCS 14) names "voiceprint" among biometric identifiers ([statute](https://www.ilga.gov/legislation/ilcs/ilcs3.asp?ActID=3004&ChapterID=57); ilga.gov still failed TLS verification on 2026-10-02, so the voiceprint wording could not be re-read at source, though it is widely reported). See workstream 11 for the amendment status.
 - Private right of action: **$1,000 per negligent violation and $5,000 per intentional or reckless violation**. *Rosenbach v. Six Flags* held that no actual injury is needed. Facebook settled for $650M in 2021 ([Wikipedia: BIPA](https://en.wikipedia.org/wiki/Biometric_Information_Privacy_Act)).
-- The 2024 amendment (SB 2979) that reportedly limits damages to one recovery per person is **unverified here**; see workstream 5.
+- The 2024 amendment (SB 2979, Public Act 103-0769) reportedly limits damages to one recovery per person for repeated collection by the same method and allows electronic signatures for consent. The primary text could not be fetched on 2026-10-02 (ilga.gov TLS error), so treat this as reported, not verified; see workstreams 5 and 11.
 - Texas (CUBI) and Washington have similar laws with no private right of action ([Wikipedia](https://en.wikipedia.org/wiki/Biometric_Information_Privacy_Act)).
 
 **Engineering implications:**
@@ -4184,7 +4555,7 @@ There are no published third-party RTF figures for these models on Tensor G5. Th
 |---|---|---|---|---|---|
 | **GLiNER-PII base v1.0** (Knowledgator + Wordcab) | base encoder (~200M, est.); **FP16 and UINT8 ONNX** with quantization-aware training | **F1 80.99%** (P 79.28, R 82.78) on synthetic-multi-pii-ner-v1 | Apache-2.0 (GLiNER) | 60+ PII/PHI/PCI types, zero-shot custom labels | [card](https://huggingface.co/knowledgator/gliner-pii-base-v1.0), [GLiNER](https://github.com/urchade/GLiNER) |
 | GLiNER multi-PII | small/medium | not retrieved | Apache-2.0 | 40+ types, 100+ languages; INT8, ONNX | [GLiNER](https://github.com/urchade/GLiNER) |
-| Microsoft Presidio with a small NER backend | regex/checksum recognizers plus spaCy or GLiNER | depends on recognizers | MIT (unverified in this session) | the best deterministic layer for SSNs, cards (Luhn), IBANs, phone numbers | see workstream 4 |
+| Microsoft Presidio with a small NER backend | regex/checksum recognizers plus spaCy or GLiNER | depends on recognizers | MIT (verified 2026-10-02) | the best deterministic layer for SSNs, cards (Luhn), IBANs, phone numbers | see workstream 4 |
 | Gemini Nano via ML Kit **Prompt API** / Summarization | on AICore | not published for PII | ML Kit GenAI terms | **foreground-only, quota-limited, locked bootloader, AICore required** | [ML Kit GenAI](https://developers.google.com/ml-kit/genai) |
 | Gemma 3n E2B / Gemma 4 E2B as an LLM redactor | 2.58 GB (Gemma 4 E2B) | not benchmarked for PII | Gemma terms | too slow and heavy for always-on redaction; fine as a second-pass verifier | [LiteRT-LM](https://developers.google.com/edge/litert-lm/overview) |
 
@@ -4241,7 +4612,7 @@ This is acceptable as a background job after the meeting. It is not interactive.
 ### 5.2 Always-on energy model (all est.; replace with measurements)
 
 Assumptions (est.):
-- battery ~4,900 mAh at 3.87 V, about 19 Wh (Pixel 10 capacity **unverified**);
+- battery 4,970 mAh at ~3.87 V, about 19.2 Wh (Pixel 10 capacity verified 2026-10-02 via [Wikipedia](https://en.wikipedia.org/wiki/Pixel_10); Pro/XL capacities not fetched). The 19 Wh basis below is unchanged;
 - speech present 30% of a 16-hour waking day;
 - 4 hours of meetings.
 
@@ -4291,7 +4662,7 @@ Thermal risk comes from sustained big-core use in a pocket or on a charger. Miti
 | DSP hotword / Sound Trigger | no | no | **yes** (with a vendor model on the Tensor DSP; needs vendor HAL access, unverified for Pixel) | via the platform hotword path (HotwordDetectionService sandbox, unverified details) |
 | Hide the privacy indicator | no | no | technically possible via config, but **must not** be done: it is a trust and consent feature | no |
 | pKVM protected VM for isolated ML | no (`MANAGE_VIRTUAL_MACHINE` is privileged) | no | **yes** | only if also privileged |
-| AICore / Gemini Nano | GMS devices with a locked bootloader only | same | only if GMS/AICore is included and the bootloader is relocked (unverified whether custom-AVB-key relock satisfies AICore) | same |
+| AICore / Gemini Nano | GMS devices with a locked bootloader only | same | **not available**: Alpha's image ships without GMS/AICore (founder decision 2026-10-02) | same |
 
 **Implication:** the always-on story requires **either** the assistant role **or** a privileged image. The repository's add-on is currently non-privileged. Always-on should be positioned as an image-level feature, with "tap-to-record, visible foreground capture" in the app build.
 
@@ -4301,7 +4672,7 @@ Thermal risk comes from sustained big-core use in a pocket or on a charger. Miti
 
 | Option | Mics / processing | Far-field quality (est.) | BOM (est.) | Retail comparables | Notes |
 |---|---|---|---|---|---|
-| Phone flat on a table (Pixel 10: 3 mics, unverified) | 2–3 MEMS; OS noise suppression; limited beamforming exposed to apps | 1–2 m radius acceptable; poor for far talkers, table noise, face-down occlusion | $0 | — | AMI-type WER (11–16% for top models, sections 2.1) is already hard with close mics; expect worse (est.) |
+| Phone flat on a table (Pixel 10: 3 mics, verified 2026-10-02; geometry not published) | 2–3 MEMS; OS noise suppression; limited beamforming exposed to apps | 1–2 m radius acceptable; poor for far talkers, table noise, face-down occlusion | $0 | — | AMI-type WER (11–16% for top models, sections 2.1) is already hard with close mics; expect worse (est.) |
 | Wearable pendant or clip (Plaud NotePin, Limitless Pendant, Bee) | 1–2 MEMS, BLE, local flash | good for the wearer, weak for the far side of a room | $15–35 (est.) | **Plaud NotePin $159 / NotePin S $179** ([Plaud](https://www.plaud.ai/blogs/news)); **Limitless Pendant $99** ([TechCrunch](https://techcrunch.com/2025/12/05/meta-acquires-ai-device-startup-limitless/)); **Bee $49.99 plus $19/mo** ([TechCrunch](https://techcrunch.com/2025/07/22/amazon-acquires-bee-the-ai-wearable-that-records-everything-you-say/)) | the social-acceptability and consent-indicator issues in workstreams 1 and 2 |
 | Desk puck (4–8-mic circular array plus DSP beamforming/AEC; e.g. an XMOS XVF3800-class or Knowles/Synaptics voice DSP) | 4–8 MEMS, 360° beamforming, AEC, dereverberation | good for 3–5 m meeting rooms (est.) | $25–60 (est., unverified; parts pricing not retrieved) | conference-speakerphone category | best accuracy per dollar for meetings; can do VAD on-puck and stream **only** over an encrypted link to the phone |
 | USB-C or clip lavalier pair | 1–2 close mics | excellent per speaker | $5–20 (est.) | — | cheapest accuracy gain for interviews |
@@ -4380,8 +4751,8 @@ Mic(s) ──► [Tier0 VAD / hotword] ──► encrypted PCM ring buffer (Keys
 |---|---|---|---|---|---|
 | **AWS Nitro Enclaves** (current) | enclave image PCRs; KMS policy bound to measurements | **no**: vsock to the parent only, no network, no persistent storage; up to 4 enclaves per parent; no extra charge | CPU-only | keep for the agent runtime, key release and redaction verification; **not for LLM or ASR at scale** | [AWS docs](https://docs.aws.amazon.com/enclaves/latest/user/nitro-enclave.html) |
 | **NVIDIA H100/H200 CC** (CVM on AMD SEV-SNP or Intel TDX, plus a GPU in CC mode) | CPU TEE plus a signed GPU attestation report over SPDM | **yes** | GPU compute and HBM unchanged; CPU↔GPU limited to ~4 GB/s by bounce-buffer encryption; **<7% for typical LLM queries** | the right home for any cloud ASR or LLM that sees T2 data | [NVIDIA](https://developer.nvidia.com/blog/confidential-computing-on-h100-gpus-for-secure-and-trustworthy-ai/), [arXiv 2409.03992](https://arxiv.org/abs/2409.03992) |
-| Hosted GPU-TEE providers (Tinfoil, Privatemode) | attested open models | yes | — | Tinfoil: private chat $20/mo, containers $20/mo plus usage ([Tinfoil](https://tinfoil.sh/)); Privatemode: open models including Qwen and GPT-OSS, a **speech-to-text** offering, BSI C5 attestation criteria, EU hosting ([Privatemode](https://www.privatemode.ai/)) | a fast way to get attested ASR or LLM fallback without building GPU CC ops |
-| **Cerebras** (current LLM) | none known (Cerebras trust page not retrievable; **unverified**) | no public TEE (unverified) | fastest tokens/s | only for T1 redacted text, under contractual zero-retention; do not describe it as "attested" |  — |
+| Hosted GPU-TEE providers (Tinfoil, Privatemode) | attested open models | yes | — | Tinfoil: private chat $20/mo, containers $20/mo plus usage ([Tinfoil](https://tinfoil.sh/)); Privatemode: open models including Qwen, a **speech-to-text** offering, BSI C5 attestation criteria, EU hosting ([Privatemode](https://www.privatemode.ai/)) | a fast way to get attested ASR or LLM fallback without building GPU CC ops |
+| **Cerebras** (current LLM, `qwen-3.8-27b`, $0.99/M in, $1.49/M out, ~1,850 tok/s; [Cerebras docs](https://inference-docs.cerebras.ai/models/qwen-3.8-27b), verified 2026-10-02) | none found (2026-10-02); public zero-data-retention statement ([Cerebras support](https://support.cerebras.net/articles/1811589793-does-cerebras-retain-my-data)) | no public TEE found | fastest tokens/s | only for T1 redacted text, under contractual zero-retention; do not describe it as "attested" |  — |
 | Apple PCC (reference) | published images, transparency log, stateless, non-targetable, no privileged access | Apple silicon | — | architectural reference for claims language | [Apple Security](https://security.apple.com/blog/private-cloud-compute/) |
 | Google Private AI Compute (reference, 2025-11-11) | TPUs plus "Titanium Intelligence Enclaves", remote attestation | TPU | — | powers Magic Cue and Recorder summary language expansion | [Google](https://blog.google/technology/ai/google-private-ai-compute/) |
 
@@ -4389,9 +4760,9 @@ Mic(s) ──► [Tier0 VAD / hotword] ──► encrypted PCM ring buffer (Keys
 
 | Primitive | What it gives Alpha | Limits | Source |
 |---|---|---|---|
-| **StrongBox** (Titan M2 on Pixel, unverified model mapping) | keys in a secure element with its own CPU, TRNG and tamper resistance; key attestation | slow; limited algorithms (RSA-2048, AES-128/256, P-256, HMAC-SHA256, 3DES); not for bulk audio encryption | [Keystore](https://developer.android.com/privacy-and-security/keystore) |
+| **StrongBox** (Titan M2 on Pixel 10, verified 2026-10-02) | keys in a secure element with its own CPU, TRNG and tamper resistance; key attestation | slow; limited algorithms (RSA-2048, AES-128/256, P-256, HMAC-SHA256, 3DES); not for bulk audio encryption | [Keystore](https://developer.android.com/privacy-and-security/keystore) |
 | TEE-backed Keystore | per-recording AES-GCM keys (already used by Alpha for credentials) | — | repo manifest |
-| **Android Protected Confirmation** | a trusted-UI prompt; the signature proves the user saw the exact text (for approvals of sensitive egress or actions) | "supported devices" on Android 9+; not a confidential channel; **current Pixel support and deprecation status unverified** | [APC](https://developer.android.com/privacy-and-security/security-android-protected-confirmation) |
+| **Android Protected Confirmation** | a trusted-UI prompt; the signature proves the user saw the exact text (for approvals of sensitive egress or actions) | "supported devices" on Android 9+; not a confidential channel; **no deprecation notice on the developer page as of 2026-10-02**; per-Pixel support list not published (could not verify) | [APC](https://developer.android.com/privacy-and-security/security-android-protected-confirmation) |
 | **AVF / pKVM protected VM** | isolation that holds even if Android is compromised; Microdroid (bionic NDK subset, verified boot, SELinux, binder-over-vsock) | ARM64 only; `MANAGE_VIRTUAL_MACHINE` is **privileged**; **no Java APIs, graphics or HALs**, so ML runs on CPU only; RAM carved out for the VM | [AVF](https://source.android.com/docs/core/virtualization), [Microdroid](https://source.android.com/docs/core/virtualization/microdroid) |
 | Precedent | Google runs **Play Protect live threat detection content-safety classifiers in pVMs**; OPPO's "AI private computing space" | — | [AVF use cases](https://source.android.com/docs/core/virtualization/usecases) |
 
@@ -4474,24 +4845,24 @@ Starting in October 2026. Each exit gate needs recorded evidence in the acceptan
    - What remains is pVM-isolated capture and redaction with attested egress. Google already uses pVMs for Play Protect classifiers, so the approach is platform-sanctioned.
 4. **Fix the cloud narrative gap.** Nitro Enclaves cannot host GPU inference. Today's Cerebras path is therefore outside any attested boundary.
    - Either restrict Cerebras to T1 redacted text and say so,
-   - or add a GPU-CC inference tier (<7% overhead) for anything more sensitive.
-5. **Avoid hard dependencies on Google AICore/ML Kit GenAI.** They require a locked bootloader and GMS/AICore, run only in the foreground, and are quota-limited. That conflicts with a sovereign or de-Googled image and with always-on. Use them only opportunistically on the GMS variant.
+   - or add a GPU-CC inference tier (<7% overhead) running self-hosted Qwen open weights for anything more sensitive, so the model and its provenance file stay the same across tiers.
+5. **Avoid hard dependencies on Google AICore/ML Kit GenAI.** They require a locked bootloader and GMS/AICore, run only in the foreground, and are quota-limited. Alpha's own AOSP image ships without GMS (founder decision 2026-10-02), so they are absent there by design. Use them only opportunistically in the app/launcher build on stock Pixels.
 6. **Diarize anonymously by default.** Keep embeddings RAM-only and do not enroll third-party voiceprints. This keeps BIPA exposure manageable and doubles as a privacy selling point.
 7. **Meetings are an audio problem as much as a model problem.** Even the best models score 11–16% WER on AMI. Plan an accessory-mic program before a custom puck.
-8. **Licences are clean if Piper-GPL is avoided** and CC-BY attribution is shipped.
+8. **Licences are clean if Piper-GPL and NVIDIA Canary 1B (CC-BY-NC) are avoided** and CC-BY attribution is shipped.
 
 ## Open questions
 
 1. What are the measured RTF, energy per audio minute and thermal behaviour of Moonshine, Zipformer and Parakeet (CPU vs GPU vs Tensor NPU AOT) on a **physical Pixel 10**? No public numbers were found.
-2. Does a Pixel relocked with **custom AVB keys** satisfy AICore's "locked bootloader" requirement? Does Alpha's image ship GMS/AICore at all?
+2. *Answered by founder decision (2026-10-02):* Alpha's image does not ship GMS/AICore, so the custom-AVB relock question is moot for that image.
 3. Can a privileged vendor app load a custom **Sound Trigger** model on Tensor G5's DSP? Does Google expose this HAL to non-Google images?
 4. Is AVF **device assignment** (GPU/NPU into a pVM) available on Pixel 10 or 11? If not, is CPU-only in-VM ASR fast enough for real-time meetings?
-5. What is the current Pixel support and deprecation status of **Android Protected Confirmation**? What is the exact Titan M2 / StrongBox feature set on Pixel 10? (Not verified in this session.)
-6. Does **Cerebras** offer any attestation or TEE product or roadmap? What zero-retention terms does Alpha have in writing?
+5. *Partly answered 2026-10-02:* APC shows no deprecation notice; Pixel 10 has Titan M2. Still open: the per-device APC support list and the exact StrongBox feature set.
+6. Does **Cerebras** offer any attestation or TEE product or roadmap? (None found 2026-10-02.) Cerebras publicly states zero data retention; what terms does Alpha have in writing?
 7. BIPA: confirm the voiceprint coverage and the effect of the 2024 per-person damages amendment (SB 2979). Get counsel's view on transient, RAM-only diarization embeddings. (Hand-off to workstream 5.)
-8. Picovoice and Speechmatics on-device list pricing, and Argmax Android SpeakerKit availability, were not retrievable. Get quotes.
-9. Pixel 10 battery capacity and microphone count/geometry (unverified). Measure the real always-on overhead against the ≤10%/day target.
-10. Should the "Pixel 10-class" target move to Pixel 11 / Tensor G6 (announced 2026-08-12) for pilot hardware bought in 2027?
+8. Picovoice and Speechmatics on-device list pricing, and Argmax Android SpeakerKit availability, were still not retrievable on 2026-10-02. Get quotes.
+9. *Partly answered 2026-10-02:* Pixel 10 has a 4,970 mAh battery, 3 microphones, 12 GB RAM and Titan M2. Mic geometry is unpublished. Measure the real always-on overhead against the ≤10%/day target.
+10. Should the "Pixel 10-class" target move to Pixel 11 / Tensor G6 for pilot hardware bought in 2027? Pixel 11 shipped 2026-08-20 from $899 (256 GB, 12 GB RAM, 7 years of updates) ([Engadget](https://www.engadget.com/2234844/google-pixel-11-announced-specs-availability/), verified 2026-10-02); reported Tensor G6 claims (TSMC N3P, +50% TPU) could not be verified on a Google page.
 11. What multilingual scope does the pilot need? Parakeet v3 covers 25 European languages; Moonshine Voice covers 8, including Arabic, Mandarin, Japanese and Korean.
 12. Is a GPU-CC fallback (self-hosted vs Tinfoil/Privatemode) acceptable to government buyers, given hosting location and certification (FedRAMP, BSI C5)? (Hand-off to workstreams 3 and 5.)
 
@@ -4519,6 +4890,33 @@ Starting in October 2026. Each exit gate needs recorded evidence in the acceptan
 - Competitors: https://www.plaud.ai/blogs/news · https://www.limitless.ai/privacy · https://techcrunch.com/2025/12/05/meta-acquires-ai-device-startup-limitless/ · https://techcrunch.com/2025/07/22/amazon-acquires-bee-the-ai-wearable-that-records-everything-you-say/
 - BIPA: https://en.wikipedia.org/wiki/Biometric_Information_Privacy_Act · statute https://www.ilga.gov/legislation/ilcs/ilcs3.asp?ActID=3004&ChapterID=57 (not fetchable in this session)
 
+---
+
+## Verification log (2026-10-02)
+
+| # | Claim (as first written) | Result | Source |
+| --- | --- | --- | --- |
+| 1 | Pixel 10 battery ~4,900 mAh (unverified) | **Corrected/confirmed:** 4,970 mAh (≈19.2 Wh); energy table unchanged | [Wikipedia](https://en.wikipedia.org/wiki/Pixel_10) |
+| 2 | Pixel 10 has 3 mics (unverified) | Confirmed; geometry unpublished | [Wikipedia](https://en.wikipedia.org/wiki/Pixel_10) |
+| 3 | Tensor G5 on TSMC 3 nm; Titan M2 | Confirmed (N3E; Titan M2) | [Wikipedia](https://en.wikipedia.org/wiki/Pixel_10) |
+| 4 | Pixel 11 / Tensor G6 announced 2026-08-12 | Confirmed; ships 2026-08-20 from $899, 12 GB RAM, 7 years of updates. G6 process/TPU claims could not verify on a Google page | [Engadget](https://www.engadget.com/2234844/google-pixel-11-announced-specs-availability/) |
+| 5 | Argmax Pro SDK Android GA 2026-03-18; $1.00–$1.33/device/month, 1,000 minimum | Confirmed; Enterprise from 10,000 licences; licence check every 30 days | [Argmax blog](https://www.argmaxinc.com/blog), [pricing](https://www.argmaxinc.com/pricing) |
+| 6 | Argmax $8M seed (2024-11-13); no later round | Confirmed; no later funding on blog | [Argmax blog](https://www.argmaxinc.com/blog) |
+| 7 | Argmax SpeakerKit Android | Could not verify a dedicated Android release | [platforms](https://app.argmaxinc.com/docs/wiki/supported-platforms) |
+| 8 | Picovoice list pricing | Could not verify (pricing page did not render) | — |
+| 9 | Canary 1B licence CC-BY (unverified) | **Corrected:** CC-BY-NC-4.0, non-commercial | [HF card](https://huggingface.co/nvidia/canary-1b) |
+| 10 | Phi-4-multimodal ~5.6B, MIT (unverified) | Confirmed | [HF card](https://huggingface.co/microsoft/Phi-4-multimodal-instruct) |
+| 11 | Whisper large-v3 1.55B (unverified), MIT | Size confirmed; HF card lists Apache-2.0 (code repo MIT) | [HF card](https://huggingface.co/openai/whisper-large-v3) |
+| 12 | Granite Speech licence (unverified) | Apache-2.0 confirmed for Granite Speech 3.3; 4.0 card not fetched | [HF card](https://huggingface.co/ibm-granite/granite-speech-3.3-8b) |
+| 13 | Presidio MIT (unverified) | Confirmed | [GitHub](https://github.com/microsoft/presidio) |
+| 14 | Android Protected Confirmation status (unverified) | No deprecation notice; per-device support list not published | [Android Developers](https://developer.android.com/privacy-and-security/security-android-protected-confirmation) |
+| 15 | Cerebras attestation (unverified) | None found; zero-data-retention statement found. Qwen3.8 price and speed confirmed ($0.99/$1.49; ~1,850 tok/s) | [Cerebras support](https://support.cerebras.net/articles/1811589793-does-cerebras-retain-my-data), [Cerebras docs](https://inference-docs.cerebras.ai/models/qwen-3.8-27b) |
+| 16 | BIPA voiceprint wording and SB 2979 amendment | Could not verify at source (ilga.gov TLS failure); left as reported | — |
+| 17 | Founder decision: no GMS/AICore/banking on Alpha's image | Applied: AICore row, key finding 3, implication 5, open question 2 | founder decision |
+| 18 | Founder decision: Qwen stays | Applied: GPU-CC tier framed as self-hosted Qwen weights; no model-swap advice added | founder decision |
+| 19 | AVF device assignment, Sound Trigger HAL on Tensor G5, XMOS/puck BOM, Speechmatics pricing, Samsung on-device toggle | Could not verify in this pass | — |
+
+
 
 ---
 
@@ -4528,6 +4926,8 @@ Research date: 2026-09-30. Workstream #11 of the [manifest](00-manifest.md). Sta
 
 This is market and strategy analysis, not engineering acceptance. Every product capability statement below is tied to a repository file and uses the repository's own evidence vocabulary. Every external number carries a source URL. Figures marked **(est.)** are analyst estimates or proposals, not sourced facts. Figures marked **(unverified)** come from background knowledge that could not be re-fetched during this session; a later pass should confirm them. The session's web-search quota was exhausted by earlier workstreams, so external research here used direct page fetches of primary sources (about 35 fetches, of which 25 returned usable data). Where a sibling workstream (01–10) covers a topic in depth, this file cross-references it rather than repeating it.
 
+**Fact-check pass (2026-10-02).** Items re-checked are marked "(verified 2026-10-02)" or "(could not verify)"; see the verification log at the end. **Founder decisions applied:** (1) Alpha forks AOSP for its own image and does not need banking apps, Play Integrity or GMS, so those are no longer scored as blockers for the custom image; MDM support for AOSP devices remains a real risk. (2) Inference stays on Qwen (`qwen-3.8-27b` on Cerebras). Buyer objections to Qwen's origin are kept as facts; mitigation is framed around Qwen itself, not a model swap.
+
 ---
 
 ## 0. Executive summary
@@ -4536,16 +4936,16 @@ This is market and strategy analysis, not engineering acceptance. Every product 
 2. **The strongest market asset is not in the Alpha app yet.** The pinned elizaOS upstream already contains a serious PII layer. It has checksum-validated detectors, corpus-consistent typed pseudonyms, a "secret-swap" before the model boundary, fail-closed audio redaction with re-transcription verification, and a host-owned *confidential inference admission* policy with mandatory audit records (`vendor/eliza/packages/core/src/security/{pii-detectors,pii-pseudonymizer,pii-pseudonym-map,secret-swap,confidential-inference}.ts`, `vendor/eliza/packages/core/src/audio-redaction*.ts`, `vendor/eliza/packages/agent/src/services/audio-redaction-service.ts`). The Alpha renderer does not call any of it (grep of `apps/app/src` finds no redaction use beyond a settings label). Wiring it in is the single highest-leverage product move.
 3. **The confidentiality story does not hold up as currently described.** The agent runs in an AWS Nitro Enclave. Nitro Enclaves have no GPU, no persistent storage and no external networking, only a vsock channel ([AWS FAQ](https://aws.amazon.com/ec2/nitro/nitro-enclaves/faqs/)). Inference therefore leaves the enclave for Cerebras. Cerebras states it does not retain inference inputs or outputs ([Cerebras privacy policy](https://www.cerebras.ai/privacy-policy)), but that is a contractual promise, not attestation. The repo says so itself ([mvp-scope-and-gap-report.md §Private hosting](../mvp-scope-and-gap-report.md)). **Redaction before egress is what makes the architecture defensible.** A later GPU TEE (NVIDIA confidential computing on Hopper, Blackwell or Rubin; [NVIDIA](https://www.nvidia.com/en-us/data-center/solutions/confidential-computing/)) closes the gap fully.
 4. **Recommended beachhead: SEC-registered investment advisers, meaning independent RIAs, multi-family offices and private-markets/alternatives IR teams.** The product would be *"Alpha Secure Scribe"*: a managed Android Enterprise app on stock Pixels, with the hardened launcher phone as a premium tier. The reasons:
-   - The pain is regulator-proven. The SEC fined 26 firms $392.75M in one off-channel sweep ([SEC 2024-98](https://www.sec.gov/newsroom/press-releases/2024-98)) and 12 more, including Blackstone, KKR, Apollo, Carlyle and TPG, $63.1M in January 2025 ([SEC 2025-6](https://www.sec.gov/newsroom/press-releases/2025-6)).
+   - The pain is regulator-proven. The SEC fined 26 firms $392.75M in one off-channel sweep ([SEC 2024-98](https://www.sec.gov/newsroom/press-releases/2024-98)) and 12 more, including Blackstone, KKR, Apollo, Carlyle and TPG, $63.1M on 2025-01-13 ([SEC 2025-6](https://www.sec.gov/newsroom/press-releases/2025-6); verified 2026-10-02). **Caveat:** under Chair Atkins the SEC has signalled lower priority for recordkeeping cases, so new-fine pressure is weakening even though the rules and existing undertakings stand ([Bond Buyer](https://www.bondbuyer.com/news/secs-atkins-criticizes-off-channel-comms-enforcement)). Sell retention hygiene and supervision of AI notes (FINRA 24-09), not fine avoidance.
    - No FedRAMP, BAA or NIAP certification is required. SOC 2 plus archive and CRM integration is enough.
    - Buyers are small and decide fast.
-   - Incumbents are cloud meeting software. Jump serves 45,000+ advisors ([jump.ai](https://jump.ai/)) and Zocks 5,000+ firms ([zocks.io](https://www.zocks.io/)), but neither is a device with local ASR and attested processing.
+   - Incumbents are cloud meeting software. Jump serves 45,000+ advisors per its homepage ([jump.ai](https://jump.ai/)); its Feb 2026 $80M Series B release cited 27,000 ([WealthManagement](https://www.wealthmanagement.com/artificial-intelligence/jump_secures_series_b), verified 2026-10-02), so the count is growing fast and Zocks 5,000+ firms ([zocks.io](https://www.zocks.io/)), but neither is a device with local ASR and attested processing.
 5. **Follow-on #1: boutique and mid-size law firms plus M&A/PE deal teams.** Privilege and MNPI make "the raw words never leave the device unredacted" worth paying for, and the same redaction and clean-room features apply. **Follow-on #2: behavioral health and private-practice clinics.** On-device ASR is most valuable there, but the segment needs a BAA, a HIPAA program and 42 CFR Part 2 handling, and it faces Microsoft Dragon Copilot and ambient-scribe incumbents ([Microsoft](https://www.microsoft.com/en-us/health-solutions/clinical-workflow/dragon-copilot)). **Government (federal civilian, DoD, IC) is a non-dilutive R&D lane**, through SBIR/DIU-style work, not a beachhead. FedRAMP 20x is still phasing in ([fedramp.gov/20x](https://www.fedramp.gov/20x/)), and NIAP/CSfC for a custom AOSP image is a multi-year effort.
 6. **Package software first and hardware second.** A dedicated "AI phone" alone joins a graveyard. Humane raised $230M and sold most of itself to HP for $116M; its devices were bricked on 2025-02-28 ([Wikipedia](https://en.wikipedia.org/wiki/Humane_Inc.)). Rabbit sold about 130k R1s, with about 5,000 concurrent users reported ([Wikipedia](https://en.wikipedia.org/wiki/Rabbit_r1)). Ship the redaction and enclave stack as an app on managed stock Android. Sell the hardened launcher phone to the subset that wants a dedicated device, and keep an SDK/OEM licensing option open. GrapheneOS's Motorola partnership, announced March 2026, shows OEM appetite for hardened Android ([Wikipedia](https://en.wikipedia.org/wiki/GrapheneOS)).
 7. **Top risks (§6):**
    - claiming "confidential AI" before redaction and GPU TEE exist
    - on-device ASR not yet accepted on physical hardware
-   - brand association with the ai16z token among regulated buyers, where Rabbit's NFT past is a cautionary analog
+   - brand association with the ai16z token among regulated buyers, where Rabbit's NFT past is a cautionary analog. The token was declared "dead" on 2026-08-05 after the *Doe v. Walters* class action (S.D.N.Y. 1:26-cv-03238) was settled with the remaining treasury (see [08](08-investors-funding-ma.md) §1.2; verified 2026-10-02)
    - recording-consent and wiretap litigation, now an active class-action genre (Otter, No. 5:25-cv-06911; Fireflies; [Wikipedia](https://en.wikipedia.org/wiki/Otter.ai))
    - focus: 14 prototype modules plus a sibling senior-care product, against one wedge
 
@@ -4732,7 +5132,7 @@ Honest caveats:
 
 ### 4.3 Follow-on #2: behavioral health and small private practices
 
-- On-device ASR plus redaction is the strongest privacy argument anywhere in this analysis. Therapy notes and substance-use records under 42 CFR Part 2 (unverified detail) carry stigma and extra legal protection.
+- On-device ASR plus redaction is the strongest privacy argument anywhere in this analysis. Therapy notes and substance-use records under 42 CFR Part 2 (confidentiality of SUD patient records; scope confirmed on [Cornell LII](https://www.law.cornell.edu/cfr/text/42/part-2) 2026-10-02; the 2024 HIPAA-alignment rule's compliance date could not be verified) carry stigma and extra legal protection.
 - It requires a HIPAA program and BAA chain, EHR integration (SimplePractice, TherapyNotes and similar are more tractable than Epic), and a two-party consent flow.
 - Enter via a partner EHR rather than direct hospital sales. Hospital enterprise is where Microsoft Dragon Copilot competes, with 2,500+ active users at Intermountain alone ([Microsoft](https://www.microsoft.com/en-us/health-solutions/clinical-workflow/dragon-copilot)).
 - Timing: design-partner pilots in months 9–12, after the SOC 2 Type 2 window opens.
@@ -4748,7 +5148,7 @@ Honest caveats:
 | Package | What it is | Pros | Cons | Verdict |
 | --- | --- | --- | --- | --- |
 | **A. "Alpha Secure Scribe" app** on stock Pixel or any Android Enterprise device (work profile or fully managed) | The standalone flavor, stripped to capture → local ASR → redaction → enclave agent → CRM/archive | Stays inside the buyer's existing MDM and phones. No hardware inventory. Play Integrity is unaffected (stock OS), so banking and MFA apps keep working. Fastest to pilot. | Less control of the mic/HOME experience. Competes directly with app incumbents. | **Lead package** |
-| **B. Hardened launcher device** (Pixel plus HOME flavor, managed, optional custom image later) | Today's launcher flavor on a company-provisioned Pixel, locked to Alpha + approved apps | Clean-room device for execs and deal teams. Premium price. Showcases the brand. | Pixel supply and bootloader dependency. Custom images fail Play Integrity: SafetyNet was fully replaced on 2025-05-20 and non-certified ROMs fail attestation ([Wikipedia](https://en.wikipedia.org/wiki/Play_Integrity_API)). Support burden. | **Premium tier**, stock-OS-plus-launcher first, custom image only for sovereign buyers |
+| **B. Hardened launcher device** (Pixel plus HOME flavor, managed, with Alpha's own AOSP image) | Today's launcher flavor on a company-provisioned Pixel, locked to Alpha + approved apps | Clean-room device for execs and deal teams. Premium price. Showcases the brand. | Pixel supply and bootloader dependency. Custom images fail Play Integrity (SafetyNet was fully replaced on 2025-05-20; non-certified ROMs fail attestation; [Wikipedia](https://en.wikipedia.org/wiki/Play_Integrity_API), verified 2026-10-02), but per the founder decision (2026-10-02) Alpha's image does not need banking apps, Wallet or GMS, so this is not a blocker. The real cost is **enterprise management**: Intune's AOSP list contains one phone (HMD Terra M), and zero-touch/managed Play assume GMS ([09](09-distribution-partners-economics.md)). Support burden. | **Premium tier**; Alpha's AOSP image where Alpha or the customer manages the device; stock-OS-plus-launcher for fleets already on Intune/Workspace ONE |
 | **C. Desk/companion puck** (boardroom or clinic-room mic array plus local NPU, pairs with A) | Multi-party far-field capture that does not rely on a phone on the table | Solves far-field/diarization. Socially legible "recording" object with an indicator light. Pairs with the clean-room meeting mode. | New hardware program. The AI-hardware graveyard. | **Year 2 option**, via ODM reference design only after A has traction |
 | **D. Sovereign on-prem appliance** (agent + GPU inference in customer DC, attestation root in customer HSM) | Enclave-equivalent stack on NVIDIA confidential-computing GPUs | Solves the Cerebras egress problem completely. Large contracts with Gulf, EU and defence primes. | Long sales cycles. Requires packaging the hosted stack for on-prem. | **Opportunistic**, driven by one anchor customer |
 | **E. SDK/licensing** of redaction plus attested-agent stack to OEMs, carriers and MDM vendors | Upstream elizaOS modules plus Alpha's verification discipline, licensed with support | Leverages MIT upstream. OEM demand for hardened Android (GrapheneOS × Motorola, March 2026; [Wikipedia](https://en.wikipedia.org/wiki/GrapheneOS)). Carriers want enterprise AI differentiation. | The MIT license means code is not the moat; support, certification and evaluation data are. Long OEM cycles. | **Keep as partnership track.** Revenue in year 2+. |
@@ -4881,8 +5281,8 @@ Likelihood (L) and impact (I) are scored 1–5; score = L×I. **Owner** is a pro
 
 | # | Risk | L | I | Score | Mitigation |
 | --- | --- | --- | --- | --- | --- |
-| P1 | Google GMS/MADA licensing blocks a GMS-bearing custom image; de-Googled image loses Play services | 4 | 4 | **16** | Stock OS + app + launcher for most customers; custom image only for sovereign buyers ([09](09-distribution-partners-economics.md)) |
-| P2 | Play Integrity: custom images fail attestation, breaking banking/MFA/MDM apps ([Wikipedia](https://en.wikipedia.org/wiki/Play_Integrity_API)) | 5 | 4 | **20** | Same as P1; publish a compatibility list |
+| P1 | De-Googled image loses managed Google Play, zero-touch and Intune AOSP support (only HMD Terra M is on Intune's AOSP phone list, verified 2026-10-02). GMS itself is **not needed** (founder decision 2026-10-02) | 4 | 3 | 12 | Alpha-provided device management or an MDM partner allow-list for the custom image; stock OS + app + launcher for fleets already on Intune/Workspace ONE ([09](09-distribution-partners-economics.md)) |
+| P2 | Play Integrity: custom images fail attestation ([Wikipedia](https://en.wikipedia.org/wiki/Play_Integrity_API)). Banking/Wallet apps are **out of scope** for Alpha's image (founder decision 2026-10-02); residual risk is third-party enterprise MFA or line-of-business apps that enforce integrity | 3 | 2 | 6 | Publish a compatibility list; offer partner apps hardware key attestation against Alpha's pinned verified-boot key |
 | P3 | Google/Apple bundle free on-device and "private cloud" transcription: Google Private AI Compute (2025-11-11) powers Recorder summaries ([Google](https://blog.google/technology/ai/google-private-ai-compute/)); Apple PCC ([Apple](https://security.apple.com/blog/private-cloud-compute/)) | 5 | 4 | **20** | Differentiate on *enterprise evidence* (archive, supervision, redaction manifest, customer-held keys), which platforms will not build for vertical compliance |
 | P4 | Android changes to mic, background and accessibility policy restrict always-on capture | 3 | 3 | 9 | Foreground-service capture with visible indicator; no accessibility scraping (already policy in [cross-app-notifications-plan.md](../cross-app-notifications-plan.md)) |
 | P5 | EMM vendors (Intune, Workspace ONE) do not certify or allow the app | 2 | 4 | 8 | Early Android Enterprise validation; managed-config schema |
@@ -4896,7 +5296,7 @@ Likelihood (L) and impact (I) are scored 1–5; score = L×I. **Owner** is a pro
 | L3 | Redaction false-negative liability: a customer relied on "redacted" and PII leaked to a subprocessor | 3 | 4 | 12 | Contract: redaction is a risk-reduction control with published recall, not a guarantee. Cyber/tech E&O insurance. Subprocessor DPA with zero retention. |
 | L4 | Privilege waiver or MNPI disclosure through a third-party model | 3 | 5 | 15 | Pseudonymize, enclave, zero-retention subprocessor, customer-held keys option; opinion letter from outside counsel for law-firm GTM |
 | L5 | Recordkeeping vs redaction conflict (SEC 17a-4, FINRA 4511, legal hold): destroying the original could be spoliation. FRCP 37(e) sanctions are harshest with intent to deprive ([Cornell LII](https://www.law.cornell.edu/rules/frcp/rule_37)) | 4 | 5 | **20** | **Dual-track architecture:** original to customer archive (WORM), redacted copy to models; legal-hold flag suspends deletion policies |
-| L6 | EU AI Act: emotion inference in workplace banned since 2025-02-02 ([Art. 5](https://artificialintelligenceact.eu/article/5/)); GDPR DPIA required | 2 | 4 | 8 | No sentiment or emotion features for employees in the EU; DPIA template |
+| L6 | EU AI Act: emotion inference in workplace banned since 2025-02-02 ([Art. 5](https://artificialintelligenceact.eu/article/5/)); GDPR DPIA required. *2026 timing update:* most provisions applied 2026-08-02, but Annex III high-risk obligations now apply from **2027-12-02** and Annex I from **2028-08-02**; generative-content transparency from 2026-12-02 ([AI Act timeline](https://artificialintelligenceact.eu/implementation-timeline/), verified 2026-10-02) | 2 | 4 | 8 | No sentiment or emotion features for employees in the EU; DPIA template |
 | L7 | HIPAA/Part 2 obligations triggered accidentally when advisors discuss client health | 3 | 3 | 9 | Health-condition redaction class in the finance pack; clear BA/non-BA position |
 | L8 | Export control of encryption/AI (EAR 5A002/5D002) for sovereign sales | 2 | 3 | 6 | Classification ruling before first non-US sale ([05](05-regulation-compliance.md)) |
 
@@ -4914,7 +5314,7 @@ Likelihood (L) and impact (I) are scored 1–5; score = L×I. **Owner** is a pro
 
 | # | Risk | L | I | Score | Mitigation |
 | --- | --- | --- | --- | --- | --- |
-| B1 | elizaOS/ai16z token association read as "crypto project" by CCOs, CISOs and government. Rabbit's pre-rebrand NFT history became a credibility scandal ([Wikipedia](https://en.wikipedia.org/wiki/Rabbit_r1)) | 4 | 4 | **16** | Separate enterprise brand (Alpha Compute) and legal entity; no token mechanics in the product; disclose governance; elizaOS positioned as "MIT-licensed open-source agent runtime" |
+| B1 | elizaOS/ai16z token association read as "crypto project" by CCOs, CISOs and government. Rabbit's pre-rebrand NFT history became a credibility scandal ([Wikipedia](https://en.wikipedia.org/wiki/Rabbit_r1)). The token was declared dead in Aug 2026 after a settled S.D.N.Y. class action ([CoinDesk](https://www.coindesk.com/markets/2026/08/05/ai-agent-token-once-worth-usd2-4-billion-ends-with-founder-calling-it-dead)) | 4 | 4 | **16** | Separate enterprise brand and legal entity; no token mechanics in the product; disclose the token history and settlement plainly; elizaOS positioned as "MIT-licensed open-source agent runtime". Note that the likely parent, Alpha Compute Corp (NASDAQ: ALP), carries its own diligence flags: a going-concern paragraph in its FY2026 20-F/A and a ≈$7M market cap after a 1:50 reverse split (see [08](08-investors-funding-ma.md) §1.1, verified 2026-10-02) |
 | B2 | Prototype mock data (balances, contacts, "Sealed/Attested/Nothing leaves" copy) appears in demos or screenshots as if real | 3 | 5 | 15 | Enforced mock banner (exists); demo-asset review; ban fixture screenshots in sales decks ([prd.md](../prd.md)) |
 | B3 | "Alpha" trademark crowding (Sony Alpha, Alphabet, many "Alpha" marks) | 3 | 3 | 9 | Formal clearance search (not done here) before investing in the product name |
 | B4 | Public infra identifiers (AWS account, KMS ARN, temporary tunnel host) in the product repo if it becomes public | 3 | 3 | 9 | Scrub docs before open-sourcing; move to private ops repo |
@@ -4936,7 +5336,7 @@ Likelihood (L) and impact (I) are scored 1–5; score = L×I. **Owner** is a pro
 | F1 | Inference and enclave COGS (12 GiB enclave slots, Cerebras per-token) exceed seat price at heavy use | 3 | 3 | 9 | Metering above included minutes; local summarization for short notes |
 | F2 | Hardware inventory and returns | 3 | 3 | 9 | HaaS via leasing partner; no stock beyond pilots |
 | F3 | Compliance program cost ($80k–$350k SOC 2 alone; [Secureframe](https://secureframe.com/hub/soc-2/audit-cost)) before revenue | 4 | 3 | 12 | Stage: Type 1 → Type 2; share controls across products |
-| F4 | Funding perception tied to token market cycles | 3 | 4 | 12 | Enterprise-revenue metrics; strategic investors from fintech and compliance ([08](08-investors-funding-ma.md)) |
+| F4 | Funding perception tied to the (now dead) token and to a distressed public parent | 3 | 4 | 12 | Enterprise-revenue metrics; strategic investors from fintech and compliance ([08](08-investors-funding-ma.md)) |
 
 **Top-10 by score:** T2 (25); then at 20: T1, T3, P2, P3, L1, L5, E1; then at 16: T7, P1, M1, M2, B1, E3.
 
@@ -4954,25 +5354,25 @@ Likelihood (L) and impact (I) are scored 1–5; score = L×I. **Owner** is a pro
 | 6 | **Duress / remote wipe** | Executives and journalists face coercion; MDM wipe exists, but a duress PIN does not on stock Android | Duress passphrase that wipes local transcript keys; relies on Keystore key deletion |
 | 7 | **Travel mode for border crossings** | CBP searched 55,318 devices in FY2025, up from 46,958 in FY2024 ([CBP](https://www.cbp.gov/travel/cbp-search-authority/border-search-electronic-devices)) | "Travel mode" that removes local transcripts and keys, re-syncs from enclave after crossing; legal review per country |
 | 8 | **Journalists and NGOs** | Source protection and interview transcription is a natural fit, with low budgets. Foundation-funded programs could subsidize. | Pro-bono/foundation tier; builds credibility beyond crypto |
-| 9 | **Union and works-council objections** | In Germany, works councils have co-determination over technical devices that can monitor employee performance (BetrVG §87(1) no. 6; unverified detail). The EU AI Act bans workplace emotion inference ([Art. 5](https://artificialintelligenceact.eu/article/5/)). | Works-council pack: purpose limitation, no performance analytics, local storage |
+| 9 | **Union and works-council objections** | In Germany, works councils have co-determination over technical devices that can monitor employee performance (BetrVG §87(1) no. 6; the official English text could not be loaded on 2026-10-02, could not verify wording). The EU AI Act bans workplace emotion inference ([Art. 5](https://artificialintelligenceact.eu/article/5/)). | Works-council pack: purpose limitation, no performance analytics, local storage |
 | 10 | **Accessibility/ADA transcription as a compliant wedge** | EEOC lists automated captioning, voice recognition software and CART as reasonable accommodations ([EEOC](https://www.eeoc.gov/laws/guidance/hearing-disabilities-workplace-and-americans-disabilities-act)). An on-device live-caption tool for deaf and hard-of-hearing employees is a pre-justified purchase that security teams approve more easily. | "Alpha Captions" accommodation SKU; HR/accommodations budget |
 | 11 | **Multilingual** | Current ASR is English-only tiny.en ([standalone-paired-asr.md](../standalone-paired-asr.md)). Gulf, EU and many US advisory clients code-switch. Redaction detectors must be locale-aware (IBAN is already there; national IDs are not). | Multilingual model qualification before sovereign GTM |
 | 12 | **Trademark check** on "Alpha Phone" / "Alpha Compute" | "Alpha" is heavily registered across electronics (Sony α), software and finance. No clearance found in repo. | Commission a USPTO/EUIPO clearance search |
 | 13 | **Patents** | Wake-word, always-on capture and PII-redaction patents exist (see [10](10-always-on-tech-feasibility.md)). Push-to-talk avoids most wake-word claims. Alpha's fail-closed audio redaction verification may itself be patentable. | FTO review; consider defensive filings or publication |
-| 14 | **Open-source licensing of elizaOS** | Upstream is MIT (`vendor/eliza/LICENSE`, copyright Shaw Walters and elizaOS contributors). Competitors can reuse the redaction stack freely, so the moat is data, evaluations, certification and integrations. Proton Pass is GPLv3 ([browser-autofill-integration.md](../browser-autofill-integration.md)). The model license for `qwen-3.8-27b` must be confirmed. | License inventory in the evidence pack; decide what stays proprietary (policy packs, eval sets) |
+| 14 | **Open-source licensing of elizaOS** | Upstream is MIT (`vendor/eliza/LICENSE`, copyright Shaw Walters and elizaOS contributors). Competitors can reuse the redaction stack freely, so the moat is data, evaluations, certification and integrations. Proton Pass is GPLv3 ([browser-autofill-integration.md](../browser-autofill-integration.md)). The model license for `qwen-3.8-27b` must be confirmed (Cerebras lists it as an Alibaba model in production; the licence was not stated on the Cerebras page, could not verify 2026-10-02). | License inventory in the evidence pack; decide what stays proprietary (policy packs, eval sets) |
 | 15 | **SOC 2 as table stakes** | Jump advertises SOC 2-certified infrastructure ([jump.ai](https://jump.ai/)). Without it, no RIA procurement will pass. Costs $80k–$350k ([Secureframe](https://secureframe.com/hub/soc-2/audit-cost)). | Start the Type 1 in Q4 2026 |
 | 16 | **Cyber insurance** | Insurers increasingly ask about AI vendors and data flows. Alpha's own tech E&O needs to cover redaction failure. Customers' carriers may ask for evidence. | Buy tech E&O plus cyber; give customers an insurer-ready control summary |
 | 17 | **Insider-threat use cases** | A device that captures meetings can be abused *by* insiders (secret recording of colleagues). Conversely, audit logs help insider-risk programs. | Admin policy: capture only in allowed contexts; tamper-evident logs |
 | 18 | **Subprocessor chain disclosure** | Cerebras, AWS and Cloudflare (currently a temporary tunnel for ingress) all become listed subprocessors under GDPR/DPA | Publish a subprocessor list; remove quick-tunnel ingress from production |
 | 19 | **Data residency** | Sovereign and EU buyers need in-region enclaves and in-region inference; Cerebras region availability is unknown | Region matrix; BYO-inference option |
-| 20 | **Model provenance and Chinese-origin models** | Qwen is an Alibaba model family; some government and defense buyers restrict PRC-origin models even when self-hosted | Offer a non-PRC model option (Llama/Mistral/other) for public sector |
+| 20 | **Model provenance and Chinese-origin models** | Qwen is an Alibaba model family; some government and defense buyers restrict PRC-origin models even when self-hosted. The FY2026 NDAA already directs DoD/IC to remove DeepSeek AI ([Wikipedia](https://en.wikipedia.org/wiki/DeepSeek), verified 2026-10-02) | Keep Qwen (founder decision 2026-10-02) and answer the objection directly: self-hosted Qwen open weights inside the attested boundary for regulated and sovereign tiers (no third-party inference egress), redaction before any prompt leaves the device or enclave, and a provenance file (weights source and hash, licence, evaluations, red-team results, attested model hash). Accept that some defense/IC buyers will still decline |
 | 21 | **Supply-chain origin of competitors** | Plaud lists Shenzhen and Beijing offices ([Plaud](https://www.plaud.ai/pages/about-us)). "US-built, no PRC data path" is a real selling point for regulated buyers. | Comparative data-path sheet (factual, not disparaging) |
 | 22 | **Platform bundling timing** | Google Private AI Compute launched 2025-11-11 with Recorder and Magic Cue ([Google](https://blog.google/technology/ai/google-private-ai-compute/)). Apple PCC promises published images ([Apple](https://security.apple.com/blog/private-cloud-compute/)). Alpha's "verifiable" claim must be at least as transparent as Apple's. | Publish enclave images/measurements and a transparency log |
 | 23 | **Transparency log for enclave releases** | The repo already records PCRs and hashes per candidate ([enclave-candidate-validation.md](../enclave-candidate-validation.md)). Making this public is cheap and matches PCC's "verifiable transparency". | Public release-measurement page; phone-side verification |
 | 24 | **Android Enterprise controls a CISO will ask for** | Android 15 lets admins block Circle to Search in work profiles and enforce default dialer/browser on COPE ([Android](https://developer.android.com/work/versions/android-15)). Buyers will expect Alpha to honour work-profile boundaries. | Managed-config schema: capture allowed apps, retention, egress policy |
 | 25 | **Deceased and incapacitated client data, and elder financial abuse** | Advisers must document diminished capacity and suspected exploitation. Transcripts become evidence. | Legal-hold and flagging workflow; tie to senior-care sibling learnings without merging products |
 | 26 | **Minors' data (education/IEP)** | IEP meetings involve FERPA records and often parental recording rights; COPPA for under-13s | Defer education; keep the note in the backlog |
-| 27 | **Voice as a biometric in the EU and Texas** | GDPR Art. 9 special-category data if used for identification; Texas CUBI (unverified detail) | No speaker identification by default |
+| 27 | **Voice as a biometric in the EU and Texas** | GDPR Art. 9 special-category data if used for identification; Texas CUBI (statute text could not be loaded 2026-10-02; could not verify) | No speaker identification by default |
 | 28 | **Hallucinated summaries as records** | An AI-generated note that is wrong still becomes a required record under FINRA 4511 ([FINRA](https://www.finra.org/rules-guidance/key-topics/ai)) | Human approval before filing; keep transcript linkage |
 | 29 | **Product sunset promise** | Humane's buyers lost device function when servers shut off ([Wikipedia](https://en.wikipedia.org/wiki/Humane_Inc.)) | Contractual data-export and offline-mode guarantees; escrow |
 | 30 | **Self-reporting incentive** | The SEC reduced penalties for self-reporting firms ([SEC 2024-98](https://www.sec.gov/newsroom/press-releases/2024-98)) | Position Alpha as part of a remediation program after a deficiency letter: a strong trigger event for sales |
@@ -5006,7 +5406,7 @@ Gating rule: no GTM phase advances on emulator-level evidence alone. Each quarte
 ## Open questions
 
 1. Will the DoD's "private TEE inference" requirement be satisfied by redaction plus a zero-retention provider, or does it require GPU-TEE or on-prem inference? Who decides?
-2. Can Cerebras sign a BAA, offer a dedicated or private deployment, and provide region pinning? What are its SOC 2/ISO status and subprocessors? The privacy policy is silent on certifications ([Cerebras](https://www.cerebras.ai/privacy-policy)).
+2. Can Cerebras sign a BAA, offer a dedicated or private deployment, and provide region pinning? *Partly answered 2026-10-02:* the Cerebras Trust Center lists **SOC 2 Type 2**, GDPR and CCPA, with subprocessors HubSpot, Cloudflare, SendGrid, Mixpanel and AWS; ISO 27001 and HIPAA/BAA are not listed ([Trust Center](https://trust.cerebras.ai/)). Cerebras states zero data retention for inference and US-based datacenters ([support](https://support.cerebras.net/articles/1811589793-does-cerebras-retain-my-data)). BAA availability remains open.
 3. Is the company willing to create a separate enterprise brand and entity, distinct from elizaOS/ai16z community branding, for regulated GTM?
 4. Which on-device ASR model will be the shipping choice? Does it provide word timestamps and diarization within the battery budget on Pixel 10 (Tensor G5)?
 5. Is Alpha Phone the same company and roadmap as the senior-care product, and how is engineering capacity divided?
@@ -5017,4 +5417,3493 @@ Gating rule: no GTM phase advances on emulator-level evidence alone. Each quarte
 10. Which archive vendors (Smarsh, Global Relay, Theta Lake, others) will partner, and on what integration terms ([09](09-distribution-partners-economics.md))?
 11. Can the redaction evaluation set be built with consented real conversations from design partners, and under what data agreement?
 12. Should the SDK/OEM track begin now (e.g., with a hardened-Android OEM) or wait for enterprise proof?
-13. Items marked (unverified) in this file need a primary-source check in the consolidation pass: BetrVG §87 wording, Texas CUBI, 42 CFR Part 2 details, and BIPA's 2024 amendment.
+13. Still unverified after the 2026-10-02 pass (primary pages blocked or failed TLS): BetrVG §87 wording, Texas CUBI text, the 42 CFR Part 2 2024-rule compliance date, and BIPA's 2024 amendment (SB 2979 / PA 103-0769).
+
+---
+
+## Verification log (2026-10-02)
+
+| # | Claim (as first written) | Result | Source |
+| --- | --- | --- | --- |
+| 1 | Founder decision: AOSP fork without banking apps / Play Integrity / GMS | Applied: package B, risks P1 (16 → 12, reframed to MDM) and P2 (20 → 6, residual third-party MFA apps) | founder decision |
+| 2 | Founder decision: Qwen stays | Applied: risk 20 mitigation reframed (self-hosted Qwen weights, redaction before egress, provenance file); no model-swap advice | founder decision |
+| 3 | SEC 2024-98: 26 firms, $392.75M | Confirmed (as cited) | [SEC](https://www.sec.gov/newsroom/press-releases/2024-98) |
+| 4 | SEC 2025-6: 12 firms, $63.1M, Jan 2025 | Confirmed (2025-01-13; Blackstone $12M, KKR $11M, Schwab $10M, Apollo/Carlyle/TPG $8.5M) | [SEC](https://www.sec.gov/newsroom/press-releases/2025-6) |
+| 5 | Off-channel pressure as a driver | **Added caveat:** Atkins-era de-emphasis of recordkeeping cases | [Bond Buyer](https://www.bondbuyer.com/news/secs-atkins-criticizes-off-channel-comms-enforcement) |
+| 6 | Jump 45,000+ advisors | Homepage figure retained; Feb 2026 release said 27,000 | [WealthManagement](https://www.wealthmanagement.com/artificial-intelligence/jump_secures_series_b) |
+| 7 | Otter class action N.D. Cal. 5:25-cv-06911 (ECPA/CIPA/BIPA) | Confirmed; no resolution reported | [Wikipedia](https://en.wikipedia.org/wiki/Otter.ai) |
+| 8 | Cruz v. Fireflies (Dec 2025) | Could not verify | — |
+| 9 | Play Integrity: SafetyNet ended 2025-05-20; custom ROMs fail | Confirmed | [Wikipedia](https://en.wikipedia.org/wiki/Play_Integrity_API) |
+| 10 | Intune AOSP list | Confirmed: only phone is HMD Terra M | [Microsoft Learn](https://learn.microsoft.com/en-us/mem/intune/fundamentals/android-os-project-supported-devices) |
+| 11 | ai16z token association | **Updated:** token declared dead 2026-08-05; *Doe v. Walters* settled | [CoinDesk](https://www.coindesk.com/markets/2026/08/05/ai-agent-token-once-worth-usd2-4-billion-ends-with-founder-calling-it-dead), [Burwick](https://www.burwick.law/insights/burwick-law-files-class-action-over-ai16z-and-elizaos-tokens) |
+| 12 | "Alpha Compute" as a clean separate brand | **Softened:** Alpha Compute Corp (NASDAQ: ALP) has a going-concern paragraph and ≈$7M market cap; it is not a diligence-neutral brand | [20-F/A](https://www.sec.gov/Archives/edgar/data/0001095435/000117184326005284/f20fa_072626.htm), [stockanalysis](https://stockanalysis.com/stocks/alp/statistics/) |
+| 13 | PRC-model restrictions | **Added:** FY2026 NDAA DeepSeek removal for DoD/IC | [Wikipedia](https://en.wikipedia.org/wiki/DeepSeek) |
+| 14 | Cerebras certifications (open question) | SOC 2 Type 2, GDPR, CCPA listed; no ISO 27001 or BAA listed; zero data retention stated | [Trust Center](https://trust.cerebras.ai/), [support](https://support.cerebras.net/articles/1811589793-does-cerebras-retain-my-data) |
+| 15 | EU AI Act timing | **Updated:** Annex III high-risk from 2027-12-02, Annex I from 2028-08-02 | [AI Act timeline](https://artificialintelligenceact.eu/implementation-timeline/) |
+| 16 | 42 CFR Part 2 | Scope confirmed; 2024-rule compliance date could not verify | [Cornell LII](https://www.law.cornell.edu/cfr/text/42/part-2) |
+| 17 | BIPA 2024 amendment (SB 2979) | Could not verify (ilga.gov TLS failure; LegiScan 403) | — |
+| 18 | BetrVG §87(1) no. 6; Texas CUBI | Could not verify (official texts did not load) | — |
+| 19 | `qwen-3.8-27b` licence | Could not verify | [Cerebras docs](https://inference-docs.cerebras.ai/models/qwen-3.8-27b) |
+
+
+
+---
+
+# 12 — AOSP fork: always-on listening, implementation spec
+
+Research date: 2026-10-02. Follows [10 — always-on technical feasibility](10-always-on-tech-feasibility.md). Audience: platform/AOSP engineering, security, product and legal.
+
+**Decision context.** The team has decided to fork AOSP into a custom signed image for a Pixel 10-class target. Banking apps, Play Integrity and GMS are out of scope. The goal is always-on listening that works with any app in the foreground, with the screen off and while the device is locked. Audio feeds an on-device ASR → redaction pipeline. A recording indicator must be impossible to hide, and the user must consent.
+
+**What this document is.** It is a specification and research report. It is not engineering acceptance. Nothing in it has been built, booted or measured. The repository contract still applies: an APK build, an emulator HOME-role test, a full AOSP image boot, real integrations and device/user acceptance are separate gates (see [`AGENTS.md`](../../AGENTS.md) and [`docs/android-and-aosp.md`](../android-and-aosp.md)).
+
+**This is a deliberate departure from ADR-04.** [`docs/architecture.md`](../architecture.md) ADR-04 ("no implicit privileged bundle") and [`docs/decisions.md`](../decisions.md) item 5 ("additive, nonprivileged") say Alpha is admitted as a non-privileged app. Always-on capture needs privileged components. A new ADR must approve that before any of this lands. This spec keeps the existing Alpha app non-privileged and adds a separate, small, privileged, network-less package.
+
+**Method and evidence.**
+- The framework claims below come from AOSP source fetched on 2026-10-02 from `android.googlesource.com` at `refs/heads/main`, with exact file paths given.
+- The repository's Pixel lock pins `android-17.0.0_r1` (`vendor/eliza/packages/os/android/pixel11pro.lock.json`). `main` can differ from that tag, so every cited line must be re-checked at the pinned tag before implementation. That re-check is item V1 in §13.
+- The session's web-search budget ran out during this workstream (shared quota). Later facts come from direct primary-source fetches.
+- **(unverified)** marks a claim not confirmed from a primary source. **(est.)** marks an engineering estimate.
+
+---
+
+## 1. Executive summary
+
+1. **The platform already has every permission we need, but the honest path is narrow.** `CAPTURE_AUDIO_HOTWORD`, `CAPTURE_AUDIO_OUTPUT`, `MANAGE_SOUND_TRIGGER`, `EXEMPT_FROM_AUDIO_RECORD_RESTRICTIONS` and `BYPASS_CONCURRENT_RECORD_AUDIO_RESTRICTION` are all `signature|privileged` (some also `|role`). A privapp allowlist grants them to a priv-app. `RECORD_BACKGROUND_AUDIO` is `internal|role`, and only the `SYSTEM_SHELL` role grants it. Do not use it.
+2. **Three silent-recording traps exist in stock AOSP, and the fork must close all three:**
+   - (a) The `SYSTEM_AMBIENT_AUDIO_INTELLIGENCE` (and related) role holders are **exempted from the privacy indicator** by `PermissionManager.EXEMPTED_ROLES`.
+   - (b) Capture through `AUDIO_SOURCE_HOTWORD` notes `OP_RECORD_AUDIO_HOTWORD`, which is **not an indicator op**, unless `ro.hotword.detection_service_required=true`.
+   - (c) HotwordDetectionService capture is remapped to `OP_RECORD_AUDIO_SANDBOXED`, which also shows **no indicator**.
+
+   Our package must hold none of the exempt roles. We set the sysprop. SystemUI gets an independent "Listening" chip derived from AudioFlinger state, not from app self-report.
+3. **Background start and boot are solvable for a system app.**
+   - A system app with `android:persistent="true"` runs at `PROCESS_STATE_PERSISTENT`. That state is ≤ TOP, so `ActiveServices` grants while-in-use and a microphone FGS is allowed.
+   - `START_ACTIVITIES_FROM_BACKGROUND` (privileged) is a second documented exemption.
+   - The Android 14/15 `BOOT_COMPLETED` microphone-FGS ban is avoided because a persistent app is started by the system, not by a broadcast receiver. It still needs on-device confirmation (V3).
+4. **Concurrency rules decide the UX.**
+   - Since Android 10, only the top or latest-started ordinary client gets real audio; the rest receive silence.
+   - Calls always win unless the client can bypass the concurrency policy.
+   - `HOTWORD`-source clients never mask other apps. That makes `HOTWORD` the right source for a background listener that must always yield.
+   - The pipeline must watch `AudioRecordingConfiguration.isClientSilenced()` and show "Paused — mic in use".
+   - We do **not** grant call capture.
+5. **Power is the hard limit on an AP-only design.**
+   - AudioFlinger's `RecordThread` holds a wakelock while capture is active, so the AP never suspends while we listen.
+   - DSP gating would fix this. Pixel's AOC DSP does run sound-trigger models: the vendor image ships `music_detector.sound_model` files for Now Playing. Those models are Google's opaque format, and no public toolchain exists to load our own **(unverified; spike S1)**.
+   - Plan for AP VAD at first, budgeting ≈5–10%/day (est.), with DSP/CHRE gating as a research spike.
+6. **Copy the HotwordDetectionService privacy model; do not reuse the service for continuous ASR.**
+   - The framework enforces HDS isolation: it must be `isolatedProcess` (not external), and the VoiceInteractionService must **not** hold the bind permission.
+   - `isolated_app_all` SELinux policy bans creating any non-`AF_UNIX` socket.
+   - The `isolated_compute_app` domain adds GPU access plus a vendor-extensible `isolated_compute_allowed_device` attribute, which is our NPU route.
+   - HDS egress is a single size-limited result object. That is the right pattern for our egress gate.
+7. **Process architecture.**
+   - A new privileged `ai.elizaresearch.alphaphone.sense` package with **no `INTERNET` permission**, a custom SELinux domain `alpha_sense_app` with network `neverallow`s, a persistent mic FGS, and AP VAD.
+   - ASR and redaction run in an `isolatedProcess` child, CPU first, NPU later.
+   - A single signature-protected egress binder hands **redacted text only** to the existing non-privileged Alpha app.
+   - pKVM/Microdroid is not viable for the ASR path: it has no HALs, so no NPU/GPU, and device assignment needs a vendor VM DTBO that Pixel does not ship **(unverified)**. Use it only for the key/ledger.
+8. **Pixel 10 is buildable without Google device trees, but through GrapheneOS's tooling.**
+   - Google stopped publishing Pixel device trees and driver binaries with Android 16. It moved the AOSP reference target to Cuttlefish.
+   - Pixel kernel source is now delivered via a request form, slowly, and as a single squashed file.
+   - AOSP source drops happen only twice a year (Q2/Q4) from 2026.
+   - GrapheneOS's `adevtool` (branch 17) already has `frankel/blazer/mustang/rango/stallion` configs. It ships stable Pixel 10 releases on Android 17 (release 2026092500). The repo's existing Pixel 11 Pro lock uses the same tooling, so a Pixel 10 lock is a mechanical extension.
+9. **Distribution and legal gates are first-order risks.** They are the redistribution rights for extracted Pixel vendor blobs **(unverified, legal review)**, all-party-consent law, BIPA for diarization, and bystander signalling. Pixel 10 has no hardware mic switch. The software toggle and an always-visible chip are the honest floor, and a Motorola/GrapheneOS-class OEM could add a hardware switch (2027).
+10. **Effort (est.):**
+    - First userdebug always-on build with indicator and consent on Pixel 10: ~10–14 weeks for 2–3 platform engineers plus 1 ML engineer.
+    - Release-signed `user` build with OTA, SELinux hardening and a 7-day dogfood: +8–12 weeks.
+    - DSP/NPU/pVM spikes in parallel.
+
+---
+
+## 2. What the repository's image tooling already does
+
+From `vendor/eliza` (read-only, pinned) and `android/`:
+
+| Item | Finding | Path |
+|---|---|---|
+| Product layer | `eliza_common.mk` installs the Eliza APK as a **privileged, platform-signed** app (`certificate: "platform"`, `privileged: true`). It ships privapp and default-permission XML, sets roles via overlay, and adds `BOARD_VENDOR_SEPOLICY_DIRS += vendor/eliza/sepolicy`. Known gap: `PRODUCT_PACKAGES -=` is a no-op, so de-bloat relies on Soong `overrides`. | `vendor/eliza/packages/os/android/vendor/eliza/eliza_common.mk`, `apps/Eliza/Android.bp` |
+| Privileged allowlist | `PACKAGE_USAGE_STATS`, `SCHEDULE_EXACT_ALARM`, `MANAGE_APP_OPS_MODES`, `MANAGE_VIRTUAL_MACHINE`, `READ_FRAME_BUFFER`, `INJECT_EVENTS`, `REAL_GET_TASKS`, `SYSTEM_ALERT_WINDOW`. No audio-capture privileges. | `.../permissions/privapp-permissions-ai.elizaos.app.xml` |
+| Default grants | `RECORD_AUDIO fixed="false"` (user can revoke), plus telephony/SMS `fixed="true"` | `.../permissions/default-permissions-ai.elizaos.app.xml` |
+| Roles | `config_defaultHome/Dialer/Sms/Assistant/Browser = ai.elizaos.app` | `.../overlays/frameworks/base/core/res/res/values/config.xml` |
+| SELinux | One broad rule, `allow platform_app app_data_file:file { execute execute_no_trans }`, plus `platform_app_36` userdebug rules. The README records that a custom `eliza_agent` domain tripped about 30 neverallows. Custom domains must go through `seapp_contexts`/seinfo tied to a separate signing cert. | `.../sepolicy/eliza_agent.te` |
+| Voice components (upstream app) | `ElizaVoiceCaptureService` (FGS `microphone`, a lifecycle anchor only), `ElizaVoiceInteractionService` (thin VIS, no HotwordDetectionService, `supportsLaunchVoiceAssistFromKeyguard=true`), `ElizaRecognitionService`, a voice IME | `vendor/eliza/packages/app/platforms/android/app/src/main/...` |
+| Hardware targets | `pixel9a-tegu` (Android 15 r31, pinned) and `pixel11pro-grizzly` (`android-17.0.0_r1`, `cp2a`, generated via **GrapheneOS adevtool** `refs/heads/17` plus a stock kernel). **No Pixel 10 lock.** `decisionNote` flags this as an open owner decision. | `vendor/eliza/packages/os/android/hardware-targets.json`, `pixel11pro.lock.json` |
+| AVB | Lock uses `external/avb/test/data/testkey_rsa4096.pem`, authorized as `public-aosp-userdebug-test-key`. No release key yet. | `pixel11pro.lock.json` |
+| Pixel audio blobs (grizzly spec) | `android.hardware.audio.service-aidl.aoc`, `aocd`, `aoc.bin`, `libaoc.so`, the `aoc_*` kernel modules, many CHRE nanoapps (`/vendor/etc/chre/*.so`), `contexthub-service.generic`, `edgetpu` (`com.google.edgetpu.tachyon-service`, `darwinn` NNAPI). There is no separate sound-trigger VINTF fragment in the extracted list. | `vendor/eliza/packages/os/android/vendor-specs/grizzly-cd1a.260905.001.b1.yml` |
+| Alpha app | Package `ai.elizaresearch.alphaphone`. Flavors `standalone`/`launcher` (same ID). Has `RECORD_AUDIO`, `INTERNET`, an `IsolatedPdfService` with `isolatedProcess="true"` (an in-repo precedent), and an `ACTION_ASSIST` activity. Admitted to AOSP as a **non-privileged presigned** import. | `android/app/src/main/AndroidManifest.xml`, `android/app/build.gradle`, `docs/android-and-aosp.md` |
+
+**Implications.**
+- Do not make the Capacitor/WebView Alpha app privileged. It has `INTERNET` and a large attack surface.
+- Put the microphone in a new, minimal priv-app with its own signing key, its own seinfo/SELinux domain, and no network.
+- Reuse the upstream vendor layering pattern: product makefile, privapp XML, overlays, `BOARD_*_SEPOLICY_DIRS`. Do not edit `vendor/eliza`. Generate `vendor/alphaphone/` in the AOSP checkout.
+
+---
+
+## 3. Permissions, roles and framework rules (verified in source)
+
+### 3.1 Protection levels (`frameworks/base/core/res/AndroidManifest.xml`, main)
+
+| Permission | Protection level | Use in Alpha fork |
+|---|---|---|
+| `RECORD_AUDIO` | `dangerous\|instant`; `backgroundPermission=RECORD_BACKGROUND_AUDIO` | Pre-grant via default-permissions with `fixed="false"`. The user can revoke it, and revoking it stops the feature. |
+| `RECORD_BACKGROUND_AUDIO` | `internal\|role`. Granted only by the `SYSTEM_SHELL` role, for CTS (`roles.xml`). | **Do not use.** |
+| `CAPTURE_AUDIO_HOTWORD` | `signature\|privileged\|role` | **Grant.** Needed for the `AUDIO_SOURCE_HOTWORD` source. `AudioService.updateAssistantUIdLocked` only treats the assistant-role holder as the "assistant UID" if it holds this permission. |
+| `CAPTURE_AUDIO_OUTPUT` | `signature\|privileged\|role` | **Do not grant.** Until the new bypass flag ships everywhere, it doubles as the concurrency/call-capture bypass (`AudioPolicyInterfaceImpl.cpp`: "remove forcing canBypassConcurrentPolicy to canCaptureOutput"). It would let us record calls and system output. |
+| `BYPASS_CONCURRENT_RECORD_AUDIO_RESTRICTION` | `signature\|privileged`, behind flag `android.media.audio.concurrent_audio_record_bypass_permission` | **Do not grant** (calls/VoIP stay unrecorded). Revisit only for an explicit, announced call-notes feature with legal sign-off. |
+| `EXEMPT_FROM_AUDIO_RECORD_RESTRICTIONS` | `signature\|privileged\|role` ("Exempt this uid from restrictions to background audio recording") | Optional fallback if persistent/WIU does not cover a path (V3). Prefer not to. |
+| `MANAGE_SOUND_TRIGGER` | `signature\|privileged\|role` | Grant only in Phase 3 (DSP spike). |
+| `SOUND_TRIGGER_RUN_IN_BATTERY_SAVER` | `signature\|privileged` | Phase 3. |
+| `BIND_HOTWORD_DETECTION_SERVICE` / `BIND_VISUAL_QUERY_DETECTION_SERVICE` | `signature`; the system binds | Declare as the service guard only. The VIS app must **not** hold it (enforced). |
+| `MANAGE_HOTWORD_DETECTION` | `internal\|preinstalled` | Not needed. |
+| `RECEIVE_SANDBOX_TRIGGER_AUDIO` | `signature\|privileged\|appop` | Only if we adopt VIS+HDS for a wake phrase (Phase 3). Its op **is** an indicator op. |
+| `START_ACTIVITIES_FROM_BACKGROUND` | `signature\|privileged\|vendorPrivileged\|oem\|verifier\|role` | Fallback WIU exemption if we choose not to be `persistent`. |
+| `START_FOREGROUND_SERVICES_FROM_BACKGROUND` | same | Optional. |
+| `FOREGROUND_SERVICE_MICROPHONE` | `normal\|instant` | Required for the FGS type. |
+| `ACCESS_ULTRASOUND` | `signature\|privileged` | Not needed. |
+| `MANAGE_VIRTUAL_MACHINE` | privileged (already in Eliza's allowlist) | Phase 3 pVM key/ledger only. |
+
+### 3.2 Roles (`packages/modules/Permission/PermissionController/res/xml/roles.xml`, main)
+
+- **`android.app.role.ASSISTANT`**
+  - `defaultHolders="config_defaultAssistant"`, `exclusivity="user"`, `requestable="false"`.
+  - Qualifies through a VIS with `sessionService`, `recognitionService` and `supportsAssist`, or through an `ACTION_ASSIST` activity.
+  - Holding it makes the app the AudioPolicy "assistant UID" **only** if it also holds `CAPTURE_AUDIO_HOTWORD` (`AudioService.updateAssistantUIdLocked`). That gives the extra capture rights in §4.
+  - The assistant role and the listener should be **different packages**: the Alpha app is the visible assistant, and the sense package is the listener. If we make the sense package the VIS instead, it gains assistant concurrency privileges. Decision D2 in §12.
+- **`android.app.role.SYSTEM_AMBIENT_AUDIO_INTELLIGENCE`**
+  - `config_systemAmbientAudioIntelligence`, `static`, `systemOnly`, invisible.
+  - Grants `CAPTURE_AUDIO_OUTPUT`, `CAPTURE_MEDIA_OUTPUT`, `CAPTURE_VOICE_COMMUNICATION_OUTPUT`, `MODIFY_AUDIO_ROUTING`, `RECORD_AUDIO`, `CAPTURE_AUDIO_HOTWORD`, `EXEMPT_FROM_AUDIO_RECORD_RESTRICTIONS`, `MANAGE_SOUND_TRIGGER`, `LOCATION_HARDWARE`, `MANAGE_MUSIC_RECOGNITION`, `OBSERVE_SENSOR_PRIVACY` and `READ_PHONE_STATE`.
+  - The role comment requires CDD §9.8.6 compliance. It also says holders "MUST NOT request INTERNET permission" and may only bind to a short allowlisted set of system packages via `<allow-association>`.
+  - **That is exactly our privacy model, but this role is indicator-exempt** (§3.4). **Do not assign it to our package.** Adopt its rules (no `INTERNET`, explicit `allow-association`) by construction instead.
+- `SYSTEM_AUDIO_INTELLIGENCE` (`config_systemAudioIntelligence`) is similar and adds in-call/caption permissions. It is also indicator-exempt. Do not use it.
+- `SYSTEM_SPEECH_RECOGNIZER` (`config_systemSpeechRecognizer`) grants `RECORD_AUDIO` and `UPDATE_APP_OPS_STATS` to a `RecognitionService` provider. It is optional: it would let the sense package serve `SpeechRecognizer` for other apps. It is not indicator-exempt.
+
+### 3.3 Foreground-service rules (Android 14–17)
+
+- **Microphone FGS** needs `FOREGROUND_SERVICE_MICROPHONE` plus a granted `RECORD_AUDIO`. `RECORD_AUDIO` is a while-in-use permission, so an app in the background cannot create a mic FGS (`SecurityException`). A `BOOT_COMPLETED` receiver cannot start one either: that restriction has applied to `microphone` since Android 14 and was extended to more types in 15 ([FGS types](https://developer.android.com/develop/background-work/services/fgs/service-types), [Android 15 changes](https://developer.android.com/about/versions/15/behavior-changes-15)).
+- **Documented while-in-use exemptions** ([background start](https://developer.android.com/develop/background-work/services/fgs/restrictions-bg-start)):
+  - started by a system component;
+  - started from a widget or notification;
+  - a `PendingIntent` from a visible app;
+  - a device-owner DPC;
+  - **an app providing `VoiceInteractionService`**;
+  - **an app holding `START_ACTIVITIES_FROM_BACKGROUND`**.
+- **Source of truth.** `frameworks/base/services/core/java/com/android/server/am/ActiveServices.java` `shouldAllowFgsWhileInUsePermissionLocked` allows WIU, among other cases, when:
+  - the caller's `uidState <= PROCESS_STATE_TOP` (comment: "PROCESS_STATE_PERSISTENT, PROCESS_STATE_PERSISTENT_UI or PROCESS_STATE_TOP");
+  - the caller is ROOT/SYSTEM/NFC/SHELL uid;
+  - the caller has `START_ACTIVITIES_FROM_BACKGROUND`;
+  - the caller is in `mAllowListWhileInUsePermissionInFgs`, which today holds only the AttentionService and SystemCaptionsService packages;
+  - the caller is the device owner.
+- **Our choice.** `android:persistent="true"` on the sense priv-app. `persistent` is honoured only for system apps. The process is then started by the system at boot, runs at a persistent proc-state (≤ TOP) and is restarted if killed. AudioPolicy also maps ≤ TOP proc-states to `APP_STATE_TOP` (`apmStatFromAmState`: "include persistent services").
+  - Also keep `START_ACTIVITIES_FROM_BACKGROUND` in the allowlist as a belt-and-braces exemption (V3 verifies whether it is needed).
+  - **The persistent-at-TOP nuance matters for concurrency.** See §4.
+- **systemExempted FGS type** is reserved for DO/PO, emergency role, exact-alarm holders, VPN and similar. It is not a mic substitute: the mic op still requires the `microphone` type.
+
+### 3.4 Privacy indicator: how it works and how stock AOSP can hide it
+
+- **Ops that light the mic/camera chip.**
+  - `packages/SystemUI/src/com/android/systemui/privacy/AppOpsPrivacyItemMonitor.kt` `OPS_MIC_CAMERA` lists `OP_CAMERA`, `OP_PHONE_CALL_CAMERA`, `OP_RECORD_AUDIO`, `OP_PHONE_CALL_MICROPHONE`, `OP_RECEIVE_AMBIENT_TRIGGER_AUDIO`, `OP_RECEIVE_EXPLICIT_USER_INTERACTION_AUDIO` and `OP_RECEIVE_SANDBOX_TRIGGER_AUDIO`.
+  - `AppOpsControllerImpl.java` has the same list. **`OP_RECORD_AUDIO_HOTWORD` and `OP_RECORD_AUDIO_SANDBOXED` are absent.**
+- **Exemptions.** `AppOpsControllerImpl.isUserVisible()` → `PermissionManager.shouldShowPackageForIndicatorCached()` → `getIndicatorExemptedPackages()`, which returns the `android` system package plus the holders of `EXEMPTED_ROLES`:
+  - `config_systemAmbientAudioIntelligence`
+  - `config_systemUiIntelligence`
+  - `config_systemAudioIntelligence`
+  - `config_systemNotificationIntelligence`
+  - `config_systemTextIntelligence`
+  - `config_systemVisualIntelligence`
+
+  Source: `frameworks/base/core/java/android/permission/PermissionManager.java`. The list is refreshed every ≤15 s.
+- **Suppression.** `AppOpsControllerImpl.isAllRecordingPausedLocked` hides the chip if the mic is muted, or if every `AudioRecordingConfiguration` for the uid `isClientSilenced()`. That is correct behaviour: silenced clients are not receiving audio.
+- **Hotword op.** `frameworks/av/media/utils/ServiceUtilities.cpp` `getOpForSource(AUDIO_SOURCE_HOTWORD)` returns `OP_RECORD_AUDIO_HOTWORD`.
+  - `frameworks/base/services/core/java/com/android/server/policy/AppOpsPolicy.java` `resolveRecordAudioOp` downgrades it to `OP_RECORD_AUDIO` (indicator shown) **only if** `ro.hotword.detection_service_required=true`, and then only for non-HDS uids.
+  - **With stock defaults (`false`), a privileged app capturing from the `HOTWORD` source shows no indicator.**
+- **HDS remap.** `AppOpsPolicy.resolveSandboxedServiceOp` changes the HDS isolated uid's `OP_RECORD_AUDIO` to `OP_RECORD_AUDIO_SANDBOXED` ("Upgrade the op such that no indicators is shown").
+- **Timing and flags.** Active means use within 5 s; recent means 15 s; minimum display is 5 s. SystemUI honours `privacy/mic_camera_indicators_enabled` (DeviceConfig namespace `privacy`; `camera_mic_icons_enabled` in `PermissionUsageHelper`) ([AOSP privacy indicators](https://source.android.com/docs/core/permissions/privacy-indicators)). The AOSP doc states, "The System UI verifies that the usage is by a system app" — this refers to the exemptions above.
+
+**Fork rules (all mandatory; together they make the indicator impossible to suppress for our listener):**
+1. Overlay `config_systemAmbientAudioIntelligence`, `config_systemAudioIntelligence`, `config_systemUiIntelligence`, `config_systemNotificationIntelligence`, `config_systemTextIntelligence` and `config_systemVisualIntelligence` to `""`.
+   - AOSP defaults are empty. Pixel vendor overlays such as `PixelConfigOverlayCommon` may set them **(unverified; check the generated overlay)**.
+   - Add a build-time check that none of them equals any Alpha package.
+2. Set `ro.hotword.detection_service_required=true` (product property).
+3. Patch `AppOpsPrivacyItemMonitor.OPS_MIC_CAMERA` and `AppOpsControllerImpl` to include `OP_RECORD_AUDIO_HOTWORD` and `OP_RECORD_AUDIO_SANDBOXED`. Or patch `AppOpsPolicy` to stop remapping. The SystemUI patch is less invasive.
+4. Pin the DeviceConfig flags. Set `privacy/camera_mic_icons_enabled=true` via `PRODUCT_PRODUCT_PROPERTIES`/`DeviceConfig` defaults. Block remote changes: there is no GMS, so no Phenotype exists to push flags anyway.
+5. Add an **independent "Listening" chip** (§9.4) driven by AudioFlinger recording state for the sense UIDs, including isolated UIDs. It must not depend on app-ops or app self-report.
+6. CTS-style invariant test on device: start capture from every source we use and assert that the chip is visible on the status bar, lock screen and AOD within 500 ms (est. threshold).
+
+### 3.5 HotwordDetectionService / VisualQueryDetectionService: the privacy model to copy
+
+Verified in `frameworks/base/services/voiceinteraction/java/com/android/server/voiceinteraction/`:
+- **`VoiceInteractionManagerServiceImpl.java`**
+  - Rejects an HDS unless `isIsolatedProcessLocked()`, meaning `FLAG_ISOLATED_PROCESS` and **not** `FLAG_EXTERNAL_SERVICE`.
+  - Rejects it unless the service is guarded by `BIND_HOTWORD_DETECTION_SERVICE`.
+  - Rejects it if the VIS package **holds** that permission.
+  - Applies the same isolation check to VisualQueryDetectionService.
+  - Initialization `SharedMemory` is made `PROT_READ`.
+- **`HotwordDetectionConnection.java`** binds via `bindIsolatedService` with `BIND_SHARED_ISOLATED_PROCESS` (when allowed), rotating isolated process names (`MAX_ISOLATED_PROCESS_NUMBER = 10`). It registers the isolated uid with AudioPolicy as an assistant-service uid (`addAssistantServiceUid`).
+- **`DetectorSession.java`** is the egress point. It logs "Egressed" results, enforces `RECORD_AUDIO` and the voice-activation op (`OP_RECEIVE_SANDBOX_TRIGGER_AUDIO`, an indicator op) plus `CAPTURE_AUDIO_HOTWORD` on the **receiving** VIS identity before data delivery, and copies `HotwordAudioStream`s under app-op checks.
+- **The egress payload is small by design.** `HotwordDetectedResult` extras are bounded by `config_hotwordDetectedResultMaxBundleSize` (AOSP default `0`).
+- `HotwordDetectionService.java` offers three detection paths:
+  - DSP trigger: `onDetect(EventPayload, timeout, cb)`.
+  - Mic directly: `onDetect(Callback)`.
+  - External stream: `onDetect(ParcelFileDescriptor, AudioFormat, …)`.
+- **SELinux** (`system/sepolicy/private/seapp_contexts`):
+  - `user=_isolated domain=isolated_app` by default.
+  - `user=_isolated isIsolatedComputeApp=true domain=isolated_compute_app`. Neverallows pin those mappings. `isolated_compute_app.te` says it "restricts data egress to protect the privacy". It grants `gpu_device` rw, `hal_codec2`/`hal_allocator` client, dmabuf system heap, and `isolated_compute_allowed_service` / `isolated_compute_allowed_device` (vendor-extensible attributes in `public/attributes`). It may only *use* tcp/udp sockets **received over IPC**; creating new ones is not permitted.
+  - `isolated_app_all.te`: "No creation of sockets families other than AF_UNIX sockets."
+  - Which framework path sets `isIsolatedComputeApp` for HDS/VQDS hosts is **(unverified; V4)**.
+  - Background: Android's Private Compute Core paper describes the same proxy-and-restrict egress design ([arXiv 2209.10317](https://arxiv.org/pdf/2209.10317)).
+
+**Why not run continuous ASR inside the stock HDS:**
+- HDS is trigger-oriented, with timeouts and auto-disconnects.
+- Its egress is a detection result, not a transcript stream.
+- Capture inside HDS is indicator-free by design.
+- It requires our package to be the VIS, which gives it assistant concurrency privileges.
+
+**What we copy instead:** isolated process + framework-enforced isolation checks + size-bounded typed egress + egress logging + receiving-side permission checks.
+
+### 3.6 Sound Trigger
+
+- **Stack** ([AOSP Sound Trigger](https://source.android.com/docs/core/audio/sound-trigger)): STHAL (`hardware/interfaces/soundtrigger/`, `ISoundTriggerHw` with `loadSoundModel`, `loadPhraseSoundModel`, `startRecognition`, `stopRecognition`, `unloadModel` and `forceRecognitionEvent`) → `SoundTriggerMiddleware` (sharing, permissions, logging) → `SoundTriggerService` → assistant/generic clients.
+  - After a trigger, audio is read through `AudioRecord` with `AUDIO_SOURCE_HOTWORD`.
+  - The model data is **opaque/vendor-specific**.
+  - In Android 11+, HAL errors force a HAL restart.
+- **Pixel.**
+  - Hotword and Now Playing run on AOC (always-on compute).
+  - The gs-common device config includes `/dev/acd-sound_trigger` (search result on a [gs-common diff](https://android.googlesource.com/device/google/gs-common/+/49e609ba234d9b2a723e455e5ba64b83c376cb99%5E2..49e609ba234d9b2a723e455e5ba64b83c376cb99/)).
+  - GrapheneOS's adevtool **excludes** `product/etc/firmware/music_detector.sound_model{,_2,_tflite}`, `music_detector.descriptor` and `product/etc/ambient/matcher_tah.leveldb` (comment: "used by ambient music recognizer") ([file-exclusion.yml](https://github.com/GrapheneOS/adevtool/blob/17/config/device/common/file-exclusion.yml)). That is evidence that Pixel's sound-trigger path consumes Google-format model files that the system loads into AOC.
+  - The public `device/google/zuma/device.mk` only has a commented-out Exynos-era `sound_trigger.primary.*` stanza. gs-common `audio/aidl/manifest.xml` is empty. The STHAL is presumably inside the proprietary `android.hardware.audio.service-aidl.aoc` **(unverified)**.
+- **Conclusion.** A custom DSP model on Pixel's AOC needs Google's model compiler/format and possibly signing. **Treat it as unavailable on an AOSP/GrapheneOS-style Pixel build until spike S1 shows otherwise.**
+  - CHRE on AOC (with the context-hub HAL and many nanoapps present) has a CHRE audio API. Custom nanoapp loading on Pixel likely requires Google signing **(unverified; spike S1b)**.
+
+---
+
+## 4. Concurrent capture
+
+Source of truth: `frameworks/av/services/audiopolicy/service/AudioPolicyService.cpp` `updateUidStates_l()` (main). The [developer summary](https://developer.android.com/media/platform/sharing-audio-input) says: "Two ordinary apps can never capture audio at the same time"; the Assistant gets audio "unless another app using a privacy-sensitive audio source is already capturing"; during calls "The call always receives audio", and other apps can capture only with `CAPTURE_AUDIO_OUTPUT`.
+
+How the rules apply to our listener (S):
+
+| Situation | Rule in `updateUidStates_l` | Outcome for S (source `HOTWORD`, persistent, not assistant) | Outcome if S used `VOICE_RECOGNITION`/`MIC` |
+|---|---|---|---|
+| Nothing else recording | HOTWORD branch: `onlyHotwordActive && canCaptureIfInCallOrCommunication` | **Captures** | Captures (persistent = TOP) |
+| Foreground app starts recording (voice memo, dictation, video) | `onlyHotwordActive` becomes false | **Silenced. Yields automatically**, and HOTWORD clients are excluded from "latest active" so they never mask others. | Both are "TOP" (persistent counts as TOP); **latest started wins**. Our restart after their start would steal audio from the user's app. **Unacceptable.** |
+| VoIP (`MODE_IN_COMMUNICATION`) | `canCaptureIfInCallOrCommunication` false unless bypass or comm owner | Silenced | Silenced |
+| Cellular call (`MODE_IN_CALL`) | needs `canBypassConcurrentPolicy` | **Silenced (we do not grant bypass)** | Silenced |
+| Privacy-sensitive capture (`VOICE_COMMUNICATION`, `CAMCORDER`, or `setPrivacySensitive(true)`) | `allowSensitiveCapture` false | Silenced | Silenced |
+| Sensor-privacy mic toggle on | `silenceAllRecordings_l()` | Silenced; chip shows "Mic off" | Silenced |
+| Assistant (Alpha app as role holder with `CAPTURE_AUDIO_HOTWORD`) opens `VOICE_RECOGNITION` while on top | assistant branches | S silenced while the assistant session runs, which is fine: the assistant session is the same product | — |
+| Accessibility service on top | a11y branches | S silenced unless HOTWORD/VR and a11y rules allow | — |
+
+**Decisions.**
+- **D-src.** S captures with `AUDIO_SOURCE_HOTWORD` (`MediaRecorder.AudioSource.HOTWORD` is a hidden/system constant 1999; set it via `AudioRecord.Builder` with system APIs) **if** Pixel's AOC audio HAL serves HOTWORD capture without an active sound-trigger session **(unverified; V5)**. Otherwise:
+  - use `VOICE_RECOGNITION` (AGC/NS tuned for ASR; `UNPROCESSED` only if the device reports `PROPERTY_SUPPORT_AUDIO_SOURCE_UNPROCESSED`, and VAD/ASR then need their own AGC);
+  - implement **cooperative yield**: register `AudioManager.AudioRecordingCallback`; stop our `AudioRecord` as soon as any other client config appears; restart only when no other client remains for ≥2 s.
+- Always observe `AudioRecordingConfiguration.isClientSilenced()` for our own session and surface "Paused — microphone in use by <app>" in the chip and notification.
+- **Never** grant `CAPTURE_AUDIO_OUTPUT`, `BYPASS_CONCURRENT_RECORD_AUDIO_RESTRICTION`, `CAPTURE_VOICE_COMMUNICATION_OUTPUT` or `CALL_AUDIO_INTERCEPTION`. Calls and VoIP are not recorded by default. A future "call notes" feature needs explicit per-call consent, an audible announcement and legal review.
+- **Never capture from `system_server` or `audioserver` context.** `ServiceUtilities.cpp` returns `PERMISSION_GRANTED` for `isAudioServerOrMediaServerOrSystemServerOrRootUid` without noting an app-op, so no indicator would appear. Capture must live in an app uid.
+
+---
+
+## 5. Power
+
+**Facts.**
+- `frameworks/av/services/audioflinger/Threads.cpp` `RecordThread::threadLoop()` calls `acquireWakeLock_l()`. While any capture is active, audioserver holds a partial wakelock, so the AP cannot suspend. Doze does not stop it: the wakelock belongs to audioserver.
+- Pixel Now Playing reference: a DSP first stage gates the AP and averages <1% battery/day ([arXiv 1711.10958](https://arxiv.org/abs/1711.10958); see [10 §5](10-always-on-tech-feasibility.md)).
+
+**Budget (est.).**
+- Pixel 10 battery capacity is unverified here. Assume ~18–19 Wh.
+- AP-awake continuous capture with little-core VAD, mic path and audio DSP path: **~30–60 mW** (est.), so **~4–8%/day** before ASR.
+- ASR on speech segments only. Assume 2–4 h of speech/day at RTF ~0.1–0.2 on CPU, 1–2 W while decoding (est.): **~2–6%/day**.
+- Total target ≤10%/day, matching the [doc 10 M5 gate](10-always-on-tech-feasibility.md). It must be measured (harness in Phase 1).
+
+**Design.**
+1. **Tier 0 (AP):**
+   - 16 kHz mono, 20 ms frames, energy gate, then a small neural VAD (Silero-class, ~1–2 MB (est.)) on one little core with `SCHED_IDLE`/`THREAD_PRIORITY_AUDIO` for capture only.
+   - Keep a 2–5 s pre-roll ring buffer in RAM. Use a large `AudioRecord` buffer (e.g. 200–400 ms) to reduce wakeups. The AP stays awake regardless.
+2. **Tier 1:** speech segments are batched (e.g. ≥10 s or end-of-utterance) and passed to the isolated ASR process. Run ASR on big cores at low duty, or on the GPU/NPU later (§6).
+3. **Governor:**
+   - Pause at <15% battery or Battery Saver (unless the user overrides).
+   - Pause at `THERMAL_STATUS_MODERATE`.
+   - Pause when the proximity/pocket heuristic plus long silence holds for >N minutes (optional "smart sleep", user-visible state).
+   - Schedules (work hours) and "on charger only" modes.
+   - Every pause state is reflected in the chip.
+4. **DSP path (Phase 3):**
+   - S1: Pixel AOC STHAL generic model.
+   - S1b: CHRE audio nanoapp.
+   - S1c: a non-Pixel OEM with an open DSP toolchain (Qualcomm LPAI/ADSP via an OEM partner).
+   - If any works, Tier 0 moves off the AP and AudioFlinger capture starts only after a trigger. That gives near-Now-Playing power.
+
+**Doze/standby exemptions (sysconfig).** `SystemConfig.java` (`frameworks/base/services/core/java/com/android/server/SystemConfig.java`) supports `allow-in-power-save`, `allow-in-power-save-except-idle`, `allow-in-data-usage-save`, `bg-restriction-exemption`, `allow-association`, `install-in-user-type` and `prevent-disable`, among others. Use `allow-in-power-save` and `bg-restriction-exemption` for the sense package. Do **not** use `allow-in-data-usage-save` because the package has no network. Persistent system apps are not subject to app-standby buckets **(unverified for Android 17; V6)**.
+
+---
+
+## 6. Isolation and egress
+
+### 6.1 Options
+
+| Option | Isolation strength | ML acceleration | Verdict |
+|---|---|---|---|
+| A. Separate priv-app UID, no `INTERNET`, custom SELinux domain | Strong on Android: no inet gid, plus SELinux neverallow on sockets | CPU/GPU/NPU via normal app paths (NNAPI/LiteRT, `edgetpu` vendor service, where reachable) | **Baseline (Phase 1–2).** |
+| B. `android:isolatedProcess` child of A (`isolated_app`) | Stronger: no app data, no services except those passed, no socket creation (`isolated_app_all.te`) | CPU only in practice (no GPU device access in `isolated_app`) | **ASR and redaction run here in Phase 1.** |
+| C. Isolated *compute* child (`isolated_compute_app`) | Same egress guarantees as B | GPU allowed; NPU if the vendor device type is added to `isolated_compute_allowed_device` | **Phase 3.** Needs a framework patch so our service is spawned as an isolated compute app (V4), plus a vendor sepolicy line for the TPU node (Pixel device type name unverified). |
+| D. pKVM protected VM (AVF/Microdroid) | Strongest: memory isolated even from a compromised host | **CPU only.** Microdroid has "no HALs" and no graphics ([Microdroid](https://source.android.com/docs/core/virtualization/microdroid)). Device assignment uses `vfio-platform` and a VM DTBO with assignable devices ([AVF device assignment](https://android.googlesource.com/platform/packages/modules/Virtualization/+/refs/heads/main/docs/device_assignment.md)). Pixel ships no TPU in a VM DTBO **(unverified)**. | **Not for ASR.** Use for the redaction-key and audit-ledger signer, and optionally text-only redaction rules. |
+
+### 6.2 Process architecture
+
+```
+                       ┌──────────────────────── SystemUI (patched) ────────────────────────┐
+                       │ Listening chip / AOD dot / lock-screen chip / QS tile / dialog     │
+                       │ source of truth: AudioManager.getActiveRecordingConfigurations()   │
+                       │ filtered to sense UIDs + ISenseStatus (state text only)            │
+                       └────────────────────────────▲───────────────────────────────────────┘
+                                                    │ (read-only status)
+ mic ─► audio HAL (AOC) ─► audioserver ─► AudioRecord (HOTWORD | VOICE_RECOGNITION)
+                                                    │
+ ┌─────────────── ai.elizaresearch.alphaphone.sense  (priv-app, persistent, NO INTERNET) ─────┐
+ │ SELinux domain: alpha_sense_app   data: alpha_sense_app_data_file                          │
+ │ ListeningService (FGS type=microphone, directBootAware)                                    │
+ │   ├─ ConsentStore (DE storage)  ├─ PolicyGovernor (battery/thermal/schedule/calls)         │
+ │   ├─ Tier-0 VAD + RAM ring buffer (never written to disk unencrypted)                      │
+ │   └─ binds ─► AsrRedactService (android:isolatedProcess=true, isolated_app)                │
+ │                 in: PCM via SharedMemory/pipe, models via read-only SharedMemory/FD        │
+ │                 out: TranscriptSegment{text_redacted, spans, labels, t0,t1, conf}         │
+ │   EgressGate (the only exported binder; guarded by signature permission)                   │
+ │     ├─ schema-checks every segment (no raw text field, no audio, size-bounded)             │
+ │     ├─ policy: consent mode, all-party-consent jurisdiction, paused state                  │
+ │     ├─ appends hash-chained audit record (optionally pVM-signed, Phase 3)                  │
+ │     └─ delivers to subscriber                                                              │
+ └──────────────────────────────────────────┬─────────────────────────────────────────────────┘
+                                            │ ITranscriptSink (redacted only)
+ ┌──────────────────── ai.elizaresearch.alphaphone (existing, NON-privileged, has INTERNET) ──┐
+ │ Notes/agent UI, review, rehydration (local vault), cloud agent per user approval           │
+ └────────────────────────────────────────────────────────────────────────────────────────────┘
+```
+
+**Invariants:**
+- Raw audio never leaves the sense UID or its isolated child.
+- Raw (unredacted) text leaves the isolated child only to the gate, inside the same app UID, and the gate never forwards it.
+- Rehydration vault keys stay in the sense package. Alpha displays redacted text unless the user unlocks a span, which is a gate API with user presence. This needs alignment with the redaction design in [04-redaction.md](04-redaction.md).
+
+### 6.3 SELinux policy sketch (system_ext private policy; unbuilt — expect neverallow iteration)
+
+```
+# system_ext/private/alpha_sense_app.te   (via SYSTEM_EXT_PRIVATE_SEPOLICY_DIRS)
+type alpha_sense_app, domain;
+typeattribute alpha_sense_app coredomain;
+app_domain(alpha_sense_app)          # note: deliberately NOT net_domain()
+# framework services an app normally needs
+allow alpha_sense_app app_api_service:service_manager find;
+allow alpha_sense_app audioserver_service:service_manager find;
+allow alpha_sense_app system_api_service:service_manager find;
+# own data
+type alpha_sense_app_data_file, file_type, data_file_type, core_data_file_type;
+allow alpha_sense_app alpha_sense_app_data_file:dir create_dir_perms;
+allow alpha_sense_app alpha_sense_app_data_file:file create_file_perms;
+
+# ---- egress guarantees ----
+neverallow alpha_sense_app self:{ tcp_socket udp_socket rawip_socket packet_socket
+    netlink_route_socket tun_socket } create;
+neverallow alpha_sense_app port_type:tcp_socket name_connect;
+neverallow alpha_sense_app { dnsproxyd_socket fwmarkd_socket }:sock_file write;
+neverallow alpha_sense_app { netd_service network_management_service
+    connectivity_service }:service_manager find;     # (verify type names at tag)
+neverallow alpha_sense_app { sdcard_type media_rw_data_file }:file { create write };
+# ---- confidentiality of stored artefacts ----
+neverallow { domain -alpha_sense_app -init -installd -vold_prepare_subdirs
+    -system_server -zygote } alpha_sense_app_data_file:file { read open map };
+neverallow { domain -alpha_sense_app } alpha_sense_app:process ptrace;
+```
+
+```
+# system_ext/private/seapp_contexts
+user=_app seinfo=alphasense name=ai.elizaresearch.alphaphone.sense domain=alpha_sense_app type=alpha_sense_app_data_file levelFrom=all
+# system_ext/private/mac_permissions.xml (+ keys.conf tag @ALPHASENSE → release cert)
+<policy><signer signature="@ALPHASENSE"><seinfo value="alphasense"/></signer></policy>
+```
+
+Notes:
+- The isolated `AsrRedactService` child is automatically `isolated_app` (`seapp_contexts`: `user=_isolated domain=isolated_app`), which already cannot create sockets. No custom policy is needed for Phase 1.
+- `keys.conf` maps tags like `@PLATFORM` to certificates (`system/sepolicy/private/keys.conf`). Add an `@ALPHASENSE` tag in our policy dir.
+- Whether `SYSTEM_EXT_PRIVATE_SEPOLICY_DIRS` accepts `seapp_contexts`/`mac_permissions.xml` additions for a new coredomain on Android 17 must be checked in the build (V7). The Eliza tree hit about 30 neverallows trying a custom domain from vendor policy. Core app domains belong in system_ext/product **private** policy, not vendor policy.
+- Defence in depth: the package declares no `INTERNET`, so the process gets no `AID_INET` supplementary group and the kernel's paranoid-network check blocks inet sockets. Add `<allow-association>` entries so the sense package can bind only to SystemUI and Alpha (the same mechanism the ambient-audio role comment prescribes).
+
+### 6.4 Egress gate contract
+
+```
+// ai/elizaresearch/alphaphone/sense/ITranscriptSink.aidl (implemented by Alpha app)
+oneway void onSegment(in RedactedSegment s);       // size ≤ 8 KiB, no audio, no raw text
+oneway void onState(in ListeningState st);         // LISTENING|PAUSED_*|MUTED|OFF
+// ai/elizaresearch/alphaphone/sense/ISense.aidl (exported by sense; signature permission)
+void subscribe(ITranscriptSink sink);              // caller cert must equal Alpha release cert
+void pause(int reason, long untilMs); void resume();
+void deleteRange(long t0, long t1);                // user right-to-delete
+```
+
+- Guard permission: `ai.elizaresearch.alphaphone.permission.SENSE_SUBSCRIBE` (`protectionLevel="signature"`). The gate also checks the caller's signing-cert digest explicitly against a pinned value, like `ChromiumBrowserIdentity`.
+- Everything is logged: segment count, bytes, labels, never content. This mirrors `DetectorSession`'s "Egressed …" logs and `HOTWORD_EVENT_EGRESS_SIZE` stats.
+
+---
+
+## 7. Pixel 10 platform reality and alternatives
+
+### 7.1 What changed at Google
+- **Android 16 (June 2025).** Google moved AOSP's reference target from Pixel to Cuttlefish. It stopped publishing Pixel device trees, driver binaries and hardware repos. Its statement: "AOSP needs a reference target that is flexible, configurable, and affordable – independent of any particular hardware, including those from Google" ([9to5Google](https://9to5google.com/2025/06/12/android-open-source-project-pixel-change/), [Android Authority](https://www.androidauthority.com/google-pixel-kernel-code-forms-3696441/)).
+- **2026.** AOSP source pushes happen **twice a year (Q2 major, Q4 minor)**. Security patches continue via a security-only branch ([Android Authority](https://www.androidauthority.com/aosp-source-code-schedule-3630018/), [PiunikaWeb](https://piunikaweb.com/2026/01/07/android-aosp-source-code-q2-and-q4-pixel-monthly-security-patches-unchanged/)).
+- **Pixel kernel source.** It is now requested via a Google Form and delivered by Drive link. GrapheneOS reports this "can now take weeks", delivered "as a single file without an accessible step-by-step update history" ([OpenSourceForU, Aug 2026](https://www.opensourceforu.com/2026/08/google-makes-pixel-kernel-source-harder-to-access/)).
+- Public `device/google/gs-common` last saw commits in early 2025 (observed via gitiles log), consistent with the above.
+
+### 7.2 Working path: GrapheneOS adevtool (already used by the repo)
+- adevtool branch `17` contains `frankel.yml`, `blazer.yml`, `mustang.yml`, `rango.yml`, `stallion.yml` and `pixel-gen10.yml`, plus `grizzly`/`cubs`/`yogi` for gen 11 ([GitHub API listing](https://github.com/GrapheneOS/adevtool/tree/17/config/device)). It generates device support with `adevtool generate-all -d <codename>`, with no device trees ([GrapheneOS build](https://grapheneos.org/build)).
+- **Codenames:** Pixel 10 `frankel`, 10 Pro `blazer`, 10 Pro XL `mustang`, 10 Pro Fold `rango`, 10a `stallion` ([GrapheneOS build](https://grapheneos.org/build)).
+- **Kernel.** Gen-10 Pixels build from `kernel_pixel_6.6` (GrapheneOS GitLab, branch `17`) with `build_codename.sh --lto=full` ([GrapheneOS build](https://grapheneos.org/build)). The repo's grizzly lock instead uses the **stock kernel** extracted from the factory image (`USE_STOCK_KERNEL := true`).
+- **Status.** GrapheneOS lists the Pixel 10 family as supported, with release 2026092500 (2026-09-25) on Android 17 ([releases](https://grapheneos.org/releases), [FAQ](https://grapheneos.org/faq)).
+- **Action.** Add `pixel10-frankel.lock.json` and an `eliza`-style `alphaphone_frankel_phone.mk` mirroring `pixel11pro.lock.json`: adevtool commit, vendor_state, stock factory build ID and hashed vendor spec. Keep the stock kernel for bring-up. Do not edit `vendor/eliza`: the lock and product live in our own overlay repo or a reviewed upstream PR.
+
+### 7.3 Verified boot and OTA
+- Generate an AVB key and extract the public key: `avbtool extract_public_key --key avb.pem --output avb_pkmd.bin` ([GrapheneOS build](https://grapheneos.org/build)).
+- Flash it to Pixel's `avb_custom_key` partition and relock with `fastboot flashing lock`. The device then boots in the **yellow** state and shows the SHA-256 of our key, which users and Auditor-style attestation can verify ([GrapheneOS CLI install](https://grapheneos.org/install/cli)). Reverting requires `fastboot erase avb_custom_key`.
+- **Signing.** Use `sign_target_files_apks` with release keys (`releasekey`, `platform`, `shared`, `media`, `networkstack`, and APEX container and payload keys via `--extra_apks` / `--extra_apex_payload_key`), then `ota_from_target_files -k` ([AOSP sign builds](https://source.android.com/docs/core/ota/sign_builds)). Add our `@ALPHASENSE` key.
+- Updater: A/B `update_engine` with a full plus incremental OTA server. GrapheneOS's `generate-release.sh` / `generate-delta.sh` show the flow.
+- The current lock uses the public AVB **test** key for userdebug. Production needs HSM-held keys and rollback-index management.
+- Without GMS there is no Play Integrity. Key attestation still reports our verified-boot key, which suits enterprise MDM attestation (verify with the chosen MDM).
+
+### 7.4 Alternatives
+
+| Path | Pros | Cons |
+|---|---|---|
+| **AOSP plus adevtool on Pixel 10 (recommended)** | Best-in-class hardware security (Titan M2, MTE, custom AVB key); repo tooling already exists | Pixel blob redistribution rights **(unverified; legal)**; kernel source latency; no custom DSP models; Google could break extraction |
+| Fork GrapheneOS as the base | Inherits hardening, monthly cadence, Pixel 10 support, and a mature OTA/updater | Must track a fast-moving upstream; check trademark and licence terms; its stance on privileged always-on mic components may conflict with its privacy defaults (cultural, not technical) |
+| Motorola (GrapheneOS partnership announced MWC 2026; first device 2027) | An OEM willing to meet strict security requirements; potential hardware mic switch and DSP access by contract ([9to5Google](https://9to5google.com/2026/03/01/motorola-confirms-grapheneos-partnership-for-a-future-smartphone-porting-features/)) | Not shippable in 2026; a partnership is needed for DSP/kernel access |
+| Qualcomm-based OEM ODM | Open-ish DSP toolchains (Hexagon/LPAI) and mature third-party NPU access (see [doc 10](10-always-on-tech-feasibility.md)) | Device-tree and BSP licensing via the ODM; weaker verified-boot/custom-key story on some OEMs |
+| Pixel 11 / Tensor G6 (`grizzly` lock exists) | Already pinned in the repo | Same Google constraints; unvalidated |
+
+---
+
+## 8. Lock screen, screen-off, Bluetooth, multi-user
+
+- **Locked / screen-off.** A persistent FGS keeps running, and audioserver's wakelock keeps the AP up (§5).
+  - **Direct boot:** mark the sense package `directBootAware`. **Before first unlock (BFU) do not listen.** Consent and keys may be in credential-encrypted storage, and nobody has authenticated. Show "Listening starts after unlock".
+  - **After first unlock (AFU) and locked:** listening is allowed. Write segments only under a Keystore AES-GCM key created with `setUnlockedDeviceRequired(false)`, kept in CE storage, which stays available AFU.
+  - The lock screen shows the chip and a "Pause" action **without unlocking**, because pausing reduces capability.
+  - "Resume" requires unlock if the user enabled "resume needs auth", following the `config_sensorPrivacyRequiresAuthentication` pattern.
+  - Transcript review needs unlock.
+- **AOD.** SystemUI must render the listening dot or chip on AOD (`PrivacyDotViewController` and the status-bar events path under `packages/SystemUI/src/com/android/systemui/statusbar/events/`). Verify AOD rendering (V8).
+- **Bluetooth headset mics.** The HFP/SCO mic is routed for communication modes and degrades A2DP. LE Audio supports a bidirectional mic.
+  - Default to **built-in mics only**. Offer "use headset mic" as an opt-in.
+  - If the route changes to BT, show "Listening via <device>".
+  - Stop on SCO activation by another app, because the call/comm rules apply.
+  - Exact routing for `HOTWORD`/`VOICE_RECOGNITION` with an LE Audio headset is **(unverified; V9)**.
+- **Multi-user.**
+  - `ROLE_ASSISTANT` and the ambient roles have `exclusivity="user"`.
+  - The sense package is installed for the primary/system user only (`install-in-user-type` sysconfig) in v1. Stop on `ACTION_USER_BACKGROUND` and do not run for secondary users or guests.
+  - **Work profile:** capture is device-level, while the transcript belongs to the personal profile. For enterprise builds, add a managed-configuration switch so the DPC can disable listening. Honour `DISALLOW_UNMUTE_MICROPHONE` (`UserManager`), which makes the mic toggle stay on **(unverified exact semantics; V10)**.
+- **Phone calls.** Calls auto-pause capture (silenced by policy). The state shows "Paused — call".
+
+---
+
+## 9. Implementation spec
+
+### 9.1 New product layer: `vendor/alphaphone/` (in the AOSP checkout; generated or reviewed)
+
+```
+vendor/alphaphone/
+  alphaphone_common.mk
+  products/alphaphone_frankel_phone.mk          # inherit vendor/google_devices/frankel + eliza/common? (D1)
+  apps/AlphaSense/Android.bp                    # android_app_import, privileged, own cert, system_ext
+  permissions/privapp-permissions-ai.elizaresearch.alphaphone.sense.xml
+  permissions/default-permissions-ai.elizaresearch.alphaphone.sense.xml
+  sysconfig/alphaphone-sense.xml
+  overlays/frameworks/base/core/res/res/values/config.xml
+  overlays/frameworks/base/packages/SystemUI/res/values/config.xml   # chip config (new keys)
+  sepolicy/system_ext/private/{alpha_sense_app.te,seapp_contexts,mac_permissions.xml,keys.conf,file_contexts}
+  init/init.alphaphone.rc
+  patches/frameworks_base/*.patch               # SystemUI + PermissionManager/AppOps patches (§9.5)
+```
+
+`alphaphone_common.mk` (sketch):
+```make
+PRODUCT_PACKAGES += AlphaSense \
+    privapp-permissions-ai.elizaresearch.alphaphone.sense.xml \
+    default-permissions-ai.elizaresearch.alphaphone.sense.xml alphaphone-sense-sysconfig
+PRODUCT_PACKAGE_OVERLAYS += vendor/alphaphone/overlays
+SYSTEM_EXT_PRIVATE_SEPOLICY_DIRS += vendor/alphaphone/sepolicy/system_ext/private
+PRODUCT_PRODUCT_PROPERTIES += ro.hotword.detection_service_required=true
+PRODUCT_SYSTEM_EXT_PROPERTIES += persist.alphaphone.listening.default=off   # off until consent
+```
+
+### 9.2 Sense app manifest (key parts)
+
+```xml
+<manifest package="ai.elizaresearch.alphaphone.sense" android:sharedUserId="(none)">
+  <!-- NO android.permission.INTERNET, NO ACCESS_NETWORK_STATE -->
+  <uses-permission android:name="android.permission.RECORD_AUDIO"/>
+  <uses-permission android:name="android.permission.CAPTURE_AUDIO_HOTWORD"/>
+  <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
+  <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE"/>
+  <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+  <uses-permission android:name="android.permission.START_ACTIVITIES_FROM_BACKGROUND"/>
+  <uses-permission android:name="android.permission.OBSERVE_SENSOR_PRIVACY"/>
+  <uses-permission android:name="android.permission.READ_PHONE_STATE"/> <!-- call state for pause UX -->
+  <permission android:name="ai.elizaresearch.alphaphone.permission.SENSE_SUBSCRIBE"
+              android:protectionLevel="signature"/>
+  <application android:persistent="true" android:directBootAware="true"
+               android:allowBackup="false" android:debuggable="false"
+               android:hasFragileUserData="true" android:usesCleartextTraffic="false">
+    <service android:name=".ListeningService" android:exported="false"
+             android:foregroundServiceType="microphone" android:directBootAware="true"/>
+    <service android:name=".AsrRedactService" android:exported="false"
+             android:isolatedProcess="true" android:process=":asr"/>
+    <service android:name=".EgressGateService" android:exported="true"
+             android:permission="ai.elizaresearch.alphaphone.permission.SENSE_SUBSCRIBE"/>
+    <activity android:name=".ConsentActivity" android:exported="false"/>
+  </application>
+</manifest>
+```
+
+### 9.3 Permission and sysconfig XML
+
+```xml
+<!-- /system_ext/etc/permissions/privapp-permissions-ai.elizaresearch.alphaphone.sense.xml -->
+<permissions>
+  <privapp-permissions package="ai.elizaresearch.alphaphone.sense">
+    <permission name="android.permission.CAPTURE_AUDIO_HOTWORD"/>
+    <permission name="android.permission.START_ACTIVITIES_FROM_BACKGROUND"/>
+    <permission name="android.permission.OBSERVE_SENSOR_PRIVACY"/>
+    <!-- Phase 3 only: MANAGE_SOUND_TRIGGER, SOUND_TRIGGER_RUN_IN_BATTERY_SAVER, MANAGE_VIRTUAL_MACHINE -->
+    <!-- Deliberately absent: CAPTURE_AUDIO_OUTPUT, CAPTURE_MEDIA_OUTPUT,
+         CAPTURE_VOICE_COMMUNICATION_OUTPUT, BYPASS_CONCURRENT_RECORD_AUDIO_RESTRICTION,
+         EXEMPT_FROM_AUDIO_RECORD_RESTRICTIONS (add only if V3 proves necessary) -->
+  </privapp-permissions>
+</permissions>
+
+<!-- default-permissions: granted at first boot but revocable; feature also needs in-app consent -->
+<exceptions><exception package="ai.elizaresearch.alphaphone.sense">
+  <permission name="android.permission.RECORD_AUDIO" fixed="false"/>
+  <permission name="android.permission.POST_NOTIFICATIONS" fixed="false"/>
+</exception></exceptions>
+
+<!-- /system_ext/etc/sysconfig/alphaphone-sense.xml -->
+<config>
+  <allow-in-power-save package="ai.elizaresearch.alphaphone.sense"/>
+  <bg-restriction-exemption package="ai.elizaresearch.alphaphone.sense"/>
+  <install-in-user-type package="ai.elizaresearch.alphaphone.sense">
+    <install-in user-type="FULL"/> <!-- verify: limit to system/primary user (V10) -->
+  </install-in-user-type>
+  <allow-association target="ai.elizaresearch.alphaphone.sense" allowed="com.android.systemui"/>
+  <allow-association target="ai.elizaresearch.alphaphone.sense" allowed="ai.elizaresearch.alphaphone"/>
+</config>
+```
+
+Whether to pre-grant `RECORD_AUDIO` at all is a product decision. The honest default is **not pre-granted**: the first-run consent flow requests it (D3).
+
+### 9.4 SystemUI changes (`frameworks/base/packages/SystemUI/`)
+
+1. `src/com/android/systemui/privacy/AppOpsPrivacyItemMonitor.kt`: add `OP_RECORD_AUDIO_HOTWORD` and `OP_RECORD_AUDIO_SANDBOXED` to `OPS_MIC_CAMERA` and map them to `TYPE_MICROPHONE`.
+2. `src/com/android/systemui/appops/AppOpsControllerImpl.java`: the same op additions. Add a build-flagged assertion that `isUserVisible(sensePkg)` is always true. Log loudly and show the chip anyway if a role misconfiguration hides it.
+3. New `src/com/android/systemui/privacy/ListeningPrivacyItemMonitor.kt`, a `PrivacyItemMonitor` registered in `PrivacyModule.java`:
+   - It sources state from `AudioManager.getActiveRecordingConfigurations()` (client uid ∈ sense app uid or its isolated uids, resolved via `ActivityManager`) plus `ISense.getState()` for the label.
+   - **If AudioFlinger reports active, unsilenced capture for a sense uid, the chip shows, whatever the app reports.** If the app says "listening" but no capture is active, it shows "Starting…".
+4. `src/com/android/systemui/privacy/OngoingPrivacyChip.kt` / `PrivacyChipBuilder.kt`: a distinct persistent style ("● Listening", a brand-colour ring, with "Paused"/"Mic off" variants). It is never auto-collapsed by `SystemStatusAnimationSchedulerImpl` while active.
+5. Lock screen and AOD: ensure the dot or chip renders via `statusbar/events/PrivacyDotViewController.kt` and keyguard status bar. Add a lock-screen "Pause" affordance.
+6. Quick Settings tile "Listening" (pause/resume/schedule), in addition to the stock mic sensor-privacy tile. Enable `config_supportsMicToggle=true` in the framework overlay.
+7. `PrivacyDialogV2.kt`: a listening row with "Pause 15 min / 1 h / until tomorrow", "Delete last 5 min" and "Settings".
+
+### 9.5 Framework patches (`frameworks/base`, `frameworks/av`), minimal
+
+| File | Change | Why |
+|---|---|---|
+| `core/java/android/permission/PermissionManager.java` | Keep `EXEMPTED_ROLES`, but filter out any package with the `ai.elizaresearch.alphaphone.*` prefix or our cert (belt-and-braces) | Prevents a future overlay mistake from hiding our indicator |
+| `services/core/java/com/android/server/policy/AppOpsPolicy.java` | Optional alternative to the SystemUI op additions: stop `resolveSandboxedServiceOp` hiding indicators | Only if we adopt HDS in Phase 3 |
+| `services/core/java/com/android/server/am/ActiveServices.java` | **None expected** (persistent proc-state). Fallback: add the sense package to `mAllowListWhileInUsePermissionInFgs` via a config array | V3 |
+| `services/core/java/com/android/server/policy/PhoneWindowManager.java` | New `config_keyChordPowerVolumeUp` value `3 = toggle listening` (today 0 nothing / 1 mute toggle / 2 global actions), or a double-press-power behaviour | Physical pause gesture |
+| `frameworks/av/services/audiopolicy/service/AudioPolicyService.cpp` | **None.** Use the stock concurrency rules | Avoid audio-policy divergence |
+| `services/core/java/com/android/server/SystemConfig.java` | None (uses existing tags) | — |
+
+### 9.6 Services and runtime behaviour (sense app)
+
+- `ListeningService` state machine:
+  `OFF → CONSENT_REQUIRED → ARMED → LISTENING ⇄ PAUSED_{USER,CALL,MIC_BUSY,MIC_TOGGLE,BATTERY,THERMAL,SCHEDULE,BFU} → OFF`
+  - Each state maps to chip text and the FGS notification (`category=service`, ongoing, actions Pause/Settings).
+- **Audio:** `AudioRecord` 16 kHz mono PCM16, source per D-src, plus `registerAudioRecordingCallback`. On `isClientSilenced`, go to `PAUSED_MIC_BUSY`. On sensor-privacy toggle, go to `PAUSED_MIC_TOGGLE`.
+- **ASR child:** one long-lived isolated process bound with `BIND_AUTO_CREATE | BIND_NOT_PERCEPTIBLE`.
+  - Models are passed as read-only `SharedMemory` (the `HotwordDetectionService` pattern) or as an fd to a dm-verity-protected file on `/system_ext` (preferred: the model ships in the image, so its integrity is covered by AVB).
+  - Engine: whisper.cpp / sherpa-onnx (Zipformer) / Moonshine, CPU first. The choice comes from the doc 10 measurement harness.
+- **Redaction:** in the same isolated child (rules plus a small NER model), producing typed pseudonyms per [04-redaction.md](04-redaction.md).
+- **Storage:** RAM ring only for audio. Raw audio is **not persisted** by default. An optional "keep audio 24 h" setting encrypts it with a Keystore key in the sense data dir. Redacted segments are persisted until Alpha acknowledges them.
+
+### 9.7 AOSP files and configs to change or add (real paths)
+
+| Path (AOSP tree) | Action |
+|---|---|
+| `frameworks/base/core/res/res/values/config.xml` (overlay) | `config_systemAmbientAudioIntelligence`, `config_systemAudioIntelligence`, `config_systemUiIntelligence`, `config_systemNotificationIntelligence`, `config_systemTextIntelligence`, `config_systemVisualIntelligence` set to `""`; `config_supportsMicToggle=true`; `config_defaultAssistant` (D2); `config_sensorPrivacyRequiresAuthentication` (keep `true`); `config_keyChordPowerVolumeUp` (with patch); `config_hotwordDetectedResultMaxBundleSize` (keep `0`) |
+| `frameworks/base/packages/SystemUI/src/com/android/systemui/privacy/{AppOpsPrivacyItemMonitor.kt,PrivacyItemController.kt,PrivacyModule.java,OngoingPrivacyChip.kt,PrivacyChipBuilder.kt,PrivacyDialogV2.kt}` | §9.4 |
+| `frameworks/base/packages/SystemUI/src/com/android/systemui/appops/AppOpsControllerImpl.java` | §9.4 |
+| `frameworks/base/packages/SystemUI/src/com/android/systemui/statusbar/events/{PrivacyDotViewController.kt,SystemStatusAnimationSchedulerImpl.kt}` | Lock screen/AOD; never auto-hide |
+| `frameworks/base/core/java/android/permission/PermissionManager.java` | §9.5 |
+| `frameworks/base/services/core/java/com/android/server/policy/PhoneWindowManager.java` | Pause chord |
+| `system/sepolicy` (no edits) + `vendor/alphaphone/sepolicy/system_ext/private/*` | §6.3 |
+| `packages/modules/Permission/PermissionController/res/xml/roles.xml` | **No edit.** Roles are assigned via config only |
+| `vendor/alphaphone/**` | New (§9.1–9.3) |
+| Device product (generated by adevtool): `vendor/google_devices/frankel/**` | Generated; check the generated `PixelConfigOverlay*` for intelligence-role package names and override them |
+| `build/make/target/product/security/` or our key dir | Release keys including `@ALPHASENSE`; AVB key |
+| `alphaphone` repo: new `docs/adr/ADR-0xx-privileged-listening.md` | Required before code (supersedes ADR-04 for this component only) |
+
+---
+
+## 10. Legal and UX requirements (engineering-facing)
+
+See [05-regulation-compliance.md](05-regulation-compliance.md) for the law. Platform requirements:
+
+1. **Consent:**
+   - Explicit first-run opt-in with a plain-language explainer and a "what never leaves the phone" diagram.
+   - Off by default.
+   - Re-consent after OTA if the data flows change.
+   - Consent receipts are stored in DE storage and in the audit ledger.
+2. **Bystander and all-party consent:**
+   - Jurisdiction-aware defaults: a geofence/region setting, with "meeting mode" requiring an announcement.
+   - Optional audible chime at start and periodically, and a "Recording" lock-screen banner.
+   - **No call recording.**
+3. **Indicator:** always visible while capture is active (§3.4 rules 1–6). There is no user or developer setting to hide it, including in developer options and `adb` on user builds: SystemUI ignores `privacy/*` overrides for the listening chip.
+4. **Pause controls:**
+   - QS tile, lock-screen chip, notification action, power+volume-up chord (patched) and the sensor-privacy mic toggle.
+   - Optional "flip-to-pause" using the device-orientation sensor **(est. feasibility)**.
+   - The voice command "stop listening" works only while listening.
+5. **Hardware mute:**
+   - Pixel 10 has no mic kill switch.
+   - The platform already supports one: `config_supportsHardwareMicToggle`, with the kernel reporting input switch `SW_MUTE_DEVICE` (0x0e). `InputManagerService` forwards it to `SensorPrivacyService` as `TOGGLE_TYPE_HARDWARE`, which calls `setGlobalRestriction(MICROPHONE, …)`.
+   - Strongest option: an OEM board with a physical mic power cut **and** the `SW_MUTE_DEVICE` report (Motorola/ODM path).
+   - USB-C/BT accessory switches cannot cut internal mics.
+6. **Data rights:** delete-range, export, a retention timer, and a "forget the last 5 minutes" one-tap.
+7. **BIPA/CUBI:** no voiceprint enrolment by default. Diarization is per-session and anonymous unless the user opts in with written release where required.
+
+---
+
+## 11. Risks
+
+| # | Risk | Likelihood / impact | Mitigation |
+|---|---|---|---|
+| R1 | Pixel vendor-blob redistribution rights for a commercial image **(unverified)** | Medium / High | Legal review of Google factory-image terms; alternatively ship tooling that builds on the customer's device (GrapheneOS-style) or partner with an OEM |
+| R2 | Google kernel-source latency or adevtool breakage on a new Pixel drop | High / Medium | Stock-kernel bring-up (as in the repo lock); pin; track GrapheneOS; budget slip time per QPR |
+| R3 | AP-only power exceeds budget | Medium / High | Governor and schedules; DSP spikes; "on charger" mode; honest marketing |
+| R4 | `HOTWORD` source unsupported or odd on the AOC HAL without an ST session | Medium / Medium | `VOICE_RECOGNITION` plus cooperative yield (§4) |
+| R5 | Custom SELinux coredomain neverallow failures (the Eliza precedent) | High / Medium | Start with stock `priv_app` plus no `INTERNET` and the isolated child; add `alpha_sense_app` in Phase 2 with time budgeted |
+| R6 | Indicator regression through a vendor overlay or role default | Low / Critical | Build-time assert, runtime SystemUI assert, on-device invariant test in CI |
+| R7 | The persistent app crashes and loops | Medium / Medium | Persistent apps auto-restart; add a crash-loop breaker → `PAUSED_ERROR` with chip |
+| R8 | Legal: all-party consent and workplace monitoring law | High / High | Defaults off, announcement mode, regional policy, counsel sign-off before pilots |
+| R9 | AOSP source only twice a year; `main` ≠ release | High / Low | Pin tags; re-verify the cited code (V1) |
+| R10 | NPU inaccessible from an isolated process on Tensor (LiteRT Tensor NPU is AOT-only; doc 10) | High / Medium | CPU/GPU first; `isolated_compute_app` plus a vendor device attribute spike |
+| R11 | Trust/PR: an "always listening phone" | High / High | Make the indicator, local-only and redaction claims verifiable: open-source the sense app and policy; reproducible builds |
+| R12 | Upstream Eliza also claims `config_defaultAssistant` (`ai.elizaos.app`) | Certain / Low | D2: product overlay wins; never inherit both products' role defaults (AGENTS.md: one independent product) |
+
+## 12. Decisions needed
+
+- **D1.** Base: AOSP + adevtool (recommended), or a GrapheneOS fork. Also decide whether Alpha's image inherits `vendor/eliza/eliza_common.mk` at all (AGENTS.md: do not import the other product's identity), so probably a separate `alphaphone_common.mk`.
+- **D2.** Who holds `ROLE_ASSISTANT`: the Alpha app (recommended) or nobody. The sense package is never the assistant.
+- **D3.** Whether to pre-grant `RECORD_AUDIO` (recommend no; ask during consent).
+- **D4.** Whether to allow optional 24 h raw-audio retention.
+- **D5.** Target device: Pixel 10 (`frankel`) vs Pixel 10 Pro (`blazer`, more RAM) vs wait for Motorola.
+
+## 13. Verification items (all open; none claimed)
+
+- **V1:** re-check every cited source line at the pinned Android 17 tag.
+- **V2:** on Pixel 10, run `dumpsys media.audio_policy`, `dumpsys soundtrigger_middleware` and `lshal`/`service list | grep -i sound`, and document what exists.
+- **V3:** a persistent priv-app can start a mic FGS at boot and from the background on Android 17 without `START_ACTIVITIES_FROM_BACKGROUND`.
+- **V4:** how `isIsolatedComputeApp` is set; whether a non-HDS service can opt in.
+- **V5:** `HOTWORD` source capture without an ST session on AOC.
+- **V6:** standby/bucket behaviour for persistent system apps.
+- **V7:** system_ext private sepolicy with custom seinfo builds without neverallow violations.
+- **V8:** AOD/lock-screen chip rendering.
+- **V9:** BT/LE Audio routing for our source.
+- **V10:** multi-user `install-in-user-type` semantics and `DISALLOW_UNMUTE_MICROPHONE`.
+- **S1/S1b/S1c:** DSP/CHRE/OEM spikes.
+
+## 14. Effort estimate (est.)
+
+| Workstream | Effort |
+|---|---|
+| Pixel 10 lock, product, boot (userdebug, stock kernel) via adevtool | 2–4 eng-weeks |
+| Sense app: capture, VAD, state machine, governor, consent UI | 6–8 eng-weeks |
+| ASR and redaction in the isolated child (CPU), measurement harness | 6–10 eng-weeks (ML + platform) |
+| SystemUI chip, QS tile, lock/AOD, dialog, invariant tests | 4–6 eng-weeks |
+| Framework patches (PermissionManager, key chord) and overlays | 2–3 eng-weeks |
+| SELinux custom domain, user build, release signing, AVB custom key, OTA server | 6–8 eng-weeks |
+| Power/thermal tuning and a 7-day dogfood | 4–6 eng-weeks |
+| Spikes: DSP/CHRE, NPU-in-isolated-compute, pVM ledger | 6–10 eng-weeks (parallel, may fail) |
+| **Total** | **~36–55 eng-weeks** ≈ 2–3 platform engineers + 1 ML engineer + 0.5 design/legal over **5–7 months** |
+
+## 15. Phased plan
+
+- **Phase 0, foundations (weeks 0–4).**
+  - ADR for privileged listening.
+  - Pixel 10 lock (`frankel`) mirroring `pixel11pro.lock.json`; boot a userdebug image with Alpha non-privileged (existing staging tool).
+  - Generate the AVB key; test-flash `avb_custom_key` on a lab device.
+  - V1/V2/V5 probes.
+  - **Exit:** a booted image, documented audio/ST inventory, hashes recorded.
+- **Phase 1, honest always-on MVP on userdebug (weeks 4–14).**
+  - Sense priv-app as stock `priv_app`, no `INTERNET`, persistent mic FGS, VAD, CPU ASR in an isolated child, redaction, egress gate to Alpha.
+  - SystemUI listening chip, op patches, overlays, sysprop.
+  - Consent flow; pause controls (tile, notification, lock screen).
+  - **Exit:** invariant tests pass (the chip is always visible while capture is active, including lock/AOD); concurrency matrix from §4 passes on device; power measured.
+- **Phase 2, production hardening (weeks 14–26).**
+  - `alpha_sense_app` SELinux domain with egress neverallows; `user` build; release keys; signed OTA and rollback drill.
+  - Governor tuning; BT/multi-user/BFU behaviours.
+  - 7-day dogfood at ≤10%/day overhead.
+  - External privacy review and counsel sign-off.
+  - **Exit:** signed release candidate plus an evidence bundle.
+- **Phase 3, efficiency and assurance (parallel from week 10).**
+  - DSP/CHRE spikes (S1/S1b).
+  - NPU via `isolated_compute_app` (V4).
+  - pVM audit-ledger signer.
+  - Optional VIS + HDS wake phrase with patched indicator.
+  - OEM (Motorola/ODM) hardware mute switch discussions.
+
+---
+
+## Sources
+
+**AOSP source (fetched 2026-10-02, `refs/heads/main`):**
+- https://android.googlesource.com/platform/frameworks/base/+/refs/heads/main/core/res/AndroidManifest.xml
+- https://android.googlesource.com/platform/frameworks/base/+/refs/heads/main/core/res/res/values/config.xml
+- https://android.googlesource.com/platform/frameworks/base/+/refs/heads/main/core/java/android/permission/PermissionManager.java
+- https://android.googlesource.com/platform/frameworks/base/+/refs/heads/main/core/java/android/permission/PermissionUsageHelper.java
+- https://android.googlesource.com/platform/frameworks/base/+/refs/heads/main/packages/SystemUI/src/com/android/systemui/appops/AppOpsControllerImpl.java
+- https://android.googlesource.com/platform/frameworks/base/+/refs/heads/main/packages/SystemUI/src/com/android/systemui/privacy/AppOpsPrivacyItemMonitor.kt
+- https://android.googlesource.com/platform/frameworks/base/+/refs/heads/main/services/core/java/com/android/server/policy/AppOpsPolicy.java
+- https://android.googlesource.com/platform/frameworks/base/+/refs/heads/main/services/core/java/com/android/server/am/ActiveServices.java
+- https://android.googlesource.com/platform/frameworks/base/+/refs/heads/main/services/core/java/com/android/server/audio/AudioService.java
+- https://android.googlesource.com/platform/frameworks/base/+/refs/heads/main/services/core/java/com/android/server/SystemConfig.java
+- https://android.googlesource.com/platform/frameworks/base/+/refs/heads/main/services/core/java/com/android/server/sensorprivacy/SensorPrivacyService.java
+- https://android.googlesource.com/platform/frameworks/base/+/refs/heads/main/services/core/java/com/android/server/input/InputManagerService.java
+- https://android.googlesource.com/platform/frameworks/base/+/refs/heads/main/core/java/android/service/voice/HotwordDetectionService.java
+- https://android.googlesource.com/platform/frameworks/base/+/refs/heads/main/services/voiceinteraction/java/com/android/server/voiceinteraction/VoiceInteractionManagerServiceImpl.java
+- https://android.googlesource.com/platform/frameworks/base/+/refs/heads/main/services/voiceinteraction/java/com/android/server/voiceinteraction/HotwordDetectionConnection.java
+- https://android.googlesource.com/platform/frameworks/base/+/refs/heads/main/services/voiceinteraction/java/com/android/server/voiceinteraction/DetectorSession.java
+- https://android.googlesource.com/platform/packages/modules/Permission/+/refs/heads/main/PermissionController/res/xml/roles.xml
+- https://android.googlesource.com/platform/frameworks/av/+/refs/heads/main/services/audiopolicy/service/AudioPolicyService.cpp
+- https://android.googlesource.com/platform/frameworks/av/+/refs/heads/main/services/audiopolicy/service/AudioPolicyInterfaceImpl.cpp
+- https://android.googlesource.com/platform/frameworks/av/+/refs/heads/main/media/utils/ServiceUtilities.cpp
+- https://android.googlesource.com/platform/frameworks/av/+/refs/heads/main/services/audioflinger/Threads.cpp
+- https://android.googlesource.com/platform/system/sepolicy/+/refs/heads/main/private/isolated_compute_app.te
+- https://android.googlesource.com/platform/system/sepolicy/+/refs/heads/main/private/isolated_app_all.te
+- https://android.googlesource.com/platform/system/sepolicy/+/refs/heads/main/private/seapp_contexts
+- https://android.googlesource.com/platform/system/sepolicy/+/refs/heads/main/public/attributes
+- https://android.googlesource.com/platform/system/sepolicy/+/refs/heads/main/private/keys.conf
+- https://android.googlesource.com/platform/packages/modules/Virtualization/+/refs/heads/main/docs/device_assignment.md
+- https://android.googlesource.com/device/google/gs-common/+/refs/heads/main/audio/aidl.mk
+- https://android.googlesource.com/device/google/zuma/+/refs/heads/main/device.mk
+
+**AOSP and Android docs:**
+- https://source.android.com/docs/core/audio/sound-trigger
+- https://source.android.com/docs/core/permissions/privacy-indicators
+- https://source.android.com/docs/core/virtualization
+- https://source.android.com/docs/core/virtualization/microdroid
+- https://source.android.com/docs/core/ota/sign_builds
+- https://developer.android.com/develop/background-work/services/fgs/restrictions-bg-start
+- https://developer.android.com/develop/background-work/services/fgs/service-types
+- https://developer.android.com/about/versions/15/behavior-changes-15
+- https://developer.android.com/media/platform/sharing-audio-input
+
+**GrapheneOS:**
+- https://grapheneos.org/build
+- https://grapheneos.org/install/cli
+- https://grapheneos.org/faq
+- https://grapheneos.org/releases
+- https://github.com/GrapheneOS/adevtool/tree/17/config/device
+- https://github.com/GrapheneOS/adevtool/blob/17/config/device/common/file-exclusion.yml
+
+**Industry and news:**
+- https://9to5google.com/2025/06/12/android-open-source-project-pixel-change/
+- https://www.androidauthority.com/google-pixel-kernel-code-forms-3696441/
+- https://www.androidauthority.com/aosp-source-code-schedule-3630018/
+- https://piunikaweb.com/2026/01/07/android-aosp-source-code-q2-and-q4-pixel-monthly-security-patches-unchanged/
+- https://www.opensourceforu.com/2026/08/google-makes-pixel-kernel-source-harder-to-access/
+- https://www.privacyguides.org/news/2025/11/26/grapheneos-now-has-experimental-support-for-pixel-10-series/
+- https://9to5google.com/2026/03/01/motorola-confirms-grapheneos-partnership-for-a-future-smartphone-porting-features/
+
+**Research:**
+- https://arxiv.org/pdf/2209.10317 (Private Compute Core)
+- https://arxiv.org/abs/1711.10958 (Now Playing)
+
+**Repository inputs (read-only):**
+- `vendor/eliza/packages/os/android/{README.md,hardware-targets.json,pixel11pro.lock.json,vendor-specs/grizzly-cd1a.260905.001.b1.yml}`
+- `vendor/eliza/packages/os/android/vendor/eliza/{eliza_common.mk,permissions/*,sepolicy/*,overlays/*,apps/Eliza/Android.bp,manifests/aosp-assistant-full-control.json}`
+- `vendor/eliza/packages/app/platforms/android/app/src/main/{AndroidManifest.xml,res/xml/eliza_voice_interaction_service.xml,java/ai/elizaos/app/ElizaVoiceCaptureService.java}`
+- `android/app/src/main/AndroidManifest.xml`, `android/app/build.gradle`
+- `docs/android-and-aosp.md`, `docs/architecture.md`, `docs/native-capability-research.md`, `docs/standalone-paired-asr.md`, `docs/market-research/10-always-on-tech-feasibility.md`
+
+
+---
+
+# 13 — Redaction integration: verified upstream inventory, egress gate design and implementation plan
+
+Research date: 2026-10-02. This is an engineering design and plan, not acceptance evidence. Nothing in this document is built. It verifies what the earlier research claimed in [04-redaction.md](04-redaction.md) and [11-fit-gtm-risks.md](11-fit-gtm-risks.md), maps Alpha's egress points, compares external tools, and proposes a single egress gate with a work plan.
+
+Repository rules that constrain this plan (from `AGENTS.md` and `docs/architecture.md`):
+
+- `vendor/eliza` is a pinned upstream submodule and must not be edited. Upstream changes go through reviewed upstream commits or explicit tested patches in `patches/eliza`.
+- ADR-02 (`docs/architecture.md:28`) says "Generic transport, platform capability checks, redaction, task/approval protocol and native plugins belong upstream. Product task policy must be supplied explicitly." So detectors, sessions and the audit sink belong upstream. Alpha supplies **policy**, the **device vault** and **native enforcement**.
+- E5 (`docs/implementation-plan.md:58`) requires "secret redaction before remote transport" and "no passwords/OTP/token values in transcripts, screenshots, model input or logs".
+- Evidence levels must stay distinct: a source read, a unit test, an APK build, an emulator test, a physical-device test and user acceptance each prove different things. Section 11 tags every test with its level.
+
+Method: I read the upstream source directly (file and line references below are against the pinned checkout `vendor/eliza` at `760ad0f1`). I grepped all 36 MVP patches plus the auxiliary patches in `patches/eliza`, and read the Alpha renderer runtime and the Android plugins. I ran 24 web searches and fetched 4 pages for the external comparison. Vendor accuracy numbers are vendor claims unless stated otherwise.
+
+---
+
+## 1. Executive summary
+
+1. **The earlier claims mostly hold, with three corrections.** The pinned upstream does contain checksum-validated detectors, session pseudonyms, secret-swap, fail-closed audio redaction with re-transcription checks, and confidential-inference admission with mandatory audit. The corrections:
+   - The pseudonyms are **realistic surrogates** ("Dana Whitfield" becomes "Priya Okafor"), not typed tokens like `PERSON_1`.
+   - The confidential-inference audit record carries **route and attestation metadata only**. It records nothing about redaction.
+   - The core PII modules have **no unit tests in the pinned checkout**, although their comments mention fuzz and red-team suites. Only the plugin-level recognizer, the scrub handler and the transcript store have tests.
+2. **Upstream redaction runs inside the agent runtime, at the model boundary** (`packages/core/src/runtime/model-dispatch/dispatcher.ts:1395-1450`). It is off by default and turned on by `ELIZA_SECRET_SWAP_ENABLED` and `ELIZA_PII_SWAP_ENABLED`. It protects the hop from agent to model provider. It does **not** protect the hop from phone to agent, which is where raw user text, mail bodies and audio travel today.
+3. **Without a local NER model, upstream detects no person names.** The built-in regex recognizer finds only US street addresses, plus email and phone if enabled. Person, organisation and location detection needs the `PII_ENTITY_RECOGNIZER_SERVICE`. Its upstream implementation (`plugins/plugin-local-inference/src/pii/llm-recognizer.ts`) is a llama.cpp prompt that Alpha's Android build does not ship.
+4. **Alpha calls none of it.** `apps/app/src` has no `@elizaos/core` dependency and no redaction calls. The upstream modules import `node:crypto` and `node:buffer` (`utils/crypto-compat.ts`, `utils/buffer.ts`), so the renderer cannot import them unchanged.
+5. **Alpha already has strong minimisation in places:**
+   - The per-view context sends opaque IDs only (`apps/app/src/runtime/phone-context.ts:15-45`).
+   - The browser refuses to read sensitive pages (`android/.../BrowserReading.java:20-61`).
+   - Credentials live in the Keystore (`AlphaConnectionPlugin.java:69`, alias `alpha.connection.aes.v1`).
+
+   The open egress is **free text**: chat messages, reviewed email bodies, voice transcripts and TTS text. **Raw audio** also leaves the phone for cloud STT and paired whisper.
+6. **There is one renderer chokepoint for chat:** `connectionController.send` in `apps/app/src/runtime/connection-ui.tsx:594-596`, where `phoneContextMessage` builds the outgoing text. Native egress has **two Java chokepoints**: `AlphaConnectionPlugin.request` (`:245`) for all JSON HTTP, and `AlphaVoiceCloudPlugin.connect`/`connectPaired` (`:88`, `:109`) for audio and TTS.
+7. **Recommended architecture:**
+   - **Detect and transform in the renderer**, reusing upstream TypeScript through a new browser-safe subpath export (a patch).
+   - **Run model-based NER natively** through ONNX Runtime Android, exposed to the renderer as a `PiiEntityRecognizer`.
+   - **Enforce in Java**, so that no body leaves without a matching gate receipt and a clean tier-0 floor scan.
+   - **Turn on the upstream swaps in the agent** as a second pass, both on-device and in the enclave.
+8. **Model choice:** first evaluate OpenAI Privacy Filter (Apache-2.0, 1.5B total / 50M active, 8 categories, ONNX q4 about 875 MB). Its download size makes it a heavy optional pack. The default on-device candidate is **GLiNER-PII edge** (Apache-2.0, UINT8 ONNX about 197 MB, vendor F1 75.5%). The regex and checksum detectors stay the deterministic floor. Presidio, Limina and Tonic Textual fit the enclave second pass or evaluation, not the phone.
+9. **Spoken entities are the biggest technical gap.** Upstream `normalizeSpokenText` strips separators but does not turn number words into digits ("five five five"). Upstream audio redaction needs word timings, which Alpha's paired whisper route does not provide (`docs/standalone-paired-asr.md:20`). Alpha needs a number-word normalisation pass with an offset map, and confidence-aware widening of detected spans.
+10. **Effort:** about 15 to 19 engineer-weeks to a qualified Tier-1/Tier-2 gate on emulator plus one physical device, and about 20 to 26 weeks including the model pack, the evaluation set and the enclave second pass. Work packages are in Section 12.
+
+---
+
+## 2. Verification of prior claims
+
+| Claim (04 / 11) | Verdict | Evidence |
+|---|---|---|
+| "Checksum-validated detectors" | **True** | `packages/core/src/security/pii-detectors.ts`. Validators: Luhn plus card brand (`:78`, `:95`), SSN allocation rules (`:119`), IPv4 octets (`:132`), IBAN mod-97 (`:139`), WIF double-SHA256 (`:186`). |
+| "Corpus-consistent typed pseudonyms" | **Partly** | Session-consistent, bijective, reversible **realistic** surrogates (`pii-pseudonymizer.ts:1-42`, `mintSurrogate` `:639`). Corpus-wide consistency by entity cluster exists separately (`pii-pseudonym-map.ts` `CorpusPseudonymMap`). Neither emits typed tokens like `PERSON_1`. |
+| "Secret-swap before the model boundary" | **True, but opt-in** | `secret-swap.ts` `SecretSwapSession`. Wired at `runtime/model-dispatch/dispatcher.ts:1395-1415`. Gated by `ELIZA_SECRET_SWAP_ENABLED` (`runtime.ts:792-796`), which defaults to false. |
+| "Fail-closed audio redaction with re-transcription verification" | **True** | `packages/agent/src/services/audio-redaction-service.ts:150-215`: build span plan, `assertCompleteAudioRedactionPlan`, render a candidate, re-transcribe with every verifier, persist only after verification. `audio-redaction-verify.ts:161` fails if no verifier is configured, if any backend throws, or if a transcript is empty. |
+| "Confidential inference admission policy with mandatory audit records" | **True for routes; no content inspection** | `security/confidential-inference.ts:27-44`. The audit record holds attempt, agent, model type, policy revision, route, phase, denial code, status and evidence/binding digests. It records no redaction facts. Durable sink: `packages/agent/src/security/confidential-sqlite-audit.ts:51`. Bootstrap: `runtime/confidential-host-bootstrap.ts:95`. |
+| "The Alpha app does not call any of it" | **True** | `apps/app/src` has no `@elizaos/core` import and no redaction call. The root `package.json` has no `@elizaos/*` dependency. |
+| "Alpha patches wire it in" | **No patch does** | 0001–0035 contain no redaction logic (0025/0026 only mention the words). 0036 is the qualified rebase to upstream `ab8f9a7110ae…` (3.4 MB, 86,625 lines). It **brings in** upstream changes to `pii-scrub-seam.ts`, `log-redaction.ts` and `redact.ts`, and adds `security/processing-policy.ts` (host-owned processing admission with `Action.egress`). It does not wire anything into Alpha's path. |
+
+---
+
+## 3. Upstream component inventory (pinned `vendor/eliza`)
+
+All listed modules are re-exported from the `@elizaos/core` root (`packages/core/src/index.ts:321`, `:334`, `:2976-3164`). The package has a single `.` export plus `./activity-plaintext`, and no browser-specific build.
+
+### 3.1 Tier-0 deterministic detectors
+
+**Location.** `packages/core/src/security/pii-detectors.ts` (445 lines).
+
+**API.**
+```ts
+export interface PiiMatch { readonly kind: string; readonly value: string; readonly start: number; readonly end: number }
+export function detectPii(text: string, options?: { disabledKinds?: ReadonlySet<string> }): PiiMatch[]
+export const PII_DETECTORS: readonly PiiDetector[]
+export const PII_DETECTOR_BY_KIND: ReadonlyMap<string, PiiDetector>
+export function luhnValid(d: string): boolean; cardBrand; ssnValid; ipv4Valid; ibanValid; wifValid
+```
+
+**Kinds detected (24).**
+- Personal and financial: `email`, `credit-card` (Luhn and brand), `ssn`, `iban` (mod-97), `phone` (NANP with a separator, or E.164 with `+`), `ipv4`, `mac-address`.
+- Credentials and keys: `jwt`, `seed-phrase` (BIP-39), `wif-private-key`, `url-credentials`, `anthropic-key`, `stripe-webhook-secret`, `slack-webhook-url`, `basic-auth-header`, `google-oauth-refresh-token`, `telegram-bot-token`, `pgp-private-key`, `aws-access-key`, `stripe-key`, `google-api-key`, `github-token`, `openai-key`, `slack-token`, `private-key`, `hex-secret`.
+
+**Approach.** Regex plus structural validators. Overlapping matches resolve longest-first (`:395-445`).
+
+**Reversible?** No. Detection only.
+
+**Runtime.** Imports `createHash` from `../utils/crypto-compat`, which imports `node:crypto`. That makes it Node-only as written. The hash is used only by the WIF check, so a WebCrypto shim or a pure-JS SHA-256 makes it browser-safe.
+
+**Tests.** None in the pinned checkout. It is exercised indirectly by `plugins/plugin-local-inference/src/services/voice/transcript-store.test.ts`.
+
+**Gaps.**
+- No person, organisation or location detection.
+- No date of birth, passport, driver's licence, medical record number, non-US national IDs, US bank account or routing numbers, or ZIP codes.
+- No spoken-form numbers ("four one five …").
+- Phone detection requires separators.
+- English and US-centric.
+
+### 3.2 Entity recognizers
+
+**Location.** `packages/core/src/security/entity-recognizer.ts` (318 lines).
+
+**API.**
+```ts
+export interface EntitySpan { kind: string; value: string; start?: number; end?: number; score?: number }
+export interface PiiEntityRecognizer { readonly name: string; recognize(text: string): Promise<EntitySpan[]> }
+export const PII_ENTITY_RECOGNIZER_SERVICE = "pii_entity_recognizer";
+export interface PiiEntityRecognizerService { getRecognizer(): PiiEntityRecognizer | null }
+export class RegexEntityRecognizer   // options { address?: true, email?: false, phone?: false }
+export class GazetteerEntityRecognizer // (entries: Iterable<{kind,value}>, { name?, caseSensitive? })
+export class CompositeEntityRecognizer // (recognizers, { blocklist? }); longest span wins; throwing recognizer contributes 0 spans
+export function canonicalKind(raw: string): string // PER/ORG/LOC/GPE/... -> person/org/location/address/email/phone
+```
+
+**Approach.** The regex recognizer handles conservative US street addresses. The gazetteer matches a dictionary (for example, the user's contact roster). The composite merges recognizers. A recognizer that throws contributes zero spans, so the composite **fails open for that recognizer**. Alpha's gate must treat "NER unavailable" as a policy event, not as silence.
+
+**Runtime.** Pure TypeScript with no Node imports apart from `basic-email`, so it is browser-safe.
+
+**Tests.** None in core.
+
+**Plugin-level model recognizer.** `plugins/plugin-local-inference/src/pii/llm-recognizer.ts`:
+- `class LlmEntityRecognizer(generate: LocalPiiGenerate, { chunkChars? = 4000 })`.
+- Kinds: `person`, `org`, `location`.
+- It runs a JSON-extraction prompt on the resident local llama.cpp model and keeps only spans found verbatim in the source.
+- `service.ts` registers `LocalPiiRecognizerService`.
+- 14 test cases.
+- It needs a local GGUF model, which Alpha's Android build does not package.
+
+### 3.3 Session pseudonymizer (reversible)
+
+**Location.** `packages/core/src/security/pii-pseudonymizer.ts` (939 lines).
+
+**API.**
+```ts
+export interface PseudonymEntry { readonly value: string; readonly surrogate: string; readonly kind: string }
+export interface PseudonymSessionOptions { salt?: string; blocklist?: Iterable<string>; disabledKinds?: Iterable<string>; recognizer?: PiiEntityRecognizer; minValueLength?: number }
+export class PseudonymSession {
+  constructor(options?: PseudonymSessionOptions)
+  get entries(): PseudonymEntry[]; get size(): number; get maxTokenLength(): number
+  learn(text: string): Promise<void>                      // runs recognizer
+  learnSpans(sourceText: string, spans: readonly EntitySpan[]): void
+  substituteText(text: string): string;  restoreText(text: string): string
+  substituteInValue<T>(value: T): T;     restoreInValue<T>(value: T): T   // bounded deep walk
+}
+export const PII_SWAP_ENABLED_SETTING = "ELIZA_PII_SWAP_ENABLED"
+export const PII_SWAP_EXEMPT_VALUES_SETTING = "ELIZA_PII_SWAP_EXEMPT_VALUES"
+export const PII_SWAP_DISABLED_KINDS_SETTING = "ELIZA_PII_SWAP_DISABLED_KINDS"
+export function collectPiiPromptText(params: unknown, systemPrompt?: string): string
+export const DEFAULT_PSEUDONYM_BLOCKLIST // eliza, anthropic, openai, cerebras, ...
+```
+
+**Surrogates.** Realistic and deterministic per salt:
+- Person: first and last name from built-in lists.
+- Organisation: two-part name.
+- Location: a city.
+- Address: a fabricated street.
+- Email: `first.last@example.com` (an RFC 2606 reserved domain).
+- Phone: `(NXX) 555-01xx` (a range reserved for fiction).
+
+The salt is a random 16 bytes per session, so sessions are unlinkable. The module guarantees bijectivity and collision checks against everything learned (`:742-939`).
+
+**Runtime.** `BufferUtils.randomBytes` imports `node:crypto`. A browser shim to `crypto.getRandomValues` is needed.
+
+**Gaps.**
+- **No snapshot/restore API.** A session lives only in memory, so rehydrating after an app restart or a background reply is impossible without a patch.
+- No typed-token or role-annotation mode.
+- Matching is by surface string, so "Dana" and "Dana Whitfield" are separate entities unless both are learned.
+
+**Tests.** None in core. Coverage is indirect through `transcript-store.test.ts`.
+
+### 3.4 Secret-swap (reversible, opaque)
+
+**Location.** `packages/core/src/security/secret-swap.ts` (494 lines) and `secret-swap.bench.ts`.
+
+**API.**
+```ts
+export type SecretSwapSessionOptions = { knownSecrets?: Record<string,string|undefined>; exemptValues?: Iterable<string>; disabledKinds?: Iterable<string> }
+export class SecretSwapSession {
+  get entries(): SecretSwapEntry[]; get maxTokenLength(): number
+  substituteText(text: string): string; restoreText(text: string, ...): string
+  substituteInValue<T>(v: T): T; restoreInValue<T>(v: T, { failOnUnresolved? }): T
+  assertNoUnresolvedPlaceholders(value: unknown): void   // throws SecretSwapUnresolvedPlaceholderError
+}
+export const SECRET_SWAP_ENABLED_SETTING = "ELIZA_SECRET_SWAP_ENABLED"
+```
+
+**Approach.** It combines `detectPii` (all 24 kinds) with assignment patterns from `redact.ts` (`KEY=…`, JSON credential fields, `Bearer`). Each hit is replaced with an unforgeable per-session nonce placeholder, `__ELIZA_SECRET_<nonce>_<n>__`. A short PII span qualifies at 4 characters or more; a generic secret needs 8 or more.
+
+**Reversible?** Yes, at the execution boundary.
+
+**Runtime.** Same Node shims as above.
+
+**Use for Alpha.** This is the right transformation for OTPs, passwords, keys, PANs and SSNs, which per [04](04-redaction.md) should be masked rather than pseudonymised.
+
+### 3.5 Streaming restore
+
+**Location.** `packages/core/src/security/guarded-stream.ts`.
+
+**API.** `new GuardedStreamScanner({ secretSession?, piiSession? })`, with `push(chunk) -> { safe, visible }` and `flush()`.
+
+**Approach.** It holds back a tail of the stream so that no value or surrogate is split across chunk boundaries. Alpha can use it to rehydrate streamed replies (`onText`) on the phone.
+
+### 3.6 Corpus pseudonym map and encrypted store
+
+**`pii-pseudonym-map.ts`.**
+- `CorpusPseudonymMap` with `assign({clusterId, kind, aliases, identities?, rulesetVersion})`, `substituteAliases(text)`, `assignmentsForText`, `toSnapshot()` and `assertValidSnapshot()`.
+- Keyed by entity cluster (one person, all aliases, one pseudonym).
+- Reversible, with snapshot support.
+
+**`pii-pseudonym-map-store.ts`.**
+- `EncryptedCachePseudonymMapStore`: AES-256-GCM under a dedicated AAD `elizaos:pii-pseudonym-map:v1`, stored in the runtime cache key `pii:pseudonym-map:v1`.
+- It is structurally excluded from retrieval.
+- This is the **agent-side** vault. Alpha's phone vault should copy its design (domain-separated AAD, never indexed) but use the Android Keystore for the key.
+
+### 3.7 Corpus scrub rails (batch)
+
+- **`pii-scrub-seam.ts`.** `scrubWithEscalation(runtime, {text, candidateSpans, rulesetVersion, ...})` runs tier-0 detection first. Only the residue escalates to `ModelType.PII_SCRUB`. With no handler registered and residue present, it throws `PiiScrubFabricationError`, so it fails closed. `assertValidScrubResult` rejects fabricated results.
+- **`pii-context-pack.ts`.** Retrieval context for the scrub step.
+- **`pii-scrub-markers.ts`.** Content-addressed done markers.
+- **`packages/core/src/services/pii-scrub.ts`.** `PiiScrubService`, driven by the `PII_SCRUB_REQUESTED` event.
+- **Cloud.** `packages/cloud/api/v1/pii-scrub/jobs`, the executor and the migrations. Patch 0036 adds tests and an inspection-scope migration.
+- **Assessment.** These rails are for background scrubbing of stored memory and corpora. They are useful for scrubbing Alpha's archive and memory in the agent, not for interactive egress.
+
+### 3.8 Audio redaction
+
+**Core, pure TypeScript.**
+- `packages/core/src/audio-redaction.ts`: `normalizeSpokenText`, `matchPiiSpansToWords`, `mergeRedactionSpans`, `buildAudioRedactionSpans(words, piiSpans, {durationMs, padMs?})`, `assertCompleteAudioRedactionPlan`, and `DEFAULT_REDACTION_PAD_MS = 250`. The 250 ms value was calibrated on faster-whisper timings.
+- `packages/core/src/audio-redaction-verify.ts`: `findResidualPii`, `findMissingSentinels`, `judgeRedactedTranscript`, and `verifyAudioRedaction(transcribers, input, {piiTexts, sentinelTexts})`.
+- `TranscriptWord` = `{ text, startMs, endMs, confidence? }` (`packages/core/src/transcripts.ts:21`).
+
+**Agent, Node.**
+- `packages/agent/src/services/audio-redaction-service.ts`: `AudioRedactionService.redactAndVerify(VerifiedAudioRedactionRequest)`. Inputs are `originalAudioUrl` (a local media-store URL), `durationMs`, `words`, `piiSpans`, `mode: "mute"|"bleep"`, `rulesetVersion` (default `2026-08-06.1`) and `languageHint`.
+- Processing is duration-preserving. There are two lanes: a pure-TS PCM16 WAV lane, and an ffmpeg lane for desktop and server only, which is unavailable on Android.
+- Verification re-transcribes with the runtime transcriber plus an optional independent OpenAI-compatible STT read from the environment.
+- Sentinels check that non-PII audio survived, so silencing everything does not count as success.
+- Only verified bytes are persisted (`api/audio-redaction-store.ts`).
+- Fail-closed paths: an unmatched span throws, and so do a missing verifier, any verifier failure, and a residual match.
+
+**Gaps.**
+- Word timings are mandatory. Alpha's paired whisper route has none.
+- PII spans are supplied by the caller; the service does no detection.
+- Residual matching is normalised containment of the exact surface text. If the re-transcript renders "555-0123" as "five five five oh one two three", the residue is **missed**.
+- No tests for the agent service exist in the pinned checkout.
+
+**Transcript redaction.** `plugins/plugin-local-inference/src/services/voice/transcript-store.ts:329-470` creates redacted transcript variants:
+- `transcriptPiiRecognizer(transcript, supplemental?)` composes regex, a gazetteer of the speaker roster, and an optional supplemental recognizer.
+- It then pseudonymises names and type-masks tier-0 matches as `[EMAIL]`, `[SSN]` and so on.
+- It is tested (`transcript-store.test.ts`).
+- **This is the closest reusable recipe for Alpha's transcript path.**
+
+### 3.9 Confidential inference and processing policy
+
+**Location.** `packages/core/src/security/confidential-inference.ts` (435 lines; imports `node:async_hooks` and `node:crypto`, so Node only).
+
+**API.**
+- `ConfidentialInferenceAuthority({ handlers, currentProfile, audit, transport?, redispatchPolicy? })`.
+- `runWithConfidentialInference(authority, {agentId, modelType, handler, operation?}, run)`.
+- `fetchWithConfidentialInference(input, init, transport)`. It admits only POST requests with a string body, rejects redirects, and commits a `dispatch_intent` audit record **before** sending.
+
+**Host bootstrap.** `packages/agent/src/runtime/confidential-host-bootstrap.ts:95` with `createAttestedInferenceFetch` and the durable `createConfidentialSQLiteAudit`.
+
+**Tests.**
+- `plugins/plugin-embeddings/__tests__/confidential-inference.test.ts`.
+- `plugins/plugin-openai/__tests__/confidential-inference.real.test.ts` (real-network).
+- `packages/os/scripts/__tests__/check-confidential-*.node.test.ts` (image and policy manifests).
+
+**Processing policy (patch 0036, upstream `ab8f9a`).** `packages/core/src/security/processing-policy.ts` adds a host-installed policy. It is consulted before any secret or PII substitution for model attempts, and before action effects with declared `Action.egress`. When no policy is installed, nothing changes. When one is installed, anything it cannot evaluate is denied, and a denial is terminal.
+
+**Where this fits.** This is the enclave hook for "refuse model attempts on turns without a valid Alpha redaction receipt at Tier ≥ 2".
+
+### 3.10 Other redaction modules (not for egress; keep)
+
+- `redact.ts`: `redactSecrets`, `redactSensitiveText`, `redactObjectSecrets`, `createSecretsRedactor`. Used for logs and tool output.
+- `log-redaction.ts`: `redactLogValue` and `redactSensitiveLogText`. It fails closed with `[REDACTED: redaction failed]`, and its header says it is shared by Node and client sinks.
+- `fragment-redaction.ts`: secret taint across stream fragments.
+- `outbound-sanitize.ts`: strips reasoning and tool-call tags. This is not PII handling.
+- `voice-gate.ts`: rephrases outbound literals into the agent's voice. This is **not** a privacy gate; the name is misleading.
+- `plugins/plugin-personal-assistant/src/lifeops/redact-sensitive-data.ts` (tested in `test/lifeops-redact-sensitive-data.test.ts`).
+- `packages/testing/scenario-runner/src/redaction.ts`.
+
+### 3.11 Maturity summary
+
+| Component | Code maturity | Tests in pin | Wired by default | Usable on phone as-is |
+|---|---|---|---|---|
+| `detectPii` | High (validators, overlap resolution) | None (indirect only) | Via secret-swap when enabled | Needs a `node:crypto` shim |
+| Recognizers (regex/gazetteer/composite) | Medium; no names without a model | None | When PII swap is enabled | Yes (pure TS) |
+| `LlmEntityRecognizer` | Medium | 14 cases | Only if the plugin is loaded | No (needs llama.cpp and a GGUF) |
+| `PseudonymSession` | High (bijective, bounded walk) | None | Opt-in env | Needs shims; **no snapshot** |
+| `SecretSwapSession` | High | Bench only | Opt-in env | Needs shims |
+| `GuardedStreamScanner` | High | None | When swaps are enabled | Yes after shims |
+| `CorpusPseudonymMap` and encrypted store | High | None | Scrub service | Map yes; store is agent-side |
+| Audio redaction and verify | High, fail-closed | None | Service must be registered | Core math yes; render and verify Node-only; **needs word timings** |
+| Confidential inference | High | Yes | Host bootstrap | Agent/enclave only |
+| Processing policy (0036) | New | In 0036 | Host-installed | Agent/enclave only |
+
+---
+
+## 4. Alpha egress map (where content leaves today)
+
+| # | Channel | Code (file:line) | Payload carrying user content | Destination and transport | Existing protection |
+|---|---|---|---|---|---|
+| E1 | Chat turn | `apps/app/src/runtime/connection-ui.tsx:594-625` `send()`, which builds `phoneContextMessage(text, context)` at `:596` and then calls `selected.cloud.send` / `selected.remote.send` | `text` (the user message after the observation envelope); `metadata.alphaPhone.context` | Eliza Cloud (`cloud-protocol.ts:292`), a paired or resident agent (`remote-protocol.ts:224`), or the on-device local runtime. HTTP goes through `nativeCloudRequest` (`native-connection.ts:47`), then `AlphaConnectionPlugin.request` (`AlphaConnectionPlugin.java:245`) over `HttpURLConnection` | Context is sanitised to opaque IDs (`phone-context.ts:15`); `sensitive` screens throw |
+| E2 | Reviewed email context | `apps/app/src/prototype/inbox-cloud-adapter.ts:105`, `validateMailContext` (`runtime/reviewed-mail-context.ts:10-12`), then `api.sendReviewedMail(text)`, which reaches E1 | `from`, `to[]`, `subject`, `bodyText` (up to 48 kB) as prose | Same as E1 | The user reviews it; the digest is bound to the destination. No PII transform |
+| E3 | Voice audio, cloud STT | `AlphaVoiceCloudPlugin.java:153-160` `transcribeRecording`, then `connect(...,"stt")` at `:88-103` (`https://<host>/api/v1/voice/stt`, multipart) | **Raw audio** | Eliza Cloud | User-initiated; HTTPS only |
+| E4 | Voice audio, paired whisper | `AlphaVoiceCloudPlugin.java:129-132` `transcribePairedRecording`, then `connectPaired(..., asr=true)` at `:109-117` (`/api/asr/whisper`) | **Raw PCM** | Paired desktop agent (HTTPS, or loopback in development) | Origin validation only |
+| E5 | TTS text | `AlphaVoiceCloudPlugin.java:184-187` `synthesize`/`synthesizePaired`; `:137` `synthesizeBrowserReading` | Reply text and pasted browser excerpts | Cloud or paired TTS | 5000-character cap |
+| E6 | Local on-device agent to model provider | `AlphaLocalAgentPlugin.java:66-82` `configureEnvironment` (sets `CEREBRAS_API_KEY` and model) | Whole prompt, built by the on-device elizaOS runtime | Cerebras HTTPS, direct from the phone | **None.** Swap env flags are not set |
+| E7 | Workflow authoring, inbox operations, reminders, notes and calendar CRUD | `runtime/phone-workflow-authoring.ts`, `inbox-operation.ts:54` (`subject`, `bodyText` drafts), `device-actions.ts` | Drafts, titles and bodies | Through E1 transports (`nativeRemoteRequest` / `nativeCloudRequest`) | Review UIs |
+| E8 | Per-view context | `phone-context.ts:15-45` | View name and opaque IDs. Provider IDs such as `accountId` and `messageId` are linkable identifiers | Through E1 metadata and prose | IDs must match `^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$`, which blocks `@` and URLs |
+| E9 | Browser page reading | `BrowserReading.java:20-105`; renderer `browser/reading-review.ts:5` | Excerpt pasted by the user, sent to TTS (E5) | TTS route | `sensitiveUrl` and a sensitive-text scan deny vault, OTP and login pages |
+
+**Chokepoints.**
+- **Renderer, text:** `connectionController.send` (E1, with E2 and E7 flowing into it). Workflow and inbox operation calls that bypass `send` go through `nativeRemoteRequest`/`nativeCloudRequest`, which are the second renderer chokepoint.
+- **Native:** `AlphaConnectionPlugin.request` covers all renderer HTTP (E1, E2, E7). `AlphaVoiceCloudPlugin.connect` and `connectPaired` cover E3, E4 and E5.
+- **No Java chokepoint for E6.** That egress happens inside the bundled agent process. Its only control is the agent's own swap flags and a future processing policy.
+
+**Reusable Keystore material.**
+- `AlphaConnectionPlugin.key()` (`:103-112`) and `AlphaCredentialStore` (`:41`, `:58-66`) use alias `alpha.connection.aes.v1`: AES-256-GCM, 12-byte IV, `AtomicFile` per slot.
+- The vault should use a **separate alias**, `alpha.redaction.vault.v1`, with `setUnlockedDeviceRequired(true)`. That way a vault-key compromise does not imply a credential compromise and vice versa.
+
+---
+
+## 5. External options evaluation
+
+| Option | What it is | Licence / size | Entities | Reported accuracy | Deployment | Reversible | Android feasibility | Role for Alpha |
+|---|---|---|---|---|---|---|---|---|
+| **OpenAI Privacy Filter** (released 2026-04-22) | Bidirectional token classifier, BIOES spans with constrained Viterbi; 8 transformer blocks; sparse MoE (128 experts, top-4) | Apache-2.0; 1.5B total / 50M active; 128k context ([HF card](https://huggingface.co/openai/privacy-filter)) | 8 categories: account_number, private_address, private_email, private_person, private_phone, private_url, private_date, secret | F1 96% on PII-Masking-300k, 97.43% after label correction (vendor, via [MarkTechPost](https://www.marktechpost.com/2026/04/28/openai-releases-privacy-filter-a-1-5b-parameter-open-source-pii-redaction-model-with-50m-active-parameters/), [Help Net Security](https://www.helpnetsecurity.com/2026/04/23/openai-privacy-filter-personally-identifiable-information/)). Card lists limitations: uncommon names, over-redaction of public entities, non-English | transformers, transformers.js (WebGPU/WASM) ([browser demo](https://github.com/montevive/openai-privacy-filter)), ONNX | No (detector) | ONNX q4f16 772 MB, q4 875 MB, q8 1.5 GB, fp16 2.6 GB ([HF onnx tree](https://huggingface.co/openai/privacy-filter/tree/main/onnx)). The MoE needs all experts resident, so **memory is the obstacle on phones**. Run with ORT Android CPU/XNNPACK; WebView WebGPU is device-dependent | Optional "accuracy pack" on 8–12 GB devices; **primary candidate for the enclave second pass** (CPU-feasible) |
+| **GLiNER-PII** (Knowledgator/Wordcab) | Zero-shot span NER, labels given at inference | Apache-2.0; edge, small, base and large variants. Edge ONNX FP16 330 MB, UINT8 197 MB ([HF](https://huggingface.co/knowledgator/gliner-pii-edge-v1.0)) | 60+ labels (personal, contact, financial, health, documents, credentials) | Vendor F1: edge 75.5% (P 78.96 / R 72.34); base 80.99% | GLiNER Python, Rust (gline-rs), ONNX | No | **Best fit for the on-device default** (UINT8 197 MB, ORT Android). Needs a span-decoding port to Java (tokeniser plus span scoring) | Default device NER |
+| **GLiNER2-PII** (Fastino, May 2026) | GLiNER2 fine-tune | 205M params ([arXiv 2605.09973](https://arxiv.org/abs/2605.09973)) | 42 PII types, multilingual | Paper reports the highest span F1 among five systems on the SPY benchmark, including OpenAI Privacy Filter | HF `fastino/gliner2-privacy-filter-PII-multi` | No | ONNX export not verified in this session | Evaluate as an alternative default |
+| **urchade/gliner_multi_pii-v1** | GLiNER multi v2.1 fine-tune on synthetic data | Apache-2.0 | ~40 types; EN/FR/DE/ES/PT/IT ([HF](https://huggingface.co/urchade/gliner_multi_pii-v1)) | Not published by the author | Python | No | Same porting cost as GLiNER-PII | Baseline only |
+| **NVIDIA gliner-PII** | Successor to the Gretel GLiNER PII/PHI models (bi-large) | 55+ categories ([HF discussion](https://huggingface.co/nvidia/gliner-PII/discussions/6)) | PII and PHI | Not verified | Python | No | Large for phones | Enclave or eval candidate for PHI |
+| **Microsoft Presidio** | Analyzer (recognizers + NER) and Anonymizer (replace, redact, mask, hash, encrypt, keep, custom); `DeanonymizeEngine` reverses **only the `encrypt` operator** via `decrypt` (AES) ([Anonymizer docs](https://presidio.dataprivacystack.org/anonymizer/), [DeepWiki](https://deepwiki.com/microsoft/presidio/3.2.2-deanonymization)) | MIT; Python plus Docker REST images | ~30 built-in recognizers plus custom; `GLiNERRecognizer` built in (`presidio-analyzer[gliner]`) ([docs](https://presidio.dataprivacystack.org/samples/python/gliner/)); a known GLiNER long-text truncation issue ([#1569](https://github.com/data-privacy-stack/presidio/issues/1569)) | Depends on the NER plugged in | Python, Docker | Encrypt/decrypt only | **Not on the phone** (Python) | Enclave second pass if the enclave image can carry Python; otherwise the eval harness comparator |
+| **Limina (formerly Private AI)** | Proprietary transformer NER in a container | Commercial; CPU container (AVX2/AVX-512/AMX) or GPU (≥16 GB VRAM, Volta+) ([requirements](https://docs.private-ai.com/installation/prerequisites-and-system-requirements)) | 50+ entity types, 52 languages; text, PDF, images, **audio** ([site](https://www.getlimina.ai/en)) | Vendor ai4privacy benchmark F1 0.938 (see [04](04-redaction.md)) | On-prem container, REST | Yes (reidentify endpoints; not re-verified this session) | No Android SDK found | Enterprise option for the enclave or customer VPC second pass; benchmark comparator |
+| **Tonic Textual** | Redaction plus synthesis; tokenised (reversible) or synthesised replacements ([SDK docs](https://tonic-textual-sdk.readthedocs-hosted.com/en/latest/redact/redact_config.html)) | Commercial; free tier with $5 credits, Plus $29/month, Enterprise custom ([pricing](https://www.tonic.ai/pricing)) | Built-in plus custom-trained entity types | Not independently verified | Cloud, self-hosted Kubernetes/Docker, AWS AMI, Snowflake ([deploy](https://docs.tonic.ai/textual/textual-install-administer/deploying-a-self-hosted-instance)) | Tokenisation reversible | No | Synthetic training and test data generation; possible enclave second pass |
+| **Google ML Kit Entity Extraction** | On-device annotator (beta) | Proprietary; ~5.6 MB per language model ([docs](https://developers.google.com/ml-kit/language/entity-extraction/android)) | 11 types incl. address, date-time, email, flight number, IBAN, ISBN, money, payment card, phone, tracking number, URL (per docs; the fetched page summary listed fewer) | Not published | Android SDK | No | **Native and cheap**, but beta with no SLA, and a Google Play services dependency conflicts with de-Googled AOSP builds | Optional supplemental recognizer for addresses and dates on stock Android only |
+| **Gemini Nano / ML Kit GenAI Prompt API** | On-device LLM via AICore (alpha) ([Android blog](https://developer.android.com/blog/posts/ml-kit-s-prompt-api-unlock-custom-on-device-gemini-nano-experiences)) | Proprietary; supported devices only | Prompted extraction | Not published | AICore | No | Not on the AOSP image; device-gated | Not recommended as a dependency |
+| **LiteRT-LM (Gemma 4 E2B)** | On-device LLM runtime ([overview](https://ai.google.dev/edge/litert-lm/overview)) | Gemma licence; ~52 tok/s decode, ~3.8k tok/s prefill on S26 Ultra GPU ([Google blog](https://developers.googleblog.com/blazing-fast-on-device-genai-with-litert-lm/)) | Prompted | Not published | Android | No | Possible host for an `LlmEntityRecognizer`-style prompt; too slow for every keystroke | Fallback recognizer for Tier 2 when no NER pack is present |
+| **sherpa-onnx** | Kaldi-next ASR/TTS/VAD/punctuation over ORT ([GitHub](https://github.com/k2-fsa/sherpa-onnx)) | Apache-2.0 | No NER; offline punctuation has Java bindings; online punctuation Java API was missing in AAR 1.12.11 ([#2568](https://github.com/k2-fsa/sherpa-onnx/issues/2568)) | — | Android AAR | — | Yes | Candidate on-device ASR with **word timestamps** (transducer models emit token times); not a PII detector |
+| **ITN (NeMo text processing / Sparrowhawk)** | WFST spoken-to-written normalisation ([NeMo ITN paper](https://arxiv.org/pdf/2104.05055)) | Apache-2.0; Sparrowhawk archived 2022 | Numbers, dates, money, phone | — | Python/C++ | — | No maintained Android port found | Port a small TypeScript subset (cardinals, digit sequences, "oh" for zero, "double") |
+| **SpeechShield** (research) | On-device timestamped entity masking in a tiny speech model ([arXiv 2502.01649](https://arxiv.org/abs/2502.01649)) | Research | Entities | Filters ~83% of private entities on-device at <100 MB | Research code | — | Shows feasibility; recall too low to be the only gate | Reference design |
+
+**Datasets and benchmarks for evaluation.**
+- ai4privacy `pii-masking-400k`: 406,896 rows, 17 classes, 6 languages ([HF](https://huggingface.co/datasets/ai4privacy/pii-masking-400k)).
+- `open-pii-masking-500k`: 580,227 rows, 20 classes, 8 languages ([HF](https://huggingface.co/datasets/ai4privacy/open-pii-masking-500k-ai4privacy)).
+- LLM-Redactor: 8 techniques compared. Local routing plus redaction plus rephrasing reached 0.6% combined PII leak with 0 exact leaks over 500 samples, and the paper documents placeholder leakage and adversarial-obfuscation evasion ([arXiv 2604.12064](https://arxiv.org/abs/2604.12064)).
+- RedactionBench: 200 documents, 11 domains, the character-level R-Score metric, and human agreement of only 47.7% on contextual redactions ([arXiv 2606.18782](https://arxiv.org/abs/2606.18782)).
+- SLUE-NER for spoken NER ([HF](https://huggingface.co/datasets/asapp/slue)).
+- None of these is a spoken-meeting PII set, so Alpha must build its own (Section 11).
+
+**Word timings.**
+- Whisper's word timestamps come from cross-attention DTW. That is an approximation that can differ by 100–400 ms between model builds ([vLLM PR](https://github.com/vllm-project/vllm/pull/47664), [whisper.cpp #2307](https://github.com/ggml-org/whisper.cpp/discussions/2307)).
+- Upstream's 250 ms padding matches this range.
+- CrisperWhisper reports more accurate verbatim timestamps ([arXiv 2408.16589](https://arxiv.org/pdf/2408.16589)).
+
+---
+
+## 6. Architecture
+
+### 6.1 Where detection runs: options and decision
+
+| Option | Pros | Cons |
+|---|---|---|
+| **A. Renderer JS only** | Reuses upstream TypeScript directly (detectors, sessions, streaming restore); one language; testable in Node and Playwright | A compromised or buggy WebView can bypass it; NER in WASM or WebGPU in the WebView is slow and memory-capped; it cannot see native audio routes |
+| **B. Native Java/Kotlin only** | Enforced below the WebView; ORT Android with NNAPI/QNN; covers audio routes | Must re-implement upstream detectors in Java, so rules drift between phone and agent; rehydrating renderer-visible text means round-trips anyway |
+| **C. Hybrid (recommended)** | Detection and transformation in the renderer with upstream code; **NER inference native** behind a `PiiEntityRecognizer` adapter; **enforcement native**, where Java refuses any egress without a matching receipt and re-runs a tier-0 floor; the vault key is in the Keystore | Two layers to keep in sync, mitigated by generating the Java floor's patterns from upstream `PII_DETECTORS` at build time and by golden cross-tests |
+
+**Decision: C.** The renderer owns transformation because it owns the text and can show the user the redaction preview. Java owns enforcement because it owns the sockets. The agent runs a second pass inside its own runtime (E6, and the enclave), because it sees context the phone never does (memory, tool outputs).
+
+### 6.2 Data flow
+
+```
+ user text / mail / transcript / page excerpt
+            │
+            ▼
+ ┌──────────────────────── Renderer (apps/app/src) ─────────────────────────┐
+ │ EgressGate.prepare(channel, destination, payload, tier)                  │
+ │   1 policy lookup (tier x channel x destination)                         │
+ │   2 spoken-form normaliser (voice only) -> offset map                    │
+ │   3 tier-0: detectPii (upstream)       ─┐                                │
+ │   4 gazetteer: contacts/roster (upstream GazetteerEntityRecognizer)      │
+ │   5 NER: NativePiiRecognizer ─────────────► AlphaPrivacy.recognize (ORT) │
+ │   6 CompositeEntityRecognizer (upstream) │                               │
+ │   7 SecretSwapSession.substitute* (secrets/PAN/SSN/OTP -> opaque)        │
+ │   8 PseudonymSession.learnSpans + substitute* (names/orgs/places/email…)  │
+ │   9 residual check: detectPii(out) must be empty of non-surrogate hits   │
+ │  10 receipt (value-free) -> AlphaPrivacy.registerReceipt(sha256(body))    │
+ └───────────────┬───────────────────────────────────────────────────────────┘
+                 │ body + X-Alpha-Redaction-Receipt
+                 ▼
+ ┌────────── Java (AlphaConnectionPlugin.request / AlphaVoiceCloudPlugin) ───┐
+ │ EgressGuard.admit(): receipt exists, digest matches body, tier allows     │
+ │ route, Java tier-0 floor finds nothing, else REJECT (fail closed)         │
+ └───────────────┬───────────────────────────────────────────────────────────┘
+                 ▼
+   agent (local runtime / paired / Eliza Cloud / enclave)
+   second pass: ELIZA_SECRET_SWAP_ENABLED + ELIZA_PII_SWAP_ENABLED,
+   PII_ENTITY_RECOGNIZER_SERVICE, ConfidentialInferenceAuthority audit,
+   ProcessingPolicy (0036) requiring a valid receipt at Tier >= 2
+                 │ reply with surrogates
+                 ▼
+ Renderer: GuardedStreamScanner(visible) -> rehydrated text to UI;
+           ActionProposal.description rehydrated before review;
+           approved device actions executed with real values on device.
+```
+
+### 6.3 Agent-side second pass (local runtime and enclave)
+
+**On-device local runtime (E6).** Alpha owns `AlphaLocalAgentPlugin.configureEnvironment` (`android/.../AlphaLocalAgentPlugin.java:66`), so it can set the flags without touching upstream:
+```java
+env.put("ELIZA_SECRET_SWAP_ENABLED", "true");
+env.put("ELIZA_PII_SWAP_ENABLED", "true");
+// Pseudonym layer owns email/phone only when secret swap is off; keep defaults.
+env.put("ELIZA_PII_SWAP_DISABLED_KINDS", "");          // policy-supplied
+env.put("ELIZA_PII_SWAP_EXEMPT_VALUES", "Alpha Phone");  // product identity
+```
+Without a recognizer service this is regex-only: addresses plus everything secret-swap catches. That is still a strict improvement on today's raw prompts to Cerebras. It is the cheapest first deliverable (WP1).
+
+**Enclave / Eliza Cloud agent.**
+- Enable the same two flags.
+- Register a `PII_ENTITY_RECOGNIZER_SERVICE` backed by OpenAI Privacy Filter or GLiNER-PII under onnxruntime-node. This needs a small upstream plugin (patch or upstream PR), because `plugin-local-inference` is llama.cpp-only.
+- Keep `ConfidentialInferenceAuthority`.
+- Install a `ProcessingPolicy` (available after 0036 lands in the agent build) that denies `model_attempt` for an Alpha Tier ≥ 2 room unless the inbound message metadata carries a valid receipt.
+- Add a **redaction summary** to the audit trail (Section 9), because `ConfidentialInferenceAuditRecord` has no field for it.
+
+**Double pseudonymisation is safe.** The agent may learn the phone's surrogates as "names" and swap them again. Restore runs in reverse order: the agent restores to phone surrogates, and the phone restores to real values. The blocklist does not need phone surrogates. A test must cover this composition (T-12).
+
+---
+
+## 7. Egress gate API contract
+
+### 7.1 TypeScript (renderer, `apps/app/src/runtime/egress-gate.ts`, new)
+
+```ts
+import type { EntitySpan, PiiEntityRecognizer } from '@elizaos/core/privacy'; // new subpath (patch P1)
+
+export type EgressChannel =
+  | 'chat' | 'mail-context' | 'voice-transcript' | 'voice-audio'
+  | 'tts-text' | 'browser-excerpt' | 'workflow-authoring' | 'inbox-operation' | 'view-context';
+
+export type PolicyTier = 'T0-open' | 'T1-standard' | 'T2-confidential' | 'T3-local-only';
+
+export interface EgressDestination {
+  kind: 'local-runtime' | 'paired-host' | 'eliza-cloud' | 'confidential-enclave';
+  origin: string;                  // canonical, verified by the connection layer
+  agentId?: string;
+  conversationId?: string;
+  attestation?: { evidenceDigest: string; policyRevision: string; verifiedAt: number };
+}
+
+export type EgressPayload =
+  | { kind: 'text'; text: string }
+  | { kind: 'json'; value: unknown }                    // all string leaves are scanned
+  | { kind: 'audio'; recordingId: string; durationMs: number };
+
+/** A span the user explicitly chose to release unredacted, after preview. */
+export interface SpanRelease { kind: string; valueDigest: string; reason: 'user-release' }
+
+export interface EgressRequest {
+  requestId: string;              // equals the native request id
+  channel: EgressChannel;
+  destination: EgressDestination;
+  payload: EgressPayload;
+  releases?: readonly SpanRelease[];
+  signal: AbortSignal;
+}
+
+export type EgressDecision =
+  | { status: 'allow' | 'transformed'; payload: EgressPayload; vaultHandle: string; receipt: RedactionReceipt }
+  | { status: 'blocked'; reason: BlockReason; receipt: RedactionReceipt };
+
+export type BlockReason =
+  | 'tier-forbids-channel'            // e.g. T2 + voice-audio
+  | 'tier-forbids-destination'        // e.g. T2 + unattested cloud
+  | 'recognizer-unavailable'          // NER required by tier but not loaded
+  | 'residual-detected'               // post-transform tier-0 still matches
+  | 'unbounded-payload'               // upstream PII_PSEUDONYM_UNBOUNDED / SECRET_SWAP_UNBOUNDED
+  | 'sensitive-surface';              // ViewContext.sensitive or BrowserReading deny
+
+export interface EgressGate {
+  /** Pure with respect to the network; never sends. Fail-closed on any throw. */
+  prepare(request: EgressRequest): Promise<EgressDecision>;
+  /** Rehydrate model output for display. Unknown surrogates pass through untouched. */
+  rehydrateText(vaultHandle: string, text: string): string;
+  rehydrateValue<T>(vaultHandle: string, value: T): T;
+  /** Streaming variant backed by upstream GuardedStreamScanner. */
+  openStream(vaultHandle: string): { push(chunk: string): string; flush(): string };
+  /** Bind the receipt to the transport outcome (sent | failed | cancelled | unknown). */
+  settle(receiptId: string, outcome: 'sent' | 'failed' | 'cancelled' | 'unknown'): Promise<void>;
+}
+
+/** Native NER adapter, implementing the upstream interface. */
+export class NativePiiRecognizer implements PiiEntityRecognizer {
+  readonly name = 'alpha-native-ner';
+  constructor(private readonly plugin: AlphaPrivacyPlugin, private readonly labels: readonly string[]) {}
+  async recognize(text: string): Promise<EntitySpan[]> {
+    const { spans } = await this.plugin.recognize({ text, labels: [...this.labels] });
+    return spans.map(s => ({ kind: s.kind, value: text.slice(s.start, s.end), start: s.start, end: s.end, score: s.score }));
+  }
+}
+```
+
+**Integration points.**
+- **E1/E2/E7.** In `connection-ui.tsx` `send()` after `phoneContextMessage` (`:596`):
+  1. `const d = await gate.prepare({channel, destination, payload:{kind:'text', text: message.text}, ...})`.
+  2. If `d.status === 'blocked'`, throw a user-visible error carrying `d.reason`.
+  3. Send `d.payload.text` with header `X-Alpha-Redaction-Receipt: d.receipt.receiptId`.
+  4. Wrap `onText` with `gate.openStream(d.vaultHandle)`.
+  5. Rehydrate the final `reply.text` and every `proposal.description`.
+
+  The observation envelope itself is constant text plus opaque IDs, and is exempted by construction: the gate scans only the user section after `[USER MESSAGE]`. The JSON observation is checked separately through the `view-context` channel.
+- **`nativeRemoteRequest` / `nativeCloudRequest`.** Accept an optional `receiptId`. Calls without one are allowed only for an allowlist of **content-free** routes (auth, status, list conversations, jobs). Java enforces this list (7.2).
+- **Voice (E3/E4).** `prototype/voice-adapter.ts:210`. Before choosing a cloud or paired route, call `gate.prepare({channel:'voice-audio', payload:{kind:'audio',...}})`. At T2 and above this blocks, and the UI offers only the on-device route. The resulting transcript then passes through `voice-transcript` before it enters chat.
+
+### 7.2 Java (native enforcement)
+
+```java
+package ai.elizaresearch.alphaphone.privacy;
+
+public enum EgressChannel { CHAT, MAIL_CONTEXT, VOICE_TRANSCRIPT, VOICE_AUDIO, TTS_TEXT,
+                            BROWSER_EXCERPT, WORKFLOW_AUTHORING, INBOX_OPERATION, VIEW_CONTEXT, CONTENT_FREE }
+
+/** Registered by the renderer after prepare(); value-free. */
+public final class ReceiptBinding {
+  public final String receiptId, requestId, policyTier, channel, destinationOrigin;
+  public final byte[] bodySha256;        // exact bytes Java will send
+  public final long expiresAtMs;         // short TTL, e.g. 60 s
+}
+
+public interface EgressGuard {
+  /** Called by the renderer via AlphaPrivacy.registerReceipt before the request. */
+  void register(ReceiptBinding binding) throws EgressDeniedException;
+
+  /**
+   * Called inside AlphaConnectionPlugin.request and AlphaVoiceCloudPlugin.connect/connectPaired
+   * immediately before connection.getOutputStream(). Fail closed: any exception => no bytes sent.
+   */
+  void admit(String requestId, java.net.URI destination, String route, byte[] body) throws EgressDeniedException;
+}
+
+final class DefaultEgressGuard implements EgressGuard {
+  // 1. route classification: CONTENT_FREE allowlist (e.g. /api/auth/*, GET status) needs no receipt.
+  // 2. otherwise: binding must exist, be unexpired, match requestId, origin and sha256(body).
+  // 3. tier rules: T2+ forbids VOICE_AUDIO routes (/api/v1/voice/stt, /api/asr/whisper) entirely;
+  //    T3 forbids every non-content-free route.
+  // 4. Tier0Floor.scan(body): Luhn PAN, SSN, JWT, PEM/PGP, AWS/GitHub/OpenAI/Stripe/Slack keys,
+  //    BIP-39 runs. Patterns generated at build time from upstream PII_DETECTORS (script, see WP3).
+  //    Any hit => EgressDeniedException("residual-detected").
+  // 5. consume the binding (single use) and append a native audit line (hashes only).
+}
+```
+
+`AlphaPrivacyPlugin` (new Capacitor plugin) methods:
+- `recognize({text, labels}) -> {spans:[{kind,start,end,score}]}`. ORT session, single thread pool, 512-token windows with 64-token overlap.
+- `registerReceipt(binding)`.
+- `vaultOpen({vaultId}) / vaultPut({vaultId, entriesCiphertext}) / vaultGet / vaultDestroy`. Key alias `alpha.redaction.vault.v1`.
+- `signReceipt({receiptJson}) -> {signature, keyId}`. EC P-256 key `alpha.redaction.receipt.v1`, non-exportable, StrongBox if available.
+
+---
+
+## 8. Vault and rehydration design
+
+**Contents.** For each vault (one per conversation, which matches the upstream "per-session unlinkable" default):
+- The `PseudonymSession` salt and entries.
+- The `SecretSwapSession` nonce and entries.
+- The policy tier and creation time.
+- The TTL.
+
+**Upstream gap.** `PseudonymSession` has no export/import. Surrogate minting is deterministic given salt, kind, value, attempt and corpus state, but replaying `learnSpans` does not guarantee the same surrogates after collision re-mints. **Patch P2** adds:
+```ts
+// packages/core/src/security/pii-pseudonymizer.ts (patch)
+export interface PseudonymSessionSnapshot { v: 1; salt: string; entries: PseudonymEntry[]; corpusDigest: string }
+toSnapshot(): PseudonymSessionSnapshot
+static fromSnapshot(s: PseudonymSessionSnapshot, options?: Omit<PseudonymSessionOptions,'salt'>): PseudonymSession
+// same for SecretSwapSession (nonce + entries)
+```
+Until P2 lands, Alpha can keep vaults **memory-only**. Replies that arrive after a process death then show surrogates with a "names hidden; reopen conversation to restore" banner. That is acceptable for T1, and the fail-safe direction (showing surrogates) is not a leak.
+
+**Encryption at rest.**
+- AES-256-GCM, key `alpha.redaction.vault.v1` in AndroidKeyStore.
+- Key parameters: `PURPOSE_ENCRYPT|DECRYPT`, `BLOCK_MODE_GCM`, `setKeySize(256)`, `setUnlockedDeviceRequired(true)` (API 28+), `setIsStrongBoxBacked(true)` with fallback, and no user-auth-per-use (rehydration happens while streaming) ([Android Keystore](https://developer.android.com/privacy-and-security/keystore), [KeyProtection](https://developer.android.com/reference/android/security/keystore/KeyProtection)).
+- AAD = `"alpha:redaction-vault:v1|" + vaultId`, domain-separated from credential slots, mirroring upstream `PII_PSEUDONYM_MAP_AAD`.
+- Storage: `AtomicFile` under `noBackupFilesDir/redaction-vault/`. The vault must be excluded from Auto Backup and from device-transfer rules.
+
+**Lifecycle.**
+- Default TTL: 30 days at T1, 7 days at T2, plus explicit "forget conversation".
+- Crypto-erase deletes the file. Deleting the Keystore key erases every vault.
+- Under GDPR the data stays pseudonymous **while the vault exists** (see [04](04-redaction.md) §B).
+
+**Rehydration rules.**
+1. Display: `restoreText` and streaming through `GuardedStreamScanner`.
+2. Action proposals: rehydrate `description` before review, so the user approves real values. Then:
+   - **Device-executed** actions run with rehydrated arguments on the phone.
+   - **Agent-executed** actions with external egress (for example, cloud Gmail send) would act on surrogates. Policy: at T1 the proposal is shown with a warning, and the phone sends a rehydrated, user-approved argument set in the `execute` call, recorded on the receipt. At T2 such actions require device execution or are refused.
+3. Never rehydrate into logs, notifications (lock-screen previews stay pseudonymous) or the action journal. Store pseudonymised text in conversation history and keep the vault separate.
+
+---
+
+## 9. Policy tiers
+
+| | T0 Open (developer/personal) | T1 Standard (default) | T2 Confidential (regulated pilot) | T3 Local-only |
+|---|---|---|---|---|
+| Secrets, OTP, passwords, PAN, SSN, IBAN | Secret-swap (opaque) | Secret-swap | Secret-swap | Nothing leaves |
+| Email, phone | Allow | Pseudonymise | Pseudonymise | — |
+| Person, org, location | Allow | Pseudonymise **if NER is available**; otherwise gazetteer only, plus a banner | Pseudonymise; **NER required** (else `recognizer-unavailable` block) | — |
+| Dates, money, numbers | Allow | Allow | Generalise (bucket), with exact arithmetic done locally on rehydration; optional | — |
+| Admin gazetteer (clients, deal code names, restricted list) | — | Optional | Required (MDM-delivered, Keystore-encrypted) | — |
+| Raw audio egress (E3/E4) | Allowed | Paired owned host only | **Forbidden**; on-device ASR only | Forbidden |
+| Destinations | Any | Any verified connection | Attested enclave (`destination.attestation` present and fresh) or the local runtime with agent swaps on | Local runtime only |
+| User release of a span | Yes | Yes (recorded) | Admin-configurable | — |
+| Agent second pass required | No | Recommended | Required (receipt checked by ProcessingPolicy) | n/a |
+| Receipts | Local, summary only | Local, signed | Signed, exportable to the firm archive | Manifests only |
+
+The tier is a product policy supplied by Alpha to upstream primitives, per ADR-02. It lives in `apps/app/src/runtime/redaction-policy.ts`, and is mirrored by Java constants and checked by the receipt digest.
+
+---
+
+## 10. Channel-specific designs
+
+### 10.1 Per-view context (E8)
+
+- Keep `sanitizePhoneContext`. Its opaque-ID regex already blocks emails, URLs and prose.
+- **Add at T2:** destination-scoped tokenisation of provider IDs (`accountId`, `messageId`, `eventId`). Compute `HMAC-SHA256(vaultKey, destinationOrigin|kind|id)`, truncate it to 22 base64url characters, and store the handle-to-real-ID map in the vault.
+  - Device-executed actions map handles back on the phone.
+  - Cloud-executed Google actions need real IDs, so at T2 those calls rehydrate in `execute` only after user approval, and the receipt records it.
+- The observation JSON goes through the gate as channel `view-context`. Tier-0 must find nothing, which it cannot by construction. This is a regression tripwire.
+
+### 10.2 Voice transcripts (E3/E4 and on-device ASR)
+
+Pipeline for `voice-transcript`:
+
+1. **ASR choice by tier.** At T2+, only `transcribeLocalRecording` (on-device) is allowed. Record whether word timings exist.
+2. **Spoken-form normaliser (new, Alpha-side; candidate for upstream).** Produce `written` from `spoken` with an offset map back to `spoken`:
+   - Number words become digits: "four one five", "oh" as zero, "double five", "triple", "hundred", teens and tens.
+   - "at" and "dot" become `@` and `.` inside email-shaped runs.
+   - Spelled letter runs collapse ("S M I T H" becomes SMITH).
+   - Ordinal dates are handled.
+
+   Run `detectPii` on **both** forms and map spans back through the offset map. This mirrors dual-form ITN ([arXiv 2609.02901](https://arxiv.org/pdf/2609.02901)) and the NeMo/Sparrowhawk tagger-then-verbaliser design.
+3. **Long digit-run rule.** Any run of 7 or more spoken digits within a 6-second window that no detector has classified becomes `NUMERIC_SEQUENCE` and is masked at T1+. This catches phone numbers or account numbers that ASR splits, which separator-bound regexes miss.
+4. **Confidence widening.** If a word adjacent to a detected span has `confidence < 0.6`, extend the span by one word on that side. Without confidences (paired whisper), pad by one word at T2. This is an n-best proxy. Real lattice or n-best access is not available from the current routes. If sherpa-onnx becomes the on-device ASR, its transducer n-best can be consumed later ([N-best SLU](https://arxiv.org/pdf/2001.05284)).
+5. **Roster gazetteer.** Calendar attendees, contacts and meeting title names go into `GazetteerEntityRecognizer`, as upstream `transcriptPiiRecognizer` does.
+6. Then NER, then secret-swap and pseudonymisation, as for chat.
+7. **Audio artefacts.** If a redacted **audio** copy is needed (for sharing or archive, never for model egress), call upstream `AudioRedactionService.redactAndVerify` in the local runtime or paired host with timed words. Map the residual check through the same spoken-form normaliser. That requires patch P4, because upstream `findResidualPii` compares only normalised surface text.
+
+### 10.3 Browser page context (E9 and future "share page with agent")
+
+- Keep `BrowserReading.sensitiveUrl` and the sensitive-text denial. A deny becomes `blocked: sensitive-surface` with a receipt.
+- Strip query strings and fragments from any URL sent as context. Today only the origin is shown, which is good. A future share-page feature must send origin plus path only.
+- Excerpts go through channel `browser-excerpt`: tier-0, gazetteer, NER and secret-swap. Do not pseudonymise public entities, because the excerpt is public text. At T1 apply secret-swap and tier-0 only (the Privacy Filter card warns about over-redaction of public entities). At T2 pseudonymise **only** entities that also appear in the user's contacts or the admin gazetteer.
+- TTS of excerpts (E5) at T2 must use a device-local voice. The renderer already says "Speech uses a device-local browser voice" for pasted excerpts (`reading-review.ts:15`). Enforce it in Java by refusing `synthesizeBrowserReading` to remote routes at T2.
+
+### 10.4 Reviewed email context (E2)
+
+This is the highest-volume PII payload.
+- `from` and `to` addresses become email surrogates.
+- Display names become person surrogates.
+- `bodyText` goes through the full pipeline.
+- Signatures (phone, address) are covered by tier-0 and the regex address recogniser.
+
+The review sheet should show the **redacted** text that will be sent, with per-span release toggles. Today it shows the original.
+
+---
+
+## 11. Audit receipt / redaction manifest
+
+Receipts are value-free, so they can be retained and shown to users, compliance officers and archives:
+- Hashes are keyed HMACs, using a per-device key `alpha.redaction.hmac.v1` stored as a Keystore-wrapped secret. That prevents dictionary attacks on short values such as SSNs.
+- Counts are per kind.
+- Receipts are hash-chained and signed with a non-exportable Keystore EC key.
+
+### 11.1 JSON Schema (2020-12)
+
+```json
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://alphaphone.invalid/schemas/redaction-receipt.v1.json",
+  "title": "Alpha Phone redaction receipt v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema","receiptId","requestId","createdAt","channel","destination","policy","detectors","input","output","entities","decision","chain","signature"],
+  "properties": {
+    "schema": { "const": "alpha.redaction-receipt.v1" },
+    "receiptId": { "type": "string", "format": "uuid" },
+    "requestId": { "type": "string", "maxLength": 256 },
+    "createdAt": { "type": "string", "format": "date-time" },
+    "settledAt": { "type": ["string","null"], "format": "date-time" },
+    "outcome": { "enum": ["sent","failed","cancelled","unknown","not-sent"] },
+    "device": {
+      "type": "object", "additionalProperties": false,
+      "required": ["installationDigest","appVersion","distribution"],
+      "properties": {
+        "installationDigest": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+        "appVersion": { "type": "string" },
+        "distribution": { "enum": ["standalone","launcher"] }
+      }
+    },
+    "channel": { "enum": ["chat","mail-context","voice-transcript","voice-audio","tts-text","browser-excerpt","workflow-authoring","inbox-operation","view-context"] },
+    "destination": {
+      "type": "object", "additionalProperties": false,
+      "required": ["kind","origin"],
+      "properties": {
+        "kind": { "enum": ["local-runtime","paired-host","eliza-cloud","confidential-enclave"] },
+        "origin": { "type": "string", "maxLength": 512 },
+        "agentIdDigest": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+        "attestation": {
+          "type": "object", "additionalProperties": false,
+          "required": ["evidenceDigest","policyRevision","verifiedAt"],
+          "properties": {
+            "evidenceDigest": { "type": "string" },
+            "policyRevision": { "type": "string" },
+            "verifiedAt": { "type": "string", "format": "date-time" }
+          }
+        }
+      }
+    },
+    "policy": {
+      "type": "object", "additionalProperties": false,
+      "required": ["tier","policyId","policyVersion"],
+      "properties": {
+        "tier": { "enum": ["T0-open","T1-standard","T2-confidential","T3-local-only"] },
+        "policyId": { "type": "string" },
+        "policyVersion": { "type": "string" },
+        "gazetteerDigest": { "type": ["string","null"] }
+      }
+    },
+    "detectors": {
+      "type": "array", "minItems": 1,
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["id","version","status"],
+        "properties": {
+          "id": { "type": "string", "examples": ["upstream.detectPii","upstream.regex-recognizer","gazetteer.contacts","native.gliner-pii-edge","spoken-normalizer"] },
+          "version": { "type": "string" },
+          "modelSha256": { "type": ["string","null"], "pattern": "^[a-f0-9]{64}$" },
+          "status": { "enum": ["ran","unavailable","failed","skipped-by-policy"] },
+          "latencyMs": { "type": "number", "minimum": 0 }
+        }
+      }
+    },
+    "input": {
+      "type": "object", "additionalProperties": false,
+      "required": ["hmac","chars"],
+      "properties": {
+        "hmac": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+        "chars": { "type": "integer", "minimum": 0 },
+        "audioDurationMs": { "type": ["integer","null"] },
+        "wordTimings": { "type": ["boolean","null"] }
+      }
+    },
+    "output": {
+      "type": "object", "additionalProperties": false,
+      "required": ["sha256","chars"],
+      "properties": {
+        "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+        "chars": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "entities": {
+      "type": "array",
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["kind","action","count"],
+        "properties": {
+          "kind": { "type": "string" },
+          "action": { "enum": ["secret-swap","pseudonymize","generalize","mask","tokenize-id","released-by-user","allowed-by-policy","blocked"] },
+          "count": { "type": "integer", "minimum": 0 },
+          "detectors": { "type": "array", "items": { "type": "string" } },
+          "minScore": { "type": ["number","null"] }
+        }
+      }
+    },
+    "releases": {
+      "type": "array",
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["kind","valueHmac","by"],
+        "properties": {
+          "kind": { "type": "string" },
+          "valueHmac": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+          "by": { "enum": ["user","admin-policy"] }
+        }
+      }
+    },
+    "residualCheck": {
+      "type": "object", "additionalProperties": false,
+      "required": ["renderer","native"],
+      "properties": {
+        "renderer": { "enum": ["clean","residual-blocked","not-run"] },
+        "native": { "enum": ["clean","residual-blocked","not-run"] }
+      }
+    },
+    "decision": { "enum": ["allow","transformed","blocked"] },
+    "blockReason": { "type": ["string","null"] },
+    "upstream": {
+      "type": "object", "additionalProperties": false,
+      "properties": {
+        "confidentialAttemptIds": { "type": "array", "items": { "type": "string" } },
+        "agentSecondPass": { "enum": ["confirmed","claimed","unknown"] }
+      }
+    },
+    "chain": {
+      "type": "object", "additionalProperties": false,
+      "required": ["prevReceiptSha256","receiptSha256"],
+      "properties": {
+        "prevReceiptSha256": { "type": ["string","null"], "pattern": "^[a-f0-9]{64}$" },
+        "receiptSha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
+      }
+    },
+    "signature": {
+      "type": "object", "additionalProperties": false,
+      "required": ["alg","keyId","value"],
+      "properties": {
+        "alg": { "const": "ES256" },
+        "keyId": { "type": "string" },
+        "value": { "type": "string" },
+        "attestationChainDigest": { "type": ["string","null"] }
+      }
+    }
+  }
+}
+```
+
+**Rules.**
+- `receiptSha256` is computed over the canonical JSON (RFC 8785 JCS) with `signature` and `chain.receiptSha256` removed.
+- The user-facing view renders kind counts ("3 names, 1 phone number, 1 account number hidden"), the destination, the tier and any releases.
+- Receipts are archived through Alpha's existing export paths.
+- The agent can echo `receiptId` into upstream audit as a pipeline-hook annotation. That requires patch P3, because `ConfidentialInferenceAuditRecord` has no free field.
+
+---
+
+## 12. Evaluation harness and test plan
+
+### 12.1 Spoken-meeting evaluation set (new)
+
+**Composition.**
+- 60 scripted role-play meetings, 8–15 minutes each: wealth management (RIA), legal intake, M&A deal call, clinical intake, and personal/family.
+- 4 speakers each, mixed accents.
+- Recorded on Alpha's target devices in a quiet room and a noisy café.
+- Plus TTS renders of 2,000 ai4privacy 400k/500k rows ([HF](https://huggingface.co/datasets/ai4privacy/pii-masking-400k)), re-transcribed through Alpha's actual ASR routes to create ASR-noise variants.
+
+**Planted entities.** Names, including uncommon and non-English ones; employer and client names; account, routing, IBAN and card numbers **spoken digit by digit and in groups**; SSNs; DOBs; addresses; emails spelled out ("j dot smith at gmail dot com"); OTPs; passwords spoken aloud; MNPI phrases from a synthetic restricted list; deal code names.
+
+**Labelling.** Double-annotated gold spans **on each ASR output**, not only on the script, because the gate sees ASR output. Adjudicate disagreements, and record agreement (RedactionBench shows contextual agreement can be as low as 47.7%).
+
+**Storage.** Repo-external, encrypted. Only synthetic identities, with no real people.
+
+### 12.2 Metrics
+
+| Metric | Definition | T1 target | T2 target |
+|---|---|---|---|
+| Exact leak rate | Share of gold PII values whose normalised form (digits/letters only, plus spoken-form normalised) appears in **any captured egress byte** | ≤ 0.5% | **0** for Tier-1 identifiers (SSN, account, card, OTP, password); ≤ 0.2% overall |
+| Partial leak rate | Gold value of 8+ characters with any ≥ 4-digit or ≥ 6-letter contiguous fragment in egress | ≤ 2% | ≤ 0.5% |
+| Worst-class recall | Minimum span recall across classes | ≥ 0.90 | ≥ 0.97 |
+| Implicit re-identification | An LLM judge given the egress transcript plus public context guesses the real person or company (top-3) | Report | ≤ 5% |
+| Over-redaction | Share of flagged spans not in gold | ≤ 15% | ≤ 10% |
+| Task utility retention | Summary and action-item quality on redacted vs. raw input, judged against references | ≥ 90% | ≥ 85% |
+| Rehydration exactness | Share of model outputs where `restore(substitute(x))` round-trips the referenced entities | 100% | 100% |
+| Latency | Gate p50/p95 for a 300-word chat turn and a 10-minute transcript on the reference device | p95 ≤ 250 ms (chat) | p95 ≤ 2 s per minute of audio |
+
+Leaks are measured on **captured wire bytes** from a mock server, not on the gate's own output, so serialisation bugs count.
+
+### 12.3 Test plan, with evidence level
+
+| ID | Test | Level | Where |
+|---|---|---|---|
+| T-1 | Upstream detector golden tests ported (Luhn, SSN, IBAN, WIF, BIP-39, phone shapes) run against the **browser build** of the subpath | Unit (Node) | `test/redaction-detectors.test.mjs` |
+| T-2 | Gate property tests: `restore(substitute(x)) == x` for random corpora; idempotence; no real learned value in output | Unit | `test/egress-gate.test.mjs` |
+| T-3 | Spoken-form normaliser fixtures ("oh", "double", spelled emails, grouped digits) with offset-map correctness | Unit | `test/spoken-normalizer.test.mjs` |
+| T-4 | Streaming rehydration with surrogates split across chunks (upstream `GuardedStreamScanner`) | Unit | same |
+| T-5 | Policy matrix: every tier × channel × destination gives the expected allow, transform or block reason | Unit | `test/redaction-policy.test.mjs` |
+| T-6 | Renderer end-to-end: send a message with canary PII through the browser dev transport; the mock server asserts no canaries in bodies or headers; the UI shows rehydrated text | Browser (Playwright) | `test/browser/redaction-egress.spec.ts` |
+| T-7 | Java `EgressGuard`: missing receipt, digest mismatch, expired binding, residual PAN and T2 audio route are all refused **before** `getOutputStream()` | JVM unit plus instrumented | `android/app/src/test/...`, `androidTest/EgressGuardInstrumentedTest.java` |
+| T-8 | Bypass attempt: call `AlphaConnection.request` directly from the WebView console with a raw PII body; it must be rejected | Emulator instrumented | `androidTest` |
+| T-9 | Native NER: ORT model loads, span offsets map correctly, memory stays within budget, cold and warm latency | Physical device (state the model) | `scripts/android-redaction-ner-smoke.mjs` |
+| T-10 | Voice: on-device ASR, then transcript gate, then chat; at T2, paired and cloud routes are disabled in the UI and refused natively | Emulator + physical | `scripts/android-redaction-voice-smoke.mjs` |
+| T-11 | Local runtime second pass: with `ELIZA_*_SWAP_ENABLED`, a mock Cerebras endpoint (debug build, loopback) receives no canaries that bypassed the phone gate (for example, via memory or tool output) | Emulator, local agent | `scripts/android-local-agent-swap-smoke.mjs` |
+| T-12 | Double-pseudonymisation composition: phone surrogates go through agent swap and back, giving exact rehydration | Unit (Node, upstream runtime from `vendor/eliza`, no edit) | `backend/test-runtime.ts` style harness |
+| T-13 | Receipt schema validation, chain continuity, signature verification, no raw value in any receipt (grep canaries) | Unit + instrumented | `test/redaction-receipt.test.mjs` |
+| T-14 | Evaluation run on the spoken-meeting set; publish the report with metric definitions | Offline eval | `scripts/redaction-eval/` |
+| T-15 | Both distribution variants (standalone, launcher) built and smoke-tested | APK build + emulator | `npm run verify`, `npm run android:build` |
+
+---
+
+## 13. Reuse vs. patch
+
+| Need | Reuse upstream as-is | Needs patch in `patches/eliza` (or upstream PR) | Alpha-owned (no upstream change) |
+|---|---|---|---|
+| Tier-0 detection | `detectPii`, `PII_DETECTORS` | **P1**: browser-safe subpath `@elizaos/core/privacy` re-exporting `pii-detectors`, `entity-recognizer`, `pii-pseudonymizer`, `secret-swap`, `guarded-stream` and `audio-redaction` (math only), with `crypto-compat` and `buffer` resolved to WebCrypto and `Uint8Array` | Build-time generator for the Java floor patterns |
+| Name/org/place detection | `PiiEntityRecognizer`, `CompositeEntityRecognizer`, `GazetteerEntityRecognizer`, `canonicalKind` | **P5**: `plugin-pii-onnx` recogniser service for Node (enclave), registering `PII_ENTITY_RECOGNIZER_SERVICE` with OpenAI Privacy Filter or GLiNER-PII | `NativePiiRecognizer` and the `AlphaPrivacy` ORT plugin |
+| Reversible transforms | `PseudonymSession`, `SecretSwapSession`, `GuardedStreamScanner` | **P2**: `toSnapshot/fromSnapshot` on both sessions. **P6** (optional): `surrogateStyle: 'realistic' \| 'typed'` plus role annotation hook | Vault (Keystore), TTL, crypto-erase |
+| Agent second pass | Dispatcher swap wiring, env settings | — | Env flags in `AlphaLocalAgentPlugin.configureEnvironment`; cloud/enclave config |
+| Admission and audit | `ConfidentialInferenceAuthority`, SQLite audit; `processing-policy.ts` via 0036 | **P3**: an optional `annotations` field (e.g. `alphaRedactionReceiptId`, value-free) on `ConfidentialInferenceAuditRecord`, or a sibling `RedactionAuditRecord` sink | Receipt format, signing, archive |
+| Audio redaction | `buildAudioRedactionSpans`, `verifyAudioRedaction`, `AudioRedactionService` | **P4**: spoken-form-aware residual matching (an injectable normaliser in `findResidualPii`) | Word timings from on-device ASR |
+| Transcript redaction recipe | `transcriptPiiRecognizer` pattern (plugin-local-inference) | — | Port the recipe to the renderer gate |
+| Test debt | — | **P7**: unit suites for `pii-detectors`, `pii-pseudonymizer`, `secret-swap`, `entity-recognizer` and `audio-redaction-service` (missing in the pin; possibly present upstream after `ab8f9a`; check before writing) | — |
+
+Every patch follows the series convention (`patches/eliza/README.md`): numbered `00NN-*.patch`, verified with `git apply --check` against the recorded base, with an `*-source-base.json` digest and evidence, applied to an isolated upstream worktree, and **never** applied to the `vendor/eliza` checkout. The next numbers after 0036 are 0037 and up.
+
+---
+
+## 14. Work packages
+
+| WP | Scope | Output | Effort (eng-weeks) | Depends on |
+|---|---|---|---|---|
+| WP0 | Spike: bundle upstream `pii-detectors`, `pseudonymizer` and `secret-swap` into the renderer with Vite aliases for `node:crypto`/`node:buffer`; measure bundle size; confirm browser behaviour. Decide between P1 and a temporary alias shim | Spike report; go/no-go on P1 | 0.5 | — |
+| WP1 | **Quick win:** set `ELIZA_SECRET_SWAP_ENABLED`/`ELIZA_PII_SWAP_ENABLED` in `AlphaLocalAgentPlugin.configureEnvironment`; T-11 | Local runtime second pass | 0.5 | — |
+| WP2 | Patch P1 (browser-safe subpath) plus P7 detector tests, in an isolated upstream worktree; qualification per the README | `0037-core-privacy-subpath.patch` | 1.5 | WP0 |
+| WP3 | Renderer `EgressGate` (Section 7.1), policy module, chat (E1), mail (E2) and inbox/workflow (E7) integration, rehydration of replies and proposals, redaction preview UI in the mail review sheet; T-1..T-6 | Gate v1 (tier-0, gazetteer, secret-swap, pseudonymisation); no NER yet | 3 | WP0/WP2 |
+| WP4 | Java `EgressGuard` and `AlphaPrivacy` plugin (receipt registration, generated tier-0 floor, route allowlist, T2 audio refusal) wired into `AlphaConnectionPlugin.request` and `AlphaVoiceCloudPlugin.connect*`; T-7, T-8 | Native enforcement | 2 | WP3 |
+| WP5 | Vault with Keystore (`alpha.redaction.vault.v1`), memory-only first, then persistence after P2; patch P2 | Vault plus `0038-session-snapshots.patch` | 1.5 | WP3 |
+| WP6 | Receipts: schema, HMAC key, ES256 signing key, chain, user-facing receipt view, export; T-13 | Receipt v1 | 1.5 | WP3, WP4 |
+| WP7 | Native NER: ORT Android, GLiNER-PII edge UINT8 (default) with tokeniser and span decoder in Java; optional OpenAI Privacy Filter q4 pack behind a device-RAM gate; model download and integrity (SHA-256 pinned); T-9 | `NativePiiRecognizer` | 3–4 | WP3 |
+| WP8 | Voice: spoken-form normaliser, digit-run rule, confidence widening, roster gazetteer, T2 route policy; T-3, T-10; P4 if a redacted-audio artefact is in scope | Transcript gate | 2–3 | WP3, WP7 |
+| WP9 | Per-view ID tokenisation (T2) and browser excerpt channel | T2 context controls | 1 | WP5 |
+| WP10 | Enclave second pass: env flags, P5 ONNX recogniser plugin, ProcessingPolicy requiring a receipt at T2, P3 audit annotation | Agent-side enforcement | 2–3 | WP6; 0036 deployed |
+| WP11 | Evaluation set, harness and first report (Section 12); T-14 | Eval report v1 | 3 (plus actor and recording costs) | WP3, WP7, WP8 |
+
+Totals:
+- **WP0–WP6 plus WP9: about 12 weeks.** That is a usable T1 gate with native enforcement and receipts, without model NER.
+- **Adding WP7–WP8: about 17–19 weeks.** That reaches a T2-capable gate on emulator plus one physical device.
+- **Adding WP10–WP11: about 22–26 weeks** in total.
+
+Physical-device qualification of each tier is separate evidence, per `AGENTS.md`.
+
+---
+
+## 15. Concrete code: calling the upstream APIs
+
+These snippets are against the pinned upstream API. The `@elizaos/core/privacy` import path assumes P1; before P1, import from `@elizaos/core` in Node tests only.
+
+**(a) Tier-0 detection:**
+```ts
+import { detectPii } from '@elizaos/core/privacy';
+const hits = detectPii('Card 4111 1111 1111 1111, SSN 123-45-6789', { disabledKinds: new Set(['ipv4']) });
+// [{kind:'credit-card', value:'4111 1111 1111 1111', start:5, end:24}, {kind:'ssn', ...}]
+```
+
+**(b) Gate core: secret-swap first, then pseudonymise with a composite recogniser:**
+```ts
+import {
+  SecretSwapSession, PseudonymSession, CompositeEntityRecognizer,
+  RegexEntityRecognizer, GazetteerEntityRecognizer, DEFAULT_PSEUDONYM_BLOCKLIST,
+} from '@elizaos/core/privacy';
+
+const blocklist = [...DEFAULT_PSEUDONYM_BLOCKLIST, 'Alpha Phone'];
+const recognizer = new CompositeEntityRecognizer([
+  new RegexEntityRecognizer({ address: true }),                       // email/phone stay with secret-swap
+  new GazetteerEntityRecognizer(contacts.map(c => ({ kind: 'person', value: c.displayName })), { name: 'contacts' }),
+  new NativePiiRecognizer(AlphaPrivacy, ['person', 'organization', 'location', 'address']),
+], { blocklist });
+
+const secrets = new SecretSwapSession({ disabledKinds: policy.disabledSecretKinds });
+const people  = new PseudonymSession({ recognizer, blocklist });
+
+const masked = secrets.substituteText(userText);   // OTP/PAN/SSN/keys -> __ELIZA_SECRET_<nonce>_<n>__
+await people.learn(masked);                        // NER never sees raw secrets (same order as upstream dispatcher)
+const outbound = people.substituteText(masked);    // "Dana Whitfield" -> "Priya Okafor"
+// residual floor (fail closed)
+if (detectPii(outbound).some(m => !isOwnPlaceholderOrSurrogate(m, secrets, people))) throw new Error('residual-detected');
+```
+
+**(c) Streaming rehydration for the UI:**
+```ts
+import { GuardedStreamScanner } from '@elizaos/core/privacy';
+const scanner = new GuardedStreamScanner({ secretSession: null, piiSession: people });
+onText = chunk => render(scanner.push(chunk).visible);   // secrets stay masked in UI; names restored
+// on completion:
+render(scanner.flush().visible);
+const proposals = reply.proposals?.map(p => ({ ...p, description: people.restoreText(p.description) }));
+```
+
+**(d) Transcript recipe (mirrors upstream `transcript-store.ts:390`):**
+```ts
+import { PseudonymSession, detectPii } from '@elizaos/core/privacy';
+const s = new PseudonymSession({ salt: `transcript:${id}:${vaultSalt}`, recognizer: transcriptRecognizer });
+await s.learn(normalizedForDetection);            // spoken-form normalised copy
+const safe = typeMaskTier0(s.substituteText(written)); // tier-0 -> [CREDIT-CARD] etc.
+```
+
+**(e) Verified audio redaction (local runtime or paired host only; Node):**
+```ts
+import { AUDIO_REDACTION_SERVICE_TYPE, type AudioRedactionService } from '@elizaos/agent/services/audio-redaction-service';
+const svc = runtime.getService(AUDIO_REDACTION_SERVICE_TYPE) as AudioRedactionService;
+const res = await svc.redactAndVerify({
+  originalAudioUrl, durationMs,
+  words,                                        // TranscriptWord[] with startMs/endMs (required)
+  piiSpans: matches.map(m => ({ text: m.value, label: m.kind })),
+  mode: 'bleep', languageHint: 'en',
+});
+// res: { url, hash, reused, verifierIds, spanCount, sentinelTexts }; throws on any unverified outcome
+```
+
+**(f) Confidential inference admission in the enclave host (as the upstream bootstrap does):**
+```ts
+import { ConfidentialInferenceAuthority, runWithConfidentialInference } from '@elizaos/core';
+const authority = new ConfidentialInferenceAuthority({
+  handlers: [cerebrasHandler], currentProfile: () => profile, audit: sqliteAudit,
+  redispatchPolicy: 'deny-after-authorization', transport: attestedTransport,
+});
+await runWithConfidentialInference(authority, { agentId, modelType: 'TEXT_LARGE', handler: cerebrasHandler },
+  () => cerebrasHandler(runtime, params));
+```
+
+**(g) Escalation with fail-closed semantics (agent-side archive scrub):**
+```ts
+import { scrubWithEscalation } from '@elizaos/core';
+const r = await scrubWithEscalation(runtime, { text, candidateSpans: nerValues, rulesetVersion: '2026-10-01.1' });
+// throws PiiScrubFabricationError if residue exists and no PII_SCRUB model is registered
+```
+
+**(h) Java enforcement hook (`AlphaConnectionPlugin.request`, before writing the body):**
+```java
+byte[] body = call.getString("body", "").getBytes(StandardCharsets.UTF_8);
+egressGuard.admit(id, url, url.getPath(), body);   // throws EgressDeniedException -> call.reject("Blocked by redaction policy")
+try (OutputStream out = connection.getOutputStream()) { out.write(body); }
+```
+
+---
+
+## 16. Risks and open questions
+
+1. **Realistic vs. typed surrogates.** Upstream realistic surrogates keep LLM fluency. They also risk confusion: "Priya Okafor" could be a real contact. Mitigations: the collision check against learned values, and the gazetteer learning all contacts first. For compliance reviewers a typed display (`[PERSON 1]`) may be preferable, which is P6. Decide per tier.
+2. **NER memory on the phone.** The Privacy Filter q4 pack (875 MB) is not viable as a default. GLiNER-PII edge recall (72%, vendor figure) is too low for T2 on its own. T2 therefore needs the gazetteer, the spoken-form rules **and** the agent second pass. Report worst-class recall honestly.
+3. **Agent-executed actions on surrogates.** These need the T1/T2 rules in Section 8. This interacts with upstream approval semantics in 0001/0007, so check before WP3 ships.
+4. **The renderer can be bypassed.** The Java guard covers HTTP from plugins. It does not cover E6 (the in-process agent) or arbitrary WebView `fetch`. Confirm the CSP `connect-src` forbids remote origins from the WebView, so that only native plugins can reach the network.
+5. **Recordkeeping.** Redaction applies to the AI copy only. Originals may need WORM retention (see [04](04-redaction.md) and [05](05-regulation-compliance.md)).
+6. **Patents.** [04](04-redaction.md) lists US 12229313 and US 12189817. A freedom-to-operate review is needed before marketing audio de-identification.
+7. **Not verified in this session:** Limina re-identification endpoints; the full ML Kit type list (the fetched page summary was partial); GLiNER2-PII ONNX export; whether upstream after `ab8f9a` added tests for the core PII modules.
+
+---
+
+## Sources
+
+Code (pinned `vendor/eliza`): `packages/core/src/security/{pii-detectors,entity-recognizer,pii-pseudonymizer,secret-swap,guarded-stream,pii-pseudonym-map,pii-pseudonym-map-store,pii-scrub-seam,pii-context-pack,pii-scrub-markers,confidential-inference,redact,log-redaction}.ts`, `packages/core/src/{audio-redaction,audio-redaction-verify,transcripts,runtime}.ts`, `packages/core/src/runtime/model-dispatch/dispatcher.ts`, `packages/core/src/services/pii-scrub.ts`, `packages/agent/src/services/audio-redaction-service.ts`, `packages/agent/src/api/audio-redaction*.ts`, `packages/agent/src/security/confidential-sqlite-audit.ts`, `packages/agent/src/runtime/confidential-host-bootstrap.ts`, `plugins/plugin-local-inference/src/pii/*`, `plugins/plugin-local-inference/src/services/voice/transcript-store.ts`. Patches: `patches/eliza/0036-qualified-ab8f9a-runtime.patch` (`processing-policy.ts`). Alpha: `apps/app/src/runtime/{connection-ui.tsx,phone-context.ts,native-connection.ts,alpha-client.ts,reviewed-mail-context.ts}`, `apps/app/src/prototype/{agent-adapter.ts,inbox-cloud-adapter.ts,voice-adapter.ts}`, `android/app/src/main/java/ai/elizaresearch/alphaphone/{AlphaConnectionPlugin,AlphaCredentialStore,AlphaVoiceCloudPlugin,AlphaLocalAgentPlugin,BrowserReading}.java`.
+
+Web:
+- OpenAI Privacy Filter: [OpenAI announcement](https://openai.com/index/introducing-openai-privacy-filter/) (403 to the fetcher; facts via [HF model card](https://huggingface.co/openai/privacy-filter), [HF ONNX tree](https://huggingface.co/openai/privacy-filter/tree/main/onnx), [MarkTechPost](https://www.marktechpost.com/2026/04/28/openai-releases-privacy-filter-a-1-5b-parameter-open-source-pii-redaction-model-with-50m-active-parameters/), [Help Net Security](https://www.helpnetsecurity.com/2026/04/23/openai-privacy-filter-personally-identifiable-information/), [montevive browser demo](https://github.com/montevive/openai-privacy-filter))
+- GLiNER-PII: [knowledgator edge](https://huggingface.co/knowledgator/gliner-pii-edge-v1.0), [base](https://huggingface.co/knowledgator/gliner-pii-base-v1.0), [urchade multi PII](https://huggingface.co/urchade/gliner_multi_pii-v1), [NVIDIA gliner-PII](https://huggingface.co/nvidia/gliner-PII/discussions/6), [GLiNER2-PII arXiv 2605.09973](https://arxiv.org/abs/2605.09973)
+- Presidio: [Anonymizer](https://presidio.dataprivacystack.org/anonymizer/), [Deanonymization](https://deepwiki.com/microsoft/presidio/3.2.2-deanonymization), [GLiNER in Presidio](https://presidio.dataprivacystack.org/samples/python/gliner/), [issue #1569](https://github.com/data-privacy-stack/presidio/issues/1569)
+- Limina: [system requirements](https://docs.private-ai.com/installation/prerequisites-and-system-requirements), [site](https://www.getlimina.ai/en)
+- Tonic Textual: [product](https://www.tonic.ai/products/textual), [pricing](https://www.tonic.ai/pricing), [self-hosted](https://docs.tonic.ai/textual/textual-install-administer/deploying-a-self-hosted-instance), [tokenisation vs synthesis](https://tonic-textual-sdk.readthedocs-hosted.com/en/latest/redact/redact_config.html)
+- Android: [ML Kit Entity Extraction](https://developers.google.com/ml-kit/language/entity-extraction/android), [ML Kit Prompt API](https://developer.android.com/blog/posts/ml-kit-s-prompt-api-unlock-custom-on-device-gemini-nano-experiences), [LiteRT-LM](https://ai.google.dev/edge/litert-lm/overview), [LiteRT-LM blog](https://developers.googleblog.com/blazing-fast-on-device-genai-with-litert-lm/), [ORT mobile](https://onnxruntime.ai/docs/tutorials/mobile/), [OpenMed Android accelerators](https://openmed.life/docs/runtimes/android-accelerators/), [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx), [sherpa-onnx #2568](https://github.com/k2-fsa/sherpa-onnx/issues/2568), [Keystore](https://developer.android.com/privacy-and-security/keystore), [KeyProtection](https://developer.android.com/reference/android/security/keystore/KeyProtection)
+- Speech: [NeMo ITN](https://arxiv.org/pdf/2104.05055), [on-device streaming ITN](https://arxiv.org/html/2211.03721), [Dual-Form ASR ITN](https://arxiv.org/pdf/2609.02901), [SpeechShield](https://arxiv.org/abs/2502.01649), [SLUE](https://huggingface.co/datasets/asapp/slue), [N-best SLU](https://arxiv.org/pdf/2001.05284), [whisper.cpp DTW discussion](https://github.com/ggml-org/whisper.cpp/discussions/2307), [vLLM Whisper DTW PR](https://github.com/vllm-project/vllm/pull/47664), [CrisperWhisper](https://arxiv.org/pdf/2408.16589)
+- Benchmarks: [ai4privacy 400k](https://huggingface.co/datasets/ai4privacy/pii-masking-400k), [open-pii-masking-500k](https://huggingface.co/datasets/ai4privacy/open-pii-masking-500k-ai4privacy), [LLM-Redactor](https://arxiv.org/abs/2604.12064), [RedactionBench](https://arxiv.org/abs/2606.18782)
+
+
+---
+
+# 14 — SOC 2 technical plan for Alpha Phone
+
+Research date: 2026-10-02. Owner: security and compliance. Companion to [05 — Regulation and compliance](05-regulation-compliance.md), which already budgets "SOC 2 Type I, then Type II" as the first enterprise unlock.
+
+> **Not audit or legal advice.** A licensed CPA firm decides scope, criteria and opinion. This plan turns the AICPA criteria into concrete engineering work for this repository and its infrastructure. It also records the gaps that are visible today.
+>
+> **Conventions.** **(est.)** marks an analyst estimate (cost, effort, duration) that no primary source states. **[repo]** marks a fact observed in this repository or in its docs on 2026-10-02. TSC criterion text is paraphrased, not quoted. The authoritative text is the AICPA [2017 Trust Services Criteria (With Revised Points of Focus — 2022)](https://www.aicpa-cima.com/resources/download/2017-trust-services-criteria-with-revised-points-of-focus-2022).
+
+---
+
+## 0. Executive summary
+
+1. **SOC 2 does not certify the phone. It attests to a *service*.** For Alpha, that service is the agent service: software and OS updates for the device, the hosted agent or pairing path, inference routing and support. Plan it as a CPA attestation of that system. Do not plan it as a device certification. The device software is in scope as a *system component*. Its build, signing and update pipeline is in scope through change management (CC8).
+2. **The architecture changed on Oct 1, 2026, so the scope must change too.** [Architecture](../architecture.md) ADR-05 and the [on-device agent plan](../on-device-agent-plan.md) move the primary agent onto the Android device. They demote Nitro Enclaves to "historical optional work", but enclaves a–d are still running [repo: enclave-candidate-validation]. Inference still goes to hosted Cerebras. The SOC 2 boundary therefore has to cover: (a) the device runtime and its update chain; (b) whichever cloud components stay customer-facing (enclave remote agent, Eliza Cloud pairing and login, voice services); (c) Cerebras as a carved-out subservice organization. Do not describe the Nitro/attested-KMS path in a SOC 2 system description unless it is actually serving customers in the window.
+3. **Criteria to include.** Report 1 should cover **Security (CC1–CC9) + Confidentiality (C1) + Availability (A1)**. Add **Privacy (P1–P8)** to the first Type 2 if the recording or transcription beta ships to customers before the window starts. Add **Processing Integrity (PI1)** only when redaction is a contractual or marketed commitment with a measured accuracy target. Redaction claims are untestable until the pipeline exists; [05 §0](05-regulation-compliance.md) records "no redaction pipeline yet".
+4. **Realistic calendar** (assuming the work starts Mon 2026-10-05): readiness and remediation take about 12 weeks. The **Type 1 point-in-time date** falls around **2027-01-15**, with the report about 4 weeks later. The **Type 2 observation window** runs **2027-01-18 → 2027-04-16** (3 months, the accepted minimum for a first report), and the Type 2 report lands around **June 2027**. The second Type 2 should use a 12-month window **(est.)**.
+5. **Year-one budget** for a team this small: **$95k–$190k cash (est.)**. That covers the automation platform ($8–28k), auditor Type 1 + Type 2 ($20–60k), pen tests for mobile, cloud and the AOSP image ($20–45k), HSM and signing infrastructure ($10–30k), MDM, IdP and SIEM tooling ($8–25k) and a fractional vCISO or GRC lead ($30–60k). Add about **1.5–2 FTE of internal time** across 6 months.
+6. **The largest gaps are operational, not cryptographic.** The repo has strong integrity *engineering*: hash-pinned sources, 36 explicit upstream patches with source-base manifests, same-run APK manifest verification between CI jobs, Keystore AES-GCM credential storage, `allowBackup=false`. What it lacks is the *control environment*:
+   - no branch protection or rulesets;
+   - one committer and no second reviewer;
+   - unsigned commits;
+   - Actions pinned by tag;
+   - no Dependabot, CodeQL or SBOM;
+   - 14-day evidence retention;
+   - release APKs unsigned, with debug-signed launcher staging in CI;
+   - no production app, platform, AVB or OTA keys;
+   - an unsigned EIF with no locatable signer ARN or Terraform runner;
+   - a `trycloudflare.com` quick tunnel as public ingress;
+   - personal Gmail as the administrative identity;
+   - a production database service named `postgres-auth-restore-drill-20260825`;
+   - no written policies, risk register, vendor register, on-call or IR plan.
+
+---
+
+## 1. SOC 2 basics
+
+### 1.1 What SOC 2 is
+
+- SOC 2 is an attestation engagement performed by a licensed CPA firm under AICPA attestation standards (SSAE No. 18/21, AT-C 105/205). The engagement guidance is the AICPA *SOC 2® Reporting on an Examination of Controls at a Service Organization Relevant to Security, Availability, Processing Integrity, Confidentiality, or Privacy*, updated as of **October 15, 2022** for SSAE 20 and 21 ([AICPA guide](https://www.aicpa-cima.com/cpe-learning/publication/soc-2-reporting-on-an-examination-of-controls-at-a-service-organization-relevant-to-security-availability-processing-integrity-confidentiality-or-privacy); [Moss Adams summary](https://www.mossadams.com/articles/2022/11/aicpa-releases-updated-soc-2-guide)).
+- Controls are evaluated against the **2017 Trust Services Criteria (TSP 100), with revised points of focus from 2022** ([AICPA TSC](https://www.aicpa-cima.com/resources/download/2017-trust-services-criteria-with-revised-points-of-focus-2022); [Deloitte DART copy](https://dart.deloitte.com/USDART/home/auditing/aicpa/trust-services-principles-criteria-illustrations/aicpa-trust-services-principles-criteria/trust-services-criteria)). As of 2026, no newer TSC version exists, and the AICPA has issued no AI-specific criteria. Auditors fold AI risk into CC3 (risk), CC9 (vendors) and CC6/CC7 ([SureCloud](https://www.surecloud.com/resource-hub/soc-2-compliance-requirement-guide); [Workstreet](https://www.workstreet.com/blog/soc-2-type-2-for-ai-companies)).
+- The system description must satisfy **DC 200 (2018 Description Criteria, 2022 implementation guidance)** ([DC 200 PDF](https://assets.ctfassets.net/rb9cdnjh59cm/1vCduR1U2OnhIvFFaDBjMv/836050054707e9afb65adeb30d2e95d8/92317096_dc_section_200_clean_version.pdf)). Its required content:
+  - DC1: services provided;
+  - DC2: principal service commitments and system requirements;
+  - DC3: components (infrastructure, software, people, procedures, data);
+  - DC4: significant incidents;
+  - DC5: applicable criteria and controls;
+  - DC6: CUECs;
+  - DC7: subservice organizations and CSOCs;
+  - DC8: criteria not relevant, with reasons;
+  - DC9: significant changes during the period (Type 2).
+
+  See [Ledger Audits on DC 200](https://www.ledgeraudits.com/blog/dc-200-guidelines). The AICPA publishes an [illustrative SOC 2 report and description](https://www.aicpa-cima.com/resources/download/illustrative-soc-2-r-report-with-description-and-assertion), which is the best template for Alpha's Section III.
+- Report sections: (I) independent service auditor's report (the opinion); (II) management's assertion; (III) the system description; (IV) criteria, controls, tests and results (Type 2); optionally (V) unaudited "other information", such as management responses to exceptions.
+- **SOC 3** is a short, public, general-use version of the same examination. It is useful as a website badge once the Type 2 exists.
+
+### 1.2 Type 1 vs Type 2 and observation windows
+
+| | Type 1 | Type 2 |
+| --- | --- | --- |
+| Opinion on | Fairness of the description, and **design** suitability *as of a date* | The same, plus **operating effectiveness** *throughout a period* |
+| Window | A single date | 3–12 months; 3 months is acceptable for a first report, 6–12 is typical after that ([Scrut](https://www.scrut.io/hub/soc-2/soc-2-type-1-vs-soc-2-type-2); [Tevora](https://www.tevora.com/resource/how-long-does-it-take-to-complete-a-soc-2-audit/)) |
+| Sampling | Walkthrough of one instance | Samples across the period. Daily, weekly and quarterly controls each need evidence for every occurrence or for samples |
+| Buyer value | "Designed, not yet proven." Unblocks pilots and some mid-market deals | What enterprise procurement actually requires |
+| Validity | Not formally defined. Buyers expect the period end to be ≤12 months old. **Bridge (gap) letters**, issued by management, cover up to about 3 months past period end ([Drata](https://drata.com/learn/soc-2/bridge-letter); [I.S. Partners](https://www.ispartnersllc.com/blog/soc-2-bridge-letter/)) | |
+
+Many startups skip Type 1 ([Scrut](https://www.scrut.io/hub/soc-2/soc-2-type-1-vs-soc-2-type-2)). For Alpha, **Type 1 is still recommended**. The product is pre-production, the device and signing controls are novel to auditors, and a Nasdaq-listed parent benefits from an early, bounded, design-only opinion. Use it to settle the description and the carve-outs before the window starts. Keep the Type 1 date and the start of the Type 2 window adjacent so no controls lapse in between.
+
+### 1.3 The five TSC categories, and what Alpha should include
+
+There are 33 Common Criteria in CC1–CC9 (the COSO-derived CC1–CC5 plus CC6 logical/physical access, CC7 operations, CC8 change and CC9 risk mitigation). The additional categories are A1 (3), C1 (2), PI1 (5) and P1–P8 (18) ([Strac reference](https://www.strac.io/blog/soc-2-controls); [AuditPath on P1–P8](https://www.auditpath.io/blog/soc2-privacy-criteria)).
+
+| Category | Include? | Rationale for Alpha |
+| --- | --- | --- |
+| **Security (CC1–CC9)** | **Mandatory** | Always required. |
+| **Availability (A1)** | **Yes, from Report 1** | An "agent phone" that schedules, reminds and acts is an availability promise. The architecture doc concedes that a powered-off phone cannot execute local schedules, so the availability commitment must be scoped honestly. Covered: cloud remote agent, pairing/login, OTA service, inference failover. Excluded: the customer's own device power and network. A1 also forces backup, DR and capacity evidence that enterprise questionnaires ask for anyway. |
+| **Confidentiality (C1)** | **Yes, from Report 1** | Customers will entrust email, calendar, notes, photos, call and voice content, and confidential business information. C1.1/C1.2 require that confidential information is identified, protected and disposed of per commitments. This is the natural home for the "prompts leave the device only to Cerebras, which retains nothing" commitment and for redaction-before-egress. |
+| **Privacy (P1–P8)** | **Add in Type 2 #1 if the recording/transcription beta is GA before the window; otherwise Type 2 #2** | Privacy tests notice, consent, collection limitation, retention/disposal, data-subject access, disclosure, quality and monitoring. It needs *operating programs*: consent records, DSR workflows, breach notification ([AuditPath](https://www.auditpath.io/blog/soc2-privacy-criteria)). Alpha's recording, consent and biometric exposure ([05 §1–2](05-regulation-compliance.md)) makes Privacy commercially valuable. But testing it before the consent UX and retention engine exist guarantees exceptions. Implement P-aligned controls now (they are cheap if designed in) and put them in scope once they have operated. |
+| **Processing Integrity (PI1)** | **Defer until redaction is a commitment** | PI asks whether processing is complete, valid, accurate, timely and authorized. Redaction is the one Alpha function where accuracy *is* the security property: a missed SSN is a confidentiality breach. When redaction ships, scope PI1 narrowly to the redaction and transcription pipeline, against a published spec: entity classes, measured recall on a held-out set, fail-closed behavior. Agent tool actions (calendar/notes CRUD with approvals) are also PI-like, and the existing approval/receipt protocol is good evidence. Do not put "LLM answers are accurate" in PI scope. |
+
+**Redaction claims and SOC 2.** C1 covers protecting confidential data, so redaction-before-egress is a C1 control. P3/P4 cover collecting and using only what is needed, so redaction is also a minimization control. PI1 covers accuracy, so a redaction *recall* claim is a PI1 control. If marketing says "PII never reaches the model", the auditor can only opine on it when there is a control, a test and a measured exception rate. Until then, keep the claim out of the system description and out of marketing ([05 §4.5](05-regulation-compliance.md) has the retention-versus-redaction tension).
+
+### 1.4 Timeline and cost benchmarks
+
+| Item | Range | Source |
+| --- | --- | --- |
+| Automation platform: Vanta | $10k–$28k/yr for <50 employees; seed often $10–15k | [soc2auditors.org](https://soc2auditors.org/insights/vanta-soc-2/); [CostBench](https://costbench.com/software/compliance-management/vanta/) |
+| Drata | Observed $9.5k–$67k, median ~$25k; Foundation ~$7.5–10k | [Vendr](https://www.vendr.com/marketplace/drata); [Sprinto on Drata](https://sprinto.com/blog/drata-pricing/) |
+| Secureframe | Median ~$20k, range ~$7.7k–$32.6k | [Vendr](https://www.vendr.com/marketplace/secureframe); [soc2auditors.org](https://soc2auditors.org/insights/secureframe-pricing/) |
+| Sprinto | ~$6k–$30k; single framework $6–10k | [soc2auditors.org](https://soc2auditors.org/insights/sprinto-pricing/); [ComplyJet](https://www.complyjet.com/blog/sprinto-pricing) |
+| Auditor: Type 1 | ~$5k–$25k (boutique) | [Drata cost](https://drata.com/learn/soc-2/cost); [soc2auditors.org startup list](https://soc2auditors.org/soc-2-auditors-startups/) |
+| Auditor: Type 2 | ~$12k–$30k boutique (Johanson, Prescient); Advantage Partners $15k–$50k; mid-tier and Big 4 much higher | [Patotski](https://patotski.com/blog/soc-2-cost-for-startup-saas/); [Secureleap auditors](https://www.secureleap.tech/blog/best-soc-2-auditors-for-your-company) |
+| Pen test | SOC 2 SaaS $8k–$25k; mobile $5k–$30k; cloud $10k–$40k+ | [soc2auditors.org pentest](https://soc2auditors.org/soc-2-penetration-testing-firms/); [Blaze](https://www.blazeinfosec.com/post/how-much-does-penetration-testing-cost/) |
+| All-in first year, small SaaS | $25k–$75k typical | [Vanta guide](https://soc2auditors.org/insights/vanta-soc-2/); [Workstreet](https://www.workstreet.com/blog/soc-2-audit-cost) |
+
+Alpha should budget above the SaaS median **(est.)**. It has a custom OS image, device signing keys, an enclave/KMS path and a public-company parent whose ITGC auditors may want to rely on the report.
+
+### 1.5 Auditor choices
+
+- **Boutique, startup-friendly firms that integrate with the automation platforms:** Johanson Group, Prescient Assurance, Advantage Partners, Insight Assurance, Sensiba, Assure Professional, A-LIGN (larger). See the [83-firm list](https://soc2auditors.org/soc-2-auditors-startups/).
+- **Mid-tier, for when the parent's external auditor or regulated buyers need a recognizable name:** Schellman, Moss Adams/Baker Tilly, BDO, Linford & Co, Coalfire (also a FedRAMP 3PAO).
+- **Selection criteria for Alpha:**
+  1. Experience with mobile, IoT or hardware products and with signing and PKI controls. Ask for a redacted example description covering firmware or OTA.
+  2. Willingness to test controls that are evidenced by build artifacts (provenance, signatures) rather than screenshots.
+  3. AWS Nitro Enclaves and KMS familiarity.
+  4. Ability to do **SOC 2+ HIPAA** later.
+  5. Independence: do not hire the firm that sells your readiness consulting to also issue the opinion.
+  6. Peer review status. Check the firm on the AICPA peer review public file.
+
+---
+
+## 2. Scope definition for Alpha
+
+### 2.1 Draft system description (DC1–DC3)
+
+**Services (DC1).** Alpha Phone is a managed Android agent phone. It provides:
+- (a) the Alpha launcher and app (standalone and HOME flavors) and, for managed SKUs, a custom AOSP image with signed OTA updates;
+- (b) an on-device elizaOS agent runtime that orchestrates tasks, stores conversation state, applies tool-approval policy and executes device actions (calendar, notes, reminders, files, browser reading);
+- (c) hosted LLM inference, routed to Cerebras (model: Qwen `qwen-3.8-27b` via the Cerebras API). Only explicitly configured, user-visible context is sent;
+- (d) optional remote/cloud agent hosting: the enclave-backed remote agent and Eliza Cloud account, pairing and agent hosting, where offered;
+- (e) planned on-device ASR and a redaction pipeline;
+- (f) customer support and fleet management.
+
+**Principal service commitments (DC2).** These are the drafts to put in the MSA, DPA, security exhibit and privacy notice. Make them testable.
+
+| ID | Commitment | Criteria | Notes |
+| --- | --- | --- | --- |
+| SC-1 | Customer content is encrypted in transit (TLS 1.2+) and at rest (Android FBE + Keystore AES-GCM on device; KMS-managed keys in cloud) | CC6.1, CC6.7, C1.1 | |
+| SC-2 | Model prompts are sent only to approved inference subprocessors, which contractually retain no prompt or output content | C1.1, CC9.2 | Backed by [Cerebras: no retention of prompts, requests/responses, logs, inputs or outputs](https://support.cerebras.net/articles/1811589793-does-cerebras-retain-my-data) |
+| SC-3 | Tool actions with side effects require explicit user approval and produce a receipt | CC6.1, PI1.3 | Existing approval/receipt protocol |
+| SC-4 | Security updates are delivered within N days of an Android Security Bulletin for supported devices | CC7.1, CC8.1 | |
+| SC-5 | Customer data is deleted within N days of account deletion or contract end | C1.2, P4.3 | |
+| SC-6 | Availability target for cloud components (e.g. 99.5% monthly, est.) | A1.1–A1.2 | Explicitly *not* for powered-off devices |
+| SC-7 | Security incidents affecting customer data are notified within 72 hours | CC7.4, P6.5 | |
+| SC-8 | Recordings are captured only with visible indicator and configured consent, and retained per tenant policy | P2, P4 | When Privacy is in scope |
+
+**Components (DC3).**
+
+| Layer | Component | In SOC 2 boundary? |
+| --- | --- | --- |
+| Infrastructure | AWS account `771726864498`, us-east-2: EC2 Nitro hosts, enclaves a–d, KMS data key, IAM role `shaw-enclave-host`, EBS volume [repo] | **Yes**, if remote agent is a customer-facing service in the window |
+| Infrastructure | Cloudflare (Workers `eliza-cloud-api-prod`, DNS, Tunnel), Railway (`eliza-cloud` Postgres, agent-server, voice services `whisper-stt`, `kokoro-tts`) [repo: cloud-production-validation] | **Yes, if Alpha's entity operates Eliza Cloud**. Otherwise Eliza Cloud is itself a subservice organization. **Scoping decision #1**: see §2.3 |
+| Infrastructure | GitHub (`AlphaCompute/alphaphone`, private), GitHub Actions hosted runners | Yes, as tooling: carved-out vendor plus in-scope configuration |
+| Infrastructure | AOSP build host (Linux x86_64, not yet allocated [repo: android-and-aosp]), signing HSM or KMS, OTA distribution (to be selected) | Yes, once production devices exist |
+| Software | Alpha app/launcher (`ai.elizaresearch.alphaphone`), `vendor/eliza` pinned submodule + `patches/eliza/*.patch`, AOSP product overlay `vendor/alphaphone`, enclave EIF, local speech runtime | Yes |
+| Endpoint | Customer devices | Device *software controls* are in scope. The physical device and user behavior are CUECs |
+| Endpoint | Alpha-owned test, demo and fleet devices; employee laptops | Yes (asset inventory, MDM) |
+| People | Founder/CEO (system owner), engineers, contractors, any agentic coding tools with repo write access | Yes. AI coding agents with commit rights must be treated as privileged identities |
+| Procedures | Change, release, signing, enclave admission, incident, access review, vendor review | Yes |
+| Data | See §2.5 | Yes |
+
+### 2.2 Boundary diagram and data flows
+
+```
+                 ┌──────────────────────── SOC 2 SYSTEM BOUNDARY ───────────────────────────┐
+ Customer user   │                                                                          │
+ (CUECs)         │  Alpha device (customer-held)                                            │
+   │ voice/touch │  ┌──────────────────────────────────────────────┐                        │
+   └────────────►│  │ AOSP image (AVB release keys, locked BL)     │◄── signed OTA ──┐      │
+                 │  │  └ Alpha launcher/app (APK v2/v3 signed)     │                 │      │
+                 │  │     └ native IPC ─ on-device elizaOS agent   │                 │      │
+                 │  │         ├ local state (FBE + Keystore AES)   │                 │      │
+                 │  │         ├ on-device ASR (planned)            │                 │      │
+                 │  │         └ redaction (planned) ──┐            │                 │      │
+                 │  └─────────────────────────────────┼────────────┘                 │      │
+                 │                    TLS 1.2+ prompts │ (redacted, minimal)          │      │
+                 │                                     ▼                              │      │
+                 │   Optional: pairing/login ──► Eliza Cloud API (CF Worker) ─► Postgres   │
+                 │   Optional: remote agent  ──► Named CF Tunnel ─► EC2 host ─► Nitro enclave
+                 │                                                   │ attestation  │      │
+                 │                                                   └─► AWS KMS (PCR0/PCR8 policy)
+                 │   Build/Release: GitHub ─► Actions (provenance) ─► signing HSM ─► OTA/APK store
+                 └─────────────────────────────────────┬────────────────────────────────────┘
+                                                       ▼   (carved out, CSOCs)
+                        Cerebras Inference ─ AWS ─ Cloudflare ─ GitHub ─ Railway ─ Google (OAuth)
+```
+
+Data flows to document, each with its own diagram in the description:
+
+| Flow | Path | Notes |
+| --- | --- | --- |
+| F1 Voice | mic → on-device ASR → transcript → (redaction) → agent | Audio is never forwarded to Cerebras. `local-asr.mjs` already asserts this for the host path [repo: agent-integration]. |
+| F2 Inference | agent → TLS → Cerebras → response | Model ID recorded per request. No embeddings, because Cerebras supplies none [repo]. |
+| F3 Tool actions | agent proposal → user approval → native bridge → Android provider (Calendar, etc.) → receipt | |
+| F4 Account | phone → `/api/auth/cli-session` → browser approval → 90-day org API key → stored in Keystore [repo] | |
+| F5 Remote agent | phone → ingress → enclave over vsock → KMS decrypt of state data key, conditioned on attestation | |
+| F6 Release | commit → CI build → provenance → signing → APK, OTA payload and EIF → distribution → device verification (AVB/APK signature) and enclave PCR admission | |
+| F7 Support and telemetry | Crash and diagnostic logs must be redacted. Define this flow now; it is the classic place PII leaks. | |
+
+### 2.3 Subservice organizations: carve-out vs inclusive
+
+Under the **carve-out** method, the description names the subservice organization and its services, lists the **complementary subservice organization controls (CSOCs)** Alpha assumes it performs, and excludes its controls from testing. Alpha then has to *monitor* it, usually by reviewing its SOC 2 each year and mapping its CUECs. Under the **inclusive** method, the subservice organization's controls are described and tested inside Alpha's report. That needs the subservice organization's participation and assertion, and large providers essentially never agree to it ([I.S. Partners](https://www.ispartnersllc.com/blog/subservice-organization-ssae18-carve-out-inclusive-method/); [Linford](https://linfordco.com/blog/inclusive-audit-method-soc-1-soc-2-reports/); [OneUptime](https://oneuptime.com/blog/post/2026-08-04-soc-2-carve-out-vs-inclusive-subservice-organizations/view)).
+
+**Recommendation: carve out all of them.** The table lists each one's assurance, the CSOCs Alpha relies on, and what Alpha monitors (CC9.2).
+
+| Subservice org | Assurance available | CSOCs Alpha relies on | Alpha monitoring control (CC9.2) |
+| --- | --- | --- | --- |
+| **AWS** (EC2 Nitro, KMS, IAM, CloudTrail, S3) | SOC 1/2/3 via **AWS Artifact** ([AWS Artifact](https://docs.aws.amazon.com/artifact/latest/ug/what-is-aws-artifact.html)). KMS is in SOC, PCI, FedRAMP and HIPAA programs ([KMS compliance](https://docs.aws.amazon.com/kms/latest/developerguide/kms-compliance.html)) | Physical security; hypervisor and Nitro isolation; KMS HSM key protection; attestation document signing; availability of regions | Annual Artifact download; map AWS CUECs (IAM config, encryption, logging, backups) to Alpha controls ([AWS SOC 2 guide](https://d1.awsstatic.com/whitepapers/compliance/AICPA_SOC2_Compliance_Guide_on_AWS.pdf); [Secureframe on AWS report](https://secureframe.com/blog/aws-soc-2-report)) |
+| **Cerebras Systems** (inference) | **SOC 2 Type 2**, GDPR, CCPA; SOC 2 report, pentest and DPA on request at [trust.cerebras.ai](https://trust.cerebras.ai/). Its own subprocessors: AWS, Cloudflare, HubSpot, SendGrid, Mixpanel | Prompts and outputs not retained or logged; access control on inference infrastructure; encryption in transit; incident notification | NDA → obtain report; confirm the report period covers the **Inference API** (not only Cerebras hardware or training cloud); signed DPA with zero-retention clause; confirm **HIPAA BAA** availability in writing before any PHI (third-party sources claim a HIPAA posture and enterprise BAA, e.g. [Infrabase](https://infrabase.ai/inference-apis/cerebras), unverified); re-review on any model or version change |
+| **Cloudflare** (Workers, DNS, Tunnel) | SOC 2 Type II (Security, Confidentiality, Availability), all plans in scope, downloadable from the dashboard ([Cloudflare SOC 2](https://www.cloudflare.com/trust-hub/compliance-resources/soc-2/)) | Edge TLS termination; Worker isolation; Tunnel connector auth | Annual review. **Quick tunnels have no SLA and are for testing only** ([Cloudflare docs mirror](https://cloudflare-docs.justalittlebyte.ovh/cloudflare-one/connections/connect-networks/do-more-with-tunnels/trycloudflare/)). They cannot sit inside a commitment |
+| **GitHub** | SOC 1 and SOC 2 Type 2 for Enterprise Cloud; org owners download them under Settings → Compliance ([GitHub blog](https://github.blog/news-insights/product-news/github-has-soc-1-and-soc-2-type-2-reports/)) | Repo storage integrity, Actions runner isolation, Sigstore attestation service | Annual review; org audit-log export |
+| **Railway** (if Eliza Cloud is in scope) | SOC 2 Type II, SOC 3, HIPAA attestation; BAA on request ([trust.railway.com](https://trust.railway.com/); [changelog](https://railway.com/changelog/2025-08-01-soc-2-type-ii)) | Database host security, backups at platform level | Annual review; confirm Postgres backup/PITR features used |
+| **Google** (Workspace/IdP, OAuth for Gmail connector) | SOC 2/3, ISO 27001 | IdP authentication | Annual review |
+| **Eliza Cloud** (if operated by a different legal entity than Alpha) | None known. **Scoping decision #1** | Account auth, org key issuance, agent hosting | If it is a separate entity, get its SOC 2 or exclude Cloud features from the committed service. If it is the same entity and team, put it **in** scope. Do not leave it ambiguous |
+
+### 2.4 Complementary user entity controls (CUECs)
+
+These go in Section III and in the customer security exhibit. The customer is responsible for:
+
+1. Provisioning and deprovisioning its users' Alpha accounts and devices, and promptly reporting lost or stolen devices.
+2. Setting a device screen lock and biometric. Not unlocking the bootloader or sideloading over managed policy.
+3. Obtaining legally required consent from all parties before recording conversations, as the employer or recording party. Configuring retention to its legal-hold and recordkeeping obligations (see [05 §1, §4](05-regulation-compliance.md)).
+4. Approving or denying agent tool actions, and reviewing receipts.
+5. Protecting third-party account credentials it connects (Google OAuth grants), and revoking them on offboarding.
+6. Not entering PHI or regulated data unless a BAA or other addendum is signed with Alpha.
+7. Keeping devices connected so OTA security updates install within the published window.
+8. Configuring its own MDM or EMM if it manages devices with Android Enterprise.
+
+### 2.5 Data classification
+
+| Class | Examples in Alpha | Handling baseline |
+| --- | --- | --- |
+| **Restricted — secrets** | App, platform, AVB and OTA signing keys; EIF signing key (PCR8); KMS key policies; Cerebras API key; Cloud org API keys (90-day); OAuth refresh tokens; Railway and Cloudflare credentials | HSM/KMS only. Never in repo, CI logs or laptops. Two-person use for signing keys |
+| **Restricted — customer content** | Audio, transcripts, messages, email bodies, notes, photos, documents, browser page content, cross-app notification text, location, contacts | On-device FBE + Keystore. Minimum necessary egress, redacted where possible. Cerebras ZDR. Retention per tenant. Never in telemetry |
+| **Restricted — special category** | Voiceprints/diarization embeddings (biometric under BIPA etc.), PHI, financial data | Off by default. Explicit consent. Separate keys. Privacy-in-scope controls |
+| **Confidential — customer metadata** | Account email, org ID, device IDs, credit balance, usage metrics | Encrypted DB, RBAC, access logged |
+| **Internal** | Source code, patches, CI logs, PCR measurements (PCRs can be public; publishing them is recommended) | Repo access control |
+| **Public** | Marketing, privacy notice, transparency log of release digests and PCRs | — |
+
+---
+
+## 3. Control-by-control technical requirements
+
+Each table gives the criterion (paraphrased), the **Alpha implementation** for this stack, **evidence**, and **status** as of 2026-10-02.
+
+Status key:
+- ❌ absent
+- ◐ partial
+- ✅ present
+
+### CC1 — Control environment
+
+| Crit. | Requirement | Alpha implementation | Evidence | Status |
+| --- | --- | --- | --- | --- |
+| CC1.1 | Integrity and ethical values | Code of conduct + acceptable use policy, acknowledged at hire and annually. Sanctions policy. Inherit the parent company's Nasdaq-required code of ethics where possible | Signed acknowledgments | ❌ for Alpha; the parent likely has one (verify) |
+| CC1.2 | Board/oversight independence | Parent board's audit committee (or a delegated security committee) receives a quarterly security and compliance report | Minutes, decks | ❌ |
+| CC1.3 | Structure, reporting lines, authority | Org chart. Named **system owner**, **security officer** (fractional vCISO acceptable), **privacy officer**, **release manager**, **signing-key custodians (≥2)** | Org chart, RACI | ❌ |
+| CC1.4 | Competence | Job descriptions with security responsibilities; training records; contractor agreements | HRIS records | ❌ |
+| CC1.5 | Accountability | Performance reviews include security objectives; policy violation process | Review records | ❌ |
+
+**HR controls (CC1.4/CC1.5, CC2.2):**
+- Background checks for everyone with production, signing or customer-data access, using Checkr or Certn (about $30–$80 per check, est.; local law limits apply).
+- NDA/confidentiality and IP assignment at hire.
+- Security awareness training at hire and annually, plus phishing simulation (KnowBe4 or platform-bundled).
+- Secure-coding training for engineers (OWASP Mobile Top 10, OWASP LLM Top 10).
+- Offboarding checklist with **same-day** revocation of IdP, GitHub, AWS, Cloudflare, Railway and Cerebras access, plus device return or wipe.
+
+### CC2 — Communication and information
+
+| Crit. | Requirement | Alpha implementation | Evidence | Status |
+| --- | --- | --- | --- | --- |
+| CC2.1 | Quality information to support controls | Asset inventory, data-flow diagrams (§2.2), system description, and a control matrix kept in the GRC platform | Platform exports | ◐ Docs are rich but are engineering narrative, not control artifacts |
+| CC2.2 | Internal communication of responsibilities | Policies published in the platform; Slack #security; documented on-call; internal incident reporting channel | Policy acceptance logs | ❌ |
+| CC2.3 | External communication | Public trust page (SOC 3 later); `SECURITY.md` + `security.txt` + vulnerability disclosure policy; customer security exhibit; status page; privacy notice; change notifications for subprocessors | Published URLs | ❌ No `SECURITY.md` in repo |
+
+### CC3 — Risk assessment
+
+| Crit. | Requirement | Alpha implementation | Evidence | Status |
+| --- | --- | --- | --- | --- |
+| CC3.1 | Objectives specified | Security objectives derived from the SC-1…SC-8 commitments | Risk program doc | ❌ |
+| CC3.2 | Identify and analyze risk | **Annual risk assessment + threat model.** Entities: device (lost phone, malicious app, bootloader unlock), agent (prompt injection via web, email or notifications → unauthorized tool action; OWASP LLM01), inference egress (over-sharing context), supply chain (upstream elizaOS, npm 3,227 packages [repo], Actions, AOSP), signing keys, enclave/KMS policy, Cloud account takeover | Risk register with likelihood × impact and owners | ❌ No register (05 doc is market research, not a risk register) |
+| CC3.3 | Fraud risk | Credit-ledger manipulation (Cloud credits: existing doc rightly bans direct SQL balance edits [repo]); insider abuse of admin DB reads; signing-key misuse | Fraud section in risk register | ◐ Good norms in docs, not formalized |
+| CC3.4 | Significant changes | Architecture changes trigger a risk re-assessment. The **Oct 1 enclave → on-device pivot** is exactly such a change; record it as a DC9 significant change if it occurs in a window | Change-impact assessment | ◐ ADR exists; no risk re-assessment |
+
+### CC4 — Monitoring activities
+
+| Crit. | Requirement | Alpha implementation | Evidence | Status |
+| --- | --- | --- | --- | --- |
+| CC4.1 | Ongoing and separate evaluations | Continuous control monitoring in Vanta/Drata (AWS, GitHub, IdP, MDM integrations); quarterly internal control self-assessment; annual third-party pen test; quarterly access reviews | Platform test history; pen-test report | ❌ |
+| CC4.2 | Communicate deficiencies | Deficiencies tracked as tickets with SLA; reported in the quarterly security report | Tickets | ❌ |
+
+### CC5 — Control activities
+
+| Crit. | Requirement | Alpha implementation | Evidence | Status |
+| --- | --- | --- | --- | --- |
+| CC5.1 | Select controls that mitigate risk | Control matrix mapped to the risk register | Matrix | ❌ |
+| CC5.2 | Technology general controls | The CC6–CC8 controls below | — | — |
+| CC5.3 | Policies and procedures deployed | Policy set in §5.2, approved by management, reviewed annually | Approval records | ❌ |
+
+### CC6 — Logical and physical access
+
+| Crit. | Requirement | Alpha implementation | Evidence | Status |
+| --- | --- | --- | --- | --- |
+| **CC6.1** | Logical access security, infrastructure and architecture | **Identity:** move every admin identity off personal Gmail to a corporate IdP (Google Workspace or Okta/Entra) with **phishing-resistant MFA (FIDO2 security keys)** for all humans. SSO into AWS (IAM Identity Center), GitHub (Enterprise Cloud SAML + enforced 2FA), Cloudflare, Railway, Cerebras console and the GRC platform. **AWS:** AWS Organizations with separate `management`, `security/log-archive`, `prod`, `staging` and `build/signing` accounts. Root MFA hardware keys in a safe, root unused. SCPs deny leaving the org, disabling CloudTrail/GuardDuty/Config, creating IAM users or access keys, and actions outside approved regions; deny `kms:PutKeyPolicy` / `ScheduleKeyDeletion` except via the Terraform pipeline role. **No long-lived access keys**; CI uses GitHub OIDC → IAM role with `sub` claim pinned to repo, branch and environment. **KMS:** key policies grant no blanket `arn:aws:iam::<acct>:root` usage with IAM delegation. Trail of Bits shows any IAM admin can then bypass the attestation condition ([ToB 2026](https://blog.trailofbits.com/2026/08/05/a-few-notes-on-aws-nitro-enclaves-kms-integration/)); use explicit principals and explicit denies. **Device:** native Keystore-backed secrets (present), and no credentials in renderer storage (present per architecture doc) | IdP config export; AWS SCP JSON; IAM Access Analyzer report; KMS policy in Terraform; Keystore code | ◐ Device side good; cloud identity ❌ (personal Gmail; invalid local AWS profile; Wrangler OAuth cached in personal home dir [repo]) |
+| CC6.2 | Registration and authorization before access | Access request tickets approved by the system owner; role-based groups in IdP; joiner workflow | Tickets | ❌ |
+| CC6.3 | Role-based, least privilege, removal | IAM permission sets: `ReadOnly`, `Operator`, `Break-glass`. Production DB read requires a ticket plus time-boxed elevation (e.g. IAM Identity Center TEAM, or Teleport/StrongDM for Postgres). **Quarterly access reviews** of AWS, GitHub, Cloudflare, Railway, Cerebras, IdP. The 2026-09-30 read-only production query used appropriate safeguards (read-only transaction, timeouts, minimal columns [repo]); formalize that as a "production data access" procedure with ticket and log | Review sign-offs | ❌ |
+| CC6.4 | Physical access | Fully inherited from AWS, Cloudflare, Railway and Cerebras (CSOCs). Office: N/A or badge logs. **Signing HSM location** (if on-prem) requires physical controls | Vendor SOC reports | Inherit |
+| CC6.5 | Disposal of assets and data | Laptop and phone wipe certificates; device RMA wipe procedure (factory reset + FBE key destruction); cryptographic erasure via KMS key deletion for retired tenants | Wipe logs | ❌ |
+| **CC6.6** | Protection against threats outside the boundary | **Replace the trycloudflare quick tunnel with a named Cloudflare Tunnel** on an Alpha zone, with Access policies and WAF/rate limiting. Quick tunnels: no SLA, 200 in-flight request cap ([Cloudflare docs](https://cloudflare-docs.justalittlebyte.ovh/cloudflare-one/connections/connect-networks/do-more-with-tunnels/trycloudflare/); [DeepWiki](https://deepwiki.com/cloudflare/cloudflared/3.4-quick-tunnels)). Close the Railway Postgres public TCP proxy, or require verified TLS; today it presents a self-signed chain [repo]. Security groups deny all inbound except the tunnel. Enclave ingress keeps `ELIZA_REQUIRE_LOCAL_AUTH=1` (present [repo]). Device: Android network security config with cleartext disabled in release (present); certificate pinning for Alpha endpoints (optional; weigh against rotation risk) | Tunnel config; SG exports; scan results | ❌ Quick tunnel in use; public DB proxy |
+| **CC6.7** | Restrict transmission, movement and removal of data | TLS 1.2+ everywhere; HSTS. Egress allow-list on the enclave host (Cerebras, KMS, Cloud API only). **Device egress policy:** only the inference endpoint and Alpha services; prompt-construction code enforces minimum context and (later) redaction before egress; logs never contain content. USB/adb disabled on production builds (`user` build, `ro.adb.secure=1`). Employee DLP: MDM-enforced disk encryption; no customer data on laptops | Network policy; build props; unit tests asserting no content in logs | ◐ `usesCleartextTraffic=false` and `allowBackup=false` in main manifest ✅; debug manifest permits cleartext (acceptable only if debug builds never ship) |
+| **CC6.8** | Prevent or detect unauthorized or malicious software | **Device:** locked bootloader with **Alpha AVB keys**, either a custom root of trust in `avb_custom_key` (the GrapheneOS model on Pixels) or OEM-fused keys on a custom SKU ([AOSP device state](https://source.android.com/docs/security/features/verifiedboot/device-state)). APK v2/v3 signature with pinned certificate; Play Protect or equivalent for non-GMS. **Cloud:** enclave admission only for PCR0 values in the release transparency log, with PCR8 signer pinning. GuardDuty Malware Protection for EBS; immutable AMIs. **Endpoints:** EDR on laptops (CrowdStrike, SentinelOne or MDM-native) | AVB key fingerprints; `apksigner verify --print-certs`; KMS policy conditions; EDR console | ❌ No production keys; EIF unsigned |
+
+**Key management (CC6.1/CC6.7/CC6.8), the part most specific to Alpha.**
+
+| Key | Today [repo] | Required control |
+| --- | --- | --- |
+| Android app signing key (`ai.elizaresearch.alphaphone`) | Debug keystore outside repo; release unsigned; "no production signing material is created by setup" | Generate in an **HSM** (AWS CloudHSM, Google Cloud KMS/HSM via PKCS#11, or a YubiHSM 2 offline ceremony). Record the ceremony (two custodians, video, script, hash of public cert). Sign in a dedicated `release` GitHub Environment with required reviewers, or in an isolated signing service that only accepts **provenance-verified** unsigned APKs. Enable **APK Signature Scheme v3 rotation lineage** so a compromised key can be rotated ([apksigner docs](https://developer.android.com/tools/apksigner); [Guardsquare v3](https://www.guardsquare.com/blog/android-apk-signature-scheme-v3-context-and-new-opportunities)). If distributing via Play, use Play App Signing plus a separate upload key |
+| AOSP platform keys (`releasekey`, `platform`, `shared`, `media`, `networkstack`, …) | None. The image lane is not yet built | Generate per AOSP "Sign builds for release". **Never ship test-keys.** Sign target files with `sign_target_files_apks -o` and the AVB key flags ([AOSP sign builds](https://source.android.com/docs/core/ota/sign_builds)). Keys stay in the HSM or an offline signing host. An APEX key per APEX |
+| AVB / vbmeta key | None | RSA-4096 in HSM. Device root of trust = this key. Rollback index policy. Document the lost-key recovery story: there is none without a new key, so treat as crown jewel |
+| OTA payload signing key | None | Separate key. OTA packages generated from signed target files. Device update engine verifies. Staged rollout + rollback |
+| Nitro EIF signing key (PCR8) | Exists somewhere, but **signer ARN and operator not locatable**; the documented alias returns NotFound; the candidate EIF is unsigned [repo] | Recover or re-establish custody (KMS asymmetric ECDSA key in the `build/signing` account; `nitro-cli sign-eif` supports a KMS ARN ([AWS docs](https://docs.aws.amazon.com/enclaves/latest/user/cmd-nitro-sign-eif.html))). If custody cannot be proven, **rotate the signer**: new PCR8, a new KMS policy statement, and retire the old signer after migration. An auditor will not accept "the key exists but no one can find who controls it" |
+| KMS data key for enclave state (`ba3b5556-…`) | Policy managed by `terraform/kms.tf` in an unlocated workspace; host cannot read policy [repo] | Terraform in a dedicated repo with remote state (S3 + DynamoDB lock, versioned), plan/apply only from CI OIDC role. **Two-person rule:** PR approval by a second key custodian plus GitHub Environment reviewer before `apply`. CloudTrail alert on any `PutKeyPolicy`, `CreateGrant`, `DisableKey`, `ScheduleKeyDeletion`. Key policy conditions: `kms:RecipientAttestation:PCR0` (image), `PCR8` (signer), `PCR3` (host role) ([KMS attestation conditions](https://docs.aws.amazon.com/kms/latest/developerguide/conditions-attestation.html)). Explicit deny for all other principals on `Decrypt` / `GenerateDataKey` without attestation |
+| Cerebras API key; Cloud org API keys | Env var on dev host; Keystore on device; 90-day org keys | Store in AWS Secrets Manager / Cloudflare secrets. Rotate ≤90 days. Per-environment keys. Usage alerts |
+
+**Encryption at rest:**
+- Device: Android FBE (default on modern Android) plus app-level Keystore AES-GCM for credentials (present).
+- Cloud: EBS/S3/RDS encryption with CMKs. Railway Postgres disk encryption is inherited; confirm it in the Railway SOC 2.
+- Enclave state: data key released only to attested enclaves.
+
+**Encryption in transit:** TLS 1.2+; vsock inside the host; mTLS or bearer auth for enclave ingress.
+
+### CC7 — System operations
+
+| Crit. | Requirement | Alpha implementation | Evidence | Status |
+| --- | --- | --- | --- | --- |
+| **CC7.1** | Detect configuration changes and vulnerabilities | **Cloud posture:** AWS Config (all regions) + conformance packs; Security Hub (CIS/FSBP standards. There is no native SOC 2 standard in Security Hub; map via the GRC platform ([AWS re:Post](https://repost.aws/questions/QUFk1crMThQGKgme256sKFOw/how-to-be-soc2-compliant))); IAM Access Analyzer. **Dependencies:** Dependabot (npm, Gradle, GitHub Actions, git submodules) + `npm audit` gate; OSV-Scanner over `package-lock.json` *and* `vendor/eliza` lockfiles; Snyk or Socket.dev optional for malicious-package detection. **SAST:** CodeQL for JS/TS + Java/Kotlin; semgrep with Android rules; MobSF static scan of release APKs; Android lint (present in build). **Containers/EIF inputs:** Trivy/Grype on the runtime image digests (`sha256:0682…`, `sha256:3f6e…` [repo]) before EIF build. **SBOM:** CycloneDX for npm, Gradle and container rootfs. Attach to each release and to the transparency log. **AOSP patch cadence:** monthly review of the [Android Security Bulletin](https://source.android.com/docs/security/bulletin). Since 2026, AOSP source drops are **quarterly (Q2 and Q4)**, with supplemental patches between ([ASB 2026](https://source.android.com/docs/security/bulletin/2026/2026-03-01); [supplemental patches](https://source.android.com/docs/security/overview/supplemental-security-patches)). Policy: critical issues within 30 days of availability, high within 60, with `ro.build.version.security_patch` truthful; also kernel, vendor blobs and WebView/Chromium. **Remediation SLAs:** Critical 7d (cloud) / 30d (device), High 30d/60d, Medium 90d | Scan histories; SBOMs; patch-level report per OTA | ❌ No Dependabot/CodeQL/SBOM/Config; ◐ hash-verified speech downloads and pinned upstream |
+| **CC7.2** | Monitor for anomalies | **Logging:** org-level CloudTrail (management + KMS data events) to the log-archive account, S3 Object Lock (WORM), ≥1 year retention (365 days hot / 7 years cold, est.); VPC Flow Logs; GuardDuty (all accounts; typical small-footprint cost $10–$100/mo ([AWS GuardDuty pricing](https://aws.amazon.com/guardduty/pricing); [CloudBurn](https://cloudburn.io/blog/amazon-guardduty-pricing))); Cloudflare Logpush (Workers, Access, WAF); Railway logs; GitHub audit log streaming; IdP sign-in logs. **SIEM:** a lean stack is fine. Options: (a) AWS Security Lake + Athena + Security Hub findings → PagerDuty; (b) Panther, Datadog Cloud SIEM or Sumo. **Detections:** root login; KMS policy change; enclave PCR mismatch / attestation failure spike; new IAM user/key; GuardDuty high; GitHub branch-protection change; secret-scanning alerts; signing-key use outside release window; Cerebras key usage anomaly. **Device fleet telemetry (privacy-preserving):** OTA install success, patch level, verified-boot state (green/yellow/orange), Play Integrity/Key Attestation verdict, crash rates. **No content** | SIEM rules; alert samples; log retention config | ❌ |
+| **CC7.3** | Evaluate security events | Triage runbook; severity matrix (SEV1–4); ticket per alert | Tickets | ❌ |
+| **CC7.4** | Incident response | IR plan with roles (incident commander, comms, legal/privacy, parent-company disclosure liaison). **SEC Form 8-K Item 1.05** materiality determination flows to the parent's disclosure committee: a microcap parent must assess material cybersecurity incidents within 4 business days of determining materiality. Customer notification ≤72h (commitment SC-7). Regulatory clocks per [05](05-regulation-compliance.md) (HIPAA 60d, GDPR 72h, NYDFS 72h). Playbooks: signing-key compromise (rotate via v3 lineage; AVB key compromise = device recall/re-key), KMS policy tamper, enclave image compromise, Cerebras breach, account takeover, lost device, prompt-injection-driven unauthorized action. **Annual tabletop exercise** | IR plan; tabletop report; post-mortems | ❌ |
+| **CC7.5** | Recover from incidents | Post-incident review with corrective actions; restore tests (see A1.3) | PIR docs | ❌ |
+
+**On-call and alerting:** PagerDuty or Opsgenie (or incident.io), with a 2-person rotation minimum (founder + engineer + vCISO escalation). Commit only to response times you can staff: e.g. SEV1 acknowledged in 30 minutes, 24×7 for cloud; business hours for SEV3 **(est.)**.
+
+### CC8 — Change management
+
+This is Alpha's richest area and the one auditors will spend the most time on.
+
+| Crit. | Requirement | Alpha implementation | Evidence | Status |
+| --- | --- | --- | --- | --- |
+| **CC8.1** | Authorize, design, develop, configure, document, test, approve and implement changes | See the CC8 control list below | PR history, CI runs, attestations, transparency log, ticket links | ❌ for review/approval; ✅/◐ for testing and pinning |
+
+CC8.1 controls for Alpha:
+
+**(1) Branch protection / rulesets on `main`.**
+- Require PRs; **≥1 approving review from someone other than the author**; dismiss stale approvals; require status checks (`Android foundation`, `Browser MVP`, CodeQL, dependency review); require linear history; block force-push and deletion; include administrators.
+- Rulesets on private repos require GitHub Team or Enterprise ([GitHub rulesets](https://docs.github.com/en/enterprise-cloud@latest/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/about-rulesets); [community discussion](https://github.com/orgs/community/discussions/184363)). The org must upgrade.
+
+**(2) CODEOWNERS.** Required owners for `patches/eliza/**`, `upstream.lock.json`, `.gitmodules`, `android/**/AndroidManifest.xml`, `scripts/stage-aosp.mjs`, `.github/workflows/**`, Terraform and KMS policy.
+
+**(3) Signed commits** (SSH or gitsign/Sigstore keyless). Require them on `main`. All 144 commits today show `%G?`=`N` [repo].
+
+**(4) AI coding agents.** Agent-authored commits must go through PRs reviewed by a human. Agents get no merge or admin permission. Agent identity is visible in the commit trailer.
+
+**(5) CI hardening.**
+- Pin all third-party actions to full commit SHAs. The tj-actions/changed-files compromise (CVE-2025-30066) moved version tags to malicious commits across 23k repos ([Semgrep](https://semgrep.dev/blog/2025/popular-github-action-tj-actionschanged-files-is-compromised/); [StepSecurity](https://www.stepsecurity.io/blog/harden-runner-detection-tj-actions-changed-files-action-is-compromised)). Today: `actions/*@v4`, `reactivecircus/android-emulator-runner@v2`, `android-actions/setup-android@v3` [repo].
+- Keep `permissions: contents: read` (present ✅).
+- Add StepSecurity harden-runner egress audit, and an OpenSSF Scorecard workflow.
+
+**(6) Provenance.**
+- Use `actions/attest-build-provenance` for every APK, AAB, OTA payload, EIF and SBOM. GitHub artifact attestations give SLSA Build L2 by default, and **L3 when built via a reusable workflow** ([GitHub blog](https://github.blog/enterprise-software/devsecops/enhance-build-security-and-reach-slsa-level-3-with-github-artifact-attestations/)).
+- Signing services verify the attestation (`gh attestation verify`) before signing.
+- Builds of the EIF today happen on an operator host (`shaw-enclave.alphacompute.dev`) [repo]. Move them into CI, or into a dedicated build account with logged sessions.
+
+**(7) Reproducible builds.**
+- APKs: target bit-for-bit reproducibility of unsigned APKs. Verify by copying signatures with apksigcopier and running `apksigner verify`, as F-Droid does ([F-Droid](https://f-droid.org/en/docs/Reproducible_Builds/)).
+- EIF: the existing 388,242-path payload equivalence scan and PCR recomputation [repo] is strong evidence. Make it a scripted CI gate.
+
+**(8) Upstream change control.**
+- The existing model is auditable: `upstream.lock.json` + 36 numbered patches + `*-source-base.json` manifests + "never edit `vendor/eliza`" rule (AGENTS.md).
+- Add a PR template that records the upstream commit, patch SHA256 and test evidence.
+
+**(9) Enclave image change / two-person admission.**
+- Every EIF release appends `{source commit, patch SHA, image digests, EIF SHA256, PCR0/1/2/8, SBOM digest, approvers}` to a **public, append-only transparency log**: Sigstore Rekor entry, or a signed git log in a public repo.
+- KMS policy PR adds the new PCR0 and retains the rollback PCR0. It needs approval by a second custodian and passes `terraform plan` review.
+- Deploy one slot (d) first, with the guarded rollback already documented [repo].
+- **No `kms put-key-policy` by hand.** The repo already states this. Enforce it with an SCP.
+
+**(10) Release management for device.**
+- Version-code monotonicity across APK and OS.
+- Staged OTA rollout (1% → 10% → 100%) with health gates.
+- Signed release notes.
+- A release checklist that distinguishes APK build, emulator HOME test, AOSP image boot, real integrations and device acceptance. That checklist already exists as AGENTS.md doctrine; turn it into a template.
+
+**(11) Emergency change procedure** with retroactive review within 2 business days.
+
+**(12) Infrastructure as code** for AWS, Cloudflare and Railway. Drift detection via AWS Config and Terraform plan on schedule.
+
+**(13) Model changes** (any change to the Qwen `qwen-3.8-27b` model version, or to its parameters or system prompts) go through change management. Record an eval run (task quality, safety and refusal, tool-call schema compatibility), the risk note (model origin, see [05 §7.7](05-regulation-compliance.md)) and approval.
+
+**(14) Test evidence retention** ≥ the observation window + 1 year. Today CI artifacts are retained **14 days** [repo]. Export to S3 (Object Lock) or rely on the GRC platform's evidence snapshots.
+
+### CC9 — Risk mitigation
+
+| Crit. | Requirement | Alpha implementation | Evidence | Status |
+| --- | --- | --- | --- | --- |
+| CC9.1 | Business disruption risk | BCP covering key-person risk (the repo has **one committer**), loss of the AWS account or of Cerebras (fallback inference provider pre-qualified, e.g. a second host serving the same open-weight Qwen model; open weights make that portable), loss of GitHub. Cyber insurance (tech E&O + cyber), coordinated with the parent | BCP; insurance binder | ❌ |
+| CC9.2 | Vendor and partner risk | Vendor register (AWS, Cerebras, Cloudflare, GitHub, Railway, Google, GRC platform, MDM, pen-test firm, OEM/ODM and any device distributor). Tiering by data access. Annual SOC 2 review with CUEC mapping. DPAs/BAAs. Subprocessor list published to customers with 30-day change notice. **Upstream open source** (elizaOS) is a supplier too: track maintainer security posture, pin commits (present) | Vendor register; review memos | ❌ |
+
+### A1 — Availability
+
+| Crit. | Alpha implementation | Status |
+| --- | --- | --- |
+| A1.1 Capacity | Capacity monitoring for enclave hosts (memory: enclave-d 12,288 MiB, a–c 4,096 MiB [repo]), Cloud DB and Cerebras rate limits; quarterly capacity review; alerts at 70% | ❌ |
+| A1.2 Environmental protections, backups, recovery infrastructure | Inherit AWS/Railway physical controls. **Backups:** Postgres PITR + daily snapshot copied cross-region/cross-account; enclave encrypted state volume snapshot (state is KMS-wrapped, so backups are safe at rest but useless without the key policy, so back up the Terraform state and policy too); git mirrors; signing-key HSM backup (CloudHSM cluster backups or YubiHSM wrapped export to a second device in a separate safe). **Device:** platform backup is deliberately disabled [repo: architecture]. Document this as a *design decision* and expose a user-controlled encrypted export, otherwise a lost phone means lost agent state | ◐ Rollback target recorded for enclave d; the DB naming suggests restore-drill history but is not documented as DR |
+| A1.3 Recovery testing | **Targets (est.):** Cloud API/pairing RTO 4h / RPO 15m; remote agent RTO 8h / RPO 24h; OTA service RTO 24h; signing capability RTO 72h (key escrow tested). Semiannual restore test with evidence. Annual DR tabletop. Note: the production writer is a service named `postgres-auth-restore-drill-20260825` and a different service is named `Postgres` [repo]. **Rename and document** the promotion; auditors will ask whether production is running on a drill copy | ❌ |
+
+### C1 — Confidentiality
+
+| Crit. | Alpha implementation | Status |
+| --- | --- | --- |
+| C1.1 Identify and maintain confidential information | Classification (§2.5). Tagging of AWS resources by data class. **Inference egress controls:** minimum context assembly, user-visible disclosure that prompts leave the device (the on-device plan already requires this [repo]), Cerebras ZDR in DPA, **redaction-before-egress** when built (entity classes: names, phone, email, address, government IDs, financial account numbers, health terms; with a fail-closed mode for regulated tenants). Logs and crash reports scrubbed. Test fixtures never use real customer data | ◐ Disclosure principle documented; redaction ❌ |
+| C1.2 Dispose of confidential information | Retention schedule per data class. Automated deletion jobs. Account deletion → delete Cloud rows, revoke org keys, crypto-erase enclave state slot, instruct device wipe. Vendor deletion confirmation (Cerebras retains nothing; Railway/AWS backups expire within N days, so disclose backup lag). Evidence = deletion job logs + sample verification | ❌ |
+
+### PI1 — Processing integrity (when redaction or ASR is committed)
+
+| Crit. | Alpha implementation |
+| --- | --- |
+| PI1.1 Define and communicate processing specifications | Published redaction spec: entity taxonomy; languages; modes (mask, pseudonymize, drop); **target recall per class** (e.g. ≥98% on SSN/PAN, ≥95% on person names, est.); known limitations (accents, code-switching, numbers spoken as words) |
+| PI1.2 Input completeness and accuracy | ASR confidence thresholds; audio segment hashes; reject or flag low-confidence spans for "redact by default" |
+| PI1.3 Processing | Versioned redaction model and rules. Regression suite (held-out labeled corpus, synthetic PII injection) in CI; a release is blocked if recall drops below threshold. Agent tool actions: approval + receipt + idempotency/unknown-outcome handling (existing protocol) |
+| PI1.4 Output | Redacted transcript carries the redaction-engine version and a per-span audit (type, offset, not the value) |
+| PI1.5 Stored inputs and outputs | Originals (if retained) encrypted under a separate key with restricted rehydration role; retention per tenant |
+
+The **effectiveness** evidence an auditor can test:
+- a quarterly sample of N production transcripts (with consent), human-reviewed for missed entities;
+- an exception rate tracked against the target;
+- incidents opened when the target is breached.
+
+Without that loop, keep redaction as a C1 *design* control, not a PI commitment.
+
+### P1–P8 — Privacy (when in scope)
+
+| Crit. | Alpha implementation |
+| --- | --- |
+| P1.1 Notice | Privacy notice covering: device data, on-device vs hosted processing, the Cerebras subprocessor, recordings, voiceprints, retention, rights, contact. In-product just-in-time notices at first mic, first recording, first external account connection |
+| P2.1 Choice and consent | Explicit opt-in for recording, transcription, voiceprint/diarization (BIPA-style written release where required), cross-app notification reading, location. **Consent records** stored with timestamp, version and device. All-party consent prompts/announcements configurable per jurisdiction ([05 §1.2](05-regulation-compliance.md)). Visible recording indicator |
+| P3.1–P3.2 Collection | Collect only for stated purposes. No secondary collection via telemetry. Implicit collection (bystander voices) handled by consent and auto-deletion of non-consented speakers when diarization exists |
+| P4.1–P4.3 Use, retention, disposal | Purpose limitation (no model training on customer data, which Cerebras ZDR supports). Retention schedule enforced by code. Secure disposal (crypto-erase) |
+| P5.1–P5.2 Access and correction | DSR workflow: export (JSON + audio) and correction/deletion within 30/45 days (GDPR/CCPA). Identity verification. Log of requests |
+| P6.1–P6.7 Disclosure and notification | Subprocessor list. Disclosure log for legal requests. Breach notification procedure. Third-party (OAuth) disclosures only on user action |
+| P7.1 Quality | Users can correct transcripts and contact data. Agent memory editable/deletable |
+| P8.1 Monitoring and enforcement | Privacy complaints intake. Annual privacy review. DPIA for recording features |
+
+### Cross-cutting: asset inventory, MDM, endpoint security
+
+- **Asset inventory (CC6.1, CC6.5, CC7.1).** Maintain it in the GRC platform, auto-synced from:
+  - AWS (Config resource inventory);
+  - Cloudflare, Railway and GitHub;
+  - the IdP (users);
+  - MDM (laptops and phones);
+  - a **device fleet register** for Alpha phones: serial/IMEI, SKU, AVB key ID, build fingerprint, patch level, owner/tenant, enrollment state, RMA status.
+- **Employee laptops.** MDM (Kandji, Jamf, Intune, Fleet or Rippling) enforcing:
+  - FileVault;
+  - OS updates within 14 days;
+  - screen lock ≤5 min;
+  - firewall;
+  - EDR;
+  - no local admin by default;
+  - USB storage policy.
+
+  Laptops holding signing tooling should be dedicated and hardened, or signing should happen only in the HSM/CI service.
+- **Alpha phones (company-owned test/demo/fleet).** Android Enterprise **fully managed** enrollment (zero-touch for Android 9+), or an AOSP-capable MDM for non-GMS builds ([Intune Android guide](https://learn.microsoft.com/en-us/intune/device-enrollment/android/guide); [Codeproof AOSP MDM](https://www.codeproof.com/platform/android/); [Fleet Android MDM](https://fleetdm.com/lp/android-mdm)). Note: the custom AOSP image may lack GMS, which rules out Google's Android Management API on those SKUs. Plan for a DPC-based or AOSP MDM, or build a minimal Alpha DPC. Policies: patch level, verified boot state, adb off, unknown sources off, remote wipe. **Customer fleets**: support customers' own EMM (CUEC 8) and document compatibility; the HOME role is not device-owner [repo: android-and-aosp].
+- **Development devices and emulators.** `userdebug` images and `-writable-system` emulators are confined to CI/dev and never enrolled into production accounts. The CI workflow already scopes WebView replacement to a disposable emulator [repo].
+
+---
+
+## 4. Gap assessment against the current repo and infrastructure (2026-10-02)
+
+Severity reflects audit impact: **H** = would produce a qualified opinion or block Type 1 design; **M** = exception likely in Type 2; **L** = hygiene.
+
+| # | Finding [repo evidence] | Criteria | Sev | Remediation |
+| --- | --- | --- | --- | --- |
+| G1 | **No branch protection or rulesets on `main`.** `gh api …/branches/main/protection` → 404; `rulesets` → `[]`; repo is private | CC8.1 | H | Upgrade org to Team/Enterprise; ruleset per §CC8 (1) |
+| G2 | **Single committer.** All 144 commits authored "Shaw" (many likely agent-generated); no second reviewer possible | CC8.1, CC1.3, CC9.1 | H | Hire or assign a second engineer as reviewer; human review of agent PRs; key-person BCP |
+| G3 | **Unsigned commits** (`%G?`=`N` for all sampled) | CC8.1 | M | Require signed commits; gitsign or SSH signing |
+| G4 | **GitHub Actions pinned by mutable tag** (`@v4`, `@v2`, `@v3`), including third-party `reactivecircus/*` and `android-actions/*` | CC8.1, CC7.1, CC9.2 | M | SHA-pin + Dependabot for actions; harden-runner |
+| G5 | **No Dependabot, CodeQL, secret scanning config, SBOM, `SECURITY.md`, CODEOWNERS** (`.github/` contains only `workflows/`); `security_and_analysis` = null | CC7.1, CC2.3 | H | Enable GHAS features available on plan; add configs |
+| G6 | **CI evidence retention 14 days** for APKs, smoke evidence and build reports | CC8.1, CC4.1 | M | Archive to S3 Object Lock ≥ 24 months, or GRC snapshots |
+| G7 | **No production signing.** Debug APKs signed with local debug keystore; release APKs unsigned; CI stages the **debug-signed launcher** into AOSP overlay with `--development` | CC6.8, CC8.1 | H (for any production claim) | HSM-backed app key + ceremony; release workflow with environment approval; keep dev staging clearly non-release |
+| G8 | **No AOSP release keys / AVB / OTA keys; image lane not built** (no Linux builder, hardware/SKU unselected, Cuttlefish boot unverified) | CC6.8, CC7.1, CC8.1 | H (if image is in the service) | Exclude AOSP image from Report 1 scope if not shipping; else generate keys per §CC6 |
+| G9 | **Unsigned EIF candidate**; existing signer certificate known only by PCR8 hash; **signer KMS ARN, operator and Terraform runner not locatable**; documented alias NotFound; local AWS profile invalid; host cannot read KMS policy | CC6.1, CC8.1, CC9.2 | H | Recover custody or rotate signer; Terraform repo + CI OIDC; two-person apply; policy readable by security auditor role |
+| G10 | **Public ingress via `trycloudflare.com` quick tunnel** (`knitting-clock-content-submitting…`) | CC6.6, A1.2 | H | Named tunnel on owned zone + Access + WAF |
+| G11 | **Enclave build artifacts on an operator host home directory** (`/home/ec2-user/alpha-phone-release-…`); evidence in a personal home dir (`~/alpha-enclave-deployment/…`) | CC8.1, CC6.1 | M | Build in CI; artifacts in versioned S3 with Object Lock; evidence in GRC |
+| G12 | **Admin identity is a personal Gmail** (`shawmakesmagic@gmail.com`) for Cloud, Railway and Google OAuth; Wrangler OAuth cached in user home; no corporate IdP evident | CC6.1–6.3 | H | Corporate IdP + FIDO2 MFA; migrate ownership of every console; break-glass procedure |
+| G13 | **Production DB identity confusion**: writer is service `postgres-auth-restore-drill-20260825`; another service named `Postgres` is not the writer; Railway prod and staging share a project | CC8.1, A1.2, CC2.1 | M | Rename, document promotion, separate prod/staging projects, tag resources |
+| G14 | **Public Postgres TCP proxy presents a self-signed chain** (cert validation fails, code 19) | CC6.6, CC6.7 | M | Disable public proxy or enforce verified TLS + IP allow-list |
+| G15 | **Cloudflare observability: logs enabled, but historical query denied to the operator**; Google OAuth 401 root cause unrecoverable | CC7.2, CC7.3 | M | Logpush to the SIEM with retention; role for security read |
+| G16 | **No written policies, risk register, vendor register, IR plan, on-call, access reviews, training, background checks** | CC1–CC5, CC9 | H | §5 policy set; platform onboarding |
+| G17 | **Release build `minifyEnabled false`**; no R8/obfuscation (not required by SOC 2, but a pen-test finding) | CC6.8 (weak) | L | Enable R8 with keep rules; verify bridge reflection |
+| G18 | **No redaction pipeline; on-device ASR not met for production; recording consent UX not built** [05 §0; MVP report] | C1, PI1, P1–P4 | H for Privacy/PI scope | Keep Privacy/PI out of Report 1; build per §3 |
+| G19 | **Architecture in flux** (enclave → on-device on Oct 1; inference location still a pending decision) | CC3.4, DC9 | M | Freeze in-scope architecture ≥4 weeks before Type 1 date; record as significant change if it happens in-window |
+| G20 | **Cerebras due diligence not on file** (SOC 2 report not obtained; DPA/ZDR not countersigned; BAA unconfirmed); Cerebras's own subprocessors include analytics (Mixpanel) and email (SendGrid), so confirm they never receive prompt content | CC9.2, C1.1 | M | Request via trust center; sign DPA; document CSOCs |
+
+**Strengths to cite in the description** (they reduce effort):
+- Pinned upstream with explicit patch files and source-base hashes, plus the "never edit vendor" rule.
+- Hash-verified model and speech-asset acquisition.
+- Same-run APK manifest hash verification between CI jobs.
+- `permissions: contents: read` in workflows.
+- `allowBackup=false`, `dataExtractionRules`, `usesCleartextTraffic=false` in the main manifest.
+- Keystore AES-GCM credential storage; no secrets in renderer storage.
+- `.gitignore` blocks `*.jks`, `*.keystore` and `.env*`.
+- `DevelopmentAgent` confined to debug source sets.
+- Tool approvals with receipts and unknown-outcome handling.
+- Documented guarded single-slot enclave rollback and payload-equivalence verification.
+- A culture of distinguishing evidence types (AGENTS.md). Auditors value that.
+
+---
+
+## 5. Evidence, policies, tooling, plan, headcount and budget
+
+### 5.1 Evidence an auditor will request (PBC list)
+
+**Entity level**
+- Org chart; board/committee minutes covering security; code of conduct acknowledgments.
+- Risk assessment and register; vendor register and reviews; insurance certificate.
+- Policy set with approval dates and annual review; security training completion; background-check confirmations (population + sample).
+- Hiring and termination lists (HRIS export). Auditors sample from these to test onboarding and offboarding.
+
+**Access (CC6)**
+- IdP user list with MFA status and SSO app assignments.
+- AWS: Organizations/SCP JSON; IAM Identity Center assignments; IAM credential report (no user keys); root MFA evidence; Access Analyzer findings.
+- GitHub org members, roles, 2FA enforcement, outside collaborators, deploy keys, Actions secrets list (names only).
+- Cloudflare, Railway and Cerebras member lists.
+- Quarterly access review sign-offs with remediation tickets.
+- Terminated-user samples: deprovisioning timestamps vs termination date.
+- KMS key policies (Terraform + live `get-key-policy`); key rotation status; HSM/key ceremony records; signing-key custodian list; signing logs.
+- Encryption configuration: EBS/S3/DB, TLS config scans (SSL Labs); Android manifest/network security config; Keystore implementation.
+
+**Operations (CC7)**
+- Vulnerability scan reports and remediation tickets with SLA adherence; Dependabot/CodeQL alert history; SBOMs per release.
+- AOSP patch-level tracking vs ASB; pen-test report + retest.
+- CloudTrail/Config/GuardDuty/Security Hub enabled-state screenshots and retention settings; SIEM alert rules; sample alerts with triage tickets.
+- On-call schedule; IR plan; tabletop report; incident log, including "no incidents" attestations.
+
+**Change (CC8)**
+- Population of all merged PRs and deployments in the window. The auditor samples 25–40 **(est.)** and checks: ticket, review by a non-author, CI pass, approval, deploy record.
+- Branch-protection/ruleset config history (audit log); emergency changes with retro review.
+- Release records: APK/OTA/EIF hashes, attestations, signing approvals, transparency-log entries, KMS policy PRs with two approvers.
+- Model-change records.
+
+**Availability/Confidentiality**
+- Backup configuration and job logs; restore test evidence; DR test; capacity reviews; uptime/status history.
+- Data retention schedule; deletion job logs; sample deletion verification; customer offboarding records.
+- Cerebras DPA/ZDR clause; subprocessor list and change notices.
+
+**Privacy/PI (if in scope)**
+- Privacy notice versions; consent records sample; DSR log with timeliness.
+- Redaction spec, regression results per release, quarterly human review sample, exception rate.
+
+### 5.2 Policy documents (adopt templates, then tailor)
+
+Template sources: the GRC platform's built-in library (Vanta/Drata/Secureframe/Sprinto all ship ~20–30 SOC 2 policies), the free [SANS policy templates](https://www.sans.org/information-security-policy/) and the Comply/StrongDM open-source SOC 2 policy set. Tailor them; auditors spot generic text that does not match practice.
+
+1. Information Security Policy (umbrella; roles; exceptions)
+2. Acceptable Use and Code of Conduct
+3. Access Control Policy (IdP, MFA, least privilege, reviews, break-glass, production data access)
+4. Asset Management Policy (inventory, device fleet register, disposal)
+5. Data Classification and Handling Policy (§2.5)
+6. Data Retention and Disposal Policy (schedule per class; customer deletion)
+7. Encryption and **Key Management Policy** (HSM; ceremonies; custodians; rotation; AVB/OTA/APK/EIF/KMS specifics; compromise response)
+8. **Secure SDLC Policy** (review, SAST/SCA, SBOM, provenance, reproducibility, AI-agent contributions, upstream patch process)
+9. **Change Management Policy** (normal/standard/emergency; enclave admission; KMS policy two-person rule; model changes; OTA staged rollout)
+10. Vulnerability and **Patch Management Policy** (SLAs; ASB cadence; WebView/Chromium; kernel)
+11. Logging and Monitoring Policy (sources; retention; alert catalog)
+12. Incident Response Plan + playbooks (including key compromise and the SEC 8-K liaison)
+13. Business Continuity and Disaster Recovery Plan (RTO/RPO; restore tests; key escrow)
+14. Vendor/Third-Party Risk Management Policy (+ subprocessor list)
+15. Risk Assessment Policy (method; annual cadence; AI threat model)
+16. Human Resources Security Policy (screening; training; offboarding; sanctions)
+17. Physical Security Policy (mostly inherited; HSM/safe)
+18. Endpoint and Mobile Device Policy (MDM; EDR; BYOD prohibition for admins)
+19. Network Security Policy (ingress via named tunnel; egress allow-lists)
+20. Privacy Policy (internal) + public Privacy Notice + Recording/Consent Policy + Biometric Data Policy
+21. **AI Use and Model Governance Policy** (approved providers; data sent; evals; prompt-injection mitigations; human approval for side effects; maps toward ISO 42001)
+22. Responsible Disclosure Policy (`SECURITY.md`, `security.txt`)
+23. Backup Policy
+24. Software Supply Chain / Open Source Policy (license + security review of new deps; pinned submodules)
+
+### 5.3 Tooling recommendations (lean, for 3–8 people)
+
+| Need | Recommendation | Est. annual cost |
+| --- | --- | --- |
+| GRC automation | **Drata or Vanta** (strongest AWS/GitHub/MDM integrations and auditor network). Sprinto/Secureframe are cheaper alternatives. Negotiate a startup discount and a 2-year term | $8k–$28k |
+| IdP | Google Workspace (Business Plus/Enterprise) + hardware keys, or Okta | $2k–$6k + keys ~$50–$70 each |
+| GitHub | **Enterprise Cloud** (rulesets, audit log streaming, SOC reports, SAML). Team plan is the minimum for private-repo rulesets. GHAS for secret scanning/code scanning on private repos | $3k–$12k |
+| AWS security baseline | Organizations + Control Tower or `aws-samples` landing zone; CloudTrail org trail; Config; GuardDuty; Security Hub; IAM Identity Center; Access Analyzer; Security Lake (optional) | $2k–$8k usage |
+| SIEM/alerting | Start with Security Hub + EventBridge → PagerDuty; graduate to Panther/Datadog Cloud SIEM when log volume justifies | $1k–$15k |
+| On-call | PagerDuty / Opsgenie / incident.io | $1k–$3k |
+| SCA/SAST | Dependabot + CodeQL (GHAS) + OSV-Scanner + semgrep CE + MobSF | $0–$10k |
+| Container/EIF scanning | Trivy/Grype (free) | $0 |
+| SBOM | Syft / CycloneDX generators; Dependency-Track (self-host) | $0 |
+| Provenance | GitHub artifact attestations; Sigstore cosign/Rekor | $0 |
+| Signing | AWS CloudHSM (HA pair) **or** YubiHSM 2 offline ceremony + KMS for EIF. Android OS signing often runs on an air-gapped signing host with HSM | $2k (YubiHSM pair) – $25k+ (CloudHSM HA, est.) |
+| MDM (laptops) | Kandji/Jamf (Mac) or Fleet/Rippling/Intune | $1k–$4k |
+| MDM (phones) | Android Enterprise EMM, or AOSP-capable MDM for non-GMS builds | $1k–$5k + engineering |
+| EDR | CrowdStrike Falcon Go / SentinelOne / MDM-bundled | $1k–$3k |
+| Training + phishing | Platform-bundled or KnowBe4 | $0–$2k |
+| Background checks | Checkr/Certn | $0.5k–$1k |
+| Trust center | Platform add-on or SafeBase | $0–$10k |
+
+### 5.4 Week-by-week plan
+
+**Assumptions:**
+- Start Mon **2026-10-05**.
+- Scope for Report 1: Security + Availability + Confidentiality.
+- In-scope service = on-device agent app (signed APK), the cloud components actually serving customers (remote enclave agent + pairing/login, or whichever is retained), the release pipeline, and Cerebras carved out.
+- The AOSP image is in scope **only if** customer devices ship on it before the Type 1 date; otherwise it is a DC9 significant change in Type 2 #2.
+
+**Phase A — Foundations (weeks 1–4)**
+
+| Wk | Dates | Work |
+| --- | --- | --- |
+| 1 | Oct 5–9 | Executive sponsor + budget approved with parent. Name the security officer (hire fractional vCISO). Decide **Scoping decision #1** (is Eliza Cloud Alpha's system?) and #2 (is the enclave remote agent a committed service?). Select GRC platform (two demos, sign). RFP to 3 auditors |
+| 2 | Oct 12–16 | Corporate IdP live; FIDO2 keys shipped; migrate GitHub, AWS, Cloudflare, Railway, Cerebras and Google Cloud console ownership off personal Gmail (G12). Upgrade GitHub org plan. Enable 2FA enforcement, secret scanning and push protection |
+| 3 | Oct 19–23 | `main` ruleset + CODEOWNERS + PR template + signed commits (G1, G3). SHA-pin actions; add Dependabot (npm, gradle, actions, submodules), CodeQL, dependency review, OpenSSF Scorecard (G4, G5). `SECURITY.md` |
+| 4 | Oct 26–30 | AWS Organizations restructure (log-archive, security, prod, build/signing accounts); org CloudTrail with Object Lock; Config; GuardDuty; Security Hub; IAM Identity Center; SCPs. Connect AWS/GitHub/IdP to GRC. Engage auditor (sign SOW for Type 1 + Type 2) |
+
+**Phase B — Close the high gaps (weeks 5–10)**
+
+| Wk | Dates | Work |
+| --- | --- | --- |
+| 5 | Nov 2–6 | Replace trycloudflare quick tunnel with a named tunnel + Access + WAF (G10). Close or lock down the public Postgres proxy (G14). Rename/document the production DB; split prod/staging (G13) |
+| 6 | Nov 9–13 | **Enclave custody:** locate or rotate the EIF signer; move `kms.tf` to a dedicated Terraform repo with CI OIDC apply, two-person review, drift detection; CloudTrail alerts on KMS policy events (G9). Fix key-policy root/IAM-delegation pattern per Trail of Bits |
+| 7 | Nov 16–20 | **App signing ceremony:** HSM-backed release key, v3 lineage plan, custodians; `release.yml` workflow with environment approval, provenance attestation, SBOM, `apksigner verify`, artifact archive to S3 Object Lock (G6, G7). Enable R8 (G17) |
+| 8 | Nov 23–27 *(holiday week, light)* | Draft policies 1–12 in platform; tailor to repo reality |
+| 9 | Nov 30–Dec 4 | Policies 13–24; management approval; employee acknowledgment; security training; background checks for existing staff. Risk assessment workshop → register (CC3). Vendor register; request Cerebras SOC 2 + DPA/ZDR + BAA position; download AWS, Cloudflare, GitHub, Railway reports; CSOC/CUEC mapping (G20) |
+| 10 | Dec 7–11 | Logging/SIEM: Cloudflare Logpush, GitHub audit-log streaming, IdP logs, Railway logs → central store; alert catalog; PagerDuty rotation; IR plan + playbooks; **first tabletop** (scenario: EIF signer compromise) |
+
+**Phase C — Readiness and Type 1 (weeks 11–16)**
+
+| Wk | Dates | Work |
+| --- | --- | --- |
+| 11 | Dec 14–18 | Backups + **first restore test** (Cloud DB to a scratch project; enclave state recovery path; signing-key escrow test). Set RTO/RPO. Capacity dashboard. MDM on all laptops + test-phone fleet; asset inventory complete |
+| 12 | Dec 21–25 *(holiday)* | Buffer. Freeze in-scope architecture (G19) |
+| 13 | Dec 28–Jan 1 *(holiday)* | Buffer; draft system description (DC1–DC9) from §2 |
+| 14 | Jan 4–8 | **Readiness assessment** (auditor or vCISO mock audit) against every control; fix list. Pen test kickoff (mobile app + cloud + enclave ingress; AOSP image if in scope) |
+| 15 | Jan 11–15 | Fix readiness findings. First quarterly access review completed and signed. **Type 1 "as of" date: Fri 2027-01-15** |
+| 16 | Jan 18–22 | Type 1 fieldwork (walkthroughs, ~1–2 weeks). **Type 2 observation window opens Mon 2027-01-18** |
+
+**Phase D — Operate the Type 2 window (weeks 17–26)**
+
+| Wk | Dates | Work |
+| --- | --- | --- |
+| 17 | Jan 25–29 | Pen test report; remediate highs within SLA; retest booked |
+| 18 | Feb 1–5 | Monthly vulnerability review #1 (evidence). ASB February review → patch decision record |
+| 19 | Feb 8–12 | **Type 1 report issued** (~4 weeks after the as-of date, est.). Publish trust page; start sharing under NDA |
+| 20 | Feb 15–19 | Change-management sample self-check: pull 10 PRs and verify ticket/review/CI/deploy linkage; fix process drift |
+| 21 | Feb 22–26 | Vendor reviews completed and signed; subprocessor list published |
+| 22 | Mar 1–5 | Monthly vuln review #2; ASB March; pen-test retest closed |
+| 23 | Mar 8–12 | DR/BCP tabletop #2 (scenario: Cerebras outage → fallback provider; AWS account lockout) |
+| 24 | Mar 15–19 | Privacy readiness (if Privacy goes into Type 2 #2): DPIA for recording, consent records, DSR workflow dry run |
+| 25 | Mar 22–26 | Redaction spec + regression harness (feeds a future PI scope); quarterly risk review |
+| 26 | Mar 29–Apr 2 | **Quarterly access review #2**; monthly vuln review #3; restore test #2 |
+| 28 | Apr 16 | **Type 2 window closes Fri 2027-04-16** |
+| 29–32 | Apr 19–May 14 | Type 2 fieldwork (samples across the window) |
+| ~35 | early Jun 2027 | **Type 2 report issued (est.)** |
+| — | Apr 17, 2027 → Apr 16, 2028 | **Type 2 #2: 12-month window**; add Privacy (and PI if redaction is committed); add AOSP image/OTA if shipping |
+
+### 5.5 Headcount (est.)
+
+| Role | Load | Notes |
+| --- | --- | --- |
+| Executive sponsor / system owner (founder) | 10–15% for 6 months | Approvals, risk acceptance, board reporting |
+| **Fractional vCISO / GRC lead** | 0.3–0.5 FTE for 6 months, then 0.2 | Policy authoring, auditor liaison, risk/vendor program; $5k–$12k/month (est.) |
+| **Security/platform engineer** | 1.0 FTE (new hire or reassigned) | AWS org, IdP, CI hardening, signing infra, SIEM, IaC. This is the person who also becomes the *second reviewer* (fixes G2) |
+| Application engineers | 10–20% each | Remediation, SAST fixes, R8, release workflow, redaction harness |
+| Android/AOSP release engineer | 0.5 FTE when the image lane starts | AVB/OTA keys, ASB patch cadence, Cuttlefish/physical acceptance |
+| People ops / legal / privacy counsel | ad hoc, ~40–80 hrs | HR controls, DPAs, privacy notice, consent; the parent may supply |
+
+Without the second engineer, G2 cannot be closed. A one-person company cannot demonstrate segregation of duties in change management. The usual compensating control is an independent reviewer (contractor or vCISO) approving production changes, which is weaker.
+
+### 5.6 Budget, year one (est.)
+
+| Item | Low | High |
+| --- | --- | --- |
+| GRC platform | $8k | $28k |
+| Auditor: Type 1 | $8k | $20k |
+| Auditor: Type 2 (3-month window) | $12k | $40k |
+| Pen test (mobile + cloud + enclave ingress; + AOSP image if in scope) | $15k | $45k |
+| Fractional vCISO (6 months) | $30k | $60k |
+| Signing infrastructure (HSM, ceremony) | $3k | $30k |
+| IdP + hardware keys + MDM + EDR + on-call + training + background checks | $8k | $20k |
+| GitHub plan upgrade + GHAS | $3k | $12k |
+| AWS security services usage | $2k | $8k |
+| Legal/privacy counsel (DPA, privacy notice, consent) | $5k | $25k |
+| **Total cash** | **~$94k** | **~$288k** |
+| Likely landing for a disciplined, small scope | **$110k–$170k** | |
+| Internal security/platform engineer (if new hire, fully loaded) | +$180k–$260k/yr | |
+
+Ongoing years run about $60k–$150k/yr plus headcount **(est.)**: annual Type 2, pen test, platform renewal and the vCISO at reduced load.
+
+---
+
+## 6. Interactions with other frameworks and customer questionnaires
+
+### 6.1 HIPAA
+
+- **There is no HIPAA "certification."** A covered entity buyer wants:
+  - a signed **BAA**;
+  - a documented **Security Rule risk analysis** (§164.308(a)(1));
+  - policies;
+  - evidence such as SOC 2 + HIPAA mapping, or HITRUST.
+- **SOC 2+ HIPAA** adds HIPAA Security Rule criteria as additional subject matter in the same CPA examination ([Meditology](https://www.meditologyservices.com/soc-2-hipaa-examination/); [Secureframe](https://secureframe.com/hub/hipaa/and-soc-2-compliance)). It does not replace the BAA or the risk analysis.
+- The strongest overlaps are access, encryption, audit logging, incident response and risk management ([AccountableHQ crosswalk](https://www.accountablehq.com/post/soc-2-to-hipaa-mapping-crosswalk-trust-services-criteria-to-hipaa-security-rule-requirements)).
+- **Alpha-specific additions:**
+  - BAAs down the chain: AWS via Artifact ([AWS re:Post](https://repost.aws/knowledge-center/activate-artifact-baa-agreement)); Cerebras (confirm in writing); Railway (BAA on request); Cloudflare (if PHI transits Workers).
+  - A "PHI-safe mode": redaction on; no third-party connectors without a BAA.
+  - Breach notification within 60 days.
+  - Design to the 2025 NPRM: MFA, asset inventory and network map, 72-hour restore, semiannual scans, annual pen test. See [05 §3](05-regulation-compliance.md). The SOC 2 plan above already satisfies most of these if the RTO is ≤72h.
+- HITRUST e1/i1 is the healthcare-buyer upgrade, $40–200k (est., from 05).
+
+### 6.2 ISO/IEC 27001:2022
+
+- ISO 27001 certifies the ISMS: scope, context, risk treatment, Statement of Applicability, internal audit, management review. It does this against 93 Annex A controls in four themes ([Konfirmity](https://www.konfirmity.com/blog/iso-27001-mapping-to-soc-2)).
+- Practitioner estimates put **~60–80% control overlap** with SOC 2 ([Probo](https://www.probo.com/hub/iso-27001-after-soc-2-the-30-percent-shortcut); [TruvoCyber](https://truvocyber.com/blog/iso-27001-soc-2-control-mapping)).
+- **Net-new work:**
+  - ISMS clauses 4–10: context, interested parties, ISMS scope statement, objectives, internal audit, management review, corrective-action process;
+  - SoA;
+  - a formal risk treatment plan;
+  - several Annex A items SOC 2 does not force (A.5.7 threat intelligence, A.5.23 cloud services, A.8.28 secure coding, A.5.30 ICT readiness for BC).
+- **Recommendation:** run ISO 27001 in year two, once EU or Gulf buyers ask. Stage 1 + Stage 2 cost about $15–40k (est.). **ISO/IEC 42001** (AI management system; ~40–50% overlap with SOC 2 per practitioners ([soc2auditors.org](https://soc2auditors.org/insights/ai-startup-iso-42001/))) is a candidate if AI governance becomes a sales question. The AI Use and Model Governance Policy (#21) is a head start.
+
+### 6.3 FedRAMP 20x
+
+- 20x replaces control narratives with **Key Security Indicators (KSIs)** that are machine-validated: ~56 for Low, ~61 for Moderate per secondary sources ([FedRAMP KSIs](https://www.fedramp.gov/docs/key-security-indicators/); [Knox](https://knoxsystems.com/resources/fedramp-20x-ksi); [Secureframe](https://secureframe.com/blog/fedramp-20x)).
+- First Moderate authorizations came in March 2026, and Rev5 certifications sunset June 2027 ([05 §7.1](05-regulation-compliance.md)). SOC 2 and ISO evidence is **partially reusable**. Commentators describe limited reuse pathways, but 20x still needs FedRAMP-specific automated KSI validation by a 3PAO ([Knox](https://knoxsystems.com/resources/fedramp-20x)).
+- What carries over directly from this plan:
+  - IaC-defined infrastructure;
+  - centralized immutable logging;
+  - automated config/vuln evidence (Config, Security Hub);
+  - phishing-resistant MFA;
+  - SBOM/provenance;
+  - IR and recovery testing;
+  - the AICPA [TSC↔NIST 800-53 mapping](https://www.aicpa-cima.com/resources/download/mapping-2017-trust-services-criteria-to-nist-800-53).
+- What does not carry over:
+  - a FedRAMP boundary, likely in AWS GovCloud;
+  - FIPS 140-3 validated crypto in the boundary;
+  - **inference inside an authorized boundary**. Cerebras's public API is not FedRAMP-authorized as far as found; this is the blocker 05 already flags.
+- Design choice now: keep evidence machine-readable (JSON from AWS/GitHub APIs, not screenshots). That is the 20x direction and also makes SOC 2 sampling cheaper.
+
+### 6.4 Customer security questionnaires: what they ask beyond SOC 2
+
+- **SIG Lite** (Shared Assessments) has ~126–128 questions across ~18–21 domains ([Workstreet](https://www.workstreet.com/blog/sig-lite); [UpGuard](https://www.upguard.com/blog/sig-questionnaire)). SIG Core runs much larger.
+- **CAIQ v4.1** maps the CSA **CCM v4.1** (207 controls, 17 domains, released Jan 2026), with ~283 yes/no questions ([CSA CCM v4.1](https://cloudsecurityalliance.org/artifacts/cloud-controls-matrix-v4-1); [CSA blog](https://cloudsecurityalliance.org/blog/2025/12/02/the-csa-cloud-controls-matrix-v4-1-strengthening-the-future-of-cloud-security)). A SOC 2 report is an accepted basis for **CSA STAR Level 2**.
+
+Expect these Alpha-specific asks that a SOC 2 report alone will not answer. Prepare a standing answer pack for each:
+1. **AI/LLM:** which models and providers; data retention and training use (Cerebras ZDR); prompt-injection defenses; human-in-the-loop for actions; model change control; evals; output-harm handling; AI incident process. Many 2026 questionnaires add an AI annex ([Lowerplane](https://lowerplane.com/blog/enterprise-ai-security-questionnaires/)).
+2. **Mobile/device:** MDM compatibility (Android Enterprise); verified boot and patch SLA (ASB cadence); device data encryption; remote wipe; lost-device process; supply chain of the hardware (ODM, country of origin — see [05 §7.4](05-regulation-compliance.md)); radio certifications.
+3. **Data residency and sovereignty:** where inference runs (Cerebras US data centers); EU option; subprocessor countries; cross-border transfer mechanism (SCCs/DPF).
+4. **Privacy and recording:** consent model, all-party consent support, biometric handling, retention configurability, legal hold and e-discovery export.
+5. **Business continuity:** key-person risk (directly visible here), financial viability (the public parent helps), source-code escrow (some enterprises ask for it for a device OS).
+6. **Insurance:** cyber and tech E&O limits (often $2–5M asked).
+7. **Pen test summary letter**, vulnerability disclosure program, bug bounty.
+8. **Software supply chain:** SBOM on request (EO 14028-influenced buyers), SLSA level, signed releases, open-source license compliance (the repo already tracks `licenses/`).
+9. **Encryption specifics:** algorithms, key lengths, KMS/HSM usage, BYOK/HYOK (the attested-KMS design is a differentiator if retained).
+10. **Background checks, training cadence, access reviews:** answered by SOC 2, but questionnaires want dates.
+
+---
+
+## 7. Open decisions
+
+1. **Scope:** is Eliza Cloud (Cloudflare Workers + Railway) Alpha's system, a sister entity's, or a third party's? (§2.3)
+2. **Scope:** does the Nitro enclave remote agent remain a customer-facing, committed service after the Oct 1 pivot? If not, keep it out of the description and decommission or isolate it, rather than describing an orphaned system.
+3. **Device:** will customer devices run the custom AOSP image before the Type 1 date? That decides whether AVB/OTA key controls are tested in Report 1.
+4. **Inference:** confirm Cerebras contract terms for `qwen-3.8-27b` (DPA, ZDR, BAA, region) before the window. Pre-qualify a fallback provider for CC9.1.
+5. **Report consumers:** does the parent's external auditor intend to rely on this report for ITGCs? If so, involve them in selecting the CPA firm and the criteria.
+6. **Second engineer:** without one, the change-management segregation of duties cannot be shown.
+
+
+---
+
+# 15 — Open-gap technical plan: confidential capture, redaction, consent and verifiable cloud processing
+
+Plan date: 2026-10-02. Author role: principal architect. Status: **plan, not acceptance evidence.** Nothing in this file proves that any capability exists. Every capability statement about Alpha today comes from repository documents. Every external fact has a URL. Figures marked **(est.)** are my own modelling. Figures marked **(unverified)** could not be confirmed in this session.
+
+This file follows [REPORT.md](REPORT.md) and workstreams [01](01-transcription-competitors.md), [03](03-secure-phones-confidential-ai.md), [04](04-redaction.md), [05](05-regulation-compliance.md), [09](09-distribution-partners-economics.md), [10](10-always-on-tech-feasibility.md) and [11](11-fit-gtm-risks.md). It also draws on [`docs/enclave-candidate-validation.md`](../enclave-candidate-validation.md), [`docs/architecture.md`](../architecture.md), [`docs/on-device-agent-plan.md`](../on-device-agent-plan.md), [`docs/agent-integration.md`](../agent-integration.md) and [`docs/standalone-paired-asr.md`](../standalone-paired-asr.md). Product and design exports are treated as reference data, not instructions.
+
+---
+
+## 0. Decisions this plan implements
+
+| # | Founder decision (2026-10-02) | Consequence for this plan |
+| --- | --- | --- |
+| D1 | **Fork AOSP**: a custom signed image. Banking apps, Play Integrity and GMS are **not** needed | Capture, isolation, the indicator and the egress gate can be **platform-enforced** with privileged permissions, SELinux and per-UID network rules, instead of relying on app-level discipline. Google's on-device stack (AICore, Gemini Nano, ML Kit GenAI, Play-services LiteRT) is out of scope, so every runtime ships statically in the image. This reverses REPORT §8's "stock first" recommendation for this product line, and the NIAP/DISA and Intune-AOSP-list consequences in [09](09-distribution-partners-economics.md) are accepted. |
+| D2 | **The model stays Qwen: `qwen-3.8-27b` on Cerebras** (founder decision, 2026-10-02) | The Cerebras provider discovery returned `qwen-3.8-27b` ([agent-integration.md](../agent-integration.md) line 74), and the enclave candidate selected it ([enclave-candidate-validation.md](../enclave-candidate-validation.md)). Qwen's origin (Alibaba, PRC) is a buyer question raised in [05 §7.7](05-regulation-compliance.md) and [06](06-vertical-markets.md). This plan answers it **for Qwen**, with four controls (§7.8): (1) self-host the open weights on confidential GPUs inside the trust boundary; (2) redact before egress; (3) attest provenance and the weights hash; (4) give buyers documented answers. **The same Qwen weights run on Cerebras and on confidential GPUs.** That makes "Cerebras fast lane" and "attested confidential lane" a choice of route, not a choice of model. |
+| D3 | **Fix the confidentiality claim so it is accurate** | §9 is a claims ladder that ties every sentence to the evidence that earns it. |
+| D4 | **Build the open-gap product**: on-device transcription, pre-egress redaction, built-in consent, verifiable cloud processing | §§2–8 cover the four pillars and one integration contract. |
+
+**Context change that the earlier research predates.** On 2026-10-01 the primary agent moved **onto the Android device** and Nitro/TEE hosting was dropped ([architecture.md](../architecture.md), [on-device-agent-plan.md](../on-device-agent-plan.md)). Orchestration, state, approvals and receipts are now local. The **only** routine cloud plaintext path is model inference, plus any connector the user approves. In the target architecture, the "measured agent" the phone attests to in the cloud is therefore a **measured inference gateway**: a router plus the model server, in a CPU+GPU TEE. An optional **remote executor**, for loops that run while the phone is off, would be a second measured workload with its own acceptance. The Nitro enclaves a–d are historical and stay untouched. They are not part of any claim below.
+
+---
+
+## 1. Executive summary
+
+1. **The gap is real, and it is an integration gap, not a research gap.** Each piece exists somewhere:
+   - On-device ASR at near-cloud accuracy: Parakeet TDT 0.6B, 6.05% average WER ([10](10-always-on-tech-feasibility.md)).
+   - Typed pseudonymization with a device vault ([04](04-redaction.md)), whose detectors already exist in the pinned upstream.
+   - OS-level consent prompts: Apple's spoken "This call will be recorded" ([Slate](https://slate.com/technology/2024/10/apple-iphone-phone-call-recording-law-consent.html)), Teams' mute-until-consent ([Microsoft Learn](https://learn.microsoft.com/en-us/microsoftteams/conferencing-recording-consent)).
+   - PCC-style verifiable inference on commodity confidential GPUs: Tinfoil, Privatemode, OpenPCC, Phala dstack.
+
+   No shipping product composes all four behind **one egress gate** with a per-request receipt. That composition is the product.
+2. **Platform enforcement is the payoff of forking AOSP.** The capture isolate holds the microphone but has **no network capability**, enforced by SELinux plus a per-UID netd rule. The redaction service is the only producer of egress payloads, and the **egress gate** is the only content path to the network. The indicator lives in SystemUI and cannot be hidden by apps. A launcher app could only ask for these properties; the image makes them true.
+3. **The on-device stack:**
+   - Silero VAD runs always on.
+   - Moonshine or streaming Zipformer gives live captions and commands.
+   - **Parakeet TDT 0.6B v3 INT8** produces final transcripts. On Android its reported RTF is about 0.12 ([Soniqo](https://soniqo.audio/guides/parakeet/android)).
+   - Sortformer plus pyannote community-1 handle anonymous diarization.
+   - The runtime is sherpa-onnx/ONNX Runtime, with LiteRT-QNN on Snapdragon.
+
+   The current paired-host whisper `tiny.en` path is retired from the product build.
+4. **Redaction design:**
+   - A high-recall ensemble: checksums and regex, a phonetic gazetteer, GLiNER-PII, relation/coreference, and an N-best lattice.
+   - Typed, role-annotated pseudonyms; generalized quasi-identifiers; a **StrongBox/Keystore-wrapped vault**; local rehydration.
+   - **Four tiers:** local-only, abstract-then-send, redact-then-send, send-redacted.
+   - Fail closed on uncertainty.
+   - The headline metric is **egress leak rate on an ASR-noised spoken-meeting eval set**, not NER F1.
+5. **Consent is a state machine, not a banner:**
+   - An unhideable indicator and a spoken announcement, recorded so it counts as an "announcement" under Washington law ([RCW 9.73.030](https://app.leg.wa.gov/rcw/default.aspx?cite=9.73.030)).
+   - Per-participant capture: verbal, tap, QR guest page or calendar pre-notice.
+   - "Stop / off the record" with buffer purge.
+   - Bystander exclusion and an all-party default everywhere.
+   - Jurisdiction packs.
+   - A **hash-chained, device-signed consent ledger** exported with the record.
+6. **Verifiable cloud processing comes in two clearly labelled routes for the same model:**
+   - **Fast lane** (interim and default today): **redacted-only** payloads to Cerebras `qwen-3.8-27b`. Protection is contractual: Cerebras states zero retention and US-only datacenters ([Cerebras privacy](https://www.cerebras.ai/privacy-policy), [Trust Center](https://trust.cerebras.ai/)). I found no Cerebras attestation offering, so the weights Cerebras serves cannot be hash-verified by the phone.
+   - **Confidential lane** (target): **Alpha self-hosts the Qwen open weights** on confidential H100/H200 GPUs. The phone verifies CPU-TEE plus NVIDIA GPU attestation, **including the Qwen weights-hash measurement**, checks it against a public transparency log, and **HPKE-encrypts to a key bound inside the attestation**. Requests travel through a third-party OHTTP relay ([RFC 9458](https://www.rfc-editor.org/rfc/rfc9458.html)). Each request returns a signed receipt naming the weights digest.
+7. **Bring the Qwen weights to a confidential platform; do not wait for a per-token vendor.** I found no managed confidential per-token API that lists `qwen-3.8-27b`. Privatemode's public model list carries only a Qwen embedding model ([Privatemode models](https://www.privatemode.ai/models)). The plan therefore runs **Alpha's own pinned Qwen container**:
+   - **M4 (managed CVM):** Tinfoil Containers ([Tinfoil pricing summary](https://aisotools.com/pricing/tinfoil); GPU quoted on request) or Phala dstack TDX plus H200 at $3.20–$4.80 per GPU-hour ([Phala](https://phala.com/pricing)).
+   - **M5 (Alpha's own gateway):** Phala, plus GCP a3-highgpu-1g with TDX ([GCP release notes](https://docs.cloud.google.com/confidential-computing/confidential-vm/docs/release-notes)) or Azure NCC40ads H100 v5 at $8.90/h ([Vantage](https://instances.vantage.sh/azure/vm/ncc40adsh100-v5)) for customers that require them.
+
+   The pinned upstream already has most of the gateway-side attestation code, including a `modelWeights` measurement (§2, §7.2).
+8. **Costs (est.):**
+   - Cerebras `qwen-3.8-27b` at the [09](09-distribution-partners-economics.md) list price costs about **$13.22 per typical user per month**.
+   - Self-hosted Qwen 27B on a confidential H200 (Phala reserved) is about **$11.7 per user at about 200 users per GPU**. That reaches parity at about **400 active users**, below which the about-$5k/month HA floor dominates.
+   - Azure confidential H100 costs about $46 per user.
+
+   **The dense-27B throughput figure is my estimate and must be measured in M5.** Confidential GPUs also add **13–28% latency/throughput overhead** ([arXiv 2607.19353](https://arxiv.org/abs/2607.19353), [arXiv 2606.23969](https://arxiv.org/abs/2606.23969)). They are far slower per user than Cerebras, so background jobs such as summaries and filing are the natural first workload for the confidential lane.
+9. **Honest limits.** Attestation proves which code booted, not that it is correct. DDR5 interposer attacks (TEE.fail, DDRop) forge attestation on TDX and SEV-SNP and, through them, NVIDIA CC ([tee.fail](https://tee.fail/), [DDRop](https://ddropattack.eu/)). Vendors call physical attacks out of scope. The design therefore keeps **redaction in front of every route**, so that even a broken TEE yields pseudonymized text. The claims ladder says so explicitly.
+
+   **Qwen's origin is answered, not hidden** (§7.8):
+   - Alpha self-hosts the weights, so Alibaba is never a data recipient.
+   - Pre-egress redaction applies on every lane.
+   - A model BOM, with independent re-hashes, records provenance.
+   - The weights, tokenizer and template hash is attested and checked by the phone.
+   - The model has no egress or autonomous tools.
+   - Admission tests are published per release.
+
+   The residual limit is stated plainly: testing cannot prove the absence of a backdoor, and some defense and IC buyers may exclude PRC-origin models on policy.
+10. **Timeline (est.):** about 11–13 FTE and nine months to the L5 claim: "independently verifiable confidential processing, audited." Each rung of the claims ladder has a dated milestone and a named class of acceptance evidence (physical device, AOSP image boot, live integration). These are kept distinct, as the repo's AGENTS.md requires.
+
+---
+
+## 2. Baseline: what exists today (repo evidence, 2026-10-02)
+
+| Area | State | Source |
+| --- | --- | --- |
+| Agent execution | Android-resident runtime selected on 2026-10-01; browser/dev path implemented; **APK/device execution, lifecycle and physical acceptance open** | [on-device-agent-plan.md](../on-device-agent-plan.md) |
+| Hosted model | Cerebras `qwen-3.8-27b`, direct (`ELIZAOS_CLOUD_USE_INFERENCE=false` in the enclave candidate); real replies verified on the local host ([11 §2.2](11-fit-gtm-risks.md)) | [enclave-candidate-validation.md](../enclave-candidate-validation.md), [agent-integration.md](../agent-integration.md) |
+| Speech | Paired-host whisper.cpp `tiny.en`, explicit upload, synthetic audio ingress only; on-device sherpa-onnx **partial** (packaged-app fixture failed "lazy"→"lady"); **no physical-microphone acceptance**; no word timings on the paired route | [standalone-paired-asr.md](../standalone-paired-asr.md), [11 §2.3](11-fit-gtm-risks.md) |
+| Redaction | Upstream `vendor/eliza/packages/core/src/security/` has `pii-detectors.ts` (validated regex and checksum detectors), `pii-pseudonymizer.ts`, `pii-pseudonym-map.ts` (one pseudonym per real person across aliases), `secret-swap.ts`, `entity-recognizer.ts`, `outbound-envelope-guard.ts`, and `pii-scrub-seam.ts` (a `PII_SCRUB` model type with an on-device GGUF lane). `packages/agent/src/services/audio-redaction-service.ts` maps detections to timed words and **re-transcribes to verify**, failing closed. **None of this is wired into Alpha.** | source inspection |
+| Confidential inference (upstream) | `packages/core/src/security/confidential-inference.ts`: a host-owned `ConfidentialInferenceAuthority` with route policy, expiry, exact handler identity, a **durable audit sink that must commit before dispatch**, and a verified pre-send transport callback carrying `evidenceDigest` and `connectionBindingDigest`. `packages/agent/src/services/tee-attested-inference.ts`: one fresh TLS connection per attempt; a quote transcript bound to the actual socket; **no pooling, redirects, retries or plaintext fallback**; dstack verification. `tee-evidence.ts`/`tee-policy.ts`: a canonical `TeeEvidence` (kinds include `tdx`, `sev-snp`, `nitro`, `dstack`; claims include `gpuProtected`, `npuProtected`; measurements include `modelWeights`, `gpuFirmware`) and one fail-closed policy evaluator. `tee-dstack-evidence.ts`: a pinned `dstack-verifier` executable and config by SHA-256. | source inspection |
+| Patch series | `patches/eliza/0036-qualified-ab8f9a-runtime.patch` adds `tee-gpu-nvidia.ts` (NRAS `/v4/attest/gpu`, ES384 EAT verification, a pinned NRAS intermediate, `eat_nonce` binding), `tee-gpu-evidence.ts` (GPU claims survive only when branded by the verifier for the same nonce), `tee-tdx-quote.ts` (in-repo TDX v4/v5 quote parser and self-signature check, rejecting the debug bit), and the `tdx-cpu` "private inference" topology. That topology requires a dstack-TDX-only policy, `debugDisabled`, and the `app`/`compose`/`os` measurements. **The patch exists. Its presence in a shipped Alpha runtime is not established here.** | `patches/eliza/0036…patch` lines 11598–14440 |
+| On-device isolation (upstream) | `AndroidVirtualizationBridge.java`: a reflection-only AVF/Microdroid probe; needs `MANAGE_VIRTUAL_MACHINE` on a privileged build | source inspection |
+| Consent | Narrow: owner-bound explicit upload, sensitive-screen send blocking, a voice-session consent nonce on the Cloud path. **No meeting-consent features.** | [agent-integration.md](../agent-integration.md), [11 §2.2](11-fit-gtm-risks.md) |
+| UI claims | `prototype/native-adapter.ts` already replaces "Sealed/Attested" fixture copy with **Not verified** | [agent-integration.md](../agent-integration.md) line 558 |
+| AOSP | Non-privileged vendor add-on generated; **no full image build or boot** | [11 §2.1](11-fit-gtm-risks.md) |
+
+**Implication.** About 60% of the confidential-inference *gateway* logic and 50% of the *redaction* logic exist upstream as tested source. The work is mostly productization, platform enforcement, verifier porting to Android, transparency infrastructure, and evaluation. Fundamental invention is not the bottleneck.
+
+---
+
+## 3. System architecture
+
+### 3.1 Context diagram
+
+```mermaid
+flowchart LR
+  subgraph Room["Meeting room / call"]
+    P1((Owner)) --- P2((Participant)) --- P3((Bystander))
+  end
+
+  subgraph Phone["Alpha Phone — custom signed AOSP image (verified boot: Alpha AVB key)"]
+    direction TB
+    IND["SystemUI capture chip + LED<br/>(unhideable)"]
+    CAP["Capture isolate<br/>uid alpha_capture · SELinux: no sockets<br/>VAD · ASR · diarization"]
+    CON["Consent service<br/>announcement · per-participant state<br/>signed ledger"]
+    RED["Redaction service<br/>(phase 2: inside pKVM pVM)<br/>detect · classify · tier · pseudonymize"]
+    VAULT[("Vault<br/>StrongBox-wrapped AES-GCM<br/>token↔value, TTL, crypto-erase")]
+    AGENT["Resident agent runtime<br/>(Eliza, Bun) — orchestration,<br/>approvals, receipts"]
+    GATE["Egress gate<br/>ONLY content path to network<br/>policy · attestation · HPKE · manifest"]
+    ARCH[("Split record<br/>original under customer key")]
+  end
+
+  subgraph Cloud["Cloud"]
+    RELAY["OHTTP relay<br/>(third party)"]
+    subgraph TEE["Confidential lane: CPU TEE (TDX/SEV-SNP) + NVIDIA CC GPU"]
+      GW["Measured gateway<br/>HPKE decap · router · receipt signer"]
+      LLM["Qwen qwen-3.8-27b open weights (vLLM)<br/>weights digest measured"]
+    end
+    CB["Fast lane: Cerebras qwen-3.8-27b<br/>(contractual ZDR, not attested)"]
+    LOG[("Transparency log<br/>Sigstore Rekor + Alpha log<br/>+ third-party witnesses")]
+    CUST[("Customer archive / KMS<br/>Smarsh, Global Relay, WORM")]
+  end
+
+  Room -->|audio| CAP
+  CAP --> CON
+  CAP -->|transcript segments| RED
+  RED <--> VAULT
+  RED -->|pseudonymized context| AGENT
+  AGENT -->|model request| GATE
+  GATE -->|verify inclusion| LOG
+  GATE -->|HPKE ciphertext| RELAY --> GW --> LLM
+  GATE -.->|TLS, redacted only| CB
+  GATE -->|"encrypted original + consent ledger"| CUST
+  CAP -.-> IND
+  CAP --> ARCH
+```
+
+### 3.2 Invariants that the image enforces
+
+| # | Invariant | Mechanism (AOSP fork) | Test that proves it |
+| --- | --- | --- | --- |
+| I1 | No audio or raw transcript reaches a network socket | The capture isolate runs as a dedicated UID without `INTERNET`. The SELinux domain is denied `socket`/`tcp_socket`/`udp_socket` create. netd per-UID deny applies too. CTS-style negative test. | Device test: the isolate tries `socket()` and gets EACCES; `tcpdump` on device shows zero packets from the UID |
+| I2 | Every content-bearing network payload passes the egress gate | The agent runtime and connectors get network only to the loopback/binder gate. A netd per-UID allowlist leaves only the gate UID able to reach model endpoints. Connector traffic routes through the gate with `purpose=approved-action`. | Packet capture plus a gate audit-log reconciliation: the count of model-endpoint flows equals the count of gate manifests |
+| I3 | The microphone cannot be live without the indicator | The capture chip is drawn by SystemUI from AudioRecord/AppOps state, not by the app. The LED is driven by the capture HAL hook. | Device test: capture starts without the chip, so an assertion fails; screen-off capture shows the LED |
+| I4 | No recording without a consent state of at least `NOTICED` | The capture isolate refuses to persist segments while the consent service state is `NONE`. Audio stays in a RAM ring buffer of 30 s or less (est.) for VAD, and the buffer is zeroized. | Unit plus device test: no announcement means no persisted segments |
+| I5 | Only redacted payloads go to non-attested destinations | Gate route policy: the `cerebras` route accepts only `RedactedPayload` objects carrying a manifest digest. A raw `string` type is not accepted. | Fuzz test: canary values in raw transcripts never appear in the Cerebras-route egress capture |
+| I6 | Confidential-lane plaintext exists only inside an attested, logged measurement | The phone verifies quote, GPU evidence and log inclusion, then HPKE-seals to the key in `report_data`. There is no plaintext fallback. | Negative tests: wrong measurement, missing log entry, stale nonce, debug TD, and GPU CC off are each refused before any send |
+
+---
+
+## 4. Pillar 1: on-device transcription
+
+### 4.1 Model stack (licence-clean, open weights)
+
+| Function | Primary | Fallback / upgrade | Licence | Evidence |
+| --- | --- | --- | --- | --- |
+| Voice activity | Silero VAD (about 2 MB, under 1 ms per 30 ms chunk) | — | MIT | [10 §2.3](10-always-on-tech-feasibility.md) |
+| Live captions, commands, wake | Moonshine (Tiny/Base, 27M/61M) or sherpa-onnx streaming Zipformer | — | MIT / Apache-2.0 | [Moonshine](https://arxiv.org/abs/2410.15608) |
+| Final transcript | **Parakeet TDT 0.6B v3 INT8** (25 European languages, word timestamps); v2 for English-only quality | Argmax Pro SDK for Android ($1.00–1.33 per device per month) as a buy option; Canary 1B for high-accuracy re-pass | CC-BY-4.0 | [v3 card](https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3); Android INT8 RTF about 0.12 reported ([Soniqo](https://soniqo.audio/guides/parakeet/android)) |
+| Diarization | Streaming Sortformer 4spk v2 (live, 4 speakers or fewer) plus a pyannote community-1 post-pass | pyannoteAI precision-2 (licensed) | CC-BY-4.0 | [10 §3.1](10-always-on-tech-feasibility.md) |
+| Contextual biasing | Gazetteer from contacts, calendar attendees and admin deal code names, fed to the decoder | — | — | [04 C.2](04-redaction.md) |
+| Owner voice (opt-in) | ECAPA-class embedding, owner only, with a written BIPA-grade release, stored in StrongBox-wrapped storage, never uploaded | — | — | [05 §2](05-regulation-compliance.md) |
+
+The paired-host whisper `tiny.en` route stays as a **development-only** capability. It is excluded from release builds by a build flag and a CI check, because it uploads audio, which breaks I1.
+
+### 4.2 Runtime and AOSP integration
+
+- **Runtime:**
+  - sherpa-onnx with ONNX Runtime, statically linked into `/system_ext/lib64`, with no Play-services dependency (D1).
+  - On Snapdragon targets, add the LiteRT QNN accelerator. Google reports up to 100× over CPU, and 64 of 72 models fully delegated to the NPU ([Google Developers Blog](https://developers.googleblog.com/en/unlocking-peak-performance-on-qualcomm-npu-with-litert/)).
+  - On Tensor, the LiteRT NPU is AOT-only ([LiteRT NPU](https://developers.google.com/edge/litert/next/npu)), so plan for CPU/GPU first.
+- **Privileged capture:**
+  - The `AlphaCaptureService` is a platform-signed `priv-app` holding `CAPTURE_AUDIO_HOTWORD`, `MANAGE_SOUND_TRIGGER` and `RECORD_AUDIO`.
+  - It is registered as the default `VoiceInteractionService` (the assistant role), so FGS background-start limits do not block it ([FGS restrictions](https://developer.android.com/develop/background-work/services/fgs/restrictions-bg-start)).
+  - Low-power arming uses a DSP keyphrase through the Sound Trigger HAL, following the Now Playing pattern of under 1% of daily battery ([arXiv 1711.10958](https://arxiv.org/abs/1711.10958)).
+- **Process model:**
+  - The capture isolate holds the AudioRecord session, VAD and ASR. It writes only to the redaction service over a binder interface that carries `TranscriptSegment`, never PCM. The one exception is audio redaction, which uses a separate path.
+  - Raw PCM persists only when the tenant retention policy requires an audio original (split record). In that case it goes **encrypted under the customer archive key** straight to the archive spool.
+- **Isolation, phase 2:**
+  - Move the redaction service, and optionally the ASR, into a **pKVM protected VM (Microdroid)**.
+  - pVMs are mutually distrusted from Android: a compromised host cannot read pVM memory ([AVF security](https://source.android.com/docs/core/virtualization/security)).
+  - In-VM ML is CPU-only unless the SoC supports device assignment. AVF supports platform-device assignment through vfio-platform plus a pvmfw-validated DTBO ([device assignment](https://android.googlesource.com/platform/packages/modules/Virtualization/+/refs/heads/android17-release/docs/device_assignment.md)).
+  - Tensor TPU assignment to app-launched pVMs is an open question upstream ([LiteRT issue #10081](https://github.com/google-ai-edge/LiteRT/issues/10081)).
+  - Plan: ASR stays in the isolate process on CPU/GPU/NPU. Redaction (GLiNER INT8, regex, gazetteer, vault ops) runs in the pVM on CPU, which fits the small compute budget in [04 C.4](04-redaction.md). Only `RedactedPayload` and vault-handle references leave the pVM.
+- **Device hardware choice (risk).**
+  - Since Android 16, Google no longer publishes Pixel device trees or driver binaries to AOSP, and Pixel kernel source now needs a manual request form ([Android Authority](https://www.androidauthority.com/google-pixel-kernel-code-forms-3696441/), [Open Source For You, Aug 2026](https://www.opensourceforu.com/2026/08/google-makes-pixel-kernel-source-harder-to-access/)).
+  - AOSP source drops are now twice a year, in Q2 and Q4 ([AVF overview](https://source.android.com/docs/core/virtualization)).
+  - Pixel is still feasible as a **development target**, as GrapheneOS shows, but it is costly to maintain.
+  - **Decision gate at M6:** a Snapdragon ODM with a full BSP and QNN access, versus continuing Pixel 10/11 with reverse-engineered vendor configuration.
+- **Verified boot and device attestation:**
+  - Ship with Alpha's AVB key using the user-settable root of trust (`avb_custom_key`). This gives a **yellow** boot state that key attestation reports in `verifiedBootState` along with the boot-key hash ([AOSP boot flow](https://source.android.com/docs/security/features/verifiedboot/boot-flow), [device state](https://source.android.com/docs/security/features/verifiedboot/device-state)).
+  - Enterprises, and the confidential gateway, can then verify that a phone runs a **genuine Alpha image** with the consent and egress invariants. This is the GrapheneOS Auditor pattern ([Auditor](https://github.com/GrapheneOS/Auditor/releases/tag/85)) and is a sellable admin feature.
+
+### 4.3 Power and latency budget (est.; replace with measurements in M1)
+
+| Mode | Budget (est.) | Source of estimate |
+| --- | --- | --- |
+| DSP arming only | ~0.5–1% of battery per day | [10 §5.2](10-always-on-tech-feasibility.md) |
+| VAD plus batched Parakeet on speech, 4 h of meetings per day | 5–15% per day if batched and accelerated; up to ~20% naive CPU | [10 §5.2](10-always-on-tech-feasibility.md) |
+| Caption latency (Moonshine/Zipformer) | p95 under 500 ms | target |
+| Final-transcript lag (Parakeet, 30 s batches) | p95 under 10 s behind speech | target |
+
+### 4.4 Acceptance for Pillar 1
+
+The evidence classes are defined in §11.1.
+
+| Gate | Required evidence | Not sufficient |
+| --- | --- | --- |
+| ASR accuracy | **D**: physical Pixel/ODM device, physical microphone, scripted plus unscripted speech in 3 room types (desk, conference table, car), 20+ speakers, measured WER per room; AMI-style far-field target ≤15% (est.) | Emulator audio injection, synthetic TTS fixtures, host GPU leaderboard numbers |
+| Latency, power, thermal | **D**: 4 h meeting run with battery drain, skin and SoC temperature, throttling events | Emulator, host benchmark |
+| No-audio-egress (I1) | **A**: full AOSP image boot on a physical device; SELinux negative test; device packet capture | APK on stock Android (cannot enforce I1) |
+| Diarization | **D**: DER on recorded multi-speaker sessions; no voiceprint persistence (storage inspection) | |
+
+---
+
+## 5. Pillar 2: pre-egress redaction
+
+### 5.1 Pipeline
+
+This implements the [04 §C.6](04-redaction.md) reference architecture, with upstream reuse made explicit.
+
+```mermaid
+flowchart LR
+  SEG["TranscriptSegment<br/>words, timings, conf,<br/>N-best, speaker label"] --> NORM["Normalizer<br/>spoken + ITN forms<br/>1.5–3 s look-ahead"]
+  NORM --> DET["Detection ensemble"]
+  subgraph DET["Detection ensemble (high-recall union)"]
+    R1["pii-detectors.ts<br/>regex + Luhn/ABA/IBAN/SSN"]
+    R2["secret-swap.ts<br/>entropy secrets"]
+    R3["Phonetic gazetteer<br/>contacts, attendees,<br/>deal codes (admin)"]
+    R4["GLiNER-PII INT8<br/>(ONNX)"]
+    R5["Relation/coref<br/>'my boss's wife'"]
+  end
+  DET --> CLS["Classifier<br/>meeting label + segment label<br/>(MNPI, privileged, PHI, HR, CUI-marking)<br/>escalate-only"]
+  CLS --> POL["Policy engine<br/>signed admin policy ∧ user policy<br/>(entity × label × destination × purpose)"]
+  POL -->|local-only| LOCAL["Never egresses"]
+  POL -->|abstract| ABS["Local LLM rewrite<br/>(small Qwen-family model,<br/>weights hash pinned)"]
+  POL -->|redact| PSE["pii-pseudonymizer.ts + pseudonym-map<br/>typed role-annotated tokens<br/>generalize amounts/dates/ages/places"]
+  ABS --> PROBE["Re-ID probe<br/>local LLM 'guess who'"]
+  PSE --> PROBE
+  PROBE -->|confident guess → escalate| POL
+  PROBE --> PAY["RedactedPayload<br/>+ manifest"]
+  PSE <--> VAULT[("Vault")]
+  PAY --> GATE["Egress gate"]
+```
+
+Key choices:
+
+- **Classification markings** ("SECRET", "TS//SCI", "CUI") trigger **stop, purge the RAM buffer, and quarantine** already-persisted segments for admin review. Alpha is not accredited to hold classified material ([04 C.6](04-redaction.md)).
+- The **local abstraction and re-ID model** is a small Qwen-family model. Qwen3-0.6B decodes about 21 tok/s and Qwen2.5-1.5B about 31 tok/s on phone GPUs ([10 §4.2](10-always-on-tech-feasibility.md)). Keeping one model family means one provenance process: the weights hash is pinned in the system image and logged (§7.8). It runs fully on the device and has no network path.
+- **Payload tokens** use a robust format: `⟦P2:person|role=counterparty CFO⟧`. Rehydration fuzzy-matches. Unknown or mangled tokens raise an alarm and block any auto-send ([04 C.2](04-redaction.md)).
+- **Audio redaction** reuses `audio-redaction-service.ts`: timed-word spans, a duration-preserving bleep, re-transcription verification, fail closed. It is used only for audio exports the policy allows. It needs Parakeet word timestamps, which closes risk T4 in [11](11-fit-gtm-risks.md).
+
+### 5.2 Vault
+
+| Property | Design |
+| --- | --- |
+| Keys | A per-session data key wrapped by a **StrongBox** key (Keystore fallback), `setUnlockedDeviceRequired(true)`, no backup |
+| Scope | Session by default. Tenant scope (keyed HMAC pseudonyms stable across meetings) is opt-in per policy. Matter walls mean a separate vault namespace per matter. |
+| Lifetime | TTL equal to the AI-working-copy retention. Crypto-erase means destroying the wrapped key. **Legal hold** suspends erase. |
+| Location | In the redaction pVM (phase 2). Phase 1: the redaction service's credential-encrypted storage |
+| Never | Uploaded, synced, logged or included in crash dumps. The gate rejects payloads containing vault-key material, as a tested canary. |
+
+### 5.3 Policy tiers and routes
+
+| Tier | What leaves | Allowed routes |
+| --- | --- | --- |
+| T-L **Local-only** | Nothing | none (local small model may answer) |
+| T-A **Abstract-then-send** | Local LLM paraphrase of Axis-2 content plus tokens | Confidential lane only (default policy). Fast lane if the admin explicitly allows it. |
+| T-R **Redact-then-send** | Typed pseudonyms plus generalized quasi-identifiers | Confidential lane; **fast lane (Cerebras)** |
+| T-S **Send-redacted** | Segments with no detections, still passed through the pipeline and manifested | Confidential lane; fast lane |
+
+Default meeting-label policy (admin-overridable, escalate-only):
+
+| Label | Fast lane | Confidential lane |
+| --- | --- | --- |
+| Privileged / Deal-restricted | ✗ | abstract |
+| PHI | ✗ (unless a BAA is in force **and** the admin opts in) | redact |
+| Unlabelled business | redact | redact |
+
+A per-request **"privacy preview"** is available interactively. Background jobs always fall back to the conservative default.
+
+### 5.4 Single egress gate
+
+The gate is a privileged system service (`AlphaEgressService`, its own UID). It is the only UID the netd allowlist permits to reach model and connector endpoints. It:
+
+1. Accepts typed requests only: `ModelRequest{payload: RedactedPayload, route, purpose}` or `ApprovedAction{receiptId, destination, body}`.
+2. Re-runs a **fast deterministic detector pass**: regex, checksums, canaries, gazetteer exact matches. This is a second line of defense. A hit means the gate blocks the request and records a near-miss.
+3. Enforces the route policy: tier against destination, the tenant allow-list, and residency.
+4. For the confidential lane, runs attestation verification and HPKE sealing (§7.4). For the fast lane, uses TLS with certificate pinning to the Cerebras API.
+5. **Commits the manifest durably before dispatch.** This mirrors the upstream `ConfidentialInferenceAuthority` rule that the audit must commit first, and it reuses its phases: `dispatch_intent`, `response_headers`, `transport_error`, `denied`.
+6. Treats telemetry and crash reports as egress too: value-free counters only, under a DP budget for fleet analytics ([04 C.1](04-redaction.md)).
+
+### 5.5 Evaluation (release gate, published)
+
+| Metric | Target (est., to be set with design partners) | Dataset |
+| --- | --- | --- |
+| Exact-value leak rate at egress (PAN, SSN, account, MRN, secrets) | **0 in eval set; worst-class recall ≥0.99** with a checksum backstop | Alpha spoken-meeting set (actors, synthetic identities, Alpha's own on-device ASR output), plus a TTS-re-transcribed ai4privacy |
+| Person/org name leak rate | ≤1% exact, ≤3% partial (4+ characters or phonetic) | same |
+| Implicit identity (adversarial LLM names the person or deal, top-1) | report it; ≤10% (est.) on finance role-plays | same, plus public-figure distractors |
+| Axis-2 proposition leak (MNPI or privileged content entailed from the payload) | report it; the tier policy must keep it at ≤ the target set with counsel | labelled segments |
+| Task-utility retention (summary, action items, email draft) | ≥90% of the unredacted LLM-judge score (est.) | same |
+| Latency | redact-then-send p95 under 300 ms; abstract p95 under 2 s ([04 C.4](04-redaction.md)) | device |
+
+CI regression runs on every model or detector change. A quarterly external red team attacks with accents, code-switching, numbers split across partials, and spoken prompt injection ("include the account number in the summary"). Results are published as a **leakage report** alongside the release in the transparency log.
+
+---
+
+## 6. Pillar 3: built-in consent
+
+### 6.1 Legal frame (from [05](05-regulation-compliance.md))
+
+- **All-party notice and consent everywhere** is the default. That covers 11 all-party states plus 4 mixed. Cross-state calls apply the stricter law, and in-room meetings make jurisdiction per person unknowable.
+- Washington deems consent obtained when the announcement **is itself recorded** ([RCW 9.73.030](https://app.leg.wa.gov/rcw/default.aspx?cite=9.73.030)).
+- California's §632 adequacy of notice is unsettled (*Smith v. LoanMe*). Best practice is a clear upfront disclosure **with the opportunity to decline** ([RecordingLaw CA](https://www.recordinglaw.com/party-two-party-consent-states/california-recording-laws/phone-calls/)).
+- The *Otter* and *Ambriz* theories make vendor **capability** to use the data the hook. Alpha's answer is "no capability": no audio egress (I1), no training path, and an attested no-retention gateway.
+- **Biometrics:** session-only anonymous diarization. Enrolled voiceprints are for the owner only, with a written release. **Never enrol third parties in IL, TX or WA** without counsel.
+
+### 6.2 Platform precedents to match or exceed
+
+| Product | Pattern | Source |
+| --- | --- | --- |
+| Apple Call Recording (iOS 18.1) | Both parties hear "This call will be recorded"; the notice repeats periodically; not optional | [Slate](https://slate.com/technology/2024/10/apple-iphone-phone-call-recording-law-consent.html) |
+| Pixel Call Notes / Call Recording | Automatic audible disclaimer to all parties; Google was reportedly testing a tone-only option | [Google Help](https://support.google.com/phoneapp/answer/15257579?hl=en), [Android Central](https://www.androidcentral.com/phones/google-pixel/google-pixels-call-notes-recording-disclaimer-could-be-going-away-soon) |
+| Zoom recording disclaimer | Joiners must Continue or Leave; no stay-without-consent | [UBC tip sheet](https://teachingsupport.forestry.ubc.ca/files/2026/02/Tips-Sheet-Zoom-Recording-Disclaimer-and-Consent.pdf) |
+| Teams explicit recording consent | Everyone is muted when recording starts; unmuting prompts for consent; "No" gives view-only; off by default | [Microsoft Learn](https://learn.microsoft.com/en-us/microsoftteams/conferencing-recording-consent) |
+
+Alpha's in-room equivalent of the Teams mute is to **exclude that speaker's segments**. In all-party mode, a decline **stops** capture.
+
+### 6.3 Consent state machine
+
+```mermaid
+stateDiagram-v2
+  [*] --> Idle
+  Idle --> Armed: owner taps Capture / calendar auto-arm (policy)
+  Armed --> Announcing: chip+LED on, RAM-only buffer
+  Announcing --> Noticed: spoken announcement played AND captured (ASR confirms notice text)
+  Announcing --> Idle: announcement failed (speaker muted / not detected) → no persistence
+  Noticed --> Recording: consent rule satisfied for jurisdiction pack
+  Noticed --> Idle: any participant declines (all-party pack)
+  Recording --> Recording: new speaker detected → re-announce + collect consent; segments held in RAM until resolved
+  Recording --> Paused: "pause" / "off the record" / tap / hardware switch
+  Paused --> Recording: owner resume + re-announce
+  Recording --> Purging: "stop and delete" / decline after start
+  Purging --> Idle: purge buffer + segments since last checkpoint; ledger entry
+  Recording --> Quarantine: classification marking detected
+  Quarantine --> Idle: stop; segments sealed for admin review only
+  Recording --> Idle: owner stop
+```
+
+### 6.4 Components
+
+| Component | Design | Enforced where |
+| --- | --- | --- |
+| **Indicator** | A SystemUI status chip ("Transcribing on this phone") plus the lock-screen chip, plus a dedicated LED or edge light where the hardware allows, plus the Android 12+ mic privacy dot. The indicator **cannot be hidden by apps or by the owner while capture is active.** A capture-state broadcast lets enterprise MDM show it on paired wearables. | SystemUI (image) — I3 |
+| **Announcement** | A localized, admin-configurable script played through the speaker at the start, on resume, on every new-speaker detection, and every N minutes (configurable, 10 min default, est.). The script names the recorder, says that transcription is on device, names cloud processing if enabled, and explains how to object. The **announcement is captured and its ASR is checked** against the notice text. A failed check blocks persistence. Phone calls use an in-call audio injection (privileged `CAPTURE_AUDIO_OUTPUT`/telephony audio path), as Pixel and Apple do. | Consent service plus capture isolate |
+| **Per-participant consent** | (a) **Verbal**: a constrained keyword grammar ("yes", "I agree", "no", "stop") spotted locally on that speaker's diarized segment, plus a short clip *kept only as consent evidence* (configurable; default is the transcript line plus hash). (b) **Tap**: a large on-screen "Agree / Decline" for the device passed around. (c) **QR / NFC guest page**: shows the notice text and lets the guest agree or decline. It collects no name by default; the record holds a random participant token. The page is served from the phone over local Wi-Fi Direct/BLE, or as a static page plus a signed token, so **no guest data goes to Alpha servers**. (d) **Calendar pre-notice**: the invite text includes the notice and a decline link, which is logged as prior notice, not as consent. | Consent service |
+| **Stop / purge** | Anyone can say "stop recording" or "off the record". The policy decides whether *any* participant (default) or only the owner can stop. Purge deletes the RAM buffer and segments since the last checkpoint (default 60 s, est.), destroys vault entries created from them, and writes a ledger entry with counts and hashes but no content. | Capture isolate plus redaction service |
+| **Bystander handling** | (1) A near-field gate (energy plus DOA on multi-mic phones) drops far-field speech in **dictation mode**. (2) In **owner-only mode**, an owner-voice verifier keeps only the owner's speech (owner enrolment, owner release). (3) In meeting mode, a speaker who has not consented has segments **held in RAM and discarded** if consent does not arrive within T (default 2 min, est.). (4) Ambient "always listening" is **off by default** and admin-gated, and needs the DSP arming plus a visible LED. | Capture isolate |
+| **Jurisdiction packs** | Signed policy bundles: `us-all-party` (default everywhere), `us-one-party` (admin opt-in, still notice), `eu-gdpr` (lawful basis field, DPIA reference, **emotion inference hard-disabled** per AI Act Art. 5(1)(f), works-council mode needing a tenant attestation of a *Betriebsvereinbarung*), `uk`, `de-201` (strict: no capture without explicit consent of all), `biometric-strict` (IL/TX/WA: no third-party embeddings persisted). Coarse location plus SIM country plus admin setting select the pack. **Conflicts pick the stricter rule.** | Consent service, from a signed policy delivered via MDM |
+| **Consent ledger** | Append-only, hash-chained CBOR records signed by a **StrongBox attestation-backed device key**. The key's attestation chain includes `verifiedBootState` and the Alpha boot-key hash, so a verifier can check the ledger came from a genuine Alpha image. Each record: `session_id`, `seq`, `prev_hash`, `event` (announce, consent, decline, stop, purge, pause, quarantine, policy-pack), `participant_token`, `method`, `notice_text_sha256`, `pack_id@version`, `t_monotonic`, `t_wall`, `evidence_digest`. **No names unless the participant typed one.** Exported with the split record to the customer archive. The daily Merkle root is anchored in the Alpha transparency log, as a digest only. | Consent service |
+
+### 6.5 Acceptance for Pillar 3
+
+| Gate | Evidence |
+| --- | --- |
+| Indicator cannot be hidden | **A** (AOSP image boot on a physical device): a third-party overlay, an immersive app, screen-off and lock-screen each still show the indicator. Screenshots plus a SystemUI dump. |
+| Announcement captured and verified | **D**: physical speaker and mic in 3 rooms; ASR notice-match rate; failure blocks persistence |
+| Consent methods | **D** plus a usability study (**U**) with 10+ non-employee participants per method; time-to-consent; comprehension check |
+| Purge correctness | **D**: storage forensics after purge (no segments, vault entries destroyed), plus ledger verification |
+| Legal | Counsel memo per pack (US all-party, IL BIPA, EU/DE). Not engineering evidence. Required before a pilot. |
+
+---
+
+## 7. Pillar 4: verifiable cloud processing
+
+### 7.1 Lanes
+
+| Lane | What the server sees | Protection | Label in UI and receipts |
+| --- | --- | --- | --- |
+| **Local** | nothing | device | "On this phone" |
+| **Fast lane, interim** — Cerebras `qwen-3.8-27b` | **Redacted payload only** (I5) | TLS plus a **contractual** zero-retention commitment, US datacenters, SOC 2 Type 2 and HIPAA per Cerebras ([Trust Center](https://trust.cerebras.ai/), [privacy policy](https://www.cerebras.ai/privacy-policy)). **Not attested.** No Cerebras TEE or attestation offering was found in public sources (searched 2026-10-02; absence of evidence). The phone cannot verify which Qwen checkpoint Cerebras serves; ask for a contractual checkpoint and hash statement. | "Fast · redacted · provider contract (not hardware-verified)" |
+| **Confidential lane, target** — Alpha-hosted Qwen open weights in CPU TEE plus NVIDIA CC GPU | Redacted payload (redaction stays on: defense in depth) | Hardware attestation verified **by the phone**, including the Qwen weights-hash measurement; a measurement in a public log; HPKE end-to-end into the TEE; OHTTP relay; signed receipt | "Confidential · hardware-verified · Qwen weights sha256:… · measurement #… in public log" |
+| **Customer-hosted** (sovereign) | Customer-defined | Same verifier; the customer pins measurements and runs a witness | "Confidential · your organization's deployment" |
+
+The redaction tier and the lane are **orthogonal**, and both are recorded in every manifest.
+
+### 7.2 Confidential platforms for hosting Alpha's pinned Qwen weights
+
+| Option | Hardware / TEE | Verification surface | Price (public) | Fit |
+| --- | --- | --- | --- | --- |
+| **Tinfoil Containers** (US, YC) | AMD SEV-SNP CVM (Genoa) plus NVIDIA CC, checked with `local-gpu-verifier`; TLS terminates **inside** the CVM with a non-exportable key; **dm-verity model weights measured**; router enclave verifies model enclave ([docs](https://docs.tinfoil.sh/verification/attestation-architecture)). Customer-supplied container config is measured and logged ([config reference](https://docs.tinfoil.sh/containers/configuration)). | **Sigstore/Rekor**-logged measurements from GitHub Actions; open-source verifier ([Tinfoil](https://tinfoil.sh/blog/2025-01-10-tinfoil-enclaves-overview)) | $20/month plus usage; GPU quoted on request ([summary](https://aisotools.com/pricing/tinfoil)) | Best **US** managed CVM for an **Alpha-built Qwen container**; its weights-measurement pattern is exactly what §7.8 needs |
+| **Privatemode** (Edgeless, DE) | NVIDIA H100 CC plus SEV-SNP ([03 B2](03-secure-phones-confidential-ai.md)) | Client proxy verifies attestation and encrypts end to end ([quickstart](https://docs.privatemode.ai/quickstart)); claims BSI C5 | Per-token; its public list does **not** include `qwen-3.8-27b` (only a Qwen embedding model) ([models](https://www.privatemode.ai/models)) | EU option **only if** Edgeless agrees to a custom Qwen deployment (ask; Contrast confidential containers are their bring-your-own route) |
+| **Phala Cloud / dstack** | Intel TDX plus H100/H200/B300 CC ([GPU TEE](https://phala.com/gpu-tee)) | dstack verifier; **upstream Eliza already integrates dstack TDX and NVIDIA NRAS** (§2) | H200 **$4.80/h on demand (24 h minimum), $3.20/h reserved**; B300 $6.50/$5.60 (30-day minimum) ([pricing](https://phala.com/pricing)) | Cheapest self-hosted path and maximal upstream reuse. Caveats: the TEE.fail paper used Phala dstack as a forged-attestation case study ([tee.fail](https://tee.fail/)); token-funded parent ([03 B2](03-secure-phones-confidential-ai.md)) |
+| **Azure NCCads H100 v5** | AMD SEV-SNP plus H100 NVL (94 GB) CC; single GPU per VM ([Microsoft](https://learn.microsoft.com/en-us/azure/virtual-machines/sizes/gpu-accelerated/nccadsh100v5-series)) | Azure attestation plus NVIDIA | **$8.90/h** on demand ([Vantage](https://instances.vantage.sh/azure/vm/ncc40adsh100-v5)) | Enterprise procurement comfort (FedRAMP path, BAA); about 2× Phala cost |
+| **GCP a3-highgpu-1g Confidential VM** | Intel TDX plus 1× H100; **GA 2025-07-31** ([release notes](https://docs.cloud.google.com/confidential-computing/confidential-vm/docs/release-notes)) | GCP attestation plus NVIDIA | not retrieved (unverified) | Alternative hyperscaler with TDX, which matches the upstream `tdx` evidence kind |
+| **Confident Security OpenPCC** | Commodity TEEs; OHTTP, blind signatures, transparency log, `go-nvtrust` ([BusinessWire](https://www.businesswire.com/news/home/20251105013372/en/Confident-Security-Launches-OpenPCC-an-Open-Source-Standard-that-Protects-Data-Shared-with-AI-Models), [arXiv 2606.11145](https://arxiv.org/abs/2606.11145)) | Open-source protocol stack | Open source (Apache-2.0/FSL) | **Protocol reference.** Adopt its OHTTP/BHTTP and non-targetability pattern rather than inventing one |
+| Lambda / CoreWeave | Lambda markets H100 CC capability; CoreWeave documents BlueField isolation, and CC details are under NDA ([CoreWeave security](https://docs.coreweave.com/security)) | unclear (unverified) | H100 $2.43–3.99/h non-CC ([Spheron on Lambda](https://www.spheron.network/blog/lambda-cloud-h100-pricing-2026/)) | Not first choice until CC-mode attestation is documented |
+| AWS | Nitro Enclaves have **no GPU**; no GPU CC with GPU attestation found as of 2026 ([03 B1](03-secure-phones-confidential-ai.md)) | — | — | Not for the confidential lane |
+
+**Recommendation:**
+
+- **M4:** run Alpha's own reproducibly built **vLLM plus Qwen container** on **Tinfoil Containers** (US) or **Phala dstack** (TDX). In both cases the weights hash is a measured input.
+- **M5:** stand up Alpha's **own** gateway on **Phala dstack TDX plus H200**, reusing upstream code, with **GCP a3 TDX** as the second provider for diversity. Keep Azure NCC for customers who require Azure.
+
+- In every case, Alpha's own phone-side verifier makes the decision. Alpha does not rely on a provider SDK's verdict alone.
+
+### 7.3 Gateway design (self-hosted, M5)
+
+```mermaid
+flowchart TB
+  subgraph CVM["Single CVM (Intel TDX) + 1–8× NVIDIA H100/H200 in CC mode"]
+    direction TB
+    BOOT["Measured boot: OVMF → kernel/initrd → rootfs (dm-verity)<br/>RTMRs: compose hash, gateway image digest, policy revision"]
+    GPUV["GPU attestation at boot + per-session nonce<br/>local verifier (nvtrust) + NRAS EAT (ES384)<br/>→ gpuProtected, gpuFirmware"]
+    KEYS["Ephemeral HPKE key pair + receipt-signing key<br/>generated in TD; pubkeys hashed into REPORTDATA"]
+    OHG["OHTTP gateway (RFC 9458) + BHTTP<br/>decapsulates ONLY inside TD"]
+    RT["Router: auth via anonymous tokens (Privacy Pass)<br/>quota per tenant; no user IDs"]
+    VLLM["vLLM: Qwen qwen-3.8-27b (BF16 or reproducible FP8)<br/>weights dm-verity root = modelWeights measurement<br/>tokenizer + chat template hashed<br/>no prompt logging; tmpfs only; no disk writes"]
+    RCPT["Receipt signer: COSE_Sign1 over request digest,<br/>policy, model digest, measurement, nonce"]
+    BOOT --> GPUV --> KEYS --> OHG --> RT --> VLLM --> RCPT
+  end
+  RELAY["Third-party OHTTP relay<br/>(Fastly / Cloudflare Privacy Gateway)"] --> OHG
+  KMS["Key policy (multi-party)<br/>model-key release only to logged measurements"] -.attested key release.-> VLLM
+```
+
+Design rules:
+
+- **No persistence of prompts.** Root fs is read-only. Scratch is tmpfs. The logging allowlist is code-reviewed and measured. Metrics are value-free.
+- **Stateless per request.** No cross-request cache keyed to users, except a prefix KV cache for the shared system prompt.
+- **Non-targetability.** The relay sees the client IP but not content. The gateway sees content but not the IP. Anonymous rate-limit tokens use Privacy Pass-style blind signatures. Meta's Private Processing uses the same OHTTP-via-Fastly pattern, with a third-party log (Cloudflare) for measurements ([Meta whitepaper](https://ai.meta.com/static-resource/private-processing-technical-whitepaper), [Meta Engineering](https://engineering.fb.com/2025/04/29/security/whatsapp-private-processing-ai-tools/)). Residual risk: the operator and relay could collude, as NCC noted for Meta ([NCC report](https://www.nccgroup.com/media/ymskbe40/ncc_group_metaplatforms_whatsapp-message_summarization_report_2025-08-27_v10.pdf)).
+- **No egress for the model.** The TD's network policy is measured: inbound only from the relay, and outbound only to NVIDIA/Intel attestation collateral. There is no path from the Qwen workload to any third party, including the model publisher.
+- **Multi-GPU.** Qwen 27B in BF16 is about 54 GB of weights, so it fits on one 80 GB H100 with limited KV cache, or more comfortably on one 141 GB H200 (est.). A **single-GPU TD per replica** avoids Hopper's protected-PCIe 8-GPU full-node constraint ([NVIDIA nvtrust/PPCIE](https://pypi.org/project/nv-ppcie-verifier)). Blackwell TEE-I/O can come later.
+- **Performance tuning for CC.** Expect a 17–21% throughput drop and +22–28% TTFT under TDX plus H100 ([arXiv 2607.19353](https://arxiv.org/abs/2607.19353)). Blackwell CC loses 13–27% from a serialized CPU–GPU bridge, and most of that is recoverable with scheduling changes: 57–92% of the gap ([arXiv 2606.23969](https://arxiv.org/abs/2606.23969)). Budget 20% (est.).
+
+### 7.4 Phone-side attestation verification and encryption
+
+Since the agent runs on the phone, verification runs **in the egress gate service on the phone**, not in a cloud enclave.
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant G as Egress gate (phone)
+  participant L as Transparency log (+ witnesses)
+  participant R as OHTTP relay (3rd party)
+  participant W as Measured gateway (TD + GPU)
+  Note over G: Payload already redacted; manifest drafted
+  G->>R: GET /keyconfig?nonce=N (via relay)
+  R->>W: forward
+  W-->>R: bundle{TDX quote(REPORTDATA=H(hpke_pk‖sign_pk‖N)), NVIDIA EAT(nonce=N), cert chains, release_id}
+  R-->>G: bundle
+  G->>G: verify TDX quote → Intel PCS root, TCB status, debug=0; parse MRTD/RTMR (port of tee-tdx-quote.ts)
+  G->>G: verify NVIDIA EAT (ES384, pinned NRAS chain, eat_nonce=N, gpu CC on, firmware in RIM)
+  G->>L: inclusion proof for release_id (measurement set); cached signed checkpoint
+  L-->>G: proof + checkpoint co-signed by ≥2 witnesses
+  G->>G: measurements == logged release AND release not revoked AND policy allows lane/tier
+  G->>G: durable commit: manifest{payload digest, evidence digest, release_id, policy rev}
+  G->>R: OHTTP(HPKE_seal(hpke_pk, BHTTP request))
+  R->>W: opaque blob
+  W->>W: decap in TD, infer, sign receipt
+  W-->>R: HPKE response + COSE receipt
+  R-->>G: response
+  G->>G: verify receipt sig with sign_pk from quote; bind to manifest; rehydrate locally
+```
+
+Implementation notes:
+
+- **Verifier code.**
+  - Port the upstream TypeScript (`tee-tdx-quote.ts`, `tee-gpu-nvidia.ts`, and the `tee-policy.ts` evaluator) into the on-device resident runtime. It is already Node/Bun code, and the agent runs Bun on the phone.
+  - Alternatively, write a Kotlin/Rust verifier in the gate service and keep the TypeScript as a cross-check in CI.
+  - SEV-SNP (Tinfoil, Azure) needs a VCEK/ASK/ARK chain verifier. Tinfoil's open-source verifier is a reference.
+  - The dstack path's external `dstack-verifier` binary must be built for arm64 and pinned by SHA-256, or replaced. Do not shell out to unpinned binaries.
+- **Quote collateral.** Intel PCS/PCCS collateral and NVIDIA OCSP/RIM are fetched by the phone through the relay (cached, with freshness ≤24 h, est.). Alternatively, use a **verifier-as-a-service result only as a cross-check, never as the sole verdict**.
+- **Freshness.** A per-request nonce applies, or per-session keys with ≤15 min lifetime (est.) and a nonce at session start. Revocation lists for releases and TCB levels come from the log.
+- **RA-TLS alternative.** The IETF SEAT drafts bind TLS keys to attestation ([draft-fossati-seat-early-attestation](https://datatracker.ietf.org/doc/html/draft-fossati-seat-early-attestation-00)). Tinfoil uses an attested in-CVM TLS key. HPKE plus OHTTP is preferred here because it adds non-targetability and keeps the relay blind. RA-TLS remains acceptable for the customer-hosted lane.
+
+### 7.5 Transparency log, reproducible builds, multi-party release policy
+
+| Element | Design | Precedent |
+| --- | --- | --- |
+| **Release statement** | For every gateway release, CI emits a signed statement: `{release_id, source commit, build recipe digest, OCI image digests, compose hash, kernel/initrd/OVMF digests, expected MRTD/RTMRs (or SNP launch digest), model weights dm-verity root, policy revision, SBOM digest}` | Tinfoil's Sigstore bundles ([docs](https://docs.tinfoil.sh/verification/attestation-architecture)); SCITT signed statements and receipts ([RFC 9943](https://www.rfc-editor.org/rfc/rfc9943.html)) |
+| **Logs** | (1) **Sigstore Rekor v2** (tile-based, GA Oct 2025) for keyless GitHub-Actions provenance ([Sigstore](https://blog.sigstore.dev/rekor-v2-ga/)). (2) An **Alpha release log** (Trillian-Tessera tiles, static on a CDN) with checkpoints **co-signed by at least 2 independent witnesses**, one of them a design-partner customer. This matches Google's stated roadmap for a third-party co-signed log ([Google brief](https://services.google.com/fh/files/misc/private_ai_compute_technical_brief.pdf)). | Apple PCC log ([Apple](https://security.apple.com/blog/private-cloud-compute/)); Meta's third-party log |
+| **Phone rule** | The phone sends to a gateway only if its measurements appear in a release **included** in the log under a witness-cosigned checkpoint not older than 7 days (est.), and not revoked. **Unlisted means refused.** | PCC |
+| **Reproducible builds** | Gateway images are built hermetically (Nix or Bazel plus pinned base digests); `SOURCE_DATE_EPOCH`; two independent builders (Alpha CI plus an external rebuilder) must produce **byte-identical** digests before the log entry. Publish the build recipe and a **researcher VM image** (a VRE analogue). | Apple VRE ([BleepingComputer](https://www.bleepingcomputer.com/news/apple/apple-creates-private-cloud-compute-vm-to-let-researchers-find-bugs/)); repo precedent of 388,242-path equivalence scans ([enclave-candidate-validation.md](../enclave-candidate-validation.md)) |
+| **Phone image** | The AOSP image is also reproducible where feasible. AOSP `system.img` content is mostly reproducible, but filesystem images are not bit-identical ([SOAP study](https://www.android-device-security.org/publications/2022-poell-wisec/Poell_2022_WiSec2022_ReproducibilityAOSP.pdf)). Publish per-file content digests and the AVB vbmeta digest in the same log. | — |
+| **Multi-party release policy** | Admission of a new release into the "trusted" set uses **TUF-style threshold signing**: 3-of-5 release keys held by different people, including one independent party, on hardware tokens ([TUF spec](https://theupdateframework.github.io/specification/latest/)). The KMS model-key and any customer-key release policy require that the measurement appears in the log **and** has threshold signatures. A **72-hour delay-and-notify** precedes non-emergency releases becoming trusted, and customers subscribed to the log can veto their tenant. Emergency security releases are allowed with post-hoc publication within 24 h (logged). This directly fixes the single-operator signer/Terraform control in [enclave-candidate-validation.md](../enclave-candidate-validation.md). | Rust 5-of-9 root quorum ([rust-lang RFC 3724](https://github.com/rust-lang/rfcs/pull/3724)) |
+
+### 7.6 Customer-held keys
+
+- **Split record.** The original transcript (and audio, if the policy says so) is encrypted on the phone to a **customer archive public key** (HPKE) and journalled to the customer's archive, such as Smarsh or Global Relay. Alpha never holds the private key.
+- **Confidential-lane tenant key.** For tenants that require it, the gateway's model-session key wrap uses the **customer's KMS**, with an attested key-release policy pinned to the logged measurements (Azure SKR, GCP Confidential Space-style, or a customer-run key broker). The customer can revoke by policy.
+- **Device side.** The vault and ledger keys stay on the device (StrongBox). The tenant escrow of the *consent ledger signing certificate chain* is public. There is no escrow of content keys.
+
+### 7.7 Per-request receipts and the "what the model saw" manifest
+
+Every egress produces two linked artifacts:
+
+1. **Manifest (phone-generated, stored locally, exportable).** It contains the exact bytes sent, before encryption, which the user can view in the "What the model saw" sheet. It also contains a token map *reference* (no values), detector and policy versions, tier per segment, lane, destination, and the attestation evidence digest. For the confidential lane it adds the release_id and log checkpoint. It ends with the response digest.
+2. **Receipt (gateway-signed, confidential lane only).** A COSE_Sign1 signed by the attestation-bound key. Fast-lane requests get a **phone-signed** receipt that states `lane=fast, attested=false`.
+
+The manifest hash and receipt are stored in the agent's existing **approvals and receipts** journal, and the consent-ledger record for the session links to them. That gives one auditable chain: *consent → capture → redaction → egress → receipt → rehydration → action approval*.
+
+---
+
+### 7.8 Model provenance and origin: answering the Qwen question
+
+**Facts:**
+
+- `qwen-3.8-27b` is an Alibaba Qwen model. Alibaba is a PRC company.
+- [05 §7.7](05-regulation-compliance.md) and [06](06-vertical-markets.md) record that origin is a hard question for defense and IC buyers, a likely one for federal, state and local buyers and critical infrastructure, and a diligence question for regulated finance.
+- No single statute bans Qwen for federal use as of the research date.
+- The model decision is fixed. The job is to make the **data path** and the **artifact** defensible, and to answer buyers truthfully.
+
+**Separate the two concerns buyers conflate:**
+
+| Concern | Question | What answers it |
+| --- | --- | --- |
+| A. Data flow | "Does our data go to China, or to Alibaba?" | Architecture and attestation |
+| B. Artifact integrity | "Could the weights be backdoored, biased or covertly instructed?" | Provenance, measurement, containment, testing. **No method proves absence.** |
+
+**Controls:**
+
+| # | Control | Addresses | Mechanism | Evidence a buyer can check |
+| --- | --- | --- | --- | --- |
+| Q1 | **Self-host the open weights inside the trust boundary** | A | The confidential lane runs Alpha-hosted Qwen weights in a CPU+GPU TEE in US regions (EU or customer regions on request). The publisher is not an operator, subprocessor or network peer. The TD's outbound network is measured and restricted to relay responses and attestation collateral (§7.3). | Attested network policy in the release statement; the subprocessor list contains no Alibaba entity; region in the receipt |
+| Q2 | **Pre-egress redaction on every lane** | A, B | Whatever the weights do, they see pseudonyms and generalized values. Vault values never enter model context (§5). | Leak-rate report; "what the model saw" manifests |
+| Q3 | **Weights-hash attestation** | B | The `modelWeights` measurement already exists in upstream `TeeEvidence` and the upstream `tee-confidential-inference.ts` unseal path. Alpha measures the dm-verity root over the exact weight shards, **plus the tokenizer and chat template** (template changes alter behaviour), plus the quantization recipe output. The phone refuses a gateway whose weights digest differs from the logged release. Receipts carry the digest. | Receipt field `modelWeightsDigest`; log entry; the phone UI shows the digest |
+| Q4 | **Provenance chain ("model BOM")** | B | Record the publisher repository, commit and file SHA-256s, licence text and download date. **Two independent parties re-download and re-hash.** Any quantization is reproduced from the published weights in the hermetic build and logged with its recipe. The same applies to the small on-device Qwen model in the system image. | Signed model-BOM statement in the transparency log (SCITT-style signed statement, [RFC 9943](https://www.rfc-editor.org/rfc/rfc9943.html)) |
+| Q5 | **Containment of the model's authority** | B | The model has no direct egress or tools. Every tool call is a proposal executed on the phone after policy and, for external sends, user approval. Detokenization happens only on the phone. Outbound-envelope and secret-swap guards apply (upstream). | Approval receipts; gate audit; prompt-injection test results |
+| Q6 | **Behavioural admission testing** | B | Before each release is admitted (threshold-signed, §7.5), run a published battery: tool-argument exfiltration attempts (does the model place data in URLs or arguments without being asked?), trigger-phrase and backdoor probes, canary-leak tests, instruction-hierarchy tests, and topic-bias checks relevant to the buyer (e.g., summaries of geopolitical or regulatory content compared against a reference). Results are logged with the release. | Published eval report per release. **Stated limit:** testing cannot prove the absence of a backdoor. |
+| Q7 | **Fast lane honesty** | A, B | Cerebras is a US company with US datacenters and states zero retention. Alpha cannot attest which checkpoint Cerebras serves, so the fast-lane label says "not hardware-verified". Ask Cerebras for a contractual checkpoint and hash statement. Policies for sensitive labels default to the confidential lane. | Lane label; DPA; Cerebras statement |
+| Q8 | **Customer pinning** | A, B | A tenant can pin the exact weights digest and release IDs it accepts, run a log witness, and run the confidential lane in its own cloud account (customer-hosted lane). | Tenant policy; witness signatures |
+
+**Buyer Q&A (approved answers; update as milestones land):**
+
+- **"Is the model Chinese?"** "Yes. Alpha uses Qwen, an open-weight model published by Alibaba's Qwen team. We do not use Alibaba's cloud or APIs. The weights are files we host ourselves (Confidential mode) or that Cerebras hosts in US datacenters (Fast mode)."
+- **"Does any of our data go to Alibaba or to China?"** "No. Fast mode sends redacted text to Cerebras in US datacenters. Confidential mode sends redacted text, encrypted, to our attested servers in [region]. Neither has a connection to Alibaba. From M4, your phone verifies the Confidential-mode server and its network policy before sending."
+- **"Could the model be backdoored?"** "No one can prove an AI model has no backdoor, whoever made it. We limit what a compromised model could do: it sees only redacted text, cannot send data anywhere or act without your approval on the phone, runs only the exact weights whose hash your phone checks, and is tested before each release. Results are published [link]."
+- **"Can we pass this through our supply-chain risk review?"** "We provide the model BOM, the attested weights hash, the network policy, the test results and our threat model for your SCRM process. Some procurement policies weigh a software component's country of origin regardless of hosting. Your review decides that; we will not tell you otherwise." (Do not claim FedRAMP, CMMC or M-25-22 alignment that has not been assessed.)
+- **"Who can change the model?"** "Only a release signed by 3 of 5 keyholders, including an independent party, after a public 72-hour notice, and visible in the transparency log. Your organization can refuse any release."
+
+**Residual market limit (stated, not mitigated away).** Some defense and IC buyers may decline a PRC-origin model on policy grounds no matter how it is hosted ([06](06-vertical-markets.md)). The controls above make the regulated-finance, legal and enterprise conversation answerable. They do not change the model's origin.
+
+## 8. Interfaces (normative sketches)
+
+```ts
+// ── Pillar 1: capture isolate → redaction (binder/AIDL; no PCM crosses) ──
+interface TranscriptSegment {
+  sessionId: string; seq: number;
+  speaker: { label: `S${number}`; consentState: 'unknown'|'noticed'|'consented'|'declined'; owner: boolean };
+  words: { text: string; startMs: number; endMs: number; conf: number }[];
+  nBest?: string[];                 // top-k alternatives for detection
+  lang: string; langConf: number;   // low conf ⇒ policy escalates to local-only
+  asr: { engine: 'parakeet-tdt-0.6b-v3-int8'|'moonshine-base'|string; modelSha256: string };
+  final: boolean;
+}
+
+// ── Pillar 3: consent service ──
+type ConsentEvent =
+  | { kind: 'announce'; noticeSha256: string; packId: string; captured: boolean }
+  | { kind: 'consent'|'decline'; participant: string /* random token */; method: 'verbal'|'tap'|'qr'|'nfc'|'pre-notice' }
+  | { kind: 'pause'|'resume'|'stop'|'purge'|'quarantine'; reason: string; purgedSegments?: number };
+interface ConsentLedgerRecord {
+  sessionId: string; seq: number; prevHash: string; tWall: string; tMono: number;
+  event: ConsentEvent; evidenceDigest?: string;
+  sig: string; // COSE_Sign1, StrongBox key with Android key-attestation chain
+}
+interface ConsentGate { canPersist(sessionId: string, speaker: string): boolean } // I4
+
+// ── Pillar 2: redaction → egress ──
+type Tier = 'local-only'|'abstract'|'redact'|'send-redacted';
+interface RedactedPayload {
+  readonly brand: unique symbol;    // only the redaction service can mint (type + runtime brand)
+  text: string;                     // contains ⟦P2:person|role=…⟧ tokens only
+  tokens: { id: string; type: string; role?: string }[]; // no values
+  tierBySegment: Record<string, Tier>;
+  detectorVersion: string; policyRevision: string; manifestDraftSha256: string;
+}
+
+// ── Pillar 4: egress gate ──
+type Lane = 'fast-cerebras'|'confidential'|'customer-hosted';
+interface ModelRequest { payload: RedactedPayload; lane: Lane; purpose: 'interactive'|'summary'|'filing'; model: 'qwen-3.8-27b'; expectedWeightsSha256?: string /* confidential lane: must match attested modelWeights */ }
+interface AttestationVerdict {
+  lane: Lane; releaseId: string; logCheckpoint: string; tee: 'tdx'|'sev-snp';
+  gpu: { cc: true; arch: 'hopper'|'blackwell'; firmwareDigest: string };
+  hpkePublicKey: Uint8Array; receiptKey: Uint8Array; nonce: string; expiresAt: number;
+}
+interface EgressGate {
+  verify(lane: Lane): Promise<AttestationVerdict>;                 // throws ⇒ no send
+  send(req: ModelRequest): Promise<{ text: string; manifest: Manifest; receipt: Receipt }>;
+}
+interface Manifest {
+  id: string; sessionId?: string; createdAt: string;
+  sentSha256: string; sentPreviewRef: string;   // exact bytes kept locally for the "what the model saw" view
+  lane: Lane; destination: string; model: string; modelWeightsDigest?: string;
+  releaseId?: string; evidenceDigest?: string; policyRevision: string; detectorVersion: string;
+  tiers: Record<Tier, number>; tokenCounts: Record<string, number>;
+  nearMisses: number; responseSha256: string;
+}
+interface Receipt { // COSE_Sign1 payload
+  v: 1; requestSha256: string; responseSha256: string; manifestSha256: string;
+  releaseId: string; measurement: Record<string, string>; modelWeightsDigest: string;
+  nonce: string; t: string; retained: 'none'; attested: boolean; signer: 'gateway'|'phone';
+}
+```
+
+The upstream `ConfidentialInferenceAuthority` (route profile with `revision`/`expiresAt`, durable `audit.append` before dispatch, `beforeDispatch(evidence)`) is the **server-agnostic core of `EgressGate.send`**. Reuse it through a reviewed patch in `patches/eliza`. Do not edit `vendor/eliza`.
+
+---
+
+## 9. Claims ladder: accurate confidentiality language by phase
+
+Rules:
+
+- Each claim may be used **only after** its evidence gate passes, and it must be published with a dated evidence link.
+- Claims are scoped to the lane in use, and the UI shows the lane on every result.
+- Never use these words, at any phase: "military-grade", "unhackable", "zero-knowledge", "end-to-end encrypted" (unless the lane terminates only in attested TEEs), "nobody can ever see", or "complies with [law]" (instead: "designed to support [requirement]").
+
+| Rung | When (target) | **What we can say** (approved wording) | **What we must not say yet** | Evidence that unlocks it |
+| --- | --- | --- | --- | --- |
+| **L0 — Today** | 2026-10-02 | "Alpha's assistant is designed to run on your phone. When it needs a cloud language model, the text it sends — your request and the selected context — goes over TLS to Cerebras, a US provider with US datacenters, running Qwen (`qwen-3.8-27b`), an open-weight model published by Alibaba's Qwen team. Alibaba does not receive your data. Cerebras states it does not retain inference inputs or outputs; that is a contractual commitment, not a technical guarantee. Speech-to-text on the phone is in development." | "enclave", "attested", "sealed", "private cloud", "data never leaves", "redacted", "not even we can see it", "on-device transcription" as a shipped feature, any "Sealed/Attested" UI | Repo docs (§2). **Remove any enclave language from the website, deck and UI now.** Do not say "the model runs on US infrastructure only" without naming the lane. Do not imply that the model is US-made. |
+| **L1 — On-device speech** | M1 (Dec 2026) | "Conversations are transcribed on the phone. Audio is not uploaded by Alpha's transcription feature." | "Nothing leaves the phone" (text still goes to the model) | **D**: physical-device WER and battery report; release-build check that the paired-host upload is absent. For "not uploaded **by the system**", **A**: I1 SELinux/netd test on an image boot. |
+| **L2 — Redacted egress** | M2 (Jan 2027) | "Before text leaves the phone, Alpha replaces names, account numbers and other identifiers with placeholders, and keeps the key on the phone. Segments your policy marks local-only never leave. On our published test set, identifier leak rate was X% (exact) / Y% (partial) [link]. Every request has a 'what the model saw' record." | "anonymous", "de-identified" (HIPAA term of art), "no personal data leaves" (context can still identify), any rate without the eval link | Eval report v1 in CI; gate packet-capture reconciliation (I2/I5) on **D**; manifest UI on **D** |
+| **L3 — Built-in consent** | M3 (Feb 2027; indicator unhideable at M6) | "Alpha announces recording out loud, asks each participant for consent, shows a recording indicator, lets anyone stop and delete, and keeps a signed consent record." From M6 add: "The indicator is enforced by the operating system and cannot be hidden by apps." | "legally compliant in all states", "BIPA compliant" | **D** consent tests plus counsel memos; **A** for "OS-enforced" |
+| **L4 — Confidential lane (managed)** | M4 (Mar 2027) | "In Confidential mode, your phone checks a hardware attestation from the server — CPU and NVIDIA GPU — and encrypts your already-redacted request so that only that verified server software can read it. That check includes the exact Qwen model files (weights hash sha256:…), which Alpha hosts itself; the model publisher has no access. Each answer comes with a signed receipt. Trust assumptions: the hardware vendors (AMD/Intel, NVIDIA), the physical security of the provider's data center, and [provider]'s published software. Fast mode uses Cerebras and is protected by contract, not hardware." | "independently audited", "no one at Alpha can deploy code that reads requests", "secure against physical attack", unqualified "end-to-end encrypted", "the model is verified safe / backdoor-free" | **I**: live phone-to-provider verification on **D**, with negative tests (bad measurement, debug, stale nonce, unlisted release) refusing to send; receipts verified |
+| **L5 — Verifiable and audited (Alpha gateway)** | M5–M6 (May–Jul 2027) | "Every server software version that can process Confidential requests is published in a public, witness-cosigned transparency log, built reproducibly, and admitted only with sign-off from multiple keyholders, including an independent party, after a public waiting period. Your phone refuses servers not in the log. [Auditor] assessed the design and implementation [report link]." | "provably private", "guaranteed", "immune to insiders" (collusion between the operator and relay, and physical attacks, remain) | Log live with ≥2 witnesses; two-builder reproducibility; TUF threshold ceremony record; external audit report published (NCC Group or Trail of Bits class); bug bounty live |
+| **L6 — Customer-controlled** | M7 (Q3 2027) | "Your organization can hold the keys to your archive and Confidential-mode sessions, pin which server versions it trusts, and witness the log itself." | — | Customer KMS integration live with ≥1 design partner (**I** + **U**) |
+
+**Rewrite of the existing claims now (M0):**
+
+| Old | New |
+| --- | --- |
+| "Attested enclave inference" | L0 text |
+| "Sealed / Attested" UI badge | "Cloud model: Cerebras (contract)" or "Not verified", as `native-adapter.ts` already shows |
+
+---
+
+## 10. Threat model (STRIDE-oriented)
+
+**Assets:** raw audio; transcripts; the vault map; redacted payloads; model responses; the consent ledger; device keys (vault, ledger, attestation); gateway HPKE/receipt keys; release-signing keys; policy bundles; model weights (integrity).
+
+**Adversaries:**
+
+- A1 remote network attacker
+- A2 malicious or compromised app on the phone
+- A3 malicious meeting participant (spoken prompt injection, false consent)
+- A4 phone thief or border search
+- A5 Alpha insider or compromised CI
+- A6 cloud operator or provider admin (Phala, Azure, GCP, Tinfoil, Privatemode)
+- A7 Cerebras (fast lane)
+- A8 physical attacker in the data center
+- A9 legal compulsion (subpoena or warrant to Alpha or a provider)
+- A10 the OHTTP relay operator
+
+| STRIDE | Threat | Adversary | Mitigation | Residual |
+| --- | --- | --- | --- | --- |
+| **S**poofing | Fake gateway or MITM presents a valid TLS cert | A1, A6 | HPKE to the attested key; quote and GPU EAT verification; log inclusion; no plaintext fallback (I6) | Forged attestation after a physical key extraction (see T-phys) |
+| S | Forged consent ("yes" by a non-participant, replayed audio) | A3 | Consent bound to the diarized speaker plus timing; liveness (re-announce on new speaker); the ledger records method and confidence; admin review for disputes | Diarization error; impersonation. Counsel decides evidentiary weight. |
+| S | Rogue phone image posing as Alpha to the gateway or tenant | A2, A4 | Android key attestation (verified boot state, Alpha boot-key hash, patch level) required for tenant enrolment and for receipts | Bootloader or TEE vulnerabilities in the phone SoC |
+| **T**ampering | Malicious release admitted to the gateway | A5 | Reproducible builds, two builders, TUF threshold 3-of-5, 72 h delay, public log, witnesses, customer veto | Collusion of the threshold; bugs in audited code |
+| T | Policy bundle weakened (fast lane allowed for privileged meetings) | A5, A2 | Signed policy (admin key plus Alpha), escalate-only at runtime, policy revision in every manifest | Admin misconfiguration (by design, admin authority) |
+| T | Model weights swapped (backdoored model) | A5, A6 | Weights, tokenizer and chat-template dm-verity root measured (`modelWeights`), logged, and checked by the phone (§7.8 Q3) | — |
+| T / I | **Publisher-level artifact risk**: Qwen weights published with a latent backdoor, trigger or bias | Model publisher | Provenance chain and independent re-hash (Q4); containment: redacted inputs, no direct egress or tools, phone-side approvals (Q2, Q5); behavioural admission battery (Q6); measured no-egress network policy in the TD (Q1) | **Cannot be eliminated.** It is stated in the Q&A and the threat model; an origin-based procurement exclusion remains for some buyers. |
+| **R**epudiation | "The phone never told us it was recording" | A3 | Captured announcement plus a signed ledger plus the ledger Merkle root anchored in the log | — |
+| R | Alpha denies what the model saw | user | Phone manifest plus gateway receipt signed by the attestation-bound key | Fast lane receipts are phone-signed only |
+| **I**nformation disclosure | Raw audio or transcript exfiltration by an app | A2 | Capture isolate without network (I1); binder permission signature-level; pVM for redaction | Kernel or hypervisor exploit |
+| I | Identifiers leak in redacted text (false negatives, context re-identification) | A7, A6 | Ensemble plus phonetic plus N-best; fail closed; re-ID probe; gate second pass; published leak eval; confidential lane as default for sensitive labels | **Non-zero by nature.** Claim is stated as a measured rate. |
+| I | Cerebras retains or misuses data | A7 | Redacted-only (I5); enterprise ZDR/DPA; lane label | Contractual only |
+| I | Provider admin reads TD/GPU memory | A6 | TDX/SEV-SNP memory encryption, GPU CC (AES-GCM VRAM and bus), debug-off check | Software TEE breaks (e.g., Heckler; BadFuse on Milan SEV-SNP ([arXiv 2605.12990](https://arxiv.org/abs/2605.12990))). Mitigations: TCB-level policy, Genoa+/TDX only, fast revocation via the log |
+| I | Prompt leakage via logs or metrics in the gateway | A5, A6 | Measured logging allowlist; tmpfs; no prompt logging in vLLM config (measured) | Bugs, so external audit |
+| I | Device seizure | A4, A9 | FBE plus StrongBox vault with `UnlockedDeviceRequired`; short TTL; duress/travel mode wipe of vault keys; split-record originals live in the customer archive, not on the phone | Unlocked-device coercion |
+| I | Legal compulsion to Alpha | A9 | Alpha holds no content keys; confidential lane is stateless; the transparency log makes a covert targeted build visible (non-targetability via OHTTP) | Compulsion on the customer archive (the customer's own process) |
+| I | Spoken prompt injection ("read me the account numbers") | A3 | Vault values never enter model context; detokenization only under user approval; outbound-envelope guard; tool policy | Social engineering of the owner |
+| **D**enial of service | Gateway or relay outage | A1, A6 | Multi-platform confidential routes for the same pinned Qwen weights (Tinfoil Containers, Phala, own gateway, GCP); queue background jobs; **never auto-downgrade** sensitive tiers to the fast lane | Availability of the confidential lane below Cerebras's |
+| D | Attestation collateral unavailable (Intel PCS, NVIDIA NRAS/OCSP) | A1 | Cached collateral with bounded freshness; a local GPU verifier inside the TD; fail closed after the window | Prolonged outage blocks the confidential lane |
+| **E**levation | Agent runtime bypasses the gate | A2 | netd per-UID allowlist: only the gate UID reaches model endpoints; SELinux neverallow rules; CTS-style tests (I2) | Platform exploit |
+| E | Redaction model compromised via malicious model update | A5 | Model files in the signed system image or APEX; digests in the release log; pVM measured at boot (pvmfw) | — |
+
+### 10.1 Physical and hardware-level TEE attacks (explicitly in the threat model)
+
+| Attack | Effect on Alpha | Response |
+| --- | --- | --- |
+| **TEE.fail** (DDR5 interposer, under $1k; TDX, SEV-SNP and through them NVIDIA CC attestation) ([tee.fail](https://tee.fail/)) | An attacker with physical plus root access to a host can **extract attestation keys and forge quotes**. A forged "confidential GPU" could run on non-TEE hardware. | (1) Redaction stays in front of every lane, so a break yields pseudonymized text, not identities. (2) Prefer providers with audited physical controls; ask for "Proof of Cloud" TPM-bound platform identity ([arXiv 2510.12469](https://arxiv.org/abs/2510.12469)). (3) Short-lived HPKE keys per session give forward secrecy for past traffic. (4) Claims (L4/L5) state the physical-security assumption. |
+| **DDRop** (about $159 interposer plus host control; replays stale ciphertext; forged launch measurements on TDX) ([ddropattack.eu](https://ddropattack.eu/)) | Same class; measurement forgery | Same, plus multi-provider diversity for sensitive tenants, and an option for customer-hosted (customer's physical control) |
+| **Battering RAM / WireTap** (DDR4) ([Kaspersky](https://www.kaspersky.com/blog/wiretap-battering-ram-tee-attacks/54598/)) | DDR4 platforms | Policy: no DDR4-era SGX/SEV platforms admitted |
+| **NVIDIA GPU-CC configuration manipulation** found by "Blueprint, Bootstrap, and Bridge" ([arXiv 2507.02770](https://arxiv.org/abs/2507.02770)) | Settings manipulable by attackers with physical or remote access, as reported | Pin GPU firmware/VBIOS digests (RIM) in policy; track PSIRT; revoke via the log |
+| Phone-side: cold boot, chip-off, SoC TEE bugs | Vault exposure on a stolen device | StrongBox (discrete secure element) for wrapping keys; short TTL; no vault on locked device |
+
+Vendors place interposer attacks **outside** their threat model and name data-center physical security as the mitigation ([03 B4](03-secure-phones-confidential-ai.md)). Alpha's public threat model must say the same thing in plain language.
+
+---
+
+## 11. Milestone plan with acceptance evidence
+
+### 11.1 Evidence classes
+
+These follow the repo's AGENTS.md: never claim one class proves another.
+
+| Code | Meaning | Does **not** prove |
+| --- | --- | --- |
+| **S** | Source and unit/integration tests | Anything on Android |
+| **B** | APK built (both distribution variants) | Execution |
+| **E** | Emulator run (incl. HOME-role test) | Microphone, acoustics, battery, thermal, NPU, SELinux policy of a real image |
+| **H** | Host/server run (local agent, provider) | Phone behaviour |
+| **D** | Physical device, real microphone and speakers, release build | Image-level enforcement (unless also A) |
+| **A** | Full custom AOSP image built, flashed and **booted on a physical device**, with policy tests | Real integrations or users |
+| **I** | Real external integration live (Cerebras, Tinfoil, Privatemode, own gateway, archive) | User acceptance |
+| **U** | Design-partner or user acceptance (consent usability, pilot sign-off) | — |
+
+### 11.2 Milestones
+
+| M | Window (target) | Scope | Exit evidence (all required) |
+| --- | --- | --- | --- |
+| **M0 — Truth and setup** | Oct 2026 (2 weeks) | Publish the L0 wording everywhere. Remove "Sealed/Attested". Lane label in the UI. Cerebras enterprise DPA/ZDR addendum, plus a Cerebras statement of the exact Qwen checkpoint. Qwen model BOM v1 (publisher files, hashes, licence, two independent re-hashes). Buyer Q&A (§7.8) reviewed by counsel. Choose the hardware track. Write a threat-model doc and the eval-set protocol. | **S** UI copy diff plus screenshots (**E** acceptable for copy only); signed DPA (**I**, legal); signed model BOM |
+| **M1 — On-device speech** | Oct–Dec 2026 | sherpa-onnx with Parakeet v3 INT8, Silero, Moonshine; diarization; word timings; paired-host route removed from release; measurement harness | **D**: WER per room, RTF, energy per audio minute, peak temperature, 4 h run, on a physical target device; **B** both variants; **E** regression only. *The emulator cannot satisfy this milestone.* |
+| **M2 — Redaction and gate (app level)** | Nov 2026–Jan 2027 | Wire the upstream detectors, pseudonymizer and pseudonym-map via `patches/eliza`; GLiNER-PII INT8; phonetic gazetteer; vault; tiers; app-level egress gate with manifests; "what the model saw" sheet; eval set v1 (≥20 h of acted meetings, est.) | **S** CI eval report; **D** gate reconciliation (packet capture versus manifests); **D** p95 latency; red-team report v1 |
+| **M3 — Consent v1 (app level)** | Dec 2026–Feb 2027 | State machine, announcement with capture check, verbal/tap/QR consent, stop/purge, ledger, jurisdiction packs v1 (US all-party, biometric-strict, EU) | **D** in 3 rooms; **U** usability (10+ participants); counsel memos (US, IL, EU/DE) |
+| **M4 — Confidential lane (managed)** | Jan–Mar 2027 | Alpha's reproducible vLLM plus Qwen container (weights, tokenizer and template measured) on Tinfoil Containers or Phala dstack; phone-side verifier (SEV-SNP or TDX, plus NVIDIA EAT, plus Sigstore bundle check); HPKE/attested-TLS; receipts with weights digest; lane policy; no auto-downgrade; behavioural admission battery v1 | **I** live on **D**: a successful verified request on the platform; **negative suite** (bad measurement, **wrong weights digest**, debug, stale nonce, revoked or unlisted release, GPU CC off) each refused **before send**, shown by packet capture; quality parity eval comparing the self-hosted Qwen with Cerebras-served Qwen on Alpha tasks |
+| **M5 — Alpha gateway and transparency** | Mar–May 2027 | Phala dstack TDX plus H200 gateway (upstream TDX/NRAS code); GCP a3 second route; vLLM Qwen `qwen-3.8-27b` with measured weights; OHTTP relay contract; anonymous tokens; Rekor plus Alpha log plus 2 witnesses; reproducible builds (two builders); TUF 3-of-5 ceremony; 72 h delay | **I**: phone-to-own-gateway verified requests on **D**; byte-identical rebuild record; ceremony transcript; log checkpoints co-signed; load test (throughput and TTFT under CC versus non-CC) |
+| **M6 — Platform enforcement (AOSP)** | Apr–Jul 2027 | Privileged capture isolate; SELinux/netd invariants I1–I4; SystemUI indicator; DSP arming; redaction in pVM; Alpha AVB key and device attestation; hardware decision executed | **A** on the physical target: invariant tests, indicator tests, pVM boot and measurement, key-attestation chain; **D** battery and thermal re-run in the image |
+| **M6b — External assurance** | Jun–Aug 2027 | Security audit of the gateway, verifier, gate and image (NCC/Trail of Bits class); bug bounty; publish the leakage report and threat model; SOC 2 Type 1 | Published audit report with fix status; bounty live |
+| **M7 — Customer control** | Q3 2027 | Customer-held archive keys (HPKE), customer KMS for confidential sessions, customer witness, tenant measurement pinning | **I** + **U** with ≥1 design partner |
+
+Dependencies: M2 needs M1's word timings. M4 can run in parallel with M2 and M3. M6 can start its build-system work in M1 but needs the hardware decision at M0. **No pilot handles real client conversations before M1 + M2 + M3 exit, plus counsel sign-off.**
+
+---
+
+## 12. Team and effort (est.)
+
+| Role | FTE | Pillar focus | Key deliverables |
+| --- | --- | --- | --- |
+| AOSP/platform engineers | 2.5 | 1, 3, enforcement | Image, SELinux, netd, SystemUI chip, Sound Trigger, pVM, AVB, OTA |
+| On-device speech ML | 2 | 1 | Model packaging, NPU/GPU delegates, diarization, measurement harness |
+| Privacy ML and evaluation | 2 | 2 | Detectors, GLiNER tuning, gazetteer, re-ID probe, eval set, red team |
+| Security/crypto engineers | 2 | 4 | Verifiers (TDX, SNP, NVIDIA), HPKE/OHTTP, receipts, TUF, log, threat model |
+| Confidential infra/SRE | 1.5 | 4 | Gateway, vLLM in CC, multi-provider, relay, witnesses, reproducible builds |
+| Product designer (consent UX) | 1 | 3 | Announcement scripts, consent flows, "what the model saw", lane labels |
+| QA/evidence engineer | 1 | all | Evidence ledger, device lab, negative suites |
+| Compliance lead (plus outside counsel) | 0.5 | 3 | Jurisdiction packs, BIPA policy, DPIA template, claims review |
+| **Total** | **~12.5** | | |
+
+Effort by pillar (engineer-weeks, est.):
+
+| Pillar | Engineer-weeks |
+| --- | --- |
+| Pillar 1 | 40–55 |
+| Pillar 2 | 45–60 (eval-set production is about 30% of it) |
+| Pillar 3 | 25–35 |
+| Pillar 4 | 70–95 (managed lane 15–20; own gateway plus transparency 55–75) |
+| Platform enforcement (M6) | 40–60 |
+
+External spend for the first 12 months (est.):
+
+| Item | Cost |
+| --- | --- |
+| Security audit | $150–400k |
+| Outside counsel (consent, BIPA, EU/DE) | $100–200k |
+| Actors and annotation for the eval set | $40–80k |
+| Device lab | $30–60k |
+| SOC 2 Type 1 | $30–60k ([05 §10](05-regulation-compliance.md)) |
+| Bug bounty pool | $50–100k |
+
+---
+
+## 13. Cost comparison: confidential GPU hosting versus Cerebras for Qwen `qwen-3.8-27b`
+
+**Workload.** The [09 §3.2](09-distribution-partners-economics.md) profiles are reused:
+
+| Profile | Monthly input tokens | Monthly output tokens | Total |
+| --- | --- | --- | --- |
+| Light | 3.6M | 0.27M | — |
+| Typical | 12M | 0.9M | 12.9M |
+| Heavy | 36M | 2.7M | — |
+
+### 13.1 Cerebras (fast lane)
+
+| Route | Price per M (in/out) | Light | **Typical** | Heavy | Attested? |
+| --- | --- | --- | --- | --- | --- |
+| Cerebras `qwen-3.8-27b` | $0.99 / $1.49 ([pricepertoken via 09](https://pricepertoken.com/endpoints/cerebras)); **confirm in the enterprise contract** (09 flags a pricing contradiction) | $3.97 | **$13.22** | $39.67 | No (contractual) |
+
+Arithmetic for the typical user: 12 × 0.99 + 0.9 × 1.49 = $13.22 ([09](09-distribution-partners-economics.md)). Prompt caching could cut this materially, because roughly 6k of the about-8k input tokens are a shared system and tool prefix (est.). Cerebras caching terms are unconfirmed.
+
+### 13.2 Self-hosted confidential GPU running the Qwen weights (est.)
+
+**Throughput — my estimate; no measured source was found for this checkpoint.** A dense 27B model in BF16/FP8 under vLLM on one H100 at about 30–50 tokens/s per user is modelled at **about 2,500 total tokens/s per GPU** for an 8k-in/600-out agent mix with prefix caching. A 20% confidential-computing penalty, from the measured 13–28% range ([arXiv 2607.19353](https://arxiv.org/abs/2607.19353), [arXiv 2606.23969](https://arxiv.org/abs/2606.23969)), gives about **2,000 tokens/s**. That is about 5.3B tokens per GPU-month at full load. At **35% effective utilization** (diurnal peaks, N+1 headroom), one H100 serves **about 140 typical users**. An H200 (141 GB, higher memory bandwidth) is assumed at about 1.4×, or **about 200 users** (est.). **This is the dominant uncertainty, and M5 measures it.**
+
+| Platform | $/GPU-h | $/GPU-month | Users per GPU (est.) | **$/typical user at scale** | HA floor per region (2 GPUs + CPU CVMs, about $500, est.) |
+| --- | --- | --- | --- | --- | --- |
+| Phala H200 TDX, reserved ([pricing](https://phala.com/pricing)) | $3.20 | $2,336 | ~200 | **~$11.7** | ~$5.2k/mo |
+| Phala H200 TDX, on demand | $4.80 | $3,504 | ~200 | ~$17.5 | ~$7.5k/mo |
+| Azure NCC40ads H100 v5 ([Vantage](https://instances.vantage.sh/azure/vm/ncc40adsh100-v5)) | $8.90 | $6,497 | ~140 | ~$46 | ~$13.5k/mo |
+| GCP a3-highgpu-1g CVM / Tinfoil Containers GPU | not retrieved | — | — | — | — |
+
+Add the costs of the relay (contract, unverified), log hosting and witnesses (small), and about 0.5 SRE FTE.
+
+**Break-even against Cerebras Qwen ($13.22 per typical user), Phala reserved H200:**
+
+| Active users | Per user |
+| --- | --- |
+| 200 | ~$26 (the floor dominates) |
+| 400 | ~$12.9 (about parity) |
+| 1,000 | ~$12.2 |
+| 5,000 | ~$11.8 |
+
+Conclusions (est.):
+
+1. Because Qwen-on-Cerebras is priced at about $1/M input, **self-hosting the Qwen weights on confidential H200s reaches cost parity early, at about 400 active users**, and is modestly cheaper beyond that. The confidential lane is therefore not a cost penalty at the regulated-tier scale. Its cost is engineering and operations.
+2. **Azure confidential H100 is about 3.5× Cerebras** at this utilization. Use it only where procurement requires it.
+3. **Latency, not cost, is the real trade-off.** At 30–50 tok/s per user, a 600-token answer takes about 12–20 s of decode on a confidential GPU (est.). Cerebras's wafer-scale serving is much faster per user (magnitude unverified for this model).
+   - **Product mapping:** the confidential lane is the default for background summaries, filing and anything labelled sensitive. The fast lane serves interactive turns on redacted text, unless policy forbids it.
+4. **Margin impact.** With the Nitro hosting line removed (no longer on the primary path), typical regulated-tier COGS moves from $25.23 ([09 §3.3](09-distribution-partners-economics.md)) to about **$21.4** on Cerebras, or about **$20–26** on confidential Phala depending on scale (est.). That is affordable at the $129 price point.
+
+## 14. How the pillars fit: one end-to-end flow
+
+1. **Arm.** The owner taps Capture, or the calendar auto-arms for a labelled meeting. SystemUI shows the chip and LED (I3). Audio sits in a RAM ring buffer only.
+2. **Announce.** The speaker plays the jurisdiction-pack notice. The capture isolate confirms the notice text in the ASR. The ledger records `announce`. The state becomes **Noticed** (I4).
+3. **Consent.** Each diarized speaker consents by voice, tap or QR, or segments are held and then discarded. A decline in an all-party pack stops capture and purges.
+4. **Transcribe.** Parakeet produces final segments with word timings in the capture isolate. Nothing touches the network (I1).
+5. **Redact.** The ensemble detects. The classifier labels, escalating only. The policy assigns tiers. The vault mints tokens. The re-ID probe checks. Output is a `RedactedPayload` plus a draft manifest.
+6. **Local first.** The resident agent does whatever it can locally: action extraction from local-only segments, and arithmetic on vault values.
+7. **Egress.** For the summary, the gate picks the lane by policy. On the confidential lane it verifies attestation, the log and the receipt key, commits the manifest, and seals with HPKE through the OHTTP relay. On the fast lane it requires a redacted payload and pinned TLS to Cerebras, and labels the result "not hardware-verified".
+8. **Return.** The phone verifies the receipt, rehydrates locally, and shows the summary with real names and a **"What the model saw"** link.
+9. **Act.** Sending a follow-up email is an `ApprovedAction` through the gate, with rehydrated values only after user approval, and is recorded as a receipt.
+10. **Record.** The split record holds the original transcript encrypted to the customer archive key, plus the consent ledger, manifests and receipts. The AI working copy and vault crypto-erase at TTL unless a legal hold applies.
+
+That chain — *consent ledger → manifest → receipt → approval* — is the artifact that a CISO or CCO can approve, and that cloud-first note-takers cannot produce.
+
+---
+
+## 15. Open questions and risks specific to this plan
+
+1. **Hardware track.** With no Pixel device trees since Android 16 and kernel source available only on request, is Pixel viable for a production fork, or should Alpha partner with a Snapdragon ODM with a BSP? This decision is due at M0, and it sets the M6 risk.
+2. **Cerebras enterprise terms.** Confirm the `qwen-3.8-27b` contract price (09 flags a pricing contradiction), a ZDR addendum, a BAA, a statement of the exact checkpoint and hash served, and any roadmap for attestation. Ask directly; no public offering was found.
+3. **Tinfoil Containers GPU pricing and SLA** (unverified), and whether Tinfoil will co-sign Alpha's log and run Alpha's measured Qwen container image as-is.
+4. **NRAS dependency.** Should the phone accept NVIDIA's NRAS-signed EAT, or require a local-verifier result attested by the CPU TEE? The plan accepts both, binds both to the nonce, and fails closed if either is inconsistent.
+5. **Qwen weight availability and licence.** Confirm that the exact `qwen-3.8-27b` checkpoint Cerebras serves is published as open weights, its licence terms, and whether a reproducible FP8 quantization keeps task quality. This could not be checked in this session because the search budget ran out. This gates M4. Also confirm the licence of the small on-device Qwen model and benchmark it.
+6. **Repository configuration.** Confirm that every runtime and script default in the repo names `qwen-3.8-27b`, so the claims, manifests and receipts match what actually runs.
+6. **Consent evidentiary weight** of the verbal and QR methods in CA/IL/FL/PA courts needs counsel opinion. Is the "exclude non-consenting speaker" mode lawful in all-party states? The default stops capture instead.
+7. **Throughput assumption.** Verify on a real confidential H200 with the actual 8k/600 agent prompt mix in M5. The 20% CC penalty and 35% utilization are estimates.
+8. **Patch 0036 qualification.** The TDX/NVIDIA verification code is in the patch series. Its test status on the current pin must be re-run before the M5 reuse claim.
+9. **Upstreaming.** The gate, manifest and receipt contracts should go upstream through reviewed PRs, per ADR-02, so that `patches/eliza` does not grow without bound.
+
+---
+
+## Sources (primary, this file)
+
+- Model and provider: [Cerebras pricing (pricepertoken)](https://pricepertoken.com/endpoints/cerebras) · [Cerebras privacy](https://www.cerebras.ai/privacy-policy) · [Cerebras Trust Center](https://trust.cerebras.ai/)
+- Confidential inference providers: [Tinfoil attestation architecture](https://docs.tinfoil.sh/verification/attestation-architecture) · [Tinfoil container configuration](https://docs.tinfoil.sh/containers/configuration) · [Tinfoil pricing summary](https://aisotools.com/pricing/tinfoil) · [Privatemode models](https://www.privatemode.ai/models) · [Phala pricing](https://phala.com/pricing) · [Phala GPU TEE](https://phala.com/gpu-tee) · [Azure NCC H100 v5](https://learn.microsoft.com/en-us/azure/virtual-machines/sizes/gpu-accelerated/nccadsh100v5-series) · [Vantage NCC40ads](https://instances.vantage.sh/azure/vm/ncc40adsh100-v5) · [GCP Confidential VM release notes](https://docs.cloud.google.com/confidential-computing/confidential-vm/docs/release-notes) · [OpenPCC](https://www.businesswire.com/news/home/20251105013372/en/Confident-Security-Launches-OpenPCC-an-Open-Source-Standard-that-Protects-Data-Shared-with-AI-Models) · [OpenPCC paper](https://arxiv.org/abs/2606.11145) · [Lambda H100 pricing](https://www.spheron.network/blog/lambda-cloud-h100-pricing-2026/) · [CoreWeave security](https://docs.coreweave.com/security)
+- Performance: [TDX+H100 CC benchmark](https://arxiv.org/abs/2607.19353) · [Blackwell CC serving](https://arxiv.org/abs/2606.23969) · [H100 CC <5%](https://arxiv.org/abs/2409.03992)
+- Attestation and NVIDIA: [NRAS releases](https://docs.nvidia.com/attestation/technical-docs-nras/latest/nras_releases.html) · [NVIDIA attestation quick start](https://docs.nvidia.com/attestation/quick-start-guide/latest/getting_started.html) · [nv-ppcie-verifier](https://pypi.org/project/nv-ppcie-verifier) · [go-nvtrust](https://forums.developer.nvidia.com/t/open-sourcing-go-nvtrust-a-go-library-for-nvidia-gpu-and-nvswitch-confidential-computing-attestation/347785) · [Nitro attestation process](https://github.com/aws/aws-nitro-enclaves-nsm-api/blob/main/docs/attestation_process.md) · [IETF SEAT attested TLS](https://datatracker.ietf.org/doc/html/draft-fossati-seat-early-attestation-00)
+- Private-cloud designs: [Apple PCC](https://security.apple.com/blog/private-cloud-compute/) · [Apple VRE](https://www.bleepingcomputer.com/news/apple/apple-creates-private-cloud-compute-vm-to-let-researchers-find-bugs/) · [Google Private AI Compute brief](https://services.google.com/fh/files/misc/private_ai_compute_technical_brief.pdf) · [Meta Private Processing](https://ai.meta.com/static-resource/private-processing-technical-whitepaper) · [NCC on Meta](https://www.nccgroup.com/media/ymskbe40/ncc_group_metaplatforms_whatsapp-message_summarization_report_2025-08-27_v10.pdf)
+- Transparency and supply chain: [Rekor v2 GA](https://blog.sigstore.dev/rekor-v2-ga/) · [RFC 9943 SCITT](https://www.rfc-editor.org/rfc/rfc9943.html) · [TUF spec](https://theupdateframework.github.io/specification/latest/) · [RFC 9458 OHTTP](https://www.rfc-editor.org/rfc/rfc9458.html) · [AOSP reproducibility study](https://www.android-device-security.org/publications/2022-poell-wisec/Poell_2022_WiSec2022_ReproducibilityAOSP.pdf)
+- TEE attacks: [TEE.fail](https://tee.fail/) · [DDRop](https://ddropattack.eu/) · [Blueprint, Bootstrap, and Bridge](https://arxiv.org/abs/2507.02770) · [BleepingComputer on TEE.fail](https://www.bleepingcomputer.com/news/security/teefail-attack-breaks-confidential-computing-on-intel-amd-nvidia-cpus/)
+- Android platform: [AVF](https://source.android.com/docs/core/virtualization) · [AVF security](https://source.android.com/docs/core/virtualization/security) · [AVF device assignment](https://android.googlesource.com/platform/packages/modules/Virtualization/+/refs/heads/android17-release/docs/device_assignment.md) · [LiteRT issue 10081](https://github.com/google-ai-edge/LiteRT/issues/10081) · [Verified boot flow](https://source.android.com/docs/security/features/verifiedboot/boot-flow) · [GrapheneOS Auditor](https://github.com/GrapheneOS/Auditor/releases/tag/85) · [Pixel kernel source change](https://www.androidauthority.com/google-pixel-kernel-code-forms-3696441/) · [Pixel device trees withheld](https://9to5google.com/2025/06/12/android-open-source-project-pixel-change/) · [Android Protected Confirmation removal](https://www.androidpolice.com/google-killing-android-protected-confirmation/) · [Parakeet on Android](https://soniqo.audio/guides/parakeet/android) · [sherpa-onnx](https://k2-fsa.github.io/sherpa/onnx/index.html)
+- Consent: [Apple call recording (Slate)](https://slate.com/technology/2024/10/apple-iphone-phone-call-recording-law-consent.html) · [Pixel Call Notes help](https://support.google.com/phoneapp/answer/15257579?hl=en) · [Teams explicit consent](https://learn.microsoft.com/en-us/microsoftteams/conferencing-recording-consent) · [Zoom disclaimer (UBC)](https://teachingsupport.forestry.ubc.ca/files/2026/02/Tips-Sheet-Zoom-Recording-Disclaimer-and-Consent.pdf) · [RCW 9.73.030](https://app.leg.wa.gov/rcw/default.aspx?cite=9.73.030) · [California recording law](https://www.recordinglaw.com/party-two-party-consent-states/california-recording-laws/phone-calls/)

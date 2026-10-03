@@ -15,13 +15,13 @@ for(const mode of ['fresh','stale','response-loss','receipt-loss','navigate','le
  if(mode==='legacy'){expect(await page.evaluate(async()=>{const {registerPlugin}=await import('/src/platform-plugins.ts');try{await registerPlugin<any>('DailyApps').cancelReminder({id:'delete-boundary'});return false;}catch{return true;}})).toBe(true);return;}
  await page.getByRole('button',{name:'Delete event',exact:true}).click();
  if(mode==='reload-loss'||mode==='late-stale'){
-  await expect(page.getByText('Deletion is unconfirmed. Check deletion status in Calendar; no cancellation will be repeated.',{exact:true})).toBeVisible();
+  await expect(page.getByText('Deletion is unconfirmed. Check action status in Calendar; no cancellation will be repeated.',{exact:true})).toBeVisible();
   await page.getByRole('button',{name:'Back to calendar',exact:true}).last().click();
-  await expect(page.getByRole('button',{name:'Check reminder deletion status',exact:true})).toBeVisible();
+  await expect(page.getByRole('button',{name:'Check reminder action status',exact:true})).toBeVisible();
   if(mode==='reload-loss'){
-   await page.getByRole('button',{name:'Check reminder deletion status',exact:true}).click();
+   await page.getByRole('button',{name:'Check reminder action status',exact:true}).click();
    await expect(page.getByRole('button',{name:/^Delete boundary reminder,/})).toHaveCount(0);
-   await expect(page.getByRole('button',{name:'Check reminder deletion status',exact:true})).toBeVisible();
+   await expect(page.getByRole('button',{name:'Check reminder action status',exact:true})).toBeVisible();
    await page.reload();await page.getByRole('button',{name:'Calendar',exact:true}).click();
    await expect.poll(()=>page.evaluate(()=>Object.keys(JSON.parse(localStorage.getItem('alpha.browser.reminder-deletions.v1')!)).length)).toBe(0);
    expect(await page.evaluate(()=>Object.keys(JSON.parse(localStorage.getItem('alpha.browser.reminders.v1')!).receipts).length)).toBe(1);
@@ -36,7 +36,7 @@ for(const mode of ['fresh','stale','response-loss','receipt-loss','navigate','le
   return;
  }
  if(mode==='navigate'){await expect.poll(()=>page.evaluate(()=>typeof(window as any).releaseDelete)).toBe('function');await page.getByRole('button',{name:'Back to calendar',exact:true}).last().click();await page.evaluate(()=>(window as any).releaseDelete());await page.waitForTimeout(100);}
- if(mode==='receipt-loss'){await expect(page.getByText('Deletion is unconfirmed. Check deletion status in Calendar; no cancellation will be repeated.',{exact:true})).toBeVisible();await page.getByRole('button',{name:'Delete event',exact:true}).click();}
+ if(mode==='receipt-loss'){await expect(page.getByText('Deletion is unconfirmed. Check action status in Calendar; no cancellation will be repeated.',{exact:true})).toBeVisible();await page.getByRole('button',{name:'Delete event',exact:true}).click();}
  if(mode==='stale')await expect(page.getByText('This reminder changed. Review it again before deleting.',{exact:true})).toBeVisible();
  if(!['stale','navigate'].includes(mode))await expect(page.getByText('Reminder cancelled',{exact:true})).toBeVisible();
  const data=await page.evaluate(()=>({store:JSON.parse(localStorage.getItem('alpha.browser.reminders.v1')!),calls:(window as any).deletes}));
@@ -56,7 +56,7 @@ test('two browser tabs retain separate uncertain deletions through reload',async
  await Promise.all([page.getByRole('button',{name:'Delete event',exact:true}).click(),second.getByRole('button',{name:'Delete event',exact:true}).click()]);
  await expect.poll(()=>page.evaluate(()=>Object.values(JSON.parse(localStorage.getItem('alpha.browser.reminder-deletions.v1')||'{}')).map((x:any)=>x.operation.target.reminderId).sort())).toEqual(['tab-one','tab-two']);
  await page.reload();await page.getByRole('button',{name:'Calendar',exact:true}).click();
- await expect(page.getByRole('button',{name:'Check reminder deletion status',exact:true})).toBeVisible();
+ await expect(page.getByRole('button',{name:'Check reminder action status',exact:true})).toBeVisible();
  expect(await page.evaluate(()=>Object.values(JSON.parse(localStorage.getItem('alpha.browser.reminder-deletions.v1')!)).map((x:any)=>x.operation.target.reminderId).sort())).toEqual(['tab-one','tab-two']);
  expect(await page.evaluate(()=>JSON.parse(localStorage.getItem('alpha.browser.reminders.v1')!).reminders.map((r:any)=>r.status))).toEqual(['scheduled','scheduled']);
 });

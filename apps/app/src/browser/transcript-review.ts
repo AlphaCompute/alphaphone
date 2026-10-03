@@ -1,3 +1,5 @@
+import './transcript-review.css';
+import {browserScreenLocked} from './screen-locked';
 type Recognition={processLocally:boolean;lang:string;continuous:boolean;interimResults:boolean;onstart:(()=>void)|null;onresult:((event:any)=>void)|null;onerror:(()=>void)|null;onend:(()=>void)|null;start:(track:MediaStreamTrack)=>void;abort:()=>void};
 type Provider={new():Recognition;available?:(input:{langs:string[];processLocally:true})=>Promise<string>;install?:(input:{langs:string[];processLocally:true})=>Promise<boolean>};
 const abort=()=>new DOMException('Transcript review cancelled','AbortError');
@@ -6,24 +8,24 @@ export class BrowserTranscriptReview {
  private close?:()=>void;
  cancel(){this.close?.();}
  open(blob:Blob):Promise<string>{
-  this.cancel();if(document.hidden||document.documentElement.dataset.devBackground==='true'||document.querySelector('[aria-label="Unlock with fingerprint"], [aria-label="Wake"]')?.getClientRects().length)return Promise.reject(abort());return new Promise((resolve,reject)=>{
+  this.cancel();if(document.hidden||document.documentElement.dataset.devBackground==='true'||browserScreenLocked())return Promise.reject(abort());return new Promise((resolve,reject)=>{
    let settled=false,generation=0,recognition:Recognition|undefined,context:AudioContext|undefined,source:AudioBufferSourceNode|undefined,track:MediaStreamTrack|undefined,timer:ReturnType<typeof setTimeout>|undefined;
-   const dialog=document.createElement('dialog');dialog.setAttribute('aria-label','Recording transcript');dialog.style.cssText='box-sizing:border-box;width:min(380px,90vw);max-height:85dvh;overflow:auto;border:0;border-radius:20px;padding:24px;background:var(--bg,#fff);color:var(--fg,#111);font:16px/1.5 system-ui';
-   const shell=document.querySelector('.os');if(shell){const theme=getComputedStyle(shell);for(const name of ['--bg','--fg','--s2'])dialog.style.setProperty(name,theme.getPropertyValue(name));}
-   const title=document.createElement('h2');title.textContent='Review transcript';title.style.margin='0 0 16px';
-   const label=document.createElement('label');label.textContent='Transcript';label.style.cssText='display:grid;gap:8px';const field=document.createElement('textarea');field.rows=6;field.maxLength=16000;field.style.cssText='box-sizing:border-box;width:100%;padding:12px;border:1px solid #999;border-radius:10px;font:inherit;color:inherit;background:transparent';label.append(field);
+   const dialog=document.createElement('dialog');dialog.setAttribute('aria-label','Recording transcript');dialog.className='alpha-transcript-review';
+   const shell=document.querySelector('.os');if(shell){const theme=getComputedStyle(shell);for(const token of ['bg','fg','s2','line'])dialog.style.setProperty('--transcript-'+token,theme.getPropertyValue('--'+token));dialog.style.colorScheme=theme.getPropertyValue('--bg').trim().toUpperCase()==='#000000'?'dark':'light';}
+   const title=document.createElement('h2');title.textContent='Review transcript';
+   const label=document.createElement('label');label.textContent='Transcript';const field=document.createElement('textarea');field.rows=6;field.maxLength=16000;label.append(field);
    const status=document.createElement('p');status.setAttribute('role','status');status.textContent='Add or edit the transcript.';
    const automatic=document.createElement('button');automatic.hidden=true;
    const stop=document.createElement('button');stop.textContent='Stop transcription';stop.hidden=true;
    const use=document.createElement('button');use.textContent='Use transcript';const cancel=document.createElement('button');cancel.textContent='Cancel';
-   for(const button of [automatic,stop,use,cancel])button.style.cssText='min-height:44px;padding:10px 14px;margin:4px;border:1px solid #ccc;border-radius:10px;font:inherit;color:inherit;background:var(--s2,#f3f3f3)';
+
    const cleanup=()=>{++generation;clearTimeout(timer);if(recognition){recognition.onstart=recognition.onresult=recognition.onerror=recognition.onend=null;try{recognition.abort();}catch{}recognition=undefined;}try{source?.stop();}catch{}source?.disconnect();source=undefined;track?.stop();track=undefined;if(context){void context.close().catch(()=>{});context=undefined;}stop.hidden=true;automatic.disabled=false;};
    const previous=document.activeElement as HTMLElement|null;
    const finish=(text?:string)=>{if(settled)return;settled=true;cleanup();window.removeEventListener('alpha-back',back,true);window.removeEventListener('pagehide',close);window.removeEventListener('alpha:device-state',close);document.removeEventListener('visibilitychange',hidden);dialog.close();dialog.remove();if(this.close===close)this.close=undefined;previous?.focus();text===undefined?reject(abort()):resolve(text);};
    const close=()=>finish();this.close=close;
    const back=(event:Event)=>{event.preventDefault();event.stopImmediatePropagation();close();};const hidden=()=>{if(document.hidden)close();};
    dialog.onclose=close;cancel.onclick=close;use.onclick=()=>{if(field.value.trim())finish(field.value.trim());else field.focus();};stop.onclick=()=>{cleanup();status.textContent='Review and edit the transcript.';};field.addEventListener('input',()=>{if(automatic.disabled){cleanup();status.textContent='Review and edit the transcript.';}});
-   dialog.append(title,label,status,automatic,stop,use,cancel);document.body.append(dialog);dialog.showModal();field.focus();window.addEventListener('alpha-back',back,true);window.addEventListener('pagehide',close);window.addEventListener('alpha:device-state',close);document.addEventListener('visibilitychange',hidden);
+   const content=document.createElement('section'),actions=document.createElement('footer');content.append(title,label,status,automatic,stop);actions.append(use,cancel);dialog.append(content,actions);document.body.append(dialog);dialog.showModal();field.focus();window.addEventListener('alpha-back',back,true);window.addEventListener('pagehide',close);window.addEventListener('alpha:device-state',close);document.addEventListener('visibilitychange',hidden);
    const Provider=((window as any).SpeechRecognition||(window as any).webkitSpeechRecognition) as Provider|undefined,language=navigator.language||'en-US',options={langs:[language],processLocally:true as const};
    let availability='unchecked';
    // Some embedded/headless Chromium builds expose SODA APIs without the speech service.

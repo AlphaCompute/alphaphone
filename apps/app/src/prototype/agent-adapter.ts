@@ -1,3 +1,10 @@
+import {reviewAgentClock} from '../runtime/clock-agent-review';
+import {isReminderCreate,validateReminderCreateResult} from '../runtime/reminder-create-contract';
+import {publishWorkflowNotice} from '../browser/workflow-notices';
+import {speakLocalText} from '../local-speech-playback';
+import {browserDevProfile} from '../browser/dev-profile';
+import {stampNoteChanges} from '../runtime/note-dates';
+import {isClockOperation,assertClockTimeZone,currentClockTimeZone,validateClockResult} from '../runtime/clock-contract';
 import { Capacitor } from '@capacitor/core';
 import { isMapsOperation } from '../runtime/maps-contract';
 import { readMapsSelection } from '../maps/agent-context';
@@ -72,10 +79,12 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
         const revision = previous?.signature === signature ? previous.revision : (previous?.revision || 0) + 1;
         shell.entityRevisions.set(key, { signature, revision });
         providerSelection = { kind: view === 'contacts' ? 'contact' : record.alphaCalendarId ? 'calendar-event' : 'reminder', id, revision: String(revision) };
-        if(record.alphaReminderId){const target=shell.reminderTargets?.get(id);providerSelection=target?{kind:'reminder',id:target.reminderId,revision:target.revision,accountId:target.sourceId,sourceRevision:target.sourceRevision,occurrenceId:target.occurrenceId}:undefined;}
+        if(record.alphaReminderId){const target=shell.reminderTargets?.get(id);providerSelection=target?{kind:'reminder',id:target.reminderId,revision:target.revision,accountId:target.sourceId,sourceRevision:target.sourceRevision,occurrenceId:target.occurrenceId,...(target.timingVersion===2?{timingVersion:2}: {})}:undefined;}
       }
     }
+    if(view==='calendar'&&shell.clockSelection?.())providerSelection=shell.clockSelection();
     alphaClient.setViewContext({
+      timeZone:currentClockTimeZone(),
       view: (view === 'wallet' ? 'passwords' : view) as AlphaView,
       // Suspension invalidates this turn and approvals, but retains the account
       // and conversation. Visibility is not a claim about Android lock state.
@@ -211,7 +220,7 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
           }
         }
         if (this.notesStorageFailed) return { status: 'failed', summary: 'Resolve the notes storage error before saving.' };
-        const note = { id: crypto.randomUUID(), kind: 'text', title: operation.title, body: operation.body, pinned: false, when: 'Now' };
+        const note = { id: crypto.randomUUID(), kind: 'text', title: operation.title, body: operation.body, pinned: false, when: 'Now', createdAt:Date.now(), modifiedAt:Date.now() };
         const current = this.vget('notes').list;
         const list = [note, ...current];
         if (!await this.vset('notes', { list })) return { status: 'failed', summary: 'The note save is unconfirmed. Reopen Notes to inspect before requesting another save.' };
@@ -221,13 +230,25 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
       else transport.close?.();
     };
     connectionController.setDeviceRecovery(async(operation,operationId,bindingHash,signal)=>{
-      signal.throwIfAborted();if(!isReminderOperation(operation))return {status:'unknown'};
+      signal.throwIfAborted();if(!isReminderOperation(operation)&&!isReminderCreate(operation))return {status:'unknown'};
       const result=await DailyApps.reminderOperationReceipt({operation,operationId,bindingHash});signal.throwIfAborted();
-      return result.status==='succeeded'?{status:'succeeded',reminderResult:validateReminderResult(operation,result.result)}:{status:'unknown'};
+      return result.status==='succeeded'?{status:'succeeded',reminderResult:isReminderCreate(operation)?validateReminderCreateResult(operation,result.result,operationId):validateReminderResult(operation,result.result)}:{status:'unknown'};
     });
-    connectionController.setDeviceExecutor(async (operation, operationId, expectedContext, signal, bindingHash) => {
+    connectionController.setDeviceExecutor(async (operation, operationId, expectedContext, signal, bindingHash, workflowRoute, journalIdentity) => {
       signal.throwIfAborted(); context(this);
       if (!this.live || JSON.stringify(alphaClient.getState().context) !== JSON.stringify(expectedContext)) throw new Error('Phone context changed');
+      if(isClockOperation(operation)){
+        if(Capacitor.getPlatform()!=='android'&&!browserDevProfile)return {status:'failed',summary:'Native Clock handoff is unavailable in browser development. No alarm request was sent.'};
+        assertClockTimeZone(operation,expectedContext.timeZone);signal.throwIfAborted();
+        if(expectedContext.sensitive||document.hidden)throw Error('Return to Alpha Phone and review again');
+        const clockSession=connectionController.getSnapshot().session;const clockEnrollment=JSON.stringify(connectionController.getWorkflowDeviceTarget());
+        const {type,...request}=operation;
+        const result=browserDevProfile?await DailyApps.clockHandoff({...request,reviewed:true}):null;
+        if(!browserDevProfile&&!journalIdentity)throw Error('Exact approved Clock journal unavailable');
+        const clockResult=validateClockResult(operation,result?{kind:'clock-handoff',action:result.action,status:result.status}:await reviewAgentClock(operation,operationId,journalIdentity!,signal,()=>{signal.throwIfAborted();context(this);if(!clockSession||connectionController.getSnapshot().session!==clockSession||JSON.stringify(connectionController.getWorkflowDeviceTarget())!==clockEnrollment||!this.live||document.hidden||JSON.stringify(alphaClient.getState().context)!==JSON.stringify(expectedContext))throw Error('Clock review context changed');}));
+        const status=clockResult.status==='opened'?'succeeded':clockResult.status==='unknown'?'unknown':'failed';
+        return {status,clockResult,summary:browserDevProfile&&clockResult.status==='opened'?result!.message:clockResult.status==='opened'?(operation.action==='dismiss'||operation.action==='snooze'?'Clock opened for manual completion. Choose the intended alarm in Clock; no snooze or dismissal was performed by Alpha.':'Approved Clock handoff sent. Check Clock; Alpha cannot confirm an alarm was changed.'):clockResult.status==='unknown'?'Clock result is unknown. Check Clock before another request.':clockResult.status==='unavailable'?'No installed Clock app handles this request.':clockResult.status==='denied'?'Android did not allow this Clock request.':'Clock request was not sent. Review its time and the current phone state.'};
+      }
       if(isMapsOperation(operation)){
         const mapsResult=readMapsSelection(operation);signal.throwIfAborted();context(this);
         if(JSON.stringify(alphaClient.getState().context)!==JSON.stringify(expectedContext))throw Error('Maps context changed');
@@ -276,19 +297,43 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
         const events=await Promise.all(result.events.map(async event=>({...event,revision:await workflowSha([event.id,event.calendarId,event.title,event.start,event.end,event.allDay])})));
         const readResult=await validateWorkflowResult(operation,{kind:'calendar',events});current();return {status:'succeeded',summary:`Read ${events.length} events within the selected calendar range.`,readResult};
       }
+      if(operation.type==='post_notification'||operation.type==='speak_text'){
+        if(connectionController.getWorkflowPresentationProtocol()!==2)return {status:'failed',summary:'This device has not negotiated workflow presentation support.'};
+        signal.throwIfAborted();context(this);if(!this.live||document.hidden||JSON.stringify(alphaClient.getState().context)!==JSON.stringify(expectedContext)||expectedContext.sensitive||expectedContext.view!=='workflows')throw Error('Workflow review context changed');
+        if(operation.type==='post_notification'&&Capacitor.isNativePlatform()){
+          const notices=registerPlugin<{postWorkflow(input:{operationId:string;bindingHash:string;title:string;body:string;route:NonNullable<typeof workflowRoute>}):Promise<{status:unknown}>}>('AlphaNotifications');
+          if(!bindingHash||!workflowRoute)throw Error('Workflow notification binding is missing');
+          const result=await notices.postWorkflow({operationId,bindingHash,title:operation.title,body:operation.body,route:workflowRoute});
+          signal.throwIfAborted();
+          const status=result.status==='succeeded'?'succeeded':result.status==='failed'?'failed':'unknown';
+          return {status,summary:status==='succeeded'?'Posted the reviewed notification on this device.':status==='failed'?'Notification delivery is unavailable on this device.':'Notification outcome is unconfirmed. It will not be repeated automatically.'};
+        }
+        if(operation.type==='post_notification'){await publishWorkflowNotice(operationId,operation.body,signal,operation.title,bindingHash);return {status:'succeeded',summary:'Posted the reviewed notification in the browser Inbox.'};}
+        const speechAbort=new AbortController(),stop=()=>speechAbort.abort();signal.addEventListener('abort',stop,{once:true});window.addEventListener('alpha:stop-workflow-speech',stop);
+        try{signal.throwIfAborted();await speakLocalText(operation.text,speechAbort.signal,undefined,true);return {status:'succeeded',summary:'Finished reading the reviewed text aloud.'};}finally{signal.removeEventListener('abort',stop);window.removeEventListener('alpha:stop-workflow-speech',stop);}
+      }
       if (operation.type === 'create_note') {
         if (this.notesStorageFailed) return { status: 'failed', summary: 'Notes storage is unavailable. Nothing saved.' };
         const existing = this.vget('notes').list.find((note: Shell) => note.id === operationId);
         if (existing) return { status: 'unknown', summary: 'A note already has this action identifier; review it before resolving.' };
-        const note = { id: operationId, kind: 'text', title: operation.title, body: operation.body, pinned: false, when: 'Now' };
+        const note = { id: operationId, kind: 'text', title: operation.title, body: operation.body, pinned: false, when: 'Now', createdAt:Date.now(), modifiedAt:Date.now() };
         const saved = await this.vset('notes', { list: [note, ...this.vget('notes').list] });
         return { status: saved ? 'succeeded' : this.notesCommitUncertain?'unknown':'failed', summary: saved ? `Saved note: ${operation.title}` : 'The note save is unconfirmed. Inspect saved notes before repeating.' };
+      }
+      if(isReminderCreate(operation)){
+        const support=await DailyApps.surfaceInfo();signal.throwIfAborted();
+        context(this);if(!this.live||JSON.stringify(alphaClient.getState().context)!==JSON.stringify(expectedContext))throw Error('Phone context changed');
+        if(support.reminderCreationVersion!==1)return {status:'failed',summary:'This phone does not support reviewed reminder creation. Nothing was created.'};
+        const result=await DailyApps.operateReminder({operationId,bindingHash,operation});
+        if(result.status!=='succeeded')return {status:'unknown',summary:'Reminder creation outcome is unknown. Check action history; it will not be repeated.'};
+        const reminderResult=validateReminderCreateResult(operation,result.result,operationId);
+        return {status:'succeeded',reminderResult,summary:reminderResult.status==='pending'?'Reminder saved with no alert.':reminderResult.status==='scheduled'?'Reminder saved with approximate notification delivery.':reminderResult.status==='permission-denied'?'Reminder saved; notifications are disabled.':'Reminder saved; notification scheduling failed.'};
       }
       if(isReminderOperation(operation)){
         signal.throwIfAborted();context(this);if(JSON.stringify(alphaClient.getState().context)!==JSON.stringify(expectedContext)||expectedContext.sensitive||document.hidden)throw Error('Reminder context changed');
         const target=await DailyApps.selectedReminder({id:operation.target.reminderId});signal.throwIfAborted();
         if(JSON.stringify(target)!==JSON.stringify(operation.target)) { // property order is normalized below
-          for(const key of ['sourceId','sourceRevision','reminderId','occurrenceId','revision'] as const)if(target[key]!==operation.target[key])return {status:'failed',summary:'This reminder changed. Review it again before applying the action.'};
+          for(const key of ['sourceId','sourceRevision','reminderId','occurrenceId','revision','timingVersion'] as const)if(target[key]!==operation.target[key])return {status:'failed',summary:'This reminder changed. Review it again before applying the action.'};
         }
         context(this);if(JSON.stringify(alphaClient.getState().context)!==JSON.stringify(expectedContext))throw Error('Reminder context changed');
         signal.throwIfAborted();
@@ -297,7 +342,7 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
         // cancels this context-bound action before it can acknowledge the server.
         if(result.status!=='succeeded')return {status:'unknown',summary:'Reminder outcome requires review. It was not repeated.'};
         const reminderResult=validateReminderResult(operation,result.result);
-        return {status:'succeeded',summary:`Reminder ${reminderResult.status}.${Capacitor.isNativePlatform()?' Android delivery is approximate.':''}`,reminderResult};
+        return {status:'succeeded',summary:reminderResult.status==='pending'?'Reminder saved with no alert.':`Reminder ${reminderResult.status}.${Capacitor.isNativePlatform()?' Android delivery is approximate.':''}`,reminderResult};
       }
       if (operation.type === 'create_reminder') {
         const at = Date.parse(operation.dueAt);
@@ -337,6 +382,7 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
     if (key !== 'notes' || !patch.list) { originalSet.call(this,key,patch);return true; }
     if (this.notesStorageFailed||!this.notesStore) {this.toast('Notes storage needs recovery before editing.');return false;}
     try {
+      if(!isAndroid)patch={...patch,list:stampNoteChanges(this.notesStore.list,patch.list)};
       const pending=this.notesStore.replace(patch.list);
       this.notesPending++;
       this.notesSelectionKey=null;this.notesSelection=null;
@@ -368,6 +414,26 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
   p.api = function (key: string) {
     const api = originalApi.call(this, key);
     if(key==='workflows'&&!isAndroid){
+      api.localWorkflowReady=()=>{context(this);return this.live&&!alphaClient.getState().pending&&!alphaClient.getState().context.sensitive&&(alphaClient.getState().connection==='ready'||!!connectionController.getSnapshot().session);};
+      api.localWorkflowBusy=()=>alphaClient.getState().pending;
+      api.localWorkflowIdle=(signal:AbortSignal)=>new Promise<void>((resolve,reject)=>{
+        signal.throwIfAborted();let unsubscribe=()=>{};
+        const finish=(error?:Error)=>{unsubscribe();signal.removeEventListener('abort',cancel);error?reject(error):resolve();};
+        const cancel=()=>finish(new DOMException('Workflow cancelled','AbortError'));
+        const check=()=>{const state=alphaClient.getState();if(state.context.sensitive)finish(Error('Return to the device before generating a workflow result.'));else if(!state.pending)finish();};
+        unsubscribe=alphaClient.subscribe(check);signal.addEventListener('abort',cancel,{once:true});check();
+      });
+      api.localWorkflowText=async(instruction:string,input:string,signal:AbortSignal,automatic=false)=>{
+        signal.throwIfAborted();
+        if(alphaClient.getState().connection!=='ready'&&!connectionController.getSnapshot().session)return undefined;
+        context(this);
+        if(!this.live||!automatic&&this.S().view!=='workflows'||alphaClient.getState().context.sensitive)throw Error('Open the workflow to generate its result.');
+        const expectedSession=alphaClient.getState().session||connectionController.getSnapshot().session,expectedRevision=alphaClient.getState().context.revision;
+        await this.connectAgent();signal.throwIfAborted();context(this);
+        if(!this.live||alphaClient.getState().context.sensitive||!automatic&&(this.S().view!=='workflows'||alphaClient.getState().context.revision!==expectedRevision)||JSON.stringify(alphaClient.getState().session)!==JSON.stringify(expectedSession))throw Error('The workflow or agent connection changed. Run the step again.');
+        return alphaClient.generateWorkflowText(instruction,input,signal,automatic);
+      };
+
       api.localWorkflowNotes=async(input:{operationId?:string;text?:string},signal:AbortSignal)=>{
         signal.throwIfAborted();
         if(this.notesStorageFailed||this.notesPending||!this.notesStore)throw Error('Reopen Notes before running this step.');
@@ -394,6 +460,9 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
       if(!current||JSON.stringify(current)!==JSON.stringify(expected)||document.hidden||connectionController.getSnapshot().open||document.documentElement.dataset.connectionMode==='mock')throw new Error('Agent changed. Review this message again.');
       if(this.S().typing)throw new Error('Wait for the current agent reply before sharing this email.');
       context(this);await this.send(text,expected);
+    };
+    if(browserDevProfile)api.composeContentQuestion=(draft:string)=>{
+      context(this);this.setState({chat:'sheet',shade:false,draft});
     };
     api.assist = (notice: string) => {
       context(this);

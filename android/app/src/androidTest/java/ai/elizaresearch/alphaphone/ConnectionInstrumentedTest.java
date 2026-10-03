@@ -47,6 +47,32 @@ public class ConnectionInstrumentedTest {
  }
  private void ready() throws Exception { until("window.Capacitor?.Plugins?.AlphaConnection && document.documentElement.dataset.activeView"); }
 
+ @Test public void reservedNativeSlotsRejectEveryPublicStorageOperation() throws Exception {
+  org.junit.Assume.assumeTrue("Owned native credential isolation campaign", "1".equals(InstrumentationRegistry.getArguments().getString("nativeSlotIsolation")));
+  assertTrue("Fresh secondary user required",android.os.Process.myUid()/100000>0);
+  AlphaCredentialStore nativeStore=new AlphaCredentialStore(InstrumentationRegistry.getInstrumentation().getTargetContext());
+  String[] slots={"resident-results:v1:fixture","local-agent-provider:v99:fixture","workflow-notice-taps:v99:fixture","workflow-notice-delivery:v99:fixture","action-journal:v1:fixture:entry:id","hosted-background:v99:fixture","hosted-digests:v1:fixture:run","hosted-notices:v99:fixture","note-audio-metadata:v1:fixture","reminder-taps:v99:fixture"};
+  java.util.List<String> ownedSlots=new java.util.ArrayList<>();
+  String retained="{\"authority\":\"native-only-fixture\"}",forged="{\"authority\":\"renderer-forgery\"}";
+  try(BoundedActivityScenario<MainActivity> activity=BoundedActivityScenario.launch(MainActivity.class)) {
+   AppNavigation.liveMode();ready();
+   for(String slot:slots){
+    assertNull("Fixture must not overwrite existing authority",nativeStore.readCredentialSlot(slot));ownedSlots.add(slot);nativeStore.writeCredentialSlot(slot,retained);
+    for(String method:new String[]{"secureRead","secureWrite","secureCompareExchange","secureRemove"}){
+     JSONObject args=new JSONObject().put("slot",slot).put("expectedValue",retained).put("value",forged);
+     assertFalse("Public "+method+" must reject native namespace",invoke(method,args).getBoolean("ok"));
+     assertEquals("Rejected access must preserve native bytes",retained,nativeStore.readCredentialSlot(slot));
+    }
+    nativeStore.writeCredentialSlot(slot,forged);assertEquals("Trusted native internal access remains",forged,nativeStore.readCredentialSlot(slot));
+   }
+   String allowed="workflow-draft:v1:"+slotHash(java.util.UUID.randomUUID().toString());
+   assertNull(nativeStore.readCredentialSlot(allowed));ownedSlots.add(allowed);
+   assertTrue(invoke("secureWrite",new JSONObject().put("slot",allowed).put("value",retained)).getBoolean("ok"));
+   assertEquals(retained,invoke("secureRead",new JSONObject().put("slot",allowed)).getJSONObject("value").getString("value"));
+   assertEquals("saved",invoke("secureCompareExchange",new JSONObject().put("slot",allowed).put("expectedValue",retained).put("value",forged)).getJSONObject("value").getString("status"));
+   assertTrue(invoke("secureRemove",new JSONObject().put("slot",allowed)).getBoolean("ok"));assertNull(nativeStore.readCredentialSlot(allowed));
+  }finally{for(String slot:ownedSlots)nativeStore.removeCredentialSlot(slot);}
+ }
  @Test public void localDraftCompareExchangePreservesNewerEditsAndEncryptedRecreation() throws Exception {
   String slot="inbox-drafts:v1:instrumentation-"+java.util.UUID.randomUUID();
   String first=new JSONObject().put("body","PRIVATE_SYNTHETIC_DRAFT_"+java.util.UUID.randomUUID()).put("revision","first").toString();
@@ -128,15 +154,16 @@ public class ConnectionInstrumentedTest {
    JSONObject response = invoke("request", request);
    assertTrue(response.getBoolean("ok")); assertEquals(200, response.getJSONObject("value").getInt("status"));
    assertTrue(response.getJSONObject("value").getJSONObject("data").getBoolean("fixture"));
-   String negotiatedCapabilities="calendar.local-event.v1,notes.local-record.v1,reminders.local-record.v1,maps.selected-read.v1";
-   for(String capabilities:new String[]{"calendar.local-event.v1","notes.local-record.v1","calendar.local-event.v1,notes.local-record.v1","notes.local-record.v1,calendar.local-event.v1","maps.selected-read.v1","calendar.local-event.v1,notes.local-record.v1,maps.selected-read.v1",negotiatedCapabilities}){
+   String negotiatedCapabilities="calendar.local-event.v1,notes.local-record.v1,reminders.local-record.v1,maps.selected-read.v1,clock.handoff.v1";
+   String negotiatedV2=negotiatedCapabilities.replace("reminders.local-record.v1","reminders.local-record.v2");
+   for(String capabilities:new String[]{"reminders.create.v1",negotiatedV2+",reminders.create.v1",negotiatedCapabilities+",reminders.create.v1","reminders.local-record.v2",negotiatedV2,"calendar.local-event.v1","notes.local-record.v1","calendar.local-event.v1,notes.local-record.v1","notes.local-record.v1,calendar.local-event.v1","maps.selected-read.v1","calendar.local-event.v1,notes.local-record.v1,maps.selected-read.v1",negotiatedCapabilities}){
     int before=requestHits.get();
     JSONObject accepted=invoke("request",new JSONObject().put("requestId",java.util.UUID.randomUUID().toString()).put("url",base+"/api/conversations").put("method","GET").put("headers",new JSONObject().put("X-Eliza-Device-Capabilities",capabilities)));
     assertTrue(accepted.getBoolean("ok"));assertEquals(200,accepted.getJSONObject("value").getInt("status"));
     assertTrue(accepted.getJSONObject("value").getJSONObject("data").getBoolean("fixture"));
     assertEquals("Accepted capability header must reach the HTTP peer exactly once",before+1,requestHits.get());assertEquals(capabilities,lastCapabilities.get());
    }
-   for(String capabilities:new String[]{"calendar.local-event.v1,calendar.local-event.v1","notes.local-record.v1,","unknown","calendar.local-event.v1,notes.local-record.v1,unknown","notes.local-record.v1\r\nX-Injected: yes","maps.selected-read.v1,maps.selected-read.v1","calendar.local-event.v1,notes.local-record.v1,reminders.local-record.v1,unknown",negotiatedCapabilities+",maps.selected-read.v1",negotiatedCapabilities+",unknown",negotiatedCapabilities+"\nX-Injected: yes"}){
+   for(String capabilities:new String[]{"reminders.local-record.v1,reminders.local-record.v2","reminders.local-record.v1,reminders.local-record.v2,reminders.create.v1",negotiatedV2+",reminders.create.v1,reminders.local-record.v1",negotiatedV2+",reminders.create.v1,unknown","reminders.create.v1,reminders.create.v1",negotiatedV2+",reminders.local-record.v1","reminders.local-record.v2,reminders.local-record.v2","calendar.local-event.v1,calendar.local-event.v1","notes.local-record.v1,","unknown","calendar.local-event.v1,notes.local-record.v1,unknown","notes.local-record.v1\r\nX-Injected: yes","maps.selected-read.v1,maps.selected-read.v1","calendar.local-event.v1,notes.local-record.v1,reminders.local-record.v1,unknown",negotiatedCapabilities+",maps.selected-read.v1",negotiatedCapabilities+",clock.handoff.v1",negotiatedCapabilities+",unknown",negotiatedCapabilities+"\nX-Injected: yes"}){
     int before=requestHits.get();assertFalse(invoke("request",new JSONObject().put("requestId",java.util.UUID.randomUUID().toString()).put("url",base+"/capabilities-invalid").put("method","GET").put("headers",new JSONObject().put("X-Eliza-Device-Capabilities",capabilities))).getBoolean("ok"));assertEquals("Invalid capability header must not reach HTTP peer",before,requestHits.get());
    }
    assertFalse(invoke("request", new JSONObject().put("requestId", "fixture-redirect").put("url", base + "/redirect").put("method", "GET")).getBoolean("ok"));
@@ -155,5 +182,82 @@ public class ConnectionInstrumentedTest {
    String hash = slotHash(slot);
    new android.util.AtomicFile(new File(InstrumentationRegistry.getInstrumentation().getTargetContext().getNoBackupFilesDir(), "connection-credentials/" + hash)).delete();
   }
+ }
+ @Test public void enabledViewProfileHttpPreservesAuthenticationAndConditionalRevision() throws Exception {
+  assertTrue("Loopback HTTP requires debug packaging", BuildConfig.DEBUG);
+  final String path="/api/client-devices/view-profile";
+  final String installation=java.util.UUID.randomUUID().toString();
+  final String key="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", bearer="Bearer SYNTHETIC-PROFILE-OWNER";
+  final String capabilities="calendar.local-event.v1,notes.local-record.v1,reminders.local-record.v2,reminders.create.v1,maps.selected-read.v1,clock.handoff.v1";
+  final String revision=java.util.UUID.randomUUID().toString();
+  AtomicInteger hits=new AtomicInteger(), writes=new AtomicInteger();
+  java.util.concurrent.atomic.AtomicReference<JSONObject> profile=new java.util.concurrent.atomic.AtomicReference<>();
+  java.util.concurrent.atomic.AtomicReference<Throwable> peerFailure=new java.util.concurrent.atomic.AtomicReference<>();
+  java.util.List<JSONObject> observed=java.util.Collections.synchronizedList(new java.util.ArrayList<>());
+  ServerSocket server=new ServerSocket(0,8,InetAddress.getByName("127.0.0.1"));
+  String base="http://127.0.0.1:"+server.getLocalPort();
+  Thread peer=new Thread(()->{
+   while(!server.isClosed()){
+    try(Socket socket=server.accept()){
+     socket.setSoTimeout(5000);
+     BufferedReader input=new BufferedReader(new InputStreamReader(socket.getInputStream(),StandardCharsets.UTF_8));
+     String first=input.readLine();if(first==null||first.length()>2048)throw new IllegalStateException("Invalid fixture request line");
+     String[] requestLine=first.split(" ");if(requestLine.length!=3)throw new IllegalStateException("Invalid fixture request line");
+     JSONObject headers=new JSONObject();String line;int headerBytes=0,length=0;
+     while((line=input.readLine())!=null&&!line.isEmpty()){
+      headerBytes+=line.length();if(headerBytes>8192)throw new IllegalStateException("Fixture headers exceeded bound");
+      int colon=line.indexOf(':');if(colon<=0)throw new IllegalStateException("Invalid fixture header");
+      String name=line.substring(0,colon).toLowerCase(java.util.Locale.ROOT),value=line.substring(colon+1).trim();
+      if(headers.has(name))throw new IllegalStateException("Duplicate fixture header");headers.put(name,value);
+      if(name.equals("content-length"))length=Integer.parseInt(value);
+     }
+     if(length<0||length>2048)throw new IllegalStateException("Fixture body exceeded bound");
+     char[] content=new char[length];int read=0;
+     while(read<length){int n=input.read(content,read,length-read);if(n<0)throw new IllegalStateException("Truncated fixture body");read+=n;}
+     String body=new String(content);hits.incrementAndGet();observed.add(new JSONObject().put("method",requestLine[0]).put("path",requestLine[1]).put("headers",headers).put("body",body));
+     int status=200;JSONObject response=new JSONObject();
+     if(!requestLine[1].equals(path)){status=404;response.put("error","Unknown synthetic route");}
+     else if(!bearer.equals(headers.optString("authorization"))||!installation.equals(headers.optString("x-eliza-device-id"))||!key.equals(headers.optString("x-eliza-device-key"))){status=401;response.put("error","Synthetic identity mismatch");}
+     else if(!capabilities.equals(headers.optString("x-eliza-device-capabilities"))){status=400;response.put("error","Synthetic capabilities mismatch");}
+     else if(requestLine[0].equals("POST")){
+      JSONObject value=new JSONObject(body);
+      if(value.getInt("version")!=1||value.length()!=3||!value.getJSONArray("views").toString().equals("[\"notes\"]"))throw new IllegalStateException("Unexpected profile body");
+      Object expected=value.get("expectedRevision");JSONObject current=profile.get();
+      if(current==null?expected!=JSONObject.NULL:!current.getString("revision").equals(expected)){status=409;response.put("error","Synthetic revision conflict");}
+      else{JSONObject saved=new JSONObject().put("version",1).put("revision",revision).put("views",new org.json.JSONArray().put("notes"));profile.set(saved);writes.incrementAndGet();response.put("version",1).put("profile",saved);}
+     }else{response.put("version",1).put("supportedViews",new org.json.JSONArray().put("notes")).put("profile",profile.get()==null?JSONObject.NULL:profile.get());}
+     byte[] bytes=response.toString().getBytes(StandardCharsets.UTF_8);
+     socket.getOutputStream().write(("HTTP/1.1 "+status+" Fixture\r\nContent-Type: application/json\r\nContent-Length: "+bytes.length+"\r\nConnection: close\r\n\r\n").getBytes(StandardCharsets.US_ASCII));
+     socket.getOutputStream().write(bytes);socket.getOutputStream().flush();
+    }catch(Exception error){if(!server.isClosed())peerFailure.compareAndSet(null,error);}
+   }
+  },"alpha-view-profile-http-fixture");peer.setDaemon(true);peer.start();
+  try(BoundedActivityScenario<MainActivity> scenario=BoundedActivityScenario.launch(MainActivity.class)){
+   AppNavigation.liveMode();ready();
+   JSONObject headers=new JSONObject().put("Authorization",bearer).put("Content-Type","application/json").put("X-Eliza-Device-Id",installation).put("X-Eliza-Device-Key",key).put("X-Eliza-Device-Capabilities",capabilities);
+   JSONObject request=new JSONObject().put("url",base+path).put("method","GET").put("headers",headers);
+   java.util.function.Function<JSONObject,JSONObject> call=args->{try{return invoke("request",new JSONObject(args.toString()).put("requestId",java.util.UUID.randomUUID().toString()));}catch(Exception e){throw new AssertionError(e);}};
+   JSONObject first=call.apply(request);assertTrue(first.getBoolean("ok"));assertEquals(200,first.getJSONObject("value").getInt("status"));assertTrue(first.getJSONObject("value").getJSONObject("data").isNull("profile"));
+   String body=new JSONObject().put("version",1).put("views",new org.json.JSONArray().put("notes")).put("expectedRevision",JSONObject.NULL).toString();
+   JSONObject post=new JSONObject(request.toString()).put("method","POST").put("body",body);
+   JSONObject saved=call.apply(post);assertTrue(saved.getBoolean("ok"));assertEquals(200,saved.getJSONObject("value").getInt("status"));assertEquals(revision,saved.getJSONObject("value").getJSONObject("data").getJSONObject("profile").getString("revision"));assertEquals(1,writes.get());
+   assertEquals("Conditional stale write is not retried",409,call.apply(post).getJSONObject("value").getInt("status"));assertEquals(1,writes.get());
+   assertEquals(revision,call.apply(request).getJSONObject("value").getJSONObject("data").getJSONObject("profile").getString("revision"));
+   assertEquals("GET forwarded with no body","",observed.get(0).getString("body"));assertEquals(body,observed.get(1).getString("body"));
+   for(int i=0;i<4;i++){
+    JSONObject sent=observed.get(i).getJSONObject("headers");assertEquals(bearer,sent.getString("authorization"));assertEquals(installation,sent.getString("x-eliza-device-id"));assertEquals(key,sent.getString("x-eliza-device-key"));assertEquals(capabilities,sent.getString("x-eliza-device-capabilities"));
+   }
+   for(String identityHeader:new String[]{"Authorization","X-Eliza-Device-Id","X-Eliza-Device-Key"}){
+    JSONObject bad=new JSONObject(request.toString());bad.getJSONObject("headers").put(identityHeader,"synthetic-wrong-identity");int before=hits.get();JSONObject refused=call.apply(bad);assertTrue(refused.getBoolean("ok"));assertEquals(401,refused.getJSONObject("value").getInt("status"));assertEquals(before+1,hits.get());assertEquals(1,writes.get());
+   }
+   assertEquals(404,call.apply(new JSONObject(request.toString()).put("url",base+path+"/unknown")).getJSONObject("value").getInt("status"));
+   for(String invalid:new String[]{capabilities+",unknown.v1",capabilities+",reminders.local-record.v1","notes.local-record.v1,notes.local-record.v1",capabilities+"\r\nX-Injected: yes"}){
+    JSONObject bad=new JSONObject(request.toString());bad.getJSONObject("headers").put("X-Eliza-Device-Capabilities",invalid);int before=hits.get();assertFalse(call.apply(bad).getBoolean("ok"));assertEquals("Rejected capabilities never reach HTTP",before,hits.get());
+   }
+   for(JSONObject bad:new JSONObject[]{new JSONObject(request.toString()).put("url",base+path+"#fragment"),new JSONObject(request.toString()).put("url","file:///api/client-devices/view-profile"),new JSONObject(request.toString()).put("method","DELETE"),new JSONObject(request.toString()).put("body",body)}){
+    int before=hits.get();assertFalse(call.apply(bad).getBoolean("ok"));assertEquals("Invalid transport request never reaches HTTP",before,hits.get());
+   }
+   assertEquals(1,writes.get());assertNull("Synthetic HTTP peer completed without error",peerFailure.get());
+  }finally{server.close();peer.join(6000);assertFalse("Fixture peer stopped",peer.isAlive());}
  }
 }

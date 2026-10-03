@@ -1,3 +1,5 @@
+import {isReminderCreate,validateReminderCreate,validateReminderCreateResult} from '../apps/app/src/runtime/reminder-create-contract.ts';
+import {validateReminderOperation,validateReminderResult} from '../apps/app/src/runtime/reminder-contract.ts';
 import {mkdirSync,readFileSync,writeFileSync,renameSync,existsSync,chmodSync} from 'node:fs';
 import {join} from 'node:path';
 import {createHash,randomUUID} from 'node:crypto';
@@ -11,7 +13,7 @@ export function localAgentStorage(directory:string,input:any):unknown {
  const digestOperation=operation==='digestRead'||operation==='digestCompareExchange';
  const draftOperation=operation==='draftRead'||operation==='draftCompareExchange';
  const slot=operation==='read'||operation==='write'||draftOperation||digestOperation?input.slot:`journal:${input.scope}`;
- if(typeof slot!=='string'||!(digestOperation?/^hosted-digests:v1:[a-f0-9]{64}(?::[A-Za-z0-9][A-Za-z0-9_-]{0,127})?$/:draftOperation?/^workflow-draft:v1:[a-f0-9]{64}$/:/^(device|journal):[a-f0-9]{64}$/).test(slot))throw Error('Invalid local storage scope');
+ if(typeof slot!=='string'||!(digestOperation?/^(?:renderer-)?hosted-digests:v1:[a-f0-9]{64}(?::[A-Za-z0-9][A-Za-z0-9_-]{0,127})?$/:draftOperation?/^workflow-draft:v1:[a-f0-9]{64}$/:/^(device|journal):[a-f0-9]{64}$/).test(slot))throw Error('Invalid local storage scope');
  const file=join(directory,createHash('sha256').update(slot).digest('hex')+'.json');
  const saved=existsSync(file)?JSON.parse(readFileSync(file,'utf8')):null;
  const write=(value:unknown)=>{const bytes=JSON.stringify(value);if(Buffer.byteLength(bytes)>2*1024*1024)throw Error('Local storage limit');const temporary=file+'.'+randomUUID();writeFileSync(temporary,bytes,{mode:0o600,flag:'wx'});renameSync(temporary,file);};
@@ -54,6 +56,27 @@ export function localAgentStorage(directory:string,input:any):unknown {
   if(previous.phase==='applying'&&previous.attemptId===input.attemptId)return {};
   if(previous.phase!=='reserved'||typeof input.attemptId!=='string'||!input.attemptId)throw Error('Invalid journal transition');
   entries[input.proposalId]={...previous,phase:'applying',attemptId:input.attemptId};write(entries);return {};
+ }
+ if(operation==='recoverNotification'){
+  if(JSON.stringify(previous)!==JSON.stringify(input.expectedEntry))throw Error('Notification journal changed. Refresh history.');
+  if(previous.phase==='terminal'&&previous.status!=='unknown')return {entry:previous};
+  const effect=previous.record.operation,hash=(value:unknown)=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
+  if(!previous.attemptId||previous.phase!=='applying'&&!(previous.phase==='terminal'&&previous.status==='unknown')||effect?.type!=='post_notification'||!previous.record.workflow)throw Error('Notification recovery requires an admitted workflow attempt');
+  const binding=hash([input.scope,previous.record.ownerId,previous.record.agentId,previous.record.sessionId,previous.record.origin,previous.record.installationId,previous.record.enrollmentId,input.proposalId,previous.record.digest,previous.operationId]);
+  if(binding!==input.bindingHash||hash(effect)!==previous.operationHash)throw Error('Notification recovery binding changed');
+  const entry={...previous,phase:'terminal',status:'succeeded',summary:'Recovered the original notification delivery receipt. Nothing was posted again.',result:{operationId:previous.operationId}};
+  entries[input.proposalId]=entry;write(entries);return {entry};
+ }
+ if(operation==='recoverReminder'){
+  if(JSON.stringify(previous)!==JSON.stringify(input.expectedEntry))throw Error('Reminder journal changed. Refresh history.');
+  if(previous.phase==='terminal'&&previous.status!=='unknown')return {entry:previous};
+  if(!previous.attemptId||previous.phase!=='applying'&&previous.status!=='unknown')throw Error('Reminder recovery requires an admitted attempt');
+  const effect=isReminderCreate(previous.record.operation)?validateReminderCreate(previous.record.operation):validateReminderOperation(previous.record.operation),hash=(value:unknown)=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
+  const binding=hash([input.scope,previous.record.ownerId,previous.record.agentId,previous.record.sessionId,previous.record.origin,previous.record.installationId,previous.record.enrollmentId,input.proposalId,previous.record.digest,previous.operationId]);
+  if(binding!==input.bindingHash||hash(effect)!==previous.operationHash)throw Error('Reminder recovery binding changed');
+  const reminderResult=isReminderCreate(effect)?validateReminderCreateResult(effect,input.reminderResult,previous.operationId):validateReminderResult(effect,input.reminderResult);
+  const entry={...previous,phase:'terminal',status:'succeeded',summary:'Recovered the original saved reminder receipt. No action was repeated.',result:{operationId:previous.operationId,reminderResult}};
+  entries[input.proposalId]=entry;write(entries);return {entry};
  }
  if(operation==='finish'){
   if(!['succeeded','failed','unknown','cancelled'].includes(input.status)||typeof input.summary!=='string')throw Error('Invalid journal result');

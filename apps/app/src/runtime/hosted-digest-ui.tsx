@@ -1,3 +1,5 @@
+import {browserDevProfile} from '../browser/dev-profile';
+import {browserScreenLocked} from '../browser/screen-locked';
 import { holdPhoneInert } from './modal-inert';
 import { browserHostedResults } from '../browser/hosted-results';
 import { developmentDigestStore } from './local-agent-storage';
@@ -14,6 +16,7 @@ import { secureConnectionStore } from "./native-connection";
 import { actionScope } from "./device-actions";
 import {
 	HostedSourceRejected,
+ digestSummaryText,
 	type DigestSource,
 	type DigestLoop,
 	type DigestResult,
@@ -27,13 +30,14 @@ type Pending = {
 	body: Record<string, unknown>;
 	summary: string;
 };
-function canSyncResults(){return !document.hidden&&(isAndroid||(document.documentElement.dataset.devBackground!=='true'&&!document.querySelector('[aria-label="Unlock with fingerprint"], [aria-label="Wake"]')?.getClientRects().length));}
+function canSyncResults(){return !document.hidden&&(isAndroid||(document.documentElement.dataset.devBackground!=='true'&&!browserScreenLocked()));}
 export function HostedDigestPanel() {
 	const panel = useRef<HTMLElement>(null);
 	const connection = useSyncExternalStore(
 		connectionController.subscribe,
 		connectionController.getSnapshot,
 	);
+	const interactiveDevelopment=browserDevProfile&&JSON.parse(localStorage.getItem('alpha.connection.selection.v1')||'null')?.kind==='development';
 	const [nativeReady,setNativeReady]=useState(false);
 	const [backgroundEnabled,setBackgroundEnabled]=useState(false);
 	const [noticeEnabled,setNoticeEnabled]=useState(false), [focusedRun,setFocusedRun]=useState<string|null>(null), [tap,setTap]=useState<{token:string;runId:string;sessionId:string}|null>(null);
@@ -165,7 +169,7 @@ export function HostedDigestPanel() {
 		}
 		const controller = new AbortController();
 		let disposed = false;
-        let releaseBrowser:undefined|(()=>void);
+        let releaseBrowser:undefined|(()=>void),releaseScheduler:undefined|(()=>void);
 		void (async () => {
 			const session = connection.session!,
 				slot =
@@ -175,7 +179,8 @@ export function HostedDigestPanel() {
 					));
 			if (disposed) return;
             const client=selected.client.hosted();let inbox:ResultInbox;
-            const storage=!isAndroid&&browserLocalAgentEnabled&&connection.kind==='resident'?developmentDigestStore():secureConnectionStore;
+            const development=browserDevProfile&&JSON.parse(localStorage.getItem('alpha.connection.selection.v1')||'null')?.kind==='development';
+            const storage=development?await (await import('../browser/digest-storage')).browserDigestStore(session,()=>!disposed&&connectionController.getSnapshot().session?.sessionId===session.sessionId):!isAndroid&&browserLocalAgentEnabled&&connection.kind==='resident'?developmentDigestStore():secureConnectionStore;
             const notices:HostedResultBinding={scope:slot.slice('hosted-digests:v1:'.length),origin:session.origin,ownerId:session.ownerId,agentId:session.agentId,current:()=>!disposed&&binding.current?.sessionId===session.sessionId&&connectionController.getSnapshot().session?.sessionId===session.sessionId,revalidate:signal=>client.available(signal),history:()=>inbox.history()};
             let ready=false;
             if(isAndroid){
@@ -196,6 +201,7 @@ export function HostedDigestPanel() {
 				controller,
 			};
 			binding.current = b;
+            if(development){const {startDevelopmentDigestScheduler}=await import('../browser/development-digests');if(!disposed)releaseScheduler=startDevelopmentDigestScheduler(notices.current,controller.signal);}
             if(!isAndroid)releaseBrowser=browserHostedResults.bind(session.sessionId,notices);
 			try {
 				const old = await b.inbox.history();
@@ -219,7 +225,7 @@ export function HostedDigestPanel() {
 		);
 		return () => {
 			disposed = true;
-            releaseBrowser?.();
+            releaseBrowser?.();releaseScheduler?.();
 			clearInterval(poll);
 			controller.abort();
 			binding.current = null;
@@ -367,7 +373,7 @@ export function HostedDigestPanel() {
 				</header>
 				<h1 id="digest-title">Scheduled digests</h1>
 				<p>
-					{connection.kind==='resident'
+					{interactiveDevelopment ? 'Schedules run while this browser is open.' : connection.kind==='resident'
                         ? (isAndroid?'Your agent runs schedules on this phone. It cannot run while the phone is off.':'Schedules run on this computer while the local agent process is running.')
                         : connection.session ? 'Schedules run on your connected agent’s host, which must remain available.' : 'Choose where your agent runs to set up scheduled digests.'}
                 </p>
@@ -527,7 +533,7 @@ export function HostedDigestPanel() {
 							<p>
 								Skipped clock times are missed; repeated times run once at the
 								earlier offset. A missed schedule does not replay a backlog.
-								Model usage is billed by the connected agent.
+								{interactiveDevelopment ? 'Digests use the configured development reply.' : 'Model usage is billed by the connected agent.'}
 							</p>
 							{(["morning", "evening"] as const).map((t) => (
 								<div key={t}>
@@ -592,8 +598,9 @@ export function HostedDigestPanel() {
 									width: "100%",
 								}}
 							>
-								{result.error || JSON.stringify(result.output, null, 2)}
+								{digestSummaryText(result)}
 							</pre>
+                            <details><summary>Execution details</summary><pre style={{whiteSpace:'pre-wrap',overflowWrap:'anywhere',font:'inherit',width:'100%'}}>{JSON.stringify(result.output,null,2)}</pre></details>
 						</article>
 					))}
 			</section>

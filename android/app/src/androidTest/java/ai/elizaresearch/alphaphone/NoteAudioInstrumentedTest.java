@@ -26,7 +26,7 @@ public class NoteAudioInstrumentedTest {
  private static byte[] wav(){int n=16000;ByteBuffer b=ByteBuffer.allocate(44+n*2).order(ByteOrder.LITTLE_ENDIAN);b.put("RIFF".getBytes(StandardCharsets.US_ASCII)).putInt(36+n*2).put("WAVEfmt ".getBytes(StandardCharsets.US_ASCII)).putInt(16).putShort((short)1).putShort((short)1).putInt(8000).putInt(16000).putShort((short)2).putShort((short)16).put("data".getBytes(StandardCharsets.US_ASCII)).putInt(n*2);return b.array();}
  private static AlphaNoteAudioPlugin plugin(){for(android.app.Activity activity:ActivityLifecycleMonitorRegistry.getInstance().getActivitiesInStage(Stage.RESUMED))if(activity instanceof MainActivity)return (AlphaNoteAudioPlugin)((MainActivity)activity).getBridge().getPlugin("AlphaNoteAudio").getInstance();throw new IllegalStateException();}
  @Test public void savedAudioSurvivesDraftRemovalRecreationAndUndo()throws Exception {
-  android.content.Context context=InstrumentationRegistry.getInstrumentation().getTargetContext();String audioId=UUID.randomUUID().toString(),noteId=UUID.randomUUID().toString();File fixture=File.createTempFile("synthetic-note-",".wav",context.getCacheDir());java.nio.file.Files.write(fixture.toPath(),wav());String input="{audioId:"+JSONObject.quote(audioId)+",noteId:"+JSONObject.quote(noteId)+"}";
+  android.content.Context context=InstrumentationRegistry.getInstrumentation().getTargetContext();String audioId=UUID.randomUUID().toString(),noteId=UUID.randomUUID().toString();File fixture=File.createTempFile("synthetic-note-",".wav",context.getCacheDir());java.nio.file.Files.write(fixture.toPath(),wav());String input="{audioId:"+JSONObject.quote(audioId)+",noteId:"+JSONObject.quote(noteId)+",operationId:\"11111111-1111-4111-8111-111111111111\"}";
   try(BoundedActivityScenario<MainActivity> scenario=BoundedActivityScenario.launch(MainActivity.class)){
    ready();AtomicReference<JSONObject> saved=new AtomicReference<>();BoundedActivityScenario.main(()->{try{saved.set(plugin().retain(fixture,audioId,noteId,2000,"Edited synthetic transcript"));}catch(Exception e){throw new RuntimeException(e);}});
    assertEquals("Edited synthetic transcript",saved.get().getString("transcript"));assertFalse(saved.get().has("path"));assertTrue(fixture.delete());
@@ -110,4 +110,40 @@ public class NoteAudioInstrumentedTest {
   }finally{if(audioId!=null)for(String suffix:new String[]{".audio",".json",".json.bak",".pending"})new File(context.getNoBackupFilesDir(),"note-audio/"+audioId+suffix).delete();}
  }
 
+
+ @Test public void expiredOwnedDeletionCannotRestoreBeforeMigration()throws Exception {
+  android.content.Context context=InstrumentationRegistry.getInstrumentation().getTargetContext();
+  String audioId=UUID.randomUUID().toString(),noteId=UUID.randomUUID().toString(),operation=UUID.randomUUID().toString();
+  File fixture=File.createTempFile("audio-expiry-",".wav",context.getCacheDir());java.nio.file.Files.write(fixture.toPath(),wav());
+  String input=new JSONObject().put("audioId",audioId).put("noteId",noteId).put("operationId",operation).toString();
+  try(BoundedActivityScenario<MainActivity> scenario=BoundedActivityScenario.launch(MainActivity.class)){
+   ready();BoundedActivityScenario.main(()->{try{plugin().retain(fixture,audioId,noteId,2000,"Synthetic retention fixture");}catch(Exception e){throw new RuntimeException(e);}});
+   assertEquals("removed",call("Capacitor.Plugins.AlphaNoteAudio.remove("+input+")").getString("status"));
+   // Age the durable tombstone while the activity remains alive: expiry must
+   // hold even before the next startup migration removes the audio bytes.
+   BoundedActivityScenario.main(()->{try{AlphaConnectionPlugin storage=(AlphaConnectionPlugin)plugin().getBridge().getPlugin("AlphaConnection").getInstance();String slot="note-audio-metadata:v1:"+audioId;JSONObject record=new JSONObject(storage.readCredentialSlot(slot));record.put("deletedAt",System.currentTimeMillis()-31L*24*60*60*1000);storage.writeCredentialSlot(slot,record.toString());}catch(Exception e){throw new RuntimeException(e);}});
+   assertTrue(call("Capacitor.Plugins.AlphaNoteAudio.restore("+input+")").has("error"));
+   assertEquals("removed",call("Capacitor.Plugins.AlphaNoteAudio.deletionStatus("+input+")").getString("status"));
+   assertTrue(call("Capacitor.Plugins.AlphaNoteAudio.play("+input+")").has("error"));
+  }finally{fixture.delete();new AlphaCredentialStore(context).removeCredentialSlot("note-audio-metadata:v1:"+audioId);for(String suffix:new String[]{".audio",".json",".json.bak",".pending"})new File(context.getNoBackupFilesDir(),"note-audio/"+audioId+suffix).delete();}
+ }
+ @Test public void optInRetiredDeletionCannotArriveAfterReloadAndRestore()throws Exception {
+  org.junit.Assume.assumeTrue("Explicit native audio fence fixture opt-in", "true".equals(InstrumentationRegistry.getArguments().getString("audioFence")));
+  android.content.Context context=InstrumentationRegistry.getInstrumentation().getTargetContext();String audioId=UUID.randomUUID().toString(),noteId=UUID.randomUUID().toString(),operation=UUID.randomUUID().toString();
+  File fixture=File.createTempFile("audio-fence-",".wav",context.getCacheDir());java.nio.file.Files.write(fixture.toPath(),wav());String input="{audioId:"+JSONObject.quote(audioId)+",noteId:"+JSONObject.quote(noteId)+",operationId:"+JSONObject.quote(operation)+"}";
+  try(BoundedActivityScenario<MainActivity> scenario=BoundedActivityScenario.launch(MainActivity.class)){
+   ready();BoundedActivityScenario.main(()->{try{plugin().retain(fixture,audioId,noteId,2000,"Synthetic fence fixture");}catch(Exception e){throw new RuntimeException(e);}});
+   // Prior app versions wrote deletedAt without an operation owner. Explicit restore
+   // may retire that legacy tombstone; delete must never adopt it into a new operation.
+   BoundedActivityScenario.main(()->{try{AlphaConnectionPlugin storage=(AlphaConnectionPlugin)plugin().getBridge().getPlugin("AlphaConnection").getInstance();String slot="note-audio-metadata:v1:"+audioId;JSONObject legacy=new JSONObject(storage.readCredentialSlot(slot));legacy.put("deletedAt",System.currentTimeMillis());storage.writeCredentialSlot(slot,legacy.toString());}catch(Exception e){throw new RuntimeException(e);}});
+   assertTrue(call("Capacitor.Plugins.AlphaNoteAudio.remove("+input+")").has("error"));
+   JSONObject legacy=call("Capacitor.Plugins.AlphaNoteAudio.describe("+input+")");assertTrue(legacy.has("deletedAt"));assertFalse(legacy.has("deletionOperations"));
+   // Explicit restore retires the operation before its delayed remove reaches native.
+   assertEquals("restored",call("Capacitor.Plugins.AlphaNoteAudio.restore("+input+")").getString("status"));
+   scenario.recreate();ready();JSONObject late=call("Capacitor.Plugins.AlphaNoteAudio.remove("+input+")");assertEquals("restored",late.getString("status"));assertEquals(operation,late.getString("operationId"));assertFalse(call("Capacitor.Plugins.AlphaNoteAudio.describe("+input+")").has("deletedAt"));
+   assertEquals("restored",call("Capacitor.Plugins.AlphaNoteAudio.deletionStatus("+input+")").getString("status"));
+   String second=input.replace(operation,UUID.randomUUID().toString());assertEquals("removed",call("Capacitor.Plugins.AlphaNoteAudio.remove("+second+")").getString("status"));
+   scenario.recreate();ready();assertEquals("restored",call("Capacitor.Plugins.AlphaNoteAudio.restore("+input+")").getString("status"));assertTrue(call("Capacitor.Plugins.AlphaNoteAudio.describe("+input+")").has("deletedAt"));assertEquals("restored",call("Capacitor.Plugins.AlphaNoteAudio.restore("+second+")").getString("status"));
+  }finally{fixture.delete();for(String suffix:new String[]{".audio",".json",".json.bak",".pending"})new File(context.getNoBackupFilesDir(),"note-audio/"+audioId+suffix).delete();}
+ }
 }

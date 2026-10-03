@@ -1,0 +1,756 @@
+diff --git a/packages/agent/src/api/device-action-routes.ts b/packages/agent/src/api/device-action-routes.ts
+index 93ffe27800a5..a99aaab58e8a 100644
+--- a/packages/agent/src/api/device-action-routes.ts
++++ b/packages/agent/src/api/device-action-routes.ts
+@@ -47,7 +47,7 @@ export function deviceRequestCredential(
+       ? capabilityHeader.split(",").map((value) => value.trim())
+       : [];
+   if (
+-    capabilities.length > 4 ||
++    capabilities.length > 5 ||
+     new Set(capabilities).size !== capabilities.length ||
+     capabilities.some(
+       (value) =>
+@@ -56,6 +56,7 @@ export function deviceRequestCredential(
+           "notes.local-record.v1",
+           "reminders.local-record.v1",
+           "maps.selected-read.v1",
++          "clock.handoff.v1",
+         ].includes(value),
+     )
+   )
+@@ -118,6 +119,7 @@ export async function handleDeviceActionRoutes(
+             "notes.local-record.v1",
+             "reminders.local-record.v1",
+             "maps.selected-read.v1",
++            "clock.handoff.v1",
+           ],
+         },
+       });
+diff --git a/plugins/plugin-assistant/src/services/device-actions/action.ts b/plugins/plugin-assistant/src/services/device-actions/action.ts
+index c1c59c8c9ae2..ad6745f11e71 100644
+--- a/plugins/plugin-assistant/src/services/device-actions/action.ts
++++ b/plugins/plugin-assistant/src/services/device-actions/action.ts
+@@ -3,6 +3,7 @@ import {
+   isCalendarOperation,
+   validateCalendarResult,
+ } from "./calendar-contract.ts";
++import { isClockOperation, validateClockResult } from "./clock-contract.ts";
+ import { DEVICE_VIEWS, object, validateDevicePayload } from "./contract.ts";
+ import {
+   deviceActionEffectReceipts,
+@@ -197,11 +198,49 @@ const calendarSchemas: ActionParameterSchema[] = [
+     },
+   })),
+ ];
++const clockSchemas: ActionParameterSchema[] = [
++  ...["show", "dismiss"].map((action) => ({
++    type: "object",
++    additionalProperties: false,
++    required: ["type", "action"],
++    properties: {
++      type: { type: "string", enum: ["clock_handoff"] },
++      action: { type: "string", enum: [action] },
++    },
++  })),
++  {
++    type: "object",
++    additionalProperties: false,
++    required: ["type", "action", "hour", "minute", "label", "timeZone"],
++    properties: {
++      type: { type: "string", enum: ["clock_handoff"] },
++      action: { type: "string", enum: ["set"] },
++      hour: { type: "integer", minimum: 0, maximum: 23 },
++      minute: { type: "integer", minimum: 0, maximum: 59 },
++      label: { type: "string", maxLength: 200 },
++      timeZone: { type: "string", maxLength: 100 },
++    },
++  },
++  {
++    type: "object",
++    additionalProperties: false,
++    required: ["type", "action", "snoozeMinutes"],
++    properties: {
++      type: { type: "string", enum: ["clock_handoff"] },
++      action: { type: "string", enum: ["snooze"] },
++      snoozeMinutes: {
++        type: "integer",
++        minimum: 1,
++        maximum: 60,
++      },
++    },
++  },
++];
+ /** Native tool output is a durable proposal, never a native effect or approval. */
+ export const proposeDeviceAction: Action = {
+   name: "PROPOSE_DEVICE_ACTION",
+   description:
+-    "Propose an approved selected Maps snapshot, note, reminder, view change, or HTTPS browser navigation on the phone enrolled for this authenticated turn. Notes read-selected/update/delete requires notes.local-record.v1 and exact selected sourceId/sourceRevision/noteId/revision. Existing create_note creates a text note. Selected reminder read/update/complete/snooze/cancel requires reminders.local-record.v1 and exact sourceId/sourceRevision/reminderId/occurrenceId/revision. Cancel stops all future repeats; snooze is ten minutes. Calendar create/read-selected/update/delete additionally requires calendar.local-event.v1 and the exact current native source/target revisions; never invent IDs or revisions. Maps read-selected requires maps.selected-read.v1 and exact current clientDevice.context kind/id/revision; never infer coordinates from the opaque identifier. The phone owner must explicitly review and approve. This tool does not perform the operation. Do not report the proposal as completed.",
++    "Propose an approved selected Maps snapshot, note, reminder, view change, or HTTPS browser navigation on the phone enrolled for this authenticated turn. Notes read-selected/update/delete requires notes.local-record.v1 and exact selected sourceId/sourceRevision/noteId/revision. Existing create_note creates a text note. Selected reminder read/update/complete/snooze/cancel requires reminders.local-record.v1 and exact sourceId/sourceRevision/reminderId/occurrenceId/revision. Cancel stops all future repeats; snooze is ten minutes. Calendar create/read-selected/update/delete additionally requires calendar.local-event.v1 and the exact current native source/target revisions; never invent IDs or revisions. Maps read-selected requires maps.selected-read.v1 and exact current clientDevice.context kind/id/revision; never infer coordinates from the opaque identifier. The phone owner must explicitly review and approve. Clock handoff requires clock.handoff.v1. Set requires the current phone clientDevice.context.timeZone, integer hour/minute, and label. Never invent the phone timezone or substitute an approximate reminder for an alarm. Set/show/dismiss/snooze only open Android Clock for user review; even an opened receipt NEVER establishes alarm creation, dismissal, snoozing or ringing. This tool does not perform the operation. Do not report the proposal as completed.",
+   contexts: ["general"],
+   parameters: [
+     {
+@@ -212,6 +251,7 @@ export const proposeDeviceAction: Action = {
+       // Service validation enforces exact keys and length bounds after decoding.
+       schema: {
+         anyOf: [
++          ...clockSchemas,
+           {
+             type: "object",
+             additionalProperties: false,
+@@ -315,6 +355,30 @@ export const proposeDeviceAction: Action = {
+     const request = outcome.request;
+     const payload = validateDevicePayload(request.payload);
+     const receipt = request.execution?.providerReceipt;
++    if (
++      isClockOperation(payload.operation) &&
++      request.state === "done" &&
++      receipt?.outcome === "applied"
++    ) {
++      const result = validateClockResult(
++        payload.operation,
++        receipt.result,
++        "applied",
++      );
++      return {
++        success: true,
++        transcriptVisibility: "internal",
++        modelReplyRequired: true,
++        effectReceipts: deviceActionEffectReceipts(outcome),
++        text: "Retrieved the historical approved Clock handoff receipt. Opened means only Android Clock was opened for review, never that an alarm was created, changed, snoozed, dismissed or rang. No new dispatch occurred.",
++        data: {
++          proposalId: request.id,
++          state: request.state,
++          executed: false,
++          result,
++        },
++      };
++    }
+     if (
+       request.state === "done" &&
+       (isMapsOperation(payload.operation) ||
+diff --git a/plugins/plugin-assistant/src/services/device-actions/clock-contract.ts b/plugins/plugin-assistant/src/services/device-actions/clock-contract.ts
+new file mode 100644
+index 000000000000..17cf8fcf2a1f
+--- /dev/null
++++ b/plugins/plugin-assistant/src/services/device-actions/clock-contract.ts
+@@ -0,0 +1,135 @@
++/** Android Clock intent handoffs only: never evidence that an alarm exists or rang. */
++export const CLOCK_CAPABILITY = "clock.handoff.v1";
++export type ClockOperation =
++  | {
++      type: "clock_handoff";
++      action: "set";
++      hour: number;
++      minute: number;
++      label: string;
++      timeZone: string;
++    }
++  | { type: "clock_handoff"; action: "snooze"; snoozeMinutes: number }
++  | { type: "clock_handoff"; action: "show" | "dismiss" };
++export interface ClockResult {
++  kind: "clock-handoff";
++  action: ClockOperation["action"];
++  status: "opened" | "unavailable" | "denied" | "failed" | "unknown";
++}
++function object(value: unknown): Record<string, unknown> {
++  if (!value || typeof value !== "object" || Array.isArray(value))
++    throw Error("Invalid Clock object");
++  return value as Record<string, unknown>;
++}
++function keys(value: Record<string, unknown>, required: string[]) {
++  if (
++    Object.keys(value).length !== required.length ||
++    required.some((key) => !Object.hasOwn(value, key))
++  )
++    throw Error("Unexpected Clock fields");
++}
++function integer(value: unknown, min: number, max: number): number {
++  if (
++    typeof value !== "number" ||
++    !Number.isInteger(value) ||
++    value < min ||
++    value > max
++  )
++    throw Error("Invalid Clock number");
++  return value;
++}
++export function clockTimeZone(value: unknown): string {
++  if (
++    typeof value !== "string" ||
++    value.length > 100 ||
++    !/^[A-Za-z_]+(?:\/[A-Za-z0-9_+.-]+)*$/.test(value)
++  )
++    throw Error("Invalid Clock time zone");
++  try {
++    new Intl.DateTimeFormat("en", { timeZone: value }).format(0);
++  } catch {
++    throw Error("Invalid Clock time zone");
++  }
++  return value;
++}
++export function isClockOperation(value: unknown): value is ClockOperation {
++  return (
++    !!value &&
++    typeof value === "object" &&
++    (value as { type?: unknown }).type === "clock_handoff"
++  );
++}
++export function validateClockOperation(value: unknown): ClockOperation {
++  const v = object(value);
++  if (v.type !== "clock_handoff") throw Error("Invalid Clock operation");
++  if (v.action === "set") {
++    keys(v, ["type", "action", "hour", "minute", "label", "timeZone"]);
++    if (
++      typeof v.label !== "string" ||
++      v.label.length > 200 ||
++      [...v.label].some((character) => {
++        const code = character.charCodeAt(0);
++        return code < 32 || code === 127;
++      })
++    )
++      throw Error("Invalid Clock label");
++    return {
++      type: v.type,
++      action: v.action,
++      hour: integer(v.hour, 0, 23),
++      minute: integer(v.minute, 0, 59),
++      label: v.label,
++      timeZone: clockTimeZone(v.timeZone),
++    };
++  }
++  if (v.action === "snooze") {
++    keys(v, ["type", "action", "snoozeMinutes"]);
++    return {
++      type: v.type,
++      action: v.action,
++      snoozeMinutes: integer(v.snoozeMinutes, 1, 60),
++    };
++  }
++  keys(v, ["type", "action"]);
++  if (v.action !== "show" && v.action !== "dismiss")
++    throw Error("Invalid Clock action");
++  return { type: v.type, action: v.action };
++}
++export function assertClockObservation(
++  operation: ClockOperation,
++  value: unknown,
++) {
++  if (operation.action !== "set") return;
++  const v = object(value);
++  if (
++    v.sensitive !== false ||
++    !Number.isSafeInteger(v.revision) ||
++    Number(v.revision) < 0 ||
++    clockTimeZone(v.timeZone) !== operation.timeZone
++  )
++    throw Error("Clock time zone observation unavailable or changed");
++}
++export function validateClockResult(
++  operation: ClockOperation,
++  value: unknown,
++  outcome: unknown,
++): ClockResult {
++  const v = object(value);
++  keys(v, ["kind", "action", "status"]);
++  if (v.kind !== "clock-handoff" || v.action !== operation.action)
++    throw Error("Clock result binding changed");
++  const valid =
++    outcome === "applied"
++      ? v.status === "opened"
++      : outcome === "unknown"
++        ? v.status === "unknown"
++        : outcome === "failed" || outcome === "not_applied"
++          ? ["unavailable", "denied", "failed"].includes(String(v.status))
++          : false;
++  if (!valid) throw Error("Clock result cannot establish this outcome");
++  return {
++    kind: v.kind,
++    action: operation.action,
++    status: v.status as ClockResult["status"],
++  };
++}
+diff --git a/plugins/plugin-assistant/src/services/device-actions/contract.ts b/plugins/plugin-assistant/src/services/device-actions/contract.ts
+index 45a6b89758a6..001bd94a7b45 100644
+--- a/plugins/plugin-assistant/src/services/device-actions/contract.ts
++++ b/plugins/plugin-assistant/src/services/device-actions/contract.ts
+@@ -2,6 +2,10 @@ import {
+   type CalendarOperation,
+   validateCalendarOperation,
+ } from "./calendar-contract.ts";
++import {
++  type ClockOperation,
++  validateClockOperation,
++} from "./clock-contract.ts";
+ import { type MapsOperation, validateMapsOperation } from "./maps-contract.ts";
+ import {
+   type NotesOperation,
+@@ -45,6 +49,7 @@ export const DEVICE_VIEWS = [
+   "workflows",
+ ] as const;
+ export type DeviceOperation =
++  | ClockOperation
+   | MapsOperation
+   | ReminderOperation
+   | NotesOperation
+@@ -94,6 +99,12 @@ export function exactKeys(
+ export function validateDeviceOperation(value: unknown): DeviceOperation {
+   const p = object(value);
+   switch (p.type) {
++    case "clock_handoff":
++      try {
++        return validateClockOperation(p);
++      } catch {
++        throw new DeviceActionError("Invalid Clock operation");
++      }
+     case "maps_read_selected":
+       try {
+         return validateMapsOperation(p);
+diff --git a/plugins/plugin-assistant/src/services/device-actions/effect-receipts.ts b/plugins/plugin-assistant/src/services/device-actions/effect-receipts.ts
+index 68318c952fe4..d9fd67fb9fb1 100644
+--- a/plugins/plugin-assistant/src/services/device-actions/effect-receipts.ts
++++ b/plugins/plugin-assistant/src/services/device-actions/effect-receipts.ts
+@@ -152,6 +152,7 @@ function deviceOperationIsRead(type: DeviceOperation["type"]): boolean {
+     case "calendar_create":
+     case "calendar_update":
+     case "calendar_delete":
++    case "clock_handoff":
+     case "create_note":
+     case "create_reminder":
+     case "open_view":
+diff --git a/plugins/plugin-assistant/src/services/device-actions/service.ts b/plugins/plugin-assistant/src/services/device-actions/service.ts
+index 9a227645dca9..24fdbace1f79 100644
+--- a/plugins/plugin-assistant/src/services/device-actions/service.ts
++++ b/plugins/plugin-assistant/src/services/device-actions/service.ts
+@@ -17,6 +17,12 @@ import {
+   isCalendarOperation,
+   validateCalendarResult,
+ } from "./calendar-contract.ts";
++import {
++  assertClockObservation,
++  CLOCK_CAPABILITY,
++  isClockOperation,
++  validateClockResult,
++} from "./clock-contract.ts";
+ import {
+   DeviceActionError,
+   type DeviceActionPayload,
+@@ -163,6 +169,7 @@ export class DeviceActionService {
+           "calendar.local-event.v1",
+           "notes.local-record.v1",
+           REMINDER_CAPABILITY,
++          CLOCK_CAPABILITY,
+           MAPS_CAPABILITY,
+         ],
+       };
+@@ -240,6 +247,11 @@ export class DeviceActionService {
+     observation?: unknown,
+   ): Promise<ApprovalEnqueueResult> {
+     const validated = validateDeviceOperation(operation);
++    if (
++      isClockOperation(validated) &&
++      !c.capabilities?.includes(CLOCK_CAPABILITY)
++    )
++      throw new DeviceActionError("Clock capability unavailable");
+     if (isMapsOperation(validated)) {
+       if (!c.capabilities?.includes(MAPS_CAPABILITY))
+         throw new DeviceActionError("Maps capability unavailable");
+@@ -261,6 +273,7 @@ export class DeviceActionService {
+       throw new DeviceActionError("Calendar capability unavailable");
+     if (
+       ![
++        "clock_handoff",
+         "create_note",
+         "maps_read_selected",
+         "notes_read_selected",
+@@ -295,6 +308,22 @@ export class DeviceActionService {
+         idempotencyKey,
+         c.subjectUserId,
+       );
++      if (isClockOperation(validated)) {
++        const receipt = existing?.execution?.providerReceipt;
++        const historical =
++          existing?.state === "done" &&
++          stableStringify(existing.payload) === stableStringify(payload) &&
++          receipt?.outcome === "applied";
++        try {
++          if (historical)
++            validateClockResult(validated, receipt.result, "applied");
++          else assertClockObservation(validated, observation);
++        } catch {
++          throw new DeviceActionError(
++            "Clock observation unavailable or changed",
++          );
++        }
++      }
+       if (isMapsOperation(validated)) {
+         const receipt = existing?.execution?.providerReceipt;
+         const historical =
+@@ -535,6 +564,11 @@ export class DeviceActionService {
+     const request = await queue.byId(identifier(id), c.subjectUserId);
+     if (!request) throw new DeviceActionError("Proposal unavailable");
+     const payload = validateDevicePayload(request.payload);
++    if (
++      isClockOperation(payload.operation) &&
++      !c.capabilities?.includes(CLOCK_CAPABILITY)
++    )
++      throw new DeviceActionError("Clock capability unavailable");
+     if (
+       isMapsOperation(payload.operation) &&
+       !c.capabilities?.includes(MAPS_CAPABILITY)
+@@ -657,6 +691,11 @@ export class DeviceActionService {
+     return this.access(c, async (q, row) => {
+       const request = await this.proposal(q, row, c, id, expectedDigest);
+       const payload = validateDevicePayload(request.payload);
++      if (
++        isClockOperation(payload.operation) &&
++        !c.capabilities?.includes(CLOCK_CAPABILITY)
++      )
++        throw new DeviceActionError("Clock capability unavailable");
+       if (
+         isMapsOperation(payload.operation) &&
+         !c.capabilities?.includes(MAPS_CAPABILITY)
+@@ -675,7 +714,24 @@ export class DeviceActionService {
+       const read =
+         payload.operation.type === "read_selected_notes" ||
+         payload.operation.type === "read_calendar_range";
+-      if (isMapsOperation(payload.operation) && receipt.outcome === "applied") {
++      if (isClockOperation(payload.operation)) {
++        try {
++          if (receipt.outcome !== "unknown" || value.result !== undefined)
++            receipt = {
++              ...receipt,
++              result: validateClockResult(
++                payload.operation,
++                value.result,
++                receipt.outcome,
++              ),
++            };
++        } catch {
++          throw new DeviceActionError("Invalid Clock receipt");
++        }
++      } else if (
++        isMapsOperation(payload.operation) &&
++        receipt.outcome === "applied"
++      ) {
+         try {
+           receipt = {
+             ...receipt,
+@@ -785,6 +841,11 @@ export class DeviceActionService {
+     return this.access(c, async (q, row) => {
+       const request = await this.proposal(q, row, c, id, expectedDigest);
+       const payload = validateDevicePayload(request.payload);
++      if (
++        isClockOperation(payload.operation) &&
++        !c.capabilities?.includes(CLOCK_CAPABILITY)
++      )
++        throw new DeviceActionError("Clock capability unavailable");
+       if (
+         isMapsOperation(payload.operation) &&
+         !c.capabilities?.includes(MAPS_CAPABILITY)
+@@ -800,7 +861,24 @@ export class DeviceActionService {
+         !c.capabilities?.includes(NOTES_CAPABILITY)
+       )
+         throw new DeviceActionError("Notes capability unavailable");
+-      if (isMapsOperation(payload.operation) && receipt.outcome === "applied") {
++      if (isClockOperation(payload.operation)) {
++        try {
++          if (receipt.outcome !== "unknown" || value.result !== undefined)
++            receipt = {
++              ...receipt,
++              result: validateClockResult(
++                payload.operation,
++                value.result,
++                receipt.outcome,
++              ),
++            };
++        } catch {
++          throw new DeviceActionError("Invalid Clock receipt");
++        }
++      } else if (
++        isMapsOperation(payload.operation) &&
++        receipt.outcome === "applied"
++      ) {
+         try {
+           receipt = {
+             ...receipt,
+diff --git a/plugins/plugin-assistant/test/device-actions.e2e.test.ts b/plugins/plugin-assistant/test/device-actions.e2e.test.ts
+index 8a1057b04f8f..359b5da8c985 100644
+--- a/plugins/plugin-assistant/test/device-actions.e2e.test.ts
++++ b/plugins/plugin-assistant/test/device-actions.e2e.test.ts
+@@ -958,6 +958,275 @@ test("device approval REST lifecycle survives restart and never duplicates claim
+         ).toHaveLength(1);
+       }
+     }
++    {
++      const capability = "clock.handoff.v1";
++      const allCapabilities =
++        "calendar.local-event.v1,notes.local-record.v1,reminders.local-record.v1,maps.selected-read.v1,clock.handoff.v1";
++      const enrolled = await request(
++        "/register",
++        { label: "Fixture phone", workflowProtocol: 1 },
++        "a",
++        deviceKey,
++        allCapabilities,
++      );
++      expect(enrolled.status).toBe(200);
++      expect(enrolled.body.capabilities).toHaveLength(5);
++      expect(enrolled.body.capabilities).toContain("clock.handoff.v1");
++      expect(
++        (
++          await request(
++            "/proposals",
++            undefined,
++            "a",
++            deviceKey,
++            allCapabilities,
++          )
++        ).status,
++      ).toBe(200);
++      expect(
++        (
++          await request(
++            "/proposals",
++            undefined,
++            "a",
++            deviceKey,
++            allCapabilities + ",unknown.v1",
++          )
++        ).status,
++      ).toBe(401);
++      expect(
++        (
++          await request(
++            "/proposals",
++            undefined,
++            "a",
++            deviceKey,
++            allCapabilities + ",clock.handoff.v1",
++          )
++        ).status,
++      ).toBe(401);
++
++      const operationSchema = proposeDeviceAction.parameters!.find(
++        (p) => p.name === "operation",
++      )!.schema;
++      const clockSchemas = operationSchema.anyOf!.filter((p) =>
++        p.properties?.type.enum?.includes("clock_handoff"),
++      );
++      expect(clockSchemas).toHaveLength(4);
++      expect(clockSchemas.every((p) => p.additionalProperties === false)).toBe(
++        true,
++      );
++      expect(proposeDeviceAction.description).toContain(
++        "Never invent the phone timezone or substitute an approximate reminder for an alarm",
++      );
++
++      const c = { ...credentials, capabilities: [capability] };
++      const clockRequest = (path: string, body?: unknown) =>
++        request(path, body, "a", deviceKey, capability);
++      const service = new DeviceActionService(runtimeState.runtime);
++      const set = {
++        type: "clock_handoff",
++        action: "set",
++        hour: 7,
++        minute: 30,
++        label: "Clock fixture",
++        timeZone: "UTC",
++      };
++      const observation = {
++        view: "home",
++        revision: 7,
++        sensitive: false,
++        timeZone: "UTC",
++      };
++      const proposeOverHttp = async (
++        operation: unknown,
++        context: unknown,
++        operationKey = randomUUID(),
++      ) => {
++        mapsActionParameters = {
++          operation,
++          operationKey,
++          reason: "Clock fixture",
++        };
++        const response = await fetch(`${origin}/api/maps-observation-fixture`, {
++          method: "POST",
++          headers: {
++            authorization: `Bearer ${sessions.a}`,
++            "x-eliza-device-id": device,
++            "x-eliza-device-key": deviceKey,
++            "x-eliza-device-capabilities": capability,
++            "content-type": "application/json",
++          },
++          body: JSON.stringify({
++            text: "Review Clock handoff",
++            metadata: { clientDevice: { context } },
++          }),
++        });
++        return {
++          status: response.status,
++          body: (await response.json()) as any,
++        };
++      };
++      await expect(
++        service.propose(
++          credentials,
++          set,
++          "clock-no-cap",
++          "Clock fixture",
++          observation,
++        ),
++      ).rejects.toThrow();
++      for (const operation of [
++        { ...set, hour: 24 },
++        { ...set, minute: -1 },
++        { ...set, hour: 7.5 },
++        { ...set, label: "x".repeat(201) },
++        { ...set, timeZone: "Not/AZone" },
++        { ...set, alarmCreated: true },
++        { type: "clock_handoff", action: "show", hour: 7 },
++        { type: "clock_handoff", action: "dismiss", alarmId: "other" },
++        { type: "clock_handoff", action: "snooze", snoozeMinutes: 0 },
++        { type: "clock_handoff", action: "snooze", snoozeMinutes: 61 },
++      ])
++        expect((await proposeOverHttp(operation, observation)).status).toBe(
++          409,
++        );
++      // The model's valid zone cannot replace missing/different current HTTP observation.
++      for (const context of [
++        undefined,
++        { ...observation, timeZone: undefined },
++        { ...observation, timeZone: "America/New_York" },
++        { ...observation, sensitive: true },
++      ]) {
++        expect((await proposeOverHttp(set, context)).status).toBe(409);
++      }
++      const operations = [
++        set,
++        { type: "clock_handoff", action: "show" },
++        { type: "clock_handoff", action: "dismiss" },
++        { type: "clock_handoff", action: "snooze", snoozeMinutes: 10 },
++        set,
++      ];
++      for (const [index, status] of [
++        "opened",
++        "unavailable",
++        "denied",
++        "failed",
++        "unknown",
++      ].entries()) {
++        const operation = operations[index];
++        const key = `clock-${status}`;
++        const proposed = await proposeOverHttp(operation, observation, key);
++        expect(proposed.status).toBe(200);
++        expect(proposed.body.metadata.clientDevice.context.timeZone).toBe(
++          "UTC",
++        );
++        const id = proposed.body.action.data.proposalId;
++        const listed = await clockRequest("/proposals");
++        const pending = listed.body.proposals.find((p: any) => p.id === id);
++        expect(pending.payload.operation).toEqual(operation);
++        expect(
++          (
++            await clockRequest(`/proposals/${id}/claim`, {
++              digest: pending.digest,
++            })
++          ).status,
++        ).toBe(409);
++        expect(
++          (
++            await clockRequest(`/proposals/${id}/decision`, {
++              digest: pending.digest,
++              decision: "approve",
++            })
++          ).status,
++        ).toBe(200);
++        const claim = await clockRequest(`/proposals/${id}/claim`, {
++          digest: pending.digest,
++        });
++        expect(claim.status).toBe(200);
++        const attemptId = claim.body.proposal.execution.attemptId;
++        const endpoint = `/proposals/${id}/receipt`;
++        for (const result of [
++          {
++            kind: "clock-handoff",
++            action: operation.action,
++            status: "created",
++          },
++          {
++            kind: "clock-handoff",
++            action: operation.action,
++            status: "opened",
++            alarmCreated: true,
++          },
++          { kind: "clock-handoff", action: "wrong", status: "opened" },
++        ]) {
++          expect(
++            (
++              await clockRequest(endpoint, {
++                digest: pending.digest,
++                attemptId,
++                receipt: {
++                  outcome: "applied",
++                  operationId: randomUUID(),
++                  result,
++                },
++              })
++            ).status,
++          ).toBe(409);
++        }
++        const receipt = {
++          outcome:
++            status === "opened"
++              ? "applied"
++              : status === "unknown"
++                ? "unknown"
++                : "failed",
++          operationId: randomUUID(),
++          result: { kind: "clock-handoff", action: operation.action, status },
++        };
++        const recorded = await clockRequest(endpoint, {
++          digest: pending.digest,
++          attemptId,
++          receipt,
++        });
++        expect(recorded.status).toBe(200);
++        expect(recorded.body.proposal.execution.providerReceipt.result).toEqual(
++          receipt.result,
++        );
++        expect(
++          (
++            await clockRequest(`/proposals/${id}/claim`, {
++              digest: pending.digest,
++            })
++          ).status,
++        ).toBe(409);
++        expect(
++          (
++            await clockRequest(endpoint, {
++              digest: pending.digest,
++              attemptId,
++              receipt,
++            })
++          ).status,
++        ).toBe(200);
++        if (status === "opened") {
++          const historical = await proposeOverHttp(
++            operation,
++            { ...observation, timeZone: "America/New_York" },
++            key,
++          );
++          expect(historical.status).toBe(200);
++          expect(historical.body.action.data.result.status).toBe("opened");
++          expect(historical.body.action.text).toContain(
++            "never that an alarm was created",
++          );
++          expect(historical.body.action.data.executed).toBe(false);
++        }
++      }
++      console.info(
++        "Clock HTTP/PGlite: 5 outcome lifecycles, capability/schema/timezone rejection, duplicate claims and historical opened-only receipt PASS",
++      );
++    }
+     {
+       const capability = "maps.selected-read.v1";
+       const service = new DeviceActionService(runtimeState.runtime);

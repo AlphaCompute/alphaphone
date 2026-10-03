@@ -9,7 +9,7 @@ final class AppNavigation {
    if("mock".equals(startup.awaitReady(false))) {
     // One real click only. Never retry effects if their callback is lost.
     startup.expectNavigation();
-    WebViewTestDriver.evaluate("document.querySelector('.mock-mode-banner button')?.click()");
+    WebViewTestDriver.withActivity(MainActivity.class,a->a.getBridge().getWebView().evaluateJavascript("document.querySelector('.mock-mode-banner button')?.click()",null));
     startup.awaitReady(true);
    }
   }

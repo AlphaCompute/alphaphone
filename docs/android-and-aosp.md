@@ -77,3 +77,17 @@ assistant role. Do not add a broad `privapp-permissions` list to make a test pas
 A persistent cross-app helper and secure Chromium component require their explicit
 native/OS integration and signer-admission work in the implementation plan. Managed
 kiosk is not enabled by default; preserve a recovery route and normal Android settings.
+
+## Required Clock provider
+
+The Alpha overlay explicitly includes AOSP `DeskClock` alongside its launcher. Keep this module in the selected product even when generic upstream de-bloating changes. A missing Clock handler is not successful MVP alarm acceptance. Both standalone and launcher APKs use the installed provider and expose honest unavailable results; neither bundles Clock inside its APK or owns exact-alarm delivery.
+
+After booting the exact signed image, perform read-only handler admission for the intended Android user:
+
+```sh
+ANDROID_SERIAL=<exact-serial> ALPHA_ANDROID_USER=<user-id> node scripts/verify-aosp-clock.mjs
+```
+
+The check requires enabled `com.android.deskclock` and its set/show/snooze/dismiss activity handlers. It does not launch an alarm, change permissions, provision a device, or prove ringing. Alpha's shared manifest declares the caller SET_ALARM permission and visibility queries; Clock's own notifications/exact-alarm access remains separately verified on the image. Confirm actual set/fire/snooze/dismiss, permission denial, reboot, time-zone/DST, cancellation and DND/physical audio before claiming alarm MVP completion.
+
+DeskClock is the real AOSP module defined in `packages/apps/DeskClock/Android.bp` and included by the standard handheld product. Pin its source through the selected image manifest; do not substitute an unreviewed downloaded APK.

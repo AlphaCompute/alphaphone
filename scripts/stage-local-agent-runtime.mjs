@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import {sourceDirectory} from './local-agent-source.mjs';
+import {sourceDirectory,workerArtifactDirectory} from './local-agent-source.mjs';
 import {verifyWorkerArtifact,workerHash} from './workflow-worker-artifact.mjs';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -8,7 +8,7 @@ const root=path.resolve(import.meta.dirname,'..');
 const source=sourceDirectory(root);
 if(!fs.existsSync(path.join(source,'.alpha-runtime-source.json')))throw Error('Run npm run agent:prepare first.');
 execFileSync(process.execPath,[path.join(root,'scripts/prepare-local-agent.mjs'),'--source-only'],{cwd:root,stdio:'inherit'});
-verifyWorkerArtifact(path.resolve(process.env.ALPHA_WORKFLOW_WORKER_OUTPUT||path.join(root,'artifacts/mobile-workflow-worker')),
+verifyWorkerArtifact(workerArtifactDirectory(root),
  {sourceStampSha256:workerHash(fs.readFileSync(path.join(source,'.alpha-runtime-source.json'))),lockSha256:workerHash(fs.readFileSync(path.join(source,'bun.lock')))});
 const env={...process.env,ELIZA_ANDROID_TARGET_ABIS:'arm64-v8a,x86_64'};
 execFileSync(process.env.ALPHA_BUN||'bun',['run','--cwd','packages/agent','build:mobile','--target=android'],{cwd:source,env,stdio:'inherit'});

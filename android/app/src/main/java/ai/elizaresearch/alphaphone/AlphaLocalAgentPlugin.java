@@ -15,6 +15,8 @@ import org.json.JSONObject;
 @CapacitorPlugin(name="Agent")
 public final class AlphaLocalAgentPlugin extends Plugin {
  private final ExecutorService workers=Executors.newFixedThreadPool(2);
+ // Set only from in-process debug instrumentation; no route, intent or preference activation.
+ static volatile java.net.ServerSocket instrumentationRecoveryEndpoint;
  private static String rootToken,ownerToken,ownerIdentity;
  private static long expiresAt;
  private static final Object lifecycleLock=new Object(), enrollmentLock=new Object();
@@ -81,6 +83,19 @@ public final class AlphaLocalAgentPlugin extends Plugin {
   env.put("ELIZAOS_CLOUD_USE_INFERENCE","false");
   env.put("ELIZA_DISABLE_PERSONAL_ASSISTANT","1");
   env.put("ELIZA_DISTRIBUTION_PROFILE","store");
+  // Pseudonymize secrets and PII in every hosted model request; needs patches/eliza/egress-swap-control-objects.patch.
+  env.put("ELIZA_SECRET_SWAP_ENABLED","true");
+  env.put("ELIZA_PII_SWAP_ENABLED","true");
+  java.net.ServerSocket fixture=instrumentationRecoveryEndpoint;
+  if(fixture!=null){
+   if(!BuildConfig.DEBUG||android.os.Process.myUid()/100000<=0||fixture.isClosed()
+      ||!fixture.isBound()||!"127.0.0.1".equals(fixture.getInetAddress().getHostAddress())
+      ||fixture.getLocalPort()<=0||!"synthetic-resident-recovery-only".equals(provider.getString("key")))
+    throw new java.io.IOException("Invalid resident recovery fixture endpoint");
+   String endpoint="http://127.0.0.1:"+fixture.getLocalPort()+"/v1";
+   env.put("CEREBRAS_BASE_URL",endpoint);env.put("OPENAI_BASE_URL",endpoint);
+   env.put("OPENAI_API_KEY","synthetic-resident-recovery-only");env.put("ELIZA_PROVIDER","cerebras");
+  }
   } catch(Exception error) {throw new java.io.IOException("Local model provider unavailable");}
  }
  @PluginMethod public void start(PluginCall call) {
@@ -111,7 +126,7 @@ public final class AlphaLocalAgentPlugin extends Plugin {
     long deadline=android.os.SystemClock.elapsedRealtime()+90000;
     boolean ready=false;
     while(android.os.SystemClock.elapsedRealtime()<deadline){
-     try{String root=ElizaAgentService.localAgentToken();if(root==null||root.isEmpty())throw new IllegalStateException();enrollmentJson(epoch,"/api/auth/status","GET",null,root).getString("instanceId");ready=true;break;}
+     try{if(rejectStartupRefusal(call,epoch,ElizaAgentService.getLocalAgentBootState(getContext())))return;String root=ElizaAgentService.localAgentToken();if(root==null||root.isEmpty())throw new IllegalStateException();authenticatedStatus(epoch,root);ready=true;break;}
      catch(Superseded stale){rejectSuperseded(call);return;}
      catch(Exception unavailable){try{Thread.sleep(1000);}catch(InterruptedException interrupted){Thread.currentThread().interrupt();break;}}
     }
@@ -124,6 +139,18 @@ public final class AlphaLocalAgentPlugin extends Plugin {
     rejectPending(call,"Local agent startup did not complete. Check runtime status; no chat was sent.");
    });
   }catch(Exception error){synchronized(lifecycleLock){pending.remove(call);}call.reject("The on-device agent could not start. Try again or connect another agent.");}
+ }
+ static String startupRefusalMessage(String reason){
+  if("ipc-recovery-retention-limit".equals(reason))return "Local startup is blocked because retained recovery records reached their limit. Your records were preserved. Waiting or repeated starts will not clear this limit. Use another connection while recovery records are reviewed; do not clear app data.";
+  if("ipc-recovery-required".equals(reason))return "Local startup could not safely identify an interrupted agent or workflow. Your records were preserved. Use another connection while the runtime is inspected; do not clear app data or rerun unfinished work.";
+  if("runtime-identity-unavailable".equals(reason))return "Local startup could not verify its runtime files. Your records were preserved. Check the installed runtime before reconnecting.";
+  return null;
+ }
+ private boolean rejectStartupRefusal(PluginCall call,long epoch,JSONObject status) throws Superseded {
+  String reason=status.optString("reason");
+  String message=startupRefusalMessage(reason);
+  if(message==null)return false;
+  synchronized(lifecycleLock){requireCurrent(epoch);if(pending.remove(call))call.reject(message,reason);return true;}
  }
  private static boolean shutdownConfirmed(JSONObject status){
   return status!=null&&"dead".equals(status.optString("state"))&&!status.optBoolean("serviceActive",true)&&!status.optBoolean("socketListening",true);
@@ -182,25 +209,35 @@ public final class AlphaLocalAgentPlugin extends Plugin {
   if(response.getInt("status")!=200)throw new IllegalStateException("Local enrollment unavailable");
   return new JSONObject(response.getString("body"));
  }
- private JSONObject enrollmentJson(long epoch,String path,String method,JSONObject body,String token) throws Exception {
+ private void requireEnrollmentRoot(long epoch,String root) throws Exception {
   requireCurrent(epoch);
+  if(root==null||root.isEmpty()||!root.equals(ElizaAgentService.localAgentToken()))throw new IllegalStateException("Local runtime token changed");
+ }
+ private JSONObject enrollmentJson(long epoch,String path,String method,JSONObject body,String token,String root) throws Exception {
+  requireEnrollmentRoot(epoch,root);
   // Admission precedes dispatch. In-flight native requests are not claimed cancelled.
-  JSONObject result=json(path,method,body,token);requireCurrent(epoch);return result;
+  JSONObject result=json(path,method,body,token);requireEnrollmentRoot(epoch,root);return result;
+ }
+ private JSONObject authenticatedStatus(long epoch,String root) throws Exception {
+  JSONObject status=enrollmentJson(epoch,"/api/auth/status","GET",null,root,root);
+  if(!Boolean.TRUE.equals(status.opt("authenticated")))throw new IllegalStateException("Local runtime token not authenticated");
+  if(status.getString("instanceId").isEmpty())throw new IllegalStateException("Local runtime instance unavailable");
+  return status;
  }
  private String enroll(long epoch) throws Exception {
   synchronized(enrollmentLock){
   requireCurrent(epoch);
   String root=ElizaAgentService.localAgentToken();
   if(root==null||root.isEmpty())throw new IllegalStateException();
-  synchronized(lifecycleLock){requireCurrent(epoch);if(root.equals(rootToken)&&ownerToken!=null&&expiresAt>System.currentTimeMillis()+30000)return ownerToken;}
-  JSONObject status=enrollmentJson(epoch,"/api/auth/status","GET",null,root);
-  JSONObject code=enrollmentJson(epoch,"/api/auth/pair-code","GET",null,root);
-  JSONObject paired=enrollmentJson(epoch,"/api/auth/pair","POST",new JSONObject().put("code",code.getString("code")).put("instanceId",status.getString("instanceId")),root);
+  synchronized(lifecycleLock){requireEnrollmentRoot(epoch,root);if(root.equals(rootToken)&&ownerToken!=null&&expiresAt>System.currentTimeMillis()+30000)return ownerToken;}
+  JSONObject status=authenticatedStatus(epoch,root);
+  JSONObject code=enrollmentJson(epoch,"/api/auth/pair-code","GET",null,root,root);
+  JSONObject paired=enrollmentJson(epoch,"/api/auth/pair","POST",new JSONObject().put("code",code.getString("code")).put("instanceId",status.getString("instanceId")),root,root);
   if(!"owner".equals(paired.getString("access"))||!status.getString("instanceId").equals(paired.getString("instanceId")))throw new IllegalStateException();
-  String token=paired.getString("token");JSONObject who=enrollmentJson(epoch,"/api/auth/me","GET",null,token);
+  String token=paired.getString("token");JSONObject who=enrollmentJson(epoch,"/api/auth/me","GET",null,token,root);
   if(!"OWNER".equals(who.getJSONObject("access").getString("role"))||!paired.getString("identityId").equals(who.getJSONObject("identity").getString("id"))||!token.equals(who.getJSONObject("session").getString("id")))throw new IllegalStateException();
   long expiry=who.getJSONObject("session").getLong("expiresAt");if(expiry<=System.currentTimeMillis())throw new IllegalStateException();
-  synchronized(lifecycleLock){requireCurrent(epoch);rootToken=root;ownerToken=token;ownerIdentity=paired.getString("identityId");expiresAt=expiry;return token;}
+  synchronized(lifecycleLock){requireEnrollmentRoot(epoch,root);rootToken=root;ownerToken=token;ownerIdentity=paired.getString("identityId");expiresAt=expiry;return token;}
   }
  }
  @PluginMethod public void request(PluginCall call) {

@@ -1,16 +1,13 @@
 import { planLocalSpeech } from './local-speech-text';
+import { speakLocalText } from '../local-speech-playback';
 import { registerPlugin } from '../platform-plugins';
-import { Capacitor, type PluginListenerHandle } from '@capacitor/core';
+import { Capacitor } from '@capacitor/core';
 import { connectionController } from './connection-ui';
 const native = registerPlugin<{
   localSpeechStatus(input: { requestId: string }): Promise<{ ready: boolean; execution: string }>;
   transcribeLocalRecording(input: { recordingId: string; requestId: string }): Promise<{ text: string; local: true; execution: string }>;
-  synthesizeLocal(input: { text: string; requestId: string }): Promise<{ playbackId: string; execution: string }>;
-  play(input: { playbackId: string }): Promise<void>;
-  stopPlayback(): Promise<void>;
   releaseLocalSpeech(): Promise<void>;
   cancel(input: { requestId: string }): Promise<void>;
-  addListener(event: 'playbackEnded' | 'playbackFailed', callback: (event: { playbackId?: string }) => void): Promise<PluginListenerHandle>;
 }>('AlphaVoiceCloud');
 let releaseWatcherInstalled = false;
 function installReleaseWatcher() {
@@ -34,17 +31,17 @@ export function createOnDeviceVoice() {
   const check = () => {
     if (document.hidden || document.documentElement.dataset.connectionMode === 'mock' || connectionController.getSnapshot().open || selected !== binding()) throw new DOMException('Voice selection changed', 'AbortError');
   };
-  async function operation<T>(signal: AbortSignal, run: (id: string, interrupted: Promise<never>) => Promise<T>): Promise<T> {
+  async function operation<T>(signal: AbortSignal, run: (id: string, interrupted: Promise<never>, ownedSignal: AbortSignal) => Promise<T>): Promise<T> {
     check(); signal.throwIfAborted();
-    const id = crypto.randomUUID(); let reject!: (reason: unknown) => void;
+    const owned = new AbortController(); const id = crypto.randomUUID(); let reject!: (reason: unknown) => void;
     const interrupted = new Promise<never>((_, fail) => { reject = fail; }); void interrupted.catch(() => {});
-    const cancel = () => { void native.cancel({ requestId: id }).catch(() => {}); void native.stopPlayback().catch(() => {}); reject(new DOMException('Voice cancelled', 'AbortError')); };
+    const cancel = () => { void native.cancel({ requestId: id }).catch(() => {}); owned.abort(new DOMException('Voice cancelled', 'AbortError')); reject(owned.signal.reason); };
     const unsubscribe = connectionController.subscribe(() => { try { check(); } catch { cancel(); } });
     const modeChanged = typeof MutationObserver === 'undefined' ? undefined : new MutationObserver(() => { try { check(); } catch { cancel(); } });
     modeChanged?.observe(document.documentElement, { attributes: true, attributeFilter: ['data-connection-mode'] });
     const visibility = () => { if (document.hidden) cancel(); };
     signal.addEventListener('abort', cancel, { once: true }); document.addEventListener('visibilitychange', visibility);
-    try { const result = await run(id, interrupted); check(); signal.throwIfAborted(); return result; }
+    try { const result = await run(id, interrupted, owned.signal); check(); signal.throwIfAborted(); return result; }
     finally { modeChanged?.disconnect(); signal.removeEventListener('abort', cancel); document.removeEventListener('visibilitychange', visibility); unsubscribe(); }
   }
   return {
@@ -52,25 +49,11 @@ export function createOnDeviceVoice() {
     async transcribe(recordingId: string, signal: AbortSignal) { return operation(signal, async (requestId, interrupted) => { const result = await Promise.race([native.transcribeLocalRecording({ recordingId, requestId }), interrupted]); if (result.execution !== (Capacitor.isNativePlatform()?'device':'browser') || result.local !== true || typeof result.text !== 'string' || !result.text.trim()) throw new Error('No usable on-device transcript'); return result; }); },
     async speak(text: string, signal: AbortSignal) {
       const chunks = planLocalSpeech(text);
-      return operation(signal, async (requestId, interrupted) => {
-        let expected: string | undefined; let ended!: () => void, failed!: (error: Error) => void;
-
-        const handles: PluginListenerHandle[] = [];
-        try {
-          handles.push(await native.addListener('playbackEnded', event => { if (expected && event.playbackId === expected) ended(); }));
-          handles.push(await native.addListener('playbackFailed', event => { if (expected && event.playbackId === expected) failed(new Error('On-device playback failed')); }));
-          check(); signal.throwIfAborted();
-          for (const chunk of chunks) {
-            check(); signal.throwIfAborted();
-            const completed = new Promise<void>((resolve, reject) => { ended = resolve; failed = reject; }); void completed.catch(() => {});
-            const result = await Promise.race([native.synthesizeLocal({ text: chunk, requestId }), interrupted]);
-            if (result.execution !== (Capacitor.isNativePlatform()?'device':'browser') || !result.playbackId) throw new Error('Invalid on-device speech result');
-            expected = result.playbackId; check(); signal.throwIfAborted();
-            await Promise.race([native.play({ playbackId: expected }), interrupted]);
-            await Promise.race([completed, interrupted]);
-            expected = undefined;
-          }
-        } finally { await Promise.all(handles.map(handle => handle.remove())); await native.stopPlayback().catch(() => {}); }
+      return operation(signal, async (_requestId, interrupted, ownedSignal) => {
+        for (const chunk of chunks) {
+          check(); ownedSignal.throwIfAborted();
+          await Promise.race([speakLocalText(chunk, ownedSignal, undefined, false, {execution:Capacitor.isNativePlatform()?'device':'browser',assertCurrent:check}), interrupted]);
+        }
       });
     },
   };

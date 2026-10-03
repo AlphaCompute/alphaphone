@@ -7,6 +7,7 @@ This is market and technology research, not engineering acceptance. Alpha Phone'
 **Method and evidence caveats.**
 - The shared web-search quota for this research session was exhausted before this workstream started. The page-fetch quota ran out partway through. Every number here comes from a primary page fetched during this workstream, and the URL is given inline.
 - Some items could not be re-fetched: Pixel 10 battery capacity, Titan M2 details, the BIPA 2024 amendment, Picovoice list pricing, XMOS/puck BOMs, and some competitor pipelines. These are marked **(unverified)** or **(est.)** and listed under Open questions. Do not quote them externally until they are checked.
+- **Fact-check pass (2026-10-02).** A second pass re-checked these items; results are marked "(verified 2026-10-02)" or "(could not verify)" and summarized in the verification log at the end. **Founder decisions applied:** Alpha's own AOSP image does not ship banking apps, Play Integrity or GMS (so AICore/ML Kit GenAI are simply absent on that image, not a blocker to solve), and cloud inference stays on Qwen on Cerebras.
 - Phone real-time factors (RTF) for most open models are **not published** for Tensor G5. The phone figures below are engineering estimates, marked (est.), and should be replaced by the measurement harness in the roadmap.
 - The Open ASR Leaderboard figures are GPU throughput (RTFx, batch processing) on English short-form sets. They rank accuracy well. They do **not** predict phone latency or power.
 
@@ -30,7 +31,7 @@ This is market and technology research, not engineering acceptance. Alpha Phone'
    - run inference only when the app is the top foreground app, and are subject to quotas ([ML Kit GenAI overview](https://developers.google.com/ml-kit/genai));
    - depend on the Google AICore service.
 
-   The platform `SpeechRecognizer` on-device mode is documented as not intended for continuous listening ([SpeechRecognizer reference](https://developer.android.com/reference/android/speech/SpeechRecognizer)). All of this conflicts with a custom-image, always-on product.
+   The platform `SpeechRecognizer` on-device mode is documented as not intended for continuous listening ([SpeechRecognizer reference](https://developer.android.com/reference/android/speech/SpeechRecognizer)). All of this conflicts with a custom-image, always-on product. Per the founder decision (2026-10-02), Alpha's AOSP image ships without GMS, so these Google services are not available there by design; the on-device stack must be Alpha's own (sherpa-onnx, LiteRT-LM).
 4. **Always-on capture is feasible only as a policy-privileged or visibly foreground mode.**
    - A third-party app cannot start a microphone foreground service from the background (Android 14+). It cannot start one from `BOOT_COMPLETED` either (Android 15+).
    - The exemptions are system components, `VoiceInteractionService` providers, and holders of the privileged `START_ACTIVITIES_FROM_BACKGROUND` permission ([FGS background-start restrictions](https://developer.android.com/develop/background-work/services/fgs/restrictions-bg-start)).
@@ -41,8 +42,8 @@ This is market and technology research, not engineering acceptance. Alpha Phone'
    - The Android Virtualization Framework (pKVM protected VMs) already runs Google's own on-device content-safety classification for Play Protect live threat detection. OPPO uses it for an "AI private computing space" ([AVF use cases](https://source.android.com/docs/core/virtualization/usecases)).
    - Limits: pVMs need the privileged `MANAGE_VIRTUAL_MACHINE` permission, and Microdroid has no HALs or graphics ([AVF overview](https://source.android.com/docs/core/virtualization), [Microdroid](https://source.android.com/docs/core/virtualization/microdroid)). In-VM ML is therefore **CPU-only** today.
    - A small ASR model plus a redaction model running inside a pVM, with only redacted text crossing the boundary, is a credible and rare claim (est.). It needs a privileged system image.
-7. **Cloud fallback: Nitro Enclaves are CPU-only.** An enclave talks only to its parent over vsock, with no GPU ([Nitro Enclaves](https://docs.aws.amazon.com/enclaves/latest/user/nitro-enclave.html)). Today's Cerebras inference path therefore sits **outside** the attested boundary unless Cerebras provides its own attestation (unverified). GPU confidential computing (H100 CC) adds under 7% overhead for typical LLM queries ([Zhu et al. 2024](https://arxiv.org/abs/2409.03992)). It is the realistic "attested inference" option.
-8. **Build or license:** build on open weights. Keep one commercial option open: Argmax Pro SDK for Android, GA March 18, 2026, $1.00–$1.33 per device per month with a 1,000-device minimum ([Argmax blog](https://www.argmaxinc.com/blog), [Argmax pricing](https://www.argmaxinc.com/pricing)). It is the fastest path to NPU-accelerated Parakeet and diarization.
+7. **Cloud fallback: Nitro Enclaves are CPU-only.** An enclave talks only to its parent over vsock, with no GPU ([Nitro Enclaves](https://docs.aws.amazon.com/enclaves/latest/user/nitro-enclave.html)). Today's Cerebras inference path (`qwen-3.8-27b`) therefore sits **outside** the attested boundary. No Cerebras attestation or TEE product was found on 2026-10-02; Cerebras does publicly state zero data retention for inference prompts and outputs ([Cerebras support](https://support.cerebras.net/articles/1811589793-does-cerebras-retain-my-data)), which is a contractual control, not an attested one. GPU confidential computing (H100 CC) adds under 7% overhead for typical LLM queries ([Zhu et al. 2024](https://arxiv.org/abs/2409.03992)). It is the realistic "attested inference" option, using self-hosted Qwen open weights so the model stays the same across tiers.
+8. **Build or license:** build on open weights. Keep one commercial option open: Argmax Pro SDK for Android, GA March 18, 2026, $1.00 (yearly) to $1.33 (monthly) per device per month with a 1,000-license minimum; Enterprise from 10,000 licences (verified 2026-10-02 on [Argmax blog](https://www.argmaxinc.com/blog) and [Argmax pricing](https://www.argmaxinc.com/pricing)). It is the fastest path to NPU-accelerated Parakeet and diarization.
 
 ---
 
@@ -57,14 +58,14 @@ Open ASR Leaderboard facts:
 
 | Model | Params / size | Licence | Languages | Streaming | Open ASR avg WER (EN short-form) | GPU RTFx | Notes and source |
 |---|---|---|---|---|---|---|---|
-| IBM Granite Speech 4.0 1B | ~1B | not verified (IBM usually Apache-2.0, unverified) | multilingual (unverified) | no (est.) | **5.52** | 280 | [Table 3](https://arxiv.org/html/2510.06961) |
+| IBM Granite Speech 4.0 1B | ~1B | Apache-2.0 for the Granite Speech family (verified on the 3.3 card 2026-10-02; 4.0 card not fetched) | EN, FR, DE, ES, PT on 3.3 (4.0 scope could not verify) | no (est.) | **5.52** | 280 | [Table 3](https://arxiv.org/html/2510.06961) |
 | NVIDIA Canary-Qwen 2.5B | 2.5B (FastConformer + Qwen 1.7B LLM) | CC-BY-4.0 | English only | no; 40 s max input | **5.63** | 418 | [model card](https://huggingface.co/nvidia/canary-qwen-2.5b) |
-| Microsoft Phi-4-multimodal-instruct | ~5.6B (unverified) | MIT (unverified) | multi | no | 6.02 | 151 | [Table 3](https://arxiv.org/html/2510.06961) |
+| Microsoft Phi-4-multimodal-instruct | 5.6B (verified 2026-10-02) | MIT (verified 2026-10-02) | speech in EN, ZH, DE, FR, IT, JA, ES, PT | no | 6.02 | 151 | [Table 3](https://arxiv.org/html/2510.06961) |
 | **NVIDIA Parakeet TDT 0.6B v2** | 600M; ≥2 GB RAM to load (NeMo) | CC-BY-4.0 | English | chunked streaming via NeMo | **6.05** | 3,386 | LS-clean 1.69, LS-other 3.19, **AMI 11.16**, **Earnings-22 11.15**; up to 24 min per pass ([card](https://huggingface.co/nvidia/parakeet-tdt-0.6b-v2)) |
 | **NVIDIA Parakeet TDT 0.6B v3** | 600M | CC-BY-4.0 | **25 European languages** | chunked streaming | 6.32 | 3,333 | FLEURS EN 4.85, ES 3.45, IT 3.00; released 2025-08-14; word timestamps ([card](https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3)) |
-| NVIDIA Canary 1B | 1B | CC-BY (unverified) | EN/DE/ES/FR (unverified) | no | 6.50 | 235 | [Table 3](https://arxiv.org/html/2510.06961) |
+| NVIDIA Canary 1B | 1B | **CC-BY-NC-4.0: non-commercial only** (corrected 2026-10-02; not usable in a commercial product) | EN/DE/ES/FR (verified) | no | 6.50 | 235 | [Table 3](https://arxiv.org/html/2510.06961) |
 | Distil-Whisper large-v3.5 | 756M | MIT | English | no (buffered) | 7.21 (leaderboard); card: 7.08 short-form OOD, 11.39 long-form OOD | 202 | ~1.5× faster than turbo; works as a speculative-decoding draft for large-v3 ([card](https://huggingface.co/distil-whisper/distil-large-v3.5)) |
-| OpenAI Whisper large-v3 | 1.55B (unverified) | MIT | 99 | no | 7.44 | 146 | [Table 3](https://arxiv.org/html/2510.06961) |
+| OpenAI Whisper large-v3 | 1.55B (verified 2026-10-02) | MIT (code); the Hugging Face model card lists Apache-2.0 | 99 | no | 7.44 | 146 | [Table 3](https://arxiv.org/html/2510.06961) |
 | OpenAI Whisper large-v3-turbo | 809M (decoder cut from 32 to 4 layers) | MIT | 99 | no | 7.83 | 200 | **AMI 16.13** ([card](https://huggingface.co/openai/whisper-large-v3-turbo)) |
 | Kyutai STT 1B (en/fr) | ~1B | CC-BY-4.0 weights; MIT (Python) / Apache-2.0 (Rust) code | EN, FR | **native streaming, 0.5 s delay**, semantic VAD | not retrieved | H100: 400 real-time streams | handles up to 2 h of audio; MLX on-device for Apple ([card](https://huggingface.co/kyutai/stt-1b-en_fr), [repo](https://github.com/kyutai-labs/delayed-streams-modeling)) |
 | Kyutai STT 2.6B (en) | ~2.6B | CC-BY-4.0 | EN | streaming, 2.5 s delay | not retrieved | — | [repo](https://github.com/kyutai-labs/delayed-streams-modeling) |
@@ -98,7 +99,7 @@ The best open 0.6B on-device-sized model (Parakeet v2, 6.05) is therefore **with
 | Pixel Recorder | on-device transcription, speaker labels; cloud summaries expanding via Private AI Compute | none published | bundled | competitor benchmark; its language expansion now uses Private AI Compute | [Private AI Compute announcement](https://blog.google/technology/ai/google-private-ai-compute/) |
 | **Apple SpeechAnalyzer** (iOS 26) | on-device; model lives in system storage outside the app; long-form and distant audio; volatile and final results | Earnings-22 **14.0% WER, 70× real time** on an M4 Mac mini | free to iOS apps; no custom vocabulary | iOS-only; the benchmark bar for "free platform ASR" | [WWDC25 session 277](https://developer.apple.com/videos/play/wwdc2025/277/), [Argmax benchmark](https://www.argmaxinc.com/blog/apple-and-argmax) |
 | **Argmax WhisperKit / Pro SDK** | iOS, macOS; **Android Pro SDK GA 2026-03-18, Kotlin-first on Google LiteRT**; WhisperKit Android with Qualcomm since 2024-10-22 | Earnings-22: WhisperKit base.en 15.2% at 111×; small.en 12.8% at 35×; **Pro 11.7% at 359×**; Parakeet v2 real-time latency **160 ms** | Basic MIT (free); **Pro $1.33/device/mo monthly or $1.00 yearly, minimum 1,000 devices**; Enterprise custom beyond 10k | the strongest "buy" option for NPU-accelerated Parakeet plus diarization on Android | [benchmark](https://www.argmaxinc.com/blog/apple-and-argmax), [blog index](https://www.argmaxinc.com/blog), [pricing](https://www.argmaxinc.com/pricing) |
-| **Picovoice Leopard / Cheetah** | on-device batch (Leopard) and streaming (Cheetah); Android, iOS, web, Raspberry Pi | English avg WER: **Leopard 9.7%**, **Cheetah 10.1%** (vs Amazon 4.3% batch and 5.6% streaming); Leopard **37 MB, 0.026 core-hours per audio hour** vs Whisper Medium 1.52 core-hours / 1,457 MB | SDK Apache-2.0, but **an AccessKey is required and usage is account-limited**; list prices could not be retrieved (unverified) | cheap CPU footprint, but accuracy lags 2025–26 open models by ~3–4 WER points | [Picovoice benchmark repo](https://github.com/Picovoice/speech-to-text-benchmark), [Leopard repo](https://github.com/Picovoice/leopard) |
+| **Picovoice Leopard / Cheetah** | on-device batch (Leopard) and streaming (Cheetah); Android, iOS, web, Raspberry Pi | English avg WER: **Leopard 9.7%**, **Cheetah 10.1%** (vs Amazon 4.3% batch and 5.6% streaming); Leopard **37 MB, 0.026 core-hours per audio hour** vs Whisper Medium 1.52 core-hours / 1,457 MB | SDK Apache-2.0, but **an AccessKey is required and usage is account-limited**; list prices could not be retrieved (picovoice.ai/pricing did not render on 2026-10-02; could not verify) | cheap CPU footprint, but accuracy lags 2025–26 open models by ~3–4 WER points | [Picovoice benchmark repo](https://github.com/Picovoice/speech-to-text-benchmark), [Leopard repo](https://github.com/Picovoice/leopard) |
 | **Speechmatics** | cloud, on-prem **and on-device**; 55+ languages; code-switching; diarization | Open ASR "Enhanced" 6.91; vendor-cited Pipecat pooled WER 1.07% (Aug 2026, vendor-reported, not comparable) | usage-based; $100 free credit; ISO 27001, SOC 2 Type II, HIPAA | a commercial on-device option; get an on-device SDK quote | [Speechmatics](https://www.speechmatics.com/), [Table 3](https://arxiv.org/html/2510.06961) |
 | **sherpa-onnx (k2-fsa)** | framework: streaming Zipformer/Paraformer, non-streaming Whisper/Moonshine, VAD, KWS, diarization, speaker ID, TTS; Android, iOS; **Qualcomm/Rockchip/Ascend/Axera NPU backends** | model-dependent | open source (15.1k stars) | **recommended runtime** for the open stack | [repo](https://github.com/k2-fsa/sherpa-onnx) |
 
@@ -107,7 +108,7 @@ The best open 0.6B on-device-sized model (Parakeet v2, 6.05) is therefore **with
 - SpeakerKit launched 2025-03-07.
 - A pyannoteAI partnership was announced 2025-06-23.
 - Pro SDK 3, with real-time STT plus speakers plus custom vocabulary, shipped 2026-09-23 (same source).
-- No later round was found (unverified; the search quota was exhausted).
+- No later round was found; the Argmax blog lists no funding news after the Nov 2024 seed (checked 2026-10-02).
 
 ### 2.3 Phone real-time factor on a Pixel 10-class device (estimates)
 
@@ -140,7 +141,7 @@ There are no published third-party RTF figures for these models on Tensor G5. Th
 | pyannote **community-1** | segmentation plus embedding (~tens of MB, est.) | **CC-BY-4.0** (gated HF token) | AISHELL-4 11.7%, **AMI-IHM 17.0%**, DIHARD3 20.2% (legacy 3.1: 12.2 / 18.8 / 21.4) | offline | CPU OK for post-meeting passes (est.) | [card](https://huggingface.co/pyannote/speaker-diarization-community-1) |
 | pyannoteAI **precision-2** | hosted/commercial | commercial | AISHELL-4 11.4%, **AMI-IHM 12.9%**, DIHARD3 14.7% | — | cloud or licence; also via Argmax SDK partnership | [card](https://huggingface.co/pyannote/speaker-diarization-community-1), [Argmax blog](https://www.argmaxinc.com/blog) |
 | NVIDIA **Streaming Sortformer 4spk v2** | **117M** | **CC-BY-4.0** | DIHARD III 1–4 speakers **13.24%**; ≥5 speakers **42.56%** | profiles: 30.4 s (RTF 0.002), 10 s (0.005), **1.04 s (RTF 0.093)**, **0.32 s (RTF 0.180)**, measured on GPU | good for ≤4 people; fails for large meetings | [card](https://huggingface.co/nvidia/diar_streaming_sortformer_4spk-v2) |
-| Argmax **SpeakerKit** | **~10 MB** | commercial subscription | "matches pyannote across 13 datasets" (vendor; SDBench) | ~1 s to diarize 4 min of audio on iPhone | iOS/macOS; Android was "coming soon" at launch (unverified now) | [SpeakerKit](https://www.argmaxinc.com/blog/speakerkit) |
+| Argmax **SpeakerKit** | **~10 MB** | commercial subscription | "matches pyannote across 13 datasets" (vendor; SDBench) | ~1 s to diarize 4 min of audio on iPhone | iOS/macOS; Argmax's platform docs list Android support without detail, and the Pro plan bundles "SpeakerKit Pro"; a dedicated SpeakerKit Android release was not found (could not verify, 2026-10-02) | [SpeakerKit](https://www.argmaxinc.com/blog/speakerkit) |
 | sherpa-onnx diarization | pyannote segmentation plus 3D-Speaker/NeMo embeddings (ONNX) | open source | model-dependent | offline | runs on Android CPU | [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx) |
 
 **Recommendation:**
@@ -150,9 +151,9 @@ There are no published third-party RTF figures for these models on Tensor G5. Th
 
 ### 3.2 BIPA and voiceprints
 
-- Illinois BIPA (740 ILCS 14) names "voiceprint" among biometric identifiers ([statute](https://www.ilga.gov/legislation/ilcs/ilcs3.asp?ActID=3004&ChapterID=57); the statute page could not be fetched over TLS here, so the voiceprint wording is **unverified in this session** but widely reported).
+- Illinois BIPA (740 ILCS 14) names "voiceprint" among biometric identifiers ([statute](https://www.ilga.gov/legislation/ilcs/ilcs3.asp?ActID=3004&ChapterID=57); ilga.gov still failed TLS verification on 2026-10-02, so the voiceprint wording could not be re-read at source, though it is widely reported). See workstream 11 for the amendment status.
 - Private right of action: **$1,000 per negligent violation and $5,000 per intentional or reckless violation**. *Rosenbach v. Six Flags* held that no actual injury is needed. Facebook settled for $650M in 2021 ([Wikipedia: BIPA](https://en.wikipedia.org/wiki/Biometric_Information_Privacy_Act)).
-- The 2024 amendment (SB 2979) that reportedly limits damages to one recovery per person is **unverified here**; see workstream 5.
+- The 2024 amendment (SB 2979, Public Act 103-0769) reportedly limits damages to one recovery per person for repeated collection by the same method and allows electronic signatures for consent. The primary text could not be fetched on 2026-10-02 (ilga.gov TLS error), so treat this as reported, not verified; see workstreams 5 and 11.
 - Texas (CUBI) and Washington have similar laws with no private right of action ([Wikipedia](https://en.wikipedia.org/wiki/Biometric_Information_Privacy_Act)).
 
 **Engineering implications:**
@@ -175,7 +176,7 @@ There are no published third-party RTF figures for these models on Tensor G5. Th
 |---|---|---|---|---|---|
 | **GLiNER-PII base v1.0** (Knowledgator + Wordcab) | base encoder (~200M, est.); **FP16 and UINT8 ONNX** with quantization-aware training | **F1 80.99%** (P 79.28, R 82.78) on synthetic-multi-pii-ner-v1 | Apache-2.0 (GLiNER) | 60+ PII/PHI/PCI types, zero-shot custom labels | [card](https://huggingface.co/knowledgator/gliner-pii-base-v1.0), [GLiNER](https://github.com/urchade/GLiNER) |
 | GLiNER multi-PII | small/medium | not retrieved | Apache-2.0 | 40+ types, 100+ languages; INT8, ONNX | [GLiNER](https://github.com/urchade/GLiNER) |
-| Microsoft Presidio with a small NER backend | regex/checksum recognizers plus spaCy or GLiNER | depends on recognizers | MIT (unverified in this session) | the best deterministic layer for SSNs, cards (Luhn), IBANs, phone numbers | see workstream 4 |
+| Microsoft Presidio with a small NER backend | regex/checksum recognizers plus spaCy or GLiNER | depends on recognizers | MIT (verified 2026-10-02) | the best deterministic layer for SSNs, cards (Luhn), IBANs, phone numbers | see workstream 4 |
 | Gemini Nano via ML Kit **Prompt API** / Summarization | on AICore | not published for PII | ML Kit GenAI terms | **foreground-only, quota-limited, locked bootloader, AICore required** | [ML Kit GenAI](https://developers.google.com/ml-kit/genai) |
 | Gemma 3n E2B / Gemma 4 E2B as an LLM redactor | 2.58 GB (Gemma 4 E2B) | not benchmarked for PII | Gemma terms | too slow and heavy for always-on redaction; fine as a second-pass verifier | [LiteRT-LM](https://developers.google.com/edge/litert-lm/overview) |
 
@@ -232,7 +233,7 @@ This is acceptable as a background job after the meeting. It is not interactive.
 ### 5.2 Always-on energy model (all est.; replace with measurements)
 
 Assumptions (est.):
-- battery ~4,900 mAh at 3.87 V, about 19 Wh (Pixel 10 capacity **unverified**);
+- battery 4,970 mAh at ~3.87 V, about 19.2 Wh (Pixel 10 capacity verified 2026-10-02 via [Wikipedia](https://en.wikipedia.org/wiki/Pixel_10); Pro/XL capacities not fetched). The 19 Wh basis below is unchanged;
 - speech present 30% of a 16-hour waking day;
 - 4 hours of meetings.
 
@@ -282,7 +283,7 @@ Thermal risk comes from sustained big-core use in a pocket or on a charger. Miti
 | DSP hotword / Sound Trigger | no | no | **yes** (with a vendor model on the Tensor DSP; needs vendor HAL access, unverified for Pixel) | via the platform hotword path (HotwordDetectionService sandbox, unverified details) |
 | Hide the privacy indicator | no | no | technically possible via config, but **must not** be done: it is a trust and consent feature | no |
 | pKVM protected VM for isolated ML | no (`MANAGE_VIRTUAL_MACHINE` is privileged) | no | **yes** | only if also privileged |
-| AICore / Gemini Nano | GMS devices with a locked bootloader only | same | only if GMS/AICore is included and the bootloader is relocked (unverified whether custom-AVB-key relock satisfies AICore) | same |
+| AICore / Gemini Nano | GMS devices with a locked bootloader only | same | **not available**: Alpha's image ships without GMS/AICore (founder decision 2026-10-02) | same |
 
 **Implication:** the always-on story requires **either** the assistant role **or** a privileged image. The repository's add-on is currently non-privileged. Always-on should be positioned as an image-level feature, with "tap-to-record, visible foreground capture" in the app build.
 
@@ -292,7 +293,7 @@ Thermal risk comes from sustained big-core use in a pocket or on a charger. Miti
 
 | Option | Mics / processing | Far-field quality (est.) | BOM (est.) | Retail comparables | Notes |
 |---|---|---|---|---|---|
-| Phone flat on a table (Pixel 10: 3 mics, unverified) | 2–3 MEMS; OS noise suppression; limited beamforming exposed to apps | 1–2 m radius acceptable; poor for far talkers, table noise, face-down occlusion | $0 | — | AMI-type WER (11–16% for top models, sections 2.1) is already hard with close mics; expect worse (est.) |
+| Phone flat on a table (Pixel 10: 3 mics, verified 2026-10-02; geometry not published) | 2–3 MEMS; OS noise suppression; limited beamforming exposed to apps | 1–2 m radius acceptable; poor for far talkers, table noise, face-down occlusion | $0 | — | AMI-type WER (11–16% for top models, sections 2.1) is already hard with close mics; expect worse (est.) |
 | Wearable pendant or clip (Plaud NotePin, Limitless Pendant, Bee) | 1–2 MEMS, BLE, local flash | good for the wearer, weak for the far side of a room | $15–35 (est.) | **Plaud NotePin $159 / NotePin S $179** ([Plaud](https://www.plaud.ai/blogs/news)); **Limitless Pendant $99** ([TechCrunch](https://techcrunch.com/2025/12/05/meta-acquires-ai-device-startup-limitless/)); **Bee $49.99 plus $19/mo** ([TechCrunch](https://techcrunch.com/2025/07/22/amazon-acquires-bee-the-ai-wearable-that-records-everything-you-say/)) | the social-acceptability and consent-indicator issues in workstreams 1 and 2 |
 | Desk puck (4–8-mic circular array plus DSP beamforming/AEC; e.g. an XMOS XVF3800-class or Knowles/Synaptics voice DSP) | 4–8 MEMS, 360° beamforming, AEC, dereverberation | good for 3–5 m meeting rooms (est.) | $25–60 (est., unverified; parts pricing not retrieved) | conference-speakerphone category | best accuracy per dollar for meetings; can do VAD on-puck and stream **only** over an encrypted link to the phone |
 | USB-C or clip lavalier pair | 1–2 close mics | excellent per speaker | $5–20 (est.) | — | cheapest accuracy gain for interviews |
@@ -371,8 +372,8 @@ Mic(s) ──► [Tier0 VAD / hotword] ──► encrypted PCM ring buffer (Keys
 |---|---|---|---|---|---|
 | **AWS Nitro Enclaves** (current) | enclave image PCRs; KMS policy bound to measurements | **no**: vsock to the parent only, no network, no persistent storage; up to 4 enclaves per parent; no extra charge | CPU-only | keep for the agent runtime, key release and redaction verification; **not for LLM or ASR at scale** | [AWS docs](https://docs.aws.amazon.com/enclaves/latest/user/nitro-enclave.html) |
 | **NVIDIA H100/H200 CC** (CVM on AMD SEV-SNP or Intel TDX, plus a GPU in CC mode) | CPU TEE plus a signed GPU attestation report over SPDM | **yes** | GPU compute and HBM unchanged; CPU↔GPU limited to ~4 GB/s by bounce-buffer encryption; **<7% for typical LLM queries** | the right home for any cloud ASR or LLM that sees T2 data | [NVIDIA](https://developer.nvidia.com/blog/confidential-computing-on-h100-gpus-for-secure-and-trustworthy-ai/), [arXiv 2409.03992](https://arxiv.org/abs/2409.03992) |
-| Hosted GPU-TEE providers (Tinfoil, Privatemode) | attested open models | yes | — | Tinfoil: private chat $20/mo, containers $20/mo plus usage ([Tinfoil](https://tinfoil.sh/)); Privatemode: open models including Qwen and GPT-OSS, a **speech-to-text** offering, BSI C5 attestation criteria, EU hosting ([Privatemode](https://www.privatemode.ai/)) | a fast way to get attested ASR or LLM fallback without building GPU CC ops |
-| **Cerebras** (current LLM) | none known (Cerebras trust page not retrievable; **unverified**) | no public TEE (unverified) | fastest tokens/s | only for T1 redacted text, under contractual zero-retention; do not describe it as "attested" |  — |
+| Hosted GPU-TEE providers (Tinfoil, Privatemode) | attested open models | yes | — | Tinfoil: private chat $20/mo, containers $20/mo plus usage ([Tinfoil](https://tinfoil.sh/)); Privatemode: open models including Qwen, a **speech-to-text** offering, BSI C5 attestation criteria, EU hosting ([Privatemode](https://www.privatemode.ai/)) | a fast way to get attested ASR or LLM fallback without building GPU CC ops |
+| **Cerebras** (current LLM, `qwen-3.8-27b`, $0.99/M in, $1.49/M out, ~1,850 tok/s; [Cerebras docs](https://inference-docs.cerebras.ai/models/qwen-3.8-27b), verified 2026-10-02) | none found (2026-10-02); public zero-data-retention statement ([Cerebras support](https://support.cerebras.net/articles/1811589793-does-cerebras-retain-my-data)) | no public TEE found | fastest tokens/s | only for T1 redacted text, under contractual zero-retention; do not describe it as "attested" |  — |
 | Apple PCC (reference) | published images, transparency log, stateless, non-targetable, no privileged access | Apple silicon | — | architectural reference for claims language | [Apple Security](https://security.apple.com/blog/private-cloud-compute/) |
 | Google Private AI Compute (reference, 2025-11-11) | TPUs plus "Titanium Intelligence Enclaves", remote attestation | TPU | — | powers Magic Cue and Recorder summary language expansion | [Google](https://blog.google/technology/ai/google-private-ai-compute/) |
 
@@ -380,9 +381,9 @@ Mic(s) ──► [Tier0 VAD / hotword] ──► encrypted PCM ring buffer (Keys
 
 | Primitive | What it gives Alpha | Limits | Source |
 |---|---|---|---|
-| **StrongBox** (Titan M2 on Pixel, unverified model mapping) | keys in a secure element with its own CPU, TRNG and tamper resistance; key attestation | slow; limited algorithms (RSA-2048, AES-128/256, P-256, HMAC-SHA256, 3DES); not for bulk audio encryption | [Keystore](https://developer.android.com/privacy-and-security/keystore) |
+| **StrongBox** (Titan M2 on Pixel 10, verified 2026-10-02) | keys in a secure element with its own CPU, TRNG and tamper resistance; key attestation | slow; limited algorithms (RSA-2048, AES-128/256, P-256, HMAC-SHA256, 3DES); not for bulk audio encryption | [Keystore](https://developer.android.com/privacy-and-security/keystore) |
 | TEE-backed Keystore | per-recording AES-GCM keys (already used by Alpha for credentials) | — | repo manifest |
-| **Android Protected Confirmation** | a trusted-UI prompt; the signature proves the user saw the exact text (for approvals of sensitive egress or actions) | "supported devices" on Android 9+; not a confidential channel; **current Pixel support and deprecation status unverified** | [APC](https://developer.android.com/privacy-and-security/security-android-protected-confirmation) |
+| **Android Protected Confirmation** | a trusted-UI prompt; the signature proves the user saw the exact text (for approvals of sensitive egress or actions) | "supported devices" on Android 9+; not a confidential channel; **no deprecation notice on the developer page as of 2026-10-02**; per-Pixel support list not published (could not verify) | [APC](https://developer.android.com/privacy-and-security/security-android-protected-confirmation) |
 | **AVF / pKVM protected VM** | isolation that holds even if Android is compromised; Microdroid (bionic NDK subset, verified boot, SELinux, binder-over-vsock) | ARM64 only; `MANAGE_VIRTUAL_MACHINE` is **privileged**; **no Java APIs, graphics or HALs**, so ML runs on CPU only; RAM carved out for the VM | [AVF](https://source.android.com/docs/core/virtualization), [Microdroid](https://source.android.com/docs/core/virtualization/microdroid) |
 | Precedent | Google runs **Play Protect live threat detection content-safety classifiers in pVMs**; OPPO's "AI private computing space" | — | [AVF use cases](https://source.android.com/docs/core/virtualization/usecases) |
 
@@ -465,24 +466,24 @@ Starting in October 2026. Each exit gate needs recorded evidence in the acceptan
    - What remains is pVM-isolated capture and redaction with attested egress. Google already uses pVMs for Play Protect classifiers, so the approach is platform-sanctioned.
 4. **Fix the cloud narrative gap.** Nitro Enclaves cannot host GPU inference. Today's Cerebras path is therefore outside any attested boundary.
    - Either restrict Cerebras to T1 redacted text and say so,
-   - or add a GPU-CC inference tier (<7% overhead) for anything more sensitive.
-5. **Avoid hard dependencies on Google AICore/ML Kit GenAI.** They require a locked bootloader and GMS/AICore, run only in the foreground, and are quota-limited. That conflicts with a sovereign or de-Googled image and with always-on. Use them only opportunistically on the GMS variant.
+   - or add a GPU-CC inference tier (<7% overhead) running self-hosted Qwen open weights for anything more sensitive, so the model and its provenance file stay the same across tiers.
+5. **Avoid hard dependencies on Google AICore/ML Kit GenAI.** They require a locked bootloader and GMS/AICore, run only in the foreground, and are quota-limited. Alpha's own AOSP image ships without GMS (founder decision 2026-10-02), so they are absent there by design. Use them only opportunistically in the app/launcher build on stock Pixels.
 6. **Diarize anonymously by default.** Keep embeddings RAM-only and do not enroll third-party voiceprints. This keeps BIPA exposure manageable and doubles as a privacy selling point.
 7. **Meetings are an audio problem as much as a model problem.** Even the best models score 11–16% WER on AMI. Plan an accessory-mic program before a custom puck.
-8. **Licences are clean if Piper-GPL is avoided** and CC-BY attribution is shipped.
+8. **Licences are clean if Piper-GPL and NVIDIA Canary 1B (CC-BY-NC) are avoided** and CC-BY attribution is shipped.
 
 ## Open questions
 
 1. What are the measured RTF, energy per audio minute and thermal behaviour of Moonshine, Zipformer and Parakeet (CPU vs GPU vs Tensor NPU AOT) on a **physical Pixel 10**? No public numbers were found.
-2. Does a Pixel relocked with **custom AVB keys** satisfy AICore's "locked bootloader" requirement? Does Alpha's image ship GMS/AICore at all?
+2. *Answered by founder decision (2026-10-02):* Alpha's image does not ship GMS/AICore, so the custom-AVB relock question is moot for that image.
 3. Can a privileged vendor app load a custom **Sound Trigger** model on Tensor G5's DSP? Does Google expose this HAL to non-Google images?
 4. Is AVF **device assignment** (GPU/NPU into a pVM) available on Pixel 10 or 11? If not, is CPU-only in-VM ASR fast enough for real-time meetings?
-5. What is the current Pixel support and deprecation status of **Android Protected Confirmation**? What is the exact Titan M2 / StrongBox feature set on Pixel 10? (Not verified in this session.)
-6. Does **Cerebras** offer any attestation or TEE product or roadmap? What zero-retention terms does Alpha have in writing?
+5. *Partly answered 2026-10-02:* APC shows no deprecation notice; Pixel 10 has Titan M2. Still open: the per-device APC support list and the exact StrongBox feature set.
+6. Does **Cerebras** offer any attestation or TEE product or roadmap? (None found 2026-10-02.) Cerebras publicly states zero data retention; what terms does Alpha have in writing?
 7. BIPA: confirm the voiceprint coverage and the effect of the 2024 per-person damages amendment (SB 2979). Get counsel's view on transient, RAM-only diarization embeddings. (Hand-off to workstream 5.)
-8. Picovoice and Speechmatics on-device list pricing, and Argmax Android SpeakerKit availability, were not retrievable. Get quotes.
-9. Pixel 10 battery capacity and microphone count/geometry (unverified). Measure the real always-on overhead against the ≤10%/day target.
-10. Should the "Pixel 10-class" target move to Pixel 11 / Tensor G6 (announced 2026-08-12) for pilot hardware bought in 2027?
+8. Picovoice and Speechmatics on-device list pricing, and Argmax Android SpeakerKit availability, were still not retrievable on 2026-10-02. Get quotes.
+9. *Partly answered 2026-10-02:* Pixel 10 has a 4,970 mAh battery, 3 microphones, 12 GB RAM and Titan M2. Mic geometry is unpublished. Measure the real always-on overhead against the ≤10%/day target.
+10. Should the "Pixel 10-class" target move to Pixel 11 / Tensor G6 for pilot hardware bought in 2027? Pixel 11 shipped 2026-08-20 from $899 (256 GB, 12 GB RAM, 7 years of updates) ([Engadget](https://www.engadget.com/2234844/google-pixel-11-announced-specs-availability/), verified 2026-10-02); reported Tensor G6 claims (TSMC N3P, +50% TPU) could not be verified on a Google page.
 11. What multilingual scope does the pilot need? Parakeet v3 covers 25 European languages; Moonshine Voice covers 8, including Arabic, Mandarin, Japanese and Korean.
 12. Is a GPU-CC fallback (self-hosted vs Tinfoil/Privatemode) acceptable to government buyers, given hosting location and certification (FedRAMP, BSI C5)? (Hand-off to workstreams 3 and 5.)
 
@@ -509,3 +510,30 @@ Starting in October 2026. Each exit gate needs recorded evidence in the acceptan
 - Cloud TEEs: https://docs.aws.amazon.com/enclaves/latest/user/nitro-enclave.html · https://developer.nvidia.com/blog/confidential-computing-on-h100-gpus-for-secure-and-trustworthy-ai/ · https://arxiv.org/abs/2409.03992 · https://tinfoil.sh/ · https://www.privatemode.ai/
 - Competitors: https://www.plaud.ai/blogs/news · https://www.limitless.ai/privacy · https://techcrunch.com/2025/12/05/meta-acquires-ai-device-startup-limitless/ · https://techcrunch.com/2025/07/22/amazon-acquires-bee-the-ai-wearable-that-records-everything-you-say/
 - BIPA: https://en.wikipedia.org/wiki/Biometric_Information_Privacy_Act · statute https://www.ilga.gov/legislation/ilcs/ilcs3.asp?ActID=3004&ChapterID=57 (not fetchable in this session)
+
+---
+
+## Verification log (2026-10-02)
+
+| # | Claim (as first written) | Result | Source |
+| --- | --- | --- | --- |
+| 1 | Pixel 10 battery ~4,900 mAh (unverified) | **Corrected/confirmed:** 4,970 mAh (≈19.2 Wh); energy table unchanged | [Wikipedia](https://en.wikipedia.org/wiki/Pixel_10) |
+| 2 | Pixel 10 has 3 mics (unverified) | Confirmed; geometry unpublished | [Wikipedia](https://en.wikipedia.org/wiki/Pixel_10) |
+| 3 | Tensor G5 on TSMC 3 nm; Titan M2 | Confirmed (N3E; Titan M2) | [Wikipedia](https://en.wikipedia.org/wiki/Pixel_10) |
+| 4 | Pixel 11 / Tensor G6 announced 2026-08-12 | Confirmed; ships 2026-08-20 from $899, 12 GB RAM, 7 years of updates. G6 process/TPU claims could not verify on a Google page | [Engadget](https://www.engadget.com/2234844/google-pixel-11-announced-specs-availability/) |
+| 5 | Argmax Pro SDK Android GA 2026-03-18; $1.00–$1.33/device/month, 1,000 minimum | Confirmed; Enterprise from 10,000 licences; licence check every 30 days | [Argmax blog](https://www.argmaxinc.com/blog), [pricing](https://www.argmaxinc.com/pricing) |
+| 6 | Argmax $8M seed (2024-11-13); no later round | Confirmed; no later funding on blog | [Argmax blog](https://www.argmaxinc.com/blog) |
+| 7 | Argmax SpeakerKit Android | Could not verify a dedicated Android release | [platforms](https://app.argmaxinc.com/docs/wiki/supported-platforms) |
+| 8 | Picovoice list pricing | Could not verify (pricing page did not render) | — |
+| 9 | Canary 1B licence CC-BY (unverified) | **Corrected:** CC-BY-NC-4.0, non-commercial | [HF card](https://huggingface.co/nvidia/canary-1b) |
+| 10 | Phi-4-multimodal ~5.6B, MIT (unverified) | Confirmed | [HF card](https://huggingface.co/microsoft/Phi-4-multimodal-instruct) |
+| 11 | Whisper large-v3 1.55B (unverified), MIT | Size confirmed; HF card lists Apache-2.0 (code repo MIT) | [HF card](https://huggingface.co/openai/whisper-large-v3) |
+| 12 | Granite Speech licence (unverified) | Apache-2.0 confirmed for Granite Speech 3.3; 4.0 card not fetched | [HF card](https://huggingface.co/ibm-granite/granite-speech-3.3-8b) |
+| 13 | Presidio MIT (unverified) | Confirmed | [GitHub](https://github.com/microsoft/presidio) |
+| 14 | Android Protected Confirmation status (unverified) | No deprecation notice; per-device support list not published | [Android Developers](https://developer.android.com/privacy-and-security/security-android-protected-confirmation) |
+| 15 | Cerebras attestation (unverified) | None found; zero-data-retention statement found. Qwen3.8 price and speed confirmed ($0.99/$1.49; ~1,850 tok/s) | [Cerebras support](https://support.cerebras.net/articles/1811589793-does-cerebras-retain-my-data), [Cerebras docs](https://inference-docs.cerebras.ai/models/qwen-3.8-27b) |
+| 16 | BIPA voiceprint wording and SB 2979 amendment | Could not verify at source (ilga.gov TLS failure); left as reported | — |
+| 17 | Founder decision: no GMS/AICore/banking on Alpha's image | Applied: AICore row, key finding 3, implication 5, open question 2 | founder decision |
+| 18 | Founder decision: Qwen stays | Applied: GPU-CC tier framed as self-hosted Qwen weights; no model-swap advice added | founder decision |
+| 19 | AVF device assignment, Sound Trigger HAL on Tensor G5, XMOS/puck BOM, Speechmatics pricing, Samsung on-device toggle | Could not verify in this pass | — |
+

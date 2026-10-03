@@ -23,3 +23,13 @@ The34-patch snapshot `e1c0f2e92d10b6844ae73cdbeba89ab40a42db80be55655b575eb3e2c4
 The35-patch snapshot `f1129550bdcaf6994bdca4043493d333921530f87954434776c81b644434a3d4` adds generic explicit-null action schema conversion and argument validation, including nullable selected-reminder recurrence. Full local root284 tasks and postchecks pass; catalogue and existing device-action flows pass. Canonical replay exactly matches29,567 top-level entries and102 changed files. The first34 patch files remain byte-identical. Evidence: `test-results/null-schema-candidate-integration` and `test-results/null-schema-canonical-export-staging/reproduction.json`.
 
 The preceding e1 live reminder run failed on the nullable schema and its Linux full verification failed at Cloud-e2e with279/283 tasks passed before a9.5GiB cgroup OOM. Its separate Linux app-host build passed. Those retained failures do not qualify the35-patch correction: corrected-source live paired reminders, Linux verification, Cloud/enclave deployment and full MVP acceptance remain open. No vendor checkout is changed by this export.
+
+### Embedded workflow execution location
+
+The consumer patch `workflow-runtime-location.patch` removes hard-coded Cloud
+ownership/health from workflow status, automation status and service metadata.
+Execution is embedded in the current agent runtime (`eliza://workflow`), whether
+that agent runs on Android, a browser-development host or an optional remote host.
+`mode: local` is relative to the agent process; it does not claim that the caller
+and agent share a device or that text-model inference is local. Both authoring
+and embedded execution services must be registered before status reports ready.

@@ -13,10 +13,13 @@ if (!serial || !serial.startsWith("emulator-"))
   );
 const identity = JSON.parse(fs.readFileSync("app.config.json"));
 const adb = path.join(env.ANDROID_HOME, "platform-tools/adb");
+// The 178-case suite reached case 138 at the old ten-minute cap. Keep a bounded
+// full-suite budget; individual dispatch/readiness deadlines remain unchanged.
+const fullSuiteDeadlineMs = 900000;
 const run = (...args) =>
   execFileSync(adb, ["-s", serial, ...args], {
     encoding: "utf8", env,
-    timeout: args.includes("instrument") ? 600000 : args[0] === "install" ? 120000 : 30000,
+    timeout: args.includes("instrument") ? (args.includes("class") ? 600000 : fullSuiteDeadlineMs) : args[0] === "install" ? 120000 : 30000,
   });
 const original = run(
   "shell",
@@ -59,6 +62,8 @@ for (const name of [
   fs.rmSync(path.join(output, name), { force: true });
 }
 const providerSelectors = [
+  `${identity.appId}.BrowserShareInstrumentedTest#exactCurrentPageChooserCancellationAndStalePageRejection`,
+  `${identity.appId}.BrowserSensitiveReadingInstrumentedTest#sensitivePagesRejectBeforeReviewTokenOrOutboundSpeech`,
   `${identity.appId}.BrowserIsolatedReadingInstrumentedTest#pageWorldTamperingCannotForgeSafeReading`,
   `${identity.appId}.BrowserReadingNavigationInstrumentedTest#delayedSameOriginAndReloadReadyCannotAdoptOldDocument`,
 ];
@@ -101,7 +106,7 @@ try {
       fs.writeFileSync(path.join(evidence, "provider-before.json"), JSON.stringify(before, null, 2));
       const classes = providerSelectors.map(selector => selector.split("#")[0]).join(",");
       const args = ["shell", "am", "instrument", "-w", "-r", "-e", "class", classes,
-        "-e", "browserIsolatedReading", "1", `${identity.appId}.test/androidx.test.runner.AndroidJUnitRunner`];
+        "-e", "browserIsolatedReading", "1", "-e", "browserSensitiveReading", "1", "-e", "browserShareLive", "1", `${identity.appId}.test/androidx.test.runner.AndroidJUnitRunner`];
       const started = Date.now();
       let text;
       try {
@@ -139,11 +144,16 @@ try {
       // Qualification can change Activity state; admit the full suite separately.
       await requireFixtureDisplay(run, { serial, record: state => fs.appendFileSync(path.join(evidence, "post-display.jsonl"), JSON.stringify(state) + "\n") });
     }
+    // Hosted CI opts into interception only; never enable realClock/clockExclusive.
+    const interceptedClockRequired = process.env.GITHUB_ACTIONS === "true";
+    const interceptedClockSelector = `${identity.appId}.ClockHandoffInstrumentedTest#visibleReviewConstructsFourStandardClockIntentsWithoutDeliveringThem`;
+    const realClockSelector = `${identity.appId}.RealClockInstrumentedTest#realClockSetFireSnoozeDismissAndDelete`;
     let instrumentation;
     const instrumentationStarted = Date.now();
     try {
       instrumentation = run(
         "shell", "am", "instrument", "-w", "-r",
+        ...(interceptedClockRequired ? ["-e", "clockHandoff", "1"] : []),
         `${identity.appId}.test/androidx.test.runner.AndroidJUnitRunner`,
       );
       fs.writeFileSync(`${output}/${variant}-instrumentation.txt`, instrumentation);
@@ -153,13 +163,14 @@ try {
       fs.writeFileSync(`${output}/${variant}-instrumentation.txt`, error.stdout ?? "");
       fs.writeFileSync(`${output}/${variant}-instrumentation-stderr.txt`, error.stderr ?? "");
       fs.writeFileSync(`${output}/${variant}-instrumentation-command.json`, JSON.stringify({
-        variant, deadlineMs: 600000, elapsedMs: Date.now() - instrumentationStarted,
+        variant, deadlineMs: fullSuiteDeadlineMs, elapsedMs: Date.now() - instrumentationStarted,
         code: error.code ?? null, status: error.status ?? null, signal: error.signal ?? null,
         completed: false,
       }, null, 2) + "\n");
       throw error;
     }
     const terminalCases = [];
+    const startedCases = [];
     let statusBlock = "";
     for (const line of instrumentation.split("\n")) {
       const code = /^INSTRUMENTATION_STATUS_CODE: (-?\d+)\s*$/.exec(line);
@@ -167,6 +178,8 @@ try {
       const testClass = /^INSTRUMENTATION_STATUS: class=(.+)$/m.exec(statusBlock)?.[1];
       const testMethod = /^INSTRUMENTATION_STATUS: test=(.+)$/m.exec(statusBlock)?.[1];
       const value = Number(code[1]);
+      if (testClass && testMethod && value === 1)
+        startedCases.push(`${testClass}#${testMethod}`);
       if (testClass && testMethod && value <= 0)
         terminalCases.push({ selector: `${testClass}#${testMethod}`, code: value });
       statusBlock = "";
@@ -183,8 +196,17 @@ try {
       reportedCount === terminalCases.length &&
       new Set(terminalCases.map(row => row.selector)).size === terminalCases.length &&
       testCounts.unknown === 0;
-    fs.writeFileSync(`${output}/${variant}-cases.json`, JSON.stringify({reportedCount, countsVerified, testCounts, terminalCases}, null, 2));
-    const instrumentationPassed = countsVerified && /OK \([1-9]\d* tests?\)/.test(instrumentation) &&
+    const interceptedClock = {
+      required: interceptedClockRequired,
+      selector: interceptedClockSelector,
+      passed: startedCases.filter(selector => selector === interceptedClockSelector).length === 1 &&
+        terminalCases.filter(row => row.selector === interceptedClockSelector && row.code === 0).length === 1,
+      realAlarmAssumptionSkipped: terminalCases.filter(row => row.selector === realClockSelector && row.code === -4).length === 1,
+      actualAlarmDeliveryVerified: false,
+    };
+    fs.writeFileSync(`${output}/${variant}-cases.json`, JSON.stringify({reportedCount, countsVerified, testCounts, terminalCases, interceptedClock}, null, 2));
+    const instrumentationPassed = countsVerified &&
+      (!interceptedClockRequired || (interceptedClock.passed && interceptedClock.realAlarmAssumptionSkipped)) && /OK \([1-9]\d* tests?\)/.test(instrumentation) &&
       !/FAILURES|INSTRUMENTATION_FAILED/.test(instrumentation);
     if (!instrumentationPassed) {
       instrumentationFailures.push(variant);

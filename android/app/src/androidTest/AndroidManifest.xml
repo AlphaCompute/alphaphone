@@ -1,4 +1,9 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+  <instrumentation android:name="androidx.test.runner.AndroidJUnitRunner"
+    android:targetPackage="ai.elizaresearch.alphaphone" />
+  <instrumentation android:name="ai.elizaresearch.alphaphone.WorkflowNoticeProcessRunner"
+    android:targetPackage="ai.elizaresearch.alphaphone"
+    android:targetProcesses="ai.elizaresearch.alphaphone:workflowNoticeTest" />
   <application>
     <activity android:name="ai.elizaresearch.alphaphone.ShareReceiverActivity"
       android:exported="true" android:label="Alpha share verification">

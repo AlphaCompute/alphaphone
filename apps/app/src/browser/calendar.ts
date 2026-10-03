@@ -8,7 +8,8 @@ import { validateCalendarOperation, type CalendarFields, type CalendarResult } f
 import { WebPlugin } from '@capacitor/core';
 import { editStore, readStore, revision } from './store';
 type EventRow=CalendarRecord;
-type State={alertDismissed?:Record<string,number>;preferences?:{visible:boolean;color:'acc'|'fg'|'mut'};sourceRevision:string;events:EventRow[];receipts?:Record<string,{binding:string;result:CalendarResult}>};
+type CreationReceipt={binding:string;result:{status:"saved";id:string;calendarId:string;creationId:string};acknowledged:boolean};
+type State={creations?:Record<string,CreationReceipt>;alertDismissed?:Record<string,number>;preferences?:{visible:boolean;color:'acc'|'fg'|'mut'};sourceRevision:string;events:EventRow[];receipts?:Record<string,{binding:string;result:CalendarResult}>};
 const key='alpha.browser.calendar.v1',initial=():State=>({sourceRevision:revision(),events:[]});
 const source={id:'local',name:'Browser calendar',account:'Alpha Phone',local:true,writable:true};
 const matches=(row:EventRow,expected:Partial<EventRow>|undefined)=>!!expected&&(!expected.revision||expected.revision===row.revision)&&(['title','body','location','begin','end'] as const).every(k=>row[k]===expected[k]);
@@ -112,7 +113,9 @@ ${reviewed.description}`);
   async workflowCalendars(){return {status:'ready',calendars:[source]};}
   async list(input:{begin:number;end:number}) {return editStore(key,initial,data=>({status:'ready',calendars:[{...source,...(data.preferences??{visible:true,color:'acc'})}],...calendarRange(data.events,input)}));}
   async prepareAgentSource(){return editStore(key,initial,data=>({status:'ready',sourceId:'local',sourceRevision:data.sourceRevision}));}
-  async save(input:Partial<EventRow>&{expected?:Partial<EventRow>}) {
+  async pendingCreations(){return editStore(key,initial,data=>({status:'ready',creations:Object.values(data.creations||{}).filter(row=>!row.acknowledged).map(row=>row.result)}));}
+  async acknowledgeCreation(input:{creationId:string}){return editStore(key,initial,data=>{const receipt=data.creations?.[input.creationId];if(!receipt)throw Error('Creation receipt unavailable');receipt.acknowledged=true;return {status:'acknowledged'};});}
+  async save(input:Partial<EventRow>&{expected?:Partial<EventRow>;creationId?:string;separateCreation?:boolean}) {
     if(!input.title?.trim()||!Number.isFinite(input.begin)||!Number.isFinite(input.end)||input.end!<=input.begin!||input.calendarId!=='local')throw Error('Review the event title, calendar and dates.');
     if(input.alert!==undefined&&input.alert!==null&&![0,10,60].includes(input.alert))throw Error('Choose an event alert.');
     if(input.who!==undefined&&(!Array.isArray(input.who)||input.who.length>100||input.who.some(id=>typeof id!=='string'||!id||id.length>128)))throw Error('Review the event attendees.');
@@ -120,14 +123,29 @@ ${reviewed.description}`);
     if(input.allDay!==undefined&&typeof input.allDay!=='boolean')throw Error('Invalid all-day setting.');
     if(input.timeZone!==undefined)new Intl.DateTimeFormat('en',{timeZone:input.timeZone});
     if(input.repeat!==undefined&&!['none','daily','weekdays','weekly'].includes(input.repeat))throw Error('Invalid event repeat rule.');
+    let binding='';
+    if(!input.id){
+      if(!/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(input.creationId||''))throw Error('Calendar creation identity required');
+      const fields=Object.fromEntries(Object.entries(input).filter(([name])=>!['creationId','separateCreation','expected','id'].includes(name)).sort(([a],[b])=>a.localeCompare(b)));
+      binding=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(JSON.stringify(fields))))).map(b=>b.toString(16).padStart(2,'0')).join('');
+    }
     return editStore(key,initial,data=>{
+      if(!input.id){
+        const receipts=data.creations??={};const previous=receipts[input.creationId!];
+        if(previous){if(previous.binding!==binding)throw Error('Calendar creation identity changed');return previous.result;}
+        if(Object.values(receipts).some(row=>!row.acknowledged)&&input.separateCreation!==true)return {status:'pending-creation'};
+        if(Object.keys(receipts).length>=1000)throw Error('Calendar creation receipt storage full');
+      }
       const old=input.id?calendarRecord(data.events,input.id):undefined;
       if(input.id&&(!old||!matches(old,input.expected)))return {status:'conflict'};
       const allDay=input.allDay??old?.allDay??false;
       if(allDay&&(input.begin!%86400000!==0||input.end!%86400000!==0))throw Error('All-day events require whole calendar dates.');
       const row:EventRow={...old,id:old?.id||crypto.randomUUID(),calendarId:'local',title:input.title!.trim(),body:input.body||'',location:input.location||'',begin:input.begin!,end:input.end!,allDay,revision:revision(),timeZone:old?.timeZone||input.timeZone||Intl.DateTimeFormat().resolvedOptions().timeZone,repeat:old?.seriesId?'none':input.repeat||old?.repeat||'none',who:input.who?[...new Set(input.who)]:old?.who||[],video:input.video??old?.video??false,alert:input.alert===undefined?old?.alert??null:input.alert};
       if(row.responses)row.responses=Object.fromEntries(Object.entries(row.responses).filter(([person])=>row.who?.includes(person)));
-      replaceCalendarRecord(data.events,row);return {status:'saved',id:row.repeat&&row.repeat!=='none'?calendarRange([row],{begin:row.begin,end:row.begin+8*86400000}).events[0].id:row.id};
+      replaceCalendarRecord(data.events,row);
+      const result={status:'saved' as const,id:row.repeat&&row.repeat!=='none'?calendarRange([row],{begin:row.begin,end:row.begin+8*86400000}).events[0].id:row.id,calendarId:'local',creationId:input.creationId||''};
+      if(!input.id)data.creations![input.creationId!]={binding,result,acknowledged:false};
+      return result;
     });
   }
   async inspect(input:{id:string;calendarId:string;expected?:Partial<EventRow>}) {const data=readStore(key,initial),row=calendarRecord(data.events,input.id);return row&&row.calendarId===input.calendarId&&matches(row,input.expected)?{status:'ready',revision:row.revision,sourceRevision:data.sourceRevision}:{status:'conflict'};}

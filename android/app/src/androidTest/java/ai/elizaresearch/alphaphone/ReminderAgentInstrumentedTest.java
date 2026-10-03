@@ -76,9 +76,35 @@ public class ReminderAgentInstrumentedTest {
    JSONObject done=new JSONObject().put("type","reminder_complete").put("target",ReminderStore.selected(c,id));String doneId=UUID.randomUUID().toString();operations.add(doneId);
    assertEquals("completed",ReminderStore.operate(c,doneId,binding,done).getJSONObject("result").getString("status"));
    ReminderStore.deliver(c,id,occurrence);assertEquals("completed",ReminderStore.read(c,id).getString("status"));
+   JSONObject completedRow=ReminderStore.read(c,id);
+   JSONObject metadata=new JSONObject().put("type","reminder_update").put("target",ReminderStore.selected(c,id)).put("fields",new JSONObject().put("title","Completed metadata edit").put("body","Completion must survive"));
+   String metadataId=UUID.randomUUID().toString();operations.add(metadataId);
+   JSONObject metadataReceipt=ReminderStore.operate(c,metadataId,binding,metadata);
+   assertEquals("succeeded",metadataReceipt.getString("status"));assertEquals("completed",metadataReceipt.getJSONObject("result").getString("status"));
+   assertEquals(occurrence,ReminderStore.read(c,id).getString("occurrenceId"));assertEquals(completedRow.getLong("at"),ReminderStore.read(c,id).getLong("at"));
+   assertEquals(completedRow.getLong("completedAt"),ReminderStore.read(c,id).getLong("completedAt"));assertEquals(completedRow.getJSONArray("history").toString(),ReminderStore.read(c,id).getJSONArray("history").toString());
+   long reviewedAt=System.currentTimeMillis()+7200000;
+   JSONObject reschedule=new JSONObject().put("type","reminder_update").put("target",ReminderStore.selected(c,id)).put("fields",new JSONObject().put("title","Explicit new occurrence").put("body","Reviewed reschedule").put("schedule",new JSONObject().put("at",reviewedAt).put("recurrence",JSONObject.NULL)));
+   String rescheduleId=UUID.randomUUID().toString();operations.add(rescheduleId);
+   JSONObject rescheduled=ReminderStore.operate(c,rescheduleId,binding,reschedule);assertEquals("succeeded",rescheduled.getString("status"));assertEquals("scheduled",rescheduled.getJSONObject("result").getString("status"));
+   String newOccurrence=ReminderStore.read(c,id).getString("occurrenceId");assertNotEquals(occurrence,newOccurrence);assertEquals(reviewedAt,ReminderStore.read(c,id).getLong("at"));
+   assertFalse(ReminderStore.read(c,id).has("completedAt"));assertEquals(completedRow.getJSONArray("history").toString(),ReminderStore.read(c,id).getJSONArray("history").toString());
+   Intent newAlarm=new Intent(c,ReminderReceiver.class).setAction("ai.elizaresearch.alphaphone.REMIND").setData(Uri.parse("alpha-reminder:"+id+"/"+newOccurrence));
+   assertNotNull("New occurrence has a real scheduled PendingIntent",PendingIntent.getBroadcast(c,0,newAlarm,PendingIntent.FLAG_NO_CREATE|PendingIntent.FLAG_IMMUTABLE));
+   assertEquals(rescheduled.toString(),ReminderStore.operate(c,rescheduleId,binding,reschedule).toString());assertEquals(rescheduled.toString(),ReminderStore.operationReceipt(c,rescheduleId,binding,reschedule).toString());
+   assertEquals(newOccurrence,ReminderStore.read(c,id).getString("occurrenceId"));assertEquals(reviewedAt,ReminderStore.read(c,id).getLong("at"));
+   try{ReminderStore.operate(c,UUID.randomUUID().toString(),binding,reschedule);fail("Stale reschedule target accepted");}catch(IllegalArgumentException expected){}
+   String beforeOldDelivery=ReminderStore.read(c,id).toString();ReminderStore.deliver(c,id,occurrence);assertEquals(beforeOldDelivery,ReminderStore.read(c,id).toString());
    JSONObject cancel=new JSONObject().put("type","reminder_cancel").put("target",ReminderStore.selected(c,id));String cancelId=UUID.randomUUID().toString();operations.add(cancelId);
    assertEquals("cancelled",ReminderStore.operate(c,cancelId,binding,cancel).getJSONObject("result").getString("status"));
    assertEquals("cancelled",ReminderStore.read(c,id).getString("status"));
+   String cancelledSnapshot=ReminderStore.read(c,id).toString();int receiptCount=new ReminderEnvelope(c).value.getJSONObject("operations").length();
+   for(boolean scheduleUpdate:new boolean[]{false,true}){
+    JSONObject fields=new JSONObject().put("title","Must not revive cancellation").put("body","");if(scheduleUpdate)fields.put("schedule",new JSONObject().put("at",reviewedAt+3600000).put("recurrence",JSONObject.NULL));
+    JSONObject cancelledUpdate=new JSONObject().put("type","reminder_update").put("target",ReminderStore.selected(c,id)).put("fields",fields);String rejectedId=UUID.randomUUID().toString();operations.add(rejectedId);
+    try{ReminderStore.operate(c,rejectedId,binding,cancelledUpdate);fail("Cancelled reminder edit accepted");}catch(IllegalArgumentException expected){}
+    assertEquals("unknown",ReminderStore.operationReceipt(c,rejectedId,binding,cancelledUpdate).getString("status"));assertEquals(cancelledSnapshot,ReminderStore.read(c,id).toString());assertEquals(receiptCount,new ReminderEnvelope(c).value.getJSONObject("operations").length());
+   }
   } finally {
    ReminderStore.cancel(c,id);
    synchronized(ReminderStore.class){ReminderEnvelope store=new ReminderEnvelope(c);store.value.getJSONObject("records").remove(id);for(String op:operations)store.value.getJSONObject("operations").remove(op);store.save();}

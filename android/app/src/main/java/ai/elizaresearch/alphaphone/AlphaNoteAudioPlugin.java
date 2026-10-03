@@ -36,7 +36,7 @@ public class AlphaNoteAudioPlugin extends Plugin {
      if(destroyed)return;
      String key=record.getName().substring(0,record.getName().length()-5);
      JSONObject value=read(key);long deleted=value.optLong("deletedAt",0);
-     if(deleted>0&&System.currentTimeMillis()-deleted>30L*24*60*60*1000){if(!audio(key).exists()||audio(key).delete()){secure().removeCredentialSlot(slot(key));metadata(key).delete();}}
+     if(deleted>0&&System.currentTimeMillis()-deleted>30L*24*60*60*1000){if(!audio(key).exists()||audio(key).delete()){if(!value.has("deletionOperations")){secure().removeCredentialSlot(slot(key));metadata(key).delete();}else{value.put("transcript","");write(key,value);}}}
     }}catch(Exception retained){migrationFailures++;/* Keep both copies; explicit status reports recovery needed. */}
    }
   }catch(Exception retained){migrationFailures++;}
@@ -77,6 +77,7 @@ public class AlphaNoteAudioPlugin extends Plugin {
  private JSObject retainLocked(File source,String recordingId,String noteId,long duration,String transcript)throws Exception {
   id(recordingId);id(noteId);if(source==null||!source.isFile()||source.length()<1||source.length()>4*1024*1024||duration<1||duration>60000||transcript==null||transcript.length()>64000)throw new IOException();
   File target=audio(recordingId);JSONObject record;
+  if(!target.isFile()&&secure().readCredentialSlot(slot(recordingId))!=null&&read(recordingId).has("deletionOperations"))throw new IOException("Recording identity retired");
   if(target.isFile()&&(metadata(recordingId).getBaseFile().isFile()||secure().readCredentialSlot(slot(recordingId))!=null)) {record=read(recordingId);if(!noteId.equals(record.optString("noteId"))||record.optLong("deletedAt",0)>0)throw new IOException();}
   else {
    File temp=new File(directory(),recordingId+".pending");
@@ -98,7 +99,27 @@ public class AlphaNoteAudioPlugin extends Plugin {
  @PluginMethod public void state(PluginCall call){main.post(()->{JSObject value=new JSObject();try{value.put("playing",player!=null&&player.isPlaying());value.put("audioId",playingId);value.put("positionMs",player==null?0:player.getCurrentPosition());}catch(RuntimeException error){value.put("playing",false);}call.resolve(value);});}
  @PluginMethod public void remove(PluginCall call){changeDeleted(call,true);}
  @PluginMethod public void restore(PluginCall call){changeDeleted(call,false);}
- private void changeDeleted(PluginCall call,boolean deleted){main.post(()->{try{synchronized(METADATA_LOCK){String key=id(call.getString("audioId"));JSONObject record=read(key);if(!record.optString("noteId").equals(id(call.getString("noteId"))))throw new IOException();if(key.equals(playingId))stop();if(deleted)record.put("deletedAt",System.currentTimeMillis());else {if(!audio(key).isFile())throw new IOException();record.remove("deletedAt");}write(key,record);call.resolve();}}catch(Exception error){call.reject("Saved recording could not be updated");}});}
+ private static String operationId(PluginCall call){String value=call.getString("operationId");if(value==null||!value.matches("[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"))throw new IllegalArgumentException();return value;}
+ private JSObject operationReceipt(JSONObject record,String operation,String status)throws Exception{JSObject result=new JSObject();result.put("operationId",operation);result.put("audioId",record.getString("audioId"));result.put("noteId",record.getString("noteId"));result.put("status",status);return result;}
+ @PluginMethod public void deletionStatus(PluginCall call){try{synchronized(METADATA_LOCK){JSONObject record=read(id(call.getString("audioId")));if(!record.getString("noteId").equals(id(call.getString("noteId"))))throw new IOException();String operation=operationId(call);JSONObject receipts=record.optJSONObject("deletionOperations");call.resolve(operationReceipt(record,operation,receipts==null?"unknown":receipts.optString(operation,"unknown")));}}catch(Exception error){call.reject("Recording operation is unavailable");}}
+ private void changeDeleted(PluginCall call,boolean deleted){main.post(()->{try{synchronized(METADATA_LOCK){
+  String key=id(call.getString("audioId")),operation=operationId(call);JSONObject record=read(key);
+  if(!record.getString("noteId").equals(id(call.getString("noteId"))))throw new IOException();
+  JSONObject receipts=record.optJSONObject("deletionOperations");if(receipts==null)receipts=new JSONObject();
+  String prior=receipts.optString(operation,"unknown");
+  // Retired operations never regain permission to delete, even after renderer death.
+  if(prior.equals("restored")||(deleted&&prior.equals("removed"))){call.resolve(operationReceipt(record,operation,prior));return;}
+  if(!receipts.has(operation)&&receipts.length()>=128)throw new IOException("Recording operation history full");
+  boolean legacyRestore=!deleted&&record.optLong("deletedAt",0)>0&&!record.has("activeDeletionOperation")&&!record.has("deletionOperations");
+  if(record.has("deletedAt")&&!operation.equals(record.optString("activeDeletionOperation"))&&!legacyRestore)throw new IOException("Another deletion owns recording");
+  if(!deleted&&record.optLong("deletedAt",0)>0&&System.currentTimeMillis()-record.getLong("deletedAt")>30L*24*60*60*1000)throw new IOException("Recording expired");
+  if(key.equals(playingId))stop();
+  if(deleted){record.put("deletedAt",System.currentTimeMillis());record.put("activeDeletionOperation",operation);}
+  else {if(!audio(key).isFile())throw new IOException();record.remove("deletedAt");record.remove("activeDeletionOperation");}
+  String status=deleted?"removed":"restored";receipts.put(operation,status);record.put("deletionOperations",receipts);
+  // Receipt and effect share one encrypted metadata commit. No replay tombstone eviction.
+  write(key,record);call.resolve(operationReceipt(record,operation,status));
+ }}catch(Exception error){call.reject("Saved recording could not be updated");}});}
  private void stop(){if(preparing!=null){preparing.reject("Playback cancelled");preparing=null;}if(player!=null){player.release();player=null;}playingId=null;}
  @Override protected void handleOnPause(){main.post(this::stop);}
  @Override protected void handleOnDestroy(){destroyed=true;migrationWorker.shutdownNow();migrationState="stopped";main.post(this::stop);}

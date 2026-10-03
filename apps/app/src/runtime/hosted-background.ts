@@ -13,6 +13,7 @@ const native=registerPlugin<NativeInbox>('AlphaHostedResults');
 const configuring=new Map<AbortController,string>();
 export async function pauseHostedBackground(sessionId?:string){
  for(const [controller,session] of configuring)if(!sessionId||sessionId===session)controller.abort();
+ if(!isAndroid)return;
  await native.disableBackground(sessionId?{sessionId}:undefined);
 }
 export async function configureHostedBackground(input:Record<string,unknown>,signal:AbortSignal):Promise<boolean>{

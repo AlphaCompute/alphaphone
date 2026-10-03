@@ -11,6 +11,59 @@ import java.util.*;
 /** Own notifications plus explicitly allowed, Android-authorized external rows. */
 @CapacitorPlugin(name="AlphaNotifications")
 public class AlphaNotificationsPlugin extends Plugin {
+ private static final WorkflowNoticeIo NOTICE_IO=new WorkflowNoticeIo();
+ private final android.os.Handler noticeMain=new android.os.Handler(android.os.Looper.getMainLooper());
+ private volatile boolean noticeDestroyed;
+ private interface NoticeWork {void run()throws Exception;}
+ @Override protected void handleOnDestroy(){noticeDestroyed=true;super.handleOnDestroy();}
+ private void requireNoticeForeground()throws Exception {
+  if(android.os.Looper.myLooper()==android.os.Looper.getMainLooper())throw new IllegalStateException("Storage must not run on main thread");
+  java.util.concurrent.CountDownLatch checked=new java.util.concurrent.CountDownLatch(1);
+  java.util.concurrent.atomic.AtomicBoolean admitted=new java.util.concurrent.atomic.AtomicBoolean();
+  Runnable check=()->{try{if(!noticeDestroyed){foreground();admitted.set(true);}}catch(Exception unavailable){}finally{checked.countDown();}};
+  if(!noticeMain.post(check))throw new IllegalStateException("Activity unavailable");
+  if(!checked.await(5,java.util.concurrent.TimeUnit.SECONDS)){noticeMain.removeCallbacks(check);throw new IllegalStateException("Activity check timed out");}
+  if(!admitted.get()||noticeDestroyed)throw new IllegalStateException("Activity inactive");
+ }
+ private void noticeWork(PluginCall call,String failure,NoticeWork work){
+  try{NOTICE_IO.execute(()->{try{requireNoticeForeground();work.run();}catch(InterruptedException interrupted){Thread.currentThread().interrupt();call.reject(failure);}catch(Exception unavailable){call.reject(failure);}});}
+  catch(java.util.concurrent.RejectedExecutionException full){call.reject(failure);}
+ }
+ private void noticeChanged(){noticeMain.post(()->{if(!noticeDestroyed)notifyListeners("pendingWorkflowTap",new JSObject(),true);});}
+ private void clearCapturedIntent(android.content.Intent intent,String token){noticeMain.post(()->{if((WorkflowNoticeTaps.PREFIX+token).equals(intent.getDataString()))intent.setData(null);});}
+ private final LinkedHashMap<String,android.content.Intent> uncapturedWorkflowTaps=new LinkedHashMap<>();
+ private WorkflowNoticeTaps workflowTaps(){return WorkflowNoticeTapsFactory.create(getContext());}
+ @Override public void load(){captureWorkflowTap(getActivity().getIntent());}
+ @Override protected void handleOnNewIntent(android.content.Intent intent){captureWorkflowTap(intent);}
+ @Override protected void handleOnResume(){try{NOTICE_IO.execute(()->{drainWorkflowTaps();noticeChanged();});}catch(java.util.concurrent.RejectedExecutionException full){/* Intents remain retained for retry. */}}
+ private int drainWorkflowTaps(){
+  int failed=0;Iterator<Map.Entry<String,android.content.Intent>> entries=uncapturedWorkflowTaps.entrySet().iterator();
+  while(entries.hasNext()){
+   Map.Entry<String,android.content.Intent> entry=entries.next();
+   try{workflowTaps().capture(entry.getKey());clearCapturedIntent(entry.getValue(),entry.getKey());entries.remove();}
+   catch(WorkflowNoticeTaps.UnknownTap unknown){clearCapturedIntent(entry.getValue(),entry.getKey());entries.remove();}
+   catch(Exception unavailable){failed++;/* Retain this exact token; another confirmed tap may still progress. */}
+  }
+  return failed;
+ }
+ private void captureWorkflowTap(android.content.Intent intent){
+  if(intent==null||!WorkflowNoticeTaps.ACTION.equals(intent.getAction())||intent.getData()==null)return;
+  String value=intent.getData().toString();if(!value.startsWith(WorkflowNoticeTaps.PREFIX))return;
+  String token=value.substring(WorkflowNoticeTaps.PREFIX.length());if(!token.matches("[a-f0-9-]{36}"))return;
+  // Capacitor forwards warm intents without Activity.setIntent. Retain the actual
+  // intent until its encrypted capture commits. OS notices do not auto-cancel,
+  // so failed persistence plus process death still leaves an explicit retry.
+  getActivity().setIntent(intent);
+  try{NOTICE_IO.execute(()->{if(!uncapturedWorkflowTaps.containsKey(token)&&uncapturedWorkflowTaps.size()<512)uncapturedWorkflowTaps.put(token,intent);drainWorkflowTaps();noticeChanged();});}
+  catch(java.util.concurrent.RejectedExecutionException full){/* Intent and OS notice remain available for explicit retry. */}
+ }
+ @PluginMethod public void pendingWorkflowTap(PluginCall call){noticeMain.post(()->{try{foreground();captureWorkflowTap(getActivity().getIntent());noticeWork(call,"Workflow notification link unavailable; retry after unlocking.",()->{int failed=drainWorkflowTaps();org.json.JSONObject pending=workflowTaps().pending();if(failed>0&&!pending.has("token"))throw new IllegalStateException("Uncaptured workflow notice retained");call.resolve(new JSObject(pending.toString()));});}catch(Exception unavailable){call.reject("Workflow notification link unavailable; retry after unlocking.");}});}
+ @PluginMethod public void consumeWorkflowTap(PluginCall call){noticeWork(call,"Workflow notification link was retained; retry.",()->consumePendingWorkflowTap(call));}
+ private void consumePendingWorkflowTap(PluginCall call)throws Exception{
+  org.json.JSONObject pending=workflowTaps().pending();String token=call.getString("token");
+  if(token==null||!token.equals(pending.optString("token")))throw new IllegalStateException("Pending tap changed");
+  requireNoticeForeground();workflowTaps().consume(token);manager().cancel("alpha-workflow-"+pending.getString("operationId"),0);call.resolve();
+ }
  private final Map<String,String> ids=new java.util.concurrent.ConcurrentHashMap<>();
  private NotificationManager manager(){return getContext().getSystemService(NotificationManager.class);}
  private boolean locked(){return getContext().getSystemService(KeyguardManager.class).isDeviceLocked();}
@@ -19,6 +72,7 @@ public class AlphaNotificationsPlugin extends Plugin {
  private StatusBarNotification resolve(String id){if(id==null||id.isEmpty())return null;for(StatusBarNotification row:manager().getActiveNotifications())if(Objects.equals(ids.get(identity(row)),id))return row;return null;}
  private String bounded(CharSequence text,int limit){String value=text==null?"":text.toString();return value.length()>limit?value.substring(0,limit):value;}
  private final Map<String,String> channels=new java.util.concurrent.ConcurrentHashMap<>();
+ @PluginMethod public void workflowPresentationCapabilities(PluginCall call){JSObject result=new JSObject();result.put("protocol",2);call.resolve(result);}
  @PluginMethod public void status(PluginCall call){try{
   NotificationManager manager=manager();JSObject out=new JSObject();JSArray values=new JSArray();Set<String> current=new HashSet<>();
   out.put("appEnabled",manager.areNotificationsEnabled());
@@ -38,6 +92,9 @@ public class AlphaNotificationsPlugin extends Plugin {
   JSObject out=new JSObject();out.put("status","opened");call.resolve(out);
  }catch(RuntimeException error){call.reject("Android channel settings could not be opened");}}
  private void foreground(){if(getActivity()==null||getActivity().isFinishing()||!getActivity().hasWindowFocus()||locked())throw new IllegalStateException();}
+ private WorkflowNoticeDelivery workflowNotices(){AlphaCredentialStore store=new AlphaCredentialStore(getContext());return new WorkflowNoticeDelivery(new WorkflowNoticeDelivery.Storage(){public String read(String key)throws Exception{return store.readCredentialSlot(key);}public void write(String key,String value)throws Exception{store.writeCredentialSlot(key,value);}},new WorkflowNoticePoster(getContext()));}
+ @PluginMethod public void postWorkflow(PluginCall call){noticeWork(call,"Workflow notification could not be confirmed. It will not be repeated automatically.",()->{workflowTaps().prepare(call.getString("operationId"),call.getString("bindingHash"),call.getObject("route"));requireNoticeForeground();String status=workflowNotices().publish(call.getString("operationId"),call.getString("bindingHash"),call.getString("title"),call.getString("body"));JSObject result=new JSObject();result.put("status",status);call.resolve(result);});}
+ @PluginMethod public void workflowReceipt(PluginCall call){noticeWork(call,"Workflow notification receipt is unavailable.",()->{String status=workflowNotices().receipt(call.getString("operationId"),call.getString("bindingHash"),call.getString("title"),call.getString("body"));JSObject result=new JSObject();result.put("status",status);call.resolve(result);});}
  @PluginMethod public void crossAppStatus(PluginCall call){try{call.resolve(NotificationAccess.status(getContext()));}catch(Exception failure){call.reject("Notification access status is unavailable. History may need clearing.");}}
  @PluginMethod public void notificationApps(PluginCall call){try{foreground();JSObject out=new JSObject();out.put("apps",NotificationAccess.apps(getContext()));call.resolve(out);}catch(Exception failure){call.reject("Notification app choices are unavailable");}}
  @PluginMethod public void setNotificationPolicy(PluginCall call){try{foreground();call.resolve(NotificationAccess.update(getContext(),call.getData()));}catch(Exception failure){call.reject("Notification settings changed or could not be saved. Refresh Settings.");}}

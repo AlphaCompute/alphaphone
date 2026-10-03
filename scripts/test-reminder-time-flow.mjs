@@ -5,14 +5,19 @@ import fs from 'node:fs';
 import vm from 'node:vm';
 import {stripTypeScriptTypes} from 'node:module';
 process.env.TZ='America/New_York';
-let writes=[],toasts=[];
-const DailyApps={scheduleReminder:async input=>{writes.push(input);return {status:'scheduled'};},listReminders:async()=>({reminders:[]})};
+let writes=[],toasts=[],stored={},subscriptions=0,unsubscriptions=0;
+const DailyApps={surfaceInfo:async()=>({reminderTimingVersion:2}),scheduleReminder:async input=>{writes.push(input);return {status:'scheduled',id:input.id};},listReminders:async()=>({reminders:writes.map(r=>({...r,status:'scheduled',occurrenceId:'fixture-occurrence'}))}),addListener:async()=>({remove(){}})};
 let state={form:null},adapter;
 class Shell{componentDidMount(){}componentWillUnmount(){}vset(){}toast(value){toasts.push(value);}}
 const views={calendar:{state:{},render:()=>({f:{cals:[]}})}};
 const source=stripTypeScriptTypes(fs.readFileSync(new URL('../apps/app/src/prototype/reminder-adapter.ts',import.meta.url),'utf8').replace(/^import .*?;\n/gm,'').replace('export function installReminderAdapter','function installReminderAdapter'));
-vm.runInNewContext(source+'\ninstallReminderAdapter(Shell,views);',{Capacitor:{getPlatform:()=> 'android'},DailyApps,Shell,views,Date,crypto,console});
-const api={get:()=>state,set:patch=>Object.assign(state,patch),toast:value=>toasts.push(value)};
+// Exercise the actual durable creation/readback module as well as the renderer.
+const creationSource=stripTypeScriptTypes(fs.readFileSync(new URL('../apps/app/src/runtime/reminder-creations.ts',import.meta.url),'utf8').replace(/^import .*?;\n/gm,'').replace(/export /g,''));
+const contractSource=stripTypeScriptTypes(fs.readFileSync(new URL('../apps/app/src/runtime/reminder-contract.ts',import.meta.url),'utf8').replace(/^import .*?;\n/gm,'').replace(/export /g,''));
+const context={Capacitor:{getPlatform:()=> 'android',isNativePlatform:()=>true},DailyApps,Shell,views,Date,crypto,console,TextEncoder,connectionController:{getSnapshot:()=>({open:true}),subscribe:()=>{subscriptions++;return()=>{unsubscriptions++;};}},document:{hidden:false,addEventListener(){},removeEventListener(){}},window:{addEventListener(){},removeEventListener(){}},secureConnectionStore:{read:async key=>stored[key]??null,compareExchange:async(key,expected,value)=>{if(JSON.stringify(stored[key]??null)!==JSON.stringify(expected))return{status:'conflict'};stored[key]=value;return{status:'saved'};}},reconcileReminderDeletions:async()=>0};
+vm.runInNewContext(contractSource+'\n'+creationSource+'\n'+source+'\ninstallReminderAdapter(Shell,views);',context);
+const owner=new Shell();owner.live=true;owner.componentDidMount();
+const api={isActive:()=>true,get:()=>state,set:patch=>Object.assign(state,patch),toast:value=>toasts.push(value)};
 const today=new Date();
 const year=today.getFullYear()+1;
 const march=new Date(Date.UTC(year,2,1));
@@ -24,4 +29,5 @@ assert.equal(writes.length,0,'Nonexistent local time must not reach native sched
 assert.ok(toasts.some(t=>t.includes('Nothing was saved')));
 state.form=form(3.5);await views.calendar.render(state,api).f.save();
 assert.equal(writes.length,1);const saved=new Date(writes[0].at);assert.equal(saved.getHours(),3);assert.equal(saved.getMinutes(),30);assert.equal(saved.getDate(),secondSunday);
+owner.componentWillUnmount();assert.equal(subscriptions,1);assert.equal(unsubscriptions,1,'Native chooser retry subscription must be released on teardown');
 console.log('PASS real reminder adapter rejects DST-gap save before native bridge; valid neighboring wall time schedules once. Host boundary fixture only.');

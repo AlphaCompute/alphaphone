@@ -34,7 +34,7 @@ test('browser voice encodes audio, reviews a transcript, persists audio and relo
  const retained=await page.evaluate(async(id)=>{
   const db=await new Promise<IDBDatabase>((resolve,reject)=>{const r=indexedDB.open('alpha.browser.audio.v1');r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error);});
   const row:any=await new Promise((resolve,reject)=>{const r=db.transaction('audio').objectStore('audio').get(id);r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error);});
-  const ctx=new AudioContext(),decoded=await ctx.decodeAudioData(await row.blob.arrayBuffer());const result={size:row.blob.size,noteId:row.noteId,duration:decoded.duration};await ctx.close();db.close();return result;
+  const blob=row.bytes?new Blob([row.bytes],{type:row.mimeType}):row.blob;const ctx=new AudioContext(),decoded=await ctx.decodeAudioData(await blob.arrayBuffer());const result={size:blob.size,noteId:row.noteId,duration:decoded.duration};await ctx.close();db.close();return result;
  },saved.audioId);
  expect(retained.noteId).toBe('audio-test-note');expect(retained.size).toBeGreaterThan(0);expect(retained.duration).toBeGreaterThan(.1);
 });
@@ -64,7 +64,7 @@ test('stored audio uses the real player, completes, and releases its URL on page
   const text=(at:number,s:string)=>{for(let i=0;i<s.length;i++)view.setUint8(at+i,s.charCodeAt(i));};
   text(0,'RIFF');view.setUint32(4,buffer.byteLength-8,true);text(8,'WAVE');text(12,'fmt ');view.setUint32(16,16,true);view.setUint16(20,1,true);view.setUint16(22,1,true);view.setUint32(24,rate,true);view.setUint32(28,rate*2,true);view.setUint16(32,2,true);view.setUint16(34,16,true);text(36,'data');view.setUint32(40,buffer.byteLength-44,true);
   const db=await new Promise<IDBDatabase>((resolve,reject)=>{const r=indexedDB.open('alpha.browser.audio.v1',1);r.onupgradeneeded=()=>r.result.createObjectStore('audio',{keyPath:'audioId'});r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error);});
-  await new Promise<void>((resolve,reject)=>{const tx=db.transaction('audio','readwrite');tx.objectStore('audio').put({audioId:'silent-fixture',noteId:'fixture',blob:new Blob([buffer],{type:'audio/wav'}),durationMs:1000});tx.oncomplete=()=>resolve();tx.onabort=()=>reject(tx.error);});db.close();
+  await new Promise<void>((resolve,reject)=>{const tx=db.transaction('audio','readwrite');tx.objectStore('audio').put({audioId:'silent-fixture',noteId:'fixture',bytes:buffer,mimeType:'audio/wav',durationMs:1000});tx.oncomplete=()=>resolve();tx.onabort=()=>reject(tx.error);});db.close();
   const {registerPlugin}=await import('/src/platform-plugins.ts');const voice=registerPlugin<any>('AlphaNoteAudio');
   const revoked:string[]=[],events:any[]=[];const revoke=URL.revokeObjectURL.bind(URL);URL.revokeObjectURL=url=>{revoked.push(url);revoke(url);};
   await voice.addListener('playbackEnded',(event:any)=>events.push(event));(window as any).playbackFixture={voice,revoked,events};
@@ -78,4 +78,11 @@ test('stored audio uses the real player, completes, and releases its URL on page
  await page.evaluate(()=>window.dispatchEvent(new Event('pagehide')));
  await expect.poll(()=>page.evaluate(async()=>(await (window as any).playbackFixture.voice.state()).playing)).toBe(false);
  expect(await page.evaluate(()=>(window as any).playbackFixture.revoked.length)).toBe(2);
+});
+
+test('retained recording bytes survive transcript edits and deletion restore without entering metadata',async({page})=>{
+ await page.goto('/');await page.evaluate(async()=>{const api=await import('/src/browser/note-audio-store.ts');const metadata=await api.retainAudio('bytes-test','note-owner','First',{blob:new Blob([new Uint8Array([0,255,128,1])],{type:'audio/wav'}),durationMs:1000});if('blob' in metadata||'bytes' in metadata)throw Error('Audio payload leaked into metadata');await api.retainAudio('bytes-test','note-owner','Edited');const operation=crypto.randomUUID();await api.changeAudioDeleted('bytes-test','note-owner',true,operation);await api.changeAudioDeleted('bytes-test','note-owner',false,operation);});await page.reload();const result=await page.evaluate(async()=>{const api=await import('/src/browser/note-audio-store.ts');const row=await api.audioRecord('bytes-test');return {bytes:[...new Uint8Array(await row.blob.arrayBuffer())],type:row.blob.type,transcript:row.transcript};});expect(result).toEqual({bytes:[0,255,128,1],type:'audio/wav',transcript:'Edited'});
+});
+test('failed recording byte read commits no audio record',async({page})=>{
+ await page.goto('/');const result=await page.evaluate(async()=>{const api=await import('/src/browser/note-audio-store.ts'),blob=new Blob(['bytes']);blob.arrayBuffer=async()=>{throw Error('Read failed');};let failed=false,missing=false;try{await api.retainAudio('failed-bytes','owner','Text',{blob,durationMs:1000});}catch{failed=true;}try{await api.audioRecord('failed-bytes');}catch{missing=true;}return {failed,missing};});expect(result).toEqual({failed:true,missing:true});
 });

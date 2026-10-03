@@ -35,6 +35,8 @@ try{
  const java=candidates.find(candidate=>{const result=spawnSync(candidate,['-version'],{encoding:'utf8',timeout:5000});const version=(result.stderr||'')+(result.stdout||'');return result.status===0&&Number(version.match(/version "(\d+)/)?.[1])>=21;});
  if(!java)throw Error('Java 21 or newer is required. Set ALPHA_MAPS_JAVA to its executable.');
  if(spawnSync('python3',['--version'],{timeout:5000}).status!==0)throw Error('Python 3 is required for the regional gateway.');
+ const manifest=spawnSync('python3',[join(root,'scripts/maps/dataset_manifest.py'),'verify','--data',data],{encoding:'utf8',timeout:30000});
+ if(manifest.status!==0)throw Error('Regional runtime manifest is missing or stale. Review the prepared data and run python3 scripts/maps/dataset_manifest.py seal explicitly.');
  for(const value of [47850,47851,47852,port])await free(value);
  start('Regional router',java,['-Xmx512m','-jar','graphhopper.jar','server',join(root,'scripts/maps/graphhopper.yml')],{cwd:data});
  await ready('http://127.0.0.1:47851/info',value=>Array.isArray(value.profiles));

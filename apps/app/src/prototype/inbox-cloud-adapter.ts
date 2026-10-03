@@ -37,6 +37,15 @@ export function installInboxCloudAdapter(Component: any, views: Record<string, B
     status = 'Connect Eliza Cloud to use Gmail';
     publish({ mails: [], sent: [], open: null, compose: null, nativeMailSelection: null });
   }
+  function cancelRead() {
+    // Cancelling a provider read does not retire this owner/session or its drafts.
+    // Invalidate first so even a transport that ignores abort cannot publish later.
+    generation++; operation?.abort(); operation = null;
+    void attachmentNative.cancel().catch(()=>{}); contextReview=null; attachmentView=null;
+    thread=null; messages=[]; body=null; loadedQuery=''; loadedLimit=25; revision='';
+    phase='ready'; status='Gmail request cancelled';
+    publish({ open:null, nativeMailSelection:null });
+  }
   async function work(label: string, task: (binding: NonNullable<ReturnType<typeof connectionController.getCloudClient>>, signal: AbortSignal, valid: () => boolean) => Promise<void>) {
     if (operation) return;
     const binding = connectionController.getCloudClient();
@@ -61,7 +70,7 @@ export function installInboxCloudAdapter(Component: any, views: Record<string, B
       const result = await client.gmailAccounts(signal);
       if (!valid()) return;
       accounts = result; messages = []; body = null;
-      if (!accounts.some(a => a.connectionId === selected)) selected = accounts.find(a => a.connected && a.grantedCapabilities.includes('google.gmail.triage'))?.connectionId || '';
+      if (!accounts.some(a => a.connectionId === selected && a.connected && a.grantedCapabilities.includes('google.gmail.triage'))) selected = accounts.find(a => a.connected && a.grantedCapabilities.includes('google.gmail.triage'))?.connectionId || '';
       void provider.bind(selected); void drafts.bind(selected, accounts.find(a => a.connectionId === selected)?.label || '');
       status = selected ? 'Gmail connected. Tap Load Inbox.' : 'Connect Gmail to read your inbox';
       publish({ open: null, nativeMailSelection: null });
@@ -148,8 +157,8 @@ export function installInboxCloudAdapter(Component: any, views: Record<string, B
       ...(selected&&!provider.capabilities()?.mailboxMutations?[chip('Authorize mailbox changes',()=>void connect('mailbox'))]:[]),
       ...accounts.filter(a => a.connectionId).map(a => chip(a.label, () => {
         if (operation) return;
-        void attachmentNative.cancel().catch(()=>{});contextReview=null;attachmentView=null;selected = a.connectionId!; void provider.bind(selected); void drafts.bind(selected, a.label); messages = []; body = null;
-        status = a.connected ? 'Tap Load Inbox to read this account' : 'This account needs Gmail authorization';
+        void attachmentNative.cancel().catch(()=>{});contextReview=null;attachmentView=null;selected = a.connected && a.grantedCapabilities.includes('google.gmail.triage') ? a.connectionId! : ''; void provider.bind(selected); void drafts.bind(selected, a.label); messages = []; body = null;
+        status = selected ? 'Tap Load Inbox to read this account' : 'This account needs Gmail authorization';
         publish({ open: null, nativeMailSelection: null });
       }, a.connectionId === selected)),
       ...(selected ? [chip(st.q ? 'Search Gmail' : 'Load Inbox', () => void load())] : []),
@@ -158,7 +167,7 @@ export function installInboxCloudAdapter(Component: any, views: Record<string, B
     ] : [chip('Connect Eliza Cloud', () => connectionController.open())];
     chips.push(...drafts.chips(chip), ...provider.chips(chip));
 
-    if (operation) chips.push(chip('Cancel', () => { clear(); status = 'Gmail request cancelled'; publish(); }));
+    if (operation) chips.push(chip('Cancel', cancelRead));
     const date = (value: string) => { const d = new Date(value); return Number.isNaN(d.valueOf()) ? '' : d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }); };
     const activeBody = st.open && body?.message.id === st.open ? body : null;
     const rows = messages.map(m => ({ name: m.from, ini: m.from.slice(0, 1).toUpperCase(), subj: m.subject || '(no subject)',

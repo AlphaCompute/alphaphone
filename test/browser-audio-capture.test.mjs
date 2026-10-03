@@ -8,6 +8,7 @@ function harness(){
  const streams=[],recorders=[],requests=[],events=[],timers=new Map();let token=0,fail='',held=false;
  const stream=()=>{const track={stopped:false,stop(){this.stopped=true;}};const value={getTracks:()=>[track],track};streams.push(value);return value;};
  class Recorder {
+  static isTypeSupported(type){return type==='audio/webm;codecs=opus';}
   state='inactive';mimeType='audio/webm';
   constructor(){if(fail==='constructor')throw Error('Constructor failed');recorders.push(this);}
   start(){if(fail==='start')throw Error('Start failed');this.state='recording';}
@@ -16,6 +17,8 @@ function harness(){
  }
  const context={navigator:{mediaDevices:{getUserMedia:()=>{const d=deferred();requests.push(d);return d.promise;}}},document:{hidden:false},MediaRecorder:Recorder,Blob,crypto:globalThis.crypto,DOMException,Date,Error,setTimeout:(fn,delay)=>{timers.set(++token,{fn,delay});return token;},clearTimeout:id=>timers.delete(id)};
  context.BrowserMicrophone=class{open(){return context.navigator.mediaDevices.getUserMedia();}close(){}};
+ const meterSource=readFileSync(new URL('../apps/app/src/browser/audio-levels.ts',import.meta.url),'utf8').replaceAll('export function','function');
+ vm.runInNewContext(stripTypeScriptTypes(meterSource,{mode:'transform'}),context);
  const source=readFileSync(new URL('../apps/app/src/browser/audio-capture.ts',import.meta.url),'utf8').replace(/^import .*\n/gm,'').replace('export class','class');
  vm.runInNewContext(stripTypeScriptTypes(source,{mode:'transform'})+'\nglobalThis.Capture=BrowserAudioCapture;',context);
  const capture=new context.Capture(e=>events.push(e));

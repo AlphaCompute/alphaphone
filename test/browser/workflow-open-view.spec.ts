@@ -7,7 +7,7 @@ for (const mode of ['pending', 'wrong-owner', 'expired'] as const) {
     await page.addInitScript((mode) => {
       const w = window as any, store = new Map(), entries = new Map();
       const agentId = '12345678-1234-4234-8234-123456789abc';
-      const fixture = w.navigationFixture = { posts: 0, lists: 0, decisions: 0, claims: 0, receipts: 0, workflowLists: 0, journal: [] as string[], proposal: null as any };
+      const fixture = w.navigationFixture = { posts: 0, lists: 0, decisions: 0, claims: 0, receipts: 0, receiptBodies: [] as string[], workflowLists: 0, journal: [] as string[], proposal: null as any };
       const methods = (names: string[]) => names.map(name => ({ name, rtype: 'promise' }));
       w.Capacitor = {
         PluginHeaders: [
@@ -63,7 +63,7 @@ for (const mode of ['pending', 'wrong-owner', 'expired'] as const) {
             if (body.digest !== fixture.proposal.digest) throw Error('Review digest changed');
             if (pathname.endsWith('/decision')) { if (body.decision !== 'approve') throw Error('Unexpected decision'); fixture.decisions++; fixture.proposal.state='approved'; return ok({ proposal: { ...fixture.proposal }, digest: fixture.proposal.digest }); }
             if (pathname.endsWith('/claim')) { fixture.claims++; Object.assign(fixture.proposal,{state:'executing',execution:{attemptId:'fixture-attempt'}}); return ok({ proposal: { ...fixture.proposal }, digest: fixture.proposal.digest }); }
-            if (pathname.endsWith('/receipt')) { if(body.receipt.outcome!=='applied'||body.attemptId!=='fixture-attempt')throw Error('Invalid navigation receipt'); fixture.receipts++; fixture.proposal.state='done'; return ok({ proposal: { ...fixture.proposal }, digest: fixture.proposal.digest }); }
+            if (pathname.endsWith('/receipt')) { if(body.receipt.outcome!=='applied'||body.attemptId!=='fixture-attempt')throw Error('Invalid navigation receipt'); fixture.receipts++; fixture.receiptBodies.push(JSON.stringify(body)); fixture.proposal.state='done'; return ok({ proposal: { ...fixture.proposal }, digest: fixture.proposal.digest }); }
           }
           throw Error('Unexpected fixture route ' + pathname);
         },
@@ -91,17 +91,21 @@ for (const mode of ['pending', 'wrong-owner', 'expired'] as const) {
       await page.getByText('Approve: open view', { exact: true }).click();
       await expect(page.getByText('No workflows on this agent',{exact:true})).toBeVisible();
       await expect.poll(async()=> (await counts()).journal).toEqual(['reserve', 'markApplying', 'finish']);
-      // Navigation retires the view's request epoch; the durable applied result
-      // is uploaded through the explicit recovery control, never by replaying navigation.
-      expect(await counts()).toEqual({ posts: 1, decisions: 1, claims: 1, receipts: 0, workflowLists: 1, journal: ['reserve', 'markApplying', 'finish'] });
+      // Receipt upload can finish before navigation retires the request epoch.
+      // Otherwise the explicit recovery control uploads the durable result.
+      // Explicit sync may resend the identical receipt, without replaying navigation.
+      const afterNavigation=await counts();expect([0,1]).toContain(afterNavigation.receipts);
+      expect({...afterNavigation,receipts:0}).toEqual({ posts: 1, decisions: 1, claims: 1, receipts: 0, workflowLists: 1, journal: ['reserve', 'markApplying', 'finish'] });
       await page.getByRole('button',{name:'Home',exact:true}).click();
       await page.getByRole('button',{name:'Settings',exact:true}).click();
       await page.getByRole('button',{name:'Agent connection',exact:true}).click();
       await page.getByText('Phone action history',{exact:true}).click();
+      const beforeSync=(await counts()).receipts;
       await page.getByRole('button',{name:'Sync recorded receipts',exact:true}).click();
-      await expect.poll(async()=> (await counts()).receipts).toBe(1);
+      await expect.poll(async()=> (await counts()).receipts).toBe(beforeSync+1);
       await expect(page.getByText('done',{exact:true})).toBeVisible();
-      expect(await counts()).toEqual({ posts: 1, decisions: 1, claims: 1, receipts: 1, workflowLists: 1, journal: ['reserve', 'markApplying', 'finish'] });
+      expect(await counts()).toEqual({ posts: 1, decisions: 1, claims: 1, receipts: beforeSync+1, workflowLists: 1, journal: ['reserve', 'markApplying', 'finish'] });
+      expect(await page.evaluate(()=>new Set((window as any).navigationFixture.receiptBodies).size)).toBe(1);
     } else {
       await expect(page.getByText(/^Approve:/)).toHaveCount(0);
       expect(await counts()).toEqual({ posts: 1, decisions: 0, claims: 0, receipts: 0, workflowLists: 0, journal: [] });

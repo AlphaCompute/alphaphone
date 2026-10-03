@@ -1,0 +1,10 @@
+plugins { id 'com.android.application' version '8.13.0' }
+android {
+ namespace 'ai.elizaresearch.alphaphone.peerfixture'
+ compileSdk 36
+ defaultConfig { applicationId 'ai.elizaresearch.alphaphone.peerfixture'; minSdk 29; targetSdk 36; versionCode 1; versionName 'fixture-1' }
+ buildFeatures { buildConfig true }
+ compileOptions { sourceCompatibility JavaVersion.VERSION_21; targetCompatibility JavaVersion.VERSION_21 }
+ // Only debug artifacts are admitted. Never distribute this test helper.
+ variantFilter { variant -> if (variant.buildType.name != 'debug') variant.setIgnore(true) }
+}

@@ -25,7 +25,7 @@ final class BrowserReading {
    host=host.toLowerCase(java.util.Locale.ROOT);if(host.endsWith("."))host=host.substring(0,host.length()-1);
    for(String provider:new String[]{"pass.proton.me","account.proton.me","accounts.google.com","passwords.google.com","bitwarden.com","bitwarden.eu","1password.com","lastpass.com","dashlane.com","keepersecurity.com","nordpass.com","passbolt.com"})if(host.equals(provider)||host.endsWith("."+provider))return true;
    String route=java.net.URLDecoder.decode(value,"UTF-8").toLowerCase(java.util.Locale.ROOT);
-   return java.util.regex.Pattern.compile("(?:^|[^a-z0-9])(?:vault|passwords?|passphrase|signin|sign-in|login|log-in|logout|auth|oauth|sso|account|accounts|security|mfa|2fa|otp|recovery|reset-password|credentials?|access_token|id_token|refresh_token|secret|token)(?:$|[^a-z0-9])").matcher(route).find();
+   return java.util.regex.Pattern.compile("(?:^|[^a-z0-9])(?:api[\\s_-]*key|vault|passwords?|passphrase|signin|sign-in|login|log-in|logout|auth|oauth|sso|account|accounts|security|mfa|2fa|otp|recovery|reset-password|credentials?|access_token|id_token|refresh_token|secret|token)(?:$|[^a-z0-9])").matcher(route).find();
   }catch(Exception error){return true;}
  }
  // Fixed traversal prunes excluded subtrees before reading text. Bounds include
@@ -36,7 +36,7 @@ final class BrowserReading {
  // Scan the whole document before selecting an article: a vault/OTP sidebar
  // must not be omitted by choosing a harmless-looking main element.
  const deny=()=>({blocked:true});
- const sensitive=/(?:password|passphrase|passcode|credential|vault|one[\\s-]*time[\\s-]*(?:password|code)|verification[\\s-]*code|security[\\s-]*code|authentication[\\s-]*code|recovery[\\s-]*(?:code|key|phrase)|backup[\\s-]*(?:code|key)|seed[\\s-]*phrase|secret[\\s-]*key|private[\\s-]*key|authenticator|two[\\s-]*factor|multi[\\s-]*factor|sign[\\s-]*in|log[\\s-]*in|\\botp\\b|\\bmfa\\b|\\b2fa\\b)/i;
+ const sensitive=/(?:api[\\s_-]*key|access[\\s_-]*token|refresh[\\s_-]*token|password|passphrase|passcode|credential|vault|one[\\s-]*time[\\s-]*(?:password|code)|verification[\\s-]*code|security[\\s-]*code|authentication[\\s-]*code|recovery[\\s-]*(?:code|key|phrase)|backup[\\s-]*(?:code|key)|seed[\\s-]*phrase|secret[\\s-]*key|private[\\s-]*key|authenticator|two[\\s-]*factor|multi[\\s-]*factor|sign[\\s-]*in|log[\\s-]*in|\\botp\\b|\\bmfa\\b|\\b2fa\\b)/i;
  const normalize=value=>value.normalize('NFKC').replace(/[\\u200B-\\u200D\\uFEFF]/g,'');
  const pending=[document.documentElement];let inspected=0,characters=0,scanText='';
  while(pending.length){
@@ -85,6 +85,10 @@ final class BrowserReading {
  BrowserReading(android.app.Activity activity,Consumer<String> cancelSpeech){this.activity=activity;this.cancelSpeech=cancelSpeech;}
  static String binding(PluginCall call)throws Exception{
   String origin=call.getString("origin"),owner=call.getString("ownerId"),session=call.getString("sessionId");Long expires=call.getLong("expiresAt");
+  if("device".equals(call.getString("execution"))){
+   if(origin!=null||owner==null||owner.isBlank()||owner.length()>256||session==null||session.isBlank()||session.length()>256||expires==null||expires<=System.currentTimeMillis()||expires>System.currentTimeMillis()+120000)throw new IllegalArgumentException();
+   return new JSONObject().put("execution","device").put("owner",owner).put("session",session).put("expires",expires).toString();
+  }
   if(origin==null||origin.length()>2048||owner==null||owner.isBlank()||owner.length()>256||session==null||session.isBlank()||session.length()>256||expires==null||expires<=System.currentTimeMillis())throw new IllegalArgumentException();
   java.net.URI uri=new java.net.URI(origin);boolean local=BuildConfig.DEBUG&&"http".equals(uri.getScheme())&&java.util.Set.of("127.0.0.1","10.0.2.2").contains(uri.getHost());
   if(uri.getHost()==null||(!"https".equals(uri.getScheme())&&!local)||uri.getRawUserInfo()!=null||uri.getRawQuery()!=null||uri.getRawFragment()!=null||!"".equals(uri.getRawPath()))throw new IllegalArgumentException();
@@ -92,11 +96,11 @@ final class BrowserReading {
  }
  void review(PluginCall call,WebView web,BrowserReadingWorld world,BooleanSupplier stillCurrent){
   cancel();final long expected=generation;
-  try{binding=binding(call);}catch(Exception error){call.reject("Pair the selected agent before reading");return;}
+  try{binding=binding(call);}catch(Exception error){call.reject("Select an available speech route before reading");return;}
   if(sensitiveUrl(web.getUrl())){call.reject("Reading unavailable on a sensitive or unverified page");return;}
   if(world==null||!world.ready()){call.reject("Isolated page reading is unavailable. Update Android System WebView, then reload this page.");return;}
   current=stillCurrent;pending=call;expires=System.currentTimeMillis()+120000;
-  new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(()->{if(expected==generation)cancel();},120000);
+  scheduleTimeout(expected,120000);
   world.evaluate(EXTRACT,encoded->{
    if(expected!=generation)return;
    try{
@@ -104,20 +108,22 @@ final class BrowserReading {
     Object decoded=new JSONTokener(encoded).nextValue();if(!(decoded instanceof JSONObject))throw new IllegalStateException();JSONObject result=(JSONObject)decoded;
     if(result.optBoolean("blocked")){PluginCall rejected=pending;pending=null;cancel();rejected.reject("Reading unavailable on a sensitive or ambiguous page");return;}
     String extracted=result.getString("text");if(extracted.isBlank()||extracted.length()>5000)throw new IllegalStateException();text=extracted;token=UUID.randomUUID().toString();
-    String source=android.net.Uri.parse(web.getUrl()).getHost();
-    TextView preview=new TextView(activity);preview.setText("Source: "+source+"\nSelected agent: "+call.getString("origin")+"\nOwner: "+call.getString("ownerId")+"\n\nRead with selected agent sends exactly the following text for speech.\n"+text.length()+" characters"+(result.optBoolean("truncated")?" (truncated; no further text will be sent)":"")+"\n\n"+text);preview.setTextIsSelectable(true);int padding=(int)(20*activity.getResources().getDisplayMetrics().density);preview.setPadding(padding,padding,padding,padding);
+    String source=android.net.Uri.parse(web.getUrl()).getHost();boolean local="device".equals(call.getString("execution"));
+    TextView preview=new TextView(activity);preview.setText("Source: "+source+"\nSpeech: "+(local?"On this device":call.getString("origin"))+"\nOwner: "+call.getString("ownerId")+(local?"\n\nRead on this device uses local speech. The excerpt is not sent to an agent or speech server.\n":"\n\nRead with selected agent sends exactly the following text for speech.\n")+text.length()+" characters"+(result.optBoolean("truncated")?" (truncated; no further text will be sent)":"")+"\n\n"+text);preview.setTextIsSelectable(true);int padding=(int)(20*activity.getResources().getDisplayMetrics().density);preview.setPadding(padding,padding,padding,padding);
     ScrollView scroll=new ScrollView(activity);scroll.addView(preview);
-    dialog=new AlertDialog.Builder(activity).setTitle("Read this page aloud?").setView(scroll).setNegativeButton("Cancel",(d,w)->cancel()).setPositiveButton("Read with selected agent",(d,w)->{
+    dialog=new AlertDialog.Builder(activity).setTitle("Read this page aloud?").setView(scroll).setNegativeButton("Cancel",(d,w)->cancel()).setPositiveButton(local?"Read on this device":"Read with selected agent",(d,w)->{
      if(expected!=generation||!valid()){cancel();return;}approved=true;PluginCall accepted=pending;pending=null;dialog=null;JSObject response=new JSObject();response.put("readingToken",token);accepted.resolve(response);
     }).setOnCancelListener(d->cancel()).create();dialog.show();
    }catch(Exception error){cancel();}
   },()->{if(expected==generation)cancel();});
  }
+ private void scheduleTimeout(long expected,long delay){new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(()->{if(expected==generation)cancel();},delay);}
  private boolean valid(){return current!=null&&current.getAsBoolean()&&System.currentTimeMillis()<expires;}
  String consume(PluginCall call)throws Exception{
   if(!approved||!valid()||!Objects.equals(token,call.getString("readingToken"))||!Objects.equals(binding,binding(call)))throw new IllegalStateException("Reading approval expired");
   requestId=call.getString("requestId");if(requestId==null||requestId.isBlank()||requestId.length()>256)throw new IllegalArgumentException();approved=false;token=null;String result=text;text=null;
-  dialog=new AlertDialog.Builder(activity).setTitle("Reading with selected agent").setMessage("Preparing or playing the reviewed text. Stop reading cancels this request and playback.").setNegativeButton("Stop reading",(d,w)->cancel()).setOnCancelListener(d->cancel()).create();dialog.show();return result;
+  if("device".equals(call.getString("execution"))){expires=System.currentTimeMillis()+20*60*1000;scheduleTimeout(++generation,20*60*1000);}
+  dialog=new AlertDialog.Builder(activity).setTitle("device".equals(call.getString("execution"))?"Reading on this device":"Reading with selected agent").setMessage("Preparing or playing the reviewed text. Stop reading cancels this request and playback.").setNegativeButton("Stop reading",(d,w)->cancel()).setOnCancelListener(d->cancel()).create();dialog.show();return result;
  }
  void check(){if(current!=null&&!valid())cancel();}
  void cancel(){generation++;PluginCall rejected=pending;pending=null;AlertDialog old=dialog;dialog=null;String active=requestId;requestId=null;current=null;binding=null;token=null;text=null;approved=false;if(old!=null)old.dismiss();if(rejected!=null)rejected.reject("Reading cancelled or page unavailable");if(active!=null)cancelSpeech.accept(active);}

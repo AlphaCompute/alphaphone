@@ -88,7 +88,7 @@ public final class AlphaConnectionPlugin extends Plugin {
   if (value == null || value.isEmpty() || value.length() > max) throw new IllegalArgumentException();
   return value;
  }
- private static int slotLimit(String name){if(name!=null&&name.matches("note-audio-metadata:v1:[A-Za-z0-9_-]{1,100}"))return 512*1024;if("notes-records:v1:device".equals(name))return 32*1024*1024;return name!=null&&(name.startsWith("inbox-drafts:v1:")||name.matches("inbox-operation:v1:[a-f0-9]{64}"))?8*1024*1024:SECRET_LIMIT;}
+ private static int slotLimit(String name){if("notes-audio-deletions:v1:device".equals(name))return 1024*1024;if(name!=null&&name.matches("note-audio-metadata:v1:[A-Za-z0-9_-]{1,100}"))return 512*1024;if("notes-records:v1:device".equals(name))return 32*1024*1024;return name!=null&&(name.startsWith("inbox-drafts:v1:")||name.matches("inbox-operation:v1:[a-f0-9]{64}"))?8*1024*1024:SECRET_LIMIT;}
  private String slotHash(String slot) throws Exception {
   byte[] hash = MessageDigest.getInstance("SHA-256").digest(required(slot, 1024).getBytes(StandardCharsets.UTF_8));
   StringBuilder result = new StringBuilder();
@@ -177,12 +177,12 @@ public final class AlphaConnectionPlugin extends Plugin {
    catch(Exception error){call.reject("Secure storage read failed");}
   });
  }
- /** Compare-and-exchange is scoped to local Inbox/workflow drafts and device Notes, never credential slots. */
+ /** Compare-and-exchange is scoped to local drafts and pending device actions, never credential slots. */
  @PluginMethod public void secureCompareExchange(PluginCall call) {
   submit(call,()->{
    try {
     String name=RendererCredentialSlots.requireAllowed(call.getString("slot"));
-    if(name==null||!(name.startsWith("inbox-drafts:v1:")||name.matches("inbox-operation:v1:[a-f0-9]{64}")||name.matches("workflow-draft:v1:[a-f0-9]{64}")||name.equals("notes-records:v1:device")||name.equals("reminder-deletions:v1:device")||name.matches("cloud-delegation:v1:[a-f0-9]{64}"))||!call.getData().has("expectedValue")||!call.getData().has("value"))throw new IllegalArgumentException();
+    if(name==null||!(name.startsWith("inbox-drafts:v1:")||name.matches("inbox-operation:v1:[a-f0-9]{64}")||name.matches("workflow-draft:v1:[a-f0-9]{64}")||name.equals("notes-records:v1:device")||name.equals("reminder-deletions:v1:device")||name.equals("reminder-creations:v1:device")||name.equals("notes-audio-deletions:v1:device")||name.matches("cloud-delegation:v1:[a-f0-9]{64}"))||!call.getData().has("expectedValue")||!call.getData().has("value"))throw new IllegalArgumentException();
     for(String field:new String[]{"expectedValue","value"})if(!call.getData().isNull(field)&&!(call.getData().get(field) instanceof String))throw new IllegalArgumentException();
     String expected=call.getString("expectedValue"), value=call.getString("value");
     synchronized(storageLock){
@@ -237,10 +237,11 @@ public final class AlphaConnectionPlugin extends Plugin {
  }
  static boolean validDeviceCapabilities(String value) {
   if(value==null||value.contains("\r")||value.contains("\n"))return false;
-  String[] parts=value.split(",",-1);if(parts.length<1||parts.length>4)return false;
+  String[] parts=value.split(",",-1);if(parts.length<1||parts.length>6)return false;
   java.util.HashSet<String> seen=new java.util.HashSet<>();
-  for(String part:parts){String token=part.trim();if(!Set.of("calendar.local-event.v1","notes.local-record.v1","reminders.local-record.v1","maps.selected-read.v1").contains(token)||!seen.add(token))return false;}
-  return true;
+  for(String part:parts){String token=part.trim();if(!Set.of("calendar.local-event.v1","notes.local-record.v1","reminders.local-record.v1","reminders.local-record.v2","reminders.create.v1","maps.selected-read.v1","clock.handoff.v1").contains(token)||!seen.add(token))return false;}
+  if(seen.contains("reminders.local-record.v1")&&seen.contains("reminders.local-record.v2"))return false;
+  return parts.length<=(seen.contains("reminders.create.v1")?6:5);
  }
  @PluginMethod public void request(PluginCall call) {
   final String id;

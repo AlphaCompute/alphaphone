@@ -29,7 +29,7 @@ public final class ResidentServiceInstrumentedTest {
   StringBuilder value=new StringBuilder();for(byte b:digest.digest())value.append(String.format(Locale.ROOT,"%02x",b&255));return value.toString();
  }
  private static String fileHash(File file)throws Exception {try(InputStream in=new FileInputStream(file)){MessageDigest digest=MessageDigest.getInstance("SHA-256");byte[] buf=new byte[65536];int n;while((n=in.read(buf))!=-1)digest.update(buf,0,n);StringBuilder s=new StringBuilder();for(byte b:digest.digest())s.append(String.format(Locale.ROOT,"%02x",b&255));return s.toString();}}
- private String ownerBearer;
+ private String ownerBearer, ownerIdentityId;
  private JSONObject nativeCall(String path,String method,JSONObject body,String bearer)throws Exception {
   JSONObject headers=new JSONObject();if(bearer!=null)headers.put("Authorization","Bearer "+bearer);
   JSONObject args=new JSONObject().put("path",path).put("method",method).put("headers",headers).put("timeoutMs",path.startsWith("/api/auth/")?10000:120000);
@@ -39,7 +39,6 @@ public final class ResidentServiceInstrumentedTest {
  }
  private JSONObject request(String path,JSONObject body)throws Exception {return nativeCall(path,body==null?"GET":"POST",body,ownerBearer);}
  private void startAndEnroll()throws Exception {
-  ownerBearer=null;
   assertTrue(context.getSharedPreferences("CapacitorStorage",Context.MODE_PRIVATE).edit().putString("eliza:mobile-runtime-mode","cloud-hybrid").commit());
   ElizaAgentService.start(context);
   long deadline=SystemClock.elapsedRealtime()+90000;
@@ -47,16 +46,29 @@ public final class ResidentServiceInstrumentedTest {
   while(SystemClock.elapsedRealtime()<deadline){
    try {
     root=ElizaAgentService.localAgentToken(context);
-    if(root!=null&&!root.isEmpty()){status=nativeCall("/api/auth/status","GET",null,root);status.getString("instanceId");break;}
+    if(root!=null&&!root.isEmpty()){
+     status=nativeCall("/api/auth/status","GET",null,ownerBearer==null?root:ownerBearer);
+     if(ownerBearer!=null&&!status.optBoolean("authenticated"))status=null;
+     else {status.getString("instanceId");break;}
+    }
    } catch(IOException|JSONException unavailable){status=null;}
    SystemClock.sleep(250);
   }
   if(status==null)throw new AssertionError("Resident service readiness deadline; inspect OS FGS admission and boot diagnostics, do not retry blindly");
+  // Restart preserves the owner session. A bootstrap bearer cannot mint another
+  // owner session after the first owner has claimed the runtime.
+  if(ownerBearer!=null){
+   JSONObject who=request("/api/auth/me",null);
+   assertTrue("Restarted native session must match",ownerBearer.equals(who.getJSONObject("session").getString("id")));
+   assertEquals(ownerIdentityId,who.getJSONObject("identity").getString("id"));
+   assertEquals("owner",who.getJSONObject("identity").getString("kind"));
+   return;
+  }
   // Pair-code issuance and pairing are deliberately outside readiness polling: never replay an ambiguous enrollment.
   JSONObject code=nativeCall("/api/auth/pair-code","GET",null,root);
   JSONObject paired=nativeCall("/api/auth/pair","POST",new JSONObject().put("code",code.getString("code")).put("instanceId",status.getString("instanceId")),root);
   assertEquals("owner",paired.getString("access"));assertEquals(status.getString("instanceId"),paired.getString("instanceId"));
-  ownerBearer=paired.getString("token");JSONObject who=request("/api/auth/me",null);
+  ownerBearer=paired.getString("token");ownerIdentityId=paired.getString("identityId");JSONObject who=request("/api/auth/me",null);
   assertTrue("Paired native session must match",ownerBearer.equals(who.getJSONObject("session").getString("id")));
   assertEquals(paired.getString("identityId"),who.getJSONObject("identity").getString("id"));
  }
@@ -123,7 +135,7 @@ public final class ResidentServiceInstrumentedTest {
     String label="Resident fixture "+fixture.getString("runId");JSONObject conversation=request("/api/conversations",new JSONObject().put("title",label)).getJSONObject("conversation");String id=conversation.getString("id"),room=conversation.getString("roomId");assertTrue(id.matches("[A-Za-z0-9_-]+"));assertTrue(room.matches("[A-Za-z0-9_-]+"));assertEquals(0,history(id).length());
     JSONObject reply=request("/api/conversations/"+id+"/messages",new JSONObject().put("text",label+": Reply with the value of seven times eight. Do not use tools or create anything.").put("channelType","DM").put("clientMessageId",UUID.randomUUID().toString()));assertFalse("Actual resident reply required",reply.getString("text").trim().isEmpty());assertTrue(reply.getString("text").contains("56"));proof.put("syntheticReplyValidated",true).put("replyLength",reply.getString("text").length()).put("replySha256",hash(reply.getString("text").getBytes(StandardCharsets.UTF_8)));
     proof.put("model",trace(room,reply.getString("userMessageId")));JSONArray before=history(id);assertTrue(before.length()>=2);String historyHash=hash(before.toString().getBytes(StandardCharsets.UTF_8));
-    ElizaAgentService.stop(context);stopped(child);ownerBearer=null;JSONObject old=child;child=null;
+    ElizaAgentService.stop(context);stopped(child);JSONObject old=child;child=null;
     startAndEnroll();child=ownedChild();assertNotEquals("Real native process restart",old.getInt("pid"),child.getInt("pid"));
     assertEquals(ownerId,owner().getJSONObject("identity").getString("id"));assertEquals(agentId,agent().getString("id"));assertEquals(historyHash,hash(history(id).toString().getBytes(StandardCharsets.UTF_8)));
     proof.put("secondProcess",child).put("ownerId",ownerId).put("agentId",agentId).put("conversationId",id).put("historySha256",historyHash).put("passed",true);
@@ -135,7 +147,7 @@ public final class ResidentServiceInstrumentedTest {
       proof.put("traceDiagnostics",traceDiagnostics);proof.put("passed",failure==null&&proof.optBoolean("passed"));
       try(FileOutputStream output=context.openFileOutput("resident-service-complete.json",Context.MODE_PRIVATE)){output.write(proof.toString().getBytes(StandardCharsets.UTF_8));}
     } catch(Throwable write) {if(failure==null)failure=write;else failure.addSuppressed(write);}
-    ownerBearer=null;
+    ownerBearer=null;ownerIdentityId=null;
   }
   if(failure!=null)throw failure;
  }

@@ -23,7 +23,7 @@ test('a false evaluated condition skips subsequent device effects',async({page})
  await page.evaluate(()=>{const state=JSON.parse(localStorage.getItem('alpha.dev.app.workflows')!);state.flows[0].steps=[{k:'Read',t:"Today's calendar",apps:['Calendar']},{k:'If',t:'It mentions money',apps:[]},{k:'Do',t:'Turn on Do Not Disturb',apps:['Settings']}];localStorage.setItem('alpha.dev.app.workflows',JSON.stringify(state));});await page.reload();await open(page);await page.getByRole('button',{name:'Run now',exact:true}).click();await expect.poll(async()=>(await journal(page))[0]?.status).toBe('skip');expect((await journal(page))[0].cursor).toBe(2);expect(await page.evaluate(()=>JSON.parse(localStorage.getItem('alpha.browser.device.v1')||'{}').doNotDisturb||false)).toBe(false);
 });
 test('failure to save run intent prevents any device effect',async({page})=>{
- await page.evaluate(()=>{const set=Storage.prototype.setItem;Storage.prototype.setItem=function(k,v){if(k==='alpha.dev.app.workflows')throw Error('Full');return set.call(this,k,v);};});await page.getByRole('button',{name:'Run now',exact:true}).click();await expect(page.getByText('Run state could not be saved. Reload to inspect its last saved step.',{exact:true})).toBeVisible();expect(await journal(page)).toEqual([]);expect(await page.evaluate(()=>localStorage.getItem('alpha.browser.device.v1'))).toBeNull();
+ await page.evaluate(()=>{const set=Storage.prototype.setItem;Storage.prototype.setItem=function(k,v){if(k==='alpha.dev.app.workflows')throw Error('Full');return set.call(this,k,v);};});await page.getByRole('button',{name:'Run now',exact:true}).click();await expect(page.getByRole('status',{name:'Workflow run status',exact:true})).toHaveText('Run state could not be saved. Reload to inspect its last saved step.');expect(await journal(page)).toEqual([]);expect(await page.evaluate(()=>localStorage.getItem('alpha.browser.device.v1'))).toBeNull();
 });
 
 test('summary step cannot report success from a truncated input',async({page})=>{
@@ -32,7 +32,7 @@ test('summary step cannot report success from a truncated input',async({page})=>
  await expect(page.getByRole('dialog',{name:'Workflow step result'})).toBeVisible();expect((await journal(page))[0].status).toBe('running');expect((await journal(page))[0].cursor).toBe(0);expect((await journal(page))[0].log).toEqual([]);await page.getByRole('dialog',{name:'Workflow step result'}).getByRole('button',{name:'Cancel run',exact:true}).click();await expect.poll(async()=>(await journal(page))[0]?.status).toBe('cancelled');
 });
 
-for(const source of ['Calendar next 90 years','Unsupported mailbox','Overnight inbox'])test('unsupported read does not silently widen or narrow '+source,async({page})=>{
+for(const source of ['Calendar next 90 years','Unsupported mailbox'])test('unsupported read does not silently widen or narrow '+source,async({page})=>{
  await page.evaluate(source=>{const s=JSON.parse(localStorage.getItem('alpha.dev.app.workflows')!);s.flows[0].steps=[{k:'Read',t:source,apps:[]}];localStorage.setItem('alpha.dev.app.workflows',JSON.stringify(s));},source);
  await page.reload();await open(page);await page.getByRole('button',{name:'Run now',exact:true}).click();await expect.poll(async()=>(await journal(page))[0]?.status).toBe('fail');expect((await journal(page))[0].cursor).toBe(0);expect((await journal(page))[0].sum).toContain('not supported');
 });

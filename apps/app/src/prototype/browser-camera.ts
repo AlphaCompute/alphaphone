@@ -1,3 +1,5 @@
+import {fileArchive} from '../browser/file-archive';
+import {applyPhotoFilter} from '../browser/photo-filter';
 import {renderVideoEdit,validateVideoEdit,type VideoEdit} from '../browser/video-edit';
 import {BrowserCameraFocus} from '../browser/camera-focus';
 import {browserDevProfile} from '../browser/dev-profile';
@@ -71,9 +73,9 @@ async function renderEdit(value:EditSession,input:EditParameters){
  const rotated=input.rotation===90||input.rotation===270,scale=Math.min(1,2048/Math.max(sw,sh));
  const canvas=document.createElement('canvas');canvas.width=Math.max(1,Math.round((rotated?sh:sw)*scale));canvas.height=Math.max(1,Math.round((rotated?sw:sh)*scale));
  const context=canvas.getContext('2d');if(!context)throw Error('Photo editing is unavailable.');
- if(input.filter!=='none'&&!('filter' in context))throw Error('Photo filters are unavailable in this browser.');
- context.filter=filters[input.filter];context.translate(canvas.width/2,canvas.height/2);context.rotate(input.rotation*Math.PI/180);
+ const nativeFilter='filter' in context;if(nativeFilter)context.filter=filters[input.filter];context.translate(canvas.width/2,canvas.height/2);context.rotate(input.rotation*Math.PI/180);
  context.drawImage(image,(image.naturalWidth-sw)/2,(image.naturalHeight-sh)/2,sw,sh,-sw*scale/2,-sh*scale/2,sw*scale,sh*scale);
+ if(!nativeFilter)applyPhotoFilter(context,canvas.width,canvas.height,filters[input.filter]);
  const encoded=canvas.toDataURL('image/jpeg',0.9);if(!encoded.startsWith('data:image/jpeg;base64,')||encoded.length>12_000_000)throw Error('Edited photo could not be encoded.');
  return {sessionId:value.id,operationId:value.id,image:encoded,width:canvas.width,height:canvas.height,reduced:scale<1,maxEdge:2048,filter:input.filter};
 }
@@ -164,8 +166,16 @@ export const browserPhotoLibrary={
   const items=selectedMedia(input.items);
   const selected=await transaction<Row[]>('readonly',(store,set,fail)=>{const result:Row[]=[];set(result);for(const item of items){const request=store.get(item.id);request.onsuccess=()=>{const row=request.result as Row|undefined;if(!row||!['image','video'].includes(row.kind)||row.mutationRevision!==item.revision||row.trashed){fail(Error('Selection changed. Reselect the items.'));return;}result.push(row);};}});
   // Validate the entire selection in one snapshot before requesting any download.
-  for(const row of selected)downloadPhoto(row);
-  return {status:'opened',count:selected.length,message:`${selected.length} downloads requested. Your browser may ask to allow multiple downloads; check Downloads to confirm.`};
+  const entries=await Promise.all(selected.map(async(row,index)=>{
+   const source=row.path||row.image;
+   if(!/^data:(image|video)\//.test(source))throw Error('Select saved local media.');
+   const response=await fetch(source),blob=await response.blob();
+   const extension=blob.type==='video/mp4'?'mp4':blob.type.startsWith('video/')?'webm':blob.type==='image/png'?'png':'jpg';
+   return {path:`Alpha-photo-${index+1}.${extension}`,bytes:new Uint8Array(await blob.arrayBuffer())};
+  }));
+  const url=URL.createObjectURL(fileArchive(entries)),link=document.createElement('a');link.href=url;link.download='Alpha photos.zip';document.body.append(link);
+  try{link.click();}finally{link.remove();setTimeout(()=>URL.revokeObjectURL(url),60000);}
+  return {status:'opened',count:selected.length,message:`${selected.length} items in Alpha photos.zip.`};
  },
  async changeAlbum(input:Record<string,unknown>){
   if(!['create','rename','delete','add','remove'].includes(String(input.operation)))throw Error('Unknown album operation.');
@@ -256,12 +266,13 @@ export const browserCamera={
   finally{if(starting===controller)starting=undefined;}
  },
  async stopPreview(){cameraFocus.clear();clearScreenLight();++generation;++videoSession;videoCapture.cancel();starting?.abort();starting=undefined;release(preview,stream);preview=null;stream=null;},
- async capturePhoto(){const token=generation,video=preview;if(!video||!stream||video.readyState<2)throw Error('Camera is not ready.');
+ async capturePhoto(options?:{saveToGallery?:boolean}){const token=generation,video=preview;if(!video||!stream||video.readyState<2)throw Error('Camera is not ready.');
   const width=video.videoWidth,height=video.videoHeight;if(width<=0||height<=0||width*height>32_000_000)throw Error('Unsupported photo dimensions.');
   const canvas=drawCameraFrame(video,{zoom,mirror});
   const image=canvas.toDataURL('image/jpeg',0.85);if(!image.startsWith('data:image/jpeg;base64,'))throw Error('Photo encoding failed.');
   const photo={base64:image.slice('data:image/jpeg;base64,'.length),format:'jpeg',width,height};if(token!==generation)throw Error('Camera view changed.');
   if(!photo.base64||photo.base64.length>12_000_000)throw Error('Photo is too large to save in this browser.');
+  if(options?.saveToGallery===false)return photo;
   // Decimal time plus random suffix is sortable and keeps the existing receipt parser.
   const id=photoId();
   const row:Row={id,kind:'image',image:'data:image/jpeg;base64,'+photo.base64,width:photo.width,height:photo.height,date:Date.now(),revision:revision(),mutationRevision:revision(),favorite:false,trashed:false};

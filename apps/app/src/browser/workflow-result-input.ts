@@ -1,8 +1,9 @@
+import {browserScreenLocked} from './screen-locked';
 const cancelled=()=>new DOMException('Result input cancelled','AbortError');
 /** Explicit local test data for an unconstrained Write instruction; never represented as model output. */
 export function requestWorkflowResult(instruction:string,input:string,signal:AbortSignal):Promise<string>{
  signal.throwIfAborted();
- if(document.hidden||document.documentElement.dataset.devBackground==='true'||document.querySelector('[aria-label="Unlock with fingerprint"], [aria-label="Wake"]')?.getClientRects().length)return Promise.reject(cancelled());
+ if(document.hidden||document.documentElement.dataset.devBackground==='true'||browserScreenLocked())return Promise.reject(cancelled());
  return new Promise((resolve,reject)=>{
   let settled=false;const previous=document.activeElement as HTMLElement|null;
   const dialog=document.createElement('dialog');dialog.setAttribute('aria-label','Workflow step result');dialog.style.cssText='box-sizing:border-box;width:min(380px,92vw);max-height:85dvh;overflow:auto;border:0;border-radius:20px;padding:24px;background:var(--bg,#fff);color:var(--fg,#111);font:16px/1.5 system-ui';

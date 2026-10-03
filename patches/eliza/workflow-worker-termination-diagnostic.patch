@@ -1,0 +1,103 @@
+diff --git a/plugins/plugin-workflow/__tests__/fixtures/smithers-worker-lifecycle-fixture.mjs b/plugins/plugin-workflow/__tests__/fixtures/smithers-worker-lifecycle-fixture.mjs
+--- a/plugins/plugin-workflow/__tests__/fixtures/smithers-worker-lifecycle-fixture.mjs
++++ b/plugins/plugin-workflow/__tests__/fixtures/smithers-worker-lifecycle-fixture.mjs
+@@ -9,7 +9,10 @@
+ const mode = payload.input.fixtureMode;
+ const emit = (message) => process.stdout.write(`${prefix}${JSON.stringify(message)}\n`);
+ 
+-if (mode === 'exit-without-result') {
++if (mode === 'exit-seven') { process.exit(7);
++} else if (mode === 'self-term') { process.kill(process.pid, 'SIGTERM');
++} else if (mode === 'empty-success') { process.exit(0);
++} else if (mode === 'exit-without-result') {
+   process.exit(17);
+ } else if (mode === 'signal-without-result') {
+   process.kill(process.pid, 'SIGKILL');
+diff --git a/plugins/plugin-workflow/__tests__/unit/smithers-worker-lifecycle.test.ts b/plugins/plugin-workflow/__tests__/unit/smithers-worker-lifecycle.test.ts
+--- a/plugins/plugin-workflow/__tests__/unit/smithers-worker-lifecycle.test.ts
++++ b/plugins/plugin-workflow/__tests__/unit/smithers-worker-lifecycle.test.ts
+@@ -79,6 +79,15 @@
+ });
+ 
+ describe('Smithers worker lifecycle', () => {
++  for (const [mode, exitCode, signal] of [['exit-seven',7,null],['empty-success',0,null],['self-term',null,'SIGTERM']] as const) {
++    test(`retains fixed termination metadata for real ${mode} subprocess`, async () => {
++      await expect(run(mode)).rejects.toMatchObject({code:'SMTHRS_RESULT_MISSING',context:{workerTermination:{exitCode,signal}}});
++    });
++  }
++  test('valid terminal result remains successful with no termination error', async () => {
++    const result=await run('event-before-result');expect(result.status).toBe('finished');expect(result.error).toBeUndefined();
++  });
++
+   test('retains a silent nonzero worker exit in the stored error message', async () => {
+     await expect(run('exit-without-result')).rejects.toMatchObject({
+       code: 'SMTHRS_RESULT_MISSING',
+diff --git a/plugins/plugin-workflow/src/services/embedded-workflow-service.ts b/plugins/plugin-workflow/src/services/embedded-workflow-service.ts
+--- a/plugins/plugin-workflow/src/services/embedded-workflow-service.ts
++++ b/plugins/plugin-workflow/src/services/embedded-workflow-service.ts
+@@ -1,3 +1,4 @@
++import { workerTerminationFromError } from './workflow-worker-termination';
+ /**
+  * Tenant-scoped persistence and execution service for native Smithers workflow
+  * modules. elizaOS owns definitions, revisions, run summaries, API events, and
+@@ -1826,12 +1827,14 @@
+         return unresolved;
+       }
+       // error-policy:J1 child-process failures become explicit failed run state.
++      const workerTermination = workerTerminationFromError(error);
+       const failed: WorkflowExecution = {
+         ...running,
+         status: controller.signal.aborted ? 'cancelled' : 'failed',
+         finished: true,
+         stoppedAt: nowIso(),
+         error: {
++          ...(workerTermination ? { workerTermination } : {}),
+           message: error instanceof Error ? error.message : String(error),
+           ...(error instanceof Error && error.stack ? { stack: error.stack } : {}),
+         },
+diff --git a/plugins/plugin-workflow/src/services/smithers-runtime.ts b/plugins/plugin-workflow/src/services/smithers-runtime.ts
+--- a/plugins/plugin-workflow/src/services/smithers-runtime.ts
++++ b/plugins/plugin-workflow/src/services/smithers-runtime.ts
+@@ -1,3 +1,4 @@
++import { workerTermination } from './workflow-worker-termination';
+ import { publishAndroidWorkflowSource } from './workflow-source-publication';
+ import { windowsWorkflowBackend } from './workflow-worker-lease.windows';
+ /**
+@@ -1010,6 +1011,7 @@
+       code: 'SMTHRS_RESULT_MISSING',
+       context: {
+         exitCode: outcome.exitCode,
++        workerTermination: workerTermination(outcome.exitCode, outcome.exitSignal),
+         exitSignal: outcome.exitSignal,
+         workflowId: request.workflow.id,
+       },
+diff --git a/plugins/plugin-workflow/src/services/workflow-worker-termination.ts b/plugins/plugin-workflow/src/services/workflow-worker-termination.ts
+new file mode 100644
+--- /dev/null
++++ b/plugins/plugin-workflow/src/services/workflow-worker-termination.ts
+@@ -0,0 +1,13 @@
++/** Fixed process metadata only; never serialize child output or arbitrary error context. */
++const SIGNALS = ['SIGHUP','SIGINT','SIGQUIT','SIGILL','SIGTRAP','SIGABRT','SIGBUS','SIGFPE','SIGKILL','SIGSEGV','SIGPIPE','SIGALRM','SIGTERM','SIGSYS','SIGXCPU','SIGXFSZ'] as const;
++export interface WorkerTerminationDiagnostic { exitCode: number | null; signal: string | null; }
++export function workerTermination(exitCode: unknown, signal: unknown): WorkerTerminationDiagnostic {
++ return {exitCode: Number.isInteger(exitCode) && Number(exitCode)>=0 && Number(exitCode)<=255 ? Number(exitCode) : null,
++  signal: signal === null || signal === undefined ? null : typeof signal==='string' && (SIGNALS as readonly string[]).includes(signal) ? signal : 'unrecognized'};
++}
++export function workerTerminationFromError(error: unknown): WorkerTerminationDiagnostic | undefined {
++ if(!error || typeof error!=='object' || !('code' in error) || error.code!=='SMTHRS_RESULT_MISSING' || !('context' in error))return;
++ const context=error.context;if(!context || typeof context!=='object' || !('workerTermination' in context))return;
++ const value=context.workerTermination;if(!value || typeof value!=='object' || !('exitCode' in value) || !('signal' in value))return;
++ return workerTermination(value.exitCode,value.signal);
++}
+diff --git a/plugins/plugin-workflow/src/types/index.ts b/plugins/plugin-workflow/src/types/index.ts
+--- a/plugins/plugin-workflow/src/types/index.ts
++++ b/plugins/plugin-workflow/src/types/index.ts
+@@ -169,7 +169,7 @@
+   stoppedAt?: string | null;
+   input: Record<string, unknown>;
+   output?: unknown;
+-  error?: { message: string; stack?: string };
++  error?: { message: string; stack?: string; workerTermination?: { exitCode: number | null; signal: string | null } };
+   /** Host process reconciliation; never a replacement for canonical Smithers receipts. */
+   reconciliation?: {
+     state: 'worker-running' | 'outcome-unknown';
