@@ -7,7 +7,7 @@ import { execFileSync, spawnSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
 import { readBootDeviceIdentity } from './ci-webview-boot-device.mjs';
 import { androidEnv } from './toolchain.mjs';
-import { requireHostedFixtureEnvironment, assertFixtureIdentity } from './ci-emulator-display.mjs';
+import { requireHostedFixtureEnvironment, assertFixtureIdentity, requireFixtureDisplay } from './ci-emulator-display.mjs';
 
 export const candidate = Object.freeze({
   url: 'https://commondatastorage.googleapis.com/chromium-browser-snapshots/AndroidDesktop_x64/1709176/chrome-android-desktop.zip?generation=1790879561205229',
@@ -204,8 +204,8 @@ export async function main({ environment = process.env, execute = execFileSync, 
   };
   const run = (...args) => command(path.join(sdk, 'platform-tools/adb'), ['-s', serial, ...args]);
   const safe = (installed = false) => requireProviderFixture(run, environment, { installed });
-  const bootIdentity = () => {
-    safe();
+  const bootIdentity = (installed = false) => {
+    safe(installed);
     const deadline = now() + 15000;
     const observations = readBootDeviceIdentity((...args) => {
       const remaining = deadline - now();
@@ -262,7 +262,7 @@ export async function main({ environment = process.env, execute = execFileSync, 
     return { pid, startTicks: fields[19] };
   };
   const sameServer = (a, b) => a.pid === b.pid && a.startTicks === b.startTicks;
-  const boot = async (previousServer = null) => {
+  const boot = async (previousServer = null, installed = false) => {
     const end = now() + 180000;
     let rootRequested = false;
     const read = (...args) => {
@@ -282,7 +282,7 @@ export async function main({ environment = process.env, execute = execFileSync, 
             if (!rootRequested) {
               try {
                 require(uid === '2000', 'Unexpected provider fixture shell identity');
-                requireProviderFixture(read, environment);
+                requireProviderFixture(read, environment, { installed });
               } catch (error) { error.providerFixtureRefusal = true; throw error; }
               rootRequested = true; // An ambiguous or refused root request is never replayed.
               read('root'); read('wait-for-device');
@@ -395,23 +395,51 @@ export async function main({ environment = process.env, execute = execFileSync, 
     command(path.join(sdk, 'platform-tools/adb'), ['-s', serial, 'install', '--no-incremental', apk], 120000);
     safe(true);
     run('shell', 'cmd', 'webviewupdate', 'set-webview-implementation', candidate.package);
-    const selectionDeadline = now() + 60000;
-    let selected = '', ready = false;
-    while (now() < selectionDeadline) {
-      safe(true); // Drift is never treated as a transient readiness failure.
-      selected = run('shell', 'dumpsys', 'webviewupdate');
-      fs.writeFileSync(path.join(output, 'provider-selected.txt'), selected);
-      const relro = [...selected.matchAll(/Number of relros (?:started|finished): (\d+)/g)].map(m => Number(m[1]));
-      ready = selected.includes(`Current WebView package (name, version): (${candidate.package}, ${candidate.version})`) &&
-        selected.includes('WebView package dirty: false') && /is\s+installed\/enabled for all users/.test(selected) &&
-        relro.length === 2 && relro[0] > 0 && relro[0] === relro[1];
-      if (ready) break;
-      await sleep(500);
-    }
-    require(ready, 'Provider selection/RELRO readiness deadline exceeded');
-    const installed = run('shell', 'pm', 'path', candidate.package).trim();
-    require(/^package:\/data\/app\/[A-Za-z0-9_./+=~-]+\.apk$/.test(installed), 'Unexpected installed provider path');
-    require(run('shell', 'sha256sum', installed.slice(8)).trim().split(/\s+/)[0] === candidate.apkSha256, 'Installed provider bytes changed');
+    const qualifyInstalledProvider = async label => {
+      const selectionDeadline = now() + 60000;
+      let selected = '', ready = false;
+      while (now() < selectionDeadline) {
+        safe(true); // Drift is never treated as a transient readiness failure.
+        selected = run('shell', 'dumpsys', 'webviewupdate');
+        fs.writeFileSync(path.join(output, 'provider-selected.txt'), selected);
+        const relro = [...selected.matchAll(/Number of relros (?:started|finished): (\d+)/g)].map(m => Number(m[1]));
+        ready = selected.includes(`Current WebView package (name, version): (${candidate.package}, ${candidate.version})`) &&
+          selected.includes('WebView package dirty: false') && /is\s+installed\/enabled for all users/.test(selected) &&
+          relro.length === 2 && relro[0] > 0 && relro[0] === relro[1];
+        if (ready) break;
+        await sleep(500);
+      }
+      require(ready, 'Provider selection/RELRO readiness deadline exceeded');
+      const installed = run('shell', 'pm', 'path', candidate.package).trim();
+      require(/^package:\/data\/app\/[A-Za-z0-9_./+=~-]+\.apk$/.test(installed), 'Unexpected installed provider path');
+      require(run('shell', 'sha256sum', installed.slice(8)).trim().split(/\s+/)[0] === candidate.apkSha256, 'Installed provider bytes changed');
+      state.providerChecks ??= []; state.providerChecks.push({ label, path: installed, apkSha256: candidate.apkSha256 }); save();
+    };
+    await qualifyInstalledProvider('after-install');
+    // The temporary provider-free framework may leave SystemUI unhealthy.
+    // Finalize every successful replacement with exactly one clean full boot,
+    // never as a response to a failed install or a failed security admission.
+    safe(true);
+    const priorBootId = run('shell', 'cat', '/proc/sys/kernel/random/boot_id').trim();
+    require(/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/.test(priorBootId), 'Unknown provider boot identity');
+    state.status = 'finalizing-provider-boot'; state.providerBoot = { priorBootId, requested: true }; save();
+    run('reboot'); run('wait-for-device'); await boot(null, true); safe(true);
+    const bootId = run('shell', 'cat', '/proc/sys/kernel/random/boot_id').trim();
+    require(/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/.test(bootId) && bootId !== priorBootId, 'Provider full reboot was not observed');
+    state.providerBoot.bootId = bootId; save();
+    bootIdentity(true);
+    state.providerBoot.backingAlias = ensureScratchBackingAlias(run, () => safe(true)); save();
+    require(scratchBackingBytes(run, { requireDataBacking: true }) === 512 * 1024 * 1024, 'Provider boot lost authenticated data scratch');
+    run('shell', 'test', '!', '-e', stock);
+    await qualifyInstalledProvider('after-clean-boot');
+    state.providerDisplayObservations = [];
+    await requireFixtureDisplay(run, { env: environment, serial, sleep, record: observation => {
+      state.providerDisplayObservations.push(observation); save();
+    } });
+    const activity = run('shell', 'dumpsys', 'activity', 'activities');
+    state.providerBoot.anrPresent = activity.includes('Application Not Responding:');
+    state.providerBoot.anrLines = activity.split(/\r?\n/).filter(line => line.includes('Application Not Responding:')).slice(0, 8).map(line => line.slice(0, 512)); save();
+    require(!state.providerBoot.anrPresent, 'Application ANR remains after clean provider boot');
     state.status = 'PROVISIONED_RUNTIME_QUALIFICATION_PENDING'; save();
     // APKs are reproducible via pinned URL/hash; keep compact provenance in CI artifacts.
     fs.unlinkSync(archive); fs.unlinkSync(apk);
