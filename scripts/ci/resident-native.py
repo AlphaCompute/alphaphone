@@ -3,6 +3,7 @@
 import hashlib,json,os,re,signal,subprocess,sys,uuid,zipfile
 from pathlib import Path
 from resident_absence import assert_no_resident
+from resident_crash_diagnostics import collect_crashes
 assert os.environ.get('GITHUB_ACTIONS')=='true' and os.environ.get('ALPHA_RESIDENT_DISPOSABLE_CI')=='1'
 serial=os.environ['ANDROID_SERIAL'];assert re.fullmatch(r'emulator-[0-9]+',serial)
 archive=Path('test-results/resident-ci-archive');out=Path('test-results/resident-ci-native');out.mkdir(exist_ok=False)
@@ -123,6 +124,18 @@ for variant in ['standalone','launcher']:
       value=run('shell','run-as',APP,'--user',user,'cat','files/'+filename,timeout=10)
       if len(value.encode())<=65536:(out/(variant+'-'+phase+'-'+filename)).write_text(value)
      except Exception:pass
+    if primary is not None and phase=='lost-rpc':
+     try:
+      # The user and package were admitted above; recheck before reading crash metadata.
+      assert run('shell','am','get-current-user').strip()=='0'
+      assert 'UserInfo{'+user+':'+name+':' in run('shell','pm','list','users')
+      installed(APP,user,manifest[variant+'-debug.apk'])
+      uid_text=run('shell','cmd','package','list','packages','-U','--user',user,APP,timeout=5)
+      uid_match=re.search(r'^package:'+re.escape(APP)+r' uid:(\d+)$',uid_text,re.M);assert uid_match
+      diagnostic=collect_crashes(serial,int(uid_match[1]));diagnostic['runId']=runid
+      (out/(variant+'-'+phase+'-native-crash.json')).write_text(json.dumps(diagnostic,indent=2)+'\n')
+     except Exception as diagnostic_error:
+      (out/(variant+'-'+phase+'-native-crash.json')).write_text(json.dumps({'available':False,'errorType':type(diagnostic_error).__name__})+'\n')
     signal.signal(signal.SIGINT,signal.SIG_IGN);signal.signal(signal.SIGTERM,signal.SIG_IGN)
     try:
      assert run('shell','am','get-current-user').strip()=='0';assert 'UserInfo{'+user+':'+name+':' in run('shell','pm','list','users')
