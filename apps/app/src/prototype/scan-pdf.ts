@@ -1,12 +1,16 @@
+import {validateScanTextLayer,type ScanTextLine} from './scan-text-layer';
 import {registerPlugin} from '../platform-plugins';
 const documents=registerPlugin<{exportPdf(input:{title:string;dataBase64:string}):Promise<{status:string;message:string}>}>('AlphaNoteDocuments',{
  web:()=>import('../runtime/browser-note-documents').then(module=>new module.BrowserNoteDocuments()),
 });
-/** Image-only page: reviewed OCR corrections remain in the separate Notes draft. */
-export async function createScanPdf(input:Blob|Blob[],signal:AbortSignal):Promise<Uint8Array<ArrayBuffer>>{
+/** Images remain unchanged; optional reviewed line layers are invisible searchable text. */
+export async function createScanPdf(input:Blob|Blob[],signal:AbortSignal,textLayers?:ScanTextLine[][]):Promise<Uint8Array<ArrayBuffer>>{
  signal.throwIfAborted();const images=Array.isArray(input)?[...input]:[input];if(!images.length||images.length>20||images.reduce((total,image)=>total+image.size,0)>64*1024*1024)throw Error('Choose 1 to 20 pages, up to 64 MB total.');
- const {PDFDocument}=await import('pdf-lib');signal.throwIfAborted();const pdf=await PDFDocument.create();
- for(const image of images){signal.throwIfAborted();
+ const layers=textLayers?.map(lines=>{validateScanTextLayer(lines);return lines.map(line=>({...line}));});if(layers&&layers.length!==images.length)throw Error('Text review must match every document page.');
+ const {PDFDocument,StandardFonts,pushGraphicsState,popGraphicsState,setTextRenderingMode,TextRenderingMode,setCharacterSqueeze}=await import('pdf-lib');signal.throwIfAborted();const pdf=await PDFDocument.create();
+ const font=layers?await pdf.embedFont(StandardFonts.Helvetica):undefined;
+ if(font)for(const lines of layers!)for(const line of lines){try{font.encodeText(line.text);}catch{throw Error('Searchable PDF supports English and Western European text. Correct unsupported characters or export an image-only PDF.');}}
+ for(const [index,image] of images.entries()){signal.throwIfAborted();
  if(!['image/jpeg','image/png','image/webp'].includes(image.type)||!image.size||image.size>16*1024*1024)throw Error('Choose a supported image up to 16 MB.');
  const bitmap=await createImageBitmap(image);let jpeg:Blob;
  try{
@@ -19,12 +23,19 @@ export async function createScanPdf(input:Blob|Blob[],signal:AbortSignal):Promis
  const picture=await pdf.embedJpg(await jpeg.arrayBuffer());signal.throwIfAborted();
  const landscape=picture.width>picture.height;const page=pdf.addPage(landscape?[841.89,595.28]:[595.28,841.89]);const margin=24;
  const scale=Math.min((page.getWidth()-margin*2)/picture.width,(page.getHeight()-margin*2)/picture.height);
- const width=picture.width*scale,height=picture.height*scale;page.drawImage(picture,{x:(page.getWidth()-width)/2,y:(page.getHeight()-height)/2,width,height});}
+ const width=picture.width*scale,height=picture.height*scale;page.drawImage(picture,{x:(page.getWidth()-width)/2,y:(page.getHeight()-height)/2,width,height});
+ if(font)for(const line of layers![index]){signal.throwIfAborted();if(!line.text.trim())continue;
+  const size=line.height*height/font.heightAtSize(1,{descender:false}),natural=font.widthOfTextAtSize(line.text,size);
+  if(!natural)continue;
+  page.pushOperators(pushGraphicsState(),setTextRenderingMode(TextRenderingMode.Invisible),setCharacterSqueeze(line.width*width/natural*100));
+  page.drawText(line.text,{font,size,x:(page.getWidth()-width)/2+line.x*width,y:(page.getHeight()-height)/2+(1-line.y-line.height)*height});page.pushOperators(popGraphicsState());
+ }
+ }
  pdf.setTitle('Alpha scan');pdf.setCreator('Alpha Phone');
  const bytes=new Uint8Array(await pdf.save());signal.throwIfAborted();if(bytes.length>8*1024*1024)throw Error('PDF exceeds the 8 MB export limit.');return bytes;
 }
 export class ScanPdfExportError extends Error {}
-export async function exportScanPdf(image:Blob|Blob[],signal:AbortSignal,title:string){
- const bytes=await createScanPdf(image,signal);let raw='';for(let index=0;index<bytes.length;index+=16384)raw+=String.fromCharCode(...bytes.subarray(index,index+16384));
+export async function exportScanPdf(image:Blob|Blob[],signal:AbortSignal,title:string,textLayers?:ScanTextLine[][]){
+ const bytes=await createScanPdf(image,signal,textLayers);let raw='';for(let index=0;index<bytes.length;index+=16384)raw+=String.fromCharCode(...bytes.subarray(index,index+16384));
  signal.throwIfAborted();try{return await documents.exportPdf({title,dataBase64:btoa(raw)});}catch(error){throw new ScanPdfExportError('PDF export unconfirmed.',{cause:error});}
 }
