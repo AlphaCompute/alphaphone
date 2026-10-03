@@ -31,7 +31,7 @@
     "plugins/plugin-assistant/src/services/device-actions/contract.ts": "393330322566722efbcdd56acb2309422f9d68d2b8de3a46ff6fdbb5d113b897",
     "plugins/plugin-assistant/test/device-actions.e2e.test.ts": "8d7b58ba3c83dd582bcab7007136d74c367df947fcaed473893d1ea99a6b67a7",
     "plugins/plugin-assistant/src/services/device-actions/clock-contract.ts": "4a068849386f1e3f81391840c60ea74e0ad488b1102d4b6d8c8dc1bf1616cfaf",
-    "plugins/plugin-assistant/src/services/device-actions/action.ts": "07246fba9f15fc5990447b1269a76d2d3e7aae004a1848519dbaa72e92da7cb4",
+    "plugins/plugin-assistant/src/services/device-actions/action.ts": "d9dd211e95df0e93920d81ae33e8ff3cb895373df6de53aed30854bf10dabcc2",
     "plugins/plugin-assistant/src/services/device-actions/effect-receipts.ts": "52fcf108e42ac6c85f4f1b60b0eb5a18b956178c693528a92fedfdae4d69d4ca",
     "plugins/plugin-assistant/src/services/device-actions/service.ts": "be69887169ca0ae48a66deb80a26d2e8657a928a13b076406a60674984811f97",
     "packages/agent/src/api/device-action-routes.ts": "3aa113ad222b5d1b38aa776e24d6bde617d93a2729d419466fc9ef1f0ecdf03c",
@@ -64,7 +64,8 @@
     "standalone-kokoro-host.patch",
     "egress-credential-assignments.patch",
     "workflow-device-owner-binding.patch",
-    "calendar-tool-format-guidance.patch"
+    "calendar-tool-format-guidance.patch",
+    "device-operation-key-guidance.patch"
   ],
   "patchHashes": {
     "approved-workflows-navigation.patch": "2202d04675531633db4b1ce3a2e49e3e870c259c341acaf20b17bbef6be99c9a",
@@ -72,6 +73,7 @@
     "standalone-kokoro-host.patch": "ae87186fdd0c3ab6ebd2d67f2621495592b3462345955fd7d8a70226ca6f5396",
     "egress-credential-assignments.patch": "a365c56f114a60bbf061f7878f8ac65e73a1c7de2bc5f2fbb9414d70c6f0ae0d",
     "workflow-device-owner-binding.patch": "4c258a6da2ca1597c9933accecbba6451f844b73b0121f8261f7a12ceefed449",
-    "calendar-tool-format-guidance.patch": "64f38f9b7da7fe4773ce13bd1751a36accf494788f7fb1cd34878655218e43fe"
+    "calendar-tool-format-guidance.patch": "64f38f9b7da7fe4773ce13bd1751a36accf494788f7fb1cd34878655218e43fe",
+    "device-operation-key-guidance.patch": "78ff3fa0477fbd5f20a9fee1e288306ccacb15e87383d8b1ab7c87f190170902"
   }
 }
