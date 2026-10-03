@@ -6,7 +6,7 @@ test.beforeEach(async({page})=>{
   const paint=()=>{ctx.fillStyle='#ff0000';ctx.fillRect(0,0,320,240);ctx.fillStyle='#00ff00';ctx.fillRect(80,0,80,240);ctx.fillStyle='#0000ff';ctx.fillRect(160,0,80,240);};paint();setInterval(paint,50);
   const streams=(window as any).controlStreams=[] as MediaStream[],original=HTMLCanvasElement.prototype.captureStream;
   HTMLCanvasElement.prototype.captureStream=function(rate){const stream=original.call(this,rate);streams.push(stream);return stream;};
-  navigator.mediaDevices.getUserMedia=async()=>canvas.captureStream(20);
+  const devices=navigator.mediaDevices;devices.getUserMedia=async()=>canvas.captureStream(20);Object.defineProperty(navigator,'mediaDevices',{configurable:true,value:devices});
  });
  await page.goto('/');await page.getByRole('button',{name:'Camera',exact:true}).click();await expect.poll(()=>page.locator('[aria-label^="Viewfinder."] video').evaluate((v:HTMLVideoElement)=>v.readyState)).toBeGreaterThanOrEqual(2);
 });
@@ -25,7 +25,9 @@ test('digital zoom changes saved pixels and preserves front-camera mirroring',as
 test('encoded video and thumbnail use the zoomed crop and release the processing stream',async({page})=>{
  const result=await page.evaluate(async()=>{
   const {browserCamera:c,browserPhotoLibrary:p}=await import('/src/prototype/browser-camera.ts');await c.setZoom({zoom:2});await c.startRecording({audio:false,maxDuration:.5,maxFileSize:1000000});await new Promise(r=>setTimeout(r,750));await c.stopRecording();
-  const row=(await p.list()).items.find(r=>r.kind==='video')!,video=document.createElement('video');video.muted=true;video.src=row.path!;await video.play();
+  const row=(await p.list()).items.find(r=>r.kind==='video')!,video=document.createElement('video');video.muted=true;video.src=row.path!;
+  // A resolved play() is not evidence that a decoded frame has been presented.
+  const frame=new Promise<void>((resolve,reject)=>{const timer=setTimeout(()=>reject(Error('Recorded video did not present a frame')),5000);video.requestVideoFrameCallback(()=>{clearTimeout(timer);resolve();});});await video.play();await frame;
   const canvas=document.createElement('canvas');canvas.width=320;canvas.height=240;const ctx=canvas.getContext('2d')!;ctx.drawImage(video,0,0);const pixels=[20,300].map(x=>Array.from(ctx.getImageData(x,120,1,1).data).slice(0,3));video.pause();video.removeAttribute('src');video.load();
   const thumb=new Image();thumb.src=row.image;await thumb.decode();ctx.drawImage(thumb,0,0);const thumbnail=[20,300].map(x=>Array.from(ctx.getImageData(x,120,1,1).data).slice(0,3));
   await c.stopPreview();return {pixels,thumbnail,released:(window as any).controlStreams.every((s:MediaStream)=>s.getTracks().every(t=>t.readyState==='ended'))};

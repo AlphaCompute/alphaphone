@@ -70,7 +70,7 @@ async function simulate({ framework = 'ready', drift, neverBoot = false, neverRe
   const badging = `package: name='com.android.webview' versionCode='808300007' versionName='157.0.8083.0'\nsdkVersion:'29'\ntargetSdkVersion:'37'\nnative-code: 'x86_64'`;
   let finalBoot=false;
   let frameworkReads=0, pidReads=0, frameworkReady=false;
-  let scratch = '', backingAlias = '/dev/block/vdc', remounts = 0, reboots = 0;
+  let scratch = '', backingAlias = '/dev/block/vdc', remounts = 0, reboots = 0, probe = null, probeMarker = null, userReads = 0, restarted = false;
   const execute = (file, args, options) => {
     const name = path.basename(file);
     if (name === 'curl') { const fd = fs.openSync(args.at(-1), 'wx'); fs.ftruncateSync(fd, candidate.size); fs.closeSync(fd); return ''; }
@@ -87,10 +87,13 @@ async function simulate({ framework = 'ready', drift, neverBoot = false, neverRe
       if (offline-- > 0 || neverBoot || finalBoot&&drift==='final-never-boot' || (drift==='overlay-never-boot'&&reboots>1)) throw Error('device offline');
       return '1';
     }
+    if (key === 'shell cmd activity get-started-user-state 0') {
+      userReads++;return restarted && (drift==='user-never-ready' || (drift==='user-delayed' && userReads<3)) ? 'RUNNING_LOCKED' : 'RUNNING_UNLOCKED';
+    }
     if(finalBoot&&drift==='final-fingerprint'&&key==='shell getprop ro.build.fingerprint')return 'unreviewed-image';
     if(finalBoot&&drift==='final-alias'&&key==='shell readlink -f /dev/block/by-name/vdc')return '/dev/block/vdd';
     if(finalBoot&&drift==='final-topology'&&key==='shell cat /proc/bootconfig')return 'androidboot.boot_devices = "wrong"';
-    if(key==='shell cat /proc/sys/kernel/random/boot_id')return finalBoot&&drift!=='final-same-boot'?'22222222-2222-4222-8222-222222222222':'11111111-1111-4111-8111-111111111111';
+    if(key==='shell cat /proc/sys/kernel/random/boot_id')return finalBoot&&drift==='final-changed-boot'?'22222222-2222-4222-8222-222222222222':'11111111-1111-4111-8111-111111111111';
     if(key===`shell test ! -e ${stock}`){if(drift==='final-stock')throw Error('Stock provider returned');return '';}
     if(key==='shell dumpsys power')return 'mWakefulness=Awake';
     if(key==='shell dumpsys window policy')return `KeyguardServiceDelegate\nshowing=false\ninputRestricted=false\nsecure=${drift==='final-secure'}\nsystemIsReady=true\nbootCompleted=true\nscreenState=SCREEN_STATE_ON\nKeyguardStateMonitor\nmCurrentUserId=0\nmIsShowing=false\nmInputRestricted=false`;
@@ -103,16 +106,16 @@ async function simulate({ framework = 'ready', drift, neverBoot = false, neverRe
     if (key === 'shell pidof system_server') {
       pidReads++;
       if (removed && framework === 'rotating') return String(200 + pidReads % 2);
-      return removed && framework !== 'stale-server' ? '200' : '100';
+      return finalBoot && drift!=='final-stale-server' ? '300' : removed && framework !== 'stale-server' ? '200' : '100';
     }
     if (/^shell cat \/proc\/[0-9]+\/stat$/.test(key)) {
       assert.equal(rooted,true,'system_server stat must only run after authenticated adb root');
       const pid=a.at(-1).split('/')[2];
-      return `${pid} (system_server) S ${Array(18).fill('0').join(' ')} ${pid==='100'?'1000':'2000'} 0`;
+      return `${pid} (system_server) S ${Array(18).fill('0').join(' ')} ${pid==='100'?'1000':pid==='200'?'2000':'3000'} 0`;
     }
     if (key === 'shell dumpsys activity -a processes') {
       if(removed)frameworkReads++;
-      frameworkReady = !removed || framework !== 'never-ready' && (framework !== 'delayed' || frameworkReads >= 3);
+      frameworkReady = !(finalBoot&&drift==='final-not-ready') && (!removed || framework !== 'never-ready' && (framework !== 'delayed' || frameworkReads >= 3));
       const row=`  mProcessesReady=${frameworkReady} mSystemReady=${frameworkReady} mBooted=${frameworkReady} mFactoryTest=0`;
       if(removed&&framework==='missing-flags')return 'ACTIVITY MANAGER RUNNING PROCESSES';
       if(removed&&framework==='duplicate-flags')return row+'\n'+row;
@@ -127,7 +130,28 @@ async function simulate({ framework = 'ready', drift, neverBoot = false, neverRe
     if (key === 'shell cat /sys/dev/block/254:5/size' && drift==='overlay-size' && reboots>1)return '92280';
     if (key === 'shell cat /sys/dev/block/254:5/size') return drift === 'small-scratch' || drift === 'cached-scratch' ? '92280' : '1048576';
     if (key === 'shell getprop ro.build.fingerprint') return 'Android/sdk_phone64_x86_64/emu64x:15/AE3A.240806.019/12368160:userdebug/test-keys';
-    if (key === 'shell cat /proc/mounts') return '/dev/block/dm-43 /data ext4 rw 0 0';
+    if (key === 'shell cat /proc/mounts' || key === 'shell cat /proc/1/mounts') {
+      let mounts = '/dev/block/dm-43 /data ext4 rw 0 0';
+      if (drift?.startsWith('overlay-live')) {
+        const readOnly = drift === 'overlay-live-ro' || (drift === 'overlay-live-init-ro' && key.includes('/proc/1/'));
+        mounts += `\noverlay /product overlay ${readOnly?'ro':'rw'},lowerdir=/product,upperdir=/mnt/scratch/overlay/product/upper,workdir=/mnt/scratch/overlay/product/work 0 0\n/dev/block/dm-5 /mnt/scratch f2fs rw 0 0`;
+      }
+      return mounts;
+    }
+    if (key === 'shell cat /sys/class/block/dm-5/dm/name') return drift === 'overlay-live-wrong-backing' ? 'userdata' : 'scratch';
+    if (a[0] === 'shell' && a[1]?.startsWith('set -C; printf %s alpha-ci-overlay-')) {
+      const match = /^set -C; printf %s (alpha-ci-overlay-[0-9a-f-]{36}) > (\/product\/app\/webview\/\.alpha-ci-probe-[0-9a-f-]{36})$/.exec(a[1]);
+      assert.ok(match);assert.equal(probe,null);probeMarker=match[1];probe=match[2];return '';
+    }
+    if (a[0] === 'shell' && a[1] === 'test' && a.at(-1).startsWith('/product/app/webview/.alpha-ci-probe-')) {
+      assert.notEqual(probe,a.at(-1));return '';
+    }
+    if (a[0] === 'shell' && a[1] === 'cat' && a[2].startsWith('/product/app/webview/.alpha-ci-probe-')) {
+      assert.equal(a[2],probe);return drift === 'overlay-live-probe-mismatch' ? 'foreign' : probeMarker;
+    }
+    if (a[0] === 'shell' && a[1] === 'rm' && a[2].startsWith('/product/app/webview/.alpha-ci-probe-')) {
+      assert.equal(a[2],probe);if(drift === 'overlay-live-cleanup-failed')throw Error('probe cleanup failed');probe=null;return '';
+    }
     if (key === 'shell cat /sys/class/block/dm-43/dm/name') return 'userdata';
     if (key === 'shell ls -1 /sys/class/block/dm-43/slaves') return drift === 'backing-device' ? 'vdd' : 'vdc';
     if (key === 'shell cat /sys/class/block/vdc/dev') return '253:32';
@@ -148,16 +172,16 @@ async function simulate({ framework = 'ready', drift, neverBoot = false, neverRe
     if (key === 'remount' && drift === 'remount-failed') { const failure = new Error('remount failed'); failure.stderr = 'Failed to map scratch; make f2fs return=65280'; throw failure; }
     if (key === 'remount') {
       remounts++;
-      if (['overlay-reboot','overlay-repeat','overlay-identity','overlay-stock','overlay-size','overlay-alias','overlay-before-size','overlay-never-boot'].includes(drift) && (remounts===1||drift==='overlay-repeat'))return fs.readFileSync('test/fixtures/remount-52ab-overlay-reboot.txt','utf8');
+      if (drift?.startsWith('overlay-live') || (['overlay-reboot','overlay-repeat','overlay-identity','overlay-stock','overlay-size','overlay-alias','overlay-before-size','overlay-never-boot'].includes(drift) && (remounts===1||drift==='overlay-repeat')))return fs.readFileSync('test/fixtures/remount-52ab-overlay-reboot.txt','utf8');
       if(drift==='overlay-unknown')return 'Remount succeeded\nNow reboot your device for settings to take effect\nAnother reboot is required\n';
       return drift === 'remount' ? 'reboot required' : 'remount succeeded';
     }
     if (['root', 'wait-for-device', 'disable-verity'].includes(key)) return '';
     if (key === 'shell stop') { stopped = true; return ''; }
-    if (key === 'shell start') { stopped = false; return ''; }
+    if (key === 'shell start') { if(installed)finalBoot=true; stopped = false; restarted = true; userReads = 0; return ''; }
     if (key === `shell rm ${stock}`) { assert.equal(stopped, true); removed = true; return ''; }
     if (a[0] === 'pull') { fs.writeFileSync(a[2], 'stock'); return ''; }
-    if (a[0] === 'install') { assert.equal(frameworkReady, true, 'Framework must complete before install');if(framework==='install-fails')throw Error('recorded install failure');assert.equal(removed, true); assert.equal(stopped, false); installed = true; return 'Success'; }
+    if (a[0] === 'install') { if(drift==='user-delayed')assert.ok(userReads>=3); assert.equal(frameworkReady, true, 'Framework must complete before install');if(framework==='install-fails')throw Error('recorded install failure');assert.equal(removed, true); assert.equal(stopped, false); installed = true; return 'Success'; }
     if (key === 'shell cmd webviewupdate set-webview-implementation com.android.webview') return 'Success';
     if (key === 'shell dumpsys webviewupdate') {
       selectionReads++;
@@ -183,7 +207,7 @@ async function simulate({ framework = 'ready', drift, neverBoot = false, neverRe
       fileDigest: f => path.basename(f) === 'chromium.zip' ? candidate.archiveSha256 : path.basename(f) === 'SystemWebView.apk' ? candidate.apkSha256 : stockHash });
   } catch (caught) { error = caught; }
   const result = JSON.parse(fs.readFileSync(path.join(output, 'result.json')));
-  const diagnosticPath = path.join(output, 'provider-boot-storage-diagnostics.json');
+  const diagnosticPath = path.join(output, 'provider-restart-storage-diagnostics.json');
   const diagnostics = fs.existsSync(diagnosticPath) ? JSON.parse(fs.readFileSync(diagnosticPath)) : null;
   const superPath=path.join(output,'super-layout-before.json');
   const superLayout=fs.existsSync(superPath)?JSON.parse(fs.readFileSync(superPath)):null;
@@ -323,7 +347,7 @@ test('cached or undersized scratch never qualifies provider replacement', async 
 });
 
 test('one authenticated requested overlay activation reboot completes provider flow', async()=>{
- const r=await simulate({drift:'overlay-reboot'});assert.ifError(r.error);assert.equal(r.result.status,'PROVISIONED_RUNTIME_QUALIFICATION_PENDING');assert.equal(r.calls.filter(c=>c==='reboot').length,3);assert.equal(r.calls.filter(c=>c==='remount').length,2);assert.equal(r.result.scratchBackingAliases.length,3);assert.equal(r.result.scratchBytes,512*1024*1024);assert.equal(r.installed,true);
+ const r=await simulate({drift:'overlay-reboot'});assert.ifError(r.error);assert.equal(r.result.status,'PROVISIONED_RUNTIME_QUALIFICATION_PENDING');assert.equal(r.calls.filter(c=>c==='reboot').length,2);assert.equal(r.calls.filter(c=>c==='remount').length,2);assert.equal(r.result.scratchBackingAliases.length,3);assert.equal(r.result.scratchBytes,512*1024*1024);assert.equal(r.installed,true);
 });
 test('requested overlay reboot refuses repeat, unknown wording, changed identity, stock, backing and size',async()=>{
  for(const drift of ['overlay-repeat','overlay-unknown','overlay-identity','overlay-stock','overlay-size','overlay-alias','overlay-before-size','overlay-never-boot']){
@@ -333,7 +357,7 @@ test('requested overlay reboot refuses repeat, unknown wording, changed identity
 
 test('stderr-only remount transcript follows the bounded overlay reboot flow', async () => {
  const r=await simulate({drift:'overlay-reboot',remountChannel:'stderr'});assert.ifError(r.error);
- assert.equal(r.calls.filter(c=>c==='reboot').length,3);assert.equal(r.calls.filter(c=>c==='remount').length,2);
+ assert.equal(r.calls.filter(c=>c==='reboot').length,2);assert.equal(r.calls.filter(c=>c==='remount').length,2);
  assert.match(r.result.overlayRemountOutputs[0],/Now reboot your device/);assert.equal(r.result.scratchBytes,512*1024*1024);assert.equal(r.installed,true);
 });
 test('successful-looking remount stderr never overrides failed exit or termination', async () => {
@@ -341,6 +365,26 @@ test('successful-looking remount stderr never overrides failed exit or terminati
   const r=await simulate({remountChannel:'stderr',...option});assert.match(r.error.message,/remount failed/);assert.equal(r.removed,false);assert.equal(r.installed,false);
   const failed=r.result.commands.find(c=>!c.success&&c.args.at(-1)==='remount');assert.match(failed.stderr,/remount succeeded/);
  }
+});
+
+test('repeated emulator reboot advisory requires live overlay proof and removed write probe', async()=>{
+ const r=await simulate({drift:'overlay-live',remountChannel:'stderr'});assert.ifError(r.error);
+ assert.equal(r.calls.filter(c=>c==='reboot').length,2);assert.equal(r.calls.filter(c=>c==='remount').length,2);
+ assert.deepEqual(r.result.liveOverlayProof,{namespaces:['shell','init'],scratchBytes:512*1024*1024,writeProbeRemoved:true});
+ const removedProbe=r.calls.findIndex(c=>c.startsWith('shell rm /product/app/webview/.alpha-ci-probe-'));
+ assert.ok(removedProbe>0&&removedProbe<r.calls.indexOf('shell rm /product/app/webview/webview.apk'));
+ assert.equal(r.installed,true);
+});
+test('live overlay admission refuses namespace, backing and write-probe failures before provider removal', async()=>{
+ for(const drift of ['overlay-live-ro','overlay-live-init-ro','overlay-live-wrong-backing','overlay-live-probe-mismatch','overlay-live-cleanup-failed']){
+  const r=await simulate({drift});assert.ok(r.error,drift);assert.equal(r.removed,false,drift);assert.equal(r.installed,false,drift);
+ }
+});
+
+// Binder services and the old boot property can be visible before the restarted framework is usable.
+test('provider installation waits for the restarted primary user to be running unlocked',async()=>{
+ const delayed=await simulate({drift:'user-delayed'});assert.ifError(delayed.error);assert.equal(delayed.installed,true);
+ const unavailable=await simulate({drift:'user-never-ready'});assert.match(unavailable.error.message,/boot deadline/);assert.equal(unavailable.installed,false);
 });
 
 test('boot identity drift refuses before provider effects and never creates a late alias',async()=>{
@@ -382,33 +426,34 @@ test('postreboot root refusal is never replayed and never reaches privileged sta
  assert.ok(!after.some(call=>/^shell cat \/proc\/[0-9]+\/stat$/.test(call)));assert.ok(!after.some(call=>call.startsWith('install ')));
 });
 
-test('successful replacement is finalized by one planned full boot before qualification',async()=>{
+test('successful replacement requires a new framework generation without losing the kernel overlay',async()=>{
  const r=await simulate();assert.ifError(r.error);
  const installs=r.calls.map((v,i)=>v.startsWith('install ')?i:-1).filter(i=>i>=0);assert.equal(installs.length,1);
- const reboots=r.calls.map((v,i)=>v==='reboot'?i:-1).filter(i=>i>=0);assert.equal(reboots.length,2);assert.ok(reboots[1]>installs[0]);
- assert.deepEqual(r.result.providerChecks.map(c=>c.label),['after-install','after-clean-boot']);
- assert.notEqual(r.result.providerBoot.priorBootId,r.result.providerBoot.bootId);
+ const reboots=r.calls.map((v,i)=>v==='reboot'?i:-1).filter(i=>i>=0);assert.equal(reboots.length,1);assert.ok(reboots[0]<installs[0]);
+ const finalStart=r.calls.lastIndexOf('shell start');assert.ok(finalStart>installs[0]);assert.equal(r.calls.filter(c=>c==='shell stop').length,2);assert.notDeepEqual(r.result.providerRestart.previousServer,r.result.providerRestart.server);
+ assert.deepEqual(r.result.providerChecks.map(c=>c.label),['after-install','after-framework-restart']);
+ assert.equal(r.result.providerRestart.priorBootId,r.result.providerRestart.bootId);
  assert.equal(r.result.providerDisplayObservations.length,2);assert.ok(r.result.providerDisplayObservations.every(o=>o.secure===false&&o.unlocked));
- assert.ok(!r.calls.slice(reboots[1]+1).some(c=>/^(install |reboot$|shell (rm |locksettings |input |wm dismiss))/.test(c)));
+ assert.ok(!r.calls.slice(finalStart+1).some(c=>/^(install |reboot$|shell (rm |locksettings |input |wm dismiss))/.test(c)));
 });
-test('postreplacement boot refuses identity, provenance, readiness, secure state and ANR without replay',async()=>{
- for(const drift of ['final-never-boot','final-same-boot','final-identity','final-stock','final-fingerprint','final-alias','final-topology','final-bytes','final-scratch','final-relro','final-secure','final-anr']){
-  const r=await simulate({drift});assert.ok(r.error,drift);assert.equal(r.result.status,'FAIL');assert.equal(r.calls.filter(c=>c.startsWith('install ')).length,1);assert.equal(r.calls.filter(c=>c==='reboot').length,2);
+test('postreplacement framework restart refuses identity, provenance, readiness, secure state and ANR without replay',async()=>{
+ for(const drift of ['final-never-boot','final-changed-boot','final-stale-server','final-not-ready','final-identity','final-stock','final-fingerprint','final-alias','final-topology','final-bytes','final-scratch','final-relro','final-secure','final-anr']){
+  const r=await simulate({drift});assert.ok(r.error,drift);assert.equal(r.result.status,'FAIL');assert.equal(r.calls.filter(c=>c.startsWith('install ')).length,1);assert.equal(r.calls.filter(c=>c==='reboot').length,1);
   if(drift==='final-secure')assert.match(r.error.message,/not observed awake/);
   if(drift==='final-anr')assert.match(r.error.message,/ANR remains/);
  }
 });
 
-test('missing final-boot scratch retains bounded storage evidence and refuses without later mutations', async () => {
+test('missing postrestart scratch retains bounded storage evidence and refuses without later mutations', async () => {
  const r=await simulate({drift:'final-missing-scratch'});
- assert.match(r.error.message,/Provider boot lost authenticated data scratch/);
- assert.equal(r.result.providerBoot.scratchBytes,null);
+ assert.match(r.error.message,/Provider restart lost authenticated data scratch/);
+ assert.equal(r.result.providerRestart.scratchBytes,null);
  assert.match(r.diagnostics.guest.deviceMapperNames,/userdata : 254:42/);
  for(const key of ['superPartition','superAlias','superLabels','superUevent','superSlot0','superSlot1','vendorBlockContexts','mounts','scratchMetadata','userspaceStorageLog','capacity','stockStat','providerPath','providerState','kernel'])assert.ok(Object.hasOwn(r.diagnostics.guest,key),key);
  assert.equal(r.diagnostics.budgetMilliseconds,20000);
  assert.equal(r.calls.filter(c=>c.startsWith('install ')).length,1);
- const finalReboot=r.calls.lastIndexOf('reboot');
- assert.equal(r.calls.filter(c=>c==='reboot').length,2);
+ const finalReboot=r.calls.lastIndexOf('shell start');
+ assert.equal(r.calls.filter(c=>c==='reboot').length,1);
  assert.ok(!r.calls.slice(finalReboot+1).some(c=>/^(install |reboot$|remount$|shell (rm |setprop |stop$|start$|input |locksettings |wm dismiss))/.test(c)));
  assert.deepEqual(r.result.providerChecks.map(c=>c.label),['after-install']);
 });
@@ -420,5 +465,5 @@ test('super layout is read before any remount without adding install or reboot',
  assert.ok(r.calls.indexOf('shell lpdump --slot=0 /dev/block/by-name/super')<r.calls.indexOf('remount'));
  assert.ok(r.calls.indexOf('shell lpdump --slot=1 /dev/block/by-name/super')<r.calls.indexOf('remount'));
  assert.equal(r.calls.filter(c=>c.startsWith('install ')).length,1);
- assert.equal(r.calls.filter(c=>c==='reboot').length,2);
+ assert.equal(r.calls.filter(c=>c==='reboot').length,1);
 });

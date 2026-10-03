@@ -6,7 +6,7 @@ import {installSimulatedVoicemail} from './simulated-voicemail';
 import {SimulatorWriter} from './simulator-writer';
 import {installSimulatedInbox} from './simulated-inbox';
 import {loadSimulatedState,simulatorNeedsRecovery,showSimulatorRecovery} from './simulator-recovery';
-import { browserDevProfile } from './dev-profile';
+import { browserDevProfile,developmentAgentWorkflows } from './dev-profile';
 type Bag=Record<string,any>;
 const names=['phone','messages','contacts','inbox','workflows','wallet'];
 /** Capture product-owned local interactions before native adapters replace effects. */
@@ -21,7 +21,7 @@ export function installSimulatedApps(Component:any,views:Bag,original:Bag){
  for(const name of names){Object.assign(views[name],original[name]);views[name].state={...views[name].state,...loadSimulatedState(name,original[name],raw=>snapshots.set('alpha.dev.app.'+name,raw))};}
  const writer=new SimulatorWriter(snapshots);
  installSimulatedInbox(views.inbox);
- const disposeWorkflows=installSimulatedWorkflows(views.workflows);
+ const disposeWorkflows=developmentAgentWorkflows?Object.assign(()=>{},{connect:()=>{}}):installSimulatedWorkflows(views.workflows);
  const disposeMessages=installSimulatedMessages(views.messages);
  const disposeVoicemail=installSimulatedVoicemail(views.phone);
  const walletRender=views.wallet.render,walletReply=views.wallet.reply;

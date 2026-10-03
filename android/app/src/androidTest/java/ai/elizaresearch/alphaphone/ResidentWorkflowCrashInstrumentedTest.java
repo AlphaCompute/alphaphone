@@ -22,6 +22,7 @@ public final class ResidentWorkflowCrashInstrumentedTest {
  private Context context;
  private JSONObject fixture;
  private JSONObject readinessTimeoutDiagnostic;
+ private JSONObject apiFailureDiagnostic;
 
  private static String hash(byte[] bytes)throws Exception {StringBuilder value=new StringBuilder();for(byte b:MessageDigest.getInstance("SHA-256").digest(bytes))value.append(String.format(Locale.ROOT,"%02x",b&255));return value.toString();}
  private static byte[] bounded(InputStream input,int max)throws Exception {ByteArrayOutputStream out=new ByteArrayOutputStream();byte[] buf=new byte[8192];int n;while((n=input.read(buf))!=-1){assertTrue("Input exceeds bound",out.size()+n<=max);out.write(buf,0,n);}return out.toByteArray();}
@@ -31,13 +32,18 @@ public final class ResidentWorkflowCrashInstrumentedTest {
   StringBuilder value=new StringBuilder();for(byte b:digest.digest())value.append(String.format(Locale.ROOT,"%02x",b&255));return value.toString();
  }
  private static String fileHash(File file)throws Exception {try(InputStream in=new FileInputStream(file)){MessageDigest digest=MessageDigest.getInstance("SHA-256");byte[] buf=new byte[65536];int n;while((n=in.read(buf))!=-1)digest.update(buf,0,n);StringBuilder s=new StringBuilder();for(byte b:digest.digest())s.append(String.format(Locale.ROOT,"%02x",b&255));return s.toString();}}
- private String ownerBearer;
+ private String ownerBearer, ownerIdentityId;
  private JSONObject nativeCall(String path,String method,JSONObject body,String bearer)throws Exception {
   JSONObject headers=new JSONObject();if(bearer!=null)headers.put("Authorization","Bearer "+bearer);
   JSONObject args=new JSONObject().put("path",path).put("method",method).put("headers",headers).put("timeoutMs",path.startsWith("/api/auth/")?10000:120000);
   if(body!=null)args.put("body",body.toString());
   JSONObject result=new JSONObject(ElizaAgentService.requestLocalAgent(args.toString()));
-  if(result.getInt("status")<200||result.getInt("status")>=300)throw new IOException("Resident API status "+result.getInt("status"));return new JSONObject(result.getString("body"));
+  if(result.getInt("status")<200||result.getInt("status")>=300){
+   String category="unrecognized";
+   try{String error=new JSONObject(result.getString("body")).optString("error","");if("Not found".equals(error))category="route-not-found";else if(error.startsWith("Workflow not found"))category="workflow-record-not-found";else if("Workflow route not found".equals(error))category="workflow-route-not-found";else if("Workflow service is unavailable".equals(error)||"Workflow runtime is unavailable".equals(error))category="workflow-service-unavailable";}catch(JSONException malformed){category="non-json-error";}
+   apiFailureDiagnostic=new JSONObject().put("status",result.getInt("status")).put("method",method).put("route","/api/workflow/workflows".equals(path)?"workflow-collection":"other").put("category",category);
+   throw new IOException("Resident API status "+result.getInt("status")+" ("+category+")");
+  }return new JSONObject(result.getString("body"));
  }
  private JSONObject request(String path,JSONObject body)throws Exception {return nativeCall(path,body==null?"GET":"POST",body,ownerBearer);}
  private static String safeBootReason(String reason) {
@@ -47,6 +53,12 @@ public final class ResidentWorkflowCrashInstrumentedTest {
   if(reason.startsWith("agent exited:"))return "agent-exited";
   if(reason.startsWith("agent startup blocked:"))return "agent-startup-blocked";
   return "unrecognized";
+ }
+ private static String safeIpcRefusal(String reason) {
+  String prefix="IPC recovery required: ";
+  if(!reason.startsWith(prefix))return "unrecognized";
+  String label=reason.substring(prefix.length());
+  return Arrays.asList("IPC directory alias","IPC directory replaced","IPC entries changed","IPC entry replaced","ambiguous authenticated worker owner","another same-UID process is alive; preserve it","another startup supervisor owns the lock","current process UID mismatch","current process absent","current process changed during inventory","incomplete native worker journal","incomplete or oversized worker maps","incomplete process inventory","incomplete resident argv","incomplete resident stop inventory","invalid mapped Bun address range","invalid mapped Bun device","invalid process identity","invalid worker endpoint","invalid worker executable","invalid worker generation","malformed worker maps","malformed worker process","mapped Bun changed after challenge","mapped Bun file identity differs","mapped Bun path alias","mapped Bun was deleted","missing process start time","missing worker start time","multiple resident processes; preserve all","oversized IPC metadata","oversized process identity","packaged Bun changed during observation","packaged Bun exceeds bound","packaged Bun executable mapping absent","process identity changed","resident PID changed after signal","resident changed before signal","resident deployment alias","resident stop inventory deadline","resident stop unconfirmed; preserve processes","same-UID process identity changed","same-UID process inventory changed","supervisor lock changed","supervisor lock changed before publication","supervisor lock lost","supervisor lock replaced","too many active worker journals","too many same-UID processes","unexpected IPC entry","unreadable IPC directory","unreadable app directory","unreadable process argv","unregistered same-UID process; preserve it","untrusted owner/type/mode","untrusted packaged Bun file","untrusted process executable","untrusted recovery publication directory","untrusted worker journal","untrusted workflow state directory","worker PID/start identity differs","worker deployment differs","worker endpoint changed","worker executable identity differs","worker executable/source exceeds bound","worker inventory deadline","worker journal changed","worker journal changed before challenge","worker journal too large","worker lease challenge differs","worker lease deadline","worker lease did not reply","worker maps exceeds bound","worker metadata exceeds bound","worker path alias","worker peer identity differs","worker process changed","worker process changed after challenge","worker response exceeds bound","worker run scope differs","worker source changed","worker source hash differs","worker source scope differs","workflow inventory unavailable","workflow journal inventory exceeds bound","writable executable Bun mapping").contains(label)?label:"unrecognized";
  }
  private void captureReadinessTimeout(long started,AssertionError primary) {
   try {
@@ -58,6 +70,17 @@ public final class ResidentWorkflowCrashInstrumentedTest {
    for(String key:new String[]{"socketListening","serviceActive"})if(boot.opt(key) instanceof Boolean)safe.put(key,boot.getBoolean(key));
    Object age=boot.opt("ageMs");if((age instanceof Long||age instanceof Integer)&&((Number)age).longValue()>=0)safe.put("ageMs",((Number)age).longValue());
    safe.put("bootSnapshotAvailable",true);
+   // Export only known structural refusal labels, never arbitrary log details.
+   File journal=new File(context.getFilesDir(),"agent/agent-restart-diagnostics.jsonl");
+   if(journal.isFile()&&journal.length()<=1048576){
+    String latest=null;
+    try(InputStream input=new FileInputStream(journal)){
+     for(String line:new String(bounded(input,1048576),StandardCharsets.UTF_8).split("\\n")){
+      try{JSONObject event=new JSONObject(line);if("ipc-recovery-required".equals(event.optString("event")))latest=event.optJSONObject("details")==null?null:event.getJSONObject("details").optString("reason","");}catch(JSONException incomplete){/* Partial final journal line is not evidence. */}
+     }
+    }
+    if(latest!=null)safe.put("ipcRefusal",safeIpcRefusal(latest));
+   }
   } catch(Throwable unavailable) {
    // Diagnostic collection must not replace the original readiness assertion.
    primary.addSuppressed(new AssertionError("Sanitized readiness snapshot unavailable"));
@@ -82,8 +105,16 @@ public final class ResidentWorkflowCrashInstrumentedTest {
    // The real start below remains responsible for enforcing the production policy.
   }
  }
+ /** Auth listening does not prove optional workflow routes have been registered. */
+ private void awaitWorkflowRoutes(long deadline)throws Exception {
+  while(SystemClock.elapsedRealtime()<deadline){
+   try{request("/api/workflow/workflows",null).getJSONArray("workflows");apiFailureDiagnostic=null;return;}
+   catch(IOException unavailable){int status=apiFailureDiagnostic==null?0:apiFailureDiagnostic.optInt("status");if(status!=404&&status!=503)throw unavailable;}
+   SystemClock.sleep(250);
+  }
+  throw new AssertionError("Workflow read-only readiness deadline; creation was not attempted");
+ }
  private void startAndEnroll()throws Exception {
-  ownerBearer=null;
   assertTrue(context.getSharedPreferences("CapacitorStorage",Context.MODE_PRIVATE).edit().putString("eliza:mobile-runtime-mode","cloud-hybrid").commit());
   reportRamAdmission();
   ElizaAgentService.start(context);
@@ -93,9 +124,8 @@ public final class ResidentWorkflowCrashInstrumentedTest {
    try {
     root=ElizaAgentService.localAgentToken(context);
     if(root!=null&&!root.isEmpty()){
-     status=nativeCall("/api/auth/status","GET",null,root);
-     // Status is public: an instance ID alone does not authenticate this boot token.
-     // Re-read the native token to reject a rotation while the probe was in flight.
+     status=nativeCall("/api/auth/status","GET",null,ownerBearer==null?root:ownerBearer);
+     // Authenticate the current boot, retaining the already paired owner on restart.
      if(Boolean.TRUE.equals(status.opt("authenticated"))&&root.equals(ElizaAgentService.localAgentToken(context))){status.getString("instanceId");break;}
      status=null;
     }
@@ -103,13 +133,23 @@ public final class ResidentWorkflowCrashInstrumentedTest {
    SystemClock.sleep(250);
   }
   if(status==null){AssertionError failure=new AssertionError("Resident service readiness deadline; inspect OS FGS admission and boot diagnostics, do not retry blindly");captureReadinessTimeout(started,failure);throw failure;}
+  // Restart preserves the owner session. A bootstrap bearer cannot mint another
+  // owner session after the first owner has claimed the runtime.
+  if(ownerBearer!=null){
+   JSONObject who=request("/api/auth/me",null);
+   assertTrue("Restarted native session must match",ownerBearer.equals(who.getJSONObject("session").getString("id")));
+   assertEquals(ownerIdentityId,who.getJSONObject("identity").getString("id"));
+   assertEquals("owner",who.getJSONObject("identity").getString("kind"));
+   awaitWorkflowRoutes(deadline);return;
+  }
   // Pair-code issuance and pairing are deliberately outside readiness polling: never replay an ambiguous enrollment.
   JSONObject code=nativeCall("/api/auth/pair-code","GET",null,root);
   JSONObject paired=nativeCall("/api/auth/pair","POST",new JSONObject().put("code",code.getString("code")).put("instanceId",status.getString("instanceId")),root);
   assertEquals("owner",paired.getString("access"));assertEquals(status.getString("instanceId"),paired.getString("instanceId"));
-  ownerBearer=paired.getString("token");JSONObject who=request("/api/auth/me",null);
+  ownerBearer=paired.getString("token");ownerIdentityId=paired.getString("identityId");JSONObject who=request("/api/auth/me",null);
   assertTrue("Paired native session must match",ownerBearer.equals(who.getJSONObject("session").getString("id")));
   assertEquals(paired.getString("identityId"),who.getJSONObject("identity").getString("id"));
+  awaitWorkflowRoutes(deadline);
  }
 
  private JSONObject nativeGet(String path,String bearer)throws Exception {
@@ -187,8 +227,14 @@ public final class ResidentWorkflowCrashInstrumentedTest {
   for(String key:new String[]{"events","output","approvals"}){JSONArray items=value.optJSONArray(key);if(items!=null)safe.put(key+"Count",items.length());}
   JSONObject error=value.optJSONObject("error");safe.put("errorPresent",error!=null);
   if(error!=null){String message=error.optString("message","");String category="unclassified";
-   for(String known:new String[]{"Workflow source digest mismatch","Default export is not a Smithers workflow","Workflow source publication identity mismatch","Workflow device dispatcher unavailable","Parent unavailable; model request not sent"})if(known.equals(message)){category=known;break;}
+   for(String known:new String[]{"Smithers worker exited without a result","Workflow source digest mismatch","Default export is not a Smithers workflow","Workflow source publication identity mismatch","Workflow device dispatcher unavailable","Parent unavailable; model request not sent"})if(known.equals(message)){category=known;break;}
    safe.put("errorCategory",category);
+   JSONObject termination=error.optJSONObject("workerTermination");
+   if(termination!=null){Object code=termination.opt("exitCode"),signal=termination.opt("signal");JSONObject fixed=new JSONObject();
+    fixed.put("exitCode",(code instanceof Integer||code instanceof Long)&&((Number)code).longValue()>=0&&((Number)code).longValue()<=255?code:JSONObject.NULL);
+    fixed.put("signal",signal==JSONObject.NULL?JSONObject.NULL:signal instanceof String&&Arrays.asList("SIGHUP","SIGINT","SIGQUIT","SIGILL","SIGTRAP","SIGABRT","SIGBUS","SIGFPE","SIGKILL","SIGSEGV","SIGPIPE","SIGALRM","SIGTERM","SIGSYS","SIGXCPU","SIGXFSZ").contains(signal)?signal:"unrecognized");
+    safe.put("workerTermination",fixed);
+   }
   }
   return safe;
  }
@@ -318,10 +364,10 @@ public final class ResidentWorkflowCrashInstrumentedTest {
    finally {
     try {if(!rpc)releaseLocal(false);model.release.countDown();if(submitted&&worker==null)throw new IOException("Submitted worker identity unobserved; preserve for disposable-user teardown");boolean workerGone=worker==null;long end=SystemClock.elapsedRealtime()+20000;while(!workerGone&&SystemClock.elapsedRealtime()<end){try{workerGone=!worker.key().equals(WorkflowSurvivorInventory.processIdentity(worker.pid).key());}catch(Exception gone){workerGone=!new File("/proc/"+worker.pid).exists();}if(!workerGone)SystemClock.sleep(100);}if(!workerGone)throw new IOException("Owned worker remains alive; preserve for disposable-user teardown");ElizaAgentService.stop(context);stopped(resident);proof.put("cleanupComplete",true);}
     catch(Throwable cleanup){if(failure==null)failure=cleanup;else failure.addSuppressed(cleanup);proof.put("cleanupFailed",true);}
-    finally {hook.set(null,null);ownerBearer=null;}
+    finally {hook.set(null,null);ownerBearer=null;ownerIdentityId=null;}
    }
   } catch(Throwable outer){if(failure==null)failure=outer;else failure.addSuppressed(outer);}
-  proof.put("passed",failure==null&&proof.optBoolean("passed"));try{if(readinessTimeoutDiagnostic!=null)proof.put("readinessTimeoutDiagnostic",readinessTimeoutDiagnostic);write(new File(context.getFilesDir(),"resident-recovery-complete.json"),proof.toString());}catch(Throwable outputFailure){if(failure==null)failure=outputFailure;else failure.addSuppressed(outputFailure);}if(failure!=null)throw failure;
+  proof.put("passed",failure==null&&proof.optBoolean("passed"));try{if(readinessTimeoutDiagnostic!=null)proof.put("readinessTimeoutDiagnostic",readinessTimeoutDiagnostic);if(apiFailureDiagnostic!=null)proof.put("apiFailureDiagnostic",apiFailureDiagnostic);write(new File(context.getFilesDir(),"resident-recovery-complete.json"),proof.toString());}catch(Throwable outputFailure){if(failure==null)failure=outputFailure;else failure.addSuppressed(outputFailure);}if(failure!=null)throw failure;
  }
  @Test public void trustedPackagedWorkerSurvivesResidentRestart()throws Throwable {
   Assume.assumeTrue("Explicit trusted worker fixture", "1".equals(InstrumentationRegistry.getArguments().getString("residentCrash")));
@@ -352,8 +398,8 @@ public final class ResidentWorkflowCrashInstrumentedTest {
     ElizaAgentService.stop(context);stopped(resident);resident=null;startAndEnroll();resident=ownedChild();JSONObject replay=trusted.replay();assertEquals(output,replay.getJSONArray("output").toString());assertEquals(0,replay.getInt("calls"));assertEquals(1,model.calls.get());assertNull(model.failure);
     proof.put("firstProcess",original).put("secondProcess",replacement).put("finalProcess",resident).put("oldIpcPreserved",retained).put("workflowVersionId","trusted-v1").put("executionId",trusted.runId).put("sourceSha256",hash(module.getBytes(StandardCharsets.UTF_8))).put("workerPid",worker.pid).put("workerStartTicks",worker.start).put("modelRequests",1).put("canonicalOutput",result.getJSONArray("output")).put("workerIndexSha256",fixture.getString("workerIndexSha256")).put("workerManifestSha256",fixture.getString("workerManifestSha256")).put("compilerManifestSha256",fixture.getString("compilerManifestSha256")).put("freshCanonicalReplay",true).put("passed",true);
    }catch(Throwable error){failure=error;}
-   finally{try{model.release.countDown();if(trusted!=null){if(trusted.process.isAlive())trusted.finish();trusted.close();}ElizaAgentService.stop(context);stopped(resident);proof.put("cleanupComplete",true);}catch(Throwable cleanup){if(failure==null)failure=cleanup;else failure.addSuppressed(cleanup);proof.put("cleanupFailed",true);}finally{hook.set(null,null);ownerBearer=null;}}
+   finally{try{model.release.countDown();if(trusted!=null){if(trusted.process.isAlive())trusted.finish();trusted.close();}ElizaAgentService.stop(context);stopped(resident);proof.put("cleanupComplete",true);}catch(Throwable cleanup){if(failure==null)failure=cleanup;else failure.addSuppressed(cleanup);proof.put("cleanupFailed",true);}finally{hook.set(null,null);ownerBearer=null;ownerIdentityId=null;}}
   }catch(Throwable outer){if(failure==null)failure=outer;else failure.addSuppressed(outer);}
-  proof.put("passed",failure==null&&proof.optBoolean("passed"));try{if(readinessTimeoutDiagnostic!=null)proof.put("readinessTimeoutDiagnostic",readinessTimeoutDiagnostic);write(new File(context.getFilesDir(),"resident-recovery-complete.json"),proof.toString());}catch(Throwable outputFailure){if(failure==null)failure=outputFailure;else failure.addSuppressed(outputFailure);}if(failure!=null)throw failure;
+  proof.put("passed",failure==null&&proof.optBoolean("passed"));try{if(readinessTimeoutDiagnostic!=null)proof.put("readinessTimeoutDiagnostic",readinessTimeoutDiagnostic);if(apiFailureDiagnostic!=null)proof.put("apiFailureDiagnostic",apiFailureDiagnostic);write(new File(context.getFilesDir(),"resident-recovery-complete.json"),proof.toString());}catch(Throwable outputFailure){if(failure==null)failure=outputFailure;else failure.addSuppressed(outputFailure);}if(failure!=null)throw failure;
  }
 }

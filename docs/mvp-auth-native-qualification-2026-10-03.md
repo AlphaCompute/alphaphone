@@ -1,5 +1,20 @@
 # Cloud recovery and native qualification follow-up
 
+## Composed MVP follow-up — October 3
+
+The candidate combines root `512f0a149fc0b42cf4c3161597296367b0db6286` with reviewed product stack `f06e80dd026348305f4e2c6a11ea2cbd17312a25`. It retains the Email owner fence, native recovery campaigns, provider admission checks and explicit source-patch ownership. The pre-follow-up composition passes 211 repository checks, TypeScript/production build, both Android distributions, lint and all six APK inspections. All 3,876 source identities remain unchanged during those checks. Thirty-four targeted rendered flows pass across workflow generation, presentation approval, Home layout, development connections and Email ownership/recovery.
+
+A follow-up fixes the development connection's missing reminder-v2 negotiation: only the explicitly selected browser development profile advertises its implemented v2 capability. Real peers continue to negotiate capability. Twenty rendered flows pass, including no-alert creation/completion, approval-before-effect, reload without replay and rejection of a v2 proposal from an older peer. Evidence: `test-results/mvp-f06-integration/` and the negative-control packet `test-results/dev-reminder-v2-f06/`.
+
+The resident workflow still exits before issuing its expected model request after the Android publication repair. A new explicit upstream patch retains only numeric exit status and an allowlisted signal for missing-result errors, carries that fixed metadata into the canonical failed execution, and projects it safely into native qualification evidence. Real subprocess checks cover exit 7, SIGTERM, empty exit 0 and a valid terminal result; actual Java projection checks exclude arbitrary values. This improves diagnosis; it does not prove or repair the Android worker failure. Packet: `test-results/worker-termination-f06/`. The final composition passes all 217 repository checks, TypeScript/production build, both Android distributions, lint and six APK inspections, with all 3,878 source identities unchanged. Thirty-eight final composed rendered flows pass (59.4 seconds), covering reminder-v2 negotiation and resident/development speech ownership. All 54 effective runtime source hashes match the declared manifest after fresh source preparation. Evidence: `test-results/mvp-f06-final/`.
+
+The narrowly adapted resident-voice ownership change from upstream product commit `89b8b3e` preserves the newer shared driver's terminal-event and playback-admission protections. It cancels only its own playback request, validates device/browser execution and rejects stale selections before synthesis or play. Sixteen owning checks and 21 rendered flows pass in the isolated review packet; this is not physical speech or microphone acceptance. Packet: `test-results/resident-voice-f06/`.
+
+Both exact `512f0a` hosted browser campaigns are terminal success: [push](https://github.com/AlphaCompute/alphaphone/actions/runs/37112452678) and [PR](https://github.com/AlphaCompute/alphaphone/actions/runs/37112456662) each report 1,034 passed, zero failed and four explicit recording/real-agent skips. The PR merge checkout `d619584e8395b35d09e205e6a397caf3d6b689b1` and push checkout share tree `810752cef541c7fefdc03e961df11bed492f359c`. These results qualify the preceding published revision, not the new composition. Evidence: `test-results/browser-512f-monitor/`.
+
+Visible Pixel emulator testing remains unavailable while Computer Use reports the Mac locked. APK compilation, rendered browser flows, provider fixture qualification, installed resident execution, live providers, signed AOSP/OTA and physical-user acceptance remain separate gates. None of the checks above qualifies the remaining gates.
+
+
 ## Email account-switch repair
 
 A rendered negative control reproduced an old account's saved Gmail draft being persisted into the newly selected owner's local draft slot. The provider draft read used an independent signal and resumed through mutable editor/operation state after the account changed. The repair captures the owning operation and session, aborts the owned draft read on reset, and checks ownership after each asynchronous continuation. Delete/undo follow-ups and receipt clearing use the same captured operation so they cannot prepare against or dismiss the replacement account's receipt. No provider send is performed by these tests.
@@ -11,6 +26,12 @@ Exact c5 provider-only [run37111858541](https://github.com/AlphaCompute/alphapho
 ## Requirement source refresh
 
 October3 read-only Google Drive retrieval rechecked the [Definition of Done](https://docs.google.com/document/d/1Vus6AZ0V-nBsxDDYnD0wqLLhNX6FBNWZS-VI9gWGV8g/) and [biweekly notes](https://docs.google.com/document/d/1Wgz0wWZh_nvICFzmxPpPa2_H-pvHLAF12FZriMQXf_I/), including each document's `t.0` tab, inline suggestions, and all18/5 comment threads. Pending Pixel, hosting/TEE and offline-inference suggestions are not accepted document edits; the user's subsequent Pixel/resident instructions govern current implementation. Messaging inclusion and proposed deferral still conflict in the notes, so Email remains retained. Comment proposals for a three-minute demo and subsecond latency do not replace the written five-minute and six-second checklist. Exact source snapshots and indexed mapping are retained in `test-results/browser-b0fdd-monitor/{definition-of-done,biweekly}.json` and `source-review.txt`.
+
+## Reviewed integration follow-up
+
+The reviewed integration retains the framework-only restart repair. Exact `139eaa64e5d6778d7e82f27c4bbe204dde71ccbf` [provider-only run 37110967622](https://github.com/AlphaCompute/alphaphone/actions/runs/37110967622) passed: system_server changed, the kernel boot identity remained unchanged, the authenticated 512 MiB scratch and installed provider hash survived, and two display observations were awake and unlocked without an ANR. This establishes provider setup only; full app/native acceptance is still pending.
+
+The subsequent diagnostic integration passes 204 repository tests, TypeScript/web verification, and both Android distributions. The production diagnostic projection was exercised with sensitive sentinel values to verify that raw errors, output and event contents are excluded. Exact `be50d6df5c64898e39ffd2fc04b6596d5c469959` native evidence now reaches worker execution beyond the old source-publication failure, but records zero model requests and “Smithers worker exited without a result.” Its cause remains unresolved; no worker recovery pass is claimed.
 
 ## Hosted follow-up: provider reboot and resident execution
 

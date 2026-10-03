@@ -33,16 +33,16 @@ public final class BrowserDialogLifecycleInstrumentedTest {
  }
  @Test public void nativeDownloadsDialogRetiresOnReloadAndMockEntry()throws Exception{
   try(BoundedActivityScenario<MainActivity> scenario=BoundedActivityScenario.launch(MainActivity.class)){
-   AppNavigation.liveMode();AlertDialog first=openDownloads();String origin=host("performance.timeOrigin");host("location.reload()");
+   AppNavigation.liveMode();AlertDialog first=openDownloads();String origin=host("performance.timeOrigin");WebViewTestDriver.navigateHostDocument("location.reload()",true);
    ready("performance.timeOrigin!=="+origin+"&&document.documentElement.dataset.activeView==='home'");dismissed(first);
    AlertDialog second=openDownloads();
    // Exercise a host navigation arriving while the native dialog is showing;
    // this is an adversarial lifecycle transition, not a touch through a modal.
    app("Settings");click("Agent connection");ready("document.querySelector('.alpha-connection-scrim')");
    host("[...document.querySelectorAll('.alpha-connection summary')].find(e=>e.textContent==='Mock mode').click()");
-   host("[...document.querySelectorAll('.alpha-connection button')].find(e=>e.textContent.trim()==='Enter mock mode').click()");
+   WebViewTestDriver.navigateHostDocument("[...document.querySelectorAll('.alpha-connection button')].find(e=>e.textContent.trim()==='Enter mock mode').click()",false);
    ready("document.documentElement.dataset.connectionMode==='mock'&&document.querySelector('.mock-mode-banner')");dismissed(second);
-   host("document.querySelector('.mock-mode-banner button').click()");ready("document.documentElement.dataset.connectionMode==='live'&&!document.querySelector('.mock-mode-banner')");
+   WebViewTestDriver.navigateHostDocument("document.querySelector('.mock-mode-banner button').click()",true);ready("document.documentElement.dataset.connectionMode==='live'&&!document.querySelector('.mock-mode-banner')");
    AlertDialog third=openDownloads();WebViewTestDriver.withActivity(MainActivity.class,a->third.dismiss());dismissed(third);
   }
  }

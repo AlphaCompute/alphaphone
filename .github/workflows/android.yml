@@ -127,7 +127,7 @@ jobs:
   smoke:
     needs: build
     runs-on: ubuntu-24.04
-    timeout-minutes: 40
+    timeout-minutes: 55
     steps:
       - uses: actions/checkout@v4
       # Smoke imports only checked-in scripts and Node builtins; no native build.

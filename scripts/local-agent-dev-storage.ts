@@ -1,3 +1,4 @@
+import {validateReminderOperation,validateReminderResult} from '../apps/app/src/runtime/reminder-contract.ts';
 import {mkdirSync,readFileSync,writeFileSync,renameSync,existsSync,chmodSync} from 'node:fs';
 import {join} from 'node:path';
 import {createHash,randomUUID} from 'node:crypto';
@@ -54,6 +55,17 @@ export function localAgentStorage(directory:string,input:any):unknown {
   if(previous.phase==='applying'&&previous.attemptId===input.attemptId)return {};
   if(previous.phase!=='reserved'||typeof input.attemptId!=='string'||!input.attemptId)throw Error('Invalid journal transition');
   entries[input.proposalId]={...previous,phase:'applying',attemptId:input.attemptId};write(entries);return {};
+ }
+ if(operation==='recoverReminder'){
+  if(JSON.stringify(previous)!==JSON.stringify(input.expectedEntry))throw Error('Reminder journal changed. Refresh history.');
+  if(previous.phase==='terminal'&&previous.status!=='unknown')return {entry:previous};
+  if(!previous.attemptId||previous.phase!=='applying'&&previous.status!=='unknown')throw Error('Reminder recovery requires an admitted attempt');
+  const effect=validateReminderOperation(previous.record.operation),hash=(value:unknown)=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
+  const binding=hash([input.scope,previous.record.ownerId,previous.record.agentId,previous.record.sessionId,previous.record.origin,previous.record.installationId,previous.record.enrollmentId,input.proposalId,previous.record.digest,previous.operationId]);
+  if(binding!==input.bindingHash||hash(effect)!==previous.operationHash)throw Error('Reminder recovery binding changed');
+  const reminderResult=validateReminderResult(effect,input.reminderResult);
+  const entry={...previous,phase:'terminal',status:'succeeded',summary:'Recovered the original saved reminder receipt. No action was repeated.',result:{operationId:previous.operationId,reminderResult}};
+  entries[input.proposalId]=entry;write(entries);return {entry};
  }
  if(operation==='finish'){
   if(!['succeeded','failed','unknown','cancelled'].includes(input.status)||typeof input.summary!=='string')throw Error('Invalid journal result');

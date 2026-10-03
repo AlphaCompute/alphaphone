@@ -1,3 +1,5 @@
+import {recordingLevels} from '../browser/audio-levels';
+import {browserDevProfile} from '../browser/dev-profile';
 import {pendingAudioDeletions,withAudioDeletionLock,changeAudioDeletion,audioDeletionNoteState,type AudioDeletion} from '../runtime/note-audio-deletions';
 import { installLocalSpeechPlayback, stopLocalSpeechPlayback } from './local-speech-playback';
 import { registerPlugin } from '../platform-plugins';
@@ -99,10 +101,10 @@ export function installPrototypeVoiceAdapter(Component: any, views: Record<strin
   }
   function enter(target?: DictationTarget, preparedLocal?: ReturnType<typeof createOnDeviceVoice>, route: 'device' | 'agent' | 'manual' = 'device') {
     stopLocalSpeechPlayback(); cleanup(); destination = target; saveId = target?.id || crypto.randomUUID(); stage = 'ready'; error = ''; draft = ''; selectedRoute = route;
-    cloudMode = connectionController.getCloudEnvironment() !== null;
-    deviceOnly = !cloudMode && (localStorage.getItem('alpha.connection.selection.v1') !== null || !Capacitor.isPluginAvailable('DevelopmentAgent'));
+    cloudMode = !browserDevProfile && connectionController.getCloudEnvironment() !== null;
+    deviceOnly = browserDevProfile || !cloudMode && (localStorage.getItem('alpha.connection.selection.v1') !== null || !Capacitor.isPluginAvailable('DevelopmentAgent'));
     driver = cloudMode ? createCloudVoice() : deviceOnly ? deviceVoice : voice;
-    onDeviceVoice = route === 'device' ? preparedLocal || createOnDeviceVoice() : null;
+    onDeviceVoice = route === 'device' || browserDevProfile && route === 'agent' ? preparedLocal || createOnDeviceVoice() : null;
     if (route === 'manual') { cloudMode = false; deviceOnly = true; driver = deviceVoice; }
     if (route === 'device') { cloudMode = false; deviceOnly = true; driver = deviceVoice; if (!onDeviceVoice) error = 'On-device speech is unavailable. Choose another voice service explicitly or use the keyboard.'; }
     if (preparedLocal) { onDeviceReady = true; cloudMode = false; deviceOnly = true; driver = deviceVoice; }
@@ -120,7 +122,7 @@ export function installPrototypeVoiceAdapter(Component: any, views: Record<strin
         pairedReady = false; pairedAsrReady = false; refresh();
       }).catch(() => { if (token === generation) { preparingLocal = false; error = 'On-device speech is unavailable. Choose another voice service explicitly or use the keyboard.'; refresh(); } });
     }
-    if (route === 'agent' && !cloudMode && deviceOnly) {
+    if (route === 'agent' && !browserDevProfile && !cloudMode && deviceOnly) {
       pairedVoice = createPairedVoice();
       if (pairedVoice) {
         preparingPaired = true;
@@ -403,27 +405,29 @@ export function installPrototypeVoiceAdapter(Component: any, views: Record<strin
     if (preparingLocal && stage === 'ready') { labels.ready = 'Preparing on-device speech'; messages.ready = 'Loading and checking speech models on this phone. Nothing is uploaded.'; }
     if(!Capacitor.isNativePlatform()) {
       labels.recorded='Review transcript';
+      messages.recording='Recording. Stop to review the audio.';
       messages.ready='Record audio in this browser. You can add a transcript manually and save without signing in.';
       messages.recorded='Microphone is off. Enter the transcript to save with this recording.';
       messages.transcribing='Review the recording transcript.';
       messages.review='Edit the transcript, listen, or save the recording in this browser.';
     }
+    if(browserDevProfile && selectedRoute==='agent'){messages.ready='Development voice uses browser recording, transcript review and playback.';messages.recorded='Review this recording in your browser.';messages.transcribing='Preparing browser transcript review.';labels.recorded='Review browser transcript';}
     if(onDeviceReady&&connectionController.getBrowserSpeechAgent()){
       labels.recorded='Transcribe on this computer';
       messages.ready='Record in this browser. English transcription runs on the local agent on this computer when you choose Transcribe.';
       messages.recorded='Microphone is off. Transcribe on this computer sends this recording to your local development agent.';
       messages.transcribing='Transcribing on this computer. Nothing has been saved.';
-      messages.review='Review the transcript, listen using a local browser voice, or save it with the recording. No chat message has been sent.';
+      messages.review='Review the transcript, listen using the local agent on this computer, or save it with the recording. No chat message has been sent.';
     }
     result.recording = true;
     result.rec = {
       manualChoice: stage === 'ready' && !busy && !preparingLocal && selectedRoute !== 'manual',
       recordOnly: () => { const target = destination, chat = chatDestination; enter(target, undefined, 'manual'); chatDestination = chat; refresh(); },
       routeChoice: stage === 'ready' && !busy && document.documentElement.dataset.connectionMode !== 'mock' && (!!connectionController.getPairedVoiceBinding() || connectionController.getCloudEnvironment() !== null),
-      routeLabel: selectedRoute === 'device' ? (connectionController.getCloudEnvironment() !== null ? 'Use Eliza Cloud voice' : 'Use selected agent voice') : 'Use on-device voice',
+      routeLabel: browserDevProfile ? (selectedRoute === 'device' ? 'Use development voice' : 'Use browser voice') : selectedRoute === 'device' ? (connectionController.getCloudEnvironment() !== null ? 'Use Eliza Cloud voice' : 'Use selected agent voice') : 'Use on-device voice',
       changeRoute: () => { if (stage !== 'ready' || busy) return; const target = destination, chat = chatDestination; enter(target, undefined, selectedRoute === 'device' ? 'agent' : 'device'); chatDestination = chat; refresh(); },
       clock: `${Math.floor(seconds / 60)}:${String(Math.floor(seconds % 60)).padStart(2, '0')}`, clockCss: '', live: stage === 'recording', paused: stage !== 'recording', dotCss: `background:${stage === 'recording' ? '#E53935' : 'var(--mut)'}`,
-      levels: Array.from({ length: 44 }, () => ({ h: 4 })),
+      levels: !Capacitor.isNativePlatform()&&stage==='recording'?recordingLevels(recordingId):Array.from({ length: 44 }, () => ({ h: 4 })),
       lines: [{ ini: error ? '!' : 'i', t: error || messages[stage], chip: 'background:var(--s2);color:var(--fg)', css: '' }],
       review: stage === 'review', transcript: draft, onTranscript: (e: Event) => { draft = (e.target as HTMLTextAreaElement).value; refresh(); },
       primaryLabel: labels[stage], primaryIcon: stage === 'review' ? current.ic.check : stage === 'recording' || stage === 'transcribing' ? current.ic.stop : current.ic.mic,

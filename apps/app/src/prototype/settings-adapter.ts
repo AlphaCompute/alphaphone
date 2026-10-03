@@ -1,3 +1,4 @@
+import {browserDevProfile} from '../browser/dev-profile';
 import { registerPlugin } from '../platform-plugins';
 import { Capacitor } from '@capacitor/core';
 import { DailyApps } from '../daily';
@@ -131,11 +132,17 @@ export function installSettingsAdapter(Component: any, views: Bag) {
         const selection:Bag={proton:provider.installation==='installed'?'Proton Pass selected':provider.installation==='disabled'?'Proton Pass selected · app disabled':'Provider package selected · publisher not verified',other:'Another provider selected',none:'No provider selected',unknown:'Selection unavailable'};
         const action=(label:string,kind:string):Bag=>({kNav:true,label,lbl:passwordOpening?'Opening…':label,chev:true,noAB:true,go:async()=>{
           if(passwordOpening)return;passwordOpening=true;const instance=owner;changed();
-          try{const result=await device.openPasswordProvider({action:kind});if(result?.status!=='opened')throw Error('Unconfirmed provider handoff');if(owner===instance)api.toast(result.destination==='system-settings'?'Opened Android settings. Search for passwords or autofill, then choose your provider.':'Opened provider setup. Complete or cancel there; no change is confirmed yet.');}
+          try{const result=await device.openPasswordProvider({action:kind});if(result?.status!=='opened')throw Error('Unconfirmed provider handoff');if(owner===instance&&result.destination!=='development')api.toast(result.destination==='system-settings'?'Opened Android settings. Search for passwords or autofill, then choose your provider.':'Opened provider setup. Complete or cancel there; no change is confirmed yet.');}
           catch{if(owner===instance)api.toast('Password provider setup is unavailable. No provider change is confirmed.');}
           finally{passwordOpening=false;if(owner===instance){changed();void refresh();}}
         }});
-        const passwordGroup=group([
+        const passwordGroup=group(browserDevProfile?[
+          info('Provider',provider.installation==='installed'?'Development provider installed':'Not installed'),
+          info('Selection',provider.selection==='proton'?'Development provider selected':'No provider selected'),
+          info('Autofill','Sample sign-in in the development vault'),
+          action('Choose password provider','settings'),
+          provider.installation==='installed'?action('Open development vault','open'):action('Add development provider','install'),
+        ]:[
           info('Proton Pass',native?(installation[provider.installation]||'Status unavailable'):'Managed by your browser and operating system'),
           info('Selection',native?(selection[provider.selection]||'Selection unavailable'):'Native provider status is unavailable here'),
           info('Autofill',native?(provider.support==='available'?'Available on this device':provider.support==='unavailable'?'Unavailable for this device or user':'Availability not checked'):'Use your browser’s password settings'),
@@ -160,7 +167,13 @@ export function installSettingsAdapter(Component: any, views: Bag) {
         page.groups = [group([info('Gmail', gmail), { kNav:true, label:'Open Inbox', lbl:'Open Inbox', chev:true, noAB:true, go:()=>api.open('inbox') }, info('Other connectors', 'Not connected')])];
       } else if (state.page === 'character' && page.hero?.kChar === true) {
         // The reference character page deliberately has no visible title.
-        page.groups = [group([info('Cloud speech', account ? 'Check in voice controls' : 'Cloud sign-in required'), info('Wake word', 'Not available'), { kNav:true, label:'Scheduled digests', lbl:'Scheduled digests', val:digests, hasVal:true, chev:true, noAB:true, go:()=>window.dispatchEvent(new Event('alpha:hosted-digests')) }, info('Personality settings', 'Managed by your agent')])];
+        page.groups = browserDevProfile?[group([
+          info('Speech','Record and review in this browser'),
+          {kNav:true,label:'Wake assistant',lbl:'Wake assistant',chev:true,noAB:true,go:()=>void owner?.startVoice()},
+          {kNav:true,label:'Open conversation',lbl:'Open conversation',chev:true,noAB:true,go:()=>api.composeContentQuestion('')},
+          {kNav:true,label:'Agent connection',lbl:'Agent connection',chev:true,noAB:true,go:()=>connectionController.open()},
+          {kNav:true,label:'Scheduled digests',lbl:'Scheduled digests',chev:true,noAB:true,go:()=>window.dispatchEvent(new Event('alpha:hosted-digests'))},
+        ])]:[group([info('Cloud speech', account ? 'Check in voice controls' : 'Cloud sign-in required'), info('Wake word', 'Not available'), { kNav:true, label:'Scheduled digests', lbl:'Scheduled digests', val:digests, hasVal:true, chev:true, noAB:true, go:()=>window.dispatchEvent(new Event('alpha:hosted-digests')) }, info('Personality settings', 'Managed by your agent')])];
       } else if (page.title === 'Battery') {
         page.hero = { ...page.hero, big: percent, sub: facts.readAt ? facts.charging ? 'Charging' : 'On battery' : 'Device reading unavailable', hasMeter: typeof facts.batteryPercent === 'number', meter: facts.batteryPercent ?? 0 };
         page.groups = [group([info('Battery saver', typeof facts.powerSave === 'boolean' ? facts.powerSave ? 'On' : 'Off' : 'Unavailable'), nav('Manage battery in Android', 'battery')])];

@@ -1,3 +1,5 @@
+import {browserDevProfile} from './dev-profile';
+import {passwordProviderStatus,openPasswordProvider} from './password-provider';
 import {focusActive} from './focus-state';
 import {installBrowserAudioSettings} from './audio-settings';
 import {installBrowserDisplay,applyBrowserDisplay} from './display';
@@ -29,9 +31,10 @@ export class BrowserDevice extends WebPlugin {
  async requestRole(input:{role:string}){if(!['home','assistant','dialer','sms'].includes(input.role))throw Error('Choose a device role.');await editStore<Record<string,boolean>,void>('alpha.browser.roles.v1',()=>({}),roles=>{roles[input.role]=true;});return {role:input.role,held:true,resultCode:-1};}
  async snapshot(){
   const permissionStates:Record<string,string>={};for(const [label,name] of [['Camera','camera'],['Microphone','microphone'],['Location','geolocation']]){try{permissionStates[label]=(await navigator.permissions.query({name:name as PermissionName})).state;}catch{permissionStates[label]='unknown';}}
-  return {...browserDeviceState(),readAt:Date.now(),model:'Browser development device',manufacturer:navigator.platform,appVersion:'0.1.0',androidRelease:'Browser',build:'Development',securityPatch:'Browser managed',uptimeMs:performance.now(),permissionStates,permissions:Object.fromEntries(Object.entries(permissionStates).map(([name,state])=>[name,state==='granted'])),locationAccess:permissionStates.Location==='granted'?'browser':'none'};
+  return {...browserDeviceState(),...(browserDevProfile?{passwordProvider:passwordProviderStatus()}:{}),readAt:Date.now(),model:'Browser development device',manufacturer:navigator.platform,appVersion:'0.1.0',androidRelease:'Browser',build:'Development',securityPatch:'Browser managed',uptimeMs:performance.now(),permissionStates,permissions:Object.fromEntries(Object.entries(permissionStates).map(([name,state])=>[name,state==='granted'])),locationAccess:permissionStates.Location==='granted'?'browser':'none'};
  }
 
+ async openPasswordProvider(input:{action:string}){return openPasswordProvider(input.action);}
  async setTextScale(input:{percent:number}){if(!Number.isFinite(input.percent))throw Error('Choose a text size.');const percent=Math.max(75,Math.min(150,Math.round(input.percent)));await editStore(key,initial,data=>{data.textScalePercent=percent;});applyBrowserDisplay(readStore(key,initial));return {textScalePercent:percent,effectiveTextZoom:percent};}
  async getDeviceSettings(){const data=readStore(key,initial);return {volumes:['music','ring','alarm'].map(stream=>({stream,current:data[stream as 'music'],max:100}))};}
  async openSettings(input:{page:string}={page:'device'}) {

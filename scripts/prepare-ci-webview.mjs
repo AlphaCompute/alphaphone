@@ -2,7 +2,7 @@
 // fixture only. This is not a production provider or a retail-device installer.
 import fs from 'node:fs';
 import path from 'node:path';
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
 import { readBootDeviceIdentity } from './ci-webview-boot-device.mjs';
@@ -79,6 +79,42 @@ export function scratchBackingBytes(run, { requireDataBacking = false } = {}) {
   return Number(sectors) * 512;
 }
 
+// This pinned SDK emulator can request the same overlay reboot again. Admit
+// that case only after proving the live product overlay in both shell and init
+// namespaces, its bounded scratch backing, and an owned reversible write.
+export function proveLiveProductOverlay(run, admit, probeId = randomUUID()) {
+  admit();
+  require(run('shell', 'getprop', 'ro.build.fingerprint').trim() ===
+    'Android/sdk_phone64_x86_64/emu64x:15/AE3A.240806.019/12368160:userdebug/test-keys', 'Unreviewed overlay image');
+  const devices = run('shell', 'dmctl', 'list', 'devices');
+  require(devices.startsWith('Available Device Mapper Devices:') &&
+    !/^\s*\S+-verity\s*:/m.test(devices), 'Active or unknown verity mappings');
+  require(scratchBackingBytes(run, { requireDataBacking: true }) === 512 * 1024 * 1024, 'Unexpected live scratch backing');
+  for (const location of ['/proc/mounts', '/proc/1/mounts']) {
+    const rows = run('shell', 'cat', location).trim().split(/\r?\n/).map(line => line.split(/\s+/));
+    const product = rows.filter(row => row[1] === '/product').at(-1);
+    const options = new Set(product?.[3]?.split(',') ?? []);
+    require(product?.[2] === 'overlay' && options.has('rw') && !options.has('ro') &&
+      options.has('lowerdir=/product') && options.has('upperdir=/mnt/scratch/overlay/product/upper') &&
+      options.has('workdir=/mnt/scratch/overlay/product/work'), 'Product overlay is not writable in ' + location);
+    const scratch = rows.filter(row => row[1] === '/mnt/scratch').at(-1);
+    require(/^\/dev\/block\/dm-\d+$/.test(scratch?.[0] ?? '') && ['f2fs', 'ext4'].includes(scratch?.[2]) &&
+      scratch[3].split(',').includes('rw') && !scratch[3].split(',').includes('ro'), 'Scratch mount unavailable');
+    require(run('shell', 'cat', `/sys/class/block/${path.basename(scratch[0])}/dm/name`).trim() === 'scratch', 'Scratch mount identity drift');
+  }
+  require(/^[0-9a-f-]{36}$/.test(probeId), 'Invalid overlay probe identity');
+  const probe = '/product/app/webview/.alpha-ci-probe-' + probeId;
+  const marker = 'alpha-ci-overlay-' + probeId;
+  admit();
+  run('shell', 'test', '!', '-e', probe); run('shell', 'test', '!', '-L', probe);
+  run('shell', `set -C; printf %s ${marker} > ${probe}`);
+  // Never remove a preexisting or changed file. Failure leaves this disposable
+  // fixture rejected, before any provider file is removed.
+  require(run('shell', 'cat', probe).trim() === marker, 'Overlay write probe mismatch');
+  admit(); run('shell', 'rm', probe); run('shell', 'test', '!', '-e', probe);
+  return { namespaces: ['shell', 'init'], scratchBytes: 512 * 1024 * 1024, writeProbeRemoved: true };
+}
+
 // Verify the alias created by boot-time device discovery; never create it late.
 export function ensureScratchBackingAlias(run, admit) {
   admit();
@@ -115,7 +151,7 @@ export function ensureScratchBackingAlias(run, admit) {
 }
 
 // Read-only diagnostic evidence: one shared budget, no retries, mutations or guessed block targets.
-export function collectOverlayFailureDiagnostics({ environment, sdkEnvironment, execute, now = Date.now, hostPaths = { workspace: process.cwd(), androidSdk: sdkEnvironment.ANDROID_HOME, home: process.env.HOME }, statfs = fs.statfsSync, userspaceOnly = false, stockBackup, providerBoot, superLayout = false }) {
+export function collectOverlayFailureDiagnostics({ environment, sdkEnvironment, execute, now = Date.now, hostPaths = { workspace: process.cwd(), androidSdk: sdkEnvironment.ANDROID_HOME, home: process.env.HOME }, statfs = fs.statfsSync, userspaceOnly = false, stockBackup, providerRestart, superLayout = false }) {
   const deadline = now() + 20000;
   const evidence = { host: {}, guest: {}, budgetMilliseconds: 20000 };
   for (const [name, location] of Object.entries(hostPaths)) {
@@ -150,14 +186,14 @@ export function collectOverlayFailureDiagnostics({ environment, sdkEnvironment, 
     ['superSlot1', ['shell', 'lpdump', '--slot=1', '/dev/block/by-name/super']],
     ['vendorBlockContexts', ['shell', 'grep', '-e', 'super', '-e', 'vda', '-e', 'vd_device', '/vendor/etc/selinux/vendor_file_contexts']],
   ];
-  const reads = superLayout ? superReads : providerBoot ? [
+  const reads = superLayout ? superReads : providerRestart ? [
     ...superReads,
     ['deviceMapperNames', ['shell', 'dmctl', 'list', 'devices']],
     ['mounts', ['shell', 'cat', '/proc/mounts']],
     ['scratchMetadata', ['shell', 'lpdump', '/metadata/gsi/remount/lp_metadata']],
     ['userspaceStorageLog', ['shell', 'logcat', '-d', '-b', 'all', '-t', '400']],
     ['capacity', ['shell', 'df', '-k', '/data', '/metadata', '/product']],
-    ['stockStat', ['shell', 'stat', '-c', '%s', providerBoot.stock]],
+    ['stockStat', ['shell', 'stat', '-c', '%s', providerRestart.stock]],
     ['providerPath', ['shell', 'pm', 'path', candidate.package]],
     ['providerState', ['shell', 'dumpsys', 'webviewupdate']],
     ['kernel', ['shell', 'dmesg']],
@@ -180,7 +216,7 @@ export function collectOverlayFailureDiagnostics({ environment, sdkEnvironment, 
   for (const [name, args] of reads) {
     if (userspaceOnly && name !== 'userspaceStorageLog') continue;
     // Admission uses the same bounded executor and performs one complete attempt.
-    try { requireProviderFixture(read, environment, { installed: Boolean(providerBoot) }, () => { throw Error('Failure diagnostic admission unavailable'); }); }
+    try { requireProviderFixture(read, environment, { installed: Boolean(providerRestart) }, () => { throw Error('Failure diagnostic admission unavailable'); }); }
     catch (error) { evidence.admissionStopped = String(error.message).slice(0, 512); break; }
     try {
       const result = read(...args);
@@ -294,7 +330,8 @@ export async function main({ environment = process.env, execute = execFileSync, 
       try {
         if (read('shell', 'getprop', 'sys.boot_completed').trim() === '1' &&
             /Service package: found/.test(read('shell', 'service', 'check', 'package')) &&
-            /Service activity: found/.test(read('shell', 'service', 'check', 'activity'))) {
+            /Service activity: found/.test(read('shell', 'service', 'check', 'activity')) &&
+            read('shell', 'cmd', 'activity', 'get-started-user-state', '0').trim() === 'RUNNING_UNLOCKED') {
           // Reboot drops adbd privileges. Authenticate the complete disposable
           // fixture before restoring root; never assume shell can inspect /proc.
           const uid = read('shell', 'id', '-u').trim();
@@ -394,7 +431,14 @@ export async function main({ environment = process.env, execute = execFileSync, 
       remount = run('remount');
       state.overlayRemountOutputs.push(remount.slice(-65536)); save();
     }
-    require(/^remount succeeded\r?$/mi.test(remount) && !/reboot/i.test(remount), 'Remount requires manual review');
+    if (state.overlayRebootRequested && rebootNotice.test(remount) &&
+        remount.trim() === state.overlayRemountOutputs[0].trim()) {
+      // No further reboot: the existing stop/start below recreates framework
+      // processes after the proven live overlay and exact provider replacement.
+      state.liveOverlayProof = proveLiveProductOverlay(run, safe); save();
+    }
+    require(/^remount succeeded\r?$/mi.test(remount) &&
+      (!/reboot/i.test(remount) || state.liveOverlayProof), 'Remount requires manual review');
     safe();
     state.scratchBytes = scratchBackingBytes(run, { requireDataBacking: true });
     require(state.scratchBytes === 512 * 1024 * 1024, 'Expected 512MiB data scratch was not established');
@@ -439,36 +483,40 @@ export async function main({ environment = process.env, execute = execFileSync, 
     };
     await qualifyInstalledProvider('after-install');
     // The temporary provider-free framework may leave SystemUI unhealthy.
-    // Finalize every successful replacement with exactly one clean full boot,
+    // This emulator loses its scratch overlay across a kernel reboot. Finalize
+    // successful replacement with one fresh framework generation after installation,
     // never as a response to a failed install or a failed security admission.
     safe(true);
     const priorBootId = run('shell', 'cat', '/proc/sys/kernel/random/boot_id').trim();
     require(/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/.test(priorBootId), 'Unknown provider boot identity');
-    state.status = 'finalizing-provider-boot'; state.providerBoot = { priorBootId, requested: true }; save();
-    run('reboot'); run('wait-for-device'); await boot(null, true); safe(true);
+    const previousProviderServer = serverIdentity();
+    state.status = 'finalizing-provider-framework'; state.providerRestart = { priorBootId, previousServer: previousProviderServer, requested: true }; save();
+    run('shell', 'stop');
+    run('shell', 'start');
+    state.providerRestart.server = await boot(previousProviderServer, true); save(); safe(true);
     const bootId = run('shell', 'cat', '/proc/sys/kernel/random/boot_id').trim();
-    require(/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/.test(bootId) && bootId !== priorBootId, 'Provider full reboot was not observed');
-    state.providerBoot.bootId = bootId; save();
+    require(/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/.test(bootId) && bootId === priorBootId, 'Provider framework restart changed kernel boot identity');
+    state.providerRestart.bootId = bootId; save();
     bootIdentity(true);
-    state.providerBoot.backingAlias = ensureScratchBackingAlias(run, () => safe(true)); save();
-    state.providerBoot.scratchBytes = scratchBackingBytes(run, { requireDataBacking: true }); save();
-    if (state.providerBoot.scratchBytes !== 512 * 1024 * 1024) {
+    state.providerRestart.backingAlias = ensureScratchBackingAlias(run, () => safe(true)); save();
+    state.providerRestart.scratchBytes = scratchBackingBytes(run, { requireDataBacking: true }); save();
+    if (state.providerRestart.scratchBytes !== 512 * 1024 * 1024) {
       try {
-        const diagnostics = collectOverlayFailureDiagnostics({ environment, sdkEnvironment: env, execute, now, providerBoot: { stock } });
-        fs.writeFileSync(path.join(output, 'provider-boot-storage-diagnostics.json'), JSON.stringify(diagnostics, null, 2) + '\n');
-      } catch (diagnosticError) { state.providerBoot.diagnosticError = String(diagnosticError.message).slice(0, 512); save(); }
+        const diagnostics = collectOverlayFailureDiagnostics({ environment, sdkEnvironment: env, execute, now, providerRestart: { stock } });
+        fs.writeFileSync(path.join(output, 'provider-restart-storage-diagnostics.json'), JSON.stringify(diagnostics, null, 2) + '\n');
+      } catch (diagnosticError) { state.providerRestart.diagnosticError = String(diagnosticError.message).slice(0, 512); save(); }
     }
-    require(state.providerBoot.scratchBytes === 512 * 1024 * 1024, 'Provider boot lost authenticated data scratch');
+    require(state.providerRestart.scratchBytes === 512 * 1024 * 1024, 'Provider restart lost authenticated data scratch');
     run('shell', 'test', '!', '-e', stock);
-    await qualifyInstalledProvider('after-clean-boot');
+    await qualifyInstalledProvider('after-framework-restart');
     state.providerDisplayObservations = [];
     await requireFixtureDisplay(run, { env: environment, serial, sleep, record: observation => {
       state.providerDisplayObservations.push(observation); save();
     } });
     const activity = run('shell', 'dumpsys', 'activity', 'activities');
-    state.providerBoot.anrPresent = activity.includes('Application Not Responding:');
-    state.providerBoot.anrLines = activity.split(/\r?\n/).filter(line => line.includes('Application Not Responding:')).slice(0, 8).map(line => line.slice(0, 512)); save();
-    require(!state.providerBoot.anrPresent, 'Application ANR remains after clean provider boot');
+    state.providerRestart.anrPresent = activity.includes('Application Not Responding:');
+    state.providerRestart.anrLines = activity.split(/\r?\n/).filter(line => line.includes('Application Not Responding:')).slice(0, 8).map(line => line.slice(0, 512)); save();
+    require(!state.providerRestart.anrPresent, 'Application ANR remains after provider framework restart');
     state.status = 'PROVISIONED_RUNTIME_QUALIFICATION_PENDING'; save();
     // APKs are reproducible via pinned URL/hash; keep compact provenance in CI artifacts.
     fs.unlinkSync(archive); fs.unlinkSync(apk);

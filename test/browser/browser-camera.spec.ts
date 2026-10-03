@@ -4,6 +4,7 @@ import {test,expect} from '@playwright/test';
 // No physical camera, model, native API, upload or external account is used.
 test('browser camera persists a real encoded frame, releases capture and restores Photos after reload',async({page},info)=>{
  await page.addInitScript(()=>{
+ const devices=navigator.mediaDevices;Object.defineProperty(navigator,'mediaDevices',{configurable:true,value:devices});
  localStorage.setItem('alpha.connection.selection.v1',JSON.stringify({kind:'offline'}));
  const canvas=document.createElement('canvas');canvas.width=640;canvas.height=480;const ctx=canvas.getContext('2d')!;
  ctx.fillStyle='#c33';ctx.fillRect(0,0,320,480);ctx.fillStyle='#3c3';ctx.fillRect(320,0,320,480);
@@ -55,6 +56,7 @@ test('browser camera persists a real encoded frame, releases capture and restore
 
 test('browser camera permission denial retries explicitly without a saved photo',async({page})=>{
  await page.addInitScript(()=>{
+ const devices=navigator.mediaDevices;Object.defineProperty(navigator,'mediaDevices',{configurable:true,value:devices});
   localStorage.setItem('alpha.connection.selection.v1',JSON.stringify({kind:'offline'}));
   (window as any).cameraAttempts=0;
   navigator.mediaDevices.getUserMedia=async()=>{(window as any).cameraAttempts++;throw new DOMException('Synthetic denial','NotAllowedError');};
@@ -71,6 +73,7 @@ test('browser camera permission denial retries explicitly without a saved photo'
 
 test('leaving Camera while permission is pending stops a late stream without reopening preview',async({page})=>{
  await page.addInitScript(()=>{
+ const devices=navigator.mediaDevices;Object.defineProperty(navigator,'mediaDevices',{configurable:true,value:devices});
   localStorage.setItem('alpha.connection.selection.v1',JSON.stringify({kind:'offline'}));
   navigator.mediaDevices.getUserMedia=()=>new Promise(resolve=>{(window as any).releaseCamera=()=>{
    const canvas=document.createElement('canvas');canvas.width=640;canvas.height=480;

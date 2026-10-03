@@ -72,7 +72,7 @@ export const DailyApps = registerPlugin<{
   ): Promise<PluginListenerHandle>;
   restoreSelected(): Promise<NativeResult>;
   renameSelected(options: { selectionId: string; name: string }): Promise<NativeResult>;
-  pdfSelected(options: { selectionId: string; page: number }): Promise<{status:string; message?:string; page?:number; pageCount?:number; imageUri?:string}>;
+  pdfSelected(options: { selectionId: string; page: number }): Promise<{status:string; message?:string; page?:number; pageCount?:number; imageUri?:string; text?:string}>;
   readSelected(options: {
     selectionId: string;
   }): Promise<{

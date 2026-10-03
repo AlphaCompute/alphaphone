@@ -1,0 +1,11 @@
+--- a/plugins/plugin-assistant/src/services/device-actions/action.ts
++++ b/plugins/plugin-assistant/src/services/device-actions/action.ts
+@@ -321,7 +321,7 @@
+       name: "operationKey",
+       required: true,
+       description:
+-        "Stable identifier for this proposed operation; reuse only for an exact retry",
++        "Generate a fresh UUID for each new user-requested operation. Reuse a prior key only for an exact retry with unchanged operation fields and reason. Never reuse keys based only on a title, action type, date, or wording; a conflicting key cannot be repaired by changing an existing approval.",
+       schema: { type: "string" },
+     },
+     {

@@ -35,7 +35,7 @@ const nativeCloudRequest = async input => {
   const response = await fetch(`http://127.0.0.1:${server.address().port}${url.pathname}${url.search}`, { method: input.method, headers: input.headers, signal: input.signal, body: input.body ? JSON.stringify(input.body) : undefined });
   return { status: response.status, data: await response.json() };
 };
-const sandbox = { secureConnectionStore:{read:async()=>null,write:async()=>{},remove:async()=>{}}, pauseHostedBackground:async()=>{}, configureHostedBackground:async()=>{}, registerPlugin: () => ({}), CloudProtocol, CloudProvisionAcceptedError, phoneContextMessage, nativeCloudRequest,
+const sandbox = { workflowPresentationProtocol:async()=>2, browserDevProfile:false, secureConnectionStore:{read:async()=>null,write:async()=>{},remove:async()=>{}}, pauseHostedBackground:async()=>{}, configureHostedBackground:async()=>{}, registerPlugin: () => ({}), CloudProtocol, CloudProvisionAcceptedError, phoneContextMessage, nativeCloudRequest,
   cloudCredentialStore: { read: async () => credential, write: async (_environment, value) => { credential = value; }, clear: async () => { credential = null; } },
   openConnectionBrowser: async () => { throw new Error('Unexpected browser effect'); },
   isAndroid: false, localStorage: { getItem: key => memory.get(key) ?? null, setItem: (key, value) => memory.set(key, value), removeItem: key => memory.delete(key) },

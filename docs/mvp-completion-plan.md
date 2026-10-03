@@ -1,5 +1,11 @@
 # Alpha Phone MVP completion plan
 
+
+## Current checkpoint — October 3, composed MVP and voice ownership
+
+The reviewed product stack is combined with the Email account fence, reminder-v2 development negotiation and request-owned resident speech. All 217 repository checks, TypeScript/build and both Android distribution builds pass with 3,878 source identities unchanged. Fresh runtime preparation verifies all 54 declared source hashes. Safe exit-code/signal diagnostics now accompany missing-result workflow failures; the actual resident worker cause remains unresolved. Both preceding exact512 browser campaigns pass 1,034 flows with four explicit skips each. Scoped notification-tap routing remains under review. Live provider, installed resident, visible Pixel, signed-image and physical acceptance remain open; the MVP is not complete. See [qualification and evidence](mvp-auth-native-qualification-2026-10-03.md).
+
+
 ## Current checkpoint — October 3, Email account ownership
 
 A rendered negative control reproduced an old-account Gmail draft being saved under a newly selected owner. The repair binds delayed reads, deletion/undo follow-ups and receipt clearing to the original operation/session, aborting owned reads on reset. Six rendered flows and 178 repository checks pass; both Android distributions build with unchanged production source. Fresh DoD and call-note reads preserve unresolved suggestions and retain Email. Native/live-provider acceptance remains open. See [qualification and source evidence](mvp-auth-native-qualification-2026-10-03.md). The MVP is not complete.

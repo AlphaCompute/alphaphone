@@ -1,3 +1,4 @@
+import {browserDevProfile} from '../browser/dev-profile';
 import { Capacitor } from '@capacitor/core';
 import { DailyApps, type Action, type NativeResult } from '../daily';
 
@@ -80,6 +81,9 @@ export function installPrototypeNativeAdapters(
     return { title: text(f.title), body: [text(f.notes), text(f.where)].filter(Boolean).join('\n'), startTime: date.getTime(), endTime: date.getTime() + duration * 3600000 };
   }
   function replacement(module: string, key: string, path: string, row: Bag, st: Bag, api: Bag, original: Callback): Callback | undefined {
+    if(browserDevProfile&&['photos','files'].includes(module)&&['askQ','askSearch'].includes(key))return ()=>{
+      const query=text(api.get(module).q).trim();if(query)api.composeContentQuestion(module==='files'?'Find the file '+query:query);
+    };
     if (['camera', 'photos', 'files'].includes(module) && ['ask', 'askQ', 'askSearch', 'saveSum'].includes(key)) return unavailable(api, 'Content analysis is not connected. No photo or document content has been sent.');
     if (module === 'workflows' && ['run', 'again', 'toggle', 'save'].includes(key)) return unavailable(api, 'Workflow execution is not connected. No automation has been activated or run.');
     const native = (action: Action, payload: Bag = {}) => () => perform(module, api, action, payload);

@@ -1,0 +1,239 @@
+diff --git a/packages/agent/src/api/device-action-routes.ts b/packages/agent/src/api/device-action-routes.ts
+--- a/packages/agent/src/api/device-action-routes.ts
++++ b/packages/agent/src/api/device-action-routes.ts
+@@ -1,4 +1,5 @@
+ import type http from "node:http";
++import { workflowDeviceOwner } from "./workflow-device-owner.ts";
+ import type { IAgentRuntime } from "@elizaos/core";
+ import {
+   ApprovalIdempotencyConflictError,
+@@ -137,6 +138,7 @@
+             credential,
+             body.label,
+             body.workflowProtocol ?? 0,
++            workflowDeviceOwner(runtime, ctx.authorization, credential.subjectUserId),
+           ),
+         );
+       return true;
+diff --git a/packages/agent/src/api/workflow-device-owner.ts b/packages/agent/src/api/workflow-device-owner.ts
+new file mode 100644
+--- /dev/null
++++ b/packages/agent/src/api/workflow-device-owner.ts
+@@ -0,0 +1,16 @@
++import { type IAgentRuntime, resolveOwnerEntityIdOrDefault } from "@elizaos/core";
++import type { AgentHttpRequestAuthorization } from "../runtime/host-bridge.ts";
++/** Bind local OWNER enrollment to the canonical workflow scope without changing
++ * the authenticated subject used by phone approvals. No request fields choose it. */
++export function workflowDeviceOwner(
++  runtime: IAgentRuntime,
++  authorization: AgentHttpRequestAuthorization | undefined,
++  subjectUserId: string,
++): string {
++  if (!authorization?.ok || !["USER", "ADMIN", "OWNER"].includes(authorization.role) ||
++      (authorization.identityId ?? (authorization.principal ? `gateway:${authorization.principal}` : undefined)) !== subjectUserId)
++    throw new Error("Verified device subject required");
++  return authorization.role === "OWNER" && !authorization.externalIdentity
++    ? resolveOwnerEntityIdOrDefault(runtime)
++    : subjectUserId;
++}
+diff --git a/plugins/plugin-assistant/src/services/device-actions/service.ts b/plugins/plugin-assistant/src/services/device-actions/service.ts
+--- a/plugins/plugin-assistant/src/services/device-actions/service.ts
++++ b/plugins/plugin-assistant/src/services/device-actions/service.ts
+@@ -140,6 +140,7 @@
+     c: DeviceCredential,
+     label: string,
+     workflowProtocol: 0 | 1 | 2 = 0,
++    workflowOwnerId: string = c.subjectUserId,
+   ): Promise<{
+     installationId: string;
+     enrollmentId: string;
+@@ -160,7 +161,7 @@
+       const row = await this.lock(tx, c);
+       await executeRawSqlTx(
+         tx,
+-        `UPDATE client_devices SET workflow_protocol=${workflowProtocol} WHERE ${scope(c, this.runtime.agentId)}`,
++        `UPDATE client_devices SET workflow_protocol=${workflowProtocol}, workflow_owner_id=${sqlText(text(workflowOwnerId, 256))} WHERE ${scope(c, this.runtime.agentId)}`,
+       );
+       return {
+         installationId: c.installationId,
+@@ -394,9 +395,10 @@
+     await this.database().transaction(async (tx) => {
+       const rows = await executeRawSqlTx(
+         tx,
+-        `SELECT enrollment_id,revoked,workflow_protocol FROM client_devices WHERE agent_id=${sqlText(this.runtime.agentId)} AND subject_user_id=${sqlText(text(subjectUserId, 256))} AND installation_id=${sqlText(identifier(target.installationId))}`,
+-      );
+-      if (
++        `SELECT enrollment_id,revoked,workflow_protocol FROM client_devices WHERE agent_id=${sqlText(this.runtime.agentId)} AND COALESCE(workflow_owner_id, subject_user_id)=${sqlText(text(subjectUserId, 256))} AND installation_id=${sqlText(identifier(target.installationId))} AND enrollment_id=${sqlText(target.enrollmentId)}`,
++      );
++      if (
++        rows.length !== 1 ||
+         rows[0]?.revoked !== false ||
+         Number(rows[0]?.workflow_protocol) < minimumProtocol ||
+         rows[0]?.enrollment_id !== target.enrollmentId
+@@ -414,9 +416,10 @@
+     return this.database().transaction(async (tx) => {
+       const rows = await executeRawSqlTx(
+         tx,
+-        `SELECT enrollment_id, revoked, workflow_protocol FROM client_devices WHERE agent_id = ${sqlText(this.runtime.agentId)} AND subject_user_id = ${sqlText(text(subjectUserId, 256))} AND installation_id = ${sqlText(identifier(dispatch.target.installationId))} FOR UPDATE`,
+-      );
+-      if (
++        `SELECT subject_user_id, enrollment_id, revoked, workflow_protocol FROM client_devices WHERE agent_id = ${sqlText(this.runtime.agentId)} AND COALESCE(workflow_owner_id, subject_user_id) = ${sqlText(text(subjectUserId, 256))} AND installation_id = ${sqlText(identifier(dispatch.target.installationId))} AND enrollment_id = ${sqlText(dispatch.target.enrollmentId)} FOR UPDATE`,
++      );
++      if (
++        rows.length !== 1 ||
+         rows[0]?.revoked !== false ||
+         Number(rows[0]?.workflow_protocol) <
+           (["post_notification", "speak_text"].includes(operation.type)
+@@ -504,19 +507,21 @@
+           throw new DeviceActionError("Workflow speech scope changed");
+       } else
+         throw new DeviceActionError("Unsupported workflow device operation");
++      // Workflow ownership stays canonical; phone approvals retain the authenticated device subject.
++      const deviceSubjectUserId = text(rows[0].subject_user_id, 256);
+       const queue = new PgApprovalQueue(transactionRuntime(this.runtime, tx), {
+         agentId: this.runtime.agentId,
+       });
+       const idempotencyKey = `workflow-device:${digest([subjectUserId, binding.runId, binding.stepId])}`;
+       const existing = await queue.byIdempotencyKey(
+         idempotencyKey,
+-        subjectUserId,
++        deviceSubjectUserId,
+       );
+       return (
+         await queue.enqueueTransactional(
+           {
+             requestedBy: this.runtime.agentId,
+-            subjectUserId,
++            subjectUserId: deviceSubjectUserId,
+             action: "device_action",
+             payload: {
+               action: "device_action",
+diff --git a/plugins/plugin-sql/src/schema/clientDevices.ts b/plugins/plugin-sql/src/schema/clientDevices.ts
+--- a/plugins/plugin-sql/src/schema/clientDevices.ts
++++ b/plugins/plugin-sql/src/schema/clientDevices.ts
+@@ -12,6 +12,8 @@
+     enrollmentId: uuid("enrollment_id").notNull(),
+     keyHash: text("key_hash").notNull(),
+     label: text("label").notNull(),
++    /** Trusted workflow owner; null preserves pre-binding enrollments. */
++    workflowOwnerId: text("workflow_owner_id"),
+     workflowProtocol: integer("workflow_protocol").notNull().default(0),
+     revoked: boolean("revoked").notNull().default(false),
+     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+diff --git a/plugins/plugin-assistant/test/workflow-owner-enrollment.test.ts b/plugins/plugin-assistant/test/workflow-owner-enrollment.test.ts
+new file mode 100644
+--- /dev/null
++++ b/plugins/plugin-assistant/test/workflow-owner-enrollment.test.ts
+@@ -0,0 +1,28 @@
++import {test,expect} from 'vitest';
++import {randomUUID} from 'node:crypto';
++import {PGlite} from '@electric-sql/pglite';
++import {drizzle} from 'drizzle-orm/pglite';
++import {DeviceActionService} from '../src/services/device-actions/service';
++test('workflow ownership and paired device identity remain separate and enforced',async()=>{
++ const pg=new PGlite();try{await pg.exec(`CREATE TABLE client_devices(agent_id uuid,subject_user_id text,installation_id text,enrollment_id uuid,key_hash text,label text,workflow_protocol integer NOT NULL DEFAULT 0,workflow_owner_id text,revoked boolean NOT NULL DEFAULT false,PRIMARY KEY(agent_id,subject_user_id,installation_id));`);
++ const db=drizzle(pg),runtime={agentId:randomUUID(),adapter:{db}} as any,service=new DeviceActionService(runtime),canonical=randomUUID(),paired=randomUUID(),credential={subjectUserId:paired,installationId:randomUUID(),deviceKey:'a'.repeat(64)},registered=await service.register(credential,'Synthetic paired owner',1,canonical),target={installationId:registered.installationId,enrollmentId:registered.enrollmentId};
++ await service.validateWorkflowTarget(canonical,target);
++ const rows=await pg.query('SELECT subject_user_id,workflow_owner_id FROM client_devices');expect(rows.rows[0]).toEqual({subject_user_id:paired,workflow_owner_id:canonical});
++ await expect(service.validateWorkflowTarget(randomUUID(),target)).rejects.toThrow();await expect(service.validateWorkflowTarget(canonical,{...target,enrollmentId:randomUUID()})).rejects.toThrow();await expect(service.validateWorkflowTarget(canonical,target,2)).rejects.toThrow();
++ await expect(service.register({...credential,deviceKey:'c'.repeat(64)},'Forged rebind',1,randomUUID())).rejects.toThrow();await service.validateWorkflowTarget(canonical,target);
++ await expect(new DeviceActionService({...runtime,agentId:randomUUID()}).validateWorkflowTarget(canonical,target)).rejects.toThrow();
++ await pg.exec('UPDATE client_devices SET workflow_owner_id=NULL');await service.validateWorkflowTarget(paired,target);await expect(service.validateWorkflowTarget(canonical,target)).rejects.toThrow();await service.register(credential,'Synthetic paired owner',1,canonical);
++ await service.register(credential,'Synthetic paired owner',0,canonical);await expect(service.validateWorkflowTarget(canonical,target)).rejects.toThrow();await service.register(credential,'Synthetic paired owner',1,canonical);await service.revoke(credential);await expect(service.validateWorkflowTarget(canonical,target)).rejects.toThrow();
++ }finally{await pg.close();}
++},30000);
++
++import {workflowDeviceOwner} from '../../../packages/agent/src/api/workflow-device-owner';
++import {deterministicOwnerEntityId} from '@elizaos/core';
++test('only a verified local OWNER may bind the canonical workflow scope',()=>{
++ const runtime={agentId:randomUUID(),getSetting:()=>null} as any,subject=randomUUID(),canonical=deterministicOwnerEntityId(runtime.agentId);
++ expect(workflowDeviceOwner(runtime,{ok:true,role:'OWNER',identityId:subject} as any,subject)).toBe(canonical);
++ for(const role of ['USER','ADMIN'])expect(workflowDeviceOwner(runtime,{ok:true,role,identityId:subject} as any,subject)).toBe(subject);
++ expect(workflowDeviceOwner(runtime,{ok:true,role:'OWNER',identityId:subject,externalIdentity:{issuer:'synthetic',subject:'synthetic'}} as any,subject)).toBe(subject);
++ expect(()=>workflowDeviceOwner(runtime,{ok:false,role:'NONE'} as any,subject)).toThrow();
++ expect(()=>workflowDeviceOwner(runtime,{ok:true,role:'OWNER',identityId:randomUUID()} as any,subject)).toThrow();
++});
+diff --git a/plugins/plugin-assistant/test/workflow-owner-dispatch.test.ts b/plugins/plugin-assistant/test/workflow-owner-dispatch.test.ts
+new file mode 100644
+--- /dev/null
++++ b/plugins/plugin-assistant/test/workflow-owner-dispatch.test.ts
+@@ -0,0 +1,19 @@
++import {test,expect} from 'vitest';
++import {randomUUID,createHash} from 'node:crypto';
++import {PGlite} from '@electric-sql/pglite';
++import {drizzle} from 'drizzle-orm/pglite';
++import {getTableConfig,PgDialect} from 'drizzle-orm/pg-core';
++import {approvalRequestTable} from '../../plugin-sql/src/schema/approvalRequests';
++import {approvalDispatchControlTable} from '../../plugin-sql/src/schema/approvalDispatchControl';
++import {DeviceActionService} from '../src/services/device-actions/service';
++async function createTable(pg:PGlite,table:any){const c=getTableConfig(table),dialect=new PgDialect(),literal=(v:any)=>typeof v==='object'&&v?.getSQL?dialect.sqlToQuery(v).sql:typeof v==='object'?`'${JSON.stringify(v)}'::jsonb`:typeof v==='string'?`'${v.replaceAll("'","''")}'`:String(v);await pg.exec(`CREATE TABLE ${c.name} (${c.columns.map(col=>`"${col.name}" ${col.getSQLType()}${col.notNull?' NOT NULL':''}${col.default!==undefined?' DEFAULT '+literal(col.default):''}${col.primary?' PRIMARY KEY':''}`).join(',')}${c.primaryKeys.length?', '+c.primaryKeys.map(k=>`PRIMARY KEY(${k.columns.map(c=>c.name).join(',')})`).join(','):''})`);}
++test('canonical workflow proposes only to its enrolled paired subject and refuses changed authority',async()=>{
++const pg=new PGlite();try{
++ await pg.exec('CREATE TABLE client_devices(agent_id uuid,subject_user_id text,installation_id text,enrollment_id uuid,key_hash text,label text,workflow_protocol integer NOT NULL DEFAULT 0,workflow_owner_id text,revoked boolean NOT NULL DEFAULT false,PRIMARY KEY(agent_id,subject_user_id,installation_id));');await createTable(pg,approvalRequestTable);await createTable(pg,approvalDispatchControlTable);await pg.exec('CREATE UNIQUE INDEX approvals_unique ON approval_requests(agent_id,idempotency_key) WHERE idempotency_key IS NOT NULL; CREATE SCHEMA workflow; CREATE TABLE workflow.embedded_executions(agent_id uuid,id text,workflow_id text,execution jsonb); CREATE TABLE workflow.embedded_workflows(agent_id uuid,id text,version_id text,workflow jsonb); CREATE TABLE workflow.workflow_revisions(agent_id uuid,workflow_id text,version_id text,workflow jsonb);');
++ const agentId=randomUUID(),runtime={agentId,adapter:{db:drizzle(pg)}} as any,service=new DeviceActionService(runtime),owner=randomUUID(),subject=randomUUID(),credential={subjectUserId:subject,installationId:randomUUID(),deviceKey:'b'.repeat(64)},enrollment=await service.register(credential,'Synthetic device',1,owner),target={installationId:enrollment.installationId,enrollmentId:enrollment.enrollmentId},workflowId=randomUUID(),versionId=randomUUID(),runId=randomUUID(),spec={version:1,device:target,steps:[{id:'save',kind:'Write',operation:'save_note',title:'Synthetic note'}]},binding={workflowId,versionId,runId,stepId:'save',specDigest:createHash('sha256').update(JSON.stringify(spec)).digest('hex')},dispatch={target,binding,operation:{type:'create_note',title:'Synthetic note',body:'Synthetic text'}} as any;
++ await pg.query('INSERT INTO workflow.embedded_executions VALUES($1,$2,$3,$4)',[agentId,runId,workflowId,JSON.stringify({workflowVersionId:versionId,status:'running',finished:false})]);await pg.query('INSERT INTO workflow.embedded_workflows VALUES($1,$2,$3,$4)',[agentId,workflowId,versionId,JSON.stringify({name:'Synthetic workflow',metadata:{elizaOwnerEntityId:owner,elizaPhoneWorkflowSpec:JSON.stringify(spec)}})]);
++ const proposal=await service.proposeForWorkflow(owner,dispatch);expect(proposal.subjectUserId).toBe(subject);expect(proposal.state).toBe('pending');expect((await service.proposeForWorkflow(owner,dispatch)).id).toBe(proposal.id);expect((await service.list(credential)).map(p=>p.id)).toEqual([proposal.id]);
++ await expect(service.proposeForWorkflow(subject,dispatch)).rejects.toThrow();await expect(service.proposeForWorkflow(randomUUID(),dispatch)).rejects.toThrow();await expect(service.proposeForWorkflow(owner,{...dispatch,target:{...target,enrollmentId:randomUUID()}})).rejects.toThrow();
++ await pg.query("UPDATE workflow.embedded_executions SET execution=execution || '{\"finished\":true,\"status\":\"cancelled\"}'::jsonb");await expect(service.proposeForWorkflow(owner,dispatch)).rejects.toThrow();expect((await pg.query('SELECT id FROM approval_requests')).rows).toHaveLength(1);
++}finally{await pg.close();}
++},30000);
+diff --git a/plugins/plugin-assistant/test/workflow-owner-receipt-review.test.ts b/plugins/plugin-assistant/test/workflow-owner-receipt-review.test.ts
+new file mode 100644
+--- /dev/null
++++ b/plugins/plugin-assistant/test/workflow-owner-receipt-review.test.ts
+@@ -0,0 +1,30 @@
++import {test,expect} from 'vitest';
++import {randomUUID,createHash} from 'node:crypto';
++import {PGlite} from '@electric-sql/pglite';
++import {drizzle} from 'drizzle-orm/pglite';
++import {getTableConfig,PgDialect} from 'drizzle-orm/pg-core';
++import {approvalRequestTable} from '../../plugin-sql/src/schema/approvalRequests';
++import {approvalDispatchControlTable} from '../../plugin-sql/src/schema/approvalDispatchControl';
++import {DeviceActionService,deviceProposalDigest} from '../src/services/device-actions/service';
++async function createTable(pg:PGlite,table:any){const c=getTableConfig(table),dialect=new PgDialect(),literal=(v:any)=>typeof v==='object'&&v?.getSQL?dialect.sqlToQuery(v).sql:typeof v==='object'?`'${JSON.stringify(v)}'::jsonb`:typeof v==='string'?`'${v.replaceAll("'","''")}'`:String(v);await pg.exec(`CREATE TABLE ${c.name} (${c.columns.map(col=>`"${col.name}" ${col.getSQLType()}${col.notNull?' NOT NULL':''}${col.default!==undefined?' DEFAULT '+literal(col.default):''}${col.primary?' PRIMARY KEY':''}`).join(',')}${c.primaryKeys.length?', '+c.primaryKeys.map(k=>`PRIMARY KEY(${k.columns.map(c=>c.name).join(',')})`).join(','):''})`);}
++test('paired subject owns review, claim and exact durable receipt after canonical workflow binding',async()=>{
++const pg=new PGlite();try{
++ await pg.exec('CREATE TABLE client_devices(agent_id uuid,subject_user_id text,installation_id text,enrollment_id uuid,key_hash text,label text,workflow_protocol integer NOT NULL DEFAULT 0,workflow_owner_id text,revoked boolean NOT NULL DEFAULT false,PRIMARY KEY(agent_id,subject_user_id,installation_id));');await createTable(pg,approvalRequestTable);await createTable(pg,approvalDispatchControlTable);await pg.exec('CREATE UNIQUE INDEX approvals_unique ON approval_requests(agent_id,idempotency_key) WHERE idempotency_key IS NOT NULL; CREATE SCHEMA workflow; CREATE TABLE workflow.embedded_executions(agent_id uuid,id text,workflow_id text,execution jsonb); CREATE TABLE workflow.embedded_workflows(agent_id uuid,id text,version_id text,workflow jsonb); CREATE TABLE workflow.workflow_revisions(agent_id uuid,workflow_id text,version_id text,workflow jsonb);');
++ const agentId=randomUUID(),runtime={agentId,getService:()=>null,adapter:{db:drizzle(pg)}} as any,service=new DeviceActionService(runtime),owner=randomUUID(),subject=randomUUID(),credential={subjectUserId:subject,installationId:randomUUID(),deviceKey:'b'.repeat(64)},enrollment=await service.register(credential,'Synthetic device',1,owner),target={installationId:enrollment.installationId,enrollmentId:enrollment.enrollmentId},workflowId=randomUUID(),versionId=randomUUID(),runId=randomUUID(),spec={version:1,device:target,steps:[{id:'save',kind:'Write',operation:'save_note',title:'Synthetic note'}]},binding={workflowId,versionId,runId,stepId:'save',specDigest:createHash('sha256').update(JSON.stringify(spec)).digest('hex')},dispatch={target,binding,operation:{type:'create_note',title:'Synthetic note',body:'Synthetic text'}} as any;
++ await pg.query('INSERT INTO workflow.embedded_executions VALUES($1,$2,$3,$4)',[agentId,runId,workflowId,JSON.stringify({workflowVersionId:versionId,status:'running',finished:false})]);await pg.query('INSERT INTO workflow.embedded_workflows VALUES($1,$2,$3,$4)',[agentId,workflowId,versionId,JSON.stringify({name:'Synthetic workflow',metadata:{elizaOwnerEntityId:owner,elizaPhoneWorkflowSpec:JSON.stringify(spec)}})]);
++ const proposal=await service.proposeForWorkflow(owner,dispatch);expect(proposal.subjectUserId).toBe(subject);expect(proposal.state).toBe('pending');expect((await service.proposeForWorkflow(owner,dispatch)).id).toBe(proposal.id);expect((await service.list(credential)).map(p=>p.id)).toEqual([proposal.id]);
++ await expect(service.proposeForWorkflow(subject,dispatch)).rejects.toThrow();await expect(service.proposeForWorkflow(randomUUID(),dispatch)).rejects.toThrow();await expect(service.proposeForWorkflow(owner,{...dispatch,target:{...target,enrollmentId:randomUUID()}})).rejects.toThrow();
++ const digest=deviceProposalDigest(proposal);
++ await expect(service.claim(credential,proposal.id,digest)).rejects.toThrow();
++ await expect(service.decide({...credential,subjectUserId:owner},proposal.id,digest,true)).rejects.toThrow();
++ const approved=await service.decide(credential,proposal.id,digest,true);expect(approved.resolvedBy).toBe(subject);
++ const claimed=await service.claim(credential,proposal.id,digest);expect(claimed.execution?.attemptId).toBeTruthy();
++ await expect(service.claim(credential,proposal.id,digest)).rejects.toThrow();
++ const receipt={outcome:'applied',operationId:randomUUID()},attempt=claimed.execution!.attemptId;
++ const completed=await service.receipt(credential,proposal.id,digest,attempt,receipt);expect(completed.state).toBe('done');
++ expect((await service.receipt(credential,proposal.id,digest,attempt,receipt)).id).toBe(completed.id);
++ expect((await service.proposeForWorkflow(owner,dispatch)).execution?.providerReceipt).toEqual(receipt);
++ await expect(service.receipt(credential,proposal.id,digest,attempt,{...receipt,operationId:randomUUID()})).rejects.toThrow();
++ await pg.query("UPDATE workflow.embedded_executions SET execution=execution || '{\"finished\":true,\"status\":\"cancelled\"}'::jsonb");await expect(service.proposeForWorkflow(owner,dispatch)).rejects.toThrow();expect((await pg.query('SELECT id FROM approval_requests')).rows).toHaveLength(1);
++}finally{await pg.close();}
++},30000);
+diff --git a/plugins/plugin-assistant/test/workflow-owner-migration-review.test.ts b/plugins/plugin-assistant/test/workflow-owner-migration-review.test.ts
+new file mode 100644
+--- /dev/null
++++ b/plugins/plugin-assistant/test/workflow-owner-migration-review.test.ts
+@@ -0,0 +1,20 @@
++import {test,expect} from 'vitest';
++import {PGlite} from '@electric-sql/pglite';
++import {clientDeviceTable} from '../../plugin-sql/src/schema/clientDevices';
++import {generateSnapshot} from '../../plugin-sql/src/runtime-migrator/drizzle-adapters/snapshot-generator';
++import {calculateDiff} from '../../plugin-sql/src/runtime-migrator/drizzle-adapters/diff-calculator';
++import {generateMigrationSQL,checkForDataLoss} from '../../plugin-sql/src/runtime-migrator/drizzle-adapters/sql-generator';
++test('runtime migration adds nullable workflow ownership without changing a legacy enrollment',async()=>{
++ const current=await generateSnapshot({clientDeviceTable}),before=structuredClone(current);
++ const name=Object.keys(before.tables).find(k=>before.tables[k].name==='client_devices')!;
++ expect(name).toBeTruthy();delete before.tables[name].columns.workflow_owner_id;
++ const diff=await calculateDiff(before,current),risk=checkForDataLoss(diff),statements=await generateMigrationSQL(before,current,diff);
++ expect(risk.hasDataLoss).toBe(false);expect(risk.requiresConfirmation).toBe(false);
++ expect(statements).toHaveLength(1);expect(statements[0]).toContain('ADD COLUMN IF NOT EXISTS');expect(statements[0]).toContain('workflow_owner_id');
++ const pg=new PGlite();try{await pg.exec("CREATE TABLE client_devices(subject_user_id text,key_hash text,enrollment_id text); INSERT INTO client_devices VALUES('legacy-paired-subject','retained-key-hash','retained-enrollment');");
++ for(const statement of statements)await pg.exec(statement);
++ expect((await pg.query('SELECT * FROM client_devices')).rows).toEqual([{subject_user_id:'legacy-paired-subject',key_hash:'retained-key-hash',enrollment_id:'retained-enrollment',workflow_owner_id:null}]);
++ for(const statement of statements)await pg.exec(statement);
++ expect((await pg.query('SELECT count(*)::int AS count FROM client_devices')).rows[0]).toEqual({count:1});
++ }finally{await pg.close();}
++},30000);

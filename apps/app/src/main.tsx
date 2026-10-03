@@ -1,9 +1,10 @@
 // Register browser implementations before any runtime module claims plugin identity.
 import './browser/register';
+import {bindBrowserSpeechConnection} from './browser/agent-speech';
 import { pauseLiveActivityForMock } from './runtime/mock-admission';
 import { installBrowserDeviceAdapter } from './browser/device-adapter';
 import { BrowserDeviceControls } from './browser/device-controls';
-import { browserDevProfile } from './browser/dev-profile';
+import { browserDevProfile,developmentAgentWorkflows } from './browser/dev-profile';
 import { captureSimulatedApps, installSimulatedApps } from './browser/simulated-apps';
 import {HostedDigestPanel} from './runtime/hosted-digest-ui';
 import { installClockAdapter } from './prototype/clock-adapter';
@@ -32,6 +33,7 @@ import { ConnectionChooser, connectionController } from './runtime/connection-ui
 import { installInboxCloudAdapter } from './prototype/inbox-cloud-adapter';
 import './prototype/prototype.css';
 import './prototype/phone.css';
+if(!isAndroid)bindBrowserSpeechConnection(connectionController);
 const query = new URLSearchParams(location.search);
 document.documentElement.classList.toggle('native-phone', isAndroid);
 const savedMock = (() => {
@@ -71,6 +73,7 @@ if (!fixture) {
   if(!browserDevProfile) installWorkflowAdapter(Component, VIEWS);
 }
 installSimulatedApps(Component,VIEWS,simulatedApps);
+if(developmentAgentWorkflows)installWorkflowAdapter(Component,VIEWS);
 installClockAdapter(Component, VIEWS, { simulated: fixture, browser: !isAndroid });
 let shell: any;
 function Phone() {

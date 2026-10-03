@@ -35,7 +35,8 @@ test('Camera Scan reviews real OCR and commits only corrected text to durable No
   test.setTimeout(90000);
   await page.addInitScript(()=>{
     localStorage.setItem('alpha.connection.selection.v1',JSON.stringify({kind:'offline'}));
-    navigator.mediaDevices.getUserMedia=async()=>{
+    const mediaDevices=navigator.mediaDevices;Object.defineProperty(navigator,'mediaDevices',{configurable:true,value:mediaDevices});
+    mediaDevices.getUserMedia=async()=>{
       const canvas=document.createElement('canvas');canvas.width=1200;canvas.height=800;const ctx=canvas.getContext('2d')!;
       const draw=()=>{ctx.fillStyle='white';ctx.fillRect(0,0,1200,800);ctx.fillStyle='black';ctx.font='64px Arial';ctx.fillText('Alpha local scan',70,180);ctx.fillText('Review before saving',70,300);};draw();
       const stream=canvas.captureStream(10);const timer=setInterval(draw,100);stream.getVideoTracks()[0].addEventListener('ended',()=>clearInterval(timer));return stream;

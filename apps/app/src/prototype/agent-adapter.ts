@@ -1,3 +1,6 @@
+import {publishWorkflowNotice} from '../browser/workflow-notices';
+import {speakLocalText} from '../local-speech-playback';
+import {browserDevProfile} from '../browser/dev-profile';
 import {stampNoteChanges} from '../runtime/note-dates';
 import {isClockOperation,assertClockTimeZone,currentClockTimeZone,validateClockResult} from '../runtime/clock-contract';
 import { Capacitor } from '@capacitor/core';
@@ -233,14 +236,14 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
       signal.throwIfAborted(); context(this);
       if (!this.live || JSON.stringify(alphaClient.getState().context) !== JSON.stringify(expectedContext)) throw new Error('Phone context changed');
       if(isClockOperation(operation)){
-        if(Capacitor.getPlatform()!=='android')return {status:'failed',summary:'Native Clock handoff is unavailable in browser development. No alarm request was sent.'};
+        if(Capacitor.getPlatform()!=='android'&&!browserDevProfile)return {status:'failed',summary:'Native Clock handoff is unavailable in browser development. No alarm request was sent.'};
         assertClockTimeZone(operation,expectedContext.timeZone);signal.throwIfAborted();
         if(expectedContext.sensitive||document.hidden)throw Error('Return to Alpha Phone and review again');
         const {type,...request}=operation;
         const result=await DailyApps.clockHandoff({...request,reviewed:true});
         const clockResult=validateClockResult(operation,{kind:'clock-handoff',action:result.action,status:result.status});
         const status=clockResult.status==='opened'?'succeeded':clockResult.status==='unknown'?'unknown':'failed';
-        return {status,clockResult,summary:clockResult.status==='opened'?'Clock request sent. Check Clock; Alpha cannot confirm an alarm was changed.':clockResult.status==='unknown'?'Clock result is unknown. Check Clock before another request.':clockResult.status==='unavailable'?'No installed Clock app handles this request.':clockResult.status==='denied'?'Android did not allow this Clock request.':'Clock request was not sent. Review its time and the current phone state.'};
+        return {status,clockResult,summary:browserDevProfile&&clockResult.status==='opened'?result.message:clockResult.status==='opened'?'Clock request sent. Check Clock; Alpha cannot confirm an alarm was changed.':clockResult.status==='unknown'?'Clock result is unknown. Check Clock before another request.':clockResult.status==='unavailable'?'No installed Clock app handles this request.':clockResult.status==='denied'?'Android did not allow this Clock request.':'Clock request was not sent. Review its time and the current phone state.'};
       }
       if(isMapsOperation(operation)){
         const mapsResult=readMapsSelection(operation);signal.throwIfAborted();context(this);
@@ -289,6 +292,21 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
         if(result.status!=='ready')return {status:'failed',summary:'Calendar read permission is unavailable. No calendar content was uploaded.'};
         const events=await Promise.all(result.events.map(async event=>({...event,revision:await workflowSha([event.id,event.calendarId,event.title,event.start,event.end,event.allDay])})));
         const readResult=await validateWorkflowResult(operation,{kind:'calendar',events});current();return {status:'succeeded',summary:`Read ${events.length} events within the selected calendar range.`,readResult};
+      }
+      if(operation.type==='post_notification'||operation.type==='speak_text'){
+        if(connectionController.getWorkflowPresentationProtocol()!==2)return {status:'failed',summary:'This device has not negotiated workflow presentation support.'};
+        signal.throwIfAborted();context(this);if(!this.live||document.hidden||JSON.stringify(alphaClient.getState().context)!==JSON.stringify(expectedContext)||expectedContext.sensitive||expectedContext.view!=='workflows')throw Error('Workflow review context changed');
+        if(operation.type==='post_notification'&&Capacitor.isNativePlatform()){
+          const notices=registerPlugin<{postWorkflow(input:{operationId:string;bindingHash:string;title:string;body:string}):Promise<{status:unknown}>}>('AlphaNotifications');
+          if(!bindingHash)throw Error('Workflow notification binding is missing');
+          const result=await notices.postWorkflow({operationId,bindingHash,title:operation.title,body:operation.body});
+          signal.throwIfAborted();
+          const status=result.status==='succeeded'?'succeeded':result.status==='failed'?'failed':'unknown';
+          return {status,summary:status==='succeeded'?'Posted the reviewed notification on this device.':status==='failed'?'Notification delivery is unavailable on this device.':'Notification outcome is unconfirmed. It will not be repeated automatically.'};
+        }
+        if(operation.type==='post_notification'){await publishWorkflowNotice(operationId,operation.body,signal,operation.title);return {status:'succeeded',summary:'Posted the reviewed notification in the browser Inbox.'};}
+        const speechAbort=new AbortController(),stop=()=>speechAbort.abort();signal.addEventListener('abort',stop,{once:true});window.addEventListener('alpha:stop-workflow-speech',stop);
+        try{signal.throwIfAborted();await speakLocalText(operation.text,speechAbort.signal,undefined,true);return {status:'succeeded',summary:'Finished reading the reviewed text aloud.'};}finally{signal.removeEventListener('abort',stop);window.removeEventListener('alpha:stop-workflow-speech',stop);}
       }
       if (operation.type === 'create_note') {
         if (this.notesStorageFailed) return { status: 'failed', summary: 'Notes storage is unavailable. Nothing saved.' };
@@ -429,6 +447,9 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
       if(!current||JSON.stringify(current)!==JSON.stringify(expected)||document.hidden||connectionController.getSnapshot().open||document.documentElement.dataset.connectionMode==='mock')throw new Error('Agent changed. Review this message again.');
       if(this.S().typing)throw new Error('Wait for the current agent reply before sharing this email.');
       context(this);await this.send(text,expected);
+    };
+    if(browserDevProfile)api.composeContentQuestion=(draft:string)=>{
+      context(this);this.setState({chat:'sheet',shade:false,draft});
     };
     api.assist = (notice: string) => {
       context(this);

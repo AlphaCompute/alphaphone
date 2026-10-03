@@ -123,7 +123,11 @@ for (const mode of ['confirm','transcribed','zone','modal','unknown','receipt-lo
       await page.evaluate(()=>{const keep=['fixture-secure','fixture-journal','fixture-effects'].map(k=>[k,localStorage.getItem(k)]);localStorage.clear();for(const [k,v] of keep)if(v)localStorage.setItem(k!,v);});
       await page.reload();await connect();
       const again=page.getByRole('textbox',{name:'Ask Alpha',exact:true});await again.fill('Repeat this same request');await again.press('Enter');
-      await page.getByText('Approve: clock handoff',{exact:true}).last().click();
+      // Let the reply settle, then keep the review card in the expanded chat.
+      // A newly opening sheet can scroll its inner text between pointer down/up.
+      await expect(page.getByText(/Pending phone actions are available for separate review/)).toBeVisible();
+      await page.getByRole('button',{name:'Expand chat',exact:true}).click();
+      await page.getByRole('button',{name:'Approve: clock handoff Tap to approve this exact action',exact:true}).click();
       await expect(page.getByText(/already has a device journal entry/).first()).toBeVisible();expect(await page.evaluate(()=>(window as any).recoveryFixture.effects)).toBe(1);
     }
 

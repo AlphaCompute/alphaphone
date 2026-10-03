@@ -14,7 +14,7 @@
 
 
 <sc-if value="{{isOn}}" hint-placeholder-val="{{false}}">
-<div data-alpha-layer="home" aria-hidden="{{homeHidden}}" inert="{{homeHidden}}" style="position: absolute; inset: 0; z-index: 10; display: flex; flex-direction: column; padding: 64px 0 108px; box-sizing: border-box">
+<div data-alpha-layer="home" aria-hidden="{{homeHidden}}" inert="{{homeHidden}}" style="position: absolute; inset: 44px 0 0; z-index: 10; display: flex; flex-direction: column; padding: 20px 0 108px; box-sizing: border-box; overflow-y:auto; overflow-x:hidden; scroll-padding-bottom:110px">
   <div class="scr" style="display: flex; gap: 12px; overflow-x: auto; scroll-snap-type: x mandatory; padding: 0 24px; scroll-padding-left: 24px; touch-action: pan-x; flex-shrink: 0">
     <button onClick="{{goCalendar}}" aria-label="{{homeCalendarLabel}}" style="flex-shrink: 0; scroll-snap-align: start; width: 280px; height: 196px; border-radius: 30px; background: var(--acc); color: #ffffff; padding: 22px; box-sizing: border-box; display: flex; flex-direction: column; justify-content: space-between">
       <div style="display: flex; justify-content: space-between; align-items: center; width: 100%">
@@ -2220,7 +2220,7 @@
         <sc-if value="{{notes.rec.paused}}" hint-placeholder-val="{{false}}"><span style="width: 12px; height: 12px; border-radius: 6px; {{notes.rec.dotCss}}"></span></sc-if>
         <span class="serif" style="font-size: 72px; line-height: 1; letter-spacing: -.02em; font-variant-numeric: tabular-nums; {{notes.rec.clockCss}}">{{notes.rec.clock}}</span>
       </div>
-      <div style="display: flex; align-items: center; gap: 3px; height: 72px; margin-top: 26px">
+      <div role="img" aria-label="Microphone levels" style="display: flex; align-items: center; gap: 3px; height: 72px; margin-top: 26px">
         <sc-for list="{{notes.rec.levels}}" as="b" hint-placeholder-count="44"><span style="flex: 1 1 0; height: {{b.h}}px; border-radius: 2px; background: var(--acct); transition: height .2s"></span></sc-for>
       </div>
       <div class="scr" style="flex-grow: 1; overflow-y: auto; margin-top: 26px; display: flex; flex-direction: column-reverse; gap: 18px; padding-bottom: 12px">
@@ -2416,7 +2416,7 @@
         <div style="height: 104px; border-radius: 24px; background: var(--s2); padding: 16px; box-sizing: border-box; display: flex; flex-direction: column; justify-content: space-between">
           <svg class="i" viewBox="0 0 24 24" style="color: var(--mut)"><path d="{{ic.filesDisk}}"></path></svg>
           <div>
-            <div style="height: 6px; border-radius: 3px; background: var(--s3); overflow: hidden"><div style="height: 100%; width: {{files.storageW}}; background: var(--acc); border-radius: 3px"></div></div>
+            <div style="height: 6px; border-radius: 3px; background: var(--s3); overflow: hidden; {{files.storageBarStyle}}"><div style="height: 100%; width: {{files.storageW}}; background: var(--acc); border-radius: 3px"></div></div>
             <div style="font-size: 13px; color: var(--mut); margin-top: 8px">{{files.storageText}}</div>
           </div>
         </div>
@@ -3048,7 +3048,7 @@
         </div>
 
         <div style="display: flex; align-items: center; gap: 8px; margin-top: 14px">
-          <span style="flex-grow: 1; font-size: 13px; color: var(--mut)">{{workflows.fd.last}}</span>
+          <span role="status" aria-label="Workflow run status" style="flex-grow: 1; font-size: 13px; color: var(--mut)">{{workflows.fd.last}}</span>
           <button onClick="{{workflows.fd.edit}}" style="height: 44px; padding: 0 18px; border-radius: 22px; background: var(--s2); font-weight: 600; font-size: 14px">Change</button>
           <sc-if value="{{workflows.fd.notRunning}}" hint-placeholder-val="{{true}}">
             <button aria-label="Run now" onClick="{{workflows.fd.run}}" style="height: 44px; padding: 0 18px; border-radius: 22px; background: var(--acc); color: #fff; font-weight: 600; font-size: 14px; display: flex; align-items: center; gap: 8px"><svg class="i" viewBox="0 0 24 24" style="width: 14px; height: 14px; fill: currentColor"><path d="{{ic.play}}"></path></svg>Run</button>
@@ -3090,14 +3090,17 @@
         <sc-if value="{{workflows.r.phoneAvailable}}" hint-placeholder-val="{{false}}">
         <section aria-label="Workflow phone steps" style="margin-top: 22px; padding: 18px 20px; border-radius: 24px; background: var(--s2); font-size: 15px; line-height: 1.45">
           <strong>Phone steps</strong><p>{{workflows.r.phoneStatus}}</p>
+          <sc-if value="{{workflows.r.phoneSpeaking}}" hint-placeholder-val="{{false}}"><button aria-label="Stop workflow speech" onClick="{{workflows.r.phoneStopSpeech}}" style="min-height:44px;padding:0 18px;border-radius:22px;background:var(--bg)">Stop reading</button></sc-if>
           <div style="display:flex; gap:12px; flex-wrap:wrap">
             <button aria-label="Review phone steps" onClick="{{workflows.r.phoneReview}}" disabled="{{workflows.r.phoneBusy}}" style="min-height:44px; padding:0 18px; border-radius:22px; background:var(--bg)">Review phone steps</button>
             <button aria-label="Sync saved phone receipts" onClick="{{workflows.r.phoneSync}}" disabled="{{workflows.r.phoneBusy}}" style="min-height:44px; padding:0 18px; border-radius:22px; background:var(--bg)">Sync saved receipts</button>
           </div>
           <sc-for list="{{workflows.r.phoneSteps}}" as="step" hint-placeholder-count="0">
             <section aria-label="Workflow phone step review" style="margin-top:18px; border-top:1px solid var(--line); padding-top:18px">
-              <strong>{{step.title}}</strong><p style="white-space:pre-wrap; overflow-wrap:anywhere">{{step.description}}</p><p>Expires {{step.expires}}</p>
-              <div style="display:flex; gap:12px; flex-wrap:wrap">
+              <strong>{{step.title}}</strong><p style="white-space:pre-wrap; overflow-wrap:anywhere">{{step.description}}</p>
+              <sc-if value="{{step.hasIdentity}}" hint-placeholder-val="{{false}}"><details aria-label="Workflow execution details" style="margin:14px 0"><summary style="min-height:44px;padding:12px 0;box-sizing:border-box;cursor:pointer;font-weight:600">Execution details</summary><p style="white-space:pre-wrap;overflow-wrap:anywhere;font-size:13px;color:var(--mut)">{{step.identity}}</p></details></sc-if>
+              <p style="font-size:13px;color:var(--mut)">Expires {{step.expires}}</p>
+              <div style="display:grid; grid-template-columns:minmax(0,1fr); gap:12px; scroll-margin-block:110px">
                 <button aria-label="{{step.denyLabel}}" onClick="{{step.deny}}" disabled="{{step.disabled}}" style="min-height:44px; padding:0 18px; border-radius:22px; background:var(--bg)">{{step.denyLabel}}</button>
                 <button aria-label="{{step.approveLabel}}" onClick="{{step.approve}}" disabled="{{step.disabled}}" style="min-height:44px; padding:0 18px; border-radius:22px; background:var(--acc); color:#fff">{{step.approveLabel}}</button>
               </div>
@@ -3168,6 +3171,28 @@
         <sc-if value="{{workflows.b.typed}}" hint-placeholder-val="{{false}}">
           <textarea aria-label="Workflow description" value="{{workflows.b.description}}" onChange="{{workflows.b.onDescription}}" maxlength="4000" style="width:100%;box-sizing:border-box;min-height:80px;padding:16px;border:0;border-radius:18px;background:var(--s2);color:var(--fg)"></textarea>
           <p role="status" style="font-size:14px;color:var(--mut);line-height:1.45">{{workflows.b.typedStatus}}</p>
+          <sc-if value="{{workflows.b.describeOn}}" hint-placeholder-val="{{false}}">
+            <section aria-label="Describe workflow" style="padding:16px;border-radius:18px;background:var(--s2);margin:16px 0">
+              <label for="workflow-generation-prompt" style="display:block;font-weight:600;margin-bottom:12px">What should this workflow do?</label>
+              <textarea id="workflow-generation-prompt" aria-label="Workflow request" value="{{workflows.b.descriptionPrompt}}" onChange="{{workflows.b.onGenerationPrompt}}" maxlength="4000" style="width:100%;box-sizing:border-box;min-height:110px;padding:12px;border:1px solid var(--line);border-radius:12px;background:var(--bg);color:var(--fg);font:inherit"></textarea>
+              <div style="display:flex;flex-wrap:wrap;gap:10px;margin-top:12px">
+                <button aria-label="Generate workflow draft" aria-disabled="{{workflows.b.generationOff}}" onClick="{{workflows.b.generateDraft}}" style="min-height:44px;padding:10px 16px;border-radius:22px;{{workflows.b.generateCss}}">{{workflows.b.generateLabel}}</button>
+                <button aria-label="Cancel workflow generation" onClick="{{workflows.b.cancelGeneration}}" style="min-height:44px;padding:10px 16px;border-radius:22px;background:var(--bg);color:var(--fg)">Keep current draft</button>
+              </div>
+              <sc-if value="{{workflows.b.hasGenerated}}" hint-placeholder-val="{{false}}">
+                <section aria-label="Generated draft" style="margin-top:20px">
+                  <h3 style="font-size:20px;overflow-wrap:anywhere">{{workflows.b.generatedName}}</h3>
+                  <p style="white-space:pre-wrap;overflow-wrap:anywhere">{{workflows.b.generatedDescription}}</p>
+                  <p style="font-size:14px;color:var(--mut)">Runs only when you choose Run now.</p>
+                  <sc-for list="{{workflows.b.generatedSteps}}" as="step" hint-placeholder-count="2">
+                    <div style="padding:12px 0;border-top:1px solid var(--line)"><strong>{{step.title}}</strong><p style="white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.5;margin-bottom:0">{{step.text}}</p></div>
+                  </sc-for>
+                  <details aria-label="Generated technical specification" style="margin:12px 0"><summary style="min-height:44px;line-height:44px;cursor:pointer">Technical specification</summary><pre aria-label="Generated workflow review" style="white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px;line-height:1.5">{{workflows.b.generatedReview}}</pre></details>
+                </section>
+                <button aria-label="Use generated workflow draft" onClick="{{workflows.b.useGenerated}}" style="min-height:44px;padding:10px 16px;border-radius:22px;background:var(--acc);color:#fff">Use draft</button>
+              </sc-if>
+            </section>
+          </sc-if>
           <sc-if value="{{workflows.b.hasTypedReview}}" hint-placeholder-val="{{false}}"><pre aria-label="Workflow save review" style="white-space:pre-wrap;overflow-wrap:anywhere;padding:16px;border-radius:18px;background:var(--s2);font-size:12px">{{workflows.b.typedReview}}</pre></sc-if>
           <sc-if value="{{workflows.b.unknown}}" hint-placeholder-val="{{false}}"><button onClick="{{workflows.b.refresh}}" style="min-height:44px;padding:12px;border-radius:22px;background:var(--s2)">Refresh save receipt</button></sc-if>
           <sc-if value="{{workflows.b.canDiscard}}" hint-placeholder-val="{{false}}"><button onClick="{{workflows.b.discard}}" style="min-height:44px;padding:12px;border-radius:22px;background:var(--s2)">Discard local draft</button></sc-if>

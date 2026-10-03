@@ -1,3 +1,5 @@
+import {BrowserDigestDelegation} from '../browser/digest-delegation-ui';
+import {browserDevProfile} from '../browser/dev-profile';
 import { CloudDelegationPanel } from "./cloud-delegation-ui";
 import { useState } from "react";
 import type {
@@ -131,7 +133,7 @@ export function HostedLiveSourcePicker({
 	return (
 		<details>
 			<summary>Use live Google data</summary>
-            {scope && <CloudDelegationPanel client={client} scope={scope} signal={signal} current={current} onConnected={()=>void loadAccounts()}/> }
+            {scope && (browserDevProfile&&JSON.parse(localStorage.getItem('alpha.connection.selection.v1')||'null')?.kind==='development'?<BrowserDigestDelegation client={client} scope={scope} signal={signal} current={current} onConnected={()=>void loadAccounts()}/>:<CloudDelegationPanel client={client} scope={scope} signal={signal} current={current} onConnected={()=>void loadAccounts()}/>) }
 			<p>{message}</p>
 			<button disabled={busy || pending} onClick={() => void loadAccounts()}>
 				Refresh connected accounts

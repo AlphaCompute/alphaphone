@@ -1,3 +1,10 @@
+import { workflowPresentationProtocol } from './workflow-presentation';
+import {developmentIdentity,assertDevelopmentIdentity} from '../browser/development-identity';
+import {developmentCloudKey} from '../browser/development-cloud';
+import {DevelopmentCloudSetup} from '../browser/development-cloud-ui';
+import {developmentCredential,developmentJournal,authorDevelopmentAction} from '../browser/development-actions';
+import {browserDevProfile} from '../browser/dev-profile';
+import {developmentBridge,developmentName,developmentProfiles,developmentReply,saveDevelopmentReply,type DevelopmentProfile} from '../browser/development-connection';
 import {Capacitor} from '@capacitor/core';
 import { CloudPersonalSetup, personalIntent, savePersonalIntent, clearPersonalIntent, type PersonalSetupState } from './cloud-personal-setup';
 import { PersonalProtocolError, type CloudPersonalProtocol, type PersonalView, type PersonalOwner } from './cloud-personal-protocol';
@@ -21,7 +28,7 @@ import { phoneContextMessage } from './phone-context';
 import { cloudCredentialStore, remoteCredentialStore, nativeCloudRequest, nativeRemoteRequest, openConnectionBrowser, secureConnectionStore } from './native-connection';
 import './connection-ui.css';
 
-type Selection = { kind: 'resident' } | { kind: 'offline' } | { kind: 'none' } | { kind: 'mock' } | { kind: 'remote' | 'local'; origin: string } | { kind: 'cloud'; environment: CloudEnvironment; agentId: string; ownerId?: string };
+type Selection = {kind:'development';profile:DevelopmentProfile;account?:string} | { kind: 'resident' } | { kind: 'offline' } | { kind: 'none' } | { kind: 'mock' } | { kind: 'remote' | 'local'; origin: string } | { kind: 'cloud'; environment: CloudEnvironment; agentId: string; ownerId?: string };
 export interface CloudServiceSession { environment: CloudEnvironment; userId: string; organizationId?: string; sessionId: string; credentialId: string }
 export interface RestoredMessage { id: string; from: 'user' | 'agent'; text: string }
 export interface ConnectionSnapshot {
@@ -35,7 +42,7 @@ export interface ConnectionSnapshot {
   kind: 'offline' | 'remote' | 'local' | 'resident' | 'cloud'; name: string;
   session: VerifiedSession | null; agents: CloudAgent[];
 }
-type Active = { kind: 'resident'; remote: LocalAgentProtocol; origin: string; actions?: DeviceActions } | { kind: 'remote' | 'local'; remote: RemoteProtocol; origin: string; actions?: DeviceActions } | { kind: 'cloud'; cloud: CloudProtocol; agentId: string; actions?: DeviceActions; phoneTarget?: CloudPhoneTarget; voiceExpiresAt?: number };
+type Active = { kind: 'resident'; remote: LocalAgentProtocol; origin: string; actions?: DeviceActions; workflowProtocol?: 1|2 } | { kind: 'remote' | 'local'; remote: RemoteProtocol; origin: string; actions?: DeviceActions; workflowProtocol?: 1|2 } | { kind: 'cloud'; cloud: CloudProtocol; agentId: string; actions?: DeviceActions; workflowProtocol?: 1|2; phoneTarget?: CloudPhoneTarget; voiceExpiresAt?: number };
 const SELECTION = 'alpha.connection.selection.v1';
 const CLOUD_SERVICE = 'alpha.connection.cloud-service.v1';
 const CONVERSATIONS = 'alpha.connection.conversations.v1';
@@ -44,6 +51,7 @@ let state: ConnectionSnapshot = { phoneActionsAvailable:false, phoneCapabilityRe
 let active: Active | null = null, operation: AbortController | null = null;
 let startup: Promise<void> | null = null, epoch = 0;
 let sending: AbortController | null = null;
+let developmentVoiceExpiresAt=0;
 const conversationMemory = new Map<string, string>();
 const actionReceipts = new Map<string, { sessionId: string; result: Promise<OperationReceipt> }>();
 let deviceRecovery: DeviceRecovery | undefined;
@@ -133,6 +141,7 @@ function expired(error: unknown): boolean {
 function selection(): Selection | null {
   try {
     const value = JSON.parse(localStorage.getItem(SELECTION) || 'null');
+    if(browserDevProfile&&value?.kind==='development'&&developmentProfiles.includes(value.profile))return value;
     if (value?.kind === 'resident' || value?.kind === 'offline' || value?.kind === 'mock' || value?.kind === 'none') return value;
     if ((value?.kind === 'remote' || value?.kind === 'local') && typeof value.origin === 'string') return value;
     if (value?.kind === 'cloud' && ['production', 'staging'].includes(value.environment) && typeof value.agentId === 'string') return value;
@@ -156,6 +165,7 @@ async function work(message: string, action: (signal: AbortSignal) => Promise<vo
   update({ busy: true, open: true, message, error: '' });
   try { await action(controller.signal); }
   catch (error) {
+    if(browserDevProfile&&controller.signal.aborted&&!state.open){update({error:'',message:''});return;}
     if (expired(error) && active?.kind === 'cloud' && active.cloud.environment === cloud.environment) {
       const previous = active; retire('Sign-in required'); detachService();
       try { await previous.cloud.disconnect(); }
@@ -194,6 +204,7 @@ async function connectRemote(kind: 'remote' | 'local', origin: string, code: str
   const verified = remote.session!;
   const session = { ownerId: verified.identityId, agentId: agent.id, sessionId: crypto.randomUUID(), origin: remote.origin };
   let actions: DeviceActions | undefined;
+  const workflowProtocol=await workflowPresentationProtocol(signal);
   try {
     const baseScope = await actionScope(JSON.stringify([remote.origin, session.ownerId, session.agentId]));
     const slot = `device:${baseScope}`;
@@ -212,7 +223,7 @@ async function connectRemote(kind: 'remote' | 'local', origin: string, code: str
       if (response.status < 200 || response.status >= 300) throw Object.assign(new Error('Device action request failed'), { status: response.status });
       return response.body;
     };
-    const registered = await request('/api/client-devices/register', { label: 'Alpha Phone', workflowProtocol: 1 }, signal) as { installationId: string; enrollmentId: string; capabilities?: string[] };
+    const registered = await request('/api/client-devices/register', { label: 'Alpha Phone', workflowProtocol }, signal) as { installationId: string; enrollmentId: string; capabilities?: string[] };
     if (registered.installationId !== credential.installationId || !/^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/.test(registered.enrollmentId)) throw new Error('Device registration was not verified');
     if(Array.isArray(registered.capabilities)&&registered.capabilities.includes("reminders.local-record.v2"))headers["X-Eliza-Device-Capabilities"]+=",reminders.local-record.v2";else if(Array.isArray(registered.capabilities)&&registered.capabilities.includes("reminders.local-record.v1"))headers["X-Eliza-Device-Capabilities"]+=",reminders.local-record.v1";
     if(Array.isArray(registered.capabilities)&&registered.capabilities.includes("maps.selected-read.v1"))headers["X-Eliza-Device-Capabilities"]+=",maps.selected-read.v1";
@@ -223,8 +234,13 @@ async function connectRemote(kind: 'remote' | 'local', origin: string, code: str
     actions = new DeviceActions(session, credential, await actionScope(JSON.stringify([baseScope, credential.installationId])), request, actionJournal, (op, id, context, effectSignal, bindingHash) => deviceExecutor(op, id, context, effectSignal, bindingHash),(op,id,binding,signal)=>deviceRecovery?deviceRecovery(op,id,binding,signal):Promise.resolve({status:"unknown"}),headers["X-Eliza-Device-Capabilities"].split(",").includes("reminders.local-record.v2"));
   } catch { signal.throwIfAborted(); /* Older hosts still support typed chat, without phone action authority. */ }
   save({ kind, origin: remote.origin });
-  activate({ kind, remote, origin: remote.origin, actions }, session, agent.name);
+  activate({ kind, remote, origin: remote.origin, actions, workflowProtocol }, session, agent.name);
 
+}
+async function connectDevelopment(profile:DevelopmentProfile,signal:AbortSignal){
+ if(!browserDevProfile)throw Error('Development mode required.');
+ // This explicitly gated browser fixture implements reminder v2; real peers still negotiate it.
+ const identity=developmentIdentity(profile);const client=new LocalAgentProtocol(developmentBridge(profile,identity));const {session,name}=await client.connect(signal);signal.throwIfAborted();const credential=developmentCredential(profile,identity),scope=await actionScope(JSON.stringify([client.origin,session.ownerId,session.agentId,credential.installationId]));const actions=new DeviceActions(session,credential,scope,(path,body,signal)=>client.request(path,body,signal),developmentJournal(profile,identity),(op,id,context,signal,binding)=>deviceExecutor(op,id,context,signal,binding),(op,id,binding,signal)=>deviceRecovery?deviceRecovery(op,id,binding,signal):Promise.resolve({status:'unknown'}),true);await retire();signal.throwIfAborted();assertDevelopmentIdentity(identity);const workflowProtocol=2 as const;save({kind:'development',profile,...(identity.account?{account:identity.account}:{})});developmentVoiceExpiresAt=Date.now()+3600000;activate({kind:'resident',remote:client,origin:client.origin,actions,workflowProtocol},session,name);
 }
 async function connectResident(signal: AbortSignal) {
   if (!await localAgentPackaged()) throw new Error('The local agent is unavailable here. Connect a remote agent, use Eliza Cloud, or continue in mock mode.');
@@ -233,6 +249,7 @@ async function connectResident(signal: AbortSignal) {
   const { session, name } = await client.connect(signal);
   signal.throwIfAborted();
   let actions:DeviceActions|undefined;
+  const workflowProtocol=await workflowPresentationProtocol(signal);
   let reason='';
   try {
     const store=isAndroid?secureConnectionStore:developmentDeviceStore;
@@ -245,7 +262,7 @@ async function connectResident(signal: AbortSignal) {
     // Browser and Android use the same reviewed local-record contracts.
     const headers={'X-Eliza-Device-Id':credential.installationId,'X-Eliza-Device-Key':credential.key,'X-Eliza-Device-Capabilities':'calendar.local-event.v1,notes.local-record.v1'};
     const request=(path:string,body:unknown|undefined,requestSignal:AbortSignal)=>client.request(path,body,requestSignal,headers);
-    const registered=await request('/api/client-devices/register',{label:isAndroid?'Alpha Phone':'Alpha browser development',workflowProtocol:1},signal);
+    const registered=await request('/api/client-devices/register',{label:isAndroid?'Alpha Phone':'Alpha browser development',workflowProtocol},signal);
     if(registered.installationId!==credential.installationId||typeof registered.enrollmentId!=='string'||!/^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/.test(registered.enrollmentId))throw Error('Device registration was not verified');
     if(Array.isArray(registered.capabilities)&&registered.capabilities.includes('reminders.local-record.v2'))headers['X-Eliza-Device-Capabilities']+=',reminders.local-record.v2';else if(Array.isArray(registered.capabilities)&&registered.capabilities.includes('reminders.local-record.v1'))headers['X-Eliza-Device-Capabilities']+=',reminders.local-record.v1';
     if(registered.capabilities?.includes('maps.selected-read.v1'))headers['X-Eliza-Device-Capabilities']+=',maps.selected-read.v1';
@@ -255,7 +272,7 @@ async function connectResident(signal: AbortSignal) {
     actions=new DeviceActions(session,credential,await actionScope(JSON.stringify([baseScope,credential.installationId])),request,journal,(op,id,context,effectSignal,bindingHash)=>deviceExecutor(op,id,context,effectSignal,bindingHash),(op,id,binding,recoverySignal)=>deviceRecovery?deviceRecovery(op,id,binding,recoverySignal):Promise.resolve({status:'unknown'}),headers["X-Eliza-Device-Capabilities"].split(",").includes("reminders.local-record.v2"));
   } catch(error) {signal.throwIfAborted();reason='Local chat connected. Device actions are unavailable: '+(error instanceof Error?error.message:'Enrollment failed.');}
   save({kind:'resident'});
-  activate({kind:'resident',remote:client,origin:client.origin,actions},session,name);
+  activate({kind:'resident',remote:client,origin:client.origin,actions,workflowProtocol},session,name);
   if(reason)update({phoneCapabilityReason:reason});
 }
 async function connectCloud(agentId: string, signal: AbortSignal, expectedOwner?: string, expectedOrigin?:string, expectedPersonalOwner?:Readonly<PersonalOwner>) {
@@ -274,7 +291,8 @@ async function connectCloud(agentId: string, signal: AbortSignal, expectedOwner?
   if (agent.status !== 'running' || !agent.runtimeUrl) throw new Error('This agent is not ready. Refresh its status.');
   if(expectedOrigin&&new URL(agent.runtimeUrl).origin!==new URL(expectedOrigin).origin)throw Error('The personal Cloud runtime changed. Refresh its status.');
   const session = {ownerId:identity.userId,agentId,sessionId:crypto.randomUUID(),origin:new URL(agent.runtimeUrl).origin};
-  const next: Extract<Active,{kind:'cloud'}> = {kind:'cloud',cloud,agentId};
+  const workflowProtocol=await workflowPresentationProtocol(signal);
+  const next: Extract<Active,{kind:'cloud'}> = {kind:'cloud',cloud,agentId,workflowProtocol};
   let attached = false;
   let reason = 'This Cloud runtime has not enabled verified phone actions, workflows or paired speech.';
   try {
@@ -300,7 +318,7 @@ async function connectCloud(agentId: string, signal: AbortSignal, expectedOwner?
     if(Capacitor.getPlatform()==='android'&&device?.capabilities?.includes("clock.handoff.v1"))target.headers["X-Eliza-Device-Capabilities"]+=",clock.handoff.v1";
     if(Array.isArray(device?.capabilities)&&device.capabilities.includes("maps.selected-read.v1"))target.headers["X-Eliza-Device-Capabilities"]+=",maps.selected-read.v1";
     session.ownerId=capability.identityId;
-    const registered=await request('/api/client-devices/register',{label:'Alpha Phone',workflowProtocol:1},signal);
+    const registered=await request('/api/client-devices/register',{label:'Alpha Phone',workflowProtocol},signal);
     if (registered.installationId!==credential.installationId || typeof registered.enrollmentId!=='string' || !/^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/.test(registered.enrollmentId)) throw new Error('Cloud device registration was not verified');
 
     credential.enrollmentId=registered.enrollmentId; await secureConnectionStore.write(slot,credential); signal.throwIfAborted();
@@ -360,6 +378,7 @@ export const connectionController = {
     actionReceipts.set(proposal.id, { sessionId, result });
     return result;
   },
+  getWorkflowPresentationProtocol():1|2 { return active?.actions ? active.workflowProtocol ?? 1 : 1; },
   getWorkflowDeviceTarget(){const selected=active;if(!selected||!selected.actions||!selected.actions.credential.enrollmentId)return null;return {installationId:selected.actions.credential.installationId,enrollmentId:selected.actions.credential.enrollmentId};},
   async workflowPhoneActions(review:WorkflowPhoneReview,context:ContextEnvelope,signal:AbortSignal){
     const selected=active,generation=epoch,sessionId=state.session?.sessionId;
@@ -425,6 +444,7 @@ export const connectionController = {
   },
   getBrowserSpeechAgent(){return active?.kind==='resident'&&state.session&&active.remote.browserSpeechAvailable?active.remote:null;},
   getPairedVoiceBinding(): { origin: string; ownerId: string; expiresAt: number; sessionId: string } | null {
+    if(browserDevProfile&&selection()?.kind==='development'&&state.session)return {...state.session,expiresAt:developmentVoiceExpiresAt};
     if (active?.kind==='cloud' && state.session && active.phoneTarget && active.voiceExpiresAt && active.voiceExpiresAt>Date.now()) return {origin:state.session.origin,ownerId:state.session.ownerId,expiresAt:active.voiceExpiresAt,sessionId:state.session.sessionId};
     if (!active || active.kind === 'cloud' || active.kind === 'resident' || !state.session || !active.remote.session || active.remote.session.expiresAt <= Date.now()) return null;
     return { origin: active.origin, ownerId: state.session.ownerId, expiresAt: active.remote.session.expiresAt, sessionId: state.session.sessionId };
@@ -445,6 +465,7 @@ export const connectionController = {
   async initialize() {
     if (startup) return startup;
     startup = (async () => {
+      if(browserDevProfile){const saved=selection();if(saved?.kind==='development'){if(saved.account!==developmentIdentity(saved.profile).account){save({kind:'none'});return;}await work('Restoring development agent…',signal=>connectDevelopment(saved.profile,signal));return;}}
       if ((!isAndroid && !browserLocalAgentEnabled) || new URLSearchParams(location.search).get('mode') === 'mock') return;
       const saved = selection();
       if (saved?.kind === 'offline') return;
@@ -466,7 +487,7 @@ export const connectionController = {
           if(saved.ownerId&&current?.view?.kind==='ready'&&!current.blocked)await connectCloud(current.view.identity.activeAgentId!,signal,saved.ownerId,current.view.identity.apiBase,personalSetup?.client.owner);
           else update({open:true});
         }
-        else await connectRemote(saved.kind, saved.origin, '', signal);
+        else if(saved.kind==='remote'||saved.kind==='local')await connectRemote(saved.kind, saved.origin, '', signal);
       });
     })();
     return startup;
@@ -479,6 +500,9 @@ export const connectionController = {
   },
   async stopLocal() { await work('Stopping the local agent…',async()=>{await stopLocalAgent();retire();save({kind:'none'});update({message:'Local agent stopped.'});}); },
   async configureLocal(apiKey:string,model:string) { await work('Saving provider securely…',async()=>{await configureLocalProvider(apiKey,model);update({message:'Provider saved. Start or restart the local agent to use it.'});}); },
+  async authorDevelopment(profile:DevelopmentProfile,json:string){await work('Preparing development action…',async signal=>{await authorDevelopmentAction(profile,json,signal);update({message:'Action queued. Send a chat message to review it on the current screen.'});});},
+  async startDevelopment(profile:DevelopmentProfile){await work('Starting development agent…',signal=>connectDevelopment(profile,signal));},
+  async saveDevelopment(profile:DevelopmentProfile,reply:string){await work('Saving development reply…',async signal=>{await saveDevelopmentReply(profile,reply,signal);update({message:'Development reply saved.'});});},
   async startLocal() { await work('Starting the local agent…', signal => { retire(); return connectResident(signal); }); },
   async pair(kind: 'remote' | 'local', origin: string, code: string) {
     await work('Verifying your agent…', signal => { retire(); return connectRemote(kind, origin, code, signal); });
@@ -680,6 +704,9 @@ export const connectionController = {
 
 export function ConnectionChooser() {
   const snapshot = useSyncExternalStore(connectionController.subscribe, connectionController.getSnapshot);
+  const [developmentAction,setDevelopmentAction]=useState('{"type":"create_note","title":"Development note","body":"Reviewed local action"}');
+  const [developmentProfile,setDevelopmentProfile]=useState<DevelopmentProfile>('local'),[reply,setReply]=useState(''),[developmentError,setDevelopmentError]=useState('');
+  useEffect(()=>{if(!browserDevProfile||!snapshot.open)return;try{setReply(developmentReply(developmentProfile));setDevelopmentError('');}catch{setDevelopmentError('Development data could not be read.');}},[developmentProfile,snapshot.open]);
   const [localPackaging,setLocalPackaging]=useState<'checking'|'available'|'unavailable'>('checking');
   useEffect(()=>{if(!snapshot.open)return;let current=true;setLocalPackaging('checking');void localAgentPackaged().then(available=>{if(current)setLocalPackaging(available?'available':'unavailable');});return()=>{current=false;};},[snapshot.open]);
   const providerKey=useRef<HTMLInputElement>(null), providerModel=useRef<HTMLInputElement>(null);
@@ -688,6 +715,8 @@ export function ConnectionChooser() {
   const localOrigin = useRef<HTMLInputElement>(null), localCode = useRef<HTMLInputElement>(null);
   const environment = useRef<HTMLSelectElement>(null);
   useEffect(() => { void connectionController.initialize(); }, []);
+  useEffect(()=>{if(!browserDevProfile)return;const changed=()=>{const selected=selection();if(selected?.kind==='development'&&selected.profile==='cloud'){operation?.abort();sending?.abort();void retire();save({kind:'none'});}try{setReply(developmentReply(developmentProfile));setDevelopmentError('');}catch{setDevelopmentError('Development data could not be read.');}};const stored=(event:StorageEvent)=>{if(event.key===developmentCloudKey||event.key===null)changed();};window.addEventListener('alpha:development-account-changed',changed);window.addEventListener('storage',stored);return()=>{window.removeEventListener('alpha:development-account-changed',changed);window.removeEventListener('storage',stored);};},[developmentProfile]);
+  useEffect(()=>{if(!browserDevProfile)return;const cancel=()=>{operation?.abort();sending?.abort();update({open:false});},hidden=()=>{if(document.hidden)cancel();},storage=(event:StorageEvent)=>{if(event.key===SELECTION||event.key===null){operation?.abort();void retire();update({open:false});}};const events=['launcher-home','alpha:device-state','pagehide'];events.forEach(event=>window.addEventListener(event,cancel));window.addEventListener('storage',storage);document.addEventListener('visibilitychange',hidden);return()=>{events.forEach(event=>window.removeEventListener(event,cancel));window.removeEventListener('storage',storage);document.removeEventListener('visibilitychange',hidden);};},[]);
   useEffect(() => {
     if (!snapshot.open) return;
     const previous = document.activeElement as HTMLElement | null;
@@ -704,7 +733,7 @@ export function ConnectionChooser() {
     const key = (event: KeyboardEvent) => {
       if (event.key === 'Escape') { event.preventDefault(); if (snapshot.busy) connectionController.cancel(); else connectionController.close(); }
       if (event.key === 'Tab' && panel.current) {
-        const items = Array.from(panel.current.querySelectorAll<HTMLElement>('button:not(:disabled),input:not(:disabled),select:not(:disabled),summary')).filter(item => item.getClientRects().length);
+        const items = Array.from(panel.current.querySelectorAll<HTMLElement>('button:not(:disabled),input:not(:disabled),textarea:not(:disabled),select:not(:disabled),summary')).filter(item => item.getClientRects().length);
         const first = items[0], last = items.at(-1);
         if (event.shiftKey && (document.activeElement === first || document.activeElement === panel.current)) { event.preventDefault(); last?.focus(); }
         else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
@@ -714,6 +743,32 @@ export function ConnectionChooser() {
     return () => { document.removeEventListener('keydown', key); window.removeEventListener('alpha-back', back, true); releaseInert(); previous?.focus(); };
   }, [snapshot.open, snapshot.busy]);
   if (!snapshot.open) return null;
+  const pairingOptions=<>
+    <details><summary>Remote agent</summary><form onSubmit={event => { event.preventDefault(); void connectionController.pair('remote', remoteOrigin.current?.value || '', remoteCode.current?.value || ''); if (remoteCode.current) remoteCode.current.value = ''; }}>
+      <label>Agent HTTPS address<input ref={remoteOrigin} type="url" autoCapitalize="none" spellCheck={false} placeholder="https://your-agent.example" required disabled={snapshot.busy} /></label>
+      <label>Pairing code<input ref={remoteCode} autoComplete="off" autoCapitalize="characters" placeholder="XXXX-XXXX-XXXX" disabled={snapshot.busy} /></label><p>Use the code shown by your agent. Leave it empty to restore this phone’s saved session.</p><button disabled={snapshot.busy}>Connect remote agent</button>
+    </form></details>
+    <details><summary>Local development agent</summary><p>For a development build connected to your computer. Inference still runs on your agent’s configured provider.</p><form onSubmit={event => { event.preventDefault(); void connectionController.pair('local', localOrigin.current?.value || '', localCode.current?.value || ''); if (localCode.current) localCode.current.value = ''; }}>
+      <label>Local agent address<input ref={localOrigin} type="url" defaultValue="http://10.0.2.2:2138" autoCapitalize="none" spellCheck={false} required disabled={snapshot.busy} /></label>
+      <label>Pairing code<input ref={localCode} autoComplete="off" autoCapitalize="characters" disabled={snapshot.busy} /></label><button disabled={snapshot.busy}>Connect local agent</button>
+    </form></details>
+  </>;
+  if(browserDevProfile)return <div className="alpha-connection-scrim"><div className="alpha-connection" role="dialog" aria-modal="true" aria-labelledby="connection-title" tabIndex={-1} ref={panel}>
+    <header><h1 id="connection-title">Development connections</h1><button aria-label="Close connection settings" disabled={snapshot.busy} onClick={()=>connectionController.close()}>×</button></header>
+    <p>Local profiles exercise agent setup, conversations and history. Edit the reply to test each consumer.</p>
+    <label>Development profile<select aria-label="Development profile" value={developmentProfile} disabled={snapshot.busy} onChange={e=>setDevelopmentProfile(e.target.value as DevelopmentProfile)}>{developmentProfiles.map(profile=><option key={profile} value={profile}>{developmentName(profile)}</option>)}</select></label>
+    <label>Scripted reply<textarea rows={4} aria-label="Scripted reply" value={reply} maxLength={16000} disabled={snapshot.busy} onChange={e=>setReply(e.target.value)}/></label>
+    <button disabled={snapshot.busy||!!developmentError} onClick={()=>void connectionController.saveDevelopment(developmentProfile,reply)}>Save development reply</button>
+    <button disabled={snapshot.busy||!!developmentError} onClick={()=>void connectionController.startDevelopment(developmentProfile)}>Connect development profile</button>
+    {snapshot.session&&<section><strong>{snapshot.name}</strong><button disabled={snapshot.busy} onClick={()=>void connectionController.disconnect()}>Disconnect agent</button><button disabled={snapshot.busy} onClick={()=>void connectionController.listHistory()}>Load conversations</button>{snapshot.conversations.map(item=><section key={item.id}><span>{item.title}</span><button disabled={snapshot.busy} onClick={()=>void connectionController.restoreHistory(item.id)}>Restore conversation</button></section>)}</section>}
+    {snapshot.session&&selection()?.kind==='development'&&<details><summary>Development device actions</summary><label>Action JSON<textarea rows={5} aria-label="Action JSON" value={developmentAction} disabled={snapshot.busy} onChange={e=>setDevelopmentAction(e.target.value)}/></label><button disabled={snapshot.busy} onClick={()=>{const selected=selection();if(selected?.kind==='development')void connectionController.authorDevelopment(selected.profile,developmentAction);}}>Queue action for review</button><button disabled={snapshot.busy} onClick={()=>void connectionController.actionHistory()}>Refresh actions</button><button disabled={snapshot.busy} onClick={()=>void connectionController.actionHistory(true)}>Sync recorded receipts</button>{snapshot.actionHistory.map(item=><section key={item.id}><p>{item.description}</p><span>{item.state}</span>{item.state==='pending'&&<button disabled={snapshot.busy} onClick={()=>void connectionController.rejectAction(item.id)}>Reject proposal</button>}{['executing','reconciliation_required'].includes(item.state)&&<><button disabled={snapshot.busy} onClick={()=>void connectionController.reconcileAction(item.id,'applied')}>I verified it happened</button><button disabled={snapshot.busy} onClick={()=>void connectionController.reconcileAction(item.id,'not_applied')}>I verified it did not happen</button></>}</section>)}</details>}
+    <p><a href="?mode=dev&workflows=agent&start=workflows">Agent workflows</a> · <a href="?mode=dev&start=workflows">Device workflows</a></p>
+    <DevelopmentCloudSetup connect={()=>connectionController.startDevelopment('cloud')}/>
+    {pairingOptions}
+    {browserLocalAgentEnabled&&<button disabled={snapshot.busy} onClick={()=>void connectionController.startLocal()}>Start local agent</button>}
+    <button disabled={snapshot.busy} onClick={()=>void connectionController.offline()}>Continue offline</button>
+    <p role="status">{snapshot.message}</p>{(snapshot.error||developmentError)&&<p role="alert">{snapshot.error||developmentError}</p>}{snapshot.busy&&<button onClick={()=>connectionController.cancel()}>Cancel</button>}
+  </div></div>;
   const env = () => environment.current?.value === 'staging' ? 'staging' : 'production';
   return <div className="alpha-connection-scrim"><div className="alpha-connection" role="dialog" aria-modal="true" aria-labelledby="connection-title" tabIndex={-1} ref={panel}>
     <header><span className="alpha-connection-logo serif">a</span><button aria-label="Close connection settings" disabled={snapshot.busy} onClick={() => connectionController.close()}>×</button></header>
@@ -740,14 +795,7 @@ export function ConnectionChooser() {
       {snapshot.cloudPersonal&&<CloudPersonalSetup setup={snapshot.cloudPersonal} busy={snapshot.busy} onAccept={()=>void connectionController.cloudPersonalAccept()} onDecline={()=>connectionController.cloudPersonalDecline()} onPoll={()=>void connectionController.cloudPersonalPoll()} onFinalize={()=>void connectionController.cloudPersonalFinalize()} onConnect={()=>void connectionController.cloudPersonalConnect()}/>}
       <button disabled={snapshot.busy} onClick={()=>void connectionController.cloudManage(env())}>Manage Cloud account</button>
     </details>
-    <details><summary>Remote agent</summary><form onSubmit={event => { event.preventDefault(); void connectionController.pair('remote', remoteOrigin.current?.value || '', remoteCode.current?.value || ''); if (remoteCode.current) remoteCode.current.value = ''; }}>
-      <label>Agent HTTPS address<input ref={remoteOrigin} type="url" autoCapitalize="none" spellCheck={false} placeholder="https://your-agent.example" required disabled={snapshot.busy} /></label>
-      <label>Pairing code<input ref={remoteCode} autoComplete="off" autoCapitalize="characters" placeholder="XXXX-XXXX-XXXX" disabled={snapshot.busy} /></label><p>Use the code shown by your agent. Leave it empty to restore this phone’s saved session.</p><button disabled={snapshot.busy}>Connect remote agent</button>
-    </form></details>
-    <details><summary>Local development agent</summary><p>For a development build connected to your computer. Inference still runs on your agent’s configured provider.</p><form onSubmit={event => { event.preventDefault(); void connectionController.pair('local', localOrigin.current?.value || '', localCode.current?.value || ''); if (localCode.current) localCode.current.value = ''; }}>
-      <label>Local agent address<input ref={localOrigin} type="url" defaultValue="http://10.0.2.2:2138" autoCapitalize="none" spellCheck={false} required disabled={snapshot.busy} /></label>
-      <label>Pairing code<input ref={localCode} autoComplete="off" autoCapitalize="characters" disabled={snapshot.busy} /></label><button disabled={snapshot.busy}>Connect local agent</button>
-    </form></details>
+    {pairingOptions}
     <details><summary>Mock mode</summary><p>Explore the prototype with simulated data and actions. No live agent connection is used.</p><button disabled={snapshot.busy} onClick={() => connectionController.mock()}>Enter mock mode</button></details>
     <button className="alpha-connection-offline" disabled={snapshot.busy} onClick={() => void connectionController.offline()}>Continue offline</button>
   </div></div>;

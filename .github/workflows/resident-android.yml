@@ -1,7 +1,7 @@
 name: Resident Android exact source
 on:
   push:
-    branches: [codex/resident-ci-qualification]
+    branches: [main, codex/resident-ci-qualification, codex/review-all-prs]
   workflow_dispatch:
 permissions:
   contents: read

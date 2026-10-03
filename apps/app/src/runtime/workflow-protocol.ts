@@ -1,6 +1,6 @@
 import {HostedDigestProtocol} from './hosted-digests';
-import { parsePhoneCatalog, verifyPhoneValidation, parsePhoneReceipt, type PhoneSpec, type PhoneCatalog } from './phone-workflow-authoring';
-import { parseWorkflowPhoneReview } from './workflow-device-contract';
+import { normalizePhoneSpec, assertPhoneCapabilities, parsePhoneCatalog, verifyPhoneValidation, parsePhoneReceipt, type PhoneSpec, type PhoneCatalog } from './phone-workflow-authoring';
+import { parseWorkflowPhoneReview, workflowBytes, type WorkflowDeviceTarget } from './workflow-device-contract';
 /** Source: plugin-workflow routes/workflow-routes.ts. Remote OWNER session only. */
 export interface RemoteWorkflow { id: string; name: string; description: string; active: boolean; removed?:boolean; triggerCleanup?:'pending'|'complete'; versionId: string; steps: Array<{label:string;description?:string}>;phoneSpec?:unknown }
 export interface WorkflowRun { id:string; workflowId:string; status:string; startedAt:string; finished:boolean; versionId:string; stoppedAt?:string; error?:string; output?:string; events:Array<{type:string;at:string;node?:string}> }
@@ -10,20 +10,39 @@ const obj=(value:unknown):Record<string,any>=>{if(!value||typeof value!=='object
 const str=(value:unknown):string=>{if(typeof value!=='string'||!value)throw new Error('Invalid workflow field');return value;};
 /** Only bounded public refusal identity crosses the native error boundary. */
 export class WorkflowHttpError extends Error {
- readonly code?:string;readonly workflowId?:string;readonly submissionId?:string;readonly mutationId?:string;readonly expectedVersionId?:string;
- constructor(readonly status:number,body:unknown){super('Workflow request unavailable. Check execution history before repeating a run.');if(body&&typeof body==='object'&&!Array.isArray(body)){const data=body as Record<string,unknown>;for(const key of ['code','workflowId','submissionId','mutationId','expectedVersionId'] as const){const value=data[key];if(typeof value==='string'&&value.length>0&&value.length<=200)this[key]=value;}}}
+ readonly clarification?:string;readonly code?:string;readonly workflowId?:string;readonly submissionId?:string;readonly mutationId?:string;readonly expectedVersionId?:string;
+ constructor(readonly status:number,body:unknown){super('Workflow request unavailable. Check execution history before repeating a run.');if(body&&typeof body==='object'&&!Array.isArray(body)){const data=body as Record<string,unknown>;if(status===422&&typeof data.error==='string'&&data.error.startsWith('Workflow needs clarification: ')&&data.error.length<=1100&&!data.error.includes('\0'))this.clarification=data.error;for(const key of ['code','workflowId','submissionId','mutationId','expectedVersionId'] as const){const value=data[key];if(typeof value==='string'&&value.length>0&&value.length<=200)this[key]=value;}}}
 }
 export class WorkflowAdmissionRejected extends Error {constructor(){super('Workflow changed before acceptance. Refresh and review the current steps before a new run.');}}
 export class WorkflowMetadataRejected extends Error {constructor(){super('Workflow changed before saving. Reopen Change and review the current name and description.');}}
 export interface WorkflowMetadataReceipt {mutationId:string;workflowId:string;previousVersionId:string;versionId:string;name:string;description:string;active:boolean;appliedAt:string}
 export class WorkflowLifecycleRejected extends Error {constructor(){super('Removal or restore was not applied. Refresh the workflow and review its version, cleanup and any ongoing executions.');}}
 export interface WorkflowLifecycleReceipt {mutationId:string;workflowId:string;previousVersionId:string;versionId:string;operation:'remove'|'restore';appliedAt:string}
+/** Present the typed worker's final text; intermediate step inputs remain in the agent receipt. */
+function workflowOutput(value:unknown,runId:string):string {
+ if(typeof value==='string')return value.slice(0,4000);
+ if(Array.isArray(value)&&value.length===1){const item=value[0];if(item&&typeof item==='object'&&item.nodeId==='typed-steps'&&item.runId===runId&&typeof item.text==='string')return item.text.slice(0,4000);}
+ return JSON.stringify(value).slice(0,4000);
+}
 export class WorkflowProtocol {
  hosted(){return new HostedDigestProtocol(this.request);}
 
  async supportsSubmissionReconciliation(signal:AbortSignal){const status=obj(await this.request('/api/workflow/status',undefined,signal));if(status.engine!=='smthrs'||status.status!=='ready')throw new Error('Workflow capability unavailable');return status.manualSubmissionProtocol===1;}
  async phoneReview(run:WorkflowRun,signal:AbortSignal){return parseWorkflowPhoneReview(await this.request(`/api/workflow/executions/${encodeURIComponent(run.id)}/phone-review`,undefined,signal),run);}
  async phoneCatalog(signal:AbortSignal){return parsePhoneCatalog(await this.request('/api/workflow/phone/catalog',undefined,signal));}
+ async generatePhone(prompt:string,catalog:PhoneCatalog,operations:string[],signal:AbortSignal,existing?:PhoneSpec,device?:WorkflowDeviceTarget){
+  if(catalog.generationProtocol!==1)throw new Error('Typed generation is unavailable on this agent');
+  if(!prompt.trim()||prompt.length>4000||prompt.includes('\0'))throw new Error('Describe the workflow in 1–4000 characters');
+  if(existing)existing=normalizePhoneSpec(existing);
+  let response:unknown;
+  try{response=await this.request('/api/workflow/phone/generate',{prompt,operations,...(existing?{existing}:{}),...(device?{device}:{}),catalogRevision:catalog.catalogRevision,compilerRevision:catalog.compilerRevision},signal);}
+  catch(error){if(error instanceof WorkflowHttpError)throw new Error(error.status===422?error.clarification??'The request needs clarification. Select any Notes or Calendar scope first, and describe a manual workflow using the available steps.':'The agent could not generate a valid draft. Your current draft is unchanged.');throw error;}
+  signal.throwIfAborted();if(workflowBytes(response)>75000)throw new Error('Generated draft exceeds the response limit');
+  const spec=normalizePhoneSpec(obj(response).spec);assertPhoneCapabilities(spec,catalog);
+  if(JSON.stringify(spec.device)!==JSON.stringify(device??existing?.device)||spec.steps.some(s=>!operations.includes(s.operation)))throw new Error('Generated draft changed the available device or operations');
+  for(const step of spec.steps){if(step.operation!=='selected_notes'&&step.operation!=='calendar_range')continue;const scope=(s:typeof step)=>JSON.stringify(s.operation==='selected_notes'?s.notes:s.range);if(!existing?.steps.some(s=>s.operation===step.operation&&scope(s)===scope(step)))throw new Error('Generated draft changed a selected read scope');}
+  return (await verifyPhoneValidation(response,spec,catalog)).spec;
+ }
  async validatePhone(spec:PhoneSpec,catalog:PhoneCatalog,signal:AbortSignal){return verifyPhoneValidation(await this.request('/api/workflow/phone/validate',{spec,catalogRevision:catalog.catalogRevision,compilerRevision:catalog.compilerRevision},signal),spec,catalog);}
  async savePhone(spec:PhoneSpec,catalog:PhoneCatalog,expected:{mutationId:string;specDigest:string;compilerRevision:string;workflowId?:string;versionId?:string},signal:AbortSignal){const response=obj(await this.request(expected.workflowId?`/api/workflow/workflows/${encodeURIComponent(expected.workflowId)}/phone-spec`:'/api/workflow/phone/workflows',{spec,catalogRevision:catalog.catalogRevision,compilerRevision:catalog.compilerRevision,mutationId:expected.mutationId,...(expected.workflowId?{expectedVersionId:expected.versionId}:{})},signal));return parsePhoneReceipt(response.receipt,expected);}
  async phoneSaveReceipt(expected:{mutationId:string;specDigest:string;compilerRevision:string;workflowId?:string;versionId?:string},signal:AbortSignal){if(!/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(expected.mutationId))throw new Error('Invalid save identity');const result=obj(await this.request(`/api/workflow/phone/mutations/${expected.mutationId}`,undefined,signal));if(result.mutationId!==expected.mutationId)throw new Error('Save identity changed');return result.receipt===null?null:parsePhoneReceipt(result.receipt,expected);}
@@ -36,7 +55,7 @@ export class WorkflowProtocol {
   return {id,workflowId,status:str(p.status),startedAt:str(p.startedAt),finished:p.finished,versionId:str(p.workflowVersionId),
    ...(typeof p.stoppedAt==='string'?{stoppedAt:p.stoppedAt}:{}),
    ...(typeof p.error?.message==='string'?{error:p.error.message.slice(0,2000)}:{}),
-   ...(p.output===undefined?{}:{output:JSON.stringify(p.output).slice(0,4000)}),
+   ...(p.output===undefined?{}:{output:workflowOutput(p.output,id)}),
    events:events.slice(-100).map((event:unknown)=>{const e=obj(event);if(e.runId!==id||e.workflowId!==workflowId)throw new Error('Execution event identity mismatch');return {type:str(e.type).slice(0,120),at:str(e.timestamp),...(typeof e.nodeId==='string'?{node:e.nodeId.slice(0,200)}:{})};})};
  }
 
