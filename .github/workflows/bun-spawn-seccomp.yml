@@ -1,6 +1,11 @@
 name: Bun spawn seccomp reproduction
 on:
   workflow_dispatch:
+  push:
+    branches: [codex/review-bun-spawn-diagnostic]
+    paths:
+      - .github/workflows/bun-spawn-seccomp.yml
+      - scripts/ci/reproduce-bun-spawn-seccomp.py
 permissions:
   contents: read
 jobs:
