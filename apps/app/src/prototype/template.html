@@ -14,7 +14,7 @@
 
 
 <sc-if value="{{isOn}}" hint-placeholder-val="{{false}}">
-<div data-alpha-layer="home" aria-hidden="{{homeHidden}}" inert="{{homeHidden}}" style="position: absolute; inset: 0; z-index: 10; display: flex; flex-direction: column; padding: 64px 0 108px; box-sizing: border-box">
+<div data-alpha-layer="home" aria-hidden="{{homeHidden}}" inert="{{homeHidden}}" style="position: absolute; inset: 44px 0 0; z-index: 10; display: flex; flex-direction: column; padding: 20px 0 108px; box-sizing: border-box; overflow-y:auto; overflow-x:hidden; scroll-padding-bottom:110px">
   <div class="scr" style="display: flex; gap: 12px; overflow-x: auto; scroll-snap-type: x mandatory; padding: 0 24px; scroll-padding-left: 24px; touch-action: pan-x; flex-shrink: 0">
     <button onClick="{{goCalendar}}" aria-label="{{homeCalendarLabel}}" style="flex-shrink: 0; scroll-snap-align: start; width: 280px; height: 196px; border-radius: 30px; background: var(--acc); color: #ffffff; padding: 22px; box-sizing: border-box; display: flex; flex-direction: column; justify-content: space-between">
       <div style="display: flex; justify-content: space-between; align-items: center; width: 100%">
@@ -3097,8 +3097,10 @@
           </div>
           <sc-for list="{{workflows.r.phoneSteps}}" as="step" hint-placeholder-count="0">
             <section aria-label="Workflow phone step review" style="margin-top:18px; border-top:1px solid var(--line); padding-top:18px">
-              <strong>{{step.title}}</strong><p style="white-space:pre-wrap; overflow-wrap:anywhere">{{step.description}}</p><p>Expires {{step.expires}}</p>
-              <div style="display:flex; gap:12px; flex-wrap:wrap">
+              <strong>{{step.title}}</strong><p style="white-space:pre-wrap; overflow-wrap:anywhere">{{step.description}}</p>
+              <sc-if value="{{step.hasIdentity}}" hint-placeholder-val="{{false}}"><details aria-label="Workflow execution details" style="margin:14px 0"><summary style="min-height:44px;padding:12px 0;box-sizing:border-box;cursor:pointer;font-weight:600">Execution details</summary><p style="white-space:pre-wrap;overflow-wrap:anywhere;font-size:13px;color:var(--mut)">{{step.identity}}</p></details></sc-if>
+              <p style="font-size:13px;color:var(--mut)">Expires {{step.expires}}</p>
+              <div style="display:grid; grid-template-columns:minmax(0,1fr); gap:12px; scroll-margin-block:110px">
                 <button aria-label="{{step.denyLabel}}" onClick="{{step.deny}}" disabled="{{step.disabled}}" style="min-height:44px; padding:0 18px; border-radius:22px; background:var(--bg)">{{step.denyLabel}}</button>
                 <button aria-label="{{step.approveLabel}}" onClick="{{step.approve}}" disabled="{{step.disabled}}" style="min-height:44px; padding:0 18px; border-radius:22px; background:var(--acc); color:#fff">{{step.approveLabel}}</button>
               </div>

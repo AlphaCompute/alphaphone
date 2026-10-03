@@ -50,6 +50,9 @@ export interface ActionProposal {
   title: string;
   /** Human-readable exact target/action review. Must contain no secret values. */
   description: string;
+  /** Workflow-only display grouping; execution remains bound to the stored proposal. */
+  reviewScope?: string;
+  reviewIdentity?: string;
   expiresAt: number;
   contextRevision: number;
 }
