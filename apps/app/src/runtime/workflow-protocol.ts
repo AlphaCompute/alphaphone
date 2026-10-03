@@ -18,6 +18,12 @@ export class WorkflowMetadataRejected extends Error {constructor(){super('Workfl
 export interface WorkflowMetadataReceipt {mutationId:string;workflowId:string;previousVersionId:string;versionId:string;name:string;description:string;active:boolean;appliedAt:string}
 export class WorkflowLifecycleRejected extends Error {constructor(){super('Removal or restore was not applied. Refresh the workflow and review its version, cleanup and any ongoing executions.');}}
 export interface WorkflowLifecycleReceipt {mutationId:string;workflowId:string;previousVersionId:string;versionId:string;operation:'remove'|'restore';appliedAt:string}
+/** Present the typed worker's final text; intermediate step inputs remain in the agent receipt. */
+function workflowOutput(value:unknown,runId:string):string {
+ if(typeof value==='string')return value.slice(0,4000);
+ if(Array.isArray(value)&&value.length===1){const item=value[0];if(item&&typeof item==='object'&&item.nodeId==='typed-steps'&&item.runId===runId&&typeof item.text==='string')return item.text.slice(0,4000);}
+ return JSON.stringify(value).slice(0,4000);
+}
 export class WorkflowProtocol {
  hosted(){return new HostedDigestProtocol(this.request);}
 
@@ -36,7 +42,7 @@ export class WorkflowProtocol {
   return {id,workflowId,status:str(p.status),startedAt:str(p.startedAt),finished:p.finished,versionId:str(p.workflowVersionId),
    ...(typeof p.stoppedAt==='string'?{stoppedAt:p.stoppedAt}:{}),
    ...(typeof p.error?.message==='string'?{error:p.error.message.slice(0,2000)}:{}),
-   ...(p.output===undefined?{}:{output:JSON.stringify(p.output).slice(0,4000)}),
+   ...(p.output===undefined?{}:{output:workflowOutput(p.output,id)}),
    events:events.slice(-100).map((event:unknown)=>{const e=obj(event);if(e.runId!==id||e.workflowId!==workflowId)throw new Error('Execution event identity mismatch');return {type:str(e.type).slice(0,120),at:str(e.timestamp),...(typeof e.nodeId==='string'?{node:e.nodeId.slice(0,200)}:{})};})};
  }
 
