@@ -1,5 +1,10 @@
 # Alpha Phone MVP completion plan
 
+## Current checkpoint — October 3, authenticated enabled views
+
+Remote, resident and Cloud enrollment now negotiates a durable MVP view profile. Per-turn model schemas, proposal admission and approval/claim revision checks enforce it; legacy hosts remain explicitly unnegotiated and locally guarded. HTTP/database, legacy migration, rendered connection flows, fresh 22-patch preparation, repository verification and both Android builds pass. See [qualification and exact limits](mvp-enabled-view-qualification-2026-10-03.md). Notification tap setup now reconciles an unknown publication receipt without reposting; both native variants pass the scoped flow. The full MVP is not complete.
+
+
 
 ## Current checkpoint — October 3, voice-save ownership
 

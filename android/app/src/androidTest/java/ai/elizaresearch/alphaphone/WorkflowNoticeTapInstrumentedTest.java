@@ -56,7 +56,15 @@ public final class WorkflowNoticeTapInstrumentedTest {
     for(String id:new String[]{first,second}){
      JSONObject route=new JSONObject().put("scope","a".repeat(64)).put("origin","https://workflow-fixture.invalid").put("ownerId","fixture-owner").put("agentId","fixture-agent").put("workflowId","fixture-flow").put("runId",id).put("versionId","fixture-version");
      JSONObject input=new JSONObject().put("operationId",id).put("bindingHash","b".repeat(64)).put("title","Fixture notification").put("body","Reviewed fixture output").put("route",route);
-     assertEquals("succeeded",call("Capacitor.Plugins.AlphaNotifications.postWorkflow("+input+")").getString("status"));
+     // Android publication is asynchronous. Dispatch once, then reconcile only the receipt.
+     String publication=call("Capacitor.Plugins.AlphaNotifications.postWorkflow("+input+")").getString("status");
+     long publicationEnd=SystemClock.elapsedRealtime()+10000;
+     while(!"succeeded".equals(publication)){
+      assertEquals("OS publication failed or returned an invalid status","unknown",publication);
+      assertTrue("OS publication receipt remained unconfirmed",SystemClock.elapsedRealtime()<publicationEnd);
+      SystemClock.sleep(50);
+      publication=call("Capacitor.Plugins.AlphaNotifications.workflowReceipt("+input+")").getString("status");
+     }
     }
     cold=notice(manager,first).contentIntent;warm=notice(manager,second).contentIntent;assertNotEquals(cold,warm);
     firstToken=WorkflowNoticeTapsFactory.create(context).token(first);secondToken=WorkflowNoticeTapsFactory.create(context).token(second);assertNotEquals(firstToken,secondToken);
