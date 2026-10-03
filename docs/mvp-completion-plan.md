@@ -324,6 +324,8 @@ Keep constants that enforce resource/security limits explicit and versioned. Mov
 
 ## Validation and delivery discipline
 
+Use the [physical pilot acceptance runbook](pilot-acceptance-runbook.md) for per-unit manifests, native/physical journeys, performance samples, signed update recovery and independent handoff. Its initial four-unit table is unexecuted; it supplies the procedure, not passing evidence.
+
 For each implementation change, run the owning full-flow integration tests, `npm run verify`, `npm run android:build`, both standalone/HOME variants, configured/unconfigured artifacts where relevant, and the corresponding native journeys. Preserve immutable APK/test pairs and source hashes. Unit-test counts are not the acceptance criterion. Synthetic transports should cover error races; real service/native/physical journeys must separately prove the production path.
 
 Proposed performance protocol: a fixed set of simple typed/spoken tasks; at least 20 warm and 5 cold observations per target device and route, with raw timings and failure counts. Measure end-of-speech to first audible response, transcription time, model first-token time and playback completion separately. The DoD target is six seconds for a simple Wi-Fi voice round-trip; agree the percentile/statistical acceptance method before signoff. A long successful transcription does not meet the latency target. Do not replace failed physical samples with synthetic audio samples.
