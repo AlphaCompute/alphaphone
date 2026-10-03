@@ -1,3 +1,4 @@
+import type {LocalAgentProtocol} from '../runtime/local-agent';
 import {recordingPcmWav} from './recording-pcm';
 import {browserMediaVolume} from './audio-settings';
 import {audioRecord,audioMetadata,retainAudio,changeAudioDeleted,audioDeletionStatus,migrateAudio} from './note-audio-store';
@@ -6,11 +7,16 @@ import { BrowserAudioCapture } from './audio-capture';
 import { WebPlugin } from '@capacitor/core';
 // Recordings stay local; explicit host-agent transcription keeps credentials on the host.
 export class BrowserVoice extends WebPlugin {
+ private connection=import('../runtime/connection-ui').then(({connectionController})=>{
+  let binding=connectionController.getSnapshot().session?.sessionId;
+  connectionController.subscribe(()=>{const next=connectionController.getSnapshot().session?.sessionId;if(next!==binding){binding=next;void this.releaseLocalSpeech();}});
+  return connectionController;
+ });
  private speechRequest?:AbortController;
  private capture=new BrowserAudioCapture(event=>{void this.notifyListeners('recordingStopped',event);});
  private transcript=new BrowserTranscriptReview();
  private speech=new Map<string,string>();
- private agentAudio=new Map<string,{blob:Blob;agent:NonNullable<ReturnType<typeof connectionController.getBrowserSpeechAgent>>;sessionId:string}>();
+ private agentAudio=new Map<string,{blob:Blob;agent:LocalAgentProtocol;sessionId:string}>();
  private audio?:HTMLAudioElement;
  private audioId?:string;
  private pendingAudioId?:string;
@@ -20,8 +26,6 @@ export class BrowserVoice extends WebPlugin {
  private utterance?:SpeechSynthesisUtterance;
  private activeSpeechId?:string;
  constructor(){super();
-  let binding=connectionController.getSnapshot().session?.sessionId;
-  connectionController.subscribe(()=>{const next=connectionController.getSnapshot().session?.sessionId;if(next!==binding){binding=next;void this.releaseLocalSpeech();}});
   window.addEventListener('alpha:device-settings',()=>{if(this.audio)this.audio.volume=browserMediaVolume();});
   if(this.audioChanges)this.audioChanges.onmessage=event=>{if(event.data?.deleted&&[this.audioId,this.pendingAudioId].includes(event.data.audioId))void this.stopPlayback();};
   void migrateAudio().catch(()=>{});
@@ -30,13 +34,13 @@ export class BrowserVoice extends WebPlugin {
   window.addEventListener('alpha:device-state',()=>{void this.cancel();});
  }
  // Resolve the controller after browser adapter registration; its native imports register plugins.
- async localSpeechStatus(){const {connectionController}=await import('../runtime/connection-ui');const agent=connectionController.getBrowserSpeechAgent();if(agent){const result=await this.withAgentSpeech(signal=>agent.speechRequest(undefined,signal));return {ready:result.ready===true,execution:'browser'};}return {ready:!!navigator.mediaDevices?.getUserMedia&&typeof MediaRecorder!=='undefined',execution:'browser'};}
+ async localSpeechStatus(){const connectionController=await this.connection;const agent=connectionController.getBrowserSpeechAgent();if(agent){const result=await this.withAgentSpeech(signal=>agent.speechRequest(undefined,signal));return {ready:result.ready===true,execution:'browser'};}return {ready:!!navigator.mediaDevices?.getUserMedia&&typeof MediaRecorder!=='undefined',execution:'browser'};}
  startRecording(input:{maxDurationMs?:number}={}){return this.capture.start(input);}
  stopRecording(){return this.capture.stop();}
  async cancelRecording(){this.capture.cancel();}
  async transcribeLocalRecording(input:{recordingId:string}){
   const clip=this.capture.get(input.recordingId);if(!clip)throw Error('Record a clip first.');
-  const {connectionController}=await import('../runtime/connection-ui');
+  const connectionController=await this.connection;
   const agent=connectionController.getBrowserSpeechAgent();
   if(agent){const selectedSession=agent.session;const result=await this.withAgentSpeech(async signal=>{const audio=await recordingPcmWav(clip.blob,signal);if(connectionController.getBrowserSpeechAgent()!==agent||agent.session!==selectedSession)throw new DOMException('Voice selection changed','AbortError');return agent.speechRequest(audio,signal);});return {text:result.text,local:true,execution:'browser'};}
   const text=await this.transcript.open(clip.blob);return {text,local:true,execution:'browser'};
@@ -45,6 +49,7 @@ export class BrowserVoice extends WebPlugin {
  transcribeRecording(input:{recordingId:string}){return this.transcribeLocalRecording(input);}
  async synthesizeLocal(input:{text:string}){
   if(typeof input.text!=='string'||!input.text.trim()||input.text.length>16000)throw Error('Choose text between 1 and 16000 characters.');
+  const connectionController=await this.connection;
   const agent=connectionController.getBrowserSpeechAgent();
   if(agent){
    const sessionId=agent.session?.sessionId;if(!sessionId)throw Error('Connect the local agent first.');
@@ -76,6 +81,8 @@ export class BrowserVoice extends WebPlugin {
    this.activeSpeechId=input.playbackId;
    const prepared=this.agentAudio.get(input.playbackId);
    if(prepared){
+    const connectionController=await this.connection;
+    if(!current())throw new DOMException('Playback cancelled','AbortError');
     if(connectionController.getBrowserSpeechAgent()!==prepared.agent||prepared.agent.session?.sessionId!==prepared.sessionId){this.agentAudio.delete(input.playbackId);throw new DOMException('Voice selection changed','AbortError');}
     const url=URL.createObjectURL(prepared.blob);let audio:HTMLAudioElement;
     try{audio=new Audio(url);audio.volume=browserMediaVolume();}catch(error){URL.revokeObjectURL(url);throw error;}

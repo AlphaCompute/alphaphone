@@ -6,7 +6,7 @@ import {stripTypeScriptTypes} from 'node:module';
 const deferred=()=>{let resolve,reject;const promise=new Promise((a,b)=>{resolve=a;reject=b;});return {promise,resolve,reject};};
 const tick=()=>new Promise(resolve=>setImmediate(resolve));
 function harness(){
- let source=readFileSync(new URL('../apps/app/src/browser/voice.ts',import.meta.url),'utf8').replace(/^import .*\n/gm,'').replace('export class','class');
+ let source=readFileSync(new URL('../apps/app/src/browser/voice.ts',import.meta.url),'utf8').replace(/^import .*\n/gm,'').replace('export class','class').replaceAll("import('../runtime/connection-ui')",'Promise.resolve({connectionController})');
  const reads=[],audio=[],revoked=[],events=[],spoken=[],timers=new Map();let id=0;
  const document=Object.assign(new EventTarget(),{hidden:false,querySelector:()=>null});
  const engine=Object.assign(new EventTarget(),{voices:[{localService:true,lang:'en-US'}],getVoices(){return this.voices;},cancel(){},speak(value){spoken.push(value);}});
