@@ -1,3 +1,4 @@
+import {fileArchive} from '../browser/file-archive';
 import {applyPhotoFilter} from '../browser/photo-filter';
 import {renderVideoEdit,validateVideoEdit,type VideoEdit} from '../browser/video-edit';
 import {BrowserCameraFocus} from '../browser/camera-focus';
@@ -165,8 +166,16 @@ export const browserPhotoLibrary={
   const items=selectedMedia(input.items);
   const selected=await transaction<Row[]>('readonly',(store,set,fail)=>{const result:Row[]=[];set(result);for(const item of items){const request=store.get(item.id);request.onsuccess=()=>{const row=request.result as Row|undefined;if(!row||!['image','video'].includes(row.kind)||row.mutationRevision!==item.revision||row.trashed){fail(Error('Selection changed. Reselect the items.'));return;}result.push(row);};}});
   // Validate the entire selection in one snapshot before requesting any download.
-  for(const row of selected)downloadPhoto(row);
-  return {status:'opened',count:selected.length,message:`${selected.length} downloads requested. Your browser may ask to allow multiple downloads; check Downloads to confirm.`};
+  const entries=await Promise.all(selected.map(async(row,index)=>{
+   const source=row.path||row.image;
+   if(!/^data:(image|video)\//.test(source))throw Error('Select saved local media.');
+   const response=await fetch(source),blob=await response.blob();
+   const extension=blob.type==='video/mp4'?'mp4':blob.type.startsWith('video/')?'webm':blob.type==='image/png'?'png':'jpg';
+   return {path:`Alpha-photo-${index+1}.${extension}`,bytes:new Uint8Array(await blob.arrayBuffer())};
+  }));
+  const url=URL.createObjectURL(fileArchive(entries)),link=document.createElement('a');link.href=url;link.download='Alpha photos.zip';document.body.append(link);
+  try{link.click();}finally{link.remove();setTimeout(()=>URL.revokeObjectURL(url),60000);}
+  return {status:'opened',count:selected.length,message:`${selected.length} items in Alpha photos.zip.`};
  },
  async changeAlbum(input:Record<string,unknown>){
   if(!['create','rename','delete','add','remove'].includes(String(input.operation)))throw Error('Unknown album operation.');
