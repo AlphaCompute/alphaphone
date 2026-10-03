@@ -1,6 +1,11 @@
 # Current Alpha Phone acceptance ledger
 
 
+## Current checkpoint — October 3, voice-save ownership
+
+Four rendered negative controls reproduce late voice/dictation saves closing a newer recording or publishing stale errors. The generation fence and commit-time transcript lock pass ten rendered flows, preserving one authorized persisted note and newer microphone sessions. Final218 checks and both Android distribution builds pass with3,896 unchanged source identities. A bounded hosted crash-buffer diagnostic adds numeric-only syscall evidence; five owning tests include real cancellation without losing the primary failure or cleanup. The resident SIGSYS repair, real provider/physical/signed-image acceptance and dynamic remote view-profile discovery remain open. See [evidence and requirements reconciliation](mvp-voice-save-qualification-2026-10-03.md). The full MVP is not complete.
+
+
 ## Current checkpoint — October 3, reviewed reminder creation and process death
 
 Explicit no-alert, timed and recurring agent reminder creation now has a distinct generic capability, atomic native receipt and immutable recovery. Both Android variants pass no-alert/permission-denied, granted timing, native HTTP negotiation and original-notification relaunch after confirmed main-process death. Forty rendered flows, 218 checks and both Android builds pass. Source comparisons retain exact qualified reminder/transport bytes; all disposable users and packages are removed. Hosted resident failure now identifies SIGSYS before model RPC; numeric-only exact-worker diagnostics are added, but the forbidden syscall and runtime repair remain open. See [qualification, retained failures and remaining gates](mvp-reminder-process-qualification-2026-10-03.md). The full MVP is not complete.
