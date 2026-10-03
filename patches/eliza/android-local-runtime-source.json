@@ -27,7 +27,7 @@
     "packages/core/src/security/runtime-abort-signal.ts": "da3bb65a56334a249399c0a2ec4e0f9d227c8e09e3566237609f679de76b0d78",
     "plugins/plugin-assistant/src/services/message/reply-policy.ts": "6258737cf79a623f58988d6788462b9b5d12ae54b6916b5e198dc873197ee40c",
     "packages/core/src/__tests__/swap-user-reply.test.ts": "f3853504d2cd0ef0806b5649edbd8bd17410d8bc1ee314eee77c9c56dc9efa08",
-    "packages/core/src/security/guarded-stream.ts": "7b8908f0b04ce822e02e4e9a98ca61b41d59658357a6c2acca85c5aecb8d987f",
+    "packages/core/src/security/guarded-stream.ts": "8761ac0e768d2498ff186f919f018b18f488fa8670bd6f184d6bfbcc17545788",
     "plugins/plugin-assistant/src/services/device-actions/contract.ts": "1cb1868981ec118366cb1186744c3790462dc2820d381da54174eba37bd6a13b",
     "plugins/plugin-assistant/test/device-actions.e2e.test.ts": "8d7b58ba3c83dd582bcab7007136d74c367df947fcaed473893d1ea99a6b67a7",
     "plugins/plugin-assistant/src/services/device-actions/clock-contract.ts": "4a068849386f1e3f81391840c60ea74e0ad488b1102d4b6d8c8dc1bf1616cfaf",
@@ -40,7 +40,9 @@
     "packages/agent/src/api/runtime-mode/route-mode-matrix.ts": "23b7233d607342d4e77698513a7686ad87750d1cd72429f33816bdcd1dc8cf1c",
     "packages/app/src/api/standalone-kokoro-routes.ts": "30efea1236029fa7500f8a2ca8d461086cdd4c8bc1a751cbdf93d4483b42da03",
     "packages/app/src/api/standalone-kokoro-service.ts": "db09fd0788a5c236cd5253b235f932fefb7695bb81458f7ba1959c6aa48272f6",
-    "plugins/plugin-local-inference/src/host-tts-worker.ts": "562fa4bd1a076dfff31f5583e0025ccb31fc0aa0d067f4a87c81b873dbca7b48"
+    "plugins/plugin-local-inference/src/host-tts-worker.ts": "562fa4bd1a076dfff31f5583e0025ccb31fc0aa0d067f4a87c81b873dbca7b48",
+    "packages/core/src/security/log-redaction.ts": "f836bf328b75908f3c9f0a7b6cd6e156d2bb7eb0f06fc554904113de0a147061",
+    "packages/core/src/__tests__/swap-credential-assignment.test.ts": "19618c7e5e56317f17507c18dacadbd1d34e0ca63fbdeb0cae14e6b1ad0b5333"
   },
   "patches": [
     "android-secure-store-socket.patch",
@@ -55,11 +57,13 @@
     "egress-user-reply-restoration.patch",
     "approved-workflows-navigation.patch",
     "clock-handoff.patch",
-    "standalone-kokoro-host.patch"
+    "standalone-kokoro-host.patch",
+    "egress-credential-assignments.patch"
   ],
   "patchHashes": {
     "approved-workflows-navigation.patch": "2202d04675531633db4b1ce3a2e49e3e870c259c341acaf20b17bbef6be99c9a",
     "clock-handoff.patch": "32245531af0928e7bd8a394ac588370790700abdf778cde644f54e1dda5388f2",
-    "standalone-kokoro-host.patch": "ae87186fdd0c3ab6ebd2d67f2621495592b3462345955fd7d8a70226ca6f5396"
+    "standalone-kokoro-host.patch": "ae87186fdd0c3ab6ebd2d67f2621495592b3462345955fd7d8a70226ca6f5396",
+    "egress-credential-assignments.patch": "a365c56f114a60bbf061f7878f8ac65e73a1c7de2bc5f2fbb9414d70c6f0ae0d"
   }
 }
