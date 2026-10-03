@@ -97,7 +97,7 @@ async function simulate({ oversizedAnr = false, framework = 'ready', drift, neve
     if(key===`shell test ! -e ${stock}`){if(drift==='final-stock')throw Error('Stock provider returned');return '';}
     if(key==='shell dumpsys power')return 'mWakefulness=Awake';
     if(key==='shell dumpsys window policy')return `KeyguardServiceDelegate\nshowing=false\ninputRestricted=false\nsecure=${drift==='final-secure'}\nsystemIsReady=true\nbootCompleted=true\nscreenState=SCREEN_STATE_ON\nKeyguardStateMonitor\nmCurrentUserId=0\nmIsShowing=false\nmInputRestricted=false`;
-    if(key==='shell dumpsys activity activities')return drift==='final-anr'?'mCurrentFocus=Application Not Responding: com.android.systemui':'ACTIVITY MANAGER ACTIVITIES';
+    if(key==='shell dumpsys activity activities')return drift?.startsWith('final-anr')?'mCurrentFocus=Application Not Responding: com.android.systemui':'ACTIVITY MANAGER ACTIVITIES';
     if(finalBoot&&drift==='final-identity'&&key==='emu avd name')return 'personal';
     if(finalBoot&&drift==='final-bytes'&&key.startsWith('shell sha256sum /data/app/'))return 'b'.repeat(64);
     if(finalBoot&&drift==='final-scratch'&&key==='shell cat /sys/dev/block/254:5/size')return '92280';
@@ -165,6 +165,10 @@ async function simulate({ oversizedAnr = false, framework = 'ready', drift, neve
     if (key==='shell cat /proc/bootconfig' && drift==='boot-config') return 'androidboot.boot_devices = "wrong"';
     if (key === 'shell getprop fs_mgr.overlayfs.data_scratch_size_mb') return drift === 'scratch-existing' ? '2048' : drift === 'scratch-unapplied' ? '' : scratch;
     if (key === 'shell setprop fs_mgr.overlayfs.data_scratch_size_mb 512') { scratch = '512'; return ''; }
+    if(key==='shell pidof surfaceflinger')return drift==='final-anr-foreign-pid'?'7 8':'407';
+    if(key==='shell readlink -f /proc/407/exe')return drift==='final-anr-foreign-exe'?'/system/bin/other':'/system/bin/surfaceflinger';
+    if(key==='shell debuggerd -b 407'){assert.ok(options.timeout>0&&options.timeout<=2000);assert.equal(options.maxBuffer,256*1024);return 'SurfaceFlinger main stack '+ 'x'.repeat(70000);}
+    if(key==='shell logcat -d -b main -t 1000 SurfaceFlinger:I RenderEngine:I EGL_emulation:I goldfish-address-space:I *:S')return 'synthetic bounded ANR evidence';
     if(key==='shell dumpsys dropbox --print system_app_anr'){assert.ok(options.timeout>0&&options.timeout<=2000);assert.equal(options.maxBuffer,256*1024);const report='ANR main thread '+'x'.repeat(70000);if(oversizedAnr){const error=Error('maxBuffer exceeded');error.code='ENOBUFS';error.stdout=report;throw error;}return report;}
     if (['shell dumpsys activity lastanr','shell dumpsys activity processes','shell logcat -d -b events -t 400 am_anr:I am_crash:I *:S','shell logcat -d -b system -t 400','shell cat /proc/meminfo','shell cat /proc/pressure/memory /proc/pressure/cpu /proc/pressure/io'].includes(key) && (key!=='shell dumpsys activity processes'||options.maxBuffer===256*1024)) { assert.ok(options.timeout>0&&options.timeout<=2000);assert.equal(options.maxBuffer,256*1024);return key==='shell dumpsys activity processes'?'ACTIVITY MANAGER bounded synthetic ANR evidence':'synthetic bounded ANR evidence'; }
     if (key === 'shell getprop ro.boot.super_partition') return 'vda2';
@@ -444,7 +448,7 @@ test('postreplacement framework restart refuses identity, provenance, readiness,
  for(const drift of ['final-never-boot','final-changed-boot','final-stale-server','final-not-ready','final-identity','final-stock','final-fingerprint','final-alias','final-topology','final-bytes','final-scratch','final-relro','final-secure','final-anr']){
   const r=await simulate({drift});assert.ok(r.error,drift);assert.equal(r.result.status,'FAIL');assert.equal(r.calls.filter(c=>c.startsWith('install ')).length,1);assert.equal(r.calls.filter(c=>c==='reboot').length,1);
   if(drift==='final-secure')assert.match(r.error.message,/not observed awake/);
-  if(drift==='final-anr')assert.match(r.error.message,/ANR remains/);
+  if(drift?.startsWith('final-anr'))assert.match(r.error.message,/ANR remains/);
  }
 });
 
@@ -475,9 +479,9 @@ test('super layout is read before any remount without adding install or reboot',
 test('focused framework ANR preserves bounded read-only evidence without accepting or retrying setup',async()=>{
  const r=await simulate({drift:'final-anr'});
  assert.match(r.error.message,/Application ANR remains/);assert.equal(r.result.status,'FAIL');
- assert.deepEqual(Object.keys(r.anrDiagnostics.guest),['systemAppAnr','lastAnr','processes','anrEvents','systemLog','memory','pressure']);
+ assert.deepEqual(Object.keys(r.anrDiagnostics.guest),['surfaceFlingerBacktrace','graphicsLog','systemAppAnr','lastAnr','processes','anrEvents','systemLog','memory','pressure']);
  assert.equal(r.anrDiagnostics.budgetMilliseconds,20000);
- for(const [key,value] of Object.entries(r.anrDiagnostics.guest))assert.equal(value,key==='systemAppAnr'?('ANR main thread '+'x'.repeat(70000)).slice(0,65536):key==='processes'?'ACTIVITY MANAGER bounded synthetic ANR evidence':'synthetic bounded ANR evidence');
+ for(const [key,value] of Object.entries(r.anrDiagnostics.guest))assert.equal(value,key==='surfaceFlingerBacktrace'?('SurfaceFlinger main stack '+'x'.repeat(70000)).slice(0,65536):key==='systemAppAnr'?('ANR main thread '+'x'.repeat(70000)).slice(0,65536):key==='processes'?'ACTIVITY MANAGER bounded synthetic ANR evidence':'synthetic bounded ANR evidence');
  const start=r.calls.indexOf('shell dumpsys dropbox --print system_app_anr');assert.ok(start>0);
  assert.ok(!r.calls.slice(start).some(c=>/^(install |reboot$|remount$|shell (stop$|start$|input |am force-stop|kill))/.test(c)));
  assert.equal(r.calls.filter(c=>c==='reboot').length,1);
@@ -488,4 +492,12 @@ test('oversized ANR reports retain a bounded leading stack without changing fail
  const r=await simulate({drift:'final-anr',oversizedAnr:true});assert.match(r.error.message,/Application ANR remains/);assert.equal(r.result.status,'FAIL');
  const report=r.anrDiagnostics.guest.systemAppAnr;assert.equal(report.code,'ENOBUFS');assert.equal(report.stdout.length,65536);assert.ok(report.stdout.startsWith('ANR main thread '));
  assert.equal(r.calls.filter(c=>c==='shell dumpsys dropbox --print system_app_anr').length,1);
+});
+
+test('SurfaceFlinger backtrace refuses ambiguous process identity',async()=>{
+ for(const drift of ['final-anr-foreign-pid','final-anr-foreign-exe']){
+  const r=await simulate({drift});assert.match(r.error.message,/Application ANR remains/);
+  assert.ok(r.anrDiagnostics.guest.surfaceFlingerBacktrace.unavailable);
+  assert.ok(!r.calls.some(c=>c.startsWith('shell debuggerd')));
+ }
 });

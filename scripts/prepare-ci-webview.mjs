@@ -188,6 +188,8 @@ export function collectOverlayFailureDiagnostics({ environment, sdkEnvironment, 
   ];
   const reads = frameworkAnr ? [
     // Keep the report header and first thread stacks even if the retained dump is large.
+    ['surfaceFlingerBacktrace', null],
+    ['graphicsLog', ['shell', 'logcat', '-d', '-b', 'main', '-t', '1000', 'SurfaceFlinger:I', 'RenderEngine:I', 'EGL_emulation:I', 'goldfish-address-space:I', '*:S']],
     ['systemAppAnr', ['shell', 'dumpsys', 'dropbox', '--print', 'system_app_anr']],
     ['lastAnr', ['shell', 'dumpsys', 'activity', 'lastanr']],
     ['processes', ['shell', 'dumpsys', 'activity', 'processes']],
@@ -228,10 +230,16 @@ export function collectOverlayFailureDiagnostics({ environment, sdkEnvironment, 
     try { requireProviderFixture(read, environment, { installed: Boolean(providerRestart || frameworkAnr) }, () => { throw Error('Failure diagnostic admission unavailable'); }); }
     catch (error) { evidence.admissionStopped = String(error.message).slice(0, 512); break; }
     try {
-      const result = read(...args);
-      evidence.guest[name] = name === 'systemAppAnr' ? result.slice(0, 65536) : (['userspaceStorageLog', 'kernel'].includes(name) ? result.split('\n').filter(line => /gsid|fiemap|scratch|overlay|mkfs|f2fs|ext4|device.mapper/i.test(line)).join('\n') : result).slice(-65536);
+      let result;
+      if (name === 'surfaceFlingerBacktrace') {
+        const pid = read('shell', 'pidof', 'surfaceflinger').trim();
+        require(/^[1-9][0-9]{0,9}$/.test(pid), 'Expected one SurfaceFlinger PID');
+        require(read('shell', 'readlink', '-f', `/proc/${pid}/exe`).trim() === '/system/bin/surfaceflinger', 'SurfaceFlinger executable changed');
+        result = read('shell', 'debuggerd', '-b', pid);
+      } else result = read(...args);
+      evidence.guest[name] = ['systemAppAnr', 'surfaceFlingerBacktrace'].includes(name) ? result.slice(0, 65536) : (['userspaceStorageLog', 'kernel'].includes(name) ? result.split('\n').filter(line => /gsid|fiemap|scratch|overlay|mkfs|f2fs|ext4|device.mapper/i.test(line)).join('\n') : result).slice(-65536);
     } catch (error) {
-      evidence.guest[name] = { unavailable: String(error.message).slice(0, 512), status: error.status ?? null, signal: error.signal ?? null, code: error.code ?? null, stdout: name === 'systemAppAnr' ? String(error.stdout ?? '').slice(0, 65536) : String(error.stdout ?? '').slice(-4096), stderr: String(error.stderr ?? '').slice(-4096) };
+      evidence.guest[name] = { unavailable: String(error.message).slice(0, 512), status: error.status ?? null, signal: error.signal ?? null, code: error.code ?? null, stdout: ['systemAppAnr', 'surfaceFlingerBacktrace'].includes(name) ? String(error.stdout ?? '').slice(0, 65536) : String(error.stdout ?? '').slice(-4096), stderr: String(error.stderr ?? '').slice(-4096) };
     }
   }
   return evidence;
