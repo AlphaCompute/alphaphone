@@ -81,7 +81,14 @@ async function simulate({ framework = 'ready', drift, neverBoot = false, neverRe
     const a = args.slice(2), key = a.join(' '); calls.push(key);
     if (['shell cat /proc/bootconfig','shell getprop ro.boot.boot_devices','shell readlink -f /sys/class/block/vdc','shell readlink -f /sys/class/block/vda','shell readlink -f /sys/class/block/vdd'].includes(key)) { assert.ok(options.timeout > 0 && options.timeout <= 2000); if(drift==='boot-budget')elapsed+=4000; }
     if(key==='shell cat /proc/bootconfig'&&!rooted)throw Error('cat: /proc/bootconfig: Permission denied');
-    if(key==='root'){if(drift==='root-unavailable'||drift==='boot-root-denied'&&rebooted)throw Error('adbd root unavailable');rooted=true;return '';}
+    if(key==='root'){
+      if(drift==='root-unavailable'||drift==='boot-root-denied'&&rebooted)throw Error('adbd root unavailable');
+      if(!rebooted&&['root-lost-ack','root-lost-ack-unprivileged','root-lost-ack-restarted'].includes(drift)){
+        rooted=drift!=='root-lost-ack-unprivileged';
+        throw Object.assign(Error('root transport closed'),{status:1,signal:null,stderr:'adb: unable to connect for root: closed\n'});
+      }
+      rooted=true;return '';
+    }
     if (key === 'reboot') { if(installed)finalBoot=true;rooted=false;reboots++; rebooted = true; offline = 1; scratch = ''; backingAlias = '/dev/block/vdc'; return ''; }
     if (key === 'shell getprop sys.boot_completed') {
       if (offline-- > 0 || neverBoot || finalBoot&&drift==='final-never-boot' || (drift==='overlay-never-boot'&&reboots>1)) throw Error('device offline');
@@ -93,7 +100,7 @@ async function simulate({ framework = 'ready', drift, neverBoot = false, neverRe
     if(finalBoot&&drift==='final-fingerprint'&&key==='shell getprop ro.build.fingerprint')return 'unreviewed-image';
     if(finalBoot&&drift==='final-alias'&&key==='shell readlink -f /dev/block/by-name/vdc')return '/dev/block/vdd';
     if(finalBoot&&drift==='final-topology'&&key==='shell cat /proc/bootconfig')return 'androidboot.boot_devices = "wrong"';
-    if(key==='shell cat /proc/sys/kernel/random/boot_id')return finalBoot&&drift==='final-changed-boot'?'22222222-2222-4222-8222-222222222222':'11111111-1111-4111-8111-111111111111';
+    if(key==='shell cat /proc/sys/kernel/random/boot_id')return (finalBoot&&drift==='final-changed-boot'||rooted&&drift==='root-lost-ack-restarted')?'22222222-2222-4222-8222-222222222222':'11111111-1111-4111-8111-111111111111';
     if(key===`shell test ! -e ${stock}`){if(drift==='final-stock')throw Error('Stock provider returned');return '';}
     if(key==='shell dumpsys power')return 'mWakefulness=Awake';
     if(key==='shell dumpsys window policy')return `KeyguardServiceDelegate\nshowing=false\ninputRestricted=false\nsecure=${drift==='final-secure'}\nsystemIsReady=true\nbootCompleted=true\nscreenState=SCREEN_STATE_ON\nKeyguardStateMonitor\nmCurrentUserId=0\nmIsShowing=false\nmInputRestricted=false`;
@@ -400,6 +407,19 @@ test('root-unavailable fixture fails before privileged boot read or any provider
  const r=await simulate({drift:'root-unavailable'});assert.match(r.error.message,/adbd root unavailable/);
  assert.equal(r.result.status,'FAIL');assert.equal(r.removed,false);assert.equal(r.installed,false);
  assert.ok(!r.calls.includes('shell cat /proc/bootconfig'));
+ assert.ok(!r.calls.some(c=>/^(disable-verity|remount|reboot|install|shell (rm|setprop|stop|start))\b/.test(c)));
+});
+
+test('closed root acknowledgement is reconciled by identity and uid without replay',async()=>{
+ const r=await simulate({drift:'root-lost-ack'});assert.ifError(r.error);
+ assert.equal(r.result.rootDisconnectReconciled,true);
+ assert.equal(r.calls.slice(0,r.calls.indexOf('reboot')).filter(c=>c==='root').length,1);
+ assert.equal(r.installed,true);
+});
+for(const drift of ['root-lost-ack-unprivileged','root-lost-ack-restarted'])test(`closed root acknowledgement refuses ${drift}`,async()=>{
+ const r=await simulate({drift});
+ assert.match(r.error.message,/root transport closed/);assert.equal(r.calls.filter(c=>c==='root').length,1);
+ assert.equal(r.installed,false);assert.equal(r.removed,false);
  assert.ok(!r.calls.some(c=>/^(disable-verity|remount|reboot|install|shell (rm|setprop|stop|start))\b/.test(c)));
 });
 

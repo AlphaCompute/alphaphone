@@ -260,6 +260,26 @@ export async function main({ environment = process.env, execute = execFileSync, 
   };
   const run = (...args) => command(path.join(sdk, 'platform-tools/adb'), ['-s', serial, ...args]);
   const safe = (installed = false) => requireProviderFixture(run, environment, { installed });
+  const rootFixture = () => {
+    safe();
+    const bootId = run('shell', 'cat', '/proc/sys/kernel/random/boot_id').trim();
+    require(/^[a-f0-9-]{36}$/.test(bootId), 'Invalid pre-root boot identity');
+    let disconnected;
+    try { run('root'); }
+    catch (error) {
+      // adbd may close this request while restarting. Never replay the mutation:
+      // require fresh fixture identity and actual privilege readback instead.
+      if (error.status !== 1 || error.signal != null ||
+          String(error.stderr ?? '').trim() !== 'adb: unable to connect for root: closed') throw error;
+      disconnected = error;
+    }
+    try {
+      run('wait-for-device'); safe();
+      require(run('shell', 'cat', '/proc/sys/kernel/random/boot_id').trim() === bootId, 'Provider fixture restarted during root request');
+      require(run('shell', 'id', '-u').trim() === '0', 'Provider fixture root was not established');
+    } catch (error) { throw disconnected ?? error; }
+    if (disconnected) { state.rootDisconnectReconciled = true; save(); }
+  };
   const bootIdentity = (installed = false) => {
     safe(installed);
     const deadline = now() + 15000;
@@ -401,7 +421,7 @@ export async function main({ environment = process.env, execute = execFileSync, 
     for (const [name, value] of Object.entries({ signature, badging, manifest })) fs.writeFileSync(path.join(output, name + '.txt'), value);
     // Chromium's Q+ removal helper targets Google/Trichrome and Chrome. We do
     // not execute it: only the single verified AOSP file below may be removed.
-    safe(); run('root'); run('wait-for-device'); safe();
+    rootFixture();
     state.status = 'preparing-overlay-storage'; save();
     captureStorage('before');
     const superLayout = collectOverlayFailureDiagnostics({ environment, sdkEnvironment: env, execute, now, superLayout: true });
@@ -414,7 +434,7 @@ export async function main({ environment = process.env, execute = execFileSync, 
       fs.writeFileSync(path.join(output, 'overlay-pre-reboot-diagnostics.json'), JSON.stringify(diagnostics, null, 2) + '\n');
     } catch (diagnosticError) { state.preRebootDiagnosticError = String(diagnosticError.message).slice(0, 512); }
     safe(); run('reboot'); run('wait-for-device'); await boot();
-    run('root'); run('wait-for-device'); safe();
+    rootFixture();
     configureScratch(); // Non-persistent property is reset by reboot.
     let remount = run('remount');
     state.overlayRemountOutputs = [remount.slice(-65536)]; save();
@@ -426,7 +446,7 @@ export async function main({ environment = process.env, execute = execFileSync, 
       state.overlayRebootRequested = true; save();
       // Exactly one documented first-overlay activation reboot; never loop or ignore it.
       run('reboot'); run('wait-for-device'); await boot();
-      run('root'); run('wait-for-device'); safe();
+      rootFixture();
       configureScratch(); // Reauthenticate userdata alias and reset the volatile property.
       remount = run('remount');
       state.overlayRemountOutputs.push(remount.slice(-65536)); save();
