@@ -1,4 +1,5 @@
 import type {LocalAgentProtocol} from '../runtime/local-agent';
+import {browserSpeechConnection as connectionController} from './agent-speech';
 import {recordingPcmWav} from './recording-pcm';
 import {browserMediaVolume} from './audio-settings';
 import {audioRecord,audioMetadata,retainAudio,changeAudioDeleted,audioDeletionStatus,migrateAudio} from './note-audio-store';
@@ -7,7 +8,7 @@ import { BrowserAudioCapture } from './audio-capture';
 import { WebPlugin } from '@capacitor/core';
 // Recordings stay local; explicit host-agent transcription keeps credentials on the host.
 export class BrowserVoice extends WebPlugin {
- private connection=import('../runtime/connection-ui').then(({connectionController})=>{
+ private connection=Promise.resolve(connectionController).then(connectionController=>{
   let binding=connectionController.getSnapshot().session?.sessionId;
   connectionController.subscribe(()=>{const next=connectionController.getSnapshot().session?.sessionId;if(next!==binding){binding=next;void this.releaseLocalSpeech();}});
   return connectionController;
@@ -34,7 +35,7 @@ export class BrowserVoice extends WebPlugin {
   window.addEventListener('alpha:device-state',()=>{void this.cancel();});
  }
  async localSpeechStatus(){return this.withAgentSpeech(async signal=>{
-  // Browser factories must register before connection modules request their proxies.
+  // The entrypoint binds this facade after browser factories have registered.
   const connectionController=await this.connection;signal.throwIfAborted();
   const agent=connectionController.getBrowserSpeechAgent();if(agent){const result=await agent.speechRequest(undefined,signal);return {ready:result.ready===true,execution:'browser'};}return {ready:!!navigator.mediaDevices?.getUserMedia&&typeof MediaRecorder!=='undefined',execution:'browser'};
  });}

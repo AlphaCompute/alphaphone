@@ -1,5 +1,6 @@
 // Register browser implementations before any runtime module claims plugin identity.
 import './browser/register';
+import {bindBrowserSpeechConnection} from './browser/agent-speech';
 import { pauseLiveActivityForMock } from './runtime/mock-admission';
 import { installBrowserDeviceAdapter } from './browser/device-adapter';
 import { BrowserDeviceControls } from './browser/device-controls';
@@ -32,6 +33,7 @@ import { ConnectionChooser, connectionController } from './runtime/connection-ui
 import { installInboxCloudAdapter } from './prototype/inbox-cloud-adapter';
 import './prototype/prototype.css';
 import './prototype/phone.css';
+if(!isAndroid)bindBrowserSpeechConnection(connectionController);
 const query = new URLSearchParams(location.search);
 document.documentElement.classList.toggle('native-phone', isAndroid);
 const savedMock = (() => {
