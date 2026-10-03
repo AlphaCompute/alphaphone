@@ -1,9 +1,32 @@
 export type ScanDraft={id:'document';revision:string;pages:Blob[];updated:number};
+type StoredScanDraft=Omit<ScanDraft,'pages'>&{pages:{bytes:ArrayBuffer;type:string}[];format:2};
+function decode(value:unknown):ScanDraft{
+ const draft=value as Partial<StoredScanDraft>;
+ if(!draft||draft.id!=='document'||typeof draft.revision!=='string'||!draft.revision||!Number.isFinite(draft.updated)||!Array.isArray(draft.pages)||(draft.format!==undefined&&draft.format!==2))throw Error('Saved draft could not be read.');
+ const pages=draft.pages.map((page:unknown)=>{
+  if(draft.format===undefined&&page instanceof Blob)return page;
+  const item=page as {bytes?:unknown;type?:unknown};
+  if(draft.format!==2||!item||!(item.bytes instanceof ArrayBuffer)||typeof item.type!=='string')throw Error('Saved page could not be read.');
+  return new Blob([item.bytes],{type:item.type});
+ });
+ valid(pages);return {id:'document',revision:draft.revision,pages,updated:draft.updated!};
+}
 function valid(pages:Blob[]){if(!Array.isArray(pages)||pages.length<1||pages.length>20||pages.some(p=>!(p instanceof Blob)||!['image/jpeg','image/png','image/webp'].includes(p.type)||!p.size||p.size>16*1024*1024)||pages.reduce((sum,p)=>sum+p.size,0)>64*1024*1024)throw Error('Choose 1 to 20 images, up to 64 MB total.');}
 async function transaction<T>(mode:IDBTransactionMode,action:(store:IDBObjectStore,set:(value:T)=>void,fail:(error:Error)=>void)=>void,signal?:AbortSignal):Promise<T>{
  const db=await new Promise<IDBDatabase>((resolve,reject)=>{const r=indexedDB.open('alpha.browser.scan-draft.v1',1);r.onupgradeneeded=()=>r.result.createObjectStore('drafts',{keyPath:'id'});r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error);r.onblocked=()=>reject(Error('Close another scan tab and try again.'));});
  return new Promise((resolve,reject)=>{const tx=db.transaction('drafts',mode);let value:T,error:Error|undefined;const cleanup=()=>{signal?.removeEventListener('abort',abort);db.close();};tx.oncomplete=()=>{cleanup();resolve(value);};tx.onabort=tx.onerror=()=>{cleanup();reject(error??tx.error??Error('Draft storage interrupted.'));};const fail=(reason:Error)=>{error=reason;tx.abort();};const abort=()=>fail(signal?.reason??new DOMException('Cancelled','AbortError'));signal?.addEventListener('abort',abort,{once:true});try{signal?.throwIfAborted();action(tx.objectStore('drafts'),v=>value=v,fail);}catch(e){fail(e as Error);}});
 }
-export async function readScanDraft(){const draft=await transaction<ScanDraft|undefined>('readonly',(store,set)=>{const r=store.get('document');r.onsuccess=()=>set(r.result);});if(draft){valid(draft.pages);if(typeof draft.revision!=='string')throw Error('Saved draft could not be read.');}return draft;}
-export async function saveScanDraft(pages:Blob[],expected:string|undefined,signal:AbortSignal){pages=[...pages];valid(pages);return transaction<ScanDraft>('readwrite',(store,set,fail)=>{const r=store.get('document');r.onsuccess=()=>{try{signal.throwIfAborted();const old=r.result as ScanDraft|undefined;if(old?.revision!==expected)throw Error('A saved draft already exists or changed. Load the saved draft before replacing it.');const draft:ScanDraft={id:'document',revision:crypto.randomUUID(),pages,updated:Date.now()};store.put(draft);set(draft);}catch(error){fail(error as Error);}};},signal);}
+export async function readScanDraft(){const draft=await transaction<unknown>('readonly',(store,set)=>{const r=store.get('document');r.onsuccess=()=>set(r.result);});return draft===undefined?undefined:decode(draft);}
+export async function saveScanDraft(pages:Blob[],expected:string|undefined,signal:AbortSignal){
+ signal.throwIfAborted();pages=[...pages];valid(pages);
+ // Read before opening the transaction: awaits must not let IndexedDB auto-commit.
+ const stored:StoredScanDraft['pages']=[];
+ for(const page of pages){const bytes=await page.arrayBuffer();signal.throwIfAborted();if(bytes.byteLength!==page.size)throw Error('Could not read the complete page.');stored.push({bytes,type:page.type});}
+ return transaction<ScanDraft>('readwrite',(store,set,fail)=>{const r=store.get('document');r.onsuccess=()=>{try{
+  signal.throwIfAborted();const old=r.result===undefined?undefined:decode(r.result);
+  if(old?.revision!==expected)throw Error('A saved draft already exists or changed. Load the saved draft before replacing it.');
+  const draft:ScanDraft={id:'document',revision:crypto.randomUUID(),pages,updated:Date.now()};
+  store.put({...draft,format:2,pages:stored} satisfies StoredScanDraft);set(draft);
+ }catch(error){fail(error as Error);}};},signal);
+}
 export async function deleteScanDraft(expected:string,signal:AbortSignal){return transaction<void>('readwrite',(store,set,fail)=>{const r=store.get('document');r.onsuccess=()=>{try{signal.throwIfAborted();if(r.result?.revision!==expected)throw Error('Saved draft changed. Load it before deleting.');store.delete('document');set(undefined);}catch(error){fail(error as Error);}};},signal);}
