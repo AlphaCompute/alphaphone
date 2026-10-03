@@ -2040,3 +2040,10 @@ The user-facing local stack was restarted on short-credential manifest `d570c03d
 Audited Notes, new-event and calendar-edit forms at 150% text in both themes. The calendar editor silently stripped description newlines through a single-line input. It now uses a textarea, themed controls and native color scheme, 44px action/checkbox-label targets, persistent Close/Save/Cancel, visible focused labels and inline save errors retaining the draft.
 
 All 32 selected Chromium/WebKit cases pass, including 360px-wide layouts at 640px and 360px heights, both themes at 150%, exact multiline preservation, focus return, failed saves, timezone overlap/gap behavior, stale saves, all-day boundaries and meeting lifecycle. Final screenshots were inspected. Repository verification passes 157 tests, zero skips, TypeScript and build. Evidence: `artifacts/calendar-preferences-review/test-results/daily-editor-audit/`. Intermediate focus failures remain in logs. Current-head full hosted qualification and remaining design states are still open. Android builds were skipped.
+
+
+## October 3 — readable calendar and reminder details
+
+A current-source compact detail audit reproduced more than 1,200px of horizontal overflow with long stored titles/references, and collapsed multiline descriptions. Detail content now wraps long text within its scroll area and preserves paragraph breaks. Reminder action rows wrap and use larger minimum heights so the 360px browser preview retains at least 44 visible pixels per action.
+
+All eight Chromium/WebKit event/reminder cases pass in light/dark themes at 150% text, checking overflow, multiline rendering, action bounds and return navigation. Final description/title screenshots were inspected. Repository verification passes 157 tests, zero skips, TypeScript and build. Evidence: `artifacts/calendar-preferences-review/test-results/calendar-detail-review/`. Baseline overflow failures, the corrected reminder-status assertion and intermediate hit-target failures remain in logs. This does not close physical device or complete design acceptance; current-head hosted checks remain pending.
