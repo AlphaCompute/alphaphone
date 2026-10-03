@@ -1,3 +1,5 @@
+import {publishWorkflowNotice} from '../browser/workflow-notices';
+import {speakLocalText} from '../local-speech-playback';
 import {browserDevProfile} from '../browser/dev-profile';
 import {stampNoteChanges} from '../runtime/note-dates';
 import {isClockOperation,assertClockTimeZone,currentClockTimeZone,validateClockResult} from '../runtime/clock-contract';
@@ -290,6 +292,13 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
         if(result.status!=='ready')return {status:'failed',summary:'Calendar read permission is unavailable. No calendar content was uploaded.'};
         const events=await Promise.all(result.events.map(async event=>({...event,revision:await workflowSha([event.id,event.calendarId,event.title,event.start,event.end,event.allDay])})));
         const readResult=await validateWorkflowResult(operation,{kind:'calendar',events});current();return {status:'succeeded',summary:`Read ${events.length} events within the selected calendar range.`,readResult};
+      }
+      if(operation.type==='post_notification'||operation.type==='speak_text'){
+        if(Capacitor.isNativePlatform())return {status:'failed',summary:'This device has not negotiated workflow presentation support.'};
+        signal.throwIfAborted();context(this);if(!this.live||document.hidden||JSON.stringify(alphaClient.getState().context)!==JSON.stringify(expectedContext)||expectedContext.sensitive||expectedContext.view!=='workflows')throw Error('Workflow review context changed');
+        if(operation.type==='post_notification'){await publishWorkflowNotice(operationId,operation.body,signal,operation.title);return {status:'succeeded',summary:'Posted the reviewed notification in the browser Inbox.'};}
+        const speechAbort=new AbortController(),stop=()=>speechAbort.abort();signal.addEventListener('abort',stop,{once:true});window.addEventListener('alpha:stop-workflow-speech',stop);
+        try{signal.throwIfAborted();await speakLocalText(operation.text,speechAbort.signal,undefined,true);return {status:'succeeded',summary:'Finished reading the reviewed text aloud.'};}finally{signal.removeEventListener('abort',stop);window.removeEventListener('alpha:stop-workflow-speech',stop);}
       }
       if (operation.type === 'create_note') {
         if (this.notesStorageFailed) return { status: 'failed', summary: 'Notes storage is unavailable. Nothing saved.' };

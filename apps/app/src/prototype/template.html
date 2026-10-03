@@ -3090,6 +3090,7 @@
         <sc-if value="{{workflows.r.phoneAvailable}}" hint-placeholder-val="{{false}}">
         <section aria-label="Workflow phone steps" style="margin-top: 22px; padding: 18px 20px; border-radius: 24px; background: var(--s2); font-size: 15px; line-height: 1.45">
           <strong>Phone steps</strong><p>{{workflows.r.phoneStatus}}</p>
+          <sc-if value="{{workflows.r.phoneSpeaking}}" hint-placeholder-val="{{false}}"><button aria-label="Stop workflow speech" onClick="{{workflows.r.phoneStopSpeech}}" style="min-height:44px;padding:0 18px;border-radius:22px;background:var(--bg)">Stop reading</button></sc-if>
           <div style="display:flex; gap:12px; flex-wrap:wrap">
             <button aria-label="Review phone steps" onClick="{{workflows.r.phoneReview}}" disabled="{{workflows.r.phoneBusy}}" style="min-height:44px; padding:0 18px; border-radius:22px; background:var(--bg)">Review phone steps</button>
             <button aria-label="Sync saved phone receipts" onClick="{{workflows.r.phoneSync}}" disabled="{{workflows.r.phoneBusy}}" style="min-height:44px; padding:0 18px; border-radius:22px; background:var(--bg)">Sync saved receipts</button>

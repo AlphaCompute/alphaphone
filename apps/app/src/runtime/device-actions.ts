@@ -8,7 +8,8 @@ import { isMvpView } from "../prototype/mvp-features";
 import { parseWorkflowBinding, parseWorkflowRead, validateWorkflowResult, assertWorkflowOperation, type WorkflowReadOperation, type WorkflowReadResult, type WorkflowDeviceBinding, type WorkflowPhoneReview } from './workflow-device-contract';
 import type { ActionProposal, ContextEnvelope, OperationReceipt, VerifiedSession } from './alpha-client';
 
-export type DeviceOperation = ClockOperation | MapsOperation | ReminderOperation | NotesOperation | CalendarOperation | WorkflowReadOperation | { type: 'create_note'; title: string; body: string }
+export type WorkflowPresentationOperation = {type:'post_notification';title:string;body:string}|{type:'speak_text';text:string};
+export type DeviceOperation = WorkflowPresentationOperation | ClockOperation | MapsOperation | ReminderOperation | NotesOperation | CalendarOperation | WorkflowReadOperation | { type: 'create_note'; title: string; body: string }
   | { type: 'create_reminder'; title: string; dueAt: string }
   | { type: 'open_view'; view: string } | { type: 'browser_navigate'; url: string };
 export interface DeviceCredential { installationId: string; key: string; enrollmentId?: string }
@@ -40,6 +41,8 @@ export function validateDeviceOperation(value: unknown): DeviceOperation {
   if(isNotesOperation(p))return validateNotesOperation(p);
   if(isCalendarOperation(p))return validateCalendarOperation(p);
   if(p.type==='read_selected_notes'||p.type==='read_calendar_range')return parseWorkflowRead(p);
+  if(p.type==='post_notification'){if(Object.keys(p).some(k=>!['type','title','body'].includes(k)))throw Error('Invalid notification fields');return {type:p.type,title:text(p.title,200),body:text(p.body,2000)};}
+  if(p.type==='speak_text'){if(Object.keys(p).some(k=>!['type','text'].includes(k)))throw Error('Invalid speech fields');return {type:p.type,text:text(p.text,5000)};}
   if (p.type === 'create_note') {
     if (typeof p.body !== 'string' || p.body.length > 32000 || p.body.includes('\0')) throw new Error('Invalid note');
     return { type: p.type, title: text(p.title, 256), body: p.body };
@@ -85,7 +88,7 @@ export class DeviceActions {
     if (!Number.isFinite(expiresAt) || !/^[a-f0-9]{64}$/.test(digest)) throw new Error('Invalid action expiry or digest');
     const workflow=payload.workflow===undefined?undefined:parseWorkflowBinding(payload.workflow),op=validateDeviceOperation(payload.operation);
     if(isReminderOperation(op)&&(op.target.timingVersion===2||op.type==='reminder_update'&&op.fields.schedule?.alertMinutes!==undefined)&&!this.reminderV2)throw Error('This agent does not support this reminder timing. Reconnect to a compatible agent.');
-    if((op.type==='read_selected_notes'||op.type==='read_calendar_range')&&!workflow)throw new Error('Workflow binding required for phone reads');
+    if((['read_selected_notes','read_calendar_range','post_notification','speak_text'].includes(op.type))&&!workflow)throw new Error('Workflow binding required for phone reads');
     return { id: id(p.id), digest, state: text(p.state, 32), expiresAt, operation:op,...(workflow?{workflow}:{}), ...(p.execution?.attemptId ? { attemptId: id(p.execution.attemptId) } : {}) };
   }
   async list(signal: AbortSignal): Promise<Proposal[]> {
@@ -120,7 +123,7 @@ export class DeviceActions {
     if(context.view!=='workflows'||context.sensitive||context.selectedObject?.kind!=='workflow-run'||context.selectedObject.id!==review.runId||context.selectedObject.revision!==review.versionId)throw new Error('Open this exact workflow execution before reviewing phone steps');
     const pending=(await this.list(signal)).filter(p=>p.workflow?.runId===review.runId&&p.state==='pending'&&p.expiresAt>Date.now());signal.throwIfAborted();this.proposals.clear();
     return pending.map(p=>{assertWorkflowOperation(review,p.workflow!,{installationId:this.credential.installationId,enrollmentId:this.credential.enrollmentId!},p.operation);this.proposals.set(p.id,{proposal:p,context:structuredClone(context),workflowReview:structuredClone(review)});
-      const op=p.operation;const scope=op.type==='read_selected_notes'?`Read only ${op.notes.length} selected Notes at the recorded revisions. Text and titles will be sent to this agent.\nSelected IDs: ${op.notes.map(n=>n.id).join(', ')}`:op.type==='read_calendar_range'?`Read calendars ${op.calendarIds.join(', ')} from ${op.start} up to (excluding) ${op.end}, shown in ${op.timeZone}. At most ${op.maximumEvents} events; overflow fails. Event titles, times and IDs will be sent; descriptions, locations and attendees are excluded.`:op.type==='create_note'?`Save one note “${op.title}” on this phone:\n${op.body}`:'Unsupported phone step';
+      const op=p.operation;const scope=op.type==='read_selected_notes'?`Read only ${op.notes.length} selected Notes at the recorded revisions. Text and titles will be sent to this agent.\nSelected IDs: ${op.notes.map(n=>n.id).join(', ')}`:op.type==='read_calendar_range'?`Read calendars ${op.calendarIds.join(', ')} from ${op.start} up to (excluding) ${op.end}, shown in ${op.timeZone}. At most ${op.maximumEvents} events; overflow fails. Event titles, times and IDs will be sent; descriptions, locations and attendees are excluded.`:op.type==='create_note'?`Save one note “${op.title}” on this phone:\n${op.body}`:op.type==='post_notification'?`Post this notification in the browser Inbox: ${op.title}\n${op.body}`:op.type==='speak_text'?`Read this exact text aloud on this device:\n${op.text}`:'Unsupported phone step';
       return {id:p.id,title:op.type.replaceAll('_',' '),description:`Agent: ${this.session.origin}\nOwner: ${this.session.ownerId}\nWorkflow: ${p.workflow!.workflowId}\nRun: ${p.workflow!.runId}\nVersion: ${p.workflow!.versionId}\nStep: ${p.workflow!.stepId}\nSpec: ${p.workflow!.specDigest}\n${scope}`,expiresAt:p.expiresAt,contextRevision:context.revision};});
   }
   private async mutation(p: Proposal, suffix: string, body: Record<string, unknown>, signal: AbortSignal): Promise<Proposal> {

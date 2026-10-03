@@ -1,3 +1,4 @@
+import {Capacitor} from '@capacitor/core';
 import {browserWorkflowDraftStore} from '../browser/workflow-drafts';
 import {browserDevProfile} from '../browser/dev-profile';
 import { registerPlugin } from '../platform-plugins';
@@ -15,7 +16,7 @@ const draftStorageDescription=browserDevProfile?'in this browser development pro
 const calendar=registerPlugin<{workflowCalendars():Promise<{status:string;calendars:Bag[]}>;requestWorkflowReadAccess():Promise<{status:string}>}>('AlphaCalendar');
 const palette=['Read','If','Write','Send','Notify','Speak','Do'];
 const icons:Record<string,string>={Read:'wfRead',If:'wfIf',Write:'edit',Send:'send',Notify:'bell',Speak:'wave',Do:'wfDo'};
-const known=new Set(['supplied_text','selected_notes','calendar_range','contains','compose_draft','model_draft','save_note']);
+const known=new Set(['supplied_text','selected_notes','calendar_range','contains','compose_draft','model_draft','save_note',...(!Capacitor.isNativePlatform()?['app_notification','read_aloud']:[])]);
 /** Typed local authoring. No prototype natural-language parser or arbitrary source is executed. */
 export function createWorkflowAuthoring(owner:()=>any,publish:()=>void,onSaved:(id:string)=>Promise<unknown>){
  let active=false,draft:Draft|null=null,catalog:PhoneCatalog|null=null,sheet:string|null=null,busy=false,status='',review:string|null=null,discard=false,generation=0,controller:AbortController|null=null;
@@ -57,6 +58,8 @@ export function createWorkflowAuthoring(owner:()=>any,publish:()=>void,onSaved:(
   if(id==='contains')return {...common,source,text:'',caseSensitive:false};
   if(id==='compose_draft')return {...common,source,prefix:'',suffix:''};
   if(id==='model_draft')return {...common,source,instruction:''};
+  if(id==='app_notification'){ensureDevice();return {...common,source,title:'Workflow result'};}
+  if(id==='read_aloud'){ensureDevice();return {...common,source};}
   if(id==='save_note'){ensureDevice();return {...common,source,title:'Workflow note'};}
   throw new Error('This operation needs a newer qualified phone capability');
  }
@@ -80,6 +83,7 @@ export function createWorkflowAuthoring(owner:()=>any,publish:()=>void,onSaved:(
   if(step.operation==='contains')fields.push(field('Text to match',step.text,v=>step.text=v));
   if(step.operation==='compose_draft')fields.push(field('Text before input',step.prefix,v=>step.prefix=v,'text',true),field('Text after input',step.suffix,v=>step.suffix=v,'text',true));
   if(step.operation==='model_draft')fields.push(field('Drafting instruction',step.instruction,v=>step.instruction=v,'text',true));
+  if(step.operation==='app_notification')fields.push(field('Notification title',step.title,v=>step.title=v));
   if(step.operation==='save_note')fields.push(field('New note title',step.title,v=>step.title=v));
   if(step.operation==='calendar_range'){fields.push(field('Range start (UTC ISO)',step.range.start,v=>step.range.start=v),field('Range end, exclusive (UTC ISO)',step.range.end,v=>step.range.end=v),field('Review time zone',step.range.timeZone,v=>step.range.timeZone=v),field('Maximum events (1–200)',String(step.range.maximumEvents),v=>step.range.maximumEvents=Number(v),'number'));}
  }
