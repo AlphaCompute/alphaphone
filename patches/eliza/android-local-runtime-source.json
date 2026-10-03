@@ -43,7 +43,9 @@
     "plugins/plugin-assistant/test/workflow-owner-migration-review.test.ts": "32c9ae7fbbcd3d9fbfc575e925d29d05433a10c09ae005a030f4e5d1147a5727",
     "packages/app/scripts/lib/stage-android-agent.ts": "e0da570ee3fac62ba8c416044ba8de4397dc452b6d08f3313e22092ae3107ffd",
     "plugins/plugin-assistant/src/services/device-actions/reminder-contract.ts": "c8d7c16f96a7d80d3b8ee32c87a9fe9bb8a93ffe7b930a9fe8b2d8754c4b171d",
-    "plugins/plugin-assistant/src/services/message/context-assembly.ts": "cef5fc478e3457fe98069ad134a09b3bb2c9072730b4cf007801e7a482cdafa1"
+    "plugins/plugin-assistant/src/services/message/context-assembly.ts": "cef5fc478e3457fe98069ad134a09b3bb2c9072730b4cf007801e7a482cdafa1",
+    "plugins/plugin-workflow/src/services/smithers-runtime.ts": "79e59adfc3284323db6c7e0082fdaf7b06c93e301bfd6913ae42c0f08f64c3c9",
+    "plugins/plugin-workflow/src/services/workflow-source-publication.ts": "8decc42c0383a344db4a64a90f8a56b06c648a51d8c09fa2ded8ce0e306dd6a7"
   },
   "patches": [
     "android-secure-store-socket.patch",
@@ -61,7 +63,8 @@
     "android-resident-launcher-no-kill.patch",
     "calendar-tool-format-guidance.patch",
     "device-operation-key-guidance.patch",
-    "reminder-explicit-timing.patch"
+    "reminder-explicit-timing.patch",
+    "android-workflow-source-publication.patch"
   ],
   "patchHashes": {
     "android-secure-store-socket.patch": "457ea3d0b91c80c53c4bd3db25bb85cea6079d87c5ee2b02a96757e0a31ae900",
@@ -79,6 +82,7 @@
     "android-resident-launcher-no-kill.patch": "7db1fd788b38a8df9cf43c81c318f257f8060c50043dc13b1d0ed78b06299636",
     "calendar-tool-format-guidance.patch": "64f38f9b7da7fe4773ce13bd1751a36accf494788f7fb1cd34878655218e43fe",
     "device-operation-key-guidance.patch": "78ff3fa0477fbd5f20a9fee1e288306ccacb15e87383d8b1ab7c87f190170902",
-    "reminder-explicit-timing.patch": "ff58f690d2214d6de435f7698377971f20c86931e2f4e674ada3ab8e265871d2"
+    "reminder-explicit-timing.patch": "ff58f690d2214d6de435f7698377971f20c86931e2f4e674ada3ab8e265871d2",
+    "android-workflow-source-publication.patch": "5c7ddee6b819ab1a586c4d83881bae2697576cd79a04c0b089276d638ad70e20"
   }
 }
