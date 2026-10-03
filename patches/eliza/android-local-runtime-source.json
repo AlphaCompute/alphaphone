@@ -47,15 +47,20 @@
     "plugins/plugin-workflow/src/services/smithers-runtime.ts": "0e1166c0ffe6eeb008d102ccdb756449615c9eddf95474021f2c1a0999d90d5d",
     "plugins/plugin-workflow/src/services/workflow-source-publication.ts": "eb7adbeebe71afde252488af2f5b6cb8d073162335cd32dc1f08fbd065d864e4",
     "plugins/plugin-workflow/src/services/phone-workflow-generation.ts": "629dce92af9fdb1685cd8cc72bd7400abd13b2f6283fa8f6ff5b0dc075228b98",
-    "plugins/plugin-workflow/src/services/workflow-service.ts": "f843af50aef4bf34da4f91cc0bcd8402319d9e127c29de2dda62eae367f45af9",
-    "plugins/plugin-workflow/src/routes/workflow-routes.ts": "6b5801e9488df87e25803df22ef787126545bce3a2220120900ae5bdcb4ccee8",
+    "plugins/plugin-workflow/src/services/workflow-service.ts": "ccc91de080b3a534560093e2d5ea97bba4f1613b84bcb3bb9986bff3e7409115",
+    "plugins/plugin-workflow/src/routes/workflow-routes.ts": "6ebcbbdf076e9df70fb6c9ff6b16bcb07e8c4b9a295f0323f52a829a515071b8",
     "plugins/plugin-workflow/__tests__/phone-workflow-generation.test.ts": "121d844a337ede32ccca3630ea416842fe75292a3b962323d966710cbe2172a3",
     "plugins/plugin-workflow/__tests__/phone-workflow-generation-route.test.ts": "c4965339fbc6bcf80d7ac1e0e66eca3e2ed54e27bc85737ce104e2123d36ef77",
     "plugins/plugin-workflow/__tests__/fixtures/smithers-worker-lifecycle-fixture.mjs": "53de5f9c70e199905dfb6dd93cb18ec3752a7c534e568234f372ee47db8888ed",
     "plugins/plugin-workflow/__tests__/unit/smithers-worker-lifecycle.test.ts": "1aa7a7283e4f44dcac407b1968cc46e16e8990cd5ae448cd363defbe7bf3561e",
     "plugins/plugin-workflow/src/services/embedded-workflow-service.ts": "e716da1be3270be89a3179cc6b92da3568bb904a65df3dadf68199bcc93baf76",
     "plugins/plugin-workflow/src/services/workflow-worker-termination.ts": "f7cb28e1780d923f04d00f33c9842d96a9501cd40afc18d8879d29294a93b2f6",
-    "plugins/plugin-workflow/src/types/index.ts": "d0252d7a0e3423383654791e645e7b34a18c784aa526494d9c5a6a26e628ee0f"
+    "plugins/plugin-workflow/src/types/index.ts": "d0252d7a0e3423383654791e645e7b34a18c784aa526494d9c5a6a26e628ee0f",
+    "plugins/plugin-workflow/src/services/workflow-status.ts": "bed439f99de3e751f64f4b9677125156c026f5a48ea3d0e0d0f466c45f7e755a",
+    "plugins/plugin-workflow/src/lib/automations-builder.ts": "641fbbd233a1a4d0fd40beb346b0fc1fd11074c0165b10cbd20095bca0f0eea8",
+    "plugins/plugin-workflow/__tests__/unit/workflow-routes.test.ts": "6f25190b0195adab69aa57f36207511573e26e2a79567ab7024576c2f7d27923",
+    "plugins/plugin-workflow/__tests__/integration/routes-e2e.test.ts": "abf36fe49b422e47c378d8d449393236bfa21cf9dc0bbc5c36ea5a8929cc7585",
+    "plugins/plugin-workflow/__tests__/unit/workflow-status.test.ts": "059161708da08a73757a3750a17ed181fa658e24a89c5018b70d4eb1d77a2117"
   },
   "patches": [
     "android-secure-store-socket.patch",
@@ -77,7 +82,8 @@
     "android-workflow-source-publication.patch",
     "typed-workflow-generation.patch",
     "workflow-worker-exit-evidence.patch",
-    "workflow-worker-termination-diagnostic.patch"
+    "workflow-worker-termination-diagnostic.patch",
+    "workflow-runtime-location.patch"
   ],
   "patchHashes": {
     "android-secure-store-socket.patch": "457ea3d0b91c80c53c4bd3db25bb85cea6079d87c5ee2b02a96757e0a31ae900",
@@ -99,6 +105,7 @@
     "android-workflow-source-publication.patch": "8ad19433f9a600f2a03becc94c7b73f021d697a7dc763bc0f2b87c87fde29dd1",
     "typed-workflow-generation.patch": "c6b3840f2860542e5411dc0a98e2e7191643a3b8ac32de2534cebf9fbfc1625e",
     "workflow-worker-exit-evidence.patch": "1c26ead686ff8a8dc00dd395422e9935d9c676c4ff7fbdcdfd943bebb47ea772",
-    "workflow-worker-termination-diagnostic.patch": "3eea71235aaf105c7c8a5c23eabc99120ba00c0a92c2045a8e6bfcff9c6b7d63"
+    "workflow-worker-termination-diagnostic.patch": "3eea71235aaf105c7c8a5c23eabc99120ba00c0a92c2045a8e6bfcff9c6b7d63",
+    "workflow-runtime-location.patch": "0f91cc5e29c9d1c45b7c4f7bd350a2881948dc3ad6787446b1879f7741f69d63"
   }
 }
