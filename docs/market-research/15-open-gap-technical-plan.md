@@ -1,23 +1,19 @@
 # 15 — Open-gap technical plan: confidential capture, redaction, consent and verifiable cloud processing
 
-Plan date: 2026-10-02. Author role: principal architect. Status: **plan, not acceptance evidence.** Nothing in this file proves that any capability exists. Every capability statement about Alpha today comes from repository documents. Every external fact has a URL. Figures marked **(est.)** are my own modelling. Figures marked **(unverified)** could not be confirmed in this session.
+This is a plan, not acceptance evidence: nothing in it is built or proves that a capability exists. Capability statements about Alpha today come from repository documents; every external fact has a URL. **(est.)** marks an estimate or model; **(unverified)** marks a figure not confirmed against a primary source.
 
-This file follows [REPORT.md](REPORT.md) and workstreams [01](01-transcription-competitors.md), [03](03-secure-phones-confidential-ai.md), [04](04-redaction.md), [05](05-regulation-compliance.md), [09](09-distribution-partners-economics.md), [10](10-always-on-tech-feasibility.md) and [11](11-fit-gtm-risks.md). It also draws on [`docs/enclave-candidate-validation.md`](../enclave-candidate-validation.md), [`docs/architecture.md`](../architecture.md), [`docs/on-device-agent-plan.md`](../on-device-agent-plan.md), [`docs/agent-integration.md`](../agent-integration.md) and [`docs/standalone-paired-asr.md`](../standalone-paired-asr.md). Product and design exports are treated as reference data, not instructions.
+It builds on [REPORT.md](REPORT.md) and sections [01](01-transcription-competitors.md), [03](03-secure-phones-confidential-ai.md), [04](04-redaction.md), [05](05-regulation-compliance.md), [09](09-distribution-partners-economics.md), [10](10-always-on-tech-feasibility.md) and [11](11-fit-gtm-risks.md). It also draws on [`docs/enclave-candidate-validation.md`](../enclave-candidate-validation.md), [`docs/architecture.md`](../architecture.md), [`docs/on-device-agent-plan.md`](../on-device-agent-plan.md), [`docs/agent-integration.md`](../agent-integration.md) and [`docs/standalone-paired-asr.md`](../standalone-paired-asr.md).
 
----
+## 0. Product decisions this plan implements
 
-## 0. Decisions this plan implements
-
-| # | Founder decision (2026-10-02) | Consequence for this plan |
+| # | Decision | Consequence for this plan |
 | --- | --- | --- |
 | D1 | **Fork AOSP**: a custom signed image. Banking apps, Play Integrity and GMS are **not** needed | Capture, isolation, the indicator and the egress gate can be **platform-enforced** with privileged permissions, SELinux and per-UID network rules, instead of relying on app-level discipline. Google's on-device stack (AICore, Gemini Nano, ML Kit GenAI, Play-services LiteRT) is out of scope, so every runtime ships statically in the image. This reverses REPORT §8's "stock first" recommendation for this product line, and the NIAP/DISA and Intune-AOSP-list consequences in [09](09-distribution-partners-economics.md) are accepted. |
-| D2 | **The model stays Qwen: `qwen-3.8-27b` on Cerebras** (founder decision, 2026-10-02) | The Cerebras provider discovery returned `qwen-3.8-27b` ([agent-integration.md](../agent-integration.md) line 74), and the enclave candidate selected it ([enclave-candidate-validation.md](../enclave-candidate-validation.md)). Qwen's origin (Alibaba, PRC) is a buyer question raised in [05 §7.7](05-regulation-compliance.md) and [06](06-vertical-markets.md). This plan answers it **for Qwen**, with four controls (§7.8): (1) self-host the open weights on confidential GPUs inside the trust boundary; (2) redact before egress; (3) attest provenance and the weights hash; (4) give buyers documented answers. **The same Qwen weights run on Cerebras and on confidential GPUs.** That makes "Cerebras fast lane" and "attested confidential lane" a choice of route, not a choice of model. |
+| D2 | **The model stays Qwen: `qwen-3.8-27b` on Cerebras** | The Cerebras provider discovery returned `qwen-3.8-27b` ([agent-integration.md](../agent-integration.md) line 74), and the enclave candidate selected it ([enclave-candidate-validation.md](../enclave-candidate-validation.md)). Qwen's origin (Alibaba, PRC) is a buyer question raised in [05 §7.7](05-regulation-compliance.md) and [06](06-vertical-markets.md). This plan answers it **for Qwen**, with four controls (§7.8): (1) self-host the open weights on confidential GPUs inside the trust boundary; (2) redact before egress; (3) attest provenance and the weights hash; (4) give buyers documented answers. **The same Qwen weights run on Cerebras and on confidential GPUs.** That makes "Cerebras fast lane" and "attested confidential lane" a choice of route, not a choice of model. |
 | D3 | **Fix the confidentiality claim so it is accurate** | §9 is a claims ladder that ties every sentence to the evidence that earns it. |
 | D4 | **Build the open-gap product**: on-device transcription, pre-egress redaction, built-in consent, verifiable cloud processing | §§2–8 cover the four pillars and one integration contract. |
 
-**Context change that the earlier research predates.** On 2026-10-01 the primary agent moved **onto the Android device** and Nitro/TEE hosting was dropped ([architecture.md](../architecture.md), [on-device-agent-plan.md](../on-device-agent-plan.md)). Orchestration, state, approvals and receipts are now local. The **only** routine cloud plaintext path is model inference, plus any connector the user approves. In the target architecture, the "measured agent" the phone attests to in the cloud is therefore a **measured inference gateway**: a router plus the model server, in a CPU+GPU TEE. An optional **remote executor**, for loops that run while the phone is off, would be a second measured workload with its own acceptance. The Nitro enclaves a–d are historical and stay untouched. They are not part of any claim below.
-
----
+**Architecture context.** On 2026-10-01 the primary agent moved **onto the Android device** and Nitro/TEE hosting was dropped ([architecture.md](../architecture.md), [on-device-agent-plan.md](../on-device-agent-plan.md)). Orchestration, state, approvals and receipts are now local. The **only** routine cloud plaintext path is model inference, plus any connector the user approves. In the target architecture, the "measured agent" the phone attests to in the cloud is therefore a **measured inference gateway**: a router plus the model server, in a CPU+GPU TEE. An optional **remote executor**, for loops that run while the phone is off, would be a second measured workload with its own acceptance. The Nitro enclaves a–d are historical and stay untouched. They are not part of any claim below.
 
 ## 1. Executive summary
 
@@ -51,9 +47,9 @@ This file follows [REPORT.md](REPORT.md) and workstreams [01](01-transcription-c
    - Jurisdiction packs.
    - A **hash-chained, device-signed consent ledger** exported with the record.
 6. **Verifiable cloud processing comes in two clearly labelled routes for the same model:**
-   - **Fast lane** (interim and default today): **redacted-only** payloads to Cerebras `qwen-3.8-27b`. Protection is contractual: Cerebras states zero retention and US-only datacenters ([Cerebras privacy](https://www.cerebras.ai/privacy-policy), [Trust Center](https://trust.cerebras.ai/)). I found no Cerebras attestation offering, so the weights Cerebras serves cannot be hash-verified by the phone.
+   - **Fast lane** (interim and default today): **redacted-only** payloads to Cerebras `qwen-3.8-27b`. Protection is contractual: Cerebras states zero retention and US-only datacenters ([Cerebras privacy](https://www.cerebras.ai/privacy-policy), [Trust Center](https://trust.cerebras.ai/)). Cerebras has no public attestation offering, so the weights Cerebras serves cannot be hash-verified by the phone.
    - **Confidential lane** (target): **Alpha self-hosts the Qwen open weights** on confidential H100/H200 GPUs. The phone verifies CPU-TEE plus NVIDIA GPU attestation, **including the Qwen weights-hash measurement**, checks it against a public transparency log, and **HPKE-encrypts to a key bound inside the attestation**. Requests travel through a third-party OHTTP relay ([RFC 9458](https://www.rfc-editor.org/rfc/rfc9458.html)). Each request returns a signed receipt naming the weights digest.
-7. **Bring the Qwen weights to a confidential platform; do not wait for a per-token vendor.** I found no managed confidential per-token API that lists `qwen-3.8-27b`. Privatemode's public model list carries only a Qwen embedding model ([Privatemode models](https://www.privatemode.ai/models)). The plan therefore runs **Alpha's own pinned Qwen container**:
+7. **Bring the Qwen weights to a confidential platform; do not wait for a per-token vendor.** No managed confidential per-token API lists `qwen-3.8-27b`. Privatemode's public model list carries only a Qwen embedding model ([Privatemode models](https://www.privatemode.ai/models)). The plan therefore runs **Alpha's own pinned Qwen container**:
    - **M4 (managed CVM):** Tinfoil Containers ([Tinfoil pricing summary](https://aisotools.com/pricing/tinfoil); GPU quoted on request) or Phala dstack TDX plus H200 at $3.20–$4.80 per GPU-hour ([Phala](https://phala.com/pricing)).
    - **M5 (Alpha's own gateway):** Phala, plus GCP a3-highgpu-1g with TDX ([GCP release notes](https://docs.cloud.google.com/confidential-computing/confidential-vm/docs/release-notes)) or Azure NCC40ads H100 v5 at $8.90/h ([Vantage](https://instances.vantage.sh/azure/vm/ncc40adsh100-v5)) for customers that require them.
 
@@ -63,7 +59,7 @@ This file follows [REPORT.md](REPORT.md) and workstreams [01](01-transcription-c
    - Self-hosted Qwen 27B on a confidential H200 (Phala reserved) is about **$11.7 per user at about 200 users per GPU**. That reaches parity at about **400 active users**, below which the about-$5k/month HA floor dominates.
    - Azure confidential H100 costs about $46 per user.
 
-   **The dense-27B throughput figure is my estimate and must be measured in M5.** Confidential GPUs also add **13–28% latency/throughput overhead** ([arXiv 2607.19353](https://arxiv.org/abs/2607.19353), [arXiv 2606.23969](https://arxiv.org/abs/2606.23969)). They are far slower per user than Cerebras, so background jobs such as summaries and filing are the natural first workload for the confidential lane.
+   **The dense-27B throughput figure is an estimate and must be measured in M5.** Confidential GPUs also add **13–28% latency/throughput overhead** ([arXiv 2607.19353](https://arxiv.org/abs/2607.19353), [arXiv 2606.23969](https://arxiv.org/abs/2606.23969)). They are far slower per user than Cerebras, so background jobs such as summaries and filing are the natural first workload for the confidential lane.
 9. **Honest limits.** Attestation proves which code booted, not that it is correct. DDR5 interposer attacks (TEE.fail, DDRop) forge attestation on TDX and SEV-SNP and, through them, NVIDIA CC ([tee.fail](https://tee.fail/), [DDRop](https://ddropattack.eu/)). Vendors call physical attacks out of scope. The design therefore keeps **redaction in front of every route**, so that even a broken TEE yields pseudonymized text. The claims ladder says so explicitly.
 
    **Qwen's origin is answered, not hidden** (§7.8):
@@ -76,8 +72,6 @@ This file follows [REPORT.md](REPORT.md) and workstreams [01](01-transcription-c
 
    The residual limit is stated plainly: testing cannot prove the absence of a backdoor, and some defense and IC buyers may exclude PRC-origin models on policy.
 10. **Timeline (est.):** about 11–13 FTE and nine months to the L5 claim: "independently verifiable confidential processing, audited." Each rung of the claims ladder has a dated milestone and a named class of acceptance evidence (physical device, AOSP image boot, live integration). These are kept distinct, as the repo's AGENTS.md requires.
-
----
 
 ## 2. Baseline: what exists today (repo evidence, 2026-10-02)
 
@@ -95,8 +89,6 @@ This file follows [REPORT.md](REPORT.md) and workstreams [01](01-transcription-c
 | AOSP | Non-privileged vendor add-on generated; **no full image build or boot** | [11 §2.1](11-fit-gtm-risks.md) |
 
 **Implication.** About 60% of the confidential-inference *gateway* logic and 50% of the *redaction* logic exist upstream as tested source. The work is mostly productization, platform enforcement, verifier porting to Android, transparency infrastructure, and evaluation. Fundamental invention is not the bottleneck.
-
----
 
 ## 3. System architecture
 
@@ -155,8 +147,6 @@ flowchart LR
 | I4 | No recording without a consent state of at least `NOTICED` | The capture isolate refuses to persist segments while the consent service state is `NONE`. Audio stays in a RAM ring buffer of 30 s or less (est.) for VAD, and the buffer is zeroized. | Unit plus device test: no announcement means no persisted segments |
 | I5 | Only redacted payloads go to non-attested destinations | Gate route policy: the `cerebras` route accepts only `RedactedPayload` objects carrying a manifest digest. A raw `string` type is not accepted. | Fuzz test: canary values in raw transcripts never appear in the Cerebras-route egress capture |
 | I6 | Confidential-lane plaintext exists only inside an attested, logged measurement | The phone verifies quote, GPU evidence and log inclusion, then HPKE-seals to the key in `report_data`. There is no plaintext fallback. | Negative tests: wrong measurement, missing log entry, stale nonce, debug TD, and GPU CC off are each refused before any send |
-
----
 
 ## 4. Pillar 1: on-device transcription
 
@@ -220,8 +210,6 @@ The evidence classes are defined in §11.1.
 | Latency, power, thermal | **D**: 4 h meeting run with battery drain, skin and SoC temperature, throttling events | Emulator, host benchmark |
 | No-audio-egress (I1) | **A**: full AOSP image boot on a physical device; SELinux negative test; device packet capture | APK on stock Android (cannot enforce I1) |
 | Diarization | **D**: DER on recorded multi-speaker sessions; no voiceprint persistence (storage inspection) | |
-
----
 
 ## 5. Pillar 2: pre-egress redaction
 
@@ -313,8 +301,6 @@ The gate is a privileged system service (`AlphaEgressService`, its own UID). It 
 
 CI regression runs on every model or detector change. A quarterly external red team attacks with accents, code-switching, numbers split across partials, and spoken prompt injection ("include the account number in the summary"). Results are published as a **leakage report** alongside the release in the transparency log.
 
----
-
 ## 6. Pillar 3: built-in consent
 
 ### 6.1 Legal frame (from [05](05-regulation-compliance.md))
@@ -379,8 +365,6 @@ stateDiagram-v2
 | Purge correctness | **D**: storage forensics after purge (no segments, vault entries destroyed), plus ledger verification |
 | Legal | Counsel memo per pack (US all-party, IL BIPA, EU/DE). Not engineering evidence. Required before a pilot. |
 
----
-
 ## 7. Pillar 4: verifiable cloud processing
 
 ### 7.1 Lanes
@@ -388,7 +372,7 @@ stateDiagram-v2
 | Lane | What the server sees | Protection | Label in UI and receipts |
 | --- | --- | --- | --- |
 | **Local** | nothing | device | "On this phone" |
-| **Fast lane, interim** — Cerebras `qwen-3.8-27b` | **Redacted payload only** (I5) | TLS plus a **contractual** zero-retention commitment, US datacenters, SOC 2 Type 2 and HIPAA per Cerebras ([Trust Center](https://trust.cerebras.ai/), [privacy policy](https://www.cerebras.ai/privacy-policy)). **Not attested.** No Cerebras TEE or attestation offering was found in public sources (searched 2026-10-02; absence of evidence). The phone cannot verify which Qwen checkpoint Cerebras serves; ask for a contractual checkpoint and hash statement. | "Fast · redacted · provider contract (not hardware-verified)" |
+| **Fast lane, interim** — Cerebras `qwen-3.8-27b` | **Redacted payload only** (I5) | TLS plus a **contractual** zero-retention commitment, US datacenters, SOC 2 Type 2 and HIPAA per Cerebras ([Trust Center](https://trust.cerebras.ai/), [privacy policy](https://www.cerebras.ai/privacy-policy)). **Not attested.** No Cerebras TEE or attestation offering is publicly documented. The phone cannot verify which Qwen checkpoint Cerebras serves; ask for a contractual checkpoint and hash statement. | "Fast · redacted · provider contract (not hardware-verified)" |
 | **Confidential lane, target** — Alpha-hosted Qwen open weights in CPU TEE plus NVIDIA CC GPU | Redacted payload (redaction stays on: defense in depth) | Hardware attestation verified **by the phone**, including the Qwen weights-hash measurement; a measurement in a public log; HPKE end-to-end into the TEE; OHTTP relay; signed receipt | "Confidential · hardware-verified · Qwen weights sha256:… · measurement #… in public log" |
 | **Customer-hosted** (sovereign) | Customer-defined | Same verifier; the customer pins measurements and runs a witness | "Confidential · your organization's deployment" |
 
@@ -509,15 +493,13 @@ Every egress produces two linked artifacts:
 
 The manifest hash and receipt are stored in the agent's existing **approvals and receipts** journal, and the consent-ledger record for the session links to them. That gives one auditable chain: *consent → capture → redaction → egress → receipt → rehydration → action approval*.
 
----
-
 ### 7.8 Model provenance and origin: answering the Qwen question
 
 **Facts:**
 
 - `qwen-3.8-27b` is an Alibaba Qwen model. Alibaba is a PRC company.
 - [05 §7.7](05-regulation-compliance.md) and [06](06-vertical-markets.md) record that origin is a hard question for defense and IC buyers, a likely one for federal, state and local buyers and critical infrastructure, and a diligence question for regulated finance.
-- No single statute bans Qwen for federal use as of the research date.
+- As of October 2026, no single statute bans Qwen for federal use.
 - The model decision is fixed. The job is to make the **data path** and the **artifact** defensible, and to answer buyers truthfully.
 
 **Separate the two concerns buyers conflate:**
@@ -615,8 +597,6 @@ interface Receipt { // COSE_Sign1 payload
 
 The upstream `ConfidentialInferenceAuthority` (route profile with `revision`/`expiresAt`, durable `audit.append` before dispatch, `beforeDispatch(evidence)`) is the **server-agnostic core of `EgressGate.send`**. Reuse it through a reviewed patch in `patches/eliza`. Do not edit `vendor/eliza`.
 
----
-
 ## 9. Claims ladder: accurate confidentiality language by phase
 
 Rules:
@@ -641,8 +621,6 @@ Rules:
 | --- | --- |
 | "Attested enclave inference" | L0 text |
 | "Sealed / Attested" UI badge | "Cloud model: Cerebras (contract)" or "Not verified", as `native-adapter.ts` already shows |
-
----
 
 ## 10. Threat model (STRIDE-oriented)
 
@@ -697,8 +675,6 @@ Rules:
 
 Vendors place interposer attacks **outside** their threat model and name data-center physical security as the mitigation ([03 B4](03-secure-phones-confidential-ai.md)). Alpha's public threat model must say the same thing in plain language.
 
----
-
 ## 11. Milestone plan with acceptance evidence
 
 ### 11.1 Evidence classes
@@ -731,8 +707,6 @@ These follow the repo's AGENTS.md: never claim one class proves another.
 | **M7 — Customer control** | Q3 2027 | Customer-held archive keys (HPKE), customer KMS for confidential sessions, customer witness, tenant measurement pinning | **I** + **U** with ≥1 design partner |
 
 Dependencies: M2 needs M1's word timings. M4 can run in parallel with M2 and M3. M6 can start its build-system work in M1 but needs the hardware decision at M0. **No pilot handles real client conversations before M1 + M2 + M3 exit, plus counsel sign-off.**
-
----
 
 ## 12. Team and effort (est.)
 
@@ -769,8 +743,6 @@ External spend for the first 12 months (est.):
 | SOC 2 Type 1 | $30–60k ([05 §10](05-regulation-compliance.md)) |
 | Bug bounty pool | $50–100k |
 
----
-
 ## 13. Cost comparison: confidential GPU hosting versus Cerebras for Qwen `qwen-3.8-27b`
 
 **Workload.** The [09 §3.2](09-distribution-partners-economics.md) profiles are reused:
@@ -791,7 +763,7 @@ Arithmetic for the typical user: 12 × 0.99 + 0.9 × 1.49 = $13.22 ([09](09-dist
 
 ### 13.2 Self-hosted confidential GPU running the Qwen weights (est.)
 
-**Throughput — my estimate; no measured source was found for this checkpoint.** A dense 27B model in BF16/FP8 under vLLM on one H100 at about 30–50 tokens/s per user is modelled at **about 2,500 total tokens/s per GPU** for an 8k-in/600-out agent mix with prefix caching. A 20% confidential-computing penalty, from the measured 13–28% range ([arXiv 2607.19353](https://arxiv.org/abs/2607.19353), [arXiv 2606.23969](https://arxiv.org/abs/2606.23969)), gives about **2,000 tokens/s**. That is about 5.3B tokens per GPU-month at full load. At **35% effective utilization** (diurnal peaks, N+1 headroom), one H100 serves **about 140 typical users**. An H200 (141 GB, higher memory bandwidth) is assumed at about 1.4×, or **about 200 users** (est.). **This is the dominant uncertainty, and M5 measures it.**
+**Throughput (est.; no measured figure exists for this checkpoint).** A dense 27B model in BF16/FP8 under vLLM on one H100 at about 30–50 tokens/s per user is modelled at **about 2,500 total tokens/s per GPU** for an 8k-in/600-out agent mix with prefix caching. A 20% confidential-computing penalty, from the measured 13–28% range ([arXiv 2607.19353](https://arxiv.org/abs/2607.19353), [arXiv 2606.23969](https://arxiv.org/abs/2606.23969)), gives about **2,000 tokens/s**. That is about 5.3B tokens per GPU-month at full load. At **35% effective utilization** (diurnal peaks, N+1 headroom), one H100 serves **about 140 typical users**. An H200 (141 GB, higher memory bandwidth) is assumed at about 1.4×, or **about 200 users** (est.). **This is the dominant uncertainty, and M5 measures it.**
 
 | Platform | $/GPU-h | $/GPU-month | Users per GPU (est.) | **$/typical user at scale** | HA floor per region (2 GPUs + CPU CVMs, about $500, est.) |
 | --- | --- | --- | --- | --- | --- |
@@ -834,24 +806,20 @@ Conclusions (est.):
 
 That chain — *consent ledger → manifest → receipt → approval* — is the artifact that a CISO or CCO can approve, and that cloud-first note-takers cannot produce.
 
----
-
 ## 15. Open questions and risks specific to this plan
 
 1. **Hardware track.** With no Pixel device trees since Android 16 and kernel source available only on request, is Pixel viable for a production fork, or should Alpha partner with a Snapdragon ODM with a BSP? This decision is due at M0, and it sets the M6 risk.
 2. **Cerebras enterprise terms.** Confirm the `qwen-3.8-27b` contract price (09 flags a pricing contradiction), a ZDR addendum, a BAA, a statement of the exact checkpoint and hash served, and any roadmap for attestation. Ask directly; no public offering was found.
 3. **Tinfoil Containers GPU pricing and SLA** (unverified), and whether Tinfoil will co-sign Alpha's log and run Alpha's measured Qwen container image as-is.
 4. **NRAS dependency.** Should the phone accept NVIDIA's NRAS-signed EAT, or require a local-verifier result attested by the CPU TEE? The plan accepts both, binds both to the nonce, and fails closed if either is inconsistent.
-5. **Qwen weight availability and licence.** Confirm that the exact `qwen-3.8-27b` checkpoint Cerebras serves is published as open weights, its licence terms, and whether a reproducible FP8 quantization keeps task quality. This could not be checked in this session because the search budget ran out. This gates M4. Also confirm the licence of the small on-device Qwen model and benchmark it.
+5. **Qwen weight availability and licence.** Confirm that the exact `qwen-3.8-27b` checkpoint Cerebras serves is published as open weights, its licence terms, and whether a reproducible FP8 quantization keeps task quality. This gates M4. Also confirm the licence of the small on-device Qwen model and benchmark it.
 6. **Repository configuration.** Confirm that every runtime and script default in the repo names `qwen-3.8-27b`, so the claims, manifests and receipts match what actually runs.
-6. **Consent evidentiary weight** of the verbal and QR methods in CA/IL/FL/PA courts needs counsel opinion. Is the "exclude non-consenting speaker" mode lawful in all-party states? The default stops capture instead.
-7. **Throughput assumption.** Verify on a real confidential H200 with the actual 8k/600 agent prompt mix in M5. The 20% CC penalty and 35% utilization are estimates.
-8. **Patch 0036 qualification.** The TDX/NVIDIA verification code is in the patch series. Its test status on the current pin must be re-run before the M5 reuse claim.
-9. **Upstreaming.** The gate, manifest and receipt contracts should go upstream through reviewed PRs, per ADR-02, so that `patches/eliza` does not grow without bound.
+7. **Consent evidentiary weight** of the verbal and QR methods in CA/IL/FL/PA courts needs counsel opinion. Is the "exclude non-consenting speaker" mode lawful in all-party states? The default stops capture instead.
+8. **Throughput assumption.** Verify on a real confidential H200 with the actual 8k/600 agent prompt mix in M5. The 20% CC penalty and 35% utilization are estimates.
+9. **Patch 0036 qualification.** The TDX/NVIDIA verification code is in the patch series. Its test status on the current pin must be re-run before the M5 reuse claim.
+10. **Upstreaming.** The gate, manifest and receipt contracts should go upstream through reviewed PRs, per ADR-02, so that `patches/eliza` does not grow without bound.
 
----
-
-## Sources (primary, this file)
+## Sources
 
 - Model and provider: [Cerebras pricing (pricepertoken)](https://pricepertoken.com/endpoints/cerebras) · [Cerebras privacy](https://www.cerebras.ai/privacy-policy) · [Cerebras Trust Center](https://trust.cerebras.ai/)
 - Confidential inference providers: [Tinfoil attestation architecture](https://docs.tinfoil.sh/verification/attestation-architecture) · [Tinfoil container configuration](https://docs.tinfoil.sh/containers/configuration) · [Tinfoil pricing summary](https://aisotools.com/pricing/tinfoil) · [Privatemode models](https://www.privatemode.ai/models) · [Phala pricing](https://phala.com/pricing) · [Phala GPU TEE](https://phala.com/gpu-tee) · [Azure NCC H100 v5](https://learn.microsoft.com/en-us/azure/virtual-machines/sizes/gpu-accelerated/nccadsh100v5-series) · [Vantage NCC40ads](https://instances.vantage.sh/azure/vm/ncc40adsh100-v5) · [GCP Confidential VM release notes](https://docs.cloud.google.com/confidential-computing/confidential-vm/docs/release-notes) · [OpenPCC](https://www.businesswire.com/news/home/20251105013372/en/Confident-Security-Launches-OpenPCC-an-Open-Source-Standard-that-Protects-Data-Shared-with-AI-Models) · [OpenPCC paper](https://arxiv.org/abs/2606.11145) · [Lambda H100 pricing](https://www.spheron.network/blog/lambda-cloud-h100-pricing-2026/) · [CoreWeave security](https://docs.coreweave.com/security)
