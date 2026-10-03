@@ -1285,3 +1285,13 @@ The ten campaign skips were local-agent-profile checks. With `VITE_LOCAL_AGENT=1
 Started a full **WebKit** campaign on checkpoint 100's frozen current-source snapshot with one worker and no live reload. It includes checkpoints 96–99 and the concurrent Files hardening. Its process/session and source manifest are in `test-results/browser-dev-parity/checkpoint-100/`. Adapter wrapper tests that launch their own Chromium scripts remain Chromium evidence even when invoked by the WebKit campaign. Android packaging remains pending: available space fell below one GiB again, so browser qualification precedes packaging to avoid another overlapping ENOSPC failure. Existing APKs qualify checkpoint 94 only.
 
 The WebKit campaign discovered **1,102 tests**. Final snapshot comparison detected a concurrent `runtime/workflow-protocol.ts` receipt-output formatting change. It is preserved and recorded as source drift; the frozen campaign does not qualify that newer protocol delta. Its owning receipt/output checks must be reconciled separately.
+
+### Checkpoint 101 — current workflow receipt output qualification
+
+The concurrent `runtime/workflow-protocol.ts` change recognizes a matching `typed-steps` receipt envelope and presents its final text, without intermediate inputs or JSON string quoting. Generic receipt structures retain their JSON presentation and output remains bounded. Its direct test covers matching/mismatched run identities, plain strings, generic data and long text.
+
+Extended the actual rendered workflow-run context test to supply the typed receipt envelope, require exact final text in the product UI, reject intermediate text from that UI, and retain the existing proof that the conversation sends only the selected run/version identity rather than private execution contents.
+
+Validation: **6/6 Chromium and 6/6 WebKit** across receipt formatting, rendered run context, typed authoring/save/recovery and Describe preservation. Root verification passed typecheck, 120 tests and production build. Evidence: `test-results/browser-dev-parity/checkpoint-101/`. The full WebKit campaign remains live on checkpoint 100's frozen source, so this owning-suite result separately qualifies the protocol delta. APK qualification remains pending.
+
+Further current-source audit found Files' storage panel still receives `Storage usage unavailable` from the data adapter in development mode. Next implementation should expose actual browser storage estimates and a useful local-file byte fallback, with truthful scope and refreshed UI after file operations; it must not show fixture device-capacity numbers as real storage.

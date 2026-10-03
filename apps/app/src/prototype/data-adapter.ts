@@ -1,3 +1,4 @@
+import {browserStorageUsage} from '../browser/storage-usage';
 import {browserDevProfile} from '../browser/dev-profile';
 type Bag = Record<string, any>;
 const installed = new WeakSet<object>();
@@ -32,13 +33,19 @@ export function installPrototypeDataAdapter(Component: any, views: Record<string
     ...out,
     empty: !out.libraryLoading && !out.libraryError && !(out.groups || []).some((group: Bag) => (group.items || []).length > 0),
   }));
-  wrap('files', out => ({
+  let storageUsage={storageW:'0%',storageText:'Browser storage',storageBarStyle:'display:none'},storageActive=false,storagePending=false,storageEpoch=0;
+  const filesLeave=views.files?.onLeave;
+  if(browserDevProfile&&views.files)views.files.onLeave=(...args:any[])=>{storageActive=false;storagePending=false;storageEpoch++;return filesLeave?.(...args);};
+  const refreshStorage=async(api:Bag)=>{if(storagePending||!api.isActive()||document.hidden)return;storagePending=true;const epoch=storageEpoch;try{const usage=await browserStorageUsage();if(epoch===storageEpoch&&api.isActive()){storageUsage=usage;api.set({browserStorageRevision:Date.now()});}}catch{if(epoch===storageEpoch&&api.isActive()){storageUsage={storageW:'0%',storageText:'Open Browser files to refresh storage',storageBarStyle:'display:none'};api.set({browserStorageRevision:Date.now()});}}finally{if(epoch===storageEpoch)storagePending=false;}};
+  wrap('files', (out,_state,api) => {
+    if(browserDevProfile&&api.isActive()&&!storageActive){storageActive=true;void refreshStorage(api);api.every(()=>void refreshStorage(api),2000);}
+    return ({
     ...out,
     locs: (out.locs || []).map((location: Bag) => ({
       ...location, sub: location.nativeTree ? location.sub : location.name === 'Photos' ? 'Choose a photo' : 'Choose a document',
     })),
-    storageW: '0%', storageText: 'Storage usage unavailable',
-  }));
+    ...(browserDevProfile?storageUsage:{storageW:'0%',storageText:'Storage usage unavailable',storageBarStyle:''}),
+  });});
   wrap('phone', out => ({ ...out, favs: [], hasFavs: false }));
   wrap('messages', out => ({ ...out, ...(out.empty ? { emptyText: 'Messages are not connected' } : {}) }));
   wrap('inbox', out => ({ ...out, emptyText: 'Inbox is not connected' }));
