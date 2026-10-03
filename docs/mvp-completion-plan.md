@@ -1,5 +1,9 @@
 # Alpha Phone MVP completion plan
 
+## Current checkpoint — October 3, Cloud recovery and native diagnostics
+
+Cloud delegation completion is bounded, late account callbacks are fenced, and native callback tests are required in both distribution recovery campaigns. The combined source passes 177 checks, two rendered auth suites and both Android builds with 3,787 source identities unchanged. Prior a91 browser runs each pass 1,030 flows with four real-agent/recording skips; both Foundation smoke jobs stop at missing scratch after provider reboot, so a strict read-only diagnostic follow-up is included. Resident a91 build/fresh-source HTTP/SQL qualification passes; native jobs remain active. See [exact evidence and remaining gates](mvp-auth-native-qualification-2026-10-03.md). The MVP is not complete.
+
 ## Current checkpoint — October 3, workflow warnings and native mock presentation
 
 The composed follow-up passes 176 repository checks, 41 targeted rendered flows, and both Android distribution builds with 3,786 source identities unchanged. Workflow storage warnings remain visible from Home and over workflow overlays; Android mock mode uses native system chrome and reserves the mock banner height. The fresh-source capability assertion now matches the six advertised capabilities while retaining the five-capability request limit. WebView CI performs one planned, fully revalidated boot after provider installation. The rebuilt launcher is installed with matching APK hash; its visible check is pending Mac unlock. Fresh hosted HTTP/SQL, native provider and resident execution remain required. Live Cloud phone exchange, chat, Gmail, voice, physical-device and signed-image acceptance remain open. The MVP is not complete.
@@ -232,6 +236,12 @@ The latest bounded e1 Linux root verification failed at Cloud-e2e: 279/283 runna
 The awake Pixel119 paired reminder run exposed a real live schema failure: the agent rejects nullable `schedule.recurrence` with `Unsupported schema type null`. The error is retained in `test-results/mvp-build119/paired-pixel5562-timeout-diagnostics-04/schema-error-evidence.json`; a generic converter/argument-validator correction is being staged separately. Neither the prior arithmetic smoke nor native ReminderStore tests establish live selected-reminder acceptance.
 
 
+## Applicability of the implementation requirements
+
+The [accepted Android-resident architecture](on-device-agent-plan.md) supersedes the earlier requirement for Nitro as the primary agent host. Apply steps 3–10 below to the resident runtime and its native authenticated transport; preserve optional Cloud/remote adapters and qualify them separately when used. Step 14's signing and identity requirements still apply to shipped app/runtime artifacts, while Nitro attestation and KMS apply only to an optional enclave deployment. Do not revive enclave hosting as a prerequisite for resident chat.
+
+The powered-off hosted-loop journey cannot be satisfied by a powered-off resident process. Local durable scheduling with explicit missed-occurrence handling is implemented work, but it is not equivalent evidence; retain the unresolved scope amendment described in the on-device plan. On-device STT/TTS, both APK distributions, current native tools, signed-image/OTA and physical pilot acceptance remain required. Older chronological checkpoints below are evidence for their named revisions, not current completion claims.
+
 ## Scope freeze and deferred code
 
 The initial MVP feature profile is implemented in `apps/app/src/prototype/mvp-features.ts`: Phone, SMS, Contacts and Wallet enabled entries are commented out with sources and restoration gates. Production/offline and mock render checks cover hidden entry points, direct navigation, `keepStack`, presets and saved-state recovery. Contacts adapter installation and agent route execution are guarded. Original design templates/styles and user data are retained. Build82 passes product verification and both Android distribution builds; Build83 native navigation and accessibility checks pass both distributions.
@@ -317,6 +327,8 @@ Use existing elizaOS services rather than duplicate schedulers or approval store
 Keep constants that enforce resource/security limits explicit and versioned. Move product-specific namespaces into configuration with migration support; do not rename secure-store keys and lose existing credentials. Current upstream native-calendar/reminders/eliza-tasks packages are Apple-specific, so Android requires a real platform implementation, not an import swap. Reuse current reviewed upstream DST fixes rather than maintaining another cron parser.
 
 ## Validation and delivery discipline
+
+Use the [physical pilot acceptance runbook](pilot-acceptance-runbook.md) for per-unit manifests, native/physical journeys, performance samples, signed update recovery and independent handoff. Its initial four-unit table is unexecuted; it supplies the procedure, not passing evidence.
 
 For each implementation change, run the owning full-flow integration tests, `npm run verify`, `npm run android:build`, both standalone/HOME variants, configured/unconfigured artifacts where relevant, and the corresponding native journeys. Preserve immutable APK/test pairs and source hashes. Unit-test counts are not the acceptance criterion. Synthetic transports should cover error races; real service/native/physical journeys must separately prove the production path.
 

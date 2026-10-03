@@ -151,7 +151,7 @@ export function ensureScratchBackingAlias(run, admit) {
 }
 
 // Failure evidence only: one shared budget, no retries, mutations or guessed block targets.
-export function collectOverlayFailureDiagnostics({ environment, sdkEnvironment, execute, now = Date.now, hostPaths = { workspace: process.cwd(), androidSdk: sdkEnvironment.ANDROID_HOME, home: process.env.HOME }, statfs = fs.statfsSync, userspaceOnly = false, stockBackup }) {
+export function collectOverlayFailureDiagnostics({ environment, sdkEnvironment, execute, now = Date.now, hostPaths = { workspace: process.cwd(), androidSdk: sdkEnvironment.ANDROID_HOME, home: process.env.HOME }, statfs = fs.statfsSync, userspaceOnly = false, stockBackup, providerBoot }) {
   const deadline = now() + 20000;
   const evidence = { host: {}, guest: {}, budgetMilliseconds: 20000 };
   for (const [name, location] of Object.entries(hostPaths)) {
@@ -177,7 +177,17 @@ export function collectOverlayFailureDiagnostics({ environment, sdkEnvironment, 
       env: sdkEnvironment, encoding: 'utf8', timeout: Math.min(2000, remaining), maxBuffer: 256 * 1024,
     });
   };
-  const reads = stockBackup ? [
+  const reads = providerBoot ? [
+    ['deviceMapperNames', ['shell', 'dmctl', 'list', 'devices']],
+    ['mounts', ['shell', 'cat', '/proc/mounts']],
+    ['scratchMetadata', ['shell', 'lpdump', '/metadata/gsi/remount/lp_metadata']],
+    ['userspaceStorageLog', ['shell', 'logcat', '-d', '-b', 'all', '-t', '400']],
+    ['capacity', ['shell', 'df', '-k', '/data', '/metadata', '/product']],
+    ['stockStat', ['shell', 'stat', '-c', '%s', providerBoot.stock]],
+    ['providerPath', ['shell', 'pm', 'path', candidate.package]],
+    ['providerState', ['shell', 'dumpsys', 'webviewupdate']],
+    ['kernel', ['shell', 'dmesg']],
+  ] : stockBackup ? [
     ['adbVersion', ['version']],
     ['deviceState', ['get-state']],
     ['fingerprint', ['shell', 'getprop', 'ro.build.fingerprint']],
@@ -196,7 +206,7 @@ export function collectOverlayFailureDiagnostics({ environment, sdkEnvironment, 
   for (const [name, args] of reads) {
     if (userspaceOnly && name !== 'userspaceStorageLog') continue;
     // Admission uses the same bounded executor and performs one complete attempt.
-    try { requireProviderFixture(read, environment, {}, () => { throw Error('Failure diagnostic admission unavailable'); }); }
+    try { requireProviderFixture(read, environment, { installed: Boolean(providerBoot) }, () => { throw Error('Failure diagnostic admission unavailable'); }); }
     catch (error) { evidence.admissionStopped = String(error.message).slice(0, 512); break; }
     try {
       const result = read(...args);
@@ -473,7 +483,14 @@ export async function main({ environment = process.env, execute = execFileSync, 
     state.providerBoot.bootId = bootId; save();
     bootIdentity(true);
     state.providerBoot.backingAlias = ensureScratchBackingAlias(run, () => safe(true)); save();
-    require(scratchBackingBytes(run, { requireDataBacking: true }) === 512 * 1024 * 1024, 'Provider boot lost authenticated data scratch');
+    state.providerBoot.scratchBytes = scratchBackingBytes(run, { requireDataBacking: true }); save();
+    if (state.providerBoot.scratchBytes !== 512 * 1024 * 1024) {
+      try {
+        const diagnostics = collectOverlayFailureDiagnostics({ environment, sdkEnvironment: env, execute, now, providerBoot: { stock } });
+        fs.writeFileSync(path.join(output, 'provider-boot-storage-diagnostics.json'), JSON.stringify(diagnostics, null, 2) + '\n');
+      } catch (diagnosticError) { state.providerBoot.diagnosticError = String(diagnosticError.message).slice(0, 512); save(); }
+    }
+    require(state.providerBoot.scratchBytes === 512 * 1024 * 1024, 'Provider boot lost authenticated data scratch');
     run('shell', 'test', '!', '-e', stock);
     await qualifyInstalledProvider('after-clean-boot');
     state.providerDisplayObservations = [];

@@ -122,6 +122,7 @@ async function simulate({ framework = 'ready', drift, neverBoot = false, neverRe
       return row;
     }
 
+    if (finalBoot && drift === 'final-missing-scratch' && key === 'shell dmctl list devices') return 'Available Device Mapper Devices:\nuserdata : 254:42\n';
     if (key === 'shell dmctl list devices') return `Available Device Mapper Devices:\n${rebooted || drift === 'cached-scratch' ? 'scratch : 254:5\n' : ''}`;
     if (key === 'shell ls -1 /sys/dev/block/254:5/slaves') return drift === 'super-scratch' ? 'vda2' : 'vdc';
     if (key === 'shell cat /sys/dev/block/254:5/dm/name') return 'scratch';
@@ -164,7 +165,7 @@ async function simulate({ framework = 'ready', drift, neverBoot = false, neverRe
     if (key==='shell cat /proc/bootconfig' && drift==='boot-config') return 'androidboot.boot_devices = "wrong"';
     if (key === 'shell getprop fs_mgr.overlayfs.data_scratch_size_mb') return drift === 'scratch-existing' ? '2048' : drift === 'scratch-unapplied' ? '' : scratch;
     if (key === 'shell setprop fs_mgr.overlayfs.data_scratch_size_mb 512') { scratch = '512'; return ''; }
-    if (['shell df -k /data /metadata /product', 'shell cat /proc/mounts', 'shell cat /proc/partitions', 'shell lpdump', 'shell dmesg'].includes(key)) return 'synthetic bounded storage diagnostics';
+    if (['shell df -k /data /metadata /product', 'shell cat /proc/mounts', 'shell cat /proc/partitions', 'shell lpdump', 'shell lpdump /metadata/gsi/remount/lp_metadata', 'shell dmesg'].includes(key)) return 'synthetic bounded storage diagnostics';
     if (key === 'remount' && drift === 'remount-failed') { const failure = new Error('remount failed'); failure.stderr = 'Failed to map scratch; make f2fs return=65280'; throw failure; }
     if (key === 'remount') {
       remounts++;
@@ -203,8 +204,10 @@ async function simulate({ framework = 'ready', drift, neverBoot = false, neverRe
       fileDigest: f => path.basename(f) === 'chromium.zip' ? candidate.archiveSha256 : path.basename(f) === 'SystemWebView.apk' ? candidate.apkSha256 : stockHash });
   } catch (caught) { error = caught; }
   const result = JSON.parse(fs.readFileSync(path.join(output, 'result.json')));
+  const diagnosticPath = path.join(output, 'provider-boot-storage-diagnostics.json');
+  const diagnostics = fs.existsSync(diagnosticPath) ? JSON.parse(fs.readFileSync(diagnosticPath)) : null;
   fs.rmSync(parent, { recursive: true, force: true });
-  return { calls, result, error, stopped, removed, installed, selectionReads, elapsed };
+  return { diagnostics, calls, result, error, stopped, removed, installed, selectionReads, elapsed };
 }
 test('full provider command sequence survives one offline reboot and delayed RELRO', async () => {
   const r = await simulate(); assert.ifError(r.error);
@@ -433,4 +436,18 @@ test('postreplacement boot refuses identity, provenance, readiness, secure state
   if(drift==='final-secure')assert.match(r.error.message,/not observed awake/);
   if(drift==='final-anr')assert.match(r.error.message,/ANR remains/);
  }
+});
+
+test('missing final-boot scratch retains bounded storage evidence and refuses without later mutations', async () => {
+ const r=await simulate({drift:'final-missing-scratch'});
+ assert.match(r.error.message,/Provider boot lost authenticated data scratch/);
+ assert.equal(r.result.providerBoot.scratchBytes,null);
+ assert.match(r.diagnostics.guest.deviceMapperNames,/userdata : 254:42/);
+ for(const key of ['mounts','scratchMetadata','userspaceStorageLog','capacity','stockStat','providerPath','providerState','kernel'])assert.ok(Object.hasOwn(r.diagnostics.guest,key),key);
+ assert.equal(r.diagnostics.budgetMilliseconds,20000);
+ assert.equal(r.calls.filter(c=>c.startsWith('install ')).length,1);
+ const finalReboot=r.calls.lastIndexOf('reboot');
+ assert.equal(r.calls.filter(c=>c==='reboot').length,2);
+ assert.ok(!r.calls.slice(finalReboot+1).some(c=>/^(install |reboot$|remount$|shell (rm |setprop |stop$|start$|input |locksettings |wm dismiss))/.test(c)));
+ assert.deepEqual(r.result.providerChecks.map(c=>c.label),['after-install']);
 });
