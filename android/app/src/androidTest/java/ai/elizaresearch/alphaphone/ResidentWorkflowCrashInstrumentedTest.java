@@ -48,6 +48,12 @@ public final class ResidentWorkflowCrashInstrumentedTest {
   if(reason.startsWith("agent startup blocked:"))return "agent-startup-blocked";
   return "unrecognized";
  }
+ private static String safeIpcRefusal(String reason) {
+  String prefix="IPC recovery required: ";
+  if(!reason.startsWith(prefix))return "unrecognized";
+  String label=reason.substring(prefix.length());
+  return Arrays.asList("IPC directory alias","IPC directory replaced","IPC entries changed","IPC entry replaced","ambiguous authenticated worker owner","another same-UID process is alive; preserve it","another startup supervisor owns the lock","current process UID mismatch","current process absent","current process changed during inventory","incomplete native worker journal","incomplete or oversized worker maps","incomplete process inventory","incomplete resident argv","incomplete resident stop inventory","invalid mapped Bun address range","invalid mapped Bun device","invalid process identity","invalid worker endpoint","invalid worker executable","invalid worker generation","malformed worker maps","malformed worker process","mapped Bun changed after challenge","mapped Bun file identity differs","mapped Bun path alias","mapped Bun was deleted","missing process start time","missing worker start time","multiple resident processes; preserve all","oversized IPC metadata","oversized process identity","packaged Bun changed during observation","packaged Bun exceeds bound","packaged Bun executable mapping absent","process identity changed","resident PID changed after signal","resident changed before signal","resident deployment alias","resident stop inventory deadline","resident stop unconfirmed; preserve processes","same-UID process identity changed","same-UID process inventory changed","supervisor lock changed","supervisor lock changed before publication","supervisor lock lost","supervisor lock replaced","too many active worker journals","too many same-UID processes","unexpected IPC entry","unreadable IPC directory","unreadable app directory","unreadable process argv","unregistered same-UID process; preserve it","untrusted owner/type/mode","untrusted packaged Bun file","untrusted process executable","untrusted recovery publication directory","untrusted worker journal","untrusted workflow state directory","worker PID/start identity differs","worker deployment differs","worker endpoint changed","worker executable identity differs","worker executable/source exceeds bound","worker inventory deadline","worker journal changed","worker journal changed before challenge","worker journal too large","worker lease challenge differs","worker lease deadline","worker lease did not reply","worker maps exceeds bound","worker metadata exceeds bound","worker path alias","worker peer identity differs","worker process changed","worker process changed after challenge","worker response exceeds bound","worker run scope differs","worker source changed","worker source hash differs","worker source scope differs","workflow inventory unavailable","workflow journal inventory exceeds bound","writable executable Bun mapping").contains(label)?label:"unrecognized";
+ }
  private void captureReadinessTimeout(long started,AssertionError primary) {
   try {
    JSONObject safe=new JSONObject().put("elapsedMs",Math.max(0L,SystemClock.elapsedRealtime()-started)).put("instrumentationPid",Process.myPid()).put("bootSnapshotAvailable",false);
@@ -58,6 +64,17 @@ public final class ResidentWorkflowCrashInstrumentedTest {
    for(String key:new String[]{"socketListening","serviceActive"})if(boot.opt(key) instanceof Boolean)safe.put(key,boot.getBoolean(key));
    Object age=boot.opt("ageMs");if((age instanceof Long||age instanceof Integer)&&((Number)age).longValue()>=0)safe.put("ageMs",((Number)age).longValue());
    safe.put("bootSnapshotAvailable",true);
+   // Export only known structural refusal labels, never arbitrary log details.
+   File journal=new File(context.getFilesDir(),"agent/agent-restart-diagnostics.jsonl");
+   if(journal.isFile()&&journal.length()<=1048576){
+    String latest=null;
+    try(InputStream input=new FileInputStream(journal)){
+     for(String line:new String(bounded(input,1048576),StandardCharsets.UTF_8).split("\\n")){
+      try{JSONObject event=new JSONObject(line);if("ipc-recovery-required".equals(event.optString("event")))latest=event.optJSONObject("details")==null?null:event.getJSONObject("details").optString("reason","");}catch(JSONException incomplete){/* Partial final journal line is not evidence. */}
+     }
+    }
+    if(latest!=null)safe.put("ipcRefusal",safeIpcRefusal(latest));
+   }
   } catch(Throwable unavailable) {
    // Diagnostic collection must not replace the original readiness assertion.
    primary.addSuppressed(new AssertionError("Sanitized readiness snapshot unavailable"));

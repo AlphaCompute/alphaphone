@@ -56,11 +56,20 @@ public class DailyAppsInstrumentedTest {
    evaluate(scenario,"document.querySelector('button[aria-label=Tomorrow]').click()");
    evaluate(scenario,"[...document.querySelectorAll('button')].find(b=>b.textContent.trim()==='Reminders').click()");
    evaluate(scenario,"document.querySelector('button[aria-label=\"Save event\"]').click()");
-   uiWait(scenario,"[...document.querySelectorAll('[data-screen] h1')].some(h=>h.textContent==="+JSONObject.quote(title)+")");
+   uiWait(scenario,"!document.querySelector('button[aria-label=\"Save event\"]')");
    begin(scenario,"Capacitor.Plugins.DailyApps.listReminders()");
    JSONArray rows=result(scenario).getJSONArray("reminders");
    for(int i=0;i<rows.length();i++){JSONObject row=rows.getJSONObject(i);if(title.equals(row.getString("title"))){reminderId=row.getString("id");assertEquals("scheduled",row.getString("status"));assertTrue(row.getLong("at")>System.currentTimeMillis());}}
    assertNotNull("Real native record created from Calendar form",reminderId);
+   // Saving returns to Calendar; select the record's civil day before opening it.
+   long due=ReminderStore.read(context,reminderId).getLong("dueAt");
+   evaluate(scenario,"document.querySelector('button[aria-label=\"Month view\"]').click()");
+   evaluate(scenario,"(()=>{const d=new Date("+due+");const now=new Date();if(d.getMonth()!==now.getMonth()||d.getFullYear()!==now.getFullYear())document.querySelector('button[aria-label=\"Next month\"]').click();})()");
+   String day="(()=>{const d=new Date("+due+");const label=d.toLocaleDateString('en-US',{weekday:'long'})+' '+d.toLocaleDateString('en-US',{month:'long'})+' '+d.getDate();return [...document.querySelectorAll('button[aria-label]')].find(b=>b.getAttribute('aria-label')===label);})()";
+   uiWait(scenario,day);evaluate(scenario,"("+day+").click()");
+   String selected="[...document.querySelectorAll('button[aria-label]')].find(b=>b.getAttribute('aria-label').startsWith("+JSONObject.quote(title+", ")+"))";
+   uiWait(scenario,selected);evaluate(scenario,"("+selected+").click()");
+   uiWait(scenario,"[...document.querySelectorAll('[data-screen] h1')].some(h=>h.textContent==="+JSONObject.quote(title)+")");
    evaluate(scenario,"document.querySelector('button[aria-label=\"Delete event\"]').click()");
    uiWait(scenario,"!document.querySelector('button[aria-label=\"Delete event\"]')");
    begin(scenario,"Capacitor.Plugins.DailyApps.listReminders()");rows=result(scenario).getJSONArray("reminders");

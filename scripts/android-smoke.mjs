@@ -13,10 +13,13 @@ if (!serial || !serial.startsWith("emulator-"))
   );
 const identity = JSON.parse(fs.readFileSync("app.config.json"));
 const adb = path.join(env.ANDROID_HOME, "platform-tools/adb");
+// The 178-case suite reached case 138 at the old ten-minute cap. Keep a bounded
+// full-suite budget; individual dispatch/readiness deadlines remain unchanged.
+const fullSuiteDeadlineMs = 900000;
 const run = (...args) =>
   execFileSync(adb, ["-s", serial, ...args], {
     encoding: "utf8", env,
-    timeout: args.includes("instrument") ? 600000 : args[0] === "install" ? 120000 : 30000,
+    timeout: args.includes("instrument") ? (args.includes("class") ? 600000 : fullSuiteDeadlineMs) : args[0] === "install" ? 120000 : 30000,
   });
 const original = run(
   "shell",
@@ -160,7 +163,7 @@ try {
       fs.writeFileSync(`${output}/${variant}-instrumentation.txt`, error.stdout ?? "");
       fs.writeFileSync(`${output}/${variant}-instrumentation-stderr.txt`, error.stderr ?? "");
       fs.writeFileSync(`${output}/${variant}-instrumentation-command.json`, JSON.stringify({
-        variant, deadlineMs: 600000, elapsedMs: Date.now() - instrumentationStarted,
+        variant, deadlineMs: fullSuiteDeadlineMs, elapsedMs: Date.now() - instrumentationStarted,
         code: error.code ?? null, status: error.status ?? null, signal: error.signal ?? null,
         completed: false,
       }, null, 2) + "\n");
