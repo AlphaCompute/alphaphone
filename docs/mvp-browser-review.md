@@ -2144,3 +2144,10 @@ All 48 owning Chromium/WebKit cases pass, including eight compact light/dark, 15
 The browser operation confirmation used by Calendar now has theme-aware controls of at least 44px, wrapping review text and a bounded scroll region with persistent Confirm/Cancel actions. Keyboard users can scroll the detail region. Background and device-state transitions cancel the pending review, and hidden/background/locked admission refuses confirmation. Existing Back cancellation and focus restoration remain owned by the dialog.
 
 Validation: 110 Chromium/WebKit layout and reminder-review cases plus 32 direct Calendar assistant/recurring-series cases pass; repository verification passes 223 tests, zero skips, TypeScript and web build. The compact dark WebKit screenshot was inspected with 150% text. Evidence: `test-results/operation-review/`, `operation-review.log`, `operation-calendar.log` and `operation-verify.log` in the review worktree. No Android build or physical-provider acceptance is claimed.
+
+
+### Recording transcript review accessibility — October 3
+
+The saved-recording transcript dialog now uses theme-aware fields and controls, a bounded scrolling editor, and persistent Use transcript/Cancel actions. Long text remains editable at 150% text on compact phones without pushing completion controls offscreen. The recognition, language-pack consent, resource cancellation and manual correction logic remain unchanged.
+
+Validation: 24 Chromium/WebKit cases pass, including eight compact layout cases, local-recognition fixture lifecycle and PCM conversion. Eight live-agent recording cases were skipped because the plain-browser campaign intentionally has no local-agent profile/real speech fixture; no new live speech result is inferred. The compact dark WebKit screenshot was inspected. Repository verification passes 223 tests without skips, TypeScript and web build. Evidence: `test-results/transcript-review/`, `transcript-review.log` and `transcript-verify.log` in the review worktree. No Android build ran.
