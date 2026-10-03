@@ -21,7 +21,7 @@ test('external storage edits are preserved when generation finishes',async({page
  await page.evaluate(()=>window.dispatchEvent(new Event('focus')));
  await expect.poll(()=>page.evaluate(()=>(window as any).workflowApi.get('workflows').localTriggerError)).toBe('Development app save failed.');
  await page.evaluate(()=>(window as any).workflowApi.toast('Unrelated status'));
- await expect(page.getByText('Run state could not be saved. Reload to inspect its last saved step.',{exact:true})).toBeVisible();
+ await expect(page.getByRole('status',{name:'Workflow run status',exact:true})).toHaveText('Run state could not be saved. Reload to inspect its last saved step.');
  expect(await page.evaluate(()=>localStorage.getItem('alpha.dev.app.workflows'))).toBe(external);
  expect(await page.evaluate(()=>JSON.parse(localStorage.getItem('alphaphone:notes:v2')!).records.some((note:any)=>note.body==='Old instruction answer'))).toBe(false);
 });
