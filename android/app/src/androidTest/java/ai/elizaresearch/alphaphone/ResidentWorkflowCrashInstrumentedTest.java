@@ -214,6 +214,52 @@ public final class ResidentWorkflowCrashInstrumentedTest {
    catch(android.system.ErrnoException error){if(error.errno!=android.system.OsConstants.ENXIO)throw error;if(!required)return;SystemClock.sleep(50);}finally{if(fd!=null)Os.close(fd);}
   }while(SystemClock.elapsedRealtime()<end);throw new IOException("Release FIFO reader deadline");
  }
+ // Only fixed-schema diagnostic values cross into retained CI evidence. Never retain prompts,
+ // model bodies, credential-bearing errors, stacks, event payloads or arbitrary owner paths.
+ static JSONObject safeExecutionDiagnostic(JSONObject value,String executionId,String workflowId,String version)throws Exception {
+  JSONObject safe=new JSONObject().put("executionMatches",executionId.equals(value.optString("id")))
+   .put("workflowMatches",workflowId.equals(value.optString("workflowId")))
+   .put("versionMatches",version.equals(value.optString("workflowVersionId")));
+  String status=value.optString("status","");safe.put("status",Arrays.asList("cancelled","continued","failed","finished","paused","queued","running","waiting-approval","waiting-event","waiting-quota","waiting-timer").contains(status)?status:"unrecognized");
+  if(value.opt("finished") instanceof Boolean)safe.put("finished",value.getBoolean("finished"));
+  JSONObject reconciliation=value.optJSONObject("reconciliation");String state=reconciliation==null?"":reconciliation.optString("state","");
+  safe.put("reconciliation",Arrays.asList("worker-running","outcome-unknown").contains(state)?state:"absent-or-unrecognized");
+  for(String key:new String[]{"events","output","approvals"}){JSONArray items=value.optJSONArray(key);if(items!=null)safe.put(key+"Count",items.length());}
+  JSONObject error=value.optJSONObject("error");safe.put("errorPresent",error!=null);
+  if(error!=null){String message=error.optString("message","");String category="unclassified";
+   for(String known:new String[]{"Smithers worker exited without a result","Workflow source digest mismatch","Default export is not a Smithers workflow","Workflow source publication identity mismatch","Workflow device dispatcher unavailable","Parent unavailable; model request not sent"})if(known.equals(message)){category=known;break;}
+   safe.put("errorCategory",category);
+  }
+  return safe;
+ }
+ private void captureMissingModelRequest(JSONObject proof,HeldModel model,String executionId,String workflowId,String version,AssertionError primary) {
+  try {
+   JSONObject safe=new JSONObject().put("requestCount",model.calls.get()).put("loopbackFailurePresent",model.failure!=null).put("executionReadAvailable",false);
+   proof.put("missingModelRequest",safe);
+   // Inspect only the exact submitted workflow journal, never recursively scan or adopt a worker.
+   try {
+    File journal=new File(control,".worker-owners/"+hash(executionId.getBytes(StandardCharsets.UTF_8))+"/owner.json");
+    if(!journal.getCanonicalPath().equals(journal.getAbsolutePath()))throw new IOException("Journal alias");
+    safe.put("ownerJournalPresent",journal.isFile());
+    if(journal.isFile()){
+     JSONObject record;try(InputStream in=new FileInputStream(journal)){record=new JSONObject(new String(bounded(in,16384),StandardCharsets.UTF_8));}
+     safe.put("ownerJournalRunMatches",executionId.equals(record.optString("runId"))).put("ownerJournalVersionMatches",version.equals(record.optString("versionId")))
+      .put("ownerJournalUidMatches",record.optInt("uid",-1)==Process.myUid());
+     JSONObject identity=record.optJSONObject("nativeIdentity");int pid=record.optInt("pid",-1);
+     if(identity!=null&&pid>0&&identity.optInt("pid",-1)==pid&&identity.optInt("uid",-1)==Process.myUid()){
+      File proc=new File("/proc/"+pid);safe.put("ownerProcessPresent",proc.isDirectory());
+      if(proc.isDirectory())safe.put("ownerProcessUidMatches",Os.stat(proc.getPath()).st_uid==Process.myUid()).put("ownerProcessStartMatches",processStart(pid).equals(identity.optString("startTicks")));
+     }
+    }
+   }catch(Throwable unavailable){safe.put("ownerJournalObservationUnavailable",true);}
+   JSONObject args=new JSONObject().put("path","/api/workflow/executions/"+executionId).put("method","GET")
+    .put("headers",new JSONObject().put("Authorization","Bearer "+ownerBearer)).put("timeoutMs",3000);
+   JSONObject response=new JSONObject(ElizaAgentService.requestLocalAgent(args.toString()));
+   safe.put("httpStatus",response.getInt("status"));
+   String body=response.optString("body","");if(body.length()>65536){safe.put("bodyExceedsDiagnosticBound",true);return;}
+   if(response.getInt("status")==200){JSONObject value=new JSONObject(body).getJSONObject("execution");safe.put("execution",safeExecutionDiagnostic(value,executionId,workflowId,version)).put("executionReadAvailable",true);}
+  } catch(Throwable unavailable){primary.addSuppressed(new AssertionError("Sanitized execution snapshot unavailable"));}
+ }
  private JSONObject execution(String id)throws Exception{return request("/api/workflow/executions/"+id,null).getJSONObject("execution");}
  private File findOwner(File root,String run)throws Exception {
   File[] children=root.listFiles();if(children==null)return null;String key=hash(run.getBytes(StandardCharsets.UTF_8));
@@ -288,17 +334,7 @@ public final class ResidentWorkflowCrashInstrumentedTest {
     String workflowId=workflow.getString("id"),version=workflow.getString("versionId"),submission=UUID.randomUUID().toString();model.expectRequest=rpc;
     assertTrue(agentId.matches("[a-zA-Z0-9_.-]+")&&workflowId.matches("[a-zA-Z0-9_.-]+"));control=new File(context.getFilesDir(),".eliza/smthrs/"+agentId+"/"+workflowId);assertEquals(control.getPath(),control.getCanonicalPath());if(!control.isDirectory())assertTrue(control.mkdirs());Os.chmod(control.getPath(),0700);assertFalse(new File(control,"recovery-effect").exists());write(new File(control,"recovery-effect"),"0");if(!rpc)Os.mkfifo(new File(control,"recovery-release").getPath(),0600);
     submitted=true;JSONObject accepted=request("/api/workflow/workflows/"+workflowId+"/run",new JSONObject().put("submissionId",submission).put("expectedVersionId",version).put("input",new JSONObject())).getJSONObject("execution");String executionId=accepted.getString("id");
-    if(rpc){
-     boolean arrived=model.received.await(60,java.util.concurrent.TimeUnit.SECONDS);
-     if(!arrived||model.failure!=null){
-      // This fixture owns the synthetic workflow and provider. Retain bounded
-      // execution state, never provider credentials, prompts, output or argv.
-      JSONObject state=execution(executionId),diagnostic=new JSONObject().put("modelRequests",model.calls.get()).put("received",arrived).put("status",state.optString("status")).put("finished",state.optBoolean("finished"));
-      JSONObject error=state.optJSONObject("error");if(error!=null){String message=error.optString("message","").replaceAll("(?i)(bearer|api[_-]?key|token|secret|password)[=: ]+[^\\s,;]+","$1=[redacted]");diagnostic.put("executionError",message.substring(0,Math.min(2048,message.length())));}
-      if(model.failure!=null)diagnostic.put("modelFailureClass",model.failure.getClass().getSimpleName());
-      proof.put("beforeModelRequest",diagnostic);
-     }
-     assertTrue("Synthetic model request must arrive; inspect beforeModelRequest proof",arrived);assertNull(model.failure);assertEquals(1,model.calls.get());}else{untilFile(new File(control,"recovery-ready"),60000);effectOnce();}File journal=findOwner(new File(context.getFilesDir(),".eliza/smthrs"),executionId);assertNotNull("Real owner journal",journal);worker=witness(journal);JSONObject ownerRecord=new JSONObject(readUtf8(journal.toPath()));assertEquals(digest,ownerRecord.getString("sourceSha256"));assertEquals(version,ownerRecord.getString("versionId"));assertEquals(executionId,ownerRecord.getString("runId"));
+    if(rpc){if(!model.received.await(60,java.util.concurrent.TimeUnit.SECONDS)){AssertionError timeout=new AssertionError("Synthetic model request deadline; inspect sanitized execution snapshot");captureMissingModelRequest(proof,model,executionId,workflowId,version,timeout);throw timeout;}assertNull(model.failure);assertEquals(1,model.calls.get());}else{untilFile(new File(control,"recovery-ready"),60000);effectOnce();}File journal=findOwner(new File(context.getFilesDir(),".eliza/smthrs"),executionId);assertNotNull("Real owner journal",journal);worker=witness(journal);JSONObject ownerRecord=new JSONObject(readUtf8(journal.toPath()));assertEquals(digest,ownerRecord.getString("sourceSha256"));assertEquals(version,ownerRecord.getString("versionId"));assertEquals(executionId,ownerRecord.getString("runId"));
     if(rpc){assertTrue(model.received.await(30,java.util.concurrent.TimeUnit.SECONDS));assertNull(model.failure);assertEquals(1,model.calls.get());}else {assertEquals(0,model.calls.get());assertNull(model.failure);}
     long oldIpc=Os.lstat(new File(context.getFilesDir(),"ipc").getPath()).st_ino;JSONObject oldResident=resident;assertNotEquals(worker.pid,resident.getInt("pid"));crash(resident);resident=null;
     if(!rpc)exactAlive(worker);else model.release.countDown();

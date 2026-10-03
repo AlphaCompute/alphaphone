@@ -150,8 +150,8 @@ export function ensureScratchBackingAlias(run, admit) {
     backingDevice: physical, deviceNumber: sysDevice, alias, created: false };
 }
 
-// Failure evidence only: one shared budget, no retries, mutations or guessed block targets.
-export function collectOverlayFailureDiagnostics({ environment, sdkEnvironment, execute, now = Date.now, hostPaths = { workspace: process.cwd(), androidSdk: sdkEnvironment.ANDROID_HOME, home: process.env.HOME }, statfs = fs.statfsSync, userspaceOnly = false, stockBackup, providerRestart }) {
+// Read-only diagnostic evidence: one shared budget, no retries, mutations or guessed block targets.
+export function collectOverlayFailureDiagnostics({ environment, sdkEnvironment, execute, now = Date.now, hostPaths = { workspace: process.cwd(), androidSdk: sdkEnvironment.ANDROID_HOME, home: process.env.HOME }, statfs = fs.statfsSync, userspaceOnly = false, stockBackup, providerRestart, superLayout = false }) {
   const deadline = now() + 20000;
   const evidence = { host: {}, guest: {}, budgetMilliseconds: 20000 };
   for (const [name, location] of Object.entries(hostPaths)) {
@@ -177,7 +177,17 @@ export function collectOverlayFailureDiagnostics({ environment, sdkEnvironment, 
       env: sdkEnvironment, encoding: 'utf8', timeout: Math.min(2000, remaining), maxBuffer: 256 * 1024,
     });
   };
-  const reads = providerRestart ? [
+  const superReads = [
+    ['superPartition', ['shell', 'getprop', 'ro.boot.super_partition']],
+    ['superAlias', ['shell', 'readlink', '-f', '/dev/block/by-name/super']],
+    ['superLabels', ['shell', 'ls', '-lZ', '/dev/block/vda', '/dev/block/vda2', '/dev/block/by-name/super']],
+    ['superUevent', ['shell', 'cat', '/sys/class/block/vda2/uevent']],
+    ['superSlot0', ['shell', 'lpdump', '--slot=0', '/dev/block/by-name/super']],
+    ['superSlot1', ['shell', 'lpdump', '--slot=1', '/dev/block/by-name/super']],
+    ['vendorBlockContexts', ['shell', 'grep', '-e', 'super', '-e', 'vda', '-e', 'vd_device', '/vendor/etc/selinux/vendor_file_contexts']],
+  ];
+  const reads = superLayout ? superReads : providerRestart ? [
+    ...superReads,
     ['deviceMapperNames', ['shell', 'dmctl', 'list', 'devices']],
     ['mounts', ['shell', 'cat', '/proc/mounts']],
     ['scratchMetadata', ['shell', 'lpdump', '/metadata/gsi/remount/lp_metadata']],
@@ -394,6 +404,8 @@ export async function main({ environment = process.env, execute = execFileSync, 
     safe(); run('root'); run('wait-for-device'); safe();
     state.status = 'preparing-overlay-storage'; save();
     captureStorage('before');
+    const superLayout = collectOverlayFailureDiagnostics({ environment, sdkEnvironment: env, execute, now, superLayout: true });
+    fs.writeFileSync(path.join(output, 'super-layout-before.json'), JSON.stringify(superLayout, null, 2) + '\n');
     configureScratch();
     run('disable-verity');
     // disable-verity can report overlay failure with exit zero; retain its logs before reboot.

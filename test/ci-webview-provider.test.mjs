@@ -165,6 +165,9 @@ async function simulate({ framework = 'ready', drift, neverBoot = false, neverRe
     if (key==='shell cat /proc/bootconfig' && drift==='boot-config') return 'androidboot.boot_devices = "wrong"';
     if (key === 'shell getprop fs_mgr.overlayfs.data_scratch_size_mb') return drift === 'scratch-existing' ? '2048' : drift === 'scratch-unapplied' ? '' : scratch;
     if (key === 'shell setprop fs_mgr.overlayfs.data_scratch_size_mb 512') { scratch = '512'; return ''; }
+    if (key === 'shell getprop ro.boot.super_partition') return 'vda2';
+    if (key === 'shell readlink -f /dev/block/by-name/super') return '/dev/block/vda2';
+    if (key.startsWith('shell ls -lZ ') || key==='shell cat /sys/class/block/vda2/uevent' || key.startsWith('shell lpdump --slot=') || key==='shell grep -e super -e vda -e vd_device /vendor/etc/selinux/vendor_file_contexts') { assert.ok(options.timeout>0 && options.timeout<=2000); return 'synthetic super layout'; }
     if (['shell df -k /data /metadata /product', 'shell cat /proc/mounts', 'shell cat /proc/partitions', 'shell lpdump', 'shell lpdump /metadata/gsi/remount/lp_metadata', 'shell dmesg'].includes(key)) return 'synthetic bounded storage diagnostics';
     if (key === 'remount' && drift === 'remount-failed') { const failure = new Error('remount failed'); failure.stderr = 'Failed to map scratch; make f2fs return=65280'; throw failure; }
     if (key === 'remount') {
@@ -206,8 +209,10 @@ async function simulate({ framework = 'ready', drift, neverBoot = false, neverRe
   const result = JSON.parse(fs.readFileSync(path.join(output, 'result.json')));
   const diagnosticPath = path.join(output, 'provider-restart-storage-diagnostics.json');
   const diagnostics = fs.existsSync(diagnosticPath) ? JSON.parse(fs.readFileSync(diagnosticPath)) : null;
+  const superPath=path.join(output,'super-layout-before.json');
+  const superLayout=fs.existsSync(superPath)?JSON.parse(fs.readFileSync(superPath)):null;
   fs.rmSync(parent, { recursive: true, force: true });
-  return { diagnostics, calls, result, error, stopped, removed, installed, selectionReads, elapsed };
+  return { superLayout, diagnostics, calls, result, error, stopped, removed, installed, selectionReads, elapsed };
 }
 test('full provider command sequence survives one offline reboot and delayed RELRO', async () => {
   const r = await simulate(); assert.ifError(r.error);
@@ -444,11 +449,21 @@ test('missing postrestart scratch retains bounded storage evidence and refuses w
  assert.match(r.error.message,/Provider restart lost authenticated data scratch/);
  assert.equal(r.result.providerRestart.scratchBytes,null);
  assert.match(r.diagnostics.guest.deviceMapperNames,/userdata : 254:42/);
- for(const key of ['mounts','scratchMetadata','userspaceStorageLog','capacity','stockStat','providerPath','providerState','kernel'])assert.ok(Object.hasOwn(r.diagnostics.guest,key),key);
+ for(const key of ['superPartition','superAlias','superLabels','superUevent','superSlot0','superSlot1','vendorBlockContexts','mounts','scratchMetadata','userspaceStorageLog','capacity','stockStat','providerPath','providerState','kernel'])assert.ok(Object.hasOwn(r.diagnostics.guest,key),key);
  assert.equal(r.diagnostics.budgetMilliseconds,20000);
  assert.equal(r.calls.filter(c=>c.startsWith('install ')).length,1);
  const finalReboot=r.calls.lastIndexOf('shell start');
  assert.equal(r.calls.filter(c=>c==='reboot').length,1);
  assert.ok(!r.calls.slice(finalReboot+1).some(c=>/^(install |reboot$|remount$|shell (rm |setprop |stop$|start$|input |locksettings |wm dismiss))/.test(c)));
  assert.deepEqual(r.result.providerChecks.map(c=>c.label),['after-install']);
+});
+
+test('super layout is read before any remount without adding install or reboot',async()=>{
+ const r=await simulate();assert.ifError(r.error);
+ assert.equal(r.superLayout.guest.superPartition,'vda2');
+ assert.equal(r.superLayout.guest.superAlias,'/dev/block/vda2');
+ assert.ok(r.calls.indexOf('shell lpdump --slot=0 /dev/block/by-name/super')<r.calls.indexOf('remount'));
+ assert.ok(r.calls.indexOf('shell lpdump --slot=1 /dev/block/by-name/super')<r.calls.indexOf('remount'));
+ assert.equal(r.calls.filter(c=>c.startsWith('install ')).length,1);
+ assert.equal(r.calls.filter(c=>c==='reboot').length,1);
 });
