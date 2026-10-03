@@ -84,7 +84,7 @@ test('Notes rejects invalid text and cancels an empty file selection without cre
 test('Scheduled digests traps focus, closes on native Back, and restores the triggering control',async({page})=>{
   await page.goto('/');await page.getByRole('button',{name:'Settings',exact:true}).click();
   const trigger=page.getByRole('button',{name:'Scheduled digests',exact:true});
-  await trigger.click();
+  await trigger.focus();await trigger.press('Enter');
   const dialog=page.getByRole('dialog',{name:'Scheduled digests',exact:true});
   await expect(dialog).toBeVisible();await expect(dialog).toBeFocused();
   await expect(dialog.getByRole('button',{name:'Result notifications',exact:true})).toBeVisible();
