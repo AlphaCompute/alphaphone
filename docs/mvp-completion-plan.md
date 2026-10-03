@@ -232,6 +232,12 @@ The latest bounded e1 Linux root verification failed at Cloud-e2e: 279/283 runna
 The awake Pixel119 paired reminder run exposed a real live schema failure: the agent rejects nullable `schedule.recurrence` with `Unsupported schema type null`. The error is retained in `test-results/mvp-build119/paired-pixel5562-timeout-diagnostics-04/schema-error-evidence.json`; a generic converter/argument-validator correction is being staged separately. Neither the prior arithmetic smoke nor native ReminderStore tests establish live selected-reminder acceptance.
 
 
+## Applicability of the implementation requirements
+
+The [accepted Android-resident architecture](on-device-agent-plan.md) supersedes the earlier requirement for Nitro as the primary agent host. Apply steps 3–10 below to the resident runtime and its native authenticated transport; preserve optional Cloud/remote adapters and qualify them separately when used. Step 14's signing and identity requirements still apply to shipped app/runtime artifacts, while Nitro attestation and KMS apply only to an optional enclave deployment. Do not revive enclave hosting as a prerequisite for resident chat.
+
+The powered-off hosted-loop journey cannot be satisfied by a powered-off resident process. Local durable scheduling with explicit missed-occurrence handling is implemented work, but it is not equivalent evidence; retain the unresolved scope amendment described in the on-device plan. On-device STT/TTS, both APK distributions, current native tools, signed-image/OTA and physical pilot acceptance remain required. Older chronological checkpoints below are evidence for their named revisions, not current completion claims.
+
 ## Scope freeze and deferred code
 
 The initial MVP feature profile is implemented in `apps/app/src/prototype/mvp-features.ts`: Phone, SMS, Contacts and Wallet enabled entries are commented out with sources and restoration gates. Production/offline and mock render checks cover hidden entry points, direct navigation, `keepStack`, presets and saved-state recovery. Contacts adapter installation and agent route execution are guarded. Original design templates/styles and user data are retained. Build82 passes product verification and both Android distribution builds; Build83 native navigation and accessibility checks pass both distributions.

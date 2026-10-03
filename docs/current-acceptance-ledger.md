@@ -1,6 +1,18 @@
 # Current Alpha Phone acceptance ledger
 
-## Current checkpoint — October 3, explicit reminder timing
+## Current checkpoint — October 3, published a91e44f
+
+Candidate `a91e44f498e49217f900b1d67950cf523b59766a` is published in [draft PR1](https://github.com/AlphaCompute/alphaphone/pull/1). Local qualification passes 176 repository checks, TypeScript/build, 41 rendered workflow/mock journeys and both Android distribution builds/lint/APK verification. Comparison of all 3,786 qualified source identities to the published tree finds only the two documented post-check prose updates; application/test/runtime bytes are unchanged.
+
+The rebuilt launcher is installed on the owned Pixel 9/API35 emulator with matching APK hash. Its new visible mock-chrome check awaits Mac unlock. Earlier exact e302 visibly created and completed a no-alert reminder without a notification permission prompt, and entered/exited mock mode. Those bounded results do not qualify every native flow or the new visual fix.
+
+Current exact-head hosted runs: browser [push37107915102](https://github.com/AlphaCompute/alphaphone/actions/runs/37107915102) and [PR37107917706](https://github.com/AlphaCompute/alphaphone/actions/runs/37107917706), Foundation [push37107915065](https://github.com/AlphaCompute/alphaphone/actions/runs/37107915065) and [PR37107917732](https://github.com/AlphaCompute/alphaphone/actions/runs/37107917732), and resident [37107915098](https://github.com/AlphaCompute/alphaphone/actions/runs/37107915098) were confirmed in progress. No terminal acceptance is inferred. Exact e302 failures and the repairs are retained in [timing/recovery qualification](mvp-reminder-timing-2026-10-03.md).
+
+The [accepted Android-resident direction](on-device-agent-plan.md) governs the primary runtime. Nitro deployment is optional historical work, not a primary gate. On-device speech, native tools, signed images and physical/user acceptance remain required. The proposed replacement for powered-off hosted loops has not been accepted by merely implementing local scheduling; its explicit scope decision remains open. Browser Google login succeeded, but phone Cloud exchange/chat/Gmail/voice remain separate unverified optional integration paths. The MVP is not complete.
+
+Evidence: `test-results/e302-followup-combined/qualification.json`, `published-source-comparison.json`, `installed.json`, and `test-results/pixel-e302-visible/` in the primary checkout.
+
+## Earlier checkpoint — October 3, explicit reminder timing
 
 The composed repair passes 123 rendered flows, TypeScript, production build, 24 WebView preparation scenarios, 20 recovery-supervisor scenarios, and compilation of the seven affected native Java sources. All 3,786 source identities remained unchanged during qualification. Due time and alert lead now persist independently; “None” creates a pending task without requesting notification permission or scheduling delivery. Explicit timing requires v2 agent capability and native version admission. Resident readiness checks current-token authentication; workflow save warnings survive scheduler failures and concurrent runs.
 

@@ -29,6 +29,16 @@ public final class BrowserSensitiveReadingInstrumentedTest {
  private void invoke(String code)throws Exception{js("window.__readingResult=null;Promise.resolve("+code+").then(v=>window.__readingResult=JSON.stringify(v||{}),()=>window.__readingResult=JSON.stringify({error:true}))");}
  private JSONObject result()throws Exception{waitFor("window.__readingResult!==null");return new JSONObject((String)new JSONTokener(js("window.__readingResult")).nextValue());}
  private JSONObject call(String code)throws Exception{invoke(code);return result();}
+ private void navigate(String url)throws Exception{
+  JSONObject target=new JSONObject((String)new JSONTokener(js("JSON.stringify(window.__readingTab)")).nextValue());
+  JSONObject navigation=call("Capacitor.Plugins.AlphaBrowser.navigate({...window.__readingTab,url:"+JSONObject.quote(url)+"})");
+  // Successful native state includes error:""; a rejected bridge call has error:true.
+  assertTrue("Native navigation must return a string error state",navigation.get("error") instanceof String);
+  assertEquals("Native navigation must report no error","",navigation.getString("error"));
+  assertEquals(target.getString("session"),navigation.getString("session"));
+  assertEquals(target.getString("id"),navigation.getString("id"));
+  assertEquals(url,navigation.getString("url"));
+ }
  private static String text(View view){String out=view instanceof TextView?((TextView)view).getText().toString():"";if(view instanceof ViewGroup){ViewGroup group=(ViewGroup)view;for(int i=0;i<group.getChildCount();i++)out+="\n"+text(group.getChildAt(i));}return out;}
  private AlertDialog dialog(BoundedActivityScenario<MainActivity> scenario)throws Exception{AtomicReference<AlertDialog> result=new AtomicReference<>();for(int i=0;i<150;i++){BoundedActivityScenario.main(()->{MainActivity activity=resumedActivity();try{Object plugin=activity.getBridge().getPlugin("AlphaBrowser").getInstance();java.lang.reflect.Field reading=AlphaBrowserPlugin.class.getDeclaredField("reading");reading.setAccessible(true);Object helper=reading.get(plugin);java.lang.reflect.Field field=BrowserReading.class.getDeclaredField("dialog");field.setAccessible(true);result.set((AlertDialog)field.get(helper));}catch(Exception e){throw new AssertionError(e);}});if(result.get()!=null&&result.get().isShowing())return result.get();SystemClock.sleep(100);}throw new AssertionError("Actual review dialog missing");}
  /** In-memory navigation fixture: exact synthetic routes only; never forwards network traffic. */
@@ -65,7 +75,7 @@ public final class BrowserSensitiveReadingInstrumentedTest {
   try{
    for(String key:new String[]{"api_key","api-key","api%20key","apikey","%61pi%5fkey","API+KEY"}){
     String url="https://reading.invalid/?"+key+"=SYNTHETIC-ONLY";
-    assertFalse(call("Capacitor.Plugins.AlphaBrowser.navigate({...window.__readingTab,url:"+JSONObject.quote(url)+"})").has("error"));
+    navigate(url);
     waitFor("window.__urlFixtureState?.url==="+JSONObject.quote(url)+"&&window.__urlFixtureState.committed&&!window.__urlFixtureState.loading&&!window.__urlFixtureState.error");
     js("window.__readingArgs=window.__urlFixtureState");
     assertEquals(JSONObject.quote(url),child.child("location.href"));
@@ -100,7 +110,7 @@ public final class BrowserSensitiveReadingInstrumentedTest {
     assertEquals("true",child.child("typeof Capacitor==='undefined'&&location.origin==='https://example.com'"));
     assertFalse(call("Capacitor.Plugins.AlphaConnection.secureWrite({slot:"+JSONObject.quote(slot)+",value:JSON.stringify({origin:"+JSONObject.quote(origin)+",identityId:'synthetic-browser-owner',token:'browser-reading-synthetic',expiresAt:"+expiry+"})})").has("error"));
     urlVariants(binding,server);
-    assertFalse(call("Capacitor.Plugins.AlphaBrowser.navigate({...window.__readingTab,url:'https://example.com/'})").has("error"));
+    navigate("https://example.com/");
     waitFor("document.querySelector('svg[aria-label=\"Secure connection\"]')");
     for(int i=0;i<300&&!"true".equals(child.child("location.href==='https://example.com/'&&document.readyState==='complete'"));i++)SystemClock.sleep(100);
     assertEquals("true",child.child("location.href==='https://example.com/'&&document.readyState==='complete'"));
