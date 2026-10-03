@@ -1,5 +1,10 @@
 # Alpha Phone MVP completion plan
 
+## Current checkpoint — October 3, cold-launch observer
+
+A controlled native negative test reproduces the one-second notification observer timeout. The remaining-budget repair passes the original notification flow in standalone and launcher on the task-owned Pixel-class emulator, with complete cleanup and3,902 source identities unchanged. Production APKs are the previously qualified c7 inputs; only test APKs were rebuilt. Six parent crash-classification checks also pass, but resident SIGSYS remains unresolved. Full combined verification/build awaits disk capacity; live, visible, physical and signed-image gates remain open. See [bounded evidence and remaining requirements](mvp-notification-readiness-qualification-2026-10-03.md). The full MVP is not complete.
+
+
 ## Current checkpoint — October 3, authenticated enabled views
 
 Remote, resident and Cloud enrollment now negotiates a durable MVP view profile. Per-turn model schemas, proposal admission and approval/claim revision checks enforce it; legacy hosts remain explicitly unnegotiated and locally guarded. HTTP/database, legacy migration, rendered connection flows, fresh 22-patch preparation, repository verification and both Android builds pass. See [qualification and exact limits](mvp-enabled-view-qualification-2026-10-03.md). Notification tap setup now reconciles an unknown publication receipt without reposting; both native variants pass the scoped flow. Actual native enabled-view GET/conditional POST transport now also passes both variants and is required as recovery phase 12; deployed-host acceptance remains open. The full MVP is not complete.
