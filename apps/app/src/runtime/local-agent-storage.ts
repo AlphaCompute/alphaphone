@@ -1,3 +1,5 @@
+import {actionScope} from './device-actions';
+import {isReminderOperation,validateReminderOperation,validateReminderResult} from './reminder-contract';
 import type {ActionJournal} from './device-actions';
 async function operation(input:Record<string,unknown>):Promise<any> {
  const response=await fetch('/__alpha-local-agent',{method:'POST',headers:{'Content-Type':'application/json','X-Alpha-Local-Agent':'1'},body:JSON.stringify({storage:input}),signal:AbortSignal.timeout(15000),redirect:'error'});
@@ -15,6 +17,16 @@ export const developmentActionJournal:ActionJournal={
  reserve:input=>operation({...input,operation:'reserve'}),
  markApplying:input=>operation({...input,operation:'markApplying'}),
  finish:input=>operation({...input,operation:'finish'}),
+ recoverReminder:async input=>{
+  const {entry}=await operation({...input,operation:'get'});if(!entry)throw Error('Reminder journal is missing');
+  if(entry.phase==='terminal'&&entry.status!=='unknown')return {entry};
+  const effect=validateReminderOperation(entry.record.operation);if(!isReminderOperation(effect)||!entry.attemptId||entry.phase!=='applying'&&entry.status!=='unknown')throw Error('Reminder recovery requires an admitted attempt');
+  const binding=await actionScope(JSON.stringify([input.scope,entry.record.ownerId,entry.record.agentId,entry.record.sessionId,entry.record.origin,entry.record.installationId,entry.record.enrollmentId,input.proposalId,entry.record.digest,entry.operationId]));
+  if(binding!==input.bindingHash||await actionScope(JSON.stringify(effect))!==entry.operationHash)throw Error('Reminder recovery binding changed');
+  const {DailyApps}=await import('../daily');const receipt=await DailyApps.reminderOperationReceipt({operationId:entry.operationId,bindingHash:input.bindingHash,operation:effect});if(receipt.status!=='succeeded')return {entry};
+  const reminderResult=validateReminderResult(effect,receipt.result);
+  return operation({...input,operation:'recoverReminder',expectedEntry:entry,reminderResult});
+ },
  get:input=>operation({...input,operation:'get'}),
  list:input=>operation({...input,operation:'list'}),
 };

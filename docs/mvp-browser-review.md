@@ -1769,3 +1769,12 @@ The dev stack restarted on `artifacts/calendar-format-reproduced` at 2026-10-03 
 Evidence: `test-results/live-calendar-action-review/` preserves the initial failure, canonical-request check and updated-runtime replay; `test-results/calendar-format-review/` preserves source/test/readiness logs. Hosted run `37103133453` ultimately cancelled with only shard 1 successful; it is not full-suite qualification. The earlier 1,071-pass workflow-owner checkpoint remains the last complete hosted result recorded here. No Android build ran.
 
 The production provider inventory was also corrected to 17 plugin classes and 159 annotated methods: the first extractor omitted Calendar's synchronized `save`. The replacement inventory checks every annotation count and source hash, excluding debug/test-only plugins. It proves method routing coverage only, not native acceptance.
+
+
+## October 3 — Host journal reminder recovery
+
+The host-backed browser journal now recovers an admitted reminder attempt from the original retained reminder receipt. The renderer verifies the operation hash and account/session/device binding, then reads the receipt without executing the operation. The host compares the complete prior journal entry before replacing an unknown/applying outcome with validated success. Stale entries and changed bindings reject; missing receipts remain unknown, and terminal results remain immutable.
+
+Independent review passed two Chromium and two WebKit cases through the actual Vite storage bridge and browser reminder store with an isolated synthetic profile. Checks cover applied/missing receipts, wrong bindings, stale compare-and-exchange input, idempotent recovery, unchanged effect-store bytes and journal persistence after reload. Repository verification passed TypeScript, 120 tests and web build. The incoming-attachment diagnostic hook now opens a CDP session only in Chromium; ten WebKit attachment lifecycle/content cases passed without suppressing any product assertions. Evidence and frozen hashes: `test-results/host-reminder-review/`.
+
+This closes the host-storage recovery route, not native process-death/provider acceptance or a fresh model-generated reminder journey. Existing actual-host Notes/Calendar evidence is separate. Newer sensor and surface-copy test edits were preserved outside this snapshot. No Android build ran.
