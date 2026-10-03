@@ -6,8 +6,7 @@ import path from 'node:path';
 import {execFileSync} from 'node:child_process';
 
 test('native stop observations tolerate exit races only after proven absence or terminal state',()=>{
- const patch=fs.readFileSync('patches/eliza/android-resident-exact-stop.patch','utf8');
- const lines=patch.split('\n').filter(line=>line.startsWith('+')&&!line.startsWith('+++')).map(line=>line.slice(1)).join('\n');
+ const lines=fs.readFileSync('vendor/eliza/packages/app/platforms/android/app/src/main/java/ai/elizaos/app/WorkflowSurvivorInventory.java','utf8');
  const start=lines.indexOf(' interface ProcessObservation'),end=lines.indexOf(' private static boolean liveProcess',start);
  assert.ok(start>=0&&end>start);
  const helper=lines.slice(start,end).replaceAll('android.system.ErrnoException','ErrnoException');

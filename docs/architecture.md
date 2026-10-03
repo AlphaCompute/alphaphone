@@ -6,6 +6,16 @@ September 30 scope update: the [MVP report](mvp-scope-and-gap-report.md) and [co
 
 Status: daily-tool implementation in progress. Cloud and remote authentication adapters are implemented; the actual local Eliza/Cerebras protocol has been exercised. Live Cloud services and device acceptance remain incomplete. Enclave deployment is historical optional work, not a gate for the primary resident-agent path. Cloud service identity is independent of the selected agent target; see `agent-integration.md` and the flow verification record for exact scope.
 
+## Upstream runtime ownership
+
+`upstream.lock.json` and the `vendor/eliza` submodule identify one reviewed upstream
+commit for the renderer helpers, resident runtime and native sources. Runtime
+preparation checks out that commit without applying consumer patches. Native
+staging records original and generated hashes; only product namespace, icon and
+environment wiring are generated locally. Regression tests exercise the pinned
+upstream sources directly. Historical patch artifacts remain available in Git
+history; the working tree no longer carries a patch series.
+
 ## Repository boundaries
 
 | Path | Responsibility |

@@ -35,26 +35,24 @@ for name in ['private-peer-debug.apk']+[v+'-'+k+'.apk' for v in ['standalone','l
  assert certs==[helper['signerSha256']]
 assert (archive/'inputs-before.json').read_bytes()==(archive/'inputs-after.json').read_bytes()
 frozen=json.loads((archive/'inputs-before.json').read_text())['files']
-native=json.loads(Path('patches/eliza/android-native-runtime-source.json').read_text())
+lock=json.loads(Path('upstream.lock.json').read_text())
+assert frozen['upstream.lock.json']==h(Path('upstream.lock.json').read_bytes())
+assert subprocess.check_output(['git','-C','vendor/eliza','rev-parse','HEAD'],text=True).strip()==lock['commit']
 generated=json.loads((archive/'native-generated-source-manifest.json').read_text())
 assert h((archive/'native-generated-source-manifest.json').read_bytes())==frozen['android/app/build/generated/local-agent/source-manifest.json']
-assert generated['runtimeSource']==native and native['commit']=='92fc988bbc2502b6dab5976014973bbe510b5045'
+assert generated['runtimeSource']=={'commit':lock['commit']} and generated['patches']==[]
 for relative,digest in frozen.items():
- if relative.startswith(('android/app/src/androidTest/','android/app/src/debug/','android/app/src/main/java/','patches/eliza/')):
+ if relative.startswith(('android/app/src/androidTest/','android/app/src/debug/','android/app/src/main/java/')):
   assert Path(relative).is_file() and h(Path(relative).read_bytes())==digest
-compat=native['compatibilityPatch']
-assert compat['patch']=='android-resident-exact-stop.patch'
-assert set(compat['files'])=={'packages/app/platforms/android/app/src/main/java/ai/elizaos/app/'+name+'.java' for name in ['ElizaAgentService','WorkflowSurvivorInventory']}
-assert h(Path('patches/eliza',compat['patch']).read_bytes())==compat['patchSha256']
-assert generated['patches'][-1]==compat
-for origin,proof in compat['files'].items():
- assert proof['sourceSha256']==native['files'][origin] and re.fullmatch('[a-f0-9]{64}',proof['patchedSha256'])
-for name in ['ElizaAgentService','IpcStartupRecovery','WorkflowSurvivorInventory']:
- origin='packages/app/platforms/android/app/src/main/java/ai/elizaos/app/'+name+'.java'
- rows=[row for row in generated['files'] if row['path']==origin];assert len(rows)==1
- row=rows[0];assert row['sourceSha256']==native['files'][origin]
- assert row['sha256']==compat['files'].get(origin,{}).get('patchedSha256',native['files'][origin])
- assert frozen['android/app/build/generated/local-agent/java/ai/elizaresearch/alphaphone/'+name+'.java']==row['generatedSha256']
+for row in generated['files']:
+ origin=row['path']
+ assert not origin.startswith('/') and '..' not in Path(origin).parts
+ committed=subprocess.check_output(['git','-C','vendor/eliza','show',lock['commit']+':'+origin])
+ assert row['sourceSha256']==row['sha256']==h(committed)
+ if origin.endswith('.java'):
+  target=row['generatedPath']
+  assert target.startswith('android/app/build/generated/local-agent/java/') and '..' not in Path(target).parts
+  assert frozen[target]==row['generatedSha256']
 
 def guard():
  assert run('shell','am','get-current-user').strip()=='0';assert_no_resident(run)
@@ -74,8 +72,8 @@ for variant in ['standalone','launcher']:
   with zipfile.ZipFile(archive/(variant+'-debug.apk')) as apk,zipfile.ZipFile(archive/(variant+'-androidTest.apk')) as test:
    entries={'bunSha256':'lib/x86_64/libeliza_bun.so','bundleSha256':'assets/agent/agent-bundle.js','sourceSha256':'assets/agent/alpha-source.json','processExecutableSha256':'lib/x86_64/libeliza_ld_musl_x86_64_real.so','workerIndexSha256':'assets/agent/workflow-worker/files.sha256','workerManifestSha256':'assets/agent/workflow-worker/manifest.json','compilerManifestSha256':'assets/agent/workflow-worker/compiler/compiler.json'}
    payload={k:h(apk.read(v)) for k,v in entries.items()};payload.update(abi='x86_64',processExecutableEntry=entries['processExecutableSha256'],trustedWorkerSha256=h(test.read('assets/trusted-worker.mjs')))
-   stamp=json.loads(apk.read('assets/agent/alpha-source.json'));assert stamp['base']=='92fc988bbc2502b6dab5976014973bbe510b5045'
-   assert stamp['consumerManifestSha256']==h(Path('patches/eliza/android-local-runtime-source.json').read_bytes())
+   stamp=json.loads(apk.read('assets/agent/alpha-source.json'));assert stamp['base']==lock['commit'] and stamp['patches']==[]
+   assert stamp['lockSha256']==h(Path('upstream.lock.json').read_bytes())
    assert payload['trustedWorkerSha256']==frozen['android/app/src/androidTest/assets/trusted-worker.mjs']==h(Path('android/app/src/androidTest/assets/trusted-worker.mjs').read_bytes())
    indexed={}
    for line in apk.read('assets/agent/workflow-worker/files.sha256').decode().splitlines():

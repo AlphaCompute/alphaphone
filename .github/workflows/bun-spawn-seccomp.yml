@@ -6,8 +6,8 @@ on:
     paths:
       - .github/workflows/bun-spawn-seccomp.yml
       - scripts/ci/reproduce-bun-spawn-seccomp.py
-      - patches/eliza/android-preserve-sigsys.patch
-      - patches/eliza/android-local-runtime-source.json
+      - upstream.lock.json
+      - vendor/eliza
 permissions:
   contents: read
 jobs:
@@ -20,6 +20,8 @@ jobs:
         libc: [glibc, musl]
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: true
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: "1.4.2"
