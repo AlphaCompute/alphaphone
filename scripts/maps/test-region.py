@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Actual local OSM/GraphHopper integration, not provider response fixtures."""
+from dataset_manifest import verify
 import urllib.request,urllib.error,json,pathlib,time,hashlib,os,sqlite3
 base='http://127.0.0.1:47850'
 def get(path):
@@ -23,5 +24,6 @@ root=pathlib.Path(os.environ.get('ALPHA_MAPS_DATA',str(pathlib.Path.home()/'.loc
 with sqlite3.connect(root/'monaco.mbtiles') as db:
  z,x,y,blob=db.execute('select zoom_level,tile_column,tile_row,tile_data from tiles order by zoom_level desc limit 1').fetchone()
  with urllib.request.urlopen(f'{base}/tiles/{z}/{x}/{2**z-1-y}.pbf',timeout=10) as response:assert response.read()==blob
+assert meta['revision']==verify(root)[0], 'Gateway revision must match actual runtime dataset'
 result={'passed':True,'scope':'Real local regional OSM tiles/search/GraphHopper HTTP; no Android/GPS/global acceptance','provider':meta['providerId'],'revision':meta['revision'],'routes':routes,'tileBytes':len(blob),'sourceManifest':json.loads((root/'source-manifest.json').read_text())}
 out=pathlib.Path('test-results/maps-regional-development');out.mkdir(parents=True,exist_ok=True);(out/'backend.json').write_text(json.dumps(result,indent=2)+'\n');print(json.dumps({'passed':True,'routes':routes,'tileBytes':len(blob)}))

@@ -126,3 +126,10 @@ failure. Worker binding version/client-ID metadata may help correlate a proven
 `invalid_client`, but no secret should be changed based only on HTTP401.
 The pending organization-key grant is a separate product-login boundary; it
 neither explains Google's401 nor grants Cloudflare historical-log permission.
+
+
+## Live browser login revalidation — October 3
+
+A fresh normal Google sign-in selected the user-requested shawmakesmagic@gmail.com account and successfully completed the Cloud callback. The browser proceeded through “Connecting to the Eliza app” to `https://cloud.eliza.app/join`, showing “Start your Dedicated Eliza”, an existing balance of $9,999.00, and a price of $0.24/day ($0.01/hour), minimum start $0.72. This supersedes the earlier unresolved browser-login state for this observed session; it does not establish phone token enrollment or Gmail authorization.
+
+No Start Dedicated action was submitted. Explicit bounded approval for one agent for up to24hours was requested because provisioning incurs ongoing hosting charges. The setup tab is retained for that decision. No API credential was extracted, no Google Gmail scope was granted, and no test email was sent. Cloud chat/voice, account-agent reuse or provisioning, phone login, and Gmail remain separately unverified.

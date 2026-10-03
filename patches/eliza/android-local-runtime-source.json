@@ -19,11 +19,11 @@
     "packages/core/src/security/secret-swap.ts": "800994cf70ed615cd912a742e383d661dbfb603c0186c7b2fab8e454a5701a98",
     "plugins/plugin-assistant/src/services/device-actions/contract.ts": "7820c4230677f7f84a0066df577c06e95f905bf89b7a6fde412a0794ea97de74",
     "plugins/plugin-assistant/src/services/message/reply-policy.ts": "6258737cf79a623f58988d6788462b9b5d12ae54b6916b5e198dc873197ee40c",
-    "plugins/plugin-assistant/test/device-actions.e2e.test.ts": "ecf07e1bfa6d4e00d023bbbd7360872755e1646f98f7f5362854b1165b42b924",
+    "plugins/plugin-assistant/test/device-actions.e2e.test.ts": "ababe7b0cc57f7b05b3b1fdf7d8901caa060fdc56d6d102e3141f15adb43bea6",
     "plugins/plugin-workflow/__tests__/hosted-route-registration.test.ts": "fff3297e97e13c5929bff141c045a10153a5166eb93bd06dc84f5deb098135ac",
     "plugins/plugin-workflow/src/plugin-routes.ts": "517b20534f8c9eab6fd0ac354a0425fd5acfd58b20393a7c0382812bd9f7d000",
-    "plugins/plugin-assistant/src/services/device-actions/clock-contract.ts": "4a068849386f1e3f81391840c60ea74e0ad488b1102d4b6d8c8dc1bf1616cfaf",
-    "plugins/plugin-assistant/src/services/device-actions/action.ts": "d51554a393e821bd61c445fc3b780402678e4a2aca3abfd58cd6fab6ee9f63ad",
+    "plugins/plugin-assistant/src/services/device-actions/clock-contract.ts": "ffc4fffdf63398dbbc2f8df0ce3d32456eeeab4b1682a549bb2b4aeaf9b98888",
+    "plugins/plugin-assistant/src/services/device-actions/action.ts": "07824788d48eea2fe8e99de21efeca8c38b452d8bc828211eaa91e6ecf15acad",
     "plugins/plugin-assistant/src/services/device-actions/effect-receipts.ts": "a3b43839a9b462fc84a74168f5c1f3d478c9f777abe9c7b77c9525628921ab5d",
     "plugins/plugin-assistant/src/services/device-actions/service.ts": "56ee79596c08731cbfdae22164f7c87a38e36c620c8c2abe91dafb695e59e207",
     "packages/agent/src/api/device-action-routes.ts": "1f4ee808c46115fe091dd5de12a6cee59aacdcbaff0b3ba714c0d327a142e9a8",
@@ -77,7 +77,12 @@
     "packages/app/scripts/aosp/seccomp-shim/sigsys-handler.c": "41aa61829efcf93e39943701c6e553bb7e2af1648828611b9150b75f06e02ae7",
     "packages/app/scripts/aosp/seccomp-shim/sigsys-handler-arm64.c": "6ecab1907ba87fa7a64cb6756283c48581fb29fedc3bd618676d7f2babc07986",
     "packages/app/scripts/aosp/seccomp-shim/sigsys-handler-riscv64.c": "93c500c5a89783a2c138cf9d39a0ce5173b0de5014ce725c4afb3bf77293673f",
-    "packages/app/scripts/aosp/seccomp-shim/preserve-sigsys.h": "12569a6dcb28510d34eba1cb1afe9bff0bfd3e4187b1bfae02913e8d01e7af20"
+    "packages/app/scripts/aosp/seccomp-shim/preserve-sigsys.h": "12569a6dcb28510d34eba1cb1afe9bff0bfd3e4187b1bfae02913e8d01e7af20",
+    "plugins/plugin-assistant/package.json": "63a0bec5bd2a8e33e86bff8907ee94f6e099b9db53f56bb9e8f3d7fa9ca9d488",
+    "plugins/plugin-assistant/build.ts": "299312aa315bcab9dfe9fa22cdece81dbd95daa757fc406c918dd4fd2f874407",
+    "plugins/plugin-assistant/src/services/device-actions/clock-review-executor.ts": "b12138a2d3b64b6694f6505051542cb14d8d53491818cab70d8feff9193df13f",
+    "plugins/plugin-assistant/test/clock-review-export.integration.test.ts": "d2cf48d33770cc3281398787241c910cc9adb363cf5cf3fe6cfc872a6181c324",
+    "plugins/plugin-assistant/vitest.clock-review.config.ts": "9f6158e9f05de7fe550c6b4523b9e8f8bcb26e886f74feabed8eac694ac4851c"
   },
   "patches": [
     "android-secure-store-socket.patch",
@@ -111,7 +116,8 @@
     "egress-uri-credentials.patch",
     "egress-encoded-credentials.patch",
     "stage1-source-repair-fixture.patch",
-    "android-preserve-sigsys.patch"
+    "android-preserve-sigsys.patch",
+    "clock-native-reviewed-executor.patch"
   ],
   "patchHashes": {
     "android-secure-store-socket.patch": "457ea3d0b91c80c53c4bd3db25bb85cea6079d87c5ee2b02a96757e0a31ae900",
@@ -144,6 +150,7 @@
     "egress-uri-credentials.patch": "dc77b4df7ae9b83a52b051dc4573ef63cf244c3f662947692e17e7b5631e1f5d",
     "egress-encoded-credentials.patch": "1c740c08eefba62ec74a7622172c52feb22b7ed2bc6fdf17f3574473b21021e5",
     "stage1-source-repair-fixture.patch": "0e99e8a1fdc6af6ee3332f02fc6c221bec1fcba9555d36931e4072da2e772aa4",
-    "android-preserve-sigsys.patch": "1395125689f6e7789c0e11f8e928f38b80cb1fee9d47f1269027912dc789d8d2"
+    "android-preserve-sigsys.patch": "1395125689f6e7789c0e11f8e928f38b80cb1fee9d47f1269027912dc789d8d2",
+    "clock-native-reviewed-executor.patch": "a6a3dfebca3c25ced8f31da3796ea5df68ac3670d3dc86b90fdcc86977630d6e"
   }
 }
