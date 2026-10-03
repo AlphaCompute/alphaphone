@@ -133,7 +133,7 @@ export class BrowserVoice extends WebPlugin {
    if(!current())throw new DOMException('Playback cancelled','AbortError');
    const receipt={audioId:input.audioId,playing:!audio.paused,positionMs:audio.currentTime*1000};void this.notifyListeners('started',receipt);return receipt;
   }catch(error){if(this.audio===audio)finish('playbackFailed');throw error;}
-  }catch(error){if(current())await this.stopPlayback();throw error;}
+  }catch(error){if(current()){const playbackId=this.activeSpeechId;this.activeSpeechId=undefined;if(playbackId)void this.notifyListeners('playbackFailed',{playbackId,message:error instanceof Error?error.message:'Speech playback failed.'});await this.stopPlayback();}throw error;}
  }
  async stopPlayback(input?:{playbackId:string}){
   if(input&&this.activeSpeechId!==input.playbackId)return;

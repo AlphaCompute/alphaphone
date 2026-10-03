@@ -19,6 +19,7 @@ public class AlphaNotificationsPlugin extends Plugin {
  private StatusBarNotification resolve(String id){if(id==null||id.isEmpty())return null;for(StatusBarNotification row:manager().getActiveNotifications())if(Objects.equals(ids.get(identity(row)),id))return row;return null;}
  private String bounded(CharSequence text,int limit){String value=text==null?"":text.toString();return value.length()>limit?value.substring(0,limit):value;}
  private final Map<String,String> channels=new java.util.concurrent.ConcurrentHashMap<>();
+ @PluginMethod public void workflowPresentationCapabilities(PluginCall call){JSObject result=new JSObject();result.put("protocol",2);call.resolve(result);}
  @PluginMethod public void status(PluginCall call){try{
   NotificationManager manager=manager();JSObject out=new JSObject();JSArray values=new JSArray();Set<String> current=new HashSet<>();
   out.put("appEnabled",manager.areNotificationsEnabled());
