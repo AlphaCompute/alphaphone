@@ -1,5 +1,15 @@
 # Combined resident and browser implementation — October 3, 2026
 
+## Current delivery checkpoint
+
+Production main and the root checkout are synchronized at `6b33e26a516b9f76a3a06cff58f7b1c661399839`, including PR 134's Home/digest and lock-summary corrections. The exact-source full browser campaign is [37156018384](https://github.com/AlphaCompute/alphaphone/actions/runs/37156018384); it succeeded across all three shards with **1,318 passed and 14 profile-dependent skips**, plus **9 passed** in the separate synthetic local-agent profile. Earlier campaigns below are historical and were superseded. All 255 repository tests, TypeScript and the web build pass for the corrected source, along with 22 focused browser cases. The current 33-patch runtime has 488 passing runtime/security cases plus the Clock-export and authenticated device-action checks.
+
+The renewed worktree audit found three additional Calendar extraction commits at `6ff1ae7c1993069ca813bd5beaefdc72e59fb4a3`, now published to `codex/native-calendar-package-snapshot`. This preserves the package and independent-consumer work without substituting an unfinished Alpha migration for production code. The originating checkout still owns that migration and upgrade validation. Other registered worktree heads are already ancestors of main; uncommitted experiments and generated evidence remain preserved.
+
+The existing local agent profile is running with owner authentication, one agent, embedded workflows, Whisper and Kokoro ready as of October 3 at 21:42 UTC. Consumer manifest remains `711ca293e205857b5b3097983ee13a4f5131c33a84e33fe945bcecb11262aea7`. Cerebras provides hosted text inference; both redaction switches retain their previously selected off state. Native, physical, provider and release acceptance remain open in the requirement matrix below.
+
+## Earlier candidate history
+
 The initial candidate combined resident/browser product head `763001bb3cd61625bda033986c36b4ae9aa16536` with the separately developed integration head `3871831619e72a7c4714b80dfba78d461b16f4de` (PR 23). Both histories are preserved. The MVP remains incomplete; this is a combined-source qualification, not installed Android or full product acceptance.
 
 ## Implementation reconciled
@@ -10,7 +20,7 @@ The initial candidate combined resident/browser product head `763001bb3cd61625bd
 - Reconcile the runtime on pinned upstream `92fc988bbc2502b6dab5976014973bbe510b5045`. Three former consumer patches are already incorporated upstream and must not be applied twice. Preserve the newer security, typed workflow and ownership patches.
 - Rebase the Stage 1 invalid-source test fixture onto the new base without changing neighboring retry expectations. The first rebase was too broad; its failed test output is retained and the corrected fixture passes.
 
-## Evidence
+## Earlier candidate evidence
 
 | Check | Result and scope |
 | --- | --- |
@@ -23,7 +33,7 @@ The initial candidate combined resident/browser product head `763001bb3cd61625bd
 
 Evidence is retained under `artifacts/calendar-preferences-review/test-results/stack-convergence/`, including unsuccessful preparation/test attempts. Dependencies were cloned using APFS copy-on-write from an existing host and reconciled against the new frozen Bun lockfile with lifecycle scripts disabled. This is not a clean dependency-install or native compilation qualification.
 
-## Remaining delivery and acceptance
+## Earlier delivery checkpoint and remaining acceptance
 
 The combined implementation is published in [PR 133](https://github.com/AlphaCompute/alphaphone/pull/133), implementation commit `ca40a0566d81844820b7ac3ceba29e98a12a8d9d`. Its hosted browser campaign is pending; remote main is not synchronized merely by opening a PR. The root checkout has been fast-forwarded and browser development restarted on the verified combined runtime at port 5317, retaining the existing profile and redaction-off defaults. On October 3 at 20:36 UTC, owner authentication, one agent, embedded workflows, Whisper and Kokoro all reported ready. Initial readiness returned 503 during startup; the subsequent completed check passed.
 
@@ -41,13 +51,13 @@ The final campaign is pending: repository verification, complete browser coverag
 The worktree inventory also found older, uncommitted native qualification/extraction experiments. They remain preserved in their original worktrees; they are not silently treated as current production implementation. Native Calendar extraction still requires its independent-consumer and storage-migration qualification before replacing the product bridge. Device, provider, signed-image and user acceptance remain open as detailed in the current requirement matrix.
 
 
-### Final campaign checkpoint
+### Pre-attention campaign checkpoint — superseded
 
 The combined product landed through PR 133 and PR 123. Main is `18e36220276b9cc6c4cd592fd5db9da1ea1cac29`; the additional local review merge has an identical Git tree. The live queue readback is zero open PRs. Redundant stacked PRs were closed after verifying that their exact heads are ancestors of main. The repository requires pull requests for changes to main; rejected direct pushes did not alter that rule.
 
 Local verification passes all 255 repository tests, TypeScript and the production web build. The initial run passed 254 tests and failed one source-reproduction fixture because an interrupted local cache had no admitted Git object. That cache was preserved, and the sole owning test passed against a valid existing object cache. Runtime verification passes 488 stage-one/security/ownership tests, one source-and-published Clock export test, and one authenticated HTTP/durable SQL device-action lifecycle test. No test assertion was weakened.
 
-The complete browser campaign is [37155265419](https://github.com/AlphaCompute/alphaphone/actions/runs/37155265419), on exact main 18e3622. All three shards passed repository verification and entered the browser suite. Its terminal result is pending. Redundant older branch campaigns were cancelled instead of repeating the same work locally.
+The complete browser campaign is [37155265419](https://github.com/AlphaCompute/alphaphone/actions/runs/37155265419), on exact main 18e3622. All three shards passed repository verification and entered the browser suite. This campaign was superseded and cancelled after the attention corrections merged; it is not terminal qualification of the corrected source. Redundant branch campaigns were cancelled instead of repeating the same work locally.
 
 The final local runtime reproduces all 33 declared patches. Consumer manifest: `711ca293e205857b5b3097983ee13a4f5131c33a84e33fe945bcecb11262aea7`; prepared metadata: `eec3fd5d6f991872dfe94ba15e1deee0e7d79605e7bf48499e1a465d69897a14`. Existing dependency directories were cloned with APFS and the frozen Bun installation completed with no dependency changes and lifecycle scripts disabled. This is reproducible source and checked dependency reuse, not a clean native build.
 
@@ -78,9 +88,17 @@ This audit preserves all fifteen plan items. A delivered implementation, a contr
 | 14. Deployment and metering | Local executable source and owner/runtime identity are verified. Nitro is optional under the resident architecture. | Signed app/runtime/image release, update/rollback, independent setup and required production usage/metering acceptance. |
 | 15. Pilot handoff | Current implementation report, source history, failure evidence and test records are retained. | Four physical-unit manifests, unedited demonstration, user/stakeholder acceptance and final P0/P1 disposition. |
 
-The full browser campaign on consolidated main is the remaining immediate verification step. Its terminal outcome must replace the pending status above before claiming that snapshot is browser-qualified. The later attention-count corrections described below require their own exact-source evidence. Physical, provider and release items remain open even if it passes.
+The final browser campaign at corrected main 6b33e26 has now succeeded as recorded at the top of this report. Its explicit skipped profiles remain separately accounted for; the result does not close physical, provider or release acceptance.
 
 
 ### Subsequent visual corrections
 
-Direct rendered review found that mock Home showed three attention items while opening a digest with only one retained MVP item. It also found deferred Messages counts in the mock lock summary. Home and the digest now share filtered fixture rows; the lock summary filters by enabled view and exposes accessible Email/Calendar count labels. The production adapter clears fixture avatars. The current correction passes all 18 MVP browser cases, four browser/native-chrome fixture cases, all 255 repository tests, TypeScript and the web build. The corrected Home and lock views were visually checked. These changes are newer than main 18e3622 and are not covered by its still-running full browser campaign.
+Direct rendered review found that mock Home showed three attention items while opening a digest with only one retained MVP item. It also found deferred Messages counts in the mock lock summary. Home and the digest now share filtered fixture rows; the lock summary filters by enabled view and exposes accessible Email/Calendar count labels. The production adapter clears fixture avatars. The current correction passes all 18 MVP browser cases, four browser/native-chrome fixture cases, all 255 repository tests, TypeScript and the web build. The corrected Home and lock views were visually checked. These changes landed in PR 134 at main 6b33e26. The older 18e3622 campaign was cancelled; the current campaign is linked at the top of this report.
+
+### Final browser result and skip accounting
+
+Run 37156018384 is terminal **success** at exact source `6b33e26a516b9f76a3a06cff58f7b1c661399839`. Shard 1 passed 434 cases with 10 skips, shard 2 passed 440 with four skips, and shard 3 passed all 444. All three repository verification steps passed. The separate local-agent profile passed nine controlled recording/playback cases. Its synthetic responses qualify the browser contract, not actual speech recognition quality.
+
+The fourteen main-suite skips consist of those nine profile cases, four host-storage reminder-recovery cases, and one actual-host synthetic-WAV speech case. The latter requires its own real-host evidence; it is not silently counted as passed. Complete job metadata, original logs and summary extraction are retained under `test-results/remaining-integration/final-ci-*`. No Android build was run in this browser-focused pass.
+
+The four host-storage reminder-recovery cases subsequently passed in a dedicated isolated profile on port 5347, using the same application source. They verify applied versus unknown outcomes, exact binding, stale-entry rejection, no reminder-state replay and durable reload. Evidence: `test-results/remaining-integration/host-recovery-browser.log` and its browser report. The user's existing agent profile was not used for these fixture writes.
