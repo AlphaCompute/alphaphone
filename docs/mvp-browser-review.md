@@ -1957,3 +1957,13 @@ Live renderer follow-up: both real retained morning/evening results rendered the
 ## October 3 — Synchronize independent browser-parity documentation
 
 Reviewed the local README and browser-parity campaign report, verified every checkpoint-115 source hash against `8190682`, and checked terminal baseline/delta browser reports. The report now identifies that exact historical snapshot instead of calling its 120-test/APK results current. Its content is preserved and synchronized with the local-agent implementation; newer 157-test and digest/recovery/speech evidence remains separate. No Android build ran.
+
+## October 3 — Truthful workflow execution-location metadata
+
+The real local host still advertised hard-coded Cloud ownership, connectivity and health in workflow status; automation status and service metadata repeated it. The explicit `workflow-runtime-location.patch` now reports embedded execution in the current agent host (`eliza://workflow`, `executionLocation: agent-runtime`). “Local” is relative to the agent process, not a claim that a remote caller shares its device or that model inference stays local. Status requires both authoring and embedded execution services. No caller-controlled deployment label or inferred Cloud health is used. This shared runtime source applies to Android and browser development.
+
+The full source series reproduces with consumer manifest `c41e76671521e54ab3ba2cd6a17a7a84675340f60808daca0afcc74c6b0b8866`. Twenty-six source tests pass (91 assertions), including actual HTTP dispatcher routes, automation status and missing services. An initial test run had an incorrect test import path; that failed attempt is retained separately and corrected in the final patch. Repository validation passes TypeScript, all 157 tests without skips and web build. Evidence: `test-results/workflow-runtime-location/`.
+
+Restarted only the owned local stack on ports 5317/47849 with the reproduced source and existing profile; runtime PID 43861. Actual authenticated status reports local embedded execution, no Cloud connection, and Whisper/Kokoro ready. The two retained real digest results remain exact, render with closed execution details, and survive browser reload. Compact screenshot inspected. Text inference remains hosted Cerebras; redaction remains off. No Android build or physical-device qualification ran.
+
+Full hosted Browser MVP run `37113808882` completed successfully at exact head `bc82cf25ee57296f34b6b2a54ef779989b0328fb`: shards report 367/377/375 passes, totaling **1,119 passed / 12 skipped**, with three separate platform-dependent repository-test skips. This qualifies the prior speech/notification-recovery snapshot, not the newer digest or execution-location patches.
