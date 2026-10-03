@@ -17,13 +17,13 @@
     "packages/core/src/security/pii-pseudonymizer.ts": "bffc53238d2580c5ad2d436e0e247ac425189487bf482e51b5917567f29ee111",
     "packages/core/src/security/runtime-abort-signal.ts": "da3bb65a56334a249399c0a2ec4e0f9d227c8e09e3566237609f679de76b0d78",
     "packages/core/src/security/secret-swap.ts": "7a4d9fed214761e714d9e7b208d1b655dadfc744c3733255bcd9ac88960e8133",
-    "plugins/plugin-assistant/src/services/device-actions/contract.ts": "1cb1868981ec118366cb1186744c3790462dc2820d381da54174eba37bd6a13b",
+    "plugins/plugin-assistant/src/services/device-actions/contract.ts": "393330322566722efbcdd56acb2309422f9d68d2b8de3a46ff6fdbb5d113b897",
     "plugins/plugin-assistant/src/services/message/reply-policy.ts": "6258737cf79a623f58988d6788462b9b5d12ae54b6916b5e198dc873197ee40c",
     "plugins/plugin-assistant/test/device-actions.e2e.test.ts": "8f0b3d68a036836e0d6de4cbe22add5a0482ba5f425ed22901996b2b227c69a8",
     "plugins/plugin-workflow/__tests__/hosted-route-registration.test.ts": "fff3297e97e13c5929bff141c045a10153a5166eb93bd06dc84f5deb098135ac",
     "plugins/plugin-workflow/src/plugin-routes.ts": "3edae66b214358367db08c3fb435bf12508c374efa691c51b71ce0ff01acf69e",
     "plugins/plugin-assistant/src/services/device-actions/clock-contract.ts": "4a068849386f1e3f81391840c60ea74e0ad488b1102d4b6d8c8dc1bf1616cfaf",
-    "plugins/plugin-assistant/src/services/device-actions/action.ts": "5dadeb7828819b490faa46e93fd0a6628165c018a2d2cc80b258a3fb428a30f4",
+    "plugins/plugin-assistant/src/services/device-actions/action.ts": "07246fba9f15fc5990447b1269a76d2d3e7aae004a1848519dbaa72e92da7cb4",
     "plugins/plugin-assistant/src/services/device-actions/effect-receipts.ts": "52fcf108e42ac6c85f4f1b60b0eb5a18b956178c693528a92fedfdae4d69d4ca",
     "plugins/plugin-assistant/src/services/device-actions/service.ts": "be69887169ca0ae48a66deb80a26d2e8657a928a13b076406a60674984811f97",
     "packages/agent/src/api/device-action-routes.ts": "3aa113ad222b5d1b38aa776e24d6bde617d93a2729d419466fc9ef1f0ecdf03c",
@@ -56,7 +56,8 @@
     "standalone-kokoro-host.patch",
     "egress-credential-assignments.patch",
     "workflow-device-owner-binding.patch",
-    "android-resident-launcher-no-kill.patch"
+    "android-resident-launcher-no-kill.patch",
+    "calendar-tool-format-guidance.patch"
   ],
   "patchHashes": {
     "android-secure-store-socket.patch": "457ea3d0b91c80c53c4bd3db25bb85cea6079d87c5ee2b02a96757e0a31ae900",
@@ -71,6 +72,7 @@
     "standalone-kokoro-host.patch": "c24a77c86ccfb6282763095b3b0a909ae5b2d665e79bbb2815f6ba6ea3870a3f",
     "egress-credential-assignments.patch": "e29cf00a402ca00973dfb5eefbfef74afe45ef2bf4d2da9aeb8631e8b163bb9e",
     "workflow-device-owner-binding.patch": "4ddb14132d6f7641bcb344a6c9bb32a61e019c3bff76486a3cf8a490e7d279f1",
-    "android-resident-launcher-no-kill.patch": "7db1fd788b38a8df9cf43c81c318f257f8060c50043dc13b1d0ed78b06299636"
+    "android-resident-launcher-no-kill.patch": "7db1fd788b38a8df9cf43c81c318f257f8060c50043dc13b1d0ed78b06299636",
+    "calendar-tool-format-guidance.patch": "64f38f9b7da7fe4773ce13bd1751a36accf494788f7fb1cd34878655218e43fe"
   }
 }
