@@ -1007,7 +1007,7 @@ This delivers WP1 (Section 14). With it, egress E6 in Section 4 is no longer unp
   - Its one recorded provider request contained `__ELIZA_SECRET_` placeholders and none of the raw email, card number or SSN.
 
   The non-secret proof is in `test-results/android-resident-redaction/result.json`. This is emulator evidence, not physical-device or AOSP-image acceptance.
-- **Separate finding:** `ResidentServiceInstrumentedTest` now fails at pairing. It expects `/api/auth/pair` to return `access: "owner"` and `identityId`, but this runtime returns `{token, instanceId}`. The agent had booted and passed readiness with both swaps on, so this is a test/runtime contract mismatch, not a redaction regression.
+- **Pairing contract:** in that local swap-fix build, `/api/auth/pair` answered from the agent-only route (`{token, instanceId}`) instead of the app pairing route that mints an owner session (`access`, `identityId`). Production enrollment in `AlphaLocalAgentPlugin` requires the owner-session contract, and the CI resident runtime pairs successfully with it, so the mismatch was specific to that build, not a product or redaction defect.
 
 ## Sources
 
