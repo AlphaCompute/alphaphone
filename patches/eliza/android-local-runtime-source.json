@@ -22,8 +22,8 @@
     "plugins/plugin-assistant/test/device-actions.e2e.test.ts": "ecf07e1bfa6d4e00d023bbbd7360872755e1646f98f7f5362854b1165b42b924",
     "plugins/plugin-workflow/__tests__/hosted-route-registration.test.ts": "fff3297e97e13c5929bff141c045a10153a5166eb93bd06dc84f5deb098135ac",
     "plugins/plugin-workflow/src/plugin-routes.ts": "517b20534f8c9eab6fd0ac354a0425fd5acfd58b20393a7c0382812bd9f7d000",
-    "plugins/plugin-assistant/src/services/device-actions/clock-contract.ts": "4a068849386f1e3f81391840c60ea74e0ad488b1102d4b6d8c8dc1bf1616cfaf",
-    "plugins/plugin-assistant/src/services/device-actions/action.ts": "d51554a393e821bd61c445fc3b780402678e4a2aca3abfd58cd6fab6ee9f63ad",
+    "plugins/plugin-assistant/src/services/device-actions/clock-contract.ts": "ffc4fffdf63398dbbc2f8df0ce3d32456eeeab4b1682a549bb2b4aeaf9b98888",
+    "plugins/plugin-assistant/src/services/device-actions/action.ts": "07824788d48eea2fe8e99de21efeca8c38b452d8bc828211eaa91e6ecf15acad",
     "plugins/plugin-assistant/src/services/device-actions/effect-receipts.ts": "a3b43839a9b462fc84a74168f5c1f3d478c9f777abe9c7b77c9525628921ab5d",
     "plugins/plugin-assistant/src/services/device-actions/service.ts": "56ee79596c08731cbfdae22164f7c87a38e36c620c8c2abe91dafb695e59e207",
     "packages/agent/src/api/device-action-routes.ts": "1f4ee808c46115fe091dd5de12a6cee59aacdcbaff0b3ba714c0d327a142e9a8",
@@ -60,7 +60,12 @@
     "packages/app/src/api/server-cors.ts": "f23ecba89e70a83be0df2a5ce4aed9813b9cca5570a8db4656fbea63e75700e4",
     "plugins/plugin-assistant/src/index.ts": "1e17329f5805693238c2a5768ddfd2962f55910f64c2071d5c2968c01a5194ea",
     "plugins/plugin-assistant/src/services/device-actions/view-profile.ts": "83bb2e07b28be9afe9c9c2ea5e6ed5021214871df9d480974faee1a753f1a5f0",
-    "plugins/plugin-workflow/__tests__/integration/device-bridge-e2e.test.ts": "47fa645374fafbcf1d7dfba697d553294c3a3507e6b5bed4b6896c88556de4cd"
+    "plugins/plugin-workflow/__tests__/integration/device-bridge-e2e.test.ts": "47fa645374fafbcf1d7dfba697d553294c3a3507e6b5bed4b6896c88556de4cd",
+    "plugins/plugin-assistant/package.json": "63a0bec5bd2a8e33e86bff8907ee94f6e099b9db53f56bb9e8f3d7fa9ca9d488",
+    "plugins/plugin-assistant/build.ts": "299312aa315bcab9dfe9fa22cdece81dbd95daa757fc406c918dd4fd2f874407",
+    "plugins/plugin-assistant/src/services/device-actions/clock-review-executor.ts": "b12138a2d3b64b6694f6505051542cb14d8d53491818cab70d8feff9193df13f",
+    "plugins/plugin-assistant/test/clock-review-export.integration.test.ts": "d2cf48d33770cc3281398787241c910cc9adb363cf5cf3fe6cfc872a6181c324",
+    "plugins/plugin-assistant/vitest.clock-review.config.ts": "9f6158e9f05de7fe550c6b4523b9e8f8bcb26e886f74feabed8eac694ac4851c"
   },
   "patches": [
     "android-secure-store-socket.patch",
@@ -84,7 +89,8 @@
     "workflow-worker-termination-diagnostic.patch",
     "reminder-reviewed-creation.patch",
     "workflow-worker-crash-identity-diagnostic.patch",
-    "authenticated-enabled-views.patch"
+    "authenticated-enabled-views.patch",
+    "clock-native-reviewed-executor.patch"
   ],
   "patchHashes": {
     "android-secure-store-socket.patch": "457ea3d0b91c80c53c4bd3db25bb85cea6079d87c5ee2b02a96757e0a31ae900",
@@ -106,6 +112,7 @@
     "android-workflow-source-publication.patch": "8ad19433f9a600f2a03becc94c7b73f021d697a7dc763bc0f2b87c87fde29dd1",
     "typed-workflow-generation.patch": "c6b3840f2860542e5411dc0a98e2e7191643a3b8ac32de2534cebf9fbfc1625e",
     "workflow-worker-termination-diagnostic.patch": "82a6372506220f5b2578fbc21af09479d7af330b1f2515fdc13287a9cd6b25e2",
-    "authenticated-enabled-views.patch": "3947ef246ff65e520d8870315222b463c15a49dfb56cbd6784acd06b2ba3a2f1"
+    "authenticated-enabled-views.patch": "3947ef246ff65e520d8870315222b463c15a49dfb56cbd6784acd06b2ba3a2f1",
+    "clock-native-reviewed-executor.patch": "793d8ede2671a1600900f302a70a37fc4d02e5d7803a31608fdbe30304de66db"
   }
 }

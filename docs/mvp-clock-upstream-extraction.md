@@ -1,0 +1,9 @@
+# Reusable Clock review executor
+
+The renderer now consumes the reusable `createClockReviewExecutor` factory from an explicit Eliza patch. `@elizaos/plugin-assistant/device-clock-review` exports both source and built entrypoints. The factory validates operations and results, retains failed native cancellations, and requires acknowledgment before owner retirement. One product instance owns the retirement registry.
+
+Alpha supplies only its Capacitor bridge. Android retains the existing encrypted action journal, approval dialog, exact attempt/operation binding, and platform dispatch. The shared module does not create a second journal or claim a native approval happened. Other applications must supply an equivalent trusted adapter before using it.
+
+`patches/eliza/clock-native-reviewed-executor.patch` applies after the authenticated enabled-view patch. Checked-in renderer exports are hash-bound to the same upstream source manifest, and `npm run verify` checks that binding before other checks. `vendor/eliza` is unchanged. This is explicit patch delivery, not evidence of upstream review/merge or deployment.
+
+The staged upstream integration test imports the source-condition entrypoint and an actual tsup-built package entrypoint, including declarations, then exercises retained receipts and cancellation retry. Its retained evidence is under `test-results/upstream-clock-review-export-v6`. Parent source-integrity and TypeScript checks pass. All19 rendered Clock flows pass with the shared implementation, including held/rejected cancellation and explicit retry; these control the native boundary and do not establish Android execution. Full composed repository verification, both APK builds and native qualification remain required after this source change. The preceding native Clock test capitalization correction is separately qualifying at commit f296a6669db79668a6f8b17b99a6df1de763ddf2.
