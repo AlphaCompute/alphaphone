@@ -1,4 +1,3 @@
-import {connectionController} from '../runtime/connection-ui';
 import {recordingPcmWav} from './recording-pcm';
 import {browserMediaVolume} from './audio-settings';
 import {audioRecord,audioMetadata,retainAudio,changeAudioDeleted,audioDeletionStatus,migrateAudio} from './note-audio-store';
@@ -27,12 +26,14 @@ export class BrowserVoice extends WebPlugin {
   window.addEventListener('pagehide',()=>{void this.cancel();});
   window.addEventListener('alpha:device-state',()=>{void this.cancel();});
  }
- async localSpeechStatus(){const agent=connectionController.getBrowserSpeechAgent();if(agent){const result=await this.withAgentSpeech(signal=>agent.speechRequest(undefined,signal));return {ready:result.ready===true,execution:'browser'};}return {ready:!!navigator.mediaDevices?.getUserMedia&&typeof MediaRecorder!=='undefined',execution:'browser'};}
+ // Resolve the controller after browser adapter registration; its native imports register plugins.
+ async localSpeechStatus(){const {connectionController}=await import('../runtime/connection-ui');const agent=connectionController.getBrowserSpeechAgent();if(agent){const result=await this.withAgentSpeech(signal=>agent.speechRequest(undefined,signal));return {ready:result.ready===true,execution:'browser'};}return {ready:!!navigator.mediaDevices?.getUserMedia&&typeof MediaRecorder!=='undefined',execution:'browser'};}
  startRecording(input:{maxDurationMs?:number}={}){return this.capture.start(input);}
  stopRecording(){return this.capture.stop();}
  async cancelRecording(){this.capture.cancel();}
  async transcribeLocalRecording(input:{recordingId:string}){
   const clip=this.capture.get(input.recordingId);if(!clip)throw Error('Record a clip first.');
+  const {connectionController}=await import('../runtime/connection-ui');
   const agent=connectionController.getBrowserSpeechAgent();
   if(agent){const selectedSession=agent.session;const result=await this.withAgentSpeech(async signal=>{const audio=await recordingPcmWav(clip.blob,signal);if(connectionController.getBrowserSpeechAgent()!==agent||agent.session!==selectedSession)throw new DOMException('Voice selection changed','AbortError');return agent.speechRequest(audio,signal);});return {text:result.text,local:true,execution:'browser'};}
   const text=await this.transcript.open(clip.blob);return {text,local:true,execution:'browser'};
