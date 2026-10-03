@@ -1,6 +1,6 @@
 # MVP implementation and design review — updated October 2, 2026
 
-Latest full integration checkpoint: **454/454 browser tests** on committed `18969d2`, covering all browser tests then present. See [October 2 simulator integration and reminder-time review](#october-2--simulator-integration-and-reminder-time-review). Pending shared-checkout changes remain outside this evidence. The MVP goal remains open.
+Latest full integration checkpoint: **927/927 browser tests passed** on committed `2d6c424f87af4baa151f1714a486009e04ad006a`, covering every browser test present in that snapshot. See [October 2 full browser qualification](#october-2--full-browser-qualification-and-history-test-budget). Pending shared-checkout changes remain outside this evidence. The MVP goal remains open.
 
 
 Latest targeted checkpoint: [Redaction control-object boundary](#october-2--redaction-control-object-boundary): repaired source patch, 14 runtime tests, Bun boundary checks and fresh full-series preparation. Runtime enablement and complete redaction acceptance remain open.
@@ -1447,3 +1447,56 @@ Investigation of PR #14's hosted app-choice timeout found that notification sett
 Notification policy controls now expose a native disabled state and “Working…” while the operation is pending, then rerender as enabled after success or failure. A handler guard also prevents stale handlers from changing choices during that interval. Other Settings navigation rows remain enabled.
 
 The notification suite passed **30 executions** (10 cases repeated three times), including the previously failing full settings-to-shade journey, delayed policy persistence and failed-write recovery. **25 additional Settings/sensor/MVP navigation cases passed**, covering light/dark and compact/wide layouts. `npm run verify` passed **114 tests**, TypeScript and the web build. Evidence: `artifacts/calendar-preferences-review/test-results/notification-settings-review/` with retained negative control and frozen inputs. Android builds skipped; new hosted verification remains pending.
+
+
+## October 2 — Full browser qualification and history test budget
+
+The complete committed snapshot `2d6c424f87af4baa151f1714a486009e04ad006a` passed **927/927 browser tests in 17.1 minutes**, with two workers and an isolated renderer on port 5388. Evidence: `artifacts/calendar-preferences-review/test-results/full-browser-2d6c424/`. Live development renderer and authenticated local-agent bridge both returned HTTP 200 during the campaign. The suite uses browser fixtures where documented; it does not establish physical-device or real-provider acceptance.
+
+PR #14 pull run `37064595888` also completed all three browser shards successfully at its exact head `a3b6ff702edf837488d85b4892b6c80a69e00c9e`. Its separate push run had two failures. The notification-choice race was addressed in PR #18. The shard-3 trace shows all 399 notification writes and compaction returning the expected values in 23.7 seconds, followed by a 3.4-second reload; the 30-second overall test deadline expired during final replay evaluation. The full-capacity scenario now has a scoped 60-second budget with every operation and assertion retained. No production behavior or performance target was changed.
+
+All **11 notification-history cases passed** after that adjustment. `npm run verify` passed **114 tests**, TypeScript and the web build. Evidence: `test-results/history-budget-review/` in the review checkout. Android builds skipped. Newer pending source and native/provider/user acceptance remain outside the 927-case checkpoint; the overall MVP goal remains open.
+
+The report/test-budget checkpoint was then rebased onto `54a8229`, which adds browser reading restrictions and password-provider setup. The combined source passed **73 affected browser cases** (reading, provider setup, notifications and history) and all **114 repository tests**, TypeScript and web build. This targeted qualification does not expand the earlier 927-case claim to the newer source. Native/provider fixtures do not establish installed Proton or Android execution. Rebased logs are retained under `test-results/history-budget-review/`.
+
+
+## October 2 — Timestamp-based video export
+
+Browser video editing now uses pinned Mediabunny 1.61.0 with WebCodecs to encode selected media timestamps independently of playback acknowledgment and audio-clock delays. It trims, rotates and crops locally, retains source audio, and preserves the existing media-element/MediaRecorder fallback when timestamp codec support is unavailable. Blob URLs are owned and revoked by export/review lifecycles. MPL license and source-location notices ship under the public licenses directory.
+
+A known-color/known-tone source verifies only the selected green frames and 880 Hz interval survive a 0.25–0.75 second trim, including decoded output at 0, 0.2 and 0.45 seconds and bounded audio duration. With the timestamp path removed but the revised loading path retained, the control fails because the exported clip has no decoded frame at 0.45 seconds. A separate control against the prior committed source also fails. These logs are retained, not replaced by the passing result.
+
+**37 Chromium browser cases passed** across video edits, source preservation, exact receipt replay, transactional failure, cancellation/reload, codec fallback with audio, Photos edits/albums and camera controls. The boundary case passed again after improving its missing-frame diagnostic. `npm run verify` passed **114 tests**, TypeScript and the web build. Evidence: `artifacts/calendar-preferences-review/test-results/video-timestamp-review/`, including frozen inputs, dependency installation, negative controls and terminal checks.
+
+These synthetic media fixtures exercise real browser codecs and storage, not physical-camera quality or Android encoding. Cross-browser timestamp-codec support and fallback precision remain bounded by the available engines; this campaign does not claim WebKit or device acceptance. Android builds skipped; hosted verification pending.
+
+
+## October 2 — Browser recording codec and byte persistence
+
+Browser capture now chooses a supported audio encoding from Opus WebM, Opus Ogg and MP4, falling back to the browser default if none is advertised. Newly retained recordings store ArrayBuffer bytes in IndexedDB and reconstruct Blobs for playback. Metadata excludes both payload representations. Transcript edits and deletion/restore preserve the bytes; expiry clears bytes and transcript while retaining the operation receipts that prevent replay. Older Blob recordings remain readable.
+
+**27 Chromium cases passed** across capture, Notes recording/reload/playback, legacy audio, deletion recovery, stale operations and expiry. **Three WebKit cases passed**, including the full rendered Notes record/review/save/reload/play/restore journey, exact binary bytes through transcript edits and restore, and failed byte-read atomicity. The prior storage implementation fails the retained WebKit control with “Recording change could not be saved.” Chromium retains coverage of legacy Blob records; this does not claim WebKit can create those historical records.
+
+`npm run verify` passed **114 tests**, TypeScript and the web build. Evidence: `artifacts/calendar-preferences-review/test-results/audio-byte-review/` with frozen inputs, terminal results and negative control. The audio sources are synthetic browser streams, so these checks do not prove physical microphone quality or agent ASR. The separate connected-voice routing changes are not included in this checkpoint. Android builds skipped; hosted checks and full device/provider acceptance remain open.
+
+## October 2 — Real host-agent ASR configuration
+
+The host launcher now passes verified installed Whisper assets to the agent's standalone ASR provider. `ALPHA_LOCAL_ASR=auto` (default) enables the provider when the standard assets exist; `off` disables it and `required` fails startup when assets are missing. Explicit `ALPHA_WHISPER_BIN` and `ALPHA_ASR_MODEL` paths must be absolute. The launcher checks executable access, bounded binary size and the supported tiny.en model's exact size and SHA-256 before enabling it. It does not download assets. This host configuration is separate from Android's packaged runtime.
+
+On this Mac the defaults are `/opt/homebrew/bin/whisper-cli` and `~/.cache/alphaphone-asr/tiny.en/ggml-model.bin`. To repeat the real service check, launch an isolated profile with `ALPHA_LOCAL_ASR=required ALPHA_REMOTE_PORT=47859 ALPHA_REMOTE_PROFILE=<private-absolute-directory> npm run agent:local`, then run `scripts/test-agent-asr.mjs` with the same port/profile variables. The test uses locally synthesized fixture speech and never uploads user recordings. An existing prepared runtime source can be selected with `ALPHA_ELIZA_SOURCE`.
+
+The isolated agent returned `ready:true` and transcribed “Please remember to water the plants tomorrow morning.” verbatim. Duplicate requests returned 409, invalid WAV and silence returned 422, and an invalid credential returned 401. Sanitized evidence is retained in `artifacts/calendar-preferences-review/test-results/host-asr-review/runtime.json`; it contains no enrollment credentials. Configuration unit checks cover missing, explicitly disabled, relative and incompatible assets.
+
+This closes host ASR startup configuration only. Browser-to-agent binary voice transport, actual speech-output readiness, Android microphone/runtime execution and device acceptance remain open. The browser's manual transcript-review fallback does not establish agent ASR parity. Android builds remain skipped at the user's direction.
+
+`npm run verify` passed **116 tests**, TypeScript and the web build for this checkpoint. The runtime test passed against an isolated agent on port 47859; it did not restart the live development agent or establish hosted CI status.
+
+## October 2 — Browser development ASR transport
+
+The host-owned development bridge now accepts only the exact Whisper status and transcription routes for speech. Transcription carries bounded canonical base64 WAV bytes through the browser's same-origin JSON envelope and forwards raw bytes with a request ID to the authenticated agent. Speech requests require the selected owner ID; mismatches fail before dispatch. Credentials stay on the host. The bridge rejects malformed payloads, route/method confusion and oversized audio, bounds speech responses to 128 KiB, and aborts the upstream request when the browser disconnects.
+
+Synthetic HTTP contracts verify exact bytes (including a 2 MiB boundary payload), owner rejection, cross-origin rejection, canonical encoding, required request IDs and upstream cancellation. A separate real-service run passes synthetic spoken audio through this bridge to the actual isolated Whisper agent: the expected sentence was transcribed, duplicate requests returned 409 and malformed/silent WAV returned 422. Invalid credentials were independently rejected by the agent with 401. Reproduce the latter with `node --import tsx scripts/test-agent-asr.mjs --bridge` and the isolated profile/port environment described above. Evidence: `artifacts/calendar-preferences-review/test-results/agent-speech-bridge-review/`.
+
+This transport is not yet wired into the rendered recording flow. Browser PCM conversion and voice selection, actual agent TTS and Android/device acceptance remain open. The live development stack was restarted with verified host ASR enabled and its renderer returned HTTP 200 on port 5317; that restart preceded this transport checkpoint. No Android builds were run.
+
+`npm run verify` passed **117 tests**, TypeScript and the web build on the frozen transport checkpoint. Hosted verification remains separate and pending.

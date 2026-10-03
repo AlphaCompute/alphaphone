@@ -3,7 +3,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
 import { androidEnv } from './toolchain.mjs';
 import { requireHostedFixtureEnvironment, assertFixtureIdentity } from './ci-emulator-display.mjs';
@@ -179,7 +179,7 @@ export function collectOverlayFailureDiagnostics({ environment, sdkEnvironment, 
   return evidence;
 }
 
-export async function main({ environment = process.env, execute = execFileSync, sdkEnvironment, outputDirectory, sleep = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds)), now = Date.now, fileDigest = sha } = {}) {
+export async function main({ environment = process.env, execute = execFileSync, executeRemount = spawnSync, sdkEnvironment, outputDirectory, sleep = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds)), now = Date.now, fileDigest = sha } = {}) {
   const serial = environment.ANDROID_SERIAL;
   requireHostedFixtureEnvironment(environment, serial); // Before download or device access.
   require(environment.ALPHA_DISPOSABLE_WEBVIEW_FIXTURE === 'api35-default-x86_64', 'Explicit disposable provider fixture required');
@@ -191,7 +191,22 @@ export async function main({ environment = process.env, execute = execFileSync, 
   const save = () => fs.writeFileSync(path.join(output, 'result.json'), JSON.stringify(state, null, 2) + '\n');
   const command = (file, args, timeout = 20000) => {
     const started = now();
-    try { const result = execute(file, args, { env, encoding: 'utf8', timeout, maxBuffer: 16 * 1024 * 1024 }); state.commands.push({ file, args, success: true }); save(); return result; }
+    try {
+      const options = { env, encoding: 'utf8', timeout, maxBuffer: 16 * 1024 * 1024 };
+      let result;
+      if (args.length === 3 && args[2] === 'remount') {
+        // adb remount reports its result on stderr on this API35 image.
+        // Capture both channels only here; preserve transport failures.
+        const captured = executeRemount(file, args, options);
+        if (captured.error || captured.status !== 0 || captured.signal) {
+          const error = captured.error || new Error('adb remount failed');
+          Object.assign(error, { status: captured.status, signal: captured.signal, stdout: captured.stdout, stderr: captured.stderr });
+          throw error;
+        }
+        result = [captured.stdout, captured.stderr].filter(value => value).join('\n');
+      } else result = execute(file, args, options);
+      state.commands.push({ file, args, success: true }); save(); return result;
+    }
     catch (error) { state.commands.push({ file, args, durationMilliseconds: Math.max(0, now() - started), success: false, status: error.status ?? null, signal: error.signal ?? null, code: error.code ?? null, stdout: String(error.stdout ?? '').slice(-65536), stderr: String(error.stderr ?? '').slice(-65536) }); save(); throw error; }
   };
   const run = (...args) => command(path.join(sdk, 'platform-tools/adb'), ['-s', serial, ...args]);

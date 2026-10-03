@@ -8,6 +8,7 @@ function harness(){
  const streams=[],recorders=[],requests=[],events=[],timers=new Map();let token=0,fail='',held=false;
  const stream=()=>{const track={stopped:false,stop(){this.stopped=true;}};const value={getTracks:()=>[track],track};streams.push(value);return value;};
  class Recorder {
+  static isTypeSupported(type){return type==='audio/webm;codecs=opus';}
   state='inactive';mimeType='audio/webm';
   constructor(){if(fail==='constructor')throw Error('Constructor failed');recorders.push(this);}
   start(){if(fail==='start')throw Error('Start failed');this.state='recording';}

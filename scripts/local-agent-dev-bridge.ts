@@ -7,8 +7,11 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 
 export const LOCAL_AGENT_BRIDGE_PATH='/__alpha-local-agent';
 const LIMIT=2*1024*1024;
+const AUDIO_ENVELOPE_LIMIT=3*1024*1024;
+const ASR_PATH='/api/asr/whisper';
 export function localAgentPathAllowed(path:unknown):path is string {
   if(typeof path!=='string'||path.length>2048||/[\\#%\r\n]/.test(path)||path.includes('..'))return false;
+  if(path===ASR_PATH||path===ASR_PATH+'/status')return true;
   return /^\/api\/(auth\/me|agents|status|conversations(?:\/[A-Za-z0-9_-]+(?:\/messages(?:\/stream)?)?)?|client-devices\/[A-Za-z0-9_/-]+|workflow(?:\/[A-Za-z0-9_/?=&-]+)?)$/.test(path);
 }
 export function createLocalAgentDevHandler(options:{origin:string;tokenFile:string;request?:typeof fetch}) {
@@ -48,12 +51,29 @@ export function createLocalAgentDevHandler(options:{origin:string;tokenFile:stri
     const onClose=()=>{if(!res.writableEnded)abort.abort();};res.on('close',onClose);
     try{
       const chunks:Buffer[]=[];let size=0;
-      for await(const chunk of req){size+=chunk.length;if(size>LIMIT){fail(413,'Request too large');return;}chunks.push(Buffer.from(chunk));}
+      for await(const chunk of req){size+=chunk.length;if(size>AUDIO_ENVELOPE_LIMIT){fail(413,'Request too large');return;}chunks.push(Buffer.from(chunk));}
       const input=JSON.parse(Buffer.concat(chunks).toString('utf8'));
+      const speech=input.path===ASR_PATH||input.path===ASR_PATH+'/status';
+      if(size>LIMIT&&!(input.path===ASR_PATH&&input.method==='POST')){fail(413,'Request too large');return;}
       if(input.storage){const result=localAgentStorage(join(dirname(options.tokenFile),'browser-device'),input.storage);res.writeHead(200,{'Content-Type':'application/json','Cache-Control':'no-store'});res.end(JSON.stringify(result));return;}
       if(!localAgentPathAllowed(input.path)||!['GET','POST'].includes(input.method)||
          (input.body!==undefined&&typeof input.body!=='string')||
          (input.method==='GET'&&input.body!==undefined)) {fail(400,'Unsupported local request');return;}
+      let audio:Buffer|undefined;
+      if(speech){
+        if(typeof input.ownerId!=='string'||!input.ownerId||input.storage||input.stream||input.body!==undefined){fail(400,'Invalid speech request');return;}
+        if(input.path===ASR_PATH+'/status'){
+          if(input.method!=='GET'||input.audioBase64!==undefined||input.requestId!==undefined){fail(400,'Invalid speech status request');return;}
+        }else{
+          if(input.method!=='POST'||typeof input.requestId!=='string'||!/^[0-9a-f-]{36}$/i.test(input.requestId)||
+             typeof input.audioBase64!=='string'||!input.audioBase64.length||input.audioBase64.length>Math.ceil(LIMIT/3)*4||
+             !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(input.audioBase64)){
+            fail(400,'Invalid speech audio request');return;
+          }
+          audio=Buffer.from(input.audioBase64,'base64');
+          if(audio.length>LIMIT||audio.toString('base64')!==input.audioBase64){fail(400,'Invalid speech audio bytes');return;}
+        }
+      }else if(input.audioBase64!==undefined||input.requestId!==undefined){fail(400,'Speech payload requires a speech route');return;}
       const streamPath=/^\/api\/conversations\/[A-Za-z0-9_-]+\/messages\/stream$/.test(input.path);
       if((input.stream===true)!==streamPath||(streamPath&&(input.method!=='POST'||typeof input.ownerId!=='string'))){fail(400,'Unsupported streaming request');return;}
       const stat=statSync(options.tokenFile);
@@ -66,7 +86,8 @@ export function createLocalAgentDevHandler(options:{origin:string;tokenFile:stri
       for(const key of ['X-Eliza-Device-Id','X-Eliza-Device-Key','X-Eliza-Device-Capabilities']){
         const value=input.headers?.[key];if(value!==undefined){if(typeof value!=='string'||value.length>2048||/[\r\n]/.test(value))throw new Error('Invalid device header');headers[key]=value;}
       }
-      const result=await request(origin.origin+input.path,{method:input.method,headers,body:input.body,redirect:'error',
+      if(audio){headers['Content-Type']='audio/wav';headers['X-Request-Id']=input.requestId;}
+      const result=await request(origin.origin+input.path,{method:input.method,headers,body:audio??input.body,redirect:'error',
         signal:AbortSignal.any([abort.signal,AbortSignal.timeout(120000)])});
       if(input.stream===true){
         if(result.status===401)pairing=undefined;
@@ -80,7 +101,7 @@ export function createLocalAgentDevHandler(options:{origin:string;tokenFile:stri
         if(!abort.signal.aborted)res.end();return;
       }
       const reader=result.body?.getReader();let received=0;const output:Uint8Array[]=[];
-      if(reader)try{while(true){const item=await reader.read();if(item.done)break;received+=item.value.length;if(received>LIMIT)throw new Error('Response too large');output.push(item.value);}}finally{await reader.cancel();}
+      if(reader)try{while(true){const item=await reader.read();if(item.done)break;received+=item.value.length;if(received>(speech?128*1024:LIMIT))throw new Error('Response too large');output.push(item.value);}}finally{await reader.cancel();}
       if(abort.signal.aborted)return;
       res.writeHead(200,{'Content-Type':'application/json','Cache-Control':'no-store','X-Content-Type-Options':'nosniff'});
       let body=Buffer.concat(output).toString('utf8');

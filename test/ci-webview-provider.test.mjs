@@ -54,7 +54,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { main, collectOverlayFailureDiagnostics } from '../scripts/prepare-ci-webview.mjs';
 
-async function simulate({ drift, neverBoot = false, neverReady = false } = {}) {
+async function simulate({ drift, neverBoot = false, neverReady = false, remountChannel = 'stdout', remountStatus = 0, remountSignal = null } = {}) {
   const parent = fs.mkdtempSync(path.join(os.tmpdir(), 'alpha-provider-sequence-'));
   const output = path.join(parent, 'evidence'), calls = [];
   let elapsed = 0, installed = false, removed = false, stopped = false, rebooted = false, offline = 0, selectionReads = 0;
@@ -126,7 +126,10 @@ async function simulate({ drift, neverBoot = false, neverReady = false } = {}) {
   };
   let error;
   try {
-    await main({ environment: { ...env, ALPHA_DISPOSABLE_WEBVIEW_FIXTURE: 'api35-default-x86_64' }, execute,
+    await main({ environment: { ...env, ALPHA_DISPOSABLE_WEBVIEW_FIXTURE: 'api35-default-x86_64' }, execute, executeRemount: (file, args, options) => {
+        const text = execute(file, args, options);
+        return { status: remountStatus, signal: remountSignal, stdout: remountChannel === 'stdout' ? text : '', stderr: remountChannel === 'stderr' ? text : '' };
+      },
       sdkEnvironment: { ANDROID_HOME: '/sdk' }, outputDirectory: output,
       now: () => elapsed, sleep: async ms => { elapsed += ms; },
       fileDigest: f => path.basename(f) === 'chromium.zip' ? candidate.archiveSha256 : path.basename(f) === 'SystemWebView.apk' ? candidate.apkSha256 : stockHash });
@@ -271,5 +274,17 @@ test('one authenticated requested overlay activation reboot completes provider f
 test('requested overlay reboot refuses repeat, unknown wording, changed identity, stock, backing and size',async()=>{
  for(const drift of ['overlay-repeat','overlay-unknown','overlay-identity','overlay-stock','overlay-size','overlay-alias','overlay-before-size','overlay-never-boot']){
   const r=await simulate({drift});assert.ok(r.error,drift);assert.equal(r.installed,false,drift);assert.equal(r.removed,false,drift);assert.ok(r.calls.filter(c=>c==='reboot').length<=2,drift);
+ }
+});
+
+test('stderr-only remount transcript follows the bounded overlay reboot flow', async () => {
+ const r=await simulate({drift:'overlay-reboot',remountChannel:'stderr'});assert.ifError(r.error);
+ assert.equal(r.calls.filter(c=>c==='reboot').length,2);assert.equal(r.calls.filter(c=>c==='remount').length,2);
+ assert.match(r.result.overlayRemountOutputs[0],/Now reboot your device/);assert.equal(r.result.scratchBytes,512*1024*1024);assert.equal(r.installed,true);
+});
+test('successful-looking remount stderr never overrides failed exit or termination', async () => {
+ for(const option of [{remountStatus:1},{remountStatus:null,remountSignal:'SIGTERM'}]){
+  const r=await simulate({remountChannel:'stderr',...option});assert.match(r.error.message,/remount failed/);assert.equal(r.removed,false);assert.equal(r.installed,false);
+  const failed=r.result.commands.find(c=>!c.success&&c.args.at(-1)==='remount');assert.match(failed.stderr,/remount succeeded/);
  }
 });
