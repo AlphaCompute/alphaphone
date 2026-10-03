@@ -48,10 +48,15 @@
     "plugins/plugin-assistant/test/workflow-owner-enrollment.test.ts": "168fde5f1d5871d39f3bf462135745107442e79847773b87475b20caed4e0bdf",
     "plugins/plugin-assistant/test/workflow-owner-dispatch.test.ts": "aeb29060516a6e25b11f5f32b73b5f382221dcc59d4434511f9dad8c417569c0",
     "plugins/plugin-workflow/src/services/phone-workflow-generation.ts": "629dce92af9fdb1685cd8cc72bd7400abd13b2f6283fa8f6ff5b0dc075228b98",
-    "plugins/plugin-workflow/src/services/workflow-service.ts": "f843af50aef4bf34da4f91cc0bcd8402319d9e127c29de2dda62eae367f45af9",
-    "plugins/plugin-workflow/src/routes/workflow-routes.ts": "6b5801e9488df87e25803df22ef787126545bce3a2220120900ae5bdcb4ccee8",
+    "plugins/plugin-workflow/src/services/workflow-service.ts": "ccc91de080b3a534560093e2d5ea97bba4f1613b84bcb3bb9986bff3e7409115",
+    "plugins/plugin-workflow/src/routes/workflow-routes.ts": "6ebcbbdf076e9df70fb6c9ff6b16bcb07e8c4b9a295f0323f52a829a515071b8",
     "plugins/plugin-workflow/__tests__/phone-workflow-generation.test.ts": "121d844a337ede32ccca3630ea416842fe75292a3b962323d966710cbe2172a3",
-    "plugins/plugin-workflow/__tests__/phone-workflow-generation-route.test.ts": "c4965339fbc6bcf80d7ac1e0e66eca3e2ed54e27bc85737ce104e2123d36ef77"
+    "plugins/plugin-workflow/__tests__/phone-workflow-generation-route.test.ts": "c4965339fbc6bcf80d7ac1e0e66eca3e2ed54e27bc85737ce104e2123d36ef77",
+    "plugins/plugin-workflow/src/services/workflow-status.ts": "bed439f99de3e751f64f4b9677125156c026f5a48ea3d0e0d0f466c45f7e755a",
+    "plugins/plugin-workflow/src/lib/automations-builder.ts": "641fbbd233a1a4d0fd40beb346b0fc1fd11074c0165b10cbd20095bca0f0eea8",
+    "plugins/plugin-workflow/__tests__/unit/workflow-routes.test.ts": "6f25190b0195adab69aa57f36207511573e26e2a79567ab7024576c2f7d27923",
+    "plugins/plugin-workflow/__tests__/integration/routes-e2e.test.ts": "abf36fe49b422e47c378d8d449393236bfa21cf9dc0bbc5c36ea5a8929cc7585",
+    "plugins/plugin-workflow/__tests__/unit/workflow-status.test.ts": "059161708da08a73757a3750a17ed181fa658e24a89c5018b70d4eb1d77a2117"
   },
   "patches": [
     "android-secure-store-socket.patch",
@@ -71,7 +76,8 @@
     "workflow-device-owner-binding.patch",
     "calendar-tool-format-guidance.patch",
     "device-operation-key-guidance.patch",
-    "typed-workflow-generation.patch"
+    "typed-workflow-generation.patch",
+    "workflow-runtime-location.patch"
   ],
   "patchHashes": {
     "approved-workflows-navigation.patch": "2202d04675531633db4b1ce3a2e49e3e870c259c341acaf20b17bbef6be99c9a",
@@ -81,6 +87,7 @@
     "workflow-device-owner-binding.patch": "4c258a6da2ca1597c9933accecbba6451f844b73b0121f8261f7a12ceefed449",
     "calendar-tool-format-guidance.patch": "64f38f9b7da7fe4773ce13bd1751a36accf494788f7fb1cd34878655218e43fe",
     "device-operation-key-guidance.patch": "78ff3fa0477fbd5f20a9fee1e288306ccacb15e87383d8b1ab7c87f190170902",
-    "typed-workflow-generation.patch": "c6b3840f2860542e5411dc0a98e2e7191643a3b8ac32de2534cebf9fbfc1625e"
+    "typed-workflow-generation.patch": "c6b3840f2860542e5411dc0a98e2e7191643a3b8ac32de2534cebf9fbfc1625e",
+    "workflow-runtime-location.patch": "0f91cc5e29c9d1c45b7c4f7bd350a2881948dc3ad6787446b1879f7741f69d63"
   }
 }

@@ -1,0 +1,225 @@
+--- /dev/null
++++ b/plugins/plugin-workflow/src/services/workflow-status.ts
+@@ -0,0 +1,29 @@
++/** Execution is embedded in this agent host; this says nothing about model inference. */
++export interface WorkflowStatusResponse {
++  mode: 'local' | 'disabled';
++  host: string | null;
++  status: 'ready' | 'error';
++  cloudConnected: false;
++  localEnabled: boolean;
++  platform: 'runtime';
++  executionLocation: 'agent-runtime';
++  cloudHealth: 'unknown';
++  engine: 'smthrs';
++  errorMessage?: string | null;
++}
++
++export function workflowRuntimeStatus(authoringAvailable: boolean, executionAvailable: boolean): WorkflowStatusResponse {
++  const available = authoringAvailable && executionAvailable;
++  return {
++    mode: available ? 'local' : 'disabled',
++    host: available ? 'eliza://workflow' : null,
++    status: available ? 'ready' : 'error',
++    cloudConnected: false,
++    localEnabled: available,
++    platform: 'runtime',
++    executionLocation: 'agent-runtime',
++    cloudHealth: 'unknown',
++    engine: 'smthrs',
++    ...(!available ? {errorMessage: 'Workflow authoring or execution service is not registered'} : {}),
++  };
++}
+--- a/plugins/plugin-workflow/src/routes/workflow-routes.ts
++++ b/plugins/plugin-workflow/src/routes/workflow-routes.ts
+@@ -26,17 +26,8 @@
+   json: (res: http.ServerResponse, body: unknown, status?: number) => void;
+ }
+ 
+-export interface WorkflowStatusResponse {
+-  mode: 'cloud' | 'disabled';
+-  host: string | null;
+-  status: 'ready' | 'error';
+-  cloudConnected: boolean;
+-  localEnabled: boolean;
+-  platform: 'cloud';
+-  cloudHealth: 'healthy' | 'unknown';
+-  engine: 'smthrs';
+-  errorMessage?: string | null;
+-}
++export type { WorkflowStatusResponse } from '../services/workflow-status';
++import { workflowRuntimeStatus } from '../services/workflow-status';
+ 
+ function isRecord(value: unknown): value is Record<string, unknown> {
+   return value !== null && typeof value === 'object' && !Array.isArray(value);
+@@ -220,14 +211,7 @@
+     }
+     if (ctx.method === 'GET' && path === '/status') {
+       ctx.json(ctx.res, {
+-        mode: 'cloud',
+-        host: 'eliza-cloud',
+-        status: 'ready',
+-        cloudConnected: true,
+-        localEnabled: false,
+-        platform: 'cloud',
+-        cloudHealth: 'healthy',
+-        engine: 'smthrs',
++        ...workflowRuntimeStatus(true, Boolean(ctx.runtime?.getService(EMBEDDED_WORKFLOW_SERVICE_TYPE))),
+         manualSubmissionProtocol: 1,
+         approvalReceiptProtocol: 1,
+         approvalPresentationProtocol: 1,
+--- a/plugins/plugin-workflow/src/lib/automations-builder.ts
++++ b/plugins/plugin-workflow/src/lib/automations-builder.ts
+@@ -15,7 +15,8 @@
+ import type { AgentRuntime, Room, Task, UUID } from '@elizaos/core';
+ import { ElizaError, stringToUuid } from '@elizaos/core';
+ import { getRouteOwnerEntityId } from '../routes/_helpers';
+-import type { WorkflowStatusResponse } from '../routes/workflow-routes';
++import { workflowRuntimeStatus } from '../services/workflow-status';
++import { EMBEDDED_WORKFLOW_SERVICE_TYPE } from '../services/embedded-workflow-service';
+ import { WORKFLOW_SERVICE_TYPE, type WorkflowService } from '../services/workflow-service';
+ import type {
+   WorkflowDefinition,
+@@ -472,20 +473,6 @@
+ function getWorkflowService(runtime: AgentRuntime): WorkflowService | null {
+   const candidate = runtime.getService(WORKFLOW_SERVICE_TYPE);
+   return (candidate as WorkflowService | null) ?? null;
+-}
+-
+-function buildWorkflowStatus(service: WorkflowService | null): WorkflowStatusResponse {
+-  return {
+-    mode: service ? 'cloud' : 'disabled',
+-    host: service ? 'eliza-cloud' : null,
+-    status: service ? 'ready' : 'error',
+-    cloudConnected: Boolean(service),
+-    localEnabled: false,
+-    platform: 'cloud',
+-    cloudHealth: service ? 'healthy' : 'unknown',
+-    engine: 'smthrs',
+-    errorMessage: service ? null : 'Workflow service is not registered',
+-  };
+ }
+ 
+ async function loadWorkflowList(
+@@ -611,7 +598,7 @@
+     .map((task) => buildCoordinatorTaskItem(task, taskRooms.get(task.id)));
+ 
+   const service = getWorkflowService(runtime);
+-  const workflowStatus = buildWorkflowStatus(service);
++  const workflowStatus = workflowRuntimeStatus(Boolean(service), Boolean(runtime.getService(EMBEDDED_WORKFLOW_SERVICE_TYPE)));
+   const { workflows: workflowList, workflowFetchError } = await loadWorkflowList(
+     service,
+     ownerEntityId
+--- a/plugins/plugin-workflow/src/services/workflow-service.ts
++++ b/plugins/plugin-workflow/src/services/workflow-service.ts
+@@ -36,7 +36,7 @@
+ export const WORKFLOW_SERVICE_TYPE = 'workflow';
+ 
+ export interface WorkflowServiceConfig extends Record<string, string> {
+-  host: 'eliza-cloud';
++  host: 'eliza://workflow';
+   backend: 'smthrs';
+ }
+ 
+@@ -154,9 +154,9 @@
+ export class WorkflowService extends Service {
+   static override readonly serviceType = WORKFLOW_SERVICE_TYPE;
+   override capabilityDescription =
+-    'Chat authoring and elizaOS Cloud API facade for native Smithers workflows.';
++    'Chat authoring and agent-runtime API facade for embedded Smithers workflows.';
+   readonly config: WorkflowServiceConfig = {
+-    host: 'eliza-cloud',
++    host: 'eliza://workflow',
+     backend: 'smthrs',
+   };
+ 
+--- a/plugins/plugin-workflow/__tests__/unit/workflow-routes.test.ts
++++ b/plugins/plugin-workflow/__tests__/unit/workflow-routes.test.ts
+@@ -8,7 +8,7 @@
+ import { WORKFLOW_SERVICE_TYPE } from '../../src/services/workflow-service';
+ 
+ describe('native workflow routes', () => {
+-  test('reports the elizaOS Cloud-owned smthrs runtime contract', async () => {
++  test('reports embedded execution without claiming cloud connection or local model inference', async () => {
+     let response: unknown;
+     const runtime = {
+       agentId: '00000000-0000-4000-8000-000000000001',
+@@ -29,13 +29,14 @@
+     });
+ 
+     expect(response).toEqual({
+-      mode: 'cloud',
+-      host: 'eliza-cloud',
++      mode: 'local',
++      host: 'eliza://workflow',
+       status: 'ready',
+-      cloudConnected: true,
+-      localEnabled: false,
+-      platform: 'cloud',
+-      cloudHealth: 'healthy',
++      cloudConnected: false,
++      localEnabled: true,
++      platform: 'runtime',
++      executionLocation: 'agent-runtime',
++      cloudHealth: 'unknown',
+       engine: 'smthrs',
+       manualSubmissionProtocol: 1,
+       approvalReceiptProtocol: 1,
+--- a/plugins/plugin-workflow/__tests__/integration/routes-e2e.test.ts
++++ b/plugins/plugin-workflow/__tests__/integration/routes-e2e.test.ts
+@@ -129,7 +129,7 @@
+     agentId: 'agent-route-test',
+     character: { name: 'Route Test Agent', settings: {} },
+     getSetting: () => null,
+-    getService: (key: string) => (withService && key === WORKFLOW_SERVICE_TYPE ? service : null),
++    getService: (key: string) => (withService && (key === WORKFLOW_SERVICE_TYPE || key === 'embedded_workflow_service') ? service : null),
+   } as unknown as AgentRuntime;
+   registerHttpPluginRoutes(runtime, {
+     name: 'workflow-test',
+@@ -186,9 +186,10 @@
+ 
+     expect(res.status).toBe(200);
+     expect(await res.json()).toMatchObject({
+-      mode: 'cloud',
++      mode: 'local',
+       status: 'ready',
+-      platform: 'cloud',
++      platform: 'runtime',
++      executionLocation: 'agent-runtime',
+       engine: 'smthrs',
+     });
+   });
+--- /dev/null
++++ b/plugins/plugin-workflow/__tests__/unit/workflow-status.test.ts
+@@ -0,0 +1,31 @@
++import {expect, test} from 'bun:test';
++import {workflowRuntimeStatus} from '../../src/services/workflow-status';
++import {buildAutomationListResponse} from '../../src/lib/automations-builder';
++
++for (const [authoring, execution] of [[true, false], [false, true], [false, false]]) {
++  test(`does not advertise execution with services ${authoring}/${execution}`, () => {
++    expect(workflowRuntimeStatus(authoring, execution)).toEqual({
++      mode:'disabled', host:null, status:'error', cloudConnected:false,
++      localEnabled:false, platform:'runtime', executionLocation:'agent-runtime',
++      cloudHealth:'unknown', engine:'smthrs',
++      errorMessage:'Workflow authoring or execution service is not registered',
++    });
++  });
++}
++test('describes the embedded agent host without inferring cloud health', () => {
++  const status = workflowRuntimeStatus(true, true);
++  expect(status).toMatchObject({mode:'local', host:'eliza://workflow', status:'ready',
++    localEnabled:true, executionLocation:'agent-runtime', cloudConnected:false, cloudHealth:'unknown'});
++  expect(status.errorMessage).toBeUndefined();
++});
++
++for (const execution of [true, false]) {
++  test(`automation status requires embedded service: ${execution}`, async () => {
++    const runtime = {agentId:'00000000-0000-4000-8000-000000000001', character:{name:'QA'},
++      getRooms:async()=>[], getTasks:async()=>[],
++      getService:(name:string)=>name==='workflow'?{listWorkflows:async()=>[]}:
++        name==='embedded_workflow_service' && execution ? {} : null};
++    const response = await buildAutomationListResponse(runtime as any, 'owner');
++    expect(response.workflowStatus).toEqual(workflowRuntimeStatus(true, execution));
++  });
++}
