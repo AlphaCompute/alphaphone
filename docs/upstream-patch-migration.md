@@ -7,7 +7,7 @@ The product is migrating all maintained Eliza changes to reviewed `elizaOS/eliza
 | Change | Upstream disposition | Product adoption |
 | --- | --- | --- |
 | Hosted digest route registration | [PR #33104](https://github.com/elizaOS/eliza/pull/33104) merged as `bb669a907283269c1640967765e44931074b3a84`; exact-head hosted run 37073425370 passed | Pin and integration verification pending |
-| Android secure-store broker socket override | [PR #33212](https://github.com/elizaOS/eliza/pull/33212), head `e90495c489cdf6e447acaa59a27024aa1ea5a47f` | Review completed; hosted checks pending |
+| Android secure-store broker socket override | [PR #33212](https://github.com/elizaOS/eliza/pull/33212) merged as `6fa5a1015ab5866e283e3e7a7c772f8e800ccf14` | Reviewed head `e90495c489cdf6e447acaa59a27024aa1ea5a47f` passed hosted run 37156768822; product adoption pending |
 | Egress control objects, safe user-reply restoration, credential assignments | [PR #33213](https://github.com/elizaOS/eliza/pull/33213), head `cd7f299c57d836b10ab7dcb02c224a1f353f7d07` | Review found and fixed browser util-polyfill regression; local runtime/browser checks pass, hosted checks pending |
 | Native Android Calendar provider and typed package entrypoint | [PR #33214](https://github.com/elizaOS/eliza/pull/33214), head `834a05abbdb1479cc838ba178bcab3013ef8698b` | Draft; independent source review found no blocker; upstream Android consumer build and packed import/type checks pass; native flows and hosted qualification pending |
 | Resident sessions, approved workflow navigation, Clock contract | [PR #33026](https://github.com/elizaOS/eliza/pull/33026) | Existing draft; remaining Android runtime gates must not be inferred from source checks |
@@ -46,3 +46,18 @@ Fresh normal-host checks at #33026 head `28ee31f8fc69cb3610aa92e6ae2601c496419d0
 Upstream Calendar consumer recovery passed on the owned phone emulator with installed APK hashes checked. The permission bridge run did not pass: the consumer lost focus, and a captured system Quickstep ANR covered the app. Cleanup restored user 0 and removed the fixture user/packages. The owned emulator was restarted before retrying; this is not Calendar bridge acceptance. Both Alpha instrumentation APK variants rebuilt successfully with the correct qualified source baseline.
 
 The preserved 0036 manifest identifies runtime commit `ab8f9a7110ae7ddc5edd6a1e323f77e0362ec9d3`, whose tree was independently verified as `6b6a2622150bc4789598d156a001173f3ff3f2e2`. That commit is an ancestor of #33026 at `28ee31f8fc69cb3610aa92e6ae2601c496419d03`. Its current patch bytes match the historical recorded SHA-256. This establishes lineage and avoids proposing the 867-file snapshot again; it does not replace review and qualification of #33026.
+
+After the owned emulator restart, the same upstream Calendar APKs passed `permissionAndReviewedProviderLifecycle` (70.607 seconds), with installed hashes verified and complete cleanup. The earlier failed runs remain evidence of system-focus instability, not passes. The separate workflow permission callback check is still running.
+
+## Latest qualification checkpoint
+
+- #33216 merged as `50989e5c30652b1e63b3c3abffc74b4082bfe35e` after exact-head hosted checks passed.
+- #33214 merged as `4d12e1c0eea6f8651ee036140f091e9582d14679` after exact-head hosted checks and all three upstream consumer flows passed (recovery, permission/CRUD, workflow permission callback).
+- #33026 full canonical CI run 37157257406 completed successfully. Its Android acceptance remains a separate unresolved gate.
+- #33217 upstream native reminder engine flow passed on the owned emulator (10.007 seconds); installed APK hashes and disposable-user cleanup verified. Permission/bridge flow remains in progress.
+- [#33226](https://github.com/elizaOS/eliza/pull/33226) ports exact resident stop and launcher preservation; latest head `d83c90ca808a73c5f1a2c513e9cef44f64343126`. The production Android compile passed; fixture execution and native survival remain unverified.
+- [#33227](https://github.com/elizaOS/eliza/pull/33227) ports workflow owner binding and authenticated enabled views at `97ec4b9b3534a4fb55b2e3984777b9fa86608bc4`; seven real HTTP/SQL tests passed.
+- [#33228](https://github.com/elizaOS/eliza/pull/33228) ports the reviewed Clock coordinator and accurate alarm-effect wording, stacked on #33026. Source and packed-consumer checks and focused strict typecheck passed; full package checks remain limited by sparse dependencies.
+- Kokoro is ported locally with real native WAV synthesis and authenticated HTTP/SQLite lifecycle checks. Review corrected optional ABI capability probing; the final flow is rerunning before publication.
+
+No incorporated patch has yet been retired from Alpha: merged commit adoption and both distribution qualifications are still required.
