@@ -66,5 +66,23 @@ test('real browser capture transcribes synthetic speech through the actual local
  const duration=await page.evaluate(()=>(window as any).spoken.duration);await page.waitForTimeout(duration*1000+400);
  await page.getByRole('button',{name:'Stop recording',exact:true}).click();await page.getByRole('button',{name:'Transcribe on this computer',exact:true}).click();
  await expect(page.getByRole('textbox',{name:'Review transcript',exact:true})).toHaveValue(/water the plants tomorrow morning/i,{timeout:20000});
- await page.screenshot({path:test.info().outputPath('real-local-agent-transcript.png')});await page.evaluate(()=>(window as any).spoken.ctx.close());
+ await page.evaluate(async()=>{
+  const {registerPlugin}=await import('/src/platform-plugins.ts');const voice=registerPlugin<any>('AlphaVoiceCloud');
+  const events:any[]=[],revoked:string[]=[];const revoke=URL.revokeObjectURL.bind(URL);URL.revokeObjectURL=url=>{revoked.push(url);revoke(url);};
+  await voice.addListener('playbackEnded',(event:any)=>events.push(event));(window as any).agentPlayback={voice,events,revoked};
+ });
+ await page.getByRole('button',{name:'Listen to transcript',exact:true}).click();
+ await expect.poll(()=>page.evaluate(async()=>(await (window as any).agentPlayback.voice.state()).playing),{timeout:20000}).toBe(true);
+ await expect.poll(()=>page.evaluate(()=>(window as any).agentPlayback.events.length),{timeout:15000}).toBeGreaterThan(0);
+ expect(await page.evaluate(()=>(window as any).agentPlayback.revoked.length)).toBeGreaterThan(0);
+ await page.getByRole('button',{name:'Listen to transcript',exact:true}).click();
+ await expect.poll(()=>page.evaluate(async()=>(await (window as any).agentPlayback.voice.state()).playing),{timeout:20000}).toBe(true);
+ await page.getByRole('button',{name:'Stop audio',exact:true}).click();
+ await expect.poll(()=>page.evaluate(async()=>(await (window as any).agentPlayback.voice.state()).playing)).toBe(false);
+ await page.screenshot({path:test.info().outputPath('real-local-agent-transcript.png')});
+ await page.getByRole('button',{name:'Listen to transcript',exact:true}).click();
+ await expect.poll(()=>page.evaluate(async()=>(await (window as any).agentPlayback.voice.state()).playing),{timeout:20000}).toBe(true);
+ await page.evaluate(async()=>{const {connectionController}=await import('/src/runtime/connection-ui.tsx');await connectionController.offline();});
+ await expect.poll(()=>page.evaluate(async()=>(await (window as any).agentPlayback.voice.state()).playing)).toBe(false);
+ await page.evaluate(()=>(window as any).spoken.ctx.close());
 });

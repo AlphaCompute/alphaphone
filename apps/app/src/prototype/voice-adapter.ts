@@ -413,7 +413,7 @@ export function installPrototypeVoiceAdapter(Component: any, views: Record<strin
       messages.ready='Record in this browser. English transcription runs on the local agent on this computer when you choose Transcribe.';
       messages.recorded='Microphone is off. Transcribe on this computer sends this recording to your local development agent.';
       messages.transcribing='Transcribing on this computer. Nothing has been saved.';
-      messages.review='Review the transcript, listen using a local browser voice, or save it with the recording. No chat message has been sent.';
+      messages.review='Review the transcript, listen using the local agent on this computer, or save it with the recording. No chat message has been sent.';
     }
     result.recording = true;
     result.rec = {
