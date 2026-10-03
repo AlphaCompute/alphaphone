@@ -27,6 +27,7 @@ for (const variant of ["standalone", "launcher"])
     fs.copyFileSync(
       `android/app/build/outputs/apk/${variant}/${mode}/app-${variant}-${mode}${suffix}.apk`,
       `artifacts/${variant}-${mode}${suffix}.apk`,
+      fs.constants.COPYFILE_FICLONE,
     );
   }
 run("node", ["scripts/verify-apks.mjs"]);
