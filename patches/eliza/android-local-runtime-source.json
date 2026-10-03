@@ -16,7 +16,7 @@
     "packages/core/src/security/guarded-stream.ts": "7f12512d8baea1dbc7a86229dcf18c8048ff1113b89915c319dc3202056ff334",
     "packages/core/src/security/pii-pseudonymizer.ts": "bffc53238d2580c5ad2d436e0e247ac425189487bf482e51b5917567f29ee111",
     "packages/core/src/security/runtime-abort-signal.ts": "da3bb65a56334a249399c0a2ec4e0f9d227c8e09e3566237609f679de76b0d78",
-    "packages/core/src/security/secret-swap.ts": "3ad15d799ac025f25a638aa9c3ec0d007753be6a2e4349df223474c61368322c",
+    "packages/core/src/security/secret-swap.ts": "800994cf70ed615cd912a742e383d661dbfb603c0186c7b2fab8e454a5701a98",
     "plugins/plugin-assistant/src/services/device-actions/contract.ts": "7820c4230677f7f84a0066df577c06e95f905bf89b7a6fde412a0794ea97de74",
     "plugins/plugin-assistant/src/services/message/reply-policy.ts": "6258737cf79a623f58988d6788462b9b5d12ae54b6916b5e198dc873197ee40c",
     "plugins/plugin-assistant/test/device-actions.e2e.test.ts": "ecf07e1bfa6d4e00d023bbbd7360872755e1646f98f7f5362854b1165b42b924",
@@ -70,7 +70,14 @@
     "plugins/plugin-assistant/src/services/device-actions/view-profile.ts": "83bb2e07b28be9afe9c9c2ea5e6ed5021214871df9d480974faee1a753f1a5f0",
     "plugins/plugin-workflow/__tests__/integration/device-bridge-e2e.test.ts": "47fa645374fafbcf1d7dfba697d553294c3a3507e6b5bed4b6896c88556de4cd",
     "packages/core/src/__tests__/swap-quoted-credentials.test.ts": "7adb7cb914057810e639291cbc6413e58bf2d4104f68887f3a043f980284a47b",
-    "packages/core/src/__tests__/swap-uri-credentials.test.ts": "97dc0ff77711587fdfb4b92c7b367d0fef595a8c98a13d587422262b7f0696bf"
+    "packages/core/src/__tests__/swap-uri-credentials.test.ts": "97dc0ff77711587fdfb4b92c7b367d0fef595a8c98a13d587422262b7f0696bf",
+    "packages/core/src/__tests__/swap-encoded-credentials.test.ts": "4a48d5bbd2f9a4cd9d53de0ddfc3793bb71ee1fbd22412045340a5278c51f4bd",
+    "packages/core/src/security/incoming-message-security.ts": "dcb8e5dce41d26258fb8c17134f7fd858c79c8e23f147dd3912a346f4b47af24",
+    "packages/core/src/__tests__/message-runtime-stage1.test.ts": "1c97828c1ca4c340f2ef2270c4006f69a439a1f21d59d41cbbd37bf5d9ae3901",
+    "packages/app/scripts/aosp/seccomp-shim/sigsys-handler.c": "41aa61829efcf93e39943701c6e553bb7e2af1648828611b9150b75f06e02ae7",
+    "packages/app/scripts/aosp/seccomp-shim/sigsys-handler-arm64.c": "6ecab1907ba87fa7a64cb6756283c48581fb29fedc3bd618676d7f2babc07986",
+    "packages/app/scripts/aosp/seccomp-shim/sigsys-handler-riscv64.c": "93c500c5a89783a2c138cf9d39a0ce5173b0de5014ce725c4afb3bf77293673f",
+    "packages/app/scripts/aosp/seccomp-shim/preserve-sigsys.h": "12569a6dcb28510d34eba1cb1afe9bff0bfd3e4187b1bfae02913e8d01e7af20"
   },
   "patches": [
     "android-secure-store-socket.patch",
@@ -101,7 +108,10 @@
     "egress-short-credentials.patch",
     "authenticated-enabled-views.patch",
     "egress-quoted-credentials.patch",
-    "egress-uri-credentials.patch"
+    "egress-uri-credentials.patch",
+    "egress-encoded-credentials.patch",
+    "stage1-source-repair-fixture.patch",
+    "android-preserve-sigsys.patch"
   ],
   "patchHashes": {
     "android-secure-store-socket.patch": "457ea3d0b91c80c53c4bd3db25bb85cea6079d87c5ee2b02a96757e0a31ae900",
@@ -131,6 +141,9 @@
     "egress-short-credentials.patch": "0a1b80d101760c311318bacc852ee695904cbe0db9d38b53f85ce26e7e60c23e",
     "authenticated-enabled-views.patch": "3947ef246ff65e520d8870315222b463c15a49dfb56cbd6784acd06b2ba3a2f1",
     "egress-quoted-credentials.patch": "010eeaeede83b1e8359f10457d1c8fc5188b94dbbba3e12eb3b9f39f14b244da",
-    "egress-uri-credentials.patch": "dc77b4df7ae9b83a52b051dc4573ef63cf244c3f662947692e17e7b5631e1f5d"
+    "egress-uri-credentials.patch": "dc77b4df7ae9b83a52b051dc4573ef63cf244c3f662947692e17e7b5631e1f5d",
+    "egress-encoded-credentials.patch": "1c740c08eefba62ec74a7622172c52feb22b7ed2bc6fdf17f3574473b21021e5",
+    "stage1-source-repair-fixture.patch": "5a09e5aa81580bd3f66c8c2483a715f7f7675d52e5a1bea3886c170575a44444",
+    "android-preserve-sigsys.patch": "1395125689f6e7789c0e11f8e928f38b80cb1fee9d47f1269027912dc789d8d2"
   }
 }

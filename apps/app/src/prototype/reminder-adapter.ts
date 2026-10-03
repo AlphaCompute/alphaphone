@@ -1,3 +1,5 @@
+import { alphaClient } from '../runtime/alpha-client';
+import { connectionController } from '../runtime/connection-ui';
 import {reminderCreations,retainReminderCreation,discardUndispatchedCreation,checkReminderCreation,reconcileReminderCreations,type ReminderCreation} from '../runtime/reminder-creations';
 import { DailyApps, type Reminder } from '../daily';
 import { pendingReminderDeletions,retainReminderDeletion,acknowledgeReminderDeletion,reconcileReminderDeletions,discardUndispatchedReminderDeletion } from '../runtime/reminder-deletions';
@@ -22,6 +24,45 @@ export function installReminderAdapter(Component: Bag, views: Bag) {
     const day = new Date(date); day.setHours(0,0,0,0);
     return { id: 'reminder:' + r.id, alphaReminderId: r.id, reminderBody:r.body, reminderAt:r.at, reminderOccurrence:r.occurrenceId, reminderRecurrence:r.recurrence, reminderHistory:r.history, reminderStatus:r.status, reminderTarget:r.target, off: Math.round((day.getTime()-today.getTime())/86400000), t: date.getHours()+date.getMinutes()/60, d: .25, title:r.title, cal:'personal', who:[], repeat:'none', alert:r.alertMinutes!==undefined?r.alertMinutes:r.recurrence?.leadMinutes || 0, notes:[r.body, r.snoozedAt && r.status==='scheduled' ? `Snoozed until ${new Date(r.at).toLocaleString()} · approximate delivery` : '', r.recurrence ? `${r.recurrence.rule} · ${r.recurrence.zone}. ${r.alertMinutes===null?'Next occurrence is saved with no alert after Done.':'Next occurrence is scheduled after Done.'} Future missing clock times use the first valid time after the gap; repeated clock times use the earlier offset.` : '', r.status === 'scheduling-failed' ? 'Saved, scheduling failed. Tap Snooze 10 minutes to retry.' : '', r.status === 'pending' ? 'No alert · saved on this device' : r.status === 'completed' ? 'Completed · no further alarm scheduled' : r.status === 'posted' ? 'Notification posted' : r.status === 'permission-denied' ? 'Not delivered · notifications were disabled. Enable notifications in Android settings, then edit this reminder to choose a new time and save.' : 'Scheduled · approximate delivery'].filter(Boolean).join('\n') };
   });
+  let tapBusy=false, tapRequested=false, tapInteraction=0;
+  const interaction=()=>{tapInteraction++;};
+  for(const name of ['openView','goHome','back']){const original=p[name];p[name]=function(...args:Bag[]){tapInteraction++;return original.apply(this,args);};}
+  const sameTarget=(a:Bag,b:Bag)=>!!a&&!!b&&Object.keys(a).length===Object.keys(b).length&&Object.entries(a).every(([key,value])=>b[key]===value);
+  async function checkReminderTap(explicit=false) {
+    if(tapBusy){if(explicit)tapRequested=true;return;}
+    const shell=owner;
+    if(!Capacitor.isNativePlatform()||!shell?.live||document.hidden||connectionController.getSnapshot().open||alphaClient.getState().context.sensitive||shell.vget('calendar').form)return;
+    const initialView=shell.S().view, initialOpen=shell.vget('calendar').open, interactionAt=tapInteraction;
+    const current=()=>tapInteraction===interactionAt&&owner===shell&&shell.live&&!document.hidden&&!connectionController.getSnapshot().open&&!alphaClient.getState().context.sensitive&&!shell.vget('calendar').form&&shell.S().view===initialView&&shell.vget('calendar').open===initialOpen;
+    tapBusy=true;
+    try {
+      const capability=await DailyApps.surfaceInfo();
+      if(!current()||capability.reminderTapVersion!==1)return;
+      const pending=await DailyApps.pendingReminderTap();
+      if(!current())return;
+      shell.vset('calendar',{reminderTapPending:!!pending.token,reminderTapToken:pending.token});
+      if(!pending.token)return;
+      if(!pending.retained||!pending.target){if(explicit)shell.toast('The original reminder changed. Its notification link is retained without opening a replacement.');return;}
+      const result=await DailyApps.listReminders();
+      if(!current())return;
+      const selected=result.reminders.find(row=>sameTarget(row.target,pending.target));
+      if(!selected){if(explicit)shell.toast('The exact reminder is unavailable. Its notification link is retained.');return;}
+      const confirmation=await DailyApps.pendingReminderTap();
+      if(!current()||confirmation.token!==pending.token||!confirmation.retained||!sameTarget(confirmation.target,pending.target))return;
+      const rows=[...(shell.nativeCalendarRows||[]),...events(result.reminders)];
+      const target=rows.find(row=>row.alphaReminderId===selected.id&&sameTarget(row.reminderTarget,pending.target));
+      if(!target)return;
+      shell.openView('calendar',{open:target.id,day:target.off,openDay:target.off,events:rows});
+      const openingInteraction=tapInteraction;
+      await new Promise<void>(resolve=>shell.setState({},resolve));
+      // Consume only after the exact detail is visible. Native rechecks the current
+      // source, occurrence and revision; a newer queued tap cannot be consumed here.
+      if(tapInteraction!==openingInteraction||owner!==shell||!shell.live||document.hidden||shell.S().view!=='calendar'||shell.vget('calendar').open!==target.id)return;
+      await DailyApps.consumeReminderTap({token:pending.token});
+      if(owner===shell&&shell.live)shell.vset('calendar',{reminderTapPending:false});
+    } catch {if(current())shell.vset('calendar',{reminderTapPending:true});}
+    finally{tapBusy=false;if(tapRequested){tapRequested=false;queueMicrotask(()=>void checkReminderTap(true));}}
+  }
   p.refreshReminders = async function (openId?: string, occurrenceId?: string) {
     // Resume and calendar refresh may supersede the notification's fetch.
     // Keep its navigation intent until the latest successful fetch consumes it.
@@ -58,19 +99,41 @@ export function installReminderAdapter(Component: Bag, views: Bag) {
   };
   p.componentDidMount = function () {
     mount.call(this); owner=this;
-    void this.refreshReminders();
+    window.addEventListener('pointerdown',interaction,true);window.addEventListener('keydown',interaction,true);
+    void this.refreshReminders();void checkReminderTap();
+    let chooserOpen=connectionController.getSnapshot().open;
+    this.reminderTapConnection=connectionController.subscribe(()=>{const next=connectionController.getSnapshot().open;if(chooserOpen&&!next)queueMicrotask(()=>void checkReminderTap(true));chooserOpen=next;});
     this.reminderCommittedHandler=()=>{if(this.live)void this.refreshReminders();};
     window.addEventListener('alpha:reminders-committed',this.reminderCommittedHandler);
     this.reminderListener=DailyApps.addListener('reminderOpened', r=>void this.refreshReminders(r.id,r.occurrenceId)).catch(()=>null);
-    this.reminderResume=DailyApps.addListener('appResumed', ()=>void this.refreshReminders()).catch(()=>null);
+    this.reminderResume=DailyApps.addListener('appResumed', ()=>{void this.refreshReminders();void checkReminderTap();}).catch(()=>null);
+    this.reminderTapVisible=()=>{if(!document.hidden)void checkReminderTap();};document.addEventListener('visibilitychange',this.reminderTapVisible);
+    this.reminderTapListener=DailyApps.addListener('pendingReminderTap',()=>void checkReminderTap(true)).catch(()=>null);
   };
   p.componentWillUnmount = function () {
+    this.reminderTapConnection?.();
+    document.removeEventListener('visibilitychange',this.reminderTapVisible);
+    window.removeEventListener('pointerdown',interaction,true);window.removeEventListener('keydown',interaction,true);
+    void this.reminderTapListener?.then((l:Bag)=>l?.remove());
     void this.reminderListener?.then((l:Bag)=>l?.remove()); void this.reminderResume?.then((l:Bag)=>l?.remove());
     window.removeEventListener('alpha:reminders-committed',this.reminderCommittedHandler);
     if(owner===this)owner=null;unmount.call(this);
   };
   views.calendar.render = function (state: Bag, api: Bag) {
     const out = render(state,api);
+    out.reminderTapPending=!!state.reminderTapPending;
+    out.checkReminderTap=()=>void checkReminderTap(true);
+    out.dismissReminderTap=async()=>{
+      const shell=owner,token=state.reminderTapToken;
+      if(!shell?.live||!token||document.hidden||shell.S().view!=='calendar'||shell.vget('calendar').form)return;
+      if(!window.confirm('Dismiss this saved notification link? The reminder itself will not change.'))return;
+      const epoch=tapInteraction;
+      try{
+        await DailyApps.dismissReminderTap({token});
+        const pending=await DailyApps.pendingReminderTap();
+        if(owner===shell&&shell.live&&epoch===tapInteraction)shell.vset('calendar',{reminderTapPending:!!pending.token,reminderTapToken:pending.token});
+      }catch{if(owner===shell&&shell.live)shell.toast('The notification link could not be dismissed. Refresh and retry.');}
+    };
     out.reminderDeleteUnknown=Number(owner?.reminderDeleteUnknown??state.reminderDeleteUnknown??0);
     out.checkReminderDeletions=()=>void owner?.refreshReminders();
     out.reminderCreateUnknown=Number(owner?.reminderCreateUnknown??state.reminderCreateUnknown??0);

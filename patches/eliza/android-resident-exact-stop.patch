@@ -49,24 +49,41 @@ index 0e9fbb8..73864a8 100644
  final class WorkflowSurvivorInventory {
   private static IOException refused(String message){return new IOException("IPC recovery required: "+message);}
   private static void check(boolean value,String message)throws IOException {if(!value)throw refused(message);}
-@@ -43,6 +43,63 @@ final class WorkflowSurvivorInventory {
+@@ -43,6 +43,80 @@ final class WorkflowSurvivorInventory {
    File proc=new File("/proc/"+pid);StructStat before=Os.stat(proc.getPath());String stat=new String(bounded(new File(proc,"stat"),16384),StandardCharsets.UTF_8);int end=stat.lastIndexOf(')');check(end>=0,"malformed worker process");String[] fields=stat.substring(end+2).trim().split("\\s+");check(fields.length>19&&fields[19].matches("[0-9]+"),"missing worker start time");
    File link=new File(proc,"exe");String executable=Os.readlink(link.getPath());check(executable.startsWith("/")&&!executable.endsWith(" (deleted)"),"invalid worker executable");StructStat exe=Os.stat(link.getPath());String digest=hash(link,deadline);StructStat after=Os.stat(proc.getPath());check(before.st_uid==after.st_uid&&before.st_ino==after.st_ino,"worker process changed");return new Identity(pid,before.st_uid,fields[19],executable,String.valueOf(exe.st_dev),String.valueOf(exe.st_ino),digest);
   }
 + interface ProcessObservation<T> { T read()throws Exception; }
-+ interface ProcessPresence { void stat(int pid)throws Exception; }
-+ /** An observation failure is benign only when a fresh kernel lookup proves absence. */
++ interface ProcessPresence { boolean live(int pid)throws Exception; }
++ /** An observation failure is benign only after fresh absence or stable terminal-state proof. */
 + static <T> T observePresent(int pid,ProcessObservation<T> observation,ProcessPresence presence)throws Exception {
 +  try{return observation.read();}
 +  catch(Exception failure){
-+   try{presence.stat(pid);}
++   try{if(!presence.live(pid))return null;}
 +   catch(android.system.ErrnoException absent){if(absent.errno==OsConstants.ENOENT)return null;throw failure;}
 +   catch(Exception uncertain){throw failure;}
 +   throw failure;
 +  }
 + }
++ static String terminalStateKey(int pid,String stat)throws IOException {
++  int end=stat.lastIndexOf(')');
++  if(!stat.startsWith(pid+" (")||end<0||end+2>=stat.length()||stat.charAt(end+1)!=' ')throw new IOException("malformed process state");
++  String[] fields=stat.substring(end+2).trim().split("\\s+");
++  if(fields.length<20||!fields[19].matches("[0-9]+")||!fields[0].matches("[RSDZTtXxKWPIN]"))throw new IOException("invalid process state");
++  return fields[0].matches("[ZXx]")?pid+":"+fields[19]:null;
++ }
++ private static boolean liveProcess(int pid)throws Exception {
++  File proc=new File("/proc/"+pid),state=new File(proc,"stat");
++  StructStat before=Os.stat(proc.getPath());
++  String first=terminalStateKey(pid,new String(bounded(state,16384),StandardCharsets.UTF_8));
++  if(first==null)return true;
++  String second=terminalStateKey(pid,new String(bounded(state,16384),StandardCharsets.UTF_8));
++  StructStat after=Os.stat(proc.getPath());
++  check(before.st_uid==after.st_uid&&before.st_ino==after.st_ino&&first.equals(second),"terminal process changed");
++  return false;
++ }
 + private static <T> T observePresent(int pid,ProcessObservation<T> observation)throws Exception {
-+  return observePresent(pid,observation,value->{Os.stat("/proc/"+value);});
++  return observePresent(pid,observation,WorkflowSurvivorInventory::liveProcess);
 + }
 + /** Only the exact resident command is signalable; shared-runtime siblings are preserved. */
 + static boolean residentArguments(byte[] bytes,String bun,String loader,String bundle)throws Exception {

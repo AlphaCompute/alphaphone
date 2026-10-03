@@ -1,0 +1,11 @@
+.alpha-calendar-response{box-sizing:border-box;width:400px;max-width:calc(100vw - 24px);max-height:calc(100dvh - 24px);padding:0;border:1px solid var(--response-line,#ccc);border-radius:20px;background:var(--response-bg,#fff);color:var(--response-fg,#111);font:16px/1.4 'Public Sans',sans-serif;overflow:hidden}
+.alpha-calendar-response[open]{display:flex;flex-direction:column}
+.alpha-calendar-response::backdrop{background:#0008}
+.alpha-response-content{min-height:0;overflow:auto;overscroll-behavior:contain;padding:0 20px;overflow-wrap:anywhere}
+.alpha-calendar-response h2{font-size:20px;line-height:1.2}
+.alpha-calendar-response select{box-sizing:border-box;width:100%;min-width:0;min-height:44px;border:1px solid var(--response-line,#ccc);border-radius:10px;padding:10px;background:var(--response-s2,#eee);color:inherit;font:inherit}
+.alpha-calendar-response footer{flex-shrink:0;display:flex;flex-wrap:wrap;gap:8px;padding:12px;border-top:1px solid var(--response-line,#ccc)}
+.alpha-calendar-response button{min-height:44px;min-width:44px;padding:10px 12px;border:1px solid var(--response-line,#ccc);border-radius:12px;background:var(--response-s2,#eee);color:inherit;font:inherit}
+.alpha-calendar-response button:first-child{background:#0000ff;color:white;border-color:#0000ff}
+.alpha-calendar-response button:disabled{opacity:.6;cursor:wait}
+.alpha-calendar-response :is(select,button):focus-visible{outline:3px solid #7777ff;outline-offset:2px}

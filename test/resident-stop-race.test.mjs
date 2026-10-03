@@ -5,10 +5,10 @@ import os from 'node:os';
 import path from 'node:path';
 import {execFileSync} from 'node:child_process';
 
-test('native stop observations tolerate exit races only after proven process absence',()=>{
+test('native stop observations tolerate exit races only after proven absence or terminal state',()=>{
  const patch=fs.readFileSync('patches/eliza/android-resident-exact-stop.patch','utf8');
  const lines=patch.split('\n').filter(line=>line.startsWith('+')&&!line.startsWith('+++')).map(line=>line.slice(1)).join('\n');
- const start=lines.indexOf(' interface ProcessObservation'),end=lines.indexOf(' private static <T> T observePresent',start);
+ const start=lines.indexOf(' interface ProcessObservation'),end=lines.indexOf(' private static boolean liveProcess',start);
  assert.ok(start>=0&&end>start);
  const helper=lines.slice(start,end).replaceAll('android.system.ErrnoException','ErrnoException');
  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'alpha-stop-race-'));
@@ -27,9 +27,16 @@ ${helper}
   if(observePresent(42,()->"owned",pid->{throw new AssertionError("Unneeded lookup");})!="owned")throw new AssertionError();
   for(Exception failure:new Exception[]{new FileNotFoundException("process stat vanished"),new ErrnoException(2),new IOException("identity unavailable")}){
    if(observePresent(42,()->{throw failure;},pid->{if(pid!=42)throw new AssertionError();throw new ErrnoException(2);})!=null)throw new AssertionError();
-   preserves(failure,pid->{}); // PID still exists, including reuse: preserve the refusal.
+   preserves(failure,pid->true); // PID still exists, including reuse: preserve the refusal.
    preserves(failure,pid->{throw new ErrnoException(13);});
    preserves(failure,pid->{throw new IOException("unknown visibility");});
+  }
+  if(observePresent(42,()->{throw new IOException("exe gone");},pid->false)!=null)throw new AssertionError("Terminal process rejected");
+  String rest=" 0".repeat(18)+" 123";
+  for(String state:new String[]{"Z","X","x"})if(!"42:123".equals(terminalStateKey(42,"42 (name with ) parentheses) "+state+rest)))throw new AssertionError("Terminal state missed");
+  for(String state:new String[]{"R","S","D","T","t","I"})if(terminalStateKey(42,"42 (worker) "+state+rest)!=null)throw new AssertionError("Live process admitted");
+  for(String malformed:new String[]{"43 (worker) Z"+rest,"42 worker Z"+rest,"42 (worker) Q"+rest,"42 (worker) Z 1","42 (worker)Z"+rest}){
+   try{terminalStateKey(42,malformed);throw new AssertionError("Malformed process admitted");}catch(IOException expected){}
   }
   Path file=Files.createTempFile("resident-observation-",".stat");
   try{

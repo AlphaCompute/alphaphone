@@ -1,9 +1,16 @@
 package ai.elizaresearch.alphaphone;
 
-/** Native runtime/provider credentials must never round-trip through the renderer. */
+/** Public credential storage must not bypass native journal/provider state machines. */
 final class RendererCredentialSlots {
+ private static final String[] NATIVE_NAMESPACES = {
+  "resident-results", "local-agent-provider", "workflow-notice-taps",
+  "workflow-notice-delivery", "action-journal", "hosted-background",
+  "hosted-digests", "hosted-notices", "note-audio-metadata", "reminder-taps"
+ };
  static String requireAllowed(String slot) {
-  if(slot==null||slot.isEmpty()||slot.length()>1024||slot.startsWith("resident-results:")||slot.startsWith("local-agent-provider:"))throw new SecurityException("Native-only credential slot");
+  if (slot == null || slot.isEmpty() || slot.length() > 1024) throw new SecurityException("Invalid credential slot");
+  for (String namespace : NATIVE_NAMESPACES)
+   if (slot.equals(namespace) || slot.startsWith(namespace + ":")) throw new SecurityException("Native-only credential slot");
   return slot;
  }
 }

@@ -1,6 +1,21 @@
 # Prototype production-flow implementation gaps
 
-## Current status — September 30, Build76 archive / scoped evidence through Build75
+## Current review — October 3, combined resident/browser source
+
+The [current MVP requirement matrix](mvp-current-status.md) and [combined implementation report](mvp-stack-convergence.md) govern remaining work. The September 30 inventory below is retained as a dated record; its unavailable-feature statements must not be used as a current implementation checklist.
+
+Current source inspection corrects these historical gaps:
+
+| Historical missing journey | Current implementation | Remaining boundary |
+| --- | --- | --- |
+| Photo multi-select Favorite/Delete | `camera-adapter.ts` connects selection to revision-bound batch favorite/trash; `photo-batch.spec.ts` covers exact selected items, Undo, reload, invalid requests and conflicts. | Physical/provider acceptance and video editing are separate. |
+| New executable workflow and full editing | Typed authoring and Describe have separate candidate review, Use, Save and Run; the connected runtime exposes typed-authoring and mutation protocols. | Broad real-model reliability, native lifecycle and account-source acceptance remain open. |
+| Browser Read aloud | `browser-adapter.ts` selects `createNativeReadingVoice`; resident reading uses native review and one-use device-bound tokens. Browser development has its own reviewed source and owned playback. | Installed-device audio, latency and provider acceptance are not proved by renderer tests. |
+| Mail provider draft/send/reply and attachments | Provider controls implement review, confirmation, receipt refresh, draft replacement/delete and supported undo; local draft attachment selection is explicit. | Real authorized Gmail journeys and ambiguous provider delivery must be qualified with actual account grants. Implemented controls do not prove delivery. |
+
+These corrections are source findings, with scoped test evidence linked in the current matrix. A fresh 64-case Chromium/WebKit campaign passes on the combined implementation for batch photos, local Inbox/triage, typed workflow authoring and reading review. Evidence: `test-results/current-report-audit-corrected.log`. The initial campaign used the live-agent server and hit its startup chooser; it was stopped and rerun against a separate plain Vite server, matching the fixture configuration. These Inbox tests exercise local development mail, not real Gmail delivery. The product is not fully accepted. Android builds are excluded from this development pass, while physical/provider gates remain explicit. Deferred Phone/SMS/Contacts/Wallet features are outside the active MVP profile; optional Nitro deployment is not a primary-agent gate.
+
+## Historical status — September 30, Build76 archive / scoped evidence through Build75
 
 The product is **not fully accepted**. The current capability summary below
 supersedes the September 29 source audit retained later in this document.
@@ -22,7 +37,7 @@ replace that result. Cloud/Gmail, enclave, real password-vault, physical-device
 and complete AOSP-image acceptance remain separate gates. Current source counts
 are intentionally not re-counted while the restart fixture is being authored.
 
-## Current capability and remaining-flow summary
+## Historical capability and remaining-flow summary
 
 | Domain | Implemented slice and scoped evidence | Remaining gaps |
 | --- | --- | --- |
@@ -38,7 +53,7 @@ are intentionally not re-counted while the restart fixture is being authored.
 | Calendar / reminders / notifications | Build69 Calendar range/race/2,002-row incomplete-result state;60 recurring Snooze/Done/DST/reboot and68 one-off completion/history pass both. Own-app notification feed is native. Build75 both pass real channel disable→blocked readback with app permission still allowed→explicit re-enable→actual synthetic notification/tap, restoring original permission flags. | Live calendar account sync/attendees/RSVP and broader edits; other-app notification listener consent/allowlist/redaction/revoke and durable aggregate history; physical DND/battery/Doze delivery. Channel diagnostics do not change DND, read other apps, or guarantee alarm deadlines. |
 | Agent / shell / telecom / Wallet | Build69 both pass16 authenticated local-model replies across root views and selected workflow/video, Wallet zero outbound, and separately approved native actions/journals. Contacts read/create and dial/SMS handoffs exist; production fixtures are suppressed. | One combined selected agent across all features and full host/phone restart remains under test. Cloud/enclave, all-view approval/recovery, overlay/accessibility/IME, physical lock/boot and telecom delivery remain gates. Wallet transactions remain unavailable. |
 
-## Concrete unfinished prototype journeys
+## Historical unfinished prototype journeys
 
 - **Photos:** multi-select → Favorite/Delete and video → Edit still report unavailable. Owned-photo rotate/crop/filter → Save copy is now implemented and has scoped acceptance; it must not remain listed as missing.
 - **Notes:** supported text → selected SAF destination and selected UTF8 file → new note now have native acceptance. Cloud sync, conflict recovery, rich-note backup/import and physical speech-to-transcript remain different journeys.

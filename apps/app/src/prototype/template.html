@@ -729,6 +729,7 @@
     </sc-if>
   </div>
 
+  <sc-if value="{{calendar.reminderTapPending}}"><div role="status" style="padding:12px;color:var(--mut)">A reminder notification link is saved.<button class="tap" aria-label="Open saved reminder notification" onClick="{{calendar.checkReminderTap}}" style="padding:8px;color:var(--acc)">Open saved reminder</button><button class="tap" aria-label="Dismiss saved reminder link" onClick="{{calendar.dismissReminderTap}}" style="padding:8px;color:var(--mut)">Dismiss link</button></div></sc-if>
   <sc-if value="{{calendar.reminderCreateUnknown}}"><div role="status" style="padding:12px;color:var(--mut)">{{calendar.reminderCreateUnknown}} new reminder(s) await confirmation.<button class="tap" aria-label="Check new reminder status" onClick="{{calendar.checkReminderCreations}}" style="padding:8px;color:var(--acc)">Check new reminder status</button></div></sc-if>
   <sc-if value="{{calendar.reminderDeleteUnknown}}"><div role="status" style="padding:12px;color:var(--mut)">{{calendar.reminderDeleteUnknown}} reminder action(s) await confirmation.<button class="tap" aria-label="Check reminder action status" onClick="{{calendar.checkReminderDeletions}}" style="padding:8px;color:var(--acc)">Check action status</button></div></sc-if>
   <sc-if value="{{calendar.clock}}" hint-placeholder-val="{{false}}">

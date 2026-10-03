@@ -1,0 +1,8 @@
+.alpha-document-viewer{box-sizing:border-box;width:700px;max-width:calc(100vw - 24px);height:80dvh;max-height:calc(100dvh - 24px);padding:0;border:1px solid var(--document-line,#ccc);border-radius:16px;background:var(--document-bg,#fff);color:var(--document-fg,#111);font:16px/1.4 'Public Sans',sans-serif;overflow:hidden}
+.alpha-document-viewer[open]{display:flex;flex-direction:column}
+.alpha-document-viewer::backdrop{background:#0008}
+.alpha-document-viewer h2{flex-shrink:0;max-height:20%;overflow:auto;overflow-wrap:anywhere;margin:0;padding:12px 16px;font-size:20px;line-height:1.2}
+.alpha-document-viewer iframe{box-sizing:border-box;width:100%;min-height:0;flex:1;border:0;background:#fff;color-scheme:normal}
+.alpha-document-viewer footer{flex-shrink:0;padding:12px 16px;border-top:1px solid var(--document-line,#ccc)}
+.alpha-document-viewer button{min-height:44px;min-width:44px;padding:10px 16px;border:1px solid var(--document-line,#ccc);border-radius:12px;background:var(--document-s2,#eee);color:inherit;font:inherit}
+.alpha-document-viewer :is(button,h2):focus-visible{outline:3px solid #7777ff;outline-offset:2px}

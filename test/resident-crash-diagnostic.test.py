@@ -13,11 +13,13 @@ def proof():
 class Flow(unittest.TestCase):
  def test_exact_projection(self):
   got=m.project(lines(),PID,UID,START,NOW)
-  self.assertEqual(got,{'available':True,'source':'debuggerd-crash-buffer','pid':PID,'uid':UID,'signal':31,'code':1,'syscall':435,'timestamp':START+1000})
+  self.assertEqual({k:v for k,v in got.items() if k not in ('stage','reason','counts')},{'available':True,'source':'debuggerd-crash-buffer','pid':PID,'uid':UID,'signal':31,'code':1,'syscall':435,'timestamp':START+1000})
   self.assertNotIn('PRIVATE',json.dumps(got))
+  self.assertEqual(got['counts'],{'lines':6,'debugLines':6,'headers':1,'pidHeaders':1,'timedPidHeaders':1,'uidMatches':1,'signalMatches':1,'causeMatches':1,'completeMatches':1})
+  self.assertEqual((got['stage'],got['reason']),('parse','matched'))
  def test_attribution_refusals(self):
   for raw in [lines(pid=322),lines(uid=UID+1),lines(epoch='1699999999.000'),lines(epoch='1700000003.000'),lines().replace('signal 31','signal 11'),lines().replace('123 124 F DEBUG : Cause','222 223 F DEBUG : Cause'),lines()+'\n'+lines(),lines().replace('system call 435','system call 99999')]:
-   with self.subTest(raw=raw[:20]):self.assertEqual(m.project(raw,PID,UID,START,NOW),{'available':False})
+   with self.subTest(raw=raw[:20]):self.assertFalse(m.project(raw,PID,UID,START,NOW)['available'])
  def test_output_and_deadline_bounds(self):
   for command,seconds in [([sys.executable,'-c',"print('x'*600000)"],2),([sys.executable,'-c','import time;time.sleep(5)'],.15),([sys.executable,'-c',"import sys;sys.stderr.write('x'*600000)"],2)]:
    began=time.monotonic()
@@ -36,11 +38,20 @@ class Flow(unittest.TestCase):
     self.assertEqual(len(record.read_text().splitlines()),7)
     for key,value in [('shell am get-current-user','10'),('shell pm list users',answers['shell pm list users']+'\nUserInfo{11:Other:10}'),('shell run-as ai.elizaresearch.alphaphone --user 10 id -u',str(UID+1))]:
      record.write_text('');install({**answers,key:value})
-     self.assertEqual(m.capture('emulator-5554','10','alpha-ci-'+'a'*32,'run',proof()),{'available':False})
+     self.assertFalse(m.capture('emulator-5554','10','alpha-ci-'+'a'*32,'run',proof())['available'])
      self.assertNotIn('logcat',record.read_text())
     record.write_text('');install(answers)
-    with patch.dict(os.environ,{'GITHUB_ACTIONS':'false'}):self.assertEqual(m.capture('emulator-5554','10','alpha-ci-'+'a'*32,'run',proof()),{'available':False})
+    with patch.dict(os.environ,{'GITHUB_ACTIONS':'false'}):self.assertFalse(m.capture('emulator-5554','10','alpha-ci-'+'a'*32,'run',proof())['available'])
     self.assertEqual(record.read_text(),'')
+ def test_fixed_unavailable_classification(self):
+  for raw,reason in [('', 'no-exact-match'),(lines()+'\n'+lines(),'multiple-exact-matches'),(lines().replace('system call 435','system call 99999'),'syscall-out-of-range'),(lines()+'\n'+lines().splitlines()[2],'duplicate-field')]:
+   value=m.project(raw,PID,UID,START,NOW);self.assertFalse(value['available']);self.assertEqual(value['reason'],reason)
+   self.assertNotIn('PRIVATE',json.dumps(value));self.assertTrue(all(type(v) is int and 0<=v<=m.LIMIT for v in value['counts'].values()))
+  env={'GITHUB_ACTIONS':'true','ALPHA_RESIDENT_DISPOSABLE_CI':'1'}
+  with patch.dict(os.environ,env):
+   for error,reason in [(m.OutputBound('PRIVATE'),'output-bound'),(m.CommandFailed('PRIVATE'),'command-failed'),(TimeoutError('PRIVATE'),'deadline'),(RuntimeError('PRIVATE'),'observation-unavailable')]:
+    with patch.object(m,'bounded_read',side_effect=error):self.assertEqual(m.capture('emulator-5554','10','alpha-ci-'+'a'*32,'run',proof()),{'available':False,'stage':'avd','reason':reason})
+  with patch.dict(os.environ,{'GITHUB_ACTIONS':'false'}):self.assertEqual(m.capture('emulator-5554','10','alpha-ci-'+'a'*32,'run',proof()),{'available':False,'stage':'host-admission','reason':'admission-refused'})
  def test_sigterm_optional_capture_preserves_primary_and_cleanup(self):
   import subprocess,signal
   with tempfile.TemporaryDirectory(prefix='alpha-crash-cancel-') as td:

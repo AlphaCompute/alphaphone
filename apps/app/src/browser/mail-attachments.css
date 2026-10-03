@@ -1,0 +1,9 @@
+.alpha-mail-attachment{box-sizing:border-box;width:700px;max-width:calc(100vw - 24px);height:80dvh;max-height:calc(100dvh - 24px);padding:0;border:1px solid var(--attachment-line,#ccc);border-radius:16px;background:var(--attachment-bg,#fff);color:var(--attachment-fg,#111);font:16px/1.4 'Public Sans',sans-serif;overflow:hidden}
+.alpha-mail-attachment[open]{display:flex;flex-direction:column}
+.alpha-mail-attachment::backdrop{background:#0008}
+.alpha-mail-attachment h2{flex-shrink:0;max-height:20%;overflow:auto;overflow-wrap:anywhere;margin:0;padding:12px 16px;font-size:20px;line-height:1.2}
+.alpha-mail-attachment pre{min-height:0;flex:1;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;padding:12px 16px;margin:0;font:inherit}
+.alpha-mail-attachment iframe{width:100%;min-height:0;flex:1;border:0;background:#fff;color-scheme:normal}
+.alpha-mail-attachment footer{flex-shrink:0;display:flex;gap:8px;flex-wrap:wrap;padding:12px 16px;border-top:1px solid var(--attachment-line,#ccc)}
+.alpha-mail-attachment :is(button,a){box-sizing:border-box;display:inline-flex;align-items:center;min-height:44px;min-width:44px;padding:10px 12px;border:1px solid var(--attachment-line,#ccc);border-radius:12px;background:var(--attachment-s2,#eee);color:inherit;font:inherit}
+.alpha-mail-attachment :is(button,a,h2,pre):focus-visible{outline:3px solid #7777ff;outline-offset:2px}

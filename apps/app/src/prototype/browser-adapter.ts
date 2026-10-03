@@ -1,7 +1,7 @@
 import { registerPlugin } from '../platform-plugins';
 import { Capacitor } from '@capacitor/core';
 import { DailyApps } from '../daily';
-import { createPairedVoice } from '../runtime/paired-voice';
+import { createNativeReadingVoice } from '../runtime/native-reading-voice';
 import { connectionController } from '../runtime/connection-ui';
 type Bag = Record<string, any>;
 const Browser = registerPlugin<any>('AlphaBrowser');
@@ -52,18 +52,18 @@ export function installPrototypeBrowserAdapter(Component: any, views: Record<str
       catch(error){if(!controller.signal.aborted)report(error);}finally{if(reading===controller)reading=undefined;}
       return;
     }
-    const voice=createPairedVoice(), binding=connectionController.getPairedVoiceBinding();
-    if(!voice || !binding){report(new Error('Connect a paired agent with voice to read this page.'));return;}
+    const voice=createNativeReadingVoice(), binding=voice?.binding;
+    if(!voice || !binding){report(new Error('Connect an agent with available speech to read this page.'));return;}
     if(!info?.committed || info.loading || info.error){report(new Error('Load an HTTPS page before reading.'));return;}
     const controller=new AbortController();reading=controller;
-    const valid=()=>{controller.signal.throwIfAborted();if(disposed||document.hidden||shell.S().view!=='browser'||state()?.cur!==id||documentRevisions.get(id)!==revision||JSON.stringify(connectionController.getPairedVoiceBinding())!==JSON.stringify(binding)||connectionController.getSnapshot().open)throw new DOMException('Reading cancelled','AbortError');};
+    const valid=()=>{controller.signal.throwIfAborted();if(disposed||document.hidden||shell.S().view!=='browser'||state()?.cur!==id||documentRevisions.get(id)!==revision||!voice.isCurrent()||connectionController.getSnapshot().open)throw new DOMException('Reading cancelled','AbortError');};
     const unsubscribe=connectionController.subscribe(()=>{try{valid();}catch{stopReading();}});
     try {
       shell.vset('browser',{menu:false});await new Promise(resolve=>setTimeout(resolve,150));valid();lastGeometry='';await update();
       if(!await voice.ready(controller.signal))throw new Error('The selected agent is not ready for speech.');valid();
       const result=await Browser.reviewReading({session,id,url:info.url,navigation:info.navigation,...binding});valid();
       shell.toast('Preparing reviewed page speech');
-      await voice.speak('',controller.signal,result.readingToken);valid();shell.toast('Reading finished');
+      await voice.speak(result.readingToken,controller.signal);valid();shell.toast('Reading finished');
     }catch(error){if(!controller.signal.aborted)report(error);}finally{unsubscribe();if(reading===controller){reading=undefined;void Browser.cancelReading({session}).catch(()=>{});}}
   }
   function hide() {
