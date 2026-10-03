@@ -10,6 +10,7 @@ export class BrowserVoice extends WebPlugin {
  private capture=new BrowserAudioCapture(event=>{void this.notifyListeners('recordingStopped',event);});
  private transcript=new BrowserTranscriptReview();
  private speech=new Map<string,string>();
+ private agentAudio=new Map<string,{blob:Blob;agent:NonNullable<ReturnType<typeof connectionController.getBrowserSpeechAgent>>;sessionId:string}>();
  private audio?:HTMLAudioElement;
  private audioId?:string;
  private pendingAudioId?:string;
@@ -19,6 +20,8 @@ export class BrowserVoice extends WebPlugin {
  private utterance?:SpeechSynthesisUtterance;
  private activeSpeechId?:string;
  constructor(){super();
+  let binding=connectionController.getSnapshot().session?.sessionId;
+  connectionController.subscribe(()=>{const next=connectionController.getSnapshot().session?.sessionId;if(next!==binding){binding=next;void this.releaseLocalSpeech();}});
   window.addEventListener('alpha:device-settings',()=>{if(this.audio)this.audio.volume=browserMediaVolume();});
   if(this.audioChanges)this.audioChanges.onmessage=event=>{if(event.data?.deleted&&[this.audioId,this.pendingAudioId].includes(event.data.audioId))void this.stopPlayback();};
   void migrateAudio().catch(()=>{});
@@ -42,6 +45,15 @@ export class BrowserVoice extends WebPlugin {
  transcribeRecording(input:{recordingId:string}){return this.transcribeLocalRecording(input);}
  async synthesizeLocal(input:{text:string}){
   if(typeof input.text!=='string'||!input.text.trim()||input.text.length>16000)throw Error('Choose text between 1 and 16000 characters.');
+  const agent=connectionController.getBrowserSpeechAgent();
+  if(agent){
+   const sessionId=agent.session?.sessionId;if(!sessionId)throw Error('Connect the local agent first.');
+   const blob=await this.withAgentSpeech(signal=>agent.synthesizeSpeech(input.text,signal));
+   if(connectionController.getBrowserSpeechAgent()!==agent||agent.session?.sessionId!==sessionId)throw new DOMException('Voice selection changed','AbortError');
+   const playbackId=crypto.randomUUID();this.agentAudio.set(playbackId,{blob,agent,sessionId});
+   while(this.agentAudio.size>8)this.agentAudio.delete(this.agentAudio.keys().next().value!);
+   return {playbackId,execution:'browser'};
+  }
   const playbackId=crypto.randomUUID();this.speech.set(playbackId,input.text);
   while(this.speech.size>8)this.speech.delete(this.speech.keys().next().value!);
   return {playbackId,execution:'browser'};
@@ -62,6 +74,17 @@ export class BrowserVoice extends WebPlugin {
   if(!!input.playbackId===!!input.audioId)throw Error('Choose one recording or prepared speech.');
   if(input.playbackId){
    this.activeSpeechId=input.playbackId;
+   const prepared=this.agentAudio.get(input.playbackId);
+   if(prepared){
+    if(connectionController.getBrowserSpeechAgent()!==prepared.agent||prepared.agent.session?.sessionId!==prepared.sessionId){this.agentAudio.delete(input.playbackId);throw new DOMException('Voice selection changed','AbortError');}
+    const url=URL.createObjectURL(prepared.blob);let audio:HTMLAudioElement;
+    try{audio=new Audio(url);audio.volume=browserMediaVolume();}catch(error){URL.revokeObjectURL(url);throw error;}
+    this.audio=audio;
+    const finish=(event:'playbackEnded'|'playbackFailed')=>{if(!current()||this.audio!==audio)return;this.releaseAudio(audio);this.activeSpeechId=undefined;this.agentAudio.delete(input.playbackId!);void this.notifyListeners(event,{playbackId:input.playbackId});};
+    audio.onended=()=>finish('playbackEnded');audio.onerror=()=>finish('playbackFailed');
+    try{const playing=audio.play();void playing.then(()=>{if(!current())audio.pause();},()=>{});await playbackWait(playing,abort.signal);if(!current())throw new DOMException('Playback cancelled','AbortError');return;}
+    catch(error){if(this.audio===audio)finish('playbackFailed');throw error;}
+   }
    const text=this.speech.get(input.playbackId);if(text===undefined)throw Error('Prepare speech first.');
    const engine=window.speechSynthesis;if(!engine)throw Error('Local speech is unavailable. Read the reply as text.');
    const voices=()=>engine.getVoices().filter(voice=>voice.localService===true);
@@ -122,7 +145,7 @@ export class BrowserVoice extends WebPlugin {
   try{return await run(controller.signal);}finally{if(this.speechRequest===controller)this.speechRequest=undefined;}
  }
  async cancel(){this.speechRequest?.abort();this.speechRequest=undefined;this.transcript.cancel();this.capture.cancel();await this.stopPlayback();}
- async releaseLocalSpeech(){await this.cancel();this.speech.clear();this.capture.clear();}
+ async releaseLocalSpeech(){await this.cancel();this.speech.clear();this.agentAudio.clear();this.capture.clear();}
 }
 function playbackWait<T>(work:Promise<T>,signal:AbortSignal):Promise<T>{
  return new Promise((resolve,reject)=>{

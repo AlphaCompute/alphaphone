@@ -121,6 +121,23 @@ export class LocalAgentProtocol {
       return result;
     }finally{this.streams.delete(controller);}
   }
+  async synthesizeSpeech(text:string,signal:AbortSignal):Promise<Blob>{
+    if(!this.browserSpeechAvailable||!this.session)throw Error('Connect the local development agent first.');
+    if(typeof text!=='string'||!text.trim()||text.length>500)throw Error('Local agent speech accepts up to 500 characters per phrase.');
+    const session=this.session,generation=this.generation,controller=new AbortController(),requestId=crypto.randomUUID();
+    this.streams.add(controller);const bounded=AbortSignal.any([signal,controller.signal]);
+    try{
+      bounded.throwIfAborted();
+      const response=await this.bridge.request({path:'/api/tts/kokoro',ownerId:session.ownerId,method:'POST',headers:{},requestId,body:JSON.stringify({text}),timeoutMs:45000},bounded);
+      bounded.throwIfAborted();if(session!==this.session||generation!==this.generation)throw new DOMException('Voice selection changed','AbortError');
+      if(response.status!==200)throw Error(`Local agent speech unavailable (HTTP ${response.status}).`);
+      const result=JSON.parse(response.body||'{}');
+      if(result.requestId!==requestId||result.provider!=='standalone-kokoro'||result.contentType!=='audio/wav'||typeof result.audioBase64!=='string'||result.audioBase64.length>1920060)throw Error('Invalid local speech response.');
+      const bytes=Uint8Array.from(atob(result.audioBase64),c=>c.charCodeAt(0));
+      if(bytes.length<44||String.fromCharCode(...bytes.subarray(0,4))!=='RIFF'||String.fromCharCode(...bytes.subarray(8,12))!=='WAVE'||new DataView(bytes.buffer).getUint32(4,true)+8!==bytes.length)throw Error('Invalid local speech audio.');
+      return new Blob([bytes],{type:'audio/wav'});
+    }finally{this.streams.delete(controller);}
+  }
   async disconnect() { this.generation++; this.session=null; for(const controller of this.streams)controller.abort();this.streams.clear(); }
   private async json(path:string,body:unknown|undefined,signal?:AbortSignal) {
     if(!this.session)throw new Error('Start the local agent first.');
