@@ -1,6 +1,12 @@
 # Current Alpha Phone acceptance ledger
 
 
+## Current checkpoint — October 3, native workflow notification taps
+
+Workflow notices now retain exact owner/agent/execution routes and distinct opaque tap identities, with durable failed-capture recovery and no implicit execution. Both standalone and launcher pass the actual Android cold/warm notification test on a fresh Pixel-class emulator, including encrypted-store failure, receipt drift and consumed-tap replay. Both disposable users and packages are cleaned up. All 218 checks, both Android builds and 27 rendered flows pass; 3,884 qualified source identities remain unchanged. Actual app-process restart, real hosted delivery, live providers and physical/signed-image acceptance remain open. See [evidence, retained failures and capacity limits](mvp-workflow-notification-qualification-2026-10-03.md). The MVP is not complete.
+
+
+
 ## Current checkpoint — October 3, composed MVP and voice ownership
 
 The reviewed product stack is combined with the Email account fence, reminder-v2 development negotiation and request-owned resident speech. All 217 repository checks, TypeScript/build and both Android distribution builds pass with 3,878 source identities unchanged. Fresh runtime preparation verifies all 54 declared source hashes. Safe exit-code/signal diagnostics now accompany missing-result workflow failures; the actual resident worker cause remains unresolved. Both preceding exact512 browser campaigns pass 1,034 flows with four explicit skips each. Scoped notification-tap routing remains under review. Live provider, installed resident, visible Pixel, signed-image and physical acceptance remain open; the MVP is not complete. See [qualification and evidence](mvp-auth-native-qualification-2026-10-03.md).
