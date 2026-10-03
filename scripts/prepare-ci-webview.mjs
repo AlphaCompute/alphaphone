@@ -151,7 +151,7 @@ export function ensureScratchBackingAlias(run, admit) {
 }
 
 // Failure evidence only: one shared budget, no retries, mutations or guessed block targets.
-export function collectOverlayFailureDiagnostics({ environment, sdkEnvironment, execute, now = Date.now, hostPaths = { workspace: process.cwd(), androidSdk: sdkEnvironment.ANDROID_HOME, home: process.env.HOME }, statfs = fs.statfsSync, userspaceOnly = false, stockBackup, providerBoot }) {
+export function collectOverlayFailureDiagnostics({ environment, sdkEnvironment, execute, now = Date.now, hostPaths = { workspace: process.cwd(), androidSdk: sdkEnvironment.ANDROID_HOME, home: process.env.HOME }, statfs = fs.statfsSync, userspaceOnly = false, stockBackup, providerRestart }) {
   const deadline = now() + 20000;
   const evidence = { host: {}, guest: {}, budgetMilliseconds: 20000 };
   for (const [name, location] of Object.entries(hostPaths)) {
@@ -177,13 +177,13 @@ export function collectOverlayFailureDiagnostics({ environment, sdkEnvironment, 
       env: sdkEnvironment, encoding: 'utf8', timeout: Math.min(2000, remaining), maxBuffer: 256 * 1024,
     });
   };
-  const reads = providerBoot ? [
+  const reads = providerRestart ? [
     ['deviceMapperNames', ['shell', 'dmctl', 'list', 'devices']],
     ['mounts', ['shell', 'cat', '/proc/mounts']],
     ['scratchMetadata', ['shell', 'lpdump', '/metadata/gsi/remount/lp_metadata']],
     ['userspaceStorageLog', ['shell', 'logcat', '-d', '-b', 'all', '-t', '400']],
     ['capacity', ['shell', 'df', '-k', '/data', '/metadata', '/product']],
-    ['stockStat', ['shell', 'stat', '-c', '%s', providerBoot.stock]],
+    ['stockStat', ['shell', 'stat', '-c', '%s', providerRestart.stock]],
     ['providerPath', ['shell', 'pm', 'path', candidate.package]],
     ['providerState', ['shell', 'dumpsys', 'webviewupdate']],
     ['kernel', ['shell', 'dmesg']],
@@ -206,7 +206,7 @@ export function collectOverlayFailureDiagnostics({ environment, sdkEnvironment, 
   for (const [name, args] of reads) {
     if (userspaceOnly && name !== 'userspaceStorageLog') continue;
     // Admission uses the same bounded executor and performs one complete attempt.
-    try { requireProviderFixture(read, environment, { installed: Boolean(providerBoot) }, () => { throw Error('Failure diagnostic admission unavailable'); }); }
+    try { requireProviderFixture(read, environment, { installed: Boolean(providerRestart) }, () => { throw Error('Failure diagnostic admission unavailable'); }); }
     catch (error) { evidence.admissionStopped = String(error.message).slice(0, 512); break; }
     try {
       const result = read(...args);
@@ -471,36 +471,40 @@ export async function main({ environment = process.env, execute = execFileSync, 
     };
     await qualifyInstalledProvider('after-install');
     // The temporary provider-free framework may leave SystemUI unhealthy.
-    // Finalize every successful replacement with exactly one clean full boot,
+    // This emulator loses its scratch overlay across a kernel reboot. Finalize
+    // successful replacement with one fresh framework generation after installation,
     // never as a response to a failed install or a failed security admission.
     safe(true);
     const priorBootId = run('shell', 'cat', '/proc/sys/kernel/random/boot_id').trim();
     require(/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/.test(priorBootId), 'Unknown provider boot identity');
-    state.status = 'finalizing-provider-boot'; state.providerBoot = { priorBootId, requested: true }; save();
-    run('reboot'); run('wait-for-device'); await boot(null, true); safe(true);
+    const previousProviderServer = serverIdentity();
+    state.status = 'finalizing-provider-framework'; state.providerRestart = { priorBootId, previousServer: previousProviderServer, requested: true }; save();
+    run('shell', 'stop');
+    run('shell', 'start');
+    state.providerRestart.server = await boot(previousProviderServer, true); save(); safe(true);
     const bootId = run('shell', 'cat', '/proc/sys/kernel/random/boot_id').trim();
-    require(/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/.test(bootId) && bootId !== priorBootId, 'Provider full reboot was not observed');
-    state.providerBoot.bootId = bootId; save();
+    require(/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/.test(bootId) && bootId === priorBootId, 'Provider framework restart changed kernel boot identity');
+    state.providerRestart.bootId = bootId; save();
     bootIdentity(true);
-    state.providerBoot.backingAlias = ensureScratchBackingAlias(run, () => safe(true)); save();
-    state.providerBoot.scratchBytes = scratchBackingBytes(run, { requireDataBacking: true }); save();
-    if (state.providerBoot.scratchBytes !== 512 * 1024 * 1024) {
+    state.providerRestart.backingAlias = ensureScratchBackingAlias(run, () => safe(true)); save();
+    state.providerRestart.scratchBytes = scratchBackingBytes(run, { requireDataBacking: true }); save();
+    if (state.providerRestart.scratchBytes !== 512 * 1024 * 1024) {
       try {
-        const diagnostics = collectOverlayFailureDiagnostics({ environment, sdkEnvironment: env, execute, now, providerBoot: { stock } });
-        fs.writeFileSync(path.join(output, 'provider-boot-storage-diagnostics.json'), JSON.stringify(diagnostics, null, 2) + '\n');
-      } catch (diagnosticError) { state.providerBoot.diagnosticError = String(diagnosticError.message).slice(0, 512); save(); }
+        const diagnostics = collectOverlayFailureDiagnostics({ environment, sdkEnvironment: env, execute, now, providerRestart: { stock } });
+        fs.writeFileSync(path.join(output, 'provider-restart-storage-diagnostics.json'), JSON.stringify(diagnostics, null, 2) + '\n');
+      } catch (diagnosticError) { state.providerRestart.diagnosticError = String(diagnosticError.message).slice(0, 512); save(); }
     }
-    require(state.providerBoot.scratchBytes === 512 * 1024 * 1024, 'Provider boot lost authenticated data scratch');
+    require(state.providerRestart.scratchBytes === 512 * 1024 * 1024, 'Provider restart lost authenticated data scratch');
     run('shell', 'test', '!', '-e', stock);
-    await qualifyInstalledProvider('after-clean-boot');
+    await qualifyInstalledProvider('after-framework-restart');
     state.providerDisplayObservations = [];
     await requireFixtureDisplay(run, { env: environment, serial, sleep, record: observation => {
       state.providerDisplayObservations.push(observation); save();
     } });
     const activity = run('shell', 'dumpsys', 'activity', 'activities');
-    state.providerBoot.anrPresent = activity.includes('Application Not Responding:');
-    state.providerBoot.anrLines = activity.split(/\r?\n/).filter(line => line.includes('Application Not Responding:')).slice(0, 8).map(line => line.slice(0, 512)); save();
-    require(!state.providerBoot.anrPresent, 'Application ANR remains after clean provider boot');
+    state.providerRestart.anrPresent = activity.includes('Application Not Responding:');
+    state.providerRestart.anrLines = activity.split(/\r?\n/).filter(line => line.includes('Application Not Responding:')).slice(0, 8).map(line => line.slice(0, 512)); save();
+    require(!state.providerRestart.anrPresent, 'Application ANR remains after provider framework restart');
     state.status = 'PROVISIONED_RUNTIME_QUALIFICATION_PENDING'; save();
     // APKs are reproducible via pinned URL/hash; keep compact provenance in CI artifacts.
     fs.unlinkSync(archive); fs.unlinkSync(apk);

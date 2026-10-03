@@ -93,7 +93,7 @@ async function simulate({ framework = 'ready', drift, neverBoot = false, neverRe
     if(finalBoot&&drift==='final-fingerprint'&&key==='shell getprop ro.build.fingerprint')return 'unreviewed-image';
     if(finalBoot&&drift==='final-alias'&&key==='shell readlink -f /dev/block/by-name/vdc')return '/dev/block/vdd';
     if(finalBoot&&drift==='final-topology'&&key==='shell cat /proc/bootconfig')return 'androidboot.boot_devices = "wrong"';
-    if(key==='shell cat /proc/sys/kernel/random/boot_id')return finalBoot&&drift!=='final-same-boot'?'22222222-2222-4222-8222-222222222222':'11111111-1111-4111-8111-111111111111';
+    if(key==='shell cat /proc/sys/kernel/random/boot_id')return finalBoot&&drift==='final-changed-boot'?'22222222-2222-4222-8222-222222222222':'11111111-1111-4111-8111-111111111111';
     if(key===`shell test ! -e ${stock}`){if(drift==='final-stock')throw Error('Stock provider returned');return '';}
     if(key==='shell dumpsys power')return 'mWakefulness=Awake';
     if(key==='shell dumpsys window policy')return `KeyguardServiceDelegate\nshowing=false\ninputRestricted=false\nsecure=${drift==='final-secure'}\nsystemIsReady=true\nbootCompleted=true\nscreenState=SCREEN_STATE_ON\nKeyguardStateMonitor\nmCurrentUserId=0\nmIsShowing=false\nmInputRestricted=false`;
@@ -106,16 +106,16 @@ async function simulate({ framework = 'ready', drift, neverBoot = false, neverRe
     if (key === 'shell pidof system_server') {
       pidReads++;
       if (removed && framework === 'rotating') return String(200 + pidReads % 2);
-      return removed && framework !== 'stale-server' ? '200' : '100';
+      return finalBoot && drift!=='final-stale-server' ? '300' : removed && framework !== 'stale-server' ? '200' : '100';
     }
     if (/^shell cat \/proc\/[0-9]+\/stat$/.test(key)) {
       assert.equal(rooted,true,'system_server stat must only run after authenticated adb root');
       const pid=a.at(-1).split('/')[2];
-      return `${pid} (system_server) S ${Array(18).fill('0').join(' ')} ${pid==='100'?'1000':'2000'} 0`;
+      return `${pid} (system_server) S ${Array(18).fill('0').join(' ')} ${pid==='100'?'1000':pid==='200'?'2000':'3000'} 0`;
     }
     if (key === 'shell dumpsys activity -a processes') {
       if(removed)frameworkReads++;
-      frameworkReady = !removed || framework !== 'never-ready' && (framework !== 'delayed' || frameworkReads >= 3);
+      frameworkReady = !(finalBoot&&drift==='final-not-ready') && (!removed || framework !== 'never-ready' && (framework !== 'delayed' || frameworkReads >= 3));
       const row=`  mProcessesReady=${frameworkReady} mSystemReady=${frameworkReady} mBooted=${frameworkReady} mFactoryTest=0`;
       if(removed&&framework==='missing-flags')return 'ACTIVITY MANAGER RUNNING PROCESSES';
       if(removed&&framework==='duplicate-flags')return row+'\n'+row;
@@ -175,7 +175,7 @@ async function simulate({ framework = 'ready', drift, neverBoot = false, neverRe
     }
     if (['root', 'wait-for-device', 'disable-verity'].includes(key)) return '';
     if (key === 'shell stop') { stopped = true; return ''; }
-    if (key === 'shell start') { stopped = false; restarted = true; userReads = 0; return ''; }
+    if (key === 'shell start') { if(installed)finalBoot=true; stopped = false; restarted = true; userReads = 0; return ''; }
     if (key === `shell rm ${stock}`) { assert.equal(stopped, true); removed = true; return ''; }
     if (a[0] === 'pull') { fs.writeFileSync(a[2], 'stock'); return ''; }
     if (a[0] === 'install') { if(drift==='user-delayed')assert.ok(userReads>=3); assert.equal(frameworkReady, true, 'Framework must complete before install');if(framework==='install-fails')throw Error('recorded install failure');assert.equal(removed, true); assert.equal(stopped, false); installed = true; return 'Success'; }
@@ -204,7 +204,7 @@ async function simulate({ framework = 'ready', drift, neverBoot = false, neverRe
       fileDigest: f => path.basename(f) === 'chromium.zip' ? candidate.archiveSha256 : path.basename(f) === 'SystemWebView.apk' ? candidate.apkSha256 : stockHash });
   } catch (caught) { error = caught; }
   const result = JSON.parse(fs.readFileSync(path.join(output, 'result.json')));
-  const diagnosticPath = path.join(output, 'provider-boot-storage-diagnostics.json');
+  const diagnosticPath = path.join(output, 'provider-restart-storage-diagnostics.json');
   const diagnostics = fs.existsSync(diagnosticPath) ? JSON.parse(fs.readFileSync(diagnosticPath)) : null;
   fs.rmSync(parent, { recursive: true, force: true });
   return { diagnostics, calls, result, error, stopped, removed, installed, selectionReads, elapsed };
@@ -342,7 +342,7 @@ test('cached or undersized scratch never qualifies provider replacement', async 
 });
 
 test('one authenticated requested overlay activation reboot completes provider flow', async()=>{
- const r=await simulate({drift:'overlay-reboot'});assert.ifError(r.error);assert.equal(r.result.status,'PROVISIONED_RUNTIME_QUALIFICATION_PENDING');assert.equal(r.calls.filter(c=>c==='reboot').length,3);assert.equal(r.calls.filter(c=>c==='remount').length,2);assert.equal(r.result.scratchBackingAliases.length,3);assert.equal(r.result.scratchBytes,512*1024*1024);assert.equal(r.installed,true);
+ const r=await simulate({drift:'overlay-reboot'});assert.ifError(r.error);assert.equal(r.result.status,'PROVISIONED_RUNTIME_QUALIFICATION_PENDING');assert.equal(r.calls.filter(c=>c==='reboot').length,2);assert.equal(r.calls.filter(c=>c==='remount').length,2);assert.equal(r.result.scratchBackingAliases.length,3);assert.equal(r.result.scratchBytes,512*1024*1024);assert.equal(r.installed,true);
 });
 test('requested overlay reboot refuses repeat, unknown wording, changed identity, stock, backing and size',async()=>{
  for(const drift of ['overlay-repeat','overlay-unknown','overlay-identity','overlay-stock','overlay-size','overlay-alias','overlay-before-size','overlay-never-boot']){
@@ -352,7 +352,7 @@ test('requested overlay reboot refuses repeat, unknown wording, changed identity
 
 test('stderr-only remount transcript follows the bounded overlay reboot flow', async () => {
  const r=await simulate({drift:'overlay-reboot',remountChannel:'stderr'});assert.ifError(r.error);
- assert.equal(r.calls.filter(c=>c==='reboot').length,3);assert.equal(r.calls.filter(c=>c==='remount').length,2);
+ assert.equal(r.calls.filter(c=>c==='reboot').length,2);assert.equal(r.calls.filter(c=>c==='remount').length,2);
  assert.match(r.result.overlayRemountOutputs[0],/Now reboot your device/);assert.equal(r.result.scratchBytes,512*1024*1024);assert.equal(r.installed,true);
 });
 test('successful-looking remount stderr never overrides failed exit or termination', async () => {
@@ -364,7 +364,7 @@ test('successful-looking remount stderr never overrides failed exit or terminati
 
 test('repeated emulator reboot advisory requires live overlay proof and removed write probe', async()=>{
  const r=await simulate({drift:'overlay-live',remountChannel:'stderr'});assert.ifError(r.error);
- assert.equal(r.calls.filter(c=>c==='reboot').length,3);assert.equal(r.calls.filter(c=>c==='remount').length,2);
+ assert.equal(r.calls.filter(c=>c==='reboot').length,2);assert.equal(r.calls.filter(c=>c==='remount').length,2);
  assert.deepEqual(r.result.liveOverlayProof,{namespaces:['shell','init'],scratchBytes:512*1024*1024,writeProbeRemoved:true});
  const removedProbe=r.calls.findIndex(c=>c.startsWith('shell rm /product/app/webview/.alpha-ci-probe-'));
  assert.ok(removedProbe>0&&removedProbe<r.calls.indexOf('shell rm /product/app/webview/webview.apk'));
@@ -421,33 +421,34 @@ test('postreboot root refusal is never replayed and never reaches privileged sta
  assert.ok(!after.some(call=>/^shell cat \/proc\/[0-9]+\/stat$/.test(call)));assert.ok(!after.some(call=>call.startsWith('install ')));
 });
 
-test('successful replacement is finalized by one planned full boot before qualification',async()=>{
+test('successful replacement requires a new framework generation without losing the kernel overlay',async()=>{
  const r=await simulate();assert.ifError(r.error);
  const installs=r.calls.map((v,i)=>v.startsWith('install ')?i:-1).filter(i=>i>=0);assert.equal(installs.length,1);
- const reboots=r.calls.map((v,i)=>v==='reboot'?i:-1).filter(i=>i>=0);assert.equal(reboots.length,2);assert.ok(reboots[1]>installs[0]);
- assert.deepEqual(r.result.providerChecks.map(c=>c.label),['after-install','after-clean-boot']);
- assert.notEqual(r.result.providerBoot.priorBootId,r.result.providerBoot.bootId);
+ const reboots=r.calls.map((v,i)=>v==='reboot'?i:-1).filter(i=>i>=0);assert.equal(reboots.length,1);assert.ok(reboots[0]<installs[0]);
+ const finalStart=r.calls.lastIndexOf('shell start');assert.ok(finalStart>installs[0]);assert.equal(r.calls.filter(c=>c==='shell stop').length,2);assert.notDeepEqual(r.result.providerRestart.previousServer,r.result.providerRestart.server);
+ assert.deepEqual(r.result.providerChecks.map(c=>c.label),['after-install','after-framework-restart']);
+ assert.equal(r.result.providerRestart.priorBootId,r.result.providerRestart.bootId);
  assert.equal(r.result.providerDisplayObservations.length,2);assert.ok(r.result.providerDisplayObservations.every(o=>o.secure===false&&o.unlocked));
- assert.ok(!r.calls.slice(reboots[1]+1).some(c=>/^(install |reboot$|shell (rm |locksettings |input |wm dismiss))/.test(c)));
+ assert.ok(!r.calls.slice(finalStart+1).some(c=>/^(install |reboot$|shell (rm |locksettings |input |wm dismiss))/.test(c)));
 });
-test('postreplacement boot refuses identity, provenance, readiness, secure state and ANR without replay',async()=>{
- for(const drift of ['final-never-boot','final-same-boot','final-identity','final-stock','final-fingerprint','final-alias','final-topology','final-bytes','final-scratch','final-relro','final-secure','final-anr']){
-  const r=await simulate({drift});assert.ok(r.error,drift);assert.equal(r.result.status,'FAIL');assert.equal(r.calls.filter(c=>c.startsWith('install ')).length,1);assert.equal(r.calls.filter(c=>c==='reboot').length,2);
+test('postreplacement framework restart refuses identity, provenance, readiness, secure state and ANR without replay',async()=>{
+ for(const drift of ['final-never-boot','final-changed-boot','final-stale-server','final-not-ready','final-identity','final-stock','final-fingerprint','final-alias','final-topology','final-bytes','final-scratch','final-relro','final-secure','final-anr']){
+  const r=await simulate({drift});assert.ok(r.error,drift);assert.equal(r.result.status,'FAIL');assert.equal(r.calls.filter(c=>c.startsWith('install ')).length,1);assert.equal(r.calls.filter(c=>c==='reboot').length,1);
   if(drift==='final-secure')assert.match(r.error.message,/not observed awake/);
   if(drift==='final-anr')assert.match(r.error.message,/ANR remains/);
  }
 });
 
-test('missing final-boot scratch retains bounded storage evidence and refuses without later mutations', async () => {
+test('missing postrestart scratch retains bounded storage evidence and refuses without later mutations', async () => {
  const r=await simulate({drift:'final-missing-scratch'});
- assert.match(r.error.message,/Provider boot lost authenticated data scratch/);
- assert.equal(r.result.providerBoot.scratchBytes,null);
+ assert.match(r.error.message,/Provider restart lost authenticated data scratch/);
+ assert.equal(r.result.providerRestart.scratchBytes,null);
  assert.match(r.diagnostics.guest.deviceMapperNames,/userdata : 254:42/);
  for(const key of ['mounts','scratchMetadata','userspaceStorageLog','capacity','stockStat','providerPath','providerState','kernel'])assert.ok(Object.hasOwn(r.diagnostics.guest,key),key);
  assert.equal(r.diagnostics.budgetMilliseconds,20000);
  assert.equal(r.calls.filter(c=>c.startsWith('install ')).length,1);
- const finalReboot=r.calls.lastIndexOf('reboot');
- assert.equal(r.calls.filter(c=>c==='reboot').length,2);
+ const finalReboot=r.calls.lastIndexOf('shell start');
+ assert.equal(r.calls.filter(c=>c==='reboot').length,1);
  assert.ok(!r.calls.slice(finalReboot+1).some(c=>/^(install |reboot$|remount$|shell (rm |setprop |stop$|start$|input |locksettings |wm dismiss))/.test(c)));
  assert.deepEqual(r.result.providerChecks.map(c=>c.label),['after-install']);
 });
