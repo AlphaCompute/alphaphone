@@ -23,7 +23,7 @@
     "packages/core/src/__tests__/swap-control-objects.test.ts": "2a3cd5464d53f791d16bf4cae4d179b818f27599b212b5bfa8106a015536bd6a",
     "packages/core/src/runtime.ts": "44536e4e519bc573511f3dbb3136c04d6b8bc2f48bfcd972ca326946606b08e2",
     "packages/core/src/security/pii-pseudonymizer.ts": "bffc53238d2580c5ad2d436e0e247ac425189487bf482e51b5917567f29ee111",
-    "packages/core/src/security/secret-swap.ts": "7a4d9fed214761e714d9e7b208d1b655dadfc744c3733255bcd9ac88960e8133",
+    "packages/core/src/security/secret-swap.ts": "99d8489f4649c5542ddf7086ab62fc5a1ed929ddb4c6a7d342c7f29fdbf61629",
     "packages/core/src/security/runtime-abort-signal.ts": "da3bb65a56334a249399c0a2ec4e0f9d227c8e09e3566237609f679de76b0d78",
     "plugins/plugin-assistant/src/services/message/reply-policy.ts": "6258737cf79a623f58988d6788462b9b5d12ae54b6916b5e198dc873197ee40c",
     "packages/core/src/__tests__/swap-user-reply.test.ts": "f3853504d2cd0ef0806b5649edbd8bd17410d8bc1ee314eee77c9c56dc9efa08",
@@ -56,7 +56,8 @@
     "plugins/plugin-workflow/src/lib/automations-builder.ts": "641fbbd233a1a4d0fd40beb346b0fc1fd11074c0165b10cbd20095bca0f0eea8",
     "plugins/plugin-workflow/__tests__/unit/workflow-routes.test.ts": "6f25190b0195adab69aa57f36207511573e26e2a79567ab7024576c2f7d27923",
     "plugins/plugin-workflow/__tests__/integration/routes-e2e.test.ts": "abf36fe49b422e47c378d8d449393236bfa21cf9dc0bbc5c36ea5a8929cc7585",
-    "plugins/plugin-workflow/__tests__/unit/workflow-status.test.ts": "059161708da08a73757a3750a17ed181fa658e24a89c5018b70d4eb1d77a2117"
+    "plugins/plugin-workflow/__tests__/unit/workflow-status.test.ts": "059161708da08a73757a3750a17ed181fa658e24a89c5018b70d4eb1d77a2117",
+    "packages/core/src/__tests__/swap-contact-reference.test.ts": "73405dfc0d73d7d5ce58a48a0cfc65e7748b079279be2c40181440f768765ffa"
   },
   "patches": [
     "android-secure-store-socket.patch",
@@ -77,7 +78,8 @@
     "calendar-tool-format-guidance.patch",
     "device-operation-key-guidance.patch",
     "typed-workflow-generation.patch",
-    "workflow-runtime-location.patch"
+    "workflow-runtime-location.patch",
+    "egress-contact-references.patch"
   ],
   "patchHashes": {
     "approved-workflows-navigation.patch": "2202d04675531633db4b1ce3a2e49e3e870c259c341acaf20b17bbef6be99c9a",
@@ -88,6 +90,7 @@
     "calendar-tool-format-guidance.patch": "64f38f9b7da7fe4773ce13bd1751a36accf494788f7fb1cd34878655218e43fe",
     "device-operation-key-guidance.patch": "78ff3fa0477fbd5f20a9fee1e288306ccacb15e87383d8b1ab7c87f190170902",
     "typed-workflow-generation.patch": "c6b3840f2860542e5411dc0a98e2e7191643a3b8ac32de2534cebf9fbfc1625e",
-    "workflow-runtime-location.patch": "0f91cc5e29c9d1c45b7c4f7bd350a2881948dc3ad6787446b1879f7741f69d63"
+    "workflow-runtime-location.patch": "0f91cc5e29c9d1c45b7c4f7bd350a2881948dc3ad6787446b1879f7741f69d63",
+    "egress-contact-references.patch": "8cdd5bcf6d64c40d2488219b8fcdb3dda776fca0bc6537de2bb2007b982b36e5"
   }
 }
