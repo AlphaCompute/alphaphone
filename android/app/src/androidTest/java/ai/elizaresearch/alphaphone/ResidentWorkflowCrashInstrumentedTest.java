@@ -231,6 +231,12 @@ public final class ResidentWorkflowCrashInstrumentedTest {
    java.util.regex.Matcher exit=java.util.regex.Pattern.compile("^Smithers worker exited without a result \\(exit=(unknown|-?[0-9]{1,10}); signal=(none|SIG[A-Z0-9]{1,12})\\)(?::.*)?$",java.util.regex.Pattern.DOTALL).matcher(message);
    if(exit.matches()){category="Smithers worker exited without a result";safe.put("workerExitCode",exit.group(1)).put("workerExitSignal",exit.group(2));}
    safe.put("errorCategory",category);
+   JSONObject termination=error.optJSONObject("workerTermination");
+   if(termination!=null){Object code=termination.opt("exitCode"),signal=termination.opt("signal");JSONObject fixed=new JSONObject();
+    fixed.put("exitCode",(code instanceof Integer||code instanceof Long)&&((Number)code).longValue()>=0&&((Number)code).longValue()<=255?code:JSONObject.NULL);
+    fixed.put("signal",signal==JSONObject.NULL?JSONObject.NULL:signal instanceof String&&Arrays.asList("SIGHUP","SIGINT","SIGQUIT","SIGILL","SIGTRAP","SIGABRT","SIGBUS","SIGFPE","SIGKILL","SIGSEGV","SIGPIPE","SIGALRM","SIGTERM","SIGSYS","SIGXCPU","SIGXFSZ").contains(signal)?signal:"unrecognized");
+    safe.put("workerTermination",fixed);
+   }
   }
   return safe;
  }

@@ -30,6 +30,14 @@ ${source.slice(start,end)}
   input.put("error",new JSONObject().put("message","Smithers worker exited without a result (exit=17; signal="+secret+")"));
   safe=safeExecutionDiagnostic(input,"run","workflow","version");
   if(safe.has("workerExitCode")||safe.toString().contains(secret))throw new AssertionError(safe);
+  for(Object[] row:new Object[][]{{7,"SIGTERM"},{0,JSONObject.NULL},{999,secret},{secret,new JSONObject().put("secret",secret)}}){
+   input.put("error",new JSONObject().put("message",secret).put("workerTermination",new JSONObject().put("exitCode",row[0]).put("signal",row[1]).put("output",secret)));
+   safe=safeExecutionDiagnostic(input,"run","workflow","version");
+   JSONObject fixed=safe.getJSONObject("workerTermination");
+   if(safe.toString().contains(secret)||fixed.length()!=2)throw new AssertionError(safe);
+   if(row[0].equals(7)&&(!fixed.get("exitCode").equals(7)||!fixed.getString("signal").equals("SIGTERM")))throw new AssertionError(safe);
+   if(row[0].equals(999)&&(!fixed.isNull("exitCode")||!fixed.getString("signal").equals("unrecognized")))throw new AssertionError(safe);
+  }
   System.out.println("PASS bounded worker exit diagnostics");
  }
 }`);
