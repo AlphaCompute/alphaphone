@@ -2,14 +2,14 @@ import {Capacitor} from '@capacitor/core';
 import {registerPlugin} from './platform-plugins';
 import {planLocalSpeech} from './runtime/local-speech-text';
 /** Preflight the complete native passage, then await every owned chunk. */
-export async function speakLocalText(text:string,signal:AbortSignal,onStarted?:()=>void,queue=false,requirements?:{execution:'device'|'browser';assertCurrent:()=>void}){
+export async function speakLocalText(text:string,signal:AbortSignal,onStarted?:()=>void,queue=false,requirements?:{execution?:'device'|'browser';assertCurrent:()=>void}){
  signal.throwIfAborted();const native=Capacitor.isNativePlatform(),chunks=native?planLocalSpeech(text):[text],voice=registerPlugin<any>('AlphaVoiceCloud');
  const controller=new AbortController(),cancel=()=>controller.abort(signal.reason);signal.addEventListener('abort',cancel,{once:true});if(signal.aborted)cancel();
  const timer=setTimeout(()=>controller.abort(Error('Speech did not finish.')),20*60*1000);let started=false;
  try{for(const chunk of chunks){controller.signal.throwIfAborted();await speakChunk(voice,native,chunk,controller.signal,()=>{if(!started){started=true;onStarted?.();}},queue,requirements);}}
  finally{clearTimeout(timer);signal.removeEventListener('abort',cancel);}
 }
-async function speakChunk(voice:any,native:boolean,text:string,signal:AbortSignal,onStarted:()=>void,queue:boolean,requirements?:{execution:'device'|'browser';assertCurrent:()=>void}){
+async function speakChunk(voice:any,native:boolean,text:string,signal:AbortSignal,onStarted:()=>void,queue:boolean,requirements?:{execution?:'device'|'browser';assertCurrent:()=>void},prepare?:(requestId:string)=>Promise<{playbackId:string;execution?:string}>){
  const requestId=crypto.randomUUID();let playbackId:string|undefined,active=true,cleanup:Promise<void>|undefined;
  const handles=new Set<{remove:()=>Promise<void>}>();
  const bounded=(run:()=>Promise<unknown>)=>new Promise<void>(resolve=>{const timer=setTimeout(resolve,500);Promise.resolve().then(run).catch(()=>{}).finally(()=>{clearTimeout(timer);resolve();});});
@@ -24,12 +24,20 @@ async function speakChunk(voice:any,native:boolean,text:string,signal:AbortSigna
    await Promise.race([pending,interrupted]);signal.throwIfAborted();
   }
   for(;;){signal.throwIfAborted();requirements?.assertCurrent();try{
-   const pending=voice.synthesizeLocal({text,requestId,...(queue&&native?{replace:false}:{})}).then((result:{playbackId:string;execution?:string})=>{if(!active&&result.playbackId)void bounded(()=>voice.stopPlayback({playbackId:result.playbackId,requestId}));return result;});
-   const result=await Promise.race([pending,interrupted]);playbackId=result.playbackId;if(requirements&&result.execution!==requirements.execution)throw Error('Invalid local speech execution');requirements?.assertCurrent();if(typeof playbackId!=='string'||!playbackId)throw Error('Speech preparation returned no playback identity');break;
+   const pending=(prepare?prepare(requestId):voice.synthesizeLocal({text,requestId,...(queue&&native?{replace:false}:{})})).then((result:{playbackId:string;execution?:string})=>{if(!active&&result.playbackId)void bounded(()=>voice.stopPlayback({playbackId:result.playbackId,requestId}));return result;});
+   const result=await Promise.race([pending,interrupted]);playbackId=result.playbackId;if(requirements?.execution&&result.execution!==requirements.execution)throw Error('Invalid local speech execution');requirements?.assertCurrent();if(typeof playbackId!=='string'||!playbackId)throw Error('Speech preparation returned no playback identity');break;
   }catch(error){if(!queue||!native||(error as {code?:string}).code!=='playback-busy')throw error;await wait();}}
   // Admission owns its precise refusal; cleanup can emit stopped before play rejects.
   // Terminal events still retire a prepared utterance while it waits for a busy speaker.
   for(;;){signal.throwIfAborted();requirements?.assertCurrent();try{await Promise.race([voice.play({playbackId,...(queue?{replace:false}:{})}),interrupted]);break;}catch(error){if(!queue||(error as {code?:string}).code!=='playback-busy')throw error;await wait(true);}}
   signal.throwIfAborted();onStarted();await Promise.race([finished,interrupted]);signal.throwIfAborted();
  }finally{signal.removeEventListener('abort',abort);await dispose();}
+}
+
+/** Shared owned playback for authorized Cloud/paired synthesis; never selects a provider. */
+export async function playOwnedSpeech(voice:any,signal:AbortSignal,prepare:(requestId:string)=>Promise<{playbackId:string}>,check:()=>void){
+ signal.throwIfAborted();check();const controller=new AbortController(),cancel=()=>controller.abort(signal.reason);signal.addEventListener('abort',cancel,{once:true});if(signal.aborted)cancel();
+ const timer=setTimeout(()=>controller.abort(Error('Speech did not finish.')),20*60*1000);
+ try{await speakChunk(voice,Capacitor.isNativePlatform(),'',controller.signal,()=>{},false,{assertCurrent:check},prepare);check();}
+ finally{clearTimeout(timer);signal.removeEventListener('abort',cancel);}
 }
