@@ -56,6 +56,16 @@ export function localAgentStorage(directory:string,input:any):unknown {
   if(previous.phase!=='reserved'||typeof input.attemptId!=='string'||!input.attemptId)throw Error('Invalid journal transition');
   entries[input.proposalId]={...previous,phase:'applying',attemptId:input.attemptId};write(entries);return {};
  }
+ if(operation==='recoverNotification'){
+  if(JSON.stringify(previous)!==JSON.stringify(input.expectedEntry))throw Error('Notification journal changed. Refresh history.');
+  if(previous.phase==='terminal'&&previous.status!=='unknown')return {entry:previous};
+  const effect=previous.record.operation,hash=(value:unknown)=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
+  if(!previous.attemptId||previous.phase!=='applying'&&!(previous.phase==='terminal'&&previous.status==='unknown')||effect?.type!=='post_notification'||!previous.record.workflow)throw Error('Notification recovery requires an admitted workflow attempt');
+  const binding=hash([input.scope,previous.record.ownerId,previous.record.agentId,previous.record.sessionId,previous.record.origin,previous.record.installationId,previous.record.enrollmentId,input.proposalId,previous.record.digest,previous.operationId]);
+  if(binding!==input.bindingHash||hash(effect)!==previous.operationHash)throw Error('Notification recovery binding changed');
+  const entry={...previous,phase:'terminal',status:'succeeded',summary:'Recovered the original notification delivery receipt. Nothing was posted again.',result:{operationId:previous.operationId}};
+  entries[input.proposalId]=entry;write(entries);return {entry};
+ }
  if(operation==='recoverReminder'){
   if(JSON.stringify(previous)!==JSON.stringify(input.expectedEntry))throw Error('Reminder journal changed. Refresh history.');
   if(previous.phase==='terminal'&&previous.status!=='unknown')return {entry:previous};

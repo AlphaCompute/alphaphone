@@ -126,6 +126,13 @@ public final class AlphaActionJournalPlugin extends Plugin {
   if(result!=null)entry.put("result",result);
   store.writeCredentialSlot(key(scope,id),entry.toString());return response(entry);
  });}
+ @PluginMethod public void recoverNotification(PluginCall call){work(call,true,(store,scope,id)->{
+  JSONObject entry=read(store,scope,id);
+  AlphaCredentialStore noticeStore=new AlphaCredentialStore(getContext());
+  WorkflowNoticeDelivery delivery=new WorkflowNoticeDelivery(new WorkflowNoticeDelivery.Storage(){public String read(String slot)throws Exception{return noticeStore.readCredentialSlot(slot);}public void write(String slot,String value)throws Exception{noticeStore.writeCredentialSlot(slot,value);}},new WorkflowNoticePoster(getContext()));
+  JSONObject recovered=WorkflowNoticeRecovery.recover(entry,scope,id,call.getString("bindingHash"),delivery::receipt);
+  if(recovered!=entry)store.writeCredentialSlot(key(scope,id),recovered.toString());return response(recovered);
+ });}
  @PluginMethod public void recoverReminder(PluginCall call){work(call,true,(store,scope,id)->{
   JSONObject entry=read(store,scope,id);if(entry==null)throw new IllegalStateException();
   JSONObject operation=entry.getJSONObject("record").getJSONObject("operation");
