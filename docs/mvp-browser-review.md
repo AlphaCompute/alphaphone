@@ -2027,3 +2027,12 @@ The next privacy gap is concrete: a named six-character password bypasses the ei
 Repaired short named/configured string credentials in `egress-short-credentials.patch`, with capture-span replacement, token boundaries and placeholder preservation. A bounded snapshot learns structured credential fields before replacing earlier references. The initial broad log-key classifier broke tool schemas; the final credential-only classifier preserves schema metadata and is covered by a regression test. Final source reproduction/recheck, 45 runtime tests, 157 repository tests/typecheck/build, and real hosted-provider drafts, streams and an approved local note pass. Fifteen captured provider request-body checks excluded the synthetic raw contact values and six-character password. The report retains failed attempts and bounded coverage; defaults remain off. See [short credential qualification](local-agent-development.md#short-credential-repair-october-3).
 
 Browser run `37118912268` at `9d5276e` completed with two successful shards and one calendar backdrop-click timeout. The next browser repair targets the visible month toggle rather than clicking beneath its panel. No Android build or device acceptance is claimed.
+
+
+## October 3 — accessible calendar month closure
+
+The calendar preference test timed out in hosted run `37118912268` because the center of the Close month backdrop was underneath the month panel. Use the existing visible Month view toggle to close it, and expose its `aria-expanded` state for assistive technology. The repair does not force a click through the panel or remove the persistence assertions.
+
+Eight Chromium/WebKit cases pass, including preference persistence/failure recovery and pointer/Enter open-close cycles at 150% text in February and August. Compact final-state screenshots were inspected; the screenshot harness finishes CSS animations before capturing with its frozen clock. Repository verification passes all 157 tests, zero skips, TypeScript and build. Evidence: `artifacts/calendar-preferences-review/test-results/calendar-close-review/`. Exact-head hosted success remains pending.
+
+The user-facing local stack was restarted on short-credential manifest `d570c03df74303368ed3e9ffeae4f1dbde1c7529136d1c806ef54e5d03394e3a`; owner authentication, one agent, embedded workflows, Whisper and Kokoro all report ready. Default swaps remain off. No Android build ran.
