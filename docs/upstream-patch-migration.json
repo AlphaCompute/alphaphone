@@ -356,8 +356,9 @@
     },
     {
       "patch": "standalone-kokoro-host.patch",
-      "sha256": "c24a77c86ccfb6282763095b3b0a909ae5b2d665e79bbb2815f6ba6ea3870a3f",
-      "disposition": "Migrated upstream in PR 33230; retained through latest-baseline integration."
+      "sha256": "f3d56b20736ce6a819f66b47c4f573d2318889e1c66ab20d20091a52fa549e99",
+      "disposition": "Migrated upstream in PR 33230; retained through latest-baseline integration. Includes subsequent host startup warming from merged AlphaPhone PR 136; adapted to upstream per-host lifecycle.",
+      "earlierSha256": "c24a77c86ccfb6282763095b3b0a909ae5b2d665e79bbb2815f6ba6ea3870a3f"
     },
     {
       "patch": "typed-workflow-generation.patch",
@@ -396,6 +397,7 @@
     }
   ],
   "upstreamFollowupPullRequest": "https://github.com/elizaOS/eliza/pull/33236",
-  "upstreamStagingCommit": "06daf5d1f796ca0c848683c8f06b994a641cd800",
-  "upstreamStagingPullRequest": "https://github.com/elizaOS/eliza/pull/32809"
+  "upstreamStagingCommit": "2fe9f510501863af97bda887e2870158b3a3e2b2",
+  "upstreamStagingPullRequest": "https://github.com/elizaOS/eliza/pull/32809",
+  "upstreamStagingFollowupPullRequest": "https://github.com/elizaOS/eliza/pull/33238"
 }
