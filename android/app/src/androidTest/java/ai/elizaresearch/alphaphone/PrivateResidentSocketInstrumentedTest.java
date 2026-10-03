@@ -59,7 +59,11 @@ public final class PrivateResidentSocketInstrumentedTest {
     int uid=out.readInt();assertNotEquals(Process.myUid(),uid);assertEquals(Process.myUid()/100000,uid/100000);
     assertEquals(context.getPackageManager().getPackageUid("ai.elizaresearch.alphaphone.peerfixture",0),uid);
     assertEquals(runId,out.readString());assertEquals(path,out.readString());int errno=out.readInt();
-    assertTrue("Actual filesystem permission rejection, errno="+errno,errno==OsConstants.EACCES||errno==OsConstants.EPERM);
+    // Android app-data mount namespaces may hide the owner's directory entirely (ENOENT).
+    // The exact path, live same-UID controls before/after, stable inode, and empty accept
+    // queue below distinguish that isolation from an absent endpoint or failed fixture.
+    assertTrue("Cross-UID filesystem isolation, errno="+errno,
+      errno==OsConstants.EACCES||errno==OsConstants.EPERM||errno==OsConstants.ENOENT);
     assertEquals("Cross-UID socket connect must fail",0,out.readInt());
    }finally{in.recycle();out.recycle();}
    StructPollfd poll=new StructPollfd();poll.fd=server.getFileDescriptor();poll.events=(short)OsConstants.POLLIN;
