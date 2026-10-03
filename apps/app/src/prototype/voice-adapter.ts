@@ -142,7 +142,7 @@ export function installPrototypeVoiceAdapter(Component: any, views: Record<strin
   }
   async function act(task: (token: number) => Promise<void>) {
     if (busy) return;
-    busy = true; error = ''; const token = generation;
+    busy = true; error = ''; const token = generation; refresh();
     try { await task(token); }
     catch { if (token === generation) { error = onDeviceReady ? 'On-device speech unavailable. Keep recordings under 30 seconds and use English text under 500 characters for playback. Your recording is retained.' : pairedAsrReady ? 'Agent Whisper transcription unavailable. Your recording is retained; check the selected agent and retry explicitly.' : deviceOnly ? 'Recording unavailable. Check microphone access and available device storage, then retry.' : cloudMode ? 'Cloud voice unavailable. Check microphone access, your Cloud account and the connection, then retry.' : 'Voice unavailable. Check microphone access and the local development service, then retry.'; stage = stage === 'review' ? 'review' : clip ? 'recorded' : 'ready'; stopClock(); } }
     finally { if (token === generation) { busy = false; refresh(); } }
@@ -188,12 +188,18 @@ export function installPrototypeVoiceAdapter(Component: any, views: Record<strin
         const text = destination.body.slice(0, destination.start) + draft + destination.body.slice(destination.end);
         const id = target.id, caret = destination.start + draft.length;
         const next = current.map((n: Bag) => n.id === id ? { ...n, body: text, when: 'Now' } : n);
-        if (await api.saveVoiceNote({ list: next, open: id }) !== true) { error = 'The note save is unconfirmed. Your transcript is retained; inspect saved Notes before applying again.'; refresh(); return; }
-        cleanup();
-        window.requestAnimationFrame?.(() => {
-          if (api?.get('notes').open !== id) return;
-          const editor = document.querySelector<HTMLTextAreaElement>('textarea[aria-label="Note"]');
-          if (editor?.value === text) { editor.focus(); editor.setSelectionRange(caret, caret); }
+        const owner = api;
+        await act(async token => {
+          const saved = await owner.saveVoiceNote({ list: next, open: id });
+          if (token !== generation) return;
+          if (saved !== true) { error = 'The note save is unconfirmed. Your transcript is retained; inspect saved Notes before applying again.'; refresh(); return; }
+          cleanup();
+          const completed = generation;
+          window.requestAnimationFrame?.(() => {
+            if (completed !== generation || api?.get('notes').open !== id) return;
+            const editor = document.querySelector<HTMLTextAreaElement>('textarea[aria-label="Note"]');
+            if (editor?.value === text) { editor.focus(); editor.setSelectionRange(caret, caret); }
+          });
         });
         return;
       }
@@ -211,7 +217,9 @@ export function installPrototypeVoiceAdapter(Component: any, views: Record<strin
         const latestTarget = latest.find((n: Bag) => n.id === id);
         if(target ? JSON.stringify(latestTarget)!==JSON.stringify(target) : !!latestTarget)throw new Error('The note changed while saving audio. Recording retained; reopen before applying.');
         const next = target ? latest.map((n: Bag) => n.id === id ? note : n) : [note, ...latest];
-        if (await api!.saveVoiceNote({ list: next, open: id }) !== true) { error = 'The note save is unconfirmed. The recording and transcript are retained; inspect saved Notes before saving again.'; refresh(); return; }
+        const saved = await api!.saveVoiceNote({ list: next, open: id });
+        if (token !== generation) return;
+        if (saved !== true) { error = 'The note save is unconfirmed. The recording and transcript are retained; inspect saved Notes before saving again.'; refresh(); return; }
         cleanup();
       });
       return;
@@ -429,7 +437,7 @@ export function installPrototypeVoiceAdapter(Component: any, views: Record<strin
       clock: `${Math.floor(seconds / 60)}:${String(Math.floor(seconds % 60)).padStart(2, '0')}`, clockCss: '', live: stage === 'recording', paused: stage !== 'recording', dotCss: `background:${stage === 'recording' ? '#E53935' : 'var(--mut)'}`,
       levels: !Capacitor.isNativePlatform()&&stage==='recording'?recordingLevels(recordingId):Array.from({ length: 44 }, () => ({ h: 4 })),
       lines: [{ ini: error ? '!' : 'i', t: error || messages[stage], chip: 'background:var(--s2);color:var(--fg)', css: '' }],
-      review: stage === 'review', transcript: draft, onTranscript: (e: Event) => { draft = (e.target as HTMLTextAreaElement).value; refresh(); },
+      review: stage === 'review', transcript: draft, transcriptDisabled: busy, onTranscript: (e: Event) => { if (busy) return; draft = (e.target as HTMLTextAreaElement).value; refresh(); },
       primaryLabel: labels[stage], primaryIcon: stage === 'review' ? current.ic.check : stage === 'recording' || stage === 'transcribing' ? current.ic.stop : current.ic.mic,
       primaryDisabled: (selectedRoute === 'device' && !onDeviceReady) || preparingLocal || preparingPaired || stage === 'starting' || (busy && stage !== 'transcribing') || (stage === 'review' && !draft.trim()),
       pauseLabel: (onDeviceReady || cloudMode || pairedReady) && stage === 'review' ? playing ? 'Stop audio' : 'Listen to transcript' : ['recorded', 'review'].includes(stage) ? 'Record again' : 'Cancel recording', pauseIcon: (onDeviceReady || cloudMode || pairedReady) && stage === 'review' ? playing ? current.ic.stop : current.ic.play : ['recorded', 'review'].includes(stage) ? current.ic.mic : current.ic.x,

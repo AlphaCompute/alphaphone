@@ -122,7 +122,18 @@ for variant in ['standalone','launcher']:
     for filename in ['resident-recovery-complete.json','resident-recovery-identity.json']:
      try:
       value=run('shell','run-as',APP,'--user',user,'cat','files/'+filename,timeout=10)
-      if len(value.encode())<=65536:(out/(variant+'-'+phase+'-'+filename)).write_text(value)
+      if len(value.encode())<=65536:
+       (out/(variant+'-'+phase+'-'+filename)).write_text(value)
+       if primary is not None and phase=='lost-rpc' and filename=='resident-recovery-complete.json':
+        # Optional read-only observation; preserve the original assertion and cleanup.
+        try:
+         from resident_crash_diagnostic import capture
+         projection=capture(serial,user,name,runid,json.loads(value))
+         (out/(variant+'-'+phase+'-crash-projection.json')).write_text(json.dumps(projection)+'\n')
+        except BaseException:
+         # A signal during optional diagnostics must not replace the active failure
+         # or skip the owned cleanup below. Original instrumentation remains interruptible.
+         pass
      except Exception:pass
     if primary is not None and phase=='lost-rpc':
      try:

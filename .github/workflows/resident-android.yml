@@ -121,7 +121,9 @@ jobs:
           python-version: "3.12"
       - name: Qualify supervisor on real Linux processes
         timeout-minutes: 10
-        run: python3 scripts/ci/test-resident-phase.py
+        run: |
+          python3 scripts/ci/test-resident-phase.py
+          python3 test/resident-crash-diagnostic.test.py
       - name: Install pinned Android native toolchain
         run: |
           python3 scripts/ci/resident-phase.py --name android-toolchain --seconds 1200 sdkmanager 'platforms;android-36' 'build-tools;36.0.0' 'ndk;28.2.13676358' 'cmake;3.22.1'
