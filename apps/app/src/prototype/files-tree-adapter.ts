@@ -34,7 +34,7 @@ export function installFilesTreeAdapter(views:Bag,accept:(module:string,result:N
  };
  async function mutation(){
   const request=dialog,folder=listing?.folder;if(!request||!folder||busy)return;
-  if(request.kind==='move'&&(!request.folder?.canCreate||request.folder.id===request.entry?.parentId))return;
+  if(request.kind==='move'&&(!request.folder?.canCreate||request.folder.id===request.entry?.parentId||request.entries?.every(e=>e.parentId===request.folder?.id)))return;
   if(['create','rename'].includes(request.kind)&&!request.name.trim()){api?.toast('Enter a name.');return;}
   busy=true;repaint();
   try{
@@ -74,7 +74,7 @@ export function installFilesTreeAdapter(views:Bag,accept:(module:string,result:N
    out.pv.del=()=>selected?.canDelete?beginDialog('delete',selected):currentApi.toast('This provider does not support deleting this file.');
    out.pv.startRename=()=>selected?.canRename?beginDialog('rename',selected):currentApi.toast('This provider does not support renaming this file.');
   }
-  if(dialog){const d=dialog;out.nativeTreeDialog={busy,confirmDisabled:busy||(d.kind==='move'&&(!d.folder?.canCreate||d.folder.id===d.entry?.parentId)),title:d.kind==='delete'?'Permanently delete?':d.kind==='move'?'Move file':d.kind==='rename'?'Rename':'New folder',message:d.error||(d.kind==='delete'?`${d.entries?d.entries.length+' selected items':d.entry?.name}. This cannot be undone. There is no integrated trash. Only empty folders can be deleted here.`:d.kind==='move'?`Destination: ${d.folder?.name||'Choose folder'}`:''),hasName:d.kind==='create'||d.kind==='rename',name:d.name,onName:(e:Event)=>{if(dialog)dialog.name=(e.target as HTMLInputElement).value;repaint();},moving:d.kind==='move',destinations:d.rows?.map(e=>({name:e.name,go:()=>moveFolder(e.id)}))||[],canUp:!!d.folder?.parentId,up:()=>moveFolder(d.folder?.parentId),canRoot:d.kind==='move',root:()=>moveFolder(),confirmLabel:busy?'Working…':d.kind==='delete'?'Delete permanently':d.kind==='move'?'Move here':d.kind==='rename'?'Rename':'Create folder',confirm:mutation,cancel:()=>{if(!busy){dialog=undefined;repaint();}}};}
+  if(dialog){const d=dialog;out.nativeTreeDialog={busy,confirmDisabled:busy||(d.kind==='move'&&(!d.folder?.canCreate||d.folder.id===d.entry?.parentId||d.entries?.every(e=>e.parentId===d.folder?.id))),title:d.kind==='delete'?'Permanently delete?':d.kind==='move'?'Move file':d.kind==='rename'?'Rename':'New folder',message:d.error||(d.kind==='delete'?`${d.entries?d.entries.length+' selected items':d.entry?.name}. This cannot be undone. There is no integrated trash. Only empty folders can be deleted here.`:d.kind==='move'?`Destination: ${d.folder?.name||'Choose folder'}`:''),hasName:d.kind==='create'||d.kind==='rename',name:d.name,onName:(e:Event)=>{if(dialog)dialog.name=(e.target as HTMLInputElement).value;repaint();},moving:d.kind==='move',destinations:d.rows?.map(e=>({name:e.name,go:()=>moveFolder(e.id)}))||[],canUp:!!d.folder?.parentId,up:()=>moveFolder(d.folder?.parentId),canRoot:d.kind==='move',root:()=>moveFolder(),confirmLabel:busy?'Working…':d.kind==='delete'?'Delete permanently':d.kind==='move'?'Move here':d.kind==='rename'?'Rename':'Create folder',confirm:mutation,cancel:()=>{if(!busy){dialog=undefined;repaint();}}};}
   else out.nativeTreeDialog=null;
   return out;
  };
