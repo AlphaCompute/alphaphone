@@ -3,15 +3,14 @@ import sys
 assert len(sys.argv)==3
 p=pathlib.Path(sys.argv[1]).resolve()
 prepared=pathlib.Path(sys.argv[2]).resolve()
-manifest=json.loads((p/'patches/eliza/android-local-runtime-source.json').read_text())
 relative='packages/app/scripts/lib/stage-android-agent.ts'
 current=(prepared/relative).read_text()
-import hashlib
-assert hashlib.sha256(current.encode()).hexdigest()==manifest['files'][relative]
-with tempfile.TemporaryDirectory(prefix='alphaownedsource') as temp:
- originalFile=pathlib.Path(temp)/relative;originalFile.parent.mkdir(parents=True);originalFile.write_text(current)
- subprocess.run(['git','apply','-R',str(p/'patches/eliza/android-resident-launcher-no-kill.patch')],cwd=temp,check=True)
- original=originalFile.read_text()
+committed=subprocess.check_output(['git','show','HEAD:'+relative],cwd=prepared).decode()
+assert current==committed
+# Deliberately reintroduce the historical broad kill as a bounded negative control.
+marker='const LAUNCH_SCRIPT = `'
+assert marker in current
+original=current.replace(marker,marker+'\npkill -f "$BUN_PATH" || true\n',1)
 results=[]
 for kind,source in [('upstream-base',original),('upstream-files',current)]:
  start=source.index('const LAUNCH_SCRIPT = `')+len('const LAUNCH_SCRIPT = `'); end=source.index('\n`;',start)

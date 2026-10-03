@@ -6,9 +6,9 @@ const blobHash = bytes => createHash('sha1').update(Buffer.from(`blob ${bytes.le
 const present=file=>{try{fs.lstatSync(file);return true;}catch(error){if(error.code==='ENOENT')return false;throw error;}};
 export const digest = file => createHash('sha256').update(fs.readFileSync(file)).digest('hex');
 function admittedCommit(root) {
- const manifest=JSON.parse(fs.readFileSync(path.join(root,'patches/eliza/mvp-source-base.json'),'utf8'));
- if(!/^[a-f0-9]{40}$/.test(manifest.baseCommit))throw Error('Exact admitted runtime commit required for default artifact selection');
- return manifest.baseCommit;
+ const manifest=JSON.parse(fs.readFileSync(path.join(root,'upstream.lock.json'),'utf8'));
+ if(!/^[a-f0-9]{40}$/.test(manifest.commit))throw Error('Exact admitted runtime commit required for default artifact selection');
+ return manifest.commit;
 }
 // Stable defaults derive from the admitted commit; old physical trees are never relabeled.
 export function workerArtifactDirectory(root, env=process.env) {

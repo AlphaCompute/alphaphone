@@ -6,8 +6,8 @@ on:
     paths:
       - .github/workflows/bun-spawn-seccomp.yml
       - scripts/ci/reproduce-bun-spawn-seccomp.py
-      - patches/eliza/android-preserve-sigsys.patch
-      - patches/eliza/android-local-runtime-source.json
+      - upstream.lock.json
+      - vendor/eliza
 permissions:
   contents: read
 jobs:
@@ -20,6 +20,8 @@ jobs:
         libc: [glibc, musl]
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: true
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: "1.4.2"
@@ -52,7 +54,7 @@ jobs:
           docker run --rm --cap-add SYS_PTRACE \
             -v "$GITHUB_WORKSPACE:$GITHUB_WORKSPACE" -v "$RUNNER_TEMP:$RUNNER_TEMP" \
             -w "$GITHUB_WORKSPACE" -e ALPHA_REPRO_BUN alpine:3.21 \
-            sh -ec 'apk add --no-cache python3 gcc musl-dev linux-headers libstdc++ strace git; python3 scripts/ci/reproduce-bun-spawn-seccomp.py'
+            sh -ec 'apk add --no-cache python3 gcc musl-dev linux-headers libstdc++ strace git; git config --global --add safe.directory "$PWD/vendor/eliza"; python3 scripts/ci/reproduce-bun-spawn-seccomp.py'
       - uses: actions/upload-artifact@v4
         if: always()
         with:

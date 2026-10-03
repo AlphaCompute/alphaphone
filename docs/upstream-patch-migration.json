@@ -1,0 +1,403 @@
+{
+  "upstreamPullRequest": "https://github.com/elizaOS/eliza/pull/33230",
+  "historicalRuntimeBaseline": "92fc988bbc2502b6dab5976014973bbe510b5045",
+  "activeRuntimeReplayHashesMatched": 81,
+  "activeRuntimeReplayHashMismatches": 0,
+  "patches": [
+    {
+      "patch": "0001-durable-device-actions.patch",
+      "sha256": "f617b97c8e9a53dad2ba6c1bc16b766f92c90da6b1a5da3d96ea86491acd0be2",
+      "disposition": "Already represented by the imported upstream runtime history."
+    },
+    {
+      "patch": "0002-paired-local-voice.patch",
+      "sha256": "3eca6439efb2bfaff0ae5fb8de5243dddd693c8dec6fdcc018230599ca99430b",
+      "disposition": "Already represented by the imported upstream runtime history."
+    },
+    {
+      "patch": "0003-explicit-standalone-whisper.patch",
+      "sha256": "10eed9f9473c2ea4eaf3ef7c04bf85e3116f9939fea3abdd482cbd3b75f89c05",
+      "disposition": "Already represented by the imported upstream runtime history."
+    },
+    {
+      "patch": "0004-reviewed-workflow-submissions.patch",
+      "sha256": "243cf49798db615e332c18bc43ffcb61e5e2c74b4af35d64bae6f7d69f05af66",
+      "disposition": "Already represented by the imported upstream runtime history."
+    },
+    {
+      "patch": "0005-durable-workflow-cancellation.patch",
+      "sha256": "b168498a69af2066a9afc26c59aa1b96c93128c124d292614980950fdafb5911",
+      "disposition": "Already represented by the imported upstream runtime history."
+    },
+    {
+      "patch": "0006-workflow-definite-admission-refusal.patch",
+      "sha256": "769d41e42bfffb0b9c0e3e42c7d20d8f6924ea350a2a855dc9b21de74650f980",
+      "disposition": "Already represented by the imported upstream runtime history."
+    },
+    {
+      "patch": "0007-canonical-workflow-approvals.patch",
+      "sha256": "55e3db069e130c7311d0ba871b392c654b16af6a35f5581168a0466d29fe332a",
+      "disposition": "Already represented by the imported upstream runtime history."
+    },
+    {
+      "patch": "0008-workflow-metadata-mutations.patch",
+      "sha256": "ac818c03ab318543e45168fd58bec7b82ad2f43ef509ab5c9dd0b8fd005ff75b",
+      "disposition": "Already represented by the imported upstream runtime history."
+    },
+    {
+      "patch": "0009-workflow-lifecycle-mutations.patch",
+      "sha256": "e2b0521bb613e5a3579cc7dd23e245ab74b431e8cf6471f9fe6f6f1b4ebf72e2",
+      "disposition": "Already represented by the imported upstream runtime history."
+    },
+    {
+      "patch": "0010-workflow-import-order.patch",
+      "sha256": "bea2aa98b186e621f536325a94ccdba3fc4737ab75c2284fed21cf0379c42f12",
+      "disposition": "Already represented by the imported upstream runtime history."
+    },
+    {
+      "patch": "0011-typed-workflow-authoring.patch",
+      "sha256": "2d5b697fc19539b6824cdc973607e61e9b659d0531740b71a5a550bb118e823e",
+      "disposition": "Already represented by the imported upstream runtime history."
+    },
+    {
+      "patch": "0012-workflow-device-bridge.patch",
+      "sha256": "68fc355a5622cd9d3c0887925e0c439d36c8e676d0c2b7aca4749a33fdedff72",
+      "disposition": "Already represented by the imported upstream runtime history."
+    },
+    {
+      "patch": "0013-workflow-presentation-steps.patch",
+      "sha256": "e9a5c829d1a3552a77481625655669cd632d1f33c989e8a785793455e6a7a3f5",
+      "disposition": "Already represented by the imported upstream runtime history."
+    },
+    {
+      "patch": "0014-workflow-compiler-compatibility.patch",
+      "sha256": "e16bebc4188aa11f0d713ac508bd5e468101546182abb18fc035ba027e3295c0",
+      "disposition": "Already represented by the imported upstream runtime history."
+    },
+    {
+      "patch": "0015-agent-calendar-crud.patch",
+      "sha256": "4ad97acdf1399cda459555fb13efbecb2ec5be334794ce570d508b04fcc9868a",
+      "disposition": "Already represented by the imported upstream runtime history."
+    },
+    {
+      "patch": "0016-hosted-digests.patch",
+      "sha256": "8b90cc901af70619220c52ff35805442c22c63705eeace180a83a0ae51ca6c2e",
+      "disposition": "Already represented by the imported upstream runtime history."
+    },
+    {
+      "patch": "0017-agent-notes-crud.patch",
+      "sha256": "f9d7333e971dd2eb522ab9be61ef0818d4e035408b3db2a66817ba8fc8e54a9a",
+      "disposition": "Already represented by the imported upstream runtime history."
+    },
+    {
+      "patch": "0018-hosted-live-google.patch",
+      "sha256": "8253753052204d07484be340f16ae69f766a117ccd99ce7be9fda763adb74b58",
+      "disposition": "Already represented by the imported upstream runtime history."
+    },
+    {
+      "patch": "0019-cloud-session-primary-read.patch",
+      "sha256": "82cd114ffaf497477bf9c45f617982235ebe0c8181283badd262f2e949747fa0",
+      "disposition": "Already represented by the imported upstream runtime history."
+    },
+    {
+      "patch": "0020-cloud-runtime-composed-qualified.patch",
+      "sha256": "a0b9e36f9f2b8ef99f2eda715955be5053f26275f92c05297a7165804818c08f",
+      "disposition": "Already represented by the imported upstream runtime history."
+    },
+    {
+      "patch": "0021-managed-inbox.patch",
+      "sha256": "404e8c6db8a409cb3fb9185a496b0e584cf117e530c32bd46ac6e80509938d86",
+      "disposition": "Already represented by the imported upstream runtime history."
+    },
+    {
+      "patch": "0022-managed-inbox-format.patch",
+      "sha256": "b127896cb3d9abb4239b5957967da6945e5024858555355febfa3b4c77b8bdcd",
+      "disposition": "Already represented by the imported upstream runtime history."
+    },
+    {
+      "patch": "0023-managed-inbox-attachments-context.patch",
+      "sha256": "f02f3794668fffeda3da959510a8b5496ebd2fde129b706fd849c555dd50cb53",
+      "disposition": "Already represented by the imported upstream runtime history."
+    },
+    {
+      "patch": "0024-cloud-google-delegation.patch",
+      "sha256": "67044baf608b1d3a6f2d356951735d063ed749777f3fab5929e8a74ddabf5f5f",
+      "disposition": "Already represented by the imported upstream runtime history."
+    },
+    {
+      "patch": "0025-managed-cloud-owner-provisioning.patch",
+      "sha256": "07258273e68cb690401be17fb982a65f53cebbe565f8fdaeab8382c4dde5b6a1",
+      "disposition": "Already represented by the imported upstream runtime history."
+    },
+    {
+      "patch": "0026-upstream-final-format.patch",
+      "sha256": "fcd633ccc036302a0bc0581e6288cc6cf29a77d36fb7ee8fa40f33da30b20d40",
+      "disposition": "Already represented by the imported upstream runtime history."
+    },
+    {
+      "patch": "0027-upstream-workflow-format.patch",
+      "sha256": "b93f1fd1f4fe4ef3d568acfd1367280c9a5d839b24878692f68f867c2e363b70",
+      "disposition": "Already represented by the imported upstream runtime history."
+    },
+    {
+      "patch": "0028-cloud-sdk-app-auth-export.patch",
+      "sha256": "5836a89c641e1a91d9b322ac4c6ab73e9e5439812a7e68d7df9c7794b5100166",
+      "disposition": "Already represented by the imported upstream runtime history."
+    },
+    {
+      "patch": "0029-cloud-google-response-validation.patch",
+      "sha256": "93b225c016ef2a908594c227cdd0d37311d416a76dd57b33a41717890c67c1f6",
+      "disposition": "Already represented by the imported upstream runtime history."
+    },
+    {
+      "patch": "0030-conversation-title-persistence.patch",
+      "sha256": "f64897b25defc9553e6bbea6427b02bf679e208f4361ce3155b0bcaff6dec7f1",
+      "disposition": "Already represented by the imported upstream runtime history."
+    },
+    {
+      "patch": "0031-portable-workflow-approval-presentation.patch",
+      "sha256": "50b7876ca83c0a9126d8137a735571b4cad42a82192e30486c1552f56018b28b",
+      "disposition": "Already represented by the imported upstream runtime history."
+    },
+    {
+      "patch": "0032-validated-workflow-authoring.patch",
+      "sha256": "2812bbc3fcc0bddc12aeb050d670230bbe61decfc3f1a87c3bd8b27f32520f48",
+      "disposition": "Already represented by the imported upstream runtime history."
+    },
+    {
+      "patch": "0033-workflow-authoring-public-api-contract.patch",
+      "sha256": "635288742066ce2c7909fd3040dec8eef6223e91011680fc1f5c5880ab956b70",
+      "disposition": "Already represented by the imported upstream runtime history."
+    },
+    {
+      "patch": "0034-selected-reminder-crud.patch",
+      "sha256": "86cdc666addf0844297c7ced081ae014295627515d333eb9eb9e9a6993e74061",
+      "disposition": "Already represented by the imported upstream runtime history."
+    },
+    {
+      "patch": "0035-nullable-action-schema.patch",
+      "sha256": "44c9b15256df0ad0af2fc11ac73eb2faec97d5ea5c20e980330edc799122212a",
+      "disposition": "Already represented by the imported upstream runtime history."
+    },
+    {
+      "patch": "0036-qualified-ab8f9a-runtime.patch",
+      "sha256": "a449a0e99ff01f264fbc038ce20e83195855cfa7b74b500f61dc0ba862859247",
+      "disposition": "Already represented by the imported upstream runtime history."
+    },
+    {
+      "patch": "android-preserve-sigsys.patch",
+      "sha256": "1395125689f6e7789c0e11f8e928f38b80cb1fee9d47f1269027912dc789d8d2",
+      "disposition": "Migrated upstream in PR 33230; retained through latest-baseline integration."
+    },
+    {
+      "patch": "android-resident-exact-stop.patch",
+      "sha256": "f329779a5d7b10526c409c018e54ee5b06774ead927bf6c752283e7410a3ba11",
+      "disposition": "Migrated upstream in PR 33230; retained through latest-baseline integration."
+    },
+    {
+      "patch": "android-resident-launcher-no-kill.patch",
+      "sha256": "7db1fd788b38a8df9cf43c81c318f257f8060c50043dc13b1d0ed78b06299636",
+      "disposition": "Migrated upstream in PR 33230; retained through latest-baseline integration."
+    },
+    {
+      "patch": "android-secure-store-api29.patch",
+      "sha256": "fac73b362b0c78dfa1bca6989108e32b9226fc21637d9dfb77d2ca3f51624691",
+      "disposition": "Migrated upstream in PR 33230; retained through latest-baseline integration."
+    },
+    {
+      "patch": "android-secure-store-socket.patch",
+      "sha256": "457ea3d0b91c80c53c4bd3db25bb85cea6079d87c5ee2b02a96757e0a31ae900",
+      "disposition": "Migrated upstream in PR 33230; retained through latest-baseline integration."
+    },
+    {
+      "patch": "android-stream-cancellation.patch",
+      "sha256": "9968da66744793492d695536f22d312faccbd4e124b3c610ed3f8749a9a1dd8c",
+      "disposition": "Already upstream with private filesystem socket transport."
+    },
+    {
+      "patch": "android-workflow-source-publication.patch",
+      "sha256": "8ad19433f9a600f2a03becc94c7b73f021d697a7dc763bc0f2b87c87fde29dd1",
+      "disposition": "Migrated upstream in PR 33230; retained through latest-baseline integration."
+    },
+    {
+      "patch": "approved-workflows-navigation.patch",
+      "sha256": "2202d04675531633db4b1ce3a2e49e3e870c259c341acaf20b17bbef6be99c9a",
+      "disposition": "Migrated upstream in PR 33230; retained through latest-baseline integration."
+    },
+    {
+      "patch": "authenticated-enabled-views.patch",
+      "sha256": "3947ef246ff65e520d8870315222b463c15a49dfb56cbd6784acd06b2ba3a2f1",
+      "disposition": "Migrated upstream in PR 33230; retained through latest-baseline integration."
+    },
+    {
+      "patch": "calendar-tool-format-guidance.patch",
+      "sha256": "64f38f9b7da7fe4773ce13bd1751a36accf494788f7fb1cd34878655218e43fe",
+      "disposition": "Migrated upstream in PR 33230; retained through latest-baseline integration."
+    },
+    {
+      "patch": "clock-handoff.patch",
+      "sha256": "32245531af0928e7bd8a394ac588370790700abdf778cde644f54e1dda5388f2",
+      "disposition": "Migrated upstream in PR 33230; retained through latest-baseline integration."
+    },
+    {
+      "patch": "clock-native-reviewed-executor.patch",
+      "sha256": "a6a3dfebca3c25ced8f31da3796ea5df68ac3670d3dc86b90fdcc86977630d6e",
+      "disposition": "Migrated upstream in PR 33230; retained through latest-baseline integration."
+    },
+    {
+      "patch": "cloud-runtime-parity-combined.patch",
+      "sha256": "d6f3f47cbd16b0487e182427910cf7c68afc315eb62d8efc677b427f42e1ddbd",
+      "disposition": "Historical mixed consumer/upstream export; upstream changes are represented by the numbered series and product changes remain in AlphaPhone."
+    },
+    {
+      "patch": "cloud-session-primary-read.patch",
+      "sha256": "82cd114ffaf497477bf9c45f617982235ebe0c8181283badd262f2e949747fa0",
+      "disposition": "Duplicate of numbered patch 0019, already upstream."
+    },
+    {
+      "patch": "device-operation-key-guidance.patch",
+      "sha256": "78ff3fa0477fbd5f20a9fee1e288306ccacb15e87383d8b1ab7c87f190170902",
+      "disposition": "Migrated upstream in PR 33230; retained through latest-baseline integration."
+    },
+    {
+      "patch": "egress-contact-guidance.patch",
+      "sha256": "69557e411bd7952c77916353998fb3dd2d3befd707c2078dbc3719531618436e",
+      "disposition": "Migrated upstream in PR 33230; retained through latest-baseline integration."
+    },
+    {
+      "patch": "egress-contact-references.patch",
+      "sha256": "8cdd5bcf6d64c40d2488219b8fcdb3dda776fca0bc6537de2bb2007b982b36e5",
+      "disposition": "Migrated upstream in PR 33230; retained through latest-baseline integration."
+    },
+    {
+      "patch": "egress-credential-assignments.patch",
+      "sha256": "e29cf00a402ca00973dfb5eefbfef74afe45ef2bf4d2da9aeb8631e8b163bb9e",
+      "disposition": "Migrated upstream in PR 33230; retained through latest-baseline integration."
+    },
+    {
+      "patch": "egress-encoded-credentials.patch",
+      "sha256": "1c740c08eefba62ec74a7622172c52feb22b7ed2bc6fdf17f3574473b21021e5",
+      "disposition": "Migrated upstream in PR 33230; retained through latest-baseline integration."
+    },
+    {
+      "patch": "egress-quoted-credentials.patch",
+      "sha256": "010eeaeede83b1e8359f10457d1c8fc5188b94dbbba3e12eb3b9f39f14b244da",
+      "disposition": "Migrated upstream in PR 33230; retained through latest-baseline integration."
+    },
+    {
+      "patch": "egress-short-credentials.patch",
+      "sha256": "0a1b80d101760c311318bacc852ee695904cbe0db9d38b53f85ce26e7e60c23e",
+      "disposition": "Migrated upstream in PR 33230; retained through latest-baseline integration."
+    },
+    {
+      "patch": "egress-swap-control-objects.patch",
+      "sha256": "6ecd2d688b0c2a8973ee5c71aabab3cc43fef8a19077516f36c27ba2bc00602c",
+      "disposition": "Migrated upstream in PR 33230; retained through latest-baseline integration."
+    },
+    {
+      "patch": "egress-uri-credentials.patch",
+      "sha256": "dc77b4df7ae9b83a52b051dc4573ef63cf244c3f662947692e17e7b5631e1f5d",
+      "disposition": "Migrated upstream in PR 33230; retained through latest-baseline integration."
+    },
+    {
+      "patch": "egress-user-reply-restoration.patch",
+      "sha256": "39904adafddc8841e74b268aad8fdac00a94481ba43f3acd7b18383d53b32ee8",
+      "disposition": "Migrated upstream in PR 33230; retained through latest-baseline integration."
+    },
+    {
+      "patch": "hosted-digest-route-registration.patch",
+      "sha256": "13da9b7847cfbcbe8ca6dd606740df6a5e2789faa8b0999480258a27542d7b2e",
+      "disposition": "Migrated upstream in PR 33230; retained through latest-baseline integration."
+    },
+    {
+      "patch": "lean-chat-workflows.patch",
+      "sha256": "a8ca2f7cda01dfee7d9542ac1263c55b66e9f6496315382329bd490bb95e0faf",
+      "disposition": "Migrated upstream in PR 33230; retained through latest-baseline integration."
+    },
+    {
+      "patch": "mobile-workflow-enablement.patch",
+      "sha256": "127471d5f767546f7c6de7fe1e2e72cbbeb10561ef59ee48b23818b7efd26bbe",
+      "disposition": "Migrated upstream in PR 33230; retained through latest-baseline integration."
+    },
+    {
+      "patch": "mobile-workflow-source-entries.patch",
+      "sha256": "15b3bf811f45c6a2c00625b5051ec7d74a17f0c5202a1155c6a668ff5a680ce6",
+      "disposition": "Migrated upstream in PR 33230; retained through latest-baseline integration."
+    },
+    {
+      "patch": "packaged-approval-receipts.patch",
+      "sha256": "bbb167f58db1f424e0e889d0c7e121ffdd0c03d4d63470ba89140d85cb09851c",
+      "disposition": "Superseded by current durable workflow approvals and receipts."
+    },
+    {
+      "patch": "packaged-workflow-compiler.patch",
+      "sha256": "ae42f24f4a46ac9165fcef9f12d1cf79411b263161c08f36a0e449c947a75f15",
+      "disposition": "Superseded by current packaged workflow compiler."
+    },
+    {
+      "patch": "packaged-workflow-worker.patch",
+      "sha256": "a11034e98b547fb22d78705e4817df1bca14fb97bb20c025a4262a893493b5c1",
+      "disposition": "Superseded by current resident workflow process host."
+    },
+    {
+      "patch": "reminder-explicit-timing.patch",
+      "sha256": "ff58f690d2214d6de435f7698377971f20c86931e2f4e674ada3ab8e265871d2",
+      "disposition": "Migrated upstream in PR 33230; retained through latest-baseline integration."
+    },
+    {
+      "patch": "reminder-reviewed-creation.patch",
+      "sha256": "c6b061c52668b79daa6c8abfcda8c7154cbccf66e35a49530eeabffad96236e5",
+      "disposition": "Migrated upstream in PR 33230; retained through latest-baseline integration."
+    },
+    {
+      "patch": "stage1-source-repair-fixture.patch",
+      "sha256": "0e99e8a1fdc6af6ee3332f02fc6c221bec1fcba9555d36931e4072da2e772aa4",
+      "disposition": "Migrated upstream in PR 33230; retained through latest-baseline integration."
+    },
+    {
+      "patch": "standalone-kokoro-host.patch",
+      "sha256": "f3d56b20736ce6a819f66b47c4f573d2318889e1c66ab20d20091a52fa549e99",
+      "disposition": "Migrated upstream in PR 33230; retained through latest-baseline integration. Includes subsequent host startup warming from merged AlphaPhone PR 136; adapted to upstream per-host lifecycle.",
+      "earlierSha256": "c24a77c86ccfb6282763095b3b0a909ae5b2d665e79bbb2815f6ba6ea3870a3f"
+    },
+    {
+      "patch": "typed-workflow-generation.patch",
+      "sha256": "c6b3840f2860542e5411dc0a98e2e7191643a3b8ac32de2534cebf9fbfc1625e",
+      "disposition": "Migrated upstream in PR 33230; retained through latest-baseline integration."
+    },
+    {
+      "patch": "workflow-device-owner-binding.patch",
+      "sha256": "4ddb14132d6f7641bcb344a6c9bb32a61e019c3bff76486a3cf8a490e7d279f1",
+      "disposition": "Migrated upstream in PR 33230; retained through latest-baseline integration."
+    },
+    {
+      "patch": "workflow-runtime-location.patch",
+      "sha256": "0f91cc5e29c9d1c45b7c4f7bd350a2881948dc3ad6787446b1879f7741f69d63",
+      "disposition": "Migrated upstream in PR 33230; retained through latest-baseline integration."
+    },
+    {
+      "patch": "workflow-worker-crash-identity-diagnostic.patch",
+      "sha256": "7b546b7bef4703dbf4035f7f87d57a7059ad201f1f3f306dfaadffd9451276d3",
+      "disposition": "Migrated upstream in PR 33230; retained through latest-baseline integration."
+    },
+    {
+      "patch": "workflow-worker-exit-evidence.patch",
+      "sha256": "1c26ead686ff8a8dc00dd395422e9935d9c676c4ff7fbdcdfd943bebb47ea772",
+      "disposition": "Migrated upstream in PR 33230; retained through latest-baseline integration."
+    },
+    {
+      "patch": "workflow-worker-termination-diagnostic.patch",
+      "sha256": "3eea71235aaf105c7c8a5c23eabc99120ba00c0a92c2045a8e6bfcff9c6b7d63",
+      "disposition": "Migrated upstream in PR 33230; retained through latest-baseline integration."
+    },
+    {
+      "patch": "standalone-whisper-backend.patch",
+      "sha256": "fa680567a796bb0a25c57b74c23823b5f29a55fb468c8b836fb69bd74ed8440c",
+      "disposition": "New host speech backend patch from AlphaPhone PR 136 migrated upstream in elizaOS/eliza PR 33236."
+    }
+  ],
+  "upstreamFollowupPullRequest": "https://github.com/elizaOS/eliza/pull/33236",
+  "upstreamStagingCommit": "2fe9f510501863af97bda887e2870158b3a3e2b2",
+  "upstreamStagingPullRequest": "https://github.com/elizaOS/eliza/pull/32809",
+  "upstreamStagingFollowupPullRequest": "https://github.com/elizaOS/eliza/pull/33238"
+}

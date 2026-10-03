@@ -26,7 +26,7 @@ if(fs.existsSync('scripts/local-speech'))for(const name of fs.readdirSync('scrip
 roots.push('android/app/src/main/assets/agent','android/app/src/main/jniLibs',
  'android/app/build/generated/local-agent/java',
  'android/app/build/generated/local-agent/source-manifest.json',
- 'upstream.lock.json','patches/eliza',
+ 'upstream.lock.json',
  'scripts/prepare-local-agent.mjs','scripts/local-agent-source.mjs',
  'scripts/stage-local-agent-runtime.mjs','scripts/stage-local-agent-sources.mjs',
  'scripts/build-workflow-worker.ts','scripts/prepared-workflow-worker.mjs',

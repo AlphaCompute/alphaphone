@@ -1,15 +1,11 @@
 import {test,after} from 'node:test';
 import assert from 'node:assert/strict';
 import * as fs from 'node:fs/promises';
-import {execFileSync} from 'node:child_process';
-import {fileURLToPath,pathToFileURL} from 'node:url';
 import path from 'node:path';
 import os from 'node:os';
 const root=await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(),'alpha-source-publication-')));
 after(()=>fs.rm(root,{recursive:true,force:true}));
-const helper='plugins/plugin-workflow/src/services/workflow-source-publication.ts';
-execFileSync('git',['apply','--include='+helper,fileURLToPath(new URL('../patches/eliza/android-workflow-source-publication.patch',import.meta.url))],{cwd:root});
-const {publishAndroidWorkflowSource:publish}=await import(pathToFileURL(path.join(root,helper)).href);
+const {publishAndroidWorkflowSource:publish}=await import('../vendor/eliza/plugins/plugin-workflow/src/services/workflow-source-publication.ts');
 async function fixture(){const dir=await fs.mkdtemp(path.join(root,'state-'));return {dir,target:path.join(dir,'version.hash.tsx')};}
 test('Android source publication publishes complete bytes across concurrent writers and retains importer inode',async()=>{
  const {dir,target}=await fixture(),source='export default '+JSON.stringify('x'.repeat(100000))+';';
