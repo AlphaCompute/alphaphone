@@ -50,6 +50,16 @@ The Kokoro directory must contain the pinned `kokoro-82m-v1_0.gguf` and `voices/
 
 The real browser test can be repeated with `VITE_LOCAL_AGENT=1`, `ALPHA_LOCAL_AGENT_ORIGIN`, `ALPHA_LOCAL_AGENT_TOKEN_FILE`, and `ALPHA_SPEECH_FIXTURE` pointing to a locally generated synthetic WAV, then running `npx playwright test test/browser/browser-agent-recording.spec.ts`. It verifies capture, transcription, real audio playback, stop and connection retirement. Its host-dependent cases explicitly skip without the required environment. Native Android speech and physical-device acceptance remain separate.
 
+For a real arithmetic-only workflow check against a disposable local host, provide an owner-only paired session JSON file and run:
+
+```sh
+ALPHA_WORKFLOW_ORIGIN=http://127.0.0.1:47859 \
+ALPHA_DEVICE_SESSION_FILE=/private/path/to/session.json \
+node scripts/test-real-workflow.mjs
+```
+
+The helper loads TypeScript through the installed `tsx` loader, accepts only an exact IPv4 loopback HTTP origin, creates a paused synthetic workflow, executes it once, and leaves it paused. It exercises the actual local workflow engine without model inference, tools or communications. Run it against an isolated test profile; it does not qualify native triggers or real-provider workflows.
+
 ## Android setup
 
 Prepare the runtime and stage its mobile payload:
