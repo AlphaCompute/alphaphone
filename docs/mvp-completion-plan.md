@@ -1,5 +1,9 @@
 # Alpha Phone MVP completion plan
 
+## Current checkpoint — October 3, Cloud recovery and native diagnostics
+
+Cloud delegation completion is bounded, late account callbacks are fenced, and native callback tests are required in both distribution recovery campaigns. The combined source passes 177 checks, two rendered auth suites and both Android builds with 3,787 source identities unchanged. Prior a91 browser runs each pass 1,030 flows with four real-agent/recording skips; both Foundation smoke jobs stop at missing scratch after provider reboot, so a strict read-only diagnostic follow-up is included. Resident a91 build/fresh-source HTTP/SQL qualification passes; native jobs remain active. See [exact evidence and remaining gates](mvp-auth-native-qualification-2026-10-03.md). The MVP is not complete.
+
 ## Current checkpoint — October 3, workflow warnings and native mock presentation
 
 The composed follow-up passes 176 repository checks, 41 targeted rendered flows, and both Android distribution builds with 3,786 source identities unchanged. Workflow storage warnings remain visible from Home and over workflow overlays; Android mock mode uses native system chrome and reserves the mock banner height. The fresh-source capability assertion now matches the six advertised capabilities while retaining the five-capability request limit. WebView CI performs one planned, fully revalidated boot after provider installation. The rebuilt launcher is installed with matching APK hash; its visible check is pending Mac unlock. Fresh hosted HTTP/SQL, native provider and resident execution remain required. Live Cloud phone exchange, chat, Gmail, voice, physical-device and signed-image acceptance remain open. The MVP is not complete.
