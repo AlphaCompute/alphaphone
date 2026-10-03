@@ -10,7 +10,7 @@
     "packages/agent/test/mobile-workflows.test.ts": "93d753ea18233078d67050f4c16b1e22450b548dcc2b22558a2c344c8fa98618",
     "packages/agent/test/mobile-workspace-exports.test.ts": "26606028fbd3deb1274a2c8801ea49dccaddb3c806e499607a523f38f5ef76e5",
     "packages/app/src/security/secure-store-android.ts": "af9dbf66398a9a984b43b33d98e752f586c70a6b473b73413e1cbfe395d30974",
-    "packages/core/src/__tests__/swap-control-objects.test.ts": "2a3cd5464d53f791d16bf4cae4d179b818f27599b212b5bfa8106a015536bd6a",
+    "packages/core/src/__tests__/swap-control-objects.test.ts": "75d54daf40bc11fae248e892b389cad9cf16d5af08863c429b890d8b4ab9affc",
     "packages/core/src/__tests__/swap-user-reply.test.ts": "f3853504d2cd0ef0806b5649edbd8bd17410d8bc1ee314eee77c9c56dc9efa08",
     "packages/core/src/runtime.ts": "44536e4e519bc573511f3dbb3136c04d6b8bc2f48bfcd972ca326946606b08e2",
     "packages/core/src/security/guarded-stream.ts": "7f12512d8baea1dbc7a86229dcf18c8048ff1113b89915c319dc3202056ff334",
@@ -62,7 +62,8 @@
     "plugins/plugin-workflow/__tests__/integration/routes-e2e.test.ts": "abf36fe49b422e47c378d8d449393236bfa21cf9dc0bbc5c36ea5a8929cc7585",
     "plugins/plugin-workflow/__tests__/unit/workflow-status.test.ts": "059161708da08a73757a3750a17ed181fa658e24a89c5018b70d4eb1d77a2117",
     "plugins/plugin-assistant/src/services/device-actions/reminder-create-contract.ts": "9545607e3b54a96c34cdf129a8cb4fc3de4476dc23857a3986c0e8174ceea4ed",
-    "packages/core/src/__tests__/swap-contact-reference.test.ts": "73405dfc0d73d7d5ce58a48a0cfc65e7748b079279be2c40181440f768765ffa"
+    "packages/core/src/__tests__/swap-contact-reference.test.ts": "73405dfc0d73d7d5ce58a48a0cfc65e7748b079279be2c40181440f768765ffa",
+    "packages/core/src/runtime/model-dispatch/dispatcher.ts": "14420d660bf8df4103d9d99dd18728e01931269e155b9a69d7d21436c79505d3"
   },
   "patches": [
     "android-secure-store-socket.patch",
@@ -88,7 +89,8 @@
     "workflow-runtime-location.patch",
     "reminder-reviewed-creation.patch",
     "workflow-worker-crash-identity-diagnostic.patch",
-    "egress-contact-references.patch"
+    "egress-contact-references.patch",
+    "egress-contact-guidance.patch"
   ],
   "patchHashes": {
     "android-secure-store-socket.patch": "457ea3d0b91c80c53c4bd3db25bb85cea6079d87c5ee2b02a96757e0a31ae900",
@@ -113,6 +115,7 @@
     "workflow-worker-termination-diagnostic.patch": "3eea71235aaf105c7c8a5c23eabc99120ba00c0a92c2045a8e6bfcff9c6b7d63",
     "workflow-runtime-location.patch": "0f91cc5e29c9d1c45b7c4f7bd350a2881948dc3ad6787446b1879f7741f69d63",
     "workflow-worker-crash-identity-diagnostic.patch": "7b546b7bef4703dbf4035f7f87d57a7059ad201f1f3f306dfaadffd9451276d3",
-    "egress-contact-references.patch": "8cdd5bcf6d64c40d2488219b8fcdb3dda776fca0bc6537de2bb2007b982b36e5"
+    "egress-contact-references.patch": "8cdd5bcf6d64c40d2488219b8fcdb3dda776fca0bc6537de2bb2007b982b36e5",
+    "egress-contact-guidance.patch": "69557e411bd7952c77916353998fb3dd2d3befd707c2078dbc3719531618436e"
   }
 }
