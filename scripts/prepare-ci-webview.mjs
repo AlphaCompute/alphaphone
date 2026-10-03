@@ -151,7 +151,7 @@ export function ensureScratchBackingAlias(run, admit) {
 }
 
 // Read-only diagnostic evidence: one shared budget, no retries, mutations or guessed block targets.
-export function collectOverlayFailureDiagnostics({ environment, sdkEnvironment, execute, now = Date.now, hostPaths = { workspace: process.cwd(), androidSdk: sdkEnvironment.ANDROID_HOME, home: process.env.HOME }, statfs = fs.statfsSync, userspaceOnly = false, stockBackup, providerRestart, superLayout = false }) {
+export function collectOverlayFailureDiagnostics({ environment, sdkEnvironment, execute, now = Date.now, hostPaths = { workspace: process.cwd(), androidSdk: sdkEnvironment.ANDROID_HOME, home: process.env.HOME }, statfs = fs.statfsSync, userspaceOnly = false, stockBackup, providerRestart, superLayout = false, frameworkAnr = false }) {
   const deadline = now() + 20000;
   const evidence = { host: {}, guest: {}, budgetMilliseconds: 20000 };
   for (const [name, location] of Object.entries(hostPaths)) {
@@ -186,7 +186,14 @@ export function collectOverlayFailureDiagnostics({ environment, sdkEnvironment, 
     ['superSlot1', ['shell', 'lpdump', '--slot=1', '/dev/block/by-name/super']],
     ['vendorBlockContexts', ['shell', 'grep', '-e', 'super', '-e', 'vda', '-e', 'vd_device', '/vendor/etc/selinux/vendor_file_contexts']],
   ];
-  const reads = superLayout ? superReads : providerRestart ? [
+  const reads = frameworkAnr ? [
+    ['lastAnr', ['shell', 'dumpsys', 'activity', 'lastanr']],
+    ['processes', ['shell', 'dumpsys', 'activity', 'processes']],
+    ['anrEvents', ['shell', 'logcat', '-d', '-b', 'events', '-t', '400', 'am_anr:I', 'am_crash:I', '*:S']],
+    ['systemLog', ['shell', 'logcat', '-d', '-b', 'system', '-t', '400']],
+    ['memory', ['shell', 'cat', '/proc/meminfo']],
+    ['pressure', ['shell', 'cat', '/proc/pressure/memory', '/proc/pressure/cpu', '/proc/pressure/io']],
+  ] : superLayout ? superReads : providerRestart ? [
     ...superReads,
     ['deviceMapperNames', ['shell', 'dmctl', 'list', 'devices']],
     ['mounts', ['shell', 'cat', '/proc/mounts']],
@@ -216,7 +223,7 @@ export function collectOverlayFailureDiagnostics({ environment, sdkEnvironment, 
   for (const [name, args] of reads) {
     if (userspaceOnly && name !== 'userspaceStorageLog') continue;
     // Admission uses the same bounded executor and performs one complete attempt.
-    try { requireProviderFixture(read, environment, { installed: Boolean(providerRestart) }, () => { throw Error('Failure diagnostic admission unavailable'); }); }
+    try { requireProviderFixture(read, environment, { installed: Boolean(providerRestart || frameworkAnr) }, () => { throw Error('Failure diagnostic admission unavailable'); }); }
     catch (error) { evidence.admissionStopped = String(error.message).slice(0, 512); break; }
     try {
       const result = read(...args);
@@ -516,6 +523,14 @@ export async function main({ environment = process.env, execute = execFileSync, 
     const activity = run('shell', 'dumpsys', 'activity', 'activities');
     state.providerRestart.anrPresent = activity.includes('Application Not Responding:');
     state.providerRestart.anrLines = activity.split(/\r?\n/).filter(line => line.includes('Application Not Responding:')).slice(0, 8).map(line => line.slice(0, 512)); save();
+    if (state.providerRestart.anrPresent) {
+      // Fresh disposable emulator only, before any product app or credentials.
+      // Preserve the failure; do not dismiss the dialog or restart a second time.
+      try {
+        const diagnostics = collectOverlayFailureDiagnostics({ environment, sdkEnvironment: env, execute, now, frameworkAnr: true });
+        fs.writeFileSync(path.join(output, 'provider-framework-anr.json'), JSON.stringify(diagnostics, null, 2) + '\n');
+      } catch (diagnosticError) { state.providerRestart.diagnosticError = String(diagnosticError.message).slice(0, 512); save(); }
+    }
     require(!state.providerRestart.anrPresent, 'Application ANR remains after provider framework restart');
     state.status = 'PROVISIONED_RUNTIME_QUALIFICATION_PENDING'; save();
     // APKs are reproducible via pinned URL/hash; keep compact provenance in CI artifacts.

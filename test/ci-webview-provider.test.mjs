@@ -165,6 +165,7 @@ async function simulate({ framework = 'ready', drift, neverBoot = false, neverRe
     if (key==='shell cat /proc/bootconfig' && drift==='boot-config') return 'androidboot.boot_devices = "wrong"';
     if (key === 'shell getprop fs_mgr.overlayfs.data_scratch_size_mb') return drift === 'scratch-existing' ? '2048' : drift === 'scratch-unapplied' ? '' : scratch;
     if (key === 'shell setprop fs_mgr.overlayfs.data_scratch_size_mb 512') { scratch = '512'; return ''; }
+    if (['shell dumpsys activity lastanr','shell dumpsys activity processes','shell logcat -d -b events -t 400 am_anr:I am_crash:I *:S','shell logcat -d -b system -t 400','shell cat /proc/meminfo','shell cat /proc/pressure/memory /proc/pressure/cpu /proc/pressure/io'].includes(key) && (key!=='shell dumpsys activity processes'||options.maxBuffer===256*1024)) { assert.ok(options.timeout>0&&options.timeout<=2000);assert.equal(options.maxBuffer,256*1024);return key==='shell dumpsys activity processes'?'ACTIVITY MANAGER bounded synthetic ANR evidence':'synthetic bounded ANR evidence'; }
     if (key === 'shell getprop ro.boot.super_partition') return 'vda2';
     if (key === 'shell readlink -f /dev/block/by-name/super') return '/dev/block/vda2';
     if (key.startsWith('shell ls -lZ ') || key==='shell cat /sys/class/block/vda2/uevent' || key.startsWith('shell lpdump --slot=') || key==='shell grep -e super -e vda -e vd_device /vendor/etc/selinux/vendor_file_contexts') { assert.ok(options.timeout>0 && options.timeout<=2000); return 'synthetic super layout'; }
@@ -211,8 +212,10 @@ async function simulate({ framework = 'ready', drift, neverBoot = false, neverRe
   const diagnostics = fs.existsSync(diagnosticPath) ? JSON.parse(fs.readFileSync(diagnosticPath)) : null;
   const superPath=path.join(output,'super-layout-before.json');
   const superLayout=fs.existsSync(superPath)?JSON.parse(fs.readFileSync(superPath)):null;
+  const anrPath=path.join(output,'provider-framework-anr.json');
+  const anrDiagnostics=fs.existsSync(anrPath)?JSON.parse(fs.readFileSync(anrPath)):null;
   fs.rmSync(parent, { recursive: true, force: true });
-  return { superLayout, diagnostics, calls, result, error, stopped, removed, installed, selectionReads, elapsed };
+  return { anrDiagnostics, superLayout, diagnostics, calls, result, error, stopped, removed, installed, selectionReads, elapsed };
 }
 test('full provider command sequence survives one offline reboot and delayed RELRO', async () => {
   const r = await simulate(); assert.ifError(r.error);
@@ -466,4 +469,16 @@ test('super layout is read before any remount without adding install or reboot',
  assert.ok(r.calls.indexOf('shell lpdump --slot=1 /dev/block/by-name/super')<r.calls.indexOf('remount'));
  assert.equal(r.calls.filter(c=>c.startsWith('install ')).length,1);
  assert.equal(r.calls.filter(c=>c==='reboot').length,1);
+});
+
+test('focused framework ANR preserves bounded read-only evidence without accepting or retrying setup',async()=>{
+ const r=await simulate({drift:'final-anr'});
+ assert.match(r.error.message,/Application ANR remains/);assert.equal(r.result.status,'FAIL');
+ assert.deepEqual(Object.keys(r.anrDiagnostics.guest),['lastAnr','processes','anrEvents','systemLog','memory','pressure']);
+ assert.equal(r.anrDiagnostics.budgetMilliseconds,20000);
+ for(const [key,value] of Object.entries(r.anrDiagnostics.guest))assert.equal(value,key==='processes'?'ACTIVITY MANAGER bounded synthetic ANR evidence':'synthetic bounded ANR evidence');
+ const start=r.calls.indexOf('shell dumpsys activity lastanr');assert.ok(start>0);
+ assert.ok(!r.calls.slice(start).some(c=>/^(install |reboot$|remount$|shell (stop$|start$|input |am force-stop|kill))/.test(c)));
+ assert.equal(r.calls.filter(c=>c==='reboot').length,1);
+ assert.equal((await simulate()).anrDiagnostics,null);
 });
