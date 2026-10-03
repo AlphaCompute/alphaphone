@@ -1,4 +1,4 @@
-import {connectionController} from '../runtime/connection-ui';
+import {browserSpeechConnection as connectionController} from './agent-speech';
 import {recordingPcmWav} from './recording-pcm';
 import {browserMediaVolume} from './audio-settings';
 import {audioRecord,audioMetadata,retainAudio,changeAudioDeleted,audioDeletionStatus,migrateAudio} from './note-audio-store';
