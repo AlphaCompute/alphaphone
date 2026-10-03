@@ -65,7 +65,7 @@ function assertCalendarContext(operation:CalendarOperation,context:ContextEnvelo
  }else if(selected.kind!=='calendar-event'||selected.id!==operation.target.eventId||selected.revision!==operation.target.revision||selected.accountId!==operation.target.sourceId||selected.sourceRevision!==operation.target.sourceRevision)throw Error('Selected calendar event changed');
 }
 function assertMapsContext(operation:MapsOperation,context:ContextEnvelope){const selected=context.selectedObject,t=operation.target;if(context.sensitive||context.view!=='maps'||!selected||selected.kind!==t.kind||selected.id!==t.id||selected.revision!==t.revision||!validateMapsSelectedObject(t))throw Error('Selected Maps context changed');}
-function assertReminderContext(operation:ReminderOperation,context:ContextEnvelope){const s=context.selectedObject,t=operation.target;if(context.sensitive||context.view!=='calendar'||!s||s.kind!=='reminder'||s.id!==t.reminderId||s.revision!==t.revision||s.accountId!==t.sourceId||s.sourceRevision!==t.sourceRevision||s.occurrenceId!==t.occurrenceId)throw Error('Selected reminder context changed');}
+function assertReminderContext(operation:ReminderOperation,context:ContextEnvelope){const s=context.selectedObject,t=operation.target;if(context.sensitive||context.view!=='calendar'||!s||s.kind!=='reminder'||s.id!==t.reminderId||s.revision!==t.revision||s.accountId!==t.sourceId||s.sourceRevision!==t.sourceRevision||s.occurrenceId!==t.occurrenceId||s.timingVersion!==t.timingVersion)throw Error('Selected reminder context changed');}
 function assertNotesContext(operation:NotesOperation,context:ContextEnvelope){const s=context.selectedObject,t=operation.target;if(context.sensitive||context.view!=='notes'||!s||s.kind!=='note'||s.id!==t.noteId||s.revision!==t.revision||s.accountId!==t.sourceId||s.sourceRevision!==t.sourceRevision)throw Error('Selected note context changed');}
 export async function actionScope(value: string): Promise<string> {
   return Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value))), b => b.toString(16).padStart(2, '0')).join('');
@@ -77,13 +77,14 @@ export class DeviceActions {
   private busy = false;
   constructor(readonly session: VerifiedSession, readonly credential: DeviceCredential, readonly scope: string,
     private request: (path: string, body: unknown | undefined, signal: AbortSignal) => Promise<unknown>,
-    private journal: ActionJournal, private execute: DeviceExecutor, private recover?:DeviceRecovery) {}
+    private journal: ActionJournal, private execute: DeviceExecutor, private recover?:DeviceRecovery, private reminderV2=false) {}
   private parse(value: unknown): Proposal {
     const p = object(value), payload = object(p.payload);
     if (p.subjectUserId !== this.session.ownerId || p.requestedBy !== this.session.agentId || p.action !== 'device_action' || payload.action !== 'device_action' || payload.version !== 1 || payload.installationId !== this.credential.installationId || payload.enrollmentId !== this.credential.enrollmentId) throw new Error('Device action belongs to another identity');
     const expiresAt = Date.parse(text(p.expiresAt, 40)), digest = text(p.digest, 64);
     if (!Number.isFinite(expiresAt) || !/^[a-f0-9]{64}$/.test(digest)) throw new Error('Invalid action expiry or digest');
     const workflow=payload.workflow===undefined?undefined:parseWorkflowBinding(payload.workflow),op=validateDeviceOperation(payload.operation);
+    if(isReminderOperation(op)&&(op.target.timingVersion===2||op.type==='reminder_update'&&op.fields.schedule?.alertMinutes!==undefined)&&!this.reminderV2)throw Error('This agent does not support this reminder timing. Reconnect to a compatible agent.');
     if((op.type==='read_selected_notes'||op.type==='read_calendar_range')&&!workflow)throw new Error('Workflow binding required for phone reads');
     return { id: id(p.id), digest, state: text(p.state, 32), expiresAt, operation:op,...(workflow?{workflow}:{}), ...(p.execution?.attemptId ? { attemptId: id(p.execution.attemptId) } : {}) };
   }

@@ -93,8 +93,9 @@ public final class ResidentWorkflowCrashInstrumentedTest {
     root=ElizaAgentService.localAgentToken(context);
     if(root!=null&&!root.isEmpty()){
      status=nativeCall("/api/auth/status","GET",null,ownerBearer==null?root:ownerBearer);
-     if(ownerBearer!=null&&!status.optBoolean("authenticated"))status=null;
-     else {status.getString("instanceId");break;}
+     // Authenticate the current boot, retaining the already paired owner on restart.
+     if(Boolean.TRUE.equals(status.opt("authenticated"))&&root.equals(ElizaAgentService.localAgentToken(context))){status.getString("instanceId");break;}
+     status=null;
     }
    } catch(IOException|JSONException unavailable){status=null;}
    SystemClock.sleep(250);

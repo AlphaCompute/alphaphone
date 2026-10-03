@@ -17,10 +17,10 @@ export function installReminderAdapter(Component: Bag, views: Bag) {
   const render = views.calendar.render;
   views.calendar.state = { ...views.calendar.state, events: [] };
   let owner: Bag;
-  const events = (rows: Reminder[]) => rows.filter(r => r.status === 'completed' || r.status === 'scheduled' || r.status === 'posted' || r.status === 'permission-denied' || r.status === 'scheduling-failed').map(r => {
+  const events = (rows: Reminder[]) => rows.filter(r => r.status === 'pending' || r.status === 'completed' || r.status === 'scheduled' || r.status === 'posted' || r.status === 'permission-denied' || r.status === 'scheduling-failed').map(r => {
     const date = new Date(r.dueAt || r.at), today = new Date(); today.setHours(0,0,0,0);
     const day = new Date(date); day.setHours(0,0,0,0);
-    return { id: 'reminder:' + r.id, alphaReminderId: r.id, reminderBody:r.body, reminderAt:r.at, reminderOccurrence:r.occurrenceId, reminderRecurrence:r.recurrence, reminderHistory:r.history, reminderStatus:r.status, reminderTarget:r.target, off: Math.round((day.getTime()-today.getTime())/86400000), t: date.getHours()+date.getMinutes()/60, d: .25, title:r.title, cal:'personal', who:[], repeat:'none', alert:r.recurrence?.leadMinutes || 0, notes:[r.body, r.snoozedAt && r.status==='scheduled' ? `Snoozed until ${new Date(r.at).toLocaleString()} · approximate delivery` : '', r.recurrence ? `${r.recurrence.rule} · ${r.recurrence.zone}. Next occurrence is scheduled after Done. Future missing clock times use the first valid time after the gap; repeated clock times use the earlier offset.` : '', r.status === 'scheduling-failed' ? 'Saved, scheduling failed. Tap Snooze 10 minutes to retry.' : '', r.status === 'completed' ? 'Completed · no further alarm scheduled' : r.status === 'posted' ? 'Notification posted' : r.status === 'permission-denied' ? 'Not delivered · notifications were disabled. Enable notifications in Android settings, then edit this reminder to choose a new time and save.' : 'Scheduled · approximate delivery'].filter(Boolean).join('\n') };
+    return { id: 'reminder:' + r.id, alphaReminderId: r.id, reminderBody:r.body, reminderAt:r.at, reminderOccurrence:r.occurrenceId, reminderRecurrence:r.recurrence, reminderHistory:r.history, reminderStatus:r.status, reminderTarget:r.target, off: Math.round((day.getTime()-today.getTime())/86400000), t: date.getHours()+date.getMinutes()/60, d: .25, title:r.title, cal:'personal', who:[], repeat:'none', alert:r.alertMinutes!==undefined?r.alertMinutes:r.recurrence?.leadMinutes || 0, notes:[r.body, r.snoozedAt && r.status==='scheduled' ? `Snoozed until ${new Date(r.at).toLocaleString()} · approximate delivery` : '', r.recurrence ? `${r.recurrence.rule} · ${r.recurrence.zone}. ${r.alertMinutes===null?'Next occurrence is saved with no alert after Done.':'Next occurrence is scheduled after Done.'} Future missing clock times use the first valid time after the gap; repeated clock times use the earlier offset.` : '', r.status === 'scheduling-failed' ? 'Saved, scheduling failed. Tap Snooze 10 minutes to retry.' : '', r.status === 'pending' ? 'No alert · saved on this device' : r.status === 'completed' ? 'Completed · no further alarm scheduled' : r.status === 'posted' ? 'Notification posted' : r.status === 'permission-denied' ? 'Not delivered · notifications were disabled. Enable notifications in Android settings, then edit this reminder to choose a new time and save.' : 'Scheduled · approximate delivery'].filter(Boolean).join('\n') };
   });
   p.refreshReminders = async function (openId?: string, occurrenceId?: string) {
     // Resume and calendar refresh may supersede the notification's fetch.
@@ -85,7 +85,7 @@ export function installReminderAdapter(Component: Bag, views: Bag) {
         if(!current?.title?.trim())return;
 
         const unchangedSchedule=current.alphaReminderId&&current.reminderEditSchedule&&JSON.stringify([current.off,current.t,current.repeat,current.alert])===JSON.stringify(current.reminderEditSchedule);
-        const saveEdit=async(schedule?:{at:number;recurrence:any})=>{
+        const saveEdit=async(schedule?:{at:number;recurrence:any;dueAt:number;alertMinutes:number|null})=>{
           if(!current.reminderEditTarget){api.toast('Refresh and reopen this reminder before saving.');return;}
           const editSession=current.reminderEditSession,saveOwner=owner;
           if(!saveOwner||!editSession)return;
@@ -120,7 +120,7 @@ export function installReminderAdapter(Component: Bag, views: Bag) {
             await acknowledgeReminderDeletion(input,response.result);
             const active=sameEditor();
             if(active)api.set({form:null});
-            if(owner===saveOwner&&saveOwner.live){await saveOwner.refreshReminders();api.toast(active?(response.result.status==='permission-denied'?'Saved, notifications disabled. Enable notifications then review this reminder again.':response.result.status==='scheduling-failed'?'Saved, scheduling failed. Review this reminder before retrying.':schedule?'Reminder rescheduled · approximate delivery':'Reminder updated. Schedule unchanged.'):'The reviewed reminder edit was saved. Later draft changes were not saved.');}
+            if(owner===saveOwner&&saveOwner.live){await saveOwner.refreshReminders();api.toast(active?(response.result.status==='pending'?'Saved with no alert.':response.result.status==='permission-denied'?'Saved, notifications disabled. Enable notifications then review this reminder again.':response.result.status==='scheduling-failed'?'Saved, scheduling failed. Review this reminder before retrying.':schedule?'Reminder rescheduled · approximate delivery':'Reminder updated. Schedule unchanged.'):'The reviewed reminder edit was saved. Later draft changes were not saved.');}
           }catch{if(owner===saveOwner&&saveOwner.live)api.toast('Reminder edit is unconfirmed. Check action status in Calendar; it will not be repeated.');}
           finally{
             if(createdInput&&!dispatched)try{await discardUndispatchedReminderDeletion(createdInput);if(editSession.attempt===createdInput)delete editSession.attempt;}catch{/* Preserve uncertain persistence and its exact attempt. */}
@@ -129,7 +129,7 @@ export function installReminderAdapter(Component: Bag, views: Bag) {
           }
         };
         if(unchangedSchedule){await saveEdit();return;}
-        const date=reminderWallTime(Number(current.off||0),Number(current.t)),lead=Number(current.alert||0);
+        const date=reminderWallTime(Number(current.off||0),Number(current.t)),alertMinutes=current.alert===null?null:Number(current.alert||0),lead=alertMinutes??0;
         if(!date||!Number.isFinite(lead)||lead<0){api.toast('This local time does not exist because the clocks change. Choose another reminder time. Nothing was saved.');return;}
         // Alert lead is elapsed time before a valid event instant, including across DST.
         const recurrence = current.repeat==='none' ? undefined : {
@@ -138,18 +138,22 @@ export function installReminderAdapter(Component: Bag, views: Bag) {
           time:`${String(date.getHours()).padStart(2,'0')}:${String(date.getMinutes()).padStart(2,'0')}`,leadMinutes:lead
         };
         if(recurrence?.rule==='weekdays' && [0,6].includes(date.getDay())){api.toast('Choose a weekday for the first reminder. Nothing was saved.');return;}
-        date.setTime(date.getTime()-lead*60000);
+        const dueAt=date.getTime();date.setTime(dueAt-lead*60000);
         if(!current.alphaReminderId){
           const createOwner=owner;if(!createOwner)return;
           createOwner.reminderSaving=true;
           const id=current.reminderCreationId||crypto.randomUUID();
-          const request={id,title:current.title.trim(),body:current.notes||'',at:date.getTime(),...(recurrence?{recurrence}:{})};
+          const request={id,title:current.title.trim(),body:current.notes||'',at:date.getTime(),dueAt,alertMinutes,...(recurrence?{recurrence}:{})};
           const signature=JSON.stringify([current.title,current.notes,current.off,current.t,current.repeat,current.alert,current.cal]);
           let matchesAttempt=true;
           const active=()=>matchesAttempt&&owner===createOwner&&createOwner.live&&!document.hidden&&api.isActive()&&api.get('calendar').form?.reminderCreationId===id&&JSON.stringify([api.get('calendar').form.title,api.get('calendar').form.notes,api.get('calendar').form.off,api.get('calendar').form.t,api.get('calendar').form.repeat,api.get('calendar').form.alert,api.get('calendar').form.cal])===signature;
           let created:ReminderCreation|null=null,dispatched=false,scheduled=false;
           try{
             if(!current.reminderCreationId){
+              let timingVersion:unknown;
+              try{timingVersion=(await DailyApps.surfaceInfo()).reminderTimingVersion;}catch{/* Unknown native support cannot dispatch an explicit alert. */}
+              if(owner!==createOwner||!createOwner.live||!api.isActive()||api.get('calendar').form!==current||document.hidden)return;
+              if(timingVersion!==2){api.toast('Update Alpha to save reminders with this alert setting. Nothing was saved.');return;}
               const pending=Object.values(await reminderCreations()).filter(row=>row.state==='pending');
               if(owner!==createOwner||!createOwner.live||!api.isActive()||api.get('calendar').form!==current||document.hidden)return;
               if(pending.length&&!window.confirm('A previous reminder creation is unconfirmed and may already exist. Create a separate new reminder? The previous attempt will remain available for status checks.'))return;
@@ -159,14 +163,14 @@ export function installReminderAdapter(Component: Bag, views: Bag) {
               await retainReminderCreation(created);
               if(!active())return;
               dispatched=true;
-              try{const response=await DailyApps.scheduleReminder(request);scheduled=response.status==='scheduled'&&response.id===id;}catch{/* Recovery reads only; never reschedule an unknown attempt. */}
+              try{const response=await DailyApps.scheduleReminder(request);scheduled=(response.status==='scheduled'||response.status==='pending')&&response.id===id;}catch{/* Recovery reads only; never reschedule an unknown attempt. */}
             }
             const retained=(await reminderCreations())[id];
             matchesAttempt=!!retained&&JSON.stringify(retained.request)===JSON.stringify(request);
             const found=await checkReminderCreation(id);
             if(found!=='found')throw Error('Creation outcome unknown');
             if(active())api.set({form:null});
-            if(owner===createOwner&&createOwner.live){await createOwner.refreshReminders();api.toast(!matchesAttempt?'The previous reminder was found. This edited draft was not saved. Close it to start a separate reminder.':scheduled?'Reminder scheduled · approximate delivery':'The saved reminder was found. Delivery is not verified.');}
+            if(owner===createOwner&&createOwner.live){await createOwner.refreshReminders();api.toast(!matchesAttempt?'The previous reminder was found. This edited draft was not saved. Close it to start a separate reminder.':scheduled?(alertMinutes===null?'Reminder saved with no alert.':'Reminder scheduled · approximate delivery'):alertMinutes===null?'The saved reminder was found. No alert is enabled.':'The saved reminder was found. Delivery is not verified.');}
           }catch{
             if(owner===createOwner&&createOwner.live)api.toast('Reminder creation is unconfirmed. Check new reminder status in Calendar; it will not be created again automatically.');
           }finally{
@@ -178,7 +182,7 @@ export function installReminderAdapter(Component: Bag, views: Bag) {
           }
           return;
         }
-        await saveEdit({at:date.getTime(),recurrence:recurrence||null});
+        await saveEdit({at:date.getTime(),recurrence:recurrence||null,dueAt,alertMinutes});
       };
     }
     const event=(state.events||[]).find((e:Bag)=>e.id===state.open);
@@ -188,11 +192,12 @@ export function installReminderAdapter(Component: Bag, views: Bag) {
       if(state.reminderStale||owner?.reminderRefreshFailed){out.ev.hasNotes=true;out.ev.notes='This reminder may be out of date. Return to Calendar and tap Retry.\n'+(out.ev.notes||'');}
       out.ev.recurringReminder=!!event.reminderOccurrence;
       out.ev.reminderActionable=!!event.reminderOccurrence&&event.reminderStatus!=='completed';
-      out.ev.reminderPolicy=event.reminderRecurrence ? `Repeats ${event.reminderRecurrence.rule} in ${event.reminderRecurrence.zone}. Next occurrence is scheduled after Done. Last 32 completion receipts are retained.` : event.reminderStatus==='completed'?'Completed · no further alarm scheduled. Last 32 completion receipts are retained.':'One-time reminder. Done completes it without scheduling another alarm.';
+      out.ev.reminderPolicy=event.reminderRecurrence ? `Repeats ${event.reminderRecurrence.rule} in ${event.reminderRecurrence.zone}. ${event.alert===null?'Next occurrence is saved with no alert after Done.':'Next occurrence is scheduled after Done.'} Last 32 completion receipts are retained.` : event.reminderStatus==='completed'?'Completed · no further alarm scheduled. Last 32 completion receipts are retained.':'One-time reminder. Done completes it without scheduling another alarm.';
       out.ev.reminderHistory=(event.reminderHistory||[]).map((h:Bag)=>({text:`Completed ${new Date(h.completedAt).toLocaleString()} · due ${new Date(h.dueAt).toLocaleString()}${h.skippedDates?` · ${h.skippedDates} elapsed repeat dates skipped`:''}`}));
       const renderedDecisionTarget=event.reminderTarget?structuredClone(event.reminderTarget):undefined;
       const decide=async(action:'done'|'snooze')=>{
         if(!requireFresh()||owner?.reminderSaving)return;
+        if(action==='snooze'&&event.alert===null){api.toast('Edit this reminder to enable an alert before snoozing.');return;}
         if(!renderedDecisionTarget){api.toast('Refresh and reopen this reminder before changing it.');return;}
         const decisionOwner=owner;
         const stillSelected=()=>owner===decisionOwner&&decisionOwner?.live&&!document.hidden&&api.isActive()&&api.get('calendar').open===event.id&&!api.get('calendar').form;
@@ -222,7 +227,7 @@ export function installReminderAdapter(Component: Bag, views: Bag) {
           if(owner===decisionOwner&&decisionOwner.live){
             await decisionOwner.refreshReminders();
             const status=response.result.status;
-            api.toast(status==='permission-denied'?'Saved, notifications disabled. Enable notifications then review this reminder again.':status==='scheduling-failed'?'Saved, scheduling failed. Review this reminder before retrying.':action==='snooze'?'Snoozed 10 minutes · approximate delivery':status==='completed'?'Completed. No further alarm scheduled.':'Completed. Next occurrence scheduled.');
+            api.toast(status==='permission-denied'?'Saved, notifications disabled. Enable notifications then review this reminder again.':status==='scheduling-failed'?'Saved, scheduling failed. Review this reminder before retrying.':action==='snooze'?'Snoozed 10 minutes · approximate delivery':status==='completed'?'Completed. No further alarm scheduled.':status==='pending'?'Completed. Next occurrence saved with no alert.':'Completed. Next occurrence scheduled.');
           }
         }catch{
           if(owner===decisionOwner&&decisionOwner.live)api.toast('Reminder action is unconfirmed. Check action status in Calendar; it will not be repeated.');
@@ -232,7 +237,7 @@ export function installReminderAdapter(Component: Bag, views: Bag) {
           decisionOwner.reminderSaving=false;
         }
       };
-      out.ev.reminderDone=()=>decide('done');out.ev.reminderSnooze=()=>decide('snooze');
+      out.ev.reminderCanSnooze=event.alert!==null;out.ev.reminderDone=()=>decide('done');out.ev.reminderSnooze=()=>decide('snooze');
       out.ev.edit=()=>{if(!requireFresh())return;const repeat=event.reminderRecurrence?.rule||'none',target=event.reminderTarget;api.set({form:{...event,repeat,id:event.id,cal:'alpha-reminders',where:'',video:false,who:[],notes:event.reminderBody||'',alphaReminderId:event.alphaReminderId,reminderEditSession:{uncertain:false},reminderEditTarget:target?structuredClone(target):undefined,reminderEditSchedule:[event.off,event.t,repeat,event.alert]}});};
       const renderedTarget=event.reminderTarget?structuredClone(event.reminderTarget):undefined;
       out.ev.del=async()=>{

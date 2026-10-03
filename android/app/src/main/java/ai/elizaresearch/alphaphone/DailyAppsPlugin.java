@@ -47,6 +47,7 @@ public class DailyAppsPlugin extends Plugin {
  }
  @PluginMethod public void surfaceInfo(PluginCall call) {
   JSObject value = new JSObject(); value.put("assistant", getActivity() instanceof AlphaAssistActivity); value.put("developmentBuild", BuildConfig.DEBUG);
+  value.put("reminderTimingVersion", 2);
   value.put("topInset", getActivity() instanceof MainActivity ? ((MainActivity)getActivity()).getTopInsetDp() : 0);
   value.put("bottomInset", getActivity() instanceof MainActivity ? ((MainActivity)getActivity()).getBottomInsetDp() : 0); call.resolve(value);
  }
@@ -71,6 +72,8 @@ public class DailyAppsPlugin extends Plugin {
    reminderResult(call, "failed", "Enter a valid reminder ID, title, and date"); return;
   }
   if (at <= System.currentTimeMillis()) { reminderResult(call, "past", "Choose a future reminder time"); return; }
+  try {if((call.getData().has("dueAt")||call.getData().has("alertMinutes"))&&at.doubleValue()!=at.longValue())throw new IllegalArgumentException("Invalid reminder instant");if(ReminderStore.noAlert(ReminderStore.explicitTiming(call.getData(),at.longValue(),call.getObject("recurrence")))){completeReminder(call);return;}}
+  catch(RuntimeException|org.json.JSONException invalid){reminderResult(call,"failed","Enter a valid reminder due time and alert");return;}
   ReminderStore.channel(getContext());
   if (Build.VERSION.SDK_INT >= 33 && getPermissionState("notifications") != PermissionState.GRANTED) {
    requestPermissionForAlias("notifications", call, "reminderPermissionResult"); return;
@@ -79,13 +82,15 @@ public class DailyAppsPlugin extends Plugin {
  }
  @PermissionCallback private void reminderPermissionResult(PluginCall call) { completeReminder(call); }
  private void completeReminder(PluginCall call) {
-  if (!ReminderStore.allowed(getContext())) { reminderResult(call, "permission-denied", "Enable Alpha Phone notifications and its Local reminders channel in Android settings"); return; }
   Double at = number(call, "at");
   if (at == null || at <= System.currentTimeMillis()) { reminderResult(call, "past", "Choose a future reminder time"); return; }
   try {
-   ReminderStore.schedule(getContext(), call.getString("id"), call.getString("title"), call.getString("body", ""), at.longValue(),call.getObject("recurrence"));
-   JSObject value = new JSObject(); value.put("status", "scheduled"); value.put("id", call.getString("id")); value.put("at", at.longValue()); value.put("mode", "inexact");
-   value.put("message", "Saved on this device. Android may delay this reminder to conserve battery."); call.resolve(value);
+   org.json.JSONObject timing=ReminderStore.explicitTiming(call.getData(),at.longValue(),call.getObject("recurrence"));
+   if(!ReminderStore.noAlert(timing)&&!ReminderStore.allowed(getContext())){reminderResult(call,"permission-denied","Enable Alpha Phone notifications and its Local reminders channel in Android settings");return;}
+   org.json.JSONObject saved=ReminderStore.schedule(getContext(),call.getString("id"),call.getString("title"),call.getString("body",""),at.longValue(),call.getObject("recurrence"),timing);
+   JSObject value=new JSObject();value.put("status",saved.getString("status"));value.put("id",call.getString("id"));value.put("at",at.longValue());value.put("mode",saved.getString("mode"));
+   if(timing!=null)value.put("dueAt",saved.getLong("dueAt")).put("alertMinutes",saved.get("alertMinutes"));
+   value.put("message",ReminderStore.noAlert(saved)?"Saved on this device without an alert.":"Saved on this device. Android may delay this reminder to conserve battery.");call.resolve(value);
   } catch (RuntimeException | org.json.JSONException error) { reminderResult(call, "failed", "The reminder could not be saved or scheduled"); }
  }
  @PluginMethod public void reminderDecision(PluginCall call) {

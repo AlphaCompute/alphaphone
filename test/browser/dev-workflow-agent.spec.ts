@@ -29,3 +29,49 @@ test('external storage edits are preserved when generation finishes',async({page
 test('long workflow instructions remain within the phone width',async({page})=>{
  await page.addInitScript(()=>{const key='alpha.dev.app.workflows',state=JSON.parse(localStorage.getItem(key)!);state.flows[0].steps[1].t='X'.repeat(512);localStorage.setItem(key,JSON.stringify(state));});await page.reload();await page.getByRole('button',{name:'Workflows',exact:true}).click();await page.getByText('Agent summary',{exact:true}).click();const instruction=page.getByText('X'.repeat(512),{exact:true});const box=await instruction.boundingBox();expect(box!.x+box!.width).toBeLessThanOrEqual(412);expect(await instruction.evaluate(element=>element.scrollWidth<=element.clientWidth)).toBe(true);
 });
+
+test('external edit warning survives a scheduler storage refusal',async({page})=>{
+ await page.evaluate(async()=>{const {Component}=await import('/src/prototype/model.js');const original=Component.prototype.api;Component.prototype.api=function(key:string){const api=original.call(this,key);if(key==='workflows')(window as any).workflowApi=api;return api;};});
+ await begin(page);
+ await page.evaluate(()=>{const api=(window as any).workflowApi;api.setView('workflows',{flows:[...api.get('workflows').flows,{id:999,name:'Other workflow',on:false,trig:{kind:'time',days:'Every day',t:9},steps:[],runs:[]}]});});
+ const external=await page.evaluate(()=>{
+  const key='alpha.dev.app.workflows',state=JSON.parse(localStorage.getItem(key)!);
+  state.flows[0].steps[1].t='External instruction';state.triggerState={cursors:[],queue:[]};
+  const raw=JSON.stringify(state);localStorage.setItem(key,raw);
+  (window as any).generation.finish({text:'Old instruction answer'});return raw;
+ });
+ await expect(page.getByRole('button',{name:'Run now',exact:true})).toBeVisible();
+ await page.evaluate(()=>window.dispatchEvent(new Event('focus')));
+ await expect.poll(()=>page.evaluate(()=>(window as any).workflowApi.get('workflows').localTriggerError)).toBe('Development app save failed.');
+ await expect(page.getByText('Run state could not be saved. Reload to inspect its last saved step.',{exact:true})).toBeVisible();
+ // Another workflow must not inherit this run's recovery warning.
+ await page.evaluate(()=>{const api=(window as any).workflowApi;api.setView('workflows',{open:999});});
+ await expect(page.getByRole('heading',{name:'Other workflow',exact:true})).toBeVisible();
+ await expect(page.getByText('Run state could not be saved. Reload to inspect its last saved step.',{exact:true})).toHaveCount(0);
+ await page.evaluate(()=>{const api=(window as any).workflowApi;api.setView('workflows',{open:971});});
+ await expect(page.getByText('Run state could not be saved. Reload to inspect its last saved step.',{exact:true})).toBeVisible();
+ expect(await page.evaluate(()=>localStorage.getItem('alpha.dev.app.workflows'))).toBe(external);
+ expect(await page.evaluate(()=>JSON.parse(localStorage.getItem('alphaphone:notes:v2')!).records.some((note:any)=>note.body==='Old instruction answer'))).toBe(false);
+});
+
+test('concurrent run refusals retain both workflow recovery messages',async({page})=>{
+ await page.evaluate(async()=>{const {Component}=await import('/src/prototype/model.js');const original=Component.prototype.api;Component.prototype.api=function(key:string){const api=original.call(this,key);if(key==='workflows')(window as any).workflowApi=api;return api;};});
+ await begin(page);
+ await page.evaluate(()=>{const api=(window as any).workflowApi;api.setView('workflows',{flows:[...api.get('workflows').flows,{id:999,name:'Other workflow',on:false,trig:{kind:'time',days:'Every day',t:9},steps:[],runs:[]}]});});
+ const external=await page.evaluate(async()=>{
+  const {VIEWS}=await import('/src/prototype/model.js');const api=(window as any).workflowApi;
+  const key='alpha.dev.app.workflows',state=JSON.parse(localStorage.getItem(key)!);state.flows[0].steps[1].t='External instruction';const raw=JSON.stringify(state);localStorage.setItem(key,raw);
+  // Invoke the real second workflow's Run handler before React can commit its error.
+  VIEWS.workflows.render({...api.get('workflows'),open:999},api).fd.run();
+  (window as any).generation.finish({text:'Old instruction answer'});return raw;
+ });
+ await expect.poll(()=>page.evaluate(()=>Object.keys((window as any).workflowApi.get('workflows').localRunErrors||{}).sort())).toEqual(['971','999']);
+ const first=await page.evaluate(()=>(window as any).workflowApi.get('workflows').localRunErrors);
+ expect(first['971'].runId).not.toBe(first['999'].runId);
+ for(const id of [971,999]){
+  await page.evaluate(id=>(window as any).workflowApi.setView('workflows',{open:id}),id);
+  await expect(page.getByText('Run state could not be saved. Reload to inspect its last saved step.',{exact:true})).toBeVisible();
+ }
+ expect(await page.evaluate(()=>localStorage.getItem('alpha.dev.app.workflows'))).toBe(external);
+ expect(await page.evaluate(()=>JSON.parse(localStorage.getItem('alphaphone:notes:v2')!).records.some((note:any)=>note.body==='Old instruction answer'))).toBe(false);
+});

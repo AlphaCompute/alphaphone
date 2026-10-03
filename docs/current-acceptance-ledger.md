@@ -1,5 +1,11 @@
 # Current Alpha Phone acceptance ledger
 
+## Current checkpoint — October 3, explicit reminder timing
+
+The composed repair passes 123 rendered flows, TypeScript, production build, 24 WebView preparation scenarios, 20 recovery-supervisor scenarios, and compilation of the seven affected native Java sources. All 3,786 source identities remained unchanged during qualification. Due time and alert lead now persist independently; “None” creates a pending task without requesting notification permission or scheduling delivery. Explicit timing requires v2 agent capability and native version admission. Resident readiness checks current-token authentication; workflow save warnings survive scheduler failures and concurrent runs.
+
+The required full `npm run verify` was attempted but stopped with exit 7; its cause remains unproven. The affected 24-case file passes unchanged separately. Available local storage dropped below 0.5 GiB, so no new local Android build or emulator acceptance is claimed. Fresh hosted verification, both APK variants, v2 authenticated HTTP/SQL flows, native execution, live providers, physical and signed AOSP acceptance remain open. Exact previous `955d109` completed eight native recovery executions across both variants, but resident pairing failed with 401 and Foundation smoke failed during framework initialization. See [timing and recovery qualification](mvp-reminder-timing-2026-10-03.md). The MVP is not complete.
+
 ## October 3 — reminder and session recovery
 
 The current composition passes 169 repository checks; the product changes pass 45 rendered reminder/Cloud/Gmail flows. Earlier exact52 has 973 hosted browser passes and four explicit skips; exactc7 has six actual native recovery passes across both distributions, but its resident worker-survival test fails after restart. The source correction passes fresh-source qualification; new-source Android builds and live/physical/AOSP acceptance remain pending. See [evidence and limits](mvp-edit-session-recovery-2026-10-03.md).

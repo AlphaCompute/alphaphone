@@ -75,7 +75,7 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
         const revision = previous?.signature === signature ? previous.revision : (previous?.revision || 0) + 1;
         shell.entityRevisions.set(key, { signature, revision });
         providerSelection = { kind: view === 'contacts' ? 'contact' : record.alphaCalendarId ? 'calendar-event' : 'reminder', id, revision: String(revision) };
-        if(record.alphaReminderId){const target=shell.reminderTargets?.get(id);providerSelection=target?{kind:'reminder',id:target.reminderId,revision:target.revision,accountId:target.sourceId,sourceRevision:target.sourceRevision,occurrenceId:target.occurrenceId}:undefined;}
+        if(record.alphaReminderId){const target=shell.reminderTargets?.get(id);providerSelection=target?{kind:'reminder',id:target.reminderId,revision:target.revision,accountId:target.sourceId,sourceRevision:target.sourceRevision,occurrenceId:target.occurrenceId,...(target.timingVersion===2?{timingVersion:2}: {})}:undefined;}
       }
     }
     if(view==='calendar'&&shell.clockSelection?.())providerSelection=shell.clockSelection();
@@ -303,7 +303,7 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
         signal.throwIfAborted();context(this);if(JSON.stringify(alphaClient.getState().context)!==JSON.stringify(expectedContext)||expectedContext.sensitive||document.hidden)throw Error('Reminder context changed');
         const target=await DailyApps.selectedReminder({id:operation.target.reminderId});signal.throwIfAborted();
         if(JSON.stringify(target)!==JSON.stringify(operation.target)) { // property order is normalized below
-          for(const key of ['sourceId','sourceRevision','reminderId','occurrenceId','revision'] as const)if(target[key]!==operation.target[key])return {status:'failed',summary:'This reminder changed. Review it again before applying the action.'};
+          for(const key of ['sourceId','sourceRevision','reminderId','occurrenceId','revision','timingVersion'] as const)if(target[key]!==operation.target[key])return {status:'failed',summary:'This reminder changed. Review it again before applying the action.'};
         }
         context(this);if(JSON.stringify(alphaClient.getState().context)!==JSON.stringify(expectedContext))throw Error('Reminder context changed');
         signal.throwIfAborted();
@@ -312,7 +312,7 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
         // cancels this context-bound action before it can acknowledge the server.
         if(result.status!=='succeeded')return {status:'unknown',summary:'Reminder outcome requires review. It was not repeated.'};
         const reminderResult=validateReminderResult(operation,result.result);
-        return {status:'succeeded',summary:`Reminder ${reminderResult.status}.${Capacitor.isNativePlatform()?' Android delivery is approximate.':''}`,reminderResult};
+        return {status:'succeeded',summary:reminderResult.status==='pending'?'Reminder saved with no alert.':`Reminder ${reminderResult.status}.${Capacitor.isNativePlatform()?' Android delivery is approximate.':''}`,reminderResult};
       }
       if (operation.type === 'create_reminder') {
         const at = Date.parse(operation.dueAt);
