@@ -19,3 +19,11 @@ include ':notification-fixture'
 include ':local-speech'
 include ':eliza-network-policy'
 project(':eliza-network-policy').projectDir = new File('../vendor/eliza/plugins/plugin-native-network-policy/android')
+
+// Verified explicit upstream patch; never modify the pinned vendor checkout.
+println providers.exec {
+ workingDir settingsDir.parentFile
+ commandLine 'node', 'scripts/stage-native-calendar.mjs'
+}.standardOutput.asText.get().trim()
+include ':eliza-calendar'
+project(':eliza-calendar').projectDir = new File('../artifacts/native-calendar')

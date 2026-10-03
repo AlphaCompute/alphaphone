@@ -43,6 +43,7 @@ def extractSpeechAndroidTestApi = tasks.register('extractSpeechAndroidTestApi', 
  into layout.buildDirectory.dir('generated/speech-android-test-api')
 }
 dependencies {
+ implementation project(':eliza-calendar')
  implementation project(':eliza-network-policy')
  implementation 'androidx.browser:browser:1.9.0'
     implementation "androidx.work:work-runtime:2.11.0"
