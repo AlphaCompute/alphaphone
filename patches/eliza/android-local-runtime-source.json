@@ -19,7 +19,7 @@
     "packages/core/src/security/secret-swap.ts": "7a4d9fed214761e714d9e7b208d1b655dadfc744c3733255bcd9ac88960e8133",
     "plugins/plugin-assistant/src/services/device-actions/contract.ts": "7820c4230677f7f84a0066df577c06e95f905bf89b7a6fde412a0794ea97de74",
     "plugins/plugin-assistant/src/services/message/reply-policy.ts": "6258737cf79a623f58988d6788462b9b5d12ae54b6916b5e198dc873197ee40c",
-    "plugins/plugin-assistant/test/device-actions.e2e.test.ts": "ecf07e1bfa6d4e00d023bbbd7360872755e1646f98f7f5362854b1165b42b924",
+    "plugins/plugin-assistant/test/device-actions.e2e.test.ts": "ababe7b0cc57f7b05b3b1fdf7d8901caa060fdc56d6d102e3141f15adb43bea6",
     "plugins/plugin-workflow/__tests__/hosted-route-registration.test.ts": "fff3297e97e13c5929bff141c045a10153a5166eb93bd06dc84f5deb098135ac",
     "plugins/plugin-workflow/src/plugin-routes.ts": "517b20534f8c9eab6fd0ac354a0425fd5acfd58b20393a7c0382812bd9f7d000",
     "plugins/plugin-assistant/src/services/device-actions/clock-contract.ts": "ffc4fffdf63398dbbc2f8df0ce3d32456eeeab4b1682a549bb2b4aeaf9b98888",
@@ -113,6 +113,6 @@
     "typed-workflow-generation.patch": "c6b3840f2860542e5411dc0a98e2e7191643a3b8ac32de2534cebf9fbfc1625e",
     "workflow-worker-termination-diagnostic.patch": "82a6372506220f5b2578fbc21af09479d7af330b1f2515fdc13287a9cd6b25e2",
     "authenticated-enabled-views.patch": "3947ef246ff65e520d8870315222b463c15a49dfb56cbd6784acd06b2ba3a2f1",
-    "clock-native-reviewed-executor.patch": "793d8ede2671a1600900f302a70a37fc4d02e5d7803a31608fdbe30304de66db"
+    "clock-native-reviewed-executor.patch": "a6a3dfebca3c25ced8f31da3796ea5df68ac3670d3dc86b90fdcc86977630d6e"
   }
 }

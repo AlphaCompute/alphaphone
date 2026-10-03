@@ -303,3 +303,19 @@
          data: {
            proposalId: request.id,
            state: request.state,
+--- a/plugins/plugin-assistant/test/device-actions.e2e.test.ts
++++ b/plugins/plugin-assistant/test/device-actions.e2e.test.ts
+@@ -1220,8 +1220,12 @@
+           expect(historical.status).toBe(200);
+           expect(historical.body.action.data.result.status).toBe("opened");
+           expect(historical.body.action.text).toContain(
+-            "never that an alarm was created",
++            "not proof of its final alarm state",
+           );
++          expect(historical.body.action.text).toContain(
++            "The request may already have changed an alarm",
++          );
++          expect(historical.body.action.text).toContain("No new dispatch occurred.");
+           expect(historical.body.action.data.executed).toBe(false);
+         }
+       }
