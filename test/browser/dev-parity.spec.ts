@@ -46,7 +46,7 @@ test('browser surface isolates pages, persists bookmarks and hides overlaid tabs
 test('local dev device exposes deferred apps without dispatching external effects',async({page})=>{
  const requests:string[]=[];page.on('request',request=>{if(!request.url().startsWith('http://127.0.0.1:'))requests.push(request.url());});
  await page.goto('/?mode=dev');
- await expect(page.getByRole('button',{name:'Dev device · local data',exact:true})).toBeVisible();
+ await expect(page.getByText('Dev data',{exact:true})).toBeVisible();
  for(const name of ['Phone','Messages','Contacts','Wallet']){
   await page.getByRole('button',{name,exact:true}).first().click();
   await page.evaluate(()=>window.dispatchEvent(new Event('alpha-back',{cancelable:true})));

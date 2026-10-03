@@ -62,7 +62,7 @@ The desktop browser shows a fitted phone preview; mobile widths fill the viewpor
 Use `?mode=mock` for the clearly labeled design fixture and `?theme=dark` to
 inspect dark layouts. Use `?mode=dev` for the browser development profile with durable local app data
 and device controls. For the complete capability matrix and current verification results, see
-[browser development parity](docs/browser-dev-parity.md). In **Device controls**, use
+[browser development parity](docs/browser-dev-parity.md). Open **Device controls** with the sliders button beside **Tools** or **Dev data** below the phone preview. Its profile buttons switch between app and development data. In **Device controls**, use
 Home, Back, Power, Background and Resume to exercise device lifecycle; use Incoming
 call/message/email and Post notification to drive incoming events. Location controls
 provide a saved Home place and manual movement for location-triggered workflows.

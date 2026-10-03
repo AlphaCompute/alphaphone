@@ -77,7 +77,7 @@ Implemented in `apps/app/src/browser` and the existing adapters:
 - Browser device profile and editable local network/sound/display/battery controls; browser geolocation driver.
 - Camera persistence and atomic photo-edit recovery from concurrent work retained; added local albums, bulk sharing and MediaRecorder video path. Video capture now uses the camera stream plus an owned microphone lease, with duration/size limits, encoding, playback and failure-recovery coverage.
 - Browser microphone recording, transcript entry, speech synthesis and IndexedDB voice-note playback. Transcript entry is a deliberate local fallback, not automatic speech recognition.
-- Explicit `?mode=dev` / **Dev device** control restores product-owned local Phone, Messages, Contacts, Inbox, Wallet and Workflows interactions. State is stored under `alpha.dev.app.*`. Wallet adds predefined development tokens instead of collecting card numbers. This profile is gated to Vite development and excluded from Android selection.
+- Explicit `?mode=dev` / **Device controls → Use development profile** restores product-owned local Phone, Messages, Contacts, Inbox, Wallet and Workflows interactions. State is stored under `alpha.dev.app.*`. Wallet adds predefined development tokens instead of collecting card numbers. This profile is gated to Vite development and excluded from Android selection.
 
 Focused tests currently establish calendar persistence/conflict rejection, reminder idempotency, frame isolation/bookmark persistence, deferred-app navigation without external requests, exact-byte file persistence/move/rename/conflict checks, settings persistence, plus camera capture/denial/pending-permission cleanup and the separately added photo-editor recovery suite.
 
