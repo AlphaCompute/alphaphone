@@ -1,7 +1,19 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import { candidate, requireProviderFixture, stockPath, verifyMetadata } from '../scripts/prepare-ci-webview.mjs';
+import { candidate, executeProviderCommand, requireProviderFixture, stockPath, verifyMetadata } from '../scripts/prepare-ci-webview.mjs';
+
+test('remount adapter captures stderr without accepting failed or timed-out commands', () => {
+  const options = { encoding: 'utf8', timeout: 5000, maxBuffer: 65536, mergeOutput: true };
+  const script = "process.stdout.write('overlay detail\\n'); process.stderr.write('Remount succeeded\\nNow reboot your device for settings to take effect\\n');";
+  const output = executeProviderCommand(process.execPath, ['-e', script], options);
+  assert.match(output, /^overlay detail$/m);
+  assert.match(output, /^Remount succeeded$/m);
+  assert.match(output, /^Now reboot your device for settings to take effect$/m);
+  assert.throws(() => executeProviderCommand(process.execPath, ['-e', script + 'process.exit(1)'], options), error => error.status === 1 && error.stderr.includes('Remount succeeded'));
+  assert.throws(() => executeProviderCommand(process.execPath, ['-e', 'setInterval(()=>{},1000)'], { ...options, timeout: 100 }), error => error.code === 'ETIMEDOUT');
+  assert.equal(executeProviderCommand(process.execPath, ['-e', "process.stdout.write('identity')"], { ...options, mergeOutput: false }), 'identity');
+});
 
 const env = { GITHUB_ACTIONS: 'true', RUNNER_ENVIRONMENT: 'github-hosted', ANDROID_SERIAL: 'emulator-5554' };
 const responses = {
@@ -62,7 +74,7 @@ async function simulate({ drift, neverBoot = false, neverReady = false } = {}) {
   const signature = `Verified using v2 scheme (APK Signature Scheme v2): true\nSigner #1 certificate SHA-256 digest: ${candidate.certificateSha256}`;
   const badging = `package: name='com.android.webview' versionCode='808300007' versionName='157.0.8083.0'\nsdkVersion:'29'\ntargetSdkVersion:'37'\nnative-code: 'x86_64'`;
   let scratch = '', backingAlias = 'MISSING', remounts = 0, reboots = 0;
-  const execute = (file, args) => {
+  const execute = (file, args, options) => {
     const name = path.basename(file);
     if (name === 'curl') { const fd = fs.openSync(args.at(-1), 'wx'); fs.ftruncateSync(fd, candidate.size); fs.closeSync(fd); return ''; }
     if (name === 'python3') { fs.writeFileSync(args.at(-1), 'candidate'); return ''; }
@@ -99,6 +111,7 @@ async function simulate({ drift, neverBoot = false, neverReady = false } = {}) {
     if (['shell df -k /data /metadata /product', 'shell cat /proc/mounts', 'shell cat /proc/partitions', 'shell lpdump', 'shell dmesg'].includes(key)) return 'synthetic bounded storage diagnostics';
     if (key === 'remount' && drift === 'remount-failed') { const failure = new Error('remount failed'); failure.stderr = 'Failed to map scratch; make f2fs return=65280'; throw failure; }
     if (key === 'remount') {
+      assert.equal(options.mergeOutput, true, 'Remount must capture AOSP stderr diagnostics');
       remounts++;
       if (['overlay-reboot','overlay-repeat','overlay-identity','overlay-stock','overlay-size','overlay-alias','overlay-before-size','overlay-never-boot'].includes(drift) && (remounts===1||drift==='overlay-repeat'))return fs.readFileSync('test/fixtures/remount-52ab-overlay-reboot.txt','utf8');
       if(drift==='overlay-unknown')return 'Remount succeeded\nNow reboot your device for settings to take effect\nAnother reboot is required\n';
