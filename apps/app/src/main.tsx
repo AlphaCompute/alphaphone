@@ -80,11 +80,12 @@ function Phone() {
   useEffect(() => {
     if (isAndroid) void DailyApps.surfaceInfo().then(info => {
       if (Number.isFinite(info.topInset)) document.documentElement.style.setProperty('--native-top-inset', `${info.topInset}px`);
+      if (Number.isFinite(info.bottomInset)) document.documentElement.style.setProperty('--native-bottom-inset', `${info.bottomInset}px`);
     }).catch(() => {});
     const size = () => {
       const height = window.visualViewport?.height || window.innerHeight;
       const desktop = !isAndroid && window.innerWidth > 600;
-      const banner = !isAndroid && mock ? document.querySelector('.mock-mode-banner')?.getBoundingClientRect().height || 36 : 0;
+      const banner = mock ? document.querySelector('.mock-mode-banner')?.getBoundingClientRect().height || 36 : 0;
       const available = Math.max(1, height - banner - (desktop ? 48 : 0));
       const scale = desktop ? Math.min(1, available / 915) : window.innerWidth / 412;
       document.documentElement.style.setProperty('--phone-scale', String(scale));
@@ -93,8 +94,9 @@ function Phone() {
       document.documentElement.style.setProperty('--phone-top', `${banner + (desktop ? 24 : 0)}px`);
       document.documentElement.classList.toggle('browser-desktop', desktop);
     };
+    const bannerObserver=new ResizeObserver(size);const bannerElement=document.querySelector('.mock-mode-banner');if(bannerElement)bannerObserver.observe(bannerElement);
     size(); window.addEventListener('resize', size); window.visualViewport?.addEventListener('resize', size);
-    return () => { window.removeEventListener('resize', size); window.visualViewport?.removeEventListener('resize', size); };
+    return () => { bannerObserver.disconnect(); window.removeEventListener('resize', size); window.visualViewport?.removeEventListener('resize', size); };
   }, []);
   return <>{import.meta.env.DEV&&!isAndroid&&!mock&&<BrowserDeviceControls command={action=>{
     if(!shell)return;
@@ -108,7 +110,7 @@ function Phone() {
     else if(action==='background'){shell.leave();shell.setState({screen:'off',voice:'off',chat:'input',shade:false});document.documentElement.dataset.devBackground='true';window.dispatchEvent(new Event('blur'));}
     else if(action==='resume'){delete document.documentElement.dataset.devBackground;shell.unlock();window.dispatchEvent(new Event('focus'));}
     if(['power','unlock','boot','background','resume'].includes(action))window.dispatchEvent(new Event('alpha:device-state'));
-  }}/>}{import.meta.env.DEV&&!isAndroid&&!mock&&<button style={{position:'fixed',right:8,bottom:8,zIndex:90,fontSize:12}} onClick={()=>{const url=new URL(location.href);if(browserDevProfile)url.searchParams.delete('mode');else url.searchParams.set('mode','dev');location.assign(url.href);}}>{browserDevProfile?'Dev device · local data':'Dev device'}</button>}{mock && <div className="mock-mode-banner" role="status"><span>Mock mode · simulated data and actions</span><button onClick={() => { void connectionController.offline().then(() => { const url = new URL(location.href); url.searchParams.delete('mode'); url.searchParams.delete('start'); location.assign(url.href); }); }}>Exit mock mode</button></div>}<Component phoneSurface initial={fixture ? query.get('start') || 'home' : 'home'} theme={initialTheme} ref={(value: any) => { shell = value; }} />
+  }}/>}{import.meta.env.DEV&&!isAndroid&&!mock&&<button style={{position:'fixed',right:8,bottom:8,zIndex:90,fontSize:12}} onClick={()=>{const url=new URL(location.href);if(browserDevProfile)url.searchParams.delete('mode');else url.searchParams.set('mode','dev');location.assign(url.href);}}>{browserDevProfile?'Dev device · local data':'Dev device'}</button>}{mock && <div className="mock-mode-banner" role="status"><span>Mock mode · simulated data and actions</span><button onClick={() => { void connectionController.offline().then(() => { const url = new URL(location.href); url.searchParams.delete('mode'); url.searchParams.delete('start'); location.assign(url.href); }); }}>Exit mock mode</button></div>}<Component phoneSurface nativeSystemChrome={isAndroid} initial={fixture ? query.get('start') || 'home' : 'home'} theme={initialTheme} ref={(value: any) => { shell = value; }} />
 {!fixture && <><ConnectionChooser /><HostedDigestPanel /></>}</>;
 }
 async function mountPhone() {

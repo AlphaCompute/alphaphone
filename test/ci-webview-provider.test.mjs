@@ -68,6 +68,7 @@ async function simulate({ framework = 'ready', drift, neverBoot = false, neverRe
   const stock = '/product/app/webview/webview.apk', stockHash = 'a'.repeat(64);
   const signature = `Verified using v2 scheme (APK Signature Scheme v2): true\nSigner #1 certificate SHA-256 digest: ${candidate.certificateSha256}`;
   const badging = `package: name='com.android.webview' versionCode='808300007' versionName='157.0.8083.0'\nsdkVersion:'29'\ntargetSdkVersion:'37'\nnative-code: 'x86_64'`;
+  let finalBoot=false;
   let frameworkReads=0, pidReads=0, frameworkReady=false;
   let scratch = '', backingAlias = '/dev/block/vdc', remounts = 0, reboots = 0, probe = null, probeMarker = null, userReads = 0, restarted = false;
   const execute = (file, args, options) => {
@@ -81,14 +82,25 @@ async function simulate({ framework = 'ready', drift, neverBoot = false, neverRe
     if (['shell cat /proc/bootconfig','shell getprop ro.boot.boot_devices','shell readlink -f /sys/class/block/vdc','shell readlink -f /sys/class/block/vda','shell readlink -f /sys/class/block/vdd'].includes(key)) { assert.ok(options.timeout > 0 && options.timeout <= 2000); if(drift==='boot-budget')elapsed+=4000; }
     if(key==='shell cat /proc/bootconfig'&&!rooted)throw Error('cat: /proc/bootconfig: Permission denied');
     if(key==='root'){if(drift==='root-unavailable'||drift==='boot-root-denied'&&rebooted)throw Error('adbd root unavailable');rooted=true;return '';}
-    if (key === 'reboot') { rooted=false;reboots++; rebooted = true; offline = 1; scratch = ''; backingAlias = '/dev/block/vdc'; return ''; }
+    if (key === 'reboot') { if(installed)finalBoot=true;rooted=false;reboots++; rebooted = true; offline = 1; scratch = ''; backingAlias = '/dev/block/vdc'; return ''; }
     if (key === 'shell getprop sys.boot_completed') {
-      if (offline-- > 0 || neverBoot || (drift==='overlay-never-boot'&&reboots>1)) throw Error('device offline');
+      if (offline-- > 0 || neverBoot || finalBoot&&drift==='final-never-boot' || (drift==='overlay-never-boot'&&reboots>1)) throw Error('device offline');
       return '1';
     }
     if (key === 'shell cmd activity get-started-user-state 0') {
       userReads++;return restarted && (drift==='user-never-ready' || (drift==='user-delayed' && userReads<3)) ? 'RUNNING_LOCKED' : 'RUNNING_UNLOCKED';
     }
+    if(finalBoot&&drift==='final-fingerprint'&&key==='shell getprop ro.build.fingerprint')return 'unreviewed-image';
+    if(finalBoot&&drift==='final-alias'&&key==='shell readlink -f /dev/block/by-name/vdc')return '/dev/block/vdd';
+    if(finalBoot&&drift==='final-topology'&&key==='shell cat /proc/bootconfig')return 'androidboot.boot_devices = "wrong"';
+    if(key==='shell cat /proc/sys/kernel/random/boot_id')return finalBoot&&drift!=='final-same-boot'?'22222222-2222-4222-8222-222222222222':'11111111-1111-4111-8111-111111111111';
+    if(key===`shell test ! -e ${stock}`){if(drift==='final-stock')throw Error('Stock provider returned');return '';}
+    if(key==='shell dumpsys power')return 'mWakefulness=Awake';
+    if(key==='shell dumpsys window policy')return `KeyguardServiceDelegate\nshowing=false\ninputRestricted=false\nsecure=${drift==='final-secure'}\nsystemIsReady=true\nbootCompleted=true\nscreenState=SCREEN_STATE_ON\nKeyguardStateMonitor\nmCurrentUserId=0\nmIsShowing=false\nmInputRestricted=false`;
+    if(key==='shell dumpsys activity activities')return drift==='final-anr'?'mCurrentFocus=Application Not Responding: com.android.systemui':'ACTIVITY MANAGER ACTIVITIES';
+    if(finalBoot&&drift==='final-identity'&&key==='emu avd name')return 'personal';
+    if(finalBoot&&drift==='final-bytes'&&key.startsWith('shell sha256sum /data/app/'))return 'b'.repeat(64);
+    if(finalBoot&&drift==='final-scratch'&&key==='shell cat /sys/dev/block/254:5/size')return '92280';
     if (key.startsWith('shell service check ')) return `Service ${a.at(-1)}: found`;
     if (key === 'shell id -u') return rooted ? '0' : '2000';
     if (key === 'shell pidof system_server') {
@@ -169,7 +181,7 @@ async function simulate({ framework = 'ready', drift, neverBoot = false, neverRe
     if (key === 'shell cmd webviewupdate set-webview-implementation com.android.webview') return 'Success';
     if (key === 'shell dumpsys webviewupdate') {
       selectionReads++;
-      return `Current WebView package (name, version): (com.android.webview, 157.0.8083.0)\nWebView package dirty: ${neverReady || selectionReads < 2}\nNumber of relros started: 1\nNumber of relros finished: ${neverReady || selectionReads < 2 ? 0 : 1}\nis installed/enabled for all users`;
+      return `Current WebView package (name, version): (com.android.webview, 157.0.8083.0)\nWebView package dirty: ${neverReady || selectionReads < 2 || finalBoot&&drift==='final-relro'}\nNumber of relros started: 1\nNumber of relros finished: ${neverReady || selectionReads < 2 ? 0 : 1}\nis installed/enabled for all users`;
     }
     if (key === 'shell pm path com.android.webview') return installed ? 'package:/data/app/provider/base.apk' : `package:${stock}`;
     if (key === 'shell dumpsys package com.android.webview') return 'versionName=124.0.6367.219';
@@ -202,11 +214,11 @@ test('full provider command sequence survives one offline reboot and delayed REL
   assert.equal(r.calls.filter(c => c === 'shell setprop fs_mgr.overlayfs.data_scratch_size_mb 512').length, 2);
   assert.ok(r.calls.indexOf('shell setprop fs_mgr.overlayfs.data_scratch_size_mb 512') < r.calls.indexOf('disable-verity'));
   assert.equal(r.calls.filter(c => c === 'shell ln -sT /dev/block/vdc /dev/block/by-name/vdc').length, 0);
-  assert.equal(r.result.bootDeviceAdmissions.length, 2);
+  assert.equal(r.result.bootDeviceAdmissions.length, 3);
   assert.ok(r.calls.indexOf('root') < r.calls.indexOf('shell cat /proc/bootconfig'));
   assert.ok(r.calls.indexOf('shell cat /proc/bootconfig') < r.calls.indexOf('shell setprop fs_mgr.overlayfs.data_scratch_size_mb 512'));
   assert.equal(r.result.scratchBackingAliases.length, 2);
-  assert.equal(r.selectionReads, 2); assert.equal(r.stopped, false);
+  assert.equal(r.selectionReads, 3); assert.equal(r.stopped, false);
   assert.ok(r.calls.indexOf('shell stop') < r.calls.indexOf('shell rm /product/app/webview/webview.apk'));
   assert.ok(r.calls.indexOf('shell rm /product/app/webview/webview.apk') < r.calls.indexOf('shell start'));
 });
@@ -327,7 +339,7 @@ test('cached or undersized scratch never qualifies provider replacement', async 
 });
 
 test('one authenticated requested overlay activation reboot completes provider flow', async()=>{
- const r=await simulate({drift:'overlay-reboot'});assert.ifError(r.error);assert.equal(r.result.status,'PROVISIONED_RUNTIME_QUALIFICATION_PENDING');assert.equal(r.calls.filter(c=>c==='reboot').length,2);assert.equal(r.calls.filter(c=>c==='remount').length,2);assert.equal(r.result.scratchBackingAliases.length,3);assert.equal(r.result.scratchBytes,512*1024*1024);assert.equal(r.installed,true);
+ const r=await simulate({drift:'overlay-reboot'});assert.ifError(r.error);assert.equal(r.result.status,'PROVISIONED_RUNTIME_QUALIFICATION_PENDING');assert.equal(r.calls.filter(c=>c==='reboot').length,3);assert.equal(r.calls.filter(c=>c==='remount').length,2);assert.equal(r.result.scratchBackingAliases.length,3);assert.equal(r.result.scratchBytes,512*1024*1024);assert.equal(r.installed,true);
 });
 test('requested overlay reboot refuses repeat, unknown wording, changed identity, stock, backing and size',async()=>{
  for(const drift of ['overlay-repeat','overlay-unknown','overlay-identity','overlay-stock','overlay-size','overlay-alias','overlay-before-size','overlay-never-boot']){
@@ -337,7 +349,7 @@ test('requested overlay reboot refuses repeat, unknown wording, changed identity
 
 test('stderr-only remount transcript follows the bounded overlay reboot flow', async () => {
  const r=await simulate({drift:'overlay-reboot',remountChannel:'stderr'});assert.ifError(r.error);
- assert.equal(r.calls.filter(c=>c==='reboot').length,2);assert.equal(r.calls.filter(c=>c==='remount').length,2);
+ assert.equal(r.calls.filter(c=>c==='reboot').length,3);assert.equal(r.calls.filter(c=>c==='remount').length,2);
  assert.match(r.result.overlayRemountOutputs[0],/Now reboot your device/);assert.equal(r.result.scratchBytes,512*1024*1024);assert.equal(r.installed,true);
 });
 test('successful-looking remount stderr never overrides failed exit or termination', async () => {
@@ -349,7 +361,7 @@ test('successful-looking remount stderr never overrides failed exit or terminati
 
 test('repeated emulator reboot advisory requires live overlay proof and removed write probe', async()=>{
  const r=await simulate({drift:'overlay-live',remountChannel:'stderr'});assert.ifError(r.error);
- assert.equal(r.calls.filter(c=>c==='reboot').length,2);assert.equal(r.calls.filter(c=>c==='remount').length,2);
+ assert.equal(r.calls.filter(c=>c==='reboot').length,3);assert.equal(r.calls.filter(c=>c==='remount').length,2);
  assert.deepEqual(r.result.liveOverlayProof,{namespaces:['shell','init'],scratchBytes:512*1024*1024,writeProbeRemoved:true});
  const removedProbe=r.calls.findIndex(c=>c.startsWith('shell rm /product/app/webview/.alpha-ci-probe-'));
  assert.ok(removedProbe>0&&removedProbe<r.calls.indexOf('shell rm /product/app/webview/webview.apk'));
@@ -404,4 +416,21 @@ test('postreboot root refusal is never replayed and never reaches privileged sta
  const r=await simulate({drift:'boot-root-denied'});assert.match(r.error.message,/boot deadline exceeded/);assert.equal(r.removed,false);assert.equal(r.installed,false);
  const after=r.calls.slice(r.calls.indexOf('reboot')+1);assert.equal(after.filter(call=>call==='root').length,1);
  assert.ok(!after.some(call=>/^shell cat \/proc\/[0-9]+\/stat$/.test(call)));assert.ok(!after.some(call=>call.startsWith('install ')));
+});
+
+test('successful replacement is finalized by one planned full boot before qualification',async()=>{
+ const r=await simulate();assert.ifError(r.error);
+ const installs=r.calls.map((v,i)=>v.startsWith('install ')?i:-1).filter(i=>i>=0);assert.equal(installs.length,1);
+ const reboots=r.calls.map((v,i)=>v==='reboot'?i:-1).filter(i=>i>=0);assert.equal(reboots.length,2);assert.ok(reboots[1]>installs[0]);
+ assert.deepEqual(r.result.providerChecks.map(c=>c.label),['after-install','after-clean-boot']);
+ assert.notEqual(r.result.providerBoot.priorBootId,r.result.providerBoot.bootId);
+ assert.equal(r.result.providerDisplayObservations.length,2);assert.ok(r.result.providerDisplayObservations.every(o=>o.secure===false&&o.unlocked));
+ assert.ok(!r.calls.slice(reboots[1]+1).some(c=>/^(install |reboot$|shell (rm |locksettings |input |wm dismiss))/.test(c)));
+});
+test('postreplacement boot refuses identity, provenance, readiness, secure state and ANR without replay',async()=>{
+ for(const drift of ['final-never-boot','final-same-boot','final-identity','final-stock','final-fingerprint','final-alias','final-topology','final-bytes','final-scratch','final-relro','final-secure','final-anr']){
+  const r=await simulate({drift});assert.ok(r.error,drift);assert.equal(r.result.status,'FAIL');assert.equal(r.calls.filter(c=>c.startsWith('install ')).length,1);assert.equal(r.calls.filter(c=>c==='reboot').length,2);
+  if(drift==='final-secure')assert.match(r.error.message,/not observed awake/);
+  if(drift==='final-anr')assert.match(r.error.message,/ANR remains/);
+ }
 });

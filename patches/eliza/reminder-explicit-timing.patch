@@ -1,199 +1,28 @@
-diff --git a/plugins/plugin-assistant/src/services/device-actions/reminder-contract.ts b/plugins/plugin-assistant/src/services/device-actions/reminder-contract.ts
---- a/plugins/plugin-assistant/src/services/device-actions/reminder-contract.ts
-+++ b/plugins/plugin-assistant/src/services/device-actions/reminder-contract.ts
-@@ -1,6 +1,10 @@
- /** Selected device records only. Observations never grant execution authority. */
- export const REMINDER_CAPABILITY = "reminders.local-record.v1";
-+export const REMINDER_TIMING_CAPABILITY = "reminders.local-record.v2";
-+export type ReminderTiming = {dueAt?:number;alertMinutes?:number|null};
-+export function reminderTiming(value:ReminderTiming):ReminderTiming {return value.alertMinutes===undefined?{}:{dueAt:value.dueAt,alertMinutes:value.alertMinutes};}
- export interface ReminderTarget {
-+  timingVersion?: 2;
-   sourceId: string;
-   sourceRevision: string;
-   reminderId: string;
-@@ -17,6 +21,8 @@
- export type ReminderSchedule = {
-   at: number;
-   recurrence: ReminderRepeat | null;
-+  dueAt?: number;
-+  alertMinutes?: number | null;
- };
- export interface ReminderFields {
-   title: string;
-@@ -43,6 +49,8 @@
-   status: string;
-   at: number;
-   fields?: ReminderFields;
-+  dueAt?: number;
-+  alertMinutes?: number | null;
- }
- function object(v: unknown): Record<string, unknown> {
-   if (!v || typeof v !== "object" || Array.isArray(v))
-@@ -99,10 +107,12 @@
-     "reminderId",
-     "occurrenceId",
-     "revision",
--  ]);
-+  ],["timingVersion"]);
-+  if(v.timingVersion!==undefined&&v.timingVersion!==2)throw Error("Invalid reminder timing version");
-   const reminderId = id(v.reminderId, 100);
-   if (!/^[A-Za-z0-9_-]+$/.test(reminderId)) throw Error("Invalid reminder ID");
-   return {
-+    ...(v.timingVersion===2?{timingVersion:2 as const}:{}),
-     sourceId: id(v.sourceId),
-     sourceRevision: revision(v.sourceRevision),
-     reminderId,
-@@ -119,7 +129,7 @@
-   };
-   if (v.schedule !== undefined) {
-     const s = object(v.schedule);
--    keys(s, ["at", "recurrence"]);
-+    keys(s, ["at", "recurrence"], ["dueAt", "alertMinutes"]);
-     let recurrence: ReminderRepeat | null = null;
-     if (s.recurrence !== null) {
-       const r = object(s.recurrence);
-@@ -153,8 +163,19 @@
-       };
-     }
-     result.schedule = { at: instant(s.at), recurrence };
-+    const timing=checkedTiming(s);
-+    if(timing.alertMinutes!==undefined){
-+      if((result.schedule.at!==timing.dueAt!-(timing.alertMinutes??0)*60000||recurrence&&recurrence.leadMinutes!==(timing.alertMinutes??0)))throw Error("Reminder timing changed");
-+      Object.assign(result.schedule,timing);
-+    }
-   }
-   return result;
-+}
-+function checkedTiming(v:Record<string,unknown>):ReminderTiming {
-+  if((v.dueAt===undefined)!==(v.alertMinutes===undefined))throw Error("Incomplete reminder timing");
-+  if(v.alertMinutes===undefined)return {};
-+  if(v.alertMinutes!==null&&(typeof v.alertMinutes!=="number"||!Number.isInteger(v.alertMinutes)||v.alertMinutes<0||v.alertMinutes>10080))throw Error("Invalid reminder alert");
-+  return {dueAt:instant(v.dueAt),alertMinutes:v.alertMinutes as number|null};
- }
- export function isReminderOperation(
-   value: unknown,
-@@ -182,6 +203,7 @@
-       : ["type", "target"],
-   );
-   const target = reminderTarget(v.target);
-+  if(v.type==="reminder_update"&&target.timingVersion===2){const fields=reminderFields(v.fields);if(fields.schedule&&fields.schedule.alertMinutes===undefined)throw Error("Explicit reminder timing cannot be discarded");}
-   return v.type === "reminder_update"
-     ? { type: v.type, target, fields: reminderFields(v.fields) }
-     : { type: v.type, target };
-@@ -203,7 +225,7 @@
-       "status",
-       "at",
-     ],
--    op.type === "reminder_read_selected" ? ["fields"] : [],
-+    op.type === "reminder_read_selected" ? ["fields","dueAt","alertMinutes"] : ["dueAt","alertMinutes"],
-   );
-   if (
-     v.version !== 1 ||
-@@ -219,10 +241,17 @@
-     "cancelled",
-     "permission-denied",
-     "scheduling-failed",
-+    "pending",
-   ];
-   if (!statuses.includes(String(v.status)))
-     throw Error("Invalid reminder result status");
-+  const timing=checkedTiming(v);
-+  if(timing.alertMinutes!==undefined&&!reminderRequiresV2(op))throw Error("Unexpected reminder timing result");
-+  if((op.target.timingVersion===2||op.type==="reminder_update"&&op.fields.schedule?.alertMinutes!==undefined)&&timing.alertMinutes===undefined)throw Error("Missing reminder timing result");
-+  if(v.status==="pending"&&timing.alertMinutes!==null||timing.alertMinutes===null&&!["pending","completed","cancelled"].includes(String(v.status)))throw Error("Invalid no-alert reminder result");
-+  if(op.type==="reminder_update"&&op.fields.schedule?.alertMinutes!==undefined&&(timing.dueAt!==op.fields.schedule.dueAt||timing.alertMinutes!==op.fields.schedule.alertMinutes||v.at!==op.fields.schedule.at))throw Error("Reminder timing result changed");
-   const result: ReminderResult = {
-+    ...timing,
-     version: 1,
-     kind: op.type,
-     sourceId: id(v.sourceId),
-@@ -239,11 +268,12 @@
-     )
-       throw Error("Reminder read changed");
-     result.fields = reminderFields(v.fields);
-+    if(timing.alertMinutes!==undefined&&(result.fields.schedule?.dueAt!==timing.dueAt||result.fields.schedule?.alertMinutes!==timing.alertMinutes))throw Error("Reminder read timing changed");
-   }
--  if (op.type === "reminder_complete" && v.status !== "completed")
--    throw Error("Reminder was not completed");
-   if (op.type === "reminder_cancel" && v.status !== "cancelled")
-     throw Error("Reminder was not cancelled");
-+  if(op.type==="reminder_complete"&&v.status!=="completed"&&(!["scheduled","pending","permission-denied","scheduling-failed"].includes(String(v.status))||v.occurrenceId===op.target.occurrenceId))throw Error("Reminder was not completed");
-+  if(op.type==="reminder_snooze"&&timing.alertMinutes===null)throw Error("No-alert reminder cannot be snoozed");
-   if (
-     op.type === "reminder_snooze" &&
-     v.occurrenceId !== op.target.occurrenceId
-@@ -253,3 +283,10 @@
-     throw Error("Reminder result exceeds bound");
-   return result;
- }
-+/** Extended timing is explicit and never downgraded for an older peer. */
-+export function reminderRequiresV2(operation:ReminderOperation):boolean {
-+  return operation.target.timingVersion===2 || operation.type==='reminder_update'&&operation.fields.schedule?.alertMinutes!==undefined;
-+}
-+export function reminderCapabilityAvailable(operation:ReminderOperation,capabilities:readonly string[]|undefined):boolean {
-+  return !!capabilities?.includes(REMINDER_TIMING_CAPABILITY)||!reminderRequiresV2(operation)&&!!capabilities?.includes(REMINDER_CAPABILITY);
-+}
-diff --git a/plugins/plugin-assistant/src/services/device-actions/service.ts b/plugins/plugin-assistant/src/services/device-actions/service.ts
---- a/plugins/plugin-assistant/src/services/device-actions/service.ts
-+++ b/plugins/plugin-assistant/src/services/device-actions/service.ts
-@@ -47,6 +47,8 @@
- import {
-   isReminderOperation,
-   REMINDER_CAPABILITY,
-+  REMINDER_TIMING_CAPABILITY,
-+  reminderCapabilityAvailable,
-   validateReminderResult,
- } from "./reminder-contract.ts";
- 
-@@ -169,6 +171,7 @@
+diff --git a/packages/agent/src/api/device-action-routes.ts b/packages/agent/src/api/device-action-routes.ts
+index a99aaab5..a01e4192 100644
+--- a/packages/agent/src/api/device-action-routes.ts
++++ b/packages/agent/src/api/device-action-routes.ts
+@@ -55,6 +55,7 @@ export function deviceRequestCredential(
            "calendar.local-event.v1",
            "notes.local-record.v1",
-           REMINDER_CAPABILITY,
-+          REMINDER_TIMING_CAPABILITY,
-           CLOCK_CAPABILITY,
-           MAPS_CAPABILITY,
-         ],
-@@ -258,7 +261,7 @@
-     }
-     if (
-       isReminderOperation(validated) &&
--      !c.capabilities?.includes(REMINDER_CAPABILITY)
-+      !reminderCapabilityAvailable(validated, c.capabilities)
-     )
-       throw new DeviceActionError("Reminder capability unavailable");
-     if (
-@@ -576,7 +579,7 @@
-       throw new DeviceActionError("Maps capability unavailable");
-     if (
-       isReminderOperation(payload.operation) &&
--      !c.capabilities?.includes(REMINDER_CAPABILITY)
-+      !reminderCapabilityAvailable(payload.operation, c.capabilities)
-     )
-       throw new DeviceActionError("Reminder capability unavailable");
-     if (
-@@ -703,7 +706,7 @@
-         throw new DeviceActionError("Maps capability unavailable");
-       if (
-         isReminderOperation(payload.operation) &&
--        !c.capabilities?.includes(REMINDER_CAPABILITY)
-+        !reminderCapabilityAvailable(payload.operation, c.capabilities)
-       )
-         throw new DeviceActionError("Reminder capability unavailable");
-       if (
-@@ -853,7 +856,7 @@
-         throw new DeviceActionError("Maps capability unavailable");
-       if (
-         isReminderOperation(payload.operation) &&
--        !c.capabilities?.includes(REMINDER_CAPABILITY)
-+        !reminderCapabilityAvailable(payload.operation, c.capabilities)
-       )
-         throw new DeviceActionError("Reminder capability unavailable");
-       if (
+           "reminders.local-record.v1",
++          "reminders.local-record.v2",
+           "maps.selected-read.v1",
+           "clock.handoff.v1",
+         ].includes(value),
+@@ -118,6 +119,7 @@ export async function handleDeviceActionRoutes(
+             "calendar.local-event.v1",
+             "notes.local-record.v1",
+             "reminders.local-record.v1",
++          "reminders.local-record.v2",
+             "maps.selected-read.v1",
+             "clock.handoff.v1",
+           ],
 diff --git a/plugins/plugin-assistant/src/services/device-actions/action.ts b/plugins/plugin-assistant/src/services/device-actions/action.ts
+index ad6745f1..83c1e05d 100644
 --- a/plugins/plugin-assistant/src/services/device-actions/action.ts
 +++ b/plugins/plugin-assistant/src/services/device-actions/action.ts
-@@ -42,15 +42,13 @@
+@@ -42,15 +42,13 @@ const reminderSchemas: ActionParameterSchema[] = [
          "occurrenceId",
          "revision",
        ],
@@ -216,7 +45,7 @@ diff --git a/plugins/plugin-assistant/src/services/device-actions/action.ts b/pl
      },
      ...(type === "reminder_update"
        ? {
-@@ -66,7 +64,9 @@
+@@ -66,7 +64,9 @@ const reminderSchemas: ActionParameterSchema[] = [
                  additionalProperties: false,
                  required: ["at", "recurrence"],
                  properties: {
@@ -227,7 +56,7 @@ diff --git a/plugins/plugin-assistant/src/services/device-actions/action.ts b/pl
                    recurrence: {
                      anyOf: [
                        { type: "null" },
-@@ -240,7 +240,7 @@
+@@ -240,7 +240,7 @@ const clockSchemas: ActionParameterSchema[] = [
  export const proposeDeviceAction: Action = {
    name: "PROPOSE_DEVICE_ACTION",
    description:
@@ -236,10 +65,206 @@ diff --git a/plugins/plugin-assistant/src/services/device-actions/action.ts b/pl
    contexts: ["general"],
    parameters: [
      {
+diff --git a/plugins/plugin-assistant/src/services/device-actions/reminder-contract.ts b/plugins/plugin-assistant/src/services/device-actions/reminder-contract.ts
+index 2d1e47ad..c573f063 100644
+--- a/plugins/plugin-assistant/src/services/device-actions/reminder-contract.ts
++++ b/plugins/plugin-assistant/src/services/device-actions/reminder-contract.ts
+@@ -1,6 +1,10 @@
+ /** Selected device records only. Observations never grant execution authority. */
+ export const REMINDER_CAPABILITY = "reminders.local-record.v1";
++export const REMINDER_TIMING_CAPABILITY = "reminders.local-record.v2";
++export type ReminderTiming = {dueAt?:number;alertMinutes?:number|null};
++export function reminderTiming(value:ReminderTiming):ReminderTiming {return value.alertMinutes===undefined?{}:{dueAt:value.dueAt,alertMinutes:value.alertMinutes};}
+ export interface ReminderTarget {
++  timingVersion?: 2;
+   sourceId: string;
+   sourceRevision: string;
+   reminderId: string;
+@@ -17,6 +21,8 @@ export interface ReminderRepeat {
+ export type ReminderSchedule = {
+   at: number;
+   recurrence: ReminderRepeat | null;
++  dueAt?: number;
++  alertMinutes?: number | null;
+ };
+ export interface ReminderFields {
+   title: string;
+@@ -43,6 +49,8 @@ export interface ReminderResult {
+   status: string;
+   at: number;
+   fields?: ReminderFields;
++  dueAt?: number;
++  alertMinutes?: number | null;
+ }
+ function object(v: unknown): Record<string, unknown> {
+   if (!v || typeof v !== "object" || Array.isArray(v))
+@@ -99,10 +107,12 @@ export function reminderTarget(value: unknown): ReminderTarget {
+     "reminderId",
+     "occurrenceId",
+     "revision",
+-  ]);
++  ],["timingVersion"]);
++  if(v.timingVersion!==undefined&&v.timingVersion!==2)throw Error("Invalid reminder timing version");
+   const reminderId = id(v.reminderId, 100);
+   if (!/^[A-Za-z0-9_-]+$/.test(reminderId)) throw Error("Invalid reminder ID");
+   return {
++    ...(v.timingVersion===2?{timingVersion:2 as const}:{}),
+     sourceId: id(v.sourceId),
+     sourceRevision: revision(v.sourceRevision),
+     reminderId,
+@@ -119,7 +129,7 @@ export function reminderFields(value: unknown): ReminderFields {
+   };
+   if (v.schedule !== undefined) {
+     const s = object(v.schedule);
+-    keys(s, ["at", "recurrence"]);
++    keys(s, ["at", "recurrence"], ["dueAt", "alertMinutes"]);
+     let recurrence: ReminderRepeat | null = null;
+     if (s.recurrence !== null) {
+       const r = object(s.recurrence);
+@@ -153,9 +163,20 @@ export function reminderFields(value: unknown): ReminderFields {
+       };
+     }
+     result.schedule = { at: instant(s.at), recurrence };
++    const timing=checkedTiming(s);
++    if(timing.alertMinutes!==undefined){
++      if((result.schedule.at!==timing.dueAt!-(timing.alertMinutes??0)*60000||recurrence&&recurrence.leadMinutes!==(timing.alertMinutes??0)))throw Error("Reminder timing changed");
++      Object.assign(result.schedule,timing);
++    }
+   }
+   return result;
+ }
++function checkedTiming(v:Record<string,unknown>):ReminderTiming {
++  if((v.dueAt===undefined)!==(v.alertMinutes===undefined))throw Error("Incomplete reminder timing");
++  if(v.alertMinutes===undefined)return {};
++  if(v.alertMinutes!==null&&(typeof v.alertMinutes!=="number"||!Number.isInteger(v.alertMinutes)||v.alertMinutes<0||v.alertMinutes>10080))throw Error("Invalid reminder alert");
++  return {dueAt:instant(v.dueAt),alertMinutes:v.alertMinutes as number|null};
++}
+ export function isReminderOperation(
+   value: unknown,
+ ): value is ReminderOperation {
+@@ -182,6 +203,7 @@ export function validateReminderOperation(value: unknown): ReminderOperation {
+       : ["type", "target"],
+   );
+   const target = reminderTarget(v.target);
++  if(v.type==="reminder_update"&&target.timingVersion===2){const fields=reminderFields(v.fields);if(fields.schedule&&fields.schedule.alertMinutes===undefined)throw Error("Explicit reminder timing cannot be discarded");}
+   return v.type === "reminder_update"
+     ? { type: v.type, target, fields: reminderFields(v.fields) }
+     : { type: v.type, target };
+@@ -203,7 +225,7 @@ export function validateReminderResult(
+       "status",
+       "at",
+     ],
+-    op.type === "reminder_read_selected" ? ["fields"] : [],
++    op.type === "reminder_read_selected" ? ["fields","dueAt","alertMinutes"] : ["dueAt","alertMinutes"],
+   );
+   if (
+     v.version !== 1 ||
+@@ -219,10 +241,17 @@ export function validateReminderResult(
+     "cancelled",
+     "permission-denied",
+     "scheduling-failed",
++    "pending",
+   ];
+   if (!statuses.includes(String(v.status)))
+     throw Error("Invalid reminder result status");
++  const timing=checkedTiming(v);
++  if(timing.alertMinutes!==undefined&&!reminderRequiresV2(op))throw Error("Unexpected reminder timing result");
++  if((op.target.timingVersion===2||op.type==="reminder_update"&&op.fields.schedule?.alertMinutes!==undefined)&&timing.alertMinutes===undefined)throw Error("Missing reminder timing result");
++  if(v.status==="pending"&&timing.alertMinutes!==null||timing.alertMinutes===null&&!["pending","completed","cancelled"].includes(String(v.status)))throw Error("Invalid no-alert reminder result");
++  if(op.type==="reminder_update"&&op.fields.schedule?.alertMinutes!==undefined&&(timing.dueAt!==op.fields.schedule.dueAt||timing.alertMinutes!==op.fields.schedule.alertMinutes||v.at!==op.fields.schedule.at))throw Error("Reminder timing result changed");
+   const result: ReminderResult = {
++    ...timing,
+     version: 1,
+     kind: op.type,
+     sourceId: id(v.sourceId),
+@@ -239,11 +268,12 @@ export function validateReminderResult(
+     )
+       throw Error("Reminder read changed");
+     result.fields = reminderFields(v.fields);
++    if(timing.alertMinutes!==undefined&&(result.fields.schedule?.dueAt!==timing.dueAt||result.fields.schedule?.alertMinutes!==timing.alertMinutes))throw Error("Reminder read timing changed");
+   }
+-  if (op.type === "reminder_complete" && v.status !== "completed")
+-    throw Error("Reminder was not completed");
+   if (op.type === "reminder_cancel" && v.status !== "cancelled")
+     throw Error("Reminder was not cancelled");
++  if(op.type==="reminder_complete"&&v.status!=="completed"&&(!["scheduled","pending","permission-denied","scheduling-failed"].includes(String(v.status))||v.occurrenceId===op.target.occurrenceId))throw Error("Reminder was not completed");
++  if(op.type==="reminder_snooze"&&timing.alertMinutes===null)throw Error("No-alert reminder cannot be snoozed");
+   if (
+     op.type === "reminder_snooze" &&
+     v.occurrenceId !== op.target.occurrenceId
+@@ -253,3 +283,10 @@ export function validateReminderResult(
+     throw Error("Reminder result exceeds bound");
+   return result;
+ }
++/** Extended timing is explicit and never downgraded for an older peer. */
++export function reminderRequiresV2(operation:ReminderOperation):boolean {
++  return operation.target.timingVersion===2 || operation.type==='reminder_update'&&operation.fields.schedule?.alertMinutes!==undefined;
++}
++export function reminderCapabilityAvailable(operation:ReminderOperation,capabilities:readonly string[]|undefined):boolean {
++  return !!capabilities?.includes(REMINDER_TIMING_CAPABILITY)||!reminderRequiresV2(operation)&&!!capabilities?.includes(REMINDER_CAPABILITY);
++}
+diff --git a/plugins/plugin-assistant/src/services/device-actions/service.ts b/plugins/plugin-assistant/src/services/device-actions/service.ts
+index 24fdbace..bfbd7b6d 100644
+--- a/plugins/plugin-assistant/src/services/device-actions/service.ts
++++ b/plugins/plugin-assistant/src/services/device-actions/service.ts
+@@ -47,6 +47,8 @@ import {
+ import {
+   isReminderOperation,
+   REMINDER_CAPABILITY,
++  REMINDER_TIMING_CAPABILITY,
++  reminderCapabilityAvailable,
+   validateReminderResult,
+ } from "./reminder-contract.ts";
+ 
+@@ -169,6 +171,7 @@ export class DeviceActionService {
+           "calendar.local-event.v1",
+           "notes.local-record.v1",
+           REMINDER_CAPABILITY,
++          REMINDER_TIMING_CAPABILITY,
+           CLOCK_CAPABILITY,
+           MAPS_CAPABILITY,
+         ],
+@@ -258,7 +261,7 @@ export class DeviceActionService {
+     }
+     if (
+       isReminderOperation(validated) &&
+-      !c.capabilities?.includes(REMINDER_CAPABILITY)
++      !reminderCapabilityAvailable(validated, c.capabilities)
+     )
+       throw new DeviceActionError("Reminder capability unavailable");
+     if (
+@@ -576,7 +579,7 @@ export class DeviceActionService {
+       throw new DeviceActionError("Maps capability unavailable");
+     if (
+       isReminderOperation(payload.operation) &&
+-      !c.capabilities?.includes(REMINDER_CAPABILITY)
++      !reminderCapabilityAvailable(payload.operation, c.capabilities)
+     )
+       throw new DeviceActionError("Reminder capability unavailable");
+     if (
+@@ -703,7 +706,7 @@ export class DeviceActionService {
+         throw new DeviceActionError("Maps capability unavailable");
+       if (
+         isReminderOperation(payload.operation) &&
+-        !c.capabilities?.includes(REMINDER_CAPABILITY)
++        !reminderCapabilityAvailable(payload.operation, c.capabilities)
+       )
+         throw new DeviceActionError("Reminder capability unavailable");
+       if (
+@@ -853,7 +856,7 @@ export class DeviceActionService {
+         throw new DeviceActionError("Maps capability unavailable");
+       if (
+         isReminderOperation(payload.operation) &&
+-        !c.capabilities?.includes(REMINDER_CAPABILITY)
++        !reminderCapabilityAvailable(payload.operation, c.capabilities)
+       )
+         throw new DeviceActionError("Reminder capability unavailable");
+       if (
 diff --git a/plugins/plugin-assistant/src/services/message/context-assembly.ts b/plugins/plugin-assistant/src/services/message/context-assembly.ts
+index e9ff43ff..89740ec6 100644
 --- a/plugins/plugin-assistant/src/services/message/context-assembly.ts
 +++ b/plugins/plugin-assistant/src/services/message/context-assembly.ts
-@@ -114,10 +114,10 @@
+@@ -114,10 +114,10 @@ export async function createV5MessageContextObject(args: {
        source: "message-service",
        stable: false,
        content:
@@ -253,29 +278,11 @@ diff --git a/plugins/plugin-assistant/src/services/message/context-assembly.ts b
            : "") +
          (getDeviceActionTurn()?.credential.capabilities?.includes(
            "notes.local-record.v1",
-diff --git a/packages/agent/src/api/device-action-routes.ts b/packages/agent/src/api/device-action-routes.ts
---- a/packages/agent/src/api/device-action-routes.ts
-+++ b/packages/agent/src/api/device-action-routes.ts
-@@ -55,6 +55,7 @@
-           "calendar.local-event.v1",
-           "notes.local-record.v1",
-           "reminders.local-record.v1",
-+          "reminders.local-record.v2",
-           "maps.selected-read.v1",
-           "clock.handoff.v1",
-         ].includes(value),
-@@ -118,6 +119,7 @@
-             "calendar.local-event.v1",
-             "notes.local-record.v1",
-             "reminders.local-record.v1",
-+          "reminders.local-record.v2",
-             "maps.selected-read.v1",
-             "clock.handoff.v1",
-           ],
 diff --git a/plugins/plugin-assistant/test/device-actions.e2e.test.ts b/plugins/plugin-assistant/test/device-actions.e2e.test.ts
+index 359b5da8..0e42599f 100644
 --- a/plugins/plugin-assistant/test/device-actions.e2e.test.ts
 +++ b/plugins/plugin-assistant/test/device-actions.e2e.test.ts
-@@ -970,7 +970,7 @@
+@@ -970,7 +970,7 @@ test("device approval REST lifecycle survives restart and never duplicates claim
          allCapabilities,
        );
        expect(enrolled.status).toBe(200);
@@ -284,10 +291,11 @@ diff --git a/plugins/plugin-assistant/test/device-actions.e2e.test.ts b/plugins/
        expect(enrolled.body.capabilities).toContain("clock.handoff.v1");
        expect(
          (
-@@ -1702,6 +1702,60 @@
+@@ -1701,6 +1701,60 @@ test("device approval REST lifecycle survives restart and never duplicates claim
+         ).toHaveLength(1);
        }
      }
-     {
++    {
 +      // Real authenticated HTTP + durable approval queue: timing semantics never
 +      // downgrade to v1, and an identical receipt replay never claims twice.
 +      const timingCapabilities = "calendar.local-event.v1,notes.local-record.v1,reminders.local-record.v2,maps.selected-read.v1,clock.handoff.v1";
@@ -341,7 +349,6 @@ diff --git a/plugins/plugin-assistant/test/device-actions.e2e.test.ts b/plugins/
 +        expect((await timingRequest(`/proposals/${item.id}/claim`, { digest: item.digest })).status).toBe(409);
 +      }
 +    }
-+    {
+     {
        const operation = {
          type: "reminder_snooze",
-         target: {

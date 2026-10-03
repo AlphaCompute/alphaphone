@@ -79,6 +79,6 @@
     "android-resident-launcher-no-kill.patch": "7db1fd788b38a8df9cf43c81c318f257f8060c50043dc13b1d0ed78b06299636",
     "calendar-tool-format-guidance.patch": "64f38f9b7da7fe4773ce13bd1751a36accf494788f7fb1cd34878655218e43fe",
     "device-operation-key-guidance.patch": "78ff3fa0477fbd5f20a9fee1e288306ccacb15e87383d8b1ab7c87f190170902",
-    "reminder-explicit-timing.patch": "3e7a313b043da4fc9a1a279043063c2a30960985e725dbabe71cfd7aa771833b"
+    "reminder-explicit-timing.patch": "ff58f690d2214d6de435f7698377971f20c86931e2f4e674ada3ab8e265871d2"
   }
 }
