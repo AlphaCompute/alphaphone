@@ -29,6 +29,7 @@
     "dev:local": "node scripts/dev-local.mjs",
     "agent:prepare": "node scripts/prepare-local-agent.mjs",
     "agent:test": "node scripts/test-local-agent-source.mjs",
+    "agent:test-digest-restart": "node scripts/test-local-digest-restart.mjs",
     "agent:build-workflow-worker": "bun scripts/build-workflow-worker.ts",
     "agent:test-mobile-workflow-bundle": "node scripts/test-mobile-workflow-bundle.mjs",
     "agent:test-workflow-compiler": "node scripts/test-workflow-compiler.mjs",

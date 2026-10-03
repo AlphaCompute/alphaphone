@@ -1966,3 +1966,11 @@ The full source series reproduces with consumer manifest `c41e76671521e54ab3ba2c
 Restarted only the owned local stack on ports 5317/47849 with the reproduced source and existing profile; runtime PID 43861. Actual authenticated status reports local embedded execution, no Cloud connection, and Whisper/Kokoro ready. The two retained real digest results remain exact, render with closed execution details, and survive browser reload. Compact screenshot inspected. Text inference remains hosted Cerebras; redaction remains off. No Android build or physical-device qualification ran.
 
 Full hosted Browser MVP run `37113808882` completed successfully at exact head `bc82cf25ee57296f34b6b2a54ef779989b0328fb`: shards report 367/377/375 passes, totaling **1,119 passed / 12 skipped**, with three separate platform-dependent repository-test skips. This qualifies the prior speech/notification-recovery snapshot, not the newer digest or execution-location patches.
+
+## October 3 — Process-loss digest safety and overdue schedules
+
+The incoming process-kill harness expected automatic inference replay and one completed result. Integration review found that its legacy state-directory environment variable is no longer accepted by the trusted process-host runtime, and a parent-only kill leaves the workflow worker separate. Those expectations do not qualify the current integration.
+
+The reviewed harness uses a temporary working directory and kills the owned detached process group after synthetic inference starts. It checks that the current runtime preserves the same run ID as unfinished `outcome-unknown`, refuses inference replay, produces no fabricated result, and deduplicates concurrent admissions. A separate persisted overdue TaskService occurrence must record one missed result, perform no inference, and advance to a future occurrence. Automatic recovery of an ambiguous interrupted worker remains an open requirement; this safety check must not be reported as a completed digest.
+
+Author-reported wall-clock HTTP/PGLite evidence remains historical controlled-provider evidence. Current integrated test results are recorded by the review qualification, separately from Android lifecycle, physical power-loss and real-provider acceptance.
