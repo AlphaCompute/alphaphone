@@ -188,6 +188,8 @@ export function collectOverlayFailureDiagnostics({ environment, sdkEnvironment, 
   ];
   const reads = frameworkAnr ? [
     // Keep the report header and first thread stacks even if the retained dump is large.
+    ['displayPolicy', ['shell', 'dumpsys', 'window', 'policy']],
+    ['powerState', ['shell', 'dumpsys', 'power']],
     ['surfaceFlingerBacktrace', null],
     ['graphicsLog', ['shell', 'logcat', '-d', '-b', 'main', '-t', '1000', 'SurfaceFlinger:I', 'RenderEngine:I', 'EGL_emulation:I', 'goldfish-address-space:I', '*:S']],
     ['systemAppAnr', ['shell', 'dumpsys', 'dropbox', '--print', 'system_app_anr']],
@@ -527,9 +529,18 @@ export async function main({ environment = process.env, execute = execFileSync, 
     run('shell', 'test', '!', '-e', stock);
     await qualifyInstalledProvider('after-framework-restart');
     state.providerDisplayObservations = [];
-    await requireFixtureDisplay(run, { env: environment, serial, sleep, record: observation => {
-      state.providerDisplayObservations.push(observation); save();
-    } });
+    try {
+      await requireFixtureDisplay(run, { env: environment, serial, sleep, record: observation => {
+        state.providerDisplayObservations.push(observation); save();
+      } });
+    } catch (displayError) {
+      // Read-only evidence after refusal; never use diagnostics to admit a secure fixture.
+      try {
+        const diagnostics = collectOverlayFailureDiagnostics({ environment, sdkEnvironment: env, execute, now, frameworkAnr: true });
+        fs.writeFileSync(path.join(output, 'provider-framework-display.json'), JSON.stringify(diagnostics, null, 2) + '\n');
+      } catch (diagnosticError) { state.providerRestart.diagnosticError = String(diagnosticError.message).slice(0, 512); save(); }
+      throw displayError;
+    }
     const activity = run('shell', 'dumpsys', 'activity', 'activities');
     state.providerRestart.anrPresent = activity.includes('Application Not Responding:');
     state.providerRestart.anrLines = activity.split(/\r?\n/).filter(line => line.includes('Application Not Responding:')).slice(0, 8).map(line => line.slice(0, 512)); save();

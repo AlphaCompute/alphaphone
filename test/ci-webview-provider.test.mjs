@@ -219,8 +219,10 @@ async function simulate({ oversizedAnr = false, framework = 'ready', drift, neve
   const superLayout=fs.existsSync(superPath)?JSON.parse(fs.readFileSync(superPath)):null;
   const anrPath=path.join(output,'provider-framework-anr.json');
   const anrDiagnostics=fs.existsSync(anrPath)?JSON.parse(fs.readFileSync(anrPath)):null;
+  const displayPath=path.join(output,'provider-framework-display.json');
+  const displayDiagnostics=fs.existsSync(displayPath)?JSON.parse(fs.readFileSync(displayPath)):null;
   fs.rmSync(parent, { recursive: true, force: true });
-  return { anrDiagnostics, superLayout, diagnostics, calls, result, error, stopped, removed, installed, selectionReads, elapsed };
+  return { displayDiagnostics, anrDiagnostics, superLayout, diagnostics, calls, result, error, stopped, removed, installed, selectionReads, elapsed };
 }
 test('full provider command sequence survives one offline reboot and delayed RELRO', async () => {
   const r = await simulate(); assert.ifError(r.error);
@@ -479,9 +481,9 @@ test('super layout is read before any remount without adding install or reboot',
 test('focused framework ANR preserves bounded read-only evidence without accepting or retrying setup',async()=>{
  const r=await simulate({drift:'final-anr'});
  assert.match(r.error.message,/Application ANR remains/);assert.equal(r.result.status,'FAIL');
- assert.deepEqual(Object.keys(r.anrDiagnostics.guest),['surfaceFlingerBacktrace','graphicsLog','systemAppAnr','lastAnr','processes','anrEvents','systemLog','memory','pressure']);
+ assert.deepEqual(Object.keys(r.anrDiagnostics.guest),['displayPolicy','powerState','surfaceFlingerBacktrace','graphicsLog','systemAppAnr','lastAnr','processes','anrEvents','systemLog','memory','pressure']);
  assert.equal(r.anrDiagnostics.budgetMilliseconds,20000);
- for(const [key,value] of Object.entries(r.anrDiagnostics.guest))assert.equal(value,key==='surfaceFlingerBacktrace'?('SurfaceFlinger main stack '+'x'.repeat(70000)).slice(0,65536):key==='systemAppAnr'?('ANR main thread '+'x'.repeat(70000)).slice(0,65536):key==='processes'?'ACTIVITY MANAGER bounded synthetic ANR evidence':'synthetic bounded ANR evidence');
+ for(const [key,value] of Object.entries(r.anrDiagnostics.guest).filter(([key])=>!['displayPolicy','powerState'].includes(key)))assert.equal(value,key==='surfaceFlingerBacktrace'?('SurfaceFlinger main stack '+'x'.repeat(70000)).slice(0,65536):key==='systemAppAnr'?('ANR main thread '+'x'.repeat(70000)).slice(0,65536):key==='processes'?'ACTIVITY MANAGER bounded synthetic ANR evidence':'synthetic bounded ANR evidence');
  const start=r.calls.indexOf('shell dumpsys dropbox --print system_app_anr');assert.ok(start>0);
  assert.ok(!r.calls.slice(start).some(c=>/^(install |reboot$|remount$|shell (stop$|start$|input |am force-stop|kill))/.test(c)));
  assert.equal(r.calls.filter(c=>c==='reboot').length,1);
@@ -500,4 +502,12 @@ test('SurfaceFlinger backtrace refuses ambiguous process identity',async()=>{
   assert.ok(r.anrDiagnostics.guest.surfaceFlingerBacktrace.unavailable);
   assert.ok(!r.calls.some(c=>c.startsWith('shell debuggerd')));
  }
+});
+
+test('secure postrestart display refusal retains graphics evidence without admission or lock changes',async()=>{
+ const r=await simulate({drift:'final-secure'});assert.equal(r.result.status,'FAIL');assert.match(r.error.message,/not observed awake/);
+ assert.match(r.displayDiagnostics.guest.displayPolicy,/secure=true/);assert.match(r.displayDiagnostics.guest.surfaceFlingerBacktrace,/SurfaceFlinger main stack/);
+ assert.equal(r.anrDiagnostics,null);assert.equal(r.calls.filter(c=>c.startsWith('install ')).length,1);
+ const start=r.calls.indexOf('shell debuggerd -b 407');assert.ok(start>0);assert.ok(!r.calls.slice(start).some(c=>/^(install |reboot$|remount$|shell (stop$|start$|input |wm dismiss|locksettings set))/.test(c)));
+ assert.equal((await simulate()).displayDiagnostics,null);
 });
