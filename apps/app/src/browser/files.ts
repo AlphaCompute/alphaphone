@@ -1,3 +1,4 @@
+import {fileArchive} from './file-archive';
 import {runFilePicker,inputFiles} from './file-picker';
 import pdfWorkerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import { WebPlugin } from '@capacitor/core';
@@ -11,7 +12,7 @@ async function entries(){const d=await db();return new Promise<Entry[]>((resolve
 async function transaction<T>(action:(all:Entry[],store:IDBObjectStore)=>T){const d=await db();return new Promise<T>((resolve,reject)=>{const tx=d.transaction('entries','readwrite'),store=tx.objectStore('entries');let result:T;let failure:unknown;tx.oncomplete=()=>resolve(result);tx.onabort=tx.onerror=event=>reject(failure||(event.target as IDBRequest)?.error||tx.error||Error('File storage failed.'));const request=store.getAll();request.onsuccess=()=>{try{result=action(request.result,store);}catch(error){failure=error;tx.abort();}};});}
 const root:Entry={id:'root',parentId:'',name:'Browser files',mimeType:'',directory:true,size:0,revision:'root'};
 const publicEntry=({blob,bytes,...entry}:Entry)=>({...entry,canCreate:entry.directory,canRename:entry.id!=='root',canDelete:entry.id!=='root',canMove:entry.id!=='root'});
-const validName=(name:string)=>{if(!name.trim()||/[\\/\0]/.test(name)||['.','..'].includes(name)||name.length>240)throw Error('Choose a valid file name.');return name.trim();};
+const validName=(name:string)=>{name=name.trim();if(!name||/[\\/\0]/.test(name)||['.','..'].includes(name)||name.length>240)throw Error('Choose a valid file name.');return name.trim();};
 function waitForFileRead<T>(work:Promise<T>,signal?:AbortSignal):Promise<T>{
  if(!signal)return work;
  return new Promise((resolve,reject)=>{let settled=false;const finish=(error:unknown,value?:T)=>{if(settled)return;settled=true;signal.removeEventListener('abort',cancel);error?reject(error):resolve(value!);};const cancel=()=>finish(new DOMException('Files read cancelled','AbortError'));signal.addEventListener('abort',cancel,{once:true});work.then(value=>finish(null,value),error=>finish(error));if(signal.aborted)cancel();});
@@ -73,6 +74,37 @@ export class BrowserFiles extends WebPlugin {
  async rename(input:{id:string;expectedRevision:string;name:string}){await this.mutate(input,row=>({...row,name:validName(input.name)}));return {status:'renamed',message:'Renamed.'};}
  async delete(input:{id:string;expectedRevision:string;confirmPermanent:boolean}){if(!input.confirmPermanent)throw Error('Confirm deletion.');await this.mutate(input,(row,all)=>{if(all.some(e=>e.parentId===row.id))throw Error('Empty this folder before deleting it.');return null;});return {status:'deleted',message:'Deleted.'};}
  async move(input:{id:string;expectedRevision:string;destinationId:string}){await this.mutate(input,(row,all)=>{const target=input.destinationId==='root'?root:all.find(e=>e.id===input.destinationId);if(!target?.directory)throw Error('Choose a destination folder.');let ancestor:Entry|undefined=target;while(ancestor){if(ancestor.id===row.id)throw Error('Choose a folder outside this folder.');ancestor=all.find(e=>e.id===ancestor!.parentId);}return {...row,parentId:target.id};});return {status:'moved',message:'Moved.'};}
+ private batchRows(all:Entry[],items:{id:string;expectedRevision:string}[]){
+  if(!items.length||new Set(items.map(item=>item.id)).size!==items.length)throw Error('Select files first.');
+  return items.map(item=>{const row=all.find(row=>row.id===item.id);if(!row||row.revision!==item.expectedRevision)throw Error('A selected file changed. Refresh and select again.');return row;});
+ }
+ async changeMany(input:{items:{id:string;expectedRevision:string}[];action:'move'|'delete';destinationId?:string;confirmPermanent?:boolean}){
+  await transaction((all,store)=>{
+   const rows=this.batchRows(all,input.items);
+   if(input.action==='delete'){
+    if(!input.confirmPermanent)throw Error('Confirm deletion.');
+    if(rows.some(row=>all.some(child=>child.parentId===row.id)))throw Error('Empty selected folders before deleting them.');
+    for(const row of rows)store.delete(row.id);
+   }else if(input.action==='move'){
+    const target=input.destinationId==='root'?root:all.find(row=>row.id===input.destinationId);
+    if(!target?.directory)throw Error('Choose a destination folder.');
+    const names=new Set<string>();
+    for(const row of rows){
+     let ancestor:Entry|undefined=target;while(ancestor){if(ancestor.id===row.id)throw Error('Choose a folder outside the selection.');ancestor=all.find(e=>e.id===ancestor!.parentId);}
+     if(names.has(row.name)||all.some(e=>e.id!==row.id&&e.parentId===target.id&&e.name===row.name))throw Error('The destination already contains a selected name.');names.add(row.name);
+    }
+    for(const row of rows)store.put({...row,parentId:target.id,revision:revision(),modifiedAt:Date.now()});
+   }else throw Error('Choose a file operation.');
+  });
+  return {status:input.action==='move'?'moved':'deleted',message:input.action==='move'?'Selection moved.':'Selection deleted.'};
+ }
+ async shareMany(input:{items:{id:string;expectedRevision:string}[]}){
+  const all=await entries(),rows=this.batchRows(all,input.items),files:{path:string;bytes:Uint8Array<ArrayBuffer>}[]=[];
+  const visit=async(row:Entry,path:string)=>{if(row.directory){files.push({path:path+'/',bytes:new Uint8Array(0)});for(const child of all.filter(e=>e.parentId===row.id))await visit(child,path+'/'+child.name);}else{if(!row.blob)throw Error('File bytes unavailable.');files.push({path,bytes:new Uint8Array(await row.blob.arrayBuffer())});}};
+  for(const row of rows)await visit(row,row.name);
+  const blob=fileArchive(files),url=URL.createObjectURL(blob),link=document.createElement('a');link.href=url;link.download='Alpha files.zip';document.body.append(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),60000);
+  return {status:'opened',message:'Selection downloaded.'};
+ }
  async select(input:{id:string}){const row=(await entries()).find(e=>e.id===input.id);if(!row?.blob)throw Error('Choose a file.');const selectionId=crypto.randomUUID(),uri=URL.createObjectURL(row.blob);this.selection.set(selectionId,{id:row.id,revision:row.revision});this.urls.set(selectionId,uri);return {status:'selected',action:'files',selectionId,uri,name:row.name,mimeType:row.mimeType};}
  private async selected(id:string){const selected=this.selection.get(id),row=(await entries()).find(e=>e.id===selected?.id);if(!row?.blob||row.revision!==selected?.revision)throw Error('Select this file again.');return row;}
  async readSelected(input:{selectionId:string}){const row=await this.selected(input.selectionId);if(row.size>2_000_000)return {status:'large',message:'Open or download this file to read it.'};if(!row.mimeType.startsWith('text/')&&!['application/json','application/xml','application/javascript'].includes(row.mimeType))return {status:'binary',message:'Open or download this file.',mimeType:row.mimeType,bytes:row.size};try{const text=new TextDecoder('utf-8',{fatal:true}).decode(await row.blob!.arrayBuffer());if(text.includes('\0'))return {status:'binary',message:'Open or download this file.'};await this.selected(input.selectionId);return {status:'read',text,mimeType:row.mimeType,bytes:row.size};}catch(error){if(error instanceof TypeError)return {status:'binary',message:'Open or download this file.'};throw error;}}
