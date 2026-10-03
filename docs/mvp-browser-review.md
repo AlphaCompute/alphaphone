@@ -2013,3 +2013,10 @@ The broader hosted run at `3e78cf2` exposed a digest assertion still targeting e
 Validation: all 34 selected Chromium/WebKit digest/audio cases pass, followed by 20 repeated real-encoder stop cases (ten per engine). Repository verification again passes 157 tests, zero skips, TypeScript and build. Evidence is `artifacts/calendar-preferences-review/test-results/ci-browser-recovery/`. These local passes repair the identified assertions; exact-head hosted green remains pending. The separate Android CI smoke failure was emulator remount/overlayfs setup, retained as an open gate outside this browser-focused pass.
 
 The user-facing local agent was restarted on contact-reference manifest `113b0e72f49f258d651529186c6d2a927164a62999f206018394a19b614f6fcf`; authenticated owner, embedded workflows and local Whisper/Kokoro readiness all pass. Redaction remains off pending broader qualification.
+
+
+## October 3 — exact contact guidance and remaining short-credential defect
+
+Added explicit, tested model-side contact-reference guidance in `egress-contact-guidance.patch`. The real model passes six repeated email/phone drafts, credential promotion, streaming and an approved local-note action retaining exact contact data once after reload. Fourteen captured provider request-body checks exclude the synthetic raw values. Final source preparation/reverification, 32 focused runtime tests and all 157 repository checks/typecheck/build pass. The initial malformed phone reference, failed duplicate-system implementation and corrected test fixture are preserved as failed evidence, not passing results.
+
+The next privacy gap is concrete: a named six-character password bypasses the eight-character swap threshold. Defaults remain off until short-credential handling is repaired and qualified. See [the qualification details](local-agent-development.md#mixed-contact-and-credential-qualification-october-3). Current-head browser CI remains in progress; no new full-suite green or Android acceptance is claimed.
