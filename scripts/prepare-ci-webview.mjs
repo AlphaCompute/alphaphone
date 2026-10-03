@@ -187,6 +187,8 @@ export function collectOverlayFailureDiagnostics({ environment, sdkEnvironment, 
     ['vendorBlockContexts', ['shell', 'grep', '-e', 'super', '-e', 'vda', '-e', 'vd_device', '/vendor/etc/selinux/vendor_file_contexts']],
   ];
   const reads = frameworkAnr ? [
+    // Keep the report header and first thread stacks even if the retained dump is large.
+    ['systemAppAnr', ['shell', 'dumpsys', 'dropbox', '--print', 'system_app_anr']],
     ['lastAnr', ['shell', 'dumpsys', 'activity', 'lastanr']],
     ['processes', ['shell', 'dumpsys', 'activity', 'processes']],
     ['anrEvents', ['shell', 'logcat', '-d', '-b', 'events', '-t', '400', 'am_anr:I', 'am_crash:I', '*:S']],
@@ -227,9 +229,9 @@ export function collectOverlayFailureDiagnostics({ environment, sdkEnvironment, 
     catch (error) { evidence.admissionStopped = String(error.message).slice(0, 512); break; }
     try {
       const result = read(...args);
-      evidence.guest[name] = (['userspaceStorageLog', 'kernel'].includes(name) ? result.split('\n').filter(line => /gsid|fiemap|scratch|overlay|mkfs|f2fs|ext4|device.mapper/i.test(line)).join('\n') : result).slice(-65536);
+      evidence.guest[name] = name === 'systemAppAnr' ? result.slice(0, 65536) : (['userspaceStorageLog', 'kernel'].includes(name) ? result.split('\n').filter(line => /gsid|fiemap|scratch|overlay|mkfs|f2fs|ext4|device.mapper/i.test(line)).join('\n') : result).slice(-65536);
     } catch (error) {
-      evidence.guest[name] = { unavailable: String(error.message).slice(0, 512), status: error.status ?? null, signal: error.signal ?? null, code: error.code ?? null, stdout: String(error.stdout ?? '').slice(-4096), stderr: String(error.stderr ?? '').slice(-4096) };
+      evidence.guest[name] = { unavailable: String(error.message).slice(0, 512), status: error.status ?? null, signal: error.signal ?? null, code: error.code ?? null, stdout: name === 'systemAppAnr' ? String(error.stdout ?? '').slice(0, 65536) : String(error.stdout ?? '').slice(-4096), stderr: String(error.stderr ?? '').slice(-4096) };
     }
   }
   return evidence;

@@ -61,7 +61,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { main, collectOverlayFailureDiagnostics } from '../scripts/prepare-ci-webview.mjs';
 
-async function simulate({ framework = 'ready', drift, neverBoot = false, neverReady = false, remountChannel = 'stdout', remountStatus = 0, remountSignal = null } = {}) {
+async function simulate({ oversizedAnr = false, framework = 'ready', drift, neverBoot = false, neverReady = false, remountChannel = 'stdout', remountStatus = 0, remountSignal = null } = {}) {
   const parent = fs.mkdtempSync(path.join(os.tmpdir(), 'alpha-provider-sequence-'));
   const output = path.join(parent, 'evidence'), calls = [];
   let elapsed = 0, installed = false, removed = false, stopped = false, rebooted = false, offline = 0, selectionReads = 0, rooted = false;
@@ -165,6 +165,7 @@ async function simulate({ framework = 'ready', drift, neverBoot = false, neverRe
     if (key==='shell cat /proc/bootconfig' && drift==='boot-config') return 'androidboot.boot_devices = "wrong"';
     if (key === 'shell getprop fs_mgr.overlayfs.data_scratch_size_mb') return drift === 'scratch-existing' ? '2048' : drift === 'scratch-unapplied' ? '' : scratch;
     if (key === 'shell setprop fs_mgr.overlayfs.data_scratch_size_mb 512') { scratch = '512'; return ''; }
+    if(key==='shell dumpsys dropbox --print system_app_anr'){assert.ok(options.timeout>0&&options.timeout<=2000);assert.equal(options.maxBuffer,256*1024);const report='ANR main thread '+'x'.repeat(70000);if(oversizedAnr){const error=Error('maxBuffer exceeded');error.code='ENOBUFS';error.stdout=report;throw error;}return report;}
     if (['shell dumpsys activity lastanr','shell dumpsys activity processes','shell logcat -d -b events -t 400 am_anr:I am_crash:I *:S','shell logcat -d -b system -t 400','shell cat /proc/meminfo','shell cat /proc/pressure/memory /proc/pressure/cpu /proc/pressure/io'].includes(key) && (key!=='shell dumpsys activity processes'||options.maxBuffer===256*1024)) { assert.ok(options.timeout>0&&options.timeout<=2000);assert.equal(options.maxBuffer,256*1024);return key==='shell dumpsys activity processes'?'ACTIVITY MANAGER bounded synthetic ANR evidence':'synthetic bounded ANR evidence'; }
     if (key === 'shell getprop ro.boot.super_partition') return 'vda2';
     if (key === 'shell readlink -f /dev/block/by-name/super') return '/dev/block/vda2';
@@ -474,11 +475,17 @@ test('super layout is read before any remount without adding install or reboot',
 test('focused framework ANR preserves bounded read-only evidence without accepting or retrying setup',async()=>{
  const r=await simulate({drift:'final-anr'});
  assert.match(r.error.message,/Application ANR remains/);assert.equal(r.result.status,'FAIL');
- assert.deepEqual(Object.keys(r.anrDiagnostics.guest),['lastAnr','processes','anrEvents','systemLog','memory','pressure']);
+ assert.deepEqual(Object.keys(r.anrDiagnostics.guest),['systemAppAnr','lastAnr','processes','anrEvents','systemLog','memory','pressure']);
  assert.equal(r.anrDiagnostics.budgetMilliseconds,20000);
- for(const [key,value] of Object.entries(r.anrDiagnostics.guest))assert.equal(value,key==='processes'?'ACTIVITY MANAGER bounded synthetic ANR evidence':'synthetic bounded ANR evidence');
- const start=r.calls.indexOf('shell dumpsys activity lastanr');assert.ok(start>0);
+ for(const [key,value] of Object.entries(r.anrDiagnostics.guest))assert.equal(value,key==='systemAppAnr'?('ANR main thread '+'x'.repeat(70000)).slice(0,65536):key==='processes'?'ACTIVITY MANAGER bounded synthetic ANR evidence':'synthetic bounded ANR evidence');
+ const start=r.calls.indexOf('shell dumpsys dropbox --print system_app_anr');assert.ok(start>0);
  assert.ok(!r.calls.slice(start).some(c=>/^(install |reboot$|remount$|shell (stop$|start$|input |am force-stop|kill))/.test(c)));
  assert.equal(r.calls.filter(c=>c==='reboot').length,1);
  assert.equal((await simulate()).anrDiagnostics,null);
+});
+
+test('oversized ANR reports retain a bounded leading stack without changing failure',async()=>{
+ const r=await simulate({drift:'final-anr',oversizedAnr:true});assert.match(r.error.message,/Application ANR remains/);assert.equal(r.result.status,'FAIL');
+ const report=r.anrDiagnostics.guest.systemAppAnr;assert.equal(report.code,'ENOBUFS');assert.equal(report.stdout.length,65536);assert.ok(report.stdout.startsWith('ANR main thread '));
+ assert.equal(r.calls.filter(c=>c==='shell dumpsys dropbox --print system_app_anr').length,1);
 });
