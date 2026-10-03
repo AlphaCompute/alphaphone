@@ -1953,3 +1953,7 @@ The actual results exposed a design gap: the panel displayed typed execution JSO
 Final validation passes all 38 Chromium/WebKit digest/source/storage/notification cases, including light/dark compact summary and closed-details behavior, with TypeScript, all 157 repository tests without skips and production build. This UI change preserves stored payloads and acknowledgement identities.
 
 Live renderer follow-up: both real retained morning/evening results rendered their exact final summaries in the local-agent UI, with Execution details closed, and survived browser reload. The compact 360×640 screenshot was visually inspected for readable summary layout. Evidence: `test-results/local-digest-qualification/render-result.json`, `render-trace.zip` and `live-summary.png`. This uses the actual retained runtime results rather than mocked digest output.
+
+## October 3 — Synchronize independent browser-parity documentation
+
+Reviewed the local README and browser-parity campaign report, verified every checkpoint-115 source hash against `8190682`, and checked terminal baseline/delta browser reports. The report now identifies that exact historical snapshot instead of calling its 120-test/APK results current. Its content is preserved and synchronized with the local-agent implementation; newer 157-test and digest/recovery/speech evidence remains separate. No Android build ran.

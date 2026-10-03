@@ -39,7 +39,7 @@ The MVP is **not complete**. This is the current requirement/evidence index; [th
 - Native presentation code `99a0590`: **138 repository tests**, TypeScript/build and **64 targeted browser cases** passed. Its full hosted run is now the successful checkpoint above.
 - Notification recovery code `ef76858`: **147 repository tests**, TypeScript/build and **52 browser cases**, plus a real local-agent workflow with a controlled journal-write failure recovered through Sync saved receipts without duplicate delivery. Native Java state-machine coverage is not physical OS acceptance.
 - Resident voice code `89b8b3e`, evidence head `a564ed4`: **144 repository tests**, TypeScript/build, **50 targeted browser cases**, plus actual browser-host Kokoro readiness/playback. No Android build ran in these two checkpoints.
-- Root `README.md` and `docs/browser-dev-parity.md` have concurrent uncommitted edits. They are preserved and excluded from these reviewed pushes. Therefore “all local files are synchronized” is not yet true.
+- The previously uncommitted README and browser-parity report are now reviewed and included in the delivery branch. Their older campaign is explicitly anchored to `8190682`; it is not current-head acceptance. The latest digest checkpoint passes 157 repository tests, TypeScript/build and 38 Chromium/WebKit cases, plus actual retained-result UI/reload checks.
 
 ## Next implementation and qualification order
 
@@ -47,7 +47,7 @@ The MVP is **not complete**. This is the current requirement/evidence index; [th
 2. Paired/Cloud speech ownership is source-qualified; retain route-specific real authorization/provider and physical audio acceptance.
 3. Two real local snapshot schedules and completed-result restart recovery are qualified. Continue interruption-during-execution and missed-occurrence/reconnect journeys; native lifecycle and real account sources remain open.
 4. Qualify redaction/contact restoration against the actual selected model before changing the default switches.
-5. Finish current-source browser/design coverage and inspect exact-head hosted results. Review and synchronize the concurrent documentation once its changes are stable.
+5. Finish current-source browser/design coverage and inspect exact-head hosted results. The concurrent documentation is reconciled and synchronized; keep snapshot evidence distinct from current-head qualification.
 6. Keep real account/provider and physical acceptance gates explicit. Browser work can prepare their contracts and recovery flows, but cannot supply missing account grants, hardware observations or stakeholder acceptance.
 
 This order preserves the full MVP goal. It is not a smaller definition of completion, and this document does not mark any missing gate as waived.
