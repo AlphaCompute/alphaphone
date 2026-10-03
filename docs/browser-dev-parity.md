@@ -1309,3 +1309,29 @@ Validation: **8/8 Chromium and 8/8 WebKit**, covering live estimate changes, mis
 The ongoing full WebKit campaign reported five failures across the two local Calendar meeting suites. Their permission fixtures assigned `getUserMedia` on an unretained MediaDevices wrapper. Both suites now pin the original `navigator.mediaDevices` object during document initialization before overriding its method, matching the already-qualified camera/video fixtures. Real canvas and Web Audio streams are still used; this does not replace media lifecycle assertions with fake track results.
 
 Validation: **8/8 Chromium and 8/8 WebKit** passed, covering Back/background release, ended sensor tracks and retry, late permission grants after leave, denied camera/microphone recovery, attendee/video persistence, and stale guest-response rejection. Production source is unchanged from checkpoint 102, whose root verification remains applicable; only these two browser fixtures and documentation changed here. Evidence: `test-results/browser-dev-parity/checkpoint-103/`. Preserve the ongoing full campaign and its original failures; the focused results reconcile these failures separately without restarting that live run. Android packaging remains pending.
+
+### Checkpoint 104 — provider-route inventory refresh
+
+Audited the current product-owned Android plugin sources: **17 plugin classes, 159 annotated methods**. `artifacts/calendar-preferences-review/test-results/provider-inventory-review/inventory.json` records each native method name, the actual registered plugin name, native source hash, and browser route source hashes. This inventory establishes where parity is implemented; it is not itself proof that every method's semantics or native behavior passed. Native `Agent` is implemented by the class named `AlphaLocalAgentPlugin`.
+
+| Android capability family | Browser route inspected | Qualification boundary |
+|---|---|---|
+| AlphaBrowser | `browser/browser-surface.ts` | Real isolated frames, local tab/bookmark/read/share controls; embedding restrictions remain browser policy |
+| AlphaFiles | `browser/files.ts` | Managed IndexedDB tree, pick/import, selected-byte capabilities, mutations, downloads and PDF; local copies do not modify the OS source |
+| AlphaPhotos | `prototype/browser-camera.ts`, selected by `camera-adapter.ts` | Renderer-level browser camera/library route rather than a global AlphaPhotos web registration |
+| AlphaNoteDocuments | `runtime/browser-note-documents.ts`, lazy registration in note/scan adapters | Browser file picker and text/PDF downloads |
+| AlphaMailAttachments | `browser/mail-attachments.ts` | Exact selected bytes and reviewed local attachment presentation |
+| AlphaNoteAudio / AlphaVoiceCloud | shared `browser/voice.ts`, capture and note-audio store | Actual capture/playback/local review; live host transcription remains a separate service test |
+| DailyApps | `browser/daily.ts`, `browser/clock.ts` | Local reminders, selected documents and Clock; foreground scheduling does not imply closed-browser execution |
+| AlphaCalendar | `browser/calendar.ts` | Local calendar CRUD/recurrence/agent contracts and meeting preview; no real guest/provider side effects from preview |
+| AlphaDevice / DeviceApps | `browser/device.ts`, `browser/device-adapter.ts` | Durable local device model and app routes; native OS controls remain native |
+| AlphaNotifications | `browser/notifications.ts` | Origin-local notification model, policy and history; external-app events are supplied through development controls |
+| AlphaHostedResults | `browser/hosted-results.ts`, early registration module | Foreground result synchronization, local notice/tap behavior and settings |
+| AlphaActionJournal | `runtime/local-agent-storage.ts`, selected by connection controller | Development identity-scoped journal and effect receipts, not an Android encrypted store |
+| AlphaConnection | development connection/Cloud transports and local-agent storage | Explicit noncredential development profiles, account/session isolation and reviewed local actions; production credential guarantees are not simulated |
+| Agent | `runtime/local-agent.ts`, host Vite bridge, development connection | Host-managed real development runtime or explicit interactive development profile; browser does not acquire native process-management privileges |
+| AlphaMapsTransport | `maps/regional-provider.ts` | Browser fetch/AbortSignal branch to configured regional backend; native emulator transport is selected only on native platform |
+
+The method inventory complements the earlier stage/consumer ledger. Remaining qualification is the terminal full WebKit result and its failures, source deltas after the frozen campaign, current dual-variant Android packaging, and the actual speech-service path if live host transcription acceptance is claimed. Browser/local simulation evidence must not be described as emulator HOME-role, AOSP boot, live provider, or physical-device acceptance. This refresh does not close the full objective.
+
+Inventory correction: the first extractor omitted Calendar’s `public synchronized void save` method. The reviewed extractor accepts that modifier, checks every annotation was counted, and verifies all native source hashes. Debug/test-only plugin classes remain outside this production inventory.

@@ -28,10 +28,10 @@
     "plugins/plugin-assistant/src/services/message/reply-policy.ts": "6258737cf79a623f58988d6788462b9b5d12ae54b6916b5e198dc873197ee40c",
     "packages/core/src/__tests__/swap-user-reply.test.ts": "f3853504d2cd0ef0806b5649edbd8bd17410d8bc1ee314eee77c9c56dc9efa08",
     "packages/core/src/security/guarded-stream.ts": "8761ac0e768d2498ff186f919f018b18f488fa8670bd6f184d6bfbcc17545788",
-    "plugins/plugin-assistant/src/services/device-actions/contract.ts": "1cb1868981ec118366cb1186744c3790462dc2820d381da54174eba37bd6a13b",
+    "plugins/plugin-assistant/src/services/device-actions/contract.ts": "393330322566722efbcdd56acb2309422f9d68d2b8de3a46ff6fdbb5d113b897",
     "plugins/plugin-assistant/test/device-actions.e2e.test.ts": "8d7b58ba3c83dd582bcab7007136d74c367df947fcaed473893d1ea99a6b67a7",
     "plugins/plugin-assistant/src/services/device-actions/clock-contract.ts": "4a068849386f1e3f81391840c60ea74e0ad488b1102d4b6d8c8dc1bf1616cfaf",
-    "plugins/plugin-assistant/src/services/device-actions/action.ts": "5dadeb7828819b490faa46e93fd0a6628165c018a2d2cc80b258a3fb428a30f4",
+    "plugins/plugin-assistant/src/services/device-actions/action.ts": "07246fba9f15fc5990447b1269a76d2d3e7aae004a1848519dbaa72e92da7cb4",
     "plugins/plugin-assistant/src/services/device-actions/effect-receipts.ts": "52fcf108e42ac6c85f4f1b60b0eb5a18b956178c693528a92fedfdae4d69d4ca",
     "plugins/plugin-assistant/src/services/device-actions/service.ts": "be69887169ca0ae48a66deb80a26d2e8657a928a13b076406a60674984811f97",
     "packages/agent/src/api/device-action-routes.ts": "3aa113ad222b5d1b38aa776e24d6bde617d93a2729d419466fc9ef1f0ecdf03c",
@@ -63,13 +63,15 @@
     "clock-handoff.patch",
     "standalone-kokoro-host.patch",
     "egress-credential-assignments.patch",
-    "workflow-device-owner-binding.patch"
+    "workflow-device-owner-binding.patch",
+    "calendar-tool-format-guidance.patch"
   ],
   "patchHashes": {
     "approved-workflows-navigation.patch": "2202d04675531633db4b1ce3a2e49e3e870c259c341acaf20b17bbef6be99c9a",
     "clock-handoff.patch": "32245531af0928e7bd8a394ac588370790700abdf778cde644f54e1dda5388f2",
     "standalone-kokoro-host.patch": "ae87186fdd0c3ab6ebd2d67f2621495592b3462345955fd7d8a70226ca6f5396",
     "egress-credential-assignments.patch": "a365c56f114a60bbf061f7878f8ac65e73a1c7de2bc5f2fbb9414d70c6f0ae0d",
-    "workflow-device-owner-binding.patch": "4c258a6da2ca1597c9933accecbba6451f844b73b0121f8261f7a12ceefed449"
+    "workflow-device-owner-binding.patch": "4c258a6da2ca1597c9933accecbba6451f844b73b0121f8261f7a12ceefed449",
+    "calendar-tool-format-guidance.patch": "64f38f9b7da7fe4773ce13bd1751a36accf494788f7fb1cd34878655218e43fe"
   }
 }
