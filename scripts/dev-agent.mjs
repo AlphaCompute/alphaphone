@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { DEVELOPMENT_PROPOSAL_VIEWS } from "../apps/app/src/runtime/development-view-contract.ts";
 /** Loopback-only emulator development chat. No production identity or tool execution. */
 import http from "node:http";
 import { randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
@@ -61,27 +62,9 @@ await mkdir(directory, { mode: 0o700 });
 const tokenPath = join(directory, "development-agent-token");
 await writeFile(tokenPath, token, { mode: 0o600, flag: "wx" });
 await chmod(tokenPath, 0o600);
-const views = new Set([
-  "home",
-  "assistant",
-  "apps",
-  "maps",
-  "camera",
-  "photos",
-  "notes",
-  "calendar",
-  "notifications",
-  "reminders",
-  "workflows",
-  "files",
-  "inbox",
-  "browser",
-  "phone",
-  "messages",
-  "contacts",
-  "passwords",
-  "settings",
-]);
+const proposalViews = new Set(DEVELOPMENT_PROPOSAL_VIEWS);
+// Assistant/apps identify chat context, never an executable navigation proposal.
+const views = new Set([...DEVELOPMENT_PROPOSAL_VIEWS, "assistant", "apps", "passwords"]);
 const tools = [
   {
     type: "function",
@@ -113,7 +96,7 @@ const tools = [
         "Propose opening an Alpha Phone view. Requires explicit user approval.",
       parameters: {
         type: "object",
-        properties: { view: { type: "string", enum: [...views] } },
+        properties: { view: { type: "string", enum: [...proposalViews] } },
         required: ["view"],
         additionalProperties: false,
       },
@@ -327,8 +310,7 @@ const server = http.createServer(async (request, response) => {
         description = "Schedule one reminder on this device at " + new Date(operation.at).toISOString() + ". Android delivery may be delayed. Title: " + operation.title + "\n\n" + operation.body;
       } else if (
         call.function?.name === "open_view" &&
-        views.has(args?.view) &&
-        !["assistant", "apps"].includes(args.view)
+        proposalViews.has(args?.view)
       ) {
         operation = { type: "open_view", view: args.view };
         title = "Open " + args.view;

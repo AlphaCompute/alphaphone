@@ -5,6 +5,13 @@ import { candidate, requireProviderFixture, stockPath, verifyMetadata } from '..
 
 const env = { GITHUB_ACTIONS: 'true', RUNNER_ENVIRONMENT: 'github-hosted', ANDROID_SERIAL: 'emulator-5554' };
 const responses = {
+  "shell cat /proc/bootconfig": "androidboot.boot_devices = \"pci0000:00/0000:00:03.0 pci0000:00/0000:00:05.0 pci0000:00/0000:00:06.0\"",
+  "shell getprop ro.boot.boot_devices": "pci0000:00/0000:00:03.0 pci0000:00/0000:00:05.0 pci0000:00/0000:00:06.0",
+  "shell readlink -f /dev/block/by-name/vdc": "/dev/block/vdc",
+  "shell readlink -f /sys/class/block/vdc": "/sys/devices/pci0000:00/0000:00:05.0/virtio3/block/vdc",
+  "shell readlink -f /sys/class/block/vda": "/sys/devices/pci0000:00/0000:00:03.0/virtio1/block/vda",
+  "shell readlink -f /sys/class/block/vdd": "/sys/devices/pci0000:00/0000:00:06.0/virtio4/block/vdd",
+
   'emu avd name': 'test\nOK', 'shell getprop ro.kernel.qemu': '1',
   'shell getprop ro.build.type': 'userdebug', 'shell am get-current-user': '0',
   'shell pm list users': 'Users:\nUserInfo{0:Owner:4c13}',
@@ -61,8 +68,8 @@ async function simulate({ drift, neverBoot = false, neverReady = false, remountC
   const stock = '/product/app/webview/webview.apk', stockHash = 'a'.repeat(64);
   const signature = `Verified using v2 scheme (APK Signature Scheme v2): true\nSigner #1 certificate SHA-256 digest: ${candidate.certificateSha256}`;
   const badging = `package: name='com.android.webview' versionCode='808300007' versionName='157.0.8083.0'\nsdkVersion:'29'\ntargetSdkVersion:'37'\nnative-code: 'x86_64'`;
-  let scratch = '', backingAlias = 'MISSING', remounts = 0, reboots = 0, probe = null, probeMarker = null, userReads = 0, restarted = false;
-  const execute = (file, args) => {
+  let scratch = '', backingAlias = '/dev/block/vdc', remounts = 0, reboots = 0, probe = null, probeMarker = null, userReads = 0, restarted = false;
+  const execute = (file, args, options) => {
     const name = path.basename(file);
     if (name === 'curl') { const fd = fs.openSync(args.at(-1), 'wx'); fs.ftruncateSync(fd, candidate.size); fs.closeSync(fd); return ''; }
     if (name === 'python3') { fs.writeFileSync(args.at(-1), 'candidate'); return ''; }
@@ -70,7 +77,8 @@ async function simulate({ drift, neverBoot = false, neverReady = false, remountC
     if (name === 'aapt') return args.includes('badging') ? badging : 'com.android.webview.WebViewLibrary libwebviewchromium.so';
     assert.equal(name, 'adb'); assert.deepEqual(args.slice(0, 2), ['-s', 'emulator-5554']);
     const a = args.slice(2), key = a.join(' '); calls.push(key);
-    if (key === 'reboot') { reboots++; rebooted = true; offline = 1; scratch = ''; backingAlias = 'MISSING'; return ''; }
+    if (['shell cat /proc/bootconfig','shell getprop ro.boot.boot_devices','shell readlink -f /sys/class/block/vdc','shell readlink -f /sys/class/block/vda','shell readlink -f /sys/class/block/vdd'].includes(key)) { assert.ok(options.timeout > 0 && options.timeout <= 2000); if(drift==='boot-budget')elapsed+=4000; }
+    if (key === 'reboot') { reboots++; rebooted = true; offline = 1; scratch = ''; backingAlias = '/dev/block/vdc'; return ''; }
     if (key === 'shell getprop sys.boot_completed') {
       if (offline-- > 0 || neverBoot || (drift==='overlay-never-boot'&&reboots>1)) throw Error('device offline');
       return '1';
@@ -117,7 +125,8 @@ async function simulate({ drift, neverBoot = false, neverReady = false, remountC
     if (key.startsWith('shell sh -c ')) return drift === 'backing-alias' ? '/dev/block/vdd' : backingAlias;
     if (key === 'shell ln -sT /dev/block/vdc /dev/block/by-name/vdc') { assert.equal(backingAlias, 'MISSING'); backingAlias = '/dev/block/vdc'; return ''; }
     if (key === 'shell readlink -f /dev/block/by-name') return '/dev/block/by-name';
-    if (key === 'shell readlink -f /dev/block/by-name/vdc') return '/dev/block/vdc';
+    if (key === 'shell readlink -f /dev/block/by-name/vdc') return drift==='boot-alias' || (drift==='boot-alias-after-reboot'&&rebooted) ? '/dev/block/by-name/vdc' : '/dev/block/vdc';
+    if (key==='shell cat /proc/bootconfig' && drift==='boot-config') return 'androidboot.boot_devices = "wrong"';
     if (key === 'shell getprop fs_mgr.overlayfs.data_scratch_size_mb') return drift === 'scratch-existing' ? '2048' : drift === 'scratch-unapplied' ? '' : scratch;
     if (key === 'shell setprop fs_mgr.overlayfs.data_scratch_size_mb 512') { scratch = '512'; return ''; }
     if (['shell df -k /data /metadata /product', 'shell cat /proc/mounts', 'shell cat /proc/partitions', 'shell lpdump', 'shell dmesg'].includes(key)) return 'synthetic bounded storage diagnostics';
@@ -169,8 +178,8 @@ test('full provider command sequence survives one offline reboot and delayed REL
   assert.ok(r.calls.indexOf('shell logcat -d -b all -t 400') < r.calls.indexOf('reboot'));
   assert.equal(r.calls.filter(c => c === 'shell setprop fs_mgr.overlayfs.data_scratch_size_mb 512').length, 2);
   assert.ok(r.calls.indexOf('shell setprop fs_mgr.overlayfs.data_scratch_size_mb 512') < r.calls.indexOf('disable-verity'));
-  assert.equal(r.calls.filter(c => c === 'shell ln -sT /dev/block/vdc /dev/block/by-name/vdc').length, 2);
-  assert.ok(r.calls.indexOf('shell ln -sT /dev/block/vdc /dev/block/by-name/vdc') < r.calls.indexOf('disable-verity'));
+  assert.equal(r.calls.filter(c => c === 'shell ln -sT /dev/block/vdc /dev/block/by-name/vdc').length, 0);
+  assert.equal(r.result.bootDeviceAdmissions.length, 3);
   assert.equal(r.result.scratchBackingAliases.length, 2);
   assert.equal(r.selectionReads, 2); assert.equal(r.stopped, false);
   assert.ok(r.calls.indexOf('shell stop') < r.calls.indexOf('shell rm /product/app/webview/webview.apk'));
@@ -331,4 +340,13 @@ test('live overlay admission refuses namespace, backing and write-probe failures
 test('provider installation waits for the restarted primary user to be running unlocked',async()=>{
  const delayed=await simulate({drift:'user-delayed'});assert.ifError(delayed.error);assert.equal(delayed.installed,true);
  const unavailable=await simulate({drift:'user-never-ready'});assert.match(unavailable.error.message,/boot deadline/);assert.equal(unavailable.installed,false);
+});
+
+test('boot identity drift refuses before provider effects and never creates a late alias',async()=>{
+ for(const drift of ['boot-alias','boot-config','boot-alias-after-reboot','boot-budget']){
+  const r=await simulate({drift});assert.ok(r.error);assert.equal(r.removed,false);assert.equal(r.installed,false);
+  assert.ok(!r.calls.some(call=>call.startsWith('shell ln')));
+  if(drift!=='boot-budget'){assert.ok(r.result.bootDeviceReadbacks.length>0);if(drift==='boot-config')assert.equal(r.result.bootDeviceReadbacks[0].bootconfig,'androidboot.boot_devices = "wrong"');}
+  if(drift!=='boot-alias-after-reboot')assert.ok(!r.calls.includes('disable-verity'));
+ }
 });

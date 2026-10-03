@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { ensureScratchBackingAlias, scratchBackingBytes } from '../scripts/prepare-ci-webview.mjs';
 const fingerprint = 'Android/sdk_phone64_x86_64/emu64x:15/AE3A.240806.019/12368160:userdebug/test-keys';
-function fixture(overrides = {}, initial = 'MISSING', deniedAdmission = 0) {
+function fixture(overrides = {}, initial = '/dev/block/vdc', deniedAdmission = 0) {
   let alias = initial, admissions = 0;
   const calls = [], mutations = [];
   const responses = {
@@ -35,13 +35,9 @@ function fixture(overrides = {}, initial = 'MISSING', deniedAdmission = 0) {
   return { run, admit, calls, mutations, reboot: () => { alias = 'MISSING'; } };
 }
 const scenario = test;
-scenario('fresh missing alias then reboot repeat uses only exact symlink creation', () => {
-  const f = fixture();
-  assert.equal(ensureScratchBackingAlias(f.run, f.admit).created, true);
-  f.reboot();
-  assert.equal(ensureScratchBackingAlias(f.run, f.admit).created, true);
-  assert.equal(f.mutations.length, 2);
-  assert.equal(f.calls[0], 'ADMIT');
+scenario('missing alias before or after reboot refuses without late repair', () => {
+  const f=fixture({}, 'MISSING');assert.throws(()=>ensureScratchBackingAlias(f.run,f.admit));
+  f.reboot();assert.throws(()=>ensureScratchBackingAlias(f.run,f.admit));assert.equal(f.mutations.length,0);
 });
 scenario('preexisting correct alias is verified without mutation', () => {
   const f = fixture({}, '/dev/block/vdc');
@@ -61,7 +57,6 @@ for (const [name, overrides, alias, admission] of [
   ['wrong alias', {}, '/dev/block/vdd'],
   ['regular existing alias', {}, 'NON_SYMLINK'],
   ['initial admission denied', {}, 'MISSING', 1],
-  ['pre-mutation admission denied', {}, 'MISSING', 2],
 ]) scenario(name+' refuses before mutation', () => {
   const f = fixture(overrides, alias, admission);
   assert.throws(() => ensureScratchBackingAlias(f.run, f.admit));
