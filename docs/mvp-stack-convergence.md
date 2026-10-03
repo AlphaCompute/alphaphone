@@ -1,5 +1,14 @@
 # Combined resident and browser implementation — October 3, 2026
 
+## October 3 speech and upstream-adoption follow-up
+
+PRs 136 and 137 are merged at `8053d04f3d6fe553fdab5de98ecfd5ad64718c9b`, pinning upstream `2fe9f510501863af97bda887e2870158b3a3e2b2` without local runtime patches. The initially reviewed migration lacked the newly landed Kokoro warming change; the final pin preserves it through a per-host lifecycle, and the source-based regression checks cover startup, retry, isolation and shutdown. Its exact-source full browser campaign is [37160959650](https://github.com/AlphaCompute/alphaphone/actions/runs/37160959650), currently running. The earlier c8e91b8 campaign was superseded, not accepted as a full pass.
+
+Before adoption, all 259 repository tests, TypeScript and the web build passed on the PR 136 source. A fresh runtime started its native speech worker before any speech request; the real browser recording/transcription/playback/completion/Stop/disconnect journey passed in 16.2 seconds. Browser dev restarted with the existing owner profile and verified ready at 23:07:50 UTC. That live runtime predates the newly merged upstream pin; restart and cold browser qualification of the new runtime remain open.
+
+The [current requirement matrix](mvp-current-status.md) records concurrent unmerged client extraction and physical/provider/release acceptance. This follow-up supersedes the older speech-readiness-only, runtime-patch and empty-queue statements below. It does not claim the entire MVP is complete.
+
+
 ## Current delivery checkpoint
 
 Production main and the root checkout are synchronized at `6b33e26a516b9f76a3a06cff58f7b1c661399839`, including PR 134's Home/digest and lock-summary corrections. The exact-source full browser campaign is [37156018384](https://github.com/AlphaCompute/alphaphone/actions/runs/37156018384); it succeeded across all three shards with **1,318 passed and 14 profile-dependent skips**, plus **9 passed** in the separate synthetic local-agent profile. Earlier campaigns below are historical and were superseded. All 255 repository tests, TypeScript and the web build pass for the corrected source, along with 22 focused browser cases. The current 33-patch runtime has 488 passing runtime/security cases plus the Clock-export and authenticated device-action checks.
