@@ -63,7 +63,8 @@
     "packages/core/src/__tests__/swap-quoted-credentials.test.ts": "7adb7cb914057810e639291cbc6413e58bf2d4104f68887f3a043f980284a47b",
     "packages/core/src/__tests__/swap-uri-credentials.test.ts": "97dc0ff77711587fdfb4b92c7b367d0fef595a8c98a13d587422262b7f0696bf",
     "packages/core/src/__tests__/swap-encoded-credentials.test.ts": "4a48d5bbd2f9a4cd9d53de0ddfc3793bb71ee1fbd22412045340a5278c51f4bd",
-    "packages/core/src/security/incoming-message-security.ts": "dcb8e5dce41d26258fb8c17134f7fd858c79c8e23f147dd3912a346f4b47af24"
+    "packages/core/src/security/incoming-message-security.ts": "dcb8e5dce41d26258fb8c17134f7fd858c79c8e23f147dd3912a346f4b47af24",
+    "packages/core/src/__tests__/message-runtime-stage1.test.ts": "a4fbbe1fc6e9d95448be31adc153a617424780f22c9eac11867491cbdbaa5ae0"
   },
   "patches": [
     "android-secure-store-socket.patch",
@@ -90,7 +91,8 @@
     "egress-short-credentials.patch",
     "egress-quoted-credentials.patch",
     "egress-uri-credentials.patch",
-    "egress-encoded-credentials.patch"
+    "egress-encoded-credentials.patch",
+    "stage1-source-repair-fixture.patch"
   ],
   "patchHashes": {
     "approved-workflows-navigation.patch": "2202d04675531633db4b1ce3a2e49e3e870c259c341acaf20b17bbef6be99c9a",
@@ -107,6 +109,7 @@
     "egress-short-credentials.patch": "0a1b80d101760c311318bacc852ee695904cbe0db9d38b53f85ce26e7e60c23e",
     "egress-quoted-credentials.patch": "010eeaeede83b1e8359f10457d1c8fc5188b94dbbba3e12eb3b9f39f14b244da",
     "egress-uri-credentials.patch": "dc77b4df7ae9b83a52b051dc4573ef63cf244c3f662947692e17e7b5631e1f5d",
-    "egress-encoded-credentials.patch": "1c740c08eefba62ec74a7622172c52feb22b7ed2bc6fdf17f3574473b21021e5"
+    "egress-encoded-credentials.patch": "1c740c08eefba62ec74a7622172c52feb22b7ed2bc6fdf17f3574473b21021e5",
+    "stage1-source-repair-fixture.patch": "7f5cea2f5159d1f679879344253910386e8225ae6bc7a6ec379f367031429830"
   }
 }
