@@ -13,7 +13,7 @@
     "packages/core/src/__tests__/swap-control-objects.test.ts": "2a3cd5464d53f791d16bf4cae4d179b818f27599b212b5bfa8106a015536bd6a",
     "packages/core/src/__tests__/swap-user-reply.test.ts": "f3853504d2cd0ef0806b5649edbd8bd17410d8bc1ee314eee77c9c56dc9efa08",
     "packages/core/src/runtime.ts": "44536e4e519bc573511f3dbb3136c04d6b8bc2f48bfcd972ca326946606b08e2",
-    "packages/core/src/security/guarded-stream.ts": "8761ac0e768d2498ff186f919f018b18f488fa8670bd6f184d6bfbcc17545788",
+    "packages/core/src/security/guarded-stream.ts": "7f12512d8baea1dbc7a86229dcf18c8048ff1113b89915c319dc3202056ff334",
     "packages/core/src/security/pii-pseudonymizer.ts": "bffc53238d2580c5ad2d436e0e247ac425189487bf482e51b5917567f29ee111",
     "packages/core/src/security/runtime-abort-signal.ts": "da3bb65a56334a249399c0a2ec4e0f9d227c8e09e3566237609f679de76b0d78",
     "packages/core/src/security/secret-swap.ts": "7a4d9fed214761e714d9e7b208d1b655dadfc744c3733255bcd9ac88960e8133",
@@ -34,7 +34,7 @@
     "packages/app/src/api/standalone-kokoro-service.ts": "338b0d8af304efbf6877bc33fb0a532746b6b2f2e6b5f4f13ce0b7ca0b54fe40",
     "plugins/plugin-local-inference/src/host-tts-worker.ts": "562fa4bd1a076dfff31f5583e0025ccb31fc0aa0d067f4a87c81b873dbca7b48",
     "packages/core/src/security/log-redaction.ts": "f836bf328b75908f3c9f0a7b6cd6e156d2bb7eb0f06fc554904113de0a147061",
-    "packages/core/src/__tests__/swap-credential-assignment.test.ts": "19618c7e5e56317f17507c18dacadbd1d34e0ca63fbdeb0cae14e6b1ad0b5333"
+    "packages/core/src/__tests__/swap-credential-assignment.test.ts": "f8dd81b1f02f2e5b206e9b8dd7e57f687ac4d6a011e6258eddfe821b490f4cb3"
   },
   "patches": [
     "android-secure-store-socket.patch",
@@ -60,6 +60,6 @@
     "approved-workflows-navigation.patch": "2202d04675531633db4b1ce3a2e49e3e870c259c341acaf20b17bbef6be99c9a",
     "clock-handoff.patch": "32245531af0928e7bd8a394ac588370790700abdf778cde644f54e1dda5388f2",
     "standalone-kokoro-host.patch": "c24a77c86ccfb6282763095b3b0a909ae5b2d665e79bbb2815f6ba6ea3870a3f",
-    "egress-credential-assignments.patch": "a365c56f114a60bbf061f7878f8ac65e73a1c7de2bc5f2fbb9414d70c6f0ae0d"
+    "egress-credential-assignments.patch": "e29cf00a402ca00973dfb5eefbfef74afe45ef2bf4d2da9aeb8631e8b163bb9e"
   }
 }
