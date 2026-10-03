@@ -1295,3 +1295,17 @@ Extended the actual rendered workflow-run context test to supply the typed recei
 Validation: **6/6 Chromium and 6/6 WebKit** across receipt formatting, rendered run context, typed authoring/save/recovery and Describe preservation. Root verification passed typecheck, 120 tests and production build. Evidence: `test-results/browser-dev-parity/checkpoint-101/`. The full WebKit campaign remains live on checkpoint 100's frozen source, so this owning-suite result separately qualifies the protocol delta. APK qualification remains pending.
 
 Further current-source audit found Files' storage panel still receives `Storage usage unavailable` from the data adapter in development mode. Next implementation should expose actual browser storage estimates and a useful local-file byte fallback, with truthful scope and refreshed UI after file operations; it must not show fixture device-capacity numbers as real storage.
+
+### Checkpoint 102 — browser Files storage usage
+
+The explicit development profile now replaces Files' unavailable-storage message with `navigator.storage.estimate()` usage/quota, labelled as browser storage rather than physical device capacity. While Files is active, the panel refreshes every two seconds; view leave retires its timer and in-flight generation. Hidden documents do not start measurements.
+
+Missing, rejected or invalid estimates fall back to a read-only IndexedDB cursor that counts local file bytes and entries. The fallback displays its narrower scope and hides the capacity bar rather than inventing a quota. Counts use stored byte buffers or Blob sizes, include imported nested files, and exclude folders. No content is uploaded or host-device storage control claimed. Native rendering is unchanged.
+
+Validation: **8/8 Chromium and 8/8 WebKit**, covering live estimate changes, missing/rejected/invalid estimate fallback, exact UTF-8 bytes, import/delete refresh and reload, plus bulk Files/archive regressions. Root verification passed typecheck, 120 tests and production build. Evidence: `test-results/browser-dev-parity/checkpoint-102/`. Full WebKit remains active on checkpoint 100's frozen snapshot and does not include this delta; Android packaging remains pending after that campaign.
+
+### Checkpoint 103 — WebKit meeting fixture reconciliation
+
+The ongoing full WebKit campaign reported five failures across the two local Calendar meeting suites. Their permission fixtures assigned `getUserMedia` on an unretained MediaDevices wrapper. Both suites now pin the original `navigator.mediaDevices` object during document initialization before overriding its method, matching the already-qualified camera/video fixtures. Real canvas and Web Audio streams are still used; this does not replace media lifecycle assertions with fake track results.
+
+Validation: **8/8 Chromium and 8/8 WebKit** passed, covering Back/background release, ended sensor tracks and retry, late permission grants after leave, denied camera/microphone recovery, attendee/video persistence, and stale guest-response rejection. Production source is unchanged from checkpoint 102, whose root verification remains applicable; only these two browser fixtures and documentation changed here. Evidence: `test-results/browser-dev-parity/checkpoint-103/`. Preserve the ongoing full campaign and its original failures; the focused results reconcile these failures separately without restarting that live run. Android packaging remains pending.
