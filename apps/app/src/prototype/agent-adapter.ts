@@ -431,6 +431,9 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
       if(this.S().typing)throw new Error('Wait for the current agent reply before sharing this email.');
       context(this);await this.send(text,expected);
     };
+    if(browserDevProfile)api.composeContentQuestion=(draft:string)=>{
+      context(this);this.setState({chat:'sheet',shade:false,draft});
+    };
     api.assist = (notice: string) => {
       context(this);
       this.setState({ chat: 'sheet', shade: false });

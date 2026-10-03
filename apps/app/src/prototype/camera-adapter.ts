@@ -1,3 +1,5 @@
+import {browserDevProfile} from '../browser/dev-profile';
+import {reviewContentQuestion} from '../browser/content-question';
 import {openScanDocument} from './scan-document';
 import {openVideoEditReview} from './video-edit-review';
 import {openCameraImageImport} from './browser-image-import';
@@ -75,6 +77,7 @@ export function installPrototypeCameraAdapter(_Component: unknown, views: Record
     return value;
   }:undefined;
   if(scanApi)prototype.api=scanApi;
+  let closeQuestion:(()=>void)|undefined;
   let closeScan:(()=>void)|undefined;
   const cancelScan=()=>{closeScan?.();closeScan=undefined;};
   let api: Bag | undefined;
@@ -402,7 +405,7 @@ export function installPrototypeCameraAdapter(_Component: unknown, views: Record
   const active = () => !disposed && !document.hidden && !!api?.isActive() && !['sheet', 'full'].includes(api?.S.chat) && !!document.querySelector(finder);
   const message = (value: string) => { api?.set({ said: value }); };
   async function stop() {
-    cancelScan(); ++epoch; phase = 'off'; controlBusy = false; mask(false);
+    closeQuestion?.();closeQuestion=undefined;cancelScan(); ++epoch; phase = 'off'; controlBusy = false; mask(false);
     if (recording || finalizing) await finishVideo();
     stopping = stopping.then(async () => { try { if (browserMode || Capacitor.isPluginAvailable('ElizaCamera')) await camera.stopPreview(); } catch { /* startPreview resets native state before retrying. */ } });
     await stopping;
@@ -520,7 +523,12 @@ export function installPrototypeCameraAdapter(_Component: unknown, views: Record
     data.vfUp = (event: PointerEvent) => { const bounds=browserMode?document.querySelector(finder)?.getBoundingClientRect():undefined;void control(() => camera.setFocusPoint({ x: Math.max(0, Math.min(1, (event.clientX-(bounds?.left??0)) / (bounds?.width||window.innerWidth))), y: Math.max(0, Math.min(1, (event.clientY-(bounds?.top??0)) / (bounds?.height||window.innerHeight))) }), () => message('')); };
     data.vfLeave = () => {};
     data.modes = (data.modes || []).map((m: Bag) => ({ ...m, pick: () => { if (recording || recordingStarting || finalizing || capturing) return; const mode = m.label.toLowerCase(); if (['photo','video','scan'].includes(mode)){cancelScan();currentApi.set({ mode, rec: false, found: false });if(mode==='scan')message('Hold text steady, then tap Scan text. English recognition runs locally.');} } }));
-    data.ask = () => currentApi.assist('You can ask Alpha here. Camera image analysis is not connected, and the live camera feed is not shared.');
+    data.ask = () => {
+      if(!browserDevProfile)return currentApi.assist('You can ask Alpha here. Camera image analysis is not connected, and the live camera feed is not shared.');
+      if(recording||recordingStarting||finalizing||capturing||phase!=='ready')return;
+      closeQuestion?.();const token=epoch;
+      closeQuestion=reviewContentQuestion({name:'Camera frame',text:'',current:()=>token===epoch&&active(),compose:draft=>currentApi.composeContentQuestion(draft),image:async signal=>{const photo=await browserCamera.capturePhoto({saveToGallery:false});signal.throwIfAborted();return new Blob([Uint8Array.from(atob(photo.base64),char=>char.charCodeAt(0))],{type:'image/jpeg'});}});
+    };
     if (captures[0]) {
       data.hasLast = true; data.noLast = false; data.lastBg = `url("${captures[0].image}") center / cover no-repeat`; data.lastTf = ''; data.lastFlt = '';
       data.openLast = () => { currentApi.open('photos', { open: captures[0].id, chrome: true }); };
@@ -592,13 +600,16 @@ export function installPrototypeCameraAdapter(_Component: unknown, views: Record
         try { const result=await library.share({id:nativeId(selected.id)}); if(result.status!=='opened')currentApi.toast(result.message||'Sharing could not open.'); }
         catch { currentApi.toast('This photo is no longer available for sharing.'); }
         finally { sharing=false; }
-      }, fav: () => { void favorite(selected,currentApi); }, edit: () => {void beginEdit(selected,currentApi);}, del: () => { void changeTrash(selected, true, currentApi); }, info: () => openAlbumManager(currentApi,selected), ask: () => currentApi.assist('You can ask Alpha here. This photo stays selected, but image analysis is not connected and its pixels are not shared.') };
+      }, fav: () => { void favorite(selected,currentApi); }, edit: () => {void beginEdit(selected,currentApi);}, del: () => { void changeTrash(selected, true, currentApi); }, info: () => openAlbumManager(currentApi,selected), ask: () => {
+        if(!browserDevProfile)return currentApi.assist('You can ask Alpha here. This photo stays selected, but image analysis is not connected and its pixels are not shared.');
+        closeQuestion?.();closeQuestion=reviewContentQuestion({name:selected.kind==='video'?'Video preview frame':'Selected photo',text:'',current:()=>!disposed&&!document.hidden&&currentApi.isActive()&&currentApi.get('photos').open===selected.id,compose:draft=>currentApi.composeContentQuestion(draft),image:async signal=>{const row=await library.read({id:nativeId(selected.id)});signal.throwIfAborted();if(row.revision!==selected.revision)throw Error('Photo changed.');if(!/^(blob:|data:image\/)/.test(row.image))throw Error('Choose a local image.');return (await fetch(row.image,{signal})).blob();}});
+      } };
       if(edit?.source===selected.id){const current=edit;data.v.ed={bg:`url("${current.image}") center / contain no-repeat`,tf:'',flt:'none',cropOn:current.crop,cropCss:current.crop?'background:#ffffff;color:#000000':'background:rgba(255,255,255,.12);color:#ffffff',status:current.uncertain?'Save outcome unresolved. Save checks the existing operation; it never creates another copy.':`Saves a new copy · original unchanged${current.reduced?' · reduced to '+current.maxEdge+' px maximum':''}. Crop trims the center at 1.3×.`,saveDisabled:current.busy,rotate:()=>void transformEdit(currentApi,true),crop:()=>void transformEdit(currentApi,false),cancel:()=>{cancelEdit();currentApi.set({nativeEditRevision:Date.now()});},save:()=>void saveEdit(currentApi),filters:[['none','Original'],['vivid','Vivid'],['warm','Warm'],['cool','Cool'],['mono','Mono'],['fade','Fade'],['noir','Noir']].map(([id,label])=>({label,bg:`url("${selected.image}") center / cover no-repeat`,flt:({none:'none',vivid:'saturate(1.55) contrast(1.08)',warm:'sepia(.3) saturate(1.35) hue-rotate(-8deg)',cool:'saturate(1.1) hue-rotate(14deg) brightness(1.03)',mono:'grayscale(1) contrast(1.05)',fade:'contrast(.78) brightness(1.12) saturate(.75)',noir:'grayscale(1) contrast(1.55) brightness(.88)'} as Record<string,string>)[id],on:current.filter===id,ring:current.filter===id?'box-shadow:0 0 0 2px #000,0 0 0 4px #fff':'',lc:current.filter===id?'#fff':'rgba(255,255,255,.6)',pick:()=>void transformEdit(currentApi,false,id)}))};}
     }
     return data;
   };
   if (views.photos) views.photos.back = (st: Bag, currentApi: Bag) => { if(edit){cancelEdit();currentApi.set({nativeEditRevision:Date.now()});return true;}if(selection){selection=undefined;endHold();currentApi.set({nativeMultiSelection:Date.now()});return true;}if(st.sheet==='owned-album'){manager=undefined;currentApi.set({sheet:null});return true;}if(st.sheet==='empty'){cancelPermanent(currentApi);return true;}if(st.sheet)return photosBack?.(st,currentApi); if (preview?.id === st.open || captures.some(c => c.id === st.open) || albumRows.some(c => c.id === st.open)) { currentApi.set({ open: null, nativePhotoSelection: null }); preview = undefined; closeVideo(); return true; } return photosBack?.(st, currentApi); };
-  if(views.photos)views.photos.onLeave=(owner:Bag)=>{cancelEdit();automaticEditRecovery='';selection=undefined;swallowedTap='';endHold();manager=undefined;const old=prepared;prepared=undefined;if(old)void library.cancelDeleteTrash({confirmation:old.confirmation}).catch(()=>{});owner.set({sheet:null});photosLeave?.(owner);};
+  if(views.photos)views.photos.onLeave=(owner:Bag)=>{closeQuestion?.();closeQuestion=undefined;cancelEdit();automaticEditRecovery='';selection=undefined;swallowedTap='';endHold();manager=undefined;const old=prepared;prepared=undefined;if(old)void library.cancelDeleteTrash({confirmation:old.confirmation}).catch(()=>{});owner.set({sheet:null});photosLeave?.(owner);};
   async function playVideo(selected: SavedPhoto, owner: Bag) {
     if (selected.kind !== 'video') return;
     try {

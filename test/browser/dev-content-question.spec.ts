@@ -1,0 +1,18 @@
+import {test,expect} from '@playwright/test';
+test('selected file question reviews exact text and composes without sending',async({page})=>{
+ await page.goto('/?mode=dev');await page.getByRole('button',{name:'Settings',exact:true}).click();await page.getByRole('button',{name:'Agent connection',exact:true}).click();await page.getByRole('button',{name:'Connect development profile'}).click();await page.getByRole('button',{name:'Home',exact:true}).click();
+ await page.evaluate(async()=>{const {registerPlugin}=await import('/src/platform-plugins.ts');await registerPlugin<any>('AlphaFiles').importFile(new File(['Public excerpt\nPRIVATE OMIT'],'review.txt',{type:'text/plain'}));});
+ await page.getByRole('button',{name:'Files',exact:true}).click();await page.getByText('Browser files',{exact:true}).first().click();await page.getByRole('button',{name:'Open review.txt',exact:true}).click();
+ await expect(page.getByText('PRIVATE OMIT',{exact:true})).toBeVisible();await page.getByRole('button',{name:'Ask Alpha',exact:true}).click();
+ const review=page.getByRole('dialog',{name:'Ask about selected content'});await expect(review.getByRole('textbox',{name:'Content excerpt'})).toHaveValue('Public excerpt\nPRIVATE OMIT');
+ await review.getByRole('button',{name:'Cancel',exact:true}).click();await expect(review).toHaveCount(0);
+ await page.getByRole('button',{name:'Ask Alpha',exact:true}).click();await review.getByRole('textbox',{name:'Content excerpt'}).fill('Public excerpt');await review.getByRole('textbox',{name:'Question about content'}).fill('What does this mean?');await review.getByRole('button',{name:'Use in conversation'}).click();
+ await expect(review).toHaveCount(0);await expect(page.getByRole('textbox',{name:'Message Alpha',exact:true})).toHaveValue('What does this mean?Source: review.txtPublic excerpt');
+ expect(await page.evaluate(()=>JSON.parse(localStorage.getItem('alpha.browser.agent.local.v1')||'{"conversations":[]}').conversations.flatMap((c:any)=>c.messages))).toEqual([]);
+ await page.getByRole('button',{name:'Send',exact:true}).click();await expect.poll(()=>page.evaluate(()=>JSON.parse(localStorage.getItem('alpha.browser.agent.local.v1')!).conversations.flatMap((c:any)=>c.messages).map((m:any)=>({...m,text:m.role==='user'?m.text.split('[USER MESSAGE]\n')[1]:m.text})))).toEqual([{id:expect.any(String),role:'user',text:'What does this mean?\n\nSource: review.txt\n\nPublic excerpt'},{id:expect.any(String),role:'assistant',text:'Development reply. Edit this response in Agent connection.'}]);
+});
+test('content review bounds excerpts and refuses a retired selection',async({page})=>{
+ await page.goto('/?mode=dev');await page.evaluate(async()=>{const {reviewContentQuestion}=await import('/src/browser/content-question.ts');(window as any).contentCurrent=true;(window as any).composed=null;reviewContentQuestion({name:'Long text',text:'a'.repeat(13000),current:()=> (window as any).contentCurrent,compose:text=>(window as any).composed=text});});
+ const review=page.getByRole('dialog',{name:'Ask about selected content'});expect((await review.getByRole('textbox',{name:'Content excerpt'}).inputValue()).length).toBe(12000);
+ await page.evaluate(()=>{(window as any).contentCurrent=false;});await review.getByRole('button',{name:'Use in conversation'}).click();await expect(review.getByRole('status')).toHaveText('Selection changed. Close this review and select the content again.');expect(await page.evaluate(()=>(window as any).composed)).toBeNull();await review.getByRole('button',{name:'Cancel',exact:true}).click();await expect(review).toHaveCount(0);
+});

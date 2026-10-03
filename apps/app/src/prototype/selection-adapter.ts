@@ -1,3 +1,5 @@
+import {browserDevProfile} from '../browser/dev-profile';
+import {reviewContentQuestion} from '../browser/content-question';
 import { installFilesTreeAdapter } from './files-tree-adapter';
 import { Capacitor } from '@capacitor/core';
 import { DailyApps, type NativeResult } from '../daily';
@@ -18,7 +20,9 @@ export function installSelectedDocumentAdapter(_Component: unknown, views: Recor
   let pdfRequest = 0;
   let renameBusy = false;
   const marker = '__native_selected_document';
+  let closeQuestion:(()=>void)|undefined;
   const clear = () => {
+    closeQuestion?.();closeQuestion=undefined;
     epoch++;
     const id = current?.result.selectionId;
     current = undefined;
@@ -51,7 +55,7 @@ export function installSelectedDocumentAdapter(_Component: unknown, views: Recor
       const response = await DailyApps.pdfSelected({selectionId: selected.result.selectionId!, page});
       if (current !== selected) return;
       if (response.status === 'rendered' && (response.imageUri?.startsWith('file://') || (!Capacitor.isNativePlatform() && response.imageUri?.startsWith('blob:'))) && Number.isInteger(response.pageCount) && Number.isInteger(response.page)) {
-        current = {...selected, pdf: {page:response.page!, count:response.pageCount!, image:response.imageUri!.startsWith('blob:') ? response.imageUri! : Capacitor.convertFileSrc(response.imageUri!) + '?page=' + page + '&v=' + Date.now()}, status: response.message || 'PDF loaded'};
+        current = {...selected, text:response.text, pdf: {page:response.page!, count:response.pageCount!, image:response.imageUri!.startsWith('blob:') ? response.imageUri! : Capacitor.convertFileSrc(response.imageUri!) + '?page=' + page + '&v=' + Date.now()}, status: response.message || 'PDF loaded'};
       } else { current = {...selected, pdf: undefined, status: response.message || 'PDF preview unavailable'}; }
       refresh();
     } catch { if(current === selected){current={...selected,pdf:undefined,status:'PDF preview unavailable. Select this document again.'};refresh();} }
@@ -94,6 +98,11 @@ export function installSelectedDocumentAdapter(_Component: unknown, views: Recor
       const uri = selected.result.uri;
       const image = mime.startsWith('image/') && (uri?.startsWith('content://') || (!Capacitor.isNativePlatform() && uri?.startsWith('blob:'))) ? Capacitor.convertFileSrc(uri) : undefined;
       const close = () => { clear(); api.set({ open: null }); };
+      const ask=()=>{
+        if(!browserDevProfile)return api.assist('You can ask Alpha here. This file stays selected, but its contents are not shared and document analysis is not connected.');
+        closeQuestion?.();
+        closeQuestion=reviewContentQuestion({name:selected.pdf?name+' · page '+(selected.pdf.page+1):name,text:selected.text??'',current:()=>current===selected&&api.get(module).open===marker&&!document.hidden,compose:(draft)=>api.composeContentQuestion(draft),...(image?{image:async(signal:AbortSignal)=>(await fetch(image,{signal})).blob()}: {})});
+      };
       if (module === 'files') {
         const rows = selected.text === undefined
           ? [{ k: 'Status', v: selected.status }]
@@ -110,7 +119,7 @@ export function installSelectedDocumentAdapter(_Component: unknown, views: Recor
           photoBg: image ? `url(${JSON.stringify(image)}) center / contain no-repeat` : '', photoSun: 'none',
           isReceipt: false, isAudio: false, isArchive: false, receipt: null, contents: [],
           renaming: !!st.renaming, notRenaming: !st.renaming, rn: typeof st.rn === 'string' ? st.rn : name, onRn: (event: Event) => api.set({rn:(event.target as HTMLInputElement).value}), saveRn: () => rename(api), rnKey: (event: KeyboardEvent) => {if(event.key === 'Enter'){event.preventDefault();void rename(api);}if(event.key === 'Escape')api.set({renaming:false});}, asking: false, asked: false, canAsk: true,
-          askLabel: 'Ask Alpha', ask: () => api.assist('You can ask Alpha here. This file stays selected, but its contents are not shared and document analysis is not connected.'), close,
+          askLabel: 'Ask Alpha', ask, close,
           startRename: () => selected.result.status === 'renamed-reselect' ? api.toast('Select the renamed file before making another change.') : api.set({renaming:true,rn:name}),
           share: () => share(api), move: () => api.toast('Moving requires access to the source and destination folders. This selection cannot be moved here yet.'), del: () => api.toast('Delete in the Android document app.'),
           saveSum: () => api.toast('Document analysis is not connected.'),
@@ -118,7 +127,7 @@ export function installSelectedDocumentAdapter(_Component: unknown, views: Recor
       } else if (image) {
         data.viewing = true; data.viewEmpty = false; data.editing = false;
         data.v = { bg: `url(${JSON.stringify(image)}) center / contain no-repeat`, tf: '', flt: '', slide: '', day: name, sub: 'Selected on this device', chromeOp: 1, chromePE: 'auto', favIcon: '', favLabel: 'Open in Android', vid: false, playBtn: false, playing: false, notSecure: true,
-          tap: () => {}, down: () => {}, up: () => {}, share: () => share(api), fav: () => open(api), edit: () => open(api), del: () => api.toast('Delete in the Android photo app.'), info: () => api.toast(name + ' · ' + mime), ask: () => api.assist('You can ask Alpha here. This photo stays selected, but image analysis is not connected and its pixels are not shared.'), close };
+          tap: () => {}, down: () => {}, up: () => {}, share: () => share(api), fav: () => open(api), edit: () => open(api), del: () => api.toast('Delete in the Android photo app.'), info: () => api.toast(name + ' · ' + mime), ask, close };
       }
       return data;
     };

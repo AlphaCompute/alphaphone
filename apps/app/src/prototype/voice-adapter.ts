@@ -1,3 +1,4 @@
+import {recordingLevels} from '../browser/audio-levels';
 import {browserDevProfile} from '../browser/dev-profile';
 import {pendingAudioDeletions,withAudioDeletionLock,changeAudioDeletion,audioDeletionNoteState,type AudioDeletion} from '../runtime/note-audio-deletions';
 import { installLocalSpeechPlayback, stopLocalSpeechPlayback } from './local-speech-playback';
@@ -404,6 +405,7 @@ export function installPrototypeVoiceAdapter(Component: any, views: Record<strin
     if (preparingLocal && stage === 'ready') { labels.ready = 'Preparing on-device speech'; messages.ready = 'Loading and checking speech models on this phone. Nothing is uploaded.'; }
     if(!Capacitor.isNativePlatform()) {
       labels.recorded='Review transcript';
+      messages.recording='Recording. Stop to review the audio.';
       messages.ready='Record audio in this browser. You can add a transcript manually and save without signing in.';
       messages.recorded='Microphone is off. Enter the transcript to save with this recording.';
       messages.transcribing='Review the recording transcript.';
@@ -425,7 +427,7 @@ export function installPrototypeVoiceAdapter(Component: any, views: Record<strin
       routeLabel: browserDevProfile ? (selectedRoute === 'device' ? 'Use development voice' : 'Use browser voice') : selectedRoute === 'device' ? (connectionController.getCloudEnvironment() !== null ? 'Use Eliza Cloud voice' : 'Use selected agent voice') : 'Use on-device voice',
       changeRoute: () => { if (stage !== 'ready' || busy) return; const target = destination, chat = chatDestination; enter(target, undefined, selectedRoute === 'device' ? 'agent' : 'device'); chatDestination = chat; refresh(); },
       clock: `${Math.floor(seconds / 60)}:${String(Math.floor(seconds % 60)).padStart(2, '0')}`, clockCss: '', live: stage === 'recording', paused: stage !== 'recording', dotCss: `background:${stage === 'recording' ? '#E53935' : 'var(--mut)'}`,
-      levels: Array.from({ length: 44 }, () => ({ h: 4 })),
+      levels: !Capacitor.isNativePlatform()&&stage==='recording'?recordingLevels(recordingId):Array.from({ length: 44 }, () => ({ h: 4 })),
       lines: [{ ini: error ? '!' : 'i', t: error || messages[stage], chip: 'background:var(--s2);color:var(--fg)', css: '' }],
       review: stage === 'review', transcript: draft, onTranscript: (e: Event) => { draft = (e.target as HTMLTextAreaElement).value; refresh(); },
       primaryLabel: labels[stage], primaryIcon: stage === 'review' ? current.ic.check : stage === 'recording' || stage === 'transcribing' ? current.ic.stop : current.ic.mic,
