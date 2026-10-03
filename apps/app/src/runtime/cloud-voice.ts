@@ -1,3 +1,4 @@
+import { playOwnedSpeech } from '../local-speech-playback';
 import { registerPlugin } from '../platform-plugins';
 import { type PluginListenerHandle } from '@capacitor/core';
 import { connectionController } from './connection-ui';
@@ -13,7 +14,7 @@ const native = registerPlugin<{
   stopPlayback(input?: { requestId: string }): Promise<void>;
   cancel(input: { requestId: string }): Promise<void>;
   addListener(event: 'recordingStopped', callback: (clip: VoiceClip) => void): Promise<PluginListenerHandle>;
-  addListener(event: 'playbackEnded' | 'playbackFailed', callback: (event: { playbackId?: string }) => void): Promise<PluginListenerHandle>;
+  addListener(event: 'playbackEnded' | 'playbackFailed' | 'playbackStopped', callback: (event: { playbackId?: string }) => void): Promise<PluginListenerHandle>;
 }>('AlphaVoiceCloud');
 
 /** Binds all audio to the explicitly selected account. Native code owns the
@@ -24,7 +25,7 @@ export function createCloudVoice() {
   const sessionId = binding?.sessionId, credentialId = binding?.credentialId;
   if (!environment || !sessionId || !credentialId) throw new Error('Sign in to Eliza Cloud to use Cloud voice.');
   const check = () => {
-    if (environment !== connectionController.getCloudEnvironment() || sessionId !== connectionController.getCloudClient()?.sessionId) throw new DOMException('Voice account changed', 'AbortError');
+    if (environment !== connectionController.getCloudEnvironment() || sessionId !== connectionController.getCloudClient()?.sessionId || credentialId !== connectionController.getCloudClient()?.credentialId) throw new DOMException('Voice account changed', 'AbortError');
   };
   return {
     cloud: true as const,
@@ -36,75 +37,16 @@ export function createCloudVoice() {
       return result;
     },
     cancel: (input: { requestId: string }) => native.cancel(input),
-    async cancelRecording() { await Promise.all([native.cancelRecording(), native.stopPlayback()]); },
+    async cancelRecording() { await native.cancelRecording(); },
     addListener: (event: 'recordingStopped', callback: (clip: VoiceClip) => void) => native.addListener(event, value => {
       try { check(); callback(value); } catch { /* Stale account events never update the new account. */ }
     }),
     async speak(text: string, signal: AbortSignal) {
-      check(); signal.throwIfAborted();
-      const requestId = crypto.randomUUID();
-      let active = true, playbackId: string | undefined;
-      let cleanup: Promise<void> | undefined;
-      const handles = new Set<PluginListenerHandle>();
-      const bounded = (operation: () => Promise<unknown>) => new Promise<void>(resolve => {
-        const timer = setTimeout(resolve, 500);
-        Promise.resolve().then(operation).catch(() => {}).finally(() => { clearTimeout(timer); resolve(); });
-      });
-      const remove = (handle: PluginListenerHandle) => bounded(() => handle.remove());
-      let rejectInterrupted!: (reason: unknown) => void;
-      const interrupted = new Promise<never>((_, reject) => { rejectInterrupted = reject; });
-      void interrupted.catch(() => {});
-      let resolveEnded!: () => void, rejectPlayback!: (reason: unknown) => void;
-      const playback = new Promise<void>((resolve, reject) => { resolveEnded = resolve; rejectPlayback = reject; });
-      void playback.catch(() => {});
-      const dispose = () => {
-        if (cleanup) return cleanup;
-        active = false;
-        // Request-scoped native stop cannot clear a newer account's playback.
-        cleanup = Promise.all([
-          bounded(() => native.cancel({ requestId })),
-          bounded(() => native.stopPlayback({ requestId })),
-          ...Array.from(handles, remove),
-        ]).then(() => {});
-        handles.clear();
-        return cleanup;
-      };
-      const cancel = (reason: unknown) => {
-        rejectInterrupted(reason || new DOMException('Playback cancelled', 'AbortError'));
-        void dispose();
-      };
-      const onAbort = () => cancel(signal.reason);
-      signal.addEventListener('abort', onAbort, { once: true });
-      const unsubscribe = connectionController.subscribe(() => {
-        try { check(); } catch (error) { cancel(error); }
-      });
-      const listen = async (event: 'playbackEnded' | 'playbackFailed') => {
-        const pending = native.addListener(event, value => {
-          if (!active || !playbackId || value.playbackId !== playbackId) return;
-          try { check(); } catch (error) { cancel(error); return; }
-          if (event === 'playbackEnded') resolveEnded();
-          else rejectPlayback(new Error('Audio playback failed.'));
-        }).then(handle => {
-          if (!active) void remove(handle);
-          else handles.add(handle);
-        });
-        await Promise.race([pending, interrupted]);
-      };
-      try {
-        await listen('playbackEnded');
-        await listen('playbackFailed');
-        signal.throwIfAborted(); check();
-        const result = await Promise.race([native.synthesize({ text, requestId, environment, credentialId }), interrupted]);
-        check(); signal.throwIfAborted();
-        playbackId = result.playbackId;
-        await Promise.race([native.play({ playbackId }), interrupted]);
-        await Promise.race([playback, interrupted]);
-        check();
-      } finally {
-        signal.removeEventListener('abort', onAbort);
-        unsubscribe();
-        await dispose();
-      }
+      check();signal.throwIfAborted();const owned=new AbortController(),cancel=()=>owned.abort(signal.reason),current=()=>{check();if(document.hidden||connectionController.getSnapshot().open)throw new DOMException('Voice review changed','AbortError');};
+      const changed=()=>{try{current();}catch(error){owned.abort(error);}};
+      const unsubscribe=connectionController.subscribe(changed);document.addEventListener('visibilitychange',changed);signal.addEventListener('abort',cancel,{once:true});if(signal.aborted)cancel();
+      try{await playOwnedSpeech(native,owned.signal,requestId=>native.synthesize({text,requestId,environment,credentialId}),current);}
+      finally{unsubscribe();document.removeEventListener('visibilitychange',changed);signal.removeEventListener('abort',cancel);}
     },
   };
 }
