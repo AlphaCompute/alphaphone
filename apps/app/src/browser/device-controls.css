@@ -1,0 +1,14 @@
+/* These controls sit outside the themed phone and remain visible on dark/locked screens. */
+.alpha-dev-tools{position:fixed;left:8px;bottom:max(8px,env(safe-area-inset-bottom));z-index:90;display:flex;align-items:center;gap:4px;padding-right:12px;border:1px solid #777;border-radius:16px;background:#fff;color:#111;font:600 12px/1.25 'Public Sans',sans-serif;box-shadow:0 2px 6px #0003}
+.alpha-dev-tools[data-dev-profile=true]{background:#0000ff;color:#fff;border-color:#0000ff}
+.alpha-dev-opener{display:flex;align-items:center;justify-content:center;flex-shrink:0;min-width:44px;min-height:44px;padding:10px;border:0;border-radius:14px;background:transparent;color:inherit}
+.alpha-dev-controls{width:360px;max-width:calc(100vw - 24px);max-height:calc(100dvh - 24px);box-sizing:border-box;overflow:auto;overscroll-behavior:contain;border:1px solid var(--dev-line,#ccc);border-radius:20px;padding:0 20px 20px;background:var(--dev-bg,#fff);color:var(--dev-fg,#111);font:400 14px/1.4 'Public Sans',sans-serif}
+.alpha-dev-controls::backdrop{background:#0008}
+.alpha-dev-controls header{position:sticky;top:0;z-index:1;display:flex;align-items:center;gap:12px;padding:12px 0;background:var(--dev-bg,#fff)}
+.alpha-dev-controls h2{font-size:20px;line-height:1.2;margin:0;flex:1;min-width:0;overflow-wrap:anywhere}
+.alpha-dev-controls button{min-width:44px;min-height:44px;box-sizing:border-box;padding:10px 12px;border:1px solid var(--dev-line,#ccc);border-radius:12px;background:var(--dev-s2,#f3f3f3);color:var(--dev-fg,#111);font:inherit;text-align:center;overflow-wrap:anywhere}
+.alpha-dev-controls header button{flex-shrink:0;font-size:24px;line-height:1;padding:8px}
+.alpha-dev-actions{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,calc(120px * var(--browser-text-scale,1))),1fr));gap:10px}
+.alpha-dev-controls>button{display:block;width:100%;margin-top:10px}
+.alpha-dev-controls button:disabled{opacity:.6;cursor:wait}
+.alpha-dev-opener:focus-visible,.alpha-dev-controls button:focus-visible{outline:3px solid #7777ff;outline-offset:2px}
