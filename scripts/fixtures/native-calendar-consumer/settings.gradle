@@ -1,0 +1,5 @@
+pluginManagement { repositories { google(); mavenCentral(); gradlePluginPortal() } }
+def alphaRoot = new File(settingsDir, '../../..').canonicalFile
+include ':calendar', ':capacitor-android'
+project(':calendar').projectDir = new File(alphaRoot, 'artifacts/native-calendar')
+project(':capacitor-android').projectDir = new File(alphaRoot, 'node_modules/@capacitor/android/capacitor')

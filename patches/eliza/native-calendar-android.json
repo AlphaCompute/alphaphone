@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "patch": "native-calendar-android.patch",
+  "patchSha256": "e01b738b92f8d00fbbe73b53a3f7dc3107e711df2a5de93594dcea532d23bb6c",
+  "destination": "plugins/plugin-native-calendar/android",
+  "files": {
+    "plugins/plugin-native-calendar/android/src/main/java/ai/eliza/plugins/calendar/CalendarConfiguration.java": "6f9c909d574771dc10693b646708d5ef81d871bb68dcb78a6944ff50d41666c0",
+    "plugins/plugin-native-calendar/android/src/main/java/ai/eliza/plugins/calendar/CalendarPlugin.java": "4f6ef541831f9664784a357578fe33c7e0a96fb7910d9951bde21978add55107",
+    "plugins/plugin-native-calendar/android/src/main/java/ai/eliza/plugins/calendar/CalendarEventGuard.java": "e39846034419c0c144261a277f60504a84a804dcb5a1d9061f13e78e8623a06b",
+    "plugins/plugin-native-calendar/android/src/main/java/ai/eliza/plugins/calendar/CalendarCreationStore.java": "456162254ad9516d814182ff3c01a42732cc2e67d5e87a0686465965337dbd45",
+    "plugins/plugin-native-calendar/android/src/main/AndroidManifest.xml": "c2572fb9756fe43a5a1be517333fa72bef55ac7b0e26fae0d7af9229a45a902d",
+    "plugins/plugin-native-calendar/android/build.gradle": "88619ce3ed51193751ae642c345084fa24a7a6680f581d2924089b595806a91e",
+    "plugins/plugin-native-calendar/android/README.md": "537cea12543f7abac40363f79145bb0b41a414ddbd1bb58307db3af0eec48035"
+  },
+  "status": "EXTRACTED_CANDIDATE_NOT_DEVICE_QUALIFIED",
+  "sourceCommit": "0b2c032c9a5d63a04ea2b46feaa8ed43c050058d"
+}

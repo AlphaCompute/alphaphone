@@ -32,3 +32,19 @@ Reminders are a larger independent extraction: ReminderStore, ReminderEnvelope, 
 ## Status
 
 This is the source-grounded implementation and acceptance boundary, not a completed extraction. Current hosted qualification continues for source0b2c032 while this next step is prepared. Signing, physical pilot, live providers and resident execution remain independent MVP gates.
+
+## Candidate implementation
+
+The complete provider implementation is now staged in the additive `patches/eliza/native-calendar-android.patch`, with per-file and patch identities in `native-calendar-android.json`. `node scripts/stage-native-calendar.mjs` reproduces and verifies the library without editing `vendor/eliza`. Immutable `CalendarConfiguration` supplies host identity. A process-lifetime registry shares journal locking and failed-write quarantine by canonical preferences path; conflicting creation URI prefixes for the same journal are rejected.
+
+The independent Gradle consumer at `scripts/fixtures/native-calendar-consumer` imports this module with a different package and registration and no Alpha source dependency. Its provider-recovery test adds concurrent store-instance and configuration-isolation coverage. Alpha still uses the original implementation until the candidate's compilation, provider flows and migration are qualified. The extraction is not complete merely because a patch and fixture exist.
+
+### October 3 candidate evidence
+
+- The independent consumer and its instrumentation APK compile with JDK 21 and the installed Android SDK. The initial Android Studio JDK 25 attempt failed at Gradle compatibility; a subsequent fixture settings mistake was fixed before the successful build. Neither failure was a library compile failure.
+- Actual CalendarProvider recovery passes in owned AVD `alpha_root_workflow_taps_20261003`, disposable user 38. The test verifies concurrent independent instances, same-ID recovery without a second insertion, ambiguous/missing marker handling, separate journals and rejection of conflicting prefixes. Original user 0 was restored; user 38 and both fixture packages were removed and verified. Evidence: `test-results/native-calendar-consumer-1791062946573`.
+- Fixture APK SHA-256: `e2462df1b20a0a115e350ae8ac4010648a8c09be79e5db1b8e73477960d0d0b6`; instrumentation SHA-256: `0aaf324cbd94c4998cf8c5008691ed4958ad701c91f570c4b9de032029718f04`.
+- Preserve the first failure: disposable ephemeral user 36 returned `unknown` rather than `saved` on its first creation. Its cause is not established. Added synthetic row diagnostics did not reproduce it in users 37 and 38; later passing runs do not erase that uncertainty. User 36 removal completed asynchronously. User 37 passed provider assertions but exposed premature cleanup while the user remained running; an explicit stop and removal were verified separately. The runner now stops its owned user before removal.
+- Product verification passes 225 checks plus typecheck and web build. This is not acceptance of the new library through Alpha: production still uses its original Calendar implementation.
+
+Remaining gates include the initial transient result diagnosis, registered bridge permission/dialog/lifecycle flows, actual process death, TypeScript/publication contract, production adapter wiring, both distribution builds and lossless upgrade validation. Do not mark MVP step 13 complete from this evidence.
