@@ -50,4 +50,18 @@ for(const phase of ['boot','synthesis'])for(const stream of ['input','output']){
   assert.equal(child.killed,true);assert.equal(service.initialized,false);assert.equal(service.busy,false);
  }finally{service.stop();}
 }
+{
+ const service=new Service();
+ try{
+  const before=children.length,boot=service.initialize(),child=children.at(-1);
+  const controller=new AbortController();
+  const speech=service.synthesize(id,'First phrase while startup is warming',controller.signal);
+  const rejected=assert.rejects(speech,/stopped/);
+  await Promise.resolve();assert.equal(children.length,before+1,'First request shares the cold startup worker');
+  assert.equal(service.initialized,false);assert.equal(service.busy,false);
+  ready(child);await boot;await Promise.resolve();
+  assert.equal(service.initialized,true);assert.equal(service.busy,true);
+  controller.abort();await rejected;assert.equal(child.killed,true);
+ }finally{service.stop();}
+}
 console.log('TTS worker boot/synthesis pipe failures, generation fencing and cancellation passed.');
