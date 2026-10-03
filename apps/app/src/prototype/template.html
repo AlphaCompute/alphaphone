@@ -31,10 +31,10 @@
     <button onClick="{{goTriage}}" aria-label="{{homeAttentionLabel}}" style="flex-shrink: 0; scroll-snap-align: start; width: 172px; height: 196px; border-radius: 30px; background: var(--s2); padding: 22px; box-sizing: border-box; display: flex; flex-direction: column; justify-content: space-between">
       <svg class="i" viewBox="0 0 24 24" style="color: var(--mut)"><path d="{{ic.inbox}}"></path></svg>
       <span class="serif" style="font-size: 72px; line-height: .85">{{homeAttentionCount}}</span>
-      <div style="display: flex; visibility: {{homePeopleVisibility}}">
-        <span style="width: 28px; height: 28px; border-radius: 14px; background: var(--s3); font-size: 9.5px; font-weight: 700; display: flex; align-items: center; justify-content: center; box-shadow: 0 0 0 2px var(--s2)">MC</span>
-        <span style="width: 28px; height: 28px; border-radius: 14px; background: var(--s3); font-size: 9.5px; font-weight: 700; display: flex; align-items: center; justify-content: center; margin-left: -5px; box-shadow: 0 0 0 2px var(--s2)">JP</span>
-        <span style="width: 28px; height: 28px; border-radius: 14px; background: var(--s3); font-size: 9.5px; font-weight: 700; display: flex; align-items: center; justify-content: center; margin-left: -5px; box-shadow: 0 0 0 2px var(--s2)">PN</span>
+      <div style="display: flex; gap: 2px; visibility: {{homePeopleVisibility}}">
+        <sc-for list="{{homeAttentionPeople}}" as="person">
+          <span style="width: 28px; height: 28px; border-radius: 14px; background: var(--s3); font-size: 9.5px; font-weight: 700; display: flex; align-items: center; justify-content: center; box-shadow: 0 0 0 2px var(--s2)">{{person.ini}}</span>
+        </sc-for>
       </div>
     </button>
     <button onClick="{{goFlows}}" aria-label="{{homeWorkflowLabel}}" style="flex-shrink: 0; scroll-snap-align: start; width: max-content; min-width: 172px; max-width: calc(100% - 48px); height: 196px; border-radius: 30px; background: var(--s2); padding: 22px; box-sizing: border-box; display: flex; flex-direction: column; justify-content: space-between">
@@ -3802,8 +3802,8 @@
   <div class="serif" style="font-size: 132px; line-height: .9; margin-top: 44px; letter-spacing: -.035em">{{clock}}</div>
   <div style="margin-top: 16px; color: var(--mut); font-size: 15px">{{dateStr}}</div>
   <div style="display: flex; gap: 8px; margin-top: 44px">
-    <sc-for list="{{lockSum}}" as="n" hint-placeholder-count="3">
-      <span style="display: flex; align-items: center; gap: 8px; height: 38px; padding: 0 14px; border-radius: 19px; background: var(--s2)"><svg class="i" viewBox="0 0 24 24" style="width: 17px; height: 17px"><path d="{{n.d}}"></path></svg><span style="font-size: 14px; font-weight: 600">{{n.c}}</span></span>
+    <sc-for list="{{lockSum}}" as="n" hint-placeholder-count="2">
+      <span role="img" aria-label="{{n.label}}" style="display: flex; align-items: center; gap: 8px; height: 38px; padding: 0 14px; border-radius: 19px; background: var(--s2)"><svg class="i" viewBox="0 0 24 24" style="width: 17px; height: 17px"><path d="{{n.d}}"></path></svg><span style="font-size: 14px; font-weight: 600">{{n.c}}</span></span>
     </sc-for>
   </div>
   <div style="position: absolute; bottom: 58px; left: 34px; right: 34px; display: flex; justify-content: space-between; align-items: center">

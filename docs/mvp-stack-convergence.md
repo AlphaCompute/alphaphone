@@ -39,3 +39,48 @@ The user requested merging and fixing the entire stack before one final verifica
 The final campaign is pending: repository verification, complete browser coverage on a dedicated server, and composed runtime source/contract qualification. Android builds remain excluded by the user's request. Local development will retain its existing owner profile and local speech settings when restarted on the consolidated runtime.
 
 The worktree inventory also found older, uncommitted native qualification/extraction experiments. They remain preserved in their original worktrees; they are not silently treated as current production implementation. Native Calendar extraction still requires its independent-consumer and storage-migration qualification before replacing the product bridge. Device, provider, signed-image and user acceptance remain open as detailed in the current requirement matrix.
+
+
+### Final campaign checkpoint
+
+The combined product landed through PR 133 and PR 123. Main is `18e36220276b9cc6c4cd592fd5db9da1ea1cac29`; the additional local review merge has an identical Git tree. The live queue readback is zero open PRs. Redundant stacked PRs were closed after verifying that their exact heads are ancestors of main. The repository requires pull requests for changes to main; rejected direct pushes did not alter that rule.
+
+Local verification passes all 255 repository tests, TypeScript and the production web build. The initial run passed 254 tests and failed one source-reproduction fixture because an interrupted local cache had no admitted Git object. That cache was preserved, and the sole owning test passed against a valid existing object cache. Runtime verification passes 488 stage-one/security/ownership tests, one source-and-published Clock export test, and one authenticated HTTP/durable SQL device-action lifecycle test. No test assertion was weakened.
+
+The complete browser campaign is [37155265419](https://github.com/AlphaCompute/alphaphone/actions/runs/37155265419), on exact main 18e3622. All three shards passed repository verification and entered the browser suite. Its terminal result is pending. Redundant older branch campaigns were cancelled instead of repeating the same work locally.
+
+The final local runtime reproduces all 33 declared patches. Consumer manifest: `711ca293e205857b5b3097983ee13a4f5131c33a84e33fe945bcecb11262aea7`; prepared metadata: `eec3fd5d6f991872dfe94ba15e1deee0e7d79605e7bf48499e1a465d69897a14`. Existing dependency directories were cloned with APFS and the frozen Bun installation completed with no dependency changes and lifecycle scripts disabled. This is reproducible source and checked dependency reuse, not a clean native build.
+
+Browser development restarted at port 5317 against this runtime, retaining the existing browser-agent owner profile and redaction-off settings. At 21:34:10 UTC, authenticated owner access, one agent, embedded local workflows, standalone Whisper and Kokoro were ready. The actual app rendered in the in-app browser. The model remains hosted Cerebras; local orchestration and local speech do not imply offline text inference.
+
+Evidence is retained under `test-results/remaining-integration/`, including source reproduction, the initial failure and corrected owning check, runtime tests, readiness and PR disposition records. Android builds were not run locally in this pass. The requirement matrix still lists real-provider, native lifecycle, physical-device, release and user-acceptance gaps; this checkpoint does not claim the full MVP is accepted.
+
+
+### Completion audit against the numbered implementation plan
+
+This audit preserves all fifteen plan items. A delivered implementation, a controlled test, and product acceptance are separate states. The resident-agent change governs execution placement; it does not supply evidence for a powered-off process or a physical device.
+
+| Plan item | Implemented or verified in the consolidated browser pass | Still not proved or completed |
+| --- | --- | --- |
+| 1. Source and scope reconciliation | Current MVP profile, deferred routes, resident execution and hosted-model distinction are documented and implemented. | Final messaging/Telegram/Discord disposition and stakeholder acceptance of the complete retained scope. |
+| 2. Stable target and native environment | Browser development is running on the merged renderer and reproduced local runtime. | Physical target identity and current installed-image acceptance. Android build work is excluded from this pass. |
+| 3. Session and capability contract | Owner authentication, durable device-action lifecycle and enabled-view negotiation are implemented; current real HTTP/SQL contract test passes. | Generic upstream publication and independently qualified production/native consumers. |
+| 4. Cloud and remote onboarding | Optional connection, grant, expired-session and owner-fencing implementations are merged. | Actual authorized account onboarding, revocation and provider-specific deployment acceptance. Local startup does not require these optional services. |
+| 5. Conversation and context | Current stage-one, security and owner/receipt tests pass; browser lifecycle coverage is in the final campaign. | End-to-end physical network/background/process interruptions and broad real task quality. |
+| 6. Speech and latency | Current local host reports Whisper and Kokoro ready; recording/review/playback ownership fixes are merged. | Physical microphone, echo/Bluetooth, language quality and measured latency target. Readiness alone is not speech accuracy. |
+| 7. Notes and native CRUD | Durable browser operations, reviewed agent effects, audio ownership and recovery implementations are merged. | Current device storage/voice journey and migration acceptance. |
+| 8. Calendar, reminders and Clock | Explicit reminder timing, durable reminder links, Calendar ownership fixes and the shared reviewed Clock executor are merged. Current HTTP/SQL lifecycle and public Clock export checks pass. | Actual provider/OS alarm behavior, time-zone/reboot/DND coverage and physical delivery. |
+| 9. Schedules and result outbox | Local workflow engine is ready; durable occurrence, result and reconnect code and earlier real local schedule evidence are retained. | Current physical lifecycle and power-loss acceptance; a powered-off device cannot execute locally. Optional powered-off remote execution needs its own scope and deployment. |
+| 10. Notifications and approvals | Exact review/receipt identity, asynchronous durable native I/O and recovery implementations are merged; controlled tests are retained. | Current native lock/permission/process behavior and physical notification delivery. |
+| 11. Browser and passwords | Navigation, selected reading, sensitive-source rejection and provider setup/status are implemented. | Release-image WebView/provider compatibility, actual vault save/fill/unlock and passkey journeys. |
+| 12. Email | Account-bound reads, drafts, attachments, cancellation and reviewed provider mutations are implemented. | Real Gmail grants and authorized read/draft/send/revoke/unknown-result acceptance. No test result authorizes sending real mail. |
+| 13. Upstream consolidation | All inventoried product PRs and committed local fixes are merged; 33 explicit runtime patches reproduce. Vendor and baseline checkouts are unchanged. | Shared upstream publication and complete generic native extraction. Uncommitted native Calendar/extraction experiments remain preserved, not adopted as qualified production code. |
+| 14. Deployment and metering | Local executable source and owner/runtime identity are verified. Nitro is optional under the resident architecture. | Signed app/runtime/image release, update/rollback, independent setup and required production usage/metering acceptance. |
+| 15. Pilot handoff | Current implementation report, source history, failure evidence and test records are retained. | Four physical-unit manifests, unedited demonstration, user/stakeholder acceptance and final P0/P1 disposition. |
+
+The full browser campaign on consolidated main is the remaining immediate verification step. Its terminal outcome must replace the pending status above before claiming that snapshot is browser-qualified. The later attention-count corrections described below require their own exact-source evidence. Physical, provider and release items remain open even if it passes.
+
+
+### Subsequent visual corrections
+
+Direct rendered review found that mock Home showed three attention items while opening a digest with only one retained MVP item. It also found deferred Messages counts in the mock lock summary. Home and the digest now share filtered fixture rows; the lock summary filters by enabled view and exposes accessible Email/Calendar count labels. The production adapter clears fixture avatars. The current correction passes all 18 MVP browser cases, four browser/native-chrome fixture cases, all 255 repository tests, TypeScript and the web build. The corrected Home and lock views were visually checked. These changes are newer than main 18e3622 and are not covered by its still-running full browser campaign.

@@ -1,3 +1,4 @@
+import {mockAttentionRows} from './mock-attention';
 import {browserStorageUsage} from '../browser/storage-usage';
 import {browserDevProfile} from '../browser/dev-profile';
 type Bag = Record<string, any>;
@@ -85,6 +86,7 @@ export function installPrototypeDataAdapter(Component: any, views: Record<string
       homeCalendarLabel: agenda ? `Open calendar event: ${agenda.event.title}` : 'Open your calendar',
       homeCalendarTime: time, homeCalendarTitle: agenda?.event.title || 'Your calendar',
       homeAttentionLabel: browserDevProfile?'Open Inbox: '+unread+' unread email'+(unread===1?'':'s'):'Accounts are not connected', homeAttentionCount: browserDevProfile?String(unread):'—',
+      homeAttentionPeople: [],
       homeWorkflowLabel: 'Open workflows', homeWorkflowTitle: 'Workflows', homeWorkflowTime: 'Review', homePeopleVisibility: 'hidden',
       goCalendar: () => this.openView('calendar', agenda ? {open:agenda.event.id, day:agenda.event.off, openDay:agenda.event.off} : undefined),
       goFlows: () => this.openView('workflows'),
@@ -98,15 +100,16 @@ export function installPrototypeDataAdapter(Component: any, views: Record<string
 }
 
 /** Call in both fixture and production before mounting; preserves original
- * fixture text byte-for-byte. Production data adapter overrides these values. */
+ * fixture layout with the current MVP data. Production overrides these values. */
 export function installPrototypeHomeBindings(Component: any) {
   const p = Component.prototype;
   const render = p.renderVals;
   p.renderVals = function () {
     const out = render.call(this);
+    const attention = mockAttentionRows();
     return {
       homeCalendarLabel: 'Next: Design review at 3:00 PM', homeCalendarTime: '3:00 PM', homeCalendarTitle: 'Design review',
-      homeAttentionLabel: '3 things need you', homeAttentionCount: '3',
+      homeAttentionLabel: `${attention.length} ${attention.length === 1 ? 'item needs' : 'items need'} your attention`, homeAttentionCount: String(attention.length), homeAttentionPeople: attention,
       homeWorkflowLabel: 'Morning brief delivered at 7:02 AM', homeWorkflowTitle: 'Morning brief', homeWorkflowTime: '7:02 AM', homePeopleVisibility: 'visible',
       ...out,
       // Keep translated/collapsed layers painted for the reference animations,
