@@ -2,14 +2,14 @@ import {Capacitor} from '@capacitor/core';
 import {registerPlugin} from './platform-plugins';
 import {planLocalSpeech} from './runtime/local-speech-text';
 /** Preflight the complete native passage, then await every owned chunk. */
-export async function speakLocalText(text:string,signal:AbortSignal,onStarted?:()=>void,queue=false){
+export async function speakLocalText(text:string,signal:AbortSignal,onStarted?:()=>void,queue=false,requirements?:{execution:'device'|'browser';assertCurrent:()=>void}){
  signal.throwIfAborted();const native=Capacitor.isNativePlatform(),chunks=native?planLocalSpeech(text):[text],voice=registerPlugin<any>('AlphaVoiceCloud');
  const controller=new AbortController(),cancel=()=>controller.abort(signal.reason);signal.addEventListener('abort',cancel,{once:true});if(signal.aborted)cancel();
  const timer=setTimeout(()=>controller.abort(Error('Speech did not finish.')),20*60*1000);let started=false;
- try{for(const chunk of chunks){controller.signal.throwIfAborted();await speakChunk(voice,native,chunk,controller.signal,()=>{if(!started){started=true;onStarted?.();}},queue);}}
+ try{for(const chunk of chunks){controller.signal.throwIfAborted();await speakChunk(voice,native,chunk,controller.signal,()=>{if(!started){started=true;onStarted?.();}},queue,requirements);}}
  finally{clearTimeout(timer);signal.removeEventListener('abort',cancel);}
 }
-async function speakChunk(voice:any,native:boolean,text:string,signal:AbortSignal,onStarted:()=>void,queue:boolean){
+async function speakChunk(voice:any,native:boolean,text:string,signal:AbortSignal,onStarted:()=>void,queue:boolean,requirements?:{execution:'device'|'browser';assertCurrent:()=>void}){
  const requestId=crypto.randomUUID();let playbackId:string|undefined,active=true,cleanup:Promise<void>|undefined;
  const handles=new Set<{remove:()=>Promise<void>}>();
  const bounded=(run:()=>Promise<unknown>)=>new Promise<void>(resolve=>{const timer=setTimeout(resolve,500);Promise.resolve().then(run).catch(()=>{}).finally(()=>{clearTimeout(timer);resolve();});});
@@ -23,11 +23,11 @@ async function speakChunk(voice:any,native:boolean,text:string,signal:AbortSigna
    const pending=voice.addListener(event,(value:{playbackId:string;message?:string})=>{if(!active||!playbackId||value.playbackId!==playbackId)return;if(event==='playbackEnded')ended();else failed(Error(event==='playbackStopped'?'Speech was stopped before completion.':(!native&&typeof value.message==='string'?value.message:'Speech playback failed.')));}).then((handle:{remove:()=>Promise<void>})=>{if(active)handles.add(handle);else void bounded(()=>handle.remove());});
    await Promise.race([pending,interrupted]);signal.throwIfAborted();
   }
-  for(;;){signal.throwIfAborted();try{
-   const pending=voice.synthesizeLocal({text,requestId,...(queue&&native?{replace:false}:{})}).then((result:{playbackId:string})=>{if(!active&&result.playbackId)void bounded(()=>voice.stopPlayback({playbackId:result.playbackId,requestId}));return result;});
-   ({playbackId}=await Promise.race([pending,interrupted]));if(typeof playbackId!=='string'||!playbackId)throw Error('Speech preparation returned no playback identity');break;
+  for(;;){signal.throwIfAborted();requirements?.assertCurrent();try{
+   const pending=voice.synthesizeLocal({text,requestId,...(queue&&native?{replace:false}:{})}).then((result:{playbackId:string;execution?:string})=>{if(!active&&result.playbackId)void bounded(()=>voice.stopPlayback({playbackId:result.playbackId,requestId}));return result;});
+   const result=await Promise.race([pending,interrupted]);playbackId=result.playbackId;if(requirements&&result.execution!==requirements.execution)throw Error('Invalid local speech execution');requirements?.assertCurrent();if(typeof playbackId!=='string'||!playbackId)throw Error('Speech preparation returned no playback identity');break;
   }catch(error){if(!queue||!native||(error as {code?:string}).code!=='playback-busy')throw error;await wait();}}
-  for(;;){signal.throwIfAborted();try{await Promise.race([voice.play({playbackId,...(queue?{replace:false}:{})}),interrupted,finished]);break;}catch(error){if(!queue||(error as {code?:string}).code!=='playback-busy')throw error;await wait();}}
+  for(;;){signal.throwIfAborted();requirements?.assertCurrent();try{await Promise.race([voice.play({playbackId,...(queue?{replace:false}:{})}),interrupted,finished]);break;}catch(error){if(!queue||(error as {code?:string}).code!=='playback-busy')throw error;await wait();}}
   signal.throwIfAborted();onStarted();await Promise.race([finished,interrupted]);signal.throwIfAborted();
  }finally{signal.removeEventListener('abort',abort);await dispose();}
 }
