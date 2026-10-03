@@ -61,7 +61,22 @@ choose the app port. Ctrl-C stops the services owned by that command.
 The desktop browser shows a fitted phone preview; mobile widths fill the viewport.
 Use `?mode=mock` for the clearly labeled design fixture and `?theme=dark` to
 inspect dark layouts. Use `?mode=dev` for the browser development profile with durable local app data
-and device controls. The normal app uses browser-local Notes. Notes text import and export use the browser
+and device controls. For the complete capability matrix and current verification results, see
+[browser development parity](docs/browser-dev-parity.md). In **Device controls**, use
+Home, Back, Power, Background and Resume to exercise device lifecycle; use Incoming
+call/message/email and Post notification to drive incoming events. Location controls
+provide a saved Home place and manual movement for location-triggered workflows.
+The role buttons persist the development device's selected Home, assistant, dialer
+and SMS roles.
+
+In **Settings → Agent connection**, select a development profile to exercise
+conversations, approvals and durable receipts without credentials. Use
+`?mode=dev&workflows=agent` to exercise the agent workflow UI with that profile.
+For real host inference and speech, follow the separate [local agent setup](docs/local-agent-development.md).
+**Settings → Character → Wake assistant** opens the recording UI; recording starts
+only after Start recording is selected.
+
+The normal app uses browser-local Notes. Notes text import and export use the browser
 file picker and downloads; browser note storage is unencrypted and is not synced.
 The browser suite covers production navigation, durable note editing, exact-byte
 file flows, dialog accessibility, disclosed adapter fixtures and reference design
