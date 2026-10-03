@@ -63,3 +63,5 @@ After the owned emulator restart, the same upstream Calendar APKs passed `permis
 No incorporated patch has yet been retired from Alpha: merged commit adoption and both distribution qualifications are still required.
 
 Latest follow-up: reminder permission/bridge test failed because it could not locate the system denial control; cleanup passed and engine acceptance remains separate. Kokoro final HTTP rerun failed readiness while direct native-worker initialization passed; this discrepancy must be resolved before voice qualification or merge. Earlier passes do not close either failure.
+
+#33213 merged as `df90e84500df616bd4c170f364a3a7f1dfed13b8` after all exact-head checks passed. [#33229](https://github.com/elizaOS/eliza/pull/33229) now contains standalone Kokoro at `ff20e268184`, including host lifecycle isolation and optional ABI capability validation. After direct native worker/service checks passed, the complete HTTP/SQLite/native rerun passed. Earlier readiness failure remains a stability limitation; hosted and complete dispatcher qualification remain outstanding.
