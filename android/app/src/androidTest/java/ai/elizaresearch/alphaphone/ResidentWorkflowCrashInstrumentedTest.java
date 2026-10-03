@@ -22,6 +22,7 @@ public final class ResidentWorkflowCrashInstrumentedTest {
  private Context context;
  private JSONObject fixture;
  private JSONObject readinessTimeoutDiagnostic;
+ private JSONObject apiFailureDiagnostic;
 
  private static String hash(byte[] bytes)throws Exception {StringBuilder value=new StringBuilder();for(byte b:MessageDigest.getInstance("SHA-256").digest(bytes))value.append(String.format(Locale.ROOT,"%02x",b&255));return value.toString();}
  private static byte[] bounded(InputStream input,int max)throws Exception {ByteArrayOutputStream out=new ByteArrayOutputStream();byte[] buf=new byte[8192];int n;while((n=input.read(buf))!=-1){assertTrue("Input exceeds bound",out.size()+n<=max);out.write(buf,0,n);}return out.toByteArray();}
@@ -37,7 +38,12 @@ public final class ResidentWorkflowCrashInstrumentedTest {
   JSONObject args=new JSONObject().put("path",path).put("method",method).put("headers",headers).put("timeoutMs",path.startsWith("/api/auth/")?10000:120000);
   if(body!=null)args.put("body",body.toString());
   JSONObject result=new JSONObject(ElizaAgentService.requestLocalAgent(args.toString()));
-  if(result.getInt("status")<200||result.getInt("status")>=300)throw new IOException("Resident API status "+result.getInt("status"));return new JSONObject(result.getString("body"));
+  if(result.getInt("status")<200||result.getInt("status")>=300){
+   String category="unrecognized";
+   try{String error=new JSONObject(result.getString("body")).optString("error","");if("Not found".equals(error))category="route-not-found";else if(error.startsWith("Workflow not found"))category="workflow-record-not-found";else if("Workflow route not found".equals(error))category="workflow-route-not-found";else if("Workflow service is unavailable".equals(error)||"Workflow runtime is unavailable".equals(error))category="workflow-service-unavailable";}catch(JSONException malformed){category="non-json-error";}
+   apiFailureDiagnostic=new JSONObject().put("status",result.getInt("status")).put("method",method).put("route","/api/workflow/workflows".equals(path)?"workflow-collection":"other").put("category",category);
+   throw new IOException("Resident API status "+result.getInt("status")+" ("+category+")");
+  }return new JSONObject(result.getString("body"));
  }
  private JSONObject request(String path,JSONObject body)throws Exception {return nativeCall(path,body==null?"GET":"POST",body,ownerBearer);}
  private static String safeBootReason(String reason) {
@@ -99,6 +105,15 @@ public final class ResidentWorkflowCrashInstrumentedTest {
    // The real start below remains responsible for enforcing the production policy.
   }
  }
+ /** Auth listening does not prove optional workflow routes have been registered. */
+ private void awaitWorkflowRoutes(long deadline)throws Exception {
+  while(SystemClock.elapsedRealtime()<deadline){
+   try{request("/api/workflow/workflows",null).getJSONArray("workflows");apiFailureDiagnostic=null;return;}
+   catch(IOException unavailable){int status=apiFailureDiagnostic==null?0:apiFailureDiagnostic.optInt("status");if(status!=404&&status!=503)throw unavailable;}
+   SystemClock.sleep(250);
+  }
+  throw new AssertionError("Workflow read-only readiness deadline; creation was not attempted");
+ }
  private void startAndEnroll()throws Exception {
   assertTrue(context.getSharedPreferences("CapacitorStorage",Context.MODE_PRIVATE).edit().putString("eliza:mobile-runtime-mode","cloud-hybrid").commit());
   reportRamAdmission();
@@ -125,7 +140,7 @@ public final class ResidentWorkflowCrashInstrumentedTest {
    assertTrue("Restarted native session must match",ownerBearer.equals(who.getJSONObject("session").getString("id")));
    assertEquals(ownerIdentityId,who.getJSONObject("identity").getString("id"));
    assertEquals("owner",who.getJSONObject("identity").getString("kind"));
-   return;
+   awaitWorkflowRoutes(deadline);return;
   }
   // Pair-code issuance and pairing are deliberately outside readiness polling: never replay an ambiguous enrollment.
   JSONObject code=nativeCall("/api/auth/pair-code","GET",null,root);
@@ -134,6 +149,7 @@ public final class ResidentWorkflowCrashInstrumentedTest {
   ownerBearer=paired.getString("token");ownerIdentityId=paired.getString("identityId");JSONObject who=request("/api/auth/me",null);
   assertTrue("Paired native session must match",ownerBearer.equals(who.getJSONObject("session").getString("id")));
   assertEquals(paired.getString("identityId"),who.getJSONObject("identity").getString("id"));
+  awaitWorkflowRoutes(deadline);
  }
 
  private JSONObject nativeGet(String path,String bearer)throws Exception {
@@ -309,7 +325,7 @@ public final class ResidentWorkflowCrashInstrumentedTest {
     finally {hook.set(null,null);ownerBearer=null;ownerIdentityId=null;}
    }
   } catch(Throwable outer){if(failure==null)failure=outer;else failure.addSuppressed(outer);}
-  proof.put("passed",failure==null&&proof.optBoolean("passed"));try{if(readinessTimeoutDiagnostic!=null)proof.put("readinessTimeoutDiagnostic",readinessTimeoutDiagnostic);write(new File(context.getFilesDir(),"resident-recovery-complete.json"),proof.toString());}catch(Throwable outputFailure){if(failure==null)failure=outputFailure;else failure.addSuppressed(outputFailure);}if(failure!=null)throw failure;
+  proof.put("passed",failure==null&&proof.optBoolean("passed"));try{if(readinessTimeoutDiagnostic!=null)proof.put("readinessTimeoutDiagnostic",readinessTimeoutDiagnostic);if(apiFailureDiagnostic!=null)proof.put("apiFailureDiagnostic",apiFailureDiagnostic);write(new File(context.getFilesDir(),"resident-recovery-complete.json"),proof.toString());}catch(Throwable outputFailure){if(failure==null)failure=outputFailure;else failure.addSuppressed(outputFailure);}if(failure!=null)throw failure;
  }
  @Test public void trustedPackagedWorkerSurvivesResidentRestart()throws Throwable {
   Assume.assumeTrue("Explicit trusted worker fixture", "1".equals(InstrumentationRegistry.getArguments().getString("residentCrash")));
@@ -342,6 +358,6 @@ public final class ResidentWorkflowCrashInstrumentedTest {
    }catch(Throwable error){failure=error;}
    finally{try{model.release.countDown();if(trusted!=null){if(trusted.process.isAlive())trusted.finish();trusted.close();}ElizaAgentService.stop(context);stopped(resident);proof.put("cleanupComplete",true);}catch(Throwable cleanup){if(failure==null)failure=cleanup;else failure.addSuppressed(cleanup);proof.put("cleanupFailed",true);}finally{hook.set(null,null);ownerBearer=null;ownerIdentityId=null;}}
   }catch(Throwable outer){if(failure==null)failure=outer;else failure.addSuppressed(outer);}
-  proof.put("passed",failure==null&&proof.optBoolean("passed"));try{if(readinessTimeoutDiagnostic!=null)proof.put("readinessTimeoutDiagnostic",readinessTimeoutDiagnostic);write(new File(context.getFilesDir(),"resident-recovery-complete.json"),proof.toString());}catch(Throwable outputFailure){if(failure==null)failure=outputFailure;else failure.addSuppressed(outputFailure);}if(failure!=null)throw failure;
+  proof.put("passed",failure==null&&proof.optBoolean("passed"));try{if(readinessTimeoutDiagnostic!=null)proof.put("readinessTimeoutDiagnostic",readinessTimeoutDiagnostic);if(apiFailureDiagnostic!=null)proof.put("apiFailureDiagnostic",apiFailureDiagnostic);write(new File(context.getFilesDir(),"resident-recovery-complete.json"),proof.toString());}catch(Throwable outputFailure){if(failure==null)failure=outputFailure;else failure.addSuppressed(outputFailure);}if(failure!=null)throw failure;
  }
 }
