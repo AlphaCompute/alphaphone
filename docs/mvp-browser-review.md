@@ -1992,3 +1992,21 @@ Replaced the two unstyled floating text links with one tools launcher and a sepa
 Visual review of the first styled launcher revealed overlap with compact phone content. The final preview reserves space below the phone, measured from the toolbar height and bottom inset, on both compact and desktop layouts. Resize testing includes an increased bottom inset; native and mock mode do not receive the development toolbar. Keyboard opening, Escape and focus return remain covered. This changes browser development chrome, not Android packaging or its role authority.
 
 Final validation: **86 Chromium/WebKit cases passed**, covering 360/601-pixel widths, 100/150% text, both themes, theme colors, target bounds, scrolling/close reachability, profile switching, failed role storage, preview separation and existing Home/power/background/incoming/location/Files/Calendar flows. TypeScript, all 157 repository tests without skips and production build pass. Evidence and inspected screenshots: `test-results/dev-controls-accessibility/`. The preceding layout PR's hosted jobs were still pending at the final check; no newer full hosted pass is inferred. No Android build ran. Remaining accessibility work includes complete subview, error-state, keyboard and physical-user acceptance.
+
+
+## October 3 — outbound contact restoration
+
+Closed the ordinary email-drafting failure with an explicit upstream patch, `egress-contact-references.patch`, composed into the pinned resident/browser runtime. Contacts use session-nonced CONTACT references; credentials retain SECRET references and credential precedence. Neither vendor nor the pristine app baseline changed.
+
+Validation: 31 focused runtime tests, full-series source verification, and all 157 repository tests/typecheck/build pass. Real hosted-model buffered and streamed drafts restored a synthetic email, and a repeated request after isolated-host restart retained/restored it. Nine captured provider request-body checks exposed neither the synthetic raw email nor password. The password-repeat probe did not disclose its synthetic credential. Initial broad-suite module-resolution failures are preserved; the passing harness supplies the missing core-subpath alias externally. Full details and evidence locations are in [local agent setup](local-agent-development.md#contact-placeholder-semantics-october-3).
+
+This closes the recorded contact-label/refusal defect for the tested email journeys. Broader contact/phone, mixed-data and approved-action coverage remains; default redaction switches stay off. Android builds and physical acceptance remain outside this checkpoint.
+
+
+## October 3 — full-suite browser regression repair
+
+The broader hosted run at `3e78cf2` exposed a digest assertion still targeting every `pre` after readable summaries added a second one, plus a recording fixture that could stop after microphone metering began but before the encoder produced audio. The digest test now verifies Execution details starts closed, opens it and checks the retained source payload there. The real MediaRecorder fixture observes nonempty `dataavailable` events before testing stop/persistence; it does not replace audio with a mock or add a fixed delay.
+
+Validation: all 34 selected Chromium/WebKit digest/audio cases pass, followed by 20 repeated real-encoder stop cases (ten per engine). Repository verification again passes 157 tests, zero skips, TypeScript and build. Evidence is `artifacts/calendar-preferences-review/test-results/ci-browser-recovery/`. These local passes repair the identified assertions; exact-head hosted green remains pending. The separate Android CI smoke failure was emulator remount/overlayfs setup, retained as an open gate outside this browser-focused pass.
+
+The user-facing local agent was restarted on contact-reference manifest `113b0e72f49f258d651529186c6d2a927164a62999f206018394a19b614f6fcf`; authenticated owner, embedded workflows and local Whisper/Kokoro readiness all pass. Redaction remains off pending broader qualification.

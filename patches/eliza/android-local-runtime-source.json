@@ -16,7 +16,7 @@
     "packages/core/src/security/guarded-stream.ts": "7f12512d8baea1dbc7a86229dcf18c8048ff1113b89915c319dc3202056ff334",
     "packages/core/src/security/pii-pseudonymizer.ts": "bffc53238d2580c5ad2d436e0e247ac425189487bf482e51b5917567f29ee111",
     "packages/core/src/security/runtime-abort-signal.ts": "da3bb65a56334a249399c0a2ec4e0f9d227c8e09e3566237609f679de76b0d78",
-    "packages/core/src/security/secret-swap.ts": "7a4d9fed214761e714d9e7b208d1b655dadfc744c3733255bcd9ac88960e8133",
+    "packages/core/src/security/secret-swap.ts": "99d8489f4649c5542ddf7086ab62fc5a1ed929ddb4c6a7d342c7f29fdbf61629",
     "plugins/plugin-assistant/src/services/device-actions/contract.ts": "885fac153520e119742bcd886c11ce81261e60837306d46708156ceef8c8f0f5",
     "plugins/plugin-assistant/src/services/message/reply-policy.ts": "6258737cf79a623f58988d6788462b9b5d12ae54b6916b5e198dc873197ee40c",
     "plugins/plugin-assistant/test/device-actions.e2e.test.ts": "6b2f688039a2626a87e51af8cd17c09f084afab52ed6913f7a9c8acafce154ff",
@@ -61,7 +61,8 @@
     "plugins/plugin-workflow/__tests__/unit/workflow-routes.test.ts": "6f25190b0195adab69aa57f36207511573e26e2a79567ab7024576c2f7d27923",
     "plugins/plugin-workflow/__tests__/integration/routes-e2e.test.ts": "abf36fe49b422e47c378d8d449393236bfa21cf9dc0bbc5c36ea5a8929cc7585",
     "plugins/plugin-workflow/__tests__/unit/workflow-status.test.ts": "059161708da08a73757a3750a17ed181fa658e24a89c5018b70d4eb1d77a2117",
-    "plugins/plugin-assistant/src/services/device-actions/reminder-create-contract.ts": "9545607e3b54a96c34cdf129a8cb4fc3de4476dc23857a3986c0e8174ceea4ed"
+    "plugins/plugin-assistant/src/services/device-actions/reminder-create-contract.ts": "9545607e3b54a96c34cdf129a8cb4fc3de4476dc23857a3986c0e8174ceea4ed",
+    "packages/core/src/__tests__/swap-contact-reference.test.ts": "73405dfc0d73d7d5ce58a48a0cfc65e7748b079279be2c40181440f768765ffa"
   },
   "patches": [
     "android-secure-store-socket.patch",
@@ -86,7 +87,8 @@
     "workflow-worker-termination-diagnostic.patch",
     "workflow-runtime-location.patch",
     "reminder-reviewed-creation.patch",
-    "workflow-worker-crash-identity-diagnostic.patch"
+    "workflow-worker-crash-identity-diagnostic.patch",
+    "egress-contact-references.patch"
   ],
   "patchHashes": {
     "android-secure-store-socket.patch": "457ea3d0b91c80c53c4bd3db25bb85cea6079d87c5ee2b02a96757e0a31ae900",
@@ -110,6 +112,7 @@
     "workflow-worker-exit-evidence.patch": "1c26ead686ff8a8dc00dd395422e9935d9c676c4ff7fbdcdfd943bebb47ea772",
     "workflow-worker-termination-diagnostic.patch": "3eea71235aaf105c7c8a5c23eabc99120ba00c0a92c2045a8e6bfcff9c6b7d63",
     "workflow-runtime-location.patch": "0f91cc5e29c9d1c45b7c4f7bd350a2881948dc3ad6787446b1879f7741f69d63",
-    "workflow-worker-crash-identity-diagnostic.patch": "7b546b7bef4703dbf4035f7f87d57a7059ad201f1f3f306dfaadffd9451276d3"
+    "workflow-worker-crash-identity-diagnostic.patch": "7b546b7bef4703dbf4035f7f87d57a7059ad201f1f3f306dfaadffd9451276d3",
+    "egress-contact-references.patch": "8cdd5bcf6d64c40d2488219b8fcdb3dda776fca0bc6537de2bb2007b982b36e5"
   }
 }
