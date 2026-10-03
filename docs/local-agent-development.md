@@ -31,7 +31,12 @@ Workflow drafts in local browser development persist in the private host profile
 
 With the real local agent selected, Notes recording transcription uses the host's standalone Whisper provider and transcript playback uses its standalone Kokoro provider. Captured bytes and text pass through the authenticated development bridge; credentials stay on the host. Playback stops on cancellation or connection changes. Failed agent synthesis is shown as an error without silently selecting another speech provider. Offline browser development retains explicit transcript review and installed local browser speech.
 
-Whisper uses the installed assets described in the review ledger. Require both speech providers at startup with:
+Whisper uses the installed assets described in the review ledger. On macOS, browser development selects the installed CLI's automatic compute backend and runs a private synthetic-silence warm-up before starting the agent. This moves first-use kernel compilation into startup. `ALPHA_WHISPER_BACKEND=cpu` explicitly retains CPU execution; other platforms default to CPU. Automatic selection requires the current reproduced runtime source, and a failed warm-up stops startup rather than reporting readiness. This is host acceleration, not Android speech qualification or a guarantee of the device latency target.
+
+When host Kokoro is configured, the agent starts its native worker and loads the speech sanitizer during startup. The worker verifies assets and synthesizes its readiness phrase before reporting ready. The first Listen request shares an in-progress initialization instead of starting another worker. Failed initialization remains retryable, and cancellation still destroys the native context. Disabled host speech does not preload either component.
+
+
+Require both speech providers at startup with:
 
 ```sh
 ALPHA_LOCAL_ASR=required \

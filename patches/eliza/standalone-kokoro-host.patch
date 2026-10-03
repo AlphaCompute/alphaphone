@@ -65,7 +65,7 @@ new file mode 100644
 index 0000000..9866bd0
 --- /dev/null
 +++ b/packages/app/src/api/standalone-kokoro-routes.ts
-@@ -0,0 +1,159 @@
+@@ -0,0 +1,170 @@
 +import type http from "node:http";
 +import { resolveAuthorizedRouteRole } from "./auth";
 +import type { CompatRuntimeState } from "./compat-route-shared";
@@ -74,6 +74,17 @@ index 0000000..9866bd0
 +
 +const service = new StandaloneKokoroService();
 +process.once("exit", () => service.stop());
++// Begin native model/voice initialization while the agent itself starts. The
++// worker reports ready only after real synthesis; requests share that boot.
++// A failed warmup remains retryable through the authenticated speech routes.
++if (process.env.ELIZA_KOKORO_ENABLED === "1") {
++  void Promise.all([
++    service.initialize(),
++    import("@elizaos/plugin-local-inference/routes/local-inference-tts-route"),
++  ]).catch(() => {
++    console.warn("Local speech initialization failed; the next request can retry.");
++  });
++}
 +const seen = new Map<string, number>();
 +let active = false;
 +export async function handleStandaloneKokoroRoute(

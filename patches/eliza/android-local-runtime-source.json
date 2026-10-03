@@ -30,7 +30,7 @@
     "packages/app/src/api/server.ts": "abe49c0fa56477c8f5b8e7ba0f1998e14dc45b54c61e2bd1ae315ddc1b236b68",
     "packages/app/src/api/route-auth-policy.ts": "03ceedd4a061c53766f27fbca7842fcb9c6489cc750957fffd4f2a4d2a218558",
     "packages/agent/src/api/runtime-mode/route-mode-matrix.ts": "23b7233d607342d4e77698513a7686ad87750d1cd72429f33816bdcd1dc8cf1c",
-    "packages/app/src/api/standalone-kokoro-routes.ts": "30efea1236029fa7500f8a2ca8d461086cdd4c8bc1a751cbdf93d4483b42da03",
+    "packages/app/src/api/standalone-kokoro-routes.ts": "93a9b6da5fe556ee23fa6d4fb146469a3450241ffb32d1de4e9a4dc2fee7b618",
     "packages/app/src/api/standalone-kokoro-service.ts": "338b0d8af304efbf6877bc33fb0a532746b6b2f2e6b5f4f13ce0b7ca0b54fe40",
     "plugins/plugin-local-inference/src/host-tts-worker.ts": "562fa4bd1a076dfff31f5583e0025ccb31fc0aa0d067f4a87c81b873dbca7b48",
     "packages/core/src/security/log-redaction.ts": "f836bf328b75908f3c9f0a7b6cd6e156d2bb7eb0f06fc554904113de0a147061",
@@ -82,7 +82,8 @@
     "plugins/plugin-assistant/build.ts": "299312aa315bcab9dfe9fa22cdece81dbd95daa757fc406c918dd4fd2f874407",
     "plugins/plugin-assistant/src/services/device-actions/clock-review-executor.ts": "b12138a2d3b64b6694f6505051542cb14d8d53491818cab70d8feff9193df13f",
     "plugins/plugin-assistant/test/clock-review-export.integration.test.ts": "d2cf48d33770cc3281398787241c910cc9adb363cf5cf3fe6cfc872a6181c324",
-    "plugins/plugin-assistant/vitest.clock-review.config.ts": "9f6158e9f05de7fe550c6b4523b9e8f8bcb26e886f74feabed8eac694ac4851c"
+    "plugins/plugin-assistant/vitest.clock-review.config.ts": "9f6158e9f05de7fe550c6b4523b9e8f8bcb26e886f74feabed8eac694ac4851c",
+    "packages/app/src/api/standalone-whisper-routes.ts": "883c7894fc4c9ad52674a7fec3d9c3fa10f4029e27fedd2e54cfd858a2609ae9"
   },
   "patches": [
     "android-secure-store-socket.patch",
@@ -117,7 +118,8 @@
     "egress-encoded-credentials.patch",
     "stage1-source-repair-fixture.patch",
     "android-preserve-sigsys.patch",
-    "clock-native-reviewed-executor.patch"
+    "clock-native-reviewed-executor.patch",
+    "standalone-whisper-backend.patch"
   ],
   "patchHashes": {
     "android-secure-store-socket.patch": "457ea3d0b91c80c53c4bd3db25bb85cea6079d87c5ee2b02a96757e0a31ae900",
@@ -129,7 +131,7 @@
     "egress-user-reply-restoration.patch": "39904adafddc8841e74b268aad8fdac00a94481ba43f3acd7b18383d53b32ee8",
     "approved-workflows-navigation.patch": "2202d04675531633db4b1ce3a2e49e3e870c259c341acaf20b17bbef6be99c9a",
     "clock-handoff.patch": "32245531af0928e7bd8a394ac588370790700abdf778cde644f54e1dda5388f2",
-    "standalone-kokoro-host.patch": "c24a77c86ccfb6282763095b3b0a909ae5b2d665e79bbb2815f6ba6ea3870a3f",
+    "standalone-kokoro-host.patch": "f3d56b20736ce6a819f66b47c4f573d2318889e1c66ab20d20091a52fa549e99",
     "egress-credential-assignments.patch": "e29cf00a402ca00973dfb5eefbfef74afe45ef2bf4d2da9aeb8631e8b163bb9e",
     "workflow-device-owner-binding.patch": "4ddb14132d6f7641bcb344a6c9bb32a61e019c3bff76486a3cf8a490e7d279f1",
     "android-resident-launcher-no-kill.patch": "7db1fd788b38a8df9cf43c81c318f257f8060c50043dc13b1d0ed78b06299636",
