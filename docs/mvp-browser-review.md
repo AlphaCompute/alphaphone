@@ -1833,3 +1833,12 @@ The product's typed schema now recognizes Notify/app_notification and Speak/read
 This is the contract stage, not completed presentation execution. The editor's supported-operation list, effect executor, native provider and protocol-2 advertisement remain to be connected and qualified. The product still advertises protocol 1 and does not expose executable Notify/Speak controls. Natural-language typed generation also remains open.
 
 Verification passed the final 26-case Chromium/WebKit authoring, phone-execution and contract suite; the new contract case checks both valid presentation steps and 19 rejection cases per engine. TypeScript, 120 tests and production build pass. The initial typecheck caught an incorrect result type and was repaired. The first browser run had 24 passes and two WebKit navigation timeouts during the editing interval; its failure artifacts remain retained. The unchanged-source rerun passed all 26 without weakening assertions. Evidence: `test-results/presentation-contract-review/`. No Android build ran.
+
+
+## October 3 — Browser typed Notify/Speak execution
+
+Browser connections now enroll with workflow protocol 2, and the typed editor exposes available Notify/Speak operations. Android remains on protocol 1 and does not expose these controls until its native executor is implemented. The development agent catalog/execution seam and real-agent device-action path both understand the same reviewed presentation operations; unrelated chat proposals cannot invoke them without a workflow binding.
+
+Notify preserves the exact title/body in durable browser Inbox history. Replay checks both fields, including compacted history, and never duplicates a dismissed notice. Speak uses the existing local speech provider and waits for the matching playback-complete event before returning success. The visible Stop reading control aborts only this workflow speech; interrupted playback is journaled as unknown and is not automatically repeated. Both steps require separate approval and confirmation.
+
+Final targeted verification passed 40 Chromium/WebKit cases, including rendered typed authoring, sequential Notify/Speak approval, natural completion, explicit Stop, receipt sync, reload and notice-history compaction. The controlled speech provider is a fixture; live Kokoro execution remains a separate check. Product verification passed TypeScript, 120 tests and build after adding the explicit Capacitor boundary to the existing VM renderer fixture. No Android build ran. Evidence: `test-results/presentation-execution-review/`.
