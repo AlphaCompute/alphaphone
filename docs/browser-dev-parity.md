@@ -1365,3 +1365,33 @@ Added a rendered development-mode sweep through Inbox, Calendar, Browser, Camera
 The full WebKit campaign also exposed two sensor-test failures caused by an unretained MediaDevices fixture. The sensor suite now pins the native MediaDevices wrapper before overriding getUserMedia. Assertions still require immediate pending-permission retirement, release of late grants, cross-tab sensor shutdown, location-watch cleanup, shared/persisted controls, owned video-microphone shutdown without stopping the camera source, media volume behavior, and rendered Notes recording exit.
 
 Validation: **8/8 Chromium and 8/8 WebKit** passed (seven sensor scenarios plus the 14-view entry sweep). Evidence: `test-results/browser-dev-parity/checkpoint-107/`. Only tests/documentation changed; checkpoint 106's root-qualified production inputs remain applicable. The full WebKit campaign is live beyond 700 cases and retains the original failures for terminal reconciliation. Android packaging remains pending.
+
+### Checkpoint 108 — interrupted WebKit campaign and bounded continuation
+
+The checkpoint-100 full WebKit process is terminal with exit 1 after case 727, without a terminal test summary. Its retained log reports **700 passed, 17 failed, 10 skipped**. The 17 failures are the five meeting, ten incoming-attachment and two sensor fixtures already corrected and retested in checkpoints 103, 104 and 107. At terminal observation only 116 MiB was free; the ending log does not conclusively identify the process-abort cause, so do not label it a confirmed ENOSPC exception. This run is incomplete.
+
+Preserved the full log and terminal counts under checkpoint 100. With no Android build active, removed regenerable Android asset intermediates while retaining verified APKs. Also removed Vite optimization caches from eleven known completed snapshots, preserving source, manifests, logs and artifacts; the active campaign snapshot's cache was retained.
+
+Continuing from the interrupted `dev-workflow-speech.spec.ts` file through the end of the same frozen source in three sequential groups covering 56 test files. The interrupted file is repeated in full to cover its unfinished cases. Each group has its own output directory, log and terminal exit code, recorded under `test-results/browser-dev-parity/checkpoint-108/`. Driver `/tmp/alpha-webkit-tail.py`, live exec session **81417**, port 5483. This is a continuation of coverage with explicit overlapping cases, not a claim that the interrupted campaign passed. Further Settings audit was deferred while restoring reliable verification. Current dual-variant APKs still need qualification after browser batches finish.
+
+
+### Checkpoint 109 — browser Character settings
+
+Development Character settings now offer manual Wake assistant, Open conversation, Agent connection and Scheduled digests in place of native-only wake-word status. Wake opens the existing voice UI without requesting microphone access; recording remains an explicit action. This is manual wake, not continuous wake-word recognition. Native settings are unchanged.
+
+Validation: 2/2 Chromium and 2/2 WebKit (Character flow plus the 14-view entry-copy audit), root typecheck, 120 tests and production build passed. The test initially encountered duplicate navigation labels in stacked Settings pages; its locator now targets the Character row. Evidence is retained in `test-results/browser-dev-parity/checkpoint-109/`. Current Android packaging remains pending.
+
+
+### Checkpoint 110 — terminal WebKit continuation and portable photo sharing
+
+All three checkpoint-108 batches are terminal: batch 1 had 132 passes and 5 failures; batch 2 had 168 passes, 3 failures and 1 skip; batch 3 had 72 passes and 4 failures. These are 372 passes, 12 failures and 1 skip across overlapping continuation coverage, not a clean full-suite pass. All twelve failed cases have now been reconciled in their owning suites.
+
+Photos batch sharing had a real portability defect: WebKit delivered only one of two consecutive downloads. The browser adapter now validates the entire selection, packages its local image/video bytes into one ZIP using the existing checked archive writer, and requests one download. No external media is fetched. The UI test checks the downloaded archive, CRC integrity and two JPEG entries, then trash/undo/reload. Stale selections still request no download.
+
+OCR, event-scan and document-camera fixtures now retain their overridden native MediaDevices wrappers. The note-audio lifecycle fixture uses the production ArrayBuffer storage representation on WebKit, whose IndexedDB rejected the fixture's legacy Blob insert before app code ran; Chromium continues to exercise legacy Blob migration. Both exercise missing metadata migration, ownership, rollback, trash retention, reload, playback and cross-tab deletion.
+
+The redirect fixture now uses an actual local HTTP 302 server rather than WebKit's unsupported route.fulfill redirect. It proves the redirect destination is not requested and manual excerpt review remains usable. The navigation fixture allows the initial receipt upload to race view retirement; explicit sync can resend the identical receipt. It checks identical payloads and a single action execution, claim and workflow navigation. This is receipt transport replay, not effect replay.
+
+Validation: the five media/scan suites pass **20/20 Chromium and 20/20 WebKit**. Reading-source passes **10/10 each**; navigation passes **3/3 each** after the timing correction. Root verification passes typecheck, 120 tests and production build. `npm run android:build` completes both standalone and launcher debug and unsigned release APKs, both instrumentation APK builds, lint and APK manifest/payload checks. No emulator HOME-role, AOSP boot, live-provider or physical-device acceptance is inferred. Logs, frozen source manifest, drift comparison and APK hashes are retained under `test-results/browser-dev-parity/checkpoint-110/`.
+
+The goal remains active: consolidate the complete coverage inventory against current source and resolve any remaining capability gaps. Earlier full Chromium and WebKit campaigns retain their original infrastructure failures and partial-run status; focused reconciliation does not relabel those runs green.
