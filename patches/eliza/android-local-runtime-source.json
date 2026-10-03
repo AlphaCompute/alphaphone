@@ -23,7 +23,7 @@
     "plugins/plugin-workflow/__tests__/hosted-route-registration.test.ts": "fff3297e97e13c5929bff141c045a10153a5166eb93bd06dc84f5deb098135ac",
     "plugins/plugin-workflow/src/plugin-routes.ts": "3edae66b214358367db08c3fb435bf12508c374efa691c51b71ce0ff01acf69e",
     "plugins/plugin-assistant/src/services/device-actions/clock-contract.ts": "4a068849386f1e3f81391840c60ea74e0ad488b1102d4b6d8c8dc1bf1616cfaf",
-    "plugins/plugin-assistant/src/services/device-actions/action.ts": "07246fba9f15fc5990447b1269a76d2d3e7aae004a1848519dbaa72e92da7cb4",
+    "plugins/plugin-assistant/src/services/device-actions/action.ts": "d9dd211e95df0e93920d81ae33e8ff3cb895373df6de53aed30854bf10dabcc2",
     "plugins/plugin-assistant/src/services/device-actions/effect-receipts.ts": "52fcf108e42ac6c85f4f1b60b0eb5a18b956178c693528a92fedfdae4d69d4ca",
     "plugins/plugin-assistant/src/services/device-actions/service.ts": "be69887169ca0ae48a66deb80a26d2e8657a928a13b076406a60674984811f97",
     "packages/agent/src/api/device-action-routes.ts": "3aa113ad222b5d1b38aa776e24d6bde617d93a2729d419466fc9ef1f0ecdf03c",
@@ -57,7 +57,8 @@
     "egress-credential-assignments.patch",
     "workflow-device-owner-binding.patch",
     "android-resident-launcher-no-kill.patch",
-    "calendar-tool-format-guidance.patch"
+    "calendar-tool-format-guidance.patch",
+    "device-operation-key-guidance.patch"
   ],
   "patchHashes": {
     "android-secure-store-socket.patch": "457ea3d0b91c80c53c4bd3db25bb85cea6079d87c5ee2b02a96757e0a31ae900",
@@ -73,6 +74,7 @@
     "egress-credential-assignments.patch": "e29cf00a402ca00973dfb5eefbfef74afe45ef2bf4d2da9aeb8631e8b163bb9e",
     "workflow-device-owner-binding.patch": "4ddb14132d6f7641bcb344a6c9bb32a61e019c3bff76486a3cf8a490e7d279f1",
     "android-resident-launcher-no-kill.patch": "7db1fd788b38a8df9cf43c81c318f257f8060c50043dc13b1d0ed78b06299636",
-    "calendar-tool-format-guidance.patch": "64f38f9b7da7fe4773ce13bd1751a36accf494788f7fb1cd34878655218e43fe"
+    "calendar-tool-format-guidance.patch": "64f38f9b7da7fe4773ce13bd1751a36accf494788f7fb1cd34878655218e43fe",
+    "device-operation-key-guidance.patch": "78ff3fa0477fbd5f20a9fee1e288306ccacb15e87383d8b1ab7c87f190170902"
   }
 }
