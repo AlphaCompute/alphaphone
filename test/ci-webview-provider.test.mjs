@@ -64,7 +64,7 @@ import { main, collectOverlayFailureDiagnostics } from '../scripts/prepare-ci-we
 async function simulate({ drift, neverBoot = false, neverReady = false, remountChannel = 'stdout', remountStatus = 0, remountSignal = null } = {}) {
   const parent = fs.mkdtempSync(path.join(os.tmpdir(), 'alpha-provider-sequence-'));
   const output = path.join(parent, 'evidence'), calls = [];
-  let elapsed = 0, installed = false, removed = false, stopped = false, rebooted = false, offline = 0, selectionReads = 0;
+  let elapsed = 0, installed = false, removed = false, stopped = false, rebooted = false, offline = 0, selectionReads = 0, rooted = false;
   const stock = '/product/app/webview/webview.apk', stockHash = 'a'.repeat(64);
   const signature = `Verified using v2 scheme (APK Signature Scheme v2): true\nSigner #1 certificate SHA-256 digest: ${candidate.certificateSha256}`;
   const badging = `package: name='com.android.webview' versionCode='808300007' versionName='157.0.8083.0'\nsdkVersion:'29'\ntargetSdkVersion:'37'\nnative-code: 'x86_64'`;
@@ -78,7 +78,9 @@ async function simulate({ drift, neverBoot = false, neverReady = false, remountC
     assert.equal(name, 'adb'); assert.deepEqual(args.slice(0, 2), ['-s', 'emulator-5554']);
     const a = args.slice(2), key = a.join(' '); calls.push(key);
     if (['shell cat /proc/bootconfig','shell getprop ro.boot.boot_devices','shell readlink -f /sys/class/block/vdc','shell readlink -f /sys/class/block/vda','shell readlink -f /sys/class/block/vdd'].includes(key)) { assert.ok(options.timeout > 0 && options.timeout <= 2000); if(drift==='boot-budget')elapsed+=4000; }
-    if (key === 'reboot') { reboots++; rebooted = true; offline = 1; scratch = ''; backingAlias = '/dev/block/vdc'; return ''; }
+    if(key==='shell cat /proc/bootconfig'&&!rooted)throw Error('cat: /proc/bootconfig: Permission denied');
+    if(key==='root'){if(drift==='root-unavailable')throw Error('adbd root unavailable');rooted=true;return '';}
+    if (key === 'reboot') { rooted=false;reboots++; rebooted = true; offline = 1; scratch = ''; backingAlias = '/dev/block/vdc'; return ''; }
     if (key === 'shell getprop sys.boot_completed') {
       if (offline-- > 0 || neverBoot || (drift==='overlay-never-boot'&&reboots>1)) throw Error('device offline');
       return '1';
@@ -155,7 +157,9 @@ test('full provider command sequence survives one offline reboot and delayed REL
   assert.equal(r.calls.filter(c => c === 'shell setprop fs_mgr.overlayfs.data_scratch_size_mb 512').length, 2);
   assert.ok(r.calls.indexOf('shell setprop fs_mgr.overlayfs.data_scratch_size_mb 512') < r.calls.indexOf('disable-verity'));
   assert.equal(r.calls.filter(c => c === 'shell ln -sT /dev/block/vdc /dev/block/by-name/vdc').length, 0);
-  assert.equal(r.result.bootDeviceAdmissions.length, 3);
+  assert.equal(r.result.bootDeviceAdmissions.length, 2);
+  assert.ok(r.calls.indexOf('root') < r.calls.indexOf('shell cat /proc/bootconfig'));
+  assert.ok(r.calls.indexOf('shell cat /proc/bootconfig') < r.calls.indexOf('shell setprop fs_mgr.overlayfs.data_scratch_size_mb 512'));
   assert.equal(r.result.scratchBackingAliases.length, 2);
   assert.equal(r.selectionReads, 2); assert.equal(r.stopped, false);
   assert.ok(r.calls.indexOf('shell stop') < r.calls.indexOf('shell rm /product/app/webview/webview.apk'));
@@ -303,6 +307,13 @@ test('boot identity drift refuses before provider effects and never creates a la
   const r=await simulate({drift});assert.ok(r.error);assert.equal(r.removed,false);assert.equal(r.installed,false);
   assert.ok(!r.calls.some(call=>call.startsWith('shell ln')));
   if(drift!=='boot-budget'){assert.ok(r.result.bootDeviceReadbacks.length>0);if(drift==='boot-config')assert.equal(r.result.bootDeviceReadbacks[0].bootconfig,'androidboot.boot_devices = "wrong"');}
-  if(drift!=='boot-alias-after-reboot')assert.ok(!r.calls.includes('disable-verity'));
+  if(drift!=='boot-alias-after-reboot'){assert.ok(!r.calls.includes('disable-verity'));assert.ok(!r.calls.some(c=>c.startsWith('shell setprop ')));}
  }
+});
+
+test('root-unavailable fixture fails before privileged boot read or any provider mutation',async()=>{
+ const r=await simulate({drift:'root-unavailable'});assert.match(r.error.message,/adbd root unavailable/);
+ assert.equal(r.result.status,'FAIL');assert.equal(r.removed,false);assert.equal(r.installed,false);
+ assert.ok(!r.calls.includes('shell cat /proc/bootconfig'));
+ assert.ok(!r.calls.some(c=>/^(disable-verity|remount|reboot|install|shell (rm|setprop|stop|start))\b/.test(c)));
 });

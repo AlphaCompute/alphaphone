@@ -1,5 +1,9 @@
 # Current Alpha Phone acceptance ledger
 
+## October 3 — reminder and session recovery
+
+The current composition passes 169 repository checks; the product changes pass 45 rendered reminder/Cloud/Gmail flows. Earlier exact52 has 973 hosted browser passes and four explicit skips; exactc7 has six actual native recovery passes across both distributions, but its resident worker-survival test fails after restart. The source correction passes fresh-source qualification; new-source Android builds and live/physical/AOSP acceptance remain pending. See [evidence and limits](mvp-edit-session-recovery-2026-10-03.md).
+
 ## Current checkpoint — October 3
 
 The [current CI recovery report](mvp-ci-recovery-2026-10-03.md) distinguishes exact c7 hosted results, the successful boot-persistence diagnostic, the newer source fixes and remaining acceptance. The PR browser run passes972 cases with4 skips, while its independent push fails one reproduced Calendar assertion race. Both Foundation builds pass but native smoke remains failed at provisioning. New-source native execution and full MVP release acceptance remain open. All older checkpoints below retain their original scope.

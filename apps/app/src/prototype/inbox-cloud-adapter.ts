@@ -61,7 +61,7 @@ export function installInboxCloudAdapter(Component: any, views: Record<string, B
       const result = await client.gmailAccounts(signal);
       if (!valid()) return;
       accounts = result; messages = []; body = null;
-      if (!accounts.some(a => a.connectionId === selected)) selected = accounts.find(a => a.connected && a.grantedCapabilities.includes('google.gmail.triage'))?.connectionId || '';
+      if (!accounts.some(a => a.connectionId === selected && a.connected && a.grantedCapabilities.includes('google.gmail.triage'))) selected = accounts.find(a => a.connected && a.grantedCapabilities.includes('google.gmail.triage'))?.connectionId || '';
       void provider.bind(selected); void drafts.bind(selected, accounts.find(a => a.connectionId === selected)?.label || '');
       status = selected ? 'Gmail connected. Tap Load Inbox.' : 'Connect Gmail to read your inbox';
       publish({ open: null, nativeMailSelection: null });
@@ -148,8 +148,8 @@ export function installInboxCloudAdapter(Component: any, views: Record<string, B
       ...(selected&&!provider.capabilities()?.mailboxMutations?[chip('Authorize mailbox changes',()=>void connect('mailbox'))]:[]),
       ...accounts.filter(a => a.connectionId).map(a => chip(a.label, () => {
         if (operation) return;
-        void attachmentNative.cancel().catch(()=>{});contextReview=null;attachmentView=null;selected = a.connectionId!; void provider.bind(selected); void drafts.bind(selected, a.label); messages = []; body = null;
-        status = a.connected ? 'Tap Load Inbox to read this account' : 'This account needs Gmail authorization';
+        void attachmentNative.cancel().catch(()=>{});contextReview=null;attachmentView=null;selected = a.connected && a.grantedCapabilities.includes('google.gmail.triage') ? a.connectionId! : ''; void provider.bind(selected); void drafts.bind(selected, a.label); messages = []; body = null;
+        status = selected ? 'Tap Load Inbox to read this account' : 'This account needs Gmail authorization';
         publish({ open: null, nativeMailSelection: null });
       }, a.connectionId === selected)),
       ...(selected ? [chip(st.q ? 'Search Gmail' : 'Load Inbox', () => void load())] : []),

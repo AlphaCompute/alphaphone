@@ -26,7 +26,8 @@
     "plugins/plugin-assistant/src/services/device-actions/action.ts": "5dadeb7828819b490faa46e93fd0a6628165c018a2d2cc80b258a3fb428a30f4",
     "plugins/plugin-assistant/src/services/device-actions/effect-receipts.ts": "52fcf108e42ac6c85f4f1b60b0eb5a18b956178c693528a92fedfdae4d69d4ca",
     "plugins/plugin-assistant/src/services/device-actions/service.ts": "c821593e90af9a95ceba3f4931e66f7496c24c58613fabd1bda6c01f8ffbd747",
-    "packages/agent/src/api/device-action-routes.ts": "1e61d0695828a7ae5a210783cc45dbfdee507579351bcee75a142c88a4c4b5bb"
+    "packages/agent/src/api/device-action-routes.ts": "1e61d0695828a7ae5a210783cc45dbfdee507579351bcee75a142c88a4c4b5bb",
+    "packages/app/scripts/lib/stage-android-agent.ts": "e0da570ee3fac62ba8c416044ba8de4397dc452b6d08f3313e22092ae3107ffd"
   },
   "patches": [
     "android-secure-store-socket.patch",
@@ -37,7 +38,8 @@
     "egress-swap-control-objects.patch",
     "egress-user-reply-restoration.patch",
     "approved-workflows-navigation.patch",
-    "clock-handoff.patch"
+    "clock-handoff.patch",
+    "android-resident-launcher-no-kill.patch"
   ],
   "patchHashes": {
     "android-secure-store-socket.patch": "457ea3d0b91c80c53c4bd3db25bb85cea6079d87c5ee2b02a96757e0a31ae900",
@@ -48,6 +50,7 @@
     "egress-swap-control-objects.patch": "6ecd2d688b0c2a8973ee5c71aabab3cc43fef8a19077516f36c27ba2bc00602c",
     "egress-user-reply-restoration.patch": "39904adafddc8841e74b268aad8fdac00a94481ba43f3acd7b18383d53b32ee8",
     "approved-workflows-navigation.patch": "2202d04675531633db4b1ce3a2e49e3e870c259c341acaf20b17bbef6be99c9a",
-    "clock-handoff.patch": "32245531af0928e7bd8a394ac588370790700abdf778cde644f54e1dda5388f2"
+    "clock-handoff.patch": "32245531af0928e7bd8a394ac588370790700abdf778cde644f54e1dda5388f2",
+    "android-resident-launcher-no-kill.patch": "7db1fd788b38a8df9cf43c81c318f257f8060c50043dc13b1d0ed78b06299636"
   }
 }

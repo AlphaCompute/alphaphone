@@ -44,16 +44,24 @@ assert generated['runtimeSource']==native and native['commit']=='92fc988bbc2502b
 for relative,digest in frozen.items():
  if relative.startswith(('android/app/src/androidTest/','android/app/src/debug/','android/app/src/main/java/','patches/eliza/')):
   assert Path(relative).is_file() and h(Path(relative).read_bytes())==digest
+compat=native['compatibilityPatch']
+assert compat['patch']=='android-resident-exact-stop.patch'
+assert set(compat['files'])=={'packages/app/platforms/android/app/src/main/java/ai/elizaos/app/'+name+'.java' for name in ['ElizaAgentService','WorkflowSurvivorInventory']}
+assert h(Path('patches/eliza',compat['patch']).read_bytes())==compat['patchSha256']
+assert generated['patches'][-1]==compat
+for origin,proof in compat['files'].items():
+ assert proof['sourceSha256']==native['files'][origin] and re.fullmatch('[a-f0-9]{64}',proof['patchedSha256'])
 for name in ['ElizaAgentService','IpcStartupRecovery','WorkflowSurvivorInventory']:
  origin='packages/app/platforms/android/app/src/main/java/ai/elizaos/app/'+name+'.java'
  rows=[row for row in generated['files'] if row['path']==origin];assert len(rows)==1
- row=rows[0];assert row['sourceSha256']==row['sha256']==native['files'][origin]
+ row=rows[0];assert row['sourceSha256']==native['files'][origin]
+ assert row['sha256']==compat['files'].get(origin,{}).get('patchedSha256',native['files'][origin])
  assert frozen['android/app/build/generated/local-agent/java/ai/elizaresearch/alphaphone/'+name+'.java']==row['generatedSha256']
 
 
 assert run('emu','avd','name').strip().splitlines()[0]=='test'
 assert run('shell','getprop','ro.build.type').strip() in ('userdebug','eng')
-PHASES=[('pending-storage','ReminderDeletionStorageInstrumentedTest','reminderDeletionSlotUsesEncryptedCompareExchange','pendingActionStorageFixture','1'),('calendar-recovery','CalendarCreationRecoveryInstrumentedTest','committedMarkerRecoveryAndMissingMarkerNeverReplay','calendarCreationRecovery','1'),('audio-fence','NoteAudioInstrumentedTest','optInRetiredDeletionCannotArriveAfterReloadAndRestore','audioFence','true')]
+PHASES=[('pending-storage','ReminderDeletionStorageInstrumentedTest','reminderDeletionSlotUsesEncryptedCompareExchange','pendingActionStorageFixture','1'),('calendar-recovery','CalendarCreationRecoveryInstrumentedTest','committedMarkerRecoveryAndMissingMarkerNeverReplay','calendarCreationRecovery','1'),('audio-fence','NoteAudioInstrumentedTest','optInRetiredDeletionCannotArriveAfterReloadAndRestore','audioFence','true'),('reminder-edit','ReminderAgentInstrumentedTest','selectedCrudPersistsExactReceiptsAndRejectsChangedBindings','reminderAgent','1')]
 for _,cls,_,_,_ in PHASES:
  relative='android/app/src/androidTest/java/ai/elizaresearch/alphaphone/'+cls+'.java'
  assert relative in frozen and h(Path(relative).read_bytes())==frozen[relative]
@@ -94,6 +102,7 @@ for variant in ['standalone','launcher']:
      run('shell','cmd','package','install-existing','--user',user,pkg);installed(pkg,user,manifest[variant+'-'+kind+'.apk'])
     if phase=='calendar-recovery':
      for permission in ['android.permission.READ_CALENDAR','android.permission.WRITE_CALENDAR']:run('shell','pm','grant','--user',user,APP,permission)
+    if phase=='reminder-edit':run('shell','pm','grant','--user',user,APP,'android.permission.POST_NOTIFICATIONS')
     switch(user,user,name)
     # A switched but not yet bound policy is a retained diagnostic failure, never user0 fallback.
     def display_record(value):
@@ -135,4 +144,4 @@ for variant in ['standalone','launcher']:
    (out/(variant+'-cleanup-incomplete.json')).write_text(json.dumps({'cleanupComplete':False,'errorType':type(error).__name__})+'\n')
    if primary is None:raise
    primary.add_note('Package cleanup unconfirmed; preserve')
-(out/'result.json').write_text(json.dumps({'passed':True,'variants':['standalone','launcher'],'methods':3,'nativeRecoveryUI':True,'liveProvider':False,'physicalAcceptance':False})+'\n')
+(out/'result.json').write_text(json.dumps({'passed':True,'variants':['standalone','launcher'],'methods':4,'nativeRecoveryUI':True,'liveProvider':False,'physicalAcceptance':False})+'\n')

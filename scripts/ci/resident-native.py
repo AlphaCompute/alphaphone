@@ -41,10 +41,18 @@ assert generated['runtimeSource']==native and native['commit']=='92fc988bbc2502b
 for relative,digest in frozen.items():
  if relative.startswith(('android/app/src/androidTest/','android/app/src/debug/','android/app/src/main/java/','patches/eliza/')):
   assert Path(relative).is_file() and h(Path(relative).read_bytes())==digest
+compat=native['compatibilityPatch']
+assert compat['patch']=='android-resident-exact-stop.patch'
+assert set(compat['files'])=={'packages/app/platforms/android/app/src/main/java/ai/elizaos/app/'+name+'.java' for name in ['ElizaAgentService','WorkflowSurvivorInventory']}
+assert h(Path('patches/eliza',compat['patch']).read_bytes())==compat['patchSha256']
+assert generated['patches'][-1]==compat
+for origin,proof in compat['files'].items():
+ assert proof['sourceSha256']==native['files'][origin] and re.fullmatch('[a-f0-9]{64}',proof['patchedSha256'])
 for name in ['ElizaAgentService','IpcStartupRecovery','WorkflowSurvivorInventory']:
  origin='packages/app/platforms/android/app/src/main/java/ai/elizaos/app/'+name+'.java'
  rows=[row for row in generated['files'] if row['path']==origin];assert len(rows)==1
- row=rows[0];assert row['sourceSha256']==row['sha256']==native['files'][origin]
+ row=rows[0];assert row['sourceSha256']==native['files'][origin]
+ assert row['sha256']==compat['files'].get(origin,{}).get('patchedSha256',native['files'][origin])
  assert frozen['android/app/build/generated/local-agent/java/ai/elizaresearch/alphaphone/'+name+'.java']==row['generatedSha256']
 
 def guard():
