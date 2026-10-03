@@ -1,3 +1,4 @@
+import {browserDevProfile} from '../browser/dev-profile';
 import {pendingAudioDeletions,withAudioDeletionLock,changeAudioDeletion,audioDeletionNoteState,type AudioDeletion} from '../runtime/note-audio-deletions';
 import { installLocalSpeechPlayback, stopLocalSpeechPlayback } from './local-speech-playback';
 import { registerPlugin } from '../platform-plugins';
@@ -99,10 +100,10 @@ export function installPrototypeVoiceAdapter(Component: any, views: Record<strin
   }
   function enter(target?: DictationTarget, preparedLocal?: ReturnType<typeof createOnDeviceVoice>, route: 'device' | 'agent' | 'manual' = 'device') {
     stopLocalSpeechPlayback(); cleanup(); destination = target; saveId = target?.id || crypto.randomUUID(); stage = 'ready'; error = ''; draft = ''; selectedRoute = route;
-    cloudMode = connectionController.getCloudEnvironment() !== null;
-    deviceOnly = !cloudMode && (localStorage.getItem('alpha.connection.selection.v1') !== null || !Capacitor.isPluginAvailable('DevelopmentAgent'));
+    cloudMode = !browserDevProfile && connectionController.getCloudEnvironment() !== null;
+    deviceOnly = browserDevProfile || !cloudMode && (localStorage.getItem('alpha.connection.selection.v1') !== null || !Capacitor.isPluginAvailable('DevelopmentAgent'));
     driver = cloudMode ? createCloudVoice() : deviceOnly ? deviceVoice : voice;
-    onDeviceVoice = route === 'device' ? preparedLocal || createOnDeviceVoice() : null;
+    onDeviceVoice = route === 'device' || browserDevProfile && route === 'agent' ? preparedLocal || createOnDeviceVoice() : null;
     if (route === 'manual') { cloudMode = false; deviceOnly = true; driver = deviceVoice; }
     if (route === 'device') { cloudMode = false; deviceOnly = true; driver = deviceVoice; if (!onDeviceVoice) error = 'On-device speech is unavailable. Choose another voice service explicitly or use the keyboard.'; }
     if (preparedLocal) { onDeviceReady = true; cloudMode = false; deviceOnly = true; driver = deviceVoice; }
@@ -120,7 +121,7 @@ export function installPrototypeVoiceAdapter(Component: any, views: Record<strin
         pairedReady = false; pairedAsrReady = false; refresh();
       }).catch(() => { if (token === generation) { preparingLocal = false; error = 'On-device speech is unavailable. Choose another voice service explicitly or use the keyboard.'; refresh(); } });
     }
-    if (route === 'agent' && !cloudMode && deviceOnly) {
+    if (route === 'agent' && !browserDevProfile && !cloudMode && deviceOnly) {
       pairedVoice = createPairedVoice();
       if (pairedVoice) {
         preparingPaired = true;
@@ -408,6 +409,7 @@ export function installPrototypeVoiceAdapter(Component: any, views: Record<strin
       messages.transcribing='Review the recording transcript.';
       messages.review='Edit the transcript, listen, or save the recording in this browser.';
     }
+    if(browserDevProfile && selectedRoute==='agent'){messages.ready='Development voice uses browser recording, transcript review and playback.';messages.recorded='Review this recording in your browser.';messages.transcribing='Preparing browser transcript review.';labels.recorded='Review browser transcript';}
     if(onDeviceReady&&connectionController.getBrowserSpeechAgent()){
       labels.recorded='Transcribe on this computer';
       messages.ready='Record in this browser. English transcription runs on the local agent on this computer when you choose Transcribe.';
@@ -420,7 +422,7 @@ export function installPrototypeVoiceAdapter(Component: any, views: Record<strin
       manualChoice: stage === 'ready' && !busy && !preparingLocal && selectedRoute !== 'manual',
       recordOnly: () => { const target = destination, chat = chatDestination; enter(target, undefined, 'manual'); chatDestination = chat; refresh(); },
       routeChoice: stage === 'ready' && !busy && document.documentElement.dataset.connectionMode !== 'mock' && (!!connectionController.getPairedVoiceBinding() || connectionController.getCloudEnvironment() !== null),
-      routeLabel: selectedRoute === 'device' ? (connectionController.getCloudEnvironment() !== null ? 'Use Eliza Cloud voice' : 'Use selected agent voice') : 'Use on-device voice',
+      routeLabel: browserDevProfile ? (selectedRoute === 'device' ? 'Use development voice' : 'Use browser voice') : selectedRoute === 'device' ? (connectionController.getCloudEnvironment() !== null ? 'Use Eliza Cloud voice' : 'Use selected agent voice') : 'Use on-device voice',
       changeRoute: () => { if (stage !== 'ready' || busy) return; const target = destination, chat = chatDestination; enter(target, undefined, selectedRoute === 'device' ? 'agent' : 'device'); chatDestination = chat; refresh(); },
       clock: `${Math.floor(seconds / 60)}:${String(Math.floor(seconds % 60)).padStart(2, '0')}`, clockCss: '', live: stage === 'recording', paused: stage !== 'recording', dotCss: `background:${stage === 'recording' ? '#E53935' : 'var(--mut)'}`,
       levels: Array.from({ length: 44 }, () => ({ h: 4 })),

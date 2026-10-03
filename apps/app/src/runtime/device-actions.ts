@@ -32,7 +32,7 @@ const views = new Set(['home','notes','reminders','browser','calendar','files','
 function object(value: unknown): Record<string, any> { if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('Invalid device action response'); return value as Record<string, any>; }
 function text(value: unknown, max = 128): string { if (typeof value !== 'string' || !value.trim() || value.length > max || value.includes('\0')) throw new Error('Invalid device action field'); return value; }
 function id(value: unknown): string { const valueText = text(value); if (!/^[A-Za-z0-9][A-Za-z0-9_-]*$/.test(valueText)) throw new Error('Invalid device action identifier'); return valueText; }
-function operation(value: unknown): DeviceOperation {
+export function validateDeviceOperation(value: unknown): DeviceOperation {
   const p = object(value);
   if(isClockOperation(p))return validateClockOperation(p);
   if(isMapsOperation(p))return validateMapsOperation(p);
@@ -83,7 +83,7 @@ export class DeviceActions {
     if (p.subjectUserId !== this.session.ownerId || p.requestedBy !== this.session.agentId || p.action !== 'device_action' || payload.action !== 'device_action' || payload.version !== 1 || payload.installationId !== this.credential.installationId || payload.enrollmentId !== this.credential.enrollmentId) throw new Error('Device action belongs to another identity');
     const expiresAt = Date.parse(text(p.expiresAt, 40)), digest = text(p.digest, 64);
     if (!Number.isFinite(expiresAt) || !/^[a-f0-9]{64}$/.test(digest)) throw new Error('Invalid action expiry or digest');
-    const workflow=payload.workflow===undefined?undefined:parseWorkflowBinding(payload.workflow),op=operation(payload.operation);
+    const workflow=payload.workflow===undefined?undefined:parseWorkflowBinding(payload.workflow),op=validateDeviceOperation(payload.operation);
     if((op.type==='read_selected_notes'||op.type==='read_calendar_range')&&!workflow)throw new Error('Workflow binding required for phone reads');
     return { id: id(p.id), digest, state: text(p.state, 32), expiresAt, operation:op,...(workflow?{workflow}:{}), ...(p.execution?.attemptId ? { attemptId: id(p.execution.attemptId) } : {}) };
   }

@@ -1,3 +1,4 @@
+import {browserDevProfile} from '../browser/dev-profile';
 import {stampNoteChanges} from '../runtime/note-dates';
 import {isClockOperation,assertClockTimeZone,currentClockTimeZone,validateClockResult} from '../runtime/clock-contract';
 import { Capacitor } from '@capacitor/core';
@@ -233,14 +234,14 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
       signal.throwIfAborted(); context(this);
       if (!this.live || JSON.stringify(alphaClient.getState().context) !== JSON.stringify(expectedContext)) throw new Error('Phone context changed');
       if(isClockOperation(operation)){
-        if(Capacitor.getPlatform()!=='android')return {status:'failed',summary:'Native Clock handoff is unavailable in browser development. No alarm request was sent.'};
+        if(Capacitor.getPlatform()!=='android'&&!browserDevProfile)return {status:'failed',summary:'Native Clock handoff is unavailable in browser development. No alarm request was sent.'};
         assertClockTimeZone(operation,expectedContext.timeZone);signal.throwIfAborted();
         if(expectedContext.sensitive||document.hidden)throw Error('Return to Alpha Phone and review again');
         const {type,...request}=operation;
         const result=await DailyApps.clockHandoff({...request,reviewed:true});
         const clockResult=validateClockResult(operation,{kind:'clock-handoff',action:result.action,status:result.status});
         const status=clockResult.status==='opened'?'succeeded':clockResult.status==='unknown'?'unknown':'failed';
-        return {status,clockResult,summary:clockResult.status==='opened'?'Clock request sent. Check Clock; Alpha cannot confirm an alarm was changed.':clockResult.status==='unknown'?'Clock result is unknown. Check Clock before another request.':clockResult.status==='unavailable'?'No installed Clock app handles this request.':clockResult.status==='denied'?'Android did not allow this Clock request.':'Clock request was not sent. Review its time and the current phone state.'};
+        return {status,clockResult,summary:browserDevProfile&&clockResult.status==='opened'?result.message:clockResult.status==='opened'?'Clock request sent. Check Clock; Alpha cannot confirm an alarm was changed.':clockResult.status==='unknown'?'Clock result is unknown. Check Clock before another request.':clockResult.status==='unavailable'?'No installed Clock app handles this request.':clockResult.status==='denied'?'Android did not allow this Clock request.':'Clock request was not sent. Review its time and the current phone state.'};
       }
       if(isMapsOperation(operation)){
         const mapsResult=readMapsSelection(operation);signal.throwIfAborted();context(this);
