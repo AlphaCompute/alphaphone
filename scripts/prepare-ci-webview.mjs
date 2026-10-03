@@ -307,7 +307,9 @@ export async function main({ environment = process.env, execute = execFileSync, 
   };
   save();
   try {
-    bootIdentity();
+    // Shell cannot read /proc/bootconfig. Full boot admission follows the
+    // existing adb-root step in configureScratch, before any overlay mutation.
+    safe();
     const stock = stockPath(run('shell', 'pm', 'path', candidate.package), run('shell', 'dumpsys', 'package', candidate.package));
     const stockHash = run('shell', 'sha256sum', stock).trim().split(/\s+/)[0];
     require(/^[a-f0-9]{64}$/.test(stockHash), 'Invalid stock hash');

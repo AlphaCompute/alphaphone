@@ -84,26 +84,51 @@ export function installReminderAdapter(Component: Bag, views: Bag) {
         if(current?.alphaReminderId&&(api.get('calendar').reminderStale||owner?.reminderRefreshFailed)){api.toast('Refresh reminders before changing this saved reminder.');void owner?.refreshReminders();return;}
         if(!current?.title?.trim())return;
 
-        if(current.reminderEditSession?.uncertain){api.toast('The previous save is unconfirmed. Cancel and reopen this reminder to review saved state.');return;}
         const unchangedSchedule=current.alphaReminderId&&current.reminderEditSchedule&&JSON.stringify([current.off,current.t,current.repeat,current.alert])===JSON.stringify(current.reminderEditSchedule);
-        if(unchangedSchedule){
+        const saveEdit=async(schedule?:{at:number;recurrence:any})=>{
           if(!current.reminderEditTarget){api.toast('Refresh and reopen this reminder before saving.');return;}
           const editSession=current.reminderEditSession,saveOwner=owner;
-          if(saveOwner)saveOwner.reminderSaving=true;
+          if(!saveOwner||!editSession)return;
+          const draftSignature=(form:Bag)=>JSON.stringify([form?.title,form?.notes,form?.off,form?.t,form?.repeat,form?.alert,form?.cal]);
+          const signature=draftSignature(current);
+          const sameEditor=()=>owner===saveOwner&&saveOwner.live&&!document.hidden&&api.isActive()&&api.get('calendar').form?.reminderEditSession===editSession&&draftSignature(api.get('calendar').form)===signature;
+          if(!sameEditor())return;
+          saveOwner.reminderSaving=true;
+          let createdInput:Bag=null,dispatched=false;
           try{
-            const operation={type:'reminder_update' as const,target:current.reminderEditTarget,fields:{title:current.title.trim(),body:current.notes||''}};
-            const bindingHash=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(JSON.stringify(operation))))).map(v=>v.toString(16).padStart(2,'0')).join('');
-            if(!saveOwner?.live||owner!==saveOwner||document.hidden||api.get('calendar').form?.reminderEditSession!==editSession)return;
-            // A metadata edit must not replace the occurrence, snooze or saved civil schedule.
-            const result=await DailyApps.operateReminder({operationId:crypto.randomUUID(),bindingHash,operation});
-            if(result.status!=='succeeded')throw Error('Unconfirmed reminder update');
-            const sameEditor=owner===saveOwner&&saveOwner.live&&api.get('calendar').form?.reminderEditSession===editSession;
-            if(sameEditor)api.set({form:null});
-            if(owner===saveOwner&&saveOwner.live)await saveOwner.refreshReminders(sameEditor?current.alphaReminderId:undefined);if(sameEditor)api.toast('Reminder updated. Schedule unchanged.');
-          }catch{editSession.uncertain=true;if(api.get('calendar').form?.reminderEditSession===editSession)api.toast('The reminder save could not be confirmed. Cancel and reopen it to review saved state.');}
-          finally{if(saveOwner)saveOwner.reminderSaving=false;}
-          return;
-        }
+            const operation={type:'reminder_update' as const,target:current.reminderEditTarget,fields:{title:current.title.trim(),body:current.notes||'',...(schedule?{schedule}:{})}};
+            const pending=Object.values(await pendingReminderDeletions()).find(input=>Object.entries(operation.target).every(([key,value])=>input.operation.target[key as keyof typeof input.operation.target]===value));
+            if(!sameEditor())return;
+            let input=editSession.attempt||pending;
+            if(input&&JSON.stringify(input.operation)!==JSON.stringify(operation)){api.toast('The previous edit must be checked before saving this changed draft. Check action status in Calendar, then reopen the reminder.');return;}
+            if(!input){
+              const selected=await DailyApps.selectedReminder({id:current.alphaReminderId});
+              if(!sameEditor())return;
+              if(Object.entries(operation.target).some(([key,value])=>selected[key as keyof typeof selected]!==value)){api.toast('This reminder changed. Reopen it before saving.');await saveOwner.refreshReminders();return;}
+              if(schedule&&current.reminderStatus==='completed'&&!window.confirm('This reminder is completed. Schedule a new occurrence at the reviewed time?'))return;
+              if(!sameEditor())return;
+              const bindingHash=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(JSON.stringify(operation))))).map(v=>v.toString(16).padStart(2,'0')).join('');
+              if(!sameEditor())return;
+              input={operationId:crypto.randomUUID(),bindingHash,operation};createdInput=input;editSession.attempt=input;
+              await retainReminderDeletion(input);
+              if(!sameEditor())return;
+            }
+            let response;
+            if(!createdInput)response=await DailyApps.reminderOperationReceipt(input);
+            else try{dispatched=true;response=await DailyApps.operateReminder(input);}catch{response=await DailyApps.reminderOperationReceipt(input);}
+            if(response.status!=='succeeded'||!response.result)throw Error('Unconfirmed reminder update');
+            await acknowledgeReminderDeletion(input,response.result);
+            const active=sameEditor();
+            if(active)api.set({form:null});
+            if(owner===saveOwner&&saveOwner.live){await saveOwner.refreshReminders();api.toast(active?(response.result.status==='permission-denied'?'Saved, notifications disabled. Enable notifications then review this reminder again.':response.result.status==='scheduling-failed'?'Saved, scheduling failed. Review this reminder before retrying.':schedule?'Reminder rescheduled · approximate delivery':'Reminder updated. Schedule unchanged.'):'The reviewed reminder edit was saved. Later draft changes were not saved.');}
+          }catch{if(owner===saveOwner&&saveOwner.live)api.toast('Reminder edit is unconfirmed. Check action status in Calendar; it will not be repeated.');}
+          finally{
+            if(createdInput&&!dispatched)try{await discardUndispatchedReminderDeletion(createdInput);if(editSession.attempt===createdInput)delete editSession.attempt;}catch{/* Preserve uncertain persistence and its exact attempt. */}
+            if(owner===saveOwner&&saveOwner.live)try{saveOwner.reminderDeleteUnknown=Object.keys(await pendingReminderDeletions()).length;api.set({reminderDeleteUnknown:saveOwner.reminderDeleteUnknown});}catch{}
+            saveOwner.reminderSaving=false;
+          }
+        };
+        if(unchangedSchedule){await saveEdit();return;}
         const date=reminderWallTime(Number(current.off||0),Number(current.t)),lead=Number(current.alert||0);
         if(!date||!Number.isFinite(lead)||lead<0){api.toast('This local time does not exist because the clocks change. Choose another reminder time. Nothing was saved.');return;}
         // Alert lead is elapsed time before a valid event instant, including across DST.
@@ -153,14 +178,7 @@ export function installReminderAdapter(Component: Bag, views: Bag) {
           }
           return;
         }
-        const id=current.alphaReminderId||crypto.randomUUID();
-        if(owner)owner.reminderSaving=true;
-        try {
-          const result=await DailyApps.scheduleReminder({id,title:current.title.trim(),body:current.notes||'',at:date.getTime(),...(recurrence?{recurrence}: {})});
-          if(result.status==='scheduled') {api.set({form:null});await owner?.refreshReminders(id);api.toast('Reminder scheduled · approximate delivery');}
-          else api.toast(result.message|| (result.status==='past'?'Choose a future reminder time.':'Allow notifications to schedule a reminder.'));
-        } catch {api.toast('The reminder could not be scheduled.');}
-        finally {if(owner)owner.reminderSaving=false;}
+        await saveEdit({at:date.getTime(),recurrence:recurrence||null});
       };
     }
     const event=(state.events||[]).find((e:Bag)=>e.id===state.open);
@@ -215,7 +233,7 @@ export function installReminderAdapter(Component: Bag, views: Bag) {
         }
       };
       out.ev.reminderDone=()=>decide('done');out.ev.reminderSnooze=()=>decide('snooze');
-      out.ev.edit=()=>{if(!requireFresh())return;const repeat=event.reminderRecurrence?.rule||'none',target=owner?.reminderTargets?.get(event.alphaReminderId);api.set({form:{...event,repeat,id:event.id,cal:'alpha-reminders',where:'',video:false,who:[],notes:event.reminderBody||'',alphaReminderId:event.alphaReminderId,reminderEditSession:{uncertain:false},reminderEditTarget:target?structuredClone(target):undefined,reminderEditSchedule:[event.off,event.t,repeat,event.alert]}});};
+      out.ev.edit=()=>{if(!requireFresh())return;const repeat=event.reminderRecurrence?.rule||'none',target=event.reminderTarget;api.set({form:{...event,repeat,id:event.id,cal:'alpha-reminders',where:'',video:false,who:[],notes:event.reminderBody||'',alphaReminderId:event.alphaReminderId,reminderEditSession:{uncertain:false},reminderEditTarget:target?structuredClone(target):undefined,reminderEditSchedule:[event.off,event.t,repeat,event.alert]}});};
       const renderedTarget=event.reminderTarget?structuredClone(event.reminderTarget):undefined;
       out.ev.del=async()=>{
         if(!requireFresh()||owner?.reminderSaving)return;

@@ -52,10 +52,10 @@ export class BrowserDaily extends WebPlugin {
       if(document.hidden)throw Error('Return to Alpha to review the reminder.');
       const row=data.reminders.find(r=>r.id===operation.target.reminderId);
       if(!row||Object.entries(target(data,row)).some(([k,v])=>operation.target[k as keyof ReminderTarget]!==v))throw Error('Reminder changed. Review it again.');
-      if(operation.type!=='reminder_read_selected'&&(row.status==='cancelled'||row.status==='completed'&&operation.type!=='reminder_cancel'))throw Error('Reminder is no longer active.');
+      if(operation.type!=='reminder_read_selected'&&(row.status==='cancelled'||row.status==='completed'&&operation.type!=='reminder_cancel'&&operation.type!=='reminder_update'))throw Error('Reminder is no longer active.');
       if(operation.type==='reminder_update'){
         row.title=operation.fields.title;row.body=operation.fields.body;
-        if(operation.fields.schedule){const schedule=operation.fields.schedule;if(schedule.at<=Date.now())throw Error('Choose a future reminder time.');row.at=schedule.at;row.recurrence=schedule.recurrence||undefined;row.dueAt=schedule.recurrence?initialReminderDue(schedule.recurrence,schedule.at):schedule.at;row.occurrenceId=crypto.randomUUID();row.status='scheduled';}
+        if(operation.fields.schedule){const schedule=operation.fields.schedule;if(schedule.at<=Date.now())throw Error('Choose a future reminder time.');row.at=schedule.at;row.recurrence=schedule.recurrence||undefined;row.dueAt=schedule.recurrence?initialReminderDue(schedule.recurrence,schedule.at):schedule.at;row.occurrenceId=crypto.randomUUID();row.status='scheduled';delete row.snoozedAt;delete row.postedAt;delete row.completedAt;}
         row.revision=revision();
       }else if(operation.type==='reminder_cancel'){row.status='cancelled';row.cancelledAt=Date.now();row.revision=revision();}
       else if(operation.type==='reminder_complete'||operation.type==='reminder_snooze')decide(row,operation.type==='reminder_complete'?'done':'snooze');

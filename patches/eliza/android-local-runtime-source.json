@@ -40,7 +40,8 @@
     "plugins/plugin-assistant/test/workflow-owner-enrollment.test.ts": "168fde5f1d5871d39f3bf462135745107442e79847773b87475b20caed4e0bdf",
     "plugins/plugin-assistant/test/workflow-owner-dispatch.test.ts": "aeb29060516a6e25b11f5f32b73b5f382221dcc59d4434511f9dad8c417569c0",
     "plugins/plugin-assistant/test/workflow-owner-receipt-review.test.ts": "36c9eb65be81339889f126a28860f05f52cff29215afd4061750c29629126e11",
-    "plugins/plugin-assistant/test/workflow-owner-migration-review.test.ts": "32c9ae7fbbcd3d9fbfc575e925d29d05433a10c09ae005a030f4e5d1147a5727"
+    "plugins/plugin-assistant/test/workflow-owner-migration-review.test.ts": "32c9ae7fbbcd3d9fbfc575e925d29d05433a10c09ae005a030f4e5d1147a5727",
+    "packages/app/scripts/lib/stage-android-agent.ts": "e0da570ee3fac62ba8c416044ba8de4397dc452b6d08f3313e22092ae3107ffd"
   },
   "patches": [
     "android-secure-store-socket.patch",
@@ -54,7 +55,8 @@
     "clock-handoff.patch",
     "standalone-kokoro-host.patch",
     "egress-credential-assignments.patch",
-    "workflow-device-owner-binding.patch"
+    "workflow-device-owner-binding.patch",
+    "android-resident-launcher-no-kill.patch"
   ],
   "patchHashes": {
     "android-secure-store-socket.patch": "457ea3d0b91c80c53c4bd3db25bb85cea6079d87c5ee2b02a96757e0a31ae900",
@@ -68,6 +70,7 @@
     "clock-handoff.patch": "32245531af0928e7bd8a394ac588370790700abdf778cde644f54e1dda5388f2",
     "standalone-kokoro-host.patch": "c24a77c86ccfb6282763095b3b0a909ae5b2d665e79bbb2815f6ba6ea3870a3f",
     "egress-credential-assignments.patch": "e29cf00a402ca00973dfb5eefbfef74afe45ef2bf4d2da9aeb8631e8b163bb9e",
-    "workflow-device-owner-binding.patch": "4ddb14132d6f7641bcb344a6c9bb32a61e019c3bff76486a3cf8a490e7d279f1"
+    "workflow-device-owner-binding.patch": "4ddb14132d6f7641bcb344a6c9bb32a61e019c3bff76486a3cf8a490e7d279f1",
+    "android-resident-launcher-no-kill.patch": "7db1fd788b38a8df9cf43c81c318f257f8060c50043dc13b1d0ed78b06299636"
   }
 }

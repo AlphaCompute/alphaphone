@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test';
 
 // Actual connection UI/controller/Cloud protocol; only native HTTP and secure storage are synthetic.
 // No live Cloud account, paid setup, mailbox access or Android permission is used.
-for(const scenario of ['decline','accepted-reload','lost-activation','quote-change','storage-failure','account-switch','definitive-rejection','lost-cutover','stopped-resume','stopped-before-finalize'] as const){
+for(const scenario of ['decline','accepted-reload','lost-activation','quote-change','storage-failure','account-switch','definitive-rejection','lost-cutover','stopped-resume','stopped-before-finalize','expired-poll','unavailable-poll'] as const){
  test(`personal Cloud setup: ${scenario}`,async({page})=>{
   await page.addInitScript((scenario)=>{
    const w=window as any;
@@ -17,9 +17,10 @@ for(const scenario of ['decline','accepted-reload','lost-activation','quote-chan
     if(method==='cancel'||method==='openExternal')return {};
     const url=new URL(input.url),path=decodeURIComponent(url.pathname),state=load(),body=input.body?JSON.parse(input.body):null;
     const response=(data:any,status=200)=>({status,data}),ok=(data:any,status=200)=>response({success:true,data},status);
-    if(path==='/api/auth/cli-session')return response({sessionId:login,expiresAt:new Date(Date.now()+60000).toISOString()});
+    if(path==='/api/auth/cli-session'){state.authFailure=0;save(state);return response({sessionId:login,expiresAt:new Date(Date.now()+60000).toISOString()});}
     if(path===`/api/auth/cli-session/${login}`)return response({status:'authenticated',token:'synthetic-cloud-token',expiresAt:new Date(Date.now()+600000).toISOString()});
     if(input.headers.Authorization!=='Bearer synthetic-cloud-token')throw Error('Unverified fixture request');
+    if(path==='/api/v1/user'&&state.authFailure)return response({error:'fixture unavailable'},state.authFailure);
     if(path==='/api/v1/user')return ok({id:user,organization_id:org});
     if(path==='/api/v1/eliza/personal')return ok({identity:{id:personal,displayName:'Personal fixture',runtime:state.ready?'dedicated':'shared',...(state.ready?{activeAgentId:agent,apiBase:`https://${agent}.cloud.eliza.app`}:{})}});
     if(path===`/api/v1/eliza/agents/${agent}`)return ok({id:agent,agentName:'Personal fixture',status:state.stopped?'stopped':'running',executionTier:'dedicated-lazy',webUiUrl:`https://${agent}.cloud.eliza.app`});
@@ -58,6 +59,21 @@ for(const scenario of ['decline','accepted-reload','lost-activation','quote-chan
   if(scenario==='lost-activation')await expect(page.getByRole('button',{name:'Start Dedicated',exact:true})).toBeDisabled();
   else await expect(page.getByText('Dedicated setup accepted',{exact:true})).toBeVisible();
   expect(await page.evaluate(()=>JSON.parse(localStorage.getItem('fixture.cloud.setup')!).activation)).toBe(1);
+  if(scenario==='expired-poll'||scenario==='unavailable-poll'){
+   const before=await page.evaluate(()=>Object.fromEntries(Object.keys(localStorage).filter(key=>key.startsWith('alpha.cloud.personal-setup.v1:')).map(key=>[key,localStorage.getItem(key)])));
+   await page.evaluate(status=>{const s=JSON.parse(localStorage.getItem('fixture.cloud.setup')!);s.authFailure=status;localStorage.setItem('fixture.cloud.setup',JSON.stringify(s));},scenario==='expired-poll'?401:503);
+   await page.getByRole('button',{name:'Check setup status',exact:true}).click();
+   if(scenario==='expired-poll'){
+    await expect(page.getByText('Cloud services connected',{exact:true})).toHaveCount(0);
+    await expect(page.getByRole('alert')).toContainText('sign-in has expired');
+    expect(await page.evaluate(async()=>{const c=(await import('/src/runtime/connection-ui.tsx')).connectionController;return {client:c.getCloudClient(),account:c.getSnapshot().cloudAccount};})).toEqual({client:null,account:null});
+   }else await expect(page.getByText('Cloud services connected',{exact:true})).toBeVisible();
+   expect(await page.evaluate(()=>Object.fromEntries(Object.keys(localStorage).filter(key=>key.startsWith('alpha.cloud.personal-setup.v1:')).map(key=>[key,localStorage.getItem(key)])))).toEqual(before);
+   await page.getByRole('button',{name:'Sign in with Eliza Cloud',exact:true}).click();
+   await expect(page.getByText('Cloud services connected',{exact:true})).toBeVisible();
+   await expect(page.getByText('Dedicated setup accepted',{exact:true})).toBeVisible();
+   expect(await page.evaluate(()=>JSON.parse(localStorage.getItem('fixture.cloud.setup')!))).toMatchObject({activation:1,cutover:0});return;
+  }
   await page.reload();await page.getByRole('button',{name:'Settings',exact:true}).click();await page.getByRole('button',{name:'Agent connection',exact:true}).click();await page.getByText('Eliza Cloud',{exact:true}).click();await page.getByRole('button',{name:'Refresh agent status',exact:true}).click();
   if(scenario==='stopped-resume'){await page.evaluate(()=>{const s=JSON.parse(localStorage.getItem('fixture.cloud.setup')!);s.stopped=true;s.quote=1;localStorage.setItem('fixture.cloud.setup',JSON.stringify(s));});await page.getByRole('button',{name:'Refresh agent status',exact:true}).click();await expect(page.getByRole('button',{name:'Start Dedicated',exact:true})).toBeEnabled();await page.getByRole('button',{name:'Start Dedicated',exact:true}).click();await page.getByRole('button',{name:'Check setup status',exact:true}).click();}
   await expect(page.getByRole('button',{name:'Continue setup',exact:true})).toBeVisible();

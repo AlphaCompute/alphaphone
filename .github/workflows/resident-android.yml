@@ -313,7 +313,9 @@ jobs:
           python3 -c 'import shutil; free=shutil.disk_usage(".").free; print("nativeFreshCapacityAfterBytes="+str(free)); assert free >= 24*1024**3, "Fresh native runner needs 24GiB before SDK, archive and AVD provisioning"'
           # Existing 10GiB admission and 4GiB runtime floor remain unchanged.
       - name: Qualify owned secondary recovery guards
-        run: python3 scripts/ci/test-recovery-ui-guard.py
+        run: |
+          python3 scripts/ci/test-recovery-ui-guard.py
+          python3 scripts/ci/test-pending-recovery-phases.py
       - uses: actions/setup-node@v4
         with:
           node-version-file: .nvmrc

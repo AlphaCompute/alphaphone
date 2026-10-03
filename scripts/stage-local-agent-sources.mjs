@@ -4,6 +4,7 @@ import os from 'node:os';
 import {createHash} from 'node:crypto';
 import {execFileSync} from 'node:child_process';
 import {sourceDirectory, verifySource} from './local-agent-source.mjs';
+import {applyNativeRuntimePatch} from './native-runtime-patch.mjs';
 const root=path.resolve(import.meta.dirname,'..');
 const upstream=path.join(root,'vendor/eliza');
 const pin=JSON.parse(fs.readFileSync(path.join(root,'upstream.lock.json'),'utf8')).commit;
@@ -54,10 +55,11 @@ for(const [relative,hash] of Object.entries(nativeSource.files)){
  if(digest(input)!==hash)throw Error('Native runtime source hash drift');
  patchedInputs.set(relative,input);
 }
+applyNativeRuntimePatch(root, nativeSource, patchedInputs);
 const classes=['SecureStoreFrameInput','AgentSecureStore','DeviceRamTierPolicy','ElizaAgentService','IpcStartupRecovery','WorkflowSurvivorInventory','ElizaAgentWatchdogPolicy','ElizaAssetExtractionPolicy','ElizaBionicInferenceServer','ElizaStartupTrace','ElizaWorkScheduler','ElizaTasksWorker','InferenceMemoryPolicy','RuntimeInstallationIdentity','ChromiumBrowserConnection','BionicDecodeLoop','ElizaVoiceNative','BgeEmbeddingSession'];
 const output=path.join(root,'android/app/build/generated/local-agent/java');
 const target=path.join(output,...identity.split('.'));fs.mkdirSync(target,{recursive:true});
-const manifest={pin,identity,runtimeSource:nativeSource,patches:[provenance],files:[]};
+const manifest={pin,identity,runtimeSource:nativeSource,patches:[provenance,nativeSource.compatibilityPatch],files:[]};
 for(const name of classes){
   const relative=`packages/app/platforms/android/app/src/main/java/ai/elizaos/app/${name}.java`;
   const input=patchedInputs.get(relative)??fs.readFileSync(path.join(upstream,relative),'utf8');

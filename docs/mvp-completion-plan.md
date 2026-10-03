@@ -1,6 +1,10 @@
 # Alpha Phone MVP completion plan
 
-## Current checkpoint — October 3, scope discovery and boot persistence
+## Current checkpoint — October 3, reminder and session recovery
+
+Saved reminder edits now use durable revision-bound operations, and Cloud/Gmail status follows confirmed session/grant availability. Final composition verification passes 169 checks; the product changes pass 45 rendered flows. The earlier exact52 browser campaign passes 973 cases with four explicit skips; exactc7 executes all six native recovery cases across both distributions. Resident restart still fails because a shared-runtime worker disappears; the identified blanket process-kill correction now passes fresh-source qualification and awaits actual Android execution. New APK/native, live provider, physical and signed AOSP acceptance remain open. See [current recovery evidence](mvp-edit-session-recovery-2026-10-03.md). The MVP is not complete.
+
+## Earlier checkpoint — October 3, scope discovery and boot persistence
 
 The next composition closes legacy development-agent discovery of deferred/unsupported routes and corrects a reproduced Calendar acknowledgement assertion race. A hosted diagnostic now proves the userdata boot-device correction preserves scratch and overlays across reboot without late alias creation. Foundation adopts that configuration with exact readback and unchanged provider/reboot gates. Combined verification passes168 checks, typecheck and production build, with39 provider/boot checks and workflow lint passing. Full new-source Android/native qualification is pending; local disk is below the required working capacity. See [current evidence and remaining gates](mvp-ci-recovery-2026-10-03.md). The MVP is not complete.
 
