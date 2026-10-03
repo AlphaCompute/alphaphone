@@ -1,6 +1,10 @@
 # Alpha Phone MVP completion plan
 
-## Current checkpoint — October 3, hosted Android findings
+## Current checkpoint — October 3, scope discovery and boot persistence
+
+The next composition closes legacy development-agent discovery of deferred/unsupported routes and corrects a reproduced Calendar acknowledgement assertion race. A hosted diagnostic now proves the userdata boot-device correction preserves scratch and overlays across reboot without late alias creation. Foundation adopts that configuration with exact readback and unchanged provider/reboot gates. Combined verification passes168 checks, typecheck and production build, with39 provider/boot checks and workflow lint passing. Full new-source Android/native qualification is pending; local disk is below the required working capacity. See [current evidence and remaining gates](mvp-ci-recovery-2026-10-03.md). The MVP is not complete.
+
+## Earlier checkpoint — October 3, hosted Android findings
 
 Exact e4d hosted resident execution passes standalone private-peer authentication and IPC streaming, then stops below the existing hybrid RAM floor. Its recovery campaign executes Reminder deletion storage successfully, but a multiline transcript parsing defect prevents acceptance and later phases. The follow-up explicitly allocates 4096M guest RAM and corrects parsing while retaining exact-method, count and no-skip gates. Foundation remains blocked at repeated overlay activation after reboot; the diagnostic also exposed a transient keyguard readiness state before any overlay collection. The combined follow-up passes 163 repository checks, both Android builds/lint, strict recovery guards and workflow lint. Its four application APKs are byte-identical to 13456e3; the test APKs now emit read-only RAM evidence. Fresh native execution and overlay evidence are required. See [qualification details](browser-native-flow-qualification-2026-10-03.md). The MVP remains incomplete.
 

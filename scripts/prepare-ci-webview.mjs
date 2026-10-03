@@ -5,6 +5,7 @@ import path from 'node:path';
 import { createHash } from 'node:crypto';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
+import { readBootDeviceIdentity } from './ci-webview-boot-device.mjs';
 import { androidEnv } from './toolchain.mjs';
 import { requireHostedFixtureEnvironment, assertFixtureIdentity } from './ci-emulator-display.mjs';
 
@@ -78,9 +79,7 @@ export function scratchBackingBytes(run, { requireDataBacking = false } = {}) {
   return Number(sectors) * 512;
 }
 
-// This SDK image omits the whole-device by-name alias needed by liblp when
-// ImageManager maps /data-backed scratch. Derive its identity from the mounted
-// userdata device; never format or relabel a guessed dm-N device.
+// Verify the alias created by boot-time device discovery; never create it late.
 export function ensureScratchBackingAlias(run, admit) {
   admit();
   require(run('shell', 'getprop', 'ro.build.fingerprint').trim() ===
@@ -107,18 +106,12 @@ export function ensureScratchBackingAlias(run, admit) {
   run('shell', 'test', '-b', physical);
   const inspect = () => run('shell', 'sh', '-c',
     "'if [ -L /dev/block/by-name/vdc ]; then readlink /dev/block/by-name/vdc; elif [ -e /dev/block/by-name/vdc ]; then echo NON_SYMLINK; else echo MISSING; fi'").trim();
-  let previous = inspect();
-  require(previous === 'MISSING' || previous === physical, 'Conflicting scratch backing alias');
-  if (previous === 'MISSING') {
-    admit(); // Re-admit immediately before the only mutation.
-    require(inspect() === 'MISSING', 'Scratch backing alias changed during admission');
-    // -T refuses a raced directory; omitting -f prevents replacement of any entry.
-    run('shell', 'ln', '-sT', physical, alias);
-  }
+  const previous = inspect();
+  require(previous === physical, 'Missing or conflicting boot-time scratch backing alias');
   require(inspect() === physical && run('shell', 'readlink', '-f', alias).trim() === physical,
     'Scratch backing alias did not resolve to the proven userdata backing device');
   return { image: 'AE3A.240806.019/12368160', userdataMapper: device,
-    backingDevice: physical, deviceNumber: sysDevice, alias, created: previous === 'MISSING' };
+    backingDevice: physical, deviceNumber: sysDevice, alias, created: false };
 }
 
 // Failure evidence only: one shared budget, no retries, mutations or guessed block targets.
@@ -211,8 +204,23 @@ export async function main({ environment = process.env, execute = execFileSync, 
   };
   const run = (...args) => command(path.join(sdk, 'platform-tools/adb'), ['-s', serial, ...args]);
   const safe = (installed = false) => requireProviderFixture(run, environment, { installed });
+  const bootIdentity = () => {
+    safe();
+    const deadline = now() + 15000;
+    const observations = readBootDeviceIdentity((...args) => {
+      const remaining = deadline - now();
+      require(remaining > 0, 'Boot-device readback deadline exceeded');
+      return command(path.join(sdk, 'platform-tools/adb'), ['-s', serial, ...args], Math.min(2000, remaining));
+    }, readback => {
+      state.bootDeviceReadbacks ??= [];
+      state.bootDeviceReadbacks.push(readback); save();
+    });
+    state.bootDeviceAdmissions ??= [];
+    state.bootDeviceAdmissions.push(observations); save();
+  };
   const scratchProperty = 'fs_mgr.overlayfs.data_scratch_size_mb';
   const configureScratch = () => {
+    bootIdentity(); // Require persistent boot-time identity after every reboot.
     safe(); // Every property mutation is confined to the fresh hosted fixture.
     if (!state.scratchBackingAliases) {
       require(scratchBackingBytes(run) === null, 'Existing scratch requires a fresh disposable fixture');
@@ -261,7 +269,7 @@ export async function main({ environment = process.env, execute = execFileSync, 
   };
   save();
   try {
-    safe();
+    bootIdentity();
     const stock = stockPath(run('shell', 'pm', 'path', candidate.package), run('shell', 'dumpsys', 'package', candidate.package));
     const stockHash = run('shell', 'sha256sum', stock).trim().split(/\s+/)[0];
     require(/^[a-f0-9]{64}$/.test(stockHash), 'Invalid stock hash');

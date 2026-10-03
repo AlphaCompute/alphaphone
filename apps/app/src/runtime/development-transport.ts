@@ -1,3 +1,4 @@
+import { DEVELOPMENT_PROPOSAL_VIEWS } from "./development-view-contract.ts";
 import { sanitizePhoneContext } from './phone-context';
 import { registerPlugin } from '../platform-plugins';
 import type {
@@ -38,27 +39,7 @@ const DevelopmentAgent = registerPlugin<{
   }): Promise<{ text: string; requestId: string; proposals: WireProposal[] }>;
   cancel(input: { requestId: string }): Promise<{ cancelled: boolean }>;
 }>("DevelopmentAgent");
-const allowedViews = new Set<AlphaView>([
-  "home",
-  "maps",
-  "camera",
-  "photos",
-  "notes",
-  "calendar",
-  "notifications",
-  "reminders",
-  "workflows",
-  "files",
-  "inbox",
-  "browser",
-  // MVP-DEFERRED: docs/mvp-completion-plan.md scope freeze.
-  // Restore only after approved scope and native permission/recipient/role/return-to-HOME acceptance.
-  // "phone",
-  // "messages",
-  // "contacts",
-  "passwords",
-  "settings",
-]);
+const allowedViews = new Set<AlphaView>(DEVELOPMENT_PROPOSAL_VIEWS);
 function validateOperation(
   operation: DevelopmentLocalOperation,
 ): DevelopmentLocalOperation {

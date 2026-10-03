@@ -188,7 +188,8 @@ public final class DevelopmentAgentPlugin extends Plugin {
     safeOperation.put("type", type).put("title", reminderTitle.trim()).put("body", reminderBody).put("at", (long) at);
    } else if ("open_view".equals(type)) {
     String view = operation.getString("view");
-    if (!java.util.Arrays.asList("home","maps","camera","photos","notes","calendar","notifications","reminders","workflows","files","inbox","browser","phone","messages","contacts","passwords","settings").contains(view)) throw new IOException("invalid view proposal");
+    // Mirrors DEVELOPMENT_PROPOSAL_VIEWS; parity is checked by the owning development scope flow.
+    if (!java.util.Arrays.asList("home","maps","camera","photos","notes","calendar","notifications","reminders","workflows","files","inbox","browser","settings").contains(view)) throw new IOException("invalid view proposal");
     safeOperation.put("type", type).put("view", view);
    } else throw new IOException("unsupported proposal");
    output.put(new JSONObject().put("id",id).put("title",title).put("description",description).put("expiresAt",expiry).put("contextRevision",revision).put("operation",safeOperation));

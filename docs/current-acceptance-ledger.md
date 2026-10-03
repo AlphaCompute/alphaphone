@@ -1,6 +1,10 @@
 # Current Alpha Phone acceptance ledger
 
-## Current checkpoint — October 2, reviewed reminder decisions
+## Current checkpoint — October 3
+
+The [current CI recovery report](mvp-ci-recovery-2026-10-03.md) distinguishes exact c7 hosted results, the successful boot-persistence diagnostic, the newer source fixes and remaining acceptance. The PR browser run passes972 cases with4 skips, while its independent push fails one reproduced Calendar assertion race. Both Foundation builds pass but native smoke remains failed at provisioning. New-source native execution and full MVP release acceptance remain open. All older checkpoints below retain their original scope.
+
+## Earlier checkpoint — October 2, reviewed reminder decisions
 
 Exact product `c350ba46fc89ba99a5c2dce78e997491d4490f33` passes `npm run verify` in 11.63 seconds and all 41 owning reminder flows, with 3,681 source hashes unchanged. Direct Calendar Done/Snooze now binds to the rendered revision, persists the operation before dispatch, and reconciles uncertain outcomes through receipts without repeating effects. Late responses preserve the current screen. Legacy pending cancellations remain readable. Native rejection without an authoritative no-effect receipt remains conservatively unknown. Evidence: `test-results/reminder-decisions/exact-main/`.
 
