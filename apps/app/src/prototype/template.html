@@ -3171,6 +3171,28 @@
         <sc-if value="{{workflows.b.typed}}" hint-placeholder-val="{{false}}">
           <textarea aria-label="Workflow description" value="{{workflows.b.description}}" onChange="{{workflows.b.onDescription}}" maxlength="4000" style="width:100%;box-sizing:border-box;min-height:80px;padding:16px;border:0;border-radius:18px;background:var(--s2);color:var(--fg)"></textarea>
           <p role="status" style="font-size:14px;color:var(--mut);line-height:1.45">{{workflows.b.typedStatus}}</p>
+          <sc-if value="{{workflows.b.describeOn}}" hint-placeholder-val="{{false}}">
+            <section aria-label="Describe workflow" style="padding:16px;border-radius:18px;background:var(--s2);margin:16px 0">
+              <label for="workflow-generation-prompt" style="display:block;font-weight:600;margin-bottom:12px">What should this workflow do?</label>
+              <textarea id="workflow-generation-prompt" aria-label="Workflow request" value="{{workflows.b.descriptionPrompt}}" onChange="{{workflows.b.onGenerationPrompt}}" maxlength="4000" style="width:100%;box-sizing:border-box;min-height:110px;padding:12px;border:1px solid var(--line);border-radius:12px;background:var(--bg);color:var(--fg);font:inherit"></textarea>
+              <div style="display:flex;flex-wrap:wrap;gap:10px;margin-top:12px">
+                <button aria-label="Generate workflow draft" aria-disabled="{{workflows.b.generationOff}}" onClick="{{workflows.b.generateDraft}}" style="min-height:44px;padding:10px 16px;border-radius:22px;{{workflows.b.generateCss}}">{{workflows.b.generateLabel}}</button>
+                <button aria-label="Cancel workflow generation" onClick="{{workflows.b.cancelGeneration}}" style="min-height:44px;padding:10px 16px;border-radius:22px;background:var(--bg);color:var(--fg)">Keep current draft</button>
+              </div>
+              <sc-if value="{{workflows.b.hasGenerated}}" hint-placeholder-val="{{false}}">
+                <section aria-label="Generated draft" style="margin-top:20px">
+                  <h3 style="font-size:20px;overflow-wrap:anywhere">{{workflows.b.generatedName}}</h3>
+                  <p style="white-space:pre-wrap;overflow-wrap:anywhere">{{workflows.b.generatedDescription}}</p>
+                  <p style="font-size:14px;color:var(--mut)">Runs only when you choose Run now.</p>
+                  <sc-for list="{{workflows.b.generatedSteps}}" as="step" hint-placeholder-count="2">
+                    <div style="padding:12px 0;border-top:1px solid var(--line)"><strong>{{step.title}}</strong><p style="white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.5;margin-bottom:0">{{step.text}}</p></div>
+                  </sc-for>
+                  <details aria-label="Generated technical specification" style="margin:12px 0"><summary style="min-height:44px;line-height:44px;cursor:pointer">Technical specification</summary><pre aria-label="Generated workflow review" style="white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px;line-height:1.5">{{workflows.b.generatedReview}}</pre></details>
+                </section>
+                <button aria-label="Use generated workflow draft" onClick="{{workflows.b.useGenerated}}" style="min-height:44px;padding:10px 16px;border-radius:22px;background:var(--acc);color:#fff">Use draft</button>
+              </sc-if>
+            </section>
+          </sc-if>
           <sc-if value="{{workflows.b.hasTypedReview}}" hint-placeholder-val="{{false}}"><pre aria-label="Workflow save review" style="white-space:pre-wrap;overflow-wrap:anywhere;padding:16px;border-radius:18px;background:var(--s2);font-size:12px">{{workflows.b.typedReview}}</pre></sc-if>
           <sc-if value="{{workflows.b.unknown}}" hint-placeholder-val="{{false}}"><button onClick="{{workflows.b.refresh}}" style="min-height:44px;padding:12px;border-radius:22px;background:var(--s2)">Refresh save receipt</button></sc-if>
           <sc-if value="{{workflows.b.canDiscard}}" hint-placeholder-val="{{false}}"><button onClick="{{workflows.b.discard}}" style="min-height:44px;padding:12px;border-radius:22px;background:var(--s2)">Discard local draft</button></sc-if>
