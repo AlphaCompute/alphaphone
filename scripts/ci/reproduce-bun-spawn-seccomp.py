@@ -112,7 +112,7 @@ int sigaction(int signal, const struct sigaction *action, struct sigaction *old)
         assert digest == manifest['files'][str(path.relative_to(source))]
         product_hashes[path.name] = digest
     subprocess.run([cc, '-O2', '-Wall', '-Werror', '-shared', '-fPIC', str(source/relative/'sigsys-handler.c'), '-ldl', '-o', str(root/'product.so')], check=True)
-    (root/'semantics.c').write_text(r''' 
+    (root/'semantics.c').write_text(r'''
 #define _GNU_SOURCE
 #include <signal.h>
 #include <stdio.h>
