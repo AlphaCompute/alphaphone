@@ -4,7 +4,7 @@
 
 A rendered negative control on `8fb1293` reproduced deletion of event A closing the subsequently selected event B. The provider mutation still targeted A; no wrong-target deletion was observed. The adapter now closes a detail only while A remains selected, Calendar remains active/visible and no new form exists. Provider data refresh remains independent of this navigation guard.
 
-All six rendered deletion/save completion flows pass: newer event, Home, and unsaved form retention, plus the existing save-completion cases. The deletion fixtures verify exactly one remove call and that only B remains in durable Calendar data. TypeScript and the renderer build pass. Evidence: `test-results/calendar-delete-completion/{before,after.log,build.log}`. New full repository, Android/native and live-provider qualification remain pending; this is not full MVP acceptance.
+All six rendered deletion/save completion flows pass: newer event, Home, and unsaved form retention, plus the existing save-completion cases. The deletion fixtures verify exactly one remove call and that only B remains in durable Calendar data. Full repository verification now passes all 224 checks, TypeScript and the renderer build. The first full run passed 223 checks and exposed missing active-view/document-visibility state in the standalone Calendar VM fixture; the fixture now supplies those production inputs. Evidence: `test-results/calendar-delete-completion/{before,after.log,build.log,full-verify.log,full-verify-final.log}`. New Android/native and live-provider qualification remain pending; this is not full MVP acceptance.
 
 Source review on 2026-09-30; findings are not emulator acceptance results.
 
