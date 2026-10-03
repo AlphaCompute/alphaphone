@@ -12,15 +12,43 @@ jobs:
   reproduce:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        libc: [glibc, musl]
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: "1.4.2"
+      - if: matrix.libc == 'musl'
+        run: sudo apt-get update -qq && sudo apt-get install -y musl-tools
+      - if: matrix.libc == 'musl'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 - <<'PY'
+          import hashlib, importlib.util, os, pathlib, zipfile
+          spec = importlib.util.spec_from_file_location('acquire', 'scripts/ci/acquire-resident-bun.py')
+          acquire = importlib.util.module_from_spec(spec); spec.loader.exec_module(acquire)
+          root = pathlib.Path(os.environ['RUNNER_TEMP'])/'musl-reproduction'
+          root.mkdir()
+          archive = root/'bun.zip'
+          # Same stable x64 asset and hashes as the pinned Android Bun lock.
+          acquire.download(545310078, archive, '4835eca59d6da70f4674f5642f6e459dcadab773695b2ed9922d131057989742', os.environ.pop('GH_TOKEN'))
+          with zipfile.ZipFile(archive) as bundle:
+              files = [name for name in bundle.namelist() if name.endswith('/bun')]
+              assert len(files) == 1
+              binary = bundle.read(files[0])
+          assert hashlib.sha256(binary).hexdigest() == '16b72935ffd7a503b978c186874539c92aade4e3515b70a5abf5db2581fdef7d'
+          executable = root/'bun'; executable.write_bytes(binary); executable.chmod(0o755)
+          with open(os.environ['GITHUB_ENV'], 'a') as env:
+              env.write(f'ALPHA_REPRO_BUN={executable}\nALPHA_REPRO_CC=musl-gcc\n')
+          PY
       - run: python3 scripts/ci/reproduce-bun-spawn-seccomp.py
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: bun-spawn-seccomp-${{ github.run_id }}
+          name: bun-spawn-seccomp-${{ matrix.libc }}-${{ github.run_id }}
           path: test-results/bun-spawn-seccomp/
           if-no-files-found: error

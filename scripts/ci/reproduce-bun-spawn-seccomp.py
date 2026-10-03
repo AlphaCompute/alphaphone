@@ -10,7 +10,9 @@ import tempfile
 
 assert platform.system() == 'Linux' and platform.machine() == 'x86_64'
 resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
-revision = subprocess.check_output(['bun', '--revision'], text=True).strip()
+bun = os.environ.get('ALPHA_REPRO_BUN', 'bun')
+cc = os.environ.get('ALPHA_REPRO_CC', 'cc')
+revision = subprocess.check_output([bun, '--revision'], text=True).strip()
 assert revision.startswith('1.4.2+') and '744846f' in revision, revision
 output = pathlib.Path('test-results/bun-spawn-seccomp')
 output.mkdir(parents=True, exist_ok=True)
@@ -64,8 +66,8 @@ let out='',err='';child.stdout.on('data',x=>out+=x);child.stderr.on('data',x=>er
 child.on('error',e=>{console.log(JSON.stringify({error:e.code}));process.exitCode=2;});
 child.on('close',(code,signal)=>console.log(JSON.stringify({code,signal,ready:out.includes('SYNTHETIC_CHILD_READY'),stderrBytes:err.length})));
 ''')
-    subprocess.run(['cc', '-O2', str(root/'filter.c'), '-o', str(root/'filter')], check=True)
-    subprocess.run(['cc', '-O2', '-shared', '-fPIC', str(root/'handler.c'), '-o', str(root/'handler.so')], check=True)
+    subprocess.run([cc, '-O2', str(root/'filter.c'), '-o', str(root/'filter')], check=True)
+    subprocess.run([cc, '-O2', '-shared', '-fPIC', str(root/'handler.c'), '-o', str(root/'handler.so')], check=True)
     # Experimental control only: preserve the installed compatibility handler
     # when the pre-exec child resets signal dispositions. This does not change
     # Android artifacts, seccomp policy, or the production shim.
@@ -86,18 +88,18 @@ int sigaction(int signal, const struct sigaction *action, struct sigaction *old)
  return real_sigaction(signal,action,old);
 }
 ''')
-    subprocess.run(['cc', '-O2', '-shared', '-fPIC', str(root/'preserve.c'), '-ldl', '-o', str(root/'preserve.so')], check=True)
+    subprocess.run([cc, '-O2', '-shared', '-fPIC', str(root/'preserve.c'), '-ldl', '-o', str(root/'preserve.so')], check=True)
     env = {'PATH': os.environ['PATH'], 'HOME': temporary, 'TMPDIR': temporary,
            'LD_PRELOAD': str(root/'handler.so'), 'BUN_FEATURE_FLAG_DISABLE_IO_POOL': '1',
            'BUN_FEATURE_FLAG_FORCE_WAITER_THREAD': '1', 'BUN_FEATURE_FLAG_DISABLE_SPAWNSYNC_FAST_PATH': '1'}
-    cases = {'baseline': ['bun', str(root/'spawn.mjs')],
-             'trap_start': [str(root/'filter'), '1', 'bun', '--version'],
+    cases = {'baseline': [bun, str(root/'spawn.mjs')],
+             'trap_start': [str(root/'filter'), '1', bun, '--version'],
              'trap_spawn': ['strace', '-ff', '-o', str(output.resolve()/'trap-spawn.trace'),
                             '-e', 'trace=close_range,rt_sigaction,rt_sigprocmask,clone,clone3,execve,wait4,waitid',
-                            '-e', 'signal=SIGSYS', str(root/'filter'), '1', 'bun', str(root/'spawn.mjs')],
-             'errno_spawn': [str(root/'filter'), '0', 'bun', str(root/'spawn.mjs')],
-             'preserved_handler_spawn': [str(root/'filter'), '1', 'bun', str(root/'spawn.mjs')]}
-    results = {'revision': revision, 'syntheticLinuxRestriction': True, 'androidAcceptance': False, 'cases': {}}
+                            '-e', 'signal=SIGSYS', str(root/'filter'), '1', bun, str(root/'spawn.mjs')],
+             'errno_spawn': [str(root/'filter'), '0', bun, str(root/'spawn.mjs')],
+             'preserved_handler_spawn': [str(root/'filter'), '1', bun, str(root/'spawn.mjs')]}
+    results = {'revision': revision, 'compiler': cc, 'binary': bun, 'syntheticLinuxRestriction': True, 'androidAcceptance': False, 'cases': {}}
     for name, command in cases.items():
         case_env = dict(env)
         if name == 'preserved_handler_spawn':
