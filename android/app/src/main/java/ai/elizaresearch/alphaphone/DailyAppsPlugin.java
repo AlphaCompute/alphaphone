@@ -31,6 +31,8 @@ import java.util.ArrayList;
 public class DailyAppsPlugin extends Plugin {
  private static final String[] ACTIONS = {"camera", "photos", "files", "maps", "calendar", "calendar-create", "reminder", "email", "inbox", "browser", "notifications", "settings", "autofill", "voice"}; // MVP-DEFERRED: "phone", "messages", "contacts".
  private boolean selectionPending;
+ private final java.util.LinkedHashMap<String, Intent> uncapturedReminderTaps = new java.util.LinkedHashMap<>();
+ private ReminderTaps reminderTaps() { return new ReminderTaps(getContext()); }
 
  @Override public void load() {
   SelectedDocumentAccess.initialize(getContext());
@@ -39,7 +41,7 @@ public class DailyAppsPlugin extends Plugin {
   openAssistant();
  }
  @Override protected void handleOnNewIntent(Intent intent) { openReminder(intent); openAssistant(); }
- @Override protected void handleOnResume() { notifyListeners("appResumed", new JSObject(), true); }
+ @Override protected void handleOnResume() { drainReminderTaps(); notifyListeners("appResumed", new JSObject(), true); }
  private void openAssistant() {
   if (!(getActivity() instanceof AlphaAssistActivity)) return;
   JSObject value = new JSObject(); value.put("source", "android-assist"); value.put("surface", "assistant");
@@ -49,6 +51,7 @@ public class DailyAppsPlugin extends Plugin {
   JSObject value = new JSObject(); value.put("assistant", getActivity() instanceof AlphaAssistActivity); value.put("developmentBuild", BuildConfig.DEBUG);
   value.put("reminderTimingVersion", 2);
   value.put("reminderCreationVersion", 1);
+  value.put("reminderTapVersion", 1);
   value.put("topInset", getActivity() instanceof MainActivity ? ((MainActivity)getActivity()).getTopInsetDp() : 0);
   value.put("bottomInset", getActivity() instanceof MainActivity ? ((MainActivity)getActivity()).getBottomInsetDp() : 0); call.resolve(value);
  }
@@ -59,12 +62,65 @@ public class DailyAppsPlugin extends Plugin {
  }
  private void openReminder(Intent intent) {
   if (intent == null) return;
+  if (ReminderTaps.ACTION.equals(intent.getAction()) && intent.getData() != null && intent.getData().toString().startsWith(ReminderTaps.PREFIX)) {
+   String token = intent.getData().toString().substring(ReminderTaps.PREFIX.length());
+   if (!token.matches("[a-f0-9-]{36}")) return;
+   // Capacitor does not set Activity.intent for warm callbacks. Keep failed capture
+   // and the non-auto-cancelled notification available until encrypted persistence.
+   if (!uncapturedReminderTaps.containsKey(token) && uncapturedReminderTaps.size() < 512) uncapturedReminderTaps.put(token, intent);
+   getActivity().setIntent(intent);
+   drainReminderTaps();
+   notifyListeners("pendingReminderTap", new JSObject(), true);
+   return;
+  }
+  // Legacy read-only deep links remain supported; new OS notices use opaque routes.
   String id = intent.getStringExtra(ReminderStore.OPEN_ID);
   if (ReminderStore.validId(id)) {
    JSObject result = new JSObject(); result.put("id", id); result.put("occurrenceId",intent.getStringExtra(ReminderStore.OCCURRENCE));
    notifyListeners("reminderOpened", result, true);
    intent.removeExtra(ReminderStore.OPEN_ID);intent.removeExtra(ReminderStore.OCCURRENCE);
   }
+ }
+ private int drainReminderTaps() {
+  int failed = 0;
+  java.util.Iterator<java.util.Map.Entry<String, Intent>> entries = uncapturedReminderTaps.entrySet().iterator();
+  while (entries.hasNext()) {
+   java.util.Map.Entry<String, Intent> entry = entries.next();
+   try { reminderTaps().capture(entry.getKey()); entry.getValue().setData(null); entries.remove(); }
+   catch (ReminderTaps.UnknownTap unknown) { entry.getValue().setData(null); entries.remove(); }
+   catch (Exception unavailable) { failed++; }
+  }
+  return failed;
+ }
+ private void reminderForeground() {
+  if (getActivity() == null || getActivity().isFinishing() || getContext().getSystemService(android.app.KeyguardManager.class).isDeviceLocked()) throw new IllegalStateException("Unlock to open reminder");
+ }
+ @PluginMethod public void pendingReminderTap(PluginCall call) {
+  new android.os.Handler(android.os.Looper.getMainLooper()).post(() -> {
+   try {
+    reminderForeground(); openReminder(getActivity().getIntent()); int failed = drainReminderTaps();
+    org.json.JSONObject pending = reminderTaps().pending();
+    if (failed > 0 && !pending.has("token")) throw new IllegalStateException("Reminder tap not captured");
+    call.resolve(new JSObject(pending.toString()));
+   } catch (Exception unavailable) { call.reject("Reminder link is retained. Unlock and retry."); }
+  });
+ }
+ @PluginMethod public void consumeReminderTap(PluginCall call) {
+  new android.os.Handler(android.os.Looper.getMainLooper()).post(() -> {
+   try {
+    reminderForeground();
+    synchronized (ReminderStore.class) {
+     reminderTaps().consume(call.getString("token"));
+    }
+    call.resolve();
+   } catch (Exception unavailable) { call.reject("Reminder link changed or could not be saved. Refresh and retry."); }
+  });
+ }
+ @PluginMethod public void dismissReminderTap(PluginCall call) {
+  new android.os.Handler(android.os.Looper.getMainLooper()).post(() -> {
+   try { reminderForeground(); reminderTaps().dismiss(call.getString("token")); call.resolve(); }
+   catch (Exception unavailable) { call.reject("Reminder link could not be dismissed. Refresh and retry."); }
+  });
  }
  @PluginMethod public void scheduleReminder(PluginCall call) {
   String id = call.getString("id", ""), title = call.getString("title", ""), body = call.getString("body", "");

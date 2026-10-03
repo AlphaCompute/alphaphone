@@ -1,3 +1,4 @@
+import {reviewAgentClock} from '../runtime/clock-agent-review';
 import {isReminderCreate,validateReminderCreateResult} from '../runtime/reminder-create-contract';
 import {publishWorkflowNotice} from '../browser/workflow-notices';
 import {speakLocalText} from '../local-speech-playback';
@@ -233,18 +234,20 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
       const result=await DailyApps.reminderOperationReceipt({operation,operationId,bindingHash});signal.throwIfAborted();
       return result.status==='succeeded'?{status:'succeeded',reminderResult:isReminderCreate(operation)?validateReminderCreateResult(operation,result.result,operationId):validateReminderResult(operation,result.result)}:{status:'unknown'};
     });
-    connectionController.setDeviceExecutor(async (operation, operationId, expectedContext, signal, bindingHash, workflowRoute) => {
+    connectionController.setDeviceExecutor(async (operation, operationId, expectedContext, signal, bindingHash, workflowRoute, journalIdentity) => {
       signal.throwIfAborted(); context(this);
       if (!this.live || JSON.stringify(alphaClient.getState().context) !== JSON.stringify(expectedContext)) throw new Error('Phone context changed');
       if(isClockOperation(operation)){
         if(Capacitor.getPlatform()!=='android'&&!browserDevProfile)return {status:'failed',summary:'Native Clock handoff is unavailable in browser development. No alarm request was sent.'};
         assertClockTimeZone(operation,expectedContext.timeZone);signal.throwIfAborted();
         if(expectedContext.sensitive||document.hidden)throw Error('Return to Alpha Phone and review again');
+        const clockSession=connectionController.getSnapshot().session;const clockEnrollment=JSON.stringify(connectionController.getWorkflowDeviceTarget());
         const {type,...request}=operation;
-        const result=await DailyApps.clockHandoff({...request,reviewed:true});
-        const clockResult=validateClockResult(operation,{kind:'clock-handoff',action:result.action,status:result.status});
+        const result=browserDevProfile?await DailyApps.clockHandoff({...request,reviewed:true}):null;
+        if(!browserDevProfile&&!journalIdentity)throw Error('Exact approved Clock journal unavailable');
+        const clockResult=validateClockResult(operation,result?{kind:'clock-handoff',action:result.action,status:result.status}:await reviewAgentClock(operation,operationId,journalIdentity!,signal,()=>{signal.throwIfAborted();context(this);if(!clockSession||connectionController.getSnapshot().session!==clockSession||JSON.stringify(connectionController.getWorkflowDeviceTarget())!==clockEnrollment||!this.live||document.hidden||JSON.stringify(alphaClient.getState().context)!==JSON.stringify(expectedContext))throw Error('Clock review context changed');}));
         const status=clockResult.status==='opened'?'succeeded':clockResult.status==='unknown'?'unknown':'failed';
-        return {status,clockResult,summary:browserDevProfile&&clockResult.status==='opened'?result.message:clockResult.status==='opened'?'Clock request sent. Check Clock; Alpha cannot confirm an alarm was changed.':clockResult.status==='unknown'?'Clock result is unknown. Check Clock before another request.':clockResult.status==='unavailable'?'No installed Clock app handles this request.':clockResult.status==='denied'?'Android did not allow this Clock request.':'Clock request was not sent. Review its time and the current phone state.'};
+        return {status,clockResult,summary:browserDevProfile&&clockResult.status==='opened'?result!.message:clockResult.status==='opened'?(operation.action==='dismiss'||operation.action==='snooze'?'Clock opened for manual completion. Choose the intended alarm in Clock; no snooze or dismissal was performed by Alpha.':'Approved Clock handoff sent. Check Clock; Alpha cannot confirm an alarm was changed.'):clockResult.status==='unknown'?'Clock result is unknown. Check Clock before another request.':clockResult.status==='unavailable'?'No installed Clock app handles this request.':clockResult.status==='denied'?'Android did not allow this Clock request.':'Clock request was not sent. Review its time and the current phone state.'};
       }
       if(isMapsOperation(operation)){
         const mapsResult=readMapsSelection(operation);signal.throwIfAborted();context(this);
