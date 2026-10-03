@@ -47,7 +47,7 @@
 +  const parentStat = await lstat(parent);
 +  if (!parentStat.isDirectory() || parentStat.isSymbolicLink() || parentStat.uid !== process.getuid?.() || (parentStat.mode & 0o022) !== 0 || await realpath(parent) !== parent)
 +    throw Error('Untrusted workflow source directory');
-+  if (await sameSource(sourcePath, source)) return;
++  if (await sameSource(sourcePath, source)) { await syncDirectory(parent); return; }
 +  const deadline = Date.now() + 5000;
 +  let identity;
 +  for (;;) {
@@ -59,7 +59,7 @@
 +      try { existing = await lstat(reservation); } catch (gone) { if ((gone as NodeJS.ErrnoException).code === 'ENOENT') continue; throw gone; }
 +      if (!existing.isDirectory() || existing.isSymbolicLink() || existing.uid !== process.getuid?.() || (existing.mode & 0o077) !== 0)
 +        throw Error('Untrusted workflow source reservation');
-+      if (await sameSource(sourcePath, source)) return;
++      if (await sameSource(sourcePath, source)) { await syncDirectory(parent); return; }
 +      if (Date.now() >= deadline) throw Error('Workflow source publication unresolved; preserve reservation');
 +      await new Promise(resolve => setTimeout(resolve, 25));
 +    }
@@ -72,7 +72,7 @@
 +  };
 +  try {
 +    await syncDirectory(parent);
-+    if (await sameSource(sourcePath, source)) return;
++    if (await sameSource(sourcePath, source)) { await syncDirectory(parent); return; }
 +    const handle = await open(temporary, 'wx', 0o600);
 +    try { await handle.writeFile(source, 'utf8'); await handle.sync(); } finally { await handle.close(); }
 +    await owned();
