@@ -1,0 +1,426 @@
+{
+  "schemaVersion": 1,
+  "note": "Coverage/provenance map, not merge or product-acceptance proof. Consult upstream-patch-migration.md. Retirement requires merged pin adoption and both distribution qualification.",
+  "patches": [
+    {
+      "patch": "0001-durable-device-actions.patch",
+      "upstreamPr": "https://github.com/elizaOS/eliza/pull/33002",
+      "disposition": "historical-lineage-or-superseded",
+      "retirementVerified": false
+    },
+    {
+      "patch": "0002-paired-local-voice.patch",
+      "upstreamPr": "https://github.com/elizaOS/eliza/pull/33002",
+      "disposition": "historical-lineage-or-superseded",
+      "retirementVerified": false
+    },
+    {
+      "patch": "0003-explicit-standalone-whisper.patch",
+      "upstreamPr": "https://github.com/elizaOS/eliza/pull/33002",
+      "disposition": "historical-lineage-or-superseded",
+      "retirementVerified": false
+    },
+    {
+      "patch": "0004-reviewed-workflow-submissions.patch",
+      "upstreamPr": "https://github.com/elizaOS/eliza/pull/33002",
+      "disposition": "historical-lineage-or-superseded",
+      "retirementVerified": false
+    },
+    {
+      "patch": "0005-durable-workflow-cancellation.patch",
+      "upstreamPr": "https://github.com/elizaOS/eliza/pull/33002",
+      "disposition": "historical-lineage-or-superseded",
+      "retirementVerified": false
+    },
+    {
+      "patch": "0006-workflow-definite-admission-refusal.patch",
+      "upstreamPr": "https://github.com/elizaOS/eliza/pull/33002",
+      "disposition": "historical-lineage-or-superseded",
+      "retirementVerified": false
+    },
+    {
+      "patch": "0007-canonical-workflow-approvals.patch",
+      "upstreamPr": "https://github.com/elizaOS/eliza/pull/33002",
+      "disposition": "historical-lineage-or-superseded",
+      "retirementVerified": false
+    },
+    {
+      "patch": "0008-workflow-metadata-mutations.patch",
+      "upstreamPr": "https://github.com/elizaOS/eliza/pull/33002",
+      "disposition": "historical-lineage-or-superseded",
+      "retirementVerified": false
+    },
+    {
+      "patch": "0009-workflow-lifecycle-mutations.patch",
+      "upstreamPr": "https://github.com/elizaOS/eliza/pull/33002",
+      "disposition": "historical-lineage-or-superseded",
+      "retirementVerified": false
+    },
+    {
+      "patch": "0010-workflow-import-order.patch",
+      "upstreamPr": "https://github.com/elizaOS/eliza/pull/33002",
+      "disposition": "historical-lineage-or-superseded",
+      "retirementVerified": false
+    },
+    {
+      "patch": "0011-typed-workflow-authoring.patch",
+      "upstreamPr": "https://github.com/elizaOS/eliza/pull/33002",
+      "disposition": "historical-lineage-or-superseded",
+      "retirementVerified": false
+    },
+    {
+      "patch": "0012-workflow-device-bridge.patch",
+      "upstreamPr": "https://github.com/elizaOS/eliza/pull/33002",
+      "disposition": "historical-lineage-or-superseded",
+      "retirementVerified": false
+    },
+    {
+      "patch": "0013-workflow-presentation-steps.patch",
+      "upstreamPr": "https://github.com/elizaOS/eliza/pull/33002",
+      "disposition": "historical-lineage-or-superseded",
+      "retirementVerified": false
+    },
+    {
+      "patch": "0014-workflow-compiler-compatibility.patch",
+      "upstreamPr": "https://github.com/elizaOS/eliza/pull/33002",
+      "disposition": "historical-lineage-or-superseded",
+      "retirementVerified": false
+    },
+    {
+      "patch": "0015-agent-calendar-crud.patch",
+      "upstreamPr": "https://github.com/elizaOS/eliza/pull/33002",
+      "disposition": "historical-lineage-or-superseded",
+      "retirementVerified": false
+    },
+    {
+      "patch": "0016-hosted-digests.patch",
+      "upstreamPr": "https://github.com/elizaOS/eliza/pull/33002",
+      "disposition": "historical-lineage-or-superseded",
+      "retirementVerified": false
+    },
+    {
+      "patch": "0017-agent-notes-crud.patch",
+      "upstreamPr": "https://github.com/elizaOS/eliza/pull/33002",
+      "disposition": "historical-lineage-or-superseded",
+      "retirementVerified": false
+    },
+    {
+      "patch": "0018-hosted-live-google.patch",
+      "upstreamPr": "https://github.com/elizaOS/eliza/pull/33002",
+      "disposition": "historical-lineage-or-superseded",
+      "retirementVerified": false
+    },
+    {
+      "patch": "0019-cloud-session-primary-read.patch",
+      "upstreamPr": "https://github.com/elizaOS/eliza/pull/33002",
+      "disposition": "historical-lineage-or-superseded",
+      "retirementVerified": false
+    },
+    {
+      "patch": "0020-cloud-runtime-composed-qualified.patch",
+      "upstreamPr": "https://github.com/elizaOS/eliza/pull/33002",
+      "disposition": "historical-lineage-or-superseded",
+      "retirementVerified": false
+    },
+    {
+      "patch": "0021-managed-inbox.patch",
+      "upstreamPr": "https://github.com/elizaOS/eliza/pull/33002",
+      "disposition": "historical-lineage-or-superseded",
+      "retirementVerified": false
+    },
+    {
+      "patch": "0022-managed-inbox-format.patch",
+      "upstreamPr": "https://github.com/elizaOS/eliza/pull/33002",
+      "disposition": "historical-lineage-or-superseded",
+      "retirementVerified": false
+    },
+    {
+      "patch": "0023-managed-inbox-attachments-context.patch",
+      "upstreamPr": "https://github.com/elizaOS/eliza/pull/33002",
+      "disposition": "historical-lineage-or-superseded",
+      "retirementVerified": false
+    },
+    {
+      "patch": "0024-cloud-google-delegation.patch",
+      "upstreamPr": "https://github.com/elizaOS/eliza/pull/33002",
+      "disposition": "historical-lineage-or-superseded",
+      "retirementVerified": false
+    },
+    {
+      "patch": "0025-managed-cloud-owner-provisioning.patch",
+      "upstreamPr": "https://github.com/elizaOS/eliza/pull/33002",
+      "disposition": "historical-lineage-or-superseded",
+      "retirementVerified": false
+    },
+    {
+      "patch": "0026-upstream-final-format.patch",
+      "upstreamPr": "https://github.com/elizaOS/eliza/pull/33002",
+      "disposition": "historical-lineage-or-superseded",
+      "retirementVerified": false
+    },
+    {
+      "patch": "0027-upstream-workflow-format.patch",
+      "upstreamPr": "https://github.com/elizaOS/eliza/pull/33002",
+      "disposition": "historical-lineage-or-superseded",
+      "retirementVerified": false
+    },
+    {
+      "patch": "0028-cloud-sdk-app-auth-export.patch",
+      "upstreamPr": "https://github.com/elizaOS/eliza/pull/33002",
+      "disposition": "historical-lineage-or-superseded",
+      "retirementVerified": false
+    },
+    {
+      "patch": "0029-cloud-google-response-validation.patch",
+      "upstreamPr": "https://github.com/elizaOS/eliza/pull/33002",
+      "disposition": "historical-lineage-or-superseded",
+      "retirementVerified": false
+    },
+    {
+      "patch": "0030-conversation-title-persistence.patch",
+      "upstreamPr": "https://github.com/elizaOS/eliza/pull/33002",
+      "disposition": "historical-lineage-or-superseded",
+      "retirementVerified": false
+    },
+    {
+      "patch": "0031-portable-workflow-approval-presentation.patch",
+      "upstreamPr": "https://github.com/elizaOS/eliza/pull/33002",
+      "disposition": "historical-lineage-or-superseded",
+      "retirementVerified": false
+    },
+    {
+      "patch": "0032-validated-workflow-authoring.patch",
+      "upstreamPr": "https://github.com/elizaOS/eliza/pull/33002",
+      "disposition": "historical-lineage-or-superseded",
+      "retirementVerified": false
+    },
+    {
+      "patch": "0033-workflow-authoring-public-api-contract.patch",
+      "upstreamPr": "https://github.com/elizaOS/eliza/pull/33002",
+      "disposition": "historical-lineage-or-superseded",
+      "retirementVerified": false
+    },
+    {
+      "patch": "0034-selected-reminder-crud.patch",
+      "upstreamPr": "https://github.com/elizaOS/eliza/pull/33002",
+      "disposition": "historical-lineage-or-superseded",
+      "retirementVerified": false
+    },
+    {
+      "patch": "0035-nullable-action-schema.patch",
+      "upstreamPr": "https://github.com/elizaOS/eliza/pull/33002",
+      "disposition": "historical-lineage-or-superseded",
+      "retirementVerified": false
+    },
+    {
+      "patch": "0036-qualified-ab8f9a-runtime.patch",
+      "upstreamPr": "https://github.com/elizaOS/eliza/pull/33026",
+      "disposition": "historical-lineage-or-superseded",
+      "retirementVerified": false
+    },
+    {
+      "patch": "android-resident-exact-stop.patch",
+      "upstreamPr": "https://github.com/elizaOS/eliza/pull/33226",
+      "disposition": "feature-port",
+      "retirementVerified": false
+    },
+    {
+      "patch": "android-resident-launcher-no-kill.patch",
+      "upstreamPr": "https://github.com/elizaOS/eliza/pull/33226",
+      "disposition": "feature-port",
+      "retirementVerified": false
+    },
+    {
+      "patch": "android-secure-store-api29.patch",
+      "upstreamPr": "https://github.com/elizaOS/eliza/pull/33216",
+      "disposition": "feature-port",
+      "retirementVerified": false
+    },
+    {
+      "patch": "android-secure-store-socket.patch",
+      "upstreamPr": "https://github.com/elizaOS/eliza/pull/33212",
+      "disposition": "feature-port",
+      "retirementVerified": false
+    },
+    {
+      "patch": "android-stream-cancellation.patch",
+      "upstreamPr": "https://github.com/elizaOS/eliza/pull/33218",
+      "disposition": "feature-port",
+      "retirementVerified": false
+    },
+    {
+      "patch": "android-workflow-source-publication.patch",
+      "upstreamPr": "https://github.com/elizaOS/eliza/pull/33222",
+      "disposition": "feature-port",
+      "retirementVerified": false
+    },
+    {
+      "patch": "approved-workflows-navigation.patch",
+      "upstreamPr": "https://github.com/elizaOS/eliza/pull/33026",
+      "disposition": "feature-port",
+      "retirementVerified": false
+    },
+    {
+      "patch": "authenticated-enabled-views.patch",
+      "upstreamPr": "https://github.com/elizaOS/eliza/pull/33227",
+      "disposition": "feature-port",
+      "retirementVerified": false
+    },
+    {
+      "patch": "calendar-tool-format-guidance.patch",
+      "upstreamPr": "https://github.com/elizaOS/eliza/pull/33231",
+      "disposition": "feature-port",
+      "retirementVerified": false
+    },
+    {
+      "patch": "clock-handoff.patch",
+      "upstreamPr": "https://github.com/elizaOS/eliza/pull/33026",
+      "disposition": "feature-port",
+      "retirementVerified": false
+    },
+    {
+      "patch": "clock-native-reviewed-executor.patch",
+      "upstreamPr": "https://github.com/elizaOS/eliza/pull/33228",
+      "disposition": "feature-port",
+      "retirementVerified": false
+    },
+    {
+      "patch": "cloud-runtime-parity-combined.patch",
+      "upstreamPr": "https://github.com/elizaOS/eliza/pull/33002",
+      "disposition": "obsolete-mixed-product-upstream-aggregate",
+      "retirementVerified": false
+    },
+    {
+      "patch": "cloud-session-primary-read.patch",
+      "upstreamPr": "https://github.com/elizaOS/eliza/pull/33002",
+      "disposition": "duplicate-numbered-history",
+      "retirementVerified": false
+    },
+    {
+      "patch": "device-operation-key-guidance.patch",
+      "upstreamPr": "https://github.com/elizaOS/eliza/pull/33231",
+      "disposition": "feature-port",
+      "retirementVerified": false
+    },
+    {
+      "patch": "egress-credential-assignments.patch",
+      "upstreamPr": "https://github.com/elizaOS/eliza/pull/33213",
+      "disposition": "feature-port",
+      "retirementVerified": false
+    },
+    {
+      "patch": "egress-swap-control-objects.patch",
+      "upstreamPr": "https://github.com/elizaOS/eliza/pull/33213",
+      "disposition": "feature-port",
+      "retirementVerified": false
+    },
+    {
+      "patch": "egress-user-reply-restoration.patch",
+      "upstreamPr": "https://github.com/elizaOS/eliza/pull/33213",
+      "disposition": "feature-port",
+      "retirementVerified": false
+    },
+    {
+      "patch": "hosted-digest-route-registration.patch",
+      "upstreamPr": "https://github.com/elizaOS/eliza/pull/33104",
+      "disposition": "feature-port",
+      "retirementVerified": false
+    },
+    {
+      "patch": "lean-chat-workflows.patch",
+      "upstreamPr": "https://github.com/elizaOS/eliza/pull/33223",
+      "disposition": "feature-port",
+      "retirementVerified": false
+    },
+    {
+      "patch": "mobile-workflow-enablement.patch",
+      "upstreamPr": "https://github.com/elizaOS/eliza/pull/33223",
+      "disposition": "feature-port",
+      "retirementVerified": false
+    },
+    {
+      "patch": "mobile-workflow-source-entries.patch",
+      "upstreamPr": "https://github.com/elizaOS/eliza/pull/33223",
+      "disposition": "feature-port",
+      "retirementVerified": false
+    },
+    {
+      "patch": "native-calendar-android.patch",
+      "upstreamPr": "https://github.com/elizaOS/eliza/pull/33214",
+      "disposition": "feature-port",
+      "retirementVerified": false
+    },
+    {
+      "patch": "native-calendar-package.patch",
+      "upstreamPr": "https://github.com/elizaOS/eliza/pull/33214",
+      "disposition": "feature-port",
+      "retirementVerified": false
+    },
+    {
+      "patch": "native-reminders-android.patch",
+      "upstreamPr": "https://github.com/elizaOS/eliza/pull/33217",
+      "disposition": "feature-port",
+      "retirementVerified": false
+    },
+    {
+      "patch": "packaged-approval-receipts.patch",
+      "upstreamPr": "https://github.com/elizaOS/eliza/pull/33026",
+      "disposition": "superseded-by-modern-implementation",
+      "retirementVerified": false
+    },
+    {
+      "patch": "packaged-workflow-compiler.patch",
+      "upstreamPr": "https://github.com/elizaOS/eliza/pull/33026",
+      "disposition": "superseded-by-modern-implementation",
+      "retirementVerified": false
+    },
+    {
+      "patch": "packaged-workflow-worker.patch",
+      "upstreamPr": "https://github.com/elizaOS/eliza/pull/33026",
+      "disposition": "superseded-by-modern-implementation",
+      "retirementVerified": false
+    },
+    {
+      "patch": "reminder-explicit-timing.patch",
+      "upstreamPr": "https://github.com/elizaOS/eliza/pull/33231",
+      "disposition": "feature-port",
+      "retirementVerified": false
+    },
+    {
+      "patch": "reminder-reviewed-creation.patch",
+      "upstreamPr": "https://github.com/elizaOS/eliza/pull/33231",
+      "disposition": "feature-port",
+      "retirementVerified": false
+    },
+    {
+      "patch": "standalone-kokoro-host.patch",
+      "upstreamPr": "https://github.com/elizaOS/eliza/pull/33229",
+      "disposition": "feature-port",
+      "retirementVerified": false
+    },
+    {
+      "patch": "typed-workflow-generation.patch",
+      "upstreamPr": "https://github.com/elizaOS/eliza/pull/33220",
+      "disposition": "feature-port",
+      "retirementVerified": false
+    },
+    {
+      "patch": "workflow-device-owner-binding.patch",
+      "upstreamPr": "https://github.com/elizaOS/eliza/pull/33227",
+      "disposition": "feature-port",
+      "retirementVerified": false
+    },
+    {
+      "patch": "workflow-worker-crash-identity-diagnostic.patch",
+      "upstreamPr": "https://github.com/elizaOS/eliza/pull/33235",
+      "disposition": "feature-port",
+      "retirementVerified": false
+    },
+    {
+      "patch": "workflow-worker-termination-diagnostic.patch",
+      "upstreamPr": "https://github.com/elizaOS/eliza/pull/33235",
+      "disposition": "feature-port",
+      "retirementVerified": false
+    }
+  ]
+}
