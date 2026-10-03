@@ -35,6 +35,8 @@ The MVP is **not complete**. This is the current requirement/evidence index; [th
 
 ## Verification checkpoints
 
+- Run `37123330883` succeeded at exact head `d2455c6f3fe05ad2ce20108e8c64cba2c86724eb`, including stored/encoded credential protection. It predates the source-repair fixture and later dialog/viewer changes; their current-head hosted qualification remains open.
+
 - Run `37122135848` succeeded at exact head `21337dc6aa0a34ae9bfa9e32a80d2128f248ce08`, including URI credentials. Stored/encoded credential and fixture changes remain newer than this checkpoint. Android foundation smoke failures remain separate and outside the requested browser pass.
 
 - Run `37121979402` succeeded at exact head `9c283fa66af5e7890fa5d3ac7ebaa92aab3a72a1`. It predates the URI and stored/encoded credential fixes. The live user host is now on storage-credential manifest `383de39c44aa5be6b99dffb91d285ca21b1055a86dff6ba4b70cf701998846ac`; owner, one agent, local workflows and Whisper/Kokoro are ready with swaps off.
