@@ -1,6 +1,6 @@
 # Combined resident and browser implementation — October 3, 2026
 
-This candidate combines resident/browser product head `763001bb3cd61625bda033986c36b4ae9aa16536` with the separately developed integration head `3871831619e72a7c4714b80dfba78d461b16f4de` (PR 23). Both histories are preserved. The MVP remains incomplete; this is a combined-source qualification, not installed Android or full product acceptance.
+The initial candidate combined resident/browser product head `763001bb3cd61625bda033986c36b4ae9aa16536` with the separately developed integration head `3871831619e72a7c4714b80dfba78d461b16f4de` (PR 23). Both histories are preserved. The MVP remains incomplete; this is a combined-source qualification, not installed Android or full product acceptance.
 
 ## Implementation reconciled
 
@@ -28,3 +28,14 @@ Evidence is retained under `artifacts/calendar-preferences-review/test-results/s
 The combined implementation is published in [PR 133](https://github.com/AlphaCompute/alphaphone/pull/133), implementation commit `ca40a0566d81844820b7ac3ceba29e98a12a8d9d`. Its hosted browser campaign is pending; remote main is not synchronized merely by opening a PR. The root checkout has been fast-forwarded and browser development restarted on the verified combined runtime at port 5317, retaining the existing profile and redaction-off defaults. On October 3 at 20:36 UTC, owner authentication, one agent, embedded workflows, Whisper and Kokoro all reported ready. Initial readiness returned 503 during startup; the subsequent completed check passed.
 
 The [current status matrix](mvp-current-status.md) remains the complete requirement index. Current native IPC/lifecycle, installed distribution identity, physical speech/alarms, actual authorized Cloud/Gmail journeys, signed AOSP and device/user acceptance remain separate open gates. Android builds remain excluded by the current request. Browser/controlled-port fixtures do not close these gates.
+
+
+## Consolidated delivery — October 3
+
+The final consolidation includes every head in the 132-open-PR inventory, plus the locally committed resident spawn/journal changes (`60ad38f`) and Calendar, mail cancellation, voice preparation, Maps dataset and shared Clock executor changes (`c9c253f`). Merge commits retain all source histories. Runtime manifests preserve the newer credential and workflow patches while adding enabled-view negotiation, reminder timing, the SIGSYS compatibility fix and the shared Clock executor. The calendar layout fixture now explicitly uses UTC, matching its fixed civil-date assumptions.
+
+The user requested merging and fixing the entire stack before one final verification campaign. The earlier local campaign was intentionally stopped; its failures and traces remain in `test-results/full-browser-convergence/`. The mock digest trace records a Vite connection loss and reload. The audio case stalled before the deletion assertion and during browser teardown; its product assertions remain unchanged. The previous exact `ec3ac54` hosted campaign passed 1,210 cases with 12 explicit skips. That result does not qualify this newly combined source.
+
+The final campaign is pending: repository verification, complete browser coverage on a dedicated server, and composed runtime source/contract qualification. Android builds remain excluded by the user's request. Local development will retain its existing owner profile and local speech settings when restarted on the consolidated runtime.
+
+The worktree inventory also found older, uncommitted native qualification/extraction experiments. They remain preserved in their original worktrees; they are not silently treated as current production implementation. Native Calendar extraction still requires its independent-consumer and storage-migration qualification before replacing the product bridge. Device, provider, signed-image and user acceptance remain open as detailed in the current requirement matrix.
