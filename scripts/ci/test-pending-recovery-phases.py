@@ -6,7 +6,7 @@ source=Path(__file__).parent/'pending-recovery-ui.py'
 tree=ast.parse(source.read_text());phases=next(n for n in tree.body if isinstance(n,ast.Assign) and any(isinstance(t,ast.Name) and t.id=='PHASES' for t in n.targets));outer=next(n for n in tree.body if isinstance(n,ast.For) and isinstance(n.target,ast.Name) and n.target.id=='variant');loop=next(n for n in ast.walk(outer) if isinstance(n,ast.For) and isinstance(n.target,ast.Tuple) and n.target.elts[0].id=='phase');code=compile(ast.fix_missing_locations(ast.Module(body=[phases,loop],type_ignores=[])),str(source),'exec')
 APP='ai.elizaresearch.alphaphone';TEST=APP+'.test';expected=APP+'.ReminderAgentInstrumentedTest#selectedCrudPersistsExactReceiptsAndRejectsChangedBindings'
 for variant in ['standalone','launcher']:
- for fault in ['none','skip','wrong-method','permission-denied','none-skip','none-wrong','numeric-skip','numeric-wrong','transport-skip','transport-wrong','cloud-cold-skip','cloud-cold-wrong','cloud-warm-skip','cloud-warm-wrong','tap-skip','tap-wrong','tap-permission-denied','cleanup-unsettled','process-skip','process-wrong','process-permission-denied','view-skip','view-wrong']:
+ for fault in ['none','skip','wrong-method','permission-denied','none-skip','none-wrong','numeric-skip','numeric-wrong','transport-skip','transport-wrong','cloud-cold-skip','cloud-cold-wrong','cloud-warm-skip','cloud-warm-wrong','tap-skip','tap-wrong','tap-permission-denied','cleanup-unsettled','process-skip','process-wrong','process-permission-denied','view-skip','view-wrong','reminder-tap-skip','reminder-tap-wrong','reminder-death-skip','reminder-death-wrong','slot-skip','slot-wrong','clock-skip','clock-wrong','clock-cleanup-unsettled']:
   state={'user':None,'current':'0','name':None,'notifications':False};calls=[];methods=[]
   def run(*args,**kwargs):
    calls.append(args)
@@ -47,24 +47,41 @@ for variant in ['standalone','launcher']:
      assert args[args.index('class')+2:args.index('class')+5]==('-e','workflowNoticeTap','1')
      if fault=='tap-wrong':method='other'
     process=method=='originalNoticeLaunchesAbsentMainAfterOrdinaryProcessDeath'
-    assert args[-1]==TEST+'/'+(APP+'.WorkflowNoticeProcessRunner' if process else 'androidx.test.runner.AndroidJUnitRunner')
+    reminderDeath=method=='capturedReminderTapSurvivesMainDeathWithoutAnotherNotificationIntent'
+    reminderTap=method=='staleDismissDuplicateCaptureAndConsumedCapacityRemainExact'
+    if reminderTap or reminderDeath:
+     assert state['notifications']
+     opt='reminderTapProcessDeath' if reminderDeath else 'reminderTapLifecycle'
+     assert args[args.index('class')+2:args.index('class')+5]==('-e',opt,'1')
+     if fault==('reminder-death-wrong' if reminderDeath else 'reminder-tap-wrong'):method='other'
+    assert args[-1]==TEST+'/'+(APP+'.WorkflowNoticeProcessRunner' if process or reminderDeath else 'androidx.test.runner.AndroidJUnitRunner')
     if process:
      assert cls==APP+'.WorkflowNoticeProcessDeathInstrumentedTest' and state['notifications']
      assert args[args.index('class')+2:args.index('class')+5]==('-e','workflowNoticeProcessDeath','1')
      if fault=='process-wrong':method='other'
+    clock=method=='journalBoundOwnerReviewManualSelectionCancellationAndRecreation'
+    if clock:
+     assert cls==APP+'.ClockAgentReviewInstrumentedTest' and not state['notifications']
+     assert args[args.index('class')+2:args.index('class')+5]==('-e','clockAgentReview','1')
+     if fault=='clock-wrong':method='other'
+    slots=method=='reservedNativeSlotsRejectEveryPublicStorageOperation'
+    if slots:
+     assert cls==APP+'.ConnectionInstrumentedTest' and not state['notifications']
+     assert args[args.index('class')+2:args.index('class')+5]==('-e','nativeSlotIsolation','1')
+     if fault=='slot-wrong':method='other'
     view=method=='enabledViewProfileHttpPreservesAuthenticationAndConditionalRevision'
     if view:
      assert cls==APP+'.ConnectionInstrumentedTest' and not state['notifications']
      assert args[args.index('class')+2:args.index('class')+5]==('-e','enabledViewTransport','1')
      if fault=='view-wrong':method='other'
     start=f'INSTRUMENTATION_STATUS: class={cls}\nINSTRUMENTATION_STATUS: test={method}\nINSTRUMENTATION_STATUS: numtests=1\nINSTRUMENTATION_STATUS_CODE: '
-    return start+'1\n'+start+('-3' if selector==expected and fault=='skip' or timingCase and fault==timingCase+'-skip' or transport and fault=='transport-skip' or cloud and fault=='cloud-'+cloud+'-skip' or tap and fault=='tap-skip' or process and fault=='process-skip' or view and fault=='view-skip' else '0')+'\nINSTRUMENTATION_RESULT: stream=\nOK (1 test)\nINSTRUMENTATION_CODE: -1\n'
+    return start+'1\n'+start+('-3' if selector==expected and fault=='skip' or timingCase and fault==timingCase+'-skip' or transport and fault=='transport-skip' or cloud and fault=='cloud-'+cloud+'-skip' or tap and fault=='tap-skip' or process and fault=='process-skip' or view and fault=='view-skip' or reminderTap and fault=='reminder-tap-skip' or reminderDeath and fault=='reminder-death-skip' or slots and fault=='slot-skip' or clock and fault=='clock-skip' else '0')+'\nINSTRUMENTATION_RESULT: stream=\nOK (1 test)\nINSTRUMENTATION_CODE: -1\n'
    if args[:3]==('shell','pm','remove-user'):assert state['current']=='0';state.update(user=None,name=None)
    return ''
   def owned(run,user,name,current=None):assert user==state['user'] and name==state['name'];assert current is None or state['current']==current
   def switch(target,user,name):
    owned(run,user,name);state['current']=target
-   if fault=='cleanup-unsettled' and target=='0':raise AssertionError('Owned foreground switch timed out')
+   if (fault=='cleanup-unsettled' or fault=='clock-cleanup-unsettled' and len(methods)==16) and target=='0':raise AssertionError('Owned foreground switch timed out')
   def guard():assert state['current']=='0'
   def installed(pkg,user,digest):assert user=='10' and digest==variant
   def admit_display(run,user,name,record):owned(run,user,name,user);record({'admitted':True})
@@ -74,18 +91,20 @@ for variant in ['standalone','launcher']:
    try:exec(code,env)
    except (AssertionError,RuntimeError):failed=True
    assert failed==(fault!='none'),(variant,fault,failed)
-   if fault=='cleanup-unsettled':
+   if fault in ['cleanup-unsettled','clock-cleanup-unsettled']:
     assert state['user']=='10' and state['current']=='0'
-    assert not any('stop-user' in c or 'remove-user' in c for c in calls)
+    remainingCalls=calls if fault=='cleanup-unsettled' else calls[next(i for i in range(len(calls)-1,-1,-1) if calls[i][:3]==('shell','pm','create-user')):]
+    assert not any('stop-user' in c or 'remove-user' in c for c in remainingCalls)
     rows=[json.loads(p.read_text()) for p in Path(directory).glob('*ownership.json')]
-    assert len(rows)==1 and rows[0]['cleanupComplete'] is False and rows[0]['state']=='owned'
+    retained=[row for row in rows if row['state']=='owned'];assert len(retained)==1 and retained[0]['cleanupComplete'] is False
+    assert len(rows)==(1 if fault=='cleanup-unsettled' else 16)
     print('PASS',variant,fault)
     continue
    assert state['user'] is None and state['current']=='0'
    early=fault in ['permission-denied','none-skip','none-wrong','numeric-skip','numeric-wrong']
    if early:assert expected not in methods
    else:assert methods.count(expected)==1
-   count=1 if fault in ['permission-denied','none-skip','none-wrong'] else 2 if fault in ['numeric-skip','numeric-wrong'] else 6 if fault in ['skip','wrong-method'] else 7 if fault in ['transport-skip','transport-wrong'] else 8 if fault in ['cloud-cold-skip','cloud-cold-wrong'] else 9 if fault in ['cloud-warm-skip','cloud-warm-wrong','tap-permission-denied'] else 10 if fault in ['tap-skip','tap-wrong','process-permission-denied'] else 11 if fault in ['process-skip','process-wrong'] else 12
+   count=1 if fault in ['permission-denied','none-skip','none-wrong'] else 2 if fault in ['numeric-skip','numeric-wrong'] else 6 if fault in ['skip','wrong-method'] else 7 if fault in ['transport-skip','transport-wrong'] else 8 if fault in ['cloud-cold-skip','cloud-cold-wrong'] else 9 if fault in ['cloud-warm-skip','cloud-warm-wrong','tap-permission-denied'] else 10 if fault in ['tap-skip','tap-wrong','process-permission-denied'] else 11 if fault in ['process-skip','process-wrong'] else 12 if fault in ['view-skip','view-wrong'] else 13 if fault in ['reminder-tap-skip','reminder-tap-wrong'] else 14 if fault in ['reminder-death-skip','reminder-death-wrong'] else 15 if fault in ['slot-skip','slot-wrong'] else 16
    assert len(methods)==count,(fault,methods)
    assert all(json.loads(p.read_text())['state']=='removed' for p in Path(directory).glob('*ownership.json'))
   print('PASS',variant,fault)

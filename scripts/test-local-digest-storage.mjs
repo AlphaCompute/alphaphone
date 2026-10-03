@@ -7,7 +7,7 @@ import {developmentDigestStore} from '../apps/app/src/runtime/local-agent-storag
 import {createDigestInbox} from '../apps/app/src/runtime/digest-inbox.ts';
 import {DigestInbox} from '../apps/app/src/runtime/hosted-digests.ts';
 const dir=mkdtempSync(join(tmpdir(),'alpha-digests-'));
-const scope='hosted-digests:v1:'+'a'.repeat(64);
+const scope='hosted-digests:v1:'+'a'.repeat(64),androidScope='renderer-'+scope;
 const request=async input=>localAgentStorage(dir,input);
 const store=()=>developmentDigestStore(request);
 try {
@@ -36,14 +36,16 @@ try {
  const replay={...result,source:{selection:{ids:['one','two'],label:'Synthetic tasks'},kind:'tasks'}};
  const client={results:async()=>acked?[]:[ackAttempts?replay:result],ack:async()=>{
   // Inspect a fresh store before allowing the host to advance its cursor.
-  assert.deepEqual(await new DigestInbox(store(),scope).history(),[result]);
+  assert.deepEqual(await new DigestInbox(store(),androidScope).history(),[result]);
   if(++ackAttempts===1)throw Error('Lost synthetic ack');
   acked=true;
  }};
  await assert.rejects(resident().sync(client,new AbortController().signal),/Lost synthetic ack/);
  assert.deepEqual(await resident().sync(client,new AbortController().signal),[result]);
  assert.equal(ackAttempts,2);
- assert.equal(JSON.stringify(await store().read(scope+':run-one')),JSON.stringify(result),'Replay must preserve originally saved bytes');
+ assert.equal(await store().read(scope+':run-one'),null,'Android fallback must not populate native-authority namespace');
+ for(const slot of ['renderer-hosted-digests:v1:wrong','renderer-hosted-digests:v1:'+('a'.repeat(64))+':../escape','workflow-notice-taps:v1','hosted-background:v1:active'])await assert.rejects(store().read(slot),/scope/);
+ assert.equal(JSON.stringify(await store().read(androidScope+':run-one')),JSON.stringify(result),'Replay must preserve originally saved bytes');
  for(const source of [{...replay.source,selection:{...replay.source.selection,label:'Changed'}},{...replay.source,selection:{...replay.source.selection,ids:['two','one']}}]){
   let changedAck=false;
   await assert.rejects(resident().sync({results:async()=>[{...replay,source}],ack:async()=>{changedAck=true;}},new AbortController().signal),/Saved digest result changed/);
@@ -54,8 +56,8 @@ try {
   if(input.operation==='digestCompareExchange'&&input.slot.endsWith(':run-two'))throw Error('Synthetic disk failure');
   return request(input);
  });
- await assert.rejects(new DigestInbox(failingStore,scope).sync({results:async()=>[{...result,cursor:2,runId:'run-two'}],ack:async()=>{falseAck=true;}},new AbortController().signal),/disk failure/);
+ await assert.rejects(new DigestInbox(failingStore,androidScope).sync({results:async()=>[{...result,cursor:2,runId:'run-two'}],ack:async()=>{falseAck=true;}},new AbortController().signal),/disk failure/);
  assert.equal(falseAck,false);
- assert.deepEqual(await new DigestInbox(store(),scope).history(),[result]);
+ assert.deepEqual(await new DigestInbox(store(),androidScope).history(),[result]);
  console.log('Local digest persistence, stale tabs, scope isolation, commit-before-ack and lost-ack recovery passed.');
 } finally {rmSync(dir,{recursive:true,force:true});}

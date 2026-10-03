@@ -13,7 +13,7 @@ export function localAgentStorage(directory:string,input:any):unknown {
  const digestOperation=operation==='digestRead'||operation==='digestCompareExchange';
  const draftOperation=operation==='draftRead'||operation==='draftCompareExchange';
  const slot=operation==='read'||operation==='write'||draftOperation||digestOperation?input.slot:`journal:${input.scope}`;
- if(typeof slot!=='string'||!(digestOperation?/^hosted-digests:v1:[a-f0-9]{64}(?::[A-Za-z0-9][A-Za-z0-9_-]{0,127})?$/:draftOperation?/^workflow-draft:v1:[a-f0-9]{64}$/:/^(device|journal):[a-f0-9]{64}$/).test(slot))throw Error('Invalid local storage scope');
+ if(typeof slot!=='string'||!(digestOperation?/^(?:renderer-)?hosted-digests:v1:[a-f0-9]{64}(?::[A-Za-z0-9][A-Za-z0-9_-]{0,127})?$/:draftOperation?/^workflow-draft:v1:[a-f0-9]{64}$/:/^(device|journal):[a-f0-9]{64}$/).test(slot))throw Error('Invalid local storage scope');
  const file=join(directory,createHash('sha256').update(slot).digest('hex')+'.json');
  const saved=existsSync(file)?JSON.parse(readFileSync(file,'utf8')):null;
  const write=(value:unknown)=>{const bytes=JSON.stringify(value);if(Buffer.byteLength(bytes)>2*1024*1024)throw Error('Local storage limit');const temporary=file+'.'+randomUUID();writeFileSync(temporary,bytes,{mode:0o600,flag:'wx'});renameSync(temporary,file);};

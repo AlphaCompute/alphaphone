@@ -28,7 +28,8 @@ export interface ActionJournal {
   list(input: { scope: string }): Promise<{ entries: JournalEntry[] }>;
 }
 export interface WorkflowNoticeRoute {scope:string;origin:string;ownerId:string;agentId:string;workflowId:string;runId:string;versionId:string}
-export type DeviceExecutor = (operation: DeviceOperation, operationId: string, context: ContextEnvelope, signal: AbortSignal, bindingHash: string, workflowRoute?:WorkflowNoticeRoute) => Promise<{ status: 'succeeded' | 'failed' | 'unknown'; summary: string; readResult?: WorkflowReadResult; calendarResult?:CalendarResult; notesResult?:NotesResult; reminderResult?:ReminderResult|ReminderCreateResult; mapsResult?:MapsResult;clockResult?:ClockHandoffResult }>;
+export interface DeviceJournalIdentity {scope:string;proposalId:string}
+export type DeviceExecutor = (operation: DeviceOperation, operationId: string, context: ContextEnvelope, signal: AbortSignal, bindingHash: string, workflowRoute?:WorkflowNoticeRoute,journalIdentity?:DeviceJournalIdentity) => Promise<{ status: 'succeeded' | 'failed' | 'unknown'; summary: string; readResult?: WorkflowReadResult; calendarResult?:CalendarResult; notesResult?:NotesResult; reminderResult?:ReminderResult|ReminderCreateResult; mapsResult?:MapsResult;clockResult?:ClockHandoffResult }>;
 export type DeviceRecovery = (operation:DeviceOperation,operationId:string,bindingHash:string,signal:AbortSignal)=>Promise<{status:string;reminderResult?:ReminderResult|ReminderCreateResult}>;
 interface Proposal { id: string; digest: string; state: string; expiresAt: number; operation: DeviceOperation; workflow?:WorkflowDeviceBinding; attemptId?: string }
 const views = new Set(['home','notes','reminders','browser','calendar','files','photos','camera','maps','inbox','settings','workflows']);
@@ -162,7 +163,7 @@ export class DeviceActions {
       signal.throwIfAborted();
       await this.journal.markApplying({ scope: this.scope, proposalId, attemptId: claimed.attemptId });
       let result: Awaited<ReturnType<DeviceExecutor>>;
-      try { signal.throwIfAborted(); if (p.expiresAt <= Date.now()) throw new Error('Expired action'); result = await this.execute(p.operation, operationId, context, signal, await actionScope(JSON.stringify([this.scope,this.session.ownerId,this.session.agentId,this.session.sessionId,this.session.origin,this.credential.installationId,this.credential.enrollmentId,p.id,p.digest,operationId])),p.workflow?{scope:this.scope,origin:this.session.origin,ownerId:this.session.ownerId,agentId:this.session.agentId,workflowId:p.workflow.workflowId,runId:p.workflow.runId,versionId:p.workflow.versionId}:undefined); }
+      try { signal.throwIfAborted(); if (p.expiresAt <= Date.now()) throw new Error('Expired action'); result = await this.execute(p.operation, operationId, context, signal, await actionScope(JSON.stringify([this.scope,this.session.ownerId,this.session.agentId,this.session.sessionId,this.session.origin,this.credential.installationId,this.credential.enrollmentId,p.id,p.digest,operationId])),p.workflow?{scope:this.scope,origin:this.session.origin,ownerId:this.session.ownerId,agentId:this.session.agentId,workflowId:p.workflow.workflowId,runId:p.workflow.runId,versionId:p.workflow.versionId}:undefined,{scope:this.scope,proposalId:p.id}); }
       catch { result = { status: 'unknown', summary: 'Action outcome needs review. It will not be repeated automatically.' }; }
       let clockResult:ClockHandoffResult|undefined;
       if(isClockOperation(p.operation)){

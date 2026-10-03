@@ -17,6 +17,7 @@ import org.json.JSONObject;
 public final class AlphaActionJournalPlugin extends Plugin {
  private static final Object LOCK=new Object();
  private final ExecutorService worker=Executors.newSingleThreadExecutor();
+ private volatile boolean destroyed;
  private interface Task { JSObject run(AlphaConnectionPlugin store,String scope,String id)throws Exception; }
  private static String field(String value,String pattern){if(value==null||!value.matches(pattern))throw new IllegalArgumentException();return value;}
  private static String key(String scope,String id){return "action-journal:v1:"+scope+":entry:"+id;}
@@ -145,6 +146,62 @@ public final class AlphaActionJournalPlugin extends Plugin {
    .put("result",new JSONObject().put("operationId",entry.getString("operationId")).put("reminderResult",receipt.getJSONObject("result")));
   store.writeCredentialSlot(key(scope,id),entry.toString());return response(entry);
  });}
+ private JSONObject clockEntry(AlphaConnectionPlugin store,String scope,String id,String operationId)throws Exception{
+  if(destroyed)throw new IllegalStateException();
+  JSONObject entry=read(store,scope,id);
+  if(entry==null||!"applying".equals(entry.getString("phase"))||!operationId.equals(entry.getString("operationId")))throw new IllegalStateException();
+  JSONObject record=entry.getJSONObject("record"),operation=record.getJSONObject("operation");ClockAgentReview.validate(operation);
+  for(String name:new String[]{"ownerId","sessionId","agentId","origin","installationId","enrollmentId"})if(record.getString(name).isEmpty())throw new IllegalStateException();
+  if(record.getLong("expiresAt")<=System.currentTimeMillis()||record.getJSONObject("context").optBoolean("sensitive",false))throw new IllegalStateException();
+  JSONObject clock=entry.optJSONObject("clockReview");
+  if(clock!=null&&(!entry.getString("attemptId").equals(clock.getString("attemptId"))||!entry.getString("operationHash").equals(clock.getString("operationHash"))))throw new IllegalStateException();
+  return entry;
+ }
+ private JSObject clockReply(JSONObject clock,String action)throws Exception{
+  JSObject out=new JSObject();out.put("result",clock!=null&&clock.has("result")?clock.getJSONObject("result"):ClockAgentReview.result(action,"unknown"));return out;
+ }
+ private JSONObject clockMarker(JSONObject entry,String phase)throws Exception{return new JSONObject().put("phase",phase).put("attemptId",entry.getString("attemptId")).put("operationHash",entry.getString("operationHash"));}
+ @PluginMethod public void reviewClock(PluginCall call){
+  worker.execute(()->{try{
+   String scope=field(call.getString("scope"),"[a-f0-9]{64}"),id=field(call.getString("proposalId"),"[A-Za-z0-9_-]{1,128}"),operationId=field(call.getString("operationId"),"[A-Za-z0-9_-]{1,128}");
+   AlphaConnectionPlugin store=(AlphaConnectionPlugin)getBridge().getPlugin("AlphaConnection").getInstance();JSONObject approved;
+   synchronized(LOCK){JSONObject entry=clockEntry(store,scope,id,operationId);approved=entry.getJSONObject("record").getJSONObject("operation");if(!sameJson(approved,call.getObject("operation")))throw new IllegalStateException();
+    if(entry.has("clockReview")){call.resolve(clockReply(entry.getJSONObject("clockReview"),approved.getString("action")));return;}
+    entry.put("clockReview",clockMarker(entry,"reviewing"));store.writeCredentialSlot(key(scope,id),entry.toString());
+   }
+   getActivity().runOnUiThread(()->{try{
+    if(destroyed)return;
+    // Re-read after crossing threads. Cancellation may have retired this review already.
+    synchronized(LOCK){JSONObject entry=clockEntry(store,scope,id,operationId);if(!"reviewing".equals(entry.getJSONObject("clockReview").getString("phase"))){call.resolve(clockReply(entry.getJSONObject("clockReview"),approved.getString("action")));return;}}
+    ClockAgentReview.show(getActivity(),scope+":"+id,approved,accepted->{if(destroyed)return;worker.execute(()->{if(destroyed)return;try{synchronized(LOCK){JSONObject entry=clockEntry(store,scope,id,operationId),clock=entry.getJSONObject("clockReview");
+      if(!"reviewing".equals(clock.getString("phase"))){call.resolve(clockReply(clock,approved.getString("action")));return;}
+      JSObject reply=new JSObject();if(accepted){String token=java.util.UUID.randomUUID().toString();clock.put("phase","approved").put("reviewToken",token);reply.put("reviewToken",token);}else{clock.put("phase","cancelled").put("result",ClockAgentReview.result(approved.getString("action"),"failed"));reply=clockReply(clock,approved.getString("action"));}
+      store.writeCredentialSlot(key(scope,id),entry.toString());call.resolve(reply);
+     }}catch(Exception refusal){if(!destroyed)call.reject("Clock review expired or was retired");}});});
+   }catch(Exception refusal){call.reject("Clock review could not be displayed; no request was sent");}});
+  }catch(Exception refusal){call.reject("Exact approved Clock review unavailable");}});
+ }
+ @PluginMethod public void cancelClock(PluginCall call){work(call,true,(store,scope,id)->{
+  String operationId=field(call.getString("operationId"),"[A-Za-z0-9_-]{1,128}");JSONObject entry=read(store,scope,id);
+  if(entry==null||!operationId.equals(entry.getString("operationId")))throw new IllegalStateException();
+  JSONObject operation=entry.getJSONObject("record").getJSONObject("operation");ClockAgentReview.validate(operation);
+  JSONObject clock=entry.optJSONObject("clockReview");if(clock==null)clock=clockMarker(entry,"reviewing");
+  if(Set.of("reviewing","approved").contains(clock.getString("phase"))){clock.put("phase","cancelled").put("result",ClockAgentReview.result(operation.getString("action"),"failed"));entry.put("clockReview",clock);store.writeCredentialSlot(key(scope,id),entry.toString());}
+  getActivity().runOnUiThread(()->ClockAgentReview.dismiss(scope+":"+id));return clockReply(clock,operation.getString("action"));
+ });}
+ @PluginMethod public void confirmClock(PluginCall call){
+  // Dispatch runs on the UI thread and rechecks the persisted exact entry at the final boundary.
+  getActivity().runOnUiThread(()->{try{synchronized(LOCK){
+   if(destroyed)throw new IllegalStateException();
+   String scope=field(call.getString("scope"),"[a-f0-9]{64}"),id=field(call.getString("proposalId"),"[A-Za-z0-9_-]{1,128}"),operationId=field(call.getString("operationId"),"[A-Za-z0-9_-]{1,128}");
+   AlphaConnectionPlugin store=(AlphaConnectionPlugin)getBridge().getPlugin("AlphaConnection").getInstance();JSONObject entry=clockEntry(store,scope,id,operationId),clock=entry.getJSONObject("clockReview"),operation=entry.getJSONObject("record").getJSONObject("operation");
+   if(!"approved".equals(clock.getString("phase"))){call.resolve(clockReply(clock,operation.getString("action")));return;}
+   if(!clock.getString("reviewToken").equals(call.getString("reviewToken")))throw new IllegalStateException();
+   ClockAgentReview.foreground(getActivity());ClockAgentReview.zone(operation);
+   clock.put("phase","dispatching").remove("reviewToken");store.writeCredentialSlot(key(scope,id),entry.toString());
+   JSObject result=ClockAgentReview.dispatch(getActivity(),operation);clock.put("phase","finished").put("result",result);store.writeCredentialSlot(key(scope,id),entry.toString());call.resolve(clockReply(clock,operation.getString("action")));
+  }}catch(Exception uncertain){call.reject("Clock handoff result is unconfirmed; do not repeat it");}});
+ }
  @PluginMethod public void get(PluginCall call){work(call,true,(store,scope,id)->response(read(store,scope,id)));}
  @PluginMethod public void list(PluginCall call){work(call,false,(store,scope,id)->{
   String saved=store.readCredentialSlot("action-journal:v1:"+scope+":index");JSONArray index=saved==null?new JSONArray():new JSONArray(saved);
@@ -155,5 +212,5 @@ public final class AlphaActionJournalPlugin extends Plugin {
   }}
   JSObject value=new JSObject();value.put("entries",entries);return value;
  });}
- @Override protected void handleOnDestroy(){worker.shutdown();super.handleOnDestroy();}
+ @Override protected void handleOnDestroy(){synchronized(LOCK){destroyed=true;}ClockAgentReview.abandon();worker.shutdown();super.handleOnDestroy();}
 }

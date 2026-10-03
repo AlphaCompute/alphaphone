@@ -47,6 +47,32 @@ public class ConnectionInstrumentedTest {
  }
  private void ready() throws Exception { until("window.Capacitor?.Plugins?.AlphaConnection && document.documentElement.dataset.activeView"); }
 
+ @Test public void reservedNativeSlotsRejectEveryPublicStorageOperation() throws Exception {
+  org.junit.Assume.assumeTrue("Owned native credential isolation campaign", "1".equals(InstrumentationRegistry.getArguments().getString("nativeSlotIsolation")));
+  assertTrue("Fresh secondary user required",android.os.Process.myUid()/100000>0);
+  AlphaCredentialStore nativeStore=new AlphaCredentialStore(InstrumentationRegistry.getInstrumentation().getTargetContext());
+  String[] slots={"resident-results:v1:fixture","local-agent-provider:v99:fixture","workflow-notice-taps:v99:fixture","workflow-notice-delivery:v99:fixture","action-journal:v1:fixture:entry:id","hosted-background:v99:fixture","hosted-digests:v1:fixture:run","hosted-notices:v99:fixture","note-audio-metadata:v1:fixture","reminder-taps:v99:fixture"};
+  java.util.List<String> ownedSlots=new java.util.ArrayList<>();
+  String retained="{\"authority\":\"native-only-fixture\"}",forged="{\"authority\":\"renderer-forgery\"}";
+  try(BoundedActivityScenario<MainActivity> activity=BoundedActivityScenario.launch(MainActivity.class)) {
+   AppNavigation.liveMode();ready();
+   for(String slot:slots){
+    assertNull("Fixture must not overwrite existing authority",nativeStore.readCredentialSlot(slot));ownedSlots.add(slot);nativeStore.writeCredentialSlot(slot,retained);
+    for(String method:new String[]{"secureRead","secureWrite","secureCompareExchange","secureRemove"}){
+     JSONObject args=new JSONObject().put("slot",slot).put("expectedValue",retained).put("value",forged);
+     assertFalse("Public "+method+" must reject native namespace",invoke(method,args).getBoolean("ok"));
+     assertEquals("Rejected access must preserve native bytes",retained,nativeStore.readCredentialSlot(slot));
+    }
+    nativeStore.writeCredentialSlot(slot,forged);assertEquals("Trusted native internal access remains",forged,nativeStore.readCredentialSlot(slot));
+   }
+   String allowed="workflow-draft:v1:"+slotHash(java.util.UUID.randomUUID().toString());
+   assertNull(nativeStore.readCredentialSlot(allowed));ownedSlots.add(allowed);
+   assertTrue(invoke("secureWrite",new JSONObject().put("slot",allowed).put("value",retained)).getBoolean("ok"));
+   assertEquals(retained,invoke("secureRead",new JSONObject().put("slot",allowed)).getJSONObject("value").getString("value"));
+   assertEquals("saved",invoke("secureCompareExchange",new JSONObject().put("slot",allowed).put("expectedValue",retained).put("value",forged)).getJSONObject("value").getString("status"));
+   assertTrue(invoke("secureRemove",new JSONObject().put("slot",allowed)).getBoolean("ok"));assertNull(nativeStore.readCredentialSlot(allowed));
+  }finally{for(String slot:ownedSlots)nativeStore.removeCredentialSlot(slot);}
+ }
  @Test public void localDraftCompareExchangePreservesNewerEditsAndEncryptedRecreation() throws Exception {
   String slot="inbox-drafts:v1:instrumentation-"+java.util.UUID.randomUUID();
   String first=new JSONObject().put("body","PRIVATE_SYNTHETIC_DRAFT_"+java.util.UUID.randomUUID()).put("revision","first").toString();
