@@ -395,5 +395,7 @@
       "disposition": "New host speech backend patch from AlphaPhone PR 136 migrated upstream in elizaOS/eliza PR 33236."
     }
   ],
-  "upstreamFollowupPullRequest": "https://github.com/elizaOS/eliza/pull/33236"
+  "upstreamFollowupPullRequest": "https://github.com/elizaOS/eliza/pull/33236",
+  "upstreamStagingCommit": "06daf5d1f796ca0c848683c8f06b994a641cd800",
+  "upstreamStagingPullRequest": "https://github.com/elizaOS/eliza/pull/32809"
 }
