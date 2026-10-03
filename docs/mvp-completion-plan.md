@@ -1,6 +1,10 @@
 # Alpha Phone MVP completion plan
 
-## Current checkpoint — October 3, browser speech and required native flows
+## Current checkpoint — October 3, hosted Android findings
+
+Exact e4d hosted resident execution passes standalone private-peer authentication and IPC streaming, then stops below the existing hybrid RAM floor. Its recovery campaign executes Reminder deletion storage successfully, but a multiline transcript parsing defect prevents acceptance and later phases. The follow-up explicitly allocates 4096M guest RAM and corrects parsing while retaining exact-method, count and no-skip gates. Foundation remains blocked at repeated overlay activation after reboot; the diagnostic also exposed a transient keyguard readiness state before any overlay collection. The combined follow-up passes 163 repository checks, both Android builds/lint, strict recovery guards and workflow lint. Its four application APKs are byte-identical to 13456e3; the test APKs now emit read-only RAM evidence. Fresh native execution and overlay evidence are required. See [qualification details](browser-native-flow-qualification-2026-10-03.md). The MVP remains incomplete.
+
+## Earlier checkpoint — October 3, browser speech and required native flows
 
 The combined follow-up fixes a reproduced browser transcription import-order regression and requires native sensitive-reading and share/cancel execution in Foundation CI. The standalone bookmark runner now rejects skipped/wrong-method results and defers cleanup after uncertain instrumentation transport. Combined verification passes 160 repository checks, both Android distributions/lint, 66 rendered flows, four additional recording flows and actual production-bundle startup with all 3,761 source identities unchanged. One real-provider case remains explicitly skipped. Both e4d hosted browser runs hit the 20-minute job limit; the next whole-job budget is 30 minutes with unchanged per-test deadlines. Native/live/physical acceptance remains open. See [browser and native flow qualification](browser-native-flow-qualification-2026-10-03.md).
 

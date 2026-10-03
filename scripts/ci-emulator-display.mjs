@@ -49,10 +49,12 @@ export async function prepareFixtureDisplay(run, { env = process.env, serial, sl
   assertFixtureIdentity(run, { fresh: true });
   let state;
   for (let attempt = 0; attempt < 30 && budget.remaining-- > 0; attempt++) {
+    assertFixtureIdentity(run, { fresh: true });
     state = parseFixtureDisplay(run("shell", "dumpsys", "power"), run("shell", "dumpsys", "window", "policy"));
     record({ phase: "system-ready", attempt, ...state });
     if (state.malformed) throw new Error("Malformed keyguard readiness observation");
-    if (!state.startupUnbound && state.secure === true) throw new Error("Secure credential state must never be changed by CI setup");
+    // A bound monitor can briefly retain its conservative secure default.
+    // Wait read-only; only observed secure=false can authorize setup below.
     if (state.ready && state.secure === false) break;
     await sleep(500);
   }
@@ -85,7 +87,8 @@ export async function requireFixtureDisplay(run, { env = process.env, serial, sl
     const state = parseFixtureDisplay(run("shell", "dumpsys", "power"), run("shell", "dumpsys", "window", "policy"));
     record({ phase: "display-admission", attempt, ...state });
     if (state.malformed) throw new Error("Malformed keyguard readiness observation");
-    if (!state.startupUnbound && state.secure === true) throw new Error("Secure fixture detected; refusing instrumentation");
+    // Secure observations never admit instrumentation; they consume the same
+    // bounded read-only budget while the binder-backed state settles.
     consecutive = state.ready && state.secure === false && state.awake && state.displayOn && state.unlocked && state.unrestricted ? consecutive + 1 : 0;
     if (consecutive === 2) return state;
     await sleep(500);

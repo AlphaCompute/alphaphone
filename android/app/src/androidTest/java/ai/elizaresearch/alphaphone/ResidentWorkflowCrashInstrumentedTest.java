@@ -63,9 +63,29 @@ public final class ResidentWorkflowCrashInstrumentedTest {
    primary.addSuppressed(new AssertionError("Sanitized readiness snapshot unavailable"));
   }
  }
+ private void reportRamAdmission() {
+  // Read-only fixture evidence; unavailable diagnostics must not replace service admission.
+  try {
+   android.app.ActivityManager manager=context.getSystemService(android.app.ActivityManager.class);
+   JSONObject diagnostic=new JSONObject().put("runtimeMode",context.getSharedPreferences("CapacitorStorage",Context.MODE_PRIVATE).getString("eliza:mobile-runtime-mode",""));
+   diagnostic.put("memoryInfoAvailable",manager!=null);
+   if(manager!=null){
+    android.app.ActivityManager.MemoryInfo memory=new android.app.ActivityManager.MemoryInfo();
+    manager.getMemoryInfo(memory);
+    diagnostic.put("totalMemBytes",memory.totalMem).put("availableMemBytes",memory.availMem).put("lowMemory",memory.lowMemory);
+    diagnostic.put("marketedRamGb",DeviceRamTierPolicy.marketedRamGb(memory.totalMem));
+    diagnostic.put("hybridAllowedByPolicy",DeviceRamTierPolicy.allowsHybridAgent(memory.totalMem));
+   }
+   android.os.Bundle status=new android.os.Bundle();status.putString("stream","\nResident RAM admission: "+diagnostic+"\n");
+   InstrumentationRegistry.getInstrumentation().sendStatus(2,status);
+  } catch(Exception unavailable) {
+   // The real start below remains responsible for enforcing the production policy.
+  }
+ }
  private void startAndEnroll()throws Exception {
   ownerBearer=null;
   assertTrue(context.getSharedPreferences("CapacitorStorage",Context.MODE_PRIVATE).edit().putString("eliza:mobile-runtime-mode","cloud-hybrid").commit());
+  reportRamAdmission();
   ElizaAgentService.start(context);
   long started=SystemClock.elapsedRealtime(),deadline=started+90000;
   String root=null;JSONObject status=null;
