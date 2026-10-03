@@ -47,6 +47,7 @@ public final class AlphaVoiceCloudPlugin extends Plugin {
   try{workers.execute(()->{try{localEngine.release();}finally{localReleaseQueued.set(false);}});}catch(RejectedExecutionException ignored){localReleaseQueued.set(false);}
  }
  private void scheduleLocalRelease(long delay){main.removeCallbacks(localIdleRelease);if(!destroyed)main.postDelayed(localIdleRelease,delay);}
+ @PluginMethod public void workflowPresentationCapabilities(PluginCall call){JSObject result=new JSObject();result.put("protocol",2);call.resolve(result);}
  @PluginMethod public void releaseLocalSpeech(PluginCall call){for(Pending request:pending.values())request.cancel();main.post(this::clearPlayback);queueLocalRelease();call.resolve();}
 
  // Test APK sets this directly on the plugin instance. Never exposed as a Capacitor method.

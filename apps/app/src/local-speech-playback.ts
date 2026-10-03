@@ -20,7 +20,7 @@ async function speakChunk(voice:any,native:boolean,text:string,signal:AbortSigna
  const wait=()=>Promise.race([new Promise<void>(resolve=>setTimeout(resolve,100)),interrupted]);
  try{
   for(const event of ['playbackEnded','playbackFailed','playbackStopped']){
-   const pending=voice.addListener(event,(value:{playbackId:string})=>{if(!active||!playbackId||value.playbackId!==playbackId)return;if(event==='playbackEnded')ended();else failed(Error(event==='playbackStopped'?'Speech was stopped before completion.':'Speech playback failed.'));}).then((handle:{remove:()=>Promise<void>})=>{if(active)handles.add(handle);else void bounded(()=>handle.remove());});
+   const pending=voice.addListener(event,(value:{playbackId:string;message?:string})=>{if(!active||!playbackId||value.playbackId!==playbackId)return;if(event==='playbackEnded')ended();else failed(Error(event==='playbackStopped'?'Speech was stopped before completion.':(!native&&typeof value.message==='string'?value.message:'Speech playback failed.')));}).then((handle:{remove:()=>Promise<void>})=>{if(active)handles.add(handle);else void bounded(()=>handle.remove());});
    await Promise.race([pending,interrupted]);signal.throwIfAborted();
   }
   for(;;){signal.throwIfAborted();try{

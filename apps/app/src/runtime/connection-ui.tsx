@@ -1,3 +1,4 @@
+import { workflowPresentationProtocol } from './workflow-presentation';
 import {developmentIdentity,assertDevelopmentIdentity} from '../browser/development-identity';
 import {developmentCloudKey} from '../browser/development-cloud';
 import {DevelopmentCloudSetup} from '../browser/development-cloud-ui';
@@ -41,7 +42,7 @@ export interface ConnectionSnapshot {
   kind: 'offline' | 'remote' | 'local' | 'resident' | 'cloud'; name: string;
   session: VerifiedSession | null; agents: CloudAgent[];
 }
-type Active = { kind: 'resident'; remote: LocalAgentProtocol; origin: string; actions?: DeviceActions } | { kind: 'remote' | 'local'; remote: RemoteProtocol; origin: string; actions?: DeviceActions } | { kind: 'cloud'; cloud: CloudProtocol; agentId: string; actions?: DeviceActions; phoneTarget?: CloudPhoneTarget; voiceExpiresAt?: number };
+type Active = { kind: 'resident'; remote: LocalAgentProtocol; origin: string; actions?: DeviceActions; workflowProtocol?: 1|2 } | { kind: 'remote' | 'local'; remote: RemoteProtocol; origin: string; actions?: DeviceActions; workflowProtocol?: 1|2 } | { kind: 'cloud'; cloud: CloudProtocol; agentId: string; actions?: DeviceActions; workflowProtocol?: 1|2; phoneTarget?: CloudPhoneTarget; voiceExpiresAt?: number };
 const SELECTION = 'alpha.connection.selection.v1';
 const CLOUD_SERVICE = 'alpha.connection.cloud-service.v1';
 const CONVERSATIONS = 'alpha.connection.conversations.v1';
@@ -201,6 +202,7 @@ async function connectRemote(kind: 'remote' | 'local', origin: string, code: str
   const verified = remote.session!;
   const session = { ownerId: verified.identityId, agentId: agent.id, sessionId: crypto.randomUUID(), origin: remote.origin };
   let actions: DeviceActions | undefined;
+  const workflowProtocol=await workflowPresentationProtocol(signal);
   try {
     const baseScope = await actionScope(JSON.stringify([remote.origin, session.ownerId, session.agentId]));
     const slot = `device:${baseScope}`;
@@ -219,7 +221,7 @@ async function connectRemote(kind: 'remote' | 'local', origin: string, code: str
       if (response.status < 200 || response.status >= 300) throw Object.assign(new Error('Device action request failed'), { status: response.status });
       return response.body;
     };
-    const registered = await request('/api/client-devices/register', { label: 'Alpha Phone', workflowProtocol: Capacitor.isNativePlatform()?1:2 }, signal) as { installationId: string; enrollmentId: string; capabilities?: string[] };
+    const registered = await request('/api/client-devices/register', { label: 'Alpha Phone', workflowProtocol }, signal) as { installationId: string; enrollmentId: string; capabilities?: string[] };
     if (registered.installationId !== credential.installationId || !/^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/.test(registered.enrollmentId)) throw new Error('Device registration was not verified');
     if(Array.isArray(registered.capabilities)&&registered.capabilities.includes("reminders.local-record.v1"))headers["X-Eliza-Device-Capabilities"]+=",reminders.local-record.v1";
     if(Array.isArray(registered.capabilities)&&registered.capabilities.includes("maps.selected-read.v1"))headers["X-Eliza-Device-Capabilities"]+=",maps.selected-read.v1";
@@ -230,12 +232,12 @@ async function connectRemote(kind: 'remote' | 'local', origin: string, code: str
     actions = new DeviceActions(session, credential, await actionScope(JSON.stringify([baseScope, credential.installationId])), request, actionJournal, (op, id, context, effectSignal, bindingHash) => deviceExecutor(op, id, context, effectSignal, bindingHash),(op,id,binding,signal)=>deviceRecovery?deviceRecovery(op,id,binding,signal):Promise.resolve({status:"unknown"}));
   } catch { signal.throwIfAborted(); /* Older hosts still support typed chat, without phone action authority. */ }
   save({ kind, origin: remote.origin });
-  activate({ kind, remote, origin: remote.origin, actions }, session, agent.name);
+  activate({ kind, remote, origin: remote.origin, actions, workflowProtocol }, session, agent.name);
 
 }
 async function connectDevelopment(profile:DevelopmentProfile,signal:AbortSignal){
  if(!browserDevProfile)throw Error('Development mode required.');
- const identity=developmentIdentity(profile);const client=new LocalAgentProtocol(developmentBridge(profile,identity));const {session,name}=await client.connect(signal);signal.throwIfAborted();const credential=developmentCredential(profile,identity),scope=await actionScope(JSON.stringify([client.origin,session.ownerId,session.agentId,credential.installationId]));const actions=new DeviceActions(session,credential,scope,(path,body,signal)=>client.request(path,body,signal),developmentJournal(profile,identity),(op,id,context,signal,binding)=>deviceExecutor(op,id,context,signal,binding),(op,id,binding,signal)=>deviceRecovery?deviceRecovery(op,id,binding,signal):Promise.resolve({status:'unknown'}));await retire();signal.throwIfAborted();assertDevelopmentIdentity(identity);save({kind:'development',profile,...(identity.account?{account:identity.account}:{})});developmentVoiceExpiresAt=Date.now()+3600000;activate({kind:'resident',remote:client,origin:client.origin,actions},session,name);
+ const identity=developmentIdentity(profile);const client=new LocalAgentProtocol(developmentBridge(profile,identity));const {session,name}=await client.connect(signal);signal.throwIfAborted();const credential=developmentCredential(profile,identity),scope=await actionScope(JSON.stringify([client.origin,session.ownerId,session.agentId,credential.installationId]));const actions=new DeviceActions(session,credential,scope,(path,body,signal)=>client.request(path,body,signal),developmentJournal(profile,identity),(op,id,context,signal,binding)=>deviceExecutor(op,id,context,signal,binding),(op,id,binding,signal)=>deviceRecovery?deviceRecovery(op,id,binding,signal):Promise.resolve({status:'unknown'}));await retire();signal.throwIfAborted();assertDevelopmentIdentity(identity);const workflowProtocol=2 as const;save({kind:'development',profile,...(identity.account?{account:identity.account}:{})});developmentVoiceExpiresAt=Date.now()+3600000;activate({kind:'resident',remote:client,origin:client.origin,actions,workflowProtocol},session,name);
 }
 async function connectResident(signal: AbortSignal) {
   if (!await localAgentPackaged()) throw new Error('The local agent is unavailable here. Connect a remote agent, use Eliza Cloud, or continue in mock mode.');
@@ -244,6 +246,7 @@ async function connectResident(signal: AbortSignal) {
   const { session, name } = await client.connect(signal);
   signal.throwIfAborted();
   let actions:DeviceActions|undefined;
+  const workflowProtocol=await workflowPresentationProtocol(signal);
   let reason='';
   try {
     const store=isAndroid?secureConnectionStore:developmentDeviceStore;
@@ -256,7 +259,7 @@ async function connectResident(signal: AbortSignal) {
     // Browser and Android use the same reviewed local-record contracts.
     const headers={'X-Eliza-Device-Id':credential.installationId,'X-Eliza-Device-Key':credential.key,'X-Eliza-Device-Capabilities':'calendar.local-event.v1,notes.local-record.v1'};
     const request=(path:string,body:unknown|undefined,requestSignal:AbortSignal)=>client.request(path,body,requestSignal,headers);
-    const registered=await request('/api/client-devices/register',{label:isAndroid?'Alpha Phone':'Alpha browser development',workflowProtocol:Capacitor.isNativePlatform()?1:2},signal);
+    const registered=await request('/api/client-devices/register',{label:isAndroid?'Alpha Phone':'Alpha browser development',workflowProtocol},signal);
     if(registered.installationId!==credential.installationId||typeof registered.enrollmentId!=='string'||!/^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/.test(registered.enrollmentId))throw Error('Device registration was not verified');
     if(registered.capabilities?.includes('reminders.local-record.v1'))headers['X-Eliza-Device-Capabilities']+=',reminders.local-record.v1';
     if(registered.capabilities?.includes('maps.selected-read.v1'))headers['X-Eliza-Device-Capabilities']+=',maps.selected-read.v1';
@@ -266,7 +269,7 @@ async function connectResident(signal: AbortSignal) {
     actions=new DeviceActions(session,credential,await actionScope(JSON.stringify([baseScope,credential.installationId])),request,journal,(op,id,context,effectSignal,bindingHash)=>deviceExecutor(op,id,context,effectSignal,bindingHash),(op,id,binding,recoverySignal)=>deviceRecovery?deviceRecovery(op,id,binding,recoverySignal):Promise.resolve({status:'unknown'}));
   } catch(error) {signal.throwIfAborted();reason='Local chat connected. Device actions are unavailable: '+(error instanceof Error?error.message:'Enrollment failed.');}
   save({kind:'resident'});
-  activate({kind:'resident',remote:client,origin:client.origin,actions},session,name);
+  activate({kind:'resident',remote:client,origin:client.origin,actions,workflowProtocol},session,name);
   if(reason)update({phoneCapabilityReason:reason});
 }
 async function connectCloud(agentId: string, signal: AbortSignal, expectedOwner?: string, expectedOrigin?:string, expectedPersonalOwner?:Readonly<PersonalOwner>) {
@@ -285,7 +288,8 @@ async function connectCloud(agentId: string, signal: AbortSignal, expectedOwner?
   if (agent.status !== 'running' || !agent.runtimeUrl) throw new Error('This agent is not ready. Refresh its status.');
   if(expectedOrigin&&new URL(agent.runtimeUrl).origin!==new URL(expectedOrigin).origin)throw Error('The personal Cloud runtime changed. Refresh its status.');
   const session = {ownerId:identity.userId,agentId,sessionId:crypto.randomUUID(),origin:new URL(agent.runtimeUrl).origin};
-  const next: Extract<Active,{kind:'cloud'}> = {kind:'cloud',cloud,agentId};
+  const workflowProtocol=await workflowPresentationProtocol(signal);
+  const next: Extract<Active,{kind:'cloud'}> = {kind:'cloud',cloud,agentId,workflowProtocol};
   let attached = false;
   let reason = 'This Cloud runtime has not enabled verified phone actions, workflows or paired speech.';
   try {
@@ -311,7 +315,7 @@ async function connectCloud(agentId: string, signal: AbortSignal, expectedOwner?
     if(Capacitor.getPlatform()==='android'&&device?.capabilities?.includes("clock.handoff.v1"))target.headers["X-Eliza-Device-Capabilities"]+=",clock.handoff.v1";
     if(Array.isArray(device?.capabilities)&&device.capabilities.includes("maps.selected-read.v1"))target.headers["X-Eliza-Device-Capabilities"]+=",maps.selected-read.v1";
     session.ownerId=capability.identityId;
-    const registered=await request('/api/client-devices/register',{label:'Alpha Phone',workflowProtocol:Capacitor.isNativePlatform()?1:2},signal);
+    const registered=await request('/api/client-devices/register',{label:'Alpha Phone',workflowProtocol},signal);
     if (registered.installationId!==credential.installationId || typeof registered.enrollmentId!=='string' || !/^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/.test(registered.enrollmentId)) throw new Error('Cloud device registration was not verified');
 
     credential.enrollmentId=registered.enrollmentId; await secureConnectionStore.write(slot,credential); signal.throwIfAborted();
@@ -371,6 +375,7 @@ export const connectionController = {
     actionReceipts.set(proposal.id, { sessionId, result });
     return result;
   },
+  getWorkflowPresentationProtocol():1|2 { return active?.actions ? active.workflowProtocol ?? 1 : 1; },
   getWorkflowDeviceTarget(){const selected=active;if(!selected||!selected.actions||!selected.actions.credential.enrollmentId)return null;return {installationId:selected.actions.credential.installationId,enrollmentId:selected.actions.credential.enrollmentId};},
   async workflowPhoneActions(review:WorkflowPhoneReview,context:ContextEnvelope,signal:AbortSignal){
     const selected=active,generation=epoch,sessionId=state.session?.sessionId;
