@@ -5,7 +5,7 @@
     "packages/app/src/security/secure-store-android.ts": "af9dbf66398a9a984b43b33d98e752f586c70a6b473b73413e1cbfe395d30974",
     "packages/agent/src/runtime/plugin-collector.ts": "7becd751d0616c5466506a1dabd48cc4a23d5ca393cf65e9cf0c9a47401c2e9b",
     "packages/agent/test/lean-chat-workflows.test.ts": "d6d937c5882e3683281cf40f84ccde3efc7bdf8c146b5a0426a0b693f519f337",
-    "plugins/plugin-workflow/src/plugin-routes.ts": "3edae66b214358367db08c3fb435bf12508c374efa691c51b71ce0ff01acf69e",
+    "plugins/plugin-workflow/src/plugin-routes.ts": "517b20534f8c9eab6fd0ac354a0425fd5acfd58b20393a7c0382812bd9f7d000",
     "plugins/plugin-workflow/__tests__/hosted-route-registration.test.ts": "fff3297e97e13c5929bff141c045a10153a5166eb93bd06dc84f5deb098135ac",
     "plugins/plugin-workflow/src/services/smithers-runtime.ts": "2dce0d172cd9513d5fdc0eac38f46c6d6341eafe4a4fdb7a8622f46475b6a814",
     "plugins/plugin-workflow/src/services/smithers-process.ts": "eb0217674c8504d975ef6375ebe484707b15033476cd8665c5c686e877102ae4",
@@ -46,7 +46,12 @@
     "packages/agent/src/api/workflow-device-owner.ts": "c9cb104f1b4fd052d34ad2b88b60fe96eb464c3de4b4285376b48a8d5d468f61",
     "plugins/plugin-sql/src/schema/clientDevices.ts": "a2b27ee5e093b5462652296a5431181a7232f1bdefc22cc6c1995dfd5f5dac84",
     "plugins/plugin-assistant/test/workflow-owner-enrollment.test.ts": "168fde5f1d5871d39f3bf462135745107442e79847773b87475b20caed4e0bdf",
-    "plugins/plugin-assistant/test/workflow-owner-dispatch.test.ts": "aeb29060516a6e25b11f5f32b73b5f382221dcc59d4434511f9dad8c417569c0"
+    "plugins/plugin-assistant/test/workflow-owner-dispatch.test.ts": "aeb29060516a6e25b11f5f32b73b5f382221dcc59d4434511f9dad8c417569c0",
+    "plugins/plugin-workflow/src/services/phone-workflow-generation.ts": "629dce92af9fdb1685cd8cc72bd7400abd13b2f6283fa8f6ff5b0dc075228b98",
+    "plugins/plugin-workflow/src/services/workflow-service.ts": "f843af50aef4bf34da4f91cc0bcd8402319d9e127c29de2dda62eae367f45af9",
+    "plugins/plugin-workflow/src/routes/workflow-routes.ts": "6b5801e9488df87e25803df22ef787126545bce3a2220120900ae5bdcb4ccee8",
+    "plugins/plugin-workflow/__tests__/phone-workflow-generation.test.ts": "121d844a337ede32ccca3630ea416842fe75292a3b962323d966710cbe2172a3",
+    "plugins/plugin-workflow/__tests__/phone-workflow-generation-route.test.ts": "c4965339fbc6bcf80d7ac1e0e66eca3e2ed54e27bc85737ce104e2123d36ef77"
   },
   "patches": [
     "android-secure-store-socket.patch",
@@ -65,7 +70,8 @@
     "egress-credential-assignments.patch",
     "workflow-device-owner-binding.patch",
     "calendar-tool-format-guidance.patch",
-    "device-operation-key-guidance.patch"
+    "device-operation-key-guidance.patch",
+    "typed-workflow-generation.patch"
   ],
   "patchHashes": {
     "approved-workflows-navigation.patch": "2202d04675531633db4b1ce3a2e49e3e870c259c341acaf20b17bbef6be99c9a",
@@ -74,6 +80,7 @@
     "egress-credential-assignments.patch": "a365c56f114a60bbf061f7878f8ac65e73a1c7de2bc5f2fbb9414d70c6f0ae0d",
     "workflow-device-owner-binding.patch": "4c258a6da2ca1597c9933accecbba6451f844b73b0121f8261f7a12ceefed449",
     "calendar-tool-format-guidance.patch": "64f38f9b7da7fe4773ce13bd1751a36accf494788f7fb1cd34878655218e43fe",
-    "device-operation-key-guidance.patch": "78ff3fa0477fbd5f20a9fee1e288306ccacb15e87383d8b1ab7c87f190170902"
+    "device-operation-key-guidance.patch": "78ff3fa0477fbd5f20a9fee1e288306ccacb15e87383d8b1ab7c87f190170902",
+    "typed-workflow-generation.patch": "c6b3840f2860542e5411dc0a98e2e7191643a3b8ac32de2534cebf9fbfc1625e"
   }
 }
