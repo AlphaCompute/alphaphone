@@ -1,0 +1,9 @@
+# Local mail drafts survive cancelled reads
+
+MVP step 12 and journey F require local drafts to remain independent of provider operations. Cancelling Load Inbox previously called the session teardown function, discarding the current unsaved draft and its in-session edits. A rendered Chromium negative control on `645df791f74ccfa03010ed5f8360dc5cf445c804` reproduces the missing Continue draft control after cancellation.
+
+The repair invalidates and aborts only the mailbox read, clears its message/context/attachment selection, and retains the current account, local draft and provider-operation state. Full teardown still runs on Cloud session change and unmount. Cancellation does not save a draft or authorize a provider mutation. Late responses cannot republish because their request generation is retired before abort.
+
+Six rendered flows pass for Load Inbox, Search Gmail and Check connection, each with an unsaved draft and edits to a saved draft. They verify subject/body/recipient retention, unchanged durable storage, one observed abort, no provider mutation, and rejection of a late response. The initial combined campaign passed the six existing owner-isolation/grant-recovery flows and four new cancellation flows; its two search cases failed on an incorrect test locator. After correcting that locator to the actual Search email button, all six new flows pass. TypeScript and the production renderer build pass.
+
+Evidence is retained under `test-results/inbox-cancel-draft-repair/`: `before/`, `after.log`, `final.log`, and `build.log`. Full repository verification, new Android builds and native/live-Gmail acceptance remain pending. Local disk is below 1 GiB; prior full verification exhausted space while preparing runtime source. Earlier hosted runs qualify their own commits and do not qualify this repair. The full MVP remains incomplete.
