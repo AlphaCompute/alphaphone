@@ -1,5 +1,9 @@
 # Alpha Phone MVP completion plan
 
+## Current checkpoint — October 3, Email account ownership
+
+A rendered negative control reproduced an old-account Gmail draft being saved under a newly selected owner. The repair binds delayed reads, deletion/undo follow-ups and receipt clearing to the original operation/session, aborting owned reads on reset. Six rendered flows and 178 repository checks pass; both Android distributions build with unchanged production source. Fresh DoD and call-note reads preserve unresolved suggestions and retain Email. Native/live-provider acceptance remains open. See [qualification and source evidence](mvp-auth-native-qualification-2026-10-03.md). The MVP is not complete.
+
 ## Current checkpoint — October 3, Cloud recovery and native diagnostics
 
 Cloud delegation completion is bounded, late account callbacks are fenced, and native callback tests are required in both distribution recovery campaigns. The combined source passes 177 checks, two rendered auth suites and both Android builds with 3,787 source identities unchanged. Prior a91 browser runs each pass 1,030 flows with four real-agent/recording skips. Exact b0 provider diagnostics now show that reboot removes the overlay and restores stock WebView, with SELinux denying super-device access during scratch cleanup. Resident a91 passes fresh-source HTTP/SQL, standalone IPC/private-peer, trusted-worker recovery and all seven required recovery methods in both variants, but its lost-parent-RPC case fails before the expected model request. The expanded diagnostics pass 178 repository checks and both Android builds with unchanged source. Both failures remain under investigation; other hosted jobs remain active. See [exact evidence and remaining gates](mvp-auth-native-qualification-2026-10-03.md). The MVP is not complete.
