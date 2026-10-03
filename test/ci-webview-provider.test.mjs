@@ -61,7 +61,7 @@ async function simulate({ drift, neverBoot = false, neverReady = false, remountC
   const stock = '/product/app/webview/webview.apk', stockHash = 'a'.repeat(64);
   const signature = `Verified using v2 scheme (APK Signature Scheme v2): true\nSigner #1 certificate SHA-256 digest: ${candidate.certificateSha256}`;
   const badging = `package: name='com.android.webview' versionCode='808300007' versionName='157.0.8083.0'\nsdkVersion:'29'\ntargetSdkVersion:'37'\nnative-code: 'x86_64'`;
-  let scratch = '', backingAlias = 'MISSING', remounts = 0, reboots = 0, probe = null, probeMarker = null;
+  let scratch = '', backingAlias = 'MISSING', remounts = 0, reboots = 0, probe = null, probeMarker = null, userReads = 0, restarted = false;
   const execute = (file, args) => {
     const name = path.basename(file);
     if (name === 'curl') { const fd = fs.openSync(args.at(-1), 'wx'); fs.ftruncateSync(fd, candidate.size); fs.closeSync(fd); return ''; }
@@ -74,6 +74,9 @@ async function simulate({ drift, neverBoot = false, neverReady = false, remountC
     if (key === 'shell getprop sys.boot_completed') {
       if (offline-- > 0 || neverBoot || (drift==='overlay-never-boot'&&reboots>1)) throw Error('device offline');
       return '1';
+    }
+    if (key === 'shell cmd activity get-started-user-state 0') {
+      userReads++;return restarted && (drift==='user-never-ready' || (drift==='user-delayed' && userReads<3)) ? 'RUNNING_LOCKED' : 'RUNNING_UNLOCKED';
     }
     if (key.startsWith('shell service check ')) return `Service ${a.at(-1)}: found`;
     if (key === 'shell dmctl list devices') return `Available Device Mapper Devices:\n${rebooted || drift === 'cached-scratch' ? 'scratch : 254:5\n' : ''}`;
@@ -127,10 +130,10 @@ async function simulate({ drift, neverBoot = false, neverReady = false, remountC
     }
     if (['root', 'wait-for-device', 'disable-verity'].includes(key)) return '';
     if (key === 'shell stop') { stopped = true; return ''; }
-    if (key === 'shell start') { stopped = false; return ''; }
+    if (key === 'shell start') { stopped = false; restarted = true; userReads = 0; return ''; }
     if (key === `shell rm ${stock}`) { assert.equal(stopped, true); removed = true; return ''; }
     if (a[0] === 'pull') { fs.writeFileSync(a[2], 'stock'); return ''; }
-    if (a[0] === 'install') { assert.equal(removed, true); assert.equal(stopped, false); installed = true; return 'Success'; }
+    if (a[0] === 'install') { if(drift==='user-delayed')assert.ok(userReads>=3); assert.equal(removed, true); assert.equal(stopped, false); installed = true; return 'Success'; }
     if (key === 'shell cmd webviewupdate set-webview-implementation com.android.webview') return 'Success';
     if (key === 'shell dumpsys webviewupdate') {
       selectionReads++;
@@ -322,4 +325,10 @@ test('live overlay admission refuses namespace, backing and write-probe failures
  for(const drift of ['overlay-live-ro','overlay-live-init-ro','overlay-live-wrong-backing','overlay-live-probe-mismatch','overlay-live-cleanup-failed']){
   const r=await simulate({drift});assert.ok(r.error,drift);assert.equal(r.removed,false,drift);assert.equal(r.installed,false,drift);
  }
+});
+
+// Binder services and the old boot property can be visible before the restarted framework is usable.
+test('provider installation waits for the restarted primary user to be running unlocked',async()=>{
+ const delayed=await simulate({drift:'user-delayed'});assert.ifError(delayed.error);assert.equal(delayed.installed,true);
+ const unavailable=await simulate({drift:'user-never-ready'});assert.match(unavailable.error.message,/boot deadline/);assert.equal(unavailable.installed,false);
 });

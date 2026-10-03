@@ -279,13 +279,15 @@ export async function main({ environment = process.env, execute = execFileSync, 
     }
     fs.writeFileSync(path.join(output, `storage-${label}.json`), JSON.stringify(details, null, 2) + '\n');
   };
+  // sys.boot_completed can remain 1 across stop/start; wait for the new user lifecycle too.
   const boot = async () => {
     const end = now() + 180000;
     while (now() < end) {
       try {
         if (run('shell', 'getprop', 'sys.boot_completed').trim() === '1' &&
             /Service package: found/.test(run('shell', 'service', 'check', 'package')) &&
-            /Service activity: found/.test(run('shell', 'service', 'check', 'activity'))) return;
+            /Service activity: found/.test(run('shell', 'service', 'check', 'activity')) &&
+            run('shell', 'cmd', 'activity', 'get-started-user-state', '0').trim() === 'RUNNING_UNLOCKED') return;
       } catch (error) {
         // Offline and unavailable binder services are expected during reboot.
         // The timeout never extends; normal fixture admission follows readiness.
