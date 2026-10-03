@@ -388,6 +388,12 @@
       "patch": "workflow-worker-termination-diagnostic.patch",
       "sha256": "3eea71235aaf105c7c8a5c23eabc99120ba00c0a92c2045a8e6bfcff9c6b7d63",
       "disposition": "Migrated upstream in PR 33230; retained through latest-baseline integration."
+    },
+    {
+      "patch": "standalone-whisper-backend.patch",
+      "sha256": "fa680567a796bb0a25c57b74c23823b5f29a55fb468c8b836fb69bd74ed8440c",
+      "disposition": "New host speech backend patch from AlphaPhone PR 136 migrated upstream in elizaOS/eliza PR 33236."
     }
-  ]
+  ],
+  "upstreamFollowupPullRequest": "https://github.com/elizaOS/eliza/pull/33236"
 }
