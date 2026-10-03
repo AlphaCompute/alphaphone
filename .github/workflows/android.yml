@@ -195,8 +195,10 @@ jobs:
           # Chromium recommends >=4 GB guest storage for WebView development.
           # Keep host capacity admission; overlay scratch is separately bounded to 512 MiB.
           disk-size: 4096M
+          # Use GLES software rendering: SystemUI startup blocked in SurfaceFlinger
+          # GPU-context query with the Vulkan-capable backend.
           # Provider replacement is confined to this fresh disposable AOSP image.
-          emulator-options: -no-window -gpu swiftshader -no-snapshot -noaudio -no-boot-anim -writable-system -append-userspace-opt 'androidboot.boot_devices=pci0000:00/0000:00:03.0 pci0000:00/0000:00:05.0 pci0000:00/0000:00:06.0'
+          emulator-options: -no-window -gpu swiftshader -feature -Vulkan -no-snapshot -noaudio -no-boot-anim -writable-system -append-userspace-opt 'androidboot.boot_devices=pci0000:00/0000:00:03.0 pci0000:00/0000:00:05.0 pci0000:00/0000:00:06.0'
           disable-animations: true
           script: |
             ANDROID_SERIAL=emulator-5554 node scripts/prepare-ci-emulator.mjs
@@ -268,8 +270,10 @@ jobs:
           # Chromium recommends >=4 GB guest storage for WebView development.
           # Keep host capacity admission; overlay scratch is separately bounded to 512 MiB.
           disk-size: 4096M
+          # Use GLES software rendering: SystemUI startup blocked in SurfaceFlinger
+          # GPU-context query with the Vulkan-capable backend.
           # Provider replacement is confined to this fresh disposable AOSP image.
-          emulator-options: -no-window -gpu swiftshader -no-snapshot -noaudio -no-boot-anim -writable-system -append-userspace-opt 'androidboot.boot_devices=pci0000:00/0000:00:03.0 pci0000:00/0000:00:05.0 pci0000:00/0000:00:06.0'
+          emulator-options: -no-window -gpu swiftshader -feature -Vulkan -no-snapshot -noaudio -no-boot-anim -writable-system -append-userspace-opt 'androidboot.boot_devices=pci0000:00/0000:00:03.0 pci0000:00/0000:00:05.0 pci0000:00/0000:00:06.0'
           disable-animations: true
           script: |
             ANDROID_SERIAL=emulator-5554 node scripts/prepare-ci-emulator.mjs
