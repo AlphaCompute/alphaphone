@@ -84,6 +84,14 @@ child.on('close',(code,signal)=>console.log(JSON.stringify({code,signal,ready:ou
             os.killpg(process.pid, signal.SIGKILL)
             stdout, stderr = process.communicate()
             results['cases'][name] = {'timedOut': True, 'stdout': stdout[:4096], 'stderr': stderr[:4096]}
+    # A fatal pre-exec signal can leave the vfork parent stalled. Require the
+    # actual child sequence, rather than treating a timeout alone as evidence.
+    child_traces = [trace.read_text() for trace in output.glob('trap-spawn.trace.*')]
+    results['childResetThenCloseRangeTrapBeforeExec'] = any(
+        'rt_sigaction(SIGSYS, {sa_handler=SIG_DFL' in trace and
+        'si_syscall=__NR_close_range' in trace and
+        trace.index('rt_sigaction(SIGSYS, {sa_handler=SIG_DFL') < trace.index('si_syscall=__NR_close_range') and
+        'execve(' not in trace for trace in child_traces)
     (output/'result.json').write_text(json.dumps(results, indent=2)+'\n')
     print(json.dumps(results, indent=2))
     for name in ['baseline', 'errno_spawn']:
@@ -91,4 +99,6 @@ child.on('close',(code,signal)=>console.log(JSON.stringify({code,signal,ready:ou
         assert case.get('returncode') == 0 and json.loads(case['stdout'].strip()) == {'code': 0, 'signal': None, 'ready': True, 'stderrBytes': 0}, name
     assert results['cases']['trap_start'].get('returncode') == 0
     trapped=results['cases']['trap_spawn']
-    assert trapped.get('returncode') == 0 and json.loads(trapped['stdout'].strip())['signal'] == 'SIGSYS', trapped
+    assert results['childResetThenCloseRangeTrapBeforeExec'], results
+    assert trapped.get('timedOut') or (trapped.get('returncode') == 0 and
+        json.loads(trapped['stdout'].strip())['signal'] == 'SIGSYS'), trapped
