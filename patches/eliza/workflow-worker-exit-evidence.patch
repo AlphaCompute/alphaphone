@@ -1,0 +1,99 @@
+--- a/plugins/plugin-workflow/src/services/smithers-runtime.ts
++++ b/plugins/plugin-workflow/src/services/smithers-runtime.ts
+@@ -840,17 +840,19 @@
+ 
+   const outcome = await new Promise<{
+     exitCode: number | null;
++    exitSignal: NodeJS.Signals | null;
+     processError?: { error: Error; phase: 'spawn' | 'runtime' };
+   }>((resolve) => {
+     let settled = false;
+     let spawnObserved = false;
++    let exitSignal: NodeJS.Signals | null = null;
+     let processError: { error: Error; phase: 'spawn' | 'runtime' } | undefined;
+     let drainTimer: NodeJS.Timeout | undefined;
+     const settle = (exitCode: number | null): void => {
+       if (settled) return;
+       settled = true;
+       if (drainTimer) clearTimeout(drainTimer);
+-      resolve({ exitCode, ...(processError ? { processError } : {}) });
++      resolve({ exitCode, exitSignal, ...(processError ? { processError } : {}) });
+     };
+     const armDrainFallback = (exitCode: number | null): void => {
+       if (settled || drainTimer) return;
+@@ -866,7 +868,8 @@
+       processError = { error, phase };
+       armDrainFallback(null);
+     });
+-    worker.once('exit', (code) => {
++    worker.once('exit', (code, signal) => {
++      exitSignal = signal;
+       processExited = true;
+       // Exit can precede pipe EOF. Drain the remaining bytes even while an
+       // earlier event awaits delivery; its queued protocol work stays ordered.
+@@ -874,7 +877,8 @@
+       protocolController.abort('exit');
+       armDrainFallback(code);
+     });
+-    worker.once('close', (code) => {
++    worker.once('close', (code, signal) => {
++      if (signal) exitSignal = signal;
+       protocolController.abort('close');
+       settle(code);
+     });
+@@ -997,10 +1001,16 @@
+     const detail = stripVTControlCharacters(
+       redactSensitiveText(`${stderr}\n${stdoutNoise}\n${stdinError?.message ?? ''}`)
+     ).trim();
+-    throw new ElizaError(`Smithers worker exited without a result${detail ? `: ${detail}` : ''}`, {
++    // The execution store retains the message, not ElizaError.context. Preserve
++    // bounded OS exit evidence even when a worker writes no diagnostic bytes.
++    const exitCode = Number.isSafeInteger(outcome.exitCode) ? String(outcome.exitCode) : 'unknown';
++    const exitSignal = outcome.exitSignal && /^SIG[A-Z0-9]{1,12}$/.test(outcome.exitSignal)
++      ? outcome.exitSignal : 'none';
++    throw new ElizaError(`Smithers worker exited without a result (exit=${exitCode}; signal=${exitSignal})${detail ? `: ${detail}` : ''}`, {
+       code: 'SMTHRS_RESULT_MISSING',
+       context: {
+         exitCode: outcome.exitCode,
++        exitSignal: outcome.exitSignal,
+         workflowId: request.workflow.id,
+       },
+     });
+--- a/plugins/plugin-workflow/__tests__/fixtures/smithers-worker-lifecycle-fixture.mjs
++++ b/plugins/plugin-workflow/__tests__/fixtures/smithers-worker-lifecycle-fixture.mjs
+@@ -9,7 +9,11 @@
+ const mode = payload.input.fixtureMode;
+ const emit = (message) => process.stdout.write(`${prefix}${JSON.stringify(message)}\n`);
+ 
+-if (mode === 'ignore-termination') {
++if (mode === 'exit-without-result') {
++  process.exit(17);
++} else if (mode === 'signal-without-result') {
++  process.kill(process.pid, 'SIGKILL');
++} else if (mode === 'ignore-termination') {
+   process.on('SIGTERM', () => {});
+   setInterval(() => {}, 1_000);
+ } else if (mode === 'exit-with-inherited-pipe') {
+--- a/plugins/plugin-workflow/__tests__/unit/smithers-worker-lifecycle.test.ts
++++ b/plugins/plugin-workflow/__tests__/unit/smithers-worker-lifecycle.test.ts
+@@ -79,6 +79,20 @@
+ });
+ 
+ describe('Smithers worker lifecycle', () => {
++  test('retains a silent nonzero worker exit in the stored error message', async () => {
++    await expect(run('exit-without-result')).rejects.toMatchObject({
++      code: 'SMTHRS_RESULT_MISSING',
++      message: 'Smithers worker exited without a result (exit=17; signal=none)',
++    });
++  });
++
++  test('retains a silent worker kill in the stored error message', async () => {
++    await expect(run('signal-without-result')).rejects.toMatchObject({
++      code: 'SMTHRS_RESULT_MISSING',
++      message: 'Smithers worker exited without a result (exit=unknown; signal=SIGKILL)',
++    });
++  });
++
+   test('uses the current Bun executable when BUN_BIN is unset', () => {
+     delete process.env.BUN_BIN;
+     expect(resolveSmithersBunExecutable()).toBe(process.execPath);

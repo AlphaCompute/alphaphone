@@ -1,3 +1,4 @@
+import {isReminderCreate,validateReminderCreate,validateReminderCreateResult} from './reminder-create-contract';
 import {actionScope} from './device-actions';
 import {isReminderOperation,validateReminderOperation,validateReminderResult} from './reminder-contract';
 import type {ActionJournal} from './device-actions';
@@ -29,11 +30,11 @@ export const developmentActionJournal:ActionJournal={
  recoverReminder:async input=>{
   const {entry}=await operation({...input,operation:'get'});if(!entry)throw Error('Reminder journal is missing');
   if(entry.phase==='terminal'&&entry.status!=='unknown')return {entry};
-  const effect=validateReminderOperation(entry.record.operation);if(!isReminderOperation(effect)||!entry.attemptId||entry.phase!=='applying'&&entry.status!=='unknown')throw Error('Reminder recovery requires an admitted attempt');
+  const effect=isReminderCreate(entry.record.operation)?validateReminderCreate(entry.record.operation):validateReminderOperation(entry.record.operation);if(!(isReminderOperation(effect)||isReminderCreate(effect))||!entry.attemptId||entry.phase!=='applying'&&entry.status!=='unknown')throw Error('Reminder recovery requires an admitted attempt');
   const binding=await actionScope(JSON.stringify([input.scope,entry.record.ownerId,entry.record.agentId,entry.record.sessionId,entry.record.origin,entry.record.installationId,entry.record.enrollmentId,input.proposalId,entry.record.digest,entry.operationId]));
   if(binding!==input.bindingHash||await actionScope(JSON.stringify(effect))!==entry.operationHash)throw Error('Reminder recovery binding changed');
   const {DailyApps}=await import('../daily');const receipt=await DailyApps.reminderOperationReceipt({operationId:entry.operationId,bindingHash:input.bindingHash,operation:effect});if(receipt.status!=='succeeded')return {entry};
-  const reminderResult=validateReminderResult(effect,receipt.result);
+  const reminderResult=isReminderCreate(effect)?validateReminderCreateResult(effect,receipt.result,entry.operationId):validateReminderResult(effect,receipt.result);
   return operation({...input,operation:'recoverReminder',expectedEntry:entry,reminderResult});
  },
  get:input=>operation({...input,operation:'get'}),

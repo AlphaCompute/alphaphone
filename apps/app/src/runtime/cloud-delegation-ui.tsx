@@ -76,7 +76,7 @@ export function CloudDelegationPanel({
 			if (valid()) setBusy(false);
 		}
 	}
-	async function recover(record: Pending) {
+	async function recover(record: Pending, allowCompletion = true) {
 		const status = await client.delegation(
 			"status",
 			{ state: record.state },
@@ -85,6 +85,7 @@ export function CloudDelegationPanel({
 		if (!valid()) return;
 		if (status.status === "complete" && typeof status.grantId === "string") {
 			await clear(record);
+			if (!valid()) return;
 			setGrantId(status.grantId);
 			setMessage(
 				"Cloud read access is connected. Choose the Google account and source below.",
@@ -94,24 +95,27 @@ export function CloudDelegationPanel({
 		}
 		if (status.status === "failed") {
 			await clear(record);
+			if (!valid()) return;
 			setMessage(
 				"This authorization expired or was cancelled. Start a new review.",
 			);
 			return;
 		}
-		if (status.status === "waiting" && record.code) {
+		if (status.status === "waiting" && record.code && allowCompletion) {
 			await client.delegation(
 				"complete",
 				{ state: record.state, code: record.code },
 				signal,
 			);
-			if (valid()) await recover(record);
+			if (valid()) await recover(record, false);
 			return;
 		}
 		setMessage(
 			status.status === "finishing"
 				? "Cloud is finishing authorization. Check again shortly."
-				: "Finish authorization in the browser, then return here.",
+				: record.code
+					? "Authorization completion is not confirmed. Check status again; it will not be retried automatically."
+					: "Finish authorization in the browser, then return here.",
 		);
 	}
 	async function callback() {

@@ -61,13 +61,15 @@ import os from 'node:os';
 import path from 'node:path';
 import { main, collectOverlayFailureDiagnostics } from '../scripts/prepare-ci-webview.mjs';
 
-async function simulate({ drift, neverBoot = false, neverReady = false, remountChannel = 'stdout', remountStatus = 0, remountSignal = null } = {}) {
+async function simulate({ oversizedAnr = false, framework = 'ready', drift, neverBoot = false, neverReady = false, remountChannel = 'stdout', remountStatus = 0, remountSignal = null } = {}) {
   const parent = fs.mkdtempSync(path.join(os.tmpdir(), 'alpha-provider-sequence-'));
   const output = path.join(parent, 'evidence'), calls = [];
   let elapsed = 0, installed = false, removed = false, stopped = false, rebooted = false, offline = 0, selectionReads = 0, rooted = false;
   const stock = '/product/app/webview/webview.apk', stockHash = 'a'.repeat(64);
   const signature = `Verified using v2 scheme (APK Signature Scheme v2): true\nSigner #1 certificate SHA-256 digest: ${candidate.certificateSha256}`;
   const badging = `package: name='com.android.webview' versionCode='808300007' versionName='157.0.8083.0'\nsdkVersion:'29'\ntargetSdkVersion:'37'\nnative-code: 'x86_64'`;
+  let finalBoot=false;
+  let frameworkReads=0, pidReads=0, frameworkReady=false;
   let scratch = '', backingAlias = '/dev/block/vdc', remounts = 0, reboots = 0, probe = null, probeMarker = null, userReads = 0, restarted = false;
   const execute = (file, args, options) => {
     const name = path.basename(file);
@@ -79,16 +81,48 @@ async function simulate({ drift, neverBoot = false, neverReady = false, remountC
     const a = args.slice(2), key = a.join(' '); calls.push(key);
     if (['shell cat /proc/bootconfig','shell getprop ro.boot.boot_devices','shell readlink -f /sys/class/block/vdc','shell readlink -f /sys/class/block/vda','shell readlink -f /sys/class/block/vdd'].includes(key)) { assert.ok(options.timeout > 0 && options.timeout <= 2000); if(drift==='boot-budget')elapsed+=4000; }
     if(key==='shell cat /proc/bootconfig'&&!rooted)throw Error('cat: /proc/bootconfig: Permission denied');
-    if(key==='root'){if(drift==='root-unavailable')throw Error('adbd root unavailable');rooted=true;return '';}
-    if (key === 'reboot') { rooted=false;reboots++; rebooted = true; offline = 1; scratch = ''; backingAlias = '/dev/block/vdc'; return ''; }
+    if(key==='root'){if(drift==='root-unavailable'||drift==='boot-root-denied'&&rebooted)throw Error('adbd root unavailable');rooted=true;return '';}
+    if (key === 'reboot') { if(installed)finalBoot=true;rooted=false;reboots++; rebooted = true; offline = 1; scratch = ''; backingAlias = '/dev/block/vdc'; return ''; }
     if (key === 'shell getprop sys.boot_completed') {
-      if (offline-- > 0 || neverBoot || (drift==='overlay-never-boot'&&reboots>1)) throw Error('device offline');
+      if (offline-- > 0 || neverBoot || finalBoot&&drift==='final-never-boot' || (drift==='overlay-never-boot'&&reboots>1)) throw Error('device offline');
       return '1';
     }
     if (key === 'shell cmd activity get-started-user-state 0') {
       userReads++;return restarted && (drift==='user-never-ready' || (drift==='user-delayed' && userReads<3)) ? 'RUNNING_LOCKED' : 'RUNNING_UNLOCKED';
     }
+    if(finalBoot&&drift==='final-fingerprint'&&key==='shell getprop ro.build.fingerprint')return 'unreviewed-image';
+    if(finalBoot&&drift==='final-alias'&&key==='shell readlink -f /dev/block/by-name/vdc')return '/dev/block/vdd';
+    if(finalBoot&&drift==='final-topology'&&key==='shell cat /proc/bootconfig')return 'androidboot.boot_devices = "wrong"';
+    if(key==='shell cat /proc/sys/kernel/random/boot_id')return finalBoot&&drift==='final-changed-boot'?'22222222-2222-4222-8222-222222222222':'11111111-1111-4111-8111-111111111111';
+    if(key===`shell test ! -e ${stock}`){if(drift==='final-stock')throw Error('Stock provider returned');return '';}
+    if(key==='shell dumpsys power')return 'mWakefulness=Awake';
+    if(key==='shell dumpsys window policy')return `KeyguardServiceDelegate\nshowing=false\ninputRestricted=false\nsecure=${drift==='final-secure'}\nsystemIsReady=true\nbootCompleted=true\nscreenState=SCREEN_STATE_ON\nKeyguardStateMonitor\nmCurrentUserId=0\nmIsShowing=false\nmInputRestricted=false`;
+    if(key==='shell dumpsys activity activities')return drift?.startsWith('final-anr')?'mCurrentFocus=Application Not Responding: com.android.systemui':'ACTIVITY MANAGER ACTIVITIES';
+    if(finalBoot&&drift==='final-identity'&&key==='emu avd name')return 'personal';
+    if(finalBoot&&drift==='final-bytes'&&key.startsWith('shell sha256sum /data/app/'))return 'b'.repeat(64);
+    if(finalBoot&&drift==='final-scratch'&&key==='shell cat /sys/dev/block/254:5/size')return '92280';
     if (key.startsWith('shell service check ')) return `Service ${a.at(-1)}: found`;
+    if (key === 'shell id -u') return rooted ? '0' : '2000';
+    if (key === 'shell pidof system_server') {
+      pidReads++;
+      if (removed && framework === 'rotating') return String(200 + pidReads % 2);
+      return finalBoot && drift!=='final-stale-server' ? '300' : removed && framework !== 'stale-server' ? '200' : '100';
+    }
+    if (/^shell cat \/proc\/[0-9]+\/stat$/.test(key)) {
+      assert.equal(rooted,true,'system_server stat must only run after authenticated adb root');
+      const pid=a.at(-1).split('/')[2];
+      return `${pid} (system_server) S ${Array(18).fill('0').join(' ')} ${pid==='100'?'1000':pid==='200'?'2000':'3000'} 0`;
+    }
+    if (key === 'shell dumpsys activity -a processes') {
+      if(removed)frameworkReads++;
+      frameworkReady = !(finalBoot&&drift==='final-not-ready') && (!removed || framework !== 'never-ready' && (framework !== 'delayed' || frameworkReads >= 3));
+      const row=`  mProcessesReady=${frameworkReady} mSystemReady=${frameworkReady} mBooted=${frameworkReady} mFactoryTest=0`;
+      if(removed&&framework==='missing-flags')return 'ACTIVITY MANAGER RUNNING PROCESSES';
+      if(removed&&framework==='duplicate-flags')return row+'\n'+row;
+      return row;
+    }
+
+    if (finalBoot && drift === 'final-missing-scratch' && key === 'shell dmctl list devices') return 'Available Device Mapper Devices:\nuserdata : 254:42\n';
     if (key === 'shell dmctl list devices') return `Available Device Mapper Devices:\n${rebooted || drift === 'cached-scratch' ? 'scratch : 254:5\n' : ''}`;
     if (key === 'shell ls -1 /sys/dev/block/254:5/slaves') return drift === 'super-scratch' ? 'vda2' : 'vdc';
     if (key === 'shell cat /sys/dev/block/254:5/dm/name') return 'scratch';
@@ -131,7 +165,16 @@ async function simulate({ drift, neverBoot = false, neverReady = false, remountC
     if (key==='shell cat /proc/bootconfig' && drift==='boot-config') return 'androidboot.boot_devices = "wrong"';
     if (key === 'shell getprop fs_mgr.overlayfs.data_scratch_size_mb') return drift === 'scratch-existing' ? '2048' : drift === 'scratch-unapplied' ? '' : scratch;
     if (key === 'shell setprop fs_mgr.overlayfs.data_scratch_size_mb 512') { scratch = '512'; return ''; }
-    if (['shell df -k /data /metadata /product', 'shell cat /proc/mounts', 'shell cat /proc/partitions', 'shell lpdump', 'shell dmesg'].includes(key)) return 'synthetic bounded storage diagnostics';
+    if(key==='shell pidof surfaceflinger')return drift==='final-anr-foreign-pid'?'7 8':'407';
+    if(key==='shell readlink -f /proc/407/exe')return drift==='final-anr-foreign-exe'?'/system/bin/other':'/system/bin/surfaceflinger';
+    if(key==='shell debuggerd -b 407'){assert.ok(options.timeout>0&&options.timeout<=2000);assert.equal(options.maxBuffer,256*1024);return 'SurfaceFlinger main stack '+ 'x'.repeat(70000);}
+    if(key==='shell logcat -d -b main -t 1000 SurfaceFlinger:I RenderEngine:I EGL_emulation:I goldfish-address-space:I *:S')return 'synthetic bounded ANR evidence';
+    if(key==='shell dumpsys dropbox --print system_app_anr'){assert.ok(options.timeout>0&&options.timeout<=2000);assert.equal(options.maxBuffer,256*1024);const report='ANR main thread '+'x'.repeat(70000);if(oversizedAnr){const error=Error('maxBuffer exceeded');error.code='ENOBUFS';error.stdout=report;throw error;}return report;}
+    if (['shell dumpsys activity lastanr','shell dumpsys activity processes','shell logcat -d -b events -t 400 am_anr:I am_crash:I *:S','shell logcat -d -b system -t 400','shell cat /proc/meminfo','shell cat /proc/pressure/memory /proc/pressure/cpu /proc/pressure/io'].includes(key) && (key!=='shell dumpsys activity processes'||options.maxBuffer===256*1024)) { assert.ok(options.timeout>0&&options.timeout<=2000);assert.equal(options.maxBuffer,256*1024);return key==='shell dumpsys activity processes'?'ACTIVITY MANAGER bounded synthetic ANR evidence':'synthetic bounded ANR evidence'; }
+    if (key === 'shell getprop ro.boot.super_partition') return 'vda2';
+    if (key === 'shell readlink -f /dev/block/by-name/super') return '/dev/block/vda2';
+    if (key.startsWith('shell ls -lZ ') || key==='shell cat /sys/class/block/vda2/uevent' || key.startsWith('shell lpdump --slot=') || key==='shell grep -e super -e vda -e vd_device /vendor/etc/selinux/vendor_file_contexts') { assert.ok(options.timeout>0 && options.timeout<=2000); return 'synthetic super layout'; }
+    if (['shell df -k /data /metadata /product', 'shell cat /proc/mounts', 'shell cat /proc/partitions', 'shell lpdump', 'shell lpdump /metadata/gsi/remount/lp_metadata', 'shell dmesg'].includes(key)) return 'synthetic bounded storage diagnostics';
     if (key === 'remount' && drift === 'remount-failed') { const failure = new Error('remount failed'); failure.stderr = 'Failed to map scratch; make f2fs return=65280'; throw failure; }
     if (key === 'remount') {
       remounts++;
@@ -141,14 +184,14 @@ async function simulate({ drift, neverBoot = false, neverReady = false, remountC
     }
     if (['root', 'wait-for-device', 'disable-verity'].includes(key)) return '';
     if (key === 'shell stop') { stopped = true; return ''; }
-    if (key === 'shell start') { stopped = false; restarted = true; userReads = 0; return ''; }
+    if (key === 'shell start') { if(installed)finalBoot=true; stopped = false; restarted = true; userReads = 0; return ''; }
     if (key === `shell rm ${stock}`) { assert.equal(stopped, true); removed = true; return ''; }
     if (a[0] === 'pull') { fs.writeFileSync(a[2], 'stock'); return ''; }
-    if (a[0] === 'install') { if(drift==='user-delayed')assert.ok(userReads>=3); assert.equal(removed, true); assert.equal(stopped, false); installed = true; return 'Success'; }
+    if (a[0] === 'install') { if(drift==='user-delayed')assert.ok(userReads>=3); assert.equal(frameworkReady, true, 'Framework must complete before install');if(framework==='install-fails')throw Error('recorded install failure');assert.equal(removed, true); assert.equal(stopped, false); installed = true; return 'Success'; }
     if (key === 'shell cmd webviewupdate set-webview-implementation com.android.webview') return 'Success';
     if (key === 'shell dumpsys webviewupdate') {
       selectionReads++;
-      return `Current WebView package (name, version): (com.android.webview, 157.0.8083.0)\nWebView package dirty: ${neverReady || selectionReads < 2}\nNumber of relros started: 1\nNumber of relros finished: ${neverReady || selectionReads < 2 ? 0 : 1}\nis installed/enabled for all users`;
+      return `Current WebView package (name, version): (com.android.webview, 157.0.8083.0)\nWebView package dirty: ${neverReady || selectionReads < 2 || finalBoot&&drift==='final-relro'}\nNumber of relros started: 1\nNumber of relros finished: ${neverReady || selectionReads < 2 ? 0 : 1}\nis installed/enabled for all users`;
     }
     if (key === 'shell pm path com.android.webview') return installed ? 'package:/data/app/provider/base.apk' : `package:${stock}`;
     if (key === 'shell dumpsys package com.android.webview') return 'versionName=124.0.6367.219';
@@ -170,8 +213,16 @@ async function simulate({ drift, neverBoot = false, neverReady = false, remountC
       fileDigest: f => path.basename(f) === 'chromium.zip' ? candidate.archiveSha256 : path.basename(f) === 'SystemWebView.apk' ? candidate.apkSha256 : stockHash });
   } catch (caught) { error = caught; }
   const result = JSON.parse(fs.readFileSync(path.join(output, 'result.json')));
+  const diagnosticPath = path.join(output, 'provider-restart-storage-diagnostics.json');
+  const diagnostics = fs.existsSync(diagnosticPath) ? JSON.parse(fs.readFileSync(diagnosticPath)) : null;
+  const superPath=path.join(output,'super-layout-before.json');
+  const superLayout=fs.existsSync(superPath)?JSON.parse(fs.readFileSync(superPath)):null;
+  const anrPath=path.join(output,'provider-framework-anr.json');
+  const anrDiagnostics=fs.existsSync(anrPath)?JSON.parse(fs.readFileSync(anrPath)):null;
+  const displayPath=path.join(output,'provider-framework-display.json');
+  const displayDiagnostics=fs.existsSync(displayPath)?JSON.parse(fs.readFileSync(displayPath)):null;
   fs.rmSync(parent, { recursive: true, force: true });
-  return { calls, result, error, stopped, removed, installed, selectionReads, elapsed };
+  return { displayDiagnostics, anrDiagnostics, superLayout, diagnostics, calls, result, error, stopped, removed, installed, selectionReads, elapsed };
 }
 test('full provider command sequence survives one offline reboot and delayed RELRO', async () => {
   const r = await simulate(); assert.ifError(r.error);
@@ -181,11 +232,11 @@ test('full provider command sequence survives one offline reboot and delayed REL
   assert.equal(r.calls.filter(c => c === 'shell setprop fs_mgr.overlayfs.data_scratch_size_mb 512').length, 2);
   assert.ok(r.calls.indexOf('shell setprop fs_mgr.overlayfs.data_scratch_size_mb 512') < r.calls.indexOf('disable-verity'));
   assert.equal(r.calls.filter(c => c === 'shell ln -sT /dev/block/vdc /dev/block/by-name/vdc').length, 0);
-  assert.equal(r.result.bootDeviceAdmissions.length, 2);
+  assert.equal(r.result.bootDeviceAdmissions.length, 3);
   assert.ok(r.calls.indexOf('root') < r.calls.indexOf('shell cat /proc/bootconfig'));
   assert.ok(r.calls.indexOf('shell cat /proc/bootconfig') < r.calls.indexOf('shell setprop fs_mgr.overlayfs.data_scratch_size_mb 512'));
   assert.equal(r.result.scratchBackingAliases.length, 2);
-  assert.equal(r.selectionReads, 2); assert.equal(r.stopped, false);
+  assert.equal(r.selectionReads, 3); assert.equal(r.stopped, false);
   assert.ok(r.calls.indexOf('shell stop') < r.calls.indexOf('shell rm /product/app/webview/webview.apk'));
   assert.ok(r.calls.indexOf('shell rm /product/app/webview/webview.apk') < r.calls.indexOf('shell start'));
 });
@@ -200,7 +251,7 @@ test('offline boot and incomplete RELRO have fixed deadlines', async () => {
   assert.match(offline.error.message, /boot deadline/); assert.equal(offline.elapsed, 180000); assert.equal(offline.removed, false);
   const relro = await simulate({ neverReady: true });
   assert.match(relro.error.message, /RELRO readiness deadline/); assert.equal(relro.result.status, 'FAIL');
-  assert.equal(relro.elapsed, 61000); assert.equal(relro.result.runtimeFeaturesQualified, false);
+  assert.equal(relro.elapsed, 62000); assert.equal(relro.result.runtimeFeaturesQualified, false);
 });
 
 test('framework starts again when stopped-provider hash check refuses deletion', async () => {
@@ -360,4 +411,103 @@ test('root-unavailable fixture fails before privileged boot read or any provider
  assert.equal(r.result.status,'FAIL');assert.equal(r.removed,false);assert.equal(r.installed,false);
  assert.ok(!r.calls.includes('shell cat /proc/bootconfig'));
  assert.ok(!r.calls.some(c=>/^(disable-verity|remount|reboot|install|shell (rm|setprop|stop|start))\b/.test(c)));
+});
+
+test('framework restart waits past published binders and stale boot property before installing once',async()=>{
+ const r=await simulate({framework:'delayed'});assert.ifError(r.error);assert.equal(r.installed,true);
+ const start=r.calls.indexOf('shell start'),install=r.calls.findIndex(call=>call.startsWith('install '));
+ assert.ok(start>=0&&install>start);assert.equal(r.calls.filter(call=>call.startsWith('install ')).length,1);
+ assert.equal(r.calls.slice(start,install).filter(call=>call==='shell dumpsys activity -a processes').length,3);
+ const admission=r.result.frameworkAdmissions.at(-1);assert.equal(admission.ready,true);assert.notDeepEqual(admission.previousServer,admission.after);assert.deepEqual(admission.before,admission.after);
+});
+test('framework incomplete, stale generation or rotating identity never dispatches install',async()=>{
+ for(const framework of ['never-ready','stale-server','rotating','missing-flags','duplicate-flags']){
+  const r=await simulate({framework});assert.match(r.error.message,/boot deadline exceeded/);assert.equal(r.removed,true);assert.equal(r.installed,false);assert.ok(!r.calls.some(call=>call.startsWith('install ')));
+  assert.ok(r.calls.filter(call=>call==='shell dumpsys activity -a processes').length<=181);assert.equal(r.elapsed,182000);
+ }
+});
+test('a failed provider install is never retried after successful framework admission',async()=>{
+ const r=await simulate({framework:'install-fails'});assert.match(r.error.message,/recorded install failure/);assert.equal(r.calls.filter(call=>call.startsWith('install ')).length,1);
+});
+
+test('postreboot root refusal is never replayed and never reaches privileged stat or install',async()=>{
+ const r=await simulate({drift:'boot-root-denied'});assert.match(r.error.message,/boot deadline exceeded/);assert.equal(r.removed,false);assert.equal(r.installed,false);
+ const after=r.calls.slice(r.calls.indexOf('reboot')+1);assert.equal(after.filter(call=>call==='root').length,1);
+ assert.ok(!after.some(call=>/^shell cat \/proc\/[0-9]+\/stat$/.test(call)));assert.ok(!after.some(call=>call.startsWith('install ')));
+});
+
+test('successful replacement requires a new framework generation without losing the kernel overlay',async()=>{
+ const r=await simulate();assert.ifError(r.error);
+ const installs=r.calls.map((v,i)=>v.startsWith('install ')?i:-1).filter(i=>i>=0);assert.equal(installs.length,1);
+ const reboots=r.calls.map((v,i)=>v==='reboot'?i:-1).filter(i=>i>=0);assert.equal(reboots.length,1);assert.ok(reboots[0]<installs[0]);
+ const finalStart=r.calls.lastIndexOf('shell start');assert.ok(finalStart>installs[0]);assert.equal(r.calls.filter(c=>c==='shell stop').length,2);assert.notDeepEqual(r.result.providerRestart.previousServer,r.result.providerRestart.server);
+ assert.deepEqual(r.result.providerChecks.map(c=>c.label),['after-install','after-framework-restart']);
+ assert.equal(r.result.providerRestart.priorBootId,r.result.providerRestart.bootId);
+ assert.equal(r.result.providerDisplayObservations.length,2);assert.ok(r.result.providerDisplayObservations.every(o=>o.secure===false&&o.unlocked));
+ assert.ok(!r.calls.slice(finalStart+1).some(c=>/^(install |reboot$|shell (rm |locksettings |input |wm dismiss))/.test(c)));
+});
+test('postreplacement framework restart refuses identity, provenance, readiness, secure state and ANR without replay',async()=>{
+ for(const drift of ['final-never-boot','final-changed-boot','final-stale-server','final-not-ready','final-identity','final-stock','final-fingerprint','final-alias','final-topology','final-bytes','final-scratch','final-relro','final-secure','final-anr']){
+  const r=await simulate({drift});assert.ok(r.error,drift);assert.equal(r.result.status,'FAIL');assert.equal(r.calls.filter(c=>c.startsWith('install ')).length,1);assert.equal(r.calls.filter(c=>c==='reboot').length,1);
+  if(drift==='final-secure')assert.match(r.error.message,/not observed awake/);
+  if(drift?.startsWith('final-anr'))assert.match(r.error.message,/ANR remains/);
+ }
+});
+
+test('missing postrestart scratch retains bounded storage evidence and refuses without later mutations', async () => {
+ const r=await simulate({drift:'final-missing-scratch'});
+ assert.match(r.error.message,/Provider restart lost authenticated data scratch/);
+ assert.equal(r.result.providerRestart.scratchBytes,null);
+ assert.match(r.diagnostics.guest.deviceMapperNames,/userdata : 254:42/);
+ for(const key of ['superPartition','superAlias','superLabels','superUevent','superSlot0','superSlot1','vendorBlockContexts','mounts','scratchMetadata','userspaceStorageLog','capacity','stockStat','providerPath','providerState','kernel'])assert.ok(Object.hasOwn(r.diagnostics.guest,key),key);
+ assert.equal(r.diagnostics.budgetMilliseconds,20000);
+ assert.equal(r.calls.filter(c=>c.startsWith('install ')).length,1);
+ const finalReboot=r.calls.lastIndexOf('shell start');
+ assert.equal(r.calls.filter(c=>c==='reboot').length,1);
+ assert.ok(!r.calls.slice(finalReboot+1).some(c=>/^(install |reboot$|remount$|shell (rm |setprop |stop$|start$|input |locksettings |wm dismiss))/.test(c)));
+ assert.deepEqual(r.result.providerChecks.map(c=>c.label),['after-install']);
+});
+
+test('super layout is read before any remount without adding install or reboot',async()=>{
+ const r=await simulate();assert.ifError(r.error);
+ assert.equal(r.superLayout.guest.superPartition,'vda2');
+ assert.equal(r.superLayout.guest.superAlias,'/dev/block/vda2');
+ assert.ok(r.calls.indexOf('shell lpdump --slot=0 /dev/block/by-name/super')<r.calls.indexOf('remount'));
+ assert.ok(r.calls.indexOf('shell lpdump --slot=1 /dev/block/by-name/super')<r.calls.indexOf('remount'));
+ assert.equal(r.calls.filter(c=>c.startsWith('install ')).length,1);
+ assert.equal(r.calls.filter(c=>c==='reboot').length,1);
+});
+
+test('focused framework ANR preserves bounded read-only evidence without accepting or retrying setup',async()=>{
+ const r=await simulate({drift:'final-anr'});
+ assert.match(r.error.message,/Application ANR remains/);assert.equal(r.result.status,'FAIL');
+ assert.deepEqual(Object.keys(r.anrDiagnostics.guest),['displayPolicy','powerState','surfaceFlingerBacktrace','graphicsLog','systemAppAnr','lastAnr','processes','anrEvents','systemLog','memory','pressure']);
+ assert.equal(r.anrDiagnostics.budgetMilliseconds,20000);
+ for(const [key,value] of Object.entries(r.anrDiagnostics.guest).filter(([key])=>!['displayPolicy','powerState'].includes(key)))assert.equal(value,key==='surfaceFlingerBacktrace'?('SurfaceFlinger main stack '+'x'.repeat(70000)).slice(0,65536):key==='systemAppAnr'?('ANR main thread '+'x'.repeat(70000)).slice(0,65536):key==='processes'?'ACTIVITY MANAGER bounded synthetic ANR evidence':'synthetic bounded ANR evidence');
+ const start=r.calls.indexOf('shell dumpsys dropbox --print system_app_anr');assert.ok(start>0);
+ assert.ok(!r.calls.slice(start).some(c=>/^(install |reboot$|remount$|shell (stop$|start$|input |am force-stop|kill))/.test(c)));
+ assert.equal(r.calls.filter(c=>c==='reboot').length,1);
+ assert.equal((await simulate()).anrDiagnostics,null);
+});
+
+test('oversized ANR reports retain a bounded leading stack without changing failure',async()=>{
+ const r=await simulate({drift:'final-anr',oversizedAnr:true});assert.match(r.error.message,/Application ANR remains/);assert.equal(r.result.status,'FAIL');
+ const report=r.anrDiagnostics.guest.systemAppAnr;assert.equal(report.code,'ENOBUFS');assert.equal(report.stdout.length,65536);assert.ok(report.stdout.startsWith('ANR main thread '));
+ assert.equal(r.calls.filter(c=>c==='shell dumpsys dropbox --print system_app_anr').length,1);
+});
+
+test('SurfaceFlinger backtrace refuses ambiguous process identity',async()=>{
+ for(const drift of ['final-anr-foreign-pid','final-anr-foreign-exe']){
+  const r=await simulate({drift});assert.match(r.error.message,/Application ANR remains/);
+  assert.ok(r.anrDiagnostics.guest.surfaceFlingerBacktrace.unavailable);
+  assert.ok(!r.calls.some(c=>c.startsWith('shell debuggerd')));
+ }
+});
+
+test('secure postrestart display refusal retains graphics evidence without admission or lock changes',async()=>{
+ const r=await simulate({drift:'final-secure'});assert.equal(r.result.status,'FAIL');assert.match(r.error.message,/not observed awake/);
+ assert.match(r.displayDiagnostics.guest.displayPolicy,/secure=true/);assert.match(r.displayDiagnostics.guest.surfaceFlingerBacktrace,/SurfaceFlinger main stack/);
+ assert.equal(r.anrDiagnostics,null);assert.equal(r.calls.filter(c=>c.startsWith('install ')).length,1);
+ const start=r.calls.indexOf('shell debuggerd -b 407');assert.ok(start>0);assert.ok(!r.calls.slice(start).some(c=>/^(install |reboot$|remount$|shell (stop$|start$|input |wm dismiss|locksettings set))/.test(c)));
+ assert.equal((await simulate()).displayDiagnostics,null);
 });

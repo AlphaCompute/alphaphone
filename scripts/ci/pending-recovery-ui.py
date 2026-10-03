@@ -61,7 +61,7 @@ for name in ['ElizaAgentService','IpcStartupRecovery','WorkflowSurvivorInventory
 
 assert run('emu','avd','name').strip().splitlines()[0]=='test'
 assert run('shell','getprop','ro.build.type').strip() in ('userdebug','eng')
-PHASES=[('pending-storage','ReminderDeletionStorageInstrumentedTest','reminderDeletionSlotUsesEncryptedCompareExchange','pendingActionStorageFixture','1'),('calendar-recovery','CalendarCreationRecoveryInstrumentedTest','committedMarkerRecoveryAndMissingMarkerNeverReplay','calendarCreationRecovery','1'),('audio-fence','NoteAudioInstrumentedTest','optInRetiredDeletionCannotArriveAfterReloadAndRestore','audioFence','true'),('reminder-edit','ReminderAgentInstrumentedTest','selectedCrudPersistsExactReceiptsAndRejectsChangedBindings','reminderAgent','1')]
+PHASES=[('reminder-no-alert','ReminderTimingInstrumentedTest','noAlertBridgeWithoutPermissionRestoresAndCompletesWithoutDelivery','reminderTiming','none'),('reminder-alert-timing','ReminderTimingInstrumentedTest','numericLeadDueTimeStaleTargetsAndLegacyReceiptsRemainBound','reminderTiming','numeric'),('pending-storage','ReminderDeletionStorageInstrumentedTest','reminderDeletionSlotUsesEncryptedCompareExchange','pendingActionStorageFixture','1'),('calendar-recovery','CalendarCreationRecoveryInstrumentedTest','committedMarkerRecoveryAndMissingMarkerNeverReplay','calendarCreationRecovery','1'),('audio-fence','NoteAudioInstrumentedTest','optInRetiredDeletionCannotArriveAfterReloadAndRestore','audioFence','true'),('reminder-edit','ReminderAgentInstrumentedTest','selectedCrudPersistsExactReceiptsAndRejectsChangedBindings','reminderAgent','1'),('reminder-v2-transport','ConnectionInstrumentedTest','encryptedCredentialsAndHttpSurviveRecreationWithCancellationAndRedirectRejection','reminderTransport','v2'),('cloud-callback-cold','CloudDelegationCallbackInstrumentedTest','coldCallbackSurvivesRecreationAndOnlyMatchingClear','cloudDelegationNative','1'),('cloud-callback-warm','CloudDelegationCallbackInstrumentedTest','warmCallbackRejectsMalformedLinksAndRetainsLatestOnRecreation','cloudDelegationNative','1'),('workflow-notice-tap','WorkflowNoticeTapInstrumentedTest','twoOpaqueNoticesRetainColdWarmAndFailedCaptureRoutes','workflowNoticeTap','1'),('workflow-notice-process-death','WorkflowNoticeProcessDeathInstrumentedTest','originalNoticeLaunchesAbsentMainAfterOrdinaryProcessDeath','workflowNoticeProcessDeath','1'),('enabled-view-transport','ConnectionInstrumentedTest','enabledViewProfileHttpPreservesAuthenticationAndConditionalRevision','enabledViewTransport','1')]
 for _,cls,_,_,_ in PHASES:
  relative='android/app/src/androidTest/java/ai/elizaresearch/alphaphone/'+cls+'.java'
  assert relative in frozen and h(Path(relative).read_bytes())==frozen[relative]
@@ -81,7 +81,9 @@ def switch(target,owner,name):
  for _ in range(30):
   owned(run,owner,name)
   current=run('shell','am','get-current-user').strip();assert current in ('0',owner)
-  if current==target:return
+  controller=run('shell','dumpsys','activity')
+  settled=re.findall(r'^\s*mCurrentUserId:(-?\d+)\s*$',controller,re.M)==[target] and re.findall(r'^\s*mTargetUserId:(-?\d+)\s*$',controller,re.M)==['-10000']
+  if current==target and settled:return
   time.sleep(.5)
  raise AssertionError('Owned foreground switch timed out')
 
@@ -102,7 +104,7 @@ for variant in ['standalone','launcher']:
      run('shell','cmd','package','install-existing','--user',user,pkg);installed(pkg,user,manifest[variant+'-'+kind+'.apk'])
     if phase=='calendar-recovery':
      for permission in ['android.permission.READ_CALENDAR','android.permission.WRITE_CALENDAR']:run('shell','pm','grant','--user',user,APP,permission)
-    if phase=='reminder-edit':run('shell','pm','grant','--user',user,APP,'android.permission.POST_NOTIFICATIONS')
+    if phase in ('reminder-edit','reminder-alert-timing','workflow-notice-tap','workflow-notice-process-death'):run('shell','pm','grant','--user',user,APP,'android.permission.POST_NOTIFICATIONS')
     switch(user,user,name)
     # A switched but not yet bound policy is a retained diagnostic failure, never user0 fallback.
     def display_record(value):
@@ -110,7 +112,8 @@ for variant in ['standalone','launcher']:
     admit_display(run,user,name,record=display_record)
     for pkg,kind in [(APP,'debug'),(TEST,'androidTest')]:installed(pkg,user,manifest[variant+'-'+kind+'.apk'])
     owned(run,user,name,user);assert_no_resident(run)
-    try:text=run('shell','am','instrument','--user',user,'-w','-r','-e','class',APP+'.'+cls+'#'+method,'-e',opt,value,TEST+'/androidx.test.runner.AndroidJUnitRunner',timeout=300)
+    runner=APP+'.WorkflowNoticeProcessRunner' if phase=='workflow-notice-process-death' else 'androidx.test.runner.AndroidJUnitRunner'
+    try:text=run('shell','am','instrument','--user',user,'-w','-r','-e','class',APP+'.'+cls+'#'+method,'-e',opt,value,TEST+'/'+runner,timeout=300)
     except (subprocess.CalledProcessError,subprocess.TimeoutExpired) as error:
      safe=lambda v:(v.decode(errors='replace') if isinstance(v,bytes) else v or '')[:1024*1024]
      (out/(variant+'-'+phase+'-failure.txt')).write_text(safe(error.stdout)+'\nSTDERR\n'+safe(error.stderr));raise
@@ -144,4 +147,4 @@ for variant in ['standalone','launcher']:
    (out/(variant+'-cleanup-incomplete.json')).write_text(json.dumps({'cleanupComplete':False,'errorType':type(error).__name__})+'\n')
    if primary is None:raise
    primary.add_note('Package cleanup unconfirmed; preserve')
-(out/'result.json').write_text(json.dumps({'passed':True,'variants':['standalone','launcher'],'methods':4,'nativeRecoveryUI':True,'liveProvider':False,'physicalAcceptance':False})+'\n')
+(out/'result.json').write_text(json.dumps({'passed':True,'variants':['standalone','launcher'],'methods':12,'nativeRecoveryUI':True,'liveProvider':False,'physicalAcceptance':False})+'\n')

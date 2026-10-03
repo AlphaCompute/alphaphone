@@ -3,13 +3,23 @@ on:
   push:
   pull_request:
   workflow_dispatch:
+    inputs:
+      provider_only:
+        description: Diagnose the disposable WebView fixture without app builds
+        type: boolean
+        default: false
+      expected_sha:
+        description: Exact reviewed commit required for provider-only diagnosis
+        type: string
+        default: ""
 permissions:
   contents: read
 concurrency:
-  group: android-${{ github.ref }}
+  group: android-${{ github.ref }}${{ github.event_name == 'workflow_dispatch' && inputs.provider_only && '-provider-only' || '' }}
   cancel-in-progress: true
 jobs:
   build:
+    if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.provider_only) }}
     outputs:
       artifact_id: ${{ steps.apks.outputs.artifact-id }}
       manifest_sha256: ${{ steps.bundle.outputs.manifest_sha256 }}
@@ -117,7 +127,7 @@ jobs:
   smoke:
     needs: build
     runs-on: ubuntu-24.04
-    timeout-minutes: 40
+    timeout-minutes: 55
     steps:
       - uses: actions/checkout@v4
       # Smoke imports only checked-in scripts and Node builtins; no native build.
@@ -200,4 +210,77 @@ jobs:
             test-results/
             !test-results/ci-webview-provider/chromium.zip
             !test-results/ci-webview-provider/SystemWebView.apk
+          retention-days: 14
+  provider-diagnostic:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.provider_only }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - name: Admit exact diagnostic source
+        env:
+          EXPECTED_SHA: ${{ inputs.expected_sha }}
+        run: |
+          python3 - <<'PYTHON'
+          import os, re, subprocess
+          expected = os.environ['EXPECTED_SHA']
+          assert re.fullmatch('[a-f0-9]{40}', expected), 'Exact reviewed SHA required'
+          assert subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip() == expected
+          assert os.environ['GITHUB_SHA'] == expected
+          PYTHON
+      # Smoke imports only checked-in scripts and Node builtins; no native build.
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools build-tools;36.0.0
+          log-accepted-android-sdk-licenses: false
+      - name: Require fresh emulator capacity
+        run: |
+          df -h "$GITHUB_WORKSPACE" "$ANDROID_HOME" "$HOME"
+          python3 - <<'PYTHON'
+          from pathlib import Path
+          import json, os, shutil
+          evidence = Path('test-results/emulator-disk-preflight')
+          evidence.mkdir(parents=True)
+          free = {name: shutil.disk_usage(path).free for name, path in {'workspace': Path.cwd(), 'androidSdk': Path(os.environ['ANDROID_HOME']), 'avdHome': Path.home()}.items()}
+          state = {'freeBytes': free, 'requiredFreeBytes': 8 * 1024 ** 3}
+          state['passed'] = min(free.values()) >= state['requiredFreeBytes']
+          (evidence / 'result.json').write_text(json.dumps(state, indent=2) + '\n')
+          print(json.dumps(state, indent=2))
+          assert state['passed'], 'Insufficient fresh-runner emulator capacity'
+          PYTHON
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: default
+          arch: x86_64
+          # Chromium recommends >=4 GB guest storage for WebView development.
+          # Keep host capacity admission; overlay scratch is separately bounded to 512 MiB.
+          disk-size: 4096M
+          # Provider replacement is confined to this fresh disposable AOSP image.
+          emulator-options: -no-window -gpu swiftshader -no-snapshot -noaudio -no-boot-anim -writable-system -append-userspace-opt 'androidboot.boot_devices=pci0000:00/0000:00:03.0 pci0000:00/0000:00:05.0 pci0000:00/0000:00:06.0'
+          disable-animations: true
+          script: |
+            ANDROID_SERIAL=emulator-5554 node scripts/prepare-ci-emulator.mjs
+            ANDROID_SERIAL=emulator-5554 ALPHA_DISPOSABLE_WEBVIEW_FIXTURE=api35-default-x86_64 node scripts/prepare-ci-webview.mjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: provider-only-diagnostics-${{ github.run_id }}
+          path: |
+            test-results/ci-webview-provider/*.json
+            test-results/ci-webview-provider/*.txt
+            test-results/android-fixture/*.json
+            test-results/emulator-disk-preflight/*.json
           retention-days: 14

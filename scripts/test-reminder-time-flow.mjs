@@ -6,7 +6,7 @@ import vm from 'node:vm';
 import {stripTypeScriptTypes} from 'node:module';
 process.env.TZ='America/New_York';
 let writes=[],toasts=[],stored={};
-const DailyApps={scheduleReminder:async input=>{writes.push(input);return {status:'scheduled',id:input.id};},listReminders:async()=>({reminders:writes.map(r=>({...r,status:'scheduled',occurrenceId:'fixture-occurrence'}))}),addListener:async()=>({remove(){}})};
+const DailyApps={surfaceInfo:async()=>({reminderTimingVersion:2}),scheduleReminder:async input=>{writes.push(input);return {status:'scheduled',id:input.id};},listReminders:async()=>({reminders:writes.map(r=>({...r,status:'scheduled',occurrenceId:'fixture-occurrence'}))}),addListener:async()=>({remove(){}})};
 let state={form:null},adapter;
 class Shell{componentDidMount(){}componentWillUnmount(){}vset(){}toast(value){toasts.push(value);}}
 const views={calendar:{state:{},render:()=>({f:{cals:[]}})}};

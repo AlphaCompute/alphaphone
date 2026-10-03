@@ -17,7 +17,7 @@ async function speakChunk(voice:any,native:boolean,text:string,signal:AbortSigna
  const interrupted=new Promise<never>((_,reject)=>interrupt=reject),finished=new Promise<void>((resolve,reject)=>{ended=resolve;failed=reject;});void interrupted.catch(()=>{});void finished.catch(()=>{});
  const dispose=()=>{if(cleanup)return cleanup;active=false;cleanup=Promise.all([...Array.from(handles,h=>bounded(()=>h.remove())),...(native?[bounded(()=>voice.cancel({requestId}))]:[]),...(playbackId||native?[bounded(()=>voice.stopPlayback({playbackId,requestId}))]:[])]).then(()=>{});handles.clear();return cleanup;};
  const abort=()=>{interrupt(signal.reason??new DOMException('Speech cancelled','AbortError'));void dispose();};signal.addEventListener('abort',abort,{once:true});if(signal.aborted)abort();
- const wait=()=>Promise.race([new Promise<void>(resolve=>setTimeout(resolve,100)),interrupted]);
+ const wait=(prepared=false)=>Promise.race([new Promise<void>(resolve=>setTimeout(resolve,100)),interrupted,...(prepared?[finished.then(()=>{throw Error('Speech finished while waiting for playback.');})]:[])]);
  try{
   for(const event of ['playbackEnded','playbackFailed','playbackStopped']){
    const pending=voice.addListener(event,(value:{playbackId:string;message?:string})=>{if(!active||!playbackId||value.playbackId!==playbackId)return;if(event==='playbackEnded')ended();else failed(Error(event==='playbackStopped'?'Speech was stopped before completion.':(!native&&typeof value.message==='string'?value.message:'Speech playback failed.')));}).then((handle:{remove:()=>Promise<void>})=>{if(active)handles.add(handle);else void bounded(()=>handle.remove());});
@@ -27,7 +27,9 @@ async function speakChunk(voice:any,native:boolean,text:string,signal:AbortSigna
    const pending=(prepare?prepare(requestId):voice.synthesizeLocal({text,requestId,...(queue&&native?{replace:false}:{})})).then((result:{playbackId:string;execution?:string})=>{if(!active&&result.playbackId)void bounded(()=>voice.stopPlayback({playbackId:result.playbackId,requestId}));return result;});
    const result=await Promise.race([pending,interrupted]);playbackId=result.playbackId;if(requirements?.execution&&result.execution!==requirements.execution)throw Error('Invalid local speech execution');requirements?.assertCurrent();if(typeof playbackId!=='string'||!playbackId)throw Error('Speech preparation returned no playback identity');break;
   }catch(error){if(!queue||!native||(error as {code?:string}).code!=='playback-busy')throw error;await wait();}}
-  for(;;){signal.throwIfAborted();requirements?.assertCurrent();try{await Promise.race([voice.play({playbackId,...(queue?{replace:false}:{})}),interrupted,finished]);break;}catch(error){if(!queue||(error as {code?:string}).code!=='playback-busy')throw error;await wait();}}
+  // Admission owns its precise refusal; cleanup can emit stopped before play rejects.
+  // Terminal events still retire a prepared utterance while it waits for a busy speaker.
+  for(;;){signal.throwIfAborted();requirements?.assertCurrent();try{await Promise.race([voice.play({playbackId,...(queue?{replace:false}:{})}),interrupted]);break;}catch(error){if(!queue||(error as {code?:string}).code!=='playback-busy')throw error;await wait(true);}}
   signal.throwIfAborted();onStarted();await Promise.race([finished,interrupted]);signal.throwIfAborted();
  }finally{signal.removeEventListener('abort',abort);await dispose();}
 }

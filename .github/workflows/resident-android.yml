@@ -121,7 +121,9 @@ jobs:
           python-version: "3.12"
       - name: Qualify supervisor on real Linux processes
         timeout-minutes: 10
-        run: python3 scripts/ci/test-resident-phase.py
+        run: |
+          python3 scripts/ci/test-resident-phase.py
+          python3 test/resident-crash-diagnostic.test.py
       - name: Install pinned Android native toolchain
         run: |
           python3 scripts/ci/resident-phase.py --name android-toolchain --seconds 1200 sdkmanager 'platforms;android-36' 'build-tools;36.0.0' 'ndk;28.2.13676358' 'cmake;3.22.1'
@@ -159,6 +161,7 @@ jobs:
           RUN_TURBO_CONCURRENCY: "1"
         run: |
           python3 scripts/ci/resident-phase.py --name prepare --seconds 3600 npm run agent:prepare
+          python3 scripts/ci/resident-phase.py --name device-timing-flow --seconds 600 npm run agent:test-device-timing
           python3 scripts/ci/resident-phase.py --name worker-build --seconds 900 npm run agent:build-workflow-worker
           python3 scripts/ci/resident-phase.py --name compiler-flow --seconds 600 npm run agent:test-workflow-compiler
           python3 scripts/ci/resident-phase.py --name worker-flow --seconds 600 npm run agent:test-workflow-worker

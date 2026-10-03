@@ -1,3 +1,4 @@
+import type {ReminderCreateOperation,ReminderCreateResult} from './runtime/reminder-create-contract';
 import type {ReminderOperation,ReminderTarget,ReminderResult} from './runtime/reminder-contract';
 import { registerPlugin } from './platform-plugins';
 import { type PluginListenerHandle } from '@capacitor/core';
@@ -25,11 +26,12 @@ export type Reminder = {
   title: string;
   body: string;
   at: number;
-  status: "scheduled" | "posted" | "completed" | "cancelled" | "permission-denied" | "scheduling-failed";
-  mode: "inexact";
+  status: "pending" | "scheduled" | "posted" | "completed" | "cancelled" | "permission-denied" | "scheduling-failed";
+  mode: "inexact" | "none";
   createdAt: number;
   occurrenceId?: string;
   dueAt?: number;
+  alertMinutes?: number|null;
   snoozedAt?: number;
   recurrence?: {rule: "daily"|"weekdays"|"weekly";zone:string;date:string;time:string;leadMinutes:number};
   history?: {occurrenceId:string;dueAt:number;completedAt:number;skippedDates:number}[];
@@ -51,7 +53,7 @@ export type ClockRequest = {action:'set';hour:number;minute:number;label:string;
 export type ClockResult = {action:ClockRequest['action'];status:'opened'|'unavailable'|'denied'|'failed'|'unknown';message:string};
 export const DailyApps = registerPlugin<{
   clockHandoff(options:ClockRequest):Promise<ClockResult>;
-  surfaceInfo(): Promise<{ developmentBuild: boolean; assistant: boolean; bottomInset?: number; topInset?: number }>;
+  surfaceInfo(): Promise<{ developmentBuild: boolean; assistant: boolean; reminderCreationVersion?:1; reminderTimingVersion?: 2; bottomInset?: number; topInset?: number }>;
   closeAssistant(): Promise<{ closed: boolean }>;
   addListener(
     event: "appResumed",
@@ -92,15 +94,17 @@ export const DailyApps = registerPlugin<{
     body?: string;
     at: number;
     recurrence?: Reminder["recurrence"];
+    dueAt?: number;
+    alertMinutes?: number|null;
   }): Promise<{
-    status: "scheduled" | "permission-denied" | "past" | "failed";
+    status: "pending" | "scheduled" | "permission-denied" | "past" | "failed";
     id: string;
-    mode: "inexact";
+    mode: "inexact" | "none";
     message?: string;
   }>;
   selectedReminder(options:{id:string}):Promise<ReminderTarget>;
-  operateReminder(options:{operationId:string;bindingHash:string;operation:ReminderOperation}):Promise<{status:string;result?:ReminderResult;message?:string}>;
-  reminderOperationReceipt(options:{operationId:string;bindingHash:string;operation:ReminderOperation}):Promise<{status:string;result?:ReminderResult;message?:string}>;
+  operateReminder(options:{operationId:string;bindingHash:string;operation:ReminderOperation|ReminderCreateOperation}):Promise<{status:string;result?:ReminderResult|ReminderCreateResult;message?:string}>;
+  reminderOperationReceipt(options:{operationId:string;bindingHash:string;operation:ReminderOperation|ReminderCreateOperation}):Promise<{status:string;result?:ReminderResult|ReminderCreateResult;message?:string}>;
   reminderDecision(options:{id:string;occurrenceId:string;action:"done"|"snooze"}):Promise<{status:string;message?:string}>;
   listReminders(): Promise<{
     reminders: Reminder[];

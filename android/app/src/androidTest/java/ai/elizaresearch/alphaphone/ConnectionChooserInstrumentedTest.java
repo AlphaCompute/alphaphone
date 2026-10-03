@@ -29,7 +29,7 @@ public class ConnectionChooserInstrumentedTest {
    String notes=NotesSecureFixture.evaluate("JSON.stringify(__notesEnvelope)");
    try{
     String previousDocument=NotesSecureFixture.evaluate("performance.timeOrigin");
-    NotesSecureFixture.evaluate("localStorage.removeItem('alpha.connection.selection.v1');location.replace(location.origin+location.pathname)");
+    WebViewTestDriver.navigateHostDocument("localStorage.removeItem('alpha.connection.selection.v1');location.replace(location.origin+location.pathname)",true);
     // The old document may already show this dialog. Require the new navigation first.
     until("performance.timeOrigin!=="+previousDocument+"&&document.querySelector('.os')&&document.querySelector('.alpha-connection-scrim')");
     assertEquals("Underlying phone is inert during connection choice","true",NotesSecureFixture.evaluate("document.querySelector('.os').inert"));
@@ -42,15 +42,15 @@ public class ConnectionChooserInstrumentedTest {
     NotesSecureFixture.evaluate("document.querySelector('button[aria-label=\"Agent connection\"]').click()");
     until("document.querySelector('.alpha-connection-scrim')");
     NotesSecureFixture.evaluate("[...document.querySelectorAll('.alpha-connection summary')].find(e=>e.textContent==='Mock mode').click()");
-    click("Enter mock mode");
+    WebViewTestDriver.navigateHostDocument("[...document.querySelectorAll('.alpha-connection button')].find(e=>e.textContent.trim()==='Enter mock mode').click()",false);
     until("document.querySelector('.mock-mode-banner')&&document.documentElement.dataset.connectionMode==='mock'");
     assertEquals("Mock entry must preserve real saved notes",notes,NotesSecureFixture.evaluate("JSON.stringify(__notesEnvelope)"));
     scenario.recreate();until("document.querySelector('.mock-mode-banner')");
-    click("Exit mock mode");
+    WebViewTestDriver.navigateHostDocument("document.querySelector('.mock-mode-banner button').click()",true);
     until("document.documentElement.dataset.connectionMode==='live'&&!document.querySelector('.mock-mode-banner')");
     assertEquals("Mock exit must preserve real saved notes",notes,NotesSecureFixture.evaluate("JSON.stringify(__notesEnvelope)"));
    }finally{
-    NotesSecureFixture.evaluate("localStorage."+("null".equals(saved)?"removeItem('alpha.connection.selection.v1')":"setItem('alpha.connection.selection.v1',"+saved+")")+";location.replace(location.origin+location.pathname)");
+    WebViewTestDriver.navigateHostDocument("localStorage."+("null".equals(saved)?"removeItem('alpha.connection.selection.v1')":"setItem('alpha.connection.selection.v1',"+saved+")")+";location.replace(location.origin+location.pathname)",false);
    }
   }
  }

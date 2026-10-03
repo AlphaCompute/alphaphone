@@ -144,10 +144,9 @@ Evidence: `test-results/redaction-boundary-review/reply-stream-tests.log`, `repl
 
 ## Isolated digest process-recovery check
 
-Run `ALPHA_ELIZA_SOURCE=/absolute/path/to/reproduced/source npm run agent:test-digest-restart` with that source's pinned dependencies installed and Bun available. The command verifies the consumer source manifest, creates its own temporary database and workflow state, and uses a synthetic read-only model without provider credentials. It kills only its own fixture process after inference begins, then checks restart recovery, concurrent duplicate admission, one retained result, and an overdue persisted task advancing without model inference. Logs and the result are retained in the printed temporary evidence directory. It does not stop or edit the live local-agent profile.
+Run `ALPHA_ELIZA_SOURCE=/absolute/path/to/reproduced/source npm run agent:test-digest-restart` on a POSIX host with that source's pinned dependencies installed and Bun available. The command verifies the consumer source manifest and creates its own temporary working directory, database and workflow state. It kills only its own detached fixture process group after synthetic read-only inference begins. Logs and results remain in the printed temporary evidence directory; the live local-agent profile is untouched.
 
-An admitted interrupted occurrence resumes under the same run ID; read-only inference may be attempted again. A never-admitted occurrence outside the two-minute schedule window produces an explicit missed result without executing backlog. These are host-process checks, not proof of Android background execution, physical power-loss durability, or exactly-once external provider calls.
-
+The current runtime preserves the interrupted run as `outcome-unknown`, with no finished result or repeated inference. Concurrent duplicate admissions return the same run ID. A separate never-admitted occurrence outside the two-minute schedule window produces an explicit missed result without executing backlog. This checks process-loss safety and overdue scheduling, not automatic recovery of an ambiguous worker outcome, Android background execution, physical power-loss durability or exactly-once provider calls.
 
 ## Contact placeholder semantics (October 3)
 

@@ -237,10 +237,11 @@ public final class AlphaConnectionPlugin extends Plugin {
  }
  static boolean validDeviceCapabilities(String value) {
   if(value==null||value.contains("\r")||value.contains("\n"))return false;
-  String[] parts=value.split(",",-1);if(parts.length<1||parts.length>5)return false;
+  String[] parts=value.split(",",-1);if(parts.length<1||parts.length>6)return false;
   java.util.HashSet<String> seen=new java.util.HashSet<>();
-  for(String part:parts){String token=part.trim();if(!Set.of("calendar.local-event.v1","notes.local-record.v1","reminders.local-record.v1","maps.selected-read.v1","clock.handoff.v1").contains(token)||!seen.add(token))return false;}
-  return true;
+  for(String part:parts){String token=part.trim();if(!Set.of("calendar.local-event.v1","notes.local-record.v1","reminders.local-record.v1","reminders.local-record.v2","reminders.create.v1","maps.selected-read.v1","clock.handoff.v1").contains(token)||!seen.add(token))return false;}
+  if(seen.contains("reminders.local-record.v1")&&seen.contains("reminders.local-record.v2"))return false;
+  return parts.length<=(seen.contains("reminders.create.v1")?6:5);
  }
  @PluginMethod public void request(PluginCall call) {
   final String id;

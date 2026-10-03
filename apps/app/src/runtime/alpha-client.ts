@@ -31,6 +31,7 @@ export interface ViewContext {
     accountId?: string;
     sourceRevision?: string;
     occurrenceId?: string;
+    timingVersion?: 2;
   };
   /** Credential and unlock surfaces suspend observation. */
   sensitive?: boolean;

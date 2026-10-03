@@ -1,3 +1,4 @@
+import {isReminderCreate,validateReminderCreateResult} from '../runtime/reminder-create-contract';
 import {publishWorkflowNotice} from '../browser/workflow-notices';
 import {speakLocalText} from '../local-speech-playback';
 import {browserDevProfile} from '../browser/dev-profile';
@@ -77,7 +78,7 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
         const revision = previous?.signature === signature ? previous.revision : (previous?.revision || 0) + 1;
         shell.entityRevisions.set(key, { signature, revision });
         providerSelection = { kind: view === 'contacts' ? 'contact' : record.alphaCalendarId ? 'calendar-event' : 'reminder', id, revision: String(revision) };
-        if(record.alphaReminderId){const target=shell.reminderTargets?.get(id);providerSelection=target?{kind:'reminder',id:target.reminderId,revision:target.revision,accountId:target.sourceId,sourceRevision:target.sourceRevision,occurrenceId:target.occurrenceId}:undefined;}
+        if(record.alphaReminderId){const target=shell.reminderTargets?.get(id);providerSelection=target?{kind:'reminder',id:target.reminderId,revision:target.revision,accountId:target.sourceId,sourceRevision:target.sourceRevision,occurrenceId:target.occurrenceId,...(target.timingVersion===2?{timingVersion:2}: {})}:undefined;}
       }
     }
     if(view==='calendar'&&shell.clockSelection?.())providerSelection=shell.clockSelection();
@@ -228,11 +229,11 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
       else transport.close?.();
     };
     connectionController.setDeviceRecovery(async(operation,operationId,bindingHash,signal)=>{
-      signal.throwIfAborted();if(!isReminderOperation(operation))return {status:'unknown'};
+      signal.throwIfAborted();if(!isReminderOperation(operation)&&!isReminderCreate(operation))return {status:'unknown'};
       const result=await DailyApps.reminderOperationReceipt({operation,operationId,bindingHash});signal.throwIfAborted();
-      return result.status==='succeeded'?{status:'succeeded',reminderResult:validateReminderResult(operation,result.result)}:{status:'unknown'};
+      return result.status==='succeeded'?{status:'succeeded',reminderResult:isReminderCreate(operation)?validateReminderCreateResult(operation,result.result,operationId):validateReminderResult(operation,result.result)}:{status:'unknown'};
     });
-    connectionController.setDeviceExecutor(async (operation, operationId, expectedContext, signal, bindingHash) => {
+    connectionController.setDeviceExecutor(async (operation, operationId, expectedContext, signal, bindingHash, workflowRoute) => {
       signal.throwIfAborted(); context(this);
       if (!this.live || JSON.stringify(alphaClient.getState().context) !== JSON.stringify(expectedContext)) throw new Error('Phone context changed');
       if(isClockOperation(operation)){
@@ -297,9 +298,9 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
         if(connectionController.getWorkflowPresentationProtocol()!==2)return {status:'failed',summary:'This device has not negotiated workflow presentation support.'};
         signal.throwIfAborted();context(this);if(!this.live||document.hidden||JSON.stringify(alphaClient.getState().context)!==JSON.stringify(expectedContext)||expectedContext.sensitive||expectedContext.view!=='workflows')throw Error('Workflow review context changed');
         if(operation.type==='post_notification'&&Capacitor.isNativePlatform()){
-          const notices=registerPlugin<{postWorkflow(input:{operationId:string;bindingHash:string;title:string;body:string}):Promise<{status:unknown}>}>('AlphaNotifications');
-          if(!bindingHash)throw Error('Workflow notification binding is missing');
-          const result=await notices.postWorkflow({operationId,bindingHash,title:operation.title,body:operation.body});
+          const notices=registerPlugin<{postWorkflow(input:{operationId:string;bindingHash:string;title:string;body:string;route:NonNullable<typeof workflowRoute>}):Promise<{status:unknown}>}>('AlphaNotifications');
+          if(!bindingHash||!workflowRoute)throw Error('Workflow notification binding is missing');
+          const result=await notices.postWorkflow({operationId,bindingHash,title:operation.title,body:operation.body,route:workflowRoute});
           signal.throwIfAborted();
           const status=result.status==='succeeded'?'succeeded':result.status==='failed'?'failed':'unknown';
           return {status,summary:status==='succeeded'?'Posted the reviewed notification on this device.':status==='failed'?'Notification delivery is unavailable on this device.':'Notification outcome is unconfirmed. It will not be repeated automatically.'};
@@ -316,11 +317,20 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
         const saved = await this.vset('notes', { list: [note, ...this.vget('notes').list] });
         return { status: saved ? 'succeeded' : this.notesCommitUncertain?'unknown':'failed', summary: saved ? `Saved note: ${operation.title}` : 'The note save is unconfirmed. Inspect saved notes before repeating.' };
       }
+      if(isReminderCreate(operation)){
+        const support=await DailyApps.surfaceInfo();signal.throwIfAborted();
+        context(this);if(!this.live||JSON.stringify(alphaClient.getState().context)!==JSON.stringify(expectedContext))throw Error('Phone context changed');
+        if(support.reminderCreationVersion!==1)return {status:'failed',summary:'This phone does not support reviewed reminder creation. Nothing was created.'};
+        const result=await DailyApps.operateReminder({operationId,bindingHash,operation});
+        if(result.status!=='succeeded')return {status:'unknown',summary:'Reminder creation outcome is unknown. Check action history; it will not be repeated.'};
+        const reminderResult=validateReminderCreateResult(operation,result.result,operationId);
+        return {status:'succeeded',reminderResult,summary:reminderResult.status==='pending'?'Reminder saved with no alert.':reminderResult.status==='scheduled'?'Reminder saved with approximate notification delivery.':reminderResult.status==='permission-denied'?'Reminder saved; notifications are disabled.':'Reminder saved; notification scheduling failed.'};
+      }
       if(isReminderOperation(operation)){
         signal.throwIfAborted();context(this);if(JSON.stringify(alphaClient.getState().context)!==JSON.stringify(expectedContext)||expectedContext.sensitive||document.hidden)throw Error('Reminder context changed');
         const target=await DailyApps.selectedReminder({id:operation.target.reminderId});signal.throwIfAborted();
         if(JSON.stringify(target)!==JSON.stringify(operation.target)) { // property order is normalized below
-          for(const key of ['sourceId','sourceRevision','reminderId','occurrenceId','revision'] as const)if(target[key]!==operation.target[key])return {status:'failed',summary:'This reminder changed. Review it again before applying the action.'};
+          for(const key of ['sourceId','sourceRevision','reminderId','occurrenceId','revision','timingVersion'] as const)if(target[key]!==operation.target[key])return {status:'failed',summary:'This reminder changed. Review it again before applying the action.'};
         }
         context(this);if(JSON.stringify(alphaClient.getState().context)!==JSON.stringify(expectedContext))throw Error('Reminder context changed');
         signal.throwIfAborted();
@@ -329,7 +339,7 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
         // cancels this context-bound action before it can acknowledge the server.
         if(result.status!=='succeeded')return {status:'unknown',summary:'Reminder outcome requires review. It was not repeated.'};
         const reminderResult=validateReminderResult(operation,result.result);
-        return {status:'succeeded',summary:`Reminder ${reminderResult.status}.${Capacitor.isNativePlatform()?' Android delivery is approximate.':''}`,reminderResult};
+        return {status:'succeeded',summary:reminderResult.status==='pending'?'Reminder saved with no alert.':`Reminder ${reminderResult.status}.${Capacitor.isNativePlatform()?' Android delivery is approximate.':''}`,reminderResult};
       }
       if (operation.type === 'create_reminder') {
         const at = Date.parse(operation.dueAt);

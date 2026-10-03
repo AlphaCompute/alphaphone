@@ -111,15 +111,15 @@ public final class BrowserContinuityInstrumentedTest {
    AppNavigation.liveMode();app("Browser");address(url);page(url);browser.child("localStorage.setItem('reload_private',"+JSONObject.quote(token)+");document.cookie='alpha_reload_private="+token+"; Secure; SameSite=Lax; Path=/';true");
    assertEquals("Private fixture stored before purge",JSONObject.quote(token),browser.child("localStorage.getItem('reload_private')"));assertEquals("Cookie fixture stored before purge","true",browser.child("document.cookie.includes('alpha_reload_private="+token+"')"));
    click("Menu");click("Bookmark");saved(store,url,true);BrowserSnapshot first=snapshot();assertEquals(1,first.frames.size());
-   String origin=host("performance.timeOrigin");host("location.reload()");ready("performance.timeOrigin!=="+origin+"&&document.documentElement.dataset.activeView==='home'");resetVerified(first,url);
+   String origin=host("performance.timeOrigin");WebViewTestDriver.navigateHostDocument("location.reload()",true);ready("performance.timeOrigin!=="+origin+"&&document.documentElement.dataset.activeView==='home'");resetVerified(first,url);
    app("Browser");address(url);page(url);assertEquals("New document cannot reuse old site storage","null",browser.child("localStorage.getItem('reload_private')"));
    click("Menu");click("Bookmarks and history");click("Bookmarks");ready(button(url));click(url);page(url);browser.child("localStorage.setItem('reload_private',"+JSONObject.quote(token)+");document.cookie='alpha_reload_private="+token+"; Secure; SameSite=Lax; Path=/';true");BrowserSnapshot second=snapshot();
    app("Settings");ready("window.__alphaTestNavigation?.status==='complete'");click("Agent connection");ready("document.querySelector('.alpha-connection-scrim')");
    host("[...document.querySelectorAll('.alpha-connection summary')].find(e=>e.textContent==='Mock mode').click()");
-   host("[...document.querySelectorAll('.alpha-connection button')].find(e=>e.textContent.trim()==='Enter mock mode').click()");
+   WebViewTestDriver.navigateHostDocument("[...document.querySelectorAll('.alpha-connection button')].find(e=>e.textContent.trim()==='Enter mock mode').click()",false);
    ready("document.documentElement.dataset.connectionMode==='mock'&&document.querySelector('.mock-mode-banner')");resetVerified(second,url);
    assertEquals("Mock renderer does not receive private bookmark URL","false",host("document.body.textContent.includes("+JSONObject.quote(token)+")"));
-   host("document.querySelector('.mock-mode-banner button').click()");ready("document.documentElement.dataset.connectionMode==='live'&&!document.querySelector('.mock-mode-banner')");
+   WebViewTestDriver.navigateHostDocument("document.querySelector('.mock-mode-banner button').click()",true);ready("document.documentElement.dataset.connectionMode==='live'&&!document.querySelector('.mock-mode-banner')");
    assertSame(first.activity,snapshot().activity);app("Browser");address(url);page(url);assertEquals("Fresh browser after mock exit","null",browser.child("localStorage.getItem('reload_private')"));
    click("Menu");click("Bookmarks and history");click("Bookmarks");ready(button(url));
   }finally{if(store.read().contains(url))store.change(url,false);}

@@ -849,7 +849,7 @@
           <sc-if value="{{calendar.ev.reminderActionable}}" hint-placeholder-val="{{false}}">
           <div style="display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px">
             <button class="tap" aria-label="Complete reminder occurrence" onClick="{{calendar.ev.reminderDone}}" style="min-height: 52px; padding: 12px 16px; border-radius: 16px; background: var(--fg); color: var(--bg)">Done</button>
-            <button class="tap" aria-label="Snooze reminder 10 minutes" onClick="{{calendar.ev.reminderSnooze}}" style="min-height: 52px; padding: 12px 16px; border-radius: 16px; background: var(--s2)">Snooze 10 minutes</button>
+            <sc-if value="{{calendar.ev.reminderCanSnooze}}"><button class="tap" aria-label="Snooze reminder 10 minutes" onClick="{{calendar.ev.reminderSnooze}}" style="min-height: 52px; padding: 12px 16px; border-radius: 16px; background: var(--s2)">Snooze 10 minutes</button></sc-if>
           </div>
           </sc-if>
           <sc-for list="{{calendar.ev.reminderHistory}}" as="h"><div style="font-size: 13px; color: var(--mut); margin-top: 8px">{{h.text}}</div></sc-for>
@@ -2224,7 +2224,7 @@
         <sc-for list="{{notes.rec.levels}}" as="b" hint-placeholder-count="44"><span style="flex: 1 1 0; height: {{b.h}}px; border-radius: 2px; background: var(--acct); transition: height .2s"></span></sc-for>
       </div>
       <div class="scr" style="flex-grow: 1; overflow-y: auto; margin-top: 26px; display: flex; flex-direction: column-reverse; gap: 18px; padding-bottom: 12px">
-        <sc-if value="{{notes.rec.review}}"><textarea aria-label="Review transcript" value="{{notes.rec.transcript}}" onChange="{{notes.rec.onTranscript}}" style="width:100%;min-height:180px;box-sizing:border-box;background:transparent;border:0;outline:none;color:var(--fg);font-family:inherit;font-size:18px;line-height:1.45;resize:vertical"></textarea></sc-if>
+        <sc-if value="{{notes.rec.review}}"><textarea aria-label="Review transcript" disabled="{{notes.rec.transcriptDisabled}}" value="{{notes.rec.transcript}}" onChange="{{notes.rec.onTranscript}}" style="width:100%;min-height:180px;box-sizing:border-box;background:transparent;border:0;outline:none;color:var(--fg);font-family:inherit;font-size:18px;line-height:1.45;resize:vertical"></textarea></sc-if>
         <sc-for list="{{notes.rec.lines}}" as="l" hint-placeholder-count="3">
           <div class="enter" style="display: flex; gap: 12px; align-items: flex-start">
             <span style="width: 30px; height: 30px; border-radius: 15px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; font-size: 10.5px; font-weight: 700; {{l.chip}}">{{l.ini}}</span>

@@ -44,3 +44,24 @@ test('generation protocol rejects enrollment, scope, capability, digest and acti
 test('leaving during generation ignores the late response and restores the prior local draft',async({page})=>{
  await setup(page,'delayed');await page.getByRole('textbox',{name:'Workflow request',exact:true}).fill('Build a draft');await page.getByRole('button',{name:'Generate workflow draft',exact:true}).click();await expect.poll(async()=>(await counts(page)).calls).toBe(1);await page.getByRole('button',{name:'Home',exact:true}).click();await page.evaluate(()=>(window as any).generationFixture.release());await page.getByRole('button',{name:'Workflows',exact:true}).click();await page.getByRole('button',{name:'New workflow',exact:true}).click();await expect(page.getByRole('textbox',{name:'Workflow name',exact:true})).toHaveValue('Retained original draft');await expect(page.getByRole('region',{name:'Generated draft',exact:true})).toHaveCount(0);expect((await counts(page)).workflows).toBe(0);
 });
+
+test('editing the request during generation discards its late response',async({page})=>{
+ await setup(page,'delayed');const prompt=page.getByRole('textbox',{name:'Workflow request',exact:true});await prompt.fill('Original request');await page.getByRole('button',{name:'Generate workflow draft',exact:true}).click();await expect.poll(async()=>(await counts(page)).calls).toBe(1);await prompt.fill('Changed request');await page.evaluate(()=>(window as any).generationFixture.release());await expect(page.getByRole('region',{name:'Generated draft',exact:true})).toHaveCount(0);await expect(prompt).toHaveValue('Changed request');await expect(page.getByRole('textbox',{name:'Workflow name',exact:true})).toHaveValue('Retained original draft');await page.evaluate(()=>(window as any).generationFixture.mode='normal');await page.getByRole('button',{name:'Generate workflow draft',exact:true}).click();await expect.poll(async()=>(await counts(page)).calls).toBe(2);expect(await page.evaluate(()=>(window as any).generationFixture.calls[1].body.prompt)).toBe('Changed request');
+});
+
+for(const outcome of ['saved','failed','left'])test(`Generation waits for durable draft storage: ${outcome}`,async({page})=>{
+ await setup(page);
+ await expect.poll(()=>page.evaluate(()=>Object.keys(localStorage).some(key=>key.startsWith('alpha.browser.workflow-draft:')))).toBe(true);
+ await page.evaluate(outcome=>{const request=navigator.locks.request.bind(navigator.locks);let held=false;navigator.locks.request=(async(name:any,...args:any[])=>{if(String(name).startsWith('alpha.browser.workflow-draft:')&&!held){held=true;await new Promise<void>(resolve=>(window as any).releaseDraft=resolve);if(outcome==='failed')throw Error('Synthetic draft storage failure');}return (request as any)(name,...args);}) as any;},outcome);
+ await page.getByRole('textbox',{name:'Workflow name',exact:true}).fill('Retain pending private draft');
+ await expect.poll(()=>page.evaluate(()=>typeof (window as any).releaseDraft)).toBe('function');
+ await page.getByRole('textbox',{name:'Workflow request',exact:true}).fill('Generate after storage');
+ await page.getByRole('button',{name:'Generate workflow draft',exact:true}).click();
+ expect((await counts(page)).calls).toBe(0);
+ await expect(page.getByRole('textbox',{name:'Workflow name',exact:true})).toBeVisible();
+ if(outcome==='left')await page.getByRole('button',{name:'Home',exact:true}).click();
+ await page.evaluate(()=>(window as any).releaseDraft());
+ if(outcome==='saved'){await expect(page.getByRole('region',{name:'Generated draft',exact:true})).toBeVisible();expect((await counts(page)).calls).toBe(1);}
+ else if(outcome==='failed'){await expect(page.getByRole('textbox',{name:'Workflow name',exact:true})).toHaveValue('Retain pending private draft');await expect(page.getByText(/Resolve local draft storage|Synthetic draft storage failure/).first()).toBeVisible();expect((await counts(page)).calls).toBe(0);}
+ else{await expect.poll(()=>page.evaluate(()=>Object.keys(localStorage).filter(key=>key.startsWith('alpha.browser.workflow-draft:')).map(key=>JSON.parse(JSON.parse(localStorage.getItem(key)!).value).spec.name))).toContain('Retain pending private draft');expect((await counts(page)).calls).toBe(0);}
+});
