@@ -106,3 +106,30 @@ for power in ['mWakefulness=Awake\nmUserId=10\nmForegroundProfile=0','mWakefulne
  f=IdleSequence([dict(READY,power=power)]);refused(lambda:admit_display(f.run,USER,NAME,sleep=lambda _:None));assert f.reads==30 and not f.effects and not f.settings
  f=IdleSequence([READY,dict(READY,power=power)]);refused(lambda:admit_display(f.run,USER,NAME,sleep=lambda _:None));assert len(f.effects)==1
 print('PASS: independent API35 main-user/profile transition waits read-only; timeout and post-admission regression refuse')
+
+# Unmodified hosted e4d transcript: stream has an unprefixed class-name line.
+captured=(Path(__file__).parent/'fixtures/recovery-storage-e4d-pass.txt').read_text()
+captured_class='ai.elizaresearch.alphaphone.ReminderDeletionStorageInstrumentedTest'
+captured_method='reminderDeletionSlotUsesEncryptedCompareExchange'
+terminal(captured,captured_class,captured_method)
+terminal(captured.replace('\n','\r\n'),captured_class,captured_method)
+for bad in [
+ captured.replace('STATUS_CODE: 0','STATUS_CODE: -3'),
+ captured.replace('STATUS_CODE: 1','STATUS_CODE: 0'),
+ captured.replace(captured_method,'otherMethod',1),
+ captured.replace('numtests=1','numtests=2',1),
+ captured.replace('INSTRUMENTATION_STATUS: current=1','INSTRUMENTATION_STATUS: class='+captured_class,1),
+ captured.replace('INSTRUMENTATION_STATUS: test='+captured_method+'\n','',1),
+ captured.replace('INSTRUMENTATION_STATUS_CODE: 0\n',''),
+ captured+captured,
+ captured+'INSTRUMENTATION_STATUS: test=late\n',
+ 'INSTRUMENTATION_CODE: -1\n'+captured.replace('INSTRUMENTATION_CODE: -1\n',''),
+ captured+'INSTRUMENTATION_STATUS_CODE: 0\n',
+ captured.replace('INSTRUMENTATION_CODE: -1','INSTRUMENTATION_CODE: 0'),
+ captured.replace('OK (1 test)','OK (0 tests)'),
+ captured+'INSTRUMENTATION_ABORTED: failure\n',
+ captured+'INSTRUMENTATION_STATUS: stack=failure\n',
+ captured+'INSTRUMENTATION_STATUS_CODE: invalid\n',
+ captured+'INSTRUMENTATION_STATUS: broken\n',
+]:refused(lambda:terminal(bad,captured_class,captured_method))
+print('PASS: actual hosted multiline stream and CRLF; 17 malformed/skip/identity/order/count/late/failure cases refused')

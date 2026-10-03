@@ -86,10 +86,27 @@ def admit_display(run,user,name,sleep=time.sleep,record=lambda x:None):
  raise AssertionError('Owned secondary display readiness timed out')
 
 def terminal(text,cls,method):
- blocks=re.findall(r'((?:INSTRUMENTATION_STATUS: [^\n]*\n)+)INSTRUMENTATION_STATUS_CODE: (-?\d+)\s*(?:\n|$)',text)
- assert len(blocks)==2 and [code for _,code in blocks]==['1','0'],'Require one start and one pass, no skipped/duplicate results'
- for block,_ in blocks:
-  for field,expected in [('class',cls),('test',method),('numtests','1')]:assert re.findall(r'^INSTRUMENTATION_STATUS: '+field+r'=(.*)$',block,re.M)==[expected]
+ assert isinstance(text,str) and len(text)<=4*1024*1024,'Instrumentation output exceeds bound'
+ text=text.replace('\r\n','\n').replace('\r','\n')
+ # AndroidJUnitRunner stream values span lines. Accumulate prefixed fields up
+ # to each status code; unprefixed stream content does not end the bundle.
+ fields={};codes=[];finished=False
+ for line in text.split('\n'):
+  field=re.fullmatch(r'INSTRUMENTATION_STATUS: ([A-Za-z][A-Za-z0-9_]*)=(.*)',line)
+  if field:
+   assert not finished and field[1] not in fields,'Late or duplicate status field'
+   fields[field[1]]=field[2];continue
+  status=re.fullmatch(r'INSTRUMENTATION_STATUS_CODE: (-?\d+)\s*',line)
+  if status:
+   assert not finished,'Status after terminal result'
+   assert status[1]==('1' if not codes else '0') and len(codes)<2,'Require one start and one pass, no skipped/duplicate results'
+   for key,expected in [('class',cls),('test',method),('numtests','1')]:assert fields.get(key)==expected
+   codes.append(status[1]);fields={};continue
+  assert not line.startswith(('INSTRUMENTATION_STATUS:', 'INSTRUMENTATION_STATUS_CODE:')),'Malformed status record'
+  if line.startswith('INSTRUMENTATION_CODE:'):
+   assert not fields and codes==['1','0'],'Terminal result before completed method'
+   finished=True
+ assert not fields and codes==['1','0'],'Incomplete instrumentation statuses'
  assert re.findall(r'^INSTRUMENTATION_CODE: (-?\d+)\s*$',text,re.M)==['-1']
  assert len(re.findall(r'^OK \(1 test\)\s*$',text,re.M))==1
- assert not re.search(r'FAILURES|INSTRUMENTATION_FAILED|INSTRUMENTATION_ABORTED|AssumptionViolated|INSTRUMENTATION_STATUS: (?:Error|stack)=',text)
+ assert not re.search(r'FAILURES|INSTRUMENTATION_FAILED|INSTRUMENTATION_ABORTED|Process crashed|AssumptionViolated|INSTRUMENTATION_STATUS: (?:Error|stack)=',text)

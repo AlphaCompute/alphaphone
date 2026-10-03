@@ -33,27 +33,33 @@ export class BrowserVoice extends WebPlugin {
   window.addEventListener('pagehide',()=>{void this.cancel();});
   window.addEventListener('alpha:device-state',()=>{void this.cancel();});
  }
- // Resolve the controller after browser adapter registration; its native imports register plugins.
- async localSpeechStatus(){const connectionController=await this.connection;const agent=connectionController.getBrowserSpeechAgent();if(agent){const result=await this.withAgentSpeech(signal=>agent.speechRequest(undefined,signal));return {ready:result.ready===true,execution:'browser'};}return {ready:!!navigator.mediaDevices?.getUserMedia&&typeof MediaRecorder!=='undefined',execution:'browser'};}
+ async localSpeechStatus(){return this.withAgentSpeech(async signal=>{
+  // Browser factories must register before connection modules request their proxies.
+  const connectionController=await this.connection;signal.throwIfAborted();
+  const agent=connectionController.getBrowserSpeechAgent();if(agent){const result=await agent.speechRequest(undefined,signal);return {ready:result.ready===true,execution:'browser'};}return {ready:!!navigator.mediaDevices?.getUserMedia&&typeof MediaRecorder!=='undefined',execution:'browser'};
+ });}
  startRecording(input:{maxDurationMs?:number}={}){return this.capture.start(input);}
  stopRecording(){return this.capture.stop();}
  async cancelRecording(){this.capture.cancel();}
  async transcribeLocalRecording(input:{recordingId:string}){
   const clip=this.capture.get(input.recordingId);if(!clip)throw Error('Record a clip first.');
-  const connectionController=await this.connection;
-  const agent=connectionController.getBrowserSpeechAgent();
-  if(agent){const selectedSession=agent.session;const result=await this.withAgentSpeech(async signal=>{const audio=await recordingPcmWav(clip.blob,signal);if(connectionController.getBrowserSpeechAgent()!==agent||agent.session!==selectedSession)throw new DOMException('Voice selection changed','AbortError');return agent.speechRequest(audio,signal);});return {text:result.text,local:true,execution:'browser'};}
-  const text=await this.transcript.open(clip.blob);return {text,local:true,execution:'browser'};
+  return this.withAgentSpeech(async signal=>{
+   const connectionController=await this.connection;signal.throwIfAborted();
+   const agent=connectionController.getBrowserSpeechAgent();
+   if(agent){const selectedSession=agent.session;const audio=await recordingPcmWav(clip.blob,signal);if(connectionController.getBrowserSpeechAgent()!==agent||agent.session!==selectedSession)throw new DOMException('Voice selection changed','AbortError');const result=await agent.speechRequest(audio,signal);return {text:result.text,local:true,execution:'browser'};}
+   const text=await this.transcript.open(clip.blob);signal.throwIfAborted();return {text,local:true,execution:'browser'};
+  });
  }
 
  transcribeRecording(input:{recordingId:string}){return this.transcribeLocalRecording(input);}
  async synthesizeLocal(input:{text:string}){
   if(typeof input.text!=='string'||!input.text.trim()||input.text.length>16000)throw Error('Choose text between 1 and 16000 characters.');
-  const connectionController=await this.connection;
+  return this.withAgentSpeech(async signal=>{
+  const connectionController=await this.connection;signal.throwIfAborted();
   const agent=connectionController.getBrowserSpeechAgent();
   if(agent){
    const sessionId=agent.session?.sessionId;if(!sessionId)throw Error('Connect the local agent first.');
-   const blob=await this.withAgentSpeech(signal=>agent.synthesizeSpeech(input.text,signal));
+   const blob=await agent.synthesizeSpeech(input.text,signal);signal.throwIfAborted();
    if(connectionController.getBrowserSpeechAgent()!==agent||agent.session?.sessionId!==sessionId)throw new DOMException('Voice selection changed','AbortError');
    const playbackId=crypto.randomUUID();this.agentAudio.set(playbackId,{blob,agent,sessionId});
    while(this.agentAudio.size>8)this.agentAudio.delete(this.agentAudio.keys().next().value!);
@@ -62,6 +68,7 @@ export class BrowserVoice extends WebPlugin {
   const playbackId=crypto.randomUUID();this.speech.set(playbackId,input.text);
   while(this.speech.size>8)this.speech.delete(this.speech.keys().next().value!);
   return {playbackId,execution:'browser'};
+  });
  }
  private releaseAudio(audio:HTMLAudioElement){
   audio.onended=null;audio.onerror=null;audio.pause();const url=audio.src;audio.removeAttribute('src');audio.load();URL.revokeObjectURL(url);
