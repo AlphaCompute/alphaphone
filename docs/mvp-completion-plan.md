@@ -1,5 +1,11 @@
 # Alpha Phone MVP completion plan
 
+## Current plan — October 3, resident agent and browser development
+
+Use the [current requirement/evidence matrix](mvp-current-status.md) and [browser implementation review](mvp-browser-review.md) for the active plan. The primary agent is Android-resident, with the same real agent hosted locally for browser development. Cloud/remote services are optional; Nitro admission is not a prerequisite. Local scheduling requires honest missed-occurrence/restart recovery. Replacing the former powered-off hosted-execution requirement remains an explicit product acceptance decision, as recorded in the on-device plan; this review does not waive it. Hosted Cerebras text inference remains distinct from local orchestration and speech.
+
+Current work proceeds through notification receipt recovery, remaining speech ownership paths, actual local digest/reconnect qualification, redaction qualification and full current-source browser/design coverage. The source browser workstream skipped Android builds; that does not waive repository verification. The reviewed integration at `e8d6838f90307d201eb530cbfbc9a0d27f776b09` passes 218 repository tests, TypeScript/web verification, 74 targeted browser cases and both Android distribution builds. Hosted native qualification remains pending. Physical device and real-provider acceptance remain open. The older checkpoints below preserve historical results and do not override this current direction.
+
 ## Current checkpoint — October 3, Email account ownership
 
 A rendered negative control reproduced an old-account Gmail draft being saved under a newly selected owner. The repair binds delayed reads, deletion/undo follow-ups and receipt clearing to the original operation/session, aborting owned reads on reset. Six rendered flows and 178 repository checks pass; both Android distributions build with unchanged production source. Fresh DoD and call-note reads preserve unresolved suggestions and retain Email. Native/live-provider acceptance remains open. See [qualification and source evidence](mvp-auth-native-qualification-2026-10-03.md). The MVP is not complete.
@@ -38,7 +44,7 @@ The combined follow-up fixes a reproduced browser transcription import-order reg
 
 The blank installed Android screen is traced to legacy Capacitor listener handles escaping the shared plugin helper. The reviewed proxy repair passes repository verification, 24 owning rendered flows, both distribution builds/lint, and visible Pixel startup/offline Notes creation. Exact `12f348e` hosted browser runs each pass 963 cases; resident/foundation builds pass, but native execution remains failed. Reviewed repairs address stderr-only remount notices and Android's hidden app-data root semantics without weakening admission or socket-liveness checks. The next composition also includes committed product `0d9a8e5` and passes 151 repository checks, 57 rendered flows and both distribution builds/lint with all 3,756 source identities unchanged. Fresh hosted qualification is pending. See [native startup qualification](native-startup-qualification-2026-10-03.md). The MVP remains incomplete.
 
-## Current checkpoint — October 2, reading privacy and password setup
+## Earlier checkpoint — October 2, reading privacy and password setup
 
 Two concrete MVP gaps are now implemented: browser read-aloud rejects recognized credential-sensitive sources and explicit API-key URLs before fetching/speaking, and Settings/Browser expose an honest password-provider setup/status flow. Android and Proton own provider selection and vault UI; no forced enablement or successful filling is inferred. Combined repository verification and 84 rendered flows pass on an isolated composition. Exact source identities, review corrections and remaining gates are in [reading/provider qualification](mvp-reading-provider-qualification.md).
 
