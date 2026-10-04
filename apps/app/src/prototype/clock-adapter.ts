@@ -1,3 +1,4 @@
+import {createInlineModal} from '../runtime/inline-modal';
 import {currentClockTimeZone} from '../runtime/clock-contract';
 import { DailyApps, type ClockRequest, type ClockResult } from '../daily';
 type Bag=Record<string,any>;
@@ -5,7 +6,7 @@ const KEY='alphaphone:clock-handoff:v1';
 const actions=['set','show','snooze','dismiss'] as const;
 /** A reviewed handoff, never a local alarm database or a provider-success claim. */
 export function installClockAdapter(Component:any,views:Bag,options:{simulated:boolean;browser?:boolean}) {
- const p=Component.prototype,render=views.calendar.render;
+ const p=Component.prototype,render=views.calendar.render,leave=views.calendar.onLeave;
  const draftId=crypto.randomUUID();let draftRevision=0;
  const selection=()=>open?{kind:'clock-draft',id:draftId,revision:String(draftRevision)}:undefined;
  let owner:any,open=false,action:ClockRequest['action']='set',time='07:00',label='',snooze='10',review:ClockRequest|null=null,busy=false,message='',generation=0;
@@ -16,19 +17,13 @@ export function installClockAdapter(Component:any,views:Bag,options:{simulated:b
   try {const last=JSON.parse(localStorage.getItem(KEY)||'null');if(last&&actions.includes(last.action)&&typeof last.status==='string')message=last.status==='opening'||last.status==='unknown'?'Previous Clock result is unknown. Check Clock before repeating a request.':'Previous request was a handoff. Check Clock for its result.';}
   catch {message='Clock handoff history could not be read. Check Clock before repeating a request.';}
  };
- const close=()=>{if(!busy){open=false;review=null;publish();queueMicrotask(()=>document.querySelector<HTMLButtonElement>('button[aria-label="Clock alarms"]')?.focus());}};
+ const close=()=>{if(!busy){open=false;review=null;publish();}};
  const back=(event:Event)=>{if(!open)return;event.preventDefault();event.stopImmediatePropagation();close();};
- const key=(event:KeyboardEvent)=>{
-  if(!open)return;if(event.key==='Escape'){back(event);return;}
-  if(event.key==='Tab'){
-   const items=Array.from(document.querySelectorAll<HTMLElement>('[role="dialog"][aria-label="Clock alarms"] button,[role="dialog"][aria-label="Clock alarms"] input'));
-   const first=items[0],last=items.at(-1);
-   if(first&&last&&((event.shiftKey&&document.activeElement===first)||(!event.shiftKey&&document.activeElement===last))){event.preventDefault();(event.shiftKey?last:first).focus();}
-  }
- };
+ const modal=createInlineModal(close,()=>document.querySelector<HTMLElement>('button[aria-label="Clock alarms"]'));
+ views.calendar.onLeave=(...args:any[])=>{open=false;review=null;++generation;return leave?.(...args);};
  const mount=p.componentDidMount,unmount=p.componentWillUnmount;
- p.componentDidMount=function(){mount.call(this);owner=this;this.clockSelection=selection;restore();window.addEventListener('alpha-back',back,true);document.addEventListener('keydown',key,true);};
- p.componentWillUnmount=function(){if(owner===this){window.removeEventListener('alpha-back',back,true);document.removeEventListener('keydown',key,true);delete this.clockSelection;owner=null;open=false;review=null;++generation;}unmount.call(this);};
+ p.componentDidMount=function(){mount.call(this);owner=this;this.clockSelection=selection;restore();window.addEventListener('alpha-back',back,true);};
+ p.componentWillUnmount=function(){if(owner===this){window.removeEventListener('alpha-back',back,true);delete this.clockSelection;owner=null;open=false;review=null;++generation;}unmount.call(this);};
  const change=(fn:()=>void)=>{if(busy)return;fn();review=null;publish();};
  const build=():ClockRequest=>{
   if(action==='set'){
@@ -62,10 +57,10 @@ export function installClockAdapter(Component:any,views:Bag,options:{simulated:b
  };
  views.calendar.render=(state:Bag,api:Bag)=>{
   const out=render(state,api);
-  out.openClock=()=>{if(busy)return;if(options.browser&&!simulated()){void DailyApps.clockHandoff({action:'show',reviewed:true}).catch(()=>api.toast('Clock could not be opened. Try again.'));return;}open=true;review=null;restore();publish();queueMicrotask(()=>document.querySelector<HTMLButtonElement>('button[aria-label="Close Clock"]')?.focus());};
+  out.openClock=()=>{if(busy)return;if(options.browser&&!simulated()){void DailyApps.clockHandoff({action:'show',reviewed:true}).catch(()=>api.toast('Clock could not be opened. Try again.'));return;}open=true;review=null;restore();publish();};
   const currentReview=review;
   out.clock=open?{
-   title:'Clock',topPadding:simulated()?'76px':'44px',message,busy,isSet:action==='set',isSnooze:action==='snooze',time,label,snooze,
+   modalRef:modal.ref,title:'Clock',topPadding:simulated()?'76px':'44px',message,busy,isSet:action==='set',isSnooze:action==='snooze',time,label,snooze,
    zone:Intl.DateTimeFormat().resolvedOptions().timeZone,
    close,
    actions:actions.map(kind=>({label:kind==='set'?'Set alarm':kind==='show'?'Show alarms':kind==='snooze'?'Snooze':'Dismiss',pick:()=>change(()=>{action=kind;}),css:action===kind?'background:var(--fg);color:var(--bg)':'background:var(--s2);color:var(--fg)'})),
