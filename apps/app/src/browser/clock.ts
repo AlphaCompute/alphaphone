@@ -21,7 +21,7 @@ export class BrowserClock {
  private soundTimer?:ReturnType<typeof setInterval>;
  private audio=new BrowserAlertAudio();
  constructor(private daily:BrowserDaily,private notifications:BrowserNotifications){
-  window.addEventListener('alpha:clock-open',()=>this.open());window.addEventListener('alpha:alarms-changed',()=>void this.poll());
+  window.addEventListener('alpha:clock-open',()=>this.open());window.addEventListener('alpha:alarms-changed',()=>void this.poll());window.addEventListener('alpha:reminders-document-changed',()=>void this.poll());
   window.addEventListener('pagehide',()=>this.retire());window.addEventListener('alpha:device-state',()=>{this.retire();});document.addEventListener('visibilitychange',()=>{if(document.hidden)this.retire();else void this.poll();});
   window.addEventListener('storage',event=>{if(event.key==='alpha.browser.reminders.v1')void this.poll();});setInterval(()=>void this.poll(),1000);
  }
