@@ -12,7 +12,7 @@ import java.nio.charset.StandardCharsets;
 import static org.junit.Assert.*;
 /** Actual SAF open/create flows with unique synthetic documents; no injected picker result. */
 public final class NotesDocumentInstrumentedTest {
- private void until(String expression)throws Exception{long end=SystemClock.elapsedRealtime()+20000;while(SystemClock.elapsedRealtime()<end){if("true".equals(NotesSecureFixture.evaluate("Boolean("+expression+")")))return;SystemClock.sleep(100);}fail("Notes document flow timed out: "+expression);}
+ private void until(String expression)throws Exception{long end=SystemClock.elapsedRealtime()+20000;while(SystemClock.elapsedRealtime()<end){if("true".equals(NotesSecureFixture.evaluate("Boolean("+expression+")")))return;SystemClock.sleep(100);}fail("Notes document flow timed out: "+expression+"; state="+NotesSecureFixture.evaluate("JSON.stringify({view:document.documentElement.dataset.activeView,storage:document.documentElement.dataset.notesStorageState,importDisabled:document.querySelector('button[aria-label=\"Import text note\"]')?.disabled,exportDisabled:document.querySelector('button[aria-label=\"Export text file\"]')?.disabled,cancellationNotice:document.body.textContent.includes('Document selection cancelled.'),observedCancellationNotice:window.__notesCancelNoticeSeen===true,documentHidden:document.hidden})"));}
  private void click(String label)throws Exception{String q="[...document.querySelectorAll('button')].find(b=>b.getAttribute('aria-label')==="+JSONObject.quote(label)+"&&b.getClientRects().length&&!b.disabled)";until(q);NotesSecureFixture.evaluate("("+q+").click()");}
  private void title(String text)throws Exception{NotesSecureFixture.evaluate("(()=>{const e=document.querySelector('input[aria-label=Title]');Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(e,"+JSONObject.quote(text)+");e.dispatchEvent(new Event('input',{bubbles:true}));e.dispatchEvent(new Event('change',{bubbles:true}));})()");until("document.querySelector('input[aria-label=Title]')?.value==="+JSONObject.quote(text.replace("\r\n","\n")));}
  // Fixed categories only: never retain activity dumps, document names, or UI text.
@@ -43,8 +43,20 @@ public final class NotesDocumentInstrumentedTest {
  private void cancelPicker(String readyControl)throws Exception{
   // JS click completion precedes the asynchronous native launch. Prove the picker
   // is foreground before asking the shared helper to send actual paired Back.
-  awaitDocumentPicker();WebViewTestDriver.cancelDocumentPicker();
-  until("document.documentElement.dataset.activeView==='notes'&&document.querySelector('button[aria-label=\""+readyControl+"\"]')?.disabled===false&&document.body.textContent.includes('Document selection cancelled.')");
+  awaitDocumentPicker();
+  // Observe the actual rendered notice before native Back. A previous notice
+  // must disappear first, so the import receipt cannot satisfy export cancellation.
+  until("!document.body.textContent.includes('Document selection cancelled.')");
+  NotesSecureFixture.evaluate("(()=>{window.__notesCancelNoticeSeen=false;window.__notesCancelObserver=new MutationObserver(()=>{if([...document.querySelectorAll('.drop > span')].some(node=>node.textContent==='Document selection cancelled. Nothing imported or exported.'&&node.getClientRects().length>0)){window.__notesCancelNoticeSeen=true;window.__notesCancelObserver.disconnect();}});window.__notesCancelObserver.observe(document.body,{childList:true,subtree:true,characterData:true});})()");
+  try {
+   WebViewTestDriver.cancelDocumentPicker();
+   // Deliberately outlive the 1900 ms toast: slow Android surface readback must
+   // not erase proof that the real cancellation notice was rendered.
+   SystemClock.sleep(2100);
+   until("document.documentElement.dataset.activeView==='notes'&&document.querySelector('button[aria-label=\""+readyControl+"\"]')?.disabled===false&&window.__notesCancelNoticeSeen===true");
+  } finally {
+   NotesSecureFixture.evaluate("window.__notesCancelObserver?.disconnect();delete window.__notesCancelObserver;delete window.__notesCancelNoticeSeen");
+  }
  }
  private void nativeSave()throws Exception{
   long end=SystemClock.elapsedRealtime()+15000;while(SystemClock.elapsedRealtime()<end){AccessibilityNodeInfo root=InstrumentationRegistry.getInstrumentation().getUiAutomation().getRootInActiveWindow();if(root!=null){ArrayDeque<AccessibilityNodeInfo> queue=new ArrayDeque<>();queue.add(root);while(!queue.isEmpty()){AccessibilityNodeInfo node=queue.remove();if(node.isEnabled()&&"save".equalsIgnoreCase(String.valueOf(node.getText()))&&String.valueOf(node.getPackageName()).contains("documentsui")){assertTrue("Actual DocumentsUI Save",node.performAction(AccessibilityNodeInfo.ACTION_CLICK));return;}for(int i=0;i<node.getChildCount();i++){AccessibilityNodeInfo child=node.getChild(i);if(child!=null)queue.add(child);}}}SystemClock.sleep(100);}fail("DocumentsUI Save not exposed");
