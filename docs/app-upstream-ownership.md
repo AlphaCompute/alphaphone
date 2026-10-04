@@ -17,8 +17,8 @@ and explicitly selected development simulations. These need different upstream
 entrypoints and admission rules; moving the folder intact would preserve the
 wrong boundaries.
 
-There are 278 files under `apps/app`, of which 221 are under `src`: 102 browser
-files, 53 runtime files, 47 prototype files, 11 Maps files and eight root files.
+At the integrated October 4 checkpoint there are 279 files under `apps/app`,
+of which 222 are under `src`: 102 browser files, 54 runtime files, 47 prototype files, 11 Maps files and eight root files.
 The largest product source files include `prototype/model.js` (5,860 lines),
 `prototype/template.html` (3,934), `runtime/connection-ui.tsx` (813),
 `prototype/camera-adapter.ts` (655), and `runtime/hosted-digest-ui.tsx` (609).
@@ -158,7 +158,7 @@ continue to reproduce the consumer without modifying the submodule.
 APK compilation, emulator HOME-role behavior, AOSP image boot, real provider
 integration, and physical-device/user acceptance remain separate evidence gates.
 
-## October 3 candidate validation
+## October 3 candidate validation (historical snapshot)
 
 - `npm run verify`: passed, 261 tests and production web build.
 - Maps/Files/lifecycle browser regression: 71 passed. After fixing the Files
@@ -188,3 +188,26 @@ integration, and physical-device/user acceptance remain separate evidence gates.
 
 Command logs, patch hash and working-tree file hashes are in the ignored
 `test-results/upstream-client-extraction/validation.json` and adjacent logs.
+
+## October 4 integration review
+
+The preserved extraction is being integrated with main's upstream pin
+`278af04b9498a35740468ffa7b68239d1924257f`. All 37 candidate paths are absent
+from that pin, so the client patch remains additive. It is separate from the
+patchless resident runtime. Installed Files and Notes storage namespaces,
+secure-store identity, Maps transport admission and Alpha presentation stay
+in product wrappers. The refreshed static inventory covers 279 app files.
+
+Source preparation now verifies the entire cached inventory, base commit and
+manifest hash, repairs recognized missing/changed/extra files, and refuses
+unknown directories or symlinks. Regression fixtures exercise these boundaries.
+The local-agent development launcher also prepares client source before starting
+its direct Vite child; it does not pass through npm's ordinary `predev` hook.
+The integration's repository and three-engine browser qualification are running;
+the October 3 results above do not qualify this newer composition.
+
+Seven focused source-preparation and portable-package checks pass on Node
+24.15.0, including clean direct-launcher preparation. All 108 selected Chromium
+journeys pass; Firefox/WebKit and the combined repository suite are still
+running. Screenshots of the large-text Files review and compact scan correction
+were inspected; these are bounded subview checks, not complete design sign-off.

@@ -2265,3 +2265,45 @@ Clock review previously exposed Calendar controls behind the modal. The shared i
 Both original light/dark failures are retained in `test-results/clock-dialog-before.log`. The first broader campaign passed all 90 existing alarm/handoff cases but failed six new Home cases because the fixture sent a resident native event in mock mode, where that bridge is absent. The corrected fixture invokes the mock shell's actual Home callback and all six new cases pass across Chromium/Firefox/WebKit (`clock-dialog-corrected.log`); the unsuccessful campaign is retained in `clock-dialog-final.log`. These are controlled browser/bridge results, not physical Clock ringing acceptance.
 
 Combined verification on upstream `6b7dbb31b` completed with 257 passes and one failure: the non-DOM Clock harness stripped imports without supplying the new focus helper. The harness now imports the real helper and also proves a retained confirmation cannot dispatch after leaving Calendar. All 16 adapter contracts pass after that repair; final TypeScript and production build pass. The expensive source-reproduction fixture passed in the consolidated run and was not needlessly repeated for this test-harness-only repair. Evidence: `clock-dialog-verify.log`, `clock-dialog-contracts-final.log`, `clock-dialog-typecheck-final.log`, and `clock-dialog-build-final.log`. The initial unbounded Git fetch was replaced by a shallow fetch; explicit negotiation from the cached exact commit avoided re-downloading the full upstream tree. The vendor checkout is the clean new pin.
+
+
+## Combined source and remaining-local-code audit — October 4
+
+Main at `24744dd3dfecfab6106c057f52e4671bf492c382` contains the full PR147 integration and Clock review fix. The review checkout uses exact upstream `278af04b9498a35740468ffa7b68239d1924257f`, with Calendar/Reminders included in its sparse checkout. Direct two-tree Git comparison with the live host's `83e2a2d90` source shows only seven test/harness changes. No Android build ran in this audit; inherited native qualification remains separately scoped.
+
+The remaining primary-checkout work was captured without altering that checkout or its index. The snapshot contains 33 tracked modifications and ten new source files (43 total; 646,812 bytes), covering Maps, Files, Notes, scans, client extraction tooling, the explicit upstream patch and the ownership report/inventory. A two-pass capture checked the base/diff and each file's bytes for concurrent changes. All 43 files were copied with recorded SHA-256 and executable-mode metadata to an isolated worktree, committed at `45239ab` and pushed as draft PR157. A post-push readback found no source-file drift. The patch preparer passed its own source/inventory validation in the isolated snapshot. Generated Python cache files were omitted.
+
+This snapshot deliberately preserves base `c8e91b8` and upstream patch base `760ad0f18`; it cannot be counted as production-ready or current-main integration. CI was skipped for this archival WIP commit. Reconciliation, source review, runtime/browser regression qualification and integration remain open. The app's 100-attachment limit prevented attaching the new worktree and PR to the chat despite retries; both remain available by filesystem path and GitHub URL. Combined-current local verification is retained in `test-results/merged-current-verify.log`.
+
+The registered-worktree audit also found three unpublished native groups. Their exact source snapshots are now pushed: `codex/reminder-fixture-snapshot-20261004` at `e23d05e8f82157de326d075619e6fc546c33a012` (10 files), `codex/notes-native-snapshot-20261004` at `7d00d273d5d467621e36061c602696e059a8112d` (one file), and `codex/resident-experiment-snapshot-20261004` at `b2988d1f508a890763e9740b748a2b84ab0c1f9c` (54 files). Each branch has `docs/local-source-snapshot.json` recording its own base, capture time and file hashes. Isolated Git indexes built the snapshots without modifying their source indexes/checkouts; committed bytes and remote refs were verified. These historical/active experiments are archival source evidence, not a claim that their implementation should overwrite current main. They require comparison with already-migrated upstream code before integration. Together with PR157, 108 changed/new source files are backed up. Other registered product worktrees had no non-cache changes at inspection, apart from this report edit.
+
+The combined `24744dd` source now passes `npm run verify`: all **271 repository tests**, zero failures/skips, TypeScript and production web build. This includes the restored native packaging/source contracts and the corrected Clock adapter harness. Hosted browser campaign `37174654496` remains independently in progress across all three shards. At 03:48:54 UTC, the existing local agent still verifies owner, one agent, standalone Whisper/Kokoro and embedded workflows. All 108 captured source files match their archival hashes after publication. Report-only updates are retained on `codex/current-source-sync` while the merged-main browser campaign finishes, avoiding a documentation-only restart.
+
+## October 4 — Client extraction integration and clean-start repair
+
+Draft PR157's preserved Maps/Files/Notes source is now reconciled in its isolated
+integration checkout with upstream pin `278af04b9498a35740468ffa7b68239d1924257f`.
+The explicit 37-file client patch is additive at this pin; it does not modify
+`vendor/eliza` or reintroduce resident runtime patches. Alpha wrappers retain
+installed database/legacy Notes keys, secure slots, device IDs, asset URLs and
+presentation defaults. The static ownership inventory now covers 279 app files.
+
+Review found two integration defects. The source cache accepted extra files and
+lacked base/manifest provenance; preparation now requires exact inventory and
+repairs only a recognized cache, with fixture coverage for drift, missing files,
+unknown directories, symlinks, escaped paths and pin/patch mismatch. The
+`dev:local` launcher invokes Vite directly and skipped npm's source-preparation
+hook; it now prepares the client source before spawning either service.
+
+Combined repository validation and the affected Files, Notes, Maps and scan
+journeys across Chromium, Firefox and WebKit are in progress. The earlier main
+browser campaign `37174654496` ended cancelled following the concurrent PR158
+merge; it is not a passing result. PR157 remains draft pending qualification.
+Primary checkout edits and the live agent on ports 5317/47849 remain untouched.
+
+Integration follow-up: all 108 selected Chromium cases pass; the same batch
+continues through Firefox and WebKit (324 total). Seven source-preparation and
+portable-package checks pass on Node 24.15.0, including clean direct-launcher
+preparation. Main PR158 has been incorporated; its change is limited to native
+Notes instrumentation, without changing the running browser source. The full
+repository command remains in progress and is not reported as passing.
