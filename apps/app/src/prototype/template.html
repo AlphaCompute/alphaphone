@@ -1646,8 +1646,9 @@
   </sc-if>
 
   <sc-if value="{{photos.albumManager}}">
-    <button aria-label="Close album management" onClick="{{photos.am.close}}" style="position:absolute;inset:0;z-index:20;background:var(--scrim)"></button>
-    <div class="enter" role="dialog" aria-label="Album management" style="position:absolute;left:0;right:0;bottom:0;z-index:21;background:var(--s1);border-radius:28px 28px 0 0;padding:24px 24px 44px;max-height:80%;overflow-y:auto;box-sizing:border-box">
+    <div ref="{{photos.am.modalRef}}" style="position:absolute;inset:0;z-index:20">
+    <button aria-hidden="true" tabindex="-1" aria-label="Close album management" onClick="{{photos.am.close}}" style="position:absolute;inset:0;z-index:20;background:var(--scrim)"></button>
+    <div class="enter" role="dialog" aria-modal="true" aria-label="Album management" style="color:var(--fg);position:absolute;left:0;right:0;bottom:0;z-index:21;background:var(--s1);border-radius:28px 28px 0 0;padding:24px 24px 44px;max-height:80%;overflow-y:auto;box-sizing:border-box">
       <div style="display:flex;align-items:center;gap:12px"><h2 class="serif" style="font-size:26px;flex:1;margin:0">{{photos.am.title}}</h2><button class="ib" aria-label="Close album management" onClick="{{photos.am.close}}"><svg class="i" viewBox="0 0 24 24"><path d="{{ic.x}}"></path></svg></button></div>
       <div role="status" style="color:var(--mut);font-size:14px;margin-top:12px">{{photos.am.error}}</div>
       <sc-if value="{{photos.am.info}}"><p style="font-size:15px;color:var(--mut)">{{photos.am.description}}</p><button aria-label="Add to album" onClick="{{photos.am.choose}}" style="width:100%;padding:16px;border-radius:24px;background:var(--s2);color:var(--fg)">Add to album</button></sc-if>
@@ -1661,6 +1662,7 @@
         <sc-if value="{{photos.am.managing}}"><button disabled="{{photos.am.busy}}" aria-label="Delete album" onClick="{{photos.am.askDelete}}" style="width:100%;padding:16px;margin-top:8px;color:var(--fg)">Delete album</button></sc-if>
       </sc-if>
       <sc-if value="{{photos.am.confirming}}"><p style="font-size:15px;color:var(--mut)">Photos and videos will remain in your library. Only this album is deleted.</p><button disabled="{{photos.am.busy}}" aria-label="Confirm delete album" onClick="{{photos.am.delete}}" style="width:100%;padding:16px;border-radius:24px;background:var(--fg);color:var(--bg)">Delete album</button></sc-if>
+    </div>
     </div>
   </sc-if>
 
@@ -3864,7 +3866,7 @@
 </div>
 </sc-if>
 <sc-if value="{{showIndicator}}" hint-placeholder-val="{{true}}">
-<button aria-label="Home" onClick="{{homeBar}}" style="position: absolute; bottom: 0; left: 126px; width: 160px; height: 22px; z-index: 99; display: flex; align-items: flex-end; justify-content: center; padding-bottom: 8px; box-sizing: border-box"><span style="width: 108px; height: 4px; border-radius: 2px; background: {{sbColor}}; opacity: .85"></span></button>
+<button aria-label="Home" onClick="{{homeBar}}" style="position: absolute; bottom: 0; left: 126px; width: 160px; height: 22px; z-index: 99; display: flex; align-items: flex-end; justify-content: center; padding-bottom: 8px; box-sizing: border-box"><span style="width: 108px; height: 4px; border-radius: 2px; background: {{homeIndicatorColor}}; opacity: .85"></span></button>
 </sc-if>
 
 </div>
