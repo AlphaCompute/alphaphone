@@ -49,7 +49,7 @@ This report consolidates fifteen research sections on the market, competitors, r
      - The audit record does not cover redaction.
      - The core PII modules have no unit tests.
      - Upstream redaction is off by default and runs only at the agent's model boundary.
-   - **Resident-agent egress:** with both swaps off, emails, phone numbers, card numbers and SSNs reached Cerebras verbatim. The patch `patches/eliza/egress-swap-control-objects.patch` fixes the swap walkers, and `AlphaLocalAgentPlugin` sets `ELIZA_SECRET_SWAP_ENABLED` and `ELIZA_PII_SWAP_ENABLED`. Those identifiers now reach Cerebras only as placeholders (emulator evidence, not physical-device or AOSP-image acceptance). Person names still egress until an NER recognizer is registered.
+   - **Resident-agent egress:** with both swaps off, emails, phone numbers, card numbers and SSNs reached Cerebras verbatim. The upstreamed swap-walker fix (recorded in [the migration ledger](../upstream-patch-migration.json)) fixes the control-object traversal, and `AlphaLocalAgentPlugin` sets `ELIZA_SECRET_SWAP_ENABLED` and `ELIZA_PII_SWAP_ENABLED`. Those identifiers now reach Cerebras only as placeholders (emulator evidence, not physical-device or AOSP-image acceptance). Person names still egress until an NER recognizer is registered.
    - **Full plan:**
      - a renderer and native detection layer, with a GLiNER-PII ONNX model behind upstream's `PiiEntityRecognizer`;
      - a Java gate that refuses any request body without a matching redaction receipt;
@@ -5747,6 +5747,8 @@ See [05-regulation-compliance.md](05-regulation-compliance.md) for the law. Plat
 
 # 13 — Redaction integration: verified upstream inventory, egress gate design and implementation plan
 
+> Runtime source update: the local patch series has been migrated into reviewed upstream commits. AlphaPhone now consumes the immutable revision in `upstream.lock.json`; see [the migration ledger](../upstream-patch-migration.json). Patch filenames and line numbers below describe historical evidence retained in Git history, not files to apply to the current checkout. Implement further shared runtime changes through upstream PRs and update the reviewed pin.
+
 This is an engineering design and plan, not acceptance evidence. Apart from the upstream swap fix in Section 17, nothing in it is built. It checks the claims in [04-redaction.md](04-redaction.md) and [11-fit-gtm-risks.md](11-fit-gtm-risks.md) against source, maps Alpha's egress points, compares external tools, and proposes a single egress gate with a work plan.
 
 Repository rules that constrain this plan (from `AGENTS.md` and `docs/architecture.md`):
@@ -6774,6 +6776,8 @@ Web:
 
 # 14 — SOC 2 technical plan for Alpha Phone
 
+> Runtime source update: the local patch series has been migrated into reviewed upstream commits. AlphaPhone now consumes the immutable revision in `upstream.lock.json`; see [the migration ledger](../upstream-patch-migration.json). Patch filenames and line numbers below describe historical evidence retained in Git history, not files to apply to the current checkout. Implement further shared runtime changes through upstream PRs and update the reviewed pin.
+
 Companion to [05 — Regulation and compliance](05-regulation-compliance.md), which budgets "SOC 2 Type I, then Type II" as the first enterprise unlock.
 
 > **Not audit or legal advice.** A licensed CPA firm decides scope, criteria and opinion. This plan turns the AICPA criteria into concrete engineering work for this repository and its infrastructure. It also records the gaps that are visible today.
@@ -7526,6 +7530,8 @@ Expect these Alpha-specific asks that a SOC 2 report alone will not answer. Prep
 ---
 
 # 15 — Open-gap technical plan: confidential capture, redaction, consent and verifiable cloud processing
+
+> Runtime source update: the local patch series has been migrated into reviewed upstream commits. AlphaPhone now consumes the immutable revision in `upstream.lock.json`; see [the migration ledger](../upstream-patch-migration.json). Patch filenames and line numbers below describe historical evidence retained in Git history, not files to apply to the current checkout. Implement further shared runtime changes through upstream PRs and update the reviewed pin.
 
 This is a plan, not acceptance evidence: nothing in it is built or proves that a capability exists. Capability statements about Alpha today come from repository documents; every external fact has a URL. **(est.)** marks an estimate or model; **(unverified)** marks a figure not confirmed against a primary source.
 

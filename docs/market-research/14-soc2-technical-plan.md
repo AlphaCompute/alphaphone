@@ -1,5 +1,7 @@
 # 14 — SOC 2 technical plan for Alpha Phone
 
+> Runtime source update: the local patch series has been migrated into reviewed upstream commits. AlphaPhone now consumes the immutable revision in `upstream.lock.json`; see [the migration ledger](../upstream-patch-migration.json). Patch filenames and line numbers below describe historical evidence retained in Git history, not files to apply to the current checkout. Implement further shared runtime changes through upstream PRs and update the reviewed pin.
+
 Companion to [05 — Regulation and compliance](05-regulation-compliance.md), which budgets "SOC 2 Type I, then Type II" as the first enterprise unlock.
 
 > **Not audit or legal advice.** A licensed CPA firm decides scope, criteria and opinion. This plan turns the AICPA criteria into concrete engineering work for this repository and its infrastructure. It also records the gaps that are visible today.
