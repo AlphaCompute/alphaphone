@@ -16,18 +16,30 @@ const source={id:'local',name:'Browser calendar',account:'Alpha Phone',local:tru
 const matches=(row:EventRow,expected:Partial<EventRow>|undefined)=>!!expected&&(!expected.revision||expected.revision===row.revision)&&(['title','body','location','begin','end'] as const).every(k=>row[k]===expected[k]);
 export class BrowserCalendar extends WebPlugin {
   private reviews=new BrowserReviews();
+  private async presentationState(){
+    const abort=new AbortController(),view=document.documentElement.dataset.activeView;
+    const retire=()=>abort.abort(),visibility=()=>{if(document.hidden)retire();};
+    const events=['alpha-back','pagehide','alpha:device-state','launcher-home','alpha:browser-open-view'];
+    for(const event of events)window.addEventListener(event,retire,true);
+    document.addEventListener('visibilitychange',visibility);
+    try{visibility();const state=await calendarDocument.read(initial,abort.signal);return abort.signal.aborted||view!==document.documentElement.dataset.activeView?null:state;}
+    catch(error){if(abort.signal.aborted&&error===abort.signal.reason)return null;throw error;}
+    finally{for(const event of events)window.removeEventListener(event,retire,true);document.removeEventListener('visibilitychange',visibility);}
+  }
+
   private active=new Map<string,{cancelled:boolean;abort:AbortController}>();
   async cancelAgent(input:{operationId:string}){const pending=this.active.get(input.operationId);if(pending){pending.cancelled=true;pending.abort.abort();}this.reviews.cancel(input.operationId);return {status:'cancelled'};}
   async executeAgent(input:{operation:unknown;operationId:string}) {
     if(!/^[A-Za-z0-9_-]{1,128}$/.test(input.operationId))throw Error('Invalid operation identity.');
     const operation=validateCalendarOperation(input.operation),binding=JSON.stringify(operation),identity=operation.type==='calendar_create'?operation.source:operation.target;
-    const prior=(await calendarDocument.read(initial)).receipts?.[input.operationId];
-    if(prior)return prior.binding===binding?{status:'applied',result:prior.result}:{status:'conflict'};
     if(this.active.has(input.operationId))return {status:'busy'};
     const ticket={cancelled:false,abort:new AbortController()};this.active.set(input.operationId,ticket);
     const fields=(row:EventRow):CalendarFields=>({title:row.title,description:row.body,location:row.location,start:new Date(row.begin).toISOString(),end:new Date(row.end).toISOString(),timeZone:row.timeZone||Intl.DateTimeFormat().resolvedOptions().timeZone});
     try {
-      const data=(await calendarDocument.read(initial)),row=operation.type==='calendar_create'?undefined:calendarRecord(data.events,operation.target.eventId);
+      const data=(await calendarDocument.read(initial,ticket.abort.signal)),row=operation.type==='calendar_create'?undefined:calendarRecord(data.events,operation.target.eventId);
+      const prior=data.receipts?.[input.operationId];
+      if(prior)return prior.binding===binding?{status:'applied',result:prior.result}:{status:'conflict'};
+      if(ticket.cancelled||document.hidden)return {status:'cancelled'};
       if(identity.sourceId!=='local'||identity.sourceRevision!==data.sourceRevision||operation.type!=='calendar_create'&&(!row||row.revision!==operation.target.revision))return {status:'conflict'};
       const reviewed='fields' in operation?operation.fields:fields(row!);
       const approved=await this.reviews.confirm(input.operationId,operation.type==='calendar_read_selected'?'Share calendar event with agent?':'Review calendar change',`${operation.type.replaceAll('_',' ')}${row?.seriesId?' · This occurrence only':''}
@@ -68,7 +80,8 @@ ${reviewed.description}`);
     return result;
   }
   async edit(input:{id:string;revision:string;people?:{id:string;name:string}[]}) {
-    const row=calendarRecord((await calendarDocument.read(initial)).events,input.id);
+    const state=await this.presentationState();if(!state)return {status:'cancelled'};
+    const row=calendarRecord(state.events,input.id);
     if(!row||row.revision!==input.revision)throw Error('This event changed. Reopen it before editing.');
     if(input.people!==undefined&&(!Array.isArray(input.people)||input.people.length>1000||input.people.some(p=>!p||typeof p.id!=='string'||!p.id||p.id.length>128||typeof p.name!=='string'||p.name.length>300)))throw Error('Review the attendee list.');
     const abort=new AbortController();
@@ -77,19 +90,22 @@ ${reviewed.description}`);
     },input.people).finally(()=>abort.abort());
   }
   async editSeries(input:{id:string;revision:string;people?:{id:string;name:string}[]}){
-    const data=(await calendarDocument.read(initial)),occurrence=calendarRecord(data.events,input.id),series=data.events.find(row=>row.id===occurrence?.seriesId);
+    const data=await this.presentationState();if(!data)return {status:'cancelled'};
+    const occurrence=calendarRecord(data.events,input.id),series=data.events.find(row=>row.id===occurrence?.seriesId);
     if(!occurrence||occurrence.revision!==input.revision||!series)throw Error('This series changed. Reopen it before editing.');
     if(!await this.reviews.confirm('edit-series-'+series.id,'Edit repeating series',`${series.title}\nChanges apply to the repeating schedule. Existing occurrence edits are kept.`))return {status:'cancelled'};
     return this.edit({id:series.id,revision:series.revision,people:input.people});
   }
   async removeSeries(input:{id:string;revision:string}){
-    const data=(await calendarDocument.read(initial)),occurrence=calendarRecord(data.events,input.id),series=data.events.find(row=>row.id===occurrence?.seriesId);
+    const data=await this.presentationState();if(!data)return {status:'cancelled'};
+    const occurrence=calendarRecord(data.events,input.id),series=data.events.find(row=>row.id===occurrence?.seriesId);
     if(!occurrence||occurrence.revision!==input.revision||!series)return {status:'conflict'};
     if(!await this.reviews.confirm('delete-series-'+series.id,'Delete repeating series',`${series.title}\nDelete every occurrence, including edited dates?`))return {status:'cancelled'};
     return calendarDocument.edit(initial,current=>{const row=current.events.find(row=>row.id===series.id),selected=calendarRecord(current.events,input.id);if(!row||row.revision!==series.revision||selected?.revision!==input.revision)return {status:'conflict'};current.events=deleteCalendarRecord(current.events,row,revision());return {status:'deleted'};});
   }
   async editResponse(input:{id:string;revision:string;person:string;name:string}){
-    const row=calendarRecord((await calendarDocument.read(initial)).events,input.id);
+    const state=await this.presentationState();if(!state)return {status:'cancelled'};
+    const row=calendarRecord(state.events,input.id);
     if(!row||row.revision!==input.revision||!row.who?.includes(input.person))throw Error('This guest list changed. Reopen the event.');
     const abort=new AbortController();
     return editCalendarResponse(input.name,row.responses?.[input.person]||'added',async(response,active)=>{
@@ -99,7 +115,8 @@ ${reviewed.description}`);
   }
   async joinMeeting(input:{id:string;revision:string;people?:string[]}){
     if(input.people!==undefined&&(!Array.isArray(input.people)||input.people.length>100||input.people.some(name=>typeof name!=='string'||name.length>300)))throw Error('Invalid meeting attendees.');
-    const row=calendarRecord((await calendarDocument.read(initial)).events,input.id);
+    const state=await this.presentationState();if(!state)return {status:'cancelled'};
+    const row=calendarRecord(state.events,input.id);
     if(!row||row.revision!==input.revision||!row.video)throw Error('This meeting changed. Reopen the event.');
     return openCalendarMeeting(row.title,(input.people||row.who||[]).slice(0,100));
   }
@@ -115,7 +132,7 @@ ${reviewed.description}`);
   async requestWorkflowReadAccess(){return {status:'granted'};}
   async workflowCalendars(){return {status:'ready',calendars:[source]};}
   async list(input:{begin:number;end:number}) {const data=await calendarDocument.read(initial);return {status:'ready',calendars:[{...source,...(data.preferences??{visible:true,color:'acc'})}],...calendarRange(data.events,input)};}
-  async prepareAgentSource(){return calendarDocument.edit(initial,data=>({status:'ready',sourceId:'local',sourceRevision:data.sourceRevision}));}
+  async prepareAgentSource(){const raw=await calendarDocument.readRaw(),data:State=raw===null?await calendarDocument.edit(initial,data=>data):JSON.parse(raw);return {status:'ready',sourceId:'local',sourceRevision:data.sourceRevision};}
   async pendingCreations(){const data=await calendarDocument.read(initial);return {status:'ready',creations:Object.values(data.creations||{}).filter(row=>!row.acknowledged).map(row=>row.result)};}
   async acknowledgeCreation(input:{creationId:string}){return calendarDocument.edit(initial,data=>{const receipt=data.creations?.[input.creationId];if(!receipt)throw Error('Creation receipt unavailable');receipt.acknowledged=true;return {status:'acknowledged'};});}
   async save(input:Partial<EventRow>&{expected?:Partial<EventRow>;creationId?:string;separateCreation?:boolean}) {
@@ -155,7 +172,8 @@ ${reviewed.description}`);
   async remove(input:{id:string;calendarId:string;expected:Partial<EventRow>;revision:string}) {return calendarDocument.edit(initial,data=>{const row=calendarRecord(data.events,input.id);if(!row||row.calendarId!==input.calendarId||row.revision!==input.revision||!matches(row,input.expected))return {status:'conflict'};data.events=deleteCalendarRecord(data.events,row,revision());return {status:'deleted'};});}
   async readWorkflowRange(input:{calendarIds:string[];start:string;end:string;maximumEvents:number}) {const {events}=await this.list({begin:Date.parse(input.start),end:Date.parse(input.end)});return {status:'ready',events:events.filter(e=>input.calendarIds.includes(e.calendarId)).slice(0,input.maximumEvents).map(e=>({...e,start:new Date(e.begin).toISOString(),end:new Date(e.end).toISOString(),allDay:!!e.allDay}))};}
   async open(input?:{id?:string}){
-    const row=input?.id?calendarRecord((await calendarDocument.read(initial)).events,input.id):undefined;
+    const state=input?.id?await this.presentationState():undefined;if(state===null)return {status:'cancelled'};
+    const row=input?.id&&state?calendarRecord(state.events,input.id):undefined;
     if(input?.id&&!row)throw Error('This event no longer exists.');
     window.dispatchEvent(new CustomEvent('alpha:browser-open-view',{detail:'calendar'}));
     if(!row)return {status:'opened'};
