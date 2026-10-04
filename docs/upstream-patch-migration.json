@@ -981,6 +981,30 @@
         "plugins/plugin-notes/test/device-client.test.mjs": "725be053a7e256f8299cf62dde230a3c46d2a7cafff158f36f36a80fcf481ddf"
       }
     },
-    "stagingCommit": "3cb30cfed6a6dd34808a0310eac0b7966611011b"
-  }
+    "stagingCommit": "3cb30cfed6a6dd34808a0310eac0b7966611011b",
+    "consumerCommit": "dda547372918a0fe6ba92cabbea837b64a162d0f",
+    "workflowRepairPr": "https://github.com/elizaOS/eliza/pull/33314"
+  },
+  "archivalResidentPatches": [
+    {
+      "patch": "mobile-graceful-shutdown.patch",
+      "sha256": "640cf6b179472e269853ddf45e29f5a72f3a549992a06b22112e01a4d7db9357",
+      "snapshot": "b2988d1f508a890763e9740b748a2b84ab0c1f9c",
+      "upstreamCommit": "3cb30cfed6a6dd34808a0310eac0b7966611011b",
+      "exactAddedFiles": {
+        "plugins/plugin-native-inference/src/android/shutdown.ts": "8e2a4eb9e17ad4dccdc978b315080a4505296f696e123f95ca01d8fdd43783b2"
+      },
+      "disposition": "Preserved upstream. Added helper is byte-identical; call sites and session hooks reviewed against the pinned source. Shutdown ingress uses the current server.stop abstraction."
+    },
+    {
+      "patch": "mobile-owner-session.patch",
+      "sha256": "535ffafdaaf7da09427b06566d15964dfeeea6b24d608cfa13828f57d4c8321a",
+      "snapshot": "b2988d1f508a890763e9740b748a2b84ab0c1f9c",
+      "upstreamCommit": "3cb30cfed6a6dd34808a0310eac0b7966611011b",
+      "exactAddedFiles": {
+        "packages/app/src/runtime/install-mobile-auth-host-bridge.ts": "b998dd379063beaa0319abf6dc63af863b54b2dfdc6a5534a09d1bfb31644f8f"
+      },
+      "disposition": "Preserved upstream. Added session adapter is byte-identical; mobile installation, host auth dispatch and full-kernel authorization routing remain connected."
+    }
+  ]
 }
