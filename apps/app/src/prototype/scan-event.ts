@@ -1,11 +1,31 @@
 export type ScanEventFields={title:string;date:string;time:string;minutes:number;location:string};
 export type ScanEventDraft={id:null;title:string;off:number;t:number;d:number;where:string;notes:string;cal:'native:local';who:never[];repeat:'none';alert:null;video:false};
-/** Only a single explicit ISO civil date/time becomes a suggestion. No invented year. */
+const months=['january','february','march','april','may','june','july','august','september','october','november','december'];
+function civilDate(year:number,month:number,day:number):string|undefined{
+ const date=new Date(Date.UTC(year,month-1,day));
+ if(year<1970||year>2100||date.getUTCFullYear()!==year||date.getUTCMonth()!==month-1||date.getUTCDate()!==day)return;
+ return `${year}-${String(month).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
+}
+function clockTime(text:string):string|undefined{
+ const clock=/^(\d{1,2})(?::([0-5]\d))?\s*(a\.?m\.?|p\.?m\.?)$/i.exec(text);
+ if(clock){const hour=Number(clock[1]);if(hour<1||hour>12)return;return `${String(hour%12+(/^p/i.test(clock[3])?12:0)).padStart(2,'0')}:${clock[2]||'00'}`;}
+ return /^(?:[01]\d|2[0-3]):[0-5]\d$/.test(text)?text:undefined;
+}
+/** Explicit civil suggestions only: no invented year, locale order or time zone. */
 export function suggestScanEvent(text:string):ScanEventFields{
  const lines=text.split(/\r?\n/).map(line=>line.trim()).filter(Boolean);
- const dates=[...text.matchAll(/\b(\d{4}-\d{2}-\d{2})\b/g)].map(match=>match[1]);
- const times=lines.map(line=>/^(?:\d{4}-\d{2}-\d{2}[T ]+)?(?:at )?((?:[01]\d|2[0-3]):[0-5]\d)$/i.exec(line)?.[1]).filter((value):value is string=>!!value);
- return {title:(lines[0]||'').slice(0,200),date:new Set(dates).size===1?dates[0]:'',time:new Set(times).size===1?times[0]:'',minutes:60,location:''};
+ const dates:(string|undefined)[]=[];
+ for(const match of text.matchAll(/\b(\d{4})-(\d{2})-(\d{2})\b/g))dates.push(civilDate(Number(match[1]),Number(match[2]),Number(match[3])));
+ const monthPattern='('+months.map(month=>month.length===3?month:month.slice(0,3)+'(?:'+month.slice(3)+')?').join('|')+')\\.?';
+ for(const match of text.matchAll(new RegExp('\\b'+monthPattern+'[ \\t]+(\\d{1,2})(?:st|nd|rd|th)?(?:,?[ \\t]+(\\d{4}))?\\b','gi')))dates.push(civilDate(Number(match[3]),months.findIndex(month=>month.startsWith(match[1].toLowerCase()))+1,Number(match[2])));
+ for(const match of text.matchAll(new RegExp('\\b(\\d{1,2})(?:st|nd|rd|th)?[ \\t]+'+monthPattern+'(?:,?[ \\t]+(\\d{4}))?\\b','gi')))dates.push(civilDate(Number(match[3]),months.findIndex(month=>month.startsWith(match[2].toLowerCase()))+1,Number(match[1])));
+ if(/\b\d{1,2}[/-]\d{1,2}[/-]\d{2,4}\b/.test(text))dates.push(undefined);
+ const zoned=/\b(?:UTC|GMT|[ECMP](?:[DS])?T|AK[DS]T|HST|CET|CEST|BST|IST|JST|KST|MSK|(?:Africa|America|Antarctica|Arctic|Asia|Atlantic|Australia|Europe|Indian|Pacific|Etc|US|Canada)\/[A-Za-z_/-]+)\b|\btime\s*zone\s*:/i.test(text);
+ const timeLines=lines.map(line=>line.replace(/^(?:\d{4}-\d{2}-\d{2}[T ]+)?(?:at\s+|time:\s*|starts?:\s*)?/i,'')).filter(line=>/^\d{1,2}(?::|\s*[ap]\.?m)/i.test(line));
+ const times=timeLines.map(clockTime);
+ const dateClear=dates.length>0&&!dates.includes(undefined)&&new Set(dates).size===1;
+ const locations=lines.map(line=>/^(?:location|venue):\s*(.+)$/i.exec(line)?.[1].trim()).filter((value):value is string=>!!value);
+ return {title:(lines[0]||'').slice(0,200),date:dateClear?dates[0]!:'',time:!zoned&&(dates.length===0||dateClear)&&!times.includes(undefined)&&new Set(times).size===1?times[0]!:'',minutes:60,location:new Set(locations).size===1&&locations[0].length<=500?locations[0]:''};
 }
 export function scanEventDraft(fields:ScanEventFields,text:string,now=new Date()):ScanEventDraft{
  if(text.length>16000)throw Error('Event notes support up to 16,000 characters. Shorten the scanned text before creating an event draft.');
