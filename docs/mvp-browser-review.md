@@ -2902,3 +2902,21 @@ Hosted status reconciliation: PR201 Browser MVP `37234303470` is successful at
 `37234707569` are cancelled. PR206 Browser MVP `37235947853` is still running at
 `2a4668037985c058cf482eecd2172e0e8fa173d1`. The current-status index now reflects
 these live readbacks; it does not treat cancelled campaigns as qualification.
+
+The upstream draft now passes full `bun run verify`: **298 successful tasks**, plus
+repository audits, at `a1877e9f2ba528e44908ba44d4e828c6664d7ac3` (7m25s).
+The separately explicit-base alias guard passes as well. The pinned-browser run
+passed Chromium including hanging-editor cancellation, then stopped because the
+pinned Firefox executable was absent; its download remains active.
+
+Alpha's `BrowserDomainDocument` migration/recovery policy is implemented behind
+an injected transactional store and is deliberately not connected to current app
+storage yet. Eight policy tests and consumer TypeScript pass. Initial migration
+retains exact legacy bytes, including malformed JSON and empty strings. Observed
+legacy changes refuse normal access without overwriting either version. Recovery
+captures both the canonical domain and current legacy bytes; revision-checked
+reset retains an empty canonical domain so an old backup cannot reimport. Tests
+also cover corrupt metadata, stale reset receipts and cancellation. These are
+policy tests with a CAS fixture, not cross-tab transaction evidence or proof of
+consumer migration. Old tabs must be closed for migration; observed-value checks
+do not turn localStorage snapshots into a transactional authority.
