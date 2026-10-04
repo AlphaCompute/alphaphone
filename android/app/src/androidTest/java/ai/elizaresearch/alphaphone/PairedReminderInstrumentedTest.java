@@ -1,4 +1,5 @@
 package ai.elizaresearch.alphaphone;
+import ai.eliza.plugins.reminders.ReminderTestAccess;
 import android.os.SystemClock;
 import android.content.*;
 import androidx.test.platform.app.InstrumentationRegistry;
@@ -39,42 +40,42 @@ public final class PairedReminderInstrumentedTest {
   try(BoundedActivityScenario<MainActivity> scenario=BoundedActivityScenario.launch(MainActivity.class)){
    until("document.querySelector('.os')",30000);AppNavigation.liveMode();
    slot="device:"+arrayHash(new JSONArray().put(ORIGIN).put(config.getString("ownerId")).put(config.getString("agentId")));
-   assertNull("Existing proxy credential must never be overwritten",credential("remote:"+ORIGIN));assertNull("Existing proxy enrollment must never be overwritten",credential(slot));assertNull("Existing fixture reminder",ReminderStore.read(c,id));
+   assertNull("Existing proxy credential must never be overwritten",credential("remote:"+ORIGIN));assertNull("Existing proxy enrollment must never be overwritten",credential(slot));assertNull("Existing fixture reminder",ReminderTestAccess.read(c,id));
    previous=NotesSecureFixture.evaluate("localStorage.getItem('alpha.connection.selection.v1')");
    try {
-    assertTrue("Normal notification permission required",ReminderStore.allowed(c));
+    assertTrue("Normal notification permission required",ReminderTestAccess.allowed(c));
     assertEquals("true",NotesSecureFixture.evaluate("(()=>{localStorage.removeItem('alpha.connection.selection.v1');return localStorage.getItem('alpha.connection.selection.v1')===null})()"));scenario.recreate();until("document.querySelector('.alpha-connection-scrim')",30000);
     NotesSecureFixture.evaluate("[...document.querySelectorAll('.alpha-connection summary')].find(e=>e.textContent==='Local development agent').click()");
     NotesSecureFixture.evaluateSensitive("(()=>{const inputs=[...document.querySelectorAll('.alpha-connection details')].find(e=>e.querySelector('summary')?.textContent==='Local development agent').querySelectorAll('input');inputs[0].value="+JSONObject.quote(ORIGIN)+";inputs[1].value="+JSONObject.quote(config.getString("code"))+";})()");admitted=true;click("Connect local agent");until("!document.querySelector('.alpha-connection-scrim')",90000);
     open("Settings");click("Agent connection");until("document.querySelector('.alpha-connection-scrim')",15000);NotesSecureFixture.evaluate("[...document.querySelectorAll('.alpha-connection summary')].find(e=>e.textContent==='Conversation history').click()");click("Load conversations");String restore="[...document.querySelectorAll('.alpha-connection-agent')].find(e=>e.querySelector('strong')?.textContent==="+JSONObject.quote(config.getString("conversationTitle"))+")?.querySelector('button')";until(restore+"&&!("+restore+").disabled",30000);NotesSecureFixture.evaluate("("+restore+").click()");until("!document.querySelector('.alpha-connection-scrim')",30000);
     JSONObject device=new JSONObject(credential(slot));scope=arrayHash(new JSONArray().put(slot.substring(7)).put(device.getString("installationId")));
-    ReminderStore.schedule(c,id,title,body,System.currentTimeMillis()+3600000);created=true;
+    ReminderTestAccess.schedule(c,id,title,body,System.currentTimeMillis()+3600000);created=true;
     for(String type:new String[]{"reminder_read_selected","reminder_update","reminder_snooze","reminder_complete","reminder_cancel"}){
-     JSONObject before=ReminderStore.read(c,id),target=ReminderStore.selected(c,id);
+     JSONObject before=ReminderTestAccess.read(c,id),target=ReminderTestAccess.selected(c,id);
      open("Home");
-     Intent intent=new Intent(c,MainActivity.class).setAction("ai.elizaresearch.alphaphone.OPEN_REMINDER").putExtra(ReminderStore.OPEN_ID,id).putExtra(ReminderStore.OCCURRENCE,target.getString("occurrenceId")).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK|Intent.FLAG_ACTIVITY_SINGLE_TOP|Intent.FLAG_ACTIVITY_CLEAR_TOP);
+     Intent intent=new Intent(c,MainActivity.class).setAction("ai.elizaresearch.alphaphone.OPEN_REMINDER").putExtra(ReminderTestAccess.OPEN_ID,id).putExtra(ReminderTestAccess.OCCURRENCE,target.getString("occurrenceId")).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK|Intent.FLAG_ACTIVITY_SINGLE_TOP|Intent.FLAG_ACTIVITY_CLEAR_TOP);
      BoundedActivityScenario.main(()->c.startActivity(intent));until(AppNavigation.selected("Calendar"),30000);until("document.body.textContent.includes("+JSONObject.quote(title)+")",30000);
      String prompt="Use PROPOSE_DEVICE_ACTION to propose exactly one "+type+" for the selected synthetic reminder. Use this exact target: "+target.toString()+". "+(type.equals("reminder_update")?"Set fields title to "+JSONObject.quote(title)+" and body to \"Updated synthetic content\"; do not change schedule. ":"")+"Do not execute it or propose any other action. Await explicit phone approval.";
      send(prompt);String approval="[...document.querySelectorAll('button')].find(e=>e.textContent.includes("+JSONObject.quote("Approve: "+type.replace('_',' '))+")&&e.getClientRects().length&&!e.disabled)";until(approval,180000);
-     assertEquals("No effect before explicit approval",before.toString(),ReminderStore.read(c,id).toString());
+     assertEquals("No effect before explicit approval",before.toString(),ReminderTestAccess.read(c,id).toString());
      int completed=Integer.parseInt(NotesSecureFixture.evaluate("[...document.querySelectorAll('button')].filter(e=>e.textContent.includes('Completed')).length"));
      long approvedAt=System.currentTimeMillis();NotesSecureFixture.evaluate("("+approval+").click()");
      String journal="Capacitor.Plugins.AlphaActionJournal.list({scope:"+JSONObject.quote(scope)+"})";JSONObject entry=null;
      long end=SystemClock.elapsedRealtime()+60000;while(SystemClock.elapsedRealtime()<end){JSONArray entries=NotesSecureFixture.call(journal).getJSONArray("entries");for(int i=0;i<entries.length();i++){JSONObject e=entries.getJSONObject(i);if(type.equals(e.getJSONObject("record").getJSONObject("operation").optString("type"))&&"terminal".equals(e.optString("phase"))){entry=e;break;}}if(entry!=null)break;SystemClock.sleep(200);}
      assertNotNull("Actual durable native action journal",entry);assertEquals("succeeded",entry.getString("status"));JSONObject record=entry.getJSONObject("record");
      String binding=arrayHash(new JSONArray().put(scope).put(record.getString("ownerId")).put(record.getString("agentId")).put(record.getString("sessionId")).put(record.getString("origin")).put(record.getString("installationId")).put(record.getString("enrollmentId")).put(entry.getString("proposalId")).put(record.getString("digest")).put(entry.getString("operationId")));
-     JSONObject receipt=ReminderStore.operationReceipt(c,entry.getString("operationId"),binding,record.getJSONObject("operation"));assertEquals("succeeded",receipt.getString("status"));assertEquals(canonical(receipt.getJSONObject("result")),canonical(entry.getJSONObject("result").getJSONObject("reminderResult")));
+     JSONObject receipt=ReminderTestAccess.operationReceipt(c,entry.getString("operationId"),binding,record.getJSONObject("operation"));assertEquals("succeeded",receipt.getString("status"));assertEquals(canonical(receipt.getJSONObject("result")),canonical(entry.getJSONObject("result").getJSONObject("reminderResult")));
      if(type.equals("reminder_read_selected"))assertEquals(body,receipt.getJSONObject("result").getJSONObject("fields").getString("body"));
-     if(type.equals("reminder_update"))assertEquals("Updated synthetic content",ReminderStore.read(c,id).getString("body"));
-     if(type.equals("reminder_snooze")){long deadline=receipt.getJSONObject("result").getLong("at");assertTrue("Exact ten minute native snooze deadline",deadline>=approvedAt+600000&&deadline<=System.currentTimeMillis()+600000);assertEquals(deadline,ReminderStore.read(c,id).getLong("at"));}
-     if(type.equals("reminder_complete"))assertEquals("completed",ReminderStore.read(c,id).getString("status"));
-     if(type.equals("reminder_cancel"))assertEquals("cancelled",ReminderStore.read(c,id).getString("status"));
+     if(type.equals("reminder_update"))assertEquals("Updated synthetic content",ReminderTestAccess.read(c,id).getString("body"));
+     if(type.equals("reminder_snooze")){long deadline=receipt.getJSONObject("result").getLong("at");assertTrue("Exact ten minute native snooze deadline",deadline>=approvedAt+600000&&deadline<=System.currentTimeMillis()+600000);assertEquals(deadline,ReminderTestAccess.read(c,id).getLong("at"));}
+     if(type.equals("reminder_complete"))assertEquals("completed",ReminderTestAccess.read(c,id).getString("status"));
+     if(type.equals("reminder_cancel"))assertEquals("cancelled",ReminderTestAccess.read(c,id).getString("status"));
      until("[...document.querySelectorAll('button')].filter(e=>e.textContent.includes('Completed')).length>"+completed,30000);
      android.os.Bundle status=new android.os.Bundle();status.putString("pairedReminderStage",type);InstrumentationRegistry.getInstrumentation().sendStatus(0,status);
     }
    }catch(Exception|AssertionError error){primary=error;throw error;}
    finally{try{
-    if(created){ReminderStore.cancel(c,id);synchronized(ReminderStore.class){ReminderEnvelope e=new ReminderEnvelope(c);e.value.getJSONObject("records").remove(id);e.save();}assertNull(ReminderStore.read(c,id));}
+    if(created){ReminderTestAccess.cancel(c,id);synchronized(ReminderTestAccess.class){ReminderTestAccess.Envelope e=new ReminderTestAccess.Envelope(c);e.value.getJSONObject("records").remove(id);e.save();}assertNull(ReminderTestAccess.read(c,id));}
     if(admitted)NotesSecureFixture.call("Promise.all([Capacitor.Plugins.AlphaConnection.secureRemove({slot:"+JSONObject.quote("remote:"+ORIGIN)+"}),Capacitor.Plugins.AlphaConnection.secureRemove({slot:"+JSONObject.quote(slot)+"})]).then(()=>({removed:true}))");
     NotesSecureFixture.evaluate("(()=>{const previous="+previous+";if(previous===null)localStorage.removeItem('alpha.connection.selection.v1');else localStorage.setItem('alpha.connection.selection.v1',previous);})()");scenario.recreate();until("document.querySelector('.os')",30000);
    }catch(Exception|AssertionError cleanup){if(primary!=null)primary.addSuppressed(cleanup);else throw cleanup;}}

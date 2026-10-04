@@ -1,4 +1,5 @@
 package ai.elizaresearch.alphaphone;
+import ai.eliza.plugins.reminders.ReminderTestAccess;
 
 import android.os.SystemClock;
 import androidx.test.ext.junit.runners.AndroidJUnit4;
@@ -34,7 +35,7 @@ public class DeviceActionInstrumentedTest {
  }
  private String approval(String label){return "[...document.querySelectorAll('button')].find(e=>e.textContent.includes("+JSONObject.quote("Approve: "+label)+")&&e.getClientRects().length&&!e.disabled)";}
  private JSONObject reminder(String title)throws Exception {
-  JSONArray rows=ReminderStore.list(InstrumentationRegistry.getInstrumentation().getTargetContext());
+  JSONArray rows=ReminderTestAccess.list(InstrumentationRegistry.getInstrumentation().getTargetContext());
   JSONObject found=null;
   for(int i=0;i<rows.length();i++)if(title.equals(rows.getJSONObject(i).optString("title"))){assertNull("Exactly one native reminder",found);found=rows.getJSONObject(i);}
   return found;
@@ -120,7 +121,7 @@ public class DeviceActionInstrumentedTest {
 
   } finally {
    JSONObject created=reminder(reminderTitle);
-   if(created!=null)ReminderStore.cancel(InstrumentationRegistry.getInstrumentation().getTargetContext(),created.getString("id"));
+   if(created!=null)ReminderTestAccess.cancel(InstrumentationRegistry.getInstrumentation().getTargetContext(),created.getString("id"));
    fixture.delete();
   }
  }

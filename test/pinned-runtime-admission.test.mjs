@@ -107,6 +107,7 @@ test("clean pinned source is admitted and loader reauthenticates on each build",
 		"location",
 		"network-policy",
 		"calendar",
+		"reminders",
 	])
 		f.write(
 			`vendor/eliza/plugins/plugin-native-${name}/android/build/generated/output.bin`,

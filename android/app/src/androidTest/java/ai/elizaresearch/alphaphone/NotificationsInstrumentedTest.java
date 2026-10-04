@@ -1,4 +1,5 @@
 package ai.elizaresearch.alphaphone;
+import ai.eliza.plugins.reminders.ReminderTestAccess;
 
 import android.app.*;
 import android.content.*;
@@ -22,12 +23,12 @@ public class NotificationsInstrumentedTest {
  @Test public void actualNotificationsRenderRecreateOpenAndClear()throws Exception{
   Context context=InstrumentationRegistry.getInstrumentation().getTargetContext();NotificationManager manager=context.getSystemService(NotificationManager.class);
   InstrumentationRegistry.getInstrumentation().getUiAutomation().grantRuntimePermission(context.getPackageName(),android.Manifest.permission.POST_NOTIFICATIONS);
-  ReminderStore.channel(context);String token=java.util.UUID.randomUUID().toString(),title="Synthetic notification "+token,tag="notification-fixture-"+token;
+  ReminderTestAccess.channel(context);String token=java.util.UUID.randomUUID().toString(),title="Synthetic notification "+token,tag="notification-fixture-"+token;
   Intent intent=new Intent(context,MainActivity.class).setAction("alpha.synthetic.notification.open").addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP|Intent.FLAG_ACTIVITY_CLEAR_TOP);
   PendingIntent tap=PendingIntent.getActivity(context,token.hashCode(),intent,PendingIntent.FLAG_UPDATE_CURRENT|PendingIntent.FLAG_IMMUTABLE);
   try(BoundedActivityScenario<MainActivity> scenario=BoundedActivityScenario.launch(MainActivity.class)){
    AppNavigation.liveMode();WebViewTestDriver.evaluate(AppNavigation.request("Home"));until("document.querySelector('[data-screen]')&&!document.querySelector('.alpha-connection-scrim')");
-   manager.notify(tag,1,new Notification.Builder(context,ReminderStore.CHANNEL).setSmallIcon(android.R.drawable.ic_popup_reminder).setContentTitle(title).setContentText("Actual Android fixture body").setContentIntent(tap).setAutoCancel(true).build());
+   manager.notify(tag,1,new Notification.Builder(context,ReminderTestAccess.CHANNEL).setSmallIcon(android.R.drawable.ic_popup_reminder).setContentTitle(title).setContentText("Actual Android fixture body").setContentIntent(tap).setAutoCancel(true).build());
    WebViewTestDriver.evaluate("window.__missingNoticeRejected=undefined;Capacitor.Plugins.AlphaNotifications.open({}).then(()=>window.__missingNoticeRejected=false,()=>window.__missingNoticeRejected=true)");
    until("window.__missingNoticeRejected===true");
    WebViewTestDriver.evaluate("window.__missingDismissFinished=false;Capacitor.Plugins.AlphaNotifications.dismiss({}).then(()=>window.__missingDismissFinished=true)");until("window.__missingDismissFinished===true");
@@ -37,7 +38,7 @@ public class NotificationsInstrumentedTest {
    scenario.recreate();WebViewTestDriver.evaluate(AppNavigation.request("Home"));until("document.querySelector('[data-screen]')&&!document.querySelector('.alpha-connection-scrim')");shade();until(button(title));
    WebViewTestDriver.evaluate("("+button(title)+").click()");
    boolean removed=false;for(int i=0;i<100;i++){removed=true;for(android.service.notification.StatusBarNotification row:manager.getActiveNotifications())if(tag.equals(row.getTag())&&row.getId()==1)removed=false;if(removed)break;SystemClock.sleep(100);}assertTrue("Opening auto-cancel notification removes real Android notification",removed);
-   manager.notify(tag,2,new Notification.Builder(context,ReminderStore.CHANNEL).setSmallIcon(android.R.drawable.ic_popup_reminder).setContentTitle(title+" clear").setContentText("Clearable fixture").build());
+   manager.notify(tag,2,new Notification.Builder(context,ReminderTestAccess.CHANNEL).setSmallIcon(android.R.drawable.ic_popup_reminder).setContentTitle(title+" clear").setContentText("Clearable fixture").build());
    until(button(title+" clear"));WebViewTestDriver.evaluate("document.querySelector('[data-alpha-layer=shade] button[aria-label=\"Clear all\"]').click()");until("!("+button(title+" clear")+")");
    for(android.service.notification.StatusBarNotification row:manager.getActiveNotifications())assertFalse("Clear action reaches Android",tag.equals(row.getTag()));
   }finally{manager.cancel(tag,1);manager.cancel(tag,2);tap.cancel();}
