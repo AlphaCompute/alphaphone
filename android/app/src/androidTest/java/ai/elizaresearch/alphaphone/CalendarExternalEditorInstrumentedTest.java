@@ -49,7 +49,7 @@ public class CalendarExternalEditorInstrumentedTest {
  private String diagnostics(String fixture){
   AccessibilityNodeInfo root=ui.getRootInActiveWindow();if(root==null)return "AX root absent";
   List<String> fields=new ArrayList<>();fields.add("package="+root.getPackageName());
-  for(String label:new String[]{"Open with","Open with Etar","Etar","Just once","Always"})fields.add(label+"="+root.findAccessibilityNodeInfosByText(label).stream().anyMatch(n->n.isVisibleToUser()&&label.contentEquals(n.getText())));
+  for(String label:new String[]{"Open with","Open with Etar","Etar","Just once","Always","Alarms & reminders"})fields.add(label+"="+root.findAccessibilityNodeInfosByText(label).stream().anyMatch(n->n.isVisibleToUser()&&label.contentEquals(n.getText())));
   if(fixture!=null)fields.add("fixtureTitleVisible="+root.findAccessibilityNodeInfosByText(fixture).stream().anyMatch(n->n.isVisibleToUser()&&fixture.contentEquals(n.getText())));
   for(String id:new String[]{"title","info_action_edit","action_cancel","action_done"})fields.add(id+"="+root.findAccessibilityNodeInfosByViewId(ETAR+":id/"+id).stream().anyMatch(AccessibilityNodeInfo::isVisibleToUser));
   String permissionPackage=String.valueOf(root.getPackageName());
@@ -144,7 +144,9 @@ public class CalendarExternalEditorInstrumentedTest {
     AccessibilityNodeInfo settings=ui.getRootInActiveWindow();
     boolean alarmPage=visibleExactText(settings,"Alarms & reminders",0);
     boolean etarListed=visibleExactText(settings,"Etar",0);
-    assertTrue("Only dismiss Etar's optional exact-alarm settings handoff",alarmPage&&etarListed);
+    // Settings may publish its root before the destination page is populated.
+    // Wait within the existing deadline; never inject input into an unidentified page.
+    if(settings==null||!"com.android.settings".equals(String.valueOf(settings.getPackageName()))||!alarmPage||!etarListed)continue;
     // Pinned Etar opens this on every resume while denied. Back loops there.
     // Exercise the ordinary Home -> Alpha launcher-intent return, preserving
     // denied special access and recording this distinct return contract.
