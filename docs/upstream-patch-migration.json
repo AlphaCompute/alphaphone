@@ -397,7 +397,8 @@
     }
   ],
   "upstreamFollowupPullRequest": "https://github.com/elizaOS/eliza/pull/33236",
-  "upstreamStagingCommit": "2fe9f510501863af97bda887e2870158b3a3e2b2",
+  "upstreamStagingCommit": "91dc19196c307eb8559b9b58de8dbf63eb47f43f",
   "upstreamStagingPullRequest": "https://github.com/elizaOS/eliza/pull/32809",
-  "upstreamStagingFollowupPullRequest": "https://github.com/elizaOS/eliza/pull/33238"
+  "upstreamStagingFollowupPullRequest": "https://github.com/elizaOS/eliza/pull/33238",
+  "upstreamValidationPullRequest": "https://github.com/elizaOS/eliza/pull/33243"
 }
