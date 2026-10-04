@@ -2405,3 +2405,15 @@ PDF output and cancellation across all three engines. The final build passes;
 all eight additional layout probes pass. Evidence is retained under
 `test-results/scan-dialog-evidence/`. PR160 remains separate from native/device
 acceptance and the still-running merged-main browser campaign.
+
+
+PR159 merged concurrently as `8b29f35` and was incorporated into the scan branch.
+Its bounded hierarchy retry was reviewed without executing Android: the current
+17 smoke/parser fixture tests pass with fake ADB, including transient recovery,
+exactly ten failed attempts, unique dump paths and main's newer malformed-status
+rejection. The tested retry script and qualification fixture match the merged
+files byte-for-byte. The earlier scratch attempt lacked the vendor toolchain
+link and did not qualify anything; that setup failure is retained. Main's
+`37176145836` browser run was cancelled by the newer merge, so it is not a pass.
+The next merged-main campaign must qualify the combined source. No Android build
+was started by this browser workstream.

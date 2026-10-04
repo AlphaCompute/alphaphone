@@ -2,7 +2,7 @@
 
 The MVP is **not complete**. This is the current requirement/evidence index; [the browser review](mvp-browser-review.md) retains the chronological implementation record and failed attempts. Older build and enclave checkpoints are historical evidence, not the current acceptance checklist.
 
-Latest inspected merged checkpoint: `ed2f69f937dce32e775b0692dde1546af77067eb`, merging [PR157](https://github.com/AlphaCompute/alphaphone/pull/157) on top of PR147/156/158. The merged tree exactly matches reviewed head `11ee6b1`. It pins upstream `278af04b9498a35740468ffa7b68239d1924257f` and consumes the separate additive Maps/Files/Notes client patch. Local extraction verification passed 277 repository tests, TypeScript/build and 323 browser cases (one existing WebKit legacy-Blob skip). After the workflow retirement repair, seven focused source tests, 16 adapter contracts, 87 owning browser cases and Node 24.15.0 typecheck/build pass. The [final main browser campaign](https://github.com/AlphaCompute/alphaphone/actions/runs/37176145836) is pending, not passing evidence. Earlier cancelled campaigns do not qualify this head. The open PR queue was empty after merge.
+Latest inspected merged checkpoint: `ed2f69f937dce32e775b0692dde1546af77067eb`, merging [PR157](https://github.com/AlphaCompute/alphaphone/pull/157) on top of PR147/156/158. The merged tree exactly matches reviewed head `11ee6b1`. It pins upstream `278af04b9498a35740468ffa7b68239d1924257f` and consumes the separate additive Maps/Files/Notes client patch. Local extraction verification passed 277 repository tests, TypeScript/build and 323 browser cases (one existing WebKit legacy-Blob skip). After the workflow retirement repair, seven focused source tests, 16 adapter contracts, 87 owning browser cases and Node 24.15.0 typecheck/build pass. The [main browser campaign](https://github.com/AlphaCompute/alphaphone/actions/runs/37176145836) ended cancelled after the subsequent PR159 merge, not passing evidence. Earlier cancelled campaigns do not qualify this head. The open PR queue was empty after merge.
 
 See the [combined resident/browser implementation report](mvp-stack-convergence.md) for integration history and [upstream migration ledger](upstream-patch-migration.md) for retired runtime patches. The live dev agent now uses independently speech/workflow-qualified upstream `83e2a2d90a619600be56fcca237a7861644b2d4b`. The current renderer review fixes covered Settings pages and Files/album dialogs remaining in the keyboard and accessibility order; its validation is recorded at the end of the browser review.
 
@@ -101,3 +101,15 @@ Repair must retain the native isolated-document extraction and explicit review i
 
 
 Resident Browser reading source repair: the renderer now chooses a device-bound route for a resident session. Native review labels on-device execution; the one-use token remains bound to route, owner/session, expiry and current document. Reviewed text stays native and uses bounded local chunk synthesis with full preflight before any audio generation. Stop/navigation/background/connection changes retain request ownership. Twenty-four owning checks, 86 browser reading/privacy checks and repository verification (164 tests, zero skips, TypeScript/web build) pass. Four changed Java sources compile against the existing SDK/dependency outputs. This is not an APK build, clean native build, or physical speech/latency acceptance.
+
+
+## Scan review design follow-up
+
+PR160 unifies correction, document assembly and searchable-PDF review under
+product-owned styles with visible action areas. Its expanded browser batch
+passes 173 cases with one existing WebKit legacy-Blob skip; eight additional
+large-text theme/orientation probes pass. Typecheck/build pass. The earlier
+correction-only checkpoint passed all 278 repository tests. PR159's main update
+at `8b29f35` is incorporated and its retry/parser composition passes 17 fixture
+tests. Final merged-head hosted verification remains pending; the full MVP and
+physical/provider acceptance are not claimed complete.
