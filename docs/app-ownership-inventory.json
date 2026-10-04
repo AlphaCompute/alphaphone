@@ -2526,9 +2526,9 @@
     {
       "file": "src/browser/device.ts",
       "upstreamCandidate": [],
-      "bytes": 9679,
-      "sha256": "2f76582408aab578f4159142454ee05a15bffcbd63b6958d8a81efe037015fd7",
-      "lines": 56,
+      "bytes": 9890,
+      "sha256": "00ff346cd182bb037e8b2cff8eaffed36c053b81dc00cda2a3780140c1d64cab",
+      "lines": 57,
       "owner": "shared platform client; Alpha composition",
       "disposition": "split",
       "reason": "Cross-domain device/platform glue; separate host contracts and provider behavior from product registry, lifecycle, DOM and defaults.",
@@ -2536,6 +2536,7 @@
         "./apps",
         "./audio-settings",
         "./dev-profile",
+        "./dialog-layout",
         "./display",
         "./focus-state",
         "./password-provider",
@@ -2548,13 +2549,7 @@
       ],
       "seams": [
         {
-          "line": 9,
-          "tags": [
-            "identity-or-compatibility"
-          ]
-        },
-        {
-          "line": 13,
+          "line": 10,
           "tags": [
             "identity-or-compatibility"
           ]
@@ -2566,19 +2561,19 @@
           ]
         },
         {
-          "line": 24,
+          "line": 15,
           "tags": [
             "identity-or-compatibility"
           ]
         },
         {
-          "line": 28,
+          "line": 25,
           "tags": [
             "identity-or-compatibility"
           ]
         },
         {
-          "line": 30,
+          "line": 29,
           "tags": [
             "identity-or-compatibility"
           ]
@@ -2590,33 +2585,39 @@
           ]
         },
         {
-          "line": 42,
+          "line": 32,
+          "tags": [
+            "identity-or-compatibility"
+          ]
+        },
+        {
+          "line": 43,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 46,
+          "line": 47,
           "tags": [
             "identity-or-compatibility",
             "presentation"
           ]
         },
         {
-          "line": 48,
+          "line": 49,
           "tags": [
             "identity-or-compatibility"
           ]
         },
         {
-          "line": 50,
+          "line": 51,
           "tags": [
             "identity-or-compatibility",
             "host-coupling"
           ]
         },
         {
-          "line": 53,
+          "line": 54,
           "tags": [
             "identity-or-compatibility"
           ]
@@ -2627,9 +2628,9 @@
     {
       "file": "src/browser/dialog-layout.ts",
       "upstreamCandidate": [],
-      "bytes": 1031,
-      "sha256": "99f6d85bf2d639f157338791528da79a94012ccade498d62d600160fb9298a4a",
-      "lines": 11,
+      "bytes": 1240,
+      "sha256": "7e99eff3e7735254747fb6a050aedebe3927104ebbad4c0688b62f689080cd04",
+      "lines": 12,
       "owner": "alphaphone",
       "disposition": "retain",
       "reason": "Product theme, compact dialog layout and accessible presentation; callers retain action and lifecycle ownership.",
@@ -2639,26 +2640,26 @@
       ],
       "seams": [
         {
-          "line": 3,
+          "line": 4,
           "tags": [
             "identity-or-compatibility",
             "presentation"
           ]
         },
         {
-          "line": 4,
+          "line": 5,
           "tags": [
             "host-coupling"
           ]
         },
         {
-          "line": 5,
+          "line": 6,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 6,
+          "line": 7,
           "tags": [
             "identity-or-compatibility"
           ]
@@ -2987,53 +2988,54 @@
     {
       "file": "src/browser/incoming-simulation.ts",
       "upstreamCandidate": [],
-      "bytes": 7089,
-      "sha256": "08daaf756d4916214e4694f73af28396f9d0c50271821dad4e2798f41448b9cf",
-      "lines": 33,
+      "bytes": 7187,
+      "sha256": "6e22e2a3b5d745355f3c2dbdfb33d08e6c83b8d15f042a984b10478639f4468d",
+      "lines": 34,
       "owner": "shared client development harness",
       "disposition": "extract-or-split",
       "reason": "Explicit simulation only; separate reusable providers/state from Alpha sample data and prototype method patches.",
       "imports": [
         "../runtime/inbox-attachment",
-        "./dev-profile"
+        "./dev-profile",
+        "./dialog-layout"
       ],
       "exports": [
         "openIncomingSimulation"
       ],
       "seams": [
         {
-          "line": 7,
+          "line": 8,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 8,
+          "line": 9,
           "tags": [
             "host-coupling",
             "presentation"
           ]
         },
         {
-          "line": 10,
+          "line": 11,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 17,
-          "tags": [
-            "presentation"
-          ]
-        },
-        {
-          "line": 30,
+          "line": 18,
           "tags": [
             "presentation"
           ]
         },
         {
           "line": 31,
+          "tags": [
+            "presentation"
+          ]
+        },
+        {
+          "line": 32,
           "tags": [
             "identity-or-compatibility",
             "host-coupling"
@@ -3045,16 +3047,17 @@
     {
       "file": "src/browser/location-simulation.ts",
       "upstreamCandidate": [],
-      "bytes": 6302,
-      "sha256": "276ed5c6debdbbcf89842be9ed0e3abbcd8ad54fae34ec951bb455e5a81adb0b",
-      "lines": 29,
+      "bytes": 6396,
+      "sha256": "b8ef2b730fabda4630d0e3ada655ec8bdd067510235021ebf2f6acca67296bde",
+      "lines": 30,
       "owner": "plugins/plugin-native-location",
       "disposition": "extract-or-split",
       "reason": "Real and simulated location providers; inject lifecycle, permission review and simulation state.",
       "imports": [
         "../maps/contracts",
         "../maps/saved-places",
-        "./dev-profile"
+        "./dev-profile",
+        "./dialog-layout"
       ],
       "exports": [
         "LocationSimulation",
@@ -3065,58 +3068,58 @@
       ],
       "seams": [
         {
-          "line": 4,
+          "line": 5,
           "tags": [
             "identity-or-compatibility"
           ]
         },
         {
-          "line": 8,
+          "line": 9,
           "tags": [
             "storage"
           ]
         },
         {
-          "line": 14,
+          "line": 15,
           "tags": [
             "identity-or-compatibility",
             "storage"
           ]
         },
         {
-          "line": 17,
+          "line": 18,
           "tags": [
             "storage",
             "presentation"
           ]
         },
         {
-          "line": 18,
+          "line": 19,
           "tags": [
             "host-coupling",
             "presentation"
           ]
         },
         {
-          "line": 20,
+          "line": 21,
           "tags": [
             "presentation"
-          ]
-        },
-        {
-          "line": 25,
-          "tags": [
-            "storage"
           ]
         },
         {
           "line": 26,
           "tags": [
-            "presentation"
+            "storage"
           ]
         },
         {
           "line": 27,
+          "tags": [
+            "presentation"
+          ]
+        },
+        {
+          "line": 28,
           "tags": [
             "identity-or-compatibility",
             "host-coupling"
@@ -3299,9 +3302,9 @@
     {
       "file": "src/browser/notifications.ts",
       "upstreamCandidate": [],
-      "bytes": 21674,
-      "sha256": "b909de722709551cc07bd468da213a923b9b58918aab637b1096a8d480596874",
-      "lines": 133,
+      "bytes": 21804,
+      "sha256": "d616e2911a926750db9dc9ac3d90bbfc3bc436c3492c28b6a954524a1bef77f2",
+      "lines": 134,
       "owner": "plugins/plugin-native-system",
       "disposition": "extract-or-split",
       "reason": "Notification queues and lifecycle; inject routing, device state and product presentation.",
@@ -3309,6 +3312,7 @@
         "./apps",
         "./calendar",
         "./daily",
+        "./dialog-layout",
         "./focus-state",
         "./hosted-results",
         "./screen-locked",
@@ -3321,56 +3325,50 @@
       ],
       "seams": [
         {
-          "line": 18,
-          "tags": [
-            "identity-or-compatibility"
-          ]
-        },
-        {
           "line": 19,
           "tags": [
             "identity-or-compatibility"
           ]
         },
         {
-          "line": 27,
+          "line": 20,
+          "tags": [
+            "identity-or-compatibility"
+          ]
+        },
+        {
+          "line": 28,
           "tags": [
             "identity-or-compatibility",
             "host-coupling"
           ]
         },
         {
-          "line": 49,
+          "line": 50,
           "tags": [
             "identity-or-compatibility"
           ]
         },
         {
-          "line": 70,
+          "line": 71,
           "tags": [
             "identity-or-compatibility"
           ]
         },
         {
-          "line": 85,
+          "line": 86,
           "tags": [
             "identity-or-compatibility"
           ]
         },
         {
-          "line": 87,
+          "line": 88,
           "tags": [
             "identity-or-compatibility"
           ]
         },
         {
-          "line": 89,
-          "tags": [
-            "identity-or-compatibility"
-          ]
-        },
-        {
-          "line": 94,
+          "line": 90,
           "tags": [
             "identity-or-compatibility"
           ]
@@ -3378,14 +3376,13 @@
         {
           "line": 95,
           "tags": [
-            "host-coupling",
-            "presentation"
+            "identity-or-compatibility"
           ]
         },
         {
-          "line": 97,
+          "line": 96,
           "tags": [
-            "identity-or-compatibility",
+            "host-coupling",
             "presentation"
           ]
         },
@@ -3399,7 +3396,8 @@
         {
           "line": 99,
           "tags": [
-            "identity-or-compatibility"
+            "identity-or-compatibility",
+            "presentation"
           ]
         },
         {
@@ -3411,21 +3409,20 @@
         {
           "line": 101,
           "tags": [
-            "identity-or-compatibility",
-            "presentation"
+            "identity-or-compatibility"
           ]
         },
         {
           "line": 102,
           "tags": [
-            "identity-or-compatibility"
+            "identity-or-compatibility",
+            "presentation"
           ]
         },
         {
           "line": 103,
           "tags": [
-            "identity-or-compatibility",
-            "presentation"
+            "identity-or-compatibility"
           ]
         },
         {
@@ -3438,37 +3435,38 @@
         {
           "line": 105,
           "tags": [
-            "identity-or-compatibility"
+            "identity-or-compatibility",
+            "presentation"
           ]
         },
         {
           "line": 106,
+          "tags": [
+            "identity-or-compatibility"
+          ]
+        },
+        {
+          "line": 107,
           "tags": [
             "identity-or-compatibility",
             "presentation"
           ]
         },
         {
-          "line": 107,
+          "line": 108,
           "tags": [
             "identity-or-compatibility"
           ]
         },
         {
-          "line": 109,
+          "line": 110,
           "tags": [
             "identity-or-compatibility",
             "host-coupling"
           ]
         },
         {
-          "line": 112,
-          "tags": [
-            "presentation"
-          ]
-        },
-        {
-          "line": 116,
+          "line": 113,
           "tags": [
             "presentation"
           ]
@@ -3480,25 +3478,31 @@
           ]
         },
         {
-          "line": 119,
+          "line": 118,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 121,
+          "line": 120,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 125,
+          "line": 122,
           "tags": [
             "presentation"
           ]
         },
         {
           "line": 126,
+          "tags": [
+            "presentation"
+          ]
+        },
+        {
+          "line": 127,
           "tags": [
             "presentation"
           ]
@@ -3509,14 +3513,15 @@
     {
       "file": "src/browser/password-provider.ts",
       "upstreamCandidate": [],
-      "bytes": 5427,
-      "sha256": "7a04e42d833a9496d302c61d086ae33309f11072d807555ab1fd76fd25967c9c",
-      "lines": 29,
+      "bytes": 5531,
+      "sha256": "cb955dc133f6aee5271a5efa260330c2251923ea8093de0cd16052738b435b82",
+      "lines": 30,
       "owner": "plugins/plugin-native-browser-surface + plugins/plugin-browser",
       "disposition": "extract-or-split",
       "reason": "Isolated browser observation/navigation and reading; inject lifecycle, consent UI, vault provider and styling.",
       "imports": [
         "./dev-profile",
+        "./dialog-layout",
         "./store"
       ],
       "exports": [
@@ -3525,22 +3530,15 @@
       ],
       "seams": [
         {
-          "line": 3,
+          "line": 4,
           "tags": [
             "identity-or-compatibility"
           ]
         },
         {
-          "line": 13,
+          "line": 14,
           "tags": [
             "presentation"
-          ]
-        },
-        {
-          "line": 15,
-          "tags": [
-            "identity-or-compatibility",
-            "host-coupling"
           ]
         },
         {
@@ -3551,13 +3549,20 @@
           ]
         },
         {
-          "line": 22,
+          "line": 17,
+          "tags": [
+            "identity-or-compatibility",
+            "host-coupling"
+          ]
+        },
+        {
+          "line": 23,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 27,
+          "line": 28,
           "tags": [
             "identity-or-compatibility",
             "host-coupling"
@@ -3585,14 +3590,15 @@
     {
       "file": "src/browser/reading-review.ts",
       "upstreamCandidate": [],
-      "bytes": 6013,
-      "sha256": "da34444fbae1cb30dd13df5fe8494dc0db449aa5798cd60dbff14079998b086c",
-      "lines": 53,
+      "bytes": 6112,
+      "sha256": "c2444acf62b98e3f65ff04d3a44da61be4f50bd35f51501ede6724025a81f515",
+      "lines": 54,
       "owner": "plugins/plugin-native-browser-surface + plugins/plugin-browser",
       "disposition": "extract-or-split",
       "reason": "Isolated browser observation/navigation and reading; inject lifecycle, consent UI, vault provider and styling.",
       "imports": [
         "../local-speech-playback",
+        "./dialog-layout",
         "./reading-sensitive",
         "./reading-source"
       ],
@@ -3601,31 +3607,25 @@
       ],
       "seams": [
         {
-          "line": 10,
-          "tags": [
-            "presentation"
-          ]
-        },
-        {
           "line": 11,
           "tags": [
-            "host-coupling"
+            "presentation"
           ]
         },
         {
           "line": 12,
           "tags": [
-            "presentation"
+            "host-coupling"
           ]
         },
         {
-          "line": 18,
+          "line": 13,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 20,
+          "line": 19,
           "tags": [
             "presentation"
           ]
@@ -3637,14 +3637,20 @@
           ]
         },
         {
-          "line": 32,
+          "line": 22,
+          "tags": [
+            "presentation"
+          ]
+        },
+        {
+          "line": 33,
           "tags": [
             "identity-or-compatibility",
             "host-coupling"
           ]
         },
         {
-          "line": 34,
+          "line": 35,
           "tags": [
             "identity-or-compatibility",
             "host-coupling"
@@ -4514,13 +4520,15 @@
     {
       "file": "src/browser/simulator-recovery.ts",
       "upstreamCandidate": [],
-      "bytes": 4781,
-      "sha256": "5f94567b8816a7686cbf02fced0732eea3d2d48352df8f5c17fb902f3085eea9",
-      "lines": 39,
+      "bytes": 4867,
+      "sha256": "29d405510071a06f7c07118898bae4ac950e6554aeb590c843e3e7fbd894d946",
+      "lines": 40,
       "owner": "shared client development harness",
       "disposition": "extract-or-split",
       "reason": "Explicit simulation only; separate reusable providers/state from Alpha sample data and prototype method patches.",
-      "imports": [],
+      "imports": [
+        "./dialog-layout"
+      ],
       "exports": [
         "loadSimulatedState",
         "showSimulatorRecovery",
@@ -4528,44 +4536,44 @@
       ],
       "seams": [
         {
-          "line": 4,
+          "line": 5,
           "tags": [
             "identity-or-compatibility"
           ]
         },
         {
-          "line": 10,
+          "line": 11,
           "tags": [
             "storage"
           ]
         },
         {
-          "line": 27,
+          "line": 28,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 28,
+          "line": 29,
           "tags": [
             "host-coupling",
             "presentation"
           ]
         },
         {
-          "line": 30,
+          "line": 31,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 34,
+          "line": 35,
           "tags": [
             "storage"
           ]
         },
         {
-          "line": 37,
+          "line": 38,
           "tags": [
             "identity-or-compatibility",
             "host-coupling"
@@ -5441,14 +5449,15 @@
     {
       "file": "src/browser/workflow-receipts.ts",
       "upstreamCandidate": [],
-      "bytes": 8312,
-      "sha256": "24c03e2dd045eab6729239073b630643559c558fa8a500d4b3acab52c6d44a26",
-      "lines": 46,
+      "bytes": 8406,
+      "sha256": "44b0a381dc8c608cd092d770eb0299d5894a6589b85693f5fc22d35d35bc5d38",
+      "lines": 47,
       "owner": "plugins/plugin-workflow",
       "disposition": "extract-or-split",
       "reason": "Workflow contracts, execution and simulation; preserve review, identity and no-replay semantics; inject product view policy.",
       "imports": [
         "../runtime/inbox-attachment",
+        "./dialog-layout",
         "./screen-locked"
       ],
       "exports": [
@@ -5460,42 +5469,35 @@
       ],
       "seams": [
         {
-          "line": 5,
+          "line": 6,
           "tags": [
             "identity-or-compatibility",
             "storage"
           ]
         },
         {
-          "line": 31,
+          "line": 32,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 32,
+          "line": 33,
           "tags": [
             "host-coupling",
             "presentation"
           ]
         },
         {
-          "line": 34,
+          "line": 35,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 37,
+          "line": 38,
           "tags": [
             "presentation"
-          ]
-        },
-        {
-          "line": 39,
-          "tags": [
-            "identity-or-compatibility",
-            "host-coupling"
           ]
         },
         {
@@ -5506,7 +5508,14 @@
           ]
         },
         {
-          "line": 42,
+          "line": 41,
+          "tags": [
+            "identity-or-compatibility",
+            "host-coupling"
+          ]
+        },
+        {
+          "line": 43,
           "tags": [
             "identity-or-compatibility",
             "host-coupling"
@@ -9416,9 +9425,9 @@
     {
       "file": "src/prototype/phone.css",
       "upstreamCandidate": [],
-      "bytes": 7788,
-      "sha256": "6d35c19a565957768585f82e1b0b6beda82632e11464c8fb9681edf5c039fa6d",
-      "lines": 78,
+      "bytes": 7927,
+      "sha256": "332bac31047a46d0000df2c8c65adb1fa6bea37ccf77b67201acd0b64000aba1",
+      "lines": 81,
       "owner": "alphaphone",
       "disposition": "retain-or-split",
       "reason": "Product composition, design reference, enabled views, fixtures, or visual presentation. Extract embedded domain behavior separately.",
@@ -9635,6 +9644,18 @@
         },
         {
           "line": 77,
+          "tags": [
+            "identity-or-compatibility"
+          ]
+        },
+        {
+          "line": 79,
+          "tags": [
+            "identity-or-compatibility"
+          ]
+        },
+        {
+          "line": 80,
           "tags": [
             "identity-or-compatibility"
           ]
