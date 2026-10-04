@@ -5,21 +5,24 @@ import {tmpdir} from 'node:os';
 import {join,resolve} from 'node:path';
 import {spawnSync,execFileSync} from 'node:child_process';
 
-function launch({route,override,swaps}={}) {
- const dir=mkdtempSync(join(tmpdir(),'alpha-model-')),profile=join(dir,'profile'),source=join(dir,'source'),receipt=join(dir,'models.json'),bun=join(dir,'fake-bun');
+function launch({route,override,swaps,existingToken=true,runtimeConfigUpdate=false}={}) {
+ const dir=mkdtempSync(join(tmpdir(),'alpha-model-')),profile=join(dir,'profile'),source=join(dir,'source'),receipt=join(dir,'models.json'),childReceipt=join(dir,'child.json'),bun=join(dir,'fake-bun');
  mkdirSync(profile);mkdirSync(join(source,'packages/app/src/runtime'),{recursive:true});writeFileSync(join(source,'packages/app/src/runtime/dev-server.ts'),'');
  execFileSync('git',['init','-q',source]);execFileSync('git',['-C',source,'-c','user.name=Fixture','-c','user.email=fixture@example.invalid','commit','--allow-empty','-qm','fixture']);
- writeFileSync(bun,`#!/usr/bin/env node\nrequire('node:fs').writeFileSync(${JSON.stringify(receipt)},JSON.stringify(Object.fromEntries(['CEREBRAS_MODEL','CEREBRAS_SMALL_MODEL','CEREBRAS_LARGE_MODEL'].map(k=>[k,process.env[k]]))));`,{mode:0o700});
+ writeFileSync(bun,`#!/usr/bin/env node\nconst fs=require('node:fs');fs.writeFileSync(${JSON.stringify(childReceipt)},JSON.stringify({pid:process.pid,token:process.env.ELIZA_API_TOKEN,config:JSON.parse(fs.readFileSync(process.env.ELIZA_CONFIG_PATH,'utf8'))}));fs.writeFileSync(${JSON.stringify(receipt)},JSON.stringify(Object.fromEntries(['CEREBRAS_MODEL','CEREBRAS_SMALL_MODEL','CEREBRAS_LARGE_MODEL'].map(k=>[k,process.env[k]]))));${runtimeConfigUpdate?"fs.writeFileSync(process.env.ELIZA_CONFIG_PATH,JSON.stringify({...JSON.parse(fs.readFileSync(process.env.ELIZA_CONFIG_PATH,'utf8')),runtimeSelection:'retained'}));":''}`,{mode:0o700});
+ const tokenPath=join(profile,'owner-token'),retainedToken='a'.repeat(64);if(existingToken)writeFileSync(tokenPath,retainedToken,{mode:0o600});
  const config=join(profile,'eliza.json');if(route)writeFileSync(config,JSON.stringify({serviceRouting:{llmText:route},fixtureKeep:'preserve'}),{mode:0o600});
  const before=existsSync(config)?readFileSync(config,'utf8'):null;
+ let ownedLivePid;
  const env={...process.env,ALPHA_LOCAL_ASR:'off',ALPHA_LOCAL_TTS:'off',ALPHA_ELIZA_SOURCE:source,ALPHA_REMOTE_PROFILE:profile,ALPHA_REMOTE_PORT:'47999',ALPHA_BUN:bun,CEREBRAS_API_KEY:'synthetic-fixture-key'};for(const key of ['ELIZA_SECRET_SWAP_ENABLED','ELIZA_PII_SWAP_ENABLED','CEREBRAS_MODEL'])delete env[key];Object.assign(env,swaps||{});if(override!==undefined)env.CEREBRAS_MODEL=override;
  try {
   const result=spawnSync(process.execPath,[resolve('scripts/start-local-remote.mjs')],{env,encoding:'utf8',timeout:15000});
-  return {status:result.status,error:result.stderr,models:existsSync(receipt)?JSON.parse(readFileSync(receipt,'utf8')):null,before,after:existsSync(config)?readFileSync(config,'utf8'):null};
- } finally {rmSync(dir,{recursive:true,force:true});}
+  const child=existsSync(childReceipt)?JSON.parse(readFileSync(childReceipt,'utf8')):null;let childAlive=false;if(child)try{process.kill(child.pid,0);childAlive=true;ownedLivePid=child.pid;}catch(error){if(error.code!=='ESRCH')throw error;}
+  return {status:result.status,error:result.stderr,child,childAlive,retainedToken,token:readFileSync(tokenPath,'utf8'),models:existsSync(receipt)?JSON.parse(readFileSync(receipt,'utf8')):null,before,after:existsSync(config)?readFileSync(config,'utf8'):null};
+ } finally {if(ownedLivePid){try{process.kill(ownedLivePid,'SIGKILL');}catch(error){if(error.code!=='ESRCH')throw error;}}rmSync(dir,{recursive:true,force:true});}
 }
 test('new local profile uses the selected model consistently in saved routing and child environment',()=>{
- const r=launch({override:'fixture-model'});assert.equal(r.status,0,r.error);assert.deepEqual(r.models,{CEREBRAS_MODEL:'fixture-model',CEREBRAS_SMALL_MODEL:'fixture-model',CEREBRAS_LARGE_MODEL:'fixture-model'});assert.equal(JSON.parse(r.after).serviceRouting.llmText.largeModel,'fixture-model');
+ const r=launch({override:'fixture-model',existingToken:false});assert.equal(r.status,0,r.error);assert.deepEqual(r.models,{CEREBRAS_MODEL:'fixture-model',CEREBRAS_SMALL_MODEL:'fixture-model',CEREBRAS_LARGE_MODEL:'fixture-model'});assert.equal(JSON.parse(r.after).serviceRouting.llmText.largeModel,'fixture-model');assert.match(r.token,/^[a-f0-9]{64}$/);assert.equal(r.child.token,r.token);
 });
 test('existing local profile retains distinct reviewed models without rewriting its configuration',()=>{
  const r=launch({route:{backend:'cerebras',transport:'direct',smallModel:'fixture-small',largeModel:'fixture-large'}});assert.equal(r.status,0,r.error);assert.deepEqual(r.models,{CEREBRAS_MODEL:'fixture-large',CEREBRAS_SMALL_MODEL:'fixture-small',CEREBRAS_LARGE_MODEL:'fixture-large'});assert.equal(r.after,r.before);
@@ -35,4 +38,13 @@ test('invalid or partial redaction selection cannot silently start an unprotecte
  for(const [swaps,error] of [[{ELIZA_PII_SWAP_ENABLED:'true'},/Set ELIZA_SECRET_SWAP_ENABLED and ELIZA_PII_SWAP_ENABLED together/],[{ELIZA_SECRET_SWAP_ENABLED:'yes',ELIZA_PII_SWAP_ENABLED:'true'},/must be true or false/]]){
   const r=launch({swaps});assert.notEqual(r.status,0);assert.equal(r.models,null);assert.equal(r.after,null);assert.match(r.error,error);
  }
+});
+
+test('private launch preserves the existing hex token and child routing configuration',()=>{
+ const r=launch({route:{backend:'cerebras',transport:'direct',smallModel:'small',largeModel:'large'}});
+ assert.equal(r.status,0,r.error);assert.equal(r.token,r.retainedToken);assert.equal(r.child.token,r.retainedToken);
+ assert.deepEqual(r.child.config,JSON.parse(r.before));assert.equal(r.childAlive,false);
+});
+test('runtime configuration updates remain in the persistent profile',()=>{
+ const r=launch({runtimeConfigUpdate:true});assert.equal(r.status,0,r.error);assert.equal(JSON.parse(r.after).runtimeSelection,'retained');
 });
