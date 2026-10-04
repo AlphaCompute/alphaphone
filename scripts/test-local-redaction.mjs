@@ -15,7 +15,7 @@ if(process.platform==='win32')throw Error('This qualification requires POSIX pro
 const product=path.resolve(import.meta.dirname,'..');
 const source=process.env.ALPHA_ELIZA_SOURCE?path.resolve(process.env.ALPHA_ELIZA_SOURCE):sourceDirectory(product);
 const lock=JSON.parse(fs.readFileSync(path.join(product,'upstream.lock.json')));
-verifySource(source,{baseCommit:lock.commit,candidateFiles:{}},{files:{}});
+verifySource(source,lock.commit);
 const bun=execFileSync('/usr/bin/which',[process.env.ALPHA_BUN||'bun'],{encoding:'utf8'}).trim();
 if(!path.isAbsolute(bun)||/[\r\n]/.test(bun))throw Error('Expected an absolute Bun executable.');
 const output=path.join(product,'test-results','local-redaction');fs.mkdirSync(output,{recursive:true});
