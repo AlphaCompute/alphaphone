@@ -1,0 +1,34 @@
+import {test,expect} from '@playwright/test';
+
+for(const theme of ['light','dark'])test(`${theme} album manager owns keyboard focus and restores the photo control`,async({page})=>{
+ await page.addInitScript(()=>localStorage.setItem('alpha.connection.selection.v1',JSON.stringify({kind:'offline'})));
+ await page.goto(`/?theme=${theme}`);
+ await page.evaluate(async()=>{const {importBrowserPhoto}=await import('/src/prototype/browser-camera.ts');const canvas=document.createElement('canvas');canvas.width=100;canvas.height=80;canvas.getContext('2d')!.fillRect(0,0,100,80);await importBrowserPhoto({original:new File([],'fixture.jpg'),image:canvas.toDataURL('image/jpeg'),width:100,height:80},new AbortController().signal);});
+ await page.getByRole('button',{name:'Photos',exact:true}).click();
+ await page.getByRole('button',{name:/Captured photo/}).click();
+ const info=page.getByRole('button',{name:'Photo info',exact:true});
+ await info.focus();await page.keyboard.press('Enter');
+ const dialog=page.getByRole('dialog',{name:'Album management'});
+ await expect(dialog.getByRole('button',{name:'Close album management',exact:true})).toBeFocused();
+ await expect(page.getByRole('button',{name:'Back from photo',exact:true})).toHaveCount(0);
+ await expect(dialog).toHaveCSS('color',theme==='dark'?'rgb(255, 255, 255)':'rgb(0, 0, 0)');
+ await expect(page.locator('button[aria-label="Home"] span')).toHaveCSS('background-color',theme==='dark'?'rgb(255, 255, 255)':'rgb(0, 0, 0)');
+ await page.screenshot({path:test.info().outputPath('album-dialog.png'),animations:'disabled'});
+ await page.keyboard.press('Shift+Tab');
+ await expect(dialog.getByRole('button',{name:'Add to album',exact:true})).toBeFocused();
+ await page.keyboard.press('Tab');
+ await expect(dialog.getByRole('button',{name:'Close album management',exact:true})).toBeFocused();
+ await dialog.getByRole('button',{name:'Add to album',exact:true}).click();
+ await dialog.getByRole('button',{name:'New album',exact:true}).click();
+ await expect(dialog.getByRole('textbox',{name:'Album name',exact:true})).toBeVisible();
+ await page.keyboard.press('Escape');
+ await expect(dialog).toHaveCount(0);
+ await expect(info).toBeFocused();
+ await info.click();
+ await page.evaluate(()=>window.dispatchEvent(new Event('alpha-back')));
+ await expect(dialog).toHaveCount(0);await expect(info).toBeFocused();
+ await info.click();
+ await page.evaluate(()=>window.dispatchEvent(new Event('launcher-home')));
+ await expect(dialog).toHaveCount(0);
+ await expect(page.getByRole('button',{name:'Photos',exact:true})).toBeVisible();
+});
