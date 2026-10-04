@@ -7,7 +7,16 @@ export function validateVideoEdit(edit:VideoEdit,duration:number){
 /** Local timestamp-based encoding with a real-time fallback; audio comes from the file. */
 export async function renderVideoEdit(source:{path:string;duration:number},edit:VideoEdit,signal:AbortSignal){
  validateVideoEdit(edit,source.duration);signal.throwIfAborted();
- if(!/^data:video\/(webm|mp4);base64,/.test(source.path)||source.path.length>140_000_000)throw Error('Choose a local video up to 100 MB.');
+ if(source.path.length>140_000_000)throw Error('Choose a local video up to 100 MB.');
+ // Older recordings could lose their MIME at stop time. Recover only recognized
+ // local video containers; keep the stored original and the strict format gate.
+ if(source.path.startsWith('data:application/octet-stream;base64,')){
+  const payload=source.path.slice('data:application/octet-stream;base64,'.length);
+  let header='';try{header=atob(payload.slice(0,16));}catch{}
+  const mime=header.startsWith('\x1a\x45\xdf\xa3')?'video/webm':header.slice(4,8)==='ftyp'?'video/mp4':null;
+  if(mime)source={...source,path:`data:${mime};base64,${payload}`};
+ }
+ if(!/^data:video\/(webm|mp4);base64,/.test(source.path))throw Error('Choose a local video up to 100 MB.');
  const video=document.createElement('video');video.playsInline=true;video.preload='auto';const sourceUrl=source.path.startsWith('data:video/webm;')?URL.createObjectURL(await(await fetch(source.path,{signal})).blob()):undefined;video.src=sourceUrl||source.path;
  let audio:AudioContext|undefined,output:MediaStream|undefined,recorder:MediaRecorder|undefined,timer:ReturnType<typeof setInterval>|undefined;
  const wait=(event:string,action:()=>void)=>new Promise<void>((resolve,reject)=>{const finish=(error?:unknown)=>{clearTimeout(timeout);video.removeEventListener(event,ok);video.removeEventListener('error',bad);signal.removeEventListener('abort',abort);error?reject(error):resolve();},ok=()=>finish(),bad=()=>finish(Error('Video could not decode.')),abort=()=>finish(signal.reason);const timeout=setTimeout(()=>finish(Error('Video decode timed out.')),15000);video.addEventListener(event,ok,{once:true});video.addEventListener('error',bad,{once:true});signal.addEventListener('abort',abort,{once:true});try{signal.throwIfAborted();action();}catch(error){finish(error);}});

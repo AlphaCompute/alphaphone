@@ -42,3 +42,8 @@
 .scan-dialog-content section img { display: block; margin-bottom: 12px; }
 .scan-dialog-text { box-sizing: border-box; display: block; width: 100%; min-height: 44px; margin: 6px 0 12px; padding: 8px; border: 1px solid var(--line,#e3e3e3); border-radius: 12px; background: var(--s1,#fafafa); color: inherit; font: inherit; }
 .scan-dialog textarea:focus-visible { outline: 2px solid var(--acct,#0000ff); outline-offset: 2px; }
+
+.scan-dialog input[type=file] { font: inherit; color: inherit; }
+.scan-dialog input::file-selector-button { min-height: 44px; border: 0; border-radius: 12px; padding: 8px; background: var(--s2,#f3f3f3); color: inherit; font: inherit; }
+
+@media (max-height: 480px) { .scan-text-review { width: min(92vw, 720px); } }
