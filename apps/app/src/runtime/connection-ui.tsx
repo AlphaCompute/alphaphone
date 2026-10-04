@@ -49,6 +49,7 @@ const SELECTION = 'alpha.connection.selection.v1';
 const CLOUD_SERVICE = 'alpha.connection.cloud-service.v1';
 const CONVERSATIONS = 'alpha.connection.conversations.v1';
 const listeners = new Set<() => void>();
+let developmentPageSuspended = false;
 let state: ConnectionSnapshot = { phoneActionsAvailable:false, phoneCapabilityReason:'', actionHistory: [], conversations: [], history: null, cloudAccount: null, open: false, busy: false, message: '', error: '', kind: 'offline', name: 'Offline', session: null, agents: [] };
 let active: Active | null = null, operation: AbortController | null = null;
 let startup: Promise<void> | null = null, epoch = 0;
@@ -115,7 +116,7 @@ async function personalWork(message:string,action:(binding:NonNullable<typeof pe
 }
 function detachCloudTarget() { if (active?.kind === 'cloud') retire(); }
 function makeCloud(environment: CloudEnvironment) { return new CloudProtocol(environment, nativeCloudRequest, cloudCredentialStore, openConnectionBrowser); }
-function update(patch: Partial<ConnectionSnapshot>) { state = { ...state, ...patch }; listeners.forEach(listener => listener()); }
+function update(patch: Partial<ConnectionSnapshot>) { state = { ...state, ...patch }; if (!developmentPageSuspended) listeners.forEach(listener => listener()); }
 function save(selection: Selection) { localStorage.setItem(SELECTION, JSON.stringify(selection)); }
 function retire(name = 'Offline') {
   const retirement=Promise.allSettled([state.session?pauseHostedBackground(state.session.sessionId):Promise.resolve(),retireClockReviews()]).then(results=>{const failed=results.find(result=>result.status==='rejected');if(failed?.status==='rejected')throw failed.reason;});
@@ -727,7 +728,30 @@ export function ConnectionChooser() {
   const environment = useRef<HTMLSelectElement>(null);
   useEffect(() => { void connectionController.initialize(); }, []);
   useEffect(()=>{if(!browserDevProfile)return;const changed=()=>{const selected=selection();if(selected?.kind==='development'&&selected.profile==='cloud'){operation?.abort();sending?.abort();void retire();save({kind:'none'});}try{setReply(developmentReply(developmentProfile));setDevelopmentError('');}catch{setDevelopmentError('Development data could not be read.');}};const stored=(event:StorageEvent)=>{if(event.key===developmentCloudKey||event.key===null)changed();};window.addEventListener('alpha:development-account-changed',changed);window.addEventListener('storage',stored);return()=>{window.removeEventListener('alpha:development-account-changed',changed);window.removeEventListener('storage',stored);};},[developmentProfile]);
-  useEffect(()=>{if(!browserDevProfile)return;const cancel=()=>{operation?.abort();sending?.abort();update({open:false});},hidden=()=>{if(document.hidden)cancel();},storage=(event:StorageEvent)=>{if(event.key===SELECTION||event.key===null){operation?.abort();void retire();update({open:false});}};const events=['launcher-home','alpha:device-state','pagehide'];events.forEach(event=>window.addEventListener(event,cancel));window.addEventListener('storage',storage);document.addEventListener('visibilitychange',hidden);return()=>{events.forEach(event=>window.removeEventListener(event,cancel));window.removeEventListener('storage',storage);document.removeEventListener('visibilitychange',hidden);};},[]);
+  useEffect(() => {
+    if (!browserDevProfile) return;
+    const cancel = () => { operation?.abort(); sending?.abort(); update({open:false}); };
+    // Firefox can revoke storage during pagehide. Retire pending work without
+    // asking the shell to read device storage in a departing document.
+    const suspend = () => { developmentPageSuspended = true; cancel(); };
+    const resume = () => { developmentPageSuspended = false; update({}); };
+    const visibility = () => { if (document.hidden) suspend(); else resume(); };
+    const storage = (event:StorageEvent) => { if (event.key===SELECTION || event.key===null) { operation?.abort(); void retire(); update({open:false}); } };
+    const events = ['launcher-home','alpha:device-state'];
+    events.forEach(event => window.addEventListener(event,cancel));
+    window.addEventListener('pagehide',suspend);
+    window.addEventListener('pageshow',resume);
+    window.addEventListener('storage',storage);
+    document.addEventListener('visibilitychange',visibility);
+    return () => {
+      developmentPageSuspended = false;
+      events.forEach(event => window.removeEventListener(event,cancel));
+      window.removeEventListener('pagehide',suspend);
+      window.removeEventListener('pageshow',resume);
+      window.removeEventListener('storage',storage);
+      document.removeEventListener('visibilitychange',visibility);
+    };
+  },[]);
   useEffect(() => {
     if (!snapshot.open) return;
     const previous = document.activeElement as HTMLElement | null;
