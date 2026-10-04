@@ -6,7 +6,7 @@ checkpoints below retain historical extraction evidence and older commands; thei
 passes do not qualify a newer pin. The package and independent-consumer helpers
 now authenticate the pinned upstream bytes directly.
 
-## Current boundary
+## Historical extraction boundary (before adoption)
 
 MVP completion step13 remains incomplete. The product implements Calendar provider operations in `AlphaCalendarPlugin`, `CalendarEventGuard` and `CalendarCreationStore` (386 lines combined at source0b2c032). These three classes form a complete reusable boundary: provider queries, permission handling, native confirmation, atomic revision assertions, lifecycle cancellation and durable creation reconciliation. They do not require Alpha's credential store or reminder scheduler. Extracting only a guard utility would leave the reusable behavior product-owned.
 
@@ -35,11 +35,11 @@ Then upgrade an existing Alpha fixture without clearing storage. Verify prior ca
 
 Reminders are a larger independent extraction: ReminderStore, ReminderEnvelope, ReminderTaps, receiver dispatch, DailyApps permission/lifecycle bridge and action-journal receipt reconciliation. Inject secure-slot storage and Activity/receiver targets through narrow host interfaces. Keep existing receiver classes as forwarding shims because persisted PendingIntents target them. Preserve channel IDs, actions, URI prefixes, storage keys and atomic record/receipt commits. Existing upstream Apple reminder policy is not an Android scheduler.
 
-## Status
+## Historical candidate status
 
 This is the source-grounded implementation and acceptance boundary, not a completed extraction. Current hosted qualification continues for source0b2c032 while this next step is prepared. Signing, physical pilot, live providers and resident execution remain independent MVP gates.
 
-## Candidate implementation
+## Historical candidate implementation
 
 The complete provider implementation is now staged in the additive `patches/eliza/native-calendar-android.patch`, with per-file and patch identities in `native-calendar-android.json`. `node scripts/stage-native-calendar.mjs` reproduces and verifies the library without editing `vendor/eliza`. Immutable `CalendarConfiguration` supplies host identity. A process-lifetime registry shares journal locking and failed-write quarantine by canonical preferences path; conflicting creation URI prefixes for the same journal are rejected.
 
