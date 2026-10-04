@@ -1415,56 +1415,58 @@
     {
       "file": "src/browser/calendar-recovery.ts",
       "upstreamCandidate": [],
-      "bytes": 4071,
-      "sha256": "a59b75563087f088f8250edf0db96433b9d2ecdf05f9c72eea87204119d4fe9c",
-      "lines": 21,
+      "bytes": 4160,
+      "sha256": "88481efff6432d5d7f020a6fcadc9f25a519aa0adb3db59ecf8be3ae01694086",
+      "lines": 22,
       "owner": "plugins/plugin-calendar + plugins/plugin-native-calendar",
       "disposition": "extract-or-split",
       "reason": "Calendar records, recurrence, approvals and browser provider; inject storage, review UI and native bridge.",
-      "imports": [],
+      "imports": [
+        "./dialog-layout"
+      ],
       "exports": [
         "openCalendarRecovery"
       ],
       "seams": [
         {
-          "line": 1,
+          "line": 2,
           "tags": [
             "identity-or-compatibility"
           ]
         },
         {
-          "line": 6,
+          "line": 7,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 8,
+          "line": 9,
           "tags": [
             "storage"
           ]
         },
         {
-          "line": 12,
+          "line": 13,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 16,
+          "line": 17,
           "tags": [
             "storage"
           ]
         },
         {
-          "line": 18,
+          "line": 19,
           "tags": [
             "identity-or-compatibility",
             "host-coupling"
           ]
         },
         {
-          "line": 19,
+          "line": 20,
           "tags": [
             "identity-or-compatibility",
             "host-coupling"
@@ -1724,15 +1726,16 @@
     {
       "file": "src/browser/clock.ts",
       "upstreamCandidate": [],
-      "bytes": 8123,
-      "sha256": "0c23a0f646c734a666a8964a4fb912ffa9086b08b8e70f6ddfa36db5224cb8c7",
-      "lines": 53,
+      "bytes": 8217,
+      "sha256": "a2a13853ed8fadab9bc1fb366e9d8d296aff9dd4bb1351d9dbff0042c5ef474f",
+      "lines": 54,
       "owner": "existing upstream clock/device execution surface",
       "disposition": "extract-or-split",
       "reason": "Clock observation and reviewed execution; reuse the pinned upstream clock executor instead of inventing a second executor.",
       "imports": [
         "./alert-audio",
         "./daily",
+        "./dialog-layout",
         "./notifications",
         "./screen-locked",
         "./store"
@@ -1742,40 +1745,34 @@
       ],
       "seams": [
         {
-          "line": 23,
+          "line": 24,
           "tags": [
             "identity-or-compatibility"
           ]
         },
         {
-          "line": 24,
+          "line": 25,
           "tags": [
             "identity-or-compatibility",
             "host-coupling"
           ]
         },
         {
-          "line": 25,
+          "line": 26,
           "tags": [
             "identity-or-compatibility"
           ]
         },
         {
-          "line": 37,
+          "line": 38,
           "tags": [
             "identity-or-compatibility"
           ]
         },
         {
-          "line": 40,
+          "line": 41,
           "tags": [
             "identity-or-compatibility"
-          ]
-        },
-        {
-          "line": 45,
-          "tags": [
-            "presentation"
           ]
         },
         {
@@ -1785,14 +1782,20 @@
           ]
         },
         {
-          "line": 49,
+          "line": 47,
+          "tags": [
+            "presentation"
+          ]
+        },
+        {
+          "line": 50,
           "tags": [
             "host-coupling",
             "presentation"
           ]
         },
         {
-          "line": 50,
+          "line": 51,
           "tags": [
             "identity-or-compatibility",
             "host-coupling",
@@ -2614,6 +2617,48 @@
         },
         {
           "line": 53,
+          "tags": [
+            "identity-or-compatibility"
+          ]
+        }
+      ],
+      "reachableFromMain": true
+    },
+    {
+      "file": "src/browser/dialog-layout.ts",
+      "upstreamCandidate": [],
+      "bytes": 1031,
+      "sha256": "99f6d85bf2d639f157338791528da79a94012ccade498d62d600160fb9298a4a",
+      "lines": 11,
+      "owner": "alphaphone",
+      "disposition": "retain",
+      "reason": "Product theme, compact dialog layout and accessible presentation; callers retain action and lifecycle ownership.",
+      "imports": [],
+      "exports": [
+        "layoutBrowserDialog"
+      ],
+      "seams": [
+        {
+          "line": 3,
+          "tags": [
+            "identity-or-compatibility",
+            "presentation"
+          ]
+        },
+        {
+          "line": 4,
+          "tags": [
+            "host-coupling"
+          ]
+        },
+        {
+          "line": 5,
+          "tags": [
+            "presentation"
+          ]
+        },
+        {
+          "line": 6,
           "tags": [
             "identity-or-compatibility"
           ]
@@ -5153,13 +5198,14 @@
     {
       "file": "src/browser/workflow-history.ts",
       "upstreamCandidate": [],
-      "bytes": 7879,
-      "sha256": "89584f589b7e9abc04e89d7957e01e5963775da43b8ac95fa07b2805c6484217",
-      "lines": 68,
+      "bytes": 7968,
+      "sha256": "5eadf07baf5d3edc3c8177e768d88cd7f59784015fec248cb5220b5e2be06c4e",
+      "lines": 69,
       "owner": "plugins/plugin-workflow",
       "disposition": "extract-or-split",
       "reason": "Workflow contracts, execution and simulation; preserve review, identity and no-replay semantics; inject product view policy.",
       "imports": [
+        "./dialog-layout",
         "./workflow-notices"
       ],
       "exports": [
@@ -5168,41 +5214,34 @@
       ],
       "seams": [
         {
-          "line": 30,
+          "line": 31,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 31,
+          "line": 32,
           "tags": [
             "host-coupling",
             "presentation"
           ]
         },
         {
-          "line": 35,
+          "line": 36,
           "tags": [
             "identity-or-compatibility"
           ]
         },
         {
-          "line": 52,
+          "line": 53,
           "tags": [
             "identity-or-compatibility"
-          ]
-        },
-        {
-          "line": 62,
-          "tags": [
-            "presentation"
           ]
         },
         {
           "line": 63,
           "tags": [
-            "identity-or-compatibility",
-            "host-coupling"
+            "presentation"
           ]
         },
         {
@@ -5213,7 +5252,14 @@
           ]
         },
         {
-          "line": 66,
+          "line": 65,
+          "tags": [
+            "identity-or-compatibility",
+            "host-coupling"
+          ]
+        },
+        {
+          "line": 67,
           "tags": [
             "identity-or-compatibility",
             "host-coupling"
@@ -5495,13 +5541,14 @@
     {
       "file": "src/browser/workflow-result-input.ts",
       "upstreamCandidate": [],
-      "bytes": 3771,
-      "sha256": "e1b8a23c94c42f7a61efe528b73c07834d56d31ab8f3ed2193ae4de2110911cc",
-      "lines": 28,
+      "bytes": 3865,
+      "sha256": "781419f76d2756a6c209ccc180a26c12b82a86dc41771b1b7c836fb5df04c656",
+      "lines": 29,
       "owner": "plugins/plugin-workflow",
       "disposition": "extract-or-split",
       "reason": "Workflow contracts, execution and simulation; preserve review, identity and no-replay semantics; inject product view policy.",
       "imports": [
+        "./dialog-layout",
         "./screen-locked"
       ],
       "exports": [
@@ -5509,21 +5556,15 @@
       ],
       "seams": [
         {
-          "line": 9,
-          "tags": [
-            "presentation"
-          ]
-        },
-        {
           "line": 10,
           "tags": [
-            "host-coupling",
             "presentation"
           ]
         },
         {
-          "line": 15,
+          "line": 11,
           "tags": [
+            "host-coupling",
             "presentation"
           ]
         },
@@ -5534,7 +5575,7 @@
           ]
         },
         {
-          "line": 19,
+          "line": 17,
           "tags": [
             "presentation"
           ]
@@ -5542,12 +5583,18 @@
         {
           "line": 20,
           "tags": [
+            "presentation"
+          ]
+        },
+        {
+          "line": 21,
+          "tags": [
             "identity-or-compatibility",
             "host-coupling"
           ]
         },
         {
-          "line": 24,
+          "line": 25,
           "tags": [
             "identity-or-compatibility",
             "host-coupling"
@@ -5708,13 +5755,14 @@
     {
       "file": "src/browser/workflow-urgency.ts",
       "upstreamCandidate": [],
-      "bytes": 4688,
-      "sha256": "b45484e5df0b8d0df485dea68341c179b93a9842077a6b51a9e1dc04b208ca58",
-      "lines": 26,
+      "bytes": 4843,
+      "sha256": "93c0c7b5319eb857d2b2a778395882912cf21e7f154901d9533642fb56541e8d",
+      "lines": 27,
       "owner": "plugins/plugin-workflow",
       "disposition": "extract-or-split",
       "reason": "Workflow contracts, execution and simulation; preserve review, identity and no-replay semantics; inject product view policy.",
       "imports": [
+        "./dialog-layout",
         "./screen-locked"
       ],
       "exports": [
@@ -5723,29 +5771,22 @@
       ],
       "seams": [
         {
-          "line": 16,
-          "tags": [
-            "presentation"
-          ]
-        },
-        {
           "line": 17,
           "tags": [
-            "host-coupling",
             "presentation"
           ]
         },
         {
           "line": 18,
           "tags": [
+            "host-coupling",
             "presentation"
           ]
         },
         {
           "line": 19,
           "tags": [
-            "identity-or-compatibility",
-            "host-coupling"
+            "presentation"
           ]
         },
         {
@@ -5756,13 +5797,20 @@
           ]
         },
         {
-          "line": 22,
+          "line": 21,
+          "tags": [
+            "identity-or-compatibility",
+            "host-coupling"
+          ]
+        },
+        {
+          "line": 23,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 23,
+          "line": 24,
           "tags": [
             "identity-or-compatibility",
             "host-coupling"
@@ -9368,9 +9416,9 @@
     {
       "file": "src/prototype/phone.css",
       "upstreamCandidate": [],
-      "bytes": 6583,
-      "sha256": "e5b28a23d8f11aed6a904e65cba15a1868f09f8e0ff514837979454d1c4383e6",
-      "lines": 66,
+      "bytes": 7788,
+      "sha256": "6d35c19a565957768585f82e1b0b6beda82632e11464c8fb9681edf5c039fa6d",
+      "lines": 78,
       "owner": "alphaphone",
       "disposition": "retain-or-split",
       "reason": "Product composition, design reference, enabled views, fixtures, or visual presentation. Extract embedded domain behavior separately.",
@@ -9526,6 +9574,67 @@
         },
         {
           "line": 65,
+          "tags": [
+            "identity-or-compatibility"
+          ]
+        },
+        {
+          "line": 68,
+          "tags": [
+            "identity-or-compatibility",
+            "presentation"
+          ]
+        },
+        {
+          "line": 69,
+          "tags": [
+            "identity-or-compatibility"
+          ]
+        },
+        {
+          "line": 70,
+          "tags": [
+            "identity-or-compatibility"
+          ]
+        },
+        {
+          "line": 71,
+          "tags": [
+            "identity-or-compatibility"
+          ]
+        },
+        {
+          "line": 72,
+          "tags": [
+            "identity-or-compatibility"
+          ]
+        },
+        {
+          "line": 73,
+          "tags": [
+            "identity-or-compatibility"
+          ]
+        },
+        {
+          "line": 74,
+          "tags": [
+            "identity-or-compatibility"
+          ]
+        },
+        {
+          "line": 75,
+          "tags": [
+            "identity-or-compatibility"
+          ]
+        },
+        {
+          "line": 76,
+          "tags": [
+            "identity-or-compatibility"
+          ]
+        },
+        {
+          "line": 77,
           "tags": [
             "identity-or-compatibility"
           ]

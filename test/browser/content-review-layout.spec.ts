@@ -21,7 +21,7 @@ for(const theme of ['light','dark'])for(const kind of ['question','image','docum
   }
  }
  await fits();
- const region=dialog.getByRole('region',{name:question?'Content question review':'Summary note review'});await region.focus();await page.keyboard.press('End');expect(await region.evaluate(e=>e.scrollTop)).toBeGreaterThan(0);
+ const region=dialog.getByRole('region',{name:question?'Content question review':'Summary note review'});await region.focus();await page.keyboard.press('End');await expect.poll(()=>region.evaluate(e=>e.scrollTop)).toBeGreaterThan(0);
  await save.click();await expect(dialog.getByRole('status')).toContainText(question?'Source could not be verified':'Save is unconfirmed');await fits();
  await page.screenshot({path:info.outputPath('compact-review-error.png')});
  await dialog.getByRole('button',{name:'Cancel',exact:true}).click();await expect(dialog).toHaveCount(0);
