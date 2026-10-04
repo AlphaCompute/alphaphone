@@ -7,7 +7,7 @@ for (const mode of ['confirm', 'cancel', 'read', 'update', 'delete'] as const) {
   test(`browser assistant Calendar action: ${mode}`, async ({ page }) => {
     await page.addInitScript((mode) => {
       const w = window as any, store = new Map();
-      if(mode!=='confirm'&&mode!=='cancel'&&!localStorage.getItem('alpha.browser.calendar.v1')){const start=new Date();start.setHours(12,0,0,0);localStorage.setItem('alpha.browser.calendar.v1',JSON.stringify({sourceRevision:'b'.repeat(64),events:[{id:'selected-event',calendarId:'local',title:'Selected private event',body:'Private description',location:'Private location',begin:start.getTime(),end:start.getTime()+3600000,revision:'c'.repeat(64)}]}));}
+      if(mode!=='confirm'&&mode!=='cancel'&&!localStorage.getItem('alpha.browser.calendar.v1')){const start=new Date();start.setHours(12,0,0,0);(localStorage.getItem('alpha.browser.calendar.v1')===null&&localStorage.setItem('alpha.browser.calendar.v1',JSON.stringify({sourceRevision:'b'.repeat(64),events:[{id:'selected-event',calendarId:'local',title:'Selected private event',body:'Private description',location:'Private location',begin:start.getTime(),end:start.getTime()+3600000,revision:'c'.repeat(64)}]})));}
       const agentId = '12345678-1234-4234-8234-123456789abc';
       const fixture = w.recoveryFixture = { posts: 0, lists: 0, decisions: 0, claims: 0, receipts: 0, effects: 0, journal: [] as string[], proposal: null as any };
       const methods = (names: string[]) => names.map(name => ({ name, rtype: 'promise' }));
@@ -90,20 +90,20 @@ for (const mode of ['confirm', 'cancel', 'read', 'update', 'delete'] as const) {
     await input.fill('Plan a Calendar event; await my review.');await input.press('Enter');
     await expect(page.getByText(/Pending phone actions are available for separate review/)).toBeVisible();
     expect(await page.evaluate(()=>(window as any).calendarSent.metadata.clientDevice.context.selectedObject.kind)).toBe(creating?'calendar-source':'calendar-event');
-    const before=await page.evaluate(()=>JSON.parse(localStorage.getItem('alpha.browser.calendar.v1')!).events);expect(before).toHaveLength(creating?0:1);
+    const before=await page.evaluate(async ()=>JSON.parse((await (await import('/src/browser/calendar-store.ts')).calendarDocument.readRaw())!).events);expect(before).toHaveLength(creating?0:1);
     expect(JSON.stringify(await page.evaluate(()=>(window as any).calendarSent))).not.toContain('Private description');
     await page.getByText('Approve: calendar '+(creating?'create':mode==='read'?'read selected':mode),{exact:true}).click();
     const review=page.getByRole('dialog',{name:mode==='read'?'Share calendar event with agent?':'Review calendar change'});
     await expect(review).toBeVisible();await expect(review).toContainText(creating||mode==='update'?'Assistant planned event':'Selected private event');
     await review.getByRole('button',{name:mode==='cancel'?'Cancel':'Confirm',exact:true}).click();
     await expect.poll(()=>page.evaluate(()=>(window as any).recoveryFixture.receipts)).toBe(1);
-    const events=await page.evaluate(()=>JSON.parse(localStorage.getItem('alpha.browser.calendar.v1')!).events);
+    const events=await page.evaluate(async ()=>JSON.parse((await (await import('/src/browser/calendar-store.ts')).calendarDocument.readRaw())!).events);
     expect(events).toHaveLength(mode==='cancel'||mode==='delete'?0:1);
     if(mode==='confirm'||mode==='update')expect(events[0].title).toBe('Assistant planned event');
     const receipt=await page.evaluate(()=>(window as any).calendarRetained);
     expect(receipt.status).toBe(mode==='cancel'?'failed':'succeeded');
     if(mode==='read'){expect(events).toEqual(before);expect(receipt.result.calendarResult.fields.description).toBe('Private description');}
     await page.reload();
-    expect(await page.evaluate(()=>JSON.parse(localStorage.getItem('alpha.browser.calendar.v1')!).events)).toEqual(events);
+    expect(await page.evaluate(async ()=>JSON.parse((await (await import('/src/browser/calendar-store.ts')).calendarDocument.readRaw())!).events)).toEqual(events);
   });
 }

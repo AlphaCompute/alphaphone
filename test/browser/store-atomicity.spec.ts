@@ -69,3 +69,20 @@ test('closing a tab during an edit releases ownership without publishing its unc
   });
   expect(result).toEqual({count:1});
 });
+
+test('rapid cross-tab edits retain every committed item and unique receipt',async({page,context})=>{
+ const other=await context.newPage();await other.goto('/');
+ const write=(tab:typeof page,owner:string)=>tab.evaluate(async owner=>{
+  const {editStore}=await import('/src/browser/store.ts');const receipts:number[]=[];
+  for(let i=0;i<25;i++){
+   // Prime a task-local snapshot before requesting the cross-tab lock.
+   localStorage.getItem('alpha.test.rapid');
+   receipts.push(await editStore('alpha.test.rapid',()=>({items:[] as string[]}),data=>{data.items.push(owner+':'+i);return data.items.length;}));
+  }
+  return receipts;
+ },owner);
+ const receipts=(await Promise.all([write(page,'first'),write(other,'second')])).flat().sort((a,b)=>a-b);
+ expect(receipts).toEqual(Array.from({length:50},(_,i)=>i+1));await page.reload();
+ const items=await page.evaluate(()=>JSON.parse(localStorage.getItem('alpha.test.rapid')!).items);
+ expect(items.sort()).toEqual(['first','second'].flatMap(owner=>Array.from({length:25},(_,i)=>owner+':'+i)).sort());
+});
