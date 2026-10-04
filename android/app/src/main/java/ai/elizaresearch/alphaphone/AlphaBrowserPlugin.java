@@ -319,11 +319,13 @@ public class AlphaBrowserPlugin extends Plugin {
   if(!BrowserBookmarks.valid(url)||saved==null){call.reject("Only HTTPS addresses without embedded credentials can be bookmarked.");return;}
   try{call.resolve(bookmarkResult(bookmarks.change(url,saved)));}catch(Exception unavailable){call.reject("Bookmark could not be saved. The device stores up to 100 bookmarks; existing data was not changed.");}
  }); }
- @PluginMethod public void reviewReading(PluginCall call) { getActivity().runOnUiThread(()->{
+ @PluginMethod public void reviewQuestion(PluginCall call) { reviewPage(call,true); }
+ @PluginMethod public void reviewReading(PluginCall call) { reviewPage(call,false); }
+ private void reviewPage(PluginCall call,boolean question) { getActivity().runOnUiThread(()->{
   Tab tab=tabs.get(call.getString("id"));String owner=session,url=call.getString("url"),navigation=call.getString("navigation");
   java.util.function.BooleanSupplier current=()->!destroyed&&!paused&&Objects.equals(owner,session)&&Objects.equals(session,call.getString("session"))&&tab!=null&&tabs.get(tab.id)==tab&&!tab.dead&&Objects.equals(presentedId,tab.id)&&tab.web.isShown()&&tab.committed&&!tab.loading&&tab.error.isEmpty()&&Objects.equals(url,tab.url)&&Objects.equals(url,tab.web.getUrl())&&Objects.equals(navigation,String.valueOf(tab.navigation))&&url!=null&&url.startsWith("https://");
   if(!current.getAsBoolean()){call.reject("Load a visible HTTPS page before reading");return;}
-  reading.review(call,tab.web,tab.readingWorld,current);
+  if(question)reading.reviewQuestion(call,tab.web,tab.readingWorld,current);else reading.review(call,tab.web,tab.readingWorld,current);
  }); }
  @PluginMethod public void cancelReading(PluginCall call) { getActivity().runOnUiThread(()->{if(Objects.equals(session,call.getString("session")))reading.cancel();call.resolve();}); }
  String consumeReading(PluginCall call)throws Exception{return reading.consume(call);}

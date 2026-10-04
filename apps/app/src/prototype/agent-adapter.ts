@@ -1,5 +1,5 @@
 import {reviewSummaryNote} from './summary-note-review';
-import {sourceOf,type Source} from './note-source-adapter';
+import {summarySourceOf as sourceOf,type SummarySource as Source} from './summary-source';
 import {reviewAgentClock} from '../runtime/clock-agent-review';
 import {isReminderCreate,validateReminderCreateResult} from '../runtime/reminder-create-contract';
 import {publishWorkflowNotice} from '../browser/workflow-notices';
@@ -465,6 +465,7 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
       if(this.S().typing)throw new Error('Wait for the current agent reply before sharing this email.');
       context(this);await this.send(text,expected);
     };
+    api.openReviewedWebSource=(url:string,signal:AbortSignal)=>this.browserNavigateApproved(url,signal);
     api.composeContentQuestion=(draft:string,source?:Source)=>{
       this.reviewedSourceDraft={draft,source:sourceOf(source)};
       context(this);this.setState({chat:'sheet',shade:false,draft});
@@ -531,7 +532,7 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
         if(!current()||this.notesStorageFailed||this.notesPending)return false;
         const update=(title:string,sub:string)=>{if(this.live)this.setState({msgs:this.S().msgs.map((m:Shell)=>m.id===message.id?{...m,card:{...m.card,done:true,title,sub}}:m)});};
         update('Saving summary note','Inspect Notes before retrying if this is interrupted.');
-        try{const note={id:crypto.randomUUID(),kind:'text',...fields,pinned:false,when:'Now',createdAt:Date.now(),modifiedAt:Date.now()};const saved=await this.vset('notes',{list:[note,...this.vget('notes').list]})===true;update(saved?'Summary note saved':'Check Notes before retrying',saved?fields.documentSource.name:'Save is unconfirmed.');return saved;}
+        try{const note={id:crypto.randomUUID(),kind:'text',...fields,pinned:false,when:'Now',createdAt:Date.now(),modifiedAt:Date.now()};const saved=await this.vset('notes',{list:[note,...this.vget('notes').list]})===true;update(saved?'Summary note saved':'Check Notes before retrying',saved?(fields.documentSource?.name||fields.webSource?.name||'Source'):'Save is unconfirmed.');return saved;}
         catch{update('Check Notes before retrying','Save is unconfirmed.');return false;}
       },complete:()=>{if(this.live)this.toast('Summary note saved with its source.');}});
       return;

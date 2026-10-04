@@ -2,6 +2,10 @@ import { registerPlugin } from '../platform-plugins';
 import { Capacitor } from '@capacitor/core';
 import { DailyApps } from '../daily';
 import { createNativeReadingVoice } from '../runtime/native-reading-voice';
+import {reviewContentQuestion} from '../browser/content-question';
+import {browserReadingSource} from '../browser/reading-source';
+import {sensitiveReadingText} from '../browser/reading-sensitive';
+import {webSourceOf} from './summary-source';
 import { connectionController } from '../runtime/connection-ui';
 type Bag = Record<string, any>;
 const Browser = registerPlugin<any>('AlphaBrowser');
@@ -38,7 +42,7 @@ export function installPrototypeBrowserAdapter(Component: any, views: Record<str
   const state = () => shell?.vget('browser');
   const refresh = () => shell?.vset('browser', { nativeRevision: Date.now() });
   const report = (error: unknown) => !disposed && shell?.toast(error instanceof Error ? error.message : 'Browser unavailable');
-  let reading: AbortController | undefined;
+  let reading: AbortController | undefined, questionReview=false;
   function stopReading() { const active=reading; reading=undefined; active?.abort(); void Browser.cancelReading({session}).catch(()=>{}); }
   const unsubscribeReading = connectionController.subscribe(()=>{ if(reading && (connectionController.getSnapshot().open || document.hidden)) stopReading(); });
   async function readPage() {
@@ -65,6 +69,27 @@ export function installPrototypeBrowserAdapter(Component: any, views: Record<str
       shell.toast('Preparing reviewed page speech');
       await voice.speak(result.readingToken,controller.signal);valid();shell.toast('Reading finished');
     }catch(error){if(!controller.signal.aborted)report(error);}finally{unsubscribe();if(reading===controller){reading=undefined;void Browser.cancelReading({session}).catch(()=>{});}}
+  }
+  async function askPage() {
+    stopReading();
+    const id=state()?.cur,info=metadata.get(id),revision=documentRevisions.get(id);
+    const source=webSourceOf({kind:'web-page',version:1,name:String(info?.title||info?.url||'Web page').replace(/[\x00-\x1f\x7f]/g,' ').trim().slice(0,120),url:info?.url});
+    if(!source||!info?.committed||info.loading||info.error){report(new Error('Load a public HTTPS page before asking about it.'));return;}
+    const controller=new AbortController();reading=controller;
+    const current=()=>!controller.signal.aborted&&!disposed&&!document.hidden&&!document.documentElement.hasAttribute('data-dev-background')&&shell.S().screen==='home'&&shell.S().view==='browser'&&state()?.cur===id&&documentRevisions.get(id)===revision&&!connectionController.getSnapshot().open;
+    try{
+      shell.vset('browser',{menu:false});shell.toast('Preparing page excerpt…');
+      let text='';
+      if(Capacitor.isNativePlatform()){
+        await new Promise(resolve=>setTimeout(resolve,150));if(!current())return;lastGeometry='';await update();
+        const result=await Browser.reviewQuestion({session,id,url:info.url,navigation:info.navigation});
+        if(typeof result.text!=='string'||!result.text.trim()||result.text.length>5000||sensitiveReadingText(result.text))throw Error('Page excerpt unavailable.');text=result.text;
+      }else{
+        const result=await browserReadingSource(source.url,controller.signal);if(result?.blocked)throw Error('This page may contain credentials or verification codes. Open a different page.');text=result?.text||'';
+      }
+      if(!current())return;questionReview=true;lastGeometry='';await update();
+      reviewContentQuestion({name:source.name,text,signal:controller.signal,current,validate:text=>!sensitiveReadingText(text),source:async()=>{if(!current())throw Error('Page changed');return source;},compose:(draft,source)=>shell.api('browser').composeContentQuestion(draft,source),closed:()=>{questionReview=false;lastGeometry='';if(reading===controller)reading=undefined;}});
+    }catch(error){if(!controller.signal.aborted)report(error);}finally{if(!questionReview&&reading===controller)reading=undefined;}
   }
   function hide() {
     const next = JSON.stringify({session,id:null});
@@ -147,7 +172,7 @@ export function installPrototypeBrowserAdapter(Component: any, views: Record<str
       host:url?.host || 'Search or type address',path:url ? url.pathname + url.search : '', hasLock:Capacitor.isNativePlatform() && !!url && url.protocol==='https:' && !!info?.committed && !info?.loading && !info?.error,
       nativeControls:true,openPasswordProvider:()=>{api.set({menu:false});api.open('settings',{page:'password-provider'});},openDownloads:()=>{api.set({menu:false});void Browser.downloads({session}).catch(report);},reload:()=>{api.set({menu:false});void command('reload');},stopLoading:()=>{api.set({menu:false});void command('stop');},loading:!!info?.loading,goBack:()=>void command('back'),goFwd:()=>void command('forward'),backOp:info?.canBack?1:0.3,fwdOp:info?.canForward?1:0.3,
       startEdit:()=>api.set({editing:true,addr:info?.url||'',menu:false}),onAddrKey:(e:KeyboardEvent)=>{ if(e.key==='Enter'){e.preventDefault();void navigate((e.target as HTMLInputElement).value);} else if(e.key==='Escape')api.set({editing:false}); },
-      toggleMark:()=>{if(!info?.committed || info.loading || info.error || url?.protocol!=='https:'){api.toast('Load an HTTPS page before bookmarking it.');return;}saveBookmark(info.url);},markLabel:s.marks.includes(info?.url)?'Bookmarked':'Bookmark',markFill:s.marks.includes(info?.url)?'currentColor':'none',libRows:(s.lib==='history'?s.visits:s.marks).map((u:string)=>({title:u,host:u,ini:new URL(u).hostname[0],go:()=>void navigate(u),canRemove:s.lib!=='history',removeAria:'Remove bookmark',remove:()=>saveBookmark(u,false)})),libEmpty:!(s.lib==='history'?s.visits:s.marks).length,newTab:openNew,readAloud:()=>void readPage(),bookNow:unavailable,cfOk:unavailable,openShare:()=>void sharePage(),
+      toggleMark:()=>{if(!info?.committed || info.loading || info.error || url?.protocol!=='https:'){api.toast('Load an HTTPS page before bookmarking it.');return;}saveBookmark(info.url);},markLabel:s.marks.includes(info?.url)?'Bookmarked':'Bookmark',markFill:s.marks.includes(info?.url)?'currentColor':'none',libRows:(s.lib==='history'?s.visits:s.marks).map((u:string)=>({title:u,host:u,ini:new URL(u).hostname[0],go:()=>void navigate(u),canRemove:s.lib!=='history',removeAria:'Remove bookmark',remove:()=>saveBookmark(u,false)})),libEmpty:!(s.lib==='history'?s.visits:s.marks).length,newTab:openNew,askPage:()=>void askPage(),readAloud:()=>void readPage(),bookNow:unavailable,cfOk:unavailable,openShare:()=>void sharePage(),
       tabCards:s.tabs.map((tab:Bag)=>({title:metadata.get(tab.id)?.title || metadata.get(tab.id)?.url || 'New tab',host:metadata.get(tab.id)?.url||'',css:tab.id===s.cur?'box-shadow:inset 0 0 0 2px var(--acc)':'',prev:'background:var(--s2)',aria:'Switch to '+(metadata.get(tab.id)?.title||'New tab'),closeAria:'Close tab',pick:()=>api.set({cur:tab.id,tabsOpen:false}),close:()=>{ const rest=state().tabs.filter((t:Bag)=>t.id!==tab.id); const fallback='b'+crypto.randomUUID().replaceAll('-','');if(created.has(tab.id))void Browser.close({session,id:tab.id}).catch(report);created.delete(tab.id);metadata.delete(tab.id);api.set({tabs:rest.length?rest:[{id:fallback,hist:['newtab'],pos:0}],cur:state().cur===tab.id?(rest[0]?.id||fallback):state().cur}); }})),
       rootRef:(element:HTMLElement)=>{out.rootRef?.(element); if(!element)return; const viewport=element.querySelector('[data-bscroll]'); if(viewport){viewport.setAttribute('data-native-browser-viewport','true'); viewport.setAttribute('aria-label',info?.error || (info?.loading?'Loading website':'Browser page'));} },
     };
@@ -194,7 +219,7 @@ export function installPrototypeBrowserAdapter(Component: any, views: Record<str
     if(disposed)return;
     const s=state(), S=shell?.S();
     const element=document.querySelector('[data-native-browser-viewport]') as HTMLElement|null;
-    const hidden=!s || !element || !element.isConnected || !element.getClientRects().length || S?.view!=='browser' || s.editing || s.tabsOpen || s.menu || s.lib || s.share || s.ag || s.confirm || S?.shade || S?.screen !== 'home' || ['sheet','full'].includes(S?.chat) || document.hidden;
+    const hidden=questionReview || !s || !element || !element.isConnected || !element.getClientRects().length || S?.view!=='browser' || s.editing || s.tabsOpen || s.menu || s.lib || s.share || s.ag || s.confirm || S?.shade || S?.screen !== 'home' || ['sheet','full'].includes(S?.chat) || document.hidden;
     if(reading && (disposed || document.hidden || document.documentElement.hasAttribute('data-dev-background') || S?.screen!=='home' || S?.view!=='browser' || s?.tabsOpen || s?.editing || S?.shade || ['sheet','full'].includes(S?.chat)))stopReading();
     const rect=element?.getBoundingClientRect();
     const composer=document.querySelector('[aria-label="Open conversation"]')?.parentElement?.getBoundingClientRect();
