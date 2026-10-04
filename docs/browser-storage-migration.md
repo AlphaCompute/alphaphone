@@ -11,8 +11,8 @@ revision compare-and-swap. Alpha supplies domain names and legacy recovery polic
 | Domain | Source integration | Qualification / remaining work |
 | --- | --- | --- |
 | Calendar | `browser/calendar-store.ts`; async Calendar and digest reads; revision-checked backup/reset; cross-tab refresh | Original creation race passed 30 cases; cancellation passed 9 three-engine cases. Combined Calendar suite remains under qualification. |
-| Hosted digest result notices | `browser/hosted-results.ts`; durable rows and pending-tap token move together; cross-tab notice invalidation | Candidate implementation; current three-engine notice flows and failed IndexedDB writes under test. |
-| Owner-bound workflow drafts | `browser/workflow-drafts.ts`; awaited reads and serialized expected-value updates | Candidate implementation; adds actual two-tab conflict and owner-change-during-read checks. |
+| Hosted digest result notices | `browser/hosted-results.ts`; durable rows and pending-tap token move together; cross-tab notice invalidation | Included in 51 passing three-engine browser cases, covering notice flows and failed IndexedDB writes. |
+| Owner-bound workflow drafts | `browser/workflow-drafts.ts`; awaited reads and serialized expected-value updates | Included in 51 passing three-engine browser cases, including actual two-tab conflict and owner-change-during-read checks. |
 | Reminders and alarms | `browser/daily.ts`, `browser/clock.ts` | Legacy. Migrate records and operation receipts together; update Clock invalidation and permission reads. |
 | Notification policy, access and history | `browser/notifications.ts` | Legacy. Reconcile initialization from the older policy key, shade queries, recovery/download and synchronous consumers. |
 | Workflow notifications | `browser/workflow-notices.ts`, `browser/workflow-history.ts` | Legacy. Async history/list/export, retention/compaction receipts and interrupted delivery must move together. |
@@ -53,3 +53,9 @@ journeys across Chromium, Firefox and WebKit, then repository verification and
 current hosted checks. Passing Calendar alone does not close the retained global
 rapid-store regression or qualify another domain. Browser evidence does not prove
 Android process, Keystore, reboot, Doze or physical-device acceptance.
+
+Implementation checkpoint `d3f81fa2` passes 326 repository tests (zero skips),
+TypeScript and the production web build. Its successor `e02b5885`, which only
+adopts Calendar fixture corrections, passes all 51 draft/result-notice browser
+cases across three engines. The earlier 50-pass/one-reload-interruption result
+is retained under `test-results/workflow-documents/`; it is not the final pass.
