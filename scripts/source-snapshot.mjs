@@ -11,7 +11,7 @@ roots.push('android/app/src/launcher','android/app/src/standalone','android/app/
  'android/gradlew','android/gradlew.bat','android/app/proguard-rules.pro',
  'android/notification-fixture/build.gradle','android/notification-fixture/src',
  'scripts/build-android.mjs','scripts/toolchain.mjs','scripts/verify-upstream.mjs',
- 'scripts/verify-apks.mjs','scripts/apk.mjs','scripts/source-snapshot.mjs');
+ 'scripts/pinned-upstream-source.mjs','scripts/verify-apks.mjs','scripts/apk.mjs','scripts/source-snapshot.mjs');
 // Generated speech models and the qualified JNI archive are APK inputs, unlike
 // Gradle outputs. Include their bytes so a model/runtime change invalidates the archive.
 roots.push('android/local-speech/build.gradle','vendor/eliza/packages/app/platforms/android/local-speech','vendor/eliza/packages/app/scripts/local-speech',

@@ -118,7 +118,7 @@ These results use **synthetic audio processed by a real ASR engine**. They prove
 
 ## Pinned Eliza development composition
 
-`backend/loader.ts` builds the source at `upstream.lock.json.commit` with Bun. Every
+`backend/loader.ts` authenticates the pinned workspace bytes before every Bun build, including ignored files and changes hidden from Git status. Only declared build outputs are allowed. Every
 `@elizaos/*` import resolves through that pinned checkout's `eliza-source` export;
 private exports, unknown packages and `dist` artifacts are rejected. A generated
 `.generated/source-map.json` records each imported upstream package/subpath and its
@@ -129,8 +129,8 @@ files or global dependencies are modified.
 
 The composition uses core `AgentRuntime`, SQL/PGLite, the OpenAI-compatible plugin
 configured for the authorized Cerebras environment, and `createAssistantPlugin`
-for the actual `DefaultMessageService`. It retains REPLY/IGNORE/NONE and two
-product-owned actions, CREATE_NOTE and OPEN_VIEW. These actions only prepare
+for the actual `DefaultMessageService`. It retains REPLY/IGNORE/NONE and three
+product-owned actions, CREATE_NOTE, CREATE_REMINDER and OPEN_VIEW. These actions only prepare
 bounded proposals. They cannot write a note or open a native activity. Existing
 app approval, canonical payload binding, context revision and one-use dispatcher
 remain the execution boundary. An AsyncLocalStorage scope binds each action to
