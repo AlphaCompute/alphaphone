@@ -1,12 +1,19 @@
-# Authoritative prototype presentation extraction
+# Product presentation
 
-Source: https://alpha-phone-prototype.pages.dev/ downloaded 2026-09-29.
-Original HTML: 816757 bytes; SHA-256 `fd1ee08878c9ae8e8e0d112cc42e3b687326f290b1f86ddaca0f737cdb79afff`.
+The renderer imports React from the application dependencies and `dc-lite.js` from
+this source directory. `model.js` supplies presentation state; `template.html`
+and `prototype.css` define the reference layout. Product adapters own real data,
+capability policy and native actions. Synthetic model behavior must not be
+presented as real account, device, payment or network state.
 
-`template.html` is the exact body of the original `dc-template` element. `model.js` preserves the original first inline script (all modules and presentation state) with React/DCLogic imports and Component/VIEWS/ORDER exports. `prototype.css` preserves both original style blocks except the local Denton URL becomes absolute, followed by bundled font-face definitions. `dc-lite.js` is the reference helper converted from a browser global IIFE into an imported React module using a raw template import. Its phoneSurface branch clones the original .os root with only the original data-screen child; the original full demo template remains unchanged.
+Design source: https://alpha-phone-prototype.pages.dev/ (retrieved 2026-09-29).
+Original HTML: 816757 bytes; SHA-256
+`fd1ee08878c9ae8e8e0d112cc42e3b687326f290b1f86ddaca0f737cdb79afff`.
+The supplied references remain under the repository's `design` directory.
 
-`asset-manifest.json` pins every fetched public asset's URL, bytes and SHA-256. All 49 referenced local assets were fetched: 42 WebP images, two logos, Denton, dc-lite and two React scripts. Google Fonts Public Sans faces were downloaded and their font-face URLs rewritten to local public files. The reference alpha-only Fraunces generated font URL returned HTTP 400; the same official Google Fonts family/italic weights 300 and 400/optical axis request without the text subset supplied full TrueType faces instead. This fallback is recorded, not claimed byte-identical to the unavailable subset. Denton remains the primary serif face.
-
-The original vendor scripts and helper in public are provenance copies; the application imports its existing React package and the adapted helper. This extraction deliberately retains synthetic prototype model functions; production capability adapters must prevent simulation from masquerading as real actions. No assertion of real account, device, payment, enclave, biometric or network state follows from the presentation fixtures.
-
-Validation: all manifest entries were rehashed locally and matched; template body byte equality and model wrapper integrity checked at extraction. JavaScript syntax checks passed. Rendering and pixel comparisons are tracked separately in docs/prototype-visual-verification.md.
+`asset-manifest.json` records source URLs, sizes and SHA-256 hashes for the retained
+public images and fonts. Public Sans faces use local files. The unavailable
+Fraunces text subset was replaced with official Google Fonts full faces using the
+same family, weights and optical axis; its recorded source describes those bytes.
+Denton is the primary serif face. Original public React scripts and the unadapted
+helper are not runtime dependencies and are not shipped.
