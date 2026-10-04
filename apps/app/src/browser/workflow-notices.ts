@@ -48,8 +48,17 @@ export async function publishWorkflowNotice(id:string,text:string,signal:AbortSi
 }
 export async function listWorkflowNotices(){const state=await workflowNoticesDocument.read(initial),hidden=blocked();validate(state);return state.rows.filter(row=>row.phase==='posted').map(row=>({...row,source:'own' as const,appLabel:'Workflows',title:hidden?'Workflows':row.title,text:hidden?'':row.text,clearable:true,canOpen:!hidden}));}
 export async function actOnWorkflowNotice(input:{id:string;revision:string},open:boolean){
- await workflowNoticesDocument.edit(initial,state=>{validate(state);const row=state.rows.find(row=>row.id===input.id);if(blocked()||!row||row.phase!=='posted'||row.revision!==input.revision)throw Error('Notification changed.');row.phase=open?'opened':'dismissed';row.revision=revision();});
- changed();if(open)window.dispatchEvent(new CustomEvent('alpha:browser-open-view',{detail:'workflows'}));
+ const cancellation=new AbortController(),retire=()=>cancellation.abort(),visibility=()=>{if(document.hidden)retire();};
+ const events=['alpha-back','pagehide','launcher-home','alpha:device-state','alpha:browser-open-view'];
+ for(const event of events)window.addEventListener(event,retire,true);
+ document.addEventListener('visibilitychange',visibility);
+ try{
+  await workflowNoticesDocument.edit(initial,state=>{validate(state);const row=state.rows.find(row=>row.id===input.id);if(blocked()||!row||row.phase!=='posted'||row.revision!==input.revision)throw Error('Notification changed.');row.phase=open?'opened':'dismissed';row.revision=revision();},cancellation.signal);
+  changed();if(open&&!cancellation.signal.aborted&&!blocked())window.dispatchEvent(new CustomEvent('alpha:browser-open-view',{detail:'workflows'}));
+ }finally{
+  for(const event of events)window.removeEventListener(event,retire,true);
+  document.removeEventListener('visibilitychange',visibility);
+ }
 }
 
 /** Read an exact retained delivery record without posting, reopening or dismissing it. */

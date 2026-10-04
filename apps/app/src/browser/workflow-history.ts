@@ -62,7 +62,7 @@ export function openWorkflowHistory(read:()=>Bag,write:(patch:Bag)=>void,isRunni
    const recovery=noticePlan?.recovery??await workflowNoticesDocument.capture(noticeAbort.signal);
    noticeAbort.signal.throwIfAborted();
    offer(noticeDownload,recovery.raw??JSON.stringify({rows:[]}));
-   if(recovery.legacy!==null&&(recovery.legacyChanged||recovery.legacy!==recovery.raw)){offer(legacyDownload,recovery.legacy);legacyDownload.hidden=false;}
+   if(recovery.legacy!==null&&(recovery.legacyChanged||recovery.legacy!==recovery.raw)){offer(legacyDownload,recovery.legacy);legacyDownload.hidden=false;legacyDownload.style.display='inline-block';}
    if(failure)throw failure;
    noticeStatus.textContent=`${noticePlan!.eligible} opened or dismissed notices can be compacted. ${noticePlan!.state.archived?.length||0} compact receipts retained.`;
    compact.disabled=!noticePlan!.eligible;
@@ -77,6 +77,7 @@ export function openWorkflowHistory(read:()=>Bag,write:(patch:Bag)=>void,isRunni
  };
  const close=document.createElement('button');close.textContent='Close history';close.onclick=()=>finish();
  for(const item of [download,remove,noticeDownload,legacyDownload,compact,close])item.style.cssText='display:inline-block;min-height:44px;box-sizing:border-box;margin:4px;padding:10px;border:1px solid #999;border-radius:10px;color:inherit;background:var(--s2,#eee);font:inherit';
+ legacyDownload.style.display='none';
  const previous=document.activeElement as HTMLElement|null;const back=(event:Event)=>{event.preventDefault();event.stopImmediatePropagation();finish();};const retire=()=>finish();const hidden=()=>{if(document.hidden)retire();};const events=['pagehide','launcher-home','alpha:device-state','alpha:dev-incoming-call'];
  let closed=false;const finish=()=>{if(closed)return;closed=true;noticeAbort.abort();dialog.close();window.removeEventListener('alpha-back',back,true);for(const event of events)window.removeEventListener(event,retire);document.removeEventListener('visibilitychange',hidden);URL.revokeObjectURL(url);for(const ownedUrl of noticeUrls)URL.revokeObjectURL(ownedUrl);dialog.remove();if(current===dialog)current=undefined;if(previous?.isConnected)previous.focus();};
  dialog.onclose=finish;dialog.oncancel=event=>{event.preventDefault();finish();};
