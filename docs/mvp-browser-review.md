@@ -2339,3 +2339,81 @@ under `test-results/workflow-retirement-final/`. At 04:08:02 UTC the untouched
 user dev host still verifies owner authentication, one agent, local Whisper and
 Kokoro, and embedded workflows. Exact-final-head hosted qualification remains a
 separate gate; Android builds were skipped as requested.
+
+
+At 04:08:41 UTC, PR157 merged as `ed2f69f937dce32e775b0692dde1546af77067eb`.
+Reviewed head `11ee6b160b6a22328b9847f0d58eb0b5cd58d917` is an ancestor of main,
+and the merge introduces no additional tree changes. A live queue read returns
+zero open PRs. Final main browser run `37176145836` is pending. Duplicate PR
+browser runs and this integration's automatically triggered Android jobs were
+cancelled; unrelated native work was not cancelled. This report-only update is
+kept on `codex/client-integration-status-20261004` to avoid restarting that final
+campaign for documentation alone. The live renderer/agent was not restarted.
+
+
+## October 4 — Document correction design and large-text review
+
+The scan-correction review still used default system typography and a loose list
+of gray controls. Its confirmation actions scrolled with the long coordinate
+form. The product-owned dialog now uses Alpha colors, Public Sans, rounded
+controls and a distinct blue adoption action. The heading and Apply/Cancel area
+remain visible while instructions, corners, tools and image preview scroll.
+Numeric fields follow light/dark colors and browser text scaling. The original
+photo and existing explicit-adoption/cancellation behavior are unchanged.
+
+All **51 existing correction and edge-detection browser cases** pass across
+Chromium, Firefox and WebKit. Four actual Chromium viewport probes at **150%
+text** cover both themes at 360x740 and 740x360. They verify 24px dialog text,
+44px minimum action height, visible action bounds, no horizontal overflow and no
+page errors. Light/dark and large-text screenshots were inspected. TypeScript
+and production build pass on Node 24.15.0. The full repository verification is
+still running and is not counted as passing yet. Evidence is in
+`test-results/correction-design/`, `test-results/correction-large-text/` and
+`test-results/correction-design-evidence/` in the isolated integration checkout.
+The static ownership inventory now contains 280 app files.
+
+This is one reviewed subview. The complete MVP/design acceptance and external
+provider/native/device requirements in the current-status ledger remain open.
+
+
+The correction-only checkpoint at `4ae0a4b` subsequently completed full
+`npm run verify`: **278 tests, zero failures/skips, TypeScript and web build**
+on Node 24.15.0.
+
+The same draft PR now extends the shared product styling to document assembly
+and searchable-PDF text review. Page/edit/export controls stay grouped in the
+scrolling content; document Save draft/Close and searchable Download/Cancel
+remain in their action areas. Labels, explicit saves, text review, cancellation
+and export-result handling remain the existing implementations. The shared CSS
+replaces the correction-only stylesheet; the app inventory remains 280 files.
+
+A first refactor had a mismatched root CSS selector. The large-text probe caught
+16px text and 19px controls rather than the required scaled text/44px controls;
+that browser run was interrupted and is not qualifying evidence. Corrected
+selectors now pass all **eight** layout probes for the two additional dialogs:
+light/dark, portrait/landscape, 150% text, no horizontal overflow, visible action
+bounds and no page errors. Screenshots were inspected. Typecheck and final build
+pass; the complete three-engine scan regression batch is still running.
+Evidence: `test-results/scan-dialog-layout-fixed/`, with the failed probe retained
+in `test-results/scan-dialog-layout/`; browser logs are retained separately.
+
+
+The expanded scan regression batch completed with **173 passes and the existing
+WebKit legacy-Blob migration fixture skip**. It covers correction, edge finding,
+capture ownership, document ordering, draft conflicts, reviewed OCR, searchable
+PDF output and cancellation across all three engines. The final build passes;
+all eight additional layout probes pass. Evidence is retained under
+`test-results/scan-dialog-evidence/`. PR160 remains separate from native/device
+acceptance and the still-running merged-main browser campaign.
+
+
+PR159 merged concurrently as `8b29f35` and was incorporated into the scan branch.
+Its bounded hierarchy retry was reviewed without executing Android: the current
+17 smoke/parser fixture tests pass with fake ADB, including transient recovery,
+exactly ten failed attempts, unique dump paths and main's newer malformed-status
+rejection. The tested retry script and qualification fixture match the merged
+files byte-for-byte. The earlier scratch attempt lacked the vendor toolchain
+link and did not qualify anything; that setup failure is retained. Main's
+`37176145836` browser run was cancelled by the newer merge, so it is not a pass.
+The next merged-main campaign must qualify the combined source. No Android build
+was started by this browser workstream.
