@@ -1,0 +1,150 @@
+{
+  "pin": "83e2a2d90a619600be56fcca237a7861644b2d4b",
+  "patchCount": 70,
+  "prs": [
+    {
+      "url": "https://github.com/elizaOS/eliza/pull/33002",
+      "merged": true,
+      "mergeCommit": "26b57df587188503a8278160e9793eaca8f2dccd",
+      "title": "Add durable approved workflows and device actions with managed Cloud identity",
+      "pinContainsMerge": true,
+      "comparison": "ahead"
+    },
+    {
+      "url": "https://github.com/elizaOS/eliza/pull/33026",
+      "merged": true,
+      "mergeCommit": "28d835905f4b8e3c3d675b12c8a28f070bb25386",
+      "title": "feat: compose resident sessions, recoverable workers and approved device actions",
+      "pinContainsMerge": true,
+      "comparison": "ahead"
+    },
+    {
+      "url": "https://github.com/elizaOS/eliza/pull/33104",
+      "merged": true,
+      "mergeCommit": "bb669a907283269c1640967765e44931074b3a84",
+      "title": "fix(workflow): register the hosted digest routes /status advertises",
+      "pinContainsMerge": true,
+      "comparison": "ahead"
+    },
+    {
+      "url": "https://github.com/elizaOS/eliza/pull/33212",
+      "merged": true,
+      "mergeCommit": "6fa5a1015ab5866e283e3e7a7c772f8e800ccf14",
+      "title": "fix(app): support embedding host secure-store socket",
+      "pinContainsMerge": true,
+      "comparison": "ahead"
+    },
+    {
+      "url": "https://github.com/elizaOS/eliza/pull/33213",
+      "merged": true,
+      "mergeCommit": "df90e84500df616bd4c170f364a3a7f1dfed13b8",
+      "title": "fix(core): preserve cancellation and safe replies through egress swaps",
+      "pinContainsMerge": true,
+      "comparison": "ahead"
+    },
+    {
+      "url": "https://github.com/elizaOS/eliza/pull/33214",
+      "merged": true,
+      "mergeCommit": "4d12e1c0eea6f8651ee036140f091e9582d14679",
+      "title": "feat(calendar): add host-configured Android provider adapter",
+      "pinContainsMerge": true,
+      "comparison": "ahead"
+    },
+    {
+      "url": "https://github.com/elizaOS/eliza/pull/33216",
+      "merged": true,
+      "mergeCommit": "50989e5c30652b1e63b3c3abffc74b4082bfe35e",
+      "title": "fix(android): read secure-store frames on API 29",
+      "pinContainsMerge": true,
+      "comparison": "ahead"
+    },
+    {
+      "url": "https://github.com/elizaOS/eliza/pull/33217",
+      "merged": true,
+      "mergeCommit": "1fa0abdf4996efffe4f980c7ecb4c427886bae14",
+      "title": "feat(native-reminders): extract host-configured Android engine candidate",
+      "pinContainsMerge": true,
+      "comparison": "ahead"
+    },
+    {
+      "url": "https://github.com/elizaOS/eliza/pull/33218",
+      "merged": true,
+      "mergeCommit": "a054d8c361d1008c951cd05f1aab08855e616ce7",
+      "title": "fix(android): expose cancellable authenticated local streams",
+      "pinContainsMerge": true,
+      "comparison": "ahead"
+    },
+    {
+      "url": "https://github.com/elizaOS/eliza/pull/33220",
+      "merged": true,
+      "mergeCommit": "a1ae36defb0e4036b4e95d624c72325c08de25f9",
+      "title": "feat(workflow): generate reviewable typed phone drafts",
+      "pinContainsMerge": true,
+      "comparison": "ahead"
+    },
+    {
+      "url": "https://github.com/elizaOS/eliza/pull/33222",
+      "merged": true,
+      "mergeCommit": "f0b92d1a7f19da3c11c7858f0c502f1798486d13",
+      "title": "fix(workflow): publish Android source without hard links",
+      "pinContainsMerge": true,
+      "comparison": "ahead"
+    },
+    {
+      "url": "https://github.com/elizaOS/eliza/pull/33223",
+      "merged": true,
+      "mergeCommit": "d99a864e760406961a76a61a56d9d6977cb7dbe1",
+      "title": "feat(agent): opt in to phone workflows in lean and Android hosts",
+      "pinContainsMerge": true,
+      "comparison": "ahead"
+    },
+    {
+      "url": "https://github.com/elizaOS/eliza/pull/33226",
+      "merged": true,
+      "mergeCommit": "4b459aaf83957c74b830ffa657d9bef197d121e0",
+      "title": "fix(android): preserve workflow workers during resident shutdown",
+      "pinContainsMerge": true,
+      "comparison": "ahead"
+    },
+    {
+      "url": "https://github.com/elizaOS/eliza/pull/33227",
+      "merged": true,
+      "mergeCommit": "646d5ddfb1ce683b3b3512dfa71d2eae58427905",
+      "title": "feat(devices): bind workflow owners and authenticated enabled views",
+      "pinContainsMerge": true,
+      "comparison": "ahead"
+    },
+    {
+      "url": "https://github.com/elizaOS/eliza/pull/33228",
+      "merged": true,
+      "mergeCommit": "356823b09f0ca0ef5a7b34f84a8f410d4ed5e072",
+      "title": "feat(assistant): publish reviewed Clock handoff coordinator",
+      "pinContainsMerge": true,
+      "comparison": "ahead"
+    },
+    {
+      "url": "https://github.com/elizaOS/eliza/pull/33229",
+      "merged": true,
+      "mergeCommit": "85d7c46aea603ec2b69475495cfdcbd90895c094",
+      "title": "feat(app): host authenticated standalone Kokoro speech",
+      "pinContainsMerge": true,
+      "comparison": "ahead"
+    },
+    {
+      "url": "https://github.com/elizaOS/eliza/pull/33231",
+      "merged": true,
+      "mergeCommit": "233e6da0c88be2743d50aaf465b6794c1699d226",
+      "title": "feat(assistant): preserve reviewed reminder timing and creation",
+      "pinContainsMerge": true,
+      "comparison": "ahead"
+    },
+    {
+      "url": "https://github.com/elizaOS/eliza/pull/33230",
+      "merged": true,
+      "mergeCommit": "09698bd30668ff3748d7922279b06119d39a3bcf",
+      "pinContainsMerge": true,
+      "comparison": "ahead",
+      "supersedes": "https://github.com/elizaOS/eliza/pull/33235"
+    }
+  ]
+}

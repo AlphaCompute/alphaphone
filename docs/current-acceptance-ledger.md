@@ -1,7 +1,7 @@
 # Current Alpha Phone acceptance ledger
 
 The current source pin is defined by `upstream.lock.json`. The initial consolidation
-checkpoint below records an older 70-patch candidate; the complete 78-patch
+checkpoint below records an older 70-patch candidate; the complete 81-record
 disposition is in [the migration ledger](upstream-patch-migration.json).
 See [current product status](mvp-current-status.md) for maintained acceptance status.
 
