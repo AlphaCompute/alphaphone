@@ -135,8 +135,8 @@ jobs:
       # AARs, extracted sources and models are rebuilt in this clean job.
       - uses: actions/cache@v4
         with:
-          path: scripts/local-speech/downloads
-          key: speech-downloads-${{ runner.os }}-${{ hashFiles('scripts/local-speech/download-manifest.json') }}
+          path: .eliza/local-speech/downloads
+          key: speech-downloads-${{ runner.os }}-${{ hashFiles('vendor/eliza/packages/app/scripts/local-speech/download-manifest.json') }}
       - name: Acquire verified speech source, models and license references
         timeout-minutes: 15
         run: |
