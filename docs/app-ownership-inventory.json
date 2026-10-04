@@ -9604,8 +9604,8 @@
     {
       "file": "src/prototype/scan-correction-review.ts",
       "upstreamCandidate": [],
-      "bytes": 7893,
-      "sha256": "c879d0af6c3145e11be6f3014a5c28ddae597b951c355e77ee4e89afa156c0dc",
+      "bytes": 8002,
+      "sha256": "29a75faec4f9edffaa63da8ad822ce2f5bfbb34ebf5df6d968f63e71ca575c10",
       "lines": 31,
       "owner": "plugins/plugin-files",
       "disposition": "extract-or-split",
@@ -9663,9 +9663,9 @@
     {
       "file": "src/prototype/scan-dialog.css",
       "upstreamCandidate": [],
-      "bytes": 2990,
-      "sha256": "6c29e125713e533f80da95cb9fd0fb7d2c0a8da0e0976daa3f08c5248a01db2e",
-      "lines": 50,
+      "bytes": 3112,
+      "sha256": "72ddf181b2bd460db2c8ed17b25bce1ce9d782c5ab931fa129f42085c2f806dd",
+      "lines": 52,
       "owner": "alphaphone",
       "disposition": "retain-or-split",
       "reason": "Product composition, design reference, enabled views, fixtures, or visual presentation. Extract embedded domain behavior separately.",
@@ -9755,6 +9755,12 @@
           "tags": [
             "presentation"
           ]
+        },
+        {
+          "line": 51,
+          "tags": [
+            "presentation"
+          ]
         }
       ],
       "reachableFromMain": true
@@ -9762,8 +9768,8 @@
     {
       "file": "src/prototype/scan-document.ts",
       "upstreamCandidate": [],
-      "bytes": 9406,
-      "sha256": "b91933abe2666b9b56d5d5f6d044b818dee348fc74f46284bd980c5d63bc483d",
+      "bytes": 9515,
+      "sha256": "7aeae0f7b51b9a63548768f5eb737fc10e16903bd5a50e0e74b1c6fe10704c4a",
       "lines": 30,
       "owner": "plugins/plugin-files",
       "disposition": "extract-or-split",
@@ -10068,8 +10074,8 @@
     {
       "file": "src/prototype/scan-searchable-review.ts",
       "upstreamCandidate": [],
-      "bytes": 6378,
-      "sha256": "c995f621d249595c5e9903ba2a0dbfe482aa4ceaac65a8bcb83bea59dd8e1917",
+      "bytes": 6487,
+      "sha256": "9c07ec58d2a76cd6031453fa46399b60c8a194480945450de4bd5ada9d96f878",
       "lines": 28,
       "owner": "plugins/plugin-files",
       "disposition": "extract-or-split",
