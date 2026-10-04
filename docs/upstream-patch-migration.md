@@ -169,3 +169,12 @@ is being rebuilt and requires a new both-variant run before acceptance.
 
 The selected browser Calendar recovery/completion and upstream Clock handoff
 suite finished with 36 passes (`test-results/upstream-patch-migration/browser-flows.log`).
+
+The next adopted merge is 98 commits ahead of the qualified candidate, with 200
+changed paths in the GitHub comparison saved as
+`test-results/upstream-patch-migration/followup-adoption-diff.json`. This includes
+reminder, briefing and Android changes as well as #33241. It therefore requires
+fresh runtime preparation and qualification, not a metadata-only pin update.
+The external-editor return fixture additionally tolerates a missing accessibility
+window during activity replacement within its existing deadline; it still requires
+Etar identity immediately before any Back event. Both instrumentation APKs build.

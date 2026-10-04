@@ -124,6 +124,9 @@ public class CalendarExternalEditorInstrumentedTest {
     if(appId.equals(active))return;
     SystemClock.sleep(100);
    }
+   // A missing AX window during activity replacement is not an app identity.
+   // Retry within the existing overall deadline, without injecting any input.
+   if(active==null||"null".equals(active))continue;
    if("com.android.settings".equals(active)){
     AccessibilityNodeInfo settings=ui.getRootInActiveWindow();
     boolean alarmPage=visibleExactText(settings,"Alarms & reminders",0);
@@ -142,7 +145,7 @@ public class CalendarExternalEditorInstrumentedTest {
    // Re-read immediately before injection, avoiding a cached Etar window.
    AccessibilityNodeInfo latest=ui.getRootInActiveWindow();
    if(latest!=null&&appId.contentEquals(latest.getPackageName()))return;
-   assertNotNull("Foreground window before Back",latest);
+   if(latest==null||latest.getPackageName()==null)continue;
    assertEquals(ETAR,String.valueOf(latest.getPackageName()));back();
   }
   fail("Back did not return from Etar to Alpha; "+diagnostics(null));
