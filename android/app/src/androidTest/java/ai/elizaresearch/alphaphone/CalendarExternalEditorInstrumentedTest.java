@@ -93,7 +93,19 @@ public class CalendarExternalEditorInstrumentedTest {
   }
   fail("Implicit Calendar resolver did not select Etar once; "+diagnostics(null));
  }
- private void tap(String id)throws Exception{AccessibilityNodeInfo n=awaitNode(id,null);while(n!=null&&!n.isClickable())n=n.getParent();assertNotNull(n);assertTrue("Etar click "+id,n.performAction(AccessibilityNodeInfo.ACTION_CLICK));}
+ private void tap(String id)throws Exception{
+  long deadline=SystemClock.elapsedRealtime()+20000;
+  while(SystemClock.elapsedRealtime()<deadline){
+   denyOptionalEtarContacts();
+   // Resolve afresh after editor transitions; a rejected stale-node action is
+   // not a successful tap. Stop immediately after the platform accepts it.
+   AccessibilityNodeInfo n=find(id,null);
+   while(n!=null&&!n.isClickable())n=n.getParent();
+   if(n!=null&&n.isVisibleToUser()&&n.isEnabled()&&n.performAction(AccessibilityNodeInfo.ACTION_CLICK))return;
+   SystemClock.sleep(100);
+  }
+  fail("Etar click did not become available: "+id+"; "+diagnostics(null));
+ }
  private boolean returnedViaLauncher;
  private void back(){key(KeyEvent.KEYCODE_BACK);}
  private void key(int code){
