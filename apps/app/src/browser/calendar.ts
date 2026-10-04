@@ -14,20 +14,17 @@ type State={creations?:Record<string,CreationReceipt>;alertDismissed?:Record<str
 const initial=():State=>({sourceRevision:revision(),events:[]});
 const source={id:'local',name:'Browser calendar',account:'Alpha Phone',local:true,writable:true};
 const matches=(row:EventRow,expected:Partial<EventRow>|undefined)=>!!expected&&(!expected.revision||expected.revision===row.revision)&&(['title','body','location','begin','end'] as const).every(k=>row[k]===expected[k]);
-async function readCalendar<T>(initial:()=>T,signal?:AbortSignal):Promise<T>{
- const raw=await calendarDocument.readRaw(signal);return raw===null?calendarDocument.edit(initial,data=>data,signal):JSON.parse(raw);
-}
 export class BrowserCalendar extends WebPlugin {
   private reviews=new BrowserReviews();
   private async presentationState(){
     const cancellation=new AbortController(),view=document.documentElement.dataset.activeView;
     const retire=()=>cancellation.abort(),visibility=()=>{if(document.hidden)retire();};
     const events=['alpha-back','pagehide','alpha:device-state','launcher-home','alpha:browser-open-view'];
-    for(const event of events)window.addEventListener(event,retire);
+    for(const event of events)window.addEventListener(event,retire,true);
     document.addEventListener('visibilitychange',visibility);
-    try{visibility();const state=await readCalendar(initial,cancellation.signal);return cancellation.signal.aborted||view!==document.documentElement.dataset.activeView?null:state;}
-    catch(error){if(cancellation.signal.aborted)return null;throw error;}
-    finally{for(const event of events)window.removeEventListener(event,retire);document.removeEventListener('visibilitychange',visibility);}
+    try{visibility();const state=await calendarDocument.read(initial,cancellation.signal);return cancellation.signal.aborted||view!==document.documentElement.dataset.activeView?null:state;}
+    catch(error){if(cancellation.signal.aborted&&error===cancellation.signal.reason)return null;throw error;}
+    finally{for(const event of events)window.removeEventListener(event,retire,true);document.removeEventListener('visibilitychange',visibility);}
   }
 
   private active=new Map<string,{cancelled:boolean;controller:AbortController}>();
@@ -39,7 +36,7 @@ export class BrowserCalendar extends WebPlugin {
     const ticket={cancelled:false,controller:new AbortController()};this.active.set(input.operationId,ticket);
     const fields=(row:EventRow):CalendarFields=>({title:row.title,description:row.body,location:row.location,start:new Date(row.begin).toISOString(),end:new Date(row.end).toISOString(),timeZone:row.timeZone||Intl.DateTimeFormat().resolvedOptions().timeZone});
     try {
-      const data=(await readCalendar(initial,ticket.controller.signal)),row=operation.type==='calendar_create'?undefined:calendarRecord(data.events,operation.target.eventId);
+      const data=(await calendarDocument.read(initial,ticket.controller.signal)),row=operation.type==='calendar_create'?undefined:calendarRecord(data.events,operation.target.eventId);
       const prior=data.receipts?.[input.operationId];
       if(prior)return prior.binding===binding?{status:'applied',result:prior.result}:{status:'conflict'};
       if(ticket.cancelled||document.hidden)return {status:'cancelled'};
@@ -69,7 +66,7 @@ ${reviewed.description}`);
         }
         (current.receipts??={})[input.operationId]={binding,result};return {status:'applied',result};
       },ticket.controller.signal);
-    } catch(error){if(ticket.cancelled)return {status:'cancelled'};throw error;} finally {if(this.active.get(input.operationId)===ticket)this.active.delete(input.operationId);}
+    } catch(error){if(ticket.controller.signal.aborted&&error===ticket.controller.signal.reason)return {status:'cancelled'};throw error;} finally {if(this.active.get(input.operationId)===ticket)this.active.delete(input.operationId);}
   }
   async changePreferences(input:{action:'visibility'|'color'}) {
     if(!['visibility','color'].includes(input.action))throw Error('Invalid calendar preference.');
@@ -121,9 +118,9 @@ ${reviewed.description}`);
     if(!row||row.revision!==input.revision||!row.video)throw Error('This meeting changed. Reopen the event.');
     return openCalendarMeeting(row.title,(input.people||row.who||[]).slice(0,100));
   }
-  async listAlerts(){const data=(await readCalendar(initial));return {items:calendarAlerts(data.events,data.alertDismissed||{})};}
+  async listAlerts(){const data=(await calendarDocument.read(initial));return {items:calendarAlerts(data.events,data.alertDismissed||{})};}
   async alertAction(input:{id:string;revision:string;open:boolean}){
-    const data=(await readCalendar(initial)),alert=calendarAlerts(data.events,data.alertDismissed||{}).find(row=>row.id===input.id&&row.revision===input.revision);
+    const data=(await calendarDocument.read(initial)),alert=calendarAlerts(data.events,data.alertDismissed||{}).find(row=>row.id===input.id&&row.revision===input.revision);
     if(!alert)throw Error('Calendar alert changed.');
     if(input.open){const result=await this.open({id:alert.eventId});if(result.status!=='opened')throw Error('Calendar navigation was cancelled.');}
     await calendarDocument.edit(initial,current=>{const active=calendarAlerts(current.events,current.alertDismissed||{}).find(row=>row.id===input.id&&row.revision===input.revision);if(!active)throw Error('Calendar alert changed.');current.alertDismissed=Object.fromEntries(Object.entries(current.alertDismissed||{}).filter(([,at])=>at>Date.now()-2*86400000));current.alertDismissed[active.receipt]=Date.now();});
@@ -132,9 +129,9 @@ ${reviewed.description}`);
   async requestAccess(){return {status:'granted'};}
   async requestWorkflowReadAccess(){return {status:'granted'};}
   async workflowCalendars(){return {status:'ready',calendars:[source]};}
-  async list(input:{begin:number;end:number}) {const data=await readCalendar(initial);return {status:'ready',calendars:[{...source,...(data.preferences??{visible:true,color:'acc'})}],...calendarRange(data.events,input)};}
-  async prepareAgentSource(){const data=await readCalendar(initial);return {status:'ready',sourceId:'local',sourceRevision:data.sourceRevision};}
-  async pendingCreations(){const data=await readCalendar(initial);return {status:'ready',creations:Object.values(data.creations||{}).filter(row=>!row.acknowledged).map(row=>row.result)};}
+  async list(input:{begin:number;end:number}) {const data=await calendarDocument.read(initial);return {status:'ready',calendars:[{...source,...(data.preferences??{visible:true,color:'acc'})}],...calendarRange(data.events,input)};}
+  async prepareAgentSource(){const raw=await calendarDocument.readRaw(),data:State=raw===null?await calendarDocument.edit(initial,data=>data):JSON.parse(raw);return {status:'ready',sourceId:'local',sourceRevision:data.sourceRevision};}
+  async pendingCreations(){const data=await calendarDocument.read(initial);return {status:'ready',creations:Object.values(data.creations||{}).filter(row=>!row.acknowledged).map(row=>row.result)};}
   async acknowledgeCreation(input:{creationId:string}){return calendarDocument.edit(initial,data=>{const receipt=data.creations?.[input.creationId];if(!receipt)throw Error('Creation receipt unavailable');receipt.acknowledged=true;return {status:'acknowledged'};});}
   async save(input:Partial<EventRow>&{expected?:Partial<EventRow>;creationId?:string;separateCreation?:boolean}) {
     if(!input.title?.trim()||!Number.isFinite(input.begin)||!Number.isFinite(input.end)||input.end!<=input.begin!||input.calendarId!=='local')throw Error('Review the event title, calendar and dates.');
@@ -169,7 +166,7 @@ ${reviewed.description}`);
       return result;
     });
   }
-  async inspect(input:{id:string;calendarId:string;expected?:Partial<EventRow>}) {const data=(await readCalendar(initial)),row=calendarRecord(data.events,input.id);return row&&row.calendarId===input.calendarId&&matches(row,input.expected)?{status:'ready',revision:row.revision,sourceRevision:data.sourceRevision}:{status:'conflict'};}
+  async inspect(input:{id:string;calendarId:string;expected?:Partial<EventRow>}) {const data=(await calendarDocument.read(initial)),row=calendarRecord(data.events,input.id);return row&&row.calendarId===input.calendarId&&matches(row,input.expected)?{status:'ready',revision:row.revision,sourceRevision:data.sourceRevision}:{status:'conflict'};}
   async remove(input:{id:string;calendarId:string;expected:Partial<EventRow>;revision:string}) {return calendarDocument.edit(initial,data=>{const row=calendarRecord(data.events,input.id);if(!row||row.calendarId!==input.calendarId||row.revision!==input.revision||!matches(row,input.expected))return {status:'conflict'};data.events=deleteCalendarRecord(data.events,row,revision());return {status:'deleted'};});}
   async readWorkflowRange(input:{calendarIds:string[];start:string;end:string;maximumEvents:number}) {const {events}=await this.list({begin:Date.parse(input.start),end:Date.parse(input.end)});return {status:'ready',events:events.filter(e=>input.calendarIds.includes(e.calendarId)).slice(0,input.maximumEvents).map(e=>({...e,start:new Date(e.begin).toISOString(),end:new Date(e.end).toISOString(),allDay:!!e.allDay}))};}
   async open(input?:{id?:string}){

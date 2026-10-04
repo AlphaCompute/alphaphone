@@ -54,3 +54,21 @@ test('Calendar reads retain the current receipt instead of invalidating reset re
  const result=await page.evaluate(async()=>{const {BrowserCalendar}=await import('/src/browser/calendar.ts');const {calendarDocument}=await import('/src/browser/calendar-store.ts');const calendar=new BrowserCalendar();await calendar.prepareAgentSource();const before=await calendarDocument.capture();await Promise.all([calendar.prepareAgentSource(),calendar.pendingCreations(),calendar.list({begin:Date.now(),end:Date.now()+86400000}),calendar.listAlerts()]);return {before,after:await calendarDocument.capture()};});
  expect(result.after).toEqual(result.before);
 });
+for(const kind of ['response','series-edit','series-delete','meeting','open'] as const)test(`Home during queued ${kind} read prevents late presentation`,async({page})=>{
+ await page.addInitScript(()=>localStorage.setItem('alpha.connection.selection.v1',JSON.stringify({kind:'offline'})));
+ await page.goto('/?mode=dev');
+ await page.evaluate(async()=>{const {BrowserCalendar}=await import('/src/browser/calendar.ts');const calendar=new BrowserCalendar(),begin=Date.now()+60000;await calendar.save({creationId:crypto.randomUUID(),calendarId:'local',title:'Retired presentation',begin,end:begin+60000,repeat:'daily',who:['maya'],video:true});(window as any).queuedCalendar=calendar;(window as any).queuedRow=(await calendar.list({begin,end:begin+86400000})).events[0];});
+ await page.evaluate(holdCalendarTransactions);
+ await page.evaluate(async kind=>{const calendar=(window as any).queuedCalendar,row=(window as any).queuedRow,input={id:row.id,revision:row.revision};const pending=kind==='response'?calendar.editResponse({...input,person:'maya',name:'Maya'}):kind==='series-edit'?calendar.editSeries(input):kind==='series-delete'?calendar.removeSeries(input):kind==='meeting'?calendar.joinMeeting(input):calendar.open({id:row.id});(window as any).presentationOutcome=pending;window.dispatchEvent(new Event('launcher-home'));(window as any).releaseCalendarTransactions();await (window as any).calendarTransactionsHeld;},kind);
+ expect(await page.evaluate(()=>(window as any).presentationOutcome)).toEqual({status:'cancelled'});
+ await expect(page.getByRole('dialog')).toHaveCount(0);
+});
+test('empty Calendar queries do not create data before an agent source is requested',async({page})=>{
+ await page.route('**/__empty-calendar',route=>route.fulfill({contentType:'text/html',body:'<!doctype html><title>Empty Calendar</title>'}));await page.goto('/__empty-calendar');
+ const result=await page.evaluate(async()=>{
+  const {BrowserCalendar}=await import('/src/browser/calendar.ts'),{calendarDocument}=await import('/src/browser/calendar-store.ts');const calendar=new BrowserCalendar();
+  await Promise.all([calendar.list({begin:Date.now(),end:Date.now()+86400000}),calendar.listAlerts(),calendar.pendingCreations(),calendar.inspect({id:'missing',calendarId:'local'})]);
+  const empty=await calendarDocument.capture(),first=await calendar.prepareAgentSource(),saved=await calendarDocument.capture(),second=await calendar.prepareAgentSource(),after=await calendarDocument.capture();return {empty,first,second,saved,after};
+ });
+ expect(result.empty.snapshot).toBeUndefined();expect(result.empty.raw).toBeNull();expect(result.first.sourceRevision).toMatch(/^[a-f0-9]{64}$/);expect(result.second).toEqual(result.first);expect(result.after).toEqual(result.saved);
+});
