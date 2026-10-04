@@ -85,6 +85,9 @@ lost an update. Old tabs must be closed for migration; legacy snapshot checks
 are not transactions. Recovery retains the exact older copy and requires review
 before resetting the canonical document.
 
+The [browser storage migration map](browser-storage-migration.md) records the
+remaining domains and their required reader, writer and recovery changes.
+
 ## Design and accessibility
 
 Keep Alpha's product identity, light/dark tokens, display/text typography, phone
