@@ -24,7 +24,7 @@ for(const enabled of [false,true])for(const failure of [false,true]){
  ]);
  let sanitizerImports=0;
  const module=new vm.SourceTextModule(stripTypeScriptTypes(source),{context,importModuleDynamically:async name=>{
-  assert.equal(name,'@elizaos/plugin-local-inference/routes/local-inference-tts-route');sanitizerImports++;
+  assert.equal(name,'@elizaos/plugin-local-inference/routes');sanitizerImports++;
   const helper=new vm.SyntheticModule(['sanitizeLocalInferenceSpeechText'],function(){this.setExport('sanitizeLocalInferenceSpeechText',value=>value);},{context});
   await helper.link(()=>{});await helper.evaluate();return helper;
  }});
