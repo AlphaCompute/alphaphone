@@ -59,7 +59,7 @@ product import and recovery policy. Other browser domains still use
 `browser/store.ts` and require their own transactional-storage audit and migration;
 Calendar qualification does not prove those domains safe.
 
-The [browser storage migration map](browser-storage-migration.md) records the
+The [browser storage ownership map](browser-storage.md) records the
 remaining domains and their required reader, writer and recovery changes.
 
 ## Design and accessibility
