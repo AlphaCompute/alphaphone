@@ -266,11 +266,11 @@ Seven focused Clock scenarios pass, including rendered CRUD/reload, custom snooz
 
 ### October 2 integrated browser snapshot
 
-The combined renderer/runtime/device/media snapshot passed all **245 browser tests**
-and **82 repository tests**, typecheck and build. See the latest integration section
-in [the MVP report](mvp-browser-review.md#october-2--integrated-browser-runtime-device-and-media-review)
-for exact scope, post-freeze Clock edits, the reproduced simulator startup defect
-and remaining development work. No Android build was run by this integration pass.
+The recorded renderer/runtime/device/media snapshot passed **245 browser tests**
+and **82 repository tests**, typecheck and build; no Android build ran in that
+campaign. These historical counts do not qualify current main. See the
+[browser review](mvp-browser-review.md#qualification-and-evidence) for current
+qualification boundaries and unresolved work.
 
 
 Clock research references: [MDN Web Audio best practices](https://developer.mozilla.org/en-US/docs/Web/API/Web_Audio_API/Best_practices) describes creating/resuming audio contexts within user gestures and exposing sound controls; [MDN Web Locks](https://developer.mozilla.org/en-US/docs/Web/API/Web_Locks_API) describes origin-scoped coordination. The implementation uses those APIs for bounded local tones and one foreground alarm owner. Audio parameter tests use a controlled context; they do not assert physical-speaker acceptance.
@@ -308,9 +308,8 @@ Checkpoint 14 verification: **17/17** isolated Calendar/preferences/assistant/br
 Clock synchronization follow-up: the two post-integration Clock corrections and the
 five Calendar assistant scenarios passed an isolated **39-case** browser campaign
 and **82** repository tests, typecheck and build. The built-web Clock handoff fixture
-also passed in Chromium with simulated native transport. See the corresponding
-October 2 section of [the MVP report](mvp-browser-review.md) for boundaries and
-remaining Calendar editor work. No Android build ran in this synchronization pass.
+also passed in Chromium with simulated native transport. See the [browser review](mvp-browser-review.md) for current boundaries and
+unresolved Calendar work. No Android build ran in this synchronization pass.
 
 
 ### Complex browser Calendar editing (15)

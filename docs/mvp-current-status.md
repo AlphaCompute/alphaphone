@@ -1,6 +1,6 @@
 # Current MVP status — October 4, 2026
 
-The MVP is **not complete**. This is the current requirement/evidence index; [the browser review](mvp-browser-review.md) retains the chronological implementation record and failed attempts. Older build and enclave checkpoints are historical evidence, not the current acceptance checklist.
+The MVP is **not complete**. This is the current requirement/evidence index; [the browser review](mvp-browser-review.md) indexes implemented surfaces and unresolved browser defects. Older build and enclave checkpoints are historical evidence, not the current acceptance checklist.
 
 The active browser-development host at port 5317 now uses admitted runtime `4c7cc7038b6e77581bd81468cba1b45374deec6c`, prepared with the strict immutable-source verifier. Agent, Whisper and Kokoro report ready; stopped-profile backups preserve the earlier runtime states. Owner, agent and all 17 conversation IDs match before/after restart. Actual browser capture → Whisper transcription → Kokoro playback/completion/Stop/disconnect passes in 22.5 seconds with unchanged stage deadlines. Text inference remains hosted Cerebras and both redaction switches remain off. The current upstream Kokoro lifecycle has owner cancellation and pipe-failure retirement instead of an independent boot deadline; synthesis still has its 30-second bound. Older 15/60-second boot observations below describe their recorded historical pins. This browser result does not establish Android or physical-microphone acceptance.
 
