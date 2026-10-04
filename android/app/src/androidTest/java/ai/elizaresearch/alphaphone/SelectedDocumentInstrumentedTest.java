@@ -153,7 +153,7 @@ public class SelectedDocumentInstrumentedTest {
     waitFor(scenario,"document.querySelector('dialog[aria-label=\"Ask about selected content\"][open]') && document.querySelector('textarea[aria-label=\"Content excerpt\"]').value==="+JSONObject.quote(textA));
     assertEquals("Review does not send the selected document", "true", eval(scenario,"document.querySelector('[data-alpha-layer=conversation]').getAttribute('aria-hidden') === 'true'"));
     eval(scenario,"[...document.querySelectorAll('dialog[open] button')].find(b=>b.textContent==='Use in conversation').click()");
-    waitFor(scenario,"document.querySelector('[data-alpha-layer=conversation]').getAttribute('aria-hidden') === 'false' && document.querySelector('input[aria-label=\"Ask Alpha\"],textarea[aria-label=\"Ask Alpha\"]').value.includes("+JSONObject.quote(textA)+")");
+    waitFor(scenario,"document.querySelector('[data-alpha-layer=conversation]').getAttribute('aria-hidden') === 'false' && ("+AppNavigation.composer()+")?.value.includes("+JSONObject.quote(textA)+")");
     assertEquals("File remains the active agent view", "\"files\"", eval(scenario,"document.documentElement.dataset.activeView"));
     click(scenario,"Minimize chat");
     waitFor(scenario,"document.querySelector('[data-alpha-layer=conversation]').getAttribute('aria-hidden') === 'true'");
