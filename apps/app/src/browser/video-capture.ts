@@ -44,7 +44,10 @@ export class BrowserVideoCapture {
      const canvas=drawCameraFrame(video,transform);
      // Codec lists contain commas; retaining them in a FileReader data URL
      // would turn part of its media type into payload before the base64 marker.
-     resolve({blob:new Blob(chunks,{type:recorder.mimeType.split(';')[0]}),duration:Math.max(.001,(session.ended-session.started)/1000),width,height,image:canvas.toDataURL('image/jpeg',.85)});chunks.length=0;
+     // Some recorders clear mimeType when they stop; emitted chunks retain it.
+     const mime=(recorder.mimeType||chunks.find(chunk=>chunk.type)?.type||'').split(';')[0].trim().toLowerCase();
+     if(!['video/webm','video/mp4'].includes(mime))throw Error('Video format could not be confirmed. Try recording again.');
+     resolve({blob:new Blob(chunks,{type:mime}),duration:Math.max(.001,(session.ended-session.started)/1000),width,height,image:canvas.toDataURL('image/jpeg',.85)});chunks.length=0;
     }catch(e){reject(e instanceof Error?e:Error('Video could not finish.'));}
    };
    const stop=()=>{if(session.settled)return;session.ended??=performance.now();clearTimeout(session.timer);session.deadline??=setTimeout(()=>finish(Error('Video did not finish. Try again.')),5000);try{if(recorder.state!=='inactive')recorder.stop();}catch(e){finish(e instanceof Error?e:Error('Video could not stop.'));}};

@@ -74,3 +74,14 @@ test('unsupported timestamp encoder falls back without dropping source audio',as
  const warnings:string[]=[];page.on('console',message=>{if(message.type()==='warning')warnings.push(message.text());});
  const source=await record(page);const result=await page.evaluate(async source=>{const {renderVideoEdit}=await import('/src/browser/video-edit.ts'),support=VideoEncoder.isConfigSupported;VideoEncoder.isConfigSupported=async config=>({supported:false,config});try{const copy=await renderVideoEdit({path:source.path!,duration:source.duration!},{start:0,end:.8,rotation:90,crop:false},new AbortController().signal),audio=new AudioContext();try{const buffer=await audio.decodeAudioData(await(await fetch(copy.path)).arrayBuffer()),samples=buffer.getChannelData(0);return {width:copy.width,height:copy.height,rms:Math.sqrt(samples.reduce((s,n)=>s+n*n,0)/samples.length)};}finally{await audio.close();}}finally{VideoEncoder.isConfigSupported=support;}},source);expect(result.width).toBe(240);expect(result.height).toBe(320);expect(result.rms).toBeGreaterThan(.05);expect(warnings.filter(message=>message.includes('discarded'))).toEqual([]);
 });
+
+
+test('legacy untyped recordings remain editable without changing their stored original',async({page})=>{
+ const source=await record(page);const result=await page.evaluate(async source=>{
+  const {renderVideoEdit}=await import('/src/browser/video-edit.ts');const legacy=source.path!.replace(/^data:video\/(?:webm|mp4);base64,/, 'data:application/octet-stream;base64,');
+  const copy=await renderVideoEdit({path:legacy,duration:source.duration!},{start:0,end:.5,rotation:90,crop:false},new AbortController().signal);
+  const video=document.createElement('video');video.muted=true;video.src=copy.path;document.body.append(video);await video.play();const width=video.videoWidth;video.pause();video.remove();
+  let rejected=false;try{await renderVideoEdit({path:'data:application/octet-stream;base64,'+btoa('<html>not video</html>'),duration:1},{start:0,end:.5,rotation:0,crop:false},new AbortController().signal);}catch{rejected=true;}
+  const {browserPhotoLibrary:p}=await import('/src/prototype/browser-camera.ts');return {width,rejected,unchanged:(await p.list()).items[0].path===source.path,prefix:copy.path.split(';')[0]};
+ },source);expect(result).toEqual({width:240,rejected:true,unchanged:true,prefix:expect.stringMatching(/^data:video\/(webm|mp4)$/)});
+});

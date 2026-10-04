@@ -13,7 +13,8 @@ test.beforeEach(async({page})=>{
  });
  await page.goto('/');await page.getByRole('button',{name:'Camera',exact:true}).click();await expect.poll(()=>page.locator('[aria-label^="Viewfinder."] video').evaluate((v:HTMLVideoElement)=>v.readyState)).toBeGreaterThanOrEqual(2);
 });
-test('video records microphone audio, saves exactly once and decodes after reload',async({page})=>{
+for(const clearedMime of [false,true])test(`video records microphone audio, saves exactly once and decodes after reload (cleared MIME: ${clearedMime})`,async({page})=>{
+ if(clearedMime)await page.evaluate(()=>{const Native=MediaRecorder;(window as any).MediaRecorder=class extends Native{get mimeType(){return this.state==='inactive'?'':super.mimeType;}};});
  const result=await page.evaluate(async()=>{
   const {browserCamera:camera,browserPhotoLibrary:photos}=await import('/src/prototype/browser-camera.ts');
   await camera.startRecording({audio:true,maxDuration:.5,maxFileSize:1_000_000});
@@ -27,10 +28,10 @@ test('video records microphone audio, saves exactly once and decodes after reloa
   const blob=await(await fetch(row.path!)).blob(),url=URL.createObjectURL(blob),video=document.createElement('video'),ac=new AudioContext();
   video.src=url;video.loop=true;document.body.append(video);
   const source=ac.createMediaElementSource(video),analyser=ac.createAnalyser(),silent=ac.createGain();silent.gain.value=0;source.connect(analyser);analyser.connect(silent);silent.connect(ac.destination);
-  try{await ac.resume();await video.play();const samples=new Float32Array(analyser.fftSize);let rms=0;const start=performance.now();while(performance.now()-start<1500&&rms<.01){await new Promise(resolve=>setTimeout(resolve,25));analyser.getFloatTimeDomainData(samples);rms=Math.max(rms,Math.sqrt(samples.reduce((sum,n)=>sum+n*n,0)/samples.length));}const tracks=typeof (video as any).captureStream==='function'?(video as any).captureStream().getTracks().map((t:MediaStreamTrack)=>t.kind):null;return {kind:row.kind,tracks,width:row.width,height:row.height,decodedWidth:video.videoWidth,rms};}
+  try{await ac.resume();await video.play();const samples=new Float32Array(analyser.fftSize);let rms=0;const start=performance.now();while(performance.now()-start<1500&&rms<.01){await new Promise(resolve=>setTimeout(resolve,25));analyser.getFloatTimeDomainData(samples);rms=Math.max(rms,Math.sqrt(samples.reduce((sum,n)=>sum+n*n,0)/samples.length));}const tracks=typeof (video as any).captureStream==='function'?(video as any).captureStream().getTracks().map((t:MediaStreamTrack)=>t.kind):null;return {mime:blob.type,kind:row.kind,tracks,width:row.width,height:row.height,decodedWidth:video.videoWidth,rms};}
   finally{video.pause();video.removeAttribute('src');video.load();video.remove();source.disconnect();analyser.disconnect();silent.disconnect();await ac.close();URL.revokeObjectURL(url);}
 
- });expect(decoded).toMatchObject({kind:'video',width:320,height:240});expect(decoded.decodedWidth).toBe(320);expect(decoded.rms).toBeGreaterThan(.01);if(decoded.tracks)expect(decoded.tracks.sort()).toEqual(['audio','video']);
+ });expect(decoded.mime).toMatch(/^video\/(webm|mp4)$/);expect(decoded).toMatchObject({kind:'video',width:320,height:240});expect(decoded.decodedWidth).toBe(320);expect(decoded.rms).toBeGreaterThan(.01);if(decoded.tracks)expect(decoded.tracks.sort()).toEqual(['audio','video']);
 });
 test('late microphone permission after camera closure is released and cannot save',async({page})=>{
  await page.evaluate(async()=>{(window as any).videoTest.held=true;const {browserCamera}=await import('/src/prototype/browser-camera.ts');(window as any).pendingVideo=browserCamera.startRecording({audio:true,maxDuration:1,maxFileSize:1000000}).then(()=>false,()=>true);});
