@@ -4385,7 +4385,10 @@ var WF_SEED = [
         log: [["When", "Started at 7:00 AM, a weekday.", "ok"], ["Read", "9 new emails and 4 events.", "ok"], ["Write", "Two things need you: roadmap review at 2, coffee with Lena at 8:30.", "ok"], ["Speak", "Spoke it at 7:00 while you were already on the phone.", "ok"]],
         out: "Morning. Coffee with Lena at 8:30 and the roadmap review at 2. Nothing urgent overnight." },
       { id: "r13", when: "Fri, 7:00 AM", status: "skip", sum: "You'd already read your inbox", dur: "",
-        log: [["When", "Started at 7:00 AM, a weekday.", "ok"], ["Read", "You'd opened Mail at 6:41 and read everything.", "ok"], ["Write", "Nothing new to say, so I didn't write a brief.", "skip"], ["Speak", "Skipped.", "skip"]], out: "" }
+        log: [["When", "Started at 7:00 AM, a weekday.", "ok"], ["Read", "You'd opened Mail at 6:41 and read everything.", "ok"], ["Write", "Nothing new to say, so I didn't write a brief.", "skip"], ["Speak", "Skipped.", "skip"]], out: "" },
+      { id: "r14", when: "Thu, 7:00 AM", status: "fail", sum: "Calendar access was revoked", dur: "",
+        log: [["When", "Started at 7:00 AM, a weekday.", "ok"], ["Read", "Calendar access was revoked.", "fail"], ["Write", "No brief was created from incomplete sources.", "skip"], ["Speak", "Nothing was spoken.", "skip"]],
+        out: "", fix: "Reconnect your calendar account, then review the sources before running again." }
     ] },
   { id: 2, name: "Protect focus", on: true,
     short: "Only Maya gets through during deep work",
@@ -4566,7 +4569,7 @@ registerView("workflows", {
   preset: function (sub) {
     if (sub === "flow") return { open: 1 };
     if (sub === "run") return { open: 1, run: "latest" };
-    if (sub === "failed") return { open: 3, run: "r31" };
+    if (sub === "failed") return { open: 1, run: "r14" };
     if (sub === "new") return { create: true };
   },
   immersive: function (st) { return (st.build || st.create) && st.sheet ? { noPill: true } : null; },
