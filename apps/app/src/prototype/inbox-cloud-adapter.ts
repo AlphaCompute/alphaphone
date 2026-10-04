@@ -1,5 +1,5 @@
 import { registerPlugin } from '../platform-plugins';
-const attachmentNative=registerPlugin<{openReviewed(input:Record<string,unknown>):Promise<{message:string}>;cancel():Promise<void>}>('AlphaMailAttachments');
+const attachmentNative=registerPlugin<{openReviewed(input:Record<string,unknown>):Promise<{message:string}>;saveReviewed(input:Record<string,unknown>):Promise<{status:string;message:string}>;cancel():Promise<void>}>('AlphaMailAttachments');
 import {reviewMailContext,validateMailContext,type ReviewedMailContext,type MailContextSource} from '../runtime/reviewed-mail-context';
 import { inboxProviderControls } from './inbox-provider-controls';
 import { inboxDrafts } from './inbox-drafts';
@@ -21,7 +21,7 @@ export function installInboxCloudAdapter(Component: any, views: Record<string, B
   let loadedQuery = '', loadedLimit: 25 | 50 = 25;
   let thread: {id:string;previousOffsets:number[];offset:number;historyId:string;nextOffset:number|null;total:number;messages:{message:GmailMessage;bodyText:string;historyId:string|null;attachments?:{partId:string;name:string;mimeType:string;size:number;supported:boolean}[]}[]}|null=null;
   let contextReview:ReviewedMailContext|null=null,contextBusy=false;
-  let attachmentView:{name:string;text:string;hash:string;external:boolean;open:()=>void}|null=null;
+  let attachmentView:{name:string;text:string;hash:string;external:boolean;open:()=>void;save:()=>void;saveDisabled:boolean;saveStatus:string}|null=null;
   let selected = '', body: { message: GmailMessage; bodyText: string; historyId?:string|null;attachments?:{partId:string;name:string;mimeType:string;size:number;supported:boolean}[] } | null = null;
   let status = 'Connect Eliza Cloud to use Gmail', phase = 'idle', revision = '';
   let agentSession = connectionController.getSnapshot().session?.sessionId;
@@ -114,7 +114,11 @@ export function installInboxCloudAdapter(Component: any, views: Record<string, B
   async function sendContext(){if(!contextReview||contextBusy)return;contextBusy=true;publish();try{const review=contextReview,destination=connectionController.getSnapshot().session;if(!destination)throw new Error('Agent disconnected');const text=await validateMailContext(review,mailContext(),destination);if(contextReview!==review)throw new Error('Review closed');contextReview=null;publish();if(!api)throw new Error("Inbox closed");await api.sendReviewedMail(text,destination);}catch(error){api?.toast((error as Error).message);}finally{contextBusy=false;publish();}}
   async function openAttachment(source:NonNullable<typeof body>,attachment:NonNullable<NonNullable<typeof body>['attachments']>[number]){
     if(!attachment.supported||!source.historyId){api?.toast('Supported attachments are PDF, PNG, JPEG, WebP or TXT up to 5 MiB.');return;}const accountId=selected;
-    await work('Loading selected attachment…',async({client},signal,valid)=>{const file=await client.gmailAttachment(accountId,source.message.id,attachment.partId,source.historyId!,signal);if(!valid()||accountId!==selected||body!==source)return;attachmentView={name:file.name,text:file.text??`${file.mimeType} · ${file.size} bytes. Open a temporary read-only copy in an installed viewer. The viewer receives this file.`,hash:file.sha256,external:file.text===undefined,open:()=>{if(accountId!==selected||body!==source)return;void attachmentNative.openReviewed({...file,reviewed:true}).then(result=>api?.toast(result.message)).catch(error=>api?.toast(error.message));}};publish();});
+    await work('Loading selected attachment…',async({client},signal,valid)=>{const file=await client.gmailAttachment(accountId,source.message.id,attachment.partId,source.historyId!,signal);if(!valid()||accountId!==selected||body!==source)return;const reviewGeneration=generation;const review={name:file.name,text:file.text??`${file.mimeType} · ${file.size} bytes. Open a temporary read-only copy in an installed viewer. The viewer receives this file.`,hash:file.sha256,external:file.text===undefined,open:()=>{if(accountId!==selected||body!==source)return;void attachmentNative.openReviewed({...file,reviewed:true}).then(result=>api?.toast(result.message)).catch(error=>api?.toast(error.message));},saveDisabled:false,saveStatus:'',save:()=>{
+      if(review.saveDisabled||attachmentView!==review||accountId!==selected||body!==source||generation!==reviewGeneration)return;
+      review.saveDisabled=true;review.saveStatus='Saving reviewed attachment…';publish();
+      void attachmentNative.saveReviewed({...file,reviewed:true}).then(result=>{if(attachmentView!==review||generation!==reviewGeneration)return;review.saveStatus=result.message;review.saveDisabled=result.status!=='cancelled';publish();}).catch(()=>{if(attachmentView!==review||generation!==reviewGeneration)return;review.saveStatus='Save not confirmed. Inspect Files before trying again.';publish();});
+    }};attachmentView=review;publish();});
   }
   async function nextThreadPage(previous=false){
     const prior=thread,accountId=selected;if(!prior||(!previous&&prior.nextOffset===null))return;
@@ -133,7 +137,7 @@ export function installInboxCloudAdapter(Component: any, views: Record<string, B
   const unsupported = () => api?.toast('Gmail is read-only here. No message has been changed or sent.');
   view.back = (st: Bag, current: Bag) => {
     if(contextReview){contextReview=null;publish();return true;}
-    if(attachmentView){attachmentView=null;publish();return true;}
+    if(attachmentView){void attachmentNative.cancel().catch(()=>{});attachmentView=null;publish();return true;}
     if (provider.close()) return true;
     if (drafts.close()) return true;
     if (st.open != null) { body = null; current.set({ open: null, nativeMailSelection: null }); return true; }
@@ -174,7 +178,7 @@ export function installInboxCloudAdapter(Component: any, views: Record<string, B
       snip: m.snippet, time: date(m.receivedAt), nameW: m.unread ? '700' : '500', subjCss: 'color:var(--fg)',
       dot: m.unread ? 'var(--acct)' : 'transparent', clip: false, tx: 0, down: () => {}, up: () => {},
       label: `${m.from}, ${m.subject}`, open: () => void open(m) }));
-    return { contextReviewOpen:!!contextReview,contextReview:contextReview?{source:`From: ${contextReview.source.from}\nTo: ${contextReview.source.to.join(', ')}\nSubject: ${contextReview.source.subject}\n\n${contextReview.source.bodyText}`,destination:`${contextReview.destination.origin} · agent ${contextReview.destination.agentId} · owner ${contextReview.destination.ownerId}`,send:()=>void sendContext(),busy:contextBusy,close:()=>{contextReview=null;publish();}}:null,attachmentOpen:!!attachmentView,attachment:attachmentView?{...attachmentView,close:()=>{attachmentView=null;publish();}}:null,chips, rows, searching: st.q != null, notSearching: st.q == null, q: st.q || '', hasQ: false,
+    return { contextReviewOpen:!!contextReview,contextReview:contextReview?{source:`From: ${contextReview.source.from}\nTo: ${contextReview.source.to.join(', ')}\nSubject: ${contextReview.source.subject}\n\n${contextReview.source.bodyText}`,destination:`${contextReview.destination.origin} · agent ${contextReview.destination.agentId} · owner ${contextReview.destination.ownerId}`,send:()=>void sendContext(),busy:contextBusy,close:()=>{contextReview=null;publish();}}:null,attachmentOpen:!!attachmentView,attachment:attachmentView?{...attachmentView,close:()=>{void attachmentNative.cancel().catch(()=>{});attachmentView=null;publish();}}:null,chips, rows, searching: st.q != null, notSearching: st.q == null, q: st.q || '', hasQ: false,
       openSearch: () => changeQuery(''), closeSearch: () => changeQuery(null), onQ: (e: Bag) => changeQuery(e.target.value),
       compose: () => drafts.begin(), empty: rows.length === 0, emptyIcon: 'M4 6h16v12H4zM4 6l8 6 8-6', emptyText: status,
       emptyAdd: false, addAcct: () => void connect(), detail: !!activeBody, ...drafts.render(), ...provider.render(),
