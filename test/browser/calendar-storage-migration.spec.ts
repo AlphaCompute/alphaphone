@@ -15,4 +15,3 @@ test('legacy import preserves exact bytes, then reload uses the committed docume
  expect(await other.evaluate(async()=>{const {calendarDocument}=await import('/src/browser/calendar-store.ts');return (await calendarDocument.read(()=>({preferences:{visible:false}}))).preferences.visible;})).toBe(true);
  await page.goto('/?mode=dev');expect(await page.evaluate(async()=>{const {calendarDocument}=await import('/src/browser/calendar-store.ts');return (await calendarDocument.read(()=>({preferences:{visible:false}}))).preferences.visible;})).toBe(true);
 });
-
