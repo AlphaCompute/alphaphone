@@ -38,7 +38,7 @@ const output=path.join(root,'test-results',`reminder-upgrade-${Date.now()}`);fs.
 for(const input of inputs){
  absentPackages();
  const {variant,files,hashes}=input,dir=path.join(output,variant);fs.mkdirSync(dir);
- const record={serial,avd,variant,files,hashes,phases:{},cleanup:[],passed:false};let user,primary;
+ const record={serial,avd,variant,files,hashes,phases:{},cleanup:[],passed:false};let user,primary,instrumentationTransportUncertain=false;
  const log=(name,value)=>fs.writeFileSync(path.join(dir,name),value);
  const persist=()=>log('result.json',JSON.stringify(record,null,2)+'\n');
  function installedHash(name,label){
@@ -53,7 +53,7 @@ for(const input of inputs){
  }
  function phase(name){
   let result;try{result=call(['shell','am','instrument','-r','--user',user,'-w','-e','reminderUpgrade',name,'-e','class',`${pkg}.ReminderUpgradeInstrumentedTest#installedUpgradePreservesIdentityAndReceipts`,`${testPkg}/androidx.test.runner.AndroidJUnitRunner`]);}
-  catch(error){log(`${name}.log`,`${error.stdout??''}\n${error.stderr??''}\n${error.message}`);throw error;}
+  catch(error){instrumentationTransportUncertain=true;log(`${name}.log`,`${error.stdout??''}\n${error.stderr??''}\n${error.message}`);throw error;}
   log(`${name}.log`,result);requireOneTest(result,name);record.phases[name]={passed:true};persist();
  }
  try{
@@ -81,6 +81,8 @@ for(const input of inputs){
 
  }catch(error){primary=error;record.error=error.message;}
  finally{
+  if(instrumentationTransportUncertain)record.cleanup.push("Deferred: confirm prior instrumentation terminated and recover this owned user before cleanup");
+  else {
   try{call(['shell','am','switch-user','0']);wait(()=>call(['shell','am','get-current-user']).trim()==='0','Owner user not restored');wait(()=>/topResumedActivity=.*\bu0\b/.test(call(['shell','dumpsys','activity','activities'])),'Owner Activity not resumed');record.cleanup.push('Owner user restored and resumed');}catch(error){primary??=error;record.cleanup.push(error.message);}
   // Uninstall only freshly introduced packages, while owned user still permits exact APK identity checks.
   if(user&&user!=='0')for(const name of [testPkg,pkg])try{
@@ -91,6 +93,7 @@ for(const input of inputs){
   }catch(error){primary??=error;record.cleanup.push(error.message);}
   if(user&&user!=='0')try{if(users().includes(user)){call(['shell','am','stop-user','-w',user]);wait(()=>call(['shell','am','is-user-stopped',user]).trim()==='true','Owned user did not stop');record.cleanup.push(call(['shell','pm','remove-user','--wait',user]).trim());}if(users().includes(user))throw Error('Owned user still exists');}catch(error){primary??=error;record.cleanup.push(error.message);}
   try{absentPackages();}catch(error){primary??=error;record.cleanup.push(error.message);}
+  }
   record.passed=!primary;if(primary)record.error=primary.message;persist();
  }
  if(primary)throw primary;
