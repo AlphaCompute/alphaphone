@@ -7,7 +7,7 @@ const native = registerPlugin<{list(): Promise<{items: Notice[]; scope: string; 
 export function installNotificationsAdapter(Component: any) {
  const p=Component.prototype, render=p.renderVals, mount=p.componentDidMount, unmount=p.componentWillUnmount;
  p.componentDidMount=function(){mount?.call(this);this.alphaNotices=[];this.alphaNoticesLive=true;this.alphaNoticeEpoch=0;
-  this.alphaNoticeVisibility=()=>{this.alphaNoticeEpoch++;if(document.hidden){this.alphaNotices=[];this.setState({nativeNoticeRevision:Date.now()});}else if(this.S().shade)void this.refreshAlphaNotices();};
+  this.alphaNoticeVisibility=()=>{this.alphaNoticeEpoch++;if(document.hidden){this.alphaNotices=[];}else{this.setState({nativeNoticeRevision:Date.now()});if(this.S().shade)void this.refreshAlphaNotices();}};
   document.addEventListener('visibilitychange',this.alphaNoticeVisibility);
   this.alphaNoticeDeviceState=()=>{this.alphaNoticeEpoch++;this.alphaNotices=[];this.setState({nativeNoticeRevision:Date.now()});};
   if(!Capacitor.isNativePlatform())window.addEventListener('alpha:device-state',this.alphaNoticeDeviceState);
