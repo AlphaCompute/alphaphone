@@ -643,7 +643,7 @@
         </sc-if>
         <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 6px; min-height: 52px; padding: 6px 0; border-bottom: 1px solid var(--line); box-sizing: border-box">
           <sc-for list="{{inbox.c.chips}}" as="r" hint-placeholder-count="1">
-            <button aria-label="Remove {{r.name}}" onClick="{{r.rm}}" style="height: 34px; padding: 0 8px 0 14px; border-radius: 17px; background: var(--s2); display: flex; align-items: center; gap: 4px; font-size: 14px; font-weight: 600">{{r.name}}<svg class="i" viewBox="0 0 24 24" style="width: 14px; height: 14px; color: var(--mut)"><path d="{{ic.x}}"></path></svg></button>
+            <button class="inbox-recipient-chip" aria-label="Remove {{r.name}}" onClick="{{r.rm}}" style="height: 34px; padding: 0 8px 0 14px; border-radius: 17px; background: var(--s2); display: flex; align-items: center; gap: 4px; font-size: 14px; font-weight: 600"><span>{{r.name}}</span><svg class="i" viewBox="0 0 24 24" style="width: 14px; height: 14px; color: var(--mut)"><path d="{{ic.x}}"></path></svg></button>
           </sc-for>
           <input aria-label="To" placeholder="{{inbox.c.toPh}}" value="{{inbox.c.toQ}}" onChange="{{inbox.c.onTo}}" onKeyDown="{{inbox.c.toKey}}" style="flex-grow: 1; min-width: 80px; height: 38px; border: 0; outline: 0; background: transparent; color: var(--fg); font-size: 16px; padding: 0">
         </div>
