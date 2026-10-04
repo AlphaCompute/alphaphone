@@ -29,3 +29,10 @@ html,body,#root{margin:0;width:100%;height:100%;overflow:hidden;overscroll-behav
 
 .inbox-message-content { overflow-wrap:anywhere; min-height:0; }
 .inbox-message-content:focus-visible { outline:2px solid var(--acct,#0000ff); outline-offset:-2px; }
+
+/* Keep the selected provider attachment's exit available while reading long text. */
+.inbox-attachment-review { position:absolute; inset:0; z-index:9; display:flex; flex-direction:column; gap:12px; background:var(--bg); padding:48px 16px 80px; overflow:hidden; box-sizing:border-box; font-size:calc(16px * var(--browser-text-scale,1)); }
+.inbox-attachment-actions { display:flex; flex-wrap:wrap; gap:8px; flex-shrink:0; }
+.inbox-attachment-actions button { min-height:44px; padding:10px; max-width:100%; font:inherit; overflow-wrap:anywhere; border-radius:16px; background:var(--s2); }
+.inbox-attachment-content { min-height:0; flex:1; overflow:auto; overflow-wrap:anywhere; overscroll-behavior:contain; }
+.inbox-attachment-content:focus-visible { outline:2px solid var(--acct,#0000ff); outline-offset:-2px; }

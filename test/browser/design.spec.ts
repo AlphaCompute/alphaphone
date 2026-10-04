@@ -12,6 +12,10 @@ for (const theme of ['light','dark']) for(const [view,subs] of Object.entries(st
       await page.goto(`/?mode=mock&theme=${theme}&start=${view}${sub?':'+sub:''}`);
       await expect(page.locator('.mock-mode-banner')).toBeVisible();
       await expect(page.locator('[data-screen]')).toBeVisible();
+      if(view==='workflows'&&sub==='failed'){
+        await expect(page.getByText('Failed', {exact:true})).toBeVisible();
+        await expect(page.getByText('Calendar access was revoked.', {exact:true})).toBeVisible();
+      }
       await page.evaluate(()=>document.fonts.ready);
       // Let the reference app-opening transition settle before visual inspection.
       await page.waitForTimeout(450);
@@ -28,7 +32,9 @@ for(const theme of ['light','dark']) test(`design ${theme}: shell and conversati
     await expect(page.locator('.mock-mode-banner')).toBeVisible();
     await page.evaluate(()=>document.fonts.ready);
     await page.waitForTimeout(450);
-    await page.screenshot({path:info.outputPath(`${state}.png`)});
+    // SMS heads-up is deferred by the MVP scope and intentionally returns Home.
+    if(state==='heads')await expect(page.getByRole('button',{name:'Inbox',exact:true})).toBeVisible();
+    await page.screenshot({path:info.outputPath(`${state==='heads'?'heads-deferred-home':state}.png`)});
   }
   expect(errors).toEqual([]);
 });
