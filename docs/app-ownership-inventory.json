@@ -9618,21 +9618,16 @@
       "reachableFromMain": true
     },
     {
-      "file": "src/prototype/scan-correction-review.ts",
+      "file": "src/prototype/scan-correction-review.css",
       "upstreamCandidate": [],
-      "bytes": 7913,
-      "sha256": "c6c7015b0a16a3bbe8c46530a5c07a19951a9bcf3b03c7cd081415c8534655e3",
-      "lines": 30,
-      "owner": "plugins/plugin-files",
-      "disposition": "extract-or-split",
-      "reason": "File capabilities, document processing and reviewed selections; keep product dialogs and calendar handoff composition local.",
-      "imports": [
-        "../browser/scan-correction",
-        "../browser/scan-edges"
-      ],
-      "exports": [
-        "reviewScanCorrection"
-      ],
+      "bytes": 2167,
+      "sha256": "890615df3792865a10b1384aa7aef5df289057cde89c8dabb65004e63e01ba3d",
+      "lines": 39,
+      "owner": "alphaphone",
+      "disposition": "retain-or-split",
+      "reason": "Product composition, design reference, enabled views, fixtures, or visual presentation. Extract embedded domain behavior separately.",
+      "imports": [],
+      "exports": [],
       "seams": [
         {
           "line": 6,
@@ -9659,7 +9654,70 @@
           ]
         },
         {
-          "line": 11,
+          "line": 25,
+          "tags": [
+            "presentation"
+          ]
+        },
+        {
+          "line": 26,
+          "tags": [
+            "presentation"
+          ]
+        },
+        {
+          "line": 29,
+          "tags": [
+            "presentation"
+          ]
+        },
+        {
+          "line": 32,
+          "tags": [
+            "presentation"
+          ]
+        },
+        {
+          "line": 36,
+          "tags": [
+            "presentation"
+          ]
+        },
+        {
+          "line": 38,
+          "tags": [
+            "presentation"
+          ]
+        }
+      ],
+      "reachableFromMain": true
+    },
+    {
+      "file": "src/prototype/scan-correction-review.ts",
+      "upstreamCandidate": [],
+      "bytes": 7908,
+      "sha256": "84e59d7bd9df81f905b2f5f273f8f6922676c7c52e4868252ec6af03d7f06c11",
+      "lines": 31,
+      "owner": "plugins/plugin-files",
+      "disposition": "extract-or-split",
+      "reason": "File capabilities, document processing and reviewed selections; keep product dialogs and calendar handoff composition local.",
+      "imports": [
+        "../browser/scan-correction",
+        "../browser/scan-edges",
+        "./scan-correction-review.css"
+      ],
+      "exports": [
+        "reviewScanCorrection"
+      ],
+      "seams": [
+        {
+          "line": 9,
+          "tags": [
+            "presentation"
+          ]
+        },
+        {
+          "line": 10,
           "tags": [
             "presentation"
           ]
@@ -9671,26 +9729,20 @@
           ]
         },
         {
-          "line": 17,
+          "line": 19,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 18,
-          "tags": [
-            "presentation"
-          ]
-        },
-        {
-          "line": 21,
+          "line": 22,
           "tags": [
             "identity-or-compatibility",
             "host-coupling"
           ]
         },
         {
-          "line": 27,
+          "line": 28,
           "tags": [
             "identity-or-compatibility",
             "host-coupling"

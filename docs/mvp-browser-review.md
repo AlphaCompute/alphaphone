@@ -2349,3 +2349,28 @@ browser runs and this integration's automatically triggered Android jobs were
 cancelled; unrelated native work was not cancelled. This report-only update is
 kept on `codex/client-integration-status-20261004` to avoid restarting that final
 campaign for documentation alone. The live renderer/agent was not restarted.
+
+
+## October 4 — Document correction design and large-text review
+
+The scan-correction review still used default system typography and a loose list
+of gray controls. Its confirmation actions scrolled with the long coordinate
+form. The product-owned dialog now uses Alpha colors, Public Sans, rounded
+controls and a distinct blue adoption action. The heading and Apply/Cancel area
+remain visible while instructions, corners, tools and image preview scroll.
+Numeric fields follow light/dark colors and browser text scaling. The original
+photo and existing explicit-adoption/cancellation behavior are unchanged.
+
+All **51 existing correction and edge-detection browser cases** pass across
+Chromium, Firefox and WebKit. Four actual Chromium viewport probes at **150%
+text** cover both themes at 360x740 and 740x360. They verify 24px dialog text,
+44px minimum action height, visible action bounds, no horizontal overflow and no
+page errors. Light/dark and large-text screenshots were inspected. TypeScript
+and production build pass on Node 24.15.0. The full repository verification is
+still running and is not counted as passing yet. Evidence is in
+`test-results/correction-design/`, `test-results/correction-large-text/` and
+`test-results/correction-design-evidence/` in the isolated integration checkout.
+The static ownership inventory now contains 280 app files.
+
+This is one reviewed subview. The complete MVP/design acceptance and external
+provider/native/device requirements in the current-status ledger remain open.
