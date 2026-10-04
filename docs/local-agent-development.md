@@ -141,6 +141,18 @@ The pinned upstream source includes the previously patched egress control-object
 Source-level Node/Bun checks and full-series replay qualify this prerequisite. They do not establish that the running browser agent has redaction enabled or that every PII category/provider/action path is covered. Keep the current Privacy disclosure until enabled runtime and end-to-end restoration evidence support changing it. No Android build is needed to reproduce source preparation.
 
 
+## Reproducible host redaction check
+
+After preparing and installing the pinned runtime, run:
+
+```sh
+npm run agent:test-redaction -- --live
+```
+
+This opt-in check uses the configured Cerebras key and sends only synthetic contact and credential fixtures. It creates its own private profile and available loopback port; the running user profile is not used. The admitted source is checked before launch, both redaction switches are enabled only for the test host, and provider-request instrumentation records leak booleans rather than bodies or headers. Six buffered formats, streamed output and a distinct-process restart exercise contact restoration and credential exclusion. The command returns nonzero on any failed assertion or missing outbound evidence.
+
+The summary is written to `test-results/local-redaction/result.json`. Successful runs remove their private synthetic profile; failures retain it in the printed temporary directory for diagnosis. SIGINT/SIGTERM stop only the owned process group. This is a real-provider host check, not browser rendering, Android privacy acceptance or proof that every possible secret format is recognized. Default development redaction settings remain unchanged.
+
 ## Historical host redaction qualification (October 2)
 
 The following dated checkpoints retain earlier failures and repairs. Patch names

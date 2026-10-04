@@ -12,7 +12,7 @@ for(const request of ['Load Inbox','Search Gmail','Check connection'])for(const 
   const deferred=(result:any,signal:AbortSignal)=>{if(!f.hold)return Promise.resolve(result);signal.addEventListener('abort',()=>f.aborts++,{once:true});return new Promise(resolve=>{f.release=()=>resolve(result);});};
   const client={gmailAccounts:(signal:AbortSignal)=>deferred(accounts,signal),gmailSearch:(_account:string,_query:string,signal:AbortSignal)=>deferred({messages:[{id:'late',threadId:'late',from:'Late response',to:[],subject:'Must not appear',snippet:'stale',receivedAt:'2026-10-03T12:00:00Z',unread:false}],syncedAt:'late'},signal),gmailInboxCapabilities:async()=>({send:false,providerDrafts:false,mailboxMutations:false}),gmailPrepareOperation:async()=>{f.mutations++;throw Error('No provider mutation expected');}};
   c.getCloudClient=()=>({client,sessionId:'fixture-session',credentialId:'fixture'} as any);
-  const original=c.getSnapshot();c.getSnapshot=()=>({...original,cloudAccount:{environment:'production',userId:'fixture-owner',sessionId:'fixture-session',credentialId:'fixture'}} as any);
+  const snapshot={...c.getSnapshot(),cloudAccount:{environment:'production',userId:'fixture-owner',sessionId:'fixture-session',credentialId:'fixture'}} as any;c.getSnapshot=()=>snapshot;
  });
  await page.getByRole('button',{name:'Inbox',exact:true}).click();
  await expect(page.getByRole('button',{name:'Load Inbox',exact:true})).toBeVisible();
