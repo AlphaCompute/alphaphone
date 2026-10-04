@@ -14,3 +14,22 @@ test('invalid dates, missing times and durations cannot become calendar drafts',
  const valid={title:'Event',date:'2026-10-10',time:'18:30',minutes:60,location:''};
  for(const patch of [{title:''},{date:'2026-02-30'},{date:'2026-13-01'},{date:'1969-12-31'},{date:''},{time:'24:00'},{time:''},{minutes:0},{minutes:15.5},{minutes:1441}])assert.throws(()=>scanEventDraft({...valid,...patch},'text'));
 });
+
+test('English poster dates and AM/PM suggestions retain explicit civil meaning',()=>{
+ for(const date of ['October 10, 2026','10 October 2026','Oct. 10th, 2026','10th Oct. 2026']){
+  const result=suggestScanEvent(`Open studio\n${date}\nTime: 6:30 p.m.\nVenue: Main hall`);
+  assert.deepEqual(result,{title:'Open studio',date:'2026-10-10',time:'18:30',minutes:60,location:'Main hall'});
+ }
+ assert.equal(suggestScanEvent('Event\n2026-10-10\n12 AM').time,'00:00');
+ assert.equal(suggestScanEvent('Event\n2026-10-10\n12 PM').time,'12:00');
+ assert.equal(suggestScanEvent('Event\n2026-10-10\nStart: 7 PM').time,'19:00');
+ assert.equal(suggestScanEvent('Event\n2026-10-10\nLocation: A\nVenue: B').location,'');
+});
+test('poster extraction does not invent years or accept conflicting, invalid or zoned times',()=>{
+ for(const date of ['October 10','10/11/2026','February 30, 2026','2026-02-30','2026-10-10\n11/10/2026','2026-10-10\nOctober 11','October 10, 2026\n11 October 2026'])assert.equal(suggestScanEvent(`Event\n${date}`).date,'',date);
+ for(const time of ['0 PM','13 AM','18:30\n19:00','18:30\n25:00','18:30\n19:7','Time: 6 PM PST','18:30\nTimezone: America/New_York','18:30\nUTC','18:30\nTimezone: Unknown','18:30\nET','6 PM - 8 PM','2026-10-10T18:30+02:00'])assert.equal(suggestScanEvent(`Event\n2026-10-10\n${time}`).time,'',time);
+ assert.equal(suggestScanEvent('Event\nFebruary 29, 2028\n7 PM').date,'2028-02-29');
+ assert.equal(suggestScanEvent('Event\nFebruary 29, 2027\n7 PM').date,'');
+});
+
+test('ordinary website paths and band names are not mistaken for time zones',()=>{assert.equal(suggestScanEvent('AC/DC tribute\nOctober 10, 2026\n6 PM\nhttps://example.com/events').time,'18:00');});

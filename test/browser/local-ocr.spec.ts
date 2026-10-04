@@ -4,6 +4,21 @@ test('real local OCR recognizes an image without remote model requests',async({p
   test.setTimeout(90000);
   const assets:string[]=[];const remote:string[]=[];
   page.on('request',request=>{const url=new URL(request.url());if(url.pathname.startsWith('/ocr/'))assets.push(url.pathname);if(url.protocol.startsWith('http')&&url.hostname!=='127.0.0.1')remote.push(url.origin);});
+  await page.addInitScript(()=>{
+    // Firefox does not reliably expose classic-worker importScripts requests in
+    // page request events. Observe the actual script imports inside this fixture.
+    const NativeWorker=window.Worker;const imports:string[]=[];(window as any).ocrScriptImports=imports;
+    window.Worker=class extends NativeWorker{
+      readonly auditUrl:string;
+      constructor(url:string|URL,options?:WorkerOptions){
+        const absolute=new URL(String(url),location.href).href;
+        const auditUrl=URL.createObjectURL(new Blob([`const originalImport=self.importScripts.bind(self);self.importScripts=(...urls)=>{self.postMessage({ocrScriptImport:urls.map(String)});return originalImport(...urls);};importScripts(${JSON.stringify(absolute)});`],{type:'text/javascript'}));
+        super(auditUrl,options);this.auditUrl=auditUrl;
+        this.addEventListener('message',event=>{if(Array.isArray(event.data?.ocrScriptImport))imports.push(...event.data.ocrScriptImport);});
+      }
+      terminate(){URL.revokeObjectURL(this.auditUrl);super.terminate();}
+    };
+  });
   await page.goto('/');
   const result=await page.evaluate(async()=>{
     const {recognizeLocalText}=await import('/src/prototype/local-ocr.ts');
@@ -13,6 +28,7 @@ test('real local OCR recognizes an image without remote model requests',async({p
     return recognizeLocalText(blob,new AbortController().signal);
   });
   expect(result.text).toContain('Alpha Phone local scan');expect(result.text).toContain('Review text before saving.');
+  for(const imported of await page.evaluate(()=>(window as any).ocrScriptImports as string[])){const url=new URL(imported);assets.push(url.pathname);if(url.hostname!=='127.0.0.1')remote.push(url.origin);}
   expect(assets).toContain('/ocr/worker.min.js');expect(assets).toContain('/ocr/eng.traineddata.gz');expect(assets.some(path=>path.includes('lstm.wasm.js'))).toBe(true);expect(remote).toEqual([]);
 });
 
