@@ -2927,3 +2927,25 @@ ensures cancellation during asynchronous initialization prevents both an editor
 callback and a late read result. The policy remains unconnected to app domains;
 this pass does not close the production cross-tab regression. Evidence:
 `test-results/domain-document-final-verify.log`.
+
+Upstream PR33568 merged as `248dbccd99cba0a79a287dd0e077fc5c0723e05f` from
+head `b8cefb7acdc600202787999d31ff0da822516664`. Final local verification passes
+all 298 tasks and repository audits. Its final pinned Chromium/Firefox/WebKit
+run passes every assertion, including all 200 retained cross-tab edits/receipts
+per engine and cancellation of an indefinitely waiting editor. Evidence:
+`transactional-store-final-root-verify.log` and `transactional-store-final-browser.log`.
+Hosted checks were still running at the observed merge; local success is not a
+claim that those hosted jobs passed.
+
+A resident-source backport is prepared on current Alpha pin
+`fec9f1bf6e6a1ccef8d934c79facba94745e29f8`, retaining its native reminder/runtime
+changes. Its store and browser harness are byte-identical to the qualified
+upstream head; the frozen install makes no dependency changes. The resident
+backport's full repository check is running. No vendor source was edited.
+
+The Calendar migration inventory also includes a direct legacy read in
+`browser/digest-live-sources.ts`, its caller in `browser/development-digests.ts`,
+and the storage-event preference listener in `prototype/calendar-adapter.ts`.
+These sit outside the 42 `readStore` calls and must move with Calendar. Moving
+only the visible Calendar and recovery controls would leave scheduled digest
+inputs and cross-tab refresh inconsistent. The app has not been switched yet.
