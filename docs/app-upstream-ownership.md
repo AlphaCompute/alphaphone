@@ -211,3 +211,14 @@ Seven focused source-preparation and portable-package checks pass on Node
 journeys pass; Firefox/WebKit and the combined repository suite are still
 running. Screenshots of the large-text Files review and compact scan correction
 were inspected; these are bounded subview checks, not complete design sign-off.
+
+
+The extraction's repository command completed with 277 passing tests and zero
+skips, TypeScript and build. Its browser batch finished with 323 passes and the
+existing WebKit historical-Blob fixture skip. A workflow retirement render error
+found in that batch is being repaired and separately qualified; see the browser
+review for the failed reproduction and exact verification boundaries.
+
+The workflow retirement repair now passes all 87 owning browser cases across
+three engines, 16 adapter contracts and Node 24.15.0 typecheck/build. Upstream
+publication and native/device acceptance remain open.

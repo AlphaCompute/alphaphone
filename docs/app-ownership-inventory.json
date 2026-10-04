@@ -13101,9 +13101,9 @@
     {
       "file": "src/prototype/workflow-adapter.ts",
       "upstreamCandidate": [],
-      "bytes": 30544,
-      "sha256": "706c435039c3921e598e40d2378b63ba89725b12500a9f84e1cea3ed50878ace",
-      "lines": 111,
+      "bytes": 31090,
+      "sha256": "3e7a58a0037a61ce0fdb67c28b928974cbc791a9c7be46673412b59929a4efe1",
+      "lines": 113,
       "owner": "plugins/plugin-workflow",
       "disposition": "extract-or-split",
       "reason": "Workflow contracts, execution and simulation; preserve review, identity and no-replay semantics; inject product view policy.",
@@ -13185,43 +13185,37 @@
           ]
         },
         {
-          "line": 31,
-          "tags": [
-            "host-coupling"
-          ]
-        },
-        {
-          "line": 32,
-          "tags": [
-            "host-coupling"
-          ]
-        },
-        {
           "line": 33,
           "tags": [
             "host-coupling"
           ]
         },
         {
-          "line": 39,
+          "line": 34,
           "tags": [
             "host-coupling"
           ]
         },
         {
-          "line": 45,
+          "line": 35,
           "tags": [
             "host-coupling"
           ]
         },
         {
-          "line": 48,
+          "line": 41,
           "tags": [
             "host-coupling"
           ]
         },
         {
-          "line": 49,
+          "line": 47,
+          "tags": [
+            "host-coupling"
+          ]
+        },
+        {
+          "line": 50,
           "tags": [
             "host-coupling"
           ]
@@ -13233,51 +13227,45 @@
           ]
         },
         {
-          "line": 67,
+          "line": 53,
+          "tags": [
+            "host-coupling"
+          ]
+        },
+        {
+          "line": 69,
           "tags": [
             "storage"
           ]
         },
         {
-          "line": 70,
+          "line": 72,
           "tags": [
             "host-coupling"
           ]
         },
         {
-          "line": 73,
+          "line": 75,
           "tags": [
             "host-coupling"
           ]
         },
         {
-          "line": 81,
+          "line": 83,
           "tags": [
             "host-coupling"
           ]
         },
         {
-          "line": 82,
+          "line": 84,
           "tags": [
             "host-coupling"
           ]
         },
         {
-          "line": 86,
+          "line": 88,
           "tags": [
             "host-coupling"
-          ]
-        },
-        {
-          "line": 89,
-          "tags": [
-            "storage"
-          ]
-        },
-        {
-          "line": 90,
-          "tags": [
-            "storage"
           ]
         },
         {
@@ -13287,43 +13275,55 @@
           ]
         },
         {
-          "line": 95,
+          "line": 92,
           "tags": [
             "storage"
           ]
         },
         {
-          "line": 96,
+          "line": 93,
           "tags": [
             "storage"
           ]
         },
         {
-          "line": 99,
+          "line": 97,
+          "tags": [
+            "storage"
+          ]
+        },
+        {
+          "line": 98,
+          "tags": [
+            "storage"
+          ]
+        },
+        {
+          "line": 101,
           "tags": [
             "host-coupling"
           ]
         },
         {
-          "line": 102,
+          "line": 104,
           "tags": [
             "host-coupling"
           ]
         },
         {
-          "line": 107,
+          "line": 109,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 108,
+          "line": 110,
           "tags": [
             "identity-or-compatibility"
           ]
         },
         {
-          "line": 109,
+          "line": 111,
           "tags": [
             "host-coupling"
           ]

@@ -2307,3 +2307,35 @@ portable-package checks pass on Node 24.15.0, including clean direct-launcher
 preparation. Main PR158 has been incorporated; its change is limited to native
 Notes instrumentation, without changing the running browser source. The full
 repository command remains in progress and is not reported as passing.
+
+
+The extraction batch finished with **323 passes and one pre-existing WebKit
+skip**: WebKit cannot write the historical IndexedDB Blob format used by that
+migration fixture. Chromium and Firefox exercise the migration. `npm run verify`
+completed with **277 tests, zero failures/skips, TypeScript and web build** on
+Node 24.5.0; the later seven focused preparation/package checks ran on the
+required Node 24.15.0, including the additional direct-launcher regression.
+
+The Firefox run also exposed an unhandled `NS_ERROR_FAILURE` during page
+retirement despite passing assertions: workflow cleanup published a renderer
+update after document storage was revoked. A targeted controlled-storage test
+reproduced the crash with agent workflows enabled. The initial fixture selected
+the wrong footer label, and a second fixture exercised only simulated workflows;
+neither is counted as a valid reproduction. The corrected reproduction loses
+the rendered shell and reports `InvalidStateError` before the repair.
+
+Workflow cleanup now still aborts owned work and invalidates its generation,
+but publication stops while hidden or between pagehide/pageshow. Resume restores
+publication, and unmount removes the lifecycle listeners. The new regression and
+owning workflow browser batch are running across three engines. All 16 adapter
+contract tests plus typecheck/build pass on Node 24.15.0 after this repair.
+
+
+The final owning browser batch passes **87 cases across Chromium, Firefox and
+WebKit**, including the corrected retirement/recovery regression in each engine.
+No unhandled page error appears in this batch. Prior failure logs and all final
+logs are retained under `test-results/client-integration/`, with browser artifacts
+under `test-results/workflow-retirement-final/`. At 04:08:02 UTC the untouched
+user dev host still verifies owner authentication, one agent, local Whisper and
+Kokoro, and embedded workflows. Exact-final-head hosted qualification remains a
+separate gate; Android builds were skipped as requested.
