@@ -1,4 +1,5 @@
 package ai.elizaresearch.alphaphone;
+import ai.eliza.plugins.reminders.ReminderTestAccess;
 
 import android.app.Activity;
 import android.app.Instrumentation;
@@ -21,7 +22,7 @@ import static org.junit.Assert.*;
  * This proves owner review/selection handoff and replay refusal, not real alarm completion. */
 @RunWith(AndroidJUnit4.class)
 public final class ClockAgentReviewInstrumentedTest {
- private final String scope=ReminderStore.digest("clock-review-fixture-"+UUID.randomUUID());
+ private final String scope=ReminderTestAccess.digest("clock-review-fixture-"+UUID.randomUUID());
  private final List<String> proposals=new ArrayList<>();
  private String js(String expression)throws Exception{return WebViewTestDriver.evaluate(expression);}
  private void waitFor(String expression)throws Exception{long end=SystemClock.elapsedRealtime()+20000;while(SystemClock.elapsedRealtime()<end){if("true".equals(js("Boolean("+expression+")")))return;SystemClock.sleep(100);}fail("Owned Clock bridge did not settle");}
@@ -32,7 +33,7 @@ public final class ClockAgentReviewInstrumentedTest {
  private JSONObject reserve(JSONObject op)throws Exception{
   String id=UUID.randomUUID().toString();proposals.add(id);JSONObject identity=new JSONObject().put("scope",scope).put("proposalId",id).put("operationId",UUID.randomUUID().toString());
   JSONObject record=new JSONObject().put("operation",op).put("context",new JSONObject().put("view","home").put("sensitive",false)).put("expiresAt",System.currentTimeMillis()+120000).put("ownerId","fixture-owner").put("sessionId","fixture-session").put("agentId","fixture-agent").put("origin","https://fixture.invalid").put("installationId","fixture-installation").put("enrollmentId","fixture-enrollment");
-  assertTrue(bridge("reserve",new JSONObject(identity.toString()).put("operationHash",ReminderStore.digest(op.toString())).put("record",record)).getBoolean("created"));
+  assertTrue(bridge("reserve",new JSONObject(identity.toString()).put("operationHash",ReminderTestAccess.digest(op.toString())).put("record",record)).getBoolean("created"));
   bridge("markApplying",new JSONObject(identity.toString()).put("attemptId",UUID.randomUUID().toString()));return identity;
  }
  private AccessibilityNodeInfo find(AccessibilityNodeInfo node,String label){if(node==null)return null;if(node.isVisibleToUser()&&label.equalsIgnoreCase(node.getText()==null?"":node.getText().toString()))return node;for(int i=0;i<node.getChildCount();i++){AccessibilityNodeInfo found=find(node.getChild(i),label);if(found!=null)return found;}return null;}

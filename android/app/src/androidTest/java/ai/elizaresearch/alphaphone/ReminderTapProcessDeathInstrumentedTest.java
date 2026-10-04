@@ -1,4 +1,5 @@
 package ai.elizaresearch.alphaphone;
+import ai.eliza.plugins.reminders.ReminderTestAccess;
 
 import android.app.*;
 import android.content.*;
@@ -77,17 +78,17 @@ public final class ReminderTapProcessDeathInstrumentedTest {
   org.junit.Assume.assumeTrue("Explicit isolated reminder process-death campaign","1".equals(InstrumentationRegistry.getArguments().getString("reminderTapProcessDeath")));
   assertEquals(APP+":workflowNoticeTest",Application.getProcessName());assertTrue(android.os.Process.myUid()/100000>0);
   Context context=InstrumentationRegistry.getInstrumentation().getTargetContext();
-  AlphaCredentialStore storage=new AlphaCredentialStore(context);assertNull("Fresh tap ledger required",storage.readCredentialSlot(ReminderTaps.SLOT));
-  ReminderTaps taps=new ReminderTaps(context);NotificationManager manager=context.getSystemService(NotificationManager.class);
+  AlphaCredentialStore storage=new AlphaCredentialStore(context);assertNull("Fresh tap ledger required",storage.readCredentialSlot(ReminderTestAccess.Taps.SLOT));
+  ReminderTestAccess.Taps taps=new ReminderTestAccess.Taps(context);NotificationManager manager=context.getSystemService(NotificationManager.class);
   String id="tap_death_"+UUID.randomUUID();
   try {
-   ReminderStore.channel(context);assertTrue(ReminderStore.allowed(context));
+   ReminderTestAccess.channel(context);assertTrue(ReminderTestAccess.allowed(context));
    long at=System.currentTimeMillis()+1500;
-   JSONObject scheduled=ReminderStore.schedule(context,id,"Retained reminder tap","Original OS notification body",at,null);
+   JSONObject scheduled=ReminderTestAccess.schedule(context,id,"Retained reminder tap","Original OS notification body",at,null);
    while(System.currentTimeMillis()<at)SystemClock.sleep(25);
    // Delivery uses the production due-time/permission/post/persistence path once.
-   ReminderStore.deliver(context,id,scheduled.getString("occurrenceId"));
-   assertEquals("posted",ReminderStore.read(context,id).getString("status"));
+   ReminderTestAccess.deliver(context,id,scheduled.getString("occurrenceId"));
+   assertEquals("posted",ReminderTestAccess.read(context,id).getString("status"));
    StatusBarNotification original=null;long noticeEnd=SystemClock.elapsedRealtime()+5000;
    do{try{original=notice(manager,id);break;}catch(AssertionError notYet){SystemClock.sleep(50);}}while(SystemClock.elapsedRealtime()<noticeEnd);
    assertNotNull(original);PendingIntent originalIntent=original.getNotification().contentIntent;assertNotNull(originalIntent);
@@ -98,8 +99,8 @@ public final class ReminderTapProcessDeathInstrumentedTest {
    JSONObject captured=null;long captureEnd=SystemClock.elapsedRealtime()+15000;
    do{captured=taps.pending();if(captured.has("token"))break;SystemClock.sleep(25);}while(SystemClock.elapsedRealtime()<captureEnd);
    assertTrue("Main must durably capture the original tap",captured.has("token"));assertTrue(captured.getBoolean("retained"));
-   assertTrue(ReminderTaps.same(ReminderStore.selected(context,id),captured.getJSONObject("target")));
-   String token=captured.getString("token"),committed=storage.readCredentialSlot(ReminderTaps.SLOT);
+   assertTrue(ReminderTestAccess.Taps.same(ReminderTestAccess.selected(context,id),captured.getJSONObject("target")));
+   String token=captured.getString("token"),committed=storage.readCredentialSlot(ReminderTestAccess.Taps.SLOT);
    for(ActivityManager.AppTask task:context.getSystemService(ActivityManager.class).getAppTasks()){
     ActivityManager.RecentTaskInfo info=task.getTaskInfo();assertNotNull(info.baseIntent.getComponent());assertEquals(APP,info.baseIntent.getComponent().getPackageName());task.finishAndRemoveTask();
    }
@@ -110,13 +111,13 @@ public final class ReminderTapProcessDeathInstrumentedTest {
    long deathEnd=SystemClock.elapsedRealtime()+10000;
    while((Files.exists(Path.of("/proc/"+before.pid))||!mainPids(context).isEmpty())&&SystemClock.elapsedRealtime()<deathEnd)SystemClock.sleep(50);
    assertFalse(Files.exists(Path.of("/proc/"+before.pid)));assertTrue("Main must be absent",mainPids(context).isEmpty());
-   assertEquals(committed,storage.readCredentialSlot(ReminderTaps.SLOT));
+   assertEquals(committed,storage.readCredentialSlot(ReminderTestAccess.Taps.SLOT));
    StatusBarNotification stillPosted=notice(manager,id);assertEquals(original.getKey(),stillPosted.getKey());assertEquals(original.getPostTime(),stillPosted.getPostTime());assertEquals(originalIntent,stillPosted.getNotification().contentIntent);
    // Normal app launch contains no reminder URI/extras: durable storage is the only route.
-   Intent normal=context.getPackageManager().getLaunchIntentForPackage(APP);assertNotNull(normal);assertNull(normal.getData());assertFalse(normal.hasExtra(ReminderStore.OPEN_ID));assertFalse(normal.hasExtra(ReminderStore.OCCURRENCE));
+   Intent normal=context.getPackageManager().getLaunchIntentForPackage(APP);assertNotNull(normal);assertNull(normal.getData());assertFalse(normal.hasExtra(ReminderTestAccess.OPEN_ID));assertFalse(normal.hasExtra(ReminderTestAccess.OCCURRENCE));
    context.startActivity(normal);Identity after=awaitMain(context);assertTrue(before.pid!=after.pid||!before.start.equals(after.start));
-   JSONObject recovered=new ReminderTaps(context).pending();assertEquals(token,recovered.getString("token"));assertTrue(recovered.getBoolean("retained"));assertTrue(ReminderTaps.same(captured.getJSONObject("target"),recovered.getJSONObject("target")));
-   assertEquals(committed,storage.readCredentialSlot(ReminderTaps.SLOT));
+   JSONObject recovered=new ReminderTestAccess.Taps(context).pending();assertEquals(token,recovered.getString("token"));assertTrue(recovered.getBoolean("retained"));assertTrue(ReminderTestAccess.Taps.same(captured.getJSONObject("target"),recovered.getJSONObject("target")));
+   assertEquals(committed,storage.readCredentialSlot(ReminderTestAccess.Taps.SLOT));
    assertEquals(original.getPostTime(),notice(manager,id).getPostTime());
    // Complete the real fresh-user recovery journey through the visible chooser.
    // This is one user action, not another notification intent or direct route injection.
@@ -125,11 +126,11 @@ public final class ReminderTapProcessDeathInstrumentedTest {
    assertTrue(offline.performAction(android.view.accessibility.AccessibilityNodeInfo.ACTION_CLICK));
    awaitVisible("Retained reminder tap");awaitVisible("Complete reminder occurrence");
    long consumedEnd=SystemClock.elapsedRealtime()+10000;boolean consumed=false;
-   do{JSONObject rows=new JSONObject(storage.readCredentialSlot(ReminderTaps.SLOT));consumed="consumed".equals(rows.getJSONObject(token).getString("state"));if(!consumed)SystemClock.sleep(50);}while(!consumed&&SystemClock.elapsedRealtime()<consumedEnd);
+   do{JSONObject rows=new JSONObject(storage.readCredentialSlot(ReminderTestAccess.Taps.SLOT));consumed="consumed".equals(rows.getJSONObject(token).getString("state"));if(!consumed)SystemClock.sleep(50);}while(!consumed&&SystemClock.elapsedRealtime()<consumedEnd);
    assertTrue("Exact captured route must be acknowledged after detail render",consumed);
-   assertFalse(new ReminderTaps(context).pending().has("token"));
-   assertEquals("Opening detail must not complete the reminder","posted",ReminderStore.read(context,id).getString("status"));
-   assertTrue(ReminderTaps.same(captured.getJSONObject("target"),ReminderStore.selected(context,id)));
+   assertFalse(new ReminderTestAccess.Taps(context).pending().has("token"));
+   assertEquals("Opening detail must not complete the reminder","posted",ReminderTestAccess.read(context,id).getString("status"));
+   assertTrue(ReminderTestAccess.Taps.same(captured.getJSONObject("target"),ReminderTestAccess.selected(context,id)));
    android.os.Bundle evidence=new android.os.Bundle();evidence.putString("reminderTapProcessDeath",new JSONObject().put("beforePid",before.pid).put("beforeStart",before.start).put("afterPid",after.pid).put("afterStart",after.start).put("uid",after.uid).put("postTime",original.getPostTime()).put("notificationSends",1).put("detailVisible",true).put("routeConsumed",true).put("recoveryLaunch","launcher-without-reminder-data").toString());InstrumentationRegistry.getInstrumentation().addResults(evidence);
   }finally{manager.cancel(id,0);/* Fresh-user supervisor owns all durable cleanup. */}
  }

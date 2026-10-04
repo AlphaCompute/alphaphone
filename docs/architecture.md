@@ -52,6 +52,13 @@ permissions. OS staging admits the product APK separately from Eliza's full app;
 release provisioning owns default roles, signing, update compatibility and
 recovery policy.
 
+Native reminders use the shared `plugin-native-reminders` engine and bridge.
+`AlphaReminders` supplies the product's existing encrypted store, preference and
+channel names, receiver/Activity identities and intent routes. `DailyApps` keeps
+its public Capacitor name and inherits the reminder methods. Reminder test access
+lives only in the instrumentation source set; it delegates to the shared engine
+rather than keeping a second implementation.
+
 ## Changing shared code
 
 1. Implement and test reusable behavior in a dedicated Eliza branch and submit
