@@ -1,3 +1,4 @@
+import {layoutBrowserDialog} from './dialog-layout';
 type Bag=Record<string,any>;
 type Failure={title:string;raw?:string};
 const failures=new Map<string,Failure>();
@@ -34,5 +35,5 @@ export function showSimulatorRecovery(){
   let confirming=false;reset.onclick=()=>{if(!confirming){confirming=true;reset.textContent='Confirm reset '+failure.title;status.textContent='Reset deletes this app’s saved development data and restores its examples. Download a backup first if you want to keep it.';return;}try{if(localStorage.getItem(key(name))!==failure.raw)throw Error('Changed');localStorage.removeItem(key(name));if(localStorage.getItem(key(name))!==null)throw Error('Unconfirmed');location.reload();}catch{confirming=false;reset.textContent='Reset '+failure.title;status.textContent='Reset could not be confirmed. Reload to inspect the current saved data.';}};
   section.append(title,backup,reset,status);own.append(section);
  }
- const close=button('Close recovery');close.onclick=()=>own.close();own.append(close);const previous=document.activeElement as HTMLElement|null;const back=(event:Event)=>{event.preventDefault();event.stopImmediatePropagation();own.close();};window.addEventListener('alpha-back',back,true);own.onclose=()=>{window.removeEventListener('alpha-back',back,true);own.remove();if(dialog===own)dialog=undefined;previous?.focus();};document.body.append(own);own.showModal();heading.tabIndex=-1;heading.focus();own.scrollTop=0;
+ const close=button('Close recovery');close.onclick=()=>own.close();own.append(close);const previous=document.activeElement as HTMLElement|null;const back=(event:Event)=>{event.preventDefault();event.stopImmediatePropagation();own.close();};window.addEventListener('alpha-back',back,true);own.onclose=()=>{window.removeEventListener('alpha-back',back,true);own.remove();if(dialog===own)dialog=undefined;previous?.focus();};layoutBrowserDialog(own,[close]);document.body.append(own);own.showModal();heading.tabIndex=-1;heading.focus();own.scrollTop=0;
 }
