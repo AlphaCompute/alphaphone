@@ -56,15 +56,18 @@ case "$*" in
  'shell am instrument '*) printf '%s\\n' ${emit([...(mode === 'ordinary-missing-start' ? [] : [['OrdinarySuite#case',1]]),['OrdinarySuite#case',0],['ClockHandoffInstrumentedTest#visibleReviewConstructsFourStandardClockIntentsWithoutDeliveringThem',1],['ClockHandoffInstrumentedTest#visibleReviewConstructsFourStandardClockIntentsWithoutDeliveringThem',0],['RealClockInstrumentedTest#realClockSetFireSnoozeDismissAndDelete',1],['RealClockInstrumentedTest#realClockSetFireSnoozeDismissAndDelete',-4]]).map(x => "'"+x+"'").join(' ')} 'OK (3 tests)';;
  'logcat -d -t 2000 -v threadtime') echo 'bounded fixture diagnostics';;
  'shell dumpsys activity activities') echo 'mResumedActivity: ${app}';;
- 'shell cat /sdcard/'*) echo '<nodes text="Open conversation" text="Calendar" text="Camera" text="Notes" text="Settings"/>';;
- install*|'shell am force-stop '*|'shell am start '*|'shell input '*|'shell uiautomator '*|'shell cmd role add-role-holder '*|'exec-out screencap -p') :;;
+ 'shell cat /sdcard/'*)
+  if test '${mode}' = 'hierarchy-missing'; then exit 1; fi
+  if test '${mode}' = 'hierarchy-transient' && ! test -f first-hierarchy-miss; then touch first-hierarchy-miss; exit 1; fi
+  echo '<nodes text="Open conversation" text="Calendar" text="Camera" text="Notes" text="Settings"/>';;
+ 'shell sleep '*|install*|'shell am force-stop '*|'shell am start '*|'shell input '*|'shell uiautomator '*|'shell cmd role add-role-holder '*|'exec-out screencap -p') :;;
  *) echo 'Unexpected fake command' >&2; exit 9;;
 esac
 `;
   const adb = path.join(dir, 'sdk/platform-tools/adb'); fs.writeFileSync(adb, fake, { mode: 0o755 });
   const result = spawnSync(process.execPath, [smoke], { cwd: dir, env: { ...process.env, ANDROID_HOME: path.join(dir, 'sdk'), ANDROID_SDK_ROOT: path.join(dir, 'sdk'), JAVA_HOME: dir, ANDROID_SERIAL: 'emulator-5554', GITHUB_ACTIONS: 'true', RUNNER_ENVIRONMENT: 'github-hosted', ALPHA_BUILD_ARCHIVE: path.join(dir, 'bundle'), ALPHA_SMOKE_RESULTS: path.join(dir, 'output') }, encoding: 'utf8', timeout: 20000 });
   assert.equal(result.signal, null, result.stderr);
-  const phases = ['standalone', 'launcher'].map(v => JSON.parse(fs.readFileSync(path.join(dir, `output/${v}-provider-qualification/result.json`))));
+  const phases = ['standalone', 'launcher'].map(v => {const file=path.join(dir, `output/${v}-provider-qualification/result.json`);return fs.existsSync(file)?JSON.parse(fs.readFileSync(file)):null;});
   const summary = JSON.parse(fs.readFileSync(path.join(dir, 'output/result.json')));
   const commands = fs.readFileSync(path.join(dir, 'commands.jsonl'), 'utf8').trim().split('\n').map(x=>x.split(' '));
   const diagnostics = ['standalone','launcher'].map(v => {const file=path.join(dir, `output/${v}-logcat.txt`);return fs.existsSync(file)?fs.readFileSync(file,'utf8'):null;});
@@ -85,4 +88,16 @@ test('ordinary missing start fails both variants and retains bounded diagnostics
  const r=exercise('ordinary-missing-start');assert.notEqual(r.code,0);assert.equal(r.summary.status,'failed');
  assert.deepEqual(r.summary.results.map(row=>row.countsVerified),[false,false]);
  assert.deepEqual(r.diagnostics,['bounded fixture diagnostics\n','bounded fixture diagnostics\n']);
+});
+
+test('a transient missing hierarchy retries and requires fresh rendered controls',()=>{
+ const r=exercise('hierarchy-transient');assert.equal(r.code,0,r.stderr);
+ assert.deepEqual(r.summary.results.map(row=>row.rendered),[true,true]);
+ const dumps=r.commands.filter(a=>a.includes('uiautomator')).map(a=>a.at(-1));
+ assert.equal(dumps.length,3);assert.equal(new Set(dumps).size,3);
+});
+test('persistently missing hierarchy cannot pass the renderer gate',()=>{
+ const r=exercise('hierarchy-missing');assert.notEqual(r.code,0);assert.equal(r.summary.status,'failed');
+ assert.match(r.summary.error,/did not render/);
+ assert.equal(r.commands.filter(a=>a.includes('uiautomator')).length,10);
 });

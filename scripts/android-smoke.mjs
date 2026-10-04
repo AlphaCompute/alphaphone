@@ -240,10 +240,17 @@ try {
     const markers = ["Open conversation", "Calendar", "Camera", "Notes", "Settings"];
     let hierarchy = "";
     let rendered = false;
+    const hierarchyRunId = crypto.randomUUID();
     for (let attempt = 0; attempt < 10; attempt++) {
-      const remote = "/sdcard/launcher-smoke-hierarchy.xml";
-      run("shell", "uiautomator", "dump", remote);
-      hierarchy = run("shell", "cat", remote);
+      // A fresh path prevents a failed dump from admitting a previous screen.
+      const remote = `/sdcard/alpha-smoke-${hierarchyRunId}-${variant}-${attempt}.xml`;
+      try {
+        run("shell", "uiautomator", "dump", remote);
+        hierarchy = run("shell", "cat", remote);
+      } catch (captureError) {
+        hierarchy = "";
+        console.error(`Hierarchy attempt ${attempt + 1} unavailable:`, captureError.message);
+      }
       if (markers.every(marker => hierarchy.includes(`text="${marker}"`) || hierarchy.includes(`content-desc="${marker}"`))) { rendered = true; break; }
       run("shell", "sleep", "0.5");
     }
