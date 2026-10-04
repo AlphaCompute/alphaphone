@@ -104,7 +104,8 @@ public class PrototypeFlowInstrumentedTest {
    s.recreate();ready(s);open(s,"Notes");click(s,"Open "+title);
    waitFor(s,"document.querySelector('textarea[aria-label=\"Note\"]').value==="+JSONObject.quote(body),10000);
    click(s,"Delete note");waitFor(s,"!("+note(title)+")",10000);
-   eval(s,"[...document.querySelectorAll('button')].find(b=>b.textContent==='Undo').click()");waitFor(s,note(title),10000);
+   String undo="[...document.querySelectorAll('button')].find(b=>b.textContent==='Undo'&&b.getClientRects().length&&b.closest('.drop')?.textContent.includes("+JSONObject.quote(title)+"))";
+   waitFor(s,undo,10000);eval(s,"("+undo+").click()");waitFor(s,note(title),10000);
    click(s,"Open "+title);click(s,"Delete note");waitFor(s,"!("+note(title)+")",10000);
   }
  }
