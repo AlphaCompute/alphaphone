@@ -5,7 +5,7 @@ October 1 architecture change: the user has selected an **Android-resident agent
 ## Accepted foundation decisions
 
 1. Keep Alpha Phone and senior-care independent: separate repository, application ID, renderer, assets and release stream.
-2. Use a pinned Eliza source submodule while upstream consumer exports stabilize. The unused `base/eliza-app` copy has been retired; `eliza-app-baseline-provenance.json` retains the original upstream commit and file hashes. Avoid publishing every workspace package before testing the actual dependency closure.
+2. Use a pinned Eliza source submodule while upstream consumer exports stabilize. Avoid publishing every workspace package before testing the actual dependency closure.
 3. Compile Eliza's real system plugin into a local bundled Capacitor shell. Cloud runtime pairing is explicit future work; the current composer never reports a successful send.
 4. Use standalone and launcher product flavors with the same Alpha identity. Switching flavor replaces the installed Alpha app. Senior-care has a different identity and can coexist.
 5. Make AOSP installation additive, nonprivileged and certificate/hash verified. Device provisioning chooses default HOME. Keep system recovery paths available.

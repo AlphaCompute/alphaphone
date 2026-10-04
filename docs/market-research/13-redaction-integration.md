@@ -1,6 +1,6 @@
 # 13 — Redaction integration: verified upstream inventory, egress gate design and implementation plan
 
-> Runtime source update: the local patch series has been migrated into reviewed upstream commits. AlphaPhone now consumes the immutable revision in `upstream.lock.json`; see [the migration ledger](../upstream-patch-migration.json). Patch filenames and line numbers below describe historical evidence retained in Git history, not files to apply to the current checkout. Implement further shared runtime changes through upstream PRs and update the reviewed pin.
+> Runtime source update: the local patch series has been migrated into reviewed upstream commits. AlphaPhone now consumes the immutable revision in `upstream.lock.json`; see [architecture and source ownership](../architecture.md). Patch filenames and line numbers below describe historical evidence retained in Git history, not files to apply to the current checkout. Implement further shared runtime changes through upstream PRs and update the reviewed pin.
 
 This is an engineering design and plan, not acceptance evidence. Apart from the upstream swap fix in Section 17, nothing in it is built. It checks the claims in [04-redaction.md](04-redaction.md) and [11-fit-gtm-risks.md](11-fit-gtm-risks.md) against source, maps Alpha's egress points, compares external tools, and proposes a single egress gate with a work plan.
 
@@ -998,7 +998,7 @@ This delivers WP1 (Section 14). With it, egress E6 in Section 4 is no longer unp
 - **Root causes:**
   - The swap walkers flatten the request `AbortSignal` into a plain object.
   - The enable flags were read only from runtime settings, which host env forwarding cannot set for keys containing `SECRET`.
-- **Fix:** [`patches/eliza/egress-swap-control-objects.patch`](../../patches/eliza/egress-swap-control-objects.patch), added to the Android runtime extras. `AlphaLocalAgentPlugin` sets `ELIZA_SECRET_SWAP_ENABLED=true` and `ELIZA_PII_SWAP_ENABLED=true`.
+- **Fix:** the retired patch (available in Git history), added to the Android runtime extras. `AlphaLocalAgentPlugin` sets `ELIZA_SECRET_SWAP_ENABLED=true` and `ELIZA_PII_SWAP_ENABLED=true`.
 - **Measured after the fix** (same proxy, patched runtime): through both the settings path and the environment-only path the resident agent uses, the email, phone, card and SSN reached Cerebras only as `__ELIZA_SECRET_<nonce>_<n>__` placeholders, and the turn completed normally.
 - **Remaining:**
   - Person names still egress until an NER recognizer is registered (Section 14).

@@ -19,7 +19,7 @@ These corrections are source findings, with scoped test evidence linked in the c
 
 The product is **not fully accepted**. The current capability summary below
 supersedes the September 29 source audit retained later in this document.
-[The current acceptance ledger](current-acceptance-ledger.md) and
+[current product status](mvp-current-status.md) and
 [flow verification](flow-verification.md) retain the exact build and test scope;
 a focused pass does not turn an earlier failed full suite green.
 

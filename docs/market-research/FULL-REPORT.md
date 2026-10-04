@@ -49,7 +49,7 @@ This report consolidates fifteen research sections on the market, competitors, r
      - The audit record does not cover redaction.
      - The core PII modules have no unit tests.
      - Upstream redaction is off by default and runs only at the agent's model boundary.
-   - **Resident-agent egress:** with both swaps off, emails, phone numbers, card numbers and SSNs reached Cerebras verbatim. The upstreamed swap-walker fix (recorded in [the migration ledger](../upstream-patch-migration.json)) fixes the control-object traversal, and `AlphaLocalAgentPlugin` sets `ELIZA_SECRET_SWAP_ENABLED` and `ELIZA_PII_SWAP_ENABLED`. Those identifiers now reach Cerebras only as placeholders (emulator evidence, not physical-device or AOSP-image acceptance). Person names still egress until an NER recognizer is registered.
+   - **Resident-agent egress:** with both swaps off, emails, phone numbers, card numbers and SSNs reached Cerebras verbatim. The upstreamed swap-walker fix (recorded in [architecture and source ownership](../architecture.md)) fixes the control-object traversal, and `AlphaLocalAgentPlugin` sets `ELIZA_SECRET_SWAP_ENABLED` and `ELIZA_PII_SWAP_ENABLED`. Those identifiers now reach Cerebras only as placeholders (emulator evidence, not physical-device or AOSP-image acceptance). Person names still egress until an NER recognizer is registered.
    - **Full plan:**
      - a renderer and native detection layer, with a GLiNER-PII ONNX model behind upstream's `PiiEntityRecognizer`;
      - a Java gate that refuses any request body without a matching redaction receipt;
@@ -216,7 +216,7 @@ This report consolidates fifteen research sections on the market, competitors, r
 
 This document defines the scope of the Alpha Phone research: the product baseline every section assumes, the questions each section answers, and the topics outside the original request that the research covers. The consolidated findings are in [REPORT.md](REPORT.md).
 
-Product capability statements come from the repository's evidence ledger (`docs/mvp-scope-and-gap-report.md`, `docs/current-acceptance-ledger.md`, `docs/enclave-candidate-validation.md`). Where a capability is only planned, the research says so.
+Product capability statements come from the repository's evidence ledger (`docs/mvp-scope-and-gap-report.md`, `docs/mvp-current-status.md`, `docs/enclave-candidate-validation.md`). Where a capability is only planned, the research says so.
 
 ## Product baseline
 
@@ -4477,7 +4477,7 @@ Every product capability statement below is tied to a repository file and uses t
 
 ## 0. Executive summary
 
-1. **Alpha Phone today is a well-engineered, honestly documented pre-MVP.** It has a large verified surface on emulators and paired hosts: both APK variants, HOME role, calendar CRUD, reminders, files, photos, notes, owner-bound approvals with an encrypted action journal, an isolated browser with a sensitive-page guard, and offline on-device speech in a separate ARM64 harness. Nothing has passed on a physical Pixel. There is no live Cloud login, no live Gmail, no deployed latest enclave, no powered-off hosted loops and no user acceptance ([mvp-scope-and-gap-report.md](../mvp-scope-and-gap-report.md), [current-acceptance-ledger.md](../current-acceptance-ledger.md)).
+1. **Alpha Phone today is a well-engineered, honestly documented pre-MVP.** It has a large verified surface on emulators and paired hosts: both APK variants, HOME role, calendar CRUD, reminders, files, photos, notes, owner-bound approvals with an encrypted action journal, an isolated browser with a sensitive-page guard, and offline on-device speech in a separate ARM64 harness. Nothing has passed on a physical Pixel. There is no live Cloud login, no live Gmail, no deployed latest enclave, no powered-off hosted loops and no user acceptance ([mvp-scope-and-gap-report.md](../mvp-scope-and-gap-report.md), [mvp-current-status.md](../mvp-current-status.md)).
 2. **The strongest market asset is not in the Alpha app yet.** The pinned elizaOS upstream already contains a serious PII layer. It has checksum-validated detectors, corpus-consistent typed pseudonyms, a "secret-swap" before the model boundary, fail-closed audio redaction with re-transcription verification, and a host-owned *confidential inference admission* policy with mandatory audit records (`vendor/eliza/packages/core/src/security/{pii-detectors,pii-pseudonymizer,pii-pseudonym-map,secret-swap,confidential-inference}.ts`, `vendor/eliza/packages/core/src/audio-redaction*.ts`, `vendor/eliza/packages/agent/src/services/audio-redaction-service.ts`). The Alpha renderer does not call any of it (grep of `apps/app/src` finds no redaction use beyond a settings label). Wiring it in is the single highest-leverage product move.
 3. **The confidentiality story does not hold up as currently described.** The agent runs in an AWS Nitro Enclave. Nitro Enclaves have no GPU, no persistent storage and no external networking, only a vsock channel ([AWS FAQ](https://aws.amazon.com/ec2/nitro/nitro-enclaves/faqs/)). Inference therefore leaves the enclave for Cerebras. Cerebras states it does not retain inference inputs or outputs ([Cerebras privacy policy](https://www.cerebras.ai/privacy-policy)), but that is a contractual promise, not attestation. The repo says so itself ([mvp-scope-and-gap-report.md §Private hosting](../mvp-scope-and-gap-report.md)). **Redaction before egress is what makes the architecture defensible.** A later GPU TEE (NVIDIA confidential computing on Hopper, Blackwell or Rubin; [NVIDIA](https://www.nvidia.com/en-us/data-center/solutions/confidential-computing/)) closes the gap fully.
 4. **Recommended beachhead: SEC-registered investment advisers, meaning independent RIAs, multi-family offices and private-markets/alternatives IR teams.** The product would be *"Alpha Secure Scribe"*: a managed Android Enterprise app on stock Pixels, with the hardened launcher phone as a premium tier. The reasons:
@@ -4524,7 +4524,7 @@ The repo's rule is to distinguish an APK build, an emulator test, a full AOSP im
 | Alpha visual system: 14 prototype modules, 60 named presets; MVP profile hides Phone, SMS, Contacts, Wallet | Verified (visual/mock); 10 retained MVP apps navigate | E (Build83 navigation/accessibility) | [prototype-screen-inventory.md](../prototype-screen-inventory.md), `apps/app/src/prototype/mvp-features.ts` |
 | AOSP vendor add-on (non-privileged, hash/signer-checked) | Generated only | B | [README.md §AOSP](../../README.md); image boot **not** done |
 | Physical Pixel image, signing, OTA/rollback | Planned | none | [decisions.md A-01, A-06](../decisions.md) |
-| Accessibility (TalkBack, large text, focus trapping) | Partial | E (Build64 text scaling, Build83 covered-layer focus) | [current-acceptance-ledger.md](../current-acceptance-ledger.md) |
+| Accessibility (TalkBack, large text, focus trapping) | Partial | E (Build64 text scaling, Build83 covered-layer focus) | [mvp-current-status.md](../mvp-current-status.md) |
 | MDM / Android Enterprise managed configuration | **Absent**: no `RestrictionsManager`/`DevicePolicyManager` use in `android/app/src/main` | none | repo grep |
 
 ### 2.2 Agent, identity and security
@@ -5747,7 +5747,7 @@ See [05-regulation-compliance.md](05-regulation-compliance.md) for the law. Plat
 
 # 13 — Redaction integration: verified upstream inventory, egress gate design and implementation plan
 
-> Runtime source update: the local patch series has been migrated into reviewed upstream commits. AlphaPhone now consumes the immutable revision in `upstream.lock.json`; see [the migration ledger](../upstream-patch-migration.json). Patch filenames and line numbers below describe historical evidence retained in Git history, not files to apply to the current checkout. Implement further shared runtime changes through upstream PRs and update the reviewed pin.
+> Runtime source update: the local patch series has been migrated into reviewed upstream commits. AlphaPhone now consumes the immutable revision in `upstream.lock.json`; see [architecture and source ownership](../architecture.md). Patch filenames and line numbers below describe historical evidence retained in Git history, not files to apply to the current checkout. Implement further shared runtime changes through upstream PRs and update the reviewed pin.
 
 This is an engineering design and plan, not acceptance evidence. Apart from the upstream swap fix in Section 17, nothing in it is built. It checks the claims in [04-redaction.md](04-redaction.md) and [11-fit-gtm-risks.md](11-fit-gtm-risks.md) against source, maps Alpha's egress points, compares external tools, and proposes a single egress gate with a work plan.
 
@@ -6745,7 +6745,7 @@ This delivers WP1 (Section 14). With it, egress E6 in Section 4 is no longer unp
 - **Root causes:**
   - The swap walkers flatten the request `AbortSignal` into a plain object.
   - The enable flags were read only from runtime settings, which host env forwarding cannot set for keys containing `SECRET`.
-- **Fix:** [`patches/eliza/egress-swap-control-objects.patch`](../../patches/eliza/egress-swap-control-objects.patch), added to the Android runtime extras. `AlphaLocalAgentPlugin` sets `ELIZA_SECRET_SWAP_ENABLED=true` and `ELIZA_PII_SWAP_ENABLED=true`.
+- **Fix:** the retired patch (available in Git history), added to the Android runtime extras. `AlphaLocalAgentPlugin` sets `ELIZA_SECRET_SWAP_ENABLED=true` and `ELIZA_PII_SWAP_ENABLED=true`.
 - **Measured after the fix** (same proxy, patched runtime): through both the settings path and the environment-only path the resident agent uses, the email, phone, card and SSN reached Cerebras only as `__ELIZA_SECRET_<nonce>_<n>__` placeholders, and the turn completed normally.
 - **Remaining:**
   - Person names still egress until an NER recognizer is registered (Section 14).
@@ -6776,7 +6776,7 @@ Web:
 
 # 14 — SOC 2 technical plan for Alpha Phone
 
-> Runtime source update: the local patch series has been migrated into reviewed upstream commits. AlphaPhone now consumes the immutable revision in `upstream.lock.json`; see [the migration ledger](../upstream-patch-migration.json). Patch filenames and line numbers below describe historical evidence retained in Git history, not files to apply to the current checkout. Implement further shared runtime changes through upstream PRs and update the reviewed pin.
+> Runtime source update: the local patch series has been migrated into reviewed upstream commits. AlphaPhone now consumes the immutable revision in `upstream.lock.json`; see [architecture and source ownership](../architecture.md). Patch filenames and line numbers below describe historical evidence retained in Git history, not files to apply to the current checkout. Implement further shared runtime changes through upstream PRs and update the reviewed pin.
 
 Companion to [05 — Regulation and compliance](05-regulation-compliance.md), which budgets "SOC 2 Type I, then Type II" as the first enterprise unlock.
 
@@ -7531,7 +7531,7 @@ Expect these Alpha-specific asks that a SOC 2 report alone will not answer. Prep
 
 # 15 — Open-gap technical plan: confidential capture, redaction, consent and verifiable cloud processing
 
-> Runtime source update: the local patch series has been migrated into reviewed upstream commits. AlphaPhone now consumes the immutable revision in `upstream.lock.json`; see [the migration ledger](../upstream-patch-migration.json). Patch filenames and line numbers below describe historical evidence retained in Git history, not files to apply to the current checkout. Implement further shared runtime changes through upstream PRs and update the reviewed pin.
+> Runtime source update: the local patch series has been migrated into reviewed upstream commits. AlphaPhone now consumes the immutable revision in `upstream.lock.json`; see [architecture and source ownership](../architecture.md). Patch filenames and line numbers below describe historical evidence retained in Git history, not files to apply to the current checkout. Implement further shared runtime changes through upstream PRs and update the reviewed pin.
 
 This is a plan, not acceptance evidence: nothing in it is built or proves that a capability exists. Capability statements about Alpha today come from repository documents; every external fact has a URL. **(est.)** marks an estimate or model; **(unverified)** marks a figure not confirmed against a primary source.
 

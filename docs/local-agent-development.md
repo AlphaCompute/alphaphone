@@ -156,7 +156,7 @@ The summary is written to `test-results/local-redaction/result.json`. Successful
 ## Historical host redaction qualification (October 2)
 
 The following dated checkpoints retain earlier failures and repairs. Patch names
-refer to retired consumer patches now recorded in the [migration ledger](upstream-patch-migration.md),
+refer to retired consumer patches now recorded in the [architecture and source ownership](architecture.md),
 not files to apply to the current source. The [current status](mvp-current-status.md)
 is the authority for later qualification and remaining work.
 

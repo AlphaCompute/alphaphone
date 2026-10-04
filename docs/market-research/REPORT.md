@@ -49,7 +49,7 @@ This report consolidates fifteen research sections on the market, competitors, r
      - The audit record does not cover redaction.
      - The core PII modules have no unit tests.
      - Upstream redaction is off by default and runs only at the agent's model boundary.
-   - **Resident-agent egress:** with both swaps off, emails, phone numbers, card numbers and SSNs reached Cerebras verbatim. The upstreamed swap-walker fix (recorded in [the migration ledger](../upstream-patch-migration.json)) fixes the control-object traversal, and `AlphaLocalAgentPlugin` sets `ELIZA_SECRET_SWAP_ENABLED` and `ELIZA_PII_SWAP_ENABLED`. Those identifiers now reach Cerebras only as placeholders (emulator evidence, not physical-device or AOSP-image acceptance). Person names still egress until an NER recognizer is registered.
+   - **Resident-agent egress:** with both swaps off, emails, phone numbers, card numbers and SSNs reached Cerebras verbatim. The upstreamed swap-walker fix (recorded in [architecture and source ownership](../architecture.md)) fixes the control-object traversal, and `AlphaLocalAgentPlugin` sets `ELIZA_SECRET_SWAP_ENABLED` and `ELIZA_PII_SWAP_ENABLED`. Those identifiers now reach Cerebras only as placeholders (emulator evidence, not physical-device or AOSP-image acceptance). Person names still egress until an NER recognizer is registered.
    - **Full plan:**
      - a renderer and native detection layer, with a GLiNER-PII ONNX model behind upstream's `PiiEntityRecognizer`;
      - a Java gate that refuses any request body without a matching redaction receipt;

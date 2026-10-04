@@ -1,69 +1,68 @@
 # Architecture and ownership
 
-October 1 architecture change: the user has selected an **Android-resident agent instead of Nitro/TEE hosting**. The [on-device agent plan](on-device-agent-plan.md) supersedes cloud-only and enclave-primary requirements below. The current implementation runs orchestration locally with an explicitly configured hosted Cerebras model; this is not offline LLM operation. Historical evidence is retained. A powered-off phone cannot execute local schedules; optional remote execution has separate acceptance requirements.
+Alpha Phone is an independent Android product. `apps/app` owns its renderer,
+navigation, presentation, capability policy and storage configuration. Shared
+runtime, browser features, native plugins and OS tooling come from the exact
+revision in `upstream.lock.json` and `vendor/eliza`.
 
-September 30 scope update: the [MVP report](mvp-scope-and-gap-report.md) and [completion plan](mvp-completion-plan.md) govern current priority. Earlier cloud-only/local-model statements do not waive the supplied DoD's on-device STT/TTS requirement; offline LLM and external-versus-TEE inference remain explicitly reconciled there.
-
-Status: daily-tool implementation in progress. Cloud and remote authentication adapters are implemented; the actual local Eliza/Cerebras protocol has been exercised. Live Cloud services and device acceptance remain incomplete. Enclave deployment is historical optional work, not a gate for the primary resident-agent path. Cloud service identity is independent of the selected agent target; see `agent-integration.md` and the flow verification record for exact scope.
-
-## Upstream runtime ownership
-
-`upstream.lock.json` and the `vendor/eliza` submodule identify one reviewed upstream
-commit for the renderer helpers, resident runtime and native sources. Runtime
-preparation checks out that commit without applying consumer patches. Native
-staging records original and generated hashes; only product namespace, icon and
-environment wiring are generated locally. Regression tests exercise the pinned
-upstream sources directly. Historical patch artifacts remain available in Git
-history; runtime preparation no longer carries a patch series. Renderer client helpers are also copied from authenticated source at the same
-pin; no consumer patch is applied.
-
-## Repository boundaries
-
-The [application ownership audit](app-upstream-ownership.md) tracks the ongoing
-split between Alpha presentation/defaults and reusable upstream features. The
-Maps, Files and Notes source is copied from the exact pinned upstream commit
-into an authenticated cache outside `vendor/eliza`. Product wrappers preserve
-installed storage keys and native identities while injecting visual and device
-configuration into the shared implementation.
+## Source boundaries
 
 | Path | Responsibility |
 | --- | --- |
-| `apps/app/src` | Entire alphaphone UI and interaction source; independent of the other product |
-| `android` | Capacitor Activity, native app launcher bridge, standalone/HOME flavors |
-| `app.config.json` | Product package identity, display name, version, orientation |
-| `vendor/eliza` | Commit-pinned agent, UI helpers, native plugins and OS tooling |
-| `docs/eliza-app-baseline-provenance.json` | Historical upstream import provenance; source recoverable from Git |
-| `design` | Original product/design evidence and exact hashes |
-| `scripts` | Reproducible build, APK inspection, emulator smoke and AOSP staging |
-| `docs` | PRD, architecture decisions, implementation/test traceability |
+| `apps/app/src` | Alpha UI, product policy and adapters to shared features |
+| `android` | Product identity, Activity, permissions, resources and standalone/HOME packaging |
+| `app.config.json` | Package ID, display name, version and orientation |
+| `backend` | Development runtime composition, character and permitted model/actions |
+| `vendor/eliza` | Pinned shared platform source; never modified by consumer builds |
+| `scripts` | Consumer build orchestration and product acceptance scenarios |
+| `design` | Requirements and visual references, not executable instructions |
 
-The active shell derives its Capacitor activity lifecycle, splash installation, mixed-content policy and HOME back behavior from Eliza's `packages/app/scripts/mobile/android/templates/main-activity.ts`. It compiles the actual `plugins/plugin-native-system/android` source as a Gradle project and imports its browser-safe TypeScript entry. Product bridges include `DeviceApps` for launcher enumeration/open and build identity, and `DailyApps` for native intent handoffs, document selection and device-local reminders. `DevelopmentAgent` exists only in debug source sets and uses a fixed loopback service through emulator port forwarding; it is not production account authentication. No agent, wallet, credential manager or whole `@elizaos/ui` barrel is bundled into the renderer.
+Maps, Files and Notes implementations are copied from authenticated upstream
+source into a generated cache outside the submodule. Product wrappers inject
+presentation, device configuration and installed storage identities. Resident
+runtime preparation also uses the locked upstream source without patch replay.
+Native staging verifies source and generated hashes and applies only explicit
+host identity/resource/environment configuration.
 
-## Decisions
+Generic behavior belongs upstream with configurable host inputs. Product names,
+package IDs, storage namespaces, view allowlists and approval policy stay here.
+Do not import another product's UI or turn Alpha-specific restrictions into
+universal platform defaults. Use existing upstream schedulers, credential
+providers and stores rather than introducing competing implementations.
 
-**ADR-01: pin source, do not publish the whole monorepo.** Each product has its own `vendor/eliza` Git submodule and exact lock. This makes unpublished native/OS fixes available while retaining reproducibility. Eliza packages contain workspace protocols, relative build scripts and native asset assumptions; a blanket `npm publish` is neither necessary nor validated. The shell's small registry dependency set has its own npm lock. A future package release needs consumer tests outside the monorepo, rewritten workspace protocols, browser-safe exports, native source packaging and a version compatibility matrix before replacing source pins.
+## Runtime and permissions
 
-**ADR-02: separate UI, shared platform contracts.** No cross-product imports. Each product owns layouts, tokens, routes, branding, package ID and store/OS metadata. Generic transport, platform capability checks, redaction, task/approval protocol and native plugins belong upstream. Product task policy must be supplied explicitly, not hard-coded into the shared agent.
+The primary agent runs on Android. Local orchestration, durable state and tool
+approvals are separate from model inference: hosted inference requires explicit
+configuration and outbound-context policy. Cloud/remote pairing is an optional
+path. Debug host forwarding is development infrastructure, not evidence of a
+resident runtime or production authentication.
 
-**ADR-03: two install modes.** `standalone` is an ordinary app with MAIN/LAUNCHER and no HOME filter. `launcher` adds MAIN/HOME/DEFAULT and handles Back/Home at its root. Both use the same product package ID so they are alternate installations, not two simultaneous apps. Alpha and senior-care package IDs are different and can coexist. Debug APKs are signed locally; release outputs are unsigned until controlled signing. The signed launcher APK is prepared for import as a nonprivileged presigned AOSP product app; a full image build and boot remain unverified. System installation alone does not grant accessibility, overlay, dialer, SMS, assistant or signature permissions.
+Third-party web content runs in an isolated native browser surface; it must not
+receive the application's Capacitor bridge. Origin, context revision, consent,
+sensitive fields and cancellation remain bound to each action. Credentials use
+Android Keystore-backed storage in the no-backup directory. Renderer preferences
+hold nonsecret selections and identifiers. Backup remains disabled until its
+key and retention policy is defined.
 
-**ADR-04: no implicit privileged bundle.** The new OS staging tool admits a custom APK separately from Eliza's full local-agent system APK. It emits an additive Soong module and product fragment after hash/signer/HOME checks. It does not replace Eliza, Launcher3, SystemUI or Chromium. Device enrollment chooses the default HOME role; production selection/rollback policy is a release gate. Do not remove the stock recovery launcher before that gate.
+Standalone and launcher APKs share `ai.elizaresearch.alphaphone` and replace one
+another. Only the launcher variant declares HOME. Release outputs require
+controlled signing. System installation alone does not grant protected roles or
+permissions. OS staging admits the product APK separately from Eliza's full app;
+release provisioning owns default roles, signing, update compatibility and
+recovery policy.
 
-**ADR-05: execution boundary (revised October 1).** The primary agent runs on the Android device, replacing the earlier cloud-only/Nitro direction. Reuse the existing Eliza mobile runtime and native IPC subject to Alpha packaging, lifecycle and permission qualification. Keep orchestration, durable state and tool approvals local; model inference location is a separate pending decision. Hosted inference, if selected, must be explicit about outbound context. Cloud/remote pairing remains an optional path. The existing debug host-forwarded transport is not an on-device runtime. See [implementation and acceptance changes](on-device-agent-plan.md).
+## Changing shared code
 
-**ADR-06: browser independence.** Assistance to third-party websites needs the isolated native browser surface or approved Chromium bridge; never expose the Capacitor bridge to arbitrary remote web content. Origin identity, observation version, consent and sensitive-field boundaries must survive every navigation. A stock launcher Activity alone cannot keep a side panel above every app. System-wide assistance needs the separate window/accessibility capability spike in the plan.
+1. Implement and test reusable behavior in a dedicated Eliza branch and submit
+   a PR against `develop`.
+2. Publish a retrievable reviewed revision. Update the submodule and lock
+   together; preserve the current source-admission checks.
+3. Run `npm run verify` and `npm run android:build` for both distributions.
+4. Exercise the changed native/renderer contract, including installed-data and
+   identity preservation where relevant.
 
-## Updating Eliza
-
-1. Make generic changes in a dedicated `codex/` branch of the Eliza source and retain targeted tests.
-2. Publish the commit so a clean clone can retrieve it. Prefer a reviewed upstream PR before release.
-3. Update the submodule and `upstream.lock.json` together. The unused baseline copy is retired; retain its historical source provenance.
-4. Run source-pin verification, product typecheck/tests/build, both APK flavors and emulator bridge/HOME tests. Upgrade one product at a time.
-5. Before production, run upstream required root checks, the real auth/agent suite, signed-image build and physical-device acceptance. Reverting the submodule pin is the source rollback; installed APK/OS rollback must separately respect signing identity and Android versionCode rules.
-
-No production secrets or signing keys belong in these repos. Account credentials are encrypted with Android Keystore AES-GCM in the app no-backup directory. Renderer preferences contain only nonsecret connection selection and conversation identifiers. Cloud voice requests bind to a specific saved credential generation. Platform backup remains disabled until retention/key ownership is specified.
-
-Shared Android calendar and local speech implementations are consumed from the pinned
-upstream source. Alpha retains calendar identity configuration, generated speech inputs,
-its renderer and both APK distributions. See [the consolidation inventory](upstream-consolidation.md)
-for the ownership boundary and remaining extraction contracts.
+APK builds, emulator bridge/HOME tests, full AOSP image boot, real integrations,
+and physical-device/user acceptance are separate gates. See
+[mvp-current-status.md](mvp-current-status.md) for their current limits. A source
+pin rollback does not by itself establish APK or OS rollback compatibility.
