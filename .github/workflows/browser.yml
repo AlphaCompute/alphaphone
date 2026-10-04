@@ -1,6 +1,7 @@
 name: Browser MVP
 on:
   push:
+    branches: [main]
   pull_request:
   workflow_dispatch:
 permissions:
@@ -28,6 +29,20 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npx playwright install --with-deps chromium
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Prepare pinned JSON dependency for host contract tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          jar="$RUNNER_TEMP/json-20250517.jar"
+          curl --fail --location --retry 3 --max-time 60 \
+            https://repo.maven.apache.org/maven2/org/json/json/20250517/json-20250517.jar \
+            --output "$jar"
+          echo "3ea61b2a06e31edf1c91134fe9106b0ebb16628be169f3db75bc7a2b06b45796  $jar" | sha256sum --check --strict
+          echo "ALPHA_JSON_JAR=$jar" >> "$GITHUB_ENV"
       - run: npm run verify
       - run: npm run test:browser -- --shard=${{ matrix.shard }}/3
       - name: Exercise synthetic local-agent speech profile

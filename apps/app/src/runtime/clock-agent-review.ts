@@ -1,5 +1,5 @@
 import {registerPlugin} from '../platform-plugins';
-import {createClockReviewExecutor,type ClockReviewBridge} from '../../../../patches/eliza/exports/clock-review-executor';
+import {createClockReviewExecutor,type ClockReviewBridge} from '../../../../vendor/eliza/plugins/plugin-assistant/src/services/device-actions/clock-review-executor';
 // One owner-retirement registry for this renderer; native approval remains in AlphaActionJournal.
 const executor=createClockReviewExecutor(registerPlugin<ClockReviewBridge>('AlphaActionJournal'));
 export const retireClockReviews=executor.retire;

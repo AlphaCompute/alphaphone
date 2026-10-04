@@ -23,7 +23,7 @@ Open `http://127.0.0.1:5317`, choose **Start local agent**, then chat normally. 
 
 The bridge accepts same-origin requests from the loopback development page only. It allows the conversation, device-action and workflow APIs, injects a host-owned machine session, and removes the upstream session ID because that ID is itself a bearer token. Credentials are not embedded in the web bundle. Device enrollment keys and durable action receipts are kept in the private development profile. Browser development advertises its implemented Notes capability, not Android Calendar/Reminders or native permission access.
 
-The development host launches Bun with `--conditions=eliza-source` and `--no-install`, matching upstream's source-checkout resolution. Alpha explicitly opts into workflows within the lean chat plugin set using the tested `lean-chat-workflows.patch`; coding, terminal, browser automation and wallet exclusions remain in force. An explicit workflow disable in the private profile still takes precedence. `agent:test` checks those selection boundaries against the prepared source. Existing profiles and their schedule settings are preserved.
+The development host launches Bun with `--conditions=eliza-source` and `--no-install`, matching upstream's source-checkout resolution. Alpha explicitly opts into workflows within the lean chat plugin set using the pinned upstream lean-chat workflow support; coding, terminal, browser automation and wallet exclusions remain in force. An explicit workflow disable in the private profile still takes precedence. `agent:test` checks those selection boundaries against the prepared source. Existing profiles and their schedule settings are preserved.
 
 Workflow drafts in local browser development persist in the private host profile, separately scoped to the selected owner/agent. Atomic compare-and-exchange rejects stale-tab changes. These development drafts are not encrypted; the editor says so. Android continues to use its encrypted native draft store. Draft storage does not save or execute a workflow on the agent until the separate reviewed submission.
 
@@ -50,6 +50,16 @@ The Kokoro directory must contain the pinned `kokoro-82m-v1_0.gguf` and `voices/
 
 The real browser test can be repeated with `VITE_LOCAL_AGENT=1`, `ALPHA_LOCAL_AGENT_ORIGIN`, `ALPHA_LOCAL_AGENT_TOKEN_FILE`, and `ALPHA_SPEECH_FIXTURE` pointing to a locally generated synthetic WAV, then running `npx playwright test test/browser/browser-agent-recording.spec.ts`. It verifies capture, transcription, real audio playback, stop and connection retirement. Its host-dependent cases explicitly skip without the required environment. Native Android speech and physical-device acceptance remain separate.
 
+For a real arithmetic-only workflow check against a disposable local host, provide an owner-only paired session JSON file and run:
+
+```sh
+ALPHA_WORKFLOW_ORIGIN=http://127.0.0.1:47859 \
+ALPHA_DEVICE_SESSION_FILE=/private/path/to/session.json \
+node scripts/test-real-workflow.mjs
+```
+
+The helper loads TypeScript through the installed `tsx` loader, accepts only an exact IPv4 loopback HTTP origin, creates a paused synthetic workflow, executes it once, and leaves it paused. It requires one persisted output row for the matching run and task with value `56`, then checks that a second receipt read returns the same result. A finished status without that output fails qualification. It exercises the actual local workflow engine without model inference, tools or communications. Run it against an isolated test profile; it does not qualify native triggers or real-provider workflows.
+
 ## Android setup
 
 Prepare the runtime and stage its mobile payload:
@@ -70,8 +80,9 @@ The native bridge enrolls and verifies its own local owner session. Conversation
 ## Reproducible source boundaries
 
 - `vendor/eliza` stays pinned and unchanged at the repository's `upstream.lock.json` revision. Its Android lifecycle sources are generated into Gradle's ignored build directory with Alpha's identity and socket namespace. A generated SHA-256 manifest records inputs and outputs.
-- The original 35-patch MVP series is preserved; patch36 advances the complete composed tree to qualified runtime `ab8f9a7110ae7ddc5edd6a1e323f77e0362ec9d3`. The series reproduces against `4573712ebf0466daa4dfadaa4482704c209d9b8c`, which differs from the vendor pin. `agent:prepare` creates an isolated checkout in `artifacts/local-agent-source`, checks every patch hash, applies the exact series, and checks all recorded output hashes. It then applies the Android secure-store socket and lean workflow patches listed in `android-local-runtime-source.json`, checking their recorded output hashes too.
-- Cached preparations authenticate unchanged base files, candidate bytes/modes, deleted-path absence, and unexpected tracked or untracked source, including ignored files. Generated outputs are limited to authenticated workspace/Turbo declarations. Source stamps pin the manifests, patches, preparer and guard. Preparation never resets or overwrites a mismatched checkout. `ALPHA_RUNTIME_GIT_CACHE` may point to an existing Git repository containing the recorded base, avoiding a network fetch; it does not change the required commit.
+- `agent:prepare` creates an isolated checkout in `artifacts/local-agent-resident-<commit>` from the same `upstream.lock.json` commit. It applies no patches. All relevant overlays have moved upstream; historical patch files and their old qualification evidence remain in Git history.
+- Cached preparations authenticate every tracked source byte and executable mode, plus unexpected untracked files including ignored files. Generated outputs are limited to authenticated workspace/Turbo declarations. Source stamps pin the upstream lock, preparer and guard. Preparation never resets or overwrites a mismatched checkout. `ALPHA_RUNTIME_GIT_CACHE` may point to a repository containing the pinned commit; it does not change the required revision.
+
 For an existing preparation that no longer matches the source stamp, preserve it and select a fresh directory for every preparation, test, development and staging command:
 
 ```sh

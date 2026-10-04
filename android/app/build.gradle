@@ -50,6 +50,7 @@ dependencies {
  implementation project(':capacitor-android')
  implementation project(':eliza-system')
  implementation project(':eliza-camera')
+ implementation project(':eliza-calendar')
  // MVP-DEFERRED: Contacts provider and permissions; see docs/mvp-scope-and-gap-report.md.
  // implementation project(':eliza-contacts')
  implementation project(':eliza-location')

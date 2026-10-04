@@ -4890,6 +4890,34 @@ function stPlane(api, on) {
   api.shell({ q: q });
 }
 function stUnscroll() { try { var sc = document.querySelector("[data-screen]"); if (sc) { sc.scrollTop = 0; sc.scrollLeft = 0; } window.scrollTo(0, 0); } catch (e) {} }
+// Covered navigation pages stay mounted for animation and Back state, but
+// must leave both the keyboard order and accessibility tree.
+var stPageFocus = new WeakMap();
+function stPageAccess(root) {
+  if (!root) return;
+  var pages = Array.from(root.children).filter(function (el) { return el.hasAttribute("data-settings-page"); });
+  var current = pages[pages.length - 1];
+  if (!current) return;
+  var depth = pages.length - 1, key = depth + ":" + current.getAttribute("data-settings-page");
+  var previous = stPageFocus.get(root);
+  var saved = previous ? previous.saved : new Map();
+  var active = document.activeElement;
+  if (previous && previous.key !== key && previous.page.contains(active)) saved.set(previous.depth, active);
+  // Release the destination before restoring focus. Hide the former page only
+  // after focus moves so browsers do not reject aria-hidden on its active child.
+  current.inert = false;
+  current.removeAttribute("aria-hidden");
+  if (previous && previous.key !== key) {
+    var target = depth < previous.depth ? saved.get(depth) : null;
+    if (!target || !target.isConnected || !current.contains(target)) target = current.querySelector("button, input, select, textarea, [tabindex='0']");
+    if (target) target.focus({ preventScroll: true });
+    Array.from(saved.keys()).forEach(function (i) { if (i > depth) saved.delete(i); });
+  }
+  pages.forEach(function (page) {
+    if (page !== current) { page.inert = true; page.setAttribute("aria-hidden", "true"); }
+  });
+  stPageFocus.set(root, { page: current, depth: depth, key: key, saved: saved });
+}
 /* the prototype page must never scroll (focus/scrollIntoView can nudge the stage); undo it on every commit */
 function stNoScroll() { try { if (window.scrollX || window.scrollY) window.scrollTo(0, 0); var sc = document.querySelector("[data-screen]"); if (sc && (sc.scrollTop || sc.scrollLeft)) { sc.scrollTop = 0; sc.scrollLeft = 0; } } catch (e) {} }
 function stEmailOk(s) { return /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(s || ""); }
@@ -5346,7 +5374,7 @@ registerView("settings", {
       });
     });
     return {
-      rootRef: function () { stNoScroll(); },
+      rootRef: function (el) { stNoScroll(); stPageAccess(el); },
       stack: stack,
       charVal: S.charName, onName: function (e) { api.shell({ charName: e.target.value }); },
       persona: persona, openChar: go("character"),
@@ -5786,7 +5814,7 @@ class Component extends DCLogic {
       mvpMessages: isMvpView("messages"),
       ic: IC, vars: vars, rootRef: rootRef, frame: th.frame, clock: clock, dateStr: dateStr, name: name,
       isBoot: S.screen === "boot", isOff: S.screen === "off", isLock: S.screen === "lock", isOn: isOn, isView: isView,
-      viewBg: imm.dark ? "#000000" : "var(--bg)", viewFg: imm.dark ? "#ffffff" : "var(--fg)", sbColor: sbColor,
+      viewBg: imm.dark ? "#000000" : "var(--bg)", viewFg: imm.dark ? "#ffffff" : "var(--fg)", sbColor: sbColor, homeIndicatorColor: out.photos && out.photos.albumManager ? "var(--fg)" : sbColor,
       showStatus: !P.nativeSystemChrome && S.screen !== "boot" && S.screen !== "off" && !imm.noStatus, micLive: S.voice === "listening",
       showIndicator: !P.nativeSystemChrome && (isOn || S.screen === "lock"),
       toast: S.toast, toastOn: !!S.toast, toastUndo: !!S.toastUndo, toastPadR: S.toastUndo ? 5 : 18, doUndo: function () { var f = self.undoFn; self.undoFn = null; self.clear("t"); self.setState({ toast: "", toastUndo: false }); if (f) f(); },

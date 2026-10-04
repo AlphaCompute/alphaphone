@@ -26,3 +26,7 @@ android/app/src/main/jniLibs/
 
 # Generated local agent/workflow runtime state
 .eliza/
+
+# Local compiler/interpreter caches
+android/.kotlin/
+__pycache__/

@@ -135,8 +135,8 @@ jobs:
       # AARs, extracted sources and models are rebuilt in this clean job.
       - uses: actions/cache@v4
         with:
-          path: scripts/local-speech/downloads
-          key: speech-downloads-${{ runner.os }}-${{ hashFiles('scripts/local-speech/download-manifest.json') }}
+          path: .eliza/local-speech/downloads
+          key: speech-downloads-${{ runner.os }}-${{ hashFiles('vendor/eliza/packages/app/scripts/local-speech/download-manifest.json') }}
       - name: Acquire verified speech source, models and license references
         timeout-minutes: 15
         run: |
@@ -210,6 +210,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ needs.build.outputs.source_sha }}
+          submodules: true
       # Fresh native job has its own stock hosted image; build-job cleanup does
       # not carry over. Provision before tools, artifacts or the AVD are created.
       - name: Provision native capacity on the disposable hosted runner
@@ -291,6 +292,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ needs.build.outputs.source_sha }}
+          submodules: true
       # Fresh native job has its own stock hosted image; build-job cleanup does
       # not carry over. Provision before tools, artifacts or the AVD are created.
       - name: Provision native capacity on the disposable hosted runner

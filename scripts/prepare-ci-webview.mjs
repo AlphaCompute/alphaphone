@@ -487,13 +487,15 @@ export async function main({ environment = process.env, execute = execFileSync, 
     require(stockPath(run('shell', 'pm', 'path', candidate.package), run('shell', 'dumpsys', 'package', candidate.package)) === stock, 'Stock path changed');
     require(run('shell', 'sha256sum', stock).trim().split(/\s+/)[0] === stockHash && fileDigest(backup) === stockHash && fileDigest(apk) === candidate.apkSha256, 'Provider bytes changed before removal');
     state.status = 'removing-exact-stock-file'; save();
+    // Restart the Java framework only. Restarting SurfaceFlinger can strand
+    // SystemUI in getGpuContextPriority on this emulator graphics backend.
     const previousServer = serverIdentity();
-    run('shell', 'stop');
+    run('shell', 'stop', 'zygote');
     try {
       require(run('emu', 'avd', 'name').trim().split(/\r?\n/)[0] === 'test' && run('shell', 'getprop', 'ro.kernel.qemu').trim() === '1', 'Fixture changed while stopped');
       require(run('shell', 'sha256sum', stock).trim().split(/\s+/)[0] === stockHash, 'Stopped provider changed');
       run('shell', 'rm', stock);
-    } finally { run('shell', 'start'); }
+    } finally { run('shell', 'start', 'zygote'); }
     const admittedServer = await boot(previousServer); safe();
     require(!run('shell', 'pm', 'list', 'packages', candidate.package).trim(), 'Conflicting provider remains');
     require(sameServer(admittedServer, serverIdentity()), 'Framework changed before provider installation');
@@ -530,8 +532,8 @@ export async function main({ environment = process.env, execute = execFileSync, 
     require(/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/.test(priorBootId), 'Unknown provider boot identity');
     const previousProviderServer = serverIdentity();
     state.status = 'finalizing-provider-framework'; state.providerRestart = { priorBootId, previousServer: previousProviderServer, requested: true }; save();
-    run('shell', 'stop');
-    run('shell', 'start');
+    run('shell', 'stop', 'zygote');
+    run('shell', 'start', 'zygote');
     state.providerRestart.server = await boot(previousProviderServer, true); save(); safe(true);
     const bootId = run('shell', 'cat', '/proc/sys/kernel/random/boot_id').trim();
     require(/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/.test(bootId) && bootId === priorBootId, 'Provider framework restart changed kernel boot identity');

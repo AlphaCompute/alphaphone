@@ -1729,7 +1729,7 @@
       "lines": 53,
       "owner": "existing upstream clock/device execution surface",
       "disposition": "extract-or-split",
-      "reason": "Clock observation and reviewed execution; reuse existing clock patch instead of inventing a second executor.",
+      "reason": "Clock observation and reviewed execution; reuse the pinned upstream clock executor instead of inventing a second executor.",
       "imports": [
         "./alert-audio",
         "./daily",
@@ -7408,9 +7408,9 @@
     {
       "file": "src/prototype/camera-adapter.ts",
       "upstreamCandidate": [],
-      "bytes": 61877,
-      "sha256": "5fdd9fc3a3f5f643474c088622e0c6df780a0eea49ba78182761907ab3e749e9",
-      "lines": 656,
+      "bytes": 62338,
+      "sha256": "d2baac3abfcb01c9f86dc8f287947b7c9def950ee106441c84fd33f7b6d70f0c",
+      "lines": 660,
       "owner": "plugins/plugin-native-camera",
       "disposition": "extract-or-split",
       "reason": "Capture, media processing and library behavior; keep Alpha viewfinder, filter presets and review layouts local.",
@@ -7418,6 +7418,7 @@
         "../browser/content-question",
         "../browser/dev-profile",
         "../platform-plugins",
+        "../runtime/inline-modal",
         "./browser-camera",
         "./browser-image-import",
         "./scan-document",
@@ -7430,33 +7431,27 @@
       ],
       "seams": [
         {
-          "line": 8,
+          "line": 9,
           "tags": [
             "host-coupling"
           ]
         },
         {
-          "line": 17,
+          "line": 18,
           "tags": [
             "host-coupling"
           ]
         },
         {
-          "line": 30,
+          "line": 31,
           "tags": [
             "host-coupling"
           ]
         },
         {
-          "line": 96,
+          "line": 97,
           "tags": [
             "identity-or-compatibility"
-          ]
-        },
-        {
-          "line": 101,
-          "tags": [
-            "storage"
           ]
         },
         {
@@ -7466,104 +7461,104 @@
           ]
         },
         {
-          "line": 106,
+          "line": 103,
           "tags": [
             "storage"
           ]
         },
         {
-          "line": 122,
+          "line": 107,
           "tags": [
             "storage"
           ]
         },
         {
-          "line": 124,
+          "line": 123,
           "tags": [
             "storage"
           ]
         },
         {
-          "line": 132,
+          "line": 125,
           "tags": [
             "storage"
           ]
         },
         {
-          "line": 140,
+          "line": 133,
           "tags": [
             "storage"
           ]
         },
         {
-          "line": 182,
+          "line": 141,
+          "tags": [
+            "storage"
+          ]
+        },
+        {
+          "line": 185,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 361,
+          "line": 365,
           "tags": [
             "identity-or-compatibility"
           ]
         },
         {
-          "line": 362,
+          "line": 366,
           "tags": [
             "identity-or-compatibility",
             "presentation"
           ]
         },
         {
-          "line": 363,
+          "line": 367,
           "tags": [
             "identity-or-compatibility"
           ]
         },
         {
-          "line": 364,
+          "line": 368,
           "tags": [
             "identity-or-compatibility"
           ]
         },
         {
-          "line": 370,
+          "line": 374,
           "tags": [
             "identity-or-compatibility"
           ]
         },
         {
-          "line": 371,
+          "line": 375,
           "tags": [
             "identity-or-compatibility"
           ]
         },
         {
-          "line": 378,
+          "line": 382,
           "tags": [
             "identity-or-compatibility"
           ]
         },
         {
-          "line": 391,
+          "line": 395,
           "tags": [
             "identity-or-compatibility"
           ]
         },
         {
-          "line": 397,
+          "line": 401,
           "tags": [
             "identity-or-compatibility"
           ]
         },
         {
-          "line": 398,
-          "tags": [
-            "identity-or-compatibility"
-          ]
-        },
-        {
-          "line": 399,
+          "line": 402,
           "tags": [
             "identity-or-compatibility"
           ]
@@ -7575,25 +7570,31 @@
           ]
         },
         {
-          "line": 513,
+          "line": 407,
+          "tags": [
+            "identity-or-compatibility"
+          ]
+        },
+        {
+          "line": 517,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 544,
+          "line": 548,
           "tags": [
             "storage"
           ]
         },
         {
-          "line": 607,
+          "line": 611,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 622,
+          "line": 626,
           "tags": [
             "presentation"
           ]
@@ -7604,72 +7605,73 @@
     {
       "file": "src/prototype/clock-adapter.ts",
       "upstreamCandidate": [],
-      "bytes": 7376,
-      "sha256": "ee0a0d657607165bba5799e0cdd6e66c594510a4b1d9a1d2dc706dfe293ac284",
-      "lines": 79,
+      "bytes": 6867,
+      "sha256": "f9039d9bc8d5d3c96222cc633b0e27968ca70e5f49a461c06f0663eb48867d0d",
+      "lines": 74,
       "owner": "existing upstream clock/device execution surface",
       "disposition": "extract-or-split",
-      "reason": "Clock observation and reviewed execution; reuse existing clock patch instead of inventing a second executor.",
+      "reason": "Clock observation and reviewed execution; reuse the pinned upstream clock executor instead of inventing a second executor.",
       "imports": [
         "../daily",
-        "../runtime/clock-contract"
+        "../runtime/clock-contract",
+        "../runtime/inline-modal"
       ],
       "exports": [
         "installClockAdapter"
       ],
       "seams": [
         {
-          "line": 4,
+          "line": 5,
           "tags": [
             "identity-or-compatibility"
           ]
         },
         {
-          "line": 8,
+          "line": 9,
           "tags": [
             "host-coupling"
           ]
         },
         {
-          "line": 16,
+          "line": 17,
           "tags": [
             "storage"
           ]
         },
         {
-          "line": 30,
+          "line": 25,
           "tags": [
             "identity-or-compatibility",
             "host-coupling"
           ]
         },
         {
-          "line": 31,
+          "line": 26,
           "tags": [
             "identity-or-compatibility",
             "host-coupling"
           ]
         },
         {
-          "line": 47,
+          "line": 42,
           "tags": [
             "identity-or-compatibility"
           ]
         },
         {
-          "line": 51,
+          "line": 46,
           "tags": [
             "storage"
           ]
         },
         {
-          "line": 58,
+          "line": 53,
           "tags": [
             "storage"
           ]
         },
         {
-          "line": 71,
+          "line": 66,
           "tags": [
             "presentation"
           ]
@@ -7792,15 +7794,16 @@
     {
       "file": "src/prototype/files-tree-adapter.ts",
       "upstreamCandidate": [],
-      "bytes": 12727,
-      "sha256": "5e39458e891a4d89674d5f48d3a568bfe4980bd5bcd70545d8f96ab494ecb4d7",
-      "lines": 84,
+      "bytes": 13378,
+      "sha256": "0ddb202b260bfe4c8d6a45f45fdba69808b67ab8bcfe4cc159e17e32f170be5f",
+      "lines": 87,
       "owner": "plugins/plugin-files",
       "disposition": "extract-or-split",
       "reason": "File capabilities, document processing and reviewed selections; keep product dialogs and calendar handoff composition local.",
       "imports": [
         "../daily",
         "../platform-plugins",
+        "../runtime/inline-modal",
         "@capacitor/core"
       ],
       "exports": [
@@ -7808,13 +7811,13 @@
       ],
       "seams": [
         {
-          "line": 2,
+          "line": 3,
           "tags": [
             "host-coupling"
           ]
         },
         {
-          "line": 7,
+          "line": 8,
           "tags": [
             "host-coupling"
           ]
@@ -8212,9 +8215,9 @@
     {
       "file": "src/prototype/model.js",
       "upstreamCandidate": [],
-      "bytes": 450334,
-      "sha256": "74ca9546e1e679faa7c3d93d0485d8cb4204f18ae189e8c138ccbd07a88424ad",
-      "lines": 5861,
+      "bytes": 452024,
+      "sha256": "9f4ecec3322e17021b0aa252da2c00eca828b6a0da0697a14139e5ef7373e84b",
+      "lines": 5889,
       "owner": "alphaphone",
       "disposition": "retain-or-split",
       "reason": "Product composition, design reference, enabled views, fixtures, or visual presentation. Extract embedded domain behavior separately.",
@@ -8927,151 +8930,151 @@
           ]
         },
         {
-          "line": 4904,
+          "line": 4932,
           "tags": [
             "identity-or-compatibility"
           ]
         },
         {
-          "line": 5086,
+          "line": 5114,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 5100,
+          "line": 5128,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 5106,
+          "line": 5134,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 5111,
+          "line": 5139,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 5130,
+          "line": 5158,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 5168,
+          "line": 5196,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 5203,
+          "line": 5231,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 5207,
+          "line": 5235,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 5255,
+          "line": 5283,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 5262,
+          "line": 5290,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 5269,
+          "line": 5297,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 5272,
+          "line": 5300,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 5276,
+          "line": 5304,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 5333,
+          "line": 5361,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 5675,
+          "line": 5703,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 5676,
+          "line": 5704,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 5677,
+          "line": 5705,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 5725,
+          "line": 5753,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 5757,
+          "line": 5785,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 5760,
+          "line": 5788,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 5764,
+          "line": 5792,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 5776,
+          "line": 5804,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 5789,
+          "line": 5817,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 5853,
+          "line": 5881,
           "tags": [
             "presentation"
           ]
@@ -9175,8 +9178,8 @@
     {
       "file": "src/prototype/notifications-adapter.ts",
       "upstreamCandidate": [],
-      "bytes": 4526,
-      "sha256": "58e1554a859077929e398dc4e1b4e018ab4b10cbedca1964ad55d76b71d11079",
+      "bytes": 4527,
+      "sha256": "b34c40f9f0ed1aab1c7121b8be9685ecd8faa65e1da5ef0f1c02741e3cc7a6a0",
       "lines": 33,
       "owner": "plugins/plugin-native-system",
       "disposition": "extract-or-split",
@@ -10348,9 +10351,9 @@
     {
       "file": "src/prototype/template.html",
       "upstreamCandidate": [],
-      "bytes": 418256,
-      "sha256": "8e2314e47203c7c72ccca6c1680dfba717dc825a563860107727c4da04935d42",
-      "lines": 3935,
+      "bytes": 418737,
+      "sha256": "29a6d6acf03d07f00eda87950cb46e5da746f7edaf5d24f2f839e888f68c8fb4",
+      "lines": 3937,
       "owner": "alphaphone",
       "disposition": "retain-or-split",
       "reason": "Product composition, design reference, enabled views, fixtures, or visual presentation. Extract embedded domain behavior separately.",
@@ -11330,13 +11333,13 @@
           ]
         },
         {
-          "line": 1653,
+          "line": 1651,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 1655,
+          "line": 1654,
           "tags": [
             "presentation"
           ]
@@ -11348,7 +11351,7 @@
           ]
         },
         {
-          "line": 1659,
+          "line": 1657,
           "tags": [
             "presentation"
           ]
@@ -11366,57 +11369,57 @@
           ]
         },
         {
-          "line": 1663,
+          "line": 1662,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 1669,
+          "line": 1664,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 1695,
+          "line": 1671,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 1698,
+          "line": 1697,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 1723,
+          "line": 1700,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 1749,
+          "line": 1725,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 1762,
+          "line": 1751,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 1768,
+          "line": 1764,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 1777,
+          "line": 1770,
           "tags": [
-            "identity-or-compatibility"
+            "presentation"
           ]
         },
         {
@@ -11426,27 +11429,27 @@
           ]
         },
         {
-          "line": 1780,
+          "line": 1781,
+          "tags": [
+            "identity-or-compatibility"
+          ]
+        },
+        {
+          "line": 1782,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 1806,
+          "line": 1808,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 1813,
+          "line": 1815,
           "tags": [
             "identity-or-compatibility",
-            "presentation"
-          ]
-        },
-        {
-          "line": 1816,
-          "tags": [
             "presentation"
           ]
         },
@@ -11457,91 +11460,91 @@
           ]
         },
         {
-          "line": 1827,
+          "line": 1820,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 1835,
+          "line": 1829,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 1838,
+          "line": 1837,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 1844,
+          "line": 1840,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 1872,
+          "line": 1846,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 1882,
+          "line": 1874,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 1895,
+          "line": 1884,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 1909,
+          "line": 1897,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 1918,
+          "line": 1911,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 1922,
+          "line": 1920,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 1923,
+          "line": 1924,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 1933,
+          "line": 1925,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 1937,
+          "line": 1935,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 1945,
+          "line": 1939,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 1958,
+          "line": 1947,
           "tags": [
             "presentation"
           ]
@@ -11553,13 +11556,13 @@
           ]
         },
         {
-          "line": 1961,
+          "line": 1962,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 1964,
+          "line": 1963,
           "tags": [
             "presentation"
           ]
@@ -11571,229 +11574,229 @@
           ]
         },
         {
-          "line": 1967,
+          "line": 1968,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 1991,
+          "line": 1969,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 2065,
+          "line": 1993,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 2072,
+          "line": 2067,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 2083,
+          "line": 2074,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 2086,
+          "line": 2085,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 2093,
+          "line": 2088,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 2099,
+          "line": 2095,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 2108,
+          "line": 2101,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 2117,
+          "line": 2110,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 2121,
+          "line": 2119,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 2132,
+          "line": 2123,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 2140,
+          "line": 2134,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 2154,
+          "line": 2142,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 2176,
+          "line": 2156,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 2199,
+          "line": 2178,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 2215,
+          "line": 2201,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 2228,
+          "line": 2217,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 2236,
+          "line": 2230,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 2237,
+          "line": 2238,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 2240,
+          "line": 2239,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 2263,
+          "line": 2242,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 2294,
+          "line": 2265,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 2301,
+          "line": 2296,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 2309,
+          "line": 2303,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 2341,
+          "line": 2311,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 2352,
+          "line": 2343,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 2360,
+          "line": 2354,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 2369,
+          "line": 2362,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 2377,
+          "line": 2371,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 2401,
+          "line": 2379,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 2428,
+          "line": 2403,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 2437,
+          "line": 2430,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 2445,
+          "line": 2439,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 2453,
+          "line": 2447,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 2479,
+          "line": 2455,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 2482,
+          "line": 2481,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 2491,
+          "line": 2484,
           "tags": [
             "presentation"
           ]
@@ -11805,25 +11808,25 @@
           ]
         },
         {
-          "line": 2494,
+          "line": 2495,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 2505,
+          "line": 2496,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 2517,
+          "line": 2507,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 2533,
+          "line": 2519,
           "tags": [
             "presentation"
           ]
@@ -11835,31 +11838,31 @@
           ]
         },
         {
-          "line": 2541,
+          "line": 2537,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 2545,
+          "line": 2543,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 2550,
+          "line": 2547,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 2558,
+          "line": 2552,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 2579,
+          "line": 2560,
           "tags": [
             "presentation"
           ]
@@ -11877,7 +11880,7 @@
           ]
         },
         {
-          "line": 2588,
+          "line": 2585,
           "tags": [
             "presentation"
           ]
@@ -11889,7 +11892,7 @@
           ]
         },
         {
-          "line": 2595,
+          "line": 2592,
           "tags": [
             "presentation"
           ]
@@ -11901,19 +11904,19 @@
           ]
         },
         {
-          "line": 2601,
+          "line": 2599,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 2606,
+          "line": 2603,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 2615,
+          "line": 2608,
           "tags": [
             "presentation"
           ]
@@ -11925,67 +11928,67 @@
           ]
         },
         {
-          "line": 2635,
+          "line": 2619,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 2651,
+          "line": 2637,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 2666,
+          "line": 2653,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 2669,
+          "line": 2668,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 2675,
+          "line": 2671,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 2724,
+          "line": 2677,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 2737,
+          "line": 2726,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 2755,
+          "line": 2739,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 2762,
+          "line": 2757,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 2774,
+          "line": 2764,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 2797,
+          "line": 2776,
           "tags": [
             "presentation"
           ]
@@ -11997,7 +12000,7 @@
           ]
         },
         {
-          "line": 2824,
+          "line": 2801,
           "tags": [
             "presentation"
           ]
@@ -12009,37 +12012,37 @@
           ]
         },
         {
-          "line": 2843,
+          "line": 2828,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 2861,
+          "line": 2845,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 2876,
+          "line": 2863,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 2883,
+          "line": 2878,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 2888,
+          "line": 2885,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 2889,
+          "line": 2890,
           "tags": [
             "presentation"
           ]
@@ -12051,7 +12054,7 @@
           ]
         },
         {
-          "line": 2892,
+          "line": 2893,
           "tags": [
             "presentation"
           ]
@@ -12063,13 +12066,13 @@
           ]
         },
         {
-          "line": 2895,
+          "line": 2896,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 2903,
+          "line": 2897,
           "tags": [
             "presentation"
           ]
@@ -12081,7 +12084,7 @@
           ]
         },
         {
-          "line": 2913,
+          "line": 2907,
           "tags": [
             "presentation"
           ]
@@ -12094,12 +12097,6 @@
         },
         {
           "line": 2917,
-          "tags": [
-            "presentation"
-          ]
-        },
-        {
-          "line": 2918,
           "tags": [
             "presentation"
           ]
@@ -12129,19 +12126,25 @@
           ]
         },
         {
+          "line": 2923,
+          "tags": [
+            "presentation"
+          ]
+        },
+        {
           "line": 2924,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 2925,
+          "line": 2926,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 2931,
+          "line": 2927,
           "tags": [
             "presentation"
           ]
@@ -12153,25 +12156,19 @@
           ]
         },
         {
-          "line": 2947,
+          "line": 2935,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 2950,
+          "line": 2949,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 2956,
-          "tags": [
-            "presentation"
-          ]
-        },
-        {
-          "line": 2957,
+          "line": 2952,
           "tags": [
             "presentation"
           ]
@@ -12183,7 +12180,13 @@
           ]
         },
         {
-          "line": 2965,
+          "line": 2959,
+          "tags": [
+            "presentation"
+          ]
+        },
+        {
+          "line": 2960,
           "tags": [
             "presentation"
           ]
@@ -12195,73 +12198,73 @@
           ]
         },
         {
-          "line": 2968,
+          "line": 2969,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 2973,
+          "line": 2970,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 2994,
+          "line": 2975,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 3000,
+          "line": 2996,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 3010,
+          "line": 3002,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 3016,
+          "line": 3012,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 3026,
+          "line": 3018,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 3027,
+          "line": 3028,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 3055,
+          "line": 3029,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 3058,
+          "line": 3057,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 3080,
+          "line": 3060,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 3094,
+          "line": 3082,
           "tags": [
             "presentation"
           ]
@@ -12273,43 +12276,43 @@
           ]
         },
         {
-          "line": 3097,
+          "line": 3098,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 3105,
+          "line": 3099,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 3106,
+          "line": 3107,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 3117,
+          "line": 3108,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 3118,
+          "line": 3119,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 3128,
+          "line": 3120,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 3148,
+          "line": 3130,
           "tags": [
             "presentation"
           ]
@@ -12321,121 +12324,121 @@
           ]
         },
         {
-          "line": 3158,
+          "line": 3152,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 3165,
+          "line": 3160,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 3168,
+          "line": 3167,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 3173,
+          "line": 3170,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 3178,
+          "line": 3175,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 3181,
+          "line": 3180,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 3193,
+          "line": 3183,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 3240,
+          "line": 3195,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 3247,
+          "line": 3242,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 3300,
+          "line": 3249,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 3303,
+          "line": 3302,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 3308,
+          "line": 3305,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 3320,
+          "line": 3310,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 3325,
+          "line": 3322,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 3326,
+          "line": 3327,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 3335,
+          "line": 3328,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 3336,
+          "line": 3337,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 3351,
+          "line": 3338,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 3363,
+          "line": 3353,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 3374,
+          "line": 3365,
           "tags": [
             "presentation"
           ]
@@ -12453,7 +12456,7 @@
           ]
         },
         {
-          "line": 3418,
+          "line": 3380,
           "tags": [
             "presentation"
           ]
@@ -12465,115 +12468,109 @@
           ]
         },
         {
-          "line": 3454,
+          "line": 3422,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 3478,
+          "line": 3456,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 3495,
+          "line": 3480,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 3503,
+          "line": 3497,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 3536,
+          "line": 3505,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 3553,
+          "line": 3538,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 3569,
+          "line": 3555,
+          "tags": [
+            "presentation"
+          ]
+        },
+        {
+          "line": 3571,
           "tags": [
             "identity-or-compatibility"
           ]
         },
         {
-          "line": 3573,
+          "line": 3575,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 3586,
+          "line": 3588,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 3606,
+          "line": 3608,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 3635,
+          "line": 3637,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 3645,
+          "line": 3647,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 3646,
+          "line": 3648,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 3658,
+          "line": 3660,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 3659,
+          "line": 3661,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 3668,
+          "line": 3670,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 3678,
-          "tags": [
-            "presentation"
-          ]
-        },
-        {
-          "line": 3695,
-          "tags": [
-            "presentation"
-          ]
-        },
-        {
-          "line": 3696,
+          "line": 3680,
           "tags": [
             "presentation"
           ]
@@ -12585,21 +12582,21 @@
           ]
         },
         {
-          "line": 3706,
+          "line": 3698,
           "tags": [
-            "identity-or-compatibility"
+            "presentation"
+          ]
+        },
+        {
+          "line": 3699,
+          "tags": [
+            "presentation"
           ]
         },
         {
           "line": 3708,
           "tags": [
-            "presentation"
-          ]
-        },
-        {
-          "line": 3709,
-          "tags": [
-            "presentation"
+            "identity-or-compatibility"
           ]
         },
         {
@@ -12609,62 +12606,68 @@
           ]
         },
         {
-          "line": 3718,
+          "line": 3711,
           "tags": [
-            "identity-or-compatibility"
+            "presentation"
+          ]
+        },
+        {
+          "line": 3712,
+          "tags": [
+            "presentation"
           ]
         },
         {
           "line": 3720,
           "tags": [
-            "presentation"
+            "identity-or-compatibility"
           ]
         },
         {
-          "line": 3733,
+          "line": 3722,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 3742,
+          "line": 3735,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 3760,
+          "line": 3744,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 3767,
+          "line": 3762,
+          "tags": [
+            "presentation"
+          ]
+        },
+        {
+          "line": 3769,
           "tags": [
             "identity-or-compatibility",
             "presentation"
           ]
         },
         {
-          "line": 3781,
+          "line": 3783,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 3800,
+          "line": 3802,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 3819,
-          "tags": [
-            "presentation"
-          ]
-        },
-        {
-          "line": 3824,
+          "line": 3821,
           "tags": [
             "presentation"
           ]
@@ -12676,19 +12679,19 @@
           ]
         },
         {
-          "line": 3835,
+          "line": 3828,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 3846,
+          "line": 3837,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 3854,
+          "line": 3848,
           "tags": [
             "presentation"
           ]
@@ -12700,25 +12703,25 @@
           ]
         },
         {
-          "line": 3863,
+          "line": 3858,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 3875,
+          "line": 3865,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 3880,
+          "line": 3877,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 3883,
+          "line": 3882,
           "tags": [
             "presentation"
           ]
@@ -12736,19 +12739,19 @@
           ]
         },
         {
-          "line": 3893,
+          "line": 3889,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 3896,
+          "line": 3895,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 3900,
+          "line": 3898,
           "tags": [
             "presentation"
           ]
@@ -12760,43 +12763,49 @@
           ]
         },
         {
-          "line": 3909,
+          "line": 3904,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 3912,
+          "line": 3911,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 3918,
+          "line": 3914,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 3919,
+          "line": 3920,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 3924,
+          "line": 3921,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 3927,
+          "line": 3926,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 3928,
+          "line": 3929,
+          "tags": [
+            "presentation"
+          ]
+        },
+        {
+          "line": 3930,
           "tags": [
             "presentation"
           ]
@@ -13539,14 +13548,14 @@
     {
       "file": "src/runtime/clock-agent-review.ts",
       "upstreamCandidate": [],
-      "bytes": 468,
-      "sha256": "c2bced4255c2599f35d9c195a762abd75e3741547841a59f6c8b8ca25eb01518",
+      "bytes": 512,
+      "sha256": "afb9f5ec498534f1e9cae141a70c819f00625108e2e19b384c95a80044dcb1e8",
       "lines": 7,
       "owner": "existing upstream clock/device execution surface",
       "disposition": "extract-or-split",
-      "reason": "Clock observation and reviewed execution; reuse existing clock patch instead of inventing a second executor.",
+      "reason": "Clock observation and reviewed execution; reuse the pinned upstream clock executor instead of inventing a second executor.",
       "imports": [
-        "../../../../patches/eliza/exports/clock-review-executor",
+        "../../../../vendor/eliza/plugins/plugin-assistant/src/services/device-actions/clock-review-executor",
         "../platform-plugins"
       ],
       "exports": [
@@ -13572,12 +13581,12 @@
     {
       "file": "src/runtime/clock-contract.ts",
       "upstreamCandidate": [],
-      "bytes": 5488,
-      "sha256": "ad88ff8a5ddf8685f8dc4842b21c2c71f8d63b6eb99875adf2632e52b56e6a01",
-      "lines": 142,
+      "bytes": 5722,
+      "sha256": "f650069c13324b094b68a187404b86c1d60a975d386bcb4276fd3700af849c9a",
+      "lines": 147,
       "owner": "existing upstream clock/device execution surface",
       "disposition": "extract-or-split",
-      "reason": "Clock observation and reviewed execution; reuse existing clock patch instead of inventing a second executor.",
+      "reason": "Clock observation and reviewed execution; reuse the pinned upstream clock executor instead of inventing a second executor.",
       "imports": [],
       "exports": [
         "CLOCK_CAPABILITY",
@@ -13886,9 +13895,9 @@
     {
       "file": "src/runtime/connection-ui.tsx",
       "upstreamCandidate": [],
-      "bytes": 82682,
-      "sha256": "55f99e2615f56f7f4337595414b4a8e79abd9bbd8c9a1bd5107bd33f0a4032b3",
-      "lines": 814,
+      "bytes": 83442,
+      "sha256": "f7d9ff0225f46797e39bad11268a425faba0ad67944e9891fc5e4df65101680e",
+      "lines": 838,
       "owner": "packages/ui client integration + existing agent/cloud transports",
       "disposition": "extract-or-split",
       "reason": "Authentication, protocol and approval machinery is generic; remove product view enums, bridge names, endpoints and singleton UI cycles first.",
@@ -13968,133 +13977,127 @@
           ]
         },
         {
-          "line": 61,
+          "line": 62,
           "tags": [
             "host-coupling"
           ]
         },
         {
-          "line": 73,
+          "line": 74,
           "tags": [
             "storage"
           ]
         },
         {
-          "line": 109,
+          "line": 110,
           "tags": [
             "host-coupling"
           ]
         },
         {
-          "line": 119,
+          "line": 120,
           "tags": [
             "storage"
           ]
         },
         {
-          "line": 135,
+          "line": 136,
           "tags": [
             "storage"
           ]
         },
         {
-          "line": 145,
+          "line": 146,
           "tags": [
             "storage"
           ]
         },
         {
-          "line": 229,
+          "line": 230,
           "tags": [
             "identity-or-compatibility"
           ]
         },
         {
-          "line": 271,
+          "line": 272,
           "tags": [
             "identity-or-compatibility"
           ]
         },
         {
-          "line": 330,
+          "line": 331,
           "tags": [
             "identity-or-compatibility"
           ]
         },
         {
-          "line": 351,
+          "line": 352,
           "tags": [
             "storage"
           ]
         },
         {
-          "line": 363,
+          "line": 364,
           "tags": [
             "identity-or-compatibility"
           ]
         },
         {
-          "line": 376,
+          "line": 377,
           "tags": [
             "host-coupling"
           ]
         },
         {
-          "line": 485,
+          "line": 486,
           "tags": [
             "storage"
           ]
         },
         {
-          "line": 539,
+          "line": 540,
           "tags": [
             "host-coupling"
           ]
         },
         {
-          "line": 591,
+          "line": 592,
           "tags": [
             "storage"
           ]
         },
         {
-          "line": 635,
+          "line": 636,
           "tags": [
             "storage"
           ]
         },
         {
-          "line": 660,
+          "line": 661,
           "tags": [
             "identity-or-compatibility"
           ]
         },
         {
-          "line": 664,
+          "line": 665,
           "tags": [
             "storage"
           ]
         },
         {
-          "line": 680,
+          "line": 681,
           "tags": [
             "identity-or-compatibility"
           ]
         },
         {
-          "line": 699,
+          "line": 700,
           "tags": [
             "identity-or-compatibility"
           ]
         },
         {
-          "line": 717,
-          "tags": [
-            "host-coupling"
-          ]
-        },
-        {
-          "line": 728,
+          "line": 718,
           "tags": [
             "host-coupling"
           ]
@@ -14102,43 +14105,17 @@
         {
           "line": 729,
           "tags": [
-            "identity-or-compatibility"
+            "host-coupling"
           ]
         },
         {
           "line": 730,
           "tags": [
-            "identity-or-compatibility",
-            "host-coupling"
+            "identity-or-compatibility"
           ]
         },
         {
-          "line": 734,
-          "tags": [
-            "host-coupling"
-          ]
-        },
-        {
-          "line": 742,
-          "tags": [
-            "host-coupling"
-          ]
-        },
-        {
-          "line": 743,
-          "tags": [
-            "identity-or-compatibility",
-            "host-coupling"
-          ]
-        },
-        {
-          "line": 745,
-          "tags": [
-            "host-coupling"
-          ]
-        },
-        {
-          "line": 754,
+          "line": 740,
           "tags": [
             "identity-or-compatibility",
             "host-coupling"
@@ -14151,7 +14128,7 @@
           ]
         },
         {
-          "line": 762,
+          "line": 766,
           "tags": [
             "host-coupling"
           ]
@@ -14159,78 +14136,31 @@
         {
           "line": 767,
           "tags": [
-            "identity-or-compatibility"
+            "identity-or-compatibility",
+            "host-coupling"
           ]
         },
         {
-          "line": 768,
+          "line": 769,
           "tags": [
             "host-coupling"
           ]
         },
         {
-          "line": 772,
-          "tags": [
-            "host-coupling"
-          ]
-        },
-        {
-          "line": 773,
-          "tags": [
-            "host-coupling"
-          ]
-        },
-        {
-          "line": 774,
-          "tags": [
-            "host-coupling"
-          ]
-        },
-        {
-          "line": 775,
-          "tags": [
-            "host-coupling"
-          ]
-        },
-        {
-          "line": 777,
-          "tags": [
-            "host-coupling"
-          ]
-        },
-        {
-          "line": 779,
-          "tags": [
-            "host-coupling"
-          ]
-        },
-        {
-          "line": 780,
-          "tags": [
-            "host-coupling"
-          ]
-        },
-        {
-          "line": 781,
-          "tags": [
-            "host-coupling"
-          ]
-        },
-        {
-          "line": 784,
-          "tags": [
-            "identity-or-compatibility"
-          ]
-        },
-        {
-          "line": 785,
+          "line": 778,
           "tags": [
             "identity-or-compatibility",
             "host-coupling"
           ]
         },
         {
-          "line": 790,
+          "line": 782,
+          "tags": [
+            "host-coupling"
+          ]
+        },
+        {
+          "line": 786,
           "tags": [
             "host-coupling"
           ]
@@ -14238,47 +14168,48 @@
         {
           "line": 791,
           "tags": [
-            "host-coupling"
+            "identity-or-compatibility"
           ]
         },
         {
-          "line": 795,
+          "line": 792,
           "tags": [
-            "identity-or-compatibility",
             "host-coupling"
           ]
         },
         {
           "line": 796,
           "tags": [
-            "identity-or-compatibility",
+            "host-coupling"
+          ]
+        },
+        {
+          "line": 797,
+          "tags": [
             "host-coupling"
           ]
         },
         {
           "line": 798,
           "tags": [
-            "identity-or-compatibility",
             "host-coupling"
           ]
         },
         {
-          "line": 800,
+          "line": 799,
           "tags": [
-            "identity-or-compatibility"
+            "host-coupling"
           ]
         },
         {
           "line": 801,
           "tags": [
-            "identity-or-compatibility",
             "host-coupling"
           ]
         },
         {
           "line": 803,
           "tags": [
-            "identity-or-compatibility",
             "host-coupling"
           ]
         },
@@ -14291,30 +14222,108 @@
         {
           "line": 805,
           "tags": [
+            "host-coupling"
+          ]
+        },
+        {
+          "line": 808,
+          "tags": [
+            "identity-or-compatibility"
+          ]
+        },
+        {
+          "line": 809,
+          "tags": [
             "identity-or-compatibility",
             "host-coupling"
           ]
         },
         {
-          "line": 806,
+          "line": 814,
           "tags": [
             "host-coupling"
           ]
         },
         {
-          "line": 807,
+          "line": 815,
           "tags": [
             "host-coupling"
           ]
         },
         {
-          "line": 810,
+          "line": 819,
+          "tags": [
+            "identity-or-compatibility",
+            "host-coupling"
+          ]
+        },
+        {
+          "line": 820,
+          "tags": [
+            "identity-or-compatibility",
+            "host-coupling"
+          ]
+        },
+        {
+          "line": 822,
+          "tags": [
+            "identity-or-compatibility",
+            "host-coupling"
+          ]
+        },
+        {
+          "line": 824,
+          "tags": [
+            "identity-or-compatibility"
+          ]
+        },
+        {
+          "line": 825,
+          "tags": [
+            "identity-or-compatibility",
+            "host-coupling"
+          ]
+        },
+        {
+          "line": 827,
+          "tags": [
+            "identity-or-compatibility",
+            "host-coupling"
+          ]
+        },
+        {
+          "line": 828,
           "tags": [
             "host-coupling"
           ]
         },
         {
-          "line": 811,
+          "line": 829,
+          "tags": [
+            "identity-or-compatibility",
+            "host-coupling"
+          ]
+        },
+        {
+          "line": 830,
+          "tags": [
+            "host-coupling"
+          ]
+        },
+        {
+          "line": 831,
+          "tags": [
+            "host-coupling"
+          ]
+        },
+        {
+          "line": 834,
+          "tags": [
+            "host-coupling"
+          ]
+        },
+        {
+          "line": 835,
           "tags": [
             "identity-or-compatibility",
             "host-coupling"
@@ -14817,6 +14826,31 @@
         "InboxOperationRecord"
       ],
       "seams": [],
+      "reachableFromMain": true
+    },
+    {
+      "file": "src/runtime/inline-modal.ts",
+      "upstreamCandidate": [],
+      "bytes": 3149,
+      "sha256": "c80a672b6e6a129a02120eeffbf04c25f8be54e4046518bb06feef58bd90d501",
+      "lines": 53,
+      "owner": "shared platform client; Alpha composition",
+      "disposition": "split",
+      "reason": "Cross-domain device/platform glue; separate host contracts and provider behavior from product registry, lifecycle, DOM and defaults.",
+      "imports": [
+        "./modal-inert"
+      ],
+      "exports": [
+        "createInlineModal"
+      ],
+      "seams": [
+        {
+          "line": 15,
+          "tags": [
+            "host-coupling"
+          ]
+        }
+      ],
       "reachableFromMain": true
     },
     {

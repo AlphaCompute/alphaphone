@@ -30,6 +30,7 @@ the exact tested scope rather than treating a successful APK build as acceptance
 - [Detailed implementation plan](docs/implementation-plan.md)
 - [Architecture and upstream ownership](docs/architecture.md)
 - [Application ownership audit and upstream extraction](docs/app-upstream-ownership.md)
+- [Upstream consolidation inventory and migration boundaries](docs/upstream-consolidation.md)
 - [Requirements and open decisions](docs/decisions.md)
 - [Verification results and remaining gates](docs/verification.md)
 - [Source/design provenance](docs/sources.md)
@@ -104,6 +105,16 @@ adb install -r artifacts/standalone-debug.apk
 adb install -r artifacts/launcher-debug.apk
 ```
 
+For constrained disks, `ALPHA_ANDROID_LOW_DISK=1 npm run android:build` packages
+one APK at a time and removes only reproducible packaging intermediates between
+variants. Source, generated provenance and finished APKs are retained.
+
+When a resident runtime is staged, APK verification checks its source stamp,
+agent bundle, complete workflow-worker inventory and both native runtime ABIs
+against the staged inputs. A stale stamp requires fresh preparation and staging.
+A developer APK without runtime payload is reported as `NOT_PACKAGED`; this is
+not proof of resident runtime execution or device acceptance.
+
 The variants intentionally share `ai.elizaresearch.alphaphone` and replace one another.
 The other product uses a different package and can be installed alongside this one.
 Release APKs are intentionally unsigned; do not distribute debug-signed builds as production.
@@ -134,9 +145,10 @@ for signing, default-home policy and the full image verification boundary.
 ## Layout
 
 `apps/app` owns this product's UI. `android` owns its packaging and launcher bridge.
-`vendor/eliza` pins shared platform/native/OS code. `base/eliza-app` is the complete,
-immutable original app import for migration; its old scripts are not this project's
-entrypoints. `design` preserves the supplied references. Use root npm scripts.
+`vendor/eliza` pins shared platform/native/OS code. The inactive app baseline has
+been removed; its source commit and file hashes remain in
+`docs/eliza-app-baseline-provenance.json` and the original copy remains in Git history.
+`design` preserves the supplied references. Use root npm scripts.
 
 GitHub Actions builds both variants, runs emulator instrumentation and uploads
 artifacts. A successful APK job does not establish full AOSP image or physical

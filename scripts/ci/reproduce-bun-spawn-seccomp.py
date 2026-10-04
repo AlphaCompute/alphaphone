@@ -1,7 +1,6 @@
 """Disposable Linux-only reproduction; does not modify Android or its policy."""
 import json
 import hashlib
-import urllib.request
 import os
 import pathlib
 import platform
@@ -92,25 +91,17 @@ int sigaction(int signal, const struct sigaction *action, struct sigaction *old)
 ''')
     subprocess.run([cc, '-O2', '-shared', '-fPIC', str(root/'preserve.c'), '-ldl', '-o', str(root/'preserve.so')], check=True)
 
-    # Compile the exact product patch, independently of the experimental control.
-    manifest = json.loads(pathlib.Path('patches/eliza/android-local-runtime-source.json').read_text())
-    patch = pathlib.Path('patches/eliza/android-preserve-sigsys.patch')
-    assert hashlib.sha256(patch.read_bytes()).hexdigest() == manifest['patchHashes'][patch.name]
+    # Compile the exact pinned upstream source independently of the control.
+    lock = json.loads(pathlib.Path('upstream.lock.json').read_text())
+    assert subprocess.check_output(['git','-C','vendor/eliza','rev-parse','HEAD'],text=True).strip()==lock['commit']
     source = root/'product'; source.mkdir()
     relative = pathlib.Path('packages/app/scripts/aosp/seccomp-shim')
     (source/relative).mkdir(parents=True)
-    for name in ('sigsys-handler.c', 'sigsys-handler-arm64.c', 'sigsys-handler-riscv64.c'):
-        url = 'https://raw.githubusercontent.com/elizaOS/eliza/' + manifest['baseCommit'] + '/' + str(relative/name)
-        with urllib.request.urlopen(url, timeout=30) as response:
-            data = response.read(1024*1024+1)
-        assert len(data) <= 1024*1024
-        (source/relative/name).write_bytes(data)
-    subprocess.run(['git', 'apply', str(patch.resolve())], cwd=source, check=True)
     product_hashes = {}
-    for path in sorted((source/relative).iterdir()):
-        digest = hashlib.sha256(path.read_bytes()).hexdigest()
-        assert digest == manifest['files'][str(path.relative_to(source))]
-        product_hashes[path.name] = digest
+    for name in ('sigsys-handler.c','sigsys-handler-arm64.c','sigsys-handler-riscv64.c','preserve-sigsys.h'):
+        data = subprocess.check_output(['git','-C','vendor/eliza','show',lock['commit']+':'+str(relative/name)])
+        (source/relative/name).write_bytes(data)
+        product_hashes[name] = hashlib.sha256(data).hexdigest()
     # Upstream documents shell continuations in // comments; GCC alone warns on these.
     subprocess.run([cc, '-O2', '-Wall', '-Werror', '-Wno-comment', '-shared', '-fPIC', str(source/relative/'sigsys-handler.c'), '-ldl', '-o', str(root/'product.so')], check=True)
     (root/'semantics.c').write_text(r'''

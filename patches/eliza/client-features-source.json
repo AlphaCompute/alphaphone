@@ -1,5 +1,5 @@
 {
-  "baseCommit": "760ad0f18ad6e34581f696642434215e397ccbc5",
+  "baseCommit": "278af04b9498a35740468ffa7b68239d1924257f",
   "patch": "client-features.patch",
   "sha256": "3a62985f51c417b69bc748b5711e95e8e900f4f891d9fa94bfc7c584355cbb98",
   "packages": [
@@ -7,7 +7,7 @@
     "plugins/plugin-maps",
     "plugins/plugin-notes"
   ],
-  "status": "Candidate changed; consumer and upstream qualification pending; not published upstream",
+  "status": "Additive client candidate rebased onto current pin; consumer qualification in progress",
   "files": {
     "plugins/plugin-files/README.md": "6aa0d4157542f30ca807ee4b98702349de9ecfee2841c0a32c9557739ffcad26",
     "plugins/plugin-files/package.json": "f86ff6fce4ed03effa2a537271a7971adc4583d18b45076afcfbaab73bc33c73",

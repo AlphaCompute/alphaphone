@@ -1,6 +1,19 @@
-# Combined resident and browser implementation — October 3, 2026
+# Combined resident and browser implementation — October 4, 2026
 
-## Current delivery checkpoint
+The [current requirement matrix](mvp-current-status.md) is the active checklist. Main is merged through PR150 at `d646a9d023e332585de98660ffa227c7e3f98953`; it pins upstream `83e2a2d90a619600be56fcca237a7861644b2d4b`. Browser dev now uses that freshly reproduced and independently speech/workflow-qualified runtime, retaining the owner, agent and all 17 conversation IDs. Its real browser speech journey passes in 17.5 seconds; the arithmetic diagnostic verifies result 56 and retained run/task identity. All 258 repository checks pass with no skips. See the latest browser-review entries for Firefox lifecycle and ongoing design qualification.
+
+The dated sections below are historical checkpoints. Their source hashes, status words and runtime descriptions apply only to those snapshots; they do not establish current CI, root-checkout synchronization or product acceptance. Concurrent extraction work and native/provider/device/release gates remain open.
+
+## October 3 speech and upstream-adoption follow-up
+
+PRs 136 and 137 are merged at `8053d04f3d6fe553fdab5de98ecfd5ad64718c9b`, pinning upstream `2fe9f510501863af97bda887e2870158b3a3e2b2` without local runtime patches. The initially reviewed migration lacked the newly landed Kokoro warming change; the final pin preserves it through a per-host lifecycle, and the source-based regression checks cover startup, retry, isolation and shutdown. Its exact-source full browser campaign is [37160959650](https://github.com/AlphaCompute/alphaphone/actions/runs/37160959650), currently running. The earlier c8e91b8 campaign was superseded, not accepted as a full pass.
+
+Before adoption, all 259 repository tests, TypeScript and the web build passed on the PR 136 source. A fresh runtime started its native speech worker before any speech request; the real browser recording/transcription/playback/completion/Stop/disconnect journey passed in 16.2 seconds. Browser dev restarted with the existing owner profile and verified ready at 23:07:50 UTC. The new upstream pin was then independently prepared with no patches, installed with its frozen app dependency set and qualified by the same real browser journey in 14.2 seconds. Dev now uses that runtime and the merged renderer. The stopped user profile was privately backed up before restart; owner and agent identities and all 17 conversation IDs remained unchanged, and both speech providers plus local workflows report ready. Per-message byte equality and physical-device behavior are not inferred from those checks.
+
+The [current requirement matrix](mvp-current-status.md) records concurrent unmerged client extraction and physical/provider/release acceptance. This follow-up supersedes the older speech-readiness-only, runtime-patch and empty-queue statements below. It does not claim the entire MVP is complete.
+
+
+## Earlier October 3 delivery checkpoint
 
 Production main and the root checkout are synchronized at `6b33e26a516b9f76a3a06cff58f7b1c661399839`, including PR 134's Home/digest and lock-summary corrections. The exact-source full browser campaign is [37156018384](https://github.com/AlphaCompute/alphaphone/actions/runs/37156018384); it succeeded across all three shards with **1,318 passed and 14 profile-dependent skips**, plus **9 passed** in the separate synthetic local-agent profile. Earlier campaigns below are historical and were superseded. All 255 repository tests, TypeScript and the web build pass for the corrected source, along with 22 focused browser cases. The current 33-patch runtime has 488 passing runtime/security cases plus the Clock-export and authenticated device-action checks.
 

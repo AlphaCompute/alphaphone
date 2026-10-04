@@ -12,7 +12,7 @@
     "build": "vite build",
     "typecheck": "tsc --noEmit",
     "test": "node --test test/*.test.mjs",
-    "verify": "node scripts/check-clock-review-export.mjs && npm run typecheck && npm test && npm run build",
+    "verify": "npm run typecheck && npm test && npm run build",
     "android:sync": "npm run build && cap sync android",
     "android:build": "node scripts/build-android.mjs",
     "android:verify": "node scripts/verify-apks.mjs",

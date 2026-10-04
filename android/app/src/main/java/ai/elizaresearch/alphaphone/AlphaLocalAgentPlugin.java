@@ -83,7 +83,7 @@ public final class AlphaLocalAgentPlugin extends Plugin {
   env.put("ELIZAOS_CLOUD_USE_INFERENCE","false");
   env.put("ELIZA_DISABLE_PERSONAL_ASSISTANT","1");
   env.put("ELIZA_DISTRIBUTION_PROFILE","store");
-  // Pseudonymize secrets and PII in every hosted model request; needs patches/eliza/egress-swap-control-objects.patch.
+  // Pseudonymize secrets and PII using the pinned upstream runtime.
   env.put("ELIZA_SECRET_SWAP_ENABLED","true");
   env.put("ELIZA_PII_SWAP_ENABLED","true");
   java.net.ServerSocket fixture=instrumentationRecoveryEndpoint;

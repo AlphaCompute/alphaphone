@@ -10,14 +10,14 @@ import {AGENT_MODEL,agentModelEnvironment} from './agent-model.mjs';
 import {agentTtsEnvironment} from './agent-tts.mjs';
 import {agentAsrEnvironment,warmAgentAsr} from './agent-asr.mjs';
 const source = process.env.ALPHA_ELIZA_SOURCE ? path.resolve(process.env.ALPHA_ELIZA_SOURCE) : sourceDirectory(path.resolve(import.meta.dirname,'..'));
-// Upstream's own swap switches. Only both together are qualified, and only on verified patched source.
+// Upstream's own swap switches. Only both together are qualified, and only on verified pinned source.
 const swapFlags = ['ELIZA_SECRET_SWAP_ENABLED', 'ELIZA_PII_SWAP_ENABLED'].map(key => process.env[key]);
 for (const value of swapFlags) if (value !== undefined && !['true', 'false'].includes(value)) throw new Error('ELIZA_SECRET_SWAP_ENABLED and ELIZA_PII_SWAP_ENABLED must be true or false');
 if ((swapFlags[0] === 'true') !== (swapFlags[1] === 'true')) throw new Error('Set ELIZA_SECRET_SWAP_ENABLED and ELIZA_PII_SWAP_ENABLED together');
 const redaction = swapFlags[0] === 'true' ? 'all' : 'off';
 if (redaction === 'all') {
-  const patches = path.resolve(import.meta.dirname, '../patches/eliza');
-  verifySource(source, JSON.parse(fs.readFileSync(path.join(patches, 'mvp-source-base.json'), 'utf8')), JSON.parse(fs.readFileSync(path.join(patches, 'android-local-runtime-source.json'), 'utf8')));
+  const lock=JSON.parse(fs.readFileSync(new URL('../upstream.lock.json',import.meta.url),'utf8'));
+  verifySource(source,{baseCommit:lock.commit,candidateFiles:{}},{files:{}});
 }
 const profile = path.resolve(process.env.ALPHA_REMOTE_PROFILE || path.join(os.homedir(), '.local/share/alphaphone/local-remote'));
 const port = Number(process.env.ALPHA_REMOTE_PORT || 47839);
@@ -41,8 +41,8 @@ fs.fchmodSync(log, 0o600);
 const asrEnvironment = agentAsrEnvironment();
 const ttsEnvironment = agentTtsEnvironment();
 if (asrEnvironment.ELIZA_WHISPER_BACKEND === 'auto' && redaction !== 'all') {
-  const patches = path.resolve(import.meta.dirname, '../patches/eliza');
-  verifySource(source, JSON.parse(fs.readFileSync(path.join(patches, 'mvp-source-base.json'), 'utf8')), JSON.parse(fs.readFileSync(path.join(patches, 'android-local-runtime-source.json'), 'utf8')));
+  const lock=JSON.parse(fs.readFileSync(new URL('../upstream.lock.json',import.meta.url),'utf8'));
+  verifySource(source,{baseCommit:lock.commit,candidateFiles:{}},{files:{}});
 }
 const warmupController = new AbortController();
 const cancelWarmup = () => warmupController.abort();

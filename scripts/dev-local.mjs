@@ -1,11 +1,14 @@
 #!/usr/bin/env node
 import {sourceDirectory} from './local-agent-source.mjs';
+import {prepareClientFeatures} from './prepare-client-features.mjs';
 // Owns only the two processes it starts. Credentials stay in the host profile.
 import {spawn,execFileSync} from 'node:child_process';
 import {resolve,join} from 'node:path';
 import {homedir} from 'node:os';
 import {readFileSync,existsSync} from 'node:fs';
 import {createServer} from 'node:net';
+// This launcher invokes Vite directly, so npm's predev hook does not run.
+prepareClientFeatures();
 const profile=resolve(process.env.ALPHA_REMOTE_PROFILE||join(homedir(),'.local/share/alphaphone/browser-agent'));
 const port=Number(process.env.ALPHA_REMOTE_PORT||47849);
 if(!Number.isInteger(port)||port<1024||port>65535)throw Error('Invalid local agent port');

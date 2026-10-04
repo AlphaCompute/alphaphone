@@ -733,7 +733,7 @@
   <sc-if value="{{calendar.reminderCreateUnknown}}"><div role="status" style="padding:12px;color:var(--mut)">{{calendar.reminderCreateUnknown}} new reminder(s) await confirmation.<button class="tap" aria-label="Check new reminder status" onClick="{{calendar.checkReminderCreations}}" style="padding:8px;color:var(--acc)">Check new reminder status</button></div></sc-if>
   <sc-if value="{{calendar.reminderDeleteUnknown}}"><div role="status" style="padding:12px;color:var(--mut)">{{calendar.reminderDeleteUnknown}} reminder action(s) await confirmation.<button class="tap" aria-label="Check reminder action status" onClick="{{calendar.checkReminderDeletions}}" style="padding:8px;color:var(--acc)">Check action status</button></div></sc-if>
   <sc-if value="{{calendar.clock}}" hint-placeholder-val="{{false}}">
-    <div role="dialog" aria-modal="true" aria-label="Clock alarms" style="position:absolute;inset:0;z-index:35;background:var(--bg);display:flex;flex-direction:column;padding:{{calendar.clock.topPadding}} 24px 120px;overflow:auto;box-sizing:border-box">
+    <div ref="{{calendar.clock.modalRef}}" role="dialog" aria-modal="true" aria-label="Clock alarms" style="position:absolute;inset:0;z-index:35;background:var(--bg);display:flex;flex-direction:column;padding:{{calendar.clock.topPadding}} 24px 120px;overflow:auto;box-sizing:border-box">
       <div style="display:flex;align-items:center;gap:12px;margin-bottom:24px"><button class="ib" aria-label="Close Clock" aria-disabled="{{calendar.clock.busy}}" onClick="{{calendar.clock.close}}"><svg class="i" viewBox="0 0 24 24"><path d="{{ic.back}}"></path></svg></button><h2 class="serif" style="font-size:32px;margin:0">Clock</h2></div>
       <p style="font-size:14px;line-height:1.5;color:var(--mut);margin:0 0 18px">Alarms are managed by your installed Clock app. Check the result there after every request.</p>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:24px"><sc-for list="{{calendar.clock.actions}}" as="item"><button class="tap" onClick="{{item.pick}}" style="padding:14px;border-radius:18px;font-size:15px;font-weight:600;{{item.css}}">{{item.label}}</button></sc-for></div>
@@ -1646,8 +1646,9 @@
   </sc-if>
 
   <sc-if value="{{photos.albumManager}}">
-    <button aria-label="Close album management" onClick="{{photos.am.close}}" style="position:absolute;inset:0;z-index:20;background:var(--scrim)"></button>
-    <div class="enter" role="dialog" aria-label="Album management" style="position:absolute;left:0;right:0;bottom:0;z-index:21;background:var(--s1);border-radius:28px 28px 0 0;padding:24px 24px 44px;max-height:80%;overflow-y:auto;box-sizing:border-box">
+    <div ref="{{photos.am.modalRef}}" style="position:absolute;inset:0;z-index:20">
+    <button aria-hidden="true" tabindex="-1" aria-label="Close album management" onClick="{{photos.am.close}}" style="position:absolute;inset:0;z-index:20;background:var(--scrim)"></button>
+    <div class="enter" role="dialog" aria-modal="true" aria-label="Album management" style="color:var(--fg);position:absolute;left:0;right:0;bottom:0;z-index:21;background:var(--s1);border-radius:28px 28px 0 0;padding:24px 24px 44px;max-height:80%;overflow-y:auto;box-sizing:border-box">
       <div style="display:flex;align-items:center;gap:12px"><h2 class="serif" style="font-size:26px;flex:1;margin:0">{{photos.am.title}}</h2><button class="ib" aria-label="Close album management" onClick="{{photos.am.close}}"><svg class="i" viewBox="0 0 24 24"><path d="{{ic.x}}"></path></svg></button></div>
       <div role="status" style="color:var(--mut);font-size:14px;margin-top:12px">{{photos.am.error}}</div>
       <sc-if value="{{photos.am.info}}"><p style="font-size:15px;color:var(--mut)">{{photos.am.description}}</p><button aria-label="Add to album" onClick="{{photos.am.choose}}" style="width:100%;padding:16px;border-radius:24px;background:var(--s2);color:var(--fg)">Add to album</button></sc-if>
@@ -1661,6 +1662,7 @@
         <sc-if value="{{photos.am.managing}}"><button disabled="{{photos.am.busy}}" aria-label="Delete album" onClick="{{photos.am.askDelete}}" style="width:100%;padding:16px;margin-top:8px;color:var(--fg)">Delete album</button></sc-if>
       </sc-if>
       <sc-if value="{{photos.am.confirming}}"><p style="font-size:15px;color:var(--mut)">Photos and videos will remain in your library. Only this album is deleted.</p><button disabled="{{photos.am.busy}}" aria-label="Confirm delete album" onClick="{{photos.am.delete}}" style="width:100%;padding:16px;border-radius:24px;background:var(--fg);color:var(--bg)">Delete album</button></sc-if>
+    </div>
     </div>
   </sc-if>
 
@@ -2662,17 +2664,17 @@
   </sc-if>
 
   <sc-if value="{{files.nativeTreeDialog}}" hint-placeholder-val="{{false}}">
-    <div role="dialog" aria-modal="true" aria-label="{{files.nativeTreeDialog.title}}" style="position: absolute; inset: 0; z-index: 20; background: var(--scrim); display: flex; align-items: flex-end; padding: 16px 16px 40px; box-sizing: border-box">
+    <div ref="{{files.nativeTreeDialog.modalRef}}" role="dialog" aria-modal="true" aria-label="{{files.nativeTreeDialog.title}}" style="position: absolute; inset: 0; z-index: 20; background: var(--scrim); display: flex; align-items: flex-end; padding: 16px 16px 120px; box-sizing: border-box">
       <div style="width: 100%; max-height: 75%; overflow-y: auto; border-radius: 28px; padding: 24px; box-sizing: border-box; background: var(--bg)">
         <h2 class="serif" style="font-size: 28px; margin: 0 0 14px">{{files.nativeTreeDialog.title}}</h2>
-        <p style="font-size: 15px; color: var(--mut); line-height: 1.5">{{files.nativeTreeDialog.message}}</p>
+        <p style="font-size: 15px; color: var(--mut); line-height: 1.5; overflow-wrap: anywhere">{{files.nativeTreeDialog.message}}</p>
         <sc-if value="{{files.nativeTreeDialog.hasName}}" hint-placeholder-val="{{false}}"><input disabled="{{files.nativeTreeDialog.busy}}" aria-label="Folder or file name" value="{{files.nativeTreeDialog.name}}" onChange="{{files.nativeTreeDialog.onName}}" maxLength="255" style="width: 100%; min-width: 0; height: 48px; border: 0; border-radius: 14px; background: var(--s2); color: var(--fg); padding: 0 14px; box-sizing: border-box"></sc-if>
         <sc-if value="{{files.nativeTreeDialog.moving}}" hint-placeholder-val="{{false}}">
           <button disabled="{{files.nativeTreeDialog.busy}}" aria-label="Move destination root" onClick="{{files.nativeTreeDialog.root}}" style="height: 44px; font-size: 14px">Selected folder root</button>
           <sc-if value="{{files.nativeTreeDialog.canUp}}" hint-placeholder-val="{{false}}"><button disabled="{{files.nativeTreeDialog.busy}}" aria-label="Move destination parent" onClick="{{files.nativeTreeDialog.up}}" style="height: 44px; padding: 0 14px; font-size: 14px">Parent folder</button></sc-if>
           <sc-for list="{{files.nativeTreeDialog.destinations}}" as="d" hint-placeholder-count="0"><button disabled="{{files.nativeTreeDialog.busy}}" aria-label="Move into {{d.name}}" onClick="{{d.go}}" style="display: block; width: 100%; text-align: left; min-height: 48px; border-top: 1px solid var(--line); font-size: 15px">{{d.name}}</button></sc-for>
         </sc-if>
-        <div style="display: flex; gap: 10px; margin-top: 20px"><button disabled="{{files.nativeTreeDialog.busy}}" aria-label="Cancel file operation" onClick="{{files.nativeTreeDialog.cancel}}" style="flex: 1; height: 48px; border-radius: 24px; background: var(--s2); font-weight: 600">Cancel</button><button disabled="{{files.nativeTreeDialog.confirmDisabled}}" aria-label="{{files.nativeTreeDialog.confirmLabel}}" onClick="{{files.nativeTreeDialog.confirm}}" style="flex: 1; height: 48px; border-radius: 24px; background: var(--acc); color: #fff; font-weight: 600">{{files.nativeTreeDialog.confirmLabel}}</button></div>
+        <div style="display: flex; flex-wrap: wrap; gap: 10px; margin-top: 20px"><button disabled="{{files.nativeTreeDialog.busy}}" aria-label="Cancel file operation" onClick="{{files.nativeTreeDialog.cancel}}" style="flex: 1 1 9em; min-width: 0; min-height: 48px; padding: 12px; text-align: center; line-height: 1.25; border-radius: 24px; background: var(--s2); font-weight: 600">Cancel</button><button disabled="{{files.nativeTreeDialog.confirmDisabled}}" aria-label="{{files.nativeTreeDialog.confirmLabel}}" onClick="{{files.nativeTreeDialog.confirm}}" style="flex: 1 1 9em; min-width: 0; min-height: 48px; padding: 12px; text-align: center; line-height: 1.25; border-radius: 24px; background: var(--acc); color: #fff; font-weight: 600">{{files.nativeTreeDialog.confirmLabel}}</button></div>
       </div>
     </div>
   </sc-if>
@@ -3348,7 +3350,7 @@
 <sc-if value="{{is.settings}}" hint-placeholder-val="{{false}}">
 <div ref="{{settings.rootRef}}" style="display: flex; flex-direction: column; height: 100%; position: relative">
   <sc-for list="{{settings.stack}}" as="p" hint-placeholder-count="1">
-    <div class="{{p.cls}}" style="position: absolute; inset: 0; background: var(--bg); display: flex; flex-direction: column; z-index: {{p.z}}">
+    <div data-settings-page="{{p.title}}" class="{{p.cls}}" style="position: absolute; inset: 0; background: var(--bg); display: flex; flex-direction: column; z-index: {{p.z}}">
       <sc-if value="{{p.isTop}}" hint-placeholder-val="{{true}}">
         <div style="display: flex; align-items: center; height: 56px; margin-top: 44px; padding: 0 8px 0 20px; gap: 2px; flex-shrink: 0">
           <h1 class="serif" style="margin: 0; font-size: 32px; flex-grow: 1; letter-spacing: -.01em">{{p.title}}</h1>
@@ -3864,7 +3866,7 @@
 </div>
 </sc-if>
 <sc-if value="{{showIndicator}}" hint-placeholder-val="{{true}}">
-<button aria-label="Home" onClick="{{homeBar}}" style="position: absolute; bottom: 0; left: 126px; width: 160px; height: 22px; z-index: 99; display: flex; align-items: flex-end; justify-content: center; padding-bottom: 8px; box-sizing: border-box"><span style="width: 108px; height: 4px; border-radius: 2px; background: {{sbColor}}; opacity: .85"></span></button>
+<button aria-label="Home" onClick="{{homeBar}}" style="position: absolute; bottom: 0; left: 126px; width: 160px; height: 22px; z-index: 99; display: flex; align-items: flex-end; justify-content: center; padding-bottom: 8px; box-sizing: border-box"><span style="width: 108px; height: 4px; border-radius: 2px; background: {{homeIndicatorColor}}; opacity: .85"></span></button>
 </sc-if>
 
 </div>
