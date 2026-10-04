@@ -4,7 +4,7 @@ Read README.md, docs/architecture.md and docs/implementation-plan.md before chan
 This is one independent product. Do not import the other product's UI or identity.
 `vendor/eliza` is a pinned upstream submodule. Never edit its checkout as a shortcut:
 use a reviewed upstream commit or an explicit tested patch in `patches/eliza`.
-`base/eliza-app` is the pristine imported app baseline, not the production entrypoint.
+The retired app baseline is recorded in `docs/eliza-app-baseline-provenance.json`.
 `apps/app` owns this product's renderer; `android` owns its Android packaging.
 Run `npm run verify` and `npm run android:build`; verify both distribution variants.
 Distinguish an APK build, emulator HOME-role test, full AOSP image boot, real integrations,

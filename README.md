@@ -133,9 +133,10 @@ for signing, default-home policy and the full image verification boundary.
 ## Layout
 
 `apps/app` owns this product's UI. `android` owns its packaging and launcher bridge.
-`vendor/eliza` pins shared platform/native/OS code. `base/eliza-app` is the complete,
-immutable original app import for migration; its old scripts are not this project's
-entrypoints. `design` preserves the supplied references. Use root npm scripts.
+`vendor/eliza` pins shared platform/native/OS code. The inactive app baseline has
+been removed; its source commit and file hashes remain in
+`docs/eliza-app-baseline-provenance.json` and the original copy remains in Git history.
+`design` preserves the supplied references. Use root npm scripts.
 
 GitHub Actions builds both variants, runs emulator instrumentation and uploads
 artifacts. A successful APK job does not establish full AOSP image or physical

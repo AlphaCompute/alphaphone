@@ -24,7 +24,7 @@ history; the working tree no longer carries a patch series.
 | `android` | Capacitor Activity, native app launcher bridge, standalone/HOME flavors |
 | `app.config.json` | Product package identity, display name, version, orientation |
 | `vendor/eliza` | Commit-pinned agent, UI helpers, native plugins and OS tooling |
-| `base/eliza-app` | Pristine copied app source for migration and comparison |
+| `docs/eliza-app-baseline-provenance.json` | Historical upstream import provenance; source recoverable from Git |
 | `design` | Original product/design evidence and exact hashes |
 | `scripts` | Reproducible build, APK inspection, emulator smoke and AOSP staging |
 | `docs` | PRD, architecture decisions, implementation/test traceability |
@@ -49,7 +49,7 @@ The active shell derives its Capacitor activity lifecycle, splash installation, 
 
 1. Make generic changes in a dedicated `codex/` branch of the Eliza source and retain targeted tests.
 2. Publish the commit so a clean clone can retrieve it. Prefer a reviewed upstream PR before release.
-3. Update the submodule and `upstream.lock.json` together. Keep the baseline import immutable; re-import intentionally with a new manifest if needed.
+3. Update the submodule and `upstream.lock.json` together. The unused baseline copy is retired; retain its historical source provenance.
 4. Run source-pin verification, product typecheck/tests/build, both APK flavors and emulator bridge/HOME tests. Upgrade one product at a time.
 5. Before production, run upstream required root checks, the real auth/agent suite, signed-image build and physical-device acceptance. Reverting the submodule pin is the source rollback; installed APK/OS rollback must separately respect signing identity and Android versionCode rules.
 
