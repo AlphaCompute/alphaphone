@@ -17,8 +17,8 @@ and explicitly selected development simulations. These need different upstream
 entrypoints and admission rules; moving the folder intact would preserve the
 wrong boundaries.
 
-At the October 4 retirement checkpoint there are 282 files under `apps/app`,
-of which 225 are under `src`: 102 browser files, 54 runtime files, 53 prototype files, 11 Maps files and 5 root files.
+At the October 4 compact-dialog checkpoint there are 283 files under `apps/app`,
+of which 226 are under `src`: 103 browser files, 54 runtime files, 53 prototype files, 11 Maps files and five root files. The small `browser/dialog-layout.ts` helper owns product theme and accessible presentation; each caller continues to own its action and lifecycle behavior.
 The largest product source files include `prototype/model.js` (5,860 lines),
 `prototype/template.html` (3,934), `runtime/connection-ui.tsx` (813),
 `prototype/camera-adapter.ts` (655), and `runtime/hosted-digest-ui.tsx` (609).

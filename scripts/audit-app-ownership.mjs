@@ -6,6 +6,7 @@ import { parseSync } from 'rolldown/utils';
 // Ownership recommendations, not authorization to copy product UI upstream.
 function ownership(file) {
   const name = path.basename(file);
+  if (file === 'src/browser/dialog-layout.ts') return { owner: 'alphaphone', disposition: 'retain', reason: 'Product theme, compact dialog layout and accessible presentation; callers retain action and lifecycle ownership.' };
   if (!file.startsWith('src/')) return { owner: 'alphaphone', disposition: 'retain', reason: 'Product entry HTML, visual assets, fonts, attribution, or public bootstrap.' };
   if (/\.(css|html|json|md)$/.test(file) || ['main.tsx', 'model.js', 'model.d.ts', 'dc-lite.js', 'mvp-features.ts', 'mock-attention.ts', 'dev-profile.ts', 'apps.ts', 'device-view-profile.ts', 'development-view-contract.ts'].includes(name)) return { owner: 'alphaphone', disposition: 'retain-or-split', reason: 'Product composition, design reference, enabled views, fixtures, or visual presentation. Extract embedded domain behavior separately.' };
   if (file.startsWith('src/maps/') || name === 'maps-contract.ts') return { owner: 'plugins/plugin-maps', disposition: 'extract-or-configure', reason: 'Maps domain; inject storage key, location, speech, regional transport and visual tokens. Alpha owns layout and provider defaults.' };

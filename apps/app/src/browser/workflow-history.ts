@@ -1,3 +1,4 @@
+import {layoutBrowserDialog} from './dialog-layout';
 import {workflowNoticeHistory,savedWorkflowNoticeHistory,compactWorkflowNotices} from './workflow-notices';
 type Bag=Record<string,any>;
 const terminal=new Set(['ok','fail','skip','cancelled']);
@@ -63,5 +64,5 @@ export function openWorkflowHistory(read:()=>Bag,write:(patch:Bag)=>void,isRunni
  const previous=document.activeElement as HTMLElement|null;const back=(event:Event)=>{event.preventDefault();event.stopImmediatePropagation();finish();};const retire=()=>finish();const hidden=()=>{if(document.hidden)retire();};const events=['pagehide','launcher-home','alpha:device-state','alpha:dev-incoming-call'];
  let closed=false;const finish=()=>{if(closed)return;closed=true;noticeAbort.abort();dialog.close();window.removeEventListener('alpha-back',back,true);for(const event of events)window.removeEventListener(event,retire);document.removeEventListener('visibilitychange',hidden);URL.revokeObjectURL(url);URL.revokeObjectURL(noticeUrl);dialog.remove();if(current===dialog)current=undefined;if(previous?.isConnected)previous.focus();};
  dialog.onclose=finish;dialog.oncancel=event=>{event.preventDefault();finish();};
- window.addEventListener('alpha-back',back,true);for(const event of events)window.addEventListener(event,retire);document.addEventListener('visibilitychange',hidden);dialog.append(heading,description,download,remove,status,noticeHeading,noticeDescription,noticeDownload,compact,noticeStatus,close);document.body.append(dialog);dialog.showModal();heading.tabIndex=-1;heading.focus();
+ window.addEventListener('alpha-back',back,true);for(const event of events)window.addEventListener(event,retire);document.addEventListener('visibilitychange',hidden);dialog.append(heading,description,download,remove,status,noticeHeading,noticeDescription,noticeDownload,compact,noticeStatus,close);layoutBrowserDialog(dialog,[close]);document.body.append(dialog);dialog.showModal();heading.tabIndex=-1;heading.focus();
 }
