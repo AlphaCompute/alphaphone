@@ -4,12 +4,6 @@
   "htmlBytes": 816757,
   "assets": [
     {
-      "path": "dc-lite.js",
-      "source": "https://alpha-phone-prototype.pages.dev/dc-lite.js",
-      "bytes": 3963,
-      "sha256": "4ae5f2b7731449728f42ef686d103759f445add8a5a9caed8fe7e5e1bfa027a1"
-    },
-    {
       "path": "denton-300.woff2",
       "source": "https://alpha-phone-prototype.pages.dev/denton-300.woff2",
       "bytes": 31960,
@@ -278,18 +272,6 @@
       "source": "https://alpha-phone-prototype.pages.dev/logo.svg",
       "bytes": 24420,
       "sha256": "2997ae0b7cf7bcc6015d60c6d550296312063468114785a33c1367aa67fe9ea4"
-    },
-    {
-      "path": "vendor/react-dom.production.min.js",
-      "source": "https://alpha-phone-prototype.pages.dev/vendor/react-dom.production.min.js",
-      "bytes": 131835,
-      "sha256": "35f4f974f4b2bcd44da73963347f8952e341f83909e4498227d4e26b98f66f0d"
-    },
-    {
-      "path": "vendor/react.production.min.js",
-      "source": "https://alpha-phone-prototype.pages.dev/vendor/react.production.min.js",
-      "bytes": 10751,
-      "sha256": "d949f1c3687aedadcedac85261865f29b17cd273997e7f6b2bfc53b2f9d4c4dd"
     },
     {
       "path": "fonts/94593e69fad0885b2b0b.woff2",
