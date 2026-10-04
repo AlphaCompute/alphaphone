@@ -1,6 +1,7 @@
 name: Android foundation
 on:
   push:
+    branches: [main]
   pull_request:
   workflow_dispatch:
     inputs:
@@ -195,6 +196,7 @@ jobs:
           # Chromium recommends >=4 GB guest storage for WebView development.
           # Keep host capacity admission; overlay scratch is separately bounded to 512 MiB.
           disk-size: 4096M
+          # SwiftShader avoids the SWANGLE SurfaceFlinger GPU-priority deadlock on restart.
           # Provider replacement is confined to this fresh disposable AOSP image.
           emulator-options: -no-window -gpu swiftshader -no-snapshot -noaudio -no-boot-anim -writable-system -append-userspace-opt 'androidboot.boot_devices=pci0000:00/0000:00:03.0 pci0000:00/0000:00:05.0 pci0000:00/0000:00:06.0'
           disable-animations: true
@@ -268,6 +270,7 @@ jobs:
           # Chromium recommends >=4 GB guest storage for WebView development.
           # Keep host capacity admission; overlay scratch is separately bounded to 512 MiB.
           disk-size: 4096M
+          # SwiftShader avoids the SWANGLE SurfaceFlinger GPU-priority deadlock on restart.
           # Provider replacement is confined to this fresh disposable AOSP image.
           emulator-options: -no-window -gpu swiftshader -no-snapshot -noaudio -no-boot-anim -writable-system -append-userspace-opt 'androidboot.boot_devices=pci0000:00/0000:00:03.0 pci0000:00/0000:00:05.0 pci0000:00/0000:00:06.0'
           disable-animations: true
