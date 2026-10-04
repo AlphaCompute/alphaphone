@@ -1,3 +1,4 @@
+import {layoutBrowserDialog} from './dialog-layout';
 import {browserScreenLocked} from './screen-locked';
 import {reviewMailAttachment,type MailAttachment} from '../runtime/inbox-attachment';
 type Bag=Record<string,any>;
@@ -39,7 +40,7 @@ export function requestWorkflowReceipt(api:Bag,needsWallet:boolean,signal:AbortS
  const finish=(value?:ReceiptInput)=>{if(settled)return;settled=true;signal.removeEventListener('abort',close);window.removeEventListener('alpha-back',back,true);for(const event of events)window.removeEventListener(event,close);document.removeEventListener('visibilitychange',hidden);dialog.close();dialog.remove();if(previous?.isConnected&&!signal.aborted)previous.focus();value?resolve(value):reject(new DOMException('Receipt input cancelled','AbortError'));};
  const close=()=>finish(),hidden=()=>{if(document.hidden)close();},back=(event:Event)=>{event.preventDefault();event.stopImmediatePropagation();close();},events=['pagehide','alpha:device-state','launcher-home','alpha:dev-incoming-call'];
  use.onclick=async()=>{if(busy||!valid())return;busy=true;update();for(const field of [select,merchant,amount,card])field.disabled=true;try{const choice=choices[Number(select.value)],checked=await reviewMailAttachment(choice.file);const result:ReceiptInput={mailId:String(choice.mail.id),sent:choice.sent,index:choice.index,name:checked.name,mimeType:checked.mimeType,sha256:checked.sha256,...(needsWallet?{merchant:merchant.value.trim(),cents:cents(),cardId:card.value}:{})};await receiptAttachment(result,api,signal);if(!settled)finish(result);}catch(error){if(!settled)status.textContent=error instanceof Error?error.message:'Choose another attachment.';}finally{busy=false;for(const field of [select,merchant,amount,card])field.disabled=false;update();}};
- cancel.onclick=close;dialog.onclose=close;signal.addEventListener('abort',close,{once:true});window.addEventListener('alpha-back',back,true);for(const event of events)window.addEventListener(event,close);document.addEventListener('visibilitychange',hidden);document.body.append(dialog);
+ cancel.onclick=close;dialog.onclose=close;signal.addEventListener('abort',close,{once:true});window.addEventListener('alpha-back',back,true);for(const event of events)window.addEventListener(event,close);document.addEventListener('visibilitychange',hidden);layoutBrowserDialog(dialog,[use,cancel]);document.body.append(dialog);
  if(signal.aborted||document.hidden||document.documentElement.dataset.devBackground==='true'||browserScreenLocked()){close();return;}try{dialog.showModal();select.focus();}catch{close();}
  });
 }
