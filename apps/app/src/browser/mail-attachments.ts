@@ -10,7 +10,13 @@ export class BrowserMailAttachments extends WebPlugin {
  private url?:string;
  private cleanup?:()=>void;
  constructor(private files:BrowserFiles){super();window.addEventListener('pagehide',()=>this.clear());document.addEventListener('visibilitychange',()=>{if(document.hidden)this.clear();});}
- async readSelected(input:{selectionId:string}){const generation=this.generation,file=await this.files.attachment(input),review=await reviewMailAttachment(file);if(generation!==this.generation)throw new DOMException('Cancelled','AbortError');return {...file,...review};}
+ async readSelected(input:{selectionId:string}){const generation=this.generation,file=await this.files.attachment(input),review=await reviewMailAttachment(file);if(generation!==this.generation)throw new DOMException('Cancelled','AbortError');return {...file,...review,sourceReferenceVersion:1 as const};}
+ async retainSourceReference(input:{selectionId:string;sha256:string}){const file=await this.readSelected(input);if(file.sha256!==input.sha256)throw Error('Source changed.');return {reference:await this.files.sourceReference(input)};}
+ async openSourceReference(input:{reference:string;sha256:string;size:number;mimeType:string}){
+  const generation=this.generation,selected=await this.files.selectSourceReference(input.reference);
+  try{const file=await this.readSelected(selected);if(generation!==this.generation||file.sha256!==input.sha256||file.size!==input.size||file.mimeType!==input.mimeType)throw Error('Source changed or is unavailable. Choose the matching source again.');return await this.openReviewed({...file,reviewed:true});}
+  finally{await this.files.forgetSelected(selected);}
+ }
  private clear(){++this.generation;this.saveController?.abort();const cleanup=this.cleanup;this.cleanup=undefined;cleanup?.();this.dialog?.close();this.dialog?.remove();this.dialog=undefined;if(this.url)URL.revokeObjectURL(this.url);this.url=undefined;}
  async cancel(){this.clear();}
  async saveReviewed(input:MailAttachment&{reviewed:boolean;sha256:string}){

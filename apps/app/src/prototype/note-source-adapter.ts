@@ -4,16 +4,18 @@ import {DailyApps} from '../daily';
 import {registerPlugin} from '../platform-plugins';
 import {reviewMailAttachment,type MailAttachment} from '../runtime/inbox-attachment';
 type Bag=Record<string,any>;
-export type Source={version:1;name:string;mimeType:string;sha256:string;size:number};
+export type Source={version:1;name:string;mimeType:string;sha256:string;size:number;reference?:string};
 const attachments=registerPlugin<{
- readSelected(input:{selectionId:string}):Promise<MailAttachment & {sha256:string;size:number}>;
+ readSelected(input:{selectionId:string}):Promise<MailAttachment & {sha256:string;size:number;sourceReferenceVersion?:1}>;
  openReviewed(input:MailAttachment & {sha256:string;reviewed:boolean}):Promise<{message:string}>;
+ retainSourceReference(input:{selectionId:string;sha256:string}):Promise<{reference?:string}>;
+ openSourceReference(input:{reference:string;sha256:string;size:number;mimeType:string}):Promise<{message:string}>;
  cancel():Promise<void>;
 }>('AlphaMailAttachments');
 export function sourceOf(value:unknown):Source|undefined {
  const s=value as Source|undefined;
  if(!s||s.version!==1||typeof s.name!=='string'||!s.name||s.name.length>120||/[\\/\x00-\x1f\x7f]/.test(s.name)||typeof s.mimeType!=='string'||!['text/plain','application/pdf','image/png','image/jpeg','image/webp'].includes(s.mimeType)||typeof s.sha256!=='string'||!/^[a-f0-9]{64}$/.test(s.sha256)||!Number.isSafeInteger(s.size)||s.size<0||s.size>5*1024*1024)return;
- return {version:1,name:s.name,mimeType:s.mimeType,sha256:s.sha256,size:s.size};
+ return {version:1,name:s.name,mimeType:s.mimeType,sha256:s.sha256,size:s.size,...(typeof s.reference==='string'&&/^(?:b1:[a-f0-9-]{36}|a1:[a-f0-9]{64})$/.test(s.reference)?{reference:s.reference}:{})};
 }
 /** Alpha's cross-app source review. Notes owns persistence; existing file ports
  * own picker grants and exact-byte validation. Never persist temporary grants. */
@@ -35,15 +37,15 @@ export function installNoteSourceAdapter(views:Bag){
    const heading=document.createElement('h2');heading.textContent='Source document';
    const content=document.createElement('div');content.className='note-source-content';content.tabIndex=0;content.setAttribute('role','region');content.setAttribute('aria-label','Source details');
    const name=document.createElement('p'),detail=document.createElement('p');
-   const description=document.createElement('p');description.textContent='Link a PDF, image or text file (up to 5 MiB). To reopen it, choose the file again. Its bytes must match the linked source. Opening shares only that selected copy with the viewer.';
+   const description=document.createElement('p');description.textContent='Link a PDF, image or text file (up to 5 MiB). Saved library links can reopen directly while access remains available. Otherwise choose the file again. Its bytes must match the linked source. Opening shares only that selected copy with the viewer.';
    const status=document.createElement('p');status.setAttribute('role','status');
    const actions=document.createElement('footer');
    const button=(label:string)=>{const el=document.createElement('button');el.type='button';el.textContent=label;actions.append(el);return el;};
-   const link=button('Link file'),open=button('Choose source file to open'),remove=button('Remove source link'),done=button('Done');
+   const linked=button('Open linked source'),link=button('Link file'),open=button('Choose source file to open'),remove=button('Remove source link'),done=button('Done');
    const current=()=>!closed&&api.isActive()&&api.get('notes').open===note.id&&JSON.stringify(api.get('notes').list.find((n:Bag)=>n.id===note.id))===expected;
    const close=()=>{if(closed)return;closed=true;pickerAbort.abort();if(opened)void attachments.cancel().catch(()=>{});dialog.remove();window.removeEventListener('alpha-back',back,true);window.removeEventListener('pagehide',close);if(closeCurrent===close)closeCurrent=undefined;if(previous instanceof HTMLElement&&previous.isConnected)previous.focus();};
    const back=(event:Event)=>{if([...document.querySelectorAll('dialog[open]')].at(-1)!==dialog)return;event.preventDefault();event.stopImmediatePropagation();close();};
-   const paint=()=>{name.textContent=source?.name||'No source linked';detail.textContent=source?`${source.mimeType} · ${source.size} bytes · SHA-256 ${source.sha256}`:'';link.textContent=source?'Replace source file':'Link file';open.hidden=remove.hidden=!source;for(const el of [link,open,remove])el.disabled=busy;};
+   const paint=()=>{linked.hidden=!source?.reference;name.textContent=source?.name||'No source linked';detail.textContent=source?`${source.mimeType} · ${source.size} bytes · SHA-256 ${source.sha256}`:'';link.textContent=source?'Replace source file':'Link file';open.hidden=remove.hidden=!source;for(const el of [linked,link,open,remove])el.disabled=busy;};
    const save=async(next:Source|undefined)=>{
     if(!current())throw Error('Note changed. Close this review and reopen the note.');
     const state=api.get('notes'),record={...state.list.find((n:Bag)=>n.id===note.id)};
@@ -55,7 +57,7 @@ export function installNoteSourceAdapter(views:Bag){
    const choose=async(mode:'link'|'open')=>{
     if(busy||!current())return;busy=true;status.textContent='Choose a file…';paint();let selectionId:string|undefined;
     try{
-     let file:MailAttachment & {sha256:string;size:number};
+     let file:MailAttachment & {sha256:string;size:number;sourceReferenceVersion?:1};
      if(Capacitor.isNativePlatform()){
       const choice=await DailyApps.perform({action:'files'});selectionId=choice.selectionId;
       if(!current())return;if(choice.status==='cancelled'){status.textContent='Selection cancelled. Source unchanged.';return;}
@@ -74,7 +76,7 @@ export function installNoteSourceAdapter(views:Bag){
      if(!current())return;
      if(checked.sha256!==file.sha256||checked.size!==file.size)throw Error('Selected file changed. Choose it again.');
      if(mode==='link'){
-      const next=sourceOf({version:1,name:file.name,mimeType:file.mimeType,sha256:checked.sha256,size:checked.size});if(!next)throw Error('This file cannot be linked.');
+      const reference=selectionId&&file.sourceReferenceVersion===1?(await attachments.retainSourceReference({selectionId,sha256:checked.sha256})).reference:undefined;if(!current())return;const next=sourceOf({version:1,name:file.name,mimeType:file.mimeType,sha256:checked.sha256,size:checked.size,...(reference?{reference}:{})});if(!next)throw Error('This file cannot be linked.');
       await save(next);if(!closed)status.textContent='Source linked. File contents were not added to the note or sent to an agent.';
      }else{
       if(!source||checked.sha256!==source.sha256||checked.size!==source.size||file.mimeType!==source.mimeType)throw Error('This file does not match the linked source. Nothing opened; the source link is unchanged.');
@@ -83,6 +85,7 @@ export function installNoteSourceAdapter(views:Bag){
     }catch(error){if(!closed)status.textContent=error instanceof Error?error.message:'Source unavailable.';}
     finally{if(selectionId)await DailyApps.forgetSelected({selectionId}).catch(()=>{if(!closed)status.textContent='File access could not be released. Close and reopen Files.';});busy=false;if(!closed)paint();}
    };
+   linked.onclick=async()=>{if(busy||!current()||!source?.reference)return;busy=true;opened=true;paint();status.textContent='Opening verified source…';try{const result=await attachments.openSourceReference({reference:source.reference,sha256:source.sha256,size:source.size,mimeType:source.mimeType});if(!closed)status.textContent=result.message;}catch{if(!closed)status.textContent='Linked source changed or access is unavailable. Choose the matching source file again.';}finally{busy=false;if(!closed)paint();}};
    link.onclick=()=>void choose('link');open.onclick=()=>void choose('open');remove.onclick=async()=>{if(busy||!current())return;busy=true;paint();try{await save(undefined);if(!closed)status.textContent='Source link removed. The file was not deleted.';}catch(error){if(!closed)status.textContent=(error as Error).message;}finally{busy=false;if(!closed)paint();}};
    done.onclick=close;dialog.oncancel=event=>{event.preventDefault();close();};
    content.append(name,detail,description,status);dialog.append(heading,content,actions);document.body.append(dialog);closeCurrent=close;window.addEventListener('alpha-back',back,true);window.addEventListener('pagehide',close);paint();dialog.showModal();done.focus();
