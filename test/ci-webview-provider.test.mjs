@@ -111,6 +111,8 @@ async function simulate({ oversizedAnr = false, framework = 'ready', drift, neve
     if(finalBoot&&drift==='final-scratch'&&key==='shell cat /sys/dev/block/254:5/size')return '92280';
     if (key.startsWith('shell service check ')) return `Service ${a.at(-1)}: found`;
     if (key === 'shell id -u') return rooted ? '0' : '2000';
+    if (key === 'shell pidof netd') return finalBoot && drift !== 'final-stale-netd' ? '603' : '602';
+    if (key === 'shell stop netd' || key === 'shell start netd') return '';
     if (key === 'shell pidof system_server') {
       pidReads++;
       if (removed && framework === 'rotating') return String(200 + pidReads % 2);
@@ -462,13 +464,17 @@ test('successful replacement requires a new framework generation without losing 
  const installs=r.calls.map((v,i)=>v.startsWith('install ')?i:-1).filter(i=>i>=0);assert.equal(installs.length,1);
  const reboots=r.calls.map((v,i)=>v==='reboot'?i:-1).filter(i=>i>=0);assert.equal(reboots.length,1);assert.ok(reboots[0]<installs[0]);
  const finalStart=r.calls.lastIndexOf('shell start zygote');assert.ok(finalStart>installs[0]);assert.equal(r.calls.filter(c=>c==='shell stop zygote').length,2);assert.ok(!r.calls.includes('shell stop')&&!r.calls.includes('shell start')); assert.notDeepEqual(r.result.providerRestart.previousServer,r.result.providerRestart.server);
+ assert.ok(r.calls.lastIndexOf('shell stop zygote') < r.calls.indexOf('shell stop netd'));
+ assert.ok(r.calls.indexOf('shell stop netd') < r.calls.indexOf('shell start netd'));
+ assert.ok(r.calls.indexOf('shell start netd') < finalStart);
+ assert.deepEqual(r.result.providerRestart.netd,{before:'602',after:'603'});
  assert.deepEqual(r.result.providerChecks.map(c=>c.label),['after-install','after-framework-restart']);
  assert.equal(r.result.providerRestart.priorBootId,r.result.providerRestart.bootId);
  assert.equal(r.result.providerDisplayObservations.length,2);assert.ok(r.result.providerDisplayObservations.every(o=>o.secure===false&&o.unlocked));
  assert.ok(!r.calls.slice(finalStart+1).some(c=>/^(install |reboot$|shell (rm |locksettings |input |wm dismiss))/.test(c)));
 });
 test('postreplacement framework restart refuses identity, provenance, readiness, secure state and ANR without replay',async()=>{
- for(const drift of ['final-never-boot','final-changed-boot','final-stale-server','final-not-ready','final-identity','final-stock','final-fingerprint','final-alias','final-topology','final-bytes','final-scratch','final-relro','final-secure','final-anr']){
+ for(const drift of ['final-never-boot','final-changed-boot','final-stale-server','final-stale-netd','final-not-ready','final-identity','final-stock','final-fingerprint','final-alias','final-topology','final-bytes','final-scratch','final-relro','final-secure','final-anr']){
   const r=await simulate({drift});assert.ok(r.error,drift);assert.equal(r.result.status,'FAIL');assert.equal(r.calls.filter(c=>c.startsWith('install ')).length,1);assert.equal(r.calls.filter(c=>c==='reboot').length,1);
   if(drift==='final-secure')assert.match(r.error.message,/not observed awake/);
   if(drift?.startsWith('final-anr'))assert.match(r.error.message,/ANR remains/);

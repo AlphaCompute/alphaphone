@@ -532,10 +532,20 @@ export async function main({ environment = process.env, execute = execFileSync, 
     const priorBootId = run('shell', 'cat', '/proc/sys/kernel/random/boot_id').trim();
     require(/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/.test(priorBootId), 'Unknown provider boot identity');
     const previousProviderServer = serverIdentity();
+    const previousNetd = run('shell', 'pidof', 'netd').trim();
+    require(/^[1-9][0-9]*$/.test(previousNetd), 'Expected one fixture netd process');
     state.status = 'finalizing-provider-framework'; state.providerRestart = { priorBootId, previousServer: previousProviderServer, requested: true }; save();
     run('shell', 'stop', 'zygote');
+    // netd retains network IDs and interface ownership across a zygote-only
+    // restart. Reset the empty fixture's network daemon before the new framework
+    // registers networks; otherwise DNS fails with ENONET despite a connected AP.
+    run('shell', 'stop', 'netd');
+    run('shell', 'start', 'netd');
     run('shell', 'start', 'zygote');
     state.providerRestart.server = await boot(previousProviderServer, true); save(); safe(true);
+    const netd = run('shell', 'pidof', 'netd').trim();
+    require(/^[1-9][0-9]*$/.test(netd) && netd !== previousNetd, 'Fixture netd did not restart');
+    state.providerRestart.netd = { before: previousNetd, after: netd }; save();
     const bootId = run('shell', 'cat', '/proc/sys/kernel/random/boot_id').trim();
     require(/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/.test(bootId) && bootId === priorBootId, 'Provider framework restart changed kernel boot identity');
     state.providerRestart.bootId = bootId; save();
