@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { parseFixtureNetwork, prepareFixtureNetwork, fixtureNetworkDiagnostics } from '../scripts/ci-emulator-network.mjs';
+import { parseFixtureNetwork, prepareFixtureNetwork, fixtureNetworkDiagnostics, parseNetworkValidationProbes } from '../scripts/ci-emulator-network.mjs';
 
 const connected = 'Active default network: 101\n  NetworkAgentInfo{network{101} handle{123} nc{[ Transports: WIFI Capabilities: INTERNET&NOT_RESTRICTED&VALIDATED LinkUpBandwidth>=1000]}\n';
 const disconnected = 'Active default network: none\n';
@@ -68,7 +68,7 @@ test('network diagnostics retain only known states and never raw identifiers or 
   const result = fixtureNetworkDiagnostics((...args) => args.join(' ') === 'shell cmd wifi status'
     ? 'Wifi is enabled\nWifi is connected to "private-network"\nIP: /192.0.2.42, Supplicant state: COMPLETED, MAC: private-mac'
     : f.run(...args));
-  assert.deepEqual(result, { airplaneMode: false, mobileDataEnabled: true, wifiStatusAvailable: true, wifiEnabled: true, fixtureAccessPointConnected: false, supplicantState: 'COMPLETED' });
+  assert.deepEqual(result, { airplaneMode: false, mobileDataEnabled: true, wifiStatusAvailable: true, validationProbes: [], wifiEnabled: true, fixtureAccessPointConnected: false, supplicantState: 'COMPLETED' });
   assert.doesNotMatch(JSON.stringify(result), /private|192\.0/);
   const unavailable = fixtureNetworkDiagnostics(() => { throw Error('private-output'); });
   assert.equal(unavailable.wifiStatusAvailable, false);
@@ -86,4 +86,21 @@ test('local contexts, populated fixtures, secondary users and identity drift ref
   const f = fixture(); let users = 0;
   await assert.rejects(prepareFixtureNetwork((...args) => args.join(' ') === 'shell am get-current-user' && ++users > 1 ? '10' : f.run(...args), options));
   assert.deepEqual(writes(f.calls), []);
+});
+
+test('validation diagnostics retain probe outcomes without network payloads', () => {
+  const probes = parseNetworkValidationProbes([
+    'PROBE_DNS private.example 2ms FAIL resNetworkQuery failed: ENONET (Machine is not on the network)',
+    'PROBE_HTTPS https://private.example/token time=35ms ret=204 headers={Authorization=[private-token]}',
+    'PROBE_DNS private.example 1ms OK 192.0.2.1',
+    'PROBE_FALLBACK private-payload',
+    'PROBE_UNKNOWN private-payload',
+  ].join('\n'));
+  assert.deepEqual(probes, [
+    { kind: 'DNS', status: 'failed', httpStatus: null, errorCode: 'ENONET' },
+    { kind: 'HTTPS', status: 'completed', httpStatus: 204, errorCode: null },
+    { kind: 'DNS', status: 'completed', httpStatus: null, errorCode: null },
+    { kind: 'FALLBACK', status: 'unknown', httpStatus: null, errorCode: null },
+  ]);
+  assert.doesNotMatch(JSON.stringify(probes), /private|192\.0|Authorization/);
 });
