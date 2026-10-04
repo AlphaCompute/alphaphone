@@ -78,3 +78,12 @@ html,body,#root{margin:0;width:100%;height:100%;overflow:hidden;overscroll-behav
 
 .alpha-browser-dialog label { min-width:0; }
 .alpha-browser-dialog label:has(input[type=checkbox],input[type=range]) { min-height:48px; }
+
+/* Calendar drafts retain fixed navigation while every field can scroll above the assistant bar. */
+.calendar-draft-fields { min-height:0; overflow-x:hidden; overscroll-behavior:contain; scroll-padding-block:16px 130px; }
+.calendar-draft-fields:focus-visible { outline:2px solid var(--acct,#0000ff); outline-offset:-2px; }
+.calendar-draft button { min-height:52px; min-width:52px; flex-shrink:0; }
+.calendar-draft-fields button { max-width:100%; overflow-wrap:anywhere; }
+.calendar-draft-fields textarea { scroll-margin-block:16px 130px; }
+
+.calendar-draft button[aria-label="Video link"] > span { top:calc(50% - 13px)!important; }
