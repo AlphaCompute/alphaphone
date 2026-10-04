@@ -2559,3 +2559,5 @@ The intended two-step flow then passed: select `garden-source.txt`, remove the p
 J03/J05 are not complete: filename provenance is not a reopenable source link, Gmail attachment-to-Files handoff is separate, and installed native execution still needs evidence. The combined request's task-quality failure remains open even though the reviewed two-step path passes. Source-link implementation is the next cross-app gap.
 
 Final verification for the shared composition change: all 286 repository tests pass with zero skips, TypeScript and web build pass. Evidence: `test-results/selected-content/verify.log`.
+
+Main advanced through PR168 (`18c433a`), which cancelled browser campaign37186634243. The incoming change only adds bounded emulator-network diagnostics and its tests. It was reviewed and merged into this branch; combined verification then passed all 287 repository tests with zero skips, TypeScript and web build. The new main browser run37187533837 was active at inspection. No cancelled run is treated as passing.
