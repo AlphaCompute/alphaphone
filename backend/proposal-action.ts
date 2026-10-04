@@ -1,25 +1,10 @@
+import { parseUnambiguousZonedDateTime as zonedTimeToEpoch } from '../vendor/eliza/packages/contracts/src/lifeops-normalize/time-util.ts';
 import { DEVELOPMENT_PROPOSAL_VIEWS } from "../apps/app/src/runtime/development-view-contract.ts";
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { randomUUID } from 'node:crypto';
 import type { Action } from '@elizaos/core';
 export const turns=new AsyncLocalStorage<{revision:number;proposals:any[];signal:AbortSignal}>();
-// Models are unreliable at epoch arithmetic, so they supply wall time and an IANA zone; code resolves the instant.
-export function zonedTimeToEpoch(local:unknown,timeZone:unknown):number|null{
- const m=typeof local==='string'&&/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/.exec(local);
- if(!m||typeof timeZone!=='string'||!timeZone.trim())return null;
- let format:Intl.DateTimeFormat;
- try{format=new Intl.DateTimeFormat('en-US',{timeZone,hourCycle:'h23',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit'});}catch{return null;}
- const [y,mo,d,h,mi]=m.slice(1).map(Number),wall=Date.UTC(y,mo-1,d,h,mi);
- const offset=(t:number)=>{const v=Object.fromEntries(format.formatToParts(t).map(x=>[x.type,x.value]));return Date.UTC(+v.year,+v.month-1,+v.day,+v.hour,+v.minute,+v.second)-t;};
- // Gather neighboring offsets so both sides of clock changes are considered.
- const offsets=new Set<number>();for(let hours=-48;hours<=48;hours+=6)offsets.add(offset(wall+hours*3600000));
- const candidates=[...offsets].map(value=>wall-value).filter(t=>{
-  const check=Object.fromEntries(format.formatToParts(t).map(x=>[x.type,x.value]));
-  return +check.year===y&&+check.month===mo&&+check.day===d&&+check.hour===h&&+check.minute===mi&&+check.second===0;
- });
- // Neither skipped times nor repeated times identify one unambiguous reminder instant.
- return candidates.length===1?candidates[0]:null;
-}
+export { zonedTimeToEpoch };
 const views=new Set<string>(DEVELOPMENT_PROPOSAL_VIEWS);
 const proposalAction:Action={
  name:'PREPARE_ALPHA_ACTION',contexts:['general','messaging'],roleGate:{minRole:'USER'},
