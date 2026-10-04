@@ -687,9 +687,9 @@
   <sc-if value="{{inbox.contextReviewOpen}}"><div class="scr" role="dialog" aria-label="Review email sharing" style="position:absolute;inset:0;z-index:10;background:var(--bg);padding:54px 20px 30px;overflow:auto;box-sizing:border-box"><button onClick="{{inbox.contextReview.close}}" style="padding:10px">Cancel</button><h2 class="serif">Share this email with your agent?</h2><p style="overflow-wrap:anywhere">Destination: {{inbox.contextReview.destination}}</p><p>The complete text below will be sent. Attachments are excluded.</p><div style="white-space:pre-wrap;overflow-wrap:anywhere">{{inbox.contextReview.source}}</div><button disabled="{{inbox.contextReview.busy}}" onClick="{{inbox.contextReview.send}}" style="padding:14px;border-radius:24px;background:var(--acc);color:white">Send reviewed email to agent</button></div></sc-if>
   <sc-if value="{{inbox.attachmentOpen}}">
     <div class="inbox-attachment-review" role="dialog" aria-label="Review attachment">
-      <div class="inbox-attachment-actions"><button onClick="{{inbox.attachment.close}}">Back to message</button><sc-if value="{{inbox.attachment.external}}"><button onClick="{{inbox.attachment.open}}">Open reviewed file</button></sc-if></div>
+      <div class="inbox-attachment-actions"><button onClick="{{inbox.attachment.close}}">Back to message</button><button onClick="{{inbox.attachment.save}}" disabled="{{inbox.attachment.saveDisabled}}">Save to Files</button><sc-if value="{{inbox.attachment.external}}"><button onClick="{{inbox.attachment.open}}">Open reviewed file</button></sc-if></div>
       <div class="scr inbox-attachment-content" role="region" aria-label="Attachment contents" tabindex="0">
-        <h2>{{inbox.attachment.name}}</h2><p style="font-size:12px;overflow-wrap:anywhere">SHA-256 {{inbox.attachment.hash}}</p><div style="white-space:pre-wrap;overflow-wrap:anywhere">{{inbox.attachment.text}}</div>
+        <p role="status">{{inbox.attachment.saveStatus}}</p><h2>{{inbox.attachment.name}}</h2><p style="font-size:12px;overflow-wrap:anywhere">SHA-256 {{inbox.attachment.hash}}</p><div style="white-space:pre-wrap;overflow-wrap:anywhere">{{inbox.attachment.text}}</div>
       </div>
     </div>
   </sc-if>

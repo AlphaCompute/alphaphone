@@ -3174,9 +3174,9 @@
     {
       "file": "src/browser/mail-attachments.ts",
       "upstreamCandidate": [],
-      "bytes": 3389,
-      "sha256": "5c6f1c0ac43597b7252d9f94c1b49d575f41234ee8d715d4a65e25224fa7bc7a",
-      "lines": 23,
+      "bytes": 4883,
+      "sha256": "6d2382856bb2ac9d03d813b322eb1e6f44c4447751cccaeeb85f560a10fa37b8",
+      "lines": 36,
       "owner": "plugins/plugin-personal-assistant + cloud client",
       "disposition": "extract-or-split",
       "reason": "Inbox drafts, exact attachment context and operation fencing; keep Alpha inbox presentation.",
@@ -3191,7 +3191,7 @@
       ],
       "seams": [
         {
-          "line": 17,
+          "line": 30,
           "tags": [
             "identity-or-compatibility",
             "host-coupling",
@@ -3199,7 +3199,7 @@
           ]
         },
         {
-          "line": 19,
+          "line": 32,
           "tags": [
             "identity-or-compatibility",
             "host-coupling"
@@ -7813,9 +7813,9 @@
     {
       "file": "src/prototype/inbox-cloud-adapter.ts",
       "upstreamCandidate": [],
-      "bytes": 18693,
-      "sha256": "2045f9e4ee6aed89950d6b8f65b4d31bddeae240c943332e4822818071f2668d",
-      "lines": 202,
+      "bytes": 19649,
+      "sha256": "82e0c8dc8bfd3304c3d38a379bc22e1b6abf4eef2ebd3e924073d851e5e4dd14",
+      "lines": 206,
       "owner": "plugins/plugin-personal-assistant + cloud client",
       "disposition": "extract-or-split",
       "reason": "Inbox drafts, exact attachment context and operation fencing; keep Alpha inbox presentation.",
@@ -7906,33 +7906,27 @@
           ]
         },
         {
-          "line": 146,
+          "line": 150,
           "tags": [
             "host-coupling"
           ]
         },
         {
-          "line": 151,
+          "line": 155,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 167,
+          "line": 171,
           "tags": [
             "host-coupling"
           ]
         },
         {
-          "line": 174,
+          "line": 178,
           "tags": [
             "presentation"
-          ]
-        },
-        {
-          "line": 184,
-          "tags": [
-            "host-coupling"
           ]
         },
         {
@@ -7942,19 +7936,25 @@
           ]
         },
         {
-          "line": 189,
-          "tags": [
-            "host-coupling"
-          ]
-        },
-        {
-          "line": 190,
-          "tags": [
-            "host-coupling"
-          ]
-        },
-        {
           "line": 192,
+          "tags": [
+            "host-coupling"
+          ]
+        },
+        {
+          "line": 193,
+          "tags": [
+            "host-coupling"
+          ]
+        },
+        {
+          "line": 194,
+          "tags": [
+            "host-coupling"
+          ]
+        },
+        {
+          "line": 196,
           "tags": [
             "host-coupling"
           ]
@@ -10442,8 +10442,8 @@
     {
       "file": "src/prototype/template.html",
       "upstreamCandidate": [],
-      "bytes": 419135,
-      "sha256": "5479f82a59e065f3bee6e9301f055cc8970d7d4b127100b6a5df96cbfbb80913",
+      "bytes": 419298,
+      "sha256": "e885589305b08ba675da910689d269ad24d69112bf23f1257573e40f74fcd264",
       "lines": 3945,
       "owner": "alphaphone",
       "disposition": "retain-or-split",
