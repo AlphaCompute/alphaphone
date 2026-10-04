@@ -102,6 +102,7 @@ async function simulate({ oversizedAnr = false, framework = 'ready', drift, neve
     if(finalBoot&&drift==='final-topology'&&key==='shell cat /proc/bootconfig')return 'androidboot.boot_devices = "wrong"';
     if(key==='shell cat /proc/sys/kernel/random/boot_id')return (finalBoot&&drift==='final-changed-boot'||rooted&&drift==='root-lost-ack-restarted')?'22222222-2222-4222-8222-222222222222':'11111111-1111-4111-8111-111111111111';
     if(key===`shell test ! -e ${stock}`){if(drift==='final-stock')throw Error('Stock provider returned');return '';}
+    if(key==='shell dumpsys connectivity')return 'Active default network: 100\n NetworkAgentInfo{network{100} handle{1} nc{[ Transports: WIFI Capabilities: INTERNET&VALIDATED]}';
     if(key==='shell dumpsys power')return 'mWakefulness=Awake';
     if(key==='shell dumpsys window policy')return `KeyguardServiceDelegate\nshowing=false\ninputRestricted=false\nsecure=${drift==='final-secure'}\nsystemIsReady=true\nbootCompleted=true\nscreenState=SCREEN_STATE_ON\nKeyguardStateMonitor\nmCurrentUserId=0\nmIsShowing=false\nmInputRestricted=false`;
     if(key==='shell dumpsys activity activities')return drift?.startsWith('final-anr')?'mCurrentFocus=Application Not Responding: com.android.systemui':'ACTIVITY MANAGER ACTIVITIES';
