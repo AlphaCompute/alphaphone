@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { execFileSync } from 'node:child_process';
+import { upstreamNativeSource } from './upstream-native-source.mjs';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -31,18 +31,19 @@ function matches(actual, expected) {
   return JSON.stringify(Object.keys(actual).sort()) === JSON.stringify(Object.keys(expected).sort()) &&
     Object.entries(expected).every(([file, digest]) => actual[file] === digest);
 }
-/** Materialize the reviewed additive patch outside the immutable vendor checkout. */
+export const CLIENT_FEATURE_PATHS = [
+  'plugins/plugin-files',
+  'plugins/plugin-maps/src/client',
+  'plugins/plugin-maps/test/device-client.test.mjs',
+  'plugins/plugin-notes/src/client',
+  'plugins/plugin-notes/test/device-client.test.mjs',
+];
+/** Copy authenticated upstream source outside the immutable vendor checkout. */
 export function prepareClientFeatures({ root = projectRoot } = {}) {
-  const manifestBytes = fs.readFileSync(path.join(root, 'patches/eliza/client-features-source.json'));
-  const manifest = JSON.parse(manifestBytes);
-  const pin = JSON.parse(fs.readFileSync(path.join(root, 'upstream.lock.json')));
-  if (pin.commit !== manifest.baseCommit) throw Error('Requalify client feature patch against the new Eliza pin.');
-  if (manifest.patch !== 'client-features.patch' || !manifest.files || !Object.keys(manifest.files).length ||
-      Object.entries(manifest.files).some(([file, digest]) => !/^plugins\/plugin-[a-z0-9-]+\//.test(file) || file.includes('\\') || file.split('/').some(part => !part || part === '.' || part === '..') || !/^[a-f0-9]{64}$/.test(digest))) {
-    throw Error('Invalid client feature manifest.');
-  }
-  const patch = path.join(root, 'patches/eliza', manifest.patch);
-  if (hash(fs.readFileSync(patch)) !== manifest.sha256) throw Error('Client feature patch hash mismatch.');
+  const upstream = upstreamNativeSource(root);
+  const source = new Map(CLIENT_FEATURE_PATHS.flatMap(prefix => [...upstream.read(prefix)]));
+  const files = Object.fromEntries([...source].map(([name, file]) => [name, file.sha256]));
+  const provenance = { baseCommit: upstream.pin, files };
   const parent = path.join(root, '.eliza'), destination = path.join(parent, 'client-features');
   regularPath(parent, true);
   const exists = regularPath(destination, true), stamp = path.join(destination, '.source.json');
@@ -50,18 +51,18 @@ export function prepareClientFeatures({ root = projectRoot } = {}) {
     if (!regularPath(stamp)) throw Error('Refusing to replace an unrecognized client feature directory.');
     const previous = JSON.parse(fs.readFileSync(stamp));
     const actual = inventory(destination); delete actual['.source.json'];
-    if (previous.baseCommit === pin.commit && previous.manifestSha256 === hash(manifestBytes) && previous.patch === manifest.sha256 && matches(actual, manifest.files)) return destination;
+    if (previous.baseCommit === upstream.pin && matches(previous.files || {}, files) && matches(actual, files)) return destination;
   }
   fs.mkdirSync(parent, { recursive: true });
   const temporary = fs.mkdtempSync(path.join(parent, 'client-features-stage-'));
   try {
-    execFileSync('git', ['init', '-q', temporary]);
-    execFileSync('git', ['apply', '--check', patch], { cwd: temporary });
-    execFileSync('git', ['apply', patch], { cwd: temporary });
-    fs.rmSync(path.join(temporary, '.git'), { recursive: true });
-    const files = inventory(temporary);
-    if (!matches(files, manifest.files)) throw Error('Client feature source does not match the checked-in file manifest.');
-    fs.writeFileSync(path.join(temporary, '.source.json'), JSON.stringify({ baseCommit: pin.commit, manifestSha256: hash(manifestBytes), patch: manifest.sha256, files }, null, 2));
+    for (const [name, file] of source) {
+      const target = path.join(temporary, name);
+      fs.mkdirSync(path.dirname(target), { recursive: true });
+      fs.writeFileSync(target, file.bytes, { mode: parseInt(file.mode, 8) });
+    }
+    if (!matches(inventory(temporary), files)) throw Error('Client feature source copy failed authentication.');
+    fs.writeFileSync(path.join(temporary, '.source.json'), JSON.stringify(provenance, null, 2));
     fs.rmSync(destination, { force: true, recursive: true });
     fs.renameSync(temporary, destination);
     return destination;
