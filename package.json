@@ -37,7 +37,13 @@
     "agent:stage-workflow-worker": "node scripts/stage-workflow-worker.mjs",
     "agent:stage-android": "node scripts/stage-local-agent-runtime.mjs",
     "android:build:local": "npm run agent:prepare && npm run agent:stage-android && npm run android:build",
-    "agent:test-device-timing": "node scripts/test-device-timing-source.mjs"
+    "agent:test-device-timing": "node scripts/test-device-timing-source.mjs",
+    "upstream:prepare-client": "node scripts/prepare-client-features.mjs",
+    "predev": "npm run upstream:prepare-client",
+    "prebuild": "npm run upstream:prepare-client",
+    "pretypecheck": "npm run upstream:prepare-client",
+    "pretest": "npm run upstream:prepare-client",
+    "predev:maps": "npm run upstream:prepare-client"
   },
   "dependencies": {
     "@capacitor/android": "8.5.2",

@@ -1,21 +1,11 @@
-import {coordinate,type Coordinate,type Route} from './contracts';
-export type MapShare={title:string;text:string;url?:string};
-const point=(value:Coordinate)=>{const p=coordinate(value);return `${p.latitude}, ${p.longitude}`;};
-export function placeShare(label:string,value:Coordinate):MapShare{
- const p=coordinate(value);const url=`https://www.openstreetmap.org/?mlat=${p.latitude}&mlon=${p.longitude}#map=17/${p.latitude}/${p.longitude}`;
- return {title:label,text:`${label}\n${point(p)}`,url};
-}
-export function routeShare(label:string,route:Route):MapShare{
- return {title:`Route to ${label}`,text:[`Route to ${label}`,`${route.mode}: ${point(route.from)} → ${point(route.to)}`,`${route.distanceMeters} m · ${route.durationSeconds} s`,...route.steps.map((step,index)=>`${index+1}. ${step.instruction}`),`Traffic: ${route.traffic}`,route.attribution].join('\n')};
-}
+import { shareMap as sharedShareMap, type MapShare } from '../../../../.eliza/client-features/plugins/plugin-maps/src/client/share.ts';
+export { placeShare, routeShare, type MapShare } from '../../../../.eliza/client-features/plugins/plugin-maps/src/client/share.ts';
 const cancelled=()=>new DOMException('Share cancelled','AbortError');
-/** Share only an explicit immutable selection; cancelled or retired requests never fall through to another transport. */
-export async function shareMap(data:MapShare,signal:AbortSignal):Promise<'shared'|'copied'|'closed'>{
- signal.throwIfAborted();
- const wait=<T>(job:Promise<T>)=>new Promise<T>((resolve,reject)=>{const cancel=()=>{signal.removeEventListener('abort',cancel);reject(cancelled());};signal.addEventListener('abort',cancel,{once:true});job.then(value=>{signal.removeEventListener('abort',cancel);signal.aborted?reject(cancelled()):resolve(value);},error=>{signal.removeEventListener('abort',cancel);reject(error);});if(signal.aborted)cancel();});
- if(navigator.share){try{await wait(navigator.share(data));return 'shared';}catch(error){if(signal.aborted||error instanceof DOMException&&error.name==='AbortError')throw cancelled();}}
- const text=[data.text,data.url].filter(Boolean).join('\n');signal.throwIfAborted();
- if(navigator.clipboard?.writeText){try{await wait(navigator.clipboard.writeText(text));return 'copied';}catch{signal.throwIfAborted();}}
+export function shareMap(data:MapShare,signal:AbortSignal):Promise<'shared'|'copied'|'closed'> {
+ return sharedShareMap(data, signal, shareDialog);
+}
+/** Alpha presentation and Back binding for hosts without share or clipboard access. */
+function shareDialog(data:MapShare,text:string,signal:AbortSignal):Promise<'closed'> {
  return new Promise((resolve,reject)=>{
   signal.throwIfAborted();const previous=document.activeElement as HTMLElement|null;
   const dialog=document.createElement('dialog');dialog.setAttribute('aria-label','Share Maps');dialog.style.cssText='box-sizing:border-box;width:min(380px,92vw);max-height:85dvh;overflow:auto;border:0;border-radius:20px;padding:24px;background:var(--bg,#fff);color:var(--fg,#111);font:16px/1.5 system-ui';

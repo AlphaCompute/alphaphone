@@ -1,8 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {readFileSync} from 'node:fs';
-import {stripTypeScriptTypes} from 'node:module';
-const {scannedLinks}=await import('data:text/javascript;base64,'+Buffer.from(stripTypeScriptTypes(readFileSync('apps/app/src/prototype/scan-links.ts','utf8'))).toString('base64'));
+import {scannedLinks} from '../apps/app/src/prototype/scan-links.ts';
 
 test('scan links preserve explicit destinations, normalize hosts and remove surrounding punctuation',()=>{
  assert.deepEqual(scannedLinks('See https://EXAMPLE.com/a?x=1&y=2#part and (www.example.org/test).\nhttps://example.com/hello(world)\nhttp://[::1]:8000/a'),['https://example.com/a?x=1&y=2#part','https://www.example.org/test','https://example.com/hello(world)','http://[::1]:8000/a']);
