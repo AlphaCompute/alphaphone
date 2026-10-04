@@ -3,14 +3,13 @@
 The MVP is **not complete**. This is the current requirement/evidence index; [the browser review](mvp-browser-review.md) indexes implemented surfaces and unresolved browser defects. Older build and enclave checkpoints are historical evidence, not the current acceptance checklist.
 
 
-The immediate implementation gap is cross-tab browser persistence. The shared
-localStorage/Web Locks writer can lose an update; the added regression checks
-all receipts and stored items. A timer-based candidate failed in WebKit and was
-removed. A transaction-backed upstream implementation now has initial three-engine
-evidence, but consumer migration and final qualification remain open. Calendar,
-its recovery controls, and every other migrated domain must share one canonical
-store; preserving legacy bytes is part of the migration, not an optional cleanup.
-See the latest [implementation record](mvp-browser-review.md) for exact scope.
+Calendar now uses the reviewed upstream transactional browser document store,
+including retained legacy bytes and cancellation during reads and writes. The
+consolidated source retains both PR209 and PR210 histories, a single document
+format, and the broader queued-navigation regression coverage. Final qualification
+is pending. Other browser domains still use the localStorage/Web Locks helper;
+the retained rapid-edit regression exposes their remaining consistency risk.
+See the [browser review](mvp-browser-review.md) for scope and evidence.
 
 The active browser-development host at port 5317 now uses admitted runtime `4c7cc7038b6e77581bd81468cba1b45374deec6c`, prepared with the strict immutable-source verifier. Agent, Whisper and Kokoro report ready; stopped-profile backups preserve the earlier runtime states. Owner, agent and all 17 conversation IDs match before/after restart. Actual browser capture → Whisper transcription → Kokoro playback/completion/Stop/disconnect passes in 22.5 seconds with unchanged stage deadlines. Text inference remains hosted Cerebras and both redaction switches remain off. The current upstream Kokoro lifecycle has owner cancellation and pipe-failure retirement instead of an independent boot deadline; synthesis still has its 30-second bound. Older 15/60-second boot observations below describe their recorded historical pins. This browser result does not establish Android or physical-microphone acceptance.
 

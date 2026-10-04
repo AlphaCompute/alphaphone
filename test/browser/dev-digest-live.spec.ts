@@ -13,3 +13,12 @@ test('stale live account revisions fail before private reads and foreign sources
  const key='alpha.browser.digests.local.v1',state=JSON.parse(localStorage.getItem(key)!);state.liveRevision='f'.repeat(64);state.loops[0].createdAt=Date.now()-120000;localStorage.setItem(key,JSON.stringify(state));let reads=0;const get=Storage.prototype.getItem;Storage.prototype.getItem=function(key){if(key==='alpha.dev.app.inbox')reads++;return get.call(this,key);};try{await call('tick');}finally{Storage.prototype.getItem=get;}const saved=JSON.parse(localStorage.getItem(key)!);return {rejected,reads,sources:saved.sources.length,status:saved.results[0].status,output:saved.results[0].output,error:saved.results[0].error};
  });expect(result).toEqual({rejected:true,reads:0,sources:1,status:'failed',output:null,error:'Source access changed.'});
 });
+test('reading an empty Calendar digest preserves Calendar source initialization',async({page})=>{
+ await page.route('**/__digest-fixture',route=>route.fulfill({contentType:'text/html',body:'<!doctype html><title>Digest storage</title>'}));
+ await page.goto('/__digest-fixture');const result=await page.evaluate(async()=>{
+ const {calendarDocument}=await import('/src/browser/calendar-store.ts'),{readBrowserDigestSource}=await import('/src/browser/digest-live-sources.ts'),{BrowserCalendar}=await import('/src/browser/calendar.ts');
+ await calendarDocument.reset(await calendarDocument.capture());
+ const output=await readBrowserDigestSource({kind:'calendar',calendarId:'local',windowHours:1,maxItems:1} as any,Date.now()),empty=await calendarDocument.capture(),source=await new BrowserCalendar().prepareAgentSource();
+ return {items:output.items,raw:empty.raw,revision:source.sourceRevision};
+ });expect(result.items).toEqual([]);expect(result.raw).toBeNull();expect(result.revision).toMatch(/^[a-f0-9]{64}$/);
+});
