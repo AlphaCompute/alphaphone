@@ -3348,7 +3348,7 @@
 <sc-if value="{{is.settings}}" hint-placeholder-val="{{false}}">
 <div ref="{{settings.rootRef}}" style="display: flex; flex-direction: column; height: 100%; position: relative">
   <sc-for list="{{settings.stack}}" as="p" hint-placeholder-count="1">
-    <div class="{{p.cls}}" style="position: absolute; inset: 0; background: var(--bg); display: flex; flex-direction: column; z-index: {{p.z}}">
+    <div data-settings-page="{{p.title}}" class="{{p.cls}}" style="position: absolute; inset: 0; background: var(--bg); display: flex; flex-direction: column; z-index: {{p.z}}">
       <sc-if value="{{p.isTop}}" hint-placeholder-val="{{true}}">
         <div style="display: flex; align-items: center; height: 56px; margin-top: 44px; padding: 0 8px 0 20px; gap: 2px; flex-shrink: 0">
           <h1 class="serif" style="margin: 0; font-size: 32px; flex-grow: 1; letter-spacing: -.01em">{{p.title}}</h1>
