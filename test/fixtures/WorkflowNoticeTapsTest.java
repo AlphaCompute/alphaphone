@@ -16,7 +16,15 @@ public final class WorkflowNoticeTapsTest {
   taps.capture(first);receipt(s,"op2","succeeded");taps.capture(second);WorkflowNoticeTaps current=new WorkflowNoticeTaps(s);check(current.pending().getString("runId").equals("run2"));check(current.pending().getBoolean("retained"));
   receipt(s,"op2","unknown");check(!current.pending().getBoolean("retained"));rejects(()->current.consume(second));receipt(s,"op2","succeeded");
   s.fail=true;rejects(()->current.consume(second));s.fail=false;check(current.pending().getString("token").equals(second));current.consume(second);current.capture(second);check(current.pending().getString("runId").equals("run1"));current.consume(first);check(current.pending().length()==0);
-  for(int i=2;i<512;i++)current.prepare("op"+(i+1),"b".repeat(64),route("run"+(i+1)));rejects(()->current.prepare("full","b".repeat(64),route("full")));check(current.token("op1").equals(first));
+  // Seed prior durable rows once; exercise both sides of the capacity boundary
+  // through production prepare without quadratically revalidating setup rows.
+  JSONObject full=new JSONObject(s.values.get(WorkflowNoticeTaps.SLOT));
+  for(int i=2;i<511;i++)full.put("op"+(i+1),new JSONObject().put("binding","b".repeat(64)).put("route",route("run"+(i+1))).put("token",UUID.randomUUID().toString()).put("state","new").put("order",0));
+  s.values.put(WorkflowNoticeTaps.SLOT,full.toString());
+  check(new JSONObject(s.values.get(WorkflowNoticeTaps.SLOT)).length()==511);
+  current.prepare("op512","b".repeat(64),route("run512"));
+  check(new JSONObject(s.values.get(WorkflowNoticeTaps.SLOT)).length()==512);
+  rejects(()->current.prepare("full","b".repeat(64),route("full")));check(current.token("op1").equals(first));
   System.out.println("PASS workflow tap durable queue, canonical receipts, failed writes, recreation, no replay and bounded retention");
  }
 }
