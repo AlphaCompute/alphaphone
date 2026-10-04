@@ -17,8 +17,8 @@ and explicitly selected development simulations. These need different upstream
 entrypoints and admission rules; moving the folder intact would preserve the
 wrong boundaries.
 
-At the integrated October 4 checkpoint there are 279 files under `apps/app`,
-of which 222 are under `src`: 102 browser files, 54 runtime files, 47 prototype files, 11 Maps files and eight root files.
+At the October 4 retirement checkpoint there are 282 files under `apps/app`,
+of which 225 are under `src`: 102 browser files, 54 runtime files, 53 prototype files, 11 Maps files and 5 root files.
 The largest product source files include `prototype/model.js` (5,860 lines),
 `prototype/template.html` (3,934), `runtime/connection-ui.tsx` (813),
 `prototype/camera-adapter.ts` (655), and `runtime/hosted-digest-ui.tsx` (609).
@@ -27,10 +27,7 @@ poor estimate of the remaining extraction effort.
 
 Before extraction these source files totalled 28,083 physical lines: 3,615 in
 `browser`, 6,829 in `runtime`, 547 in `maps`, 15,677 in `prototype`, and 1,415 at
-the source root. The import graph from `main.tsx` does not reach the old root
-`style.css`, `VoiceRecorder.tsx`, or `useDevice.ts`. They should be evaluated for
-retirement rather than promoted upstream as active implementation. The other
-unreached source-folder files are declaration/provenance documentation.
+the source root. The former root `style.css`, `VoiceRecorder.tsx`, and `useDevice.ts` were not reachable from `main.tsx` and had no consumers in application, build or test source. They are now retired (996 lines, 20,792 bytes); their original source remains in Git history. The active shell uses `prototype/voice-adapter.ts`, `runtime/local-voice.ts`, the native/device adapters, and `prototype/prototype.css` plus `prototype/phone.css`. This removes the dormant emulator-only recorder without changing the resident/browser speech route. Other unreached source-folder entries are declarations/provenance documentation.
 
 The biggest dependency cycles are not visual styling. Connection UI also owns
 session/controller state and is imported by voice, inbox and workflow consumers.

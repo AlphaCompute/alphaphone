@@ -1805,9 +1805,9 @@
     {
       "file": "src/browser/content-question.ts",
       "upstreamCandidate": [],
-      "bytes": 7538,
-      "sha256": "9b83017dd4569bcdc0c5123fad31cdbf4f8d82074a0e6dd1f802fb575331634c",
-      "lines": 38,
+      "bytes": 8197,
+      "sha256": "ca67af4b90fbce9be4f24b23bc2bd5f183d53a45c9fbdec22adcadaea23a7cc4",
+      "lines": 42,
       "owner": "plugins/plugin-files",
       "disposition": "extract-or-split",
       "reason": "File capabilities, document processing and reviewed selections; keep product dialogs and calendar handoff composition local.",
@@ -1820,19 +1820,13 @@
       ],
       "seams": [
         {
-          "line": 6,
+          "line": 7,
           "tags": [
-            "presentation"
+            "host-coupling"
           ]
         },
         {
-          "line": 12,
-          "tags": [
-            "presentation"
-          ]
-        },
-        {
-          "line": 14,
+          "line": 16,
           "tags": [
             "presentation"
           ]
@@ -1844,33 +1838,39 @@
           ]
         },
         {
-          "line": 20,
-          "tags": [
-            "identity-or-compatibility",
-            "host-coupling"
-          ]
-        },
-        {
-          "line": 25,
-          "tags": [
-            "identity-or-compatibility",
-            "host-coupling"
-          ]
-        },
-        {
-          "line": 28,
+          "line": 22,
           "tags": [
             "presentation"
+          ]
+        },
+        {
+          "line": 24,
+          "tags": [
+            "identity-or-compatibility",
+            "host-coupling"
           ]
         },
         {
           "line": 29,
           "tags": [
+            "identity-or-compatibility",
+            "host-coupling"
+          ]
+        },
+        {
+          "line": 32,
+          "tags": [
             "presentation"
           ]
         },
         {
-          "line": 36,
+          "line": 33,
+          "tags": [
+            "presentation"
+          ]
+        },
+        {
+          "line": 40,
           "tags": [
             "host-coupling"
           ]
@@ -9374,9 +9374,9 @@
     {
       "file": "src/prototype/phone.css",
       "upstreamCandidate": [],
-      "bytes": 5009,
-      "sha256": "7f647152d0df860cc09fe292fd092eaeb3d8411d88654e84afb747d92914e584",
-      "lines": 51,
+      "bytes": 5284,
+      "sha256": "e185679ab977857ef8820e60c3edb07a512bdb8f3b607887105e48721af11f10",
+      "lines": 56,
       "owner": "alphaphone",
       "disposition": "retain-or-split",
       "reason": "Product composition, design reference, enabled views, fixtures, or visual presentation. Extract embedded domain behavior separately.",
@@ -10002,8 +10002,8 @@
     {
       "file": "src/prototype/scan-event-review.ts",
       "upstreamCandidate": [],
-      "bytes": 2991,
-      "sha256": "9dd54b2bd58f902f67bb3413964c558d6a0a940e7b2fdaea0913d779d2c45136",
+      "bytes": 3148,
+      "sha256": "8b48dbd3579e54559ac796285c0ff080e086a24c6d8352228e081a1ea900ed3e",
       "lines": 19,
       "owner": "plugins/plugin-files",
       "disposition": "extract-or-split",
@@ -10045,9 +10045,9 @@
     {
       "file": "src/prototype/scan-event.ts",
       "upstreamCandidate": [],
-      "bytes": 2521,
-      "sha256": "cfeb0b5d9bdbb1445963d12695e898fb0953ca8214df359d040b6af14eace94f",
-      "lines": 22,
+      "bytes": 4757,
+      "sha256": "250c193e768d4bcfc7ecb852c77a557e3816956892ee1e3d15c22ef23ef43f4e",
+      "lines": 42,
       "owner": "plugins/plugin-files",
       "disposition": "extract-or-split",
       "reason": "File capabilities, document processing and reviewed selections; keep product dialogs and calendar handoff composition local.",
@@ -10558,9 +10558,9 @@
     {
       "file": "src/prototype/summary-note-review.ts",
       "upstreamCandidate": [],
-      "bytes": 5848,
-      "sha256": "b1ea0891ce42d5cbff7919d1c6f0bc36de0e8a7c182b05013d4391752aa0026b",
-      "lines": 27,
+      "bytes": 6040,
+      "sha256": "546fb0d49096f80eb1986734d3dca8bcedabdca8ae13d874c14beedb3df8a511",
+      "lines": 29,
       "owner": "shared platform client; Alpha composition",
       "disposition": "split",
       "reason": "Cross-domain device/platform glue; separate host contracts and provider behavior from product registry, lifecycle, DOM and defaults.",
@@ -10592,14 +10592,14 @@
           ]
         },
         {
-          "line": 20,
+          "line": 22,
           "tags": [
             "identity-or-compatibility",
             "host-coupling"
           ]
         },
         {
-          "line": 22,
+          "line": 24,
           "tags": [
             "identity-or-compatibility",
             "host-coupling"
@@ -16137,373 +16137,6 @@
       ],
       "seams": [],
       "reachableFromMain": true
-    },
-    {
-      "file": "src/style.css",
-      "upstreamCandidate": [],
-      "bytes": 11015,
-      "sha256": "7eeea3a9f90f65118226e44b5a9e2605495917e61c006bf84dadd15806b8e08d",
-      "lines": 686,
-      "owner": "alphaphone",
-      "disposition": "retain-or-split",
-      "reason": "Product composition, design reference, enabled views, fixtures, or visual presentation. Extract embedded domain behavior separately.",
-      "imports": [],
-      "exports": [],
-      "seams": [
-        {
-          "line": 6,
-          "tags": [
-            "presentation"
-          ]
-        },
-        {
-          "line": 7,
-          "tags": [
-            "presentation"
-          ]
-        },
-        {
-          "line": 8,
-          "tags": [
-            "presentation"
-          ]
-        },
-        {
-          "line": 20,
-          "tags": [
-            "presentation"
-          ]
-        },
-        {
-          "line": 29,
-          "tags": [
-            "presentation"
-          ]
-        },
-        {
-          "line": 53,
-          "tags": [
-            "presentation"
-          ]
-        },
-        {
-          "line": 68,
-          "tags": [
-            "presentation"
-          ]
-        },
-        {
-          "line": 69,
-          "tags": [
-            "presentation"
-          ]
-        },
-        {
-          "line": 75,
-          "tags": [
-            "presentation"
-          ]
-        },
-        {
-          "line": 82,
-          "tags": [
-            "presentation"
-          ]
-        },
-        {
-          "line": 88,
-          "tags": [
-            "presentation"
-          ]
-        },
-        {
-          "line": 94,
-          "tags": [
-            "identity-or-compatibility"
-          ]
-        },
-        {
-          "line": 95,
-          "tags": [
-            "presentation"
-          ]
-        },
-        {
-          "line": 98,
-          "tags": [
-            "presentation"
-          ]
-        },
-        {
-          "line": 99,
-          "tags": [
-            "presentation"
-          ]
-        },
-        {
-          "line": 115,
-          "tags": [
-            "presentation"
-          ]
-        },
-        {
-          "line": 130,
-          "tags": [
-            "presentation"
-          ]
-        },
-        {
-          "line": 149,
-          "tags": [
-            "presentation"
-          ]
-        },
-        {
-          "line": 154,
-          "tags": [
-            "presentation"
-          ]
-        },
-        {
-          "line": 157,
-          "tags": [
-            "presentation"
-          ]
-        },
-        {
-          "line": 163,
-          "tags": [
-            "presentation"
-          ]
-        },
-        {
-          "line": 168,
-          "tags": [
-            "presentation"
-          ]
-        },
-        {
-          "line": 169,
-          "tags": [
-            "presentation"
-          ]
-        },
-        {
-          "line": 204,
-          "tags": [
-            "presentation"
-          ]
-        },
-        {
-          "line": 211,
-          "tags": [
-            "presentation"
-          ]
-        },
-        {
-          "line": 215,
-          "tags": [
-            "presentation"
-          ]
-        },
-        {
-          "line": 217,
-          "tags": [
-            "presentation"
-          ]
-        },
-        {
-          "line": 254,
-          "tags": [
-            "presentation"
-          ]
-        },
-        {
-          "line": 265,
-          "tags": [
-            "presentation"
-          ]
-        },
-        {
-          "line": 290,
-          "tags": [
-            "presentation"
-          ]
-        },
-        {
-          "line": 303,
-          "tags": [
-            "presentation"
-          ]
-        },
-        {
-          "line": 314,
-          "tags": [
-            "presentation"
-          ]
-        },
-        {
-          "line": 321,
-          "tags": [
-            "presentation"
-          ]
-        },
-        {
-          "line": 341,
-          "tags": [
-            "presentation"
-          ]
-        },
-        {
-          "line": 345,
-          "tags": [
-            "presentation"
-          ]
-        },
-        {
-          "line": 346,
-          "tags": [
-            "presentation"
-          ]
-        },
-        {
-          "line": 352,
-          "tags": [
-            "presentation"
-          ]
-        },
-        {
-          "line": 356,
-          "tags": [
-            "presentation"
-          ]
-        },
-        {
-          "line": 363,
-          "tags": [
-            "presentation"
-          ]
-        },
-        {
-          "line": 373,
-          "tags": [
-            "presentation"
-          ]
-        },
-        {
-          "line": 386,
-          "tags": [
-            "presentation"
-          ]
-        },
-        {
-          "line": 398,
-          "tags": [
-            "presentation"
-          ]
-        },
-        {
-          "line": 399,
-          "tags": [
-            "presentation"
-          ]
-        },
-        {
-          "line": 411,
-          "tags": [
-            "presentation"
-          ]
-        },
-        {
-          "line": 429,
-          "tags": [
-            "presentation"
-          ]
-        },
-        {
-          "line": 433,
-          "tags": [
-            "presentation"
-          ]
-        },
-        {
-          "line": 443,
-          "tags": [
-            "presentation"
-          ]
-        },
-        {
-          "line": 449,
-          "tags": [
-            "presentation"
-          ]
-        },
-        {
-          "line": 457,
-          "tags": [
-            "presentation"
-          ]
-        },
-        {
-          "line": 679,
-          "tags": [
-            "presentation"
-          ]
-        }
-      ],
-      "reachableFromMain": false
-    },
-    {
-      "file": "src/useDevice.ts",
-      "upstreamCandidate": [],
-      "bytes": 2375,
-      "sha256": "6c485761f3941d02b623a78f77d275bfabe39a70516e46217d3a19c4268dbeb4",
-      "lines": 86,
-      "owner": "shared platform client; Alpha composition",
-      "disposition": "split",
-      "reason": "Cross-domain device/platform glue; separate host contracts and provider behavior from product registry, lifecycle, DOM and defaults.",
-      "imports": [
-        "./native",
-        "react"
-      ],
-      "exports": [
-        "useDevice"
-      ],
-      "seams": [],
-      "reachableFromMain": false
-    },
-    {
-      "file": "src/VoiceRecorder.tsx",
-      "upstreamCandidate": [],
-      "bytes": 7402,
-      "sha256": "9a7d0c9cb94ecd4e248086c48086a4329b4b09380a8e10edbd2c47c91c5935e6",
-      "lines": 227,
-      "owner": "shared platform client; Alpha composition",
-      "disposition": "split",
-      "reason": "Cross-domain device/platform glue; separate host contracts and provider behavior from product registry, lifecycle, DOM and defaults.",
-      "imports": [
-        "./platform-plugins",
-        "@capacitor/core",
-        "react"
-      ],
-      "exports": [
-        "VoiceRecorder"
-      ],
-      "seams": [
-        {
-          "line": 2,
-          "tags": [
-            "host-coupling"
-          ]
-        },
-        {
-          "line": 6,
-          "tags": [
-            "host-coupling"
-          ]
-        }
-      ],
-      "reachableFromMain": false
     }
   ]
 }
