@@ -930,7 +930,7 @@
     "upstreamPullRequest": "https://github.com/elizaOS/eliza/pull/33295",
     "upstreamCommit": "d488a860f91348c86e7ff71895bfaf503c94ba65",
     "stagingPullRequest": "https://github.com/elizaOS/eliza/pull/33299",
-    "disposition": "Merged upstream and promoted to staging; consumer now copies authenticated pinned source without patch replay. Final consumer qualification pending.",
+    "disposition": "Merged upstream and promoted to staging; consumer copies authenticated pinned source without patch replay. Repository, selected browser and both APK distributions pass; hosted qualification remains in progress.",
     "originalManifest": {
       "baseCommit": "278af04b9498a35740468ffa7b68239d1924257f",
       "patch": "client-features.patch",
@@ -983,7 +983,27 @@
     },
     "stagingCommit": "3cb30cfed6a6dd34808a0310eac0b7966611011b",
     "consumerCommit": "dda547372918a0fe6ba92cabbea837b64a162d0f",
-    "workflowRepairPr": "https://github.com/elizaOS/eliza/pull/33314"
+    "workflowRepairPr": "https://github.com/elizaOS/eliza/pull/33314",
+    "qualification": {
+      "productSource": "d26811ff26b572fd037d32f540579db8065d6c48",
+      "upstreamSource": "dda547372918a0fe6ba92cabbea837b64a162d0f",
+      "repositoryTestsPassed": 281,
+      "typecheck": "passed",
+      "productionBuild": "passed",
+      "androidVariants": [
+        "standaloneDebug",
+        "standaloneRelease",
+        "launcherDebug",
+        "launcherRelease"
+      ],
+      "selectedBrowserPassed": 326,
+      "selectedBrowserSkipped": 1,
+      "lifecycleRepetitionsPassed": 30,
+      "blockedFilesUpgradePassed": 3,
+      "hosted": "in progress",
+      "firefoxWorkerCompilationLimitation": "https://github.com/microsoft/playwright/issues/42565",
+      "evidenceDirectory": "test-results/client-migration"
+    }
   },
   "archivalResidentPatches": [
     {
