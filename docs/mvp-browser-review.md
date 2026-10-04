@@ -65,6 +65,14 @@ creation-race regression passed 30 repetitions across Chromium, Firefox and
 WebKit. Ten migration-policy tests and 326 repository tests passed at the first
 integration checkpoint, including TypeScript and the production web build.
 
+The integration review found cancellation gaps both while reading Calendar state
+and between preparing an edit and committing its transaction. Reads that open
+editors, series review, meetings or event navigation now retire on Home, Back,
+background and view changes. Agent cancellation is registered before its first
+storage read. Reading an existing agent source preserves the document revision,
+so it does not invalidate an unrelated reset review. These behaviors consolidate
+the useful queued-read fixes from PR209 while retaining this migration format.
+
 The integration review also found cancellation between preparing an edit and
 committing its transaction. Event and guest-response editors, plus agent cancellation, now propagate their
 lifetime to storage with AbortSignal. All nine cancellation cases pass across the three engines. The focused migration
