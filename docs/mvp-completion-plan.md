@@ -1,5 +1,24 @@
 # Alpha Phone MVP completion plan
 
+## Current checkpoint — October 3, upstream consolidation and Calendar
+
+The maintained local Eliza patches are represented by merged upstream PRs and
+Alpha now consumes merged candidate `09698bd30668ff3748d7922279b06119d39a3bcf`
+without applying local patches. All 70 originals remain recoverable in Git with
+hash/PR/merge provenance. Full repository verification passes 225 checks and the
+renderer build; all four Android APKs build and their packaged runtime, worker
+inventory and native ABI bytes match the staged candidate. Both standalone and
+launcher pass all ten native Calendar tests, with owned-user/package cleanup.
+The 36 selected browser Calendar recovery/completion and Clock handoff flows pass.
+See [the migration report](upstream-patch-migration.md) for exact evidence.
+
+Upstream source-review follow-up #33241 passed all hosted checks and merged as
+`17f0d1c7da30187b9914992877604a08284bf8a2`; its Alpha adoption/rebuild is pending.
+External Calendar editor testing is running. Artifact archival and these scoped
+passes do not establish resident runtime, Cloud/Gmail, real voice, signed-image,
+physical-device or pilot acceptance. The full MVP remains incomplete.
+
+
 ## Current checkpoint — October 3, regional dataset identity
 
 Maps capability revisions now bind the actual prepared place database, tiles, router, routing configuration and graph files. Startup requires an explicitly sealed manifest; live changes, active SQLite journals and changes during a request are refused. Immutable reads retain compatibility with closed checkpointed WAL databases. The synthetic HTTP lifecycle and actual Monaco search/detail/tiles/three-mode routing pass, followed by all 225 repository checks, TypeScript and production build. See [dataset qualification and remaining deployment limits](maps-regional-validation.md#runtime-dataset-identity--october-3). Public hosting, latest-source Android/native and physical acceptance remain open. The full MVP is not complete.
