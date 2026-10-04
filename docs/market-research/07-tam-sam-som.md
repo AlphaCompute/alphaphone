@@ -1,14 +1,14 @@
 # 07 — TAM, SAM and SOM
 
-Research date: 2026-09-30. Workstream 7 of the [manifest](00-manifest.md). This is market research, not engineering acceptance. Product capability assumptions follow the manifest baseline: the full AOSP image is not qualified on a physical device, on-device STT/TTS is not yet met, the redaction pipeline does not exist yet, and there are no FedRAMP, NIAP, CSfC or FIPS certifications.
+Product capability baseline: the full AOSP image is not qualified on a physical device, on-device STT/TTS is not yet met, the redaction pipeline does not exist yet, and there are no FedRAMP, NIAP, CSfC or FIPS certifications. Alpha's own AOSP image does not need banking apps, Play Integrity or GMS; the reach factor below is about whether professionals will carry an Android or second device, not about app compatibility.
 
 **Conventions**
+
 - Every sourced input carries a URL. Numbers that are **derived** (computed from sourced inputs) are marked `(der.)`. Numbers that are **assumptions or estimates** are marked `(est.)`.
 - Market-research-firm figures ("syndicated reports") are not audited and often disagree by 2–10x. They are used here only to bracket the size of the space. The bottom-up model drives the headline numbers.
 - "ARPU" means annual revenue per user, including hardware amortized over 3 years where a device is sold. It is not gross hardware revenue in the year of sale.
 - Year 1 of the SOM curve is 2027. Year 5 is 2031.
-- **Fact-check pass (2026-10-02).** Key inputs were re-checked against primary pages where reachable. No population or price input changed enough to alter the TAM/SAM/SOM arithmetic, so the headline numbers stand. New context (Army device policy, SEC enforcement posture, Jump's advisor count) is added where it affects interpretation. See the verification log at the end.
-- **Founder decision (2026-10-02).** Alpha's own AOSP image does not need banking apps, Play Integrity or GMS. That does not change this sizing; the reach factor below is about whether professionals will carry an Android or second device, not about app compatibility.
+- Figures marked **(unverified)** are not confirmed against the firm's own page.
 
 ---
 
@@ -33,8 +33,6 @@ Research date: 2026-09-30. Workstream 7 of the [manifest](00-manifest.md). This 
 
 ### 1.1 Summary of analyst estimates
 
-Where a firm's attribution came only from a search-result snippet and was not verified on the page, it is marked "(attribution unverified)".
-
 | Category | Firm (publication) | Base-year size | Forecast | CAGR | Source |
 | --- | --- | --- | --- | --- | --- |
 | **Speech & voice recognition** | MarketsandMarkets (2025) | $9.66B (2025) | $23.11B (2030) | 19.1% | [M&M press release](https://www.marketsandmarkets.com/PressReleases/speech-voice-recognition.asp) |
@@ -43,9 +41,9 @@ Where a firm's attribution came only from a search-result snippet and was not ve
 | AI speech-to-text tools | Market Research Future | $3.86B (2025) | $36.91B (2035) | 25.32% | [MRFR](https://www.marketresearchfuture.com/reports/ai-speech-to-text-tool-market-12209) |
 | AI speech-to-text tools | Technavio | +$8.29B increment 2024–29 | — | 28.8% | [Technavio](https://www.technavio.com/report/ai-speech-to-text-tool-market-industry-analysis) |
 | Speech-to-text API | Allied Market Research | $5B (2024) | $21B (2034) | 15.2% | [PR Newswire](https://www.prnewswire.com/news-releases/speech-to-text-api-market-to-reach-5-billion-by-2024-in-the-short-term-and-21-billion-by-2034-globally-at-15-2-cagr-allied-market-research-302452178.html) |
-| **AI meeting assistants** | Precedence Research | $1.20B (2025) (verified on the Precedence page 2026-10-02) | $6.28B (2035) | 18% (2026–35) | [Precedence](https://www.precedenceresearch.com/ai-in-meeting-assistants-market) |
+| **AI meeting assistants** | Precedence Research | $1.20B (2025) | $6.28B (2035) | 18% (2026–35) | [Precedence](https://www.precedenceresearch.com/ai-in-meeting-assistants-market) |
 | AI meeting assistants | Grand View Research | not retrieved (page returned 403) | 2033 | 25.8% (2026–33) | [GVR](https://www.grandviewresearch.com/industry-analysis/ai-meeting-assistant-market-report) |
-| AI meeting assistants | Research&Markets (verified 2026-10-02: $3.14B 2025, $3.91B 2026, $9.33B 2030, 24.3% CAGR); TBRC / Dataintelo / MRI up to $3.8B (could not verify) | $3.14–3.8B (2025) | 2030–34 | 19–25% | [R&M](https://www.researchandmarkets.com/reports/6226248/ai-powered-meeting-assistants-market-report), [TBRC](https://www.thebusinessresearchcompany.com/report/artificial-intelligence-ai-powered-meeting-assistants-global-market-report), [Dataintelo](https://dataintelo.com/report/ai-meeting-assistants-market) |
+| AI meeting assistants | Research&Markets ($3.14B 2025, $3.91B 2026, $9.33B 2030, 24.3% CAGR); TBRC / Dataintelo / MRI up to $3.8B (unverified) | $3.14–3.8B (2025) | 2030–34 | 19–25% | [R&M](https://www.researchandmarkets.com/reports/6226248/ai-powered-meeting-assistants-market-report), [TBRC](https://www.thebusinessresearchcompany.com/report/artificial-intelligence-ai-powered-meeting-assistants-global-market-report), [Dataintelo](https://dataintelo.com/report/ai-meeting-assistants-market) |
 | Horizontal AI copilots (enterprise spend) | Menlo Ventures (Dec 2025) | $8.4B (2025), of which general-purpose copilots $7.2B | — | — | [Menlo Enterprise 2025](https://menlovc.com/perspective/2025-the-state-of-generative-ai-in-the-enterprise/) |
 | **AI voice recorders (hardware)** | No credible syndicated report. Best proxy is the leader's revenue: Plaud | Plaud revenue ~$250M (2025, expected); ~$56M (2024) | Target $500M sales (2026) | ~3x YoY (2025) | [KrASIA](https://kr-asia.com/tencents-rumored-plaud-deal-points-to-looming-ai-hardware-contest), [Sacra](https://sacra.com/c/plaud/) |
 | AI voice recorders | Plaud (company, via TechCrunch, June 2026) | >2M devices shipped; software ARR >$100M; ~50% of owners pay | — | — | [TechCrunch](https://techcrunch.com/2026/06/16/plaud-says-its-software-business-topped-100m-in-arr-after-shipping-over-2m-ai-notetakers/) |
@@ -53,10 +51,10 @@ Where a firm's attribution came only from a search-result snippet and was not ve
 | **GenAI smartphones** (units) | IDC (Jul 2024) | 234.2M (2024, 19% share) | >370M (2025, 30%), 912M (2028, >70%) | 78.4% (2024–28) | [IDC](https://my.idc.com/getdoc.jsp?containerId=prUS52478124), [RCR](https://www.rcrwireless.com/20240801/featured/idc-predicts-912-million-gen-ai-smartphone-shipments-by-2028) |
 | GenAI smartphones (units) | Counterpoint (Mar 2025; Jun 2026) | >400M (2025, ~1/3 share) | 45% share (2026), 52% (2027) | — | [Counterpoint 2025](https://counterpointresearch.com/en/insights/genai-smartphone-shipments-to-exceed-400-million-in-2025-capturing-onethird-of-global-market), [Counterpoint 2026](https://counterpointresearch.com/en/insights/genai-smartphone-share-to-rise-to-45-percent-of-global-shipments-in-2026) |
 | Total smartphones | IDC (2025) | ~+1% growth in 2025 | — | — | [IDC](https://my.idc.com/getdoc.jsp?containerId=prUS53767725) |
-| **Ultra-secure smartphones** | IMARC (verified 2026-10-02; Android 68.6% share; government 46.6% of demand) | $4.91B (2025) | $24.04B (2034) | 17.68% | [IMARC](https://www.imarcgroup.com/ultra-secure-smartphone-market) |
-| Ultra-secure smartphones | SkyQuest (verified on the SkyQuest page 2026-10-02) | $4.06B (2025) | $13.41B (2033) | 16.1% | [SkyQuest](https://www.skyquestt.com/report/ultra-secure-smartphone-market) |
+| **Ultra-secure smartphones** | IMARC (Android 68.6% share; government 46.6% of demand) | $4.91B (2025) | $24.04B (2034) | 17.68% | [IMARC](https://www.imarcgroup.com/ultra-secure-smartphone-market) |
+| Ultra-secure smartphones | SkyQuest | $4.06B (2025) | $13.41B (2033) | 16.1% | [SkyQuest](https://www.skyquestt.com/report/ultra-secure-smartphone-market) |
 | Encrypted phones | Verified Market Reports | $1.39B (2025) | $8.57B (2034) | 22.4% | [VMR](https://www.verifiedmarketreports.com/product/encrypted-phone-market-size-and-forecast/) |
-| **Rugged phones** | Coherent / Technavio / others (could not verify 2026-10-02) | $3.5–5.8B (2025) | 2030–32 | 4.5–11.1% | [Coherent](https://www.coherentmarketinsights.com/industry-reports/rugged-phones-market), [Technavio](https://www.technavio.com/report/rugged-smartphone-market-analysis) |
+| **Rugged phones** | Coherent / Technavio / others (unverified) | $3.5–5.8B (2025) | 2030–32 | 4.5–11.1% | [Coherent](https://www.coherentmarketinsights.com/industry-reports/rugged-phones-market), [Technavio](https://www.technavio.com/report/rugged-smartphone-market-analysis) |
 | **Enterprise mobility management** | Grand View Research | $19.0B (2024) | $69.1B (2030) | 24.1% | [GVR press release](https://www.grandviewresearch.com/press-release/global-enterprise-mobility-management-emm-market) |
 | Enterprise mobility management | Mordor Intelligence | $33.9B (2025) | $94.47B (2031) | 18.62% | [Mordor](https://www.mordorintelligence.com/industry-reports/enterprise-mobility-management-market) |
 | **Confidential computing** | Grand View Research | $5.5B (2023) | $153.8B (2030) | 61.1% | [GVR](https://www.grandviewresearch.com/industry-analysis/confidential-computing-market-report) |
@@ -66,10 +64,10 @@ Where a firm's attribution came only from a search-result snippet and was not ve
 | Data loss prevention | Straits Research | $3.33B (2025) | 2034 | 22.09% | [Straits](https://straitsresearch.com/report/data-loss-prevention-market) |
 | Data loss prevention | 360iResearch | $6.39B (2025) | 2032 | — | [360i](https://www.360iresearch.com/library/intelligence/data-loss-prevention) |
 | **AI-specific data security (GenAI cyber)** | MarketsandMarkets | $8.65B (2025) | $35.5B (2031) | 26.5% | [M&M](https://www.marketsandmarkets.com/Market-Reports/generative-ai-cybersecurity-market-164202814.html) |
-| AI security (all) | Via Lakera blog (firm attribution could not verify 2026-10-02) | $24.3B (2024), $30.1B (2025) | $133.8B (2030) | 21.9% | [Lakera](https://www.lakera.ai/blog/ai-security-trends) |
+| AI security (all) | Via Lakera blog (firm attribution unverified) | $24.3B (2024), $30.1B (2025) | $133.8B (2030) | 21.9% | [Lakera](https://www.lakera.ai/blog/ai-security-trends) |
 | AI cybersecurity spend | Gartner (Jan 2026, via secondary) | $51B (2026) | — | — | [Digital Applied compilation](https://www.digitalapplied.com/blog/ai-spending-forecasts-2026-gartner-idc-stanford-compiled) |
 | Shadow-AI risk (qualitative driver) | Gartner | >40% of enterprises will have shadow-AI incidents by 2030 | — | — | [Petri](https://petri.com/shadow-ai-enterprise-threat-2030/) |
-| **Ambient clinical documentation** | Menlo Ventures (Oct 2025) | $600M (2025), 2.4x YoY. Shares: Microsoft/Nuance 33%, Abridge 30%, Ambience 13% (verified on the Menlo page 2026-10-02); Suki ~10% per Becker's (Menlo groups the rest as "others 24%") | — | — | [Menlo Healthcare 2025](https://menlovc.com/perspective/2025-the-state-of-ai-in-healthcare/), [Becker's](https://www.beckershospitalreview.com/healthcare-information-technology/ai/ambient-ai-scribes-by-market-share/) |
+| **Ambient clinical documentation** | Menlo Ventures (Oct 2025) | $600M (2025), 2.4x YoY. Shares: Microsoft/Nuance 33%, Abridge 30%, Ambience 13%; Suki ~10% per Becker's (Menlo groups the rest as "others 24%") | — | — | [Menlo Healthcare 2025](https://menlovc.com/perspective/2025-the-state-of-ai-in-healthcare/), [Becker's](https://www.beckershospitalreview.com/healthcare-information-technology/ai/ambient-ai-scribes-by-market-share/) |
 | Ambient scribe | Astute Analytica | $1.2B (2025) | 2035 | — | [Astute](https://www.astuteanalytica.com/industry-report/ai-clinical-documentation-ambient-scribe-market) |
 | Ambient scribe | Growth Market Reports | $1.75B (2025) | $12.04B (2034) | — | [GMR](https://growthmarketreports.com/report/ambient-ai-scribe-market) |
 | Ambient clinical intelligence | DataM Intelligence | $2.34B (2025) | — | — | [DataM](https://www.datamintelligence.com/research-report/ambient-clinical-intelligence-voice-ai-for-ehr-market) |
@@ -135,17 +133,17 @@ Growing at the blended ~20–25% CAGR that the firms report, this adjacency reac
 | H4 | Healthcare / BH | Substance abuse, behavioral and mental-health counselors | 533,400 (2025) | [BLS OOH](https://www.bls.gov/ooh/community-and-social-service/substance-abuse-behavioral-disorder-and-mental-health-counselors.htm) | Growing 18% to 2035 |
 | H5 | Healthcare / BH | Clinical and counseling psychologists | 81,300 (2025) | [BLS OOH](https://www.bls.gov/ooh/life-physical-and-social-science/psychologists.htm) | |
 | | **Healthcare total** | | **1,982,700 (der.)** | | |
-| F1 | Finance | FINRA-registered securities representatives | ~625,000 (Mar 2026); 3,250+ firms | [Wikipedia (FINRA)](https://en.wikipedia.org/wiki/Financial_Industry_Regulatory_Authority) | Re-checked 2026-10-02: Wikipedia still cites these figures (March 2026). FINRA's 2025 Industry Snapshot page exists but its PDF did not load, so the primary figure could not be verified. Treat as secondary. |
+| F1 | Finance | FINRA-registered securities representatives | ~625,000 (Mar 2026); 3,250+ firms | [Wikipedia (FINRA)](https://en.wikipedia.org/wiki/Financial_Industry_Regulatory_Authority) | Secondary source; not confirmed against FINRA's [2025 Industry Snapshot](https://www.finra.org/media-center/reports-studies/2025-industry-snapshot) (unverified). |
 | F1a | Finance (cross-check) | Personal financial advisors | 299,400 (2025) | [BLS OOH](https://www.bls.gov/ooh/business-and-financial/personal-financial-advisors.htm) | Overlaps F1. Not added. |
 | F1b | Finance (cross-check) | Securities, commodities and financial services sales agents | 531,000 (2025) | [BLS OOH](https://www.bls.gov/ooh/sales/securities-commodities-and-financial-services-sales-agents.htm) | Overlaps F1. Not added. |
 | | **Finance total** | | **625,000** | | Excludes insurance underwriters (125,600, [BLS](https://www.bls.gov/ooh/business-and-financial/insurance-underwriters.htm)) and bank staff. Conservative. |
 | L1 | Legal | Lawyers | 863,700 (2025) | [BLS OOH](https://www.bls.gov/ooh/legal/lawyers.htm) | |
 | L2 | Legal | Paralegals and legal assistants | 404,900 (2025) | [BLS OOH](https://www.bls.gov/ooh/legal/paralegals-and-legal-assistants.htm) | |
 | | **Legal total** | | **1,268,600 (der.)** | | |
-| G1 | Government | Federal civilian employees (ex-USPS) | ~2.4M (Nov 2024) → **2.2M used** after 2025 reductions | [Pew Research](https://www.pewresearch.org/short-reads/2025/01/07/what-the-data-says-about-federal-workers/), [Wikipedia (2025 federal layoffs)](https://en.wikipedia.org/wiki/2025_United_States_federal_mass_layoffs) | The ~8% haircut is consistent with reports that about 9% of the federal workforce had been eliminated by March 2026 (2.4M × 0.91 ≈ 2.18M; checked 2026-10-02) |
-| G2 | Defense | Active-duty military | 1,294,191 (Jun 2024; still the latest figure on the cited page, 2026-10-02) | [Wikipedia (DoD)](https://en.wikipedia.org/wiki/United_States_Department_of_Defense) | Only **30% counted (est.)** as office/staff knowledge workers → 388,300 (der.) |
+| G1 | Government | Federal civilian employees (ex-USPS) | ~2.4M (Nov 2024) → **2.2M used** after 2025 reductions | [Pew Research](https://www.pewresearch.org/short-reads/2025/01/07/what-the-data-says-about-federal-workers/), [Wikipedia (2025 federal layoffs)](https://en.wikipedia.org/wiki/2025_United_States_federal_mass_layoffs) | The ~8% haircut is consistent with reports that about 9% of the federal workforce had been eliminated by March 2026 (2.4M × 0.91 ≈ 2.18M) |
+| G2 | Defense | Active-duty military | 1,294,191 (Jun 2024) | [Wikipedia (DoD)](https://en.wikipedia.org/wiki/United_States_Department_of_Defense) | Only **30% counted (est.)** as office/staff knowledge workers → 388,300 (der.) |
 | G3 | Defense (cross-check) | DoD civilians | 789,594 (Jun 2024) | [Wikipedia (DoD)](https://en.wikipedia.org/wiki/United_States_Department_of_Defense) | Inside G1. Not added. |
-| G4 | Cleared (cross-check) | Top Secret clearance holders | ~1.25M (2019) | [Wikipedia (Classified information)](https://en.wikipedia.org/wiki/Classified_information_in_the_United_States) | Overlaps G1/G2 plus contractors. Not added. The total cleared population (~4M) is widely cited from ODNI reports but could not be retrieved (could not verify 2026-10-02). |
+| G4 | Cleared (cross-check) | Top Secret clearance holders | ~1.25M (2019) | [Wikipedia (Classified information)](https://en.wikipedia.org/wiki/Classified_information_in_the_United_States) | Overlaps G1/G2 plus contractors. Not added. The total cleared population (~4M) is widely cited from ODNI reports (unverified). |
 | | **Government/defense total** | | **2,588,300 (der./est.)** | | Excludes state and local government (~20M workers, est.) |
 | E1 | Education | Public K-12 teachers | 3.8M (2020–21) | [NCES](https://nces.ed.gov/programs/coe/indicator/clr/public-school-teachers) | Stale year. Private-school teachers excluded. |
 | E2 | Education | Postsecondary teachers | ~1.4M (2025) | [BLS OOH](https://www.bls.gov/ooh/education-training-and-library/postsecondary-teachers.htm) | |
@@ -192,7 +190,7 @@ Resulting blended ARPU per year (der.): conservative $693–933, base $1,220–1
 | **US TAM** | | **$6.5B** | **$11.7B** | **$18.6B** |
 | **Global TAM** (× 2.5, est.) | | **$16.2B** | **$29.3B** | **$46.6B** |
 
-Global multiplier rationale (est.): the global headcount of regulated professionals is roughly 4–6x the US count. ARPU outside the US is lower, and in many countries these buyers purchase through government or sovereign channels. A spend-weighted multiplier of 2.5x is consistent with the US share (~33–40%) of global enterprise software spend that analysts commonly cite. This is an estimate. The global headcount of physicians, lawyers and advisors could not be verified within this workstream (see Open questions).
+Global multiplier rationale (est.): the global headcount of regulated professionals is roughly 4–6x the US count. ARPU outside the US is lower, and in many countries these buyers purchase through government or sovereign channels. A spend-weighted multiplier of 2.5x is consistent with the US share (~33–40%) of global enterprise software spend that analysts commonly cite. The global headcount of physicians, lawyers and advisors outside the US is not sourced (see Open questions).
 
 ### 2.4 SAM: what Alpha can serve by 2028–29 (der./est.)
 
@@ -234,7 +232,7 @@ Base SAM by segment (US, der.):
 
 ### 2.5 SOM: realistic 3–5-year share (est.)
 
-The adoption curve counts paid seats at year end. Year 1 (2027) assumes that on-device STT, the redaction pipeline, and a qualified signed device image are all delivered. None of these exist today (see the manifest).
+The adoption curve counts paid seats at year end. Year 1 (2027) assumes that on-device STT, the redaction pipeline, and a qualified signed device image are all delivered. None of these exist today.
 
 | Paid seats | 2027 (Y1) | 2028 (Y2) | 2029 (Y3) | 2030 (Y4) | 2031 (Y5) | Y5 share of SAM users | Y5 ARR |
 | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -296,13 +294,13 @@ Base SAM is $2.18B and base Y5 SOM is $84.8M. Each driver is varied alone.
 | Personal financial advisors (BLS, cross-check) | 299,400 | [BLS](https://www.bls.gov/ooh/business-and-financial/personal-financial-advisors.htm) |
 | SEC-registered RIA firms (2019, dated) | ~12,993 firms; 88% have <50 employees | [Wikipedia (RIA)](https://en.wikipedia.org/wiki/Registered_investment_adviser) |
 | Independent channel share | 40% → **250,000 reachable advisors/reps** | (est.) |
-| Penetration comp | Jump reached **27,000 advisors** in under two years and raised an $80M Series B (2026-02) | [WealthManagement](https://www.wealthmanagement.com/artificial-intelligence/jump_secures_series_b) (verified 2026-10-02) |
+| Penetration comp | Jump reached **27,000 advisors** in under two years and raised an $80M Series B (2026-02) | [WealthManagement](https://www.wealthmanagement.com/artificial-intelligence/jump_secures_series_b) |
 | ARPU | $100/mo software ([Jump](https://jump.ai/pricing)) + $500/yr device = **$1,700/yr** | (est.) |
 | **Beachhead market** | **$425M/yr** | (der.) |
 | Year-3 capture, cons./base/aggr. | 1% / 2% / 4% = 2,500 / 5,000 / 10,000 seats | (est.) |
 | **Year-3 ARR** | **$3.0M** ($1,200 software only) / **$8.5M** / **$26.3M** ($2,633) | (der.) |
 
-**Why this beachhead.** Advisors already pay $100+/mo for AI meeting notes; Jump's 27,000 advisors at ~$100/mo imply roughly $30M+ of annualized software spend with one vendor (der.), so the base Y3 capture of 5,000 seats is about a fifth of what one competitor has already reached. The regulator requires that business communications be *retained*, and in-person and mobile conversations are the gap in that coverage. A device that captures, redacts client PII before cloud inference, and exports to the compliance archive fits the buyer's need. **Caveat:** retention obligations conflict with "redact everything." The product must keep an unredacted archive copy under the firm's control (see 04 and 05). **Enforcement caveat (2026-10-02):** the SEC's off-channel sweep produced about $2B in penalties across 100+ firms (2021–24), but Chair Atkins has signalled lower priority for recordkeeping cases. The rules are unchanged, so the archive requirement still drives purchase, but fear of new fines is a weaker sales lever than in 2024 ([FINRA](https://www.finra.org/media-center/blog/sec-off-channel-communications-settlements-sro-collateral-consequences), [Bond Buyer](https://www.bondbuyer.com/news/secs-atkins-criticizes-off-channel-comms-enforcement)).
+**Why this beachhead.** Advisors already pay $100+/mo for AI meeting notes; Jump's 27,000 advisors at ~$100/mo imply roughly $30M+ of annualized software spend with one vendor (der.), so the base Y3 capture of 5,000 seats is about a fifth of what one competitor has already reached. The regulator requires that business communications be *retained*, and in-person and mobile conversations are the gap in that coverage. A device that captures, redacts client PII before cloud inference, and exports to the compliance archive fits the buyer's need. **Caveat:** retention obligations conflict with "redact everything." The product must keep an unredacted archive copy under the firm's control (see 04 and 05). **Enforcement caveat:** the SEC's off-channel sweep produced about $2B in penalties across 100+ firms (2021–24), but Chair Atkins has signalled lower priority for recordkeeping cases. The rules are unchanged, so the archive requirement still drives purchase, but fear of new fines is a weaker sales lever than in 2024 ([FINRA](https://www.finra.org/media-center/blog/sec-off-channel-communications-settlements-sro-collateral-consequences), [Bond Buyer](https://www.bondbuyer.com/news/secs-atkins-criticizes-off-channel-comms-enforcement)).
 
 ### 5.2 Beachhead B — behavioral health and private clinics
 
@@ -331,8 +329,8 @@ Base SAM is $2.18B and base Y5 SOM is $84.8M. Each driver is varied alone.
 | **Beachhead market** | **$548M/yr** | (der.) |
 | Year-3 pilot seats, cons./base/aggr. | 500 / 2,000 / 5,000 | (est.) |
 | **Year-3 revenue** | **$1.3M / $5.3M / $13.2M**, plus SBIR/DIU/AFWERX non-dilutive funding (see 08) | (der.) |
-| Market context | Ultra-secure phones $4.1–4.9B (2025), government = 46.6% of end-user demand (verified 2026-10-02) | [IMARC](https://www.imarcgroup.com/ultra-secure-smartphone-market) |
-| Device-policy context | The Army required commands to disenroll government-furnished phones from DMUC and return them by **2026-05-30**, moving users to BYOD with Hypori or Army MAM; dedicated government phones only by general-officer exception | [DVIDS](https://www.dvidshub.net/news/564961/army-sets-deadline-dmuc-device-turn-in-moves-new-mobility-program) (verified 2026-10-02) |
+| Market context | Ultra-secure phones $4.1–4.9B (2025), government = 46.6% of end-user demand | [IMARC](https://www.imarcgroup.com/ultra-secure-smartphone-market) |
+| Device-policy context | The Army required commands to disenroll government-furnished phones from DMUC and return them by **2026-05-30**, moving users to BYOD with Hypori or Army MAM; dedicated government phones only by general-officer exception | [DVIDS](https://www.dvidshub.net/news/564961/army-sets-deadline-dmuc-device-turn-in-moves-new-mobility-program) |
 
 **Why this beachhead.** It carries the highest strategic value and is the best reference customer for sovereign buyers abroad. The attested-enclave architecture fits zero-trust doctrine. **Caveat:** production scale needs NIAP MDF, CSfC and IL5/FedRAMP, each of which takes 12–24 months (see 05). The Army's 2026 move away from government-furnished phones toward BYOD also means the hardened-device ARPU ($2,633) applies only to exception users; a BYOD app tier is the likelier route for most Army staff. The base pilot seat counts (2,000 by Y3) are small enough to survive this, but a device-based government model would shrink. The crypto association of elizaOS is a trust liability here (see 11). Treat this as a funded pilot track, not the revenue engine.
 
@@ -362,38 +360,11 @@ The reachable population is 780,900 executives and executive assistants ([BLS](h
 
 ## Open questions
 
-1. **Global headcount inputs.** The number of physicians (WHO), lawyers (CCBE/IBA) and licensed advisors outside the US could not be retrieved in this pass. The 2.5x global spend multiplier is an estimate and should be replaced with sourced counts.
-2. **FINRA primary source.** Confirm the ~625k registered reps and the split between the independent BD/RIA channel and the wirehouse channel from FINRA's 2025 Industry Snapshot and the IAA/NRS *Evolution Revolution* 2025 report. Neither document could be retrieved.
-3. **DoD mobile device counts.** The DoD Mobility Unclassified and Classified capability device counts, and the total cleared population (~4M per ODNI, est.), could not be verified on 2026-10-02. *New context:* the Army ended DMUC government-furnished phones by 2026-05-30 in favour of BYOD plus Hypori/MAM, so a device-based model would now undercount BYOD demand and overcount hardened-device demand.
+1. **Global headcount.** How many physicians, lawyers and licensed advisors are there outside the US? The 2.5x global spend multiplier is an estimate until replaced with sourced counts (WHO, CCBE/IBA).
+2. **Advisor channel split.** How many of the ~625k registered reps sit in the independent BD/RIA channel versus wirehouses? This sets the size of beachhead A.
+3. **Government device demand.** With the Army ending DMUC government-furnished phones by 2026-05-30 in favour of BYOD plus Hypori/MAM, how much government demand is for hardened devices versus a BYOD app tier?
 4. **Android acceptance (reach factor).** What share of target professionals would carry an Android device or a second device? Primary research is needed: a survey of 50–100 advisors and clinicians.
 5. **Willingness to pay for a device.** Would advisors or clinicians pay $1,000–2,500 for a hardened device, or only accept a firm-provided or free device with a subscription?
-6. **Meeting-assistant market attribution.** *Partly resolved 2026-10-02:* Precedence ($1.20B) and Research&Markets ($3.14B) are now verified on their own pages. TBRC, Dataintelo and Grand View figures remain unverified.
-7. **Retention versus redaction.** How do FINRA/SEC recordkeeping and HIPAA's minimum-necessary rule interact with a redact-before-inference pipeline? This changes whether finance is in the SAM at all (see 04 and 05).
-8. **International sovereign demand.** Could Gulf, EU or UK government pilots be larger and faster than US DoD, given the $80B sovereign cloud IaaS spend in 2026 ([Gartner](https://www.gartner.com/en/newsroom/press-releases/2026-02-09-gartner-says-worldwide-sovereign-cloud-iaas-spending-will-total-us-dollars-80-billion-in-2026))? The SAM international multiplier (1.3x) may understate this.
-9. **Competitive price compression.** Apple, Google and Microsoft bundle free or cheap transcription. How much of the $80–150/mo vertical ARPU survives by 2029?
-
----
-
-## Verification log (2026-10-02)
-
-| # | Claim (as first written) | Result | Source |
-| --- | --- | --- | --- |
-| 1 | BLS 2025 counts (physicians 862,800; lawyers 863,700; personal financial advisors 299,400) | Confirmed (OOH, 2025 base year) | [BLS physicians](https://www.bls.gov/ooh/healthcare/physicians-and-surgeons.htm), [BLS lawyers](https://www.bls.gov/ooh/legal/lawyers.htm), [BLS PFA](https://www.bls.gov/ooh/business-and-financial/personal-financial-advisors.htm) |
-| 2 | FINRA ~625,000 reps, 3,250+ firms (March 2026) | Secondary source confirmed; FINRA primary PDF could not be loaded (could not verify primary) | [Wikipedia](https://en.wikipedia.org/wiki/Financial_Industry_Regulatory_Authority), [FINRA 2025 Snapshot page](https://www.finra.org/media-center/reports-studies/2025-industry-snapshot) |
-| 3 | SEC-registered RIAs ~12,993 (2019) | Still the only figure retrievable; current IAA/NASAA counts could not be loaded (could not verify) | [Wikipedia](https://en.wikipedia.org/wiki/Registered_investment_adviser) |
-| 4 | Federal civilian workforce 2.2M after ~8% cut (est.) | Consistent with ~9% eliminated by March 2026 (≈2.18M). No change | [Wikipedia](https://en.wikipedia.org/wiki/2025_United_States_federal_mass_layoffs) |
-| 5 | DoD 1,294,191 active duty, 789,594 civilians (Jun 2024) | Confirmed as latest on cited page | [Wikipedia (DoD)](https://en.wikipedia.org/wiki/United_States_Department_of_Defense) |
-| 6 | DoD mobile device counts; ODNI ~4M cleared | Could not verify. **Added** Army DMUC turn-in deadline (2026-05-30) and BYOD/Hypori shift | [DVIDS](https://www.dvidshub.net/news/564961/army-sets-deadline-dmuc-device-turn-in-moves-new-mobility-program) |
-| 7 | Menlo ambient scribe $600M, shares 33/30/13 | Confirmed; Suki 10% is from Becker's, not Menlo | [Menlo](https://menlovc.com/perspective/2025-the-state-of-ai-in-healthcare/) |
-| 8 | Healthcare AI spend $1.4B (2025) | Confirmed | [Menlo](https://menlovc.com/perspective/2025-the-state-of-ai-in-healthcare/) |
-| 9 | Precedence meeting assistants $1.20B (attribution unverified) | Confirmed | [Precedence](https://www.precedenceresearch.com/ai-in-meeting-assistants-market) |
-| 10 | R&M et al. $3.14–3.8B (attribution unverified) | R&M $3.14B confirmed; others could not verify | [R&M](https://www.researchandmarkets.com/reports/6226248/ai-powered-meeting-assistants-market-report) |
-| 11 | Ultra-secure phones IMARC $4.91B; second firm $4.06B (attribution unverified) | Both confirmed; second firm is SkyQuest | [IMARC](https://www.imarcgroup.com/ultra-secure-smartphone-market), [SkyQuest](https://www.skyquestt.com/report/ultra-secure-smartphone-market) |
-| 12 | Plaud >2M devices, software ARR >$100M, ~50% pay | Confirmed (TechCrunch, June 2026) | [TechCrunch](https://techcrunch.com/2026/06/16/plaud-says-its-software-business-topped-100m-in-arr-after-shipping-over-2m-ai-notetakers/) |
-| 13 | Jump $100/advisor/month anchor | Confirmed; **added** 27,000 advisors and $80M Series B (Feb 2026) | [Jump](https://jump.ai/pricing), [WealthManagement](https://www.wealthmanagement.com/artificial-intelligence/jump_secures_series_b) |
-| 14 | Otter Business $19.99–30 | Confirmed | [Otter](https://otter.ai/pricing) |
-| 15 | SEC off-channel enforcement as a demand driver | **Added caveat:** ≈$2B across 100+ firms (2021–24); Atkins-era de-emphasis | [FINRA](https://www.finra.org/media-center/blog/sec-off-channel-communications-settlements-sro-collateral-consequences) |
-| 16 | Rugged-phone and AI-security firm attributions | Could not verify | — |
-| 17 | TAM/SAM/SOM arithmetic | No input changed materially; no recomputation needed | — |
-| 18 | Global headcount multiplier (2.5x) | Still an estimate; WHO/IBA counts not retrieved (web search budget exhausted mid-pass) | — |
-
+6. **Retention versus redaction.** How do FINRA/SEC recordkeeping and HIPAA's minimum-necessary rule interact with a redact-before-inference pipeline? This changes whether finance is in the SAM at all (see 04 and 05).
+7. **International sovereign demand.** Could Gulf, EU or UK government pilots be larger and faster than US DoD, given the $80B sovereign cloud IaaS spend in 2026 ([Gartner](https://www.gartner.com/en/newsroom/press-releases/2026-02-09-gartner-says-worldwide-sovereign-cloud-iaas-spending-will-total-us-dollars-80-billion-in-2026))? The SAM international multiplier (1.3x) may understate this.
+8. **Competitive price compression.** Apple, Google and Microsoft bundle free or cheap transcription. How much of the $80–150/mo vertical ARPU survives by 2029?

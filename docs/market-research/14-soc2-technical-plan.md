@@ -1,12 +1,12 @@
 # 14 — SOC 2 technical plan for Alpha Phone
 
-Research date: 2026-10-02. Owner: security and compliance. Companion to [05 — Regulation and compliance](05-regulation-compliance.md), which already budgets "SOC 2 Type I, then Type II" as the first enterprise unlock.
+> Runtime source update: the local patch series has been migrated into reviewed upstream commits. AlphaPhone now consumes the immutable revision in `upstream.lock.json`; see [the migration ledger](../upstream-patch-migration.json). Patch filenames and line numbers below describe historical evidence retained in Git history, not files to apply to the current checkout. Implement further shared runtime changes through upstream PRs and update the reviewed pin.
+
+Companion to [05 — Regulation and compliance](05-regulation-compliance.md), which budgets "SOC 2 Type I, then Type II" as the first enterprise unlock.
 
 > **Not audit or legal advice.** A licensed CPA firm decides scope, criteria and opinion. This plan turns the AICPA criteria into concrete engineering work for this repository and its infrastructure. It also records the gaps that are visible today.
 >
-> **Conventions.** **(est.)** marks an analyst estimate (cost, effort, duration) that no primary source states. **[repo]** marks a fact observed in this repository or in its docs on 2026-10-02. TSC criterion text is paraphrased, not quoted. The authoritative text is the AICPA [2017 Trust Services Criteria (With Revised Points of Focus — 2022)](https://www.aicpa-cima.com/resources/download/2017-trust-services-criteria-with-revised-points-of-focus-2022).
-
----
+> **Conventions.** **(est.)** marks an estimate (cost, effort, duration) that no primary source states. **[repo]** marks a fact observed in this repository or its docs as of 2026-10-02. TSC criterion text is paraphrased, not quoted. The authoritative text is the AICPA [2017 Trust Services Criteria (With Revised Points of Focus — 2022)](https://www.aicpa-cima.com/resources/download/2017-trust-services-criteria-with-revised-points-of-focus-2022).
 
 ## 0. Executive summary
 
@@ -14,7 +14,7 @@ Research date: 2026-10-02. Owner: security and compliance. Companion to [05 — 
 2. **The architecture changed on Oct 1, 2026, so the scope must change too.** [Architecture](../architecture.md) ADR-05 and the [on-device agent plan](../on-device-agent-plan.md) move the primary agent onto the Android device. They demote Nitro Enclaves to "historical optional work", but enclaves a–d are still running [repo: enclave-candidate-validation]. Inference still goes to hosted Cerebras. The SOC 2 boundary therefore has to cover: (a) the device runtime and its update chain; (b) whichever cloud components stay customer-facing (enclave remote agent, Eliza Cloud pairing and login, voice services); (c) Cerebras as a carved-out subservice organization. Do not describe the Nitro/attested-KMS path in a SOC 2 system description unless it is actually serving customers in the window.
 3. **Criteria to include.** Report 1 should cover **Security (CC1–CC9) + Confidentiality (C1) + Availability (A1)**. Add **Privacy (P1–P8)** to the first Type 2 if the recording or transcription beta ships to customers before the window starts. Add **Processing Integrity (PI1)** only when redaction is a contractual or marketed commitment with a measured accuracy target. Redaction claims are untestable until the pipeline exists; [05 §0](05-regulation-compliance.md) records "no redaction pipeline yet".
 4. **Realistic calendar** (assuming the work starts Mon 2026-10-05): readiness and remediation take about 12 weeks. The **Type 1 point-in-time date** falls around **2027-01-15**, with the report about 4 weeks later. The **Type 2 observation window** runs **2027-01-18 → 2027-04-16** (3 months, the accepted minimum for a first report), and the Type 2 report lands around **June 2027**. The second Type 2 should use a 12-month window **(est.)**.
-5. **Year-one budget** for a team this small: **$95k–$190k cash (est.)**. That covers the automation platform ($8–28k), auditor Type 1 + Type 2 ($20–60k), pen tests for mobile, cloud and the AOSP image ($20–45k), HSM and signing infrastructure ($10–30k), MDM, IdP and SIEM tooling ($8–25k) and a fractional vCISO or GRC lead ($30–60k). Add about **1.5–2 FTE of internal time** across 6 months.
+5. **Year-one budget** for a team this small: **$110k–$170k cash is the likely landing, within a full range of ~$94k–$288k (est., §5.6)**. The largest items are a fractional vCISO ($30–60k), pen tests for mobile, cloud and the AOSP image ($15–45k), auditor Type 1 + Type 2 ($20–60k), the GRC automation platform ($8–28k) and signing infrastructure ($3–30k). Add about **1.5–2 FTE of internal time** across 6 months.
 6. **The largest gaps are operational, not cryptographic.** The repo has strong integrity *engineering*: hash-pinned sources, 36 explicit upstream patches with source-base manifests, same-run APK manifest verification between CI jobs, Keystore AES-GCM credential storage, `allowBackup=false`. What it lacks is the *control environment*:
    - no branch protection or rulesets;
    - one committer and no second reviewer;
@@ -29,8 +29,6 @@ Research date: 2026-10-02. Owner: security and compliance. Companion to [05 — 
    - personal Gmail as the administrative identity;
    - a production database service named `postgres-auth-restore-drill-20260825`;
    - no written policies, risk register, vendor register, on-call or IR plan.
-
----
 
 ## 1. SOC 2 basics
 
@@ -105,8 +103,6 @@ Alpha should budget above the SaaS median **(est.)**. It has a custom OS image, 
   4. Ability to do **SOC 2+ HIPAA** later.
   5. Independence: do not hire the firm that sells your readiness consulting to also issue the opinion.
   6. Peer review status. Check the firm on the AICPA peer review public file.
-
----
 
 ## 2. Scope definition for Alpha
 
@@ -225,8 +221,6 @@ These go in Section III and in the customer security exhibit. The customer is re
 | **Confidential — customer metadata** | Account email, org ID, device IDs, credit balance, usage metrics | Encrypted DB, RBAC, access logged |
 | **Internal** | Source code, patches, CI logs, PCR measurements (PCRs can be public; publishing them is recommended) | Repo access control |
 | **Public** | Marketing, privacy notice, transparency log of release digests and PCRs | — |
-
----
 
 ## 3. Control-by-control technical requirements
 
@@ -461,8 +455,6 @@ Without that loop, keep redaction as a C1 *design* control, not a PI commitment.
 - **Alpha phones (company-owned test/demo/fleet).** Android Enterprise **fully managed** enrollment (zero-touch for Android 9+), or an AOSP-capable MDM for non-GMS builds ([Intune Android guide](https://learn.microsoft.com/en-us/intune/device-enrollment/android/guide); [Codeproof AOSP MDM](https://www.codeproof.com/platform/android/); [Fleet Android MDM](https://fleetdm.com/lp/android-mdm)). Note: the custom AOSP image may lack GMS, which rules out Google's Android Management API on those SKUs. Plan for a DPC-based or AOSP MDM, or build a minimal Alpha DPC. Policies: patch level, verified boot state, adb off, unknown sources off, remote wipe. **Customer fleets**: support customers' own EMM (CUEC 8) and document compatibility; the HOME role is not device-owner [repo: android-and-aosp].
 - **Development devices and emulators.** `userdebug` images and `-writable-system` emulators are confined to CI/dev and never enrolled into production accounts. The CI workflow already scopes WebView replacement to a disposable emulator [repo].
 
----
-
 ## 4. Gap assessment against the current repo and infrastructure (2026-10-02)
 
 Severity reflects audit impact: **H** = would produce a qualified opinion or block Type 1 design; **M** = exception likely in Type 2; **L** = hygiene.
@@ -502,8 +494,6 @@ Severity reflects audit impact: **H** = would produce a qualified opinion or blo
 - Tool approvals with receipts and unknown-outcome handling.
 - Documented guarded single-slot enclave rollback and payload-equivalence verification.
 - A culture of distinguishing evidence types (AGENTS.md). Auditors value that.
-
----
 
 ## 5. Evidence, policies, tooling, plan, headcount and budget
 
@@ -688,8 +678,6 @@ Without the second engineer, G2 cannot be closed. A one-person company cannot de
 
 Ongoing years run about $60k–$150k/yr plus headcount **(est.)**: annual Type 2, pen test, platform renewal and the vCISO at reduced load.
 
----
-
 ## 6. Interactions with other frameworks and customer questionnaires
 
 ### 6.1 HIPAA
@@ -734,7 +722,7 @@ Ongoing years run about $60k–$150k/yr plus headcount **(est.)**: annual Type 2
 - What does not carry over:
   - a FedRAMP boundary, likely in AWS GovCloud;
   - FIPS 140-3 validated crypto in the boundary;
-  - **inference inside an authorized boundary**. Cerebras's public API is not FedRAMP-authorized as far as found; this is the blocker 05 already flags.
+  - **inference inside an authorized boundary**. Cerebras's public API has no known FedRAMP authorization; this is the blocker 05 already flags.
 - Design choice now: keep evidence machine-readable (JSON from AWS/GitHub APIs, not screenshots). That is the 20x direction and also makes SOC 2 sampling cheaper.
 
 ### 6.4 Customer security questionnaires: what they ask beyond SOC 2
@@ -753,8 +741,6 @@ Expect these Alpha-specific asks that a SOC 2 report alone will not answer. Prep
 8. **Software supply chain:** SBOM on request (EO 14028-influenced buyers), SLSA level, signed releases, open-source license compliance (the repo already tracks `licenses/`).
 9. **Encryption specifics:** algorithms, key lengths, KMS/HSM usage, BYOK/HYOK (the attested-KMS design is a differentiator if retained).
 10. **Background checks, training cadence, access reviews:** answered by SOC 2, but questionnaires want dates.
-
----
 
 ## 7. Open decisions
 

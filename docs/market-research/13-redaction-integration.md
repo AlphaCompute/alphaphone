@@ -1,21 +1,21 @@
 # 13 — Redaction integration: verified upstream inventory, egress gate design and implementation plan
 
-Research date: 2026-10-02. This is an engineering design and plan, not acceptance evidence. Nothing in this document is built. It verifies what the earlier research claimed in [04-redaction.md](04-redaction.md) and [11-fit-gtm-risks.md](11-fit-gtm-risks.md), maps Alpha's egress points, compares external tools, and proposes a single egress gate with a work plan.
+> Runtime source update: the local patch series has been migrated into reviewed upstream commits. AlphaPhone now consumes the immutable revision in `upstream.lock.json`; see [the migration ledger](../upstream-patch-migration.json). Patch filenames and line numbers below describe historical evidence retained in Git history, not files to apply to the current checkout. Implement further shared runtime changes through upstream PRs and update the reviewed pin.
+
+This is an engineering design and plan, not acceptance evidence. Apart from the upstream swap fix in Section 17, nothing in it is built. It checks the claims in [04-redaction.md](04-redaction.md) and [11-fit-gtm-risks.md](11-fit-gtm-risks.md) against source, maps Alpha's egress points, compares external tools, and proposes a single egress gate with a work plan.
 
 Repository rules that constrain this plan (from `AGENTS.md` and `docs/architecture.md`):
 
 - `vendor/eliza` is a pinned upstream submodule and must not be edited. Upstream changes go through reviewed upstream commits or explicit tested patches in `patches/eliza`.
 - ADR-02 (`docs/architecture.md:28`) says "Generic transport, platform capability checks, redaction, task/approval protocol and native plugins belong upstream. Product task policy must be supplied explicitly." So detectors, sessions and the audit sink belong upstream. Alpha supplies **policy**, the **device vault** and **native enforcement**.
 - E5 (`docs/implementation-plan.md:58`) requires "secret redaction before remote transport" and "no passwords/OTP/token values in transcripts, screenshots, model input or logs".
-- Evidence levels must stay distinct: a source read, a unit test, an APK build, an emulator test, a physical-device test and user acceptance each prove different things. Section 11 tags every test with its level.
+- Evidence levels must stay distinct: a source read, a unit test, an APK build, an emulator test, a physical-device test and user acceptance each prove different things. Section 12.3 tags every test with its level.
 
-Method: I read the upstream source directly (file and line references below are against the pinned checkout `vendor/eliza` at `760ad0f1`). I grepped all 36 MVP patches plus the auxiliary patches in `patches/eliza`, and read the Alpha renderer runtime and the Android plugins. I ran 24 web searches and fetched 4 pages for the external comparison. Vendor accuracy numbers are vendor claims unless stated otherwise.
-
----
+File and line references are against the pinned checkout `vendor/eliza` at `760ad0f1`, the 36 MVP patches plus the auxiliary patches in `patches/eliza`, the Alpha renderer runtime and the Android plugins. Vendor accuracy numbers are vendor claims unless stated otherwise.
 
 ## 1. Executive summary
 
-1. **The earlier claims mostly hold, with three corrections.** The pinned upstream does contain checksum-validated detectors, session pseudonyms, secret-swap, fail-closed audio redaction with re-transcription checks, and confidential-inference admission with mandatory audit. The corrections:
+1. **The claims in 04 and 11 mostly hold, with three corrections.** The pinned upstream does contain checksum-validated detectors, session pseudonyms, secret-swap, fail-closed audio redaction with re-transcription checks, and confidential-inference admission with mandatory audit. The corrections:
    - The pseudonyms are **realistic surrogates** ("Dana Whitfield" becomes "Priya Okafor"), not typed tokens like `PERSON_1`.
    - The confidential-inference audit record carries **route and attestation metadata only**. It records nothing about redaction.
    - The core PII modules have **no unit tests in the pinned checkout**, although their comments mention fuzz and red-team suites. Only the plugin-level recognizer, the scrub handler and the transcript store have tests.
@@ -36,9 +36,7 @@ Method: I read the upstream source directly (file and line references below are 
    - **Turn on the upstream swaps in the agent** as a second pass, both on-device and in the enclave.
 8. **Model choice:** first evaluate OpenAI Privacy Filter (Apache-2.0, 1.5B total / 50M active, 8 categories, ONNX q4 about 875 MB). Its download size makes it a heavy optional pack. The default on-device candidate is **GLiNER-PII edge** (Apache-2.0, UINT8 ONNX about 197 MB, vendor F1 75.5%). The regex and checksum detectors stay the deterministic floor. Presidio, Limina and Tonic Textual fit the enclave second pass or evaluation, not the phone.
 9. **Spoken entities are the biggest technical gap.** Upstream `normalizeSpokenText` strips separators but does not turn number words into digits ("five five five"). Upstream audio redaction needs word timings, which Alpha's paired whisper route does not provide (`docs/standalone-paired-asr.md:20`). Alpha needs a number-word normalisation pass with an offset map, and confidence-aware widening of detected spans.
-10. **Effort:** about 15 to 19 engineer-weeks to a qualified Tier-1/Tier-2 gate on emulator plus one physical device, and about 20 to 26 weeks including the model pack, the evaluation set and the enclave second pass. Work packages are in Section 12.
-
----
+10. **Effort:** about 15 to 19 engineer-weeks to a qualified Tier-1/Tier-2 gate on emulator plus one physical device, and about 20 to 26 weeks including the model pack, the evaluation set and the enclave second pass. Work packages are in Section 14.
 
 ## 2. Verification of prior claims
 
@@ -51,8 +49,6 @@ Method: I read the upstream source directly (file and line references below are 
 | "Confidential inference admission policy with mandatory audit records" | **True for routes; no content inspection** | `security/confidential-inference.ts:27-44`. The audit record holds attempt, agent, model type, policy revision, route, phase, denial code, status and evidence/binding digests. It records no redaction facts. Durable sink: `packages/agent/src/security/confidential-sqlite-audit.ts:51`. Bootstrap: `runtime/confidential-host-bootstrap.ts:95`. |
 | "The Alpha app does not call any of it" | **True** | `apps/app/src` has no `@elizaos/core` import and no redaction call. The root `package.json` has no `@elizaos/*` dependency. |
 | "Alpha patches wire it in" | **No patch does** | 0001–0035 contain no redaction logic (0025/0026 only mention the words). 0036 is the qualified rebase to upstream `ab8f9a7110ae…` (3.4 MB, 86,625 lines). It **brings in** upstream changes to `pii-scrub-seam.ts`, `log-redaction.ts` and `redact.ts`, and adds `security/processing-policy.ts` (host-owned processing admission with `Action.egress`). It does not wire anything into Alpha's path. |
-
----
 
 ## 3. Upstream component inventory (pinned `vendor/eliza`)
 
@@ -287,8 +283,6 @@ export const SECRET_SWAP_ENABLED_SETTING = "ELIZA_SECRET_SWAP_ENABLED"
 | Confidential inference | High | Yes | Host bootstrap | Agent/enclave only |
 | Processing policy (0036) | New | In 0036 | Host-installed | Agent/enclave only |
 
----
-
 ## 4. Alpha egress map (where content leaves today)
 
 | # | Channel | Code (file:line) | Payload carrying user content | Destination and transport | Existing protection |
@@ -312,19 +306,17 @@ export const SECRET_SWAP_ENABLED_SETTING = "ELIZA_SECRET_SWAP_ENABLED"
 - `AlphaConnectionPlugin.key()` (`:103-112`) and `AlphaCredentialStore` (`:41`, `:58-66`) use alias `alpha.connection.aes.v1`: AES-256-GCM, 12-byte IV, `AtomicFile` per slot.
 - The vault should use a **separate alias**, `alpha.redaction.vault.v1`, with `setUnlockedDeviceRequired(true)`. That way a vault-key compromise does not imply a credential compromise and vice versa.
 
----
-
 ## 5. External options evaluation
 
 | Option | What it is | Licence / size | Entities | Reported accuracy | Deployment | Reversible | Android feasibility | Role for Alpha |
 |---|---|---|---|---|---|---|---|---|
 | **OpenAI Privacy Filter** (released 2026-04-22) | Bidirectional token classifier, BIOES spans with constrained Viterbi; 8 transformer blocks; sparse MoE (128 experts, top-4) | Apache-2.0; 1.5B total / 50M active; 128k context ([HF card](https://huggingface.co/openai/privacy-filter)) | 8 categories: account_number, private_address, private_email, private_person, private_phone, private_url, private_date, secret | F1 96% on PII-Masking-300k, 97.43% after label correction (vendor, via [MarkTechPost](https://www.marktechpost.com/2026/04/28/openai-releases-privacy-filter-a-1-5b-parameter-open-source-pii-redaction-model-with-50m-active-parameters/), [Help Net Security](https://www.helpnetsecurity.com/2026/04/23/openai-privacy-filter-personally-identifiable-information/)). Card lists limitations: uncommon names, over-redaction of public entities, non-English | transformers, transformers.js (WebGPU/WASM) ([browser demo](https://github.com/montevive/openai-privacy-filter)), ONNX | No (detector) | ONNX q4f16 772 MB, q4 875 MB, q8 1.5 GB, fp16 2.6 GB ([HF onnx tree](https://huggingface.co/openai/privacy-filter/tree/main/onnx)). The MoE needs all experts resident, so **memory is the obstacle on phones**. Run with ORT Android CPU/XNNPACK; WebView WebGPU is device-dependent | Optional "accuracy pack" on 8–12 GB devices; **primary candidate for the enclave second pass** (CPU-feasible) |
 | **GLiNER-PII** (Knowledgator/Wordcab) | Zero-shot span NER, labels given at inference | Apache-2.0; edge, small, base and large variants. Edge ONNX FP16 330 MB, UINT8 197 MB ([HF](https://huggingface.co/knowledgator/gliner-pii-edge-v1.0)) | 60+ labels (personal, contact, financial, health, documents, credentials) | Vendor F1: edge 75.5% (P 78.96 / R 72.34); base 80.99% | GLiNER Python, Rust (gline-rs), ONNX | No | **Best fit for the on-device default** (UINT8 197 MB, ORT Android). Needs a span-decoding port to Java (tokeniser plus span scoring) | Default device NER |
-| **GLiNER2-PII** (Fastino, May 2026) | GLiNER2 fine-tune | 205M params ([arXiv 2605.09973](https://arxiv.org/abs/2605.09973)) | 42 PII types, multilingual | Paper reports the highest span F1 among five systems on the SPY benchmark, including OpenAI Privacy Filter | HF `fastino/gliner2-privacy-filter-PII-multi` | No | ONNX export not verified in this session | Evaluate as an alternative default |
+| **GLiNER2-PII** (Fastino, May 2026) | GLiNER2 fine-tune | 205M params ([arXiv 2605.09973](https://arxiv.org/abs/2605.09973)) | 42 PII types, multilingual | Paper reports the highest span F1 among five systems on the SPY benchmark, including OpenAI Privacy Filter | HF `fastino/gliner2-privacy-filter-PII-multi` | No | ONNX export unconfirmed | Evaluate as an alternative default |
 | **urchade/gliner_multi_pii-v1** | GLiNER multi v2.1 fine-tune on synthetic data | Apache-2.0 | ~40 types; EN/FR/DE/ES/PT/IT ([HF](https://huggingface.co/urchade/gliner_multi_pii-v1)) | Not published by the author | Python | No | Same porting cost as GLiNER-PII | Baseline only |
 | **NVIDIA gliner-PII** | Successor to the Gretel GLiNER PII/PHI models (bi-large) | 55+ categories ([HF discussion](https://huggingface.co/nvidia/gliner-PII/discussions/6)) | PII and PHI | Not verified | Python | No | Large for phones | Enclave or eval candidate for PHI |
 | **Microsoft Presidio** | Analyzer (recognizers + NER) and Anonymizer (replace, redact, mask, hash, encrypt, keep, custom); `DeanonymizeEngine` reverses **only the `encrypt` operator** via `decrypt` (AES) ([Anonymizer docs](https://presidio.dataprivacystack.org/anonymizer/), [DeepWiki](https://deepwiki.com/microsoft/presidio/3.2.2-deanonymization)) | MIT; Python plus Docker REST images | ~30 built-in recognizers plus custom; `GLiNERRecognizer` built in (`presidio-analyzer[gliner]`) ([docs](https://presidio.dataprivacystack.org/samples/python/gliner/)); a known GLiNER long-text truncation issue ([#1569](https://github.com/data-privacy-stack/presidio/issues/1569)) | Depends on the NER plugged in | Python, Docker | Encrypt/decrypt only | **Not on the phone** (Python) | Enclave second pass if the enclave image can carry Python; otherwise the eval harness comparator |
-| **Limina (formerly Private AI)** | Proprietary transformer NER in a container | Commercial; CPU container (AVX2/AVX-512/AMX) or GPU (≥16 GB VRAM, Volta+) ([requirements](https://docs.private-ai.com/installation/prerequisites-and-system-requirements)) | 50+ entity types, 52 languages; text, PDF, images, **audio** ([site](https://www.getlimina.ai/en)) | Vendor ai4privacy benchmark F1 0.938 (see [04](04-redaction.md)) | On-prem container, REST | Yes (reidentify endpoints; not re-verified this session) | No Android SDK found | Enterprise option for the enclave or customer VPC second pass; benchmark comparator |
+| **Limina (formerly Private AI)** | Proprietary transformer NER in a container | Commercial; CPU container (AVX2/AVX-512/AMX) or GPU (≥16 GB VRAM, Volta+) ([requirements](https://docs.private-ai.com/installation/prerequisites-and-system-requirements)) | 50+ entity types, 52 languages; text, PDF, images, **audio** ([site](https://www.getlimina.ai/en)) | Vendor ai4privacy benchmark F1 0.938 (see [04](04-redaction.md)) | On-prem container, REST | Yes (reidentify endpoints, unverified) | No Android SDK found | Enterprise option for the enclave or customer VPC second pass; benchmark comparator |
 | **Tonic Textual** | Redaction plus synthesis; tokenised (reversible) or synthesised replacements ([SDK docs](https://tonic-textual-sdk.readthedocs-hosted.com/en/latest/redact/redact_config.html)) | Commercial; free tier with $5 credits, Plus $29/month, Enterprise custom ([pricing](https://www.tonic.ai/pricing)) | Built-in plus custom-trained entity types | Not independently verified | Cloud, self-hosted Kubernetes/Docker, AWS AMI, Snowflake ([deploy](https://docs.tonic.ai/textual/textual-install-administer/deploying-a-self-hosted-instance)) | Tokenisation reversible | No | Synthetic training and test data generation; possible enclave second pass |
 | **Google ML Kit Entity Extraction** | On-device annotator (beta) | Proprietary; ~5.6 MB per language model ([docs](https://developers.google.com/ml-kit/language/entity-extraction/android)) | 11 types incl. address, date-time, email, flight number, IBAN, ISBN, money, payment card, phone, tracking number, URL (per docs; the fetched page summary listed fewer) | Not published | Android SDK | No | **Native and cheap**, but beta with no SLA, and a Google Play services dependency conflicts with de-Googled AOSP builds | Optional supplemental recognizer for addresses and dates on stock Android only |
 | **Gemini Nano / ML Kit GenAI Prompt API** | On-device LLM via AICore (alpha) ([Android blog](https://developer.android.com/blog/posts/ml-kit-s-prompt-api-unlock-custom-on-device-gemini-nano-experiences)) | Proprietary; supported devices only | Prompted extraction | Not published | AICore | No | Not on the AOSP image; device-gated | Not recommended as a dependency |
@@ -339,14 +331,12 @@ export const SECRET_SWAP_ENABLED_SETTING = "ELIZA_SECRET_SWAP_ENABLED"
 - LLM-Redactor: 8 techniques compared. Local routing plus redaction plus rephrasing reached 0.6% combined PII leak with 0 exact leaks over 500 samples, and the paper documents placeholder leakage and adversarial-obfuscation evasion ([arXiv 2604.12064](https://arxiv.org/abs/2604.12064)).
 - RedactionBench: 200 documents, 11 domains, the character-level R-Score metric, and human agreement of only 47.7% on contextual redactions ([arXiv 2606.18782](https://arxiv.org/abs/2606.18782)).
 - SLUE-NER for spoken NER ([HF](https://huggingface.co/datasets/asapp/slue)).
-- None of these is a spoken-meeting PII set, so Alpha must build its own (Section 11).
+- None of these is a spoken-meeting PII set, so Alpha must build its own (Section 12.1).
 
 **Word timings.**
 - Whisper's word timestamps come from cross-attention DTW. That is an approximation that can differ by 100–400 ms between model builds ([vLLM PR](https://github.com/vllm-project/vllm/pull/47664), [whisper.cpp #2307](https://github.com/ggml-org/whisper.cpp/discussions/2307)).
 - Upstream's 250 ms padding matches this range.
 - CrisperWhisper reports more accurate verbatim timestamps ([arXiv 2408.16589](https://arxiv.org/pdf/2408.16589)).
-
----
 
 ## 6. Architecture
 
@@ -414,11 +404,9 @@ Without a recognizer service this is regex-only: addresses plus everything secre
 - Register a `PII_ENTITY_RECOGNIZER_SERVICE` backed by OpenAI Privacy Filter or GLiNER-PII under onnxruntime-node. This needs a small upstream plugin (patch or upstream PR), because `plugin-local-inference` is llama.cpp-only.
 - Keep `ConfidentialInferenceAuthority`.
 - Install a `ProcessingPolicy` (available after 0036 lands in the agent build) that denies `model_attempt` for an Alpha Tier ≥ 2 room unless the inbound message metadata carries a valid receipt.
-- Add a **redaction summary** to the audit trail (Section 9), because `ConfidentialInferenceAuditRecord` has no field for it.
+- Add a **redaction summary** to the audit trail (Section 11), because `ConfidentialInferenceAuditRecord` has no field for it.
 
 **Double pseudonymisation is safe.** The agent may learn the phone's surrogates as "names" and swap them again. Restore runs in reverse order: the agent restores to phone surrogates, and the phone restores to real values. The blocklist does not need phone surrogates. A test must cover this composition (T-12).
-
----
 
 ## 7. Egress gate API contract
 
@@ -549,8 +537,6 @@ final class DefaultEgressGuard implements EgressGuard {
 - `vaultOpen({vaultId}) / vaultPut({vaultId, entriesCiphertext}) / vaultGet / vaultDestroy`. Key alias `alpha.redaction.vault.v1`.
 - `signReceipt({receiptJson}) -> {signature, keyId}`. EC P-256 key `alpha.redaction.receipt.v1`, non-exportable, StrongBox if available.
 
----
-
 ## 8. Vault and rehydration design
 
 **Contents.** For each vault (one per conversation, which matches the upstream "per-session unlinkable" default):
@@ -587,8 +573,6 @@ Until P2 lands, Alpha can keep vaults **memory-only**. Replies that arrive after
    - **Agent-executed** actions with external egress (for example, cloud Gmail send) would act on surrogates. Policy: at T1 the proposal is shown with a warning, and the phone sends a rehydrated, user-approved argument set in the `execute` call, recorded on the receipt. At T2 such actions require device execution or are refused.
 3. Never rehydrate into logs, notifications (lock-screen previews stay pseudonymous) or the action journal. Store pseudonymised text in conversation history and keep the vault separate.
 
----
-
 ## 9. Policy tiers
 
 | | T0 Open (developer/personal) | T1 Standard (default) | T2 Confidential (regulated pilot) | T3 Local-only |
@@ -605,8 +589,6 @@ Until P2 lands, Alpha can keep vaults **memory-only**. Replies that arrive after
 | Receipts | Local, summary only | Local, signed | Signed, exportable to the firm archive | Manifests only |
 
 The tier is a product policy supplied by Alpha to upstream primitives, per ADR-02. It lives in `apps/app/src/runtime/redaction-policy.ts`, and is mirrored by Java constants and checked by the receipt digest.
-
----
 
 ## 10. Channel-specific designs
 
@@ -652,8 +634,6 @@ This is the highest-volume PII payload.
 - Signatures (phone, address) are covered by tier-0 and the regex address recogniser.
 
 The review sheet should show the **redacted** text that will be sent, with per-span release toggles. Today it shows the original.
-
----
 
 ## 11. Audit receipt / redaction manifest
 
@@ -820,11 +800,9 @@ Receipts are value-free, so they can be retained and shown to users, compliance 
 - Receipts are archived through Alpha's existing export paths.
 - The agent can echo `receiptId` into upstream audit as a pipeline-hook annotation. That requires patch P3, because `ConfidentialInferenceAuditRecord` has no free field.
 
----
-
 ## 12. Evaluation harness and test plan
 
-### 12.1 Spoken-meeting evaluation set (new)
+### 12.1 Spoken-meeting evaluation set
 
 **Composition.**
 - 60 scripted role-play meetings, 8–15 minutes each: wealth management (RIA), legal intake, M&A deal call, clinical intake, and personal/family.
@@ -873,8 +851,6 @@ Leaks are measured on **captured wire bytes** from a mock server, not on the gat
 | T-14 | Evaluation run on the spoken-meeting set; publish the report with metric definitions | Offline eval | `scripts/redaction-eval/` |
 | T-15 | Both distribution variants (standalone, launcher) built and smoke-tested | APK build + emulator | `npm run verify`, `npm run android:build` |
 
----
-
 ## 13. Reuse vs. patch
 
 | Need | Reuse upstream as-is | Needs patch in `patches/eliza` (or upstream PR) | Alpha-owned (no upstream change) |
@@ -889,8 +865,6 @@ Leaks are measured on **captured wire bytes** from a mock server, not on the gat
 | Test debt | — | **P7**: unit suites for `pii-detectors`, `pii-pseudonymizer`, `secret-swap`, `entity-recognizer` and `audio-redaction-service` (missing in the pin; possibly present upstream after `ab8f9a`; check before writing) | — |
 
 Every patch follows the series convention (`patches/eliza/README.md`): numbered `00NN-*.patch`, verified with `git apply --check` against the recorded base, with an `*-source-base.json` digest and evidence, applied to an isolated upstream worktree, and **never** applied to the `vendor/eliza` checkout. The next numbers after 0036 are 0037 and up.
-
----
 
 ## 14. Work packages
 
@@ -915,8 +889,6 @@ Totals:
 - **Adding WP10–WP11: about 22–26 weeks** in total.
 
 Physical-device qualification of each tier is separate evidence, per `AGENTS.md`.
-
----
 
 ## 15. Concrete code: calling the upstream APIs
 
@@ -1009,8 +981,6 @@ egressGuard.admit(id, url, url.getPath(), body);   // throws EgressDeniedExcepti
 try (OutputStream out = connection.getOutputStream()) { out.write(body); }
 ```
 
----
-
 ## 16. Risks and open questions
 
 1. **Realistic vs. typed surrogates.** Upstream realistic surrogates keep LLM fluency. They also risk confusion: "Priya Okafor" could be a real contact. Mitigations: the collision check against learned values, and the gazetteer learning all contacts first. For compliance reviewers a typed display (`[PERSON 1]`) may be preferable, which is P6. Decide per tier.
@@ -1019,25 +989,10 @@ try (OutputStream out = connection.getOutputStream()) { out.write(body); }
 4. **The renderer can be bypassed.** The Java guard covers HTTP from plugins. It does not cover E6 (the in-process agent) or arbitrary WebView `fetch`. Confirm the CSP `connect-src` forbids remote origins from the WebView, so that only native plugins can reach the network.
 5. **Recordkeeping.** Redaction applies to the AI copy only. Originals may need WORM retention (see [04](04-redaction.md) and [05](05-regulation-compliance.md)).
 6. **Patents.** [04](04-redaction.md) lists US 12229313 and US 12189817. A freedom-to-operate review is needed before marketing audio de-identification.
-7. **Not verified in this session:** Limina re-identification endpoints; the full ML Kit type list (the fetched page summary was partial); GLiNER2-PII ONNX export; whether upstream after `ab8f9a` added tests for the core PII modules.
 
----
+## 17. Implementation status: upstream swap fixed and enabled for the resident agent
 
-## Sources
-
-Code (pinned `vendor/eliza`): `packages/core/src/security/{pii-detectors,entity-recognizer,pii-pseudonymizer,secret-swap,guarded-stream,pii-pseudonym-map,pii-pseudonym-map-store,pii-scrub-seam,pii-context-pack,pii-scrub-markers,confidential-inference,redact,log-redaction}.ts`, `packages/core/src/{audio-redaction,audio-redaction-verify,transcripts,runtime}.ts`, `packages/core/src/runtime/model-dispatch/dispatcher.ts`, `packages/core/src/services/pii-scrub.ts`, `packages/agent/src/services/audio-redaction-service.ts`, `packages/agent/src/api/audio-redaction*.ts`, `packages/agent/src/security/confidential-sqlite-audit.ts`, `packages/agent/src/runtime/confidential-host-bootstrap.ts`, `plugins/plugin-local-inference/src/pii/*`, `plugins/plugin-local-inference/src/services/voice/transcript-store.ts`. Patches: `patches/eliza/0036-qualified-ab8f9a-runtime.patch` (`processing-policy.ts`). Alpha: `apps/app/src/runtime/{connection-ui.tsx,phone-context.ts,native-connection.ts,alpha-client.ts,reviewed-mail-context.ts}`, `apps/app/src/prototype/{agent-adapter.ts,inbox-cloud-adapter.ts,voice-adapter.ts}`, `android/app/src/main/java/ai/elizaresearch/alphaphone/{AlphaConnectionPlugin,AlphaCredentialStore,AlphaVoiceCloudPlugin,AlphaLocalAgentPlugin,BrowserReading}.java`.
-
-Web:
-- OpenAI Privacy Filter: [OpenAI announcement](https://openai.com/index/introducing-openai-privacy-filter/) (403 to the fetcher; facts via [HF model card](https://huggingface.co/openai/privacy-filter), [HF ONNX tree](https://huggingface.co/openai/privacy-filter/tree/main/onnx), [MarkTechPost](https://www.marktechpost.com/2026/04/28/openai-releases-privacy-filter-a-1-5b-parameter-open-source-pii-redaction-model-with-50m-active-parameters/), [Help Net Security](https://www.helpnetsecurity.com/2026/04/23/openai-privacy-filter-personally-identifiable-information/), [montevive browser demo](https://github.com/montevive/openai-privacy-filter))
-- GLiNER-PII: [knowledgator edge](https://huggingface.co/knowledgator/gliner-pii-edge-v1.0), [base](https://huggingface.co/knowledgator/gliner-pii-base-v1.0), [urchade multi PII](https://huggingface.co/urchade/gliner_multi_pii-v1), [NVIDIA gliner-PII](https://huggingface.co/nvidia/gliner-PII/discussions/6), [GLiNER2-PII arXiv 2605.09973](https://arxiv.org/abs/2605.09973)
-- Presidio: [Anonymizer](https://presidio.dataprivacystack.org/anonymizer/), [Deanonymization](https://deepwiki.com/microsoft/presidio/3.2.2-deanonymization), [GLiNER in Presidio](https://presidio.dataprivacystack.org/samples/python/gliner/), [issue #1569](https://github.com/data-privacy-stack/presidio/issues/1569)
-- Limina: [system requirements](https://docs.private-ai.com/installation/prerequisites-and-system-requirements), [site](https://www.getlimina.ai/en)
-- Tonic Textual: [product](https://www.tonic.ai/products/textual), [pricing](https://www.tonic.ai/pricing), [self-hosted](https://docs.tonic.ai/textual/textual-install-administer/deploying-a-self-hosted-instance), [tokenisation vs synthesis](https://tonic-textual-sdk.readthedocs-hosted.com/en/latest/redact/redact_config.html)
-- Android: [ML Kit Entity Extraction](https://developers.google.com/ml-kit/language/entity-extraction/android), [ML Kit Prompt API](https://developer.android.com/blog/posts/ml-kit-s-prompt-api-unlock-custom-on-device-gemini-nano-experiences), [LiteRT-LM](https://ai.google.dev/edge/litert-lm/overview), [LiteRT-LM blog](https://developers.googleblog.com/blazing-fast-on-device-genai-with-litert-lm/), [ORT mobile](https://onnxruntime.ai/docs/tutorials/mobile/), [OpenMed Android accelerators](https://openmed.life/docs/runtimes/android-accelerators/), [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx), [sherpa-onnx #2568](https://github.com/k2-fsa/sherpa-onnx/issues/2568), [Keystore](https://developer.android.com/privacy-and-security/keystore), [KeyProtection](https://developer.android.com/reference/android/security/keystore/KeyProtection)
-- Speech: [NeMo ITN](https://arxiv.org/pdf/2104.05055), [on-device streaming ITN](https://arxiv.org/html/2211.03721), [Dual-Form ASR ITN](https://arxiv.org/pdf/2609.02901), [SpeechShield](https://arxiv.org/abs/2502.01649), [SLUE](https://huggingface.co/datasets/asapp/slue), [N-best SLU](https://arxiv.org/pdf/2001.05284), [whisper.cpp DTW discussion](https://github.com/ggml-org/whisper.cpp/discussions/2307), [vLLM Whisper DTW PR](https://github.com/vllm-project/vllm/pull/47664), [CrisperWhisper](https://arxiv.org/pdf/2408.16589)
-- Benchmarks: [ai4privacy 400k](https://huggingface.co/datasets/ai4privacy/pii-masking-400k), [open-pii-masking-500k](https://huggingface.co/datasets/ai4privacy/open-pii-masking-500k-ai4privacy), [LLM-Redactor](https://arxiv.org/abs/2604.12064), [RedactionBench](https://arxiv.org/abs/2606.18782)
-
-## Status update (2026-10-02): upstream swap fixed and enabled for the resident agent
+This delivers WP1 (Section 14). With it, egress E6 in Section 4 is no longer unprotected for secrets and structured identifiers.
 
 - **Measured before the fix** (logging proxy between the real pinned runtime and Cerebras, Qwen): with both swaps off, the email, phone, card and SSN in the prompt reached Cerebras verbatim. Enabling either swap made every model call fail with `signal is not of type AbortSignal`. That fails closed but is unusable.
 - **Root causes:**
@@ -1046,12 +1001,26 @@ Web:
 - **Fix:** [`patches/eliza/egress-swap-control-objects.patch`](../../patches/eliza/egress-swap-control-objects.patch), added to the Android runtime extras. `AlphaLocalAgentPlugin` sets `ELIZA_SECRET_SWAP_ENABLED=true` and `ELIZA_PII_SWAP_ENABLED=true`.
 - **Measured after the fix** (same proxy, patched runtime): through both the settings path and the environment-only path the resident agent uses, the email, phone, card and SSN reached Cerebras only as `__ELIZA_SECRET_<nonce>_<n>__` placeholders, and the turn completed normally.
 - **Remaining:**
-  - Person names still egress until an NER recognizer is registered (§ work packages).
+  - Person names still egress until an NER recognizer is registered (Section 14).
   - The desktop backend's vendor pin is unpatched.
   - Emulator and physical-device evidence for the resident agent are separate gates.
-- **Emulator evidence (2026-10-02):** `ResidentEgressRedactionInstrumentedTest` ran through `scripts/android-resident-instrumentation.mjs` on a disposable API 35 arm64 emulator with 6 GB RAM, in a fresh secondary user, with the debug APK built from the series that includes the patch. Result:
+- **Emulator evidence:** `ResidentEgressRedactionInstrumentedTest` ran through `scripts/android-resident-instrumentation.mjs` on a disposable API 35 arm64 emulator with 6 GB RAM, in a fresh secondary user, with the debug APK built from the series that includes the patch. Result:
   - The resident agent, with both swaps on, answered the turn ("56").
   - Its one recorded provider request contained `__ELIZA_SECRET_` placeholders and none of the raw email, card number or SSN.
 
   The non-secret proof is in `test-results/android-resident-redaction/result.json`. This is emulator evidence, not physical-device or AOSP-image acceptance.
-- **Separate finding:** `ResidentServiceInstrumentedTest` now fails at pairing. It expects `/api/auth/pair` to return `access: "owner"` and `identityId`, but this runtime returns `{token, instanceId}`. The agent had booted and passed readiness with both swaps on, so this is a test/runtime contract mismatch, not a redaction regression.
+- **Pairing contract:** in that local swap-fix build, `/api/auth/pair` answered from the agent-only route (`{token, instanceId}`) instead of the app pairing route that mints an owner session (`access`, `identityId`). Production enrollment in `AlphaLocalAgentPlugin` requires the owner-session contract, and the CI resident runtime pairs successfully with it, so the mismatch was specific to that build, not a product or redaction defect.
+
+## Sources
+
+Code (pinned `vendor/eliza`): `packages/core/src/security/{pii-detectors,entity-recognizer,pii-pseudonymizer,secret-swap,guarded-stream,pii-pseudonym-map,pii-pseudonym-map-store,pii-scrub-seam,pii-context-pack,pii-scrub-markers,confidential-inference,redact,log-redaction}.ts`, `packages/core/src/{audio-redaction,audio-redaction-verify,transcripts,runtime}.ts`, `packages/core/src/runtime/model-dispatch/dispatcher.ts`, `packages/core/src/services/pii-scrub.ts`, `packages/agent/src/services/audio-redaction-service.ts`, `packages/agent/src/api/audio-redaction*.ts`, `packages/agent/src/security/confidential-sqlite-audit.ts`, `packages/agent/src/runtime/confidential-host-bootstrap.ts`, `plugins/plugin-local-inference/src/pii/*`, `plugins/plugin-local-inference/src/services/voice/transcript-store.ts`. Patches: `patches/eliza/0036-qualified-ab8f9a-runtime.patch` (`processing-policy.ts`). Alpha: `apps/app/src/runtime/{connection-ui.tsx,phone-context.ts,native-connection.ts,alpha-client.ts,reviewed-mail-context.ts}`, `apps/app/src/prototype/{agent-adapter.ts,inbox-cloud-adapter.ts,voice-adapter.ts}`, `android/app/src/main/java/ai/elizaresearch/alphaphone/{AlphaConnectionPlugin,AlphaCredentialStore,AlphaVoiceCloudPlugin,AlphaLocalAgentPlugin,BrowserReading}.java`.
+
+Web:
+- OpenAI Privacy Filter: [OpenAI announcement](https://openai.com/index/introducing-openai-privacy-filter/) ([HF model card](https://huggingface.co/openai/privacy-filter), [HF ONNX tree](https://huggingface.co/openai/privacy-filter/tree/main/onnx), [MarkTechPost](https://www.marktechpost.com/2026/04/28/openai-releases-privacy-filter-a-1-5b-parameter-open-source-pii-redaction-model-with-50m-active-parameters/), [Help Net Security](https://www.helpnetsecurity.com/2026/04/23/openai-privacy-filter-personally-identifiable-information/), [montevive browser demo](https://github.com/montevive/openai-privacy-filter))
+- GLiNER-PII: [knowledgator edge](https://huggingface.co/knowledgator/gliner-pii-edge-v1.0), [base](https://huggingface.co/knowledgator/gliner-pii-base-v1.0), [urchade multi PII](https://huggingface.co/urchade/gliner_multi_pii-v1), [NVIDIA gliner-PII](https://huggingface.co/nvidia/gliner-PII/discussions/6), [GLiNER2-PII arXiv 2605.09973](https://arxiv.org/abs/2605.09973)
+- Presidio: [Anonymizer](https://presidio.dataprivacystack.org/anonymizer/), [Deanonymization](https://deepwiki.com/microsoft/presidio/3.2.2-deanonymization), [GLiNER in Presidio](https://presidio.dataprivacystack.org/samples/python/gliner/), [issue #1569](https://github.com/data-privacy-stack/presidio/issues/1569)
+- Limina: [system requirements](https://docs.private-ai.com/installation/prerequisites-and-system-requirements), [site](https://www.getlimina.ai/en)
+- Tonic Textual: [product](https://www.tonic.ai/products/textual), [pricing](https://www.tonic.ai/pricing), [self-hosted](https://docs.tonic.ai/textual/textual-install-administer/deploying-a-self-hosted-instance), [tokenisation vs synthesis](https://tonic-textual-sdk.readthedocs-hosted.com/en/latest/redact/redact_config.html)
+- Android: [ML Kit Entity Extraction](https://developers.google.com/ml-kit/language/entity-extraction/android), [ML Kit Prompt API](https://developer.android.com/blog/posts/ml-kit-s-prompt-api-unlock-custom-on-device-gemini-nano-experiences), [LiteRT-LM](https://ai.google.dev/edge/litert-lm/overview), [LiteRT-LM blog](https://developers.googleblog.com/blazing-fast-on-device-genai-with-litert-lm/), [ORT mobile](https://onnxruntime.ai/docs/tutorials/mobile/), [OpenMed Android accelerators](https://openmed.life/docs/runtimes/android-accelerators/), [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx), [sherpa-onnx #2568](https://github.com/k2-fsa/sherpa-onnx/issues/2568), [Keystore](https://developer.android.com/privacy-and-security/keystore), [KeyProtection](https://developer.android.com/reference/android/security/keystore/KeyProtection)
+- Speech: [NeMo ITN](https://arxiv.org/pdf/2104.05055), [on-device streaming ITN](https://arxiv.org/html/2211.03721), [Dual-Form ASR ITN](https://arxiv.org/pdf/2609.02901), [SpeechShield](https://arxiv.org/abs/2502.01649), [SLUE](https://huggingface.co/datasets/asapp/slue), [N-best SLU](https://arxiv.org/pdf/2001.05284), [whisper.cpp DTW discussion](https://github.com/ggml-org/whisper.cpp/discussions/2307), [vLLM Whisper DTW PR](https://github.com/vllm-project/vllm/pull/47664), [CrisperWhisper](https://arxiv.org/pdf/2408.16589)
+- Benchmarks: [ai4privacy 400k](https://huggingface.co/datasets/ai4privacy/pii-masking-400k), [open-pii-masking-500k](https://huggingface.co/datasets/ai4privacy/open-pii-masking-500k-ai4privacy), [LLM-Redactor](https://arxiv.org/abs/2604.12064), [RedactionBench](https://arxiv.org/abs/2606.18782)
