@@ -1,0 +1,42 @@
+import {test, expect} from '@playwright/test';
+
+for (const mode of ['mock', 'dev']) {
+ test(`${mode} Settings hides covered pages and restores keyboard focus`, async ({page}) => {
+  await page.addInitScript(() => localStorage.setItem('alpha.connection.selection.v1', JSON.stringify({kind:'offline'})));
+  await page.goto(`/?mode=${mode}`);
+  await page.getByRole('button', {name:'Settings', exact:true}).click();
+  const models = page.getByRole('button', {name:'Models', exact:true});
+  await models.focus();
+  await page.keyboard.press('Enter');
+  const back = page.getByRole('button', {name:'Back to Settings', exact:true});
+  await expect(back).toBeFocused();
+  await expect(page.getByRole('button', {name:'Accounts', exact:true})).toHaveCount(0);
+  await expect(page.getByRole('heading', {name:'Settings', exact:true})).toHaveCount(0);
+  await expect(page.locator('[data-settings-page="Settings"]')).toHaveAttribute('inert', '');
+  await page.keyboard.press('Tab');
+  expect(await page.evaluate(() => !!document.activeElement?.closest('[inert]'))).toBe(false);
+  await back.focus();
+  await page.keyboard.press('Enter');
+  await expect(models).toBeFocused();
+  await expect(page.getByRole('button', {name:'Accounts', exact:true})).toBeVisible();
+  if (mode === 'dev') {
+   const password = page.getByRole('button', {name:'Password manager', exact:true});
+   await password.focus(); await page.keyboard.press('Enter');
+   await expect(back).toBeFocused();
+   await expect(page.getByRole('button', {name:'Models', exact:true})).toHaveCount(0);
+   await page.keyboard.press('Enter');
+   await expect(password).toBeFocused();
+  } else {
+   const accounts = page.getByRole('button', {name:'Accounts', exact:true});
+   await accounts.focus(); await page.keyboard.press('Enter');
+   const add = page.getByRole('button', {name:'Add account', exact:true});
+   await add.focus(); await page.keyboard.press('Enter');
+   const parent = page.getByRole('button', {name:'Back to Accounts', exact:true});
+   await expect(parent).toBeFocused();
+   await expect(back).toHaveCount(0);
+   await page.keyboard.press('Enter');
+   await expect(add).toBeFocused();
+   await back.click(); await expect(accounts).toBeFocused();
+  }
+ });
+}
