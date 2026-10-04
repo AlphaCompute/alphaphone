@@ -4744,9 +4744,9 @@
     {
       "file": "src/browser/video-capture.ts",
       "upstreamCandidate": [],
-      "bytes": 6703,
-      "sha256": "e9743bf4714729eba7e1c2e7b5c474c3b236c4b526d8f4f07a8640eb419abd08",
-      "lines": 70,
+      "bytes": 6995,
+      "sha256": "994b9c856e2496e5c47ff7d55c27d92f22a49799110c0a5559cf4a60b4574570",
+      "lines": 73,
       "owner": "plugins/plugin-native-camera",
       "disposition": "extract-or-split",
       "reason": "Capture, media processing and library behavior; keep Alpha viewfinder, filter presets and review layouts local.",
@@ -4779,9 +4779,9 @@
     {
       "file": "src/browser/video-edit.ts",
       "upstreamCandidate": [],
-      "bytes": 6959,
-      "sha256": "031d5181aaf0d8546a7aa2a2c1aa1efaf4eca3b8485430ef42d001acb3563a27",
-      "lines": 43,
+      "bytes": 7570,
+      "sha256": "7af0b70d88d2381b6afc9b1b76741dbbfeca991bd0a3309a8c6b1edad27b2161",
+      "lines": 52,
       "owner": "plugins/plugin-native-camera",
       "disposition": "extract-or-split",
       "reason": "Capture, media processing and library behavior; keep Alpha viewfinder, filter presets and review layouts local.",
@@ -7167,30 +7167,20 @@
     {
       "file": "src/prototype/browser-image-import.ts",
       "upstreamCandidate": [],
-      "bytes": 5571,
-      "sha256": "f05b5b3f38ad8bf447d31543af892a885ae2e8ef951e9a37b6ebaec81aa134d9",
-      "lines": 34,
+      "bytes": 5476,
+      "sha256": "84559405bc00749d07a9ea683c965fd14bf955c4ecb66fb7d95ea276af601fad",
+      "lines": 35,
       "owner": "plugins/plugin-native-browser-surface + plugins/plugin-browser",
       "disposition": "extract-or-split",
       "reason": "Isolated browser observation/navigation and reading; inject lifecycle, consent UI, vault provider and styling.",
-      "imports": [],
+      "imports": [
+        "./scan-dialog.css"
+      ],
       "exports": [
         "ImportedCameraImage",
         "openCameraImageImport"
       ],
       "seams": [
-        {
-          "line": 16,
-          "tags": [
-            "presentation"
-          ]
-        },
-        {
-          "line": 19,
-          "tags": [
-            "presentation"
-          ]
-        },
         {
           "line": 20,
           "tags": [
@@ -7198,33 +7188,27 @@
           ]
         },
         {
-          "line": 22,
+          "line": 21,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 23,
-          "tags": [
-            "presentation"
-          ]
-        },
-        {
-          "line": 25,
+          "line": 26,
           "tags": [
             "identity-or-compatibility",
             "host-coupling"
           ]
         },
         {
-          "line": 27,
+          "line": 28,
           "tags": [
             "identity-or-compatibility",
             "host-coupling"
           ]
         },
         {
-          "line": 32,
+          "line": 33,
           "tags": [
             "host-coupling"
           ]
@@ -9620,19 +9604,73 @@
     {
       "file": "src/prototype/scan-correction-review.ts",
       "upstreamCandidate": [],
-      "bytes": 7913,
-      "sha256": "c6c7015b0a16a3bbe8c46530a5c07a19951a9bcf3b03c7cd081415c8534655e3",
-      "lines": 30,
+      "bytes": 7893,
+      "sha256": "c879d0af6c3145e11be6f3014a5c28ddae597b951c355e77ee4e89afa156c0dc",
+      "lines": 31,
       "owner": "plugins/plugin-files",
       "disposition": "extract-or-split",
       "reason": "File capabilities, document processing and reviewed selections; keep product dialogs and calendar handoff composition local.",
       "imports": [
         "../browser/scan-correction",
-        "../browser/scan-edges"
+        "../browser/scan-edges",
+        "./scan-dialog.css"
       ],
       "exports": [
         "reviewScanCorrection"
       ],
+      "seams": [
+        {
+          "line": 9,
+          "tags": [
+            "presentation"
+          ]
+        },
+        {
+          "line": 10,
+          "tags": [
+            "presentation"
+          ]
+        },
+        {
+          "line": 12,
+          "tags": [
+            "presentation"
+          ]
+        },
+        {
+          "line": 19,
+          "tags": [
+            "presentation"
+          ]
+        },
+        {
+          "line": 22,
+          "tags": [
+            "identity-or-compatibility",
+            "host-coupling"
+          ]
+        },
+        {
+          "line": 28,
+          "tags": [
+            "identity-or-compatibility",
+            "host-coupling"
+          ]
+        }
+      ],
+      "reachableFromMain": true
+    },
+    {
+      "file": "src/prototype/scan-dialog.css",
+      "upstreamCandidate": [],
+      "bytes": 2990,
+      "sha256": "6c29e125713e533f80da95cb9fd0fb7d2c0a8da0e0976daa3f08c5248a01db2e",
+      "lines": 50,
+      "owner": "alphaphone",
+      "disposition": "retain-or-split",
+      "reason": "Product composition, design reference, enabled views, fixtures, or visual presentation. Extract embedded domain behavior separately.",
+      "imports": [],
+      "exports": [],
       "seams": [
         {
           "line": 6,
@@ -9659,41 +9697,63 @@
           ]
         },
         {
-          "line": 11,
+          "line": 25,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 12,
+          "line": 26,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 17,
+          "line": 29,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 18,
+          "line": 32,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 21,
+          "line": 36,
           "tags": [
-            "identity-or-compatibility",
-            "host-coupling"
+            "presentation"
           ]
         },
         {
-          "line": 27,
+          "line": 38,
           "tags": [
-            "identity-or-compatibility",
-            "host-coupling"
+            "presentation"
+          ]
+        },
+        {
+          "line": 40,
+          "tags": [
+            "presentation"
+          ]
+        },
+        {
+          "line": 43,
+          "tags": [
+            "presentation"
+          ]
+        },
+        {
+          "line": 44,
+          "tags": [
+            "presentation"
+          ]
+        },
+        {
+          "line": 47,
+          "tags": [
+            "presentation"
           ]
         }
       ],
@@ -9702,9 +9762,9 @@
     {
       "file": "src/prototype/scan-document.ts",
       "upstreamCandidate": [],
-      "bytes": 9168,
-      "sha256": "5ce4c39113c649018802cae60cd0a916611df156affcbd3459801053ea8fc134",
-      "lines": 29,
+      "bytes": 9406,
+      "sha256": "b91933abe2666b9b56d5d5f6d044b818dee348fc74f46284bd980c5d63bc483d",
+      "lines": 30,
       "owner": "plugins/plugin-files",
       "disposition": "extract-or-split",
       "reason": "File capabilities, document processing and reviewed selections; keep product dialogs and calendar handoff composition local.",
@@ -9712,6 +9772,7 @@
         "../browser/file-picker",
         "../browser/scan-draft",
         "./scan-correction-review",
+        "./scan-dialog.css",
         "./scan-page-camera",
         "./scan-pdf",
         "./scan-searchable-review",
@@ -9722,32 +9783,20 @@
       ],
       "seams": [
         {
-          "line": 11,
+          "line": 16,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 14,
-          "tags": [
-            "presentation"
-          ]
-        },
-        {
-          "line": 15,
-          "tags": [
-            "presentation"
-          ]
-        },
-        {
-          "line": 23,
+          "line": 24,
           "tags": [
             "identity-or-compatibility",
             "host-coupling"
           ]
         },
         {
-          "line": 27,
+          "line": 28,
           "tags": [
             "identity-or-compatibility",
             "host-coupling"
@@ -9884,23 +9933,19 @@
     {
       "file": "src/prototype/scan-page-camera.ts",
       "upstreamCandidate": [],
-      "bytes": 5457,
-      "sha256": "e98da538e8152f794a037e17f533f30be80669fb14e605aca5db8d306be2f768",
-      "lines": 18,
+      "bytes": 5696,
+      "sha256": "cb78c5646f1b4192f05f3986fe6f208e55bb1330cbbfc1dcd109ed9601fd0a4d",
+      "lines": 19,
       "owner": "plugins/plugin-files",
       "disposition": "extract-or-split",
       "reason": "File capabilities, document processing and reviewed selections; keep product dialogs and calendar handoff composition local.",
-      "imports": [],
+      "imports": [
+        "./scan-dialog.css"
+      ],
       "exports": [
         "captureScanPage"
       ],
       "seams": [
-        {
-          "line": 4,
-          "tags": [
-            "presentation"
-          ]
-        },
         {
           "line": 5,
           "tags": [
@@ -9908,14 +9953,14 @@
           ]
         },
         {
-          "line": 6,
+          "line": 7,
           "tags": [
             "identity-or-compatibility",
             "host-coupling"
           ]
         },
         {
-          "line": 11,
+          "line": 12,
           "tags": [
             "identity-or-compatibility",
             "host-coupling"
@@ -9971,14 +10016,15 @@
     {
       "file": "src/prototype/scan-review.ts",
       "upstreamCandidate": [],
-      "bytes": 7199,
-      "sha256": "b20f24fb1173ff69a0460d063bff84ec304c6e2889da88eceeb875c54ea79ad4",
-      "lines": 49,
+      "bytes": 6883,
+      "sha256": "9d794fa7cef8df07ac5a493b462c5352fe57b0e122a324b008dbe7621f4ed519",
+      "lines": 51,
       "owner": "plugins/plugin-files",
       "disposition": "extract-or-split",
       "reason": "File capabilities, document processing and reviewed selections; keep product dialogs and calendar handoff composition local.",
       "imports": [
         "./local-ocr",
+        "./scan-dialog.css",
         "./scan-document",
         "./scan-event",
         "./scan-event-review",
@@ -9991,57 +10037,27 @@
       ],
       "seams": [
         {
-          "line": 13,
+          "line": 28,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 17,
-          "tags": [
-            "presentation"
-          ]
-        },
-        {
-          "line": 18,
-          "tags": [
-            "presentation"
-          ]
-        },
-        {
-          "line": 19,
-          "tags": [
-            "presentation"
-          ]
-        },
-        {
-          "line": 26,
-          "tags": [
-            "presentation"
-          ]
-        },
-        {
-          "line": 29,
+          "line": 31,
           "tags": [
             "identity-or-compatibility",
             "host-coupling"
           ]
         },
         {
-          "line": 33,
+          "line": 35,
           "tags": [
             "identity-or-compatibility",
             "host-coupling"
           ]
         },
         {
-          "line": 41,
-          "tags": [
-            "presentation"
-          ]
-        },
-        {
-          "line": 43,
+          "line": 45,
           "tags": [
             "host-coupling"
           ]
@@ -10052,15 +10068,16 @@
     {
       "file": "src/prototype/scan-searchable-review.ts",
       "upstreamCandidate": [],
-      "bytes": 6511,
-      "sha256": "3ae157ed3c18fa53012f219ed200659e87c31a8b07701e7f44a87b1658f56dd9",
-      "lines": 27,
+      "bytes": 6378,
+      "sha256": "c995f621d249595c5e9903ba2a0dbfe482aa4ceaac65a8bcb83bea59dd8e1917",
+      "lines": 28,
       "owner": "plugins/plugin-files",
       "disposition": "extract-or-split",
       "reason": "File capabilities, document processing and reviewed selections; keep product dialogs and calendar handoff composition local.",
       "imports": [
         "../browser/scan-draft",
         "./local-ocr",
+        "./scan-dialog.css",
         "./scan-pdf",
         "./scan-text-layer"
       ],
@@ -10069,39 +10086,21 @@
       ],
       "seams": [
         {
-          "line": 9,
-          "tags": [
-            "presentation"
-          ]
-        },
-        {
-          "line": 12,
-          "tags": [
-            "presentation"
-          ]
-        },
-        {
-          "line": 13,
+          "line": 14,
           "tags": [
             "identity-or-compatibility",
             "host-coupling"
           ]
         },
         {
-          "line": 17,
+          "line": 18,
           "tags": [
             "identity-or-compatibility",
             "host-coupling"
           ]
         },
         {
-          "line": 21,
-          "tags": [
-            "presentation"
-          ]
-        },
-        {
-          "line": 23,
+          "line": 22,
           "tags": [
             "presentation"
           ]
@@ -12816,52 +12815,35 @@
     {
       "file": "src/prototype/video-edit-review.ts",
       "upstreamCandidate": [],
-      "bytes": 4887,
-      "sha256": "3cc564c3f296e0fd4432fe9cad24a5f5ee98bd188145a34413279a6b76836e3c",
-      "lines": 18,
+      "bytes": 5134,
+      "sha256": "c404914ec7113cd9f7cbcdb01d6417b04ba68f2d212f8d986b0c6510513dea21",
+      "lines": 19,
       "owner": "plugins/plugin-native-camera",
       "disposition": "extract-or-split",
       "reason": "Capture, media processing and library behavior; keep Alpha viewfinder, filter presets and review layouts local.",
       "imports": [
-        "../browser/video-edit"
+        "../browser/video-edit",
+        "./scan-dialog.css"
       ],
       "exports": [
         "openVideoEditReview"
       ],
       "seams": [
         {
-          "line": 4,
+          "line": 6,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 5,
-          "tags": [
-            "presentation"
-          ]
-        },
-        {
-          "line": 8,
-          "tags": [
-            "presentation"
-          ]
-        },
-        {
-          "line": 9,
-          "tags": [
-            "presentation"
-          ]
-        },
-        {
-          "line": 13,
+          "line": 14,
           "tags": [
             "identity-or-compatibility",
             "host-coupling"
           ]
         },
         {
-          "line": 16,
+          "line": 17,
           "tags": [
             "identity-or-compatibility",
             "host-coupling"

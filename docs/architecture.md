@@ -14,15 +14,15 @@ preparation checks out that commit without applying consumer patches. Native
 staging records original and generated hashes; only product namespace, icon and
 environment wiring are generated locally. Regression tests exercise the pinned
 upstream sources directly. Historical patch artifacts remain available in Git
-history; runtime preparation no longer carries a patch series. The separate
-additive client-feature candidate below is not part of the resident runtime.
+history; runtime preparation no longer carries a patch series. Renderer client helpers are also copied from authenticated source at the same
+pin; no consumer patch is applied.
 
 ## Repository boundaries
 
 The [application ownership audit](app-upstream-ownership.md) tracks the ongoing
 split between Alpha presentation/defaults and reusable upstream features. The
-Maps, Files and Notes candidate is consumed from a hash-checked patch staged outside
-`vendor/eliza`; it is not yet a published upstream pin. Product wrappers preserve
+Maps, Files and Notes source is copied from the exact pinned upstream commit
+into an authenticated cache outside `vendor/eliza`. Product wrappers preserve
 installed storage keys and native identities while injecting visual and device
 configuration into the shared implementation.
 

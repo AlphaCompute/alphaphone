@@ -99,16 +99,19 @@ schemas/store/actions; the new client contract is an explicit compatibility
 surface, not a replacement for the canonical agent schema. Converging those two
 contracts requires an adapter and protocol migration, not silent field renames.
 
-## First extraction candidate
+## Pinned client source
 
-[client-features.patch](../patches/eliza/client-features.patch) contains additive
-upstream source under `plugin-maps/src/client`, `plugin-notes/src/client` and the
-new `plugin-files` package.
-[client-features-source.json](../patches/eliza/client-features-source.json) binds
-it to the Eliza pin and patch hash. `scripts/prepare-client-features.mjs` applies
-the patch into ignored `.eliza/client-features`; npm development, build,
-typecheck and test entrypoints prepare that source automatically. `vendor/eliza`
-and the imported baseline remain immutable.
+The Maps, Files, Notes and document-processing source is published in
+[upstream PR 33295](https://github.com/elizaOS/eliza/pull/33295), with staging
+promotion tracked in [PR 33299](https://github.com/elizaOS/eliza/pull/33299).
+`scripts/prepare-client-features.mjs` copies the selected source groups from the
+exact `upstream.lock.json` commit into ignored `.eliza/client-features`. It checks
+the vendor HEAD, clean checkout, Git blob contents and complete cached inventory.
+It never applies patches or modifies `vendor/eliza`. Development, build,
+typecheck and test entrypoints prepare this source automatically.
+
+The original 37-file patch, its SHA-256 and per-file hashes are preserved in Git
+history and the [migration ledger](upstream-patch-migration.json).
 
 Alpha currently consumes the staged source through compatibility modules. Maps
 wrappers supply the installed saved-place key, location/speech ports, regional
@@ -122,12 +125,11 @@ Existing browser tests can keep using the original module paths and exercise
 the shared implementation. These re-exports are transitional compatibility
 adapters, not a claim that the complete app has been moved.
 
-The candidate is not yet a reviewed/published upstream commit or a registry
-release. A patch stored in this repository is not upstream delivery. Before
-publication, compose against current `develop`, reconcile manifests and package
-exports/dependencies, run owning upstream checks and root verification, open the
-upstream PR, and only then choose a reviewed pin update. A clean checkout must
-continue to reproduce the consumer without modifying the submodule.
+The staging pin includes these sources; the final consumer qualification below covers
+repository, browser and both APK distributions. A clean checkout
+must reproduce the consumer from the pinned upstream source without modifying
+the submodule. Upstream publication is distinct from registry publication and
+physical-device acceptance.
 
 ## Remaining dependency-ordered work
 
@@ -222,3 +224,32 @@ review for the failed reproduction and exact verification boundaries.
 The workflow retirement repair now passes all 87 owning browser cases across
 three engines, 16 adapter contracts and Node 24.15.0 typecheck/build. Upstream
 publication and native/device acceptance remain open.
+## October 4 upstream adoption and patch retirement
+
+The client sources were merged upstream in elizaOS/eliza#33295 and promoted to
+staging in #33299. Alpha consumes repaired staging commit
+`dda547372918a0fe6ba92cabbea837b64a162d0f` (#33314), using authenticated committed
+files rather than patch replay. No files remain tracked under `patches/`.
+The migration ledger retains original patch hashes and archived source variants.
+
+At product source `d26811ff26b572fd037d32f540579db8065d6c48`, `npm run verify`
+passed all 281 tests, typecheck and production build. `npm run android:build`
+passed for standalone and launcher debug/release outputs. The selected browser
+suite passed 326 cases with one existing WebKit historical-Blob fixture skip.
+The two corrected lifecycle fixtures also passed five repetitions in each of
+Chromium, Firefox and WebKit (30 cases). The blocked Files upgrade assertion was
+updated to the shared package's generic message; its data-preservation and retry
+checks passed in all three engines.
+
+Firefox 153 can crash natively when a large worker is terminated during script
+compilation ([Playwright #42565](https://github.com/microsoft/playwright/issues/42565)).
+The cancellation fixture now stalls a small actual Worker and asserts its pending
+request and termination; real Tesseract recognition is tested separately. This
+fixture does not qualify early cancellation of the large worker on affected
+Firefox builds. Notes audio qualification explicitly foregrounds the page,
+resumes its synthetic audio source from a user click and waits for encoded bytes.
+
+Logs and exact-source results are under `test-results/client-migration/`.
+Hosted qualification remains in progress. These results do not establish native
+emulator HOME-role, real provider, full AOSP boot, physical-device or user acceptance
+for this pin.

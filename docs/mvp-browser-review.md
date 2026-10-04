@@ -2339,3 +2339,117 @@ under `test-results/workflow-retirement-final/`. At 04:08:02 UTC the untouched
 user dev host still verifies owner authentication, one agent, local Whisper and
 Kokoro, and embedded workflows. Exact-final-head hosted qualification remains a
 separate gate; Android builds were skipped as requested.
+
+
+At 04:08:41 UTC, PR157 merged as `ed2f69f937dce32e775b0692dde1546af77067eb`.
+Reviewed head `11ee6b160b6a22328b9847f0d58eb0b5cd58d917` is an ancestor of main,
+and the merge introduces no additional tree changes. A live queue read returns
+zero open PRs. Final main browser run `37176145836` is pending. Duplicate PR
+browser runs and this integration's automatically triggered Android jobs were
+cancelled; unrelated native work was not cancelled. This report-only update is
+kept on `codex/client-integration-status-20261004` to avoid restarting that final
+campaign for documentation alone. The live renderer/agent was not restarted.
+
+
+## October 4 — Document correction design and large-text review
+
+The scan-correction review still used default system typography and a loose list
+of gray controls. Its confirmation actions scrolled with the long coordinate
+form. The product-owned dialog now uses Alpha colors, Public Sans, rounded
+controls and a distinct blue adoption action. The heading and Apply/Cancel area
+remain visible while instructions, corners, tools and image preview scroll.
+Numeric fields follow light/dark colors and browser text scaling. The original
+photo and existing explicit-adoption/cancellation behavior are unchanged.
+
+All **51 existing correction and edge-detection browser cases** pass across
+Chromium, Firefox and WebKit. Four actual Chromium viewport probes at **150%
+text** cover both themes at 360x740 and 740x360. They verify 24px dialog text,
+44px minimum action height, visible action bounds, no horizontal overflow and no
+page errors. Light/dark and large-text screenshots were inspected. TypeScript
+and production build pass on Node 24.15.0. The full repository verification is
+still running and is not counted as passing yet. Evidence is in
+`test-results/correction-design/`, `test-results/correction-large-text/` and
+`test-results/correction-design-evidence/` in the isolated integration checkout.
+The static ownership inventory now contains 280 app files.
+
+This is one reviewed subview. The complete MVP/design acceptance and external
+provider/native/device requirements in the current-status ledger remain open.
+
+
+The correction-only checkpoint at `4ae0a4b` subsequently completed full
+`npm run verify`: **278 tests, zero failures/skips, TypeScript and web build**
+on Node 24.15.0.
+
+The same draft PR now extends the shared product styling to document assembly
+and searchable-PDF text review. Page/edit/export controls stay grouped in the
+scrolling content; document Save draft/Close and searchable Download/Cancel
+remain in their action areas. Labels, explicit saves, text review, cancellation
+and export-result handling remain the existing implementations. The shared CSS
+replaces the correction-only stylesheet; the app inventory remains 280 files.
+
+A first refactor had a mismatched root CSS selector. The large-text probe caught
+16px text and 19px controls rather than the required scaled text/44px controls;
+that browser run was interrupted and is not qualifying evidence. Corrected
+selectors now pass all **eight** layout probes for the two additional dialogs:
+light/dark, portrait/landscape, 150% text, no horizontal overflow, visible action
+bounds and no page errors. Screenshots were inspected. Typecheck and final build
+pass; the complete three-engine scan regression batch is still running.
+Evidence: `test-results/scan-dialog-layout-fixed/`, with the failed probe retained
+in `test-results/scan-dialog-layout/`; browser logs are retained separately.
+
+
+The expanded scan regression batch completed with **173 passes and the existing
+WebKit legacy-Blob migration fixture skip**. It covers correction, edge finding,
+capture ownership, document ordering, draft conflicts, reviewed OCR, searchable
+PDF output and cancellation across all three engines. The final build passes;
+all eight additional layout probes pass. Evidence is retained under
+`test-results/scan-dialog-evidence/`. PR160 remains separate from native/device
+acceptance and the still-running merged-main browser campaign.
+
+
+PR159 merged concurrently as `8b29f35` and was incorporated into the scan branch.
+Its bounded hierarchy retry was reviewed without executing Android: the current
+17 smoke/parser fixture tests pass with fake ADB, including transient recovery,
+exactly ten failed attempts, unique dump paths and main's newer malformed-status
+rejection. The tested retry script and qualification fixture match the merged
+files byte-for-byte. The earlier scratch attempt lacked the vendor toolchain
+link and did not qualify anything; that setup failure is retained. Main's
+`37176145836` browser run was cancelled by the newer merge, so it is not a pass.
+The next merged-main campaign must qualify the combined source. No Android build
+was started by this browser workstream.
+
+
+## Current pinned browser runtime and cold Kokoro requalification — October 4
+
+At Alpha main `fa45c90172c58c57908a1197de9382e7e6df0760`, prepared the exact upstream `278af04b9498a35740468ffa7b68239d1924257f` source in a fresh checkout with the full source guard. Frozen, scripts-disabled app dependency installation using Bun 1.4.2 and `--backend=copyfile` succeeded (2,719 packages, 311 seconds). No vendor source or lockfile was changed. The new prepared-source manifest is `4ae18597113ac167843ddfbd43767bdfafecfb0ceecb90a044312d755fc960dd`.
+
+The existing upstream cold-start repair eagerly initializes the per-host Kokoro worker and imports the speech sanitizer. First requests share initialization; failed startup is retryable, and closing one host cannot resurrect its worker or stop a different host. Four targeted asset/startup/worker-lifecycle regressions pass on Node 24.15.0. A fresh isolated profile started on port 47846 with automatic Whisper warm-up (1,502 ms), and the Kokoro child worker existed before any speech endpoint was called.
+
+The first browser attempt received a connection 503 while the new agent was still initializing; it did not reach speech. After the runtime reported ready, the real synthetic-recording/transcription/first-playback/completion/Stop/disconnect journey passed in **17.6 seconds**, retaining all existing stage deadlines. No preliminary synthesis or Kokoro readiness request warmed the provider. The rendered transcript was inspected. Evidence: `test-results/current-runtime/voice` retains the early-connect failure; `voice-ready` retains the passing journey and screenshot. Native dependencies and models are the installed development assets already recorded in the speech setup guide; this is host execution evidence, not packaged Android acceptance.
+
+The local setup guide now distinguishes current upstream integration from historical consumer patches and reflects implemented browser capabilities. The full main Browser MVP run `37176795954` remains in progress at this checkpoint; no terminal hosted pass is claimed. No Android build was run.
+
+The live browser stack was then restarted from the current integration checkout at 04:38:26 UTC using the existing private profile. A complete stopped-profile backup preserves generated dependency links; an initial incomplete copy that followed those links was discarded. The first readiness probe reached workflow registration too early and received 404; the subsequent completed startup check at 04:38:57 UTC confirms owner authentication, one agent, standalone Whisper/Kokoro ready and local embedded workflows ready with Cloud disconnected. Before/after hashes match for owner ID, agent IDs and all 17 conversation IDs. This is conversation inventory preservation, not a bytewise message-history audit. The isolated qualification host was stopped. The user stack remains at port 5317, on the new exact pin and source manifest, with hosted Cerebras and redaction off.
+
+
+## Media review dialogs and full-campaign follow-up — October 4
+
+The remaining camera-image import, scanned-text review, document capture and video editor dialogs now share the Alpha scan-dialog typography, themes and rounded controls. Scrollable content has a named keyboard-focusable region; Save/Use/Close actions stay outside that scroller. Scanned-text PDF export, Copy text, Save to Notes and Cancel remain in the fixed footer; the multipage-document tool stays in the reviewed content. Short landscape viewports give the scanned-text dialog more width. Capture ownership, edited-copy persistence, approval, cancellation and ambiguous-save behavior are unchanged.
+
+Before repair, 150% text probes reproduced image-import Cancel below the viewport and video Save/Close below the viewport in portrait and landscape; scanned-text review remained at 16px despite the larger-text setting. After repair, all 16 combinations (four dialogs, light/dark, 360×740 and 740×360) use 24px text with no horizontal overflow and visible final actions at least 44px high. Rendered screenshots were inspected, and a keyboard probe verifies scrolling plus Escape cancellation. Evidence is retained under `test-results/media-design/before` and `after`.
+
+Repository verification completed before the host reboot: **280 tests, zero skips**, TypeScript and production build passed. The initial three-engine browser batch recorded slow 20-second click dispatch and timeouts, then was explicitly interrupted for diagnosis. The host subsequently rebooted; kernel boot time, missing process handles and the interrupted Playwright result confirm that run ended. No missing handle was treated as a passing result. After reboot the same Camera click completed in 277ms, and the previously failing import-layout case passed in 2.8s with unchanged deadlines. The combined rerun then detected a real layout regression: moving PDF export and Copy text into the scroller violated the existing persistent-action checks. Both were restored to the fixed footer, the six owning visibility cases pass in all three engines, and four fresh large-text scan layouts pass after the landscape-width adjustment. The final combined batch runs against that corrected source, retaining both earlier failed campaigns.
+
+Main campaign `37176795954` at `fa45c90172c58c57908a1197de9382e7e6df0760` is terminal: shards 1 and 3 passed, and shard 2 failed only its stale expectation of “Close other Alpha tabs”. The extracted provider reports “Close other tabs for this app and retry Files.” The assertion now checks that complete recovery instruction; it still verifies preservation of the legacy file bytes and successful retry after the blocking owner closes. This repairs the test expectation rather than weakening the migration contract. The terminal failure log is retained at `test-results/media-design/main-ci-failure.log`.
+
+The dev stack was restored after reboot at port 5317 using the same verified runtime and profile. At 06:43:12 UTC, owner authentication, Whisper, Kokoro and embedded local workflows report ready. Owner, agent and all 17 conversation IDs match the prior snapshot; this remains inventory evidence rather than a message-byte audit. Android builds were not run. Draft PR161 remains separate pending its author's native qualification.
+
+
+### Recorded video MIME recovery
+
+The corrected media/Files campaign completed with **276 passing, 11 failing and one existing WebKit legacy-Blob skip**. The failures clustered in Firefox video editing. A direct synthetic capture reproduced a saved path beginning `data:application/octet-stream;base64,` with a WebM container: Firefox can clear `MediaRecorder.mimeType` by stop time. This was a production recording bug, not a reason to skip Firefox or extend test deadlines.
+
+Capture now preserves the emitted chunk MIME when the stopped recorder no longer exposes it, accepts only WebM/MP4, and strips codec parameters before constructing the saved data URL. Existing untyped recordings can also be edited: the editor recognizes only local WebM/MP4 container headers, normalizes the temporary source MIME and retains the stored original. Arbitrary binary/HTML and remote paths are not admitted. New coverage forces a cleared recorder MIME while retaining real encoding, persistence, reload, video decode and audio checks; a legacy-recording case verifies editable output, unchanged originals and refusal of unknown containers. The owning 72-case capture/edit batch and repository verification are running against this repair.
+
+
+The MIME repair passes repository verification again: **280 tests without skips**, TypeScript and production build. Its owning three-engine campaign passed **71 of 72 cases**; the remaining Firefox failure was the existing 300ms size-limit/retry fixture stopping before any encoded data existed. The fixture now waits for actual encoded data (or the configured recording end), requires the specific size-limit error, and retains denial, no-save and successful fresh-attempt assertions. Production recording limits and test timeouts are unchanged. The corrected case passes **nine runs** (three repeats in each engine). All prior Firefox edit failures, deliberate cleared-MIME recordings, real audio decoding and legacy untyped-video cases passed after the production repair. Evidence is retained under `test-results/media-design/video-mime`, `capture-fixture`, and `final-verify.log`; the earlier failures remain available.
