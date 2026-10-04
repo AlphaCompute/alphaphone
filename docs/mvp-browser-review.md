@@ -2887,3 +2887,18 @@ reads and 63 edits found in the browser adapter inventory:
 The running development agent remains available at port 5317; its latest
 readiness check confirms Whisper/Kokoro and the unchanged 17-conversation
 inventory. Android builds remain excluded by the user.
+
+Publication update: [Eliza PR33568](https://github.com/elizaOS/eliza/pull/33568)
+is open as a draft at `a1877e9f2ba528e44908ba44d4e828c6664d7ac3` against
+`develop`. GitHub readback confirms exactly the intended five files (store,
+real-browser harness, public export, package command and README). The source push
+completed. UI typecheck and the explicit-base alias-read guard pass. Full upstream
+verification and the pinned Firefox/WebKit installation remain live; the failed
+first pinned-browser launch was a missing browser executable, not a passing run.
+The earlier three-engine pass used the consumer's installed Playwright browsers.
+
+Hosted status reconciliation: PR201 Browser MVP `37234303470` is successful at
+`b1a5a56c72d9d13b108b168213a6f732bb80f797`. Main campaigns `37233958282` and
+`37234707569` are cancelled. PR206 Browser MVP `37235947853` is still running at
+`2a4668037985c058cf482eecd2172e0e8fa173d1`. The current-status index now reflects
+these live readbacks; it does not treat cancelled campaigns as qualification.
