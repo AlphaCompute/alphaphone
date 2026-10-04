@@ -44,8 +44,10 @@ test('microphone denial and size overflow produce no saved video and permit a fr
  const result=await page.evaluate(async()=>{
   const {browserCamera:c,browserPhotoLibrary:p}=await import('/src/prototype/browser-camera.ts');const s=(window as any).videoTest;let denied=false,overflow=false;s.deny=true;
   try{await c.startRecording({audio:true,maxDuration:1,maxFileSize:1000000});}catch{denied=true;}s.deny=false;
-  await c.startRecording({audio:true,maxDuration:.3,maxFileSize:1});await new Promise(r=>setTimeout(r,500));try{await c.stopRecording();}catch{overflow=true;}const empty=(await p.list()).items.length;
-  await c.startRecording({audio:true,maxDuration:.3,maxFileSize:1000000});await new Promise(r=>setTimeout(r,500));await c.stopRecording();return {denied,overflow,empty,saved:(await p.list()).items.length};
+  // Wait for an actual encoded chunk, rather than assuming each codec starts in 300 ms.
+  const recorded=async()=>{while(true){const state=await c.getRecordingState();if(state.fileSize>0||!state.isRecording)return;await new Promise(r=>setTimeout(r,25));}};
+  await c.startRecording({audio:true,maxDuration:2,maxFileSize:1});await recorded();try{await c.stopRecording();}catch(error){overflow=String(error).includes('Video exceeded the size limit.');}const empty=(await p.list()).items.length;
+  await c.startRecording({audio:true,maxDuration:2,maxFileSize:1000000});await recorded();await c.stopRecording();return {denied,overflow,empty,saved:(await p.list()).items.length};
  });expect(result).toEqual({denied:true,overflow:true,empty:0,saved:1});
 });
 test('quota failure does not publish a receipt or duplicate a video on repeated Stop',async({page})=>{
