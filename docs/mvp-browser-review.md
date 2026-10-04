@@ -2417,3 +2417,16 @@ link and did not qualify anything; that setup failure is retained. Main's
 `37176145836` browser run was cancelled by the newer merge, so it is not a pass.
 The next merged-main campaign must qualify the combined source. No Android build
 was started by this browser workstream.
+
+
+## Current pinned browser runtime and cold Kokoro requalification — October 4
+
+At Alpha main `fa45c90172c58c57908a1197de9382e7e6df0760`, prepared the exact upstream `278af04b9498a35740468ffa7b68239d1924257f` source in a fresh checkout with the full source guard. Frozen, scripts-disabled app dependency installation using Bun 1.4.2 and `--backend=copyfile` succeeded (2,719 packages, 311 seconds). No vendor source or lockfile was changed. The new prepared-source manifest is `4ae18597113ac167843ddfbd43767bdfafecfb0ceecb90a044312d755fc960dd`.
+
+The existing upstream cold-start repair eagerly initializes the per-host Kokoro worker and imports the speech sanitizer. First requests share initialization; failed startup is retryable, and closing one host cannot resurrect its worker or stop a different host. Four targeted asset/startup/worker-lifecycle regressions pass on Node 24.15.0. A fresh isolated profile started on port 47846 with automatic Whisper warm-up (1,502 ms), and the Kokoro child worker existed before any speech endpoint was called.
+
+The first browser attempt received a connection 503 while the new agent was still initializing; it did not reach speech. After the runtime reported ready, the real synthetic-recording/transcription/first-playback/completion/Stop/disconnect journey passed in **17.6 seconds**, retaining all existing stage deadlines. No preliminary synthesis or Kokoro readiness request warmed the provider. The rendered transcript was inspected. Evidence: `test-results/current-runtime/voice` retains the early-connect failure; `voice-ready` retains the passing journey and screenshot. Native dependencies and models are the installed development assets already recorded in the speech setup guide; this is host execution evidence, not packaged Android acceptance.
+
+The local setup guide now distinguishes current upstream integration from historical consumer patches and reflects implemented browser capabilities. The full main Browser MVP run `37176795954` remains in progress at this checkpoint; no terminal hosted pass is claimed. No Android build was run.
+
+The live browser stack was then restarted from the current integration checkout at 04:38:26 UTC using the existing private profile. A complete stopped-profile backup preserves generated dependency links; an initial incomplete copy that followed those links was discarded. The first readiness probe reached workflow registration too early and received 404; the subsequent completed startup check at 04:38:57 UTC confirms owner authentication, one agent, standalone Whisper/Kokoro ready and local embedded workflows ready with Cloud disconnected. Before/after hashes match for owner ID, agent IDs and all 17 conversation IDs. This is conversation inventory preservation, not a bytewise message-history audit. The isolated qualification host was stopped. The user stack remains at port 5317, on the new exact pin and source manifest, with hosted Cerebras and redaction off.
