@@ -1805,46 +1805,46 @@
     {
       "file": "src/browser/content-question.ts",
       "upstreamCandidate": [],
-      "bytes": 5573,
-      "sha256": "d106a3f7db4ab4eb75362f83186ce601213d430899faa299720460b6f9c240f7",
-      "lines": 35,
+      "bytes": 6953,
+      "sha256": "eba39bdc3e6ee6f6191eb9c381b1f272de1810673d3a2af7fcda4605eb89efe2",
+      "lines": 38,
       "owner": "plugins/plugin-files",
       "disposition": "extract-or-split",
       "reason": "File capabilities, document processing and reviewed selections; keep product dialogs and calendar handoff composition local.",
       "imports": [
-        "../prototype/local-ocr"
+        "../prototype/local-ocr",
+        "../prototype/note-source-adapter"
       ],
       "exports": [
         "reviewContentQuestion"
       ],
       "seams": [
         {
-          "line": 5,
+          "line": 6,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 11,
+          "line": 12,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 15,
+          "line": 14,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 17,
+          "line": 18,
           "tags": [
-            "identity-or-compatibility",
-            "host-coupling"
+            "presentation"
           ]
         },
         {
-          "line": 22,
+          "line": 20,
           "tags": [
             "identity-or-compatibility",
             "host-coupling"
@@ -1853,17 +1853,24 @@
         {
           "line": 25,
           "tags": [
-            "presentation"
+            "identity-or-compatibility",
+            "host-coupling"
           ]
         },
         {
-          "line": 26,
+          "line": 28,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 33,
+          "line": 29,
+          "tags": [
+            "presentation"
+          ]
+        },
+        {
+          "line": 36,
           "tags": [
             "host-coupling"
           ]
@@ -6368,9 +6375,9 @@
     {
       "file": "src/prototype/agent-adapter.ts",
       "upstreamCandidate": [],
-      "bytes": 48382,
-      "sha256": "07d29660d7374ace970390e189c5e795db3cdad6aeeb927c070b1c5415f0b27d",
-      "lines": 564,
+      "bytes": 50737,
+      "sha256": "7ed845619d8640ce67aabac2542f00dd95380879383ace88d3d5196703f44f25",
+      "lines": 585,
       "owner": "shared platform client; Alpha composition",
       "disposition": "split",
       "reason": "Cross-domain device/platform glue; separate host contracts and provider behavior from product registry, lifecycle, DOM and defaults.",
@@ -6398,6 +6405,8 @@
         "../runtime/reminder-create-contract",
         "../runtime/workflow-device-contract",
         "./mvp-features",
+        "./note-source-adapter",
+        "./summary-note-review",
         "@capacitor/core"
       ],
       "exports": [
@@ -6405,15 +6414,9 @@
       ],
       "seams": [
         {
-          "line": 20,
+          "line": 22,
           "tags": [
             "identity-or-compatibility"
-          ]
-        },
-        {
-          "line": 24,
-          "tags": [
-            "host-coupling"
           ]
         },
         {
@@ -6423,43 +6426,37 @@
           ]
         },
         {
-          "line": 32,
+          "line": 28,
           "tags": [
             "host-coupling"
           ]
         },
         {
-          "line": 76,
+          "line": 34,
+          "tags": [
+            "host-coupling"
+          ]
+        },
+        {
+          "line": 78,
           "tags": [
             "identity-or-compatibility"
           ]
         },
         {
-          "line": 81,
+          "line": 83,
           "tags": [
             "identity-or-compatibility"
           ]
         },
         {
-          "line": 91,
+          "line": 93,
           "tags": [
             "host-coupling"
           ]
         },
         {
-          "line": 94,
-          "tags": [
-            "host-coupling"
-          ]
-        },
-        {
-          "line": 99,
-          "tags": [
-            "host-coupling"
-          ]
-        },
-        {
-          "line": 100,
+          "line": 96,
           "tags": [
             "host-coupling"
           ]
@@ -6471,56 +6468,62 @@
           ]
         },
         {
-          "line": 108,
+          "line": 102,
           "tags": [
             "host-coupling"
           ]
         },
         {
-          "line": 123,
+          "line": 103,
+          "tags": [
+            "host-coupling"
+          ]
+        },
+        {
+          "line": 111,
+          "tags": [
+            "host-coupling"
+          ]
+        },
+        {
+          "line": 126,
           "tags": [
             "storage"
           ]
         },
         {
-          "line": 124,
+          "line": 127,
           "tags": [
             "storage"
           ]
         },
         {
-          "line": 146,
+          "line": 149,
           "tags": [
             "identity-or-compatibility"
           ]
         },
         {
-          "line": 158,
+          "line": 161,
           "tags": [
             "host-coupling"
           ]
         },
         {
-          "line": 161,
+          "line": 164,
           "tags": [
             "identity-or-compatibility",
             "host-coupling"
           ]
         },
         {
-          "line": 165,
+          "line": 168,
           "tags": [
             "identity-or-compatibility"
           ]
         },
         {
-          "line": 174,
-          "tags": [
-            "host-coupling"
-          ]
-        },
-        {
-          "line": 178,
+          "line": 177,
           "tags": [
             "host-coupling"
           ]
@@ -6532,68 +6535,68 @@
           ]
         },
         {
-          "line": 187,
+          "line": 184,
+          "tags": [
+            "host-coupling"
+          ]
+        },
+        {
+          "line": 190,
           "tags": [
             "identity-or-compatibility",
             "storage"
           ]
         },
         {
-          "line": 189,
+          "line": 192,
           "tags": [
             "host-coupling"
           ]
         },
         {
-          "line": 209,
+          "line": 212,
           "tags": [
             "identity-or-compatibility"
           ]
         },
         {
-          "line": 232,
+          "line": 235,
           "tags": [
             "host-coupling"
           ]
         },
         {
-          "line": 237,
+          "line": 240,
           "tags": [
             "host-coupling"
           ]
         },
         {
-          "line": 243,
+          "line": 246,
           "tags": [
             "identity-or-compatibility"
           ]
         },
         {
-          "line": 244,
+          "line": 247,
           "tags": [
             "host-coupling"
           ]
         },
         {
-          "line": 248,
+          "line": 251,
           "tags": [
             "host-coupling"
           ]
         },
         {
-          "line": 258,
+          "line": 261,
           "tags": [
             "host-coupling"
           ]
         },
         {
-          "line": 294,
-          "tags": [
-            "host-coupling"
-          ]
-        },
-        {
-          "line": 301,
+          "line": 297,
           "tags": [
             "host-coupling"
           ]
@@ -6605,19 +6608,19 @@
           ]
         },
         {
-          "line": 312,
+          "line": 307,
+          "tags": [
+            "host-coupling"
+          ]
+        },
+        {
+          "line": 315,
           "tags": [
             "identity-or-compatibility"
           ]
         },
         {
-          "line": 313,
-          "tags": [
-            "identity-or-compatibility"
-          ]
-        },
-        {
-          "line": 374,
+          "line": 316,
           "tags": [
             "identity-or-compatibility"
           ]
@@ -6625,54 +6628,66 @@
         {
           "line": 378,
           "tags": [
+            "identity-or-compatibility"
+          ]
+        },
+        {
+          "line": 382,
+          "tags": [
             "identity-or-compatibility",
             "host-coupling"
           ]
         },
         {
-          "line": 417,
+          "line": 421,
           "tags": [
             "host-coupling"
           ]
         },
         {
-          "line": 428,
+          "line": 432,
           "tags": [
             "host-coupling"
           ]
         },
         {
-          "line": 431,
+          "line": 435,
           "tags": [
             "host-coupling"
           ]
         },
         {
-          "line": 459,
+          "line": 463,
           "tags": [
             "host-coupling"
           ]
         },
         {
-          "line": 460,
+          "line": 464,
           "tags": [
             "host-coupling"
           ]
         },
         {
-          "line": 480,
+          "line": 485,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 500,
+          "line": 506,
           "tags": [
             "host-coupling"
           ]
         },
         {
-          "line": 520,
+          "line": 507,
+          "tags": [
+            "host-coupling"
+          ]
+        },
+        {
+          "line": 515,
           "tags": [
             "host-coupling"
           ]
@@ -6684,13 +6699,25 @@
           ]
         },
         {
-          "line": 530,
+          "line": 541,
           "tags": [
             "host-coupling"
           ]
         },
         {
-          "line": 558,
+          "line": 548,
+          "tags": [
+            "host-coupling"
+          ]
+        },
+        {
+          "line": 551,
+          "tags": [
+            "host-coupling"
+          ]
+        },
+        {
+          "line": 579,
           "tags": [
             "identity-or-compatibility"
           ]
@@ -9119,8 +9146,8 @@
     {
       "file": "src/prototype/note-source-adapter.ts",
       "upstreamCandidate": [],
-      "bytes": 8696,
-      "sha256": "699da3dbd0155cd92d9c3e3cb235efdbd40d8088b0e735e79bd2c1291e714013",
+      "bytes": 8710,
+      "sha256": "456608a4fc5c3fe70d47f67880d943f1a714ae0fbbdba8917fcc7c26956a1318",
       "lines": 93,
       "owner": "plugins/plugin-notes",
       "disposition": "extract-or-split",
@@ -9133,7 +9160,9 @@
         "@capacitor/core"
       ],
       "exports": [
-        "installNoteSourceAdapter"
+        "Source",
+        "installNoteSourceAdapter",
+        "sourceOf"
       ],
       "seams": [
         {
@@ -10222,16 +10251,19 @@
     {
       "file": "src/prototype/selection-adapter.ts",
       "upstreamCandidate": [],
-      "bytes": 11837,
-      "sha256": "e0147215facb7b80552922f9b14ece069bdc9741a1a667f4a5ea56b94b1185d5",
-      "lines": 160,
+      "bytes": 12795,
+      "sha256": "64cc55511d67723b584ad3908c7c496cba3982851b83111070bad731611d25c1",
+      "lines": 164,
       "owner": "shared platform client; Alpha composition",
       "disposition": "split",
       "reason": "Cross-domain device/platform glue; separate host contracts and provider behavior from product registry, lifecycle, DOM and defaults.",
       "imports": [
         "../browser/content-question",
         "../daily",
+        "../platform-plugins",
+        "../runtime/inbox-attachment",
         "./files-tree-adapter",
+        "./note-source-adapter",
         "@capacitor/core"
       ],
       "exports": [
@@ -10239,25 +10271,37 @@
       ],
       "seams": [
         {
-          "line": 28,
+          "line": 1,
+          "tags": [
+            "host-coupling"
+          ]
+        },
+        {
+          "line": 4,
+          "tags": [
+            "host-coupling"
+          ]
+        },
+        {
+          "line": 32,
           "tags": [
             "identity-or-compatibility"
           ]
         },
         {
-          "line": 73,
+          "line": 77,
           "tags": [
             "identity-or-compatibility"
           ]
         },
         {
-          "line": 116,
+          "line": 120,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 140,
+          "line": 144,
           "tags": [
             "identity-or-compatibility"
           ]
@@ -10434,6 +10478,51 @@
           "line": 256,
           "tags": [
             "identity-or-compatibility"
+          ]
+        }
+      ],
+      "reachableFromMain": true
+    },
+    {
+      "file": "src/prototype/summary-note-review.ts",
+      "upstreamCandidate": [],
+      "bytes": 3764,
+      "sha256": "96bfef9b97bbe36bb0574b2b5427560ecaefe7073fb883401ce58b130b4b2bc6",
+      "lines": 21,
+      "owner": "shared platform client; Alpha composition",
+      "disposition": "split",
+      "reason": "Cross-domain device/platform glue; separate host contracts and provider behavior from product registry, lifecycle, DOM and defaults.",
+      "imports": [
+        "./note-source-adapter"
+      ],
+      "exports": [
+        "reviewSummaryNote"
+      ],
+      "seams": [
+        {
+          "line": 6,
+          "tags": [
+            "host-coupling"
+          ]
+        },
+        {
+          "line": 10,
+          "tags": [
+            "presentation"
+          ]
+        },
+        {
+          "line": 14,
+          "tags": [
+            "identity-or-compatibility",
+            "host-coupling"
+          ]
+        },
+        {
+          "line": 16,
+          "tags": [
+            "identity-or-compatibility",
+            "host-coupling"
           ]
         }
       ],

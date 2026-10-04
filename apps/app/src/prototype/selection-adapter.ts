@@ -1,3 +1,7 @@
+import {registerPlugin} from '../platform-plugins';
+import {reviewMailAttachment,type MailAttachment} from '../runtime/inbox-attachment';
+import type {Source} from './note-source-adapter';
+const sourceFiles=registerPlugin<{readSelected(input:{selectionId:string}):Promise<MailAttachment & {sha256:string;size:number}>}>('AlphaMailAttachments');
 import {reviewContentQuestion} from '../browser/content-question';
 import { installFilesTreeAdapter } from './files-tree-adapter';
 import { Capacitor } from '@capacitor/core';
@@ -99,7 +103,7 @@ export function installSelectedDocumentAdapter(_Component: unknown, views: Recor
       const close = () => { clear(); api.set({ open: null }); };
       const ask=()=>{
         closeQuestion?.();
-        closeQuestion=reviewContentQuestion({name:selected.pdf?name+' · page '+(selected.pdf.page+1):name,text:selected.text??'',current:()=>current===selected&&api.get(module).open===marker&&!document.hidden,compose:(draft)=>api.composeContentQuestion(draft),...(image?{image:async(signal:AbortSignal)=>(await fetch(image,{signal})).blob()}: {})});
+        closeQuestion=reviewContentQuestion({name:selected.pdf?name+' · page '+(selected.pdf.page+1):name,text:selected.text??'',current:()=>current===selected&&api.get(module).open===marker&&!document.hidden,compose:(draft,source)=>api.composeContentQuestion(draft,source),...(selected.result.selectionId&&['text/plain','application/pdf','image/png','image/jpeg','image/webp'].includes(mime)?{source:async():Promise<Source>=>{const file=await sourceFiles.readSelected({selectionId:selected.result.selectionId!}),checked=await reviewMailAttachment(file);if(current!==selected||checked.sha256!==file.sha256||checked.size!==file.size||file.name!==selected.result.name||file.mimeType!==mime||mime==='text/plain'&&checked.text!==selected.text)throw Error('Source changed');return {version:1,name:file.name,mimeType:file.mimeType,sha256:checked.sha256,size:checked.size};}}:{}),...(image?{image:async(signal:AbortSignal)=>(await fetch(image,{signal})).blob()}: {})});
       };
       if (module === 'files') {
         const rows = selected.text === undefined
