@@ -63,3 +63,12 @@ for(const kind of ['response','series-edit','series-delete','meeting','open'] as
  expect(await page.evaluate(()=>(window as any).presentationOutcome)).toEqual({status:'cancelled'});
  await expect(page.getByRole('dialog')).toHaveCount(0);
 });
+test('empty Calendar queries do not create data before an agent source is requested',async({page})=>{
+ await page.route('**/__empty-calendar',route=>route.fulfill({contentType:'text/html',body:'<!doctype html><title>Empty Calendar</title>'}));await page.goto('/__empty-calendar');
+ const result=await page.evaluate(async()=>{
+  const {BrowserCalendar}=await import('/src/browser/calendar.ts'),{calendarDocument}=await import('/src/browser/calendar-store.ts');const calendar=new BrowserCalendar();
+  await Promise.all([calendar.list({begin:Date.now(),end:Date.now()+86400000}),calendar.listAlerts(),calendar.pendingCreations(),calendar.inspect({id:'missing',calendarId:'local'})]);
+  const empty=await calendarDocument.capture(),first=await calendar.prepareAgentSource(),saved=await calendarDocument.capture(),second=await calendar.prepareAgentSource(),after=await calendarDocument.capture();return {empty,first,second,saved,after};
+ });
+ expect(result.empty.snapshot).toBeUndefined();expect(result.empty.raw).toBeNull();expect(result.first.sourceRevision).toMatch(/^[a-f0-9]{64}$/);expect(result.second).toEqual(result.first);expect(result.after).toEqual(result.saved);
+});
