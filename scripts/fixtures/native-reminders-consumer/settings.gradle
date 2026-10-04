@@ -1,0 +1,5 @@
+pluginManagement { repositories { google(); mavenCentral(); gradlePluginPortal() } }
+def productRoot = new File(settingsDir, '../../..').canonicalFile
+include ':reminders', ':capacitor-android'
+project(':reminders').projectDir = new File(productRoot, 'artifacts/native-reminders')
+project(':capacitor-android').projectDir = new File(productRoot, 'node_modules/@capacitor/android/capacitor')

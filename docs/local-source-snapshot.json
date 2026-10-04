@@ -1,0 +1,57 @@
+{
+  "baseCommit": "a26dd7e55f196a3f1116475bd4fc34778a81bc34",
+  "capturedAt": "2026-10-04T03:44:22.091829+00:00",
+  "status": "Unqualified source backup, not production integration",
+  "files": {
+    "scripts/fixtures/native-reminders-consumer/README.md": {
+      "sha256": "24f4299c979a4d726182fbf47d4b20451a47deed42bab68b9aa7d39c167fb6f2",
+      "bytes": 1451,
+      "mode": "100644"
+    },
+    "scripts/fixtures/native-reminders-consumer/build.gradle": {
+      "sha256": "6c038620f2d406321bf66ee8e110e602ccd12c1fafced92f5ee96b9a7f20e88f",
+      "bytes": 937,
+      "mode": "100644"
+    },
+    "scripts/fixtures/native-reminders-consumer/gradle.properties": {
+      "sha256": "df0507308489fac6e713a35dd44dab0dfd5031290aee2100bd4debf99ec3640c",
+      "bytes": 128,
+      "mode": "100644"
+    },
+    "scripts/fixtures/native-reminders-consumer/settings.gradle": {
+      "sha256": "fada6ae342fd863ffea6c86913b4fcba4be891aa50dfbbf0721df9c8ed91ae12",
+      "bytes": 391,
+      "mode": "100644"
+    },
+    "scripts/fixtures/native-reminders-consumer/src/androidTest/java/example/reminders/fixture/ReminderEngineFlowTest.java": {
+      "sha256": "2dd9a3048a1b41b86e96d70d74921a2e14770047863e95697447f5ea2d9be30a",
+      "bytes": 9059,
+      "mode": "100644"
+    },
+    "scripts/fixtures/native-reminders-consumer/src/main/AndroidManifest.xml": {
+      "sha256": "4cd4bc1b7d8e09f68025cd1a53fd2c2cdb4f29899bd91d06ba619155a8b7467d",
+      "bytes": 322,
+      "mode": "100644"
+    },
+    "scripts/fixtures/native-reminders-consumer/src/main/java/example/reminders/fixture/FixtureActivity.java": {
+      "sha256": "c2f0d3b088661304752c64c981b49d271e02cd512b825c3a5999931f1b7c6ac1",
+      "bytes": 203,
+      "mode": "100644"
+    },
+    "scripts/fixtures/native-reminders-consumer/src/main/java/example/reminders/fixture/FixtureHost.java": {
+      "sha256": "7b6f6f44b9bdd707a4273dfe7ab8f8a4dd0f14cd717194ce7d7adf7dbfb95998",
+      "bytes": 1429,
+      "mode": "100644"
+    },
+    "scripts/fixtures/native-reminders-consumer/src/main/java/example/reminders/fixture/FixtureReceiver.java": {
+      "sha256": "e501c30bdeac5c8694eed170d2798aec9f50ec7e46b35283fb8c316f93b1d415",
+      "bytes": 545,
+      "mode": "100644"
+    },
+    "scripts/test-native-reminders-consumer.mjs": {
+      "sha256": "b7be9afa7c46b326c5989910808c77ba80c36820c9475e130b5b99c3db283f26",
+      "bytes": 5412,
+      "mode": "100644"
+    }
+  }
+}
