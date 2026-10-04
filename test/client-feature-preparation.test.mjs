@@ -15,6 +15,11 @@ function fixture(run) {
    const file=path.join(vendor,prefix.endsWith('.mjs')?prefix:prefix+'/fixture.ts');
    fs.mkdirSync(path.dirname(file),{recursive:true});fs.writeFileSync(file,'export const value = 1;\n');
   }
+  // The development launcher imports the shared verifier through its product adapter.
+  for(const name of ['immutable-workspace-source.mjs','committed-source.mjs']) {
+   const relative=`packages/app/scripts/lib/${name}`,target=path.join(vendor,relative);
+   fs.mkdirSync(path.dirname(target),{recursive:true});fs.copyFileSync(path.join('vendor/eliza',relative),target);
+  }
   git(['add','.']);git(['-c','user.name=Source fixture','-c','user.email=fixture@example.invalid','commit','-qm','Fixture']);
   const commit=git(['rev-parse','HEAD']);fs.writeFileSync(path.join(root,'upstream.lock.json'),JSON.stringify({commit}));
   return run({root,vendor,commit,git});

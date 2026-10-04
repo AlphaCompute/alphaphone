@@ -2,9 +2,9 @@ import fs from "node:fs";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
 import { androidEnv } from "./toolchain.mjs";
-import { requireHostedFixtureEnvironment, assertFixtureIdentity, prepareFixtureDisplay } from "./ci-emulator-display.mjs";
+import { requireHostedFixtureEnvironment, assertFixtureIdentity, prepareFixtureDisplay } from "../vendor/eliza/packages/app/scripts/mobile/android/hosted-fixture/ci-emulator-display.mjs";
 
-import { captureFixtureDisplayEvidence } from "./ci-emulator-diagnostics.mjs";
+import { captureFixtureDisplayEvidence } from "../vendor/eliza/packages/app/scripts/mobile/android/hosted-fixture/ci-emulator-diagnostics.mjs";
 
 const serial = process.env.ANDROID_SERIAL;
 requireHostedFixtureEnvironment(process.env, serial);

@@ -1,5 +1,5 @@
 import { smokeCaseCounts } from "./smoke-case-counts.mjs";
-import { requireFixtureDisplay } from "./ci-emulator-display.mjs";
+import { requireFixtureDisplay } from "../vendor/eliza/packages/app/scripts/mobile/android/hosted-fixture/ci-emulator-display.mjs";
 import { candidate as qualifiedProvider } from "./prepare-ci-webview.mjs";
 import fs from "node:fs";
 import path from "node:path";
