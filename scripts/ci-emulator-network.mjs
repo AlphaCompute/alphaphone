@@ -52,7 +52,26 @@ export async function prepareFixtureNetwork(run, { env = process.env, serial, sl
     // measuring real requests; never retry or replace failed product operations.
     admit();
     record({ phase: 'diagnostics-before', ...fixtureNetworkDiagnostics(run) });
+    const waitForRadio = async enabled => {
+      for (let attempt = 0; attempt < 40; attempt++) {
+        admit();
+        const status = run('shell', 'cmd', 'wifi', 'status');
+        const state = /^Wifi is enabled\s*$/m.test(status) ? true : /^Wifi is disabled\s*$/m.test(status) ? false : null;
+        record({ phase: 'radio', requestedEnabled: enabled, attempt, enabled: state });
+        if (state === enabled) return;
+        await sleep(250);
+      }
+      throw new Error('Disposable emulator Wi-Fi radio transition did not complete');
+    };
+    // After a framework restart, the supplicant can remain connected while
+    // ConnectivityService has no network. Recreate that fixture attachment
+    // once instead of treating a redundant connect command as recovery.
+    admit();
+    run('shell', 'cmd', 'wifi', 'set-wifi-enabled', 'disabled');
+    await waitForRadio(false);
+    admit();
     run('shell', 'cmd', 'wifi', 'set-wifi-enabled', 'enabled');
+    await waitForRadio(true);
     admit();
     run('shell', 'cmd', 'wifi', 'connect-network', 'AndroidWifi', 'open');
   }

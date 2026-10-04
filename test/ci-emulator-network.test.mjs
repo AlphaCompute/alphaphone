@@ -5,8 +5,8 @@ import { parseFixtureNetwork, prepareFixtureNetwork, fixtureNetworkDiagnostics }
 const connected = 'Active default network: 101\n  NetworkAgentInfo{network{101} handle{123} nc{[ Transports: WIFI Capabilities: INTERNET&NOT_RESTRICTED&VALIDATED LinkUpBandwidth>=1000]}\n';
 const disconnected = 'Active default network: none\n';
 const options = { env: { GITHUB_ACTIONS: 'true', RUNNER_ENVIRONMENT: 'github-hosted' }, serial: 'emulator-5554', sleep: async () => {} };
-function fixture({ neverReady = false, packages = '', user = '0', initiallyReady = false } = {}) {
-  let requested = false;
+function fixture({ neverReady = false, packages = '', user = '0', initiallyReady = false, stuckRadio = false } = {}) {
+  let requested = false, wifiEnabled = true, radioWasDisabled = false;
   const calls = [];
   const run = (...args) => {
     const key = args.join(' '); calls.push(key);
@@ -15,14 +15,15 @@ function fixture({ neverReady = false, packages = '', user = '0', initiallyReady
       'shell getprop ro.build.type': 'userdebug', 'shell am get-current-user': user,
       'shell pm list users': 'Users:\n UserInfo{0:Owner:4c13} running',
       'shell pm list packages -3': packages,
-      'shell cmd wifi status': 'Wifi is enabled\nWifi is connected to "AndroidWifi"\nSupplicant state: COMPLETED,',
+      'shell cmd wifi status': wifiEnabled ? 'Wifi is enabled\nWifi is connected to "AndroidWifi"\nSupplicant state: COMPLETED,' : 'Wifi is disabled',
       'shell settings get global airplane_mode_on': '0',
       'shell settings get global mobile_data': '1',
     };
     if (key in responses) return responses[key];
     if (key === 'shell dumpsys connectivity') return initiallyReady || requested && !neverReady ? connected : disconnected;
-    if (key === 'shell cmd wifi set-wifi-enabled enabled') return '';
-    if (key === 'shell cmd wifi connect-network AndroidWifi open') { requested = true; return 'Connection initiated'; }
+    if (key === 'shell cmd wifi set-wifi-enabled disabled') { if (!stuckRadio) { wifiEnabled = false; radioWasDisabled = true; } return ''; }
+    if (key === 'shell cmd wifi set-wifi-enabled enabled') { wifiEnabled = true; return ''; }
+    if (key === 'shell cmd wifi connect-network AndroidWifi open') { requested = radioWasDisabled && wifiEnabled; return 'Connection initiated'; }
     throw Error('Unexpected command: ' + key);
   };
   return { run, calls };
@@ -40,7 +41,8 @@ test('only the active network capabilities can admit Internet access', () => {
 test('preparation connects once and requires two actual ready observations', async () => {
   const f = fixture({ packages: 'package:com.android.webview' }), records = [];
   await prepareFixtureNetwork(f.run, { ...options, record: state => records.push(state) });
-  assert.deepEqual(writes(f.calls), ['shell cmd wifi set-wifi-enabled enabled', 'shell cmd wifi connect-network AndroidWifi open']);
+  assert.deepEqual(writes(f.calls), ['shell cmd wifi set-wifi-enabled disabled', 'shell cmd wifi set-wifi-enabled enabled', 'shell cmd wifi connect-network AndroidWifi open']);
+  assert.deepEqual(records.filter(row => row.phase === 'radio').map(row => row.enabled), [false, true]);
   assert.equal(records.filter(row => row.phase === 'admission' && row.validated).length, 2);
   assert.equal(JSON.stringify(records).includes('101'), false);
 });
@@ -51,9 +53,15 @@ test('already connected fixtures are only observed', async () => {
 test('a successful connect command cannot substitute for a working network', async () => {
   const f = fixture({ neverReady: true }), records = []; let waits = 0;
   await assert.rejects(prepareFixtureNetwork(f.run, { ...options, record: row => records.push(row), sleep: async () => { waits++; } }), /no validated Internet/);
-  assert.equal(waits, 60); assert.equal(writes(f.calls).length, 2);
+  assert.equal(waits, 60); assert.equal(writes(f.calls).length, 3);
   assert.equal(records.at(-1).phase, 'diagnostics-failed');
   assert.equal(records.at(-1).fixtureAccessPointConnected, true);
+});
+test('a successful disable command cannot substitute for observing the radio stop', async () => {
+  const f = fixture({ stuckRadio: true }); let waits = 0;
+  await assert.rejects(prepareFixtureNetwork(f.run, { ...options, sleep: async () => { waits++; } }), /radio transition/);
+  assert.equal(waits, 40);
+  assert.deepEqual(writes(f.calls), ['shell cmd wifi set-wifi-enabled disabled']);
 });
 test('network diagnostics retain only known states and never raw identifiers or errors', () => {
   const f = fixture();
