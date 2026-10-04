@@ -8,6 +8,7 @@ import { pathToFileURL } from 'node:url';
 import { readBootDeviceIdentity } from './ci-webview-boot-device.mjs';
 import { androidEnv } from './toolchain.mjs';
 import { requireHostedFixtureEnvironment, assertFixtureIdentity, requireFixtureDisplay } from './ci-emulator-display.mjs';
+import { prepareFixtureNetwork } from './ci-emulator-network.mjs';
 
 export const candidate = Object.freeze({
   url: 'https://commondatastorage.googleapis.com/chromium-browser-snapshots/AndroidDesktop_x64/1709176/chrome-android-desktop.zip?generation=1790879561205229',
@@ -575,6 +576,10 @@ export async function main({ environment = process.env, execute = execFileSync, 
       } catch (diagnosticError) { state.providerRestart.diagnosticError = String(diagnosticError.message).slice(0, 512); save(); }
     }
     require(!state.providerRestart.anrPresent, 'Application ANR remains after provider framework restart');
+    state.networkObservations = [];
+    await prepareFixtureNetwork(run, { env: environment, serial, sleep, record: observation => {
+      state.networkObservations.push(observation); save();
+    } });
     state.status = 'PROVISIONED_RUNTIME_QUALIFICATION_PENDING'; save();
     // APKs are reproducible via pinned URL/hash; keep compact provenance in CI artifacts.
     fs.unlinkSync(archive); fs.unlinkSync(apk);
