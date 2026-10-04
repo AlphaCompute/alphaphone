@@ -1,4 +1,5 @@
-/** One atomic persisted document per domain, serialized across browser tabs. */
+/** Legacy localStorage helper. Web Locks do not guarantee cross-process snapshot coherence.
+ * Migrate complete domains to BrowserDomainDocument; do not add new callers here. */
 export async function editStore<T,R>(key:string,initial:()=>T,edit:(data:T)=>R|Promise<R>,signal?:AbortSignal):Promise<R> {
   // A process-local queue cannot protect this origin from another tab. Never
   // start an edit (which may prepare a receipt) without the cross-tab lock.
