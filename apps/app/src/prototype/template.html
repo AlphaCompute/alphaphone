@@ -634,7 +634,7 @@
         </sc-if>
         <button aria-label="Send email" onClick="{{inbox.c.send}}" style="width: 44px; height: 44px; border-radius: 22px; background: var(--acc); color: #fff; display: flex; align-items: center; justify-content: center"><svg class="i" viewBox="0 0 24 24"><path d="{{ic.send}}"></path></svg></button>
       </div>
-      <div style="display: flex; flex-direction: column; flex-grow: 1; min-height: 0; padding: 0 20px">
+      <div class="scr inbox-compose-fields" role="region" aria-label="Email draft fields" tabindex="0" style="display: flex; flex-direction: column; flex-grow: 1; min-height: 0; padding: 0 20px">
         <sc-if value="{{inbox.c.multi}}" hint-placeholder-val="{{true}}">
           <button aria-label="From account" onClick="{{inbox.c.cycleFrom}}" style="display: flex; align-items: center; gap: 8px; min-height: 48px; border-bottom: 1px solid var(--line); font-size: 14px; color: var(--mut)">
             <span style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{inbox.c.from}}</span>

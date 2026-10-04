@@ -9232,9 +9232,9 @@
     {
       "file": "src/prototype/phone.css",
       "upstreamCandidate": [],
-      "bytes": 2096,
-      "sha256": "e1d9f7f90f5434e39c1989fa3c5a6f9e57136012cd3ad719a0d57e0d30996ead",
-      "lines": 20,
+      "bytes": 2473,
+      "sha256": "c1945dd4d565a27a1e072db190dd54af9061d9f5968a33dbe424ddb5a9ea4d62",
+      "lines": 25,
       "owner": "alphaphone",
       "disposition": "retain-or-split",
       "reason": "Product composition, design reference, enabled views, fixtures, or visual presentation. Extract embedded domain behavior separately.",
@@ -9313,6 +9313,12 @@
           "line": 19,
           "tags": [
             "identity-or-compatibility"
+          ]
+        },
+        {
+          "line": 24,
+          "tags": [
+            "presentation"
           ]
         }
       ],
@@ -10356,8 +10362,8 @@
     {
       "file": "src/prototype/template.html",
       "upstreamCandidate": [],
-      "bytes": 418737,
-      "sha256": "29a6d6acf03d07f00eda87950cb46e5da746f7edaf5d24f2f839e888f68c8fb4",
+      "bytes": 418829,
+      "sha256": "cf256296ac1f7084ef609e2af75b1dbe7ccdd19eb0291c56662aaf497073f112",
       "lines": 3937,
       "owner": "alphaphone",
       "disposition": "retain-or-split",

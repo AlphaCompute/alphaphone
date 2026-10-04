@@ -17,3 +17,8 @@ html,body,#root{margin:0;width:100%;height:100%;overflow:hidden;overscroll-behav
 /* The reference canvas is 915px tall; keyboard and compact windows are not. */
 .alpha-phone [data-alpha-layer="conversation"]{max-height:100%}
 .alpha-phone [data-alpha-layer="conversation"]>.scr{min-height:0}
+
+/* Recipient suggestions and attachments must not push the draft out of reach. */
+.inbox-compose-fields { overflow-y:auto; overflow-x:hidden; overscroll-behavior:contain; scroll-padding-block:12px; padding-bottom:64px!important; }
+.inbox-compose-fields > * { flex-shrink:0; }
+.inbox-compose-fields:focus-visible { outline:2px solid var(--acct,#0000ff); outline-offset:-2px; }
