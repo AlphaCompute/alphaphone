@@ -97,7 +97,7 @@ for (const mode of ['read', 'update', 'delete', 'cancel', 'stale'] as const) {
     await expect(review).toBeVisible();await expect(review).toContainText(mode==='read'||mode==='delete'?'Selected private event':'Assistant planned event');
     await expect(review).toContainText('This occurrence only');
     const selected=await page.evaluate(()=>(window as any).calendarSent.metadata.clientDevice.context.selectedObject.id);expect(selected).toContain(':occ:');
-    if(mode==='stale')await page.evaluate(()=>{const key='alpha.browser.calendar.v1',data=JSON.parse(localStorage.getItem(key)!);data.events[0].revision='d'.repeat(64);data.events[0].title='Changed series';localStorage.setItem(key,JSON.stringify(data));});
+    if(mode==='stale')await page.evaluate(async()=>{const {calendarDocument}=await import('/src/browser/calendar-store.ts');await calendarDocument.edit(()=>({events:[] as any[]}),data=>{data.events[0].revision='d'.repeat(64);data.events[0].title='Changed series';});});
     await review.getByRole('button',{name:mode==='cancel'?'Cancel':'Confirm',exact:true}).click();
     await expect.poll(()=>page.evaluate(()=>(window as any).recoveryFixture.receipts)).toBe(1);
     const events=await page.evaluate(async ()=>JSON.parse((await (await import('/src/browser/calendar-store.ts')).calendarDocument.readRaw())!).events);
