@@ -1,8 +1,24 @@
 # Upstream patch migration
 
+## Current integration
+
+Alpha consumes the reviewed patchless pin in `upstream.lock.json` (currently
+`83e2a2d90a619600be56fcca237a7861644b2d4b`). The complete inventory contains
+78 retired patches in [the migration ledger](upstream-patch-migration.json).
+The 70-file map below is an earlier historical inventory. Runtime authentication
+uses the lock, preparer and source-guard hashes; the two earlier runtime manifests
+are retired. The source-review follow-up and historical test-credential scan
+exception are incorporated upstream. No historical result below qualifies a newer
+source tree. Current native/hosted acceptance remains tracked separately.
+
+## Historical migration report
+
+The remainder records the original October 3 candidate and its evidence. References
+to pending PRs, patch staging and candidate pins describe that checkpoint only.
+
 The product is migrating all maintained Eliza changes to reviewed `elizaOS/eliza` PRs. Unused patch artifacts may be archived after semantic coverage, merged-pin ancestry and removal of executable references are verified. Full behavioral retirement additionally requires both Alpha distributions and relevant runtime/device flows to qualify; artifact archival does not satisfy that gate.
 
-## October 3 merged-source adoption checkpoint
+## Historical October 3 merged-source adoption checkpoint
 
 All 70 preserved patch files have hashes and merged upstream dispositions in
 [the patch map](upstream-patch-map.json). Maintained implementations are included

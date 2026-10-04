@@ -49,7 +49,7 @@ public class CalendarExternalEditorInstrumentedTest {
  private String diagnostics(String fixture){
   AccessibilityNodeInfo root=ui.getRootInActiveWindow();if(root==null)return "AX root absent";
   List<String> fields=new ArrayList<>();fields.add("package="+root.getPackageName());
-  for(String label:new String[]{"Open with","Open with Etar","Etar","Just once","Always"})fields.add(label+"="+root.findAccessibilityNodeInfosByText(label).stream().anyMatch(n->n.isVisibleToUser()&&label.contentEquals(n.getText())));
+  for(String label:new String[]{"Open with","Open with Etar","Etar","Just once","Always","Alarms & reminders"})fields.add(label+"="+root.findAccessibilityNodeInfosByText(label).stream().anyMatch(n->n.isVisibleToUser()&&label.contentEquals(n.getText())));
   if(fixture!=null)fields.add("fixtureTitleVisible="+root.findAccessibilityNodeInfosByText(fixture).stream().anyMatch(n->n.isVisibleToUser()&&fixture.contentEquals(n.getText())));
   for(String id:new String[]{"title","info_action_edit","action_cancel","action_done"})fields.add(id+"="+root.findAccessibilityNodeInfosByViewId(ETAR+":id/"+id).stream().anyMatch(AccessibilityNodeInfo::isVisibleToUser));
   String permissionPackage=String.valueOf(root.getPackageName());
@@ -93,7 +93,19 @@ public class CalendarExternalEditorInstrumentedTest {
   }
   fail("Implicit Calendar resolver did not select Etar once; "+diagnostics(null));
  }
- private void tap(String id)throws Exception{AccessibilityNodeInfo n=awaitNode(id,null);while(n!=null&&!n.isClickable())n=n.getParent();assertNotNull(n);assertTrue("Etar click "+id,n.performAction(AccessibilityNodeInfo.ACTION_CLICK));}
+ private void tap(String id)throws Exception{
+  long deadline=SystemClock.elapsedRealtime()+20000;
+  while(SystemClock.elapsedRealtime()<deadline){
+   denyOptionalEtarContacts();
+   // Resolve afresh after editor transitions; a rejected stale-node action is
+   // not a successful tap. Stop immediately after the platform accepts it.
+   AccessibilityNodeInfo n=find(id,null);
+   while(n!=null&&!n.isClickable())n=n.getParent();
+   if(n!=null&&n.isVisibleToUser()&&n.isEnabled()&&n.performAction(AccessibilityNodeInfo.ACTION_CLICK))return;
+   SystemClock.sleep(100);
+  }
+  fail("Etar click did not become available: "+id+"; "+diagnostics(null));
+ }
  private boolean returnedViaLauncher;
  private void back(){key(KeyEvent.KEYCODE_BACK);}
  private void key(int code){
@@ -120,15 +132,21 @@ public class CalendarExternalEditorInstrumentedTest {
    long settle=Math.min(deadline,SystemClock.elapsedRealtime()+1200);
    String active=null;
    while(SystemClock.elapsedRealtime()<settle){
+    denyOptionalEtarContacts();
     AccessibilityNodeInfo root=ui.getRootInActiveWindow();active=root==null?null:String.valueOf(root.getPackageName());
     if(appId.equals(active))return;
     SystemClock.sleep(100);
    }
+   // A missing AX window during activity replacement is not an app identity.
+   // Retry within the existing overall deadline, without injecting any input.
+   if(active==null||"null".equals(active))continue;
    if("com.android.settings".equals(active)){
     AccessibilityNodeInfo settings=ui.getRootInActiveWindow();
     boolean alarmPage=visibleExactText(settings,"Alarms & reminders",0);
     boolean etarListed=visibleExactText(settings,"Etar",0);
-    assertTrue("Only dismiss Etar's optional exact-alarm settings handoff",alarmPage&&etarListed);
+    // Settings may publish its root before the destination page is populated.
+    // Wait within the existing deadline; never inject input into an unidentified page.
+    if(settings==null||!"com.android.settings".equals(String.valueOf(settings.getPackageName()))||!alarmPage||!etarListed)continue;
     // Pinned Etar opens this on every resume while denied. Back loops there.
     // Exercise the ordinary Home -> Alpha launcher-intent return, preserving
     // denied special access and recording this distinct return contract.
@@ -138,11 +156,11 @@ public class CalendarExternalEditorInstrumentedTest {
     assertNotNull("Alpha launcher entry remains available",launch);
     context.startActivity(launch);returnedViaLauncher=true;continue;
    }
-   assertEquals("Only navigate Back while Etar remains the actual foreground app",ETAR,active);
+   assertEquals("Only navigate Back while Etar remains the actual foreground app; "+diagnostics(null),ETAR,active);
    // Re-read immediately before injection, avoiding a cached Etar window.
    AccessibilityNodeInfo latest=ui.getRootInActiveWindow();
    if(latest!=null&&appId.contentEquals(latest.getPackageName()))return;
-   assertNotNull("Foreground window before Back",latest);
+   if(latest==null||latest.getPackageName()==null)continue;
    assertEquals(ETAR,String.valueOf(latest.getPackageName()));back();
   }
   fail("Back did not return from Etar to Alpha; "+diagnostics(null));

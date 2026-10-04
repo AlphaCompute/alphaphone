@@ -18,14 +18,14 @@ if (dirty)
   throw new Error(
     "Eliza checkout has uncommitted source changes; commit and pin a reviewed upstream change.",
   );
-const runtimeStamp = "android/app/src/main/assets/agent/alpha-source.json";
-if (fs.existsSync(runtimeStamp)) {
-  const stamp = JSON.parse(fs.readFileSync(runtimeStamp, "utf8"));
+const stampFile = "android/app/src/main/assets/agent/alpha-source.json";
+if (fs.existsSync(stampFile)) {
+  const stamp = JSON.parse(fs.readFileSync(stampFile, "utf8"));
   const hash = file => createHash("sha256").update(fs.readFileSync(file)).digest("hex");
   if (stamp.base !== pin.commit || !Array.isArray(stamp.patches) || stamp.patches.length ||
       stamp.lockSha256 !== hash("upstream.lock.json") ||
       stamp.preparerSha256 !== hash("scripts/prepare-local-agent.mjs") ||
       stamp.guardSha256 !== hash("scripts/local-agent-source.mjs"))
-    throw new Error("Staged agent does not match the patchless upstream pin; rebuild and stage its runtime before packaging.");
+    throw new Error("Staged runtime does not match the pinned source; prepare and stage it before packaging.");
 }
 console.log(`Eliza source verified: ${actual}`);

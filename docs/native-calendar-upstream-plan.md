@@ -1,5 +1,11 @@
 # Native Calendar upstream extraction
 
+Current integration uses the shared Calendar library from `upstream.lock.json`
+without local patches. Product compatibility adapters remain intentional. The
+checkpoints below retain historical extraction evidence and older commands; their
+passes do not qualify a newer pin. The package and independent-consumer helpers
+now authenticate the pinned upstream bytes directly.
+
 ## Current boundary
 
 MVP completion step13 remains incomplete. The product implements Calendar provider operations in `AlphaCalendarPlugin`, `CalendarEventGuard` and `CalendarCreationStore` (386 lines combined at source0b2c032). These three classes form a complete reusable boundary: provider queries, permission handling, native confirmation, atomic revision assertions, lifecycle cancellation and durable creation reconciliation. They do not require Alpha's credential store or reminder scheduler. Extracting only a guard utility would leave the reusable behavior product-owned.
@@ -63,7 +69,7 @@ These results close registered bridge permission, reviewed CRUD, conflict and pa
 
 `native-calendar-package.patch` adds a separate ESM-only `@elizaos/capacitor-calendar/android` entrypoint with `registerAndroidCalendar(name)` and typed native methods/results. The host must explicitly provide its registered subclass name. No Android browser simulator is registered. Existing Apple entrypoints and generated Rollup configuration remain unchanged. The package includes both Android sources and TypeScript sources so its `eliza-source` exports resolve from the tarball.
 
-`scripts/qualify-native-calendar-package.mjs` reconstructs the pinned package plus both explicit patches, verifies source identities, compiles declarations and existing Apple bundles, creates an npm tarball, and checks a separate unpacked consumer. The consumer imports Android, verifies absent-native rejection, exercises the Apple CommonJS unsupported fallback, and compiles valid/invalid Android calls with strict declaration checking. Supply `ALPHA_CALENDAR_ROLLUP_BIN` if the plugin's declared Rollup dependency is installed outside the root. Nothing is published to a registry.
+`scripts/qualify-native-calendar-package.mjs` reconstructs the authenticated pinned package, verifies source identities, compiles declarations and existing Apple bundles, creates an npm tarball, and checks a separate unpacked consumer. The consumer imports Android, verifies absent-native rejection, exercises the Apple CommonJS unsupported fallback, and compiles valid/invalid Android calls with strict declaration checking. Supply `ALPHA_CALENDAR_ROLLUP_BIN` if the plugin's declared Rollup dependency is installed outside the root. Nothing is published to a registry.
 
 The final tarball SHA-256 is `d5c6c2a426b949985f210726a226fe1a28a50d5822e922d3ef7b0150fb4a9c29` (47 files). Qualification: `artifacts/native-calendar-package-1791063292358/result.json`. The Android consumer also rebuilt against the unpacked tarball through `-PcalendarLibraryDir=…/node_modules/@elizaos/capacitor-calendar/android`, then passed the full bridge flow in owned user 43 with verified cleanup (`test-results/native-calendar-consumer-1791063306398`). Its APK hashes match the previously tested native source, establishing identical packaged output for this consumer.
 

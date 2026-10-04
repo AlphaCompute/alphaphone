@@ -1,7 +1,6 @@
 package ai.elizaresearch.alphaphone;
 
 import android.Manifest;
-import ai.eliza.plugins.calendar.CalendarCreationStore;
 import android.content.ContentUris;
 import android.content.ContentValues;
 import android.content.Context;
@@ -39,25 +38,25 @@ public final class CalendarCreationRecoveryInstrumentedTest {
   Uri created=context.getContentResolver().insert(calendars,calendar);assertNotNull(created);long calendarId=ContentUris.parseId(created);
   try {
    ContentValues values=new ContentValues();values.put("calendar_id",calendarId);values.put("title","Owned recovery event");values.put("description","");values.put("eventLocation","");values.put("dtstart",System.currentTimeMillis()+3600000);values.put("dtend",System.currentTimeMillis()+7200000);values.put("eventTimezone","UTC");
-   JSObject first=new CalendarCreationStore(AlphaCalendarPlugin.CONFIGURATION).create(context,id,values,false);assertEquals("saved",first.getString("status"));String eventId=first.getString("id");assertEquals(1,count(context,calendarId));
+   JSObject first=CalendarCreationStore.create(context,id,values,false);assertEquals("saved",first.getString("status"));String eventId=first.getString("id");assertEquals(1,count(context,calendarId));
    JSONObject all=new JSONObject(journal.getString("operations","{}"));all.getJSONObject(id).put("status","unknown").remove("eventId");assertTrue(journal.edit().putString("operations",all.toString()).commit());
-   JSONObject recovered=new CalendarCreationStore(AlphaCalendarPlugin.CONFIGURATION).pendingCreations(context).getJSONArray("creations").getJSONObject(0);assertEquals("saved",recovered.getString("status"));assertEquals(eventId,recovered.getString("id"));
-   assertEquals(eventId,new CalendarCreationStore(AlphaCalendarPlugin.CONFIGURATION).create(context,id,values,false).getString("id"));assertEquals(1,count(context,calendarId));
+   JSONObject recovered=CalendarCreationStore.pendingCreations(context).getJSONArray("creations").getJSONObject(0);assertEquals("saved",recovered.getString("status"));assertEquals(eventId,recovered.getString("id"));
+   assertEquals(eventId,CalendarCreationStore.create(context,id,values,false).getString("id"));assertEquals(1,count(context,calendarId));
    // Multiple exact marker rows cannot produce an authoritative receipt.
    all=new JSONObject(journal.getString("operations","{}"));all.getJSONObject(id).put("status","unknown").remove("eventId");assertTrue(journal.edit().putString("operations",all.toString()).commit());
    ContentValues duplicate=new ContentValues(values);duplicate.put(CalendarContract.Events.CUSTOM_APP_PACKAGE,context.getPackageName());duplicate.put(CalendarContract.Events.CUSTOM_APP_URI,"alphaphone://calendar-creation/"+id);
    Uri duplicateUri=context.getContentResolver().insert(CalendarContract.Events.CONTENT_URI,duplicate);assertNotNull(duplicateUri);
-   assertEquals("unknown",new CalendarCreationStore(AlphaCalendarPlugin.CONFIGURATION).pendingCreations(context).getJSONArray("creations").getJSONObject(0).getString("status"));
-   assertEquals("unknown",new CalendarCreationStore(AlphaCalendarPlugin.CONFIGURATION).create(context,id,values,false).getString("status"));assertEquals(2,count(context,calendarId));
+   assertEquals("unknown",CalendarCreationStore.pendingCreations(context).getJSONArray("creations").getJSONObject(0).getString("status"));
+   assertEquals("unknown",CalendarCreationStore.create(context,id,values,false).getString("status"));assertEquals(2,count(context,calendarId));
    assertEquals(1,context.getContentResolver().delete(duplicateUri,null,null));
    // Simulate a provider/sync edit stripping identity before recovery can observe it.
    all=new JSONObject(journal.getString("operations","{}"));all.getJSONObject(id).put("status","unknown").remove("eventId");assertTrue(journal.edit().putString("operations",all.toString()).commit());
    ContentValues stripped=new ContentValues();stripped.putNull(CalendarContract.Events.CUSTOM_APP_URI);assertEquals(1,context.getContentResolver().update(ContentUris.withAppendedId(CalendarContract.Events.CONTENT_URI,Long.parseLong(eventId)),stripped,null,null));
-   assertEquals("unknown",new CalendarCreationStore(AlphaCalendarPlugin.CONFIGURATION).pendingCreations(context).getJSONArray("creations").getJSONObject(0).getString("status"));
-   assertEquals("unknown",new CalendarCreationStore(AlphaCalendarPlugin.CONFIGURATION).create(context,id,values,false).getString("status"));assertEquals(1,count(context,calendarId));
-   assertEquals("pending-creation",new CalendarCreationStore(AlphaCalendarPlugin.CONFIGURATION).create(context,separate,values,false).getString("status"));assertEquals(1,count(context,calendarId));
-   assertEquals("saved",new CalendarCreationStore(AlphaCalendarPlugin.CONFIGURATION).create(context,separate,values,true).getString("status"));assertEquals(2,count(context,calendarId));
-   assertEquals(2,new CalendarCreationStore(AlphaCalendarPlugin.CONFIGURATION).pendingCreations(context).getJSONArray("creations").length());
+   assertEquals("unknown",CalendarCreationStore.pendingCreations(context).getJSONArray("creations").getJSONObject(0).getString("status"));
+   assertEquals("unknown",CalendarCreationStore.create(context,id,values,false).getString("status"));assertEquals(1,count(context,calendarId));
+   assertEquals("pending-creation",CalendarCreationStore.create(context,separate,values,false).getString("status"));assertEquals(1,count(context,calendarId));
+   assertEquals("saved",CalendarCreationStore.create(context,separate,values,true).getString("status"));assertEquals(2,count(context,calendarId));
+   assertEquals(2,CalendarCreationStore.pendingCreations(context).getJSONArray("creations").length());
   } finally {
    Uri exact=ContentUris.withAppendedId(calendars,calendarId);
    try(Cursor row=context.getContentResolver().query(exact,new String[]{"account_name","name"},null,null,null)){assertNotNull(row);assertTrue(row.moveToFirst());assertEquals(name,row.getString(0));assertEquals(name,row.getString(1));}

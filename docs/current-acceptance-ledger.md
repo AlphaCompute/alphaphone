@@ -1,6 +1,11 @@
 # Current Alpha Phone acceptance ledger
 
-## Current checkpoint — October 3, upstream consolidation and Calendar
+The current source pin is defined by `upstream.lock.json`. The initial consolidation
+checkpoint below records an older 70-patch candidate; the complete 78-patch
+disposition is in [the migration ledger](upstream-patch-migration.json).
+See [current product status](mvp-current-status.md) for maintained acceptance status.
+
+## Historical checkpoint — October 3, initial upstream consolidation and Calendar
 
 The maintained local Eliza patches are represented by merged upstream PRs and
 Alpha now consumes merged candidate `09698bd30668ff3748d7922279b06119d39a3bcf`

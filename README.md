@@ -104,6 +104,16 @@ adb install -r artifacts/standalone-debug.apk
 adb install -r artifacts/launcher-debug.apk
 ```
 
+For constrained disks, `ALPHA_ANDROID_LOW_DISK=1 npm run android:build` packages
+one APK at a time and removes only reproducible packaging intermediates between
+variants. Source, generated provenance and finished APKs are retained.
+
+When a resident runtime is staged, APK verification checks its source stamp,
+agent bundle, complete workflow-worker inventory and both native runtime ABIs
+against the staged inputs. A stale stamp requires fresh preparation and staging.
+A developer APK without runtime payload is reported as `NOT_PACKAGED`; this is
+not proof of resident runtime execution or device acceptance.
+
 The variants intentionally share `ai.elizaresearch.alphaphone` and replace one another.
 The other product uses a different package and can be installed alongside this one.
 Release APKs are intentionally unsigned; do not distribute debug-signed builds as production.

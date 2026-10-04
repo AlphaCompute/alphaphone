@@ -36,9 +36,7 @@ def verify(apk):
         pin = json.loads((ROOT / 'upstream.lock.json').read_text())['commit']
         if stamp.get('base') != pin or stamp.get('patches') != []:
             raise ValueError('Staged runtime does not match patchless pin')
-        for field, source in [('lockSha256', 'upstream.lock.json'),
-                              ('preparerSha256', 'scripts/prepare-local-agent.mjs'),
-                              ('guardSha256', 'scripts/local-agent-source.mjs')]:
+        for field, source in [('lockSha256', 'upstream.lock.json'), ('preparerSha256', 'scripts/prepare-local-agent.mjs'), ('guardSha256', 'scripts/local-agent-source.mjs')]:
             if stamp.get(field) != file_hash(ROOT / source):
                 raise ValueError('Staged source manifest mismatch')
         checks = {}
@@ -52,14 +50,26 @@ def verify(apk):
 
         for name in ['alpha-source.json', 'agent-bundle.js', 'workflow-worker/files.sha256', 'workflow-worker/manifest.json']:
             check('assets/agent/' + name, staged / name)
+        worker_manifest = json.loads((staged / 'workflow-worker/manifest.json').read_text())
+        worker_files = worker_manifest.get('files')
+        if worker_manifest.get('version') != 1 or not isinstance(worker_files, dict) or not worker_files:
+            raise ValueError('Invalid staged worker manifest')
+        if worker_manifest.get('sourceStampSha256') != file_hash(stamp_file):
+            raise ValueError('Worker belongs to a different prepared runtime')
+        expected_worker_files = dict(worker_files)
+        expected_worker_files['manifest.json'] = file_hash(staged / 'workflow-worker/manifest.json')
         inventory = set()
         for line in (staged / 'workflow-worker/files.sha256').read_text().splitlines():
             expected, name = line.split('\t', 1)
             relative = PurePosixPath(name)
             if len(expected) != 64 or any(c not in '0123456789abcdef' for c in expected) or relative.is_absolute() or '..' in relative.parts or name in inventory:
                 raise ValueError('Invalid worker inventory')
+            if expected_worker_files.get(name) != expected:
+                raise ValueError('Worker index differs from manifest')
             inventory.add(name)
             check('assets/agent/workflow-worker/' + name, staged / 'workflow-worker' / name, expected)
+        if inventory != set(expected_worker_files):
+            raise ValueError('Incomplete worker index')
         packaged_worker = {name.removeprefix('assets/agent/workflow-worker/') for name in names if name.startswith('assets/agent/workflow-worker/') and not name.endswith('/')}
         if packaged_worker != inventory | {'files.sha256', 'manifest.json'}:
             raise ValueError('Unexpected packaged worker inventory')
