@@ -11,7 +11,7 @@ import {recognizeLocalText} from './local-ocr';
 export function openScanReview(image:Blob,save:(text:string,id:string)=>Promise<boolean>,reviewEvent?:(draft:ScanEventDraft)=>boolean,source:'captured'|'selected'='captured'):()=>void {
   const controller=new AbortController();const previous=document.activeElement;
   const dialog=document.createElement('dialog');dialog.setAttribute('aria-label','Review scanned text');
-  dialog.className='scan-dialog';
+  dialog.className='scan-dialog scan-text-review';
   const heading=document.createElement('h2');heading.textContent='Scan text';
   const disclosure=document.createElement('p');disclosure.textContent='English text recognition runs on this device. Check the result before saving. '+(source==='captured'?'The captured photo remains in Photos.':'The selected file stays unchanged and is not copied to Photos.');
   const status=document.createElement('p');status.setAttribute('role','status');status.setAttribute('aria-label','Scan status');status.textContent='Starting local scan…';
@@ -22,7 +22,7 @@ export function openScanReview(image:Blob,save:(text:string,id:string)=>Promise<
   let closeDocument:(()=>void)|undefined;
   if(!Capacitor.isNativePlatform()){const document=button('Build multi-page PDF');document.onclick=()=>{closeDocument?.();closeDocument=openScanDocument(image);};tools.append(document);}
   const pdf=button(Capacitor.isNativePlatform()?'Save photo PDF':'Download photo PDF');
-  const copy=button('Copy text'),commit=button('Save to Notes'),close=button('Cancel scan');copy.disabled=true;commit.disabled=true;commit.className='primary';tools.append(pdf,copy);
+  const copy=button('Copy text'),commit=button('Save to Notes'),close=button('Cancel scan');copy.disabled=true;commit.disabled=true;commit.className='primary';
   const pdfStatus=document.createElement('p');pdfStatus.setAttribute('role','status');pdfStatus.setAttribute('aria-label','PDF export status');
   let pdfAttempted=false;
   const previewUrl=URL.createObjectURL(image),preview=document.createElement('img');preview.src=previewUrl;preview.alt=source==='captured'?'Captured page for PDF export':'Selected image for PDF export';preview.style.cssText='display:block;width:100%;max-height:160px;object-fit:contain;background:var(--s2,#eee);border-radius:8px';

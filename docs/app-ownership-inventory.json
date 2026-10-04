@@ -9663,9 +9663,9 @@
     {
       "file": "src/prototype/scan-dialog.css",
       "upstreamCandidate": [],
-      "bytes": 2911,
-      "sha256": "15420eb04fb43bba3c3fb66593acf2eaa7729d6bec54158e376d303ab3027791",
-      "lines": 48,
+      "bytes": 2990,
+      "sha256": "6c29e125713e533f80da95cb9fd0fb7d2c0a8da0e0976daa3f08c5248a01db2e",
+      "lines": 50,
       "owner": "alphaphone",
       "disposition": "retain-or-split",
       "reason": "Product composition, design reference, enabled views, fixtures, or visual presentation. Extract embedded domain behavior separately.",
@@ -10016,8 +10016,8 @@
     {
       "file": "src/prototype/scan-review.ts",
       "upstreamCandidate": [],
-      "bytes": 6889,
-      "sha256": "3830a6707d40aed8cadeaf50bc1177884c61b38ca02d3c62d5d408ce7b991771",
+      "bytes": 6883,
+      "sha256": "9d794fa7cef8df07ac5a493b462c5352fe57b0e122a324b008dbe7621f4ed519",
       "lines": 51,
       "owner": "plugins/plugin-files",
       "disposition": "extract-or-split",
