@@ -2664,17 +2664,17 @@
   </sc-if>
 
   <sc-if value="{{files.nativeTreeDialog}}" hint-placeholder-val="{{false}}">
-    <div role="dialog" aria-modal="true" aria-label="{{files.nativeTreeDialog.title}}" style="position: absolute; inset: 0; z-index: 20; background: var(--scrim); display: flex; align-items: flex-end; padding: 16px 16px 40px; box-sizing: border-box">
+    <div ref="{{files.nativeTreeDialog.modalRef}}" role="dialog" aria-modal="true" aria-label="{{files.nativeTreeDialog.title}}" style="position: absolute; inset: 0; z-index: 20; background: var(--scrim); display: flex; align-items: flex-end; padding: 16px 16px 120px; box-sizing: border-box">
       <div style="width: 100%; max-height: 75%; overflow-y: auto; border-radius: 28px; padding: 24px; box-sizing: border-box; background: var(--bg)">
         <h2 class="serif" style="font-size: 28px; margin: 0 0 14px">{{files.nativeTreeDialog.title}}</h2>
-        <p style="font-size: 15px; color: var(--mut); line-height: 1.5">{{files.nativeTreeDialog.message}}</p>
+        <p style="font-size: 15px; color: var(--mut); line-height: 1.5; overflow-wrap: anywhere">{{files.nativeTreeDialog.message}}</p>
         <sc-if value="{{files.nativeTreeDialog.hasName}}" hint-placeholder-val="{{false}}"><input disabled="{{files.nativeTreeDialog.busy}}" aria-label="Folder or file name" value="{{files.nativeTreeDialog.name}}" onChange="{{files.nativeTreeDialog.onName}}" maxLength="255" style="width: 100%; min-width: 0; height: 48px; border: 0; border-radius: 14px; background: var(--s2); color: var(--fg); padding: 0 14px; box-sizing: border-box"></sc-if>
         <sc-if value="{{files.nativeTreeDialog.moving}}" hint-placeholder-val="{{false}}">
           <button disabled="{{files.nativeTreeDialog.busy}}" aria-label="Move destination root" onClick="{{files.nativeTreeDialog.root}}" style="height: 44px; font-size: 14px">Selected folder root</button>
           <sc-if value="{{files.nativeTreeDialog.canUp}}" hint-placeholder-val="{{false}}"><button disabled="{{files.nativeTreeDialog.busy}}" aria-label="Move destination parent" onClick="{{files.nativeTreeDialog.up}}" style="height: 44px; padding: 0 14px; font-size: 14px">Parent folder</button></sc-if>
           <sc-for list="{{files.nativeTreeDialog.destinations}}" as="d" hint-placeholder-count="0"><button disabled="{{files.nativeTreeDialog.busy}}" aria-label="Move into {{d.name}}" onClick="{{d.go}}" style="display: block; width: 100%; text-align: left; min-height: 48px; border-top: 1px solid var(--line); font-size: 15px">{{d.name}}</button></sc-for>
         </sc-if>
-        <div style="display: flex; gap: 10px; margin-top: 20px"><button disabled="{{files.nativeTreeDialog.busy}}" aria-label="Cancel file operation" onClick="{{files.nativeTreeDialog.cancel}}" style="flex: 1; height: 48px; border-radius: 24px; background: var(--s2); font-weight: 600">Cancel</button><button disabled="{{files.nativeTreeDialog.confirmDisabled}}" aria-label="{{files.nativeTreeDialog.confirmLabel}}" onClick="{{files.nativeTreeDialog.confirm}}" style="flex: 1; height: 48px; border-radius: 24px; background: var(--acc); color: #fff; font-weight: 600">{{files.nativeTreeDialog.confirmLabel}}</button></div>
+        <div style="display: flex; flex-wrap: wrap; gap: 10px; margin-top: 20px"><button disabled="{{files.nativeTreeDialog.busy}}" aria-label="Cancel file operation" onClick="{{files.nativeTreeDialog.cancel}}" style="flex: 1 1 9em; min-width: 0; min-height: 48px; padding: 12px; text-align: center; line-height: 1.25; border-radius: 24px; background: var(--s2); font-weight: 600">Cancel</button><button disabled="{{files.nativeTreeDialog.confirmDisabled}}" aria-label="{{files.nativeTreeDialog.confirmLabel}}" onClick="{{files.nativeTreeDialog.confirm}}" style="flex: 1 1 9em; min-width: 0; min-height: 48px; padding: 12px; text-align: center; line-height: 1.25; border-radius: 24px; background: var(--acc); color: #fff; font-weight: 600">{{files.nativeTreeDialog.confirmLabel}}</button></div>
       </div>
     </div>
   </sc-if>
