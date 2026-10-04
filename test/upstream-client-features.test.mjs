@@ -7,7 +7,7 @@ import { prepareClientFeatures } from '../scripts/prepare-client-features.mjs';
 
 test('upstream device-client tests run without an Alpha application host', () => {
   const source = prepareClientFeatures();
-  const manifest = JSON.parse(fs.readFileSync('patches/eliza/client-features-source.json'));
+  const manifest = JSON.parse(fs.readFileSync(path.join(source, '.source.json')));
   const tests = Object.keys(manifest.files).filter(file => /\/test\/.*\.test\.mjs$/.test(file));
   assert.ok(tests.length > 0);
   execFileSync(process.execPath, ['--experimental-transform-types', '--test', ...tests.map(file => path.join(source,file))], { stdio: 'pipe', timeout: 20_000 });
