@@ -5,7 +5,8 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import crypto from 'node:crypto';
-import {spawn, execFileSync} from 'node:child_process';
+import {execFileSync} from 'node:child_process';
+import {preparePrivateRuntimeProfile,runtimeEnvironment,startPrivateRuntimeProcess,writePrivateRuntimeJson} from '../vendor/eliza/packages/agent/native-host/private-runtime-launch.mjs';
 import {AGENT_MODEL,agentModelEnvironment} from './agent-model.mjs';
 import {agentTtsEnvironment} from './agent-tts.mjs';
 import {agentAsrEnvironment,warmAgentAsr} from './agent-asr.mjs';
@@ -29,15 +30,16 @@ if (!providerKey) throw new Error('Configure CEREBRAS_API_KEY or the private Cer
 fs.mkdirSync(profile, {recursive:true, mode:0o700});
 fs.chmodSync(profile, 0o700);
 const tokenPath = path.join(profile, 'owner-token');
-if (!fs.existsSync(tokenPath)) fs.writeFileSync(tokenPath, crypto.randomBytes(32).toString('hex'), {mode:0o600, flag:'wx'});
-if ((fs.statSync(tokenPath).mode & 0o077) !== 0) throw new Error('Owner token must be owner-only');
+if (fs.existsSync(tokenPath) && (fs.statSync(tokenPath).mode & 0o077) !== 0) throw new Error('Owner token must be owner-only');
 const entry = path.join(source,'packages/app/src/runtime/dev-server.ts');
 if (!fs.existsSync(entry)) throw new Error('Eliza app host source is missing');
 const config = path.join(profile,'eliza.json');
-if (!fs.existsSync(config)) fs.writeFileSync(config, JSON.stringify({cloud:{enabled:false}, serviceRouting:{llmText:{backend:'cerebras',transport:'direct',smallModel:AGENT_MODEL,largeModel:AGENT_MODEL}},plugins:{entries:{'personal-assistant':{enabled:false}}}})+'\n', {mode:0o600, flag:'wx'});
-const modelEnvironment=agentModelEnvironment(JSON.parse(fs.readFileSync(config,'utf8')));
-const log = fs.openSync(path.join(profile,'server.log'), 'a', 0o600);
-fs.fchmodSync(log, 0o600);
+const privateProfile=await preparePrivateRuntimeProfile({tokenPath,configPath:config,
+ createToken:()=>crypto.randomBytes(32).toString('hex'),
+ initialConfig:{cloud:{enabled:false},serviceRouting:{llmText:{backend:'cerebras',transport:'direct',smallModel:AGENT_MODEL,largeModel:AGENT_MODEL}},plugins:{entries:{'personal-assistant':{enabled:false}}}},
+});
+const modelEnvironment=agentModelEnvironment(privateProfile.config);
+if(!/^[a-f0-9]{64}$/.test(privateProfile.token))throw Error('Invalid owner token');
 const asrEnvironment = agentAsrEnvironment();
 const ttsEnvironment = agentTtsEnvironment();
 if (asrEnvironment.ELIZA_WHISPER_BACKEND === 'auto' && redaction !== 'all') {
@@ -54,21 +56,25 @@ try {
 } finally {
   process.off('SIGINT', cancelWarmup); process.off('SIGTERM', cancelWarmup);
 }
-const baseEnv = Object.fromEntries(['PATH','TMPDIR','LANG','SHELL','USER','LOGNAME','HOME'].filter(key=>process.env[key]).map(key=>[key,process.env[key]]));
-const env = {...baseEnv, ELIZA_HEADLESS:'1', ELIZA_DISTRIBUTION_PROFILE:'store', ELIZA_PLUGIN_SET:'lean-chat', ELIZA_REQUIRE_LOCAL_AUTH:'1', ELIZA_API_BIND:'127.0.0.1', ELIZA_ALLOWED_HOSTS:'10.0.2.2', ELIZA_API_PORT:String(port), ELIZA_API_EXPOSE_PORT:'1', ELIZA_STATE_DIR:profile, ELIZA_CONFIG_PATH:config, ELIZA_API_TOKEN:fs.readFileSync(tokenPath,'utf8').trim(), CEREBRAS_API_KEY:providerKey, ...modelEnvironment, ...asrEnvironment, ...ttsEnvironment, ELIZAOS_CLOUD_USE_INFERENCE:'false'};
-for (const key of ['ELIZAOS_CLOUD_API_KEY','OPENAI_API_KEY','ANTHROPIC_API_KEY']) delete env[key];
-env.ELIZA_LEAN_CHAT_WORKFLOWS = '1';
-if (redaction === 'all') {
-  env.ELIZA_SECRET_SWAP_ENABLED = 'true';
-  env.ELIZA_PII_SWAP_ENABLED = 'true';
-}
-// Match upstream's source-checkout launcher. The private profile is the cwd,
-// so its location cannot supply the workspace's eliza-source condition.
-const child = spawn(process.env.ALPHA_BUN || 'bun', ['--no-install', '--conditions=eliza-source', entry], {cwd:profile, env, stdio:['ignore',log,log]});
-const sourceManifest=path.join(source,'.alpha-runtime-source.json');
-const metadata = {localTtsConfigured:ttsEnvironment.ELIZA_KOKORO_ENABLED==='1',localAsrConfigured:asrEnvironment.ELIZA_WHISPER_ENABLED==='1',localAsrBackend:asrEnvironment.ELIZA_WHISPER_BACKEND,asrWarmup,egressRedactionRequested:redaction,sourceManifestSha256:fs.existsSync(sourceManifest)?crypto.createHash('sha256').update(fs.readFileSync(sourceManifest)).digest('hex'):null,pid:child.pid, port, profile, source, revision:execFileSync('git',['rev-parse','HEAD'],{cwd:source,encoding:'utf8'}).trim(), startedAt:new Date().toISOString()};
-fs.writeFileSync(path.join(profile,'process.json'), JSON.stringify(metadata,null,2), {mode:0o600});
-console.log(JSON.stringify({...metadata, log:path.join(profile,'server.log')}));
-for (const signal of ['SIGINT','SIGTERM']) process.on(signal,()=>child.kill(signal));
-child.on('error',error=>{console.error(error.message);process.exitCode=1;});
-child.on('exit',code=>{process.exitCode=code??1;});
+const env=runtimeEnvironment({
+ inherited:process.env,allow:['PATH','TMPDIR','LANG','SHELL','USER','LOGNAME','HOME'],
+ settings:{CEREBRAS_API_KEY:providerKey,...modelEnvironment,...asrEnvironment,...ttsEnvironment,...(redaction==='all'?{ELIZA_SECRET_SWAP_ENABLED:'true',ELIZA_PII_SWAP_ENABLED:'true'}:{})},
+ owned:{ELIZA_HEADLESS:'1',ELIZA_DISTRIBUTION_PROFILE:'store',ELIZA_PLUGIN_SET:'lean-chat',ELIZA_REQUIRE_LOCAL_AUTH:'1',ELIZA_API_BIND:'127.0.0.1',ELIZA_ALLOWED_HOSTS:'10.0.2.2',ELIZA_API_PORT:String(port),ELIZA_API_EXPOSE_PORT:'1',ELIZA_STATE_DIR:profile,ELIZA_CONFIG_PATH:config,ELIZA_API_TOKEN:privateProfile.token,ELIZAOS_CLOUD_USE_INFERENCE:'false',ELIZA_LEAN_CHAT_WORKFLOWS:'1'},
+ remove:['ELIZAOS_CLOUD_API_KEY','OPENAI_API_KEY','ANTHROPIC_API_KEY'],
+});
+const log=fs.openSync(path.join(profile,'server.log'),'a',0o600);
+try {
+ fs.fchmodSync(log,0o600);
+ // The profile cwd cannot supply the workspace source condition.
+ const running=await startPrivateRuntimeProcess({command:process.env.ALPHA_BUN||'bun',args:['--no-install','--conditions=eliza-source',entry],cwd:profile,env,stdio:['ignore',log,log],
+  async recordLaunch({pid,launchedAt}){
+   const sourceManifest=path.join(source,'.alpha-runtime-source.json');
+   const metadata={localTtsConfigured:ttsEnvironment.ELIZA_KOKORO_ENABLED==='1',localAsrConfigured:asrEnvironment.ELIZA_WHISPER_ENABLED==='1',localAsrBackend:asrEnvironment.ELIZA_WHISPER_BACKEND,asrWarmup,egressRedactionRequested:redaction,sourceManifestSha256:fs.existsSync(sourceManifest)?crypto.createHash('sha256').update(fs.readFileSync(sourceManifest)).digest('hex'):null,pid,port,profile,source,revision:execFileSync('git',['rev-parse','HEAD'],{cwd:source,encoding:'utf8'}).trim(),startedAt:new Date(launchedAt).toISOString()};
+   await writePrivateRuntimeJson(path.join(profile,'process.json'),metadata);
+   console.log(JSON.stringify({...metadata,log:path.join(profile,'server.log')}));
+  },
+ });
+ const result=await running.completion;
+ if(result.error)console.error(result.error.message);
+ process.exitCode=result.error?1:result.code??1;
+}finally{fs.closeSync(log);}
