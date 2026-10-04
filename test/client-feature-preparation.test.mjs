@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import {spawnSync} from 'node:child_process';
 import {prepareClientFeatures} from '../scripts/prepare-client-features.mjs';
 function fixture(run){
  const root=fs.mkdtempSync(path.join(os.tmpdir(),'alpha-client-source-'));
@@ -27,4 +28,13 @@ test('client source refuses unknown directories and cache symlinks',()=>fixture(
 test('client source cannot follow a linked staging parent or escaped manifest path',()=>fixture(root=>{
  const outside=path.join(root,'outside');fs.mkdirSync(outside);fs.writeFileSync(path.join(outside,'keep'),'retained');fs.symlinkSync(outside,path.join(root,'.eliza'));assert.throws(()=>prepareClientFeatures({root}),/Nonregular/);assert.deepEqual(fs.readdirSync(outside),['keep']);fs.unlinkSync(path.join(root,'.eliza'));
  const file=path.join(root,'patches/eliza/client-features-source.json'),manifest=JSON.parse(fs.readFileSync(file));manifest.files['plugins/plugin-files/../../escape.ts']='0'.repeat(64);fs.writeFileSync(file,JSON.stringify(manifest));assert.throws(()=>prepareClientFeatures({root}),/Invalid client feature manifest/);
+}));
+
+test('direct local development launcher prepares a clean client tree before starting services',()=>fixture(root=>{
+ for(const file of ['scripts/dev-local.mjs','scripts/local-agent-source.mjs','scripts/prepare-client-features.mjs']){const target=path.join(root,file);fs.mkdirSync(path.dirname(target),{recursive:true});fs.copyFileSync(file,target);}
+ // Stop at configuration admission before binding ports or starting an agent.
+ const result=spawnSync(process.execPath,[path.join(root,'scripts/dev-local.mjs')],{cwd:root,env:{...process.env,ALPHA_REMOTE_PORT:'0'},encoding:'utf8',timeout:20000});
+ assert.equal(result.status,1);assert.match(result.stderr,/Invalid local agent port/);
+ const stamp=JSON.parse(fs.readFileSync(path.join(root,'.eliza/client-features/.source.json')));
+ assert.equal(stamp.baseCommit,JSON.parse(fs.readFileSync(path.join(root,'upstream.lock.json'))).commit);
 }));

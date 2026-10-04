@@ -2300,3 +2300,10 @@ journeys across Chromium, Firefox and WebKit are in progress. The earlier main
 browser campaign `37174654496` ended cancelled following the concurrent PR158
 merge; it is not a passing result. PR157 remains draft pending qualification.
 Primary checkout edits and the live agent on ports 5317/47849 remain untouched.
+
+Integration follow-up: all 108 selected Chromium cases pass; the same batch
+continues through Firefox and WebKit (324 total). Seven source-preparation and
+portable-package checks pass on Node 24.15.0, including clean direct-launcher
+preparation. Main PR158 has been incorporated; its change is limited to native
+Notes instrumentation, without changing the running browser source. The full
+repository command remains in progress and is not reported as passing.

@@ -205,3 +205,9 @@ The local-agent development launcher also prepares client source before starting
 its direct Vite child; it does not pass through npm's ordinary `predev` hook.
 The integration's repository and three-engine browser qualification are running;
 the October 3 results above do not qualify this newer composition.
+
+Seven focused source-preparation and portable-package checks pass on Node
+24.15.0, including clean direct-launcher preparation. All 108 selected Chromium
+journeys pass; Firefox/WebKit and the combined repository suite are still
+running. Screenshots of the large-text Files review and compact scan correction
+were inspected; these are bounded subview checks, not complete design sign-off.
