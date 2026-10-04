@@ -2920,3 +2920,10 @@ also cover corrupt metadata, stale reset receipts and cancellation. These are
 policy tests with a CAS fixture, not cross-tab transaction evidence or proof of
 consumer migration. Old tabs must be closed for migration; observed-value checks
 do not turn localStorage snapshots into a transactional authority.
+
+Final consumer policy verification passes `npm run verify`: **324 tests**, zero
+failures/skips, TypeScript and production web build. The ninth policy regression
+ensures cancellation during asynchronous initialization prevents both an editor
+callback and a late read result. The policy remains unconnected to app domains;
+this pass does not close the production cross-tab regression. Evidence:
+`test-results/domain-document-final-verify.log`.

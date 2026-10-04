@@ -87,3 +87,12 @@ test('cancellation and editor failure do not persist partial data',async()=>{
  await assert.rejects(f.domain.edit(()=>({count:0}),data=>{data.count=9;throw Error('failed editor');}),/failed editor/);
  assert.deepEqual(f.saved(),before);
 });
+
+test('cancellation during asynchronous initialization prevents a later edit or read result',async()=>{
+ const f=fixture(null),abort=new AbortController();let edited=false;
+ await assert.rejects(f.domain.edit(async()=>{abort.abort();return {};},()=>{edited=true;},abort.signal),{name:'AbortError'});
+ assert.equal(edited,false);assert.equal(f.saved(),undefined);
+ const readAbort=new AbortController();
+ await assert.rejects(f.domain.read(async()=>{readAbort.abort();return {};},readAbort.signal),{name:'AbortError'});
+ assert.equal((await f.domain.capture()).raw,null);
+});

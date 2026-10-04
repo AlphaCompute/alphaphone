@@ -52,7 +52,7 @@ export class BrowserDomainDocument {
  async readRaw(signal?:AbortSignal):Promise<string|null>{return (await this.load(signal)).value;}
  async read<T>(initial:()=>T|Promise<T>,signal?:AbortSignal):Promise<T>{
   const raw=await this.readRaw(signal);signal?.throwIfAborted();
-  return raw===null?initial():JSON.parse(raw);
+  const value:T=raw===null?await initial():JSON.parse(raw);signal?.throwIfAborted();return value;
  }
  async edit<T,R>(initial:()=>T|Promise<T>,edit:(data:T)=>R|Promise<R>,signal?:AbortSignal):Promise<R>{
   return this.documents.edit(this.key,async before=>{
@@ -60,6 +60,7 @@ export class BrowserDomainDocument {
    const value:Envelope=before?envelope(before.raw):{version:1,legacy,value:legacy};
    unchanged(legacy,value.legacy);
    const data:T=value.value===null?await initial():JSON.parse(value.value);
+   signal?.throwIfAborted();
    const result=await edit(data);signal?.throwIfAborted();
    unchanged(this.legacy(),value.legacy);
    const raw=JSON.stringify(data);
