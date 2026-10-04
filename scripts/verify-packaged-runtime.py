@@ -58,6 +58,9 @@ def verify(apk):
                 raise ValueError('Invalid worker inventory')
             inventory.add(name)
             check('assets/agent/workflow-worker/' + name, staged / 'workflow-worker' / name, expected)
+        packaged_worker = {name.removeprefix('assets/agent/workflow-worker/') for name in names if name.startswith('assets/agent/workflow-worker/') and not name.endswith('/')}
+        if packaged_worker != inventory | {'files.sha256', 'manifest.json'}:
+            raise ValueError('Unexpected packaged worker inventory')
         for abi in ['arm64-v8a', 'x86_64']:
             name = f'lib/{abi}/libeliza_bun.so'
             check(name, ROOT / 'android/app/src/main/jniLibs' / abi / 'libeliza_bun.so')
