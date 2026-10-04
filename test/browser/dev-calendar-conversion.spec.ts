@@ -4,13 +4,13 @@ async function edit(page:Page,allDay=false){
  await page.goto('/?mode=dev');
  await page.evaluate(async allDay=>{
   const row={id:'conversion',calendarId:'local',title:'Conversion',body:'Keep this',location:'Desk',begin:Date.parse(allDay?'2027-03-14T00:00:00Z':'2027-03-15T02:00:00Z'),end:Date.parse(allDay?'2027-03-15T00:00:00Z':'2027-03-15T03:00:00Z'),allDay,timeZone:'America/New_York',revision:'b'.repeat(64)};
-  localStorage.setItem('alpha.browser.calendar.v1',JSON.stringify({sourceRevision:'a'.repeat(64),events:[row]}));
+  await (await import('/src/browser/calendar-storage.ts')).editCalendarStore(()=>({}),data=>{Object.assign(data,{sourceRevision:'a'.repeat(64),events:[row]});});
   const {registerPlugin}=await import('/src/platform-plugins.ts');
   (window as any).calendarEdit=registerPlugin<any>('AlphaCalendar').edit({id:row.id,revision:row.revision});
  },allDay);
  return page.getByRole('dialog',{name:'Edit calendar event'});
 }
-async function saved(page:Page){return page.evaluate(()=>JSON.parse(localStorage.getItem('alpha.browser.calendar.v1')!).events[0]);}
+async function saved(page:Page){return page.evaluate(async ()=>JSON.parse((await (await import('/src/browser/calendar-storage.ts')).calendarSnapshot()).raw!).events[0]);}
 test('timed to all-day uses the displayed civil day and preserves content across reload',async({page})=>{
  const dialog=await edit(page);await dialog.getByLabel('All day',{exact:true}).check();
  await expect(dialog.getByLabel('Starts',{exact:true})).toHaveValue('2027-03-14');await expect(dialog.getByLabel('Ends',{exact:true})).toHaveValue('2027-03-14');
@@ -31,9 +31,9 @@ test('all-day to timed preserves civil dates over daylight saving transition',as
 });
 test('cancelling a save waiting for the Calendar lock leaves the event unchanged',async({page})=>{
  const dialog=await edit(page);const before=await saved(page);
- await page.evaluate(()=>{(window as any).holdingCalendar=navigator.locks.request('alpha.browser.calendar.v1',()=>new Promise<void>(resolve=>{(window as any).releaseCalendar=resolve;}));});
+ await page.evaluate(()=>{(window as any).holdingCalendar=navigator.locks.request(JSON.stringify(['browser-document','alpha.browser.documents.v1','alpha.browser.calendar.v1']),()=>new Promise<void>(resolve=>{(window as any).releaseCalendar=resolve;}));});
  await expect.poll(()=>page.evaluate(()=>typeof (window as any).releaseCalendar)).toBe('function');
  await dialog.getByLabel('Event title',{exact:true}).fill('Must not save');await dialog.getByRole('button',{name:'Save event',exact:true}).click();await expect(dialog.getByRole('button',{name:'Save event',exact:true})).toBeDisabled();
  await dialog.getByRole('button',{name:'Cancel',exact:true}).click();expect(await page.evaluate(()=>(window as any).calendarEdit)).toEqual({status:'cancelled'});
- await page.evaluate(async()=>{(window as any).releaseCalendar();await (window as any).holdingCalendar;await navigator.locks.request('alpha.browser.calendar.v1',()=>{});});expect(await saved(page)).toEqual(before);
+ await page.evaluate(async()=>{(window as any).releaseCalendar();await (window as any).holdingCalendar;await navigator.locks.request(JSON.stringify(['browser-document','alpha.browser.documents.v1','alpha.browser.calendar.v1']),()=>{});});expect(await saved(page)).toEqual(before);
 });

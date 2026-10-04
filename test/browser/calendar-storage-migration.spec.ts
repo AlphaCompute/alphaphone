@@ -1,0 +1,56 @@
+import {holdCalendarTransactions} from './calendar-fixture';
+import {test,expect} from '@playwright/test';
+const key='alpha.browser.calendar.v1';
+test('legacy import preserves exact bytes, then reload uses the committed document',async({page,context})=>{
+ const original=' {"sourceRevision":"legacy-owner","events":[],"preferences":{"visible":false,"color":"fg"}} ';
+ await page.addInitScript(({key,original})=>{localStorage.setItem('alpha.connection.selection.v1',JSON.stringify({kind:'offline'}));if(!localStorage.getItem(key))localStorage.setItem(key,original);},{key,original});
+ await page.route('**/__storage-fixture',route=>route.fulfill({contentType:'text/html',body:'<!doctype html><title>Storage migration</title>'}));
+ await page.goto('/__storage-fixture');
+ const first=await page.evaluate(async()=>{const {calendarSnapshot}=await import('/src/browser/calendar-storage.ts');return calendarSnapshot();});
+ expect(first.raw).toBe(original);
+ await page.evaluate(async()=>{const {editCalendarStore}=await import('/src/browser/calendar-storage.ts');await editCalendarStore(()=>({}),data=>{(data as any).preferences.visible=true;});});
+ const after=await page.evaluate(async()=>{const {calendarSnapshot}=await import('/src/browser/calendar-storage.ts');return calendarSnapshot();});
+ expect(after.revision).not.toBe(first.revision);expect(JSON.parse(after.raw!).preferences.visible).toBe(true);
+ expect(await page.evaluate(key=>localStorage.getItem(key),key)).toBe(original);
+ const other=await context.newPage();await other.goto('/?mode=dev');
+ expect(await other.evaluate(async()=>{const {readCalendarStore}=await import('/src/browser/calendar-storage.ts');return (await readCalendarStore(()=>({preferences:{visible:false}}))).preferences.visible;})).toBe(true);
+ await page.goto('/?mode=dev');expect(await page.evaluate(async()=>{const {readCalendarStore}=await import('/src/browser/calendar-storage.ts');return (await readCalendarStore(()=>({preferences:{visible:false}}))).preferences.visible;})).toBe(true);
+});
+
+test('agent cancellation while storage read is queued cannot open a late review',async({page})=>{
+ await page.addInitScript(()=>localStorage.setItem('alpha.connection.selection.v1',JSON.stringify({kind:'offline'})));
+ await page.goto('/?mode=dev');
+ await page.evaluate(async()=>{const {BrowserCalendar}=await import('/src/browser/calendar.ts');const calendar=new BrowserCalendar();(window as any).queuedCalendar=calendar;(window as any).queuedSource=await calendar.prepareAgentSource();});
+ await page.evaluate(holdCalendarTransactions);
+ await page.evaluate(async()=>{const calendar=(window as any).queuedCalendar,source=(window as any).queuedSource,id=crypto.randomUUID();(window as any).queuedOperation=calendar.executeAgent({operationId:id,operation:{type:'calendar_create',source:{sourceId:source.sourceId,sourceRevision:source.sourceRevision},fields:{title:'Cancelled before read',description:'',location:'',start:new Date(Date.now()+60000).toISOString(),end:new Date(Date.now()+120000).toISOString(),timeZone:'UTC'}}}).then(result=>(window as any).queuedOutcome=result);await calendar.cancelAgent({operationId:id});(window as any).releaseCalendarTransactions();await (window as any).calendarTransactionsHeld;});
+ await expect.poll(()=>page.evaluate(()=>(window as any).queuedOutcome)).toEqual({status:'cancelled'});
+ await expect(page.getByRole('dialog',{name:'Review calendar change'})).toHaveCount(0);
+ expect(await page.evaluate(async()=>{const {readCalendarStore}=await import('/src/browser/calendar-storage.ts');return (await readCalendarStore(()=>({events:[]}))).events;})).toEqual([]);
+});
+test('backgrounding while an event read is queued cannot open a late editor',async({page})=>{
+ await page.addInitScript(()=>localStorage.setItem('alpha.connection.selection.v1',JSON.stringify({kind:'offline'})));
+ await page.goto('/?mode=dev');
+ await page.evaluate(async()=>{const {BrowserCalendar}=await import('/src/browser/calendar.ts');const calendar=new BrowserCalendar();await calendar.save({creationId:crypto.randomUUID(),calendarId:'local',title:'Retired editor',begin:Date.now()+60000,end:Date.now()+120000});const {readCalendarStore}=await import('/src/browser/calendar-storage.ts');(window as any).queuedCalendar=calendar;(window as any).queuedRow=(await readCalendarStore(()=>({events:[]}))).events[0];});
+ await page.evaluate(holdCalendarTransactions);
+ await page.evaluate(async()=>{const row=(window as any).queuedRow;(window as any).queuedEditor=(window as any).queuedCalendar.edit({id:row.id,revision:row.revision}).then(result=>(window as any).queuedEditorOutcome=result);window.dispatchEvent(new Event('alpha:device-state'));(window as any).releaseCalendarTransactions();await (window as any).calendarTransactionsHeld;});
+ await expect.poll(()=>page.evaluate(()=>(window as any).queuedEditorOutcome)).toEqual({status:'cancelled'});
+ await expect(page.getByRole('dialog',{name:'Edit calendar event'})).toHaveCount(0);
+});
+for(const kind of ['event','response'] as const)test(`${kind} dismissal aborts a write before its transaction commits`,async({page})=>{
+ await page.addInitScript(()=>localStorage.setItem('alpha.connection.selection.v1',JSON.stringify({kind:'offline'})));
+ await page.goto('/?mode=dev');
+ const before=await page.evaluate(async kind=>{const {BrowserCalendar}=await import('/src/browser/calendar.ts');const calendar=new BrowserCalendar();await calendar.save({creationId:crypto.randomUUID(),calendarId:'local',title:'Original',begin:Date.now()+60000,end:Date.now()+120000,who:['maya']});const {calendarSnapshot}=await import('/src/browser/calendar-storage.ts');const snapshot=await calendarSnapshot(),row=JSON.parse(snapshot.raw!).events[0];(window as any).dismissedEdit=kind==='event'?calendar.edit({id:row.id,revision:row.revision}):calendar.editResponse({id:row.id,revision:row.revision,person:'maya',name:'Maya'});return snapshot.raw;},kind);
+ const dialog=page.getByRole('dialog',{name:kind==='event'?'Edit calendar event':'Local guest response'});
+ if(kind==='event')await dialog.getByLabel('Event title',{exact:true}).fill('Must roll back');else await dialog.getByLabel('Guest response',{exact:true}).selectOption('yes');
+ await page.evaluate(()=>{const put=IDBObjectStore.prototype.put;IDBObjectStore.prototype.put=function(value,key){const request=put.call(this,value,key);if(key==='alpha.browser.calendar.v1'){IDBObjectStore.prototype.put=put;this.transaction.addEventListener('abort',()=>(window as any).editAbortObserved=true);const cancel=[...document.querySelectorAll<HTMLButtonElement>('dialog button')].find(button=>button.textContent==='Cancel');if(!cancel)throw Error('No owned editor cancel action');cancel.click();}return request;};});
+ await dialog.getByRole('button',{name:kind==='event'?'Save event':'Save response',exact:true}).click();
+ await expect(dialog).toHaveCount(0);expect(await page.evaluate(()=>(window as any).dismissedEdit)).toEqual({status:'cancelled'});
+ await expect.poll(()=>page.evaluate(()=>(window as any).editAbortObserved)).toBe(true);
+ expect(await page.evaluate(async()=>(await (await import('/src/browser/calendar-storage.ts')).calendarSnapshot()).raw)).toBe(before);
+});
+test('Calendar reads retain the current receipt instead of invalidating reset review',async({page})=>{
+ await page.addInitScript(()=>localStorage.setItem('alpha.connection.selection.v1',JSON.stringify({kind:'offline'})));
+ await page.goto('/?mode=dev');
+ const result=await page.evaluate(async()=>{const {BrowserCalendar}=await import('/src/browser/calendar.ts');const {calendarSnapshot}=await import('/src/browser/calendar-storage.ts');const calendar=new BrowserCalendar();await calendar.prepareAgentSource();const before=await calendarSnapshot();await Promise.all([calendar.prepareAgentSource(),calendar.pendingCreations(),calendar.list({begin:Date.now(),end:Date.now()+86400000}),calendar.listAlerts()]);return {before,after:await calendarSnapshot()};});
+ expect(result.after).toEqual(result.before);
+});
