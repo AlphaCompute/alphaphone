@@ -13,6 +13,7 @@ function exercise(mode) {
  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'alpha-ci-provider-runner-'));
  try {
   fs.mkdirSync(path.join(dir, 'sdk/platform-tools'), { recursive: true });
+  fs.writeFileSync(path.join(dir, 'release'), 'JAVA_VERSION="21"\n');
   fs.mkdirSync(path.join(dir, 'test-results/ci-webview-provider'), { recursive: true });
   fs.mkdirSync(path.join(dir, 'bundle'));
   fs.writeFileSync(path.join(dir, 'app.config.json'), JSON.stringify({ appId: app }));
@@ -60,7 +61,7 @@ case "$*" in
 esac
 `;
   const adb = path.join(dir, 'sdk/platform-tools/adb'); fs.writeFileSync(adb, fake, { mode: 0o755 });
-  const result = spawnSync(process.execPath, [smoke], { cwd: dir, env: { ...process.env, ANDROID_HOME: path.join(dir, 'sdk'), JAVA_HOME: dir, ANDROID_SERIAL: 'emulator-5554', GITHUB_ACTIONS: 'true', RUNNER_ENVIRONMENT: 'github-hosted', ALPHA_BUILD_ARCHIVE: path.join(dir, 'bundle'), ALPHA_SMOKE_RESULTS: path.join(dir, 'output') }, encoding: 'utf8', timeout: 20000 });
+  const result = spawnSync(process.execPath, [smoke], { cwd: dir, env: { ...process.env, ANDROID_HOME: path.join(dir, 'sdk'), ANDROID_SDK_ROOT: path.join(dir, 'sdk'), JAVA_HOME: dir, ANDROID_SERIAL: 'emulator-5554', GITHUB_ACTIONS: 'true', RUNNER_ENVIRONMENT: 'github-hosted', ALPHA_BUILD_ARCHIVE: path.join(dir, 'bundle'), ALPHA_SMOKE_RESULTS: path.join(dir, 'output') }, encoding: 'utf8', timeout: 20000 });
   assert.equal(result.signal, null, result.stderr);
   const phases = ['standalone', 'launcher'].map(v => JSON.parse(fs.readFileSync(path.join(dir, `output/${v}-provider-qualification/result.json`))));
   const summary = JSON.parse(fs.readFileSync(path.join(dir, 'output/result.json')));
