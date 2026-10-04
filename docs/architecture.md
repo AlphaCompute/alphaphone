@@ -6,6 +6,16 @@ September 30 scope update: the [MVP report](mvp-scope-and-gap-report.md) and [co
 
 Status: daily-tool implementation in progress. Cloud and remote authentication adapters are implemented; the actual local Eliza/Cerebras protocol has been exercised. Live Cloud services and device acceptance remain incomplete. Enclave deployment is historical optional work, not a gate for the primary resident-agent path. Cloud service identity is independent of the selected agent target; see `agent-integration.md` and the flow verification record for exact scope.
 
+## Upstream runtime ownership
+
+`upstream.lock.json` and the `vendor/eliza` submodule identify one reviewed upstream
+commit for the renderer helpers, resident runtime and native sources. Runtime
+preparation checks out that commit without applying consumer patches. Native
+staging records original and generated hashes; only product namespace, icon and
+environment wiring are generated locally. Regression tests exercise the pinned
+upstream sources directly. Historical patch artifacts remain available in Git
+history; the working tree no longer carries a patch series.
+
 ## Repository boundaries
 
 | Path | Responsibility |
@@ -14,7 +24,7 @@ Status: daily-tool implementation in progress. Cloud and remote authentication a
 | `android` | Capacitor Activity, native app launcher bridge, standalone/HOME flavors |
 | `app.config.json` | Product package identity, display name, version, orientation |
 | `vendor/eliza` | Commit-pinned agent, UI helpers, native plugins and OS tooling |
-| `base/eliza-app` | Pristine copied app source for migration and comparison |
+| `docs/eliza-app-baseline-provenance.json` | Historical upstream import provenance; source recoverable from Git |
 | `design` | Original product/design evidence and exact hashes |
 | `scripts` | Reproducible build, APK inspection, emulator smoke and AOSP staging |
 | `docs` | PRD, architecture decisions, implementation/test traceability |
@@ -39,8 +49,13 @@ The active shell derives its Capacitor activity lifecycle, splash installation, 
 
 1. Make generic changes in a dedicated `codex/` branch of the Eliza source and retain targeted tests.
 2. Publish the commit so a clean clone can retrieve it. Prefer a reviewed upstream PR before release.
-3. Update the submodule and `upstream.lock.json` together. Keep the baseline import immutable; re-import intentionally with a new manifest if needed.
+3. Update the submodule and `upstream.lock.json` together. The unused baseline copy is retired; retain its historical source provenance.
 4. Run source-pin verification, product typecheck/tests/build, both APK flavors and emulator bridge/HOME tests. Upgrade one product at a time.
 5. Before production, run upstream required root checks, the real auth/agent suite, signed-image build and physical-device acceptance. Reverting the submodule pin is the source rollback; installed APK/OS rollback must separately respect signing identity and Android versionCode rules.
 
 No production secrets or signing keys belong in these repos. Account credentials are encrypted with Android Keystore AES-GCM in the app no-backup directory. Renderer preferences contain only nonsecret connection selection and conversation identifiers. Cloud voice requests bind to a specific saved credential generation. Platform backup remains disabled until retention/key ownership is specified.
+
+Shared Android calendar and local speech implementations are consumed from the pinned
+upstream source. Alpha retains calendar identity configuration, generated speech inputs,
+its renderer and both APK distributions. See [the consolidation inventory](upstream-consolidation.md)
+for the ownership boundary and remaining extraction contracts.

@@ -1,21 +1,11 @@
 import {test,after} from 'node:test';
 import assert from 'node:assert/strict';
 import * as fs from 'node:fs/promises';
-import {execFileSync} from 'node:child_process';
-import {fileURLToPath,pathToFileURL} from 'node:url';
 import path from 'node:path';
 import os from 'node:os';
 const root=await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(),'alpha-source-publication-')));
 after(()=>fs.rm(root,{recursive:true,force:true}));
-const helper='plugins/plugin-workflow/src/services/workflow-source-publication.ts';
-const sourceRoot=fileURLToPath(new URL('../vendor/eliza/',import.meta.url));
-const pin=JSON.parse(await fs.readFile(new URL('../upstream.lock.json',import.meta.url),'utf8')).commit;
-assert.equal(execFileSync('git',['rev-parse','HEAD'],{cwd:sourceRoot,encoding:'utf8'}).trim(),pin);
-const committed=execFileSync('git',['show',pin+':'+helper],{cwd:sourceRoot});
-assert.deepEqual(await fs.readFile(path.join(sourceRoot,helper)),committed);
-await fs.mkdir(path.dirname(path.join(root,helper)),{recursive:true});
-await fs.writeFile(path.join(root,helper),committed);
-const {publishAndroidWorkflowSource:publish}=await import(pathToFileURL(path.join(root,helper)).href);
+const {publishAndroidWorkflowSource:publish}=await import('../vendor/eliza/plugins/plugin-workflow/src/services/workflow-source-publication.ts');
 async function fixture(){const dir=await fs.mkdtemp(path.join(root,'state-'));return {dir,target:path.join(dir,'version.hash.tsx')};}
 test('Android source publication publishes complete bytes across concurrent writers and retains importer inode',async()=>{
  const {dir,target}=await fixture(),source='export default '+JSON.stringify('x'.repeat(100000))+';';

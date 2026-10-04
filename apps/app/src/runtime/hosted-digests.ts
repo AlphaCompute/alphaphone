@@ -157,6 +157,14 @@ export function parseDigestResult(value: unknown): DigestResult {
 		error: typeof v.error === "string" ? v.error : null,
 	};
 }
+/** Display the final summary, not typed-step source payloads or execution metadata. */
+export function digestSummaryText(result: Pick<DigestResult,'runId'|'output'|'error'>):string {
+ if(result.error)return result.error;
+ const output=result.output;if(typeof output==='string')return output;
+ if(Array.isArray(output)&&output.length===1){const value=output[0];if(value&&typeof value==='object'&&value.nodeId==='typed-steps'&&value.runId===result.runId&&typeof value.text==='string')return value.text;}
+ if(output&&typeof output==='object'&&!Array.isArray(output)){const value=output as Record<string,unknown>;if(typeof value.summary==='string')return value.summary;if(typeof value.text==='string')return value.text;}
+ return 'No readable summary was returned. Open execution details to inspect this result.';
+}
 export class HostedDigestProtocol {
 	constructor(
 		private request: (

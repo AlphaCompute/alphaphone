@@ -1,5 +1,11 @@
 # Cloud recovery and native qualification follow-up
 
+## Reviewed integration follow-up
+
+The reviewed integration retains the framework-only restart repair. Exact `139eaa64e5d6778d7e82f27c4bbe204dde71ccbf` [provider-only run 37110967622](https://github.com/AlphaCompute/alphaphone/actions/runs/37110967622) passed: system_server changed, the kernel boot identity remained unchanged, the authenticated 512 MiB scratch and installed provider hash survived, and two display observations were awake and unlocked without an ANR. This establishes provider setup only; full app/native acceptance is still pending. The later full Foundation run `37110980028` at the same head passed its build but refused setup with a focused SystemUI ANR after the framework restart. The same 512 MiB scratch and replacement WebView hash remained intact. The framework repair therefore has one isolated setup pass and a full-campaign setup failure; it is not fully qualified. A bounded read-only follow-up collects the last ANR, process state, system/event logs and memory/pressure evidence without dismissing the dialog, retrying installation or weakening admission.
+
+The subsequent diagnostic integration passes 204 repository tests, TypeScript/web verification, and both Android distributions. The production diagnostic projection was exercised with sensitive sentinel values to verify that raw errors, output and event contents are excluded. Exact `be50d6df5c64898e39ffd2fc04b6596d5c469959` native evidence now reaches worker execution beyond the old source-publication failure, but records zero model requests and “Smithers worker exited without a result.” Its cause remains unresolved; no worker recovery pass is claimed.
+
 ## Composed MVP follow-up — October 3
 
 The candidate combines root `512f0a149fc0b42cf4c3161597296367b0db6286` with reviewed product stack `f06e80dd026348305f4e2c6a11ea2cbd17312a25`. It retains the Email owner fence, native recovery campaigns, provider admission checks and explicit source-patch ownership. The pre-follow-up composition passes 211 repository checks, TypeScript/production build, both Android distributions, lint and all six APK inspections. All 3,876 source identities remain unchanged during those checks. Thirty-four targeted rendered flows pass across workflow generation, presentation approval, Home layout, development connections and Email ownership/recovery.
@@ -26,12 +32,6 @@ Exact c5 provider-only [run37111858541](https://github.com/AlphaCompute/alphapho
 ## Requirement source refresh
 
 October3 read-only Google Drive retrieval rechecked the [Definition of Done](https://docs.google.com/document/d/1Vus6AZ0V-nBsxDDYnD0wqLLhNX6FBNWZS-VI9gWGV8g/) and [biweekly notes](https://docs.google.com/document/d/1Wgz0wWZh_nvICFzmxPpPa2_H-pvHLAF12FZriMQXf_I/), including each document's `t.0` tab, inline suggestions, and all18/5 comment threads. Pending Pixel, hosting/TEE and offline-inference suggestions are not accepted document edits; the user's subsequent Pixel/resident instructions govern current implementation. Messaging inclusion and proposed deferral still conflict in the notes, so Email remains retained. Comment proposals for a three-minute demo and subsecond latency do not replace the written five-minute and six-second checklist. Exact source snapshots and indexed mapping are retained in `test-results/browser-b0fdd-monitor/{definition-of-done,biweekly}.json` and `source-review.txt`.
-
-## Reviewed integration follow-up
-
-The reviewed integration retains the framework-only restart repair. Exact `139eaa64e5d6778d7e82f27c4bbe204dde71ccbf` [provider-only run 37110967622](https://github.com/AlphaCompute/alphaphone/actions/runs/37110967622) passed: system_server changed, the kernel boot identity remained unchanged, the authenticated 512 MiB scratch and installed provider hash survived, and two display observations were awake and unlocked without an ANR. This establishes provider setup only; full app/native acceptance is still pending.
-
-The subsequent diagnostic integration passes 204 repository tests, TypeScript/web verification, and both Android distributions. The production diagnostic projection was exercised with sensitive sentinel values to verify that raw errors, output and event contents are excluded. Exact `be50d6df5c64898e39ffd2fc04b6596d5c469959` native evidence now reaches worker execution beyond the old source-publication failure, but records zero model requests and “Smithers worker exited without a result.” Its cause remains unresolved; no worker recovery pass is claimed.
 
 ## Hosted follow-up: provider reboot and resident execution
 

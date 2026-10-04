@@ -1,3 +1,4 @@
+import { mockAttentionRows } from "./mock-attention";
 import { isMvpView, DEFERRED_MVP_VIEWS, deferredMvpPrompt } from "./mvp-features";
 import React from "react";
 import { DCLogic } from "./dc-lite.js";
@@ -5592,11 +5593,7 @@ class Component extends DCLogic {
     if (/what needs|catch me up|triage|anything new|summar/.test(t)) {
       // MVP-DEFERRED: SMS digest cards stay out of mock and live discovery.
       // Keep the original fixture data available for a reviewed scope restoration.
-      var rows = [
-        { ini: "MC", who: "Maya Chen", text: "Still on for 3? I can bring the prototype.", icon: "bubble", go: { view: "messages", patch: { thread: "maya" } } },
-        { ini: "JP", who: "Jordan Park", text: "Revised term sheet attached.", icon: "mail", go: { view: "inbox", patch: { open: 2 } } },
-        { ini: "PN", who: "Priya Nair", text: "Sent you the photos from Saturday", icon: "bubble", go: { view: "messages", patch: { thread: "priya" } } }
-      ].filter(function (row) { return isMvpView(row.go.view); });
+      var rows = mockAttentionRows();
       return { text: rows.length + (rows.length === 1 ? " item needs" : " items need") + " your attention.", card: { type: "digest", rows: rows } };
     }
     return { text: "I can't do that yet. Try opening " + ORDER.filter(isMvpView).map(function (key) { return VIEWS[key].title; }).join(", ") + "." };
@@ -5800,7 +5797,7 @@ class Component extends DCLogic {
       goSettings: function () { self.openView("settings"); },
       tiles: tiles, bright: S.bright, onBright: function (e) { self.setState({ bright: +e.target.value }); }, shadeN: shadeN, shadeY: isOn && S.shade ? "0" : "-100%",
       closeShade: function () { self.setState({ shade: false }); }, clearAll: function () { self.setState({ nGone: NOTIF.map(function (n) { return n.id; }), shade: false }); },
-      lockSum: [{ d: IC.bubble, c: S.nGone.indexOf("n1") < 0 ? 2 : 0 }, { d: IC.mail, c: S.nGone.indexOf("n2") < 0 ? 1 : 0 }, { d: IC.cal, c: S.nGone.indexOf("n3") < 0 ? 1 : 0 }].filter(function (x) { return x.c > 0; }),
+      lockSum: [{ view: "messages", d: IC.bubble, label: "2 message notifications", c: S.nGone.indexOf("n1") < 0 ? 2 : 0 }, { view: "inbox", d: IC.mail, label: "1 email notification", c: S.nGone.indexOf("n2") < 0 ? 1 : 0 }, { view: "calendar", d: IC.cal, label: "1 calendar notification", c: S.nGone.indexOf("n3") < 0 ? 1 : 0 }].filter(function (x) { return isMvpView(x.view) && x.c > 0; }),
       lockCamera: function () { self.setState({ screen: "home", secure: true }); self.openView("camera"); },
       msgs: msgs, typing: S.typing, sugg: sugg, showSugg: panelOpen && !S.draft && !S.typing && !voiceOn,
       panelComposer: panelOpen && !voiceOn,

@@ -1,17 +1,16 @@
 # 12 — AOSP fork: always-on listening, implementation spec
 
-Research date: 2026-10-02. Follows [10 — always-on technical feasibility](10-always-on-tech-feasibility.md). Audience: platform/AOSP engineering, security, product and legal.
+Builds on [10 — always-on technical feasibility](10-always-on-tech-feasibility.md). Audience: platform/AOSP engineering, security, product and legal.
 
 **Decision context.** The team has decided to fork AOSP into a custom signed image for a Pixel 10-class target. Banking apps, Play Integrity and GMS are out of scope. The goal is always-on listening that works with any app in the foreground, with the screen off and while the device is locked. Audio feeds an on-device ASR → redaction pipeline. A recording indicator must be impossible to hide, and the user must consent.
 
-**What this document is.** It is a specification and research report. It is not engineering acceptance. Nothing in it has been built, booted or measured. The repository contract still applies: an APK build, an emulator HOME-role test, a full AOSP image boot, real integrations and device/user acceptance are separate gates (see [`AGENTS.md`](../../AGENTS.md) and [`docs/android-and-aosp.md`](../android-and-aosp.md)).
+**Status.** This is a specification; nothing in it has been built, booted or measured. The repository contract still applies: an APK build, an emulator HOME-role test, a full AOSP image boot, real integrations and device/user acceptance are separate gates (see [`AGENTS.md`](../../AGENTS.md) and [`docs/android-and-aosp.md`](../android-and-aosp.md)).
 
 **This is a deliberate departure from ADR-04.** [`docs/architecture.md`](../architecture.md) ADR-04 ("no implicit privileged bundle") and [`docs/decisions.md`](../decisions.md) item 5 ("additive, nonprivileged") say Alpha is admitted as a non-privileged app. Always-on capture needs privileged components. A new ADR must approve that before any of this lands. This spec keeps the existing Alpha app non-privileged and adds a separate, small, privileged, network-less package.
 
-**Method and evidence.**
-- The framework claims below come from AOSP source fetched on 2026-10-02 from `android.googlesource.com` at `refs/heads/main`, with exact file paths given.
+**Evidence.**
+- The framework claims below come from AOSP source on `android.googlesource.com` at `refs/heads/main` as of 2026-10-02, with exact file paths given.
 - The repository's Pixel lock pins `android-17.0.0_r1` (`vendor/eliza/packages/os/android/pixel11pro.lock.json`). `main` can differ from that tag, so every cited line must be re-checked at the pinned tag before implementation. That re-check is item V1 in §13.
-- The session's web-search budget ran out during this workstream (shared quota). Later facts come from direct primary-source fetches.
 - **(unverified)** marks a claim not confirmed from a primary source. **(est.)** marks an engineering estimate.
 
 ---
@@ -649,7 +648,7 @@ See [05-regulation-compliance.md](05-regulation-compliance.md) for the law. Plat
 - **D4.** Whether to allow optional 24 h raw-audio retention.
 - **D5.** Target device: Pixel 10 (`frankel`) vs Pixel 10 Pro (`blazer`, more RAM) vs wait for Motorola.
 
-## 13. Verification items (all open; none claimed)
+## 13. Verification items (all open)
 
 - **V1:** re-check every cited source line at the pinned Android 17 tag.
 - **V2:** on Pixel 10, run `dumpsys media.audio_policy`, `dumpsys soundtrigger_middleware` and `lshal`/`service list | grep -i sound`, and document what exists.
@@ -665,7 +664,7 @@ See [05-regulation-compliance.md](05-regulation-compliance.md) for the law. Plat
 
 ## 14. Effort estimate (est.)
 
-| Workstream | Effort |
+| Work item | Effort |
 |---|---|
 | Pixel 10 lock, product, boot (userdebug, stock kernel) via adevtool | 2–4 eng-weeks |
 | Sense app: capture, VAD, state machine, governor, consent UI | 6–8 eng-weeks |
@@ -707,7 +706,7 @@ See [05-regulation-compliance.md](05-regulation-compliance.md) for the law. Plat
 
 ## Sources
 
-**AOSP source (fetched 2026-10-02, `refs/heads/main`):**
+**AOSP source (`refs/heads/main` as of 2026-10-02):**
 - https://android.googlesource.com/platform/frameworks/base/+/refs/heads/main/core/res/AndroidManifest.xml
 - https://android.googlesource.com/platform/frameworks/base/+/refs/heads/main/core/res/res/values/config.xml
 - https://android.googlesource.com/platform/frameworks/base/+/refs/heads/main/core/java/android/permission/PermissionManager.java

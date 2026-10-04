@@ -29,6 +29,7 @@ the exact tested scope rather than treating a successful APK build as acceptance
 - [Working PRD](docs/prd.md)
 - [Detailed implementation plan](docs/implementation-plan.md)
 - [Architecture and upstream ownership](docs/architecture.md)
+- [Upstream consolidation inventory and migration boundaries](docs/upstream-consolidation.md)
 - [Requirements and open decisions](docs/decisions.md)
 - [Verification results and remaining gates](docs/verification.md)
 - [Source/design provenance](docs/sources.md)
@@ -61,7 +62,22 @@ choose the app port. Ctrl-C stops the services owned by that command.
 The desktop browser shows a fitted phone preview; mobile widths fill the viewport.
 Use `?mode=mock` for the clearly labeled design fixture and `?theme=dark` to
 inspect dark layouts. Use `?mode=dev` for the browser development profile with durable local app data
-and device controls. The normal app uses browser-local Notes. Notes text import and export use the browser
+and device controls. For the complete capability matrix and current verification results, see
+[browser development parity](docs/browser-dev-parity.md). Open **Device controls** with the sliders button beside **Tools** or **Dev data** below the phone preview. Its profile buttons switch between app and development data. In **Device controls**, use
+Home, Back, Power, Background and Resume to exercise device lifecycle; use Incoming
+call/message/email and Post notification to drive incoming events. Location controls
+provide a saved Home place and manual movement for location-triggered workflows.
+The role buttons persist the development device's selected Home, assistant, dialer
+and SMS roles.
+
+In **Settings → Agent connection**, select a development profile to exercise
+conversations, approvals and durable receipts without credentials. Use
+`?mode=dev&workflows=agent` to exercise the agent workflow UI with that profile.
+For real host inference and speech, follow the separate [local agent setup](docs/local-agent-development.md).
+**Settings → Character → Wake assistant** opens the recording UI; recording starts
+only after Start recording is selected.
+
+The normal app uses browser-local Notes. Notes text import and export use the browser
 file picker and downloads; browser note storage is unencrypted and is not synced.
 The browser suite covers production navigation, durable note editing, exact-byte
 file flows, dialog accessibility, disclosed adapter fixtures and reference design
@@ -118,9 +134,10 @@ for signing, default-home policy and the full image verification boundary.
 ## Layout
 
 `apps/app` owns this product's UI. `android` owns its packaging and launcher bridge.
-`vendor/eliza` pins shared platform/native/OS code. `base/eliza-app` is the complete,
-immutable original app import for migration; its old scripts are not this project's
-entrypoints. `design` preserves the supplied references. Use root npm scripts.
+`vendor/eliza` pins shared platform/native/OS code. The inactive app baseline has
+been removed; its source commit and file hashes remain in
+`docs/eliza-app-baseline-provenance.json` and the original copy remains in Git history.
+`design` preserves the supplied references. Use root npm scripts.
 
 GitHub Actions builds both variants, runs emulator instrumentation and uploads
 artifacts. A successful APK job does not establish full AOSP image or physical

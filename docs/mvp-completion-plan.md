@@ -1,79 +1,55 @@
 # Alpha Phone MVP completion plan
 
-## Current checkpoint — October 3, upstream consolidation and Calendar
+## Current plan — October 3, resident agent and browser development
 
-The maintained local Eliza patches are represented by merged upstream PRs and
-Alpha now consumes merged candidate `09698bd30668ff3748d7922279b06119d39a3bcf`
-without applying local patches. All 70 originals remain recoverable in Git with
-hash/PR/merge provenance. Full repository verification passes 225 checks and the
-renderer build; all four Android APKs build and their packaged runtime, worker
-inventory and native ABI bytes match the staged candidate. Both standalone and
-launcher pass all ten native Calendar tests, with owned-user/package cleanup.
-The 36 selected browser Calendar recovery/completion and Clock handoff flows pass.
-See [the migration report](upstream-patch-migration.md) for exact evidence.
+The [combined-source report](mvp-stack-convergence.md) tracks integration of the previously separate resident/browser branches.
 
-Upstream source-review follow-up #33241 passed all hosted checks and merged as
-`17f0d1c7da30187b9914992877604a08284bf8a2`; its Alpha adoption/rebuild is pending.
-External Calendar editor testing is running. Artifact archival and these scoped
-passes do not establish resident runtime, Cloud/Gmail, real voice, signed-image,
-physical-device or pilot acceptance. The full MVP remains incomplete.
+Use the [current requirement/evidence matrix](mvp-current-status.md) and [browser implementation review](mvp-browser-review.md) for the active plan. The primary agent is Android-resident, with the same real agent hosted locally for browser development. Cloud/remote services are optional; Nitro admission is not a prerequisite. Local scheduling requires honest missed-occurrence/restart recovery, not a claim that a powered-off phone runs code. Hosted Cerebras text inference remains distinct from local orchestration and speech.
 
+Current work proceeds through notification receipt recovery, remaining speech ownership paths, actual local digest/reconnect qualification, redaction qualification and full current-source browser/design coverage. Android builds remain skipped for this browser-focused pass. Physical device and real-provider acceptance remain open. The older checkpoints below preserve historical results and do not override this current direction.
 
-## Current checkpoint — October 3, regional dataset identity
-
-Maps capability revisions now bind the actual prepared place database, tiles, router, routing configuration and graph files. Startup requires an explicitly sealed manifest; live changes, active SQLite journals and changes during a request are refused. Immutable reads retain compatibility with closed checkpointed WAL databases. The synthetic HTTP lifecycle and actual Monaco search/detail/tiles/three-mode routing pass, followed by all 225 repository checks, TypeScript and production build. See [dataset qualification and remaining deployment limits](maps-regional-validation.md#runtime-dataset-identity--october-3). Public hosting, latest-source Android/native and physical acceptance remain open. The full MVP is not complete.
-
-## Current checkpoint — October 3, voice preparation ownership
-
-A rendered negative control reproduces stale speech-readiness rejection opening Notes after navigation or account change. Preparation now retains full connection and screen ownership across success and failure; navigation away and back also retires the request. All 12 preparation/save/dictation browser cases and all 224 repository checks, TypeScript and production build pass. [Evidence and limits](mvp-voice-preparation-ownership-2026-10-03.md). New Android/native, live voice and physical acceptance remain open. The full MVP is not complete.
-
-## Current checkpoint — October 3, mail draft and Calendar completion ownership
-
-Cancelling a mailbox read now preserves unsaved local drafts and edits to saved drafts without saving or sending them. Six rendered cancellation flows pass after a negative control reproduces the loss. Calendar deletion completion now preserves a newer event, navigation or draft; three new rendered cases and three existing save-completion cases pass. The composed source passes all 224 repository checks, TypeScript and the production build. New-source Android/native and live-provider acceptance remain open. See [mail evidence](mvp-mail-read-cancellation-2026-10-03.md) and [Calendar evidence](calendar-reminder-audit.md).
-
-Fresh provider diagnostics identify SystemUI startup waiting on SurfaceFlinger GPU context priority; this is a graphics-initialization lead, not a proven driver defect. A separate provider-only SwANGLE experiment retains all existing ANR, identity, provider and resource checks. Earlier runtime/native campaigns remain scoped to their own source. Resident runtime, visible Pixel flows, real providers, signed-image/OTA and the physical pilot are not yet accepted. The full MVP is not complete.
-
-## Current checkpoint — October 3, cold-launch observer
+## Earlier integration checkpoint — October 3, cold-launch observer
 
 A controlled native negative test reproduces the one-second notification observer timeout. The remaining-budget repair passes the original notification flow in standalone and launcher on the task-owned Pixel-class emulator, with complete cleanup and3,902 source identities unchanged. Production APKs are the previously qualified c7 inputs; only test APKs were rebuilt. Six parent crash-classification checks also pass, but resident SIGSYS remains unresolved. Full combined verification/build awaits disk capacity; live, visible, physical and signed-image gates remain open. See [bounded evidence and remaining requirements](mvp-notification-readiness-qualification-2026-10-03.md). The full MVP is not complete.
 
 
-## Current checkpoint — October 3, authenticated enabled views
+## Earlier integration checkpoint — October 3, authenticated enabled views
+
 
 Remote, resident and Cloud enrollment now negotiates a durable MVP view profile. Per-turn model schemas, proposal admission and approval/claim revision checks enforce it; legacy hosts remain explicitly unnegotiated and locally guarded. HTTP/database, legacy migration, rendered connection flows, fresh 22-patch preparation, repository verification and both Android builds pass. See [qualification and exact limits](mvp-enabled-view-qualification-2026-10-03.md). Notification tap setup now reconciles an unknown publication receipt without reposting; both native variants pass the scoped flow. Actual native enabled-view GET/conditional POST transport now also passes both variants and is required as recovery phase 12; deployed-host acceptance remains open. The full MVP is not complete.
 
 
 
-## Current checkpoint — October 3, voice-save ownership
+## Earlier integration checkpoint — October 3, voice-save ownership
 
 Four rendered negative controls reproduce late voice/dictation saves closing a newer recording or publishing stale errors. The generation fence and commit-time transcript lock pass ten rendered flows, preserving one authorized persisted note and newer microphone sessions. Final218 checks and both Android distribution builds pass with3,896 unchanged source identities. A bounded hosted crash-buffer diagnostic adds numeric-only syscall evidence; five owning tests include real cancellation without losing the primary failure or cleanup. The resident SIGSYS repair, real provider/physical/signed-image acceptance and dynamic remote view-profile discovery remain open. See [evidence and requirements reconciliation](mvp-voice-save-qualification-2026-10-03.md). The full MVP is not complete.
 
 
-## Current checkpoint — October 3, reviewed reminder creation and process death
+## Earlier integration checkpoint — October 3, reviewed reminder creation and process death
 
 Explicit no-alert, timed and recurring agent reminder creation now has a distinct generic capability, atomic native receipt and immutable recovery. Both Android variants pass no-alert/permission-denied, granted timing, native HTTP negotiation and original-notification relaunch after confirmed main-process death. Forty rendered flows, 218 checks and both Android builds pass. Source comparisons retain exact qualified reminder/transport bytes; all disposable users and packages are removed. Hosted resident failure now identifies SIGSYS before model RPC; numeric-only exact-worker diagnostics are added, but the forbidden syscall and runtime repair remain open. See [qualification, retained failures and remaining gates](mvp-reminder-process-qualification-2026-10-03.md). The full MVP is not complete.
 
 
-## Current checkpoint — October 3, native workflow notification taps
+## Earlier integration checkpoint — October 3, native workflow notification taps
 
 Workflow notices now retain exact owner/agent/execution routes and distinct opaque tap identities, with durable failed-capture recovery and no implicit execution. Both standalone and launcher pass the actual Android cold/warm notification test on a fresh Pixel-class emulator, including encrypted-store failure, receipt drift and consumed-tap replay. Both disposable users and packages are cleaned up. All 218 checks, both Android builds and 27 rendered flows pass; 3,884 qualified source identities remain unchanged. Actual app-process restart, real hosted delivery, live providers and physical/signed-image acceptance remain open. See [evidence, retained failures and capacity limits](mvp-workflow-notification-qualification-2026-10-03.md). The MVP is not complete.
 
 
 
-## Current checkpoint — October 3, composed MVP and voice ownership
+## Earlier integration checkpoint — October 3, composed MVP and voice ownership
 
 The reviewed product stack is combined with the Email account fence, reminder-v2 development negotiation and request-owned resident speech. All 217 repository checks, TypeScript/build and both Android distribution builds pass with 3,878 source identities unchanged. Fresh runtime preparation verifies all 54 declared source hashes. Safe exit-code/signal diagnostics now accompany missing-result workflow failures; the actual resident worker cause remains unresolved. Both preceding exact512 browser campaigns pass 1,034 flows with four explicit skips each. Scoped notification-tap routing remains under review. Live provider, installed resident, visible Pixel, signed-image and physical acceptance remain open; the MVP is not complete. See [qualification and evidence](mvp-auth-native-qualification-2026-10-03.md).
 
 
-## Current checkpoint — October 3, Email account ownership
+## Earlier integration checkpoint — October 3, Email account ownership
 
 A rendered negative control reproduced an old-account Gmail draft being saved under a newly selected owner. The repair binds delayed reads, deletion/undo follow-ups and receipt clearing to the original operation/session, aborting owned reads on reset. Six rendered flows and 178 repository checks pass; both Android distributions build with unchanged production source. Fresh DoD and call-note reads preserve unresolved suggestions and retain Email. Native/live-provider acceptance remains open. See [qualification and source evidence](mvp-auth-native-qualification-2026-10-03.md). The MVP is not complete.
 
-## Current checkpoint — October 3, Cloud recovery and native diagnostics
+## Earlier integration checkpoint — October 3, Cloud recovery and native diagnostics
 
 Cloud delegation completion is bounded, late account callbacks are fenced, and native callback tests are required in both distribution recovery campaigns. The combined source passes 177 checks, two rendered auth suites and both Android builds with 3,787 source identities unchanged. Prior a91 browser runs each pass 1,030 flows with four real-agent/recording skips. Exact b0 provider diagnostics now show that reboot removes the overlay and restores stock WebView, with SELinux denying super-device access during scratch cleanup. Resident a91 passes fresh-source HTTP/SQL, standalone IPC/private-peer, trusted-worker recovery and all seven required recovery methods in both variants, but its lost-parent-RPC case fails before the expected model request. The expanded diagnostics pass 178 repository checks and both Android builds with unchanged source. Both failures remain under investigation; other hosted jobs remain active. See [exact evidence and remaining gates](mvp-auth-native-qualification-2026-10-03.md). The MVP is not complete.
 
-## Current checkpoint — October 3, workflow warnings and native mock presentation
+## Earlier integration checkpoint — October 3, workflow warnings and native mock presentation
 
 The composed follow-up passes 176 repository checks, 41 targeted rendered flows, and both Android distribution builds with 3,786 source identities unchanged. Workflow storage warnings remain visible from Home and over workflow overlays; Android mock mode uses native system chrome and reserves the mock banner height. The fresh-source capability assertion now matches the six advertised capabilities while retaining the five-capability request limit. WebView CI performs one planned, fully revalidated boot after provider installation. The rebuilt launcher is installed with matching APK hash; its visible check is pending Mac unlock. Fresh hosted HTTP/SQL, native provider and resident execution remain required. Live Cloud phone exchange, chat, Gmail, voice, physical-device and signed-image acceptance remain open. The MVP is not complete.
 
@@ -83,7 +59,7 @@ The composed repair passes 123 rendered flows, TypeScript, production build, 24 
 
 The initial full verification attempt exited 7 with an unproven cause; an unchanged retry then passed all 174 checks and the production build. Fresh source preparation and both Android distributions now build successfully, including all six APKs, lint, and APK verification. Exact e302 is installed on the owned Pixel 9 emulator, where visible no-alert reminder creation and completion pass after denying calendar access. Both hosted browser runs report 1,020 passed, four skipped, and one workflow-warning failure; the repair passes 34 owning flows. Resident qualification stopped at a stale advertised-capability assertion, and Foundation smoke refused a secure keyguard after successful WebView provisioning. Those follow-up repairs and investigations retain every existing acceptance gate. Browser Cloud Google login succeeds, but phone exchange, agent chat, Gmail and voice remain open. Native execution across both distributions, resident recovery, live providers, physical and signed AOSP acceptance remain required. See [timing and recovery qualification](mvp-reminder-timing-2026-10-03.md). The MVP is not complete.
 
-## Current checkpoint — October 3, reminder and session recovery
+## Earlier integration checkpoint — October 3, reminder and session recovery
 
 Saved reminder edits now use durable revision-bound operations, and Cloud/Gmail status follows confirmed session/grant availability. Final composition verification passes 169 checks; the product changes pass 45 rendered flows. The earlier exact52 browser campaign passes 973 cases with four explicit skips; exactc7 executes all six native recovery cases across both distributions. Resident restart still fails because a shared-runtime worker disappears; the identified blanket process-kill correction now passes fresh-source qualification and awaits actual Android execution. New APK/native, live provider, physical and signed AOSP acceptance remain open. See [current recovery evidence](mvp-edit-session-recovery-2026-10-03.md). The MVP is not complete.
 
@@ -103,7 +79,8 @@ The combined follow-up fixes a reproduced browser transcription import-order reg
 
 The blank installed Android screen is traced to legacy Capacitor listener handles escaping the shared plugin helper. The reviewed proxy repair passes repository verification, 24 owning rendered flows, both distribution builds/lint, and visible Pixel startup/offline Notes creation. Exact `12f348e` hosted browser runs each pass 963 cases; resident/foundation builds pass, but native execution remains failed. Reviewed repairs address stderr-only remount notices and Android's hidden app-data root semantics without weakening admission or socket-liveness checks. The next composition also includes committed product `0d9a8e5` and passes 151 repository checks, 57 rendered flows and both distribution builds/lint with all 3,756 source identities unchanged. Fresh hosted qualification is pending. See [native startup qualification](native-startup-qualification-2026-10-03.md). The MVP remains incomplete.
 
-## Current checkpoint — October 2, reading privacy and password setup
+
+## Earlier checkpoint — October 2, reading privacy and password setup
 
 Two concrete MVP gaps are now implemented: browser read-aloud rejects recognized credential-sensitive sources and explicit API-key URLs before fetching/speaking, and Settings/Browser expose an honest password-provider setup/status flow. Android and Proton own provider selection and vault UI; no forced enablement or successful filling is inferred. Combined repository verification and 84 rendered flows pass on an isolated composition. Exact source identities, review corrections and remaining gates are in [reading/provider qualification](mvp-reading-provider-qualification.md).
 

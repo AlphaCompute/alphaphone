@@ -23,7 +23,7 @@ Open `http://127.0.0.1:5317`, choose **Start local agent**, then chat normally. 
 
 The bridge accepts same-origin requests from the loopback development page only. It allows the conversation, device-action and workflow APIs, injects a host-owned machine session, and removes the upstream session ID because that ID is itself a bearer token. Credentials are not embedded in the web bundle. Device enrollment keys and durable action receipts are kept in the private development profile. Browser development advertises its implemented Notes capability, not Android Calendar/Reminders or native permission access.
 
-The development host launches Bun with `--conditions=eliza-source` and `--no-install`, matching upstream's source-checkout resolution. Alpha explicitly opts into workflows within the lean chat plugin set using the tested `lean-chat-workflows.patch`; coding, terminal, browser automation and wallet exclusions remain in force. An explicit workflow disable in the private profile still takes precedence. `agent:test` checks those selection boundaries against the prepared source. Existing profiles and their schedule settings are preserved.
+The development host launches Bun with `--conditions=eliza-source` and `--no-install`, matching upstream's source-checkout resolution. Alpha explicitly opts into workflows within the lean chat plugin set using the pinned upstream lean-chat workflow support; coding, terminal, browser automation and wallet exclusions remain in force. An explicit workflow disable in the private profile still takes precedence. `agent:test` checks those selection boundaries against the prepared source. Existing profiles and their schedule settings are preserved.
 
 Workflow drafts in local browser development persist in the private host profile, separately scoped to the selected owner/agent. Atomic compare-and-exchange rejects stale-tab changes. These development drafts are not encrypted; the editor says so. Android continues to use its encrypted native draft store. Draft storage does not save or execute a workflow on the agent until the separate reviewed submission.
 
@@ -31,7 +31,12 @@ Workflow drafts in local browser development persist in the private host profile
 
 With the real local agent selected, Notes recording transcription uses the host's standalone Whisper provider and transcript playback uses its standalone Kokoro provider. Captured bytes and text pass through the authenticated development bridge; credentials stay on the host. Playback stops on cancellation or connection changes. Failed agent synthesis is shown as an error without silently selecting another speech provider. Offline browser development retains explicit transcript review and installed local browser speech.
 
-Whisper uses the installed assets described in the review ledger. Require both speech providers at startup with:
+Whisper uses the installed assets described in the review ledger. On macOS, browser development selects the installed CLI's automatic compute backend and runs a private synthetic-silence warm-up before starting the agent. This moves first-use kernel compilation into startup. `ALPHA_WHISPER_BACKEND=cpu` explicitly retains CPU execution; other platforms default to CPU. Automatic selection requires the current reproduced runtime source, and a failed warm-up stops startup rather than reporting readiness. This is host acceleration, not Android speech qualification or a guarantee of the device latency target.
+
+When host Kokoro is configured, the agent starts its native worker and loads the speech sanitizer during startup. The worker verifies assets and synthesizes its readiness phrase before reporting ready. The first Listen request shares an in-progress initialization instead of starting another worker. Failed initialization remains retryable, and cancellation still destroys the native context. Disabled host speech does not preload either component.
+
+
+Require both speech providers at startup with:
 
 ```sh
 ALPHA_LOCAL_ASR=required \
@@ -44,6 +49,16 @@ npm run dev:local
 The Kokoro directory must contain the pinned `kokoro-82m-v1_0.gguf` and `voices/af_bella.bin` assets. The launcher checks the model and voice hashes; the host service checks the native library and ABI and warms synthesis before readiness. This command uses already installed qualified assets; it does not download a model or build a native library. `ALPHA_LOCAL_TTS=auto` stays disabled unless a library is explicitly configured, and `off` disables synthesis. Browser phrases are bounded to 500 characters; the transcript player divides longer text into shorter phrases. Speech runs on the development computer; text-model inference still uses the configured hosted provider.
 
 The real browser test can be repeated with `VITE_LOCAL_AGENT=1`, `ALPHA_LOCAL_AGENT_ORIGIN`, `ALPHA_LOCAL_AGENT_TOKEN_FILE`, and `ALPHA_SPEECH_FIXTURE` pointing to a locally generated synthetic WAV, then running `npx playwright test test/browser/browser-agent-recording.spec.ts`. It verifies capture, transcription, real audio playback, stop and connection retirement. Its host-dependent cases explicitly skip without the required environment. Native Android speech and physical-device acceptance remain separate.
+
+For a real arithmetic-only workflow check against a disposable local host, provide an owner-only paired session JSON file and run:
+
+```sh
+ALPHA_WORKFLOW_ORIGIN=http://127.0.0.1:47859 \
+ALPHA_DEVICE_SESSION_FILE=/private/path/to/session.json \
+node scripts/test-real-workflow.mjs
+```
+
+The helper loads TypeScript through the installed `tsx` loader, accepts only an exact IPv4 loopback HTTP origin, creates a paused synthetic workflow, executes it once, and leaves it paused. It exercises the actual local workflow engine without model inference, tools or communications. Run it against an isolated test profile; it does not qualify native triggers or real-provider workflows.
 
 ## Android setup
 
@@ -65,8 +80,9 @@ The native bridge enrolls and verifies its own local owner session. Conversation
 ## Reproducible source boundaries
 
 - `vendor/eliza` stays pinned and unchanged at the repository's `upstream.lock.json` revision. Its Android lifecycle sources are generated into Gradle's ignored build directory with Alpha's identity and socket namespace. A generated SHA-256 manifest records inputs and outputs.
-- `agent:prepare` creates a fresh commit-named checkout under `artifacts`, using the same merged upstream commit as `upstream.lock.json`. `upstream/runtime-source.json` and `upstream/runtime-consumer.json` contain no patch or override entries. Every tracked source file, mode and symlink is authenticated against the committed tree on each use; unexpected files are rejected. Historical patch hashes and PR dispositions are recorded in `docs/upstream-patch-map.json`. Existing prepared trees retain their original identity and are never relabeled.
-- Cached preparations authenticate unchanged base files, candidate bytes/modes, deleted-path absence, and unexpected tracked or untracked source, including ignored files. Generated outputs are limited to authenticated workspace/Turbo declarations. Source stamps pin the manifests, patches, preparer and guard. Preparation never resets or overwrites a mismatched checkout. `ALPHA_RUNTIME_GIT_CACHE` may point to an existing Git repository containing the recorded base, avoiding a network fetch; it does not change the required commit.
+- `agent:prepare` creates an isolated checkout in `artifacts/local-agent-resident-<commit>` from the same `upstream.lock.json` commit. It applies no patches. All relevant overlays have moved upstream; historical patch files and their old qualification evidence remain in Git history.
+- Cached preparations authenticate every tracked source byte and executable mode, plus unexpected untracked files including ignored files. Generated outputs are limited to authenticated workspace/Turbo declarations. Source stamps pin the upstream lock, preparer and guard. Preparation never resets or overwrites a mismatched checkout. `ALPHA_RUNTIME_GIT_CACHE` may point to a repository containing the pinned commit; it does not change the required revision.
+
 For an existing preparation that no longer matches the source stamp, preserve it and select a fresh directory for every preparation, test, development and staging command:
 
 ```sh
@@ -142,6 +158,49 @@ Remaining: the ordinary buffered drafting probe had the model output `[secret om
 
 Evidence: `test-results/redaction-boundary-review/reply-stream-tests.log`, `reply-product-verify.log`, `reply-prepare-v4.log`, `live-bridge-after-restoration.json` (ordinary buffered failure), `live-buffered-controlled-restoration.json` (controlled buffered pass), and `live-stream-after-restoration.json` (streamed pass). These are host/provider observations, not a capture of provider-bound traffic or proof of every PII category.
 
-### Constrained build disk space
+## Isolated digest process-recovery check
 
-`ALPHA_ANDROID_LOW_DISK=1 npm run android:build` packages each standalone/launcher debug/release APK sequentially. After preserving each APK, it removes only Gradle's generated asset/compressed-asset/merged-native/stripped-native intermediates. Source, generated Java provenance, APK outputs and logs remain. Both debug/release variants, instrumentation, lint and APK inspection still run.
+Run `ALPHA_ELIZA_SOURCE=/absolute/path/to/reproduced/source npm run agent:test-digest-restart` on a POSIX host with that source's pinned dependencies installed and Bun available. The command verifies the consumer source manifest and creates its own temporary working directory, database and workflow state. It kills only its own detached fixture process group after synthetic read-only inference begins. Logs and results remain in the printed temporary evidence directory; the live local-agent profile is untouched.
+
+The current runtime preserves the interrupted run as `outcome-unknown`, with no finished result or repeated inference. Concurrent duplicate admissions return the same run ID. A separate never-admitted occurrence outside the two-minute schedule window produces an explicit missed result without executing backlog. This checks process-loss safety and overdue scheduling, not automatic recovery of an ambiguous worker outcome, Android background execution, physical power-loss durability or exactly-once provider calls.
+
+## Contact placeholder semantics (October 3)
+
+`egress-contact-references.patch` gives detected email/phone data session-nonced `__ELIZA_CONTACT_…__` references. Credentials retain `__ELIZA_SECRET_…__`. Both forms share session-scoped resolution, unresolved-reference checks and streaming boundaries. A contact later classified as a credential remains blocked at the user-reply boundary; configured credentials and overlapping credential values retain precedence. The local execution boundary can still restore authorized parameters.
+
+Fresh full-series preparation and source verification pass with manifest `113b0e72f49f258d651529186c6d2a927164a62999f206018394a19b614f6fcf`. Thirty-one focused tests pass, including cancellation-control objects, credential precedence, forged/session-isolated references and every tested stream split. The initial broad-suite invocation failed to resolve a core subpath; an external harness alias fixed resolution without changing runtime source. All failed attempts are retained alongside the passing log. Product verification passes 157 tests with zero skips, TypeScript and the web bundle.
+
+An isolated host with both swap layers enabled used the production Vite bridge and real configured Cerebras model. Two ordinary email-drafting requests restored the exact synthetic email without placeholder instructions; a synthetic password-repeat request did not return the password. The actual streamed request restored both progress and terminal text. After restarting that isolated host, retained history and a follow-up restored the same email. Fetch instrumentation captured provider request-body checks (booleans only, no credentials or raw request bodies): all nine requests observed through these checks excluded the synthetic raw email/password, and included the relevant contact/secret markers. This is bounded proof for these probes, not a general privacy guarantee.
+
+Evidence: `artifacts/calendar-preferences-review/test-results/contact-references/` contains preparation, source tests, product verification, provider/stream/restart results and the instrumentation harness. The earlier lowercase-assignment finding is already repaired by `egress-credential-assignments.patch`; those regression tests pass here. Both swaps remain off in the user-facing host pending broader contact/phone, approved action, mixed-data and provider coverage. No Android build or device acceptance is claimed.
+
+
+## Mixed contact and credential qualification (October 3)
+
+The first mixed email/phone/password draft altered a phone reference, leaving it unrestored. `egress-contact-guidance.patch` now adds explicit exact-copy guidance to text model requests containing CONTACT references, preserves SECRET restrictions and existing approval requirements, and removes only an exact duplicate leading system message before extending the canonical system prompt. It never guesses a contact from a corrupted reference. The guidance is included in the provider budgeted request and is absent when swapping is disabled.
+
+Fresh source manifest `856e543ec6f38041a056d32f2e3d8d6df4cb96881fea58189150a2fe85f82255` passes full-series preparation/reverification. All 32 focused runtime tests and 157 repository tests, TypeScript and build pass. The real isolated host/model passed six repeated contact drafts (three mixed with a synthetic password), followed by a contact-to-credential promotion that refused disclosure. Streamed progress and terminal output restored both email and phone. A real generated local-note proposal displayed restored details, saved nothing before approval, and retained exactly one approved note after reload. Fourteen captured provider request-body checks excluded the exact raw synthetic email, phone and password, and all contact requests carried the guidance.
+
+Failed attempts are retained: the first guidance implementation produced duplicate system messages rejected by the provider; a subsequent test edit accidentally referenced a fixture flag outside its helper. Both were corrected before delivery; the final native-message regression proves one canonical system prompt. Evidence is `artifacts/calendar-preferences-review/test-results/contact-mixed-review/`, with final evidence in `qualified/`. The original unmodified-reference failure and first successful approval journey remain at the top level.
+
+Enablement remains blocked by a newly reproduced defect: a named six-character password is left in model-facing and visible text because the generic swap threshold is eight characters. `short-credential-probe.json` records boolean leak checks using synthetic input. Fix named short credentials without globally replacing ordinary short words; then qualify short/overlapping values, structured action parameters, and broader contact formats before enabling defaults. These results do not establish universal model reliability or physical-device privacy acceptance. No Android build ran.
+
+
+## Short credential repair (October 3)
+
+`egress-short-credentials.patch` repairs the reproduced six-character password leak. Explicit credential captures no longer have an eight-character minimum. Capture spans handle short punctuation-only assignments; known short values use token boundaries, and existing opaque references are preserved. Structured explicit credential fields are learned from a bounded descriptor snapshot before substitution, so a later password field protects earlier references. Generic `key` metadata, token budgets and correlation identifiers are not treated as credential fields. Credential overlap checks also use short-value boundaries rather than suppressing unrelated contact text.
+
+Manifest `d570c03df74303368ed3e9ffeae4f1dbde1c7529136d1c806ef54e5d03394e3a` reproduces and re-verifies. All 45 focused runtime tests and 157 repository tests/typecheck/build pass. Cases include one-character and punctuation values, JSON syntax, whole-word boundaries, known configured credentials, structured-field ordering, contact overlap, existing placeholders, cancellation and stream splits. An initial broad structured-field classifier incorrectly treated tool-schema `key` metadata as credentials and caused real provider rejection; the final narrower classifier and schema regression test repair that failure. Failed source/test/provider attempts remain recorded.
+
+The real isolated host/model passes six repeated contact drafts (three containing the unrelated short test password), contact-to-credential promotion, streamed contact output without the short password, and an approved local note. The note is absent before approval and retained once after reload with exact contact data and no test password. Fifteen captured provider request-body checks contain none of the exact raw synthetic email, phone or password values. Evidence: `artifacts/calendar-preferences-review/test-results/short-credential-review/`, with passing final evidence in `final/`.
+
+This closes the named short-string credential defect for the tested paths. It is not universal secret detection, an arbitrary-format guarantee or device acceptance. Default swaps remain off while the broader redaction enablement campaign, current-source restart and native integration gates are completed. No Android build ran.
+
+
+## Stored and encoded credential qualification — October 3
+
+The live user stack now uses `artifacts/calendar-preferences-review/artifacts/storage-credential-final`, consumer manifest `383de39c44aa5be6b99dffb91d285ca21b1055a86dff6ba4b70cf701998846ac`. It was restarted with the existing browser-agent profile; owner authentication, one agent, local workflows, Whisper and Kokoro all report ready. Both swap flags remain off by default. Explicitly select this verified source with `ALPHA_ELIZA_SOURCE` when restarting; source reproduction and the normal fresh dependency installation remain governed by the commands above.
+
+An isolated redaction-on campaign on this source passes five real-provider credential formats, streaming, and owner/contact restoration after an actual host restart. All eleven captured outbound body checks exclude the synthetic raw contacts and credential suffix. Incoming storage now masks complete credentials before the model sees them; nested JSON text/fragments are also protected with exact source-span restoration and bounded decoding. All 97 selected runtime/security tests and all 157 repository tests/typecheck/build pass.
+
+Failed live attempts led to this repair and remain recorded under `test-results/current-redaction-live/`; passing results are in its `storage/` directory. `test-results/encoded-credential-review/` contains source/test evidence. The broader stage-one invalid-native-source failure was subsequently traced to a stale fixture that omitted the intentional single repair attempt. The fixture correction and combined 485-case campaign pass; production runtime behavior is unchanged. Native integration, wider model reliability and current-head full hosted qualification remain open. No Android build ran.

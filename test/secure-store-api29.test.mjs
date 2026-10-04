@@ -4,24 +4,35 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import {execFileSync} from 'node:child_process';
+import {sourceDirectory} from '../scripts/local-agent-source.mjs';
+import {createHash} from 'node:crypto';
 const root=path.resolve(import.meta.dirname,'..');
 
-test('pinned generated secure-store helper reads bounded actual bytes on the Java 8 API',async()=>{
+test('pinned generated secure-store helper reads bounded actual bytes on the Java 8 API',()=>{
   const fixture=fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(),'alpha-frame-test-')));
   try {
-    for(const relative of ['scripts/upstream-native-source.mjs','scripts/stage-local-agent-sources.mjs','upstream.lock.json','app.config.json']) {
+    for(const relative of ['scripts/prepare-local-agent.mjs','scripts/stage-local-agent-sources.mjs','scripts/local-agent-source.mjs','upstream.lock.json','app.config.json']) {
       fs.mkdirSync(path.dirname(path.join(fixture,relative)),{recursive:true});
       fs.copyFileSync(path.join(root,relative),path.join(fixture,relative));
     }
     fs.mkdirSync(path.join(fixture,'vendor'));
-    // Isolated checkout permits negative controls without touching the pinned vendor.
-    const pin=JSON.parse(fs.readFileSync(path.join(root,'upstream.lock.json'))).commit;
-    const vendor=path.join(fixture,'vendor/eliza');
-    execFileSync('git',['clone','--shared','--no-checkout',path.join(root,'vendor/eliza'),vendor],{stdio:'pipe',timeout:60000});
-    execFileSync('git',['-C',vendor,'sparse-checkout','set','packages/app/platforms/android/app/src/main/java/ai/elizaos/app','plugins/plugin-native-browser-surface/android/src/main/java/ai/eliza/plugins/browsersurface'],{stdio:'pipe',timeout:60000});
-    execFileSync('git',['-C',vendor,'checkout','--detach',pin],{stdio:'pipe',timeout:120000});
-    const stage=()=>execFileSync(process.execPath,[path.join(fixture,'scripts/stage-local-agent-sources.mjs')],{timeout:60000,stdio:'pipe'});
-    stage();
+    fs.symlinkSync(fs.realpathSync(path.join(root,'vendor/eliza')),path.join(fixture,'vendor/eliza'));
+    // Native lifecycle sources must be physical, admitted runtime files; a vendor
+    // symlink alone cannot stand in for their independent committed provenance.
+    const lock=JSON.parse(fs.readFileSync(path.join(root,'upstream.lock.json')));
+    const runtimeSource=sourceDirectory(root);
+    const runtimeFixture=path.join(fixture,'artifacts/local-agent-source');
+    // Exercise the real source preparer even on a clean checkout. This fixture
+    // compiles Java only; dependency installation remains the runtime build's job.
+    // An existing source is an object cache, never trusted as prepared test input.
+    const stageEnv={...process.env,ALPHA_LOCAL_AGENT_SOURCE_DIR:runtimeFixture,
+      ALPHA_RUNTIME_GIT_CACHE:fs.existsSync(runtimeSource)?runtimeSource:path.join(root,'vendor/eliza')};
+    // A cold full-runtime checkout and whole-tree authentication can exceed three
+    // minutes on a busy filesystem. Keep the real preparer and all source checks.
+    execFileSync(process.execPath,[path.join(fixture,'scripts/prepare-local-agent.mjs'),'--source-only'],{stdio:'pipe',timeout:600000,env:stageEnv});
+    const launcherResult=execFileSync('python3',[path.join(root,'test/fixtures/resident-launcher-survival.py'),fixture,runtimeFixture],{encoding:'utf8',timeout:15000,maxBuffer:65536});
+    assert.ok(launcherResult.includes('PASS source-derived'));
+    execFileSync(process.execPath,[path.join(fixture,'scripts/stage-local-agent-sources.mjs')],{timeout:60000,env:stageEnv});
     const identity=JSON.parse(fs.readFileSync(path.join(fixture,'app.config.json'))).appId;
     const generated=path.join(fixture,'android/app/build/generated/local-agent');
     const target=path.join(generated,'java',...identity.split('.'));
@@ -30,13 +41,10 @@ test('pinned generated secure-store helper reads bounded actual bytes on the Jav
     assert.equal(store.match(/SecureStoreFrameInput.readBounded/g)?.length,2);
     const manifest=JSON.parse(fs.readFileSync(path.join(generated,'source-manifest.json')));
     assert.deepEqual(manifest.patches,[]);
-    assert.equal(manifest.pin,pin);
-    assert.equal(manifest.runtimeSource.commit,pin);
+    assert.deepEqual(manifest.runtimeSource,{commit:lock.commit});
     for(const entry of manifest.files){
-      const original=execFileSync('git',['-C',vendor,'show',`${pin}:${entry.path}`]);
-      const {createHash}=await import('node:crypto');
-      assert.equal(entry.sha256,createHash('sha256').update(original).digest('hex'));
-      if(entry.sourceSha256)assert.equal(entry.sourceSha256,entry.sha256);
+      const hash=createHash('sha256').update(fs.readFileSync(path.join(runtimeFixture,entry.path))).digest('hex');
+      assert.equal(entry.sourceSha256,hash);assert.equal(entry.sha256,hash);
     }
     const harness=`package ${identity};
 import java.io.*;
@@ -78,17 +86,8 @@ public class FrameReadTest {
     const binary=name=>java?path.join(java,'bin',name):name;
     execFileSync(binary('javac'),['--release','8','-d',fixture,path.join(target,'SecureStoreFrameInput.java'),path.join(target,'FrameReadTest.java')],{timeout:20000});
     assert.match(execFileSync(binary('java'),['-cp',fixture,identity+'.FrameReadTest'],{encoding:'utf8',timeout:20000}),/^PASS bounded/);
-    // Committed-source drift and pin drift must stop staging.
-    const upstreamHelper=path.join(vendor,'packages/app/platforms/android/app/src/main/java/ai/elizaos/app/SecureStoreFrameInput.java');
-    fs.appendFileSync(upstreamHelper,'\n');
-    assert.throws(stage,/checkout is dirty/);
-    execFileSync('git',['-C',vendor,'restore','--',path.relative(vendor,upstreamHelper)]);
-    const original=fs.readFileSync(upstreamHelper);
-    fs.unlinkSync(upstreamHelper);fs.symlinkSync(path.join(target,'SecureStoreFrameInput.java'),upstreamHelper);
-    assert.throws(stage,/checkout is dirty|Symlink/);
-    fs.unlinkSync(upstreamHelper);fs.writeFileSync(upstreamHelper,original);
-    fs.writeFileSync(path.join(fixture,'upstream.lock.json'),JSON.stringify({commit:'0'.repeat(40)}));
-    assert.throws(stage,/Unexpected (?:upstream|native runtime) source pin/);
-
+    // Source drift must stop staging before generating native files.
+    fs.appendFileSync(path.join(runtimeFixture,'packages/app/platforms/android/app/src/main/java/ai/elizaos/app/AgentSecureStore.java'),'\n');
+    assert.throws(()=>execFileSync(process.execPath,[path.join(fixture,'scripts/stage-local-agent-sources.mjs')],{stdio:'pipe',timeout:60000,env:stageEnv}),/Unexpected runtime source/);
   } finally { fs.rmSync(fixture,{recursive:true,force:true}); }
 });

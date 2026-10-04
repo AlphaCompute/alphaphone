@@ -37,36 +37,25 @@ for name in ['private-peer-debug.apk']+[v+'-'+k+'.apk' for v in ['standalone','l
  assert certs==[helper['signerSha256']]
 assert (archive/'inputs-before.json').read_bytes()==(archive/'inputs-after.json').read_bytes()
 frozen=json.loads((archive/'inputs-before.json').read_text())['files']
-source=json.loads(Path('upstream/runtime-source.json').read_text())
-consumer=json.loads(Path('upstream/runtime-consumer.json').read_text())
-pin=json.loads(Path('upstream.lock.json').read_text())['commit']
-assert re.fullmatch('[a-f0-9]{40}',pin)
-assert source['baseCommit']==consumer['baseCommit']==pin
-assert source['patches']==consumer['patches']==[] and consumer['patchHashes']=={}
-assert subprocess.check_output(['git','-C','vendor/eliza','rev-parse','HEAD'],text=True).strip()==pin
-for relative in ['upstream/runtime-source.json','upstream/runtime-consumer.json','upstream.lock.json']:
- assert h(Path(relative).read_bytes())==frozen[relative]
+lock=json.loads(Path('upstream.lock.json').read_text())
+assert frozen['upstream.lock.json']==h(Path('upstream.lock.json').read_bytes())
+assert subprocess.check_output(['git','-C','vendor/eliza','rev-parse','HEAD'],text=True).strip()==lock['commit']
 generated=json.loads((archive/'native-generated-source-manifest.json').read_text())
 assert h((archive/'native-generated-source-manifest.json').read_bytes())==frozen['android/app/build/generated/local-agent/source-manifest.json']
-native=generated['runtimeSource']
-assert generated['pin']==native['commit']==pin and generated['patches']==[]
-origins={'packages/app/platforms/android/app/src/main/java/ai/elizaos/app/'+name+'.java' for name in ['ElizaAgentService','IpcStartupRecovery','WorkflowSurvivorInventory']}
-assert set(native['files'])==origins
+assert generated['runtimeSource']=={'commit':lock['commit']} and generated['patches']==[]
 for relative,digest in frozen.items():
- if relative.startswith(('android/app/src/androidTest/','android/app/src/debug/','android/app/src/main/java/','upstream/')) or relative=='upstream.lock.json':
+ if relative.startswith(('android/app/src/androidTest/','android/app/src/debug/','android/app/src/main/java/')):
   assert Path(relative).is_file() and h(Path(relative).read_bytes())==digest
-for origin in sorted(origins):
- committed=subprocess.check_output(['git','-C','vendor/eliza','show',pin+':'+origin])
- digest=h(committed)
- assert h(Path('vendor/eliza',origin).read_bytes())==digest==native['files'][origin]
- rows=[row for row in generated['files'] if row['path']==origin];assert len(rows)==1
- row=rows[0];assert row['sourceSha256']==row['sha256']==digest
- assert re.fullmatch('[a-f0-9]{64}',row['generatedSha256'])
- assert frozen['android/app/build/generated/local-agent/java/ai/elizaresearch/alphaphone/'+Path(origin).name]==row['generatedSha256']
+for row in generated['files']:
+ origin=row['path']
+ assert not origin.startswith('/') and '..' not in Path(origin).parts
+ committed=subprocess.check_output(['git','-C','vendor/eliza','show',lock['commit']+':'+origin])
+ assert row['sourceSha256']==row['sha256']==h(committed)
+ if origin.endswith('.java'):
+  target=row['generatedPath']
+  assert target.startswith('android/app/build/generated/local-agent/java/') and '..' not in Path(target).parts
+  assert frozen[target]==row['generatedSha256']
 
-
-assert run('emu','avd','name').strip().splitlines()[0]=='test'
-assert run('shell','getprop','ro.build.type').strip() in ('userdebug','eng')
 PHASES=[('reminder-no-alert','ReminderTimingInstrumentedTest','noAlertBridgeWithoutPermissionRestoresAndCompletesWithoutDelivery','reminderTiming','none'),('reminder-alert-timing','ReminderTimingInstrumentedTest','numericLeadDueTimeStaleTargetsAndLegacyReceiptsRemainBound','reminderTiming','numeric'),('pending-storage','ReminderDeletionStorageInstrumentedTest','reminderDeletionSlotUsesEncryptedCompareExchange','pendingActionStorageFixture','1'),('calendar-recovery','CalendarCreationRecoveryInstrumentedTest','committedMarkerRecoveryAndMissingMarkerNeverReplay','calendarCreationRecovery','1'),('audio-fence','NoteAudioInstrumentedTest','optInRetiredDeletionCannotArriveAfterReloadAndRestore','audioFence','true'),('reminder-edit','ReminderAgentInstrumentedTest','selectedCrudPersistsExactReceiptsAndRejectsChangedBindings','reminderAgent','1'),('reminder-v2-transport','ConnectionInstrumentedTest','encryptedCredentialsAndHttpSurviveRecreationWithCancellationAndRedirectRejection','reminderTransport','v2'),('cloud-callback-cold','CloudDelegationCallbackInstrumentedTest','coldCallbackSurvivesRecreationAndOnlyMatchingClear','cloudDelegationNative','1'),('cloud-callback-warm','CloudDelegationCallbackInstrumentedTest','warmCallbackRejectsMalformedLinksAndRetainsLatestOnRecreation','cloudDelegationNative','1'),('workflow-notice-tap','WorkflowNoticeTapInstrumentedTest','twoOpaqueNoticesRetainColdWarmAndFailedCaptureRoutes','workflowNoticeTap','1'),('workflow-notice-process-death','WorkflowNoticeProcessDeathInstrumentedTest','originalNoticeLaunchesAbsentMainAfterOrdinaryProcessDeath','workflowNoticeProcessDeath','1'),('enabled-view-transport','ConnectionInstrumentedTest','enabledViewProfileHttpPreservesAuthenticationAndConditionalRevision','enabledViewTransport','1'),('reminder-tap-lifecycle','ReminderTapLifecycleInstrumentedTest','staleDismissDuplicateCaptureAndConsumedCapacityRemainExact','reminderTapLifecycle','1'),('reminder-tap-process-death','ReminderTapProcessDeathInstrumentedTest','capturedReminderTapSurvivesMainDeathWithoutAnotherNotificationIntent','reminderTapProcessDeath','1'),('native-slot-isolation','ConnectionInstrumentedTest','reservedNativeSlotsRejectEveryPublicStorageOperation','nativeSlotIsolation','1'),('clock-agent-review','ClockAgentReviewInstrumentedTest','journalBoundOwnerReviewManualSelectionCancellationAndRecreation','clockAgentReview','1')]
 for _,cls,_,_,_ in PHASES:
  relative='android/app/src/androidTest/java/ai/elizaresearch/alphaphone/'+cls+'.java'

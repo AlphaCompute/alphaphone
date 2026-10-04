@@ -16,6 +16,7 @@ import { secureConnectionStore } from "./native-connection";
 import { actionScope } from "./device-actions";
 import {
 	HostedSourceRejected,
+ digestSummaryText,
 	type DigestSource,
 	type DigestLoop,
 	type DigestResult,
@@ -597,8 +598,9 @@ export function HostedDigestPanel() {
 									width: "100%",
 								}}
 							>
-								{result.error || JSON.stringify(result.output, null, 2)}
+								{digestSummaryText(result)}
 							</pre>
+                            <details><summary>Execution details</summary><pre style={{whiteSpace:'pre-wrap',overflowWrap:'anywhere',font:'inherit',width:'100%'}}>{JSON.stringify(result.output,null,2)}</pre></details>
 						</article>
 					))}
 			</section>

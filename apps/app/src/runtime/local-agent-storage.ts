@@ -18,6 +18,15 @@ export const developmentActionJournal:ActionJournal={
  reserve:input=>operation({...input,operation:'reserve'}),
  markApplying:input=>operation({...input,operation:'markApplying'}),
  finish:input=>operation({...input,operation:'finish'}),
+ recoverNotification:async input=>{
+  const {entry}=await operation({...input,operation:'get'});if(!entry)throw Error('Notification journal is missing');
+  if(entry.phase==='terminal'&&entry.status!=='unknown')return {entry};
+  const effect=entry.record.operation;if(effect?.type!=='post_notification'||!entry.record.workflow||!entry.attemptId||entry.phase!=='applying'&&!(entry.phase==='terminal'&&entry.status==='unknown'))throw Error('Notification recovery requires an admitted workflow attempt');
+  const binding=await actionScope(JSON.stringify([input.scope,entry.record.ownerId,entry.record.agentId,entry.record.sessionId,entry.record.origin,entry.record.installationId,entry.record.enrollmentId,input.proposalId,entry.record.digest,entry.operationId]));
+  if(binding!==input.bindingHash||await actionScope(JSON.stringify(effect))!==entry.operationHash)throw Error('Notification recovery binding changed');
+  const {workflowNoticeReceipt}=await import('../browser/workflow-notices');const receipt=await workflowNoticeReceipt(entry.operationId,effect.title,effect.body,input.bindingHash,AbortSignal.timeout(15000));if(receipt.status!=='succeeded')return {entry};
+  return operation({...input,operation:'recoverNotification',expectedEntry:entry});
+ },
  recoverReminder:async input=>{
   const {entry}=await operation({...input,operation:'get'});if(!entry)throw Error('Reminder journal is missing');
   if(entry.phase==='terminal'&&entry.status!=='unknown')return {entry};

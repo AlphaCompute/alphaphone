@@ -308,7 +308,7 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
           const status=result.status==='succeeded'?'succeeded':result.status==='failed'?'failed':'unknown';
           return {status,summary:status==='succeeded'?'Posted the reviewed notification on this device.':status==='failed'?'Notification delivery is unavailable on this device.':'Notification outcome is unconfirmed. It will not be repeated automatically.'};
         }
-        if(operation.type==='post_notification'){await publishWorkflowNotice(operationId,operation.body,signal,operation.title);return {status:'succeeded',summary:'Posted the reviewed notification in the browser Inbox.'};}
+        if(operation.type==='post_notification'){await publishWorkflowNotice(operationId,operation.body,signal,operation.title,bindingHash);return {status:'succeeded',summary:'Posted the reviewed notification in the browser Inbox.'};}
         const speechAbort=new AbortController(),stop=()=>speechAbort.abort();signal.addEventListener('abort',stop,{once:true});window.addEventListener('alpha:stop-workflow-speech',stop);
         try{signal.throwIfAborted();await speakLocalText(operation.text,speechAbort.signal,undefined,true);return {status:'succeeded',summary:'Finished reading the reviewed text aloud.'};}finally{signal.removeEventListener('abort',stop);window.removeEventListener('alpha:stop-workflow-speech',stop);}
       }

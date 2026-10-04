@@ -9,12 +9,6 @@ test("imported design sources retain their exact bytes", () => {
   for (const item of JSON.parse(fs.readFileSync("design/manifest.json")))
     assert.equal(hash(item.path), item.sha256, item.path);
 });
-test("full imported app baseline matches its recorded upstream source", () => {
-  const manifest = JSON.parse(fs.readFileSync("base/manifest.json"));
-  assert.equal(manifest.files.length > 2000, true);
-  for (const file of manifest.files)
-    assert.equal(hash(file.path), file.sha256, file.path);
-});
 test("native source is pinned and unmodified", () => {
   execFileSync("node", ["scripts/verify-upstream.mjs"]);
 });

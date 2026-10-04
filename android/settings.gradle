@@ -20,10 +20,5 @@ include ':local-speech'
 include ':eliza-network-policy'
 project(':eliza-network-policy').projectDir = new File('../vendor/eliza/plugins/plugin-native-network-policy/android')
 
-// Authenticated committed upstream sources; never modify the pinned vendor checkout.
-println providers.exec {
- workingDir settingsDir.parentFile
- commandLine 'node', 'scripts/stage-native-calendar.mjs'
-}.standardOutput.asText.get().trim()
 include ':eliza-calendar'
-project(':eliza-calendar').projectDir = new File('../artifacts/native-calendar')
+project(':eliza-calendar').projectDir = new File('../vendor/eliza/plugins/plugin-native-calendar/android')

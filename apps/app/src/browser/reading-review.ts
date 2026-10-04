@@ -29,9 +29,9 @@ export async function reviewBrowserReading(url:string,signal:AbortSignal,valid:(
  let active=true,generation=0,speech:AbortController|undefined;
  const stopSpeech=()=>{generation++;speech?.abort();speech=undefined;field.disabled=false;read.disabled=blocked||sourcePending;field.disabled=blocked;stop.disabled=true;};
  let finish!:()=>void;
- const closed=new Promise<void>(resolve=>{finish=()=>{if(!active)return;active=false;sourceAbort.abort();stopSpeech();signal.removeEventListener('abort',finish);window.removeEventListener('pagehide',finish);document.removeEventListener('visibilitychange',visibility);dialog.remove();if(previous?.isConnected)previous.focus();resolve();};});
- const visibility=()=>{if(document.hidden)finish();};
- window.addEventListener('pagehide',finish);document.addEventListener('visibilitychange',visibility);signal.addEventListener('abort',finish,{once:true});
+ const closed=new Promise<void>(resolve=>{finish=()=>{if(!active)return;active=false;sourceAbort.abort();stopSpeech();signal.removeEventListener('abort',finish);window.removeEventListener('pagehide',finish);window.removeEventListener('alpha-back',back,true);document.removeEventListener('visibilitychange',visibility);dialog.remove();if(previous?.isConnected)previous.focus();resolve();};});
+ const visibility=()=>{if(document.hidden)finish();},back=(event:Event)=>{event.preventDefault();event.stopImmediatePropagation();finish();};
+ window.addEventListener('pagehide',finish);window.addEventListener('alpha-back',back,true);document.addEventListener('visibilitychange',visibility);signal.addEventListener('abort',finish,{once:true});
  dialog.oncancel=event=>{event.preventDefault();finish();};dialog.onclose=finish;close.onclick=finish;
  stop.onclick=()=>{if(!active)return;stopSpeech();status.textContent='Reading stopped.';};
  read.onclick=async()=>{

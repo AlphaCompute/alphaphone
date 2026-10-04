@@ -151,7 +151,7 @@ export function ensureScratchBackingAlias(run, admit) {
 }
 
 // Read-only diagnostic evidence: one shared budget, no retries, mutations or guessed block targets.
-export function collectOverlayFailureDiagnostics({ environment, sdkEnvironment, execute, now = Date.now, hostPaths = { workspace: process.cwd(), androidSdk: sdkEnvironment.ANDROID_HOME, home: process.env.HOME }, statfs = fs.statfsSync, userspaceOnly = false, stockBackup, providerRestart, superLayout = false }) {
+export function collectOverlayFailureDiagnostics({ environment, sdkEnvironment, execute, now = Date.now, hostPaths = { workspace: process.cwd(), androidSdk: sdkEnvironment.ANDROID_HOME, home: process.env.HOME }, statfs = fs.statfsSync, userspaceOnly = false, stockBackup, providerRestart, superLayout = false, frameworkAnr = false }) {
   const deadline = now() + 20000;
   const evidence = { host: {}, guest: {}, budgetMilliseconds: 20000 };
   for (const [name, location] of Object.entries(hostPaths)) {
@@ -186,7 +186,20 @@ export function collectOverlayFailureDiagnostics({ environment, sdkEnvironment, 
     ['superSlot1', ['shell', 'lpdump', '--slot=1', '/dev/block/by-name/super']],
     ['vendorBlockContexts', ['shell', 'grep', '-e', 'super', '-e', 'vda', '-e', 'vd_device', '/vendor/etc/selinux/vendor_file_contexts']],
   ];
-  const reads = superLayout ? superReads : providerRestart ? [
+  const reads = frameworkAnr ? [
+    // Keep the report header and first thread stacks even if the retained dump is large.
+    ['displayPolicy', ['shell', 'dumpsys', 'window', 'policy']],
+    ['powerState', ['shell', 'dumpsys', 'power']],
+    ['surfaceFlingerBacktrace', null],
+    ['graphicsLog', ['shell', 'logcat', '-d', '-b', 'main', '-t', '1000', 'SurfaceFlinger:I', 'RenderEngine:I', 'EGL_emulation:I', 'goldfish-address-space:I', '*:S']],
+    ['systemAppAnr', ['shell', 'dumpsys', 'dropbox', '--print', 'system_app_anr']],
+    ['lastAnr', ['shell', 'dumpsys', 'activity', 'lastanr']],
+    ['processes', ['shell', 'dumpsys', 'activity', 'processes']],
+    ['anrEvents', ['shell', 'logcat', '-d', '-b', 'events', '-t', '400', 'am_anr:I', 'am_crash:I', '*:S']],
+    ['systemLog', ['shell', 'logcat', '-d', '-b', 'system', '-t', '400']],
+    ['memory', ['shell', 'cat', '/proc/meminfo']],
+    ['pressure', ['shell', 'cat', '/proc/pressure/memory', '/proc/pressure/cpu', '/proc/pressure/io']],
+  ] : superLayout ? superReads : providerRestart ? [
     ...superReads,
     ['deviceMapperNames', ['shell', 'dmctl', 'list', 'devices']],
     ['mounts', ['shell', 'cat', '/proc/mounts']],
@@ -216,13 +229,19 @@ export function collectOverlayFailureDiagnostics({ environment, sdkEnvironment, 
   for (const [name, args] of reads) {
     if (userspaceOnly && name !== 'userspaceStorageLog') continue;
     // Admission uses the same bounded executor and performs one complete attempt.
-    try { requireProviderFixture(read, environment, { installed: Boolean(providerRestart) }, () => { throw Error('Failure diagnostic admission unavailable'); }); }
+    try { requireProviderFixture(read, environment, { installed: Boolean(providerRestart || frameworkAnr) }, () => { throw Error('Failure diagnostic admission unavailable'); }); }
     catch (error) { evidence.admissionStopped = String(error.message).slice(0, 512); break; }
     try {
-      const result = read(...args);
-      evidence.guest[name] = (['userspaceStorageLog', 'kernel'].includes(name) ? result.split('\n').filter(line => /gsid|fiemap|scratch|overlay|mkfs|f2fs|ext4|device.mapper/i.test(line)).join('\n') : result).slice(-65536);
+      let result;
+      if (name === 'surfaceFlingerBacktrace') {
+        const pid = read('shell', 'pidof', 'surfaceflinger').trim();
+        require(/^[1-9][0-9]{0,9}$/.test(pid), 'Expected one SurfaceFlinger PID');
+        require(read('shell', 'readlink', '-f', `/proc/${pid}/exe`).trim() === '/system/bin/surfaceflinger', 'SurfaceFlinger executable changed');
+        result = read('shell', 'debuggerd', '-b', pid);
+      } else result = read(...args);
+      evidence.guest[name] = ['systemAppAnr', 'surfaceFlingerBacktrace'].includes(name) ? result.slice(0, 65536) : (['userspaceStorageLog', 'kernel'].includes(name) ? result.split('\n').filter(line => /gsid|fiemap|scratch|overlay|mkfs|f2fs|ext4|device.mapper/i.test(line)).join('\n') : result).slice(-65536);
     } catch (error) {
-      evidence.guest[name] = { unavailable: String(error.message).slice(0, 512), status: error.status ?? null, signal: error.signal ?? null, code: error.code ?? null, stdout: String(error.stdout ?? '').slice(-4096), stderr: String(error.stderr ?? '').slice(-4096) };
+      evidence.guest[name] = { unavailable: String(error.message).slice(0, 512), status: error.status ?? null, signal: error.signal ?? null, code: error.code ?? null, stdout: ['systemAppAnr', 'surfaceFlingerBacktrace'].includes(name) ? String(error.stdout ?? '').slice(0, 65536) : String(error.stdout ?? '').slice(-4096), stderr: String(error.stderr ?? '').slice(-4096) };
     }
   }
   return evidence;
@@ -468,13 +487,15 @@ export async function main({ environment = process.env, execute = execFileSync, 
     require(stockPath(run('shell', 'pm', 'path', candidate.package), run('shell', 'dumpsys', 'package', candidate.package)) === stock, 'Stock path changed');
     require(run('shell', 'sha256sum', stock).trim().split(/\s+/)[0] === stockHash && fileDigest(backup) === stockHash && fileDigest(apk) === candidate.apkSha256, 'Provider bytes changed before removal');
     state.status = 'removing-exact-stock-file'; save();
+    // Restart the Java framework only. Restarting SurfaceFlinger can strand
+    // SystemUI in getGpuContextPriority on this emulator graphics backend.
     const previousServer = serverIdentity();
-    run('shell', 'stop');
+    run('shell', 'stop', 'zygote');
     try {
       require(run('emu', 'avd', 'name').trim().split(/\r?\n/)[0] === 'test' && run('shell', 'getprop', 'ro.kernel.qemu').trim() === '1', 'Fixture changed while stopped');
       require(run('shell', 'sha256sum', stock).trim().split(/\s+/)[0] === stockHash, 'Stopped provider changed');
       run('shell', 'rm', stock);
-    } finally { run('shell', 'start'); }
+    } finally { run('shell', 'start', 'zygote'); }
     const admittedServer = await boot(previousServer); safe();
     require(!run('shell', 'pm', 'list', 'packages', candidate.package).trim(), 'Conflicting provider remains');
     require(sameServer(admittedServer, serverIdentity()), 'Framework changed before provider installation');
@@ -511,8 +532,8 @@ export async function main({ environment = process.env, execute = execFileSync, 
     require(/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/.test(priorBootId), 'Unknown provider boot identity');
     const previousProviderServer = serverIdentity();
     state.status = 'finalizing-provider-framework'; state.providerRestart = { priorBootId, previousServer: previousProviderServer, requested: true }; save();
-    run('shell', 'stop');
-    run('shell', 'start');
+    run('shell', 'stop', 'zygote');
+    run('shell', 'start', 'zygote');
     state.providerRestart.server = await boot(previousProviderServer, true); save(); safe(true);
     const bootId = run('shell', 'cat', '/proc/sys/kernel/random/boot_id').trim();
     require(/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/.test(bootId) && bootId === priorBootId, 'Provider framework restart changed kernel boot identity');
@@ -530,12 +551,29 @@ export async function main({ environment = process.env, execute = execFileSync, 
     run('shell', 'test', '!', '-e', stock);
     await qualifyInstalledProvider('after-framework-restart');
     state.providerDisplayObservations = [];
-    await requireFixtureDisplay(run, { env: environment, serial, sleep, record: observation => {
-      state.providerDisplayObservations.push(observation); save();
-    } });
+    try {
+      await requireFixtureDisplay(run, { env: environment, serial, sleep, record: observation => {
+        state.providerDisplayObservations.push(observation); save();
+      } });
+    } catch (displayError) {
+      // Read-only evidence after refusal; never use diagnostics to admit a secure fixture.
+      try {
+        const diagnostics = collectOverlayFailureDiagnostics({ environment, sdkEnvironment: env, execute, now, frameworkAnr: true });
+        fs.writeFileSync(path.join(output, 'provider-framework-display.json'), JSON.stringify(diagnostics, null, 2) + '\n');
+      } catch (diagnosticError) { state.providerRestart.diagnosticError = String(diagnosticError.message).slice(0, 512); save(); }
+      throw displayError;
+    }
     const activity = run('shell', 'dumpsys', 'activity', 'activities');
     state.providerRestart.anrPresent = activity.includes('Application Not Responding:');
     state.providerRestart.anrLines = activity.split(/\r?\n/).filter(line => line.includes('Application Not Responding:')).slice(0, 8).map(line => line.slice(0, 512)); save();
+    if (state.providerRestart.anrPresent) {
+      // Fresh disposable emulator only, before any product app or credentials.
+      // Preserve the failure; do not dismiss the dialog or restart a second time.
+      try {
+        const diagnostics = collectOverlayFailureDiagnostics({ environment, sdkEnvironment: env, execute, now, frameworkAnr: true });
+        fs.writeFileSync(path.join(output, 'provider-framework-anr.json'), JSON.stringify(diagnostics, null, 2) + '\n');
+      } catch (diagnosticError) { state.providerRestart.diagnosticError = String(diagnosticError.message).slice(0, 512); save(); }
+    }
     require(!state.providerRestart.anrPresent, 'Application ANR remains after provider framework restart');
     state.status = 'PROVISIONED_RUNTIME_QUALIFICATION_PENDING'; save();
     // APKs are reproducible via pinned URL/hash; keep compact provenance in CI artifacts.

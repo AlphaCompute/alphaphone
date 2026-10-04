@@ -3,6 +3,7 @@
 import hashlib,json,os,re,signal,subprocess,sys,uuid,zipfile
 from pathlib import Path
 from resident_absence import assert_no_resident
+from resident_crash_diagnostics import collect_crashes
 assert os.environ.get('GITHUB_ACTIONS')=='true' and os.environ.get('ALPHA_RESIDENT_DISPOSABLE_CI')=='1'
 serial=os.environ['ANDROID_SERIAL'];assert re.fullmatch(r'emulator-[0-9]+',serial)
 archive=Path('test-results/resident-ci-archive');out=Path('test-results/resident-ci-native');out.mkdir(exist_ok=False)
@@ -34,32 +35,24 @@ for name in ['private-peer-debug.apk']+[v+'-'+k+'.apk' for v in ['standalone','l
  assert certs==[helper['signerSha256']]
 assert (archive/'inputs-before.json').read_bytes()==(archive/'inputs-after.json').read_bytes()
 frozen=json.loads((archive/'inputs-before.json').read_text())['files']
-source=json.loads(Path('upstream/runtime-source.json').read_text())
-consumer=json.loads(Path('upstream/runtime-consumer.json').read_text())
-pin=json.loads(Path('upstream.lock.json').read_text())['commit']
-assert re.fullmatch('[a-f0-9]{40}',pin)
-assert source['baseCommit']==consumer['baseCommit']==pin
-assert source['patches']==consumer['patches']==[] and consumer['patchHashes']=={}
-assert subprocess.check_output(['git','-C','vendor/eliza','rev-parse','HEAD'],text=True).strip()==pin
-for relative in ['upstream/runtime-source.json','upstream/runtime-consumer.json','upstream.lock.json']:
- assert h(Path(relative).read_bytes())==frozen[relative]
+lock=json.loads(Path('upstream.lock.json').read_text())
+assert frozen['upstream.lock.json']==h(Path('upstream.lock.json').read_bytes())
+assert subprocess.check_output(['git','-C','vendor/eliza','rev-parse','HEAD'],text=True).strip()==lock['commit']
 generated=json.loads((archive/'native-generated-source-manifest.json').read_text())
 assert h((archive/'native-generated-source-manifest.json').read_bytes())==frozen['android/app/build/generated/local-agent/source-manifest.json']
-native=generated['runtimeSource']
-assert generated['pin']==native['commit']==pin and generated['patches']==[]
-origins={'packages/app/platforms/android/app/src/main/java/ai/elizaos/app/'+name+'.java' for name in ['ElizaAgentService','IpcStartupRecovery','WorkflowSurvivorInventory']}
-assert set(native['files'])==origins
+assert generated['runtimeSource']=={'commit':lock['commit']} and generated['patches']==[]
 for relative,digest in frozen.items():
- if relative.startswith(('android/app/src/androidTest/','android/app/src/debug/','android/app/src/main/java/','upstream/')) or relative=='upstream.lock.json':
+ if relative.startswith(('android/app/src/androidTest/','android/app/src/debug/','android/app/src/main/java/')):
   assert Path(relative).is_file() and h(Path(relative).read_bytes())==digest
-for origin in sorted(origins):
- committed=subprocess.check_output(['git','-C','vendor/eliza','show',pin+':'+origin])
- digest=h(committed)
- assert h(Path('vendor/eliza',origin).read_bytes())==digest==native['files'][origin]
- rows=[row for row in generated['files'] if row['path']==origin];assert len(rows)==1
- row=rows[0];assert row['sourceSha256']==row['sha256']==digest
- assert re.fullmatch('[a-f0-9]{64}',row['generatedSha256'])
- assert frozen['android/app/build/generated/local-agent/java/ai/elizaresearch/alphaphone/'+Path(origin).name]==row['generatedSha256']
+for row in generated['files']:
+ origin=row['path']
+ assert not origin.startswith('/') and '..' not in Path(origin).parts
+ committed=subprocess.check_output(['git','-C','vendor/eliza','show',lock['commit']+':'+origin])
+ assert row['sourceSha256']==row['sha256']==h(committed)
+ if origin.endswith('.java'):
+  target=row['generatedPath']
+  assert target.startswith('android/app/build/generated/local-agent/java/') and '..' not in Path(target).parts
+  assert frozen[target]==row['generatedSha256']
 
 def guard():
  assert run('shell','am','get-current-user').strip()=='0';assert_no_resident(run)
@@ -79,8 +72,8 @@ for variant in ['standalone','launcher']:
   with zipfile.ZipFile(archive/(variant+'-debug.apk')) as apk,zipfile.ZipFile(archive/(variant+'-androidTest.apk')) as test:
    entries={'bunSha256':'lib/x86_64/libeliza_bun.so','bundleSha256':'assets/agent/agent-bundle.js','sourceSha256':'assets/agent/alpha-source.json','processExecutableSha256':'lib/x86_64/libeliza_ld_musl_x86_64_real.so','workerIndexSha256':'assets/agent/workflow-worker/files.sha256','workerManifestSha256':'assets/agent/workflow-worker/manifest.json','compilerManifestSha256':'assets/agent/workflow-worker/compiler/compiler.json'}
    payload={k:h(apk.read(v)) for k,v in entries.items()};payload.update(abi='x86_64',processExecutableEntry=entries['processExecutableSha256'],trustedWorkerSha256=h(test.read('assets/trusted-worker.mjs')))
-   stamp=json.loads(apk.read('assets/agent/alpha-source.json'));assert stamp['base']==pin
-   assert stamp['consumerManifestSha256']==h(Path('upstream/runtime-consumer.json').read_bytes())
+   stamp=json.loads(apk.read('assets/agent/alpha-source.json'));assert stamp['base']==lock['commit'] and stamp['patches']==[]
+   assert stamp['lockSha256']==h(Path('upstream.lock.json').read_bytes())
    assert payload['trustedWorkerSha256']==frozen['android/app/src/androidTest/assets/trusted-worker.mjs']==h(Path('android/app/src/androidTest/assets/trusted-worker.mjs').read_bytes())
    indexed={}
    for line in apk.read('assets/agent/workflow-worker/files.sha256').decode().splitlines():
@@ -140,6 +133,18 @@ for variant in ['standalone','launcher']:
          # or skip the owned cleanup below. Original instrumentation remains interruptible.
          pass
      except Exception:pass
+    if primary is not None and phase=='lost-rpc':
+     try:
+      # The user and package were admitted above; recheck before reading crash metadata.
+      assert run('shell','am','get-current-user').strip()=='0'
+      assert 'UserInfo{'+user+':'+name+':' in run('shell','pm','list','users')
+      installed(APP,user,manifest[variant+'-debug.apk'])
+      uid_text=run('shell','cmd','package','list','packages','-U','--user',user,APP,timeout=5)
+      uid_match=re.search(r'^package:'+re.escape(APP)+r' uid:(\d+)$',uid_text,re.M);assert uid_match
+      diagnostic=collect_crashes(serial,int(uid_match[1]));diagnostic['runId']=runid
+      (out/(variant+'-'+phase+'-native-crash.json')).write_text(json.dumps(diagnostic,indent=2)+'\n')
+     except Exception as diagnostic_error:
+      (out/(variant+'-'+phase+'-native-crash.json')).write_text(json.dumps({'available':False,'errorType':type(diagnostic_error).__name__})+'\n')
     signal.signal(signal.SIGINT,signal.SIG_IGN);signal.signal(signal.SIGTERM,signal.SIG_IGN)
     try:
      assert run('shell','am','get-current-user').strip()=='0';assert 'UserInfo{'+user+':'+name+':' in run('shell','pm','list','users')

@@ -23,8 +23,9 @@ if (fs.existsSync(runtimeStamp)) {
   const stamp = JSON.parse(fs.readFileSync(runtimeStamp, "utf8"));
   const hash = file => createHash("sha256").update(fs.readFileSync(file)).digest("hex");
   if (stamp.base !== pin.commit || !Array.isArray(stamp.patches) || stamp.patches.length ||
-      stamp.manifestSha256 !== hash("upstream/runtime-source.json") ||
-      stamp.consumerManifestSha256 !== hash("upstream/runtime-consumer.json"))
+      stamp.lockSha256 !== hash("upstream.lock.json") ||
+      stamp.preparerSha256 !== hash("scripts/prepare-local-agent.mjs") ||
+      stamp.guardSha256 !== hash("scripts/local-agent-source.mjs"))
     throw new Error("Staged agent does not match the patchless upstream pin; rebuild and stage its runtime before packaging.");
 }
 console.log(`Eliza source verified: ${actual}`);

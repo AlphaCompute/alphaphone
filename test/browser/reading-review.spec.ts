@@ -71,3 +71,11 @@ test('closing a replaced reading session does not stop another speech consumer',
  await page.evaluate(async()=>{const {registerPlugin}=await import('/src/platform-plugins.ts');const voice=registerPlugin<any>('AlphaVoiceCloud');await voice.play(await voice.synthesizeLocal({text:'Other consumer'}));});
  const before=await page.evaluate(()=>(window as any).speechTest.cancelled);await dialog.getByRole('button',{name:'Close',exact:true}).click();expect(await page.evaluate(()=>(window as any).speechTest.cancelled)).toBe(before);
 });
+
+test('Back dismisses the reading review and cancels only its speech before browser navigation',async({page})=>{
+ await open(page);const dialog=page.getByRole('dialog',{name:'Read page excerpt'});await dialog.getByRole('textbox').fill('Reviewed local text');await dialog.getByRole('button',{name:'Read locally',exact:true}).click();await expect(dialog.getByRole('status')).toHaveText('Reading locally…');
+ await page.evaluate(()=>{(window as any).backEscaped=false;window.addEventListener('alpha-back',()=>{(window as any).backEscaped=true;},{once:true});window.dispatchEvent(new Event('alpha-back',{cancelable:true}));});
+ await expect(dialog).toHaveCount(0);expect(await page.evaluate(()=>(window as any).backEscaped)).toBe(false);expect(await page.evaluate(()=>(window as any).speechTest.cancelled)).toBeGreaterThan(0);
+ // Its capture listener must be gone: the next Back belongs to the app again.
+ await page.evaluate(()=>window.dispatchEvent(new Event('alpha-back',{cancelable:true})));expect(await page.evaluate(()=>(window as any).backEscaped)).toBe(true);
+});

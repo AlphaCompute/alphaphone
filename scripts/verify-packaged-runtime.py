@@ -36,8 +36,10 @@ def verify(apk):
         pin = json.loads((ROOT / 'upstream.lock.json').read_text())['commit']
         if stamp.get('base') != pin or stamp.get('patches') != []:
             raise ValueError('Staged runtime does not match patchless pin')
-        for field, source in [('manifestSha256', 'runtime-source.json'), ('consumerManifestSha256', 'runtime-consumer.json')]:
-            if stamp.get(field) != file_hash(ROOT / 'upstream' / source):
+        for field, source in [('lockSha256', 'upstream.lock.json'),
+                              ('preparerSha256', 'scripts/prepare-local-agent.mjs'),
+                              ('guardSha256', 'scripts/local-agent-source.mjs')]:
+            if stamp.get(field) != file_hash(ROOT / source):
                 raise ValueError('Staged source manifest mismatch')
         checks = {}
 

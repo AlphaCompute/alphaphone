@@ -65,7 +65,7 @@ sys.path.insert(0,sys.argv[1])
 def interrupt(*unused):raise KeyboardInterrupt('owned cancellation')
 signal.signal(signal.SIGTERM,interrupt)
 tree=ast.parse(pathlib.Path(sys.argv[2]).read_text())
-blocks=[n for n in ast.walk(tree) if isinstance(n,ast.If) and 'primary is not None' in ast.unparse(n.test) and "phase == 'lost-rpc'" in ast.unparse(n.test)]
+blocks=[n for n in ast.walk(tree) if isinstance(n,ast.If) and 'primary is not None' in ast.unparse(n.test) and "phase == 'lost-rpc'" in ast.unparse(n.test) and "filename == 'resident-recovery-complete.json'" in ast.unparse(n.test)]
 assert len(blocks)==1
 code=compile(ast.fix_missing_locations(ast.Module(body=[blocks[0]],type_ignores=[])),str(sys.argv[2]),'exec')
 namespace={'primary':RuntimeError,'phase':'lost-rpc','filename':'resident-recovery-complete.json','serial':'emulator-5554','user':'10','name':'alpha-ci-'+'a'*32,'runid':'run','value':sys.argv[4],'out':pathlib.Path(sys.argv[3]),'variant':'standalone','json':json}
@@ -88,5 +88,6 @@ except BaseException as error:
     self.assertEqual(child.returncode,0,stdout+stderr);self.assertEqual(stdout.strip(),'RuntimeError:primary-native-failure');self.assertEqual(cleaned.read_text(),'owned cleanup reached')
     with self.assertRaises(ProcessLookupError):os.kill(diagnostic_pid,0)
    finally:
-    if child.poll() is None:child.kill();child.communicate(timeout=2)
+    if child.poll() is None:child.kill()
+    child.communicate(timeout=2)
 if __name__=='__main__':unittest.main()

@@ -1,0 +1,63 @@
+name: Bun spawn seccomp reproduction
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, codex/review-bun-spawn-diagnostic, codex/review-stored-credentials]
+    paths:
+      - .github/workflows/bun-spawn-seccomp.yml
+      - scripts/ci/reproduce-bun-spawn-seccomp.py
+      - upstream.lock.json
+      - vendor/eliza
+permissions:
+  contents: read
+jobs:
+  reproduce:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        libc: [glibc, musl]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.4.2"
+      - if: matrix.libc == 'musl'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 - <<'PY'
+          import hashlib, importlib.util, os, pathlib, zipfile
+          spec = importlib.util.spec_from_file_location('acquire', 'scripts/ci/acquire-resident-bun.py')
+          acquire = importlib.util.module_from_spec(spec); spec.loader.exec_module(acquire)
+          root = pathlib.Path(os.environ['RUNNER_TEMP'])/'musl-reproduction'
+          root.mkdir()
+          archive = root/'bun.zip'
+          # Same stable x64 asset and hashes as the pinned Android Bun lock.
+          acquire.download(545310078, archive, '4835eca59d6da70f4674f5642f6e459dcadab773695b2ed9922d131057989742', os.environ.pop('GH_TOKEN'))
+          with zipfile.ZipFile(archive) as bundle:
+              files = [name for name in bundle.namelist() if name.endswith('/bun')]
+              assert len(files) == 1
+              binary = bundle.read(files[0])
+          assert hashlib.sha256(binary).hexdigest() == '16b72935ffd7a503b978c186874539c92aade4e3515b70a5abf5db2581fdef7d'
+          executable = root/'bun'; executable.write_bytes(binary); executable.chmod(0o755)
+          with open(os.environ['GITHUB_ENV'], 'a') as env:
+              env.write(f'ALPHA_REPRO_BUN={executable}\n')
+          PY
+      - if: matrix.libc == 'glibc'
+        run: python3 scripts/ci/reproduce-bun-spawn-seccomp.py
+      - if: matrix.libc == 'musl'
+        run: |
+          docker run --rm --cap-add SYS_PTRACE \
+            -v "$GITHUB_WORKSPACE:$GITHUB_WORKSPACE" -v "$RUNNER_TEMP:$RUNNER_TEMP" \
+            -w "$GITHUB_WORKSPACE" -e ALPHA_REPRO_BUN alpine:3.21 \
+            sh -ec 'apk add --no-cache python3 gcc musl-dev linux-headers libstdc++ strace git; git config --global --add safe.directory "$PWD/vendor/eliza"; python3 scripts/ci/reproduce-bun-spawn-seccomp.py'
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: bun-spawn-seccomp-${{ matrix.libc }}-${{ github.run_id }}
+          path: test-results/bun-spawn-seccomp/
+          if-no-files-found: error

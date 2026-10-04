@@ -9,3 +9,17 @@ test('Describe preserves the draft when the fixture agent has no typed generator
  expect(await page.evaluate(()=>JSON.parse(localStorage.getItem('alpha.browser.agent.local.v1')||'{"conversations":[]}').conversations.flatMap((c:any)=>c.messages))).toEqual([]);
  await page.reload();await page.getByRole('button',{name:'Workflows',exact:true}).click();await page.getByRole('button',{name:'New workflow',exact:true}).click();await expect(page.getByText(/Restored the draft stored/)).toBeVisible();await expect(page.getByRole('textbox',{name:'Workflow name',exact:true})).toHaveValue('Retain this private draft');await expect(page.getByRole('textbox',{name:'Workflow description',exact:true})).toHaveValue('Private description');
 });
+for(const outcome of ['saved','failed','left'])test(`Describe preserves pending draft storage: ${outcome}`,async({page})=>{
+ await setup(page);
+ await expect.poll(()=>page.evaluate(()=>Object.keys(localStorage).some(key=>key.startsWith('alpha.browser.workflow-draft:')))).toBe(true);
+ await page.evaluate(outcome=>{const request=navigator.locks.request.bind(navigator.locks);let held=false;navigator.locks.request=(async(name:any,...args:any[])=>{if(String(name).startsWith('alpha.browser.workflow-draft:')&&!held){held=true;await new Promise<void>(resolve=>(window as any).releaseDraft=resolve);if(outcome==='failed')throw Error('Synthetic draft storage failure');}return (request as any)(name,...args);}) as any;},outcome);
+ await page.getByRole('textbox',{name:'Workflow name',exact:true}).fill('Retain pending private draft');
+ await expect.poll(()=>page.evaluate(()=>typeof (window as any).releaseDraft)).toBe('function');
+ await page.getByRole('button',{name:/Describe it to/}).click();
+ await expect(page.getByRole('textbox',{name:'Workflow name',exact:true})).toBeVisible();
+ if(outcome==='left')await page.getByRole('button',{name:'Home',exact:true}).click();
+ await page.evaluate(()=>(window as any).releaseDraft());
+ if(outcome==='saved'){await expect(page.getByRole('textbox',{name:'Workflow name',exact:true})).toHaveValue('Retain pending private draft');await expect.poll(()=>page.evaluate(()=>Object.keys(localStorage).filter(key=>key.startsWith('alpha.browser.workflow-draft:')).map(key=>JSON.parse(JSON.parse(localStorage.getItem(key)!).value).spec.name))).toContain('Retain pending private draft');await expect(page.getByRole('textbox',{name:'Message Alpha',exact:true})).toHaveCount(0);}
+ else if(outcome==='failed'){await expect(page.getByRole('textbox',{name:'Workflow name',exact:true})).toHaveValue('Retain pending private draft');await expect(page.getByText('Synthetic draft storage failure',{exact:true}).first()).toBeVisible();}
+ else{await expect.poll(()=>page.evaluate(()=>Object.keys(localStorage).filter(key=>key.startsWith('alpha.browser.workflow-draft:')).map(key=>JSON.parse(JSON.parse(localStorage.getItem(key)!).value).spec.name))).toContain('Retain pending private draft');await expect(page.getByRole('textbox',{name:'Message Alpha',exact:true})).toHaveCount(0);}
+});
