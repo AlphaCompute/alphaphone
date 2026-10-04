@@ -6218,9 +6218,9 @@
       "upstreamCandidate": [
         "plugins/plugin-maps/src/client/share.ts"
       ],
-      "bytes": 3094,
-      "sha256": "d47f1aafca98d6f1f7183c8d1060e0212e00c6d0caa46c97f763507e79c02a70",
-      "lines": 24,
+      "bytes": 2846,
+      "sha256": "a8bd3dba5ec3eaedab4454c2279de7f2c7de9efd1788698cf3b3d726de747d61",
+      "lines": 25,
       "owner": "plugins/plugin-maps",
       "disposition": "extract-or-configure",
       "reason": "Maps domain; inject storage key, location, speech, regional transport and visual tokens. Alpha owns layout and provider defaults.",
@@ -6237,19 +6237,13 @@
         {
           "line": 11,
           "tags": [
-            "presentation"
+            "identity-or-compatibility"
           ]
         },
         {
           "line": 12,
           "tags": [
             "host-coupling",
-            "presentation"
-          ]
-        },
-        {
-          "line": 14,
-          "tags": [
             "presentation"
           ]
         },
@@ -6262,18 +6256,18 @@
         {
           "line": 18,
           "tags": [
-            "presentation"
+            "identity-or-compatibility"
           ]
         },
         {
-          "line": 19,
+          "line": 20,
           "tags": [
             "identity-or-compatibility",
             "host-coupling"
           ]
         },
         {
-          "line": 21,
+          "line": 22,
           "tags": [
             "identity-or-compatibility",
             "host-coupling"
@@ -9374,9 +9368,9 @@
     {
       "file": "src/prototype/phone.css",
       "upstreamCandidate": [],
-      "bytes": 5284,
-      "sha256": "e185679ab977857ef8820e60c3edb07a512bdb8f3b607887105e48721af11f10",
-      "lines": 56,
+      "bytes": 6583,
+      "sha256": "e5b28a23d8f11aed6a904e65cba15a1868f09f8e0ff514837979454d1c4383e6",
+      "lines": 66,
       "owner": "alphaphone",
       "disposition": "retain-or-split",
       "reason": "Product composition, design reference, enabled views, fixtures, or visual presentation. Extract embedded domain behavior separately.",
@@ -9485,6 +9479,55 @@
           "line": 45,
           "tags": [
             "presentation"
+          ]
+        },
+        {
+          "line": 58,
+          "tags": [
+            "identity-or-compatibility",
+            "presentation"
+          ]
+        },
+        {
+          "line": 59,
+          "tags": [
+            "identity-or-compatibility"
+          ]
+        },
+        {
+          "line": 60,
+          "tags": [
+            "identity-or-compatibility"
+          ]
+        },
+        {
+          "line": 61,
+          "tags": [
+            "identity-or-compatibility"
+          ]
+        },
+        {
+          "line": 62,
+          "tags": [
+            "identity-or-compatibility"
+          ]
+        },
+        {
+          "line": 63,
+          "tags": [
+            "identity-or-compatibility"
+          ]
+        },
+        {
+          "line": 64,
+          "tags": [
+            "identity-or-compatibility"
+          ]
+        },
+        {
+          "line": 65,
+          "tags": [
+            "identity-or-compatibility"
           ]
         }
       ],
