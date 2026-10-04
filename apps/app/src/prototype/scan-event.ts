@@ -11,6 +11,15 @@ function clockTime(text:string):string|undefined{
  if(clock){const hour=Number(clock[1]);if(hour<1||hour>12)return;return `${String(hour%12+(/^p/i.test(clock[3])?12:0)).padStart(2,'0')}:${clock[2]||'00'}`;}
  return /^(?:[01]\d|2[0-3]):[0-5]\d$/.test(text)?text:undefined;
 }
+function timeWindow(text:string):{time:string;minutes?:number}|undefined{
+ const single=clockTime(text);if(single)return {time:single};
+ const range=text.split(/\s*(?:[-–—]|\s+to\s+)\s*/i);
+ if(range.length!==2)return;
+ const start=clockTime(range[0].trim()),end=clockTime(range[1].trim());if(!start||!end)return;
+ const minute=(clock:string)=>Number(clock.slice(0,2))*60+Number(clock.slice(3));
+ const minutes=minute(end)-minute(start);if(minutes<15||minutes>1440)return;
+ return {time:start,minutes};
+}
 /** Explicit civil suggestions only: no invented year, locale order or time zone. */
 export function suggestScanEvent(text:string):ScanEventFields{
  const lines=text.split(/\r?\n/).map(line=>line.trim()).filter(Boolean);
@@ -22,10 +31,12 @@ export function suggestScanEvent(text:string):ScanEventFields{
  if(/\b\d{1,2}[/-]\d{1,2}[/-]\d{2,4}\b/.test(text))dates.push(undefined);
  const zoned=/\b(?:UTC|GMT|[ECMP](?:[DS])?T|AK[DS]T|HST|CET|CEST|BST|IST|JST|KST|MSK|(?:Africa|America|Antarctica|Arctic|Asia|Atlantic|Australia|Europe|Indian|Pacific|Etc|US|Canada)\/[A-Za-z_/-]+)\b|\btime\s*zone\s*:/i.test(text);
  const timeLines=lines.map(line=>line.replace(/^(?:\d{4}-\d{2}-\d{2}[T ]+)?(?:at\s+|time:\s*|starts?:\s*)?/i,'')).filter(line=>/^\d{1,2}(?::|\s*[ap]\.?m)/i.test(line));
- const times=timeLines.map(clockTime);
+ const windows=timeLines.map(timeWindow);
+ const times=windows.map(value=>value?.time),durations=windows.flatMap(value=>value?.minutes===undefined?[]:[value.minutes]);
  const dateClear=dates.length>0&&!dates.includes(undefined)&&new Set(dates).size===1;
+ const timeClear=!zoned&&(dates.length===0||dateClear)&&!times.includes(undefined)&&new Set(times).size===1&&new Set(durations).size<=1;
  const locations=lines.map(line=>/^(?:location|venue):\s*(.+)$/i.exec(line)?.[1].trim()).filter((value):value is string=>!!value);
- return {title:(lines[0]||'').slice(0,200),date:dateClear?dates[0]!:'',time:!zoned&&(dates.length===0||dateClear)&&!times.includes(undefined)&&new Set(times).size===1?times[0]!:'',minutes:60,location:new Set(locations).size===1&&locations[0].length<=500?locations[0]:''};
+ return {title:(lines[0]||'').slice(0,200),date:dateClear?dates[0]!:'',time:timeClear?times[0]!:'',minutes:timeClear&&durations.length?durations[0]:60,location:new Set(locations).size===1&&locations[0].length<=500?locations[0]:''};
 }
 export function scanEventDraft(fields:ScanEventFields,text:string,now=new Date()):ScanEventDraft{
  if(text.length>16000)throw Error('Event notes support up to 16,000 characters. Shorten the scanned text before creating an event draft.');
