@@ -28,6 +28,7 @@ export function installPrototypeMapsAdapter(_Component: unknown, views: Record<s
   let initialization: Promise<void> | undefined, searchIntent = 0;
   const navigationVoice=new NavigationVoice(()=>{message='Voice guidance paused. Tap Enable voice guidance to retry.';invalidate();});
   const searchIdentity = {};
+  let pendingHandoff: {query:string;intent:number}|undefined;
   let sharing: {abort:AbortController;current:()=>boolean}|undefined;
   function share(data:MapShare,current:()=>boolean){
     if(!current()||document.hidden)return;sharing?.abort.abort();const owner={abort:new AbortController(),current};sharing=owner;
@@ -72,22 +73,27 @@ export function installPrototypeMapsAdapter(_Component: unknown, views: Record<s
     });
     return controller;
   }
+  function discardHandoff(){
+    pendingHandoff=undefined;
+    if(api?.get('maps').query!=null)api.set({query:null});
+  }
   function release(cancelIntent=true) {
     sharing?.abort.abort();sharing=undefined;navigationVoice.pause();
     lifecycle.releases++;lifecycle.lastRelease=cancelIntent?'leave-or-background':'provider-switch';message='';
-    if(cancelIntent)++searchIntent;
+    if(cancelIntent){++searchIntent;discardHandoff();}
     plane?.destroy(); plane=undefined; planeElement=undefined; directions=false; navigating=false; void navigationLocation.stop().catch(()=>{});
     clearMapsSelection(); ++revision; locating = false; unsubscribe?.(); unsubscribe = undefined;
     const old = controller; controller = undefined; state = undefined;
     void old?.leave().catch(error => { message = failure(error).message; });
     selected = undefined;
   }
-  function showSaved(saved: SavedPlace) { selected = { label: saved.label, coordinate: saved.coordinate, savedId: saved.id, providerId: saved.providerId, providerPlaceId: saved.providerPlaceId, origin: 'saved' }; searching = false; message = ''; invalidate(); }
+  function showSaved(saved: SavedPlace) { discardHandoff();selected = { label: saved.label, coordinate: saved.coordinate, savedId: saved.id, providerId: saved.providerId, providerPlaceId: saved.providerPlaceId, origin: 'saved' }; searching = false; message = ''; invalidate(); }
   function showPlace(place: Place) {
     selected = { label: place.name, coordinate: place.coordinate, providerId: place.providerId, providerPlaceId: place.id, origin: 'provider' };
     searching = false; message = ''; void ensure().select(place); invalidate();
   }
   function submit() {
+    discardHandoff();
     const intent=++searchIntent;
     selected = undefined; searching = true; message = '';
     const match = query.trim().match(/^([+-]?\d+(?:\.\d+)?)\s*,\s*([+-]?\d+(?:\.\d+)?)$/);
@@ -110,7 +116,7 @@ export function installPrototypeMapsAdapter(_Component: unknown, views: Record<s
       message='';void ensure().search(requestedQuery);
     })();
   }
-  function locate() { message = ''; locating = true; if(!directions)selected = undefined; searching = false; void ensure().locate(); invalidate(); }
+  function locate() { discardHandoff();message = ''; locating = true; if(!directions)selected = undefined; searching = false; void ensure().locate(); invalidate(); }
   function save() {
     if (!selected) return;
     try {
@@ -120,12 +126,22 @@ export function installPrototypeMapsAdapter(_Component: unknown, views: Record<s
     } catch (error) { message = failure(error).message; }
     invalidate();
   }
-  const back = () => { ++searchIntent;if(directions||navigating){navigationVoice.pause();directions=false;navigating=false;void navigationLocation.stop().catch(()=>{});message='';invalidate();return true;} if (selected) { selected = undefined; message = ''; invalidate(); return true; } if (searching || query) { searching = false; query = ''; message = ''; void ensure().search(''); invalidate(); return true; } return false; };
+  const back = () => { discardHandoff();++searchIntent;if(directions||navigating){navigationVoice.pause();directions=false;navigating=false;void navigationLocation.stop().catch(()=>{});message='';invalidate();return true;} if (selected) { selected = undefined; message = ''; invalidate(); return true; } if (searching || query) { searching = false; query = ''; message = ''; void ensure().search(''); invalidate(); return true; } return false; };
   module.back = back; module.onLeave = () => release(); module.ongoing = () => null;
   module.reply = () => null;
   module.suggestions = () => regionalMap() ? ['Help me with this place', 'Explain regional map coverage'] : ['Help me choose a Maps provider', 'Explain location permissions'];
   module.render = (st: Bag, currentApi: Bag) => {
     api = currentApi; ensure();
+    // Cross-app navigation carries a one-use search, not a selected destination.
+    // Consume it outside render and fence it against leaving or a newer action.
+    if(typeof st.query==='string'&&st.query.trim()&&!pendingHandoff){
+      const handoff=pendingHandoff={query:st.query,intent:searchIntent};
+      queueMicrotask(()=>{
+        if(pendingHandoff!==handoff)return;pendingHandoff=undefined;
+        if(disposed||!currentApi.isActive()||currentApi.get('maps').query!==handoff.query||handoff.intent!==searchIntent)return;
+        currentApi.set({query:null});release();query=handoff.query.trim();submit();invalidate();
+      });
+    }
     // Calling the original with neutral state retains visual tokens without
     // generating sample place cards, address guesses, routes or timers.
     const data = original.render({ ...st, query: null, place: null, directions: null, nav: false, saved: [], pan: null }, currentApi);
@@ -145,7 +161,7 @@ export function installPrototypeMapsAdapter(_Component: unknown, views: Record<s
       showSearch:!directions&&!navigating, showRec:!navigating, grid: '', major: '', fwy: '', water: '', parks: '', rwy: '', routeD: '', doneD: '', hasRoute: false, pins: [], labels: [], meCss: 'display:none;',
       mapDown: () => {}, mapUp: () => {}, q: query, hasQ: !!query, searchLabel: isPlace || searching ? 'Back' : 'Search',
       searchLead: () => { if (!back()) { searching = true; invalidate(); } },
-      onQ: (event: Event) => { ++searchIntent;query = (event.target as HTMLInputElement).value; selected = undefined; searching = true; message = ''; void ensure().search(''); invalidate(); },
+      onQ: (event: Event) => { discardHandoff();++searchIntent;query = (event.target as HTMLInputElement).value; selected = undefined; searching = true; message = ''; void ensure().search(''); invalidate(); },
       focusQ: () => { if (!searching) { selected = undefined; searching = true; invalidate(); } },
       qKey: (event: KeyboardEvent) => { if (event.key === 'Enter') { event.preventDefault(); submit(); (event.target as HTMLInputElement).blur(); } },
       clearQ: () => { ++searchIntent;query = ''; selected = undefined; searching = true; message = ''; void ensure().search(''); invalidate(); },
