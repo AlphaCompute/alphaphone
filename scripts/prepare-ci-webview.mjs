@@ -5,10 +5,10 @@ import path from 'node:path';
 import { createHash, randomUUID } from 'node:crypto';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
-import { readBootDeviceIdentity } from './ci-webview-boot-device.mjs';
+import { readBootDeviceIdentity } from '../vendor/eliza/packages/app/scripts/mobile/android/hosted-fixture/ci-webview-boot-device.mjs';
 import { androidEnv } from './toolchain.mjs';
-import { requireHostedFixtureEnvironment, assertFixtureIdentity, requireFixtureDisplay } from './ci-emulator-display.mjs';
-import { prepareFixtureNetwork } from './ci-emulator-network.mjs';
+import { requireHostedFixtureEnvironment, assertFixtureIdentity, requireFixtureDisplay } from '../vendor/eliza/packages/app/scripts/mobile/android/hosted-fixture/ci-emulator-display.mjs';
+import { prepareFixtureNetwork } from '../vendor/eliza/packages/app/scripts/mobile/android/hosted-fixture/ci-emulator-network.mjs';
 
 export const candidate = Object.freeze({
   url: 'https://commondatastorage.googleapis.com/chromium-browser-snapshots/AndroidDesktop_x64/1709176/chrome-android-desktop.zip?generation=1790879561205229',
