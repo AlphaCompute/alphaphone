@@ -2,7 +2,7 @@
 
 ## Current review — October 3, combined resident/browser source
 
-The [current MVP requirement matrix](mvp-current-status.md) and [combined implementation report](mvp-stack-convergence.md) govern remaining work. The September 30 inventory below is retained as a dated record; its unavailable-feature statements must not be used as a current implementation checklist.
+The [current MVP requirement matrix](mvp-current-status.md) governs remaining work. The September 30 inventory below is retained as a dated record; its unavailable-feature statements must not be used as a current implementation checklist.
 
 Current source inspection corrects these historical gaps:
 
