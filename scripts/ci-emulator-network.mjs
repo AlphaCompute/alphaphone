@@ -16,6 +16,24 @@ export function parseFixtureNetwork(text) {
 }
 
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
+// Failure diagnostics never retain raw Wi-Fi output, addresses or identifiers.
+export function fixtureNetworkDiagnostics(run) {
+  const read = (...args) => { try { return run('shell', ...args); } catch { return null; } };
+  const flag = name => {
+    const value = read('settings', 'get', 'global', name)?.trim();
+    return value === '1' ? true : value === '0' ? false : null;
+  };
+  const wifi = read('cmd', 'wifi', 'status');
+  const supplicant = /\bSupplicant state: ([A-Z_]+),/.exec(wifi ?? '')?.[1];
+  const states = ['DISCONNECTED', 'INTERFACE_DISABLED', 'INACTIVE', 'SCANNING', 'AUTHENTICATING', 'ASSOCIATING', 'ASSOCIATED', 'FOUR_WAY_HANDSHAKE', 'GROUP_HANDSHAKE', 'COMPLETED', 'DORMANT', 'UNINITIALIZED', 'INVALID'];
+  return {
+    airplaneMode: flag('airplane_mode_on'), mobileDataEnabled: flag('mobile_data'),
+    wifiStatusAvailable: wifi !== null,
+    wifiEnabled: /^Wifi is enabled\s*$/m.test(wifi ?? '') ? true : /^Wifi is disabled\s*$/m.test(wifi ?? '') ? false : null,
+    fixtureAccessPointConnected: wifi === null ? null : /^Wifi is connected to "AndroidWifi"\s*$/m.test(wifi),
+    supplicantState: states.includes(supplicant) ? supplicant : null,
+  };
+}
 export async function prepareFixtureNetwork(run, { env = process.env, serial, sleep = delay, record = () => {} } = {}) {
   const admit = () => {
     requireHostedFixtureEnvironment(env, serial);
@@ -33,6 +51,7 @@ export async function prepareFixtureNetwork(run, { env = process.env, serial, sl
     // The SDK emulator owns this open virtual AP. Configure it once, before
     // measuring real requests; never retry or replace failed product operations.
     admit();
+    record({ phase: 'diagnostics-before', ...fixtureNetworkDiagnostics(run) });
     run('shell', 'cmd', 'wifi', 'set-wifi-enabled', 'enabled');
     admit();
     run('shell', 'cmd', 'wifi', 'connect-network', 'AndroidWifi', 'open');
@@ -46,5 +65,7 @@ export async function prepareFixtureNetwork(run, { env = process.env, serial, sl
     if (consecutive === 2) return state;
     await sleep(500);
   }
+  admit();
+  record({ phase: 'diagnostics-failed', ...fixtureNetworkDiagnostics(run) });
   throw new Error('Disposable emulator has no validated Internet network');
 }
