@@ -59,7 +59,7 @@ These changes belong in Eliza once and are consumed through reviewed source pins
 
 ### Native launcher API consolidation
 
-The setup's small `DeviceApps` bridge is duplicated intentionally so each APK can be built immediately. After E1, move installed-app enumeration, explicit app launch and package-change notifications into `plugins/plugin-native-system`, preserving the `ElizaSystem` registration contract. Return app identity, accessible label, icon and capability/error state; keep Android package visibility scoped to launchable activities and do not request `QUERY_ALL_PACKAGES`. Test removed/disabled apps, work profiles, duplicate activities, malicious labels and denied handlers. Replace both local bridges in the same source-pin upgrade; keep product layout and app ordering local. Build identity remains product configuration, not a shared hard-coded package name.
+`DeviceApps` keeps the product's bridge identity and build information. Installed-app discovery and launch-intent resolution delegate to upstream `SystemLauncherApps` in `plugins/plugin-native-system`; the host owns the actual Activity handoff. Package visibility remains scoped to launchable activities, without `QUERY_ALL_PACKAGES`. The shared helper filters self, disabled and unexported entries, sorts labels and deduplicates packages. Icons, package-change notifications and work-profile behavior remain separate feature work, not claims made by the current enumeration API.
 
 ### Shared contract shape
 
