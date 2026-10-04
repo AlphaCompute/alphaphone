@@ -1,5 +1,5 @@
 import {reviewSummaryNote} from './summary-note-review';
-import {summarySourceOf as sourceOf,type SummarySource as Source} from './summary-source';
+import {summarySourceOf as sourceOf,recordingSourceOf,recordingRevision,type SummarySource as Source} from './summary-source';
 import {reviewAgentClock} from '../runtime/clock-agent-review';
 import {isReminderCreate,validateReminderCreateResult} from '../runtime/reminder-create-contract';
 import {publishWorkflowNotice} from '../browser/workflow-notices';
@@ -525,16 +525,24 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
   p.cardAct = async function (message: Shell) {
     const card = message.card || {};
     if(card.sourceSummary&&!card.done){
-      const review=card.sourceSummary,current=()=>this.live&&!document.hidden&&!connectionController.getSnapshot().open&&JSON.stringify(connectionController.getSnapshot().session)===JSON.stringify(review.session)&&this.S().msgs.some((m:Shell)=>m.id===message.id&&!m.card?.done);
+      const review=card.sourceSummary,recording=recordingSourceOf(review.source);
+      const recordingNote=recording&&this.vget('notes').list.find((n:Shell)=>n.id===recording.noteId);
+      const expectedRecording=recordingNote&&JSON.stringify(recordingNote);
+      const current=()=>this.live&&!document.hidden&&!connectionController.getSnapshot().open&&JSON.stringify(connectionController.getSnapshot().session)===JSON.stringify(review.session)&&this.S().msgs.some((m:Shell)=>m.id===message.id&&!m.card?.done)&&(!recording||JSON.stringify(this.vget('notes').list.find((n:Shell)=>n.id===recording.noteId))===expectedRecording);
       if(!current()){this.toast('Agent or conversation changed. Ask about the source again.');return;}
+      if(recording&&(!recordingNote?.audio||await recordingRevision(recordingNote)!==recording.revision||!current())){this.toast('Recording changed or is unavailable. Ask about its current transcript again.');return;}
       this.closeSummaryReview?.();
       this.closeSummaryReview=reviewSummaryNote({text:review.text,source:review.source,current,save:async(fields)=>{
         if(!current()||this.notesStorageFailed||this.notesPending)return false;
         const update=(title:string,sub:string)=>{if(this.live)this.setState({msgs:this.S().msgs.map((m:Shell)=>m.id===message.id?{...m,card:{...m.card,done:true,title,sub}}:m)});};
         update('Saving summary note','Inspect Notes before retrying if this is interrupted.');
-        try{const note={id:crypto.randomUUID(),kind:'text',...fields,pinned:false,when:'Now',createdAt:Date.now(),modifiedAt:Date.now()};const saved=await this.vset('notes',{list:[note,...this.vget('notes').list]})===true;update(saved?'Summary note saved':'Check Notes before retrying',saved?(fields.documentSource?.name||fields.webSource?.name||'Source'):'Save is unconfirmed.');return saved;}
+        try{
+          const existing=this.vget('notes').list;
+          const list=recording?existing.map((n:Shell)=>n.id===recording.noteId?{...n,summary:[fields.body],actions:fields.actions||[],onCal:false,when:'Now',modifiedAt:Date.now()}:n):[{id:crypto.randomUUID(),kind:'text',...fields,pinned:false,when:'Now',createdAt:Date.now(),modifiedAt:Date.now()},...existing];
+          const saved=await this.vset('notes',{list})===true;update(saved?(recording?'Recording summary saved':'Summary note saved'):'Check Notes before retrying',saved?(recording?.name||fields.documentSource?.name||fields.webSource?.name||'Source'):'Save is unconfirmed.');return saved;
+        }
         catch{update('Check Notes before retrying','Save is unconfirmed.');return false;}
-      },complete:()=>{if(this.live)this.toast('Summary note saved with its source.');}});
+      },complete:()=>{if(this.live)this.toast(recording?'Recording summary saved. No reminders scheduled.':'Summary note saved with its source.');}});
       return;
     }
     if (card.proposalId && !card.done) {

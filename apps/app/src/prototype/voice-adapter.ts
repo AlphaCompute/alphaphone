@@ -1,3 +1,5 @@
+import {recordingRevision} from './summary-source';
+import {reviewContentQuestion} from '../browser/content-question';
 import {recordingLevels} from '../browser/audio-levels';
 import {browserDevProfile} from '../browser/dev-profile';
 import {pendingAudioDeletions,withAudioDeletionLock,changeAudioDeletion,audioDeletionNoteState,type AudioDeletion} from '../runtime/note-audio-deletions';
@@ -36,6 +38,7 @@ const noteAudio = registerPlugin<{
 export function installPrototypeVoiceAdapter(Component: any, views: Record<string, Bag>) {
   installLocalSpeechPlayback(Component);
   const notes = views.notes, render = notes.render, back = notes.back, leave = notes.onLeave;
+  let closeTranscriptQuestion:(()=>void)|undefined;
   const originalApi = Component.prototype.api;
   Component.prototype.api = function (key: string) {
     const value = originalApi.call(this, key);
@@ -88,6 +91,7 @@ export function installPrototypeVoiceAdapter(Component: any, views: Record<strin
   const refresh = () => api?.setView('notes', { nativeVoiceRevision: Date.now() });
   const stopClock = () => { if (tick) clearInterval(tick); tick = undefined; };
   function cleanup(close = true) {
+    closeTranscriptQuestion?.();
     ++generation; readiness?.abort(); readiness = undefined; transcription?.abort(); transcription = undefined; pairedVoice = null; onDeviceVoice = null; onDeviceReady = false; preparingLocal = false; preparingPaired = false; pairedReady = false; pairedAsrReady = false; busy = false; stopClock(); stopSaved();
     if (requestId) void driver.cancel({ requestId }).catch(() => {});
     playback?.abort(); playback = undefined; playing = false;
@@ -355,6 +359,25 @@ export function installPrototypeVoiceAdapter(Component: any, views: Record<strin
     for (const card of [...(result.colL || []), ...(result.colR || [])]) if ((current.get('notes').list || []).some((n: Bag) => n.id === card.id && n.audio)) card.bars = card.bars.map(() => 4);
     if (selected?.audio && result.vo) {
       const vo = result.vo;
+      // A retained recording is not automatically summarized or scheduled.
+      vo.ready=Array.isArray(selected.summary)&&selected.summary.length>0;vo.noSummary=false;
+      vo.canReviewTranscript=!!String(selected.body||selected.audio.transcript||'').trim();
+      vo.reviewTranscript=()=>{
+        closeTranscriptQuestion?.();stopSaved();
+        const snapshot=JSON.stringify(selected),active=()=>current.voiceNoteActive()&&current.isActive()&&!document.hidden&&!connectionController.getSnapshot().open&&current.get('notes').open===selected.id&&JSON.stringify(current.get('notes').list.find((n:Bag)=>n.id===selected.id))===snapshot;
+        if(!active())return;
+        closeTranscriptQuestion=reviewContentQuestion({name:selected.title||'Recording transcript',text:String(selected.body||selected.audio.transcript||''),question:'Summarize this meeting and list its action items. Do not change or schedule anything. Return JSON with exactly two fields: summary (a string) and actions (an array of short strings). Include only actions supported by this excerpt.',sourceLabel:'Offer to save the reviewed answer to this recording',sourceDescription:'You can then edit the summary and action items before saving them to this recording.',current:active,source:async()=>({kind:'recording',version:1,name:String(selected.title||'Recording transcript').slice(0,120),noteId:selected.id,revision:await recordingRevision(selected)}),compose:(text,source)=>current.composeContentQuestion(text,source),closed:()=>{closeTranscriptQuestion=undefined;}});
+      };
+      vo.toCal=()=>{
+        const note=current.get('notes').list.find((n:Bag)=>n.id===selected.id);if(!current.isActive()||document.hidden||current.get('notes').open!==selected.id||JSON.stringify(note)!==JSON.stringify(selected))return;
+        const actionText=(note.actions||[]).filter((a:Bag)=>!a.done).map((a:Bag)=>String(a.t||'')).join('\n');
+        if(!actionText.trim()){current.toast('No open action items. Review the transcript with Alpha first.');return;}
+        if(actionText.length>4000){current.toast('Shorten the action items before creating a reminder. Nothing scheduled.');return;}
+        current.open('calendar',{form:{id:null,title:'',off:1,t:9,d:0,where:'',video:false,who:[],cal:'alpha-reminders',repeat:'none',alert:0,notes:actionText},open:null,month:null,day:1},'hidden');
+        current.toast('Choose one action and review its time, then Save. Nothing scheduled yet.');
+      };
+      vo.calLabel='Review reminder draft';vo.calText='Review reminder';vo.calIcon=current.ic.cal;
+
       vo.playLabel = savedPlaying ? 'Stop recording playback' : 'Play recording';
       vo.playIcon = savedPlaying ? current.ic.stop : current.ic.play;
       vo.play = () => { void playSaved(selected); };
@@ -365,7 +388,7 @@ export function installPrototypeVoiceAdapter(Component: any, views: Record<strin
       vo.del = () => { void (async () => {
         if(deletionBusy)return;deletionBusy=true;stopSaved();
         let row:AudioDeletion|undefined;
-        const active=()=>current.voiceNoteActive()&&current.isActive()&&!document.hidden&&current.get('notes').open===reviewed.id;
+        const active=()=>current.voiceNoteActive()&&current.isActive()&&!document.hidden&&!connectionController.getSnapshot().open&&current.get('notes').open===reviewed.id;
         try {await withAudioDeletionLock(async()=>{
           if(!active())return;
           const prior=Object.values(await pendingAudioDeletions()).find(x=>x.note.id===reviewed.id);
@@ -465,7 +488,7 @@ export function installPrototypeVoiceAdapter(Component: any, views: Record<strin
   const immersive = notes.immersive;
   notes.immersive = (state: Bag, current: Bag) => stage !== 'closed' ? { noPill: true } : immersive?.(state, current);
   notes.back = (state: Bag, current: Bag) => { if (stage !== 'closed') { cleanup(); return true; } return back?.(state, current); };
-  notes.onLeave = (current: Bag) => { cleanup(); leave?.(current); };
+  notes.onLeave = (current: Bag) => { closeTranscriptQuestion?.();cleanup(); leave?.(current); };
   const visibility = () => {
     if (!document.hidden) return;
     ++composerProbe; stopSaved();
@@ -477,8 +500,8 @@ export function installPrototypeVoiceAdapter(Component: any, views: Record<strin
   let account = binding();
   const unsubscribe = connectionController.subscribe(() => {
     const next = binding();
-    if (connectionController.getSnapshot().open) { ++composerProbe; if (stage !== 'closed') cleanup(); }
-    if (next !== account) { ++composerProbe; account = next; stopSaved(); if (stage !== 'closed') cleanup(); }
+    if (connectionController.getSnapshot().open) { closeTranscriptQuestion?.(); ++composerProbe; if (stage !== 'closed') cleanup(); }
+    if (next !== account) { closeTranscriptQuestion?.(); ++composerProbe; account = next; stopSaved(); if (stage !== 'closed') cleanup(); }
   });
   document.addEventListener('visibilitychange', visibility);
   window.addEventListener('pagehide', pagehide);
