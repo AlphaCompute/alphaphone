@@ -2822,9 +2822,9 @@
       "upstreamCandidate": [
         "plugins/plugin-files/src/browser/files.ts"
       ],
-      "bytes": 704,
-      "sha256": "8f8daff2025f41ee0ae86875800a55015901db819596deb4d1c05a2a4bc25e49",
-      "lines": 16,
+      "bytes": 1464,
+      "sha256": "695a896c8170af2adffd062dbfc97cd14a19236637f8ef8a09c99fbe9dbf8f35",
+      "lines": 22,
       "owner": "plugins/plugin-files",
       "disposition": "extract-or-split",
       "reason": "File capabilities, document processing and reviewed selections; keep product dialogs and calendar handoff composition local.",
@@ -3181,9 +3181,9 @@
     {
       "file": "src/browser/mail-attachments.ts",
       "upstreamCandidate": [],
-      "bytes": 4883,
-      "sha256": "6d2382856bb2ac9d03d813b322eb1e6f44c4447751cccaeeb85f560a10fa37b8",
-      "lines": 36,
+      "bytes": 5714,
+      "sha256": "1879825b488f0aca75a35caeb2f54c0dab39f0a3aa0ce4ac8d7c8296b0d051fc",
+      "lines": 42,
       "owner": "plugins/plugin-personal-assistant + cloud client",
       "disposition": "extract-or-split",
       "reason": "Inbox drafts, exact attachment context and operation fencing; keep Alpha inbox presentation.",
@@ -3198,7 +3198,7 @@
       ],
       "seams": [
         {
-          "line": 30,
+          "line": 36,
           "tags": [
             "identity-or-compatibility",
             "host-coupling",
@@ -3206,7 +3206,7 @@
           ]
         },
         {
-          "line": 32,
+          "line": 38,
           "tags": [
             "identity-or-compatibility",
             "host-coupling"
@@ -9146,9 +9146,9 @@
     {
       "file": "src/prototype/note-source-adapter.ts",
       "upstreamCandidate": [],
-      "bytes": 8710,
-      "sha256": "456608a4fc5c3fe70d47f67880d943f1a714ae0fbbdba8917fcc7c26956a1318",
-      "lines": 93,
+      "bytes": 9983,
+      "sha256": "dc56d951d4063bff906d583f29b4e7031f28a42c2e0f0068be15267816b31316",
+      "lines": 96,
       "owner": "plugins/plugin-notes",
       "disposition": "extract-or-split",
       "reason": "Notes and audio metadata persistence; inject legacy keys, secure store, clock and approval contracts.",
@@ -9178,21 +9178,21 @@
           ]
         },
         {
-          "line": 34,
+          "line": 36,
           "tags": [
             "host-coupling",
             "presentation"
           ]
         },
         {
-          "line": 44,
+          "line": 46,
           "tags": [
             "identity-or-compatibility",
             "host-coupling"
           ]
         },
         {
-          "line": 88,
+          "line": 91,
           "tags": [
             "identity-or-compatibility",
             "host-coupling"
@@ -10251,8 +10251,8 @@
     {
       "file": "src/prototype/selection-adapter.ts",
       "upstreamCandidate": [],
-      "bytes": 12795,
-      "sha256": "64cc55511d67723b584ad3908c7c496cba3982851b83111070bad731611d25c1",
+      "bytes": 13175,
+      "sha256": "d29ca2dde3d1fd325d89d78e6dbd59839358a3df601856e2731556a8ea515a5d",
       "lines": 164,
       "owner": "shared platform client; Alpha composition",
       "disposition": "split",
@@ -10486,8 +10486,8 @@
     {
       "file": "src/prototype/summary-note-review.ts",
       "upstreamCandidate": [],
-      "bytes": 3764,
-      "sha256": "96bfef9b97bbe36bb0574b2b5427560ecaefe7073fb883401ce58b130b4b2bc6",
+      "bytes": 3875,
+      "sha256": "a2c50cef7713469b8bb434641cba6d30970870fad247b4ae288804260794e379",
       "lines": 21,
       "owner": "shared platform client; Alpha composition",
       "disposition": "split",
