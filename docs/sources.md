@@ -5,7 +5,6 @@
 - [Eliza Product Vision](https://docs.google.com/document/d/1l6O9s8P5jtzoisotUgyMbcRP-btrN0LbgMLxHV1PBd4/edit): authenticated exports of **Product Vision**, **Design Exploration Plan**, and **On-screen Helper PRD** are in `design/sources/`. Exported separately; comments are not part of the Markdown export. The source remains a work in progress.
 - [Alpha Phone prototype](https://alpha-phone-prototype.pages.dev/): HTML, React runtime, dc-lite runtime and both SVG assets preserved in `design/prototype/`.
 - Senior-care handoff: in the separate senior-care repository. `design/manifest.json` records original byte hashes.
-- Eliza app baseline: the inactive copy was removed. `eliza-app-baseline-provenance.json` records the original `packages/app` commit and all imported file hashes; the original copy remains available in Git history. The active renderer is `apps/app` and shared runtime/native code comes from the pin in `upstream.lock.json`.
 - `vendor/eliza` is the build-consumed upstream source; `upstream.lock.json` pins it. Current upstream scripts use `.ts`; older local checkouts used `.mjs`. Plans below refer to the pinned `.ts` layout.
 
 ## Existing Alpha engineering contracts reviewed

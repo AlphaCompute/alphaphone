@@ -1,6 +1,6 @@
 # Alpha Phone physical pilot acceptance
 
-This runbook implements the handoff procedure in steps 14–15 of the [MVP completion plan](mvp-completion-plan.md). It is an execution template, not acceptance evidence. No physical unit, signed image, OTA, latency target or stakeholder signoff is marked passed by this document. Use the current [acceptance ledger](current-acceptance-ledger.md) to select the candidate; historical emulator results cannot fill physical-unit cells.
+This runbook implements the handoff procedure in steps 14–15 of the [MVP completion plan](mvp-completion-plan.md). It is an execution template, not acceptance evidence. No physical unit, signed image, OTA, latency target or stakeholder signoff is marked passed by this document. Use the current [current product status](mvp-current-status.md) to select the candidate; historical emulator results cannot fill physical-unit cells.
 
 ## Release entry conditions
 

@@ -6,8 +6,7 @@ September 30 scope update: the [MVP report](mvp-scope-and-gap-report.md) and [co
 
 This plan starts from the setup foundation in this repository. See `verification.md` for actual results; planned acceptance criteria below are not passing results.
 
-This foundation roadmap is retained for architecture context. The current
-prototype migration, per-flow work and device evidence are tracked in
+Per-flow requirements and device acceptance are tracked in
 [flow-implementation-plan.md](flow-implementation-plan.md),
 [prototype-implementation-gaps.md](prototype-implementation-gaps.md), and
 [flow-verification.md](flow-verification.md). The target is a Pixel 10 or similar
@@ -61,12 +60,6 @@ These changes belong in Eliza once and are consumed through reviewed source pins
 ### Native launcher API consolidation
 
 The setup's small `DeviceApps` bridge is duplicated intentionally so each APK can be built immediately. After E1, move installed-app enumeration, explicit app launch and package-change notifications into `plugins/plugin-native-system`, preserving the `ElizaSystem` registration contract. Return app identity, accessible label, icon and capability/error state; keep Android package visibility scoped to launchable activities and do not request `QUERY_ALL_PACKAGES`. Test removed/disabled apps, work profiles, duplicate activities, malicious labels and denied handlers. Replace both local bridges in the same source-pin upgrade; keep product layout and app ordering local. Build identity remains product configuration, not a shared hard-coded package name.
-
-### Packaging decision and migration
-
-Continue with submodules for implementation. Publishing every package is not a prerequisite and would export untested workspace assumptions. Before moving to registry packages: inventory the actual dependency closure; build it in topological order; rewrite workspace versions; include all Android/iOS source and runtime assets; verify exports with `npm pack`; install tarballs into these two clean consumer repos; build both flavors; then publish a coordinated prerelease with a compatibility matrix and rollback pin. Never publish credentials, proprietary device blobs or generated development signing material.
-
-The retired app baseline remains an audit/migration source in Git history; see `eliza-app-baseline-provenance.json`. Do not activate its entire default UI to finish either product. Port the bootstrap and narrow reusable services into E1, retaining original source attribution and comparing against the recorded upstream baseline commit. Every port must have a consumer test; generic fixes go upstream instead of accumulating two copies.
 
 ### Shared contract shape
 

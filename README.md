@@ -20,7 +20,7 @@ the exact tested scope rather than treating a successful APK build as acceptance
 - [Current implementation plan](docs/flow-implementation-plan.md)
 - [Prototype coverage and remaining gaps](docs/prototype-implementation-gaps.md)
 - [Current flow verification](docs/flow-verification.md)
-- [Complete current acceptance ledger](docs/current-acceptance-ledger.md)
+- [current product status](docs/mvp-current-status.md)
 - [Cloud deployment and authentication findings](docs/cloud-production-validation.md)
 - [Enclave candidate and signing gates](docs/enclave-candidate-validation.md)
 - [Browser autofill and Proton integration](docs/browser-autofill-integration.md)
@@ -29,8 +29,6 @@ the exact tested scope rather than treating a successful APK build as acceptance
 - [Working PRD](docs/prd.md)
 - [Detailed implementation plan](docs/implementation-plan.md)
 - [Architecture and upstream ownership](docs/architecture.md)
-- [Application ownership audit and upstream extraction](docs/app-upstream-ownership.md)
-- [Upstream consolidation inventory and migration boundaries](docs/upstream-consolidation.md)
 - [Requirements and open decisions](docs/decisions.md)
 - [Verification results and remaining gates](docs/verification.md)
 - [Source/design provenance](docs/sources.md)
@@ -145,10 +143,7 @@ for signing, default-home policy and the full image verification boundary.
 ## Layout
 
 `apps/app` owns this product's UI. `android` owns its packaging and launcher bridge.
-`vendor/eliza` pins shared platform/native/OS code. The inactive app baseline has
-been removed; its source commit and file hashes remain in
-`docs/eliza-app-baseline-provenance.json` and the original copy remains in Git history.
-`design` preserves the supplied references. Use root npm scripts.
+`vendor/eliza` pins shared platform/native/OS code. `design` preserves the supplied references. Use root npm scripts.
 
 GitHub Actions builds both variants, runs emulator instrumentation and uploads
 artifacts. A successful APK job does not establish full AOSP image or physical

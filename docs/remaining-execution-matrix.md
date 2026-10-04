@@ -1,6 +1,6 @@
 # Remaining execution matrix
 
-Source inventory re-counted from frozen Build77 Java source on September 30, with archived runtime evidence through Build75 and Build76 static package checks. Documentation-only review; no adb, Gradle, emulator, provider or account operations were performed. This inventory complements the [current acceptance ledger](current-acceptance-ledger.md). Historical rows retain their named artifact scope; source counts are not execution counts.
+Source inventory re-counted from frozen Build77 Java source on September 30, with archived runtime evidence through Build75 and Build76 static package checks. Documentation-only review; no adb, Gradle, emulator, provider or account operations were performed. This inventory complements the [current product status](mvp-current-status.md). Historical rows retain their named artifact scope; source counts are not execution counts.
 
 ## New Build77 source gates — execution pending
 
