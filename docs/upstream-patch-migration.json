@@ -406,5 +406,7 @@
   "upstreamPlatformCommit": "17c795ff947081a304c73d8d224095899c8252ed",
   "upstreamPlatformStagingPullRequest": "https://github.com/elizaOS/eliza/pull/33260",
   "upstreamNativeLibraryQualificationPullRequest": "https://github.com/elizaOS/eliza/pull/33265",
-  "upstreamNativeLibraryQualificationCommit": "6b7dbb31b253b3e9b1371cdf57f76e4a9c81b149"
+  "upstreamNativeLibraryQualificationCommit": "6b7dbb31b253b3e9b1371cdf57f76e4a9c81b149",
+  "upstreamNativeLibraryStagingPullRequest": "https://github.com/elizaOS/eliza/pull/33277",
+  "upstreamNativeLibraryStagingCommit": "278af04b9498a35740468ffa7b68239d1924257f"
 }

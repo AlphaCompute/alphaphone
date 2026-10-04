@@ -3,7 +3,7 @@
 ## Current integration
 
 Alpha consumes the reviewed patchless pin in `upstream.lock.json` (currently
-`83e2a2d90a619600be56fcca237a7861644b2d4b`). The complete inventory contains
+`278af04b9498a35740468ffa7b68239d1924257f`). The complete inventory contains
 78 retired patches in [the migration ledger](upstream-patch-migration.json).
 The 70-file map below is an earlier historical inventory. Runtime authentication
 uses the lock, preparer and source-guard hashes; the two earlier runtime manifests
