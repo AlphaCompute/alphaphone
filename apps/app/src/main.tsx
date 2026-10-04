@@ -8,6 +8,7 @@ import { browserDevProfile,developmentAgentWorkflows } from './browser/dev-profi
 import { captureSimulatedApps, installSimulatedApps } from './browser/simulated-apps';
 import {HostedDigestPanel} from './runtime/hosted-digest-ui';
 import { installClockAdapter } from './prototype/clock-adapter';
+import {installNoteWebSourceAdapter} from './prototype/note-web-source-adapter';
 import {installNoteSourceAdapter} from './prototype/note-source-adapter';
 import { installNotesDocumentAdapter } from './prototype/notes-document-adapter';
 import { installPrototypeMapsAdapter } from './prototype/maps-adapter';
@@ -68,6 +69,7 @@ if (!fixture) {
   installPrototypeVoiceAdapter(Component, VIEWS);
   installNotesDocumentAdapter(Component, VIEWS);
   installNoteSourceAdapter(VIEWS);
+  installNoteWebSourceAdapter(VIEWS);
   installPrototypeBrowserAdapter(Component, VIEWS);
   installSettingsAdapter(Component, VIEWS);
   if(!isAndroid)installBrowserDeviceAdapter(Component);

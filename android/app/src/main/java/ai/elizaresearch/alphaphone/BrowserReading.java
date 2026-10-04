@@ -95,8 +95,12 @@ final class BrowserReading {
   return new JSONObject().put("origin",origin).put("owner",owner).put("session",session).put("expires",expires).toString();
  }
  void review(PluginCall call,WebView web,BrowserReadingWorld world,BooleanSupplier stillCurrent){
+  review(call,web,world,stillCurrent,false);
+ }
+ void reviewQuestion(PluginCall call,WebView web,BrowserReadingWorld world,BooleanSupplier stillCurrent){review(call,web,world,stillCurrent,true);}
+ private void review(PluginCall call,WebView web,BrowserReadingWorld world,BooleanSupplier stillCurrent,boolean question){
   cancel();final long expected=generation;
-  try{binding=binding(call);}catch(Exception error){call.reject("Select an available speech route before reading");return;}
+  try{if(!question)binding=binding(call);}catch(Exception error){call.reject("Select an available speech route before reading");return;}
   if(sensitiveUrl(web.getUrl())){call.reject("Reading unavailable on a sensitive or unverified page");return;}
   if(world==null||!world.ready()){call.reject("Isolated page reading is unavailable. Update Android System WebView, then reload this page.");return;}
   current=stillCurrent;pending=call;expires=System.currentTimeMillis()+120000;
@@ -109,10 +113,10 @@ final class BrowserReading {
     if(result.optBoolean("blocked")){PluginCall rejected=pending;pending=null;cancel();rejected.reject("Reading unavailable on a sensitive or ambiguous page");return;}
     String extracted=result.getString("text");if(extracted.isBlank()||extracted.length()>5000)throw new IllegalStateException();text=extracted;token=UUID.randomUUID().toString();
     String source=android.net.Uri.parse(web.getUrl()).getHost();boolean local="device".equals(call.getString("execution"));
-    TextView preview=new TextView(activity);preview.setText("Source: "+source+"\nSpeech: "+(local?"On this device":call.getString("origin"))+"\nOwner: "+call.getString("ownerId")+(local?"\n\nRead on this device uses local speech. The excerpt is not sent to an agent or speech server.\n":"\n\nRead with selected agent sends exactly the following text for speech.\n")+text.length()+" characters"+(result.optBoolean("truncated")?" (truncated; no further text will be sent)":"")+"\n\n"+text);preview.setTextIsSelectable(true);int padding=(int)(20*activity.getResources().getDisplayMetrics().density);preview.setPadding(padding,padding,padding,padding);
+    TextView preview=new TextView(activity);preview.setText(question?"Source: "+source+"\n\nContinue releases this public excerpt to the question editor. Review and edit it there; only Send shares your draft with the selected agent.\n\n"+text:"Source: "+source+"\nSpeech: "+(local?"On this device":call.getString("origin"))+"\nOwner: "+call.getString("ownerId")+(local?"\n\nRead on this device uses local speech. The excerpt is not sent to an agent or speech server.\n":"\n\nRead with selected agent sends exactly the following text for speech.\n")+text.length()+" characters"+(result.optBoolean("truncated")?" (truncated; no further text will be sent)":"")+"\n\n"+text);preview.setTextIsSelectable(true);int padding=(int)(20*activity.getResources().getDisplayMetrics().density);preview.setPadding(padding,padding,padding,padding);
     ScrollView scroll=new ScrollView(activity);scroll.addView(preview);
-    dialog=new AlertDialog.Builder(activity).setTitle("Read this page aloud?").setView(scroll).setNegativeButton("Cancel",(d,w)->cancel()).setPositiveButton(local?"Read on this device":"Read with selected agent",(d,w)->{
-     if(expected!=generation||!valid()){cancel();return;}approved=true;PluginCall accepted=pending;pending=null;dialog=null;JSObject response=new JSObject();response.put("readingToken",token);accepted.resolve(response);
+    dialog=new AlertDialog.Builder(activity).setTitle(question?"Ask about this page?":"Read this page aloud?").setView(scroll).setNegativeButton("Cancel",(d,w)->cancel()).setPositiveButton(question?"Review question":local?"Read on this device":"Read with selected agent",(d,w)->{
+     if(expected!=generation||!valid()){cancel();return;}if(question){PluginCall accepted=pending;pending=null;JSObject response=new JSObject();response.put("text",text);cancel();accepted.resolve(response);return;}approved=true;PluginCall accepted=pending;pending=null;dialog=null;JSObject response=new JSObject();response.put("readingToken",token);accepted.resolve(response);
     }).setOnCancelListener(d->cancel()).create();dialog.show();
    }catch(Exception error){cancel();}
   },()->{if(expected==generation)cancel();});
