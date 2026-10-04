@@ -54,3 +54,8 @@ The active shell derives its Capacitor activity lifecycle, splash installation, 
 5. Before production, run upstream required root checks, the real auth/agent suite, signed-image build and physical-device acceptance. Reverting the submodule pin is the source rollback; installed APK/OS rollback must separately respect signing identity and Android versionCode rules.
 
 No production secrets or signing keys belong in these repos. Account credentials are encrypted with Android Keystore AES-GCM in the app no-backup directory. Renderer preferences contain only nonsecret connection selection and conversation identifiers. Cloud voice requests bind to a specific saved credential generation. Platform backup remains disabled until retention/key ownership is specified.
+
+Shared Android calendar and local speech implementations are consumed from the pinned
+upstream source. Alpha retains calendar identity configuration, generated speech inputs,
+its renderer and both APK distributions. See [the consolidation inventory](upstream-consolidation.md)
+for the ownership boundary and remaining extraction contracts.

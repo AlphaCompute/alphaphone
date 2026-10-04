@@ -19,3 +19,6 @@ include ':notification-fixture'
 include ':local-speech'
 include ':eliza-network-policy'
 project(':eliza-network-policy').projectDir = new File('../vendor/eliza/plugins/plugin-native-network-policy/android')
+
+include ':eliza-calendar'
+project(':eliza-calendar').projectDir = new File('../vendor/eliza/plugins/plugin-native-calendar/android')

@@ -29,6 +29,7 @@ the exact tested scope rather than treating a successful APK build as acceptance
 - [Working PRD](docs/prd.md)
 - [Detailed implementation plan](docs/implementation-plan.md)
 - [Architecture and upstream ownership](docs/architecture.md)
+- [Upstream consolidation inventory and migration boundaries](docs/upstream-consolidation.md)
 - [Requirements and open decisions](docs/decisions.md)
 - [Verification results and remaining gates](docs/verification.md)
 - [Source/design provenance](docs/sources.md)

@@ -40,8 +40,8 @@ configuration; they do not measure how much independently reusable code exists.
 | Local code | Upstream owner | Required work before deletion |
 | --- | --- | --- |
 | `DeviceAppsPlugin` enumeration/launch | `plugin-native-system` | Add scoped launchable-app enumeration and launch helpers; preserve exported-activity checks, self exclusion, deduplication, unavailable handlers and no `QUERY_ALL_PACKAGES`. Build identity remains local. The pinned system plugin currently exposes roles/settings, not this complete list/launch contract. |
-| `AlphaCalendarPlugin`, creation/deletion guards | `plugin-native-calendar` | Add Android CalendarContract APIs and exact event/change guards. Existing exported definitions are Apple-calendar oriented; verify recurrence, timezone, provider mutation races and cancellation on Android. |
-| `ReminderStore`, receivers/taps and envelopes | `plugin-native-reminders` | Preserve reboot recovery, stable operation identity, exact alarms/permissions, recurrence and product route configuration. Do not add a second scheduler or silently relax replay prevention. |
+| `AlphaCalendarPlugin`, creation/deletion guards | `plugin-native-calendar` | Adopted the newer host-configured Android adapter, preserving Alpha account, calendar, label, color, journal and URI identity. Added upstream wiring and native identity tests; retained product acceptance scenarios. The original pin exposed the Apple contract; newer develop now has a separate Android adapter. |
+| `ReminderStore`, receivers/taps and envelopes | `plugin-native-reminders` | Newer develop has a host-configured engine with explicit secure-store factories, resource ownership and per-envelope synchronization. Added missing native identity admission tests upstream. Alpha adoption still requires an encrypted-store adapter, exact legacy PendingIntent/storage configuration, and recovery/upgrade scenarios; do not swap these identities mechanically. |
 | `AlphaCredentialStore`, renderer slots, connection/voice credentials | `plugin-native-secure-store` and shared session transport | Generalize registered credential scopes and migration, not arbitrary renderer key access. The current upstream TypeScript contract admits fixed session/runtime keys; Alpha stores additional scoped credentials and journals. Preserve Keystore/no-backup semantics and credential-generation binding. |
 | Browser bookmarks/downloads/reading/password-provider surface | `plugin-native-browser-surface` | Extract isolated surfaces and approved observation/action contracts; retain origin/version/consent binding and no Capacitor bridge in third-party pages. Product navigation and account decisions remain local. |
 | `AlphaFilesPlugin`, selected-document access, document export | `plugin-native-filesystem` | Support Android SAF persistable grants, exact-byte provider readback, cancellation and grant loss. Avoid replacing user-selected document capabilities with unrestricted paths. |
@@ -52,8 +52,11 @@ configuration; they do not measure how much independently reusable code exists.
 ## Verification boundaries
 
 The WebView CI failure was SystemUI waiting for SurfaceFlinger GPU context priority
-across framework restart. Disabling host Vulkan passed the focused hosted provider
-qualification in run `37164442229`; the ANR/display/provider checks remain enabled.
+across framework restart. Disabling host Vulkan passed focused qualification in run `37164442229`, but
+full PR smoke reproduced the ANR. Restarting only the primary Zygote/framework
+preserves SurfaceFlinger; all 38 provider tests and hosted qualification run
+`37168294637` passed. Full smoke remains a separate required check. The
+ANR/display/provider checks remain enabled.
 Both PRs receive one browser/Android run per PR update rather than duplicate branch
 push and PR runs. Push verification remains enabled on `main`.
 
@@ -63,3 +66,7 @@ separate results. No source move or successful APK build establishes the latter
 acceptance gates. Upstream changes must be published and reviewed before the
 consumer pin and local deletions are merged together; never edit the vendor
 checkout to make an uncommitted extraction appear consumed.
+
+The extraction also preserves the reviewed staging speech warmup and late-abort
+worker receipt fixes from upstream PRs #33238 and #33243 when advancing to develop.
+These fixes were absent from that branch despite being present in Alpha's earlier pin.
