@@ -145,3 +145,14 @@ Cleanup restored user 0 and removed owned packages/users after both setup failur
 packaged agent bundle, worker file inventory and both native runtime ABIs against
 authenticated staged inputs. All four current APKs passed; a synthetic mixed-source
 archive was rejected. No runtime execution acceptance is inferred.
+
+## Both-distribution Calendar acceptance at candidate 09698bd
+
+The corrected disposable-user HOME setup completed the launcher campaign:
+all ten instrumentation tests passed, including creation recovery, five main
+flows, two CRUD flows, range and truncation. Every owned user/package was cleaned
+up and owner user 0 restored. Evidence is
+`test-results/calendar-regression-1791080876060`; standalone evidence remains
+`test-results/calendar-regression-1791070033982`. These exact APKs are documented
+in the packaged-runtime proof. External editor handoff, physical-device behavior
+and a rebuild of the later upstream merge remain separate requirements.
