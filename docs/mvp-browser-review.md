@@ -2509,3 +2509,10 @@ A valid synthetic 137-character email address rendered a recipient chip about 1,
 The compact-draft regression now saves/reloads that exact address, verifies all draft fields, removes the recipient and confirms the message remains unchanged, with no local sends. All 33 owning Inbox cases pass across Chromium, Firefox and WebKit; all 286 repository tests, TypeScript and build pass. Evidence: `test-results/inbox-layout/long-negative/`, `long-fixed/`, `long-recipient-after.png`, and `long-verify.log`. The earlier one-off screenshot filename was overwritten by the corrected probe; the original failed-test screenshot and measured negative result remain retained. No real email was sent and no Android build ran.
 
 These changes are published with the preceding compose/fixture repairs and reproducible privacy check as one review batch. The existing main browser run37185569183 remains active and is not claimed passing.
+
+
+## October 4 — long email reading content
+
+The Inbox reading review exposed 3,475 pixels of horizontal overflow from a long subject and URL at 150% text. A negative assertion reproduced it. The message region now wraps unbroken content and supports keyboard focus while retaining the existing preformatted paragraph rendering. A synthetic HTML-like body remains inert text: no image element is inserted and no handler executes. The corrected body screenshot was inspected.
+
+All 39 final Inbox layout/local-message cases pass across Chromium, Firefox and WebKit, including the preceding draft/recipient cases. All 286 repository tests, TypeScript and build pass. Evidence is in `test-results/inbox-layout/message-negative/`, `message-fixed/` and `message-verify.log`. A first batch was interrupted after a scoped template-edit assertion prevented the patch; that interrupted attempt is not a pass. The subsequent complete campaign exited zero. No Android build or real email delivery occurred. This completes the accumulated Inbox fixes for PR166 alongside the reproducible host privacy command; final hosted qualification must follow its eventual merged head.
