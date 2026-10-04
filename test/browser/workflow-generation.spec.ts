@@ -51,8 +51,13 @@ test('editing the request during generation discards its late response',async({p
 
 for(const outcome of ['saved','failed','left'])test(`Generation waits for durable draft storage: ${outcome}`,async({page})=>{
  await setup(page);
- await expect.poll(()=>page.evaluate(()=>Object.keys(localStorage).some(key=>key.startsWith('alpha.browser.workflow-draft:')))).toBe(true);
- await page.evaluate(outcome=>{const request=navigator.locks.request.bind(navigator.locks);let held=false;navigator.locks.request=(async(name:any,...args:any[])=>{if(String(name).startsWith('alpha.browser.workflow-draft:')&&!held){held=true;await new Promise<void>(resolve=>(window as any).releaseDraft=resolve);if(outcome==='failed')throw Error('Synthetic draft storage failure');}return (request as any)(name,...args);}) as any;},outcome);
+ await page.evaluate(async()=>{
+  const {connectionController:c}=await import('/src/runtime/connection-ui.tsx'),{browserWorkflowDraftStore}=await import('/src/browser/workflow-drafts.ts'),{workflowSha}=await import('/src/runtime/workflow-device-contract.ts');
+  const session=c.getSnapshot().session!,store=await browserWorkflowDraftStore(session),slot='workflow-draft:v1:'+await workflowSha([session.origin,session.ownerId,session.agentId]);
+  (window as any).readGenerationDraft=async()=>{const {value}=await store.secureRead({slot});return value?JSON.parse(value).spec.name:null;};
+ });
+ await expect.poll(()=>page.evaluate(()=>(window as any).readGenerationDraft())).toBe('Retained original draft');
+ await page.evaluate(outcome=>{const request=navigator.locks.request.bind(navigator.locks);let held=false;navigator.locks.request=(async(name:any,...args:any[])=>{if(String(name).startsWith('["browser-document","alpha.browser.documents.v1","alpha.browser.workflow-draft:')&&!held){held=true;await new Promise<void>(resolve=>(window as any).releaseDraft=resolve);if(outcome==='failed')throw Error('Synthetic draft storage failure');}return (request as any)(name,...args);}) as any;},outcome);
  await page.getByRole('textbox',{name:'Workflow name',exact:true}).fill('Retain pending private draft');
  await expect.poll(()=>page.evaluate(()=>typeof (window as any).releaseDraft)).toBe('function');
  await page.getByRole('textbox',{name:'Workflow request',exact:true}).fill('Generate after storage');
@@ -63,5 +68,5 @@ for(const outcome of ['saved','failed','left'])test(`Generation waits for durabl
  await page.evaluate(()=>(window as any).releaseDraft());
  if(outcome==='saved'){await expect(page.getByRole('region',{name:'Generated draft',exact:true})).toBeVisible();expect((await counts(page)).calls).toBe(1);}
  else if(outcome==='failed'){await expect(page.getByRole('textbox',{name:'Workflow name',exact:true})).toHaveValue('Retain pending private draft');await expect(page.getByText(/Resolve local draft storage|Synthetic draft storage failure/).first()).toBeVisible();expect((await counts(page)).calls).toBe(0);}
- else{await expect.poll(()=>page.evaluate(()=>Object.keys(localStorage).filter(key=>key.startsWith('alpha.browser.workflow-draft:')).map(key=>JSON.parse(JSON.parse(localStorage.getItem(key)!).value).spec.name))).toContain('Retain pending private draft');expect((await counts(page)).calls).toBe(0);}
+ else{await expect.poll(()=>page.evaluate(()=>(window as any).readGenerationDraft())).toBe('Retain pending private draft');expect((await counts(page)).calls).toBe(0);}
 });
