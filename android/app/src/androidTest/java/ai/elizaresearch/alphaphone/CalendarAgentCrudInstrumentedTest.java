@@ -22,7 +22,19 @@ public class CalendarAgentCrudInstrumentedTest {
  private void nativeClick(String label)throws Exception{for(int i=0;i<120;i++){String early=eval("window.__calendarAgentResult ? JSON.stringify({status:window.__calendarAgentResult.status,error:window.__calendarAgentResult.error}) : null");if(!"null".equals(early))fail("Calendar operation settled before review control "+label+": "+early);AccessibilityNodeInfo root=InstrumentationRegistry.getInstrumentation().getUiAutomation().getRootInActiveWindow();if(root!=null){java.util.ArrayDeque<AccessibilityNodeInfo> queue=new java.util.ArrayDeque<>();queue.add(root);while(!queue.isEmpty()){AccessibilityNodeInfo node=queue.removeFirst();if(node.getText()!=null&&label.equalsIgnoreCase(node.getText().toString())&&node.isVisibleToUser()&&node.isClickable()&&node.performAction(AccessibilityNodeInfo.ACTION_CLICK))return;for(int child=0;child<node.getChildCount();child++){AccessibilityNodeInfo value=node.getChild(child);if(value!=null)queue.add(value);}}}SystemClock.sleep(100);}fail("Native Calendar control missing: "+label);}
  private JSONObject result()throws Exception{until("window.__calendarAgentResult");JSONObject value=new JSONObject(eval("window.__calendarAgentResult"));assertFalse(value.has("error"));if("applied".equals(value.optString("status"))||"cancelled".equals(value.optString("status")))assertReviewReleased();return value;}
  private void assertReviewReleased()throws Exception{WebViewTestDriver.withActivity(MainActivity.class,activity->{try{AlphaCalendarPlugin plugin=(AlphaCalendarPlugin)activity.getBridge().getPlugin("AlphaCalendar").getInstance();java.lang.reflect.Field busy=ai.eliza.plugins.calendar.CalendarPlugin.class.getDeclaredField("deleting"),dialog=ai.eliza.plugins.calendar.CalendarPlugin.class.getDeclaredField("deleteDialog");busy.setAccessible(true);dialog.setAccessible(true);assertFalse("Terminal receipt must release native review gate",((java.util.concurrent.atomic.AtomicBoolean)busy.get(plugin)).get());assertNull("Terminal receipt must follow dialog dismissal",dialog.get(plugin));}catch(ReflectiveOperationException error){throw new AssertionError(error);}});}
- private void begin(JSONObject operation)throws Exception{eval("window.__calendarAgentResult=null;Capacitor.Plugins.AlphaCalendar.executeAgent({operation:"+operation+",operationId:"+JSONObject.quote(java.util.UUID.randomUUID().toString())+"}).then(value=>window.__calendarAgentResult=value,error=>window.__calendarAgentResult={error:String(error)})");}
+ // A dialog receipt confirms dismissal, but the Activity can regain focus a frame later.
+ // Wait before a new reviewed request; never retry an operation that already settled.
+ private void awaitReviewForeground()throws Exception{
+  long deadline=SystemClock.elapsedRealtime()+15000;
+  while(SystemClock.elapsedRealtime()<deadline){
+   boolean[] ready={false};
+   WebViewTestDriver.withActivity(MainActivity.class,activity->{ready[0]=!activity.isFinishing()&&!activity.isDestroyed()&&activity.hasWindowFocus();});
+   if(ready[0])return;
+   SystemClock.sleep(100);
+  }
+  fail("Alpha Activity did not regain foreground focus before Calendar review");
+ }
+ private void begin(JSONObject operation)throws Exception{awaitReviewForeground();eval("window.__calendarAgentResult=null;Capacitor.Plugins.AlphaCalendar.executeAgent({operation:"+operation+",operationId:"+JSONObject.quote(java.util.UUID.randomUUID().toString())+"}).then(value=>window.__calendarAgentResult=value,error=>window.__calendarAgentResult={error:String(error)})");}
  private JSONObject perform(JSONObject operation,String button)throws Exception{begin(operation);nativeClick(button);return result();}
  private boolean exists(Context context,long id){try(Cursor row=context.getContentResolver().query(ContentUris.withAppendedId(CalendarContract.Events.CONTENT_URI,id),new String[]{CalendarContract.Events.DELETED},null,null,null)){return row!=null&&row.moveToFirst()&&row.getInt(0)==0;}}
  @Test public void reviewedNativeCreateReadUpdateDeleteAndStaleRevision()throws Exception{

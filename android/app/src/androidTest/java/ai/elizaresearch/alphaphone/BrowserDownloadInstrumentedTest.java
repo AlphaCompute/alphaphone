@@ -68,6 +68,19 @@ public final class BrowserDownloadInstrumentedTest {
    }}SystemClock.sleep(100);
   }fail("Missing fixture-owned native download control");
  }
+ // Only capability booleans: never include network identifiers, addresses or exception text.
+ private String networkState(android.content.Context context){
+  try{
+   android.net.ConnectivityManager connectivity=context.getSystemService(android.net.ConnectivityManager.class);
+   if(connectivity==null)return "service-unavailable";
+   android.net.Network active=connectivity.getActiveNetwork();
+   android.net.NetworkCapabilities capabilities=active==null?null:connectivity.getNetworkCapabilities(active);
+   return "active="+(active!=null)+",capabilitiesAvailable="+(capabilities!=null)+
+    ",internet="+(capabilities!=null&&capabilities.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_INTERNET))+
+    ",validated="+(capabilities!=null&&capabilities.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_VALIDATED));
+  }catch(SecurityException unavailable){return "permission-unavailable";}
+   catch(RuntimeException unavailable){return "query-unavailable";}
+ }
  private long find(DownloadManager manager,String name){
   try(Cursor cursor=manager.query(new DownloadManager.Query())){while(cursor!=null&&cursor.moveToNext())if(name.equals(cursor.getString(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_TITLE))))return cursor.getLong(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_ID));}return -1;
  }
@@ -76,10 +89,12 @@ public final class BrowserDownloadInstrumentedTest {
  @Test public void explicitReviewExactBytesDenialAndCancellation()throws Exception{
   String token=UUID.randomUUID().toString(),filename="alpha-download-"+token+".txt",slowname="alpha-slow-"+token+".bin",errorname="alpha-error-"+token+".txt";
   byte[] expected=("Synthetic browser download "+token+"\nExact bytes verified.\n").getBytes(StandardCharsets.UTF_8);
-  ServerSocket server=new ServerSocket(0,16,InetAddress.getByName("127.0.0.1"));ExecutorService workers=Executors.newCachedThreadPool();CountDownLatch releaseSlow=new CountDownLatch(1);java.util.concurrent.atomic.AtomicInteger errorRequests=new java.util.concurrent.atomic.AtomicInteger();
+  ServerSocket server=new ServerSocket(0,16,InetAddress.getByName("127.0.0.1"));ExecutorService workers=Executors.newCachedThreadPool();CountDownLatch releaseSlow=new CountDownLatch(1);java.util.concurrent.atomic.AtomicInteger errorRequests=new java.util.concurrent.atomic.AtomicInteger(),fileRequests=new java.util.concurrent.atomic.AtomicInteger(),slowRequests=new java.util.concurrent.atomic.AtomicInteger();
   workers.submit(()->{while(!server.isClosed())try{Socket socket=server.accept();workers.submit(()->{try(socket){
    socket.setSoTimeout(10000);BufferedReader reader=new BufferedReader(new InputStreamReader(socket.getInputStream(),StandardCharsets.US_ASCII));String request=reader.readLine(),line;while((line=reader.readLine())!=null&&!line.isEmpty()){}
    boolean file=request!=null&&request.startsWith("GET /file"),slow=request!=null&&request.startsWith("GET /slow"),error=request!=null&&request.startsWith("GET /error");
+   // Count only this fixture's synthetic paths, without recording request/header content.
+   if(file)fileRequests.incrementAndGet();if(slow)slowRequests.incrementAndGet();
    OutputStream output=socket.getOutputStream();
    if(error&&errorRequests.incrementAndGet()>1){output.write("HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n".getBytes(StandardCharsets.US_ASCII));output.flush();return;}
    if(file||slow||error){byte[] body=slow?new byte[128*1024]:expected;
@@ -92,8 +107,14 @@ public final class BrowserDownloadInstrumentedTest {
    AppNavigation.liveMode();host(AppNavigation.request("Browser"));ready(AppNavigation.selected("Browser"));String url="http://127.0.0.1:"+server.getLocalPort()+"/";address(url);page();
    link("file");nativeVisible("127.0.0.1");nativeVisible(filename);nativeVisible("Advertised size: "+expected.length+" bytes");
    assertEquals("No DownloadManager side effect before consent",-1,find(manager,filename));nativeClick("Cancel");assertEquals("Denied review queues nothing",-1,find(manager,filename));
-   address(url);link("file");nativeClick("Download");long id=row(manager,filename);cleanup.add(id);
-   boolean complete=false;int downloadStatus=-1,downloadReason=-1;long received=-1;for(int i=0;i<300;i++){try(Cursor cursor=manager.query(new DownloadManager.Query().setFilterById(id))){if(cursor.moveToFirst()){downloadStatus=cursor.getInt(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_STATUS));downloadReason=cursor.getInt(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_REASON));received=cursor.getLong(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_BYTES_DOWNLOADED_SO_FAR));if(downloadStatus==DownloadManager.STATUS_SUCCESSFUL){complete=true;break;}if(downloadStatus==DownloadManager.STATUS_FAILED)break;}}SystemClock.sleep(100);}assertTrue("Actual DownloadProvider completes; status="+downloadStatus+" reason="+downloadReason+" received="+received,complete);
+   address(url);link("file");
+   // The WebView already requested the attachment to display its review. Capture that
+   // baseline so a later request can distinguish actual DownloadManager activity.
+   int fileRequestsBeforeEnqueue=fileRequests.get();String networkBeforeEnqueue=networkState(context);
+   nativeClick("Download");long id=row(manager,filename);cleanup.add(id);
+   boolean complete=false;int downloadStatus=-1,downloadReason=-1;long received=-1;for(int i=0;i<300;i++){try(Cursor cursor=manager.query(new DownloadManager.Query().setFilterById(id))){if(cursor.moveToFirst()){downloadStatus=cursor.getInt(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_STATUS));downloadReason=cursor.getInt(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_REASON));received=cursor.getLong(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_BYTES_DOWNLOADED_SO_FAR));if(downloadStatus==DownloadManager.STATUS_SUCCESSFUL){complete=true;break;}if(downloadStatus==DownloadManager.STATUS_FAILED)break;}}SystemClock.sleep(100);}assertTrue("Actual DownloadProvider completes; status="+downloadStatus+" reason="+downloadReason+" received="+received+
+    "; networkBefore={"+networkBeforeEnqueue+"}; networkAfter={"+networkState(context)+"}"+
+    "; fixtureRequests={fileBeforeEnqueue="+fileRequestsBeforeEnqueue+",file="+fileRequests.get()+",slow="+slowRequests.get()+",error="+errorRequests.get()+"}",complete);
    try(android.os.ParcelFileDescriptor descriptor=manager.openDownloadedFile(id);InputStream input=new android.os.ParcelFileDescriptor.AutoCloseInputStream(descriptor);ByteArrayOutputStream bytes=new ByteArrayOutputStream()){
     byte[] buffer=new byte[1024];int count;while((count=input.read(buffer))!=-1){assertTrue("Bounded fixture bytes",bytes.size()+count<4096);bytes.write(buffer,0,count);}assertArrayEquals("Exact downloaded file bytes",expected,bytes.toByteArray());
    }

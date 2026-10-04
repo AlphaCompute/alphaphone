@@ -3,6 +3,7 @@ import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {createHash} from 'node:crypto';
 import {execFileSync} from 'node:child_process';
+import {requireInstrumentationSuccess} from './instrumentation-result.mjs';
 
 const root=process.env.ALPHA_CALENDAR_TEST_ROOT??path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 const baseline=process.env.ALPHA_CALENDAR_BASELINE_DIR;
@@ -16,7 +17,14 @@ if(pkg!=='ai.elizaresearch.alphaphone')throw Error('Unexpected Alpha package ide
 const adb=path.join(process.env.ANDROID_HOME??path.join(process.env.HOME,'Library/Android/sdk'),'platform-tools/adb');
 const hash=file=>createHash('sha256').update(fs.readFileSync(file)).digest('hex');
 const call=args=>execFileSync(adb,['-s',serial,...args],{encoding:'utf8',timeout:120000,maxBuffer:16*1024*1024});
-const wait=(predicate,message)=>{const until=Date.now()+15000;while(Date.now()<until){if(predicate())return;Atomics.wait(new Int32Array(new SharedArrayBuffer(4)),0,0,150);}throw Error(message);};
+const wait=(predicate,message,timeoutMs=15000)=>{const until=Date.now()+timeoutMs;while(Date.now()<until){if(predicate())return;Atomics.wait(new Int32Array(new SharedArrayBuffer(4)),0,0,150);}throw Error(message);};
+// Reuse upstream's raw protocol parser; require the selected method, not just an OK count.
+function requireOneTest(result,label,testClass='CalendarUpgradeInstrumentedTest',method='baselineToCandidatePreservesCalendarIdentity'){
+ const expected=`${pkg}.${testClass}`;
+ const evidence=requireInstrumentationSuccess(result,[expected]);
+ if(evidence.totalTests!==1||evidence.cases[0]!==`${expected}#${method}`)
+  throw Error(`${label} did not pass the selected test exactly once`);
+}
 const avd=call(['emu','avd','name']).split(/\r?\n/)[0].trim();if(avd!==expected)throw Error('Owned AVD identity mismatch');
 if(call(['shell','am','get-current-user']).trim()!=='0')throw Error('Original user must be owner 0');
 const users=()=>{const ids=[...call(['shell','pm','list','users']).matchAll(/UserInfo\{([0-9]+):/g)].map(m=>m[1]);if(!ids.includes('0'))throw Error('User inventory unavailable');return ids;};
@@ -44,21 +52,27 @@ for(const input of inputs){
   const observed=installedHash(label==='test'?testPkg:pkg,label);if(observed!==expectedHash)throw Error(`${label} installed APK hash mismatch`);record.phases[label]={installedHash:observed};persist();
  }
  function phase(name){
-  let result;try{result=call(['shell','am','instrument','--user',user,'-w','-e','calendarUpgradePhase',name,'-e','class',`${pkg}.CalendarUpgradeInstrumentedTest#baselineToCandidatePreservesCalendarIdentity`,`${testPkg}/androidx.test.runner.AndroidJUnitRunner`]);}
+  let result;try{result=call(['shell','am','instrument','-r','--user',user,'-w','-e','calendarUpgradePhase',name,'-e','class',`${pkg}.CalendarUpgradeInstrumentedTest#baselineToCandidatePreservesCalendarIdentity`,`${testPkg}/androidx.test.runner.AndroidJUnitRunner`]);}
   catch(error){log(`${name}.log`,`${error.stdout??''}\n${error.stderr??''}\n${error.message}`);throw error;}
-  log(`${name}.log`,result);if(!/OK \(1 test\)/.test(result)||/FAILURES!!!|INSTRUMENTATION_FAILED|INSTRUMENTATION_STATUS_CODE: -[234]/.test(result))throw Error(`${name} did not pass one non-skipped test`);record.phases[name]={passed:true};persist();
+  log(`${name}.log`,result);requireOneTest(result,name);record.phases[name]={passed:true};persist();
  }
  try{
   const created=call(['shell','pm','create-user',`calendar-upgrade-${variant}-${Date.now()}`]);log('create-user.log',created);user=created.match(/Success: created user id (\d+)/)?.[1];if(!user||user==='0')throw Error('No owned secondary user');record.user=user;persist();
   install(files.baseline,hashes.baseline,'baseline');install(files.test,hashes.test,'test');
-  call(['shell','am','start-user','-w',user]);call(['shell','am','switch-user',user]);wait(()=>call(['shell','am','get-current-user']).trim()===user,'Owned user not foreground');
+  call(['shell','am','start-user','-w',user]);
+  // Resolve stock HOME in owner 0, but modify only this campaign's disposable user.
+  const home=call(['shell','cmd','package','resolve-activity','--brief','--user','0','-a','android.intent.action.MAIN','-c','android.intent.category.HOME','-p','com.android.launcher3']).trim().split(/\r?\n/).at(-1);
+  if(!/^com\.android\.launcher3\/[A-Za-z0-9_.$]+$/.test(home))throw Error('Stock HOME unavailable for disposable user');
+  if(!/Success/.test(call(['shell','cmd','package','set-home-activity','--user',user,home])))throw Error('Disposable user HOME selection failed');
+  call(['shell','am','switch-user',user]);wait(()=>call(['shell','am','get-current-user']).trim()===user,'Owned user not foreground');
   call(['shell','input','keyevent','KEYCODE_WAKEUP']);call(['shell','wm','dismiss-keyguard']);
+  wait(()=>new RegExp('topResumedActivity=.*\\bu'+user+'\\b.*com\\.android\\.launcher3').test(call(['shell','dumpsys','activity','activities'])),'Owned user launcher did not finish initial startup',60000);
   for(const permission of ['READ_CALENDAR','WRITE_CALENDAR'])call(['shell','pm','grant','--user',user,pkg,`android.permission.${permission}`]);
   phase('seed');call(['shell','am','force-stop','--user',user,pkg]);install(files.candidate,hashes.candidate,'candidate',true);phase('verify');
   if(process.argv.includes('--bridge')){
-   const result=call(['shell','am','instrument','--user',user,'-w','-e','calendarAgent','1','-e','class',`${pkg}.CalendarAgentCrudInstrumentedTest`,`${testPkg}/androidx.test.runner.AndroidJUnitRunner`]);
+   const result=call(['shell','am','instrument','-r','--user',user,'-w','-e','calendarAgent','1','-e','class',`${pkg}.CalendarAgentCrudInstrumentedTest`,`${testPkg}/androidx.test.runner.AndroidJUnitRunner`]);
    log('bridge.log',result);
-   if(!/OK \(1 test\)/.test(result)||/FAILURES!!!|INSTRUMENTATION_FAILED|INSTRUMENTATION_STATUS_CODE: -[1234]/.test(result))throw Error('Post-upgrade native bridge flow did not pass');
+   requireOneTest(result,'Post-upgrade native bridge','CalendarAgentCrudInstrumentedTest','reviewedNativeCreateReadUpdateDeleteAndStaleRevision');
    record.phases.bridge={passed:true};persist();
   }
 
