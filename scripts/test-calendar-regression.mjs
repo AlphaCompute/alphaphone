@@ -3,6 +3,7 @@ import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {createHash} from 'node:crypto';
 import {execFileSync} from 'node:child_process';
+import {requireInstrumentationSuccess} from './instrumentation-result.mjs';
 
 const root=process.env.ALPHA_CALENDAR_TEST_ROOT??path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 const serial=process.env.ALPHA_CALENDAR_TEST_SERIAL;
@@ -42,7 +43,7 @@ const output=path.join(root,'test-results',`calendar-regression-${Date.now()}`);
 for(const input of inputs){
  absentPackages();
  const {variant,files,hashes,testClass,flag,count}=input,dir=path.join(output,`${variant}-${testClass}`);fs.mkdirSync(dir);
- const record={serial,avd,variant,testClass,files,hashes,phases:{},cleanup:[],passed:false};let user,primary;
+ const record={serial,avd,variant,testClass,files,hashes,phases:{},cleanup:[],passed:false};let user,primary,instrumentationTransportUncertain=false;
  const log=(name,value)=>fs.writeFileSync(path.join(dir,name),value);
  const persist=()=>log('result.json',JSON.stringify(record,null,2)+'\n');
  function installedHash(name,label){
@@ -74,13 +75,16 @@ for(const input of inputs){
   for(const permission of ['READ_CALENDAR','WRITE_CALENDAR'])call(['shell','pm','grant','--user',user,pkg,`android.permission.${permission}`]);
   if(external)for(const permission of ['READ_CALENDAR','WRITE_CALENDAR'])call(['shell','pm','grant','--user',user,companion.pkg,`android.permission.${permission}`]);
   let result;
-  try{result=call(['shell','am','instrument','--user',user,'-w','-e',flag,external?'true':'1','-e','class',`${pkg}.${testClass}`,`${testPkg}/androidx.test.runner.AndroidJUnitRunner`]);}
-  catch(error){log('instrumentation.log',`${error.stdout??''}\n${error.stderr??''}\n${error.message}`);throw error;}
+  try{result=call(['shell','am','instrument','-r','--user',user,'-w','-e',flag,external?'true':'1','-e','class',`${pkg}.${testClass}`,`${testPkg}/androidx.test.runner.AndroidJUnitRunner`]);}
+  catch(error){instrumentationTransportUncertain=true;log('instrumentation.log',`${error.stdout??''}\n${error.stderr??''}\n${error.message}`);throw error;}
   log('instrumentation.log',result);
-  if(!result.includes(`OK (${count} test${count===1?'':'s'})`)||/FAILURES!!!|INSTRUMENTATION_FAILED|INSTRUMENTATION_STATUS_CODE: -[1234]/.test(result))throw Error(`${testClass} did not pass all ${count} tests`);
-  record.phases.instrumentation={passed:true,count};persist();
+  const evidence=requireInstrumentationSuccess(result,[`${pkg}.${testClass}`]);
+  if(evidence.totalTests!==count)throw Error(`${testClass} did not pass all ${count} tests`);
+  record.phases.instrumentation={passed:true,count,evidence};persist();
  }catch(error){primary=error;record.error=error.message;}
  finally{
+  if(instrumentationTransportUncertain)record.cleanup.push("Deferred: confirm prior instrumentation terminated and recover this owned user before cleanup");
+  else {
   try{call(['shell','am','switch-user','0']);wait(()=>call(['shell','am','get-current-user']).trim()==='0','Owner user not restored');wait(()=>/topResumedActivity=.*\bu0\b/.test(call(['shell','dumpsys','activity','activities'])),'Owner Activity not resumed');record.cleanup.push('Owner user restored and resumed');}catch(error){primary??=error;record.cleanup.push(error.message);}
   // Uninstall only freshly introduced packages, while owned user still permits exact APK identity checks.
   if(user&&user!=='0')for(const name of [testPkg,pkg,...(external?[companion.pkg]:[])])try{
@@ -91,6 +95,7 @@ for(const input of inputs){
   }catch(error){primary??=error;record.cleanup.push(error.message);}
   if(user&&user!=='0')try{if(users().includes(user)){call(['shell','am','stop-user','-w',user]);wait(()=>call(['shell','am','is-user-stopped',user]).trim()==='true','Owned user did not stop');record.cleanup.push(call(['shell','pm','remove-user','--wait',user]).trim());}if(users().includes(user))throw Error('Owned user still exists');}catch(error){primary??=error;record.cleanup.push(error.message);}
   try{absentPackages();}catch(error){primary??=error;record.cleanup.push(error.message);}
+  }
   record.passed=!primary;if(primary)record.error=primary.message;persist();
  }
  if(primary)throw primary;
