@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import vm from 'node:vm';
 import {stripTypeScriptTypes} from 'node:module';
 import {randomUUID} from 'node:crypto';
+import {createInlineModal} from '../apps/app/src/runtime/inline-modal.ts';
 import {currentClockTimeZone} from '../apps/app/src/runtime/clock-contract.ts';
 const source=stripTypeScriptTypes(fs.readFileSync(new URL('../apps/app/src/prototype/clock-adapter.ts',import.meta.url),'utf8').replace(/^import .*?;\n/gm,'').replace('export function installClockAdapter','function installClockAdapter'));
 let writes=[],store=new Map(),failStorage=false,response={status:'opened',message:'Clock request sent. Check Clock.'},hold,hidden=false;
@@ -13,8 +14,8 @@ const DailyApps={clockHandoff:async request=>{writes.push(request);if(hold)retur
 function fixture(simulated=false){
  class Shell{componentDidMount(){}componentWillUnmount(){}vset(){}}
  const views={calendar:{render:()=>({})}};
- vm.runInNewContext(source+'\ninstallClockAdapter(Shell,views,{simulated});',{currentClockTimeZone,DailyApps,Shell,views,simulated,document,window:{addEventListener(){},removeEventListener(){}},queueMicrotask,localStorage,crypto:{randomUUID},Date,Intl,console});
- const shell=new Shell();shell.componentDidMount();const render=()=>views.calendar.render({},{});render().openClock();return {shell,render};
+ vm.runInNewContext(source+'\ninstallClockAdapter(Shell,views,{simulated});',{createInlineModal,currentClockTimeZone,DailyApps,Shell,views,simulated,document,window:{addEventListener(){},removeEventListener(){}},queueMicrotask,localStorage,crypto:{randomUUID},Date,Intl,console});
+ const shell=new Shell();shell.componentDidMount();const render=()=>views.calendar.render({},{});render().openClock();return {shell,render,leave:()=>views.calendar.onLeave()};
 }
 let f=fixture();let ui=f.render().clock;
 assert.equal(writes.length,0);ui.onTime({target:{value:'25:03'}});f.render().clock.prepare();assert.equal(f.render().clock.review,null);
@@ -39,6 +40,8 @@ response=new Error('lost response');f.render().clock.prepare();await f.render().
 f.shell.componentWillUnmount();f=fixture();assert.match(f.render().clock.message,/unknown/);assert.equal(writes.length,count,'recreation must not dispatch or retry');
 failStorage=true;f.render().clock.prepare();await f.render().clock.review.confirm();assert.equal(writes.length,count);assert.match(f.render().clock.message,/not sent/);failStorage=false;
 hidden=true;f.render().clock.prepare();await f.render().clock.review.confirm();assert.equal(writes.length,count);hidden=false;
+// Leaving the view invalidates even a retained confirmation callback.
+f.render().clock.prepare();const departed=f.render().clock.review;f.leave();await departed.confirm();assert.equal(writes.length,count);assert.equal(f.render().clock,null);assert.equal(f.shell.clockSelection(),undefined);f.render().openClock();assert.equal(f.render().clock.review,null);
 // Both startup mock and a mode switch during review prevent the native call.
 for(const startupMock of [true,false]){const mock=fixture(startupMock);mock.render().clock.prepare();document.documentElement.dataset.connectionMode='mock';await mock.render().clock.review.confirm();assert.equal(writes.length,count);assert.match(mock.render().clock.message,/simulated/);mock.shell.componentWillUnmount();document.documentElement.dataset.connectionMode='live';}
 console.log('PASS actual Clock adapter flow: review/snapshot, invalid input, duplicate taps, all four operations, no handler, response loss/recreation, storage failure, foreground and mock isolation. Native boundary is synthetic.');
