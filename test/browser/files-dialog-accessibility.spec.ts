@@ -1,0 +1,22 @@
+import {test,expect} from '@playwright/test';
+for(const theme of ['light','dark'])test(`${theme} Files folder dialog owns keyboard focus without changing files on dismissal`,async({page})=>{
+ await page.addInitScript(()=>localStorage.setItem('alpha.connection.selection.v1',JSON.stringify({kind:'offline'})));
+ await page.goto(`/?mode=dev&theme=${theme}`);
+ await page.getByRole('button',{name:'Files',exact:true}).click();
+ await page.getByText('Browser files',{exact:true}).first().click();
+ const menu=page.getByRole('button',{name:'View and sort',exact:true});
+ await menu.click();await page.getByText('New folder',{exact:true}).click();
+ const dialog=page.getByRole('dialog',{name:'New folder',exact:true}),input=dialog.getByRole('textbox',{name:'Folder or file name'});
+ await expect(input).toBeFocused();
+ await expect(menu).toHaveCount(0);
+ await input.fill('Do not create');
+ await page.keyboard.press('Shift+Tab');await expect(dialog.getByRole('button',{name:'Create folder',exact:true})).toBeFocused();
+ await page.keyboard.press('Tab');await expect(input).toBeFocused();
+ await page.keyboard.press('Escape');await expect(dialog).toHaveCount(0);
+ await expect(menu).toBeFocused();
+ await expect(page.getByRole('button',{name:'Open Do not create',exact:true})).toHaveCount(0);
+ await menu.click();await page.getByText('New folder',{exact:true}).click();
+ await input.fill('Reviewed folder');await dialog.getByRole('button',{name:'Create folder',exact:true}).click();
+ await expect(dialog).toHaveCount(0);await expect(page.getByRole('button',{name:'Open Reviewed folder',exact:true})).toBeVisible();
+ await expect(menu).toBeFocused();
+});
