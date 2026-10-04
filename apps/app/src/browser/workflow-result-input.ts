@@ -1,3 +1,4 @@
+import {layoutBrowserDialog} from './dialog-layout';
 import {browserScreenLocked} from './screen-locked';
 const cancelled=()=>new DOMException('Result input cancelled','AbortError');
 /** Explicit local test data for an unconstrained Write instruction; never represented as model output. */
@@ -20,7 +21,7 @@ export function requestWorkflowResult(instruction:string,input:string,signal:Abo
   const finish=(value?:string)=>{if(settled)return;settled=true;signal.removeEventListener('abort',close);window.removeEventListener('alpha-back',back,true);for(const name of ['pagehide','alpha:device-state','launcher-home','alpha:dev-incoming-call'])window.removeEventListener(name,close);document.removeEventListener('visibilitychange',hidden);dialog.close();dialog.remove();if(previous?.isConnected)previous.focus();value===undefined?reject(cancelled()):resolve(value);};
   const close=()=>finish();const hidden=()=>{if(document.hidden)close();};const back=(event:Event)=>{event.preventDefault();event.stopImmediatePropagation();close();};
   result.oninput=()=>{use.disabled=!result.value.trim()||result.value.length>16000;};use.onclick=()=>{if(result.value.trim()&&result.value.length<=16000)finish(result.value);};cancel.onclick=close;dialog.onclose=close;
-  dialog.append(title,prompt,sourceLabel,resultLabel,use,cancel);document.body.append(dialog);
+  dialog.append(title,prompt,sourceLabel,resultLabel,use,cancel);layoutBrowserDialog(dialog,[use,cancel]);document.body.append(dialog);
   signal.addEventListener('abort',close,{once:true});window.addEventListener('alpha-back',back,true);for(const name of ['pagehide','alpha:device-state','launcher-home','alpha:dev-incoming-call'])window.addEventListener(name,close);document.addEventListener('visibilitychange',hidden);
   if(signal.aborted){close();return;}try{dialog.showModal();result.focus();}catch{close();}
  });
