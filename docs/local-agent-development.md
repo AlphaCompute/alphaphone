@@ -58,7 +58,7 @@ ALPHA_DEVICE_SESSION_FILE=/private/path/to/session.json \
 node scripts/test-real-workflow.mjs
 ```
 
-The helper loads TypeScript through the installed `tsx` loader, accepts only an exact IPv4 loopback HTTP origin, creates a paused synthetic workflow, executes it once, and leaves it paused. It exercises the actual local workflow engine without model inference, tools or communications. Run it against an isolated test profile; it does not qualify native triggers or real-provider workflows.
+The helper loads TypeScript through the installed `tsx` loader, accepts only an exact IPv4 loopback HTTP origin, creates a paused synthetic workflow, executes it once, and leaves it paused. It requires one persisted output row for the matching run and task with value `56`, then checks that a second receipt read returns the same result. A finished status without that output fails qualification. It exercises the actual local workflow engine without model inference, tools or communications. Run it against an isolated test profile; it does not qualify native triggers or real-provider workflows.
 
 ## Android setup
 
