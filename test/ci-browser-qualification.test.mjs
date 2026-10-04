@@ -31,7 +31,7 @@ function exercise(mode) {
   if (mode === 'wrong-count') rows.pop();
   const emit = items => items.flatMap(([selector,code]) => {
    const [cls,method] = selector.split('#');
-   return [1, code].flatMap(value => [`INSTRUMENTATION_STATUS: class=${app}.${cls}`, `INSTRUMENTATION_STATUS: test=${method}`, `INSTRUMENTATION_STATUS_CODE: ${value}`]);
+   return [`INSTRUMENTATION_STATUS: class=${app}.${cls}`, `INSTRUMENTATION_STATUS: test=${method}`, `INSTRUMENTATION_STATUS_CODE: ${code}`];
   });
   // A shell-only fake avoids launching a new Node runtime for every readback.
   const fake = `#!/bin/sh
@@ -53,7 +53,8 @@ case "$*" in
  'shell am instrument '*browserIsolatedReading*)
   test "$*" = 'shell am instrument -w -r -e class ${methods.map(x => app+'.'+x.split('#')[0]).join(',')} -e browserIsolatedReading 1 -e browserSensitiveReading 1 -e browserShareLive 1 ${app}.test/androidx.test.runner.AndroidJUnitRunner' || exit 7
   printf '%s\\n' ${emit(rows).map(x => "'"+x+"'").join(' ')} 'OK (4 tests)';;
- 'shell am instrument '*) printf '%s\\n' ${emit([['OrdinarySuite#case',0],['ClockHandoffInstrumentedTest#visibleReviewConstructsFourStandardClockIntentsWithoutDeliveringThem',0],['RealClockInstrumentedTest#realClockSetFireSnoozeDismissAndDelete',-4]]).map(x => "'"+x+"'").join(' ')} 'OK (3 tests)';;
+ 'shell am instrument '*) printf '%s\\n' ${emit([...(mode === 'ordinary-missing-start' ? [] : [['OrdinarySuite#case',1]]),['OrdinarySuite#case',0],['ClockHandoffInstrumentedTest#visibleReviewConstructsFourStandardClockIntentsWithoutDeliveringThem',1],['ClockHandoffInstrumentedTest#visibleReviewConstructsFourStandardClockIntentsWithoutDeliveringThem',0],['RealClockInstrumentedTest#realClockSetFireSnoozeDismissAndDelete',1],['RealClockInstrumentedTest#realClockSetFireSnoozeDismissAndDelete',-4]]).map(x => "'"+x+"'").join(' ')} 'OK (3 tests)';;
+ 'logcat -d -t 2000 -v threadtime') echo 'bounded fixture diagnostics';;
  'shell dumpsys activity activities') echo 'mResumedActivity: ${app}';;
  'shell cat /sdcard/'*) echo '<nodes text="Open conversation" text="Calendar" text="Camera" text="Notes" text="Settings"/>';;
  install*|'shell am force-stop '*|'shell am start '*|'shell input '*|'shell uiautomator '*|'shell cmd role add-role-holder '*|'exec-out screencap -p') :;;
@@ -66,7 +67,8 @@ esac
   const phases = ['standalone', 'launcher'].map(v => JSON.parse(fs.readFileSync(path.join(dir, `output/${v}-provider-qualification/result.json`))));
   const summary = JSON.parse(fs.readFileSync(path.join(dir, 'output/result.json')));
   const commands = fs.readFileSync(path.join(dir, 'commands.jsonl'), 'utf8').trim().split('\n').map(x=>x.split(' '));
-  return { code: result.status, stderr: result.stderr, phases, summary, commands };
+  const diagnostics = ['standalone','launcher'].map(v => {const file=path.join(dir, `output/${v}-logcat.txt`);return fs.existsSync(file)?fs.readFileSync(file,'utf8'):null;});
+  return { code: result.status, stderr: result.stderr, phases, summary, commands, diagnostics };
  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 }
 test('smoke invokes four actual opt-in classes before each unchanged ordinary suite', () => {
@@ -77,4 +79,10 @@ test('smoke invokes four actual opt-in classes before each unchanged ordinary su
 });
 for(const mode of ['skip','skip-sensitive','duplicate','wrong-count'])test(`qualification rejects ${mode} while retaining both variant outcomes`,()=>{
  const r=exercise(mode);assert.notEqual(r.code,0);assert.equal(r.summary.status,'failed');assert.deepEqual(r.phases.map(p=>p.passed),[false,false]);
+});
+
+test('ordinary missing start fails both variants and retains bounded diagnostics',()=>{
+ const r=exercise('ordinary-missing-start');assert.notEqual(r.code,0);assert.equal(r.summary.status,'failed');
+ assert.deepEqual(r.summary.results.map(row=>row.countsVerified),[false,false]);
+ assert.deepEqual(r.diagnostics,['bounded fixture diagnostics\n','bounded fixture diagnostics\n']);
 });
