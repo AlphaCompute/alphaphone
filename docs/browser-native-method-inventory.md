@@ -51,8 +51,8 @@ These are the remaining implementation gates, not waived limitations. New equiva
 
 ### October 2 integrated browser snapshot
 
-The combined renderer/runtime/device/media snapshot passed all **245 browser tests**
-and **82 repository tests**, typecheck and build. See the latest integration section
-in [the MVP report](mvp-browser-review.md#october-2--integrated-browser-runtime-device-and-media-review)
-for exact scope, post-freeze Clock edits, the reproduced simulator startup defect
-and remaining development work. No Android build was run by this integration pass.
+The recorded renderer/runtime/device/media snapshot passed **245 browser tests**
+and **82 repository tests**, typecheck and build; no Android build ran in that
+campaign. These historical counts do not qualify current main. See the
+[browser review](mvp-browser-review.md#qualification-and-evidence) for current
+qualification boundaries and unresolved work.

@@ -1,6 +1,6 @@
 # Alpha Phone — working PRD
 
-Version: 0.2, 2026-10-01. Derived from the supplied interactive prototype, explicit two-repository request, and the reviewed upstream Alpha issues. Product sign-off is still needed for final scope and hardware. See `sources.md` for provenance. The current MVP scope in `mvp-scope-and-gap-report.md` supersedes the original foundation priorities below; `mvp-browser-review.md` records the October 1 implementation and browser audit.
+Version: 0.2, 2026-10-01. Derived from the supplied interactive prototype, explicit two-repository request, and the reviewed upstream Alpha issues. Product sign-off is still needed for final scope and hardware. See `sources.md` for provenance. The current MVP scope in `mvp-scope-and-gap-report.md` supersedes the original foundation priorities below; `mvp-browser-review.md` indexes browser implementation and remaining acceptance.
 
 ## Outcome
 
