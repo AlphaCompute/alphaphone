@@ -4,13 +4,13 @@ import {DailyApps} from '../daily';
 import {registerPlugin} from '../platform-plugins';
 import {reviewMailAttachment,type MailAttachment} from '../runtime/inbox-attachment';
 type Bag=Record<string,any>;
-type Source={version:1;name:string;mimeType:string;sha256:string;size:number};
+export type Source={version:1;name:string;mimeType:string;sha256:string;size:number};
 const attachments=registerPlugin<{
  readSelected(input:{selectionId:string}):Promise<MailAttachment & {sha256:string;size:number}>;
  openReviewed(input:MailAttachment & {sha256:string;reviewed:boolean}):Promise<{message:string}>;
  cancel():Promise<void>;
 }>('AlphaMailAttachments');
-function sourceOf(value:unknown):Source|undefined {
+export function sourceOf(value:unknown):Source|undefined {
  const s=value as Source|undefined;
  if(!s||s.version!==1||typeof s.name!=='string'||!s.name||s.name.length>120||/[\\/\x00-\x1f\x7f]/.test(s.name)||typeof s.mimeType!=='string'||!['text/plain','application/pdf','image/png','image/jpeg','image/webp'].includes(s.mimeType)||typeof s.sha256!=='string'||!/^[a-f0-9]{64}$/.test(s.sha256)||!Number.isSafeInteger(s.size)||s.size<0||s.size>5*1024*1024)return;
  return {version:1,name:s.name,mimeType:s.mimeType,sha256:s.sha256,size:s.size};

@@ -1,3 +1,5 @@
+import {reviewSummaryNote} from './summary-note-review';
+import {sourceOf,type Source} from './note-source-adapter';
 import {reviewAgentClock} from '../runtime/clock-agent-review';
 import {isReminderCreate,validateReminderCreateResult} from '../runtime/reminder-create-contract';
 import {publishWorkflowNotice} from '../browser/workflow-notices';
@@ -100,6 +102,7 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
     this.connectionUnsubscribe = connectionController.subscribe(() => {
       const session = connectionController.getSnapshot().session?.sessionId;
       if (session !== this.connectionSession) {
+        this.closeSummaryReview?.();this.reviewedSourceDraft=null;
         clearMapsSelection();
         this.connectionSession = session;
         alphaClient.disconnect();
@@ -370,6 +373,7 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
   };
   p.componentDidUpdate = function (prev: Shell) { originalUpdate.call(this, prev); context(this); };
   p.componentWillUnmount = function () {
+    this.closeSummaryReview?.();
     this.connectionUnsubscribe?.();
     window.removeEventListener('alpha:notes-committed',this.notesCommittedHandler);
     document.removeEventListener('visibilitychange', this.visibilityHandler);
@@ -461,7 +465,8 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
       if(this.S().typing)throw new Error('Wait for the current agent reply before sharing this email.');
       context(this);await this.send(text,expected);
     };
-    api.composeContentQuestion=(draft:string)=>{
+    api.composeContentQuestion=(draft:string,source?:Source)=>{
+      this.reviewedSourceDraft={draft,source:sourceOf(source)};
       context(this);this.setState({chat:'sheet',shade:false,draft});
     };
     api.assist = (notice: string) => {
@@ -489,6 +494,7 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
   p.send = async function (argument?: string, expectedSession?: {sessionId:string;agentId:string;ownerId:string;origin:string}) {
     const s = this.S(); const text = String(argument ?? s.draft).trim();
     if (!text || s.typing) return;
+    const sourceDraft=this.reviewedSourceDraft?.draft.trim()===text?sourceOf(this.reviewedSourceDraft.source):undefined;this.reviewedSourceDraft=null;
     context(this);
     const revision = alphaClient.getState().context.revision;
     const streamedId=crypto.randomUUID();let streamed=false;
@@ -498,6 +504,7 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
       await this.connectAgent(); context(this);
       if (alphaClient.getState().context.revision !== revision) throw new Error('The active screen changed. Please send your request again.');
       if(expectedSession&&(JSON.stringify(connectionController.getSnapshot().session)!==JSON.stringify(expectedSession)||document.hidden))throw new Error('Agent changed. Review this message again.');
+      const sourceSession=connectionController.getSnapshot().session;
       const reply = await alphaClient.send(text,value=>{
         if(!this.live)return;
         if(streamed)replaceStream(value);
@@ -505,6 +512,7 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
       });
       if (!this.live) return;
       if(streamed)replaceStream(reply.text,false);else this.agentSay(reply.text);
+      if(sourceDraft&&sourceSession&&JSON.stringify(sourceSession)===JSON.stringify(connectionController.getSnapshot().session))this.agentSay('Review this answer before saving it with its source.',{type:'generic',icon:'note',title:'Review summary note',sub:sourceDraft.name,sourceSummary:{source:sourceDraft,text:reply.text,session:sourceSession}});
       for (const proposal of reply.proposals || []) this.agentSay(proposal.description, { type: 'generic', icon: 'check', title: 'Approve: ' + proposal.title, sub: 'Tap to approve this exact action', proposalId: proposal.id });
     } catch (e) { if (this.live) {const message=e instanceof Error?e.message:'The agent could not complete this request.';if(streamed)this.setState((previous:Shell)=>({msgs:previous.msgs.map((item:Shell)=>item.id===streamedId?{...item,streaming:false,interrupted:true,text:`${item.text}\n\nResponse interrupted. ${message}`} :item)}));else this.agentSay(message);} }
     finally { if (this.live) this.setState({ typing: false }); }
@@ -515,6 +523,19 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
   p.reply = function () { return { text: 'Connect an agent to continue.' }; };
   p.cardAct = async function (message: Shell) {
     const card = message.card || {};
+    if(card.sourceSummary&&!card.done){
+      const review=card.sourceSummary,current=()=>this.live&&!document.hidden&&!connectionController.getSnapshot().open&&JSON.stringify(connectionController.getSnapshot().session)===JSON.stringify(review.session)&&this.S().msgs.some((m:Shell)=>m.id===message.id&&!m.card?.done);
+      if(!current()){this.toast('Agent or conversation changed. Ask about the source again.');return;}
+      this.closeSummaryReview?.();
+      this.closeSummaryReview=reviewSummaryNote({text:review.text,source:review.source,current,save:async(fields)=>{
+        if(!current()||this.notesStorageFailed||this.notesPending)return false;
+        const update=(title:string,sub:string)=>{if(this.live)this.setState({msgs:this.S().msgs.map((m:Shell)=>m.id===message.id?{...m,card:{...m.card,done:true,title,sub}}:m)});};
+        update('Saving summary note','Inspect Notes before retrying if this is interrupted.');
+        try{const note={id:crypto.randomUUID(),kind:'text',...fields,pinned:false,when:'Now',createdAt:Date.now(),modifiedAt:Date.now()};const saved=await this.vset('notes',{list:[note,...this.vget('notes').list]})===true;update(saved?'Summary note saved':'Check Notes before retrying',saved?fields.documentSource.name:'Save is unconfirmed.');return saved;}
+        catch{update('Check Notes before retrying','Save is unconfirmed.');return false;}
+      },complete:()=>{if(this.live)this.toast('Summary note saved with its source.');}});
+      return;
+    }
     if (card.proposalId && !card.done) {
       try {
         const sessionId = connectionController.getSnapshot().session?.sessionId;
