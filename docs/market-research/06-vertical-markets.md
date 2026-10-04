@@ -1,33 +1,27 @@
 # 06 — Vertical market deep-dives
 
-Workstream 6 of the Alpha Phone market research ([manifest](00-manifest.md)). Research date: 2026-09-30.
+This file covers eleven verticals. For each it sets out pain points for an agentic, confidential, transcribing phone; buyer personas (economic buyer, champion, blockers); budget sources and deal sizes; procurement path and cycle length; incumbents and prices; user or device counts; AI adoption and spend; notable RFPs and contracts from 2024 to 2026; and a fit score for Alpha **today** and **after on-device ASR and redaction ship**.
 
-## How to read this file
+**Conventions.** Every number has a source URL. **[V]** marks a source confirmed against the cited page. **[R]** marks a figure from prior published reporting that is unverified against the live page; re-verify it before it goes into an investor or customer document. **(est.)** marks an estimate or derived figure.
 
-- **Scope.** There are eleven verticals. Each one covers pain points for an agentic, confidential, transcribing phone; buyer personas (economic buyer, champion, blockers); budget sources and deal sizes; procurement path and cycle length; incumbents and prices; user or device counts; AI adoption and spend; notable RFPs and contracts from 2024 to 2026; and a fit score for Alpha **today** and **after on-device ASR and redaction ship**.
-- **Evidence labels.** Every number has a source URL.
-  - **[V]** means the figure was checked in this session (2026-09-30) through web search or a direct fetch of the cited page.
-  - **[R]** means the figure is recalled from prior published reporting and the URL is the best-known source. It was **not** re-fetched in this session.
-  - **(est.)** marks an analyst estimate or derived figure.
-  - **Fact-check pass (2026-10-02).** Items re-checked on 2026-10-02 are marked "(verified 2026-10-02)" or corrected in place. **Any [R] tag still present could not be verified in that pass** (web search budget ran out mid-pass; many primary pages returned 403/404). See the verification log at the end.
-  - **Founder decisions (2026-10-02).** Alpha keeps Qwen (`qwen-3.8-27b` on Cerebras); this file records buyer objections to Qwen as facts, and frames mitigation around Qwen itself (self-hosted open weights inside the trust boundary, redaction before egress, provenance documentation) rather than a model swap. Alpha's own AOSP image does not need banking apps, Play Integrity or GMS.
-- **Search coverage.** The shared session search budget ran out after 19 searches in this workstream, which is short of the 40+ target. Coverage was topped up with about 30 direct page fetches (Wikipedia, press, GSA, DefenseScoop, AT&T/FirstNet, DoD IG). **Re-verify every [R] figure before it goes into an investor or customer document.**
-- **Product baseline** (from the repo, not from marketing):
-  - The phone is an Android UI in app and HOME-launcher flavors. The full signed AOSP image has not been qualified on hardware.
-  - The cloud agent runs in AWS Nitro Enclaves. **Inference goes to Cerebras (`qwen-3.8-27b`) outside Alpha's TEE**. The gap report says so directly: "An enclave-hosted agent that calls Cerebras is not evidence that model inference ran inside Alpha's TEE" (`docs/mvp-scope-and-gap-report.md`).
-  - ASR and TTS run on a paired host, not on the phone.
-  - There is no redaction pipeline yet.
+**Product baseline:**
+
+- The phone is an Android UI in app and HOME-launcher flavors. The full signed AOSP image has not been qualified on hardware, and it ships without GMS, so it does not depend on banking apps or Play Integrity.
+- The cloud agent runs in AWS Nitro Enclaves. **Inference goes to Cerebras (`qwen-3.8-27b`) outside Alpha's TEE**. The gap report says so directly: "An enclave-hosted agent that calls Cerebras is not evidence that model inference ran inside Alpha's TEE" (`docs/mvp-scope-and-gap-report.md`).
+- ASR and TTS run on a paired host, not on the phone.
+- There is no redaction pipeline yet.
+- Alpha keeps Qwen as its model. Buyer objections to Qwen are recorded here as facts, and mitigation is framed around Qwen itself (self-hosted open weights inside the trust boundary, redaction before egress, provenance documentation) rather than a model swap.
 
 Two findings from the product baseline change the scores in almost every regulated vertical:
 
 1. **"Confidential compute" is only partly true today.** The enclave protects the orchestration and keys, but the prompt text leaves the enclave for Cerebras. A regulated buyer's security review will find this in the first data-flow diagram.
-2. **The model is Qwen**, from Alibaba, a PRC company. That is a hard blocker for defense and IC buyers, a likely blocker for federal civilian, state/local law enforcement and critical infrastructure buyers, and a question for regulated finance and pharma. Several US states and agencies banned PRC-origin AI (DeepSeek) in 2025 [R] ([example: Texas ban on DeepSeek/RedNote, Jan 2025](https://gov.texas.gov/news/post/governor-abbott-bans-chinese-communist-party-based-ai-and-social-media-apps); page returned 404 on 2026-10-02). The **FY2026 NDAA** directs DoD and the IC to remove and exclude AI developed by DeepSeek from their devices, with research and CI/CT exceptions ([Wikipedia](https://en.wikipedia.org/wiki/DeepSeek); verified 2026-10-02). It names DeepSeek, not Qwen, but signals how buyers treat PRC-origin models. **Mitigation without changing models (founder decision 2026-10-02):** for verticals 1–3 and 9, offer Qwen open weights self-hosted inside the customer's or Alpha's attested boundary (no third-party inference egress), redact before any prompt leaves the device or enclave, and ship a provenance file (weights source and hashes, licence, evaluation and red-team results, attestation of the loaded model). Expect some defense, IC and federal buyers to reject a PRC-origin model regardless; record those as lost segments, not as a reason to swap.
+2. **The model is Qwen**, from Alibaba, a PRC company. That is a hard blocker for defense and IC buyers, a likely blocker for federal civilian, state/local law enforcement and critical infrastructure buyers, and a question for regulated finance and pharma. Several US states and agencies banned PRC-origin AI (DeepSeek) in 2025 [R] ([example: Texas ban on DeepSeek/RedNote, Jan 2025](https://gov.texas.gov/news/post/governor-abbott-bans-chinese-communist-party-based-ai-and-social-media-apps)). The **FY2026 NDAA** directs DoD and the IC to remove and exclude AI developed by DeepSeek from their devices, with research and CI/CT exceptions ([Wikipedia](https://en.wikipedia.org/wiki/DeepSeek)). It names DeepSeek, not Qwen, but signals how buyers treat PRC-origin models. **Mitigation without changing models:** for verticals 1–3 and 9, offer Qwen open weights self-hosted inside the customer's or Alpha's attested boundary (no third-party inference egress), redact before any prompt leaves the device or enclave, and ship a provenance file (weights source and hashes, licence, evaluation and red-team results, attestation of the loaded model). Expect some defense, IC and federal buyers to reject a PRC-origin model regardless; record those as lost segments, not as a reason to swap.
 
 ---
 
 ## Summary scoreboard
 
-Fit is scored 1–5, where 5 means Alpha can win a paid pilot with what exists. "After" assumes on-device ASR, on-device redaction and in-TEE (or attested private) inference all ship. Certifications are **not** assumed; they are covered in workstream 5.
+Fit is scored 1–5, where 5 means Alpha can win a paid pilot with what exists. "After" assumes on-device ASR, on-device redaction and in-TEE (or attested private) inference all ship. Certifications are **not** assumed; they are covered in [05](05-regulation-compliance.md).
 
 | # | Vertical | Users/devices (US unless noted) | Fit today | Fit after ASR+redaction | Sales cycle | Hard blockers |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -125,7 +119,7 @@ Fit is scored 1–5, where 5 means Alpha can win a paid pilot with what exists. 
 
 - **Today: 1/5.** No FedRAMP, a PRC-origin model, inference outside the TEE, and no records/retention module.
 - **After: 2/5.** On-device redaction plus records export is a real differentiator for caseworkers and inspectors, but the ATO still gates everything.
-- **Best wedge:** an SLG caseworker/inspector pilot funded by a state innovation office, on a US-origin model, with a "no audio leaves the device" architecture that lowers the CJIS/HIPAA-style review burden.
+- **Best wedge:** an SLG caseworker/inspector pilot funded by a state innovation office, using self-hosted Qwen weights with a provenance file and a "no audio leaves the device" architecture that lowers the CJIS/HIPAA-style review burden.
 
 ---
 
@@ -147,7 +141,7 @@ Fit is scored 1–5, where 5 means Alpha can win a paid pilot with what exists. 
 | DMCC IDIQ (devices, hotspots, plans) | Carrier device contract vehicle | Active IDIQ | [V](https://usfcr.com/search/opportunities/?oppId=c64b757ff5a043879e519d6a2d639f7f) |
 | TAK (ATAK/iTAK/WinTAK) | Android situational awareness at brigade and below | Hundreds of thousands of users (est.); on Samsung tactical phones | [V](https://breakingdefense.com/2025/11/evolution-and-future-of-the-tactical-assault-kit-for-soldiers-and-special-operators/), [V](https://www.army.mil/article/286205/adaptive_c2_modernizing_army_command_and_control) |
 | Army NGC2 | Data-centric C2, prototypes in 2024–25 Capstone events | Anduril-led team prototype (~$100M, July 2025) [R](https://www.anduril.com/article/anduril-awarded-next-generation-command-and-control-prototype/) | [V](https://www.army.mil/article/286205/adaptive_c2_modernizing_army_command_and_control) |
-| Army BYOD / virtual mobile (Hypori) | Virtual Android on personal phones | Army-wide rollout 2024–25 [R](https://www.hypori.com/) | [R] |
+| Army BYOD / virtual mobile (Hypori) | Virtual Android on personal phones | Army-wide rollout 2024–25 [R](https://www.hypori.com/). The Army required GFE phones to be disenrolled from DMUC by 2026-05-30, moving users to Hypori or Army MAM ([DVIDS](https://www.dvidshub.net/news/564961/army-sets-deadline-dmuc-device-turn-in-moves-new-mobility-program)) | [R] |
 | GenAI.mil | Enterprise GenAI portal (IL5) | 1.7M users | [V](https://defensescoop.com/2026/09/23/genai-mil-pentagon-frontier-models-defensetalks/) |
 | CDAO frontier-AI awards | Ceiling of up to $200M each to Anthropic, Google, OpenAI and xAI | July 2025 | [R](https://www.ai.mil/Latest/News-Press/PR-View/Article/4242822/) |
 | DoD workforce | Uniformed + civilian | ~3–3.5M | [V](https://defensescoop.com/2026/09/23/genai-mil-pentagon-frontier-models-defensetalks/), [V](https://shattered.io/pentagon-chatgpt-grok-genai-mil-2026/) |
@@ -169,7 +163,7 @@ Fit is scored 1–5, where 5 means Alpha can win a paid pilot with what exists. 
   - NSA CSfC/NIAP requirements for the device.
   - DoD CIO mobile policy.
   - OPSEC/COMSEC, which will object to "always-on microphone" by default.
-  - Supply-chain risk management: TAA, Section 889 and model provenance. **Qwen is disqualifying for many of these reviewers** (buyer concern; the FY2026 NDAA already requires DoD/IC removal of DeepSeek AI, verified 2026-10-02). The Anthropic designation shows the Pentagon will act on vendor-level supply-chain risk ([V](https://www.mayerbrown.com/en/insights/publications/2026/03/pentagon-designates-anthropic-a-supply-chain-risk-what-government-contractors-need-to-know)).
+  - Supply-chain risk management: TAA, Section 889 and model provenance. **Qwen is disqualifying for many of these reviewers** (buyer concern; the FY2026 NDAA already requires DoD/IC removal of DeepSeek AI). The Anthropic designation shows the Pentagon will act on vendor-level supply-chain risk ([V](https://www.mayerbrown.com/en/insights/publications/2026/03/pentagon-designates-anthropic-a-supply-chain-risk-what-government-contractors-need-to-know)).
   - Brand diligence on elizaOS/ai16z crypto associations.
 
 ### 2.4 Budget, deal size, procurement
@@ -180,7 +174,7 @@ Fit is scored 1–5, where 5 means Alpha can win a paid pilot with what exists. 
   - NATO DIANA challenge programs and the NATO Innovation Fund.
   - UK DASA.
   - Germany and the Bundeswehr, where secure phones come from Secusmart/HENSOLDT [R].
-  - France, where the Ministry of Armed Forces reportedly signed a framework agreement with Mistral (2026) [R](https://en.wikipedia.org/wiki/Mistral_AI) (not found on the cited page 2026-10-02; could not verify). In May 2026 Mistral's CEO told the National Assembly France should not become a US "vassal state" through reliance on foreign AI in its armed forces (verified on Wikipedia 2026-10-02). Mistral is the reference for "sovereign model plus defense." Wikipedia notes Mensch's public stance against dependence on foreign AI for French defense ([V](https://en.wikipedia.org/wiki/Mistral_AI)).
+  - France, where the Ministry of Armed Forces reportedly signed a framework agreement with Mistral (2026) [R](https://en.wikipedia.org/wiki/Mistral_AI) (unverified; not on the cited page). In May 2026 Mistral's CEO, Arthur Mensch, told the National Assembly France should not become a US "vassal state" through reliance on foreign AI in its armed forces ([V](https://en.wikipedia.org/wiki/Mistral_AI)). Mistral is the reference for "sovereign model plus defense."
 
 ### 2.5 Incumbents
 
@@ -190,7 +184,7 @@ Fit is scored 1–5, where 5 means Alpha can win a paid pilot with what exists. 
 | Hypori | Virtual mobile (BYOD) | Army contracts | [R](https://www.hypori.com/) |
 | Google (Gemini for Govt, GenAI.mil) | Enterprise AI | Included in GenAI.mil | [V](https://www.defenseone.com/defense-systems/2026/04/pentagon-adds-googles-latest-model-genaimil-usage-soars/413126/) |
 | OpenAI / xAI | ChatGPT Mil, Grok on GenAI.mil (Aug 31, 2026) | CDAO awards | [V](https://shattered.io/pentagon-chatgpt-grok-genai-mil-2026/) |
-| Ask Sage, Scale AI (Donovan), Palantir (AIP; Army Enterprise Service Agreement **up to $10B over 10 years, 2025-07-31**, consolidating 75 contracts; verified 2026-10-02) | Gov GenAI and data platforms | — | [Wikipedia](https://en.wikipedia.org/wiki/Palantir_Technologies), [Army](https://www.army.mil/article/287506/) |
+| Ask Sage, Scale AI (Donovan), Palantir (AIP; Army Enterprise Service Agreement **up to $10B over 10 years, 2025-07-31**, consolidating 75 contracts) | Gov GenAI and data platforms | — | [Wikipedia](https://en.wikipedia.org/wiki/Palantir_Technologies), [Army](https://www.army.mil/article/287506/) |
 | Anduril (Lattice), Palantir | NGC2, SOCOM autonomy ($86M, Mar 2025) | — | [V](https://defensescoop.com/2025/03/26/anduril-socom-contract-award-autonomy-software-86m/) |
 | TAK ecosystem (TAK Product Center) | Free GOTS | Free to government | [V](https://tak.gov/products) |
 
@@ -272,7 +266,7 @@ Axon's body-camera share among major-city departments was 85% (2017) ([V](https:
 
 | Company | Funding (date, lead) | Total raised | Scale | Price | Source |
 | --- | --- | --- | --- | --- | --- |
-| Jump | $20M Series A (Feb 2025); **$80M Series B (2025, Insight Partners)**, with F-Prime, Allianz Life Ventures, TIAA Ventures, Citi Ventures | $105M | 27,000 advisors in <2 years | Meet $100/advisor/mo annual ($120 monthly); ramp $75; lite $25; $200 all-in | [V](https://www.insightpartners.com/ideas/jump-raises-80-million-series-b-led-by-insight-partners-to-expand-ai-operating-system-for-financial-advisors/), [V](https://www.wealthmanagement.com/artificial-intelligence/jump_secures_series_b), [V](https://jump.ai/pricing) |
+| Jump | $20M Series A (Feb 2025); **$80M Series B (Feb 2026, Insight Partners)**, with F-Prime, Allianz Life Ventures, TIAA Ventures, Citi Ventures | $105M | 27,000 advisors in <2 years | Meet $100/advisor/mo annual ($120 monthly); ramp $75; lite $25; $200 all-in | [V](https://www.insightpartners.com/ideas/jump-raises-80-million-series-b-led-by-insight-partners-to-expand-ai-operating-system-for-financial-advisors/), [V](https://www.wealthmanagement.com/artificial-intelligence/jump_secures_series_b), [V](https://jump.ai/pricing) |
 | Zocks | $13.8M Series A (Mar 6, 2025, Motive Ventures); **$45M Series B (Jan 26, 2026, Lightspeed + QED)** | $65M | Enterprise-focused | Not public (est. $50–100/seat) | [V](https://www.businesswire.com/news/home/20250306555397/en/Zocks-Secures-$13.8M-Series-A-to-Power-AI-Driven-Client-Intelligence-for-Financial-Advisors), [V](https://www.morningstar.com/news/business-wire/20260126549388/zocks-raises-45m-series-b-to-accelerate-ai-powered-automation-for-financial-advisors) |
 | Zeplyn | $3M seed (Nov 2024, Leo Capital) | $3M | Salesforce/Redtail/Wealthbox integrations; in-person + dictation | Not verified | [V](https://fintech.global/2024/11/15/zeplyn-lands-3m-to-enhance-advisor-efficiency-with-ai-driven-platform/) |
 | Finmate AI | Funding not verified | — | Solo/small RIAs; mobile in-person recording | Not verified | [V](https://scribbl.co/post/ai-notetaker-for-financial-advisors) |
@@ -280,7 +274,7 @@ Axon's body-camera share among major-city departments was 85% (2017) ([V](https:
 
 **Scale:**
 
-- 299,400 personal financial advisors (BLS, 2025) ([V](https://smartasset.com/advisor-resources/how-many-financial-advisors-in-the-us)).
+- 299,400 personal financial advisors (BLS, 2025) ([V](https://smartasset.com/advisor-resources/how-many-financial-advisors-in-the-us), [BLS](https://www.bls.gov/ooh/business-and-financial/personal-financial-advisors.htm)).
 - Cerulli counted 283,137 at end-2023 and projects ~292K by 2027. Independent RIAs hold about 16% share and grew 10.6% YoY ([V](https://www.cerulli.com/press-releases/the-financial-advisor-industry-has-a-headcount-problem)).
 - At $100/month, the software line alone is worth about $360M/yr at full penetration (est. = 299.4K × $1,200).
 
@@ -344,10 +338,10 @@ Axon's body-camera share among major-city departments was 85% (2017) ([V](https:
 | Company | Latest funding (date, lead) | Valuation | Scale | Price | Source |
 | --- | --- | --- | --- | --- | --- |
 | Abridge | $250M Series D (Feb 2025) at $2.75B; **$300M Series E (June 24, 2025, a16z; Khosla)** | $5.3B | 150+ large health systems; Q1 2025 contracted ARR $117M | Enterprise (est. $200–$600/clinician/mo) | [V](https://techcrunch.com/2025/06/24/in-just-4-months-ai-medical-scribe-abridge-doubles-valuation-to-5-3b/) |
-| Ambience Healthcare | $243M Series C (July 2025, Oak HC/FT + a16z; verified 2026-10-02) | ~$1.25B | Houston Methodist, MultiCare (92% adoption), Ardent | Enterprise | [MedCity](https://medcitynews.com/2025/07/healthcare-documentation-startup-unicorn/), customers [V](https://www.ambiencehealthcare.com/) |
-| Microsoft Dragon Copilot (Nuance DAX) | Microsoft acquired Nuance for $19.7B (closed Mar 4, 2022) | — | Dragon Copilot announced 2025-03-03, GA May 2025 in US/Canada, then UK, DE, FR, NL (verified 2026-10-02) | Enterprise, bundled | [V](https://en.wikipedia.org/wiki/Nuance_Communications), [V](https://news.microsoft.com/2025/03/03/microsoft-dragon-copilot-provides-the-healthcare-industrys-first-unified-voice-ai-assistant-that-enables-clinicians-to-streamline-clinical-documentation-surface-information-and-automate-task/) |
-| Suki | $70M Series D (Oct 2024, Hedosophia; verified 2026-10-02) | ~$500M (aggregator est.) | Health systems | Enterprise | [Healthcare Dive](https://www.healthcaredive.com/news/suki-70-million-Series-D-funding/729573/) |
-| Nabla | $70M Series C (June 2025, HV Capital; total $120M; verified 2026-10-02) | Not disclosed | 85,000+ clinicians, 130+ orgs, 20M+ encounters/yr | Enterprise + individual | [Nabla](https://www.nabla.com/blog/70m-series-c), scale [V](https://www.nabla.com/) |
+| Ambience Healthcare | $243M Series C (July 2025, Oak HC/FT + a16z) | ~$1.25B | Houston Methodist, MultiCare (92% adoption), Ardent | Enterprise | [MedCity](https://medcitynews.com/2025/07/healthcare-documentation-startup-unicorn/), customers [V](https://www.ambiencehealthcare.com/) |
+| Microsoft Dragon Copilot (Nuance DAX) | Microsoft acquired Nuance for $19.7B (closed Mar 4, 2022) | — | Dragon Copilot announced 2025-03-03, GA May 2025 in US/Canada, then UK, DE, FR, NL | Enterprise, bundled | [V](https://en.wikipedia.org/wiki/Nuance_Communications), [V](https://news.microsoft.com/2025/03/03/microsoft-dragon-copilot-provides-the-healthcare-industrys-first-unified-voice-ai-assistant-that-enables-clinicians-to-streamline-clinical-documentation-surface-information-and-automate-task/) |
+| Suki | $70M Series D (Oct 2024, Hedosophia) | ~$500M (aggregator est.) | Health systems | Enterprise | [Healthcare Dive](https://www.healthcaredive.com/news/suki-70-million-Series-D-funding/729573/) |
+| Nabla | $70M Series C (June 2025, HV Capital; total $120M) | Not disclosed | 85,000+ clinicians, 130+ orgs, 20M+ encounters/yr | Enterprise + individual | [Nabla](https://www.nabla.com/blog/70m-series-c), scale [V](https://www.nabla.com/) |
 | Heidi Health | $65M Series B (Oct 2025, Point72 Private Investments) | ~$465M | 175M+ patient interactions, 190+ countries, 77 languages; free tier | Free/individual/enterprise | [R](https://www.heidihealth.com/blog), scale [V](https://www.heidihealth.com/) |
 | Freed | $30M Series A (Mar 2025, Sequoia) | Not verified | ~20K paying clinicians (est.) | ~$99/clinician/mo (est.) | [R](https://www.getfreed.ai/) |
 | Commure (Augmedix) | $200M growth financing (June 2025, Hercules Capital); acquired Augmedix (~$139M, 2024) | Not verified | Ambient + RCM | Enterprise | [R](https://www.commure.com/) |
@@ -367,7 +361,7 @@ Market note: Wikipedia counts **50+ AI scribe products** (2024) priced from "mid
 
 ### 5.3 Hospital device fleets
 
-- **Stryker bought Vocera** (announced 2022-01-06, $2.97B; verified 2026-10-02 via [Wikipedia](https://en.wikipedia.org/wiki/Vocera_Communications)). Vocera is now inside Stryker's portfolio ([V](https://en.wikipedia.org/wiki/Vocera_Communications)). Vocera's badges and smartphone apps are the incumbent clinical-communications layer.
+- **Stryker bought Vocera** (announced 2022-01-06, $2.97B), and Vocera is now inside Stryker's portfolio ([V](https://en.wikipedia.org/wiki/Vocera_Communications)). Vocera's badges and smartphone apps are the incumbent clinical-communications layer.
 - **Hospital-issued smartphones:** Zebra (Android, the rugged healthcare line), Spectralink (Android), Apple iPhone fleets under Epic Rover/Haiku/Limerick, and Ascom. Many hospitals already issue **Android** devices for nurses (est.). An AOSP phone faces a hospital MDM (SOTI, Intune, Workspace ONE) that expects certified Android Enterprise devices.
 
 ### 5.4 Personas
@@ -403,14 +397,14 @@ Market note: Wikipedia counts **50+ AI scribe products** (2024) priced from "mid
 - **Privilege and confidentiality.** ABA Model Rule 1.6 and ABA Formal Opinion 512 (July 2024) on generative AI both apply: lawyers must understand the risks of self-learning tools and get informed consent before inputting client information [R](https://www.americanbar.org/content/dam/aba/administrative/professional_responsibility/ethics-opinions/aba-formal-opinion-512.pdf).
 - **AI conversations may not be privileged.** In United States v. Heppner (S.D.N.Y., Feb 2026), the court reportedly held that a defendant's own consumer-AI conversations were not privileged [R](https://www.reuters.com/legal/). This is a strong argument for **attorney-controlled, confidential** AI tooling.
 - **Court reporting shortage.** BLS counted ~21,300 court reporters in 2022, versus an earlier projection of 27,700, and some states saw an 85% fall in certification applicants over five years ([V](https://en.wikipedia.org/wiki/Court_reporter)). Depositions, client interviews and witness prep need accurate, privileged capture.
-- **Recording-consent law.** Two-party-consent states constrain lawyer–client and witness recordings (see workstream 5). Otter.ai faces a 2025 class action over recording without consent (N.D. Cal. No. 5:25-cv-06911, filed Aug 2025; ECPA, CIPA and Illinois BIPA claims over OtterPilot auto-joining meetings and using recordings for training; no resolution reported as of Aug 2026; verified 2026-10-02 via [Wikipedia](https://en.wikipedia.org/wiki/Otter.ai); [NPR](https://www.npr.org/2025/08/15/nx-s1-5503200/otter-ai-lawsuit)).
+- **Recording-consent law.** Two-party-consent states constrain lawyer–client and witness recordings (see [05](05-regulation-compliance.md)). Otter.ai faces a 2025 class action over recording without consent (N.D. Cal. No. 5:25-cv-06911, filed Aug 2025; ECPA, CIPA and Illinois BIPA claims over OtterPilot auto-joining meetings and using recordings for training; no resolution reported as of Aug 2026; [Wikipedia](https://en.wikipedia.org/wiki/Otter.ai); [NPR](https://www.npr.org/2025/08/15/nx-s1-5503200/otter-ai-lawsuit)).
 
 ### 6.2 Incumbents and funding
 
 | Company | Funding (date, lead) | Valuation | Metrics | Source |
 | --- | --- | --- | --- | --- |
 | Harvey | $300M (Feb 2025, Sequoia) at $3B; $300M (June 2025, Kleiner/Coatue) at $5B; $160M (Dec 2025, a16z) at $8B; $200M (Mar 2026, GIC/Sequoia) at $11B; **$550M (Sept 2026, Diffusion/Lightspeed) at $15.5B** | $15.5B | 2025 revenue ~$190M | [V](https://en.wikipedia.org/wiki/Harvey_(software)) |
-| Legora | $80M Series B (May 2025); $150M Series C (Oct 2025) at $1.8B; **$550M Series D (Mar 2026, Accel) at $5.55B**; $100M ARR by Apr 2026; reported talks at ≥$10B (Aug 2026) | **$5.55B** (corrected from ~$1.8B; verified 2026-10-02) | Europe/US firms | [Wikipedia](https://en.wikipedia.org/wiki/Legora) |
+| Legora | $80M Series B (May 2025); $150M Series C (Oct 2025) at $1.8B; **$550M Series D (Mar 2026, Accel) at $5.55B**; $100M ARR by Apr 2026; reported talks at ≥$10B (Aug 2026) | **$5.55B** | Europe/US firms | [Wikipedia](https://en.wikipedia.org/wiki/Legora) |
 | Thomson Reuters CoCounsel (Casetext, $650M acquisition 2023) | — | — | Bundled with Westlaw | [R](https://www.thomsonreuters.com/en/press-releases/2023/june/thomson-reuters-completes-acquisition-of-casetext-inc.html) |
 | Clio (acquired vLex ~$1B, 2025) | — | — | SMB law firms; Clio Duo AI | [R](https://www.clio.com/) |
 | EvenUp (PI demand letters) | Series E (Oct 2025) ~$2B val. | ~$2B | Plaintiff firms | [R](https://www.evenuplaw.com/) |
@@ -423,7 +417,7 @@ Market note: Wikipedia counts **50+ AI scribe products** (2024) priced from "mid
 - **Blockers:** firm GC/ethics partner, CISO, and client outside-counsel guidelines (many banks and pharma companies restrict AI on their matters).
 - **Deal size (est.):** $1K–$3K per lawyer per year for AI tools. Harvey reportedly charges enterprise seats at roughly $1,000+/lawyer/yr (est.). AmLaw 100 deals run $0.5–$5M.
 - **Cycle:** 1–3 months (small firms); 6–12 months (large firms, including client consent).
-- **Scale:** ~1.32M lawyers ([R](https://www.americanbar.org/news/profile-legal-profession/)); 21,300 court reporters ([V](https://en.wikipedia.org/wiki/Court_reporter)).
+- **Scale:** ~1.32M lawyers ([R](https://www.americanbar.org/news/profile-legal-profession/)); BLS counts 863,700 lawyer jobs in 2025, a different measure (employment versus licensed resident attorneys) ([BLS](https://www.bls.gov/ooh/legal/lawyers.htm)); 21,300 court reporters ([V](https://en.wikipedia.org/wiki/Court_reporter)).
 
 ### 6.4 Fit
 
@@ -479,14 +473,14 @@ Market note: Wikipedia counts **50+ AI scribe products** (2024) priced from "mid
 - **HR and investigations.** Interviews in harassment and whistleblower investigations need accurate transcripts, strict access and redaction for release. They are subject to state recording-consent law.
 - **M&A deal rooms.** Clean-team rules, NDAs and HSR gun-jumping concerns.
 - **Engineering and IP-heavy firms.** Trade secrets appear in design reviews, and export-controlled technical data appears in meetings.
-- **Bystander and consent risk.** Consumer recorders and bots create legal exposure: the 2025 class action against Otter.ai (N.D. Cal. 5:25-cv-06911; verified 2026-10-02) ([NPR](https://www.npr.org/2025/08/15/nx-s1-5503200/otter-ai-lawsuit)).
+- **Bystander and consent risk.** Consumer recorders and bots create legal exposure: the 2025 class action against Otter.ai (N.D. Cal. 5:25-cv-06911) ([NPR](https://www.npr.org/2025/08/15/nx-s1-5503200/otter-ai-lawsuit)).
 
 ### 8.2 Incumbents
 
 - **Bundled platforms:** Microsoft 365 Copilot (Teams recap), Google Gemini in Meet, and Zoom AI Companion.
-- **Meeting assistants:** Otter, Fireflies, Granola, Fathom and Read.ai (workstream 1).
+- **Meeting assistants:** Otter, Fireflies, Granola, Fathom and Read.ai (see [01](01-transcription-competitors.md)).
 - **Secure messengers:** Wickr (AWS), Signal and Threema.
-- **Executive-protection devices:** Silent Circle, Sirin Labs, Bittium, Katim (workstream 3).
+- **Executive-protection devices:** Silent Circle, Sirin Labs, Bittium, Katim (see [03](03-secure-phones-confidential-ai.md)).
 - **Prices:** Copilot $30/user/mo [R](https://www.microsoft.com/en-us/microsoft-365/copilot/enterprise); Otter Business ~$20–30/user/mo [R](https://otter.ai/pricing).
 
 ### 8.3 Personas, budget and procurement
@@ -548,8 +542,8 @@ Market note: Wikipedia counts **50+ AI scribe products** (2024) priced from "mid
   - G42 announced Stargate UAE with OpenAI, Oracle, NVIDIA, SoftBank and Cisco on May 22, 2025, with operations starting in 2026 ([V](https://en.wikipedia.org/wiki/G42_(company))).
   - Microsoft invested $1.5B in G42 in April 2024 ([V](https://en.wikipedia.org/wiki/G42_(company))).
   - Core42 is the sovereign cloud arm, and G42 launched "Digital Embassies" in Jan 2026 ([V](https://en.wikipedia.org/wiki/G42_(company))).
-  - EDGE Group's KATIM makes secure phones (workstream 3) [R](https://www.katim.com/).
-- **Saudi Arabia:** PIF launched HUMAIN on 2025-05-12; NVIDIA allocated about 18,000 top chips initially (verified 2026-10-02 via [Wikipedia](https://en.wikipedia.org/wiki/Humain)). Reported AMD ($10B) and AWS (>$5B "AI Zone") sizes [R](https://www.humain.com/) could not be verified; Qualcomm is also a partner. HUMAIN's flagship model is the Arabic-first ALLaM.
+  - EDGE Group's KATIM makes secure phones (see [03](03-secure-phones-confidential-ai.md)) [R](https://www.katim.com/).
+- **Saudi Arabia:** PIF launched HUMAIN on 2025-05-12; NVIDIA allocated about 18,000 top chips initially ([Wikipedia](https://en.wikipedia.org/wiki/Humain)). Reported AMD ($10B) and AWS (>$5B "AI Zone") sizes are unverified [R](https://www.humain.com/); Qualcomm is also a partner. HUMAIN's flagship model is the Arabic-first ALLaM.
 - **Buyers:** sovereign-AI entities (G42/Core42, HUMAIN), ministries, royal courts and family offices, and national champions (Aramco, ADNOC, e&, stc).
 - **Pain:** Arabic-first on-device ASR, data residency, and sovereign control of keys and models.
 - **Deal sizes:** partner-led programs of $5–$50M+ (est.). Cycle 12–36 months.
@@ -562,10 +556,10 @@ Market note: Wikipedia counts **50+ AI scribe products** (2024) priced from "mid
   - €600M at €5.8B (June 2024).
   - €2B at €12B (Sept 2025), with ASML investing €1.3B for ~11% and becoming its top shareholder.
   - $830M for data centers (Mar 2026).
-  - Samsung Electronics stake in a €3B transaction at €21B (Sept 2026) (re-checked on Wikipedia 2026-10-02; still no primary release fetched). Mistral employs 1,000+ people.
+  - Samsung Electronics stake in a €3B transaction at €21B (Sept 2026; Wikipedia only, no primary release). Mistral employs 1,000+ people.
 - **InvestAI:** the EU Commission announced €200B, including €20B for AI gigafactories (Feb 2025) [R](https://ec.europa.eu/commission/presscorner/detail/en/ip_25_467).
 - **Rules:** the EU AI Act, whose GPAI obligations began Aug 2025 [R](https://artificialintelligenceact.eu/), and the GDPR/Schrems-driven preference for EU hosting.
-- **Secure-phone incumbents:** Bittium (Finland), Secusmart (Germany), Thales (France), Murena//e/OS (France), Purism (US) — workstream 3.
+- **Secure-phone incumbents:** Bittium (Finland), Secusmart (Germany), Thales (France), Murena//e/OS (France), Purism (US) — see [03](03-secure-phones-confidential-ai.md).
 - **Pain:** US CLOUD Act exposure. **AWS Nitro in an AWS region is still a US provider**, although AWS launched the European Sovereign Cloud (Brandenburg, 2025–26) [R](https://aws.amazon.com/compliance/europe-digital-sovereignty/). Alpha would need EU-owned hosting or AWS ESC. Some EU sovereign buyers will also prefer or require an EU model (Mistral); that is a buyer requirement Alpha will not meet by design. Alpha's answer is EU-hosted, self-managed Qwen weights with provenance documentation and redaction before egress, accepting that some tenders will be lost.
 - **Buyers:** national ministries (Interior, Defence), EU institutions, regulated enterprises, and works-council-heavy employers (Germany).
 - **Cycle:** 12–24 months with public tenders (TED).
@@ -609,7 +603,7 @@ Market note: Wikipedia counts **50+ AI scribe products** (2024) priced from "mid
 | Solana Seeker (shipped Aug 2025) | ~$450–$500 | 150K+ pre-orders; SKR token | [R](https://solanamobile.com/) |
 | GrapheneOS on Pixel | Free OS + Pixel | Privacy standard for prosumers | [R](https://grapheneos.org/) |
 | Murena / e/OS | ~€300–€700 phones | — | [R](https://murena.com/) |
-| Sirin Labs Finney (2018) | $999 | Failed (see workstream 2) | [R] |
+| Sirin Labs Finney (2018) | $999 | Failed (see [02](02-agentic-phones-devices.md)) | [R] |
 | Light Phone, Punkt MC02 | $299–$799 | Niche privacy/minimal | [R] |
 | Vertu / Silent Circle | $1K–$10K+ | Luxury/security | [R] |
 
@@ -617,7 +611,7 @@ Market note: Wikipedia counts **50+ AI scribe products** (2024) priced from "mid
 
 - **Buyer:** the individual (direct-to-consumer). For family offices, the COO or chief of staff.
 - **Champions:** elizaOS community leads, crypto KOLs, security researchers.
-- **Blockers:** skepticism about crypto-linked hardware (token incentives can look like pump schemes), support expectations, and banking-app compatibility (Play Integrity fails on de-Googled AOSP — workstream 9).
+- **Blockers:** skepticism about crypto-linked hardware (token incentives can look like pump schemes), support expectations, and banking-app compatibility (Play Integrity fails on de-Googled AOSP — see [09](09-distribution-partners-economics.md)).
 - **Deal size:** $500–$1,500 hardware plus a $20–$100/mo subscription (est.).
 - **Cycle:** days to weeks.
 
@@ -625,7 +619,7 @@ Market note: Wikipedia counts **50+ AI scribe products** (2024) priced from "mid
 
 - **Today: 3/5.** This is the only vertical where the current feature set (owner-paired agent, approvals and receipts, enclave story, elizaOS lineage) is enough to sell a founders' edition, if the "confidential" claim is worded precisely (orchestration in the enclave; inference at Cerebras).
 - **After: 4/5.**
-- **Brand asymmetry:** the elizaOS/crypto association helps here and hurts in verticals 1–3 (see the manifest checklist).
+- **Brand asymmetry:** the elizaOS/crypto association helps here and hurts in verticals 1–3.
 
 ---
 
@@ -633,7 +627,7 @@ Market note: Wikipedia counts **50+ AI scribe products** (2024) priced from "mid
 
 ### A. Budget and deal structure
 
-| Vertical | Budget line | Typical first deal (est.) | Expansion deal (est.) | Price anchor (verified where cited) |
+| Vertical | Budget line | Typical first deal (est.) | Expansion deal (est.) | Price anchor |
 | --- | --- | --- | --- | --- |
 | Federal civilian | IT O&M, TMF, SBIR | $50K–$250K | $1–$10M/yr | $0.25–$1 per agency for frontier chat ([V](https://www.potomacofficersclub.com/articles/onegov-ai-gsa-openai-xai-google-anthropic/)) |
 | SLG | General fund, federal grants | $25K–$150K | $0.5–$3M | NASPO/Sourcewell pricing |
@@ -649,7 +643,7 @@ Market note: Wikipedia counts **50+ AI scribe products** (2024) priced from "mid
 | Sovereign | National programs | $1–$5M (partner) | $10–$100M | Stargate/HUMAIN scale |
 | Crypto/HNW | Personal | $500–$1,500 per unit | Community drops | Seeker ~$450–$500 [R] |
 
-### B. Compliance gate per vertical (details in workstream 5)
+### B. Compliance gate per vertical (details in [05](05-regulation-compliance.md))
 
 | Vertical | Must-have before a paid pilot | Must-have before scale |
 | --- | --- | --- |
@@ -691,7 +685,7 @@ Scoring runs 1–5 on each axis:
 - **Fit:** the average of today and after, weighted toward "after" at 70%.
 - **Speed:** time to first dollar and cycle length.
 
-The composite is the product of the three (max 125). All scores are analyst estimates (est.).
+The composite is the product of the three (max 125). All scores are estimates (est.).
 
 | Rank | Vertical / sub-segment | Attract. | Fit (today→after) | Speed | Composite | Rationale |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -716,7 +710,7 @@ The composite is the product of the three (max 125). All scores are analyst esti
 
 ## Implications for Alpha Phone
 
-1. **Answer the Qwen objection before any institutional sale, without swapping models (founder decision 2026-10-02).** Buyers in defense, IC and federal government treat PRC-origin models as disqualifying, and law enforcement, critical infrastructure and many regulated enterprises are likely to raise it; the FY2026 NDAA's DeepSeek exclusion shows the direction. The mitigation is about Qwen itself: (a) for regulated and sovereign tiers, run Qwen open weights self-hosted inside the attested boundary rather than through third-party inference; (b) redact before any prompt leaves the device or enclave; (c) publish a provenance file (weights source and hash, licence, evaluations, red-team results) and attest the loaded model hash. Accept that some defense and IC buyers will still say no. Government AI vendor politics move fast: the Anthropic supply-chain designation went from directive to appellate ruling in seven months ([V](https://www.cnbc.com/2026/09/25/pentagon-anthropic-ai-risk-appeals-court.html)).
+1. **Answer the Qwen objection before any institutional sale, without swapping models.** Buyers in defense, IC and federal government treat PRC-origin models as disqualifying, and law enforcement, critical infrastructure and many regulated enterprises are likely to raise it; the FY2026 NDAA's DeepSeek exclusion shows the direction. The mitigation is about Qwen itself: (a) for regulated and sovereign tiers, run Qwen open weights self-hosted inside the attested boundary rather than through third-party inference; (b) redact before any prompt leaves the device or enclave; (c) publish a provenance file (weights source and hash, licence, evaluations, red-team results) and attest the loaded model hash. Accept that some defense and IC buyers will still say no. Government AI vendor politics move fast: the Anthropic supply-chain designation went from directive to appellate ruling in seven months ([V](https://www.cnbc.com/2026/09/25/pentagon-anthropic-ai-risk-appeals-court.html)).
 2. **Word the confidential claim precisely, or close the gap.** Today the enclave covers orchestration and keys, not inference (`docs/mvp-scope-and-gap-report.md`). In legal, executive, crypto and sovereign sales, "attested private inference" is the purchase reason. Either run inference in an attested TEE (GPU confidential computing, or a self-hosted model in enclave-adjacent infrastructure) or state the Cerebras boundary plainly. An overstated claim found in a security review ends the deal and the reference.
 3. **Redaction must be retention-aware.** Finance (17a-4/FINRA), government (the Federal Records Act, FOIA), law enforcement (SB 524 requires keeping every draft ([V](https://resources.truleo.co/blog/new-law-regulates-ai-police-reports))) and legal holds all require keeping originals. Design the pipeline as **"redact for the model, retain for the record"**: raw audio and transcript go to a customer-controlled WORM/archive (Smarsh, Global Relay, customer S3 Object Lock), and only redacted text reaches inference.
 4. **Beachhead: in-person professional conversations in regulated, fast-buying firms.** That means wealth advisors first, then legal (small/mid firms) and executive/HR/deal teams. These buyers pay $75–$200/user/month today ([V](https://jump.ai/pricing)), buy in 1–6 months and value on-device capture for exactly the meetings Zoom bots miss.
@@ -725,7 +719,7 @@ The composite is the product of the three (max 125). All scores are analyst esti
 7. **On-device ASR is the unlock for the largest markets.** SOCOM SSE, home health, law-enforcement interviews and all sovereign markets require disconnected or local-language capture. Prioritize on-device ASR with diarization, local-language support (Arabic, Hindi and other Indic languages, Japanese, Korean) and a visible recording indicator for consent.
 8. **Use a software-first route for government and defense.** Institutional buyers issue certified Samsung/Apple/Zebra devices and will not adopt a new AOSP handset without NIAP/CSfC. Package Alpha's agent, redaction and enclave as an **app or SDK that runs on certified devices** (Android Enterprise, Samsung Knox, ATAK plugin). Keep the Alpha phone for prosumer, executive and SMB segments.
 9. **Build distribution through compliance incumbents.** Archiving vendors (finance), EHR marketplaces (health), DMS (legal: iManage, NetDocuments), FirstNet Ready certification (public safety), Carahsoft/OneGov (government) and sovereign-cloud partners (G42/Core42, HUMAIN, AWS European Sovereign Cloud, Mistral).
-10. **Price as a compliance product, not an AI product.** Chat is free in government and bundled in the enterprise. Alpha's price must be justified by avoided fines (>$3B in off-channel penalties since 2021 across SEC and CFTC ([V](https://www.globalrelay.com/resources/thought-leadership/new-year-same-sec-as-12-firms-hit-with-63-million-in-off-channel-communications-fines/)); about $2B of that from the SEC across 100+ firms per [FINRA](https://www.finra.org/media-center/blog/sec-off-channel-communications-settlements-sro-collateral-consequences), with SEC Chair Atkins now de-emphasizing recordkeeping cases, verified 2026-10-02), privilege protection and hours saved, and delivered as hardware-as-a-service plus per-seat compliance software.
+10. **Price as a compliance product, not an AI product.** Chat is free in government and bundled in the enterprise. Alpha's price must be justified by avoided fines (>$3B in off-channel penalties since 2021 across SEC and CFTC ([V](https://www.globalrelay.com/resources/thought-leadership/new-year-same-sec-as-12-firms-hit-with-63-million-in-off-channel-communications-fines/)); about $2B of that from the SEC across 100+ firms per [FINRA](https://www.finra.org/media-center/blog/sec-off-channel-communications-settlements-sro-collateral-consequences), with SEC Chair Atkins now de-emphasizing recordkeeping cases), privilege protection and hours saved, and delivered as hardware-as-a-service plus per-seat compliance software.
 
 ## Open questions
 
@@ -736,52 +730,6 @@ The composite is the product of the three (max 125). All scores are analyst esti
 5. **Device vs software.** For each institutional vertical, will buyers accept a new AOSP device, or must Alpha ship as an app on Samsung Knox/Android Enterprise first? Validate this with 5–10 CISO interviews.
 6. **Anthropic/government volatility.** The Claude OneGov listing (extended to Oct 31, 2026) conflicts with the Feb 2026 directive to cease use ([V](https://www.washingtontechnology.com/contracts/2026/09/google-extends-gemini-onegov-deal-november/416338/), [V](https://www.npr.org/2026/03/06/g-s1-112713/pentagon-labels-ai-company-anthropic-a-supply-chain-risk)). What does this imply for any vendor's model choice in government sales?
 7. **Brand separation.** How much does the elizaOS/ai16z association cost in regulated diligence, and does a separate corporate entity (Alpha Compute) sufficiently firewall it?
-8. **Unverified figures to re-check.** Every [R] item needs re-verification, especially:
-   - Heidi, Freed and Commure rounds and valuations (Ambience, Suki and Nabla verified 2026-10-02).
-   - Epic AI Charting timing.
-   - The Harvey Sept 2026 round (single source: Wikipedia).
-   - Mistral–Samsung (now confirmed on Wikipedia; primary release not fetched).
-   - Seeker pre-orders.
-   - HUMAIN AMD and AWS partnership sizes (launch date and NVIDIA allocation verified).
-   - IndiaAI budget.
-   - Gallup teacher AI data.
-   - The US v. Heppner holding.
-   - The CDAO $200M awards.
-   - Classified-mobility device counts (redacted in DODIG-2025-053).
-9. **Wealth-advisor saturation.** With Jump (27K advisors) and Zocks funded and prices compressing toward $50 ([V](https://www.investmentnews.com/advisor-tech/is-50-the-new-120-price-compression-comes-to-ai-notetakers/264773)), is a device-plus-software offer differentiated enough? Or should Alpha partner with (or be the hardware for) Jump or Zocks?
-10. **Behavioral-health liability.** What are the liability and insurance requirements for AI-generated therapy notes (42 CFR Part 2, state mental-health confidentiality laws), and will malpractice carriers cover them?
-11. **Sovereign partners.** Which partner (G42/Core42, HUMAIN, an EU telco) would white-label the stack, and what local-hosting and local-model obligations would they impose on the enclave design?
-
----
-
-## Verification log (2026-10-02)
-
-Web search was available for part of this pass and then exhausted; the rest used direct fetches, many of which returned 403/404. Items not listed here keep their [R] tag and should be read as "could not verify".
-
-| # | Claim (as first written) | Result | Source |
-| --- | --- | --- | --- |
-| 1 | Qwen origin is a blocker for defense/IC/federal; "swap the model" | **Kept as a buyer concern; recommendation changed** per founder decision: no model swap. Mitigation reframed to self-hosted Qwen weights inside the trust boundary, redaction before egress and provenance documentation (summary, §2.3, §2.6, §10.2, ranking table, implication 1, open question 2) | founder decision |
-| 2 | PRC-model bans | **Added:** FY2026 NDAA directs DoD/IC to remove DeepSeek AI. Texas ban page returned 404 (could not verify) | [Wikipedia](https://en.wikipedia.org/wiki/DeepSeek) |
-| 3 | Palantir Army enterprise agreement ~$10B/10 yr | Confirmed: up to $10B over 10 years, 2025-07-31, 75 contracts consolidated | [Wikipedia](https://en.wikipedia.org/wiki/Palantir_Technologies) |
-| 4 | Legora ~$1.8B | **Corrected:** $550M Series D at $5.55B (Mar 2026); $100M ARR (Apr 2026); talks at ≥$10B (Aug 2026) | [Wikipedia](https://en.wikipedia.org/wiki/Legora) |
-| 5 | Ambience $243M C at ~$1.25B | Confirmed | [MedCity](https://medcitynews.com/2025/07/healthcare-documentation-startup-unicorn/) |
-| 6 | Suki $70M D (Hedosophia) | Confirmed | [Healthcare Dive](https://www.healthcaredive.com/news/suki-70-million-Series-D-funding/729573/) |
-| 7 | Nabla $70M C (HV Capital) | Confirmed; total $120M | [Nabla](https://www.nabla.com/blog/70m-series-c) |
-| 8 | Dragon Copilot launched Mar 2025 | Confirmed (announced 2025-03-03; GA May 2025) | [Microsoft](https://news.microsoft.com/2025/03/03/microsoft-dragon-copilot-provides-the-healthcare-industrys-first-unified-voice-ai-assistant-that-enables-clinicians-to-streamline-clinical-documentation-surface-information-and-automate-task/) |
-| 9 | Stryker–Vocera ~$2.97B, Jan 2022 | Confirmed (announced 2022-01-06) | [Wikipedia](https://en.wikipedia.org/wiki/Vocera_Communications) |
-| 10 | Otter.ai 2025 class action | Confirmed and detailed (N.D. Cal. 5:25-cv-06911; ECPA, CIPA, BIPA) | [Wikipedia](https://en.wikipedia.org/wiki/Otter.ai) |
-| 11 | Mistral–Samsung €21B (single source) | Confirmed on Wikipedia; primary not fetched | [Wikipedia](https://en.wikipedia.org/wiki/Mistral_AI) |
-| 12 | French Armed Forces framework agreement with Mistral | Could not verify (not on cited page) | — |
-| 13 | HUMAIN launch and partners | Launch 2025-05-12 and ~18,000 NVIDIA chips confirmed; AMD $10B and AWS $5B could not verify | [Wikipedia](https://en.wikipedia.org/wiki/Humain) |
-| 14 | Off-channel penalties >$3B | Kept (SEC + CFTC); **added** SEC ≈$2B across 100+ firms and the Atkins-era de-emphasis | [FINRA](https://www.finra.org/media-center/blog/sec-off-channel-communications-settlements-sro-collateral-consequences) |
-| 15 | Jump 27K advisors | Confirmed ($80M Series B, Feb 2026, Insight) | [WealthManagement](https://www.wealthmanagement.com/artificial-intelligence/jump_secures_series_b) |
-| 16 | Personal financial advisors 299,400 | Confirmed (BLS 2025) | [BLS](https://www.bls.gov/ooh/business-and-financial/personal-financial-advisors.htm) |
-| 17 | ~1.32M lawyers (ABA) | Could not verify (ABA page 403). BLS counts 863,700 lawyer jobs in 2025, a different measure (employment vs. licensed resident attorneys) | [BLS](https://www.bls.gov/ooh/legal/lawyers.htm) |
-| 18 | Army BYOD / Hypori | **Added context:** Army required GFE phones to be disenrolled from DMUC by 2026-05-30, moving users to Hypori or Army MAM | [DVIDS](https://www.dvidshub.net/news/564961/army-sets-deadline-dmuc-device-turn-in-moves-new-mobility-program) |
-| 19 | Anduril NGC2 ~$100M (July 2025) | Could not verify (Anduril page 404; not on Wikipedia) | — |
-| 20 | CDAO $200M frontier-AI awards | Could not verify (ai.mil 403) | — |
-| 21 | Solana Seeker 150K+ pre-orders; Saga price | Could not verify (pages 404) | — |
-| 22 | US v. Heppner (S.D.N.Y., Feb 2026) | Could not verify | — |
-| 23 | Remaining [R] items (OMB M-25-21, USAi, PA pilot, CJIS, NAIC, Gallup, NCES IDEA, MagicSchool, Brisk, CSU ChatGPT Edu, InvestAI, EU AI Act dates, AWS ESC, IndiaAI, DPDP, Japan, Korea, Veeva, Harmonic, JPMorgan LLM Suite) | Could not verify in this pass | — |
-| 24 | Founder decision: AOSP fork without banking apps / Play Integrity / GMS | No blocker of that kind was stated in this file; no change needed | founder decision |
-
+8. **Wealth-advisor saturation.** With Jump (27K advisors) and Zocks funded and prices compressing toward $50 ([V](https://www.investmentnews.com/advisor-tech/is-50-the-new-120-price-compression-comes-to-ai-notetakers/264773)), is a device-plus-software offer differentiated enough? Or should Alpha partner with (or be the hardware for) Jump or Zocks?
+9. **Behavioral-health liability.** What are the liability and insurance requirements for AI-generated therapy notes (42 CFR Part 2, state mental-health confidentiality laws), and will malpractice carriers cover them?
+10. **Sovereign partners.** Which partner (G42/Core42, HUMAIN, an EU telco) would white-label the stack, and what local-hosting and local-model obligations would they impose on the enclave design?
