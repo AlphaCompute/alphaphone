@@ -185,6 +185,10 @@ try {
       !/FAILURES|INSTRUMENTATION_FAILED/.test(instrumentation);
     if (!instrumentationPassed) {
       instrumentationFailures.push(variant);
+      // Ordinary test failures do not throw, so preserve diagnostics here before
+      // the other distribution replaces the process and overwrites log buffers.
+      try { fs.writeFileSync(`${output}/${variant}-logcat.txt`, run("logcat", "-d", "-t", "2000", "-v", "threadtime")); }
+      catch (captureError) { console.error(`Could not collect ${variant} logcat:`, captureError.message); }
       console.error(`${variant} instrumentation failed; preserving its log and checking the other distribution variant.`);
     }
     // Instrumentation owns the prior process. Exercise a fresh normal launch.
