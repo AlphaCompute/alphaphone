@@ -29,6 +29,8 @@ roots.push('android/app/src/main/assets/agent','android/app/src/main/jniLibs',
  'upstream.lock.json','patches/eliza',
  'scripts/prepare-local-agent.mjs','scripts/local-agent-source.mjs',
  'scripts/stage-local-agent-runtime.mjs','scripts/stage-local-agent-sources.mjs',
+ 'scripts/build-workflow-worker.ts','scripts/prepared-workflow-worker.mjs',
+ 'scripts/stage-workflow-worker.mjs','scripts/workflow-worker-artifact.mjs',
  'vendor/eliza/packages/app/platforms/android/app/src/main/java/ai/elizaos/app',
  'vendor/eliza/plugins/plugin-native-browser-surface/android/src/main/java/ai/eliza/plugins/browsersurface/ChromiumBrowserIdentity.java');
 const files=[];

@@ -1,0 +1,79 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import {execFileSync} from 'node:child_process';
+import {stageWorkerArtifact,verifyWorkerArtifact,workerHash} from '../scripts/workflow-worker-artifact.mjs';
+const root=path.resolve(import.meta.dirname,'..');
+function fixture(directory){
+ const files={};for(const name of ['node_modules/smthrs/package.json','node_modules/zod/package.json','node_modules/effect/package.json','node_modules/@smthrs/engine/package.json','dependencies.json','lib/worker.js']){
+  const bytes=Buffer.from(name.endsWith('.js')?'export const text="synthetic";':'{}');const file=path.join(directory,name);fs.mkdirSync(path.dirname(file),{recursive:true});fs.writeFileSync(file,bytes);files[name]=workerHash(bytes);
+ }
+ const manifest={version:1,sourceStampSha256:'a'.repeat(64),lockSha256:'b'.repeat(64),files};fs.writeFileSync(path.join(directory,'manifest.json'),JSON.stringify(manifest));return manifest;
+}
+test('worker staging rejects drift, traversal, missing files and symlinks before replacement',()=>{
+ const temporary=fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(),'worker-stage-')));
+ try{
+  const source=path.join(temporary,'source'),target=path.join(temporary,'assets/worker'),manifest=fixture(source);
+  const expected={sourceStampSha256:manifest.sourceStampSha256,lockSha256:manifest.lockSha256};
+  const first=stageWorkerArtifact(source,target,expected);assert.equal(first.files,7);
+  const original=fs.readFileSync(path.join(target,'files.sha256'),'utf8');
+  assert.throws(()=>stageWorkerArtifact(source,target,{sourceStampSha256:'c'.repeat(64)}),/mismatch/);
+  assert.throws(()=>stageWorkerArtifact(source,target,{lockSha256:'c'.repeat(64)}),/mismatch/);
+  fs.appendFileSync(path.join(source,'lib/worker.js'),'changed');assert.throws(()=>stageWorkerArtifact(source,target,expected),/hash mismatch/);
+  assert.equal(fs.readFileSync(path.join(target,'files.sha256'),'utf8'),original);fixture(source);
+  fs.writeFileSync(path.join(source,'extra.txt'),'unexpected');assert.throws(()=>verifyWorkerArtifact(source),/Unexpected/);fs.unlinkSync(path.join(source,'extra.txt'));
+  fs.unlinkSync(path.join(source,'lib/worker.js'));assert.throws(()=>verifyWorkerArtifact(source),/missing/);fixture(source);
+  fs.unlinkSync(path.join(source,'lib/worker.js'));fs.symlinkSync(path.join(target,'lib/worker.js'),path.join(source,'lib/worker.js'));assert.throws(()=>verifyWorkerArtifact(source),/symlink/);fs.unlinkSync(path.join(source,'lib/worker.js'));fixture(source);
+  const altered={...manifest,files:{...manifest.files,'../escape.js':'a'.repeat(64)}};fs.writeFileSync(path.join(source,'manifest.json'),JSON.stringify(altered));assert.throws(()=>verifyWorkerArtifact(source),/Invalid or missing/);
+  fixture(source);fs.truncateSync(path.join(source,'lib/worker.js'),64*1024*1024);assert.throws(()=>verifyWorkerArtifact(source),/exceeds/);
+  fixture(source);const redirected=path.join(temporary,'redirected');fs.symlinkSync(path.join(temporary,'assets'),redirected);assert.throws(()=>stageWorkerArtifact(source,path.join(redirected,'must-not-create/worker')),/symlink/);assert.equal(fs.existsSync(path.join(temporary,'assets/must-not-create')),false);
+  fixture(source);assert.equal(stageWorkerArtifact(source,target,expected).indexSha256,first.indexSha256);
+ }finally{fs.rmSync(temporary,{recursive:true,force:true});}
+});
+test('native worker extractor verifies bytes and preserves the previous installation on failure',()=>{
+ const temporary=fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(),'worker-extract-')));
+ try{
+  const source=path.join(temporary,'source'),assets=path.join(temporary,'assets'),state=path.join(temporary,'agent');fixture(source);stageWorkerArtifact(source,assets);fs.mkdirSync(state);
+  const identity='ai.elizaresearch.alphaphone';
+  const harness=`package ${identity};
+import java.io.*; import java.nio.file.*; import java.nio.charset.StandardCharsets;
+public class WorkerAssetTest {
+ public static void main(String[] args)throws Exception{
+  File assets=new File(args[0]),root=new File(args[1]);byte[] index=Files.readAllBytes(new File(assets,"files.sha256").toPath());
+  WorkflowWorkerAssets.Source source=p->new FileInputStream(new File(assets,p));
+  File installed=WorkflowWorkerAssets.install(root,new ByteArrayInputStream(index),source);
+  java.util.Map<String,String> env=new java.util.HashMap<>();env.put("ELIZA_MOBILE_WORKFLOWS","stale");
+  WorkflowWorkerAssets.configureEnvironment(installed,env);
+  if(!installed.getCanonicalPath().equals(env.get("ELIZA_SMTHRS_RUNTIME_DIR")))throw new AssertionError("wrong resource path");
+  Path alias=new File(root,"worker-alias").toPath();Files.createSymbolicLink(alias,installed.toPath());
+  try{WorkflowWorkerAssets.configureEnvironment(alias.toFile(),env);if(!installed.getCanonicalPath().equals(env.get("ELIZA_SMTHRS_RUNTIME_DIR"))||!Files.isSameFile(alias,installed.toPath()))throw new AssertionError("worker alias did not preserve canonical resource identity");}finally{Files.delete(alias);}
+  boolean compiler=new File(installed,"compiler/node_modules/typescript/lib/typescript.js").isFile()&&new File(installed,"compiler/node_modules/smthrs/package.json").isFile();
+  if(compiler?!"1".equals(env.get("ELIZA_MOBILE_WORKFLOWS")):env.containsKey("ELIZA_MOBILE_WORKFLOWS"))throw new AssertionError("incorrect compiler enablement");
+  byte[] prior=Files.readAllBytes(new File(installed,"manifest.json").toPath());
+  WorkflowWorkerAssets.install(root,new ByteArrayInputStream(index),source);
+  WorkflowWorkerAssets.Source corrupt=p->p.equals("manifest.json")?new ByteArrayInputStream(new byte[]{1,2,3}):source.open(p);
+  try{WorkflowWorkerAssets.install(root,new ByteArrayInputStream(index),corrupt);throw new AssertionError("accepted corruption");}catch(IOException expected){}
+  if(!java.util.Arrays.equals(prior,Files.readAllBytes(new File(installed,"manifest.json").toPath())))throw new AssertionError("lost previous artifact");
+  for(String bad:new String[]{new String(index,StandardCharsets.UTF_8)+"${'a'.repeat(64)}\\t../escape\\n",new String(index,StandardCharsets.UTF_8)+new String(index,StandardCharsets.UTF_8),""}){
+   try{WorkflowWorkerAssets.install(root,new ByteArrayInputStream(bad.getBytes(StandardCharsets.UTF_8)),source);throw new AssertionError("accepted invalid index");}catch(IOException expected){}
+  }
+  try{WorkflowWorkerAssets.install(root,new ByteArrayInputStream(new byte[1024*1024+1]),source);throw new AssertionError("accepted oversized index");}catch(IOException expected){}
+  if(new File(root.getParentFile(),"escape").exists())throw new AssertionError("path escaped");
+  for(File file:root.listFiles())if(file.getName().startsWith(".workflow-worker-"))throw new AssertionError("left partial staging");
+  System.out.println("PASS extract, update, corruption, traversal, duplicate, missing, rollback");
+ }
+}`;
+  const harnessPath=path.join(temporary,'WorkerAssetTest.java');fs.writeFileSync(harnessPath,harness);
+  const java=process.env.JAVA_HOME||(process.platform==='darwin'?'/opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home':'');const binary=name=>java?path.join(java,'bin',name):name;
+  execFileSync(binary('javac'),['--release','8','-d',temporary,path.join(root,'android/app/src/main/java/ai/elizaresearch/alphaphone/WorkflowWorkerAssets.java'),harnessPath],{timeout:20000});
+  assert.match(execFileSync(binary('java'),['-cp',temporary,identity+'.WorkerAssetTest',assets,state],{encoding:'utf8',timeout:20000}),/^PASS extract/);
+  if(process.env.ALPHA_WORKFLOW_WORKER_OUTPUT){
+   const realAssets=path.join(temporary,'real-assets'),realState=path.join(temporary,'real-agent');
+   const staged=stageWorkerArtifact(process.env.ALPHA_WORKFLOW_WORKER_OUTPUT,realAssets);fs.mkdirSync(realState);
+   assert.match(execFileSync(binary('java'),['-cp',temporary,identity+'.WorkerAssetTest',realAssets,realState],{encoding:'utf8',timeout:30000}),/^PASS extract/);
+   console.log(`Verified native extractor against ${staged.files} real worker artifact files (host JVM only)`);
+  }
+ }finally{fs.rmSync(temporary,{recursive:true,force:true});}
+});

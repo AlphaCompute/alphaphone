@@ -1,0 +1,277 @@
+{
+  "baseCommit": "0003566fda843437e5adc5c9f8d812a30d3081dc",
+  "capturedAt": "2026-10-04T03:44:32.035986+00:00",
+  "status": "Unqualified source backup, not production integration",
+  "files": {
+    "android/app/src/androidTest/assets/trusted-worker.mjs": {
+      "sha256": "3cbe24f0d58e66105dcd083efd2f77f7b1545ffcc45cca830739eca234978895",
+      "bytes": 39351,
+      "mode": "100644"
+    },
+    "android/app/src/androidTest/java/ai/elizaresearch/alphaphone/ResidentAgentInstrumentedTest.java": {
+      "sha256": "54a426766d0e31805a71d10b8c145f1e2289075382095222c53caf77f836287c",
+      "bytes": 14335,
+      "mode": "100644"
+    },
+    "android/app/src/androidTest/java/ai/elizaresearch/alphaphone/ResidentModelResponseContract.java": {
+      "sha256": "6a877f063040b74412d2bd18994fe6ab9fe47d3c71ead2cc77c08377c2214d0c",
+      "bytes": 1111,
+      "mode": "100644"
+    },
+    "android/app/src/androidTest/java/ai/elizaresearch/alphaphone/ResidentModelResponseContractTest.java": {
+      "sha256": "eff8b7180d758eff687ad73c23a3a27d422e45b81ad8ea51da20ef3e201ca7fb",
+      "bytes": 1804,
+      "mode": "100644"
+    },
+    "android/app/src/androidTest/java/ai/elizaresearch/alphaphone/ResidentPeerUidInstrumentedTest.java": {
+      "sha256": "649786705d31e745e5acf00175079b50aacdfdb673e5787c7eebd9abf68f6b46",
+      "bytes": 7672,
+      "mode": "100644"
+    },
+    "android/app/src/androidTest/java/ai/elizaresearch/alphaphone/ResidentServiceInstrumentedTest.java": {
+      "sha256": "6756286a7d3da4114c3df65f4a9982db940348b8af45e11f24b631d34b2f6878",
+      "bytes": 16156,
+      "mode": "100644"
+    },
+    "android/app/src/androidTest/java/ai/elizaresearch/alphaphone/ResidentStreamTransportInstrumentedTest.java": {
+      "sha256": "991614171c3566558ce622936715f964823d14b3ab78d844fd2d60f016074275",
+      "bytes": 10967,
+      "mode": "100644"
+    },
+    "android/app/src/androidTest/java/ai/elizaresearch/alphaphone/ResidentWorkflowCrashInstrumentedTest.java": {
+      "sha256": "558a807d26f139df62fdf5f143f4315c077c802492516ec4371d5918bbea866a",
+      "bytes": 40029,
+      "mode": "100644"
+    },
+    "android/app/src/androidTest/java/ai/elizaresearch/alphaphone/TrustedPackagedWorker.java": {
+      "sha256": "ee8768c8d8022a4140dd3f5b05bdef19efacd420eae574d1d5822f688c6d5e22",
+      "bytes": 7079,
+      "mode": "100644"
+    },
+    "android/app/src/debug/AndroidManifest.xml": {
+      "sha256": "088678bbd28be3230e4f48703f783432ff6488b9aaf4a92d605f6913fad5e4e8",
+      "bytes": 1115,
+      "mode": "100644"
+    },
+    "android/app/src/debug/java/ai/elizaresearch/alphaphone/ResidentHostileSocketService.java": {
+      "sha256": "d53cb90938773e00bfff41e3ac448c20bc5fd7ac08899e1631557d332a776c54",
+      "bytes": 3187,
+      "mode": "100644"
+    },
+    "android/app/src/main/java/ai/elizaresearch/alphaphone/AlphaLocalAgentPlugin.java": {
+      "sha256": "b3c06aad22e32c1d72572b48969a09309408e72b75480f5b9c75a7e28ff51ae1",
+      "bytes": 21378,
+      "mode": "100644"
+    },
+    "android/app/src/main/java/ai/elizaresearch/alphaphone/HostedDelivery.java": {
+      "sha256": "2dcc27a99e930264110d6a5c0df1598597a92dde3ca3a54c7fa79b137fadad3f",
+      "bytes": 10364,
+      "mode": "100644"
+    },
+    "android/app/src/main/java/ai/elizaresearch/alphaphone/HostedDeliveryWorker.java": {
+      "sha256": "404bd01dfe1f28311e07aee391f2ff34df596044d2f440aa5e8192abea95887d",
+      "bytes": 1970,
+      "mode": "100644"
+    },
+    "android/app/src/main/java/ai/elizaresearch/alphaphone/HostedInbox.java": {
+      "sha256": "94e88f01e325bbb9f9c60122033ddfe8cea3ebc5ac18f6b5e436d175a891e569",
+      "bytes": 7812,
+      "mode": "100644"
+    },
+    "android/app/src/main/java/ai/elizaresearch/alphaphone/HostedTransport.java": {
+      "sha256": "19c47bff0ff9557eb54b10308f87ac9af70e948e839fe90ae498c8c609b143f0",
+      "bytes": 8615,
+      "mode": "100644"
+    },
+    "android/app/src/main/java/ai/elizaresearch/alphaphone/RendererCredentialSlots.java": {
+      "sha256": "de297f4a0aed53ced74d6ba2df7369c71ecdfb3aeeb5a3265b18eb97884b622f",
+      "bytes": 420,
+      "mode": "100644"
+    },
+    "android/app/src/main/java/ai/elizaresearch/alphaphone/ResidentResultSession.java": {
+      "sha256": "449dcea561a095e12dac23f592711ed0e78b1d6d3888dd996fd0f11e66c8d303",
+      "bytes": 3843,
+      "mode": "100644"
+    },
+    "android/app/src/main/java/ai/elizaresearch/alphaphone/ResidentResultTransport.java": {
+      "sha256": "2ce7d97cb08d244b7d246e111ef8e94973c5b2757a592d44888363c90d609543",
+      "bytes": 4143,
+      "mode": "100644"
+    },
+    "android/app/src/main/java/ai/elizaresearch/alphaphone/WorkflowWorkerAssets.java": {
+      "sha256": "d3858d5d9350002853af3d4247cca96784f4f7aef72830c5b7182b50dee2164b",
+      "bytes": 5457,
+      "mode": "100644"
+    },
+    "apps/app/src/runtime/local-agent-native-stream.ts": {
+      "sha256": "225208afaaa14d77ff2d622acc0b7647dc28282b26908f4aab1ea286ca448245",
+      "bytes": 4551,
+      "mode": "100644"
+    },
+    "apps/app/src/runtime/local-agent.ts": {
+      "sha256": "7ad97f6be325a2f4a7ddae1f822ee4ab491a46b7ffcc3b2d5dcc56276e51f64c",
+      "bytes": 10740,
+      "mode": "100644"
+    },
+    "package.json": {
+      "sha256": "13ae36fec7df50c2c6239f13fb7408871b1c9d56281d831980de3766daeaa535",
+      "bytes": 2525,
+      "mode": "100644"
+    },
+    "patches/eliza/android-local-runtime-source.json": {
+      "sha256": "cf9ea3be876e04ad4572232b7d62caf357be0e69ea6b784d5343bd1b4b52943c",
+      "bytes": 2136,
+      "mode": "100644"
+    },
+    "patches/eliza/android-native-runtime-source.json": {
+      "sha256": "d11279c7e27d3180902dc59921195bd15ace05da86de4495f19a309ad8eb8011",
+      "bytes": 593,
+      "mode": "100644"
+    },
+    "patches/eliza/android-stream-cancellation-source.json": {
+      "sha256": "22cecf79d599e17bad4d89d9955f38b3d44276a5cb864663e525039057d1ec78",
+      "bytes": 496,
+      "mode": "100644"
+    },
+    "patches/eliza/android-stream-cancellation.patch": {
+      "sha256": "9968da66744793492d695536f22d312faccbd4e124b3c610ed3f8749a9a1dd8c",
+      "bytes": 6892,
+      "mode": "100644"
+    },
+    "patches/eliza/hosted-digest-route-registration.patch": {
+      "sha256": "13da9b7847cfbcbe8ca6dd606740df6a5e2789faa8b0999480258a27542d7b2e",
+      "bytes": 3011,
+      "mode": "100644"
+    },
+    "patches/eliza/mobile-graceful-shutdown.patch": {
+      "sha256": "640cf6b179472e269853ddf45e29f5a72f3a549992a06b22112e01a4d7db9357",
+      "bytes": 2085,
+      "mode": "100644"
+    },
+    "patches/eliza/mobile-owner-session.patch": {
+      "sha256": "535ffafdaaf7da09427b06566d15964dfeeea6b24d608cfa13828f57d4c8321a",
+      "bytes": 5214,
+      "mode": "100644"
+    },
+    "patches/eliza/mobile-workflow-enablement.patch": {
+      "sha256": "127471d5f767546f7c6de7fe1e2e72cbbeb10561ef59ee48b23818b7efd26bbe",
+      "bytes": 5092,
+      "mode": "100644"
+    },
+    "patches/eliza/mobile-workflow-source-entries.patch": {
+      "sha256": "15b3bf811f45c6a2c00625b5051ec7d74a17f0c5202a1155c6a668ff5a680ce6",
+      "bytes": 2758,
+      "mode": "100644"
+    },
+    "patches/eliza/mvp-series": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0,
+      "mode": "100644"
+    },
+    "patches/eliza/mvp-source-base.json": {
+      "sha256": "fb4211355c0689466726c40f69766615d853361f7f2f4817c5be67fba5ea5d47",
+      "bytes": 891,
+      "mode": "100644"
+    },
+    "scripts/build-archive.mjs": {
+      "sha256": "8c35e3de24bfb0ea5d93740e71da489d76f42de614cc4098a10ae5d0e65d95d9",
+      "bytes": 2871,
+      "mode": "100644"
+    },
+    "scripts/build-workflow-worker.ts": {
+      "sha256": "43daa4b1f5ef1fba2dc9d3d3f4329459208fe75eedb9fc597f59f579af8eeadd",
+      "bytes": 762,
+      "mode": "100644"
+    },
+    "scripts/prepared-workflow-worker.mjs": {
+      "sha256": "b57510842546dfa9b0eb9fef235f6c77473bbe49b906d9ab74b2e05b07199c40",
+      "bytes": 2029,
+      "mode": "100644"
+    },
+    "scripts/source-snapshot.mjs": {
+      "sha256": "46f3bbdead907a308e272bbf76b420e803236c35f43acb01e66ab0778af7d9d7",
+      "bytes": 3405,
+      "mode": "100644"
+    },
+    "scripts/stage-local-agent-runtime.mjs": {
+      "sha256": "cb50209d2d9ab1b5514e2b954eae48b4567d802e46a66c3a59ab454276dbb516",
+      "bytes": 2144,
+      "mode": "100644"
+    },
+    "scripts/stage-local-agent-sources.mjs": {
+      "sha256": "09c6ce470037a266bf5cd57eadfe336dc5a36e5e82e18bae882bd3057bfc226b",
+      "bytes": 7127,
+      "mode": "100644"
+    },
+    "scripts/stage-workflow-worker.mjs": {
+      "sha256": "afc4387a3bdaaffc80406ed7a45e3b2fb6bbc66f05079426bb682809213386e8",
+      "bytes": 911,
+      "mode": "100644"
+    },
+    "scripts/test-local-agent-source.mjs": {
+      "sha256": "cf4ab2b9919d5801054b8db6e92e7020187c6e836018891d9e9bdbde404028e5",
+      "bytes": 901,
+      "mode": "100644"
+    },
+    "scripts/test-mobile-workflow-bundle.mjs": {
+      "sha256": "5c2ca25ade613f6dbe2baff939431fd5617aedca31d16f18b8beaf251dde2e3e",
+      "bytes": 2348,
+      "mode": "100644"
+    },
+    "scripts/test-workflow-compiler.mjs": {
+      "sha256": "9b387df497525f30051e5acb5bbac10bb958802ffa182501915f7b0f47f7b5f1",
+      "bytes": 3462,
+      "mode": "100644"
+    },
+    "scripts/test-workflow-worker.mjs": {
+      "sha256": "f29025dfa45356605d5a2e3318fdfc03aa3272198ac14c7e8d62b1b137907a5f",
+      "bytes": 9222,
+      "mode": "100644"
+    },
+    "scripts/workflow-worker-artifact.mjs": {
+      "sha256": "32e92c052b003473dd18883fd88b9479bb4f653fe7aa890f0635ac41629cb606",
+      "bytes": 4337,
+      "mode": "100644"
+    },
+    "test/browser/local-agent-native-stream.spec.ts": {
+      "sha256": "ec762425bca35a0cf915459afd5b2a226643836116bb1a9d42efcde8c7823500",
+      "bytes": 4301,
+      "mode": "100644"
+    },
+    "test/fixtures/ResidentDeliveryTest.java": {
+      "sha256": "7d7711d2d2e2bd1ceeeb6488b79718420bf0e395a4d06ef636e92f7a3383fc78",
+      "bytes": 2723,
+      "mode": "100644"
+    },
+    "test/fixtures/ResidentResultTransportTest.java": {
+      "sha256": "8522aa3b12a985496b4371afb16075d2dcf7779b7067a8d3378017994c03cc1b",
+      "bytes": 9098,
+      "mode": "100644"
+    },
+    "test/prepared-workflow-worker.test.mjs": {
+      "sha256": "afdf76ddeb3a507d600eff577d57dac66a17ed066cf772e75b74f51d78e7dda2",
+      "bytes": 3344,
+      "mode": "100644"
+    },
+    "test/resident-result-transport.test.mjs": {
+      "sha256": "a766f4233d449cb750b688d38e1fcf9588bfc920285c0ad9f93b71faeae3ae83",
+      "bytes": 5027,
+      "mode": "100644"
+    },
+    "test/resident-startup-guidance.test.mjs": {
+      "sha256": "e67e40eab97cc8cb47f76c96dd750c4776f207846351debfe894ef552d59c621",
+      "bytes": 3152,
+      "mode": "100644"
+    },
+    "test/secure-store-api29.test.mjs": {
+      "sha256": "cd6a2a849344cf189e95da52da92003c94e6f3e4ee6ea8408b24b1d4e2d78b9c",
+      "bytes": 7507,
+      "mode": "100644"
+    },
+    "test/workflow-worker-assets.test.mjs": {
+      "sha256": "3829f6776bf23a6f2e5c76f3970c1a67a152875578660f1349a2961aefbd5a26",
+      "bytes": 8204,
+      "mode": "100644"
+    }
+  }
+}

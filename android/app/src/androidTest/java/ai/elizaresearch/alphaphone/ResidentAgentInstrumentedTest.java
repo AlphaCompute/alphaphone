@@ -22,6 +22,11 @@ public final class ResidentAgentInstrumentedTest {
  private JSONObject fixture;
  private static String hash(byte[] bytes)throws Exception {StringBuilder value=new StringBuilder();for(byte b:MessageDigest.getInstance("SHA-256").digest(bytes))value.append(String.format(Locale.ROOT,"%02x",b&255));return value.toString();}
  private static byte[] bounded(InputStream input,int max)throws Exception {ByteArrayOutputStream out=new ByteArrayOutputStream();byte[] buf=new byte[8192];int n;while((n=input.read(buf))!=-1){assertTrue("Input exceeds bound",out.size()+n<=max);out.write(buf,0,n);}return out.toByteArray();}
+ private static String boundedHash(InputStream input,long max)throws Exception {
+  MessageDigest digest=MessageDigest.getInstance("SHA-256");byte[] buffer=new byte[65536];long total=0;int count;
+  while((count=input.read(buffer))!=-1){assertTrue("Input exceeds bound",count<=max-total);total+=count;digest.update(buffer,0,count);}
+  StringBuilder value=new StringBuilder();for(byte b:digest.digest())value.append(String.format(Locale.ROOT,"%02x",b&255));return value.toString();
+ }
  private static String fileHash(File file)throws Exception {try(InputStream in=new FileInputStream(file)){MessageDigest digest=MessageDigest.getInstance("SHA-256");byte[] buf=new byte[65536];int n;while((n=in.read(buf))!=-1)digest.update(buf,0,n);StringBuilder s=new StringBuilder();for(byte b:digest.digest())s.append(String.format(Locale.ROOT,"%02x",b&255));return s.toString();}}
  private JSONObject invoke(String method,JSONObject input,long timeout)throws Exception {
   assertTrue(method.matches("[A-Za-z]+"));
@@ -82,8 +87,8 @@ public final class ResidentAgentInstrumentedTest {
   assertEquals(InstrumentationRegistry.getArguments().getString("residentRunId"),fixture.getString("runId"));assertNull("Fresh credential slot",new AlphaCredentialStore(context).readCredentialSlot("local-agent-provider:v1"));
   File bun=new File(context.getApplicationInfo().nativeLibraryDir,"libeliza_bun.so");assertEquals(fixture.getString("bunSha256"),fileHash(bun));
   try(InputStream in=new FileInputStream(bun)){byte[] h=new byte[20];assertEquals(20,in.read(h));assertEquals(0x7f,h[0]&255);assertEquals('E',h[1]);assertEquals('L',h[2]);assertEquals('F',h[3]);assertEquals(2,h[4]);assertEquals(1,h[5]);assertEquals(183,(h[18]&255)|((h[19]&255)<<8));}
-  try(InputStream in=context.getAssets().open("agent/agent-bundle.js")){assertEquals(fixture.getString("bundleSha256"),hash(bounded(in,128*1024*1024)));}
-  try(InputStream in=context.getAssets().open("agent/alpha-source.json")){assertEquals(fixture.getString("sourceSha256"),hash(bounded(in,8*1024*1024)));}
+  try(InputStream in=context.getAssets().open("agent/agent-bundle.js")){assertEquals(fixture.getString("bundleSha256"),boundedHash(in,128L*1024*1024));}
+  try(InputStream in=context.getAssets().open("agent/alpha-source.json")){assertEquals(fixture.getString("sourceSha256"),boundedHash(in,8L*1024*1024));}
   JSONObject child=null,proof=new JSONObject().put("runId",fixture.getString("runId")).put("passed",false);
   try(BoundedActivityScenario<MainActivity> scenario=BoundedActivityScenario.launch(MainActivity.class)) {
    try {

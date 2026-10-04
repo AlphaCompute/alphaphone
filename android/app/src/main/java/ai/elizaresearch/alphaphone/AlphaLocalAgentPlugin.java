@@ -15,6 +15,8 @@ import org.json.JSONObject;
 @CapacitorPlugin(name="Agent")
 public final class AlphaLocalAgentPlugin extends Plugin {
  private final ExecutorService workers=Executors.newFixedThreadPool(2);
+ // Set only from in-process debug instrumentation; no route, intent or preference activation.
+ static volatile java.net.ServerSocket instrumentationRecoveryEndpoint;
  private static String rootToken,ownerToken,ownerIdentity;
  private static long expiresAt;
  private static final Object lifecycleLock=new Object(), enrollmentLock=new Object();
@@ -22,7 +24,11 @@ public final class AlphaLocalAgentPlugin extends Plugin {
  private static boolean accepting=true,stopping;
  private volatile boolean disposed;
  private static final java.util.Set<PluginCall> pending=new java.util.HashSet<>();
+ private static final java.util.Map<String,ElizaAgentService.LocalStreamHandle> streams=new java.util.HashMap<>();
+ private static final java.util.Map<String,Runnable> streamInvalidators=new java.util.HashMap<>();
  private static void invalidateCalls(){
+  for(var notify:streamInvalidators.values())notify.run();streamInvalidators.clear();
+  for(var handle:streams.values())handle.cancel();streams.clear();
   for(PluginCall call:pending)call.reject("Local agent connection changed. A dispatched operation may still have completed; inspect its receipt before retrying.","LOCAL_AGENT_EPOCH_CHANGED");
   pending.clear();
  }
@@ -57,6 +63,15 @@ public final class AlphaLocalAgentPlugin extends Plugin {
   }catch(Exception error){call.reject("Provider could not be saved securely.");}});
  }
  static void configureEnvironment(Context context,java.util.Map<String,String> env) throws java.io.IOException {
+  env.remove("ELIZA_MOBILE_WORKFLOWS");
+  java.io.InputStream workerIndex=null;
+  try {workerIndex=context.getAssets().open("agent/workflow-worker/files.sha256");}
+  catch(java.io.FileNotFoundException absent) { /* Older payloads do not contain a workflow worker. */ }
+  if(workerIndex!=null){
+   String root=env.get("AGENT_ROOT");if(root==null){workerIndex.close();throw new java.io.IOException("Agent resource directory unavailable");}
+   java.io.File worker=WorkflowWorkerAssets.install(new java.io.File(root),workerIndex,path->context.getAssets().open("agent/workflow-worker/"+path));
+   WorkflowWorkerAssets.configureEnvironment(worker,env);
+  }
   try {
   String saved=new AlphaCredentialStore(context).readCredentialSlot("local-agent-provider:v1");
   if(saved==null)throw new IllegalStateException("Configure a model provider before starting the local agent");
@@ -68,6 +83,16 @@ public final class AlphaLocalAgentPlugin extends Plugin {
   env.put("ELIZAOS_CLOUD_USE_INFERENCE","false");
   env.put("ELIZA_DISABLE_PERSONAL_ASSISTANT","1");
   env.put("ELIZA_DISTRIBUTION_PROFILE","store");
+  java.net.ServerSocket fixture=instrumentationRecoveryEndpoint;
+  if(fixture!=null){
+   if(!BuildConfig.DEBUG||android.os.Process.myUid()/100000<=0||fixture.isClosed()
+      ||!fixture.isBound()||!"127.0.0.1".equals(fixture.getInetAddress().getHostAddress())
+      ||fixture.getLocalPort()<=0||!"synthetic-resident-recovery-only".equals(provider.getString("key")))
+    throw new java.io.IOException("Invalid resident recovery fixture endpoint");
+   String endpoint="http://127.0.0.1:"+fixture.getLocalPort()+"/v1";
+   env.put("CEREBRAS_BASE_URL",endpoint);env.put("OPENAI_BASE_URL",endpoint);
+   env.put("OPENAI_API_KEY","synthetic-resident-recovery-only");env.put("ELIZA_PROVIDER","cerebras");
+  }
   } catch(Exception error) {throw new java.io.IOException("Local model provider unavailable");}
  }
  @PluginMethod public void start(PluginCall call) {
@@ -96,14 +121,33 @@ public final class AlphaLocalAgentPlugin extends Plugin {
    epoch=admitted;
    workers.execute(()->{
     long deadline=android.os.SystemClock.elapsedRealtime()+90000;
+    boolean ready=false;
     while(android.os.SystemClock.elapsedRealtime()<deadline){
-     try{enroll(epoch);resolveCurrent(call,epoch,new JSObject().put("state","ready"));return;}
+     try{if(rejectStartupRefusal(call,epoch,ElizaAgentService.getLocalAgentBootState(getContext())))return;String root=ElizaAgentService.localAgentToken();if(root==null||root.isEmpty())throw new IllegalStateException();enrollmentJson(epoch,"/api/auth/status","GET",null,root).getString("instanceId");ready=true;break;}
      catch(Superseded stale){rejectSuperseded(call);return;}
      catch(Exception unavailable){try{Thread.sleep(1000);}catch(InterruptedException interrupted){Thread.currentThread().interrupt();break;}}
+    }
+    if(ready){
+     // Never poll enrollment: a failed response may follow a committed pairing POST.
+     try{enroll(epoch);resolveCurrent(call,epoch,new JSObject().put("state","ready"));return;}
+     catch(Superseded stale){rejectSuperseded(call);return;}
+     catch(Exception uncertain){rejectPending(call,"Local enrollment did not complete. Check runtime status before reconnecting.");return;}
     }
     rejectPending(call,"Local agent startup did not complete. Check runtime status; no chat was sent.");
    });
   }catch(Exception error){synchronized(lifecycleLock){pending.remove(call);}call.reject("The on-device agent could not start. Try again or connect another agent.");}
+ }
+ static String startupRefusalMessage(String reason){
+  if("ipc-recovery-retention-limit".equals(reason))return "Local startup is blocked because retained recovery records reached their limit. Your records were preserved. Waiting or repeated starts will not clear this limit. Use another connection while recovery records are reviewed; do not clear app data.";
+  if("ipc-recovery-required".equals(reason))return "Local startup could not safely identify an interrupted agent or workflow. Your records were preserved. Use another connection while the runtime is inspected; do not clear app data or rerun unfinished work.";
+  if("runtime-identity-unavailable".equals(reason))return "Local startup could not verify its runtime files. Your records were preserved. Check the installed runtime before reconnecting.";
+  return null;
+ }
+ private boolean rejectStartupRefusal(PluginCall call,long epoch,JSONObject status) throws Superseded {
+  String reason=status.optString("reason");
+  String message=startupRefusalMessage(reason);
+  if(message==null)return false;
+  synchronized(lifecycleLock){requireCurrent(epoch);if(pending.remove(call))call.reject(message,reason);return true;}
  }
  private static boolean shutdownConfirmed(JSONObject status){
   return status!=null&&"dead".equals(status.optString("state"))&&!status.optBoolean("serviceActive",true)&&!status.optBoolean("socketListening",true);
@@ -134,6 +178,17 @@ public final class AlphaLocalAgentPlugin extends Plugin {
    invalidateCalls();++lifecycleEpoch;accepting=false;stopping=true;clearEnrollment();
    try{ElizaAgentService.stop(getContext());call.resolve(new JSObject().put("state","stopping"));}
    catch(Exception unavailable){call.reject("Stop requested locally, but native shutdown could not be confirmed. Check runtime status.");}
+  }
+ }
+ // Native callers may bind background result reads to an existing enrollment.
+ // This is deliberately not a Capacitor method and never initiates pairing.
+ static JSONObject captureResultSession(String expectedOwner) throws Exception {
+  synchronized(lifecycleLock){
+   String currentRoot=ElizaAgentService.localAgentToken();
+   if(!accepting||stopping||rootToken==null||!rootToken.equals(currentRoot)||
+      ownerIdentity==null||!ownerIdentity.equals(expectedOwner)||ownerToken==null||
+      expiresAt<=System.currentTimeMillis()+30000)throw new SecurityException("Reconnect the local agent before binding results");
+   return ResidentResultSession.snapshot(ownerIdentity,ownerToken,expiresAt,currentRoot);
   }
  }
  private static JSONObject raw(String path,String method,String body,String token,JSONObject supplied) throws Exception {
@@ -193,6 +248,30 @@ public final class AlphaLocalAgentPlugin extends Plugin {
   }catch(Superseded stale){rejectSuperseded(call);}
   catch(Exception error){rejectPending(call,"Local agent request failed. No automatic retry was made.");}});}
   catch(java.util.concurrent.RejectedExecutionException closed){rejectPending(call,"Local agent bridge is closed.");}
+ }
+ /** Cancellation acknowledges transport closure, never server-effect cancellation. */
+ @PluginMethod public void cancelStream(PluginCall call) {
+  String id=call.getString("streamId","");
+  synchronized(lifecycleLock){var handle=streams.remove(id);streamInvalidators.remove(id);if(handle!=null)handle.cancel();}
+  call.resolve(new JSObject().put("transportClosed",true).put("outcome","unknown"));
+ }
+ @PluginMethod public void requestStream(PluginCall call) {
+  String id=call.getString("streamId",""),path=call.getString("path",""),owner=call.getString("ownerId",""),body=call.getString("body","");
+  if(!id.matches("[A-Za-z0-9-]{16,64}")||!path.matches("^/api/conversations/[A-Za-z0-9_-]+/messages/stream$")||owner.isEmpty()||body.isEmpty()||body.length()>2*1024*1024){call.reject("Unsupported local stream.");return;}
+  final long epoch;final var handle=new ElizaAgentService.LocalStreamHandle();
+  try{synchronized(lifecycleLock){epoch=admittedEpoch();if(streams.size()>=2||streams.containsKey(id))throw new IllegalStateException();streams.put(id,handle);streamInvalidators.put(id,()->notifyListeners("alphaAgentStream",new JSObject().put("streamId",id).put("event",new JSObject().put("type","complete").put("error","Local connection changed. Outcome unknown; check history before retrying."))));}}
+  catch(Exception unavailable){call.reject("Local stream unavailable.");return;}
+  final JSONObject supplied=call.getObject("headers");
+  call.resolve(new JSObject().put("streamId",id));
+  try{workers.execute(()->{try{
+   String token=enroll(epoch);JSONObject headers=new JSONObject().put("Authorization","Bearer "+token).put("Accept","text/event-stream").put("Content-Type","application/json");
+   if(supplied!=null)for(String key:new String[]{"X-Eliza-Device-Id","X-Eliza-Device-Key","X-Eliza-Device-Capabilities"})if(supplied.has(key)){String value=supplied.getString(key);if(value.length()>2048||value.contains("\r")||value.contains("\n"))throw new IllegalArgumentException();headers.put(key,value);}
+   synchronized(lifecycleLock){requireCurrent(epoch);if(!owner.equals(ownerIdentity)||streams.get(id)!=handle)throw new Superseded();}
+   JSONObject input=new JSONObject().put("path",path).put("method","POST").put("body",body).put("headers",headers).put("timeoutMs",120000);
+   ElizaAgentService.requestLocalAgentStream(input.toString(),event->{synchronized(lifecycleLock){try{requireCurrent(epoch);if(streams.get(id)!=handle)return;JSONObject value=new JSONObject(event);if("response".equals(value.optString("type"))&&value.optInt("status")==401)clearEnrollment();notifyListeners("alphaAgentStream",new JSObject().put("streamId",id).put("event",value));}catch(Exception ignored){}}},handle);
+  }catch(Exception error){synchronized(lifecycleLock){if(streams.get(id)==handle)notifyListeners("alphaAgentStream",new JSObject().put("streamId",id).put("event",new JSObject().put("type","complete").put("error","Stream interrupted. Outcome unknown; check history before retrying.")));}}
+  finally{synchronized(lifecycleLock){if(streams.get(id)==handle){streams.remove(id);streamInvalidators.remove(id);}handle.cancel();}}});}
+  catch(java.util.concurrent.RejectedExecutionException closed){synchronized(lifecycleLock){streams.remove(id);streamInvalidators.remove(id);handle.cancel();}notifyListeners("alphaAgentStream",new JSObject().put("streamId",id).put("event",new JSObject().put("type","complete").put("error","Stream unavailable.")));}
  }
  @Override protected void handleOnDestroy(){synchronized(lifecycleLock){disposed=true;invalidateCalls();++lifecycleEpoch;clearEnrollment();}workers.shutdownNow();super.handleOnDestroy();}
 }

@@ -3,6 +3,7 @@ import path from 'node:path';
 import os from 'node:os';
 import {createHash} from 'node:crypto';
 import {execFileSync} from 'node:child_process';
+import {sourceDirectory, verifySource} from './local-agent-source.mjs';
 const root=path.resolve(import.meta.dirname,'..');
 const upstream=path.join(root,'vendor/eliza');
 const pin=JSON.parse(fs.readFileSync(path.join(root,'upstream.lock.json'),'utf8')).commit;
@@ -34,10 +35,29 @@ try {
     patchedInputs.set(relative,input);
   }
 } finally { fs.rmSync(scratch,{recursive:true,force:true}); }
-const classes=['SecureStoreFrameInput','AgentSecureStore','DeviceRamTierPolicy','ElizaAgentService','ElizaAgentWatchdogPolicy','ElizaAssetExtractionPolicy','ElizaBionicInferenceServer','ElizaStartupTrace','ElizaWorkScheduler','ElizaTasksWorker','InferenceMemoryPolicy','RuntimeInstallationIdentity','ChromiumBrowserConnection','BionicDecodeLoop','ElizaVoiceNative','BgeEmbeddingSession'];
+// Service and lifecycle helpers now come from the reviewed runtime commit.
+// The old vendor-based stream/private IPC overlays must not be replayed.
+const nativeSource=JSON.parse(fs.readFileSync(path.join(root,'patches/eliza/android-native-runtime-source.json'),'utf8'));
+const runtimeManifest=JSON.parse(fs.readFileSync(path.join(root,'patches/eliza/mvp-source-base.json'),'utf8'));
+const consumerManifest=JSON.parse(fs.readFileSync(path.join(root,'patches/eliza/android-local-runtime-source.json'),'utf8'));
+if(!/^[a-f0-9]{40}$/.test(nativeSource.commit)||nativeSource.commit!==runtimeManifest.baseCommit||consumerManifest.baseCommit!==nativeSource.commit)throw Error('Native runtime commit is not admitted');
+const runtimeSource=sourceDirectory(root);
+verifySource(runtimeSource,runtimeManifest,consumerManifest);
+const expectedClasses=['ElizaAgentService','IpcStartupRecovery','WorkflowSurvivorInventory'];
+const expectedPaths=expectedClasses.map(name=>`packages/app/platforms/android/app/src/main/java/ai/elizaos/app/${name}.java`);
+if(JSON.stringify(Object.keys(nativeSource.files).sort())!==JSON.stringify(expectedPaths.sort()))throw Error('Native source registration changed');
+for(const [relative,hash] of Object.entries(nativeSource.files)){
+ if(patchedInputs.has(relative)||Object.hasOwn(consumerManifest.files,relative)||Object.hasOwn(runtimeManifest.candidateFiles,relative))throw Error('Native runtime source must come directly from the admitted upstream commit');
+ const file=path.join(runtimeSource,relative);
+ if(fs.lstatSync(file).isSymbolicLink())throw Error('Native runtime source must be a regular file');
+ const input=fs.readFileSync(file,'utf8');
+ if(digest(input)!==hash)throw Error('Native runtime source hash drift');
+ patchedInputs.set(relative,input);
+}
+const classes=['SecureStoreFrameInput','AgentSecureStore','DeviceRamTierPolicy','ElizaAgentService','IpcStartupRecovery','WorkflowSurvivorInventory','ElizaAgentWatchdogPolicy','ElizaAssetExtractionPolicy','ElizaBionicInferenceServer','ElizaStartupTrace','ElizaWorkScheduler','ElizaTasksWorker','InferenceMemoryPolicy','RuntimeInstallationIdentity','ChromiumBrowserConnection','BionicDecodeLoop','ElizaVoiceNative','BgeEmbeddingSession'];
 const output=path.join(root,'android/app/build/generated/local-agent/java');
 const target=path.join(output,...identity.split('.'));fs.mkdirSync(target,{recursive:true});
-const manifest={pin,identity,patches:[provenance],files:[]};
+const manifest={pin,identity,runtimeSource:nativeSource,patches:[provenance],files:[]};
 for(const name of classes){
   const relative=`packages/app/platforms/android/app/src/main/java/ai/elizaos/app/${name}.java`;
   const input=patchedInputs.get(relative)??fs.readFileSync(path.join(upstream,relative),'utf8');
@@ -45,12 +65,12 @@ for(const name of classes){
   // Abstract sockets are device-global. Give the consumer its own namespace.
   value=value.replaceAll('"eliza_local_agent_v1"',`"${identity}.agent.v1"`).replaceAll('"eliza_bionic_infer_v1"',`"${identity}.inference.v1"`);
   if(name==='ElizaAgentService'){
-    const anchor='agentEnv.put("ELIZA_LOCAL_AGENT_SOCKET", LOCAL_AGENT_SOCKET_NAME);';
+    const anchor='agentEnv.put("ELIZA_LOCAL_AGENT_SOCKET_PATH",privateSocketPath);';
     if(value.split(anchor).length!==2)throw Error('Native runtime environment insertion point changed');
     value=value.replace(anchor,anchor+`\n            agentEnv.put("ELIZA_ANDROID_SECURE_STORE_SOCKET", "${identity}.secure-store");\n            try { AlphaLocalAgentPlugin.configureEnvironment(this, agentEnv); } catch (java.io.IOException unavailable) { currentStatus = "provider-unavailable"; updateNotification(); return; }`);
   }
   fs.writeFileSync(path.join(target,name+'.java'),value);
-  manifest.files.push({path:relative,sourceSha256:provenance.files[relative]?.sourceSha256??(patchedInputs.has(relative)?null:digest(input)),sha256:digest(input),generatedSha256:createHash('sha256').update(value).digest('hex')});
+  manifest.files.push({path:relative,sourceSha256:nativeSource.files[relative]??provenance.files[relative]?.sourceSha256??(patchedInputs.has(relative)?null:digest(input)),sha256:digest(input),generatedSha256:createHash('sha256').update(value).digest('hex')});
 }
 const identitySource='plugins/plugin-native-browser-surface/android/src/main/java/ai/eliza/plugins/browsersurface/ChromiumBrowserIdentity.java';
 const browserTarget=path.join(output,'ai/eliza/plugins/browsersurface');fs.mkdirSync(browserTarget,{recursive:true});
