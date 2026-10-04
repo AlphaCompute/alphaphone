@@ -2840,3 +2840,50 @@ The final combined campaign passed 113 of 114 cases in 8.9 minutes (`test-result
 The unchanged Firefox Calendar race reproduced once in ten runs (`test-results/calendar-tab-race.log`). Inspection found all ordinary Calendar mutations use the existing named Web Lock; the raw recovery reset has its own same-name lock. A candidate retained lock ownership through a task boundary before reading and after writing localStorage. This is motivated by Mozilla's documented task-local storage checkpoints ([bug 1740144, comment 28](https://bugzilla.mozilla.org/show_bug.cgi?id=1740144#c28)), but that mechanism is a hypothesis for this failure, not a browser-internals trace.
 
 The candidate passed 20 repeated Firefox Calendar cases (`test-results/calendar-tab-checkpoint.log`). A stronger direct-store fixture then exposed the limitation: two tabs each make 25 edits after priming their localStorage snapshot; every item and all 50 unique receipts must survive. The combined store/Calendar campaign passed 47/48, but WebKit returned duplicate receipt 23 and no receipt 50 (`test-results/calendar-tab-repair.log`). Timer boundaries do not establish a reliable cross-browser storage handoff. The candidate was rejected and the production store restored unchanged; its source remains in `test-results/calendar-tab-checkpoint-candidate.ts` for diagnosis. The new real-browser regression remains in `store-atomicity.spec.ts`. A transaction-backed design must preserve existing data/recovery semantics and verify stale-read handling before this defect can be called repaired. No pass is inferred for the original source from these candidate results.
+
+## October 4 — transactional browser storage repair in progress
+
+The cross-tab failure remains open in the product. The 50-edit regression on
+`codex/browser-store-race-investigation-20261004` reproduces lost updates with
+localStorage even when Web Locks serialize the callbacks. Yielding one task before
+reading and after writing is rejected: WebKit still lost an update. Production
+`store.ts` has not been replaced by that candidate.
+
+A separate Eliza branch, `codex/transactional-browser-documents-20261004`, now
+implements `BrowserDocumentStore` in `packages/ui/src/platform`. IndexedDB owns
+both bytes and revision receipts. Atomic compare-and-swap rejects stale writes;
+resets keep tombstones to reject stale receipts even if the same text is restored.
+Async editors use Web Locks and are never automatically replayed. Cancellation
+releases the lock and prevents a late editor result from publishing. The host
+owns its namespace, migration, schema validation and recovery UI. There is no
+second writable localStorage mirror.
+
+The initial real-browser harness retained 200 unique edits/receipts in each of
+Chromium, Firefox and WebKit. It also covered competing creation, exact malformed
+text retention, reset/recreate conflict, failed writes, callback failure,
+cancellation, concurrent external compare-and-swap, closing a tab mid-edit and
+reload. A later addition covers cancellation of an editor that never finishes.
+The current upstream-develop rebase passes UI typecheck; its final browser and
+repository qualification are in progress. These results do not prove that Alpha's
+existing stores have migrated or that its original failing regression is fixed.
+
+The required consumer migration must be coordinated across all 42 synchronous
+reads and 63 edits found in the browser adapter inventory:
+
+- Convert reads and synchronous UI initialization to asynchronous document reads;
+  preserve view-lifetime cancellation and visible unreadable-data errors.
+- Import existing localStorage bytes once without parsing or rewriting the backup.
+  Preserve malformed bytes for recovery. Retain a migration receipt and detect
+  subsequent writes from an older tab instead of silently choosing one version.
+- Move Calendar backup/reset and workflow-notification history to exact raw
+  snapshots plus revision-checked writes. A reset tombstone must prevent accidental
+  reimport of the retained legacy backup. Closing recovery or changing data must
+  invalidate its reset attempt.
+- Change test fixtures that seed or inspect current data to use the canonical
+  store; retain explicit legacy-import and corrupt-data fixtures. Requalify all
+  affected domains and both themes together after the migration, including the
+  original rapid-write and pending-Calendar-creation regressions.
+
+The running development agent remains available at port 5317; its latest
+readiness check confirms Whisper/Kokoro and the unchanged 17-conversation
+inventory. Android builds remain excluded by the user.
