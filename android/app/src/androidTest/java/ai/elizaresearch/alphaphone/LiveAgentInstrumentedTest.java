@@ -1,4 +1,5 @@
 package ai.elizaresearch.alphaphone;
+import ai.eliza.plugins.reminders.ReminderTestAccess;
 
 import android.os.SystemClock;
 import androidx.test.ext.junit.runners.AndroidJUnit4;
@@ -117,8 +118,8 @@ public class LiveAgentInstrumentedTest {
    if(!java.time.Instant.ofEpochMilli(at).atZone(java.time.ZoneId.systemDefault()).toLocalDate().equals(java.time.LocalDate.now()))eval(scenario,"document.querySelector('button[aria-label=Tomorrow]')?.click()");
    waitFor(scenario,"document.querySelector('[data-screen]').textContent.includes("+JSONObject.quote(title)+")",10000);
   }finally{
-   org.json.JSONArray rows=ReminderStore.list(context);
-   for(int i=0;i<rows.length();i++){JSONObject row=rows.getJSONObject(i);if(title.equals(row.optString("title")))ReminderStore.cancel(context,row.getString("id"));}
+   org.json.JSONArray rows=ReminderTestAccess.list(context);
+   for(int i=0;i<rows.length();i++){JSONObject row=rows.getJSONObject(i);if(title.equals(row.optString("title")))ReminderTestAccess.cancel(context,row.getString("id"));}
   }
  }
 

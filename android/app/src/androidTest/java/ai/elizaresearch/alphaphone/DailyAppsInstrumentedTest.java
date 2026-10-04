@@ -1,4 +1,5 @@
 package ai.elizaresearch.alphaphone;
+import ai.eliza.plugins.reminders.ReminderTestAccess;
 
 import android.os.SystemClock;
 import android.view.KeyEvent;
@@ -62,7 +63,7 @@ public class DailyAppsInstrumentedTest {
    for(int i=0;i<rows.length();i++){JSONObject row=rows.getJSONObject(i);if(title.equals(row.getString("title"))){reminderId=row.getString("id");assertEquals("scheduled",row.getString("status"));assertTrue(row.getLong("at")>System.currentTimeMillis());}}
    assertNotNull("Real native record created from Calendar form",reminderId);
    // Saving returns to Calendar; select the record's civil day before opening it.
-   long due=ReminderStore.read(context,reminderId).getLong("dueAt");
+   long due=ReminderTestAccess.read(context,reminderId).getLong("dueAt");
    evaluate(scenario,"document.querySelector('button[aria-label=\"Month view\"]').click()");
    evaluate(scenario,"(()=>{const d=new Date("+due+");const now=new Date();if(d.getMonth()!==now.getMonth()||d.getFullYear()!==now.getFullYear())document.querySelector('button[aria-label=\"Next month\"]').click();})()");
    String day="(()=>{const d=new Date("+due+");const label=d.toLocaleDateString('en-US',{weekday:'long'})+' '+d.toLocaleDateString('en-US',{month:'long'})+' '+d.getDate();return [...document.querySelectorAll('button[aria-label]')].find(b=>b.getAttribute('aria-label')===label);})()";
@@ -77,8 +78,8 @@ public class DailyAppsInstrumentedTest {
    for(int i=0;i<rows.length();i++){JSONObject row=rows.getJSONObject(i);if(reminderId.equals(row.getString("id")))cancelled="cancelled".equals(row.getString("status"));}
    assertTrue("Calendar Delete cancels the real native reminder",cancelled);
   } finally {
-   JSONArray rows=ReminderStore.list(context);
-   for(int i=0;i<rows.length();i++){JSONObject row=rows.getJSONObject(i);if(title.equals(row.optString("title")))ReminderStore.cancel(context,row.getString("id"));}
+   JSONArray rows=ReminderTestAccess.list(context);
+   for(int i=0;i<rows.length();i++){JSONObject row=rows.getJSONObject(i);if(title.equals(row.optString("title")))ReminderTestAccess.cancel(context,row.getString("id"));}
   }
  }
  @Test public void nativeCapabilityInventoryIsExplicit() throws Exception {
@@ -179,7 +180,7 @@ public class DailyAppsInstrumentedTest {
    for (android.service.notification.StatusBarNotification item : notifications.getActiveNotifications()) assertNotEquals(id,item.getTag());
    begin(scenario, "Capacitor.Plugins.DailyApps.scheduleReminder({id:'past_test',title:'Past',at:1})");
    assertEquals("past", result(scenario).getString("status"));
-  } finally { ReminderStore.cancel(context,id); }
+  } finally { ReminderTestAccess.cancel(context,id); }
  }
 
  @Test public void rootBackFinishesStandaloneAndKeepsLauncherHome() throws Exception {

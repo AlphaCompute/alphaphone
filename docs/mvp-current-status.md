@@ -1,6 +1,6 @@
 # Current MVP status — October 4, 2026
 
-The MVP is **not complete**. This is the current requirement/evidence index; [the browser review](mvp-browser-review.md) retains the chronological implementation record and failed attempts. Older build and enclave checkpoints are historical evidence, not the current acceptance checklist.
+The MVP is **not complete**. This is the current requirement/evidence index; [the browser review](mvp-browser-review.md) indexes implemented surfaces and unresolved browser defects. Older build and enclave checkpoints are historical evidence, not the current acceptance checklist.
 
 
 The immediate implementation gap is cross-tab browser persistence. The shared

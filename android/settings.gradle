@@ -22,3 +22,6 @@ project(':eliza-network-policy').projectDir = new File('../vendor/eliza/plugins/
 
 include ':eliza-calendar'
 project(':eliza-calendar').projectDir = new File('../vendor/eliza/plugins/plugin-native-calendar/android')
+
+include ':eliza-reminders'
+project(':eliza-reminders').projectDir = new File('../vendor/eliza/plugins/plugin-native-reminders/android')

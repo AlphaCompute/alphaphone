@@ -9,7 +9,7 @@ export function verifyPinnedUpstream(root) {
 	);
 	const directory = path.join(root, "vendor/eliza");
 	verifyCommittedWorkspace(directory, commit, {
-		// These five Gradle projects are declared in android/settings.gradle. Tracked
+		// These six Gradle projects are declared in android/settings.gradle. Tracked
 		// files are always authenticated, including files inside output directories.
 		generatedDirectories: [
 			"system",
@@ -17,6 +17,7 @@ export function verifyPinnedUpstream(root) {
 			"location",
 			"network-policy",
 			"calendar",
+			"reminders",
 		].map((name) => `plugins/plugin-native-${name}/android/build`),
 	});
 	return { directory, commit };

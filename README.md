@@ -11,7 +11,7 @@ complete workflow execution remain acceptance work. The primary architecture is 
 the native bridge, reproducible mobile payload staging and browser development host are now implemented. See [local agent setup](docs/local-agent-development.md) and the verification ledger for
 the exact tested scope rather than treating a successful APK build as acceptance.
 
-- [October 1 browser implementation and design review](docs/mvp-browser-review.md)
+- [Browser implementation and acceptance review](docs/mvp-browser-review.md)
 - [MVP scope and gap report](docs/mvp-scope-and-gap-report.md)
 - [MVP completion plan](docs/mvp-completion-plan.md)
 
