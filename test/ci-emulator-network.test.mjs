@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { parseFixtureNetwork, prepareFixtureNetwork } from '../scripts/ci-emulator-network.mjs';
+import { parseFixtureNetwork, prepareFixtureNetwork, fixtureNetworkDiagnostics } from '../scripts/ci-emulator-network.mjs';
 
 const connected = 'Active default network: 101\n  NetworkAgentInfo{network{101} handle{123} nc{[ Transports: WIFI Capabilities: INTERNET&NOT_RESTRICTED&VALIDATED LinkUpBandwidth>=1000]}\n';
 const disconnected = 'Active default network: none\n';
@@ -15,6 +15,9 @@ function fixture({ neverReady = false, packages = '', user = '0', initiallyReady
       'shell getprop ro.build.type': 'userdebug', 'shell am get-current-user': user,
       'shell pm list users': 'Users:\n UserInfo{0:Owner:4c13} running',
       'shell pm list packages -3': packages,
+      'shell cmd wifi status': 'Wifi is enabled\nWifi is connected to "AndroidWifi"\nSupplicant state: COMPLETED,',
+      'shell settings get global airplane_mode_on': '0',
+      'shell settings get global mobile_data': '1',
     };
     if (key in responses) return responses[key];
     if (key === 'shell dumpsys connectivity') return initiallyReady || requested && !neverReady ? connected : disconnected;
@@ -24,7 +27,7 @@ function fixture({ neverReady = false, packages = '', user = '0', initiallyReady
   };
   return { run, calls };
 }
-const writes = calls => calls.filter(call => call.startsWith('shell cmd wifi'));
+const writes = calls => calls.filter(call => call.startsWith('shell cmd wifi') && call !== 'shell cmd wifi status');
 
 test('only the active network capabilities can admit Internet access', () => {
   assert.deepEqual(parseFixtureNetwork(connected), { active: true, internet: true, validated: true });
@@ -46,9 +49,24 @@ test('already connected fixtures are only observed', async () => {
   await prepareFixtureNetwork(f.run, options); assert.deepEqual(writes(f.calls), []);
 });
 test('a successful connect command cannot substitute for a working network', async () => {
-  const f = fixture({ neverReady: true }); let waits = 0;
-  await assert.rejects(prepareFixtureNetwork(f.run, { ...options, sleep: async () => { waits++; } }), /no validated Internet/);
+  const f = fixture({ neverReady: true }), records = []; let waits = 0;
+  await assert.rejects(prepareFixtureNetwork(f.run, { ...options, record: row => records.push(row), sleep: async () => { waits++; } }), /no validated Internet/);
   assert.equal(waits, 60); assert.equal(writes(f.calls).length, 2);
+  assert.equal(records.at(-1).phase, 'diagnostics-failed');
+  assert.equal(records.at(-1).fixtureAccessPointConnected, true);
+});
+test('network diagnostics retain only known states and never raw identifiers or errors', () => {
+  const f = fixture();
+  const result = fixtureNetworkDiagnostics((...args) => args.join(' ') === 'shell cmd wifi status'
+    ? 'Wifi is enabled\nWifi is connected to "private-network"\nIP: /192.0.2.42, Supplicant state: COMPLETED, MAC: private-mac'
+    : f.run(...args));
+  assert.deepEqual(result, { airplaneMode: false, mobileDataEnabled: true, wifiStatusAvailable: true, wifiEnabled: true, fixtureAccessPointConnected: false, supplicantState: 'COMPLETED' });
+  assert.doesNotMatch(JSON.stringify(result), /private|192\.0/);
+  const unavailable = fixtureNetworkDiagnostics(() => { throw Error('private-output'); });
+  assert.equal(unavailable.wifiStatusAvailable, false);
+  assert.equal(unavailable.airplaneMode, null);
+  assert.equal(unavailable.supplicantState, null);
+  assert.doesNotMatch(JSON.stringify(unavailable), /private/);
 });
 test('local contexts, populated fixtures, secondary users and identity drift refuse writes', async () => {
   const local = fixture();
