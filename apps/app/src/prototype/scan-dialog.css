@@ -47,3 +47,5 @@
 .scan-dialog input::file-selector-button { min-height: 44px; border: 0; border-radius: 12px; padding: 8px; background: var(--s2,#f3f3f3); color: inherit; font: inherit; }
 
 @media (max-height: 480px) { .scan-text-review { width: min(92vw, 720px); } }
+
+.scan-dialog-content:focus-visible { outline: 2px solid var(--acct,#0000ff); outline-offset: -2px; border-radius: 4px; }

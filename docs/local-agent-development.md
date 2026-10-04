@@ -15,7 +15,7 @@ npm run agent:test
 npm run dev:local
 ```
 
-For browser-only source preparation without mobile setup, `npm run agent:prepare -- --source-only` creates the directory reported by the command. In that prepared directory, `bun install --frozen-lockfile --ignore-scripts --filter @elizaos/app --backend=copyfile` installs the locked host dependencies. Set `ALPHA_ELIZA_SOURCE` to that absolute directory when running `npm run dev:local`. This path was exercised against upstream `278af04b9498a35740468ffa7b68239d1924257f`; it does not build or qualify Android. Keep the source guard enabled and do not reuse dependencies through a symlink to another runtime checkout.
+For browser-only source preparation without mobile setup, `npm run agent:prepare -- --source-only` creates the directory reported by the command. In that prepared directory, `bun install --frozen-lockfile --ignore-scripts --filter @elizaos/app --backend=copyfile` installs the locked host dependencies. Set `ALPHA_ELIZA_SOURCE` to that absolute directory when running `npm run dev:local`. This path was exercised against upstream `dda547372918a0fe6ba92cabbea837b64a162d0f`; it does not build or qualify Android. Keep the source guard enabled and do not reuse dependencies through a symlink to another runtime checkout.
 
 Before starting, configure `CEREBRAS_API_KEY` in the host environment or the owner-only file `~/.config/alphaphone/cerebras-key`. Do not put it in a `VITE_` variable, checked-in file, browser field, URL or command-line argument. The existing private key file is supported. The current model defaults to `qwen-3.8-27b`.
 
