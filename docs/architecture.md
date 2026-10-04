@@ -18,6 +18,13 @@ history; the working tree no longer carries a patch series.
 
 ## Repository boundaries
 
+The [application ownership audit](app-upstream-ownership.md) tracks the ongoing
+split between Alpha presentation/defaults and reusable upstream features. The
+Maps and Files candidate is consumed from a hash-checked patch staged outside
+`vendor/eliza`; it is not yet a published upstream pin. Product wrappers preserve
+installed storage keys and native identities while injecting visual and device
+configuration into the shared implementation.
+
 | Path | Responsibility |
 | --- | --- |
 | `apps/app/src` | Entire alphaphone UI and interaction source; independent of the other product |

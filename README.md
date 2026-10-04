@@ -30,6 +30,7 @@ the exact tested scope rather than treating a successful APK build as acceptance
 - [Detailed implementation plan](docs/implementation-plan.md)
 - [Architecture and upstream ownership](docs/architecture.md)
 - [Upstream consolidation inventory and migration boundaries](docs/upstream-consolidation.md)
+- [Application ownership audit and upstream extraction](docs/app-upstream-ownership.md)
 - [Requirements and open decisions](docs/decisions.md)
 - [Verification results and remaining gates](docs/verification.md)
 - [Source/design provenance](docs/sources.md)

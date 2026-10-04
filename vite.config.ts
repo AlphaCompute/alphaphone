@@ -19,5 +19,11 @@ export default defineConfig({
     },
   },
   build: { outDir: "../../web-dist", emptyOutDir: true },
-  server: { fs: { allow: ["."] } },
+  server: { fs: { allow: [
+    fileURLToPath(new URL('./apps/app', import.meta.url)),
+    fileURLToPath(new URL('./.eliza/client-features', import.meta.url)),
+    fileURLToPath(new URL('./node_modules', import.meta.url)),
+    fileURLToPath(new URL('./vendor/eliza/plugins/plugin-native-system', import.meta.url)),
+    fileURLToPath(new URL('./patches/eliza/exports', import.meta.url)),
+  ] } },
 });

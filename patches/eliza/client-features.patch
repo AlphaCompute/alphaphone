@@ -1,0 +1,5480 @@
+diff --git a/plugins/plugin-files/README.md b/plugins/plugin-files/README.md
+new file mode 100644
+index 0000000..34595ed
+--- /dev/null
++++ b/plugins/plugin-files/README.md
+@@ -0,0 +1,22 @@
++# @elizaos/plugin-files
++
++Managed browser files with transactional revisions, selected-file capabilities,
++exact-byte import/export, and atomic workflow receipts. Native filesystem access
++continues to belong to plugin-native-filesystem.
++
++Hosts call `createBrowserFiles` with their persistent database name, PDF worker
++and asset URLs, cancellable picker, and sandboxed document viewer. Configure once
++per storage domain and register the returned class through the host's shared
++Capacitor registry. Do not rename an existing database without a data migration.
++The factory does not register plugins, choose account authority, or mount UI.
++
++The `documents/*` exports provide scan correction and edge suggestions, reviewed
++text-layer validation, PDF generation, local OCR and revisioned draft persistence.
++The host supplies PDF metadata, an OCR worker/assets URL and language, and the
++draft database name. OCR uses the Tesseract 7 worker protocol; host the worker,
++WASM and language data together. No remote OCR service is selected implicitly.
++
++Run `bun run typecheck`, `bun run test`, `bun run lint:check`, and `bun run build`
++in this package. Consumer qualification
++must exercise IndexedDB transactions, stale selections, cancellation, restart
++receipts and exact-byte file flows in a real browser.
+diff --git a/plugins/plugin-files/package.json b/plugins/plugin-files/package.json
+new file mode 100644
+index 0000000..7833566
+--- /dev/null
++++ b/plugins/plugin-files/package.json
+@@ -0,0 +1,62 @@
++{
++  "name": "@elizaos/plugin-files",
++  "version": "2.0.3-beta.7",
++  "type": "module",
++  "description": "Browser managed files, revision-bound selections, exact-byte attachments and durable operation receipts.",
++  "exports": {
++    ".": {
++      "eliza-source": "./src/index.ts",
++      "types": "./dist/index.d.ts",
++      "import": "./dist/index.js"
++    },
++    "./browser/*": {
++      "eliza-source": "./src/browser/*.ts",
++      "types": "./dist/browser/*.d.ts",
++      "import": "./dist/browser/*.js"
++    },
++    "./documents/*": {
++      "eliza-source": "./src/documents/*.ts",
++      "types": "./dist/documents/*.d.ts",
++      "import": "./dist/documents/*.js",
++      "default": "./dist/documents/*.js"
++    },
++    "./package.json": "./package.json"
++  },
++  "files": [
++    "dist"
++  ],
++  "peerDependencies": {
++    "@capacitor/core": "^8.5.2",
++    "pdfjs-dist": "^6.3.289"
++  },
++  "scripts": {
++    "build": "bun run build:js && bun run build:types",
++    "build:js": "tsup --config ../tsup.plugin-packages.shared.ts",
++    "build:types": "tsc --noCheck -p tsconfig.build.json",
++    "typecheck": "tsc --noEmit -p tsconfig.json",
++    "test": "node --test --experimental-transform-types test/*.test.mjs",
++    "lint": "bunx @biomejs/biome check --write --unsafe .",
++    "lint:check": "bunx @biomejs/biome check .",
++    "format": "bunx @biomejs/biome format --write .",
++    "format:check": "bunx @biomejs/biome format .",
++    "clean": "node ../../packages/scripts/rm-path-recursive.ts dist .turbo"
++  },
++  "main": "./dist/index.js",
++  "types": "./dist/index.d.ts",
++  "license": "MIT",
++  "publishConfig": {
++    "access": "public"
++  },
++  "sideEffects": false,
++  "dependencies": {
++    "pdf-lib": "^1.17.1"
++  },
++  "devDependencies": {
++    "@capacitor/core": "^8.5.2",
++    "pdfjs-dist": "^6.3.289",
++    "@types/node": "^25.0.6",
++    "@typescript/native": "npm:typescript@^7.0.2",
++    "tsup": "^8.5.1",
++    "typescript": "^6.0.3"
++  }
++}
+diff --git a/plugins/plugin-files/src/browser/attachment.ts b/plugins/plugin-files/src/browser/attachment.ts
+new file mode 100644
+index 0000000..7f84953
+--- /dev/null
++++ b/plugins/plugin-files/src/browser/attachment.ts
+@@ -0,0 +1,56 @@
++export type MailAttachment = {
++  name: string;
++  mimeType: string;
++  dataBase64: string;
++};
++export async function reviewMailAttachment(file: MailAttachment) {
++  if (
++    !file ||
++    typeof file.name !== "string" ||
++    file.name.length > 120 ||
++    // biome-ignore lint/suspicious/noControlCharactersInRegex: Reject control characters in untrusted input.
++    /[\\/\x00-\x1f\x7f]/.test(file.name) ||
++    typeof file.dataBase64 !== "string" ||
++    file.dataBase64.length > 7 * 1024 * 1024
++  )
++    throw new Error("Invalid attachment name or encoding");
++  const raw = atob(file.dataBase64);
++  if (btoa(raw) !== file.dataBase64 || raw.length > 5 * 1024 * 1024)
++    throw new Error("Attachment exceeds 5 MiB");
++  const bytes = Uint8Array.from(raw, (c) => c.charCodeAt(0));
++  let text: string | undefined;
++  const name = file.name.toLowerCase();
++  let valid = false;
++  if (file.mimeType === "text/plain") {
++    text = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(
++      bytes,
++    );
++    valid = name.endsWith(".txt") && !text.includes("\0");
++  }
++  if (file.mimeType === "application/pdf")
++    valid = name.endsWith(".pdf") && raw.startsWith("%PDF-");
++  if (file.mimeType === "image/png")
++    valid = name.endsWith(".png") && raw.startsWith("\x89PNG\r\n\x1a\n");
++  if (file.mimeType === "image/jpeg")
++    valid = /\.jpe?g$/.test(name) && raw.startsWith("\xff\xd8\xff");
++  if (file.mimeType === "image/webp")
++    valid =
++      name.endsWith(".webp") &&
++      raw.startsWith("RIFF") &&
++      raw.slice(8, 12) === "WEBP";
++  if (!valid)
++    throw new Error(
++      "Supported attachments: PDF, PNG, JPEG, WebP and UTF-8 TXT up to 5 MiB. File content must match its type.",
++    );
++  const sha256 = Array.from(
++    new Uint8Array(await crypto.subtle.digest("SHA-256", bytes)),
++    (b) => b.toString(16).padStart(2, "0"),
++  ).join("");
++  return {
++    name: file.name,
++    mimeType: file.mimeType,
++    size: bytes.length,
++    sha256,
++    ...(text === undefined ? {} : { text }),
++  };
++}
+diff --git a/plugins/plugin-files/src/browser/file-archive.ts b/plugins/plugin-files/src/browser/file-archive.ts
+new file mode 100644
+index 0000000..d214dd8
+--- /dev/null
++++ b/plugins/plugin-files/src/browser/file-archive.ts
+@@ -0,0 +1,71 @@
++/** Stored ZIP entries: portable downloads without executable archive paths. */
++export function fileArchive(
++  files: { path: string; bytes: Uint8Array<ArrayBuffer> }[],
++) {
++  const parts: BlobPart[] = [],
++    central: BlobPart[] = [];
++  let offset = 0,
++    centralSize = 0;
++  if (files.length > 65535) throw Error("Choose fewer files.");
++  const paths = new Set<string>();
++  for (const file of files) {
++    const path = file.path.endsWith("/") ? file.path.slice(0, -1) : file.path;
++    if (
++      !path ||
++      /[\\\0]/.test(path) ||
++      /^[a-z]:/i.test(path) ||
++      path
++        .split("/")
++        .some((part) => !part.trim() || [".", ".."].includes(part.trim())) ||
++      paths.has(path)
++    )
++      throw Error("Choose files with distinct relative archive paths.");
++    paths.add(path);
++    const name = new TextEncoder().encode(file.path);
++    if (name.length > 65535 || file.bytes.length > 0xffffffff)
++      throw Error("Choose a smaller selection.");
++    let crc = 0xffffffff;
++    for (const byte of file.bytes) {
++      crc ^= byte;
++      for (let bit = 0; bit < 8; bit++)
++        crc = (crc >>> 1) ^ (crc & 1 ? 0xedb88320 : 0);
++    }
++    crc = (crc ^ 0xffffffff) >>> 0;
++    const header = new Uint8Array(30),
++      h = new DataView(header.buffer);
++    h.setUint32(0, 0x04034b50, true);
++    h.setUint16(4, 20, true);
++    h.setUint16(6, 0x800, true);
++    h.setUint16(12, 33, true);
++    h.setUint32(14, crc, true);
++    h.setUint32(18, file.bytes.length, true);
++    h.setUint32(22, file.bytes.length, true);
++    h.setUint16(26, name.length, true);
++    const record = new Uint8Array(46),
++      c = new DataView(record.buffer);
++    c.setUint32(0, 0x02014b50, true);
++    c.setUint16(4, 20, true);
++    c.setUint16(6, 20, true);
++    c.setUint16(8, 0x800, true);
++    c.setUint16(14, 33, true);
++    c.setUint32(16, crc, true);
++    c.setUint32(20, file.bytes.length, true);
++    c.setUint32(24, file.bytes.length, true);
++    c.setUint16(28, name.length, true);
++    c.setUint32(42, offset, true);
++    parts.push(header, name, file.bytes);
++    central.push(record, name);
++    offset += 30 + name.length + file.bytes.length;
++    centralSize += 46 + name.length;
++    if (offset + centralSize > 0xffffffff)
++      throw Error("Choose a smaller selection.");
++  }
++  const end = new Uint8Array(22),
++    e = new DataView(end.buffer);
++  e.setUint32(0, 0x06054b50, true);
++  e.setUint16(8, files.length, true);
++  e.setUint16(10, files.length, true);
++  e.setUint32(12, centralSize, true);
++  e.setUint32(16, offset, true);
++  return new Blob([...parts, ...central, end], { type: "application/zip" });
++}
+diff --git a/plugins/plugin-files/src/browser/files.ts b/plugins/plugin-files/src/browser/files.ts
+new file mode 100644
+index 0000000..2ea36e2
+--- /dev/null
++++ b/plugins/plugin-files/src/browser/files.ts
+@@ -0,0 +1,976 @@
++import { WebPlugin } from "@capacitor/core";
++import { type MailAttachment, reviewMailAttachment } from "./attachment.ts";
++import { fileArchive } from "./file-archive.ts";
++export interface BrowserFilesOptions {
++  databaseName: string;
++  archiveName: string;
++  pdfWorkerUrl: string;
++  pdfAssetsBase: string;
++  openSelectedDocumentViewer(
++    name: string,
++    url: string,
++    onClose: () => void,
++  ): () => void;
++  runFilePicker<T>(
++    choose: (signal: AbortSignal) => Promise<T>,
++    cancelled: T,
++  ): Promise<T>;
++  inputFiles(
++    signal: AbortSignal,
++    options?: { photos?: boolean; directory?: boolean },
++  ): Promise<File[]>;
++}
++interface DirectoryHandle {
++  kind: "directory";
++  name: string;
++  values(): AsyncIterable<
++    DirectoryHandle | { kind: "file"; name: string; getFile(): Promise<File> }
++  >;
++}
++
++type Entry = {
++  id: string;
++  parentId: string;
++  name: string;
++  mimeType: string;
++  directory: boolean;
++  size: number;
++  revision: string;
++  createdAt?: number;
++  modifiedAt?: number;
++  blob?: Blob;
++  bytes?: ArrayBuffer;
++};
++const revision = () =>
++  Array.from(crypto.getRandomValues(new Uint8Array(32)), (v) =>
++    v.toString(16).padStart(2, "0"),
++  ).join("");
++function createFileStorage(options: BrowserFilesOptions) {
++  options = { ...options };
++  let database: Promise<IDBDatabase> | undefined;
++  function db() {
++    return (database ??= new Promise((resolve, reject) => {
++      let blocked = false;
++      const r = indexedDB.open(options.databaseName, 2);
++      r.onblocked = () => {
++        blocked = true;
++        database = undefined;
++        reject(Error("Close other tabs for this app and retry Files."));
++      };
++      r.onupgradeneeded = () => {
++        if (!r.result.objectStoreNames.contains("entries"))
++          r.result.createObjectStore("entries", { keyPath: "id" });
++        r.result.createObjectStore("workflowReceipts", { keyPath: "id" });
++      };
++      r.onsuccess = () => {
++        if (blocked) {
++          r.result.close();
++          return;
++        }
++        r.result.onversionchange = () => {
++          r.result.close();
++          database = undefined;
++        };
++        resolve(r.result);
++      };
++      r.onerror = () => {
++        database = undefined;
++        reject(r.error);
++      };
++    }));
++  }
++  async function entries() {
++    const d = await db();
++    return new Promise<Entry[]>((resolve, reject) => {
++      const r = d.transaction("entries").objectStore("entries").getAll();
++      r.onsuccess = () =>
++        resolve(
++          r.result.map((row: Entry) =>
++            row.bytes
++              ? { ...row, blob: new Blob([row.bytes], { type: row.mimeType }) }
++              : row,
++          ),
++        );
++      r.onerror = () => reject(r.error);
++    });
++  }
++  /** Read, validate, and mutate in one transaction, including across tabs. */
++  async function transaction<T>(
++    action: (all: Entry[], store: IDBObjectStore) => T,
++  ) {
++    const d = await db();
++    return new Promise<T>((resolve, reject) => {
++      const tx = d.transaction("entries", "readwrite"),
++        store = tx.objectStore("entries");
++      let result: T;
++      let failure: unknown;
++      tx.oncomplete = () => resolve(result);
++      tx.onabort = tx.onerror = (event) =>
++        reject(
++          failure ||
++            (event.target as IDBRequest)?.error ||
++            tx.error ||
++            Error("File storage failed."),
++        );
++      const request = store.getAll();
++      request.onsuccess = () => {
++        try {
++          result = action(request.result, store);
++        } catch (error) {
++          failure = error;
++          tx.abort();
++        }
++      };
++    });
++  }
++  return { db, entries, transaction };
++}
++const root: Entry = {
++  id: "root",
++  parentId: "",
++  name: "Browser files",
++  mimeType: "",
++  directory: true,
++  size: 0,
++  revision: "root",
++};
++const publicEntry = ({ blob, bytes, ...entry }: Entry) => ({
++  ...entry,
++  canCreate: entry.directory,
++  canRename: entry.id !== "root",
++  canDelete: entry.id !== "root",
++  canMove: entry.id !== "root",
++});
++const validName = (name: string) => {
++  name = name.trim();
++  if (
++    !name ||
++    /[\\/\0]/.test(name) ||
++    [".", ".."].includes(name) ||
++    name.length > 240
++  )
++    throw Error("Choose a valid file name.");
++  return name.trim();
++};
++function waitForFileRead<T>(
++  work: Promise<T>,
++  signal?: AbortSignal,
++): Promise<T> {
++  if (!signal) return work;
++  return new Promise((resolve, reject) => {
++    let settled = false;
++    const finish = (error: unknown, value?: T) => {
++      if (settled) return;
++      settled = true;
++      signal.removeEventListener("abort", cancel);
++      if (error) reject(error);
++      else resolve(value as T);
++    };
++    const cancel = () =>
++      finish(new DOMException("Files read cancelled", "AbortError"));
++    signal.addEventListener("abort", cancel, { once: true });
++    work.then(
++      (value) => finish(null, value),
++      (error) => finish(error),
++    );
++    if (signal.aborted) cancel();
++  });
++}
++export class BrowserFiles extends WebPlugin {
++  constructor(
++    private options: BrowserFilesOptions,
++    private storage = createFileStorage(options),
++  ) {
++    super();
++    this.options = { ...options };
++  }
++  /** File and durable operation receipt commit together; deletion never permits replay to recreate it. */
++  async saveWorkflowAttachment(
++    input: MailAttachment & { operationId: string },
++    signal: AbortSignal,
++  ) {
++    input = { ...input };
++    signal.throwIfAborted();
++    if (!/^[a-zA-Z0-9_-]{1,120}$/.test(input.operationId))
++      throw Error("Invalid workflow operation.");
++    const checked = await reviewMailAttachment(input),
++      name = validName(input.name),
++      fingerprint = JSON.stringify([name, input.mimeType, checked.sha256]);
++    const bytes = Uint8Array.from(atob(input.dataBase64), (c) =>
++        c.charCodeAt(0),
++      ),
++      d = await this.storage.db();
++    signal.throwIfAborted();
++    return new Promise<{ id: string; name: string; sha256: string }>(
++      (resolve, reject) => {
++        const tx = d.transaction(["entries", "workflowReceipts"], "readwrite"),
++          store = tx.objectStore("entries"),
++          receipts = tx.objectStore("workflowReceipts");
++        let result: { id: string; name: string; sha256: string },
++          failure: unknown;
++        const cancel = () => {
++          try {
++            tx.abort();
++          } catch {}
++        };
++        signal.addEventListener("abort", cancel, { once: true });
++        tx.oncomplete = () => {
++          signal.removeEventListener("abort", cancel);
++          resolve(result);
++        };
++        tx.onabort = tx.onerror = () => {
++          signal.removeEventListener("abort", cancel);
++          reject(
++            failure || tx.error || new DOMException("Cancelled", "AbortError"),
++          );
++        };
++        const receipt = receipts.get(input.operationId);
++        receipt.onsuccess = () => {
++          try {
++            signal.throwIfAborted();
++            if (receipt.result) {
++              if (receipt.result.fingerprint !== fingerprint)
++                throw Error("Saved file receipt does not match this step.");
++              result = receipt.result.result;
++              return;
++            }
++            const all = store.getAll();
++            all.onsuccess = () => {
++              try {
++                signal.throwIfAborted();
++                const rows = all.result as Entry[];
++                let folder = rows.find(
++                  (row) => row.parentId === "root" && row.name === "Receipts",
++                );
++                if (folder && !folder.directory)
++                  throw Error(
++                    "A file named Receipts already exists. Rename it before saving receipts.",
++                  );
++                const now = Date.now();
++                if (!folder) {
++                  folder = {
++                    id: crypto.randomUUID(),
++                    parentId: "root",
++                    name: "Receipts",
++                    mimeType: "",
++                    directory: true,
++                    size: 0,
++                    revision: revision(),
++                    createdAt: now,
++                    modifiedAt: now,
++                  };
++                  store.add(folder);
++                }
++                const folderId = folder.id;
++                let savedName = name;
++                for (
++                  let n = 2;
++                  rows.some(
++                    (row) =>
++                      row.parentId === folderId && row.name === savedName,
++                  );
++                  n++
++                ) {
++                  const dot = name.lastIndexOf(".");
++                  savedName =
++                    dot > 0
++                      ? name.slice(0, dot) + " (" + n + ")" + name.slice(dot)
++                      : name + " (" + n + ")";
++                }
++                result = {
++                  id: crypto.randomUUID(),
++                  name: savedName,
++                  sha256: checked.sha256,
++                };
++                store.add({
++                  ...result,
++                  parentId: folder.id,
++                  mimeType: input.mimeType,
++                  directory: false,
++                  size: checked.size,
++                  revision: revision(),
++                  createdAt: now,
++                  modifiedAt: now,
++                  bytes: bytes.buffer,
++                });
++                receipts.add({ id: input.operationId, fingerprint, result });
++              } catch (error) {
++                failure = error;
++                tx.abort();
++              }
++            };
++          } catch (error) {
++            failure = error;
++            tx.abort();
++          }
++        };
++      },
++    );
++  }
++  private selection = new Map<string, { id: string; revision: string }>();
++  private previews = new Map<string, string>();
++  private viewers = new Map<string, () => void>();
++  private urls = new Map<string, string>();
++  async choose() {
++    return this.list({});
++  }
++  async workflowFiles(input: { recent: boolean }, signal?: AbortSignal) {
++    signal?.throwIfAborted();
++    const choose = (all: Entry[]) =>
++      all
++        .filter((row) => !row.directory)
++        .sort(
++          (a, b) =>
++            (b.modifiedAt || 0) - (a.modifiedAt || 0) ||
++            a.id.localeCompare(b.id),
++        )
++        .slice(0, input.recent ? 20 : 2000);
++    const all = await waitForFileRead(this.storage.entries(), signal),
++      rows = choose(all);
++    signal?.throwIfAborted();
++    if (!input.recent && all.filter((row) => !row.directory).length > 2000)
++      throw Error("Choose a smaller Files source.");
++    const result = [];
++    for (const row of rows) {
++      signal?.throwIfAborted();
++      let text: string | undefined,
++        contentStatus = "binary";
++      if (
++        row.mimeType.startsWith("text/") ||
++        [
++          "application/json",
++          "application/xml",
++          "application/javascript",
++        ].includes(row.mimeType)
++      ) {
++        if (row.size > 16000) contentStatus = "too-large";
++        else if (row.blob) {
++          try {
++            text = new TextDecoder("utf-8", { fatal: true }).decode(
++              await waitForFileRead(row.blob.arrayBuffer(), signal),
++            );
++            if (text.includes("\0")) {
++              text = undefined;
++              contentStatus = "binary";
++            } else contentStatus = "text";
++          } catch (error) {
++            if (!(error instanceof TypeError)) throw error;
++            contentStatus = "binary";
++          }
++        }
++      }
++      result.push({
++        id: row.id,
++        parentId: row.parentId,
++        name: row.name,
++        mimeType: row.mimeType,
++        size: row.size,
++        revision: row.revision,
++        createdAt: row.createdAt ?? null,
++        modifiedAt: row.modifiedAt ?? null,
++        contentStatus,
++        ...(text === undefined ? {} : { text }),
++      });
++    }
++    signal?.throwIfAborted();
++    const latest = await waitForFileRead(this.storage.entries(), signal);
++    signal?.throwIfAborted();
++    if (!input.recent && latest.filter((row) => !row.directory).length > 2000)
++      throw Error("Choose a smaller Files source.");
++    const current = choose(latest);
++    if (
++      JSON.stringify(current.map((row) => [row.id, row.revision])) !==
++      JSON.stringify(rows.map((row) => [row.id, row.revision]))
++    )
++      throw Error("Files changed during the read. Run the step again.");
++    return {
++      scope: input.recent
++        ? "20 most recently imported or changed files"
++        : "All managed files",
++      files: result,
++    };
++  }
++
++  async importDirectory(
++    files: { path: string; file: File }[],
++    name: string,
++    signal?: AbortSignal,
++  ) {
++    const folder: Entry = {
++        id: crypto.randomUUID(),
++        parentId: "root",
++        name: validName(name),
++        mimeType: "",
++        directory: true,
++        size: 0,
++        revision: revision(),
++      },
++      rows: Entry[] = [folder],
++      directories = new Map<string, string>([["", folder.id]]);
++    for (const item of files) {
++      const parts = item.path.split("/").map(validName);
++      let path = "",
++        parentId = folder.id;
++      for (const part of parts.slice(0, -1)) {
++        path = path ? path + "/" + part : part;
++        let id = directories.get(path);
++        if (!id) {
++          id = crypto.randomUUID();
++          directories.set(path, id);
++          rows.push({
++            id,
++            parentId,
++            name: part,
++            mimeType: "",
++            directory: true,
++            size: 0,
++            revision: revision(),
++          });
++        }
++        parentId = id;
++      }
++      rows.push({
++        id: crypto.randomUUID(),
++        parentId,
++        name: parts[parts.length - 1],
++        mimeType: item.file.type || "application/octet-stream",
++        directory: false,
++        size: item.file.size,
++        revision: revision(),
++        bytes: await waitForFileRead(item.file.arrayBuffer(), signal),
++      });
++    }
++    await this.storage.transaction((all, store) => {
++      signal?.throwIfAborted();
++      if (all.some((e) => e.parentId === "root" && e.name === folder.name))
++        throw Error("A folder with this name already exists.");
++      const names = new Set<string>();
++      for (const row of rows) {
++        const key = row.parentId + "/" + row.name;
++        if (names.has(key)) throw Error("Duplicate folder entry.");
++        names.add(key);
++        store.add({ ...row, createdAt: Date.now(), modifiedAt: Date.now() });
++      }
++    });
++    return this.list({ id: folder.id });
++  }
++  async importFolder() {
++    return this.options.runFilePicker<
++      Awaited<ReturnType<BrowserFiles["list"]>> | { status: string }
++    >(
++      async (signal) => {
++        const picker = (
++          window as Window & {
++            showDirectoryPicker?: (options: {
++              mode: "read";
++            }) => Promise<DirectoryHandle>;
++          }
++        ).showDirectoryPicker;
++        if (picker) {
++          const directory = await picker.call(window, { mode: "read" });
++          signal.throwIfAborted();
++          const files: { path: string; file: File }[] = [];
++          const walk = async (handle: DirectoryHandle, prefix = "") => {
++            for await (const entry of handle.values()) {
++              signal.throwIfAborted();
++              const path = prefix + entry.name;
++              if (entry.kind === "directory") await walk(entry, path + "/");
++              else files.push({ path, file: await entry.getFile() });
++            }
++          };
++          await walk(directory);
++          signal.throwIfAborted();
++          return this.importDirectory(files, directory.name, signal);
++        }
++        const files = await this.options.inputFiles(signal, {
++          directory: true,
++        });
++        signal.throwIfAborted();
++        if (!files.length) return { status: "cancelled" };
++        const name = files[0].webkitRelativePath.split("/")[0];
++        return this.importDirectory(
++          files.map((file) => ({
++            path: file.webkitRelativePath.split("/").slice(1).join("/"),
++            file,
++          })),
++          name,
++          signal,
++        );
++      },
++      { status: "cancelled" },
++    );
++  }
++  async usage() {
++    const d = await this.storage.db();
++    return new Promise<{ bytes: number; files: number }>((resolve, reject) => {
++      let bytes = 0,
++        files = 0;
++      const tx = d.transaction("entries"),
++        cursor = tx.objectStore("entries").openCursor();
++      cursor.onsuccess = () => {
++        const current = cursor.result;
++        if (!current) return;
++        const row = current.value as Entry;
++        if (!row.directory) {
++          files++;
++          bytes += row.bytes?.byteLength ?? row.blob?.size ?? row.size;
++        }
++        current.continue();
++      };
++      tx.oncomplete = () => resolve({ bytes, files });
++      tx.onabort = tx.onerror = () =>
++        reject(tx.error || Error("File storage could not be read."));
++    });
++  }
++  async list(input: { id?: string }) {
++    const all = await this.storage.entries(),
++      folder =
++        input.id && input.id !== "root"
++          ? all.find((e) => e.id === input.id)
++          : root;
++    if (!folder?.directory) throw Error("Choose a folder.");
++    return {
++      status: "ready",
++      message: "",
++      rootId: "root",
++      folder: publicEntry(folder),
++      entries: all.filter((e) => e.parentId === folder.id).map(publicEntry),
++    };
++  }
++  private insert(row: Entry, signal?: AbortSignal) {
++    return this.storage.transaction((all, store) => {
++      signal?.throwIfAborted();
++      if (
++        row.parentId !== "root" &&
++        !all.some((e) => e.id === row.parentId && e.directory)
++      )
++        throw Error("Choose a folder.");
++      if (all.some((e) => e.parentId === row.parentId && e.name === row.name))
++        throw Error("Choose a different name.");
++      store.add({ ...row, createdAt: Date.now(), modifiedAt: Date.now() });
++    });
++  }
++  async createFolder(input: { id: string; name: string }) {
++    await this.insert({
++      id: crypto.randomUUID(),
++      parentId: input.id,
++      name: validName(input.name),
++      mimeType: "",
++      directory: true,
++      size: 0,
++      revision: revision(),
++    });
++    return { status: "created", message: "Folder created." };
++  }
++  async importFile(file: File, parentId = "root", signal?: AbortSignal) {
++    const row: Entry = {
++      id: crypto.randomUUID(),
++      parentId,
++      name: validName(file.name),
++      mimeType: file.type || "application/octet-stream",
++      directory: false,
++      size: file.size,
++      revision: revision(),
++      bytes: await waitForFileRead(file.arrayBuffer(), signal),
++    };
++    await this.insert(row, signal);
++    signal?.throwIfAborted();
++    const selected = await this.select({ id: row.id });
++    if (signal?.aborted) {
++      await this.forgetSelected(selected);
++      signal.throwIfAborted();
++    }
++    return selected;
++  }
++  async pick(photos = false) {
++    const cancelled = {
++      status: "cancelled",
++      action: photos ? "photos" : "files",
++    };
++    return this.options.runFilePicker<
++      | Awaited<ReturnType<BrowserFiles["importFile"]>>
++      | { status: string; action: string; message?: string }
++    >(async (signal) => {
++      const files = await this.options.inputFiles(signal, { photos });
++      signal.throwIfAborted();
++      if (!files.length) return cancelled;
++      try {
++        return await this.importFile(files[0], "root", signal);
++      } catch (error) {
++        if (signal.aborted) throw error;
++        return {
++          status: "failed",
++          action: cancelled.action,
++          message: "File could not be imported. Try again.",
++        };
++      }
++    }, cancelled);
++  }
++  private async mutate(
++    input: { id: string; expectedRevision: string },
++    change: (row: Entry, all: Entry[]) => Entry | null,
++  ) {
++    const parentId = await this.storage.transaction((all, store) => {
++      const row = all.find((e) => e.id === input.id);
++      if (!row || row.revision !== input.expectedRevision)
++        throw Error("This file changed. Refresh and try again.");
++      const updated = change(row, all);
++      if (
++        updated &&
++        all.some(
++          (e) =>
++            e.id !== row.id &&
++            e.parentId === updated.parentId &&
++            e.name === updated.name,
++        )
++      )
++        throw Error("Choose a different name.");
++      if (updated)
++        store.put({ ...updated, revision: revision(), modifiedAt: Date.now() });
++      else store.delete(row.id);
++      return updated?.parentId || row.parentId;
++    });
++    return { status: "changed", message: "File updated.", parentId };
++  }
++  async rename(input: { id: string; expectedRevision: string; name: string }) {
++    await this.mutate(input, (row) => ({
++      ...row,
++      name: validName(input.name),
++    }));
++    return { status: "renamed", message: "Renamed." };
++  }
++  async delete(input: {
++    id: string;
++    expectedRevision: string;
++    confirmPermanent: boolean;
++  }) {
++    if (!input.confirmPermanent) throw Error("Confirm deletion.");
++    await this.mutate(input, (row, all) => {
++      if (all.some((e) => e.parentId === row.id))
++        throw Error("Empty this folder before deleting it.");
++      return null;
++    });
++    return { status: "deleted", message: "Deleted." };
++  }
++  async move(input: {
++    id: string;
++    expectedRevision: string;
++    destinationId: string;
++  }) {
++    await this.mutate(input, (row, all) => {
++      const target =
++        input.destinationId === "root"
++          ? root
++          : all.find((e) => e.id === input.destinationId);
++      if (!target?.directory) throw Error("Choose a destination folder.");
++      let ancestor: Entry | undefined = target;
++      while (ancestor) {
++        if (ancestor.id === row.id)
++          throw Error("Choose a folder outside this folder.");
++        const parentId: string = ancestor.parentId;
++        ancestor = all.find((e) => e.id === parentId);
++      }
++      return { ...row, parentId: target.id };
++    });
++    return { status: "moved", message: "Moved." };
++  }
++  private batchRows(
++    all: Entry[],
++    items: { id: string; expectedRevision: string }[],
++  ) {
++    if (
++      !items.length ||
++      new Set(items.map((item) => item.id)).size !== items.length
++    )
++      throw Error("Select files first.");
++    return items.map((item) => {
++      const row = all.find((row) => row.id === item.id);
++      if (!row || row.revision !== item.expectedRevision)
++        throw Error("A selected file changed. Refresh and select again.");
++      return row;
++    });
++  }
++  async changeMany(input: {
++    items: { id: string; expectedRevision: string }[];
++    action: "move" | "delete";
++    destinationId?: string;
++    confirmPermanent?: boolean;
++  }) {
++    await this.storage.transaction((all, store) => {
++      const rows = this.batchRows(all, input.items);
++      if (input.action === "delete") {
++        if (!input.confirmPermanent) throw Error("Confirm deletion.");
++        if (rows.some((row) => all.some((child) => child.parentId === row.id)))
++          throw Error("Empty selected folders before deleting them.");
++        for (const row of rows) store.delete(row.id);
++      } else if (input.action === "move") {
++        const target =
++          input.destinationId === "root"
++            ? root
++            : all.find((row) => row.id === input.destinationId);
++        if (!target?.directory) throw Error("Choose a destination folder.");
++        const names = new Set<string>();
++        for (const row of rows) {
++          let ancestor: Entry | undefined = target;
++          while (ancestor) {
++            if (ancestor.id === row.id)
++              throw Error("Choose a folder outside the selection.");
++            const parentId: string = ancestor.parentId;
++            ancestor = all.find((e) => e.id === parentId);
++          }
++          if (
++            names.has(row.name) ||
++            all.some(
++              (e) =>
++                e.id !== row.id &&
++                e.parentId === target.id &&
++                e.name === row.name,
++            )
++          )
++            throw Error("The destination already contains a selected name.");
++          names.add(row.name);
++        }
++        for (const row of rows)
++          store.put({
++            ...row,
++            parentId: target.id,
++            revision: revision(),
++            modifiedAt: Date.now(),
++          });
++      } else throw Error("Choose a file operation.");
++    });
++    return {
++      status: input.action === "move" ? "moved" : "deleted",
++      message:
++        input.action === "move" ? "Selection moved." : "Selection deleted.",
++    };
++  }
++  async shareMany(input: {
++    items: { id: string; expectedRevision: string }[];
++  }) {
++    const all = await this.storage.entries(),
++      rows = this.batchRows(all, input.items),
++      files: { path: string; bytes: Uint8Array<ArrayBuffer> }[] = [];
++    const visit = async (row: Entry, path: string) => {
++      if (row.directory) {
++        files.push({ path: path + "/", bytes: new Uint8Array(0) });
++        for (const child of all.filter((e) => e.parentId === row.id))
++          await visit(child, path + "/" + child.name);
++      } else {
++        if (!row.blob) throw Error("File bytes unavailable.");
++        files.push({
++          path,
++          bytes: new Uint8Array(await row.blob.arrayBuffer()),
++        });
++      }
++    };
++    for (const row of rows) await visit(row, row.name);
++    const blob = fileArchive(files),
++      url = URL.createObjectURL(blob),
++      link = document.createElement("a");
++    link.href = url;
++    link.download = this.options.archiveName;
++    document.body.append(link);
++    link.click();
++    link.remove();
++    setTimeout(() => URL.revokeObjectURL(url), 60000);
++    return { status: "opened", message: "Selection downloaded." };
++  }
++  async select(input: { id: string }) {
++    const row = (await this.storage.entries()).find((e) => e.id === input.id);
++    if (!row?.blob) throw Error("Choose a file.");
++    const selectionId = crypto.randomUUID(),
++      uri = URL.createObjectURL(row.blob);
++    this.selection.set(selectionId, { id: row.id, revision: row.revision });
++    this.urls.set(selectionId, uri);
++    return {
++      status: "selected",
++      action: "files",
++      selectionId,
++      uri,
++      name: row.name,
++      mimeType: row.mimeType,
++    };
++  }
++  private async selected(id: string) {
++    const selected = this.selection.get(id),
++      row = (await this.storage.entries()).find((e) => e.id === selected?.id);
++    if (!row?.blob || row.revision !== selected?.revision)
++      throw Error("Select this file again.");
++    return { ...row, blob: row.blob };
++  }
++  async readSelected(input: { selectionId: string }) {
++    const row = await this.selected(input.selectionId);
++    if (row.size > 2_000_000)
++      return {
++        status: "large",
++        message: "Open or download this file to read it.",
++      };
++    if (
++      !row.mimeType.startsWith("text/") &&
++      ![
++        "application/json",
++        "application/xml",
++        "application/javascript",
++      ].includes(row.mimeType)
++    )
++      return {
++        status: "binary",
++        message: "Open or download this file.",
++        mimeType: row.mimeType,
++        bytes: row.size,
++      };
++    try {
++      const text = new TextDecoder("utf-8", { fatal: true }).decode(
++        await row.blob.arrayBuffer(),
++      );
++      if (text.includes("\0"))
++        return { status: "binary", message: "Open or download this file." };
++      await this.selected(input.selectionId);
++      return { status: "read", text, mimeType: row.mimeType, bytes: row.size };
++    } catch (error) {
++      if (error instanceof TypeError)
++        return { status: "binary", message: "Open or download this file." };
++      throw error;
++    }
++  }
++  async pdfSelected(input: { selectionId: string; page: number }) {
++    const row = await this.selected(input.selectionId);
++    if (
++      row.mimeType !== "application/pdf" ||
++      !Number.isInteger(input.page) ||
++      input.page < 0
++    )
++      throw Error("Choose a PDF page.");
++    const { getDocument, GlobalWorkerOptions } = await import("pdfjs-dist");
++    GlobalWorkerOptions.workerSrc = this.options.pdfWorkerUrl;
++    const task = getDocument({
++      data: new Uint8Array(await row.blob.arrayBuffer()),
++      cMapUrl: this.options.pdfAssetsBase + "cmaps/",
++      cMapPacked: true,
++      standardFontDataUrl: this.options.pdfAssetsBase + "standard_fonts/",
++      wasmUrl: this.options.pdfAssetsBase + "wasm/",
++    });
++    try {
++      const pdf = await task.promise;
++      if (input.page >= pdf.numPages) throw Error("Choose a PDF page.");
++      const page = await pdf.getPage(input.page + 1),
++        base = page.getViewport({ scale: 1 }),
++        viewport = page.getViewport({
++          scale: Math.min(2, 1200 / base.width, 1600 / base.height),
++        }),
++        canvas = document.createElement("canvas");
++      canvas.width = Math.ceil(viewport.width);
++      canvas.height = Math.ceil(viewport.height);
++      await page.render({ canvas, viewport }).promise;
++      await this.selected(input.selectionId);
++      const blob = await new Promise<Blob>((resolve, reject) =>
++        canvas.toBlob(
++          (value) =>
++            value ? resolve(value) : reject(Error("Page rendering failed.")),
++          "image/png",
++        ),
++      );
++      await this.selected(input.selectionId);
++      const previous = this.previews.get(input.selectionId);
++      if (previous) URL.revokeObjectURL(previous);
++      const imageUri = URL.createObjectURL(blob);
++      this.previews.set(input.selectionId, imageUri);
++      const content = await page.getTextContent();
++      await this.selected(input.selectionId);
++      const text = content.items
++        .map((item) =>
++          "str" in item
++            ? item.str + ("hasEOL" in item && item.hasEOL ? "\n" : " ")
++            : "",
++        )
++        .join("")
++        .trim();
++      return {
++        status: "rendered",
++        page: input.page,
++        pageCount: pdf.numPages,
++        imageUri,
++        text,
++      };
++    } finally {
++      await task.destroy();
++    }
++  }
++  async attachment(input: { selectionId: string }) {
++    const row = await this.selected(input.selectionId);
++    if (row.size > 5 * 1024 * 1024) throw Error("Choose a file up to 5 MiB.");
++    const bytes = new Uint8Array(await row.blob.arrayBuffer());
++    await this.selected(input.selectionId);
++    let raw = "";
++    for (let i = 0; i < bytes.length; i += 16384)
++      raw += String.fromCharCode(...bytes.subarray(i, i + 16384));
++    return { name: row.name, mimeType: row.mimeType, dataBase64: btoa(raw) };
++  }
++  async openSelected(input: { selectionId: string }) {
++    const row = await this.selected(input.selectionId),
++      url = this.urls.get(input.selectionId);
++    if (!url) throw Error("Select this file again.");
++    this.viewers.get(input.selectionId)?.();
++    const close = this.options.openSelectedDocumentViewer(row.name, url, () => {
++      if (this.viewers.get(input.selectionId) === close)
++        this.viewers.delete(input.selectionId);
++    });
++    this.viewers.set(input.selectionId, close);
++    return { status: "opened", message: "Document opened." };
++  }
++  async shareSelected(input: { selectionId: string }) {
++    const row = await this.selected(input.selectionId),
++      link = document.createElement("a");
++    const url = this.urls.get(input.selectionId);
++    if (!url) throw Error("Select this file again.");
++    link.href = url;
++    link.download = row.name;
++    document.body.append(link);
++    link.click();
++    link.remove();
++    return { status: "opened" };
++  }
++  async renameSelected(input: { selectionId: string; name: string }) {
++    const row = await this.selected(input.selectionId);
++    await this.rename({
++      id: row.id,
++      expectedRevision: row.revision,
++      name: input.name,
++    });
++    await this.forgetSelected(input);
++    return this.select({ id: row.id });
++  }
++  async forgetSelected(input: { selectionId: string }) {
++    this.viewers.get(input.selectionId)?.();
++    this.viewers.delete(input.selectionId);
++    const url = this.urls.get(input.selectionId);
++    if (url) URL.revokeObjectURL(url);
++    this.urls.delete(input.selectionId);
++    const preview = this.previews.get(input.selectionId);
++    if (preview) URL.revokeObjectURL(preview);
++    this.previews.delete(input.selectionId);
++    this.selection.delete(input.selectionId);
++  }
++  async restoreSelected() {
++    return { status: "cancelled", action: "files" };
++  }
++  async forget() {
++    for (const id of this.selection.keys())
++      await this.forgetSelected({ selectionId: id });
++    return { status: "forgotten", message: "Folder closed." };
++  }
++}
++
++/** Configure once per storage domain; constructors share storage but own their selections. */
++export function createBrowserFiles(
++  options: BrowserFilesOptions,
++): new () => BrowserFiles {
++  options = { ...options };
++  const storage = createFileStorage(options);
++  return class extends BrowserFiles {
++    constructor() {
++      super(options, storage);
++    }
++  };
++}
+diff --git a/plugins/plugin-files/src/documents/local-ocr.ts b/plugins/plugin-files/src/documents/local-ocr.ts
+new file mode 100644
+index 0000000..b283186
+--- /dev/null
++++ b/plugins/plugin-files/src/documents/local-ocr.ts
+@@ -0,0 +1,210 @@
++interface WorkerResult {
++  text: string;
++  confidence: number;
++  blocks:
++    | {
++        paragraphs?: {
++          lines?: {
++            text: string;
++            bbox: { x0: number; y0: number; x1: number; y1: number };
++          }[];
++        }[];
++      }[]
++    | null;
++}
++
++export interface OcrConfig {
++  workerUrl: string;
++  assetsUrl: string;
++  language: string;
++}
++
++import { type ScanTextLine, validateScanTextLayer } from "./scan-text-layer.ts";
++export type OcrResult = {
++  text: string;
++  confidence: number;
++  lines?: ScanTextLine[];
++};
++export type OcrProgress = { status: string; progress: number };
++
++/** Pinned Tesseract 7 worker protocol. Owning the Worker before initialization
++ * makes cancellation terminate model startup as well as active recognition. */
++export async function recognizeLocalText(
++  config: OcrConfig,
++  image: Blob,
++  signal: AbortSignal,
++  onProgress: (value: OcrProgress) => void = () => {},
++  layout = false,
++): Promise<OcrResult> {
++  signal.throwIfAborted();
++  if (
++    !["image/jpeg", "image/png", "image/webp"].includes(image.type) ||
++    image.size === 0 ||
++    image.size > 16 * 1024 * 1024
++  )
++    throw Error("Choose a JPEG, PNG or WebP image up to 16 MB.");
++  const worker = new Worker(new URL(config.workerUrl, location.href));
++  const workerId = crypto.randomUUID();
++  let sequence = 0,
++    ended = false;
++  let pending:
++    | {
++        id: string;
++        action: string;
++        resolve: (value: WorkerResult) => void;
++        reject: (error: Error) => void;
++      }
++    | undefined;
++  const finish = (error: Error) => {
++    if (ended) return;
++    ended = true;
++    worker.terminate();
++    pending?.reject(error);
++    pending = undefined;
++  };
++  const aborted = () =>
++    finish(new DOMException("Scan cancelled", "AbortError"));
++  signal.addEventListener("abort", aborted, { once: true });
++  const timer = setTimeout(
++    () =>
++      finish(Error("Scanning took too long. Try a smaller, clearer image.")),
++    60000,
++  );
++  worker.onerror = () =>
++    finish(Error("The local scan engine could not start."));
++  worker.onmessageerror = () =>
++    finish(Error("The local scan engine returned unreadable data."));
++  worker.onmessage = (event) => {
++    const value = event.data,
++      job = pending;
++    if (
++      ended ||
++      !job ||
++      value?.workerId !== workerId ||
++      value.jobId !== job.id ||
++      value.action !== job.action
++    )
++      return;
++    if (value.status === "progress") {
++      if (
++        typeof value.data?.status === "string" &&
++        Number.isFinite(value.data.progress)
++      )
++        onProgress({
++          status: value.data.status,
++          progress: Math.max(0, Math.min(1, value.data.progress)),
++        });
++    } else if (value.status === "resolve") {
++      pending = undefined;
++      job.resolve(value.data);
++    } else if (value.status === "reject") {
++      pending = undefined;
++      job.reject(
++        Error("The image could not be read by the local scan engine."),
++      );
++    }
++  };
++  const request = (action: string, payload: unknown) =>
++    new Promise<WorkerResult>((resolve, reject) => {
++      if (ended) {
++        reject(new DOMException("Scan cancelled", "AbortError"));
++        return;
++      }
++      const id = String(++sequence);
++      pending = { id, action, resolve, reject };
++      try {
++        worker.postMessage({ workerId, jobId: id, action, payload });
++      } catch {
++        finish(Error("The scan request could not start."));
++      }
++    });
++  try {
++    const bitmap = await createImageBitmap(image);
++    let bounded: Blob,
++      width = 0,
++      height = 0;
++    try {
++      signal.throwIfAborted();
++      if (
++        !bitmap.width ||
++        !bitmap.height ||
++        bitmap.width * bitmap.height > 32000000
++      )
++        throw Error("Choose an image with at most 32 million pixels.");
++      const scale = Math.min(1, 2048 / Math.max(bitmap.width, bitmap.height));
++      const canvas = document.createElement("canvas");
++      canvas.width = Math.max(1, Math.round(bitmap.width * scale));
++      canvas.height = Math.max(1, Math.round(bitmap.height * scale));
++      width = canvas.width;
++      height = canvas.height;
++      const context = canvas.getContext("2d");
++      if (!context) throw Error("Image processing is unavailable.");
++      context.fillStyle = "white";
++      context.fillRect(0, 0, canvas.width, canvas.height);
++      context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
++      bounded = await new Promise<Blob>((resolve, reject) =>
++        canvas.toBlob(
++          (value) =>
++            value ? resolve(value) : reject(Error("Image conversion failed.")),
++          "image/png",
++        ),
++      );
++    } finally {
++      bitmap.close();
++    }
++    const bytes = new Uint8Array(await bounded.arrayBuffer());
++    signal.throwIfAborted();
++    const local = new URL(config.assetsUrl, location.href).href;
++    await request("load", {
++      options: { lstmOnly: true, corePath: local, logging: false },
++    });
++    await request("loadLanguage", {
++      langs: [config.language],
++      options: {
++        langPath: local,
++        cacheMethod: "none",
++        gzip: true,
++        lstmOnly: true,
++      },
++    });
++    await request("initialize", { langs: config.language, oem: 1, config: {} });
++    const result = await request("recognize", {
++      image: bytes,
++      options: {},
++      output: { text: true, blocks: layout },
++    });
++    if (
++      typeof result?.text !== "string" ||
++      !Number.isFinite(result.confidence) ||
++      result.text.length > 100000
++    )
++      throw Error("The scan result is invalid or too large.");
++    let lines: ScanTextLine[] | undefined;
++    if (layout) {
++      if (result.blocks !== null && !Array.isArray(result.blocks))
++        throw Error("The scan engine did not return text positions.");
++      lines = [];
++      for (const block of result.blocks ?? [])
++        for (const paragraph of block.paragraphs ?? [])
++          for (const line of paragraph.lines ?? []) {
++            if (typeof line.text !== "string" || !line.bbox)
++              throw Error("Invalid scanned text position.");
++            const box = line.bbox;
++            lines.push({
++              text: line.text.trim(),
++              x: box.x0 / width,
++              y: box.y0 / height,
++              width: (box.x1 - box.x0) / width,
++              height: (box.y1 - box.y0) / height,
++            });
++            if (lines.length > 2000) throw Error("Too many scanned lines.");
++          }
++      validateScanTextLayer(lines);
++    }
++    return { text: result.text.trim(), confidence: result.confidence, lines };
++  } finally {
++    clearTimeout(timer);
++    signal.removeEventListener("abort", aborted);
++    finish(new DOMException("Scan finished", "AbortError"));
++  }
++}
+diff --git a/plugins/plugin-files/src/documents/scan-correction.ts b/plugins/plugin-files/src/documents/scan-correction.ts
+new file mode 100644
+index 0000000..d1ac99e
+--- /dev/null
++++ b/plugins/plugin-files/src/documents/scan-correction.ts
+@@ -0,0 +1,163 @@
++export type ScanCorner = { x: number; y: number };
++export type ScanCorners = [ScanCorner, ScanCorner, ScanCorner, ScanCorner];
++export const fullPageCorners = (): ScanCorners => [
++  { x: 0, y: 0 },
++  { x: 1, y: 0 },
++  { x: 1, y: 1 },
++  { x: 0, y: 1 },
++];
++/** Clockwise normalized corners, starting at the top left. Reject folds and tiny regions. */
++export function validateScanCorners(corners: ScanCorners) {
++  if (
++    !Array.isArray(corners) ||
++    corners.length !== 4 ||
++    corners.some(
++      (p) =>
++        !p ||
++        !Number.isFinite(p.x) ||
++        !Number.isFinite(p.y) ||
++        p.x < 0 ||
++        p.x > 1 ||
++        p.y < 0 ||
++        p.y > 1,
++    )
++  )
++    throw Error("Keep all four corners inside the image.");
++  let area = 0;
++  for (let i = 0; i < 4; i++) {
++    const a = corners[i],
++      b = corners[(i + 1) % 4],
++      c = corners[(i + 2) % 4];
++    area += a.x * b.y - b.x * a.y;
++    if (
++      (b.x - a.x) * (c.y - b.y) - (b.y - a.y) * (c.x - b.x) <= 0.0001 ||
++      Math.hypot(b.x - a.x, b.y - a.y) < 0.02
++    )
++      throw Error(
++        "Keep corners in clockwise order without crossing the page edges.",
++      );
++  }
++  if (area < 0.02) throw Error("Select a larger page area.");
++}
++export async function correctScanPage(
++  image: Blob,
++  input: ScanCorners,
++  signal: AbortSignal,
++): Promise<Blob> {
++  const corners = input.map((p) => ({ ...p })) as ScanCorners;
++  signal.throwIfAborted();
++  validateScanCorners(corners);
++  if (
++    !["image/jpeg", "image/png", "image/webp"].includes(image.type) ||
++    !image.size ||
++    image.size > 16 * 1024 * 1024
++  )
++    throw Error("Choose an image up to 16 MB.");
++  const bitmap = await createImageBitmap(image);
++  const source = document.createElement("canvas");
++  try {
++    signal.throwIfAborted();
++    if (
++      !bitmap.width ||
++      !bitmap.height ||
++      bitmap.width * bitmap.height > 32000000
++    )
++      throw Error("Image dimensions are too large.");
++    const scale = Math.min(1, 2048 / Math.max(bitmap.width, bitmap.height));
++    source.width = Math.max(2, Math.round(bitmap.width * scale));
++    source.height = Math.max(2, Math.round(bitmap.height * scale));
++    const ctx = source.getContext("2d");
++    if (!ctx) throw Error("Image correction is unavailable.");
++    ctx.fillStyle = "white";
++    ctx.fillRect(0, 0, source.width, source.height);
++    ctx.drawImage(bitmap, 0, 0, source.width, source.height);
++  } finally {
++    bitmap.close();
++  }
++  const points = corners.map((p) => ({
++    x: p.x * (source.width - 1),
++    y: p.y * (source.height - 1),
++  }));
++  const [p0, p1, p2, p3] = points;
++  const distance = (a: ScanCorner, b: ScanCorner) =>
++    Math.hypot(a.x - b.x, a.y - b.y);
++  const rawWidth = (distance(p0, p1) + distance(p3, p2)) / 2,
++    rawHeight = (distance(p0, p3) + distance(p1, p2)) / 2,
++    scale = Math.min(1, 2048 / Math.max(rawWidth, rawHeight));
++  const output = document.createElement("canvas");
++  output.width = Math.max(2, Math.round(rawWidth * scale));
++  output.height = Math.max(2, Math.round(rawHeight * scale));
++  const ctx = output.getContext("2d");
++  if (!ctx) throw Error("Image correction is unavailable.");
++  const dx1 = p1.x - p2.x,
++    dx2 = p3.x - p2.x,
++    dx3 = p0.x - p1.x + p2.x - p3.x,
++    dy1 = p1.y - p2.y,
++    dy2 = p3.y - p2.y,
++    dy3 = p0.y - p1.y + p2.y - p3.y,
++    det = dx1 * dy2 - dx2 * dy1;
++  const g = (dx3 * dy2 - dx2 * dy3) / det,
++    h = (dx1 * dy3 - dx3 * dy1) / det,
++    a = p1.x - p0.x + g * p1.x,
++    b = p3.x - p0.x + h * p3.x,
++    d = p1.y - p0.y + g * p1.y,
++    e = p3.y - p0.y + h * p3.y;
++  const sourceContext = source.getContext("2d");
++  if (!sourceContext) throw Error("Image processing is unavailable.");
++  const pixels = sourceContext.getImageData(
++      0,
++      0,
++      source.width,
++      source.height,
++    ).data,
++    result = ctx.createImageData(output.width, output.height);
++  for (let y = 0; y < output.height; y++) {
++    if (y % 32 === 0) {
++      await new Promise<void>((resolve) => setTimeout(resolve, 0));
++      signal.throwIfAborted();
++    }
++    for (let x = 0; x < output.width; x++) {
++      const u = x / (output.width - 1),
++        v = y / (output.height - 1),
++        den = g * u + h * v + 1;
++      const sx = Math.max(
++          0,
++          Math.min(source.width - 1, (a * u + b * v + p0.x) / den),
++        ),
++        sy = Math.max(
++          0,
++          Math.min(source.height - 1, (d * u + e * v + p0.y) / den),
++        );
++      const left = Math.floor(sx),
++        top = Math.floor(sy),
++        right = Math.min(left + 1, source.width - 1),
++        bottom = Math.min(top + 1, source.height - 1),
++        fx = sx - left,
++        fy = sy - top,
++        at = (y * output.width + x) * 4;
++      for (let c = 0; c < 3; c++)
++        result.data[at + c] =
++          (pixels[(top * source.width + left) * 4 + c] * (1 - fx) +
++            pixels[(top * source.width + right) * 4 + c] * fx) *
++            (1 - fy) +
++          (pixels[(bottom * source.width + left) * 4 + c] * (1 - fx) +
++            pixels[(bottom * source.width + right) * 4 + c] * fx) *
++            fy;
++      result.data[at + 3] = 255;
++    }
++  }
++  signal.throwIfAborted();
++  ctx.putImageData(result, 0, 0);
++  const blob = await new Promise<Blob>((resolve, reject) =>
++    output.toBlob(
++      (value) =>
++        value
++          ? resolve(value)
++          : reject(Error("Could not encode the corrected page.")),
++      "image/jpeg",
++      0.92,
++    ),
++  );
++  signal.throwIfAborted();
++  return blob;
++}
+diff --git a/plugins/plugin-files/src/documents/scan-draft.ts b/plugins/plugin-files/src/documents/scan-draft.ts
+new file mode 100644
+index 0000000..11b5e5b
+--- /dev/null
++++ b/plugins/plugin-files/src/documents/scan-draft.ts
+@@ -0,0 +1,212 @@
++import { type ScanTextLine, validateScanTextLayer } from "./scan-text-layer.ts";
++export type ScanDraft = {
++  id: "document";
++  revision: string;
++  pages: Blob[];
++  textLayers?: (ScanTextLine[] | null)[];
++  updated: number;
++};
++type StoredScanDraft = Omit<ScanDraft, "pages"> & {
++  pages: { bytes: ArrayBuffer; type: string }[];
++  format: 2;
++};
++function decode(value: unknown): ScanDraft {
++  const draft = value as Partial<StoredScanDraft>;
++  if (
++    !draft ||
++    draft.id !== "document" ||
++    typeof draft.revision !== "string" ||
++    !draft.revision ||
++    typeof draft.updated !== "number" ||
++    !Number.isFinite(draft.updated) ||
++    !Array.isArray(draft.pages) ||
++    (draft.format !== undefined && draft.format !== 2)
++  )
++    throw Error("Saved draft could not be read.");
++  const pages = draft.pages.map((page: unknown) => {
++    if (draft.format === undefined && page instanceof Blob) return page;
++    const item = page as { bytes?: unknown; type?: unknown };
++    if (
++      draft.format !== 2 ||
++      !item ||
++      !(item.bytes instanceof ArrayBuffer) ||
++      typeof item.type !== "string"
++    )
++      throw Error("Saved page could not be read.");
++    return new Blob([item.bytes], { type: item.type });
++  });
++  valid(pages);
++  return {
++    id: "document",
++    revision: draft.revision,
++    pages,
++    textLayers: copyScanTextLayers(draft.textLayers, pages.length),
++    updated: draft.updated,
++  };
++}
++export function copyScanTextLayers(
++  input: (ScanTextLine[] | null)[] | undefined,
++  count: number,
++) {
++  if (input === undefined) return undefined;
++  if (!Array.isArray(input) || input.length !== count)
++    throw Error("Saved text does not match the document pages.");
++  return input.map((lines) => {
++    if (lines === null) return null;
++    validateScanTextLayer(lines);
++    return lines.map(({ text, x, y, width, height }) => ({
++      text,
++      x,
++      y,
++      width,
++      height,
++    }));
++  });
++}
++function valid(pages: Blob[]) {
++  if (
++    !Array.isArray(pages) ||
++    pages.length < 1 ||
++    pages.length > 20 ||
++    pages.some(
++      (p) =>
++        !(p instanceof Blob) ||
++        !["image/jpeg", "image/png", "image/webp"].includes(p.type) ||
++        !p.size ||
++        p.size > 16 * 1024 * 1024,
++    ) ||
++    pages.reduce((sum, p) => sum + p.size, 0) > 64 * 1024 * 1024
++  )
++    throw Error("Choose 1 to 20 images, up to 64 MB total.");
++}
++export function createScanDraftStore(databaseName: string) {
++  async function transaction<T>(
++    mode: IDBTransactionMode,
++    action: (
++      store: IDBObjectStore,
++      set: (value: T) => void,
++      fail: (error: Error) => void,
++    ) => void,
++    signal?: AbortSignal,
++  ): Promise<T> {
++    const db = await new Promise<IDBDatabase>((resolve, reject) => {
++      const r = indexedDB.open(databaseName, 1);
++      r.onupgradeneeded = () =>
++        r.result.createObjectStore("drafts", { keyPath: "id" });
++      r.onsuccess = () => resolve(r.result);
++      r.onerror = () => reject(r.error);
++      r.onblocked = () =>
++        reject(Error("Close another scan tab and try again."));
++    });
++    return new Promise((resolve, reject) => {
++      const tx = db.transaction("drafts", mode);
++      let value: T, error: Error | undefined;
++      const cleanup = () => {
++        signal?.removeEventListener("abort", abort);
++        db.close();
++      };
++      tx.oncomplete = () => {
++        cleanup();
++        resolve(value);
++      };
++      tx.onabort = tx.onerror = () => {
++        cleanup();
++        reject(error ?? tx.error ?? Error("Draft storage interrupted."));
++      };
++      const fail = (reason: Error) => {
++        error = reason;
++        tx.abort();
++      };
++      const abort = () =>
++        fail(signal?.reason ?? new DOMException("Cancelled", "AbortError"));
++      signal?.addEventListener("abort", abort, { once: true });
++      try {
++        signal?.throwIfAborted();
++        action(tx.objectStore("drafts"), (v) => (value = v), fail);
++      } catch (e) {
++        fail(e as Error);
++      }
++    });
++  }
++  async function readScanDraft() {
++    const draft = await transaction<unknown>("readonly", (store, set) => {
++      const r = store.get("document");
++      r.onsuccess = () => set(r.result);
++    });
++    return draft === undefined ? undefined : decode(draft);
++  }
++  async function saveScanDraft(
++    pages: Blob[],
++    expected: string | undefined,
++    signal: AbortSignal,
++    textLayers?: (ScanTextLine[] | null)[],
++  ) {
++    signal.throwIfAborted();
++    pages = [...pages];
++    valid(pages);
++    textLayers = copyScanTextLayers(textLayers, pages.length);
++    // Read before opening the transaction: awaits must not let IndexedDB auto-commit.
++    const stored: StoredScanDraft["pages"] = [];
++    for (const page of pages) {
++      const bytes = await page.arrayBuffer();
++      signal.throwIfAborted();
++      if (bytes.byteLength !== page.size)
++        throw Error("Could not read the complete page.");
++      stored.push({ bytes, type: page.type });
++    }
++    return transaction<ScanDraft>(
++      "readwrite",
++      (store, set, fail) => {
++        const r = store.get("document");
++        r.onsuccess = () => {
++          try {
++            signal.throwIfAborted();
++            const old = r.result === undefined ? undefined : decode(r.result);
++            if (old?.revision !== expected)
++              throw Error(
++                "A saved draft already exists or changed. Load the saved draft before replacing it.",
++              );
++            const draft: ScanDraft = {
++              id: "document",
++              revision: crypto.randomUUID(),
++              pages,
++              textLayers,
++              updated: Date.now(),
++            };
++            store.put({
++              ...draft,
++              format: 2,
++              pages: stored,
++            } satisfies StoredScanDraft);
++            set(draft);
++          } catch (error) {
++            fail(error as Error);
++          }
++        };
++      },
++      signal,
++    );
++  }
++  async function deleteScanDraft(expected: string, signal: AbortSignal) {
++    return transaction<void>(
++      "readwrite",
++      (store, set, fail) => {
++        const r = store.get("document");
++        r.onsuccess = () => {
++          try {
++            signal.throwIfAborted();
++            if (r.result?.revision !== expected)
++              throw Error("Saved draft changed. Load it before deleting.");
++            store.delete("document");
++            set(undefined);
++          } catch (error) {
++            fail(error as Error);
++          }
++        };
++      },
++      signal,
++    );
++  }
++
++  return { readScanDraft, saveScanDraft, deleteScanDraft };
++}
+diff --git a/plugins/plugin-files/src/documents/scan-edges.ts b/plugins/plugin-files/src/documents/scan-edges.ts
+new file mode 100644
+index 0000000..b2d23a8
+--- /dev/null
++++ b/plugins/plugin-files/src/documents/scan-edges.ts
+@@ -0,0 +1,171 @@
++import {
++  type ScanCorner,
++  type ScanCorners,
++  validateScanCorners,
++} from "./scan-correction.ts";
++
++const cross = (a: ScanCorner, b: ScanCorner, c: ScanCorner) =>
++  (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x);
++const area = (p: ScanCorner[]) =>
++  Math.abs(
++    p.reduce((s, a, i) => {
++      const b = p[(i + 1) % p.length];
++      return s + a.x * b.y - b.x * a.y;
++    }, 0),
++  ) / 2;
++function hull(points: ScanCorner[]) {
++  points.sort((a, b) => a.x - b.x || a.y - b.y);
++  const lower: ScanCorner[] = [],
++    upper: ScanCorner[] = [];
++  for (const p of points) {
++    while (
++      lower.length > 1 &&
++      cross(lower[lower.length - 2], lower[lower.length - 1], p) <= 0
++    )
++      lower.pop();
++    lower.push(p);
++  }
++  for (const p of [...points].reverse()) {
++    while (
++      upper.length > 1 &&
++      cross(upper[upper.length - 2], upper[upper.length - 1], p) <= 0
++    )
++      upper.pop();
++    upper.push(p);
++  }
++  return [...lower.slice(0, -1), ...upper.slice(0, -1)];
++}
++/** Conservative local contrast segmentation. A suggestion is never an applied crop. */
++export async function detectScanEdges(
++  image: Blob,
++  signal: AbortSignal,
++): Promise<ScanCorners | undefined> {
++  signal.throwIfAborted();
++  if (
++    !["image/jpeg", "image/png", "image/webp"].includes(image.type) ||
++    !image.size ||
++    image.size > 16 * 1024 * 1024
++  )
++    throw Error("Choose an image up to 16 MB.");
++  const bitmap = await createImageBitmap(image),
++    canvas = document.createElement("canvas");
++  let pixels: Uint8ClampedArray;
++  try {
++    signal.throwIfAborted();
++    if (
++      !bitmap.width ||
++      !bitmap.height ||
++      bitmap.width * bitmap.height > 32000000
++    )
++      throw Error("Image dimensions are too large.");
++    const scale = Math.min(1, 320 / Math.max(bitmap.width, bitmap.height));
++    canvas.width = Math.max(2, Math.round(bitmap.width * scale));
++    canvas.height = Math.max(2, Math.round(bitmap.height * scale));
++    const ctx = canvas.getContext("2d");
++    if (!ctx) throw Error("Page detection is unavailable.");
++    ctx.fillStyle = "white";
++    ctx.fillRect(0, 0, canvas.width, canvas.height);
++    ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
++    pixels = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
++  } finally {
++    bitmap.close();
++  }
++  const w = canvas.width,
++    h = canvas.height,
++    n = w * h,
++    gray = new Uint8Array(n),
++    border: number[] = [];
++  for (let i = 0; i < n; i++) {
++    gray[i] = Math.round(
++      0.2126 * pixels[i * 4] +
++        0.7152 * pixels[i * 4 + 1] +
++        0.0722 * pixels[i * 4 + 2],
++    );
++    if (i < w || i >= n - w || i % w === 0 || i % w === w - 1)
++      border.push(gray[i]);
++  }
++  border.sort((a, b) => a - b);
++  const background = border[Math.floor(border.length / 2)];
++  const candidates: { corners: ScanCorners; size: number }[] = [];
++  for (const direction of [1, -1]) {
++    const seen = new Uint8Array(n),
++      queue = new Int32Array(n);
++    for (let start = 0; start < n; start++) {
++      if (start % 2048 === 0) {
++        await new Promise<void>((r) => setTimeout(r, 0));
++        signal.throwIfAborted();
++      }
++      if (seen[start] || direction * (gray[start] - background) < 30) continue;
++      let head = 0,
++        tail = 1,
++        touches = false;
++      queue[0] = start;
++      seen[start] = 1;
++      const points: ScanCorner[] = [];
++      while (head < tail) {
++        const at = queue[head++],
++          x = at % w,
++          y = Math.floor(at / w);
++        if (x === 0 || x === w - 1 || y === 0 || y === h - 1) touches = true;
++        let edge = false;
++        for (const next of [
++          x ? at - 1 : -1,
++          x < w - 1 ? at + 1 : -1,
++          y ? at - w : -1,
++          y < h - 1 ? at + w : -1,
++        ]) {
++          if (next < 0 || direction * (gray[next] - background) < 30) {
++            edge = true;
++            continue;
++          }
++          if (!seen[next]) {
++            seen[next] = 1;
++            queue[tail++] = next;
++          }
++        }
++        if (edge) points.push({ x, y });
++      }
++      if (touches || tail < n * 0.15) continue;
++      const outline = hull(points),
++        fullArea = area(outline);
++      if (fullArea <= 0 || tail / fullArea < 0.7) continue;
++      while (outline.length > 4) {
++        let smallest = Infinity,
++          index = 0;
++        for (let i = 0; i < outline.length; i++) {
++          const loss = Math.abs(
++            cross(
++              outline[(i + outline.length - 1) % outline.length],
++              outline[i],
++              outline[(i + 1) % outline.length],
++            ),
++          );
++          if (loss < smallest) {
++            smallest = loss;
++            index = i;
++          }
++        }
++        outline.splice(index, 1);
++      }
++      if (outline.length !== 4 || area(outline) / fullArea < 0.9) continue;
++      let first = 0;
++      for (let i = 1; i < 4; i++)
++        if (outline[i].x + outline[i].y < outline[first].x + outline[first].y)
++          first = i;
++      const corners = [...outline.slice(first), ...outline.slice(0, first)].map(
++        (p) => ({ x: p.x / (w - 1), y: p.y / (h - 1) }),
++      ) as ScanCorners;
++      try {
++        validateScanCorners(corners);
++        candidates.push({ corners, size: tail });
++      } catch {
++        /* Retain manual controls for non-quadrilateral regions. */
++      }
++    }
++  }
++  signal.throwIfAborted();
++  candidates.sort((a, b) => b.size - a.size);
++  if (!candidates.length || candidates[1]?.size > candidates[0].size * 0.5)
++    return undefined;
++  return candidates[0].corners;
++}
+diff --git a/plugins/plugin-files/src/documents/scan-links.ts b/plugins/plugin-files/src/documents/scan-links.ts
+new file mode 100644
+index 0000000..d955ce4
+--- /dev/null
++++ b/plugins/plugin-files/src/documents/scan-links.ts
+@@ -0,0 +1,43 @@
++/** Explicit URL tokens only. OCR never executes or silently repairs a destination. */
++export function scannedLinks(text: string): string[] {
++  if (typeof text !== "string" || text.length > 100000) return [];
++  const result: string[] = [];
++  for (const match of text.matchAll(
++    /(?:^|[\s([{"'])((?:https?:\/\/|www\.)[^\s<>"'`]+)/gi,
++  )) {
++    let raw = match[1].replace(/[.,;]+$/, "");
++    for (const [close, open] of [
++      [")", "("],
++      ["]", "["],
++      ["}", "{"],
++    ]) {
++      while (
++        raw.endsWith(close) &&
++        raw.split(close).length > raw.split(open).length
++      )
++        raw = raw.slice(0, -1);
++    }
++    if (
++      /^https?:\/\/[/?#]/i.test(raw) ||
++      raw.length > 2048 ||
++      // biome-ignore lint/suspicious/noControlCharactersInRegex: Reject control characters in untrusted input.
++      /[\\\u0000-\u001f\u007f]/.test(raw)
++    )
++      continue;
++    try {
++      const url = new URL(/^www\./i.test(raw) ? "https://" + raw : raw);
++      if (
++        !["https:", "http:"].includes(url.protocol) ||
++        !url.hostname ||
++        url.username ||
++        url.password
++      )
++        continue;
++      if (!result.includes(url.href)) result.push(url.href);
++      if (result.length === 10) break;
++    } catch {
++      /* Invalid OCR is kept in the editable text, never navigated. */
++    }
++  }
++  return result;
++}
+diff --git a/plugins/plugin-files/src/documents/scan-pdf.ts b/plugins/plugin-files/src/documents/scan-pdf.ts
+new file mode 100644
+index 0000000..a726350
+--- /dev/null
++++ b/plugins/plugin-files/src/documents/scan-pdf.ts
+@@ -0,0 +1,139 @@
++import { type ScanTextLine, validateScanTextLayer } from "./scan-text-layer.ts";
++export interface ScanPdfMetadata {
++  title: string;
++  creator: string;
++}
++/** Images remain unchanged; optional reviewed line layers are invisible searchable text. */
++export async function createScanPdf(
++  metadata: ScanPdfMetadata,
++  input: Blob | Blob[],
++  signal: AbortSignal,
++  textLayers?: ScanTextLine[][],
++): Promise<Uint8Array<ArrayBuffer>> {
++  signal.throwIfAborted();
++  const images = Array.isArray(input) ? [...input] : [input];
++  if (
++    !images.length ||
++    images.length > 20 ||
++    images.reduce((total, image) => total + image.size, 0) > 64 * 1024 * 1024
++  )
++    throw Error("Choose 1 to 20 pages, up to 64 MB total.");
++  const layers = textLayers?.map((lines) => {
++    validateScanTextLayer(lines);
++    return lines.map((line) => ({ ...line }));
++  });
++  if (layers && layers.length !== images.length)
++    throw Error("Text review must match every document page.");
++  const {
++    PDFDocument,
++    StandardFonts,
++    pushGraphicsState,
++    popGraphicsState,
++    setTextRenderingMode,
++    TextRenderingMode,
++    setCharacterSqueeze,
++  } = await import("pdf-lib");
++  signal.throwIfAborted();
++  const pdf = await PDFDocument.create();
++  const font = layers
++    ? await pdf.embedFont(StandardFonts.Helvetica)
++    : undefined;
++  if (font && layers)
++    for (const lines of layers)
++      for (const line of lines) {
++        try {
++          font.encodeText(line.text);
++        } catch {
++          throw Error(
++            "Searchable PDF supports English and Western European text. Correct unsupported characters or export an image-only PDF.",
++          );
++        }
++      }
++  for (const [index, image] of images.entries()) {
++    signal.throwIfAborted();
++    if (
++      !["image/jpeg", "image/png", "image/webp"].includes(image.type) ||
++      !image.size ||
++      image.size > 16 * 1024 * 1024
++    )
++      throw Error("Choose a supported image up to 16 MB.");
++    const bitmap = await createImageBitmap(image);
++    let jpeg: Blob;
++    try {
++      signal.throwIfAborted();
++      if (
++        !bitmap.width ||
++        !bitmap.height ||
++        bitmap.width * bitmap.height > 32000000
++      )
++        throw Error("Image dimensions are too large.");
++      const scale = Math.min(1, 2048 / Math.max(bitmap.width, bitmap.height));
++      const canvas = document.createElement("canvas");
++      canvas.width = Math.max(1, Math.round(bitmap.width * scale));
++      canvas.height = Math.max(1, Math.round(bitmap.height * scale));
++      const context = canvas.getContext("2d");
++      if (!context) throw Error("Image conversion is unavailable.");
++      context.fillStyle = "white";
++      context.fillRect(0, 0, canvas.width, canvas.height);
++      context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
++      jpeg = await new Promise<Blob>((resolve, reject) =>
++        canvas.toBlob(
++          (value) =>
++            value ? resolve(value) : reject(Error("Image conversion failed.")),
++          "image/jpeg",
++          0.9,
++        ),
++      );
++    } finally {
++      bitmap.close();
++    }
++    signal.throwIfAborted();
++    const picture = await pdf.embedJpg(await jpeg.arrayBuffer());
++    signal.throwIfAborted();
++    const landscape = picture.width > picture.height;
++    const page = pdf.addPage(landscape ? [841.89, 595.28] : [595.28, 841.89]);
++    const margin = 24;
++    const scale = Math.min(
++      (page.getWidth() - margin * 2) / picture.width,
++      (page.getHeight() - margin * 2) / picture.height,
++    );
++    const width = picture.width * scale,
++      height = picture.height * scale;
++    page.drawImage(picture, {
++      x: (page.getWidth() - width) / 2,
++      y: (page.getHeight() - height) / 2,
++      width,
++      height,
++    });
++    if (font && layers)
++      for (const line of layers[index]) {
++        signal.throwIfAborted();
++        if (!line.text.trim()) continue;
++        const size =
++            (line.height * height) / font.heightAtSize(1, { descender: false }),
++          natural = font.widthOfTextAtSize(line.text, size);
++        if (!natural) continue;
++        page.pushOperators(
++          pushGraphicsState(),
++          setTextRenderingMode(TextRenderingMode.Invisible),
++          setCharacterSqueeze(((line.width * width) / natural) * 100),
++        );
++        page.drawText(line.text, {
++          font,
++          size,
++          x: (page.getWidth() - width) / 2 + line.x * width,
++          y:
++            (page.getHeight() - height) / 2 +
++            (1 - line.y - line.height) * height,
++        });
++        page.pushOperators(popGraphicsState());
++      }
++  }
++  pdf.setTitle(metadata.title);
++  pdf.setCreator(metadata.creator);
++  const bytes = new Uint8Array(await pdf.save());
++  signal.throwIfAborted();
++  if (bytes.length > 8 * 1024 * 1024)
++    throw Error("PDF exceeds the 8 MB export limit.");
++  return bytes;
++}
+diff --git a/plugins/plugin-files/src/documents/scan-text-layer.ts b/plugins/plugin-files/src/documents/scan-text-layer.ts
+new file mode 100644
+index 0000000..cf6f595
+--- /dev/null
++++ b/plugins/plugin-files/src/documents/scan-text-layer.ts
+@@ -0,0 +1,32 @@
++/** Coordinates are normalized to the exact reviewed image, with a top-left origin. */
++export type ScanTextLine = {
++  text: string;
++  x: number;
++  y: number;
++  width: number;
++  height: number;
++};
++export function validateScanTextLayer(lines: ScanTextLine[]) {
++  if (!Array.isArray(lines) || lines.length > 2000)
++    throw Error("Choose at most 2,000 text lines per page.");
++  let length = 0;
++  for (const line of lines) {
++    if (
++      !line ||
++      typeof line.text !== "string" ||
++      line.text.length > 4000 ||
++      // biome-ignore lint/suspicious/noControlCharactersInRegex: Reject control characters in untrusted input.
++      /[\r\n\u0000-\u0008\u000b-\u001f]/.test(line.text) ||
++      ![line.x, line.y, line.width, line.height].every(Number.isFinite) ||
++      line.x < 0 ||
++      line.y < 0 ||
++      line.width <= 0 ||
++      line.height <= 0 ||
++      line.x + line.width > 1.000001 ||
++      line.y + line.height > 1.000001
++    )
++      throw Error("Invalid scanned line or position.");
++    length += line.text.length;
++  }
++  if (length > 100000) throw Error("Page text exceeds 100,000 characters.");
++}
+diff --git a/plugins/plugin-files/src/index.ts b/plugins/plugin-files/src/index.ts
+new file mode 100644
+index 0000000..7251215
+--- /dev/null
++++ b/plugins/plugin-files/src/index.ts
+@@ -0,0 +1,3 @@
++export * from "./browser/attachment.ts";
++export * from "./browser/file-archive.ts";
++export * from "./browser/files.ts";
+diff --git a/plugins/plugin-files/test/file-content.test.mjs b/plugins/plugin-files/test/file-content.test.mjs
+new file mode 100644
+index 0000000..fdd1ffd
+--- /dev/null
++++ b/plugins/plugin-files/test/file-content.test.mjs
+@@ -0,0 +1,57 @@
++import assert from "node:assert/strict";
++import test from "node:test";
++import { reviewMailAttachment } from "../src/browser/attachment.ts";
++import { fileArchive } from "../src/browser/file-archive.ts";
++
++test("archives retain exact binary bytes and reject traversal and duplicate paths", async () => {
++  const bytes = new Uint8Array([0, 255, 128, 13, 10]);
++  const result = new Uint8Array(
++    await fileArchive([{ path: "sample.bin", bytes }]).arrayBuffer(),
++  );
++  assert.deepEqual(result.slice(40, 45), bytes);
++  for (const path of [
++    "../escape",
++    "/absolute",
++    "C:/absolute",
++    "folder/../escape",
++  ])
++    assert.throws(
++      () => fileArchive([{ path, bytes }]),
++      /relative archive paths/,
++    );
++  assert.throws(
++    () =>
++      fileArchive([
++        { path: "same", bytes },
++        { path: "same", bytes },
++      ]),
++    /distinct/,
++  );
++});
++test("attachments validate exact bytes and type before deriving a review hash", async () => {
++  const bytes = "hello\r\n";
++  const result = await reviewMailAttachment({
++    name: "note.txt",
++    mimeType: "text/plain",
++    dataBase64: btoa(bytes),
++  });
++  assert.equal(result.text, bytes);
++  assert.equal(result.size, 7);
++  assert.match(result.sha256, /^[a-f0-9]{64}$/);
++  await assert.rejects(
++    reviewMailAttachment({
++      name: "note.pdf",
++      mimeType: "application/pdf",
++      dataBase64: btoa(bytes),
++    }),
++    /content must match/,
++  );
++  await assert.rejects(
++    reviewMailAttachment({
++      name: "../note.txt",
++      mimeType: "text/plain",
++      dataBase64: btoa(bytes),
++    }),
++    /Invalid attachment/,
++  );
++});
+diff --git a/plugins/plugin-files/tsconfig.build.json b/plugins/plugin-files/tsconfig.build.json
+new file mode 100644
+index 0000000..0f6bbd3
+--- /dev/null
++++ b/plugins/plugin-files/tsconfig.build.json
+@@ -0,0 +1,14 @@
++{
++  "extends": "../tsconfig.build.shared.json",
++  "compilerOptions": {
++    "outDir": "dist",
++    "rootDir": "./src"
++  },
++  "include": ["src"],
++  "exclude": [
++    "src/**/*.test.ts",
++    "src/**/*.test.tsx",
++    "src/**/__tests__/**",
++    "src/**/__e2e__/**"
++  ]
++}
+diff --git a/plugins/plugin-files/tsconfig.json b/plugins/plugin-files/tsconfig.json
+new file mode 100644
+index 0000000..87420d8
+--- /dev/null
++++ b/plugins/plugin-files/tsconfig.json
+@@ -0,0 +1,27 @@
++{
++  "compilerOptions": {
++    "composite": false,
++    "types": [
++      "node"
++    ],
++    "declaration": false,
++    "declarationMap": false,
++    "incremental": false,
++    "target": "ES2022",
++    "module": "ESNext",
++    "moduleResolution": "Bundler",
++    "lib": [
++      "ES2023",
++      "DOM",
++      "DOM.Iterable"
++    ],
++    "strict": true,
++    "skipLibCheck": true,
++    "allowImportingTsExtensions": true,
++    "noEmit": true
++  },
++  "include": [
++    "src/**/*.ts"
++  ],
++  "exclude": []
++}
+diff --git a/plugins/plugin-maps/src/client/agent-context.ts b/plugins/plugin-maps/src/client/agent-context.ts
+new file mode 100644
+index 0000000..f818946
+--- /dev/null
++++ b/plugins/plugin-maps/src/client/agent-context.ts
+@@ -0,0 +1,69 @@
++import {
++  type MapsFields,
++  type MapsOperation,
++  type MapsResult,
++  validateMapsResult,
++} from "./approved-read.ts";
++/** Process-local capability for a Maps observation. The identity envelope contains
++ * no location data; content stays local behind the explicitly approved resolver. */
++export type MapsSelectedObject = Readonly<{
++  kind: "map-place" | "map-route" | "map-search";
++  id: string;
++  revision: string;
++}>;
++let current: MapsSelectedObject | undefined;
++let identity: unknown;
++let readCurrent: (() => MapsFields) | undefined;
++export function publishMapsSelection(
++  kind: MapsSelectedObject["kind"],
++  owner: object,
++  revision: number,
++  read?: () => MapsFields,
++): void {
++  if (!Number.isSafeInteger(revision) || revision < 0)
++    throw new Error("Invalid Maps observation revision.");
++  const id =
++    current?.kind === kind && identity === owner
++      ? current.id
++      : `maps_${crypto.randomUUID()}`;
++  identity = owner;
++  readCurrent = read;
++  current = Object.freeze({ kind, id, revision: String(revision) });
++}
++export function clearMapsSelection(): void {
++  current = undefined;
++  identity = undefined;
++  readCurrent = undefined;
++}
++export function getMapsSelectedObject(): MapsSelectedObject | undefined {
++  return current ? { ...current } : undefined;
++}
++export function validateMapsSelectedObject(value: {
++  kind: string;
++  id: string;
++  revision?: string;
++  accountId?: string;
++}): boolean {
++  return (
++    !!current &&
++    value.accountId === undefined &&
++    value.kind === current.kind &&
++    value.id === current.id &&
++    value.revision === current.revision
++  );
++}
++
++/** Called only by the approved device executor; never by context serialization. */
++export function readMapsSelection(operation: MapsOperation): MapsResult {
++  if (!validateMapsSelectedObject(operation.target) || !readCurrent)
++    throw Error("Selected Maps observation changed or is unavailable.");
++  const fields = readCurrent();
++  if (!validateMapsSelectedObject(operation.target))
++    throw Error("Selected Maps observation changed.");
++  return validateMapsResult(operation, {
++    kind: operation.type,
++    version: 1,
++    target: operation.target,
++    fields,
++  });
++}
+diff --git a/plugins/plugin-maps/src/client/approved-read.ts b/plugins/plugin-maps/src/client/approved-read.ts
+new file mode 100644
+index 0000000..6cedd6c
+--- /dev/null
++++ b/plugins/plugin-maps/src/client/approved-read.ts
+@@ -0,0 +1,173 @@
++/** Approved, bounded selected-map read. Opaque targets contain no location data. */
++export type MapsTarget = {
++  kind: "map-place" | "map-route";
++  id: string;
++  revision: string;
++};
++export type MapsOperation = { type: "maps_read_selected"; target: MapsTarget };
++type Point = { latitude: number; longitude: number };
++export type MapsFields = {
++  providerId: string;
++  providerRevision: string;
++  attribution: string;
++} & (
++  | { kind: "map-place"; label: string; coordinate: Point }
++  | {
++      kind: "map-route";
++      from: Point;
++      to: Point;
++      mode: "drive" | "walk" | "bicycle";
++      distanceMeters: number;
++      durationSeconds: number;
++      traffic: "none" | "approximated" | "live";
++    }
++);
++export type MapsResult = {
++  kind: "maps_read_selected";
++  version: 1;
++  target: MapsTarget;
++  fields: MapsFields;
++};
++function obj(v: unknown): Record<string, unknown> {
++  if (!v || typeof v !== "object" || Array.isArray(v))
++    throw Error("Invalid Maps read");
++  return v as Record<string, unknown>;
++}
++function keys(v: Record<string, unknown>, allowed: string[]) {
++  if (
++    Object.keys(v).length !== allowed.length ||
++    Object.keys(v).some((k) => !allowed.includes(k))
++  )
++    throw Error("Invalid Maps read fields");
++}
++function text(v: unknown, max: number): string {
++  if (
++    typeof v !== "string" ||
++    !v.trim() ||
++    v.length > max ||
++    // biome-ignore lint/suspicious/noControlCharactersInRegex: Reject control characters in untrusted input.
++    /[\u0000-\u001f]/.test(v)
++  )
++    throw Error("Invalid Maps text");
++  return v;
++}
++function point(v: unknown): Point {
++  const p = obj(v);
++  keys(p, ["latitude", "longitude"]);
++  if (
++    typeof p.latitude !== "number" ||
++    !Number.isFinite(p.latitude) ||
++    typeof p.longitude !== "number" ||
++    !Number.isFinite(p.longitude) ||
++    Math.abs(p.latitude) > 90 ||
++    Math.abs(p.longitude) > 180
++  )
++    throw Error("Invalid Maps coordinate");
++  return { latitude: p.latitude, longitude: p.longitude };
++}
++export function mapsTarget(v: unknown): MapsTarget {
++  const t = obj(v);
++  keys(t, ["kind", "id", "revision"]);
++  if (
++    (t.kind !== "map-place" && t.kind !== "map-route") ||
++    !/^maps_[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/.test(
++      text(t.id, 64),
++    ) ||
++    !/^(0|[1-9][0-9]{0,15})$/.test(text(t.revision, 16)) ||
++    !Number.isSafeInteger(Number(t.revision))
++  )
++    throw Error("Invalid Maps target");
++  return { kind: t.kind, id: text(t.id, 64), revision: text(t.revision, 16) };
++}
++export function isMapsOperation(v: { type?: unknown }): v is MapsOperation {
++  return v.type === "maps_read_selected";
++}
++export function validateMapsOperation(v: unknown): MapsOperation {
++  const op = obj(v);
++  keys(op, ["type", "target"]);
++  if (op.type !== "maps_read_selected") throw Error("Invalid Maps operation");
++  return { type: op.type, target: mapsTarget(op.target) };
++}
++export function validateMapsResult(
++  op: MapsOperation,
++  value: unknown,
++): MapsResult {
++  const r = obj(value);
++  keys(r, ["kind", "version", "target", "fields"]);
++  const target = mapsTarget(r.target);
++  if (
++    r.kind !== op.type ||
++    r.version !== 1 ||
++    target.id !== op.target.id ||
++    target.kind !== op.target.kind ||
++    target.revision !== op.target.revision
++  )
++    throw Error("Maps receipt target changed");
++  const f = obj(r.fields),
++    common = {
++      providerId: text(f.providerId, 80),
++      providerRevision: text(f.providerRevision, 128),
++      attribution: text(f.attribution, 2000),
++    };
++  let fields: MapsFields;
++  if (target.kind === "map-place") {
++    keys(f, [
++      "kind",
++      "providerId",
++      "providerRevision",
++      "attribution",
++      "label",
++      "coordinate",
++    ]);
++    if (f.kind !== target.kind) throw Error("Maps receipt kind changed");
++    fields = {
++      ...common,
++      kind: "map-place",
++      label: text(f.label, 300),
++      coordinate: point(f.coordinate),
++    };
++  } else {
++    keys(f, [
++      "kind",
++      "providerId",
++      "providerRevision",
++      "attribution",
++      "from",
++      "to",
++      "mode",
++      "distanceMeters",
++      "durationSeconds",
++      "traffic",
++    ]);
++    if (
++      f.kind !== target.kind ||
++      (f.mode !== "drive" && f.mode !== "walk" && f.mode !== "bicycle") ||
++      (f.traffic !== "none" &&
++        f.traffic !== "approximated" &&
++        f.traffic !== "live") ||
++      typeof f.distanceMeters !== "number" ||
++      !Number.isFinite(f.distanceMeters) ||
++      f.distanceMeters < 0 ||
++      f.distanceMeters > 1e8 ||
++      typeof f.durationSeconds !== "number" ||
++      !Number.isFinite(f.durationSeconds) ||
++      f.durationSeconds < 0 ||
++      f.durationSeconds > 1e8
++    )
++      throw Error("Invalid Maps route receipt");
++    fields = {
++      ...common,
++      kind: "map-route",
++      from: point(f.from),
++      to: point(f.to),
++      mode: f.mode,
++      distanceMeters: f.distanceMeters,
++      durationSeconds: f.durationSeconds,
++      traffic: f.traffic,
++    };
++  }
++  const result: MapsResult = { kind: op.type, version: 1, target, fields };
++  if (new TextEncoder().encode(JSON.stringify(result)).length > 7600)
++    throw Error("Maps receipt too large");
++  return result;
++}
+diff --git a/plugins/plugin-maps/src/client/contracts.ts b/plugins/plugin-maps/src/client/contracts.ts
+new file mode 100644
+index 0000000..22f3436
+--- /dev/null
++++ b/plugins/plugin-maps/src/client/contracts.ts
+@@ -0,0 +1,204 @@
++/** Device-client contracts. No prototype place, route or location is a fallback. */
++export type Coordinate = Readonly<{ latitude: number; longitude: number }>;
++export type TravelMode = "drive" | "walk" | "bicycle" | "transit";
++export type MapsFailureCode =
++  | "unconfigured"
++  | "unavailable"
++  | "permission-denied"
++  | "timeout"
++  | "cancelled"
++  | "offline"
++  | "rate-limited"
++  | "unauthorized"
++  | "invalid-response"
++  | "unsupported"
++  | "storage";
++export class MapsFailure extends Error {
++  constructor(
++    readonly code: MapsFailureCode,
++    message: string,
++  ) {
++    super(message);
++    this.name = "MapsFailure";
++  }
++}
++export type ProviderCapabilities = Readonly<{
++  map: boolean;
++  search: boolean;
++  placeDetails: boolean;
++  modes: readonly TravelMode[];
++  traffic: "none" | "approximated" | "live";
++  transit: "none" | "approximated" | "scheduled";
++  offline: Readonly<{ map: boolean; search: boolean; routing: boolean }>;
++}>;
++export const unavailableCapabilities: ProviderCapabilities = Object.freeze({
++  map: false,
++  search: false,
++  placeDetails: false,
++  modes: [],
++  traffic: "none",
++  transit: "none",
++  offline: { map: false, search: false, routing: false },
++});
++export type ProviderConfig =
++  | Readonly<{ status: "unconfigured" }>
++  | Readonly<{
++      status: "configured";
++      providerId: string;
++      connectionId: string;
++      revision: string;
++      capabilities: ProviderCapabilities;
++    }>;
++export type Place = Readonly<{
++  providerId: string;
++  id: string;
++  name: string;
++  coordinate: Coordinate;
++  address?: string;
++  website?: string;
++  phone?: string;
++  attribution: string;
++  fetchedAt: number;
++}>;
++export type Route = Readonly<{
++  providerId: string;
++  id: string;
++  from: Coordinate;
++  to: Coordinate;
++  mode: TravelMode;
++  geometry: readonly Coordinate[];
++  distanceMeters: number;
++  durationSeconds: number;
++  steps: readonly Readonly<{
++    instruction: string;
++    coordinate: Coordinate;
++    distanceMeters: number;
++  }>[];
++  attribution: string;
++  fetchedAt: number;
++  traffic: ProviderCapabilities["traffic"];
++}>;
++export interface MapsProvider {
++  readonly providerId: string;
++  readonly connectionId: string;
++  search(query: string, signal: AbortSignal): Promise<readonly Place[]>;
++  detail(id: string, signal: AbortSignal): Promise<Place | null>;
++  route(
++    from: Coordinate,
++    to: Coordinate,
++    mode: TravelMode,
++    signal: AbortSignal,
++  ): Promise<Route>;
++}
++export type ResultState<T> = Readonly<{
++  phase: "idle" | "loading" | "ready" | "empty" | "error";
++  value: T;
++  error: MapsFailure | null;
++}>;
++export function coordinate(value: unknown): Coordinate {
++  if (!value || typeof value !== "object")
++    throw new MapsFailure("invalid-response", "A real coordinate is required.");
++  const candidate = value as Coordinate;
++  if (
++    !Number.isFinite(candidate.latitude) ||
++    !Number.isFinite(candidate.longitude) ||
++    Math.abs(candidate.latitude) > 90 ||
++    Math.abs(candidate.longitude) > 180
++  )
++    throw new MapsFailure("invalid-response", "The coordinate is invalid.");
++  return { latitude: candidate.latitude, longitude: candidate.longitude };
++}
++export function boundedText(value: unknown, limit: number): value is string {
++  return (
++    typeof value === "string" &&
++    value.trim().length > 0 &&
++    value.length <= limit &&
++    // biome-ignore lint/suspicious/noControlCharactersInRegex: Reject control characters in untrusted input.
++    !/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/.test(value)
++  );
++}
++export function place(value: unknown, expectedProvider?: string): Place {
++  if (!value || typeof value !== "object")
++    throw new MapsFailure("invalid-response", "The place is invalid.");
++  const p = value as Place;
++  if (
++    !boundedText(p.id, 512) ||
++    !boundedText(p.providerId, 80) ||
++    !boundedText(p.name, 300) ||
++    !boundedText(p.attribution, 2000) ||
++    !Number.isFinite(p.fetchedAt) ||
++    p.fetchedAt <= 0 ||
++    p.fetchedAt > Date.now() + 60000 ||
++    (expectedProvider && p.providerId !== expectedProvider)
++  )
++    throw new MapsFailure(
++      "invalid-response",
++      "The place identity or provenance is invalid.",
++    );
++  if (p.address !== undefined && !boundedText(p.address, 1000))
++    throw new MapsFailure("invalid-response", "The place address is invalid.");
++  if (p.phone !== undefined && !/^[+0-9() .-]{3,80}$/.test(p.phone))
++    throw new MapsFailure(
++      "invalid-response",
++      "The place phone number is invalid.",
++    );
++  if (p.website !== undefined) {
++    let url: URL;
++    try {
++      url = new URL(p.website);
++    } catch {
++      throw new MapsFailure(
++        "invalid-response",
++        "The place website is invalid.",
++      );
++    }
++    if (
++      !["http:", "https:"].includes(url.protocol) ||
++      url.username ||
++      url.password ||
++      p.website.length > 2048
++    )
++      throw new MapsFailure(
++        "invalid-response",
++        "The place website is invalid.",
++      );
++  }
++  return {
++    providerId: p.providerId,
++    id: p.id,
++    name: p.name,
++    coordinate: coordinate(p.coordinate),
++    ...(p.address ? { address: p.address } : {}),
++    ...(p.phone ? { phone: p.phone } : {}),
++    ...(p.website ? { website: p.website } : {}),
++    attribution: p.attribution,
++    fetchedAt: p.fetchedAt,
++  };
++}
++export function configuredProvider(
++  config: ProviderConfig,
++  provider?: MapsProvider,
++): MapsProvider {
++  if (config.status === "unconfigured")
++    throw new MapsFailure(
++      "unconfigured",
++      "Connect a Maps provider to search places and plan routes.",
++    );
++  if (
++    !provider ||
++    !boundedText(config.revision, 100) ||
++    !/^conn_[A-Za-z0-9_-]{16,}$/.test(config.connectionId) ||
++    provider.connectionId !== config.connectionId ||
++    provider.providerId !== config.providerId
++  )
++    throw new MapsFailure(
++      "unavailable",
++      "The configured Maps connection is unavailable.",
++    );
++  return provider;
++}
++export function failure(error: unknown): MapsFailure {
++  return error instanceof MapsFailure
++    ? error
++    : new MapsFailure("unavailable", "Maps could not complete this request.");
++}
+diff --git a/plugins/plugin-maps/src/client/index.ts b/plugins/plugin-maps/src/client/index.ts
+new file mode 100644
+index 0000000..6cc17ba
+--- /dev/null
++++ b/plugins/plugin-maps/src/client/index.ts
+@@ -0,0 +1,9 @@
++export * from "./agent-context.ts";
++export * from "./approved-read.ts";
++export * from "./contracts.ts";
++export * from "./location.ts";
++export * from "./navigation-voice.ts";
++export * from "./route-distance.ts";
++export * from "./runtime.ts";
++export * from "./saved-places.ts";
++export * from "./state.ts";
+diff --git a/plugins/plugin-maps/src/client/location.ts b/plugins/plugin-maps/src/client/location.ts
+new file mode 100644
+index 0000000..2f66819
+--- /dev/null
++++ b/plugins/plugin-maps/src/client/location.ts
+@@ -0,0 +1,17 @@
++import type { Coordinate, MapsFailure } from "./contracts.ts";
++export type Position = Readonly<{
++  coordinate: Coordinate;
++  accuracyMeters: number;
++  timestamp: number;
++  precision: "precise" | "approximate" | "unknown";
++}>;
++/** Host-owned permission and lifecycle boundary; a controller never discovers a device. */
++export interface MapsLocation {
++  awaitingPermission(): boolean;
++  start(
++    oneShot: boolean,
++    onFix: (position: Position) => void,
++    onError: (error: MapsFailure) => void,
++  ): Promise<void>;
++  stop(): Promise<void>;
++}
+diff --git a/plugins/plugin-maps/src/client/map-plane.ts b/plugins/plugin-maps/src/client/map-plane.ts
+new file mode 100644
+index 0000000..3c8846d
+--- /dev/null
++++ b/plugins/plugin-maps/src/client/map-plane.ts
+@@ -0,0 +1,256 @@
++import {
++  addProtocol,
++  type GeoJSONSource,
++  Map as MapLibre,
++  Marker,
++  setWorkerCount,
++  setWorkerUrl,
++} from "maplibre-gl";
++import type { Coordinate, Route } from "./contracts.ts";
++export type RegionalMap = {
++  base: string;
++  region: string;
++  bounds: [number, number, number, number];
++  attribution: string;
++};
++export interface MapPlaneOptions {
++  fontUrl: string;
++  workerUrl: string;
++  accent: string;
++  protocol: string;
++  routePadding: { top: number; bottom: number; left: number; right: number };
++  nativeRegion(base: string): boolean;
++  nativeRequest(
++    path: string,
++    signal: AbortSignal,
++  ): Promise<{ status: number; bytes: Uint8Array<ArrayBuffer> }>;
++}
++/** Renderer only: no geolocation, third-party style, glyph, sprite or search calls. */
++export class MapPlane {
++  private map: MapLibre;
++  private marker?: Marker;
++  private lastSelection = "";
++  private lastRoute = "";
++  private requested?: Coordinate;
++  private requestedRoute?: Route | null;
++  constructor(
++    container: HTMLElement,
++    region: RegionalMap,
++    onError: () => void,
++    colors: Record<string, string>,
++    private options: MapPlaneOptions,
++  ) {
++    setWorkerUrl(options.workerUrl);
++    setWorkerCount(1);
++    addProtocol(options.protocol, async (request, abort) => {
++      // WebView's custom-scheme URL parser can put the authority in pathname.
++      // Match the complete wire format instead; never accept another target or query.
++      const tile =
++        /^[a-z][a-z0-9+.-]*:\/\/tiles\/([0-9]{1,2})\/([0-9]{1,6})\/([0-9]{1,6})\.pbf$/.exec(
++          request.url,
++        );
++      if (!tile) throw new Error("Invalid regional tile");
++      const [, z, x, y] = tile;
++      const zoom = Number(z),
++        column = Number(x),
++        row = Number(y);
++      if (zoom > 14 || column >= 2 ** zoom || row >= 2 ** zoom)
++        throw new Error("Invalid regional tile");
++      const result = await options.nativeRequest(
++        `/tiles/${zoom}/${column}/${row}.pbf`,
++        abort.signal,
++      );
++      if (result.status !== 200 && result.status !== 204)
++        throw new Error("Regional tile unavailable");
++      return { data: result.bytes.buffer };
++    });
++
++    const [w, s, e, n] = region.bounds;
++    this.map = new MapLibre({
++      container,
++      center: [(w + e) / 2, (s + n) / 2],
++      zoom: 14,
++      minZoom: 11,
++      maxZoom: 18,
++      maxBounds: [
++        [w - 0.01, s - 0.01],
++        [e + 0.01, n + 0.01],
++      ],
++      attributionControl: false,
++      style: {
++        version: 8,
++        "font-faces": { "Map Labels": options.fontUrl },
++        sources: {
++          regional: {
++            type: "vector",
++            tiles: [
++              options.nativeRegion(region.base)
++                ? options.protocol + "://tiles/{z}/{x}/{y}.pbf"
++                : region.base + "/tiles/{z}/{x}/{y}.pbf",
++            ],
++            maxzoom: 14,
++            bounds: region.bounds,
++          },
++        },
++        layers: [
++          {
++            id: "land",
++            type: "background",
++            paint: { "background-color": colors.land },
++          },
++          {
++            id: "water",
++            type: "fill",
++            source: "regional",
++            "source-layer": "water",
++            paint: { "fill-color": colors.water },
++          },
++          {
++            id: "park",
++            type: "fill",
++            source: "regional",
++            "source-layer": "landcover",
++            paint: { "fill-color": colors.park, "fill-opacity": 0.6 },
++          },
++          {
++            id: "buildings",
++            type: "fill",
++            source: "regional",
++            "source-layer": "building",
++            paint: { "fill-color": colors.rwy, "fill-opacity": 0.55 },
++          },
++          {
++            id: "road-outline",
++            type: "line",
++            source: "regional",
++            "source-layer": "transportation",
++            paint: { "line-color": colors.fwyE, "line-width": 6 },
++          },
++          {
++            id: "roads",
++            type: "line",
++            source: "regional",
++            "source-layer": "transportation",
++            paint: { "line-color": colors.major, "line-width": 3 },
++          },
++          {
++            id: "street-names",
++            type: "symbol",
++            source: "regional",
++            "source-layer": "transportation_name",
++            layout: {
++              "symbol-placement": "line",
++              "text-field": ["get", "name"],
++              "text-font": ["Map Labels"],
++              "text-size": 11,
++            },
++            paint: {
++              "text-color": colors.label,
++              "text-halo-color": colors.land,
++              "text-halo-width": 1,
++            },
++          },
++          {
++            id: "place-names",
++            type: "symbol",
++            source: "regional",
++            "source-layer": "place",
++            layout: {
++              "text-field": ["get", "name"],
++              "text-font": ["Map Labels"],
++              "text-size": 13,
++            },
++            paint: {
++              "text-color": colors.label,
++              "text-halo-color": colors.land,
++              "text-halo-width": 1,
++            },
++          },
++        ],
++      },
++    });
++    this.map.on("idle", () => {
++      container.dataset.mapFeatureCount = String(
++        this.map.queryRenderedFeatures({ layers: ["roads"] }).length,
++      );
++    });
++    this.map.on("error", (event) => {
++      const message = String(event.error?.message || "");
++      container.dataset.mapError = /worker/i.test(message)
++        ? "worker-load"
++        : /webgl|context/i.test(message)
++          ? "webgl"
++          : /fetch|request|tile|load/i.test(message)
++            ? "resource-load"
++            : "render-error";
++      onError();
++    });
++    this.map.on("load", () => {
++      container.dataset.mapReady = "true";
++      this.update(this.requested, this.requestedRoute);
++    });
++  }
++  update(selected?: Coordinate, route?: Route | null) {
++    this.requested = selected;
++    this.requestedRoute = route;
++    if (!this.map.isStyleLoaded()) return;
++    const key = selected ? `${selected.longitude},${selected.latitude}` : "";
++    if (key !== this.lastSelection) {
++      this.lastSelection = key;
++      this.marker?.remove();
++      this.marker = undefined;
++      if (selected) {
++        this.marker = new Marker({ color: this.options.accent })
++          .setLngLat([selected.longitude, selected.latitude])
++          .addTo(this.map);
++        this.map.easeTo({
++          center: [selected.longitude, selected.latitude],
++          duration: 350,
++        });
++      }
++    }
++    const routeKey = route?.id || "";
++    if (routeKey === this.lastRoute) return;
++    this.lastRoute = routeKey;
++    const data = {
++      type: "Feature" as const,
++      properties: {},
++      geometry: {
++        type: "LineString" as const,
++        coordinates:
++          route?.geometry.map((p) => [p.longitude, p.latitude]) || [],
++      },
++    };
++    if (this.map.getSource("route"))
++      (this.map.getSource("route") as GeoJSONSource).setData(data);
++    else {
++      this.map.addSource("route", { type: "geojson", data });
++      this.map.addLayer({
++        id: "route-line",
++        type: "line",
++        source: "route",
++        paint: { "line-color": this.options.accent, "line-width": 6 },
++      });
++    }
++    if (route) {
++      const p = route.geometry;
++      this.map.fitBounds(
++        [
++          [
++            Math.min(...p.map((v) => v.longitude)),
++            Math.min(...p.map((v) => v.latitude)),
++          ],
++          [
++            Math.max(...p.map((v) => v.longitude)),
++            Math.max(...p.map((v) => v.latitude)),
++          ],
++        ],
++        { padding: this.options.routePadding, duration: 350, maxZoom: 17 },
++      );
++    }
++  }
++  destroy() {
++    this.marker?.remove();
++    this.map.remove();
++  }
++}
+diff --git a/plugins/plugin-maps/src/client/native-location.ts b/plugins/plugin-maps/src/client/native-location.ts
+new file mode 100644
+index 0000000..92c954a
+--- /dev/null
++++ b/plugins/plugin-maps/src/client/native-location.ts
+@@ -0,0 +1,262 @@
++type Permission = {
++  location: "granted" | "denied" | "prompt";
++  accuracy?: "precise" | "approximate" | "none";
++};
++type Fix = {
++  coords: {
++    latitude: number;
++    longitude: number;
++    accuracy: number;
++    timestamp: number;
++  };
++  cached: boolean;
++};
++
++import type { PluginListenerHandle } from "@capacitor/core";
++import { coordinate, MapsFailure } from "./contracts.ts";
++import type { Position } from "./location.ts";
++
++export type { Position } from "./location.ts";
++export type LocationBridge = {
++  checkPermissions(): Promise<Permission>;
++  requestPermissions(input?: { requestId: string }): Promise<Permission>;
++  cancelPermissionRequest(input: { requestId: string }): Promise<void>;
++  watchPosition(options: {
++    accuracy: "high";
++    minInterval: number;
++    minDistance: number;
++  }): Promise<{ watchId: string }>;
++  clearWatch(options: { watchId: string }): Promise<void>;
++  addListener(
++    name: "locationChange",
++    callback: (fix: Fix) => void,
++  ): Promise<PluginListenerHandle>;
++  addListener(
++    name: "error",
++    callback: (error: { code: string }) => void,
++  ): Promise<PluginListenerHandle>;
++};
++type Session = {
++  aborted: boolean;
++  handles: PluginListenerHandle[];
++  watchId?: string;
++  permissionRequestId?: string;
++  timer?: ReturnType<typeof setTimeout>;
++  cancelForegroundWait?: () => void;
++};
++/** One owner per Maps controller. The upstream event contract has no watchId. */
++export class NativeMapsLocation {
++  constructor(
++    private readonly location: LocationBridge,
++    private readonly platform: { isNative(): boolean; available(): boolean },
++  ) {}
++  private session?: Session;
++  private admitting = false;
++  private generation = 0;
++  private requestingPermission = false;
++  awaitingPermission() {
++    return this.requestingPermission && !!this.session && !this.session.aborted;
++  }
++  available() {
++    return this.platform.available();
++  }
++  async stop(): Promise<void> {
++    ++this.generation;
++    const current = this.session;
++    this.session = undefined;
++    if (!current) return;
++    current.aborted = true;
++    clearTimeout(current.timer);
++    current.cancelForegroundWait?.();
++    const results = await Promise.allSettled([
++      ...current.handles.map((handle) => handle.remove()),
++      ...(current.permissionRequestId && !this.platform.isNative()
++        ? [
++            this.location.cancelPermissionRequest({
++              requestId: current.permissionRequestId,
++            }),
++          ]
++        : []),
++      ...(current.watchId
++        ? [this.location.clearWatch({ watchId: current.watchId })]
++        : []),
++    ]);
++    // Report a native cleanup failure rather than claiming the watch stopped.
++    if (results.some((result) => result.status === "rejected"))
++      throw new MapsFailure(
++        "unavailable",
++        "Location cleanup could not be confirmed.",
++      );
++  }
++  async start(
++    oneShot: boolean,
++    onFix: (position: Position) => void,
++    onError: (error: MapsFailure) => void,
++  ): Promise<void> {
++    if (this.admitting)
++      throw new MapsFailure(
++        "unavailable",
++        "A location permission or start request is still settling.",
++      );
++    if (!this.available())
++      throw new MapsFailure(
++        "unavailable",
++        "Native location is unavailable in this build.",
++      );
++    this.admitting = true;
++    let session: Session | undefined;
++    try {
++      const ticket = this.generation + 1;
++      await this.stop();
++      if (this.generation !== ticket) return;
++      session = { aborted: false, handles: [] };
++      this.session = session;
++      const current = session;
++      const active = () => this.session === current && !current.aborted;
++      const report = (error: MapsFailure) => {
++        if (active()) {
++          onError(error);
++          void this.stop().catch(onError);
++        }
++      };
++      let permission = await this.location.checkPermissions();
++      if (!active()) return;
++      if (permission.location !== "granted") {
++        this.requestingPermission = true;
++        if (!this.platform.isNative())
++          current.permissionRequestId = crypto.randomUUID();
++        permission = await this.location.requestPermissions(
++          current.permissionRequestId
++            ? { requestId: current.permissionRequestId }
++            : undefined,
++        );
++        current.permissionRequestId = undefined;
++        // Android's permission surface may temporarily hide a launcher WebView.
++        // Preserve the explicit request, but never start GPS while hidden.
++        if (active() && permission.location === "granted" && document.hidden) {
++          await new Promise<void>((resolve, reject) => {
++            const finish = (error?: MapsFailure) => {
++              clearTimeout(timer);
++              document.removeEventListener("visibilitychange", visible);
++              current.cancelForegroundWait = undefined;
++              if (error) reject(error);
++              else resolve();
++            };
++            const visible = () => {
++              if (!document.hidden) finish();
++            };
++            const timer = setTimeout(
++              () =>
++                finish(
++                  new MapsFailure(
++                    "timeout",
++                    "Return to Maps and retry location.",
++                  ),
++                ),
++              15000,
++            );
++            current.cancelForegroundWait = () => finish();
++            document.addEventListener("visibilitychange", visible);
++          });
++        }
++        this.requestingPermission = false;
++      }
++      if (!active()) return;
++      if (permission.location !== "granted")
++        throw new MapsFailure(
++          "permission-denied",
++          "Location permission was not granted. You can choose an origin manually.",
++        );
++      // Listeners precede watch creation so the first fix cannot be lost.
++      const fixes = await this.location.addListener("locationChange", (fix) => {
++        if (!active()) return;
++        try {
++          const coords = fix.coords,
++            position = coordinate(coords);
++          if (
++            !Number.isFinite(coords.accuracy) ||
++            coords.accuracy < 0 ||
++            !Number.isFinite(coords.timestamp) ||
++            Date.now() - coords.timestamp > 30000 ||
++            coords.timestamp > Date.now() + 5000
++          )
++            throw new MapsFailure(
++              "invalid-response",
++              "A fresh location fix is not available.",
++            );
++          clearTimeout(current.timer);
++          onFix({
++            coordinate: position,
++            accuracyMeters: coords.accuracy,
++            timestamp: coords.timestamp,
++            precision:
++              permission.accuracy === "precise" ||
++              permission.accuracy === "approximate"
++                ? permission.accuracy
++                : "unknown",
++          });
++          if (oneShot) void this.stop().catch(onError);
++        } catch (error) {
++          report(
++            error instanceof MapsFailure
++              ? error
++              : new MapsFailure(
++                  "invalid-response",
++                  "The location fix is invalid.",
++                ),
++          );
++        }
++      });
++      if (!active()) {
++        await fixes.remove();
++        return;
++      }
++      current.handles.push(fixes);
++      const errors = await this.location.addListener("error", (error) =>
++        report(
++          new MapsFailure(
++            error.code === "PERMISSION_DENIED"
++              ? "permission-denied"
++              : "unavailable",
++            "Location is unavailable. Check device location settings or choose an origin manually.",
++          ),
++        ),
++      );
++      if (!active()) {
++        await errors.remove();
++        return;
++      }
++      current.handles.push(errors);
++      current.timer = setTimeout(
++        () =>
++          report(
++            new MapsFailure(
++              "timeout",
++              "No fresh location fix arrived. You can choose an origin manually.",
++            ),
++          ),
++        15000,
++      );
++      const watch = await this.location.watchPosition({
++        accuracy: "high",
++        minInterval: 1000,
++        minDistance: 0,
++      });
++      // Leaving during native watch setup must clear the eventual native ID.
++      if (!active()) await this.location.clearWatch({ watchId: watch.watchId });
++      else current.watchId = watch.watchId;
++    } catch (error) {
++      if (session && this.session === session && !session.aborted) {
++        onError(
++          error instanceof MapsFailure
++            ? error
++            : new MapsFailure("unavailable", "Location could not start."),
++        );
++        await this.stop();
++      } else if (!session) throw error;
++    } finally {
++      this.requestingPermission = false;
++      this.admitting = false;
++    }
++  }
++}
+diff --git a/plugins/plugin-maps/src/client/navigation-voice.ts b/plugins/plugin-maps/src/client/navigation-voice.ts
+new file mode 100644
+index 0000000..fb47055
+--- /dev/null
++++ b/plugins/plugin-maps/src/client/navigation-voice.ts
+@@ -0,0 +1,44 @@
++/** Latest valid foreground instruction owns speech; new fixes do not repeat an unchanged step. */
++export class NavigationVoice {
++  enabled = true;
++  private current?: { key: string; text: string };
++  private spoken?: string;
++  private owner?: AbortController;
++  constructor(
++    private failed: () => void,
++    private speak: (text: string, signal: AbortSignal) => Promise<unknown>,
++  ) {}
++  update(key: string, text: string) {
++    this.current = { key, text };
++    if (!this.enabled || this.spoken === key) return;
++    this.owner?.abort();
++    const owner = new AbortController();
++    this.owner = owner;
++    this.spoken = key;
++    void this.speak(text, owner.signal)
++      .catch(() => {
++        if (this.owner === owner && !owner.signal.aborted) {
++          this.enabled = false;
++          this.spoken = undefined;
++          this.failed();
++        }
++      })
++      .finally(() => {
++        if (this.owner === owner) this.owner = undefined;
++      });
++  }
++  pause() {
++    this.owner?.abort();
++    this.owner = undefined;
++    this.current = undefined;
++    this.spoken = undefined;
++  }
++  toggle() {
++    this.enabled = !this.enabled;
++    if (!this.enabled) {
++      this.owner?.abort();
++      this.owner = undefined;
++      this.spoken = undefined;
++    } else if (this.current) this.update(this.current.key, this.current.text);
++  }
++}
+diff --git a/plugins/plugin-maps/src/client/regional-provider.ts b/plugins/plugin-maps/src/client/regional-provider.ts
+new file mode 100644
+index 0000000..1e4977e
+--- /dev/null
++++ b/plugins/plugin-maps/src/client/regional-provider.ts
+@@ -0,0 +1,286 @@
++import {
++  type Coordinate,
++  MapsFailure,
++  type MapsProvider,
++  type Place,
++  type Route,
++  type TravelMode,
++} from "./contracts.ts";
++export type RegionalMap = {
++  base: string;
++  region: string;
++  bounds: [number, number, number, number];
++  attribution: string;
++};
++export interface RegionalOptions {
++  baseUrl?: string;
++  providerId: string;
++  nativeGateway: string;
++  developmentHosts: readonly string[];
++  development: boolean;
++  isNative(): boolean;
++  developmentBuild(): Promise<boolean>;
++  transport: {
++    request(input: {
++      path: string;
++      requestId: string;
++    }): Promise<{ status: number; data: string }>;
++    cancel(input: { requestId: string }): Promise<void>;
++  };
++  configure(
++    config: import("./contracts.ts").ProviderConfig,
++    provider: MapsProvider,
++  ): void;
++}
++/** Explicit trusted host configuration; no storage, chat, or public-provider discovery. */
++export function createRegionalMaps(options: RegionalOptions) {
++  options = { ...options, developmentHosts: [...options.developmentHosts] };
++  let region: RegionalMap | undefined;
++  const diagnostic = {
++    stage: "idle",
++    configured: false,
++    native: false,
++    development: false,
++    error: "",
++    nativeRequests: 0,
++    nativeSuccesses: 0,
++    lastStatus: 0,
++    lastBytes: 0,
++  };
++  function regionalDiagnostics() {
++    return { ...diagnostic };
++  }
++  function nativeRegion(base: string) {
++    return options.isNative() && base === options.nativeGateway;
++  }
++  async function nativeRegionRequest(path: string, signal?: AbortSignal) {
++    const requestId = crypto.randomUUID();
++    signal?.throwIfAborted();
++    const cancel = () => {
++      void options.transport.cancel({ requestId }).catch(() => {});
++    };
++    signal?.addEventListener("abort", cancel, { once: true });
++    try {
++      diagnostic.nativeRequests++;
++      const result = await options.transport.request({ path, requestId });
++      diagnostic.nativeSuccesses++;
++      diagnostic.lastStatus = result.status;
++      diagnostic.lastBytes = result.data.length;
++      signal?.throwIfAborted();
++      if (result.data.length > 2800000)
++        throw new Error("Regional response too large");
++      const bytes = Uint8Array.from(atob(result.data), (c) => c.charCodeAt(0));
++      return { status: result.status, bytes };
++    } finally {
++      signal?.removeEventListener("abort", cancel);
++    }
++  }
++
++  function regionalMap() {
++    return region;
++  }
++  async function request(base: string, path: string, signal?: AbortSignal) {
++    const timeout = AbortSignal.timeout(15000);
++    try {
++      if (nativeRegion(base)) {
++        const response = await nativeRegionRequest(
++            path,
++            signal ? AbortSignal.any([signal, timeout]) : timeout,
++          ),
++          result = JSON.parse(new TextDecoder().decode(response.bytes));
++        if (response.status < 200 || response.status >= 300)
++          throw new MapsFailure(
++            response.status === 422 ? "unsupported" : "unavailable",
++            typeof result.error === "string"
++              ? result.error.slice(0, 300)
++              : "Regional service unavailable.",
++          );
++        return result;
++      }
++      const response = await fetch(base + path, {
++        signal: signal ? AbortSignal.any([signal, timeout]) : timeout,
++        credentials: "omit",
++        referrerPolicy: "no-referrer",
++        redirect: "error",
++      });
++      const reader = response.body?.getReader();
++      if (!reader) throw new Error();
++      const chunks: Uint8Array[] = [];
++      let size = 0;
++      try {
++        for (;;) {
++          const { done, value } = await reader.read();
++          if (done) break;
++          size += value.byteLength;
++          if (size > 2 * 1024 * 1024) throw new Error();
++          chunks.push(value);
++        }
++      } finally {
++        await reader.cancel();
++      }
++      const bytes = new Uint8Array(size);
++      let offset = 0;
++      for (const chunk of chunks) {
++        bytes.set(chunk, offset);
++        offset += chunk.length;
++      }
++      const result = JSON.parse(new TextDecoder().decode(bytes));
++      if (!response.ok)
++        throw new MapsFailure(
++          response.status === 422
++            ? "unsupported"
++            : response.status === 429
++              ? "rate-limited"
++              : "unavailable",
++          typeof result.error === "string"
++            ? result.error.slice(0, 300)
++            : "Regional Maps request failed.",
++        );
++      return result;
++    } catch (error) {
++      if (error instanceof MapsFailure) throw error;
++      if (signal?.aborted)
++        throw new MapsFailure("cancelled", "Maps request cancelled.");
++      throw new MapsFailure(
++        timeout.aborted ? "timeout" : "offline",
++        "Regional Maps is unavailable. Check the configured service connection.",
++      );
++    }
++  }
++  class RegionalProvider implements MapsProvider {
++    constructor(
++      readonly providerId: string,
++      readonly connectionId: string,
++      private base: string,
++    ) {}
++    search(query: string, signal: AbortSignal): Promise<readonly Place[]> {
++      return request(
++        this.base,
++        "/search?q=" + encodeURIComponent(query),
++        signal,
++      );
++    }
++    detail(id: string, signal: AbortSignal): Promise<Place | null> {
++      return request(this.base, "/place?id=" + encodeURIComponent(id), signal);
++    }
++    route(
++      from: Coordinate,
++      to: Coordinate,
++      mode: TravelMode,
++      signal: AbortSignal,
++    ): Promise<Route> {
++      return request(
++        this.base,
++        "/route?" +
++          new URLSearchParams({
++            from: `${from.latitude},${from.longitude}`,
++            to: `${to.latitude},${to.longitude}`,
++            mode,
++          }),
++        signal,
++      );
++    }
++  }
++  /** Explicit build-time configuration. No endpoint discovery from user chat/storage. */
++  async function initializeRegionalMaps() {
++    diagnostic.error = "";
++    const raw = options.baseUrl;
++    diagnostic.configured = !!raw;
++    diagnostic.native = options.isNative();
++    if (!raw) {
++      diagnostic.stage = "no-configuration";
++      return;
++    }
++    try {
++      diagnostic.stage = "native-build-check";
++      const url = new URL(raw);
++      const development = options.isNative()
++        ? await options.developmentBuild()
++        : options.development;
++      diagnostic.development = development;
++      diagnostic.stage = "endpoint-validation";
++      if (
++        url.username ||
++        url.password ||
++        url.search ||
++        url.hash ||
++        url.pathname !== "/" ||
++        !(
++          url.protocol === "https:" ||
++          (development &&
++            url.protocol === "http:" &&
++            options.developmentHosts.includes(url.hostname))
++        )
++      )
++        throw new Error("Maps endpoint must use HTTPS.");
++      if (
++        options.isNative() &&
++        url.protocol === "http:" &&
++        url.origin !== options.nativeGateway
++      )
++        throw new Error("Use the fixed debug regional gateway.");
++      diagnostic.stage = "capabilities-request";
++      const base = url.origin,
++        meta = await request(base, "/capabilities");
++      diagnostic.stage = "capabilities-validation";
++      if (
++        meta.providerId !== options.providerId ||
++        typeof meta.region !== "string" ||
++        meta.region.length > 100 ||
++        !Array.isArray(meta.bounds) ||
++        meta.bounds.length !== 4 ||
++        !meta.bounds.every(Number.isFinite) ||
++        typeof meta.attribution !== "string" ||
++        meta.attribution.length > 1000
++      )
++        throw new Error("Invalid regional Maps metadata.");
++      const caps = meta.capabilities;
++      if (
++        !caps ||
++        caps.map !== true ||
++        caps.search !== true ||
++        caps.placeDetails !== true ||
++        !Array.isArray(caps.modes) ||
++        caps.modes.length > 3 ||
++        !caps.modes.every((mode: string) =>
++          ["drive", "walk", "bicycle"].includes(mode),
++        ) ||
++        caps.traffic !== "none" ||
++        caps.transit !== "none" ||
++        !caps.offline ||
++        Object.values(caps.offline).some((v) => v !== false)
++      )
++        throw new Error("Invalid regional capabilities");
++      region = {
++        base,
++        region: meta.region,
++        bounds: meta.bounds,
++        attribution: meta.attribution,
++      };
++      diagnostic.stage = "ready";
++      options.configure(
++        {
++          status: "configured",
++          providerId: meta.providerId,
++          connectionId: meta.connectionId,
++          revision: meta.revision,
++          capabilities: meta.capabilities,
++        },
++        new RegionalProvider(meta.providerId, meta.connectionId, base),
++      );
++    } catch (error) {
++      diagnostic.error =
++        error instanceof MapsFailure ? error.code : "initialization-failed";
++      region =
++        undefined; /* Remain explicitly unconfigured. No public-provider fallback. */
++    }
++  }
++
++  return {
++    regionalDiagnostics,
++    nativeRegion,
++    nativeRegionRequest,
++    regionalMap,
++    initializeRegionalMaps,
++  };
++}
+diff --git a/plugins/plugin-maps/src/client/route-distance.ts b/plugins/plugin-maps/src/client/route-distance.ts
+new file mode 100644
+index 0000000..e189b4e
+--- /dev/null
++++ b/plugins/plugin-maps/src/client/route-distance.ts
+@@ -0,0 +1,61 @@
++import type { Coordinate } from "./contracts.ts";
++
++const radians = Math.PI / 180;
++const earthRadius = 6371000;
++function angle(a: Coordinate, b: Coordinate): number {
++  const lat = (b.latitude - a.latitude) * radians;
++  const lon = (b.longitude - a.longitude) * radians;
++  return (
++    2 *
++    Math.asin(
++      Math.min(
++        1,
++        Math.sqrt(
++          Math.sin(lat / 2) ** 2 +
++            Math.cos(a.latitude * radians) *
++              Math.cos(b.latitude * radians) *
++              Math.sin(lon / 2) ** 2,
++        ),
++      ),
++    )
++  );
++}
++function bearing(a: Coordinate, b: Coordinate): number {
++  const latA = a.latitude * radians,
++    latB = b.latitude * radians;
++  const lon = (b.longitude - a.longitude) * radians;
++  return Math.atan2(
++    Math.sin(lon) * Math.cos(latB),
++    Math.cos(latA) * Math.sin(latB) -
++      Math.sin(latA) * Math.cos(latB) * Math.cos(lon),
++  );
++}
++/** Distance to the nearest point on the route's bounded great-circle segments. */
++export function distanceToRoute(
++  point: Coordinate,
++  geometry: readonly Coordinate[],
++): number {
++  let nearest = Infinity;
++  for (let i = 0; i < geometry.length; i++) {
++    const start = geometry[i],
++      fromStart = angle(start, point);
++    nearest = Math.min(nearest, fromStart);
++    if (i + 1 === geometry.length) continue;
++    const end = geometry[i + 1],
++      length = angle(start, end);
++    // Coincident and antipodal endpoints do not define a unique segment.
++    if (length < 1e-12 || Math.PI - length < 1e-12) continue;
++    const deltaBearing = bearing(start, point) - bearing(start, end);
++    const along = Math.atan2(
++      Math.sin(fromStart) * Math.cos(deltaBearing),
++      Math.cos(fromStart),
++    );
++    if (along >= 0 && along <= length) {
++      const cross = Math.asin(
++        Math.max(-1, Math.min(1, Math.sin(fromStart) * Math.sin(deltaBearing))),
++      );
++      nearest = Math.min(nearest, Math.abs(cross));
++    }
++  }
++  return nearest * earthRadius;
++}
+diff --git a/plugins/plugin-maps/src/client/runtime.ts b/plugins/plugin-maps/src/client/runtime.ts
+new file mode 100644
+index 0000000..f8c4388
+--- /dev/null
++++ b/plugins/plugin-maps/src/client/runtime.ts
+@@ -0,0 +1,34 @@
++import {
++  configuredProvider,
++  type MapsProvider,
++  type ProviderConfig,
++} from "./contracts.ts";
++
++/** Trusted connection composition only. No localStorage endpoint/key discovery. */
++let connection: { config: ProviderConfig; provider?: MapsProvider } = {
++  config: { status: "unconfigured" },
++};
++const listeners = new Set<() => void>();
++export function mapsConnection() {
++  return {
++    config: structuredClone(connection.config),
++    provider: connection.provider,
++  };
++}
++export function configureMapsProvider(
++  config: ProviderConfig,
++  provider?: MapsProvider,
++) {
++  if (config.status === "configured") configuredProvider(config, provider);
++  connection = {
++    config: structuredClone(config),
++    provider: config.status === "configured" ? provider : undefined,
++  };
++  listeners.forEach((listener) => listener());
++}
++export function onMapsConnectionChange(listener: () => void) {
++  listeners.add(listener);
++  return () => {
++    listeners.delete(listener);
++  };
++}
+diff --git a/plugins/plugin-maps/src/client/saved-places.ts b/plugins/plugin-maps/src/client/saved-places.ts
+new file mode 100644
+index 0000000..4b4bea8
+--- /dev/null
++++ b/plugins/plugin-maps/src/client/saved-places.ts
+@@ -0,0 +1,165 @@
++import {
++  boundedText,
++  type Coordinate,
++  coordinate,
++  MapsFailure,
++} from "./contracts.ts";
++
++export type SavedPlace = Readonly<{
++  id: string;
++  label: string;
++  coordinate: Coordinate;
++  providerId?: string;
++  providerPlaceId?: string;
++  savedAt: number;
++}>;
++const LIMIT = 200;
++/** Deliberately saves only labels/coordinates/identity, not cached provider details or location history. */
++export class SavedPlaces {
++  constructor(
++    private readonly key: string,
++    private readonly storage?: Pick<Storage, "getItem" | "setItem">,
++  ) {}
++  private target() {
++    return this.storage ?? localStorage;
++  }
++  read(): readonly SavedPlace[] {
++    try {
++      const raw = this.target().getItem(this.key);
++      if (raw === null) return [];
++      if (raw.length > 300000) throw new Error();
++      const data = JSON.parse(raw);
++      if (
++        data.version !== 1 ||
++        !Array.isArray(data.items) ||
++        data.items.length > LIMIT
++      )
++        throw new Error();
++      const ids = new Set<string>();
++      return data.items.map((item: SavedPlace) => {
++        if (
++          !item ||
++          !/^[A-Za-z0-9-]{1,80}$/.test(item.id) ||
++          ids.has(item.id) ||
++          !boundedText(item.label, 300) ||
++          !Number.isFinite(item.savedAt) ||
++          item.savedAt <= 0
++        )
++          throw new Error();
++        if (
++          (item.providerId === undefined) !==
++          (item.providerPlaceId === undefined)
++        )
++          throw new Error();
++        if (
++          item.providerId !== undefined &&
++          (!boundedText(item.providerId, 80) ||
++            !boundedText(item.providerPlaceId, 512))
++        )
++          throw new Error();
++        ids.add(item.id);
++        return {
++          id: item.id,
++          label: item.label,
++          coordinate: coordinate(item.coordinate),
++          savedAt: item.savedAt,
++          ...(item.providerId
++            ? {
++                providerId: item.providerId,
++                providerPlaceId: item.providerPlaceId,
++              }
++            : {}),
++        };
++      });
++    } catch {
++      throw new MapsFailure(
++        "storage",
++        "Saved places could not be read. Existing data has not been replaced.",
++      );
++    }
++  }
++  private write(items: readonly SavedPlace[]) {
++    const value = JSON.stringify({ version: 1, items });
++    try {
++      this.target().setItem(this.key, value);
++      if (this.target().getItem(this.key) !== value) throw new Error();
++    } catch {
++      throw new MapsFailure(
++        "storage",
++        "Saved places could not be confirmed on this device.",
++      );
++    }
++    return items;
++  }
++  save(input: {
++    label: string;
++    coordinate: Coordinate;
++    providerId?: string;
++    providerPlaceId?: string;
++  }): SavedPlace {
++    if (
++      !boundedText(input.label, 300) ||
++      (input.providerId === undefined) !==
++        (input.providerPlaceId === undefined) ||
++      (input.providerId !== undefined &&
++        (!boundedText(input.providerId, 80) ||
++          !boundedText(input.providerPlaceId, 512)))
++    )
++      throw new MapsFailure(
++        "invalid-response",
++        "A name and valid place identity are required.",
++      );
++    const position = coordinate(input.coordinate),
++      items = this.read();
++    const existing = items.find((p) =>
++      input.providerId
++        ? p.providerId === input.providerId &&
++          p.providerPlaceId === input.providerPlaceId
++        : !p.providerId &&
++          p.coordinate.latitude === position.latitude &&
++          p.coordinate.longitude === position.longitude,
++    );
++    if (!existing && items.length >= LIMIT)
++      throw new MapsFailure(
++        "storage",
++        "Remove a saved place before adding another.",
++      );
++    const item: SavedPlace = {
++      id: existing?.id || crypto.randomUUID(),
++      label: input.label.trim(),
++      coordinate: position,
++      savedAt: Date.now(),
++      ...(input.providerId
++        ? {
++            providerId: input.providerId,
++            providerPlaceId: input.providerPlaceId,
++          }
++        : {}),
++    };
++    this.write(
++      existing
++        ? items.map((p) => (p.id === existing.id ? item : p))
++        : [...items, item],
++    );
++    return item;
++  }
++  rename(id: string, label: string): readonly SavedPlace[] {
++    if (!boundedText(label, 300))
++      throw new MapsFailure(
++        "invalid-response",
++        "A saved-place name is required.",
++      );
++    const items = this.read();
++    if (!items.some((p) => p.id === id))
++      throw new MapsFailure(
++        "unavailable",
++        "This saved place no longer exists.",
++      );
++    return this.write(
++      items.map((p) => (p.id === id ? { ...p, label: label.trim() } : p)),
++    );
++  }
++  remove(id: string): readonly SavedPlace[] {
++    return this.write(this.read().filter((p) => p.id !== id));
++  }
++}
+diff --git a/plugins/plugin-maps/src/client/share.ts b/plugins/plugin-maps/src/client/share.ts
+new file mode 100644
+index 0000000..6df3525
+--- /dev/null
++++ b/plugins/plugin-maps/src/client/share.ts
+@@ -0,0 +1,79 @@
++import { type Coordinate, coordinate, type Route } from "./contracts.ts";
++export type MapShare = { title: string; text: string; url?: string };
++const point = (value: Coordinate) => {
++  const p = coordinate(value);
++  return `${p.latitude}, ${p.longitude}`;
++};
++export function placeShare(label: string, value: Coordinate): MapShare {
++  const p = coordinate(value);
++  const url = `https://www.openstreetmap.org/?mlat=${p.latitude}&mlon=${p.longitude}#map=17/${p.latitude}/${p.longitude}`;
++  return { title: label, text: `${label}\n${point(p)}`, url };
++}
++export function routeShare(label: string, route: Route): MapShare {
++  return {
++    title: `Route to ${label}`,
++    text: [
++      `Route to ${label}`,
++      `${route.mode}: ${point(route.from)} → ${point(route.to)}`,
++      `${route.distanceMeters} m · ${route.durationSeconds} s`,
++      ...route.steps.map((step, index) => `${index + 1}. ${step.instruction}`),
++      `Traffic: ${route.traffic}`,
++      route.attribution,
++    ].join("\n"),
++  };
++}
++const cancelled = () => new DOMException("Share cancelled", "AbortError");
++/** Share only an explicit immutable selection; cancelled or retired requests never fall through to another transport. */
++export async function shareMap(
++  data: MapShare,
++  signal: AbortSignal,
++  fallback: (
++    data: MapShare,
++    text: string,
++    signal: AbortSignal,
++  ) => Promise<"closed">,
++): Promise<"shared" | "copied" | "closed"> {
++  signal.throwIfAborted();
++  const wait = <T>(job: Promise<T>) =>
++    new Promise<T>((resolve, reject) => {
++      const cancel = () => {
++        signal.removeEventListener("abort", cancel);
++        reject(cancelled());
++      };
++      signal.addEventListener("abort", cancel, { once: true });
++      job.then(
++        (value) => {
++          signal.removeEventListener("abort", cancel);
++          signal.aborted ? reject(cancelled()) : resolve(value);
++        },
++        (error) => {
++          signal.removeEventListener("abort", cancel);
++          reject(error);
++        },
++      );
++      if (signal.aborted) cancel();
++    });
++  if (navigator.share) {
++    try {
++      await wait(navigator.share(data));
++      return "shared";
++    } catch (error) {
++      if (
++        signal.aborted ||
++        (error instanceof DOMException && error.name === "AbortError")
++      )
++        throw cancelled();
++    }
++  }
++  const text = [data.text, data.url].filter(Boolean).join("\n");
++  signal.throwIfAborted();
++  if (navigator.clipboard?.writeText) {
++    try {
++      await wait(navigator.clipboard.writeText(text));
++      return "copied";
++    } catch {
++      signal.throwIfAborted();
++    }
++  }
++  return fallback(data, text, signal);
++}
+diff --git a/plugins/plugin-maps/src/client/state.ts b/plugins/plugin-maps/src/client/state.ts
+new file mode 100644
+index 0000000..a9b8908
+--- /dev/null
++++ b/plugins/plugin-maps/src/client/state.ts
+@@ -0,0 +1,404 @@
++import {
++  boundedText,
++  type Coordinate,
++  configuredProvider,
++  coordinate,
++  failure,
++  MapsFailure,
++  type MapsProvider,
++  type Place,
++  type ProviderConfig,
++  place,
++  type ResultState,
++  type Route,
++  type TravelMode,
++  unavailableCapabilities,
++} from "./contracts.ts";
++import type { MapsLocation, Position } from "./location.ts";
++import type { SavedPlace, SavedPlaces } from "./saved-places.ts";
++
++const idle = <T>(value: T): ResultState<T> => ({
++  phase: "idle",
++  value,
++  error: null,
++});
++export type MapsState = Readonly<{
++  revision: number;
++  provider: ProviderConfig;
++  query: string;
++  search: ResultState<readonly Place[]>;
++  selection: ResultState<Place | null>;
++  origin: Coordinate | null;
++  position: ResultState<Position | null>;
++  mode: TravelMode;
++  route: ResultState<Route | null>;
++  saved: ResultState<readonly SavedPlace[]>;
++}>;
++/** State only; no simulated map and no silent provider discovery/fallback. */
++export class MapsController {
++  private state: MapsState;
++  private listeners = new Set<(state: MapsState) => void>();
++  private searchRequest?: AbortController;
++  private detailRequest?: AbortController;
++  private detailPending?: Promise<void>;
++  private routeRequest?: AbortController;
++  private active = true;
++  constructor(
++    private config: ProviderConfig,
++    private provider: MapsProvider | undefined,
++    private savedPlaces: SavedPlaces,
++    private nativeLocation: MapsLocation,
++  ) {
++    this.state = {
++      revision: 0,
++      provider: config,
++      query: "",
++      search: idle([]),
++      selection: idle(null),
++      origin: null,
++      position: idle(null),
++      mode: "drive",
++      route: idle(null),
++      saved: idle([]),
++    };
++    this.reloadSaved();
++  }
++  snapshot(): MapsState {
++    const copy = <T>(result: ResultState<T>): ResultState<T> => ({
++      ...result,
++      value: structuredClone(result.value),
++      error: result.error
++        ? new MapsFailure(result.error.code, result.error.message)
++        : null,
++    });
++    return {
++      ...structuredClone(this.state),
++      search: copy(this.state.search),
++      selection: copy(this.state.selection),
++      route: copy(this.state.route),
++      position: copy(this.state.position),
++      saved: copy(this.state.saved),
++    };
++  }
++  awaitingLocationPermission() {
++    return this.nativeLocation.awaitingPermission();
++  }
++  activateProvider(config: ProviderConfig, provider?: MapsProvider) {
++    // Initial provider discovery is independent of device location permission.
++    // Replacing this controller would silently discard a pending Recenter.
++    this.searchRequest?.abort();
++    this.detailRequest?.abort();
++    this.detailRequest = undefined;
++    this.invalidateRoute();
++    this.config = config;
++    this.provider = provider;
++    this.update({ provider: config, search: idle([]), selection: idle(null) });
++  }
++  capabilities() {
++    return this.config.status === "configured"
++      ? this.config.capabilities
++      : unavailableCapabilities;
++  }
++  subscribe(listener: (state: MapsState) => void) {
++    this.listeners.add(listener);
++    listener(this.snapshot());
++    return () => {
++      this.listeners.delete(listener);
++    };
++  }
++  private update(patch: Partial<MapsState>) {
++    if (!this.active) return;
++    this.state = { ...this.state, ...patch, revision: this.state.revision + 1 };
++    const state = this.snapshot();
++    this.listeners.forEach((listener) => listener(state));
++  }
++  private invalidateRoute() {
++    this.routeRequest?.abort();
++    this.routeRequest = undefined;
++    this.update({ route: idle(null) });
++  }
++  private admitted() {
++    return configuredProvider(this.config, this.provider);
++  }
++  async search(query: string) {
++    this.searchRequest?.abort();
++    this.detailRequest?.abort();
++    this.invalidateRoute();
++    const text = query.trim();
++    this.update({ query: text, selection: idle(null), search: idle([]) });
++    if (!text) return;
++    const request = new AbortController();
++    this.searchRequest = request;
++    this.update({ search: { phase: "loading", value: [], error: null } });
++    try {
++      if (!boundedText(text, 300))
++        throw new MapsFailure(
++          "unsupported",
++          "Use a search of at most 300 characters.",
++        );
++      const provider = this.admitted();
++      if (!this.capabilities().search)
++        throw new MapsFailure(
++          "unsupported",
++          "This provider does not support place search.",
++        );
++      const result = await provider.search(text, request.signal);
++      if (
++        request.signal.aborted ||
++        !this.active ||
++        this.searchRequest !== request
++      )
++        return;
++      if (!Array.isArray(result) || result.length > 50)
++        throw new MapsFailure(
++          "invalid-response",
++          "The search response is invalid.",
++        );
++      const items = result.map((item) => place(item, provider.providerId));
++      this.update({
++        search: {
++          phase: items.length ? "ready" : "empty",
++          value: items,
++          error: null,
++        },
++      });
++    } catch (error) {
++      if (!request.signal.aborted && this.active)
++        this.update({
++          search: { phase: "error", value: [], error: failure(error) },
++        });
++    }
++  }
++  select(candidate: Place, resolveDetails = true): Promise<void> {
++    this.detailRequest?.abort();
++    this.invalidateRoute();
++    const request = new AbortController();
++    this.detailRequest = request;
++    this.update({ selection: { phase: "loading", value: null, error: null } });
++    const pending = this.resolveSelection(candidate, resolveDetails, request);
++    this.detailPending = pending;
++    return pending;
++  }
++  private async resolveSelection(
++    candidate: Place,
++    resolveDetails: boolean,
++    request: AbortController,
++  ) {
++    try {
++      const provider = this.admitted(),
++        original = place(candidate, provider.providerId);
++      const result =
++        resolveDetails && this.capabilities().placeDetails
++          ? await provider.detail(original.id, request.signal)
++          : original;
++      if (
++        request.signal.aborted ||
++        !this.active ||
++        this.detailRequest !== request
++      )
++        return;
++      const selected = result ? place(result, provider.providerId) : null;
++      if (selected && selected.id !== original.id)
++        throw new MapsFailure(
++          "invalid-response",
++          "The selected place identity changed.",
++        );
++      this.update({
++        selection: {
++          phase: selected ? "ready" : "empty",
++          value: selected,
++          error: null,
++        },
++      });
++    } catch (error) {
++      if (!request.signal.aborted && this.active)
++        this.update({
++          selection: { phase: "error", value: null, error: failure(error) },
++        });
++    }
++  }
++  clearOrigin() {
++    this.invalidateRoute();
++    this.update({ origin: null });
++  }
++  setOrigin(value: Coordinate) {
++    const origin = coordinate(value);
++    void this.nativeLocation.stop().catch((error) =>
++      this.update({
++        position: { phase: "error", value: null, error: failure(error) },
++      }),
++    );
++    this.invalidateRoute();
++    this.update({ origin, position: idle(null) });
++  }
++  setMode(mode: TravelMode) {
++    if (!["drive", "walk", "bicycle", "transit"].includes(mode))
++      throw new MapsFailure("unsupported", "This travel mode is unsupported.");
++    this.invalidateRoute();
++    this.update({ mode });
++  }
++  async locate() {
++    this.update({ position: { phase: "loading", value: null, error: null } });
++    try {
++      await this.nativeLocation.start(
++        true,
++        (position) => {
++          if (!this.active) return;
++          this.setOrigin(position.coordinate);
++          this.update({
++            position: { phase: "ready", value: position, error: null },
++          });
++        },
++        (error) =>
++          this.update({ position: { phase: "error", value: null, error } }),
++      );
++    } catch (error) {
++      this.update({
++        position: { phase: "error", value: null, error: failure(error) },
++      });
++    }
++  }
++  async planRoute() {
++    this.invalidateRoute();
++    const request = new AbortController();
++    this.routeRequest = request;
++    this.update({ route: { phase: "loading", value: null, error: null } });
++    try {
++      // Directions can be submitted while the native detail request is still
++      // resolving. Keep that user's request, but never route a stale selection.
++      const detail = this.detailRequest;
++      if (this.state.selection.phase === "loading") await this.detailPending;
++      if (
++        request.signal.aborted ||
++        !this.active ||
++        this.routeRequest !== request ||
++        this.detailRequest !== detail
++      )
++        return;
++      const provider = this.admitted(),
++        { origin, selection, mode } = this.state;
++      if (selection.error) throw selection.error;
++      if (!origin || !selection.value)
++        throw new MapsFailure(
++          "unsupported",
++          "Choose an actual origin and destination first.",
++        );
++      if (!this.capabilities().modes.includes(mode))
++        throw new MapsFailure(
++          "unsupported",
++          "This provider does not support that route mode.",
++        );
++      const result = await provider.route(
++        origin,
++        selection.value.coordinate,
++        mode,
++        request.signal,
++      );
++      if (
++        request.signal.aborted ||
++        !this.active ||
++        this.routeRequest !== request
++      )
++        return;
++      const from = coordinate(result.from),
++        to = coordinate(result.to);
++      if (
++        result.providerId !== provider.providerId ||
++        result.mode !== mode ||
++        !boundedText(result.id, 512) ||
++        !boundedText(result.attribution, 2000) ||
++        from.latitude !== origin.latitude ||
++        from.longitude !== origin.longitude ||
++        to.latitude !== selection.value.coordinate.latitude ||
++        to.longitude !== selection.value.coordinate.longitude ||
++        !Array.isArray(result.geometry) ||
++        result.geometry.length < 2 ||
++        result.geometry.length > 20000 ||
++        !Array.isArray(result.steps) ||
++        result.steps.length > 2000 ||
++        !Number.isFinite(result.distanceMeters) ||
++        result.distanceMeters < 0 ||
++        !Number.isFinite(result.durationSeconds) ||
++        result.durationSeconds < 0 ||
++        !Number.isFinite(result.fetchedAt) ||
++        result.fetchedAt <= 0 ||
++        result.fetchedAt > Date.now() + 60000 ||
++        result.traffic !== this.capabilities().traffic
++      )
++        throw new MapsFailure(
++          "invalid-response",
++          "The provider route is invalid.",
++        );
++      const steps = result.steps.map((step) => {
++        if (
++          !boundedText(step.instruction, 2000) ||
++          !Number.isFinite(step.distanceMeters) ||
++          step.distanceMeters < 0
++        )
++          throw new MapsFailure(
++            "invalid-response",
++            "A route instruction is invalid.",
++          );
++        return { ...step, coordinate: coordinate(step.coordinate) };
++      });
++      this.update({
++        route: {
++          phase: "ready",
++          value: {
++            ...result,
++            from,
++            to,
++            steps,
++            geometry: result.geometry.map(coordinate),
++          },
++          error: null,
++        },
++      });
++    } catch (error) {
++      if (!request.signal.aborted && this.active)
++        this.update({
++          route: { phase: "error", value: null, error: failure(error) },
++        });
++    }
++  }
++  reloadSaved() {
++    try {
++      const items = this.savedPlaces.read();
++      this.update({
++        saved: {
++          phase: items.length ? "ready" : "empty",
++          value: items,
++          error: null,
++        },
++      });
++    } catch (error) {
++      this.update({
++        saved: { phase: "error", value: [], error: failure(error) },
++      });
++    }
++  }
++  save(input: Parameters<SavedPlaces["save"]>[0]) {
++    const item = this.savedPlaces.save(input);
++    this.reloadSaved();
++    return item;
++  }
++  renameSaved(id: string, name: string) {
++    this.savedPlaces.rename(id, name);
++    this.reloadSaved();
++  }
++  removeSaved(id: string) {
++    this.savedPlaces.remove(id);
++    this.reloadSaved();
++  }
++  async leave() {
++    this.active = false;
++    this.searchRequest?.abort();
++    this.detailRequest?.abort();
++    this.routeRequest?.abort();
++    try {
++      await this.nativeLocation.stop();
++    } finally {
++      this.listeners.clear();
++    }
++  }
++}
+diff --git a/plugins/plugin-maps/test/device-client.test.mjs b/plugins/plugin-maps/test/device-client.test.mjs
+new file mode 100644
+index 0000000..c7163f0
+--- /dev/null
++++ b/plugins/plugin-maps/test/device-client.test.mjs
+@@ -0,0 +1,107 @@
++import assert from "node:assert/strict";
++import test from "node:test";
++import { NavigationVoice } from "../src/client/navigation-voice.ts";
++import { SavedPlaces } from "../src/client/saved-places.ts";
++import { MapsController } from "../src/client/state.ts";
++
++const storage = () => {
++  const values = new Map();
++  return {
++    getItem: (key) => values.get(key) ?? null,
++    setItem: (key, value) => values.set(key, value),
++  };
++};
++const location = () => ({
++  awaitingPermission: () => false,
++  start: async () => {},
++  stop: async () => {},
++});
++const config = {
++  status: "configured",
++  providerId: "test",
++  connectionId: "conn_test_device_123456",
++  revision: "one",
++  capabilities: {
++    map: false,
++    search: true,
++    placeDetails: false,
++    modes: ["walk"],
++    traffic: "none",
++    transit: "none",
++    offline: { map: false, search: false, routing: false },
++  },
++};
++const place = (name) => ({
++  providerId: "test",
++  id: name,
++  name,
++  coordinate: { latitude: 1, longitude: 2 },
++  attribution: "Test data",
++  fetchedAt: Date.now(),
++});
++test("host namespaces retain installed data without sharing saved places", () => {
++  const store = storage(),
++    first = new SavedPlaces("host.one", store),
++    second = new SavedPlaces("host.two", store);
++  first.save({
++    label: "First home",
++    coordinate: { latitude: 1, longitude: 2 },
++  });
++  assert.equal(
++    new SavedPlaces("host.one", store).read()[0].label,
++    "First home",
++  );
++  assert.deepEqual(second.read(), []);
++  store.setItem("host.two", "broken");
++  assert.throws(() => second.read(), /could not be read/);
++  assert.equal(store.getItem("host.two"), "broken");
++});
++test("late search results cannot replace the current query or survive controller retirement", async () => {
++  const pending = [];
++  const provider = {
++    providerId: "test",
++    connectionId: config.connectionId,
++    search: () => new Promise((resolve) => pending.push(resolve)),
++  };
++  const controller = new MapsController(
++    config,
++    provider,
++    new SavedPlaces("test", storage()),
++    location(),
++  );
++  const first = controller.search("old"),
++    second = controller.search("new");
++  pending[1]([place("new")]);
++  await second;
++  pending[0]([place("old")]);
++  await first;
++  assert.equal(controller.snapshot().search.value[0].name, "new");
++  const third = controller.search("retired");
++  await controller.leave();
++  pending[2]([place("retired")]);
++  await third;
++  assert.equal(controller.snapshot().search.phase, "loading");
++});
++test("guidance uses the supplied speaker and cancels owned speech when retired", async () => {
++  const spoken = [];
++  let failed = 0;
++  const voice = new NavigationVoice(
++    () => failed++,
++    (text, signal) =>
++      new Promise((resolve, reject) => {
++        spoken.push({ text, signal });
++        signal.addEventListener("abort", () => reject(signal.reason), {
++          once: true,
++        });
++      }),
++  );
++  voice.update("one", "First");
++  voice.update("one", "First");
++  assert.equal(spoken.length, 1);
++  voice.update("two", "Second");
++  assert.equal(spoken[0].signal.aborted, true);
++  voice.pause();
++  assert.equal(spoken[1].signal.aborted, true);
++  await new Promise((resolve) => setImmediate(resolve));
++  assert.equal(failed, 0);
++});
+diff --git a/plugins/plugin-notes/src/client/index.ts b/plugins/plugin-notes/src/client/index.ts
+new file mode 100644
+index 0000000..85a4627
+--- /dev/null
++++ b/plugins/plugin-notes/src/client/index.ts
+@@ -0,0 +1,4 @@
++export * from "./note-dates.ts";
++export * from "./notes-contract.ts";
++export * from "./notes-secure-store.ts";
++export * from "./notes-store.ts";
+diff --git a/plugins/plugin-notes/src/client/note-dates.ts b/plugins/plugin-notes/src/client/note-dates.ts
+new file mode 100644
+index 0000000..fe9e193
+--- /dev/null
++++ b/plugins/plugin-notes/src/client/note-dates.ts
+@@ -0,0 +1,34 @@
++type Note = Record<string, unknown>;
++const content = (note: Note) =>
++  JSON.stringify(
++    Object.fromEntries(
++      Object.entries(note)
++        .filter(
++          ([key]) =>
++            !["createdAt", "modifiedAt", "when", "pinned"].includes(key),
++        )
++        .sort(([a], [b]) => a.localeCompare(b)),
++    ),
++  );
++/** Preserve unknown legacy creation dates; only real content changes acquire a modification time. */
++export function stampNoteChanges(
++  previous: Note[],
++  next: Note[],
++  now = Date.now(),
++) {
++  const old = new Map(previous.map((note) => [note.id, note]));
++  return next.map((note) => {
++    const before = old.get(note.id);
++    if (!before)
++      return {
++        ...note,
++        createdAt: Number.isFinite(note.createdAt) ? note.createdAt : now,
++        modifiedAt: now,
++      };
++    return {
++      ...note,
++      createdAt: before.createdAt,
++      modifiedAt: content(before) === content(note) ? before.modifiedAt : now,
++    };
++  });
++}
+diff --git a/plugins/plugin-notes/src/client/notes-contract.ts b/plugins/plugin-notes/src/client/notes-contract.ts
+new file mode 100644
+index 0000000..c5f71f6
+--- /dev/null
++++ b/plugins/plugin-notes/src/client/notes-contract.ts
+@@ -0,0 +1,137 @@
++/** Closed, provider-neutral selected Notes contract. Observations grant no authority. */
++export const NOTES_CAPABILITY = "notes.local-record.v1";
++export interface NotesTarget {
++  sourceId: string;
++  sourceRevision: string;
++  noteId: string;
++  revision: string;
++}
++export interface NotesFields {
++  title: string;
++  body: string;
++}
++export type NotesOperation =
++  | { type: "notes_read_selected" | "notes_delete"; target: NotesTarget }
++  | { type: "notes_update"; target: NotesTarget; fields: NotesFields };
++export interface NotesResult {
++  version: 1;
++  kind: NotesOperation["type"];
++  sourceId: string;
++  noteId: string;
++  revision: string;
++  fields?: NotesFields;
++}
++function object(value: unknown): Record<string, unknown> {
++  if (!value || typeof value !== "object" || Array.isArray(value))
++    throw Error("Invalid Notes object");
++  return value as Record<string, unknown>;
++}
++function keys(v: Record<string, unknown>, names: string[]) {
++  if (
++    Object.keys(v).length !== names.length ||
++    names.some((k) => !Object.hasOwn(v, k))
++  )
++    throw Error("Unexpected Notes fields");
++}
++function text(v: unknown, max: number, empty = false) {
++  if (
++    typeof v !== "string" ||
++    v.length > max ||
++    (!empty && !v.trim()) ||
++    v.includes("\0")
++  )
++    throw Error("Invalid Notes text");
++  return v;
++}
++function id(v: unknown) {
++  const s = text(v, 128);
++  if (!/^[A-Za-z0-9][A-Za-z0-9._:-]*$/.test(s))
++    throw Error("Invalid Notes identity");
++  return s;
++}
++function revision(v: unknown) {
++  const s = text(v, 64);
++  if (!/^[a-f0-9]{64}$/.test(s)) throw Error("Invalid Notes revision");
++  return s;
++}
++export function notesFields(value: unknown): NotesFields {
++  const v = object(value);
++  keys(v, ["title", "body"]);
++  const fields = {
++    title: text(v.title, 256, true),
++    body: text(v.body, 32000, true),
++  };
++  if (new TextEncoder().encode(JSON.stringify(fields)).byteLength > 60000)
++    throw Error("Note text exceeds the reviewed transfer bound");
++  return fields;
++}
++export function notesTarget(value: unknown): NotesTarget {
++  const v = object(value);
++  keys(v, ["sourceId", "sourceRevision", "noteId", "revision"]);
++  return {
++    sourceId: id(v.sourceId),
++    sourceRevision: revision(v.sourceRevision),
++    noteId: id(v.noteId),
++    revision: revision(v.revision),
++  };
++}
++export function isNotesOperation(value: unknown): value is NotesOperation {
++  return (
++    !!value &&
++    typeof value === "object" &&
++    ["notes_read_selected", "notes_update", "notes_delete"].includes(
++      String((value as { type?: unknown }).type),
++    )
++  );
++}
++export function validateNotesOperation(value: unknown): NotesOperation {
++  const v = object(value);
++  if (!isNotesOperation(value)) throw Error("Unsupported Notes operation");
++  keys(
++    v,
++    value.type === "notes_update"
++      ? ["type", "target", "fields"]
++      : ["type", "target"],
++  );
++  return value.type === "notes_update"
++    ? {
++        type: value.type,
++        target: notesTarget(v.target),
++        fields: notesFields(v.fields),
++      }
++    : { type: value.type, target: notesTarget(v.target) };
++}
++export function validateNotesResult(
++  operation: NotesOperation,
++  value: unknown,
++): NotesResult {
++  const v = object(value);
++  keys(
++    v,
++    operation.type === "notes_read_selected"
++      ? ["version", "kind", "sourceId", "noteId", "revision", "fields"]
++      : ["version", "kind", "sourceId", "noteId", "revision"],
++  );
++  if (
++    v.version !== 1 ||
++    v.kind !== operation.type ||
++    v.sourceId !== operation.target.sourceId ||
++    v.noteId !== operation.target.noteId
++  )
++    throw Error("Notes result scope changed");
++  const result: NotesResult = {
++    version: 1,
++    kind: operation.type,
++    sourceId: id(v.sourceId),
++    noteId: id(v.noteId),
++    revision: revision(v.revision),
++  };
++  if (
++    operation.type !== "notes_update" &&
++    result.revision !== operation.target.revision
++  )
++    throw Error("Notes result revision changed");
++  if (operation.type === "notes_read_selected")
++    result.fields = notesFields(v.fields);
++  return result;
++}
+diff --git a/plugins/plugin-notes/src/client/notes-secure-store.ts b/plugins/plugin-notes/src/client/notes-secure-store.ts
+new file mode 100644
+index 0000000..891f1ba
+--- /dev/null
++++ b/plugins/plugin-notes/src/client/notes-secure-store.ts
+@@ -0,0 +1,312 @@
++import type { NotesOperation } from "./notes-contract.ts";
++import {
++  type NoteRecord,
++  NotesCommitUncertain,
++  type NotesStorageKeys,
++  NotesStore,
++} from "./notes-store.ts";
++export type NotesOpenStage =
++  | "native-read"
++  | "legacy-import"
++  | "migration-write"
++  | "migration-readback"
++  | "encrypted-validation"
++  | "legacy-comparison"
++  | "legacy-cleanup"
++  | "opened";
++export interface SecureNotesConfig extends NotesStorageKeys {
++  secureSlot: string;
++  daily: string;
++}
++interface LegacyStorage {
++  getItem(key: string): string | null;
++  setItem(key: string, value: string): void;
++  removeItem(key: string): void;
++}
++/** Read only the legacy Notes schema; unrelated workflows/receipts do not gate Notes. */
++export function readLegacyDailyNotes(
++  config: SecureNotesConfig,
++  storage: Pick<LegacyStorage, "getItem">,
++): NoteRecord[] {
++  const raw = storage.getItem(config.daily);
++  if (raw === null) return [];
++  const value = JSON.parse(raw);
++  if (
++    !value ||
++    typeof value !== "object" ||
++    !Array.isArray(value.notes) ||
++    value.notes.length > 10000
++  )
++    throw Error("Invalid legacy daily Notes");
++  const ids = new Set<string>();
++  return value.notes.map((note: Record<string, unknown>) => {
++    if (
++      !note ||
++      typeof note !== "object" ||
++      typeof note.id !== "string" ||
++      !note.id ||
++      ids.has(note.id) ||
++      typeof note.title !== "string" ||
++      typeof note.body !== "string" ||
++      typeof note.updatedAt !== "string" ||
++      !Number.isFinite(Date.parse(note.updatedAt))
++    )
++      throw Error("Invalid legacy daily Note");
++    ids.add(note.id);
++    return {
++      ...note,
++      id: note.id,
++      title: note.title,
++      body: note.body,
++      kind: "text",
++      pinned: false,
++      when: "Saved on this device",
++    };
++  });
++}
++export interface NotesVault {
++  read<T>(key: string): Promise<T | null>;
++  compareExchange(
++    key: string,
++    expected: unknown | null,
++    value: unknown | null,
++  ): Promise<{ status: string }>;
++}
++interface Saved {
++  version: 1;
++  currentRaw: string;
++  archive: { v1: string | null; v2: string | null; daily: string | null };
++}
++function memory(
++  config: SecureNotesConfig,
++  raw: string | null,
++  legacy: string | null = null,
++) {
++  const values = new Map<string, string>();
++  if (raw !== null) values.set(config.current, raw);
++  if (legacy !== null) values.set(config.legacy, legacy);
++  return {
++    getItem: (key: string) => values.get(key) ?? null,
++    setItem: (key: string, value: string) => {
++      values.set(key, value);
++    },
++  };
++}
++const equal = (a: unknown, b: unknown) =>
++  JSON.stringify(a) === JSON.stringify(b);
++/** Device-local collection. Native CAS is authoritative; no plaintext persistence fallback.
++ * The optimistic editor snapshot is never an agent target until pending commits settle. */
++export class SecureNotesStore {
++  private tail: Promise<void> = Promise.resolve();
++  private fault: unknown;
++  private activeOperation = false;
++  private constructor(
++    private config: SecureNotesConfig,
++    private vault: NotesVault,
++    private saved: Saved,
++    private inner: NotesStore,
++  ) {}
++  static async open(
++    config: SecureNotesConfig,
++    vault: NotesVault,
++    legacy: LegacyStorage,
++    initial: NoteRecord[] | (() => NoteRecord[]) = [],
++    onStage: (stage: NotesOpenStage) => void = () => {},
++  ) {
++    config = { ...config };
++    onStage("native-read");
++    let saved = await vault.read<Saved>(config.secureSlot);
++    if (saved === null) {
++      onStage("legacy-import");
++      const archive = {
++        v1: legacy.getItem(config.legacy),
++        v2: legacy.getItem(config.current),
++        daily: legacy.getItem(config.daily),
++      };
++      const inner = new NotesStore(
++        config,
++        memory(config, archive.v2, archive.v1),
++        initial,
++      );
++      const proposed: Saved = { version: 1, currentRaw: inner.raw, archive };
++      // Never remove source data before an acknowledged encrypted write and exact readback.
++      onStage("migration-write");
++      let result;
++      try {
++        result = await vault.compareExchange(config.secureSlot, null, proposed);
++      } catch {
++        throw new NotesCommitUncertain(
++          "Notes migration acknowledgement was lost. Reopen to inspect the saved collection.",
++        );
++      }
++      if (result.status !== "saved")
++        throw Error("Notes migration changed in another view. Reopen Notes.");
++      onStage("migration-readback");
++      saved = await vault.read<Saved>(config.secureSlot);
++      if (!equal(saved, proposed))
++        throw new NotesCommitUncertain(
++          "Encrypted Notes migration could not be verified. Original data retained.",
++        );
++    }
++    onStage("encrypted-validation");
++    if (
++      !saved ||
++      saved.version !== 1 ||
++      typeof saved.currentRaw !== "string" ||
++      !saved.archive ||
++      ![saved.archive.v1, saved.archive.v2, saved.archive.daily].every(
++        (value) => value === null || typeof value === "string",
++      )
++    )
++      throw Error("Invalid encrypted Notes collection. No data changed.");
++    const inner = new NotesStore(config, memory(config, saved.currentRaw));
++    // Originals remain verbatim inside the encrypted archive. Delete only exact migration sources.
++    onStage("legacy-comparison");
++    const sources: [[string, string | null], [string, string | null]] = [
++      [config.legacy, saved.archive.v1],
++      [config.current, saved.archive.v2],
++    ];
++    for (const [key, expected] of sources) {
++      const current = legacy.getItem(key);
++      if (current !== null && current !== expected)
++        throw Error(
++          "Plaintext Notes changed during migration. Both copies retained for recovery.",
++        );
++    }
++    let dailyClean: string | null = null;
++    if (saved.archive.daily !== null) {
++      const daily = JSON.parse(saved.archive.daily);
++      if (!daily || !Array.isArray(daily.notes))
++        throw Error("Invalid legacy Notes archive");
++      dailyClean = JSON.stringify({ ...daily, notes: [] });
++    }
++    const currentDaily = legacy.getItem(config.daily);
++    if (
++      currentDaily !== null &&
++      currentDaily !== saved.archive.daily &&
++      currentDaily !== dailyClean
++    ) {
++      const daily = JSON.parse(currentDaily);
++      if (!daily || !Array.isArray(daily.notes) || daily.notes.length)
++        throw Error(
++          "Legacy Notes changed during migration. Both copies retained for recovery.",
++        );
++    }
++    onStage("legacy-cleanup");
++    for (const [key, expected] of sources)
++      if (legacy.getItem(key) === expected && expected !== null)
++        legacy.removeItem(key);
++    if (
++      saved.archive.daily !== null &&
++      dailyClean !== null &&
++      legacy.getItem(config.daily) === saved.archive.daily
++    )
++      legacy.setItem(config.daily, dailyClean);
++    if (sources.some(([key]) => legacy.getItem(key) !== null))
++      throw Error(
++        "Plaintext Notes cleanup did not complete. Reopen to retry cleanup.",
++      );
++    onStage("opened");
++    return new SecureNotesStore(config, vault, saved, inner);
++  }
++  get raw() {
++    return this.inner.raw;
++  }
++  get list() {
++    return this.inner.list;
++  }
++  get needsRecovery() {
++    return this.fault !== undefined;
++  }
++  private check() {
++    if (this.fault) throw this.fault;
++  }
++  async assertCurrent() {
++    await this.tail;
++    this.check();
++    try {
++      const current = await this.vault.read<Saved>(this.config.secureSlot);
++      if (!equal(current, this.saved))
++        throw Error("Notes changed in another view. Reopen before editing.");
++    } catch (error) {
++      this.fault = error;
++      throw error;
++    }
++  }
++  private commit(nextRaw: string) {
++    const task = this.tail.then(async () => {
++      this.check();
++      const next = { ...this.saved, currentRaw: nextRaw };
++      let result;
++      try {
++        result = await this.vault.compareExchange(
++          this.config.secureSlot,
++          this.saved,
++          next,
++        );
++      } catch {
++        throw new NotesCommitUncertain(
++          "Notes commit outcome is unknown; do not repeat the edit.",
++        );
++      }
++      if (result.status !== "saved")
++        throw Error(
++          "Notes changed in another view. Unsaved text remains on this screen.",
++        );
++      let current;
++      try {
++        current = await this.vault.read<Saved>(this.config.secureSlot);
++      } catch {
++        throw new NotesCommitUncertain(
++          "Notes saved acknowledgement could not be verified. Do not repeat the edit.",
++        );
++      }
++      if (!equal(current, next))
++        throw new NotesCommitUncertain(
++          "Notes readback changed. Inspect saved data before another edit.",
++        );
++      this.saved = next;
++    });
++    this.tail = task.catch((error) => {
++      this.fault = error;
++    });
++    return task;
++  }
++  replace(list: NoteRecord[]) {
++    this.check();
++    if (this.activeOperation)
++      throw Error("Finish the approved Notes operation first.");
++    this.inner.replace(list);
++    return this.commit(this.inner.raw);
++  }
++  async target(id: string) {
++    await this.assertCurrent();
++    const raw = this.raw,
++      target = await this.inner.target(id);
++    await this.assertCurrent();
++    if (raw !== this.raw) throw Error("Selected note changed");
++    return target;
++  }
++  async execute(
++    op: NotesOperation,
++    id: string,
++    signal: AbortSignal,
++    authorized: () => void,
++  ) {
++    this.check();
++    if (this.activeOperation)
++      throw Error("Another Notes operation is in progress");
++    this.activeOperation = true;
++    try {
++      await this.assertCurrent();
++      signal.throwIfAborted();
++      authorized();
++      const before = this.raw;
++      const result = await this.inner.execute(op, id, signal, authorized);
++      if (this.raw !== before) await this.commit(this.raw);
++      return result;
++    } finally {
++      this.activeOperation = false;
++    }
++  }
++}
+diff --git a/plugins/plugin-notes/src/client/notes-store.ts b/plugins/plugin-notes/src/client/notes-store.ts
+new file mode 100644
+index 0000000..5088000
+--- /dev/null
++++ b/plugins/plugin-notes/src/client/notes-store.ts
+@@ -0,0 +1,233 @@
++import {
++  type NotesOperation,
++  type NotesResult,
++  type NotesTarget,
++  notesFields,
++  validateNotesOperation,
++  validateNotesResult,
++} from "./notes-contract.ts";
++export interface NotesStorageKeys {
++  current: string;
++  legacy: string;
++}
++export class NotesCommitUncertain extends Error {}
++
++export interface NoteRecord {
++  id: string;
++  kind: string;
++  title: string;
++  body?: string;
++  [key: string]: unknown;
++}
++interface Envelope {
++  version: 2;
++  collectionId: string;
++  records: NoteRecord[];
++  deleted: Array<{ id: string; revision: string; operationId: string }>;
++}
++export interface StoragePort {
++  getItem(key: string): string | null;
++  setItem(key: string, value: string): void;
++}
++function records(value: unknown): NoteRecord[] {
++  if (!Array.isArray(value) || value.length > 10000)
++    throw Error("Invalid saved Notes");
++  const ids = new Set<string>();
++  for (const item of value) {
++    if (
++      !item ||
++      typeof item !== "object" ||
++      typeof item.id !== "string" ||
++      !item.id ||
++      ids.has(item.id) ||
++      typeof item.title !== "string" ||
++      !["text", "list", "voice", "link"].includes(item.kind)
++    )
++      throw Error("Invalid saved Note");
++    ids.add(item.id);
++  }
++  return value;
++}
++function canonical(value: unknown): string {
++  if (Array.isArray(value)) return "[" + value.map(canonical).join(",") + "]";
++  if (value && typeof value === "object")
++    return (
++      "{" +
++      Object.keys(value)
++        .sort()
++        .map(
++          (key) =>
++            JSON.stringify(key) +
++            ":" +
++            canonical((value as Record<string, unknown>)[key]),
++        )
++        .join(",") +
++      "}"
++    );
++  return JSON.stringify(value);
++}
++async function hash(value: unknown) {
++  return Array.from(
++    new Uint8Array(
++      await crypto.subtle.digest(
++        "SHA-256",
++        new TextEncoder().encode(canonical(value)),
++      ),
++    ),
++    (x) => x.toString(16).padStart(2, "0"),
++  ).join("");
++}
++/** One authoritative versioned envelope. The original v1 key is preserved verbatim. */
++export class NotesStore {
++  raw = "";
++  private envelope!: Envelope;
++  constructor(
++    private keys: NotesStorageKeys,
++    private storage: StoragePort,
++    initial: NoteRecord[] | (() => NoteRecord[]) = [],
++  ) {
++    this.keys = { ...keys };
++    const current = storage.getItem(this.keys.current);
++    if (current === null) {
++      const legacy = storage.getItem(this.keys.legacy);
++      const list = records(
++        legacy === null
++          ? typeof initial === "function"
++            ? initial()
++            : initial
++          : JSON.parse(legacy),
++      );
++      const next: Envelope = {
++        version: 2,
++        collectionId: crypto.randomUUID(),
++        records: list,
++        deleted: [],
++      };
++      const encoded = JSON.stringify(next);
++      if (storage.getItem(this.keys.current) !== null)
++        throw Error("Notes migration raced");
++      storage.setItem(this.keys.current, encoded);
++      if (storage.getItem(this.keys.current) !== encoded)
++        throw Error("Notes migration not committed");
++      this.load(encoded);
++    } else this.load(current);
++  }
++  private load(raw: string) {
++    const e = JSON.parse(raw);
++    if (
++      !e ||
++      e.version !== 2 ||
++      typeof e.collectionId !== "string" ||
++      !/^[a-f0-9-]{36}$/.test(e.collectionId) ||
++      !Array.isArray(e.deleted)
++    )
++      throw Error("Invalid Notes envelope");
++    records(e.records);
++    this.envelope = e;
++    this.raw = raw;
++  }
++  get list() {
++    return structuredClone(this.envelope.records);
++  }
++  assertCurrent() {
++    if (this.storage.getItem(this.keys.current) !== this.raw)
++      throw Error(
++        "Notes changed in another view. Reopen Notes before editing.",
++      );
++  }
++  replace(list: NoteRecord[], deleted = this.envelope.deleted) {
++    this.assertCurrent();
++    records(list);
++    const raw = JSON.stringify({ ...this.envelope, records: list, deleted });
++    try {
++      this.storage.setItem(this.keys.current, raw);
++      if (this.storage.getItem(this.keys.current) !== raw)
++        throw Error("readback mismatch");
++      this.load(raw);
++    } catch {
++      throw new NotesCommitUncertain(
++        "Notes commit outcome is unknown; do not repeat the edit.",
++      );
++    }
++  }
++  async target(noteId: string): Promise<NotesTarget> {
++    this.assertCurrent();
++    const note = this.envelope.records.find((n) => n.id === noteId);
++    if (!note) throw Error("Selected note is missing");
++    const target = {
++      sourceId: this.envelope.collectionId,
++      sourceRevision: await hash([
++        "notes.local-record.v1",
++        this.envelope.collectionId,
++      ]),
++      noteId,
++      revision: await hash([this.envelope.collectionId, note]),
++    };
++    this.assertCurrent();
++    if (
++      this.envelope.collectionId !== target.sourceId ||
++      canonical(this.envelope.records.find((n) => n.id === noteId)) !==
++        canonical(note)
++    )
++      throw Error("Selected note changed");
++    return target;
++  }
++  async execute(
++    input: NotesOperation,
++    operationId: string,
++    signal: AbortSignal,
++    assertAuthorized: () => void,
++  ): Promise<NotesResult> {
++    const op = validateNotesOperation(input);
++    signal.throwIfAborted();
++    assertAuthorized();
++    const raw = this.raw,
++      target = await this.target(op.target.noteId);
++    if (canonical(target) !== canonical(op.target))
++      throw Error("Selected note revision changed");
++    const original = this.envelope.records.find((n) => n.id === target.noteId);
++    if (!original) throw Error("Selected note changed");
++    // v1 can read transcript text, but cannot silently turn a list/voice/link into a text note.
++    if (op.type === "notes_update" && original.kind !== "text")
++      throw Error(
++        "Only text Notes support agent edits; use the native editor for this note kind",
++      );
++    let result: NotesResult = {
++      version: 1,
++      kind: op.type,
++      sourceId: target.sourceId,
++      noteId: target.noteId,
++      revision: target.revision,
++    };
++    let list = this.list,
++      deleted = this.envelope.deleted;
++    if (op.type === "notes_read_selected")
++      result.fields = notesFields({
++        title: original.title,
++        body: original.body,
++      });
++    if (op.type === "notes_update") {
++      const next: NoteRecord = { ...original, ...op.fields };
++      if (next.title !== original.title || next.body !== original.body)
++        next.modifiedAt = Date.now();
++      result.revision = await hash([this.envelope.collectionId, next]);
++      list = list.map((n) => (n.id === target.noteId ? next : n));
++    }
++    if (op.type === "notes_delete") {
++      list = list.filter((n) => n.id !== target.noteId);
++      deleted = [
++        ...deleted,
++        { id: target.noteId, revision: target.revision, operationId },
++      ];
++    }
++    signal.throwIfAborted();
++    assertAuthorized();
++    this.assertCurrent();
++    if (this.raw !== raw)
++      throw Error("Notes changed before the approved operation");
++    result = validateNotesResult(op, result);
++    // No async work after mutation and before returning its exact receipt.
++    if (op.type !== "notes_read_selected") this.replace(list, deleted);
++    return result;
++  }
++}
+diff --git a/plugins/plugin-notes/test/device-client.test.mjs b/plugins/plugin-notes/test/device-client.test.mjs
+new file mode 100644
+index 0000000..ad6b97b
+--- /dev/null
++++ b/plugins/plugin-notes/test/device-client.test.mjs
+@@ -0,0 +1,110 @@
++import assert from "node:assert/strict";
++import test from "node:test";
++import { SecureNotesStore } from "../src/client/notes-secure-store.ts";
++import { NotesCommitUncertain, NotesStore } from "../src/client/notes-store.ts";
++
++const memory = () => {
++  const values = new Map();
++  return {
++    getItem: (key) => values.get(key) ?? null,
++    setItem: (key, value) => values.set(key, value),
++    removeItem: (key) => values.delete(key),
++  };
++};
++const config = {
++  current: "host.notes.v2",
++  legacy: "host.notes.v1",
++  daily: "host.daily",
++  secureSlot: "host.encrypted",
++};
++const note = { id: "note", kind: "text", title: "Keep", body: "Exact content" };
++test("host-configured notes migrate without destroying legacy bytes and fence stale editors", async () => {
++  const storage = memory(),
++    legacy = JSON.stringify([note]);
++  storage.setItem(config.legacy, legacy);
++  const first = new NotesStore(config, storage),
++    second = new NotesStore(config, storage);
++  const other = new NotesStore(
++    { ...config, current: "other.v2", legacy: "other.v1" },
++    storage,
++  );
++  assert.deepEqual(other.list, []);
++  assert.equal(storage.getItem(config.legacy), legacy);
++  const target = await first.target(note.id);
++  first.replace([{ ...note, body: "New body" }]);
++  assert.throws(() => second.replace([note]), /changed in another view/);
++  await assert.rejects(
++    first.execute(
++      { type: "notes_read_selected", target },
++      "read",
++      new AbortController().signal,
++      () => {},
++    ),
++    /revision changed/,
++  );
++  assert.equal(first.list[0].body, "New body");
++});
++test("encrypted migration retains originals when acknowledgement is lost and recovers by readback", async () => {
++  const storage = memory(),
++    legacy = JSON.stringify([note]);
++  storage.setItem(config.legacy, legacy);
++  let saved = null,
++    lose = true;
++  const slots = [];
++  const vault = {
++    read: async (key) => {
++      slots.push(key);
++      return structuredClone(saved);
++    },
++    compareExchange: async (key, expected, value) => {
++      slots.push(key);
++      assert.deepEqual(saved, expected);
++      saved = structuredClone(value);
++      if (lose) {
++        lose = false;
++        throw Error("lost response");
++      }
++      return { status: "saved" };
++    },
++  };
++  await assert.rejects(
++    SecureNotesStore.open(config, vault, storage),
++    NotesCommitUncertain,
++  );
++  assert.equal(storage.getItem(config.legacy), legacy);
++  const restored = await SecureNotesStore.open(config, vault, storage);
++  assert.deepEqual(restored.list, [note]);
++  assert.equal(storage.getItem(config.legacy), null);
++  assert.equal(
++    slots.every((slot) => slot === config.secureSlot),
++    true,
++  );
++  await restored.replace([{ ...note, body: "Saved once" }]);
++  assert.equal(
++    (await SecureNotesStore.open(config, vault, storage)).list[0].body,
++    "Saved once",
++  );
++});
++test("encrypted compare-exchange rejection faults the editor without overwriting another writer", async () => {
++  let saved = null,
++    reject = false;
++  const storage = memory();
++  const vault = {
++    read: async () => structuredClone(saved),
++    compareExchange: async (_key, expected, value) => {
++      if (reject) return { status: "conflict" };
++      assert.deepEqual(saved, expected);
++      saved = structuredClone(value);
++      return { status: "saved" };
++    },
++  };
++  const notes = await SecureNotesStore.open(config, vault, storage, [note]);
++  reject = true;
++  await assert.rejects(
++    notes.replace([{ ...note, body: "Unsaved" }]),
++    /another view/,
++  );
++  assert.equal(notes.needsRecovery, true);
++  assert.equal(JSON.parse(saved.currentRaw).records[0].body, "Exact content");
++  await assert.rejects(notes.target(note.id), /another view/);
++});
