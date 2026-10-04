@@ -2339,3 +2339,13 @@ under `test-results/workflow-retirement-final/`. At 04:08:02 UTC the untouched
 user dev host still verifies owner authentication, one agent, local Whisper and
 Kokoro, and embedded workflows. Exact-final-head hosted qualification remains a
 separate gate; Android builds were skipped as requested.
+
+
+At 04:08:41 UTC, PR157 merged as `ed2f69f937dce32e775b0692dde1546af77067eb`.
+Reviewed head `11ee6b160b6a22328b9847f0d58eb0b5cd58d917` is an ancestor of main,
+and the merge introduces no additional tree changes. A live queue read returns
+zero open PRs. Final main browser run `37176145836` is pending. Duplicate PR
+browser runs and this integration's automatically triggered Android jobs were
+cancelled; unrelated native work was not cancelled. This report-only update is
+kept on `codex/client-integration-status-20261004` to avoid restarting that final
+campaign for documentation alone. The live renderer/agent was not restarted.
