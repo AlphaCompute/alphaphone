@@ -27,7 +27,9 @@ test('pinned generated secure-store helper reads bounded actual bytes on the Jav
     // An existing source is an object cache, never trusted as prepared test input.
     const stageEnv={...process.env,ALPHA_LOCAL_AGENT_SOURCE_DIR:runtimeFixture,
       ALPHA_RUNTIME_GIT_CACHE:fs.existsSync(runtimeSource)?runtimeSource:path.join(root,'vendor/eliza')};
-    execFileSync(process.execPath,[path.join(fixture,'scripts/prepare-local-agent.mjs'),'--source-only'],{stdio:'pipe',timeout:180000,env:stageEnv});
+    // A cold full-runtime checkout and whole-tree authentication can exceed three
+    // minutes on a busy filesystem. Keep the real preparer and all source checks.
+    execFileSync(process.execPath,[path.join(fixture,'scripts/prepare-local-agent.mjs'),'--source-only'],{stdio:'pipe',timeout:600000,env:stageEnv});
     const launcherResult=execFileSync('python3',[path.join(root,'test/fixtures/resident-launcher-survival.py'),fixture,runtimeFixture],{encoding:'utf8',timeout:15000,maxBuffer:65536});
     assert.ok(launcherResult.includes('PASS source-derived'));
     execFileSync(process.execPath,[path.join(fixture,'scripts/stage-local-agent-sources.mjs')],{timeout:60000,env:stageEnv});
