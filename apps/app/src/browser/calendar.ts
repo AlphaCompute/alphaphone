@@ -14,29 +14,32 @@ type State={creations?:Record<string,CreationReceipt>;alertDismissed?:Record<str
 const initial=():State=>({sourceRevision:revision(),events:[]});
 const source={id:'local',name:'Browser calendar',account:'Alpha Phone',local:true,writable:true};
 const matches=(row:EventRow,expected:Partial<EventRow>|undefined)=>!!expected&&(!expected.revision||expected.revision===row.revision)&&(['title','body','location','begin','end'] as const).every(k=>row[k]===expected[k]);
+async function readCalendar<T>(initial:()=>T,signal?:AbortSignal):Promise<T>{
+ return calendarDocument.read(initial,signal);
+}
 export class BrowserCalendar extends WebPlugin {
   private reviews=new BrowserReviews();
   private async presentationState(){
-    const abort=new AbortController(),view=document.documentElement.dataset.activeView;
-    const retire=()=>abort.abort(),visibility=()=>{if(document.hidden)retire();};
+    const cancellation=new AbortController(),view=document.documentElement.dataset.activeView;
+    const retire=()=>cancellation.abort(),visibility=()=>{if(document.hidden)retire();};
     const events=['alpha-back','pagehide','alpha:device-state','launcher-home','alpha:browser-open-view'];
     for(const event of events)window.addEventListener(event,retire,true);
     document.addEventListener('visibilitychange',visibility);
-    try{visibility();const state=await calendarDocument.read(initial,abort.signal);return abort.signal.aborted||view!==document.documentElement.dataset.activeView?null:state;}
-    catch(error){if(abort.signal.aborted&&error===abort.signal.reason)return null;throw error;}
+    try{visibility();const state=await readCalendar(initial,cancellation.signal);return cancellation.signal.aborted||view!==document.documentElement.dataset.activeView?null:state;}
+    catch(error){if(cancellation.signal.aborted&&error===cancellation.signal.reason)return null;throw error;}
     finally{for(const event of events)window.removeEventListener(event,retire,true);document.removeEventListener('visibilitychange',visibility);}
   }
 
-  private active=new Map<string,{cancelled:boolean;abort:AbortController}>();
-  async cancelAgent(input:{operationId:string}){const pending=this.active.get(input.operationId);if(pending){pending.cancelled=true;pending.abort.abort();}this.reviews.cancel(input.operationId);return {status:'cancelled'};}
+  private active=new Map<string,{cancelled:boolean;controller:AbortController}>();
+  async cancelAgent(input:{operationId:string}){const pending=this.active.get(input.operationId);if(pending){pending.cancelled=true;pending.controller.abort();}this.reviews.cancel(input.operationId);return {status:'cancelled'};}
   async executeAgent(input:{operation:unknown;operationId:string}) {
     if(!/^[A-Za-z0-9_-]{1,128}$/.test(input.operationId))throw Error('Invalid operation identity.');
     const operation=validateCalendarOperation(input.operation),binding=JSON.stringify(operation),identity=operation.type==='calendar_create'?operation.source:operation.target;
     if(this.active.has(input.operationId))return {status:'busy'};
-    const ticket={cancelled:false,abort:new AbortController()};this.active.set(input.operationId,ticket);
+    const ticket={cancelled:false,controller:new AbortController()};this.active.set(input.operationId,ticket);
     const fields=(row:EventRow):CalendarFields=>({title:row.title,description:row.body,location:row.location,start:new Date(row.begin).toISOString(),end:new Date(row.end).toISOString(),timeZone:row.timeZone||Intl.DateTimeFormat().resolvedOptions().timeZone});
     try {
-      const data=(await calendarDocument.read(initial,ticket.abort.signal)),row=operation.type==='calendar_create'?undefined:calendarRecord(data.events,operation.target.eventId);
+      const data=(await readCalendar(initial,ticket.controller.signal)),row=operation.type==='calendar_create'?undefined:calendarRecord(data.events,operation.target.eventId);
       const prior=data.receipts?.[input.operationId];
       if(prior)return prior.binding===binding?{status:'applied',result:prior.result}:{status:'conflict'};
       if(ticket.cancelled||document.hidden)return {status:'cancelled'};
@@ -65,8 +68,8 @@ ${reviewed.description}`);
           else result.fields=fields(before!);
         }
         (current.receipts??={})[input.operationId]={binding,result};return {status:'applied',result};
-      },ticket.abort.signal);
-    } catch(error){if(ticket.abort.signal.aborted&&error===ticket.abort.signal.reason)return {status:'cancelled'};throw error;} finally {if(this.active.get(input.operationId)===ticket)this.active.delete(input.operationId);}
+      },ticket.controller.signal);
+    } catch(error){if(ticket.controller.signal.aborted&&error===ticket.controller.signal.reason)return {status:'cancelled'};throw error;} finally {if(this.active.get(input.operationId)===ticket)this.active.delete(input.operationId);}
   }
   async changePreferences(input:{action:'visibility'|'color'}) {
     if(!['visibility','color'].includes(input.action))throw Error('Invalid calendar preference.');
@@ -84,10 +87,9 @@ ${reviewed.description}`);
     const row=calendarRecord(state.events,input.id);
     if(!row||row.revision!==input.revision)throw Error('This event changed. Reopen it before editing.');
     if(input.people!==undefined&&(!Array.isArray(input.people)||input.people.length>1000||input.people.some(p=>!p||typeof p.id!=='string'||!p.id||p.id.length>128||typeof p.name!=='string'||p.name.length>300)))throw Error('Review the attendee list.');
-    const abort=new AbortController();
-    return editCalendarEvent({...row,...(row.seriesId?{repeat:'none' as const}:{})},async(next,current)=>{
-      await calendarDocument.edit(initial,data=>{if(!current())throw Error('Editing cancelled.');const before=calendarRecord(data.events,input.id);if(!before||before.revision!==input.revision)throw Error('This event changed. Reopen it before editing.');if((next.who?.length||0)>100)throw Error('Choose at most 100 attendees.');const updated={...before,...next,revision:revision()};if(updated.responses)updated.responses=Object.fromEntries(Object.entries(updated.responses).filter(([person])=>updated.who?.includes(person)));if(!before.seriesId&&before.repeat&&before.repeat!=='none')updated.excluded=remapCalendarExclusions(data.events,before,updated);replaceCalendarRecord(data.events,updated);},abort.signal);
-    },input.people).finally(()=>abort.abort());
+    return editCalendarEvent({...row,...(row.seriesId?{repeat:'none' as const}:{})},async(next,current,signal)=>{
+      await calendarDocument.edit(initial,data=>{if(!current())throw Error('Editing cancelled.');const before=calendarRecord(data.events,input.id);if(!before||before.revision!==input.revision)throw Error('This event changed. Reopen it before editing.');if((next.who?.length||0)>100)throw Error('Choose at most 100 attendees.');const updated={...before,...next,revision:revision()};if(updated.responses)updated.responses=Object.fromEntries(Object.entries(updated.responses).filter(([person])=>updated.who?.includes(person)));if(!before.seriesId&&before.repeat&&before.repeat!=='none')updated.excluded=remapCalendarExclusions(data.events,before,updated);replaceCalendarRecord(data.events,updated);},signal);
+    },input.people);
   }
   async editSeries(input:{id:string;revision:string;people?:{id:string;name:string}[]}){
     const data=await this.presentationState();if(!data)return {status:'cancelled'};
@@ -107,11 +109,10 @@ ${reviewed.description}`);
     const state=await this.presentationState();if(!state)return {status:'cancelled'};
     const row=calendarRecord(state.events,input.id);
     if(!row||row.revision!==input.revision||!row.who?.includes(input.person))throw Error('This guest list changed. Reopen the event.');
-    const abort=new AbortController();
-    return editCalendarResponse(input.name,row.responses?.[input.person]||'added',async(response,active)=>{
+    return editCalendarResponse(input.name,row.responses?.[input.person]||'added',async(response,active,signal)=>{
       if(!Object.hasOwn(calendarResponses,response))throw Error('Choose a guest response.');
-      await calendarDocument.edit(initial,data=>{if(!active())throw Error('Response editing cancelled.');const before=calendarRecord(data.events,input.id);if(!before||before.revision!==input.revision||!before.who?.includes(input.person))throw Error('This guest list changed. Reopen the event.');replaceCalendarRecord(data.events,{...before,responses:{...before.responses,[input.person]:response},revision:revision()});},abort.signal);
-    }).finally(()=>abort.abort());
+      await calendarDocument.edit(initial,data=>{if(!active())throw Error('Response editing cancelled.');const before=calendarRecord(data.events,input.id);if(!before||before.revision!==input.revision||!before.who?.includes(input.person))throw Error('This guest list changed. Reopen the event.');replaceCalendarRecord(data.events,{...before,responses:{...before.responses,[input.person]:response},revision:revision()});},signal);
+    });
   }
   async joinMeeting(input:{id:string;revision:string;people?:string[]}){
     if(input.people!==undefined&&(!Array.isArray(input.people)||input.people.length>100||input.people.some(name=>typeof name!=='string'||name.length>300)))throw Error('Invalid meeting attendees.');
@@ -120,9 +121,9 @@ ${reviewed.description}`);
     if(!row||row.revision!==input.revision||!row.video)throw Error('This meeting changed. Reopen the event.');
     return openCalendarMeeting(row.title,(input.people||row.who||[]).slice(0,100));
   }
-  async listAlerts(){const data=(await calendarDocument.read(initial));return {items:calendarAlerts(data.events,data.alertDismissed||{})};}
+  async listAlerts(){const data=(await readCalendar(initial));return {items:calendarAlerts(data.events,data.alertDismissed||{})};}
   async alertAction(input:{id:string;revision:string;open:boolean}){
-    const data=(await calendarDocument.read(initial)),alert=calendarAlerts(data.events,data.alertDismissed||{}).find(row=>row.id===input.id&&row.revision===input.revision);
+    const data=(await readCalendar(initial)),alert=calendarAlerts(data.events,data.alertDismissed||{}).find(row=>row.id===input.id&&row.revision===input.revision);
     if(!alert)throw Error('Calendar alert changed.');
     if(input.open){const result=await this.open({id:alert.eventId});if(result.status!=='opened')throw Error('Calendar navigation was cancelled.');}
     await calendarDocument.edit(initial,current=>{const active=calendarAlerts(current.events,current.alertDismissed||{}).find(row=>row.id===input.id&&row.revision===input.revision);if(!active)throw Error('Calendar alert changed.');current.alertDismissed=Object.fromEntries(Object.entries(current.alertDismissed||{}).filter(([,at])=>at>Date.now()-2*86400000));current.alertDismissed[active.receipt]=Date.now();});
@@ -131,9 +132,9 @@ ${reviewed.description}`);
   async requestAccess(){return {status:'granted'};}
   async requestWorkflowReadAccess(){return {status:'granted'};}
   async workflowCalendars(){return {status:'ready',calendars:[source]};}
-  async list(input:{begin:number;end:number}) {const data=await calendarDocument.read(initial);return {status:'ready',calendars:[{...source,...(data.preferences??{visible:true,color:'acc'})}],...calendarRange(data.events,input)};}
+  async list(input:{begin:number;end:number}) {const data=await readCalendar(initial);return {status:'ready',calendars:[{...source,...(data.preferences??{visible:true,color:'acc'})}],...calendarRange(data.events,input)};}
   async prepareAgentSource(){const raw=await calendarDocument.readRaw(),data:State=raw===null?await calendarDocument.edit(initial,data=>data):JSON.parse(raw);return {status:'ready',sourceId:'local',sourceRevision:data.sourceRevision};}
-  async pendingCreations(){const data=await calendarDocument.read(initial);return {status:'ready',creations:Object.values(data.creations||{}).filter(row=>!row.acknowledged).map(row=>row.result)};}
+  async pendingCreations(){const data=await readCalendar(initial);return {status:'ready',creations:Object.values(data.creations||{}).filter(row=>!row.acknowledged).map(row=>row.result)};}
   async acknowledgeCreation(input:{creationId:string}){return calendarDocument.edit(initial,data=>{const receipt=data.creations?.[input.creationId];if(!receipt)throw Error('Creation receipt unavailable');receipt.acknowledged=true;return {status:'acknowledged'};});}
   async save(input:Partial<EventRow>&{expected?:Partial<EventRow>;creationId?:string;separateCreation?:boolean}) {
     if(!input.title?.trim()||!Number.isFinite(input.begin)||!Number.isFinite(input.end)||input.end!<=input.begin!||input.calendarId!=='local')throw Error('Review the event title, calendar and dates.');
@@ -168,7 +169,7 @@ ${reviewed.description}`);
       return result;
     });
   }
-  async inspect(input:{id:string;calendarId:string;expected?:Partial<EventRow>}) {const data=(await calendarDocument.read(initial)),row=calendarRecord(data.events,input.id);return row&&row.calendarId===input.calendarId&&matches(row,input.expected)?{status:'ready',revision:row.revision,sourceRevision:data.sourceRevision}:{status:'conflict'};}
+  async inspect(input:{id:string;calendarId:string;expected?:Partial<EventRow>}) {const data=(await readCalendar(initial)),row=calendarRecord(data.events,input.id);return row&&row.calendarId===input.calendarId&&matches(row,input.expected)?{status:'ready',revision:row.revision,sourceRevision:data.sourceRevision}:{status:'conflict'};}
   async remove(input:{id:string;calendarId:string;expected:Partial<EventRow>;revision:string}) {return calendarDocument.edit(initial,data=>{const row=calendarRecord(data.events,input.id);if(!row||row.calendarId!==input.calendarId||row.revision!==input.revision||!matches(row,input.expected))return {status:'conflict'};data.events=deleteCalendarRecord(data.events,row,revision());return {status:'deleted'};});}
   async readWorkflowRange(input:{calendarIds:string[];start:string;end:string;maximumEvents:number}) {const {events}=await this.list({begin:Date.parse(input.start),end:Date.parse(input.end)});return {status:'ready',events:events.filter(e=>input.calendarIds.includes(e.calendarId)).slice(0,input.maximumEvents).map(e=>({...e,start:new Date(e.begin).toISOString(),end:new Date(e.end).toISOString(),allDay:!!e.allDay}))};}
   async open(input?:{id?:string}){
