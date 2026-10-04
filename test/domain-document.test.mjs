@@ -29,6 +29,11 @@ test('migration and edits preserve the exact legacy bytes without a writable mir
  assert.equal(JSON.parse(f.saved().raw).legacy,original);
 });
 
+test('empty reads do not claim a migration before legacy data exists',async()=>{
+ const f=fixture(null);assert.deepEqual(await f.domain.read(()=>({count:0})),{count:0});assert.equal(f.saved(),undefined);
+ f.setLegacy('{"count":7}');assert.deepEqual(await f.domain.read(()=>({count:0})),{count:7});assert.equal(JSON.parse(f.saved().raw).legacy,'{"count":7}');
+});
+
 test('malformed and empty legacy bytes are retained for backup, never treated as empty data',async()=>{
  for(const original of ['{ invalid\n\u0000','']){
   const f=fixture(original);let initialized=false;

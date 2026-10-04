@@ -10,5 +10,5 @@ for(const next of ['stay','home','new-draft'] as const)test(`edited event refres
  if(next==='stay'){await expect(page.getByRole('button',{name:'Join',exact:true})).toBeVisible();await expect(page.getByRole('heading',{name:'Renamed meeting',exact:true})).toBeVisible();}
  if(next==='home')await expect(page.locator('html')).toHaveAttribute('data-active-view','home');
  if(next==='new-draft')await expect(page.getByRole('textbox',{name:'Title',exact:true})).toHaveValue('Keep this newer draft');
- expect(await page.evaluate(()=>(window as any).editSaves)).toBe(1);const events=await page.evaluate(()=>JSON.parse(localStorage.getItem('alpha.browser.calendar.v1')!).events);expect(events).toHaveLength(1);expect(events[0].title).toBe('Renamed meeting');expect(events[0].video).toBe(true);
+ expect(await page.evaluate(()=>(window as any).editSaves)).toBe(1);const events=await page.evaluate(async ()=>JSON.parse((await (await import('/src/browser/calendar-store.ts')).calendarDocument.readRaw())!).events);expect(events).toHaveLength(1);expect(events[0].title).toBe('Renamed meeting');expect(events[0].video).toBe(true);
 });

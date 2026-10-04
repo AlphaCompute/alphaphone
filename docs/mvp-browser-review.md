@@ -17,7 +17,7 @@ not a claim that every feature or the current main revision has passed acceptanc
 | Connection and assistant | Resident/native IPC, local development host, optional Cloud/remote sessions, conversation history, reviewed proposals and receipts | Real owner/provider authorization, revoke, process recovery and complete task journeys |
 | Voice | Recording review, manual transcript fallback, explicit local/agent routes, owned playback and cancellation | Transcript quality, six-second latency target, physical microphone/speaker/Bluetooth and lifecycle |
 | Inbox | Account-bound Gmail adapter and operation journal; disclosed local draft/attachment simulator | Real provider grants, approved read/send journeys, account isolation and uncertain-outcome recovery |
-| Calendar | Persistent events, zoned/all-day dates, recurring series and overrides, preferences, local guest/meeting UI, alerts, backup and reviewed reset | Cross-tab creation race below; salvage/import, live-agent series, real invitations/conferencing and provider sync |
+| Calendar | Persistent events, zoned/all-day dates, recurring series and overrides, preferences, local guest/meeting UI, alerts, backup and reviewed reset | Transactional migration qualification below; salvage/import, live-agent series, real invitations/conferencing and provider sync |
 | Reminders and Clock | Shared native reminder engine, browser reminders, Done/Snooze/repeats, foreground alarm ownership and native Clock handoff | Physical audibility, Doze/OEM delivery, reboot, DND and hardware time-zone changes |
 | Browser | Development iframe, bookmarks, navigation, reviewed reading; isolated native browser surface | Cross-origin access limits, real password-provider/passkey/autofill behavior and release WebView lifecycle |
 | Camera and Scan | Capture/import, local OCR, reviewed text/links/calendar suggestions, multipage drafts, perspective correction, page-edge suggestions and searchable PDF | Physical camera/torch/permissions, OCR language/photo quality, edge quality and interrupted capture |
@@ -27,7 +27,7 @@ not a claim that every feature or the current main revision has passed acceptanc
 | Notifications | Owner-bound notices, receipt recovery and Calendar/reminder integration | Current-source native background/channel behavior and physical delivery |
 | Phone/SMS/Contacts and Wallet | Disabled shipping routes; explicit development simulation | Scope disposition before enabling production routes; simulations do not establish telecom, payment or external-message acceptance |
 
-## Open cross-tab Calendar defect
+## Cross-tab Calendar storage repair
 
 `test/browser/calendar-creation-recovery.spec.ts`, “different tabs cannot silently
 bypass a pending creation”, intermittently returns two `saved` results in Firefox
@@ -54,20 +54,36 @@ stale compare-and-swap, retains reset tombstones and cancels asynchronous editor
 without replaying them. The final shared implementation passes all three browser
 engines (200 retained concurrent edits and unique receipts per engine), UI
 typecheck and full upstream verification. A resident-source backport preserves
-Alpha's current native reminder/runtime source and is being qualified.
+Alpha's current native reminder/runtime source; its qualification is recorded below.
 
 Alpha's `BrowserDomainDocument` policy preserves exact legacy bytes, refuses
 observed legacy changes, exposes unreadable data for backup and prevents reset
-data from being reimported. Nine policy tests pass; the source checkpoint passes
-324 repository tests, TypeScript and the web build. The policy is not yet wired
-to the app, so the original cross-tab defect remains open.
+data from being reimported. Calendar now uses the document API for reads, writes,
+recovery and digest inputs, with cross-tab refresh through BroadcastChannel.
+Opening an empty calendar does not invent a persisted document. The original
+creation-race regression passed 30 repetitions across Chromium, Firefox and
+WebKit. Ten migration-policy tests and 326 repository tests passed at the first
+integration checkpoint, including TypeScript and the production web build.
 
-Migration must include Calendar reads/writes, recovery, the direct Calendar read
-in `browser/digest-live-sources.ts`, its `development-digests.ts` caller, and
-`prototype/calendar-adapter.ts` cross-tab refresh. The other store domains remain
-in scope. A timer-only candidate was rejected after WebKit lost an update. Old
-tabs must be closed for migration; legacy snapshot checks are not transactions.
-Preserve the failing regression until the integrated app passes it.
+The integration review also found cancellation between preparing an edit and
+committing its transaction. Event and guest-response editors, plus agent cancellation, now propagate their
+lifetime to storage with AbortSignal. All nine cancellation cases pass across the three engines. The focused migration
+batch passed 72 cases; three event-editor cases stopped at an outdated test label,
+which is corrected and passes in the cancellation rerun. The full Calendar suite
+is pending; original failures are retained in `test-results/transactions/`. Fixtures now inspect canonical IndexedDB documents
+and inject actual IndexedDB write failures rather than modifying legacy storage.
+
+The resident-source backport is merged as
+[Eliza PR33575](https://github.com/elizaOS/eliza/pull/33575); its exact head
+`50ef4984fedadae8f544103c63c27d434a4a945f` passes all 298 upstream verification
+tasks and preserves the admitted native reminder/runtime source.
+
+Other domains still use the old storage helper and remain in scope. The global
+rapid-edit regression is retained; Calendar qualification does not establish
+that those domains are fixed. A timer-only candidate was rejected after WebKit
+lost an update. Old tabs must be closed for migration; legacy snapshot checks
+are not transactions. Recovery retains the exact older copy and requires review
+before resetting the canonical document.
 
 ## Design and accessibility
 

@@ -7,7 +7,7 @@ for (const mode of ['read', 'update', 'delete', 'cancel', 'stale'] as const) {
   test(`browser assistant recurring Calendar action: ${mode}`, async ({ page }) => {
     await page.addInitScript((mode) => {
       const w = window as any, store = new Map();
-      if(!localStorage.getItem('alpha.browser.calendar.v1')){const start=new Date();start.setHours(12,0,0,0);localStorage.setItem('alpha.browser.calendar.v1',JSON.stringify({sourceRevision:'b'.repeat(64),events:[{id:'selected-event',calendarId:'local',title:'Selected private event',body:'Private description',location:'Private location',begin:start.getTime(),end:start.getTime()+3600000,revision:'c'.repeat(64),repeat:'daily',timeZone:Intl.DateTimeFormat().resolvedOptions().timeZone}]}));}
+      if(!localStorage.getItem('alpha.browser.calendar.v1')){const start=new Date();start.setHours(12,0,0,0);(localStorage.getItem('alpha.browser.calendar.v1')===null&&localStorage.setItem('alpha.browser.calendar.v1',JSON.stringify({sourceRevision:'b'.repeat(64),events:[{id:'selected-event',calendarId:'local',title:'Selected private event',body:'Private description',location:'Private location',begin:start.getTime(),end:start.getTime()+3600000,revision:'c'.repeat(64),repeat:'daily',timeZone:Intl.DateTimeFormat().resolvedOptions().timeZone}]})));}
       const agentId = '12345678-1234-4234-8234-123456789abc';
       const fixture = w.recoveryFixture = { posts: 0, lists: 0, decisions: 0, claims: 0, receipts: 0, effects: 0, journal: [] as string[], proposal: null as any };
       const methods = (names: string[]) => names.map(name => ({ name, rtype: 'promise' }));
@@ -90,7 +90,7 @@ for (const mode of ['read', 'update', 'delete', 'cancel', 'stale'] as const) {
     await input.fill('Plan a Calendar event; await my review.');await input.press('Enter');
     await expect(page.getByText(/Pending phone actions are available for separate review/)).toBeVisible();
     expect(await page.evaluate(()=>(window as any).calendarSent.metadata.clientDevice.context.selectedObject.kind)).toBe('calendar-event');
-    const before=await page.evaluate(()=>JSON.parse(localStorage.getItem('alpha.browser.calendar.v1')!).events);expect(before).toHaveLength(1);
+    const before=await page.evaluate(async ()=>JSON.parse((await (await import('/src/browser/calendar-store.ts')).calendarDocument.readRaw())!).events);expect(before).toHaveLength(1);
     expect(JSON.stringify(await page.evaluate(()=>(window as any).calendarSent))).not.toContain('Private description');
     await page.getByText('Approve: calendar '+(mode==='read'?'read selected':mode==='delete'?'delete':'update'),{exact:true}).click();
     const review=page.getByRole('dialog',{name:mode==='read'?'Share calendar event with agent?':'Review calendar change'});
@@ -100,7 +100,7 @@ for (const mode of ['read', 'update', 'delete', 'cancel', 'stale'] as const) {
     if(mode==='stale')await page.evaluate(()=>{const key='alpha.browser.calendar.v1',data=JSON.parse(localStorage.getItem(key)!);data.events[0].revision='d'.repeat(64);data.events[0].title='Changed series';localStorage.setItem(key,JSON.stringify(data));});
     await review.getByRole('button',{name:mode==='cancel'?'Cancel':'Confirm',exact:true}).click();
     await expect.poll(()=>page.evaluate(()=>(window as any).recoveryFixture.receipts)).toBe(1);
-    const events=await page.evaluate(()=>JSON.parse(localStorage.getItem('alpha.browser.calendar.v1')!).events);
+    const events=await page.evaluate(async ()=>JSON.parse((await (await import('/src/browser/calendar-store.ts')).calendarDocument.readRaw())!).events);
     const receipt=await page.evaluate(()=>(window as any).calendarRetained);expect(receipt.status).toBe(mode==='cancel'||mode==='stale'?'failed':'succeeded');
     if(mode==='read'){expect(events).toEqual(before);expect(receipt.result.calendarResult.fields.description).toBe('Private description');}
     if(mode==='cancel')expect(events).toEqual(before);
@@ -110,9 +110,9 @@ for (const mode of ['read', 'update', 'delete', 'cancel', 'stale'] as const) {
     if(mode!=='stale'&&mode!=='cancel'){
       expect(receipt.result.calendarResult.eventId).toBe(selected);
       const rows=await page.evaluate(async(begin)=>{const {registerPlugin}=await import('/src/platform-plugins.ts');return (await registerPlugin<any>('AlphaCalendar').list({begin:begin+86400000,end:begin+3*86400000})).events;},before[0].begin);expect(rows).toHaveLength(2);expect(rows.every((r:any)=>r.title==='Selected private event')).toBe(true);
-      const replay=await page.evaluate(async()=>{const {registerPlugin}=await import('/src/platform-plugins.ts');const state=JSON.parse(localStorage.getItem('alpha.browser.calendar.v1')!),[id,receipt]=Object.entries(state.receipts)[0] as [string,any];await registerPlugin<any>('AlphaCalendar').executeAgent({operationId:id,operation:JSON.parse(receipt.binding)});return JSON.parse(localStorage.getItem('alpha.browser.calendar.v1')!).events;});expect(replay).toEqual(events);
+      const replay=await page.evaluate(async()=>{const {registerPlugin}=await import('/src/platform-plugins.ts');const state=JSON.parse((await (await import('/src/browser/calendar-store.ts')).calendarDocument.readRaw())!),[id,receipt]=Object.entries(state.receipts)[0] as [string,any];await registerPlugin<any>('AlphaCalendar').executeAgent({operationId:id,operation:JSON.parse(receipt.binding)});return JSON.parse((await (await import('/src/browser/calendar-store.ts')).calendarDocument.readRaw())!).events;});expect(replay).toEqual(events);
     }
     await page.reload();
-    expect(await page.evaluate(()=>JSON.parse(localStorage.getItem('alpha.browser.calendar.v1')!).events)).toEqual(events);
+    expect(await page.evaluate(async ()=>JSON.parse((await (await import('/src/browser/calendar-store.ts')).calendarDocument.readRaw())!).events)).toEqual(events);
   });
 }

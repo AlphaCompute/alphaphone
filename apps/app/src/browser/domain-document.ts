@@ -40,6 +40,8 @@ export class BrowserDomainDocument {
  private async load(signal?:AbortSignal):Promise<Envelope>{
   const current=await this.documents.read(this.key,signal);
   if(current){const value=envelope(current.raw);unchanged(this.legacy(),value.legacy);return value;}
+  // Merely opening an empty domain must not claim a migration or invent data.
+  if(this.legacy()===null)return {version:1,legacy:null,value:null};
   return this.documents.edit(this.key,async before=>{
    signal?.throwIfAborted();
    const legacy=this.legacy();

@@ -25,6 +25,6 @@ for(const next of ['event','home','new-draft'] as const)test(`late Calendar dele
  if(next==='event')await expect(page.getByRole('heading',{name:'Keep event B',exact:true})).toBeVisible();
  if(next==='home')await expect(page.locator('html')).toHaveAttribute('data-active-view','home');
  if(next==='new-draft')await expect(page.getByRole('textbox',{name:'Title',exact:true})).toHaveValue('New unsaved event');
- const result=await page.evaluate(()=>({calls:(window as any).deleteCompletion.calls,events:JSON.parse(localStorage.getItem('alpha.browser.calendar.v1')!).events}));
+ const result=await page.evaluate(async ()=>({calls:(window as any).deleteCompletion.calls,events:JSON.parse((await (await import('/src/browser/calendar-store.ts')).calendarDocument.readRaw())!).events}));
  expect(result.calls).toBe(1);expect(result.events.map((event:any)=>event.title)).toEqual(['Keep event B']);
 });
