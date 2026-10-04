@@ -34,6 +34,7 @@ public class CalendarExternalEditorInstrumentedTest {
  private void setEditorTitle(String original,String updated)throws Exception{
   long end=SystemClock.elapsedRealtime()+15000;
   while(SystemClock.elapsedRealtime()<end){
+   denyOptionalEtarContacts();
    AccessibilityNodeInfo input=find("title",original);
    // The view page and edit page share this ID. Wait for a fresh editable node,
    // then tolerate a node becoming stale during the activity transition.

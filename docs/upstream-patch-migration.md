@@ -156,3 +156,16 @@ up and owner user 0 restored. Evidence is
 `test-results/calendar-regression-1791070033982`. These exact APKs are documented
 in the packaged-runtime proof. External editor handoff, physical-device behavior
 and a rebuild of the later upstream merge remain separate requirements.
+
+## External editor follow-up
+
+The first external Etar edit/cancel/save campaign failed at the second editor
+entry: an identified optional Contacts permission prompt covered the title
+control. The title-wait loop now calls the same scoped denial handler as the
+other editor waits; no Contacts permission is granted. Failure evidence and
+successful owned-user/package cleanup are retained in
+`test-results/calendar-regression-1791081113265`. The corrected instrumentation
+is being rebuilt and requires a new both-variant run before acceptance.
+
+The selected browser Calendar recovery/completion and upstream Clock handoff
+suite finished with 36 passes (`test-results/upstream-patch-migration/browser-flows.log`).
