@@ -1,0 +1,12 @@
+{
+  "baseCommit": "24744dd3dfecfab6106c057f52e4671bf492c382",
+  "capturedAt": "2026-10-04T03:44:26.649178+00:00",
+  "status": "Unqualified source backup, not production integration",
+  "files": {
+    "android/app/src/androidTest/java/ai/elizaresearch/alphaphone/NotesDocumentInstrumentedTest.java": {
+      "sha256": "c0616a2ebc253d031590abc2b44afc68dd70c1a1ed24176da05d47fb8f9c5422",
+      "bytes": 19654,
+      "mode": "100644"
+    }
+  }
+}
