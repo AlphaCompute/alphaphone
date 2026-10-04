@@ -8209,9 +8209,9 @@
     {
       "file": "src/prototype/maps-adapter.ts",
       "upstreamCandidate": [],
-      "bytes": 22183,
-      "sha256": "e8fe0343c330fe258a3adedebb6646b1e6c69f746e0b166c0cea6ed24eb7dc66",
-      "lines": 204,
+      "bytes": 23120,
+      "sha256": "8bb4fab74a13042f1e0baeb30889a476f1fe7dbb509434144ef20f9e2cefd6ff",
+      "lines": 220,
       "owner": "shared platform client; Alpha composition",
       "disposition": "split",
       "reason": "Cross-domain device/platform glue; separate host contracts and provider behavior from product registry, lifecycle, DOM and defaults.",
@@ -8233,19 +8233,19 @@
       ],
       "seams": [
         {
-          "line": 169,
+          "line": 185,
           "tags": [
             "identity-or-compatibility"
           ]
         },
         {
-          "line": 186,
+          "line": 202,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 199,
+          "line": 215,
           "tags": [
             "identity-or-compatibility",
             "host-coupling"
