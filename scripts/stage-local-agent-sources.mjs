@@ -12,7 +12,7 @@ if(!/^[a-z][a-z0-9]*(\.[a-z][a-z0-9]*)+$/.test(identity))throw Error('Invalid ap
 // All shared native code comes directly from the same reviewed upstream commit.
 const digest=value=>createHash('sha256').update(value).digest('hex');
 const runtimeSource=sourceDirectory(root);
-verifySource(runtimeSource,{baseCommit:pin,candidateFiles:{}},{files:{}});
+verifySource(runtimeSource,pin);
 const classes=['SecureStoreFrameInput','AgentSecureStore','DeviceRamTierPolicy','ElizaAgentService','IpcStartupRecovery','WorkflowSurvivorInventory','ElizaAgentWatchdogPolicy','ElizaAssetExtractionPolicy','ElizaBionicInferenceServer','ElizaStartupTrace','ElizaWorkScheduler','ElizaTasksWorker','InferenceMemoryPolicy','RuntimeInstallationIdentity','BionicDecodeLoop','ElizaVoiceNative','BgeEmbeddingSession'];
 const output=path.join(root,'android/app/build/generated/local-agent/java');
 fs.rmSync(output,{recursive:true,force:true});

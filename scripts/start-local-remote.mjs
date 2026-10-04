@@ -17,7 +17,7 @@ if ((swapFlags[0] === 'true') !== (swapFlags[1] === 'true')) throw new Error('Se
 const redaction = swapFlags[0] === 'true' ? 'all' : 'off';
 if (redaction === 'all') {
   const lock=JSON.parse(fs.readFileSync(new URL('../upstream.lock.json',import.meta.url),'utf8'));
-  verifySource(source,{baseCommit:lock.commit,candidateFiles:{}},{files:{}});
+  verifySource(source,lock.commit);
 }
 const profile = path.resolve(process.env.ALPHA_REMOTE_PROFILE || path.join(os.homedir(), '.local/share/alphaphone/local-remote'));
 const port = Number(process.env.ALPHA_REMOTE_PORT || 47839);
@@ -42,7 +42,7 @@ const asrEnvironment = agentAsrEnvironment();
 const ttsEnvironment = agentTtsEnvironment();
 if (asrEnvironment.ELIZA_WHISPER_BACKEND === 'auto' && redaction !== 'all') {
   const lock=JSON.parse(fs.readFileSync(new URL('../upstream.lock.json',import.meta.url),'utf8'));
-  verifySource(source,{baseCommit:lock.commit,candidateFiles:{}},{files:{}});
+  verifySource(source,lock.commit);
 }
 const warmupController = new AbortController();
 const cancelWarmup = () => warmupController.abort();

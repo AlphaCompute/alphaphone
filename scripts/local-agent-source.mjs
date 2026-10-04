@@ -39,27 +39,20 @@ export function sourceDirectory(root, env=process.env) {
  }
  return directory;
 }
-export function verifySource(directory, manifest, extra) {
+export function verifySource(directory, commit) {
+ if(typeof commit!=='string'||!/^[a-f0-9]{40}$/.test(commit))throw Error('Exact admitted runtime commit required');
  const git=(args)=>execFileSync('git',args,{cwd:directory,encoding:'utf8',maxBuffer:64*1024*1024});
- if(git(['rev-parse','HEAD']).trim()!==manifest.baseCommit)throw Error('Prepared runtime base commit changed');
- const expected={...manifest.candidateFiles,...extra.files};
- const deleted=new Set(manifest.deletedFiles||[]);
- for(const file of deleted)if(present(path.join(directory,file)))throw Error(`Deleted runtime source reintroduced: ${file}`);
- for(const [file,hash]of Object.entries(expected)){
-  const absolute=path.join(directory,file);
-  if(!fs.existsSync(absolute)||fs.lstatSync(absolute).isSymbolicLink()||digest(absolute)!==hash)throw Error(`Prepared source changed: ${file}`);
- }
- for(const [file,mode] of Object.entries(manifest.candidateModes||{}))if((fs.statSync(path.join(directory,file)).mode & 0o111)!==(mode==='100755'?0o111:0))throw Error(`Runtime source mode changed: ${file}`);
- // Unchanged base files are also authenticated, including ignored tracked files.
+ if(git(['rev-parse','HEAD']).trim()!==commit)throw Error('Prepared runtime base commit changed');
+ // Authenticate every committed file, including ignored tracked files.
  const entries=git(['ls-tree','-r','-z','HEAD']).split('\0').filter(Boolean);
- for(const entry of entries){const [meta,file]=entry.split('\t');if(Object.hasOwn(expected,file)||deleted.has(file))continue;
+ for(const entry of entries){const [meta,file]=entry.split('\t');
   const [mode,type,oid]=meta.split(' ');if(type==='commit')continue;
   const absolute=path.join(directory,file);
   if(mode==='120000') {if(!fs.existsSync(absolute)||!fs.lstatSync(absolute).isSymbolicLink()||blobHash(Buffer.from(fs.readlinkSync(absolute)))!==oid)throw Error(`Unsupported baseline symlink: ${file}`);continue;}
   if(!fs.existsSync(absolute)||fs.lstatSync(absolute).isSymbolicLink()||(fs.statSync(absolute).mode & 0o111)!==(mode==='100755'?0o111:0)||blobHash(fs.readFileSync(absolute))!==oid)throw Error(`Unexpected runtime source change: ${file}`);
  }
- for(const file of git(['diff','--name-only','HEAD']).trim().split('\n').filter(Boolean))if(!Object.hasOwn(expected,file)&&!deleted.has(file))throw Error(`Unexpected runtime source change: ${file}`);
- const packageFiles=new Set([...entries.map(entry=>entry.split('\t')[1]),...Object.keys(expected)]);
+ for(const file of git(['diff','--name-only','HEAD']).trim().split('\n').filter(Boolean))throw Error(`Unexpected runtime source change: ${file}`);
+ const packageFiles=new Set(entries.map(entry=>entry.split('\t')[1]));
  const rootPackage=JSON.parse(fs.readFileSync(path.join(directory,'package.json'),'utf8'));
  const turbo=JSON.parse(fs.readFileSync(path.join(directory,'turbo.json'),'utf8'));
  const workspacePatterns=Array.isArray(rootPackage.workspaces)?rootPackage.workspaces:rootPackage.workspaces.packages;
@@ -82,5 +75,5 @@ export function verifySource(directory, manifest, extra) {
  }
  const allowedGenerated=file=>file==='.alpha-runtime-source.json'||file==='.alpha-stage-runtime.ts'||generatedLogs.has(file)||generatedRoots.some(prefix=>file.startsWith(prefix));
  // Include ignored files: .gitignore must not hide unexpected source additions.
- for(const file of git(['ls-files','--others','-z']).split('\0').filter(Boolean))if(!Object.hasOwn(expected,file)&&!allowedGenerated(file))throw Error(`Unexpected untracked runtime source: ${file}`);
+ for(const file of git(['ls-files','--others','-z']).split('\0').filter(Boolean))if(!allowedGenerated(file))throw Error(`Unexpected untracked runtime source: ${file}`);
 }

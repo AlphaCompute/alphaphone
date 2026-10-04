@@ -64,7 +64,7 @@ if(process.env.ALPHA_DIGEST_CRASH_CHILD==='1'){
 }else{
  if(process.platform==='win32')throw Error('This fixture requires POSIX process groups');
  const source=process.env.ALPHA_ELIZA_SOURCE;if(!source||!path.isAbsolute(source))throw Error('Set ALPHA_ELIZA_SOURCE to the reproduced source with installed dependencies');
- const verify=()=>verifySource(source,{baseCommit:JSON.parse(fs.readFileSync(path.join(product,'upstream.lock.json'))).commit,candidateFiles:{}},{files:{}});verify();
+ const verify=()=>verifySource(source,JSON.parse(fs.readFileSync(path.join(product,'upstream.lock.json'))).commit);verify();
  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'alpha-digest-crash-'));const children=new Set();
  const killOwned=child=>{assert.ok(Number.isSafeInteger(child.pid)&&child.pid>1);try{process.kill(-child.pid,'SIGKILL');}catch(error){if(error.code!=='ESRCH')throw error;}};
  const cleanEnv=Object.fromEntries(['PATH','HOME','TMPDIR','LANG'].filter(k=>process.env[k]).map(k=>[k,process.env[k]]));
