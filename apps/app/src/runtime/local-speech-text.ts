@@ -22,20 +22,20 @@ export function planLocalSpeech(input: string): string[] {
     .replace(/\.{2,}/g, '.').replace(/\s+/g, ' ').trim();
   if (!/[A-Za-z0-9]/.test(text) || /[^A-Za-z0-9\s'.,!?;:()]/.test(text)) throw new Error('This message contains unsupported characters or formatting. Edit a copy in Notes before listening; nothing has been read.');
   const chunks: string[] = [];
-  // 300 input characters leave room below the native 2,000-character spelling
-  // expansion limit even when every character expands to a six-character digit.
-  while (text.length > 300) {
+  // Keep the first audio response sentence-sized instead of waiting for an
+  // entire multi-sentence passage. Preflight above still covers every character.
+  // The 300-character cap also bounds native spelling expansion.
+  while (text) {
     let boundary = -1;
-    for (const match of text.slice(0, 301).matchAll(/[.!?;]\s/g)) if (match.index! >= 100) boundary = match.index! + 1;
-    if (boundary < 0) boundary = text.lastIndexOf(' ', 300);
+    for (const match of text.slice(0, 301).matchAll(/[.!?;]\s/g)) {
+      // Avoid tiny fragments such as titles and initials.
+      if (match.index! >= 20) { boundary = match.index! + 1; break; }
+    }
+    if (boundary < 0) boundary = text.length <= 300 ? text.length : text.lastIndexOf(' ', 300);
     if (boundary < 1) throw new Error('A word is too long for local listening. Edit a copy in Notes; nothing has been read.');
     const chunk = text.slice(0, boundary).trim();
     if (!/[A-Za-z0-9]/.test(chunk)) throw new Error('Unsupported punctuation-only passage. Nothing has been read.');
     chunks.push(chunk); text = text.slice(boundary).trim();
-  }
-  if (text) {
-    if (!/[A-Za-z0-9]/.test(text)) throw new Error('Unsupported punctuation-only passage. Nothing has been read.');
-    chunks.push(text);
   }
   return chunks;
 }

@@ -15221,8 +15221,8 @@
     {
       "file": "src/runtime/local-speech-text.ts",
       "upstreamCandidate": [],
-      "bytes": 3077,
-      "sha256": "5ac5d953a95efe6331a9171a23442abf077b10d1f1386b0897a58fd7fb15ac3d",
+      "bytes": 3089,
+      "sha256": "0edffdcea38e144b8028afc0e3e68901a0a1302d11f8fb3ac5eb34fc9b351522",
       "lines": 42,
       "owner": "plugins/plugin-native-talkmode",
       "disposition": "extract-or-split",
