@@ -24,3 +24,13 @@ test('abort during listener registration removes a late handle without synthesiz
 test('a stopped prepared utterance exits the playback queue immediately',async()=>{const f=fixture(false);f.voice.play=async()=>{throw Object.assign(Error('Busy'),{code:'playback-busy'});};const c=new AbortController(),speech=f.speak('Queued browser text',c.signal,undefined,true);void speech.catch(()=>{});await until(()=>f.calls.length===1);await tick();f.emit('playbackStopped');try{await Promise.race([assert.rejects(speech),new Promise((_,reject)=>setTimeout(()=>reject(Error('Stopped playback remained queued')),800))]);}finally{c.abort();}});
 
 test('play admission error is preserved when its cleanup emits a stopped event',async()=>{const f=fixture(false);f.voice.play=async()=>{f.emit('playbackStopped');await tick();throw Error('No local browser voice is available. Read the reply as text.');};await assert.rejects(f.speak('Private reviewed text',new AbortController().signal),/No local browser voice/);});
+
+test('local speech starts with a complete sentence without dropping the remainder',()=>{
+ const f=fixture(),text='Alpha phone, local voice verification please. Remember to water the plants tomorrow morning.';
+ const chunks=Array.from(f.plan(text));
+ assert.deepEqual(chunks,['Alpha phone, local voice verification please.','Remember to water the plants tomorrow morning.']);
+ assert.equal(chunks.join(' '),text);
+ const unpunctuated='Water the plants tomorrow morning '.repeat(30).trim(),bounded=Array.from(f.plan(unpunctuated));
+ assert.ok(bounded.every(chunk=>chunk.length<=300));assert.equal(bounded.join(' '),unpunctuated);
+ assert.throws(()=>f.plan(text+' Unsupported 🙂'));
+});
