@@ -66,7 +66,7 @@ The setup's small `DeviceApps` bridge is duplicated intentionally so each APK ca
 
 Continue with submodules for implementation. Publishing every package is not a prerequisite and would export untested workspace assumptions. Before moving to registry packages: inventory the actual dependency closure; build it in topological order; rewrite workspace versions; include all Android/iOS source and runtime assets; verify exports with `npm pack`; install tarballs into these two clean consumer repos; build both flavors; then publish a coordinated prerelease with a compatibility matrix and rollback pin. Never publish credentials, proprietary device blobs or generated development signing material.
 
-The imported app baseline is an audit/migration source. Do not activate its entire default UI to finish either product. Port the bootstrap and narrow reusable services into E1, retaining original source attribution and comparing against the immutable baseline. Every port must have a consumer test; generic fixes go upstream instead of accumulating two copies.
+The retired app baseline remains an audit/migration source in Git history; see `eliza-app-baseline-provenance.json`. Do not activate its entire default UI to finish either product. Port the bootstrap and narrow reusable services into E1, retaining original source attribution and comparing against the recorded upstream baseline commit. Every port must have a consumer test; generic fixes go upstream instead of accumulating two copies.
 
 ### Shared contract shape
 

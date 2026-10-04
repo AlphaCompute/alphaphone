@@ -397,9 +397,12 @@
     }
   ],
   "upstreamFollowupPullRequest": "https://github.com/elizaOS/eliza/pull/33236",
-  "upstreamStagingCommit": "7509777f7d0fdfaa023dcc41e7d8d9937ab9f04f",
+  "upstreamStagingCommit": "83e2a2d90a619600be56fcca237a7861644b2d4b",
   "upstreamStagingPullRequest": "https://github.com/elizaOS/eliza/pull/32809",
   "upstreamStagingFollowupPullRequest": "https://github.com/elizaOS/eliza/pull/33238",
   "upstreamValidationPullRequest": "https://github.com/elizaOS/eliza/pull/33243",
-  "upstreamCiRepairPullRequest": "https://github.com/elizaOS/eliza/pull/33249"
+  "upstreamCiRepairPullRequest": "https://github.com/elizaOS/eliza/pull/33249",
+  "upstreamPlatformPullRequest": "https://github.com/elizaOS/eliza/pull/33253",
+  "upstreamPlatformCommit": "17c795ff947081a304c73d8d224095899c8252ed",
+  "upstreamPlatformStagingPullRequest": "https://github.com/elizaOS/eliza/pull/33260"
 }

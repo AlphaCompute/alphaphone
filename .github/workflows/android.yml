@@ -57,8 +57,8 @@ jobs:
       # AARs, extracted sources and models are rebuilt in this clean job.
       - uses: actions/cache@v4
         with:
-          path: scripts/local-speech/downloads
-          key: speech-downloads-${{ runner.os }}-${{ hashFiles('scripts/local-speech/download-manifest.json') }}
+          path: .eliza/local-speech/downloads
+          key: speech-downloads-${{ runner.os }}-${{ hashFiles('vendor/eliza/packages/app/scripts/local-speech/download-manifest.json') }}
       - name: Acquire verified speech source, models and license references
         timeout-minutes: 15
         run: |
@@ -119,9 +119,9 @@ jobs:
             artifacts/
             test-results/
             android/app/build/reports/
-            scripts/local-speech/build-*/build.log
-            scripts/local-speech/build-*/qualification*.json
-            scripts/local-speech/generated/lexicon-provenance.json
+            .eliza/local-speech/build-*/build.log
+            .eliza/local-speech/build-*/qualification*.json
+            .eliza/local-speech/generated/lexicon-provenance.json
             android/local-speech/runtime-manifest.json
             android/local-speech/src/main/assets/local-speech/v1/manifest.json
           retention-days: 14
@@ -131,6 +131,8 @@ jobs:
     timeout-minutes: 55
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: true
       # Smoke imports only checked-in scripts and Node builtins; no native build.
       - uses: actions/setup-node@v4
         with:
@@ -219,6 +221,8 @@ jobs:
     timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: true
       - name: Admit exact diagnostic source
         env:
           EXPECTED_SHA: ${{ inputs.expected_sha }}
