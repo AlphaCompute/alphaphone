@@ -70,3 +70,27 @@ checkout to make an uncommitted extraction appear consumed.
 The extraction also preserves the reviewed staging speech warmup and late-abort
 worker receipt fixes from upstream PRs #33238 and #33243 when advancing to develop.
 These fixes were absent from that branch despite being present in Alpha's earlier pin.
+
+## Consolidation evidence
+
+The main extraction merged in elizaOS/eliza#33253 and AlphaCompute/alphaphone#144.
+The CI framework restart repair merged in AlphaCompute/alphaphone#143.
+The native test harness follow-up merged in elizaOS/eliza#33265: calendar and reminders
+are host-configured libraries, so their identity tests run without an invented
+default Capacitor bridge. Existing bridge modules retain their WebView tests.
+
+Local qualification on an isolated API 35 emulator passed calendar CRUD,
+revoked-access and reviewed agent operations (3/3) for each Alpha variant.
+The creation recovery/no-replay test passed (1/1 per variant) in a fresh owned
+secondary user. Shared calendar identity tests passed 2/2 and reminder identity
+admission passed 1/1, with no skips. No real accounts or external integrations
+were connected. These native tests exercised production code unchanged by the
+subsequent test-harness-only pin update.
+
+The initial consumer verification passed all 258 tests, typechecking and the web
+build; Android assembly, both debug/release variants, both instrumentation APKs,
+lint and APK policy verification passed (760 Gradle tasks). Final-pin verification also passed all 258 tests, typechecking, the web build,
+both debug/release and instrumentation APK variants, lint and APK policy checks.
+The regenerated speech qualification manifest records the exact rebuilt ABI
+bytes; source/model acquisition pins and the no-eSpeak policy are unchanged. These results do not establish a full AOSP image boot,
+live integrations, or physical-device/user acceptance.
