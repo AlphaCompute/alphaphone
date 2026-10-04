@@ -94,3 +94,9 @@ both debug/release and instrumentation APK variants, lint and APK policy checks.
 The regenerated speech qualification manifest records the exact rebuilt ABI
 bytes; source/model acquisition pins and the no-eSpeak policy are unchanged. These results do not establish a full AOSP image boot,
 live integrations, or physical-device/user acceptance.
+
+The combined integration retains the previously qualified speech AAR and its
+matching runtime manifest. The native-library harness update changes no speech
+source, model or generator inputs. The regenerated hashes in the original #151
+branch remain historical evidence for that build; they are not substituted for
+the actual binary inputs used by this combined build.

@@ -1,3 +1,4 @@
+import { smokeCaseCounts } from "./smoke-case-counts.mjs";
 import { requireFixtureDisplay } from "./ci-emulator-display.mjs";
 import { candidate as qualifiedProvider } from "./prepare-ci-webview.mjs";
 import fs from "node:fs";
@@ -169,33 +170,7 @@ try {
       }, null, 2) + "\n");
       throw error;
     }
-    const terminalCases = [];
-    const startedCases = [];
-    let statusBlock = "";
-    for (const line of instrumentation.split("\n")) {
-      const code = /^INSTRUMENTATION_STATUS_CODE: (-?\d+)\s*$/.exec(line);
-      if (!code) { statusBlock += line + "\n"; continue; }
-      const testClass = /^INSTRUMENTATION_STATUS: class=(.+)$/m.exec(statusBlock)?.[1];
-      const testMethod = /^INSTRUMENTATION_STATUS: test=(.+)$/m.exec(statusBlock)?.[1];
-      const value = Number(code[1]);
-      if (testClass && testMethod && value === 1)
-        startedCases.push(`${testClass}#${testMethod}`);
-      if (testClass && testMethod && value <= 0)
-        terminalCases.push({ selector: `${testClass}#${testMethod}`, code: value });
-      statusBlock = "";
-    }
-    const testCounts = {
-      passed: terminalCases.filter(row => row.code === 0).length,
-      failed: terminalCases.filter(row => row.code === -1 || row.code === -2).length,
-      ignored: terminalCases.filter(row => row.code === -3).length,
-      assumptionSkipped: terminalCases.filter(row => row.code === -4).length,
-      unknown: terminalCases.filter(row => ![0,-1,-2,-3,-4].includes(row.code)).length,
-    };
-    const reportedCount = Number(/(?:OK \(|Tests run: )(\d+)/.exec(instrumentation)?.[1]);
-    const countsVerified = Number.isSafeInteger(reportedCount) && reportedCount > 0 &&
-      reportedCount === terminalCases.length &&
-      new Set(terminalCases.map(row => row.selector)).size === terminalCases.length &&
-      testCounts.unknown === 0;
+    const {terminalCases, startedCases, testCounts, reportedCount, countsVerified} = smokeCaseCounts(instrumentation);
     const interceptedClock = {
       required: interceptedClockRequired,
       selector: interceptedClockSelector,
@@ -210,6 +185,10 @@ try {
       !/FAILURES|INSTRUMENTATION_FAILED/.test(instrumentation);
     if (!instrumentationPassed) {
       instrumentationFailures.push(variant);
+      // Ordinary test failures do not throw, so preserve diagnostics here before
+      // the other distribution replaces the process and overwrites log buffers.
+      try { fs.writeFileSync(`${output}/${variant}-logcat.txt`, run("logcat", "-d", "-t", "2000", "-v", "threadtime")); }
+      catch (captureError) { console.error(`Could not collect ${variant} logcat:`, captureError.message); }
       console.error(`${variant} instrumentation failed; preserving its log and checking the other distribution variant.`);
     }
     // Instrumentation owns the prior process. Exercise a fresh normal launch.

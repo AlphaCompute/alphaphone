@@ -15,6 +15,7 @@ for (const variant of ["standalone", "launcher"])
     const { badging, xml, ...record } = d;
     results.push(record);
   }
+const runtimePackaging = JSON.parse(execFileSync("python3", ["scripts/verify-packaged-runtime.py", ...results.map(record => record.file)], { encoding: "utf8" }));
 fs.writeFileSync(
   "artifacts/apk-manifest.json",
   JSON.stringify(
@@ -22,6 +23,7 @@ fs.writeFileSync(
       createdAt: new Date().toISOString(),
       upstream: JSON.parse(fs.readFileSync("upstream.lock.json")),
       results,
+      runtimePackaging,
     },
     null,
     2,
