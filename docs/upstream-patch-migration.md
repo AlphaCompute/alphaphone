@@ -1,8 +1,57 @@
 # Upstream patch migration
 
-The product is migrating all maintained Eliza changes to reviewed `elizaOS/eliza` PRs. Do not retire a local patch merely because a PR exists: it must be merged, included in the pinned upstream commit, and qualified with both Alpha distributions. Historical patches require semantic coverage review before archival.
+The product is migrating all maintained Eliza changes to reviewed `elizaOS/eliza` PRs. Unused patch artifacts may be archived after semantic coverage, merged-pin ancestry and removal of executable references are verified. Full behavioral retirement additionally requires both Alpha distributions and relevant runtime/device flows to qualify; artifact archival does not satisfy that gate.
 
-## Current disposition
+## October 3 merged-source adoption checkpoint
+
+All 70 preserved patch files have hashes and merged upstream dispositions in
+[the patch map](upstream-patch-map.json). Maintained implementations are included
+in adoption candidate `09698bd30668ff3748d7922279b06119d39a3bcf`, merged by
+[#33230](https://github.com/elizaOS/eliza/pull/33230). Ancestry is recorded in
+`test-results/upstream-patch-migration/merged-pr-ancestry.json`. #33235 is closed
+as superseded. The separate permission-controller fixture correction #33234 is
+also merged; its merge does not by itself establish passing hosted checks.
+
+Alpha's candidate pin, native staging and renderer Clock imports use that
+commit. Runtime preparation now consumes `upstream/runtime-source.json` and
+`upstream/runtime-consumer.json` with no patches or overrides. Committed source
+and mode authentication remain enabled. Unused patch artifacts are archived in Git commit `d31f364d7d46cd491334d11933a96ab67f414a6a`;
+the ledger preserves hashes and merged PR provenance. Behavioral retirement
+remains unverified until the remaining flow gates pass.
+
+Validation of this candidate:
+
+- Full Alpha verification rerun passed 225/225 checks and renderer build.
+- Combined reminder/Clock HTTP/SQL suite passed seven tests against upstream.
+- Patchless API29 generation, Java 8 compilation and frame reads passed, including
+  dirty-source, symlink and incorrect-pin refusals.
+- The rebuilt embedded runtime and workflow worker were staged successfully.
+- All four standalone/launcher debug/release APKs and Android lint passed using
+  `ALPHA_ANDROID_LOW_DISK=1 npm run android:build`. Packaging one APK at a time
+  resolved the observed ENOSPC failures without deleting source or evidence.
+- `test-results/upstream-patch-migration/packaged-runtime-proof.json` proves all
+  four packaged agent bundles, worker manifests/indexes and both ABI runtimes
+  match the staged patchless candidate. This is packaging evidence, not runtime,
+  AOSP-image or physical-device acceptance.
+- Standalone Calendar CRUD passed both instrumentation tests on owned Pixel-class
+  emulator 5570, with APK hash verification and successful package/user cleanup.
+  Evidence: `test-results/calendar-regression-1791069822775`. The complete Calendar
+  suite across both distributions is running; no complete-suite claim yet.
+
+Canonical upstream [run 37160304309](https://github.com/elizaOS/eliza/actions/runs/37160304309)
+is not green. Resolver typing was fixed upstream in
+`ac4aa91de71d57b43b1ad03df54d45ac2abc5109`; #33240 was closed as superseded after
+verification against develop. Source-review false positives are being corrected
+in [#33241](https://github.com/elizaOS/eliza/pull/33241), including real-Git
+regressions for inline expression, call-argument and JSX credential literals.
+The corrected head `3a775d33d7acdb6a8fbee517bd649af1fdc1ca94` passed
+all hosted checks and merged as `17f0d1c7da30187b9914992877604a08284bf8a2`.
+Alpha still needs to adopt and rebuild that corrected pin. The canonical full-history secret scan also failed;
+its findings have not been suppressed or classified as harmless. Final corrected
+upstream adoption, remaining native flows, patch retirement and complete CI
+qualification remain open.
+
+## Historical disposition
 
 | Change | Upstream disposition | Product adoption |
 | --- | --- | --- |
@@ -75,3 +124,24 @@ Live upstream state now reports #33217 merged as `1fa0abdf4996efffe4f980c7ecb4c4
 Reminder bridge qualification now passes after the resource-ID test correction: denial, grant, create/read/update, stale-revision rejection, resume and cancellation (7.908 seconds). Production APK SHA remains `e0e17986de0e76e95caa61c580b5da1301233a9c3755dbef29013c1f064fda6d`; new test APK SHA is `af870808bdad4a6ec1d46fd3ebf3da32a9f8d1c6ad5799f7baee59fffe1cab75`. Cleanup passed. [#33234](https://github.com/elizaOS/eliza/pull/33234) carries the fixture correction. Remaining worker termination metadata patches are being ported, with only normal-exit host checks selected; no crash diagnostics are being executed.
 
 [#33235](https://github.com/elizaOS/eliza/pull/33235) ports both bounded worker-termination metadata patches. Three normal-exit subprocess checks and focused strict metadata typecheck passed; signal/crash cases were not executed. Root verification remains limited by the sparse checkout. This metadata does not prove native crash cause or process identity.
+
+The fresh patchless Alpha verification rerun passed all 225 checks and the renderer build. Both standalone/launcher debug and release APKs, instrumentation and lint passed (760 Gradle tasks; 1m53s). Those first APKs retained the prior embedded runtime payload. The new upstream mobile bundle passed its real host module-load smoke and the workflow dependency/compiler artifact rebuilt; staging and final APK rebuild remain in progress. Calendar source bytes match the previously qualified upstream consumer exactly; Reminders differs only in its README. These comparisons do not replace final product integration acceptance.
+
+Live GitHub readback and local ancestry checks confirm every PR in the 70-file map (using #33230 for superseded #33235) is merged and included in candidate `09698bd30668ff3748d7922279b06119d39a3bcf`. This establishes source inclusion, not passing checks for externally advanced heads. Exact PR heads/merge commits are retained in the evidence snapshot. The new ARM64/x86_64 runtime payload and 1,115-file workflow artifact staged successfully; final APK packaging is running.
+
+Final new-runtime packaging hit ENOSPC in launcher release (merge native libraries and compress assets). It is rerunning using the sequential low-disk build path. Canonical upstream CI exposed resolver typing and source-review/redaction regressions; fixes are being submitted upstream. Its independent full-history secret scan also reported 4,283 historical findings, predominantly benchmark/generated data, and remains a separate unresolved security-review gate. No secret values were exposed or broad suppression added.
+
+Upstream #33234 is merged as `079fb41d658` (external merge). Resolver fix #33240 was closed as superseded after current develop resolver source from `ac4aa91de71d57b43b1ad03df54d45ac2abc5109` passed strict typing and the actual bundler/escape flow. Source-review/redaction correction is under review in #33241. Alpha remains pinned to the earlier candidate until the corrective integration is admitted. The first sequential build still exhausted disk; its failed packaging intermediates were cleared and the build now packages one APK at a time with cleanup on failure.
+
+## Archival and packaging validation
+
+After inactive patch artifacts were removed, `npm run verify` passed again.
+All ten standalone Calendar tests passed, including recovery, CRUD, range and
+truncation. Launcher setup encountered a HOME-selection ambiguity before tests;
+the disposable-user fixture now explicitly selects stock HOME and is being rerun.
+Cleanup restored user 0 and removed owned packages/users after both setup failures.
+
+`verify-apks.mjs` now runs `verify-packaged-runtime.py`, comparing the actual
+packaged agent bundle, worker file inventory and both native runtime ABIs against
+authenticated staged inputs. All four current APKs passed; a synthetic mixed-source
+archive was rejected. No runtime execution acceptance is inferred.

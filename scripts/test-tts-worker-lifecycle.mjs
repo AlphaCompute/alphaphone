@@ -1,4 +1,4 @@
-// Exercise the exact patched service with synthetic pipes, without loading native
+// Exercise the pinned upstream service with synthetic pipes, without loading native
 // assets, starting a provider, or importing the host's credential-bearing entrypoint.
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -8,9 +8,7 @@ import {EventEmitter} from 'node:events';
 import {PassThrough} from 'node:stream';
 import {fileURLToPath} from 'node:url';
 
-const patch=fs.readFileSync(new URL('../patches/eliza/standalone-kokoro-host.patch',import.meta.url),'utf8');
-const section=patch.split('+++ b/packages/app/src/api/standalone-kokoro-service.ts\n')[1].split('\ndiff --git ')[0];
-const source=section.split('\n').filter(line=>line.startsWith('+')).map(line=>line.slice(1)).join('\n')+'\n';
+const source=fs.readFileSync(new URL('../vendor/eliza/packages/app/src/api/standalone-kokoro-service.ts',import.meta.url),'utf8');
 const children=[];
 const imports=new Map([
  ['node:child_process',new vm.SyntheticModule(['spawn'],function(){this.setExport('spawn',()=>{

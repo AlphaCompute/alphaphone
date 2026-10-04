@@ -1,24 +1,15 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import {execFileSync} from 'node:child_process';
-import {createHash} from 'node:crypto';
 import {fileURLToPath} from 'node:url';
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
-const metadata=JSON.parse(fs.readFileSync(path.join(root,'patches/eliza/native-calendar-package.json')));
-const native=JSON.parse(fs.readFileSync(path.join(root,'patches/eliza/native-calendar-android.json')));
-const sha=value=>createHash('sha256').update(value).digest('hex');
+import {upstreamNativeSource,sha} from './upstream-native-source.mjs';
+const upstream=upstreamNativeSource(root);
 const prefix='plugins/plugin-native-calendar/';
+const files=upstream.read(prefix);
 const output=path.join(root,'artifacts',`native-calendar-package-${Date.now()}`);
 const source=path.join(output,'source');fs.mkdirSync(source,{recursive:true});
-const git=args=>execFileSync('git',['-C',path.join(root,'vendor/eliza'),...args],{maxBuffer:32*1024*1024});
-const inventory=git(['ls-tree','-r',metadata.baseCommit,prefix]).toString().trim().split('\n');
-for(const line of inventory){const match=line.match(/^(100644|100755) blob [a-f0-9]+\t(.+)$/);if(!match||!match[2].startsWith(prefix))throw Error('Nonregular package source');const filename=match[2];const target=path.join(source,filename);fs.mkdirSync(path.dirname(target),{recursive:true});fs.writeFileSync(target,git(['show',`${metadata.baseCommit}:${filename}`]),{mode:match[1]==='100755'?0o755:0o644});}
-for(const [filename,expected] of Object.entries(metadata.baseFiles))if(sha(fs.readFileSync(path.join(source,filename)))!==expected)throw Error('Package base identity changed');
-execFileSync('git',['init','--quiet',source]);
-for(const spec of [{name:metadata.patch,hash:metadata.patchSha256,files:metadata.files},{name:native.patch,hash:native.patchSha256,files:native.files}]){
- const patch=path.join(root,'patches/eliza',spec.name);if(sha(fs.readFileSync(patch))!==spec.hash)throw Error('Package patch identity changed');execFileSync('git',['apply',patch],{cwd:source});
- for(const [filename,expected] of Object.entries(spec.files))if(sha(fs.readFileSync(path.join(source,filename)))!==expected)throw Error(`Package source mismatch: ${filename}`);
-}
+for(const [filename,file] of files){const target=path.join(source,filename);fs.mkdirSync(path.dirname(target),{recursive:true});fs.writeFileSync(target,file.bytes,{mode:parseInt(file.mode,8)});}
 const pkg=path.join(source,prefix);fs.symlinkSync(path.join(root,'node_modules'),path.join(pkg,'node_modules'),'dir');
 const run=(file,args,cwd=pkg)=>execFileSync(file,args,{cwd,stdio:['ignore','pipe','pipe'],maxBuffer:16*1024*1024});
 run(path.join(root,'node_modules/.bin/tsc'),['--project','tsconfig.json']);
@@ -29,7 +20,7 @@ const packed=JSON.parse(run('npm',['pack','--ignore-scripts','--json']).toString
 for(const required of ['dist/esm/android.js','dist/esm/android.d.ts','dist/plugin.cjs.js','dist/esm/index.js','android/build.gradle','android/src/main/java/ai/eliza/plugins/calendar/CalendarPlugin.java'])if(!packed.files.some(file=>file.path===required))throw Error(`Packed file missing: ${required}`);
 const consumer=path.join(output,'consumer');const unpacked=path.join(consumer,'node_modules/@elizaos/capacitor-calendar');fs.mkdirSync(unpacked,{recursive:true});
 run('tar',['-xzf',path.join(pkg,packed.filename),'--strip-components=1','-C',unpacked],output);
-for(const [filename,expected] of Object.entries({...metadata.files,...native.files}))if(sha(fs.readFileSync(path.join(unpacked,filename.slice(prefix.length))))!==expected)throw Error('Packed source differs from verified patch');
+for(const [filename,file] of files){const relative=filename.slice(prefix.length);if(relative.startsWith('android/')&&!packed.files.some(entry=>entry.path===relative))throw Error(`Packed native source missing: ${relative}`);if(packed.files.some(entry=>entry.path===relative)&&sha(fs.readFileSync(path.join(unpacked,relative)))!==file.sha256)throw Error('Packed source differs from pinned upstream');}
 fs.mkdirSync(path.join(consumer,'node_modules/@capacitor'),{recursive:true});fs.symlinkSync(path.join(root,'node_modules/@capacitor/core'),path.join(consumer,'node_modules/@capacitor/core'),'dir');
 fs.writeFileSync(path.join(consumer,'package.json'),JSON.stringify({type:'module',private:true}));
 fs.writeFileSync(path.join(consumer,'check.mjs'),`import assert from 'node:assert/strict';\nimport {createRequire} from 'node:module';\nconst {AppleCalendar}=createRequire(import.meta.url)('@elizaos/capacitor-calendar');\nassert.equal((await AppleCalendar.checkPermissions()).calendar,'restricted');\nimport {registerAndroidCalendar} from '@elizaos/capacitor-calendar/android';\nassert.throws(()=>registerAndroidCalendar(''));\nconst plugin=registerAndroidCalendar('ExternalPackedCalendar');\nassert.equal(typeof plugin.requestAccess,'function');\nawait assert.rejects(plugin.requestAccess(),/not implemented/i);\nconsole.log('Packed Android entrypoint imported; absent native implementation is not simulated');\n`);
@@ -37,5 +28,5 @@ const imported=run(process.execPath,['check.mjs'],consumer).toString();
 fs.writeFileSync(path.join(consumer,'check.ts'),`import {registerAndroidCalendar,type AndroidCalendarOperation} from '@elizaos/capacitor-calendar/android';\nconst calendar=registerAndroidCalendar('ExternalPackedCalendar');\nconst operation:AndroidCalendarOperation={type:'calendar_delete',target:{sourceId:'1',sourceRevision:'revision',eventId:'2',revision:'event'}};\nvoid calendar.executeAgent({operationId:'reviewed-operation',operation});\n// @ts-expect-error Browser-only recurrence editing is not an Android capability.\ncalendar.editSeries({id:'2'});\n// @ts-expect-error Deletion requires a bound target.\ncalendar.executeAgent({operationId:'missing-target',operation:{type:'calendar_delete'}});\n// @ts-expect-error New saves require a creation identity.\ncalendar.save({title:'Missing identity',begin:1,end:2});\n`);
 fs.writeFileSync(path.join(consumer,'tsconfig.json'),JSON.stringify({compilerOptions:{noEmit:true,strict:true,skipLibCheck:false,module:'NodeNext',target:'ES2022'},files:['check.ts']}));
 run(path.join(root,'node_modules/.bin/tsc'),['--project','tsconfig.json'],consumer);
-const result={passed:true,baseCommit:metadata.baseCommit,packagePatchSha256:metadata.patchSha256,nativePatchSha256:native.patchSha256,archiveSha256:sha(fs.readFileSync(path.join(pkg,packed.filename))),archive:path.join(pkg,packed.filename),packedFiles:packed.files.length,imported,scope:'Packed ESM API/types and native-source inclusion; no production installation or registry publication'};
+const result={passed:true,baseCommit:upstream.pin,sourceFiles:Object.fromEntries([...files].map(([name,file])=>[name,file.sha256])),archiveSha256:sha(fs.readFileSync(path.join(pkg,packed.filename))),archive:path.join(pkg,packed.filename),packedFiles:packed.files.length,imported,scope:'Packed ESM API/types and native-source inclusion; no production installation or registry publication'};
 fs.writeFileSync(path.join(output,'result.json'),JSON.stringify(result,null,2)+'\n');console.log(JSON.stringify({output,...result},null,2));

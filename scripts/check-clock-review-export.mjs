@@ -1,15 +1,14 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import {createHash} from 'node:crypto';
-import {fileURLToPath} from 'node:url';
-const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
-const manifest=JSON.parse(fs.readFileSync(path.join(root,'patches/eliza/android-local-runtime-source.json'),'utf8'));
-const patch='clock-native-reviewed-executor.patch';
-const digest=bytes=>createHash('sha256').update(bytes).digest('hex');
-if(!manifest.patches.includes(patch)||digest(fs.readFileSync(path.join(root,'patches/eliza',patch)))!==manifest.patchHashes[patch])throw Error('Clock executor upstream patch identity changed');
+import {execFileSync} from 'node:child_process';
+const root=path.resolve(import.meta.dirname,'..');
+const upstream=path.join(root,'vendor/eliza');
+const pin=JSON.parse(fs.readFileSync(path.join(root,'upstream.lock.json'),'utf8')).commit;
+if(!/^[a-f0-9]{40}$/.test(pin)||execFileSync('git',['rev-parse','HEAD'],{cwd:upstream,encoding:'utf8'}).trim()!==pin)throw Error('Clock source pin changed');
 for(const name of ['clock-review-executor.ts','clock-contract.ts']){
  const source=`plugins/plugin-assistant/src/services/device-actions/${name}`;
- const bytes=fs.readFileSync(path.join(root,'patches/eliza/exports',name));
- if(!manifest.files[source]||digest(bytes)!==manifest.files[source])throw Error('Clock renderer export differs from authenticated upstream source');
+ const file=path.join(upstream,source);
+ const stat=fs.lstatSync(file);
+ if(!stat.isFile()||stat.isSymbolicLink()||!fs.readFileSync(file).equals(execFileSync('git',['show',`${pin}:${source}`],{cwd:upstream})))throw Error('Clock renderer source differs from pinned upstream');
 }
-console.log('Clock renderer exports match explicit upstream source identities');
+console.log('Clock renderer imports verified pinned upstream sources');

@@ -16,8 +16,8 @@ for (const value of swapFlags) if (value !== undefined && !['true', 'false'].inc
 if ((swapFlags[0] === 'true') !== (swapFlags[1] === 'true')) throw new Error('Set ELIZA_SECRET_SWAP_ENABLED and ELIZA_PII_SWAP_ENABLED together');
 const redaction = swapFlags[0] === 'true' ? 'all' : 'off';
 if (redaction === 'all') {
-  const patches = path.resolve(import.meta.dirname, '../patches/eliza');
-  verifySource(source, JSON.parse(fs.readFileSync(path.join(patches, 'mvp-source-base.json'), 'utf8')), JSON.parse(fs.readFileSync(path.join(patches, 'android-local-runtime-source.json'), 'utf8')));
+  const patches = path.resolve(import.meta.dirname, '../upstream');
+  verifySource(source, JSON.parse(fs.readFileSync(path.join(patches, 'runtime-source.json'), 'utf8')), JSON.parse(fs.readFileSync(path.join(patches, 'runtime-consumer.json'), 'utf8')));
 }
 const profile = path.resolve(process.env.ALPHA_REMOTE_PROFILE || path.join(os.homedir(), '.local/share/alphaphone/local-remote'));
 const port = Number(process.env.ALPHA_REMOTE_PORT || 47839);

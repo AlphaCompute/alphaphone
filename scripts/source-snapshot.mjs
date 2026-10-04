@@ -26,13 +26,14 @@ if(fs.existsSync('scripts/local-speech'))for(const name of fs.readdirSync('scrip
 roots.push('android/app/src/main/assets/agent','android/app/src/main/jniLibs',
  'android/app/build/generated/local-agent/java',
  'android/app/build/generated/local-agent/source-manifest.json',
- 'upstream.lock.json','patches/eliza',
+ 'upstream.lock.json','upstream',
  'scripts/prepare-local-agent.mjs','scripts/local-agent-source.mjs',
- 'scripts/stage-local-agent-runtime.mjs','scripts/stage-local-agent-sources.mjs',
+ 'scripts/stage-local-agent-runtime.mjs','scripts/stage-local-agent-sources.mjs','scripts/upstream-native-source.mjs',
  'scripts/build-workflow-worker.ts','scripts/prepared-workflow-worker.mjs',
  'scripts/stage-workflow-worker.mjs','scripts/workflow-worker-artifact.mjs',
  'vendor/eliza/packages/app/platforms/android/app/src/main/java/ai/elizaos/app',
- 'vendor/eliza/plugins/plugin-native-browser-surface/android/src/main/java/ai/eliza/plugins/browsersurface/ChromiumBrowserIdentity.java');
+ 'vendor/eliza/plugins/plugin-native-browser-surface/android/src/main/java/ai/eliza/plugins/browsersurface/ChromiumBrowserIdentity.java',
+ 'vendor/eliza/plugins/plugin-native-browser-surface/android/src/main/java/ai/eliza/plugins/browsersurface/ChromiumBrowserConnection.java');
 const files=[];
 function walk(entry){if(!fs.existsSync(entry))return;const stat=fs.lstatSync(entry);if(stat.isDirectory())for(const name of fs.readdirSync(entry).sort())walk(path.join(entry,name));else if(stat.isFile())files.push(entry);}
 roots.forEach(walk);

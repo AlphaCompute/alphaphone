@@ -1,8 +1,0 @@
-diff --git a/packages/app/src/security/secure-store-android.ts b/packages/app/src/security/secure-store-android.ts
---- a/packages/app/src/security/secure-store-android.ts
-+++ b/packages/app/src/security/secure-store-android.ts
-@@ -18,3 +18,3 @@ type Reply =
- export function createAndroidPlatformSecureStore(
--  socketPath = "\0ai.elizaos.app.secure-store",
-+  socketPath = "\0" + (process.env.ELIZA_ANDROID_SECURE_STORE_SOCKET || "ai.elizaos.app.secure-store"),
-   timeoutMs = 15_000,

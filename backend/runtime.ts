@@ -7,11 +7,9 @@ import { randomUUID } from 'node:crypto';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 
-// Upstream secret and PII swap pseudonymize model requests before they leave this process. The pinned getSetting
-// ignores process.env, so upstream's own ELIZA_SECRET_SWAP_ENABLED / ELIZA_PII_SWAP_ENABLED are forwarded as runtime
-// settings. Off unless set: this desktop runtime builds from the unpatched vendor pin, where either swap clones the
-// request AbortSignal and every model call fails closed. The Android runtime applies
-// patches/eliza/egress-swap-control-objects.patch.
+// Upstream secret and PII swap pseudonymize model requests before they leave this process.
+// Forward explicit environment opt-ins as runtime settings. Both desktop and Android
+// now consume the upstream implementation that preserves request control objects.
 function redactionSettings(){return Object.fromEntries(['ELIZA_SECRET_SWAP_ENABLED','ELIZA_PII_SWAP_ENABLED'].map(key=>[key,process.env[key]==='true'?'true':'false']));}
 export async function createRuntimeBackend({head,dataDir,model='qwen-3.8-27b'}:{head:string;dataDir:string;model?:string}) {
  if(!process.env.CEREBRAS_API_KEY||!process.env.CEREBRAS_BASE_URL)throw new Error('Existing Cerebras environment required');
