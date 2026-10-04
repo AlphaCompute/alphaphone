@@ -141,7 +141,9 @@ public class DailyAppsInstrumentedTest {
   android.app.NotificationManager notifications = context.getSystemService(android.app.NotificationManager.class);
   try (BoundedActivityScenario<MainActivity> scenario = BoundedActivityScenario.launch(MainActivity.class)) {
    ready(scenario);
-   evaluate(scenario, "Capacitor.Plugins.DailyApps.addListener('reminderOpened', e => window.__openedReminder=e.id)");
+   AppNavigation.liveMode();
+   begin(scenario, "(async()=>{window.__pendingReminderSignals=0;window.__reminderTapListener=await Capacitor.Plugins.DailyApps.addListener('pendingReminderTap',()=>window.__pendingReminderSignals++);return {ready:true};})()");
+   assertTrue(result(scenario).getBoolean("ready"));
    long at = System.currentTimeMillis() + 2000;
    begin(scenario, "Capacitor.Plugins.DailyApps.scheduleReminder({id:" + JSONObject.quote(id) + ",title:" + JSONObject.quote("Device flow test " + id) + ",body:'Local reminder delivery',at:" + at + "})");
    JSONObject scheduled = result(scenario); assertEquals(scheduled.toString(), "scheduled", scheduled.getString("status")); assertEquals("inexact", scheduled.getString("mode"));
@@ -162,10 +164,10 @@ public class DailyAppsInstrumentedTest {
    posted.getNotification().contentIntent.send();
    boolean opened = false;
    for (int i = 0; i < 50; i++) {
-    if (JSONObject.quote(id).equals(evaluate(scenario, "window.__openedReminder || null"))) { opened = true; break; }
+    if ("true".equals(evaluate(scenario, "window.__pendingReminderSignals>0"))) { opened = true; break; }
     SystemClock.sleep(100);
    }
-   assertTrue("Notification tap emits its exact reminder context", opened);
+   assertTrue("Durable notification tap signals pending delivery", opened);
    boolean detailOpened = false;
    for (int i = 0; i < 80; i++) {
     if ("true".equals(evaluate(scenario,"document.documentElement.dataset.activeView==='calendar' && [...document.querySelectorAll('[data-screen] h1')].some(h=>h.textContent==="+JSONObject.quote("Device flow test " + id)+") && !!document.querySelector('button[aria-label=\"Edit event\"]')"))) { detailOpened=true; break; }

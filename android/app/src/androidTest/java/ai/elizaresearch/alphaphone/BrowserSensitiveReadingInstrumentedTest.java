@@ -78,7 +78,7 @@ public final class BrowserSensitiveReadingInstrumentedTest {
     navigate(url);
     waitFor("window.__urlFixtureState?.url==="+JSONObject.quote(url)+"&&window.__urlFixtureState.committed&&!window.__urlFixtureState.loading&&!window.__urlFixtureState.error");
     js("window.__readingArgs=window.__urlFixtureState");
-    assertEquals(JSONObject.quote(url),child.child("location.href"));
+    assertEquals(url,new JSONTokener(child.child("location.href")).nextValue());
     assertEquals("true",js("window.__readingArgs.url==="+JSONObject.quote(url)));
     int before=fixture.get().requests.get();
     js("window.__readingResult=null;Capacitor.Plugins.AlphaBrowser.reviewReading({...window.__readingArgs,"+binding+"}).then(v=>window.__readingResult=JSON.stringify(v),e=>window.__readingResult=JSON.stringify({error:true,message:e.message}))");
