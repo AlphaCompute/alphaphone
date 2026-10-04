@@ -17,7 +17,7 @@ not a claim that every feature or the current main revision has passed acceptanc
 | Connection and assistant | Resident/native IPC, local development host, optional Cloud/remote sessions, conversation history, reviewed proposals and receipts | Real owner/provider authorization, revoke, process recovery and complete task journeys |
 | Voice | Recording review, manual transcript fallback, explicit local/agent routes, owned playback and cancellation | Transcript quality, six-second latency target, physical microphone/speaker/Bluetooth and lifecycle |
 | Inbox | Account-bound Gmail adapter and operation journal; disclosed local draft/attachment simulator | Real provider grants, approved read/send journeys, account isolation and uncertain-outcome recovery |
-| Calendar | Persistent events, zoned/all-day dates, recurring series and overrides, preferences, local guest/meeting UI, alerts, backup and reviewed reset | Transactional migration qualification below; salvage/import, live-agent series, real invitations/conferencing and provider sync |
+| Calendar | Persistent events, zoned/all-day dates, recurring series and overrides, preferences, local guest/meeting UI, alerts, backup and reviewed reset | Transactional storage below; salvage/import, live-agent series, real invitations/conferencing and provider sync |
 | Reminders and Clock | Shared native reminder engine, browser reminders, Done/Snooze/repeats, foreground alarm ownership and native Clock handoff | Physical audibility, Doze/OEM delivery, reboot, DND and hardware time-zone changes |
 | Browser | Development iframe, bookmarks, navigation, reviewed reading; isolated native browser surface | Cross-origin access limits, real password-provider/passkey/autofill behavior and release WebView lifecycle |
 | Camera and Scan | Capture/import, local OCR, reviewed text/links/calendar suggestions, multipage drafts, perspective correction, page-edge suggestions and searchable PDF | Physical camera/torch/permissions, OCR language/photo quality, edge quality and interrupted capture |
@@ -27,63 +27,37 @@ not a claim that every feature or the current main revision has passed acceptanc
 | Notifications | Owner-bound notices, receipt recovery and Calendar/reminder integration | Current-source native background/channel behavior and physical delivery |
 | Phone/SMS/Contacts and Wallet | Disabled shipping routes; explicit development simulation | Scope disposition before enabling production routes; simulations do not establish telecom, payment or external-message acceptance |
 
-## Cross-tab Calendar storage repair
+## Calendar storage
 
-`test/browser/calendar-creation-recovery.spec.ts`, “different tabs cannot silently
-bypass a pending creation”, intermittently returns two `saved` results in Firefox
-where one must be `pending-creation`. This was found in the Calendar layout review
-and reproduced on merged main `cfbbe52`: 10 of 25 repeated Firefox cases failed
-(`test-results/calendar-race-before/`). The affected adapter
-uses `apps/app/src/browser/store.ts`: a Web Lock surrounds a localStorage
-read/edit/write. The exact cause is still under investigation; do not replace the
-assertion with a retry or accept two successful creations.
+Calendar uses the reviewed upstream `BrowserDocumentStore` for IndexedDB
+transactions, revision-bound replacements and reset tombstones. The previous
+localStorage/Web Locks implementation could admit competing creations in Firefox;
+lock ownership alone did not make a tab's storage snapshot current. The
+[Web Storage standard](https://html.spec.whatwg.org/multipage/webstorage.html)
+does not define cross-agent-cluster synchronization.
 
-Storage sequencing must be qualified across browser processes, alongside receipt
-identity, lost-response recovery, reload, cancellation and failed writes. Other
-browser domains use the same helper, so any shared repair needs their coverage.
-The Web Storage specification does not define cross-agent-cluster synchronization;
-a Web Lock alone must not be treated as evidence of transactional persistence.
-See the [Web Storage standard](https://html.spec.whatwg.org/multipage/webstorage.html)
-and [Mozilla's snapshot-coherence discussion](https://bugzilla.mozilla.org/show_bug.cgi?id=1740144).
+The product imports an existing Calendar document once and retains the original
+localStorage bytes together with the imported baseline in document metadata. Subsequent edits, receipts, digest reads, backups and resets
+use the IndexedDB document; there is no writable localStorage mirror. Close older
+app tabs when updating: their writes to the retired store are not merged into the
+new document. An observed change to that older copy stops normal access and offers
+both versions for backup in recovery. Legacy snapshot checks are not transactions. Browser data remains local and unencrypted, and clearing site data
+removes it.
 
-### Transactional repair and migration
+A reset compares the reviewed revision and preserves a tombstone so reload cannot
+restore the old document or authorize an old proposal. Invalid JSON remains
+exportable. Failed transactions retain the saved document. Queued reads and edits
+must preserve cancellation and navigation ownership; no late read may open a
+retired editor or agent review.
 
-[Eliza PR33568](https://github.com/elizaOS/eliza/pull/33568) is merged. Its
-IndexedDB document API commits bytes and revision receipts together, rejects
-stale compare-and-swap, retains reset tombstones and cancels asynchronous editors
-without replaying them. The final shared implementation passes all three browser
-engines (200 retained concurrent edits and unique receipts per engine), UI
-typecheck and full upstream verification. A resident-source backport preserves
-Alpha's current native reminder/runtime source; its qualification is recorded below.
-
-Alpha's `BrowserDomainDocument` policy preserves exact legacy bytes, refuses
-observed legacy changes, exposes unreadable data for backup and prevents reset
-data from being reimported. Calendar now uses the document API for reads, writes,
-recovery and digest inputs, with cross-tab refresh through BroadcastChannel.
-Opening an empty calendar does not invent a persisted document. The original
-creation-race regression passed 30 repetitions across Chromium, Firefox and
-WebKit. Ten migration-policy tests and 326 repository tests passed at the first
-integration checkpoint, including TypeScript and the production web build.
-
-The integration review also found cancellation between preparing an edit and
-committing its transaction. Event and guest-response editors, plus agent cancellation, now propagate their
-lifetime to storage with AbortSignal. All nine cancellation cases pass across the three engines. The focused migration
-batch passed 72 cases; three event-editor cases stopped at an outdated test label,
-which is corrected and passes in the cancellation rerun. The full Calendar suite
-is pending; original failures are retained in `test-results/transactions/`. Fixtures now inspect canonical IndexedDB documents
-and inject actual IndexedDB write failures rather than modifying legacy storage.
-
-The resident-source backport is merged as
-[Eliza PR33575](https://github.com/elizaOS/eliza/pull/33575); its exact head
-`50ef4984fedadae8f544103c63c27d434a4a945f` passes all 298 upstream verification
-tasks and preserves the admitted native reminder/runtime source.
-
-Other domains still use the old storage helper and remain in scope. The global
-rapid-edit regression is retained; Calendar qualification does not establish
-that those domains are fixed. A timer-only candidate was rejected after WebKit
-lost an update. Old tabs must be closed for migration; legacy snapshot checks
-are not transactions. Recovery retains the exact older copy and requires review
-before resetting the canonical document.
+The owning tests are `calendar-creation-recovery.spec.ts`,
+`calendar-storage-migration.spec.ts` and `calendar-recovery.spec.ts`, alongside
+Calendar, digest and cross-tab browser journeys. Preparation-time cancellation is
+covered by `calendar-agent-transaction-cancel.spec.ts` and
+`calendar-transaction-cancel.spec.ts`; `test/domain-document.test.mjs` covers the
+product import and recovery policy. Other browser domains still use
+`browser/store.ts` and require their own transactional-storage audit and migration;
+Calendar qualification does not prove those domains safe.
 
 ## Design and accessibility
 

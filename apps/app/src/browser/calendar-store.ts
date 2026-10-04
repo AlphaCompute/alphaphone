@@ -20,7 +20,7 @@ export const calendarDocument={
    const before=JSON.stringify(data),result=await edit(data);
    modified=before!==JSON.stringify(data);return result;
   },signal);
-  // Read-only Calendar queries also use edit; avoid refresh/write feedback loops.
+  // Only changed domain bytes need a cross-tab refresh.
   if(modified)changed();return result;
  },
 };
