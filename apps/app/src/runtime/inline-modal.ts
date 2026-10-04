@@ -7,7 +7,7 @@ export function createInlineModal(close:()=>void,returnFocus?:()=>HTMLElement|nu
   if(container===mounted)return;
   dispose?.();dispose=undefined;mounted=container;
   if(!container)return;
-  const dialog=container.querySelector<HTMLElement>('[role="dialog"]');
+  const dialog=container.matches('[role="dialog"]')?container:container.querySelector<HTMLElement>('[role="dialog"]');
   if(!dialog)return;
   const previous=returnFocus?.()||(document.activeElement instanceof HTMLElement?document.activeElement:null);
   const releases:Array<()=>void>=[],backgrounds:HTMLElement[]=[];
@@ -44,7 +44,8 @@ export function createInlineModal(close:()=>void,returnFocus?:()=>HTMLElement|nu
   dispose=()=>{
    observer.disconnect();document.removeEventListener('keydown',key,true);document.removeEventListener('focusin',contain);
    releases.reverse().forEach(release=>release());
-   if(previous?.isConnected&&!previous.closest('[inert]'))previous.focus({preventScroll:true});
+   const target=previous?.isConnected?previous:returnFocus?.();
+   if(target?.isConnected&&!target.closest('[inert]'))target.focus({preventScroll:true});
   };
  };
  return {ref};
