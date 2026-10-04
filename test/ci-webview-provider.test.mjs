@@ -190,8 +190,8 @@ async function simulate({ oversizedAnr = false, framework = 'ready', drift, neve
       return drift === 'remount' ? 'reboot required' : 'remount succeeded';
     }
     if (['root', 'wait-for-device', 'disable-verity'].includes(key)) return '';
-    if (key === 'shell stop') { stopped = true; return ''; }
-    if (key === 'shell start') { if(installed)finalBoot=true; stopped = false; restarted = true; userReads = 0; return ''; }
+    if (key === 'shell stop zygote') { stopped = true; return ''; }
+    if (key === 'shell start zygote') { if(installed)finalBoot=true; stopped = false; restarted = true; userReads = 0; return ''; }
     if (key === `shell rm ${stock}`) { assert.equal(stopped, true); removed = true; return ''; }
     if (a[0] === 'pull') { fs.writeFileSync(a[2], 'stock'); return ''; }
     if (a[0] === 'install') { if(drift==='user-delayed')assert.ok(userReads>=3); assert.equal(frameworkReady, true, 'Framework must complete before install');if(framework==='install-fails')throw Error('recorded install failure');assert.equal(removed, true); assert.equal(stopped, false); installed = true; return 'Success'; }
@@ -244,8 +244,8 @@ test('full provider command sequence survives one offline reboot and delayed REL
   assert.ok(r.calls.indexOf('shell cat /proc/bootconfig') < r.calls.indexOf('shell setprop fs_mgr.overlayfs.data_scratch_size_mb 512'));
   assert.equal(r.result.scratchBackingAliases.length, 2);
   assert.equal(r.selectionReads, 3); assert.equal(r.stopped, false);
-  assert.ok(r.calls.indexOf('shell stop') < r.calls.indexOf('shell rm /product/app/webview/webview.apk'));
-  assert.ok(r.calls.indexOf('shell rm /product/app/webview/webview.apk') < r.calls.indexOf('shell start'));
+  assert.ok(r.calls.indexOf('shell stop zygote') < r.calls.indexOf('shell rm /product/app/webview/webview.apk'));
+  assert.ok(r.calls.indexOf('shell rm /product/app/webview/webview.apk') < r.calls.indexOf('shell start zygote'));
 });
 test('provider main refuses identity stock and remount drift before deletion/install', async () => {
   for (const drift of ['identity', 'stock', 'remount']) {
@@ -265,7 +265,7 @@ test('framework starts again when stopped-provider hash check refuses deletion',
   const r = await simulate({ drift: 'stopped-stock' });
   assert.match(r.error.message, /Stopped provider changed/);
   assert.equal(r.stopped, false); assert.equal(r.removed, false);
-  assert.ok(r.calls.includes('shell start')); assert.equal(r.installed, false);
+  assert.ok(r.calls.includes('shell start zygote')); assert.equal(r.installed, false);
 });
 
 test('scratch policy refuses drift before verity or provider mutations', async () => {
@@ -435,7 +435,7 @@ for(const drift of ['root-lost-ack-unprivileged','root-lost-ack-restarted'])test
 
 test('framework restart waits past published binders and stale boot property before installing once',async()=>{
  const r=await simulate({framework:'delayed'});assert.ifError(r.error);assert.equal(r.installed,true);
- const start=r.calls.indexOf('shell start'),install=r.calls.findIndex(call=>call.startsWith('install '));
+ const start=r.calls.indexOf('shell start zygote'),install=r.calls.findIndex(call=>call.startsWith('install '));
  assert.ok(start>=0&&install>start);assert.equal(r.calls.filter(call=>call.startsWith('install ')).length,1);
  assert.equal(r.calls.slice(start,install).filter(call=>call==='shell dumpsys activity -a processes').length,3);
  const admission=r.result.frameworkAdmissions.at(-1);assert.equal(admission.ready,true);assert.notDeepEqual(admission.previousServer,admission.after);assert.deepEqual(admission.before,admission.after);
@@ -460,7 +460,7 @@ test('successful replacement requires a new framework generation without losing 
  const r=await simulate();assert.ifError(r.error);
  const installs=r.calls.map((v,i)=>v.startsWith('install ')?i:-1).filter(i=>i>=0);assert.equal(installs.length,1);
  const reboots=r.calls.map((v,i)=>v==='reboot'?i:-1).filter(i=>i>=0);assert.equal(reboots.length,1);assert.ok(reboots[0]<installs[0]);
- const finalStart=r.calls.lastIndexOf('shell start');assert.ok(finalStart>installs[0]);assert.equal(r.calls.filter(c=>c==='shell stop').length,2);assert.notDeepEqual(r.result.providerRestart.previousServer,r.result.providerRestart.server);
+ const finalStart=r.calls.lastIndexOf('shell start zygote');assert.ok(finalStart>installs[0]);assert.equal(r.calls.filter(c=>c==='shell stop zygote').length,2);assert.ok(!r.calls.includes('shell stop')&&!r.calls.includes('shell start')); assert.notDeepEqual(r.result.providerRestart.previousServer,r.result.providerRestart.server);
  assert.deepEqual(r.result.providerChecks.map(c=>c.label),['after-install','after-framework-restart']);
  assert.equal(r.result.providerRestart.priorBootId,r.result.providerRestart.bootId);
  assert.equal(r.result.providerDisplayObservations.length,2);assert.ok(r.result.providerDisplayObservations.every(o=>o.secure===false&&o.unlocked));
@@ -482,7 +482,7 @@ test('missing postrestart scratch retains bounded storage evidence and refuses w
  for(const key of ['superPartition','superAlias','superLabels','superUevent','superSlot0','superSlot1','vendorBlockContexts','mounts','scratchMetadata','userspaceStorageLog','capacity','stockStat','providerPath','providerState','kernel'])assert.ok(Object.hasOwn(r.diagnostics.guest,key),key);
  assert.equal(r.diagnostics.budgetMilliseconds,20000);
  assert.equal(r.calls.filter(c=>c.startsWith('install ')).length,1);
- const finalReboot=r.calls.lastIndexOf('shell start');
+ const finalReboot=r.calls.lastIndexOf('shell start zygote');
  assert.equal(r.calls.filter(c=>c==='reboot').length,1);
  assert.ok(!r.calls.slice(finalReboot+1).some(c=>/^(install |reboot$|remount$|shell (rm |setprop |stop$|start$|input |locksettings |wm dismiss))/.test(c)));
  assert.deepEqual(r.result.providerChecks.map(c=>c.label),['after-install']);
