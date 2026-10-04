@@ -11,7 +11,7 @@
     "dev:maps": "node scripts/maps/dev.mjs",
     "build": "vite build",
     "typecheck": "tsc --noEmit",
-    "test": "node --test test/*.test.mjs",
+    "test": "node --test --test-concurrency=4 test/*.test.mjs",
     "verify": "npm run typecheck && npm test && npm run build",
     "android:sync": "npm run build && cap sync android",
     "android:build": "node scripts/build-android.mjs",

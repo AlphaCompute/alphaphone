@@ -6,11 +6,12 @@ import os from 'node:os';
 const root=await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(),'alpha-source-publication-')));
 after(()=>fs.rm(root,{recursive:true,force:true}));
 const {publishAndroidWorkflowSource:publish}=await import('../vendor/eliza/plugins/plugin-workflow/src/services/workflow-source-publication.ts');
+async function allWriters(work){const results=await Promise.allSettled(work);for(const result of results)if(result.status==='rejected')throw result.reason;}
 async function fixture(){const dir=await fs.mkdtemp(path.join(root,'state-'));return {dir,target:path.join(dir,'version.hash.tsx')};}
 test('Android source publication publishes complete bytes across concurrent writers and retains importer inode',async()=>{
  const {dir,target}=await fixture(),source='export default '+JSON.stringify('x'.repeat(100000))+';';
- await Promise.all(Array.from({length:16},()=>publish(target,source)));
- const handle=await fs.open(target,'r');try{const initial=await handle.stat();await Promise.all(Array.from({length:16},()=>publish(target,source)));assert.equal((await fs.stat(target)).ino,initial.ino);assert.equal(await handle.readFile('utf8'),source);}finally{await handle.close();}
+ await allWriters(Array.from({length:16},()=>publish(target,source)));
+ const handle=await fs.open(target,'r');try{const initial=await handle.stat();await allWriters(Array.from({length:16},()=>publish(target,source)));assert.equal((await fs.stat(target)).ino,initial.ino);assert.equal(await handle.readFile('utf8'),source);}finally{await handle.close();}
  assert.deepEqual(await fs.readdir(dir),[path.basename(target)]);
  await assert.rejects(publish(target,'different'),/identity mismatch/);assert.equal(await fs.readFile(target,'utf8'),source);
 });

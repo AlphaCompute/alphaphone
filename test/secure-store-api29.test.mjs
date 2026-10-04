@@ -4,7 +4,6 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import {execFileSync} from 'node:child_process';
-import {sourceDirectory} from '../scripts/local-agent-source.mjs';
 import {createHash} from 'node:crypto';
 const root=path.resolve(import.meta.dirname,'..');
 
@@ -20,13 +19,13 @@ test('pinned generated secure-store helper reads bounded actual bytes on the Jav
     // Native lifecycle sources must be physical, admitted runtime files; a vendor
     // symlink alone cannot stand in for their independent committed provenance.
     const lock=JSON.parse(fs.readFileSync(path.join(root,'upstream.lock.json')));
-    const runtimeSource=sourceDirectory(root);
     const runtimeFixture=path.join(fixture,'artifacts/local-agent-source');
     // Exercise the real source preparer even on a clean checkout. This fixture
     // compiles Java only; dependency installation remains the runtime build's job.
-    // An existing source is an object cache, never trusted as prepared test input.
+    // Use the pinned vendor object cache, not a runtime directory that may still
+    // be under preparation. The independent checkout is fully authenticated.
     const stageEnv={...process.env,ALPHA_LOCAL_AGENT_SOURCE_DIR:runtimeFixture,
-      ALPHA_RUNTIME_GIT_CACHE:fs.existsSync(runtimeSource)?runtimeSource:path.join(root,'vendor/eliza')};
+      ALPHA_RUNTIME_GIT_CACHE:path.join(root,'vendor/eliza')};
     // A cold full-runtime checkout and whole-tree authentication can exceed three
     // minutes on a busy filesystem. Keep the real preparer and all source checks.
     execFileSync(process.execPath,[path.join(fixture,'scripts/prepare-local-agent.mjs'),'--source-only'],{stdio:'pipe',timeout:600000,env:stageEnv});
