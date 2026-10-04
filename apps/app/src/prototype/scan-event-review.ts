@@ -2,7 +2,7 @@ import {scanEventDraft,suggestScanEvent,type ScanEventDraft} from './scan-event'
 
 export function createScanEventReview(text:()=>string,active:()=>boolean,review:(draft:ScanEventDraft)=>boolean){
  const details=document.createElement('details'),summary=document.createElement('summary');summary.textContent='Create event draft';summary.style.cssText='cursor:pointer;min-height:44px;padding-top:12px';
- const description=document.createElement('p');description.textContent='Check every suggested detail against the photo. Dates need an explicit year; ambiguous or timezone-qualified times need manual review. Duration starts at 60 minutes. This opens a draft in Calendar; Save there to create the event.';
+ const description=document.createElement('p');description.textContent='Check every suggested detail against the photo. Dates need an explicit year; ambiguous or timezone-qualified times need manual review. Duration starts at 60 minutes unless a clear same-day time range is printed. This opens a draft in Calendar; Save there to create the event.';
  const zone=document.createElement('p');zone.textContent='Local time · '+Intl.DateTimeFormat().resolvedOptions().timeZone;
  const form=document.createElement('form');form.style.cssText='display:grid;gap:12px';
  const input=(name:string,type:string)=>{const label=document.createElement('label');label.textContent=name;label.style.cssText='display:grid;gap:4px';const value=document.createElement('input');value.type=type;value.setAttribute('aria-label',name);value.style.cssText='box-sizing:border-box;width:100%;min-height:44px;font:inherit;color:inherit;background:var(--s2,#eee);border:1px solid var(--bd,#aaa);border-radius:8px;padding:8px';label.append(value);form.append(label);return value;};

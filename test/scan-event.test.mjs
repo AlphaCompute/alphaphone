@@ -27,9 +27,19 @@ test('English poster dates and AM/PM suggestions retain explicit civil meaning',
 });
 test('poster extraction does not invent years or accept conflicting, invalid or zoned times',()=>{
  for(const date of ['October 10','10/11/2026','February 30, 2026','2026-02-30','2026-10-10\n11/10/2026','2026-10-10\nOctober 11','October 10, 2026\n11 October 2026'])assert.equal(suggestScanEvent(`Event\n${date}`).date,'',date);
- for(const time of ['0 PM','13 AM','18:30\n19:00','18:30\n25:00','18:30\n19:7','Time: 6 PM PST','18:30\nTimezone: America/New_York','18:30\nUTC','18:30\nTimezone: Unknown','18:30\nET','6 PM - 8 PM','2026-10-10T18:30+02:00'])assert.equal(suggestScanEvent(`Event\n2026-10-10\n${time}`).time,'',time);
+ for(const time of ['0 PM','13 AM','18:30\n19:00','18:30\n25:00','18:30\n19:7','Time: 6 PM PST','18:30\nTimezone: America/New_York','18:30\nUTC','18:30\nTimezone: Unknown','18:30\nET','2026-10-10T18:30+02:00'])assert.equal(suggestScanEvent(`Event\n2026-10-10\n${time}`).time,'',time);
  assert.equal(suggestScanEvent('Event\nFebruary 29, 2028\n7 PM').date,'2028-02-29');
  assert.equal(suggestScanEvent('Event\nFebruary 29, 2027\n7 PM').date,'');
 });
 
 test('ordinary website paths and band names are not mistaken for time zones',()=>{assert.equal(suggestScanEvent('AC/DC tribute\nOctober 10, 2026\n6 PM\nhttps://example.com/events').time,'18:00');});
+
+
+test('explicit same-day poster time ranges suggest duration without inventing meridiem or overnight dates',()=>{
+ for(const range of ['6 PM - 8 PM','6PM-8PM','6 p.m. – 8 p.m.','18:00—20:00','18:00 to 20:00']){
+  const fields=suggestScanEvent(`Studio\nOctober 10, 2026\nTime: ${range}`);assert.equal(fields.time,'18:00',range);assert.equal(fields.minutes,120,range);
+ }
+ for(const range of ['6 - 8 PM','11 PM - 1 AM','18:00 - 18:00','18:00 - 18:10','18:00 - 25:00','6 PM - 8 PM PST','18:00 - 20:00\n18:00 - 21:00']){
+  const fields=suggestScanEvent(`Studio\nOctober 10, 2026\nTime: ${range}`);assert.equal(fields.time,'',range);assert.equal(fields.minutes,60,range);
+ }
+});
