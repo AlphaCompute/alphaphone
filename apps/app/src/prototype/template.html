@@ -2091,6 +2091,7 @@
       <div style="padding: 4px 24px 0; flex-shrink: 0">
         <input aria-label="Title" placeholder="Title" value="{{notes.ed.title}}" onChange="{{notes.ed.onTitle}}" class="serif" style="width: 100%; box-sizing: border-box; border: 0; outline: 0; background: transparent; color: var(--fg); font-size: 32px; font-family: 'Denton', 'Fraunces', Georgia, serif; font-weight: 300; padding: 6px 0; letter-spacing: -.01em">
       </div>
+      <sc-if value="{{notes.canLinkSource}}"><button class="note-source-trigger" onClick="{{notes.sourceDocument}}">{{notes.sourceLabel}}</button></sc-if>
       <sc-if value="{{notes.ed.isText}}" hint-placeholder-val="{{true}}">
         <textarea aria-label="Note" placeholder="Note" value="{{notes.ed.body}}" onChange="{{notes.ed.onBody}}" class="scr" style="flex-grow: 1; width: calc(100% - 48px); margin: 0 24px; box-sizing: border-box; resize: none; border: 0; outline: 0; background: transparent; color: var(--fg); font: inherit; font-size: 17px; line-height: 1.55; padding: 10px 0 190px; touch-action: pan-y"></textarea>
       </sc-if>

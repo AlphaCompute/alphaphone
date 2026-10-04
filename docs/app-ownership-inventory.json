@@ -5859,9 +5859,9 @@
     {
       "file": "src/main.tsx",
       "upstreamCandidate": [],
-      "bytes": 9293,
-      "sha256": "100399348644dda7e894dcc834b403cea8a664415ba7e93872f5a789a0c243a1",
-      "lines": 135,
+      "bytes": 9402,
+      "sha256": "617ee9c4e848728735f58b42c2ff7dc8bf8dae4abf2d0991fe4e58dd98cf270b",
+      "lines": 137,
       "owner": "alphaphone",
       "disposition": "retain-or-split",
       "reason": "Product composition, design reference, enabled views, fixtures, or visual presentation. Extract embedded domain behavior separately.",
@@ -5886,6 +5886,7 @@
         "./prototype/model.js",
         "./prototype/mvp-features",
         "./prototype/native-adapter",
+        "./prototype/note-source-adapter",
         "./prototype/notes-document-adapter",
         "./prototype/notifications-adapter",
         "./prototype/phone.css",
@@ -5904,53 +5905,53 @@
       "exports": [],
       "seams": [
         {
-          "line": 32,
+          "line": 33,
           "tags": [
             "host-coupling"
           ]
         },
         {
-          "line": 36,
+          "line": 37,
           "tags": [
             "host-coupling"
           ]
         },
         {
-          "line": 40,
+          "line": 41,
           "tags": [
             "identity-or-compatibility",
             "storage"
           ]
         },
         {
-          "line": 48,
+          "line": 49,
           "tags": [
             "identity-or-compatibility",
             "storage"
           ]
         },
         {
-          "line": 89,
+          "line": 91,
           "tags": [
             "identity-or-compatibility"
           ]
         },
         {
-          "line": 106,
+          "line": 108,
           "tags": [
             "identity-or-compatibility",
             "host-coupling"
           ]
         },
         {
-          "line": 114,
+          "line": 116,
           "tags": [
             "identity-or-compatibility",
             "host-coupling"
           ]
         },
         {
-          "line": 115,
+          "line": 117,
           "tags": [
             "host-coupling"
           ]
@@ -9116,6 +9117,62 @@
       "reachableFromMain": true
     },
     {
+      "file": "src/prototype/note-source-adapter.ts",
+      "upstreamCandidate": [],
+      "bytes": 8696,
+      "sha256": "699da3dbd0155cd92d9c3e3cb235efdbd40d8088b0e735e79bd2c1291e714013",
+      "lines": 93,
+      "owner": "plugins/plugin-notes",
+      "disposition": "extract-or-split",
+      "reason": "Notes and audio metadata persistence; inject legacy keys, secure store, clock and approval contracts.",
+      "imports": [
+        "../browser/file-picker",
+        "../daily",
+        "../platform-plugins",
+        "../runtime/inbox-attachment",
+        "@capacitor/core"
+      ],
+      "exports": [
+        "installNoteSourceAdapter"
+      ],
+      "seams": [
+        {
+          "line": 4,
+          "tags": [
+            "host-coupling"
+          ]
+        },
+        {
+          "line": 8,
+          "tags": [
+            "host-coupling"
+          ]
+        },
+        {
+          "line": 34,
+          "tags": [
+            "host-coupling",
+            "presentation"
+          ]
+        },
+        {
+          "line": 44,
+          "tags": [
+            "identity-or-compatibility",
+            "host-coupling"
+          ]
+        },
+        {
+          "line": 88,
+          "tags": [
+            "identity-or-compatibility",
+            "host-coupling"
+          ]
+        }
+      ],
+      "reachableFromMain": true
+    },
+    {
       "file": "src/prototype/notes-document-adapter.ts",
       "upstreamCandidate": [],
       "bytes": 2715,
@@ -9232,9 +9289,9 @@
     {
       "file": "src/prototype/phone.css",
       "upstreamCandidate": [],
-      "bytes": 3707,
-      "sha256": "c96bde255450c15076f3b2cd8dffcbf7668f719a003646069265bf66b7410f89",
-      "lines": 39,
+      "bytes": 4703,
+      "sha256": "55474c16988d986ff1cc7ca5a12244ddec6478974d47d641b48fd66609de897d",
+      "lines": 47,
       "owner": "alphaphone",
       "disposition": "retain-or-split",
       "reason": "Product composition, design reference, enabled views, fixtures, or visual presentation. Extract embedded domain behavior separately.",
@@ -9335,6 +9392,12 @@
         },
         {
           "line": 38,
+          "tags": [
+            "presentation"
+          ]
+        },
+        {
+          "line": 41,
           "tags": [
             "presentation"
           ]
@@ -10379,9 +10442,9 @@
     {
       "file": "src/prototype/template.html",
       "upstreamCandidate": [],
-      "bytes": 418980,
-      "sha256": "2a6d58a3ffd47dd00fd74ecde599f86a395daa2f21c3b639144f57cee91c84ff",
-      "lines": 3944,
+      "bytes": 419135,
+      "sha256": "5479f82a59e065f3bee6e9301f055cc8970d7d4b127100b6a5df96cbfbb80913",
+      "lines": 3945,
       "owner": "alphaphone",
       "disposition": "retain-or-split",
       "reason": "Product composition, design reference, enabled views, fixtures, or visual presentation. Extract embedded domain behavior separately.",
@@ -11632,85 +11695,79 @@
           ]
         },
         {
-          "line": 2095,
+          "line": 2096,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 2102,
+          "line": 2103,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 2108,
+          "line": 2109,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 2117,
+          "line": 2118,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 2126,
+          "line": 2127,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 2130,
+          "line": 2131,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 2141,
+          "line": 2142,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 2149,
+          "line": 2150,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 2163,
+          "line": 2164,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 2185,
+          "line": 2186,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 2208,
+          "line": 2209,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 2224,
+          "line": 2225,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 2237,
-          "tags": [
-            "presentation"
-          ]
-        },
-        {
-          "line": 2245,
+          "line": 2238,
           "tags": [
             "presentation"
           ]
@@ -11722,115 +11779,115 @@
           ]
         },
         {
-          "line": 2249,
+          "line": 2247,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 2272,
+          "line": 2250,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 2303,
+          "line": 2273,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 2310,
+          "line": 2304,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 2318,
+          "line": 2311,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 2350,
+          "line": 2319,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 2361,
+          "line": 2351,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 2369,
+          "line": 2362,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 2378,
+          "line": 2370,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 2386,
+          "line": 2379,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 2410,
+          "line": 2387,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 2437,
+          "line": 2411,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 2446,
+          "line": 2438,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 2454,
+          "line": 2447,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 2462,
+          "line": 2455,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 2488,
+          "line": 2463,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 2491,
+          "line": 2489,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 2500,
+          "line": 2492,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 2502,
+          "line": 2501,
           "tags": [
             "presentation"
           ]
@@ -11842,229 +11899,229 @@
           ]
         },
         {
-          "line": 2514,
+          "line": 2504,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 2526,
+          "line": 2515,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 2542,
+          "line": 2527,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 2544,
+          "line": 2543,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 2550,
+          "line": 2545,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 2554,
+          "line": 2551,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 2559,
+          "line": 2555,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 2567,
+          "line": 2560,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 2588,
+          "line": 2568,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 2590,
+          "line": 2589,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 2592,
+          "line": 2591,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 2597,
+          "line": 2593,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 2599,
+          "line": 2598,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 2604,
+          "line": 2600,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 2606,
+          "line": 2605,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 2610,
+          "line": 2607,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 2615,
+          "line": 2611,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 2624,
+          "line": 2616,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 2626,
+          "line": 2625,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 2644,
+          "line": 2627,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 2660,
+          "line": 2645,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 2675,
+          "line": 2661,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 2678,
+          "line": 2676,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 2684,
+          "line": 2679,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 2733,
+          "line": 2685,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 2746,
+          "line": 2734,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 2764,
+          "line": 2747,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 2771,
+          "line": 2765,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 2783,
+          "line": 2772,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 2806,
+          "line": 2784,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 2808,
+          "line": 2807,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 2833,
+          "line": 2809,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 2835,
+          "line": 2834,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 2852,
+          "line": 2836,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 2870,
+          "line": 2853,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 2885,
+          "line": 2871,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 2892,
+          "line": 2886,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 2897,
+          "line": 2893,
           "tags": [
             "presentation"
           ]
@@ -12076,7 +12133,7 @@
           ]
         },
         {
-          "line": 2900,
+          "line": 2899,
           "tags": [
             "presentation"
           ]
@@ -12088,7 +12145,7 @@
           ]
         },
         {
-          "line": 2903,
+          "line": 2902,
           "tags": [
             "presentation"
           ]
@@ -12100,31 +12157,31 @@
           ]
         },
         {
-          "line": 2912,
+          "line": 2905,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 2914,
+          "line": 2913,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 2922,
+          "line": 2915,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 2924,
+          "line": 2923,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 2926,
+          "line": 2925,
           "tags": [
             "presentation"
           ]
@@ -12160,7 +12217,7 @@
           ]
         },
         {
-          "line": 2933,
+          "line": 2932,
           "tags": [
             "presentation"
           ]
@@ -12172,31 +12229,31 @@
           ]
         },
         {
-          "line": 2940,
+          "line": 2935,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 2942,
+          "line": 2941,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 2956,
+          "line": 2943,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 2959,
+          "line": 2957,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 2965,
+          "line": 2960,
           "tags": [
             "presentation"
           ]
@@ -12214,13 +12271,13 @@
           ]
         },
         {
-          "line": 2974,
+          "line": 2968,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 2976,
+          "line": 2975,
           "tags": [
             "presentation"
           ]
@@ -12232,37 +12289,37 @@
           ]
         },
         {
-          "line": 2982,
+          "line": 2978,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 3003,
+          "line": 2983,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 3009,
+          "line": 3004,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 3019,
+          "line": 3010,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 3025,
+          "line": 3020,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 3035,
+          "line": 3026,
           "tags": [
             "presentation"
           ]
@@ -12274,31 +12331,31 @@
           ]
         },
         {
-          "line": 3064,
+          "line": 3037,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 3067,
+          "line": 3065,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 3089,
+          "line": 3068,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 3103,
+          "line": 3090,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 3105,
+          "line": 3104,
           "tags": [
             "presentation"
           ]
@@ -12310,7 +12367,7 @@
           ]
         },
         {
-          "line": 3114,
+          "line": 3107,
           "tags": [
             "presentation"
           ]
@@ -12322,7 +12379,7 @@
           ]
         },
         {
-          "line": 3126,
+          "line": 3116,
           "tags": [
             "presentation"
           ]
@@ -12334,103 +12391,103 @@
           ]
         },
         {
-          "line": 3137,
+          "line": 3128,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 3157,
+          "line": 3138,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 3159,
+          "line": 3158,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 3167,
+          "line": 3160,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 3174,
+          "line": 3168,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 3177,
+          "line": 3175,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 3182,
+          "line": 3178,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 3187,
+          "line": 3183,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 3190,
+          "line": 3188,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 3202,
+          "line": 3191,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 3249,
+          "line": 3203,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 3256,
+          "line": 3250,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 3309,
+          "line": 3257,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 3312,
+          "line": 3310,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 3317,
+          "line": 3313,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 3329,
+          "line": 3318,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 3334,
+          "line": 3330,
           "tags": [
             "presentation"
           ]
@@ -12442,7 +12499,7 @@
           ]
         },
         {
-          "line": 3344,
+          "line": 3336,
           "tags": [
             "presentation"
           ]
@@ -12454,115 +12511,115 @@
           ]
         },
         {
-          "line": 3360,
+          "line": 3346,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 3372,
+          "line": 3361,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 3383,
+          "line": 3373,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 3385,
+          "line": 3384,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 3387,
+          "line": 3386,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 3427,
+          "line": 3388,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 3429,
+          "line": 3428,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 3463,
+          "line": 3430,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 3487,
+          "line": 3464,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 3504,
+          "line": 3488,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 3512,
+          "line": 3505,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 3545,
+          "line": 3513,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 3562,
+          "line": 3546,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 3578,
+          "line": 3563,
+          "tags": [
+            "presentation"
+          ]
+        },
+        {
+          "line": 3579,
           "tags": [
             "identity-or-compatibility"
           ]
         },
         {
-          "line": 3582,
+          "line": 3583,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 3595,
+          "line": 3596,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 3615,
+          "line": 3616,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 3644,
-          "tags": [
-            "presentation"
-          ]
-        },
-        {
-          "line": 3654,
+          "line": 3645,
           "tags": [
             "presentation"
           ]
@@ -12574,7 +12631,7 @@
           ]
         },
         {
-          "line": 3667,
+          "line": 3656,
           "tags": [
             "presentation"
           ]
@@ -12586,19 +12643,19 @@
           ]
         },
         {
-          "line": 3677,
+          "line": 3669,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 3687,
+          "line": 3678,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 3704,
+          "line": 3688,
           "tags": [
             "presentation"
           ]
@@ -12616,15 +12673,15 @@
           ]
         },
         {
-          "line": 3715,
+          "line": 3707,
           "tags": [
-            "identity-or-compatibility"
+            "presentation"
           ]
         },
         {
-          "line": 3717,
+          "line": 3716,
           "tags": [
-            "presentation"
+            "identity-or-compatibility"
           ]
         },
         {
@@ -12640,170 +12697,170 @@
           ]
         },
         {
-          "line": 3727,
+          "line": 3720,
+          "tags": [
+            "presentation"
+          ]
+        },
+        {
+          "line": 3728,
           "tags": [
             "identity-or-compatibility"
           ]
         },
         {
-          "line": 3729,
+          "line": 3730,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 3742,
+          "line": 3743,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 3751,
+          "line": 3752,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 3769,
+          "line": 3770,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 3776,
+          "line": 3777,
           "tags": [
             "identity-or-compatibility",
             "presentation"
           ]
         },
         {
-          "line": 3790,
+          "line": 3791,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 3809,
+          "line": 3810,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 3828,
+          "line": 3829,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 3833,
+          "line": 3834,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 3835,
+          "line": 3836,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 3844,
+          "line": 3845,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 3855,
+          "line": 3856,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 3863,
+          "line": 3864,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 3865,
+          "line": 3866,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 3872,
+          "line": 3873,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 3884,
+          "line": 3885,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 3889,
+          "line": 3890,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 3892,
+          "line": 3893,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 3894,
+          "line": 3895,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 3896,
+          "line": 3897,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 3902,
+          "line": 3903,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 3905,
+          "line": 3906,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 3909,
+          "line": 3910,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 3911,
+          "line": 3912,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 3918,
+          "line": 3919,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 3921,
-          "tags": [
-            "presentation"
-          ]
-        },
-        {
-          "line": 3927,
+          "line": 3922,
           "tags": [
             "presentation"
           ]
@@ -12815,19 +12872,25 @@
           ]
         },
         {
-          "line": 3933,
+          "line": 3929,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 3936,
+          "line": 3934,
           "tags": [
             "presentation"
           ]
         },
         {
           "line": 3937,
+          "tags": [
+            "presentation"
+          ]
+        },
+        {
+          "line": 3938,
           "tags": [
             "presentation"
           ]
