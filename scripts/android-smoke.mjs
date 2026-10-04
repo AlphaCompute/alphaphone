@@ -14,9 +14,9 @@ if (!serial || !serial.startsWith("emulator-"))
   );
 const identity = JSON.parse(fs.readFileSync("app.config.json"));
 const adb = path.join(env.ANDROID_HOME, "platform-tools/adb");
-// The 178-case suite reached case 138 at the old ten-minute cap. Keep a bounded
-// full-suite budget; individual dispatch/readiness deadlines remain unchanged.
-const fullSuiteDeadlineMs = 900000;
+// The 189-case suite reached case 174 at the old fifteen-minute cap. Keep a
+// bounded full-suite budget; individual dispatch/readiness deadlines remain unchanged.
+const fullSuiteDeadlineMs = 1200000;
 const run = (...args) =>
   execFileSync(adb, ["-s", serial, ...args], {
     encoding: "utf8", env,

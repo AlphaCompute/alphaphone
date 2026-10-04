@@ -98,7 +98,10 @@ public class PrototypeFlowInstrumentedTest {
   String title="Reference note "+UUID.randomUUID(),body="Written through the exact prototype editor.";
   try(BoundedActivityScenario<MainActivity>s=BoundedActivityScenario.launch(MainActivity.class)){
    ready(s);open(s,"Notes");click(s,"New note");fill(s,"Title",title);fill(s,"Note",body);click(s,"Back to notes");
-   waitFor(s,button("Open "+title),10000);s.recreate();ready(s);open(s,"Notes");click(s,"Open "+title);
+   waitFor(s,button("Open "+title),10000);
+   // The visible list is optimistic; prove the encrypted commit before killing its activity.
+   waitFor(s,"("+note(title)+")?.body==="+JSONObject.quote(body),10000);
+   s.recreate();ready(s);open(s,"Notes");click(s,"Open "+title);
    waitFor(s,"document.querySelector('textarea[aria-label=\"Note\"]').value==="+JSONObject.quote(body),10000);
    click(s,"Delete note");waitFor(s,"!("+note(title)+")",10000);
    eval(s,"[...document.querySelectorAll('button')].find(b=>b.textContent==='Undo').click()");waitFor(s,note(title),10000);
