@@ -2141,6 +2141,7 @@
           </div>
         </div>
 
+        <sc-if value="{{notes.vo.canReviewTranscript}}"><button class="note-source-trigger" style="margin:16px 0 0;width:100%" onClick="{{notes.vo.reviewTranscript}}">Review transcript with Alpha</button><p style="color:var(--mut);font-size:14px">Choose the text to discuss before sending it to your agent.</p></sc-if>
         <sc-if value="{{notes.vo.proc}}" hint-placeholder-val="{{false}}">
           <div style="display: flex; flex-direction: column; gap: 12px; padding: 18px; border-radius: 24px; background: var(--s2); margin-top: 22px">
             <span class="dot" style="display: block"><span class="serif" style="font-style: italic; font-weight: 400; font-size: 24px; line-height: 1; color: var(--acct)">&#945;</span></span>
@@ -2165,7 +2166,7 @@
                   <span style="font-size: 15px; line-height: 1.4; padding: 11px 8px 11px 0; {{a.css}}">{{a.t}}</span>
                 </div>
               </sc-for>
-              <button onClick="{{notes.vo.toCal}}" aria-label="{{notes.vo.calLabel}}" style="display: flex; align-items: center; gap: 8px; height: 36px; padding: 0 14px; margin: 6px 0 4px 10px; border-radius: 18px; background: var(--bg); font-size: 14px; font-weight: 600"><svg class="i" viewBox="0 0 24 24" style="width: 18px; height: 18px; color: var(--acct)"><path d="{{notes.vo.calIcon}}"></path></svg>{{notes.vo.calText}}</button>
+              <button onClick="{{notes.vo.toCal}}" aria-label="{{notes.vo.calLabel}}" style="display: flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 14px; margin: 6px 0 4px 10px; border-radius: 18px; background: var(--bg); font-size: 14px; font-weight: 600"><svg class="i" viewBox="0 0 24 24" style="width: 18px; height: 18px; color: var(--acct)"><path d="{{notes.vo.calIcon}}"></path></svg>{{notes.vo.calText}}</button>
             </div>
           </sc-if>
         </sc-if>

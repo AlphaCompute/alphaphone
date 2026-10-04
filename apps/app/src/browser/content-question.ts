@@ -1,17 +1,17 @@
 import type {SummarySource as Source} from '../prototype/summary-source';
 import {recognizeLocalText} from '../prototype/local-ocr';
 /** Review local source text before placing it in the conversation composer. */
-export function reviewContentQuestion(input:{signal?:AbortSignal;closed?:()=>void;validate?:(text:string)=>boolean;name:string;text:string;current:()=>boolean;compose:(text:string,source?:Source)=>void;source?:()=>Promise<Source>;image?:(signal:AbortSignal)=>Promise<Blob>}) {
+export function reviewContentQuestion(input:{sourceDescription?:string;sourceLabel?:string;question?:string;signal?:AbortSignal;closed?:()=>void;validate?:(text:string)=>boolean;name:string;text:string;current:()=>boolean;compose:(text:string,source?:Source)=>void;source?:()=>Promise<Source>;image?:(signal:AbortSignal)=>Promise<Blob>}) {
  const dialog=document.createElement('dialog');dialog.setAttribute('aria-label','Ask about selected content');
  dialog.style.cssText='width:min(560px,90vw);max-height:85dvh;overflow:auto;box-sizing:border-box;padding:24px;border-radius:20px;background:var(--bg,#fff);color:var(--fg,#111);font:inherit';
  const heading=document.createElement('h2');heading.textContent='Ask about '+input.name;heading.style.overflowWrap='anywhere';
- const description=document.createElement('p');description.textContent='Review the excerpt and your question. Continue places them in your conversation draft; Send shares that draft with your selected agent.'+(input.source?' You can then review the answer and save a note linked to this source.':'');
+ const description=document.createElement('p');description.textContent='Review the excerpt and your question. Continue places them in your conversation draft; Send shares that draft with your selected agent.'+(input.source?' '+(input.sourceDescription||'You can then review the answer and save a note linked to this source.'):'');
  const controller=new AbortController();let previewUrl:string|undefined;
- const question=document.createElement('textarea');question.setAttribute('aria-label','Question about content');question.value=input.image?'Help me understand this image text or description.':'Summarize this excerpt.';question.maxLength=2000;question.rows=2;
+ const question=document.createElement('textarea');question.setAttribute('aria-label','Question about content');question.value=input.question||(input.image?'Help me understand this image text or description.':'Summarize this excerpt.');question.maxLength=2000;question.rows=2;
  const excerpt=document.createElement('textarea');excerpt.setAttribute('aria-label','Content excerpt');excerpt.value=input.text.slice(0,12000);excerpt.maxLength=12000;excerpt.rows=10;
  for(const field of [question,excerpt])field.style.cssText='box-sizing:border-box;width:100%;font:inherit;background:inherit;color:inherit;padding:12px;margin-bottom:12px';
  const status=document.createElement('p');status.setAttribute('role','status');status.textContent=input.text.length>12000?'Showing the first 12,000 characters. Edit the excerpt to choose what to discuss.':'Edit the excerpt to choose what to discuss.';
- const linkSource=document.createElement('input');linkSource.type='checkbox';linkSource.checked=true;const sourceLabel=document.createElement('label');sourceLabel.style.cssText='display:block;margin:12px 0';sourceLabel.append(linkSource,document.createTextNode(' Link this source when saving the answer to Notes'));
+ const linkSource=document.createElement('input');linkSource.type='checkbox';linkSource.checked=true;const sourceLabel=document.createElement('label');sourceLabel.style.cssText='display:block;margin:12px 0';sourceLabel.append(linkSource,document.createTextNode(' '+(input.sourceLabel||'Link this source when saving the answer to Notes')));
  let verifying=false;
  const proceed=document.createElement('button');proceed.textContent='Use in conversation';
  const cancel=document.createElement('button');cancel.textContent='Cancel';

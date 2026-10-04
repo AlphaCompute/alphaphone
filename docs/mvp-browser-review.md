@@ -2629,3 +2629,42 @@ Final local qualification: **63 distinct focused browser cases passed** (59 from
 The current `dda54737` runtime already warms Kokoro during host startup. A fresh configured host confirmed the native worker existed before the first speech endpoint call. An initial connection attempt occurred before the agent became running and failed without requesting speech. Once running, first audio and Stop passed, but a longer two-sentence transcript missed the 20-second replay deadline. Those failed runs remain retained.
 
 Local playback now selects the first complete sentence boundary instead of waiting for a whole multi-sentence passage. Full-passage validation still occurs before any audio request, each chunk remains bounded to 300 characters, completion waits for all chunks, and cancellation cannot start the remainder. A fresh process at the same runtime pin passed actual browser recording, Whisper transcription, first Kokoro playback, completion, Stop, replay and disconnect with unchanged per-stage deadlines. All 11 owning browser cases and all 290 repository tests (zero skips), TypeScript and the web build pass. The rendered transcript was inspected. Evidence: `test-results/cold-kokoro-confirmation/`, including both original failures, `fixed-before.json`, `fixed-browser.log`, `verify.log` and `result.json`. This is a cold process, not an OS-cache purge or Android/device acceptance. No Android build ran.
+
+
+## October 4 — recording summary, action review and reminder completion
+
+Baseline: `1bd6633d00f9cfa49b9541529dfaa977675ebd5b`, including the reviewed PR176 notification-capacity fixture and PR177 first-sentence speech segmentation.
+
+### Implementation
+
+- A retained recording offers **Review transcript with Alpha**. The excerpt and question are editable; using the excerpt only prepares the composer, and Send remains separate. Source binding retains recording identity and an exact revision digest, not omitted transcript text.
+- The default question requests a bounded summary/action JSON proposal. Valid output prefills editable fields; malformed output remains available for manual review. No model response saves or schedules anything automatically.
+- Explicit summary saving updates the original recording, preserves its audio/transcript/title, and rejects changed/deleted recordings or changed conversations. Actions are bounded, editable and separately reviewed. A failed save does not create a duplicate recording or claim success.
+- **Review reminder draft** opens Calendar with action text and leaves title/time for explicit selection and Save. Browser notification-disabled policy yields an honest permission-denied record and message; delivery does not silently become posted.
+
+### Evidence and limitations
+
+- `test-results/recording-review/structured-verify.log`: 292 repository tests, zero failures/skips, TypeScript and web build pass.
+- `structured-browser.log`: all 45 recording/source cases pass across Chromium, Firefox and WebKit. The preceding `corrected-browser.log` passed 108 recording, source and reminder cases. The initial batch was stopped after 28 passes and three fixture failures: React input mutation did not use its native setter, and a moved clock retained Calendar's previous selected day. Corrections preserve product guards and individual assertion deadlines.
+- `complete-live/structured-asr-to-action/live-result.json`: actual browser MediaRecorder and local-host Whisper, one hosted Cerebras request, omitted text excluded, structured summary/actions reviewed and edited, original recording retained through reload, explicit reminder save, browser notification opening and completion. Rendered completion was inspected. Input is a previously generated synthetic speech WAV; this does not qualify physical capture, Android OS notifications or full J02 device acceptance.
+- A correctly configured fresh host independently failed first Kokoro synthesis after 15.27 seconds (`complete-live/live-failure.txt`, trace and log). Earlier unconfigured-host HTTP 503 is a separate setup error. The runtime's 15-second initialization timer killed the cold worker. Upstream PR33403 proposes a 60-second initialization budget; readiness still requires its probe, while cancellation and pipe failure remain immediate. Four owning tests, host typecheck and three fresh native workers pass, but admission and user-host restart remain pending. No current TTS success is inferred from the recording journey's prerecorded input.
+
+Remaining gates: current-head full hosted browser campaign, admitted cold-start runtime qualification, native microphone/speech and Android notification lifecycle, provider/physical-device acceptance, and the other open rows in the current MVP status. Android builds were deliberately excluded from this browser development pass.
+
+
+## October 4 — admit bounded cold Kokoro initialization
+
+Admitted runtime: `a97dfbda615af8cf07425eeda3b76773a1308e71`, exactly two files beyond the prior `dda54737` pin. The upstream develop fix is merged as PR33403; PR33405 merges the resident-baseline backport into staging. The develop PR was corrected from a staging-derived base to a two-file develop change; no unrelated develop code is imported into Alpha.
+
+The old 15-second boot timer reproduced a first-call HTTP 502 at 15.27 seconds. The new bounded 60-second initialization budget retains false readiness until the native synthesis probe finishes. Concurrent requests share initialization; cancellation, worker failure and broken pipes still stop it immediately. The 30-second synthesis and 45-second HTTP deadlines remain unchanged. A very slow initialization can therefore outlast an individual request, which must still report failure honestly rather than claiming audio success.
+
+Evidence: upstream `test-results/kokoro-cold-init/verify.log` terminates successfully, including 286 typecheck/lint tasks and final repository audits. Four fake-worker regression tests pass, covering a 20-second initialization, timeout/retry, cancellation and pipe failure. Three fresh actual native workers each produce valid WAV audio. The separately rebased develop test initially failed due to missing workspace dependencies; after a real frozen install, all four tests pass. No source guard was bypassed.
+
+Consumer `test-results/kokoro-cold-budget`: fresh exact source, 3,244 dependency packages installed with frozen lockfile and scripts disabled in 26.02 seconds; manifest `f177c085e762dfe4d1dcab4a8d31cc793e6e5bbb82d408593f07fbec46271c42`. The real browser speech journey passes in 28.9 seconds (31.1 seconds including runner startup), with synthetic audio captured through MediaRecorder, actual Whisper transcription, Kokoro first playback, completion, Stop and disconnect. The rendered transcript was inspected. `verify.log` passes 292 repository tests with no skips, TypeScript and the web build. Android builds were excluded; neither desktop native speech nor a browser notification establishes Android/device acceptance.
+
+
+### User development restart and source delivery
+
+PR179 merged as `5f957078e6aeeb60ee3d30546974f05a49b2b5ec`; PR180 merged as `4af51a10b4cfda2bbd555989f9476bb1a9566aae`. The user stack was stopped and its profile archived privately with symlinks preserved, then restarted on port 5317 at 09:58:13 UTC using runtime `a97dfbda`. Authenticated `user-before.json` / `user-after.json` in `test-results/kokoro-cold-budget` match owner, agent and all 17 conversation IDs; agent, Whisper and Kokoro report ready. Actual post-restart synthesis returns a valid 159,644-byte WAV in 590 ms (`user-synthesis.json`), without creating a conversation or playing audio. The isolated qualification hosts were stopped; the user stack remains running.
+
+Full hosted browser campaign `37193847892` at merge head `4af51a1` remains pending. Android workflows triggered by this browser pass were cancelled under the user's exclusion; the independently owned draft PR178 remains open with native qualification pending. No current-head hosted, Android, physical-device or full-MVP acceptance is inferred from these local results.

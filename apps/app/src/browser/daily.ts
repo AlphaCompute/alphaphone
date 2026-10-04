@@ -8,6 +8,8 @@ import { editStore, readStore, revision } from './store';
 type Row=Reminder & {revision:string};
 type State={sourceRevision:string;reminders:Row[];receipts?:Record<string,{binding:string;result:ReminderResult|ReminderCreateResult}>};
 const key='alpha.browser.reminders.v1',initial=():State=>({sourceRevision:revision(),reminders:[]});
+function notificationsAllowed(){const state=readStore<{appEnabled?:boolean;channels?:Record<string,boolean>}>('alpha.browser.notifications.v2',()=>readStore('alpha.browser.notification-policy.v1',()=>({})));return state.appEnabled!==false&&state.channels?.reminders!==false;}
+function scheduledStatus():'scheduled'|'permission-denied'{return notificationsAllowed()?'scheduled':'permission-denied';}
 function target(data:State,row:Row):ReminderTarget {return {...(row.alertMinutes!==undefined?{timingVersion:2 as const}:{}),sourceId:'browser-reminders',sourceRevision:data.sourceRevision,reminderId:row.id,occurrenceId:row.occurrenceId!,revision:row.revision};}
 function operationBinding(input:{operationId:string;bindingHash:string},operation:ReminderOperation|ReminderCreateOperation) {
   if(!/^[A-Za-z0-9_-]{1,128}$/.test(input.operationId)||!/^[a-f0-9]{64}$/.test(input.bindingHash))throw Error('Invalid reminder operation binding.');
@@ -18,11 +20,11 @@ function decide(row:Row,action:'done'|'snooze') {
   if(action==='snooze'){
     if(row.alertMinutes===null)throw Error('No-alert reminders cannot be snoozed. Edit the alert first.');
     if(row.status==='scheduled'&&row.snoozedAt!==undefined)return 'unchanged';
-    row.at=now+600000;row.snoozedAt=now;row.status='scheduled';
+    row.at=now+600000;row.snoozedAt=now;row.status=scheduledStatus();
   } else {
     const next=row.recurrence?nextReminderOccurrence(row.recurrence,now):undefined;
     row.history=[...(row.history||[]),{occurrenceId:row.occurrenceId!,dueAt:row.dueAt||row.at,completedAt:now,skippedDates:next?.skippedDates||0}].slice(-32);
-    if(next){row.recurrence!.date=next.date;row.dueAt=next.dueAt;row.at=next.at;row.occurrenceId=crypto.randomUUID();row.status=row.alertMinutes===null?'pending':'scheduled';delete row.completedAt;}
+    if(next){row.recurrence!.date=next.date;row.dueAt=next.dueAt;row.at=next.at;row.occurrenceId=crypto.randomUUID();row.status=row.alertMinutes===null?'pending':scheduledStatus();delete row.completedAt;}
     else {row.status='completed';row.completedAt=now;}
     delete row.snoozedAt;delete row.postedAt;
   }
@@ -39,10 +41,10 @@ export class BrowserDaily extends WebPlugin {
     reminderFields({title:input.title,body:input.body||'',schedule:{at:input.at,recurrence:input.recurrence||null,...(input.dueAt!==undefined||input.alertMinutes!==undefined?{dueAt:input.dueAt,alertMinutes:input.alertMinutes}:{})}});
     const dueAt=input.dueAt??(input.recurrence?initialReminderDue(input.recurrence,input.at):input.at);
     if(input.recurrence&&initialReminderDue(input.recurrence,input.at)!==dueAt)throw Error('Reminder civil time changed');
-    const status=input.alertMinutes===null?'pending':'scheduled',mode=input.alertMinutes===null?'none':'inexact';
+    const status=input.alertMinutes===null?'pending':scheduledStatus(),mode=input.alertMinutes===null?'none':'inexact';
     return editStore(key,initial,data=>{const previous=data.reminders.find(r=>r.id===input.id);if(previous?.alertMinutes!==undefined&&input.alertMinutes===undefined)throw Error('Explicit reminder timing cannot be discarded');data.reminders=data.reminders.filter(r=>r.id!==input.id);data.reminders.push({...input,body:input.body||'',mode,createdAt:previous?.createdAt||Date.now(),status,occurrenceId:crypto.randomUUID(),dueAt,history:previous?.history||[],revision:revision()});return {status,id:input.id,mode};});
   }
-  async listReminders(){return editStore(key,initial,data=>{for(const row of data.reminders)if(row.status==='scheduled'&&row.at<=Date.now()){row.status='posted';row.postedAt=Date.now();row.revision=revision();}return {reminders:data.reminders.filter(r=>r.status!=='cancelled').map(r=>({...r,target:target(data,r)})),notificationsEnabled:true};});}
+  async listReminders(){return editStore(key,initial,data=>{for(const row of data.reminders)if(row.status==='scheduled'&&row.at<=Date.now()){row.status=notificationsAllowed()?'posted':'permission-denied';if(row.status==='posted')row.postedAt=Date.now();row.revision=revision();}return {reminders:data.reminders.filter(r=>r.status!=='cancelled').map(r=>({...r,target:target(data,r)})),notificationsEnabled:notificationsAllowed()};});}
   async cancelReminder(input:{id:string;target:ReminderTarget;operationId:string;bindingHash:string}){if(input.target?.reminderId!==input.id)throw Error('Reviewed reminder target required.');const response=await this.operateReminder({...input,operation:{type:'reminder_cancel',target:input.target}});return {status:response.status==='succeeded'?'cancelled':'unknown',id:input.id};}
   async selectedReminder(input:{id:string}):Promise<ReminderTarget>{const data=readStore(key,initial),row=data.reminders.find(r=>r.id===input.id);if(!row)throw Error('Reminder no longer exists.');return target(data,row);}
   async reminderOperationReceipt(input:{operationId:string;bindingHash:string;operation:ReminderOperation|ReminderCreateOperation}) {
@@ -59,7 +61,7 @@ export class BrowserDaily extends WebPlugin {
         if(Object.keys(data.receipts||{}).length>=500)throw Error('Reminder receipt history is full');
         const {title,body,schedule}=operation.fields;
         if(schedule.at<=Date.now()||schedule.recurrence&&initialReminderDue(schedule.recurrence,schedule.at)!==schedule.dueAt)throw Error('Choose a valid future reminder schedule');
-        const row:Row={id:input.operationId,title,body,at:schedule.at,dueAt:schedule.dueAt,alertMinutes:schedule.alertMinutes,...(schedule.recurrence?{recurrence:schedule.recurrence}:{}),mode:schedule.alertMinutes===null?'none':'inexact',status:schedule.alertMinutes===null?'pending':'scheduled',createdAt:Date.now(),occurrenceId:crypto.randomUUID(),revision:revision(),history:[]};
+        const row:Row={id:input.operationId,title,body,at:schedule.at,dueAt:schedule.dueAt,alertMinutes:schedule.alertMinutes,...(schedule.recurrence?{recurrence:schedule.recurrence}:{}),mode:schedule.alertMinutes===null?'none':'inexact',status:schedule.alertMinutes===null?'pending':scheduledStatus(),createdAt:Date.now(),occurrenceId:crypto.randomUUID(),revision:revision(),history:[]};
         const result=validateReminderCreateResult(operation,{version:1,kind:operation.type,sourceId:'browser-reminders',reminderId:row.id,occurrenceId:row.occurrenceId,revision:row.revision,status:row.status,at:row.at,dueAt:row.dueAt,alertMinutes:row.alertMinutes,fields:operation.fields},input.operationId);
         data.reminders.push(row);(data.receipts??={})[input.operationId]={binding,result};return {status:'succeeded',result};
       }
@@ -68,7 +70,7 @@ export class BrowserDaily extends WebPlugin {
       if(operation.type!=='reminder_read_selected'&&(row.status==='cancelled'||row.status==='completed'&&operation.type!=='reminder_cancel'&&operation.type!=='reminder_update'))throw Error('Reminder is no longer active.');
       if(operation.type==='reminder_update'){
         row.title=operation.fields.title;row.body=operation.fields.body;
-        if(operation.fields.schedule){const schedule=operation.fields.schedule;if(schedule.at<=Date.now())throw Error('Choose a future reminder time.');row.at=schedule.at;row.recurrence=schedule.recurrence||undefined;row.dueAt=schedule.dueAt??(schedule.recurrence?initialReminderDue(schedule.recurrence,schedule.at):schedule.at);if(schedule.recurrence&&initialReminderDue(schedule.recurrence,schedule.at)!==row.dueAt)throw Error('Reminder civil time changed');if(schedule.alertMinutes===undefined)delete row.alertMinutes;else row.alertMinutes=schedule.alertMinutes;row.mode=row.alertMinutes===null?'none':'inexact';row.occurrenceId=crypto.randomUUID();row.status=row.alertMinutes===null?'pending':'scheduled';delete row.snoozedAt;delete row.postedAt;delete row.completedAt;}
+        if(operation.fields.schedule){const schedule=operation.fields.schedule;if(schedule.at<=Date.now())throw Error('Choose a future reminder time.');row.at=schedule.at;row.recurrence=schedule.recurrence||undefined;row.dueAt=schedule.dueAt??(schedule.recurrence?initialReminderDue(schedule.recurrence,schedule.at):schedule.at);if(schedule.recurrence&&initialReminderDue(schedule.recurrence,schedule.at)!==row.dueAt)throw Error('Reminder civil time changed');if(schedule.alertMinutes===undefined)delete row.alertMinutes;else row.alertMinutes=schedule.alertMinutes;row.mode=row.alertMinutes===null?'none':'inexact';row.occurrenceId=crypto.randomUUID();row.status=row.alertMinutes===null?'pending':scheduledStatus();delete row.snoozedAt;delete row.postedAt;delete row.completedAt;}
         row.revision=revision();
       }else if(operation.type==='reminder_cancel'){row.status='cancelled';row.cancelledAt=Date.now();row.revision=revision();}
       else if(operation.type==='reminder_complete'||operation.type==='reminder_snooze')decide(row,operation.type==='reminder_complete'?'done':'snooze');
@@ -88,7 +90,7 @@ export class BrowserDaily extends WebPlugin {
       if(input.action==='cancel'){row.status='cancelled';row.cancelledAt=Date.now();row.revision=revision();}
       else if(row.status!=='posted')return {status:'stale'};
       else if(input.action==='dismiss')decide(row,'done');
-      else{row.at=Date.now()+input.minutes!*60000;row.snoozedAt=Date.now();row.status='scheduled';delete row.postedAt;row.revision=revision();}
+      else{row.at=Date.now()+input.minutes!*60000;row.snoozedAt=Date.now();row.status=scheduledStatus();delete row.postedAt;row.revision=revision();}
       return {status:'applied'};
     });
   }
@@ -96,11 +98,11 @@ export class BrowserDaily extends WebPlugin {
     if(input.reviewed!==true||!['set','show','dismiss','snooze'].includes(input.action))throw Error('Review the alarm action first.');
     if(input.action==='set'){
       if(!Number.isInteger(input.hour)||input.hour<0||input.hour>23||!Number.isInteger(input.minute)||input.minute<0||input.minute>59||typeof input.label!=='string'||input.label.length>200||input.label.includes('\0'))throw Error('Choose a valid alarm time and label.');
-      const date=new Date();date.setHours(input.hour,input.minute,0,0);if(date.getTime()<=Date.now())date.setDate(date.getDate()+1);const saved=await this.scheduleReminder({id:'alarm_'+crypto.randomUUID(),title:input.label||'Alarm',at:date.getTime()});if(saved.status!=='scheduled')throw Error('The alarm time passed. Choose another time.');
+      const date=new Date();date.setHours(input.hour,input.minute,0,0);if(date.getTime()<=Date.now())date.setDate(date.getDate()+1);const saved=await this.scheduleReminder({id:'alarm_'+crypto.randomUUID(),title:input.label||'Alarm',at:date.getTime()});if(saved.status!=='scheduled')throw Error(saved.status==='permission-denied'?'The alarm was saved but notifications are disabled. Enable notifications and review its time.':'The alarm time passed. Choose another time.');
     }else if(input.action==='show')window.dispatchEvent(new Event('alpha:clock-open'));
     else{
       if(input.action==='snooze'&&(!Number.isInteger(input.snoozeMinutes)||input.snoozeMinutes<1||input.snoozeMinutes>60))throw Error('Choose 1 to 60 snooze minutes.');
-      await editStore(key,initial,data=>{for(const row of data.reminders.filter(r=>r.id.startsWith('alarm_')&&r.status==='posted')){if(input.action==='dismiss')decide(row,'done');else if(input.action==='snooze'){row.at=Date.now()+input.snoozeMinutes*60000;row.snoozedAt=Date.now();row.status='scheduled';delete row.postedAt;row.revision=revision();}}});
+      await editStore(key,initial,data=>{for(const row of data.reminders.filter(r=>r.id.startsWith('alarm_')&&r.status==='posted')){if(input.action==='dismiss')decide(row,'done');else if(input.action==='snooze'){row.at=Date.now()+input.snoozeMinutes*60000;row.snoozedAt=Date.now();row.status=scheduledStatus();delete row.postedAt;row.revision=revision();}}});
     }
     window.dispatchEvent(new Event('alpha:alarms-changed'));return {action:input.action,status:'opened',message:input.action==='set'?'Alarm saved.':input.action==='show'?'Alarms':input.action==='dismiss'?'Alarm dismissed.':'Alarm snoozed.'};
   }
