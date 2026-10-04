@@ -1,4 +1,3 @@
-import {browserDevProfile} from '../browser/dev-profile';
 import {reviewContentQuestion} from '../browser/content-question';
 import { installFilesTreeAdapter } from './files-tree-adapter';
 import { Capacitor } from '@capacitor/core';
@@ -99,7 +98,6 @@ export function installSelectedDocumentAdapter(_Component: unknown, views: Recor
       const image = mime.startsWith('image/') && (uri?.startsWith('content://') || (!Capacitor.isNativePlatform() && uri?.startsWith('blob:'))) ? Capacitor.convertFileSrc(uri) : undefined;
       const close = () => { clear(); api.set({ open: null }); };
       const ask=()=>{
-        if(!browserDevProfile)return api.assist('You can ask Alpha here. This file stays selected, but its contents are not shared and document analysis is not connected.');
         closeQuestion?.();
         closeQuestion=reviewContentQuestion({name:selected.pdf?name+' · page '+(selected.pdf.page+1):name,text:selected.text??'',current:()=>current===selected&&api.get(module).open===marker&&!document.hidden,compose:(draft)=>api.composeContentQuestion(draft),...(image?{image:async(signal:AbortSignal)=>(await fetch(image,{signal})).blob()}: {})});
       };

@@ -6367,8 +6367,8 @@
     {
       "file": "src/prototype/agent-adapter.ts",
       "upstreamCandidate": [],
-      "bytes": 48403,
-      "sha256": "b6f10783605d1e6884199d6b98eb088036870d26cddbc560911dd62737af4613",
+      "bytes": 48382,
+      "sha256": "07d29660d7374ace970390e189c5e795db3cdad6aeeb927c070b1c5415f0b27d",
       "lines": 564,
       "owner": "shared platform client; Alpha composition",
       "disposition": "split",
@@ -10159,15 +10159,14 @@
     {
       "file": "src/prototype/selection-adapter.ts",
       "upstreamCandidate": [],
-      "bytes": 12069,
-      "sha256": "4eb104c02cabdc3ab39c8b6836df24a19219f86c09d7e80112de28bb6c781bfb",
-      "lines": 162,
+      "bytes": 11837,
+      "sha256": "e0147215facb7b80552922f9b14ece069bdc9741a1a667f4a5ea56b94b1185d5",
+      "lines": 160,
       "owner": "shared platform client; Alpha composition",
       "disposition": "split",
       "reason": "Cross-domain device/platform glue; separate host contracts and provider behavior from product registry, lifecycle, DOM and defaults.",
       "imports": [
         "../browser/content-question",
-        "../browser/dev-profile",
         "../daily",
         "./files-tree-adapter",
         "@capacitor/core"
@@ -10177,25 +10176,25 @@
       ],
       "seams": [
         {
-          "line": 29,
+          "line": 28,
           "tags": [
             "identity-or-compatibility"
           ]
         },
         {
-          "line": 74,
+          "line": 73,
           "tags": [
             "identity-or-compatibility"
           ]
         },
         {
-          "line": 118,
+          "line": 116,
           "tags": [
             "presentation"
           ]
         },
         {
-          "line": 142,
+          "line": 140,
           "tags": [
             "identity-or-compatibility"
           ]
