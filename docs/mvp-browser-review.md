@@ -2374,3 +2374,34 @@ The static ownership inventory now contains 280 app files.
 
 This is one reviewed subview. The complete MVP/design acceptance and external
 provider/native/device requirements in the current-status ledger remain open.
+
+
+The correction-only checkpoint at `4ae0a4b` subsequently completed full
+`npm run verify`: **278 tests, zero failures/skips, TypeScript and web build**
+on Node 24.15.0.
+
+The same draft PR now extends the shared product styling to document assembly
+and searchable-PDF text review. Page/edit/export controls stay grouped in the
+scrolling content; document Save draft/Close and searchable Download/Cancel
+remain in their action areas. Labels, explicit saves, text review, cancellation
+and export-result handling remain the existing implementations. The shared CSS
+replaces the correction-only stylesheet; the app inventory remains 280 files.
+
+A first refactor had a mismatched root CSS selector. The large-text probe caught
+16px text and 19px controls rather than the required scaled text/44px controls;
+that browser run was interrupted and is not qualifying evidence. Corrected
+selectors now pass all **eight** layout probes for the two additional dialogs:
+light/dark, portrait/landscape, 150% text, no horizontal overflow, visible action
+bounds and no page errors. Screenshots were inspected. Typecheck and final build
+pass; the complete three-engine scan regression batch is still running.
+Evidence: `test-results/scan-dialog-layout-fixed/`, with the failed probe retained
+in `test-results/scan-dialog-layout/`; browser logs are retained separately.
+
+
+The expanded scan regression batch completed with **173 passes and the existing
+WebKit legacy-Blob migration fixture skip**. It covers correction, edge finding,
+capture ownership, document ordering, draft conflicts, reviewed OCR, searchable
+PDF output and cancellation across all three engines. The final build passes;
+all eight additional layout probes pass. Evidence is retained under
+`test-results/scan-dialog-evidence/`. PR160 remains separate from native/device
+acceptance and the still-running merged-main browser campaign.
