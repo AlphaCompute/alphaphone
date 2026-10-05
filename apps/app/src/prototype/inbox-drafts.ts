@@ -13,21 +13,21 @@ const valid=(v:any,owner:string):v is Draft=>!!v&&v.version===1&&v.owner===owner
 export function inboxDrafts(publish:()=>void,toast:(text:string)=>void, provider?:{prepare(proposal:Bag):Promise<void>;capabilities():{send:boolean;providerDrafts:boolean;from?:string}|null}) {
  let owner='',session='',epoch=0,saved:Draft|null=null,draft:Draft|null=null;
  const pendingEdits=new Map<string,Draft>();
- let ready=false,busy=false,open=false,confirm=false,toQ='',label='',status='';
+ let loading=false,ready=false,busy=false,open=false,confirm=false,toQ='',label='',status='';
  const slot=()=>`inbox-drafts:v1:${owner}`;
- function reset(){pendingEdits.clear();epoch++;owner='';session='';saved=draft=null;ready=busy=open=confirm=false;toQ='';status='';}
+ function reset(){pendingEdits.clear();epoch++;owner='';session='';saved=draft=null;loading=ready=busy=open=confirm=false;toQ='';status='';}
  async function bind(account:string,accountLabel:string){
   const identity=connectionController.getSnapshot().cloudAccount, binding=connectionController.getCloudClient();
   const next=identity&&binding?.sessionId===identity.sessionId&&account?JSON.stringify([identity.environment,identity.userId,identity.organizationId||'',account]):'';
   if(next===owner&&binding?.sessionId===session&&ready)return;
   if(draft)pendingEdits.set(owner,{...draft,to:[...draft.to]});
-  epoch++;saved=draft=null;ready=busy=open=confirm=false;toQ='';status='';owner=next;session=binding?.sessionId||'';label=accountLabel;
+  epoch++;saved=draft=null;loading=ready=busy=open=confirm=false;toQ='';status='';owner=next;session=binding?.sessionId||'';label=accountLabel;
   if(!owner)return;
-  const token=epoch, key=slot();status='Checking local draft…';publish();
+  const token=epoch, key=slot();loading=true;status='Checking local draft…';publish();
   try{const value=await secureConnectionStore.read<Draft>(key);if(token!==epoch)return;
    if(value!==null&&!valid(value,owner))throw Error();saved=value;draft=pendingEdits.get(owner)||null;ready=true;status=draft?'Unsaved edits retained in this session':value?'Saved draft on this device':'No saved local draft';
   }catch{if(token===epoch)status='Local draft storage unavailable. Retry connection to reload.';}
-  if(token===epoch)publish();
+  if(token===epoch){loading=false;publish();}
  }
  function begin(reply?:GmailMessage,mode:'reply'|'reply-all'|'forward'='reply',forwardedBody=''){
   if(!ready||busy){toast(status||'Connect a Gmail account first.');return;}
@@ -63,7 +63,7 @@ export function inboxDrafts(publish:()=>void,toast:(text:string)=>void, provider
   chips(chip:(label:string,action:()=>void)=>Bag){return ready?[
    ...(draft?[chip('Continue draft',()=>{open=true;publish();})]:saved?[chip('Restore local draft',()=>{draft={...saved!,to:[...saved!.to]};open=true;confirm=false;toQ='';publish();})]:[]),
   ]:[];},
-  render(){return {composing:open&&!!draft,c: draft?{
+  render(){return {composeDisabled:loading||busy,composing:open&&!!draft,c: draft?{
    local:true,status,busy,confirm,save:()=>void update(),discard:()=>{if(!busy){confirm=true;publish();}},cancelDiscard:()=>{confirm=false;publish();},confirmDiscard:()=>void update(true),
    send:()=>{if(!provider?.capabilities()?.send){toast('Sending is unavailable for this account. Save locally; no email has been sent.');return;}if(toQ.trim()){add();if(toQ.trim())return;}void provider.prepare({kind:'send',mode:draft!.mode||(draft!.reply?'reply':'compose'),to:[...draft!.to],cc:[...(draft!.cc||[])],bcc:[...(draft!.bcc||[])],subject:draft!.subject,bodyText:draft!.body,attachments:[...(draft!.attachments||[])],...(draft!.reply?{replyMessageId:draft!.reply.messageId}:{})});},
    canSaveProvider:!!provider?.capabilities()?.providerDrafts,saveProvider:()=>{if(toQ.trim()){add();if(toQ.trim())return;}void provider?.prepare({kind:draft!.provider?'draft-replace':'draft-create',...(draft!.provider?{draftId:draft!.provider.draftId,expectedDigest:draft!.provider.providerDigest,acceptNonAtomicReplacement:true}:{}),mode:draft!.mode||(draft!.reply?'reply':'compose'),to:[...draft!.to],cc:[...(draft!.cc||[])],bcc:[...(draft!.bcc||[])],subject:draft!.subject,bodyText:draft!.body,attachments:[...(draft!.attachments||[])],...(draft!.reply?{replyMessageId:draft!.reply.messageId}:{})});},multi:true,from:label,cycleFrom:()=>toast('Close this composer to choose another Gmail account.'),
