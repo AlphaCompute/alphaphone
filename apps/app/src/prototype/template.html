@@ -816,7 +816,7 @@
       <sc-for list="{{calendar.events}}" as="e" hint-placeholder-count="5">
         <button onClick="{{e.open}}" aria-label="{{e.title}}, {{e.time}}" style="position: absolute; left: {{e.left}}px; width: {{e.w}}px; top: {{e.top}}px; height: {{e.h}}px; border-radius: 14px; padding: 8px 12px 8px 16px; box-sizing: border-box; display: flex; align-items: flex-start; gap: 8px; overflow: hidden; text-align: left; {{e.css}}">
           <span style="position: absolute; left: 6px; top: 6px; bottom: 6px; width: 3px; border-radius: 2px; background: {{e.stripe}}"></span>
-          <span style="flex-grow: 1; min-width: 0"><span style="display: block; font-size: 14px; font-weight: 600; line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{e.title}}</span><span style="display: block; font-size: 12px; opacity: .7; margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{e.sub}}</span></span>
+          <span style="flex-grow: 1; min-width: 0"><span style="display: block; font-size: 14px; font-weight: 600; line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{e.title}}</span><span style="display: block; font-size: 12px; opacity: .85; margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{e.sub}}</span></span>
           <sc-if value="{{e.showTime}}" hint-placeholder-val="{{true}}"><span style="font-size: 12px; opacity: .75; white-space: nowrap">{{e.time}}</span></sc-if>
         </button>
       </sc-for>
@@ -2620,14 +2620,14 @@
               <sc-if value="{{pg.first}}" hint-placeholder-val="{{true}}">
                 <div style="font-family: 'Denton', 'Fraunces', Georgia, serif; font-size: 21px; font-weight: 400; margin-bottom: 18px">{{pg.heading}}</div>
                 <sc-for list="{{pg.rows}}" as="r" hint-placeholder-count="4">
-                  <div style="display: flex; gap: 10px; padding: 6px 0; border-bottom: 1px solid #E4E4E4; font-size: 11.5px"><span style="width: 84px; flex-shrink: 0; color: #777">{{r.k}}</span><span style="font-weight: 500">{{r.v}}</span></div>
+                  <div style="display: flex; gap: 10px; padding: 6px 0; border-bottom: 1px solid #E4E4E4; font-size: 11.5px"><span style="width: 84px; flex-shrink: 0; color: #555">{{r.k}}</span><span style="font-weight: 500">{{r.v}}</span></div>
                 </sc-for>
                 <div style="height: 16px"></div>
               </sc-if>
               <sc-for list="{{pg.lines}}" as="l" hint-placeholder-count="8">
                 <div style="height: 6px; border-radius: 3px; background: #DDDDDD; margin: 9px 0; width: {{l.w}}%"></div>
               </sc-for>
-              <div style="position: absolute; bottom: 12px; right: 16px; font-size: 10px; color: #999">{{pg.num}}</div>
+              <div style="position: absolute; bottom: 12px; right: 16px; font-size: 10px; color: #555">{{pg.num}}</div>
             </div>
           </sc-for>
         </sc-if>
@@ -3080,7 +3080,7 @@
           <sc-for list="{{workflows.fd.steps}}" as="s" hint-placeholder-count="4">
             <div style="display: flex; gap: 14px">
               <div style="display: flex; flex-direction: column; align-items: center; width: 32px; flex-shrink: 0">
-                <span aria-label="{{s.label}}" style="width: 32px; height: 32px; border-radius: 16px; margin-top: 11px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; transition: background .2s; {{s.dotCss}}"><svg class="i" viewBox="0 0 24 24" style="width: 16px; height: 16px"><path d="{{s.d}}"></path></svg></span>
+                <span role="img" aria-label="{{s.label}}" style="width: 32px; height: 32px; border-radius: 16px; margin-top: 11px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; transition: background .2s; {{s.dotCss}}"><svg class="i" viewBox="0 0 24 24" style="width: 16px; height: 16px"><path d="{{s.d}}"></path></svg></span>
                 <span style="width: 2px; flex-grow: 1; background: {{s.lineColor}}"></span>
               </div>
               <div style="flex-grow: 1; min-width: 0; overflow-wrap: anywhere; padding: 16px; border-radius: 18px; margin-bottom: 10px; font-size: 15.5px; line-height: 1.4; transition: box-shadow .2s; {{s.boxCss}}">{{s.t}}</div>

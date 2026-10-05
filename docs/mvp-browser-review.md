@@ -414,3 +414,30 @@ Firefox and WebKit. Three record validation tests and type checking also passed.
 Combined root verification with the Calendar modal changes is pending. Physical-device
 process recreation, native encrypted-store execution and real Gmail authorization
 and provider outcomes remain unqualified by these browser fixtures.
+
+### Subview accessibility follow-up — October 5
+
+An axe-core 4.14.0 scan of 86 light/dark reference app states found low-contrast
+Calendar event details and adjacent-month dates, faint document-preview labels,
+and dimmed paused-workflow descriptions. Workflow step icons also used labels on
+plain spans without an image role. Event details now retain more foreground
+contrast, adjacent-month dates use the muted text token, preview labels use a
+readable gray, paused descriptions retain full opacity, and step icons have the
+appropriate role. The fixture document preview is not a claim about imported PDF
+accessibility or real document content.
+
+All 22 reference-state rendering tests passed, along with type checking. The
+repeated 86-state audit reported zero automated violations. It still returned
+contrast items requiring manual review in 64 states, primarily because overlays,
+images and partial overlaps prevent automatic background determination; these are
+not passing contrast measurements. Calendar month and document preview captures
+were inspected. Source and evidence are in the `alpha-album-documents` checkout,
+under `artifacts/pr317-browser/subview-*` and
+`test-results/root-accessibility-followup/design-*`. Broad screen-reader,
+keyboard traversal of overlapping subviews and physical accessibility remain open.
+
+The full Chromium campaign at `b021874ffe1085e2ad1f850cbd1d772ee6215043`
+finished with 1,909 passed, 15 skipped and zero failures (31.6 minutes). The log is
+`artifacts/calendar-form-review/current-main-chromium.log` in the primary checkout.
+Its host-only skipped cases require separate profiles, and it predates PR 335 and
+this subview follow-up. It must not be used as full-suite evidence for later code.
