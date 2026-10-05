@@ -184,7 +184,7 @@ async function work(message: string, action: (signal: AbortSignal) => Promise<vo
   update({ busy: true, open: true, message, error: '' });
   try { await action(controller.signal); }
   catch (error) {
-    if(browserDevProfile&&controller.signal.aborted&&!state.open){update({error:'',message:''});return;}
+    if(controller.signal.aborted&&!state.open){update({error:'',message:''});return;}
     if (expired(error) && active?.kind === 'cloud' && active.cloud.environment === cloud.environment) {
       const previous = active; retire('Sign-in required'); detachService();
       try { await previous.cloud.disconnect(); }
@@ -758,6 +758,23 @@ export function ConnectionChooser() {
   const localOrigin = useRef<HTMLInputElement>(null), localCode = useRef<HTMLInputElement>(null);
   const environment = useRef<HTMLSelectElement>(null);
   useEffect(() => { void connectionController.initialize(); }, []);
+  useEffect(()=>{
+    if(isAndroid)return;
+    const changed=(event:StorageEvent)=>{
+      if(event.key!==SELECTION&&event.key!==CLOUD_SERVICE&&event.key!==null)return;
+      agentRecovery.current?.abort();operation?.abort();
+      if(event.key===SELECTION||event.key===null){
+        void retire();
+        if(event.key===null||selection()?.kind==='offline')detachService();
+      }else{detachCloudTarget();detachService();}
+      // Read preferences only. Another tab's choice must not trigger sign-in or
+      // be overwritten by cancellation cleanup in this tab.
+      update({open:false});
+    };
+    window.addEventListener('storage',changed);
+    return()=>window.removeEventListener('storage',changed);
+  },[]);
+
   useEffect(()=>{if(!browserDevProfile)return;const changed=()=>{const selected=selection();if(selected?.kind==='development'&&selected.profile==='cloud'){operation?.abort();sending?.abort();void retire();save({kind:'none'});}agentRecovery.current?.abort();setReplyReady(false);setDevelopmentAccountRevision(value=>value+1);};const stored=(event:StorageEvent)=>{if(event.key===developmentCloudKey||event.key===null)changed();};window.addEventListener('alpha:development-account-changed',changed);window.addEventListener('storage',stored);return()=>{window.removeEventListener('alpha:development-account-changed',changed);window.removeEventListener('storage',stored);};},[developmentProfile]);
   useEffect(() => {
     if (!browserDevProfile) return;
@@ -767,19 +784,16 @@ export function ConnectionChooser() {
     const suspend = () => { developmentPageSuspended = true; cancel(); };
     const resume = () => { developmentPageSuspended = false; update({}); };
     const visibility = () => { if (document.hidden) suspend(); else resume(); };
-    const storage = (event:StorageEvent) => { if (event.key===SELECTION || event.key===null) { agentRecovery.current?.abort();operation?.abort(); void retire(); update({open:false}); } };
     const events = ['launcher-home','alpha:device-state'];
     events.forEach(event => window.addEventListener(event,cancel));
     window.addEventListener('pagehide',suspend);
     window.addEventListener('pageshow',resume);
-    window.addEventListener('storage',storage);
     document.addEventListener('visibilitychange',visibility);
     return () => {
       developmentPageSuspended = false;
       events.forEach(event => window.removeEventListener(event,cancel));
       window.removeEventListener('pagehide',suspend);
       window.removeEventListener('pageshow',resume);
-      window.removeEventListener('storage',storage);
       document.removeEventListener('visibilitychange',visibility);
     };
   },[]);
