@@ -82,6 +82,10 @@ jobs:
         run: >-
           npm run test:browser --
           test/browser/domain-atomicity.spec.ts
+          test/browser/reminder-action-storage.spec.ts
+          test/browser/reminder-delete-review.spec.ts
+          test/browser/reminder-decision-review.spec.ts
+          test/browser/browser-reminder-edit-recovery.spec.ts
           test/browser/reminder-creation-storage.spec.ts
           test/browser/reminder-create-review.spec.ts
           test/browser/domain-initialization.spec.ts

@@ -3,8 +3,8 @@ import {secureConnectionStore} from './native-connection';
 import {validateReminderOperation,validateReminderResult,type ReminderOperation,type ReminderTarget} from './reminder-contract';
 import {DailyApps} from '../daily';
 export type PendingReminderDeletion={operationId:string;bindingHash:string;operation:Extract<ReminderOperation,{type:'reminder_update'}>|{type:'reminder_cancel'|'reminder_complete'|'reminder_snooze';target:ReminderTarget}};
-// Legacy deletion slot retained: old cancel records remain readable alongside reviewed decisions and edits.
-const slot='reminder-deletions:v1:device',webKey='alpha.browser.reminder-deletions.v1';
+const slot='reminder-deletions:v1:device';
+const browserHistory=()=>import('../browser/reminder-action-document');
 type Pending=Record<string,PendingReminderDeletion>;
 function validate(raw:Pending|null):Pending{
  if(raw===null)return {};
@@ -16,23 +16,23 @@ function validate(raw:Pending|null):Pending{
  }
  return raw;
 }
-async function read():Promise<Pending|null>{return Capacitor.getPlatform()==='android'?secureConnectionStore.read<Pending>(slot):JSON.parse(localStorage.getItem(webKey)||'null');}
+async function read():Promise<Pending|null>{
+ if(Capacitor.getPlatform()==='android')return secureConnectionStore.read<Pending>(slot);
+ return (await browserHistory()).reminderActionDocument.readJson<Pending>();
+}
 export async function pendingReminderDeletions(){return validate(await read());}
 async function change(id:string,expected:PendingReminderDeletion|null,value:PendingReminderDeletion|null){
- if(Capacitor.getPlatform()==='android')return changeLocked(id,expected,value);
- if(!navigator.locks?.request)throw Error('Safe browser storage requires Web Locks');
- return navigator.locks.request(webKey,{mode:'exclusive'},()=>changeLocked(id,expected,value));
-}
-async function changeLocked(id:string,expected:PendingReminderDeletion|null,value:PendingReminderDeletion|null){
- const raw=await read(),all=validate(raw);
- if(value===null&&!all[id])return;
- if(JSON.stringify(all[id]||null)!==JSON.stringify(expected))throw Error('Pending deletion changed');
- const next={...all};if(value)next[id]=value;else delete next[id];validate(next);
+ const update=(raw:Pending|null)=>{
+  const all=validate(raw);if(value===null&&!all[id])return raw;
+  if(JSON.stringify(all[id]||null)!==JSON.stringify(expected))throw Error('Pending deletion changed');
+  const next={...all};if(value)next[id]=value;else delete next[id];return validate(next);
+ };
  if(Capacitor.getPlatform()==='android'){
+  const raw=await read(),next=update(raw);if(next===raw)return;
   if((await secureConnectionStore.compareExchange(slot,raw,next)).status!=='saved')throw Error('Pending deletion changed');
  }else{
-  if(localStorage.getItem(webKey)!==(raw===null?null:JSON.stringify(raw)))throw Error('Pending deletion changed');
-  localStorage.setItem(webKey,JSON.stringify(next));
+  if(value===null&&!(await pendingReminderDeletions())[id])return;
+  await (await browserHistory()).reminderActionDocument.editJson<Pending>(update);
  }
  if(JSON.stringify((await pendingReminderDeletions())[id]||null)!==JSON.stringify(value))throw Error('Pending deletion save unconfirmed');
 }
