@@ -12,6 +12,7 @@ import {developmentCredential,developmentJournal,authorDevelopmentAction} from '
 import {browserDevProfile} from '../browser/dev-profile';
 import {developmentBridge,developmentName,developmentProfiles,developmentReply,saveDevelopmentReply,type DevelopmentProfile} from '../browser/development-connection';
 import {Capacitor} from '@capacitor/core';
+import {personalIntentDocument,type PersonalIntent} from './cloud-personal-intent';
 import { CloudPersonalSetup, personalIntent, savePersonalIntent, clearPersonalIntent, type PersonalSetupState } from './cloud-personal-setup';
 import { PersonalProtocolError, type CloudPersonalProtocol, type PersonalView, type PersonalOwner } from './cloud-personal-protocol';
 import { holdPhoneInert } from './modal-inert';
@@ -81,7 +82,8 @@ async function verifyService(client: CloudProtocol, signal: AbortSignal) {
 }
 let personalSetup: { client:CloudPersonalProtocol; serviceId:string } | null = null;
 let personalGeneration=0;
-function clearPersonalSetup(){personalGeneration++;personalSetup=null;update({cloudPersonal:undefined});}
+let personalRecovery:AbortController|null=null;
+function clearPersonalSetup(){personalRecovery?.abort();personalGeneration++;personalSetup=null;update({cloudPersonal:undefined});}
 function personalCurrent(binding:NonNullable<typeof personalSetup>,generation:number){return generation===personalGeneration&&personalSetup===binding&&service?.identity.sessionId===binding.serviceId&&service.identity.credentialId===binding.client.owner.credentialId&&service.identity.environment===binding.client.owner.environment&&service.identity.userId===binding.client.owner.userId&&service.identity.organizationId===binding.client.owner.organizationId;}
 async function inspectPersonal(signal:AbortSignal){
  const generation=personalGeneration,serviceId=service?.identity.sessionId;
@@ -89,19 +91,27 @@ async function inspectPersonal(signal:AbortSignal){
  const client=await cloud.personal(signal);signal.throwIfAborted();
  if(generation!==personalGeneration||service?.identity.sessionId!==serviceId||service.identity.credentialId!==client.owner.credentialId||service.identity.userId!==client.owner.userId||service.identity.organizationId!==client.owner.organizationId)throw Error('Cloud account changed. Refresh status.');
  const binding={client,serviceId};personalSetup=binding;
+ try{const expected=await personalIntent(client.owner,signal);
  const view=await client.inspect(signal);signal.throwIfAborted();
  if(!personalCurrent(binding,generation))return;
- publishPersonal(binding,view);
+ await publishPersonal(binding,view,expected,generation,signal);
+ }catch(error){if(personalCurrent(binding,generation))update({cloudPersonal:{view:null,blocked:true,declined:false}});throw error;}
 }
-function publishPersonal(binding:NonNullable<typeof personalSetup>,view:PersonalView){
- let intent=personalIntent(binding.client.owner);
- if(intent?.phase==='activation'&&intent.state==='accepted'&&(view.kind==='review'||view.kind==='unavailable')&&intent.personalElizaId===view.review.personalElizaId&&intent.dedicatedAgentId&&intent.dedicatedAgentId===view.review.dedicatedAgentId&&['stopped','sleeping','error'].includes(view.review.status||'')){clearPersonalIntent(binding.client.owner);intent=null;}
+async function publishPersonal(binding:NonNullable<typeof personalSetup>,view:PersonalView,expected:PersonalIntent|null,generation:number,signal:AbortSignal){
+ const current=()=>{signal.throwIfAborted();if(!personalCurrent(binding,generation))throw Error('Cloud account changed. Refresh status.');};current();
+ let intent=await personalIntent(binding.client.owner,signal);current();
+ if(JSON.stringify(intent)!==JSON.stringify(expected))throw Error('Cloud setup changed in another view. Refresh its status.');
+ if(intent?.phase==='activation'&&intent.state==='accepted'&&(view.kind==='review'||view.kind==='unavailable')&&intent.personalElizaId===view.review.personalElizaId&&intent.dedicatedAgentId&&intent.dedicatedAgentId===view.review.dedicatedAgentId&&['stopped','sleeping','error'].includes(view.review.status||'')){await clearPersonalIntent(binding.client.owner,intent,signal);intent=null;current();}
  if(intent&&view.kind==='ready'){
   if(intent.personalElizaId!==view.identity.personalElizaId||(intent.dedicatedAgentId&&intent.dedicatedAgentId!==view.identity.activeAgentId))throw Error('Cloud setup returned a different target. Review the account before connecting.');
-  clearPersonalIntent(binding.client.owner);
+  await clearPersonalIntent(binding.client.owner,intent,signal);intent=null;current();
  }
  const blocked=!!intent&&view.kind!=='ready'&&(view.kind!=='pending'||intent.phase==='cutover'||intent.personalElizaId!==view.receipt.personalElizaId||(!!intent.dedicatedAgentId&&intent.dedicatedAgentId!==view.receipt.dedicatedAgentId));
  update({cloudPersonal:{view,blocked,declined:false},message:view.kind==='ready'?'Your personal Cloud agent is ready.':view.kind==='pending'?'Setup accepted. Check status to continue.':'Cloud account connected. Review Dedicated hosting before starting setup.',error:''});
+}
+async function personalDispatch(binding:NonNullable<typeof personalSetup>,generation:number,intent:PersonalIntent,signal:AbortSignal){
+ if(!signal.aborted&&personalCurrent(binding,generation))return;
+ await clearPersonalIntent(binding.client.owner,intent);signal.throwIfAborted();throw Error('Cloud account changed before setup was sent.');
 }
 async function personalWork(message:string,action:(binding:NonNullable<typeof personalSetup>,view:PersonalView,signal:AbortSignal)=>Promise<void>){
  await work(message,async signal=>{
@@ -112,7 +122,8 @@ async function personalWork(message:string,action:(binding:NonNullable<typeof pe
    if(!personalCurrent(binding,generation))return;
    // Expiration detaches this exact service, without clearing durable setup intent.
    if((error instanceof CloudProtocolError||error instanceof PersonalProtocolError)&&expired(error)&&connectionController.rejectCloudSession(binding.serviceId,error))return;
-   let blocked=true;try{blocked=!!personalIntent(binding.client.owner);}catch{/* Invalid persistence refuses further setup writes. */}
+   let blocked=true;try{blocked=!!await personalIntent(binding.client.owner);}catch{/* Invalid persistence refuses further setup writes. */}
+   if(!personalCurrent(binding,generation))return;
    if(signal.aborted&&!blocked){update({cloudPersonal:undefined,message:'Cloud setup check stopped.',error:''});personalGeneration++;personalSetup=null;return;}
    update({cloudPersonal:{view:state.cloudPersonal?state.cloudPersonal.view:view,blocked,declined:false},message:blocked?'Setup could not be confirmed. Check status before taking another action.':'',error:blocked?'':error instanceof PersonalProtocolError&&error.code==='account-changed'?'Cloud account changed. Refresh status.':'Cloud setup is unavailable. Refresh status to review the current state.'});
   }
@@ -551,33 +562,38 @@ export const connectionController = {
   },
   async cloudChoose(id: string) { await work('Verifying your Cloud agent…', signal => { retire(); return connectCloud(id, signal); }); },
   // Generic create/provision onboarding is deferred: personal Dedicated setup requires a current quote.
-  cloudPersonalDecline(){if(operation)return;personalGeneration++;personalSetup=null;update({cloudPersonal:{view:null,blocked:false,declined:true},message:'Cloud account connected. Dedicated setup was not started.',error:''});},
+  cloudPersonalDecline(){if(operation)return;clearPersonalSetup();update({cloudPersonal:{view:null,blocked:false,declined:true},message:'Cloud account connected. Dedicated setup was not started.',error:''});},
   async cloudPersonalAccept(){await personalWork('Submitting the reviewed setup…',async(binding,view,signal)=>{
-   if(view.kind!=='review'||state.cloudPersonal?.blocked||personalIntent(binding.client.owner))throw Error('Refresh setup status before continuing.');
-   const generation=personalGeneration;
-   savePersonalIntent(binding.client.owner,{phase:'activation',personalElizaId:view.review.personalElizaId,dedicatedAgentId:view.review.dedicatedAgentId,state:'attempting'});
-   let next:PersonalView;
+   if(view.kind!=='review'||state.cloudPersonal?.blocked)throw Error('Refresh setup status before continuing.');
+   const generation=personalGeneration,attempt=await savePersonalIntent(binding.client.owner,{phase:'activation',personalElizaId:view.review.personalElizaId,dedicatedAgentId:view.review.dedicatedAgentId,state:'attempting'},null,signal);
+   await personalDispatch(binding,generation,attempt,signal);
+   let next:PersonalView,intent:PersonalIntent|null=attempt;
    try{next=await binding.client.accept(view.review,signal);}
-   catch(error){if(error instanceof PersonalProtocolError&&error.code==='http'&&error.status!==undefined&&error.status>=400&&error.status<500){clearPersonalIntent(binding.client.owner);if(personalCurrent(binding,generation))update({cloudPersonal:{view:null,blocked:false,declined:false}});}throw error;}
-   if(next.kind==='review'||next.kind==='unavailable')clearPersonalIntent(binding.client.owner);
-   else if(next.kind==='pending')savePersonalIntent(binding.client.owner,{phase:'activation',personalElizaId:next.receipt.personalElizaId,dedicatedAgentId:next.receipt.dedicatedAgentId,state:'accepted'});
-   if(personalCurrent(binding,generation)){publishPersonal(binding,next);if(next.kind==='review')update({message:'The hosting terms changed. Review the current quote before continuing.'});}
+   catch(error){if(error instanceof PersonalProtocolError&&error.code==='http'&&error.status!==undefined&&error.status>=400&&error.status<500){await clearPersonalIntent(binding.client.owner,attempt);if(personalCurrent(binding,generation))update({cloudPersonal:{view:null,blocked:false,declined:false}});}throw error;}
+   if(next.kind==='review'||next.kind==='unavailable'){await clearPersonalIntent(binding.client.owner,attempt);intent=null;}
+   else if(next.kind==='pending')intent=await savePersonalIntent(binding.client.owner,{phase:'activation',personalElizaId:next.receipt.personalElizaId,dedicatedAgentId:next.receipt.dedicatedAgentId,state:'accepted'},attempt);
+   if(personalCurrent(binding,generation)){await publishPersonal(binding,next,intent,generation,signal);if(next.kind==='review')update({message:'The hosting terms changed. Review the current quote before continuing.'});}
   });},
-  async cloudPersonalPoll(){await personalWork('Checking setup status…',async(binding,view,signal)=>{const generation=personalGeneration;const next=view.kind==='pending'?await binding.client.poll(view.receipt,signal):await binding.client.inspect(signal);if(personalCurrent(binding,generation))publishPersonal(binding,next);});},
+  async cloudPersonalPoll(){await personalWork('Checking setup status…',async(binding,view,signal)=>{const generation=personalGeneration,expected=await personalIntent(binding.client.owner,signal);const next=view.kind==='pending'?await binding.client.poll(view.receipt,signal):await binding.client.inspect(signal);if(personalCurrent(binding,generation))await publishPersonal(binding,next,expected,generation,signal);});},
   async cloudPersonalFinalize(){await personalWork('Completing personal agent setup…',async(binding,view,signal)=>{
    if(view.kind!=='pending'||view.phase!=='cutover'||state.cloudPersonal?.blocked)throw Error('Check setup status before continuing.');
-   const prior=personalIntent(binding.client.owner);if(prior?.phase==='cutover')throw Error('Check the previous setup outcome before continuing.');
-   const generation=personalGeneration;
-   savePersonalIntent(binding.client.owner,{phase:'cutover',personalElizaId:view.receipt.personalElizaId,dedicatedAgentId:view.receipt.dedicatedAgentId,state:'attempting'});
-   const next=await binding.client.finalize(view.receipt,signal);
+   const generation=personalGeneration,prior=await personalIntent(binding.client.owner,signal);if(prior?.phase==='cutover')throw Error('Check the previous setup outcome before continuing.');if(prior&&(prior.personalElizaId!==view.receipt.personalElizaId||prior.dedicatedAgentId&&prior.dedicatedAgentId!==view.receipt.dedicatedAgentId))throw Error('Cloud setup target changed. Refresh its status.');
+   const attempt=await savePersonalIntent(binding.client.owner,{phase:'cutover',personalElizaId:view.receipt.personalElizaId,dedicatedAgentId:view.receipt.dedicatedAgentId,state:'attempting'},prior,signal);
+   await personalDispatch(binding,generation,attempt,signal);
+   const next=await binding.client.finalize(view.receipt,signal);let intent:PersonalIntent=attempt;
    // A returned pending state is the protocol's explicit non-ambiguous retry permission.
-   if(next.kind==='pending')savePersonalIntent(binding.client.owner,{phase:'activation',personalElizaId:next.receipt.personalElizaId,dedicatedAgentId:next.receipt.dedicatedAgentId,state:'accepted'});
-   else if(next.kind==='review'||next.kind==='unavailable')savePersonalIntent(binding.client.owner,{phase:'activation',personalElizaId:view.receipt.personalElizaId,dedicatedAgentId:view.receipt.dedicatedAgentId,state:'accepted'});
-   if(personalCurrent(binding,generation))publishPersonal(binding,next);
+   if(next.kind==='pending')intent=await savePersonalIntent(binding.client.owner,{phase:'activation',personalElizaId:next.receipt.personalElizaId,dedicatedAgentId:next.receipt.dedicatedAgentId,state:'accepted'},attempt);
+   else if(next.kind==='review'||next.kind==='unavailable')intent=await savePersonalIntent(binding.client.owner,{phase:'activation',personalElizaId:view.receipt.personalElizaId,dedicatedAgentId:view.receipt.dedicatedAgentId,state:'accepted'},attempt);
+   if(personalCurrent(binding,generation))await publishPersonal(binding,next,intent,generation,signal);
   });},
+  async cloudPersonalRecovery(){
+   const binding=personalSetup,generation=personalGeneration;if(Capacitor.getPlatform()==='android'||!binding||!personalCurrent(binding,generation)||operation)return;
+   personalRecovery?.abort();const controller=personalRecovery=new AbortController(),check=()=>{controller.signal.throwIfAborted();if(!personalCurrent(binding,generation))throw Error('Cloud account changed.');};
+   try{const domain=await personalIntentDocument(binding.client.owner);check();openDomainRecovery({async capture(signal){check();const value=await domain.capture(signal);check();return value;},async reset(expected,signal){check();await domain.reset(expected,signal);check();}},'Cloud setup intent','Cloud setup intent recovery','Download this account’s exact saved intent before resetting. An uncertain setup may already have started hosting. Check Cloud status first. Reset only clears local recovery; it does not stop hosting, revoke credentials or send another setup request.',controller.signal);}catch{if(!controller.signal.aborted&&personalCurrent(binding,generation))update({error:'Cloud setup recovery could not be opened.'});}
+  },
   async cloudManage(environment:CloudEnvironment){await work('Opening Cloud account…',signal=>openConnectionBrowser(environment==='staging'?'https://cloud-staging.eliza.app/cloud/agents':'https://cloud.eliza.app/cloud/agents',signal));},
   async cloudPersonalConnect(){await personalWork('Verifying your personal Cloud agent…',async(binding,_view,signal)=>{
-   const generation=personalGeneration,next=await binding.client.inspect(signal);if(!personalCurrent(binding,generation))return;publishPersonal(binding,next);
+   const generation=personalGeneration,expected=await personalIntent(binding.client.owner,signal),next=await binding.client.inspect(signal);if(!personalCurrent(binding,generation))return;await publishPersonal(binding,next,expected,generation,signal);
    if(next.kind!=='ready'||state.cloudPersonal?.blocked)throw Error('Your personal Cloud agent is not ready.');
    await connectCloud(next.identity.activeAgentId!,signal,binding.client.owner.userId,next.identity.apiBase,binding.client.owner);
   });},
@@ -839,6 +855,7 @@ export function ConnectionChooser() {
       {snapshot.cloudAccount && <section className="alpha-connection-current"><strong>Cloud services connected</strong><span>{snapshot.cloudAccount.environment} · verified account {snapshot.cloudAccount.userId.slice(0, 8)}</span><p>Gmail and speech use this account independently of your agent.</p><button disabled={snapshot.busy} onClick={() => void connectionController.cloudSignOut()}>Sign out of Eliza Cloud</button></section>}
       <label>Environment<select aria-label="Environment" ref={environment} disabled={snapshot.busy} defaultValue="production" onChange={() => connectionController.cloudEnvironment(env())}><option value="production">Production</option><option value="staging">Staging</option></select></label>
       <div className="alpha-connection-actions"><button disabled={snapshot.busy} onClick={() => void connectionController.cloudLogin(env())}>Sign in with Eliza Cloud</button><button disabled={snapshot.busy} onClick={() => void connectionController.cloudList(env())}>Refresh agent status</button></div>
+      {snapshot.cloudAccount&&Capacitor.getPlatform()!=='android'&&<button disabled={snapshot.busy} onClick={()=>void connectionController.cloudPersonalRecovery()}>Cloud setup intent recovery</button>}
       {snapshot.cloudPersonal&&<CloudPersonalSetup setup={snapshot.cloudPersonal} busy={snapshot.busy} onAccept={()=>void connectionController.cloudPersonalAccept()} onDecline={()=>connectionController.cloudPersonalDecline()} onPoll={()=>void connectionController.cloudPersonalPoll()} onFinalize={()=>void connectionController.cloudPersonalFinalize()} onConnect={()=>void connectionController.cloudPersonalConnect()}/>}
       <button disabled={snapshot.busy} onClick={()=>void connectionController.cloudManage(env())}>Manage Cloud account</button>
     </details>
