@@ -21,7 +21,7 @@ test('browser reminder posts, snoozes and completes without repeating completion
  const result=await page.evaluate(async()=>{
   const {registerPlugin}=await import('/src/platform-plugins.ts');const daily=registerPlugin<any>('DailyApps'),notices=registerPlugin<any>('AlphaNotifications');
   await daily.scheduleReminder({id:'parity',title:'Parity reminder',at:Date.now()+10000});
-  const data=JSON.parse(localStorage.getItem('alpha.browser.reminders.v1')!);data.reminders[0].at=Date.now()-1;localStorage.setItem('alpha.browser.reminders.v1',JSON.stringify(data));
+  await (await import('/src/browser/reminder-store.ts')).reminderDocument.edit(()=>({reminders:[] as any[]}),data=>{data.reminders[0].at=Date.now()-1;});
   const posted=await notices.list(),row=(await daily.listReminders()).reminders[0];
   const snoozed=await daily.reminderDecision({id:row.id,occurrenceId:row.occurrenceId,action:'snooze'});
   const done=await daily.reminderDecision({id:row.id,occurrenceId:row.occurrenceId,action:'done'});

@@ -7,9 +7,9 @@ for(const mode of ['fresh','stale','response-loss','receipt-loss','navigate','le
  await page.reload();await page.getByRole('button',{name:'Calendar',exact:true}).click();await page.getByRole('button',{name:/^Delete boundary reminder,/}).click();
  await page.evaluate(async mode=>{
   const {BrowserDaily}=await import('/src/browser/daily.ts');const operation=BrowserDaily.prototype.operateReminder,receipt=BrowserDaily.prototype.reminderOperationReceipt;(window as any).deletes=0;(window as any).receipts=0;
-  BrowserDaily.prototype.operateReminder=async function(input){(window as any).deletes++;if(mode==='late-stale'){const key='alpha.browser.reminders.v1',data=JSON.parse(localStorage.getItem(key)!);data.reminders[0].title='Changed during dispatch';data.reminders[0].revision='b'.repeat(64);localStorage.setItem(key,JSON.stringify(data));}const out=await operation.call(this,input);if(mode==='response-loss'||mode==='receipt-loss'||mode==='reload-loss')throw Error('Lost response');return out;};
+  BrowserDaily.prototype.operateReminder=async function(input){(window as any).deletes++;if(mode==='late-stale'){await (await import('/src/browser/reminder-store.ts')).reminderDocument.edit(()=>({reminders:[] as any[]}),data=>{data.reminders[0].title='Changed during dispatch';data.reminders[0].revision='b'.repeat(64);});}const out=await operation.call(this,input);if(mode==='response-loss'||mode==='receipt-loss'||mode==='reload-loss')throw Error('Lost response');return out;};
   BrowserDaily.prototype.reminderOperationReceipt=async function(input){(window as any).receipts++;if(mode==='reload-loss'||mode==='receipt-loss'&&(window as any).receipts===1)throw Error('Temporary receipt failure');return receipt.call(this,input);};
-  if(mode==='stale'){const key='alpha.browser.reminders.v1',data=JSON.parse(localStorage.getItem(key)!);data.reminders[0].title='Concurrent replacement';data.reminders[0].revision='a'.repeat(64);localStorage.setItem(key,JSON.stringify(data));}
+  if(mode==='stale'){await (await import('/src/browser/reminder-store.ts')).reminderDocument.edit(()=>({reminders:[] as any[]}),data=>{data.reminders[0].title='Concurrent replacement';data.reminders[0].revision='a'.repeat(64);});}
   if(mode==='navigate'){const digest=crypto.subtle.digest.bind(crypto.subtle);crypto.subtle.digest=async function(a,b){if(new TextDecoder().decode(b as ArrayBuffer).includes('reminder_cancel'))await new Promise<void>(r=>(window as any).releaseDelete=r);return digest(a,b);};}
  },mode);
  if(mode==='legacy'){expect(await page.evaluate(async()=>{const {registerPlugin}=await import('/src/platform-plugins.ts');try{await registerPlugin<any>('DailyApps').cancelReminder({id:'delete-boundary'});return false;}catch{return true;}})).toBe(true);return;}
@@ -24,13 +24,13 @@ for(const mode of ['fresh','stale','response-loss','receipt-loss','navigate','le
    await expect(page.getByRole('button',{name:'Check reminder action status',exact:true})).toBeVisible();
    await page.reload();await page.getByRole('button',{name:'Calendar',exact:true}).click();
    await expect.poll(()=>page.evaluate(()=>Object.keys(JSON.parse(localStorage.getItem('alpha.browser.reminder-deletions.v1')!)).length)).toBe(0);
-   expect(await page.evaluate(()=>Object.keys(JSON.parse(localStorage.getItem('alpha.browser.reminders.v1')!).receipts).length)).toBe(1);
+   expect(await page.evaluate(async ()=>Object.keys(JSON.parse((await (await import('/src/browser/reminder-store.ts')).reminderDocument.readRaw())!).receipts).length)).toBe(1);
   }else{
    await page.evaluate(async()=>{const {registerPlugin}=await import('/src/platform-plugins.ts');await registerPlugin<any>('DailyApps').scheduleReminder({id:'unrelated',title:'Unrelated reminder',at:Date.parse('2027-03-13T15:00Z')});});
    await page.reload();await page.getByRole('button',{name:'Calendar',exact:true}).click();await page.getByRole('button',{name:/^Unrelated reminder,/}).click();await page.getByRole('button',{name:'Delete event',exact:true}).click();await expect(page.getByText('Reminder cancelled',{exact:true})).toBeVisible();
-   const data=await page.evaluate(()=>JSON.parse(localStorage.getItem('alpha.browser.reminders.v1')!));expect(data.reminders.find((x:any)=>x.id==='delete-boundary').status).toBe('scheduled');expect(data.reminders.find((x:any)=>x.id==='unrelated').status).toBe('cancelled');
+   const data=await page.evaluate(async ()=>JSON.parse((await (await import('/src/browser/reminder-store.ts')).reminderDocument.readRaw())!));expect(data.reminders.find((x:any)=>x.id==='delete-boundary').status).toBe('scheduled');expect(data.reminders.find((x:any)=>x.id==='unrelated').status).toBe('cancelled');
    expect(await page.evaluate(()=>Object.values(JSON.parse(localStorage.getItem('alpha.browser.reminder-deletions.v1')!)).map((x:any)=>x.operation.target.reminderId))).toEqual(['delete-boundary']);
-   await page.getByRole('button',{name:/^Changed during dispatch,/}).click();await page.getByRole('button',{name:'Delete event',exact:true}).click();await expect.poll(()=>page.evaluate(()=>JSON.parse(localStorage.getItem('alpha.browser.reminders.v1')!).reminders.find((r:any)=>r.id==='delete-boundary').status)).toBe('cancelled');
+   await page.getByRole('button',{name:/^Changed during dispatch,/}).click();await page.getByRole('button',{name:'Delete event',exact:true}).click();await expect.poll(()=>page.evaluate(async ()=>JSON.parse((await (await import('/src/browser/reminder-store.ts')).reminderDocument.readRaw())!).reminders.find((r:any)=>r.id==='delete-boundary').status)).toBe('cancelled');
    expect(await page.evaluate(()=>Object.values(JSON.parse(localStorage.getItem('alpha.browser.reminder-deletions.v1')!)).map((x:any)=>x.operation.target.reminderId))).toEqual(['delete-boundary']);
   }
   return;
@@ -39,7 +39,7 @@ for(const mode of ['fresh','stale','response-loss','receipt-loss','navigate','le
  if(mode==='receipt-loss'){await expect(page.getByText('Deletion is unconfirmed. Check action status in Calendar; no cancellation will be repeated.',{exact:true})).toBeVisible();await page.getByRole('button',{name:'Delete event',exact:true}).click();}
  if(mode==='stale')await expect(page.getByText('This reminder changed. Review it again before deleting.',{exact:true})).toBeVisible();
  if(!['stale','navigate'].includes(mode))await expect(page.getByText('Reminder cancelled',{exact:true})).toBeVisible();
- const data=await page.evaluate(()=>({store:JSON.parse(localStorage.getItem('alpha.browser.reminders.v1')!),calls:(window as any).deletes}));
+ const data=await page.evaluate(async ()=>({store:JSON.parse((await (await import('/src/browser/reminder-store.ts')).reminderDocument.readRaw())!),calls:(window as any).deletes}));
  expect(data.calls).toBe(['stale','navigate'].includes(mode)?0:1);expect(data.store.reminders[0].status).toBe(['stale','navigate'].includes(mode)?'scheduled':'cancelled');expect(Object.keys(data.store.receipts||{})).toHaveLength(['stale','navigate'].includes(mode)?0:1);
 });
 
@@ -58,7 +58,7 @@ test('two browser tabs retain separate uncertain deletions through reload',async
  await page.reload();await page.getByRole('button',{name:'Calendar',exact:true}).click();
  await expect(page.getByRole('button',{name:'Check reminder action status',exact:true})).toBeVisible();
  expect(await page.evaluate(()=>Object.values(JSON.parse(localStorage.getItem('alpha.browser.reminder-deletions.v1')!)).map((x:any)=>x.operation.target.reminderId).sort())).toEqual(['tab-one','tab-two']);
- expect(await page.evaluate(()=>JSON.parse(localStorage.getItem('alpha.browser.reminders.v1')!).reminders.map((r:any)=>r.status))).toEqual(['scheduled','scheduled']);
+ expect(await page.evaluate(async ()=>JSON.parse((await (await import('/src/browser/reminder-store.ts')).reminderDocument.readRaw())!).reminders.map((r:any)=>r.status))).toEqual(['scheduled','scheduled']);
 });
 
 for(const mode of ['navigate','throw'])test(`abandoned durable deletion preparation ${mode}`,async({page})=>{
@@ -74,5 +74,5 @@ for(const mode of ['navigate','throw'])test(`abandoned durable deletion preparat
  if(mode==='navigate'){await expect.poll(()=>page.evaluate(()=>typeof(window as any).releaseRetention)).toBe('function');await page.getByRole('button',{name:'Back to calendar',exact:true}).last().click();await page.evaluate(()=>(window as any).releaseRetention());}
  await expect.poll(()=>page.evaluate(()=>Object.keys(JSON.parse(localStorage.getItem('alpha.browser.reminder-deletions.v1')||'{}')).length)).toBe(0);
  expect(await page.evaluate(()=>(window as any).dispatches)).toBe(0);
- expect(await page.evaluate(()=>JSON.parse(localStorage.getItem('alpha.browser.reminders.v1')!).reminders[0].status)).toBe('scheduled');
+ expect(await page.evaluate(async ()=>JSON.parse((await (await import('/src/browser/reminder-store.ts')).reminderDocument.readRaw())!).reminders[0].status)).toBe('scheduled');
 });

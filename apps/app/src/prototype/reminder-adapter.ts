@@ -105,6 +105,7 @@ export function installReminderAdapter(Component: Bag, views: Bag) {
     this.reminderTapConnection=connectionController.subscribe(()=>{const next=connectionController.getSnapshot().open;if(chooserOpen&&!next)queueMicrotask(()=>void checkReminderTap(true));chooserOpen=next;});
     this.reminderCommittedHandler=()=>{if(this.live)void this.refreshReminders();};
     window.addEventListener('alpha:reminders-committed',this.reminderCommittedHandler);
+    window.addEventListener('alpha:reminders-document-changed',this.reminderCommittedHandler);
     this.reminderListener=DailyApps.addListener('reminderOpened', r=>void this.refreshReminders(r.id,r.occurrenceId)).catch(()=>null);
     this.reminderResume=DailyApps.addListener('appResumed', ()=>{void this.refreshReminders();void checkReminderTap();}).catch(()=>null);
     this.reminderTapVisible=()=>{if(!document.hidden)void checkReminderTap();};document.addEventListener('visibilitychange',this.reminderTapVisible);
@@ -117,6 +118,7 @@ export function installReminderAdapter(Component: Bag, views: Bag) {
     void this.reminderTapListener?.then((l:Bag)=>l?.remove());
     void this.reminderListener?.then((l:Bag)=>l?.remove()); void this.reminderResume?.then((l:Bag)=>l?.remove());
     window.removeEventListener('alpha:reminders-committed',this.reminderCommittedHandler);
+    window.removeEventListener('alpha:reminders-document-changed',this.reminderCommittedHandler);
     if(owner===this)owner=null;unmount.call(this);
   };
   views.calendar.render = function (state: Bag, api: Bag) {

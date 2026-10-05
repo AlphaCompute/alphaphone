@@ -36,9 +36,9 @@ test('invalid recurrence cannot overwrite a saved reminder',async({page})=>{
  const result=await page.evaluate(async()=>{
   const {registerPlugin}=await import('/src/platform-plugins.ts');const daily=registerPlugin<any>('DailyApps');
   await daily.scheduleReminder({id:'same',title:'Original',at:Date.parse('2027-03-15T07:30Z')});
-  const before=localStorage.getItem('alpha.browser.reminders.v1');let rejected=false;
+  const before=(await (await import('/src/browser/reminder-store.ts')).reminderDocument.readRaw());let rejected=false;
   try{await daily.scheduleReminder({id:'same',title:'Invalid replacement',at:Date.parse('2027-03-14T07:30Z'),recurrence:{rule:'daily',zone:'America/New_York',date:'2027-03-14',time:'02:30',leadMinutes:0}});}catch{rejected=true;}
-  return {rejected,unchanged:before===localStorage.getItem('alpha.browser.reminders.v1')};
+  return {rejected,unchanged:before===(await (await import('/src/browser/reminder-store.ts')).reminderDocument.readRaw())};
  });expect(result).toEqual({rejected:true,unchanged:true});
 });
 
@@ -53,21 +53,21 @@ for(const scenario of ['before-dst','resolved-dst-gap'] as const){
   },scenario);
   if(scenario==='resolved-dst-gap')await page.clock.setFixedTime(new Date('2027-03-14T00:00Z'));
   await page.reload();
-  const original=await page.evaluate(()=>JSON.parse(localStorage.getItem('alpha.browser.reminders.v1')!).reminders[0]);
+  const original=await page.evaluate(async ()=>JSON.parse((await (await import('/src/browser/reminder-store.ts')).reminderDocument.readRaw())!).reminders[0]);
   await page.getByRole('button',{name:'Calendar',exact:true}).click();
   await page.getByRole('button',{name:/^Retained zoned reminder,/}).click();
   await page.getByRole('button',{name:'Edit event',exact:true}).click();
   await page.getByRole('textbox',{name:'Title',exact:true}).fill('Renamed zoned reminder');
   await page.getByRole('button',{name:'Save event',exact:true}).click();
   await expect(page.getByRole('button',{name:'Save event',exact:true})).toHaveCount(0);await expect(page.getByRole('button',{name:'Edit event',exact:true})).toBeVisible();
-  const changed=await page.evaluate(()=>JSON.parse(localStorage.getItem('alpha.browser.reminders.v1')!).reminders[0]);
+  const changed=await page.evaluate(async ()=>JSON.parse((await (await import('/src/browser/reminder-store.ts')).reminderDocument.readRaw())!).reminders[0]);
   expect(changed.title).toBe('Renamed zoned reminder');
   for(const key of ['at','dueAt','occurrenceId','recurrence','history','status','snoozedAt'])expect(changed[key],key).toEqual(original[key]);
   await page.reload();await page.getByRole('button',{name:'Calendar',exact:true}).click();
   await page.getByRole('button',{name:/^Renamed zoned reminder,/}).click();
   await page.getByRole('button',{name:'Complete reminder occurrence',exact:true}).click();
-  await expect.poll(()=>page.evaluate(()=>JSON.parse(localStorage.getItem('alpha.browser.reminders.v1')!).reminders[0].occurrenceId)).not.toBe(original.occurrenceId);
-  const next=await page.evaluate(()=>JSON.parse(localStorage.getItem('alpha.browser.reminders.v1')!).reminders[0]);
+  await expect.poll(()=>page.evaluate(async ()=>JSON.parse((await (await import('/src/browser/reminder-store.ts')).reminderDocument.readRaw())!).reminders[0].occurrenceId)).not.toBe(original.occurrenceId);
+  const next=await page.evaluate(async ()=>JSON.parse((await (await import('/src/browser/reminder-store.ts')).reminderDocument.readRaw())!).reminders[0]);
   expect(next.at).toBe(Date.parse(scenario==='before-dst'?'2027-03-14T13:00Z':'2027-03-15T06:30Z'));
   expect(next.recurrence.zone).toBe('America/New_York');expect(next.history).toHaveLength(original.history.length+1);
  });
@@ -80,7 +80,7 @@ test('explicit time edit uses canonical update and adopts reviewed phone zone',a
  await page.reload();await page.getByRole('button',{name:'Calendar',exact:true}).click();await page.getByRole('button',{name:/^Boundary reminder,/}).click();await page.getByRole('button',{name:'Edit event',exact:true}).click();
  await page.evaluate(async()=>{const {BrowserDaily}=await import('/src/browser/daily.ts');const original=BrowserDaily.prototype.operateReminder;(window as any).updates=[];BrowserDaily.prototype.operateReminder=async function(input){(window as any).updates.push(input);return original.call(this,input);};BrowserDaily.prototype.scheduleReminder=async()=>{throw Error('Legacy edit must not execute');};});
  await page.getByRole('button',{name:'Start later',exact:true}).click();await page.getByRole('button',{name:'Save event',exact:true}).click();await expect(page.getByRole('button',{name:'Save event',exact:true})).toHaveCount(0);
- const saved=await page.evaluate(()=>({row:JSON.parse(localStorage.getItem('alpha.browser.reminders.v1')!).reminders[0],updates:(window as any).updates}));expect(saved.row.at).toBeGreaterThan(Date.parse('2027-03-13T14:00Z'));expect(saved.row.recurrence.zone).toBe('Asia/Tokyo');expect(saved.updates).toHaveLength(1);expect(saved.updates[0].operation.type).toBe('reminder_update');expect(saved.updates[0].operation.fields.schedule.at).toBe(saved.row.at);
+ const saved=await page.evaluate(async ()=>({row:JSON.parse((await (await import('/src/browser/reminder-store.ts')).reminderDocument.readRaw())!).reminders[0],updates:(window as any).updates}));expect(saved.row.at).toBeGreaterThan(Date.parse('2027-03-13T14:00Z'));expect(saved.row.recurrence.zone).toBe('Asia/Tokyo');expect(saved.updates).toHaveLength(1);expect(saved.updates[0].operation.type).toBe('reminder_update');expect(saved.updates[0].operation.fields.schedule.at).toBe(saved.row.at);
 });
 
 test('closing the reminder editor during preparation cancels before mutation dispatch',async({page})=>{
@@ -88,7 +88,7 @@ test('closing the reminder editor during preparation cancels before mutation dis
  await page.clock.setFixedTime(new Date('2027-03-13T00:00Z'));await page.goto('/');await page.getByRole('button',{name:'Calendar',exact:true}).waitFor({state:'visible'});
  await page.evaluate(async()=>{const {registerPlugin}=await import('/src/platform-plugins.ts');await registerPlugin<any>('DailyApps').scheduleReminder({id:'cancel-before-dispatch',title:'Keep original title',at:Date.parse('2027-03-13T14:00Z')});});
  await page.reload();await page.getByRole('button',{name:'Calendar',exact:true}).click();await page.getByRole('button',{name:/^Keep original title,/}).click();await page.getByRole('button',{name:'Edit event',exact:true}).click();await page.getByRole('textbox',{name:'Title',exact:true}).fill('Cancelled title');
- const before=await page.evaluate(async()=>{const {BrowserDaily}=await import('/src/browser/daily.ts');const operate=BrowserDaily.prototype.operateReminder;(window as any).dispatches=0;BrowserDaily.prototype.operateReminder=async function(input){(window as any).dispatches++;return operate.call(this,input);};const digest=crypto.subtle.digest.bind(crypto.subtle);crypto.subtle.digest=async function(algorithm,data){if(new TextDecoder().decode(data as ArrayBuffer).includes('reminder_update'))await new Promise<void>(resolve=>(window as any).releasePreparation=resolve);return digest(algorithm,data);};return localStorage.getItem('alpha.browser.reminders.v1');});
+ const before=await page.evaluate(async()=>{const {BrowserDaily}=await import('/src/browser/daily.ts');const operate=BrowserDaily.prototype.operateReminder;(window as any).dispatches=0;BrowserDaily.prototype.operateReminder=async function(input){(window as any).dispatches++;return operate.call(this,input);};const digest=crypto.subtle.digest.bind(crypto.subtle);crypto.subtle.digest=async function(algorithm,data){if(new TextDecoder().decode(data as ArrayBuffer).includes('reminder_update'))await new Promise<void>(resolve=>(window as any).releasePreparation=resolve);return digest(algorithm,data);};return (await (await import('/src/browser/reminder-store.ts')).reminderDocument.readRaw());});
  await page.getByRole('button',{name:'Save event',exact:true}).click();await expect.poll(()=>page.evaluate(()=>typeof (window as any).releasePreparation)).toBe('function');await page.getByRole('button',{name:'Back to calendar',exact:true}).last().click();await expect(page.getByRole('button',{name:'Save event',exact:true})).toHaveCount(0);await page.evaluate(()=>(window as any).releasePreparation());await page.waitForTimeout(150);
- expect(await page.evaluate(()=>(window as any).dispatches)).toBe(0);expect(await page.evaluate(()=>localStorage.getItem('alpha.browser.reminders.v1'))).toBe(before);
+ expect(await page.evaluate(()=>(window as any).dispatches)).toBe(0);expect(await page.evaluate(async ()=>(await (await import('/src/browser/reminder-store.ts')).reminderDocument.readRaw()))).toBe(before);
 });
