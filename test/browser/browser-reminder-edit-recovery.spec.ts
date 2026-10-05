@@ -9,43 +9,43 @@ async function editor(page:any,completed=false){
 }
 test('stale rendered schedule must not overwrite a newer canonical edit',async({page})=>{
  await editor(page);
- const newer=await page.evaluate(async()=>{const {registerPlugin}=await import('/src/platform-plugins.ts');const daily=registerPlugin<any>('DailyApps');const target=await daily.selectedReminder({id:'reschedule'});await daily.operateReminder({operationId:crypto.randomUUID(),bindingHash:'a'.repeat(64),operation:{type:'reminder_update',target,fields:{title:'Changed elsewhere',body:'Newer details'}}});return JSON.parse(localStorage.getItem('alpha.browser.reminders.v1')!).reminders[0];});
+ const newer=await page.evaluate(async()=>{const {registerPlugin}=await import('/src/platform-plugins.ts');const daily=registerPlugin<any>('DailyApps');const target=await daily.selectedReminder({id:'reschedule'});await daily.operateReminder({operationId:crypto.randomUUID(),bindingHash:'a'.repeat(64),operation:{type:'reminder_update',target,fields:{title:'Changed elsewhere',body:'Newer details'}}});return JSON.parse((await (await import('/src/browser/reminder-store.ts')).reminderDocument.readRaw())!).reminders[0];});
  await page.getByRole('button',{name:'Save event',exact:true}).click();
- await expect.poll(()=>page.evaluate(()=>JSON.parse(localStorage.getItem('alpha.browser.reminders.v1')!).reminders[0])).toEqual(newer);
+ await expect.poll(()=>page.evaluate(async ()=>JSON.parse((await (await import('/src/browser/reminder-store.ts')).reminderDocument.readRaw())!).reminders[0])).toEqual(newer);
 });
 for(const metadata of [false,true])test(`committed ${metadata?'metadata':'reschedule'} response and receipt loss survives reload without replay`,async({page})=>{
  await editor(page);if(metadata)await page.getByRole('button',{name:'Start earlier',exact:true}).click();
  await page.getByRole('textbox',{name:'Title',exact:true}).fill('Reviewed change');
  await page.evaluate(async()=>{const {BrowserDaily}=await import('/src/browser/daily.ts');const original=BrowserDaily.prototype.operateReminder;(window as any).editCalls=0;BrowserDaily.prototype.operateReminder=async function(input){(window as any).editCalls++;await original.call(this,input);throw Error('Synthetic committed response lost');};BrowserDaily.prototype.reminderOperationReceipt=async()=>{throw Error('Synthetic receipt unavailable');};});
  await page.getByRole('button',{name:'Save event',exact:true}).click();await expect(page.getByText('Reminder edit is unconfirmed. Check action status in Calendar; it will not be repeated.',{exact:true})).toBeVisible();
- const first=await page.evaluate(()=>localStorage.getItem('alpha.browser.reminders.v1'));
+ const first=await page.evaluate(async ()=>(await (await import('/src/browser/reminder-store.ts')).reminderDocument.readRaw()));
  await page.getByRole('button',{name:'Save event',exact:true}).click();
  await expect.poll(()=>page.evaluate(()=>(window as any).editCalls)).toBe(1);
- expect(await page.evaluate(()=>localStorage.getItem('alpha.browser.reminders.v1'))).toBe(first);
+ expect(await page.evaluate(async ()=>(await (await import('/src/browser/reminder-store.ts')).reminderDocument.readRaw()))).toBe(first);
  expect(await page.evaluate(()=>Object.keys(JSON.parse(localStorage.getItem('alpha.browser.reminder-deletions.v1')!)).length)).toBe(1);
  await page.reload();await page.getByRole('button',{name:'Calendar',exact:true}).click();
  await expect.poll(()=>page.evaluate(()=>Object.keys(JSON.parse(localStorage.getItem('alpha.browser.reminder-deletions.v1')!)).length)).toBe(0);
- expect(await page.evaluate(()=>localStorage.getItem('alpha.browser.reminders.v1'))).toBe(first);
+ expect(await page.evaluate(async ()=>(await (await import('/src/browser/reminder-store.ts')).reminderDocument.readRaw()))).toBe(first);
 });
 
 for(const scenario of ['metadata','reschedule-accept','reschedule-cancel'])test(`completed reminder editing: ${scenario}`,async({page})=>{
  await editor(page,true);if(scenario==='metadata')await page.getByRole('button',{name:'Start earlier',exact:true}).click();
- const before=await page.evaluate(()=>JSON.parse(localStorage.getItem('alpha.browser.reminders.v1')!).reminders[0]);
+ const before=await page.evaluate(async ()=>JSON.parse((await (await import('/src/browser/reminder-store.ts')).reminderDocument.readRaw())!).reminders[0]);
  await page.getByRole('textbox',{name:'Title',exact:true}).fill('Completed edited');
  let dialogs=0;page.on('dialog',async dialog=>{dialogs++;expect(dialog.message()).toContain('Schedule a new occurrence');if(scenario==='reschedule-accept')await dialog.accept();else await dialog.dismiss();});
  await page.getByRole('button',{name:'Save event',exact:true}).click();
- if(scenario==='reschedule-cancel'){await expect.poll(()=>dialogs).toBe(1);expect(await page.evaluate(()=>JSON.parse(localStorage.getItem('alpha.browser.reminders.v1')!).reminders[0])).toEqual(before);return;}
+ if(scenario==='reschedule-cancel'){await expect.poll(()=>dialogs).toBe(1);expect(await page.evaluate(async ()=>JSON.parse((await (await import('/src/browser/reminder-store.ts')).reminderDocument.readRaw())!).reminders[0])).toEqual(before);return;}
  await expect(page.getByRole('button',{name:'Save event',exact:true})).toHaveCount(0);
- const after=await page.evaluate(()=>JSON.parse(localStorage.getItem('alpha.browser.reminders.v1')!).reminders[0]);expect(after.title).toBe('Completed edited');expect(after.history).toEqual(before.history);expect(before.completedAt).toBe(Date.parse('2027-03-13T00:00Z'));
+ const after=await page.evaluate(async ()=>JSON.parse((await (await import('/src/browser/reminder-store.ts')).reminderDocument.readRaw())!).reminders[0]);expect(after.title).toBe('Completed edited');expect(after.history).toEqual(before.history);expect(before.completedAt).toBe(Date.parse('2027-03-13T00:00Z'));
  if(scenario==='metadata'){expect(dialogs).toBe(0);expect(after.status).toBe('completed');expect(after.completedAt).toBe(before.completedAt);expect(after.occurrenceId).toBe(before.occurrenceId);}else{expect(dialogs).toBe(1);expect(after.status).toBe('scheduled');expect(after.completedAt).toBeUndefined();expect(after.occurrenceId).not.toBe(before.occurrenceId);}
 });
 for(const scenario of ['draft-during-digest','navigate-during-digest','storage-failure'])test(`no dispatch before durable reviewed edit: ${scenario}`,async({page})=>{
- await editor(page);const before=await page.evaluate(()=>localStorage.getItem('alpha.browser.reminders.v1'));
+ await editor(page);const before=await page.evaluate(async ()=>(await (await import('/src/browser/reminder-store.ts')).reminderDocument.readRaw()));
  await page.evaluate(async scenario=>{const {BrowserDaily}=await import('/src/browser/daily.ts');const original=BrowserDaily.prototype.operateReminder;(window as any).editCalls=0;BrowserDaily.prototype.operateReminder=async function(input){(window as any).editCalls++;return original.call(this,input);};if(scenario==='storage-failure'){const set=Storage.prototype.setItem;Storage.prototype.setItem=function(key,value){if(key==='alpha.browser.reminder-deletions.v1')throw Error('Synthetic durable storage unavailable');return set.call(this,key,value);};}else{const digest=crypto.subtle.digest.bind(crypto.subtle);crypto.subtle.digest=async function(algorithm,data){if(new TextDecoder().decode(data as ArrayBuffer).includes('reminder_update'))await new Promise<void>(resolve=>(window as any).releaseEdit=resolve);return digest(algorithm,data);};}},scenario);
  await page.getByRole('button',{name:'Save event',exact:true}).click();
  if(scenario==='storage-failure')await expect(page.getByText('Reminder edit is unconfirmed. Check action status in Calendar; it will not be repeated.',{exact:true})).toBeVisible();
  else{await expect.poll(()=>page.evaluate(()=>typeof (window as any).releaseEdit)).toBe('function');if(scenario==='draft-during-digest')await page.getByRole('textbox',{name:'Title',exact:true}).fill('Later draft');else await page.getByRole('button',{name:'Back to calendar',exact:true}).last().click();await page.evaluate(()=>(window as any).releaseEdit());await expect.poll(()=>page.evaluate(()=>Object.keys(JSON.parse(localStorage.getItem('alpha.browser.reminder-deletions.v1')||'{}')).length)).toBe(0);}
- expect(await page.evaluate(()=>(window as any).editCalls)).toBe(0);expect(await page.evaluate(()=>localStorage.getItem('alpha.browser.reminders.v1'))).toBe(before);
+ expect(await page.evaluate(()=>(window as any).editCalls)).toBe(0);expect(await page.evaluate(async ()=>(await (await import('/src/browser/reminder-store.ts')).reminderDocument.readRaw()))).toBe(before);
 });
 for(const scenario of ['double-save','draft-after-dispatch','navigate-after-dispatch'])test(`committed edit completion ownership: ${scenario}`,async({page})=>{
  await editor(page);
@@ -61,7 +61,7 @@ for(const scenario of ['receipt-recovered','late-stale','wrong-receipt'])test(`c
  await page.evaluate(async scenario=>{const {BrowserDaily}=await import('/src/browser/daily.ts');const original=BrowserDaily.prototype.operateReminder,receipt=BrowserDaily.prototype.reminderOperationReceipt;(window as any).editCalls=0;BrowserDaily.prototype.operateReminder=async function(input){(window as any).editCalls++;if(scenario==='late-stale'){await original.call(this,{operationId:crypto.randomUUID(),bindingHash:'c'.repeat(64),operation:{...input.operation,fields:{title:'Concurrent edit',body:'Must survive'}}});return original.call(this,input);}await original.call(this,input);throw Error('Synthetic response lost');};if(scenario==='wrong-receipt')BrowserDaily.prototype.reminderOperationReceipt=async function(input){const result=await receipt.call(this,input);return {...result,result:{...result.result,reminderId:'wrong-record'}};};},scenario);
  await page.getByRole('button',{name:'Save event',exact:true}).click();
  if(scenario==='receipt-recovered'){await expect(page.getByRole('button',{name:'Save event',exact:true})).toHaveCount(0);expect(await page.evaluate(()=>Object.keys(JSON.parse(localStorage.getItem('alpha.browser.reminder-deletions.v1')!)).length)).toBe(0);}
- else{await expect(page.getByText('Reminder edit is unconfirmed. Check action status in Calendar; it will not be repeated.',{exact:true})).toBeVisible();await page.getByRole('button',{name:'Save event',exact:true}).click();expect(await page.evaluate(()=>Object.keys(JSON.parse(localStorage.getItem('alpha.browser.reminder-deletions.v1')!)).length)).toBe(1);if(scenario==='late-stale')expect(await page.evaluate(()=>JSON.parse(localStorage.getItem('alpha.browser.reminders.v1')!).reminders[0].title)).toBe('Concurrent edit');}
+ else{await expect(page.getByText('Reminder edit is unconfirmed. Check action status in Calendar; it will not be repeated.',{exact:true})).toBeVisible();await page.getByRole('button',{name:'Save event',exact:true}).click();expect(await page.evaluate(()=>Object.keys(JSON.parse(localStorage.getItem('alpha.browser.reminder-deletions.v1')!)).length)).toBe(1);if(scenario==='late-stale')expect(await page.evaluate(async ()=>JSON.parse((await (await import('/src/browser/reminder-store.ts')).reminderDocument.readRaw())!).reminders[0].title)).toBe('Concurrent edit');}
  expect(await page.evaluate(()=>(window as any).editCalls)).toBe(1);
 });
 test('navigation during durable retention discards only undispatched edit',async({page})=>{

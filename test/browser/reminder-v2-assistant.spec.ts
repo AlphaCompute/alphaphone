@@ -96,19 +96,19 @@ for (const mode of ['read', 'update', 'complete', 'cancel', 'stale', 'recurring-
       expect(await page.evaluate(()=>(window as any).recoveryFixture.decisions)).toBe(0);
       expect(await page.evaluate(()=>(window as any).recoveryFixture.claims)).toBe(0);
       expect(await page.evaluate(()=>(window as any).recoveryFixture.journal)).toEqual([]);
-      expect(await page.evaluate(()=>JSON.parse(localStorage.getItem('alpha.browser.reminders.v1')!).reminders[0].status)).toBe('pending');
+      expect(await page.evaluate(async ()=>JSON.parse((await (await import('/src/browser/reminder-store.ts')).reminderDocument.readRaw())!).reminders[0].status)).toBe('pending');
       await expect(page.getByText('Approve: reminder complete',{exact:true})).toHaveCount(0);return;
     }
     await expect(page.getByText(/Pending phone actions are available for separate review/)).toBeVisible();
     expect(await page.evaluate(()=>(window as any).calendarSent.metadata.clientDevice.context.selectedObject)).toMatchObject({kind:'reminder',timingVersion:2});
-    const before=await page.evaluate(()=>JSON.parse(localStorage.getItem('alpha.browser.reminders.v1')!).reminders);expect(before).toHaveLength(1);
+    const before=await page.evaluate(async ()=>JSON.parse((await (await import('/src/browser/reminder-store.ts')).reminderDocument.readRaw())!).reminders);expect(before).toHaveLength(1);
     expect(JSON.stringify(await page.evaluate(()=>(window as any).calendarSent))).not.toContain('Private reminder details');
-    if(mode==='stale')await page.evaluate(()=>{const key='alpha.browser.reminders.v1',data=JSON.parse(localStorage.getItem(key)!);data.reminders[0].revision='d'.repeat(64);data.reminders[0].title='Changed elsewhere';localStorage.setItem(key,JSON.stringify(data));});
+    if(mode==='stale')await page.evaluate(async ()=>{await (await import('/src/browser/reminder-store.ts')).reminderDocument.edit(()=>({reminders:[] as any[]}),data=>{data.reminders[0].revision='d'.repeat(64);data.reminders[0].title='Changed elsewhere';});});
     await page.getByRole('button',{name:'Expand chat',exact:true}).click();
     const approvalLabel=mode.startsWith('create-')?'Approve: reminder create':mode==='create'?'Approve: create reminder':'Approve: reminder '+(mode==='read'?'read selected':mode==='stale'||mode==='recurring-complete'?'complete':mode);
     await page.getByRole('button',{name:approvalLabel+' Tap to approve this exact action',exact:true}).click();
     await expect.poll(()=>page.evaluate(()=>(window as any).recoveryFixture.receipts)).toBe(1);
-    const rows=await page.evaluate(()=>JSON.parse(localStorage.getItem('alpha.browser.reminders.v1')!).reminders);expect(rows).toHaveLength(mode==='create'||mode.startsWith('create-')?2:1);
+    const rows=await page.evaluate(async ()=>JSON.parse((await (await import('/src/browser/reminder-store.ts')).reminderDocument.readRaw())!).reminders);expect(rows).toHaveLength(mode==='create'||mode.startsWith('create-')?2:1);
     const receipt=await page.evaluate(()=>(window as any).calendarRetained);expect(receipt.summary).not.toContain('Android');expect(receipt.status).toBe(mode==='stale'?'failed':'succeeded');
     if(mode.startsWith('create-')){
       expect(rows[1]).toMatchObject({title:'Assistant created reminder',body:'Reviewed creation body',dueAt:Date.parse('2026-10-02T14:00:00Z'),alertMinutes:mode==='create-lead'?10:null,status:mode==='create-lead'?'scheduled':'pending'});
@@ -123,7 +123,7 @@ for (const mode of ['read', 'update', 'complete', 'cancel', 'stale', 'recurring-
     if(mode==='snooze')expect(rows[0]).toMatchObject({status:'scheduled',at:Date.parse('2026-10-02T12:10:00Z')});
     if(mode==='stale')expect(rows[0]).toMatchObject({title:'Changed elsewhere',status:'pending'});
     expect(await page.evaluate(()=>(window as any).recoveryFixture.journal)).toEqual(expect.arrayContaining(['reserve','markApplying','finish']));
-    if(mode==='recurring-complete'){const replay=await page.evaluate(async()=>{const {registerPlugin}=await import('/src/platform-plugins.ts');const state=JSON.parse(localStorage.getItem('alpha.browser.reminders.v1')!),[id,receipt]=Object.entries(state.receipts)[0] as [string,any],[bindingHash,operation]=JSON.parse(receipt.binding);await registerPlugin<any>('DailyApps').operateReminder({operationId:id,bindingHash,operation});return JSON.parse(localStorage.getItem('alpha.browser.reminders.v1')!).reminders;});expect(replay).toEqual(rows);}
-    await page.reload();expect(await page.evaluate(()=>JSON.parse(localStorage.getItem('alpha.browser.reminders.v1')!).reminders)).toEqual(rows);
+    if(mode==='recurring-complete'){const replay=await page.evaluate(async()=>{const {registerPlugin}=await import('/src/platform-plugins.ts');const state=JSON.parse((await (await import('/src/browser/reminder-store.ts')).reminderDocument.readRaw())!),[id,receipt]=Object.entries(state.receipts)[0] as [string,any],[bindingHash,operation]=JSON.parse(receipt.binding);await registerPlugin<any>('DailyApps').operateReminder({operationId:id,bindingHash,operation});return JSON.parse((await (await import('/src/browser/reminder-store.ts')).reminderDocument.readRaw())!).reminders;});expect(replay).toEqual(rows);}
+    await page.reload();expect(await page.evaluate(async ()=>JSON.parse((await (await import('/src/browser/reminder-store.ts')).reminderDocument.readRaw())!).reminders)).toEqual(rows);
   });
 }
