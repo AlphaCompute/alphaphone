@@ -20,7 +20,7 @@ import static org.junit.Assert.*;
 public final class ClockHandoffInstrumentedTest {
  private String js(String s)throws Exception{return WebViewTestDriver.evaluate(s);}
  private void until(String s)throws Exception{for(int i=0;i<180;i++){if("true".equals(js("Boolean("+s+")")))return;SystemClock.sleep(100);}fail("Clock condition: "+s);}
- private void click(String label)throws Exception{String s="[...document.querySelectorAll('button')].find(e=>e.getAttribute('aria-label')==="+JSONObject.quote(label)+"||e.textContent.trim()==="+JSONObject.quote(label)+")";until(s);js("("+s+").click()");}
+ private void click(String label)throws Exception{String s="[...document.querySelectorAll('button')].find(e=>e.getAttribute('aria-label')==="+JSONObject.quote(label)+"||e.textContent.trim()==="+JSONObject.quote(label)+")";until(s+"&&("+s+").getAttribute('aria-disabled')!=='true'");js("("+s+").click()");}
  @Test public void visibleReviewConstructsFourStandardClockIntentsWithoutDeliveringThem()throws Exception{
   org.junit.Assume.assumeTrue("Explicit intercepted Clock fixture required","1".equals(InstrumentationRegistry.getArguments().getString("clockHandoff")));
   Instrumentation instrumentation=InstrumentationRegistry.getInstrumentation();List<Intent> captured=new java.util.concurrent.CopyOnWriteArrayList<>();
@@ -28,15 +28,14 @@ public final class ClockHandoffInstrumentedTest {
    String a=intent.getAction();if(AlarmClock.ACTION_SET_ALARM.equals(a)||AlarmClock.ACTION_SHOW_ALARMS.equals(a)||AlarmClock.ACTION_SNOOZE_ALARM.equals(a)||AlarmClock.ACTION_DISMISS_ALARM.equals(a)){synchronized(captured){captured.add(new Intent(intent));}return new Instrumentation.ActivityResult(Activity.RESULT_CANCELED,null);}return null;
   }};
   instrumentation.addMonitor(monitor);
-  try(BoundedActivityScenario<MainActivity> scenario=BoundedActivityScenario.launch(MainActivity.class)){
-   AppNavigation.liveMode();js(AppNavigation.request("Calendar"));until(AppNavigation.selected("Calendar"));String previous=js("localStorage.getItem('alphaphone:clock-handoff:v1')");try{click("Clock alarms");
+  try(BoundedActivityScenario<MainActivity> scenario=BoundedActivityScenario.launch(MainActivity.class);ClockHistoryFixture history=new ClockHistoryFixture()){
+   AppNavigation.liveMode();js(AppNavigation.request("Calendar"));until(AppNavigation.selected("Calendar"));click("Clock alarms");
    for(String action:new String[]{"Set alarm","Show alarms","Snooze","Dismiss"}){
-    click(action);int before=captured.size();click("Review Clock request");assertEquals(before,captured.size());click("Confirm Clock request");until("document.querySelector('[role=\"dialog\"][aria-label=\"Clock alarms\"]').textContent.includes('Clock request sent')");assertEquals(before+1,captured.size());
+    click(action);int before=captured.size();click("Review Clock request");assertEquals(before,captured.size());click("Confirm Clock request");until("document.querySelector('[role=\"dialog\"][aria-label=\"Clock alarms\"]').textContent.includes('Clock request sent')");assertEquals(before+1,captured.size());history.completed(action.equals("Set alarm")?"set":action.equals("Show alarms")?"show":action.equals("Snooze")?"snooze":"dismiss");
    }
    assertEquals(AlarmClock.ACTION_SET_ALARM,captured.get(0).getAction());assertEquals(7,captured.get(0).getIntExtra(AlarmClock.EXTRA_HOUR,-1));assertEquals(0,captured.get(0).getIntExtra(AlarmClock.EXTRA_MINUTES,-1));assertFalse(captured.get(0).getBooleanExtra(AlarmClock.EXTRA_SKIP_UI,true));
    assertEquals(AlarmClock.ACTION_SHOW_ALARMS,captured.get(1).getAction());assertEquals(AlarmClock.ACTION_SNOOZE_ALARM,captured.get(2).getAction());assertEquals(10,captured.get(2).getIntExtra(AlarmClock.EXTRA_ALARM_SNOOZE_DURATION,-1));assertEquals(AlarmClock.ACTION_DISMISS_ALARM,captured.get(3).getAction());assertNull(captured.get(3).getData());assertFalse(captured.get(3).hasExtra(AlarmClock.EXTRA_ALARM_SEARCH_MODE));
    click("Close Clock");until("!document.querySelector('[role=\"dialog\"][aria-label=\"Clock alarms\"]')");
-   }finally{js("(()=>{const previous="+previous+";if(previous===null)localStorage.removeItem('alphaphone:clock-handoff:v1');else localStorage.setItem('alphaphone:clock-handoff:v1',previous);})()");}
   }finally{instrumentation.removeMonitor(monitor);}
  }
  @Test public void invalidIntentDoesNotBecomeAnotherAlarmRequest(){

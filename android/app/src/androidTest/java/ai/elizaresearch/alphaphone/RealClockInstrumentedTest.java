@@ -27,10 +27,11 @@ public final class RealClockInstrumentedTest {
  private final UiAutomation ui=InstrumentationRegistry.getInstrumentation().getUiAutomation();
  private final String label="Alpha fixture "+UUID.randomUUID();
  private File output;
+ private ClockHistoryFixture history;
  private boolean notificationShadeOpened;
  private String js(String s)throws Exception{return WebViewTestDriver.evaluate(s);}
  private void waitJs(String s)throws Exception{long end=SystemClock.elapsedRealtime()+20000;while(SystemClock.elapsedRealtime()<end){if("true".equals(js("Boolean("+s+")")))return;SystemClock.sleep(100);}fail("Missing Alpha control: "+s);}
- private void click(String label)throws Exception{String q="[...document.querySelectorAll('button')].find(e=>e.getAttribute('aria-label')==="+JSONObject.quote(label)+"||e.textContent.trim()==="+JSONObject.quote(label)+")";waitJs(q);js("("+q+").click()");}
+ private void click(String label)throws Exception{String q="[...document.querySelectorAll('button')].find(e=>e.getAttribute('aria-label')==="+JSONObject.quote(label)+"||e.textContent.trim()==="+JSONObject.quote(label)+")";waitJs(q+"&&("+q+").getAttribute('aria-disabled')!=='true'");js("("+q+").click()");}
  private List<AccessibilityNodeInfo> nodes(AccessibilityNodeInfo root){List<AccessibilityNodeInfo> out=new ArrayList<>();if(root==null)return out;ArrayDeque<AccessibilityNodeInfo> q=new ArrayDeque<>();q.add(root);while(!q.isEmpty()){assertTrue("Bounded native hierarchy",out.size()<1000);AccessibilityNodeInfo n=q.remove();out.add(n);for(int i=0;i<n.getChildCount();i++){AccessibilityNodeInfo child=n.getChild(i);if(child!=null)q.add(child);}}return out;}
  private AccessibilityNodeInfo find(Predicate<AccessibilityNodeInfo> predicate){for(AccessibilityNodeInfo n:nodes(ui.getRootInActiveWindow()))if(n.isVisibleToUser()&&predicate.test(n))return n;return null;}
  private boolean id(AccessibilityNodeInfo n,String suffix){return ("com.android.deskclock:id/"+suffix).equals(n.getViewIdResourceName());}
@@ -46,7 +47,7 @@ public final class RealClockInstrumentedTest {
   AccessibilityNodeInfo root=ui.getRootInActiveWindow();assertNotNull(root);assertFalse("Notification shade closed before returning to Alpha","com.android.systemui".contentEquals(root.getPackageName()==null?"":root.getPackageName()));notificationShadeOpened=false;
  }
  private void front()throws Exception{closeNotificationShade();BoundedActivityScenario.main(()->context.startActivity(new Intent(context,MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK|Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)));waitJs("!document.hidden");}
- private void handoff(String action)throws Exception{front();click(action);click("Review Clock request");click("Confirm Clock request");}
+ private void handoff(String action)throws Exception{front();click(action);click("Review Clock request");click("Confirm Clock request");history.completed(action.equals("Show alarms")?"show":action.equals("Snooze")?"snooze":"dismiss");}
  private void show()throws Exception{handoff("Show alarms");waitNative(n->"com.android.deskclock".contentEquals(n.getPackageName()==null?"":n.getPackageName())&&id(n,"fab"),15000);}
  private void showForCleanup()throws Exception{
   // Cleanup does not depend on the product flow that may have just failed.
@@ -73,14 +74,15 @@ public final class RealClockInstrumentedTest {
   assertEquals("Clock notification permission required for real firing evidence",android.content.pm.PackageManager.PERMISSION_GRANTED,context.getPackageManager().checkPermission("android.permission.POST_NOTIFICATIONS","com.android.deskclock"));
   output=new File(context.getExternalFilesDir(null),"real-clock-"+label.substring(14));assertTrue(output.mkdirs());
   android.accessibilityservice.AccessibilityServiceInfo info=ui.getServiceInfo();int oldFlags=info.flags;info.flags|=android.accessibilityservice.AccessibilityServiceInfo.FLAG_REPORT_VIEW_IDS;ui.setServiceInfo(info);
-  boolean mayExist=false;String previous=null;List<String> before=null;Throwable failed=null;
-  try(BoundedActivityScenario<MainActivity> scenario=BoundedActivityScenario.launch(MainActivity.class)){
+  boolean mayExist=false;List<String> before=null;Throwable failed=null;
+  try(BoundedActivityScenario<MainActivity> scenario=BoundedActivityScenario.launch(MainActivity.class);ClockHistoryFixture clockHistory=new ClockHistoryFixture()){
+   history=clockHistory;
    try{
-    AppNavigation.liveMode();js(AppNavigation.request("Calendar"));waitJs(AppNavigation.selected("Calendar"));previous=js("localStorage.getItem('alphaphone:clock-handoff:v1')");click("Clock alarms");show();
+    AppNavigation.liveMode();js(AppNavigation.request("Calendar"));waitJs(AppNavigation.selected("Calendar"));click("Clock alarms");show();
     assertNull("No existing scheduled alarm accepted",context.getSystemService(AlarmManager.class).getNextAlarmClock());before=baseline();assertNull("Enable Clock notifications through its normal UI before real alarm acceptance",find(n->String.valueOf(n.getText()).contains("Clock notifications are blocked")));record("01-before");
     Calendar at=Calendar.getInstance();at.add(Calendar.MINUTE,2);at.set(Calendar.SECOND,0);at.set(Calendar.MILLISECOND,0);String time=String.format(Locale.ROOT,"%02d:%02d",at.get(Calendar.HOUR_OF_DAY),at.get(Calendar.MINUTE));
     front();click("Set alarm");for(String[] input:new String[][]{{"Alarm time",time},{"Alarm label",label}})js("(()=>{const e=document.querySelector('input[aria-label=\""+input[0]+"\"]');Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(e,"+JSONObject.quote(input[1])+");e.dispatchEvent(new Event('input',{bubbles:true}));})()");
-    click("Review Clock request");record("02-reviewed");mayExist=true;click("Confirm Clock request");waitNative(n->id(n,"onoff")&&row()!=null,15000);assertNotNull("Exact labeled native alarm row",row());record("03-created");
+    click("Review Clock request");record("02-reviewed");mayExist=true;click("Confirm Clock request");history.completed("set");waitNative(n->id(n,"onoff")&&row()!=null,15000);assertNotNull("Exact labeled native alarm row",row());record("03-created");
     long firingDeadline=at.getTimeInMillis()+15000;while(System.currentTimeMillis()<firingDeadline&&find(n->id(n,"title")&&label.contentEquals(n.getText()==null?"":n.getText()))==null)SystemClock.sleep(200);
     if(find(n->id(n,"title")&&label.contentEquals(n.getText()==null?"":n.getText()))==null){
      assertTrue("Android opened the actual notification shade",ui.performGlobalAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_NOTIFICATIONS));
@@ -101,7 +103,7 @@ public final class RealClockInstrumentedTest {
     handoff("Dismiss");show();waitNative(n->row()!=null&&nodes(row()).stream().anyMatch(x->id(x,"onoff")&&!x.isChecked()),15000);assertTrue("Exact fixture is disabled",nodes(row()).stream().anyMatch(n->id(n,"onoff")&&!n.isChecked()));assertNull(context.getSystemService(AlarmManager.class).getNextAlarmClock());record("06-dismissed");
    }catch(Throwable t){failed=t;throw t;}finally{
     try{if(mayExist){showForCleanup();AccessibilityNodeInfo exact=row();assertNotNull("Fixture cleanup needs exact label",exact);AccessibilityNodeInfo delete=nodes(exact).stream().filter(n->id(n,"delete")&&n.isVisibleToUser()).findFirst().orElse(null);if(delete==null){AccessibilityNodeInfo arrow=nodes(exact).stream().filter(n->id(n,"arrow")).findFirst().orElseThrow(()->new AssertionError("Exact row expansion missing"));tap(arrow);waitNative(n->id(n,"delete"),5000);exact=row();delete=nodes(exact).stream().filter(n->id(n,"delete")&&n.isVisibleToUser()).findFirst().orElseThrow(()->new AssertionError("Exact row delete missing"));}tap(delete);long end=SystemClock.elapsedRealtime()+5000;while(row()!=null&&SystemClock.elapsedRealtime()<end)SystemClock.sleep(100);assertNull("Only synthetic row deleted",row());assertEquals("Existing disabled alarm rows preserved",before,baseline());record("07-cleaned");}
-     if(previous!=null){front();js("(()=>{const p="+previous+";if(p===null)localStorage.removeItem('alphaphone:clock-handoff:v1');else localStorage.setItem('alphaphone:clock-handoff:v1',p);})()");}
+     front();
     }catch(Throwable cleanup){if(failed!=null)failed.addSuppressed(cleanup);else throw cleanup;}
    }
   }finally{info.flags=oldFlags;ui.setServiceInfo(info);}

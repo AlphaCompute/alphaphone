@@ -7,7 +7,7 @@ export const locationSimulationKey='alpha.dev.location.v1';
 export type LocationSimulation={mode:'browser'|'coordinates';latitude:number;longitude:number;accuracy:number;homeId:string;radius:number;workId?:string;workRadius?:number};
 const initial=():LocationSimulation=>({mode:'browser',latitude:0,longitude:0,accuracy:5,homeId:'',radius:200,workId:'',workRadius:200});
 export function readLocationSimulation():LocationSimulation{
- if(!devSurfacesEnabled||!browserDevProfile)return initial();const raw=localStorage.getItem(locationSimulationKey);if(!raw)return initial();const value=JSON.parse(raw);validate(value);return {...initial(),...value};
+ if(!devSurfacesEnabled||!browserDevProfile)return initial();const raw=localStorage.getItem(locationSimulationKey);if(raw===null)return initial();const value=JSON.parse(raw);validate(value);return {...initial(),...value};
 }
 function validate(value:LocationSimulation){
  if(!value||!['browser','coordinates'].includes(value.mode)||typeof value.homeId!=='string'||value.homeId.length>80||!Number.isFinite(value.accuracy)||value.accuracy<0||value.accuracy>100000||!Number.isFinite(value.radius)||value.radius<10||value.radius>100000)throw Error('Choose valid location coordinates, accuracy and home radius.');coordinate(value);if(value.workId!==undefined&&(typeof value.workId!=='string'||value.workId.length>80)||value.workRadius!==undefined&&(!Number.isFinite(value.workRadius)||value.workRadius<10||value.workRadius>100000))throw Error('Choose a valid Work place and radius.');
@@ -18,15 +18,38 @@ export function saveLocationSimulation(value:LocationSimulation){
 // Development-server-only editor; flag-off builds fold it to an unavailable stub.
 export const openLocationControls:()=>void=devSurfacesEnabled?openDevelopmentLocationControls:()=>{throw Error('Location simulation is unavailable in this build.');};
 function openDevelopmentLocationControls(){
- const before=localStorage.getItem(locationSimulationKey),config=readLocationSimulation(),places=new SavedPlaces().read(),dialog=document.createElement('dialog');dialog.setAttribute('aria-label','Development location');dialog.style.cssText='box-sizing:border-box;width:min(380px,92vw);max-height:85dvh;overflow:auto;border:0;border-radius:20px;padding:20px;background:var(--bg,#fff);color:var(--fg,#111);font:16px/1.4 system-ui';
+ const before=localStorage.getItem(locationSimulationKey);let config:LocationSimulation,damaged=false;
+ try{config=readLocationSimulation();}catch{config=initial();damaged=true;}
+ let placesUnavailable=false;
+ const places=(()=>{try{return new SavedPlaces().read();}catch{placesUnavailable=true;return [];}})(),dialog=document.createElement('dialog');dialog.setAttribute('aria-label','Development location');dialog.style.cssText='box-sizing:border-box;width:min(380px,92vw);max-height:85dvh;overflow:auto;border:0;border-radius:20px;padding:20px;background:var(--bg,#fff);color:var(--fg,#111);font:16px/1.4 system-ui';
  const shell=document.querySelector('.os');if(shell){const theme=getComputedStyle(shell);for(const name of ['--bg','--fg','--s2'])dialog.style.setProperty(name,theme.getPropertyValue(name));}
  const title=document.createElement('h2');title.textContent='Device location';const intro=document.createElement('p');intro.textContent='Use browser location or choose coordinates for this development device.';dialog.append(title,intro);
  const field=(name:string,control:HTMLElement)=>{control.setAttribute('aria-label',name);control.style.cssText='box-sizing:border-box;width:100%;padding:8px;border:1px solid #999;border-radius:8px;font:inherit;color:inherit;background:var(--bg,#fff)';const label=document.createElement('label');label.textContent=name;label.style.cssText='display:grid;gap:4px;margin:10px 0';label.append(control);dialog.append(label);};
  const mode=document.createElement('select');mode.add(new Option('Browser location','browser'));mode.add(new Option('Coordinates','coordinates'));mode.value=config.mode;field('Location source',mode);
  const fields=new Map<string,HTMLInputElement>();for(const [key,label] of [['latitude','Latitude'],['longitude','Longitude'],['accuracy','Accuracy (meters)'],['radius','Home radius (meters)'],['workRadius','Work radius (meters)']]){const input=document.createElement('input');input.type='number';input.step='any';input.value=String(config[key as keyof LocationSimulation]);fields.set(key,input);field(label,input);}
  const home=document.createElement('select');home.add(new Option('Choose a saved Maps place',''));for(const place of places)home.add(new Option(place.label,place.id));home.value=config.homeId;field('Home place',home);const work=document.createElement('select');work.add(new Option('Choose a saved Maps place',''));for(const place of places)work.add(new Option(place.label,place.id));work.value=config.workId||'';field('Work place',work);
- const fill=document.createElement('button');fill.textContent='Use Home coordinates';fill.onclick=()=>{const place=places.find(p=>p.id===home.value);if(place){fields.get('latitude')!.value=String(place.coordinate.latitude);fields.get('longitude')!.value=String(place.coordinate.longitude);mode.value='coordinates';}};
- const status=document.createElement('p');status.setAttribute('role','status');const save=document.createElement('button');save.textContent='Save location';save.onclick=()=>{try{if(localStorage.getItem(locationSimulationKey)!==before)throw Error('Location settings changed. Close and reopen this editor.');const values=Object.fromEntries([...fields].map(([key,input])=>{if(!input.value.trim())throw Error('Enter '+input.getAttribute('aria-label')+'.');return [key,Number(input.value)];}));saveLocationSimulation({...config,...values,mode:mode.value as LocationSimulation['mode'],homeId:home.value,workId:work.value});dialog.close();}catch(error){status.textContent=error instanceof Error?error.message:'Location could not be saved.';}};
- const close=document.createElement('button');close.textContent='Cancel';close.onclick=()=>dialog.close();for(const button of [fill,save,close])button.style.cssText='min-height:44px;margin:4px;padding:8px 12px;border:1px solid #aaa;border-radius:10px;font:inherit;color:inherit;background:var(--s2,#eee)';dialog.append(fill,status,save,close);
+ const fill=document.createElement('button');fill.textContent='Use Home coordinates';fill.onclick=()=>{const place=places.find(p=>p.id===home.value);if(place){fields.get('latitude')!.value=String(place.coordinate.latitude);fields.get('longitude')!.value=String(place.coordinate.longitude);mode.value='coordinates';resetConfirmation();}};
+ const status=document.createElement('p');status.setAttribute('role','status');
+ if(damaged)status.textContent='Saved location settings are unreadable. Download the original before replacing them.';
+ else if(placesUnavailable)status.textContent='Saved Maps places are unavailable. Existing Home and Work choices will be kept.';
+ home.disabled=work.disabled=fill.disabled=placesUnavailable;
+ const backup=damaged?document.createElement('button'):null;
+ if(backup){backup.textContent='Download location settings backup';backup.onclick=()=>{
+  const url=URL.createObjectURL(new Blob([before??''],{type:'application/octet-stream'})),link=document.createElement('a');link.href=url;link.download='Alpha-location-settings-backup.txt';document.body.append(link);
+  try{link.click();status.textContent='Backup download requested. Check Downloads before replacing the settings.';}finally{link.remove();setTimeout(()=>URL.revokeObjectURL(url),60000);}
+ };}
+ let confirmed=false;const save=document.createElement('button'),saveLabel=damaged?'Replace saved location settings':'Save location';save.textContent=saveLabel;
+ // Replacing a button's text during field blur can suppress WebKit's pending click.
+ const resetConfirmation=()=>{if(!confirmed)return;confirmed=false;save.textContent=saveLabel;};dialog.addEventListener('input',resetConfirmation);dialog.addEventListener('change',resetConfirmation);
+ save.onclick=()=>{try{
+  if(localStorage.getItem(locationSimulationKey)!==before)throw Error('Location settings changed. Close and reopen this editor.');
+  const values=Object.fromEntries([...fields].map(([key,input])=>{if(!input.value.trim())throw Error('Enter '+input.getAttribute('aria-label')+'.');return [key,Number(input.value)];}));
+  const next={...config,...values,mode:mode.value as LocationSimulation['mode'],homeId:placesUnavailable?config.homeId:home.value,workId:placesUnavailable?config.workId:work.value};validate(next);
+  if(damaged&&!confirmed){confirmed=true;save.textContent='Confirm location replacement';status.textContent='This replaces the unreadable settings with the values shown. Keep the downloaded original if you need it.';status.scrollIntoView({block:'nearest'});return;}
+  saveLocationSimulation(next);dialog.close();
+ }catch(error){resetConfirmation();status.textContent=error instanceof Error?error.message:'Location could not be saved.';}};
+ const close=document.createElement('button');close.textContent='Cancel';close.onclick=()=>dialog.close();
+ for(const button of [fill,...(backup?[backup]:[]),save,close])button.style.cssText='min-height:44px;margin:4px;padding:8px 12px;border:1px solid #aaa;border-radius:10px;font:inherit;color:inherit;background:var(--s2,#eee)';
+ dialog.append(fill,...(backup?[backup]:[]),status,save,close);
  const retire=()=>dialog.close(),hidden=()=>{if(document.hidden)retire();},events=['pagehide','alpha:device-state','launcher-home','alpha:dev-incoming-call'];for(const event of events)window.addEventListener(event,retire);document.addEventListener('visibilitychange',hidden);const back=(event:Event)=>{event.preventDefault();event.stopImmediatePropagation();dialog.close();};window.addEventListener('alpha-back',back,true);dialog.onclose=()=>{for(const event of events)window.removeEventListener(event,retire);document.removeEventListener('visibilitychange',hidden);window.removeEventListener('alpha-back',back,true);dialog.remove();};layoutBrowserDialog(dialog,[save,close]);document.body.append(dialog);dialog.showModal();
 }

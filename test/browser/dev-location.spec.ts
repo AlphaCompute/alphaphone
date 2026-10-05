@@ -62,7 +62,10 @@ for(const retired of [false,true])test(`failed permission query preserves curren
  const result=await page.evaluate(async retired=>{
   const {BrowserLocation}=await import('/src/browser/location.ts');const {readLocationSimulation,saveLocationSimulation}=await import('/src/browser/location-simulation.ts');
   let reject!:(error:Error)=>void,started!:()=>void;const ready=new Promise<void>(resolve=>started=resolve);
-  Object.defineProperty(navigator,'permissions',{configurable:true,value:{query:()=>new Promise((_resolve,fail)=>{reject=fail;started();})}});
+  // Startup may query permissions too. All callers must share the same outcome,
+  // rather than replacing the rejection callback and stranding this request.
+  const denied=new Promise<never>((_resolve,fail)=>{reject=fail;});
+  Object.defineProperty(navigator,'permissions',{configurable:true,value:{query:()=>{started();return denied;}}});
   const pending=new BrowserLocation().checkPermissions();await ready;if(retired)saveLocationSimulation({...readLocationSimulation(),mode:'coordinates'});reject(Error('Permission query unavailable'));return pending;
  },retired);expect(result).toEqual({location:retired?'denied':'prompt',accuracy:'none'});
 });

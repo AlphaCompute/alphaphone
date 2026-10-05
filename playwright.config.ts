@@ -7,7 +7,7 @@ const storageSpecs=new RegExp(`(?:^|[\\\\/])(${[
   // Storage-domain specs qualified per engine by scripts/qualify-head.mjs.
   'preference-storage-migration','reminder-storage-migration','storage-usage',
   // Canonical storage and asynchronous Cloud setup specs.
-  'domain-atomicity','connection-preference-storage','appearance-storage','workflow-intent-storage','notes-document-storage','notes-save-failure',
+  'domain-atomicity','location-settings-recovery','connection-preference-storage','appearance-storage','workflow-intent-storage','notes-document-storage','notes-save-failure',
   'note-audio-delete-recovery','media-copy-intent-storage','conversation-selection-storage','browser-photo-edit','reminder-action-storage',
   'reminder-delete-review','reminder-decision-review','browser-reminder-edit-recovery','reminder-creation-storage','reminder-create-review',
   'domain-initialization','dev-cloud-setup','dev-cloud-scenarios','cloud-personal-intent-storage','cloud-personal-onboarding',
