@@ -59,6 +59,6 @@ synthetic-provider results must remain distinguishable from real account access
 and physical hardware observations.
 
 The [completion plan](mvp-completion-plan.md),
-[flow acceptance](flow-verification.md), [Android/AOSP guide](android-and-aosp.md)
+[verification gates](verification.md), [Android/AOSP guide](android-and-aosp.md)
 and [on-device agent plan](on-device-agent-plan.md) define the remaining work.
 No historical result or documentation cleanup waives those requirements.

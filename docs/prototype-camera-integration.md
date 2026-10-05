@@ -103,8 +103,8 @@ saved image. A separate manual build 17 run verified catalog reload after a
 confirmed process stop and fresh launch. Activity recreation is not a full process-death test.
 Permission denial/retry is a separate opt-in instrumentation fixture. Manual preview
 framing, switch/zoom/focus/flash, rapid navigation, background/resume and both
-variants remain distinct acceptance checks. See `flow-verification.md` for dated
-results rather than treating this implementation description as test evidence.
+variants remain distinct acceptance checks. Use [verification gates](verification.md) and revision-bound reports rather than
+treating this implementation description as current test evidence.
 
 Build 17 update: repository verification and both debug/release variants passed.
 The standalone capture → MediaStore byte readback → Activity recreation → Photos

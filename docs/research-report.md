@@ -1,4 +1,4 @@
-> Current design correction: the authoritative UI is https://alpha-phone-prototype.pages.dev/ and its extracted fourteen-app presentation. The earlier seventeen-route renderer discussed below is historical. For current adapter behavior and remaining real-flow gaps, use [prototype implementation gaps](prototype-implementation-gaps.md) and [screen inventory](prototype-screen-inventory.md). No full-flow completion is claimed.
+> Current design correction: the authoritative UI is https://alpha-phone-prototype.pages.dev/ and its extracted fourteen-app presentation. The earlier seventeen-route renderer discussed below is historical. For current adapter behavior and remaining real-flow gaps, use [current capability status](mvp-current-status.md) and [screen inventory](prototype-screen-inventory.md). No full-flow completion is claimed.
 
 # Alpha Phone — consolidated flow and platform research
 
@@ -8,7 +8,7 @@ Research date: 2026-09-29. Product target correction: Pixel 10 or similar **phon
 
 Alpha Phone can own a coherent, branded daily-task interface while reusing Android for secure and hardware-dependent interaction. The correct split is product-owned navigation, editing, context, approval and result presentation; native-owned permissions, credential dialogs, pickers, audio/camera and application handoff; cloud Eliza-owned agent execution, account connectors and durable workflow orchestration; AOSP-owned provisioning, system roles, browser packaging and updates.
 
-The active renderer now uses the extracted fourteen-app prototype. Product adapters provide real native browser documents, CameraX still capture and app-owned photo browsing, CalendarProvider events and Home agenda routing, Android contacts, selected files, local notes and native reminders. The debug transport runs pinned Eliza with a real remote model and can propose approved note creation, reminder creation and view navigation. Production pairing, mailbox sync, actual workflow execution, full browser credentials and image/document understanding remain incomplete. Opening another Android app establishes only a handoff; installing a provider establishes neither account setup nor integration. Exact test scope is recorded in [flow verification](flow-verification.md).
+The active renderer now uses the extracted fourteen-app prototype. Product adapters provide real native browser documents, CameraX still capture and app-owned photo browsing, CalendarProvider events and Home agenda routing, Android contacts, selected files, local notes and native reminders. The debug transport runs pinned Eliza with a real remote model and can propose approved note creation, reminder creation and view navigation. Production pairing, mailbox sync, actual workflow execution, full browser credentials and image/document understanding remain incomplete. Opening another Android app establishes only a handoff; installing a provider establishes neither account setup nor integration. Use [verification gates](verification.md) and revision-bound test reports to establish tested scope.
 
 Every product view must expose contextual assistance without sending secrets or arbitrary device data. A context contract needs owner/account identity, selected object and revision, allowed capabilities, sensitivity and return destination. The client boundary supports explicit connection/cancellation/proposal handling, and the debug-only service path supports real-provider development calls. An approved, registered Alpha auth client and real owner-scoped endpoint are still required before production connected-agent claims. Its renderer interface cannot substitute for durable backend receipts, origin validation and account isolation.
 
@@ -25,13 +25,13 @@ The largest immediate risks are data integrity and lifecycle behavior: stale asy
 | [Flow implementation plan](flow-implementation-plan.md) | PRD coverage ledger, fourteen upstream/native work packages, dependency-ordered delivery and full-flow test matrix |
 | [Agent integration contract](agent-integration.md) | Current transport boundary, upstream authentication limitations, lifecycle/approval semantics and real-integration acceptance |
 | [Existing architecture](architecture.md) | Independent product boundary, immutable baseline, pinned upstream source and distribution model |
-| [Verification record](verification.md) | Previously recorded evidence; check its date and tested revision before applying it to current changes |
+| [Verification guide](verification.md) | Required gates and rules for revision-bound evidence |
 
-The PRD specifies the target. The implementation plan distinguishes the source-present subset from missing/provider-blocked work. The verification record and newly generated test reports establish what actually passed. None should be used as a substitute for the others.
+The PRD specifies the target. The implementation plan distinguishes the source-present subset from missing/provider-blocked work. Only revision-bound test reports establish what actually passed. None should be used as a substitute for the others.
 
 ## Original native and product decisions
 
-This table records the research baseline. The current implementation paragraph above and verification ledger supersede its older implementation and pending-test descriptions.
+This table records the research baseline. Consult [current capability status](mvp-current-status.md) for implementation and remaining acceptance; this table is not a current status ledger.
 
 | Area | Working choice | What is still required |
 | --- | --- | --- |

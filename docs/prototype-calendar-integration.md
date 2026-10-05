@@ -19,7 +19,7 @@ Recurring-event creation, invitations, conferencing and event alerts require the
 
 ## Verification
 
-`CalendarFlowInstrumentedTest` exercises the real event form, checks that typing has no effect, saves one UUID-labelled event, inspects CalendarProvider, recreates the Activity, and verifies the agenda reloads it. Cleanup deletes only that test's event. The test is newly added and must not be described as passed until device output confirms it. The initial Java compile exposed an incorrect inherited constant (`Instances.DELETED`); it was corrected to `Events.DELETED`. See `flow-verification.md` for the current build/device results.
+`CalendarFlowInstrumentedTest` exercises the real event form, checks that typing has no effect, saves one UUID-labelled event, inspects CalendarProvider, recreates the Activity, and verifies the agenda reloads it. Cleanup deletes only that test's event. Device results must identify the tested revision and APKs; see [verification gates](verification.md).
 
 A subsequent UX correction (not in build 13) opens the saved event's original detail screen after the provider refresh, matching the prototype's completion flow. The post-write refresh supersedes any older refresh instead of being skipped while one is running. Its E2E assertion now requires that detail screen before Activity recreation. These changes await the next APK/device run.
 
