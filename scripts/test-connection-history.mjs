@@ -43,6 +43,12 @@ const sandbox = { retireClockReviews, workflowPresentationProtocol:async()=>2, b
   isAndroid: false, localStorage: { getItem: key => memory.get(key) ?? null, setItem: (key, value) => memory.set(key, value), removeItem: key => memory.delete(key) },
   URL, URLSearchParams, AbortController, DOMException, crypto: globalThis.crypto, console,
 };
+// Exercise the real installed string-map adapter alongside the controller fixture.
+const selectionSandbox = { ...sandbox, Capacitor: { getPlatform: () => 'android' } };
+const selectionSource = stripTypeScriptTypes(await readFile(new URL('../apps/app/src/runtime/conversation-selection.ts', import.meta.url), 'utf8'), { mode: 'transform' })
+  .replace(/^import .*;\n/gm, '').replace(/export /g, '');
+vm.runInNewContext(selectionSource + '\nglobalThis.selectionApi = { captureConversationChoice, selectConversation };', selectionSandbox);
+Object.assign(sandbox, selectionSandbox.selectionApi);
 let source = (await readFile(new URL('../apps/app/src/runtime/connection-ui.tsx', import.meta.url), 'utf8')).split('export function ConnectionChooser()')[0];
 source = source.replace(/^import .*;\n/gm, '').replace(/export /g, '');
 source += '\nglobalThis.controller = connectionController;';
@@ -60,6 +66,7 @@ try {
   assert.equal(historyReads, 0, 'membership check blocks unlisted history requests');
   assert.equal(controller.getSnapshot().history, null);
   await controller.restoreHistory(conversation);
+  assert.equal(controller.getSnapshot().error, '', 'History restoration must succeed');
   const restored = controller.getSnapshot().history;
   assert.equal(restored.messages[0].text, 'Earlier user text');
   assert.equal(restored.messages[1].text, 'Earlier answer');

@@ -37,9 +37,3 @@ export async function selectConversation(key:string,expected:ConversationChoice|
  if(native){const next=JSON.stringify(update(JSON.parse(localStorage.getItem(conversationSelectionKey)||'null')));localStorage.setItem(conversationSelectionKey,next);if(localStorage.getItem(conversationSelectionKey)!==next)throw Error('Conversation selection could not be confirmed.');}
  else await(await conversationSelectionDocument()).editJson(update,signal);
 }
-
-/** Convenience API for a choice made now; delayed operations use captured revisions. */
-export async function readConversationChoice(owner:string,signal?:AbortSignal){return (await captureConversationChoice(owner,signal))?.id;}
-export async function saveConversationChoice(owner:string,id:string,signal:AbortSignal=new AbortController().signal){
- const expected=await captureConversationChoice(owner,signal);await selectConversation(owner,expected,id,signal,()=>{});
-}
