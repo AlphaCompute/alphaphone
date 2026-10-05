@@ -124,7 +124,9 @@ starts another login or sends text.
 
 Six new browser tests use a disclosed synthetic identity boundary and two real
 tabs; they make no provider requests and collect no credentials. TypeScript
-passed before integrating current main; owning browser qualification is running.
+passed before integrating current main; all six owning Chromium cases pass
+after integrating merged Notes/main. Cross-engine and full-product qualification
+remain open.
 This covers preference retirement, not actual provider authentication or native
 credential replacement.
 
