@@ -1,11 +1,10 @@
 // Register browser implementations before any runtime module claims plugin identity.
 import './browser/register';
 import {bindBrowserSpeechConnection} from './browser/agent-speech';
-import { pauseLiveActivityForMock } from './runtime/mock-admission';
+import { testMocksEnabled, devSurfacesEnabled } from './build-flags';
+import { RootErrorBoundary, installGlobalErrorRecovery } from './runtime/error-boundary';
 import { installBrowserDeviceAdapter } from './browser/device-adapter';
-import { BrowserDeviceControls } from './browser/device-controls';
-import { browserDevProfile,developmentAgentWorkflows } from './browser/dev-profile';
-import { captureSimulatedApps, installSimulatedApps } from './browser/simulated-apps';
+import { browserDevProfile as devProfileQuery,developmentAgentWorkflows as devAgentWorkflowsQuery } from './browser/dev-profile';
 import {HostedDigestPanel} from './runtime/hosted-digest-ui';
 import { installClockAdapter } from './prototype/clock-adapter';
 import {installNoteWebSourceAdapter} from './prototype/note-web-source-adapter';
@@ -35,23 +34,32 @@ import { ConnectionChooser, connectionController } from './runtime/connection-ui
 import { installInboxCloudAdapter } from './prototype/inbox-cloud-adapter';
 import './prototype/prototype.css';
 import './prototype/phone.css';
+installGlobalErrorRecovery();
+// Developer surfaces are only reachable in an explicitly flagged development server.
+const browserDevProfile=devSurfacesEnabled&&devProfileQuery;
+const developmentAgentWorkflows=devSurfacesEnabled&&devAgentWorkflowsQuery;
+const BrowserDeviceControls=devSurfacesEnabled?(await import('./browser/device-controls')).BrowserDeviceControls:null;
+const simulatedAppsModule=devSurfacesEnabled?await import('./browser/simulated-apps'):null;
+const MOCK_BANNER_STYLE=".mock-mode-banner{position:fixed;top:0;left:0;right:0;z-index:2000;display:flex;justify-content:space-between;align-items:center;gap:8px;padding:5px 10px;background:#0000ff;color:white;font:11px 'Public Sans',sans-serif}.mock-mode-banner button{border:1px solid white;border-radius:14px;background:transparent;color:white;padding:4px 8px;font:inherit}.native-phone .mock-mode-banner{top:var(--native-top-inset,24px)}";
 if(!isAndroid)bindBrowserSpeechConnection(connectionController);
 const query = new URLSearchParams(location.search);
 document.documentElement.classList.toggle('native-phone', isAndroid);
-const savedMock = (() => {
+const savedMock = testMocksEnabled && (() => {
   try { return isAndroid && JSON.parse(localStorage.getItem('alpha.connection.selection.v1') || 'null')?.kind === 'mock'; }
   catch { return false; }
 })();
 // Resolve mock before mounting any native adapter, including after a cold start.
-const mock = query.get('mode') === 'mock' || savedMock;
-const fixture = mock || (import.meta.env.DEV && !isAndroid && query.get('fixture') === '1');
+// Production builds never admit mock or fixture state, whatever the URL or storage says.
+const mock = testMocksEnabled && (query.get('mode') === 'mock' || savedMock);
+const fixture = testMocksEnabled && (mock || (devSurfacesEnabled && !isAndroid && query.get('fixture') === '1'));
 const initialTheme = (() => {
-  if (query.has('theme') || fixture) return query.get('theme') === 'dark' ? 'dark' : 'light';
+  if (testMocksEnabled && (query.has('theme') || fixture)) return query.get('theme') === 'dark' ? 'dark' : 'light';
   try { return localStorage.getItem('alpha.appearance.v1') === 'dark' ? 'dark' : 'light'; }
   catch { return 'light'; }
 })();
 document.documentElement.dataset.connectionMode = mock ? 'mock' : 'live';
-const simulatedApps=captureSimulatedApps(VIEWS);
+if (testMocksEnabled && mock) { const style = document.createElement('style'); style.textContent = MOCK_BANNER_STYLE; document.head.append(style); }
+const simulatedApps=simulatedAppsModule?.captureSimulatedApps(VIEWS);
 installPrototypeHomeBindings(Component);
 if (!fixture) {
   let selected: ReturnType<typeof installSelectedDocumentAdapter> | undefined;
@@ -72,13 +80,23 @@ if (!fixture) {
   installNoteWebSourceAdapter(VIEWS);
   installPrototypeBrowserAdapter(Component, VIEWS);
   installSettingsAdapter(Component, VIEWS);
-  if(!isAndroid)installBrowserDeviceAdapter(Component);
+  if(!isAndroid){if(devSurfacesEnabled)installBrowserDeviceAdapter(Component);else installBrowserCapabilityTiles(Component);}
   if(!browserDevProfile) installInboxCloudAdapter(Component, VIEWS);
   if(!browserDevProfile) installWorkflowAdapter(Component, VIEWS);
 }
-installSimulatedApps(Component,VIEWS,simulatedApps);
+if(simulatedAppsModule&&simulatedApps)simulatedAppsModule.installSimulatedApps(Component,VIEWS,simulatedApps);
 if(developmentAgentWorkflows)installWorkflowAdapter(Component,VIEWS);
-installClockAdapter(Component, VIEWS, { simulated: fixture, browser: !isAndroid });
+installClockAdapter(Component, VIEWS, { simulated: testMocksEnabled && fixture, browser: !isAndroid });
+/** A browser cannot read or change radios and sensors; show that instead of fixture toggles. */
+function installBrowserCapabilityTiles(Component:any){
+  const p=Component.prototype,render=p.renderVals;
+  const managed=new Set(['Wi-Fi','Bluetooth','Airplane mode','Agent can listen','Location','Do not disturb']);
+  p.renderVals=function(){
+    const out=render.call(this);
+    const tiles=(out.tiles||[]).map((tile:any)=>managed.has(tile.label)?{...tile,on:false,disabled:true,css:'background:var(--s2);color:var(--fg);opacity:.55',toggle:()=>{}}:tile);
+    return {...out,tiles,deviceSettingsPending:true,deviceSettingsMessage:'Network, radio and sensor settings are managed by your browser and operating system.',sbWifi:navigator.onLine,sbPlane:false};
+  };
+}
 let shell: any;
 function Phone() {
   useEffect(() => {
@@ -89,8 +107,8 @@ function Phone() {
     const size = () => {
       const height = window.visualViewport?.height || window.innerHeight;
       const desktop = !isAndroid && window.innerWidth > 600;
-      const banner = mock ? document.querySelector('.mock-mode-banner')?.getBoundingClientRect().height || 36 : 0;
-      const tools = import.meta.env.DEV && !isAndroid && !mock ? document.querySelector<HTMLElement>('.alpha-dev-tools') : null;
+      const banner = testMocksEnabled && mock ? document.querySelector('.mock-mode-banner')?.getBoundingClientRect().height || 36 : 0;
+      const tools = devSurfacesEnabled && !isAndroid && !mock ? document.querySelector<HTMLElement>('.alpha-dev-tools') : null;
       const toolsInset = tools ? Math.max(56, Math.ceil(tools.getBoundingClientRect().height + (parseFloat(getComputedStyle(tools).bottom) || 0) + 2)) : 0;
       const available = Math.max(1, height - banner - (desktop ? 48 : 0) - toolsInset);
       const scale = desktop ? Math.min(1, available / 915) : window.innerWidth / 412;
@@ -100,11 +118,11 @@ function Phone() {
       document.documentElement.style.setProperty('--phone-top', `${banner + (desktop ? 24 : 0)}px`);
       document.documentElement.classList.toggle('browser-desktop', desktop);
     };
-    const bannerObserver=new ResizeObserver(size);const bannerElement=document.querySelector('.mock-mode-banner');if(bannerElement)bannerObserver.observe(bannerElement);
+    const bannerObserver=new ResizeObserver(size);const bannerElement=testMocksEnabled&&mock?document.querySelector('.mock-mode-banner'):null;if(bannerElement)bannerObserver.observe(bannerElement);
     size(); window.addEventListener('resize', size); window.visualViewport?.addEventListener('resize', size);
     return () => { bannerObserver.disconnect(); window.removeEventListener('resize', size); window.visualViewport?.removeEventListener('resize', size); };
   }, []);
-  return <>{import.meta.env.DEV&&!isAndroid&&!mock&&<BrowserDeviceControls command={action=>{
+  return <>{BrowserDeviceControls&&!isAndroid&&!mock&&<BrowserDeviceControls command={action=>{
     if(!shell)return;
     if(action==='home')window.dispatchEvent(new Event('launcher-home'));
     else if(action==='back')window.dispatchEvent(new Event('alpha-back',{cancelable:true}));
@@ -116,11 +134,12 @@ function Phone() {
     else if(action==='background'){shell.leave();shell.setState({screen:'off',voice:'off',chat:'input',shade:false});document.documentElement.dataset.devBackground='true';window.dispatchEvent(new Event('blur'));}
     else if(action==='resume'){delete document.documentElement.dataset.devBackground;shell.unlock();window.dispatchEvent(new Event('focus'));}
     if(['power','unlock','boot','background','resume'].includes(action))window.dispatchEvent(new Event('alpha:device-state'));
-  }}/>}{mock && <div className="mock-mode-banner" role="status"><span>Mock mode · simulated data and actions</span><button onClick={() => { void connectionController.offline().then(() => { const url = new URL(location.href); url.searchParams.delete('mode'); url.searchParams.delete('start'); location.assign(url.href); }); }}>Exit mock mode</button></div>}<Component phoneSurface nativeSystemChrome={isAndroid} initial={fixture ? query.get('start') || 'home' : 'home'} theme={initialTheme} ref={(value: any) => { shell = value; }} />
+  }}/>}{testMocksEnabled && mock && <div className="mock-mode-banner" role="status"><span>Mock mode · simulated data and actions</span><button onClick={() => { void connectionController.offline().then(() => { const url = new URL(location.href); url.searchParams.delete('mode'); url.searchParams.delete('start'); location.assign(url.href); }); }}>Exit mock mode</button></div>}<Component phoneSurface nativeSystemChrome={isAndroid} initial={testMocksEnabled && fixture ? query.get('start') || 'home' : 'home'} theme={initialTheme} ref={(value: any) => { shell = value; }} />
 {!fixture && <><ConnectionChooser /><HostedDigestPanel /></>}</>;
 }
 async function mountPhone() {
-  if (mock && isAndroid) {
+  if (testMocksEnabled && mock && isAndroid) {
+    const { pauseLiveActivityForMock } = await import('./runtime/mock-admission');
     const root=document.getElementById('root')!;
     root.setAttribute('role','status');
     root.textContent='Pausing live background activity before opening mock mode…';
@@ -133,6 +152,6 @@ async function mountPhone() {
     }
     root.removeAttribute('role');
   }
-  createRoot(document.getElementById('root')!).render(<Phone />);
+  createRoot(document.getElementById('root')!).render(<RootErrorBoundary><Phone /></RootErrorBoundary>);
 }
 void mountPhone();
