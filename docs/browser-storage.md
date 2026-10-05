@@ -72,3 +72,14 @@ another domain. Browser CI runs the canonical domain and development Cloud
 setup cases in Firefox and WebKit alongside the full Chromium shards.
 Browser evidence does not prove
 Android process, Keystore, reboot, Doze or physical-device acceptance.
+
+## Development simulator ownership
+
+The prototype application reducers intentionally use one origin-wide Web Locks
+writer lease. A second development tab can inspect data but must close the writer
+and reload before saving or resetting. Recovery uses the same writer instance;
+reset checks the loaded and current bytes, verifies removal, then retires the
+writer before reload so queued stale reducers cannot recreate the old snapshot.
+Malformed bytes remain available for backup until an explicit successful reset.
+This contract applies to development fixtures, not native application storage.
+The reset ownership browser cases are prepared; combined qualification is pending.
