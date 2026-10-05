@@ -25,7 +25,7 @@ public class PairedVoiceLiveInstrumentedTest {
  private static AlphaConnectionPlugin store(){return (AlphaConnectionPlugin)activity().getBridge().getPlugin("AlphaConnection").getInstance();}
  private static void field(Object object,String name,Object value)throws Exception{Field field=object.getClass().getDeclaredField(name);field.setAccessible(true);field.set(object,value);}
  @Test public void actualPairedHostNotesListenDecodesEndsAndCancels()throws Exception{
-  Assume.assumeTrue("Explicit live paired voice opt-in required","1".equals(InstrumentationRegistry.getArguments().getString("pairedVoiceLive")));assertTrue(BuildConfig.DEBUG);
+  Assume.assumeTrue("Explicit live paired voice opt-in required","1".equals(InstrumentationRegistry.getArguments().getString("pairedVoiceLive")));assertTrue("Loopback HTTP fixtures require a -PELIZA_DEV_ALLOW_TEST_MOCKS=1 debug build",BuildConfig.ELIZA_DEV_ALLOW_TEST_MOCKS);
   android.content.Context context=InstrumentationRegistry.getInstrumentation().getTargetContext();File material=new File(context.getFilesDir(),"paired-voice-live.json");JSONObject input=new JSONObject(new String(Files.readAllBytes(material.toPath()),java.nio.charset.StandardCharsets.UTF_8));
   String origin=input.getString("origin");assertEquals("http://10.0.2.2:47844",origin);String code=input.getString("code"),slot="remote:"+origin;
   AtomicReference<String> originalCredential=new AtomicReference<>();String originalSelection=null;File audio=File.createTempFile("paired-voice-fixture-",".wav",context.getCacheDir());

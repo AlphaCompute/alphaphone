@@ -247,10 +247,18 @@ export function installPrototypeCameraAdapter(_Component: unknown, views: Record
     }catch{if(owner.isActive())owner.toast('Batch outcome could not be verified. Reopen Photos before retrying.');}
     finally{mutating=false;if(!disposed){void refresh();void loadTrash(owner);void loadCounts(owner);void loadCustomAlbums(owner);owner.set({nativeMultiSelection:Date.now()});}}
   }
+  // Browser-owned album storage reports damaged saved data by failing to read.
+  // Albums then offers the exact-byte recovery dialog; saved media is unaffected.
+  let albumsRecovery=false;
+  async function albumStoreNeedsRecovery(){
+    if(!browserMode)return false;
+    const {albumDocument}=await import('../browser/preference-documents');
+    try{await albumDocument.read(()=>[]);return false;}catch{return true;}
+  }
   async function loadCustomAlbums(owner: Bag) {
     if(disposed)return;const token=++albumsEpoch;albumsBusy=true;
-    try{const result=await library.albums();if(!disposed&&token===albumsEpoch){customAlbums=result.items;albumsLoaded=true;owner.set({nativeAlbumsError:'',nativeAlbumsRevision:token});}}
-    catch{if(!disposed&&token===albumsEpoch){albumsLoaded=true;owner.set({nativeAlbumsError:'Custom albums could not be loaded. Reopen album management to retry.'});}}
+    try{const result=await library.albums();if(!disposed&&token===albumsEpoch){customAlbums=result.items;albumsLoaded=true;albumsRecovery=false;owner.set({nativeAlbumsError:'',nativeAlbumsRevision:token});}}
+    catch{const recovery=await albumStoreNeedsRecovery().catch(()=>false);if(!disposed&&token===albumsEpoch){albumsLoaded=true;albumsRecovery=recovery;owner.set({nativeAlbumsError:recovery?'Saved albums need recovery. Open Recover albums in Albums.':'Custom albums could not be loaded. Reopen album management to retry.',nativeAlbumsRevision:token});}}
     finally{if(token===albumsEpoch)albumsBusy=false;}
   }
   function openAlbumManager(owner:Bag,media?:SavedPhoto,album?:OwnedAlbum,trigger?:HTMLElement){
@@ -587,6 +595,7 @@ export function installPrototypeCameraAdapter(_Component: unknown, views: Record
     data.tiles = [['fav','Favorites',counts?.favorites],['video','Videos',counts?.videos]].map(([key,name,count])=>({name,count:count??'…',bg:(captures.find(row=>key==='fav'?row.favorite:row.kind==='video')?.image ? `url("${captures.find(row=>key==='fav'?row.favorite:row.kind==='video')?.image}") center / cover no-repeat` : 'var(--s2)'),tf:'',flt:'',open:()=>{currentApi.set({album:key,open:null,nativePhotoSelection:null});closeVideo();void loadAlbum(String(key),currentApi);}}));
     if(!albumsLoaded&&!albumsBusy)queueMicrotask(()=>{void loadCustomAlbums(currentApi);});
     data.tiles.push(...customAlbums.map(album=>({name:album.name,count:album.count,bg:'var(--s2)',tf:'',flt:'',open:()=>{currentApi.set({album:'custom:'+album.id,open:null,nativePhotoSelection:null});closeVideo();void loadAlbum('custom:'+album.id,currentApi);void loadCustomAlbums(currentApi);}})));
+    if(albumsRecovery)data.tiles.push({name:'Recover albums',count:'Original data retained',bg:'var(--s2)',tf:'',flt:'',open:()=>{void import('../browser/preference-recovery').then(m=>m.openAlbumRecovery()).catch(()=>currentApi.toast('Album recovery could not be opened. Try again.'));}});
     data.albumManager=st.sheet==='owned-album'&&!!manager;
     if(manager){const selectedManager=manager;data.am={modalRef:albumModal.ref,title:manager.confirmDelete?'Delete album?':manager.creating?'New album':manager.album?'Manage album':manager.choosing?'Add to album':'Photo info',name:manager.name,onName:(event:Event)=>{if(manager){manager.name=(event.target as HTMLInputElement).value;currentApi.set({nativeAlbumDraft:Date.now()});}},
       managing:!!manager.album,naming:!!manager.creating||!!manager.album&&!manager.confirmDelete,info:!!manager.media&&!manager.creating&&!manager.choosing,description:manager.media?`${manager.media.width} × ${manager.media.height} · ${manager.media.kind==='video'?'Video':'Photo'} · ${browserMode?'saved in this browser':'saved to Android Photos'}`:'',choose:()=>{if(manager){manager.choosing=true;currentApi.set({nativeAlbumDraft:Date.now()});}},choosing:!!manager.media&&!!manager.choosing&&!manager.creating,confirming:!!manager.confirmDelete,error:st.nativeAlbumsError||'',busy:mutating,

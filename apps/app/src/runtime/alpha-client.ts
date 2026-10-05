@@ -122,6 +122,16 @@ const copyContext = (
   revision,
 });
 
+// Plain-HTTP loopback sessions are a test-mocks surface (ELIZA_DEV_ALLOW_TEST_MOCKS=1).
+// Vite replaces import.meta.env at build time, so flag-off bundles accept HTTPS
+// sessions only. Node contract tests import this source without Vite.
+const developmentSessionsAllowed: boolean = import.meta.env === undefined || import.meta.env.VITE_ELIZA_DEV_ALLOW_TEST_MOCKS === '1';
+const developmentSessionHosts: readonly string[] = developmentSessionsAllowed ? ["127.0.0.1", "10.0.2.2", "localhost", "[::1]"] : [];
+/** An explicitly declared plain-HTTP loopback development session origin. */
+export function developmentSessionOrigin(origin: URL, declared: string | undefined, allowDevelopment: boolean = developmentSessionsAllowed): boolean {
+  return allowDevelopment && origin.protocol === "http:" &&
+    developmentSessionHosts.includes(origin.hostname) && declared === origin.origin;
+}
 export class AlphaClient {
   private transport: VerifiedSessionTransport | null = null;
   private epoch = 0;
@@ -157,9 +167,7 @@ export class AlphaClient {
     } catch {
       throw new Error("Invalid verified session origin");
     }
-    const development = origin.protocol === "http:" &&
-      ["127.0.0.1", "10.0.2.2", "localhost", "[::1]"].includes(origin.hostname) &&
-      options.developmentOrigin === origin.origin;
+    const development = developmentSessionOrigin(origin, options.developmentOrigin);
     if (
       (origin.protocol !== "https:" && !development) ||
       origin.origin !== session.origin ||

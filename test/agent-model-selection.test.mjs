@@ -9,7 +9,7 @@ function launch({route,override,swaps,existingToken=true,runtimeConfigUpdate=fal
  const dir=mkdtempSync(join(tmpdir(),'alpha-model-')),profile=join(dir,'profile'),source=join(dir,'source'),receipt=join(dir,'models.json'),childReceipt=join(dir,'child.json'),bun=join(dir,'fake-bun');
  mkdirSync(profile);mkdirSync(join(source,'packages/app/src/runtime'),{recursive:true});writeFileSync(join(source,'packages/app/src/runtime/dev-server.ts'),'');
  execFileSync('git',['init','-q',source]);execFileSync('git',['-C',source,'-c','user.name=Fixture','-c','user.email=fixture@example.invalid','commit','--allow-empty','-qm','fixture']);
- writeFileSync(bun,`#!/usr/bin/env node\nconst fs=require('node:fs');fs.writeFileSync(${JSON.stringify(childReceipt)},JSON.stringify({pid:process.pid,token:process.env.ELIZA_API_TOKEN,config:JSON.parse(fs.readFileSync(process.env.ELIZA_CONFIG_PATH,'utf8'))}));fs.writeFileSync(${JSON.stringify(receipt)},JSON.stringify(Object.fromEntries(['CEREBRAS_MODEL','CEREBRAS_SMALL_MODEL','CEREBRAS_LARGE_MODEL'].map(k=>[k,process.env[k]]))));${runtimeConfigUpdate?"fs.writeFileSync(process.env.ELIZA_CONFIG_PATH,JSON.stringify({...JSON.parse(fs.readFileSync(process.env.ELIZA_CONFIG_PATH,'utf8')),runtimeSelection:'retained'}));":''}`,{mode:0o700});
+ writeFileSync(bun,`#!/usr/bin/env node\nconst fs=require('node:fs');fs.writeFileSync(${JSON.stringify(childReceipt)},JSON.stringify({pid:process.pid,token:process.env.ELIZA_API_TOKEN,swaps:{secret:process.env.ELIZA_SECRET_SWAP_ENABLED??null,pii:process.env.ELIZA_PII_SWAP_ENABLED??null},config:JSON.parse(fs.readFileSync(process.env.ELIZA_CONFIG_PATH,'utf8'))}));fs.writeFileSync(${JSON.stringify(receipt)},JSON.stringify(Object.fromEntries(['CEREBRAS_MODEL','CEREBRAS_SMALL_MODEL','CEREBRAS_LARGE_MODEL'].map(k=>[k,process.env[k]]))));${runtimeConfigUpdate?"fs.writeFileSync(process.env.ELIZA_CONFIG_PATH,JSON.stringify({...JSON.parse(fs.readFileSync(process.env.ELIZA_CONFIG_PATH,'utf8')),runtimeSelection:'retained'}));":''}`,{mode:0o700});
  const tokenPath=join(profile,'owner-token'),retainedToken='a'.repeat(64);if(existingToken)writeFileSync(tokenPath,retainedToken,{mode:0o600});
  const config=join(profile,'eliza.json');if(route)writeFileSync(config,JSON.stringify({serviceRouting:{llmText:route},fixtureKeep:'preserve'}),{mode:0o600});
  const before=existsSync(config)?readFileSync(config,'utf8'):null;
@@ -18,7 +18,8 @@ function launch({route,override,swaps,existingToken=true,runtimeConfigUpdate=fal
  try {
   const result=spawnSync(process.execPath,[resolve('scripts/start-local-remote.mjs')],{env,encoding:'utf8',timeout:15000});
   const child=existsSync(childReceipt)?JSON.parse(readFileSync(childReceipt,'utf8')):null;let childAlive=false;if(child)try{process.kill(child.pid,0);childAlive=true;ownedLivePid=child.pid;}catch(error){if(error.code!=='ESRCH')throw error;}
-  return {status:result.status,error:result.stderr,child,childAlive,retainedToken,token:readFileSync(tokenPath,'utf8'),models:existsSync(receipt)?JSON.parse(readFileSync(receipt,'utf8')):null,before,after:existsSync(config)?readFileSync(config,'utf8'):null};
+  const launchRecord=join(profile,'process.json');
+  return {status:result.status,error:result.stderr,child,launch:existsSync(launchRecord)?JSON.parse(readFileSync(launchRecord,'utf8')):null,childAlive,retainedToken,token:readFileSync(tokenPath,'utf8'),models:existsSync(receipt)?JSON.parse(readFileSync(receipt,'utf8')):null,before,after:existsSync(config)?readFileSync(config,'utf8'):null};
  } finally {if(ownedLivePid){try{process.kill(ownedLivePid,'SIGKILL');}catch(error){if(error.code!=='ESRCH')throw error;}}rmSync(dir,{recursive:true,force:true});}
 }
 test('new local profile uses the selected model consistently in saved routing and child environment',()=>{
@@ -47,4 +48,24 @@ test('private launch preserves the existing hex token and child routing configur
 });
 test('runtime configuration updates remain in the persistent profile',()=>{
  const r=launch({runtimeConfigUpdate:true});assert.equal(r.status,0,r.error);assert.equal(JSON.parse(r.after).runtimeSelection,'retained');
+});
+
+// Host launcher and backend keep upstream swaps off unless both are explicitly enabled;
+// only the packaged Android resident runtime turns them on by default.
+test('host launcher defaults upstream secret and PII swaps off',()=>{
+ for(const swaps of [undefined,{ELIZA_SECRET_SWAP_ENABLED:'false',ELIZA_PII_SWAP_ENABLED:'false'}]){
+  const r=launch({swaps});assert.equal(r.status,0,r.error);
+  assert.notEqual(r.child.swaps.secret,'true');assert.notEqual(r.child.swaps.pii,'true');
+  assert.equal(r.launch.egressRedactionRequested,'off');
+  assert.doesNotMatch(JSON.stringify(r.launch),/synthetic-fixture-key/);
+ }
+});
+test('backend forwards swaps as false unless explicitly true, and resident Android keeps them on',()=>{
+ const backend=readFileSync(resolve('backend/runtime.ts'),'utf8');
+ assert.match(backend,/process\.env\[key\]==='true'\?'true':'false'/);
+ const resident=readFileSync(resolve('android/app/src/main/java/ai/elizaresearch/alphaphone/AlphaLocalAgentPlugin.java'),'utf8');
+ assert.match(resident,/env\.put\("ELIZA_SECRET_SWAP_ENABLED","true"\);/);
+ assert.match(resident,/env\.put\("ELIZA_PII_SWAP_ENABLED","true"\);/);
+ const launcher=readFileSync(resolve('scripts/start-local-remote.mjs'),'utf8');
+ assert.match(launcher,/const redaction = swapFlags\[0\] === 'true' \? 'all' : 'off';/);
 });

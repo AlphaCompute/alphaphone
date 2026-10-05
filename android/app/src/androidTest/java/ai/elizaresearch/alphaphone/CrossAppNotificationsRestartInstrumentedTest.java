@@ -81,6 +81,7 @@ public final class CrossAppNotificationsRestartInstrumentedTest {
   assertFalse("Retained history absent",new java.io.File(context().getNoBackupFilesDir(),"notification-history.enc").exists());
  }
  @Test public void processPhase()throws Exception{
+  org.junit.Assume.assumeTrue("Mock mode exists only in -PELIZA_DEV_ALLOW_TEST_MOCKS=1 builds",BuildConfig.ELIZA_DEV_ALLOW_TEST_MOCKS);
   org.junit.Assume.assumeTrue("Explicit distinct-process runner only","1".equals(InstrumentationRegistry.getArguments().getString("crossNotificationsRestart")));
   String phase=InstrumentationRegistry.getArguments().getString("notificationPhase"),runId=InstrumentationRegistry.getArguments().getString("notificationRunId");
   assertEquals(java.util.UUID.fromString(runId).toString(),runId);assertTrue(java.util.Set.of("prepare","restore","pause","restorePaused","resumeAndRevoke","verifyRevoked","cleanup").contains(phase));

@@ -17,6 +17,7 @@ export const ENABLED_MVP_VIEWS = new Set([
   "workflows", "settings",
 ]);
 export const DEFERRED_MVP_VIEWS = new Set(["phone", "messages", "contacts", "wallet"]);
+// Development-server fixtures only (browserDevProfile requires devSurfacesEnabled); never a product scope change.
 if(browserDevProfile){for(const view of DEFERRED_MVP_VIEWS)ENABLED_MVP_VIEWS.add(view);DEFERRED_MVP_VIEWS.clear();}
 export function isMvpView(view: string) { return ENABLED_MVP_VIEWS.has(view); }
 export function deferredMvpPrompt(text: unknown) {

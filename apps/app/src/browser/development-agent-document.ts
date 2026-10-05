@@ -1,14 +1,15 @@
 import {browserDocuments} from './documents';
 import {BrowserDomainDocument} from './domain-document';
 import {browserDevProfile} from './dev-profile';
-import {assertDevelopmentIdentity,verifyDevelopmentIdentity,type DevelopmentIdentity} from './development-identity';
+import {assertDevelopmentIdentity,verifyDevelopmentIdentity,developmentDefaultReply,type DevelopmentIdentity} from './development-identity';
+import {devSurfacesEnabled} from '../build-flags';
 export type DevelopmentMessage={id:string;role:'user'|'assistant';text:string};
 export type DevelopmentConversation={id:string;title:string;messages:DevelopmentMessage[];receipts:Record<string,{input:string;text:string}>};
 export type DevelopmentAgentState={version:1;reply:string;conversations:DevelopmentConversation[]};
-const initial=():DevelopmentAgentState=>({version:1,reply:'Development reply. Edit this response in Agent connection.',conversations:[]});
+const initial=():DevelopmentAgentState=>({version:1,reply:developmentDefaultReply,conversations:[]});
 function check(identity:DevelopmentIdentity,signal?:AbortSignal){
  signal?.throwIfAborted();
- if(!browserDevProfile||!/^(local|remote|cloud(?:\.(first|second))?)$/.test(identity.namespace))throw Error('Choose a development profile.');
+ if(!devSurfacesEnabled||!browserDevProfile||!/^(local|remote|cloud(?:\.(first|second))?)$/.test(identity.namespace))throw Error('Choose a development profile.');
  assertDevelopmentIdentity(identity);
 }
 export function validateDevelopmentAgent(data:DevelopmentAgentState){

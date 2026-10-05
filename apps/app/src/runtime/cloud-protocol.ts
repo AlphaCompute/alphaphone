@@ -5,10 +5,17 @@ import { reviewMailAttachment, type MailAttachment } from './inbox-attachment.ts
  * ui/src/api/client-cloud.ts. Native composition owns HTTP and secure storage.
  * This module never stores credentials in renderer persistence or logs them. */
 export type CloudEnvironment = "production" | "staging";
-const authorities = {
+type CloudAuthority = { readonly api: string; readonly web: string; readonly agents: string };
+// Staging is a test-mocks surface (ELIZA_DEV_ALLOW_TEST_MOCKS=1). Vite replaces
+// import.meta.env at build time, so flag-off bundles fold the staging authority
+// away. Node contract tests import this source without Vite and keep both.
+const stagingAvailable: boolean = import.meta.env === undefined || import.meta.env.VITE_ELIZA_DEV_ALLOW_TEST_MOCKS === '1';
+const authorities: Partial<Record<CloudEnvironment, CloudAuthority>> = {
   production: { api: "https://api.eliza.app", web: "https://eliza.app", agents: "cloud.eliza.app" },
-  staging: { api: "https://api-staging.eliza.app", web: "https://staging.eliza.app", agents: "cloud-staging.eliza.app" },
-} as const;
+  ...(stagingAvailable ? { staging: { api: "https://api-staging.eliza.app", web: "https://staging.eliza.app", agents: "cloud-staging.eliza.app" } } : {}),
+};
+/** Whether this build can address the environment. Production builds expose only production. */
+export function cloudEnvironmentAvailable(environment: CloudEnvironment): boolean { return authorities[environment] !== undefined; }
 export interface CloudCredential {
   /** Local generation identifier, never an authentication credential. */
   credentialId?: string;
@@ -112,7 +119,11 @@ export class CloudProtocol {
   constructor(readonly environment: CloudEnvironment, private readonly request: CloudNativeRequest,
     private readonly credentials: CloudCredentialStore,
     private readonly openExternal: (url: string, signal: AbortSignal) => Promise<void>) {}
-  private get authority() { return authorities[this.environment]; }
+  private get authority(): CloudAuthority {
+    const authority = authorities[this.environment];
+    if (!authority) throw new Error("This Eliza Cloud environment is unavailable in this build.");
+    return authority;
+  }
   private async requestData(path: string, signal: AbortSignal, options: { body?: unknown; authenticated?: boolean; runtimeBase?: string; timeoutMs?: number; headers?: Record<string,string>; credentialId?: string; onStatus?: (status:number)=>void } = {}) {
     signal.throwIfAborted();
     const headers: Record<string, string> = { Accept: "application/json", ...options.headers };

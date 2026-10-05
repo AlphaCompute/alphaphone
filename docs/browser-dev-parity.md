@@ -1,11 +1,19 @@
 # Browser development capabilities
 
 Browser development uses Alpha's renderer and the same application-facing plugin
-contracts as Android. Run `npm run dev` and open `?mode=dev` for the disclosed
-local device profile; use `?mode=dev&workflows=agent` for workflow authoring.
-The [README](../README.md) describes device controls, and
+contracts as Android. Run `npm run dev` (which sets `ELIZA_DEV_ALLOW_TEST_MOCKS=1`) and
+open `?mode=dev` for the disclosed local device profile; use `?mode=dev&workflows=agent`
+for workflow authoring. Both entry points exist only on the development server with the
+switch on. The [README](../README.md) describes device controls and the switch, and
 [local agent development](local-agent-development.md) covers actual host inference
-and speech. Mock mode is a separate design fixture.
+and speech. Mock mode (`?mode=mock`, switch on only) is a separate design fixture.
+
+Production builds (`npm run build`, and the web payload of every distribution APK) are
+built with the switch off and contain none of the surfaces below that are marked
+development-only: the development profile, device controls, simulated Phone/SMS/
+Contacts/Wallet apps, injected events, manual location, the development password
+provider and the local development agent bridge. `npm run test:browser:production`
+checks that boundary on the rendered production build.
 
 The browser profile supports development without carrier roles, Android system
 permissions or provider credentials. Its local calls, messages, payments, roles

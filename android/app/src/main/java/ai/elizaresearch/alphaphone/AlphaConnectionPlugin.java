@@ -126,7 +126,7 @@ public final class AlphaConnectionPlugin extends Plugin {
   URI url = new URI(required(text, 16384));
   String host = url.getHost(), scheme = url.getScheme();
   if (host == null || url.getRawUserInfo() != null || url.getRawFragment() != null || url.getPort() == 0 || url.getPort() > 65535) throw new IllegalArgumentException();
-  boolean development = allowDevelopment && BuildConfig.DEBUG && "http".equals(scheme)
+  boolean development = allowDevelopment && BuildConfig.ELIZA_DEV_ALLOW_TEST_MOCKS && "http".equals(scheme)
     && ("127.0.0.1".equals(host) || "10.0.2.2".equals(host));
   if (!"https".equals(scheme) && !development) throw new IllegalArgumentException();
   return url;

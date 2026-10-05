@@ -7,12 +7,14 @@
     "node": ">=24"
   },
   "scripts": {
-    "dev": "vite --host 127.0.0.1",
+    "dev": "node scripts/with-test-mocks.mjs vite --host 127.0.0.1",
     "dev:maps": "node scripts/maps/dev.mjs",
     "build": "vite build",
+    "build:test-mocks": "node scripts/with-test-mocks.mjs vite build",
+    "audit:bundle": "node scripts/audit-production-bundle.mjs web-dist",
     "typecheck": "tsc --noEmit",
     "test": "node --test --test-concurrency=4 test/*.test.mjs",
-    "verify": "npm run typecheck && npm test && npm run build",
+    "verify": "npm run typecheck && npm test && npm run build && node scripts/audit-production-bundle.mjs web-dist",
     "android:sync": "npm run build && cap sync android",
     "android:build": "node scripts/build-android.mjs",
     "android:verify": "node scripts/verify-apks.mjs",
@@ -25,7 +27,9 @@
     "agent:local": "node scripts/start-local-remote.mjs",
     "android:connection-smoke": "node scripts/android-connection-smoke.mjs",
     "android:local-agent-smoke": "node scripts/android-local-remote-smoke.mjs",
-    "test:browser": "playwright test",
+    "test:browser": "playwright test --project=chromium",
+    "test:browser:production": "playwright test --project=production",
+    "test:browser:storage": "playwright test --project=firefox --project=webkit",
     "dev:local": "node scripts/dev-local.mjs",
     "agent:prepare": "node scripts/prepare-local-agent.mjs",
     "agent:test": "node scripts/test-local-agent-source.mjs",
@@ -44,7 +48,8 @@
     "prebuild": "npm run upstream:prepare-client",
     "pretypecheck": "npm run upstream:prepare-client",
     "pretest": "npm run upstream:prepare-client",
-    "predev:maps": "npm run upstream:prepare-client"
+    "predev:maps": "npm run upstream:prepare-client",
+    "prebuild:test-mocks": "npm run upstream:prepare-client"
   },
   "dependencies": {
     "@capacitor/android": "8.5.2",

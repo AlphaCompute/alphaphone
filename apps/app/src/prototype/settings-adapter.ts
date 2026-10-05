@@ -1,10 +1,64 @@
-import {browserDevProfile} from '../browser/dev-profile';
+import {browserDevProfile as devProfileQuery} from '../browser/dev-profile';
+import {testMocksEnabled,devSurfacesEnabled} from '../build-flags';
+import {openNotificationRecovery} from '../browser/notification-recovery';
+import {openAlertSoundRecovery,openDevicePreferencesRecovery,openDeviceRolesRecovery} from '../browser/preference-recovery';
+import {notificationDocument} from '../browser/notification-store';
+import {alertSoundDocument,deviceRolesDocument} from '../browser/preference-documents';
+import {readDevicePreferences} from '../browser/device-preferences';
 import { registerPlugin } from '../platform-plugins';
 import { Capacitor } from '@capacitor/core';
 import { DailyApps } from '../daily';
 import { connectionController } from '../runtime/connection-ui';
 
 type Bag = Record<string, any>;
+declare const __APP_VERSION__: string;
+const browserDevProfile = devSurfacesEnabled && devProfileQuery;
+/** Build version injected at build time from app.config.json or ELIZAOS_VERSION_NAME. */
+export const buildVersion = typeof __APP_VERSION__ === 'string' && __APP_VERSION__ ? __APP_VERSION__ : 'Unavailable';
+export type LicenseNotice = { name: string; version: string; license: string; source: string; text: string };
+let licenses: { status: 'idle' | 'loading' | 'ready' | 'unavailable'; items: LicenseNotice[] } = { status: 'idle', items: [] };
+/** Reads the generated notice file shipped with the app; never a remote source. */
+async function loadLicenses(changed: () => void) {
+  if (licenses.status === 'loading' || licenses.status === 'ready') return;
+  licenses = { status: 'loading', items: [] }; changed();
+  try {
+    const response = await fetch('licenses/third-party-notices.json', { cache: 'no-cache' });
+    if (!response.ok) throw Error('License notices unavailable');
+    const value: unknown = await response.json();
+    if (!Array.isArray(value)) throw Error('License notices unavailable');
+    const items = value.filter((item): item is LicenseNotice => !!item && typeof item === 'object' && ['name', 'version', 'license'].every(key => typeof (item as Bag)[key] === 'string'));
+    licenses = { status: items.length ? 'ready' : 'unavailable', items };
+  } catch { licenses = { status: 'unavailable', items: [] }; }
+  changed();
+}
+type RecoveryDomain = 'notifications' | 'device settings' | 'device roles' | 'alert sound history';
+const recoveryActions: Record<RecoveryDomain, { label: string; open: () => void }> = {
+  notifications: { label: 'Recover notification data', open: openNotificationRecovery },
+  'device settings': { label: 'Recover device settings', open: openDevicePreferencesRecovery },
+  'device roles': { label: 'Recover device roles', open: openDeviceRolesRecovery },
+  'alert sound history': { label: 'Recover notification sounds', open: openAlertSoundRecovery },
+};
+/** Browser stores report recovery when saved bytes or their metadata cannot be read normally. */
+async function recoveryNeeded(): Promise<RecoveryDomain[]> {
+  const probe = async (domain: { capture(signal?: AbortSignal): Promise<{ format: string; legacyChanged: boolean }>; readRaw(signal?: AbortSignal): Promise<string | null> }, validate?: () => Promise<unknown>) => {
+    try {
+      const captured = await domain.capture();
+      if (captured.format === 'unrecognized' || captured.legacyChanged) return true;
+      const raw = await domain.readRaw();
+      if (raw !== null) JSON.parse(raw);
+      if (validate) await validate();
+      return false;
+    } catch { return true; }
+  };
+  const checks: Array<[RecoveryDomain, Promise<boolean>]> = [
+    ['notifications', probe(notificationDocument)],
+    ['device settings', probe({ capture: signal => readDevicePreferences(signal).then(() => ({ format: 'domain', legacyChanged: false })), readRaw: async () => null })],
+    ['device roles', probe(deviceRolesDocument)],
+    ['alert sound history', probe(alertSoundDocument)],
+  ];
+  const results = await Promise.all(checks.map(async ([name, check]) => [name, await check] as const));
+  return results.filter(([, needed]) => needed).map(([name]) => name);
+}
 const device = registerPlugin<{
   snapshot(): Promise<Bag>;
   openPasswordProvider(input:{action:string}):Promise<{status:string;destination?:string}>;
@@ -21,6 +75,7 @@ export function installSettingsAdapter(Component: any, views: Bag) {
   const mount = p.componentDidMount, unmount = p.componentWillUnmount, openView = p.openView, update = p.componentDidUpdate;
   let owner: any, facts: Bag = {}, controls: Bag = {}, delivery: Bag = {}, generation = 0,scaleGeneration=0, cross:Bag={}, choices:Bag[]|null=null, history:Bag[]|null=null, notificationBusy=false;
   let passwordOpening=false;
+  let recovery: RecoveryDomain[] = [];
   let capabilityAbort: AbortController | null = null;
   let gmail = 'Not checked', digests = 'Not checked', localSpeech = 'Not checked', speechChecking = false, speechGeneration = 0;
   const changed = () => owner?.vset('settings', { capabilityReadAt: Date.now() });
@@ -72,6 +127,8 @@ export function installSettingsAdapter(Component: any, views: Bag) {
     delivery = noticeState.status === 'fulfilled' ? noticeState.value : {};
     cross = crossState.status === 'fulfilled' ? crossState.value : {};
     if(metadata.status==='fulfilled'&&metadata.value!==null)history=metadata.value.items;
+    // Browser-only stores; native Android data has its own platform recovery.
+    if(!Capacitor.isNativePlatform()){const next=await recoveryNeeded().catch(()=>[] as RecoveryDomain[]);if(owner!==instance||generation!==token)return;recovery=next;}
     instance.vset('settings', { nativeReadAt: Date.now() });
   }
   p.componentDidMount = function () {
@@ -129,6 +186,7 @@ export function installSettingsAdapter(Component: any, views: Bag) {
     const info = (label: string, val: string): Bag => ({ kInfo: true, label, val, hasVal: true, noAB: true });
     const nav = (label: string, page: string): Bag => ({ kNav: true, label, lbl: label, chev: true, noAB: true, go: manage(page) });
     const group = (rows: Bag[]) => ({ css: 'background:var(--s2);padding:4px 0', rows });
+    const licensesRow = (): Bag => ({ kNav:true, label:'Open source licenses', lbl:'Open source licenses', chev:true, noAB:true, go:()=>{ api.set({ page:'licenses' }); void loadLicenses(changed); } });
     const percent = typeof facts.batteryPercent === 'number' ? `${facts.batteryPercent}%` : 'Unavailable';
     const active = (key: string) => typeof facts[key] === 'boolean' ? facts[key] ? 'Active connection' : 'Not active' : 'Unavailable';
     const topValues: Bag = {
@@ -168,7 +226,9 @@ export function installSettingsAdapter(Component: any, views: Bag) {
         if(state.page==='password-provider')out.stack.push({isTop:false,notTop:true,cls:'enter',z:4,title:'Password manager',hasTitle:true,backLabel:'Back to Settings',back:()=>api.set({page:null}),hero:{},groups:[passwordGroup]});
         page.groups.push(group([{kNav:true,label:'Scheduled digests',lbl:'Scheduled digests',chev:true,noAB:true,go:()=>window.dispatchEvent(new Event('alpha:hosted-digests'))}]));
         page.groups.push(group([{kNav:true,label:'Agent connection',lbl:'Agent connection',val:connectionController.getSnapshot().name,hasVal:true,chev:true,noAB:true,go:()=>connectionController.open()}]));
-        page.groups.push(group([{kNav:true,label:'Try mock mode',lbl:'Try mock mode',chev:true,noAB:true,go:()=>connectionController.mock()}]));
+        if(testMocksEnabled)page.groups.push(group([{kNav:true,label:'Try mock mode',lbl:'Try mock mode',chev:true,noAB:true,go:()=>connectionController.mock()}]));
+        if(recovery.length)page.groups.push(group([info('Saved data needs recovery','Back up before resetting'),...recovery.map(name=>({kNav:true,label:recoveryActions[name].label,lbl:recoveryActions[name].label,chev:true,noAB:true,go:()=>recoveryActions[name].open()}))]));
+        if(state.page==='licenses')out.stack.push({isTop:false,notTop:true,cls:'enter',z:4,title:'Open source licenses',hasTitle:true,backLabel:'Back to Settings',back:()=>api.set({page:null}),hero:{},groups:licenses.status==='ready'?licenses.items.map(item=>group([info(item.name,`${item.version} · ${item.license}`),...(typeof item.source==='string'&&item.source?[{kLog:true,time:'Source',text:item.source}]:[]),...(typeof item.text==='string'&&item.text?[{kLog:true,time:'License',text:item.text}]:[])])):[group([info(licenses.status==='unavailable'?'License notices unavailable':'Loading license notices…',licenses.status==='unavailable'?'Reinstall or update the app to restore them':'')])]});
         for (const g of page.groups) for (const row of g.rows) if (row.label in topValues) {
           row.val = topValues[row.label]; row.hasVal = true;
           if(row.label==='Privacy & Enclave'){row.label='Privacy & runtime';row.lbl=row.label;}
@@ -194,10 +254,10 @@ export function installSettingsAdapter(Component: any, views: Bag) {
       } else if (page.title === 'About') {
         page.hero = { ...page.hero, big: facts.model || 'This phone', sub: facts.manufacturer || 'Device information unavailable' };
         page.groups = [group([
-          info('Alpha Phone', facts.appVersion || 'Unavailable'), info('Android', facts.androidRelease || 'Unavailable'),
+          info('Alpha Phone', facts.appVersion || buildVersion), info('Android', facts.androidRelease || 'Unavailable'),
           info('Build', facts.build || 'Unavailable'), info('Security patch', facts.securityPatch || 'Unavailable'),
-          info('Agent execution', runtimeLocation), info('Agent', target), info('Inference model', 'Not reported by agent'),
-        ]), group([nav('Android device information', 'about')])];
+          info('Runtime', 'Android app'), info('Agent execution', runtimeLocation), info('Agent', target), info('Inference model', 'Not reported by agent'),
+        ]), group([nav('Android device information', 'about')]), group([licensesRow()])];
       } else if (page.title === 'Wi-Fi') {
         page.hasHdrTog = false; page.hdrTog = null;
         page.hero = { ...page.hero, big: active('wifiActive'), sub: 'Wi-Fi transport · network names stay in Android settings' };
@@ -217,7 +277,7 @@ export function installSettingsAdapter(Component: any, views: Bag) {
         const run = async (task:()=>Promise<void>)=>{if(notificationBusy)return;notificationBusy=true;changed();const current=owner;try{await task();if(owner===current)await refresh();}catch{if(owner===current)api.toast('Notification settings changed or are unavailable. Refresh and try again.');}finally{notificationBusy=false;if(owner===current)changed();}};
         const policy = (changes:Bag)=>void run(async()=>{await notifications.setNotificationPolicy({expectedRevision:cross.revision,...changes});if(changes.history===false)history=[];});
         const selected:Bag[]=cross.apps||[];
-        const crossRows:Bag[]=[info('Other apps',typeof cross.accessGranted!=='boolean'?'Unavailable':!cross.enabled?'Collection off':cross.paused?'Paused after mock mode':!cross.accessGranted?'Android access not granted':!cross.connected?'Waiting for Android listener':'Selected apps connected'),info('Notification privacy',Capacitor.isNativePlatform()?'Android grants broad access. Alpha reads only selected apps; previews and history are separate choices.':'Development events are stored in this browser. Previews and metadata history are separate choices.'),info('Agent access','Notification content is not sent to your agent')];
+        const crossRows:Bag[]=[info('Other apps',typeof cross.accessGranted!=='boolean'?'Unavailable':!cross.enabled?'Collection off':cross.paused?(testMocksEnabled?'Paused after mock mode':'Paused · resume to collect'):!cross.accessGranted?'Android access not granted':!cross.connected?'Waiting for Android listener':'Selected apps connected'),info('Notification privacy',Capacitor.isNativePlatform()?'Android grants broad access. Alpha reads only selected apps; previews and history are separate choices.':(devSurfacesEnabled?'Development events are stored in this browser. ':'Notification events are stored in this browser. ')+'Previews and metadata history are separate choices.'),info('Agent access','Notification content is not sent to your agent')];
         if(cross.revision){
           crossRows.push(custom(cross.enabled?'Turn off other-app collection':'Enable selected-app collection',()=>{
             if(Capacitor.isNativePlatform()&&!cross.enabled&&!window.confirm('Enable collection for your selected apps? Android grants broad notification access. Alpha filters to your selection before reading text. Previews and local metadata history remain separate choices.'))return;
@@ -267,7 +327,7 @@ export function installSettingsAdapter(Component: any, views: Bag) {
     }
     if(!Capacitor.isNativePlatform()) {
       for(const page of out.stack){
-        if(page.title==='About')page.groups=[group([info('Alpha Phone','0.1.0'),info('Runtime','Browser development'),info('Storage','This browser profile')])];
+        if(page.title==='About')page.groups=[group([info('Alpha Phone',buildVersion),info('Runtime',devSurfacesEnabled?'Browser development':'Web browser'),info('Storage','This browser profile')]),group([licensesRow()])];
       }
       const browserLabels=(value:any):any=>{if(typeof value==='string')return value.replaceAll('Manage brightness in Android','Brightness').replaceAll('Manage sound in Android','Sound settings').replaceAll('Unavailable','Browser managed').replaceAll('Manage in Android','Browser device').replaceAll('in Android','in browser').replaceAll('Android settings','Browser device settings').replaceAll('Android Calendar','Browser calendar').replaceAll('Android device information','Browser device information').replaceAll('Android developer settings','Browser developer settings').replaceAll('Device accounts in Android','Browser accounts').replaceAll('On this phone','In this browser').replaceAll('on this phone','in this browser').replaceAll('Android access not granted','Development event access off').replaceAll('Waiting for Android listener','Waiting for local events').replaceAll('Selected apps connected','Selected development apps connected').replaceAll('Android battery policies may delay alerts','Alerts appear while Alpha is open').replaceAll('Native setting unavailable','Browser setting').replaceAll('Wi-Fi transport · network names stay in Android settings','Development network');if(Array.isArray(value))return value.map(browserLabels);if(value&&typeof value==='object')return Object.fromEntries(Object.entries(value).map(([k,v])=>[k,browserLabels(v)]));return value;};
       return browserLabels(out);

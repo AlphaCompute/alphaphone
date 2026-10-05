@@ -1,4 +1,5 @@
 import { browserDevProfile } from './dev-profile';
+import { devSurfacesEnabled } from '../build-flags';
 const all = [
  ['mail','Mail','inbox'],['calendar','Calendar','calendar'],['messages','Messages','messages'],
  ['browser','Browser','browser'],['camera','Camera','camera'],['photos','Photos','photos'],
@@ -8,4 +9,4 @@ const all = [
 ];
 const deferred=new Set(['messages','phone','contacts','wallet']);
 /** Stable package identities shared by app launching and development event sources. */
-export const browserApps=all.filter(([id])=>browserDevProfile||!deferred.has(id)).map(([id,label,view])=>({packageName:`browser.${id}`,label,view}));
+export const browserApps=all.filter(([id])=>devSurfacesEnabled&&browserDevProfile||!deferred.has(id)).map(([id,label,view])=>({packageName:`browser.${id}`,label,view}));

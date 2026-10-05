@@ -1,15 +1,19 @@
 import {openBookmarkRecovery,openAlertSoundRecovery,openPasswordProviderRecovery,openAlbumRecovery,openDevicePreferencesRecovery,openDeviceRolesRecovery} from './preference-recovery';
-import './device-controls.css';
+import {devSurfacesEnabled} from '../build-flags';
 import {openNotificationRecovery} from './notification-recovery';
 import {openLocationControls} from './location-simulation';
 import {openReminderRecovery} from './reminder-recovery';
 import {openCalendarRecovery} from './calendar-recovery';
 import {browserDevProfile} from './dev-profile';
 import {showSimulatorRecovery} from './simulator-recovery';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ReactElement } from 'react';
 import { registerPlugin } from '../platform-plugins';
 type Command='home'|'back'|'power'|'unlock'|'boot'|'assistant'|'shade'|'background'|'resume';
-export function BrowserDeviceControls({command}:{command:(command:Command)=>void}) {
+type Props={command:(command:Command)=>void};
+// Development-server-only surface (devSurfacesEnabled). Flag-off builds fold the
+// controls, their stylesheet and the simulator/location tools out of the bundle.
+if(devSurfacesEnabled)void import('./device-controls.css');
+function DevelopmentDeviceControls({command}:Props) {
  const dialog=useRef<HTMLDialogElement>(null),[role,setRole]=useState(''),[savingRole,setSavingRole]=useState(false);
  useEffect(()=>{const back=(event:Event)=>{if(!dialog.current?.open)return;event.preventDefault();event.stopImmediatePropagation();dialog.current.close();};window.addEventListener('alpha-back',back,true);return()=>window.removeEventListener('alpha-back',back,true);},[]);
  const run=(action:Command)=>{dialog.current?.close();command(action);};
@@ -43,3 +47,4 @@ export function BrowserDeviceControls({command}:{command:(command:Command)=>void
  </div><p role="status">{role}</p><button onClick={changeProfile}>{browserDevProfile?'Use app profile':'Use development profile'}</button><button onClick={()=>dialog.current?.close()}>Done</button>
  </dialog></>;
 }
+export const BrowserDeviceControls:(props:Props)=>ReactElement|null=devSurfacesEnabled?DevelopmentDeviceControls:()=>null;

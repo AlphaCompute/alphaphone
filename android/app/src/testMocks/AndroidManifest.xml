@@ -1,9 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android" xmlns:tools="http://schemas.android.com/tools">
+ <!-- Test-mocks overlay: attached to debug variants only with -PELIZA_DEV_ALLOW_TEST_MOCKS=1. -->
  <uses-permission android:name="android.permission.RECORD_AUDIO" />
  <uses-permission android:name="ai.elizaresearch.alphaphone.peerfixture.permission.CONTROL" />
  <queries><package android:name="ai.elizaresearch.alphaphone.peerfixture" /></queries>
- <application android:usesCleartextTraffic="true" android:networkSecurityConfig="@xml/development_network_security_config" tools:replace="android:usesCleartextTraffic">
+ <application android:usesCleartextTraffic="true" android:networkSecurityConfig="@xml/development_network_security_config" tools:replace="android:usesCleartextTraffic,android:networkSecurityConfig">
   <service android:name=".SyntheticAutofillService" android:exported="true" android:permission="android.permission.BIND_AUTOFILL_SERVICE">
    <intent-filter><action android:name="android.service.autofill.AutofillService" /></intent-filter>
    <meta-data android:name="android.autofill" android:resource="@xml/synthetic_autofill_service" />

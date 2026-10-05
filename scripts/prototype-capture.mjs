@@ -35,6 +35,16 @@ if (!Number.isFinite(elapsedMs) || elapsedMs < 0) throw new Error('settle must b
 await fs.mkdir(out, { recursive: true });
 const sources = [{ id: 'reference', url: options.reference || 'https://alpha-phone-prototype.pages.dev/', width: 960, height: 1020 }];
 if (options.local) sources.push({ id: 'local', url: options.local, width: 412, height: 915 });
+// Local fixture captures need test mocks: the `npm run dev` server, or a bundle built with
+// `npm run build:test-mocks`. A production bundle has no fixtures, so refuse it up front.
+if (options.local) {
+  let flags = null;
+  try {
+    const response = await fetch(new URL('build-flags.json', options.local));
+    if (response.ok && /json/.test(response.headers.get('content-type') || '')) flags = await response.json();
+  } catch { /* An unreachable server fails at capture time with its own error. */ }
+  if (flags && flags.testMocks !== true) throw new Error(`${options.local} serves a production bundle (testMocks:false). Serve a test-mocks build (npm run build:test-mocks) or use npm run dev.`);
+}
 const browser = await chromium.launch({ headless: true, ...(options.executable ? { executablePath: options.executable } : {}) });
 const results = [];
 const hash = bytes => createHash('sha256').update(bytes).digest('hex');

@@ -1,10 +1,11 @@
 import {NativeMapsLocation,type Position} from '../maps/native-location';
+import {devSurfacesEnabled} from '../build-flags';
 import {SavedPlaces} from '../maps/saved-places';
 import {distanceToRoute} from '../maps/route-distance';
 import {readLocationSimulation} from './location-simulation';
 export async function workflowAwayFromHome(signal:AbortSignal):Promise<{away:boolean;detail:string}>{
  signal.throwIfAborted();const config=readLocationSimulation(),home=new SavedPlaces().read().find(place=>place.id===config.homeId);
- if(!home)throw Error('Choose a saved Home place in Device controls → Location.');
+ if(!home)throw Error(devSurfacesEnabled?'Choose a saved Home place in Device controls → Location.':'Save a Home place in Maps saved places to use location conditions.');
  const original=JSON.stringify({home,radius:config.radius});
  const position=await new Promise<Position>((resolve,reject)=>{
   const location=new NativeMapsLocation();let settled=false;

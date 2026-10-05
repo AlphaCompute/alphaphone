@@ -1,5 +1,6 @@
 import {readDevelopmentAgent} from './development-agent-document';
 import {developmentDigestRequest} from './development-digests';
+import {devSurfacesEnabled} from '../build-flags';
 import {authorWorkflowProposal,existingWorkflowProposal,developmentProposal,developmentCredential} from './development-actions';
 import {validateWorkflowResult} from '../runtime/workflow-device-contract';
 import type {DeviceOperation} from '../runtime/device-actions';
@@ -13,7 +14,7 @@ type State={mutations?:Array<{id:string;input:string;receipt:Record<string,any>}
 const publicWorkflow=(workflow:Workflow)=>({...workflow,metadata:{elizaPhoneWorkflowSpec:JSON.stringify(workflow.phoneSpec)}});
 const catalog={specVersion:1,catalogRevision:'development-v1',compilerRevision:'development-v1',maximumSteps:32,maximumSpecBytes:65536,triggers:[{kind:'manual',available:true}],palette:[{kind:'Read',operations:['supplied_text','selected_notes','calendar_range'].map(id=>({id,available:true}))},{kind:'Notify',operations:[{id:'app_notification',available:true}]},{kind:'Speak',operations:[{id:'read_aloud',available:true}]},{kind:'If',operations:[{id:'contains',available:true}]},{kind:'Write',operations:['compose_draft','model_draft','save_note'].map(id=>({id,available:true}))}]};
 /** Local owner-scoped workflow authoring protocol. Execution is added at the same seam. */
-export async function developmentWorkflowRequest(identity:DevelopmentIdentity,path:string,body:any,signal?:AbortSignal){return navigator.locks.request('alpha.browser.workflow-admission.'+identity.namespace,{...(signal?{signal}:{})},()=>workflowRequest(identity,path,body,signal));}
+export async function developmentWorkflowRequest(identity:DevelopmentIdentity,path:string,body:any,signal?:AbortSignal){if(!devSurfacesEnabled)throw Error('Development profiles are unavailable in this build.');return navigator.locks.request('alpha.browser.workflow-admission.'+identity.namespace,{...(signal?{signal}:{})},()=>workflowRequest(identity,path,body,signal));}
 async function workflowRequest(identity:DevelopmentIdentity,path:string,body:any,signal?:AbortSignal){
  const check=async()=>{signal?.throwIfAborted();await verifyDevelopmentIdentity(identity,signal);assertDevelopmentIdentity(identity);const selected=JSON.parse(localStorage.getItem('alpha.connection.selection.v1')||'null');if(selected?.kind!=='development'||selected.profile!==identity.profile)throw Error('Workflow connection changed.');};await check();
  const initial=():State=>({workflows:[],receipts:[]});

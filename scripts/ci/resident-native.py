@@ -42,7 +42,7 @@ generated=json.loads((archive/'native-generated-source-manifest.json').read_text
 assert h((archive/'native-generated-source-manifest.json').read_bytes())==frozen['android/app/build/generated/local-agent/source-manifest.json']
 assert generated['runtimeSource']=={'commit':lock['commit']} and generated['patches']==[]
 for relative,digest in frozen.items():
- if relative.startswith(('android/app/src/androidTest/','android/app/src/debug/','android/app/src/main/java/')):
+ if relative.startswith(('android/app/src/androidTest/','android/app/src/testMocks/','android/app/src/main/java/')):
   assert Path(relative).is_file() and h(Path(relative).read_bytes())==digest
 for row in generated['files']:
  origin=row['path']
@@ -85,7 +85,12 @@ for variant in ['standalone','launcher']:
    for name,digest in worker['files'].items():assert indexed.get(name)==digest and h(apk.read('assets/agent/workflow-worker/'+name))==digest
    assert set(indexed)==set(worker['files'])|{'manifest.json'}
    with zipfile.ZipFile(archive/(variant+'-release-unsigned.apk')) as release:
-    for key,name in entries.items():assert h(release.read(name))==payload[key]
+    # Release packages arm64-v8a only (android/app/build.gradle abiFilters): compare the
+    # ABI-neutral payload and the ARM64 runtime with debug, and require no x86_64 libraries.
+    for key,name in entries.items():
+     if not name.startswith('lib/'):assert h(release.read(name))==payload[key]
+    assert h(release.read('lib/arm64-v8a/libeliza_bun.so'))==h(apk.read('lib/arm64-v8a/libeliza_bun.so'))
+    assert not any(name.startswith('lib/x86_64/') for name in release.namelist())
   phases=[('private-peer','PrivateResidentSocketInstrumentedTest','ordinaryOtherUidCannotReachPrivateEndpoint','privatePeerFixture','privatePeerRunId'),('ipc','ResidentStreamTransportInstrumentedTest','splitFramesCancellationAndNoReplay','residentStreamFixture','residentStreamRunId'),('trusted','ResidentWorkflowCrashInstrumentedTest','trustedPackagedWorkerSurvivesResidentRestart','residentCrash','residentRunId'),('lost-rpc','ResidentWorkflowCrashInstrumentedTest','lostParentModelRpcRemainsUnknownWithoutReplay','residentCrash','residentRunId')]
   for phase,cls,method,opt,uuidarg in phases:
    guard();name='alpha-ci-'+uuid.uuid4().hex;created=run('shell','pm','create-user',name);match=re.fullmatch(r'\s*Success: created user id (\d+)\s*',created);assert match;user=match[1];assert user!='0';runid=str(uuid.uuid4());helper_state='absent'

@@ -81,6 +81,7 @@ public final class CrossAppNotificationsInstrumentedTest {
   waitFor(()->value("notificationHistory",new JSONObject()).getJSONArray("items").length()>0,"A new post after Clear is retained normally");
  }
  @Test public void explicitGrantSignatureSelectionPreviewSnapshotActionsHistoryAndMockPause()throws Exception{
+  org.junit.Assume.assumeTrue("Mock mode exists only in -PELIZA_DEV_ALLOW_TEST_MOCKS=1 builds",BuildConfig.ELIZA_DEV_ALLOW_TEST_MOCKS);
   org.junit.Assume.assumeTrue("Dedicated disposable fixture runner required","1".equals(InstrumentationRegistry.getArguments().getString("crossNotifications")));
   Context c=context();assertFalse("Refuse preexisting Android notification access",NotificationAccess.granted(c));JSONObject initial=status();assertFalse(initial.getBoolean("enabled"));assertEquals(0,initial.getJSONArray("apps").length());assertFalse(initial.getBoolean("history"));
   assertNotEquals(c.getApplicationInfo().uid,c.getPackageManager().getApplicationInfo(SELECTED,0).uid);

@@ -83,8 +83,10 @@ Show a single “Transcript” row or editable body until richer verified output
 
 ## Current proven native/debug contract
 
-`android/app/src/debug/java/ai/elizaresearch/alphaphone/DevelopmentAgentPlugin.java`
-and `DevelopmentVoiceCapture.java` expose:
+`android/app/src/testMocks/java/ai/elizaresearch/alphaphone/DevelopmentAgentPlugin.java`
+and `DevelopmentVoiceCapture.java` expose the following. They are compiled into the
+debug variant only when Gradle receives `ELIZA_DEV_ALLOW_TEST_MOCKS=1`
+(`npm run android:build -- --test-mocks`); distribution APKs omit them.
 
 - `startRecording()` → recordingId/maxDurationMs, only after native capture starts.
 - `stopRecording()` → recordingId/durationMs; no upload.

@@ -71,11 +71,16 @@ function boolean(value: unknown): boolean {
   return value;
 }
 function abort(signal?: AbortSignal): void { signal?.throwIfAborted(); }
-export function normalizeRemoteOrigin(input: string, developmentOrigins: readonly string[] = []): string {
+// Plain-HTTP loopback agents are a test-mocks surface (ELIZA_DEV_ALLOW_TEST_MOCKS=1).
+// Vite replaces import.meta.env at build time, so flag-off bundles fold this to
+// false and accept HTTPS only. Node contract tests import this source without Vite.
+const developmentOriginsAllowed: boolean = import.meta.env === undefined || import.meta.env.VITE_ELIZA_DEV_ALLOW_TEST_MOCKS === '1';
+const developmentLoopbackHosts: readonly string[] = developmentOriginsAllowed ? ["localhost", "127.0.0.1", "[::1]", "10.0.2.2"] : [];
+export function normalizeRemoteOrigin(input: string, developmentOrigins: readonly string[] = [], allowDevelopment: boolean = developmentOriginsAllowed): string {
   let url: URL;
   try { url = new URL(input); } catch { throw new RemoteProtocolError("invalid_origin"); }
   if (url.username || url.password || url.search || url.hash || url.pathname !== "/") throw new RemoteProtocolError("origin_required");
-  const loopback = ["localhost", "127.0.0.1", "[::1]", "10.0.2.2"].includes(url.hostname);
+  const loopback = allowDevelopment && developmentLoopbackHosts.includes(url.hostname);
   if (url.protocol !== "https:" && !(url.protocol === "http:" && loopback && developmentOrigins.includes(url.origin))) {
     throw new RemoteProtocolError("https_required");
   }
