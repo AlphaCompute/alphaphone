@@ -52,13 +52,14 @@ bytes depend on more than the source and model hashes:
   members can be compared.
 
 Measured on this pin: with the pinned toolchain and the remap, stripped arm64-v8a
-libraries built in two different directories differ only in the 20-byte build ID, and
-both have exactly the recorded size (4,042,512 bytes; an unremapped build in another
-checkout gave 4,039,088). Their SHA-256 still differs from the record. The build ID is
-the likely remaining difference, but the original library was not available to confirm
-it. A byte-exact reproduction would need the build to run in the qualified workspace path
-itself (for example the upstream `run.py --workspace` with that directory), which has not
-been attempted. The x86_64 library was not rebuilt for this comparison.
+libraries built in two different directories differ only in the 20-byte build ID. Both
+ABIs match the recorded sizes exactly (arm64-v8a 4,042,512 bytes, x86_64 4,394,840; an
+unremapped arm64 build in another checkout gave 4,039,088), and rebuilding in the same
+directory reproduces the same bytes. The SHA-256 still differs from the record. The build
+ID is the likely remaining difference, but the original library was not available to
+confirm it. A byte-exact reproduction would need the build to run in the qualified
+workspace path itself (for example the upstream `run.py --workspace` with that
+directory), which has not been attempted.
 
 `install-generated.py` compares every generated native library with the record before
 installing anything. When they differ it stops, lists the differing libraries and
