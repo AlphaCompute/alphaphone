@@ -3322,7 +3322,8 @@ registerView("contacts", {
   jumps: [[null, "Contacts"], ["detail", "Contact"], ["edit", "Edit contact"]],
   preset: function (sub) {
     if (sub === "detail") return copy("contacts").presetDetail ? { open: copy("contacts").presetDetail } : null;
-    if (sub === "edit") return { open: "jordan", edit: "jordan" };
+    var ed = copy("contacts").presetEdit;
+    if (sub === "edit") return ed ? { open: ed, edit: ed } : null;
   },
   back: function (st, api) {
     if (st.edit || st.add) { api.set({ edit: null, add: null, form: null, open: st.edit || st.open }); return true; }
@@ -4436,7 +4437,7 @@ registerView("workflows", {
         var tr = b.trig; var tp = function (p) { bp({ trig: Object.assign({}, tr, p) }); };
         var chip = function (on) { return on ? "background:var(--fg);color:var(--bg)" : "background:var(--s2)"; };
         B.tr = {
-          kinds: WF_TRIG.filter(function (k) { return k[0] !== "message" || isMvpView("messages"); }).map(function (k) { var on = tr.kind === k[0]; return { d: IC[k[1]], label: k[2], css: on ? "background:var(--acc);color:#fff" : "background:var(--s2)", pressed: on, pick: function () { bp({ trig: { kind: k[0], days: "Weekdays", t: 18, ev: WF_EVENTS[0][0], person: "maya", place: WF_PLACES[0], match: "receipt" } }); } }; }),
+          kinds: WF_TRIG.filter(function (k) { return k[0] !== "message" || isMvpView("messages"); }).map(function (k) { var on = tr.kind === k[0]; return { d: IC[k[1]], label: k[2], css: on ? "background:var(--acc);color:#fff" : "background:var(--s2)", pressed: on, pick: function () { bp({ trig: { kind: k[0], days: "Weekdays", t: 18, ev: WF_EVENTS[0][0], person: copy("workflows").triggerPerson || null, place: WF_PLACES[0], match: "receipt" } }); } }; }),
           text: wfTrigText(tr, api),
           isTime: tr.kind === "time", isEvent: tr.kind === "event", isMsg: tr.kind === "message", isPlace: tr.kind === "location", isEmail: tr.kind === "email",
           days: WF_DAYS.map(function (d) { return { label: d, css: chip(tr.days === d), pick: function () { tp({ days: d }); } }; }),

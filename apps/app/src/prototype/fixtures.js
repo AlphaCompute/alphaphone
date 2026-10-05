@@ -635,6 +635,7 @@ export const COPY = {
   },
   contacts: {
     presetDetail: "maya",
+    presetEdit: "jordan",
     suggestions: ["What's Maya's number?", "Add a contact Alex Kim 415 555 0100", "When is Dad's birthday?"],
     voicePhrase: "What's Maya's number?"
   },
