@@ -43,7 +43,7 @@ Merged consumer `4145e3a930a736d97da463fc89237bb02ad4bbbb`, with upstream
 zero failures or skips, type checking, production build and the 245-file production
 bundle audit. This combines Calendar creation, inline edits and modal editor
 retention with account-bound Inbox unsaved recovery. Their owning browser campaigns
-are recorded below; the full integrated browser campaign is still in progress.
+are recorded below; the completed older browser campaign is detailed below.
 That campaign exposed outdated native fixtures without draft compare-and-exchange
 and old single-line composer selectors. Updating the fixtures to retain exact
 expected-value conflicts and select the visible textbox passed all 144 affected
@@ -80,7 +80,10 @@ Additional terminal browser evidence on October 5:
 
 Logs are `artifacts/calendar-form-review/integrated-storage.log` and
 `integrated-production.log` in the primary checkout. The broad Chromium campaign
-on `4145e3a9` is still running. Its Calendar guest failure used an ambiguous status
+on `4145e3a9` finished with 1,831 passed, 74 failed and 14 skipped (44.1 minutes).
+Its failures use the older native draft fixtures, composer selectors and text
+expectations corrected by PRs 328, 331 and 334. This is a failed campaign, not a
+green integration result. Its Calendar guest failure used an ambiguous status
 selector after editor-draft retention; selected-file and image-question expectations
 still described the old input's discarded newlines. The corrected exact save-status
 and multiline assertions passed all nine owning cases, including local OCR and
@@ -94,6 +97,14 @@ between the question, source name and edited excerpt. Both light/dark cases pass
 while asserting zero sends from the review step
 (`artifacts/calendar-form-review/selected-file-multiline.log`). The old assertion
 expected the removed single-line input's newline stripping.
+
+Subsequent repository verification passed at `978694b0` (671 tests) and
+`b021874ffe1085e2ad1f850cbd1d772ee6215043` (674 tests), both with zero failures
+or skips, type checking, production build and the 245-file bundle audit. Logs are
+`artifacts/settings-review/latest-main-verify.log` and `final-integrated-verify.log`
+in the `alpha-live-settings-review` checkout. A fresh full Chromium campaign on
+`b021874f` remains in progress. These checkpoints predate the accessibility
+follow-up below and do not qualify that later source.
 
 | Surface | Implementation | Remaining acceptance |
 | --- | --- | --- |
@@ -171,6 +182,31 @@ The production-surface lane, live empty/error states, compact/large-text owning
 tests and real journeys must supply their own evidence. Physical accessibility
 and user task acceptance remain open.
 
+The root-state audit found that the previous suite explicitly accepted missing
+landmarks and alert roles as known gaps. Those exceptions have been removed:
+active app views and the notification shade now have named regions; browser
+storage access denial has an alert in the active surface; Calendar's empty
+timeline accepts keyboard focus and scrolling; Browser has a visible new-tab
+heading and a named page region. Calendar names its empty visible schedule explicitly,
+without claiming that hidden calendars contain no events.
+Files already had truthful empty copy, so its assertion now checks that copy.
+The storage alert checks API access, not available quota, every record schema or
+the success of future writes; domain recovery remains necessary.
+
+The 97 root-state/keyboard cases and five existing empty-runtime/large-text cases
+passed (102 total), with type checking. A final Browser region correction passed
+all eight Browser root cases; the final visible-schedule copy passed four Calendar/
+Reminders empty-state cases. Axe-core 4.14.0 audited ten fresh-profile app roots in
+both themes with WCAG 2 A/AA and 2.1 AA rules. After correcting the Calendar scroll
+region and Browser's formerly unnamed-role viewport, no automated violations or
+unresolved checks remain in those 20 root states. Normal Calendar, Browser and
+blocked-storage Calendar screenshots were visually inspected at 412 × 915.
+This is not a full subview, screen-reader, physical-device or user acceptance audit.
+Evidence in the `alpha-album-documents` checkout is under
+`artifacts/pr317-browser/`: `root-accessibility-browser.log`,
+`root-accessibility-types.log`, `root-accessibility-audit-after.json`,
+`browser-region-followup.log`, `browser-region-axe.json` and `accessibility-*.png`.
+
 Review compact portrait/landscape layouts, large text, keyboard focus, scrolling,
 visible save/cancel controls and assistant-toolbar clearance. Calendar draft
 controls have a named focusable Event details region and 52 CSS-pixel minimum
@@ -181,7 +217,7 @@ loading, unavailable, failed and uncertain-write states as distinct outcomes.
 ## Qualification and evidence
 
 Run `npm run verify` and the owning Playwright cases for changed browser paths.
-The suite can select Chromium, Firefox or WebKit with `--browser`; use explicit
+The suite can select Chromium, Firefox or WebKit with `--project`; use explicit
 fixture profiles and inspect relevant screenshots. Preserve terminal failures and
 source identities alongside results in `test-results/`. A passing focused run
 does not replace full current-source hosted qualification.
