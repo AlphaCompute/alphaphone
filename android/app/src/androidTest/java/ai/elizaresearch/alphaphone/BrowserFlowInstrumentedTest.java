@@ -112,6 +112,7 @@ public class BrowserFlowInstrumentedTest {
   AtomicBoolean found=new AtomicBoolean();for(int i=0;i<150;i++){WebViewTestDriver.withActivity(MainActivity.class,a->found.set(containsNativeText(a.getWindow().getDecorView(),text)));if(found.get())return;SystemClock.sleep(100);}fail("Missing visible browser state: "+text+"; "+diagnostics());
  }
  @Test public void selectedDocumentUploadsExactBytesWithoutAppBridge()throws Exception{
+  org.junit.Assume.assumeTrue("Loopback HTTP fixtures require a -PELIZA_DEV_ALLOW_TEST_MOCKS=1 debug build", BuildConfig.ELIZA_DEV_ALLOW_TEST_MOCKS);
   String token=UUID.randomUUID().toString(),name="alpha-upload-"+token+".txt",body="Synthetic selected browser upload "+token;
   android.content.ContentResolver resolver=androidx.test.platform.app.InstrumentationRegistry.getInstrumentation().getTargetContext().getContentResolver();
   SelectedDocumentInstrumentedTest picker=new SelectedDocumentInstrumentedTest();android.net.Uri uri=picker.fixture(resolver,name,body);
@@ -140,6 +141,7 @@ public class BrowserFlowInstrumentedTest {
   }finally{server.close();worker.shutdownNow();resolver.delete(uri,null,null);}
  }
  @Test public void stalledPageCanBeStoppedAndReloaded()throws Exception{
+  org.junit.Assume.assumeTrue("Loopback HTTP fixtures require a -PELIZA_DEV_ALLOW_TEST_MOCKS=1 debug build", BuildConfig.ELIZA_DEV_ALLOW_TEST_MOCKS);
   // Actual loopback HTTP connection, permitted only by the existing debug
   // network policy. Hold the response until the user stops the navigation.
   java.net.ServerSocket server=new java.net.ServerSocket(0,8,java.net.InetAddress.getByName("127.0.0.1"));
@@ -163,6 +165,7 @@ public class BrowserFlowInstrumentedTest {
   }finally{release.countDown();server.close();workers.shutdownNow();}
  }
  @Test public void httpErrorDocumentRetainsItsRetryLink()throws Exception{
+  org.junit.Assume.assumeTrue("Loopback HTTP fixtures require a -PELIZA_DEV_ALLOW_TEST_MOCKS=1 debug build", BuildConfig.ELIZA_DEV_ALLOW_TEST_MOCKS);
   java.net.ServerSocket server=new java.net.ServerSocket(0,8,java.net.InetAddress.getByName("127.0.0.1"));
   ExecutorService worker=Executors.newSingleThreadExecutor();
   worker.submit(()->{while(!server.isClosed()){try(java.net.Socket socket=server.accept()){

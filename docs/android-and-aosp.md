@@ -18,13 +18,16 @@ on each APK's extracted `assets/public`. These checks inspect APK bytes, not sou
 strings alone.
 
 Gradle's `stageLocalAgentSources` step reads the prepared resident runtime source in
-`artifacts/local-agent-resident-<commit>`, so run `npm run agent:prepare` before any
-Android build. Release verification also requires the staged runtime payload from
-`npm run agent:stage-android`: without it `scripts/verify-packaged-runtime.py` exits 3
-and `npm run android:build` fails. `npm run agent:build-workflow-worker` must run before staging (`npm run android:build:local`
-does not build the worker), and Gradle's `:local-speech:preBuild` needs the speech AAR from
-[local speech setup](../scripts/local-speech/README.md). `npm run android:build -- --allow-unpackaged-runtime` is the developer
-path: it records release APKs without the payload as `distributable: false`.
+`artifacts/local-agent-resident-<commit>`, and release verification requires the staged
+runtime payload (without it `scripts/verify-packaged-runtime.py` exits 3). On a clean
+checkout `npm run android:build:local` runs the whole chain: an input check, `agent:prepare`,
+`agent:build-workflow-worker`, `agent:stage-android` and `android:build`. Gradle's
+`:local-speech:preBuild` also needs the speech AAR from
+[local speech setup](../scripts/local-speech/README.md). `npm run android:build` checks all of
+these first (`scripts/android-build-preflight.mjs`) and exits 2 with the command to run instead
+of failing inside Gradle. `npm run android:build -- --allow-unpackaged-runtime` is the developer
+path: it needs only `agent:prepare` and records release APKs without the payload as
+`distributable: false`.
 
 `npm run android:build -- --test-mocks` passes `-PELIZA_DEV_ALLOW_TEST_MOCKS=1` and writes
 only to `artifacts/test-mocks/`. It attaches `android/app/src/testMocks` (DevelopmentAgent
@@ -34,6 +37,9 @@ permission and queries) to debug variants and sets `BuildConfig.ELIZA_DEV_ALLOW_
 receive the source set. Without `--test-mocks` the build script removes both
 `ELIZA_DEV_ALLOW_TEST_MOCKS` and `VITE_ELIZA_DEV_ALLOW_TEST_MOCKS` from its child
 environment. Test-mocks APKs are never distribution or acceptance artifacts.
+Instrumentation cases that need a loopback HTTP fixture server or the DevelopmentAgent
+plugin assume `BuildConfig.ELIZA_DEV_ALLOW_TEST_MOCKS`: flag-off distribution debug
+APKs skip them, and the CI test-mocks smoke lane runs them.
 
 Release variants are minified and resource-shrunk with R8 using
 `android/app/proguard-rules.pro`, which keeps Capacitor plugin reflection targets,

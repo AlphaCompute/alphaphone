@@ -98,14 +98,18 @@ jobs:
             test-results/browser-report/
           retention-days: 14
   storage:
-    name: Browser storage (${{ matrix.browser }})
+    name: Browser storage (${{ matrix.browser }}, shard ${{ matrix.shard }}/2)
     runs-on: ubuntu-latest
-    # WebKit reached test 295 before the old 20-minute job limit cancelled it.
+    # The storage projects run 297 cases per browser. Unsharded, the hosted Firefox
+    # lane took 15-21 minutes of test time and WebKit 19-21 minutes, close to the
+    # former 30-minute limit and growing with every storage spec. Two shards keep
+    # each job near 10 minutes; the limit leaves room for runner variance.
     timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
         browser: [firefox, webkit]
+        shard: [1, 2]
     steps:
       - uses: actions/checkout@v4
         with:
@@ -121,11 +125,11 @@ jobs:
           # Storage specs run against the flag-on development server.
           ELIZA_DEV_ALLOW_TEST_MOCKS: '1'
         # The firefox and webkit projects in playwright.config.ts select the storage specs.
-        run: npx playwright test --project=${{ matrix.browser }}
+        run: npx playwright test --project=${{ matrix.browser }} --shard=${{ matrix.shard }}/2
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: browser-storage-${{ matrix.browser }}
+          name: browser-storage-${{ matrix.browser }}-shard-${{ matrix.shard }}-of-2
           path: |
             test-results/browser/
             test-results/browser-report/
