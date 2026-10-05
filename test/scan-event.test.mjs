@@ -1,5 +1,5 @@
 import test from 'node:test';import assert from 'node:assert/strict';import {readFileSync} from 'node:fs';import {stripTypeScriptTypes} from 'node:module';
-const {suggestScanEvent,scanEventDraft}=await import('data:text/javascript;base64,'+Buffer.from(stripTypeScriptTypes(readFileSync('apps/app/src/prototype/scan-event.ts','utf8'))).toString('base64'));
+const {suggestScanEvent,suggestScanEventDetails,scanEventDraft}=await import('data:text/javascript;base64,'+Buffer.from(stripTypeScriptTypes(readFileSync('apps/app/src/prototype/scan-event.ts','utf8'))).toString('base64'));
 test('scan event suggestions preserve text and leave ambiguous dates or time zones for review',()=>{
  assert.deepEqual(suggestScanEvent('Open studio\n2026-10-10\n18:30\nMain hall'),{title:'Open studio',date:'2026-10-10',time:'18:30',minutes:60,location:''});
  for(const text of ['Tomorrow at 7','July 3 at 7 PM','2026-10-10\n2026-10-11\n07:00 PM','2026-10-10T18:30Z','2026-10-10\n18:30 PST','Meet at 18:30-19:30'])assert.equal(suggestScanEvent(text).time,'');
@@ -42,4 +42,62 @@ test('explicit same-day poster time ranges suggest duration without inventing me
  for(const range of ['6 - 8 PM','11 PM - 1 AM','18:00 - 18:00','18:00 - 18:10','18:00 - 25:00','6 PM - 8 PM PST','18:00 - 20:00\n18:00 - 21:00']){
   const fields=suggestScanEvent(`Studio\nOctober 10, 2026\nTime: ${range}`);assert.equal(fields.time,'',range);assert.equal(fields.minutes,60,range);
  }
+});
+
+// Saturday 2026-10-03 at 15:00 UTC; inference is relative to this injected instant and zone, never to the wall clock.
+const now=new Date('2026-10-03T15:00:00Z'),ny={now,timeZone:'America/New_York'},london={now,timeZone:'Europe/London'};
+const details=(text,context=ny)=>suggestScanEventDetails(text,context);
+test('year-less dates suggest their next occurrence with a year-inferred disclosure',()=>{
+ let r=details('Open studio\nOctober 10\n7 PM');assert.equal(r.fields.date,'2026-10-10');assert.equal(r.fields.time,'19:00');assert.match(r.disclosures.join('\n'),/Year inferred/);
+ r=details('Gala\n2 March\n7 PM');assert.equal(r.fields.date,'2027-03-02');assert.match(r.disclosures.join('\n'),/Year inferred.*2027-03-02/);
+ r=details('Fair\nOctober 3\n7 PM');assert.equal(r.fields.date,'2026-10-03','today still counts as the next occurrence');
+ r=details('Leap gala\nFebruary 29\n7 PM');assert.equal(r.fields.date,'2028-02-29');
+ assert.equal(suggestScanEvent('Event\nOctober 10').date,'','without an injected now no year is invented');
+ r=details('Event\nOctober 10, 2026\nOctober 11');assert.equal(r.fields.date,'','conflicting dates stay blank');
+});
+test('weekday, today and tomorrow resolve against the injected now and are disclosed',()=>{
+ let r=details('Book club\nTuesday\n6:30 PM');assert.equal(r.fields.date,'2026-10-06');assert.equal(r.fields.time,'18:30');assert.match(r.disclosures.join('\n'),/Tuesday.*next occurrence, 2026-10-06/);
+ r=details('Market\nSaturday\n9 AM');assert.equal(r.fields.date,'2026-10-03');assert.match(r.disclosures.join('\n'),/\(today\)/);
+ r=details('Party\nTomorrow\n8 PM');assert.equal(r.fields.date,'2026-10-04');assert.match(r.disclosures.join('\n'),/Tomorrow.*2026-10-04/);
+ r=details('Talk\nToday\n20:00');assert.equal(r.fields.date,'2026-10-03');
+ r=details('Late talk\nToday\n20:00',{now:new Date('2026-10-04T02:00:00Z'),timeZone:'America/New_York'});assert.equal(r.fields.date,'2026-10-03','today is the civil day in the device zone');
+ r=details('Late talk\nToday\n20:00',{now:new Date('2026-10-04T02:00:00Z'),timeZone:'Europe/London'});assert.equal(r.fields.date,'2026-10-04');
+ r=details('Event\nSaturday, October 10, 2026\n7 PM');assert.equal(r.fields.date,'2026-10-10','a matching weekday confirms the date');
+ r=details('Event\nFriday, October 10, 2026\n7 PM');assert.equal(r.fields.date,'');assert.match(r.disclosures.join('\n'),/does not match/);
+ r=details('Event\nTomorrow\nOctober 10, 2026');assert.equal(r.fields.date,'','relative and explicit dates that disagree stay blank');
+ r=details('Event\nMonday or Tuesday\n7 PM');assert.equal(r.fields.date,'');
+ assert.equal(details('Tomorrow at 7').fields.time,'','a time without AM/PM is never guessed');
+});
+test('explicit IANA and offset zones convert to the device zone and keep the source zone visible',()=>{
+ let r=details('Launch\nOctober 10, 2026\n18:30\nTime zone: Europe/London');assert.equal(r.fields.date,'2026-10-10');assert.equal(r.fields.time,'13:30');assert.equal(r.sourceZone,'Europe/London');assert.match(r.disclosures.join('\n'),/Converted from 18:30 Europe\/London.*13:30.*America\/New_York/);
+ r=details('Launch\nOctober 10, 2026\n7 PM (Asia/Tokyo)');assert.equal(r.fields.date,'2026-10-10');assert.equal(r.fields.time,'06:00');assert.equal(r.sourceZone,'Asia/Tokyo');
+ r=details('Launch\nOctober 10, 2026\n1 AM UTC');assert.equal(r.fields.date,'2026-10-09','conversion can move the civil date');assert.equal(r.fields.time,'21:00');assert.equal(r.sourceZone,'UTC');
+ r=details('Launch\n2026-10-10T18:30+02:00');assert.equal(r.fields.date,'2026-10-10');assert.equal(r.fields.time,'12:30');assert.equal(r.sourceZone,'+02:00');
+ r=details('Launch\n2026-10-10\n18:30 UTC+5:30',london);assert.equal(r.fields.time,'14:00');assert.equal(r.sourceZone,'UTC+5:30');
+ r=details('Launch\n2026-10-10T18:30Z',london);assert.equal(r.fields.time,'19:30');
+ r=details('Launch\nOctober 10, 2026\n6 PM - 8 PM UTC');assert.equal(r.fields.time,'14:00');assert.equal(r.fields.minutes,120);
+});
+test('zone abbreviations, conflicting zones and undated or nonexistent zoned times stay blank',()=>{
+ for(const text of ['Event\n2026-10-10\n6 PM PST','Event\n2026-10-10\n18:30 ET','Event\n2026-10-10\n18:30\nTimezone: Unknown','Event\n2026-10-10\n18:30 UTC\nTime zone: Asia/Tokyo','Event\n18:30 UTC','Event\n2026-03-08\n02:30\nTime zone: America/New_York','Event\n2026-11-01\n01:30\nTime zone: America/New_York']){
+  const r=details(text);assert.equal(r.fields.time,'',text);assert.equal(r.sourceZone,null,text);assert.ok(r.disclosures.length>0,text);
+ }
+ assert.equal(details('AC/DC tribute\nOctober 10, 2026\n6 PM\nhttps://example.com/events').fields.time,'18:00');
+});
+test('a dated poster without a time is suggested all-day, but a scan draft never saves an all-day event silently',()=>{
+ let r=details('Book fair\nOctober 10, 2026\nVenue: Library');assert.equal(r.allDay,true);assert.equal(r.fields.time,'');assert.equal(r.fields.location,'Library');assert.match(r.disclosures.join('\n'),/all-day/);
+ for(const text of ['Book fair\nOctober 10, 2026\n7 PM','Book fair\nOctober 10, 2026 at 7','Book fair\nOctober 10, 2026\nNoon','Book fair'])assert.equal(details(text).allDay,false,text);
+ assert.throws(()=>scanEventDraft({title:'Book fair',date:'2026-10-10',time:'',minutes:60,location:'',allDay:true},'text',new Date(2026,9,3)),/need a start time/);
+});
+test('repeat wording is only an opt-in hint; drafts repeat only when explicitly confirmed',()=>{
+ let r=details('Yoga\nEvery Tuesday\n6 PM');assert.deepEqual(r.recurrence,{repeat:'weekly',evidence:'Every Tuesday'});assert.equal(r.fields.date,'2026-10-06');assert.match(r.disclosures.join('\n'),/off until you turn it on/);
+ assert.equal(details('Standup\nMonday to Friday\n9 AM').recurrence.repeat,'weekdays');
+ assert.equal(details('Run club\nOctober 10, 2026\nDaily at 7 AM').recurrence.repeat,'daily');
+ assert.equal(details('Board meeting\nOctober 10, 2026\nMonthly\n7 PM').recurrence,null);assert.match(details('Board meeting\nOctober 10, 2026\nMonthly\n7 PM').disclosures.join('\n'),/not a repeat this draft supports/);
+ assert.equal(details('Open studio\nOctober 10, 2026\n7 PM').recurrence,null);
+ const fields={title:'Yoga',date:'2026-10-06',time:'18:00',minutes:60,location:''};
+ assert.equal(scanEventDraft(fields,'text',new Date(2026,9,3)).repeat,'none');assert.equal(scanEventDraft({...fields,repeat:'weekly'},'text',new Date(2026,9,3)).repeat,'weekly');
+ assert.throws(()=>scanEventDraft({...fields,repeat:'monthly'},'text'));
+});
+test('ambiguous numeric dates stay blank with an explanation even with a reference date',()=>{
+ for(const text of ['Event\n10/11/2026\n7 PM','Event\n10-11-26\n7 PM']){const r=details(text);assert.equal(r.fields.date,'',text);assert.match(r.disclosures.join('\n'),/numeric date/);}
 });
