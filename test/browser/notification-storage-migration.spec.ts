@@ -32,3 +32,12 @@ for(const legacy of [null,'{damaged'])test(`concurrent first policy reads initia
  },legacy);
  expect(result.writes).toBe(1);expect(result.failed).toBe(legacy===null?0:20);if(legacy!==null)expect(result.raw).toBe(legacy);
 });
+
+test('notification backup and captured reset remain available without Web Locks',async({page})=>{
+ await page.route('**/notification-recovery-fixture',route=>route.fulfill({contentType:'text/html',body:'<!doctype html><title>Notification recovery</title>'}));await page.goto('/notification-recovery-fixture');
+ const result=await page.evaluate(async()=>{
+  Object.defineProperty(navigator,'locks',{value:undefined,configurable:true});localStorage.setItem('alpha.browser.notifications.v2','{unreadable legacy');
+  const {notificationDocument}=await import('/src/browser/notification-store.ts'),before=await notificationDocument.capture();await notificationDocument.reset(before);const after=await notificationDocument.capture();
+  return {original:before.raw,reset:after.raw,legacy:after.legacy};
+ });expect(result).toEqual({original:'{unreadable legacy',reset:null,legacy:'{unreadable legacy'});
+});

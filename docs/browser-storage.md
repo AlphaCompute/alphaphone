@@ -20,7 +20,7 @@ revision compare-and-swap. Alpha supplies domain names and legacy recovery polic
 | Development workflows and digests | `browser/development-workflows.ts`, `browser/development-digests.ts`, `browser/digest-storage.ts` | Legacy. Workflow/run/save receipts and source/result cursors must move as coherent documents. Direct configured-agent reads also require migration. |
 | Development Cloud setup | `browser/development-cloud.ts` | Legacy. Account/session identity and setup state have synchronous callers and explicit recovery behavior. |
 | Device preferences and roles | `browser/device.ts` | Legacy. Brightness, volume, focus and display consumers currently read synchronously; move hydration and refresh before replacing persistence. |
-| Browser bookmarks, development password provider and camera preferences | `browser/browser-surface.ts`, `browser/password-provider.ts`, `prototype/browser-camera.ts` | Legacy. Migrate all direct readers/writers and UI initialization, preserving native boundaries. |
+| Browser bookmarks, development password provider and photo albums | `browser/browser-surface.ts`, `browser/password-provider.ts`, `prototype/browser-camera.ts` | Legacy. Migrate all direct readers/writers and UI initialization, preserving native boundaries. `alpha.browser.albums.v1` holds album names and media membership; photo/video payloads already use a separate IndexedDB store. |
 
 This table covers the shared `readStore`/`editStore` callers, not every localStorage
 key. Connection selection, prototype state and independent security/operation
