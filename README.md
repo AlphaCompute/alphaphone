@@ -279,6 +279,14 @@ selected HOME is available before installing fixtures. Permission
 changes affect only the fixture user; unproven package cleanup retains that user
 for recovery. The output records APK admission, test identities and user cleanup.
 
+Process-restart acceptance for Inbox, Notes and selected Files uses
+`node scripts/test-native-restart.mjs inbox|notes|document APP.apk TEST.apk NEW_OUTPUT`
+with the same archive, owned-emulator environment and HOME configuration as the
+permission campaign. The shared harness authenticates both APKs, runs exact
+prepare/restore/cleanup methods in a disposable user and records strict phase
+results. Inbox requires a test-mocks APK pair for its closed provider fixture.
+These checks do not establish physical-device or real-provider acceptance.
+
 Installed Calendar and reminder upgrade acceptance uses
 `node scripts/test-calendar-upgrade.mjs` or `node scripts/test-reminder-upgrade.mjs`.
 Set `ANDROID_HOME` and the matching `ALPHA_CALENDAR_` or `ALPHA_REMINDER_` variables:

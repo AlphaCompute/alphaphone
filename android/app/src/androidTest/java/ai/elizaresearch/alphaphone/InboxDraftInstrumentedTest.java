@@ -63,7 +63,7 @@ public final class InboxDraftInstrumentedTest {
  private void reload()throws Exception{String before=js("performance.timeOrigin");js("location.replace(location.origin+location.pathname)");until("performance.timeOrigin!=="+before+"&&document.documentElement.dataset.activeView");}
  @Test public void processPhase()throws Exception{
   assertTrue(BuildConfig.DEBUG);String phase=InboxFixtureScope.phase;
-  android.os.Bundle evidence=new android.os.Bundle();evidence.putInt("inboxFixturePid",android.os.Process.myPid());InstrumentationRegistry.getInstrumentation().sendStatus(0,evidence);
+  android.os.Bundle evidence=new android.os.Bundle();evidence.putInt("inboxFixturePid",android.os.Process.myPid());InstrumentationRegistry.getInstrumentation().addResults(evidence);
   android.content.Context context=InstrumentationRegistry.getInstrumentation().getTargetContext();
   File backup=new File(context.getNoBackupFilesDir(),"inbox-fixture-"+InboxFixtureScope.runId+".json");
   BoundedActivityScenario.main(()->context.startActivity(new Intent(context,MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK|Intent.FLAG_ACTIVITY_CLEAR_TASK)));
