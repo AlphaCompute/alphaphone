@@ -172,10 +172,14 @@ test("bundle flags and the shared audit CLI are required", () => {
 test("shared production bundle audit rejects mock strings when present", { skip: !fs.existsSync(path.join(root, "scripts/audit-production-bundle.mjs")) && "scripts/audit-production-bundle.mjs not merged yet" }, () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "alpha-audit-"));
   try {
+    const script = path.join(root, "scripts/audit-production-bundle.mjs");
     fs.writeFileSync(path.join(dir, "index.html"), "<script src=assets/index.js></script>");
+    fs.writeFileSync(path.join(dir, "build-flags.json"), JSON.stringify({ testMocks: false }));
     fs.mkdirSync(path.join(dir, "assets"));
-    fs.writeFileSync(path.join(dir, "assets/index.js"), "if(new URLSearchParams(location.search).get('mode')==='mock'){}const u='?mode=mock';");
-    assert.throws(() => auditBundle(dir, { script: path.join(root, "scripts/audit-production-bundle.mjs") }), /Production bundle audit failed/);
+    fs.writeFileSync(path.join(dir, "assets/index.js"), "export const ready=true;");
+    assert.doesNotThrow(() => auditBundle(dir, { script }));
+    fs.writeFileSync(path.join(dir, "assets/index.js"), "document.body.className='mock-mode-banner';const label='Enter mock mode';");
+    assert.throws(() => auditBundle(dir, { script }), /Production bundle audit failed/);
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
