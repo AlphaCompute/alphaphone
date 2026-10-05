@@ -140,6 +140,18 @@ The runner requires an owned disposable emulator, leases it, uses fresh secondar
 users and retains uncertain cleanup for explicit recovery. Reports are under
 `test-results/native-calendar-consumer`; fixture builds alone do not prove native acceptance.
 
+Installed Calendar and reminder upgrade acceptance uses
+`node scripts/test-calendar-upgrade.mjs` or `node scripts/test-reminder-upgrade.mjs`.
+Set `ANDROID_HOME` and the matching `ALPHA_CALENDAR_` or `ALPHA_REMINDER_` variables:
+`BASELINE_DIR` (absolute), `TEST_SERIAL`, `TEST_AVD`, and `TEST_ABI`. Baselines contain
+`standalone-debug.apk` and `launcher-debug.apk`; reminder baselines also require
+`standalone-test.apk` and `launcher-test.apk`. Build current product and
+instrumentation APKs first. Calendar accepts `--bridge` for its additional native
+CRUD check. The shared runner admits both APK pairs, verifies installed hashes,
+uses fresh secondary users and preserves uncertain cleanup for explicit recovery.
+Reports go to `test-results/calendar-upgrade-*` or `test-results/reminder-upgrade-*`.
+These campaigns require an owned disposable emulator and do not prove device acceptance.
+
 ## AOSP integration
 
 ```sh
