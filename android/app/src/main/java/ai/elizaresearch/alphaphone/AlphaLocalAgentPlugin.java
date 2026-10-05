@@ -62,6 +62,24 @@ public final class AlphaLocalAgentPlugin extends Plugin {
    call.resolve(new JSObject().put("configured",true));
   }catch(Exception error){call.reject("Provider could not be saved securely.");}});
  }
+ static final String PROVIDER_MODEL_PATTERN="[A-Za-z0-9][A-Za-z0-9._/-]{0,127}";
+ /** Settings may show which hosted provider and model are configured; the key never leaves native storage. */
+ static JSObject providerIdentity(String saved) {
+  JSObject result=new JSObject().put("provider","cerebras").put("configured",false);
+  if(saved==null)return result;
+  try{
+   String model=new JSONObject(saved).optString("model","");
+   if(model.matches(PROVIDER_MODEL_PATTERN))result.put("configured",true).put("model",model);
+  }catch(org.json.JSONException malformed){/* Report unconfigured, never the stored value. */}
+  return result;
+ }
+ @PluginMethod public void providerStatus(PluginCall call) {
+  try{workers.execute(()->{
+   try{call.resolve(providerIdentity(new AlphaCredentialStore(getContext()).readCredentialSlot("local-agent-provider:v1")));}
+   catch(Exception unavailable){call.reject("Provider status unavailable.");}
+  });}
+  catch(java.util.concurrent.RejectedExecutionException closed){call.reject("Local agent bridge is closed.");}
+ }
  static void configureEnvironment(Context context,java.util.Map<String,String> env) throws java.io.IOException {
   env.remove("ELIZA_MOBILE_WORKFLOWS");
   java.io.InputStream workerIndex=null;
