@@ -1,4 +1,4 @@
-import {openBookmarkRecovery,openAlertSoundRecovery} from './preference-recovery';
+import {openBookmarkRecovery,openAlertSoundRecovery,openPasswordProviderRecovery} from './preference-recovery';
 import './device-controls.css';
 import {openNotificationRecovery} from './notification-recovery';
 import {openLocationControls} from './location-simulation';
@@ -33,6 +33,7 @@ export function BrowserDeviceControls({command}:{command:(command:Command)=>void
  <button onClick={()=>{dialog.current?.close();openNotificationRecovery();}}>Notification recovery</button>
  <button onClick={()=>{dialog.current?.close();openBookmarkRecovery();}}>Bookmark recovery</button>
  <button onClick={()=>{dialog.current?.close();openAlertSoundRecovery();}}>Notification sound recovery</button>
+ {browserDevProfile&&<button onClick={()=>{dialog.current?.close();openPasswordProviderRecovery();}}>Password provider recovery</button>}
  {browserDevProfile&&<button onClick={()=>{dialog.current?.close();showSimulatorRecovery();}}>Saved app recovery</button>}
  <button onClick={()=>{dialog.current?.close();void registerPlugin<{compose():Promise<void>}>('AlphaNotifications').compose();}}>Post notification</button>
  {['home','assistant','dialer','sms'].map(value=><button key={value} disabled={savingRole} onClick={()=>{setSavingRole(true);void registerPlugin<{requestRole(input:{role:string}):Promise<unknown>}>('ElizaSystem').requestRole({role:value}).then(()=>setRole(`${value} selected`)).catch(()=>setRole('Role could not be saved. Try again.')).finally(()=>setSavingRole(false));}}>Use as {value}</button>)}
