@@ -726,7 +726,7 @@ export const connectionController = {
         id = created.id;
         let saved=true;
         try { await selectConversation(key,cached,id,requestSignal,assertCurrent); } catch { saved=false; }
-        assertCurrent();conversationMemory.set(key,id);
+        assertCurrent();conversationMemory.set(key,id);update({});
         if(!saved)update({ message: 'Conversation is connected for this session. Its selection could not be saved for restart.' });
       }
       // Generic clients report an observation, never authority or permission.

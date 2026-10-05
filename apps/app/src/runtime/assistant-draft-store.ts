@@ -9,6 +9,10 @@ export async function assistantDraftStore(binding:string){
  const native=Capacitor.getPlatform()==='android';
  const domain=native?null:new (await import('../browser/json-domain-document')).BrowserJsonDomainDocument('alpha.browser.'+slot);
  return {
+  recovery:domain?{
+   capture:(signal?:AbortSignal)=>domain.capture(signal),
+   reset:async(expected:import('../browser/domain-document').DomainRecovery,signal?:AbortSignal)=>{const empty=replaceAssistantDraft(null,null,binding,'',()=>crypto.randomUUID());await domain.restore(expected,JSON.stringify({raw:JSON.stringify(empty)}),signal);},
+  }:undefined,
   async read(signal?:AbortSignal){signal?.throwIfAborted();const value=native?await secureConnectionStore.read(slot):await domain!.readJson(signal);signal?.throwIfAborted();return readAssistantDraft(value,binding);},
   async save(expected:AssistantDraft|null,text:string,signal?:AbortSignal):Promise<AssistantDraft>{
    signal?.throwIfAborted();let result:AssistantDraft|undefined;
