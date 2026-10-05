@@ -416,7 +416,9 @@ export const connectionController = {
     if(!selected||!session)return JSON.stringify(['offline']);
     const key=conversationKey(session),saved=await captureConversationChoice(key,signal);
     signal.throwIfAborted();if(generation!==epoch||selected!==active||session!==state.session)throw Error('The agent changed while opening its draft.');
-    return JSON.stringify([session.origin,session.ownerId,session.agentId,conversationMemory.get(key)||saved?.id||null]);
+    // Pin even an empty choice: another tab's restart preference cannot move this draft.
+    if(!conversationMemory.has(key))conversationMemory.set(key,saved?.id||'');
+    return JSON.stringify([session.origin,session.ownerId,session.agentId,conversationMemory.get(key)||null]);
   },
   setDeviceRecovery(recovery: DeviceRecovery) { deviceRecovery=recovery; },
   setDeviceExecutor(executor: DeviceExecutor) { deviceExecutor = executor; },
@@ -718,7 +720,7 @@ export const connectionController = {
       const assertCurrent=()=>{requestSignal.throwIfAborted();if(generation!==epoch||selected!==active||state.session?.sessionId!==session.sessionId)throw Error('The connection changed.');};
       const key = conversationKey(session), cached = await captureConversationChoice(key,requestSignal);
       assertCurrent();
-      let id = conversationMemory.get(key) || cached?.id;
+      let id = conversationMemory.has(key) ? conversationMemory.get(key) : cached?.id;
       if (typeof id !== 'string' || !id) {
         const created = selected.kind === 'cloud' ? await selected.cloud.createConversation(selected.agentId, 'Alpha Phone', requestSignal) : await selected.remote.createConversation('Alpha Phone', requestSignal);
         requestSignal.throwIfAborted();

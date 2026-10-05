@@ -104,7 +104,8 @@ current screen/session and clears the saved draft before dispatch; invalidating 
 clear restores its original text only while that clear's revision remains current.
 Restoring a draft never sends it. Browser corruption recovery downloads original saved
 bytes plus current text before a confirmed revision-checked reset. Native corruption
-reset presentation and native/device lifecycle acceptance remain unqualified.
+reset presentation is not yet implemented; native/device lifecycle acceptance remains
+unqualified.
 
 Controller/storage and rendered browser campaigns cover the implemented boundaries;
 full repository verification is tracked on the PR. No APK build or physical keyboard,
