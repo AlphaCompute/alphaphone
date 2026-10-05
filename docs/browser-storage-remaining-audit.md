@@ -56,7 +56,7 @@ outstanding browser Clock journal or as proof an alarm was created.
    its active chat until retirement, when in-memory choices are cleared. A failed
    restart-choice save may retain the verified chat for this session with a
    visible warning. Cache reset does not delete agent conversations or send text.
-   TypeScript passes; browser qualification is pending. Connection selection and
+   TypeScript and the owning three-engine browser cases pass. Full-product and native qualification remain separate. Connection selection and
    Cloud environment preference classification remain separate.
 4. Specify preference winner and refresh semantics, then verify appearance and
    simulated location against those semantics. Avoid creating redundant mirrors.
