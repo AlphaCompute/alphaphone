@@ -81,12 +81,34 @@ This review is source-only while separate phone smoke testing runs. Findings des
 
 - **Selected-file identity and stale text:** starting a new picker selection must clear the previous file preview immediately. An asynchronous read must apply only if its captured selection ID and route epoch still match. Otherwise file A content can be shown or copied into a request under file B metadata. Test A-read → B-select and slow A-read → clear/navigation.
 - **Assistant height on a phone:** the total assistant history/proposals needs one bounded scroll region. Individual 35dvh response/proposal limits do not bound several cards plus input within a shrinking IME viewport. Minimize must actually collapse history; input, stop/cancel and the active tool must stay reachable. Test a long response plus four proposals with the keyboard open.
-- **Reviewable outbound draft:** explicitly copied note/file text is now supported. A single-line composer cannot show a multiline draft adequately; use a bounded multiline editor or an expandable selected-content preview, with visible length limits. Copying to a draft is not sending. Long text should be editable rather than only rejected at the native request limit.
+- **Reviewable outbound draft:** both assistant composers now use bounded multiline editors with internal scrolling. Shift+Enter inserts a line; Enter sends only outside IME composition. Chromium checks cover light/dark themes, 915px and 420px viewports, expanded conversation, contraction after shortening and one explicit send. Copying to a draft is not sending. Physical keyboard/IME and current native geometry remain separate acceptance, and restart retention remains open below.
 - **Notification object return:** consume the native reminder ID in the tap event, select and scroll/focus its record, and handle a missing/cancelled record. Routing every tap to the generic list is an incomplete deep link.
 - **Revision invalidation on all edits:** discard/revert and recovered text must invalidate old note proposals just as typing and dictation do. Verify after editing → asking → reverting that the old proposal cannot mutate a different revision.
-- **Draft availability:** Notes retain local drafts. Inbox has an explicit owner-scoped Save/Restore flow using compare-and-swap storage (`prototype/inbox-drafts.ts`); edits after the last save remain in memory. Calendar form state and the assistant composer also remain in memory (`prototype/calendar-adapter.ts`, `prototype/agent-adapter.ts`). Restart recovery for these unsaved edits, plus Reminder forms, remains open. Saved Inbox draft support must not be reported as missing, and it does not prove automatic recovery of unsaved edits. This is a current source observation, not a process-death acceptance result. A malformed draft record must not prevent access to valid saved records or overwrite their store.
+- **Draft availability:** Notes retain local drafts. Inbox has an explicit owner-scoped Save/Restore flow using compare-and-swap storage (`prototype/inbox-drafts.ts`); edits after the last save remain in memory. Calendar form state remains in memory (`prototype/calendar-adapter.ts`). The assistant now retains conversation-bound text drafts with explicit conflict recovery; selected-source authority is never restored from a saved draft. Restart recovery for unsaved Calendar/Reminder forms and post-save Inbox edits remains open. Saved Inbox draft support must not be reported as missing, and it does not prove automatic recovery of unsaved edits. This is a current source observation, not a process-death acceptance result. A malformed draft record must not prevent access to valid saved records or overwrite their store.
 
 These are local engineering/UX gaps, not account-provider blockers. Phone-native visual acceptance must verify them through actual scrolling, keyboard and Back/Home actions; DOM-driven clicks may bypass offscreen controls.
+
+### Assistant draft recovery
+
+The composer saves text plus binding/revision metadata. Binding uses origin, verified
+owner, agent and authoritative conversation selection; offline text has a separate
+identity. Browser writes use the upstream transactional document store, while the
+Android adapter admits a narrowly named encrypted draft slot. Revisioned empty records
+prevent stale writes after clearing. No selected-file handles, proposal authority or
+message receipts are serialized into a draft.
+
+The UI shows saving, saved, restored and failure states. Competing edits retain the
+current text and display the saved copy for an explicit Restore or Replace choice.
+Late reads cannot populate a retired binding. Send waits for pending saves, checks the
+current screen/session and clears the saved draft before dispatch; invalidating a known
+clear restores its original text only while that clear's revision remains current.
+Restoring a draft never sends it. Browser corruption recovery downloads original saved
+bytes plus current text before a confirmed revision-checked reset. Native corruption
+reset presentation and native/device lifecycle acceptance remain unqualified.
+
+Controller/storage and rendered browser campaigns cover the implemented boundaries;
+full repository verification is tracked on the PR. No APK build or physical keyboard,
+process-death, encrypted-storage or device acceptance is implied by browser evidence.
 
 ## Upstream extraction and native integration packages
 

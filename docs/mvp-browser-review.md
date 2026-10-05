@@ -127,3 +127,14 @@ bundle audit before the final strict-response guard. That guard then passed the
 owning unit/browser suites and type checking; the expensive unrelated runner
 suite was not repeated. These results do not qualify native/device behavior or
 unrelated MVP acceptance.
+
+## Assistant draft restart recovery
+
+Both assistant composers support bounded multiline review and IME-safe sending.
+Unsent text is saved to the selected owner/agent/conversation, with offline text kept
+separate. Restored drafts have no retained selected-source authority and never send
+automatically. Revision conflicts show both copies; failed writes retain editable
+text. Browser damaged-record recovery backs up stored bytes and current text before
+confirmed reset. Native happy-path storage is wired to the encrypted draft slot, but
+native corruption reset and physical restart/IME acceptance remain open. Calendar and
+Reminder unsaved forms remain separate implementation gaps.

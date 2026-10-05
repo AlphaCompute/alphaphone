@@ -1,3 +1,5 @@
+import {AssistantDraftController} from './assistant-draft-controller';
+import {assistantDraftStore} from '../runtime/assistant-draft-store';
 import {openBrowserNotes,browserNotesRecovery} from '../runtime/browser-notes-document';
 import {audioDeletionRecovery} from '../runtime/note-audio-deletions';
 import {openDomainRecovery} from '../browser/domain-recovery';
@@ -48,6 +50,11 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
   // Navigation resets transient view state, but must retain the actual storage receipt.
   views.notes.persist = [...new Set([...(views.notes.persist || []), 'storageStatus'])];
 
+  function sizeComposer(){
+    for(const input of document.querySelectorAll<HTMLTextAreaElement>('textarea[data-alpha-composer]')){
+      input.style.height='44px';input.style.height=`${Math.max(44,input.scrollHeight)}px`;
+    }
+  }
   function context(shell: Shell) {
     const s = shell.S();
     const view = s.view || 'home';
@@ -105,10 +112,14 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
     activeShell=this;this.notesOpenAbort=new AbortController();
     originalMount.call(this);
     this.live = true;
+    this.composerDraft=new AssistantDraftController(assistantDraftStore,()=>String(this.S().draft||''),text=>{this.reviewedSourceDraft=null;if(this.live)this.setState({draft:text});},()=>{if(this.live)this.setState({});});
+    this.refreshDraftBinding=()=>{this.draftBindingAbort?.abort();const controller=this.draftBindingAbort=new AbortController();this.draftBindingTask=connectionController.assistantDraftBinding(controller.signal).then(key=>{if(this.live&&!controller.signal.aborted)return this.composerDraft.open(key);}).catch(()=>{if(this.live&&!controller.signal.aborted)this.composerDraft.unavailable();});};
+    this.refreshDraftBinding();
     this.connectionSession = connectionController.getSnapshot().session?.sessionId;
     this.connectionUnsubscribe = connectionController.subscribe(() => {
       const session = connectionController.getSnapshot().session?.sessionId;
       if (session !== this.connectionSession) {
+        this.draftRecoveryAbort?.abort();this.composerDraft.retire();
         this.closeSummaryReview?.();this.reviewedSourceDraft=null;
         clearMapsSelection();
         this.connectionSession = session;
@@ -117,11 +128,12 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
       }
       const history = connectionController.getSnapshot().history;
       if (history && history.sessionId === session && this.restoredHistory !== history) {
+        this.draftRecoveryAbort?.abort();this.composerDraft.retire();this.reviewedSourceDraft=null;
         this.restoredHistory = history;
         alphaClient.disconnect();
         if (this.live) this.setState({ msgs: history.messages.map(message => ({ ...message, card: null })), draft: '', typing: false, chat: 'full' });
       }
-      if (this.live) context(this);
+      if (this.live) {context(this);this.refreshDraftBinding();}
     });
     this.notesStorageFailed = true;
     this.notesPending = 0;
@@ -388,8 +400,9 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
     });
     context(this);
   };
-  p.componentDidUpdate = function (prev: Shell) { originalUpdate.call(this, prev); context(this); };
+  p.componentDidUpdate = function (prev: Shell) { originalUpdate.call(this, prev); context(this); sizeComposer();this.composerDraft?.edit(String(this.S().draft||'')); };
   p.componentWillUnmount = function () {
+    this.draftRecoveryAbort?.abort();this.composerDraft?.retire(false);this.draftBindingAbort?.abort();
     this.notesOpenAbort?.abort();if(activeShell===this){activeShell=null;notesRecovery?.abort();}
     this.closeSummaryReview?.();
     this.connectionUnsubscribe?.();
@@ -503,6 +516,15 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
   };
   p.renderVals = function () {
     const out = originalVals.call(this);
+    const draft=this.composerDraft?.state;
+    out.draftRecovery=!!draft?.error&&!!this.composerDraft?.recovery();
+    out.recoverDraft=()=>{const recovery=this.composerDraft?.recovery();if(!recovery)return;this.draftRecoveryAbort?.abort();const controller=this.draftRecoveryAbort=new AbortController();openDomainRecovery({capture:async signal=>{const captured=await recovery.capture(signal);return {...captured,raw:JSON.stringify({saved:captured.raw,currentDraft:String(this.S().draft||'')})};},reset:recovery.reset},'assistant draft','Assistant draft recovery','Download the saved bytes and current text before resetting this conversation’s draft. Reset does not delete messages or send anything. Reloading discards the current unsaved text.',controller.signal);};
+    out.draftRetry=!!draft?.error;out.draftStatus=draft?.message||'';out.draftConflict=!!draft?.conflict;out.draftSavedText=draft?.savedText||'(Empty saved draft)';out.draftOpening=!!draft?.consuming;
+    out.restoreSavedDraft=()=>this.composerDraft?.restoreSaved();out.keepCurrentDraft=()=>this.composerDraft?.keepCurrent();out.retryDraft=()=>{this.composerDraft?.retire();this.refreshDraftBinding();};
+    out.composerPointer=(event:PointerEvent)=>event.stopPropagation();
+    out.onKey=(event:KeyboardEvent&{nativeEvent?:KeyboardEvent})=>{
+      if(event.key==='Enter'&&!event.shiftKey&&!event.isComposing&&!event.nativeEvent?.isComposing&&event.keyCode!==229){event.preventDefault();void this.send();}
+    };
     out.canStopReply=!!this.S().typing&&alphaClient.getState().pending;
     out.stopReply=()=>alphaClient.cancel();
     if (isAndroid) {
@@ -518,10 +540,14 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
   };
   p.send = async function (argument?: string, expectedSession?: {sessionId:string;agentId:string;ownerId:string;origin:string}) {
     const s = this.S(); const text = String(argument ?? s.draft).trim();
-    if (!text || s.typing) return;
-    const sourceDraft=this.reviewedSourceDraft?.draft.trim()===text?sourceOf(this.reviewedSourceDraft.source):undefined;this.reviewedSourceDraft=null;
+    if (!text || s.typing || this.draftSendPending) return;
+    const sourceDraft=this.reviewedSourceDraft?.draft.trim()===text?sourceOf(this.reviewedSourceDraft.source):undefined;
     context(this);
-    const revision = alphaClient.getState().context.revision;
+    const revision=alphaClient.getState().context.revision,connection=connectionController.getSnapshot(),sessionId=connection.session?.sessionId,conversationId=connection.history?.conversationId;
+    const current=()=>{const selected=connectionController.getSnapshot();return this.live&&!document.hidden&&!selected.busy&&!selected.open&&selected.session?.sessionId===sessionId&&selected.history?.conversationId===conversationId&&alphaClient.getState().context.revision===revision;};
+    this.draftSendPending=true;
+    try{await this.draftBindingTask;await this.composerDraft.consume(String(s.draft||'').trim(),current);}catch(error){this.toast(error instanceof Error?error.message:'Draft could not be prepared. Nothing was sent.');return;}finally{this.draftSendPending=false;}
+    this.reviewedSourceDraft=null;
     const streamedId=crypto.randomUUID();let streamed=false;
     const replaceStream=(value:string,streaming=true)=>this.setState((previous:Shell)=>({msgs:previous.msgs.map((message:Shell)=>message.id===streamedId?{...message,text:value,streaming}:message)}));
     this.setState({ msgs: [...s.msgs, { id: crypto.randomUUID(), from: 'user', text }], draft: '', typing: true, chat: s.chat === 'full' ? 'full' : 'sheet', shade: false });
