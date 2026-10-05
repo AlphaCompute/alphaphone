@@ -58,6 +58,14 @@ test('location source change rejects a delayed permission status',async({page})=
  });expect(result).toEqual({location:'denied',accuracy:'none'});
 });
 
+for(const retired of [false,true])test(`failed permission query preserves current ownership: retired=${retired}`,async({page})=>{
+ const result=await page.evaluate(async retired=>{
+  const {BrowserLocation}=await import('/src/browser/location.ts');const {readLocationSimulation,saveLocationSimulation}=await import('/src/browser/location-simulation.ts');
+  let reject!:(error:Error)=>void,started!:()=>void;const ready=new Promise<void>(resolve=>started=resolve);
+  Object.defineProperty(navigator,'permissions',{configurable:true,value:{query:()=>new Promise((_resolve,fail)=>{reject=fail;started();})}});
+  const pending=new BrowserLocation().checkPermissions();await ready;if(retired)saveLocationSimulation({...readLocationSimulation(),mode:'coordinates'});reject(Error('Permission query unavailable'));return pending;
+ },retired);expect(result).toEqual({location:retired?'denied':'prompt',accuracy:'none'});
+});
 test('another tab changing location cancels the first tab permission request',async({page,context})=>{
  await page.evaluate(async()=>{
   const {BrowserLocation}=await import('/src/browser/location.ts');const state=(window as any).locationRace={cleared:[]};
