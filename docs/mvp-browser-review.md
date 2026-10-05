@@ -87,7 +87,7 @@ as green.
 | Connection and assistant | Resident/native IPC, local development host, optional Cloud/remote sessions, conversation history, reviewed proposals and receipts | Real owner/provider authorization, revoke, process recovery and complete task journeys |
 | Voice | Recording review, manual transcript fallback, explicit local/agent routes, owned playback and cancellation | Transcript quality, six-second latency target, physical microphone/speaker/Bluetooth and lifecycle |
 | Inbox | Account-bound Gmail adapter and operation journal; disclosed local draft/attachment simulator | Real provider grants, approved read/send journeys, account isolation and uncertain-outcome recovery |
-| Calendar | Persistent events, zoned/all-day dates, recurring series and overrides, preferences, local guest/meeting UI, alerts, backup and reviewed reset | Transactional storage below; partial-damage salvage, live-agent series, real invitations/conferencing and provider sync |
+| Calendar | Persistent events, zoned/all-day dates, recurring series and overrides, preferences, local guest/meeting UI, alerts, backup and reviewed reset | Transactional storage below; live-agent series, real invitations/conferencing and provider sync |
 | Reminders and Clock | Shared native reminder engine, browser reminders, Done/Snooze/repeats, foreground alarm ownership and native Clock handoff | Physical audibility, Doze/OEM delivery, reboot, DND and hardware time-zone changes |
 | Browser | Development iframe, bookmarks, navigation, reviewed reading; isolated native browser surface | Cross-origin access limits, real password-provider/passkey/autofill behavior and release WebView lifecycle |
 | Camera and Scan | Capture/import, local OCR, reviewed text/links/calendar suggestions, multipage drafts, perspective correction, page-edge suggestions and searchable PDF | Physical camera/torch/permissions, OCR language/photo quality, edge quality and interrupted capture |
@@ -204,9 +204,24 @@ records as new instructions. The current calendar can be downloaded first.
 
 Replacement uses the captured document revision and older-copy bytes; newer edits
 or legacy writes invalidate approval. Closing or retiring the dialog aborts a queued
-write. The exact legacy copy remains available. Invalid or partially damaged files
-are rejected as a whole, so selective salvage remains open. This is Alpha browser
-backup recovery, not ICS/provider import or native Calendar restoration.
+write. The exact legacy copy remains available. Strict restore still rejects a
+partly damaged file by default. An explicit recovery checkbox can preview valid
+independent events and recurring-series groups, including the skipped count and
+record positions, before the same separate replacement confirmation. Duplicate
+identities are ambiguous and skipped. A damaged linked exception skips its whole
+series group so it cannot silently return as an original occurrence. Malformed
+JSON, oversized input and a file with no recoverable group remain rejected.
+Changing the selected file or recovery mode clears the prior confirmation.
+Keep the original backup: recovery does not reconstruct missing or invalid data.
+This is Alpha browser backup recovery, not ICS/provider import or native Calendar
+restoration.
+
+Partial-recovery qualification: 18 backup validation cases and 24 restore browser
+cases across Chromium, Firefox and WebKit passed, along with type checking. The
+rendered confirmation preview was inspected. Logs are in the primary checkout at
+`artifacts/calendar-form-review/partial-backup-unit.log`,
+`partial-backup-browser.log` and `partial-backup-typecheck.log`.
+No Android build or native Calendar restoration was performed.
 
 Calendar restore qualification: all 36 owning restore/recovery checks passed across
 Chromium, Firefox and WebKit, including reviewed replacement, invalid files, stale
