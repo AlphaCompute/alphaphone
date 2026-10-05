@@ -150,3 +150,45 @@ across Chromium, Firefox and WebKit. It pins the current tab's observed choice,
 including an empty choice, so another tab's saved restart preference cannot move an
 unsent draft before its first send. These remain local results, not hosted CI or
 native/device qualification.
+
+Native assistant draft recovery qualification: consumer `5f4534ee` passed
+`npm run verify` (657 tests, type checking, production build and a 245-file
+flag-off bundle audit). All 57 affected browser checks passed across Chromium,
+Firefox and WebKit. Native adapter tests used explicit bridge-contract doubles;
+these results do not prove encrypted Android storage or file-provider execution.
+
+## Unsaved Calendar and Reminder creation forms
+
+New event and reminder forms now retain their editable fields and original creation
+identities in the transactional draft store. Browser app and development profiles
+use separate bindings; Android selects the existing encrypted slot adapter. Recovery
+is explicit through **Resume unsaved event or reminder** and never saves an item.
+Civil dates are stored independently of relative day offsets, including when an
+open form crosses midnight. Changing time zones prompts a review of the restored
+time. Separate-creation consent is not restored. Existing pending-write journals
+and provider revision checks remain authoritative for uncertain outcomes.
+
+Competing tabs require Restore or Replace, and creating a new form requires review
+before replacing a retained one. Discard requires confirmation and refuses stale
+receipts, without creating or deleting events. Confirmed saves clear only the matching retained
+form. Storage failure leaves current text available and exposes recovery.
+
+This closes creation-form retention in source; existing-event/reminder edit forms
+and the separate recurring/all-day Calendar editor still need restart recovery.
+Post-save unsaved Inbox edits also remain open. Android execution and physical
+process-death acceptance remain separate from browser qualification.
+
+Runtime update PR #317 remains unqualified at `e2f62059`: hosted test-mocks
+instrumentation ran 191 tests per variant, with one standalone video-playback
+failure and two launcher failures (video playback and returning from the system
+share chooser). These are actual assertion failures, distinct from the cancelled
+browser/distribution jobs. The preserved hosted evidence was inspected without
+running another Android build. Browser development remains on upstream `95924e90`.
+
+Creation-form qualification: three record-contract tests and type checking pass.
+The 92-case creation/save campaign passed across Chromium, Firefox and WebKit;
+after the discard addition, all 39 form-specific cases passed across those engines.
+Cases cover date rollover, cross-tab conflict, uncertain event/reminder outcomes,
+explicit replacement/discard, oversized edits and damaged-form recovery without
+changing saved events. The restored form was inspected at 412 × 915. Full repository
+verification for this batch is running; no Android build or native execution is claimed.

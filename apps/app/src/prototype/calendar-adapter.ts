@@ -207,6 +207,7 @@ export function installCalendarAdapter(Component: any, views: Bag) {
           if(creationId&&result.creationId!==creationId)throw Error('Mismatched creation receipt');
           const targetDay=Number(current.off||0);
           // Retire only this exact submitted draft before an acknowledgement can be lost.
+          currentOwner.calendarFormCommitted?.(api.get('calendar').form);
           api.set({form:null,open:null,day:targetDay,month:null});
           const ownsCompletion=()=>owner===currentOwner&&!document.hidden&&api.isActive()&&creationDraftEpoch===epoch&&!api.get('calendar').form&&!api.get('calendar').open&&Number(api.get('calendar').day||0)===targetDay&&api.get('calendar').month==null;
           // Edits have not yielded since ownsForm: React may not have committed form:null yet.
