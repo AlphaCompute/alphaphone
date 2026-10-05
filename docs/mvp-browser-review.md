@@ -89,6 +89,12 @@ cancelled recognition (`artifacts/settings-review/remaining-browser.log` in the
 these assertions. These later focused passes do not relabel the earlier campaign
 as green.
 
+The normal-app selected-file review also now asserts preserved paragraph breaks
+between the question, source name and edited excerpt. Both light/dark cases passed
+while asserting zero sends from the review step
+(`artifacts/calendar-form-review/selected-file-multiline.log`). The old assertion
+expected the removed single-line input's newline stripping.
+
 | Surface | Implementation | Remaining acceptance |
 | --- | --- | --- |
 | Home and settings | Product-owned preview, themes, assistant dock, agenda, device development controls | Native boot, lock, HOME role and actual system controls |
