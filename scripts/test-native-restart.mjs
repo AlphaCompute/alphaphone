@@ -6,6 +6,31 @@ import crypto from "node:crypto";
 import { runNativeFixture } from "./native-test-fixture.mjs";
 
 const cases = {
+	"text-scale": {
+		testClass: "TextScaleInstrumentedTest",
+		method: "textScaleProcessRestartPhase",
+		gate: "textScalePhase",
+		restore: "verify",
+		scope:
+			"Persisted text zoom and real glyph geometry; distinct PID asserted by native test",
+	},
+	tree: {
+		testClass: "FilesTreeRestartInstrumentedTest",
+		method: "processPhase",
+		gate: "treePhase",
+		restore: "verify",
+		scope:
+			"Real persisted SAF folder grant, list, preview and scoped write; distinct PID asserted by native test",
+	},
+	bookmark: {
+		testClass: "BrowserContinuityInstrumentedTest",
+		method: "bookmarkProcessRestartPhase",
+		gate: "bookmarkPhase",
+		restore: "verify",
+		afterRestore: "verifyRemoved",
+		scope:
+			"Real HTTPS bookmark persistence and removal across two new processes; native profile cleanup",
+	},
 	inbox: {
 		testClass: "InboxDraftInstrumentedTest",
 		method: "processPhase",
@@ -36,7 +61,10 @@ const cases = {
 };
 const [scenario, appApk, testApk, output = "test-results/native-restart"] =
 	process.argv.slice(2);
-assert.ok(Object.hasOwn(cases, scenario), "Choose inbox, notes, or document");
+assert.ok(
+	Object.hasOwn(cases, scenario),
+	"Choose " + Object.keys(cases).join(", "),
+);
 const selected = cases[scenario],
 	runId = crypto.randomUUID();
 const phaseArgs = (name) => [
@@ -68,6 +96,14 @@ await runNativeFixture({
 			selected.restore,
 			phaseArgs(selected.restore),
 		);
+		if (selected.afterRestore) {
+			await stop();
+			await context.instrumentPhase(
+				selected.afterRestore,
+				phaseArgs(selected.afterRestore),
+			);
+		}
+
 		if (selected.pid) {
 			const pid = (label) => {
 				const log = fs.readFileSync(path.join(directory, label), "utf8");

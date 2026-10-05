@@ -13,9 +13,9 @@ jobs:
   browser:
     name: Browser MVP (shard ${{ matrix.shard }}/3)
     runs-on: ubuntu-latest
-    # Includes setup, repository verification and roughly 560 UI cases per shard.
-    # Hosted UI execution alone takes about 31 minutes; retain time for reports.
-    timeout-minutes: 45
+    # Includes setup, repository verification, over 600 UI cases and speech checks.
+    # A hosted run reached 617/619 passing cases at the former 45-minute limit.
+    timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:

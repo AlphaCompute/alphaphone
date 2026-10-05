@@ -81,11 +81,18 @@ cleanup, and `result.json` the product scenario. Deferred cleanup is a failure
 requiring explicit recovery of the owned fixture.
 
 Process-restart campaigns use `node scripts/test-native-restart.mjs` with `inbox`,
-`notes`, or `document`, a matching archived APK pair and a new output directory.
+`notes`, `document`, `text-scale`, `tree`, or `bookmark`, a matching archived APK pair and a new output directory.
 Use the owned-emulator configuration in the README. Require successful prepare,
 restore/verify and cleanup phases; Notes and Inbox reports also require distinct
-process IDs. The selected-file native test asserts that process boundary itself.
-Activity recreation alone is insufficient.
+process IDs. Selected-file, text-scale, folder and bookmark native tests assert process boundaries themselves.
+The bookmark case also force-stops before `verifyRemoved`, requiring removal to
+survive a second process restart.
+Activity recreation alone is insufficient. The distribution Android CI lane runs
+all six text-scale/folder/bookmark checks through `scripts/ci/native-restarts.sh`
+before its smoke suite installs product packages. It provisions the pinned
+[development WebView](ci-webview-provider.md) first; the stock API 35 provider
+lacks the browsing-data deletion capability required by bookmark navigation.
+Retain provider admission and native phase evidence separately.
 
 Argument-gated instrumentation methods can be skipped by a full-suite invocation.
 Use the exact method and explicit gate documented in its current runner/test source;
