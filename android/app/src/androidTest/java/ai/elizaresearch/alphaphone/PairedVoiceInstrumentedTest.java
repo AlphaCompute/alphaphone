@@ -36,6 +36,7 @@ public class PairedVoiceInstrumentedTest {
   public void close()throws Exception{server.close();worker.shutdownNow();}
  }
  @Test public void pairedSpeechUsesPrivateCredentialAndRejectsStaleIdentityAndRedirect()throws Exception {
+  org.junit.Assume.assumeTrue("Loopback HTTP fixtures require a -PELIZA_DEV_ALLOW_TEST_MOCKS=1 debug build", BuildConfig.ELIZA_DEV_ALLOW_TEST_MOCKS);
   try(Fixture fixture=new Fixture();BoundedActivityScenario<MainActivity> scenario=BoundedActivityScenario.launch(MainActivity.class)){
    for(int i=0;i<100;i++){if("true".equals(WebViewTestDriver.evaluate("Boolean(window.Capacitor?.Plugins?.AlphaVoiceCloud)")))break;SystemClock.sleep(100);}
    String origin="http://127.0.0.1:"+fixture.server.getLocalPort(),slot="remote:"+origin;

@@ -34,6 +34,9 @@ permission and queries) to debug variants and sets `BuildConfig.ELIZA_DEV_ALLOW_
 receive the source set. Without `--test-mocks` the build script removes both
 `ELIZA_DEV_ALLOW_TEST_MOCKS` and `VITE_ELIZA_DEV_ALLOW_TEST_MOCKS` from its child
 environment. Test-mocks APKs are never distribution or acceptance artifacts.
+Instrumentation cases that need a loopback HTTP fixture server or the DevelopmentAgent
+plugin assume `BuildConfig.ELIZA_DEV_ALLOW_TEST_MOCKS`: flag-off distribution debug
+APKs skip them, and the CI test-mocks smoke lane runs them.
 
 Release variants are minified and resource-shrunk with R8 using
 `android/app/proguard-rules.pro`, which keeps Capacitor plugin reflection targets,

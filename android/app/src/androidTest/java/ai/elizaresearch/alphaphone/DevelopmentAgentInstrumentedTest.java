@@ -59,6 +59,7 @@ public class DevelopmentAgentInstrumentedTest {
   }
  }
  @Test public void explicitMicrophoneCaptureCreatesAndDiscardsPrivateDraft() throws Exception {
+  org.junit.Assume.assumeTrue("DevelopmentAgent exists only in -PELIZA_DEV_ALLOW_TEST_MOCKS=1 builds",BuildConfig.ELIZA_DEV_ALLOW_TEST_MOCKS);
   android.content.Context context=InstrumentationRegistry.getInstrumentation().getTargetContext();
   InstrumentationRegistry.getInstrumentation().getUiAutomation().grantRuntimePermission(context.getPackageName(),android.Manifest.permission.RECORD_AUDIO);
   try(BoundedActivityScenario<MainActivity> scenario=BoundedActivityScenario.launch(MainActivity.class)) {
