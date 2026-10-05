@@ -4,6 +4,7 @@ import type {BrowserDaily} from './daily';
 import type {BrowserNotifications} from './notifications';
 import {BrowserAlertAudio} from './alert-audio';
 import {alertSoundDocument} from './preference-documents';
+import {testMocksEnabled} from '../build-flags';
 type Alarm={id:string;title:string;at:number;status:string;revision:string};
 /** One foreground owner rings alarms; all tabs share the existing reminder records. */
 export class BrowserClock {
@@ -25,7 +26,7 @@ export class BrowserClock {
   window.addEventListener('pagehide',()=>this.retire());window.addEventListener('alpha:device-state',()=>{this.retire();});document.addEventListener('visibilitychange',()=>{if(document.hidden)this.retire();else void this.poll();});
   window.addEventListener('storage',event=>{if(event.key==='alpha.browser.reminders.v1')void this.poll();});setInterval(()=>void this.poll(),1000);
  }
- private allowed(){return !document.hidden&&document.documentElement.dataset.devBackground!=='true'&&document.documentElement.dataset.connectionMode!=='mock'&&!browserScreenLocked();}
+ private allowed(){return !document.hidden&&document.documentElement.dataset.devBackground!=='true'&&!(testMocksEnabled&&document.documentElement.dataset.connectionMode==='mock')&&!browserScreenLocked();}
  private stopSound(){clearInterval(this.soundTimer);this.soundTimer=undefined;this.audio.stop();}
  private retire(){this.stopSound();this.dialog?.close();this.owns=false;this.ringing='';this.release?.();this.release=undefined;}
  private async poll(){

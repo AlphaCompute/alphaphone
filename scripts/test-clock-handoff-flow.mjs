@@ -11,12 +11,15 @@ let writes=[],store=new Map(),failStorage=false,response={status:'opened',messag
 const document={addEventListener(){},removeEventListener(){},querySelector(){return null;},documentElement:{dataset:{connectionMode:'live'}},get hidden(){return hidden;}};
 const localStorage={getItem:k=>store.get(k)||null,setItem:(k,v)=>{if(failStorage)throw Error('full');store.set(k,v);}};
 const DailyApps={clockHandoff:async request=>{writes.push(request);if(hold)return new Promise(resolve=>hold=resolve);if(response instanceof Error)throw response;return {...response,action:request.action};}};
+let flags={testMocksEnabled:true,devSurfacesEnabled:true};
 function fixture(simulated=false){
  class Shell{componentDidMount(){}componentWillUnmount(){}vset(){}}
  const views={calendar:{render:()=>({})}};
- vm.runInNewContext(source+'\ninstallClockAdapter(Shell,views,{simulated});',{createInlineModal,currentClockTimeZone,DailyApps,Shell,views,simulated,document,window:{addEventListener(){},removeEventListener(){}},queueMicrotask,localStorage,crypto:{randomUUID},Date,Intl,console});
+ vm.runInNewContext(source+'\ninstallClockAdapter(Shell,views,{simulated});',{...flags,createInlineModal,currentClockTimeZone,DailyApps,Shell,views,simulated,document,window:{addEventListener(){},removeEventListener(){}},queueMicrotask,localStorage,crypto:{randomUUID},Date,Intl,console});
  const shell=new Shell();shell.componentDidMount();const render=()=>views.calendar.render({},{});render().openClock();return {shell,render,leave:()=>views.calendar.onLeave()};
 }
+for(const testMocksEnabled of [true,false]){
+flags={testMocksEnabled,devSurfacesEnabled:testMocksEnabled};writes=[];store=new Map();failStorage=false;hidden=false;hold=undefined;response={status:'opened',message:'Clock request sent. Check Clock.'};
 let f=fixture();let ui=f.render().clock;
 assert.equal(writes.length,0);ui.onTime({target:{value:'25:03'}});f.render().clock.prepare();assert.equal(f.render().clock.review,null);
 ui=f.render().clock;ui.onTime({target:{value:'06:45'}});ui.onLabel({target:{value:'Morning'}});f.render().clock.prepare();
@@ -43,5 +46,7 @@ hidden=true;f.render().clock.prepare();await f.render().clock.review.confirm();a
 // Leaving the view invalidates even a retained confirmation callback.
 f.render().clock.prepare();const departed=f.render().clock.review;f.leave();await departed.confirm();assert.equal(writes.length,count);assert.equal(f.render().clock,null);assert.equal(f.shell.clockSelection(),undefined);f.render().openClock();assert.equal(f.render().clock.review,null);
 // Both startup mock and a mode switch during review prevent the native call.
-for(const startupMock of [true,false]){const mock=fixture(startupMock);mock.render().clock.prepare();document.documentElement.dataset.connectionMode='mock';await mock.render().clock.review.confirm();assert.equal(writes.length,count);assert.match(mock.render().clock.message,/simulated/);mock.shell.componentWillUnmount();document.documentElement.dataset.connectionMode='live';}
-console.log('PASS actual Clock adapter flow: review/snapshot, invalid input, duplicate taps, all four operations, no handler, response loss/recreation, storage failure, foreground and mock isolation. Native boundary is synthetic.');
+// Without ELIZA_DEV_ALLOW_TEST_MOCKS there is no simulation: a mock request fails closed.
+for(const startupMock of [true,false]){const mock=fixture(startupMock);mock.render().clock.prepare();document.documentElement.dataset.connectionMode='mock';const review=mock.render().clock.review;assert.equal(review.label,testMocksEnabled?'Simulate Clock request':'Continue to Clock');await review.confirm();assert.equal(writes.length,count);assert.match(mock.render().clock.message,testMocksEnabled?/simulated/:/unavailable without a live connection/);mock.shell.componentWillUnmount();document.documentElement.dataset.connectionMode='live';}
+}
+console.log('PASS actual Clock adapter flow: review/snapshot, invalid input, duplicate taps, all four operations, no handler, response loss/recreation, storage failure, foreground and mock isolation, with and without ELIZA_DEV_ALLOW_TEST_MOCKS. Native boundary is synthetic.');
