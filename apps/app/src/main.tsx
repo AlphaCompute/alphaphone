@@ -26,8 +26,6 @@ import { installPrototypeNativeAdapters } from './prototype/native-adapter';
 import { installSelectedDocumentAdapter } from './prototype/selection-adapter';
 import { installPrototypeCameraAdapter } from './prototype/camera-adapter';
 import { installPrototypeHomeBindings, installPrototypeDataAdapter } from './prototype/data-adapter';
-import { isMvpView } from './prototype/mvp-features';
-import { installPrototypeContactsAdapter } from './prototype/contacts-adapter';
 import { isAndroid } from './native';
 import { DailyApps } from './daily';
 import { installPrototypeVoiceAdapter } from './prototype/voice-adapter';
@@ -70,8 +68,6 @@ if (!fixture) {
   installPrototypeMapsAdapter(Component, VIEWS);
   selected = installSelectedDocumentAdapter(Component, VIEWS);
   installPrototypeCameraAdapter(Component, VIEWS);
-  // Deferred by September 15 MVP notes; retain adapter source and user data.
-  if (isMvpView("contacts")) installPrototypeContactsAdapter(Component, VIEWS);
   installAgentAdapter(Component, VIEWS);
   installReminderAdapter(Component, VIEWS);
   installCalendarAdapter(Component, VIEWS);

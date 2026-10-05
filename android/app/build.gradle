@@ -107,8 +107,6 @@ dependencies {
  implementation project(':eliza-camera')
  implementation project(':eliza-calendar')
  implementation project(':eliza-reminders')
- // MVP-DEFERRED: Contacts provider and permissions; see docs/mvp-scope-and-gap-report.md.
- // implementation project(':eliza-contacts')
  implementation project(':eliza-location')
  implementation "androidx.webkit:webkit:$rootProject.ext.androidxWebkitVersion"
  implementation "androidx.appcompat:appcompat:$rootProject.ext.androidxAppCompatVersion"
