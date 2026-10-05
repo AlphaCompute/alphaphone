@@ -32,7 +32,6 @@ const KNOWN_GAPS: Partial<Record<Check, Partial<Record<View, string>>>> = {
     Browser: 'The new-tab page shows only the address field; there is no labelled empty state.',
     Files: 'Files lists picker locations; there is no labelled "no files" state.',
     Reminders: 'Reminders live inside Calendar with no labelled empty reminder state.',
-    Notifications: 'The notification shade renders no text when it has no notifications.',
   },
   alert: Object.fromEntries(VIEWS.map(view => [view, 'Storage failures are announced with role=status (or not at all), never role=alert.'])),
   landmark: Object.fromEntries(VIEWS.map(view => [view, 'The active app layer is a plain div; there is no main/region landmark named for the view.'])),
