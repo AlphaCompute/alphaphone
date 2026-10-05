@@ -1,5 +1,6 @@
 /** Prepared one-session campaign. Never starts/restarts the reviewed combined host. */
-import fs from 'node:fs';import os from 'node:os';import path from 'node:path';import http from 'node:http';import crypto from 'node:crypto';import assert from 'node:assert/strict';import {androidEnv} from './toolchain.mjs';
+import fs from 'node:fs';import os from 'node:os';import path from 'node:path';import crypto from 'node:crypto';import assert from 'node:assert/strict';import {androidEnv} from './toolchain.mjs';
+import {createCombinedAgentProxy} from './combined-agent-proxy.mjs';
 import {arithmetic,approvalSource} from './combined-agent-fixtures.mjs';
 import {createCombinedDeviceRunner,requireCombinedCase} from './combined-agent-device.mjs';
 const serial=process.env.ANDROID_SERIAL,archive=process.env.ALPHA_BUILD_ARCHIVE,sessionFile=process.env.ALPHA_COMBINED_OWNER_SESSION,sourceManifest=process.env.ALPHA_COMBINED_SOURCE_MANIFEST;
@@ -12,28 +13,7 @@ const digest=bytes=>crypto.createHash('sha256').update(bytes).digest('hex');
 async function request(route,body,authenticated=true){const response=await fetch(host+route,{method:body===undefined?'GET':'POST',headers:{Host:'10.0.2.2:47858','X-Forwarded-For':'192.0.2.1',...(authenticated?{Authorization:`Bearer ${owner.token}`} : {}),'Content-Type':'application/json'},body:body===undefined?undefined:JSON.stringify(body),redirect:'error',signal:AbortSignal.timeout(30000)});if(!response.ok)throw Error(`Combined fixture HTTP ${response.status}`);return response.json();}
 const me=await request('/api/auth/me'),agents=await request('/api/agents'),cap=await request('/api/workflow/status');assert.equal(me.access?.role,'OWNER');assert.equal(me.access?.mode,'session');assert.equal(agents.agents?.length,1);for(const key of ['manualSubmissionProtocol','approvalReceiptProtocol','metadataMutationProtocol','lifecycleMutationProtocol'])assert.equal(cap[key],1);
 assert.equal((await request('/api/asr/whisper/status')).ready,true);assert.equal((await request('/api/tts/local-inference/status')).ready,true);
-let active;const proxy=http.createServer((req,res)=>{
- if(!req.url?.startsWith('/api/')||req.url.startsWith('//')||req.url.includes('://')){res.writeHead(404).end();return;}
- if(active&&req.method==='POST'&&req.url===`/api/workflow/executions/${active.approvalRunId}/approvals/write-fixture/0`)active.approvalDecisions++;
- const upstream=http.request(host+req.url,{method:req.method,headers:{...req.headers,host:'10.0.2.2:47858','x-forwarded-for':'192.0.2.1'},timeout:180000},reply=>{
-  reply.on('error',()=>{if(active)active.failed=true;res.destroy();});
-  const successful=reply.statusCode>=200&&reply.statusCode<300;
-  if(active){if(req.url==='/api/auth/pair'&&req.method==='POST'&&successful)active.pairings++;
-   if(req.headers.authorization&&successful){active.sessions.add(digest(req.headers.authorization));if(active.sessions.size!==1)active.failed=true;}
-   if(req.headers['x-eliza-device-id']&&successful){active.devices.add(digest(String(req.headers['x-eliza-device-id'])+'|'+String(req.headers['x-eliza-device-key']||'')));if(active.devices.size!==1)active.failed=true;}
-   if(reply.statusCode===429)active.providerFailure=true;
-  }
-  const message=req.method==='POST'&&/^\/api\/conversations\/[^/]+\/messages$/.test(req.url),metadata=active&&req.method==='POST'&&req.url===`/api/workflow/workflows/${active.workflowId}/metadata`;
-  if(active&&message&&req.url!==`/api/conversations/${encodeURIComponent(active.conversationId)}/messages`)active.failed=true;
-  if(active&&successful&&req.method==='POST'){if(req.url==='/api/asr/whisper')active.asr++;if(req.url==='/api/tts/local-inference')active.tts++;if(req.url.startsWith('/api/client-devices/')&&req.url.endsWith('/decision'))active.deviceDecisions++;if(req.url.startsWith('/api/client-devices/')&&req.url.endsWith('/claim'))active.deviceClaims++;if(req.url.startsWith('/api/client-devices/')&&req.url.endsWith('/receipt'))active.deviceReceipts++;if(metadata)active.metadataPosts++;}
-  const lifecycle=active&&req.method==='POST'&&req.url===`/api/workflow/workflows/${active.workflowId}/lifecycle`,workflowRun=active&&req.method==='POST'&&req.url===`/api/workflow/workflows/${active.workflowId}/run`;
-  if(message||metadata||lifecycle||workflowRun){let bytes=0,chunks=[];reply.on('data',chunk=>{bytes+=chunk.length;if(bytes>2*1024*1024){active.failed=true;upstream.destroy();return;}chunks.push(chunk);});reply.on('end',()=>{const data=Buffer.concat(chunks);try{const parsed=JSON.parse(data);if(message&&active){active.chats++;if(parsed.terminalFailure||parsed.failureKind)active.providerFailure=true;if(active.chats===1)active.exactChat=String(parsed.text).trim()===String(active.answer);}
-   if(lifecycle&&successful)active.lifecycleReceipts.push(parsed.receipt);if(workflowRun&&successful)active.nativeRunIds.push(parsed.execution?.id);
-   if(metadata&&successful){active.metadataReceipt=parsed.receipt;active.mutationId=parsed.receipt?.mutationId;active.droppedMetadata++;res.destroy();return;}
-  }catch{if(active)active.failed=true;}const headers={...reply.headers,'content-length':String(data.length)};delete headers['transfer-encoding'];res.writeHead(reply.statusCode,headers);res.end(data);});}
-  else{res.writeHead(reply.statusCode,reply.headers);reply.pipe(res);}
- });upstream.on('timeout',()=>upstream.destroy());upstream.on('error',()=>{if(!res.headersSent)res.writeHead(502);res.end();});res.on('close',()=>{if(!res.writableEnded)upstream.destroy();});req.pipe(upstream);
-});
+let active;const proxy=createCombinedAgentProxy({host,getActive:()=>active});
 await new Promise((resolve,reject)=>{proxy.once('error',reject);proxy.listen(47859,'127.0.0.1',resolve);});
 const env=androidEnv(),adb=path.join(env.ANDROID_HOME,'platform-tools/adb'),app=JSON.parse(fs.readFileSync('app.config.json')).appId;fs.mkdirSync(out,{recursive:true});
 const run=createCombinedDeviceRunner({adb,serial,env});
