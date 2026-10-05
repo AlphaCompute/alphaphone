@@ -19,17 +19,10 @@ import fs from "node:fs";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import { checkRequiredPlaywrightResults } from "../vendor/eliza/packages/scripts/check-required-playwright-results.ts";
 
-export const STORAGE_SPECS = Object.freeze([
-  "test/browser/album-storage-migration.spec.ts",
-  "test/browser/calendar-storage-migration.spec.ts",
-  "test/browser/device-storage-migration.spec.ts",
-  "test/browser/notification-storage-migration.spec.ts",
-  "test/browser/password-provider-storage.spec.ts",
-  "test/browser/preference-storage-migration.spec.ts",
-  "test/browser/reminder-storage-migration.spec.ts",
-  "test/browser/storage-usage.spec.ts",
-]);
+import { STORAGE_SPECS } from "./storage-specs.mjs";
+export { STORAGE_SPECS };
 export const ENGINES = Object.freeze(["chromium", "firefox", "webkit"]);
 
 export function parseQualifyArgs(argv) {
@@ -50,25 +43,11 @@ export function parseQualifyArgs(argv) {
   return options;
 }
 
-/** Summarize a Playwright JSON report into counts and failing titles. */
-export function summarizePlaywright(report) {
-  const stats = report?.stats ?? {};
-  const failures = [];
-  const visit = suite => {
-    for (const spec of suite.specs ?? [])
-      for (const test of spec.tests ?? [])
-        if (test.status === "unexpected" || test.status === "flaky")
-          failures.push({ file: spec.file ?? suite.file, title: spec.title, status: test.status });
-    for (const child of suite.suites ?? []) visit(child);
-  };
-  for (const suite of report?.suites ?? []) visit(suite);
-  return {
-    expected: stats.expected ?? 0,
-    unexpected: stats.unexpected ?? 0,
-    flaky: stats.flaky ?? 0,
-    skipped: stats.skipped ?? 0,
-    failures,
-  };
+/** Admit complete terminal evidence using the shared upstream report validator. */
+export function qualifyPlaywrightReport(report) {
+  const counts = checkRequiredPlaywrightResults(report,
+    STORAGE_SPECS.map(file => path.relative("test/browser", file)));
+  return { ...counts, failures: [] };
 }
 
 /** Overall verdict: every step ran now and passed on a clean, pinned tree, on all engines. */
@@ -179,8 +158,18 @@ function main() {
     const report = path.join(directory, `storage-${engine}.json`);
     const record = step(`storage-${engine}`, "npx", ["playwright", "test", ...STORAGE_SPECS, `--project=${engine}`, "--reporter=json"],
       { ...process.env, PLAYWRIGHT_JSON_OUTPUT_NAME: report }, 3600000);
-    if (fs.existsSync(report)) Object.assign(record, summarizePlaywright(JSON.parse(fs.readFileSync(report, "utf8"))), { report: path.relative(root, report) });
-    else record.status = "failed";
+    if (fs.existsSync(report)) {
+      record.report = path.relative(root, report);
+      try { Object.assign(record, qualifyPlaywrightReport(JSON.parse(fs.readFileSync(report, "utf8")))); }
+      catch (error) {
+        record.status = "failed";
+        record.reason = error.message;
+        record.failures = [{ message: error.message }];
+      }
+    } else {
+      record.status = "failed";
+      record.reason = "No Playwright JSON report was produced";
+    }
     result.storageSpecs[engine] = record;
     write();
   }

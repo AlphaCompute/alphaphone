@@ -23,7 +23,11 @@ Unsigned release APKs require controlled signing before distribution.
 Run `npm run test:browser` for the affected flows and inspect the generated reports
 and screenshots under `test-results/`. The browser workflow also exercises storage
 contracts in Firefox and WebKit. Record the browser, project, test selection and
-fixture profile. A simulated adapter test verifies its contract, not a live provider.
+fixture profile. `scripts/storage-specs.mjs` is the shared storage-spec inventory
+for browser lanes and `scripts/qualify-head.mjs`. Qualification requires every
+listed spec to execute, passing terminal attempts, matching report counts and no
+runner errors, skipped tests or flaky results. A simulated adapter test verifies
+its contract, not a live provider.
 Visual acceptance requires decoded reference assets and comparable capture geometry;
 see [visual verification](prototype-visual-verification.md).
 
