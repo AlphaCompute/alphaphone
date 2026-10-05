@@ -4,8 +4,42 @@
     {
       "name": "radical-studio",
       "runtimeExecutable": "python3",
-      "runtimeArgs": ["-m", "http.server", "8781", "--directory", "design-assets/radical-studio"],
+      "runtimeArgs": [
+        "-m",
+        "http.server",
+        "8781",
+        "--directory",
+        "design-assets/radical-studio"
+      ],
       "port": 8781
+    },
+    {
+      "name": "alphaphone-production",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "exec",
+        "vite",
+        "--",
+        "preview",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        "4610",
+        "--strictPort"
+      ],
+      "port": 4610
+    },
+    {
+      "name": "alphaphone-dev-agent",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "run",
+        "dev",
+        "--",
+        "--port",
+        "4611"
+      ],
+      "port": 4611
     }
   ]
 }
