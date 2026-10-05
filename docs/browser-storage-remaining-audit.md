@@ -18,7 +18,7 @@ journal. The required invariant depends on the stored meaning: a preference may
 intentionally be last-writer-wins, whereas an uncertain external operation must
 retain its exact request identity until authoritative reconciliation.
 
-## Outstanding domains
+## Preference domains and remaining acceptance
 
 | Domain and authoritative source | Current mechanism and concrete concern | Required implementation and exit evidence |
 | --- | --- | --- |
@@ -42,8 +42,9 @@ outstanding browser Clock journal or as proof an alarm was created.
 
 ## Remaining review
 
-Specify winner, refresh and retirement semantics for connection/environment,
-and simulated location preferences, then qualify their callers.
+Connection/environment and simulated location now have explicit winner, refresh,
+retirement and recovery semantics, with browser coverage recorded below. Current
+hosted cross-engine qualification remains separate from these local results.
 Conversation choices, Notes and audio-deletion records now have canonical document
 implementations; their contracts and owning suites are in
 [browser storage](browser-storage.md). A domain migration does not establish
@@ -161,3 +162,19 @@ At merged source `9d45e5c7`, the combined appearance/connection campaign passed
 in the remaining case; all module responses were HTTP 200. That exact case
 passed a focused unchanged-source recheck (1.6 seconds). The initial failure
 is retained; this is not a clean 66-case single-run claim.
+
+## Integrated verification after location recovery
+
+PR #266 merged as `011de823456d0cc6d93aba836751b5956d0b99f1`. At that exact
+source, `npm run verify` terminates successfully: TypeScript, 385 repository
+tests (zero failures, cancellations or skips), and the renderer build pass.
+The test phase completed in 82.75 seconds. The log is retained locally at
+`artifacts/location-recovery/verify-integrated.log`. This supersedes the older
+root timeout result for current-source local qualification.
+
+The local browser evidence remains the 89/90 location campaign followed by all
+six corrected permission-fixture cases, and the 65/66 preference campaign
+followed by its unchanged-source owning recheck. The full hosted browser
+campaign was still running when this report was updated; no all-green hosted
+claim is made. Android builds, native execution and physical/provider acceptance
+remain outside this browser pass.
