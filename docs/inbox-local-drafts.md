@@ -72,9 +72,11 @@ explicit `inboxPhase` and run UUID. `InboxFixtureScope` validates those inputs;
 Cloud/Gmail transport before WebView creation. Storage delegates to the real
 native credential-slot implementation. No provider network or mail send occurs.
 
-Build a matching test-mocks APK pair for the staging chooser used by this
-fixture. Retain both APK hashes in the archive's flat `apk-manifest.json`, then
-run against an owned disposable emulator:
+Build a matching production app/instrumentation APK pair. The fixture exercises
+the production sign-in control and account namespace through its closed synthetic
+transport; it does not require a developer environment selector. Retain both APK
+hashes in the archive's flat `apk-manifest.json`, then run against an owned
+disposable emulator:
 
 ```sh
 ANDROID_SERIAL=emulator-N ALPHA_NATIVE_TEST_AVD=owned-avd ALPHA_NATIVE_TEST_ABI=x86_64 \

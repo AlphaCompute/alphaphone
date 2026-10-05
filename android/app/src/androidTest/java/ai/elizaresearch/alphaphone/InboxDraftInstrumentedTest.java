@@ -58,7 +58,7 @@ public final class InboxDraftInstrumentedTest {
   String selector="document.querySelector('[aria-label=\""+name+"\"]')";until(selector);js("(()=>{const e="+selector+";Object.getOwnPropertyDescriptor(e.tagName==='TEXTAREA'?HTMLTextAreaElement.prototype:HTMLInputElement.prototype,'value').set.call(e,"+JSONObject.quote(text)+");e.dispatchEvent(new Event('input',{bubbles:true}));e.dispatchEvent(new Event('change',{bubbles:true}));})()");until(selector+".value==="+JSONObject.quote(text));
  }
  private void nav(String name)throws Exception{js(AppNavigation.request(name));until("window.__alphaTestNavigation?.status==='complete'&&"+AppNavigation.selected(name));}
- private String slot(){return "inbox-drafts:v1:"+new JSONArray().put("staging").put(InboxFixtureScope.runId).put("").put("a");}
+ private String slot(){return "inbox-drafts:v1:"+new JSONArray().put("production").put(InboxFixtureScope.runId).put("").put("a");}
  private JSONObject read(String key)throws Exception{return call("Capacitor.Plugins.AlphaConnection.secureRead({slot:"+JSONObject.quote(key)+"})").getJSONObject("value");}
  private void reload()throws Exception{String before=js("performance.timeOrigin");js("location.replace(location.origin+location.pathname)");until("performance.timeOrigin!=="+before+"&&document.documentElement.dataset.activeView");}
  @Test public void processPhase()throws Exception{
@@ -72,10 +72,10 @@ public final class InboxDraftInstrumentedTest {
   if(phase.equals("cleanup")){
    if(!backup.exists())return;
    JSONObject prior=new JSONObject(new String(Files.readAllBytes(backup.toPath()),java.nio.charset.StandardCharsets.UTF_8));
-   JSONObject credential=read("cloud:staging");
+   JSONObject credential=read("cloud:production");
    if(!credential.isNull("value")){
     JSONObject value=new JSONObject(credential.getString("value"));assertTrue("Only fixture credential can be removed",InboxFixtureConnection.token().equals(value.optString("token")));
-    call("Capacitor.Plugins.AlphaConnection.secureRemove({slot:'cloud:staging'})");
+    call("Capacitor.Plugins.AlphaConnection.secureRemove({slot:'cloud:production'})");
    }
    call("Capacitor.Plugins.AlphaConnection.secureRemove({slot:"+JSONObject.quote(slot())+"})");
    for(String key:new String[]{SELECTION,SERVICE})js(prior.isNull(key)?"localStorage.removeItem("+JSONObject.quote(key)+")":"localStorage.setItem("+JSONObject.quote(key)+","+JSONObject.quote(prior.getString(key))+")");
@@ -83,14 +83,15 @@ public final class InboxDraftInstrumentedTest {
   }
   if(phase.equals("prepare")){
    assertFalse("Refuse unresolved earlier fixture",backup.exists());
-   assertTrue("Refuse preexisting staging credentials",read("cloud:staging").isNull("value"));
+   assertTrue("Refuse preexisting production-profile credentials",read("cloud:production").isNull("value"));
    assertTrue("Unique draft slot starts empty",read(slot()).isNull("value"));
    JSONObject prior=new JSONObject().put("pid",android.os.Process.myPid());
    for(String key:new String[]{SELECTION,SERVICE})prior.put(key,new JSONTokener(js("localStorage.getItem("+JSONObject.quote(key)+")")).nextValue());
    Files.write(backup.toPath(),prior.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8));
    js("localStorage.setItem("+JSONObject.quote(SELECTION)+",JSON.stringify({kind:'none'}));localStorage.removeItem("+JSONObject.quote(SERVICE)+")");reload();
-   nav("Settings");click("Agent connection");until("document.querySelector('.alpha-connection select')");
-   js("(()=>{const e=document.querySelector('.alpha-connection select');e.value='staging';e.dispatchEvent(new Event('change',{bubbles:true}));})()");click("Sign in with Eliza Cloud");until("document.querySelector('.alpha-connection-current')?.textContent.includes('Cloud services connected')");click("Close connection settings");
+   // Exercise the production sign-in control with a closed test-APK transport;
+   // a developer-only environment selector is not part of this UI contract.
+   nav("Settings");click("Agent connection");click("Sign in with Eliza Cloud");until("document.querySelector('.alpha-connection-current')?.textContent.includes('Cloud services connected')");click("Close connection settings");
    nav("Inbox");until(button("Load Inbox"));click("Compose");input("To","literal@example.invalid");click("literal@example.invalid");input("Subject","Synthetic saved draft");input("Message","Exact native draft\nSecond line");click("Save draft locally");until("[...document.querySelectorAll('[role=status]')].some(e=>e.textContent==='Saved locally on this device')");
    JSONObject draft=new JSONObject(read(slot()).getString("value"));assertEquals("Exact native draft\nSecond line",draft.getString("body"));
    StringBuilder hash=new StringBuilder();for(byte b:java.security.MessageDigest.getInstance("SHA-256").digest(slot().getBytes(StandardCharsets.UTF_8)))hash.append(String.format(java.util.Locale.ROOT,"%02x",b&255));
