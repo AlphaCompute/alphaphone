@@ -76,6 +76,15 @@ export function installSettingsAdapter(Component: any, views: Bag) {
   }
   p.componentDidMount = function () {
     mount.call(this); owner = this; void refresh(); void refreshCapabilities();
+    if(!Capacitor.isNativePlatform()&&!new URLSearchParams(location.search).has('theme')){
+      const apply=()=>{try{const theme=localStorage.getItem('alpha.appearance.v1')==='dark'?'dark':'light';this.setState({theme,appearanceStorageRead:{theme}});}catch{/* Keep the current session theme if storage is unavailable. */}};
+      this.appearanceStorageListener=(event:StorageEvent)=>{if(event.key==='alpha.appearance.v1'||event.key===null)apply();};
+      this.appearanceResumeListener=apply;
+      window.addEventListener('storage',this.appearanceStorageListener);
+      window.addEventListener('pageshow',apply);
+      apply();
+    }
+
     let lastBinding = JSON.stringify([connectionController.getSnapshot().session?.sessionId, connectionController.getCloudClient()?.sessionId]);
     this.settingsConnectionUnsubscribe = connectionController.subscribe(() => {
       this.vset('settings', { connectionReadAt: Date.now() });
@@ -87,13 +96,18 @@ export function installSettingsAdapter(Component: any, views: Bag) {
   p.componentDidUpdate = function (previousProps: Bag, previousState: Bag) {
     update?.call(this, previousProps, previousState);
     const theme = this.state?.theme;
-    if ((theme === 'light' || theme === 'dark') && theme !== previousState?.theme) {
+    // The marker travels with React state, so queued external reads cannot echo an older theme.
+    const external=this.state?.appearanceStorageRead;
+    const fromStorage=external!==previousState?.appearanceStorageRead&&external?.theme===theme;
+    if (!fromStorage&&(theme === 'light' || theme === 'dark') && theme !== previousState?.theme) {
       try { localStorage.setItem('alpha.appearance.v1', theme); }
       catch { this.toast('Theme changed for this session, but could not be saved.'); }
     }
   };
   p.componentWillUnmount = function () {
     if (owner === this) { capabilityAbort?.abort(); capabilityAbort = null; ++speechGeneration; owner = null; ++generation; facts = {}; controls = {}; delivery = {}; cross={}; choices=null; history=null; }
+    window.removeEventListener('storage',this.appearanceStorageListener);
+    window.removeEventListener('pageshow',this.appearanceResumeListener);
     this.settingsConnectionUnsubscribe?.();
     void this.deviceResume?.then((listener: any) => listener?.remove()); unmount.call(this);
   };
