@@ -78,3 +78,24 @@ test('late native timing admission cannot dispatch after draft navigation',async
  await page.getByRole('button',{name:'New event',exact:true}).click();await page.getByRole('textbox',{name:'Title',exact:true}).fill('Late admission');await page.getByRole('button',{name:'Reminders',exact:true}).click();await page.getByRole('button',{name:'Save event',exact:true}).click();await expect.poll(()=>page.evaluate(()=>typeof (window as any).releaseTiming)).toBe('function');await page.getByRole('button',{name:'Back to calendar',exact:true}).last().click();await page.getByRole('button',{name:'Home',exact:true}).click();await page.evaluate(()=>(window as any).releaseTiming());
  expect(await page.evaluate(()=>(window as any).timingDispatches)).toBe(0);expect(await page.evaluate(async()=>Object.keys(await (await import('/src/runtime/reminder-creations.ts')).reminderCreations()).length)).toBe(0);
 });
+
+test('saved reminder editor waits for refresh before exposing completion',async({page})=>{
+ await create(page,'None',true);
+ await page.getByRole('button',{name:'Edit event',exact:true}).click();
+ await page.getByRole('textbox',{name:'Title',exact:true}).fill('Delayed refresh');
+ await page.evaluate(async()=>{
+  const {BrowserDaily}=await import('/src/browser/daily.ts');
+  const original=BrowserDaily.prototype.listReminders;
+  let release!:()=>void;
+  const gate=new Promise<void>(resolve=>{release=resolve;});
+  (window as any).releaseReminderRefresh=()=>{BrowserDaily.prototype.listReminders=original;release();};
+  BrowserDaily.prototype.listReminders=async function(){await gate;return original.call(this);};
+ });
+ await page.getByRole('button',{name:'Save event',exact:true}).click();
+ await expect.poll(async()=>(await row(page)).title).toBe('Delayed refresh');
+ await expect(page.getByRole('button',{name:'Save event',exact:true})).toBeVisible();
+ await page.evaluate(()=>(window as any).releaseReminderRefresh());
+ await expect(page.getByRole('button',{name:'Save event',exact:true})).toHaveCount(0);
+ await page.getByRole('button',{name:'Complete reminder occurrence',exact:true}).click();
+ await expect.poll(async()=>(await row(page)).history?.length).toBe(1);
+});
