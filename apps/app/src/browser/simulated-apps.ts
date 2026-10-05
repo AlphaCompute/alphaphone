@@ -5,7 +5,7 @@ import {installSimulatedMessages} from './simulated-messages';
 import {installSimulatedVoicemail} from './simulated-voicemail';
 import {SimulatorWriter} from './simulator-writer';
 import {installSimulatedInbox} from './simulated-inbox';
-import {loadSimulatedState,simulatorNeedsRecovery,showSimulatorRecovery} from './simulator-recovery';
+import {loadSimulatedState,simulatorNeedsRecovery,showSimulatorRecovery,configureSimulatorRecovery} from './simulator-recovery';
 import { browserDevProfile,developmentAgentWorkflows } from './dev-profile';
 type Bag=Record<string,any>;
 const names=['phone','messages','contacts','inbox','workflows','wallet'];
@@ -20,6 +20,7 @@ export function installSimulatedApps(Component:any,views:Bag,original:Bag){
  const snapshots=new Map<string,string|null>();
  for(const name of names){Object.assign(views[name],original[name]);views[name].state={...views[name].state,...loadSimulatedState(name,original[name],raw=>snapshots.set('alpha.dev.app.'+name,raw))};}
  const writer=new SimulatorWriter(snapshots);
+ configureSimulatorRecovery((key,expected)=>writer.reset(key,expected));
  installSimulatedInbox(views.inbox);
  const disposeWorkflows=developmentAgentWorkflows?Object.assign(()=>{},{connect:()=>{}}):installSimulatedWorkflows(views.workflows);
  const disposeMessages=installSimulatedMessages(views.messages);

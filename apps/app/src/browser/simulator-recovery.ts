@@ -2,6 +2,8 @@ import {layoutBrowserDialog} from './dialog-layout';
 type Bag=Record<string,any>;
 type Failure={title:string;raw?:string};
 const failures=new Map<string,Failure>();
+let resetSavedApp:((key:string,expected:string)=>void)|undefined;
+export function configureSimulatorRecovery(reset:(key:string,expected:string)=>void){resetSavedApp=reset;}
 const key=(name:string)=>'alpha.dev.app.'+name;
 const object=(value:unknown):value is Bag=>!!value&&typeof value==='object'&&!Array.isArray(value);
 /** Only persisted fields can enter a simulator; damaged records stay untouched. */
@@ -32,7 +34,7 @@ export function showSimulatorRecovery(){
  for(const [name,failure] of failures){
   const section=document.createElement('section'),title=document.createElement('h3'),status=document.createElement('p');title.textContent=failure.title;status.setAttribute('role','status');const backup=button('Download '+failure.title+' backup'),reset=button('Reset '+failure.title);backup.disabled=reset.disabled=failure.raw===undefined;
   backup.onclick=()=>{const url=URL.createObjectURL(new Blob([failure.raw!],{type:'application/octet-stream'})),link=document.createElement('a');link.href=url;link.download='Alpha-'+name+'-recovery.txt';document.body.append(link);try{link.click();status.textContent='Backup download requested. Check Downloads before resetting.';}finally{link.remove();setTimeout(()=>URL.revokeObjectURL(url),60000);}};
-  let confirming=false;reset.onclick=()=>{if(!confirming){confirming=true;reset.textContent='Confirm reset '+failure.title;status.textContent='Reset deletes this app’s saved development data and restores its examples. Download a backup first if you want to keep it.';return;}try{if(localStorage.getItem(key(name))!==failure.raw)throw Error('Changed');localStorage.removeItem(key(name));if(localStorage.getItem(key(name))!==null)throw Error('Unconfirmed');location.reload();}catch{confirming=false;reset.textContent='Reset '+failure.title;status.textContent='Reset could not be confirmed. Reload to inspect the current saved data.';}};
+  let confirming=false;reset.onclick=()=>{if(!confirming){confirming=true;reset.textContent='Confirm reset '+failure.title;status.textContent='Reset deletes this app’s saved development data and restores its examples. Download a backup first if you want to keep it.';return;}try{if(!resetSavedApp)throw Error('Development writer is unavailable. Reload before resetting.');resetSavedApp(key(name),failure.raw!);location.reload();}catch(error){confirming=false;reset.textContent='Reset '+failure.title;status.textContent='Reset could not be confirmed. '+(error instanceof Error?error.message:'Reload to inspect the current saved data.');}};
   section.append(title,backup,reset,status);own.append(section);
  }
  const close=button('Close recovery');close.onclick=()=>own.close();own.append(close);const previous=document.activeElement as HTMLElement|null;const back=(event:Event)=>{event.preventDefault();event.stopImmediatePropagation();own.close();};window.addEventListener('alpha-back',back,true);own.onclose=()=>{window.removeEventListener('alpha-back',back,true);own.remove();if(dialog===own)dialog=undefined;previous?.focus();};layoutBrowserDialog(own,[close]);document.body.append(own);own.showModal();heading.tabIndex=-1;heading.focus();own.scrollTop=0;

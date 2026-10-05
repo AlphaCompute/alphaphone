@@ -24,3 +24,18 @@ test('unreadable app storage retains the recovery route without offering a destr
 });
 
 test('background polling cannot reopen dismissed recovery for an invalid workflow store',async({page})=>{await seed(page,{workflows:'null'});await page.getByRole('button',{name:'Workflows',exact:true}).click();const dialog=page.getByRole('dialog',{name:'Saved app recovery'});await expect(dialog).toBeVisible();await dialog.getByRole('button',{name:'Close recovery',exact:true}).click();await page.evaluate(()=>window.dispatchEvent(new Event('focus')));await page.waitForTimeout(1500);await expect(dialog).toHaveCount(0);expect(await page.evaluate(()=>localStorage.getItem('alpha.dev.app.workflows'))).toBe('null');});
+
+test('a second development tab cannot reset data owned by the first writer',async({page,context})=>{
+ await seed(page,{inbox:raw,contacts:JSON.stringify({list:[]})});
+ await expect.poll(()=>page.evaluate(async()=>(await navigator.locks.query()).held?.some(lock=>lock.name==='alpha.dev.simulator-writer.v1'))).toBe(true);
+ const other=await context.newPage();await other.goto('/?mode=dev');await other.getByRole('button',{name:'Inbox',exact:true}).click();const dialog=other.getByRole('dialog',{name:'Saved app recovery'});
+ await dialog.getByRole('button',{name:'Reset Inbox',exact:true}).click();await dialog.getByRole('button',{name:'Confirm reset Inbox',exact:true}).click();await expect(dialog.getByRole('status')).toContainText('Another development tab owns');expect(await other.evaluate(()=>localStorage.getItem('alpha.dev.app.inbox'))).toBe(raw);
+ await page.close();await other.reload();await other.getByRole('button',{name:'Inbox',exact:true}).click();await dialog.getByRole('button',{name:'Reset Inbox',exact:true}).click();await dialog.getByRole('button',{name:'Confirm reset Inbox',exact:true}).click();await expect(dialog).toHaveCount(0);expect(await other.evaluate(()=>localStorage.getItem('alpha.dev.app.inbox'))).toBeNull();expect(await other.evaluate(()=>localStorage.getItem('alpha.dev.app.contacts'))).toBe(JSON.stringify({list:[]}));
+});
+test('a retired page cannot reset its captured malformed data',async({page})=>{
+ await seed(page,{inbox:raw});await page.getByRole('button',{name:'Inbox',exact:true}).click();const dialog=page.getByRole('dialog',{name:'Saved app recovery'});await dialog.getByRole('button',{name:'Reset Inbox',exact:true}).click();await page.evaluate(()=>window.dispatchEvent(new Event('pagehide')));await dialog.getByRole('button',{name:'Confirm reset Inbox',exact:true}).click();await expect(dialog.getByRole('status')).toContainText('Safe development storage is unavailable');expect(await page.evaluate(()=>localStorage.getItem('alpha.dev.app.inbox'))).toBe(raw);
+});
+test('successful reset retires stale reducers before they can recreate erased data',async({page})=>{
+ await page.addInitScript(()=>localStorage.setItem('alpha.connection.selection.v1',JSON.stringify({kind:'offline'})));await page.goto('/');
+ expect(await page.evaluate(async()=>{const {SimulatorWriter}=await import('/src/browser/simulator-writer.ts'),key='alpha.dev.app.inbox',raw='{broken';localStorage.setItem(key,raw);const writer=new SimulatorWriter(new Map([[key,raw]]));for(let i=0;i<100&&!writer.ready;i++)await new Promise(r=>setTimeout(r,10));if(!writer.ready)throw Error('Fixture writer unavailable');writer.reset(key,raw);let refused=false;try{writer.write(key,JSON.stringify({mails:[]}));}catch{refused=true;}return {refused,ready:writer.ready,saved:localStorage.getItem(key)};})).toEqual({refused:true,ready:false,saved:null});
+});
