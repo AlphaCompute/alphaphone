@@ -139,7 +139,7 @@ def generated_matches_archive(manifest, archive):
 def check_against_record(workspace, repository, allow_unqualified):
     """Return a message for the installer; raise unless the natives match or the caller opted in."""
     generated_path = Path(workspace) / 'source/android/local-speech/runtime-manifest.json'
-    recorded_path = Path(repository) / 'android/local-speech/runtime-manifest.json'
+    recorded_path = Path(repository) / 'android/local-speech/qualified-runtime-manifest.json'
     generated = json.loads(generated_path.read_text())
     recorded = json.loads(recorded_path.read_text())
     archive = generated_path.parent / 'libs/sherpa-onnx-1.13.8-no-espeak.aar'

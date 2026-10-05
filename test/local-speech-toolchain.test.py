@@ -83,6 +83,7 @@ class SpeechToolchainTest(unittest.TestCase):
         return workspace, repository, generated
 
     def record(self, repository, manifest):
+        (repository / 'android/local-speech/qualified-runtime-manifest.json').write_text(json.dumps(manifest))
         (repository / 'android/local-speech/runtime-manifest.json').write_text(json.dumps(manifest))
 
     def test_matching_natives_install_and_explain_the_container_hash(self):
@@ -109,6 +110,37 @@ class SpeechToolchainTest(unittest.TestCase):
         warning = toolchain.check_against_record(workspace, repository, True)
         self.assertIn('UNQUALIFIED', warning)
         self.assertIn('arm64-v8a/libsherpa-onnx-jni.so', warning)
+
+    def test_reinstall_cannot_promote_an_unqualified_local_manifest(self):
+        workspace, repository, generated = self.runtime({'arm64-v8a': b'arm', 'x86_64': b'x86'})
+        recorded = json.loads(json.dumps(generated))
+        recorded['qualifiedAbis'][0]['native'][0]['sha256'] = sha(b'qualified')
+        self.record(repository, recorded)
+        # Installation replaces the local manifest, never the reviewed record.
+        (repository / 'android/local-speech/runtime-manifest.json').write_text(json.dumps(generated))
+        with self.assertRaises(SystemExit):
+            toolchain.check_against_record(workspace, repository, False)
+
+    def test_apk_qualification_checks_packaged_bytes_and_missing_abis(self):
+        spec = importlib.util.spec_from_file_location('apk_qualification', ROOT / 'scripts/local-speech/verify-apk-qualification.py')
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        _, _, record = self.runtime({'arm64-v8a': b'arm', 'x86_64': b'x86'})
+        apk = self.dir / 'release.apk'
+        def write(arm, x86):
+            with zipfile.ZipFile(apk, 'w') as archive:
+                archive.writestr('lib/arm64-v8a/libsherpa-onnx-jni.so', arm)
+                if x86 is not None:
+                    archive.writestr('lib/x86_64/libsherpa-onnx-jni.so', x86)
+        write(b'arm', b'x86')
+        self.assertTrue(module.qualify(apk, record)['qualified'])
+        write(b'changed', b'x86')
+        self.assertFalse(module.qualify(apk, record)['qualified'])
+        write(b'arm', None)
+        self.assertTrue(module.qualify(apk, record)['qualified'])  # Shipping release is ARM64 only.
+        self.assertFalse(module.qualify(apk, record, ('arm64-v8a', 'x86_64'))['qualified'])
+        write(b'changed', None)
+        self.assertFalse(module.qualify(apk, record)['qualified'])
 
     def test_assembled_archive_must_match_its_generated_manifest(self):
         workspace, repository, generated = self.runtime({'arm64-v8a': b'arm', 'x86_64': b'x86'})

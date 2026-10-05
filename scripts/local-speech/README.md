@@ -68,3 +68,10 @@ the local build, which Gradle's `:local-speech:preBuild` requires. APKs built th
 build evidence only, not release candidates, and that manifest change must never be
 committed. Recording a new qualified runtime needs a reviewed rebuild and device
 qualification, not a hash update.
+
+The reviewed native-byte baseline is `android/local-speech/qualified-runtime-manifest.json`.
+The installer never overwrites it: `runtime-manifest.json` describes the installed local
+AAR and can differ. Release APK verification hashes the actual packaged native libraries
+against the reviewed baseline and records `speechQualification`; any mismatch or missing
+ABI forces `distributable: false`, including in the resident CI build. Updating the
+reviewed baseline requires separate native qualification, not a successful local rebuild.
