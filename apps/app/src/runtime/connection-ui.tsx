@@ -410,6 +410,14 @@ async function conversationList(selected: Active, signal: AbortSignal) {
 export const connectionController = {
   subscribe(listener: () => void) { listeners.add(listener); return () => { listeners.delete(listener); }; },
   getSnapshot() { return state; },
+  async assistantDraftBinding(signal:AbortSignal){
+    const selected=active,session=state.session,generation=epoch;
+    signal.throwIfAborted();
+    if(!selected||!session)return JSON.stringify(['offline']);
+    const key=conversationKey(session),saved=await captureConversationChoice(key,signal);
+    signal.throwIfAborted();if(generation!==epoch||selected!==active||session!==state.session)throw Error('The agent changed while opening its draft.');
+    return JSON.stringify([session.origin,session.ownerId,session.agentId,conversationMemory.get(key)||saved?.id||null]);
+  },
   setDeviceRecovery(recovery: DeviceRecovery) { deviceRecovery=recovery; },
   setDeviceExecutor(executor: DeviceExecutor) { deviceExecutor = executor; },
   async execute(proposal: ActionProposal, context: ContextEnvelope, signal: AbortSignal): Promise<OperationReceipt> {

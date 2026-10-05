@@ -88,6 +88,21 @@ This review is source-only while separate phone smoke testing runs. Findings des
 
 These are local engineering/UX gaps, not account-provider blockers. Phone-native visual acceptance must verify them through actual scrolling, keyboard and Back/Home actions; DOM-driven clicks may bypass offscreen controls.
 
+### Assistant draft recovery implementation in progress
+
+The draft storage layer now stores only text plus binding/revision metadata. Binding
+uses origin, verified owner, agent and authoritative conversation selection; offline
+text has a separate identity. Browser writes use the upstream transactional document
+store, while the Android adapter admits a narrowly named encrypted draft slot.
+Revisioned empty records prevent stale writes after clearing. Four record-policy tests
+and 15 browser storage/binding checks across Chromium, Firefox and WebKit pass.
+
+The composer does not consume this storage layer yet. Remaining work is save/recovery
+presentation, stale-load protection, competing-edit review, send/clear ordering and
+rendered restart journeys. Until those are integrated and verified, assistant draft
+restart retention remains incomplete. Native slot admission is source-only here;
+no APK build or device persistence result is claimed.
+
 ## Upstream extraction and native integration packages
 
 Do not modify `vendor/eliza` as a shortcut or activate `base/eliza-app` as the product. Generic additions are reviewed upstream commits or explicit tested patches in `patches/eliza`. Keep `upstream.lock.json` consistent with an intentional submodule upgrade. The local DailyApps intent dispatcher is an interim product handoff adapter; avoid expanding it into a second shared platform implementation.
