@@ -52,7 +52,7 @@ else if(a.includes('run-as')){
  const text=isEnvelope?JSON.stringify(envelope):id;
  console.log('<map><string name="'+(isEnvelope?'envelope':'id')+'">'+text.replaceAll('&','&amp;').replaceAll('"','&quot;')+'</string></map>');
 }
-else if(a.slice(0,3).join(' ')==='shell dumpsys package')console.log('User 0: stopped=true'+String.fromCharCode(10)+'User 10: stopped=false');
+else if(a.slice(0,3).join(' ')==='shell dumpsys package')console.log('Packages:'+String.fromCharCode(10)+'  Package ['+pkg+'] (abc):'+String.fromCharCode(10)+'    User 0: stopped=true'+String.fromCharCode(10)+'    User 10: stopped=false'+String.fromCharCode(10)+'Queries:'+String.fromCharCode(10)+'    User 10:');
 else if(a.includes('notification')&&a.includes('list'))console.log(s.boot?'10|'+pkg+'|0|'+${JSON.stringify(kind==='recurrence-recovery'?'recurring_recovery_fixture':'recovery_fixture')}+'|1010000':'');
 else if(a.includes('revoke')){s.denied=true;s.reminderStatus='permission-denied';save();}
 else if(a.includes('grant')){if(s.denied&&mode==='grant-resumes')s.reminderStatus='scheduled';save();}
