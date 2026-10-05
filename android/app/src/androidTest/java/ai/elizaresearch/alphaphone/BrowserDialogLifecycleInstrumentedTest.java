@@ -32,6 +32,7 @@ public final class BrowserDialogLifecycleInstrumentedTest {
   for(int i=0;i<150;i++){if(listing()==null){WebViewTestDriver.withActivity(MainActivity.class,a->assertFalse("Prior native dialog is actually dismissed",old.isShowing()));return;}SystemClock.sleep(100);}fail("Native history dialog survived document replacement");
  }
  @Test public void nativeDownloadsDialogRetiresOnReloadAndMockEntry()throws Exception{
+  org.junit.Assume.assumeTrue("Mock mode exists only in -PELIZA_DEV_ALLOW_TEST_MOCKS=1 builds",BuildConfig.ELIZA_DEV_ALLOW_TEST_MOCKS);
   try(BoundedActivityScenario<MainActivity> scenario=BoundedActivityScenario.launch(MainActivity.class)){
    AppNavigation.liveMode();AlertDialog first=openDownloads();String origin=host("performance.timeOrigin");WebViewTestDriver.navigateHostDocument("location.reload()",true);
    ready("performance.timeOrigin!=="+origin+"&&document.documentElement.dataset.activeView==='home'");dismissed(first);

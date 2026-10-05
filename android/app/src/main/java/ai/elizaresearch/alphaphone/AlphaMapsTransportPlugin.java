@@ -27,8 +27,10 @@ public final class AlphaMapsTransportPlugin extends Plugin {
   void resolve(JSObject value){if(settled.compareAndSet(false,true)){if(deadline!=null)deadline.cancel(false);call.resolve(value);}}
   void cancel(String reason){cancelled=true;reject(reason);FutureTask<Void> queued=task;if(queued!=null){workers.remove(queued);queued.cancel(true);}HttpURLConnection active=connection;if(active!=null)try{closers.execute(active::disconnect);}catch(RejectedExecutionException ignored){/* The owning worker also closes in finally. */}}
  }
+ // Compile-time constant: builds without ELIZA_DEV_ALLOW_TEST_MOCKS=1 carry no loopback origin.
+ private static final String DEVELOPMENT_ORIGIN=BuildConfig.ELIZA_DEV_ALLOW_TEST_MOCKS?"http://10.0.2.2:47850":"";
  @PluginMethod public void request(PluginCall call){
-  if(!BuildConfig.DEBUG||destroyed){call.reject("Regional development transport is unavailable in this build");return;}
+  if(!BuildConfig.ELIZA_DEV_ALLOW_TEST_MOCKS||DEVELOPMENT_ORIGIN.isEmpty()||destroyed){call.reject("Regional development transport is unavailable in this build");return;}
   String path=call.getString("path"),id=call.getString("requestId");
   try{URI uri=new URI(path==null?"":path);String p=uri.getRawPath();
    if(id==null||!id.matches("[a-zA-Z0-9_-]{1,80}")||path.length()>4096||uri.isAbsolute()||uri.getRawAuthority()!=null||uri.getFragment()!=null||p==null||!(p.matches("/tiles/[0-9]{1,2}/[0-9]{1,6}/[0-9]{1,6}\\.pbf")||p.equals("/capabilities")||p.equals("/search")||p.equals("/place")||p.equals("/route")))throw new IllegalArgumentException();
@@ -42,7 +44,7 @@ public final class AlphaMapsTransportPlugin extends Plugin {
    job.deadline=deadlines.schedule(()->{job.cancel("Regional service timed out");pending.remove(id,job);},15,TimeUnit.SECONDS);
    FutureTask<Void> task=new FutureTask<>(()->{try{
    if(job.cancelled||destroyed)throw new IOException();
-   HttpURLConnection connection=(HttpURLConnection)new URL("http://10.0.2.2:47850"+path).openConnection();job.connection=connection;
+   HttpURLConnection connection=(HttpURLConnection)new URL(DEVELOPMENT_ORIGIN+path).openConnection();job.connection=connection;
    connection.setUseCaches(false);connection.setInstanceFollowRedirects(false);connection.setConnectTimeout(10000);connection.setReadTimeout(15000);connection.setRequestProperty("Accept-Encoding","identity");connection.setRequestProperty("User-Agent","AlphaPhone-RegionalMaps/0.1");
    if(job.cancelled||destroyed)throw new IOException();int status=connection.getResponseCode();
    if(status>=300&&status<400)throw new IOException();

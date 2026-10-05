@@ -2,6 +2,9 @@ package ai.elizaresearch.alphaphone;
 
 import android.os.Bundle;
 import android.content.Intent;
+import android.os.SystemClock;
+import android.view.ViewGroup;
+import android.webkit.RenderProcessGoneDetail;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import androidx.activity.OnBackPressedCallback;
@@ -10,6 +13,7 @@ import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowCompat;
 import androidx.core.view.WindowInsetsCompat;
 import com.getcapacitor.BridgeActivity;
+import com.getcapacitor.WebViewListener;
 import ai.eliza.plugins.system.SystemPlugin;
 
 /** Derived from packages/app/scripts/mobile/android/templates/main-activity.ts.
@@ -21,6 +25,33 @@ public class MainActivity extends BridgeActivity {
  public int getTopInsetDp() { return topInsetDp; }
  public int getBottomInsetDp() { return bottomInsetDp; }
  protected boolean isAssistantSurface() { return false; }
+ // Renderer recovery is process-wide so a crash loop backs off instead of spinning.
+ private static final long RECOVERY_WINDOW_MS = 60_000L, RECOVERY_BACKOFF_MS = 5_000L;
+ private static final int RECOVERY_BUDGET = 3;
+ private static long recoveryWindowStart = 0L;
+ private static int recoveriesInWindow = 0;
+ private boolean recoveringRenderer = false;
+ /** Returns the delay before recreating after a renderer loss, applying a bounded backoff. */
+ static synchronized long rendererRecoveryDelay(long now) {
+  if (recoveryWindowStart == 0L || now - recoveryWindowStart > RECOVERY_WINDOW_MS) { recoveryWindowStart = now; recoveriesInWindow = 0; }
+  recoveriesInWindow++;
+  return recoveriesInWindow > RECOVERY_BUDGET ? RECOVERY_BACKOFF_MS : 0L;
+ }
+ private final WebViewListener rendererRecovery = new WebViewListener() {
+  @Override public boolean onRenderProcessGone(WebView view, RenderProcessGoneDetail detail) {
+   if (getBridge() == null || view != getBridge().getWebView()) return false;
+   // A dead renderer leaves the HOME surface blank and, unhandled, kills the app process.
+   // Detach and destroy the dead WebView, then rebuild the Activity and its bridge.
+   android.util.Log.w("AlphaRenderer", "WebView renderer gone; crashed=" + detail.didCrash() + "; recreating activity");
+   if (recoveringRenderer) return true;
+   recoveringRenderer = true;
+   if (view.getParent() instanceof ViewGroup) ((ViewGroup) view.getParent()).removeView(view);
+   view.destroy();
+   long delay = rendererRecoveryDelay(SystemClock.elapsedRealtime());
+   getWindow().getDecorView().postDelayed(() -> { if (!isFinishing() && !isDestroyed()) recreate(); }, delay);
+   return true;
+  }
+ };
  @Override public void onCreate(Bundle state) {
   SplashScreen.installSplashScreen(this);
   registerPlugin(SystemPlugin.class);
@@ -45,11 +76,13 @@ public class MainActivity extends BridgeActivity {
   registerPlugin(AlphaNoteDocumentsPlugin.class);
   registerPlugin(AlphaNotificationsPlugin.class);
   registerPlugin(AlphaHostedResultsPlugin.class);
-  if (BuildConfig.DEBUG) {
+  if (BuildConfig.ELIZA_DEV_ALLOW_TEST_MOCKS) {
+   // Present only in debug builds made with -PELIZA_DEV_ALLOW_TEST_MOCKS=1 (src/testMocks).
    try { registerPlugin(Class.forName("ai.elizaresearch.alphaphone.DevelopmentAgentPlugin").asSubclass(com.getcapacitor.Plugin.class)); }
-   catch (ClassNotFoundException ignored) { /* Debug-only class must never enter release APKs. */ }
+   catch (ClassNotFoundException ignored) { /* Test-mocks overlay not attached to this build. */ }
   }
   super.onCreate(state);
+  getBridge().addWebViewListener(rendererRecovery);
   WebView.setWebContentsDebuggingEnabled(BuildConfig.DEBUG);
   getBridge().getWebView().getSettings().setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
   AlphaDevicePlugin.applyTextScale(this);

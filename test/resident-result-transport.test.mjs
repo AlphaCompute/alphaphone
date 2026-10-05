@@ -26,7 +26,7 @@ test('resident delivery coordinator uses IPC and retires its encrypted session b
   const context=join(temporary,'Context.java');writeFileSync(context,'package android.content; public class Context {public Context getApplicationContext(){return this;}}');
   const support=join(temporary,'Support.java');writeFileSync(support,`package ai.elizaresearch.alphaphone;
 import android.content.Context;import org.json.*;import java.util.*;
-class BuildConfig {static final boolean DEBUG=false;}
+class BuildConfig {static final boolean DEBUG=false;static final boolean ELIZA_DEV_ALLOW_TEST_MOCKS=false;}
 class AlphaCredentialStore {static final Map<String,String> data=new HashMap<>();AlphaCredentialStore(Context c){}String readCredentialSlot(String key){return data.get(key);}void writeCredentialSlot(String key,String value){data.put(key,value);}void removeCredentialSlot(String key){data.remove(key);}}
 class HostedNoticePoster implements HostedResultNotices.Poster {HostedNoticePoster(Context c){}public boolean allowed(){return false;}public boolean active(String key){return false;}public void post(String key){throw new AssertionError();}public void cancel(String key){}}
 class HostedDeliveryWorker {static boolean resident;static int scheduled;static void cancel(Context c){}static void schedule(Context c,String generation,boolean local){resident=local;scheduled++;}}

@@ -6,7 +6,8 @@ final class AppNavigation {
  private AppNavigation() {}
  static void liveMode() throws Exception {
   try(StartupDocumentProbe startup=new StartupDocumentProbe()) {
-   if("mock".equals(startup.awaitReady(false))) {
+   // Builds without ELIZA_DEV_ALLOW_TEST_MOCKS have no mock mode: require live directly.
+   if("mock".equals(startup.awaitReady(!BuildConfig.ELIZA_DEV_ALLOW_TEST_MOCKS))) {
     // One real click only. Never retry effects if their callback is lost.
     startup.expectNavigation();
     WebViewTestDriver.withActivity(MainActivity.class,a->a.getBridge().getWebView().evaluateJavascript("document.querySelector('.mock-mode-banner button')?.click()",null));

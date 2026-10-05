@@ -1,5 +1,28 @@
 apply plugin: 'com.android.application'
 def identity = new groovy.json.JsonSlurper().parse(file('../../app.config.json'))
+// Upstream switch (vendor/eliza/packages/app/scripts/dev-ui.ts): exactly "1" opts
+// test-only mocks and developer hooks into DEBUG variants. Release never gets them.
+def testMocksRaw = project.findProperty('ELIZA_DEV_ALLOW_TEST_MOCKS') ?: System.getenv('ELIZA_DEV_ALLOW_TEST_MOCKS')
+def testMocksEnabled = testMocksRaw != null && testMocksRaw.toString() == '1'
+// Upstream release names. Version values must be positive integers / plain labels.
+def envValue = { String name -> def value = System.getenv(name); value == null || value.trim().isEmpty() ? null : value.trim() }
+def versionCodeSource = envValue('ELIZAOS_VERSION_CODE') != null ? 'ELIZAOS_VERSION_CODE' : 'app.config.json versionCode'
+def versionCodeRaw = (envValue('ELIZAOS_VERSION_CODE') ?: identity.versionCode)?.toString()
+if (versionCodeRaw == null || !(versionCodeRaw ==~ /[1-9][0-9]{0,9}/) || versionCodeRaw.toLong() > 2100000000L)
+ throw new GradleException("${versionCodeSource} must be a positive integer no greater than 2100000000")
+def appVersionCode = versionCodeRaw.toInteger()
+def appVersionName = (envValue('ELIZAOS_VERSION_NAME') ?: identity.version)?.toString()
+if (appVersionName == null || !(appVersionName ==~ /[0-9A-Za-z][0-9A-Za-z.+_-]{0,63}/))
+ throw new GradleException('ELIZAOS_VERSION_NAME / app.config.json version must be a plain version label')
+// Release signing is applied only when all four upstream variables are present.
+// Values are never printed; a partial set is reported by name only.
+def releaseSigningNames = ['ELIZAOS_KEYSTORE_PATH', 'ELIZAOS_KEYSTORE_PASSWORD', 'ELIZAOS_KEY_ALIAS', 'ELIZAOS_KEY_PASSWORD']
+def releaseSigningMissing = releaseSigningNames.findAll { envValue(it) == null }
+def releaseSigningReady = releaseSigningMissing.isEmpty()
+if (!releaseSigningReady && releaseSigningMissing.size() < releaseSigningNames.size())
+ logger.warn("[release-signing] incomplete signing environment; producing unsigned release APKs. Missing: ${releaseSigningMissing.join(', ')}")
+if (releaseSigningReady && !file(envValue('ELIZAOS_KEYSTORE_PATH')).isFile())
+ throw new GradleException('ELIZAOS_KEYSTORE_PATH does not name a readable keystore file')
 android {
  namespace identity.appId
  compileSdk rootProject.ext.compileSdkVersion
@@ -7,8 +30,8 @@ android {
   applicationId identity.appId
   minSdk rootProject.ext.minSdkVersion
   targetSdk rootProject.ext.targetSdkVersion
-  versionCode identity.versionCode
-  versionName identity.version
+  versionCode appVersionCode
+  versionName appVersionName
   resValue 'string', 'app_name', identity.appName
   manifestPlaceholders = [appOrientation: identity.orientation]
   testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'
@@ -18,6 +41,18 @@ android {
   buildConfigField 'boolean', 'AOSP_BUILD', 'false'
   buildConfigField 'String', 'ELIZA_CHROMIUM_PACKAGE_NAME', '""'
   buildConfigField 'String', 'ELIZA_CHROMIUM_CERT_SHA256', '""'
+  buildConfigField 'boolean', 'ELIZA_DEV_ALLOW_TEST_MOCKS', 'false'
+ }
+ // Developer hooks (DevelopmentAgentPlugin, DevelopmentVoiceCapture, SyntheticAutofillService,
+ // loopback cleartext config, peer-fixture visibility) are attached to debug variants only
+ // when the switch is on, following upstream's lp3ColorPolicyBuildEnabled source-set pattern.
+ sourceSets {
+  if (testMocksEnabled) {
+   debug.java.srcDir file('src/testMocks/java')
+   debug.res.srcDir file('src/testMocks/res')
+   debug.manifest.srcFile file('src/testMocks/AndroidManifest.xml')
+   androidTest.java.srcDir file('src/testMocks/androidTest/java')
+  }
  }
  sourceSets.main.java.srcDir layout.buildDirectory.dir('generated/local-agent/java')
  packagingOptions { jniLibs { useLegacyPackaging = true; keepDebugSymbols += ['**/libeliza_*.so', '**/libsigsys-handler.so'] } }
@@ -26,9 +61,29 @@ android {
   standalone { dimension 'distribution'; buildConfigField 'boolean', 'IS_LAUNCHER', 'false' }
   launcher { dimension 'distribution'; buildConfigField 'boolean', 'IS_LAUNCHER', 'true' }
  }
+ signingConfigs {
+  if (releaseSigningReady) {
+   release {
+    storeFile file(envValue('ELIZAOS_KEYSTORE_PATH'))
+    storePassword envValue('ELIZAOS_KEYSTORE_PASSWORD')
+    keyAlias envValue('ELIZAOS_KEY_ALIAS')
+    keyPassword envValue('ELIZAOS_KEY_PASSWORD')
+   }
+  }
+ }
  buildTypes {
-  debug { debuggable true }
-  release { minifyEnabled false }
+  debug {
+   debuggable true
+   buildConfigField 'boolean', 'ELIZA_DEV_ALLOW_TEST_MOCKS', testMocksEnabled ? 'true' : 'false'
+  }
+  release {
+   minifyEnabled true
+   shrinkResources true
+   proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+   // Shipping hardware is ARM64; debug/CI variants keep every ABI including x86_64.
+   ndk { abiFilters 'arm64-v8a' }
+   if (releaseSigningReady) signingConfig signingConfigs.release
+  }
  }
  compileOptions { sourceCompatibility JavaVersion.VERSION_21; targetCompatibility JavaVersion.VERSION_21 }
 }

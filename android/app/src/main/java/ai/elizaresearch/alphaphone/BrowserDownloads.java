@@ -46,8 +46,8 @@ final class BrowserDownloads {
  private boolean allowed(Uri uri){
   if(uri.getHost()==null||uri.getUserInfo()!=null)return false;
   if("https".equalsIgnoreCase(uri.getScheme()))return true;
-  // Only disposable instrumentation can use the existing debug loopback policy.
-  return BuildConfig.DEBUG && "http".equals(uri.getScheme()) && ("127.0.0.1".equals(uri.getHost())||"localhost".equals(uri.getHost()));
+  // Only test-mocks debug builds (ELIZA_DEV_ALLOW_TEST_MOCKS=1) may use the loopback policy.
+  return BuildConfig.ELIZA_DEV_ALLOW_TEST_MOCKS && "http".equals(uri.getScheme()) && ("127.0.0.1".equals(uri.getHost())||"localhost".equals(uri.getHost()));
  }
  private void message(String text){new AlertDialog.Builder(context).setTitle("Download").setMessage(text).setPositiveButton("Close",null).show();}
  void request(String tab,String raw,String disposition,String mime,long length,BooleanSupplier current){

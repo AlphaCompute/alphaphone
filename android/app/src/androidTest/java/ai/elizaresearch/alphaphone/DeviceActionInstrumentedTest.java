@@ -45,7 +45,7 @@ public class DeviceActionInstrumentedTest {
  }
  @Test public void realProposalApprovedOncePersistsNoteAndJournal()throws Exception {
   Assume.assumeTrue("Requires explicit patched device opt-in","true".equals(InstrumentationRegistry.getArguments().getString("deviceActions")));
-  assertTrue(BuildConfig.DEBUG);
+  assertTrue("Loopback HTTP fixtures require a -PELIZA_DEV_ALLOW_TEST_MOCKS=1 debug build",BuildConfig.ELIZA_DEV_ALLOW_TEST_MOCKS);
   File fixture=new File(InstrumentationRegistry.getInstrumentation().getTargetContext().getFilesDir(),"device-action-pairing.json");
   JSONObject config=new JSONObject(new String(Files.readAllBytes(fixture.toPath()),StandardCharsets.UTF_8));
   String origin=config.getString("origin"),title=config.getString("title"),body="Synthetic Android fixture only.";

@@ -90,7 +90,7 @@ final class BrowserReading {
    return new JSONObject().put("execution","device").put("owner",owner).put("session",session).put("expires",expires).toString();
   }
   if(origin==null||origin.length()>2048||owner==null||owner.isBlank()||owner.length()>256||session==null||session.isBlank()||session.length()>256||expires==null||expires<=System.currentTimeMillis())throw new IllegalArgumentException();
-  java.net.URI uri=new java.net.URI(origin);boolean local=BuildConfig.DEBUG&&"http".equals(uri.getScheme())&&java.util.Set.of("127.0.0.1","10.0.2.2").contains(uri.getHost());
+  java.net.URI uri=new java.net.URI(origin);boolean local=BuildConfig.ELIZA_DEV_ALLOW_TEST_MOCKS&&"http".equals(uri.getScheme())&&java.util.Set.of("127.0.0.1","10.0.2.2").contains(uri.getHost());
   if(uri.getHost()==null||(!"https".equals(uri.getScheme())&&!local)||uri.getRawUserInfo()!=null||uri.getRawQuery()!=null||uri.getRawFragment()!=null||!"".equals(uri.getRawPath()))throw new IllegalArgumentException();
   return new JSONObject().put("origin",origin).put("owner",owner).put("session",session).put("expires",expires).toString();
  }

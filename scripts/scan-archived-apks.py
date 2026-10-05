@@ -19,9 +19,10 @@ if output.exists():
     raise SystemExit("Preserve existing scan evidence")
 manifest = json.loads((archive / "apk-manifest.json").read_text())
 inputs = json.loads((archive / "inputs-before.json").read_text())["files"]
-prefix = "android/app/src/androidTest/java/"
+prefixes = ["android/app/src/androidTest/java/", "android/app/src/testMocks/androidTest/java/"]
 descriptors = [
     ("L" + name[len(prefix):-5] + ";").encode()
+    for prefix in prefixes
     for name in inputs if name.startswith(prefix) and name.endswith(".java")
 ]
 key_path = Path.home() / ".config/alphaphone/cerebras-key"
@@ -50,7 +51,10 @@ for name in sorted(manifest):
     release = "release-unsigned" in name
     test_absent = all(value not in dex for value in descriptors) if release else None
     presence = {value: ("Lai/elizaresearch/alphaphone/" + value + ";").encode() in dex for value in debug_classes}
-    passed = secret_absent and (not release or test_absent) and all(found != release for found in presence.values())
+    # Release never carries developer hooks. Debug carries all of them only when built with
+    # -PELIZA_DEV_ALLOW_TEST_MOCKS=1 (src/testMocks); a flag-off debug carries none.
+    hooks_consistent = not any(presence.values()) if release else len(set(presence.values())) == 1
+    passed = secret_absent and (not release or test_absent) and hooks_consistent
     results.append({"apk": name, "sha256": digest, "archiveHashMatched": True,
                     "providerSecretAbsent": secret_absent, "androidTestClassesAbsent": test_absent,
                     "debugOnlyClassPresence": presence, "passed": passed})
