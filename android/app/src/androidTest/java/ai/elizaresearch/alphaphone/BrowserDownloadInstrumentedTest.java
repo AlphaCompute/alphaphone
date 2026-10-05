@@ -87,6 +87,7 @@ public final class BrowserDownloadInstrumentedTest {
  private long row(DownloadManager manager,String name)throws Exception{for(int i=0;i<150;i++){long id=find(manager,name);if(id>0)return id;SystemClock.sleep(100);}throw new AssertionError("Confirmed download has no actual provider row");}
  private void link(String id)throws Exception{page();assertEquals("true",browser.child("(()=>{document.querySelector('#"+id+"').click();return true})()"));nativeVisible("Download file?");}
  @Test public void explicitReviewExactBytesDenialAndCancellation()throws Exception{
+  org.junit.Assume.assumeTrue("Loopback HTTP fixtures require a -PELIZA_DEV_ALLOW_TEST_MOCKS=1 debug build", BuildConfig.ELIZA_DEV_ALLOW_TEST_MOCKS);
   String token=UUID.randomUUID().toString(),filename="alpha-download-"+token+".txt",slowname="alpha-slow-"+token+".bin",errorname="alpha-error-"+token+".txt";
   byte[] expected=("Synthetic browser download "+token+"\nExact bytes verified.\n").getBytes(StandardCharsets.UTF_8);
   ServerSocket server=new ServerSocket(0,16,InetAddress.getByName("127.0.0.1"));ExecutorService workers=Executors.newCachedThreadPool();CountDownLatch releaseSlow=new CountDownLatch(1);java.util.concurrent.atomic.AtomicInteger errorRequests=new java.util.concurrent.atomic.AtomicInteger(),fileRequests=new java.util.concurrent.atomic.AtomicInteger(),slowRequests=new java.util.concurrent.atomic.AtomicInteger();

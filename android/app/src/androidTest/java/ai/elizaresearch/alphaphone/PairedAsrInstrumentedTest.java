@@ -36,6 +36,7 @@ public class PairedAsrInstrumentedTest {
   public void close()throws Exception{server.close();worker.shutdownNow();}
  }
  @Test public void nativeAacDecodeAndAuthenticatedExplicitAsrPreserveDraft()throws Exception{
+  org.junit.Assume.assumeTrue("Loopback HTTP fixtures require a -PELIZA_DEV_ALLOW_TEST_MOCKS=1 debug build", BuildConfig.ELIZA_DEV_ALLOW_TEST_MOCKS);
   android.content.Context context=InstrumentationRegistry.getInstrumentation().getTargetContext();File audio=File.createTempFile("paired-asr-",".m4a",context.getCacheDir());
   try(InputStream input=InstrumentationRegistry.getInstrumentation().getContext().getAssets().open("paired-whisper-fixture.m4a");OutputStream output=new FileOutputStream(audio)){byte[] buffer=new byte[8192];int n;while((n=input.read(buffer))!=-1)output.write(buffer,0,n);}
   try{AlphaVoicePcm.decode(audio,()->true);fail("Cancelled decoder must not return audio");}catch(IOException expected){}
