@@ -7,7 +7,7 @@ import os from "node:os";
 import path from "node:path";
 import { execFileSync, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { auditBundle, distributionProblems, manifestFacts, parseSignerDigest, readBuildFlags } from "../scripts/apk.mjs";
+import { archiveWebPayload, auditBundle, distributionProblems, manifestFacts, parseSignerDigest, readBuildFlags } from "../scripts/apk.mjs";
 import { buildEnv, gradleFlagArgs, outputDirectory, parseBuildArgs, signingRequested, withDistributionWebRestored } from "../scripts/build-android.mjs";
 import { parseQualifyArgs, summarizePlaywright, verdict, ENGINES } from "../scripts/qualify-head.mjs";
 
@@ -331,4 +331,23 @@ test("a restore that still records test mocks fails the build", () => {
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }
+});
+
+for (const testMocks of [false, true]) test(`archive retains actual APK web bytes with testMocks=${testMocks}`, t => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'alpha-archive-web-'));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const publicDir = path.join(dir, 'assets/public');
+  fs.mkdirSync(publicDir, { recursive: true });
+  fs.writeFileSync(path.join(publicDir, 'build-flags.json'), JSON.stringify({ testMocks }));
+  fs.writeFileSync(path.join(publicDir, 'index.html'), '<html>Actual APK payload</html>');
+  const apkFile = path.join(dir, 'app.apk');
+  execFileSync('zip', ['-q', '-r', apkFile, 'assets'], { cwd: dir });
+  // Working assets may be restored to a different mode after the APK was built.
+  fs.writeFileSync(path.join(publicDir, 'build-flags.json'), JSON.stringify({ testMocks: !testMocks }));
+  const archived = path.join(dir, 'archived-web');
+  archiveWebPayload(apkFile, archived, { testMocks });
+  assert.equal(readBuildFlags(archived).testMocks, testMocks);
+  assert.equal(fs.readFileSync(path.join(archived, 'index.html'), 'utf8'), '<html>Actual APK payload</html>');
+  assert.throws(() => archiveWebPayload(apkFile, path.join(dir, 'wrong-mode'), { testMocks: !testMocks }), /testMocks/);
+  assert.equal(fs.existsSync(path.join(dir, 'wrong-mode')), false);
 });

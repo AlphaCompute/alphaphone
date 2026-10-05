@@ -12,6 +12,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import assert from 'node:assert/strict';
 import {execFileSync} from 'node:child_process';
+import {archiveWebPayload} from './apk.mjs';
 const cli=process.argv.slice(2);
 const testMocks=cli.includes('--test-mocks');
 const positional=cli.filter(arg=>arg!=='--test-mocks');
@@ -56,8 +57,6 @@ function retain(source,name){const target=path.join(destination,name);fs.copyFil
 // Retain exactly the build verify-apks checked, with its flag state.
 const verification=JSON.parse(fs.readFileSync(path.join(sourceDir,'apk-manifest.json'),'utf8'));
 assert.equal(verification.testMocks,testMocks,`Archive expects a testMocks=${testMocks} build`);
-const webFlags=JSON.parse(fs.readFileSync('web-dist/build-flags.json','utf8'));
-assert.equal(webFlags.testMocks,testMocks,`web-dist was not built with testMocks=${testMocks}`);
 // apk-manifest.json keeps its six-APK name->hash shape for existing consumers;
 // release mappings are retained beside it with their own hashes.
 const mappings={};
@@ -81,6 +80,8 @@ for(const variant of ['standalone','launcher']){
 }
 fs.writeFileSync(path.join(destination,'release-mappings.json'),JSON.stringify(mappings,null,2)+'\n',{flag:'wx'});
 fs.copyFileSync(path.join(sourceDir,'apk-manifest.json'),path.join(destination,'apk-verification.json'),fs.constants.COPYFILE_EXCL);
-fs.cpSync('web-dist',path.join(destination,'web-dist'),{recursive:true,errorOnExist:true,force:false});
+// build-android restores working web assets to flag-off after a test-mocks build.
+// Preserve the exact payload from our already hash-checked, archived APK instead.
+archiveWebPayload(path.join(destination,'standalone-debug.apk'),path.join(destination,'web-dist'),{testMocks});
 fs.writeFileSync(path.join(destination,'apk-manifest.json'),JSON.stringify(manifest,null,2));
 console.log(JSON.stringify({archive:destination,sourceFingerprint:after.digest,apks:Object.keys(manifest).length}));

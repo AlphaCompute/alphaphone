@@ -269,3 +269,16 @@ export function validateApk(file, identity, wantsHome) {
     throw new Error(`Camera hardware must remain optional in ${file}`);
   return data;
 }
+
+/** Archive the verified APK payload, independent of the restored working web bundle. */
+export function archiveWebPayload(apkFile, destination, { testMocks = false } = {}) {
+  const payload = extractWebPayload(apkFile);
+  try {
+    const flags = readBuildFlags(payload.public);
+    if (flags.testMocks !== testMocks) throw new Error(`APK web payload has testMocks=${flags.testMocks}; expected ${testMocks}`);
+    auditBundle(payload.public, { testMocks });
+    fs.cpSync(payload.public, destination, { recursive: true, errorOnExist: true, force: false });
+  } finally {
+    fs.rmSync(payload.root, { recursive: true, force: true });
+  }
+}
