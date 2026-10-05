@@ -1,4 +1,5 @@
 import {mockAttentionRows} from './mock-attention';
+import {HOME_DEFAULTS} from './model.js';
 import {browserStorageUsage} from '../browser/storage-usage';
 import {browserDevProfile} from '../browser/dev-profile';
 type Bag = Record<string, any>;
@@ -99,8 +100,15 @@ export function installPrototypeDataAdapter(Component: any, views: Record<string
   p.showHeads = function () {};
 }
 
-/** Call in both fixture and production before mounting; preserves original
- * fixture layout with the current MVP data. Production overrides these values. */
+/** Neutral Home card values used when no fixture defaults are bundled. */
+const NEUTRAL_HOME = {
+  homeCalendarLabel: 'Open your calendar', homeCalendarTime: 'Calendar', homeCalendarTitle: 'Your calendar',
+  homeWorkflowLabel: 'Open workflows', homeWorkflowTitle: 'Workflows', homeWorkflowTime: 'Review',
+};
+
+/** Call in both fixture and production before mounting. Fixture builds keep the
+ * reference layout with HOME_DEFAULTS from fixtures.js; production builds swap
+ * that module, so Home starts from neutral copy until live adapters override it. */
 export function installPrototypeHomeBindings(Component: any) {
   const p = Component.prototype;
   const render = p.renderVals;
@@ -108,9 +116,10 @@ export function installPrototypeHomeBindings(Component: any) {
     const out = render.call(this);
     const attention = mockAttentionRows();
     return {
-      homeCalendarLabel: 'Next: Design review at 3:00 PM', homeCalendarTime: '3:00 PM', homeCalendarTitle: 'Design review',
-      homeAttentionLabel: `${attention.length} ${attention.length === 1 ? 'item needs' : 'items need'} your attention`, homeAttentionCount: String(attention.length), homeAttentionPeople: attention,
-      homeWorkflowLabel: 'Morning brief delivered at 7:02 AM', homeWorkflowTitle: 'Morning brief', homeWorkflowTime: '7:02 AM', homePeopleVisibility: 'visible',
+      ...NEUTRAL_HOME,
+      ...(HOME_DEFAULTS || {}),
+      homeAttentionLabel: attention.length ? `${attention.length} ${attention.length === 1 ? 'item needs' : 'items need'} your attention` : 'Nothing needs your attention', homeAttentionCount: String(attention.length), homeAttentionPeople: attention,
+      homePeopleVisibility: attention.length ? 'visible' : 'hidden',
       ...out,
       // Keep translated/collapsed layers painted for the reference animations,
       // but prevent their controls receiving focus or accessibility navigation.
@@ -119,7 +128,6 @@ export function installPrototypeHomeBindings(Component: any) {
       conversationHidden: out.panelPE !== 'auto' || out.shadeY === '0' || !!out.voiceOn,
       shadeHidden: out.shadeY !== '0' || !!out.voiceOn,
       dockHidden: out.shadeY === '0' || !!out.voiceOn,
-      ...(out.files ? { files: { storageText: '218 GB free', ...out.files } } : {}),
     };
   };
 }
