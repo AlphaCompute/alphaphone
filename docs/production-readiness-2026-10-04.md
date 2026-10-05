@@ -43,7 +43,8 @@ through an explicit connection choice.
 
 Each package was developed in its own branch from `origin/main` `c1f21e71` and merged,
 in this order, into `claude/mvp-production-integration` on top of `origin/main`
-`c51a07b5` (about 120 newer commits). Where main had moved code the package touched,
+`c51a07b5` (about 120 newer commits), and then merged with 31 further `origin/main` commits
+(elizaOS pin `eba10c3e`, encrypted Clock handoff history, recoverable location editor). Where main had moved code the package touched,
 the integration kept main's behaviour and reapplied the package's gating to it.
 
 | Package | Change as integrated |
@@ -55,7 +56,7 @@ the integration kept main's behaviour and reapplied the package's gating to it.
 | android-native-hardening | `ELIZA_DEV_ALLOW_TEST_MOCKS` Gradle property and `BuildConfig` field; debug hooks in `android/app/src/testMocks`, attached to debug only when on; `ELIZAOS_*` signing and version; R8 minification and resource shrinking; base network security config; App Links template (inactive); WebView renderer-loss recovery |
 | privacy-and-honest-settings | Per-connection privacy disclosure; resident redaction switches (`ELIZA_SECRET_SWAP_ENABLED`, `ELIZA_PII_SWAP_ENABLED`) on by default versus host default off; configured resident provider and model reported without the key |
 | workflow-and-scan-mvp | Interrupted-run policy ported onto main's workflow intent store (outcome-unknown labels, no replay, explicit cancellation before removal, confirmed new run only for read-only digests); unsupported-scope refusal before generation; inferred poster dates, zones, all-day and repeat suggestions with disclosure |
-| third-party-licenses | `scripts/generate-licenses.mjs`; notices regenerated for main's pinned elizaOS `79bda059`; Settings rendering with an unavailable fallback |
+| third-party-licenses | `scripts/generate-licenses.mjs`; notices regenerated for main's pinned elizaOS (now `eba10c3e`); Settings rendering with an unavailable fallback |
 | docs-status-reconciliation | README, status, storage, runbook and qualification docs; this record; `test/docs-flag-qualification.test.mjs`. Main's removal of the obsolete verification journals and its canonical storage table were kept. |
 
 ## Integrated-head qualification
@@ -66,11 +67,11 @@ only.
 
 | Command | Class | Result |
 | --- | --- | --- |
-| `npm run verify` | S | Pass: typecheck, 467 of 467 unit tests (0 skipped), flag-off web build, bundle audit |
-| `ELIZA_DEV_ALLOW_TEST_MOCKS= npm run build` and `node scripts/audit-production-bundle.mjs web-dist` | S | Pass: 244 files, `testMocks: false`; no `Mock mode`, `mode=mock`, `Jordan Park`, `Exit mock mode` or `Device controls` string in `web-dist` |
+| `npm run verify` | S | Pass: typecheck, 489 of 489 unit tests (0 skipped), flag-off web build, bundle audit |
+| `ELIZA_DEV_ALLOW_TEST_MOCKS= npm run build` and `node scripts/audit-production-bundle.mjs web-dist` | S | Pass: 244 files, `testMocks: false`; no `Mock mode`, `mode=mock`, `Jordan Park`, `Exit mock mode`, `Device controls`, `Development location` or `Simulate Clock request` string in `web-dist` |
 | `npx playwright test --project=production` (`npm run test:browser:production`) | S | 11 of 11 pass |
-| `npx playwright test --project=chromium --workers=4` (`npm run test:browser`) | S | 1829 pass, 14 skipped, 0 failed |
-| `npx playwright test --project=firefox --project=webkit --workers=4` | S | 578 of 578 pass |
+| `npx playwright test --project=chromium --workers=4` (`npm run test:browser`) | S | 1837 pass, 14 skipped, 0 failed |
+| `npx playwright test --project=firefox --project=webkit --workers=4` | S | 594 of 594 pass |
 | `npm run android:build` (includes `verify-apks.mjs`) | B | Pass after `agent:prepare`, `agent:build-workflow-worker`, `agent:stage-android` and a local speech AAR build: four APKs with the packaged resident runtime, no test-mock classes, clean bundle audit of each `assets/public`; releases unsigned (no `ELIZAOS_*` key here) and recorded distributable by runtime |
 | `npm run android:build -- --test-mocks` | B | Pass: four APKs plus instrumentation in `artifacts/test-mocks/` only, recorded `testMocks: true` and not distributable; the distribution APKs were not rewritten. It now ends by rebuilding and syncing the flag-off bundle, also after a failure, so `web-dist` and the Android web assets do not stay flag-on |
 | `node scripts/qualify-head.mjs` | S/B | Not run on this head |
