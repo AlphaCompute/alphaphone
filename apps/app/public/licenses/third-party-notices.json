@@ -197,9 +197,9 @@
   },
   {
     "name": "elizaOS",
-    "version": "2.0.4 (d088cd85b339e55872b39582524b84fc9af650b1)",
+    "version": "2.0.4 (46d736d5c776f6529dea1a3aacdf185b60c754b3)",
     "license": "MIT",
-    "source": "https://github.com/elizaOS/eliza/tree/d088cd85b339e55872b39582524b84fc9af650b1",
+    "source": "https://github.com/elizaOS/eliza/tree/46d736d5c776f6529dea1a3aacdf185b60c754b3",
     "text": "MIT License\n\nCopyright (c) 2026 Shaw Walters and elizaOS Contributors\n\nPermission is hereby granted, free of charge, to any person obtaining a copy\nof this software and associated documentation files (the \"Software\"), to deal\nin the Software without restriction, including without limitation the rights\nto use, copy, modify, merge, publish, distribute, sublicense, and/or sell\ncopies of the Software, and to permit persons to whom the Software is\nfurnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in all\ncopies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\nFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\nAUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\nLIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\nOUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE\nSOFTWARE."
   },
   {
@@ -358,10 +358,10 @@
   },
   {
     "name": "On-device elizaOS agent runtime payload",
-    "version": "staged only by npm run android:build:local",
+    "version": "pinned upstream runtime when present in the APK payload",
     "license": "license unverified",
     "source": "scripts/stage-local-agent-runtime.mjs",
-    "text": "LICENSE UNVERIFIED. Staged only by npm run android:build:local, not by npm run android:build. Its Bun runtime and bundled agent dependency notices must be generated from the pinned upstream lockfile before any local-agent APK is distributed.\n\nThe optional on-device agent payload (Bun runtime and the bundled elizaOS agent with its dependencies) is staged from the pinned upstream source only for local-agent APK builds. Its dependency notices are not generated here."
+    "text": "LICENSE UNVERIFIED. The staged runtime can ship in standard Android builds. Its Bun runtime and bundled agent dependency notices must be generated from the pinned upstream lockfile before any APK containing that runtime is distributed.\n\nThe on-device agent payload (Bun runtime and the bundled elizaOS agent with its dependencies) is staged from pinned upstream source and may be included in standard Android builds. The APK runtime provenance identifies the packaged source. Its dependency notices are not generated here."
   },
   {
     "name": "ONNX Runtime",
