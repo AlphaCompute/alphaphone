@@ -48,6 +48,9 @@ The native workflow campaign uses `node scripts/android-workflow-native.mjs` wit
 `ALPHA_BUILD_ARCHIVE`. The archive must contain both distributions' debug and
 instrumentation APKs plus their filename-to-SHA256 `apk-manifest.json`. Evidence
 is written to a new `ALPHA_CAMPAIGN_OUTPUT` directory beneath `test-results/`.
+Set `ALPHA_TEST_HOME_PACKAGE` when the image’s stock launcher differs from
+`com.android.launcher3` (for example, `com.google.android.apps.nexuslauncher` on
+Google APIs images). This also applies to Calendar and permission campaigns.
 The runner refuses existing product package registrations, leases the emulator,
 and runs each exact method in a fresh secondary user. It retains the fixture if
 package termination or cleanup cannot be proven. These synthetic read/draft tests

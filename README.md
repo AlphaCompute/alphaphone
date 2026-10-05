@@ -271,7 +271,10 @@ harness. Set `ANDROID_SERIAL`, `ALPHA_NATIVE_TEST_AVD` and
 Use `settings` or `channels` in place of `camera` for location/Accounts settings
 or notification-channel recovery with the same archived pair and emulator inputs.
 The APKs must be a matching archived standalone or launcher pair with their
-`apk-manifest.json`. Existing package registrations are refused. Permission
+`apk-manifest.json`. Existing package registrations are refused.
+For Google APIs images, set `ALPHA_TEST_HOME_PACKAGE=com.google.android.apps.nexuslauncher`;
+the default stock HOME package is `com.android.launcher3`. The runner verifies the
+selected HOME is available before installing fixtures. Permission
 changes affect only the fixture user; unproven package cleanup retains that user
 for recovery. The output records APK admission, test identities and user cleanup.
 

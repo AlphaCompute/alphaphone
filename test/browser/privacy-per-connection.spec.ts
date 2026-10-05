@@ -15,8 +15,8 @@ const fixtureActivity = [/Drafted a reply to Maya/, /Filed Jordan's term sheet/,
 const forbidden = [/Redaction on/, /Identifiers replaced/, /Pre-egress redaction is not connected/];
 
 type Scenario = 'resident' | 'remote' | 'offline';
-async function nativeStub(page: Page, scenario: Scenario, options: { strayKeyInStatus?: boolean; proposals?: boolean } = {}) {
-  await page.addInitScript(({ scenario, key, remote, strayKeyInStatus, proposals }) => {
+async function nativeStub(page: Page, scenario: Scenario, options: { strayKeyInStatus?: boolean; proposals?: boolean; locationAccess?: 'approximate' | 'precise' } = {}) {
+  await page.addInitScript(({ scenario, key, remote, strayKeyInStatus, proposals, locationAccess }) => {
     const w = window as any;
     w.androidBridge = {};
     const store = new Map<string, string>();
@@ -38,6 +38,7 @@ async function nativeStub(page: Page, scenario: Scenario, options: { strayKeyInS
         { name: 'AlphaConnection', methods: methods(['secureRead', 'secureWrite', 'secureRemove', 'request', 'cancel', 'addListener', 'removeListener', 'pauseNotificationCollection']) },
         { name: 'AlphaActionJournal', methods: methods(['list']) },
         { name: 'DeviceApps', methods: methods(['buildInfo']) },
+        { name: 'AlphaDevice', methods: methods(['snapshot']) },
       ],
       nativePromise: async (plugin: string, method: string, input: any) => {
         const f = w.privacyFixture;
@@ -73,11 +74,12 @@ async function nativeStub(page: Page, scenario: Scenario, options: { strayKeyInS
           if (['cancel', 'addListener', 'removeListener', 'pauseNotificationCollection'].includes(method)) return respond({});
         }
         if (plugin === 'AlphaActionJournal' && method === 'list') return respond({ entries: [] });
+        if (plugin === 'AlphaDevice' && method === 'snapshot') return respond({ permissions: { Location: !!locationAccess }, locationAccess: locationAccess ?? 'none' });
         if (plugin === 'DeviceApps' && method === 'buildInfo') return respond({ launcher: false, version: 'fixture' });
         f.unexpected.push(plugin + '.' + method); throw Error('Unexpected native operation');
       },
     };
-  }, { scenario, key: SYNTHETIC_KEY, remote: REMOTE, strayKeyInStatus: !!options.strayKeyInStatus, proposals: !!options.proposals });
+  }, { scenario, key: SYNTHETIC_KEY, remote: REMOTE, strayKeyInStatus: !!options.strayKeyInStatus, proposals: !!options.proposals, locationAccess: options.locationAccess });
 }
 
 async function connect(page: Page, scenario: Scenario) {
@@ -197,4 +199,13 @@ for (const proposals of [true, false]) test(`resident Activity shows history onl
   const text = await page.locator('body').innerText();
   for (const row of fixtureActivity) expect(text).not.toMatch(row);
   expect(text).not.toContain('Connect an agent to see activity');
+});
+
+for (const locationAccess of ['approximate', 'precise'] as const) test(`Privacy shows the native ${locationAccess} location grant without losing connection disclosure`, async ({ page }) => {
+  await nativeStub(page, 'offline', { locationAccess });
+  await connect(page, 'offline');
+  await openSettings(page, 'Privacy & data');
+  await expect(page.getByText(locationAccess === 'precise' ? 'Precise location allowed' : 'Approximate location allowed', { exact: true })).toBeVisible();
+  await expect(page.getByText(REDACTION.offline, { exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Activity', exact: true })).toBeVisible();
 });

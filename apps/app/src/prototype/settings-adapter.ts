@@ -192,7 +192,6 @@ export function installSettingsAdapter(Component: any, views: Bag) {
     const topValues: Bag = {
       'Wi-Fi': active('wifiActive'), 'Bluetooth': Capacitor.isNativePlatform()?'Manage in Android':active('bluetoothActive'), 'Mobile data': active('cellularActive'),
       'Accounts': account ? 'Eliza Cloud connected' : 'Not signed in', 'Connections': gmail,
-      'Privacy & Enclave': runtimeLocation,
       'Battery': percent, 'Models': target, 'About': facts.appVersion || 'Unavailable',
       'Notifications': typeof delivery.appEnabled !== 'boolean' ? 'Unavailable' : !delivery.appEnabled || !delivery.permissionGranted ? 'App notifications off' : delivery.channels?.some((c:Bag)=>c.blocked||c.groupBlocked) ? 'Some channels blocked' : 'App notifications allowed',
       'Sound & vibration': Capacitor.isNativePlatform()?'Android settings':'Browser device settings',
@@ -231,7 +230,6 @@ export function installSettingsAdapter(Component: any, views: Bag) {
         if(state.page==='licenses')out.stack.push({isTop:false,notTop:true,cls:'enter',z:4,title:'Open source licenses',hasTitle:true,backLabel:'Back to Settings',back:()=>api.set({page:null}),hero:{},groups:licenses.status==='ready'?licenses.items.map(item=>group([info(item.name,`${item.version} · ${item.license}`),...(typeof item.source==='string'&&item.source?[{kLog:true,time:'Source',text:item.source}]:[]),...(typeof item.text==='string'&&item.text?[{kLog:true,time:'License',text:item.text}]:[])])):[group([info(licenses.status==='unavailable'?'License notices unavailable':'Loading license notices…',licenses.status==='unavailable'?'Reinstall or update the app to restore them':'')])]});
         for (const g of page.groups) for (const row of g.rows) if (row.label in topValues) {
           row.val = topValues[row.label]; row.hasVal = true;
-          if(row.label==='Privacy & Enclave'){row.label='Privacy & runtime';row.lbl=row.label;}
         }
         continue;
       }
@@ -301,10 +299,17 @@ export function installSettingsAdapter(Component: any, views: Bag) {
         const interruption:Bag={all:'No DND suppression reported',priority:'Priority interruptions only',alarms:'Alarms only',none:'Interruptions suppressed',unknown:'Unavailable'};
         page.groups = [group([info('Alpha notifications', topValues.Notifications),info('Do Not Disturb',interruption[delivery.interruption]||'Unavailable'),info('Delivery timing','Android battery policies may delay alerts'),Capacitor.isNativePlatform()?nav('Manage Alpha notifications', 'notifications'):custom('Manage Alpha notifications',()=>void run(async()=>{await notifications.openAppSettings();}))]),
           ...((delivery.channels||[]).map((channel:Bag)=>group([info(channel.name,channel.blocked?'Channel blocked':channel.groupBlocked?'Channel group blocked':!delivery.appEnabled||!delivery.permissionGranted?'App notifications off':channel.importance<=2?'Silent channel':'Channel allowed'),{kNav:true,label:`Manage ${channel.name}`,lbl:`Manage ${channel.name}`,chev:true,noAB:true,go:()=>void notifications.openChannelSettings({id:channel.id}).catch(()=>api.toast('This notification channel is unavailable.'))}]))),group(crossRows)];
-      } else if (page.title === 'Privacy & Enclave') {
-        page.title='Privacy & runtime';
-        page.hero={...page.hero,big:runtimeLocation,sub:'Hosted inference receives prompts and selected context. Local execution does not mean all data stays on the device.'};
-        page.groups = [group([info('Agent execution', runtimeLocation),info('Model inference',connection.kind==='resident'&&connection.session?'Configured hosted provider':'Managed by the selected agent'), info('On-device speech', localSpeech)]), group(Object.entries(facts.permissions || {}).map(([label, granted]) => info(label, !Capacitor.isNativePlatform()&&facts.permissionStates?.[label]?({granted:'Granted in browser',prompt:'Ask when used',denied:'Blocked in browser',unknown:'Managed by browser'} as Bag)[facts.permissionStates[label]]:label==='Location'?(facts.locationAccess==='precise'?'Precise location allowed':facts.locationAccess==='approximate'?'Approximate location allowed':'Not allowed'):granted ? 'Allowed for Alpha' : 'Not allowed'))), group([nav('Manage Alpha permissions', 'privacy')])];
+      } else if (page.title === 'Privacy & data') {
+        const permissionLabels=new Set(['Microphone','Location','Camera','Contacts']);
+        const permissionValue=(label:string)=>{
+          if(!Capacitor.isNativePlatform())return ({granted:'Granted in browser',prompt:'Ask when used',denied:'Blocked in browser',unknown:'Managed by browser'} as Bag)[facts.permissionStates?.[label]]??'Managed by browser';
+          if(typeof facts.permissions?.[label]!=='boolean')return 'Unavailable';
+          if(label==='Location')return facts.locationAccess==='precise'?'Precise location allowed':facts.locationAccess==='approximate'?'Approximate location allowed':'Not allowed';
+          return facts.permissions[label]?'Allowed for Alpha':'Not allowed';
+        };
+        // Keep connection privacy and Activity; replace only prototype permission rows.
+        page.groups=page.groups.map((g:Bag)=>({...g,rows:g.rows.map((row:Bag)=>permissionLabels.has(row.label)?info(row.label,permissionValue(row.label)):row)}));
+        page.groups.push(group([nav('Manage Alpha permissions','privacy')]));
       } else if (page.title === 'Sound & vibration') {
         const volume = (label: string, stream: string) => {
           const value = controls.volumes?.find((v: Bag) => v.stream === stream);

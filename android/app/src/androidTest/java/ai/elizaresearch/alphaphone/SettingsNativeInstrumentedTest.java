@@ -26,10 +26,10 @@ public final class SettingsNativeInstrumentedTest {
   android.content.Context context=InstrumentationRegistry.getInstrumentation().getTargetContext();
   assertEquals(android.content.pm.PackageManager.PERMISSION_GRANTED,context.checkSelfPermission(Manifest.permission.ACCESS_COARSE_LOCATION));assertEquals(android.content.pm.PackageManager.PERMISSION_DENIED,context.checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION));
   try(BoundedActivityScenario<MainActivity> scenario=BoundedActivityScenario.launch(MainActivity.class)){
-   AppNavigation.liveMode();settings();label("Privacy & Enclave");until("document.body.textContent.includes('Approximate location allowed')");assertEquals("No false precise grant","false",js("document.body.textContent.includes('Precise location allowed')"));
+   AppNavigation.liveMode();settings();label("Privacy & data");until("document.body.textContent.includes('Approximate location allowed')");assertEquals("No false precise grant","false",js("document.body.textContent.includes('Precise location allowed')"));
    accountsAndBack();
    InstrumentationRegistry.getInstrumentation().getUiAutomation().grantRuntimePermission(context.getPackageName(),Manifest.permission.ACCESS_FINE_LOCATION);
-   accountsAndBack();settings();label("Privacy & Enclave");until("document.body.textContent.includes('Precise location allowed')");assertEquals("Old approximate value replaced","false",js("document.body.textContent.includes('Approximate location allowed')"));
+   accountsAndBack();settings();label("Privacy & data");until("document.body.textContent.includes('Precise location allowed')");assertEquals("Old approximate value replaced","false",js("document.body.textContent.includes('Approximate location allowed')"));
   }
  }
 }

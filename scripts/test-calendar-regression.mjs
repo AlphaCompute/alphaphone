@@ -35,10 +35,10 @@ try{
   try{
    const installed=call('shell','pm','list','packages','-u','--user','all').split(/\r?\n/);
    assert.ok(![pkg,`${pkg}.test`,...(external?[companion.packageName]:[])].some(name=>installed.includes(`package:${name}`)),'Existing package registration; refusing replacement');
-   await withIsolatedAndroidUser({serial,deviceLease:lease,expectedAvdName:avd,homePackage:'com.android.launcher3',name:`calendar-${variant}-${Date.now()}`,signal:cancellation.signal,execute:args=>call(...args),record:state=>{record.userLifecycle=state;persist();},run:async({user})=>{
+   await withIsolatedAndroidUser({serial,deviceLease:lease,expectedAvdName:avd,homePackage:process.env.ALPHA_TEST_HOME_PACKAGE??'com.android.launcher3',name:`calendar-${variant}-${Date.now()}`,signal:cancellation.signal,execute:args=>call(...args),record:state=>{record.userLifecycle=state;persist();},run:async({user})=>{
     record.user=user;
     try{
-     record.result=await runIsolatedAndroidTest({serial,adb,aapt,packageName:pkg,testClass:`${pkg}.${testClass}`,testMethod,expectedTests:count,requiredAbi:abi,expectedAvdName:avd,androidUser:user,deviceLease:lease,directory,signal:cancellation.signal,commandTimeoutMs:120000,instrumentationTimeoutMs:external?300000:['calendarRange','calendarCrud','calendarAgent'].includes(flag)?240000:120000,cleanupTimeoutMs:120000,
+     record.result=await runIsolatedAndroidTest({serial,adb,aapt,packageName:pkg,additionalInstrumentationRunners:[pkg+'.WorkflowNoticeProcessRunner'],testClass:`${pkg}.${testClass}`,testMethod,expectedTests:count,requiredAbi:abi,expectedAvdName:avd,androidUser:user,deviceLease:lease,directory,signal:cancellation.signal,commandTimeoutMs:120000,instrumentationTimeoutMs:external?300000:['calendarRange','calendarCrud','calendarAgent'].includes(flag)?240000:120000,cleanupTimeoutMs:120000,
       variants:[{name:variant,apk:path.join(root,'artifacts',`${variant}-debug.apk`),testApk:path.join(root,'android/app/build/outputs/apk/androidTest',variant,'debug',`app-${variant}-debug-androidTest.apk`)}],companionApks:external?[companion]:[],runnerArgs:['-e',flag,external?'true':'1'],
       evidence:'Alpha Calendar regression in an owned secondary emulator user. No live account acceptance.',
       collectVariant:external?()=>{
