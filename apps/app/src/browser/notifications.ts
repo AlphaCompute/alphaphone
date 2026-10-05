@@ -1,3 +1,4 @@
+import {beginNoticeAction as notificationAction} from './notice-action';
 import {layoutBrowserDialog} from './dialog-layout';
 import {browserScreenLocked} from './screen-locked';
 import {focusActive,focusHoldsNotice,focusAllowedNotices} from './focus-state';
@@ -16,12 +17,6 @@ type DeviceEvent = Notice & {source:'external';packageName:string;sourceKey:stri
 type Selection={packageName:string;preview:boolean};
 type Identity = {id:string;revision:string;source?:string};
 const locked=()=>document.hidden||document.documentElement.dataset.devBackground==='true'||!!browserScreenLocked();
-function notificationAction(){
- const controller=new AbortController(),retire=()=>controller.abort(),hidden=()=>{if(document.hidden)retire();};
- const events=['alpha-back','pagehide','launcher-home','alpha:device-state','alpha:dev-incoming-call','alpha:browser-open-view'];
- for(const event of events)window.addEventListener(event,retire,true);document.addEventListener('visibilitychange',hidden);hidden();
- return {signal:controller.signal,dispose:()=>{for(const event of events)window.removeEventListener(event,retire,true);document.removeEventListener('visibilitychange',hidden);}};
-}
 const noticePolicy=(state:State)=>JSON.stringify([state.revision,state.epoch,state.enabled,state.paused,state.accessGranted,state.appEnabled,state.channels,state.apps]);
 function trim(state:State){state.deviceEvents??=[];state.events=state.history&&state.enabled&&state.accessGranted&&!state.paused?state.events.filter(event=>event.at>Date.now()-86400000).slice(-100):[];state.dismissed=state.dismissed.slice(-500);}
 function record(state:State,row:Notice,event:string){trim(state);if(state.history&&row.packageName){state.events.push({id:crypto.randomUUID(),appLabel:row.appLabel,packageName:row.packageName,at:Date.now(),state:event});trim(state);}}
