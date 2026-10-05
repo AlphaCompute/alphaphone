@@ -40,6 +40,14 @@ test('a coerced guest response cannot enter the reviewed calendar',async({page})
 
 const partialLabel='Recover complete valid events and series from a partly damaged backup';
 const partialBackup={events:[backup.events[0],{...backup.events[0],id:'broken',end:0}]};
+test('partial recovery excludes a series when its exception reference is damaged',async({page})=>{
+ const base=backup.events[0],occurrence=base.begin+7*86400000,d=await open(page);
+ await choose(d,{events:[base,{...base,id:`saved:occ:${occurrence}`,seriesId:null,occurrenceBegin:occurrence,repeat:'none'},{...base,id:'safe',title:'Independent event'}]});
+ await d.getByLabel(partialLabel,{exact:true}).check();
+ await expect(d.getByText('1 event record(s) can be recovered; 2 record(s) will be skipped.',{exact:false})).toBeVisible();
+ expect(await raw(page)).toBe('damaged original');await d.getByRole('button',{name:'Review calendar restore',exact:true}).click();await d.getByRole('button',{name:'Confirm calendar restore',exact:true}).click();
+ await expect(d).toHaveCount(0);expect(JSON.parse(await raw(page)).events.map((event:any)=>event.title)).toEqual(['Independent event']);
+});
 test('partial recovery requires opt-in, review and confirmation; changing mode retires approval',async({page},info)=>{
  const d=await open(page);await choose(d,partialBackup);
  await expect(d.getByRole('button',{name:'Review calendar restore',exact:true})).toBeDisabled();

@@ -1,4 +1,8 @@
 import type {CalendarRecord} from './calendar-records';
+function encodedSeriesId(id:string){
+ const match=/^(.*):occ:(-?\d+)$/.exec(id);
+ return match&&Number.isSafeInteger(Number(match[2]))&&String(Number(match[2]))===match[2]?match[1]:undefined;
+}
 function readBackup(raw:string){
  if(new TextEncoder().encode(raw).length>5*1024*1024)throw Error('Calendar backup must be 5 MB or smaller.');
  const fail=():never=>{throw Error('This is not a supported calendar backup. No events were changed.');};
@@ -16,6 +20,8 @@ export function prepareCalendarBackup(raw:string,nextRevision:()=>string){
  const ids=new Map<string,string>(),rows=new Map<string,any>(),sourceRevision=nextRevision();
  for(const row of value.events){if(!row||typeof row!=='object')return fail();const id=text(row.id,512);if(!id||ids.has(id))return fail();ids.set(id,`restored-${sourceRevision}-${ids.size}`);rows.set(id,row);}
  const events:CalendarRecord[]=value.events.map((row:any)=>{
+  const encodedParent=encodedSeriesId(row.id);
+  if(encodedParent!==undefined&&rows.has(encodedParent)&&row.seriesId!==encodedParent)return fail();
   const begin=instant(row.begin),end=instant(row.end);if(end<=begin)return fail();
   const title=text(row.title,500);if(!title.trim())return fail();
   for(const field of ['allDay','video'])if(row[field]!==undefined&&typeof row[field]!=='boolean')return fail();
@@ -39,13 +45,26 @@ export function prepareCalendarBackup(raw:string,nextRevision:()=>string){
 /** Explicit best-effort import. A recurring series is an indivisible recovery unit:
  * a damaged exception must not silently reappear as its original occurrence. */
 export function prepareCalendarSalvage(raw:string,nextRevision:()=>string){
- const value=readBackup(raw),counts=new Map<string,number>(),groups=new Map<string,number[]>();
+ const value=readBackup(raw),counts=new Map<string,number>(),groups=new Map<string,number[]>(),parents=new Map<string,string>();
  const validId=(id:unknown):id is string=>typeof id==='string'&&id.length>0&&id.length<=512;
  for(const row of value.events)if(validId(row?.id))counts.set(row.id,(counts.get(row.id)||0)+1);
+ const root=(key:string):string=>{let result=key;while(parents.has(result))result=parents.get(result)!;while(parents.has(key)){const next=parents.get(key)!;parents.set(key,result);key=next;}return result;};
+ const join=(a:string,b:string)=>{a=root(a);b=root(b);if(a!==b)parents.set(a,b);};
+ const keyOf=(index:number)=>validId(value.events[index]?.id)?JSON.stringify(['id',value.events[index].id]):JSON.stringify(['invalid',index]);
+ const inferredParent=(row:any)=>{
+  if(!validId(row?.id))return undefined;
+  const parent=encodedSeriesId(row.id);
+  return parent!==undefined&&counts.has(parent)?parent:undefined;
+ };
+ // Follow both explicit references and the generated occurrence identity. A
+ // corrupted/missing reference must not detach an exception from its parent.
  for(let index=0;index<value.events.length;index++){
-  const row=value.events[index],identity=validId(row?.seriesId)?row.seriesId:validId(row?.id)?row.id:null;
-  // JSON keys distinguish invalid rows from every possible imported identity.
-  const key=JSON.stringify(identity===null?['invalid',index]:['series',identity]);
+  const row=value.events[index],key=keyOf(index),inferred=inferredParent(row);
+  if(validId(row?.seriesId))join(key,JSON.stringify(['id',row.seriesId]));
+  if(inferred!==undefined)join(key,JSON.stringify(['id',inferred]));
+ }
+ for(let index=0;index<value.events.length;index++){
+  const key=root(keyOf(index));
   const group=groups.get(key);if(group)group.push(index);else groups.set(key,[index]);
  }
  const accepted=new Set<number>(),skipped:{index:number;reason:string}[]=[];
