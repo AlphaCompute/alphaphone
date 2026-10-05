@@ -30,13 +30,34 @@ Do not import another product's UI or turn Alpha-specific restrictions into
 universal platform defaults. Use existing upstream schedulers, credential
 providers and stores rather than introducing competing implementations.
 
+## Build surfaces
+
+The web build (`npm run build` → `web-dist/`) is a development and preview surface and
+the payload packaged into the APKs; it is not a standalone product distribution. The
+product ships as the standalone and launcher APKs.
+
+One build-time switch, the upstream name `ELIZA_DEV_ALLOW_TEST_MOCKS`, gates every mock,
+fixture and developer surface. It is off unless set to exactly `1`. The renderer reads
+it only through `apps/app/src/build-flags.ts` (`testMocksEnabled`, and
+`devSurfacesEnabled` for development-server-only surfaces); Vite folds it to a constant
+and, when off, replaces the prototype fixture module with an empty module. Android
+receives it as `-PELIZA_DEV_ALLOW_TEST_MOCKS=1`, exposes
+`BuildConfig.ELIZA_DEV_ALLOW_TEST_MOCKS`, and attaches the `src/testMocks` source set
+(development agent and voice plugins, synthetic autofill, loopback cleartext config,
+fixture-package visibility) to debug variants only when on. Development behavior keys
+on that field, not on `BuildConfig.DEBUG`. The switch is on for `npm run dev`,
+Playwright and explicit test-mocks builds, and off for `npm run build`,
+`npm run android:sync` and `npm run android:build`. No `ALPHA_*` switch or widened
+`ELIZA_` env prefix is used.
+
 ## Runtime and permissions
 
 The primary agent runs on Android. Local orchestration, durable state and tool
 approvals are separate from model inference: hosted inference requires explicit
 configuration and outbound-context policy. Cloud/remote pairing is an optional
-path. Debug host forwarding is development infrastructure, not evidence of a
-resident runtime or production authentication.
+path. Debug host forwarding (the DevelopmentAgent bridge, present only in test-mocks
+builds) is development infrastructure, not evidence of a resident runtime or
+production authentication.
 
 Third-party web content runs in an isolated native browser surface; it must not
 receive the application's Capacitor bridge. Origin, context revision, consent,
@@ -47,7 +68,9 @@ key and retention policy is defined.
 
 Standalone and launcher APKs share `ai.elizaresearch.alphaphone` and replace one
 another. Only the launcher variant declares HOME. Release outputs require
-controlled signing. System installation alone does not grant protected roles or
+controlled signing through the upstream `ELIZAOS_KEYSTORE_PATH`,
+`ELIZAOS_KEYSTORE_PASSWORD`, `ELIZAOS_KEY_ALIAS` and `ELIZAOS_KEY_PASSWORD` values;
+without all four the build emits unsigned release APKs. System installation alone does not grant protected roles or
 permissions. OS staging admits the product APK separately from Eliza's full app;
 release provisioning owns default roles, signing, update compatibility and
 recovery policy.

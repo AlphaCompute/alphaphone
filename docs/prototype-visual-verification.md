@@ -1,6 +1,6 @@
 # Authoritative prototype visual verification
 
-Reference: https://alpha-phone-prototype.pages.dev/; HTML snapshot SHA-256 `fd1ee08878c9ae8e8e0d112cc42e3b687326f290b1f86ddaca0f737cdb79afff`. This report concerns the extracted presentation fixture, not completion of native integrations or production behavior. The rejected former renderer is not a visual baseline.
+Reference: https://alpha-phone-prototype.pages.dev/; HTML snapshot SHA-256 `fd1ee08878c9ae8e8e0d112cc42e3b687326f290b1f86ddaca0f737cdb79afff`. This report concerns the extracted presentation fixture, not completion of native integrations or production behavior. Since October 4 the fixture data and images, `?fixture=1` and `?start=` presets exist only in builds with `ELIZA_DEV_ALLOW_TEST_MOCKS=1`; the capture script runs against the development server with that switch on, and production builds swap the fixture module for an empty one. The rejected former renderer is not a visual baseline.
 
 ## Evidence and method
 

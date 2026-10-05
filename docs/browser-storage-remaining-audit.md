@@ -40,6 +40,16 @@ completion compares an operation ID before a separate localStorage write, and
 initial retention currently lacks readback. Do not present this record as an
 outstanding browser Clock journal or as proof an alarm was created.
 
+## Test-mocks switch and renderer keys
+
+Builds without `ELIZA_DEV_ALLOW_TEST_MOCKS=1` read none of the development keys
+(`alpha.dev.location.v1`, `alpha.dev.app.<view>`, the `alpha.browser.agent.*`,
+`alpha.browser.cloud.*`, `alpha.browser.digests.*` and `alpha.browser.workflows.*`
+development documents). When the switch is off, startup rewrites a saved
+`{kind:'mock'}` connection selection to `{kind:'none'}` once and opens the chooser,
+and a stored `staging` Cloud service value is treated as signed out. These are
+migration rules for older saved state, not new storage domains.
+
 ## Remaining review
 
 Specify winner, refresh and retirement semantics for connection/environment,

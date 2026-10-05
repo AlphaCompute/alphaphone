@@ -3,8 +3,13 @@
 Independent Android UI on Eliza, using the Alpha Phone prototype as its design
 reference. The current renderer includes native browser, camera,
 calendar, reminders, selected files and local notes. Phone, SMS, Contacts and Wallet
-entry points are disabled by the documented MVP profile. The connection chooser supports Cloud sign-in, remote pairing, an explicit local
-development endpoint, offline use and mock mode. The real local Eliza/Cerebras
+entry points are disabled by the documented MVP profile. The connection chooser supports
+the on-device agent, Cloud sign-in, remote pairing and offline use. Mock mode, prototype
+fixture data, developer device controls and the local development endpoint are
+development surfaces that exist only when the build-time switch
+`ELIZA_DEV_ALLOW_TEST_MOCKS=1` is set (see [build-time switch](#build-time-test-mock-switch)).
+Production web builds and all four distribution APKs start as the live app with honest
+empty or unconnected states. The real local Eliza/Cerebras
 protocol is verified; live provider login, Gmail, voice and
 complete workflow execution remain acceptance work. The primary architecture is now an
 [Android-resident agent](docs/on-device-agent-plan.md), replacing Nitro/TEE hosting;
@@ -19,6 +24,7 @@ the required evidence rather than treating a successful APK build as acceptance.
 - [Detailed flow PRD](docs/flow-audit-and-prd.md)
 - [Current implementation plan](docs/flow-implementation-plan.md)
 - [current product status](docs/mvp-current-status.md)
+- [Production readiness record, 2026-10-04](docs/production-readiness-2026-10-04.md)
 - [Cloud deployment and authentication findings](docs/cloud-production-validation.md)
 - [Enclave candidate and signing gates](docs/enclave-candidate-validation.md)
 - [Browser autofill and Proton integration](docs/browser-autofill-integration.md)
@@ -41,14 +47,56 @@ npm run verify
 npm run dev
 ```
 
+## Build-time test-mock switch
+
+One build-time switch, the upstream elizaOS name `ELIZA_DEV_ALLOW_TEST_MOCKS`, controls
+every mock, fixture and developer surface. It is **off unless set to exactly `1`**.
+
+When it is off (the default for `npm run build`, `npm run android:sync`,
+`npm run android:build` and therefore the production web build and all four
+distribution APKs: standalone and launcher, debug and release), the build does not
+contain or expose mock mode, prototype fixture data or fixture images, the "mock"
+connection choice, the flag-only `?mode=mock`, `?fixture=1`, `?mode=dev` and `?start=`
+entry points, developer device controls, the simulated apps, the local development agent
+(`10.0.2.2:2138`) option, the Cloud Staging environment, the DevelopmentAgent fallback
+transport or the debug-only native hooks (synthetic autofill service, development
+agent and voice plugins, cleartext network configuration and fixture-package
+permissions/queries). Upgraded installs that had saved the old mock selection start at
+the connection chooser instead; a saved Cloud Staging service is treated as signed out;
+paused notification collection resumes only through an explicit connection choice.
+
+It is turned on explicitly by:
+
+- `npm run dev` (the default `npx vite` without the script stays off), `npm run dev:local`
+  and `npm run dev:maps`;
+- the Playwright web server used by `npm run test:browser`, and the browser CI job;
+- an explicit test-mocks web build: `ELIZA_DEV_ALLOW_TEST_MOCKS=1 npm run build`;
+- an explicit test-mocks Android build: `npm run android:build -- --test-mocks`, which
+  writes only to `artifacts/test-mocks/` and never replaces the distribution APKs in
+  `artifacts/`.
+
+The renderer reads the switch through `apps/app/src/build-flags.ts`; Vite folds it to a
+constant, so gated code is removed from production bundles. The envPrefix is not widened
+to `ELIZA_`; no other `ELIZA_*` value reaches the bundle. On Android the same name is
+passed as the Gradle property `-PELIZA_DEV_ALLOW_TEST_MOCKS=1`, exposed as
+`BuildConfig.ELIZA_DEV_ALLOW_TEST_MOCKS`, and attaches the `src/testMocks` source set to
+debug variants only when on. A web build writes `web-dist/build-flags.json`
+(`{"testMocks": false}` for production).
+
+`node scripts/audit-production-bundle.mjs web-dist` fails on any mock/developer string,
+fixture name, `img/` fixture image or source map in a production bundle;
+`--expect-test-mocks` audits a deliberate test-mocks build instead. The Android
+verification applies the same audit to the extracted web assets of every distribution APK.
+
 ## Browser development and verification
 
 ```sh
 npm ci
 npx playwright install chromium
 npm run verify
-npm run test:browser
-npm run dev
+npm run test:browser              # development surfaces on (switch set by Playwright)
+npm run test:browser:production   # production build, switch off: no mock/dev surfaces
+npm run dev                       # development server, switch on
 ```
 
 For configured regional Maps, prepare the data once as described in
@@ -57,25 +105,38 @@ This starts the local router, gateway and app together; use `-- --port 5194` to
 choose the app port. Ctrl-C stops the services owned by that command.
 
 The desktop browser shows a fitted phone preview; mobile widths fill the viewport.
-Use `?mode=mock` for the clearly labeled design fixture and `?theme=dark` to
-inspect dark layouts. Use `?mode=dev` for the browser development profile with durable local app data
-and device controls. For the complete capability matrix and current verification results, see
-[browser development parity](docs/browser-dev-parity.md). Open **Device controls** with the sliders button beside **Tools** or **Dev data** below the phone preview. Its profile buttons switch between app and development data. In **Device controls**, use
+Use `?theme=dark` to inspect dark layouts. The following entry points exist only in
+`npm run dev` and other builds with `ELIZA_DEV_ALLOW_TEST_MOCKS=1`; production builds
+ignore them and open the live app:
+
+- `?mode=mock` (switch on only) opens the clearly labeled design fixture. It is a
+  development/test surface, not a product connection choice.
+- `?fixture=1` (switch on, development server only) renders prototype fixture data for
+  visual snapshots.
+- `?mode=dev` (switch on, development server only) opens the browser development
+  profile with durable local app data and device controls.
+
+For the complete capability matrix and current verification results, see
+[browser development parity](docs/browser-dev-parity.md). In the development profile, open **Device controls** with the sliders button beside **Tools** or **Dev data** below the phone preview. Its profile buttons switch between app and development data. In **Device controls**, use
 Home, Back, Power, Background and Resume to exercise device lifecycle; use Incoming
 call/message/email and Post notification to drive incoming events. Location controls
 provide a saved Home place and manual movement for location-triggered workflows.
 The role buttons persist the development device's selected Home, assistant, dialer
 and SMS roles.
 
-In **Settings → Agent connection**, select a development profile to exercise
-conversations, approvals and durable receipts without credentials. Use
-`?mode=dev&workflows=agent` to exercise the agent workflow UI with that profile.
+On the development server (switch on), **Settings → Agent connection** offers development
+profiles to exercise conversations, approvals and durable receipts without credentials.
+Use `?mode=dev&workflows=agent` (switch on, development server only) to exercise the
+agent workflow UI with that profile.
 For real host inference and speech, follow the separate [local agent setup](docs/local-agent-development.md).
 **Settings → Character → Wake assistant** opens the recording UI; recording starts
 only after Start recording is selected.
 
-The normal app uses browser-local Notes. Notes text import and export use the browser
-file picker and downloads; browser note storage is unencrypted and is not synced.
+The web build uses browser-local Notes. Notes text import and export use the browser
+file picker and downloads; browser note storage is unencrypted and is not synced. On
+Android, Notes use the native Keystore-backed secure store.
+The web build is a development and preview surface and the payload packaged into the
+APKs; it is not a standalone product distribution.
 The browser suite covers production navigation, durable note editing, exact-byte
 file flows, dialog accessibility, disclosed adapter fixtures and reference design
 states. Reports/screenshots are in `test-results/browser-report` and
@@ -94,12 +155,40 @@ runtimes are required; Android CI provisions and validates them on a clean check
 
 ```sh
 npm run android:build
-# Signed debug APKs and unsigned release APKs are in artifacts/.
+# Distribution APKs (switch off) are in artifacts/: debug-signed debug APKs and
+# release APKs that are signed only when the release signing variables below are set.
 # Install either standalone-debug.apk or launcher-debug.apk for this product.
 adb install -r artifacts/standalone-debug.apk
 # The launcher flavor can be selected from Android's default Home app settings.
 adb install -r artifacts/launcher-debug.apk
+
+# Development/test APKs with mocks and debug-only native hooks (never distributed):
+npm run android:build -- --test-mocks   # writes only to artifacts/test-mocks/
 ```
+
+`npm run android:build` removes `ELIZA_DEV_ALLOW_TEST_MOCKS` and
+`VITE_ELIZA_DEV_ALLOW_TEST_MOCKS` from its child environment unless `--test-mocks` is
+passed, so a value exported in your shell cannot leak mocks into distribution APKs.
+Native instrumentation that depends on the debug-only hooks (development agent bridge,
+synthetic autofill, development voice capture, cleartext host access) needs the
+`artifacts/test-mocks/` APKs.
+
+Release signing and version use the upstream elizaOS names:
+
+| Variable | Purpose |
+| --- | --- |
+| `ELIZAOS_KEYSTORE_PATH`, `ELIZAOS_KEYSTORE_PASSWORD`, `ELIZAOS_KEY_ALIAS`, `ELIZAOS_KEY_PASSWORD` | Release signing. Release APKs are signed only when all four are set; otherwise the build produces `*-release-unsigned.apk`. Keep the keystore and passwords in the signing service or CI secret store, never in the repository. |
+| `ELIZAOS_VERSION_CODE`, `ELIZAOS_VERSION_NAME` | Override `versionCode`/`versionName` (defaults from `app.config.json`). |
+| `VITE_MAPS_BASE_URL` | Owned regional Maps gateway (HTTPS for release); unset means Maps reports unconfigured. |
+
+`node scripts/verify-apks.mjs` (`npm run android:verify`) inspects APK bytes: package
+IDs, HOME/LAUNCHER filters, debug flags and signatures, the absence of test-mock
+native classes, cleartext configuration and fixture-package queries in distribution
+APKs, and the production bundle audit of each APK's `assets/public`.
+`node scripts/qualify-head.mjs` is the entry point for qualifying the checked-out
+commit (repository verification, distribution builds and their audits); it is source/build evidence for that
+exact commit only and does not stand in for emulator, AOSP image, real-integration or
+device acceptance.
 
 For constrained disks, `ALPHA_ANDROID_LOW_DISK=1 npm run android:build` packages
 one APK at a time and removes only reproducible packaging intermediates between
@@ -113,7 +202,8 @@ not proof of resident runtime execution or device acceptance.
 
 The variants intentionally share `ai.elizaresearch.alphaphone` and replace one another.
 The other product uses a different package and can be installed alongside this one.
-Release APKs are intentionally unsigned; do not distribute debug-signed builds as production.
+Release APKs are unsigned unless the `ELIZAOS_*` signing variables are supplied; do not distribute
+debug-signed or test-mocks builds as production.
 
 ## Emulator verification
 

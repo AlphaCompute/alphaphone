@@ -19,6 +19,13 @@ listed in [browser-dev-parity.md](browser-dev-parity.md) and
   assistance, workflows, digests, Files and capture remain in scope. Gmail remains
   an integration gap. Phone, SMS, Contacts and Wallet are deferred by MVP policy;
   development fixtures do not change that scope.
+- Production builds are the live app. Mock mode, prototype fixtures, the development
+  profile, device controls, simulated apps and debug-only native hooks exist only in
+  builds made with `ELIZA_DEV_ALLOW_TEST_MOCKS=1` (`npm run dev`, Playwright, explicit
+  test-mocks builds). The production web build and all four distribution APKs are built
+  with the switch off. The web build is a development/preview surface and the APK
+  payload, not a separate product. See the
+  [production readiness record](production-readiness-2026-10-04.md).
 
 ## Capabilities and remaining acceptance
 
@@ -28,7 +35,7 @@ listed in [browser-dev-parity.md](browser-dev-parity.md) and
 | Chat and retained context | Typed conversations, selected-source context, reviewed actions, cancellation and durable receipts. | Broad model quality, missing-detail clarification, target-device performance and complete physical user journeys. |
 | Speech and recording (J02) | Editable transcript review; separate Send, summary save and reminder draft. Owned playback rejects stale completions. Resident Browser reading retains native reviewed text and uses bounded local synthesis chunks. | Physical microphone/audio quality, Bluetooth/echo, language support, interruption and latency. Host synthesis does not qualify Android playback or native permission behavior. |
 | Notes, Calendar and Reminders | Durable editing, selected reads, reviewed actions and recovery. Native Calendar and Reminders delegate to shared upstream plugins while retaining product storage and provider identity. | Current installed-data upgrade, timezone/recurrence, ambiguous writes, real provider and physical-device behavior. Browser notification delivery is not alarm qualification. |
-| Browser persistence | Calendar, reminders/alarms, notification policy/history, hosted-result notices, owner-bound workflow drafts, workflow notification receipts, bookmarks and notification sound history use the upstream transactional document store. Revision-bound recovery preserves exact older bytes. | Remaining domains and their coupled readers/writers are listed in [browser-storage.md](browser-storage.md). Their localStorage/Web Locks consistency risk remains open. |
+| Browser persistence | Calendar, reminders/alarms, notification policy/history, hosted-result notices, owner-bound workflow drafts, workflow notification receipts, bookmarks and notification sound history use the upstream transactional document store and are qualified. Device preferences and roles, the development password provider and photo album metadata are merged to the same store (PR226, PR228) with three-engine qualification pending. Revision-bound recovery preserves exact older bytes. | Remaining localStorage domains and every raw-localStorage key family, with owner, writer, reader and disposition (justified single writer or migration pending), are listed in [browser-storage.md](browser-storage.md). The development-only domains ship only in test-mocks builds. The localStorage/Web Locks consistency risk remains open for the migration-pending families. |
 | Clock | Reviewed handoff to Android Clock with truthful opened semantics. | Actual ringing, snooze/dismiss, reboot, timezone and DND behavior; Clock owns final alarm creation. |
 | Typed workflows | Bounded generated candidates, separate Use/Save/Run, approved device effects and retained results. | Broad model reliability, unsupported-scope handling and current compiler/runtime release qualification. Arbitrary code and an unrestricted workflow IDE remain outside MVP. |
 | Notify and Speak | Native delivery ledger and executor; browser transactional notices and exact receipt recovery without reposting. | Native OS posting/audio and interrupted-delivery acceptance. Uncertain speech must not be replayed or inferred complete. |
@@ -41,13 +48,25 @@ listed in [browser-dev-parity.md](browser-dev-parity.md) and
 | Schedule to travel (J04) and Maps | Selected event location enters Maps once; route choice and origin remain explicit. Stale search/navigation work is cancelled. | Production endpoint/TLS, licensed data coverage, location permissions, offline behavior and physical navigation. See [regional Maps setup](maps-regional-validation.md). |
 | Web research to note (J05) | Bounded public-page or pasted-text review, separate question Send and explicit note Save with a source link. | Installed native reading/consent and real-site coverage. CORS-denied content needs user-supplied text; a link is provenance, not an immutable archive. |
 | Design and accessibility | Themed bounded dialogs, visible actions, keyboard-scrollable content and large-text checks across core flows. | Complete current-source subviews, error/empty states, Pixel geometry, physical accessibility and user task acceptance. Browser assertions alone are not design approval. |
-| Privacy and outbound context | Approval/context binding, native secure storage, contact references and credential redaction contracts. Browser development storage is disclosed as unencrypted. | Broader model/native qualification before default redaction enablement. Inspect the selected runtime's actual configuration; a past host snapshot does not prove present settings or that data stays local. |
-| Release | Pinned upstream source, standalone/HOME packaging and source-admitted runtime staging. | Current clean-build and installed-data evidence, signing, licenses, image/hardware qualification, update/rollback, support and pilot acceptance. |
+| Privacy and outbound context | Approval/context binding, native secure storage, contact references and credential redaction contracts. The resident Android agent starts with the upstream `ELIZA_SECRET_SWAP_ENABLED` and `ELIZA_PII_SWAP_ENABLED` switches on by default; the browser development host keeps both off unless both are set to `true` on qualified source. Privacy disclosure is per connection: hosted Cerebras inference is disclosed, and no connection claims that data stays local. Browser development storage is disclosed as unencrypted. | Re-run resident redaction on the current APK (emulator, then device, as separate gates) and broaden category/provider coverage. The host default stays off until its enablement campaign passes. Inspect the selected runtime's actual configuration; a past host snapshot does not prove present settings or that data stays local. |
+| Release | Pinned upstream source, standalone/HOME packaging and source-admitted runtime staging. Distribution builds exclude mock/fixture/developer surfaces and debug-only native hooks; release signing and version come from `ELIZAOS_KEYSTORE_PATH`, `ELIZAOS_KEYSTORE_PASSWORD`, `ELIZAOS_KEY_ALIAS`, `ELIZAOS_KEY_PASSWORD`, `ELIZAOS_VERSION_CODE` and `ELIZAOS_VERSION_NAME` (unsigned `*-release-unsigned.apk` without all four signing values). | Controlled release key and signed artifacts, installed-data upgrade from earlier (including mock-state) installs, image/hardware qualification, App Links verification on a real domain, signed update/rollback, support and pilot acceptance. |
+| Licenses | Settings renders `apps/app/public/licenses/third-party-notices.json` (name, version, license, source, text) with an explicit unavailable fallback; `THIRD_PARTY_NOTICES.txt` accompanies it. | Legal review of the generated notices, corresponding-source offers where required, and the separate native-app/OS-image notices in [native-app distribution](native-app-distribution.md). |
 
 ## Qualification
 
 Run `npm run verify` and `npm run android:build`, including standalone and launcher
-debug/release outputs. Exercise the owning changed contracts and inspect the
+debug/release outputs. The production-surface gates are:
+
+| Gate | Command | What it qualifies | What it does not qualify |
+| --- | --- | --- | --- |
+| Production bundle audit | `node scripts/audit-production-bundle.mjs web-dist` (`--expect-test-mocks` for a deliberate test-mocks build) | The web bundle has no mock/developer strings, fixture names, `img/` fixture images or source maps, and `web-dist/build-flags.json` reports `testMocks: false`. | Runtime behavior, APK contents (see below) or any device result. |
+| Production browser lane | `npm run test:browser:production` | Rendered production build (switch off): no mock choice, no `?mode=mock`/`?fixture=1`/`?mode=dev`/`?start=` entry, no device controls; honest empty and unconnected states; legacy `{kind:'mock'}` selection opens the chooser. | Android WebView, native plugins or real accounts. |
+| APK verification | `node scripts/verify-apks.mjs` (run by `npm run android:build`) | APK bytes for all four distribution APKs: identities, HOME filter, debug flags and signatures, no test-mock native classes, cleartext config or fixture-package queries, and the bundle audit on each APK's extracted `assets/public`. | Installation, emulator HOME role, image boot or device behavior. |
+| Head qualification | `node scripts/qualify-head.mjs` | Repository verification, distribution builds and their audits for the exact checked-out commit. | Any later commit, hosted CI, emulator, AOSP image, real integration or device acceptance. |
+
+Test-mocks builds (`ELIZA_DEV_ALLOW_TEST_MOCKS=1 npm run build`,
+`npm run android:build -- --test-mocks` into `artifacts/test-mocks/`) exist for
+development and instrumentation only and never qualify a distribution artifact. Exercise the owning changed contracts and inspect the
 terminal hosted result for the reviewed source. Use the commit's PR and
 [GitHub Actions runs](https://github.com/AlphaCompute/alphaphone/actions) for
 source-specific results; old pass counts and cancelled runs cannot qualify new code.
@@ -57,6 +76,32 @@ physical-device/user acceptance are independent gates. A source pin rollback doe
 not establish installed-data or OS rollback compatibility. Browser fixture and
 synthetic-provider results must remain distinguishable from real account access
 and physical hardware observations.
+
+Evidence classes stay separate: (1) source/test (`npm run verify`, Playwright lanes,
+bundle audit); (2) APK build and byte inspection; (3) emulator HOME-role and
+instrumentation; (4) full AOSP image build and boot; (5) real integrations (accounts,
+providers, OAuth grants); (6) physical-device and user acceptance. A result in one class
+never stands in for another.
+
+## Remaining external items
+
+These cannot be completed in software from this repository; they are prepared but open:
+
+- Release signing key custody and signed release APKs (`ELIZAOS_*` signing values held by
+  the release owner), plus signed OS image, OTA/update and rollback drill.
+- App Links: publishing `assetlinks.json` on an owned domain with the release signer
+  fingerprint, and verifying it on an installed signed build.
+- Gmail OAuth: production client/consent configuration and a real account grant,
+  revoke and recovery ([runbook](pilot-acceptance-runbook.md)).
+- Cerebras key provisioning for the resident agent on pilot devices, without exposing the
+  key in evidence.
+- Password provider real-site save/fill/passkey on a recognized browser and signed build.
+- Regional Maps production gateway (HTTPS `VITE_MAPS_BASE_URL`), data licence review and
+  physical navigation.
+- Emulator and physical-device upgrade from earlier installs that saved mock state.
+- Resident redaction re-run on current APKs; physical speech, latency, battery and soak.
+- Stakeholder decisions (powered-off scheduling, Email scope), legal review of licence
+  notices, and the four-unit physical pilot.
 
 The [completion plan](mvp-completion-plan.md),
 [verification gates](verification.md), [Android/AOSP guide](android-and-aosp.md)

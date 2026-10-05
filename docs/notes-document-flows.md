@@ -31,7 +31,8 @@ requested.
 Native ownership: AlphaNoteDocumentsPlugin, registered in MainActivity; shared
 read implementation remains SelectedDocumentAccess. Renderer ownership:
 notes-document-adapter.ts, installed after voice so existing audio UI/storage
-continues to work. Mock mode does not install this adapter or its native actions.
+continues to work. Mock mode (present only in `ELIZA_DEV_ALLOW_TEST_MOCKS=1` builds)
+does not install this adapter or its native actions.
 The prototype Notes layout and Share sheet styling are reused; the two new
 production-only affordances are conditional and do not change reference fixtures.
 
