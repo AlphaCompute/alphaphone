@@ -42,7 +42,7 @@ generated=json.loads((archive/'native-generated-source-manifest.json').read_text
 assert h((archive/'native-generated-source-manifest.json').read_bytes())==frozen['android/app/build/generated/local-agent/source-manifest.json']
 assert generated['runtimeSource']=={'commit':lock['commit']} and generated['patches']==[]
 for relative,digest in frozen.items():
- if relative.startswith(('android/app/src/androidTest/','android/app/src/debug/','android/app/src/main/java/')):
+ if relative.startswith(('android/app/src/androidTest/','android/app/src/testMocks/','android/app/src/main/java/')):
   assert Path(relative).is_file() and h(Path(relative).read_bytes())==digest
 for row in generated['files']:
  origin=row['path']
