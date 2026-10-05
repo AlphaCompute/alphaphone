@@ -2,8 +2,8 @@ import {layoutBrowserDialog} from './dialog-layout';
 import type {DomainRecovery,BrowserDomainDocument} from './domain-document';
 let current:HTMLDialogElement|undefined;
 /** Exact-byte backup and explicitly confirmed, revision-checked recovery. */
-export function openDomainRecovery(domain:Pick<BrowserDomainDocument,'capture'|'reset'>,name:'calendar'|'reminders'|'notifications'|'bookmarks'|'alert sound history'|'password provider'|'photo albums'|'device settings'|'device roles',heading:string,description:string){
- if(current?.open)return;
+export function openDomainRecovery(domain:Pick<BrowserDomainDocument,'capture'|'reset'>,name:'calendar'|'reminders'|'notifications'|'bookmarks'|'alert sound history'|'password provider'|'photo albums'|'device settings'|'device roles'|'digest inbox'|'agent history',heading:string,description:string,signal?:AbortSignal){
+ if(signal?.aborted||current?.open)return;
  const dialog=current=document.createElement('dialog');dialog.setAttribute('aria-label',heading);dialog.style.cssText='box-sizing:border-box;width:min(400px,94vw);max-height:85dvh;overflow:auto;padding:24px;border:0;border-radius:20px;background:var(--bg,#fff);color:var(--fg,#111);font:16px/1.5 system-ui';
  const previous=document.activeElement as HTMLElement|null,abort=new AbortController();let closed=false,confirming=false,busy=false,captured:DomainRecovery|undefined;
  const title=document.createElement('h2');title.textContent=heading;
@@ -18,7 +18,8 @@ export function openDomainRecovery(domain:Pick<BrowserDomainDocument,'capture'|'
   void (async()=>{try{if(document.hidden)throw Error('Reset cancelled.');await domain.reset(captured!,abort.signal);if(!closed){status.textContent=`${name[0].toUpperCase()+name.slice(1)} reset. Reloading…`;location.reload();}}catch(error){if(!closed){status.textContent=error instanceof Error?error.message:`Reset could not be confirmed. Reload to inspect the ${name}.`;confirming=false;reset.textContent=`Reset browser ${name}`;reset.disabled=false;}}finally{busy=false;}})();
  };
  const retireEvents=['pagehide','launcher-home','alpha:device-state','alpha:dev-incoming-call'];
- const dispose=()=>{if(closed)return;closed=true;abort.abort();dialog.remove();if(current===dialog)current=undefined;window.removeEventListener('alpha-back',back,true);for(const event of retireEvents)window.removeEventListener(event,dispose,true);document.removeEventListener('visibilitychange',visibility);previous?.focus();};
+ const dispose=()=>{if(closed)return;closed=true;abort.abort();signal?.removeEventListener('abort',dispose);dialog.remove();if(current===dialog)current=undefined;window.removeEventListener('alpha-back',back,true);for(const event of retireEvents)window.removeEventListener(event,dispose,true);document.removeEventListener('visibilitychange',visibility);previous?.focus();};
+ signal?.addEventListener('abort',dispose,{once:true});
  const back=(event:Event)=>{event.preventDefault();event.stopImmediatePropagation();dispose();},visibility=()=>{if(document.hidden)dispose();};close.onclick=dispose;dialog.oncancel=e=>{e.preventDefault();dispose();};window.addEventListener('alpha-back',back,true);for(const event of retireEvents)window.addEventListener(event,dispose,true);document.addEventListener('visibilitychange',visibility);dialog.append(title,text,backup,legacy,reset,status,close);layoutBrowserDialog(dialog,[close]);(document.querySelector('.os')||document.body).append(dialog);dialog.showModal();close.focus();
  void domain.capture(abort.signal).then(value=>{if(closed)return;captured=value;backup.disabled=value.raw===null;reset.disabled=value.raw===null&&!value.snapshot;legacy.hidden=value.legacy===null||value.legacy===value.raw;status.textContent=value.legacyChanged?'An older tab changed its saved copy. Download both versions and close older tabs before resetting.':value.format==='unrecognized'?`Saved ${name} metadata needs recovery. Download the original saved bytes before resetting.`:value.raw===null?`No saved browser ${name}.`:'Saved data is retained until you confirm a reset.';},()=>{if(!closed)status.textContent='Saved data could not be read. Reset is unavailable.';});
 }
