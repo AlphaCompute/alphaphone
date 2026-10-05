@@ -129,3 +129,35 @@ exposes these causes but does not turn the run into a pass. Full current-source
 verification remains open, and further blanket deadline increases have not been
 made. The old Notes `f4132bdc` browser campaign was explicitly retired when its
 source was superseded; partial results remain diagnostic only.
+
+## Unreadable development location settings
+
+The recovery candidate opens the location editor when saved JSON is malformed,
+empty or structurally invalid. Original text remains untouched until the user
+confirms replacement, and the dialog offers an exact UTF-8 backup download.
+Replacement validates every field, checks that the saved text still matches the
+opened snapshot, and requires a fresh confirmation after edits. Navigation and
+storage-write failure retain the original. Unavailable saved Maps places disable
+place selection while preserving existing Home/Work bindings.
+
+This is a single development preference with last-writer-wins semantics, not a
+transactional operation journal. The starting-value check refuses observed stale
+edits; it is not a cross-process atomic compare-and-exchange guarantee. No native
+GPS, permission or workflow effect is authorized by recovery. TypeScript passes;
+eight browser regressions are being qualified. Rendered review is complete. The
+initial campaign exposed a WebKit click loss: the field change handler rewrote
+the Save label between pointer-down and pointer-up. Reset now leaves inactive
+confirmation untouched; the original campaign was explicitly retired for this
+fix and is not a full-pass claim.
+
+The corrected location campaign passed 89 of 90 Chromium/Firefox/WebKit cases;
+all 24 recovery cases and the existing validation flow passed. The remaining
+WebKit permission fixture let startup calls replace its rejection callback.
+It now shares one rejection outcome across callers; all six focused checks
+pass across Chromium, Firefox and WebKit. Confirmation rendering was inspected with the full explanation visible.
+
+At merged source `9d45e5c7`, the combined appearance/connection campaign passed
+65 of 66 cases. Chromium discarded an evaluation promise during fixture setup
+in the remaining case; all module responses were HTTP 200. That exact case
+passed a focused unchanged-source recheck (1.6 seconds). The initial failure
+is retained; this is not a clean 66-case single-run claim.

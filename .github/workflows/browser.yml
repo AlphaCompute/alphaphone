@@ -83,6 +83,7 @@ jobs:
         run: >-
           npm run test:browser --
           test/browser/domain-atomicity.spec.ts
+          test/browser/location-settings-recovery.spec.ts
           test/browser/connection-preference-storage.spec.ts
           test/browser/appearance-storage.spec.ts
           test/browser/workflow-intent-storage.spec.ts
