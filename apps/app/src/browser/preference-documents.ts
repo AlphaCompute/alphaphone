@@ -17,3 +17,5 @@ function document(key:string,event:string){
 }
 export const bookmarkDocument=document('alpha.browser.bookmarks.v1','alpha:bookmarks-document-changed');
 export const alertSoundDocument=document('alpha.browser.alert-sounds.v1','alpha:alert-sounds-document-changed');
+
+export const passwordProviderDocument=document('alpha.browser.password-provider.v1','alpha:password-provider-document-changed');
