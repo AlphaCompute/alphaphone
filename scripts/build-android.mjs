@@ -10,6 +10,8 @@
  * to artifacts/.
  * --test-mocks builds the web bundle and APKs with the flag on and writes only
  * under artifacts/test-mocks/; it never replaces distribution artifacts.
+ * Afterwards (also on failure) it rebuilds and syncs the flag-off bundle, so
+ * web-dist and the Android web assets never stay flag-on.
  * --allow-unpackaged-runtime is a developer option forwarded to verify-apks:
  * releases without the staged resident runtime are recorded distributable:false
  * instead of failing the build.
@@ -51,14 +53,47 @@ export function gradleFlagArgs({ testMocks }) {
 }
 
 export const outputDirectory = ({ testMocks }) => (testMocks ? "artifacts/test-mocks" : "artifacts");
+
+/**
+ * A test-mocks build has to sync a flag-on bundle into web-dist and the Android
+ * assets. Afterwards, whether it succeeded or failed, rebuild and sync the
+ * flag-off bundle so neither web-dist nor android/app/src/main/assets/public is
+ * left carrying mocks for a later sync, Gradle or archive step.
+ */
+export function withDistributionWebRestored(options, baseEnv, run, body, { root = process.cwd() } = {}) {
+  if (!options.testMocks) return body();
+  let failed = false;
+  try {
+    return body();
+  } catch (error) {
+    failed = true;
+    throw error;
+  } finally {
+    try {
+      run("npm", ["run", "android:sync"], { env: buildEnv(baseEnv, { testMocks: false }) });
+      const flags = JSON.parse(fs.readFileSync(path.join(root, "web-dist/build-flags.json"), "utf8"));
+      if (flags.testMocks !== false) throw new Error("web-dist/build-flags.json still records testMocks after restoring the distribution bundle");
+      console.log("Restored the flag-off web bundle in web-dist and the Android assets.");
+    } catch (error) {
+      // Never hide the original failure; still report that web-dist may carry mocks.
+      if (!failed) throw error;
+      console.error(`Could not restore the flag-off web bundle: ${error.message}`);
+    }
+  }
+}
 export const signingRequested = env => SIGNING_ENV.every(name => Boolean(env[name]));
 
 function main() {
   const options = parseBuildArgs(process.argv.slice(2));
-  const env = buildEnv(androidEnv(), options);
-  const outDir = outputDirectory(options);
+  const baseEnv = androidEnv();
   const run = (cmd, args, extra = {}) =>
-    execFileSync(cmd, args, { stdio: "inherit", env, ...extra });
+    execFileSync(cmd, args, { stdio: "inherit", env: buildEnv(baseEnv, options), ...extra });
+  withDistributionWebRestored(options, baseEnv, run, () => build(options, baseEnv, run));
+}
+
+function build(options, baseEnv, run) {
+  const env = buildEnv(baseEnv, options);
+  const outDir = outputDirectory(options);
   const gradleFlags = gradleFlagArgs(options);
   console.log(`Android build: ${options.testMocks ? "TEST-MOCKS (never distributable) -> " : "distribution, test mocks off -> "}${outDir}/`);
 

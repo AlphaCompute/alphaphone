@@ -8,7 +8,7 @@ import path from "node:path";
 import { execFileSync, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { auditBundle, distributionProblems, manifestFacts, parseSignerDigest, readBuildFlags } from "../scripts/apk.mjs";
-import { buildEnv, gradleFlagArgs, outputDirectory, parseBuildArgs, signingRequested } from "../scripts/build-android.mjs";
+import { buildEnv, gradleFlagArgs, outputDirectory, parseBuildArgs, signingRequested, withDistributionWebRestored } from "../scripts/build-android.mjs";
 import { parseQualifyArgs, summarizePlaywright, verdict, ENGINES } from "../scripts/qualify-head.mjs";
 
 const root = path.resolve(import.meta.dirname, "..");
@@ -284,4 +284,51 @@ test("qualification needs every current step to pass on a clean pinned tree", ()
     suites: [{ file: "a.spec.ts", specs: [{ title: "t1", file: "a.spec.ts", tests: [{ status: "unexpected" }] }], suites: [] }],
   });
   assert.deepEqual(summary, { expected: 3, unexpected: 1, flaky: 0, skipped: 2, failures: [{ file: "a.spec.ts", title: "t1", status: "unexpected" }] });
+});
+
+// A fake android:sync writes web-dist/build-flags.json from the flag in its environment.
+function fakeSync(root, calls) {
+  return (cmd, args, extra = {}) => {
+    calls.push({ cmd: [cmd, ...args].join(" "), flag: extra.env?.ELIZA_DEV_ALLOW_TEST_MOCKS ?? null });
+    fs.mkdirSync(path.join(root, "web-dist"), { recursive: true });
+    fs.writeFileSync(path.join(root, "web-dist/build-flags.json"), JSON.stringify({ testMocks: extra.env?.ELIZA_DEV_ALLOW_TEST_MOCKS === "1" }));
+  };
+}
+
+test("a test-mocks Android build leaves a flag-off web-dist, after success and after failure", () => {
+  for (const fails of [false, true]) {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "alpha-test-mocks-web-"));
+    try {
+      const calls = [], run = fakeSync(root, calls);
+      const body = () => {
+        // The test-mocks build syncs a flag-on bundle first.
+        run("npm", ["run", "android:sync"], { env: buildEnv({ PATH: "/bin" }, { testMocks: true }) });
+        assert.equal(JSON.parse(fs.readFileSync(path.join(root, "web-dist/build-flags.json"), "utf8")).testMocks, true);
+        if (fails) throw new Error("gradle failed");
+        return "built";
+      };
+      const attempt = () => withDistributionWebRestored({ testMocks: true }, { PATH: "/bin", ELIZA_DEV_ALLOW_TEST_MOCKS: "1" }, run, body, { root });
+      if (fails) assert.throws(attempt, /gradle failed/); else assert.equal(attempt(), "built");
+      assert.deepEqual(calls.map(call => call.flag), ["1", null], "the restore sync runs with the switch removed");
+      assert.equal(JSON.parse(fs.readFileSync(path.join(root, "web-dist/build-flags.json"), "utf8")).testMocks, false);
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  }
+});
+
+test("a distribution Android build does not add a second sync", () => {
+  const calls = [];
+  assert.equal(withDistributionWebRestored({ testMocks: false }, {}, () => calls.push("sync"), () => "built"), "built");
+  assert.deepEqual(calls, []);
+});
+
+test("a restore that still records test mocks fails the build", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "alpha-test-mocks-web-"));
+  try {
+    const stuck = () => { fs.mkdirSync(path.join(root, "web-dist"), { recursive: true }); fs.writeFileSync(path.join(root, "web-dist/build-flags.json"), JSON.stringify({ testMocks: true })); };
+    assert.throws(() => withDistributionWebRestored({ testMocks: true }, {}, stuck, () => "built", { root }), /still records testMocks/);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
 });

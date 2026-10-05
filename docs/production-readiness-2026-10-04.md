@@ -72,7 +72,7 @@ only.
 | `npx playwright test --project=chromium --workers=4` (`npm run test:browser`) | S | 1829 pass, 14 skipped, 0 failed |
 | `npx playwright test --project=firefox --project=webkit --workers=4` | S | 578 of 578 pass |
 | `npm run android:build` (includes `verify-apks.mjs`) | B | Pass after `agent:prepare`, `agent:build-workflow-worker`, `agent:stage-android` and a local speech AAR build: four APKs with the packaged resident runtime, no test-mock classes, clean bundle audit of each `assets/public`; releases unsigned (no `ELIZAOS_*` key here) and recorded distributable by runtime |
-| `npm run android:build -- --test-mocks` | B | Pass: four APKs plus instrumentation in `artifacts/test-mocks/` only, recorded `testMocks: true` and not distributable; the distribution APKs were not rewritten. It leaves a flag-on bundle in `web-dist`, so rebuild with the switch off before any `cap sync` |
+| `npm run android:build -- --test-mocks` | B | Pass: four APKs plus instrumentation in `artifacts/test-mocks/` only, recorded `testMocks: true` and not distributable; the distribution APKs were not rewritten. It now ends by rebuilding and syncing the flag-off bundle, also after a failure, so `web-dist` and the Android web assets do not stay flag-on |
 | `node scripts/qualify-head.mjs` | S/B | Not run on this head |
 | `ANDROID_SERIAL=… npm run android:smoke` on distribution APKs | E | Not run |
 | Upgrade from saved mock state (runbook) | E, then D | Not run |

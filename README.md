@@ -199,7 +199,7 @@ adb install -r artifacts/standalone-debug.apk
 adb install -r artifacts/launcher-debug.apk
 
 # Development/test APKs with mocks and debug-only native hooks (never distributed):
-npm run android:build -- --test-mocks   # writes only to artifacts/test-mocks/
+npm run android:build -- --test-mocks   # writes only to artifacts/test-mocks/; web-dist is restored flag-off afterwards
 ```
 
 `npm run android:build` removes `ELIZA_DEV_ALLOW_TEST_MOCKS` and
