@@ -1,7 +1,7 @@
 import {browserDocuments} from './documents';
 import {BrowserDomainDocument} from './domain-document';
 import {browserDevProfile} from './dev-profile';
-import {assertDevelopmentIdentity,type DevelopmentIdentity} from './development-identity';
+import {assertDevelopmentIdentity,verifyDevelopmentIdentity,type DevelopmentIdentity} from './development-identity';
 export type DevelopmentMessage={id:string;role:'user'|'assistant';text:string};
 export type DevelopmentConversation={id:string;title:string;messages:DevelopmentMessage[];receipts:Record<string,{input:string;text:string}>};
 export type DevelopmentAgentState={version:1;reply:string;conversations:DevelopmentConversation[]};
@@ -20,8 +20,8 @@ export function developmentAgentDocument(identity:DevelopmentIdentity){
  return new BrowserDomainDocument(browserDocuments,key,()=>{check(identity);return localStorage.getItem(key);});
 }
 export async function readDevelopmentAgent(identity:DevelopmentIdentity,signal?:AbortSignal){
- check(identity,signal);const data=await developmentAgentDocument(identity).read(initial,signal);check(identity,signal);return validateDevelopmentAgent(data);
+ await verifyDevelopmentIdentity(identity,signal);check(identity,signal);const data=await developmentAgentDocument(identity).read(initial,signal);await verifyDevelopmentIdentity(identity,signal);check(identity,signal);return validateDevelopmentAgent(data);
 }
 export async function editDevelopmentAgent<R>(identity:DevelopmentIdentity,edit:(data:DevelopmentAgentState)=>R|Promise<R>,signal?:AbortSignal):Promise<R>{
- check(identity,signal);return developmentAgentDocument(identity).edit(initial,async data=>{check(identity,signal);const result=await edit(validateDevelopmentAgent(data));check(identity,signal);return result;},signal);
+ await verifyDevelopmentIdentity(identity,signal);check(identity,signal);return developmentAgentDocument(identity).edit(initial,async data=>{await verifyDevelopmentIdentity(identity,signal);check(identity,signal);const result=await edit(validateDevelopmentAgent(data));await verifyDevelopmentIdentity(identity,signal);check(identity,signal);return result;},signal);
 }

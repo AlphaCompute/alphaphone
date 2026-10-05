@@ -2,7 +2,7 @@ import {readDevelopmentAgent} from './development-agent-document';
 import {developmentDelegationRequest,grantAccount} from './digest-delegation';
 import {browserDigestAccount,validateBrowserDigestSelection,readBrowserDigestSource} from './digest-live-sources';
 import {developmentDigestDocument,readDevelopmentDigests,validateDevelopmentDigests,initialDevelopmentDigests as initial,type DevelopmentDigestSource as Source,type DevelopmentDigestLoop as Loop} from './development-digest-document';
-import {assertDevelopmentIdentity,developmentIdentity,type DevelopmentIdentity} from './development-identity';
+import {assertDevelopmentIdentity,verifyDevelopmentIdentity,developmentIdentity,type DevelopmentIdentity} from './development-identity';
 import {revision} from './store';
 const id=(v:unknown):string=>{if(typeof v!=='string'||!/^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/.test(v))throw Error('Invalid digest identity.');return v;};
 function wall(at:number,zone:string){const p=Object.fromEntries(new Intl.DateTimeFormat('en-GB',{timeZone:zone,year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).formatToParts(at).map(x=>[x.type,x.value]));return `${p.year}-${p.month}-${p.day}T${p.hour}:${p.minute}`;}
@@ -15,8 +15,8 @@ function scheduledOccurrence(loop:Loop,minute:number):string|null{
 }
 /** Requests and periodic inbox checks advance only the current minute, never a backlog. */
 export async function developmentDigestRequest(identity:DevelopmentIdentity,path:string,body:any,signal?:AbortSignal){
- const check=()=>{signal?.throwIfAborted();assertDevelopmentIdentity(identity);const selected=JSON.parse(localStorage.getItem('alpha.connection.selection.v1')||'null');if(selected?.kind!=='development'||selected.profile!==identity.profile)throw Error('Digest connection changed.');};check();
- const snapshot=await readDevelopmentDigests(identity,signal);check();
+ const check=async()=>{signal?.throwIfAborted();await verifyDevelopmentIdentity(identity,signal);assertDevelopmentIdentity(identity);const selected=JSON.parse(localStorage.getItem('alpha.connection.selection.v1')||'null');if(selected?.kind!=='development'||selected.profile!==identity.profile)throw Error('Digest connection changed.');};await check();
+ const snapshot=await readDevelopmentDigests(identity,signal);await check();
  if(path==='/api/workflow/hosted/sources'&&body===undefined)return {sources:snapshot.sources.map(({text,...source})=>source)};
  if(path==='/api/workflow/hosted/loops'&&body===undefined)return {loops:snapshot.loops};
  if(path==='/api/workflow/hosted/cloud-delegation/revocations')return {grants:[]};
@@ -27,26 +27,26 @@ export async function developmentDigestRequest(identity:DevelopmentIdentity,path
   if(!due)return client===null?{}:{entries:snapshot.results.filter(row=>row.cursor>(Object.hasOwn(snapshot.acks,client)?snapshot.acks[client]:0)).slice(0,50)};
  }
  return developmentDigestDocument(identity).edit(initial,async state=>{
-  validateDevelopmentDigests(state);const result=await operate(state);check();return result;
+  validateDevelopmentDigests(state);const result=await operate(state);await check();return result;
  },signal);
  async function operate(state:ReturnType<typeof initial>){
-  check();const now=Date.now(),minute=Math.floor(now/60000)*60000;
+  await check();const now=Date.now(),minute=Math.floor(now/60000)*60000;
   const delegation=state.delegation??={requests:[],grants:[]};
   const liveAccount=(accountId:string)=>{if(accountId==='browser:'+identity.namespace)return browserDigestAccount(identity,state.liveRevision||'');const grant=delegation.grants.find(g=>'cloud:'+g.id===accountId&&!g.revoked&&Date.parse(g.expiresAt)>now);if(!grant)throw Error('Source access changed.');return grantAccount(grant);};
   const validateLive=(value:any)=>{const account=liveAccount(value?.accountId);return validateBrowserDigestSelection(value,identity,account.accountRevision,account);};
   if(path.startsWith('/api/workflow/hosted/cloud-delegation/')){const operation=path.slice('/api/workflow/hosted/cloud-delegation/'.length),result=developmentDelegationRequest(delegation,operation,body,now);if(operation==='revoke')for(const source of state.sources)if(source.live?.accountId==='cloud:'+body.grantId)source.revoked=true;return result;}
   const tick=async()=>{for(const loop of state.loops){const local=scheduledOccurrence(loop,minute);if(local===null)continue;
    loop.lastOccurrence=local;const source=state.sources.find(s=>s.id===loop.spec.sourceId&&s.revision===loop.spec.sourceRevision);if(!source||source.revoked||Date.parse(source.expiresAt)<=now)continue;
-   let readError:string|null=null,liveInput:Awaited<ReturnType<typeof readBrowserDigestSource>>|undefined;if(source.live){try{validateLive(source.live);liveInput=await readBrowserDigestSource(source.live,now);}catch(error){readError=(error as Error).message;}check();}
-   const output=(await readDevelopmentAgent(identity,signal)).reply;check();if(typeof output!=='string'||output.length>16000)throw Error('Digest output exceeds the development limit.');
+   let readError:string|null=null,liveInput:Awaited<ReturnType<typeof readBrowserDigestSource>>|undefined;if(source.live){try{validateLive(source.live);liveInput=await readBrowserDigestSource(source.live,now);}catch(error){readError=(error as Error).message;}await check();}
+   const output=(await readDevelopmentAgent(identity,signal)).reply;await check();if(typeof output!=='string'||output.length>16000)throw Error('Digest output exceeds the development limit.');
    const time=new Date(now).toISOString();state.results.push({cursor:++state.cursor,runId:crypto.randomUUID(),workflowId:loop.id,workflowVersionId:loop.versionId,templateVersion:'development-v1',scheduledAt:new Date(minute).toISOString(),source:{id:source.id,revision:source.revision,observedAt:source.live?time:source.observedAt,expiresAt:source.expiresAt,...(source.live?{live:source.live}:{})},status:readError?'failed':'completed',startedAt:time,completedAt:time,output:readError?null:liveInput?{summary:output,...liveInput}:output,error:readError});if(state.results.length>100)state.results.shift();
   }};
-  if(path==='/api/workflow/hosted/tick'){await tick();check();return {};}
+  if(path==='/api/workflow/hosted/tick'){await tick();await check();return {};}
   if(path==='/api/workflow/hosted/sources'&&body===undefined)return {sources:state.sources.map(({text,...source})=>source)};
   if(path==='/api/workflow/hosted/loops'&&body===undefined)return {loops:state.loops};
   if(path==='/api/workflow/hosted/live-accounts'){state.liveRevision??=revision();return {accounts:[browserDigestAccount(identity,state.liveRevision),...delegation.grants.filter(g=>!g.revoked&&Date.parse(g.expiresAt)>now).map(grantAccount)]};}
   if(path==='/api/workflow/hosted/live-calendars'){const account=liveAccount(body?.accountId);if(!account.kinds.includes('calendar'))throw Error('Calendar access is not granted.');if(body?.accountId!==account.accountId||body.accountRevision!==account.accountRevision)throw Error('Source access changed.');return {calendars:[{calendarId:'local',label:'Browser calendar',timeZone:Intl.DateTimeFormat().resolvedOptions().timeZone}],truncated:false};}
-    if(path.startsWith('/api/workflow/hosted/results?')){const client=id(new URL(path,location.origin).searchParams.get('clientId'));await tick();check();return {entries:state.results.filter(r=>r.cursor>(Object.hasOwn(state.acks,client)?state.acks[client]:0)).slice(0,50)};}
+    if(path.startsWith('/api/workflow/hosted/results?')){const client=id(new URL(path,location.origin).searchParams.get('clientId'));await tick();await check();return {entries:state.results.filter(r=>r.cursor>(Object.hasOwn(state.acks,client)?state.acks[client]:0)).slice(0,50)};}
   if(path==='/api/workflow/hosted/results/ack'){const client=id(body?.clientId);if(!state.results.some(r=>r.cursor===body.cursor&&r.runId===body.runId))throw Error('Digest receipt changed.');if(!Object.hasOwn(state.acks,client)&&Object.keys(state.acks).length>=100)throw Error('Digest client history is full.');state.acks[client]=Math.max(Object.hasOwn(state.acks,client)?state.acks[client]:0,body.cursor);return {};}
   if(!body||body.confirmed!==true)throw Error('Review this digest change first.');
   if(path==='/api/workflow/hosted/sources/revoke'){const source=state.sources.find(s=>s.id===id(body.id));if(!source)throw Error('Source not found.');source.revoked=true;return {source};}
