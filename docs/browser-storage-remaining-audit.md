@@ -138,3 +138,21 @@ deadlines, pin authentication, cleanup and evidence assertions are unchanged.
 The full repository batch still needs qualification after this correction; two
 diagnostic passes are not a full-suite pass. These are fake SDK/ADB fixture tests,
 not Android builds or device acceptance.
+
+## Appearance preference synchronization
+
+Appearance remains a single last-writer-wins preference (`alpha.appearance.v1`).
+The candidate browser settings adapter now follows changes from another tab,
+including removal and storage clearing, and rereads the latest bytes when a page
+is restored. A React-state marker identifies external reads so they are not
+written back as local choices; rapid storage events cannot deliberately replay
+an older event payload. Local changes retain their existing persistence and
+session-only error message if storage fails.
+
+Malformed bytes render the default light theme without overwriting the original
+value. An explicit `?theme=` preview remains independent of other-tab changes;
+mock previews retain their separate behavior. The native settings adapter is
+unchanged. TypeScript passes; the new seven-case suite is running across all
+three engines, covering two real tabs, rapid writes, remove/clear, malformed
+values, explicit previews and write failure. Full integrated qualification is
+still pending.
