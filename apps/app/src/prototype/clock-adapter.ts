@@ -2,7 +2,8 @@ import {createInlineModal} from '../runtime/inline-modal';
 import {currentClockTimeZone} from '../runtime/clock-contract';
 import { DailyApps, type ClockRequest, type ClockResult } from '../daily';
 type Bag=Record<string,any>;
-const KEY='alphaphone:clock-handoff:v1';
+import {createClockHandoffHistory,clockHandoffLegacyKey,type ClockHandoffSnapshot} from '../runtime/clock-handoff-history';
+import {secureConnectionStore} from '../runtime/native-connection';
 const actions=['set','show','snooze','dismiss'] as const;
 /** A reviewed handoff, never a local alarm database or a provider-success claim. */
 export function installClockAdapter(Component:any,views:Bag,options:{simulated:boolean;browser?:boolean}) {
@@ -12,18 +13,27 @@ export function installClockAdapter(Component:any,views:Bag,options:{simulated:b
  let owner:any,open=false,action:ClockRequest['action']='set',time='07:00',label='',snooze='10',review:ClockRequest|null=null,busy=false,message='',generation=0;
  const simulated=()=>options.simulated||document.documentElement.dataset.connectionMode==='mock';
  const publish=()=>{++draftRevision;owner?.vset('calendar',{});};
- const restore=()=>{
-  if(simulated())return;
-  try {const last=JSON.parse(localStorage.getItem(KEY)||'null');if(last&&actions.includes(last.action)&&typeof last.status==='string')message=last.status==='opening'||last.status==='unknown'?'Previous Clock result is unknown. Check Clock before repeating a request.':'Previous request was a handoff. Check Clock for its result.';}
-  catch {message='Clock handoff history could not be read. Check Clock before repeating a request.';}
+ const history=createClockHandoffHistory(secureConnectionStore,()=>localStorage.getItem(clockHandoffLegacyKey));
+ let snapshot:ClockHandoffSnapshot|null=null,loading=false,historyGeneration=0;
+ const restore=async()=>{
+  if(simulated()||options.browser)return;
+  const token=++historyGeneration,view=generation;snapshot=null;loading=true;publish();
+  try {
+   const saved=await history.read();if(token!==historyGeneration||view!==generation)return;
+   snapshot=saved;const last=saved.record;
+   message=last?(last.status==='opening'||last.status==='unknown'?'Previous Clock result is unknown. Check Clock before repeating a request.':'Previous request was a handoff. Check Clock for its result.'):'';
+  }catch {if(token===historyGeneration&&view===generation)message='Clock handoff history could not be read. Check Clock before repeating a request.';}
+  finally{if(token===historyGeneration){loading=false;if(view===generation)publish();}}
  };
  const close=()=>{if(!busy){open=false;review=null;publish();}};
  const back=(event:Event)=>{if(!open)return;event.preventDefault();event.stopImmediatePropagation();close();};
  const modal=createInlineModal(close,()=>document.querySelector<HTMLElement>('button[aria-label="Clock alarms"]'));
  views.calendar.onLeave=(...args:any[])=>{open=false;review=null;++generation;return leave?.(...args);};
+ const retireReview=()=>{review=null;++generation;};
+ const hidden=()=>{if(document.hidden)retireReview();else if(open&&!busy)void restore();};
  const mount=p.componentDidMount,unmount=p.componentWillUnmount;
- p.componentDidMount=function(){mount.call(this);owner=this;this.clockSelection=selection;restore();window.addEventListener('alpha-back',back,true);};
- p.componentWillUnmount=function(){if(owner===this){window.removeEventListener('alpha-back',back,true);delete this.clockSelection;owner=null;open=false;review=null;++generation;}unmount.call(this);};
+ p.componentDidMount=function(){mount.call(this);owner=this;this.clockSelection=selection;void restore();window.addEventListener('alpha-back',back,true);window.addEventListener('pagehide',retireReview);document.addEventListener('visibilitychange',hidden);};
+ p.componentWillUnmount=function(){if(owner===this){window.removeEventListener('alpha-back',back,true);window.removeEventListener('pagehide',retireReview);document.removeEventListener('visibilitychange',hidden);delete this.clockSelection;owner=null;open=false;review=null;++generation;}unmount.call(this);};
  const change=(fn:()=>void)=>{if(busy)return;fn();review=null;publish();};
  const build=():ClockRequest=>{
   if(action==='set'){
@@ -42,30 +52,40 @@ export function installClockAdapter(Component:any,views:Bag,options:{simulated:b
   if(document.hidden){message='Return to Alpha Phone and review again.';review=null;publish();return;}
   if(simulated()){message='Mock mode: Clock request simulated. No alarm was changed and no app was opened.';review=null;publish();return;}
   if(request.action==='set'&&request.timeZone!==currentClockTimeZone()){message='Phone time zone changed. Review the Clock request again.';review=null;publish();return;}
-  const id=crypto.randomUUID(),token=generation;
-  try {localStorage.setItem(KEY,JSON.stringify({id,action:request.action,status:'opening',at:new Date().toISOString()}));}
-  catch {message='Clock request was not sent because its handoff record could not be saved.';publish();return;}
-  busy=true;review=null;message='Opening Clock…';publish();
+  if(!snapshot||loading){message='Clock request was not sent because its handoff history is unavailable. Close and reopen Clock to retry.';publish();return;}
+  const id=crypto.randomUUID(),token=generation,expected=snapshot;
+  busy=true;review=null;message='Saving Clock request…';publish();
+  let retained:ClockHandoffSnapshot;
+  try {retained=await history.save(expected,{id,action:request.action,status:'opening',at:new Date().toISOString()});}
+  catch {busy=false;snapshot=null;if(token===generation){message='Clock request was not sent because its handoff record could not be saved. Close and reopen Clock to retry.';publish();}return;}
+  // Admission is asynchronous. A retired review must never dispatch after it completes.
+  let cancelled=token!==generation||document.hidden||simulated();
+  try{if(request.action==='set'&&request.timeZone!==currentClockTimeZone())cancelled=true;}catch{cancelled=true;}
   let result:ClockResult;
-  try {result=await DailyApps.clockHandoff(request);if(result.action!==request.action||!['opened','unavailable','denied','failed','unknown'].includes(result.status))throw Error();}
-  catch {result={action:request.action,status:'unknown',message:'Clock result is unknown. Check Clock before repeating the request.'};}
-  // The Activity may now be backgrounded. Persist the handoff, never replay it.
-  try {const current=JSON.parse(localStorage.getItem(KEY)||'null');if(current?.id===id)localStorage.setItem(KEY,JSON.stringify({id,action:request.action,status:result.status,at:new Date().toISOString()}));}
-  catch {result={...result,message:'Clock may have opened, but its handoff record could not be saved. Check Clock before trying again.'};}
+  if(cancelled)result={action:request.action,status:'failed',message:'Clock request was not sent. Return to Alpha Phone and review again.'};
+  else{
+   message='Opening Clock…';publish();
+   try {result=await DailyApps.clockHandoff(request);if(result.action!==request.action||!['opened','unavailable','denied','failed','unknown'].includes(result.status))throw Error();}
+   catch {result={action:request.action,status:'unknown',message:'Clock result is unknown. Check Clock before repeating the request.'};}
+  }
+  // Only this exact admitted record can be completed; never replay a handoff.
+  try {snapshot=await history.save(retained,{id,action:request.action,status:result.status,at:new Date().toISOString()});}
+  catch {snapshot=null;result={...result,message:cancelled?'Clock request was not sent, but its cancelled record could not be saved. Check Clock before trying again.':'Clock may have opened, but its handoff record could not be saved. Check Clock before trying again.'};}
   busy=false;
   if(token===generation){message=result.message;publish();}
+  else if(open&&!document.hidden)void restore();
  };
  views.calendar.render=(state:Bag,api:Bag)=>{
   const out=render(state,api);
-  out.openClock=()=>{if(busy)return;if(options.browser&&!simulated()){void DailyApps.clockHandoff({action:'show',reviewed:true}).catch(()=>api.toast('Clock could not be opened. Try again.'));return;}open=true;review=null;restore();publish();};
+  out.openClock=()=>{if(busy)return;if(options.browser&&!simulated()){void DailyApps.clockHandoff({action:'show',reviewed:true}).catch(()=>api.toast('Clock could not be opened. Try again.'));return;}open=true;review=null;void restore();publish();};
   const currentReview=review;
   out.clock=open?{
-   modalRef:modal.ref,title:'Clock',topPadding:simulated()?'76px':'44px',message,busy,isSet:action==='set',isSnooze:action==='snooze',time,label,snooze,
+   modalRef:modal.ref,title:'Clock',topPadding:simulated()?'76px':'44px',message,busy:busy||loading,isSet:action==='set',isSnooze:action==='snooze',time,label,snooze,
    zone:Intl.DateTimeFormat().resolvedOptions().timeZone,
    close,
    actions:actions.map(kind=>({label:kind==='set'?'Set alarm':kind==='show'?'Show alarms':kind==='snooze'?'Snooze':'Dismiss',pick:()=>change(()=>{action=kind;}),css:action===kind?'background:var(--fg);color:var(--bg)':'background:var(--s2);color:var(--fg)'})),
    onTime:(e:Bag)=>change(()=>{time=e.target.value;}),onLabel:(e:Bag)=>change(()=>{label=e.target.value;}),onSnooze:(e:Bag)=>change(()=>{snooze=e.target.value;}),
-   prepare:()=>{if(busy)return;try{review=build();message='';}catch(error){message=(error as Error).message;}publish();},
+   prepare:()=>{if(busy||loading)return;try{review=build();message='';}catch(error){message=(error as Error).message;}publish();},
    review:currentReview?{text:description(currentReview),confirm:()=>dispatch(currentReview),cancel:()=>change(()=>{}),label:simulated()?'Simulate Clock request':'Continue to Clock'}:null,
   }:null;
   return out;

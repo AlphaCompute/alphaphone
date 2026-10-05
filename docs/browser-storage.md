@@ -64,18 +64,30 @@ cannot be read, place selection is disabled while existing Home/Work bindings
 remain intact. The starting-value check is not an atomic cross-process
 compare-and-exchange operation.
 
-## Native Clock handoff persistence gap
+## Native Clock handoff history
 
-`prototype/clock-adapter.ts` retains `alphaphone:clock-handoff:v1` for the native
-handoff UI. Its completion path compares the operation ID before a separate
-localStorage write; initial retention lacks readback. This remains a native
-persistence review item: verify failed retention before dispatch, competing
-requests, late completions and restart with an uncertain result. Reuse the
-existing native storage contract if stronger coordination is required.
+`prototype/clock-adapter.ts` uses the existing encrypted Android storage API for
+`clock-handoff:v1:device`. A reviewed request captures the displayed history;
+compare-and-exchange and readback must confirm its admission before Clock can
+open. A conflicting update or failed retention prevents dispatch. After the
+awaited admission, the UI rechecks review ownership, visibility, mode and time
+zone. Retired requests are recorded as undispatched failures. Completion can
+replace only its exact admitted record; a lost native response remains unknown.
+No history read or recovery automatically replays a handoff.
 
-The browser path opens the simulated Clock directly, and mock requests do not
-write this record. It is neither a browser Clock journal nor evidence that an
-alarm was created. A handoff record must never authorize automatic replay.
+The previous `alphaphone:clock-handoff:v1` bytes are retained verbatim in the
+encrypted envelope and left untouched in localStorage. Later changes to that
+retired source or unreadable history block new handoffs rather than discarding
+an uncertain result. The record represents the latest reviewed handoff, not an
+alarm database or proof that an alarm exists. The browser path opens its
+simulated Clock directly; mock requests do not write native history.
+
+`clock-handoff-history.test.mjs` covers competing admissions, lost writes,
+retained old bytes, late completion, duplicate clicks and retirement during an
+awaited save. Android Clock fixtures observe encrypted completion and refuse to
+delete changed or unobserved records. Those fixtures require current-source
+native execution; host tests and APK compilation alone do not qualify Android
+Keystore, process death or real Clock behavior.
 
 ## Storage and recovery rules
 
