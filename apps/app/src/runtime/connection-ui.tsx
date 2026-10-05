@@ -1,4 +1,4 @@
-import {conversationSelectionDocument,readConversationChoice,saveConversationChoice} from './conversation-selection';
+import {captureConversationChoice,selectConversation,conversationSelectionDocument} from './conversation-selection';
 import {developmentDigestDocument} from '../browser/development-digest-document';
 import {developmentExecutionDocument} from '../browser/development-execution-document';
 import {developmentAgentDocument} from '../browser/development-agent-document';
@@ -138,6 +138,7 @@ function retire(name = 'Offline') {
   void retirement.catch(()=>update({error:'Background delivery could not be retired. Reconnect to reset it.'}));
   if (active?.kind === 'cloud') { active.cloud.setPhoneTarget(null); if (state.session) void secureConnectionStore.remove(`cloud-runtime:${state.session.sessionId}`).catch(()=>{}); }
   actionReceipts.clear();
+  conversationMemory.clear();
   epoch++;
   sending?.abort(new DOMException('The connection changed.', 'AbortError'));
   sending = null;
@@ -195,6 +196,7 @@ async function work(message: string, action: (signal: AbortSignal) => Promise<vo
 }
 function activate(next: Active, session: VerifiedSession, name: string) {
   actionReceipts.clear();
+  conversationMemory.clear();
   epoch++; sending?.abort(new DOMException('The connection changed.', 'AbortError')); sending = null; active = next;
   update({ phoneActionsAvailable:!!next.actions, conversations: [], history: null, kind: next.kind, name, session, open: false, message: 'Connected', error: '' });
 }
@@ -637,6 +639,9 @@ export const connectionController = {
     await work('Verifying and restoring conversation…', async signal => {
       const selected = active, session = state.session, generation = epoch;
       if (!selected || !session) throw new Error('Connect an agent first.');
+      const key=conversationKey(session),expected=await captureConversationChoice(key,signal);
+      const assertCurrent=()=>{signal.throwIfAborted();if(generation!==epoch||selected!==active||state.session?.sessionId!==session.sessionId)throw Error('The agent changed.');};
+      assertCurrent();
       const list = await conversationList(selected, signal);
       if (!list.some(item => item.id === id)) throw new Error('This conversation is no longer available to this agent.');
       const result = selected.kind === 'cloud' ? await selected.cloud.messages(selected.agentId, id, signal) : await selected.remote.messages(id, signal);
@@ -647,11 +652,9 @@ export const connectionController = {
         if (typeof item.id !== 'string' || !item.id || typeof item.text !== 'string' || item.text.length > 200000) throw new Error('The agent returned invalid history.');
         return { id: item.id, from: item.role === 'user' ? 'user' : 'agent', text: item.role === 'user' ? restoredText(item.text) : item.text };
       });
-      const key = conversationKey(session);
       let saved = true;
-      try { await saveConversationChoice(key,id,signal); } catch { saved = false; }
-      signal.throwIfAborted();if(generation!==epoch)throw Error('The connection changed.');
-      conversationMemory.set(key, id);
+      try { await selectConversation(key,expected,id,signal,assertCurrent); } catch { saved = false; }
+      assertCurrent();conversationMemory.set(key,id);
       update({ history: { sessionId: session.sessionId, conversationId: id, revision: (state.history?.revision || 0) + 1, messages }, open: false,
         message: saved ? 'Returned history restored. Older messages may remain on the agent.' : 'History restored for this session; restart selection could not be saved.' });
     });
@@ -673,17 +676,19 @@ export const connectionController = {
       if (selected.kind === 'remote' || selected.kind === 'local') {
         if (!selected.remote.session || selected.remote.session.expiresAt <= Date.now()) throw Object.assign(new Error('Your session has expired. Pair again.'), { code: 'session_expired' });
       }
-      const key = conversationKey(session);
-      let id = conversationMemory.get(key) || await readConversationChoice(key,requestSignal);
-      requestSignal.throwIfAborted();if(generation!==epoch)throw Error('The connection changed.');
+      const assertCurrent=()=>{requestSignal.throwIfAborted();if(generation!==epoch||selected!==active||state.session?.sessionId!==session.sessionId)throw Error('The connection changed.');};
+      const key = conversationKey(session), cached = await captureConversationChoice(key,requestSignal);
+      assertCurrent();
+      let id = conversationMemory.get(key) || cached?.id;
       if (typeof id !== 'string' || !id) {
         const created = selected.kind === 'cloud' ? await selected.cloud.createConversation(selected.agentId, 'Alpha Phone', requestSignal) : await selected.remote.createConversation('Alpha Phone', requestSignal);
         requestSignal.throwIfAborted();
         if (generation !== epoch) throw new Error('The connection changed.');
-        id = created.id; conversationMemory.set(key, id);
-        try { await saveConversationChoice(key,id,requestSignal); }
-        catch { if(!requestSignal.aborted&&generation===epoch)update({ message: 'Conversation is connected for this session. Its selection could not be saved for restart.' }); }
-        requestSignal.throwIfAborted();if(generation!==epoch)throw Error('The connection changed.');
+        id = created.id;
+        let saved=true;
+        try { await selectConversation(key,cached,id,requestSignal,assertCurrent); } catch { saved=false; }
+        assertCurrent();conversationMemory.set(key,id);
+        if(!saved)update({ message: 'Conversation is connected for this session. Its selection could not be saved for restart.' });
       }
       // Generic clients report an observation, never authority or permission.
       // Retain the legacy field while older runtime deployments are supported.
@@ -741,8 +746,9 @@ export function ConnectionChooser() {
   const [replyReady,setReplyReady]=useState(false),[developmentAccountRevision,setDevelopmentAccountRevision]=useState(0);
   const agentRecovery=useRef<AbortController|null>(null);
   useEffect(()=>()=>{agentRecovery.current?.abort();},[developmentProfile]);
+  useEffect(()=>{const retire=()=>agentRecovery.current?.abort(),hidden=()=>{if(document.hidden)retire();};const events=['pagehide','launcher-home','alpha:device-state','alpha:dev-incoming-call'];for(const event of events)window.addEventListener(event,retire);document.addEventListener('visibilitychange',hidden);return()=>{retire();for(const event of events)window.removeEventListener(event,retire);document.removeEventListener('visibilitychange',hidden);};},[]);
   useEffect(()=>{if(!browserDevProfile||!snapshot.open)return;const controller=new AbortController();setReplyReady(false);setReply('');setDevelopmentError('');void developmentReply(developmentProfile,controller.signal).then(value=>{if(!controller.signal.aborted){setReply(value);setReplyReady(true);}},()=>{if(!controller.signal.aborted)setDevelopmentError('Development data could not be read. Open agent history recovery to download or reset it.');});return()=>controller.abort();},[developmentProfile,snapshot.open,developmentAccountRevision]);
-  const recoverConversations=async()=>{agentRecovery.current?.abort();const controller=agentRecovery.current=new AbortController();connectionController.close();try{const domain=await conversationSelectionDocument();controller.signal.throwIfAborted();openDomainRecovery(domain,'conversation selections','Conversation selection recovery','Download saved conversation choices before resetting. Reset forgets browser restart selections for all connected accounts. It does not delete conversations, messages or provider data, revoke credentials, or change server access. Close older Alpha tabs before continuing.',controller.signal);}catch{if(!controller.signal.aborted)update({error:'Conversation selection recovery could not be opened.'});}};
+  const recoverConversationChoice=async()=>{if(state.busy)return;sending?.abort(new DOMException('Conversation recovery requested.','AbortError'));agentRecovery.current?.abort();const controller=agentRecovery.current=new AbortController();try{const domain=await conversationSelectionDocument();controller.signal.throwIfAborted();connectionController.close();openDomainRecovery(domain,'conversation selections','Conversation selection recovery','Download saved conversation selections before resetting. This clears only browser restart choices; conversations remain on their agents. It does not delete conversations, messages or provider data. Reset never sends a message. Close older Alpha tabs before continuing.',controller.signal);}catch{if(!controller.signal.aborted)update({error:'Conversation selections could not be read.'});}};
   const recoverDevelopment=(kind:'agent'|'execution'|'digest')=>{try{const identity=developmentIdentity(developmentProfile),domain=developmentOwnerRecovery(kind==='agent'?developmentAgentDocument(identity):kind==='execution'?developmentExecutionDocument(identity):developmentDigestDocument(identity),identity);agentRecovery.current?.abort();const controller=agentRecovery.current=new AbortController();connectionController.close();if(kind==='agent')openDomainRecovery(domain,'agent history','Development agent history recovery','Download this profile’s conversations, scripted reply and message receipts before resetting. Reset clears only this development agent history and restores the default reply. Pending device actions, workflows and real local-agent data are separate. Close older Alpha tabs before continuing.',controller.signal);else if(kind==='execution')openDomainRecovery(domain,'execution history','Development execution recovery','Download this profile’s workflows, runs, action proposals and receipts before resetting. Reset clears them together so waiting workflows cannot recreate cleared proposals. Pending actions may already have happened: reconcile them before resetting. Reset does not undo effects. Older bytes are preserved inside a JSON archive. Real local-agent data is separate. Close older Alpha tabs before continuing.',controller.signal);else openDomainRecovery(domain,'digest schedules','Development digest schedule recovery','Download this profile’s read grants, sources, schedules, execution results and delivery acknowledgements before resetting. Reset removes these local schedules and grants. Already saved inbox results remain in the separate inbox. Real provider grants and real local-agent data are separate. Close older Alpha tabs before continuing.',controller.signal);}catch{setDevelopmentError('Development recovery could not be opened.');}};
   const [localPackaging,setLocalPackaging]=useState<'checking'|'available'|'unavailable'>('checking');
   useEffect(()=>{if(!snapshot.open)return;let current=true;setLocalPackaging('checking');void localAgentPackaged().then(available=>{if(current)setLocalPackaging(available?'available':'unavailable');});return()=>{current=false;};},[snapshot.open]);
@@ -821,10 +827,10 @@ export function ConnectionChooser() {
     <label>Scripted reply<textarea rows={4} aria-label="Scripted reply" value={reply} maxLength={16000} disabled={snapshot.busy||!replyReady} onChange={e=>setReply(e.target.value)}/></label>
     <button disabled={snapshot.busy||!replyReady||!!developmentError} onClick={()=>void connectionController.saveDevelopment(developmentProfile,reply)}>Save development reply</button>
     <button disabled={snapshot.busy||!replyReady||!!developmentError} onClick={()=>void connectionController.startDevelopment(developmentProfile)}>Connect development profile</button>
-    <button disabled={snapshot.busy} onClick={()=>void recoverConversations()}>Conversation selection recovery</button>
     <button disabled={snapshot.busy} onClick={()=>recoverDevelopment('agent')}>Agent history recovery</button>
     <button disabled={snapshot.busy} onClick={()=>recoverDevelopment('execution')}>Execution history recovery</button>
     <button disabled={snapshot.busy} onClick={()=>recoverDevelopment('digest')}>Digest schedule recovery</button>
+    {!isAndroid&&<button disabled={snapshot.busy} onClick={()=>void recoverConversationChoice()}>Conversation selection recovery</button>}
     {snapshot.session&&<section><strong>{snapshot.name}</strong><button disabled={snapshot.busy} onClick={()=>void connectionController.disconnect()}>Disconnect agent</button><button disabled={snapshot.busy} onClick={()=>void connectionController.listHistory()}>Load conversations</button>{snapshot.conversations.map(item=><section key={item.id}><span>{item.title}</span><button disabled={snapshot.busy} onClick={()=>void connectionController.restoreHistory(item.id)}>Restore conversation</button></section>)}</section>}
     {snapshot.session&&selection()?.kind==='development'&&<details><summary>Development device actions</summary><label>Action JSON<textarea rows={5} aria-label="Action JSON" value={developmentAction} disabled={snapshot.busy} onChange={e=>setDevelopmentAction(e.target.value)}/></label><button disabled={snapshot.busy} onClick={()=>{const selected=selection();if(selected?.kind==='development')void connectionController.authorDevelopment(selected.profile,developmentAction);}}>Queue action for review</button><button disabled={snapshot.busy} onClick={()=>void connectionController.actionHistory()}>Refresh actions</button><button disabled={snapshot.busy} onClick={()=>void connectionController.actionHistory(true)}>Sync recorded receipts</button>{snapshot.actionHistory.map(item=><section key={item.id}><p>{item.description}</p><span>{item.state}</span>{item.state==='pending'&&<button disabled={snapshot.busy} onClick={()=>void connectionController.rejectAction(item.id)}>Reject proposal</button>}{['executing','reconciliation_required'].includes(item.state)&&<><button disabled={snapshot.busy} onClick={()=>void connectionController.reconcileAction(item.id,'applied')}>I verified it happened</button><button disabled={snapshot.busy} onClick={()=>void connectionController.reconcileAction(item.id,'not_applied')}>I verified it did not happen</button></>}</section>)}</details>}
     <p><a href="?mode=dev&workflows=agent&start=workflows">Agent workflows</a> · <a href="?mode=dev&start=workflows">Device workflows</a></p>
@@ -847,10 +853,10 @@ export function ConnectionChooser() {
       {localPackaging==='unavailable' && <p>The local agent is unavailable in this version. Connect a remote agent, use Eliza Cloud, or continue in mock mode.</p>}
     </section>
     {snapshot.session && <section className="alpha-connection-current"><strong>{snapshot.name}</strong><span>Connected · {snapshot.kind === 'cloud' ? 'Eliza Cloud' : snapshot.kind === 'resident' ? (isAndroid ? 'On this device' : 'On this computer · development') : snapshot.kind === 'local' ? 'Local development' : 'Remote agent'}</span><button disabled={snapshot.busy} onClick={() => void connectionController.disconnect()}>Disconnect agent</button>{isAndroid && snapshot.kind==='resident' && <button disabled={snapshot.busy} onClick={()=>void connectionController.stopLocal()}>Stop local agent</button>}</section>}
+    {!isAndroid&&<button disabled={snapshot.busy} onClick={()=>void recoverConversationChoice()}>Conversation selection recovery</button>}
     {snapshot.session && <details><summary>Conversation history</summary><p>Load from this agent only. Restoring replaces the visible chat and draft; it does not run past actions.</p><button disabled={snapshot.busy} onClick={() => void connectionController.listHistory()}>Load conversations</button>{snapshot.conversations.map(item => <section key={item.id} className="alpha-connection-agent"><strong>{item.title}</strong><button disabled={snapshot.busy} onClick={() => void connectionController.restoreHistory(item.id)}>Restore conversation</button></section>)}</details>}
     {snapshot.session && snapshot.phoneCapabilityReason && <p role="status">{snapshot.phoneCapabilityReason}</p>}
     {snapshot.session && snapshot.phoneActionsAvailable && <details><summary>Phone action history</summary><button disabled={snapshot.busy} onClick={() => void connectionController.actionHistory()}>Refresh actions</button><button disabled={snapshot.busy} onClick={() => void connectionController.actionHistory(true)}>Sync recorded receipts</button>{snapshot.actionHistory.map(item => <section key={item.id} className="alpha-connection-agent"><strong>{item.description}</strong><span>{item.state}</span>{item.state === 'pending' && <button disabled={snapshot.busy} onClick={() => void connectionController.rejectAction(item.id)}>Reject proposal</button>}{['executing','reconciliation_required'].includes(item.state) && <><p>After checking this phone, confirm whether this exact action happened.</p><button disabled={snapshot.busy} onClick={() => void connectionController.reconcileAction(item.id, 'applied')}>I verified it happened</button><button disabled={snapshot.busy} onClick={() => void connectionController.reconcileAction(item.id, 'not_applied')}>I verified it did not happen</button></>}</section>)}</details>}
-    {!isAndroid&&<button disabled={snapshot.busy} onClick={()=>void recoverConversations()}>Conversation selection recovery</button>}
     <div role="status" aria-live="polite">{snapshot.message}</div>
     {snapshot.error && <p role="alert" className="alpha-connection-error">{snapshot.error}</p>}
     {snapshot.busy && <button className="alpha-connection-cancel" onClick={() => connectionController.cancel()}>{snapshot.cloudPersonal?.view?'Stop waiting':'Cancel'}</button>}

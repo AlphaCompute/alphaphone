@@ -2,33 +2,38 @@ import {Capacitor} from '@capacitor/core';
 import type {BrowserJsonDomainDocument} from '../browser/json-domain-document';
 
 export const conversationSelectionKey='alpha.connection.conversations.v1';
-type Choices=Record<string,string>;
-let document:Promise<BrowserJsonDomainDocument>|undefined;
-export function conversationSelectionDocument(){
- if(Capacitor.getPlatform()==='android')throw Error('Browser conversation recovery is unavailable on this device');
- return document??=import('../browser/json-domain-document').then(({BrowserJsonDomainDocument})=>new BrowserJsonDomainDocument(conversationSelectionKey));
-}
-function choices(value:unknown):Choices{
+export type ConversationChoice={id:string;revision?:string};
+type Choices=Record<string,string|ConversationChoice>;
+function validate(value:unknown):Choices{
  if(value===null)return {};
- if(!value||typeof value!=='object'||Array.isArray(value)||Object.values(value).some(id=>typeof id!=='string'||!id))throw Error('Saved conversation choices need recovery. Open conversation selection recovery in Agent connection.');
+ if(!value||typeof value!=='object'||Array.isArray(value))throw Error('Conversation selections need recovery.');
+ for(const [key,item] of Object.entries(value)){
+  if(!key)throw Error('Conversation selection owner is invalid.');
+  const choice=typeof item==='string'?{id:item}:item;
+  if(!choice||typeof choice!=='object'||typeof choice.id!=='string'||!choice.id||Object.keys(choice).some(k=>!['id','revision'].includes(k))||choice.revision!==undefined&&(typeof choice.revision!=='string'||!choice.revision))throw Error('Conversation selections need recovery.');
+ }
  return value as Choices;
 }
-function nativeChoices():Choices{
- try{return choices(JSON.parse(localStorage.getItem(conversationSelectionKey)||'null'));}catch{return {};}
+const choice=(values:Choices,key:string):ConversationChoice|null=>{const item=Object.hasOwn(values,key)?values[key]:undefined;return item===undefined?null:typeof item==='string'?{id:item}:{...item};};
+let document:Promise<BrowserJsonDomainDocument>|undefined;
+export async function conversationSelectionDocument(){
+ if(Capacitor.getPlatform()==='android')throw Error('Browser conversation recovery is unavailable on this device.');
+ return document??=import('../browser/json-domain-document').then(({BrowserJsonDomainDocument})=>new BrowserJsonDomainDocument(conversationSelectionKey));
 }
-export async function readConversationChoice(owner:string,signal?:AbortSignal):Promise<string|undefined>{
+export async function captureConversationChoice(key:string,signal?:AbortSignal){
  signal?.throwIfAborted();
- try{
-  const saved=Capacitor.getPlatform()==='android'?nativeChoices():choices(await(await conversationSelectionDocument()).readJson(signal));
-  signal?.throwIfAborted();return Object.hasOwn(saved,owner)?saved[owner]:undefined;
- }catch{signal?.throwIfAborted();throw Error('Saved conversation choices need recovery. Open conversation selection recovery in Agent connection.');}
+ const values=Capacitor.getPlatform()==='android'?JSON.parse(localStorage.getItem(conversationSelectionKey)||'null'):await(await conversationSelectionDocument()).readJson(signal);
+ signal?.throwIfAborted();return choice(validate(values),key);
 }
-/** Cache selection only: a saved ID grants no access and never replaces server ownership checks. */
-export async function saveConversationChoice(owner:string,id:string,signal?:AbortSignal):Promise<void>{
- signal?.throwIfAborted();if(!owner||!id)throw Error('Invalid conversation selection');
- if(Capacitor.getPlatform()==='android'){
-  // Native keeps its installed renderer format; read at completion, never before a provider await.
-  const saved=nativeChoices();saved[owner]=id;const raw=JSON.stringify(saved);localStorage.setItem(conversationSelectionKey,raw);
-  if(localStorage.getItem(conversationSelectionKey)!==raw)throw Error('Conversation selection could not be saved');
- }else await(await conversationSelectionDocument()).editJson<Choices>(value=>({...choices(value),[owner]:id}),signal);
+/** Update one captured owner's restart choice. Visible chats remain tab-local. */
+export async function selectConversation(key:string,expected:ConversationChoice|null,id:string,signal:AbortSignal,assertCurrent:()=>void){
+ const native=Capacitor.getPlatform()==='android';
+ const update=(raw:unknown)=>{
+  signal.throwIfAborted();assertCurrent();const values=validate(raw);
+  if(JSON.stringify(choice(values,key))!==JSON.stringify(expected))throw Error('Another view changed this conversation selection.');
+  const next={...values,[key]:native?id:{id,revision:crypto.randomUUID()}};validate(next);return next;
+ };
+ signal.throwIfAborted();
+ if(native){const next=JSON.stringify(update(JSON.parse(localStorage.getItem(conversationSelectionKey)||'null')));localStorage.setItem(conversationSelectionKey,next);if(localStorage.getItem(conversationSelectionKey)!==next)throw Error('Conversation selection could not be confirmed.');}
+ else await(await conversationSelectionDocument()).editJson(update,signal);
 }
