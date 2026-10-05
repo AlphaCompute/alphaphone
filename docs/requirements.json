@@ -3,13 +3,13 @@
     "id": "AP-01",
     "source": "docs/prd.md",
     "status": "foundation only",
-    "evidence": "docs/verification.md"
+    "evidence": null
   },
   {
     "id": "AP-02",
     "source": "docs/prd.md",
     "status": "foundation only",
-    "evidence": "docs/verification.md"
+    "evidence": null
   },
   {
     "id": "AP-03",

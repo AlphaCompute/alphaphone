@@ -4,12 +4,12 @@ October 1 architecture change: the user has selected an **Android-resident agent
 
 September 30 scope update: the [MVP report](mvp-scope-and-gap-report.md) and [completion plan](mvp-completion-plan.md) govern current priority. Earlier cloud-only/local-model statements do not waive the supplied DoD's on-device STT/TTS requirement; offline LLM and external-versus-TEE inference remain explicitly reconciled there.
 
-This plan starts from the setup foundation in this repository. See `verification.md` for actual results; planned acceptance criteria below are not passing results.
+This plan starts from the setup foundation in this repository. See [verification gates](verification.md) for required evidence; planned acceptance criteria below are not passing results.
 
 Per-flow requirements and device acceptance are tracked in
 [flow-implementation-plan.md](flow-implementation-plan.md),
-[prototype-implementation-gaps.md](prototype-implementation-gaps.md), and
-[flow-verification.md](flow-verification.md). The target is a Pixel 10 or similar
+[mvp-current-status.md](mvp-current-status.md), and
+[verification.md](verification.md). The target is a Pixel 10 or similar
 phone; tablet geometry is not the current acceptance target.
 
 ## Dependency order

@@ -1,4 +1,4 @@
-> Current renderer supersession: the authoritative fourteen-app prototype replaces the earlier seventeen-route implementation. This plan retains prior implementation history; [prototype implementation gaps](prototype-implementation-gaps.md) is the current source-level gap ledger. Agent sending auto-connects the provisioned development transport; the former Settings-connect control is historical.
+> Current renderer supersession: the authoritative fourteen-app prototype replaces the earlier seventeen-route implementation. This plan retains prior implementation history; [current capability status](mvp-current-status.md) is the current source-level gap ledger. Agent sending auto-connects the provisioned development transport; the former Settings-connect control is historical.
 
 # Flow implementation plan and acceptance ledger
 

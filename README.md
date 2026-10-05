@@ -8,8 +8,8 @@ development endpoint, offline use and mock mode. The real local Eliza/Cerebras
 protocol is verified; live provider login, Gmail, voice and
 complete workflow execution remain acceptance work. The primary architecture is now an
 [Android-resident agent](docs/on-device-agent-plan.md), replacing Nitro/TEE hosting;
-the native bridge, reproducible mobile payload staging and browser development host are now implemented. See [local agent setup](docs/local-agent-development.md) and the verification ledger for
-the exact tested scope rather than treating a successful APK build as acceptance.
+the native bridge, reproducible mobile payload staging and browser development host are now implemented. See [local agent setup](docs/local-agent-development.md) and the [verification guide](docs/verification.md) for
+the required evidence rather than treating a successful APK build as acceptance.
 
 - [Browser implementation and acceptance review](docs/mvp-browser-review.md)
 - [MVP scope and gap report](docs/mvp-scope-and-gap-report.md)
@@ -18,8 +18,6 @@ the exact tested scope rather than treating a successful APK build as acceptance
 - [Current flow research](docs/research-report.md)
 - [Detailed flow PRD](docs/flow-audit-and-prd.md)
 - [Current implementation plan](docs/flow-implementation-plan.md)
-- [Prototype coverage and remaining gaps](docs/prototype-implementation-gaps.md)
-- [Current flow verification](docs/flow-verification.md)
 - [current product status](docs/mvp-current-status.md)
 - [Cloud deployment and authentication findings](docs/cloud-production-validation.md)
 - [Enclave candidate and signing gates](docs/enclave-candidate-validation.md)
@@ -30,7 +28,7 @@ the exact tested scope rather than treating a successful APK build as acceptance
 - [Detailed implementation plan](docs/implementation-plan.md)
 - [Architecture and upstream ownership](docs/architecture.md)
 - [Requirements and open decisions](docs/decisions.md)
-- [Verification results and remaining gates](docs/verification.md)
+- [Verification gates and evidence](docs/verification.md)
 - [Source/design provenance](docs/sources.md)
 
 ## Setup
@@ -172,4 +170,4 @@ for signing, default-home policy and the full image verification boundary.
 
 GitHub Actions builds both variants, runs emulator instrumentation and uploads
 artifacts. A successful APK job does not establish full AOSP image or physical
-hardware acceptance. See the verification record for what was actually run.
+hardware acceptance. Use revision-bound CI artifacts and test reports to establish what was actually run.
