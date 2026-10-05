@@ -268,7 +268,7 @@
         <div class="serif" style="font-size: 38px; line-height: 1.1">{{phone.rName}}</div>
         <div style="font-size: 16px; color: #8F8F8F; margin-top: 8px">{{phone.rSub}}</div>
         <sc-if value="{{phone.isRing}}" hint-placeholder-val="{{true}}">
-          <div style="display: inline-flex; align-items: center; gap: 8px; margin-top: 16px; font-size: 14px; color: #BDBDBD"><span style="font-family: Denton, Fraunces, Georgia, serif; font-style: italic; font-size: 17px; color: #8A93FF"><span class="al">α</span></span><span>{{phone.rCtx}}</span></div>
+          <sc-if value="{{phone.hasCtx}}" hint-placeholder-val="{{true}}"><div style="display: inline-flex; align-items: center; gap: 8px; margin-top: 16px; font-size: 14px; color: #BDBDBD"><span style="font-family: Denton, Fraunces, Georgia, serif; font-style: italic; font-size: 17px; color: #8A93FF"><span class="al">α</span></span><span>{{phone.rCtx}}</span></div></sc-if>
         </sc-if>
         <sc-if value="{{phone.scrLive}}" hint-placeholder-val="{{false}}">
           <div style="display: inline-flex; align-items: center; gap: 8px; margin-top: 16px; height: 30px; padding: 0 14px; border-radius: 15px; background: rgba(255,255,255,.1); font-size: 13px">
@@ -1092,7 +1092,7 @@
       </div></div>
       <div style="padding: 24px 24px 140px">
         <h2 class="serif" style="margin: 0; font-size: 36px; line-height: 1.05; font-weight: 300; letter-spacing: -.01em">The case for on-device agents</h2>
-        <div style="color: var(--mut); margin-top: 12px; font-size: 13px">news.example · 6 min</div>
+        <div style="color: var(--mut); margin-top: 12px; font-size: 13px">{{browser.pg.host}} · 6 min</div>
         <p data-bk="p1" style="font-size: 16px; line-height: 1.6; margin: 22px 0 0; border-radius: 6px; transition: background .4s, box-shadow .4s; {{browser.hl1}}">An assistant that lives on your phone sees everything you do. The question is who else gets to see it. Keeping the model and its memory on the device changes the answer.</p>
         <p style="font-size: 16px; line-height: 1.6; margin: 16px 0 0">When the agent runs next to your data, it can act without sending your inbox or calendar anywhere. It also stays useful with no signal.</p>
         <p data-bk="p2" style="font-size: 16px; line-height: 1.6; margin: 16px 0 0; border-radius: 6px; transition: background .4s, box-shadow .4s; {{browser.hl2}}"><button onClick="{{browser.openEnc}}" style="color: var(--acct); text-decoration: underline; text-underline-offset: 3px; font-size: 16px; line-height: 1.6">Hardware-held keys</button> make the agent accountable to one person: its owner. Every action it takes can be signed and checked later.</p>
@@ -1110,7 +1110,7 @@
       </div></div>
       <div style="padding: 24px 24px 140px">
         <h2 class="serif" style="margin: 0; font-size: 36px; line-height: 1.05; font-weight: 300; letter-spacing: -.01em">Keys that never leave the chip</h2>
-        <div style="color: var(--mut); margin-top: 12px; font-size: 13px">enclave.example · 4 min</div>
+        <div style="color: var(--mut); margin-top: 12px; font-size: 13px">{{browser.pg.host}} · 4 min</div>
         <p data-bk="p1" style="font-size: 16px; line-height: 1.6; margin: 22px 0 0; border-radius: 6px; transition: background .4s, box-shadow .4s; {{browser.hl1}}">A secure enclave is a small, sealed part of the processor. Keys are created inside it and can be used there, but never read out.</p>
         <p data-bk="p2" style="font-size: 16px; line-height: 1.6; margin: 16px 0 0; border-radius: 6px; transition: background .4s, box-shadow .4s; {{browser.hl2}}">When an agent signs an action with one of those keys, anyone can check that it came from your device, and only your device.</p>
         <p data-bk="p3" style="font-size: 16px; line-height: 1.6; margin: 16px 0 0; border-radius: 6px; transition: background .4s, box-shadow .4s; {{browser.hl3}}">That makes the phone the root of trust, not a server you have to believe.</p>
@@ -2445,6 +2445,9 @@
             <div style="min-width: 0; flex-grow: 1"><div style="font-size: 15px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{r.name}}</div><div style="font-size: 13px; color: var(--mut); margin-top: 2px">{{r.sub}}</div></div>
           </button>
         </sc-for>
+        <sc-if value="{{files.noRecent}}" hint-placeholder-val="{{false}}">
+          <div role="status" style="padding: 18px 8px; font-size: 14px; color: var(--mut)">{{files.recentEmptyText}}</div>
+        </sc-if>
       </div>
     </sc-if>
     <sc-if value="{{files.hasQuery}}" hint-placeholder-val="{{false}}">
@@ -3764,10 +3767,10 @@
 <sc-if value="{{showHeads}}" hint-placeholder-val="{{false}}">
 <div class="drop" onPointerDown="{{headsSw.down}}" onPointerUp="{{headsSw.up}}" style="position: absolute; top: 46px; left: 10px; right: 10px; z-index: 72; border-radius: 28px; background: var(--s1); padding: 14px 14px 12px; box-shadow: 0 0 0 1px var(--line), 0 20px 60px var(--shc); touch-action: none">
   <button onClick="{{headsOpen}}" style="width: 100%; display: flex; gap: 12px; align-items: center">
-    <span style="width: 42px; height: 42px; border-radius: 21px; background: var(--s3); display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 14px; flex-shrink: 0">MC</span>
+    <span style="width: 42px; height: 42px; border-radius: 21px; background: var(--s3); display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 14px; flex-shrink: 0">{{headsBanner.ini}}</span>
     <div style="flex-grow: 1; min-width: 0; text-align: left">
-      <div style="font-weight: 600">Maya Chen</div>
-      <div style="font-size: 14px; color: var(--mut); margin-top: 3px">Still on for 3? I can bring the prototype.</div>
+      <div style="font-weight: 600">{{headsBanner.who}}</div>
+      <div style="font-size: 14px; color: var(--mut); margin-top: 3px">{{headsBanner.text}}</div>
     </div>
   </button>
   <div style="display: flex; gap: 8px; margin-top: 12px; justify-content: flex-end">
@@ -3791,7 +3794,7 @@
     <input type="range" min="0" max="100" value="{{bright}}" disabled="{{deviceSettingsPending}}" onChange="{{onBright}}" aria-label="Brightness">
   </div>
   <sc-if value="{{deviceSettingsMessage}}"><p role="status">{{deviceSettingsMessage}}</p></sc-if>
-  <div class="scr" style="flex-grow: 1; overflow-y: auto; margin-top: 12px; display: flex; flex-direction: column; gap: 6px; touch-action: pan-y">
+  <div class="scr alpha-shade-list" style="flex-grow: 1; overflow-y: auto; margin-top: 12px; display: flex; flex-direction: column; gap: 6px; touch-action: pan-y">
     <sc-for list="{{shadeN}}" as="n" hint-placeholder-count="4">
       <div onPointerDown="{{n.down}}" onPointerUp="{{n.up}}" style="display: flex; gap: 12px; padding: 14px 16px; border-radius: 22px; background: var(--s2); transform: translateX({{n.tx}}px); opacity: {{n.op}}; transition: transform .28s cubic-bezier(.19,1,.22,1), opacity .28s; flex-shrink: 0; touch-action: pan-y">
         <button onClick="{{n.open}}" aria-label="Open {{n.who}}" style="display: flex; gap: 12px; flex-grow: 1; min-width: 0; text-align: left">
@@ -3803,6 +3806,9 @@
         </button>
       </div>
     </sc-for>
+    <!-- Shown only while the list above renders no notification before it. -->
+    <div class="alpha-shade-empty" role="status" style="padding: 28px 16px; text-align: center; font-size: 14px; color: var(--mut)">No notifications</div>
+    <style>.alpha-shade-list > .alpha-shade-empty:not(:first-child) { display: none; }</style>
   </div>
   <div style="display: flex; justify-content: space-between; align-items: center; padding: 10px 4px 26px">
     <button class="ib" aria-label="Clear all" onClick="{{clearAll}}" style="background: var(--s2)"><svg class="i" viewBox="0 0 24 24"><path d="{{ic.sweep}}"></path></svg></button>

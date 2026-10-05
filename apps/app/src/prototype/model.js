@@ -1,4 +1,14 @@
-import { mockAttentionRows } from "./mock-attention";
+/* Seeds, scripted replies and fixture images. Production builds resolve this
+   specifier to ./fixtures.empty.js (same names, empty values). */
+import {
+  IMG, PEOPLE, PN_REC, PN_VM, PN_SCRIPT, PN_SCREEN, PN_REPLIES, MSG_PHOTOS, MSG_SEED, MSG_UNREAD,
+  MSG_SMART, MSG_BOT, INBOX_ACCTS, INBOX_SEED, CAL_SEED, CAL_PREP, BR_START, BR_PAGES, BR_ME,
+  PH_SEED, PH_DESC, PH_SHARE, MAPS_PLACES, MAPS_FAR, MAPS_MATCH, MAPS_SAVED, NOTES_SEED,
+  NOTES_LIVE, NOTES_DICT, CT_SEED, FILES_FOLDERS_EXTRA, FILES_SEED, WAL_CARDS, WAL_TRIPS,
+  WAL_MERCH, WAL_PASSES, WF_SEED, ST_ACCOUNTS, ST_NETS, ST_BT, ST_PERM0, ST_MODELS, ST_LOG,
+  ST_DEVLOG, ST_DEVICE, ST_ABOUT, NOTIF, LOCK_SUM, QUICK_SETTINGS, QUICK_TILES, HEADS, VOICE, COPY,
+  ATTENTION_ROWS, HOME_DEFAULTS
+} from "./fixtures.js";
 import { isMvpView, DEFERRED_MVP_VIEWS, deferredMvpPrompt } from "./mvp-features";
 import React from "react";
 import { DCLogic } from "./dc-lite.js";
@@ -75,18 +85,19 @@ var LIGHT = { bg: "#FFFFFF", s1: "#FAFAFA", s2: "#F3F3F3", s3: "#E6E6E6", line: 
 var DAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 var MONS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 
-/* Shared people directory. Every app refers to people by id. */
-/* Generated photography. build.py fills IMG from img.json (canvas: asset URLs; site: ./img/<key>.webp). */
-var IMG = {"p01":"./img/p01.webp","p02":"./img/p02.webp","p03":"./img/p03.webp","p04":"./img/p04.webp","p05":"./img/p05.webp","p06":"./img/p06.webp","p07":"./img/p07.webp","p08":"./img/p08.webp","p09":"./img/p09.webp","p10":"./img/p10.webp","p11":"./img/p11.webp","p12":"./img/p12.webp","p13":"./img/p13.webp","p14":"./img/p14.webp","p15":"./img/p15.webp","p16":"./img/p16.webp","p17":"./img/p17.webp","p18":"./img/p18.webp","p19":"./img/p19.webp","p20":"./img/p20.webp","p21":"./img/p21.webp","p22":"./img/p22.webp","p23":"./img/p23.webp","p24":"./img/p24.webp","p25":"./img/p25.webp","p26":"./img/p26.webp","p27":"./img/p27.webp","p28":"./img/p28.webp","p29":"./img/p29.webp","p30":"./img/p30.webp","p31":"./img/p31.webp","p32":"./img/p32.webp","cam_park":"./img/cam_park.webp","cam_selfie":"./img/cam_selfie.webp","cam_poster":"./img/cam_poster.webp","msg0":"./img/msg0.webp","msg1":"./img/msg1.webp","msg2":"./img/msg2.webp","msg3":"./img/msg3.webp","news":"./img/news.webp","enclave":"./img/enclave.webp","nopa":"./img/nopa.webp"};
+/* People (PEOPLE) and generated photography (IMG) come from ./fixtures.js. Production
+   builds swap in empty values, so every lookup below tolerates a missing entry. */
 function imgBg(key, fallback) { return IMG[key] ? "url(" + IMG[key] + ") center / cover no-repeat" : fallback; }
-var PEOPLE = [
-  { id: "maya", name: "Maya Chen", ini: "MC", phone: "(415) 555-0132", email: "maya@lumen.example", fav: true, note: "Design lead at Lumen" },
-  { id: "jordan", name: "Jordan Park", ini: "JP", phone: "(212) 555-0187", email: "jordan@northpoint.example", fav: true, note: "Partner, Northpoint" },
-  { id: "priya", name: "Priya Nair", ini: "PN", phone: "(650) 555-0144", email: "priya@nair.example", fav: true, note: "" },
-  { id: "sam", name: "Sam Okafor", ini: "SO", phone: "(510) 555-0199", email: "sam@okafor.example", fav: false, note: "" },
-  { id: "lena", name: "Lena Ruiz", ini: "LR", phone: "(718) 555-0121", email: "lena@ruiz.example", fav: false, note: "" },
-  { id: "dad", name: "Dad", ini: "D", phone: "(503) 555-0110", email: "", fav: true, note: "" }
-];
+/* Home/digest rows that need attention; deferred sources stay excluded. */
+function mockAttentionRows() { return ATTENTION_ROWS.filter(function (row) { return isMvpView(row.go.view); }).map(function (row) { return Object.assign({}, row); }); }
+/* Fixture copy for one view; empty in production builds. */
+function copy(view) { return (COPY && COPY[view]) || {}; }
+/* Canned answers for a view: [{ re, text, nav?, card? }]. Present only with fixtures. */
+function scriptedReply(view, t) {
+  var rows = copy(view).replies || [];
+  for (var i = 0; i < rows.length; i++) if (rows[i].re.test(t)) { var r = rows[i]; return { text: r.text, card: r.card || null, nav: r.nav || null }; }
+  return null;
+}
 function person(id) { for (var i = 0; i < PEOPLE.length; i++) if (PEOPLE[i].id === id) return PEOPLE[i]; return null; }
 function cap(s) { return s.charAt(0).toUpperCase() + s.slice(1); }
 function pad2(n) { return String(n).padStart(2, "0"); }
@@ -108,30 +119,8 @@ IC.phoneSpk = IC.phoneSpk || "M4 9h4l5-4v14l-5-4H4zM16.5 8.5a5 5 0 0 1 0 7M19 6a
 IC.phoneAddP = IC.phoneAddP || "M14 8a4 4 0 1 1-8 0a4 4 0 1 1 8 0zM2 21a8 8 0 0 1 12.5-6.6M19 14v6M16 17h6";
 IC.phoneDel = IC.phoneDel || "M9 6h11v12H9l-6-6zM12 9.5l5 5M17 9.5l-5 5";
 
-var PN_REC = [
-  { id: "r1", pid: "maya", dir: "missed", ago: 12, dur: 0 },
-  { id: "r2", pid: null, num: "(628) 555-0199", dir: "in", ago: 52, dur: 24, screened: true, note: "Spam: car warranty. Declined for you." },
-  { id: "r3", pid: "jordan", dir: "out", ago: 190, dur: 740, note: "Pro-rata to 15%. He sends the revised sheet tonight." },
-  { id: "r4", pid: "dad", dir: "in", ago: 1300, dur: 1260 },
-  { id: "r5", pid: "priya", dir: "out", ago: 1570, dur: 95 },
-  { id: "r6", pid: "sam", dir: "missed", ago: 3000, dur: 0 },
-  { id: "r7", pid: "lena", dir: "in", ago: 4500, dur: 300 }
-];
-var PN_VM = [
-  { id: "v1", pid: "maya", ago: 11, dur: 18, heard: false, gist: "she wants to push the review to 3:30", text: "Hey, it's Maya. Quick one: can we push the review to 3:30? I want to get the prototype on the device first. Call me back." },
-  { id: "v2", pid: "dad", ago: 1320, dur: 34, heard: true, gist: "are you coming up for the weekend?", text: "Hi kiddo, just checking in. Mom wants to know if you're coming up for the weekend. No rush, call when you can." },
-  { id: "v3", pid: null, num: "(212) 555-0100", label: "Dr. Patel's office", ago: 2900, dur: 22, heard: true, gist: "confirm Thursday at 10 AM", text: "This is Dr. Patel's office confirming your appointment Thursday at 10 AM. Please call back to confirm." }
-];
-/* live transcript Alpha writes when you turn it on during a call */
-var PN_SCRIPT = {
-  maya: { lines: [["them", "Hey, got a sec?"], ["you", "Yeah, what's up?"], ["them", "Can we do the review at 3:30 instead?"], ["you", "Works. Bring the prototype."], ["them", "Will do. See you then."]], sum: "Review moved to 3:30. Maya brings the prototype." },
-  jordan: { lines: [["them", "Saw the redlines?"], ["you", "Yes. Pro-rata is the sticking point."], ["them", "I can get us to 15%."], ["you", "Do it. Send the revised sheet."]], sum: "Pro-rata at 15%. Jordan sends the revised sheet." },
-  dad: { lines: [["them", "Hey kiddo!"], ["you", "Hi Dad. Got your message."], ["them", "Coming up this weekend?"], ["you", "Saturday morning, probably."]], sum: "Visiting Saturday morning." },
-  _: { lines: [["them", "Hi, thanks for calling back."], ["you", "Of course. What do you need?"], ["them", "Just confirming Thursday."], ["you", "Thursday works."]], sum: "Confirmed Thursday." }
-};
-var PN_SCREEN = [["alpha", "Hi, this is {name}, answering for you. What's it about?"], ["them", "Hey, it's Maya. I'm running ten minutes late for three."], ["alpha", "Got it, I'll pass it on. Anything else?"], ["them", "Nope, that's it. Thanks!"]];
-var PN_REPLIES = ["Can't talk now. Call you later?", "On my way.", "Running a few minutes late."];
 var PN = { live: null, boot: null, lastTab: "recents" };
+function pnScript(call) { return PN_SCRIPT[call] || PN_SCRIPT._ || { lines: [], sum: "" }; }
 
 function pnPeople(api) { var c = api.get("contacts"); return (c && c.list) || PEOPLE; }
 function pnWho(api, id) { if (!id) return null; var l = pnPeople(api); for (var i = 0; i < l.length; i++) if (l[i].id === id) return l[i]; return person(id); }
@@ -182,7 +171,7 @@ function pnStart(api, pid, num, opt) {
   api.everyBg(function () {
     var s = api.get("phone"); if (s.callWho !== id) return;
     var p = { tick: Date.now() };
-    if (s.ai && s.liveAt && !s.hold) { var sc = PN_SCRIPT[s.call] || PN_SCRIPT._; p.aiC = (s.aiC || 0) + 1; if (p.aiC % 2 === 1 && (s.aiN || 0) < sc.lines.length) p.aiN = (s.aiN || 0) + 1; }
+    if (s.ai && s.liveAt && !s.hold) { var sc = pnScript(s.call); p.aiC = (s.aiC || 0) + 1; if (p.aiC % 2 === 1 && (s.aiN || 0) < sc.lines.length) p.aiN = (s.aiN || 0) + 1; }
     api.set(p);
   }, 1000);
 }
@@ -191,7 +180,7 @@ function pnEnd(api, opt) {
   if (!PN.live) return;
   var s = api.get("phone");
   var dur = s.liveAt ? Math.round((Date.now() - s.liveAt) / 1000) : 0;
-  var sc = PN_SCRIPT[s.call] || PN_SCRIPT._;
+  var sc = pnScript(s.call);
   var note = s.ai && s.aiN > 0 ? sc.sum : "";
   var e = { id: "r" + Date.now(), pid: s.call || null, num: s.num || "", dir: s.dir || "out", at: Date.now(), dur: dur, note: note };
   api.set({ recents: [e].concat(s.recents || []), call: null, num: "", callWho: null, callAt: null, liveAt: null, ai: false, aiN: 0, kp: false, min: false, hold: false, mute: false, spk: false, ret: null, tab: PN.lastTab || s.tab });
@@ -210,9 +199,11 @@ function pnRingEnd(api, entry, patch) {
 function pnDecline(api, why) {
   var s = api.get("phone"); var pid = s.incoming;
   if (!pid) return;
-  var patch = why ? {} : { vms: [{ id: "v" + crypto.randomUUID(), pid: pid, at: Date.now(), dur: 12, heard: false, gist: "she's running ten minutes late", text: "Hey, it's Maya. Running ten minutes late for three. See you soon!" }].concat(s.vms || []) };
+  var vm = copy("phone").declineVoicemail;
+  var patch = why || !vm ? {} : { vms: [{ id: "v" + crypto.randomUUID(), pid: pid, at: Date.now(), dur: 12, heard: false, gist: vm.gist, text: vm.text }].concat(s.vms || []) };
   pnRingEnd(api, { dir: "missed", note: why || "" }, patch);
-  if (!why) api.toast("New voicemail from " + pnFirst(pnWho(api, pid)));
+  var caller = pnWho(api, pid);
+  if (!why && vm) api.toast("New voicemail from " + (caller ? pnFirst(caller) : "caller"));
 }
 
 registerView("phone", {
@@ -223,8 +214,9 @@ registerView("phone", {
   preset: function (sub) {
     if (sub === "keypad") return { tab: "keypad" };
     if (sub === "voicemail") return { tab: "voicemail", vmOpen: "v1" };
-    if (sub === "call") return { call: "maya" };
-    if (sub === "incoming") return { incoming: "maya", ring: "ring" };
+    var who = copy("phone").presetPerson;
+    if (sub === "call") return who ? { call: who } : null;
+    if (sub === "incoming") return who ? { incoming: who, ring: "ring" } : null;
   },
   badge: function (st) { return (st.vms || []).some(function (v) { return !v.heard; }); },
   immersive: function (st) { return (pnWant(st) && !st.min) || st.incoming ? { dark: true, noPill: true } : null; },
@@ -249,11 +241,12 @@ registerView("phone", {
     api.set(p); PN.boot = null;
   },
   suggestions: function (st) {
-    if (st.tab === "voicemail") return ["Summarize my voicemail", "Call Maya back", "Who called?"];
-    if (st.tab === "keypad") return ["Call Dad", "Call Dr. Patel's office"];
-    return ["Who called?", "Check voicemail", "Call Maya"];
+    var sg = copy("phone").suggestions || {};
+    if (st.tab === "voicemail") return sg.voicemail || ["Summarize my voicemail", "Who called?"];
+    if (st.tab === "keypad") return sg.keypad || [];
+    return sg.recents || ["Who called?", "Check voicemail"];
   },
-  voicePhrase: "Call Maya",
+  voicePhrase: copy("phone").voicePhrase,
   actions: {
     hangup: function (card, api) { pnEnd(api); }
   },
@@ -386,7 +379,7 @@ registerView("phone", {
     var live = !!st.liveAt;
     var el = live ? (Date.now() - st.liveAt) / 1000 : 0;
     var status = !live ? "Calling…" : (st.hold ? "On hold · " : "") + pnClock(el);
-    var sc = PN_SCRIPT[st.call] || PN_SCRIPT._;
+    var sc = pnScript(st.call);
     var themName = cp ? pnFirst(cp) : "Caller";
     var lines = sc.lines.slice(0, st.aiN || 0).map(function (l) { return { who: l[0] === "you" ? "You" : themName, text: l[1], css: l[0] === "you" ? "color:#8F8F8F" : "color:#FFFFFF" }; }).slice(-5);
     var ctrl = function (key, d, label, on, extra) {
@@ -436,12 +429,12 @@ registerView("phone", {
       restore: function () { api.set({ min: false }); },
 
       ringing: !!st.incoming, rName: ip ? ip.name : "Unknown", rIni: ip ? ip.ini : "#", rSub: ip ? ip.phone : "",
-      rCtx: "Probably about the 3:00 design review",
+      rCtx: copy("phone").ringContext || "", hasCtx: !!copy("phone").ringContext,
       isRing: !!st.incoming && !screening, isScreen: screening, scrLines: scrLines, scrDone: scrDone, scrLive: screening && !scrDone,
-      scrSum: "Maya's running ten minutes late for 3:00.",
+      scrSum: copy("phone").screenSummary || "",
       accept: function () { var s = api.get("phone"); PN.lastTab = tab; pnStart(api, s.incoming, "", { dir: "in", live: true }); },
       decline: function () { pnDecline(api); },
-      endScreen: function () { pnRingEnd(api, { dir: "in", screened: true, dur: (api.get("phone").scrN || 0) * 2, note: "Maya's running ten minutes late for 3:00." }); api.toast(api.name + " saved the message"); },
+      endScreen: function () { pnRingEnd(api, { dir: "in", screened: true, dur: (api.get("phone").scrN || 0) * 2, note: copy("phone").screenSummary || "" }); api.toast(api.name + " saved the message"); },
       alphaAnswer: function () {
         api.stopBg(); api.set({ ring: "screen", scrN: 1 });
         api.everyBg(function () { var s = api.get("phone"); if (s.ring !== "screen") return; if ((s.scrN || 0) < PN_SCREEN.length) api.set({ scrN: (s.scrN || 0) + 1 }); }, 1900);
@@ -457,57 +450,6 @@ registerView("phone", {
 /* Messages: SMS / RCS. Holes are {{messages.*}}. */
 IC.msgUnread = IC.msgUnread || "M15 12a3 3 0 1 1-6 0a3 3 0 1 1 6 0z";
 
-var MSG_PHOTOS = [
-  "linear-gradient(160deg,#F2B880 0%,#D9785B 55%,#4B3B6B 100%)",
-  "linear-gradient(200deg,#9AD0EC 0%,#4F86C6 60%,#233D6E 100%)",
-  "linear-gradient(170deg,#C7E3B0 0%,#6FA56B 55%,#2F4F3A 100%)",
-  "linear-gradient(150deg,#F5E1C8 0%,#C9A27A 60%,#6B4E3A 100%)"
-];
-// k = minutes since midnight today (negative = yesterday)
-var MSG_SEED = {
-  maya: [
-    { me: false, text: "Pushed the new flows to Figma", k: -330 },
-    { me: true, text: "Looks great. Review tomorrow?", k: -322 },
-    { me: false, text: "Yes! Put it on the calendar", k: -321 },
-    { me: true, text: "Design review is at 3", k: 750 },
-    { me: false, text: "Still on for 3? I can bring the prototype.", k: 844 }
-  ],
-  priya: [
-    { me: true, text: "Saturday was so fun", k: -600 },
-    { me: false, text: "Right?? Lunch Tuesday?", k: -590 },
-    { me: true, text: "Yes. Tartine at 1", k: -588 },
-    { me: false, text: "Sent you the photos from Saturday", k: 700 },
-    { me: false, photo: 0, k: 700 },
-    { me: false, photo: 1, k: 700 }
-  ],
-  jordan: [
-    { me: false, text: "Can we do 4:30 instead of 4?", k: 615 },
-    { me: true, text: "Works.", k: 618 }
-  ],
-  sam: [
-    { me: false, text: "Running 10 min late to standup", k: 562 },
-    { me: true, text: "No worries", k: 563 }
-  ],
-  dad: [
-    { me: false, text: "Did you see the game last night?", k: -700 },
-    { me: true, text: "Missed it! Call you Sunday", k: -650 },
-    { me: false, text: "Ok. Love you", k: -640 }
-  ]
-};
-var MSG_SMART = {
-  maya: [["See you at 3", "Yes, see you at 3. Bring the prototype!"], ["Bring it", "Yes, bring it. Can't wait to try it."], ["Running 5 late", "Running 5 late, start without me."]],
-  priya: [["These are great", "These are great, thank you!"], ["Send the rest?", "Love these. Send the rest?"], ["Tuesday still on?", "Still on for Tuesday at 1?"]],
-  jordan: [["Works", "Works for me."], ["Can we do 5?", "Can we push to 5?"]],
-  dad: [["Love you too", "Love you too, Dad."], ["Call Sunday?", "Call you Sunday?"]],
-  sam: [["No worries", "No worries."], ["Thanks", "Thanks!"]]
-};
-var MSG_BOT = {
-  maya: ["Perfect. See you at 3.", "Bringing the new build too, it's much faster.", "Ha, ok. On my way."],
-  priya: ["Glad you like them!", "More coming tonight."],
-  jordan: ["Great, talk then.", "Sounds good."],
-  sam: ["Cool.", "On it."],
-  dad: ["Talk soon kiddo.", "Love you."]
-};
 var MSG_GENERIC = [["Sounds good", "Sounds good."], ["Thanks!", "Thanks!"]];
 
 function msgPeople(api) { var c = api.get("contacts") || {}; return (c.list && c.list.length) ? c.list : api.people; }
@@ -579,11 +521,11 @@ function msgOpenThread(api, pid, local) {
 registerView("messages", {
   title: "Messages", icon: "bubble", aliases: ["texts", "sms", "text"],
   chat: "hidden",
-  state: { threads: MSG_SEED, unread: { maya: 1, priya: 3 }, extra: [], botI: {}, thread: null, compose: null, text: "", attach: null, tray: false, typing: null, q: "", sq: null, local: false, slide: null },
+  state: { threads: MSG_SEED, unread: MSG_UNREAD, extra: [], botI: {}, thread: null, compose: null, text: "", attach: null, tray: false, typing: null, q: "", sq: null, local: false, slide: null },
   persist: ["threads", "unread", "extra"],
   jumps: [[null, "Messages"], ["thread", "Thread"], ["new", "New message"]],
   preset: function (sub) {
-    if (sub === "thread") return { thread: "maya" };
+    if (sub === "thread") return copy("messages").presetThread ? { thread: copy("messages").presetThread } : null;
     if (sub === "new") return { compose: true };
   },
   badge: function (st) { var u = st.unread || {}; return Object.keys(u).some(function (k) { return u[k] > 0; }); },
@@ -602,9 +544,9 @@ registerView("messages", {
   suggestions: function (st, api) {
     var tp = st.thread || (typeof st.compose === "string" ? st.compose : null);
     if (tp) { var f = msgFirst(msgWho(api, tp, st)); return ["Reply for me", "What did " + f + " say?", "Tell " + f + " I'm 5 min late"]; }
-    return ["Text Maya I'm running late", "What did Priya send?", "Any new texts?"];
+    return copy("messages").suggestions || ["Any new texts?"];
   },
-  voicePhrase: "Text Maya I'm running five minutes late",
+  voicePhrase: copy("messages").voicePhrase,
   reply: function (t, raw, api) {
     var st = api.st; var m, p;
     var here = api.active;
@@ -723,7 +665,7 @@ registerView("messages", {
           openFile: function () { if (VIEWS.files && m.fid) api.open("files", { open: m.fid }); else api.toast(m.file); },
           row: "justify-content:" + (m.me ? "flex-end" : "flex-start") + ";margin-top:" + (sep ? "4px" : (prev && prev.me === m.me ? "3px" : "12px")),
           css: (m.me ? "background:var(--acc);color:#fff;" : "background:var(--s2);color:var(--fg);") + "border-radius:" + r,
-          photoCss: "background:" + imgBg("msg" + ((m.photo || 0) % MSG_PHOTOS.length), MSG_PHOTOS[(m.photo || 0) % MSG_PHOTOS.length]) + ";border-radius:" + r,
+          photoCss: "background:" + (MSG_PHOTOS.length ? imgBg("msg" + ((m.photo || 0) % MSG_PHOTOS.length), MSG_PHOTOS[(m.photo || 0) % MSG_PHOTOS.length]) : "var(--s3)") + ";border-radius:" + r,
           openPhoto: function () { if (VIEWS.photos) api.open("photos"); else api.toast("Photo"); }
         };
       });
@@ -798,35 +740,6 @@ registerView("messages", {
 IC.inboxFwd = IC.inboxFwd || "M15 14l5-5-5-5M20 9H10a6 6 0 0 0-6 6v4";
 IC.inboxClip = IC.inboxClip || "M20 11.5l-8.2 8.2a5 5 0 0 1-7.1-7.1l8.6-8.6a3.4 3.4 0 0 1 4.8 4.8l-8.5 8.5a1.7 1.7 0 0 1-2.4-2.4l7.8-7.8";
 
-var INBOX_ACCTS = [
-  { id: "personal", label: "Personal", provider: "google", address: "me@gmail.example", mail: true, calendar: true, contacts: true },
-  { id: "work", label: "Work", provider: "microsoft", address: "me@alphacompute.example", mail: true, calendar: true, contacts: true }
-];
-var INBOX_SEED = [
-  { id: 2, pid: "jordan", acct: "work", k: 793, time: "1:12 PM", unread: true, subj: "Revised term sheet",
-    body: "Hi,\n\nAttached is the revised term sheet. We moved on the pro-rata and tightened the board language as discussed.\n\nNeed your eyes by Friday so we can get it to counsel. Happy to walk through it on our 4:30.\n\nJordan",
-    atts: [{ name: "Term sheet v3.pdf", size: "212 KB", file: "termsheet" }],
-    gist: "Revised term sheet, needs your eyes by Friday", draft: "Thanks Jordan. Reading it tonight, notes to you by Friday." },
-  { id: 1, pid: "maya", acct: "work", k: 768, time: "12:48 PM", unread: true, subj: "Notes for the 3:00 review",
-    body: "Notes for this afternoon attached. Pages 6 to 9 are the new onboarding flow, that's where I'd love your call.\n\nMaya",
-    atts: [{ name: "Design review notes.pdf", size: "1.1 MB", file: "designnotes" }],
-    gist: "Notes for the 3:00 review, wants your call on the onboarding pages", draft: "Thanks Maya, reading now. The onboarding pages look strong." },
-  { id: 4, pid: "lena", acct: "personal", k: 570, time: "9:30 AM", unread: true, subj: "Dinner Friday?",
-    body: "We're doing tacos at ours on Friday around 7. Bring nothing but yourself. Sam's coming too.\n\nL",
-    gist: "Tacos at hers Friday at 7", draft: "Count me in. See you Friday at 7!" },
-  { id: 5, pid: "sam", acct: "work", k: 588, time: "9:48 AM", unread: false, subj: "Standup notes",
-    body: "Quick notes from standup:\n\n- Build 0.9 goes to beta testers Thursday\n- Redaction eval is green on all devices\n- Maya owns the onboarding copy\n\nSam",
-    gist: "Standup notes, beta build Thursday", draft: "Thanks Sam, all good on my side." },
-  { id: 3, name: "GPU Reserve", ini: "GR", email: "no-reply@gpureserve.example", acct: "work", k: 545, time: "9:05 AM", unread: false, subj: "Reservation confirmed · Oct 2",
-    body: "Your reservation for 8 × H200 on October 2, 09:00 to 21:00 PT is confirmed.\n\nReference GR-20417.",
-    gist: "GPU reservation confirmed for Oct 2", draft: "Thanks, confirmed." },
-  { id: 6, name: "Tartine", ini: "T", email: "hello@tartine.example", acct: "personal", k: 492, time: "8:12 AM", unread: false, subj: "Table for 2 at 1:00",
-    body: "See you today at 1:00 PM. Table for 2 under your name, Guerrero St.\n\nReply to this email to change your booking.",
-    gist: "Lunch booking at 1:00 confirmed", draft: "Thanks, see you at 1." },
-  { id: 7, name: "Alaska Airlines", ini: "AS", email: "trips@alaskaair.example", acct: "personal", k: -300, time: "Yesterday", unread: false, subj: "Your trip to Portland",
-    body: "SFO to PDX, Saturday Oct 4, 8:40 AM. Seat 7A.\n\nCheck-in opens 24 hours before departure.",
-    gist: "Portland flight Saturday 8:40 AM", draft: "Thanks." }
-];
 
 function inboxAccts(api) {
   var s = api.get("settings") || {};
@@ -842,7 +755,7 @@ function inboxAcctLabel(a) {
 function inboxAcctOf(accts, id) {
   for (var i = 0; i < accts.length; i++) if (accts[i].id === id) return accts[i];
   for (var j = 0; j < accts.length; j++) if (String(accts[j].label || "").toLowerCase() === id) return accts[j];
-  return id === "work" && accts[1] ? accts[1] : accts[0];
+  return (id === "work" && accts[1] ? accts[1] : accts[0]) || { id: id || "none", label: "No account", address: "No account connected", mail: false };
 }
 function inboxPeople(api) { var c = api.get("contacts") || {}; return (c.list && c.list.length) ? c.list : api.people; }
 function inboxPerson(api, id) { var l = inboxPeople(api); for (var i = 0; i < l.length; i++) if (l[i].id === id) return l[i]; return api.person(id); }
@@ -905,8 +818,9 @@ registerView("inbox", {
   persist: ["mails", "sent"],
   jumps: [[null, "Inbox"], ["mail", "Email"], ["compose", "Compose"]],
   preset: function (sub) {
-    if (sub === "mail") return { open: 2 };
-    if (sub === "compose") return { compose: { to: "jordan", subject: "Re: Revised term sheet", body: "" } };
+    var pr = copy("inbox").presets || {};
+    if (sub === "mail") return pr.mail || null;
+    if (sub === "compose") return pr.compose || { compose: { to: [], subject: "", body: "" } };
   },
   badge: function (st) { return inboxLive(st).some(function (m) { return m.unread; }); },
   immersive: function (st) { return st.compose ? { noPill: true } : null; },
@@ -923,8 +837,9 @@ registerView("inbox", {
   onLeave: function (api) { if (api.st.open != null) inboxMarkRead(api, api.st.open); },
   suggestions: function (st) {
     if (st.compose) return ["Write this for me", "Make it shorter"];
-    if (st.open != null) return ["Draft a reply", "Summarize this email", "Forward to Maya"];
-    return ["Summarize my inbox", "Reply to Jordan", "Archive the rest"];
+    var sg = copy("inbox").suggestions || {};
+    if (st.open != null) return sg.open || ["Draft a reply", "Summarize this email"];
+    return sg.list || ["Summarize my inbox", "Archive the rest"];
   },
   voicePhrase: "Summarize my inbox",
   reply: function (t, raw, api) {
@@ -1001,8 +916,7 @@ registerView("inbox", {
       if (res.length === 1) return { text: "Found it.", card: { type: "generic", icon: "mail", title: res[0].subj, sub: inboxWho(api, res[0]).name + " · " + res[0].time, go: { view: "inbox", patch: { open: res[0].id } } } };
       return { text: res.length + " emails.", card: { type: "digest", rows: res.map(function (x) { var w = inboxWho(api, x); return { ini: w.ini, who: w.name, text: x.subj }; }), go: { view: "inbox" } } };
     }
-    if (/term sheet (e-?mail|mail)|jordan'?s (e-?mail|mail)/.test(t)) return { text: "Jordan's revised term sheet.", nav: { view: "inbox", patch: { open: 2 } } };
-    return null;
+    return scriptedReply("inbox", t);
   },
   actions: {
     sendDraft: function (card, api) {
@@ -1173,23 +1087,6 @@ IC.calRepeat = IC.calRepeat || "M4 11a7 7 0 0 1 12.5-4.3M20 13a7 7 0 0 1-12.5 4.
 IC.calToday = IC.calToday || "M4 6h16v14H4zM4 10h16M8 3v4M16 3v4M12 15h.01";
 IC.calNote = IC.calNote || "M5 7h14M5 12h14M5 17h9";
 
-var CAL_SEED = [
-  { id: "c1", off: -14, t: 9.5, d: 0.5, title: "Standup", cal: "work", repeat: "weekdays", video: "meet.lumen.example/standup", where: "", who: ["maya", "sam"], rsvp: { maya: "yes", sam: "yes" }, notes: "" },
-  { id: "c2", off: 0, t: 11, d: 1.5, title: "Deep work", cal: "work", hold: true, where: "", who: [], notes: "Enclave copy, then the onboarding flow." },
-  { id: "c3", off: 0, t: 13, d: 1, title: "Lunch · Priya", cal: "personal", where: "Tartine, Guerrero St", who: ["priya"], rsvp: { priya: "yes" }, notes: "" },
-  { id: "c4", off: 0, t: 15, d: 1, title: "Design review", cal: "work", key: true, video: "meet.lumen.example/design-review", where: "", who: ["maya", "jordan", "sam", "lena"], rsvp: { maya: "yes", jordan: "maybe", sam: "yes", lena: "yes" }, notes: "Walk through the onboarding prototype. Decide on the enclave copy before Friday." },
-  { id: "c5", off: 0, t: 16.5, d: 0.5, title: "Jordan · term sheet", cal: "work", where: "Phone", who: ["jordan"], rsvp: { jordan: "yes" }, notes: "Revised term sheet is in your inbox." },
-  { id: "c6", off: 0, t: 19.5, d: 1, title: "Gym", cal: "personal", where: "Equinox SoMa", who: [], notes: "" },
-  { id: "c11", off: -1, t: 8.5, d: 0.5, title: "Coffee · Lena", cal: "personal", where: "Sightglass, 7th St", who: ["lena"], notes: "" },
-  { id: "c12", off: -1, t: 14, d: 1, title: "Roadmap review", cal: "work", video: "meet.lumen.example/roadmap", where: "", who: ["maya", "sam"], notes: "" },
-  { id: "c8", off: 1, t: 10, d: 0.5, title: "1:1 · Maya", cal: "work", video: "meet.lumen.example/maya", where: "", who: ["maya"], notes: "" },
-  { id: "c9", off: 1, t: 14, d: 1, title: "Dentist", cal: "personal", where: "Mission Dental, Valencia St", who: [], alert: 60, notes: "" },
-  { id: "c13", off: 2, t: 9, d: 2, title: "Board prep", cal: "work", where: "Lumen HQ, 3rd floor", who: ["jordan", "maya"], notes: "" },
-  { id: "c14", off: 2, t: 19, d: 1.5, title: "Dinner · Dad", cal: "personal", where: "Zuni Café", who: ["dad"], notes: "" },
-  { id: "c10", off: 3, t: 19, d: 2, title: "Northpoint partner dinner", cal: "work", where: "Nopa, Divisadero St", who: ["jordan", "priya"], invite: { from: "jordan", status: "pending" }, notes: "Partners and founders, informal. Jordan would like you to say a few words about the enclave." },
-  { id: "c15", off: 4, t: 13, d: 1, title: "Offsite planning", cal: "work", video: "meet.lumen.example/offsite", where: "", who: ["maya", "lena"], notes: "" },
-  { id: "c16", off: 5, t: 10, d: 2, title: "Farmers market", cal: "personal", where: "Ferry Building", who: ["priya"], notes: "" }
-];
 var CAL_COLORS = { acc: "var(--acct)", fg: "var(--fg)", mut: "var(--mut)" };
 var CAL_COLOR_ORDER = ["acc", "fg", "mut"];
 var CAL_REPEAT = [["none", "Once"], ["daily", "Daily"], ["weekdays", "Weekdays"], ["weekly", "Weekly"]];
@@ -1230,7 +1127,7 @@ function calCals(st, api) {
       if (i < 2) list[i].sub = a.address || a.provider || "";
       else list.push({ id: a.id || ("acct" + i), name: a.provider || "Calendar", sub: a.address || "", color: "mut" });
     });
-  } else { list[0].sub = "Google"; list[1].sub = "Lumen"; }
+  } else { var subs = copy("calendar").calendarSubs || []; list[0].sub = subs[0] || ""; list[1].sub = subs[1] || ""; }
   var prefs = st.calPrefs || {};
   return list.map(function (c) { var p = prefs[c.id] || {}; return Object.assign({}, c, { on: p.on !== false, color: p.color || c.color }); });
 }
@@ -1265,7 +1162,7 @@ function calMatch(list, t, api) {
   return best;
 }
 function calPrep(e, api) {
-  if (e.id === "c4") return ["Maya is bringing the onboarding prototype. Her last note asks for a call on the enclave copy.", "Jordan is a maybe; his revised term sheet landed at 1:12 and may come up.", "Open question from Friday: ship keys-on-device doc before or after the dry run."];
+  if (CAL_PREP[e.id]) return CAL_PREP[e.id].slice();
   var who = (e.who || []).map(function (id) { return calPerson(api, id).name.split(" ")[0]; });
   var b = [];
   if (who.length) b.push("With " + who.join(", ") + ". Your last thread with " + who[0] + " was about scheduling this.");
@@ -1280,17 +1177,19 @@ registerView("calendar", {
   persist: ["events", "calPrefs"],
   jumps: [[null, "Calendar"], ["event", "Event"], ["new", "New event"], ["month", "Month"], ["invite", "Invite"], ["add", "Add from app"]],
   preset: function (sub, api) {
-    if (sub === "event") return { open: "c4", openDay: 0 };
-    if (sub === "invite") return { open: "c10", openDay: 3 };
+    var pr = copy("calendar").presets || {};
+    if (sub === "event") return pr.event || null;
+    if (sub === "invite") return pr.invite || null;
     if (sub === "month") return { month: 0 };
-    if (sub === "add") return { add: { title: "Flight to JFK", off: 4, t: 8, d: 5.5, where: "SFO Terminal 2", notes: "UA 1542 · Seat 14C", cal: "personal" } };
+    if (sub === "add") return pr.add || null;
     if (sub === "new") return { form: { id: null, title: "", off: 0, t: 17, d: 1, where: "", video: false, who: [], cal: "work", repeat: "none", alert: 10, notes: "" } };
   },
   badge: function (st) { return (st.events || CAL_SEED).some(function (e) { return e.invite && e.invite.status === "pending"; }); },
   suggestions: function (st) {
-    if (st.form) return ["Lunch with Priya next Tuesday at 1", "Find me an hour to focus"];
+    var sg = copy("calendar").suggestions || {};
+    if (st.form) return sg.form || ["Find me an hour to focus"];
     if (st.open) { var e = calFind(st.events || CAL_SEED, st.open); if (e) return ["Prep me for " + e.title, "Move " + e.title + " to tomorrow", "Cancel " + e.title]; }
-    return ["What does my afternoon look like?", "Find me an hour to focus", "Move gym to tomorrow", "Lunch with Priya next Tuesday at 1"];
+    return sg.day || ["What does my afternoon look like?", "Find me an hour to focus"];
   },
   voicePhrase: "Find me an hour to focus",
   back: function (st, api) {
@@ -1518,8 +1417,8 @@ registerView("calendar", {
         title: ev.title, when: calRange(ev.t, ev.d), day: calDayName(api, evDay) + (repeatLabel ? " · " + repeatLabel : ""),
         dot: CAL_COLORS[c.color], calName: c.name,
         recurringReminder: false, reminderPolicy: "", reminderHistory: [], reminderDone: function () {}, reminderSnooze: function () {},
-        hasWhere: !!ev.where, where: isPhone ? "Call " + calPerson(api, (ev.who || [])[0] || "jordan").name.split(" ")[0] : ev.where, whereIcon: isPhone ? IC.phone : IC.pin,
-        goWhere: function () { if (isPhone) api.open("phone", { call: (ev.who || [])[0] || "jordan" }); else api.open("maps", { query: ev.where }); },
+        hasWhere: !!ev.where, where: isPhone ? ((ev.who || [])[0] ? "Call " + calPerson(api, ev.who[0]).name.split(" ")[0] : "Phone call") : ev.where, whereIcon: isPhone ? IC.phone : IC.pin,
+        goWhere: function () { if (isPhone) { if ((ev.who || [])[0]) api.open("phone", { call: ev.who[0] }); } else api.open("maps", { query: ev.where }); },
         hasVideo: !!ev.video, video: ev.video, join: function () { api.toast("Joining " + ev.title); },
         hasAlert: !!alertLabel, alertLabel: alertLabel,
         hasPeople: (ev.who || []).length > 0,
@@ -1590,7 +1489,7 @@ registerView("calendar", {
       month: monthOpen ? MONS[mBase.getMonth()] + (mBase.getFullYear() !== today.getFullYear() ? " " + mBase.getFullYear() : "") : MONS[selDate.getMonth()] + (selDate.getFullYear() !== today.getFullYear() ? " " + selDate.getFullYear() : ""),
       dayMode: !monthOpen,
       dayName: calDayName(api, sel),
-      emptyText: "Free all day", week: week, events: events, hours: hours, empty: evs.length === 0 && sel !== 0,
+      emptyText: sel === 0 ? "Nothing scheduled today" : "Free all day", week: week, events: events, hours: hours, empty: evs.length === 0,
       showNow: sel === 0 && nowT >= CAL_H0 && nowT <= CAL_H1, nowTop: (nowT - CAL_H0) * CAL_PX + 8,
       tlDown: tlDown, tlUp: tlUp,
       notToday: sel !== 0, goToday: function () { set({ day: 0, month: null }); },
@@ -1612,20 +1511,11 @@ registerView("calendar", {
 IC.brTabs = IC.brTabs || "M5 7h11v12H5zM8 4h11v12";
 IC.brUser = IC.brUser || "M16 8a4 4 0 1 1-8 0a4 4 0 1 1 8 0zM4 21a8 8 0 0 1 16 0";
 
-var BR_NEWS = "news.example/on-device-agents", BR_ENC = "enclave.example/keys-in-hardware", BR_BOOK = "tables.example/nopa";
-var BR_PAGES = {};
-BR_PAGES[BR_NEWS] = { kind: "news", title: "The case for on-device agents", host: "news.example", path: "/on-device-agents", tile: "#000000",
-  snip: "An assistant that lives on your phone sees everything you do. The question is who else gets to see it.", kw: "agents on-device ai assistant privacy phone news",
-  points: ["Keeping model and memory on the phone means nobody else sees your data", "Hardware-held keys make every agent action signed and checkable", "The interface should get quieter: one conversation, the right card at the right time"] };
-BR_PAGES[BR_ENC] = { kind: "enclave", title: "Keys that never leave the chip", host: "enclave.example", path: "/keys-in-hardware", tile: "#0000FF",
-  snip: "A secure enclave is a small, sealed part of the processor. Keys are created inside it and never read out.", kw: "enclave keys hardware security chip secure",
-  points: ["Enclave keys are created inside the chip and can't be read out", "Signed actions prove they came from your device", "The phone becomes the root of trust, not a server"] };
-BR_PAGES[BR_BOOK] = { kind: "book", title: "Nopa · Book a table", host: "tables.example", path: "/nopa", tile: "#17352A",
-  snip: "Californian, wood-fired. 560 Divisadero St. Tables tonight from 6:00.", kw: "nopa restaurant dinner table book reservation food eat tonight",
-  points: ["Nopa, 560 Divisadero St, Californian and wood-fired", "Tables tonight from 6:00 to 8:30", "Bookings are held for 15 minutes"] };
+/* Reference pages and the booking demo come from BR_START / BR_PAGES (fixtures only). */
+var BR_LINKS = BR_START || {};
+var BR_NEWS = BR_LINKS.news || null, BR_ENC = BR_LINKS.enc || null, BR_BOOK = BR_LINKS.book || null;
 var BR_TIMES = ["6:00", "6:30", "7:00", "7:30", "8:00", "8:30"];
 var BR_DATES = [["tonight", "Tonight"], ["tomorrow", "Tomorrow"], ["fri", "Fri"]];
-var BR_ME = { name: "Alex Kim", phone: "(415) 555-0100" };
 var BR_NUM = { one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8 };
 
 function brPage(url) {
@@ -1690,11 +1580,12 @@ function brParseBook(t) {
   return { party: Math.max(1, Math.min(12, party)), time: time, date: date };
 }
 function brStartBook(api, o) {
+  if (!BR_BOOK || !BR_ME) return;
   api.stop();
   var s = api.get("browser");
   if (brCurUrl(s) !== BR_BOOK) brGo(api, BR_BOOK);
   var dl = (BR_DATES.filter(function (d) { return d[0] === o.date; })[0] || BR_DATES[0])[1];
-  api.set({ ag: { task: "book", text: "Opening tables.example", cx: 196, cy: 260 }, confirm: null, booked: null, share: false, menu: false, editing: false, tabsOpen: false, lib: null,
+  api.set({ ag: { task: "book", text: "Opening " + brPage(BR_BOOK).host, cx: 196, cy: 260 }, confirm: null, booked: null, share: false, menu: false, editing: false, tabsOpen: false, lib: null,
     bk: { party: 2, date: "tonight", time: null, name: "", phone: "" }, want: o });
   var t = 0;
   var step = function (ms, fn) { t += ms; api.later(function () { if (!api.get("browser").ag) return; fn(); }, t); };
@@ -1716,7 +1607,7 @@ function brFinishBook(api) {
   var dl = (BR_DATES.filter(function (d) { return d[0] === b.date; })[0] || BR_DATES[0])[1];
   var booked = { party: b.party, date: dl, time: b.time + " PM", name: b.name, code: "NP-" + (4000 + Math.floor(Math.random() * 900)) };
   api.set({ booked: booked, confirm: null, ag: null });
-  api.toast("Booked · Nopa, " + booked.time);
+  api.toast("Booked · " + (BR_LINKS.venue || brPage(brCurUrl(s)).title) + ", " + booked.time);
 }
 function brStartPoints(api) {
   api.stop();
@@ -1733,24 +1624,25 @@ registerView("browser", {
   chat: "input", placeholder: "Ask about this page",
   state: {
     newTab: false,
-    tabs: [{ id: "t1", hist: [BR_NEWS], pos: 0 }, { id: "t2", hist: [BR_ENC], pos: 0 }], cur: "t1",
-    marks: [BR_ENC], visits: [BR_NEWS, BR_ENC, BR_BOOK],
+    tabs: BR_LINKS.tabs || [{ id: "t1", hist: ["newtab"], pos: 0 }], cur: BR_LINKS.cur || "t1",
+    marks: BR_LINKS.marks || [], visits: BR_LINKS.visits || [],
     bk: { party: 2, date: "tonight", time: null, name: "", phone: "" }, booked: null,
     editing: false, addr: "", tabsOpen: false, menu: false, lib: null, share: false, ag: null, confirm: null, hl: 0, url: null, want: null
   },
   persist: ["tabs", "cur", "marks", "visits", "bk", "booked"],
   jumps: [[null, "Browser"], ["book", "Booking page"], ["tabs", "Tabs"], ["agent", "Agent booking"]],
   preset: function (sub, api) {
-    if (sub === "book") return { url: BR_BOOK };
+    if (sub === "book") return BR_BOOK ? { url: BR_BOOK } : null;
     if (sub === "tabs") return { tabsOpen: true };
-    if (sub === "agent") { api.later(function () { brStartBook(api, { party: 2, time: "7:30", date: "tonight" }); }, 120); return {}; }
+    if (sub === "agent" && BR_BOOK) { api.later(function () { brStartBook(api, { party: 2, time: "7:30", date: "tonight" }); }, 120); return {}; }
   },
   immersive: function (st) { return (st.confirm || st.share) ? { noPill: true } : null; },
   suggestions: function (st) {
     var pg = brPage(brCurUrl(st));
-    if (pg.kind === "book") return ["Book a table for 2 at 7:30", "Summarize this page"];
-    if (pg.kind === "newtab" || pg.kind === "search") return ["Book a table for 2 at 7:30", "Go to enclave.example"];
-    return ["Summarize this page", "Save the key points to Notes", "Book a table for 2 at 7:30"];
+    var sg = copy("browser").suggestions || {};
+    if (pg.kind === "book") return sg.book || ["Summarize this page"];
+    if (pg.kind === "newtab" || pg.kind === "search") return sg.newtab || [];
+    return sg.page || ["Summarize this page", "Save the key points to Notes"];
   },
   voicePhrase: "Summarize this page",
   back: function (st, api) {
@@ -1775,7 +1667,7 @@ registerView("browser", {
   },
   reply: function (t, raw, api) {
     var st = api.get("browser"); var here = api.active; var pg = brPage(brCurUrl(st)); var m;
-    if (/\bbook (me )?(a )?table\b|\btable for (\d+|two|three|four|five|six)\b|\breserv(e|ation) (a table|at nopa|for)/.test(t)) {
+    if (BR_BOOK && /\bbook (me )?(a )?table\b|\btable for (\d+|two|three|four|five|six)\b|\breserv(e|ation) (a table|at nopa|for)/.test(t)) {
       var o = brParseBook(t);
       return { text: "On it. I'll fill in the booking and check with you before I submit.", 
         then: function () { if (!api.isActive()) api.open("browser", null, "input"); api.shell({ chat: "input" }); brStartBook(api, o); } };
@@ -1946,7 +1838,7 @@ function camFlashFx(api) { api.set({ fl: 1 }); api.later(function () { api.set({
 function camStopRec(api) {
   var s = api.get("camera"); if (!s.rec) return;
   var sec = Math.max(1, Math.floor((Date.now() - s.recAt) / 1000));
-  camSave(api, { id: "c" + Date.now(), ts: Date.now(), kind: "video", dur: Math.floor(sec / 60) + ":" + pad2(sec % 60), scene: camScene(s), figs: camFigs(s), place: "Dolores Park", people: [], tags: s.front ? ["selfie"] : [], fav: false, z: s.front ? 1 : CAM_ZOOM[s.zoom][1] });
+  camSave(api, { id: "c" + Date.now(), ts: Date.now(), kind: "video", dur: Math.floor(sec / 60) + ":" + pad2(sec % 60), scene: camScene(s), figs: camFigs(s), place: copy("camera").place || "", people: [], tags: s.front ? ["selfie"] : [], fav: false, z: s.front ? 1 : CAM_ZOOM[s.zoom][1] });
   api.set({ rec: false, recAt: 0 }); api.stopBg();
 }
 function camAsk(api) {
@@ -1957,14 +1849,16 @@ function camAsk(api) {
 function camRecLabel(st) { var sec = Math.max(0, Math.floor((Date.now() - st.recAt) / 1000)); return Math.floor(sec / 60) + ":" + pad2(sec % 60); }
 function camSaveScan(api, quiet) {
   var s = api.get("camera");
-  camSave(api, { id: "c" + Date.now(), ts: Date.now(), kind: "doc", scene: "poster", figs: null, place: "Lumen HQ", people: [], tags: ["open studio", "lumen"], fav: false, z: 1 });
+  var scan = copy("camera").scan || {};
+  camSave(api, { id: "c" + Date.now(), ts: Date.now(), kind: "doc", scene: "poster", figs: null, place: scan.place || "", people: [], tags: (scan.tags || []).slice(), fav: false, z: 1 });
   if (!quiet) camFlashFx(api);
   return s;
 }
 function camDescribe(st, now) {
-  if (st.mode === "scan") { var p = camPoster(now); return "A poster: Open Studio at Lumen, " + p.day + " at 6 PM, 1 Market St. The QR code goes to the RSVP page."; }
-  if (st.front) return "That's you, with soft window light from the left. Good light for a selfie.";
-  return "A park on a clear afternoon: lawn, two trees and a path up the hill. Plenty of light, no flash needed.";
+  var cc = copy("camera");
+  if (st.mode === "scan") { var scan = cc.scan || {}; return scan.describe ? scan.describe.replace("{day}", camPoster(now).day) : "Document reading is not connected."; }
+  if (st.front) return cc.describeFront || "Scene description is not connected.";
+  return cc.describeBack || "Scene description is not connected.";
 }
 
 registerView("camera", {
@@ -1989,13 +1883,13 @@ registerView("camera", {
     var st = api.st; var now = api.now.getTime();
     if (api.active) {
       if (/what (am i|do you|is (this|that)|'s (this|that))|what.*(see|looking)|read (this|it)|what does it say|describe/.test(t)) {
-        if (st.mode === "scan") { var p = camPoster(now); return { text: camDescribe(st, now), card: { type: "event", time: p.day + " · 6:00 PM", title: "Open Studio · Lumen", act: { mod: "camera", fn: "addEvent" } } }; }
+        if (st.mode === "scan" && (copy("camera").scan || {}).title) { var p = camPoster(now); return { text: camDescribe(st, now), card: { type: "event", time: p.day + " · 6:00 PM", title: copy("camera").scan.title, act: { mod: "camera", fn: "addEvent" } } }; }
         return { text: camDescribe(st, now) };
       }
-      if (st.mode === "scan" && /calendar|add (it|the event|event)/.test(t)) return { text: "Added Open Studio to your calendar.", then: function () { api.toast("Added to Calendar"); } };
+      if (st.mode === "scan" && (copy("camera").scan || {}).added && /calendar|add (it|the event|event)/.test(t)) return { text: copy("camera").scan.added, then: function () { api.toast("Added to Calendar"); } };
       if (st.mode === "scan" && /files|save (it|this)/.test(t)) return { text: "Saved to Files, under Scans.", then: function () { camSaveScan(api, true); api.toast("Saved to Files"); } };
-      if (/\b(take|snap|shoot)\b.*\bselfie\b/.test(t)) return { text: "Smile.", then: function () { api.set({ mode: "photo", front: true }); api.later(function () { api.set({ fl: 1 }); var s = api.get("camera"); camSave(api, { id: "c" + Date.now(), ts: Date.now(), kind: "photo", scene: "selfie", figs: [[50, 2.2]], place: "Dolores Park", people: [], tags: ["selfie"], fav: false, z: 1 }); api.later(function () { api.set({ fl: 0 }); }, 90); }, 900); } };
-      if (/\b(take|snap|shoot)\b.*\b(photo|picture|pic|shot)\b/.test(t)) return { text: "Got it.", then: function () { var s = api.get("camera"); camFlashFx(api); camSave(api, { id: "c" + Date.now(), ts: Date.now(), kind: "photo", scene: camScene(s), figs: camFigs(s), place: "Dolores Park", people: [], tags: s.front ? ["selfie"] : [], fav: false, z: s.front ? 1 : CAM_ZOOM[s.zoom][1] }); } };
+      if (/\b(take|snap|shoot)\b.*\bselfie\b/.test(t)) return { text: "Smile.", then: function () { api.set({ mode: "photo", front: true }); api.later(function () { api.set({ fl: 1 }); var s = api.get("camera"); camSave(api, { id: "c" + Date.now(), ts: Date.now(), kind: "photo", scene: "selfie", figs: [[50, 2.2]], place: copy("camera").place || "", people: [], tags: ["selfie"], fav: false, z: 1 }); api.later(function () { api.set({ fl: 0 }); }, 90); }, 900); } };
+      if (/\b(take|snap|shoot)\b.*\b(photo|picture|pic|shot)\b/.test(t)) return { text: "Got it.", then: function () { var s = api.get("camera"); camFlashFx(api); camSave(api, { id: "c" + Date.now(), ts: Date.now(), kind: "photo", scene: camScene(s), figs: camFigs(s), place: copy("camera").place || "", people: [], tags: s.front ? ["selfie"] : [], fav: false, z: s.front ? 1 : CAM_ZOOM[s.zoom][1] }); } };
     }
     if (/\b(take|snap)\b.*\bselfie\b/.test(t)) return { text: "Front camera's ready.", nav: { view: "camera", patch: { mode: "photo", front: true } } };
     if (/\b(take|snap|shoot)\b.*\b(photo|picture|pic)\b|\bopen (the )?camera\b/.test(t)) return { text: "Camera's ready.", nav: { view: "camera", patch: { mode: "photo" } } };
@@ -2040,7 +1934,7 @@ registerView("camera", {
       posterDay: poster.short,
       addEvent: function () { api.toast("Added to Calendar · " + poster.short); },
       saveFiles: function () { camSaveScan(api); api.toast("Saved to Files"); },
-      openLink: function () { api.open("browser", { url: "lumen.example/open-studio" }); },
+      openLink: function () { var link = (copy("camera").scan || {}).link; if (link) api.open("browser", { url: link }); else api.toast("No link was read from this scan"); },
       modes: CAM_MODES.map(function (m) {
         var on = st.mode === m[0];
         return { label: m[1], css: on ? "color:#ffffff" : "color:rgba(255,255,255,.55)", dot: on ? 1 : 0, pick: function () { setMode(m[0]); } };
@@ -2053,7 +1947,7 @@ registerView("camera", {
         if (s.mode === "video") { if (s.rec) camStopRec(api); else { api.set({ rec: true, recAt: Date.now() }); api.everyBg(function () { var c = api.get("camera"); api.set({ tick: (c.tick || 0) + 1 }); }, 1000); } return; }
         if (s.mode === "scan") { camSaveScan(api); api.toast("Scan saved"); return; }
         camFlashFx(api);
-        camSave(api, { id: "c" + Date.now(), ts: Date.now(), kind: "photo", scene: camScene(s), figs: camFigs(s), place: "Dolores Park", people: [], tags: s.front ? ["selfie"] : [], fav: false, z: s.front ? 1 : CAM_ZOOM[s.zoom][1] });
+        camSave(api, { id: "c" + Date.now(), ts: Date.now(), kind: "photo", scene: camScene(s), figs: camFigs(s), place: copy("camera").place || "", people: [], tags: s.front ? ["selfie"] : [], fav: false, z: s.front ? 1 : CAM_ZOOM[s.zoom][1] });
       },
       hasLast: !!last, lastBg: lastLook ? lastLook.bg : "", lastTf: lastLook ? lastLook.tf : "", lastFlt: lastLook ? lastLook.flt : "none",
       openLast: function () { if (last) api.open("photos", { open: last.id, from: "camera", seq: api.secure ? sess.slice() : null, chrome: true, sheet: null, edit: null, sel: null, searching: false }); },
@@ -2168,51 +2062,6 @@ function phTagsFor(it) {
   if (it.place) out = out.concat(it.place.toLowerCase().replace(/[^a-z ]/g, "").split(" "));
   var seen = {}; return out.filter(function (x) { if (!x || seen[x]) return false; seen[x] = 1; return true; });
 }
-var PH_SEED = (function () {
-  var now = new Date(); var dow = now.getDay(); var sat = (dow + 1) % 7 || 7;
-  function at(ago, h, m) { var d = new Date(now); d.setDate(d.getDate() - ago); d.setHours(h, m || 0, 0, 0); return d.getTime(); }
-  var mid = new Date(now); mid.setHours(0, 1, 0, 0);
-  function rel(min) { return Math.max(mid.getTime(), now.getTime() - min * 60000); }
-  var R = [
-    ["p01", rel(50), "shot", null, "", [], { kind: "shot", tags: ["boarding pass", "flight"] }],
-    ["p02", rel(190), "cafe", null, "Tartine", [], {}],
-    ["p03", at(1, 14, 20), "whiteboard", null, "Lumen HQ", ["maya", "sam"], {}],
-    ["p04", at(1, 19, 5), "city", null, "Embarcadero", [], { tags: ["sunset"] }],
-    ["p05", at(sat, 15, 10), "beach", [[42, 1]], "Ocean Beach", ["maya"], { fav: true }],
-    ["p06", at(sat, 15, 14), "beach", null, "Ocean Beach", [], {}],
-    ["p07", at(sat, 15, 40), "beach", [[36, 1], [63, 1.05, "#33303F"]], "Ocean Beach", ["maya", "priya"], {}],
-    ["p08", at(sat, 16, 2), "portrait", [[50, 2]], "Ocean Beach", ["maya"], { fav: true, tone: 0 }],
-    ["p09", at(sat, 16, 30), "sea", null, "Ocean Beach", [], { kind: "video", dur: "0:12" }],
-    ["p10", at(sat, 18, 58), "sunsea", null, "Ocean Beach", [], { fav: true }],
-    ["p11", at(sat, 19, 4), "sunsea", [[40, 0.9], [58, 0.95]], "Ocean Beach", ["maya", "priya"], {}],
-    ["p12", at(sat, 20, 30), "food", null, "Nopa", ["maya", "priya"], {}],
-    ["p13", at(sat + 1, 21, 40), "night", [[50, 1.3]], "SoMa", ["jordan"], {}],
-    ["p14", at(sat + 1, 21, 55), "city", null, "SoMa", [], {}],
-    ["p15", at(sat + 6, 9, 30), "mountain", null, "Mt Tamalpais", [], {}],
-    ["p16", at(sat + 6, 10, 5), "forest", null, "Mt Tamalpais", [], {}],
-    ["p17", at(sat + 6, 11, 20), "mountain", [[38, 1], [61, 0.95, "#1F2A24"]], "Mt Tamalpais", ["sam", "lena"], {}],
-    ["p18", at(sat + 6, 11, 40), "portrait", [[50, 2]], "Mt Tamalpais", ["sam"], { tone: 1 }],
-    ["p19", at(sat + 6, 12, 10), "mountain", null, "Mt Tamalpais", [], { kind: "video", dur: "0:24" }],
-    ["p20", at(16, 19, 30), "birthday", [[30, 1.3]], "Portland", ["dad"], { fav: true }],
-    ["p21", at(16, 19, 40), "portrait", [[50, 2]], "Portland", ["dad"], { tone: 3 }],
-    ["p22", at(16, 20, 10), "food", null, "Portland", [], { tags: ["birthday"] }],
-    ["p23", at(16, 21, 0), "doc", null, "Portland", [], { kind: "doc", tags: ["receipt"] }],
-    ["p24", at(18, 8, 10), "lake", null, "Lake Tahoe", [], {}],
-    ["p25", at(18, 13, 0), "lake", [[50, 1.1]], "Lake Tahoe", ["priya"], {}],
-    ["p26", at(18, 13, 20), "lake", null, "Lake Tahoe", [], { kind: "video", dur: "0:08" }],
-    ["p27", at(18, 18, 45), "sunset", null, "Lake Tahoe", [], {}],
-    ["p28", at(25, 12, 0), "shot2", null, "", [], { kind: "shot", tags: ["directions"] }],
-    ["p29", at(25, 16, 0), "park", [[46, 1]], "Dolores Park", ["lena"], {}],
-    ["p30", at(25, 17, 10), "cafe", null, "Four Barrel", [], {}],
-    ["p31", at(40, 14, 0), "beach", null, "Santa Cruz", [], {}],
-    ["p32", at(40, 19, 10), "sunset", null, "Santa Cruz", [], {}]
-  ];
-  return R.map(function (r) {
-    var x = r[6];
-    return { id: r[0], ts: r[1], scene: r[2], figs: r[3], place: r[4], people: r[5], kind: x.kind || "photo", dur: x.dur || "", fav: !!x.fav, tone: x.tone || 0, tags: x.tags || [] };
-  }).sort(function (a, b) { return b.ts - a.ts; });
-})();
-
 /* ---------- helpers ---------- */
 function phSort(l) { return l.slice().sort(function (a, b) { return b.ts - a.ts; }); }
 function phDayKey(ts) { var d = new Date(ts); return d.getFullYear() + "-" + (d.getMonth() + 1) + "-" + d.getDate(); }
@@ -2275,28 +2124,6 @@ function phMatch(it, q) {
   if (q.fav && !it.fav) return false;
   return true;
 }
-var PH_DESC = {
-  beach: "Ocean Beach in the afternoon: low tide, a long line of surf and a pale sky.",
-  sea: "A short clip of waves rolling in, shot from the sand.",
-  sunset: "A sunset, the sun halfway under the horizon.",
-  sunsea: "Sunset over the water, with a warm streak of light on the waves.",
-  mountain: "A mountain ridge with a snow-dusted peak behind it.",
-  lake: "A still lake with mountains behind it and light on the water.",
-  forest: "Tall pines on the trail.",
-  park: "A park on a clear afternoon: lawn, two trees and a path up the hill.",
-  city: "The skyline at dusk, lights coming on.",
-  night: "A rooftop at night with the city lit up behind.",
-  cafe: "A coffee on the table by a sunny window.",
-  food: "Dinner from above: a tomato dish with greens, and a coffee on the side.",
-  whiteboard: "A whiteboard from a working session: three bullet lines, a circled idea and some sticky notes.",
-  shot: "A screenshot of a boarding pass.",
-  shot2: "A screenshot of walking directions on a map.",
-  doc: "A receipt. The total is at the bottom.",
-  poster: "A scanned poster for Open Studio at Lumen, with a QR code.",
-  portrait: "A portrait against a soft backdrop.",
-  selfie: "A selfie in window light.",
-  birthday: "A birthday cake with one candle, in a warm, dim room."
-};
 function phDescribe(it, api, now) {
   var who = (it.people || []).map(function (id) { return phFirst(api, id); });
   var s = PH_DESC[it.scene] || "A photo.";
@@ -2340,7 +2167,6 @@ function phLiveMatch(it, words, now) {
   return words.every(function (w) { var w2 = w.length > 3 && w.slice(-1) === "s" ? w.slice(0, -1) : w; return bag.some(function (b) { return b.indexOf(w) === 0 || b.indexOf(w2) === 0; }); });
 }
 function phWords(q) { return String(q || "").toLowerCase().replace(/'s\b/g, "").replace(/[^a-z0-9 ]/g, " ").split(/\s+/).filter(function (w) { return w && ["of", "at", "the", "in", "on", "from", "with", "and", "photos", "photo", "pictures", "pics", "my", "a"].indexOf(w) < 0; }); }
-var PH_SHARE = ["maya", "priya", "dad", "jordan", "sam", "lena"];
 
 registerView("photos", {
   title: "Photos", icon: "photo", aliases: ["gallery", "pictures"],
@@ -2349,17 +2175,19 @@ registerView("photos", {
   persist: ["list", "trash", "albums"],
   jumps: [[null, "Photos"], ["viewer", "Photo viewer"], ["albums", "Albums"], ["search", "Photo search"]],
   preset: function (sub, api) {
-    if (sub === "viewer") return { open: "p05", from: null };
+    var pr = copy("photos").presets || {};
+    if (sub === "viewer") return pr.viewer || null;
     if (sub === "albums") return { tab: "alb" };
-    if (sub === "search") { var r = phParse("maya beach", api.st.list || PH_SEED, api.now.getTime()); return { filter: r }; }
+    if (sub === "search") { if (!pr.search) return { searching: true }; var r = phParse(pr.search, api.st.list || PH_SEED, api.now.getTime()); return { filter: r }; }
   },
   immersive: function (st) { if (st.open) return { dark: true, noPill: true }; if (st.sel || st.sheet || st.searching) return { noPill: true }; return null; },
   back: phBack,
   suggestions: function (st) {
-    if (st.open) return ["What's in this photo?", "Send this to Maya", "Make it warmer"];
-    return ["Photos of Maya at the beach", "Show Saturday's photos", "Make an album of the hike"];
+    var sg = copy("photos").suggestions || {};
+    if (st.open) return sg.open || ["What's in this photo?", "Make it warmer"];
+    return sg.library || ["Show Saturday's photos", "Show my favorites"];
   },
-  voicePhrase: "Find photos of Maya at the beach",
+  voicePhrase: copy("photos").voicePhrase,
   actions: {
     sendPhoto: function (card, api) { api.toast("Sent to " + (card.to || "").split(" ")[0]); }
   },
@@ -2646,24 +2474,6 @@ var MAPS_H = { 640: "Mission St", 704: "Howard St", 832: "Folsom St", 896: "Harr
 var MAPS_V = { 768: "2nd St", 704: "3rd St", 640: "4th St", 576: "5th St", 512: "7th St", 384: "Valencia St", 320: "Guerrero St" };
 var MAPS_MODES = [["drive", "mapsCar", "Drive"], ["transit", "mapsBus", "Transit"], ["walk", "mapsWalk", "Walk"], ["bike", "mapsBike", "Bike"]];
 /* min: [drive, transit, walk, bike]; open: [from, to] in hours, null = 24h, "none" = no hours (home) */
-var MAPS_PLACES = [
-  { id: "tartine", name: "Tartine", cat: "Bakery", area: "Guerrero St", addr: "600 Guerrero St", x: 320, y: 1216, icon: "mapsFood", mi: 1.9, min: [11, 22, 38, 13], open: [7.5, 17], phone: "(415) 555-0172", web: "tartinebakery.com", pid: "priya", tags: "lunch bakery food bread cafe priya tartine",
-    pts: [[608, 832], [384, 832], [384, 1216], [320, 1216]] },
-  { id: "gym", name: "Equinox SoMa", cat: "Gym", area: "4th St", addr: "4th St & Howard St", x: 640, y: 704, icon: "mapsGym", mi: 0.4, min: [3, 6, 8, 3], open: [5, 22], phone: "(415) 555-0126", web: "equinox.com", tags: "gym workout fitness equinox",
-    pts: [[608, 832], [640, 832], [640, 704]] },
-  { id: "lumen", name: "Lumen studio", cat: "Office", area: "2nd St", addr: "2nd St & Mission St", x: 768, y: 640, icon: "mapsWork", mi: 0.6, min: [4, 9, 12, 5], open: [9, 19], pid: "maya", phone: "(415) 555-0190", web: "lumen.example", tags: "work office studio lumen maya",
-    pts: [[608, 832], [768, 832], [768, 640]] },
-  { id: "home", name: "Home", cat: "Home", area: "Liberty St", addr: "Liberty St, Dolores Heights", x: 224, y: 1344, icon: "mapsHome", mi: 2.4, min: [13, 26, 48, 16], open: "none", tags: "home house",
-    pts: [[608, 832], [384, 832], [384, 1344], [224, 1344]] },
-  { id: "sightglass", name: "Sightglass Coffee", cat: "Coffee", area: "7th St", addr: "270 7th St", x: 512, y: 896, icon: "mapsCup", mi: 0.3, min: [3, 5, 6, 2], open: [7, 18], phone: "(415) 555-0181", web: "sightglasscoffee.com", tags: "coffee cafe espresso",
-    pts: [[608, 832], [576, 832], [576, 896], [512, 896]] },
-  { id: "bluebottle", name: "Blue Bottle Coffee", cat: "Coffee", area: "Mint Plaza", addr: "66 Mint St", x: 576, y: 704, icon: "mapsCup", mi: 0.4, min: [3, 6, 8, 3], open: [7, 17], phone: "(415) 555-0115", web: "bluebottlecoffee.com", tags: "coffee cafe espresso",
-    pts: [[608, 832], [576, 832], [576, 704]] },
-  { id: "philz", name: "Philz Coffee", cat: "Coffee", area: "3rd St", addr: "3rd St & Harrison St", x: 704, y: 896, icon: "mapsCup", mi: 0.2, min: [2, 5, 5, 2], open: [6, 20], phone: "(415) 555-0163", web: "philzcoffee.com", tags: "coffee cafe espresso",
-    pts: [[608, 832], [704, 832], [704, 896]] },
-  { id: "sfo", name: "SFO", cat: "Airport", area: "San Francisco International", addr: "San Francisco International Airport", x: 780, y: 3040, icon: "plane", mi: 13.4, min: [22, 41, 270, 80], open: null, phone: "(650) 555-0100", web: "flysfo.com", tags: "airport sfo flight plane",
-    pts: [[608, 832], [640, 832], [640, 960], [680, 1100], [640, 1500], [560, 1900], [620, 2400], [760, 2850], [780, 3040]] }
-];
 var MAPS_GRID = (function () {
   var d = ""; var x, y;
   for (x = 0; x <= MAPS_WW; x += 64) d += "M" + x + " 0V1700";
@@ -2687,12 +2497,6 @@ var MAPS_DRAG = { on: false, t: 0 };
 function mapsPlace(id) { if (!id) return null; if (String(id).indexOf("addr:") === 0) return mapsAddr(String(id).slice(5)); for (var i = 0; i < MAPS_PLACES.length; i++) if (MAPS_PLACES[i].id === id) return MAPS_PLACES[i]; return null; }
 /* street-address "geocoder": SF streets land on the drawn grid, other cities get a far pin */
 var MAPS_STREETS = { valencia: [384, "v"], guerrero: [320, "v"], dolores: [256, "v"], folsom: [832, "h"], mission: [640, "h"], howard: [704, "h"], harrison: [896, "h"], liberty: [1344, "h"], "18th": [1216, "h"], "2nd": [768, "v"], "3rd": [704, "v"], "4th": [640, "v"], "5th": [576, "v"], "7th": [512, "v"] };
-var MAPS_FAR = [
-  [/mountain view|palo alto/, 36, [48, 95, 720, 190], [[608, 832], [640, 832], [640, 960], [680, 1100], [640, 1500], [560, 1900], [620, 2400], [760, 2850], [700, 3190]]],
-  [/new york|brooklyn|\bny\b/, 2900, null, [[608, 832], [1190, 700]]],
-  [/portland|seattle/, 635, null, [[608, 832], [560, 10]]],
-  [/oakland|berkeley/, 11, [22, 35, 220, 60], [[608, 832], [640, 832], [640, 400], [1190, 380]]]
-];
 function mapsIsAddr(q) { return /^\s*\d+[a-z]?\s+\S+.*\b(st|street|ave|avenue|blvd|rd|road|way|pl|ln|dr|ct)\b/i.test(q || ""); }
 function mapsAddr(a) {
   var parts = a.split(","); var street = parts[0].trim(); var city = (parts.slice(1).join(",").trim()) || "San Francisco";
@@ -2745,16 +2549,14 @@ function mapsSteps(p) {
 }
 function mapsPath(pts) { return pts.map(function (q, i) { return (i ? "L" : "M") + Math.round(q[0]) + " " + Math.round(q[1]); }).join(""); }
 function mapsMatch(t) {
-  if (/tartine|priya|lunch/.test(t)) return "tartine";
-  if (/\bgym\b|equinox|workout/.test(t)) return "gym";
-  if (/lumen|maya'?s (office|studio|work)|\bstudio\b|\bwork\b|\boffice\b/.test(t)) return "lumen";
-  if (/\bhome\b/.test(t)) return "home";
-  if (/\bsfo\b|airport/.test(t)) return "sfo";
-  if (/sightglass/.test(t)) return "sightglass";
-  if (/blue bottle/.test(t)) return "bluebottle";
-  if (/philz/.test(t)) return "philz";
+  for (var i = 0; i < MAPS_MATCH.length; i++) if (MAPS_MATCH[i][0].test(t) && mapsPlace(MAPS_MATCH[i][1])) return MAPS_MATCH[i][1];
   return null;
 }
+/* Home and work stay pinned and saved; both exist only in fixture data. */
+var MAPS_FIX = MAPS_SAVED || {};
+var MAPS_FIXED = [MAPS_FIX.home, MAPS_FIX.work].filter(Boolean);
+function mapsFixed(id) { return MAPS_FIXED.indexOf(id) >= 0; }
+function mapsSavedIds(st) { return MAPS_FIXED.concat((st.saved || []).filter(function (id) { return !mapsFixed(id); })).filter(function (id) { return !!mapsPlace(id); }); }
 function mapsSearch(q) {
   q = (q || "").toLowerCase().trim(); if (!q) return [];
   var words = q.split(/\s+/).filter(function (w) { return w && ["near", "nearby", "me", "the", "a", "find", "around"].indexOf(w) < 0; });
@@ -2782,14 +2584,16 @@ function mapsGoPatch(id, mode) { return { query: null, place: id, directions: id
 registerView("maps", {
   title: "Maps", icon: "pin", aliases: ["map", "directions", "navigation"],
   chat: "hidden",
-  state: { query: null, sheet: "half", place: null, directions: null, mode: "drive", nav: false, prog: 0, voice: true, pan: null, saved: ["tartine"] },
+  state: { query: null, sheet: "half", place: null, directions: null, mode: "drive", nav: false, prog: 0, voice: true, pan: null, saved: (MAPS_FIX.initial || []).slice() },
   persist: ["saved", "voice"],
   jumps: [[null, "Maps"], ["search", "Search results"], ["place", "Place"], ["route", "Directions"], ["nav", "Navigation"]],
   preset: function (sub, api) {
+    var pid = MAPS_FIX.preset;
     if (sub === "search") return { query: "coffee", sheet: "half" };
-    if (sub === "place") return { place: "tartine" };
-    if (sub === "route") return { place: "tartine", directions: "tartine" };
-    if (sub === "nav") { api.later(function () { mapsStartNav(api, "tartine"); api.set({ prog: 0.2 }); }, 30); return { place: "tartine", directions: "tartine" }; }
+    if (!pid) return null;
+    if (sub === "place") return { place: pid };
+    if (sub === "route") return { place: pid, directions: pid };
+    if (sub === "nav") { api.later(function () { mapsStartNav(api, pid); api.set({ prog: 0.2 }); }, 30); return { place: pid, directions: pid }; }
   },
   immersive: function (st) { return st.nav ? { dark: true, noPill: true } : null; },
   ongoing: function (st) {
@@ -2808,20 +2612,24 @@ registerView("maps", {
     return false;
   },
   suggestions: function (st) {
-    if (st.nav) return ["Share my ETA with Maya", "How long left?", "Find coffee on the way"];
+    var sg = copy("maps").suggestions || {};
+    var etaWho = person(MAPS_FIX.sharePerson);
+    if (st.nav) return (etaWho ? ["Share my ETA with " + etaWho.name.split(" ")[0]] : []).concat(["How long left?", "Find coffee on the way"]);
     var p = mapsPlace(st.directions || st.place);
-    if (p) return ["Share my ETA with " + (p.pid ? person(p.pid).name.split(" ")[0] : "Maya"), "How long to walk there?", "Find coffee nearby"];
-    return ["Directions to Tartine", "How long to the gym?", "Find coffee nearby"];
+    var pw = p && p.pid ? person(p.pid) : etaWho;
+    if (p) return (pw ? ["Share my ETA with " + pw.name.split(" ")[0]] : []).concat(["How long to walk there?", "Find coffee nearby"]);
+    return sg.base || ["Find coffee nearby"];
   },
-  voicePhrase: "How long to the gym?",
+  voicePhrase: copy("maps").voicePhrase,
   reply: function (t, raw, api) {
     var st = api.get("maps");
     var modeOf = function () { return /\bwalk/.test(t) ? "walk" : (/\bbike|cycl/.test(t) ? "bike" : (/transit|\bbus\b|train|muni|bart/.test(t) ? "transit" : "drive")); };
     /* share ETA */
     if (/\b(share|send)\b.*\beta\b|\blet (\w+) know i'?m (on my way|coming|close)/.test(t)) {
       var who = null; PEOPLE.forEach(function (p) { if (!who && t.indexOf(p.name.split(" ")[0].toLowerCase()) >= 0) who = p; });
-      who = who || person("maya");
-      var dst = mapsPlace(st.directions) || mapsPlace(who.id === "priya" ? "tartine" : "lumen");
+      who = who || person(MAPS_FIX.sharePerson);
+      var dst = mapsPlace(st.directions) || (who && mapsPlace((MAPS_FIX.shareDest || {})[who.id] || MAPS_FIX.work));
+      if (!who || !dst) return null;
       var left = dst.min[mapsModeI(st.mode)] * (st.nav ? 1 - (st.prog || 0) : 1);
       var body = "On my way to " + dst.name + ". Arriving around " + mapsEta(api, left) + " (" + mapsFmtMin(left) + ").";
       return { text: "Here's your ETA for " + who.name.split(" ")[0] + ".", card: { type: "draft", to: who.name, pid: who.id, body: body, act: { mod: "messages", fn: "sendDraft" } } };
@@ -2837,17 +2645,18 @@ registerView("maps", {
       var q = mapsPlace(id);
       var txt = q.name + " is " + mapsFmtMin(q.min[0]) + " by car, " + mapsFmtMin(q.min[2]) + " on foot.";
       if (/walk/.test(t)) txt = mapsFmtMin(q.min[2]) + " on foot to " + q.name + ", " + mapsMi(q.mi) + " mi.";
-      if (id === "gym") txt += " Leave by 7:20 for your 7:30 session.";
+      if ((copy("maps").placeNotes || {})[id]) txt += " " + copy("maps").placeNotes[id];
       return { text: txt, card: { type: "generic", icon: "mapsRoute", title: q.name, sub: mapsMi(q.mi) + " mi · " + q.area, go: { view: "maps", patch: mapsGoPatch(id, /walk/.test(t) ? "walk" : "drive") } } };
     }
     if (/\b(coffee|cafe|espresso)\b/.test(t) && /\b(find|nearby|near|around|closest|nearest|any|where|on the way)\b/.test(t)) {
       var res = mapsSearch("coffee");
+      if (!res.length) return null;
       return { text: res.length + " within a short walk. " + res[0].name + " is closest.", nav: { view: "maps", patch: { query: "coffee", sheet: "half", place: null, directions: null, nav: false } },
         card: { type: "agenda", go: { view: "maps", patch: { query: "coffee", sheet: "half", place: null, directions: null, nav: false } }, rows: res.map(function (r) { return { time: r.min[2] + " min", title: r.name }; }) } };
     }
-    if (/where am i|my location/.test(t)) return { text: "Folsom St near 4th, in SoMa.", nav: { view: "maps", patch: { query: null, place: null, directions: null, nav: false, pan: null } } };
+    if (copy("maps").whereAmI && /where am i|my location/.test(t)) return { text: copy("maps").whereAmI, nav: { view: "maps", patch: { query: null, place: null, directions: null, nav: false, pan: null } } };
     if (st.nav && /how (long|much) (left|longer)|when will i (get|arrive)/.test(t)) {
-      var d = mapsPlace(st.directions); var l = d.min[mapsModeI(st.mode)] * (1 - (st.prog || 0));
+      var d = mapsPlace(st.directions); if (!d) return null; var l = d.min[mapsModeI(st.mode)] * (1 - (st.prog || 0));
       return { text: mapsFmtMin(l) + " left. You'll get to " + d.name + " at " + mapsEta(api, l) + "." };
     }
     return null;
@@ -2901,7 +2710,7 @@ registerView("maps", {
     /* pins */
     var tapGuard = function () { return Date.now() - MAPS_DRAG.t < 400; };
     var pinList = [];
-    if (mode === "base") { ["home", "lumen"].concat(st.saved || []).forEach(function (id) { if (pinList.indexOf(id) < 0) pinList.push(id); }); }
+    if (mode === "base") { mapsSavedIds(st).forEach(function (id) { if (pinList.indexOf(id) < 0) pinList.push(id); }); }
     else if (mode === "results") pinList = results.map(function (r) { return r.id; });
     else if (mode === "place") pinList = place.far ? [] : [place.id];
     else pinList = [dst.id];
@@ -2928,9 +2737,9 @@ registerView("maps", {
     };
 
     /* saved chips */
-    var chips = ["home", "lumen"].concat((st.saved || []).filter(function (id) { return id !== "home" && id !== "lumen"; })).map(function (id) {
+    var chips = mapsSavedIds(st).map(function (id) {
       var p = mapsPlace(id);
-      return { label: id === "lumen" ? "Work" : p.name, d: IC[p.icon], go: function () { api.set({ place: id, pan: null }); } };
+      return { label: id === MAPS_FIX.work ? MAPS_FIX.workLabel || p.name : p.name, d: IC[p.icon], go: function () { api.set({ place: id, pan: null }); } };
     });
     var cats = [["Coffee", "mapsCup", "coffee"], ["Food", "mapsFood", "food"], ["Gym", "mapsGym", "gym"]].map(function (c) {
       return { label: c[0], d: IC[c[1]], go: function () { api.set({ query: c[2], sheet: "half", place: null, pan: null }); } };
@@ -2940,7 +2749,7 @@ registerView("maps", {
       var h = mapsHours(p, api.now);
       return { name: p.name, d: IC[p.icon], sub: p.cat + " · " + mapsMi(p.mi) + " mi" + (h ? " · " + (h.open ? "Open" : "Closed") : ""), go: function () { api.set({ place: p.id, pan: null }); } };
     };
-    var savedRows = ["home", "lumen"].concat((st.saved || []).filter(function (id) { return id !== "home" && id !== "lumen"; })).map(function (id) { var r = row(mapsPlace(id)); if (id === "lumen") r.name = "Work · Lumen studio"; return r; });
+    var savedRows = mapsSavedIds(st).map(function (id) { var r = row(mapsPlace(id)); if (id === MAPS_FIX.work && MAPS_FIX.workName) r.name = MAPS_FIX.workName; return r; });
     var q = st.query || "";
     var sheetSw = api.sw(function (dx, dy) {
       var order = ["peek", "half", "full"]; var i = order.indexOf(st.sheet || "half");
@@ -2952,18 +2761,18 @@ registerView("maps", {
     /* place card */
     var pc = null;
     if (place) {
-      var ph = mapsHours(place, api.now); var saved = (st.saved || []).indexOf(place.id) >= 0 || place.id === "home" || place.id === "lumen";
+      var ph = mapsHours(place, api.now); var saved = (st.saved || []).indexOf(place.id) >= 0 || mapsFixed(place.id);
       pc = {
         name: place.name, meta: place.cat + " · " + place.area + " · " + mapsMi(place.mi) + " mi", addr: place.addr, d: IC[place.icon],
         hasHours: !!ph, openTxt: ph ? (ph.open ? "Open" : "Closed") : "", hoursTxt: ph ? ph.text : "", openCss: ph && ph.open ? "color: var(--fg)" : "color: var(--mut)",
         min: mapsFmtMin(place.min[0]),
-        hasPhone: !!place.phone, canDir: !place.far, hasWeb: !!place.web, fixed: place.id === "home" || place.id === "lumen",
+        hasPhone: !!place.phone, canDir: !place.far, hasWeb: !!place.web, fixed: mapsFixed(place.id),
         saved: saved, starD: IC.star, starCss: saved ? "color: var(--acct)" : "", starFill: saved ? "fill: currentColor" : "", saveLabel: saved ? "Remove from saved" : "Save",
         close: function () { api.set({ place: null, pan: null }); },
         dirs: function () { api.set({ directions: place.id, pan: null }); },
         call: function () { api.open("phone", { call: null, num: place.phone }); },
         save: function () {
-          if (place.id === "home" || place.id === "lumen") { api.toast(place.id === "home" ? "Home is always saved" : "Work is always saved"); return; }
+          if (mapsFixed(place.id)) { api.toast(place.id === MAPS_FIX.home ? "Home is always saved" : "Work is always saved"); return; }
           var l = (st.saved || []).slice(); var i = l.indexOf(place.id);
           api.set({ saved: i >= 0 ? l.filter(function (x) { return x !== place.id; }) : l.concat([place.id]) });
           if (i >= 0) api.toast(place.name + " removed from saved", { undo: function () { var cur = api.get("maps").saved || []; if (cur.indexOf(place.id) < 0) api.set({ saved: cur.concat([place.id]) }); } });
@@ -2990,10 +2799,11 @@ registerView("maps", {
         close: function () { api.set({ directions: null, place: dst.id, pan: null }); },
         start: function () { mapsStartNav(api, dst.id); },
         shareEta: function () {
-          var who = person(dst.pid || "maya");
+          var who = person(dst.pid || MAPS_FIX.sharePerson);
+          if (!who) { api.open("messages", { compose: true, text: "On my way to " + dst.name + ". Arriving around " + mapsEta(api, m) + " (" + mapsFmtMin(m) + ")." }); return; }
           api.say("Here's your ETA for " + who.name.split(" ")[0] + ".", { type: "draft", to: who.name, pid: who.id, body: "On my way to " + dst.name + ". Arriving around " + mapsEta(api, m) + " (" + mapsFmtMin(m) + ").", act: { mod: "messages", fn: "sendDraft" } });
         },
-        shareLabel: "Share ETA with " + person(dst.pid || "maya").name.split(" ")[0]
+        shareLabel: person(dst.pid || MAPS_FIX.sharePerson) ? "Share ETA with " + person(dst.pid || MAPS_FIX.sharePerson).name.split(" ")[0] : "Share ETA"
       };
       if (mode === "nav") {
         var cur = steps[stepI]; var nxt = steps[stepI + 1];
@@ -3051,39 +2861,6 @@ IC.notesRecDot = IC.notesRecDot || "M12 7.5a4.5 4.5 0 1 1 0 9a4.5 4.5 0 1 1 0-9z
 IC.notesWave = IC.notesWave || "M3 12h2M7 8v8M11 5v14M15 9v6M19 11v2M21 12h0";
 var NOTES_RED = "#E5484D";
 
-var NOTES_SEED = [
-  { id: "sync", kind: "voice", title: "Design sync", when: "Yesterday · 4:10 PM", dur: 408, pinned: false,
-    lines: [
-      { s: "maya", t: "Okay, lock screen first. Notifications stay as icons until you unlock.", at: 0 },
-      { s: "me", t: "Agreed. Voice still works locked, but the answers stay vague.", at: 42 },
-      { s: "sam", t: "What about the chat over other apps?", at: 90 },
-      { s: "maya", t: "Four heights. Pill, input, half, full. You drag between them.", at: 125 },
-      { s: "me", t: "Let's cut the mark button from the recorder. Nobody used it.", at: 190 },
-      { s: "sam", t: "I'll wire the new recorder into Notes by Thursday.", at: 242 },
-      { s: "maya", t: "I'll send the prototype to the team tonight.", at: 315 },
-      { s: "me", t: "And I'll book a review with Jordan for next week.", at: 390 }
-    ],
-    summary: ["Notifications stay as icons until unlock", "Voice works while locked; answers stay vague", "Chat has four heights: pill, input, half, full", "The recorder drops the mark button"],
-    actions: [{ t: "Sam · wire the recorder into Notes by Thursday", done: false }, { t: "Maya · send the prototype to the team tonight", done: true }, { t: "Book a review with Jordan next week", done: false }] },
-  { id: "enclave", kind: "text", title: "Enclave launch", body: "Confirm attestation flow\nShip the keys-on-device doc\nDry run Friday", pinned: true, when: "Today" },
-  { id: "groceries", kind: "list", title: "Groceries", items: [{ t: "Oat milk", done: true }, { t: "Espresso beans", done: false }, { t: "Lemons", done: false }, { t: "Sourdough from Tartine", done: false }], pinned: false, when: "Today" },
-  { id: "agents", kind: "link", title: "The case for on-device agents", url: "news.example/on-device-agents", domain: "news.example", when: "Mon",
-    clips: ["Keys that never leave the device change what an assistant can be trusted with.", "Latency drops below the threshold where talking feels like thinking.", "The phone becomes the agent's body, not just its screen."] },
-  { id: "gifts", kind: "text", title: "Gift ideas · Priya", body: "Film camera, ceramics class.\nShe mentioned the print show at SFMOMA.", pinned: false, when: "Sun" },
-  { id: "landlord", kind: "text", title: "Radiator", body: "Call the landlord Friday. Bedroom radiator clanks all night.", pinned: false, when: "Sep 22" }
-];
-
-/* scripted live transcript for a new recording; each line may add a summary bullet or an action item */
-var NOTES_LIVE = [
-  { s: "me", t: "Quick standup. Maya, where is the prototype?" },
-  { s: "maya", t: "Home and chat are done. Notes and Files land today.", sum: "Home and chat are done; Notes and Files land today" },
-  { s: "sam", t: "The on-device model is twice as fast after the quantization pass.", sum: "On-device model is 2x faster after quantization" },
-  { s: "me", t: "Great. Let's demo that at the design review at three.", act: "Demo the faster model at the 3:00 design review" },
-  { s: "maya", t: "I need the final lock screen copy by noon.", act: "Sam · final lock screen copy to Maya by noon" },
-  { s: "sam", t: "I'll send it. Jordan also wants term sheet notes before four thirty.", sum: "Jordan needs term sheet notes before 4:30" },
-  { s: "me", t: "I'll review the term sheet over lunch.", act: "Review the term sheet over lunch" }
-];
-var NOTES_DICT = ["Ask Jordan about the board seat before signing.", "Pick up the dry cleaning on Thursday.", "Idea: let Alpha draft the weekly review from calendar and notes."];
 var NOTES_WAVE = []; (function () { for (var i = 0; i < 56; i++) NOTES_WAVE.push(Math.round(8 + 26 * Math.abs(Math.sin(i * 0.9) * Math.cos(i * 0.37)) + (i % 3) * 3)); })();
 var NT = { pend: false, recI: null, playI: null, dicI: null, dIdx: 0, undoT: null };
 
@@ -3184,9 +2961,10 @@ registerView("notes", {
   persist: ["list"],
   jumps: [[null, "Notes"], ["editor", "Note editor"], ["rec", "Recording"], ["voice", "Voice note"]],
   preset: function (sub) {
-    if (sub === "editor") return { open: "enclave" };
+    var pr = copy("notes").presets || {};
+    if (sub === "editor") return pr.editor ? { open: pr.editor } : { compose: true };
     if (sub === "rec") return { record: true };
-    if (sub === "voice") return { open: "sync" };
+    if (sub === "voice") return pr.voice ? { open: pr.voice } : null;
   },
   immersive: function (st) { return st.rec || st.record || st.sheet ? { noPill: true } : null; },
   back: function (st, api) {
@@ -3238,9 +3016,10 @@ registerView("notes", {
     if (/(start|begin)\s+(a\s+)?(recording|transcri)|record (this|the) (meeting|call)|^record$|^transcribe/.test(t)) {
       return { text: "Recording. I'll transcribe as we go and summarize when you stop.", nav: { view: "notes", patch: { record: true } } };
     }
-    if (/design sync/.test(t) && /decide|decision|agree|summar|what/.test(t)) {
-      var d = notesFind(st.list, "sync");
-      if (d) return { text: "Four decisions and three follow-ups.", card: { type: "summary", bullets: d.summary.concat(d.actions.map(function (a) { return "Next: " + a.t; })), go: { view: "notes", patch: { open: "sync" } } } };
+    var digest = copy("notes").digest;
+    if (digest && digest.re.test(t) && /decide|decision|agree|summar|what/.test(t)) {
+      var d = notesFind(st.list, digest.id);
+      if (d) return { text: digest.text, card: { type: "summary", bullets: d.summary.concat(d.actions.map(function (a) { return "Next: " + a.t; })), go: { view: "notes", patch: { open: digest.id } } } };
     }
     if (/summar|recap|what did we (decide|say)/.test(t) && /(last|latest|recent)?\s*(recording|meeting|voice note|memo|standup)/.test(t) || (api.active && /what did we decide/.test(t))) {
       var cur = api.active && st.open ? notesFind(st.list, st.open) : null;
@@ -3257,7 +3036,7 @@ registerView("notes", {
         return { text: n.title || "This note", card: { type: "summary", bullets: src.slice(0, 4), title: (n.title || "Note") + " · summary", act: { mod: "notes", fn: "save" } } };
       }
       if (n && n.kind === "voice" && /share|send/.test(t) && /action|follow|item|summary|notes/.test(t)) {
-        var pid = null; n.lines.forEach(function (l) { if (!pid && l.s !== "me") pid = l.s; }); var p = api.person(pid) || { name: "Maya Chen" };
+        var pid = null; n.lines.forEach(function (l) { if (!pid && l.s !== "me") pid = l.s; }); var p = api.person(pid) || { name: pid || "Attendees" };
         return { text: "Here's a draft to " + p.name.split(" ")[0] + ".", card: { type: "draft", to: p.name, pid: pid, body: "From " + n.title + ": " + n.actions.map(function (a) { return a.t; }).join("; ") + ".", act: { mod: VIEWS.messages && VIEWS.messages.actions && VIEWS.messages.actions.sendDraft ? "messages" : "notes", fn: VIEWS.messages && VIEWS.messages.actions && VIEWS.messages.actions.sendDraft ? "sendDraft" : "sendShare" } } };
       }
     }
@@ -3332,6 +3111,7 @@ registerView("notes", {
         dictLabel: st.dict ? "Stop dictation" : "Dictate", dictCss: st.dict ? "background: var(--acc); color: #fff" : "",
         dictate: function () {
           if (api.get("notes").dict) { clearInterval(NT.dicI); NT.dicI = null; api.set({ dict: false }); return; }
+          if (!NOTES_DICT.length) { api.toast("Dictation is not connected"); return; }
           var phrase = NOTES_DICT[NT.dIdx++ % NOTES_DICT.length]; var i = 0; var id = n.id;
           api.set({ dict: true });
           clearInterval(NT.dicI);
@@ -3458,26 +3238,8 @@ registerView("notes", {
 IC.contactsGift = IC.contactsGift || "M4 11h16v9H4zM3 8h18v3H3zM12 8v12M12 8c-1.5-3-5-3.5-5-1.5S12 8 12 8zM12 8c1.5-3 5-3.5 5-1.5S12 8 12 8z";
 IC.contactsNote = IC.contactsNote || "M5 6h14M5 10h14M5 14h9M5 18h6";
 
-var CT_EXTRA = {
-  maya: { address: "1450 Valencia St, San Francisco", birthday: "Mar 14" },
-  jordan: { address: "88 Greenwich St, New York", birthday: "Nov 2" },
-  priya: { address: "212 Castro St, Mountain View", birthday: "Jul 9" },
-  sam: { address: "", birthday: "Jan 27" },
-  lena: { address: "31 Bedford Ave, Brooklyn", birthday: "" },
-  dad: { address: "2210 NE Alberta St, Portland", birthday: "Oct 11" }
-};
-var CT_MORE = [
-  { id: "ana", first: "Ana", last: "Torres", phone: "(415) 555-0171", email: "ana@torres.example", address: "", birthday: "May 3", note: "Climbing partner", fav: false },
-  { id: "ben", first: "Ben", last: "Adler", phone: "(415) 555-0163", email: "ben@adler.example", address: "", birthday: "", note: "Accountant", fav: false },
-  { id: "kenji", first: "Kenji", last: "Sato", phone: "(206) 555-0148", email: "kenji@sato.example", address: "", birthday: "Dec 5", note: "", fav: false },
-  { id: "olivia", first: "Olivia", last: "Brooks", phone: "(415) 555-0126", email: "olivia@brooks.example", address: "77 Dolores St, San Francisco", birthday: "", note: "Landlord", fav: false }
-];
 function ctIni(first, last) { var s = ((first || "").charAt(0) + (last || "").charAt(0)).toUpperCase(); return s || "#"; }
 function ctMake(p) { var name = ((p.first || "") + " " + (p.last || "")).trim(); return Object.assign({}, p, { name: name || p.phone || "No name", ini: ctIni(p.first, p.last) }); }
-var CT_SEED = PEOPLE.map(function (p) {
-  var parts = p.name.split(" ");
-  return Object.assign({}, p, { first: parts[0], last: parts.slice(1).join(" "), address: "", birthday: "" }, CT_EXTRA[p.id] || {});
-}).concat(CT_MORE.map(ctMake));
 
 var CT_FIELDS = ["first", "last", "phone", "email", "address", "birthday", "note"];
 function ctList(api) { return api.get("contacts").list || CT_SEED; }
@@ -3559,7 +3321,7 @@ registerView("contacts", {
   persist: ["list"],
   jumps: [[null, "Contacts"], ["detail", "Contact"], ["edit", "Edit contact"]],
   preset: function (sub) {
-    if (sub === "detail") return { open: "maya" };
+    if (sub === "detail") return copy("contacts").presetDetail ? { open: copy("contacts").presetDetail } : null;
     if (sub === "edit") return { open: "jordan", edit: "jordan" };
   },
   back: function (st, api) {
@@ -3572,9 +3334,9 @@ registerView("contacts", {
     var p = st.open ? ctGet(st.list || CT_SEED, st.open) : null;
     if (st.edit || st.add) return ["Save it", "Discard changes"];
     if (p) return ["Catch me up on " + p.first, "Text " + p.first, "Edit " + p.first + "'s email"];
-    return ["What's Maya's number?", "Add a contact Alex Kim 415 555 0100", "When is Dad's birthday?"];
+    return copy("contacts").suggestions || ["Add a contact"];
   },
-  voicePhrase: "What's Maya's number?",
+  voicePhrase: copy("contacts").voicePhrase,
   reply: function (t, raw, api) {
     var st = api.st; var list = ctList(api);
     if (api.active && (st.edit || st.add)) {
@@ -3719,9 +3481,8 @@ var FILES_FOLDERS = [
   { id: "Downloads", icon: "filesDown" },
   { id: "Documents", icon: "folder" },
   { id: "Receipts", icon: "filesReceipt" },
-  { id: "Recordings", icon: "wave" },
-  { id: "Northpoint", icon: "folder", parent: "Documents" }
-];
+  { id: "Recordings", icon: "wave" }
+].concat(FILES_FOLDERS_EXTRA);
 var FILES_TYPES = {
   pdf: { label: "PDF", icon: "filesPdf" },
   doc: { label: "Document", icon: "notes" },
@@ -3729,39 +3490,6 @@ var FILES_TYPES = {
   audio: { label: "Audio", icon: "wave" },
   archive: { label: "Archive", icon: "filesZip" }
 };
-var FILES_SEED = [
-  { id: "tartine", name: "Tartine receipt.jpg", type: "image", folder: "Receipts", size: "1.8 MB", when: "Today", scan: "receipt",
-    receipt: { shop: "TARTINE", rows: [["Morning bun", "5.25"], ["Country loaf", "14.00"], ["Cappuccino x2", "11.50"], ["Tip", "7.75"]], total: "38.50" },
-    sum: ["Tartine Bakery, today at 1:48 PM", "Total $38.50, paid with the Visa ending 4417", "Filed under Meals for the September report"] },
-  { id: "termsheet", name: "Northpoint_TermSheet_v3.pdf", type: "pdf", folder: "Downloads", size: "212 KB", when: "Today", from: "jordan",
-    heading: "Summary of Terms", rows: [["Issuer", "Alpha Compute, Inc."], ["Security", "Series A Preferred"], ["Amount", "$8,000,000"], ["Pre-money", "$32,000,000"], ["Liquidation", "1x, non-participating"], ["Board", "2 common · 1 investor · 1 independent"], ["No-shop", "30 days"]], pages: 4,
-    sum: ["$8M Series A at a $32M pre-money, led by Northpoint", "1x non-participating liquidation preference", "Board of four: two common, one investor, one independent", "30-day no-shop; changed from v2: option pool now 12%"] },
-  { id: "designnotes", name: "Design review notes.pdf", type: "pdf", folder: "Documents", size: "1.1 MB", when: "Today",
-    heading: "Design review", rows: [["Date", "Today, 3:00 PM"], ["With", "Maya, Jordan, Sam, Lena"], ["Scope", "Lock screen, chat, Notes"]], pages: 2,
-    sum: ["Review of lock screen, chat heights and the new Notes recorder", "Open question: how vague should locked voice answers be", "Maya to bring the prototype"] },
-  { id: "memo", name: "Voice memo · landlord.m4a", type: "audio", folder: "Recordings", size: "2.4 MB", when: "Yesterday", dur: 72,
-    sum: ["Reminder to call the landlord on Friday", "Bedroom radiator clanks at night", "Ask about the lease renewal date"] },
-  { id: "equinox", name: "Equinox · September.pdf", type: "pdf", folder: "Receipts", size: "96 KB", when: "Sep 26",
-    heading: "Equinox SoMa", rows: [["Membership", "September"], ["Amount", "$215.00"], ["Card", "Visa · 4417"]], pages: 1,
-    sum: ["Equinox SoMa membership for September", "$215.00 charged to the Visa ending 4417", "Renews October 26"] },
-  { id: "proto", name: "Prototype v7.zip", type: "archive", folder: "Downloads", size: "48 MB", when: "Sep 25",
-    contents: ["Main.dc.html", "shell.js", "modules/", "assets/", "README.md"],
-    sum: ["Prototype build 7 from Maya", "5 items, mostly the shell and app modules", "Newer than the build on your home screen"] },
-  { id: "roadmap", name: "Q4 roadmap.docx", type: "doc", folder: "Documents", size: "220 KB", when: "Sep 24",
-    heading: "Q4 roadmap", rows: [["October", "Notes, Files, Wallet"], ["November", "Workflows beta"], ["December", "Enclave launch"]], pages: 3,
-    sum: ["Three launches: apps in October, Workflows in November, Enclave in December", "Hiring two on-device ML engineers", "Risk: model size on older phones"] },
-  { id: "boarding", name: "Boarding pass SFO–JFK.pdf", type: "pdf", folder: "Downloads", size: "180 KB", when: "Sep 20",
-    heading: "Boarding pass", rows: [["Flight", "UA 1542"], ["Date", "Oct 9 · 7:05 AM"], ["Seat", "14A"], ["Gate", "F12"]], pages: 1,
-    sum: ["UA 1542, SFO to JFK, Oct 9 at 7:05 AM", "Seat 14A, gate F12, boarding 6:25", "Already in your calendar"] },
-  { id: "deck", name: "Series A deck v12.pdf", type: "pdf", folder: "Northpoint", size: "6.2 MB", when: "Sep 18",
-    heading: "Alpha Compute", rows: [["Slides", "18"], ["For", "Northpoint partners"]], pages: 18,
-    sum: ["18 slides: problem, device, agent, traction, raise", "Ask: $8M Series A", "Traction slide still shows August numbers"] },
-  { id: "sideletter", name: "Side letter draft.docx", type: "doc", folder: "Northpoint", size: "64 KB", when: "Sep 17",
-    heading: "Side letter", rows: [["Parties", "Northpoint, Alpha Compute"], ["Status", "Draft"]], pages: 2,
-    sum: ["Information rights for Northpoint", "Pro-rata in the next round", "Still a draft; not signed"] },
-  { id: "img2041", name: "IMG_2041.jpg", type: "image", folder: "Downloads", size: "3.1 MB", when: "Sep 14", scan: "photo",
-    sum: ["Photo of Ocean Beach at sunset", "Taken Sep 14 at 7:12 PM", "Also in Photos"] }
-];
 var FL = { undoT: null, playI: null };
 
 function filesFind(list, id) { for (var i = 0; i < list.length; i++) if (list[i].id === id) return list[i]; return null; }
@@ -3800,7 +3528,7 @@ registerView("files", {
   jumps: [[null, "Files"], ["folder", "Folder"], ["preview", "File preview"]],
   preset: function (sub) {
     if (sub === "folder") return { folder: "Downloads" };
-    if (sub === "preview") return { folder: "Downloads", open: "termsheet" };
+    if (sub === "preview") return copy("files").presetPreview || { folder: "Downloads" };
   },
   immersive: function (st) { return st.sheet ? { noPill: true } : null; },
   back: function (st, api) {
@@ -3815,17 +3543,19 @@ registerView("files", {
   },
   onLeave: function () { clearInterval(FL.playI); },
   suggestions: function (st) {
-    if (st.open) return ["Summarize this file", "Send this to Jordan"];
-    if (st.folder === "Receipts") return ["Total my receipts this month", "Find the term sheet"];
-    return ["Find the term sheet", "Show my receipts", "What's taking up space?"];
+    var sg = copy("files").suggestions || {};
+    if (st.open) return sg.open || ["Summarize this file"];
+    if (st.folder === "Receipts") return sg.receipts || ["Show my receipts"];
+    return sg.root || ["Show my receipts"];
   },
-  voicePhrase: "Find the term sheet",
+  voicePhrase: copy("files").voicePhrase,
   reply: function (t, raw, api) {
     var st = api.get("files");
     var cur = api.active && st.open ? filesFind(st.files, st.open) : null;
-    if (/term ?sheet/.test(t) && /\b(find|where|open|show|pull up|get)\b/.test(t) && !/summar/.test(t)) {
-      var ts = filesFind(st.files, "termsheet");
-      if (ts) return { text: "In " + ts.folder + ", from Jordan's email this afternoon.", card: { type: "generic", icon: "filesDoc", title: ts.name, sub: ts.folder + " · " + ts.size, go: { view: "files", patch: { open: "termsheet" } } }, nav: { view: "files", patch: { open: "termsheet" } } };
+    var fs = copy("files").findShortcut;
+    if (fs && fs.re.test(t) && /\b(find|where|open|show|pull up|get)\b/.test(t) && !/summar/.test(t)) {
+      var ts = filesFind(st.files, fs.id);
+      if (ts) return { text: "In " + ts.folder + fs.from, card: { type: "generic", icon: "filesDoc", title: ts.name, sub: ts.folder + " · " + ts.size, go: { view: "files", patch: { open: fs.id } } }, nav: { view: "files", patch: { open: fs.id } } };
     }
     var ff = raw.match(/^\s*(?:find|where(?:'s| is))\s+(?:the\s+|my\s+)?(?:file\s+)?(.+?)\s*(?:file)?\??$/i);
     if (ff && !/\bnotes?\b/i.test(raw)) {
@@ -3835,19 +3565,25 @@ registerView("files", {
     }
     if (/receipts?/.test(t) && /\b(show|find|open|my|where|total)\b/.test(t)) {
       var rs = st.files.filter(function (f) { return f.folder === "Receipts"; });
-      return { text: /total/.test(t) ? "$253.50 across " + rs.length + " receipts this month." : rs.length + " receipts: Tartine $38.50 and Equinox $215.00.", card: { type: "generic", icon: "filesReceipt", title: "Receipts", sub: rs.length + " files · $253.50", go: { view: "files", patch: { folder: "Receipts" } } }, nav: { view: "files", patch: { folder: "Receipts", open: null } } };
+      var rc = copy("files").receipts;
+      if (!rc) return { text: rs.length ? rs.length + (rs.length === 1 ? " receipt" : " receipts") + " in Files. Totals are not calculated." : "No receipts in Files.", nav: { view: "files", patch: { folder: "Receipts", open: null } } };
+      return { text: /total/.test(t) ? rc.total + " across " + rs.length + " receipts this month." : rs.length + " receipts: " + rc.list + ".", card: { type: "generic", icon: "filesReceipt", title: "Receipts", sub: rs.length + " files · " + rc.total, go: { view: "files", patch: { folder: "Receipts" } } }, nav: { view: "files", patch: { folder: "Receipts", open: null } } };
     }
     if (/summar|what'?s in|tl;?dr|key points/.test(t) && (cur || /\b(pdf|file|document|doc|term sheet|receipt)\b/.test(t))) {
-      var f = cur || (/receipt/.test(t) ? filesFind(st.files, "tartine") : /term sheet/.test(t) || /pdf/.test(t) ? filesFind(st.files, "termsheet") : null);
+      var sd = copy("files").summaryDefaults || {};
+      var f = cur || (/receipt/.test(t) ? filesFind(st.files, sd.receipt) : /term sheet/.test(t) || /pdf/.test(t) ? filesFind(st.files, sd.pdf) : null);
       if (f && f.sum) return { text: f.name, card: { type: "summary", title: filesSplit(f.name)[0] + " · summary", bullets: f.sum, act: VIEWS.notes ? { mod: "notes", fn: "save" } : null },
         then: function () { var a = Object.assign({}, api.get("files").asked); a[f.id] = true; api.set({ asked: a }); } };
     }
-    if (/taking up space|storage|free up/.test(t)) {
-      return { text: "38 GB used of 256. Biggest: Prototype v7.zip at 48 MB and 12 GB of video in Photos.", card: { type: "generic", icon: "filesDisk", title: "218 GB free", sub: "Prototype v7.zip · 48 MB", go: { view: "files", patch: { folder: "Downloads" } } } };
+    var storage = copy("files").storage;
+    if (storage && /taking up space|storage|free up/.test(t)) {
+      return { text: storage.text, card: { type: "generic", icon: "filesDisk", title: storage.title, sub: storage.sub, go: { view: "files", patch: { folder: "Downloads" } } } };
     }
     if (cur && /send (this|it)|share (this|it)/.test(t)) {
-      var pid = /jordan/.test(t) ? "jordan" : /maya/.test(t) ? "maya" : /priya/.test(t) ? "priya" : cur.from || "jordan";
-      var p = api.person(pid);
+      var shareTo = copy("files").shareTo || {};
+      var pid = (shareTo.match || []).filter(function (x) { return x[0].test(t); }).map(function (x) { return x[1]; })[0] || cur.from || shareTo.fallback;
+      var p = pid ? api.person(pid) : null;
+      if (!p) return { text: "Choose who to send " + cur.name + " to.", then: function () { api.set({ sheet: "share", sel: null }); } };
       return { text: "Draft to " + p.name.split(" ")[0] + " with " + cur.name + " attached.", card: { type: "draft", to: p.name, pid: pid, body: "Here's " + filesSplit(cur.name)[0] + ". Let me know if anything's off.", act: VIEWS.messages && VIEWS.messages.actions && VIEWS.messages.actions.sendDraft ? { mod: "messages", fn: "sendDraft" } : null } };
     }
     return null;
@@ -3886,7 +3622,7 @@ registerView("files", {
       var n = filesCount(files, d.id);
       return { name: d.id, d: IC[d.icon], sub: n === 1 ? "1 item" : n + " items", go: function () { api.set({ folder: d.id, q: null }); } };
     });
-    locs.push({ name: "Photos", d: IC.photo, sub: "2,184", go: function () { if (VIEWS.photos) api.open("photos"); else api.toast("Opening Photos"); } });
+    locs.push({ name: "Photos", d: IC.photo, sub: copy("files").photosSub || "Photo library", go: function () { if (VIEWS.photos) api.open("photos"); else api.toast("Opening Photos"); } });
     var q = st.q == null ? null : String(st.q).toLowerCase().trim();
     var results = q ? files.filter(function (f) { return filesNorm(f.name + " " + f.folder + " " + (FILES_TYPES[f.type] || {}).label).indexOf(filesNorm(q)) >= 0; }).map(row) : [];
 
@@ -3997,8 +3733,9 @@ registerView("files", {
       top: !st.folder, searching: st.q !== null && st.q !== undefined, notSearching: st.q === null || st.q === undefined,
       q: st.q || "", onQ: function (e) { api.set({ q: e.target.value }); }, search: function () { api.set({ q: "" }); }, endSearch: function () { api.set({ q: null }); },
       hasQuery: !!q, noQuery: !q, results: results, noResults: !!q && results.length === 0,
-      locs: locs, recent: files.slice(0, 5).map(row),
-      storageW: "15%",
+      locs: locs, recent: files.slice(0, 5).map(row), noRecent: files.length === 0, recentEmptyText: "No recent files. Files you open or save appear here.",
+      storageText: copy("files").storageText || "Storage usage unavailable",
+      storageW: copy("files").storageW || "0%",
       inFolder: !!fd, fd: fd,
       isList: !st.grid, isGrid: !!st.grid,
       isSel: isSel, notSel: !isSel, selCount: selCount === 0 ? "Select" : String(selCount), hasSel: selCount > 0, selOp: selCount > 0 ? "1" : ".35",
@@ -4032,31 +3769,6 @@ IC.walGym = IC.walGym || "M7 7v10M4 9.5v5M17 7v10M20 9.5v5M7 12h10";
 IC.walBag = IC.walBag || "M5 8h14l-1 12H6zM9 8V6a3 3 0 0 1 6 0v2";
 IC.walUnlock = IC.walUnlock || "M6 11h12v9H6zM8.5 11V8a3.5 3.5 0 0 1 6.8-1.2";
 
-var WAL_CARDS = [
-  { id: "stone", name: "Household", last4: "0359", kind: "Debit", bg: "#D9D7D0", fg: "#000000", def: false, locked: false, tx: [
-    { id: "s1", m: "Rainbow Grocery", a: 92.40, d: 6, icon: "walBag" },
-    { id: "s2", m: "Cole Hardware", a: 23.10, d: 12, icon: "walBag" }] },
-  { id: "work", name: "Work", last4: "7703", kind: "Credit", bg: "#1F1F1F", fg: "#FFFFFF", def: false, locked: false, tx: [
-    { id: "w1", m: "GPU Reserve", a: 120.00, d: 1, icon: "chip", note: "Compute credits" },
-    { id: "w2", m: "Philz Coffee", a: 7.25, d: 2, icon: "walCup" },
-    { id: "w3", m: "Flight SFO to JFK", a: 389.00, d: 4, icon: "plane" },
-    { id: "w4", m: "GPU Reserve", a: 480.00, d: 6, icon: "chip", note: "Compute credits" },
-    { id: "w5", m: "GPU Reserve", a: 120.00, d: 13, icon: "chip", note: "Compute credits" }] },
-  { id: "blue", name: "Alpha Blue", last4: "4821", kind: "Debit", bg: "#0000FF", fg: "#FFFFFF", def: true, locked: false, tx: [
-    { id: "b1", m: "Tartine", a: 38.50, d: 0, icon: "walFood" },
-    { id: "b2", m: "Sightglass Coffee", a: 6.50, d: 1, icon: "walCup" },
-    { id: "b3", m: "Equinox SoMa", a: 210.00, d: 2, icon: "walGym", note: "Monthly membership" },
-    { id: "b4", m: "Rainbow Grocery", a: 64.18, d: 3, icon: "walBag" },
-    { id: "b5", m: "Transit reload", a: 20.00, d: 5, icon: "walBus" },
-    { id: "b6", m: "Blue Bottle Coffee", a: 5.75, d: 8, icon: "walCup" },
-    { id: "b7", m: "Tartine", a: 24.00, d: 11, icon: "walFood" }] }
-];
-var WAL_TRIPS = [
-  { id: "r1", m: "Bus · 4th St & Folsom St", a: 2.50, d: 0 },
-  { id: "r2", m: "Train · Civic Center", a: 2.50, d: 1 },
-  { id: "r3", m: "Bus · 16th St & Valencia St", a: 2.50, d: 3 }
-];
-var WAL_MERCH = [["Sightglass Coffee", 6.50, "walCup"], ["Blue Bottle Coffee", 5.75, "walCup"], ["Philz Coffee", 7.25, "walCup"]];
 var WAL_NEW_BG = ["#0C0C61", "#3A3A3A", "#5B5BD6"];
 
 function walMoney(a) { return "$" + a.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ","); }
@@ -4088,7 +3800,9 @@ function walQR(seed) {
   for (var y = 0; y < n; y++) for (var x = 0; x < n; x++) { var f = finder(x, y); var on = f === null ? (y === 6 || x === 6 ? (x + y) % 2 === 0 : rnd() === 1) : f; if (on) d += "M" + x + " " + y + "h1v1h-1z"; }
   return d;
 }
-var WAL_QR = { bp: walQR("SFOJFK1482-14A"), ticket: walQR("NIGHTSIGNALS-GA-0412") };
+var WAL_QR = {}; WAL_PASSES.forEach(function (p) { if (p.qr) WAL_QR[p.id] = walQR(p.qr); });
+function walPass(id) { for (var i = 0; i < WAL_PASSES.length; i++) if (WAL_PASSES[i].id === id) return WAL_PASSES[i]; return null; }
+var WAL_TRANSIT = copy("wallet").transit;
 function walWeek(cards, only) {
   var total = 0, n = 0, by = {};
   cards.forEach(function (c) { if (only && c.id !== only) return; c.tx.forEach(function (x) { if (x.d < 7) { total += x.a; n++; by[x.m] = (by[x.m] || 0) + x.a; } }); });
@@ -4106,15 +3820,16 @@ function walFmtExp(v) { var d = v.replace(/\D/g, "").slice(0, 4); return d.lengt
 registerView("wallet", {
   title: "Wallet", icon: "wallet", aliases: ["pay", "cards", "passes"],
   chat: "hidden",
-  state: { cards: WAL_CARDS, open: null, pay: false, card: null, stage: "auth", paid: null, add: null, form: { num: "", exp: "", name: "", cvv: "" }, code: "", transit: 23.40, trips: WAL_TRIPS, calAdded: {}, pays: 0 },
+  state: { cards: WAL_CARDS, open: null, pay: false, card: null, stage: "auth", paid: null, add: null, form: { num: "", exp: "", name: "", cvv: "" }, code: "", transit: WAL_TRANSIT || 0, trips: WAL_TRIPS, calAdded: {}, pays: 0 },
   persist: ["cards", "transit", "trips", "calAdded", "pays"],
   jumps: [[null, "Wallet"], ["card", "Card"], ["pay", "Pay"], ["secure", "Pay from lock"], ["add", "Add card"], ["pass", "Boarding pass"]],
   preset: function (sub, api) {
-    if (sub === "card") return { open: "blue" };
+    var pr = copy("wallet").presets || {};
+    if (sub === "card") return pr.card ? { open: pr.card } : null;
     if (sub === "pay") return { pay: true, stage: "auth" };
     if (sub === "secure") { api.shell({ secure: true }); return { pay: true, stage: "auth" }; }
-    if (sub === "add") return { add: "form", form: { num: "4000 1234 5678 9017", exp: "11/29", name: "", cvv: "" } };
-    if (sub === "pass") return { open: "bp" };
+    if (sub === "add") return { add: "form", form: pr.addForm || { num: "", exp: "", name: "", cvv: "" } };
+    if (sub === "pass") return pr.pass ? { open: pr.pass } : null;
   },
   badge: function () { return false; },
   immersive: function (st, api) {
@@ -4130,9 +3845,10 @@ registerView("wallet", {
   },
   onLeave: function (api) { api.stop(); },
   suggestions: function (st) {
-    if (st.open === "bp") return ["When should I leave for SFO?", "Directions to SFO"];
-    if (st.open && st.open !== "ticket" && st.open !== "transit") return ["How much did I spend on this card?", "Lock this card"];
-    return ["How much did I spend this week?", "Show my boarding pass", "Pay with my work card"];
+    var op = walPass(st.open);
+    if (op && op.suggestions) return op.suggestions;
+    if (st.open && !op && st.open !== "transit") return ["How much did I spend on this card?", "Lock this card"];
+    return copy("wallet").suggestions || ["How much did I spend this week?"];
   },
   voicePhrase: "How much did I spend this week?",
   reply: function (t, raw, api) {
@@ -4143,8 +3859,7 @@ registerView("wallet", {
       var top = w.top[0];
       var bullets = [walMoney(w.total) + " across " + w.n + " purchases" + (c ? " on " + c.name : "")];
       if (top) bullets.push(top + " was the biggest: " + walMoney(w.by[top]));
-      if (!only && w.by["Equinox SoMa"]) bullets.push("Equinox renewed at " + walMoney(w.by["Equinox SoMa"]) + ", as usual");
-      if (!only || only === "work") { var g = w.by["GPU Reserve"]; if (g && top !== "GPU Reserve") bullets.push("GPU Reserve: " + walMoney(g)); }
+      if (copy("wallet").spendNotes) bullets = bullets.concat(copy("wallet").spendNotes(w, only, top, walMoney));
       return { text: walMoney(w.total) + " this week" + (c ? " on " + c.name : "") + (top ? ", mostly " + top + "." : "."), card: { type: "summary", bullets: bullets, go: { view: "wallet", patch: only ? { open: only } : {} } } };
     }
     var pm = t.match(/\bpay (with|using) (?:my |the )?(.+)$/) || (/^(tap to )?pay( now| here)?[.!]?$|contactless/.test(t) ? [t, "", ""] : null);
@@ -4154,12 +3869,13 @@ registerView("wallet", {
       if (cd.locked) return { text: cd.name + " is locked. Unlock it first?", nav: { view: "wallet", patch: { open: cd.id } } };
       return { text: cd.name + " is ready. Hold near the reader.", nav: { view: "wallet", patch: { pay: true, card: cd.id, stage: "auth", open: null, add: null }, chat: "hidden" } };
     }
-    if (/boarding pass|my flight|flight pass|\bgate\b.*flight|which gate/.test(t)) {
-      return { text: "Gate B12, seat 14A. Boarding at 7:25 AM " + walDate(3, api.now).split(",")[0] + ".", card: { type: "generic", icon: "plane", title: "SFO to JFK", sub: walDate(3, api.now) + " · 8:05 AM · Gate B12", go: { view: "wallet", patch: { open: "bp", pay: false, add: null } } },
-        nav: { view: "wallet", patch: { open: "bp", pay: false, add: null } } };
+    var bp = WAL_PASSES.filter(function (p) { return p.reply; })[0];
+    if (bp && /boarding pass|my flight|flight pass|\bgate\b.*flight|which gate/.test(t)) {
+      return { text: bp.reply.text + " " + walDate(bp.day, api.now).split(",")[0] + ".", card: { type: "generic", icon: bp.icon, title: bp.reply.title, sub: walDate(bp.day, api.now) + bp.reply.sub, go: { view: "wallet", patch: { open: bp.id, pay: false, add: null } } },
+        nav: { view: "wallet", patch: { open: bp.id, pay: false, add: null } } };
     }
     if (/\badd (a |my |new |another )?(credit |debit )?card\b/.test(t)) return { text: "Scan it or type it in.", nav: { view: "wallet", patch: { add: "pick", open: null, pay: false } } };
-    if (/transit (card|balance)|\bfare balance/.test(t)) return { text: "Transit has " + walMoney(st.transit) + ".", card: { type: "generic", icon: "walBus", title: "Transit", sub: walMoney(st.transit), go: { view: "wallet", patch: { open: "transit" } } } };
+    if (WAL_TRANSIT != null && /transit (card|balance)|\bfare balance/.test(t)) return { text: "Transit has " + walMoney(st.transit) + ".", card: { type: "generic", icon: "walBus", title: "Transit", sub: walMoney(st.transit), go: { view: "wallet", patch: { open: "transit" } } } };
     var lk = t.match(/\b(lock|freeze|unlock|unfreeze)\b (?:my |this |the )?(.*)card/);
     if (lk) {
       var lid = walFind(lk[2], cards) || (st.open && walCard(cards, st.open) ? st.open : null);
@@ -4184,11 +3900,11 @@ registerView("wallet", {
     var stack = order.map(function (c, i) {
       return Object.assign(vis(c), { mt: i === 0 ? 0 : -174, label: c.name + " card ending " + c.last4, open: function () { set({ open: c.id }); } });
     });
-    var passes = [
-      { id: "bp", title: "SFO → JFK", sub: walDate(3, now) + " · 8:05 AM", d: IC.plane, iconCss: "background: var(--acc); color: #fff", right: "" },
-      { id: "ticket", title: "Night Signals", sub: walDate(4, now) + " · 8:00 PM", d: IC.walTicket, iconCss: "background: var(--s3)", right: "" },
+    var passes = WAL_PASSES.map(function (p) {
+      return { id: p.id, title: p.title, sub: walDate(p.day, now) + " · " + p.time, d: IC[p.icon], iconCss: p.accent ? "background: var(--acc); color: #fff" : "background: var(--s3)", right: "" };
+    }).concat(WAL_TRANSIT != null ? [
       { id: "transit", title: "Transit", sub: "Tap at the gate", d: IC.walBus, iconCss: "background: var(--s3)", right: walMoney(st.transit) }
-    ].map(function (p) { return Object.assign(p, { go: function () { set({ open: p.id }); } }); });
+    ] : []).map(function (p) { return Object.assign(p, { go: function () { set({ open: p.id }); } }); });
 
     /* detail */
     var oc = st.open ? walCard(cards, st.open) : null;
@@ -4215,7 +3931,7 @@ registerView("wallet", {
     }
 
     /* passes */
-    var pass = st.open === "bp" || st.open === "ticket" || st.open === "transit" ? st.open : null;
+    var pass = walPass(st.open) || (st.open === "transit" && WAL_TRANSIT != null) ? st.open : null;
     var calOn = !!(st.calAdded || {})[pass];
     var ps = pass ? {
       isBp: pass === "bp", isTicket: pass === "ticket", isTransit: pass === "transit",
@@ -4223,9 +3939,9 @@ registerView("wallet", {
       calOn: calOn, calOff: !calOn,
       addCal: function () {
         var c = Object.assign({}, api.get("wallet").calAdded || {}); c[pass] = true; set({ calAdded: c });
-        api.open("calendar", { add: pass === "bp" ? { title: "Flight SFO → JFK", off: 3, t: 8 + 5 / 60, d: 5.6, where: "SFO · Gate B12 · Seat 14A", cal: "personal" } : { title: "Night Signals", off: 4, t: 20, d: 3, where: "The Warfield, 982 Market St", cal: "personal" } });
+        var wp = walPass(pass); if (wp && wp.cal) api.open("calendar", { add: wp.cal });
       },
-      dirs: function () { api.open("maps", { query: null, place: null, directions: "sfo", nav: false, mode: "drive" }); },
+      dirs: function () { var wp = walPass(pass); if (wp && wp.place) api.open("maps", { query: null, place: null, directions: wp.place, nav: false, mode: "drive" }); },
       balance: walMoney(st.transit),
       trips: (st.trips || []).map(function (r) { return { m: r.m, sub: walDay(r.d, now), amt: "−" + walMoney(r.a) }; }),
       reload: function () {
@@ -4247,7 +3963,7 @@ registerView("wallet", {
     var closePay = function () { api.stop(); set({ pay: false, stage: "auth", card: null }); if (secure) api.home(); };
     if (payOn) {
       var stage = st.stage || "auth";
-      var mer = WAL_MERCH[(st.pays || 0) % WAL_MERCH.length];
+      var mer = WAL_MERCH.length ? WAL_MERCH[(st.pays || 0) % WAL_MERCH.length] : ["Payment terminal", 0, "walCard"];
       var cycle = function (dir) {
         if (!pc || payable.length < 2 || stage !== "auth" || secure) return;
         var i = payable.indexOf(pc); set({ card: payable[(i + dir + payable.length) % payable.length].id });
@@ -4357,7 +4073,7 @@ var WF_KINDS = {
   Read: { icon: "wfRead", presets: [["Today's calendar", ["Calendar"]], ["Overnight inbox", ["Mail"]], ["New messages", ["Messages"]], ["Today's notes", ["Notes"]], ["Recent files", ["Files"]]] },
   If: { icon: "wfIf", presets: [["It's from a favorite", ["Contacts"]], ["It mentions money", []], ["I'm in a meeting", ["Calendar"]], ["I'm not at home", ["Location"]]] },
   Write: { icon: "edit", presets: [["A short summary", []], ["A draft reply", []], ["A note in Notes", ["Notes"]], ["Tomorrow's first three tasks", []]] },
-  Send: { icon: "send", presets: [["A message to Maya", ["Messages"]], ["An email to me", ["Mail"]], ["A reply to the sender", ["Messages"]]] },
+  Send: { icon: "send", presets: (copy("workflows").sendPresets || []).concat([["An email to me", ["Mail"]], ["A reply to the sender", ["Messages"]]]) },
   Notify: { icon: "bell", presets: [["A notification", []], ["A notification, only if urgent", []]] },
   Speak: { icon: "wave", presets: [["Read it aloud", ["Speaker"]], ["Speak it when I pick up the phone", ["Speaker"]]] },
   Do: { icon: "wfDo", presets: [["Turn on Do Not Disturb", ["Settings"]], ["Turn off Do Not Disturb", ["Settings"]], ["Save the attachment to Files", ["Files"]], ["Add the amount to Wallet", ["Wallet"]]] }
@@ -4371,66 +4087,13 @@ var WF_DAYS = ["Every day", "Weekdays", "Weekends", "Mondays", "Fridays"];
 var WF_EVENTS = [["A deep-work event starts", ["Calendar"]], ["An event ends", ["Calendar"]], ["10 minutes before a meeting", ["Calendar"]]];
 var WF_PLACES = ["I arrive home", "I leave home", "I arrive at work"];
 
-var WF_SEED = [
-  { id: 1, name: "Morning brief", on: true,
-    short: "Spoken rundown of your day, weekdays at 7",
-    summary: "Weekdays at 7, a spoken rundown of your inbox and day the first time you pick up the phone.",
-    trig: { kind: "time", days: "Weekdays", t: 7 },
-    steps: [{ k: "Read", t: "Overnight inbox and today's calendar", apps: ["Mail", "Calendar"] }, { k: "Write", t: "A brief under a minute long", apps: [] }, { k: "Speak", t: "Speak it when I pick up the phone", apps: ["Speaker"] }],
-    runs: [
-      { id: "r11", when: "Today, 7:02 AM", status: "ok", sum: "Spoke a 48-second brief", dur: "2 min",
-        log: [["When", "Started at 7:00 AM, a weekday.", "ok"], ["Read", "14 new emails and 6 events today.", "ok"], ["Write", "Picked the three things that need you: Jordan's term sheet, Maya's prototype, the 3:00 design review.", "ok"], ["Speak", "You picked up the phone at 7:02. Spoke it in 48 seconds.", "ok"]],
-        out: "Morning. Three things today: Jordan sent a revised term sheet, Maya's bringing the prototype to the 3:00 design review, and you've got lunch with Priya at 1." },
-      { id: "r12", when: "Yesterday, 7:00 AM", status: "ok", sum: "Spoke a 41-second brief", dur: "1 min",
-        log: [["When", "Started at 7:00 AM, a weekday.", "ok"], ["Read", "9 new emails and 4 events.", "ok"], ["Write", "Two things need you: roadmap review at 2, coffee with Lena at 8:30.", "ok"], ["Speak", "Spoke it at 7:00 while you were already on the phone.", "ok"]],
-        out: "Morning. Coffee with Lena at 8:30 and the roadmap review at 2. Nothing urgent overnight." },
-      { id: "r13", when: "Fri, 7:00 AM", status: "skip", sum: "You'd already read your inbox", dur: "",
-        log: [["When", "Started at 7:00 AM, a weekday.", "ok"], ["Read", "You'd opened Mail at 6:41 and read everything.", "ok"], ["Write", "Nothing new to say, so I didn't write a brief.", "skip"], ["Speak", "Skipped.", "skip"]], out: "" },
-      { id: "r14", when: "Thu, 7:00 AM", status: "fail", sum: "Calendar access was revoked", dur: "",
-        log: [["When", "Started at 7:00 AM, a weekday.", "ok"], ["Read", "Calendar access was revoked.", "fail"], ["Write", "No brief was created from incomplete sources.", "skip"], ["Speak", "Nothing was spoken.", "skip"]],
-        out: "", fix: "Reconnect your calendar account, then review the sources before running again." }
-    ] },
-  { id: 2, name: "Protect focus", on: true,
-    short: "Only Maya gets through during deep work",
-    summary: "During deep work, everything but Maya waits, and you get what you missed when it ends.",
-    trig: { kind: "event", ev: "A deep-work event starts" },
-    steps: [{ k: "Do", t: "Turn on Do Not Disturb", apps: ["Settings"] }, { k: "If", t: "A message is from Maya, let it through", apps: ["Messages", "Contacts"] }, { k: "Write", t: "A summary of what I missed", apps: [] }, { k: "Notify", t: "A notification when the block ends", apps: [] }],
-    runs: [
-      { id: "r21", when: "Today, 11:00 AM", status: "ok", sum: "Held 5 notifications, let Maya through once", dur: "1 h 30 min",
-        log: [["When", "Deep work started at 11:00 AM.", "ok"], ["Do", "Turned on Do Not Disturb.", "ok"], ["If", "Maya texted at 11:42. Let it through. Held 4 others.", "ok"], ["Write", "Summarized 5 held notifications.", "ok"], ["Notify", "Sent the summary at 12:30 PM.", "ok"]],
-        out: "While you were focused: Jordan emailed the term sheet, Priya confirmed lunch, 3 newsletters." },
-      { id: "r22", when: "Yesterday", status: "skip", sum: "No deep-work block", dur: "",
-        log: [["When", "No deep-work event on your calendar yesterday.", "skip"]], out: "" }
-    ] },
-  { id: 3, name: "Receipts to Files", on: true,
-    short: "Saves receipts from Mail and logs the amount",
-    summary: "Receipts from Mail go to Files › Receipts, and the amount goes to Wallet.",
-    trig: { kind: "email", match: "receipt" },
-    steps: [{ k: "Do", t: "Save the attachment to Files", apps: ["Files"] }, { k: "Do", t: "Add the amount to Wallet", apps: ["Wallet"] }],
-    runs: [
-      { id: "r31", when: "Today, 9:14 AM", status: "fail", sum: "PDF was password-protected", dur: "",
-        log: [["When", "An email from Delta matched “receipt”.", "ok"], ["Do", "Couldn't open the PDF. It's password-protected.", "fail"], ["Do", "Didn't add an amount, since there was nothing to read.", "skip"]],
-        out: "", fix: "Ask me to open it with your Delta password, or forward the receipt without a password." },
-      { id: "r32", when: "Yesterday, 6:05 PM", status: "ok", sum: "Saved Blue Bottle receipt · $6.50", dur: "4 s",
-        log: [["When", "An email from Blue Bottle matched “receipt”.", "ok"], ["Do", "Saved receipt-0928.pdf to Files › Receipts.", "ok"], ["Do", "Added $6.50 to Wallet under Food.", "ok"]], out: "" }
-    ] },
-  { id: 4, name: "Weekly review", on: false,
-    short: "One-page recap of your week, Fridays at 5",
-    summary: "Fridays at 5, a one-page recap of your week's calendar, notes and sent mail, saved to Notes.",
-    trig: { kind: "time", days: "Fridays", t: 17 },
-    steps: [{ k: "Read", t: "This week's calendar, notes and sent mail", apps: ["Calendar", "Notes", "Mail"] }, { k: "Write", t: "A note in Notes", apps: ["Notes"] }],
-    runs: [
-      { id: "r41", when: "Sep 18, 5:00 PM", status: "ok", sum: "Wrote “Week of Sep 14” in Notes", dur: "40 s",
-        log: [["When", "Friday, 5:00 PM.", "ok"], ["Read", "22 events, 6 notes, 31 sent emails.", "ok"], ["Write", "Saved a one-page review to Notes.", "ok"]], out: "" }
-    ] }
-];
 
 function wfAmpm(t) { var h = Math.floor(t), m = Math.round((t - h) * 60); return (h % 12 || 12) + ":" + pad2(m) + " " + (h >= 12 ? "PM" : "AM"); }
 function wfTrigText(tr, api) {
   if (!tr) return "";
   if (tr.kind === "time") return (tr.days || "Every day") + " at " + wfAmpm(tr.t == null ? 18 : tr.t);
   if (tr.kind === "event") return tr.ev || WF_EVENTS[0][0];
-  if (tr.kind === "message") { var p = api.person(tr.person || "maya"); return (p ? p.name.split(" ")[0] : "Someone") + " texts me"; }
+  if (tr.kind === "message") { var p = api.person(tr.person || copy("workflows").triggerPerson); return (p ? p.name.split(" ")[0] : "Someone") + " texts me"; }
   if (tr.kind === "location") return tr.place || WF_PLACES[0];
   if (tr.kind === "email") return "An email mentions “" + (tr.match || "receipt") + "”";
   return tr.text || "";
@@ -4567,9 +4230,10 @@ registerView("workflows", {
   persist: ["flows"],
   jumps: [[null, "Workflows"], ["flow", "Workflow"], ["run", "Run log"], ["failed", "Failed run"], ["new", "Build workflow"]],
   preset: function (sub) {
-    if (sub === "flow") return { open: 1 };
-    if (sub === "run") return { open: 1, run: "latest" };
-    if (sub === "failed") return { open: 1, run: "r14" };
+    var pr = copy("workflows").presets || {};
+    if (sub === "flow") return pr.flow || null;
+    if (sub === "run") return pr.run || null;
+    if (sub === "failed") return pr.failed || null;
     if (sub === "new") return { create: true };
   },
   immersive: function (st) { return (st.build || st.create) && st.sheet ? { noPill: true } : null; },
@@ -4578,7 +4242,7 @@ registerView("workflows", {
     if (st.build || st.create) return ["Every weekday at 6, wrap up my day"];
     var f = st.open != null ? wfFind((st.flows || WF_SEED).filter(wfAllowed), st.open) : null;
     if (f) return ["Run " + f.name + " now", "Why did " + f.name + " run?", "Turn off " + f.name];
-    return ["Every weekday at 6, wrap up my day", "Why did Morning brief run?"];
+    return ["Every weekday at 6, wrap up my day"].concat(copy("workflows").suggestions || []);
   },
   voicePhrase: "Every weekday at 6, wrap up my day",
   back: function (st, api) {
@@ -4839,38 +4503,8 @@ var ST_CONNS = [
   { id: "figma", name: "Figma", scopes: ["Read files you open", "Leave comments you approve"] },
   { id: "spotify", name: "Spotify", scopes: ["See what's playing", "Control playback"] }
 ];
-var ST_NETS = [
-  { id: "home", name: "Alpha Home", lock: true, sig: "Strong" },
-  { id: "studio", name: "Studio 5G", lock: true, sig: "Strong" },
-  { id: "ritual", name: "Ritual Coffee", lock: false, sig: "Good" },
-  { id: "n24", name: "Neighbors_2.4", lock: true, sig: "Weak" }
-];
-var ST_BT = [
-  { id: "buds", name: "Pixel Buds Pro 2", d: "stHeadph", on: true },
-  { id: "car", name: "Car", d: "stCar", on: false },
-  { id: "kb", name: "Keyboard K3", d: "kbd", on: false }
-];
 var ST_VOICES = ["Warm", "Bright", "Low", "Neutral"];
 var ST_PERMS = [["mic", "Microphone", "mic"], ["loc", "Location", "pin"], ["camera", "Camera", "camera"], ["contacts", "Contacts", "user"]].filter(function (x) { return x[0] !== "contacts" || isMvpView("contacts"); });
-var ST_PERM0 = {
-  mic: { alpha: true, phone: true, camera: true, notes: true, messages: true },
-  loc: { alpha: true, maps: true, camera: true, photos: true },
-  camera: { camera: true, messages: true, browser: false },
-  contacts: { alpha: true, phone: true, messages: true, inbox: true }
-};
-var ST_MODELS = [
-  { id: "vision", name: "Vision 2B", size: "1.6 GB", pct: -1 },
-  { id: "speech", name: "Speech", size: "310 MB", pct: 100 },
-  { id: "translate", name: "Translate", size: "900 MB", pct: -1 }
-];
-var ST_LOG = [
-  ["2:15", "Drafted a reply to Maya", "bubble"], ["1:12", "Filed Jordan's term sheet", "mail"], ["12:40", "Moved Gym to 7:30 PM", "cal"],
-  ["9:02", "Summarized 14 emails", "inbox"], ["7:10", "Ran Morning brief", "flow"], ["6:00", "Redaction receipt saved", "shield"]
-];
-var ST_DEVLOG = [
-  ["14:15:02", "agent  reply ok 412ms  tokens 188"], ["14:15:01", "memory recall  k=6  hits 4"], ["14:04:11", "npu  load core-7b-q4  1.9s"],
-  ["13:12:40", "action calendar.move  signed"], ["06:00:00", "redaction receipt  saved"]
-];
 var ST_TOP = { accounts: "Accounts", character: "Character", privacy: "Privacy & data", notifications: "Notifications", wifi: "Wi-Fi", bluetooth: "Bluetooth", mobile: "Mobile data", display: "Display", sound: "Sound & vibration", battery: "Battery", about: "About", developer: "Developer", connections: "Connections", models: "Models" };
 
 function stRow(kind, o) { var r = Object.assign({ label: "", sub: "", val: "" }, o); r[kind] = true; if (kind === 'kSlider') r.valueLabel = r.v; r.hasSub = !!r.sub; r.hasIcon = !!r.d; r.hasVal = !!r.val; return r; }
@@ -4930,13 +4564,10 @@ registerView("settings", {
   state: {
     page: null, acct: null, adding: false, addStep: null, addProv: null, addEmail: "", addPw: "", addServer: "", addLvl: null, busy: null,
     perm: null, log: false, sheet: null, pw: "", playing: null, btScan: false, dl: null,
-    accounts: [
-      { id: "a1", provider: "google", label: "Personal", address: "you@gmail.example", mail: true, calendar: true, contacts: true, access: { mail: "act", calendar: "act", contacts: "read" } },
-      { id: "a2", provider: "microsoft", label: "Work", address: "you@alpha.example", mail: true, calendar: true, contacts: false, access: { mail: "read", calendar: "act", contacts: "read" } }
-    ],
-    conns: { slack: true, github: true },
+    accounts: ST_ACCOUNTS.slice(),
+    conns: Object.assign({}, copy("settings").conns),
     char: { voice: 0, brev: 30, tone: 60, init: 45, wake: true, speak: false, proactive: true },
-    wifiCur: "home", wifiKnown: ["home", "studio"], btDev: ST_BT, textSize: 50, snd: { media: 60, ring: 80, alarm: 70, vib: true },
+    wifiCur: copy("settings").wifiCur || null, wifiKnown: (copy("settings").wifiKnown || []).slice(), btDev: ST_BT, textSize: 50, snd: { media: 60, ring: 80, alarm: 70, vib: true },
     notif: { summaries: true, off: { browser: true, files: true } }, cloud: false, models: ST_MODELS, perms: ST_PERM0,
     mobile: { data: true, roam: false }, memWiped: false, saver: false, cap80: true, verbose: false
   },
@@ -4950,7 +4581,7 @@ registerView("settings", {
   suggestions: function (st) {
     if (st.page === "accounts") return ["Connect my work email", "What can Alpha see?"];
     if (st.page === "privacy") return ["What can Alpha see?", "Wipe your memory"];
-    if (st.page === "wifi") return ["Connect to Ritual Coffee", "Turn off Wi-Fi"];
+    if (st.page === "wifi") return (copy("settings").wifiSuggestions || []).concat(["Turn off Wi-Fi"]);
     if (st.page === "character") return ["Make your replies shorter", "Call yourself Nova"];
     return ["Turn on dark mode", "Connect my work email", "What can Alpha see?"];
   },
@@ -5062,7 +4693,7 @@ registerView("settings", {
       var key = { wifi: "wifi", "wi-fi": "wifi", bluetooth: "bluetooth", display: "display", privacy: "privacy", account: "accounts", accounts: "accounts", notification: "notifications", notifications: "notifications", battery: "battery", model: "models", models: "models", developer: "developer", about: "about", sound: "sound", connection: "connections", connections: "connections", "mobile data": "mobile" }[m[1]];
       return { text: "Here you go.", nav: { view: "settings", patch: { page: key } } };
     }
-    if (/\bbattery\b/.test(t) && /\b(how much|left|level|life|status)\b/.test(t)) return { text: "82%. About a day and six hours left.", card: { type: "generic", icon: "stBattery", title: "82%", sub: "About 1 day 6 hr", go: { view: "settings", patch: { page: "battery" } } } };
+    if (ST_DEVICE && /\bbattery\b/.test(t) && /\b(how much|left|level|life|status)\b/.test(t)) return { text: ST_DEVICE.battery.spoken, card: { type: "generic", icon: "stBattery", title: ST_DEVICE.battery.pct + "%", sub: ST_DEVICE.battery.left, go: { view: "settings", patch: { page: "battery" } } } };
     return null;
   },
   render: function (st, api) {
@@ -5090,18 +4721,18 @@ registerView("settings", {
         { rows: [
           stNav({ d: IC.wifi, label: "Wi-Fi", val: S.q.wifi ? (ST_NETS.filter(function (n) { return n.id === st.wifiCur; })[0] || { name: "On" }).name : "Off", go: go("wifi") }),
           stNav({ d: IC.bt, label: "Bluetooth", val: S.q.bt ? (btOnDev ? btOnDev.name : "On") : "Off", go: go("bluetooth") }),
-          stNav({ d: IC.stSignal, label: "Mobile data", val: S.q.plane ? "Airplane" : (st.mobile.data ? "5G" : "Off"), go: go("mobile") })
+          stNav({ d: IC.stSignal, label: "Mobile data", val: S.q.plane ? "Airplane" : (st.mobile.data ? (ST_DEVICE ? ST_DEVICE.mobile.label : "On") : "Off"), go: go("mobile") })
         ] },
         { rows: [
           stNav({ d: IC.sun, label: "Display", val: cap(api.theme), go: go("display") }),
           stNav({ d: IC.stSpeaker, label: "Sound & vibration", val: S.q.dnd ? "Silent" : "", go: go("sound") }),
           stNav({ d: IC.bell, label: "Notifications", val: st.notif.summaries ? "Summaries" : "", go: go("notifications") }),
-          stNav({ d: IC.stBattery, label: "Battery", val: "82%", go: go("battery") })
+          stNav({ d: IC.stBattery, label: "Battery", val: ST_DEVICE ? ST_DEVICE.battery.pct + "%" : "Unavailable", go: go("battery") })
         ] },
         { rows: [
           stNav({ d: IC.chip, label: "Models", val: "On device", go: go("models") }),
           stNav({ d: IC.code, label: "Developer", go: go("developer") }),
-          stNav({ d: IC.info, label: "About", val: "elizaOS 2.1", go: go("about") })
+          stNav({ d: IC.info, label: "About", val: ST_ABOUT ? ST_ABOUT.summary : "", go: go("about") })
         ] }
       ]
     };
@@ -5137,7 +4768,7 @@ registerView("settings", {
         return stNav({ tile: c.name.charAt(0), tileCss: on ? "background:var(--acc);color:#fff" : "background:var(--s3)", label: c.name, sub: on ? c.scopes[0] : "", val: on ? "" : "Connect", valCss: "color:var(--acct);font-weight:600", trail: on ? IC.check : "", trailCss: "color:var(--acct)", go: function () { set({ sheet: { kind: "conn", id: c.id } }); } });
       }) }] });
     } else if (P === "privacy") {
-      var logN = ST_LOG.length + (api.get("browser").booked ? 1 : 0);
+      var logN = ST_LOG.length + (api.get("browser").booked && BR_LINKS.venue ? 1 : 0);
       p1 = page("Privacy & data", {
         hero: { kBig: true, hasIcon: true, d: IC.shield, iconCss: "background:var(--acc);color:#fff", big: "Redaction on", sub: "Identifiers replaced before hosted requests" },
         groups: [
@@ -5151,7 +4782,7 @@ registerView("settings", {
             stNav({ d: IC.flow, label: "Workflow runs", go: function () { api.open("workflows"); } })
           ] },
           { rows: [
-            stRow("kInfo", { label: "Memory", val: st.memWiped ? "Empty" : "2,418 items · 38 MB" }),
+            stRow("kInfo", { label: "Memory", val: st.memWiped ? "Empty" : (ST_DEVICE ? ST_DEVICE.runtime.memorySize : "Unavailable") }),
             stNav({ d: IC.trash, label: "Wipe memory", danger: true, noChev: true, go: function () { set({ sheet: { kind: "wipe" } }); } })
           ] }
         ] });
@@ -5189,11 +4820,11 @@ registerView("settings", {
     } else if (P === "mobile") {
       p1 = page("Mobile data", { groups: [
         { rows: [
-          stTog({ d: IC.stSignal, label: "Mobile data", aria: "Use mobile data", sub: "Alpha Mobile · 5G" }, st.mobile.data && !S.q.plane, function () { set({ mobile: Object.assign({}, api.get("settings").mobile, { data: !api.get("settings").mobile.data }) }); }),
+          stTog({ d: IC.stSignal, label: "Mobile data", aria: "Use mobile data", sub: ST_DEVICE ? ST_DEVICE.mobile.carrier : "" }, st.mobile.data && !S.q.plane, function () { set({ mobile: Object.assign({}, api.get("settings").mobile, { data: !api.get("settings").mobile.data }) }); }),
           stTog({ label: "Roaming" }, st.mobile.roam, function () { set({ mobile: Object.assign({}, api.get("settings").mobile, { roam: !api.get("settings").mobile.roam }) }); }),
           stTog({ d: IC.plane, label: "Airplane mode" }, S.q.plane, function () { stPlane(api, !api.S.q.plane); })
         ] },
-        { rows: [stRow("kInfo", { label: "This month", val: "3.2 of 20 GB" })] }
+        { rows: [stRow("kInfo", { label: "This month", val: ST_DEVICE ? ST_DEVICE.mobile.usage : "Unavailable" })] }
       ] });
     } else if (P === "display") {
       p1 = page("Display", { hero: { kBig: true, big: "Aa", sub: "Replies, mail and pages", subCss: "font-size:" + Math.round(13 + st.textSize / 100 * 9) + "px;color:var(--fg)" }, groups: [
@@ -5223,15 +4854,15 @@ registerView("settings", {
         }) }
       ] });
     } else if (P === "battery") {
-      p1 = page("Battery", { hero: { kBig: true, big: "82%", sub: "About 1 day 6 hr", hasMeter: true, meter: 82 }, groups: [
+      p1 = page("Battery", { hero: ST_DEVICE ? { kBig: true, big: ST_DEVICE.battery.pct + "%", sub: ST_DEVICE.battery.left, hasMeter: true, meter: ST_DEVICE.battery.pct } : { kBig: true, big: "Unavailable", sub: "Battery level is not reported", hasMeter: false, meter: 0 }, groups: [
         { rows: [
           stTog({ label: "Battery saver" }, st.saver, function () { set({ saver: !api.get("settings").saver }); }),
           stTog({ label: "Charge to 80%" }, st.cap80, function () { set({ cap80: !api.get("settings").cap80 }); })
         ] },
-        { rows: [stRow("kInfo", { d: IC.sun, label: "Screen", val: "31%" }), stRow("kInfo", { d: IC.chip, label: "On-device model", val: "9%" }), stRow("kInfo", { d: IC.bubble, label: "Messages", val: "6%" })] }
-      ] });
+        { rows: (ST_DEVICE ? ST_DEVICE.battery.usage : []).map(function (u) { return stRow("kInfo", { d: IC[u[0]], label: u[1], val: u[2] }); }) }
+      ].filter(function (g) { return g.rows.length; }) });
     } else if (P === "models") {
-      p1 = page("Models", { hero: { kBig: true, hasIcon: true, d: IC.chip, iconCss: "background:var(--acc);color:#fff", big: "Core 7B", sub: "On device · NPU · 4-bit" }, groups: [
+      p1 = page("Models", { hero: { kBig: true, hasIcon: true, d: IC.chip, iconCss: "background:var(--acc);color:#fff", big: ST_DEVICE ? ST_DEVICE.model.name : "No model loaded", sub: ST_DEVICE ? ST_DEVICE.model.sub : "Model details are not reported" }, groups: [
         { rows: [stTog({ label: "Cloud fallback", sub: st.cloud ? "Asks each time, sends only the question" : "Off · nothing leaves this phone" }, st.cloud, function () { set({ cloud: !api.get("settings").cloud }); })] },
         { rows: (st.models || []).map(function (md) {
           var done = md.pct >= 100; var going = md.pct >= 0 && md.pct < 100;
@@ -5246,13 +4877,13 @@ registerView("settings", {
       ] });
     } else if (P === "developer") {
       p1 = page("Developer", { groups: [
-        { rows: [stRow("kInfo", { label: "Runtime", val: "elizaOS 2.1 · running" }), stRow("kInfo", { label: "Uptime", val: "3 d 4 h" }), stRow("kInfo", { label: "NPU", val: "18%" }), stRow("kInfo", { label: "Memory", val: st.memWiped ? "0 items" : "2,418 items" })] },
+        { rows: ST_DEVICE ? [stRow("kInfo", { label: "Runtime", val: ST_DEVICE.runtime.running }), stRow("kInfo", { label: "Uptime", val: ST_DEVICE.runtime.uptime }), stRow("kInfo", { label: "NPU", val: ST_DEVICE.runtime.npu }), stRow("kInfo", { label: "Memory", val: st.memWiped ? "0 items" : ST_DEVICE.runtime.memoryItems })] : [stRow("kInfo", { label: "Runtime", val: "Not reported" })] },
         { rows: [stTog({ label: "Verbose logs" }, st.verbose, function () { set({ verbose: !api.get("settings").verbose }); })] },
         { rows: ST_DEVLOG.map(function (l) { return stRow("kLog", { time: l[0], text: l[1] }); }).concat([stNav({ d: IC.share, label: "Export logs", accent: true, noChev: true, go: function () { api.open("files", { folder: "Downloads" }); api.toast("Logs saved to Downloads"); } })]) }
       ] });
     } else if (P === "about") {
-      p1 = page("About", { hero: { kBig: true, big: "Alpha Compute phone", sub: "Powered by elizaOS" }, groups: [
-        { rows: [stRow("kInfo", { label: "elizaOS", val: "2.1.0" }), stRow("kInfo", { label: "Android", val: "17 · AOSP" }), stRow("kInfo", { label: "Build", val: "AC1.260915" }), stRow("kInfo", { label: "Redaction", val: "4.2" }), stRow("kInfo", { label: "Model", val: "Core 7B" })] },
+      p1 = page("About", { hero: { kBig: true, big: ST_ABOUT ? ST_ABOUT.hero : "Alpha Phone", sub: ST_ABOUT ? ST_ABOUT.sub : "Device details are not reported" }, groups: [
+        { rows: (ST_ABOUT ? ST_ABOUT.rows : [["Device details", "Unavailable"]]).map(function (r) { return stRow("kInfo", { label: r[0], val: r[1] }); }) },
         { rows: [stNav({ label: st.busy === "upd" ? "Checking…" : "Check for updates", accent: true, noChev: true, go: function () { set({ busy: "upd" }); api.later(function () { set({ busy: null }); api.toast("Up to date"); }, 1000); } })] }
       ] });
     }
@@ -5320,7 +4951,7 @@ registerView("settings", {
         return stTog({ d: IC[ap[2]] || IC.grid, label: ap[1], aria: ap[1] + " " + pm[1].toLowerCase() }, on, function () { var ps = Object.assign({}, api.get("settings").perms); var one = Object.assign({}, ps[pm[0]]); one[ap[0]] = !on; ps[pm[0]] = one; set({ perms: ps }); });
       }) }] });
     } else if (P === "privacy" && st.log) {
-      var lg = ST_LOG.slice(); if (api.get("browser").booked) lg.unshift(["now", "Booked Nopa for you (confirmed)", "globe"]);
+      var lg = ST_LOG.slice(); if (api.get("browser").booked && BR_LINKS.venue) lg.unshift(["now", "Booked " + BR_LINKS.venue + " for you (confirmed)", "globe"]);
       p2 = page("Activity", { back: function () { set({ log: false }); }, groups: [
         { rows: lg.map(function (l) { return stNav({ d: IC[l[2]] || IC.check, label: l[1], val: l[0], noChev: true, go: function () {} }); }) },
         { rows: [stNav({ d: IC.flow, label: "Workflow runs", go: function () { api.open("workflows"); } })] }
@@ -5390,7 +5021,8 @@ registerView("settings", {
 var BASE = {
   screen: "boot", bootStep: 0, view: null, shade: false, chat: "input",
   voice: "off", vtext: "", vcap: "", draft: "", editCard: null, typing: false, heads: false, toast: "", hint: false,
-  q: { wifi: true, bt: true, dnd: false, mic: true, loc: true, plane: false, shield: true, torch: false },
+  // Quick-settings facts; tiles stay neutral until a fact is known.
+  q: Object.assign({}, QUICK_SETTINGS),
   nGone: [], nSlide: null, bright: 70, theme: null, fs: null, now: Date.now(),
   charName: "Alpha", vs: {}, secure: false, stack: [], toastUndo: false,
   msgs: []
@@ -5625,7 +5257,7 @@ class Component extends DCLogic {
       // MVP-DEFERRED: SMS digest cards stay out of mock and live discovery.
       // Keep the original fixture data available for a reviewed scope restoration.
       var rows = mockAttentionRows();
-      return { text: rows.length + (rows.length === 1 ? " item needs" : " items need") + " your attention.", card: { type: "digest", rows: rows } };
+      if (rows.length) return { text: rows.length + (rows.length === 1 ? " item needs" : " items need") + " your attention.", card: { type: "digest", rows: rows } };
     }
     return { text: "I can't do that yet. Try opening " + ORDER.filter(isMvpView).map(function (key) { return VIEWS[key].title; }).join(", ") + "." };
   }
@@ -5667,11 +5299,14 @@ class Component extends DCLogic {
   startVoice() {
     var S = this.S(); var self = this;
     if (S.screen === "boot") return;
-    if (!S.q.mic) return this.toast("Listening is off in quick settings");
+    if (S.q.mic === false) return this.toast("Listening is off in quick settings");
+    // The typed-out phrase and spoken answer are a scripted demo (VOICE); without
+    // it there is no simulated listening. Live voice adapters replace this method.
+    if (!VOICE) return this.toast("Voice input is not connected");
     this.clear("v"); clearInterval(this.vI);
     var locked = S.screen === "off" || S.screen === "lock";
     var m = S.view ? this.mod(S.view) : null;
-    var phrase = locked ? "What's next today?" : ((m && m.voicePhrase) || "What does my afternoon look like?");
+    var phrase = locked ? VOICE.locked : ((m && m.voicePhrase) || VOICE.fallback);
     this.setState({ screen: S.screen === "off" ? "lock" : S.screen, voice: "listening", vtext: "", vcap: "", shade: false });
     var i = 0;
     this.vI = setInterval(function () {
@@ -5681,7 +5316,7 @@ class Component extends DCLogic {
         self.later(function () { self.setState({ voice: "thinking" }); }, 450, "v");
         self.later(function () {
           var S2 = self.S(); var lockedNow = S2.screen === "lock";
-          var r = lockedNow ? { text: "Design review at 3. Unlock for details." } : self.reply(phrase);
+          var r = lockedNow ? { text: VOICE.lockedAnswer } : self.reply(phrase);
           var patch = { voice: "speaking", vcap: r.text };
           if (!lockedNow) { var id = Date.now(); patch.msgs = S2.msgs.concat([{ id: id, from: "user", text: phrase }, { id: id + 1, from: "agent", text: r.text, card: r.card || null }]); }
           self.setState(patch);
@@ -5739,20 +5374,18 @@ class Component extends DCLogic {
       return { d: IC[def.icon] || IC.grid, label: def.title, open: function () { self.openView(k); }, badge: def.badge && ["phone", "messages", "inbox"].indexOf(k) >= 0 ? !!def.badge(self.vget(k)) : false };
     });
 
-    var NOTIF = [
-      { id: "n1", d: IC.bubble, who: "Maya Chen", text: "Still on for 3? I can bring the prototype.", time: "2:04", go: { view: "messages", patch: { thread: "maya" } } },
-      { id: "n2", d: IC.mail, who: "Jordan Park", text: "Revised term sheet attached", time: "1:12", go: { view: "inbox", patch: { open: 2 } } },
-      { id: "n3", d: IC.cal, who: "Design review", text: "3:00 PM", time: "2:15", go: { view: "calendar", patch: { open: "c4" } } },
-      { id: "n4", d: IC.shield, who: "Redaction receipt", text: "3 identifiers replaced before the morning brief.", time: "6:00", go: { view: "settings", patch: { page: "privacy" } } }
-    ];
-    var shadeN = NOTIF.filter(function (n) { return isMvpView(n.go.view) && S.nGone.indexOf(n.id) < 0; }).map(function (n) {
+    var NOTIFS = NOTIF.map(function (n) { return Object.assign({}, n, { d: IC[n.icon] || IC.bell }); });
+    var shadeN = NOTIFS.filter(function (n) { return isMvpView(n.go.view) && S.nGone.indexOf(n.id) < 0; }).map(function (n) {
       var s = self.sw(function (dx, dy) { self.setState({ nSlide: n.id }); self.later(function () { var S2 = self.S(); self.setState({ nGone: S2.nGone.concat([n.id]), nSlide: null }); }, 250); }, { axis: "x" });
       var sliding = S.nSlide === n.id;
       return Object.assign({}, n, { down: s.down, up: s.up, tx: sliding ? -420 : 0, op: sliding ? 0 : 1, open: function () { if (self.swallowed()) return; self.setState({ nGone: self.S().nGone.concat([n.id]) }); self.openView(n.go.view, n.go.patch); } });
     });
-    var tileDefs = [["wifi", IC.wifi, "Wi-Fi"], ["bt", IC.bt, "Bluetooth"], ["dnd", IC.moon, "Do not disturb"], ["mic", IC.mic, "Agent can listen"], ["loc", IC.pin, "Location"], ["plane", IC.plane, "Airplane mode"], ["shield", IC.shield, "Enclave lock"], ["torch", IC.torch, "Flashlight"]];
+    var tileDefs = [["wifi", IC.wifi, "Wi-Fi"], ["bt", IC.bt, "Bluetooth"], ["dnd", IC.moon, "Do not disturb"], ["mic", IC.mic, "Agent can listen"], ["loc", IC.pin, "Location"], ["plane", IC.plane, "Airplane mode"]]
+      .concat(QUICK_TILES.map(function (t) { return [t[0], IC[t[1]], t[2]]; }))
+      .concat([["torch", IC.torch, "Flashlight"]]);
     var tiles = tileDefs.map(function (t) {
-      var on = S.q[t[0]];
+      // Without a known fact the tile has no on/off state (no aria-pressed, neutral colors).
+      var known = typeof S.q[t[0]] === "boolean"; var on = known ? S.q[t[0]] : undefined;
       return { d: t[1], label: t[2], on: on, css: on ? "background:var(--acc);color:#fff" : "background:var(--s2);color:var(--fg)", toggle: function () {
         var q = Object.assign({}, self.S().q); q[t[0]] = !q[t[0]];
         if (t[0] === "plane") { if (q.plane) { self.prePlane = { wifi: q.wifi, bt: q.bt }; q.wifi = false; q.bt = false; } else if (self.prePlane) { q.wifi = self.prePlane.wifi; q.bt = self.prePlane.bt; } }
@@ -5822,13 +5455,13 @@ class Component extends DCLogic {
       showIndicator: !P.nativeSystemChrome && (isOn || S.screen === "lock"),
       toast: S.toast, toastOn: !!S.toast, toastUndo: !!S.toastUndo, toastPadR: S.toastUndo ? 5 : 18, doUndo: function () { var f = self.undoFn; self.undoFn = null; self.clear("t"); self.setState({ toast: "", toastUndo: false }); if (f) f(); },
       hasOngoing: !!ongoing && isOn, ongoing: ongoing || {}, sbWifi: S.q.wifi, sbPlane: S.q.plane, apps: apps, toastBottom: imm.toastBottom || ((isOn && (S.chat === "input" || (S.chat === "hidden" && !imm.noPill))) ? 104 : 40),
-      goCalendar: function () { self.openView("calendar", { open: "c4" }); },
+      goCalendar: function () { self.openView("calendar", copy("shell").homeCalendar || null); },
       goTriage: function () { self.send("What needs me?"); },
-      goFlows: function () { self.openView("workflows", { open: 1, run: "latest" }); },
+      goFlows: function () { self.openView("workflows", copy("shell").homeWorkflow || null); },
       goSettings: function () { self.openView("settings"); },
       tiles: tiles, bright: S.bright, onBright: function (e) { self.setState({ bright: +e.target.value }); }, shadeN: shadeN, shadeY: isOn && S.shade ? "0" : "-100%",
-      closeShade: function () { self.setState({ shade: false }); }, clearAll: function () { self.setState({ nGone: NOTIF.map(function (n) { return n.id; }), shade: false }); },
-      lockSum: [{ view: "messages", d: IC.bubble, label: "2 message notifications", c: S.nGone.indexOf("n1") < 0 ? 2 : 0 }, { view: "inbox", d: IC.mail, label: "1 email notification", c: S.nGone.indexOf("n2") < 0 ? 1 : 0 }, { view: "calendar", d: IC.cal, label: "1 calendar notification", c: S.nGone.indexOf("n3") < 0 ? 1 : 0 }].filter(function (x) { return isMvpView(x.view) && x.c > 0; }),
+      closeShade: function () { self.setState({ shade: false }); }, clearAll: function () { self.setState({ nGone: NOTIFS.map(function (n) { return n.id; }), shade: false }); },
+      lockSum: LOCK_SUM.map(function (x) { return { view: x.view, d: IC[x.icon] || IC.bell, label: x.label, c: S.nGone.indexOf(x.notif) < 0 ? x.count : 0 }; }).filter(function (x) { return isMvpView(x.view) && x.c > 0; }),
       lockCamera: function () { self.setState({ screen: "home", secure: true }); self.openView("camera"); },
       msgs: msgs, typing: S.typing, sugg: sugg, showSugg: panelOpen && !S.draft && !S.typing && !voiceOn,
       panelComposer: panelOpen && !voiceOn,
@@ -5854,12 +5487,12 @@ class Component extends DCLogic {
       vTextCss: S.voice === "thinking" ? "color:var(--mut)" : "", vBarColor: S.voice === "thinking" ? "var(--line)" : "var(--acc)", vPlay: S.voice === "thinking" ? "paused" : "running", bars: bars,
       startVoice: function () { self.startVoice(); }, stopVoice: function () { self.stopVoice(); },
       voiceToType: function () { var vt = self.S().vtext; self.stopVoice(); self.setState({ chat: self.S().screen === "home" ? "sheet" : self.S().chat, draft: vt }); },
-      showHeads: isOn && S.heads && !S.shade,
+      showHeads: isOn && S.heads && !S.shade && !!HEADS, headsBanner: HEADS || {},
       headsSw: this.sw(function () { self.setState({ heads: false }); }),
-      headsOpen: function () { if (self.swallowed()) return; self.openView("messages", { thread: "maya" }); },
-      headsOk: function () { self.setState({ heads: false }); self.toast("Confirmed with Maya"); },
+      headsOpen: function () { if (self.swallowed() || !HEADS) return; self.openView("messages", { thread: HEADS.pid }); },
+      headsOk: function () { self.setState({ heads: false }); if (HEADS) self.toast(HEADS.confirmed); },
       headsX: function () { self.setState({ heads: false }); },
-      headsReply: function () { self.setState({ heads: false }); self.agentSay("Here's a reply to Maya.", { type: "draft", to: "Maya Chen", body: "Yes, see you at 3. Bring the prototype!", act: { mod: "messages", fn: "sendDraft" }, pid: "maya" }); },
+      headsReply: function () { self.setState({ heads: false }); if (HEADS) self.agentSay("Here's a reply to " + HEADS.who.split(" ")[0] + ".", { type: "draft", to: HEADS.who, body: HEADS.reply, act: { mod: "messages", fn: "sendDraft" }, pid: HEADS.pid }); },
       fireHeads: function () { var S2 = self.S(); if (S2.screen !== "home") self.unlock(); self.later(function () { self.showHeads(); }, 80); },
       unlock: function () { self.unlock(); }, wake: function () { self.setState({ screen: "lock" }); },
       pDown: function (e) { e.stopPropagation(); self.pLong = false; clearTimeout(self.pT); self.pT = setTimeout(function () { self.pLong = true; self.startVoice(); }, 550); },
@@ -5888,4 +5521,4 @@ class Component extends DCLogic {
 
 
 
-export { Component, VIEWS, ORDER };
+export { Component, VIEWS, ORDER, mockAttentionRows, HOME_DEFAULTS };
