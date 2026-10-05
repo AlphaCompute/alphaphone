@@ -1,3 +1,6 @@
+import type {BrowserJsonDomainDocument} from '../browser/json-domain-document';
+import {withAudioDeletionLock} from './note-audio-lock';
+export {withAudioDeletionLock} from './note-audio-lock';
 import {Capacitor} from '@capacitor/core';
 import {secureConnectionStore} from './native-connection';
 import {NotesStore,NOTES_KEY,type NoteRecord} from './notes-store';
@@ -13,7 +16,13 @@ function validate(value:any):Pending {
  for(const [id,row]of Object.entries(value) as [string,AudioDeletion][]){notesTarget(row.target);if(row.id!==id||!/^[-\w]{1,128}$/.test(id)||row.note.id!==row.target.noteId||row.note.kind!=='voice'||(row.note.audio as any)?.audioId!==row.audioId||(row.note.audio as any)?.noteId!==row.note.id||!row.audioId||(row.audioRequested!==undefined&&row.audioRequested!==true))throw Error('Invalid audio deletion binding');}
  return value;
 }
-async function read(){return android()?secureConnectionStore.read<Pending>(slot):JSON.parse(localStorage.getItem(key)||'null');}
+let document:Promise<BrowserJsonDomainDocument>|undefined;
+export function audioDeletionDocument(){
+ if(android())throw Error('Browser audio recovery is unavailable on this device');
+ return document??=import('../browser/json-domain-document').then(({BrowserJsonDomainDocument})=>new BrowserJsonDomainDocument(key));
+}
+export async function audioDeletionRecovery(){const domain=await audioDeletionDocument();return {capture:domain.capture.bind(domain),reset:(expected:Parameters<typeof domain.reset>[0],signal?:AbortSignal)=>withAudioDeletionLock(()=>domain.reset(expected,signal),signal)};}
+async function read(){return android()?secureConnectionStore.read<Pending>(slot):(await audioDeletionDocument()).readJson<Pending>();}
 export async function pendingAudioDeletions(){
  const rows=validate(await read());
  for(const row of Object.values(rows)){
@@ -24,28 +33,21 @@ export async function pendingAudioDeletions(){
  return rows;
 }
 export async function changeAudioDeletion(row:AudioDeletion,create:boolean,updated?:AudioDeletion){
- const change=async()=>{const raw=await read(),all=validate(raw),prior=all[row.id];
- if(create?(!!prior||Object.values(all).some(x=>x.note.id===row.note.id)):JSON.stringify(prior)!==JSON.stringify(row))throw Error('Audio deletion changed');
- const next={...all};if(create||updated)next[row.id]=updated||row;else delete next[row.id];validate(next);
- if(android()){if((await secureConnectionStore.compareExchange(slot,raw,next)).status!=='saved')throw Error('Audio deletion changed');}
- else {if(localStorage.getItem(key)!==(raw===null?null:JSON.stringify(raw)))throw Error('Audio deletion changed');localStorage.setItem(key,JSON.stringify(next));}
- if(JSON.stringify((await pendingAudioDeletions())[row.id]||null)!==JSON.stringify(updated||(create?row:null)))throw Error('Audio deletion persistence unconfirmed');};
- if(android())return change();if(!navigator.locks?.request)throw Error('Safe browser storage requires Web Locks');return navigator.locks.request(key,{mode:'exclusive'},change);
+ const change=(raw:Pending|null)=>{const all=validate(raw),prior=all[row.id];
+  if(create?(!!prior||Object.values(all).some(x=>x.note.id===row.note.id)):JSON.stringify(prior)!==JSON.stringify(row))throw Error('Audio deletion changed');
+  const next={...all};if(create||updated)next[row.id]=updated||row;else delete next[row.id];validate(next);return next;
+ };
+ if(android()){const raw=await secureConnectionStore.read<Pending>(slot);if((await secureConnectionStore.compareExchange(slot,raw,change(raw))).status!=='saved')throw Error('Audio deletion changed');}
+ else await(await audioDeletionDocument()).editJson<Pending>(change);
+ if(JSON.stringify((await pendingAudioDeletions())[row.id]||null)!==JSON.stringify(updated||(create?row:null)))throw Error('Audio deletion persistence unconfirmed');
 }
 /** Read authoritative storage, never an optimistic editor snapshot. No mutation/replay. */
 export async function audioDeletionNoteState(row:AudioDeletion):Promise<'deleted'|'original'|'changed'>{
  const saved=android()?await secureConnectionStore.read<{currentRaw:string}>(SECURE_NOTES_SLOT):null;
- const raw=android()?saved?.currentRaw:localStorage.getItem(NOTES_KEY);if(typeof raw!=='string')throw Error('Notes readback unavailable');
+ const raw=android()?saved?.currentRaw:await(await import('./browser-notes-document')).readBrowserNotesRaw();if(typeof raw!=='string')throw Error('Notes readback unavailable');
  const store=new NotesStore({getItem:k=>k===NOTES_KEY?raw:null,setItem:()=>{throw Error('Read-only Notes recovery');}});
  const note=store.list.find(n=>n.id===row.note.id),envelope=JSON.parse(raw);
  if(!note&&store.list.some(n=>(n.audio as any)?.audioId===row.audioId))return 'changed';
  if(!note)return envelope.collectionId===row.target.sourceId&&envelope.deleted.some((d:any)=>d.id===row.note.id&&d.revision===row.target.revision&&d.operationId===row.id)?'deleted':'changed';
  return JSON.stringify(await store.target(row.note.id))===JSON.stringify(row.target)?'original':'changed';
-}
-
-/** Serialize app-owned deletion, restoration and reconciliation across same-origin views.
- * Missing coordination fails closed; storage CAS alone cannot fence audio effects. */
-export async function withAudioDeletionLock<T>(work:()=>Promise<T>):Promise<T>{
- if(!navigator.locks?.request)throw Error('Safe audio recovery requires Web Locks');
- return navigator.locks.request('alpha.notes-audio-effects.v1',{mode:'exclusive'},work);
 }

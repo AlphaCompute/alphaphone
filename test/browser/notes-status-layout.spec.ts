@@ -14,7 +14,7 @@ for(const theme of ['light','dark'])for(const viewport of [{width:360,height:740
   };
   await page.getByRole('button',{name:'New note',exact:true}).click();
   await page.getByRole('textbox',{name:'Title',exact:true}).fill('Status layout');await page.getByRole('textbox',{name:'Note',exact:true}).fill('Original');
-  await page.evaluate(()=>{const set=Storage.prototype.setItem;Storage.prototype.setItem=function(key,value){if(key==='alphaphone:notes:v2')throw new DOMException('Full','QuotaExceededError');return set.call(this,key,value);};});
+  await page.evaluate(()=>{const set=IDBObjectStore.prototype.put;IDBObjectStore.prototype.put=function(value,key){if(key==='alpha.browser.notes.v1')throw new DOMException('Full','QuotaExceededError');return set.call(this,value,key);};});
   await page.getByRole('textbox',{name:'Note',exact:true}).fill('Keep this unsaved text');
   await expect(status).toContainText('Keep this screen open');await check();
   const controls=await page.getByRole('button',{name:'Back to notes',exact:true}).boundingBox(),bounds=await status.boundingBox();expect(controls!.y).toBeGreaterThanOrEqual(bounds!.y+bounds!.height-.5);
