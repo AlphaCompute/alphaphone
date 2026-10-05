@@ -6,6 +6,7 @@ import { developmentWorkflowDraftStore } from '../runtime/local-agent-storage';
 import { connectionController } from '../runtime/connection-ui';
 import { normalizePhoneSpec, assertPhoneCapabilities, type PhoneSpec, type PhoneStep, type PhoneCatalog } from '../runtime/phone-workflow-authoring';
 import { workflowSha, workflowBytes } from '../runtime/workflow-device-contract';
+import { checkWorkflowScope, WORKFLOW_OPERATION_LABELS } from './workflow-scope';
 import type { RemoteWorkflow } from '../runtime/workflow-protocol';
 type Bag=Record<string,any>;
 type Pending={mutationId:string;specDigest:string;compilerRevision:string;workflowId?:string;versionId?:string};
@@ -72,11 +73,14 @@ export function createWorkflowAuthoring(owner:()=>any,publish:()=>void,onSaved:(
   if(!describeOn||!draft||!catalog||locked())return;
   const binding=connectionController.getWorkflowClient();if(!binding)return;
   const baseline=JSON.stringify(draft.spec),token=generation,target=connectionController.getWorkflowDeviceTarget()??undefined,prompt=descriptionPrompt;
+  const operations=catalog.palette.flatMap(p=>p.operations.filter(o=>o.available&&supported(o.id)).map(o=>o.id));
+  // Unsupported scope is refused on the phone; the request never reaches the agent or its model.
+  const scope=checkWorkflowScope(prompt,operations);if(scope.refused){generated=null;status=scope.message;toast(scope.message);publish();return;}
   let existing:PhoneSpec|undefined;try{if(draft.spec.steps.length)existing=normalizePhoneSpec(draft.spec);}catch(error){status=(error as Error).message;publish();return;}
   const capabilities=catalog;controller=new AbortController();const signal=controller.signal;busy=true;generating=true;generated=null;status='Generating a draft for you to review…';publish();
   const valid=()=>active&&describeOn&&token===generation&&!signal.aborted&&!document.hidden&&binding.sessionId===connectionController.getWorkflowClient()?.sessionId&&JSON.stringify(draft?.spec)===baseline;
-  try{await localSaved();if(!valid())return;const spec=await binding.client.generatePhone(prompt,capabilities,capabilities.palette.flatMap(p=>p.operations.filter(o=>o.available&&supported(o.id)).map(o=>o.id)),signal,existing,target);if(!valid())return;generated=spec;generatedBaseline=baseline;generatedSession=binding.sessionId;status='Review every generated step below. Use draft replaces the local editor contents; Save and Run remain separate.';}
-  catch(error){if(valid())status=error instanceof Error?error.message:'Generation failed. Your current draft is unchanged.';}
+  try{await localSaved();if(!valid())return;const spec=await binding.client.generatePhone(prompt,capabilities,operations,signal,existing,target);if(!valid())return;generated=spec;generatedBaseline=baseline;generatedSession=binding.sessionId;status='Review every generated step below. Use draft replaces the local editor contents; Save and Run remain separate.';}
+  catch(error){if(valid()){const message=error instanceof Error?error.message:'Generation failed.';status=message.startsWith('Workflow needs clarification: ')?message+' Your current draft and request are unchanged; edit the request and generate again.':error instanceof Error?error.message:'Generation failed. Your current draft is unchanged.';}}
   finally{if(token===generation){busy=false;generating=false;controller=null;publish();}}
  }
  function useGenerated(){if(!generated||locked()||!draft)return;if(generatedSession!==connectionController.getWorkflowClient()?.sessionId||generatedBaseline!==JSON.stringify(draft.spec)||JSON.stringify(generated.device)!==JSON.stringify(connectionController.getWorkflowDeviceTarget()??undefined)){generated=null;status='Connection or draft changed. Generate and review again.';publish();return;}const spec=generated;change(()=>{draft!.spec=spec;generated=null;describeOn=false;sheet=null;});}
@@ -92,7 +96,7 @@ export function createWorkflowAuthoring(owner:()=>any,publish:()=>void,onSaved:(
  }
  const generatedSteps=generated?.steps.map((s,i)=>{
   const input=s.source?'Input: step '+(generated!.steps.findIndex(p=>p.id===s.source)+1)+'\n':'';
-  const title:Record<string,string>={supplied_text:'Read supplied text',selected_notes:'Read selected Notes',calendar_range:'Read Calendar range',contains:'Continue if text matches',compose_draft:'Compose text',model_draft:'Ask the agent to draft text',save_note:'Save a note',app_notification:'Post a notification',read_aloud:'Read aloud'};
+  const title:Record<string,string>={...WORKFLOW_OPERATION_LABELS,calendar_range:'Read Calendar range'};
   let text='';
   if(s.operation==='supplied_text')text=s.text;
   else if(s.operation==='selected_notes')text=s.notes.map((n:Bag)=>(owner()?.vget('notes').list??[]).find((note:Bag)=>note.id===n.id)?.title||n.id).join('\n');
