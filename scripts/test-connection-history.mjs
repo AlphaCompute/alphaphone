@@ -37,7 +37,7 @@ const nativeCloudRequest = async input => {
 };
 let clockRetirements=0,heldClockRetirement=null,clockRetirementStarted=null;
 const retireClockReviews=async()=>{clockRetirements++;clockRetirementStarted?.();if(heldClockRetirement)await heldClockRetirement;};
-const sandbox = { retireClockReviews, workflowPresentationProtocol:async()=>2, browserDevProfile:false, secureConnectionStore:{read:async()=>null,write:async()=>{},remove:async()=>{}}, pauseHostedBackground:async()=>{}, configureHostedBackground:async()=>{}, registerPlugin: () => ({}), CloudProtocol, CloudProvisionAcceptedError, phoneContextMessage, nativeCloudRequest,
+const sandbox = { retireClockReviews, workflowPresentationProtocol:async()=>2, browserDevProfile:false, devProfileQuery:false, testMocksEnabled:false, devSurfacesEnabled:false, secureConnectionStore:{read:async()=>null,write:async()=>{},remove:async()=>{}}, pauseHostedBackground:async()=>{}, configureHostedBackground:async()=>{}, registerPlugin: () => ({}), CloudProtocol, CloudProvisionAcceptedError, phoneContextMessage, nativeCloudRequest,
   cloudCredentialStore: { read: async () => credential, write: async (_environment, value) => { credential = value; }, clear: async () => { credential = null; } },
   openConnectionBrowser: async () => { throw new Error('Unexpected browser effect'); },
   isAndroid: false, localStorage: { getItem: key => memory.get(key) ?? null, setItem: (key, value) => memory.set(key, value), removeItem: key => memory.delete(key) },

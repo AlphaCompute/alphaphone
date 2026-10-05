@@ -839,7 +839,7 @@ export function ConnectionChooser() {
   return <div className="alpha-connection-scrim"><div className="alpha-connection" role="dialog" aria-modal="true" aria-labelledby="connection-title" tabIndex={-1} ref={panel}>
     <header><span className="alpha-connection-logo serif">a</span><button aria-label="Close connection settings" disabled={snapshot.busy} onClick={() => connectionController.close()}>×</button></header>
     <h1 id="connection-title" className="serif">Your agent.<br />Your phone.</h1>
-    <p>Run your agent locally, or connect an optional remote agent. Model inference uses the provider configured for that agent.</p>
+    <p>{browserOnly ? 'Connect your own remote agent or Eliza Cloud.' : 'Run your agent locally, or connect an optional remote agent.'} Model inference uses the provider configured for that agent.</p>
     {browserOnly ? <section className="alpha-connection-notice"><h3>This browser has no on-device agent</h3>
       <p>The web version of Alpha Phone does not run an agent itself. Connect your own remote agent, sign in with Eliza Cloud, or continue offline with local apps such as Notes and Calendar.</p>
     </section> : <section><h3>{isAndroid ? 'On-device agent' : 'Agent on this computer'}</h3>
