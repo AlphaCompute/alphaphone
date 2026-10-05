@@ -1,12 +1,61 @@
-/** Root-owned exact archived-APK native workflow campaign. Never builds or starts a backend. */
-import fs from 'node:fs';import path from 'node:path';import crypto from 'node:crypto';import assert from 'node:assert/strict';import {spawn} from 'node:child_process';import {androidEnv} from './toolchain.mjs';
-import {requireInstrumentationSuccess} from './instrumentation-result.mjs';
-const serial=process.env.ANDROID_SERIAL,archive=process.env.ALPHA_BUILD_ARCHIVE;assert.match(serial||'',/^emulator-\d+$/);assert.ok(archive,'Set ALPHA_BUILD_ARCHIVE');const out=path.resolve(process.env.ALPHA_CAMPAIGN_OUTPUT||path.join(archive,'workflow-native'));assert.ok(out.startsWith(path.resolve('test-results')+path.sep));assert.equal(fs.existsSync(out),false,'Use a new evidence folder');const manifest=JSON.parse(fs.readFileSync(path.join(archive,'apk-manifest.json'))),env=androidEnv(),adb=path.join(env.ANDROID_HOME,'platform-tools/adb'),app=JSON.parse(fs.readFileSync('app.config.json')).appId,hash=p=>crypto.createHash('sha256').update(fs.readFileSync(p)).digest('hex');fs.mkdirSync(out,{recursive:true});
-const permissions=['android.permission.READ_CALENDAR','android.permission.WRITE_CALENDAR'];
-let interrupted=false,restoring=false,activeChild=null;for(const signal of ['SIGINT','SIGTERM'])process.on(signal,()=>{interrupted=true;activeChild?.kill('SIGTERM');});
-function run(args){if(interrupted&&!restoring)return Promise.reject(Error('Campaign interrupted'));return new Promise((resolve,reject)=>{const child=spawn(adb,['-s',serial,...args],{env,stdio:['ignore','pipe','pipe']});activeChild=child;let text='';const timer=setTimeout(()=>{child.kill('SIGTERM');reject(Error('Bounded device command timed out'));},args.includes('instrument')?240000:120000);child.stdout.on('data',c=>{text+=c;if(text.length>2e6)child.kill('SIGTERM');});child.stderr.resume();child.on('error',()=>{clearTimeout(timer);reject(Error('Device command unavailable'));});child.on('close',code=>{if(activeChild===child)activeChild=null;clearTimeout(timer);if(code===0)resolve(text);else reject(Object.assign(Error('Device command failed'),{instrumentation:text}));});});}
-function snapshot(dump){return permissions.map(permission=>{const lines=dump.split('\n').filter(l=>l.includes(permission+': granted='));assert.equal(lines.length,1,'Expected one primary-user Calendar permission record');const line=lines[0],match=line.match(/flags=\[([^\]]*)\]/);assert.ok(match,'Missing permission flags');const flags=match[1].split('|').map(f=>f.trim()).filter(Boolean).sort();assert.doesNotMatch(flags.join('|'),/SYSTEM_FIXED|POLICY_FIXED|ONE_TIME/,'Refuse fixed or one-time permissions before mutation');return{permission,granted:line.includes('granted=true'),flags};});}
-async function restore(previous){restoring=true;try{const errors=[];for(const row of previous){try{await run(['shell','pm',row.granted?'grant':'revoke',app,row.permission]);await run(['shell','pm','clear-permission-flags',app,row.permission,'user-set','user-fixed']);const userFlags=row.flags.filter(f=>['USER_SET','USER_FIXED'].includes(f)).map(f=>f.toLowerCase().replaceAll('_','-'));if(userFlags.length)await run(['shell','pm','set-permission-flags',app,row.permission,...userFlags]);}catch{errors.push(row.permission);}}const after=snapshot(await run(['shell','dumpsys','package',app]));assert.deepEqual(after,previous,'Restore must match every grant and flag, including untouched system flags');assert.equal(errors.length,0,'Permission restore commands failed');return after;}finally{restoring=false;}}
-const cases=[{class:'WorkflowPhoneNativeInstrumentedTest',method:'privateReadResultSurvivesRecreationButNeverExpandsPassiveHistory',gate:'workflowPhoneNative',grant:true,cleanup:'Exact UUID-owned journal slots removed and encrypted files absent'}, {class:'WorkflowPhoneNativeInstrumentedTest',method:'selectedCalendarQueryExcludesOtherAccountsAndRefusesOverflow',gate:'workflowPhoneNative',grant:true,cleanup:'Exact UUID-owned calendar rows removed with account-qualified deletion; provider cascades fixture events'}, {class:'WorkflowPhoneNativeInstrumentedTest',method:'deniedCalendarGrantReturnsNoEvents',gate:'workflowPhoneDenied',grant:false,cleanup:'Denied read creates no source/provider fixture'}, {class:'WorkflowDraftNativeInstrumentedTest',method:'encryptedDraftIsAtomicAndSurvivesRecreation',gate:'workflowDraftNative',grant:false,cleanup:'Exact UUID-owned draft slot removed and encrypted files absent'}];const results=[];
-for(const variant of ['standalone','launcher']){const record={variant,passed:false,permissionsRestored:false,methods:[]};let before;try{before=snapshot(await run(['shell','dumpsys','package',app]));record.permissionBefore=before;for(const kind of ['debug','androidTest']){const name=`${variant}-${kind}.apk`,file=path.join(archive,name);assert.equal(hash(file),manifest[name],'Immutable archive hash mismatch');record[kind+'Sha256']=manifest[name];await run(['install','--no-incremental','-r',file]);}for(const test of cases){const item={method:test.class+'#'+test.method,expected:1,executed:0,skipped:0,passed:false,fixtureCleanupConfirmed:false};record.methods.push(item);let log='';try{for(const permission of permissions){await run(['shell','pm',test.grant?'grant':'revoke',app,permission]);await run(['shell','pm','clear-permission-flags',app,permission,'user-set','user-fixed']);}const current=snapshot(await run(['shell','dumpsys','package',app]));assert.ok(current.every(p=>p.granted===test.grant));await run(['shell','am','force-stop',app]);log=await run(['shell','am','instrument','-w','-r','-e',test.gate,'1','-e','class',app+'.'+item.method,app+'.test/androidx.test.runner.AndroidJUnitRunner']);const parsed=requireInstrumentationSuccess(log,[app+'.'+test.class]);assert.deepEqual(parsed.cases,[app+'.'+item.method]);item.instrumentation=parsed;Object.assign(item,{executed:1,passed:true,fixtureCleanupConfirmed:true,fixtureCleanupEvidence:test.cleanup+'; assertions in test finally completed'});}catch(error){log=error.instrumentation||log;item.error=error.message;throw error;}finally{fs.writeFileSync(path.join(out,variant+'-'+test.method+'.txt'),log);}}record.passed=record.methods.length===4&&record.methods.every(x=>x.passed);}catch(error){record.error=error.message;}finally{if(before)try{record.permissionAfter=await restore(before);record.permissionsRestored=true;}catch(error){record.passed=false;record.restoreError=error.message;}results.push(record);fs.writeFileSync(path.join(out,'result.json'),JSON.stringify({serial,archive:path.resolve(archive),nativeOnly:true,pairedHostTested:false,allWorkflowFlowsAccepted:false,results},null,2));}if(!record.passed||!record.permissionsRestored)break;}
-if(results.length!==2||results.some(r=>!r.passed||!r.permissionsRestored))process.exitCode=1;
+/** Archived workflow scenarios; upstream owns leased APK and disposable-user lifecycles. */
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
+import crypto from 'node:crypto';
+import {androidEnv} from './toolchain.mjs';
+import {execFile} from 'node:child_process';
+import {promisify} from 'node:util';
+import {verifyPinnedUpstream} from './pinned-upstream-source.mjs';
+const repository=path.resolve(import.meta.dirname,'..');
+verifyPinnedUpstream(repository);
+const {runIsolatedAndroidTest}=await import('../vendor/eliza/packages/app/scripts/lib/isolated-android-test.mjs');
+const {withIsolatedAndroidUser}=await import('../vendor/eliza/packages/app/scripts/lib/isolated-android-user.mjs');
+const {acquireDeviceLease}=await import('../vendor/eliza/packages/app/scripts/lib/device-lease.ts');
+const serial=process.env.ANDROID_SERIAL,avd=process.env.ALPHA_WORKFLOW_TEST_AVD,abi=process.env.ALPHA_WORKFLOW_TEST_ABI;
+assert.match(serial??'',/^emulator-\d+$/);assert.match(avd??'',/^[A-Za-z0-9_.-]+$/);assert.ok(['x86_64','arm64-v8a'].includes(abi),'Explicit owned emulator ABI required');
+assert.ok(process.env.ALPHA_BUILD_ARCHIVE,'Set ALPHA_BUILD_ARCHIVE');
+const archive=path.resolve(process.env.ALPHA_BUILD_ARCHIVE),output=path.resolve(process.env.ALPHA_CAMPAIGN_OUTPUT??path.join(archive,'workflow-native'));
+assert.ok(output.startsWith(path.resolve('test-results')+path.sep),'Evidence must remain beneath test-results');assert.ok(!fs.existsSync(output),'Use a new evidence folder');
+const env=androidEnv(),adb=path.join(env.ANDROID_HOME,'platform-tools/adb'),aapt=path.join(env.ANDROID_HOME,'build-tools/36.0.0/aapt');
+const pkg=JSON.parse(fs.readFileSync('app.config.json')).appId;assert.equal(pkg,'ai.elizaresearch.alphaphone');
+const manifest=JSON.parse(fs.readFileSync(path.join(archive,'apk-manifest.json')));
+const hash=file=>crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex');
+for(const variant of ['standalone','launcher'])for(const kind of ['debug','androidTest']){
+ const name=`${variant}-${kind}.apk`;assert.equal(hash(path.join(archive,name)),manifest[name],'Immutable archive hash mismatch');
+}
+const cases=[{class:'WorkflowPhoneNativeInstrumentedTest',method:'privateReadResultSurvivesRecreationButNeverExpandsPassiveHistory',gate:'workflowPhoneNative',grant:true}, {class:'WorkflowPhoneNativeInstrumentedTest',method:'selectedCalendarQueryExcludesOtherAccountsAndRefusesOverflow',gate:'workflowPhoneNative',grant:true}, {class:'WorkflowPhoneNativeInstrumentedTest',method:'deniedCalendarGrantReturnsNoEvents',gate:'workflowPhoneDenied',grant:false}, {class:'WorkflowDraftNativeInstrumentedTest',method:'encryptedDraftIsAtomicAndSurvivesRecreation',gate:'workflowDraftNative',grant:false}];
+const cancellation=new AbortController(),cancel=()=>cancellation.abort();
+const execute=promisify(execFile);
+const call=async(args,signal)=>String((await execute(adb,['-s',serial,...args],{env,encoding:'utf8',timeout:120000,killSignal:'SIGKILL',maxBuffer:4*1024*1024,signal})).stdout).trim();
+const lease=await acquireDeviceLease(`android:${serial}`,{waitMs:0,ttlMs:Number.MAX_SAFE_INTEGER});
+const report={serial,avd,abi,archive,nativeOnly:true,pairedHostTested:false,allWorkflowFlowsAccepted:false,results:[]};
+const persist=()=>fs.writeFileSync(path.join(output,'result.json'),JSON.stringify(report,null,2)+'\n');
+process.once('SIGINT',cancel);process.once('SIGTERM',cancel);
+try{
+ fs.mkdirSync(output,{recursive:true});
+ for(const variant of ['standalone','launcher'])for(const test of cases){
+  cancellation.signal.throwIfAborted();
+  const directory=path.join(output,variant+'-'+test.method);fs.mkdirSync(directory);
+  const record={variant,method:test.class+'#'+test.method,passed:false};report.results.push(record);let failure;
+  try{
+   const installed=(await call(['shell','pm','list','packages','-u','--user','all'],cancellation.signal)).split(/\r?\n/);
+   assert.ok(![pkg,pkg+'.test'].some(name=>installed.includes('package:'+name)),'Existing package registration; refusing replacement');
+   await withIsolatedAndroidUser({serial,deviceLease:lease,expectedAvdName:avd,homePackage:'com.android.launcher3',name:`workflow-${variant}-${Date.now()}`,signal:cancellation.signal,execute:(args,{signal})=>call(args,signal),record:state=>{record.userLifecycle=state;persist();},run:async({user})=>{
+    record.user=user;
+    try{
+     record.result=await runIsolatedAndroidTest({serial,adb,aapt,env,packageName:pkg,testClass:pkg+'.'+test.class,testMethod:test.method,expectedTests:1,requiredAbi:abi,expectedAvdName:avd,androidUser:user,deviceLease:lease,directory,signal:cancellation.signal,commandTimeoutMs:120000,instrumentationTimeoutMs:240000,cleanupTimeoutMs:120000,
+      variants:[{name:variant,apk:path.join(archive,variant+'-debug.apk'),testApk:path.join(archive,variant+'-androidTest.apk')}],runnerArgs:['-e',test.gate,'1'],
+      evidence:'Synthetic native workflow fixture in an owned secondary emulator user; no paired host or live workflow acceptance.',
+      prepareVariant:async()=>{for(const permission of ['READ_CALENDAR','WRITE_CALENDAR']){await call(['shell','pm',test.grant?'grant':'revoke','--user',String(user),pkg,'android.permission.'+permission],cancellation.signal);await call(['shell','pm','clear-permission-flags','--user',String(user),pkg,'android.permission.'+permission,'user-set','user-fixed'],cancellation.signal);}},
+     });
+    }catch(error){failure=error;record.error=error.message;}
+    let proof;try{proof=JSON.parse(fs.readFileSync(path.join(directory,'verification.json')));}catch{/* Retain the fixture if cleanup is unproven. */}
+    return {cleaned:proof?.cleaned===true,cleanupDeferred:proof?.cleanupDeferred===true};
+   }});
+  }catch(error){failure??=error;record.error=failure.message;}
+  finally{record.passed=!failure;persist();}
+  if(failure)throw failure;
+ }
+ console.log(output);
+}finally{process.removeListener('SIGINT',cancel);process.removeListener('SIGTERM',cancel);lease.release();}
