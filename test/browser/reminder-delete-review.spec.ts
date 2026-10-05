@@ -31,7 +31,8 @@ for(const mode of ['fresh','stale','response-loss','receipt-loss','navigate','le
    const data=await page.evaluate(async ()=>JSON.parse((await (await import('/src/browser/reminder-store.ts')).reminderDocument.readRaw())!));expect(data.reminders.find((x:any)=>x.id==='delete-boundary').status).toBe('scheduled');expect(data.reminders.find((x:any)=>x.id==='unrelated').status).toBe('cancelled');
    expect(await page.evaluate(async()=>Object.values(await (await import('/src/runtime/reminder-deletions.ts')).pendingReminderDeletions()).map((x:any)=>x.operation.target.reminderId))).toEqual(['delete-boundary']);
    await page.getByRole('button',{name:/^Changed during dispatch,/}).click();await page.getByRole('button',{name:'Delete event',exact:true}).click();await expect.poll(()=>page.evaluate(async ()=>JSON.parse((await (await import('/src/browser/reminder-store.ts')).reminderDocument.readRaw())!).reminders.find((r:any)=>r.id==='delete-boundary').status)).toBe('cancelled');
-   expect(await page.evaluate(async()=>Object.values(await (await import('/src/runtime/reminder-deletions.ts')).pendingReminderDeletions()).map((x:any)=>x.operation.target.reminderId))).toEqual(['delete-boundary']);
+   // Cancellation is durable before its separate pending-action acknowledgement finishes.
+   await expect.poll(()=>page.evaluate(async()=>Object.values(await (await import('/src/runtime/reminder-deletions.ts')).pendingReminderDeletions()).map((x:any)=>x.operation.target.reminderId))).toEqual(['delete-boundary']);
   }
   return;
  }
