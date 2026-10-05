@@ -1,3 +1,4 @@
+import {readMediaCopyIntent,admitMediaCopyIntent,acknowledgeMediaCopyIntent,mediaCopyIntentDocument,type MediaCopyIntent} from '../runtime/media-copy-intent';
 import {createInlineModal} from '../runtime/inline-modal';
 import {browserDevProfile} from '../browser/dev-profile';
 import {reviewContentQuestion} from '../browser/content-question';
@@ -94,53 +95,82 @@ export function installPrototypeCameraAdapter(_Component: unknown, views: Record
   let photosApi: Bag | undefined, loaded = false, loading = false, next = '', libraryEpoch = 0;
   let preview: SavedPhoto | undefined, reading = '', sharing = false;
   let edit: (EditPreview & {source:string;rotation:number;crop:boolean;busy:boolean;uncertain?:boolean})|undefined,editEpoch=0;
-  const editPendingKey='alpha.photos.pending-copy.v1';
+  let editRecoveryChecked=false,copyRecovery:AbortController|undefined;
   let closeVideoEdit:(()=>void)|undefined,videoEditSource:string|undefined;
-  function cancelEdit(){closeVideoEdit?.();closeVideoEdit=undefined;videoEditSource=undefined;++editEpoch;const old=edit;edit=undefined;if(old)void library.cancelEdit({sessionId:old.sessionId}).catch(()=>{});}
+  function cancelEdit(){copyRecovery?.abort();copyRecovery=undefined;closeVideoEdit?.();closeVideoEdit=undefined;videoEditSource=undefined;++editEpoch;const old=edit;edit=undefined;if(old)void library.cancelEdit({sessionId:old.sessionId}).catch(()=>{});}
   async function beginEdit(row:SavedPhoto,owner:Bag){
-    if(row.kind==='video'&&browserMode){
-      if(!row.mutationRevision||localStorage.getItem(editPendingKey)){void recoverEdit(owner);return;}cancelEdit();closeVideo();const token=editEpoch;
-      try{const source=await browserPhotoLibrary.read({id:nativeId(row.id)});if(disposed||token!==editEpoch||!owner.isActive()||owner.get('photos').open!==row.id)return;if(!source.path||!source.duration)throw Error('Video has no playable source.');const operationId=crypto.randomUUID();videoEditSource=row.id;closeVideoEdit=openVideoEditReview({path:source.path,duration:source.duration},async(parameters,signal)=>{automaticEditRecovery=operationId;localStorage.setItem(editPendingKey,operationId);const ticket={token:operationId,epoch:token,source:row.id};try{const receipt=await browserPhotoLibrary.saveVideoCopy({id:source.id,revision:row.mutationRevision!,operationId,edit:parameters},signal);await finishEdit(receipt,owner,ticket);return receipt.status==='saved';}catch{await recoverEdit(owner,ticket);return false;}},()=>{if(editEpoch===token){++editEpoch;closeVideoEdit=undefined;videoEditSource=undefined;}});}catch(error){owner.toast(error instanceof Error?error.message:'Video could not open.');}return;
-    }
-    if(row.kind==='video'){owner.toast('Video editing is not available. Your video is unchanged.');return;}
     if(!row.mutationRevision||edit||mutating)return;
-    if(localStorage.getItem(editPendingKey)){owner.toast('Checking a previous saved-copy outcome…');void recoverEdit(owner);return;}
-    const generation=++editEpoch;closeVideo();
-    try{const value=await library.beginEdit({id:nativeId(row.id),revision:row.mutationRevision});if(disposed||generation!==editEpoch||!owner.isActive()||owner.get('photos').open!==row.id){void library.cancelEdit({sessionId:value.sessionId});return;}
+    if(row.kind==='video'&&!browserMode){owner.toast('Video editing is not available. Your video is unchanged.');return;}
+    cancelEdit();closeVideo();const token=editEpoch;
+    const current=()=>!disposed&&!document.hidden&&token===editEpoch&&owner.isActive()&&owner.get('photos').open===row.id;
+    try{
+      const pending=await readMediaCopyIntent();if(!current())return;
+      if(pending){owner.toast('Checking a previous saved-copy outcome…');void recoverEdit(owner);return;}
+      if(row.kind==='video'){
+        const source=await browserPhotoLibrary.read({id:nativeId(row.id)});if(!current())return;if(!source.path||!source.duration)throw Error('Video has no playable source.');
+        const operationId=crypto.randomUUID();videoEditSource=row.id;
+        closeVideoEdit=openVideoEditReview({path:source.path,duration:source.duration},async(parameters,signal)=>{
+          const ticket:EditCompletion={token:operationId,epoch:token,source:row.id};
+          try{
+            ticket.intent=await admitMediaCopyIntent(operationId,signal);automaticEditRecovery=operationId;
+            if(signal.aborted||!current()){await acknowledgeMediaCopyIntent(ticket.intent);return false;}
+            const receipt=await browserPhotoLibrary.saveVideoCopy({id:source.id,revision:row.mutationRevision!,operationId,edit:parameters},signal);
+            await finishEdit(receipt,owner,ticket);return receipt.status==='saved';
+          }catch{if(ticket.intent)await recoverEdit(owner,ticket);else if(current()){owner.set({nativeCopyRecovery:true});owner.toast('Copy request could not be retained. Check saved-copy recovery before another save.');}return false;}
+        },()=>{if(editEpoch===token){++editEpoch;closeVideoEdit=undefined;videoEditSource=undefined;}});
+        return;
+      }
+      const value=await library.beginEdit({id:nativeId(row.id),revision:row.mutationRevision});if(!current()){void library.cancelEdit({sessionId:value.sessionId});return;}
       edit={...value,source:row.id,rotation:0,crop:false,busy:false};owner.set({nativeEditRevision:Date.now()});
-    }catch(error){if(owner.isActive())owner.toast(error instanceof Error?error.message:'Photo editor unavailable.');}
+    }catch(error){if(current()){owner.set({nativeCopyRecovery:true});owner.toast(error instanceof Error?error.message:'Photo editor unavailable.');}}
   }
   async function transformEdit(owner:Bag,rotate:boolean,chosenFilter?:string){const current=edit;if(!current||current.busy||current.uncertain)return;current.busy=true;const rotation=rotate?(current.rotation+90)%360:current.rotation,crop=chosenFilter!==undefined?current.crop:rotate?current.crop:!current.crop,filter=chosenFilter??current.filter;owner.set({nativeEditRevision:Date.now()});
     try{const value=await library.previewEdit({sessionId:current.sessionId,rotation,crop,filter});if(edit===current)edit={...current,...value,rotation,crop,busy:false};}
     catch(error){if(edit===current){current.busy=false;owner.toast(error instanceof Error?error.message:'Preview unavailable. Original unchanged.');}}
     finally{if(owner.isActive())owner.set({nativeEditRevision:Date.now()});}
   }
-  type EditCompletion={token:string;epoch:number;source:string|undefined};
+  type EditCompletion={token:string;epoch:number;source:string|undefined;intent?:MediaCopyIntent};
   const completionCurrent=(ticket:EditCompletion,owner:Bag)=>!disposed&&!document.hidden&&owner.isActive()&&editEpoch===ticket.epoch&&owner.get('photos').open===ticket.source&&(!edit||edit.operationId===ticket.token);
   async function finishEdit(value:EditReceipt,owner:Bag,ticket:EditCompletion){
     // A late/duplicate outcome may only retire its own persisted operation.
     // It cannot consume a new save or cancel/navigate a newer editor/selection.
-    if(value.operationId!==ticket.token||localStorage.getItem(editPendingKey)!==ticket.token)return true;
+    if(value.operationId!==ticket.token||!ticket.intent)throw Error('Saved-copy receipt identity changed');
     const terminal=(value.status==='saved'&&!!value.id)||['failed','unchanged','not-started'].includes(value.status);if(!terminal)return false;
-    const updateView=completionCurrent(ticket,owner);localStorage.removeItem(editPendingKey);
+    await acknowledgeMediaCopyIntent(ticket.intent);const updateView=completionCurrent(ticket,owner);
     if(edit?.operationId===ticket.token)cancelEdit();
-    if(!updateView)return true;
+    if(!updateView)return true;owner.set({nativeCopyRecovery:false});
     if(value.status==='saved'&&value.id){owner.toast('Saved a copy. Original unchanged.');void refresh();await openSaved('native-camera-'+value.id,owner);}
     else{owner.toast(value.status==='failed'?'Copy was not saved. Original unchanged.':'No copy was created. Original unchanged.');owner.set({nativeEditRevision:Date.now()});}return true;
   }
   let recoveringEdit=false,automaticEditRecovery='';
   async function recoverEdit(owner:Bag,original?:EditCompletion){
-    const token=localStorage.getItem(editPendingKey);if(!token||recoveringEdit||(original&&original.token!==token))return;
-    const ticket=original||{token,epoch:editEpoch,source:owner.get('photos').open};recoveringEdit=true;
-    try{const value=await library.editResult({operationId:token});if(!await finishEdit(value,owner,ticket)&&completionCurrent(ticket,owner))owner.toast('Copy outcome is unresolved. No automatic retry; inspect Photos before trying another edit.');}
-    catch{if(completionCurrent(ticket,owner))owner.toast('Copy outcome could not be checked. No additional copy was created.');}
+    if(recoveringEdit)return;recoveringEdit=true;
+    const epoch=editEpoch,source=owner.get('photos').open;let ticket:EditCompletion|undefined;
+    try{
+      const intent=await readMediaCopyIntent();if(!intent||original&&JSON.stringify(original.intent)!==JSON.stringify(intent))return;
+      ticket=original||{token:intent.token,epoch,source,intent};
+      const value=await library.editResult({operationId:intent.token});if(!await finishEdit(value,owner,ticket)&&completionCurrent(ticket,owner)){owner.set({nativeCopyRecovery:true});owner.toast('Copy outcome is unresolved. No automatic retry; inspect Photos before trying another edit.');}
+    }catch{if(!disposed&&owner.isActive()&&editEpoch===epoch){owner.set({nativeCopyRecovery:true});owner.toast('Copy outcome could not be checked. Use saved-copy recovery; no additional copy was created.');}}
     finally{recoveringEdit=false;}
   }
-  async function saveEdit(owner:Bag){const current=edit;if(!current||current.busy)return;
-    const ticket={token:current.operationId,epoch:editEpoch,source:current.source};if(current.uncertain){void recoverEdit(owner,ticket);return;}current.busy=true;owner.set({nativeEditRevision:Date.now()});
-    try{const pending=localStorage.getItem(editPendingKey);if(pending&&pending!==ticket.token)throw Error('Another save is unresolved');localStorage.setItem(editPendingKey,ticket.token);const value=await library.saveEdit({sessionId:current.sessionId,rotation:current.rotation,crop:current.crop,filter:current.filter});if(!await finishEdit(value,owner,ticket)){if(edit===current)current.uncertain=true;await recoverEdit(owner,ticket);}}
-    catch{if(edit===current)current.uncertain=true;await recoverEdit(owner,ticket);}
+  async function saveEdit(owner:Bag){
+    const current=edit;if(!current||current.busy)return;
+    const ticket:EditCompletion={token:current.operationId,epoch:editEpoch,source:current.source};
+    if(current.uncertain){void recoverEdit(owner);return;}current.busy=true;owner.set({nativeEditRevision:Date.now()});
+    try{
+      ticket.intent=await admitMediaCopyIntent(ticket.token);automaticEditRecovery=ticket.token;
+      if(!completionCurrent(ticket,owner)){await acknowledgeMediaCopyIntent(ticket.intent);return;}
+      const value=await library.saveEdit({sessionId:current.sessionId,rotation:current.rotation,crop:current.crop,filter:current.filter});
+      if(!await finishEdit(value,owner,ticket)){if(edit===current)current.uncertain=true;await recoverEdit(owner,ticket);}
+    }catch{if(edit===current)current.uncertain=true;if(ticket.intent)await recoverEdit(owner,ticket);else if(completionCurrent(ticket,owner)){owner.set({nativeCopyRecovery:true});owner.toast('Copy request could not be retained. Check saved-copy recovery before another save.');}}
     finally{if(edit===current){current.busy=false;if(completionCurrent(ticket,owner))owner.set({nativeEditRevision:Date.now()});}}
+  }
+  async function openCopyRecovery(owner:Bag){
+    if(!browserMode||disposed||!owner.isActive())return;
+    copyRecovery?.abort();const controller=copyRecovery=new AbortController(),token=editEpoch;
+    try{const domain=await mediaCopyIntentDocument(),{openDomainRecovery}=await import('../browser/domain-recovery');if(controller.signal.aborted||disposed||!owner.isActive()||editEpoch!==token)return;
+      openDomainRecovery({capture:signal=>domain.capture(signal),reset:async(expected,signal)=>{await domain.reset(expected,signal);editRecoveryChecked=false;automaticEditRecovery='';if(owner.isActive())owner.set({nativeCopyRecovery:false});}},'saved-copy request','Browser saved-copy recovery','Download the pending request before resetting. A photo or video copy may already exist. Inspect Photos before saving another copy. Reset clears only the browser request; it does not delete media, undo a saved copy or repeat an edit. Close older Alpha tabs before continuing.',controller.signal);
+    }catch{if(!controller.signal.aborted&&owner.isActive())owner.toast('Saved-copy recovery is unavailable. The request remains retained.');}
   }
   let counts: {favorites:number;videos:number;trash:number;canFavorite:boolean} | undefined, countsBusy = false, countsError = false, countsEpoch = 0;
   let albumRows: SavedPhoto[] = [], albumKey = '', albumNext = '', albumBusy = false, albumEpoch = 0;
@@ -543,13 +573,14 @@ export function installPrototypeCameraAdapter(_Component: unknown, views: Record
   module.onLeave = () => { void stop(); };
   if (photosRender) views.photos.render = (st: Bag, currentApi: Bag) => {
     photosApi = currentApi;
-    // Once per Photos entry, reconcile the persisted operation without reissuing a save.
-    if(currentApi.isActive()&&!edit){
-      let pending:string|null=null;try{pending=localStorage.getItem(editPendingKey);}catch{}
-      if(pending&&automaticEditRecovery!==pending){automaticEditRecovery=pending;queueMicrotask(()=>{if(!disposed&&currentApi.isActive())void recoverEdit(currentApi);});}
+    // Read canonical intent once per Photos entry, without replaying a save.
+    if(currentApi.isActive()&&!edit&&!editRecoveryChecked){
+      editRecoveryChecked=true;const token=editEpoch;
+      queueMicrotask(()=>{void readMediaCopyIntent().then(pending=>{if(!disposed&&currentApi.isActive()&&editEpoch===token&&pending&&automaticEditRecovery!==pending.token){automaticEditRecovery=pending.token;void recoverEdit(currentApi);}}).catch(()=>{if(!disposed&&currentApi.isActive()&&editEpoch===token){currentApi.set({nativeCopyRecovery:true});currentApi.toast('Saved-copy request needs recovery. No edit was repeated.');}});});
     }
     if (!loaded && !loading) queueMicrotask(() => { void refresh(); });
     const data = photosRender(st, currentApi);
+    data.copyRecovery=browserMode&&!!st.nativeCopyRecovery;data.openCopyRecovery=()=>void openCopyRecovery(currentApi);
     if (!trashLoaded && !trashLoading && !st.nativeTrashError && libraryAvailable()) queueMicrotask(() => { void loadTrash(currentApi); });
     if (!counts && !countsBusy && !countsError && libraryAvailable()) queueMicrotask(() => { void loadCounts(currentApi); });
     data.trashN = counts ? String(counts.trash) : trashLoaded ? String(trash.length) + (trashNext ? '+' : '') : '…';
@@ -613,7 +644,7 @@ export function installPrototypeCameraAdapter(_Component: unknown, views: Record
     return data;
   };
   if (views.photos) views.photos.back = (st: Bag, currentApi: Bag) => { if(edit){cancelEdit();currentApi.set({nativeEditRevision:Date.now()});return true;}if(selection){selection=undefined;endHold();currentApi.set({nativeMultiSelection:Date.now()});return true;}if(st.sheet==='owned-album'){manager=undefined;currentApi.set({sheet:null});return true;}if(st.sheet==='empty'){cancelPermanent(currentApi);return true;}if(st.sheet)return photosBack?.(st,currentApi); if (preview?.id === st.open || captures.some(c => c.id === st.open) || albumRows.some(c => c.id === st.open)) { currentApi.set({ open: null, nativePhotoSelection: null }); preview = undefined; closeVideo(); return true; } return photosBack?.(st, currentApi); };
-  if(views.photos)views.photos.onLeave=(owner:Bag)=>{closeQuestion?.();closeQuestion=undefined;cancelEdit();automaticEditRecovery='';selection=undefined;swallowedTap='';endHold();manager=undefined;const old=prepared;prepared=undefined;if(old)void library.cancelDeleteTrash({confirmation:old.confirmation}).catch(()=>{});owner.set({sheet:null});photosLeave?.(owner);};
+  if(views.photos)views.photos.onLeave=(owner:Bag)=>{closeQuestion?.();closeQuestion=undefined;cancelEdit();editRecoveryChecked=false;automaticEditRecovery='';selection=undefined;swallowedTap='';endHold();manager=undefined;const old=prepared;prepared=undefined;if(old)void library.cancelDeleteTrash({confirmation:old.confirmation}).catch(()=>{});owner.set({sheet:null});photosLeave?.(owner);};
   async function playVideo(selected: SavedPhoto, owner: Bag) {
     if (selected.kind !== 'video') return;
     try {
@@ -656,6 +687,7 @@ export function installPrototypeCameraAdapter(_Component: unknown, views: Record
   const visibility = () => { if (document.hidden) { cancelEdit();closeVideo(); void stop(); } else { loaded = false; if (photosApi?.isActive()) void refresh(); schedule(); } };
   const albumsChanged=()=>{if(!browserMode||disposed)return;albumsLoaded=false;albumsBusy=false;++albumsEpoch;albumKey='';albumBusy=false;++albumEpoch;if(photosApi?.isActive()){void loadCustomAlbums(photosApi);const key=photosApi.get('photos').album;if(typeof key==='string'&&key.startsWith('custom:'))void loadAlbum(key,photosApi);}};
   window.addEventListener('alpha:albums-document-changed',albumsChanged);
-  document.addEventListener('visibilitychange', visibility); window.addEventListener('pagehide', stop); window.addEventListener('resize', resize); schedule();
-  return () => { window.removeEventListener('alpha:albums-document-changed',albumsChanged);if(scanApi&&prototype.api===scanApi)prototype.api=originalApi;disposed = true;cancelEdit();endHold();selection=undefined; clearInterval(timer); closeVideo(); observer.disconnect(); document.removeEventListener('visibilitychange', visibility); window.removeEventListener('pagehide', stop); window.removeEventListener('resize', resize); void stop(); style.remove(); captures = []; module.render = render; module.onLeave = leave; module.back = cameraBack; if (views.photos) { views.photos.render = photosRender; views.photos.back = photosBack; views.photos.onLeave = photosLeave; } };
+  const pageHide=()=>{cancelEdit();closeVideo();void stop();};
+  document.addEventListener('visibilitychange', visibility); window.addEventListener('pagehide', pageHide); window.addEventListener('resize', resize); schedule();
+  return () => { window.removeEventListener('alpha:albums-document-changed',albumsChanged);if(scanApi&&prototype.api===scanApi)prototype.api=originalApi;disposed = true;cancelEdit();endHold();selection=undefined; clearInterval(timer); closeVideo(); observer.disconnect(); document.removeEventListener('visibilitychange', visibility); window.removeEventListener('pagehide', pageHide); window.removeEventListener('resize', resize); void stop(); style.remove(); captures = []; module.render = render; module.onLeave = leave; module.back = cameraBack; if (views.photos) { views.photos.render = photosRender; views.photos.back = photosBack; views.photos.onLeave = photosLeave; } };
 }
