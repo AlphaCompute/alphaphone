@@ -42,7 +42,7 @@ try{
  await ready('http://127.0.0.1:47851/info',value=>Array.isArray(value.profiles));
  start('Regional gateway','python3',[join(root,'scripts/maps/serve-region.py')],{env:{...process.env,ALPHA_MAPS_DATA:data}});
  await ready('http://127.0.0.1:47850/capabilities',value=>value.providerId==='alpha-osm-monaco');
- start('Development app',process.execPath,[join(root,'node_modules/vite/bin/vite.js'),'--host','127.0.0.1','--port',String(port),'--strictPort'],{env:{...process.env,VITE_MAPS_BASE_URL:'http://127.0.0.1:47850'}});
+ start('Development app',process.execPath,[join(root,'node_modules/vite/bin/vite.js'),'--host','127.0.0.1','--port',String(port),'--strictPort'],{env:{...process.env,ELIZA_DEV_ALLOW_TEST_MOCKS:'1',VITE_MAPS_BASE_URL:'http://127.0.0.1:47850'}});
  await ready(`http://127.0.0.1:${port}/`,value=>value.includes('/@vite/client'),'text');
  console.log(`Regional Maps ready. App: http://127.0.0.1:${port}/?mode=dev — Ctrl-C stops this command's services.`);
 }catch(error){if(!stopping)console.error(error.message);await stop(stopping?process.exitCode||130:1);}
