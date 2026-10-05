@@ -170,10 +170,11 @@ function main() {
     : { status: "failed", reason: "scripts/audit-production-bundle.mjs is missing" };
   write();
 
+  // playwright.config.ts defines one project per engine; --browser is refused there.
   result.storageSpecs = {};
   for (const engine of options.engines) {
     const report = path.join(directory, `storage-${engine}.json`);
-    const record = step(`storage-${engine}`, "npx", ["playwright", "test", ...STORAGE_SPECS, `--browser=${engine}`, "--reporter=json"],
+    const record = step(`storage-${engine}`, "npx", ["playwright", "test", ...STORAGE_SPECS, `--project=${engine}`, "--reporter=json"],
       { ...process.env, PLAYWRIGHT_JSON_OUTPUT_NAME: report }, 3600000);
     if (fs.existsSync(report)) Object.assign(record, summarizePlaywright(JSON.parse(fs.readFileSync(report, "utf8"))), { report: path.relative(root, report) });
     else record.status = "failed";

@@ -4,6 +4,8 @@ const productionPort=port+1;
 // Storage-domain specs also run in Firefox and WebKit, whose storage and locking differ.
 const storageSpecs=new RegExp(`(?:^|[\\\\/])(${[
   'device-storage-migration','password-provider-storage','album-storage-migration','photo-albums','notification-storage-migration','calendar-storage-migration',
+  // Storage-domain specs qualified per engine by scripts/qualify-head.mjs.
+  'preference-storage-migration','reminder-storage-migration','storage-usage',
   // Canonical storage and asynchronous Cloud setup specs.
   'domain-atomicity','connection-preference-storage','appearance-storage','workflow-intent-storage','notes-document-storage','notes-save-failure',
   'note-audio-delete-recovery','media-copy-intent-storage','conversation-selection-storage','browser-photo-edit','reminder-action-storage',
