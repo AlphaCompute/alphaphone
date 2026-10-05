@@ -25,3 +25,56 @@ test('cancelling a pending permission request immediately clears its browser wat
 test('cancelling one permission request leaves another owner active',async({page})=>{
  const result=await page.evaluate(async()=>{const {BrowserLocation}=await import('/src/browser/location.ts');let next=0,ready!:()=>void;const started=new Promise<void>(resolve=>ready=resolve),callbacks:Function[]=[],cleared:number[]=[];Object.defineProperty(navigator,'geolocation',{value:{watchPosition:(fn:Function)=>{callbacks.push(fn);const id=++next;if(id===2)ready();return id;},clearWatch:(id:number)=>cleared.push(id)}});const location=new BrowserLocation();const a=location.requestPermissions({requestId:'first'}),b=location.requestPermissions({requestId:'second'});await started;await location.cancelPermissionRequest({requestId:'first'});const before=[...cleared];callbacks[1]();return {first:await a,second:await b,before,cleared};});expect(result.first.location).toBe('denied');expect(result.second.location).toBe('granted');expect(result.before).toEqual([1]);expect(result.cleared).toEqual([1,2]);
 });
+
+for(const change of ['same-tab','storage-event','clear'] as const)test(`location preference ${change} retires a pending permission request`,async({page})=>{
+ const result=await page.evaluate(async change=>{
+  const {BrowserLocation}=await import('/src/browser/location.ts');
+  const {saveLocationSimulation,readLocationSimulation,locationSimulationKey}=await import('/src/browser/location-simulation.ts');
+  let callback!:()=>void,started!:()=>void;const ready=new Promise<void>(resolve=>started=resolve),cleared:number[]=[];
+  Object.defineProperty(navigator,'geolocation',{configurable:true,value:{watchPosition:(fn:()=>void)=>{callback=fn;started();return 92;},clearWatch:(id:number)=>cleared.push(id)}});
+  const location=new BrowserLocation(),pending=location.requestPermissions({requestId:'old-source'});await ready;
+  const value={...readLocationSimulation(),mode:'coordinates' as const};
+  if(change==='same-tab')saveLocationSimulation(value);
+  else {if(change==='storage-event')localStorage.setItem(locationSimulationKey,JSON.stringify(value));else localStorage.removeItem(locationSimulationKey);window.dispatchEvent(new StorageEvent('storage',{key:change==='clear'?null:locationSimulationKey}));}
+  callback();return {permission:await pending,cleared};
+ },change);expect(result).toEqual({permission:{location:'denied',accuracy:'none'},cleared:[92]});
+});
+test('malformed location settings retire a browser watch without accepting a late fix',async({page})=>{
+ const result=await page.evaluate(async()=>{
+  const {BrowserLocation}=await import('/src/browser/location.ts');const {locationSimulationKey}=await import('/src/browser/location-simulation.ts');
+  let callback!:(value:any)=>void;const cleared:number[]=[],fixes:any[]=[],errors:any[]=[];
+  Object.defineProperty(navigator,'geolocation',{configurable:true,value:{watchPosition:(fn:any)=>{callback=fn;return 93;},clearWatch:(id:number)=>cleared.push(id)}});
+  const location=new BrowserLocation();await location.addListener('locationChange',fix=>fixes.push(fix));await location.addListener('error',error=>errors.push(error));await location.watchPosition();
+  localStorage.setItem(locationSimulationKey,'broken exact bytes');window.dispatchEvent(new StorageEvent('storage',{key:locationSimulationKey}));callback({coords:{latitude:1,longitude:1,accuracy:5},timestamp:Date.now()});
+  return {cleared,fixes,errors,raw:localStorage.getItem(locationSimulationKey)};
+ });expect(result).toEqual({cleared:[93],fixes:[],errors:[{code:'UNAVAILABLE'}],raw:'broken exact bytes'});
+});
+test('location source change rejects a delayed permission status',async({page})=>{
+ const result=await page.evaluate(async()=>{
+  const {BrowserLocation}=await import('/src/browser/location.ts');const {readLocationSimulation,saveLocationSimulation}=await import('/src/browser/location-simulation.ts');
+  let finish!:(value:any)=>void,started!:()=>void;const ready=new Promise<void>(resolve=>started=resolve);
+  Object.defineProperty(navigator,'permissions',{configurable:true,value:{query:()=>new Promise(resolve=>{finish=resolve;started();})}});
+  const location=new BrowserLocation(),pending=location.checkPermissions();await ready;saveLocationSimulation({...readLocationSimulation(),mode:'coordinates'});finish({state:'granted'});return pending;
+ });expect(result).toEqual({location:'denied',accuracy:'none'});
+});
+
+for(const retired of [false,true])test(`failed permission query preserves current ownership: retired=${retired}`,async({page})=>{
+ const result=await page.evaluate(async retired=>{
+  const {BrowserLocation}=await import('/src/browser/location.ts');const {readLocationSimulation,saveLocationSimulation}=await import('/src/browser/location-simulation.ts');
+  let reject!:(error:Error)=>void,started!:()=>void;const ready=new Promise<void>(resolve=>started=resolve);
+  Object.defineProperty(navigator,'permissions',{configurable:true,value:{query:()=>new Promise((_resolve,fail)=>{reject=fail;started();})}});
+  const pending=new BrowserLocation().checkPermissions();await ready;if(retired)saveLocationSimulation({...readLocationSimulation(),mode:'coordinates'});reject(Error('Permission query unavailable'));return pending;
+ },retired);expect(result).toEqual({location:retired?'denied':'prompt',accuracy:'none'});
+});
+test('another tab changing location cancels the first tab permission request',async({page,context})=>{
+ await page.evaluate(async()=>{
+  const {BrowserLocation}=await import('/src/browser/location.ts');const state=(window as any).locationRace={cleared:[]};
+  Object.defineProperty(navigator,'geolocation',{configurable:true,value:{watchPosition:(fn:any)=>{state.callback=fn;return 94;},clearWatch:(id:number)=>state.cleared.push(id)}});
+  state.pending=new BrowserLocation().requestPermissions({requestId:'tab-one'}).then(result=>state.result=result);
+ });
+ await expect.poll(()=>page.evaluate(()=>typeof(window as any).locationRace.callback)).toBe('function');
+ const other=await context.newPage();await other.goto('/?mode=dev');
+ await other.evaluate(async()=>{const m=await import('/src/browser/location-simulation.ts');m.saveLocationSimulation({...m.readLocationSimulation(),mode:'coordinates',latitude:12});});
+ await expect.poll(()=>page.evaluate(()=>(window as any).locationRace.result?.location)).toBe('denied');
+ expect(await page.evaluate(async()=>{const state=(window as any).locationRace;state.callback();await state.pending;return {result:state.result,cleared:state.cleared};})).toEqual({result:{location:'denied',accuracy:'none'},cleared:[94]});
+});
