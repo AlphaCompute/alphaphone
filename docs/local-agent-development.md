@@ -48,6 +48,29 @@ ALPHA_TTS_MODEL_DIR=/absolute/path/to/kokoro \
 npm run dev:local
 ```
 
+For persistent development defaults, save those nonsecret settings in the selected
+profile's `local-speech.json` (by default
+`~/.local/share/alphaphone/browser-agent/local-speech.json`), with owner-only
+permissions (`chmod 600`). For example:
+
+```json
+{
+  "ALPHA_LOCAL_ASR": "required",
+  "ALPHA_LOCAL_TTS": "required",
+  "ALPHA_TTS_LIBRARY": "/absolute/path/to/libelizainference.dylib",
+  "ALPHA_TTS_MODEL_DIR": "/absolute/path/to/kokoro"
+}
+```
+
+`npm run dev` and `npm run dev:local` read this file at startup. Explicit shell
+environment values take precedence, including `ALPHA_LOCAL_TTS=off`. Optional
+saved keys are `ALPHA_WHISPER_BIN`, `ALPHA_ASR_MODEL` and
+`ALPHA_WHISPER_BACKEND`. Only speech modes and absolute asset paths are accepted;
+credentials, arbitrary process settings, symlinks, shared-access files and malformed
+JSON are rejected. With no file, existing environment/default behavior is preserved.
+The file selects installed assets; their existing hash and readiness checks still
+run. It does not download assets or configure speech on Android.
+
 The Kokoro directory must contain the pinned `kokoro-82m-v1_0.gguf` and `voices/af_bella.bin` assets. The launcher checks the model and voice hashes; the host service checks the native library and ABI and warms synthesis before readiness. This command uses already installed qualified assets; it does not download a model or build a native library. `ALPHA_LOCAL_TTS=auto` stays disabled unless a library is explicitly configured, and `off` disables synthesis. Browser phrases are bounded to 500 characters; the transcript player divides longer text into shorter phrases. Speech runs on the development computer; text-model inference still uses the configured hosted provider.
 
 The real browser test can be repeated with `VITE_LOCAL_AGENT=1`, `ALPHA_LOCAL_AGENT_ORIGIN`, `ALPHA_LOCAL_AGENT_TOKEN_FILE`, and `ALPHA_SPEECH_FIXTURE` pointing to a locally generated synthetic WAV, then running `npx playwright test test/browser/browser-agent-recording.spec.ts`. It verifies capture, transcription, real audio playback, stop and connection retirement. Its host-dependent cases explicitly skip without the required environment. Native Android speech and physical-device acceptance remain separate.

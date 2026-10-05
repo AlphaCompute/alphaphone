@@ -13,6 +13,7 @@ export const calendarDocument={
  read:<T>(initial:()=>T|Promise<T>,signal?:AbortSignal)=>domain.read(initial,signal),
  readRaw:(signal?:AbortSignal)=>domain.readRaw(signal),
  capture:(signal?:AbortSignal)=>domain.capture(signal),
+ async restore(expected:DomainRecovery,raw:string,signal?:AbortSignal){await domain.restore(expected,raw,signal);changed();},
  async reset(expected:DomainRecovery,signal?:AbortSignal){await domain.reset(expected,signal);changed();},
  async edit<T,R>(initial:()=>T|Promise<T>,edit:(data:T)=>R|Promise<R>,signal?:AbortSignal):Promise<R>{
   let modified=false;

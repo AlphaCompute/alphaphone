@@ -1,6 +1,6 @@
 import {test,expect,type Page} from '@playwright/test';
 async function start(page:Page){await page.addInitScript(()=>localStorage.setItem('alpha.connection.selection.v1',JSON.stringify({kind:'offline'})));await page.goto('/?mode=dev');await page.getByRole('button',{name:'Calendar',exact:true}).click();}
-async function draft(page:Page,title:string){await page.getByRole('button',{name:'New event',exact:true}).click();await page.getByRole('textbox',{name:'Title',exact:true}).fill(title);}
+async function draft(page:Page,title:string){const replace=async(dialog:any)=>{expect(dialog.message()).toBe('Replace the retained unsaved form with a new event?');await dialog.accept();};page.on('dialog',replace);try{await page.getByRole('button',{name:'New event',exact:true}).click();}finally{page.off('dialog',replace);}await page.getByRole('textbox',{name:'Title',exact:true}).fill(title);}
 async function count(page:Page){return page.evaluate(async()=>JSON.parse((await (await import('/src/browser/calendar-store.ts')).calendarDocument.readRaw())||'{"events":[]}').events.length);}
 test('committed creation response loss survives reload and recovers receipt without replay',async({page})=>{
  const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));await start(page);

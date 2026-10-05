@@ -9,6 +9,23 @@ See [architecture](architecture.md), [MVP scope](mvp-scope-and-gap-report.md) an
 This inventory describes available behavior and remaining qualification. It is
 not a claim that every feature or the current main revision has passed acceptance.
 
+## Local speech restart checkpoint — 2026-10-05
+
+The browser dev launcher now reads owner-only `local-speech.json` defaults from
+its private agent profile, so restarting without the original shell environment
+retains the installed Whisper/Kokoro assets. Explicit environment overrides still
+win. Unsupported settings, credentials, symlinks and shared-access files fail
+closed; existing asset admission and cold-start warmup remain in place.
+
+Qualified on consumer base `15f9338f` with upstream `95924e90`: all 631 repository
+tests, type checking, production build and bundle audit passed. A plain `npm run
+dev` cold process start reported Whisper and Kokoro ready. The actual browser
+capture/transcription/synthesis journey passed in 15.3 seconds, including playback
+completion, stop and disconnect. The owner, agent and 18 conversation IDs were
+unchanged across that test. This is host/browser evidence; no Android build or
+physical-device acceptance was performed for this change. See
+[local development](local-agent-development.md) for persistent settings.
+
 ## Surface inventory
 
 | Surface | Implementation | Remaining acceptance |
@@ -17,7 +34,7 @@ not a claim that every feature or the current main revision has passed acceptanc
 | Connection and assistant | Resident/native IPC, local development host, optional Cloud/remote sessions, conversation history, reviewed proposals and receipts | Real owner/provider authorization, revoke, process recovery and complete task journeys |
 | Voice | Recording review, manual transcript fallback, explicit local/agent routes, owned playback and cancellation | Transcript quality, six-second latency target, physical microphone/speaker/Bluetooth and lifecycle |
 | Inbox | Account-bound Gmail adapter and operation journal; disclosed local draft/attachment simulator | Real provider grants, approved read/send journeys, account isolation and uncertain-outcome recovery |
-| Calendar | Persistent events, zoned/all-day dates, recurring series and overrides, preferences, local guest/meeting UI, alerts, backup and reviewed reset | Transactional storage below; salvage/import, live-agent series, real invitations/conferencing and provider sync |
+| Calendar | Persistent events, zoned/all-day dates, recurring series and overrides, preferences, local guest/meeting UI, alerts, backup and reviewed reset | Transactional storage below; partial-damage salvage, live-agent series, real invitations/conferencing and provider sync |
 | Reminders and Clock | Shared native reminder engine, browser reminders, Done/Snooze/repeats, foreground alarm ownership and native Clock handoff | Physical audibility, Doze/OEM delivery, reboot, DND and hardware time-zone changes |
 | Browser | Development iframe, bookmarks, navigation, reviewed reading; isolated native browser surface | Cross-origin access limits, real password-provider/passkey/autofill behavior and release WebView lifecycle |
 | Camera and Scan | Capture/import, local OCR, reviewed text/links/calendar suggestions, multipage drafts, perspective correction, page-edge suggestions and searchable PDF | Physical camera/torch/permissions, OCR language/photo quality, edge quality and interrupted capture |
@@ -84,3 +101,109 @@ four physical units and user acceptance remain explicit gates. Offline-LLM and
 Telegram/Discord scope conflicts require product disposition. Historical build
 counts, source migrations and failed-attempt narratives are available in Git
 history rather than serving as current setup instructions.
+
+## Browser calendar backup restore
+
+Calendar recovery accepts a selected Alpha calendar backup (domain bytes or a
+recognized document envelope), validates the complete event set and previews the
+count and titles before a separate replacement confirmation. It restores local
+event copies with new identities and revisions, preserving recurrence, exclusions
+and edited occurrences. Alerts are off; invitations are not sent. Preferences and
+creation/action receipts are not imported. This avoids treating historical effect
+records as new instructions. The current calendar can be downloaded first.
+
+Replacement uses the captured document revision and older-copy bytes; newer edits
+or legacy writes invalidate approval. Closing or retiring the dialog aborts a queued
+write. The exact legacy copy remains available. Invalid or partially damaged files
+are rejected as a whole, so selective salvage remains open. This is Alpha browser
+backup recovery, not ICS/provider import or native Calendar restoration.
+
+Calendar restore qualification: all 36 owning restore/recovery checks passed across
+Chromium, Firefox and WebKit, including reviewed replacement, invalid files, stale
+approval, queued cancellation and access from a healthy calendar. The 26 parser
+and domain-document unit checks passed, including strict guest-response admission.
+`npm run verify` passed all 644 tests, type checking, the production build and the
+bundle audit before the final strict-response guard. That guard then passed the
+owning unit/browser suites and type checking; the expensive unrelated runner
+suite was not repeated. These results do not qualify native/device behavior or
+unrelated MVP acceptance.
+
+## Assistant draft restart recovery
+
+Both assistant composers support bounded multiline review and IME-safe sending.
+Unsent text is saved to the selected owner/agent/conversation, with offline text kept
+separate. Restored drafts have no retained selected-source authority and never send
+automatically. Revision conflicts show both copies; failed writes retain editable
+text. Browser damaged-record recovery backs up stored bytes and current text before
+confirmed reset. Android also offers backup and confirmed reset for readable records with invalid
+draft schemas. Reset compares the exact captured secure-slot bytes; backup uses the
+existing reviewed Android document picker with exact-byte readback. Decryption or
+native read failures leave the record untouched. Physical restart/IME, encrypted-store
+execution and document-provider acceptance remain open. Calendar and Reminder form recovery is tracked separately below.
+
+Assistant draft qualification: consumer `ba3eed32` passed `npm run verify` (657
+tests, type checking, production build and bundle audit), 11 production-surface
+browser tests and 13 selected-source summary tests. A subsequent conversation-choice
+fix passed type checking and all 81 owning draft/storage/conversation browser checks
+across Chromium, Firefox and WebKit. It pins the current tab's observed choice,
+including an empty choice, so another tab's saved restart preference cannot move an
+unsent draft before its first send. These remain local results, not hosted CI or
+native/device qualification.
+
+Native assistant draft recovery qualification: consumer `5f4534ee` passed
+`npm run verify` (657 tests, type checking, production build and a 245-file
+flag-off bundle audit). All 57 affected browser checks passed across Chromium,
+Firefox and WebKit. Native adapter tests used explicit bridge-contract doubles;
+these results do not prove encrypted Android storage or file-provider execution.
+
+## Unsaved Calendar and Reminder creation forms
+
+New event and reminder forms now retain their editable fields and original creation
+identities in the transactional draft store. Browser app and development profiles
+use separate bindings; Android selects the existing encrypted slot adapter. Recovery
+is explicit through **Resume unsaved calendar form** and never saves an item.
+Civil dates are stored independently of relative day offsets, including when an
+open form crosses midnight. Changing time zones prompts a review of the restored
+time. Separate-creation consent is not restored. Existing pending-write journals
+and provider revision checks remain authoritative for uncertain outcomes.
+
+Competing tabs require Restore or Replace, and creating a new form requires review
+before replacing a retained one. Discard requires confirmation and refuses stale
+receipts, without creating or deleting events. Confirmed saves clear only the matching retained
+form. Storage failure leaves current text available and exposes recovery.
+
+Creation forms and inline existing-event/reminder edit forms retain drafts in separate
+slots. The separate recurring/all-day Calendar editor still needs restart recovery.
+Post-save unsaved Inbox edits also remain open. Android execution and physical
+process-death acceptance remain separate from browser qualification.
+
+Runtime update PR #317 remains unqualified at `e2f62059`: hosted test-mocks
+instrumentation ran 191 tests per variant, with one standalone video-playback
+failure and two launcher failures (video playback and returning from the system
+share chooser). These are actual assertion failures, distinct from the cancelled
+browser/distribution jobs. The preserved hosted evidence was inspected without
+running another Android build. Browser development remains on upstream `95924e90`.
+
+Creation-form qualification: three record-contract tests and type checking pass.
+The 92-case creation/save campaign passed across Chromium, Firefox and WebKit;
+after the discard addition, all 39 form-specific cases passed across those engines.
+Cases cover date rollover, cross-tab conflict, uncertain event/reminder outcomes,
+explicit replacement/discard, oversized edits and damaged-form recovery without
+changing saved events. The restored form was inspected at 412 × 915. The primary-checkout repository run finished with 658 of 660 tests passing: an
+untracked ownership audit links to removed patches, and its previously staged Android
+payload does not match the current source pin. Integrated verification in the clean
+worktree is pending; no Android build or native execution is claimed.
+
+## Unsaved inline Calendar and Reminder edits
+
+Existing-item edits retain the original Calendar expected fields/revision or exact
+Reminder target separately from editable values. Restoring never creates a new item
+or restores an in-memory mutation attempt. Provider revision checks and the pending
+action journal still govern Save. Civil dates and the original reminder schedule
+rebase together, so a title-only change after midnight does not reschedule it.
+Confirmed saves clear only the matching retained form. Explicit discard cannot
+erase a newer draft from another tab and leaves saved items unchanged.
+
+This is implemented for the inline editor; the separate recurring/all-day modal
+and unsaved Inbox edits remain open. Browser qualification for this batch is in
+progress. Native encrypted storage and process-death behavior remain unqualified.

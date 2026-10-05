@@ -192,7 +192,7 @@ export function installReminderAdapter(Component: Bag, views: Bag) {
             if(owner===saveOwner&&saveOwner.live)try{saveOwner.reminderDeleteUnknown=Object.keys(await pendingReminderDeletions()).length;api.set({reminderDeleteUnknown:saveOwner.reminderDeleteUnknown});}catch{}
             saveOwner.reminderSaving=false;
             // Keep the editor visible until refreshed targets and the mutation lock settle.
-            if(editSaved&&sameEditor())api.set({form:null});
+            if(editSaved&&sameEditor()){saveOwner.calendarFormCommitted?.(api.get('calendar').form);api.set({form:null});}
           }
         };
         if(unchangedSchedule){await saveEdit();return;}
@@ -236,7 +236,7 @@ export function installReminderAdapter(Component: Bag, views: Bag) {
             matchesAttempt=!!retained&&JSON.stringify(retained.request)===JSON.stringify(request);
             const found=await checkReminderCreation(id);
             if(found!=='found')throw Error('Creation outcome unknown');
-            if(active())api.set({form:null});
+            if(active()){createOwner.calendarFormCommitted?.(api.get('calendar').form);api.set({form:null});}
             if(owner===createOwner&&createOwner.live){await createOwner.refreshReminders();api.toast(!matchesAttempt?'The previous reminder was found. This edited draft was not saved. Close it to start a separate reminder.':notificationsBlocked?'Reminder saved; notifications are disabled. Enable notifications, then review its time.':scheduled?(alertMinutes===null?'Reminder saved with no alert.':'Reminder scheduled · approximate delivery'):alertMinutes===null?'The saved reminder was found. No alert is enabled.':'The saved reminder was found. Delivery is not verified.');}
           }catch{
             if(owner===createOwner&&createOwner.live)api.toast('Reminder creation is unconfirmed. Check new reminder status in Calendar; it will not be created again automatically.');

@@ -1,11 +1,17 @@
 /** Product storage contracts qualified across Chromium, Firefox and WebKit. */
 export const STORAGE_SPECS = Object.freeze([
+  "test/browser/assistant-draft-storage.spec.ts",
+  "test/browser/assistant-draft-recovery.spec.ts",
   "test/browser/device-storage-migration.spec.ts",
   "test/browser/password-provider-storage.spec.ts",
   "test/browser/album-storage-migration.spec.ts",
   "test/browser/photo-albums.spec.ts",
   "test/browser/notification-storage-migration.spec.ts",
   "test/browser/calendar-storage-migration.spec.ts",
+  "test/browser/calendar-form-draft.spec.ts",
+  "test/browser/calendar-edit-draft.spec.ts",
+  "test/browser/calendar-backup-restore.spec.ts",
+  "test/browser/calendar-recovery.spec.ts",
   "test/browser/preference-storage-migration.spec.ts",
   "test/browser/reminder-storage-migration.spec.ts",
   "test/browser/storage-usage.spec.ts",

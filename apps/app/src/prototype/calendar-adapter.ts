@@ -94,7 +94,7 @@ export function installCalendarAdapter(Component: any, views: Bag) {
     out.emptyText=rangeReady?(truncated?'Calendar results incomplete. Some events may be missing.':reminderStale?'Reminders unavailable. Retry before relying on this schedule.':'Free all day'):status;
     out.nativeStatusLabel=[rangeReady&&truncated?'Calendar results incomplete. Some events may be missing.':'',reminderStale?'Reminders may be out of date. Tap to retry.':''].filter(Boolean).join(' ');
     out.nativeStatusRetry=()=>{void refresh(false,true);void owner?.refreshReminders();};
-    out.browserRecovery=!Capacitor.isNativePlatform()&&loadFailed&&!loading;out.openBrowserRecovery=openCalendarRecovery;
+    out.browserBackup=!Capacitor.isNativePlatform()&&!loadFailed&&!loading;out.browserRecovery=!Capacitor.isNativePlatform()&&loadFailed&&!loading;out.openBrowserRecovery=openCalendarRecovery;
     out.reminderRecovery=!Capacitor.isNativePlatform()&&reminderStale;out.openReminderRecovery=openReminderRecovery;out.openReminderCreationRecovery=openReminderCreationRecovery;out.openReminderActionRecovery=openReminderActionRecovery;
     if(!rangeReady&&!state.open&&!state.form)out.empty=true;
     const allDay=(state.events||[]).filter((e:Bag)=>e.alphaCalendarId&&e.allDay);
@@ -207,6 +207,7 @@ export function installCalendarAdapter(Component: any, views: Bag) {
           if(creationId&&result.creationId!==creationId)throw Error('Mismatched creation receipt');
           const targetDay=Number(current.off||0);
           // Retire only this exact submitted draft before an acknowledgement can be lost.
+          currentOwner.calendarFormCommitted?.(api.get('calendar').form);
           api.set({form:null,open:null,day:targetDay,month:null});
           const ownsCompletion=()=>owner===currentOwner&&!document.hidden&&api.isActive()&&creationDraftEpoch===epoch&&!api.get('calendar').form&&!api.get('calendar').open&&Number(api.get('calendar').day||0)===targetDay&&api.get('calendar').month==null;
           // Edits have not yielded since ownsForm: React may not have committed form:null yet.

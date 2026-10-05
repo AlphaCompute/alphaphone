@@ -1,3 +1,5 @@
+import {installCalendarEditDraftAdapter} from './prototype/calendar-edit-draft-adapter';
+import {installCalendarFormDraftAdapter} from './prototype/calendar-form-draft-adapter';
 // Register browser implementations before any runtime module claims plugin identity.
 import './browser/register';
 import {bindBrowserSpeechConnection} from './browser/agent-speech';
@@ -71,6 +73,8 @@ if (!fixture) {
   installAgentAdapter(Component, VIEWS);
   installReminderAdapter(Component, VIEWS);
   installCalendarAdapter(Component, VIEWS);
+  installCalendarFormDraftAdapter(Component, VIEWS);
+  installCalendarEditDraftAdapter(Component, VIEWS);
   installPrototypeDataAdapter(Component, VIEWS);
   installNotificationsAdapter(Component);
   installPrototypeVoiceAdapter(Component, VIEWS);

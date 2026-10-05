@@ -410,6 +410,16 @@ async function conversationList(selected: Active, signal: AbortSignal) {
 export const connectionController = {
   subscribe(listener: () => void) { listeners.add(listener); return () => { listeners.delete(listener); }; },
   getSnapshot() { return state; },
+  async assistantDraftBinding(signal:AbortSignal){
+    const selected=active,session=state.session,generation=epoch;
+    signal.throwIfAborted();
+    if(!selected||!session)return JSON.stringify(['offline']);
+    const key=conversationKey(session),saved=await captureConversationChoice(key,signal);
+    signal.throwIfAborted();if(generation!==epoch||selected!==active||session!==state.session)throw Error('The agent changed while opening its draft.');
+    // Pin even an empty choice: another tab's restart preference cannot move this draft.
+    if(!conversationMemory.has(key))conversationMemory.set(key,saved?.id||'');
+    return JSON.stringify([session.origin,session.ownerId,session.agentId,conversationMemory.get(key)||null]);
+  },
   setDeviceRecovery(recovery: DeviceRecovery) { deviceRecovery=recovery; },
   setDeviceExecutor(executor: DeviceExecutor) { deviceExecutor = executor; },
   async execute(proposal: ActionProposal, context: ContextEnvelope, signal: AbortSignal): Promise<OperationReceipt> {
@@ -710,7 +720,7 @@ export const connectionController = {
       const assertCurrent=()=>{requestSignal.throwIfAborted();if(generation!==epoch||selected!==active||state.session?.sessionId!==session.sessionId)throw Error('The connection changed.');};
       const key = conversationKey(session), cached = await captureConversationChoice(key,requestSignal);
       assertCurrent();
-      let id = conversationMemory.get(key) || cached?.id;
+      let id = conversationMemory.has(key) ? conversationMemory.get(key) : cached?.id;
       if (typeof id !== 'string' || !id) {
         const created = selected.kind === 'cloud' ? await selected.cloud.createConversation(selected.agentId, 'Alpha Phone', requestSignal) : await selected.remote.createConversation('Alpha Phone', requestSignal);
         requestSignal.throwIfAborted();
@@ -718,7 +728,7 @@ export const connectionController = {
         id = created.id;
         let saved=true;
         try { await selectConversation(key,cached,id,requestSignal,assertCurrent); } catch { saved=false; }
-        assertCurrent();conversationMemory.set(key,id);
+        assertCurrent();conversationMemory.set(key,id);update({});
         if(!saved)update({ message: 'Conversation is connected for this session. Its selection could not be saved for restart.' });
       }
       // Generic clients report an observation, never authority or permission.
