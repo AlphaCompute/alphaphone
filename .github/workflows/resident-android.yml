@@ -177,6 +177,8 @@ jobs:
         run: |
           python3 scripts/ci/resident-phase.py --name runtime-stage --seconds 1800 npm run agent:stage-android
           python3 scripts/ci/resident-phase.py --name mobile-bundle --seconds 300 npm run agent:test-mobile-workflow-bundle
+          # Fresh native artifacts and the runtime pin are inputs to shipped notices.
+          python3 scripts/ci/resident-phase.py --name license-notices --seconds 120 node scripts/generate-licenses.mjs
           # Flag-off distribution: release verification requires the PACKAGED runtime.
           python3 scripts/ci/resident-phase.py --name distribution-archive --seconds 3000 node scripts/build-archive.mjs test-results/resident-ci-distribution
           # The native suites need the private peer fixture, a debug-only test hook
