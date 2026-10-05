@@ -175,7 +175,7 @@ form. Storage failure leaves current text available and exposes recovery.
 Creation forms and inline existing-event/reminder edit forms retain drafts in separate
 slots. The separate recurring/all-day Calendar editor also retains per-event drafts,
 with explicit recovery when the event is reopened for editing.
-Post-save unsaved Inbox edits also remain open. Android execution and physical
+Inbox now also retains unsaved edits separately from explicitly saved drafts. Android execution and physical
 process-death acceptance remain separate from browser qualification.
 
 Runtime update PR #317 remains unqualified at `e2f62059`: hosted test-mocks
@@ -228,5 +228,23 @@ across Chromium, Firefox and WebKit, following 14 initial editor/recurrence/
 accessibility regressions and 21 recovery cases before the compact-layout adjustment.
 The corrected 360 × 360 restored editor was visually inspected. The earlier full
 663-test result predates this modal change; its combined root verification is
-deferred to the next implementation batch. No Android build was run. Unsaved
-Inbox edits remain the next draft-recovery gap.
+deferred to the next implementation batch. No Android build was run. Inbox recovery is tracked below.
+
+## Unsent Inbox edit recovery
+
+Unsent edits now have a separate recovery copy bound to the exact Cloud
+environment, owner, organization and Gmail connection. It retains partial
+recipient input, editable text, reviewed attachment bytes and the original saved
+draft revision. Resume is explicit and never prepares or sends provider mail.
+A newer saved draft refuses a stale replacement; competing windows require
+Restore or Replace. Failed recovery cleanup after an explicit local save is
+reported without claiming the copy was removed. Damaged recovery storage can
+be reset without deleting the explicitly saved draft. Browser and native
+storage use the existing transactional document and encrypted-slot adapters.
+
+Inbox qualification: all 33 browser checks passed, including the owning adapter,
+account-switch/read-cancellation regressions and recovery cases across Chromium,
+Firefox and WebKit. Three record validation tests and type checking also passed.
+Combined root verification with the Calendar modal changes is pending. Physical-device
+process recreation, native encrypted-store execution and real Gmail authorization
+and provider outcomes remain unqualified by these browser fixtures.
