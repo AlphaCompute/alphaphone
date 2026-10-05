@@ -1,3 +1,4 @@
+import {openDomainRecovery} from '../browser/domain-recovery';
 import {browserDevProfile} from '../browser/dev-profile';
 import {browserScreenLocked} from '../browser/screen-locked';
 import { holdPhoneInert } from './modal-inert';
@@ -63,6 +64,7 @@ export function HostedDigestPanel() {
 		[evening, setEvening] = useState("18:00");
 	const binding = useRef<{
 		storage: DigestStorage;
+        recover?:()=>void;
 		notices: HostedResultBinding;
 		client: HostedDigestProtocol;
 		inbox: ResultInbox;
@@ -180,7 +182,7 @@ export function HostedDigestPanel() {
 			if (disposed) return;
             const client=selected.client.hosted();let inbox:ResultInbox;
             const development=browserDevProfile&&JSON.parse(localStorage.getItem('alpha.connection.selection.v1')||'null')?.kind==='development';
-            const storage=development?await (await import('../browser/digest-storage')).browserDigestStore(session,()=>!disposed&&connectionController.getSnapshot().session?.sessionId===session.sessionId):!isAndroid&&browserLocalAgentEnabled&&connection.kind==='resident'?developmentDigestStore():secureConnectionStore;
+            const storage=development?await (await import('../browser/digest-storage')).browserDigestStore(session,()=>!disposed&&connectionController.getSnapshot().session?.sessionId===session.sessionId,controller.signal):!isAndroid&&browserLocalAgentEnabled&&connection.kind==='resident'?developmentDigestStore():secureConnectionStore;
             const notices:HostedResultBinding={scope:slot.slice('hosted-digests:v1:'.length),origin:session.origin,ownerId:session.ownerId,agentId:session.agentId,current:()=>!disposed&&binding.current?.sessionId===session.sessionId&&connectionController.getSnapshot().session?.sessionId===session.sessionId,revalidate:signal=>client.available(signal),history:()=>inbox.history()};
             let ready=false;
             if(isAndroid){
@@ -194,6 +196,7 @@ export function HostedDigestPanel() {
             inbox=createDigestInbox({android:isAndroid,nativeReady:ready,storage,scope:slot,native:()=>new NativeResultInbox(session.sessionId),afterCommit:!isAndroid?async(result,signal)=>{await publishHostedResult(hostedResultNative,notices,result,signal);}:undefined});
 			const b = {
                 storage, notices,
+                recover:development&&'recovery' in storage?()=>openDomainRecovery(storage.recovery as Parameters<typeof openDomainRecovery>[0],'digest inbox','Development digest inbox recovery','Download saved results and pending recovery records before resetting. Reset clears this account’s local inbox and pending request records. It does not cancel or restart agent schedules. Review uncertain requests with the agent before creating replacements. The backup preserves older slot bytes inside a JSON archive. Close older Alpha tabs before continuing.',controller.signal):undefined,
 				client,
 				inbox,
 				slot,
@@ -372,6 +375,7 @@ export function HostedDigestPanel() {
 					</button>
 				</header>
 				<h1 id="digest-title">Scheduled digests</h1>
+                {liveBinding?.recover&&<button onClick={()=>{setOpen(false);liveBinding.recover?.();}}>Digest inbox recovery</button>}
 				<p>
 					{interactiveDevelopment ? 'Schedules run while this browser is open.' : connection.kind==='resident'
                         ? (isAndroid?'Your agent runs schedules on this phone. It cannot run while the phone is off.':'Schedules run on this computer while the local agent process is running.')
