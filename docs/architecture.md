@@ -41,7 +41,12 @@ resident runtime or production authentication.
 Third-party web content runs in an isolated native browser surface; it must not
 receive the application's Capacitor bridge. Origin, context revision, consent,
 sensitive fields and cancellation remain bound to each action. Credentials use
-Android Keystore-backed storage in the no-backup directory. Renderer preferences
+Android Keystore-backed storage in the no-backup directory. The renderer bridge
+and background consumers use upstream `JsonCredentialSlots` through
+`AlphaCredentialStore`, sharing one process-wide lock and compare-and-exchange.
+Alpha owns the installed alias, directory, per-slot byte limits and renderer
+namespace restrictions. The ciphertext frame, hashed filename and slot AAD remain
+unchanged; writers in separate Android processes are outside this contract. Renderer preferences
 hold nonsecret selections and identifiers. Backup remains disabled until its
 key and retention policy is defined.
 

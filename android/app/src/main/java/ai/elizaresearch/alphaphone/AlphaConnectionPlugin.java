@@ -2,35 +2,22 @@ package ai.elizaresearch.alphaphone;
 
 import android.content.Intent;
 import android.net.Uri;
-import android.security.keystore.KeyGenParameterSpec;
-import android.security.keystore.KeyProperties;
-import android.util.AtomicFile;
 import com.getcapacitor.JSObject;
 import com.getcapacitor.Plugin;
 import com.getcapacitor.PluginCall;
 import com.getcapacitor.PluginMethod;
 import com.getcapacitor.annotation.CapacitorPlugin;
 import java.io.ByteArrayOutputStream;
-import java.io.File;
-import java.io.FileOutputStream;
-import java.io.FileNotFoundException;
 import java.io.InputStream;
 import java.net.HttpURLConnection;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
-import java.security.KeyStore;
-import java.security.MessageDigest;
-import java.util.Arrays;
 import java.util.Iterator;
 import java.util.Locale;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import javax.crypto.Cipher;
-import javax.crypto.KeyGenerator;
-import javax.crypto.SecretKey;
-import javax.crypto.spec.GCMParameterSpec;
 import org.json.JSONObject;
 import org.json.JSONTokener;
 
@@ -66,12 +53,9 @@ public final class AlphaConnectionPlugin extends Plugin {
   call.resolve();
  }
 
- private static final String KEY_ALIAS = "alpha.connection.aes.v1";
  private static final int RESPONSE_LIMIT = 2 * 1024 * 1024;
- private static final int SECRET_LIMIT = 256 * 1024;
  private final ExecutorService workers = Executors.newFixedThreadPool(4);
  private volatile boolean destroyed;
- private static final Object storageLock = new Object();
  private final ConcurrentHashMap<String, Pending> requests = new ConcurrentHashMap<>();
  /** Bridge messages already queued during Activity teardown can arrive after shutdown. */
  private boolean submit(PluginCall call,Runnable task) {
@@ -88,28 +72,6 @@ public final class AlphaConnectionPlugin extends Plugin {
   if (value == null || value.isEmpty() || value.length() > max) throw new IllegalArgumentException();
   return value;
  }
- private static int slotLimit(String name){if("notes-audio-deletions:v1:device".equals(name))return 1024*1024;if(name!=null&&name.matches("note-audio-metadata:v1:[A-Za-z0-9_-]{1,100}"))return 512*1024;if("notes-records:v1:device".equals(name))return 32*1024*1024;return name!=null&&(name.startsWith("inbox-drafts:v1:")||name.matches("inbox-operation:v1:[a-f0-9]{64}"))?8*1024*1024:SECRET_LIMIT;}
- private String slotHash(String slot) throws Exception {
-  byte[] hash = MessageDigest.getInstance("SHA-256").digest(required(slot, 1024).getBytes(StandardCharsets.UTF_8));
-  StringBuilder result = new StringBuilder();
-  for (byte b : hash) result.append(String.format(Locale.ROOT, "%02x", b & 255));
-  return result.toString();
- }
- private AtomicFile slotFile(String hash) throws Exception {
-  File directory = new File(getContext().getNoBackupFilesDir(), "connection-credentials");
-  if (!directory.isDirectory() && !directory.mkdirs()) throw new IllegalStateException();
-  return new AtomicFile(new File(directory, hash));
- }
- private SecretKey key() throws Exception {
-  KeyStore store = KeyStore.getInstance("AndroidKeyStore"); store.load(null);
-  if (!store.containsAlias(KEY_ALIAS)) {
-   KeyGenerator generator = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, "AndroidKeyStore");
-   generator.init(new KeyGenParameterSpec.Builder(KEY_ALIAS, KeyProperties.PURPOSE_ENCRYPT | KeyProperties.PURPOSE_DECRYPT)
-     .setBlockModes(KeyProperties.BLOCK_MODE_GCM).setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE).setKeySize(256).build());
-   generator.generateKey();
-  }
-  return (SecretKey) store.getKey(KEY_ALIAS, null);
- }
  private static Object parseJson(String value) throws Exception {
   JSONTokener parser = new JSONTokener(value);
   Object parsed = parser.nextValue();
@@ -125,48 +87,10 @@ public final class AlphaConnectionPlugin extends Plugin {
    } catch (Exception error) { call.reject("Secure storage write failed"); }
   });
  }
- void writeCredentialSlot(String name, String serialized) throws Exception {
-    String slot = slotHash(name);
-    int limit=slotLimit(name);
-    String value = required(serialized, limit);
-    parseJson(value);
-    byte[] plain = value.getBytes(StandardCharsets.UTF_8);
-    if (plain.length > limit) throw new IllegalArgumentException();
-    synchronized (storageLock) {
-     Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding"); cipher.init(Cipher.ENCRYPT_MODE, key());
-     cipher.updateAAD(slot.getBytes(StandardCharsets.US_ASCII));
-     byte[] iv = cipher.getIV(), encrypted = cipher.doFinal(plain);
-     AtomicFile file = slotFile(slot); FileOutputStream out = null;
-     try {
-      out = file.startWrite(); out.write(1); out.write(iv.length); out.write(iv); out.write(encrypted);
-      out.getFD().sync(); file.finishWrite(out);
-      out = null;
-      try (InputStream input = file.openRead()) {
-       byte[] committed = readBounded(input, limit + 64);
-       if (committed.length != 2 + iv.length + encrypted.length || committed[0] != 1 || committed[1] != iv.length
-         || !Arrays.equals(iv, Arrays.copyOfRange(committed, 2, 2 + iv.length))
-         || !Arrays.equals(encrypted, Arrays.copyOfRange(committed, 2 + iv.length, committed.length))) throw new IllegalStateException();
-      }
-     } catch (Exception error) { if (out != null) file.failWrite(out); throw error; }
-     finally { Arrays.fill(plain, (byte) 0); }
-    }
- }
- /** Native consumers share the same authenticated slot format without a JS credential round trip. */
- String readCredentialSlot(String name) throws Exception {
-  String slot=slotHash(name);int limit=slotLimit(name);
-  synchronized(storageLock) {
-   AtomicFile file=slotFile(slot); byte[] stored;
-   try(InputStream input=file.openRead()){stored=readBounded(input,limit+64);}
-   catch(FileNotFoundException missing){if(file.getBaseFile().exists()||new File(file.getBaseFile().getPath()+".bak").exists())throw missing;return null;}
-   if(stored.length<30||stored[0]!=1||stored[1]!=12)throw new IllegalArgumentException();
-   Cipher cipher=Cipher.getInstance("AES/GCM/NoPadding");
-   cipher.init(Cipher.DECRYPT_MODE,key(),new GCMParameterSpec(128,Arrays.copyOfRange(stored,2,14)));
-   cipher.updateAAD(slot.getBytes(StandardCharsets.US_ASCII));
-   byte[] plain=cipher.doFinal(stored,14,stored.length-14);
-   try{String value=new String(plain,StandardCharsets.UTF_8);parseJson(value);return value;}
-   finally{Arrays.fill(plain,(byte)0);}
-  }
- }
+ private AlphaCredentialStore storage(){return new AlphaCredentialStore(getContext());}
+ void writeCredentialSlot(String name,String value)throws Exception{storage().writeCredentialSlot(name,value);}
+ String readCredentialSlot(String name)throws Exception{return storage().readCredentialSlot(name);}
+ void removeCredentialSlot(String name)throws Exception{storage().removeCredentialSlot(name);}
  /** Required before rendering or persisting mock mode; never resumes automatically. */
  @PluginMethod public void pauseNotificationCollection(PluginCall call) {
   submit(call,()->{try{NotificationAccess.pause(getContext(),true);call.resolve();}catch(Exception failure){call.reject("Notification collection could not be paused");}});
@@ -185,34 +109,15 @@ public final class AlphaConnectionPlugin extends Plugin {
     if(name==null||!(name.startsWith("inbox-drafts:v1:")||name.matches("inbox-operation:v1:[a-f0-9]{64}")||name.matches("workflow-draft:v1:[a-f0-9]{64}")||name.equals("notes-records:v1:device")||name.equals("reminder-deletions:v1:device")||name.equals("reminder-creations:v1:device")||name.equals("clock-handoff:v1:device")||name.equals("notes-audio-deletions:v1:device")||name.matches("cloud-delegation:v1:[a-f0-9]{64}"))||!call.getData().has("expectedValue")||!call.getData().has("value"))throw new IllegalArgumentException();
     for(String field:new String[]{"expectedValue","value"})if(!call.getData().isNull(field)&&!(call.getData().get(field) instanceof String))throw new IllegalArgumentException();
     String expected=call.getString("expectedValue"), value=call.getString("value");
-    synchronized(storageLock){
-     String current=readCredentialSlot(name);
-     JSObject result=new JSObject();
-     if(!java.util.Objects.equals(expected,current)){result.put("status","conflict");call.resolve(result);return;}
-     if(value!=null)writeCredentialSlot(name,value);
-     else {
-      AtomicFile file=slotFile(slotHash(name));file.delete();
-      if(file.getBaseFile().exists()||new File(file.getBaseFile().getPath()+".bak").exists()||new File(file.getBaseFile().getPath()+".new").exists())throw new IllegalStateException();
-     }
-     result.put("status","saved");call.resolve(result);
-    }
+    JSObject result=new JSObject();
+    result.put("status",storage().compareExchangeCredentialSlot(name,expected,value)?"saved":"conflict");call.resolve(result);
    }catch(Exception error){call.reject("Secure draft update failed");}
   });
- }
- void removeCredentialSlot(String name)throws Exception {
-  synchronized(storageLock){
-   AtomicFile file=slotFile(slotHash(name));file.delete();
-   if(file.getBaseFile().exists()||new File(file.getBaseFile()+".bak").exists()||new File(file.getBaseFile()+".new").exists())throw new java.io.IOException("Secure slot removal failed");
-  }
  }
  @PluginMethod public void secureRemove(PluginCall call) {
   submit(call,() -> {
    try {
-    String slot = slotHash(RendererCredentialSlots.requireAllowed(call.getString("slot")));
-    synchronized (storageLock) {
-     AtomicFile file = slotFile(slot); file.delete();
-     if (file.getBaseFile().exists() || new File(file.getBaseFile().getPath() + ".bak").exists() || new File(file.getBaseFile().getPath() + ".new").exists()) throw new IllegalStateException();
-    }
+    removeCredentialSlot(RendererCredentialSlots.requireAllowed(call.getString("slot")));
     call.resolve();
    } catch (Exception error) { call.reject("Secure storage removal failed"); }
   });
