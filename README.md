@@ -138,6 +138,15 @@ The runner requires an owned disposable emulator, leases it, uses fresh secondar
 users and retains uncertain cleanup for explicit recovery. Reports are under
 `test-results/native-calendar-consumer`; fixture builds alone do not prove native acceptance.
 
+The camera denial/retry campaign uses the same leased emulator and disposable-user
+harness. Set `ANDROID_SERIAL`, `ALPHA_CAMERA_TEST_AVD` and
+`ALPHA_CAMERA_TEST_ABI`, then run
+`node scripts/test-camera-permission.mjs APP.apk MATCHING_TEST.apk NEW_OUTPUT`.
+The APKs must be a matching archived standalone or launcher pair with their
+`apk-manifest.json`. Existing package registrations are refused. Permission
+changes affect only the fixture user; unproven package cleanup retains that user
+for recovery. The output records APK admission, test identities and user cleanup.
+
 Installed Calendar and reminder upgrade acceptance uses
 `node scripts/test-calendar-upgrade.mjs` or `node scripts/test-reminder-upgrade.mjs`.
 Set `ANDROID_HOME` and the matching `ALPHA_CALENDAR_` or `ALPHA_REMINDER_` variables:

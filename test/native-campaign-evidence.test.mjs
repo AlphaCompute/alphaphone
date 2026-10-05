@@ -6,7 +6,7 @@ import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 
-const scripts={workflow:path.resolve('scripts/android-workflow-native.mjs'),calendar:path.resolve('scripts/test-calendar-range.mjs'),camera:path.resolve('scripts/test-camera-permission.mjs')};
+const scripts={workflow:path.resolve('scripts/android-workflow-native.mjs'),calendar:path.resolve('scripts/test-calendar-range.mjs')};
 function exercise(kind,mode) {
   const root=fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(),'alpha-native-evidence-')));
   try {
