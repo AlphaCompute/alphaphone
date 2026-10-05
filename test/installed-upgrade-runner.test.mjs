@@ -18,7 +18,12 @@ function exercise(kind,mode='pass',bridge=false){
   fs.writeFileSync(state,JSON.stringify({user:'0',exists:false,files:mode==='existing'?{[pkg]:'unowned'}:{}}));fs.writeFileSync(log,'');
   fs.writeFileSync(aapt,`#!/usr/bin/env node
 const args=process.argv.slice(2),test=/androidTest|test.apk/.test(args[2]);
-if(args[1]==='badging')console.log("package: name='${pkg}"+(test?'.test':'')+"'");else console.log('E: manifest\\n  E: instrumentation\\n    A: android:name="androidx.test.runner.AndroidJUnitRunner"\\n    A: android:targetPackage="${pkg}"');
+const extra=args[2].includes('androidTest')?${JSON.stringify(mode)}!=='candidate-missing-runner':['baseline-process','baseline-undeclared'].includes(${JSON.stringify(mode)});
+if(args[1]==='badging')console.log("package: name='${pkg}"+(test?'.test':'')+"'");
+else {
+ console.log('E: manifest\\n  E: instrumentation\\n    A: android:name="androidx.test.runner.AndroidJUnitRunner"\\n    A: android:targetPackage="${pkg}"');
+ if(extra)console.log('  E: instrumentation\\n    A: android:name="${pkg}.WorkflowNoticeProcessRunner"\\n    A: android:targetPackage="${pkg}"');
+}
 `,{mode:0o700});
   fs.writeFileSync(adb,`#!/usr/bin/env node
 const fs=require('node:fs'),a=process.argv.slice(4),stateFile=${JSON.stringify(state)},s=JSON.parse(fs.readFileSync(stateFile)),pkg=${JSON.stringify(pkg)},mode=${JSON.stringify(mode)},host=${JSON.stringify(host)};
@@ -47,7 +52,7 @@ else if(a.includes('instrument')){const selector=a[a.indexOf('class')+1],parts=s
 else if(a.includes('start-user')||a.includes('stop-user')||a.includes('grant')||a[1]==='input'||a[1]==='wm'){}
 else {console.error('Unexpected command '+JSON.stringify(a));process.exit(1);}
 `,{mode:0o700});
-  const prefix=`ALPHA_${kind.toUpperCase()}`,run=spawnSync(process.execPath,[path.resolve(`scripts/test-${kind}-upgrade.mjs`),...(bridge?['--bridge']:[])],{encoding:'utf8',timeout:120000,env:{...process.env,ANDROID_HOME:root,ELIZA_DEVICE_LEASE_DIR:path.join(root,'leases'),[`${prefix}_TEST_ROOT`]:root,[`${prefix}_BASELINE_DIR`]:path.join(root,'baseline'),[`${prefix}_TEST_SERIAL`]:'emulator-5596',[`${prefix}_TEST_AVD`]:'owned-fixture',[`${prefix}_TEST_ABI`]:'x86_64'}});
+  const prefix=`ALPHA_${kind.toUpperCase()}`,run=spawnSync(process.execPath,[path.resolve(`scripts/test-${kind}-upgrade.mjs`),...(bridge?['--bridge']:[]),...(mode==='baseline-process'?['--baseline-process-runner']:[])],{encoding:'utf8',timeout:120000,env:{...process.env,ANDROID_HOME:root,ELIZA_DEVICE_LEASE_DIR:path.join(root,'leases'),[`${prefix}_TEST_ROOT`]:root,[`${prefix}_BASELINE_DIR`]:path.join(root,'baseline'),[`${prefix}_TEST_SERIAL`]:'emulator-5596',[`${prefix}_TEST_AVD`]:'owned-fixture',[`${prefix}_TEST_ABI`]:'x86_64'}});
   // Source authentication alone can exceed the old whole-fixture deadline.
   // Surface process failures before reading output that may never have been created.
   assert.ifError(run.error);
@@ -72,4 +77,11 @@ test('existing product registration is rejected before a user or installation is
 
 test('failed owner restoration retains the secondary user for recovery',()=>{
  const r=exercise('calendar','restore-failure');assert.notEqual(r.status,0);assert.equal(r.state.exists,true);assert.equal(r.reports[0].cleanupDeferred,true);assert.ok(!r.commands.some(a=>a.includes('remove-user')));
+});
+
+test('reminder can explicitly admit the known process runner in a newer baseline',()=>{
+ const r=exercise('reminder','baseline-process');assert.equal(r.status,0,r.stderr);assert.equal(r.reports.length,2);
+});
+for(const mode of ['baseline-undeclared','candidate-missing-runner'])test(`reminder rejects ${mode} before installing any APK`,()=>{
+ const r=exercise('reminder',mode);assert.notEqual(r.status,0);assert.ok(!r.commands.some(a=>a[0]==='install'));assert.deepEqual(r.state.files,{});assert.equal(r.reports[0].cleanupDeferred,true);
 });

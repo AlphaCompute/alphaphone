@@ -24,8 +24,9 @@ export async function testInstalledUpgrade(kind){
  const adb=path.join(sdk,'platform-tools/adb'),aapt=path.join(sdk,'build-tools/36.0.0/aapt');
  const pkg=JSON.parse(fs.readFileSync(path.join(root,'app.config.json'),'utf8')).appId,testPkg=`${pkg}.test`;
  assert.equal(pkg,'ai.elizaresearch.alphaphone');
- const bridge=process.argv.includes('--bridge');
- assert.ok(process.argv.slice(2).every(arg=>kind==='calendar'&&arg==='--bridge'),'Unknown upgrade option');
+ const bridge=process.argv.includes('--bridge'),baselineProcessRunner=process.argv.includes('--baseline-process-runner');
+ assert.ok(process.argv.slice(2).every(arg=>(kind==='calendar'&&arg==='--bridge')||(kind==='reminder'&&arg==='--baseline-process-runner')),'Unknown upgrade option');
+ const currentRunners=[pkg+'.WorkflowNoticeProcessRunner'];
  const cancellation=new AbortController(),cancel=()=>cancellation.abort();
  const call=(...args)=>execFileSync(adb,['-s',serial,...args],{encoding:'utf8',timeout:120000,maxBuffer:16*1024*1024}).trim();
  const host=kind==='calendar'?'com.android.launcher3':'com.google.android.apps.nexuslauncher';
@@ -54,7 +55,7 @@ export async function testInstalledUpgrade(kind){
       try{
     receipt.result=await runIsolatedAndroidTest({serial,adb,aapt,packageName:pkg,testClass:`${pkg}.${testClass}`,testMethod,requiredAbi:abi,expectedAvdName:avd,androidUser:user,deviceLease:lease,directory,signal:cancellation.signal,commandTimeoutMs:120000,instrumentationTimeoutMs:120000,cleanupTimeoutMs:120000,
      evidence:`Alpha ${kind} installed upgrade in a fresh owned secondary user. No live account acceptance.`,
-     variants:[{name:variant,apk:path.join(baseline,`${variant}-debug.apk`),testApk:kind==='reminder'?path.join(baseline,`${variant}-test.apk`):candidateTest,upgrade:{apk:path.join(root,'artifacts',`${variant}-debug.apk`),testApk:candidateTest}}],runnerArgs:['-e',flag,'seed'],upgradeRunnerArgs:['-e',flag,'verify'],
+     variants:[{name:variant,apk:path.join(baseline,`${variant}-debug.apk`),testApk:kind==='reminder'?path.join(baseline,`${variant}-test.apk`):candidateTest,additionalInstrumentationRunners:kind==='calendar'||baselineProcessRunner?currentRunners:[],upgrade:{apk:path.join(root,'artifacts',`${variant}-debug.apk`),testApk:candidateTest,additionalInstrumentationRunners:currentRunners}}],runnerArgs:['-e',flag,'seed'],upgradeRunnerArgs:['-e',flag,'verify'],
      prepareVariant:()=>{for(const permission of kind==='calendar'?['READ_CALENDAR','WRITE_CALENDAR']:['POST_NOTIFICATIONS'])call('shell','pm','grant','--user',String(user),pkg,`android.permission.${permission}`);},
      beforeUpgrade:()=>{if(kind==='calendar')call('shell','am','force-stop','--user',String(user),pkg);else {before=routes();log('baseline-intents.json',before);assert.ok(before.some(line=>line.includes('dat=alpha-reminder:upgrade_future/'))&&before.some(line=>line.includes('dat=alpha-reminder:upgrade_repeat/'))&&before.some(line=>line.includes('dat=alpha-reminder-tap:')),'Baseline native intent inventory missing');}},
      afterUpgrade:()=>{if(kind==='reminder'){const after=routes();log('candidate-intents.json',after);assert.deepEqual(after,before,'Installed update changed native reminder intent routes');receipt.intentPreservation={passed:true,routes:before.length};}},
