@@ -1,10 +1,27 @@
-/** Verify, build both distributions and retain immutable matching app/test artifacts. */
+/**
+ * Verify, build both distributions and retain immutable matching app/test artifacts.
+ *
+ *   node scripts/build-archive.mjs [--test-mocks] test-results/<new-archive>
+ *
+ * Default archives the flag-off distribution build from artifacts/. --test-mocks
+ * archives the separate, never-distributable test-mocks build from
+ * artifacts/test-mocks/ for mock-isolation instrumentation suites only.
+ */
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import assert from 'node:assert/strict';
 import {execFileSync} from 'node:child_process';
-const [destination]=process.argv.slice(2);
+const cli=process.argv.slice(2);
+const testMocks=cli.includes('--test-mocks');
+const positional=cli.filter(arg=>arg!=='--test-mocks');
+assert.ok(positional.length===1&&!positional[0].startsWith('--'),'Use: node scripts/build-archive.mjs [--test-mocks] test-results/<new-archive>');
+const [destination]=positional;
+const sourceDir=testMocks?'artifacts/test-mocks':'artifacts';
+// Distribution archives are always flag-off; build-android also strips these.
+const buildEnv={...process.env};
+for(const name of ['ELIZA_DEV_ALLOW_TEST_MOCKS','VITE_ELIZA_DEV_ALLOW_TEST_MOCKS','ORG_GRADLE_PROJECT_ELIZA_DEV_ALLOW_TEST_MOCKS'])delete buildEnv[name];
+if(testMocks)buildEnv.ELIZA_DEV_ALLOW_TEST_MOCKS='1';
 assert.ok(destination && path.resolve(destination).startsWith(path.resolve('test-results')+path.sep), 'Use a new archive beneath test-results');
 assert.ok(!fs.existsSync(destination), 'Archive already exists; preserve earlier evidence');
 fs.mkdirSync(destination,{recursive:true});
@@ -19,14 +36,15 @@ finally{fs.closeSync(nativeStageLog);}
 // Complete normal sync before freezing; the build repeats sync and equality
 // below still rejects drift in this file or any other captured input.
 const capacitorStageLog=fs.openSync(path.join(destination,'capacitor-prestage.log'),'wx');
-try{execFileSync('npm',['run','android:sync'],{stdio:['ignore',capacitorStageLog,capacitorStageLog],timeout:600000});}
+try{execFileSync('npm',['run','android:sync'],{stdio:['ignore',capacitorStageLog,capacitorStageLog],timeout:600000,env:buildEnv});}
 finally{fs.closeSync(capacitorStageLog);}
 const before=snapshot();
 fs.writeFileSync(path.join(destination,'inputs-before.json'),JSON.stringify(before,null,2));
-fs.writeFileSync(path.join(destination,'configuration.json'),JSON.stringify({mapsConfigured:Boolean(process.env.VITE_MAPS_BASE_URL),startedAt:new Date().toISOString()},null,2));
+fs.writeFileSync(path.join(destination,'configuration.json'),JSON.stringify({testMocks,mapsConfigured:Boolean(process.env.VITE_MAPS_BASE_URL),startedAt:new Date().toISOString()},null,2));
 for(const command of ['verify','android:build']){
  const log=fs.openSync(path.join(destination,command.replace(':','-')+'.log'),'wx');
- try{execFileSync('npm',['run',command],{stdio:['ignore',log,log],timeout:1200000});}
+ const extra=command==='android:build'&&testMocks?['--','--test-mocks']:[];
+ try{execFileSync('npm',['run',command,...extra],{stdio:['ignore',log,log],timeout:1200000,env:command==='verify'?process.env:buildEnv});}
  finally{fs.closeSync(log);}
  console.log(command+': passed');
 }
@@ -35,10 +53,34 @@ fs.writeFileSync(path.join(destination,'inputs-after.json'),JSON.stringify(after
 assert.equal(after.digest,before.digest,'Build inputs changed; do not qualify this archive');
 const manifest={};
 function retain(source,name){const target=path.join(destination,name);fs.copyFileSync(source,target,fs.constants.COPYFILE_EXCL);manifest[name]=crypto.createHash('sha256').update(fs.readFileSync(target)).digest('hex');}
+// Retain exactly the build verify-apks checked, with its flag state.
+const verification=JSON.parse(fs.readFileSync(path.join(sourceDir,'apk-manifest.json'),'utf8'));
+assert.equal(verification.testMocks,testMocks,`Archive expects a testMocks=${testMocks} build`);
+const webFlags=JSON.parse(fs.readFileSync('web-dist/build-flags.json','utf8'));
+assert.equal(webFlags.testMocks,testMocks,`web-dist was not built with testMocks=${testMocks}`);
+// apk-manifest.json keeps its six-APK name->hash shape for existing consumers;
+// release mappings are retained beside it with their own hashes.
+const mappings={};
 for(const variant of ['standalone','launcher']){
- for(const suffix of ['debug','release-unsigned'])retain(`artifacts/${variant}-${suffix}.apk`,`${variant}-${suffix}.apk`);
- retain(`android/app/build/outputs/apk/androidTest/${variant}/debug/app-${variant}-debug-androidTest.apk`,`${variant}-androidTest.apk`);
+ const releases=['release','release-unsigned'].filter(suffix=>fs.existsSync(path.join(sourceDir,`${variant}-${suffix}.apk`)));
+ assert.equal(releases.length,1,`Expected exactly one ${variant} release APK`);
+ for(const suffix of ['debug',releases[0]]){
+  const name=`${variant}-${suffix}.apk`;
+  const row=verification.results.find(entry=>entry.file===path.join(sourceDir,name));
+  assert.ok(row,`${sourceDir}/${name} is not in the verified APK manifest`);
+  retain(path.join(sourceDir,name),name);
+  assert.equal(manifest[name],row.sha256,`${sourceDir}/${name} changed after verification`);
+ }
+ retain(testMocks?path.join(sourceDir,`${variant}-androidTest.apk`):`android/app/build/outputs/apk/androidTest/${variant}/debug/app-${variant}-debug-androidTest.apk`,`${variant}-androidTest.apk`);
+ const mapping=path.join(sourceDir,'mapping',`${variant}-release-mapping.txt`);
+ if(fs.existsSync(mapping)){
+  const target=path.join(destination,`${variant}-release-mapping.txt`);
+  fs.copyFileSync(mapping,target,fs.constants.COPYFILE_EXCL);
+  mappings[`${variant}-release-mapping.txt`]=crypto.createHash('sha256').update(fs.readFileSync(target)).digest('hex');
+ }
 }
+fs.writeFileSync(path.join(destination,'release-mappings.json'),JSON.stringify(mappings,null,2)+'\n',{flag:'wx'});
+fs.copyFileSync(path.join(sourceDir,'apk-manifest.json'),path.join(destination,'apk-verification.json'),fs.constants.COPYFILE_EXCL);
 fs.cpSync('web-dist',path.join(destination,'web-dist'),{recursive:true,errorOnExist:true,force:false});
 fs.writeFileSync(path.join(destination,'apk-manifest.json'),JSON.stringify(manifest,null,2));
 console.log(JSON.stringify({archive:destination,sourceFingerprint:after.digest,apks:Object.keys(manifest).length}));
