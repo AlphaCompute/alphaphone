@@ -2,7 +2,7 @@ import {layoutBrowserDialog} from './dialog-layout';
 import type {DomainRecovery,BrowserDomainDocument} from './domain-document';
 let current:HTMLDialogElement|undefined;
 /** Exact-byte backup and explicitly confirmed, revision-checked recovery. */
-export function openDomainRecovery(domain:Pick<BrowserDomainDocument,'capture'|'reset'>,name:'calendar'|'reminders'|'notifications'|'bookmarks'|'alert sound history',heading:string,description:string){
+export function openDomainRecovery(domain:Pick<BrowserDomainDocument,'capture'|'reset'>,name:'calendar'|'reminders'|'notifications'|'bookmarks'|'alert sound history'|'password provider',heading:string,description:string){
  if(current?.open)return;
  const dialog=current=document.createElement('dialog');dialog.setAttribute('aria-label',heading);dialog.style.cssText='box-sizing:border-box;width:min(400px,94vw);max-height:85dvh;overflow:auto;padding:24px;border:0;border-radius:20px;background:var(--bg,#fff);color:var(--fg,#111);font:16px/1.5 system-ui';
  const previous=document.activeElement as HTMLElement|null,abort=new AbortController();let closed=false,confirming=false,busy=false,captured:DomainRecovery|undefined;
