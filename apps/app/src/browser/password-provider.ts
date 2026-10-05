@@ -1,6 +1,6 @@
 import {layoutBrowserDialog} from './dialog-layout';
 import {browserDevProfile} from './dev-profile';
-import {revision} from './store';
+import {revision} from './revision';
 import {passwordProviderDocument} from './preference-documents';
 import {browserScreenLocked} from './screen-locked';
 const key='alpha.browser.password-provider.v1';

@@ -2,8 +2,8 @@
 
 The transactional migrations in [browser-storage.md](browser-storage.md) do not
 complete the persistence review. This audit covers independent renderer stores,
-operation intents and delegated storage ports that do not use the legacy
-`readStore`/`editStore` helpers. It is a source review, not a claim that every
+operation intents and delegated storage ports outside the canonical browser
+domains. It is a source review, not a claim that every
 listed path has reproduced data loss or passed concurrency qualification.
 
 ## Audit boundary
@@ -61,6 +61,4 @@ existing secure contract.
 Browser and root verification qualify their exact source only. Current native
 IPC, Android process/reboot/Doze behavior, real Gmail and Cloud grants, provider
 revocation, installed autofill, physical speech and signed release/pilot journeys
-remain separate items in [current MVP status](mvp-current-status.md). Android
-builds are outside the current user-requested browser work. This audit neither
-waives those gates nor represents the MVP as complete.
+remain separate items in [current MVP status](mvp-current-status.md). This audit neither waives those gates nor represents the MVP as complete.

@@ -9,7 +9,7 @@ import { browserHostedResults } from './hosted-results';
 import { browserApps } from './apps';
 import { WebPlugin } from '@capacitor/core';
 import type { BrowserDaily } from './daily';
-import { revision } from './store';
+import { revision } from './revision';
 import {notificationDocument,notificationState,type NotificationState as State} from './notification-store';
 
 const apps=browserApps;

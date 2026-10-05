@@ -4,7 +4,7 @@ import { BrowserFiles } from './files';
 import { initialReminderDue, nextReminderOccurrence } from './reminder-recurrence';
 import { WebPlugin } from '@capacitor/core';
 import type { Reminder, ClockRequest } from '../daily';
-import { revision } from './store';
+import { revision } from './revision';
 import {notificationState} from './notification-store';
 import {reminderDocument} from './reminder-store';
 type Row=Reminder & {revision:string};

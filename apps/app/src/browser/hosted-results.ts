@@ -2,7 +2,7 @@ import {beginNoticeAction} from './notice-action';
 import {browserScreenLocked} from './screen-locked';
 import {WebPlugin} from '@capacitor/core';
 import type {HostedResultBinding,HostedResultRoute} from '../runtime/hosted-result-notices';
-import {revision} from './store';
+import {revision} from './revision';
 import {BrowserDomainDocument} from './domain-document';
 import {browserDocuments} from './documents';
 

@@ -1,5 +1,5 @@
 import {CloudPersonalProtocol} from '../runtime/cloud-personal-protocol';
-import {revision} from './store';
+import {revision} from './revision';
 import {cloudSetupDocument,type DevelopmentSetup as Setup,type DevelopmentScenario} from './development-cloud-document';
 export type {DevelopmentScenario} from './development-cloud-document';
 import {developmentCloudAccount,readDevelopmentCloudAccount,type DevelopmentCloudAccount as Account} from './development-account-document';
