@@ -771,9 +771,10 @@ export function ConnectionChooser() {
       for (const key of ['bg', 'fg', 's2', 'line', 'mut', 'acc']) panel.current.style.setProperty(`--connection-${key}`, theme.getPropertyValue(`--${key}`));
     }
     panel.current?.focus();
-    const back = (event: Event) => { event.preventDefault(); event.stopImmediatePropagation(); if (snapshot.busy) connectionController.cancel(); else connectionController.close(); };
+    const back = (event: Event) => { if(document.querySelector("dialog[open]"))return; event.preventDefault(); event.stopImmediatePropagation(); if (snapshot.busy) connectionController.cancel(); else connectionController.close(); };
     window.addEventListener('alpha-back', back, true);
     const key = (event: KeyboardEvent) => {
+      if(document.querySelector("dialog[open]"))return;
       if (event.key === 'Escape') { event.preventDefault(); if (snapshot.busy) connectionController.cancel(); else connectionController.close(); }
       if (event.key === 'Tab' && panel.current) {
         const items = Array.from(panel.current.querySelectorAll<HTMLElement>('button:not(:disabled),input:not(:disabled),textarea:not(:disabled),select:not(:disabled),summary')).filter(item => item.getClientRects().length);
