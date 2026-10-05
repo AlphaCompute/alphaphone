@@ -17,6 +17,8 @@ const residentProvider = registerPlugin<{ providerStatus(): Promise<Record<strin
 const providerModelPattern = /^[A-Za-z0-9][A-Za-z0-9._/-]{0,127}$/;
 type ProviderStatus = { sessionId: string; label: string | null };
 let providerStatus: ProviderStatus | null = null, providerReading: string | null = null;
+/** Session whose phone action history this view read successfully; an unread history is never shown as empty. */
+let actionHistoryRead: string | null = null;
 
 export type EgressPrivacy = { big: string; sub: string };
 /** Per-connection wording. Only the packaged Android resident runtime is known to enable
@@ -25,7 +27,7 @@ export function egressPrivacy(connection: Pick<ConnectionSnapshot, 'kind' | 'ses
   if (connection.session && connection.kind === 'resident' && native)
     return { big: 'Identifier swap only', sub: 'Secret and contact identifiers are swapped before hosted inference; names and free text are not covered' };
   if (connection.session || connection.cloudAccount) return { big: 'Not reported', sub: 'Depends on the selected agent; not reported' };
-  return { big: 'Offline', sub: 'No hosted requests' };
+  return { big: 'Offline', sub: 'No agent connected; no hosted inference requests' };
 }
 /** Only a verified resident session on Android reports its configured hosted model. */
 function residentModelLabel(connection: ConnectionSnapshot, refresh: () => void): string | null {
@@ -199,11 +201,8 @@ export function installPrototypeNativeAdapters(
     }
     if (module === 'settings') {
       if (st.page === 'privacy' && key === 'go' && row.label === 'Workflow runs') return () => api.open('workflows');
-      if (st.page === 'privacy' && key === 'go' && row.label === 'Activity') return () => {
-        api.set({ log: true });
-        const connection = connectionController.getSnapshot();
-        if (connection.session && connection.phoneActionsAvailable) void connectionController.actionHistory();
-      };
+      // Opening Activity only shows what is already known; reading history is a separate explicit step.
+      if (st.page === 'privacy' && key === 'go' && row.label === 'Activity') return () => api.set({ log: true });
       if (key === 'pick' && st.page !== 'display') return unavailable(api, 'This setting needs a connected provider. No change was applied.');
       if (key === 'onPw' || (st.adding && ['change', 'onKey', 'go', 'ok'].includes(key))) return native('settings');
       if (key === 'ok') return st.sheet?.kind === 'wipe' ? unavailable(api, 'Memory deletion is not connected. Nothing has been erased.') : native('settings');
@@ -252,13 +251,25 @@ export function installPrototypeNativeAdapters(
       if ((page.title === 'Models' || page.title === 'About') && model)
         for (const group of page.groups) for (const row of group.rows || []) if (row.label === 'Inference model') { row.val = model; row.hasVal = true; }
       if (st.page === 'privacy' && st.log && page.title === 'Activity') {
+        const sessionId = connection.session?.sessionId ?? null;
+        // Explicit read: the connection panel shows progress, errors and reconcile controls.
+        const load = (label: string) => nav(label, () => {
+          const before = connectionController.getSnapshot().actionHistory;
+          void connectionController.actionHistory().then(() => {
+            const after = connectionController.getSnapshot();
+            if (sessionId && after.session?.sessionId === sessionId && !after.error && after.actionHistory !== before) actionHistoryRead = sessionId;
+            try { api.set({ actionHistoryReadAt: Date.now() }); } catch { /* view closed */ }
+          });
+        });
         const rows: Bag[] = !connection.session
           ? [info('Connect an agent to see activity', ''), nav('Agent connection', () => connectionController.open())]
           : !connection.phoneActionsAvailable
             ? [info('Phone action history', 'Not reported by agent')]
             : connection.actionHistory.length
-              ? connection.actionHistory.map(entry => info(entry.description, entry.state))
-              : [info('No phone actions recorded', '')];
+              ? [...connection.actionHistory.map(entry => info(entry.description, entry.state)), load('Refresh phone action history')]
+              : actionHistoryRead === sessionId
+                ? [info('No phone actions recorded', ''), load('Refresh phone action history')]
+                : [info('Phone action history', 'Not loaded'), load('Load phone action history')];
         page.groups = [{ rows }, { rows: [nav('Workflow runs', () => api.open('workflows'))] }];
       }
     }

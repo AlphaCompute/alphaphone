@@ -8,15 +8,15 @@ const REMOTE = 'https://agent.example.test';
 const REDACTION = {
   resident: 'Secret and contact identifiers are swapped before hosted inference; names and free text are not covered',
   agent: 'Depends on the selected agent; not reported',
-  offline: 'No hosted requests',
+  offline: 'No agent connected; no hosted inference requests',
 };
 // Former fixture activity rows and claims must never be presented as this phone's history.
 const fixtureActivity = [/Drafted a reply to Maya/, /Filed Jordan's term sheet/, /Moved Gym to 7:30 PM/, /Summarized 14 emails/, /Ran Morning brief/, /Redaction receipt saved/, /Booked Nopa/, /\b\d+ today\b/];
 const forbidden = [/Redaction on/, /Identifiers replaced/, /Pre-egress redaction is not connected/];
 
 type Scenario = 'resident' | 'remote' | 'offline';
-async function nativeStub(page: Page, scenario: Scenario, options: { strayKeyInStatus?: boolean } = {}) {
-  await page.addInitScript(({ scenario, key, remote, strayKeyInStatus }) => {
+async function nativeStub(page: Page, scenario: Scenario, options: { strayKeyInStatus?: boolean; proposals?: boolean } = {}) {
+  await page.addInitScript(({ scenario, key, remote, strayKeyInStatus, proposals }) => {
     const w = window as any;
     w.androidBridge = {};
     const store = new Map<string, string>();
@@ -54,6 +54,7 @@ async function nativeStub(page: Page, scenario: Scenario, options: { strayKeyInS
             else if (input.path === '/api/client-devices/register') body = { installationId: input.headers['X-Eliza-Device-Id'], enrollmentId: 'fixture-enrollment', capabilities: [] };
             else if (input.path === '/api/conversations') body = { conversations: [] };
             else if (input.path === '/api/workflow/status') body = { status: 'unavailable' };
+            else if (input.path === '/api/client-devices/proposals' && proposals) body = { proposals: [] };
             else return respond({ status: 404, body: '{}' });
             return respond({ status: 200, body: JSON.stringify(body) });
           }
@@ -76,7 +77,7 @@ async function nativeStub(page: Page, scenario: Scenario, options: { strayKeyInS
         f.unexpected.push(plugin + '.' + method); throw Error('Unexpected native operation');
       },
     };
-  }, { scenario, key: SYNTHETIC_KEY, remote: REMOTE, strayKeyInStatus: !!options.strayKeyInStatus });
+  }, { scenario, key: SYNTHETIC_KEY, remote: REMOTE, strayKeyInStatus: !!options.strayKeyInStatus, proposals: !!options.proposals });
 }
 
 async function connect(page: Page, scenario: Scenario) {
@@ -172,12 +173,27 @@ test('Workflow runs on the privacy page opens Workflows, not Android settings', 
   await expect(page.locator('html')).toHaveAttribute('data-active-view', 'workflows');
 });
 
-test('resident Activity reads the real phone action history', async ({ page }) => {
-  await nativeStub(page, 'resident');
+const proposalReads = (page: Page) => page.evaluate(() => (window as any).privacyFixture.calls.filter((call: any) => call.plugin === 'Agent' && call.input?.path === '/api/client-devices/proposals').length);
+for (const proposals of [true, false]) test(`resident Activity shows history only after an explicit ${proposals ? 'successful' : 'failed'} read`, async ({ page }) => {
+  await nativeStub(page, 'resident', { proposals });
   await connect(page, 'resident');
   await openSettings(page, 'Privacy & data');
   await page.getByRole('button', { name: 'Activity', exact: true }).click();
-  await expect(page.getByText(/No phone actions recorded|Phone action history/).first()).toBeVisible();
+  const app = page.locator('[data-alpha-layer="app"]');
+  // Opening Activity must not pop the connection panel or claim an unread history is empty.
+  const unread = app.getByText('Phone action history', { exact: true });
+  await expect(unread).toBeVisible();
+  await expect(page.locator('.alpha-connection-scrim')).toHaveCount(0);
+  expect(await app.innerText()).not.toContain('No phone actions recorded');
+  const before = await proposalReads(page);
+  await app.getByRole('button', { name: 'Load phone action history', exact: true }).click();
+  await expect(page.locator('.alpha-connection-scrim')).toHaveCount(1);
+  await expect.poll(() => proposalReads(page)).toBeGreaterThan(before);
+  if (!proposals) await expect(page.locator('.alpha-connection').getByText(/request failed/i)).toBeVisible();
+  await page.getByRole('button', { name: 'Close connection settings' }).first().click();
+  await expect(page.locator('.alpha-connection-scrim')).toHaveCount(0);
+  if (proposals) await expect(app.getByText('No phone actions recorded', { exact: true })).toBeVisible();
+  else { await expect(unread).toBeVisible(); await expect(app.getByRole('button', { name: 'Load phone action history', exact: true })).toBeVisible(); expect(await app.innerText()).not.toContain('No phone actions recorded'); }
   const text = await page.locator('body').innerText();
   for (const row of fixtureActivity) expect(text).not.toMatch(row);
   expect(text).not.toContain('Connect an agent to see activity');
