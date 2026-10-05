@@ -24,6 +24,8 @@ jobs:
     outputs:
       artifact_id: ${{ steps.apks.outputs.artifact-id }}
       manifest_sha256: ${{ steps.bundle.outputs.manifest_sha256 }}
+      test_mocks_artifact_id: ${{ steps.test-mocks-apks.outputs.artifact-id }}
+      test_mocks_manifest_sha256: ${{ steps.test-mocks-bundle.outputs.manifest_sha256 }}
     runs-on: ubuntu-24.04
     timeout-minutes: 120
     steps:
@@ -79,8 +81,26 @@ jobs:
           python3 scripts/local-speech/install-generated.py --repository "$GITHUB_WORKSPACE"
       - name: Prepare pinned native lifecycle sources
         run: node scripts/prepare-local-agent.mjs --source-only
-      - run: npm run android:build
+      # Distribution build: flag-off whatever the runner exports. This job stages no
+      # resident runtime, so releases are recorded distributable:false (APK-build
+      # evidence only); the resident workflow builds and verifies PACKAGED releases.
+      - name: Build flag-off distribution APKs
+        env:
+          ELIZA_DEV_ALLOW_TEST_MOCKS: ""
+          VITE_ELIZA_DEV_ALLOW_TEST_MOCKS: ""
+        run: npm run android:build -- --allow-unpackaged-runtime
+      - name: Require test-mock-free distribution
+        run: |
+          node scripts/audit-production-bundle.mjs web-dist
+          node - <<'NODE'
+          const fs = require('node:fs');
+          const manifest = JSON.parse(fs.readFileSync('artifacts/apk-manifest.json', 'utf8'));
+          if (manifest.testMocks !== false || manifest.demoEntryPoints !== false) throw new Error('Distribution APKs must be testMocks:false and demoEntryPoints:false');
+          if (manifest.results.length !== 4 || manifest.results.some(row => row.testMocks !== false || row.bundleAudit !== 'passed')) throw new Error('Every distribution APK must pass the flag-off bundle audit');
+          console.log(JSON.stringify({ testMocks: manifest.testMocks, demoEntryPoints: manifest.demoEntryPoints, version: manifest.version, signing: manifest.signing.release }, null, 2));
+          NODE
       - run: npm run aosp:stage -- --apk artifacts/launcher-debug.apk --development
+      # Stage before the test-mocks build: it reuses Gradle's androidTest outputs.
       - name: Stage immutable six-APK smoke bundle
         id: bundle
         run: |
@@ -92,7 +112,9 @@ jobs:
           bundle.mkdir()
           hashes = {}
           for variant in ('standalone', 'launcher'):
-              for kind in ('debug', 'release-unsigned', 'androidTest'):
+              releases = [kind for kind in ('release', 'release-unsigned') if (root / 'artifacts' / (variant + '-' + kind + '.apk')).is_file()]
+              assert len(releases) == 1, variant + ': expected exactly one release APK'
+              for kind in ('debug', releases[0], 'androidTest'):
                   name = variant + '-' + kind + '.apk'
                   source = root / ('android/app/build/outputs/apk/androidTest/' + variant + '/debug/app-' + variant + '-debug-androidTest.apk') if kind == 'androidTest' else root / 'artifacts' / name
                   assert source.is_file() and not source.is_symlink(), str(source)
@@ -111,6 +133,46 @@ jobs:
           path: artifacts/smoke-bundle/
           if-no-files-found: error
           retention-days: 14
+      # Separate, never-distributable build for the mock-isolation instrumentation
+      # suites (loopback fixtures, development agent, peer fixture). It writes only
+      # under artifacts/test-mocks/ and leaves the distribution APKs untouched.
+      - name: Build separate test-mocks APKs
+        run: |
+          before=$(sha256sum artifacts/*.apk)
+          npm run android:build -- --test-mocks
+          test "$before" = "$(sha256sum artifacts/*.apk)"
+      - name: Stage immutable test-mocks smoke bundle
+        id: test-mocks-bundle
+        run: |
+          python3 - <<'PYTHON'
+          from pathlib import Path
+          import hashlib, json, os, shutil
+          root = Path.cwd()
+          verified = json.loads((root / 'artifacts/test-mocks/apk-manifest.json').read_text())
+          assert verified['testMocks'] is True and all(row.get('distributable') is not True for row in verified['results'])
+          bundle = root / 'artifacts/test-mocks-bundle'
+          bundle.mkdir()
+          hashes = {}
+          for variant in ('standalone', 'launcher'):
+              for kind in ('debug', 'androidTest'):
+                  name = variant + '-' + kind + '.apk'
+                  source = root / 'artifacts/test-mocks' / name
+                  assert source.is_file() and not source.is_symlink(), str(source)
+                  shutil.copyfile(source, bundle / name)
+                  hashes[name] = hashlib.sha256(source.read_bytes()).hexdigest()
+                  assert hashlib.sha256((bundle / name).read_bytes()).hexdigest() == hashes[name]
+          manifest = bundle / 'apk-manifest.json'
+          manifest.write_text(json.dumps(hashes, indent=2) + '\n')
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
+              output.write('manifest_sha256=' + hashlib.sha256(manifest.read_bytes()).hexdigest() + '\n')
+          PYTHON
+      - uses: actions/upload-artifact@v4
+        id: test-mocks-apks
+        with:
+          name: android-test-mocks-apks-${{ github.run_id }}-${{ github.run_attempt }}
+          path: artifacts/test-mocks-bundle/
+          if-no-files-found: error
+          retention-days: 14
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -125,10 +187,17 @@ jobs:
             android/local-speech/runtime-manifest.json
             android/local-speech/src/main/assets/local-speech/v1/manifest.json
           retention-days: 14
+  # distribution: flag-off debug APKs run the no-mock instrumentation (mock-only
+  # cases skip by BuildConfig.ELIZA_DEV_ALLOW_TEST_MOCKS). test-mocks: the separate
+  # test-mocks APKs run the mock-isolation suites. Neither is device acceptance.
   smoke:
     needs: build
     runs-on: ubuntu-24.04
     timeout-minutes: 55
+    strategy:
+      fail-fast: false
+      matrix:
+        bundle: [distribution, test-mocks]
     steps:
       - uses: actions/checkout@v4
         with:
@@ -147,12 +216,13 @@ jobs:
           log-accepted-android-sdk-licenses: false
       - uses: actions/download-artifact@v4
         with:
-          artifact-ids: ${{ needs.build.outputs.artifact_id }}
+          artifact-ids: ${{ matrix.bundle == 'test-mocks' && needs.build.outputs.test_mocks_artifact_id || needs.build.outputs.artifact_id }}
           path: artifacts/smoke-bundle
           merge-multiple: true
       - name: Verify exact build-job APK bundle
         env:
-          EXPECTED_MANIFEST_SHA256: ${{ needs.build.outputs.manifest_sha256 }}
+          EXPECTED_MANIFEST_SHA256: ${{ matrix.bundle == 'test-mocks' && needs.build.outputs.test_mocks_manifest_sha256 || needs.build.outputs.manifest_sha256 }}
+          BUNDLE_KIND: ${{ matrix.bundle }}
         run: |
           python3 - <<'PYTHON'
           from pathlib import Path
@@ -161,14 +231,19 @@ jobs:
           manifest = bundle / 'apk-manifest.json'
           assert hashlib.sha256(manifest.read_bytes()).hexdigest() == os.environ['EXPECTED_MANIFEST_SHA256'], 'Bundle manifest differs from build job output'
           hashes = json.loads(manifest.read_text())
-          expected = {variant + '-' + kind + '.apk' for variant in ('standalone', 'launcher') for kind in ('debug', 'release-unsigned', 'androidTest')}
-          assert set(hashes) == expected, 'Bundle must contain exactly six approved APKs'
+          if os.environ['BUNDLE_KIND'] == 'test-mocks':
+              expected = {variant + '-' + kind + '.apk' for variant in ('standalone', 'launcher') for kind in ('debug', 'androidTest')}
+          else:
+              releases = {name for name in hashes if '-release' in name}
+              assert releases in ({v + '-release-unsigned.apk' for v in ('standalone', 'launcher')}, {v + '-release.apk' for v in ('standalone', 'launcher')}), 'Unexpected release APK names'
+              expected = {variant + '-' + kind + '.apk' for variant in ('standalone', 'launcher') for kind in ('debug', 'androidTest')} | releases
+          assert set(hashes) == expected, 'Bundle members differ from the approved set'
           assert {p.name for p in bundle.iterdir()} == expected | {'apk-manifest.json'}, 'Unexpected or missing bundle members'
           for name, digest in hashes.items():
               path = bundle / name
               assert path.is_file() and not path.is_symlink(), name
               assert hashlib.sha256(path.read_bytes()).hexdigest() == digest, 'APK hash mismatch: ' + name
-          print('Verified all six APKs against same-run build manifest')
+          print('Verified %d %s APKs against same-run build manifest' % (len(hashes), os.environ['BUNDLE_KIND']))
           PYTHON
       - name: Require fresh emulator capacity
         run: |
@@ -205,11 +280,11 @@ jobs:
           script: |
             ANDROID_SERIAL=emulator-5554 node scripts/prepare-ci-emulator.mjs
             ANDROID_SERIAL=emulator-5554 ALPHA_DISPOSABLE_WEBVIEW_FIXTURE=api35-default-x86_64 node scripts/prepare-ci-webview.mjs
-            ANDROID_SERIAL=emulator-5554 ALPHA_BUILD_ARCHIVE=artifacts/smoke-bundle npm run android:smoke
+            ANDROID_SERIAL=emulator-5554 ALPHA_BUILD_ARCHIVE=artifacts/smoke-bundle ALPHA_SMOKE_RESULTS=test-results/${{ matrix.bundle == 'test-mocks' && 'android-test-mocks' || 'android' }} npm run android:smoke
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: android-smoke-evidence
+          name: android-smoke-evidence${{ matrix.bundle == 'test-mocks' && '-test-mocks' || '' }}
           path: |
             test-results/
             !test-results/ci-webview-provider/chromium.zip

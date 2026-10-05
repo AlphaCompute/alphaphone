@@ -1,4 +1,15 @@
-"""Verify packaged runtime bytes; this does not execute or qualify a runtime."""
+"""Verify packaged runtime bytes; this does not execute or qualify a runtime.
+
+Usage: verify-packaged-runtime.py [--allow-unpackaged-runtime] [--release APK]... [APK]...
+
+APKs passed with --release are distribution releases: without a packaged,
+authenticated runtime they are not distributable and the script exits 3
+(after printing every result) unless --allow-unpackaged-runtime is given, in
+which case those entries are reported with "distributable": false. Debug and
+other positional APKs keep the original semantics: NOT_PACKAGED is reported,
+not rejected. Byte mismatches always raise (exit 1).
+"""
+import argparse
 import hashlib
 import json
 from pathlib import Path, PurePosixPath
@@ -20,7 +31,7 @@ def file_hash(path):
         return digest(stream)
 
 
-def verify(apk):
+def verify(apk, release=False):
     staged = ROOT / 'android/app/src/main/assets/agent'
     stamp_file = staged / 'alpha-source.json'
     with zipfile.ZipFile(apk) as archive:
@@ -73,11 +84,46 @@ def verify(apk):
         packaged_worker = {name.removeprefix('assets/agent/workflow-worker/') for name in names if name.startswith('assets/agent/workflow-worker/') and not name.endswith('/')}
         if packaged_worker != inventory | {'files.sha256', 'manifest.json'}:
             raise ValueError('Unexpected packaged worker inventory')
-        for abi in ['arm64-v8a', 'x86_64']:
+        # Debug/test APKs carry both ABIs. Releases may filter to the shipping
+        # arm64-v8a ABI; every ABI a release packages must carry the runtime.
+        packaged_abis = {name.split('/')[1] for name in names if name.startswith('lib/') and name.count('/') >= 2}
+        abis = sorted(packaged_abis | {'arm64-v8a'}) if release else ['arm64-v8a', 'x86_64']
+        for abi in abis:
+            if abi not in ('arm64-v8a', 'x86_64'):
+                raise ValueError(f'Unexpected packaged ABI: {abi}')
             name = f'lib/{abi}/libeliza_bun.so'
             check(name, ROOT / 'android/app/src/main/jniLibs' / abi / 'libeliza_bun.so')
-        return {'apk': str(apk), 'upstreamCommit': pin, 'verifiedEntries': len(checks), 'runtimeExecution': False}
+        return {'apk': str(apk), 'runtime': 'PACKAGED', 'upstreamCommit': pin, 'verifiedEntries': len(checks), 'runtimeExecution': False}
+
+
+NOT_DISTRIBUTABLE = 3
+
+
+def main(argv):
+    parser = argparse.ArgumentParser(description='Verify packaged runtime bytes in APKs.')
+    parser.add_argument('--release', action='append', default=[], metavar='APK', help='distribution release APK; requires a packaged runtime')
+    parser.add_argument('--allow-unpackaged-runtime', action='store_true', help='developer option: report unpackaged releases as distributable=false instead of failing')
+    parser.add_argument('apks', nargs='*', metavar='APK')
+    args = parser.parse_args(argv)
+    if not args.release and not args.apks:
+        parser.error('no APKs supplied')
+    results = []
+    refused = []
+    for apk in args.release:
+        result = verify(Path(apk), release=True)
+        result['release'] = True
+        result['distributable'] = result['runtime'] == 'PACKAGED'
+        if not result['distributable']:
+            refused.append(apk)
+        results.append(result)
+    results.extend(verify(Path(apk)) for apk in args.apks)
+    print(json.dumps(results, indent=2))
+    if refused and not args.allow_unpackaged_runtime:
+        print('Release APKs without a packaged resident runtime are not distributable: ' + ', '.join(refused)
+              + '. Stage it with npm run android:build:local, or pass --allow-unpackaged-runtime for a non-distributable developer build.', file=sys.stderr)
+        return NOT_DISTRIBUTABLE
+    return 0
 
 
 if __name__ == '__main__':
-    print(json.dumps([verify(Path(apk)) for apk in sys.argv[1:]], indent=2))
+    sys.exit(main(sys.argv[1:]))
