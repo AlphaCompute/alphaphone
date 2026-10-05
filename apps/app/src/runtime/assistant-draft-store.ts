@@ -1,3 +1,4 @@
+import {nativeAssistantDraftRecovery} from './native-assistant-draft-recovery';
 import {Capacitor} from '@capacitor/core';
 import {secureConnectionStore} from './native-connection';
 import {readAssistantDraft,replaceAssistantDraft,type AssistantDraft} from './assistant-draft-record';
@@ -12,7 +13,7 @@ export async function assistantDraftStore(binding:string){
   recovery:domain?{
    capture:(signal?:AbortSignal)=>domain.capture(signal),
    reset:async(expected:import('../browser/domain-document').DomainRecovery,signal?:AbortSignal)=>{const empty=replaceAssistantDraft(null,null,binding,'',()=>crypto.randomUUID());await domain.restore(expected,JSON.stringify({raw:JSON.stringify(empty)}),signal);},
-  }:undefined,
+  }:nativeAssistantDraftRecovery(binding,{read:()=>secureConnectionStore.readRaw(slot),compareExchange:(expected,value)=>secureConnectionStore.compareExchangeRaw(slot,expected,value)}),
   async read(signal?:AbortSignal){signal?.throwIfAborted();const value=native?await secureConnectionStore.read(slot):await domain!.readJson(signal);signal?.throwIfAborted();return readAssistantDraft(value,binding);},
   async save(expected:AssistantDraft|null,text:string,signal?:AbortSignal):Promise<AssistantDraft>{
    signal?.throwIfAborted();let result:AssistantDraft|undefined;
