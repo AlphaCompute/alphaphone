@@ -129,6 +129,17 @@ and restores the original HOME role. Reports/screenshots go to `test-results/and
 CI first prepares a disposable stock-HOME fixture with explicit phone/tablet geometry;
 that setup script refuses to run outside GitHub Actions unless explicitly emulated.
 
+The independent native Calendar consumer comes from the pinned upstream source.
+Build its app and instrumentation APKs with
+`node scripts/test-native-calendar-consumer.mjs --build-only` using JDK 21 and
+`ANDROID_HOME`. Outputs remain under `artifacts/`, outside source. To run recovery,
+set `ALPHA_CALENDAR_TEST_SERIAL`, `ALPHA_CALENDAR_TEST_AVD` and
+`ALPHA_CALENDAR_TEST_ABI` (`x86_64` or `arm64-v8a`), then omit `--build-only`.
+Use `--bridge` or `--workflow-permission` for separate permission-dialog cases.
+The runner requires an owned disposable emulator, leases it, uses fresh secondary
+users and retains uncertain cleanup for explicit recovery. Reports are under
+`test-results/native-calendar-consumer`; fixture builds alone do not prove native acceptance.
+
 ## AOSP integration
 
 ```sh
