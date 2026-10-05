@@ -25,7 +25,7 @@ retain its exact request identity until authoritative reconciliation.
 | --- | --- | --- |
 | Browser Notes: `prototype/agent-adapter.ts`, `runtime/notes-store.ts`, upstream `plugin-notes` client store | Browser construction passes `localStorage` to the shared synchronous store. `assertCurrent` compares bytes before a whole-envelope write and reads them back afterward. This detects observed changes but does not make comparison and write one transaction across processes. Android uses the separate secure Notes adapter. | Introduce a reviewed upstream asynchronous browser storage path while preserving collection identity, revisions, deletion tombstones, metadata and operation receipts. Update all UI/actions/readback consumers together. Prove simultaneous edits, stale edits, lost responses, migration and exact recovery across engines. Do not edit the pinned vendor checkout or claim native migration from browser evidence. |
 | Note/audio deletion recovery: `runtime/note-audio-deletions.ts` | Browser pending records contain the reviewed note snapshot, target and audio identity. A separate effects lock coordinates deletion/restoration; localStorage comparison protects the pending map. Notes readback also uses the synchronous Notes envelope. | Migrate the pending map without removing the effects lock. Coordinate with the Notes storage change. Preserve unknown audio outcomes, exact original snapshots and deletion tombstones; prove no duplicate audio removal and no restoration over a newer note. |
-| Connection selection, Cloud environment and conversation cache: `runtime/connection-ui.tsx` | These are separate from development Cloud account storage. Selection/environment are individual records; conversation choices are a serialized cache. Their intended cross-tab winner and cache-loss semantics need explicit classification. | Audit every reader, invalidation event and owner key. Keep credential storage separate. Prove that an older asynchronous connection/history completion cannot restore a retired owner or overwrite another owner's conversation choice. Do not migrate a writer alone. |
+| Connection selection and Cloud environment: `runtime/connection-ui.tsx` | Individual nonsecret preferences remain in renderer storage. Credential storage is separate. Conversation restart choices now have an atomic document implementation described below. | Verify selection/environment winner semantics, cross-tab retirement, and late authentication completions. Browser conversation tests do not establish native persistence or credential acceptance. |
 | Appearance and simulated location: `prototype/settings-adapter.ts`, `browser/location-simulation.ts` | Individual preference values with events/readback. These do not share the multi-record receipt semantics above. | Verify deliberate last-writer-wins behavior, malformed-value handling, cross-tab refresh and pending sensor cancellation. Migrate only if the required invariant needs stronger coordination; avoid adding a redundant writable mirror. |
 
 ## Scope distinctions
@@ -50,12 +50,14 @@ outstanding browser Clock journal or as proof an alarm was created.
    rendering, but it cannot authorize a mutation or deletion readback.
 2. Move audio-deletion recovery with Notes. Preserve the separate effects lock,
    original note snapshots, unknown audio outcomes and deletion tombstones.
-3. Classify connection preferences and conversation choices independently. In
-   `connection-ui.tsx`, `send` currently captures the whole conversation cache
-   before awaiting conversation creation, then writes that earlier map. Another
-   owner's saved choice can be lost. Fix the complete read/write contract with
-   concurrent owner coverage; merely moving a write after the await still leaves
-   cross-process read-modify-write races.
+3. Qualify conversation restart choices in `runtime/conversation-choice.ts` and
+   both history/send consumers. Writes compare the captured owner choice inside
+   the canonical transaction; another owner's entry is retained. Each tab keeps
+   its active chat until retirement, when in-memory choices are cleared. A failed
+   restart-choice save may retain the verified chat for this session with a
+   visible warning. Cache reset does not delete agent conversations or send text.
+   TypeScript passes; browser qualification is pending. Connection selection and
+   Cloud environment preference classification remain separate.
 4. Specify preference winner and refresh semantics, then verify appearance and
    simulated location against those semantics. Avoid creating redundant mirrors.
 
