@@ -24,11 +24,11 @@ for(const legacy of [null,'{damaged'])test(`concurrent first policy reads initia
  await page.route('**/notification-initialization-fixture',route=>route.fulfill({contentType:'text/html',body:'<!doctype html><title>Policy initialization</title>'}));await page.goto('/notification-initialization-fixture');
  const result=await page.evaluate(async legacy=>{
   if(legacy!==null)localStorage.setItem('alpha.browser.notifications.v2',legacy);
-  const {notificationState,notificationDocument}=await import('/src/browser/notification-store.ts'),{browserDocuments}=await import('/src/browser/documents.ts');
-  const compare=browserDocuments.compareExchange.bind(browserDocuments);let writes=0;
-  browserDocuments.compareExchange=async(...args)=>{const result=await compare(...args);writes++;return result;};
+  const {notificationState,notificationDocument}=await import('/src/browser/notification-store.ts');
+  const put=IDBObjectStore.prototype.put;let writes=0;
+  IDBObjectStore.prototype.put=function(value,key){if(key==='alpha.browser.notifications.v2')writes++;return put.call(this,value,key);};
   const outcomes=await Promise.allSettled(Array.from({length:20},()=>notificationState()));
-  const capture=await notificationDocument.capture();return {writes,failed:outcomes.filter(row=>row.status==='rejected').length,raw:capture.raw};
+  const capture=await notificationDocument.capture();IDBObjectStore.prototype.put=put;return {writes,failed:outcomes.filter(row=>row.status==='rejected').length,raw:capture.raw};
  },legacy);
  expect(result.writes).toBe(1);expect(result.failed).toBe(legacy===null?0:20);if(legacy!==null)expect(result.raw).toBe(legacy);
 });
