@@ -1,8 +1,6 @@
 # Scoped Files folder process restart
 
-Build70 passed prepare/verify/cleanup on both standalone and launcher. Results are `test-results/prototype-build70/tree-{variant}/result.json`, with archived app/test hashes and all phases passed. This adds no production capability. `FilesTreeRestartInstrumentedTest#processPhase` is gated by `treePhase=prepare/verify/cleanup`; a phased method counts once in the opt-in inventory.
-
-Run `ANDROID_SERIAL=emulator-N node scripts/test-tree-restart.mjs ARCHIVED_APP.apk MATCHING_TEST.apk OUTPUT`. The wrapper requires matching standalone or launcher debug APKs and hashes from the same archive manifest. It records each phase, force-stops between prepare and verify, and always attempts scoped cleanup. Verify independently asserts a different Android PID from prepare, not merely that force-stop was requested.
+Run `ANDROID_SERIAL=emulator-N node scripts/test-native-restart.mjs tree ARCHIVED_APP.apk MATCHING_TEST.apk OUTPUT`. The wrapper requires matching standalone or launcher debug APKs and hashes from the same archive manifest. Use the [shared verification configuration](verification.md) to select an owned AVD and ABI. The upstream lifecycle refuses existing packages, leases the emulator and installs in a fresh secondary user. It records each phase and force-stops the scoped package between prepare and verify. Cleanup requires confirmed instrumentation termination; uncertainty retains the user for explicit recovery. Verify independently asserts a different Android PID from prepare, not merely that force-stop was requested.
 
 Prepare refuses an existing selected SAF root: the production plugin cannot reliably restore arbitrary prior user consent, so the test does not replace it. It also refuses an unresolved prior fixture and checks that transient previews cannot evict preexisting retained document selections. It creates a UUID-owned folder through MediaStore, enters that exact directory in actual DocumentsUI, and explicitly selects/grants it. The private fixture manifest records only owned identities, initial PID and retained-selection snapshot.
 
@@ -10,4 +8,6 @@ The next process uses the actual saved-folder UI, verifies persisted read/write 
 
 Cleanup requires the current saved root to be absent or match the owned root. It validates the folder's exact UUID name and permits only the two named fixture children, refuses unknown contents, deletes those children and their now-empty root, releases only the fixture grant, and verifies preexisting retained document selections are unchanged. It does not recursively delete folders or replace existing grants. If preparation fails before obtaining a tree grant, cleanup can remove the owned MediaStore row but may leave an empty UUID fixture directory; that directory is not removed through broad filesystem access. If a grant was accepted but not yet recorded when the test interrupted, cleanup deliberately refuses an unrecognized saved root and retains the manifest for scoped recovery.
 
-Runner syntax and whitespace checks passed. Build70 native execution establishes the scoped emulator flow for both distributions. Other providers and physical devices remain unqualified. This is separate from the existing Activity recreation tree flow and the single-document process restart flow; it does not establish physical-device or cloud-provider acceptance.
+
+Run both distributions and retain current source/APK identities and raw phase logs.
+Emulator results do not establish physical-device or cloud-provider acceptance.
