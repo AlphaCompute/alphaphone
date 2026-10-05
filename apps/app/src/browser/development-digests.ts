@@ -1,27 +1,41 @@
 import {readDevelopmentAgent} from './development-agent-document';
-import {developmentDelegationRequest,grantAccount,type DevelopmentDelegation} from './digest-delegation';
+import {developmentDelegationRequest,grantAccount} from './digest-delegation';
 import {browserDigestAccount,validateBrowserDigestSelection,readBrowserDigestSource} from './digest-live-sources';
-import type {DigestResult,DigestSource,DigestLoop} from '../runtime/hosted-digests';
+import {developmentDigestDocument,readDevelopmentDigests,validateDevelopmentDigests,initialDevelopmentDigests as initial,type DevelopmentDigestSource as Source,type DevelopmentDigestLoop as Loop} from './development-digest-document';
 import {assertDevelopmentIdentity,developmentIdentity,type DevelopmentIdentity} from './development-identity';
-import {editStore,revision} from './store';
-type Source=DigestSource&{text:string};
-type Loop=DigestLoop&{createdAt:number;lastOccurrence?:string};
-type State={delegation?:DevelopmentDelegation;liveRevision?:string;sources:Source[];loops:Loop[];receipts:Array<{id:string;input:string;result:unknown}>;results:DigestResult[];cursor:number;acks:Record<string,number>};
-const initial=():State=>({sources:[],loops:[],receipts:[],results:[],cursor:0,acks:{}});
+import {revision} from './store';
 const id=(v:unknown):string=>{if(typeof v!=='string'||!/^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/.test(v))throw Error('Invalid digest identity.');return v;};
 function wall(at:number,zone:string){const p=Object.fromEntries(new Intl.DateTimeFormat('en-GB',{timeZone:zone,year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).formatToParts(at).map(x=>[x.type,x.value]));return `${p.year}-${p.month}-${p.day}T${p.hour}:${p.minute}`;}
+function scheduledOccurrence(loop:Loop,minute:number):string|null{
+ if(!loop.active||loop.removed||loop.createdAt>minute)return null;
+ const local=wall(minute,loop.spec.timeZone);if(local.slice(11)!==loop.spec.localTime||loop.lastOccurrence===local)return null;
+ // Repeated civil times execute at their earlier instant. Gaps never match.
+ for(let delta=60000;delta<=3*3600000;delta+=60000)if(wall(minute-delta,loop.spec.timeZone)===local)return null;
+ return local;
+}
 /** Requests and periodic inbox checks advance only the current minute, never a backlog. */
 export async function developmentDigestRequest(identity:DevelopmentIdentity,path:string,body:any,signal?:AbortSignal){
  const check=()=>{signal?.throwIfAborted();assertDevelopmentIdentity(identity);const selected=JSON.parse(localStorage.getItem('alpha.connection.selection.v1')||'null');if(selected?.kind!=='development'||selected.profile!==identity.profile)throw Error('Digest connection changed.');};check();
- return editStore(`alpha.browser.digests.${identity.namespace}.v1`,initial,async state=>{
+ const snapshot=await readDevelopmentDigests(identity,signal);check();
+ if(path==='/api/workflow/hosted/sources'&&body===undefined)return {sources:snapshot.sources.map(({text,...source})=>source)};
+ if(path==='/api/workflow/hosted/loops'&&body===undefined)return {loops:snapshot.loops};
+ if(path==='/api/workflow/hosted/cloud-delegation/revocations')return {grants:[]};
+ // Empty and unchanged polling must not initialize storage or invalidate a backup.
+ if(path==='/api/workflow/hosted/tick'||path.startsWith('/api/workflow/hosted/results?')){
+  const client=path.endsWith('/tick')?null:id(new URL(path,location.origin).searchParams.get('clientId')),minute=Math.floor(Date.now()/60000)*60000;
+  const due=snapshot.loops.some(loop=>scheduledOccurrence(loop,minute)!==null);
+  if(!due)return client===null?{}:{entries:snapshot.results.filter(row=>row.cursor>(Object.hasOwn(snapshot.acks,client)?snapshot.acks[client]:0)).slice(0,50)};
+ }
+ return developmentDigestDocument(identity).edit(initial,async state=>{
+  validateDevelopmentDigests(state);const result=await operate(state);check();return result;
+ },signal);
+ async function operate(state:ReturnType<typeof initial>){
   check();const now=Date.now(),minute=Math.floor(now/60000)*60000;
   const delegation=state.delegation??={requests:[],grants:[]};
   const liveAccount=(accountId:string)=>{if(accountId==='browser:'+identity.namespace)return browserDigestAccount(identity,state.liveRevision||'');const grant=delegation.grants.find(g=>'cloud:'+g.id===accountId&&!g.revoked&&Date.parse(g.expiresAt)>now);if(!grant)throw Error('Source access changed.');return grantAccount(grant);};
   const validateLive=(value:any)=>{const account=liveAccount(value?.accountId);return validateBrowserDigestSelection(value,identity,account.accountRevision,account);};
   if(path.startsWith('/api/workflow/hosted/cloud-delegation/')){const operation=path.slice('/api/workflow/hosted/cloud-delegation/'.length),result=developmentDelegationRequest(delegation,operation,body,now);if(operation==='revoke')for(const source of state.sources)if(source.live?.accountId==='cloud:'+body.grantId)source.revoked=true;return result;}
-  const tick=async()=>{for(const loop of state.loops){if(!loop.active||loop.removed||loop.createdAt>minute)continue;const local=wall(minute,loop.spec.timeZone);if(local.slice(11)!==loop.spec.localTime||loop.lastOccurrence===local)continue;
-   // Repeated civil times execute at their earlier instant. Gaps never match.
-   let repeated=false;for(let delta=60000;delta<=3*3600000;delta+=60000)if(wall(minute-delta,loop.spec.timeZone)===local){repeated=true;break;}if(repeated)continue;
+  const tick=async()=>{for(const loop of state.loops){const local=scheduledOccurrence(loop,minute);if(local===null)continue;
    loop.lastOccurrence=local;const source=state.sources.find(s=>s.id===loop.spec.sourceId&&s.revision===loop.spec.sourceRevision);if(!source||source.revoked||Date.parse(source.expiresAt)<=now)continue;
    let readError:string|null=null,liveInput:Awaited<ReturnType<typeof readBrowserDigestSource>>|undefined;if(source.live){try{validateLive(source.live);liveInput=await readBrowserDigestSource(source.live,now);}catch(error){readError=(error as Error).message;}check();}
    const output=(await readDevelopmentAgent(identity,signal)).reply;check();if(typeof output!=='string'||output.length>16000)throw Error('Digest output exceeds the development limit.');
@@ -49,7 +63,7 @@ export async function developmentDigestRequest(identity:DevelopmentIdentity,path
    const loop:Loop={id:old?.id||crypto.randomUUID(),versionId:crypto.randomUUID(),name:spec.template+' digest',active:spec.enabled,removed:false,spec:structuredClone(spec),createdAt:now,...(old?.lastOccurrence?{lastOccurrence:old.lastOccurrence}:{})};state.loops=state.loops.filter(l=>l.id!==loop.id);state.loops.push(loop);result={loop};
   }else throw Error('Unknown development digest request.');
   state.receipts.push({id:mutationId,input,result});return result;
- },signal);
+ }
 }
 
 /** Scheduling is independent of whether the inbox is currently polling delivery. */

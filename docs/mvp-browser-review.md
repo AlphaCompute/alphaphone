@@ -194,3 +194,28 @@ and inject IndexedDB failures. The next sequential browser campaign now contains
 633 cases in 27 files across three engines, superseding the earlier pending batch
 sizes. It remains unrun while the frozen c1f21e71 campaign continues. This is not a
 claim of full MVP, hosted, native or real-provider qualification.
+
+## Development digest execution storage
+
+Scheduled digest grants, sources, loops, results and acknowledgement cursors now
+share their owner-scoped transactional document. A result commits with its run
+identity, cursor and scheduled occurrence marker. Failed writes preserve all of
+those fields; two tabs cannot publish two results for the same occurrence.
+Empty or unchanged polling returns canonical state without initializing or
+rewriting it. DST overlap/gap handling remains shared by admission and execution.
+The selected-profile recovery control preserves exact older bytes, clears local
+grants and schedules only after confirmation, and retains separate inbox history.
+
+TypeScript passes. Seven migration cases join the retained live-source, schedule
+and delegation journeys. The next sequential batch now enumerates 696 cases in
+30 files across three engines. The separate pending authorization UI request
+store in `digest-delegation-ui.tsx` was found by the expanded `.ts`/`.tsx` audit and
+remains a named legacy domain alongside development Cloud setup. This candidate
+does not claim that either remaining domain is migrated.
+
+The earlier c1f21e71 campaign continues through Firefox. In addition to the fixed
+location fixture, its Chromium run recorded a notification setup timeout, an album
+module-fetch failure and a password-provider failure whose retained trace reaches
+the final dialog assertion. These remain failed/incomplete campaign evidence;
+the owning suites are included in the next batch and no environmental cause is
+asserted as proven. No Android build was run.
