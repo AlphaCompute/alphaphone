@@ -18,6 +18,7 @@ test('closing the source review rejects a delayed file read',async({page})=>{
 
 test('source metadata save failure retains the persisted note and reports uncertainty',async({page})=>{
  await page.goto('/');await page.getByRole('button',{name:'Notes',exact:true}).click();await page.getByRole('button',{name:'New note',exact:true}).click();await page.getByRole('textbox',{name:'Title',exact:true}).fill('Source-linked summary');await page.getByRole('textbox',{name:'Note',exact:true}).fill('Retain this summary.');
+ await expect.poll(async()=>(await saved(page))?.body).toBe('Retain this summary.');
  const before=await saved(page);
  await page.evaluate(()=>{const original=IDBObjectStore.prototype.put;IDBObjectStore.prototype.put=function(value,key){if(key==='alpha.browser.notes.v1')throw new DOMException('Storage full','QuotaExceededError');return original.call(this,value,key);};});
  await page.getByRole('button',{name:'Link source document',exact:true}).click();await choose(page,'Link file');const dialog=page.getByRole('dialog',{name:'Note source document'});await expect(dialog.getByRole('status')).toContainText('save is unconfirmed');expect(await saved(page)).toEqual(before);await expect(dialog.getByText('No source linked',{exact:true})).toBeVisible();

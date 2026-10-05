@@ -44,7 +44,9 @@ public class ReminderRecoveryInstrumentedTest {
     JSONObject saved=awaitStatus(c,id,"scheduled");assertTrue(saved.getLong("at")>System.currentTimeMillis());assertEquals("Same reminder is rescheduled",id,saved.getString("id"));
    }
   }else if(phase.equals("prepare-reboot")){
-   assertNotNull(id);ReminderTestAccess.schedule(c,id,"Reboot reminder "+id,"Disposable reboot fixture",System.currentTimeMillis()+20000);
+   assertNotNull(id);long at=System.currentTimeMillis()+20000;
+   // The UI retry saved explicit timing; an intentional fixture edit must carry it too.
+   ReminderTestAccess.schedule(c,id,"Reboot reminder "+id,"Disposable reboot fixture",at,null,new JSONObject().put("dueAt",at).put("alertMinutes",0));
    // Damaged unrelated data must not prevent recovery/listing of the actual fixture.
    assertTrue(new ReminderTestAccess.Envelope(c).records().edit().putString(id+"_damaged","invalid-json").commit());
   }else if(phase.equals("verify-reboot")){
