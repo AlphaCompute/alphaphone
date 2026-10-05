@@ -52,7 +52,10 @@ else if(a.includes('instrument')){
 else{console.error('Unexpected command '+JSON.stringify(a));process.exit(1);}
 `,{mode:0o700});
   const testClass=mode==='companion-pin'?'CalendarExternalEditorInstrumentedTest':'CalendarCreationRecoveryInstrumentedTest';
-  const run=spawnSync(process.execPath,[script,`--case=${testClass}`,'--variant=standalone',...(mode==='companion-pin'?['--external']:[])],{cwd:root,env:{...process.env,ALPHA_CALENDAR_TEST_ROOT:root,ALPHA_CALENDAR_TEST_SERIAL:'emulator-5580',ALPHA_CALENDAR_TEST_AVD:'calendar-fixture',ALPHA_CALENDAR_TEST_ABI:'x86_64',ANDROID_HOME:root,ELIZA_DEVICE_LEASE_DIR:path.join(root,'leases')},encoding:'utf8',timeout:15000});
+  const run=spawnSync(process.execPath,[script,`--case=${testClass}`,'--variant=standalone',...(mode==='companion-pin'?['--external']:[])],{cwd:root,env:{...process.env,ALPHA_CALENDAR_TEST_ROOT:root,ALPHA_CALENDAR_TEST_SERIAL:'emulator-5580',ALPHA_CALENDAR_TEST_AVD:'calendar-fixture',ALPHA_CALENDAR_TEST_ABI:'x86_64',ANDROID_HOME:root,ELIZA_DEVICE_LEASE_DIR:path.join(root,'leases')},encoding:'utf8',timeout:120000});
+  // Source authentication alone can exceed the old whole-fixture deadline.
+  // Surface process failures before reading output that may never have been created.
+  assert.ifError(run.error);
   const directory=path.join(root,'test-results',fs.readdirSync(path.join(root,'test-results'))[0],`standalone-${testClass}`);
   return {code:run.status,stderr:run.stderr,record:JSON.parse(fs.readFileSync(path.join(directory,'result.json'),'utf8')),state:JSON.parse(fs.readFileSync(state)),commands:fs.readFileSync(log,'utf8').trim().split('\n').map(JSON.parse),log:fs.existsSync(path.join(directory,'standalone.log'))?fs.readFileSync(path.join(directory,'standalone.log'),'utf8'):''};
  }finally{fs.rmSync(root,{recursive:true,force:true});}
