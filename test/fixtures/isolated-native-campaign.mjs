@@ -6,6 +6,7 @@ import path from 'node:path';
 import {spawnSync} from 'node:child_process';
 const scripts={workflow:path.resolve('scripts/android-workflow-native.mjs'),calendar:path.resolve('scripts/test-calendar-regression.mjs'),camera:path.resolve('scripts/test-native-permissions.mjs'),settings:path.resolve('scripts/test-native-permissions.mjs'),channels:path.resolve('scripts/test-native-permissions.mjs')};
 export function exercise(mode,kind='calendar'){
+ const homePackage=mode==='google-home'?'com.google.android.apps.nexuslauncher':'com.android.launcher3';
  const permissionCampaign=['camera','settings','channels'].includes(kind);
  const root=fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(),'alpha-calendar-runner-')));
  try{
@@ -41,9 +42,9 @@ else if(a.includes('remove-user')){s.created=false;save();console.log('Success')
 else if(a.includes('is-user-stopped'))console.log('true');
 else if(a.includes('users'))console.log('UserInfo{0:Owner:13}'+(s.created?'\\nUserInfo{10:Fixture:10}':''));
 else if(a.includes('packages'))console.log(Object.keys(s.files).map(p=>'package:'+p).join('\\n'));
-else if(a.includes('resolve-activity'))console.log('com.android.launcher3/.Launcher');
+else if(a.includes('resolve-activity'))console.log('${homePackage}/.Launcher');
 else if(a.includes('set-home-activity'))console.log('Success');
-else if(a.includes('activities'))console.log('topResumedActivity=ActivityRecord u'+s.user+' com.android.launcher3/.Launcher');
+else if(a.includes('activities'))console.log('topResumedActivity=ActivityRecord u'+s.user+' ${homePackage}/.Launcher');
 else if(a[0]==='install'){const source=a.at(-1),id=source.includes('androidTest')?pkg+'.test':pkg,dest=file+'.'+id+'.apk';fs.copyFileSync(source,dest);s.files[id]=dest;save();console.log('Success');}
 else if(a.slice(0,3).join(' ')==='shell pm path')console.log('package:/data/'+a.at(-1)+'.apk');
 else if(a[0]==='pull')fs.copyFileSync(s.files[a[1].slice(6,-4)],a[2]);
@@ -64,7 +65,7 @@ else if(a.includes('instrument')){
 else{console.error('Unexpected command '+JSON.stringify(a));process.exit(1);}
 `,{mode:0o700});
   const testClass=mode==='companion-pin'?'CalendarExternalEditorInstrumentedTest':selectedClass;
-  const run=spawnSync(process.execPath,[scripts[kind]??scripts.calendar,...(kind==='workflow'?[]:permissionCampaign?[kind,apk,cameraTest,path.join(root,'output')]:[`--case=${testClass}`,'--variant=standalone',...(mode==='companion-pin'?['--external']:[])])],{cwd:root,env:{...process.env,ALPHA_CALENDAR_TEST_ROOT:root,ALPHA_CALENDAR_TEST_SERIAL:'emulator-5580',ALPHA_CALENDAR_TEST_AVD:'calendar-fixture',ALPHA_CALENDAR_TEST_ABI:'x86_64',ANDROID_HOME:root,ANDROID_SDK_ROOT:root,JAVA_HOME:jdk,ANDROID_SERIAL:'emulator-5580',ALPHA_NATIVE_TEST_AVD:'calendar-fixture',ALPHA_NATIVE_TEST_ABI:'x86_64',ALPHA_BUILD_ARCHIVE:path.join(root,'artifacts'),ALPHA_CAMPAIGN_OUTPUT:path.join(root,'test-results/workflow'),ALPHA_WORKFLOW_TEST_AVD:'calendar-fixture',ALPHA_WORKFLOW_TEST_ABI:'x86_64',ELIZA_DEVICE_LEASE_DIR:path.join(root,'leases')},encoding:'utf8',timeout:120000});
+  const run=spawnSync(process.execPath,[scripts[kind]??scripts.calendar,...(kind==='workflow'?[]:permissionCampaign?[kind,apk,cameraTest,path.join(root,'output')]:[`--case=${testClass}`,'--variant=standalone',...(mode==='companion-pin'?['--external']:[])])],{cwd:root,env:{...process.env,ALPHA_CALENDAR_TEST_ROOT:root,ALPHA_CALENDAR_TEST_SERIAL:'emulator-5580',ALPHA_CALENDAR_TEST_AVD:'calendar-fixture',ALPHA_CALENDAR_TEST_ABI:'x86_64',ANDROID_HOME:root,ANDROID_SDK_ROOT:root,JAVA_HOME:jdk,ANDROID_SERIAL:'emulator-5580',ALPHA_TEST_HOME_PACKAGE:homePackage,ALPHA_NATIVE_TEST_AVD:'calendar-fixture',ALPHA_NATIVE_TEST_ABI:'x86_64',ALPHA_BUILD_ARCHIVE:path.join(root,'artifacts'),ALPHA_CAMPAIGN_OUTPUT:path.join(root,'test-results/workflow'),ALPHA_WORKFLOW_TEST_AVD:'calendar-fixture',ALPHA_WORKFLOW_TEST_ABI:'x86_64',ELIZA_DEVICE_LEASE_DIR:path.join(root,'leases')},encoding:'utf8',timeout:120000});
   // Source authentication alone can exceed the old whole-fixture deadline.
   // Surface process failures before reading output that may never have been created.
   assert.ifError(run.error);

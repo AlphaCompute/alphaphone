@@ -39,3 +39,9 @@ for(const [scenario,method,permissions]of [
   const r=exercise('wrong-method',scenario);assert.notEqual(r.code,0);assert.equal(r.record.passed,false);assert.equal(r.state.created,false);
  });
 }
+
+test('permission campaign uses the explicitly selected stock HOME package',()=>{
+ const r=exercise('google-home','camera');assert.equal(r.code,0,r.stderr);assert.equal(r.record.userLifecycle.removed,true);
+ const resolve=r.commands.find(a=>a.includes('resolve-activity'));assert.equal(resolve.at(-1),'com.google.android.apps.nexuslauncher');
+ const assign=r.commands.find(a=>a.includes('set-home-activity'));assert.equal(assign.at(-1),'com.google.android.apps.nexuslauncher/.Launcher');
+});
