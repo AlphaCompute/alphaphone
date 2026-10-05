@@ -21,6 +21,15 @@ Generated ignored artifacts:
 - `test-results/prototype-all/comparison/<theme>-<state>.png`: amplified RGB difference heatmap, excluded pixels black.
 - `test-results/prototype-all/comparison/contact-*.png`: groups of reference, local, difference thumbnails, in that order.
 
+## Capture admission
+
+Wait for visible image and CSS background-image decoding under a bounded host
+timer independent of the paused page clock. Record dimensions and decode failures.
+HTTP responses of 400 or greater, request failures, page errors and decode
+failures/timeouts make a capture unsuccessful even when a screenshot exists.
+A failed hosted font request cannot be relabeled a clean runtime pass. Preserve
+original captures and identify any replacements and their source hashes.
+
 ## Extraction integrity
 
 All 49 local reference assets were downloaded, including all 42 WebPs, both SVG logos, Denton, the helper and two React distribution scripts. Bundled Google fonts bring the manifest to 53 records (font files may be shared across weights). Every local asset was rehashed and matched [asset-manifest.json](../apps/app/src/prototype/asset-manifest.json). The template body exactly matches the downloaded HTML and the model exactly matches its original inline script apart from import/export wrappers. JavaScript syntax checks passed. The phone-only helper retains the original root theme binding and clones the exact screen content while excluding demonstration furniture.
