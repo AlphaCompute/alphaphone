@@ -18,11 +18,17 @@ const prototypeDirectory = fileURLToPath(new URL('./apps/app/src/prototype/', im
 const fixturesModule = path.join(prototypeDirectory, 'fixtures.js');
 const emptyFixturesModule = path.join(prototypeDirectory, 'fixtures.empty.js');
 
-// Modules that main.tsx and the connection UI import dynamically behind the flag. A
-// dead dynamic import can still emit an orphan chunk, so flag-off builds resolve them
-// to an empty module. Their call sites are constant-folded away and never run.
-const flaggedDynamicModules = new Set(['./browser/device-controls', './browser/simulated-apps', './runtime/mock-admission', './mock-admission']);
-const disabledModule = '\0alpha-test-mocks-disabled';
+// Developer and mock modules that main.tsx and the connection UI import behind the flag.
+// Flag-off builds resolve them to inert stubs with the same export names, so neither the
+// modules nor an orphan chunk ship. Their call sites are constant-folded away and never run.
+const disabledModuleSource: Record<string, string> = {
+  './browser/device-controls': 'export const BrowserDeviceControls = null;',
+  './browser/simulated-apps': 'export const captureSimulatedApps = () => undefined; export const installSimulatedApps = () => {};',
+  // Only imported dynamically, after a constant-false guard, so an empty module suffices.
+  './runtime/mock-admission': 'export {};',
+  './mock-admission': 'export {};',
+};
+const disabledModulePrefix = '\0alpha-disabled-';
 const srcDirectory = fileURLToPath(new URL('./apps/app/src/', import.meta.url));
 
 /** Production CSP. Dev serve stays relaxed for HMR and the local agent bridge. */
@@ -63,12 +69,13 @@ function productionSurface(): Plugin[] {
       name: 'alpha-test-mock-modules',
       enforce: 'pre',
       resolveId(source, importer) {
-        if (flagOn || !importer || !flaggedDynamicModules.has(source)) return null;
+        if (flagOn || !importer || !Object.hasOwn(disabledModuleSource, source)) return null;
         const owner = path.relative(srcDirectory, importer.split('?')[0]).split(path.sep).join('/');
         if (owner !== 'main.tsx' && owner !== 'runtime/connection-ui.tsx') return null;
-        return disabledModule;
+        // The virtual id carries an index, not the source name, so no chunk is named after it.
+        return disabledModulePrefix + Object.keys(disabledModuleSource).indexOf(source);
       },
-      load(id) { return id === disabledModule ? 'export {};' : null; },
+      load(id) { return id.startsWith(disabledModulePrefix) ? Object.values(disabledModuleSource)[Number(id.slice(disabledModulePrefix.length))] ?? null : null; },
     },
     {
       name: 'alpha-production-csp',

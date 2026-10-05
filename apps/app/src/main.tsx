@@ -5,6 +5,10 @@ import { testMocksEnabled, devSurfacesEnabled } from './build-flags';
 import { RootErrorBoundary, installGlobalErrorRecovery } from './runtime/error-boundary';
 import { installBrowserDeviceAdapter } from './browser/device-adapter';
 import { browserDevProfile as devProfileQuery,developmentAgentWorkflows as devAgentWorkflowsQuery } from './browser/dev-profile';
+// Static imports keep development startup synchronous (no top-level await, which the page load
+// event does not wait for). Flag-off builds resolve these two modules to inert stubs in vite.config.
+import { BrowserDeviceControls as DevDeviceControls } from './browser/device-controls';
+import { captureSimulatedApps, installSimulatedApps } from './browser/simulated-apps';
 import {HostedDigestPanel} from './runtime/hosted-digest-ui';
 import { installClockAdapter } from './prototype/clock-adapter';
 import {installNoteWebSourceAdapter} from './prototype/note-web-source-adapter';
@@ -38,8 +42,7 @@ installGlobalErrorRecovery();
 // Developer surfaces are only reachable in an explicitly flagged development server.
 const browserDevProfile=devSurfacesEnabled&&devProfileQuery;
 const developmentAgentWorkflows=devSurfacesEnabled&&devAgentWorkflowsQuery;
-const BrowserDeviceControls=devSurfacesEnabled?(await import('./browser/device-controls')).BrowserDeviceControls:null;
-const simulatedAppsModule=devSurfacesEnabled?await import('./browser/simulated-apps'):null;
+const BrowserDeviceControls=devSurfacesEnabled?DevDeviceControls:null;
 const MOCK_BANNER_STYLE=".mock-mode-banner{position:fixed;top:0;left:0;right:0;z-index:2000;display:flex;justify-content:space-between;align-items:center;gap:8px;padding:5px 10px;background:#0000ff;color:white;font:11px 'Public Sans',sans-serif}.mock-mode-banner button{border:1px solid white;border-radius:14px;background:transparent;color:white;padding:4px 8px;font:inherit}.native-phone .mock-mode-banner{top:var(--native-top-inset,24px)}";
 if(!isAndroid)bindBrowserSpeechConnection(connectionController);
 const query = new URLSearchParams(location.search);
@@ -59,7 +62,7 @@ const initialTheme = (() => {
 })();
 document.documentElement.dataset.connectionMode = mock ? 'mock' : 'live';
 if (testMocksEnabled && mock) { const style = document.createElement('style'); style.textContent = MOCK_BANNER_STYLE; document.head.append(style); }
-const simulatedApps=simulatedAppsModule?.captureSimulatedApps(VIEWS);
+const simulatedApps=devSurfacesEnabled?captureSimulatedApps(VIEWS):undefined;
 installPrototypeHomeBindings(Component);
 if (!fixture) {
   let selected: ReturnType<typeof installSelectedDocumentAdapter> | undefined;
@@ -84,7 +87,7 @@ if (!fixture) {
   if(!browserDevProfile) installInboxCloudAdapter(Component, VIEWS);
   if(!browserDevProfile) installWorkflowAdapter(Component, VIEWS);
 }
-if(simulatedAppsModule&&simulatedApps)simulatedAppsModule.installSimulatedApps(Component,VIEWS,simulatedApps);
+if(devSurfacesEnabled&&simulatedApps)installSimulatedApps(Component,VIEWS,simulatedApps);
 if(developmentAgentWorkflows)installWorkflowAdapter(Component,VIEWS);
 installClockAdapter(Component, VIEWS, { simulated: testMocksEnabled && fixture, browser: !isAndroid });
 /** A browser cannot read or change radios and sensors; show that instead of fixture toggles. */
