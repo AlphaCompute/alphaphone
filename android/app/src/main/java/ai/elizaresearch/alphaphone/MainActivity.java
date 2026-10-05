@@ -80,6 +80,12 @@ public class MainActivity extends BridgeActivity {
    catch (ClassNotFoundException ignored) { /* Test-mocks overlay not attached to this build. */ }
   }
   super.onCreate(state);
+  // Capacitor displays its no-WebView fallback without creating a bridge when
+  // the system provider cannot initialize. Preserve that screen and lifecycle.
+  if (getBridge() == null) {
+   android.util.Log.e("AlphaRenderer", "System WebView unavailable; retaining Capacitor fallback");
+   return;
+  }
   getBridge().addWebViewListener(rendererRecovery);
   WebView.setWebContentsDebuggingEnabled(BuildConfig.DEBUG);
   getBridge().getWebView().getSettings().setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
@@ -119,7 +125,7 @@ public class MainActivity extends BridgeActivity {
  }
  @Override public void onNewIntent(Intent intent) {
   super.onNewIntent(intent);
-  if (!isAssistantSurface() && Intent.ACTION_MAIN.equals(intent.getAction()) && intent.hasCategory(Intent.CATEGORY_HOME))
+  if (getBridge() != null && !isAssistantSurface() && Intent.ACTION_MAIN.equals(intent.getAction()) && intent.hasCategory(Intent.CATEGORY_HOME))
    getBridge().getWebView().evaluateJavascript("window.dispatchEvent(new Event('launcher-home'))", null);
  }
  @Override public void onResume(){super.onResume();if(getBridge()!=null&&getBridge().getWebView()!=null)AlphaDevicePlugin.applyTextScale(this);}
