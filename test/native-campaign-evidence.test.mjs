@@ -8,7 +8,7 @@ import test from 'node:test';
 
 const scripts={workflow:path.resolve('scripts/android-workflow-native.mjs'),calendar:path.resolve('scripts/test-calendar-range.mjs'),camera:path.resolve('scripts/test-camera-permission.mjs')};
 function exercise(kind,mode) {
-  const root=fs.mkdtempSync(path.join(os.tmpdir(),'alpha-native-evidence-'));
+  const root=fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(),'alpha-native-evidence-')));
   try {
     const app='ai.elizaresearch.alphaphone',archive=path.join(root,'test-results/archive'),out=path.join(root,'test-results/evidence'),sdk=path.join(root,'sdk'),jdk=path.join(root,'jdk'),state=path.join(root,'state.json'),commands=path.join(root,'commands.jsonl');
     fs.mkdirSync(archive,{recursive:true});fs.mkdirSync(path.join(sdk,'platform-tools'),{recursive:true});fs.mkdirSync(jdk);fs.writeFileSync(path.join(jdk,'release'),'JAVA_VERSION="21.0.1"');
@@ -45,6 +45,7 @@ else {console.error('Unexpected fixture command');process.exit(1);}
     const args=kind==='workflow'?[]:[path.join(archive,'standalone-debug.apk'),path.join(archive,'standalone-androidTest.apk'),out];
     const run=spawnSync(process.execPath,[scripts[kind],...args],{cwd:root,env:{...process.env,ANDROID_SERIAL:'emulator-9999',ANDROID_HOME:sdk,ANDROID_SDK_ROOT:sdk,JAVA_HOME:jdk,ALPHA_BUILD_ARCHIVE:archive,ALPHA_CAMPAIGN_OUTPUT:out},encoding:'utf8',timeout:30000});
     assert.ifError(run.error);
+    assert.ok(fs.existsSync(path.join(out,'result.json')),run.stderr || 'Campaign did not produce evidence');
     return {code:run.status,error:run.stderr,original,restored:JSON.parse(fs.readFileSync(state)),evidence:JSON.parse(fs.readFileSync(path.join(out,'result.json'))),commands:fs.readFileSync(commands,'utf8').trim().split('\n').map(JSON.parse),logs:fs.readdirSync(out).filter(n=>n.endsWith('.txt')).map(n=>fs.readFileSync(path.join(out,n),'utf8'))};
   } finally {fs.rmSync(root,{recursive:true,force:true});}
 }
