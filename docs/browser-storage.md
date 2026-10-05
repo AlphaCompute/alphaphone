@@ -37,12 +37,45 @@ readers. Alpha supplies domain names and legacy recovery policy.
 This table describes implemented contracts and test scope, not a consolidated passing
 report. Consult revision-bound results using the [verification guide](verification.md).
 It covers the canonical browser domains, not every localStorage key.
-Connection selection, prototype state and independent security/operation
-stores require their own ownership and synchronization audit. The
-[remaining persistence audit](browser-storage-remaining-audit.md) identifies their
-writers, invariants and required verification. Do not change a
-writer while leaving its synchronous reader pointed at legacy bytes. Never add a
-writable localStorage mirror to make old fixtures pass.
+The preference contracts and native Clock gap below cover independent stores;
+[simulator ownership](#development-simulator-ownership) and
+[Notes and audio deletion](#notes-and-audio-deletion) describe their separate
+boundaries. Do not change a writer while leaving its synchronous reader pointed
+at retired bytes. Never add a writable localStorage mirror to make fixtures pass.
+
+## Independent preferences
+
+These single-value preferences deliberately use last-writer-wins storage. They
+are not multi-record operation journals and do not inherit IndexedDB transaction
+guarantees. Credential storage remains separate from renderer preferences.
+
+| Domain | Current contract | Owning browser suites |
+| --- | --- | --- |
+| Connection selection and Cloud environment (`runtime/connection-ui.tsx`) | In normal and development browser use, another tab's preference change cancels pending connection work and retires the affected target without writing over the winner or starting another login. Cloud-environment changes detach Cloud services and the Cloud agent, leaving an independent local/remote agent intact. Offline selection and storage clearing also detach Cloud services. Late authentication cannot reopen a retired chooser. | `connection-preference-storage.spec.ts`; synthetic identity boundary, independent tabs and delayed completions. No provider requests or native credential qualification. |
+| Appearance (`prototype/settings-adapter.ts`, `alpha.appearance.v1`) | Storage events, removal, clearing and page restoration refresh the visible theme without echoing external reads as new writes. Malformed bytes remain untouched while the UI uses light mode. Explicit theme previews stay independent. Failed writes retain the session theme and its persistence error. | `appearance-storage.spec.ts`; independent tabs, rapid writes, remove/clear, malformed values, previews and write failure. |
+| Development location (`browser/location-simulation.ts`, `browser/location.ts`) | A validated complete snapshot is written and read back. Changes cancel pending prompts and invalidate delayed permission reads; compatible coordinate watches receive the new fix. Unreadable settings retire watches with UNAVAILABLE and reject late fixes. | `dev-location.spec.ts`, `location-settings-recovery.spec.ts`; settings changes, pending sensor cancellation, late callbacks and recovery. No physical GPS or Android permission qualification. |
+
+The location editor opens even when saved JSON is empty, malformed or
+structurally invalid. It offers an exact UTF-8 backup and leaves the original
+untouched until explicit replacement confirmation. Every field is validated;
+edits require fresh confirmation. The editor refuses a changed starting snapshot,
+and navigation or write failure preserves the original. If saved Maps places
+cannot be read, place selection is disabled while existing Home/Work bindings
+remain intact. The starting-value check is not an atomic cross-process
+compare-and-exchange operation.
+
+## Native Clock handoff persistence gap
+
+`prototype/clock-adapter.ts` retains `alphaphone:clock-handoff:v1` for the native
+handoff UI. Its completion path compares the operation ID before a separate
+localStorage write; initial retention lacks readback. This remains a native
+persistence review item: verify failed retention before dispatch, competing
+requests, late completions and restart with an uncertain result. Reuse the
+existing native storage contract if stronger coordination is required.
+
+The browser path opens the simulated Clock directly, and mock requests do not
+write this record. It is neither a browser Clock journal nor evidence that an
+alarm was created. A handoff record must never authorize automatic replay.
 
 ## Storage and recovery rules
 

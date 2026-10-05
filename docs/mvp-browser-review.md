@@ -30,7 +30,8 @@ not a claim that every feature or the current main revision has passed acceptanc
 ## Browser storage
 
 The [storage ownership map](browser-storage.md) defines each canonical domain,
-its recovery boundary and remaining consolidation work. The [independent-store audit](browser-storage-remaining-audit.md) covers operation intents, Notes, prototype snapshots and preferences outside the migrated helper callers. Shared IndexedDB
+its recovery boundary, independent preference contracts and the remaining native
+Clock handoff persistence gap. Shared IndexedDB
 transactions bind changes to receipts and revisions. Initialization must use the
 same serialization boundary as edits and preserve an existing revision.
 
