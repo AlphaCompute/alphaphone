@@ -8,13 +8,11 @@ listed path has reproduced data loss or passed concurrency qualification.
 
 ## Audit boundary
 
-The reviewed product source is the integration at `3c914dc1c59a31a2acff1dea5eb2320d233f2e34`,
-with upstream `60d66613e3a31e88f17ef396f1c33997fc578ac7`. Searching direct
-`localStorage` and `sessionStorage` writes in browser, runtime and prototype
-TypeScript found 27 source lines. Some lines contain multiple writes; the count
-is not a count of stores. Shared engines and injected storage ports require
-separate inspection. In particular, the product Notes wrapper delegates to
-`plugins/plugin-notes/src/client/notes-store.ts`.
+Inspect direct `localStorage` and `sessionStorage` writes together with delegated
+storage ports. A direct-call count misses the product Notes wrapper, which delegates
+to `plugins/plugin-notes/src/client/notes-store.ts`, and does not establish whether
+readers and writers share the same authority. The domains below remain outside the
+canonical browser documents described in [browser storage](browser-storage.md).
 
 Single-value preferences are not automatically equivalent to a multi-record
 journal. The required invariant depends on the stored meaning: a preference may
@@ -27,26 +25,55 @@ retain its exact request identity until authoritative reconciliation.
 | --- | --- | --- |
 | Browser Notes: `prototype/agent-adapter.ts`, `runtime/notes-store.ts`, upstream `plugin-notes` client store | Browser construction passes `localStorage` to the shared synchronous store. `assertCurrent` compares bytes before a whole-envelope write and reads them back afterward. This detects observed changes but does not make comparison and write one transaction across processes. Android uses the separate secure Notes adapter. | Introduce a reviewed upstream asynchronous browser storage path while preserving collection identity, revisions, deletion tombstones, metadata and operation receipts. Update all UI/actions/readback consumers together. Prove simultaneous edits, stale edits, lost responses, migration and exact recovery across engines. Do not edit the pinned vendor checkout or claim native migration from browser evidence. |
 | Note/audio deletion recovery: `runtime/note-audio-deletions.ts` | Browser pending records contain the reviewed note snapshot, target and audio identity. A separate effects lock coordinates deletion/restoration; localStorage comparison protects the pending map. Notes readback also uses the synchronous Notes envelope. | Migrate the pending map without removing the effects lock. Coordinate with the Notes storage change. Preserve unknown audio outcomes, exact original snapshots and deletion tombstones; prove no duplicate audio removal and no restoration over a newer note. |
-| Real Cloud setup intent: `runtime/cloud-personal-intent.ts`, `runtime/connection-ui.tsx` | Implementation candidate: browser activation/cutover intents now use a canonical document, unique update revisions and exact expected-value admission/acknowledgement. Query results reconcile only the intent captured before their request. Android keeps its existing renderer slot with expected-value updates. | Controlled cases cover concurrent admission, failed writes, replacement intents, cancellation before dispatch, changed status snapshots and exact backup/reset. Combined browser qualification remains pending; real hosting and native persistence remain separate gates. |
-| Workflow client pending intents: `runtime/workflow-intents.ts`, `prototype/workflow-adapter.ts` | Implementation candidate: one canonical browser document per captured origin/owner/agent. Run, metadata, lifecycle and approval slots retain separate exact request records with unique revisions. Protocol callbacks await admission before dispatch; completion and reconciliation compare the captured record. Lifecycle discovery and recovery read the canonical account document. | Prepared browser cases cover concurrent admission, stale acknowledgement, failed writes, legacy archives, cancellation and recovery retirement. Existing HTTP fixtures exercise the installed-slot fallback. Combined root/browser qualification remains pending; Android storage migration is not claimed. |
-| Media saved-copy recovery: `runtime/media-copy-intent.ts`, `prototype/camera-adapter.ts` | Implementation candidate: the browser pending token has canonical storage and a unique admission revision. Photo/video dispatch waits for admission, and terminal receipt cleanup compares its captured request. Legacy token bytes are preserved for backup; native renderer slots retain their existing format. | Prepared cases cover two-tab admission, replacement tokens, failed acknowledgement, exact legacy/reset recovery and cancellation after admission but before photo dispatch. Existing photo/video receipt cases now read canonical pending state. Combined browser qualification remains pending. |
-| Prototype application snapshots: `browser/simulated-apps.ts`, `browser/simulator-writer.ts`, `browser/simulator-recovery.ts` | Development reducers intentionally retain one origin-wide writer lease. Reset now requires that same owner, compares both the loaded snapshot and current bytes, verifies removal and retires the writer before reload. A second or retired tab cannot reset. | Implementation candidate. Prepared cases cover a refused second reset, writer closure and reload, stale/failed removal, page retirement and prevention of post-reset resurrection. Combined qualification is pending. This is a deliberate single-writer fixture contract, not a multi-writer journal. |
 | Connection selection, Cloud environment and conversation cache: `runtime/connection-ui.tsx` | These are separate from development Cloud account storage. Selection/environment are individual records; conversation choices are a serialized cache. Their intended cross-tab winner and cache-loss semantics need explicit classification. | Audit every reader, invalidation event and owner key. Keep credential storage separate. Prove that an older asynchronous connection/history completion cannot restore a retired owner or overwrite another owner's conversation choice. Do not migrate a writer alone. |
-| Clock handoff status: `prototype/clock-adapter.ts` | A single nonsecret record stores opening/unknown/opened state; it is informational and never a claim that an alarm was created. Completion checks its operation ID before writing, but comparison and write are separate. | Preserve truthful handoff semantics and bind completion atomically if multiple views can write. Verify an older completion cannot replace a newer handoff and that failed retention prevents dispatch. Browser Clock simulation is not physical ringing evidence. |
 | Appearance and simulated location: `prototype/settings-adapter.ts`, `browser/location-simulation.ts` | Individual preference values with events/readback. These do not share the multi-record receipt semantics above. | Verify deliberate last-writer-wins behavior, malformed-value handling, cross-tab refresh and pending sensor cancellation. Migrate only if the required invariant needs stronger coordination; avoid adding a redundant writable mirror. |
+
+## Scope distinctions
+
+Cloud setup intents, workflow pending requests and saved-copy requests now use
+canonical browser documents. Simulator reset requires the same writer lease as
+its reducers. Their recovery and verification contracts live in
+[browser storage](browser-storage.md); they are not outstanding migrations here.
+This does not establish a passing result for every engine or live provider.
+
+`prototype/clock-adapter.ts` uses its `alphaphone:clock-handoff:v1` record for the
+native handoff UI. The browser path opens the simulated Clock directly, and mock
+requests do not write the record. Audit native handoff retention separately:
+completion compares an operation ID before a separate localStorage write, and
+initial retention currently lacks readback. Do not present this record as an
+outstanding browser Clock journal or as proof an alarm was created.
 
 ## Implementation order
 
-1. Keep the current account/development-domain integration immutable while its
-   combined verification runs. Record terminal results against that source.
-2. Address operation-intent admission and expected acknowledgements: real Cloud,
-   workflow client intents, reminder pending records and media-copy tokens.
-   Use controlled providers; do not turn a test into real provisioning or sending.
-3. Coordinate the shared Notes browser storage change with audio-deletion recovery.
-   Preserve the native secure adapter and exact installed-data identities.
-4. Resolve simulator reset ownership, then classify preference/cache records with
-   their own explicit semantics. A zero-result search for the old helper is not
-   proof that browser persistence is complete.
+1. Add an asynchronous Notes storage contract upstream and migrate every browser
+   reader and writer together. The synchronous editor snapshot may remain for
+   rendering, but it cannot authorize a mutation or deletion readback.
+2. Move audio-deletion recovery with Notes. Preserve the separate effects lock,
+   original note snapshots, unknown audio outcomes and deletion tombstones.
+3. Classify connection preferences and conversation choices independently. In
+   `connection-ui.tsx`, `send` currently captures the whole conversation cache
+   before awaiting conversation creation, then writes that earlier map. Another
+   owner's saved choice can be lost. Fix the complete read/write contract with
+   concurrent owner coverage; merely moving a write after the await still leaves
+   cross-process read-modify-write races.
+4. Specify preference winner and refresh semantics, then verify appearance and
+   simulated location against those semantics. Avoid creating redundant mirrors.
+
+## Notes migration boundaries
+
+`prototype/agent-adapter.ts` opens the browser store and uses its `list`, `raw`,
+`replace`, `target`, `assertCurrent` and `execute` paths. Its asynchronous Android
+store is already a separate adapter; preserve that native contract. Browser
+`note-audio-deletions.ts` independently reads the Notes envelope to distinguish
+an original note, a changed note and an exact deletion tombstone. Changing only
+the editor would leave this recovery reader on retired bytes.
+
+Keep collection and note identities, revision hashes, metadata and deletion
+operation IDs unchanged. Preserve the original current, legacy and daily Notes
+inputs for explicit recovery. Cover initialization races, queued editor saves,
+external edits, cancellation around commit, failed acknowledgement and recovery
+before replacing all browser consumers. No pinned vendor edits or writable
+localStorage mirror may stand in for the upstream change.
 
 ## Qualification and remaining product gates
 
