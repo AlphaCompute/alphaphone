@@ -144,9 +144,26 @@ permission requests synchronously created watches before cancellation. The
 follow-up waits for both watches, then keeps the original independent ownership
 and clear-watch assertions. The frozen campaign source and trace are retained.
 
-The next sequential batch now includes 324 cases across three engines, combining
+The next sequential batch now includes 525 cases across three engines, combining
 the digest inbox cases, new conversation migration cases, existing connection,
 Cloud identity, content/search question, workflow authoring/phone/presentation
 journeys, and device/location cases. TypeScript passes for the implementation;
 this batch has been enumerated but has not yet run. No terminal qualification is
 claimed for these candidates.
+
+## Atomic import integration
+
+PR231's atomic first-import fix is reconciled with the inbox and conversation
+migrations. Its reviewed upstream pin is
+`1e4c41d3f58d1f510434bd4b8e482e797eb64f7d`; the upstream delta from the prior
+pin is confined to document-store initialization, its browser regressions and
+API documentation. Concurrent import now preserves the existing revision and
+coordinates with a pending asynchronous editor. The duplicate location fixture
+fix is resolved using the explicit second-watch admission signal.
+
+TypeScript passes for the reconciled source. The prepared next batch is expanded
+to 525 three-engine cases including first import, notification/provider/album/
+preference recovery and compact controls. The running c1f21e71 campaign remains
+frozen at its prior pin and does not qualify this integration. Its observed
+location fixture failure is retained in the campaign log and trace. No Android
+build was run by this review.
