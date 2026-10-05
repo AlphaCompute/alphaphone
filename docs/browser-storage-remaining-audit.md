@@ -89,3 +89,33 @@ Browser and root verification qualify their exact source only. Current native
 IPC, Android process/reboot/Doze behavior, real Gmail and Cloud grants, provider
 revocation, installed autofill, physical speech and signed release/pilot journeys
 remain separate items in [current MVP status](mvp-current-status.md). This audit neither waives those gates nor represents the MVP as complete.
+
+## Location preference lifecycle review
+
+The location configuration is one complete development preference snapshot, not
+an operation journal. `saveLocationSimulation` validates the full snapshot and
+checks persisted bytes; the latest completed write supplies future reads. An
+open location editor also refuses a save when it observes a changed starting
+snapshot. That comparison is not a cross-process transaction and must not be
+presented as one.
+
+A concrete lifecycle gap was found: changing this preference retired mismatched
+active watches but left a pending browser permission prompt alive. The candidate
+now cancels pending prompts and invalidates pending permission-status reads when
+location settings change, including same-tab notifications, storage events and
+storage clearing. Malformed settings retire existing watches with UNAVAILABLE,
+retain the exact original bytes, and reject late fixes. Coordinate updates keep
+compatible active simulated watches and publish the new fix as before.
+
+TypeScript and the 19-case Chromium location suite pass. A 60-case three-engine
+campaign adds a real two-tab storage-event regression and is pending. This is
+browser location lifecycle evidence, not physical GPS or Android permission
+acceptance. Malformed location settings still need an explicit user-facing
+backup/reset path; automatic replacement would lose the retained bytes.
+
+The adjacent preference review also found that appearance is loaded at startup
+and saved on local changes without cross-tab refresh, and connection selection
+storage retirement is currently installed only for the development profile.
+Cloud environment selection has no equivalent storage-event retirement. These
+remain implementation/qualification gaps; current conversation-cache tests do
+not prove their ownership semantics.
