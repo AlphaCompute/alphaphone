@@ -1,8 +1,8 @@
 # One-off reminder completion and snooze
 
-Build67 source checkpoint: implementation and fixtures are ready; native execution is pending. This does not establish a physical-device delivery deadline. Android reminders remain inexact and may be delayed by system battery policy.
+Android reminders remain inexact and may be delayed by system battery policy.
 
-New one-off reminders now have an occurrence revision while retaining their existing reminder ID. Their actual Android notification exposes Done and Snooze 10 minutes, using the same immutable decision intents as recurring reminders. Snooze retains the original due time and occurrence identity, moves the alarm ten minutes from the explicit action, and rejects a duplicate snooze while that snooze is pending.
+One-off reminders have an occurrence revision while retaining their existing reminder ID. Their actual Android notification exposes Done and Snooze 10 minutes, using the same immutable decision intents as recurring reminders. Snooze retains the original due time and occurrence identity, moves the alarm ten minutes from the explicit action, and rejects a duplicate snooze while that snooze is pending.
 
 Done persists one completion receipt and terminal `completed` state before cancelling the alarm and notification. It does not schedule another alarm. Completed rows stay visible on their original Calendar date with completion time, due time and no active Done/Snooze controls. Activity recreation and alarm restoration cannot reopen them. Old decision intents cannot duplicate completion or mutate a later explicitly edited revision. Editing and saving a new future date is an explicit reschedule and preserves prior history.
 
@@ -14,8 +14,4 @@ Each record keeps at most 32 completion receipts. At the existing 250-record sto
 
 Run through `scripts/test-reminder-one-off.mjs APP.apk MATCHING_TEST.apk OUTPUT` with explicit `ANDROID_SERIAL=emulator-N`. The runner records APK hashes, grants notification permission only for the fixture, then restores and verifies its original grant/user flags. Notification channel disablement is not overridden. The native test allows up to 13 minutes for Android's inexact delivery, matching the observed emulator policy; it does not manually call delivery to manufacture the initial notification. Cleanup cancels and removes only its unique fixture IDs.
 
-TypeScript, runner syntax and whitespace checks passed at this checkpoint. Root owns Gradle, both distribution builds and native execution. Existing recurrence and capacity tests should run with this change; their previous passing evidence does not automatically qualify Build67.
-
-Build68 consumer follow-up: Home's upcoming agenda excludes completed reminder rows even if their snoozed deadline remains in the future. The native one-off fixture now navigates to the real Home view after Done, requires its actual Calendar card to be rendered, and asserts that the completed fixture is not its upcoming event. Calendar history remains available. TypeScript passed; Build68 native execution is pending.
-
-Build67 standalone native run observed the genuine initial alarm and notification Snooze, and reached persisted `completed` with one receipt after visible Done. It failed the combined receipt/action UI assertion. Source inspection found that the history template used unsupported `sc-for each/of` attributes; `dc-lite.js` only renders `list/as`. Build68 corrects that production template binding for both one-off and recurring receipts. The assertion remains unchanged, with bounded diagnostic booleans for active view, completion text, receipt text and action presence. Full-flow acceptance still requires the native rerun.
+Completed reminders are excluded from Home’s upcoming agenda, including when a snoozed deadline remains in the future. Calendar history remains available. Qualify this with the current APKs; retain exact source/artifact identities and raw native results according to the [verification guide](verification.md).
