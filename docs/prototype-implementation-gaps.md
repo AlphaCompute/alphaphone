@@ -120,7 +120,7 @@ Build 20 passed both full distribution suites and both opt-in live-agent/camera-
 
 ## Historical architecture and implementation order
 
-Keep fixture mode (`DEV`, non-Android, explicit `fixture=1`) for visual snapshots, and separate its datasets from production. Introduce typed view models with `unconfigured`, `loading`, `ready`, `stale`, `denied`, `failed` and `empty` status; render those states in the existing exact components. Keep only safe local preferences as local state; accounts, permissions, delivery, media and network/device facts come from real capability adapters.
+Keep fixture mode (development server with `ELIZA_DEV_ALLOW_TEST_MOCKS=1`, non-Android, explicit `fixture=1`) for visual snapshots; production builds swap the fixture module for an empty one, and separate its datasets from production. Introduce typed view models with `unconfigured`, `loading`, `ready`, `stale`, `denied`, `failed` and `empty` status; render those states in the existing exact components. Keep only safe local preferences as local state; accounts, permissions, delivery, media and network/device facts come from real capability adapters.
 
 Next implement a typed action registry with explicit payloads and return receipts, replacing heuristic callback interception domain by domain. Start with the already-working slices—notes, selected document, camera still photo, reminders, agent proposal/approval—then actual calendar/mail/contact models and owned Chromium/maps. Ensure every selected real entity updates the agent context with an opaque identity, account boundary, revision and sensitivity. Do not grant agent access merely because a presentation component is visible.
 

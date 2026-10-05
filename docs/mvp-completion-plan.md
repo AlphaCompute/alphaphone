@@ -1,6 +1,10 @@
 # Alpha Phone MVP completion plan
 
-## Current plan — October 3, resident agent and browser development
+## Current plan — October 4, production surfaces
+
+Mock mode, prototype fixtures, the development profile, device controls, simulated apps, the local development agent option and the debug-only native hooks are now flag-only: they exist only in builds with `ELIZA_DEV_ALLOW_TEST_MOCKS=1` (`npm run dev`, Playwright, `ELIZA_DEV_ALLOW_TEST_MOCKS=1 npm run build`, `npm run android:build -- --test-mocks`). The production web build and all four distribution APKs exclude them, and the production bundle audit, production browser lane and APK verification enforce it. Mentions of mock mode in older checkpoints below describe their recorded builds. See the [production readiness record](production-readiness-2026-10-04.md) and [current status](mvp-current-status.md).
+
+## Plan — October 3, resident agent and browser development
 
 The [architecture](architecture.md) defines product and shared platform ownership.
 
@@ -292,9 +296,9 @@ The powered-off hosted-loop journey cannot be satisfied by a powered-off residen
 
 The initial MVP feature profile is implemented in `apps/app/src/prototype/mvp-features.ts`: Phone, SMS, Contacts and Wallet enabled entries are commented out with sources and restoration gates. Production/offline and mock render checks cover hidden entry points, direct navigation, `keepStack`, presets and saved-state recovery. Contacts adapter installation and agent route execution are guarded. Original design templates/styles and user data are retained. Build82 passes product verification and both Android distribution builds; Build83 native navigation and accessibility checks pass both distributions.
 
-Complete the remaining profile coverage in remote agent capability discovery and native acceptance. The same profile must govern route registration, home icons, voice/text navigation, suggestions, deep links and mock mode. Retain their implementations and the original design reference; do not delete user data or Android's stock dialer/emergency functionality. Disable adapter installation for deferred functions. A hidden icon alone is insufficient.
+Complete the remaining profile coverage in remote agent capability discovery and native acceptance. The same profile must govern route registration, home icons, voice/text navigation, suggestions, deep links and (in test-mocks builds only) mock mode. Retain their implementations and the original design reference; do not delete user data or Android's stock dialer/emergency functionality. Disable adapter installation for deferred functions. A hidden icon alone is insufficient.
 
-After the messaging answer, apply the same profile to Telegram/Discord or retain their work explicitly. Do not silently remove Email while it remains a prior direct requirement. Keep the local-development connection available for diagnostics and mock mode isolated from effects. Advanced photo editing, global/offline navigation, autonomous booking/purchasing and a general workflow IDE are recommended later work; record a disposition before removing their controls. Basic selected files/capture can remain as supporting functions without making an entire media suite the critical path.
+After the messaging answer, apply the same profile to Telegram/Discord or retain their work explicitly. Do not silently remove Email while it remains a prior direct requirement. Mock mode is now flag-only (`ELIZA_DEV_ALLOW_TEST_MOCKS=1`): the local-development connection and mock mode remain available for diagnostics in development and test-mocks builds, isolated from effects, and are absent from production builds and all distribution APKs. Advanced photo editing, global/offline navigation, autonomous booking/purchasing and a general workflow IDE are recommended later work; record a disposition before removing their controls. Basic selected files/capture can remain as supporting functions without making an entire media suite the critical path.
 
 Use comments such as `MVP-DEFERRED: <feature>; reason/source; restore only after <acceptance gate>` next to commented registration/import entries. Also document native permissions, background services, scheduled jobs and remote capabilities that must be inactive. Existing saved references to disabled routes should return Home with a clear message. Back, process restore, `keepStack`, direct URLs and agent proposals must not bypass the profile. Do not comment out tests that prove required MVP behavior merely to make the suite green.
 
@@ -328,7 +332,7 @@ Parallelize source review, upstream contracts and physical-device preparation. S
 2. Choose Cloud, authenticate with the intended account, select an existing agent, then separately verify explicit new-agent provisioning and unknown-result recovery. Complete remote pairing to the private host as a second approach; local-development mode is a third diagnostic path.
 3. Type a request, speak another, switch Notes/Calendar/Browser and retain the intended conversation. Confirm source context and actual owner/agent identity without showing credentials.
 4. Cancel a stream and a pending action; switch networks; background and kill/restart the app; expire/revoke a token. Recover one result per accepted request and no old-owner output after account change.
-5. Enter mock mode and prove no provider/native side effect. Exit mock mode and restore a deliberate real/offline selection.
+5. On the distribution APK, prove no mock choice or mock entry point exists. Separately, on a test-mocks APK only, enter mock mode and prove no provider/native side effect, then exit and restore a deliberate real/offline selection.
 
 ### B. Voice to note to calendar or reminder
 

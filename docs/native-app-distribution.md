@@ -71,6 +71,20 @@ Each approved app uses a distinct `android_app_import` with `presigned: true`, `
 
 Owned Chromium stays in the dedicated upstream `packages/os/scripts/distro-android/prepare-chromium-browser.ts` path and associated browser build/signing configuration. Do not replace the pinned owned-browser package with the development snapshot in a production manifest or disable package/certificate checks to make the snapshot pass.
 
+## Alpha Phone's own release packaging (October 4)
+
+This document concerns third-party native apps. Alpha Phone's own APKs follow
+[the Android build contract](android-and-aosp.md): distribution builds exclude every
+mock, fixture and developer surface (`ELIZA_DEV_ALLOW_TEST_MOCKS` off); release signing
+uses `ELIZAOS_KEYSTORE_PATH`, `ELIZAOS_KEYSTORE_PASSWORD`, `ELIZAOS_KEY_ALIAS` and
+`ELIZAOS_KEY_PASSWORD`; version comes from `ELIZAOS_VERSION_CODE`/`ELIZAOS_VERSION_NAME`
+or `app.config.json`; release variants are R8-minified with retained mapping files; and
+App Links are prepared from `assetlinks.template.json` but inactive until a domain and
+release signer exist. Alpha's in-app third-party notices
+(`apps/app/public/licenses/third-party-notices.json` and `THIRD_PARTY_NOTICES.txt`) cover
+the app's own dependencies only; the native apps staged here need their own notices in
+the image's license bundle.
+
 ## Required post-install tests
 
 1. Native intent resolution from Alpha reaches the intended installed app, including first-run screens, and returns through Android Back/Home without losing Alpha's draft.

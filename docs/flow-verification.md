@@ -8,6 +8,8 @@ Build57 passes `npm run verify`, Android lint and all four APK builds with match
 - Build56 package inspection verified all four APK identities, provider-secret absence and debug-only synthetic autofill. Release Maps request code rejects without invoking the HTTP worker. This is static package evidence, not deployed/runtime acceptance.
 - Build56 route screenshot files were adb error text. Their names and receipt flags have been corrected; no valid native route screenshot exists yet.
 
+Checkpoints below that mention mock mode, `?mode=mock` or the explicit mock chooser describe the recorded builds. Since October 4 mock mode exists only in builds with `ELIZA_DEV_ALLOW_TEST_MOCKS=1` and is absent from the production web build and all distribution APKs; see the [production readiness record](production-readiness-2026-10-04.md).
+
 The following checkpoints retain earlier evidence and failures; the [current product status](mvp-current-status.md) is the current remaining-work inventory.
 
 # Current checkpoint — Build55, 2026-09-30
