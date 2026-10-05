@@ -18,6 +18,10 @@ const selected=(()=>{
 })();
 const needsProduction=!selected.length||selected.includes('production');
 const needsDevelopment=!selected.length||selected.some(name=>name!=='production');
+// Specs that start their own in-process Vite server (dev-hosted-journey, dev-reload,
+// reading-source) read the flag from the worker environment, so development lanes opt in
+// here too. The production web server below clears it explicitly.
+if(needsDevelopment)process.env.ELIZA_DEV_ALLOW_TEST_MOCKS='1';
 
 const development={
   // The development server explicitly opts into test mocks, fixtures and device controls.
