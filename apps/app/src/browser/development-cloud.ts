@@ -1,13 +1,13 @@
 import {CloudPersonalProtocol} from '../runtime/cloud-personal-protocol';
 import {browserDevProfile} from './dev-profile';
-import {readStore,revision} from './store';
+import {revision} from './revision';
 import {cloudSetupDocument,type DevelopmentSetup as Setup,type DevelopmentScenario} from './development-cloud-document';
 export type {DevelopmentScenario} from './development-cloud-document';
 export const developmentCloudKey='alpha.browser.cloud.account.v1';
 export type DevelopmentAccount='first'|'second';
 type Account={account:DevelopmentAccount;session:string}|null;
 const valid=(v:unknown):v is DevelopmentAccount=>v==='first'||v==='second';
-export function developmentCloudAccount():Account {if(!browserDevProfile)throw Error('Choose development mode.');const account=readStore<Account>(developmentCloudKey,()=>null);if(account&&(!valid(account.account)||typeof account.session!=='string'))throw Error('Development account data needs recovery.');return account;}
+export function developmentCloudAccount():Account {if(!browserDevProfile)throw Error('Choose development mode.');const raw=localStorage.getItem(developmentCloudKey),account:Account=raw?JSON.parse(raw):null;if(account&&(!valid(account.account)||typeof account.session!=='string'))throw Error('Development account data needs recovery.');return account;}
 export async function selectDevelopmentCloud(account:DevelopmentAccount|null,signal:AbortSignal){
  if(!browserDevProfile||account!==null&&!valid(account))throw Error('Choose a development account.');
  return navigator.locks.request(developmentCloudKey,{signal},()=>{signal.throwIfAborted();const value=account?{account,session:crypto.randomUUID()}:null;localStorage.setItem(developmentCloudKey,JSON.stringify(value));window.dispatchEvent(new Event('alpha:development-account-changed'));return value;});

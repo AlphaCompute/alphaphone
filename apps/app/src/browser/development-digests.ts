@@ -3,7 +3,7 @@ import {developmentDelegationRequest,grantAccount} from './digest-delegation';
 import {browserDigestAccount,validateBrowserDigestSelection,readBrowserDigestSource} from './digest-live-sources';
 import {developmentDigestDocument,readDevelopmentDigests,validateDevelopmentDigests,initialDevelopmentDigests as initial,type DevelopmentDigestSource as Source,type DevelopmentDigestLoop as Loop} from './development-digest-document';
 import {assertDevelopmentIdentity,developmentIdentity,type DevelopmentIdentity} from './development-identity';
-import {revision} from './store';
+import {revision} from './revision';
 const id=(v:unknown):string=>{if(typeof v!=='string'||!/^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/.test(v))throw Error('Invalid digest identity.');return v;};
 function wall(at:number,zone:string){const p=Object.fromEntries(new Intl.DateTimeFormat('en-GB',{timeZone:zone,year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).formatToParts(at).map(x=>[x.type,x.value]));return `${p.year}-${p.month}-${p.day}T${p.hour}:${p.minute}`;}
 function scheduledOccurrence(loop:Loop,minute:number):string|null{

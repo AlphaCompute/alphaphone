@@ -1,5 +1,5 @@
 import {browserScreenLocked} from './screen-locked';
-import {revision} from './store';
+import {revision} from './revision';
 import {BrowserDomainDocument,type DomainRecovery} from './domain-document';
 import {browserDocuments} from './documents';
 type Row={id:string;revision:string;title:string;text:string;at:number;phase:'posted'|'dismissed'|'opened';bindingHash?:string};

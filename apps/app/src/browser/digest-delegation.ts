@@ -1,4 +1,4 @@
-import {revision} from './store';
+import {revision} from './revision';
 export type DevelopmentGrant={id:string;revision:string;kinds:string[];expiresAt:string;revoked:boolean};
 type Request={mutationId:string;state:string;kinds:string[];expiresAt:string;status:'waiting'|'complete'|'failed';grantId?:string};
 export type DevelopmentDelegation={requests:Request[];grants:DevelopmentGrant[]};

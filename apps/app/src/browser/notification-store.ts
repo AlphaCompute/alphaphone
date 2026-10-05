@@ -1,6 +1,6 @@
 import {browserDocuments} from './documents';
 import {BrowserDomainDocument,type DomainRecovery} from './domain-document';
-import {revision} from './store';
+import {revision} from './revision';
 
 type Selection={packageName:string;preview:boolean};
 type History={id:string;appLabel:string;packageName:string;at:number;state:string};

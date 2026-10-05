@@ -7,7 +7,7 @@ import { editCalendarEvent } from './calendar-editor';
 import { BrowserReviews } from './review';
 import { validateCalendarOperation, type CalendarFields, type CalendarResult } from '../runtime/calendar-contract';
 import { WebPlugin } from '@capacitor/core';
-import { revision } from './store';
+import { revision } from './revision';
 import {calendarDocument} from './calendar-store';
 type EventRow=CalendarRecord;
 type CreationReceipt={binding:string;result:{status:"saved";id:string;calendarId:string;creationId:string};acknowledged:boolean};

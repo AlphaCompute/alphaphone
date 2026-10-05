@@ -29,8 +29,8 @@ readers. Alpha supplies domain names and legacy recovery policy.
 | Development password provider | `browser/password-provider.ts`, `browser/preference-documents.ts`; asynchronous device status, canonical provider selection, cross-tab retirement and backup/reset | Provider lifecycle, storage and compact large-text suites cover pending dialog cancellation, retired sample fills and recovery. This is the development sample provider, not real Proton credentials or native autofill acceptance. |
 | Photo albums | `prototype/browser-camera.ts`, `browser/preference-documents.ts`; canonical album names/membership and revision checks, cross-tab catalogue refresh, exact-byte backup/reset | Album/storage suites cover concurrent creation, cross-tab refresh, failed writes and stale recovery. Saved media remains in its existing IndexedDB database; album reset does not delete photos/videos. Album metadata and media bytes are separate transaction domains. `alpha.browser.albums.v1` holds album names and media membership; photo/video payloads already use a separate IndexedDB store. |
 
-This table covers the shared `readStore`/`editStore` callers, not every localStorage
-key. Connection selection, prototype state and independent security/operation
+This table covers the canonical browser domains, not every localStorage key.
+Connection selection, prototype state and independent security/operation
 stores require their own ownership and synchronization audit. Do not change a
 writer while leaving its synchronous reader pointed at legacy bytes. Never add a
 writable localStorage mirror to make old fixtures pass.
@@ -58,6 +58,11 @@ Keep terminal results and failed reproductions, tied to source commits. Require
 real multi-document concurrency, unique receipts, malformed-byte recovery,
 write failure, tab death, stale reset and cancellation cases. Run the owning UI
 journeys across Chromium, Firefox and WebKit, then repository verification and
-current hosted checks. Passing Calendar alone does not close the retained global
-rapid-store regression or qualify another domain. Browser evidence does not prove
+current hosted checks. The shared domain atomicity suite covers rapid cross-tab
+writes, unique receipts,
+failed commits and tab closure against the canonical store. Domain-specific
+journeys must still verify their callers; passing Calendar does not qualify
+another domain. Browser CI runs the canonical domain and development Cloud
+setup cases in Firefox and WebKit alongside the full Chromium shards.
+Browser evidence does not prove
 Android process, Keystore, reboot, Doze or physical-device acceptance.
