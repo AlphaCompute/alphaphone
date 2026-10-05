@@ -21,8 +21,16 @@ before UI assertions, and deletes only that calendar. Inserts use batches of at
 most 200 and require a URI for every result. Do not assume recurrence expansion
 will produce enough rows to exercise the limit.
 
-`scripts/test-calendar-range.mjs APP.apk MATCHING_TEST.apk OUTPUT` requires an
-explicit emulator, verifies the APK pair and restores Calendar grants and flags.
+Run `node scripts/test-calendar-regression.mjs --case=CalendarRangeInstrumentedTest`
+and `node scripts/test-calendar-regression.mjs --case=CalendarTruncationInstrumentedTest`
+after building the app and instrumentation APKs. Set `ALPHA_CALENDAR_TEST_SERIAL`,
+`ALPHA_CALENDAR_TEST_AVD` and `ALPHA_CALENDAR_TEST_ABI` (`x86_64` or `arm64-v8a`).
+Each command checks both distributions unless `--variant=standalone` or
+`--variant=launcher` is supplied. The upstream harness leases the emulator,
+refuses existing package registrations, verifies installed APK bytes and runs the
+exact method in a fresh secondary user. Calendar grants affect only that user;
+uncertain cleanup retains the fixture for recovery. Reports are written beneath
+`test-results/calendar-regression-*`.
 Both range navigation and truncation methods must pass. Rapid A→B→A navigation
 must discard the retired query and issue a fresh query for the final range.
 
