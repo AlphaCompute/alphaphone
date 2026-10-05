@@ -80,6 +80,30 @@ test('every shipped font file is accounted for and unverified items carry their 
   assert.match(fs.readFileSync(path.join(ROOT, TEXT_OUTPUT), 'utf8'), new RegExp(`marked "${UNVERIFIED}": ${unverified.length} \\(pending legal review\\)`));
 });
 
+test('libraries statically linked into the shipped OCR WebAssembly cores are listed with pinned texts', () => {
+  const pinned = JSON.parse(fs.readFileSync(path.join(ROOT, 'licenses/tesseract-core/sources.json'), 'utf8'));
+  for (const name of ['Tesseract OCR engine', 'Leptonica image processing library', 'Independent JPEG Group libjpeg', 'libpng', 'LibTIFF', 'libwebp', 'GIFLIB', 'zlib', 'OpenLibm'])
+    assert.ok(pinned.components.some(component => component.name === name), name);
+  for (const component of pinned.components) {
+    const entry = shipped.find(item => item.name.startsWith(`${component.name} (linked into tesseract.js-core`));
+    assert.ok(entry, component.name);
+    assert.equal(entry.license, component.license);
+  }
+  assert.match(shipped.find(item => item.name.startsWith('Independent JPEG Group libjpeg')).text, /^This software is based in part on the work of the Independent JPEG Group\./);
+});
+
+test('generation fails when the shipped OCR cores or their pinned license copies change', t => {
+  const dir = scratchRoot(t);
+  const file = path.join(dir, 'licenses/tesseract-core/sources.json');
+  const pinned = JSON.parse(fs.readFileSync(file, 'utf8'));
+  fs.appendFileSync(path.join(dir, 'licenses/tesseract-core/leptonica-license.txt'), '\nmodified');
+  assert.ok(collectNotices(dir).errors.some(error => error.includes('leptonica-license.txt does not match')));
+  fs.writeFileSync(file, JSON.stringify({...pinned, version: '0.0.0', cores: {...pinned.cores, 'tesseract-core-lstm.wasm.js': '0'.repeat(64)}}));
+  const errors = collectNotices(dir).errors;
+  assert.ok(errors.some(error => error.includes('differs from licenses/tesseract-core/sources.json (0.0.0)')));
+  assert.ok(errors.some(error => error.includes('tesseract-core-lstm.wasm.js differs from the core pinned')));
+});
+
 test('existing mediabunny and OCR/tessdata notices are retained', () => {
   for (const file of ['apps/app/public/licenses/mediabunny/LICENSE.txt', 'apps/app/public/licenses/mediabunny/NOTICE.txt', 'licenses/mediabunny-MPL-2.0.txt', 'licenses/tessdata-APACHE-2.0.txt'])
     assert.ok(fs.statSync(path.join(ROOT, file)).size > 0, file);

@@ -29,6 +29,8 @@ export const UNVERIFIED = 'license unverified';
 export const KNOWN_LICENSES = new Set([
   '0BSD', 'Apache-2.0', 'BSD-2-Clause', 'BSD-3-Clause', 'ISC', 'MIT', 'MPL-2.0', 'OFL-1.1', 'ODbL-1.0', 'Zlib',
   'GPL-2.0-only WITH Font-exception-2.0',
+  // Permissive licenses of libraries statically linked into the tesseract.js-core WebAssembly cores.
+  'IJG', 'libpng-2.0', 'libtiff', 'SunPro',
 ]);
 
 /** Maven group prefixes found on the resolved Android runtime classpath. Anything else fails. */
@@ -233,6 +235,38 @@ function ocrDataEntries(root) {
     source: 'https://github.com/naptha/tessdata', text: normalizeText(read(root, 'licenses/tessdata-APACHE-2.0.txt'))}];
 }
 
+/**
+ * tesseract.js-core ships WebAssembly cores that statically link Tesseract, Leptonica and image/math
+ * libraries. Its own LICENSE covers only the wrapper, so each linked library is listed from license
+ * copies pinned in licenses/tesseract-core/sources.json to the exact cores that ship.
+ */
+export const TESSERACT_CORE_SOURCES = 'licenses/tesseract-core/sources.json';
+function tesseractCoreEntries(root, errors) {
+  if (!exists(root, TESSERACT_CORE_SOURCES)) { errors.push(`${TESSERACT_CORE_SOURCES} missing`); return []; }
+  const pinned = readJson(root, TESSERACT_CORE_SOURCES);
+  const dir = `node_modules/${pinned.package}`;
+  if (!exists(root, `${dir}/package.json`)) { errors.push(`${pinned.package}: not installed; run npm ci`); return []; }
+  const installed = readJson(root, `${dir}/package.json`).version;
+  if (installed !== pinned.version)
+    errors.push(`${pinned.package} ${installed} differs from ${TESSERACT_CORE_SOURCES} (${pinned.version}); re-review its statically linked libraries`);
+  for (const [file, digest] of Object.entries(pinned.cores)) {
+    if (!exists(root, `${dir}/${file}`)) errors.push(`${dir}/${file}: missing`);
+    else if (sha256(fs.readFileSync(path.join(root, dir, file))) !== digest)
+      errors.push(`${dir}/${file} differs from the core pinned in ${TESSERACT_CORE_SOURCES}; re-review its statically linked libraries`);
+  }
+  return pinned.components.map(component => {
+    const texts = component.files.map(file => {
+      const rel = `licenses/tesseract-core/${file.path}`;
+      if (!exists(root, rel)) { errors.push(`${rel}: missing`); return ''; }
+      const bytes = fs.readFileSync(path.join(root, rel));
+      if (sha256(bytes) !== file.sha256) errors.push(`${rel} does not match its sha256 in ${TESSERACT_CORE_SOURCES}`);
+      return normalizeText(bytes.toString('utf8'));
+    }).filter(Boolean);
+    return {name: `${component.name} (linked into ${pinned.package} WebAssembly)`, version: `${component.version}; bundled with ${pinned.package} ${pinned.version}`,
+      license: component.license, source: component.source, text: [component.preface, ...texts].filter(Boolean).join('\n\n')};
+  });
+}
+
 function fontEntries(root, templates, errors) {
   const entries = [];
   const groups = new Map();
@@ -415,6 +449,7 @@ export function collectNotices(root = ROOT) {
     ...npmEntries(root, templates, errors),
     ...pdfjsEntries(root, errors),
     ...ocrDataEntries(root),
+    ...tesseractCoreEntries(root, errors),
     ...fontEntries(root, templates, errors),
     elizaEntry(root),
     ...androidEntries(root, templates, errors),

@@ -18,6 +18,11 @@ Inputs:
 - Every font file under `apps/app/public`, identified from its OpenType name table, plus the
   declared `@fontsource/*` packages.
 - pdf.js decoder, font and CMap license files that ship in `pdfjs-assets/`.
+- `tesseract-core/`: license copies for the libraries statically linked into the
+  `tesseract.js-core` WebAssembly cores in `ocr/` (Tesseract, Leptonica, libjpeg, libpng, LibTIFF,
+  libwebp, GIFLIB, zlib, OpenLibm), pinned by `tesseract-core/sources.json` to the submodule commits
+  of the `tesseract.js-core` v7.0.0 tag. Generation fails when the installed package, a shipped core
+  or a license copy changes until the pins are re-reviewed.
 - `android-runtime-classpath.json`: the resolved release and debug runtime classpath for both
   distribution variants. Its fingerprint covers the Gradle dependency declarations; generation fails
   when they change until the snapshot is refreshed.
