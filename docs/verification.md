@@ -68,6 +68,18 @@ and runs each exact method in a fresh secondary user. It retains the fixture if
 package termination or cleanup cannot be proven. These synthetic read/draft tests
 do not establish paired-host workflow execution.
 
+Native permission, restart, one-off reminder, and recurrence runners share
+`scripts/native-test-fixture.mjs`: AlphaPhone owns the exact archived APK pair
+and SDK configuration; upstream owns the emulator lease, isolated user, strict
+instrumentation admission, and cleanup. Set `ANDROID_SERIAL`,
+`ALPHA_NATIVE_TEST_AVD`, `ALPHA_NATIVE_TEST_ABI`, and the fixture's stock
+`ALPHA_TEST_HOME_PACKAGE`. Supply archived app/test APK paths and a fresh output
+directory. Permission changes apply only to the temporary user; successful
+cleanup removes that user and restores owner 0. `user-verification.json` records
+the shared lifecycle, `verification.json` the instrumentation and package
+cleanup, and `result.json` the product scenario. Deferred cleanup is a failure
+requiring explicit recovery of the owned fixture.
+
 Process-restart campaigns use `node scripts/test-native-restart.mjs` with `inbox`,
 `notes`, or `document`, a matching archived APK pair and a new output directory.
 Use the owned-emulator configuration in the README. Require successful prepare,
