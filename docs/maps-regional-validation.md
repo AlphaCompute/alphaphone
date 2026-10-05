@@ -27,7 +27,7 @@ Foreground navigation uses the existing native location plugin, rejects fixes to
 3. From the data directory run `java -Xmx512m -jar graphhopper.jar server /ABSOLUTE_REPO/scripts/maps/graphhopper.yml`.
 4. Stop the router and all dataset writers. Checkpoint/close any SQLite writers, then run `python3 scripts/maps/dataset_manifest.py seal`. This explicitly admits the prepared dataset; it performs no download or reindex.
 5. Run `npm run dev:maps -- --port 5194` to verify the dataset and start its router, gateway and app together. In another terminal, run `python3 scripts/maps/test-region.py`.
-6. For separate rendered checks start a dedicated `VITE_MAPS_BASE_URL=http://127.0.0.1:47850 npm run dev -- --port 5194 --strictPort`, then run `scripts/maps/test-renderer.mjs` with `ALPHA_BROWSER_MODULES` pointing to the existing Playwright installation.
+6. For separate rendered checks start a dedicated `VITE_MAPS_BASE_URL=http://127.0.0.1:47850 npm run dev:ui -- --port 5194 --strictPort`, then run `scripts/maps/test-renderer.mjs` with `ALPHA_BROWSER_MODULES` pointing to the existing Playwright installation.
 
 ## Data and software terms
 

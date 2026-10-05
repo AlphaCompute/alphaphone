@@ -1,7 +1,7 @@
 # Browser development capabilities
 
 Browser development uses Alpha's renderer and the same application-facing plugin
-contracts as Android. Run `npm run dev` (which sets `ELIZA_DEV_ALLOW_TEST_MOCKS=1`) and
+contracts as Android. Run `npm run dev` (which sets `ELIZA_DEV_ALLOW_TEST_MOCKS=1` and starts the local agent; `npm run dev:ui` is renderer-only) and
 open `?mode=dev` for the disclosed local device profile; use `?mode=dev&workflows=agent`
 for workflow authoring. Both entry points exist only on the development server with the
 switch on. The [README](../README.md) describes device controls and the switch, and

@@ -68,8 +68,8 @@ paused notification collection resumes only through an explicit connection choic
 
 It is turned on explicitly by:
 
-- `npm run dev` (the default `npx vite` without the script stays off), `npm run dev:local`
-  and `npm run dev:maps`;
+- `npm run dev` (which also starts the local agent; the default `npx vite` without the
+  script stays off), `npm run dev:ui` (renderer only) and `npm run dev:maps`;
 - the Playwright web server used by `npm run test:browser`, and the browser CI job;
 - an explicit test-mocks web build: `ELIZA_DEV_ALLOW_TEST_MOCKS=1 npm run build`;
 - an explicit test-mocks Android build: `npm run android:build -- --test-mocks`, which
@@ -97,7 +97,8 @@ npx playwright install chromium
 npm run verify
 npm run test:browser              # development surfaces on (switch set by Playwright)
 npm run test:browser:production   # production build, switch off: no mock/dev surfaces
-npm run dev                       # development server, switch on
+npm run dev                       # local agent + development server, switch on
+npm run dev:ui                    # renderer-only development server, switch on
 ```
 
 For configured regional Maps, prepare the data once as described in
