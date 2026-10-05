@@ -23,3 +23,19 @@ test('camera refuses unowned package registration before installing or creating 
 test('camera admits only the exact archived app and instrumentation bytes',()=>{
  const r=run('archive-pin');assert.notEqual(r.code,0);assert.equal(r.record,null);assert.match(r.stderr,/Exact matching archived distribution/);assert.equal(r.commands.length,0);
 });
+
+for(const [scenario,method,permissions]of [
+ ['settings','accountsHandoffAndLocationAccuracyReadback',[['revoke','ACCESS_FINE_LOCATION'],['grant','ACCESS_COARSE_LOCATION']]],
+ ['channels','blockedChannelReadbackUserRecoveryAndRealNotification',[['grant','POST_NOTIFICATIONS']]],
+]){
+ test(`${scenario} scopes its permission preconditions and exact native method`,()=>{
+  const r=exercise('pass',scenario);assert.equal(r.code,0,r.stderr);assert.equal(r.record.scenario,scenario);assert.equal(r.record.userLifecycle.removed,true);
+  const invocation=r.commands.find(a=>a.includes('instrument'));assert.ok(invocation[invocation.indexOf('class')+1].endsWith('#'+method));
+  const changes=r.commands.filter(a=>a.includes('grant')||a.includes('revoke'));
+  assert.deepEqual(changes.map(a=>[a[2],a.at(-1).replace('android.permission.','')]),permissions);assert.ok(changes.every(a=>a[a.indexOf('--user')+1]==='10'));
+  assert.equal(r.state.created,false);assert.deepEqual(r.state.files,{});
+ });
+ test(`${scenario} rejects a different method and removes its fixture`,()=>{
+  const r=exercise('wrong-method',scenario);assert.notEqual(r.code,0);assert.equal(r.record.passed,false);assert.equal(r.state.created,false);
+ });
+}
