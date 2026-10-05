@@ -48,6 +48,11 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
   // Navigation resets transient view state, but must retain the actual storage receipt.
   views.notes.persist = [...new Set([...(views.notes.persist || []), 'storageStatus'])];
 
+  function sizeComposer(){
+    for(const input of document.querySelectorAll<HTMLTextAreaElement>('textarea[data-alpha-composer]')){
+      input.style.height='44px';input.style.height=`${Math.max(44,input.scrollHeight)}px`;
+    }
+  }
   function context(shell: Shell) {
     const s = shell.S();
     const view = s.view || 'home';
@@ -388,7 +393,7 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
     });
     context(this);
   };
-  p.componentDidUpdate = function (prev: Shell) { originalUpdate.call(this, prev); context(this); };
+  p.componentDidUpdate = function (prev: Shell) { originalUpdate.call(this, prev); context(this); sizeComposer(); };
   p.componentWillUnmount = function () {
     this.notesOpenAbort?.abort();if(activeShell===this){activeShell=null;notesRecovery?.abort();}
     this.closeSummaryReview?.();
@@ -503,6 +508,10 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
   };
   p.renderVals = function () {
     const out = originalVals.call(this);
+    out.composerPointer=(event:PointerEvent)=>event.stopPropagation();
+    out.onKey=(event:KeyboardEvent&{nativeEvent?:KeyboardEvent})=>{
+      if(event.key==='Enter'&&!event.shiftKey&&!event.isComposing&&!event.nativeEvent?.isComposing&&event.keyCode!==229){event.preventDefault();void this.send();}
+    };
     out.canStopReply=!!this.S().typing&&alphaClient.getState().pending;
     out.stopReply=()=>alphaClient.cancel();
     if (isAndroid) {
