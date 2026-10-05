@@ -109,14 +109,15 @@ contracts requires an adapter and protocol migration, not silent field renames.
 
 ## Historical first extraction candidate
 
-The former `patches/eliza/client-features.patch` contains additive
-upstream source under `plugin-maps/src/client`, `plugin-notes/src/client` and the
-new `plugin-files` package.
-The former `patches/eliza/client-features-source.json` binds
-it to the Eliza pin and patch hash. `scripts/prepare-client-features.mjs` applies
-the patch into ignored `.eliza/client-features`; npm development, build,
-typecheck and test entrypoints prepare that source automatically. `vendor/eliza`
-and the imported baseline remain immutable.
+The former `patches/eliza/client-features.patch` supplied additive source under
+`plugin-maps/src/client`, `plugin-notes/src/client` and `plugin-files`. Its source
+manifest bound the patch to an Eliza pin and hash. These overlays have since been
+migrated upstream and removed as part of
+[the reviewed upstream integration](https://github.com/elizaOS/eliza/pull/33230).
+`scripts/prepare-client-features.mjs` now copies authenticated source from the
+pinned upstream checkout into ignored `.eliza/client-features`, without patch
+replay. npm development, build, typecheck and test entrypoints prepare that source
+automatically. `vendor/eliza` and the imported baseline remain immutable.
 
 Alpha currently consumes the staged source through compatibility modules. Maps
 wrappers supply the installed saved-place key, location/speech ports, regional
@@ -130,11 +131,10 @@ Existing browser tests can keep using the original module paths and exercise
 the shared implementation. These re-exports are transitional compatibility
 adapters, not a claim that the complete app has been moved.
 
-The candidate is not yet a reviewed/published upstream commit or a registry
-release. A patch stored in this repository is not upstream delivery. Before
-publication, compose against current `develop`, reconcile manifests and package
-exports/dependencies, run owning upstream checks and root verification, open the
-upstream PR, and only then choose a reviewed pin update. A clean checkout must
+The initial candidate has been incorporated into the reviewed upstream source.
+This does not imply a registry release or complete app extraction. Further shared
+changes still require a PR against current `develop`, owning upstream checks and
+root verification before a reviewed consumer pin update. A clean checkout must
 continue to reproduce the consumer without modifying the submodule.
 
 ## Historical dependency-ordered work
