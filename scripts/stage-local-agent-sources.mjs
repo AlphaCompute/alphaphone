@@ -32,14 +32,17 @@ for(const name of classes){
   fs.writeFileSync(path.join(target,name+'.java'),value);
   manifest.files.push({path:relative,generatedPath:path.relative(root,path.join(target,name+'.java')),sourceSha256:digest(input),sha256:digest(input),generatedSha256:createHash('sha256').update(value).digest('hex')});
 }
-// The canonical service delegates child termination to this upstream helper.
-// Keep its package and implementation intact, with the same source provenance.
-const supervisorRelative='plugins/plugin-native-agent/android/src/main/java/ai/eliza/plugins/agent/runtime/NativeProcessSupervisor.java';
-const supervisorInput=fs.readFileSync(path.join(runtimeSource,supervisorRelative),'utf8');
-const supervisorTarget=path.join(output,'ai/eliza/plugins/agent/runtime/NativeProcessSupervisor.java');
-fs.mkdirSync(path.dirname(supervisorTarget),{recursive:true});
-fs.writeFileSync(supervisorTarget,supervisorInput);
-manifest.files.push({path:supervisorRelative,generatedPath:path.relative(root,supervisorTarget),sourceSha256:digest(supervisorInput),sha256:digest(supervisorInput),generatedSha256:digest(supervisorInput)});
+// Stage shared native helpers without changing their packages or implementations.
+// Record the same source provenance as the service adapters above.
+for(const relative of [
+ 'plugins/plugin-native-agent/android/src/main/java/ai/eliza/plugins/agent/runtime/NativeProcessSupervisor.java',
+ 'plugins/plugin-native-secure-store/android/src/main/java/ai/eliza/plugins/securestore/nativeonly/JsonCredentialSlots.java',
+]){
+ const input=fs.readFileSync(path.join(runtimeSource,relative),'utf8');
+ const target=path.join(output,relative.split('/android/src/main/java/')[1]);
+ fs.mkdirSync(path.dirname(target),{recursive:true});fs.writeFileSync(target,input);
+ manifest.files.push({path:relative,generatedPath:path.relative(root,target),sourceSha256:digest(input),sha256:digest(input),generatedSha256:digest(input)});
+}
 const browserTarget=path.join(output,'ai/eliza/plugins/browsersurface');fs.mkdirSync(browserTarget,{recursive:true});
 for(const name of ['ChromiumBrowserIdentity','ChromiumBrowserConnection']){
  const relative=`plugins/plugin-native-browser-surface/android/src/main/java/ai/eliza/plugins/browsersurface/${name}.java`;
