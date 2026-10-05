@@ -153,11 +153,11 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
     document.addEventListener('visibilitychange', this.visibilityHandler);
     window.addEventListener('pagehide', this.pageHideHandler);
     window.addEventListener('pageshow', this.pageShowHandler);
-    this.backHandler = () => {
+    this.backHandler = (event: Event) => {
       // A modal owns Back while the underlying phone is inert. Window-targeted
       // native events must not navigate the shell before its dialog closes.
       const dialog = Array.from(document.querySelectorAll<HTMLDialogElement>('dialog[open]')).at(-1);
-      if (dialog) { dialog.close(); return; }
+      if (dialog) { event.preventDefault(); event.stopImmediatePropagation(); if(dialog.dispatchEvent(new Event('cancel',{cancelable:true})))dialog.close(); return; }
       if (document.querySelector<HTMLElement>('.os')?.inert) return;
       alphaClient.cancel(); this.back();
     };
