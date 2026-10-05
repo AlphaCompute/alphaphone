@@ -7,7 +7,7 @@ test('workflow save retries reuse their receipt and reject changed payloads',asy
 test('Describe preserves the draft when the fixture agent has no typed generator',async({page})=>{
  await setup(page);await page.getByRole('textbox',{name:'Workflow name',exact:true}).fill('Retain this private draft');await page.getByRole('textbox',{name:'Workflow description',exact:true}).fill('Private description');await page.getByRole('button',{name:/Describe it to/}).click();
  await expect(page.getByRole('textbox',{name:'Workflow name',exact:true})).toHaveValue('Retain this private draft');await expect(page.getByRole('textbox',{name:'Workflow request',exact:true})).toHaveCount(0);
- expect(await page.evaluate(()=>JSON.parse(localStorage.getItem('alpha.browser.agent.local.v1')||'{"conversations":[]}').conversations.flatMap((c:any)=>c.messages))).toEqual([]);
+ expect(await page.evaluate(async()=>(await (await import('/src/browser/development-agent-document.ts')).readDevelopmentAgent((await import('/src/browser/development-identity.ts')).developmentIdentity('local'))).conversations.flatMap((c:any)=>c.messages))).toEqual([]);
  await page.reload();await page.getByRole('button',{name:'Workflows',exact:true}).click();await page.getByRole('button',{name:'New workflow',exact:true}).click();await expect(page.getByText(/Restored the draft stored/)).toBeVisible();await expect(page.getByRole('textbox',{name:'Workflow name',exact:true})).toHaveValue('Retain this private draft');await expect(page.getByRole('textbox',{name:'Workflow description',exact:true})).toHaveValue('Private description');
 });
 for(const outcome of ['saved','failed','left'])test(`Describe preserves pending draft storage: ${outcome}`,async({page})=>{

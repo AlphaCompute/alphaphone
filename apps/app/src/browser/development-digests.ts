@@ -1,3 +1,4 @@
+import {readDevelopmentAgent} from './development-agent-document';
 import {developmentDelegationRequest,grantAccount,type DevelopmentDelegation} from './digest-delegation';
 import {browserDigestAccount,validateBrowserDigestSelection,readBrowserDigestSource} from './digest-live-sources';
 import type {DigestResult,DigestSource,DigestLoop} from '../runtime/hosted-digests';
@@ -23,7 +24,7 @@ export async function developmentDigestRequest(identity:DevelopmentIdentity,path
    let repeated=false;for(let delta=60000;delta<=3*3600000;delta+=60000)if(wall(minute-delta,loop.spec.timeZone)===local){repeated=true;break;}if(repeated)continue;
    loop.lastOccurrence=local;const source=state.sources.find(s=>s.id===loop.spec.sourceId&&s.revision===loop.spec.sourceRevision);if(!source||source.revoked||Date.parse(source.expiresAt)<=now)continue;
    let readError:string|null=null,liveInput:Awaited<ReturnType<typeof readBrowserDigestSource>>|undefined;if(source.live){try{validateLive(source.live);liveInput=await readBrowserDigestSource(source.live,now);}catch(error){readError=(error as Error).message;}check();}
-   const configured=JSON.parse(localStorage.getItem(`alpha.browser.agent.${identity.namespace}.v1`)||'null'),output=configured?.reply??'Development reply. Edit this response in Agent connection.';if(typeof output!=='string'||output.length>16000)throw Error('Digest output exceeds the development limit.');
+   const output=(await readDevelopmentAgent(identity,signal)).reply;check();if(typeof output!=='string'||output.length>16000)throw Error('Digest output exceeds the development limit.');
    const time=new Date(now).toISOString();state.results.push({cursor:++state.cursor,runId:crypto.randomUUID(),workflowId:loop.id,workflowVersionId:loop.versionId,templateVersion:'development-v1',scheduledAt:new Date(minute).toISOString(),source:{id:source.id,revision:source.revision,observedAt:source.live?time:source.observedAt,expiresAt:source.expiresAt,...(source.live?{live:source.live}:{})},status:readError?'failed':'completed',startedAt:time,completedAt:time,output:readError?null:liveInput?{summary:output,...liveInput}:output,error:readError});if(state.results.length>100)state.results.shift();
   }};
   if(path==='/api/workflow/hosted/tick'){await tick();check();return {};}
