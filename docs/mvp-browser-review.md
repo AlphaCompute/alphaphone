@@ -75,7 +75,7 @@ Current operating guides and requirements:
 
 - [Browser development capabilities](browser-dev-parity.md) and [native method inventory](browser-native-method-inventory.md)
 - [Local agent setup](local-agent-development.md) and [resident execution plan](on-device-agent-plan.md)
-- [Calendar/reminder audit](calendar-reminder-audit.md) and [regional Maps setup](maps-regional-validation.md)
+- [Calendar/reminder contracts](calendar-reminder-contract.md) and [regional Maps setup](maps-regional-validation.md)
 - [Local OCR](local-ocr.md), [browser autofill](browser-autofill-integration.md) and [Notes documents](notes-document-flows.md)
 - [MVP completion plan](mvp-completion-plan.md), [scope and gaps](mvp-scope-and-gap-report.md) and [pilot acceptance](pilot-acceptance-runbook.md)
 

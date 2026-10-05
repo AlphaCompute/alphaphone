@@ -29,7 +29,7 @@ the required evidence rather than treating a successful APK build as acceptance.
 - [Cloud deployment and authentication findings](docs/cloud-production-validation.md)
 - [Enclave candidate and signing gates](docs/enclave-candidate-validation.md)
 - [Browser autofill and Proton integration](docs/browser-autofill-integration.md)
-- [Calendar and reminder recovery audit](docs/calendar-reminder-audit.md)
+- [Calendar and reminder contracts](docs/calendar-reminder-contract.md)
 
 - [Working PRD](docs/prd.md)
 - [Detailed implementation plan](docs/implementation-plan.md)
