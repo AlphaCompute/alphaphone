@@ -663,6 +663,10 @@
         <sc-if value="{{inbox.c.local}}"><button disabled="{{inbox.c.busy}}" onClick="{{inbox.c.attach}}" style="padding:10px 0;text-align:left">Attach one PDF, image or TXT (up to 5 MiB)</button></sc-if>
         <sc-if value="{{inbox.c.canSaveProvider}}"><button onClick="{{inbox.c.saveProvider}}" style="padding:12px 0;text-align:left;color:var(--acct)">Review save to Gmail drafts</button></sc-if>
         <sc-if value="{{inbox.c.local}}"><div role="status" style="font-size:12px;color:var(--mut);padding:8px 0">{{inbox.c.status}}</div></sc-if>
+        <sc-if value="{{inbox.c.local}}"><div role="status" aria-label="Email edit recovery status" style="font-size:12px;color:var(--mut);padding:8px 0">{{inbox.c.retainedStatus}}</div></sc-if>
+        <sc-if value="{{inbox.c.retainedConflict}}"><div><button onClick="{{inbox.c.restoreEdits}}" style="min-height:44px;padding:12px">Restore retained email edits</button><button onClick="{{inbox.c.replaceEdits}}" style="min-height:44px;padding:12px">Replace retained email edits</button></div></sc-if>
+        <sc-if value="{{inbox.c.retainedError}}"><div><button onClick="{{inbox.c.retryEdits}}" style="min-height:44px;padding:12px">Retry email recovery storage</button><button onClick="{{inbox.c.recoverEdits}}" style="min-height:44px;padding:12px">Recover email edits</button></div></sc-if>
+        <sc-if value="{{inbox.c.staleBase}}"><button onClick="{{inbox.c.useLatest}}" style="min-height:44px;padding:12px">Use latest saved draft</button></sc-if>
         <sc-if value="{{inbox.c.confirm}}">
           <div role="dialog" aria-label="Discard local draft" style="padding:16px;background:var(--s2);border-radius:16px">
             <p>Discard this local draft permanently?</p>
