@@ -9,6 +9,23 @@ See [architecture](architecture.md), [MVP scope](mvp-scope-and-gap-report.md) an
 This inventory describes available behavior and remaining qualification. It is
 not a claim that every feature or the current main revision has passed acceptance.
 
+## Local speech restart checkpoint — 2026-10-05
+
+The browser dev launcher now reads owner-only `local-speech.json` defaults from
+its private agent profile, so restarting without the original shell environment
+retains the installed Whisper/Kokoro assets. Explicit environment overrides still
+win. Unsupported settings, credentials, symlinks and shared-access files fail
+closed; existing asset admission and cold-start warmup remain in place.
+
+Qualified on consumer base `15f9338f` with upstream `95924e90`: all 631 repository
+tests, type checking, production build and bundle audit passed. A plain `npm run
+dev` cold process start reported Whisper and Kokoro ready. The actual browser
+capture/transcription/synthesis journey passed in 15.3 seconds, including playback
+completion, stop and disconnect. The owner, agent and 18 conversation IDs were
+unchanged across that test. This is host/browser evidence; no Android build or
+physical-device acceptance was performed for this change. See
+[local development](local-agent-development.md) for persistent settings.
+
 ## Surface inventory
 
 | Surface | Implementation | Remaining acceptance |
