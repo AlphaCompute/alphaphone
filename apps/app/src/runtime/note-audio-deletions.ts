@@ -51,4 +51,3 @@ export async function audioDeletionNoteState(row:AudioDeletion):Promise<'deleted
  if(!note)return envelope.collectionId===row.target.sourceId&&envelope.deleted.some((d:any)=>d.id===row.note.id&&d.revision===row.target.revision&&d.operationId===row.id)?'deleted':'changed';
  return JSON.stringify(await store.target(row.note.id))===JSON.stringify(row.target)?'original':'changed';
 }
-

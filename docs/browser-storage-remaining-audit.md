@@ -100,8 +100,9 @@ The backport passed 14 client tests, strict leaf TypeScript and owning lint.
 A full upstream root verification is still outstanding; the obsolete original
 root campaign was explicitly retired after the source advanced.
 
-Product TypeScript passes. The focused 34-case browser campaign is in progress;
-no browser pass is claimed yet. Added cases cover two independent editors,
+Product TypeScript and all 34 focused Chromium Notes/audio cases pass on
+`17b48adc17f89860b2b49b0dac7cfcfd9f8d9abd` (3.6 minutes).
+Firefox/WebKit and combined repository qualification remain outstanding. Added cases cover two independent editors,
 initialization receipt stability, lost acknowledgement, metadata/identity
 preservation, late legacy changes, exact malformed backups, stale reset,
 new collection identity, canonical audio tombstones and effects-lock coordination.
