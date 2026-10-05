@@ -19,3 +19,16 @@ test('damaged policy downloads its original bytes before an explicit recovery re
  const pending=page.waitForEvent('download');await dialog.getByRole('button',{name:'Download notifications backup',exact:true}).click();const download=await pending,stream=await download.createReadStream(),chunks:Buffer[]=[];for await(const chunk of stream!)chunks.push(Buffer.from(chunk));expect(Buffer.concat(chunks).toString()).toBe(raw);
  await dialog.getByRole('button',{name:'Reset browser notifications',exact:true}).click();expect(await page.evaluate(()=>localStorage.getItem('alpha.browser.notifications.v2'))).toBe(raw);await dialog.getByRole('button',{name:'Confirm notifications reset',exact:true}).click();await expect(dialog).toHaveCount(0);expect(await page.evaluate(async()=>{const {notificationState}=await import('/src/browser/notification-store.ts');return (await notificationState()).enabled;})).toBe(false);
 });
+
+for(const legacy of [null,'{damaged'])test(`concurrent first policy reads initialize at most once (${legacy===null?'empty':'damaged'})`,async({page})=>{
+ await page.route('**/notification-initialization-fixture',route=>route.fulfill({contentType:'text/html',body:'<!doctype html><title>Policy initialization</title>'}));await page.goto('/notification-initialization-fixture');
+ const result=await page.evaluate(async legacy=>{
+  if(legacy!==null)localStorage.setItem('alpha.browser.notifications.v2',legacy);
+  const {notificationState,notificationDocument}=await import('/src/browser/notification-store.ts'),{browserDocuments}=await import('/src/browser/documents.ts');
+  const compare=browserDocuments.compareExchange.bind(browserDocuments);let writes=0;
+  browserDocuments.compareExchange=async(...args)=>{const result=await compare(...args);writes++;return result;};
+  const outcomes=await Promise.allSettled(Array.from({length:20},()=>notificationState()));
+  const capture=await notificationDocument.capture();return {writes,failed:outcomes.filter(row=>row.status==='rejected').length,raw:capture.raw};
+ },legacy);
+ expect(result.writes).toBe(1);expect(result.failed).toBe(legacy===null?0:20);if(legacy!==null)expect(result.raw).toBe(legacy);
+});

@@ -13,6 +13,11 @@ const domain=new BrowserDomainDocument(browserDocuments,notificationStorageKey,l
 const channel=typeof BroadcastChannel==='undefined'?null:new BroadcastChannel('alpha.browser.documents.v1');
 if(channel)channel.onmessage=event=>{if(event.data?.key===notificationStorageKey)window.dispatchEvent(new Event('alpha:notifications-document-changed'));};
 const changed=()=>channel?.postMessage({key:notificationStorageKey});
+// Startup polling shares one initialization owner across tabs. Re-read inside
+// this lock before importing legacy bytes or filling missing policy authority.
+const initialize=<T>(read:()=>Promise<T>,signal?:AbortSignal)=>navigator.locks.request(
+ JSON.stringify(['alpha.browser.documents.v1',notificationStorageKey,'initialize']),
+ {mode:'exclusive',...(signal?{signal}:{})},read);
 const initial=():NotificationState=>({revision:revision(),epoch:revision(),enabled:false,paused:false,history:false,accessGranted:true,apps:[],events:[],dismissed:[],appEnabled:true,channels:{reminders:true,calendar:true},deviceEvents:[]});
 function normalize(value:NotificationState):NotificationState{
  if(!value||typeof value!=='object'||Array.isArray(value))throw Error('Notification data needs recovery.');
@@ -24,7 +29,7 @@ function normalize(value:NotificationState):NotificationState{
 }
 export const notificationDocument={
  readRaw:(signal?:AbortSignal)=>domain.readRaw(signal),
- capture:(signal?:AbortSignal)=>domain.capture(signal),
+ capture:(signal?:AbortSignal)=>initialize(()=>domain.capture(signal),signal),
  async reset(expected:DomainRecovery,signal?:AbortSignal){await domain.reset(expected,signal);changed();},
  async edit<R>(edit:(state:NotificationState)=>R|Promise<R>,signal?:AbortSignal):Promise<R>{
   let modified=false;
@@ -34,7 +39,9 @@ export const notificationDocument={
 };
 /** Persist authority once; ordinary policy reads never advance its document revision. */
 export async function notificationState(signal?:AbortSignal):Promise<NotificationState>{
+ return initialize(async()=>{
  const raw=await domain.readRaw(signal);
  if(raw!==null){const value=JSON.parse(raw),state=normalize(value);if(Object.keys(state).every(key=>JSON.stringify(value[key])===JSON.stringify(state[key as keyof NotificationState])))return state;}
  return notificationDocument.edit(state=>state,signal);
+ },signal);
 }
