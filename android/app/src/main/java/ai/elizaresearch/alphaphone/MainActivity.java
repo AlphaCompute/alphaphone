@@ -59,8 +59,6 @@ public class MainActivity extends BridgeActivity {
   registerPlugin(DailyAppsPlugin.class);
   registerPlugin(AlphaMapsTransportPlugin.class);
   registerPlugin(ai.eliza.plugins.camera.CameraPlugin.class);
-  // MVP-DEFERRED: Contacts, per September 15 scope; restore only with provider/permission acceptance.
-  // registerPlugin(ai.eliza.plugins.contacts.ContactsPlugin.class);
   registerPlugin(ai.eliza.plugins.location.LocationPlugin.class);
   registerPlugin(AlphaBrowserPlugin.class);
   registerPlugin(AlphaCalendarPlugin.class);
