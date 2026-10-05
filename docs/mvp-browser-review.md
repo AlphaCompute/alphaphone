@@ -144,7 +144,7 @@ permission requests synchronously created watches before cancellation. The
 follow-up waits for both watches, then keeps the original independent ownership
 and clear-watch assertions. The frozen campaign source and trace are retained.
 
-The next sequential batch now includes 270 cases across three engines, combining
+The next sequential batch now includes 324 cases across three engines, combining
 the digest inbox cases, new conversation migration cases, existing connection,
 Cloud identity, content/search question, workflow authoring/phone/presentation
 journeys, and device/location cases. TypeScript passes for the implementation;
