@@ -77,13 +77,17 @@ fixture. Retain both APK hashes in the archive's flat `apk-manifest.json`, then
 run against an owned disposable emulator:
 
 ```sh
-ANDROID_SERIAL=emulator-N node scripts/test-inbox-native-restart.mjs \
+ANDROID_SERIAL=emulator-N ALPHA_NATIVE_TEST_AVD=owned-avd ALPHA_NATIVE_TEST_ABI=x86_64 \
+node scripts/test-native-restart.mjs inbox \
   test-results/inbox-archive/standalone-debug.apk \
   test-results/inbox-archive/standalone-androidTest.apk \
   test-results/inbox-standalone
 ```
 
-Repeat with the matching launcher pair. The runner records prepare, restore and
+Repeat with the matching launcher pair and a new output directory. The runner
+leases the emulator, refuses existing package registrations and uses a fresh
+secondary user. Set `ALPHA_TEST_HOME_PACKAGE` when the stock HOME package differs
+from `com.android.launcher3`. Uncertain cleanup retains the user for recovery. The runner records prepare, restore and
 cleanup phases, exact artifact hashes and process IDs. A different restore PID
 is required. The retained report must prove cleanup as well as successful
 save/restore; compilation alone does not qualify this flow. These are synthetic

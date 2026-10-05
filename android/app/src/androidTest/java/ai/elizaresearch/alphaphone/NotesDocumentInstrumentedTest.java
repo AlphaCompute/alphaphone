@@ -132,7 +132,7 @@ public final class NotesDocumentInstrumentedTest {
  @Test public void documentProcessRestartPhase()throws Exception{
   String phase=InstrumentationRegistry.getArguments().getString("notesDocumentPhase");org.junit.Assume.assumeTrue("Explicit process runner required",phase!=null);
   String runId=InstrumentationRegistry.getArguments().getString("notesDocumentRunId");assertNotNull("Explicit process run ID required",runId);assertEquals("Canonical run UUID",UUID.fromString(runId).toString(),runId);
-  android.os.Bundle evidence=new android.os.Bundle();evidence.putInt("notesDocumentPid",android.os.Process.myPid());InstrumentationRegistry.getInstrumentation().sendStatus(0,evidence);
+  android.os.Bundle evidence=new android.os.Bundle();evidence.putInt("notesDocumentPid",android.os.Process.myPid());InstrumentationRegistry.getInstrumentation().addResults(evidence);
   Context context=InstrumentationRegistry.getInstrumentation().getTargetContext();java.io.File file=new java.io.File(context.getNoBackupFilesDir(),"notes-document-restart-"+runId+".json"),exportRecovery=new java.io.File(context.getNoBackupFilesDir(),"notes-export-fixture-"+runId+".json");
   if(phase.equals("prepare")){assertFalse("Refuse unresolved note fixture",file.exists());assertFalse("Refuse unresolved export fixture",exportRecovery.exists());runFlow(true);return;}
   if(phase.equals("cleanup")&&!file.exists()){assertFalse("This run still has an unresolved exported document; recovery journal retained",exportRecovery.exists());return;}
