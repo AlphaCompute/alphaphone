@@ -66,7 +66,12 @@ for(const scenario of ['decline','accepted-reload','lost-activation','quote-chan
   if(scenario==='storage-failure'){await expect(page.getByRole('alert')).toBeVisible();expect(await page.evaluate(()=>JSON.parse(localStorage.getItem('fixture.cloud.setup')||'{"activation":0}').activation)).toBe(0);return;}
   if(scenario==='definitive-rejection'){await expect(page.getByRole('alert')).toBeVisible();expect(JSON.parse((await intentSnapshot(page)).raw!)).toEqual({raw:null});await page.getByRole('button',{name:'Refresh agent status',exact:true}).click();await expect(page.getByRole('button',{name:'Start Dedicated',exact:true})).toBeEnabled();return;}
   if(scenario==='quote-change'){await expect(page.getByText('The hosting terms changed. Review the current quote before continuing.',{exact:true})).toBeVisible();expect(await page.evaluate(()=>JSON.parse(localStorage.getItem('fixture.cloud.setup')!).activation)).toBe(0);await page.getByRole('button',{name:'Start Dedicated',exact:true}).click();}
-  if(scenario==='lost-activation')await expect(page.getByRole('button',{name:'Start Dedicated',exact:true})).toBeDisabled();
+  if(scenario==='lost-activation'){
+   // Busy disables this button before durable admission and the synthetic POST.
+   // Wait for the reconciled uncertain state before asserting its retained outcome.
+   await expect(page.getByText('Setup could not be confirmed. Check status before taking another action.',{exact:true})).toBeVisible();
+   await expect(page.getByRole('button',{name:'Start Dedicated',exact:true})).toBeDisabled();
+  }
   else await expect(page.getByText('Dedicated setup accepted',{exact:true})).toBeVisible();
   expect(await page.evaluate(()=>JSON.parse(localStorage.getItem('fixture.cloud.setup')!).activation)).toBe(1);
   if(scenario==='expired-poll'||scenario==='unavailable-poll'){
