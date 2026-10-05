@@ -1,4 +1,5 @@
 import {CloudPersonalProtocol} from '../runtime/cloud-personal-protocol';
+import {devSurfacesEnabled} from '../build-flags';
 import {browserDevProfile} from './dev-profile';
 import {editStore,readStore,revision} from './store';
 export const developmentCloudKey='alpha.browser.cloud.account.v1';
@@ -7,9 +8,9 @@ type Account={account:DevelopmentAccount;session:string}|null;
 export type DevelopmentScenario='new'|'existing'|'insufficient'|'failed'|'changed';
 type Setup={scenario?:DevelopmentScenario;phase:'review'|'provisioning'|'ready';startedAt?:number;quote:string};
 const valid=(v:unknown):v is DevelopmentAccount=>v==='first'||v==='second';
-export function developmentCloudAccount():Account {if(!browserDevProfile)throw Error('Choose development mode.');const account=readStore<Account>(developmentCloudKey,()=>null);if(account&&(!valid(account.account)||typeof account.session!=='string'))throw Error('Development account data needs recovery.');return account;}
+export function developmentCloudAccount():Account {if(!devSurfacesEnabled||!browserDevProfile)throw Error('Choose development mode.');const account=readStore<Account>(developmentCloudKey,()=>null);if(account&&(!valid(account.account)||typeof account.session!=='string'))throw Error('Development account data needs recovery.');return account;}
 export async function selectDevelopmentCloud(account:DevelopmentAccount|null,signal:AbortSignal){
- if(!browserDevProfile||account!==null&&!valid(account))throw Error('Choose a development account.');
+ if(!devSurfacesEnabled||!browserDevProfile||account!==null&&!valid(account))throw Error('Choose a development account.');
  return navigator.locks.request(developmentCloudKey,{signal},()=>{signal.throwIfAborted();const value=account?{account,session:crypto.randomUUID()}:null;localStorage.setItem(developmentCloudKey,JSON.stringify(value));window.dispatchEvent(new Event('alpha:development-account-changed'));return value;});
 }
 export async function configureDevelopmentCloud(scenario:DevelopmentScenario,signal:AbortSignal){
@@ -18,6 +19,7 @@ export async function configureDevelopmentCloud(scenario:DevelopmentScenario,sig
  window.dispatchEvent(new Event('alpha:development-account-changed'));
 }
 export function developmentPersonal(account:NonNullable<Account>){
+ if(!devSurfacesEnabled)throw Error('Choose development mode.');
  const index=account.account==='first'?'1':'2',userId=`00000000-0000-4000-8000-00000000000${index}`,personal=`personal:00000000-0000-5000-8000-00000000000${index}`,target=`10000000-0000-4000-8000-00000000000${index}`,job=`20000000-0000-4000-8000-00000000000${index}`;
  const key=`alpha.browser.cloud.setup.${account.account}.v1`,initial=():Setup=>({phase:'review',quote:index.repeat(64)});
  const check=(signal:AbortSignal)=>{signal.throwIfAborted();const current=developmentCloudAccount();if(current?.account!==account.account||current.session!==account.session)throw Error('Development account changed.');};

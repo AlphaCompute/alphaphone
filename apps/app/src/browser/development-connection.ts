@@ -1,5 +1,6 @@
 import {developmentWorkflowRequest} from './development-workflows';
-import {developmentIdentity,assertDevelopmentIdentity,type DevelopmentIdentity} from './development-identity';
+import {devSurfacesEnabled} from '../build-flags';
+import {developmentIdentity,assertDevelopmentIdentity,developmentDefaultReply,type DevelopmentIdentity} from './development-identity';
 import {developmentActionRequest} from './development-actions';
 import {browserDevProfile} from './dev-profile';
 import {editStore,readStore} from './store';
@@ -10,9 +11,9 @@ export const developmentName=(profile:DevelopmentProfile)=>`${profile==='local'?
 type Message={id:string;role:'user'|'assistant';text:string};
 type Conversation={id:string;title:string;messages:Message[];receipts:Record<string,{input:string;text:string}>};
 type State={version:1;reply:string;conversations:Conversation[]};
-const initial=():State=>({version:1,reply:'Development reply. Edit this response in Agent connection.',conversations:[]});
+const initial=():State=>({version:1,reply:developmentDefaultReply,conversations:[]});
 const key=(identity:DevelopmentIdentity)=>`alpha.browser.agent.${identity.namespace}.v1`;
-function allowed(profile:DevelopmentProfile){if(!browserDevProfile||!developmentProfiles.includes(profile))throw Error('Choose a development profile.');}
+function allowed(profile:DevelopmentProfile){if(!devSurfacesEnabled||!browserDevProfile||!developmentProfiles.includes(profile))throw Error('Choose a development profile.');}
 function validate(data:State){if(!data||data.version!==1||typeof data.reply!=='string'||!data.reply.trim()||data.reply.length>16000||!Array.isArray(data.conversations)||data.conversations.length>100||data.conversations.some(c=>typeof c.id!=='string'||typeof c.title!=='string'||!Array.isArray(c.messages)||c.messages.length>200||!c.receipts||typeof c.receipts!=='object'))throw Error('Development agent data needs recovery.');return data;}
 export function developmentReply(profile:DevelopmentProfile){allowed(profile);return validate(readStore(key(developmentIdentity(profile)),initial)).reply;}
 export async function saveDevelopmentReply(profile:DevelopmentProfile,reply:string,signal?:AbortSignal){allowed(profile);const identity=developmentIdentity(profile);if(typeof reply!=='string'||!reply.trim()||reply.length>16000)throw Error('Enter a reply between 1 and 16000 characters.');await editStore(key(identity),initial,data=>{assertDevelopmentIdentity(identity);validate(data);data.reply=reply;},signal);}

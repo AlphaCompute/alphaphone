@@ -1,9 +1,13 @@
-import {useEffect,useRef,useState} from 'react';
+import {useEffect,useRef,useState,type ReactElement} from 'react';
+import {devSurfacesEnabled} from '../build-flags';
 import {CloudPersonalSetup,type PersonalSetupState} from '../runtime/cloud-personal-setup';
 import type {CloudPersonalProtocol,PersonalView} from '../runtime/cloud-personal-protocol';
 import {configureDevelopmentCloud,type DevelopmentScenario,developmentCloudAccount,developmentCloudKey,developmentPersonal,selectDevelopmentCloud,type DevelopmentAccount} from './development-cloud';
 /** Local account fixture uses the production quote/receipt parser and review component. */
-export function DevelopmentCloudSetup({connect}:{connect:()=>Promise<void>}){
+type SetupProps={connect:()=>Promise<void>};
+// Development-server-only account fixture; flag-off builds fold it to an empty component.
+export const DevelopmentCloudSetup:(props:SetupProps)=>ReactElement|null=devSurfacesEnabled?DevelopmentCloudFixture:()=>null;
+function DevelopmentCloudFixture({connect}:SetupProps){
  const [account,setAccount]=useState<ReturnType<typeof developmentCloudAccount>>(null),[choice,setChoice]=useState<DevelopmentAccount>('first'),[setup,setSetup]=useState<PersonalSetupState>({view:null,blocked:false,declined:false}),[busy,setBusy]=useState(false),[error,setError]=useState('');
  const [scenario,setScenario]=useState<DevelopmentScenario>('new');
  const client=useRef<CloudPersonalProtocol|null>(null),pending=useRef<AbortController|null>(null),generation=useRef(0);

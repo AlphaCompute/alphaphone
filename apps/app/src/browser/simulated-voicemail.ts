@@ -1,7 +1,9 @@
 import {speakLocalText} from '../local-speech-playback';
+import {devSurfacesEnabled} from '../build-flags';
 type Bag=Record<string,any>;
 /** Local seed messages have transcripts rather than recordings. Read them with the local voice. */
 export function installSimulatedVoicemail(phone:Bag){
+ if(!devSurfacesEnabled)return ()=>{};
  let generation=0,owner:AbortController|undefined,api:Bag|undefined;
  const stop=(finished=false)=>{
   generation++;owner?.abort();owner=undefined;

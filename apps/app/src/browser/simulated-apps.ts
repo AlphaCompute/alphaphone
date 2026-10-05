@@ -7,12 +7,17 @@ import {SimulatorWriter} from './simulator-writer';
 import {installSimulatedInbox} from './simulated-inbox';
 import {loadSimulatedState,simulatorNeedsRecovery,showSimulatorRecovery} from './simulator-recovery';
 import { browserDevProfile,developmentAgentWorkflows } from './dev-profile';
+import { devSurfacesEnabled } from '../build-flags';
 type Bag=Record<string,any>;
 const names=['phone','messages','contacts','inbox','workflows','wallet'];
 /** Capture product-owned local interactions before native adapters replace effects. */
-export function captureSimulatedApps(views:Bag){return Object.fromEntries(names.map(name=>[name,{...views[name],state:structuredClone(views[name].state)}]));}
-export function installSimulatedApps(Component:any,views:Bag,original:Bag){
- if(!browserDevProfile)return;
+function captureDevelopmentApps(views:Bag):Bag{return Object.fromEntries(names.map(name=>[name,{...views[name],state:structuredClone(views[name].state)}]));}
+// Development-server-only simulator (devSurfacesEnabled). Flag-off builds fold
+// these exports to no-ops so the simulated apps never enter the bundle.
+export const captureSimulatedApps:(views:Bag)=>Bag=devSurfacesEnabled?captureDevelopmentApps:()=>({});
+export const installSimulatedApps:(Component:any,views:Bag,original:Bag)=>void=devSurfacesEnabled?installDevelopmentApps:()=>{};
+function installDevelopmentApps(Component:any,views:Bag,original:Bag){
+ if(!devSurfacesEnabled||!browserDevProfile)return;
  original.wallet.persist=[...original.wallet.persist,'workflowReceipts'];original.wallet.state.workflowReceipts={};
  original.workflows.persist=[...original.workflows.persist,'localRuns','triggerState'];original.workflows.state.localRuns={};original.workflows.state.triggerState={cursors:[],queue:[]};
  original.messages.persist=[...original.messages.persist,'localDrafts'];original.messages.state.localDrafts={};

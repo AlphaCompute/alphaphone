@@ -3,6 +3,7 @@ import { validateReminderOperation, reminderFields, reminderTiming, type Reminde
 import { BrowserFiles } from './files';
 import { initialReminderDue, nextReminderOccurrence } from './reminder-recurrence';
 import { WebPlugin } from '@capacitor/core';
+import { devSurfacesEnabled } from '../build-flags';
 import type { Reminder, ClockRequest } from '../daily';
 import { revision } from './store';
 import {notificationState} from './notification-store';
@@ -35,7 +36,7 @@ async function decide(row:Row,action:'done'|'snooze') {
 export class BrowserDaily extends WebPlugin {
   constructor(private files:BrowserFiles){super();window.addEventListener('focus',()=>void this.notifyListeners('appResumed',{}));}
   async notifyReminder(id:string,occurrenceId:string){await this.notifyListeners('reminderOpened',{id,occurrenceId});}
-  async surfaceInfo(){return {developmentBuild:true,assistant:false,reminderCreationVersion:1 as const,reminderTimingVersion:2 as const,topInset:0,bottomInset:0};}
+  async surfaceInfo(){return {developmentBuild:devSurfacesEnabled,assistant:false,reminderCreationVersion:1 as const,reminderTimingVersion:2 as const,topInset:0,bottomInset:0};}
   async closeAssistant(){window.dispatchEvent(new Event('alpha-back',{cancelable:true}));return {closed:true};}
   async scheduleReminder(input:{id:string;title:string;body?:string;at:number;recurrence?:Reminder['recurrence'];dueAt?:number;alertMinutes?:number|null}) {
     if(!Number.isSafeInteger(input.at)||input.at<=Date.now())return {status:'past',id:input.id,mode:'inexact'};

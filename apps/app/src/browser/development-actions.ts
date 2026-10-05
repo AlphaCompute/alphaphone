@@ -1,4 +1,5 @@
 import {isReminderCreate,validateReminderCreateResult} from '../runtime/reminder-create-contract';
+import {devSurfacesEnabled} from '../build-flags';
 import type {WorkflowDeviceBinding} from '../runtime/workflow-device-contract';
 import {developmentIdentity,assertDevelopmentIdentity,type DevelopmentIdentity} from './development-identity';
 import {isReminderOperation,validateReminderResult} from '../runtime/reminder-contract';
@@ -10,7 +11,7 @@ type Proposal={id:string;digest:string;state:string;subjectUserId:string;request
 type State={version:1;proposals:Proposal[];journal:JournalEntry[]};
 const initial=():State=>({version:1,proposals:[],journal:[]});
 const key=(identity:DevelopmentIdentity)=>`alpha.browser.agent.actions.${identity.namespace}.v1`;
-const allowed=(p:DevelopmentProfile)=>{if(!browserDevProfile||!['local','cloud','remote'].includes(p))throw Error('Choose a development profile.');};
+const allowed=(p:DevelopmentProfile)=>{if(!devSurfacesEnabled||!browserDevProfile||!['local','cloud','remote'].includes(p))throw Error('Choose a development profile.');};
 function validate(s:State){if(!s||s.version!==1||!Array.isArray(s.proposals)||!Array.isArray(s.journal)||s.proposals.length>100||s.journal.length>100)throw Error('Development action data needs recovery.');return s;}
 function current(profile:DevelopmentProfile,signal?:AbortSignal){allowed(profile);signal?.throwIfAborted();const selection=JSON.parse(localStorage.getItem('alpha.connection.selection.v1')||'null');if(selection?.kind!=='development'||selection.profile!==profile)throw Error('Development profile changed.');}
 /** These fixed IDs are public local-fixture labels, never network credentials. */

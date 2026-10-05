@@ -1,4 +1,5 @@
 import {DailyApps} from '../daily';
+import {devSurfacesEnabled} from '../build-flags';
 import {registerPlugin} from '../platform-plugins';
 import {reviewMailAttachment} from '../runtime/inbox-attachment';
 type Bag=Record<string,any>;
@@ -6,6 +7,7 @@ const attachments=registerPlugin<any>('AlphaMailAttachments');
 const recipient=(state:Bag)=>state.thread||(typeof state.compose==='string'?state.compose:null);
 /** Local message copies never enter the SMS/provider transport. */
 export function installSimulatedMessages(view:Bag){
+ if(!devSurfacesEnabled)return ()=>{};
  const render=view.render,leave=view.onLeave,back=view.back;let epoch=0,busy=false,activeApi:Bag|undefined;
  const hidden=()=>{if(document.hidden)retirePage();},retirePage=()=>{epoch++;busy=false;void attachments.cancel();if(activeApi?.isActive())activeApi.set({browserAttachmentRevision:crypto.randomUUID()});};
  window.addEventListener('pagehide',retirePage);window.addEventListener('alpha:device-state',retirePage);document.addEventListener('visibilitychange',hidden);

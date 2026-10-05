@@ -1,10 +1,11 @@
 import {developmentDigestRequest} from './development-digests';
+import {devSurfacesEnabled} from '../build-flags';
 import {authorWorkflowProposal,existingWorkflowProposal,developmentProposal,developmentCredential} from './development-actions';
 import {validateWorkflowResult} from '../runtime/workflow-device-contract';
 import type {DeviceOperation} from '../runtime/device-actions';
 import {normalizePhoneSpec,type PhoneSpec,type PhoneSaveReceipt} from '../runtime/phone-workflow-authoring';
 import {workflowSha} from '../runtime/workflow-device-contract';
-import {assertDevelopmentIdentity,type DevelopmentIdentity} from './development-identity';
+import {assertDevelopmentIdentity,developmentDefaultReply,type DevelopmentIdentity} from './development-identity';
 import {editStore,readStore} from './store';
 type Workflow={removed?:boolean;triggerCleanup?:'complete';id:string;name:string;description:string;active:boolean;versionId:string;phoneSpec:PhoneSpec;steps:Array<{label:string}>};
 type Run={proposalIds?:Record<string,string>;id:string;workflowId:string;workflowVersionId:string;submissionId:string;status:string;finished:boolean;startedAt:string;stoppedAt?:string;output?:string;error?:{message:string};spec:PhoneSpec;stepIndex:number;values:Record<string,string>;events:Array<{runId:string;workflowId:string;type:string;timestamp:string;nodeId?:string}>};
@@ -12,7 +13,7 @@ type State={mutations?:Array<{id:string;input:string;receipt:Record<string,any>}
 const publicWorkflow=(workflow:Workflow)=>({...workflow,metadata:{elizaPhoneWorkflowSpec:JSON.stringify(workflow.phoneSpec)}});
 const catalog={specVersion:1,catalogRevision:'development-v1',compilerRevision:'development-v1',maximumSteps:32,maximumSpecBytes:65536,triggers:[{kind:'manual',available:true}],palette:[{kind:'Read',operations:['supplied_text','selected_notes','calendar_range'].map(id=>({id,available:true}))},{kind:'Notify',operations:[{id:'app_notification',available:true}]},{kind:'Speak',operations:[{id:'read_aloud',available:true}]},{kind:'If',operations:[{id:'contains',available:true}]},{kind:'Write',operations:['compose_draft','model_draft','save_note'].map(id=>({id,available:true}))}]};
 /** Local owner-scoped workflow authoring protocol. Execution is added at the same seam. */
-export async function developmentWorkflowRequest(identity:DevelopmentIdentity,path:string,body:any,signal?:AbortSignal){return navigator.locks.request('alpha.browser.workflow-admission.'+identity.namespace,{...(signal?{signal}:{})},()=>workflowRequest(identity,path,body,signal));}
+export async function developmentWorkflowRequest(identity:DevelopmentIdentity,path:string,body:any,signal?:AbortSignal){if(!devSurfacesEnabled)throw Error('Development profiles are unavailable in this build.');return navigator.locks.request('alpha.browser.workflow-admission.'+identity.namespace,{...(signal?{signal}:{})},()=>workflowRequest(identity,path,body,signal));}
 async function workflowRequest(identity:DevelopmentIdentity,path:string,body:any,signal?:AbortSignal){
  const check=()=>{signal?.throwIfAborted();assertDevelopmentIdentity(identity);const selected=JSON.parse(localStorage.getItem('alpha.connection.selection.v1')||'null');if(selected?.kind!=='development'||selected.profile!==identity.profile)throw Error('Workflow connection changed.');};check();
  const key=`alpha.browser.workflows.${identity.namespace}.v1`,initial=():State=>({workflows:[],receipts:[]});
@@ -31,7 +32,7 @@ async function workflowRequest(identity:DevelopmentIdentity,path:string,body:any
   if(step.operation==='supplied_text')output=step.text;
   else if(step.operation==='contains'){const matched=step.caseSensitive?source.includes(step.text):source.toLowerCase().includes(step.text.toLowerCase());if(!matched){run.status='skipped';run.finished=true;run.stoppedAt=new Date().toISOString();event(run,'condition_not_met',step.id);return;}output=source;}
   else if(step.operation==='compose_draft')output=step.prefix+source+step.suffix;
-  else if(step.operation==='model_draft'){const configured=readStore<{reply:string}>(`alpha.browser.agent.${identity.namespace}.v1`,()=>({reply:'Development reply. Edit this response in Agent connection.'}));output=configured.reply;}
+  else if(step.operation==='model_draft'){const configured=readStore<{reply:string}>(`alpha.browser.agent.${identity.namespace}.v1`,()=>({reply:developmentDefaultReply}));output=configured.reply;}
   else throw Error('Unknown development workflow step.');
   if(typeof output!=='string'||output.length>16000)throw Error('Workflow step output exceeds 16000 characters.');run.values[step.id]=output;run.output=output;event(run,'step_completed',step.id);
  }run.status='succeeded';run.finished=true;run.stoppedAt=new Date().toISOString();event(run,'execution_completed');};

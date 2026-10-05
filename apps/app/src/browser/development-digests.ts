@@ -1,7 +1,8 @@
 import {developmentDelegationRequest,grantAccount,type DevelopmentDelegation} from './digest-delegation';
+import {devSurfacesEnabled} from '../build-flags';
 import {browserDigestAccount,validateBrowserDigestSelection,readBrowserDigestSource} from './digest-live-sources';
 import type {DigestResult,DigestSource,DigestLoop} from '../runtime/hosted-digests';
-import {assertDevelopmentIdentity,developmentIdentity,type DevelopmentIdentity} from './development-identity';
+import {assertDevelopmentIdentity,developmentIdentity,developmentDefaultReply,type DevelopmentIdentity} from './development-identity';
 import {editStore,revision} from './store';
 type Source=DigestSource&{text:string};
 type Loop=DigestLoop&{createdAt:number;lastOccurrence?:string};
@@ -11,6 +12,7 @@ const id=(v:unknown):string=>{if(typeof v!=='string'||!/^[A-Za-z0-9][A-Za-z0-9_-
 function wall(at:number,zone:string){const p=Object.fromEntries(new Intl.DateTimeFormat('en-GB',{timeZone:zone,year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).formatToParts(at).map(x=>[x.type,x.value]));return `${p.year}-${p.month}-${p.day}T${p.hour}:${p.minute}`;}
 /** Requests and periodic inbox checks advance only the current minute, never a backlog. */
 export async function developmentDigestRequest(identity:DevelopmentIdentity,path:string,body:any,signal?:AbortSignal){
+ if(!devSurfacesEnabled)throw Error('Development profiles are unavailable in this build.');
  const check=()=>{signal?.throwIfAborted();assertDevelopmentIdentity(identity);const selected=JSON.parse(localStorage.getItem('alpha.connection.selection.v1')||'null');if(selected?.kind!=='development'||selected.profile!==identity.profile)throw Error('Digest connection changed.');};check();
  return editStore(`alpha.browser.digests.${identity.namespace}.v1`,initial,async state=>{
   check();const now=Date.now(),minute=Math.floor(now/60000)*60000;
@@ -23,7 +25,7 @@ export async function developmentDigestRequest(identity:DevelopmentIdentity,path
    let repeated=false;for(let delta=60000;delta<=3*3600000;delta+=60000)if(wall(minute-delta,loop.spec.timeZone)===local){repeated=true;break;}if(repeated)continue;
    loop.lastOccurrence=local;const source=state.sources.find(s=>s.id===loop.spec.sourceId&&s.revision===loop.spec.sourceRevision);if(!source||source.revoked||Date.parse(source.expiresAt)<=now)continue;
    let readError:string|null=null,liveInput:Awaited<ReturnType<typeof readBrowserDigestSource>>|undefined;if(source.live){try{validateLive(source.live);liveInput=await readBrowserDigestSource(source.live,now);}catch(error){readError=(error as Error).message;}check();}
-   const configured=JSON.parse(localStorage.getItem(`alpha.browser.agent.${identity.namespace}.v1`)||'null'),output=configured?.reply??'Development reply. Edit this response in Agent connection.';if(typeof output!=='string'||output.length>16000)throw Error('Digest output exceeds the development limit.');
+   const configured=JSON.parse(localStorage.getItem(`alpha.browser.agent.${identity.namespace}.v1`)||'null'),output=configured?.reply??developmentDefaultReply;if(typeof output!=='string'||output.length>16000)throw Error('Digest output exceeds the development limit.');
    const time=new Date(now).toISOString();state.results.push({cursor:++state.cursor,runId:crypto.randomUUID(),workflowId:loop.id,workflowVersionId:loop.versionId,templateVersion:'development-v1',scheduledAt:new Date(minute).toISOString(),source:{id:source.id,revision:source.revision,observedAt:source.live?time:source.observedAt,expiresAt:source.expiresAt,...(source.live?{live:source.live}:{})},status:readError?'failed':'completed',startedAt:time,completedAt:time,output:readError?null:liveInput?{summary:output,...liveInput}:output,error:readError});if(state.results.length>100)state.results.shift();
   }};
   if(path==='/api/workflow/hosted/tick'){await tick();check();return {};}
@@ -53,6 +55,7 @@ export async function developmentDigestRequest(identity:DevelopmentIdentity,path
 
 /** Scheduling is independent of whether the inbox is currently polling delivery. */
 export function startDevelopmentDigestScheduler(current:()=>boolean,signal:AbortSignal){
+ if(!devSurfacesEnabled)return ()=>{};
  const selected=JSON.parse(localStorage.getItem('alpha.connection.selection.v1')||'null');if(selected?.kind!=='development')return ()=>{};
  const identity=developmentIdentity(selected.profile);let running=false;
  const tick=async()=>{if(running||signal.aborted||!current())return;running=true;try{await developmentDigestRequest(identity,'/api/workflow/hosted/tick',undefined,signal);}catch{}finally{running=false;}};
