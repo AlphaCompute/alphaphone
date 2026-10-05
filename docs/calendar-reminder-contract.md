@@ -63,13 +63,22 @@ or a saved schedule is not delivery evidence.
 
 The separate recovery scenarios are `scripts/test-reminder-recovery.mjs` and
 `scripts/test-reminder-recurrence-recovery.mjs`. They require their own dedicated
-disposable emulator and matching archived APKs. Before reboot, require a scheduled,
+disposable emulator and matching archived APKs. Set `ANDROID_SERIAL`,
+`ALPHA_NATIVE_TEST_AVD`, and `ALPHA_NATIVE_TEST_ABI` explicitly, plus
+`ALPHA_TEST_HOME_PACKAGE` for a non-default stock HOME. Pass the matching app APK,
+instrumentation APK, and a new output directory to each runner. The shared harness
+leases the emulator, verifies archived and installed bytes, refuses existing
+packages, and scopes installation and permission changes to a fresh secondary
+user. Both recovery scenarios read the current reminder envelope and witness the
+real permission-denied alarm externally before starting the UI assertion phase.
+Before reboot, require a scheduled,
 unposted fixture with the package not stopped. Require a changed kernel boot ID
-and observe only the named fixture's stored receipt and exact notification key.
+and resume the same fixture user unlocked. Observe only the named fixture's
+stored receipt and notification key, including its Android user ID.
 Do not start instrumentation, explicitly launch the app, or manually invoke a
 restore/boot broadcast before the external delivery witness: instrumentation
 startup can stop the package and cancel the alarm being measured. The recurring
-permission-denial witness follows the same no-instrumentation rule and must
+permission-denial witness additionally follows the same no-instrumentation rule and must
 preserve revision, occurrence, and zero completion advancement. Run the subsequent
 Done/stale-action phase and fixture cleanup only after that observation.
 
