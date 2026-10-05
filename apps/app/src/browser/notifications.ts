@@ -7,18 +7,21 @@ import { browserHostedResults } from './hosted-results';
 import { browserApps } from './apps';
 import { WebPlugin } from '@capacitor/core';
 import type { BrowserDaily } from './daily';
-import { editStore, readStore, revision } from './store';
+import { readStore, revision } from './store';
+import {notificationDocument,notificationState,type NotificationState as State} from './notification-store';
 
 const apps=browserApps;
-type Selection = {packageName:string;preview:boolean};
-type History = {id:string;appLabel:string;packageName:string;at:number;state:string};
-type State = {revision:string;epoch:string;enabled:boolean;paused:boolean;history:boolean;accessGranted:boolean;apps:Selection[];events:History[];dismissed:string[];appEnabled:boolean;channels:Record<string,boolean>;deviceEvents?:DeviceEvent[]};
 type Notice = {id:string;revision:string;source:'own'|'external'|'hosted';appLabel:string;title:string;text:string;at:number;clearable:boolean;canOpen:boolean;packageName?:string;epoch?:string};
-type DeviceEvent = Notice & {packageName:string;sourceKey:string;autoCancel:boolean;secret:boolean};
+type DeviceEvent = Notice & {source:'external';packageName:string;sourceKey:string;autoCancel:boolean;secret:boolean};
+type Selection={packageName:string;preview:boolean};
 type Identity = {id:string;revision:string;source?:string};
-const key='alpha.browser.notifications.v2';
-const initial=():State=>({revision:revision(),epoch:revision(),enabled:false,paused:false,history:false,accessGranted:true,apps:[],events:[],dismissed:[],appEnabled:true,channels:{reminders:true},...readStore('alpha.browser.notification-policy.v1',()=>({}))});
 const locked=()=>document.hidden||document.documentElement.dataset.devBackground==='true'||!!browserScreenLocked();
+function notificationAction(){
+ const controller=new AbortController(),retire=()=>controller.abort(),hidden=()=>{if(document.hidden)retire();};
+ const events=['alpha-back','pagehide','launcher-home','alpha:device-state','alpha:dev-incoming-call','alpha:browser-open-view'];
+ for(const event of events)window.addEventListener(event,retire,true);document.addEventListener('visibilitychange',hidden);hidden();
+ return {signal:controller.signal,dispose:()=>{for(const event of events)window.removeEventListener(event,retire,true);document.removeEventListener('visibilitychange',hidden);}};
+}
 const noticePolicy=(state:State)=>JSON.stringify([state.revision,state.epoch,state.enabled,state.paused,state.accessGranted,state.appEnabled,state.channels,state.apps]);
 function trim(state:State){state.deviceEvents??=[];state.events=state.history&&state.enabled&&state.accessGranted&&!state.paused?state.events.filter(event=>event.at>Date.now()-86400000).slice(-100):[];state.dismissed=state.dismissed.slice(-500);}
 function record(state:State,row:Notice,event:string){trim(state);if(state.history&&row.packageName){state.events.push({id:crypto.randomUUID(),appLabel:row.appLabel,packageName:row.packageName,at:Date.now(),state:event});trim(state);}}
@@ -26,8 +29,8 @@ function record(state:State,row:Notice,event:string){trim(state);if(state.histor
 /** Synthetic device events persist; Alpha observations and redacted history remain separate. */
 export class BrowserNotifications extends WebPlugin {
  private session=revision();
- constructor(private daily:BrowserDaily,private calendar=new BrowserCalendar()){super();window.addEventListener('storage',event=>{if(event.key===key)this.changed();});const retire=()=>{this.session=revision();};window.addEventListener('alpha:device-state',retire);window.addEventListener('blur',retire);window.addEventListener('pagehide',retire);window.addEventListener('pageshow',retire);document.addEventListener('visibilitychange',retire);}
- private async state(){return editStore(key,initial,state=>{trim(state);state.channels.calendar??=true;return state;});}
+ constructor(private daily:BrowserDaily,private calendar=new BrowserCalendar()){super();window.addEventListener('alpha:notifications-document-changed',()=>this.changed());const retire=()=>{this.session=revision();};window.addEventListener('alpha:device-state',retire);window.addEventListener('blur',retire);window.addEventListener('pagehide',retire);window.addEventListener('pageshow',retire);document.addEventListener('visibilitychange',retire);}
+ private async state(){const state=await notificationState(),before=JSON.stringify(state);trim(state);if(JSON.stringify(state)===before)return state;return notificationDocument.edit(state=>{trim(state);return state;});}
  private allowed(state:State,row:Notice){return state.enabled&&!state.paused&&state.accessGranted&&apps.some(app=>app.packageName===row.packageName)&&state.apps.some(app=>app.packageName===row.packageName);}
  private observe(state:State,row:DeviceEvent):Notice {
   const hidden=locked()||row.secret||!state.apps.find(app=>app.packageName===row.packageName)?.preview;
@@ -37,7 +40,7 @@ export class BrowserNotifications extends WebPlugin {
  async crossAppStatus(){const state=await this.state();const {events,dismissed,deviceEvents,...policy}=state;return {...policy,apps:state.apps.map(app=>({...app,label:apps.find(value=>value.packageName===app.packageName)?.label||app.packageName.replace('browser.',''),available:apps.some(value=>value.packageName===app.packageName)})),connected:state.accessGranted};}
  async notificationApps(){return {apps:apps.map(({view,...app})=>app)};}
  async setNotificationPolicy(input:{expectedRevision:string;enabled?:boolean;history?:boolean;apps?:Selection[]}){
-  await editStore(key,initial,state=>{
+  await notificationDocument.edit(state=>{
    if(state.revision!==input.expectedRevision)throw Error('Settings changed. Refresh and try again.');
    for(const flag of ['enabled','history'] as const)if(input[flag]!==undefined){if(typeof input[flag]!=='boolean')throw Error('Invalid notification policy.');state[flag]=input[flag]!;}
    if(input.apps!==undefined){if(!Array.isArray(input.apps)||input.apps.length>apps.length||new Set(input.apps.map(app=>app.packageName)).size!==input.apps.length||input.apps.some(app=>!apps.some(known=>known.packageName===app.packageName)||typeof app.preview!=='boolean'))throw Error('Choose a development app.');state.apps=input.apps.map(({packageName,preview})=>({packageName,preview}));}
@@ -45,15 +48,15 @@ export class BrowserNotifications extends WebPlugin {
   });
   this.changed();return this.crossAppStatus();
  }
- async resumeCrossApp(input:{expectedRevision:string}){await editStore(key,initial,state=>{if(state.revision!==input.expectedRevision)throw Error('Settings changed. Refresh and try again.');state.paused=false;state.epoch=revision();state.revision=revision();});this.changed();return this.crossAppStatus();}
+ async resumeCrossApp(input:{expectedRevision:string}){await notificationDocument.edit(state=>{if(state.revision!==input.expectedRevision)throw Error('Settings changed. Refresh and try again.');state.paused=false;state.epoch=revision();state.revision=revision();});this.changed();return this.crossAppStatus();}
  async notificationHistory(){const state=await this.state();return {items:[...state.events].reverse()};}
- async clearNotificationHistory(){await editStore(key,initial,state=>{state.events=[];state.epoch=revision();});this.changed();}
+ async clearNotificationHistory(){await notificationDocument.edit(state=>{state.events=[];state.epoch=revision();});this.changed();}
  async status(){const state=await this.state();return {appEnabled:state.appEnabled,permissionGranted:true,interruption:readStore<{doNotDisturb?:boolean}>('alpha.browser.device.v1',()=>({})).doNotDisturb||focusActive()?'none':'all',channels:Object.entries(state.channels).map(([id,enabled])=>({id,name:id==='reminders'?'Reminders':id==='calendar'?'Calendar':id,importance:enabled?3:0,blocked:!enabled})),scope:'browser'};}
  async inject(input:{packageName:string;title:string;text:string;id?:string;clearable?:boolean;autoCancel?:boolean;secret?:boolean;canOpen?:boolean}){
   const app=apps.find(app=>app.packageName===input.packageName);if(!app||typeof input.title!=='string'||typeof input.text!=='string'||input.title.length>200||input.text.length>2000||input.id!==undefined&&!/^[\w-]{1,128}$/.test(input.id))throw Error('Review the event fields.');
   for(const flag of ['clearable','autoCancel','secret','canOpen'] as const)if(input[flag]!==undefined&&typeof input[flag]!=='boolean')throw Error('Review the event options.');
-  const observed=readStore(key,initial).epoch,sourceKey=`${app.packageName}/${input.id||crypto.randomUUID()}`;
-  const result=await editStore(key,initial,state=>{
+  const observed=(await notificationState()).epoch,sourceKey=`${app.packageName}/${input.id||crypto.randomUUID()}`;
+  const result=await notificationDocument.edit(state=>{
    trim(state);const previous=state.deviceEvents!.find(row=>row.sourceKey===sourceKey);
    const row:DeviceEvent={sourceKey,id:previous?.id||crypto.randomUUID(),revision:revision(),source:'external',appLabel:app.label,title:input.title,text:input.text,at:Date.now(),clearable:input.clearable!==false,autoCancel:input.autoCancel!==false,secret:input.secret===true,canOpen:input.canOpen!==false,packageName:app.packageName};
    state.deviceEvents=[...state.deviceEvents!.filter(event=>event.sourceKey!==sourceKey),row].slice(-100);
@@ -76,27 +79,29 @@ export class BrowserNotifications extends WebPlugin {
   const external=state.deviceEvents!.filter(row=>this.allowed(state,row)).map(row=>({...this.observe(state,row),...(!applyFocus?{revision:row.revision}:{})}));
   const workflow=state.appEnabled?await listWorkflowNotices():[],hosted=await browserHostedResults.list();
   // All sources are asynchronous. Apply the current lock state after the last read.
-  if(noticePolicy(readStore(key,initial))!==noticePolicy(state))throw Error('Notification settings changed. Refresh notifications.');
+  if(noticePolicy((await notificationState()))!==noticePolicy(state))throw Error('Notification settings changed. Refresh notifications.');
   const nowHidden=locked();
   const items=[...[...own,...calendar,...external,...workflow,...hosted].filter(row=>!applyFocus||!focusHoldsNotice(row.at)),...(applyFocus&&state.appEnabled?focusAllowedNotices().filter(row=>!state.dismissed.includes(row.id)).map(row=>({...row,title:hidden?'Messages':row.title,text:hidden?'':row.text,canOpen:!hidden})):[])].sort((a,b)=>b.at-a.at).slice(0,100);
   return {scope:'browser',calendarStatus,items:nowHidden?items.map(row=>({...row,title:row.appLabel,text:'',canOpen:false})):items};
  }
  private async external(input:Identity,opening:boolean){
-  const view=await editStore(key,initial,state=>{
+  const action=notificationAction();try{
+  const view=await notificationDocument.edit(state=>{
    trim(state);const row=state.deviceEvents!.find(row=>row.id===input.id);
    if(!row||!this.allowed(state,row)||locked()||this.observe(state,row).revision!==input.revision||(!opening&&!row.clearable)||(opening&&!this.observe(state,row).canOpen))throw Error('Notification changed.');
    record(state,row,opening?'opened':'dismissed');
    if(!opening||row.autoCancel)state.deviceEvents=state.deviceEvents!.filter(event=>event.id!==row.id);
    return apps.find(app=>app.packageName===row.packageName)!.view;
-  });
-  if(opening)window.dispatchEvent(new CustomEvent('alpha:browser-open-view',{detail:view}));this.changed();
+  },action.signal);
+  if(opening&&!action.signal.aborted&&!locked())window.dispatchEvent(new CustomEvent('alpha:browser-open-view',{detail:view}));this.changed();
+  }finally{action.dispose();}
  }
  async open(input:Identity){if(input.id.startsWith('focus:'))return this.focusAction(input,true);if(input.source==='own'&&input.id.startsWith('workflow:')){if(!(await this.state()).appEnabled)throw Error('Notifications are disabled.');return actOnWorkflowNotice(input,true);}if(input.source==='hosted')return browserHostedResults.action(input,true);if(input.source==='external')return this.external(input,true);if(locked())throw Error('Unlock to open this notification.');const {items}=await this.list();if(!items.some(row=>row.source==='own'&&row.id===input.id&&row.revision===input.revision))throw Error('Notification changed.');if(input.id.startsWith('calendar:')){await this.calendar.alertAction({...input,open:true});this.changed();return;}window.dispatchEvent(new CustomEvent('alpha:browser-open-view',{detail:'calendar'}));await this.daily.notifyReminder(input.id,input.revision);}
- async dismiss(input:Identity){if(input.id.startsWith('focus:'))return this.focusAction(input,false);if(input.source==='own'&&input.id.startsWith('workflow:')){if(!(await this.state()).appEnabled)throw Error('Notifications are disabled.');return actOnWorkflowNotice(input,false);}if(input.source==='hosted')return browserHostedResults.action(input,false);if(input.source==='external')return this.external(input,false);if(locked())throw Error('Unlock to dismiss this notification.');const {items}=await this.list();if(!items.some(row=>row.source==='own'&&row.id===input.id&&row.revision===input.revision))throw Error('Notification changed.');if(input.id.startsWith('calendar:')){await this.calendar.alertAction({...input,open:false});this.changed();return;}await editStore(key,initial,state=>{state.dismissed.push(input.revision);trim(state);});this.changed();}
- async focusAction(input:Identity,open:boolean){if(locked()||!(await this.list()).items.some(row=>row.id===input.id&&row.revision===input.revision))throw Error('Notification changed.');await editStore(key,initial,state=>{state.dismissed.push(input.id);trim(state);});if(open)window.dispatchEvent(new CustomEvent('alpha:browser-open-view',{detail:'messages'}));this.changed();}
+ async dismiss(input:Identity){if(input.id.startsWith('focus:'))return this.focusAction(input,false);if(input.source==='own'&&input.id.startsWith('workflow:')){if(!(await this.state()).appEnabled)throw Error('Notifications are disabled.');return actOnWorkflowNotice(input,false);}if(input.source==='hosted')return browserHostedResults.action(input,false);if(input.source==='external')return this.external(input,false);if(locked())throw Error('Unlock to dismiss this notification.');const {items}=await this.list();if(!items.some(row=>row.source==='own'&&row.id===input.id&&row.revision===input.revision))throw Error('Notification changed.');if(input.id.startsWith('calendar:')){await this.calendar.alertAction({...input,open:false});this.changed();return;}await notificationDocument.edit(state=>{state.dismissed.push(input.revision);trim(state);});this.changed();}
+ async focusAction(input:Identity,open:boolean){const action=notificationAction();try{if(locked()||!(await this.list()).items.some(row=>row.id===input.id&&row.revision===input.revision))throw Error('Notification changed.');action.signal.throwIfAborted();await notificationDocument.edit(state=>{if(locked())throw Error('Notification changed.');state.dismissed.push(input.id);trim(state);},action.signal);if(open&&!action.signal.aborted&&!locked())window.dispatchEvent(new CustomEvent('alpha:browser-open-view',{detail:'messages'}));this.changed();}finally{action.dispose();}}
  async clear(input:{items:Identity[]}){if(!Array.isArray(input.items)||input.items.length>100)throw Error('Refresh notifications.');const outcomes=[];for(const item of input.items){try{await this.dismiss(item);outcomes.push({id:item.id,status:'requested'});}catch{outcomes.push({id:item.id,status:'unavailable'});}}return {outcomes};}
  async deviceEvents(){const state=await this.state();return {items:state.deviceEvents!.map(row=>({id:row.id,revision:row.revision,appLabel:row.appLabel,packageName:row.packageName,notificationId:row.sourceKey.slice(row.packageName.length+1),title:row.title,text:row.text,clearable:row.clearable,autoCancel:row.autoCancel,secret:row.secret}))};}
- async removeDeviceEvent(input:{id:string;revision:string}){await editStore(key,initial,state=>{trim(state);const row=state.deviceEvents!.find(row=>row.id===input.id);if(!row||row.revision!==input.revision)throw Error('The device event changed.');state.deviceEvents=state.deviceEvents!.filter(event=>event.id!==row.id);if(this.allowed(state,row))record(state,row,'removed');});this.changed();}
+ async removeDeviceEvent(input:{id:string;revision:string}){await notificationDocument.edit(state=>{trim(state);const row=state.deviceEvents!.find(row=>row.id===input.id);if(!row||row.revision!==input.revision)throw Error('The device event changed.');state.deviceEvents=state.deviceEvents!.filter(event=>event.id!==row.id);if(this.allowed(state,row))record(state,row,'removed');});this.changed();}
  private show(dialog:HTMLDialogElement,actions:HTMLElement[]){
   dialog.classList.add('alpha-notification-dialog');
   const shell=document.querySelector('.os');if(shell){const theme=getComputedStyle(shell);for(const name of ['--bg','--fg','--s2','--line','--acc'])dialog.style.setProperty(name,theme.getPropertyValue(name));}
@@ -133,7 +138,7 @@ export class BrowserNotifications extends WebPlugin {
   for(const field of fields){const label=document.createElement('label'),control=document.createElement('input');label.textContent=field.label;label.style.cssText='display:flex;gap:20px;align-items:center;margin:20px 0';control.type='checkbox';control.checked=field.checked;control.onchange=async()=>{control.disabled=true;try{await field.change(control.checked);this.changed();}catch{control.checked=!control.checked;}finally{control.disabled=false;}};label.append(control);dialog.append(label);}
   const done=document.createElement('button');done.textContent='Done';done.onclick=()=>dialog.close();dialog.onclose=()=>{dialog.remove();this.changed();};dialog.append(done);this.show(dialog,[done]);return {status:'opened'};
  }
- async openNotificationAccess(){const state=await this.state();return this.controls('Notification access',[{label:'Allow development app events',checked:state.accessGranted,change:async enabled=>{await editStore(key,initial,state=>{state.accessGranted=enabled;state.epoch=revision();state.revision=revision();trim(state);});}}]);}
- async openChannelSettings(input:{id:string}){const state=await this.state();if(!(input.id in state.channels))throw Error('Choose a notification channel.');return this.controls(input.id==='calendar'?'Calendar notifications':'Reminders notifications',[{label:input.id==='calendar'?'Show calendar alerts':'Show reminders',checked:state.channels[input.id],change:async enabled=>{await editStore(key,initial,state=>{state.channels[input.id]=enabled;});}}]);}
- async openAppSettings(){const state=await this.state();return this.controls('Alpha notifications',[{label:'Show Alpha notifications',checked:state.appEnabled,change:async enabled=>{await editStore(key,initial,state=>{state.appEnabled=enabled;});}}]);}
+ async openNotificationAccess(){const state=await this.state();return this.controls('Notification access',[{label:'Allow development app events',checked:state.accessGranted,change:async enabled=>{await notificationDocument.edit(state=>{state.accessGranted=enabled;state.epoch=revision();state.revision=revision();trim(state);});}}]);}
+ async openChannelSettings(input:{id:string}){const state=await this.state();if(!(input.id in state.channels))throw Error('Choose a notification channel.');return this.controls(input.id==='calendar'?'Calendar notifications':'Reminders notifications',[{label:input.id==='calendar'?'Show calendar alerts':'Show reminders',checked:state.channels[input.id],change:async enabled=>{await notificationDocument.edit(state=>{state.channels[input.id]=enabled;});}}]);}
+ async openAppSettings(){const state=await this.state();return this.controls('Alpha notifications',[{label:'Show Alpha notifications',checked:state.appEnabled,change:async enabled=>{await notificationDocument.edit(state=>{state.appEnabled=enabled;});}}]);}
 }

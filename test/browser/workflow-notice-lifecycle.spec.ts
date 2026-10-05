@@ -5,7 +5,7 @@ test('history hides the older download when no older copy exists',async({page})=
  const dialog=page.getByRole('dialog',{name:'Workflow history',exact:true});await expect(dialog.getByRole('link',{name:'Download notification history',exact:true})).toBeVisible();
  await expect(dialog.getByText('Download older notification history',{exact:true})).toBeHidden();
 });
-for(const event of ['launcher-home','alpha:device-state'])test(`notice action cancelled by ${event} cannot commit or navigate later`,async({page})=>{
+for(const event of ['launcher-home','alpha:device-state','alpha:dev-incoming-call'])test(`notice action cancelled by ${event} cannot commit or navigate later`,async({page})=>{
  const before=await page.evaluate(async()=>{
   const n=await import('/src/browser/workflow-notices.ts'),row=await n.publishWorkflowNotice('late-open','Retain notice',new AbortController().signal),edit=n.workflowNoticesDocument.edit.bind(n.workflowNoticesDocument);let navigated=0;
   window.addEventListener('alpha:browser-open-view',()=>navigated++);
@@ -41,7 +41,7 @@ for(const change of ['disabled','preview-revoked'] as const)test(`a pending noti
   (window as any).policyList=notifications.list().then(()=>false,error=>error.message==='Notification settings changed. Refresh notifications.');
  });
  await expect.poll(()=>page.evaluate(()=>(window as any).policyListHeld)).toBe(true);
- await page.evaluate(change=>{const key='alpha.browser.notifications.v2',state=JSON.parse(localStorage.getItem(key)!);if(change==='disabled')state.appEnabled=false;else state.apps=[{packageName:'browser.inbox',preview:false}];localStorage.setItem(key,JSON.stringify(state));(window as any).releasePolicyList();},change);
+ await page.evaluate(async change=>{await (await import('/src/browser/notification-store.ts')).notificationDocument.edit(state=>{if(change==='disabled')state.appEnabled=false;else state.apps=[{packageName:'browser.inbox',preview:false}];});(window as any).releasePolicyList();},change);
  expect(await page.evaluate(()=>(window as any).policyList)).toBe(true);
 });
 test('Home after notice commit preserves the receipt without late navigation',async({page})=>{
