@@ -1,7 +1,7 @@
 import {test,expect,type Page} from '@playwright/test';
 const bytes=Buffer.from('Original source bytes.\nA fact for the summary.'),file={name:'source.txt',mimeType:'text/plain',buffer:bytes};
 async function choose(page:Page,label:string,input=file){const picker=page.waitForEvent('filechooser');await page.getByRole('dialog',{name:'Note source document'}).getByRole('button',{name:label,exact:true}).click();await(await picker).setFiles(input);}
-async function saved(page:Page){return page.evaluate(()=>JSON.parse(localStorage.getItem('alphaphone:notes:v2')!).records.find((n:any)=>n.title==='Source-linked summary'));}
+async function saved(page:Page){return page.evaluate(async ()=>JSON.parse((await (await import('/src/runtime/browser-notes-document.ts')).readBrowserNotesRaw())!).records.find((n:any)=>n.title==='Source-linked summary'));}
 test.beforeEach(async({page})=>{await page.addInitScript(()=>localStorage.setItem('alpha.connection.selection.v1',JSON.stringify({kind:'offline'})));});
 for(const theme of ['light','dark'])test(`source fingerprint survives reload, rejects changed bytes and opens exact source ${theme}`,async({page},info)=>{
  await page.setViewportSize({width:360,height:640});await page.goto('/?theme='+theme);await page.getByRole('button',{name:'Notes',exact:true}).click();await page.getByRole('button',{name:'New note',exact:true}).click();await page.getByRole('textbox',{name:'Title',exact:true}).fill('Source-linked summary');await page.getByRole('textbox',{name:'Note',exact:true}).fill('Reviewed summary text.');
@@ -19,7 +19,7 @@ test('closing the source review rejects a delayed file read',async({page})=>{
 test('source metadata save failure retains the persisted note and reports uncertainty',async({page})=>{
  await page.goto('/');await page.getByRole('button',{name:'Notes',exact:true}).click();await page.getByRole('button',{name:'New note',exact:true}).click();await page.getByRole('textbox',{name:'Title',exact:true}).fill('Source-linked summary');await page.getByRole('textbox',{name:'Note',exact:true}).fill('Retain this summary.');
  const before=await saved(page);
- await page.evaluate(()=>{const original=Storage.prototype.setItem;Storage.prototype.setItem=function(key,value){if(key==='alphaphone:notes:v2')throw new DOMException('Storage full','QuotaExceededError');return original.call(this,key,value);};});
+ await page.evaluate(()=>{const original=IDBObjectStore.prototype.put;IDBObjectStore.prototype.put=function(value,key){if(key==='alpha.browser.notes.v1')throw new DOMException('Storage full','QuotaExceededError');return original.call(this,value,key);};});
  await page.getByRole('button',{name:'Link source document',exact:true}).click();await choose(page,'Link file');const dialog=page.getByRole('dialog',{name:'Note source document'});await expect(dialog.getByRole('status')).toContainText('save is unconfirmed');expect(await saved(page)).toEqual(before);await expect(dialog.getByText('No source linked',{exact:true})).toBeVisible();
  await dialog.getByRole('button',{name:'Done',exact:true}).click();await page.reload();await page.getByRole('button',{name:'Notes',exact:true}).click();await page.getByRole('button',{name:'Open Source-linked summary',exact:true}).click();await expect(page.getByRole('textbox',{name:'Note',exact:true})).toHaveValue('Retain this summary.');await expect(page.getByRole('button',{name:'Link source document',exact:true})).toBeVisible();
 });
