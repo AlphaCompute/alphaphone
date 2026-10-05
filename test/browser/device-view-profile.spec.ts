@@ -13,7 +13,7 @@ for(const scenario of ['supported','legacy','unsupported','malformed','lost','re
    if(scenario==='retained')f.profile={version:1,revision:'11111111-1111-4111-8111-111111111111',views:['browser','home','notes','reminders','settings']};
    w.Capacitor={PluginHeaders:[
     {name:'Agent',methods:methods(['getStatus','start','request'])},
-    {name:'AlphaConnection',methods:methods(['secureRead','secureWrite','secureRemove','cancel','addListener','removeListener','pauseNotificationCollection'])},
+    {name:'AlphaConnection',methods:methods(['secureRead','secureWrite','secureCompareExchange','secureRemove','cancel','addListener','removeListener','pauseNotificationCollection'])},
     {name:'AlphaActionJournal',methods:methods(['list'])},
     {name:'DeviceApps',methods:methods(['buildInfo'])},
     {name:'AlphaHostedResults',methods:methods(['configureBackground','disableBackground','cancelBackground','inboxHistory','status','pendingResult','addListener','removeListener'])},
@@ -36,6 +36,7 @@ for(const scenario of ['supported','legacy','unsupported','malformed','lost','re
     }
     if(plugin==='AlphaConnection'){
      if(method==='secureRead')return {value:store.get(input.slot)??null};
+     if(method==='secureCompareExchange'){if((store.get(input.slot)??null)!==input.expectedValue)return {status:'conflict'};if(input.value===null)store.delete(input.slot);else store.set(input.slot,input.value);return {status:'saved'};}
      if(method==='secureWrite'){store.set(input.slot,input.value);return {};}
      if(method==='secureRemove'){store.delete(input.slot);return {};}
      return {};

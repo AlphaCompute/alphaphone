@@ -12,7 +12,7 @@ for(const scenario of ['two','other-owner','wrong-version','unconfirmed','naviga
    w.Capacitor={PluginHeaders:[
     {name:'AlphaNotifications',methods:methods(['pendingWorkflowTap','consumeWorkflowTap','addListener','removeListener'])},
     {name:'Agent',methods:methods(['getStatus','start','request'])},
-    {name:'AlphaConnection',methods:methods(['secureRead','secureWrite','secureRemove','cancel','addListener','removeListener','pauseNotificationCollection'])},
+    {name:'AlphaConnection',methods:methods(['secureRead','secureWrite','secureCompareExchange','secureRemove','cancel','addListener','removeListener','pauseNotificationCollection'])},
     {name:'AlphaActionJournal',methods:methods(['list'])},
     {name:'DeviceApps',methods:methods(['buildInfo'])},
     {name:'AlphaHostedResults',methods:methods(['beginBackground','cancelBackground','configureBackground','disableBackground','inboxHistory','syncInbox','status','setBackgroundPolling','enable','pendingResult','addListener','removeListener'])},
@@ -46,6 +46,7 @@ for(const scenario of ['two','other-owner','wrong-version','unconfirmed','naviga
     }
     if(plugin==='AlphaConnection'){
      if(method==='secureRead')return {value:store.get(input.slot)??null};
+     if(method==='secureCompareExchange'){if((store.get(input.slot)??null)!==input.expectedValue)return {status:'conflict'};if(input.value===null)store.delete(input.slot);else store.set(input.slot,input.value);return {status:'saved'};}
      if(method==='secureWrite'){store.set(input.slot,input.value);return {};}
      if(method==='secureRemove'){f.removed.push(input.slot);store.delete(input.slot);return {};}
      if(method==='pauseNotificationCollection'&&f.mockHold){await new Promise<void>(resolve=>{f.mockReleases.notifications=resolve;});return {};}

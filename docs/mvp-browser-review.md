@@ -28,6 +28,41 @@ physical-device acceptance was performed for this change. See
 
 ## Surface inventory
 
+### Integrated source checkpoint — 2026-10-05
+
+Merged consumer `4145e3a930a736d97da463fc89237bb02ad4bbbb`, with upstream
+`95924e90a75ec2b14f5835fa5f07d81115ccdb15`, passed `npm run verify`: 666 tests,
+zero failures or skips, type checking, production build and the 245-file production
+bundle audit. This combines Calendar creation, inline edits and modal editor
+retention with account-bound Inbox unsaved recovery. Their owning browser campaigns
+are recorded below; the full integrated browser campaign is still in progress.
+That campaign exposed outdated native fixtures without draft compare-and-exchange
+and old single-line composer selectors. Updating the fixtures to retain exact
+expected-value conflicts and select the visible textbox passed all 144 affected
+Chromium cases, type checking and five documentation checks. These corrections
+do not change production storage or relax draft admission. Evidence is
+`artifacts/calendar-form-review/native-fixture-retention-final.log` in the primary
+checkout. The broad run on the earlier frozen source remains a separate result.
+
+On the same runtime pin, a fresh plain development restart passed actual browser
+capture, Whisper transcription and Kokoro playback, completion, Stop and disconnect
+in 13.6 seconds including runner startup. Hashed snapshots retained the same owner,
+agent and 18 conversation identifiers. This is not a synthesis latency measurement.
+
+A separate isolated real-Cerebras redaction campaign passed all six synthetic
+contact/credential formats, streamed restoration and distinct-process restart.
+All ten captured provider-bound request checks excluded the raw synthetic contact
+and credential strings. The normal development profile was not changed. Approved
+device actions, wider categories/models and Android remain separate qualification;
+this bounded pass does not enable redaction by default on the development host.
+
+Evidence is retained in the qualification checkout under
+`artifacts/pr317-browser/`: `calendar-inbox-full-verify.log`,
+`kokoro-current-browser.log`, hashed `kokoro-current-before.json` and
+`kokoro-current-after.json`, and `current-redaction-qualification.log`.
+The redaction summary is `test-results/local-redaction/result.json`.
+No Android build was run for this integrated checkpoint.
+
 | Surface | Implementation | Remaining acceptance |
 | --- | --- | --- |
 | Home and settings | Product-owned preview, themes, assistant dock, agenda, device development controls | Native boot, lock, HOME role and actual system controls |

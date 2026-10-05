@@ -15,7 +15,7 @@ for (const mode of ['confirm','transcribed','zone','modal','unknown','receipt-lo
         PluginHeaders: [
           {name:'AlphaVoiceCloud',methods:methods(['localSpeechStatus','transcribeLocalRecording','startRecording','stopRecording','releaseLocalSpeech','cancel','cancelRecording','stopPlayback','addListener','removeListener'])},
           {name:'DailyApps',methods:methods(['clockHandoff','perform','surfaceInfo','addListener','removeListener'])},
-          { name: 'AlphaConnection', methods: methods(['request', 'cancel', 'secureRead', 'secureWrite', 'secureRemove','addListener','removeListener']) },
+          { name: 'AlphaConnection', methods: methods(['request', 'cancel', 'secureRead', 'secureWrite','secureCompareExchange', 'secureRemove','addListener','removeListener']) },
           { name: 'AlphaActionJournal', methods: methods(['reserve', 'markApplying', 'finish', 'get', 'list','reviewClock','confirmClock','cancelClock']) },
         ],
         nativeCallback:()=> 'fixture-listener',
@@ -52,6 +52,7 @@ for (const mode of ['confirm','transcribed','zone','modal','unknown','receipt-lo
           }
           if (plugin !== 'AlphaConnection') throw Error('Unexpected native effect');
           if (method === 'secureRead') return { value: store.get(input.slot) ?? null };
+          if(method==='secureCompareExchange'){if((store.get(input.slot)??null)!==input.expectedValue)return {status:'conflict'};if(input.value===null)store.delete(input.slot);else store.set(input.slot,input.value);localStorage.setItem('fixture-secure',JSON.stringify([...store]));return {status:'saved'};}
           if (method === 'secureWrite') { store.set(input.slot, input.value);localStorage.setItem('fixture-secure',JSON.stringify([...store])); return {}; }
           if (method === 'secureRemove') { store.delete(input.slot); return {}; }
           if (method === 'cancel') return {};

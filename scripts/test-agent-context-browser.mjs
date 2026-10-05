@@ -15,7 +15,15 @@ try {
   window.androidBridge = {};
   localStorage.setItem('alpha.connection.selection.v1',JSON.stringify({kind:'offline'}));
   const media = { id: 'video-fixture-71', kind: 'video', revision: 'revision-2', width: 640, height: 480, duration: 2, date: 1700000000000, image: 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg"/>', path: 'content://PRIVATE_VIDEO_URI_CANARY', privateCaption: 'PRIVATE_VIDEO_CONTENT_CANARY' };
-  window.Capacitor = { PluginHeaders: [{ name: 'AlphaPhotos', methods: ['list','read'].map(name => ({ name, rtype: 'promise' })) }], nativePromise: async (plugin, method) => {
+  const drafts = new Map();
+  window.Capacitor = { PluginHeaders: [{ name: 'AlphaConnection', methods: ['secureRead','secureCompareExchange','addListener','removeListener'].map(name => ({ name, rtype: 'promise' })) }, { name: 'AlphaPhotos', methods: ['list','read'].map(name => ({ name, rtype: 'promise' })) }], nativeCallback:()=> 'fixture-listener', nativePromise: async (plugin, method, input) => {
+   if(plugin==='AlphaConnection'){
+    if(method==='addListener')return {callbackId:'fixture-listener'};
+    if(method==='removeListener')return {};
+    if(method==='secureRead')return {value:drafts.get(input.slot)??null};
+    if(method==='secureCompareExchange'){if((drafts.get(input.slot)??null)!==input.expectedValue)return {status:'conflict'};if(input.value===null)drafts.delete(input.slot);else drafts.set(input.slot,input.value);return {status:'saved'};}
+    throw Error('Unexpected credential operation');
+   }
    if (plugin !== 'AlphaPhotos') throw Error('Unexpected native access');
    return method === 'list' ? { items: [media], next: '' } : media;
   }};
@@ -85,9 +93,10 @@ try {
   await limited.addInitScript(mode => {
    const store = new Map(), token = 'synthetic-rate-limit-session';
    window.rateFixture = { mode, posts: 0, creates: 0, successes: 0, paths: [], accountReads: 0 };
-   window.Capacitor = { PluginHeaders: [{ name: 'AlphaConnection', methods: ['request','cancel','secureRead','secureWrite','secureRemove'].map(name => ({ name, rtype: 'promise' })) }], nativePromise: async (plugin, method, input) => {
+   window.Capacitor = { PluginHeaders: [{ name: 'AlphaConnection', methods: ['request','cancel','secureRead','secureWrite','secureCompareExchange','secureRemove'].map(name => ({ name, rtype: 'promise' })) }], nativePromise: async (plugin, method, input) => {
     if (plugin !== 'AlphaConnection') throw Error('Unexpected native fixture access');
     if (method === 'secureRead') return { value: store.get(input.slot) ?? null };
+    if(method==='secureCompareExchange'){if((store.get(input.slot)??null)!==input.expectedValue)return {status:'conflict'};if(input.value===null)store.delete(input.slot);else store.set(input.slot,input.value);return {status:'saved'};}
     if (method === 'secureWrite') { store.set(input.slot, input.value); return {}; }
     if (method === 'secureRemove') { store.delete(input.slot); return {}; }
     if (method === 'cancel') return {};
@@ -119,7 +128,7 @@ try {
   const identityBefore = await limited.evaluate(async () => (await import('/src/runtime/connection-ui.tsx')).connectionController.getSnapshot().session);
   assert.equal(identityBefore.ownerId, 'rate-owner');
   await limited.getByRole('button', { name: 'Type', exact: true }).click();
-  const input = limited.locator('[data-alpha-layer="composer"][aria-hidden="false"] input, [data-alpha-layer="conversation"][aria-hidden="false"] input').first();
+  const input = limited.locator('[data-alpha-layer="composer"][aria-hidden="false"], [data-alpha-layer="conversation"][aria-hidden="false"]').getByRole('textbox').first();
   await input.fill('First visible fixture message'); await input.press('Enter');
   const message = 'The agent provider is rate-limiting requests. Wait before sending again. Alpha Phone did not retry your message.';
   await limited.getByText(message, { exact: true }).waitFor();
