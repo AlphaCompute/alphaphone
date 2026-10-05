@@ -177,7 +177,11 @@ jobs:
         run: |
           python3 scripts/ci/resident-phase.py --name runtime-stage --seconds 1800 npm run agent:stage-android
           python3 scripts/ci/resident-phase.py --name mobile-bundle --seconds 300 npm run agent:test-mobile-workflow-bundle
-          python3 scripts/ci/resident-phase.py --name archive --seconds 3000 node scripts/build-archive.mjs test-results/resident-ci-archive
+          # Flag-off distribution: release verification requires the PACKAGED runtime.
+          python3 scripts/ci/resident-phase.py --name distribution-archive --seconds 3000 node scripts/build-archive.mjs test-results/resident-ci-distribution
+          # The native suites need the private peer fixture, a debug-only test hook
+          # that exists only in the separate, never-distributable test-mocks build.
+          python3 scripts/ci/resident-phase.py --name archive --seconds 3000 node scripts/build-archive.mjs --test-mocks test-results/resident-ci-archive
       - name: Build and anchor private endpoint helper
         run: python3 scripts/ci/build-private-peer.py
       - name: Preserve native generated provenance
@@ -199,6 +203,7 @@ jobs:
             test-results/resident-ci-supervisor/
             test-results/resident-ci/
             test-results/resident-ci-archive/
+            test-results/resident-ci-distribution/
             android/app/build/reports/
   native:
     needs: build
