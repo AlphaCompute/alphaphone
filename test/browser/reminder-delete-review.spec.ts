@@ -23,15 +23,15 @@ for(const mode of ['fresh','stale','response-loss','receipt-loss','navigate','le
    await expect(page.getByRole('button',{name:/^Delete boundary reminder,/})).toHaveCount(0);
    await expect(page.getByRole('button',{name:'Check reminder action status',exact:true})).toBeVisible();
    await page.reload();await page.getByRole('button',{name:'Calendar',exact:true}).click();
-   await expect.poll(()=>page.evaluate(()=>Object.keys(JSON.parse(localStorage.getItem('alpha.browser.reminder-deletions.v1')!)).length)).toBe(0);
+   await expect.poll(()=>page.evaluate(async()=>Object.keys(await (await import('/src/runtime/reminder-deletions.ts')).pendingReminderDeletions()).length)).toBe(0);
    expect(await page.evaluate(async ()=>Object.keys(JSON.parse((await (await import('/src/browser/reminder-store.ts')).reminderDocument.readRaw())!).receipts).length)).toBe(1);
   }else{
    await page.evaluate(async()=>{const {registerPlugin}=await import('/src/platform-plugins.ts');await registerPlugin<any>('DailyApps').scheduleReminder({id:'unrelated',title:'Unrelated reminder',at:Date.parse('2027-03-13T15:00Z')});});
    await page.reload();await page.getByRole('button',{name:'Calendar',exact:true}).click();await page.getByRole('button',{name:/^Unrelated reminder,/}).click();await page.getByRole('button',{name:'Delete event',exact:true}).click();await expect(page.getByText('Reminder cancelled',{exact:true})).toBeVisible();
    const data=await page.evaluate(async ()=>JSON.parse((await (await import('/src/browser/reminder-store.ts')).reminderDocument.readRaw())!));expect(data.reminders.find((x:any)=>x.id==='delete-boundary').status).toBe('scheduled');expect(data.reminders.find((x:any)=>x.id==='unrelated').status).toBe('cancelled');
-   expect(await page.evaluate(()=>Object.values(JSON.parse(localStorage.getItem('alpha.browser.reminder-deletions.v1')!)).map((x:any)=>x.operation.target.reminderId))).toEqual(['delete-boundary']);
+   expect(await page.evaluate(async()=>Object.values(await (await import('/src/runtime/reminder-deletions.ts')).pendingReminderDeletions()).map((x:any)=>x.operation.target.reminderId))).toEqual(['delete-boundary']);
    await page.getByRole('button',{name:/^Changed during dispatch,/}).click();await page.getByRole('button',{name:'Delete event',exact:true}).click();await expect.poll(()=>page.evaluate(async ()=>JSON.parse((await (await import('/src/browser/reminder-store.ts')).reminderDocument.readRaw())!).reminders.find((r:any)=>r.id==='delete-boundary').status)).toBe('cancelled');
-   expect(await page.evaluate(()=>Object.values(JSON.parse(localStorage.getItem('alpha.browser.reminder-deletions.v1')!)).map((x:any)=>x.operation.target.reminderId))).toEqual(['delete-boundary']);
+   expect(await page.evaluate(async()=>Object.values(await (await import('/src/runtime/reminder-deletions.ts')).pendingReminderDeletions()).map((x:any)=>x.operation.target.reminderId))).toEqual(['delete-boundary']);
   }
   return;
  }
@@ -54,10 +54,10 @@ test('two browser tabs retain separate uncertain deletions through reload',async
  }
  // Both renderers share the origin and contend for the recovery-record lock.
  await Promise.all([page.getByRole('button',{name:'Delete event',exact:true}).click(),second.getByRole('button',{name:'Delete event',exact:true}).click()]);
- await expect.poll(()=>page.evaluate(()=>Object.values(JSON.parse(localStorage.getItem('alpha.browser.reminder-deletions.v1')||'{}')).map((x:any)=>x.operation.target.reminderId).sort())).toEqual(['tab-one','tab-two']);
+ await expect.poll(()=>page.evaluate(async()=>Object.values(await (await import('/src/runtime/reminder-deletions.ts')).pendingReminderDeletions()).map((x:any)=>x.operation.target.reminderId).sort())).toEqual(['tab-one','tab-two']);
  await page.reload();await page.getByRole('button',{name:'Calendar',exact:true}).click();
  await expect(page.getByRole('button',{name:'Check reminder action status',exact:true})).toBeVisible();
- expect(await page.evaluate(()=>Object.values(JSON.parse(localStorage.getItem('alpha.browser.reminder-deletions.v1')!)).map((x:any)=>x.operation.target.reminderId).sort())).toEqual(['tab-one','tab-two']);
+ expect(await page.evaluate(async()=>Object.values(await (await import('/src/runtime/reminder-deletions.ts')).pendingReminderDeletions()).map((x:any)=>x.operation.target.reminderId).sort())).toEqual(['tab-one','tab-two']);
  expect(await page.evaluate(async ()=>JSON.parse((await (await import('/src/browser/reminder-store.ts')).reminderDocument.readRaw())!).reminders.map((r:any)=>r.status))).toEqual(['scheduled','scheduled']);
 });
 
@@ -68,11 +68,11 @@ for(const mode of ['navigate','throw'])test(`abandoned durable deletion preparat
  await page.evaluate(async mode=>{
   const {BrowserDaily}=await import('/src/browser/daily.ts');const operate=BrowserDaily.prototype.operateReminder;(window as any).dispatches=0;BrowserDaily.prototype.operateReminder=async function(input){(window as any).dispatches++;return operate.call(this,input);};
   const request=navigator.locks.request.bind(navigator.locks);let first=true;
-  navigator.locks.request=((name:any,options:any,callback:any)=>request(name,options,async(lock:any)=>{const result=await callback(lock);if(name==='alpha.browser.reminder-deletions.v1'&&first){first=false;if(mode==='throw')throw Error('Lost retention response');await new Promise<void>(r=>(window as any).releaseRetention=r);}return result;})) as any;
+  navigator.locks.request=((name:any,options:any,callback:any)=>request(name,options,async(lock:any)=>{const result=await callback(lock);if(name===JSON.stringify(['browser-document','alpha.browser.documents.v1','alpha.browser.reminder-deletions.v1'])&&first){first=false;if(mode==='throw')throw Error('Lost retention response');await new Promise<void>(r=>(window as any).releaseRetention=r);}return result;})) as any;
  },mode);
  await page.getByRole('button',{name:'Delete event',exact:true}).click();
  if(mode==='navigate'){await expect.poll(()=>page.evaluate(()=>typeof(window as any).releaseRetention)).toBe('function');await page.getByRole('button',{name:'Back to calendar',exact:true}).last().click();await page.evaluate(()=>(window as any).releaseRetention());}
- await expect.poll(()=>page.evaluate(()=>Object.keys(JSON.parse(localStorage.getItem('alpha.browser.reminder-deletions.v1')||'{}')).length)).toBe(0);
+ await expect.poll(()=>page.evaluate(async()=>Object.keys(await (await import('/src/runtime/reminder-deletions.ts')).pendingReminderDeletions()).length)).toBe(0);
  expect(await page.evaluate(()=>(window as any).dispatches)).toBe(0);
  expect(await page.evaluate(async ()=>JSON.parse((await (await import('/src/browser/reminder-store.ts')).reminderDocument.readRaw())!).reminders[0].status)).toBe('scheduled');
 });

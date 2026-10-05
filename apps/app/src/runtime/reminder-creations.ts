@@ -17,9 +17,8 @@ function valid(value:Store|null):Store{
 }
 const read=async():Promise<Store|null>=>{
  if(Capacitor.getPlatform()==='android')return secureConnectionStore.read<Store>(slot);
- const {reminderCreationDocument,emptyReminderCreationArchive,reminderCreationArchiveRaw}=await browserHistory();
- const raw=reminderCreationArchiveRaw(await reminderCreationDocument.read(emptyReminderCreationArchive));
- return raw===null?null:JSON.parse(raw);
+ const {reminderCreationDocument}=await browserHistory();
+ return reminderCreationDocument.readJson<Store>();
 };
 export async function reminderCreations(){return valid(await read());}
 async function change(id:string,expected:ReminderCreation|null,value:ReminderCreation|null){
@@ -36,11 +35,8 @@ async function change(id:string,expected:ReminderCreation|null,value:ReminderCre
   if((await secureConnectionStore.compareExchange(slot,raw,next)).status!=='saved')throw Error('Reminder creation changed');
  }else{
   if(!value&&!(await reminderCreations())[id])return;
-  const {reminderCreationDocument,emptyReminderCreationArchive,reminderCreationArchiveRaw}=await browserHistory();
-  await reminderCreationDocument.edit(emptyReminderCreationArchive,archive=>{
-   const raw=reminderCreationArchiveRaw(archive),next=update(raw===null?null:JSON.parse(raw));
-   archive.raw=next===null?null:JSON.stringify(next);
-  });
+  const {reminderCreationDocument}=await browserHistory();
+  await reminderCreationDocument.editJson<Store>(update);
  }
  if(JSON.stringify((await reminderCreations())[id]||null)!==JSON.stringify(value))throw Error('Reminder creation save unconfirmed');
 }
