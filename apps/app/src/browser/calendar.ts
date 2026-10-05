@@ -1,3 +1,4 @@
+import {beginNoticeAction,noticeActionBlocked} from './notice-action';
 import {calendarAlerts} from './calendar-alerts';
 import {editCalendarResponse,calendarResponses} from './calendar-response';
 import {openCalendarMeeting} from './calendar-meeting';
@@ -19,7 +20,7 @@ export class BrowserCalendar extends WebPlugin {
   private async presentationState(){
     const cancellation=new AbortController(),view=document.documentElement.dataset.activeView;
     const retire=()=>cancellation.abort(),visibility=()=>{if(document.hidden)retire();};
-    const events=['alpha-back','pagehide','alpha:device-state','launcher-home','alpha:browser-open-view'];
+    const events=['alpha-back','pagehide','alpha:device-state','launcher-home','alpha:dev-incoming-call','alpha:browser-open-view'];
     for(const event of events)window.addEventListener(event,retire,true);
     document.addEventListener('visibilitychange',visibility);
     try{visibility();const state=await calendarDocument.read(initial,cancellation.signal);return cancellation.signal.aborted||view!==document.documentElement.dataset.activeView?null:state;}
@@ -120,11 +121,18 @@ ${reviewed.description}`);
   }
   async listAlerts(){const data=(await calendarDocument.read(initial));return {items:calendarAlerts(data.events,data.alertDismissed||{})};}
   async alertAction(input:{id:string;revision:string;open:boolean}){
-    const data=(await calendarDocument.read(initial)),alert=calendarAlerts(data.events,data.alertDismissed||{}).find(row=>row.id===input.id&&row.revision===input.revision);
-    if(!alert)throw Error('Calendar alert changed.');
-    if(input.open){const result=await this.open({id:alert.eventId});if(result.status!=='opened')throw Error('Calendar navigation was cancelled.');}
-    await calendarDocument.edit(initial,current=>{const active=calendarAlerts(current.events,current.alertDismissed||{}).find(row=>row.id===input.id&&row.revision===input.revision);if(!active)throw Error('Calendar alert changed.');current.alertDismissed=Object.fromEntries(Object.entries(current.alertDismissed||{}).filter(([,at])=>at>Date.now()-2*86400000));current.alertDismissed[active.receipt]=Date.now();});
-    return {status:input.open?'opened':'dismissed'};
+    const action=beginNoticeAction();
+    try{
+      const eventId=await calendarDocument.edit(initial,current=>{
+        if(noticeActionBlocked())throw Error('Unlock to use this Calendar alert.');
+        const active=calendarAlerts(current.events,current.alertDismissed||{}).find(row=>row.id===input.id&&row.revision===input.revision);
+        if(!active)throw Error('Calendar alert changed.');
+        current.alertDismissed=Object.fromEntries(Object.entries(current.alertDismissed||{}).filter(([,at])=>at>Date.now()-2*86400000));current.alertDismissed[active.receipt]=Date.now();return active.eventId;
+      },action.signal);
+      // A committed dismissal remains durable, even if its navigation is retired.
+      if(input.open){if(action.signal.aborted||noticeActionBlocked())return {status:'cancelled'};const result=await this.open({id:eventId});if(result.status!=='opened')throw Error('Calendar navigation was cancelled.');}
+      return {status:input.open?'opened':'dismissed'};
+    }finally{action.dispose();}
   }
   async requestAccess(){return {status:'granted'};}
   async requestWorkflowReadAccess(){return {status:'granted'};}

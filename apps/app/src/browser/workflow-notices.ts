@@ -49,7 +49,7 @@ export async function publishWorkflowNotice(id:string,text:string,signal:AbortSi
 export async function listWorkflowNotices(){const state=await workflowNoticesDocument.read(initial),hidden=blocked();validate(state);return state.rows.filter(row=>row.phase==='posted').map(row=>({...row,source:'own' as const,appLabel:'Workflows',title:hidden?'Workflows':row.title,text:hidden?'':row.text,clearable:true,canOpen:!hidden}));}
 export async function actOnWorkflowNotice(input:{id:string;revision:string},open:boolean){
  const cancellation=new AbortController(),retire=()=>cancellation.abort(),visibility=()=>{if(document.hidden)retire();};
- const events=['alpha-back','pagehide','launcher-home','alpha:device-state','alpha:browser-open-view'];
+ const events=['alpha-back','pagehide','launcher-home','alpha:device-state','alpha:dev-incoming-call','alpha:browser-open-view'];
  for(const event of events)window.addEventListener(event,retire,true);
  document.addEventListener('visibilitychange',visibility);
  try{
