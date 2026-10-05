@@ -37,7 +37,6 @@ const target=String.raw`(?:me\b|him\b|her\b|them\b|us\b|back\b|[Mm]y\s+\w+|[Mm]o
 const verb=(words:string)=>new RegExp(clause+'(?:'+words+')\\s+'+target);
 const callPatterns=[
  /\b(?:make|place|start|schedule|return)\s+(?:a\s+|the\s+)?(?:phone\s+|voice\s+|video\s+)?calls?\b/i,
- /\bphone\s+calls?\b/i,
  /\b(?:answer|pick\s+up|decline|reject)\s+(?:the\s+|my\s+|incoming\s+)*calls?\b/i,
  /\b(?:when(?:ever)?|if)\s+\S+\s+calls\b/i,
  verb('[Cc]all|[Pp]hone|[Dd]ial|[Rr]ing'),
@@ -49,16 +48,20 @@ const smsPatterns=[
  verb('[Tt]ext|[Mm]essage|[Rr]eply\\s+to'),
 ];
 const paymentPatterns=[
- /\b(?:payments?|venmo|paypal|zelle|cash\s*app|wire\s+transfer|bank\s+transfer|credit\s+card|debit\s+card|bank\s+account|bitcoin|crypto(?:currency)?)\b/i,
- /\bpay(?:s|ing)?\s+(?!attention\b)/i,
+ /\b(?:make|send|schedule|process|submit|initiate|authori[sz]e|approve)\s+(?:a\s+|the\s+|my\s+|any\s+)?(?:\w+\s+)?payments?\b/i,
+ new RegExp(clause+'(?:[Pp]ay|[Vv]enmo|[Zz]elle|[Rr]efund|[Rr]eimburse)\\s+(?!attention\\b)'),
+ /\b(?:with|via|through|using|on|in|use)\s+(?:my\s+)?(?:venmo|paypal|zelle|cash\s*app|apple\s+pay|google\s+pay)\b/i,
+ /\b(?:wire|bank)\s+transfer\b/i,
+ /\b(?:charge|bill|debit)\s+(?:my\s+|the\s+|a\s+)?(?:credit\s+card|debit\s+card|bank\s+account|card|account)\b/i,
+ /\b(?:buy|sell|trade|swap|send)\s+(?:some\s+|my\s+)?(?:bitcoin|btc|eth(?:ereum)?|crypto(?:currency)?|stocks?|shares)\b/i,
  /\b(?:send|transfer|move|withdraw|deposit|wire)\s+(?:the\s+|some\s+)?(?:money|funds|cash|\$|€|£|\d+\s*(?:dollars|euros|pounds))/i,
  /\b(?:to|in|into|from)\s+(?:my\s+)?wallet\b/i,
 ];
-const contactPatterns=[/\bcontacts?\b/i,/\baddress\s*book\b/i,/\bphone\s*book\b/i];
+// The Contacts app or address book as a data source or target, never "my contact at Acme".
+const contactPatterns=[/\bContacts\b/,/\b(?:my|the|all|our|your|phone)\s+contacts\b/i,/\bcontact\s+(?:list|card|details|info(?:rmation)?)\b/i,/\baddress\s*book\b/i,/\bphone\s*book\b/i];
 const codePatterns=[
- /\b(?:run|execute|eval|evaluate)\s+(?:a\s+|an\s+|this\s+|my\s+|some\s+|the\s+)?(?:custom\s+)?(?:code|script|shell|command|program|python|javascript|js|bash|sql|query)\b/i,
- /\b(?:shell|terminal|bash|powershell)\s+commands?\b/i,
- /\b(?:python|javascript|typescript|node|bash|ruby|perl|lua)\s+(?:code|script|snippet|function)\b/i,
+ /\b(?:run|execute|eval|evaluate|use|write|create|add|call)\s+(?:a\s+|an\s+|this\s+|my\s+|some\s+|the\s+)?(?:custom\s+)?(?:(?:python|javascript|typescript|node|bash|ruby|perl|lua|sql|shell)\s+)?(?:code|script|shell|command|program|python|javascript|js|bash|sql|query|snippet|function)\b/i,
+ /\b(?:run|execute)\s+(?:a\s+|an\s+|this\s+|some\s+|the\s+)?(?:shell|terminal|bash|powershell)\b/i,
  /\b(?:curl|wget|sudo|webhook|http\s+(?:request|call|post|get)|api\s+(?:call|request)|fetch\s+(?:the\s+)?url)\b/i,
  /```|<script\b|\beval\s*\(|\bfunction\s*\(|=>\s*\{/i,
 ];
@@ -69,9 +72,14 @@ const emailSend=[
 const explicitAddress=/[^\s@<>()"',;]+@[^\s@<>()"',;]+\.[a-z]{2,}/i;
 const ownerOnly=/\b(?:to\s+me|to\s+myself|e-?mail\s+me|e-?mail\s+myself|send\s+me|mail\s+me|me\s+an?\s+e-?mail)\b/i;
 
+// Subjects of supported steps ("notes about bill payments", "remind me to call Mom", "a notification
+// saying text Sam") describe what a note, reminder or notification says. They are not actions, so
+// that span is ignored up to the next clause boundary.
+const subject=/\b(?:remind(?:er)?\s+(?:me\s+)?(?:to|about)|(?:a|the)\s+(?:note|notification|reminder)\s+(?:to|about|saying|that\s+says)|notes?\s+(?:about|on|mentioning|containing|that\s+mention)|notify\s+me\s+(?:to|about))\s+[^.;:!?\n,]*?(?=[.;:!?\n,]|\s+(?:and\s+)?then\b|$)/gi;
+
 /** Categories the typed phone catalog cannot satisfy, in a stable order. */
 export function workflowScopeCategories(prompt:string):WorkflowScopeCategory[]{
- const text=prompt.normalize('NFKC');
+ const text=prompt.normalize('NFKC').replace(subject,' ');
  const found:WorkflowScopeCategory[]=[];
  if(callPatterns.some(p=>p.test(text)))found.push('calls');
  if(smsPatterns.some(p=>p.test(text)))found.push('sms');

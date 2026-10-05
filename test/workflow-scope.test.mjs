@@ -16,3 +16,9 @@ test('a refusal names every refused category and only the operations available o
  assert.match(checkWorkflowScope('Call Maya',[]).message,/No typed workflow steps are available/);
  assert.deepEqual(checkWorkflowScope('Read my calendar',['calendar_range']),{refused:false});
 });
+test('subjects of supported Notes, reminders and notifications are not refused, but a following action still is',()=>{
+ for(const prompt of ['Every morning summarize my Calendar events and notes about bill payments due this week','Summarize notes mentioning my contact at Acme','Make a note to pay rent','Remind me to call Mom','Post a notification when notes contain Venmo','Summarize my javascript code notes','Compose a summary of my phone calls notes'])
+  assert.deepEqual(workflowScopeCategories(prompt),[],prompt);
+ const refused={'Remind me to call Mom, then text Sam':'sms','Notes about bill payments then pay Sam':'payments','Make a payment to the landlord':'payments','Charge my credit card monthly':'payments','Buy bitcoin every Monday':'payments','Write a python script that reads my notes':'code'};
+ for(const [prompt,category] of Object.entries(refused))assert.ok(workflowScopeCategories(prompt).includes(category),`${category}: ${prompt}`);
+});
