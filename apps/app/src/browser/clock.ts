@@ -3,7 +3,7 @@ import {browserScreenLocked} from './screen-locked';
 import type {BrowserDaily} from './daily';
 import type {BrowserNotifications} from './notifications';
 import {BrowserAlertAudio} from './alert-audio';
-import {editStore} from './store';
+import {alertSoundDocument} from './preference-documents';
 type Alarm={id:string;title:string;at:number;status:string;revision:string};
 /** One foreground owner rings alarms; all tabs share the existing reminder records. */
 export class BrowserClock {
@@ -38,7 +38,10 @@ export class BrowserClock {
    else if(navigator.locks){void navigator.locks.request('alpha.browser.alarm-owner',{ifAvailable:true},async lock=>{if(!lock||!this.allowed()||this.owns)return;const current=(await this.daily.listReminders()).reminders.filter(row=>row.id.startsWith('alarm_')&&row.status==='posted').map(row=>row.id+':'+row.revision).sort().join('|');if(!current||!this.allowed())return;this.owns=true;await new Promise<void>(resolve=>{this.release=resolve;this.ring(current);});});}
    const notices=(await this.notifications.list()).items.filter(n=>!n.id.startsWith('alarm_'));
    if(!this.allowed())return;
-   const fresh=await editStore('alpha.browser.alert-sounds.v1',()=>({seen:[] as string[]}),data=>{const active=notices.map(n=>n.source+':'+n.id+':'+n.revision.split(':')[0]),fresh=active.some(key=>!data.seen.includes(key));data.seen=[...data.seen.filter(key=>!active.includes(key)).slice(-(500-active.length)),...active];return fresh;});if(fresh&&this.allowed())this.audio.play('ring');
+   const active=notices.map(n=>n.source+':'+n.id+':'+n.revision.split(':')[0]),initial=()=>({seen:[] as string[]}),before=await alertSoundDocument.read(initial);
+   // Unchanged polling must not invent records or advance recovery revisions.
+   if(!active.some(key=>!before.seen.includes(key)))return;
+   const fresh=await alertSoundDocument.edit(initial,data=>{const fresh=active.some(key=>!data.seen.includes(key));data.seen=[...data.seen.filter(key=>!active.includes(key)).slice(-(500-active.length)),...active];return fresh;});if(fresh&&this.allowed())this.audio.play('ring');
   }catch(error){if(this.status)this.status.textContent='Alarms could not refresh. Try again.';}finally{this.polling=false;}
  }
  private ring(key:string){this.ringing=key;this.stopSound();this.open();this.audio.play('alarm');const started=performance.now();this.soundTimer=setInterval(()=>{if(!this.owns||!this.allowed()||performance.now()-started>=60000)this.stopSound();else this.audio.play('alarm');},1000);}

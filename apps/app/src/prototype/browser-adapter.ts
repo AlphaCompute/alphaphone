@@ -230,8 +230,9 @@ export function installPrototypeBrowserAdapter(Component: any, views: Record<str
   };
   const openBrowserView = (event: Event) => shell?.openView((event as CustomEvent<string>).detail);
   window.addEventListener('alpha:browser-open-view', openBrowserView);
+  window.addEventListener('alpha:bookmarks-document-changed',refreshBookmarks);
   const timer=window.setInterval(update,100);
   const visibility = () => { lastGeometry=''; update(); if (!document.hidden && shell?.S().view === 'browser') refreshBookmarks(); };
   window.addEventListener('resize',update);document.addEventListener('visibilitychange',visibility);
-  return ()=>{window.removeEventListener('alpha:browser-open-view',openBrowserView);stopReading();unsubscribeReading();disposed=true;clearInterval(timer);window.removeEventListener('resize',update);document.removeEventListener('visibilitychange',visibility);void resumeListener?.remove();void listener?.remove();for(const id of created.keys())void Browser.close({session,id}).catch(()=>{});};
+  return ()=>{window.removeEventListener('alpha:bookmarks-document-changed',refreshBookmarks);window.removeEventListener('alpha:browser-open-view',openBrowserView);stopReading();unsubscribeReading();disposed=true;clearInterval(timer);window.removeEventListener('resize',update);document.removeEventListener('visibilitychange',visibility);void resumeListener?.remove();void listener?.remove();for(const id of created.keys())void Browser.close({session,id}).catch(()=>{});};
 }

@@ -1,6 +1,5 @@
 import { WebPlugin } from '@capacitor/core';
-import {editStore,readStore} from './store';
-const bookmarkKey='alpha.browser.bookmarks.v1';
+import {bookmarkDocument} from './preference-documents';
 
 type Tab = { session: string; id: string; frame: HTMLIFrameElement; container: HTMLDivElement; link: HTMLAnchorElement; status:HTMLParagraphElement; history: string[]; position: number; sequence: number; navigation: number; loading: boolean; committed:boolean; error:string };
 /** Unprivileged web surfaces. Remote documents never receive the host bridge. */
@@ -50,8 +49,8 @@ export class BrowserSurface extends WebPlugin {
     for(const tab of this.tabs.values())if(tab.session===input.session){const visible=tab.id===input.id;tab.container.style.display=visible?'flex':'none';if(visible)Object.assign(tab.container.style,{left:`${input.x||0}px`,top:`${input.y||0}px`,width:`${input.width||0}px`,height:`${input.height||0}px`});}
   }
   async close(input:{session:string;id:string}) {const tab=this.tabs.get(this.key(input));tab?.container.remove();this.tabs.delete(this.key(input));}
-  async bookmarks() {return {urls:readStore<string[]>(bookmarkKey,()=>[])};}
-  async setBookmark(input:{url:string;saved:boolean}) {const url=this.address(input.url);return editStore<string[],{urls:string[]}>(bookmarkKey,()=>[],urls=>{const next=urls.filter(value=>value!==url);if(input.saved)next.unshift(url);urls.splice(0,urls.length,...next);return {urls:[...urls]};});}
+  async bookmarks() {return {urls:await bookmarkDocument.read<string[]>(()=>[])};}
+  async setBookmark(input:{url:string;saved:boolean}) {const url=this.address(input.url);return bookmarkDocument.edit<string[],{urls:string[]}>(()=>[],urls=>{const next=urls.filter(value=>value!==url);if(input.saved)next.unshift(url);urls.splice(0,urls.length,...next);return {urls:[...urls]};});}
   async share(input:{session:string;id:string;url:string;navigation:number}) {const tab=this.tab(input);if(!tab.committed||tab.loading||tab.error||document.hidden||tab.container.style.display==='none'||tab.navigation!==input.navigation||tab.history[tab.position]!==input.url)throw Error('The page changed. Share it again.');if(navigator.share)await navigator.share({url:input.url});else await navigator.clipboard.writeText(input.url);}
   async downloads() {window.dispatchEvent(new CustomEvent('alpha:browser-open-view',{detail:'files'}));}
   async cancelReading() {window.speechSynthesis?.cancel();}
