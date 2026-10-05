@@ -34,7 +34,7 @@ physical-device acceptance was performed for this change. See
 | Connection and assistant | Resident/native IPC, local development host, optional Cloud/remote sessions, conversation history, reviewed proposals and receipts | Real owner/provider authorization, revoke, process recovery and complete task journeys |
 | Voice | Recording review, manual transcript fallback, explicit local/agent routes, owned playback and cancellation | Transcript quality, six-second latency target, physical microphone/speaker/Bluetooth and lifecycle |
 | Inbox | Account-bound Gmail adapter and operation journal; disclosed local draft/attachment simulator | Real provider grants, approved read/send journeys, account isolation and uncertain-outcome recovery |
-| Calendar | Persistent events, zoned/all-day dates, recurring series and overrides, preferences, local guest/meeting UI, alerts, backup and reviewed reset | Transactional storage below; salvage/import, live-agent series, real invitations/conferencing and provider sync |
+| Calendar | Persistent events, zoned/all-day dates, recurring series and overrides, preferences, local guest/meeting UI, alerts, backup and reviewed reset | Transactional storage below; partial-damage salvage, live-agent series, real invitations/conferencing and provider sync |
 | Reminders and Clock | Shared native reminder engine, browser reminders, Done/Snooze/repeats, foreground alarm ownership and native Clock handoff | Physical audibility, Doze/OEM delivery, reboot, DND and hardware time-zone changes |
 | Browser | Development iframe, bookmarks, navigation, reviewed reading; isolated native browser surface | Cross-origin access limits, real password-provider/passkey/autofill behavior and release WebView lifecycle |
 | Camera and Scan | Capture/import, local OCR, reviewed text/links/calendar suggestions, multipage drafts, perspective correction, page-edge suggestions and searchable PDF | Physical camera/torch/permissions, OCR language/photo quality, edge quality and interrupted capture |
@@ -101,3 +101,29 @@ four physical units and user acceptance remain explicit gates. Offline-LLM and
 Telegram/Discord scope conflicts require product disposition. Historical build
 counts, source migrations and failed-attempt narratives are available in Git
 history rather than serving as current setup instructions.
+
+## Browser calendar backup restore
+
+Calendar recovery accepts a selected Alpha calendar backup (domain bytes or a
+recognized document envelope), validates the complete event set and previews the
+count and titles before a separate replacement confirmation. It restores local
+event copies with new identities and revisions, preserving recurrence, exclusions
+and edited occurrences. Alerts are off; invitations are not sent. Preferences and
+creation/action receipts are not imported. This avoids treating historical effect
+records as new instructions. The current calendar can be downloaded first.
+
+Replacement uses the captured document revision and older-copy bytes; newer edits
+or legacy writes invalidate approval. Closing or retiring the dialog aborts a queued
+write. The exact legacy copy remains available. Invalid or partially damaged files
+are rejected as a whole, so selective salvage remains open. This is Alpha browser
+backup recovery, not ICS/provider import or native Calendar restoration.
+
+Calendar restore qualification: all 36 owning restore/recovery checks passed across
+Chromium, Firefox and WebKit, including reviewed replacement, invalid files, stale
+approval, queued cancellation and access from a healthy calendar. The 26 parser
+and domain-document unit checks passed, including strict guest-response admission.
+`npm run verify` passed all 644 tests, type checking, the production build and the
+bundle audit before the final strict-response guard. That guard then passed the
+owning unit/browser suites and type checking; the expensive unrelated runner
+suite was not repeated. These results do not qualify native/device behavior or
+unrelated MVP acceptance.

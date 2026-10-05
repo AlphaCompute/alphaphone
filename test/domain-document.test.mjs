@@ -123,3 +123,12 @@ test('cancellation during asynchronous initialization prevents a later edit or r
  await assert.rejects(f.domain.read(async()=>{readAbort.abort();return {};},readAbort.signal),{name:'AbortError'});
  assert.equal((await f.domain.capture()).raw,null);
 });
+
+test('reviewed restore is atomic, retains legacy bytes and rejects stale or cancelled approvals',async()=>{
+ const f=fixture('damaged legacy');const captured=await f.domain.capture();
+ await f.domain.restore(captured,'{"events":[]}');assert.equal(await f.domain.readRaw(),'{"events":[]}');assert.equal(f.legacy(),'damaged legacy');
+ await assert.rejects(f.domain.restore(captured,'{"events":[1]}'),/saved document changed/);
+ const next=await f.domain.capture(),abort=new AbortController();abort.abort();await assert.rejects(f.domain.restore(next,'{}',abort.signal));
+ f.setLegacy('newer old-tab data');await assert.rejects(f.domain.restore(next,'{}'),/Older browser data changed/);
+ assert.equal(JSON.parse(f.saved().raw).value,'{"events":[]}');
+});

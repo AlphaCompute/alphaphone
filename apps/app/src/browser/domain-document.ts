@@ -76,6 +76,12 @@ export class BrowserDomainDocument {
   catch{return {snapshot,legacy,raw:snapshot.raw,format:'unrecognized',legacyChanged:false};}
  }
 
+ /** Product-reviewed replacement, bound to the exact captured bytes and legacy copy. */
+ async restore(expected:DomainRecovery,raw:string,signal?:AbortSignal):Promise<void>{
+  signal?.throwIfAborted();unchanged(this.legacy(),expected.legacy);
+  await this.documents.compareExchange(this.key,expected.snapshot,JSON.stringify({version:1,legacy:expected.legacy,value:raw}),signal);
+ }
+
  /** Called only after explicit reset confirmation of the captured recovery state. */
  async reset(expected:DomainRecovery,signal?:AbortSignal):Promise<void>{
   signal?.throwIfAborted();unchanged(this.legacy(),expected.legacy);
