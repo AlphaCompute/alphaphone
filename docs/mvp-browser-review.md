@@ -173,7 +173,8 @@ receipts, without creating or deleting events. Confirmed saves clear only the ma
 form. Storage failure leaves current text available and exposes recovery.
 
 Creation forms and inline existing-event/reminder edit forms retain drafts in separate
-slots. The separate recurring/all-day Calendar editor still needs restart recovery.
+slots. The separate recurring/all-day Calendar editor also retains per-event drafts,
+with explicit recovery when the event is reopened for editing.
 Post-save unsaved Inbox edits also remain open. Android execution and physical
 process-death acceptance remain separate from browser qualification.
 
@@ -191,8 +192,11 @@ Cases cover date rollover, cross-tab conflict, uncertain event/reminder outcomes
 explicit replacement/discard, oversized edits and damaged-form recovery without
 changing saved events. The restored form was inspected at 412 × 915. The primary-checkout repository run finished with 658 of 660 tests passing: an
 untracked ownership audit links to removed patches, and its previously staged Android
-payload does not match the current source pin. Integrated verification in the clean
-worktree is pending; no Android build or native execution is claimed.
+payload does not match the current source pin. Those historical failures remain distinguished from the clean-worktree integrated
+result: consumer `baa41362` passed all 663 tests, type checking, production build
+and the 245-file flag-off bundle audit. The ownership links were repaired in
+PR #325; the old staged Android payload was preserved. No Android build or native
+execution is claimed.
 
 ## Unsaved inline Calendar and Reminder edits
 
@@ -204,6 +208,25 @@ rebase together, so a title-only change after midnight does not reschedule it.
 Confirmed saves clear only the matching retained form. Explicit discard cannot
 erase a newer draft from another tab and leaves saved items unchanged.
 
-This is implemented for the inline editor; the separate recurring/all-day modal
-and unsaved Inbox edits remain open. Browser qualification for this batch is in
-progress. Native encrypted storage and process-death behavior remain unqualified.
+Inline-editor qualification: all 63 creation/edit draft cases passed across
+Chromium, Firefox and WebKit, plus 42 existing Calendar save and Reminder
+edit/timing cases in Chromium. The full 663-test integrated result above includes
+this implementation. Native encrypted storage and process-death remain unqualified.
+
+## Recurring and all-day Calendar editor recovery
+
+The separate browser editor retains per-event text, selected dates/time zone,
+all-day presentation, recurrence, alerts, attendees and local meeting preference.
+Reopening the event offers explicit Restore or Discard; it does not apply old edits
+automatically. Retained edits keep their original event revision, so restoring an
+older version cannot overwrite a newer event. Cross-tab writes require explicit
+conflict review. Oversized edits remain visible, and a confirmed event save whose
+draft cleanup fails disables another save and reports the cleanup failure.
+
+The final typecheck passed. All 26 final recovery/accessibility browser cases passed
+across Chromium, Firefox and WebKit, following 14 initial editor/recurrence/
+accessibility regressions and 21 recovery cases before the compact-layout adjustment.
+The corrected 360 × 360 restored editor was visually inspected. The earlier full
+663-test result predates this modal change; its combined root verification is
+deferred to the next implementation batch. No Android build was run. Unsaved
+Inbox edits remain the next draft-recovery gap.
