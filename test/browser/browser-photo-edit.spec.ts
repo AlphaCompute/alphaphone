@@ -47,9 +47,9 @@ test('lost photo-copy response and reload recover the same durable receipt witho
  await page.getByRole('button',{name:'Save edit',exact:true}).click();
  await expect(page.getByText('Saved a copy. Original unchanged.',{exact:true})).toBeVisible();
  const request=await page.evaluate(()=>(window as any).savedEdit);
- await page.evaluate(id=>localStorage.setItem('alpha.photos.pending-copy.v1',id),request.sessionId);
+ await page.evaluate(async id=>(await import('/src/runtime/media-copy-intent.ts')).admitMediaCopyIntent(id),request.sessionId);
  await page.reload();await page.getByRole('button',{name:'Photos',exact:true}).click();
- await expect.poll(()=>page.evaluate(()=>localStorage.getItem('alpha.photos.pending-copy.v1'))).toBe(null);
+ await expect.poll(()=>page.evaluate(async()=>(await import('/src/runtime/media-copy-intent.ts')).readMediaCopyIntent())).toBe(null);
  const result=await page.evaluate(async request=>{
   const {browserPhotoLibrary:library}=await import('/src/prototype/browser-camera.ts');
   const first=await library.editResult({operationId:request.sessionId}),repeated=await library.saveEdit(request);
@@ -114,4 +114,22 @@ test('preview and save capture transform parameters before asynchronous work',as
   return {preview:[preview.width,preview.height],copy:[copy.width,copy.height]};
  });
  expect(result).toEqual({preview:[120,240],copy:[120,240]});
+});
+for(const mode of ['failed','cancelled'])test(`photo copy waits for durable request admission: ${mode}`,async({page})=>{
+ await seed(page);await openEditor(page);
+ await page.evaluate(async mode=>{
+  const {browserPhotoLibrary:library}=await import('/src/prototype/browser-camera.ts'),{browserDocuments}=await import('/src/browser/documents');const save=library.saveEdit,edit=browserDocuments.edit;(window as any).copyDispatches=0;
+  library.saveEdit=async input=>{(window as any).copyDispatches++;return save(input);};
+  browserDocuments.edit=async function(key,fn,signal){if(key!=='alpha.photos.pending-copy.v1')return edit.call(this,key,fn,signal);browserDocuments.edit=edit;if(mode==='failed')throw Error('Synthetic admission refused');const result=await edit.call(this,key,fn,signal);await new Promise<void>(resolve=>(window as any).releaseCopyAdmission=resolve);return result;};
+ },mode);
+ await page.getByRole('button',{name:'Save edit',exact:true}).click();
+ if(mode==='cancelled'){await expect.poll(()=>page.evaluate(()=>typeof(window as any).releaseCopyAdmission)).toBe('function');await page.getByRole('button',{name:'Cancel edit',exact:true}).click();await page.evaluate(()=>(window as any).releaseCopyAdmission());}
+ else await expect(page.getByText('Copy request could not be retained. Check saved-copy recovery before another save.',{exact:true})).toBeVisible();
+ await expect.poll(()=>page.evaluate(async()=>(await import('/src/runtime/media-copy-intent.ts')).readMediaCopyIntent())).toBeNull();expect(await page.evaluate(()=>(window as any).copyDispatches)).toBe(0);expect(await page.evaluate(async()=>(await(await import('/src/prototype/browser-camera.ts')).browserPhotoLibrary.list()).items.length)).toBe(1);
+});
+test('a late pending-request read cannot open an editor after Home',async({page})=>{
+ await seed(page);await page.getByRole('button',{name:'Photos',exact:true}).click();await page.getByRole('button',{name:/^Captured photo /}).click();
+ await page.evaluate(async()=>{const {browserDocuments}=await import('/src/browser/documents'),read=browserDocuments.read;browserDocuments.read=async function(key,signal){if(key==='alpha.photos.pending-copy.v1'){browserDocuments.read=read;const result=await read.call(this,key,signal);await new Promise<void>(resolve=>(window as any).releaseCopyRead=resolve);return result;}return read.call(this,key,signal);};});
+ await page.getByRole('button',{name:'Edit photo',exact:true}).click();await expect.poll(()=>page.evaluate(()=>typeof(window as any).releaseCopyRead)).toBe('function');await page.getByRole('button',{name:'Home',exact:true}).click();await page.evaluate(()=>(window as any).releaseCopyRead());await expect(page.getByRole('button',{name:'Save edit',exact:true})).toHaveCount(0);
+ await page.getByRole('button',{name:'Photos',exact:true}).click();await expect(page.getByRole('button',{name:'Save edit',exact:true})).toHaveCount(0);
 });
