@@ -103,3 +103,25 @@ four physical units and user acceptance remain explicit gates. Offline-LLM and
 Telegram/Discord scope conflicts require product disposition. Historical build
 counts, source migrations and failed-attempt narratives are available in Git
 history rather than serving as current setup instructions.
+
+## Development digest inbox follow-up
+
+The development inbox now stores its result index, saved result slots and pending
+request record in one account-scoped browser document. Reads and expected-value
+updates share that document. Existing localStorage slot bytes remain untouched and
+are preserved verbatim as string values in the migration archive; an observed
+older-copy change refuses access. Connection retirement is checked after reads
+and supplies cancellation to document operations.
+
+Scheduled digests exposes a development inbox recovery dialog with an archive
+backup and revision-checked reset. Reset clears local delivery/recovery records,
+not agent schedules; the dialog explicitly warns users to reconcile uncertain
+requests before creating replacements. A reset tombstone prevents older data
+from returning. This migration does not move the separate development scheduler,
+workflow execution, source-grant or configured-agent stores.
+
+TypeScript passes. The prepared sequential qualification contains 66 cases across
+Chromium, Firefox and WebKit: inbox migration/recovery plus the existing digest
+storage, schedule, live-source and delegation journeys. The earlier combined
+storage campaign remains live at c1f21e71; no terminal browser result is claimed
+for either campaign here. Android builds remain excluded by the requested scope.
