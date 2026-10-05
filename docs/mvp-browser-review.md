@@ -63,6 +63,24 @@ Evidence is retained in the qualification checkout under
 The redaction summary is `test-results/local-redaction/result.json`.
 No Android build was run for this integrated checkpoint.
 
+Additional terminal browser evidence on October 5:
+
+| Source and lane | Result | Scope |
+| --- | --- | --- |
+| `4d8d09097c4c89ce3f336950903e798f45f0051c`, Firefox and WebKit storage | 726 passed, zero failed (13.4 minutes) | Both configured cross-engine storage suites, including retained drafts and recovery; not every app journey in those engines |
+| `af098a113b5173db9ba2edc9c924e3989a99f82f`, production surface | 11 passed, zero failed (13.7 seconds) | Flag-off build, real/empty entry points, absent developer surfaces and CSP behavior |
+
+Logs are `artifacts/calendar-form-review/integrated-storage.log` and
+`integrated-production.log` in the primary checkout. The broad Chromium campaign
+on `4145e3a9` is still running. Its Calendar guest failure used an ambiguous status
+selector after editor-draft retention; selected-file and image-question expectations
+still described the old input's discarded newlines. The corrected exact save-status
+and multiline assertions passed all nine owning cases, including local OCR and
+cancelled recognition (`artifacts/settings-review/remaining-browser.log` in the
+`alpha-live-settings-review` checkout). No product behavior was weakened to satisfy
+these assertions. These later focused passes do not relabel the earlier campaign
+as green.
+
 | Surface | Implementation | Remaining acceptance |
 | --- | --- | --- |
 | Home and settings | Product-owned preview, themes, assistant dock, agenda, device development controls | Native boot, lock, HOME role and actual system controls |
