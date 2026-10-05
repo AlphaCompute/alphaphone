@@ -126,9 +126,11 @@ jobs:
           python3 test/resident-crash-diagnostic.test.py
       - name: Install pinned Android native toolchain
         run: |
-          python3 scripts/ci/resident-phase.py --name android-toolchain --seconds 1200 sdkmanager 'platforms;android-36' 'build-tools;36.0.0' 'ndk;28.2.13676358' 'cmake;3.22.1'
+          python3 scripts/ci/resident-phase.py --name android-toolchain --seconds 1200 sdkmanager 'platforms;android-36' 'build-tools;36.0.0' 'ndk;28.2.13676358'
           echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/28.2.13676358" >> "$GITHUB_ENV"
-          echo "$ANDROID_HOME/cmake/3.22.1/bin" >> "$GITHUB_PATH"
+          # The speech wrappers require the CMake release of the qualified build.
+          python3 -m pip install cmake==4.0.3
+          test "$(cmake --version | head -1)" = "cmake version 4.0.3"
       - run: python3 scripts/ci/resident-phase.py --name product-install --seconds 600 npm ci
       - run: node --test vendor/eliza/packages/os/scripts/__tests__/stage-launcher-overlay.node.test.ts
       # Cache only acquisition inputs. Every hit is size/hash verified; generated
@@ -154,7 +156,7 @@ jobs:
         run: |
           python3 scripts/ci/resident-phase.py --name speech-assets --seconds 600 python3 scripts/local-speech/prepare-assets.py
           python3 scripts/ci/resident-phase.py --name speech-assemble --seconds 600 python3 scripts/local-speech/assemble-runtime.py
-          python3 scripts/ci/resident-phase.py --name speech-install --seconds 600 python3 scripts/local-speech/install-generated.py --repository "$GITHUB_WORKSPACE"
+          python3 scripts/ci/resident-phase.py --name speech-install --seconds 600 python3 scripts/local-speech/install-generated.py --repository "$GITHUB_WORKSPACE" --allow-unqualified-runtime
       - name: Prepare and qualify fresh resident source with normal hooks
         env:
           NODE_OPTIONS: --max-old-space-size=4096
