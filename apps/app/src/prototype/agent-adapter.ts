@@ -1,3 +1,6 @@
+import {openBrowserNotes,browserNotesRecovery} from '../runtime/browser-notes-document';
+import {audioDeletionRecovery} from '../runtime/note-audio-deletions';
+import {openDomainRecovery} from '../browser/domain-recovery';
 import {reviewSummaryNote} from './summary-note-review';
 import {summarySourceOf as sourceOf,recordingSourceOf,recordingRevision,type SummarySource as Source} from './summary-source';
 import {reviewAgentClock} from '../runtime/clock-agent-review';
@@ -13,7 +16,7 @@ import { readMapsSelection } from '../maps/agent-context';
 import {isReminderOperation,validateReminderResult} from '../runtime/reminder-contract';
 import { SecureNotesStore, readLegacyDailyNotes } from '../runtime/notes-secure-store';
 import { secureConnectionStore } from '../runtime/native-connection';
-import {NotesStore,NotesCommitUncertain} from '../runtime/notes-store';
+import {NotesCommitUncertain} from '../runtime/notes-store';
 import {isNotesOperation} from '../runtime/notes-contract';
 import {isCalendarOperation,validateCalendarResult} from '../runtime/calendar-contract';
 import { isMvpView } from "./mvp-features";
@@ -32,6 +35,9 @@ import { connectionController } from '../runtime/connection-ui';
 type Shell = any;
 export function installAgentAdapter(Component: Shell, views: Shell) {
   const p = Component.prototype;
+  let activeShell:Shell|null=null,notesRecovery:AbortController|null=null;
+  const notesLeave=views.notes.onLeave;
+  views.notes.onLeave=(...args:Shell[])=>{notesRecovery?.abort();return notesLeave?.(...args);};
   const originalMount = p.componentDidMount;
   const originalUpdate = p.componentDidUpdate;
   const originalUnmount = p.componentWillUnmount;
@@ -96,6 +102,7 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
     document.documentElement.dataset.alphaCanGoBack = String(connectionController.getSnapshot().open || !!s.view || s.shade || s.chat === 'sheet' || s.chat === 'full' || s.voice !== 'off');
   }
   p.componentDidMount = function () {
+    activeShell=this;this.notesOpenAbort=new AbortController();
     originalMount.call(this);
     this.live = true;
     this.connectionSession = connectionController.getSnapshot().session?.sessionId;
@@ -124,7 +131,7 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
     document.documentElement.dataset.notesOpenStage='starting';
     this.notesReady = (async()=>{
       const initial=()=>{document.documentElement.dataset.notesOpenStage='legacy-daily-read';return readLegacyDailyNotes(localStorage);};
-      this.notesStore=isAndroid?await SecureNotesStore.open(secureConnectionStore,localStorage,initial,stage=>{document.documentElement.dataset.notesOpenStage=stage;}):new NotesStore(localStorage,initial);
+      this.notesStore=isAndroid?await SecureNotesStore.open(secureConnectionStore,localStorage,initial,stage=>{document.documentElement.dataset.notesOpenStage=stage;}):await openBrowserNotes(this.notesOpenAbort.signal);
       if(!this.live)return;
       document.documentElement.dataset.notesStorageState='ready';
       this.notesStorageFailed=false;this.notesRaw=this.notesStore.raw;
@@ -148,7 +155,7 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
     this.notesCommittedHandler=()=>{if(this.live&&this.notesStore&&!this.notesStorageFailed&&!this.notesPending){this.notesRaw=this.notesStore.raw;originalSet.call(this,'notes',{list:this.notesStore.list,storageStatus:isAndroid?'Note text encrypted on this device':''});context(this);}};
     window.addEventListener('alpha:notes-committed',this.notesCommittedHandler);
     this.visibilityHandler = () => { if (this.live) context(this); };
-    this.pageHideHandler = () => { this.pageSuspended = true; if (this.live) context(this); };
+    this.pageHideHandler = () => { notesRecovery?.abort();this.pageSuspended = true; if (this.live) context(this); };
     this.pageShowHandler = () => { this.pageSuspended = false; if (this.live) context(this); };
     document.addEventListener('visibilitychange', this.visibilityHandler);
     window.addEventListener('pagehide', this.pageHideHandler);
@@ -373,6 +380,7 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
   };
   p.componentDidUpdate = function (prev: Shell) { originalUpdate.call(this, prev); context(this); };
   p.componentWillUnmount = function () {
+    this.notesOpenAbort?.abort();if(activeShell===this){activeShell=null;notesRecovery?.abort();}
     this.closeSummaryReview?.();
     this.connectionUnsubscribe?.();
     window.removeEventListener('alpha:notes-committed',this.notesCommittedHandler);
@@ -575,6 +583,9 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
   views.notes.render = function (state: Shell, api: Shell) {
     const out = notesRender({ ...state, record: false }, api);
     out.storageStatus=state.storageStatus;
+    out.browserRecovery=!isAndroid&&Boolean((activeShell?.notesStorageFailed&&document.documentElement.dataset.notesStorageState!=='opening')||activeShell?.notesStore?.needsRecovery||state.audioDeletionRecoveryFailed||state.audioDeletionPending?.length);
+    out.openBrowserRecovery=()=>{const shell=activeShell;if(!shell||shell.notesPending)return;notesRecovery?.abort();const controller=notesRecovery=new AbortController();openDomainRecovery({capture:async signal=>{const saved=await browserNotesRecovery.capture(signal);return {...saved,raw:JSON.stringify({saved:saved.raw,draft:shell.notesStore?.raw??null})};},reset:browserNotesRecovery.reset},'Notes','Browser Notes recovery','Download saved Notes and the current editor draft before resetting. Reset starts an empty collection; it does not delete audio files or resolve pending audio deletion. Close other Alpha tabs before continuing.',controller.signal);};
+    out.openAudioRecovery=async()=>{const shell=activeShell;if(!shell)return;notesRecovery?.abort();const controller=notesRecovery=new AbortController();try{const recovery=await audioDeletionRecovery();if(controller.signal.aborted||activeShell!==shell||!shell.live||shell.S().view!=='notes')return;openDomainRecovery(recovery,'note audio deletion history','Note audio deletion recovery','Download unresolved note/audio deletion records before resetting. Reset forgets recovery records, but does not delete or restore Notes or audio. Check uncertain outcomes before repeating any deletion. Close other Alpha tabs before continuing.',controller.signal);}catch{if(!controller.signal.aborted)api.toast('Audio deletion recovery could not be opened.');}};
     const dictate = async () => {
       try {
         const r = await DailyApps.perform({ action: 'voice' });

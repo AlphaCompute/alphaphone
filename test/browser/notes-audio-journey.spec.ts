@@ -29,7 +29,7 @@ test('Notes records, reviews, saves, reloads, plays and restores the same retain
  await page.evaluate(async()=>{const {ctx,osc}=(window as any).fixture;osc.stop();await ctx.close();});
  await page.reload();await page.getByRole('button',{name:'Notes',exact:true}).click();await page.getByRole('button',{name:'Open Browser audio journey',exact:true}).click();
  await expect(page.getByText('A recorded note saved through the real Notes interface.',{exact:true}).first()).toBeVisible();
- const note=await page.evaluate(()=>JSON.parse(localStorage.getItem('alphaphone:notes:v2')!).records.find((n:any)=>n.title==='Browser audio journey'));
+ const note=await page.evaluate(async ()=>JSON.parse((await (await import('/src/runtime/browser-notes-document.ts')).readBrowserNotesRaw())!).records.find((n:any)=>n.title==='Browser audio journey'));
  const replay=await page.evaluate(async(note)=>{
   const {registerPlugin}=await import('/src/platform-plugins.ts');const voice=registerPlugin<any>('AlphaVoiceCloud');
   const result=await voice.saveRecording({recordingId:note.audio.audioId,noteId:note.id,transcript:note.body});

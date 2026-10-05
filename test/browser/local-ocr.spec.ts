@@ -63,11 +63,11 @@ test('Camera Scan reviews real OCR and commits only corrected text to durable No
   await page.getByRole('button',{name:'Scan mode',exact:true}).click();await page.getByRole('button',{name:'Scan text',exact:true}).click();
   const dialog=page.getByRole('dialog',{name:'Review scanned text'});await expect(dialog).toBeVisible();
   const text=dialog.getByRole('textbox',{name:'Scanned text'});await expect(text).toHaveValue(/Alpha local scan/,{timeout:60000});
-  expect(await page.evaluate(()=>JSON.parse(localStorage.getItem('alphaphone:notes:v2')||'{"records":[]}').records.filter((n:any)=>n.id.startsWith('scan-')).length)).toBe(0);
+  expect(await page.evaluate(async ()=>JSON.parse((await (await import('/src/runtime/browser-notes-document.ts')).readBrowserNotesRaw())||'{"records":[]}').records.filter((n:any)=>n.id.startsWith('scan-')).length)).toBe(0);
   await text.fill('Reviewed scan title\nCorrected by the user.');await dialog.getByRole('button',{name:'Save to Notes',exact:true}).click();await expect(dialog.getByRole('status',{name:'Scan status'})).toHaveText('Saved to Notes.');
   await page.screenshot({path:info.outputPath('scan-review.png'),animations:'disabled'});
   await dialog.getByRole('button',{name:'Close scan',exact:true}).click();await page.reload();
-  const saved=await page.evaluate(()=>JSON.parse(localStorage.getItem('alphaphone:notes:v2')!).records.filter((n:any)=>n.id.startsWith('scan-')));
+  const saved=await page.evaluate(async ()=>JSON.parse((await (await import('/src/runtime/browser-notes-document.ts')).readBrowserNotesRaw())!).records.filter((n:any)=>n.id.startsWith('scan-')));
   expect(saved).toHaveLength(1);expect(saved[0].body).toBe('Reviewed scan title\nCorrected by the user.');
 });
 
