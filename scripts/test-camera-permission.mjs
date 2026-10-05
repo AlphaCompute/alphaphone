@@ -1,3 +1,5 @@
+import assert from 'node:assert/strict';
+import {requireInstrumentationSuccess} from './instrumentation-result.mjs';
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
@@ -19,11 +21,12 @@ const previous=['android.permission.CAMERA'].map(permission=>{
  if(/SYSTEM_FIXED|POLICY_FIXED|ONE_TIME/.test(line))throw Error('Fixture refuses fixed or one-time permission state');
  return {permission,granted:line.includes('granted=true'),flags:['USER_SET','USER_FIXED'].filter(f=>line.includes(f)).map(f=>f.toLowerCase().replace('_','-'))};
 });
+const selectors=['CameraFlowInstrumentedTest#denyingCameraAllowsExplicitRetryWithoutFakePreview'].map(selector=>app+'.'+selector);
 let failure;
 try{
  for(const {permission} of previous){run('shell','pm','revoke',app,permission);run('shell','pm','clear-permission-flags',app,permission,'user-set','user-fixed');}
- const log=run('shell','am','instrument','-w','-r','-e','class',app+'.CameraFlowInstrumentedTest#denyingCameraAllowsExplicitRetryWithoutFakePreview','-e','cameraPermissionTest','true',app+'.test/androidx.test.runner.AndroidJUnitRunner');
- fs.writeFileSync(path.join(output,'instrumentation.txt'),log);evidence.passed=/OK \(1 test\)/.test(log)&&!/FAILURES|INSTRUMENTATION_FAILED|Process crashed/.test(log);if(!evidence.passed)throw Error('Camera permission flow failed; see instrumentation.txt');
+ const log=run('shell','am','instrument','-w','-r','-e','class',selectors.join(','),'-e','cameraPermissionTest','true',app+'.test/androidx.test.runner.AndroidJUnitRunner');
+ fs.writeFileSync(path.join(output,'instrumentation.txt'),log);evidence.instrumentation=requireInstrumentationSuccess(log,selectors.map(selector=>selector.split('#')[0]));assert.deepEqual([...evidence.instrumentation.cases].sort(),[...selectors].sort());evidence.passed=true;
 }catch(error){failure=error;evidence.error=error.message;}
 finally{
  try{
