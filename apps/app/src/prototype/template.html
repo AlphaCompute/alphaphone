@@ -3783,13 +3783,14 @@
 <div data-alpha-layer="shade" aria-hidden="{{shadeHidden}}" inert="{{shadeHidden}}" style="position: absolute; inset: 0; z-index: 66; background: var(--bg); transform: translateY({{shadeY}}); transition: transform .55s cubic-bezier(.19,1,.22,1); display: flex; flex-direction: column; padding: 56px 14px 0; box-sizing: border-box">
   <div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px">
     <sc-for list="{{tiles}}" as="t" hint-placeholder-count="8">
-      <button aria-label="{{t.label}}" aria-pressed="{{t.on}}" onClick="{{t.toggle}}" style="height: 62px; border-radius: 22px; display: flex; align-items: center; justify-content: center; transition: background .2s, color .2s; {{t.css}}"><svg class="i" viewBox="0 0 24 24"><path d="{{t.d}}"></path></svg></button>
+      <button aria-label="{{t.label}}" aria-pressed="{{t.on}}" disabled="{{t.disabled}}" onClick="{{t.toggle}}" style="height: 62px; border-radius: 22px; display: flex; align-items: center; justify-content: center; transition: background .2s, color .2s; {{t.css}}"><svg class="i" viewBox="0 0 24 24"><path d="{{t.d}}"></path></svg></button>
     </sc-for>
   </div>
   <div style="display: flex; align-items: center; gap: 12px; padding: 14px 10px 6px; color: var(--mut)">
     <svg class="i" viewBox="0 0 24 24" style="width: 18px; height: 18px"><path d="{{ic.sun}}"></path></svg>
-    <input type="range" min="0" max="100" value="{{bright}}" onChange="{{onBright}}" aria-label="Brightness">
+    <input type="range" min="0" max="100" value="{{bright}}" disabled="{{deviceSettingsPending}}" onChange="{{onBright}}" aria-label="Brightness">
   </div>
+  <sc-if value="{{deviceSettingsMessage}}"><p role="status">{{deviceSettingsMessage}}</p></sc-if>
   <div class="scr" style="flex-grow: 1; overflow-y: auto; margin-top: 12px; display: flex; flex-direction: column; gap: 6px; touch-action: pan-y">
     <sc-for list="{{shadeN}}" as="n" hint-placeholder-count="4">
       <div onPointerDown="{{n.down}}" onPointerUp="{{n.up}}" style="display: flex; gap: 12px; padding: 14px 16px; border-radius: 22px; background: var(--s2); transform: translateX({{n.tx}}px); opacity: {{n.op}}; transition: transform .28s cubic-bezier(.19,1,.22,1), opacity .28s; flex-shrink: 0; touch-action: pan-y">

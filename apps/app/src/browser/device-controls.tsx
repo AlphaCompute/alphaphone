@@ -1,4 +1,4 @@
-import {openBookmarkRecovery,openAlertSoundRecovery,openPasswordProviderRecovery} from './preference-recovery';
+import {openBookmarkRecovery,openAlertSoundRecovery,openPasswordProviderRecovery,openAlbumRecovery,openDevicePreferencesRecovery,openDeviceRolesRecovery} from './preference-recovery';
 import './device-controls.css';
 import {openNotificationRecovery} from './notification-recovery';
 import {openLocationControls} from './location-simulation';
@@ -32,6 +32,9 @@ export function BrowserDeviceControls({command}:{command:(command:Command)=>void
  <button onClick={()=>{dialog.current?.close();openReminderRecovery();}}>Reminder recovery</button>
  <button onClick={()=>{dialog.current?.close();openNotificationRecovery();}}>Notification recovery</button>
  <button onClick={()=>{dialog.current?.close();openBookmarkRecovery();}}>Bookmark recovery</button>
+ <button onClick={()=>{dialog.current?.close();openAlbumRecovery();}}>Photo album recovery</button>
+ <button onClick={()=>{dialog.current?.close();openDevicePreferencesRecovery();}}>Device settings recovery</button>
+ <button onClick={()=>{dialog.current?.close();openDeviceRolesRecovery();}}>Device role recovery</button>
  <button onClick={()=>{dialog.current?.close();openAlertSoundRecovery();}}>Notification sound recovery</button>
  {browserDevProfile&&<button onClick={()=>{dialog.current?.close();openPasswordProviderRecovery();}}>Password provider recovery</button>}
  {browserDevProfile&&<button onClick={()=>{dialog.current?.close();showSimulatorRecovery();}}>Saved app recovery</button>}

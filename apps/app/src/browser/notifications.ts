@@ -1,3 +1,4 @@
+import {readDevicePreferences} from './device-preferences';
 import {beginNoticeAction as notificationAction} from './notice-action';
 import {layoutBrowserDialog} from './dialog-layout';
 import {browserScreenLocked} from './screen-locked';
@@ -8,7 +9,7 @@ import { browserHostedResults } from './hosted-results';
 import { browserApps } from './apps';
 import { WebPlugin } from '@capacitor/core';
 import type { BrowserDaily } from './daily';
-import { readStore, revision } from './store';
+import { revision } from './store';
 import {notificationDocument,notificationState,type NotificationState as State} from './notification-store';
 
 const apps=browserApps;
@@ -46,7 +47,7 @@ export class BrowserNotifications extends WebPlugin {
  async resumeCrossApp(input:{expectedRevision:string}){await notificationDocument.edit(state=>{if(state.revision!==input.expectedRevision)throw Error('Settings changed. Refresh and try again.');state.paused=false;state.epoch=revision();state.revision=revision();});this.changed();return this.crossAppStatus();}
  async notificationHistory(){const state=await this.state();return {items:[...state.events].reverse()};}
  async clearNotificationHistory(){await notificationDocument.edit(state=>{state.events=[];state.epoch=revision();});this.changed();}
- async status(){const state=await this.state();return {appEnabled:state.appEnabled,permissionGranted:true,interruption:readStore<{doNotDisturb?:boolean}>('alpha.browser.device.v1',()=>({})).doNotDisturb||focusActive()?'none':'all',channels:Object.entries(state.channels).map(([id,enabled])=>({id,name:id==='reminders'?'Reminders':id==='calendar'?'Calendar':id,importance:enabled?3:0,blocked:!enabled})),scope:'browser'};}
+ async status(){const state=await this.state();return {appEnabled:state.appEnabled,permissionGranted:true,interruption:(await readDevicePreferences()).doNotDisturb||focusActive()?'none':'all',channels:Object.entries(state.channels).map(([id,enabled])=>({id,name:id==='reminders'?'Reminders':id==='calendar'?'Calendar':id,importance:enabled?3:0,blocked:!enabled})),scope:'browser'};}
  async inject(input:{packageName:string;title:string;text:string;id?:string;clearable?:boolean;autoCancel?:boolean;secret?:boolean;canOpen?:boolean}){
   const app=apps.find(app=>app.packageName===input.packageName);if(!app||typeof input.title!=='string'||typeof input.text!=='string'||input.title.length>200||input.text.length>2000||input.id!==undefined&&!/^[\w-]{1,128}$/.test(input.id))throw Error('Review the event fields.');
   for(const flag of ['clearable','autoCancel','secret','canOpen'] as const)if(input[flag]!==undefined&&typeof input[flag]!=='boolean')throw Error('Review the event options.');

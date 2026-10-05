@@ -19,3 +19,7 @@ export const bookmarkDocument=document('alpha.browser.bookmarks.v1','alpha:bookm
 export const alertSoundDocument=document('alpha.browser.alert-sounds.v1','alpha:alert-sounds-document-changed');
 
 export const passwordProviderDocument=document('alpha.browser.password-provider.v1','alpha:password-provider-document-changed');
+
+export const albumDocument=document('alpha.browser.albums.v1','alpha:albums-document-changed');
+export const devicePreferencesDocument=document('alpha.browser.device.v1','alpha:device-preferences-document-changed');
+export const deviceRolesDocument=document('alpha.browser.roles.v1','alpha:device-roles-document-changed');

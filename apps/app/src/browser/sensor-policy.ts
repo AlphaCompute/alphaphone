@@ -1,14 +1,16 @@
+import {cachedDevicePreferences,readDevicePreferences,initializeDevicePreferences} from './device-preferences';
 export type BrowserSensor='microphoneEnabled'|'locationEnabled';
-export function browserSensorEnabled(sensor:BrowserSensor){try{return JSON.parse(localStorage.getItem('alpha.browser.device.v1')||'{}')[sensor]!==false;}catch{return false;}}
+export function browserSensorEnabled(sensor:BrowserSensor){return cachedDevicePreferences()?.[sensor]===true;}
 /** Own a microphone permission request and its eventual stream across policy changes. */
 export class BrowserMicrophone {
  private closed=false;
  private stream?:MediaStream;
  private abort=new AbortController();
  private changed=()=>{if(!browserSensorEnabled('microphoneEnabled'))this.cancel();};
- constructor(private cancel:()=>void){window.addEventListener('alpha:device-settings',this.changed);}
+ constructor(private cancel:()=>void){initializeDevicePreferences();window.addEventListener('alpha:device-settings',this.changed);}
  async open(){
-  if(this.closed||!browserSensorEnabled('microphoneEnabled')){this.close();throw new DOMException('Microphone is off. Turn it on in device controls.','NotAllowedError');}
+  let enabled=false;try{enabled=(await readDevicePreferences(this.abort.signal)).microphoneEnabled;}catch(error){this.close();throw error;}
+  if(this.closed||!enabled){this.close();throw new DOMException('Microphone is off. Turn it on in device controls.','NotAllowedError');}
   const signal=this.abort.signal;
   return new Promise<MediaStream>((resolve,reject)=>{
    const cancelled=()=>reject(new DOMException('Recording cancelled','AbortError'));signal.addEventListener('abort',cancelled,{once:true});
