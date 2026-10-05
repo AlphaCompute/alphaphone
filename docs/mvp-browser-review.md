@@ -167,3 +167,30 @@ preference recovery and compact controls. The running c1f21e71 campaign remains
 frozen at its prior pin and does not qualify this integration. Its observed
 location fixture failure is retained in the campaign log and trace. No Android
 build was run by this review.
+
+## Shared development execution state
+
+Development workflow definitions, runs, mutation receipts, phone proposals and
+action journals now share one account-scoped document. Workflow admission reads
+both parts from its transaction snapshot; advancing a waiting run reads its
+proposal from that same snapshot. The protocol keeps its outer admission lock,
+while the document store serializes all journal and workflow edits. This avoids
+nested document locks and preserves independent updates to either part.
+
+Old-account journals remain bound to their captured namespace so an already
+started action can record a terminal receipt after account retirement. New
+reservations and transitions into applying require the current selected identity.
+Workflow edits recheck selection after asynchronous model-reply reads before
+committing. Recovery downloads exact older action/workflow bytes in an archive
+and resets both parts together. Its disclosure requires reconciliation of
+uncertain actions first and states that reset does not undo effects. Real runtime
+state and development scheduled-digest execution remain separate domains.
+
+TypeScript passes. Eight new cases cover empty reads, concurrent workflow/action
+creation, write rollback, exact legacy preservation, retired-account admission,
+stale resets, joint recovery and retirement during an asynchronous run. Existing
+proposal, execution, generation and receipt fixtures now read canonical documents
+and inject IndexedDB failures. The next sequential browser campaign now contains
+633 cases in 27 files across three engines, superseding the earlier pending batch
+sizes. It remains unrun while the frozen c1f21e71 campaign continues. This is not a
+claim of full MVP, hosted, native or real-provider qualification.
