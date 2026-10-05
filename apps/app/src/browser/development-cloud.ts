@@ -2,13 +2,13 @@ import {CloudPersonalProtocol} from '../runtime/cloud-personal-protocol';
 import {revision} from './store';
 import {cloudSetupDocument,type DevelopmentSetup as Setup,type DevelopmentScenario} from './development-cloud-document';
 export type {DevelopmentScenario} from './development-cloud-document';
-import {readDevelopmentCloudAccount,type DevelopmentCloudAccount as Account} from './development-account-document';
+import {developmentCloudAccount,readDevelopmentCloudAccount,type DevelopmentCloudAccount as Account} from './development-account-document';
 export {developmentCloudAccount,readDevelopmentCloudAccount,developmentCloudKey,selectDevelopmentCloud,developmentAccountRecovery,type DevelopmentAccount} from './development-account-document';
 export function developmentCloudSetupDocument(account:NonNullable<Account>){
  return cloudSetupDocument(account.account,async signal=>{signal?.throwIfAborted();const current=await readDevelopmentCloudAccount(signal);if(current?.account!==account.account||current.session!==account.session)throw Error('Development account changed.');});
 }
 export async function configureDevelopmentCloud(scenario:DevelopmentScenario,signal:AbortSignal){
- const account=await readDevelopmentCloudAccount(signal);if(!account||!['new','existing','insufficient','failed','changed'].includes(scenario))throw Error('Choose a development setup.');
+ const account=developmentCloudAccount();if(!account||!['new','existing','insufficient','failed','changed'].includes(scenario))throw Error('Choose a development setup.');
  await developmentCloudSetupDocument(account).edit(state=>{Object.keys(state).forEach(key=>delete (state as any)[key]);Object.assign(state,{phase:'review',scenario,quote:revision()});},signal);
  window.dispatchEvent(new Event('alpha:development-account-changed'));
 }
