@@ -82,11 +82,8 @@ Browser location lifecycle checks do not establish physical GPS or Android
 permission acceptance. Malformed location settings still need an explicit user-facing
 backup/reset path; automatic replacement would lose the retained bytes.
 
-Connection selection storage retirement is currently installed only for the
-development profile.
-Cloud environment selection has no equivalent storage-event retirement. These
-remain implementation/qualification gaps; current conversation-cache tests do
-not prove their ownership semantics.
+Browser connection preference retirement is described below. Provider and native
+credential acceptance remain separate from browser preference qualification.
 
 ## Appearance preference synchronization
 
