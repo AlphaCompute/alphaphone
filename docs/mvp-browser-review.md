@@ -102,6 +102,25 @@ geometry and icons independent of the upstream app UI. The supplied references
 remain requirements data, including deferred states; they do not authorize
 activating disabled routes.
 
+On October 5, 102 rendered reference-state captures from consumer `4145e3a9`
+were inspected as five contact sheets. Coverage includes light and dark Inbox,
+Calendar, Browser, Camera, Photos, Maps, Notes, Files, Workflows, Settings and
+shell/conversation states. The captures retain consistent Alpha typography,
+accent, navigation and phone composition; no additional gross layout break was
+identified in this visual pass. Full-size captures remain under the qualification
+checkout's `test-results/browser/design-*` directories; contact sheets are in the
+primary checkout's `artifacts/calendar-form-review/design-audit-1.png` through
+`design-audit-5.png`.
+
+These are labeled mock reference states, not a complete live-product design
+approval. In particular, their sample accounts, model/privacy summaries, booking
+forms, route maps and workflow results are simulated. The boot capture is a
+transition frame and proves neither native startup nor a completed boot animation.
+Contact-sheet inspection does not measure contrast, touch targets or focus order.
+The production-surface lane, live empty/error states, compact/large-text owning
+tests and real journeys must supply their own evidence. Physical accessibility
+and user task acceptance remain open.
+
 Review compact portrait/landscape layouts, large text, keyboard focus, scrolling,
 visible save/cancel controls and assistant-toolbar clearance. Calendar draft
 controls have a named focusable Event details region and 52 CSS-pixel minimum
