@@ -88,6 +88,15 @@ test('reset rejects a stale canonical snapshot or changed legacy bytes',async()=
  await assert.rejects(f.domain.reset(newer),/Older browser data changed/);assert.deepEqual(f.saved(),current);
 });
 
+test('a first import after a recovery capture requires a fresh capture before reset',async()=>{
+ const f=fixture('{"count":7}'),capture=await f.domain.capture();
+ assert.equal(capture.snapshot,undefined);
+ await f.domain.read(()=>({count:0}));const saved=f.saved();
+ await assert.rejects(f.domain.reset(capture),/saved document changed/);
+ assert.deepEqual(f.saved(),saved);
+ await f.domain.reset(await f.domain.capture());assert.equal((await f.domain.capture()).raw,null);
+});
+
 test('unreadable canonical metadata can be backed up exactly and explicitly reset',async()=>{
  const f=fixture('{"count":1}'),raw='{"version":99,"unrecognized":"retain me"}';
  await f.documents.compareExchange('calendar',undefined,raw);
