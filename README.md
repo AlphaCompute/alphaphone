@@ -153,6 +153,42 @@ assets using [the local speech build instructions](scripts/local-speech/README.m
 These generated inputs are intentionally absent from Git. Both ARM64 and x86_64
 runtimes are required; Android CI provisions and validates them on a clean checkout.
 
+Every Android build also needs the prepared resident runtime source in
+`artifacts/local-agent-resident-<commit>` (from `upstream.lock.json`): Gradle's
+`stageLocalAgentSources` step generates the native agent service classes from it.
+Release verification additionally requires the staged runtime payload. On a clean
+checkout, plain `npm run android:build` therefore stops:
+
+- without `npm run agent:prepare`, Gradle fails in `:app:stageLocalAgentSources`
+  (exit 1) before any APK is built;
+- with preparation but without `npm run agent:stage-android`, the four APKs build but
+  `scripts/verify-packaged-runtime.py` exits 3 for the release APKs (no packaged
+  resident runtime), and `npm run android:build` fails rather than labelling them
+  distributable.
+
+Staging also requires the workflow-worker artifact
+(`artifacts/mobile-workflow-worker-<commit>`), which `npm run android:build:local` does
+not build, and Gradle's `:local-speech:preBuild` requires the speech AAR built by the
+speech instructions above. On a clean checkout use:
+
+```sh
+# Distributable build: prepare, build the worker, stage the runtime, build and verify.
+npm run agent:prepare
+npm run agent:build-workflow-worker
+npm run agent:stage-android
+npm run android:build
+# Later rebuilds with the same staged inputs:
+npm run android:build:local
+# Developer APKs without the runtime payload (releases recorded distributable:false):
+npm run agent:prepare -- --source-only
+npm run android:build -- --allow-unpackaged-runtime
+```
+
+`agent:prepare` and `agent:stage-android` run the upstream Turborepo build. When they
+run under an AI coding agent, Turborepo may append its agent-guidance block to the
+prepared checkout's `AGENTS.md`, which the immutable-source check then rejects; run
+them with the agent-detection variables (`AI_AGENT`, `CLAUDECODE` and similar) unset.
+
 ```sh
 npm run android:build
 # Distribution APKs (switch off) are in artifacts/: debug-signed debug APKs and

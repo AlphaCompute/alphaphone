@@ -30,7 +30,7 @@ Android's service guidance requires attention to source domain, app identity/cer
 
 ## Concrete verification
 
-`BrowserAutofillInstrumentedTest#frameworkFillsOnlyVisibleCommittedHttpsChild` exercises the actual Android framework with `SyntheticAutofillService`, included only in the debug source set. The service remains dormant until native instrumentation arms it. It accepts only the target package's HTTPS example.com virtual fields, emits one synthetic dataset, and never persists, logs, uploads or saves structures or credentials.
+`BrowserAutofillInstrumentedTest#frameworkFillsOnlyVisibleCommittedHttpsChild` exercises the actual Android framework with `SyntheticAutofillService` from `android/app/src/testMocks`, attached to the debug variant and its instrumentation only when Gradle receives `ELIZA_DEV_ALLOW_TEST_MOCKS=1` (`npm run android:build -- --test-mocks`). The service remains dormant until native instrumentation arms it. It accepts only the target package's HTTPS example.com virtual fields, emits one synthetic dataset, and never persists, logs, uploads or saves structures or credentials.
 
 The test temporarily selects this debug provider and restores the previous provider in `finally`. It loads example.com over actual validated HTTPS, creates an instrumentation-only form in that child, taps its username field, selects the visible native dataset and checks filled values as booleans. Nothing is submitted to the website. It verifies the host cannot see the form, checks overlay cancellation, reload clears the fixture, failed navigation removes eligibility, and a real cleartext loopback form has no dataset or filled values. This does not use a production JavaScript form-reading API and does not bypass TLS validation.
 

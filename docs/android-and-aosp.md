@@ -17,6 +17,15 @@ configuration and fixture-package queries, and runs `scripts/audit-production-bu
 on each APK's extracted `assets/public`. These checks inspect APK bytes, not source
 strings alone.
 
+Gradle's `stageLocalAgentSources` step reads the prepared resident runtime source in
+`artifacts/local-agent-resident-<commit>`, so run `npm run agent:prepare` before any
+Android build. Release verification also requires the staged runtime payload from
+`npm run agent:stage-android`: without it `scripts/verify-packaged-runtime.py` exits 3
+and `npm run android:build` fails. `npm run agent:build-workflow-worker` must run before staging (`npm run android:build:local`
+does not build the worker), and Gradle's `:local-speech:preBuild` needs the speech AAR from
+[local speech setup](../scripts/local-speech/README.md). `npm run android:build -- --allow-unpackaged-runtime` is the developer
+path: it records release APKs without the payload as `distributable: false`.
+
 `npm run android:build -- --test-mocks` passes `-PELIZA_DEV_ALLOW_TEST_MOCKS=1` and writes
 only to `artifacts/test-mocks/`. It attaches `android/app/src/testMocks` (DevelopmentAgent
 and voice plugins, synthetic autofill service, loopback cleartext config, fixture-package
