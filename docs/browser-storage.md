@@ -11,6 +11,7 @@ readers. Alpha supplies domain names and legacy recovery policy.
 
 | Domain | Source integration | Behavior and verification scope |
 | --- | --- | --- |
+| Conversation restart choices | `runtime/conversation-selection.ts`; transactional browser map keyed by origin, owner and agent; both connection save paths await canonical storage | Each save edits the latest map without erasing other owners. For one owner, the last committed save wins for restart; an active session keeps its selected conversation. Cache IDs confer no provider authorization. Failed saves retain session-only selection. Backup/reset clears browser choices without deleting provider conversations. Native retains its installed renderer format. |
 | Calendar | `browser/calendar-store.ts`; async Calendar and digest reads; revision-checked backup/reset; cross-tab refresh | Creation/recovery, queued-read cancellation, transaction abort and stable-read-revision browser suites; domain import/recovery unit tests. |
 | Hosted digest result notices | `browser/hosted-results.ts`; durable rows and pending-tap token move together; cross-tab notice invalidation | Hosted-result browser suite covers notice flows, duplicate publication, pending taps and failed IndexedDB writes. |
 | Media saved-copy request | `runtime/media-copy-intent.ts`; transactional admission and exact cleanup for photo/video copy receipt recovery | Cancelling before dispatch clears only its own request. Recovery preserves legacy bytes and never deletes or recreates media. |
