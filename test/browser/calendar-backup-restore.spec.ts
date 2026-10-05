@@ -33,3 +33,7 @@ test('closing recovery while a transaction holds storage cancels the queued rest
  await page.evaluate(async()=>{(window as any).releaseRecovery();await (window as any).recoveryLock;});
  expect(await page.evaluate(async()=>(await import('/src/browser/calendar-store.ts')).calendarDocument.readRaw())).toBe('damaged original');
 });
+
+test('a coerced guest response cannot enter the reviewed calendar',async({page})=>{
+ const d=await open(page);await choose(d,{events:[{...backup.events[0],who:['Guest'],responses:{Guest:['yes']}}]});await expect(d.getByText('This is not a supported calendar backup. No events were changed.')).toBeVisible();await expect(d.getByRole('button',{name:'Review calendar restore',exact:true})).toBeDisabled();expect(await raw(page)).toBe('damaged original');
+});

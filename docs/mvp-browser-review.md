@@ -118,8 +118,12 @@ write. The exact legacy copy remains available. Invalid or partially damaged fil
 are rejected as a whole, so selective salvage remains open. This is Alpha browser
 backup recovery, not ICS/provider import or native Calendar restoration.
 
-Calendar restore qualification: all 33 owning restore/recovery checks passed across
+Calendar restore qualification: all 36 owning restore/recovery checks passed across
 Chromium, Firefox and WebKit, including reviewed replacement, invalid files, stale
-approval, queued cancellation and access from a healthy calendar. The 25 parser
-and domain-document unit checks passed. Full repository verification is recorded
-separately; these focused results do not qualify unrelated MVP surfaces.
+approval, queued cancellation and access from a healthy calendar. The 26 parser
+and domain-document unit checks passed, including strict guest-response admission.
+`npm run verify` passed all 644 tests, type checking, the production build and the
+bundle audit before the final strict-response guard. That guard then passed the
+owning unit/browser suites and type checking; the expensive unrelated runner
+suite was not repeated. These results do not qualify native/device behavior or
+unrelated MVP acceptance.
