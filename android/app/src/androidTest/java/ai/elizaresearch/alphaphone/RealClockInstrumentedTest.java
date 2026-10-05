@@ -75,7 +75,7 @@ public final class RealClockInstrumentedTest {
   output=new File(context.getExternalFilesDir(null),"real-clock-"+label.substring(14));assertTrue(output.mkdirs());
   android.accessibilityservice.AccessibilityServiceInfo info=ui.getServiceInfo();int oldFlags=info.flags;info.flags|=android.accessibilityservice.AccessibilityServiceInfo.FLAG_REPORT_VIEW_IDS;ui.setServiceInfo(info);
   boolean mayExist=false;List<String> before=null;Throwable failed=null;
-  try(ClockHistoryFixture clockHistory=new ClockHistoryFixture(context);BoundedActivityScenario<MainActivity> scenario=BoundedActivityScenario.launch(MainActivity.class)){
+  try(BoundedActivityScenario<MainActivity> scenario=BoundedActivityScenario.launch(MainActivity.class);ClockHistoryFixture clockHistory=new ClockHistoryFixture()){
    history=clockHistory;
    try{
     AppNavigation.liveMode();js(AppNavigation.request("Calendar"));waitJs(AppNavigation.selected("Calendar"));click("Clock alarms");show();
@@ -103,6 +103,7 @@ public final class RealClockInstrumentedTest {
     handoff("Dismiss");show();waitNative(n->row()!=null&&nodes(row()).stream().anyMatch(x->id(x,"onoff")&&!x.isChecked()),15000);assertTrue("Exact fixture is disabled",nodes(row()).stream().anyMatch(n->id(n,"onoff")&&!n.isChecked()));assertNull(context.getSystemService(AlarmManager.class).getNextAlarmClock());record("06-dismissed");
    }catch(Throwable t){failed=t;throw t;}finally{
     try{if(mayExist){showForCleanup();AccessibilityNodeInfo exact=row();assertNotNull("Fixture cleanup needs exact label",exact);AccessibilityNodeInfo delete=nodes(exact).stream().filter(n->id(n,"delete")&&n.isVisibleToUser()).findFirst().orElse(null);if(delete==null){AccessibilityNodeInfo arrow=nodes(exact).stream().filter(n->id(n,"arrow")).findFirst().orElseThrow(()->new AssertionError("Exact row expansion missing"));tap(arrow);waitNative(n->id(n,"delete"),5000);exact=row();delete=nodes(exact).stream().filter(n->id(n,"delete")&&n.isVisibleToUser()).findFirst().orElseThrow(()->new AssertionError("Exact row delete missing"));}tap(delete);long end=SystemClock.elapsedRealtime()+5000;while(row()!=null&&SystemClock.elapsedRealtime()<end)SystemClock.sleep(100);assertNull("Only synthetic row deleted",row());assertEquals("Existing disabled alarm rows preserved",before,baseline());record("07-cleaned");}
+     front();
     }catch(Throwable cleanup){if(failed!=null)failed.addSuppressed(cleanup);else throw cleanup;}
    }
   }finally{info.flags=oldFlags;ui.setServiceInfo(info);}

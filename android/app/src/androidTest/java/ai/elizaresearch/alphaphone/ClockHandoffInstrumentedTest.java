@@ -28,7 +28,7 @@ public final class ClockHandoffInstrumentedTest {
    String a=intent.getAction();if(AlarmClock.ACTION_SET_ALARM.equals(a)||AlarmClock.ACTION_SHOW_ALARMS.equals(a)||AlarmClock.ACTION_SNOOZE_ALARM.equals(a)||AlarmClock.ACTION_DISMISS_ALARM.equals(a)){synchronized(captured){captured.add(new Intent(intent));}return new Instrumentation.ActivityResult(Activity.RESULT_CANCELED,null);}return null;
   }};
   instrumentation.addMonitor(monitor);
-  try(ClockHistoryFixture history=new ClockHistoryFixture(instrumentation.getTargetContext());BoundedActivityScenario<MainActivity> scenario=BoundedActivityScenario.launch(MainActivity.class)){
+  try(BoundedActivityScenario<MainActivity> scenario=BoundedActivityScenario.launch(MainActivity.class);ClockHistoryFixture history=new ClockHistoryFixture()){
    AppNavigation.liveMode();js(AppNavigation.request("Calendar"));until(AppNavigation.selected("Calendar"));click("Clock alarms");
    for(String action:new String[]{"Set alarm","Show alarms","Snooze","Dismiss"}){
     click(action);int before=captured.size();click("Review Clock request");assertEquals(before,captured.size());click("Confirm Clock request");until("document.querySelector('[role=\"dialog\"][aria-label=\"Clock alarms\"]').textContent.includes('Clock request sent')");assertEquals(before+1,captured.size());history.completed(action.equals("Set alarm")?"set":action.equals("Show alarms")?"show":action.equals("Snooze")?"snooze":"dismiss");

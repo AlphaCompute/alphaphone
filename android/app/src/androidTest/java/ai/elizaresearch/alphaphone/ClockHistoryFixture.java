@@ -1,6 +1,5 @@
 package ai.elizaresearch.alphaphone;
 
-import android.content.Context;
 import android.os.SystemClock;
 import java.util.Objects;
 import org.json.JSONObject;
@@ -9,16 +8,18 @@ import static org.junit.Assert.*;
 /** Test-only encrypted receipt observation; unobserved or replaced records are retained. */
 final class ClockHistoryFixture implements AutoCloseable {
  private static final String SLOT="clock-handoff:v1:device";
- private final AlphaCredentialStore store;
  private String owned;
- ClockHistoryFixture(Context context)throws Exception{
-  store=new AlphaCredentialStore(context);
-  assertNull("Use a fixture without existing encrypted Clock history",store.readCredentialSlot(SLOT));
+ ClockHistoryFixture()throws Exception{
+  assertNull("Use a fixture without existing encrypted Clock history",read());
+ }
+ private String read()throws Exception{
+  JSONObject response=NotesSecureFixture.call("Capacitor.Plugins.AlphaConnection.secureRead({slot:'"+SLOT+"'})");
+  return response.isNull("value")?null:response.getString("value");
  }
  void completed(String action)throws Exception{
   long end=SystemClock.elapsedRealtime()+20000;
   while(SystemClock.elapsedRealtime()<end){
-   String raw=store.readCredentialSlot(SLOT);
+   String raw=read();
    if(raw!=null&&!Objects.equals(raw,owned)){
     JSONObject value=new JSONObject(raw),record=value.getJSONObject("record");
     if(!"opening".equals(record.getString("status"))){
@@ -32,11 +33,11 @@ final class ClockHistoryFixture implements AutoCloseable {
   throw new AssertionError("Clock encrypted completion missing; retain uncertain history");
  }
  @Override public void close()throws Exception{
-  synchronized(AlphaCredentialStore.LOCK){
-   String current=store.readCredentialSlot(SLOT);
-   if(current==null)return;
-   assertEquals("Retain changed or unobserved Clock history for recovery",owned,current);
-   store.removeCredentialSlot(SLOT);assertNull(store.readCredentialSlot(SLOT));
-  }
+  String current=read();
+  if(current==null)return;
+  assertEquals("Retain changed or unobserved Clock history for recovery",owned,current);
+  JSONObject args=new JSONObject().put("slot",SLOT).put("expectedValue",owned).put("value",JSONObject.NULL);
+  assertEquals("Fixture cleanup must not erase a newer handoff","saved",NotesSecureFixture.call("Capacitor.Plugins.AlphaConnection.secureCompareExchange("+args+")").getString("status"));
+  assertNull(read());
  }
 }
