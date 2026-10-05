@@ -2,7 +2,7 @@ import {test,expect} from '@playwright/test';
 const key='alpha.photos.pending-copy.v1';
 test.beforeEach(async({page})=>{await page.addInitScript(()=>localStorage.setItem('alpha.connection.selection.v1',JSON.stringify({kind:'offline'})));await page.goto('/');});
 test('empty read leaves the browser document uninitialized',async({page})=>{
- expect(await page.evaluate(async key=>{const m=await import('/src/runtime/media-copy-intent.ts'),{browserDocuments}=await import('/src/browser/documents');return {intent:await m.readMediaCopyIntent(),stored:!!await browserDocuments.read(key)};},key)).toEqual({intent:null,stored:false});
+ expect(await page.evaluate(async key=>{const m=await import('/src/runtime/media-copy-intent.ts'),{browserDocuments}=await import('/src/browser/documents.ts');return {intent:await m.readMediaCopyIntent(),stored:!!await browserDocuments.read(key)};},key)).toEqual({intent:null,stored:false});
 });
 test('two tabs cannot overwrite another pending copy',async({page,context})=>{
  const other=await context.newPage();await other.goto('/');
