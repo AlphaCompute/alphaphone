@@ -40,7 +40,7 @@ public final class PrivateResidentSocketInstrumentedTest {
  @Test public void ordinaryOtherUidCannotReachPrivateEndpoint()throws Exception{
   org.junit.Assume.assumeTrue("Dedicated owned-user supervisor only",InstrumentationRegistry.getArguments().getString("privatePeerFixture")!=null);
   assertEquals("Explicit supervisor required","1",InstrumentationRegistry.getArguments().getString("privatePeerFixture"));
-  assertTrue(BuildConfig.DEBUG);assertTrue(Process.myUid()/100000>0);
+  assertTrue("Peer fixture visibility requires a -PELIZA_DEV_ALLOW_TEST_MOCKS=1 debug build",BuildConfig.ELIZA_DEV_ALLOW_TEST_MOCKS);assertTrue(Process.myUid()/100000>0);
   String runId=InstrumentationRegistry.getArguments().getString("privatePeerRunId","");assertTrue(runId.matches("[0-9a-f-]{36}"));
   Context context=InstrumentationRegistry.getInstrumentation().getTargetContext();
   JSONObject boot=ElizaAgentService.getLocalAgentBootState(context);assertFalse(boot.getBoolean("serviceActive"));assertFalse(boot.getBoolean("socketListening"));

@@ -64,6 +64,18 @@ cannot be read, place selection is disabled while existing Home/Work bindings
 remain intact. The starting-value check is not an atomic cross-process
 compare-and-exchange operation.
 
+## Test-mocks switch and renderer keys
+
+Builds without `ELIZA_DEV_ALLOW_TEST_MOCKS=1` read none of the development keys
+(`alpha.dev.location.v1`, `alpha.dev.app.<view>`, the `alpha.browser.agent.*`,
+`alpha.browser.cloud.*`, `alpha.browser.digests.*` and `alpha.browser.workflows.*`
+development documents), and the development location editor is not shipped. When the
+switch is off, startup rewrites a saved `{kind:'mock'}` connection selection to
+`{kind:'none'}` once and opens the chooser, a stored `staging` Cloud service value is
+treated as signed out, and a Clock request made in mock mode fails closed without
+writing handoff history or opening Clock. These are migration rules for older saved
+state, not new storage domains.
+
 ## Native Clock handoff history
 
 `prototype/clock-adapter.ts` uses the existing encrypted Android storage API for

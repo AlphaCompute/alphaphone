@@ -1,4 +1,5 @@
 import {layoutBrowserDialog} from './dialog-layout';
+import {devSurfacesEnabled} from '../build-flags';
 import {browserDevProfile} from './dev-profile';
 import {coordinate} from '../maps/contracts';
 import {SavedPlaces} from '../maps/saved-places';
@@ -6,15 +7,17 @@ export const locationSimulationKey='alpha.dev.location.v1';
 export type LocationSimulation={mode:'browser'|'coordinates';latitude:number;longitude:number;accuracy:number;homeId:string;radius:number;workId?:string;workRadius?:number};
 const initial=():LocationSimulation=>({mode:'browser',latitude:0,longitude:0,accuracy:5,homeId:'',radius:200,workId:'',workRadius:200});
 export function readLocationSimulation():LocationSimulation{
- if(!browserDevProfile)return initial();const raw=localStorage.getItem(locationSimulationKey);if(raw===null)return initial();const value=JSON.parse(raw);validate(value);return {...initial(),...value};
+ if(!devSurfacesEnabled||!browserDevProfile)return initial();const raw=localStorage.getItem(locationSimulationKey);if(raw===null)return initial();const value=JSON.parse(raw);validate(value);return {...initial(),...value};
 }
 function validate(value:LocationSimulation){
  if(!value||!['browser','coordinates'].includes(value.mode)||typeof value.homeId!=='string'||value.homeId.length>80||!Number.isFinite(value.accuracy)||value.accuracy<0||value.accuracy>100000||!Number.isFinite(value.radius)||value.radius<10||value.radius>100000)throw Error('Choose valid location coordinates, accuracy and home radius.');coordinate(value);if(value.workId!==undefined&&(typeof value.workId!=='string'||value.workId.length>80)||value.workRadius!==undefined&&(!Number.isFinite(value.workRadius)||value.workRadius<10||value.workRadius>100000))throw Error('Choose a valid Work place and radius.');
 }
 export function saveLocationSimulation(value:LocationSimulation){
- if(!browserDevProfile)throw Error('Open the development device to set its location.');validate(value);const raw=JSON.stringify(value);localStorage.setItem(locationSimulationKey,raw);if(localStorage.getItem(locationSimulationKey)!==raw)throw Error('Location settings could not be saved.');window.dispatchEvent(new Event('alpha:dev-location'));
+ if(!devSurfacesEnabled||!browserDevProfile)throw Error('Location simulation is unavailable in this build.');validate(value);const raw=JSON.stringify(value);localStorage.setItem(locationSimulationKey,raw);if(localStorage.getItem(locationSimulationKey)!==raw)throw Error('Location settings could not be saved.');window.dispatchEvent(new Event('alpha:dev-location'));
 }
-export function openLocationControls(){
+// Development-server-only editor; flag-off builds fold it to an unavailable stub.
+export const openLocationControls:()=>void=devSurfacesEnabled?openDevelopmentLocationControls:()=>{throw Error('Location simulation is unavailable in this build.');};
+function openDevelopmentLocationControls(){
  const before=localStorage.getItem(locationSimulationKey);let config:LocationSimulation,damaged=false;
  try{config=readLocationSimulation();}catch{config=initial();damaged=true;}
  let placesUnavailable=false;

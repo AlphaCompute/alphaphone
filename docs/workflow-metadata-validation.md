@@ -1,6 +1,6 @@
 # Workflow Change: name and description
 
-The existing Change button now opens the prototype builder's name/save layout for name and description only. Live mode hides trigger, step, account, source-generation and palette controls. Mock mode retains its original builder. Save validates a nonempty name of at most200 characters and a description of at most4000 characters. It does not run, enable, disable or reschedule the workflow.
+The existing Change button now opens the prototype builder's name/save layout for name and description only. Live mode hides trigger, step, account, source-generation and palette controls. Mock mode, present only in `ELIZA_DEV_ALLOW_TEST_MOCKS=1` builds, retains its original builder. Save validates a nonempty name of at most200 characters and a description of at most4000 characters. It does not run, enable, disable or reschedule the workflow.
 
 ## Durable mutation contract
 

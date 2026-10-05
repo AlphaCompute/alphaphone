@@ -45,12 +45,16 @@ jobs:
           echo "3ea61b2a06e31edf1c91134fe9106b0ebb16628be169f3db75bc7a2b06b45796  $jar" | sha256sum --check --strict
           echo "ALPHA_JSON_JAR=$jar" >> "$GITHUB_ENV"
       - run: npm run verify
-      - run: npm run test:browser -- --shard=${{ matrix.shard }}/3
+      - name: Browser MVP on the flag-on development server
+        env:
+          # Development shards opt into test mocks, fixtures and device controls explicitly.
+          ELIZA_DEV_ALLOW_TEST_MOCKS: '1'
+        run: npm run test:browser -- --shard=${{ matrix.shard }}/3
       - name: Exercise synthetic local-agent speech profile
         if: matrix.shard == 1
         run: |
           node --input-type=module -e "import fs from 'node:fs'; fs.writeFileSync(process.env.RUNNER_TEMP + '/alpha-synthetic-owner-token', 'a'.repeat(64), {mode: 0o600});"
-          PLAYWRIGHT_HTML_OUTPUT_DIR=test-results/browser-agent-profile-report VITE_LOCAL_AGENT=1 ALPHA_LOCAL_AGENT_TOKEN_FILE="$RUNNER_TEMP/alpha-synthetic-owner-token" ALPHA_LOCAL_AGENT_ORIGIN=http://127.0.0.1:1 npm run test:browser -- test/browser/browser-agent-recording.spec.ts test/browser/browser-agent-tts.spec.ts --grep 'rendered browser recording|local agent TTS|prepared agent audio' --output=test-results/browser-agent-profile
+          PLAYWRIGHT_HTML_OUTPUT_DIR=test-results/browser-agent-profile-report ELIZA_DEV_ALLOW_TEST_MOCKS=1 VITE_LOCAL_AGENT=1 ALPHA_LOCAL_AGENT_TOKEN_FILE="$RUNNER_TEMP/alpha-synthetic-owner-token" ALPHA_LOCAL_AGENT_ORIGIN=http://127.0.0.1:1 npm run test:browser -- test/browser/browser-agent-recording.spec.ts test/browser/browser-agent-tts.spec.ts --grep 'rendered browser recording|local agent TTS|prepared agent audio' --output=test-results/browser-agent-profile
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -60,6 +64,38 @@ jobs:
             test-results/browser-report/
             test-results/browser-agent-profile/
             test-results/browser-agent-profile-report/
+          retention-days: 14
+  production:
+    name: Browser production surface (flag off)
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - name: Production bundle audit
+        run: |
+          npm run build
+          node scripts/audit-production-bundle.mjs web-dist
+      - name: Test-mocks bundle records its flag
+        run: |
+          npm run build:test-mocks -- --outDir ../../test-results/test-mocks-web
+          node scripts/audit-production-bundle.mjs test-results/test-mocks-web --expect-test-mocks
+      # Builds and previews a flag-off bundle; the flag is deliberately unset here.
+      - run: npm run test:browser:production
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: browser-production-surface
+          path: |
+            test-results/browser/
+            test-results/browser-report/
           retention-days: 14
   storage:
     name: Browser storage (${{ matrix.browser }})
@@ -80,33 +116,11 @@ jobs:
       - run: npm ci
       - run: npx playwright install --with-deps ${{ matrix.browser }}
       - name: Verify canonical storage and asynchronous Cloud setup
-        run: >-
-          npm run test:browser --
-          test/browser/domain-atomicity.spec.ts
-          test/browser/location-settings-recovery.spec.ts
-          test/browser/connection-preference-storage.spec.ts
-          test/browser/appearance-storage.spec.ts
-          test/browser/workflow-intent-storage.spec.ts
-          test/browser/notes-document-storage.spec.ts
-          test/browser/notes-save-failure.spec.ts
-          test/browser/note-audio-delete-recovery.spec.ts
-          test/browser/media-copy-intent-storage.spec.ts
-          test/browser/conversation-selection-storage.spec.ts
-          test/browser/browser-photo-edit.spec.ts
-          test/browser/reminder-action-storage.spec.ts
-          test/browser/reminder-delete-review.spec.ts
-          test/browser/reminder-decision-review.spec.ts
-          test/browser/browser-reminder-edit-recovery.spec.ts
-          test/browser/reminder-creation-storage.spec.ts
-          test/browser/reminder-create-review.spec.ts
-          test/browser/domain-initialization.spec.ts
-          test/browser/dev-cloud-setup.spec.ts
-          test/browser/dev-cloud-scenarios.spec.ts
-          test/browser/cloud-personal-intent-storage.spec.ts
-          test/browser/cloud-personal-onboarding.spec.ts
-          test/browser/cloud-account-migration.spec.ts
-          test/browser/cloud-setup-migration.spec.ts
-          --browser=${{ matrix.browser }}
+        env:
+          # Storage specs run against the flag-on development server.
+          ELIZA_DEV_ALLOW_TEST_MOCKS: '1'
+        # The firefox and webkit projects in playwright.config.ts select the storage specs.
+        run: npx playwright test --project=${{ matrix.browser }}
       - uses: actions/upload-artifact@v4
         if: always()
         with:

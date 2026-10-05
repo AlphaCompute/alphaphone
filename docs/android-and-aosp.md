@@ -2,20 +2,56 @@
 
 ## Artifact identities
 
-Package: `ai.elizaresearch.alphaphone`. Version source: `app.config.json`. AOSP module: `AlphaPhone`.
+Package: `ai.elizaresearch.alphaphone`. Version source: `app.config.json`, overridden by
+`ELIZAOS_VERSION_CODE` (positive integer) and `ELIZAOS_VERSION_NAME` when set. AOSP module: `AlphaPhone`.
 Standalone and launcher variants share data and signing identity within this product.
 Use `adb install -r` to replace them. Do not uninstall a real user's app to switch variants.
 
-`npm run android:build` builds signed debug and unsigned release artifacts for both
-flavors, Android instrumentation APKs and Android lint. `android:verify` inspects
-compiled package IDs, HOME/LAUNCHER filters, bundled web assets, debug flags and debug
-signatures. These checks inspect APK bytes, not source strings alone.
+`npm run android:build` builds debug-signed debug artifacts and release artifacts for both
+flavors, Android instrumentation APKs and Android lint, all with
+`ELIZA_DEV_ALLOW_TEST_MOCKS` off. Release APKs are signed only when all four `ELIZAOS_*`
+signing values below are present; otherwise they are `*-release-unsigned.apk`.
+`android:verify` (`scripts/verify-apks.mjs`) inspects compiled package IDs, HOME/LAUNCHER
+filters, debug flags and signatures, the absence of test-mock classes, cleartext network
+configuration and fixture-package queries, and runs `scripts/audit-production-bundle.mjs`
+on each APK's extracted `assets/public`. These checks inspect APK bytes, not source
+strings alone.
+
+Gradle's `stageLocalAgentSources` step reads the prepared resident runtime source in
+`artifacts/local-agent-resident-<commit>`, so run `npm run agent:prepare` before any
+Android build. Release verification also requires the staged runtime payload from
+`npm run agent:stage-android`: without it `scripts/verify-packaged-runtime.py` exits 3
+and `npm run android:build` fails. `npm run agent:build-workflow-worker` must run before staging (`npm run android:build:local`
+does not build the worker), and Gradle's `:local-speech:preBuild` needs the speech AAR from
+[local speech setup](../scripts/local-speech/README.md). `npm run android:build -- --allow-unpackaged-runtime` is the developer
+path: it records release APKs without the payload as `distributable: false`.
+
+`npm run android:build -- --test-mocks` passes `-PELIZA_DEV_ALLOW_TEST_MOCKS=1` and writes
+only to `artifacts/test-mocks/`. It attaches `android/app/src/testMocks` (DevelopmentAgent
+and voice plugins, synthetic autofill service, loopback cleartext config, fixture-package
+permission and queries) to debug variants and sets `BuildConfig.ELIZA_DEV_ALLOW_TEST_MOCKS`;
+`DailyApps.surfaceInfo().developmentBuild` reports that field. Release variants never
+receive the source set. Without `--test-mocks` the build script removes both
+`ELIZA_DEV_ALLOW_TEST_MOCKS` and `VITE_ELIZA_DEV_ALLOW_TEST_MOCKS` from its child
+environment. Test-mocks APKs are never distribution or acceptance artifacts.
+
+Release variants are minified and resource-shrunk with R8 using
+`android/app/proguard-rules.pro`, which keeps Capacitor plugin reflection targets,
+upstream native plugins and manifest-instantiated components. Retain each release's
+`android/app/build/outputs/mapping/<variant>Release/mapping.txt` with the distributed APK
+to symbolicate crashes. An R8 build passing APK verification is not installed-release
+behavior evidence: exercise the signed release on an emulator and a device as separate
+gates.
 
 ## Signing
 
-Development uses the Android debug keystore outside the repository. A release owner
-must zipalign/sign the unsigned release APK with the controlled application key,
-verify with `apksigner`, and supply an independently reviewed descriptor. Keep keys
+Development uses the Android debug keystore outside the repository. Release signing uses
+the upstream names `ELIZAOS_KEYSTORE_PATH`, `ELIZAOS_KEYSTORE_PASSWORD`,
+`ELIZAOS_KEY_ALIAS` and `ELIZAOS_KEY_PASSWORD`, supplied by the signing service or CI
+secret store. Gradle signs only when all four are set (a partial set is reported by name
+and produces unsigned APKs); values are never printed. Alternatively, a release owner
+may zipalign/sign the unsigned release APK with the controlled application key. Either
+way, verify with `apksigner` and supply an independently reviewed descriptor. Keep keys
 in the signing service/CI secret store. No production signing material is created
 by setup. Pin app certificate and versionCode across APK and OS releases.
 
@@ -41,6 +77,18 @@ Unsigned release APKs cannot pass signature verification. It inspects a private 
 of the same bytes it stages and writes a presigned/preprocessed nonprivileged Soong
 `android_app_import` plus a `PRODUCT_PACKAGES` fragment. No local-agent marker or
 privileged permission whitelist is fabricated for a thin launcher.
+
+## App Links preparation
+
+Verified App Links for the Cloud delegation return are prepared but not active. The
+manifest carries a commented `autoVerify` HTTPS intent filter, and
+`android/app/src/main/assetlinks.template.json` is the `/.well-known/assetlinks.json`
+template for `ai.elizaresearch.alphaphone` with a placeholder certificate fingerprint.
+The `alphaphone://cloud-delegation` custom scheme remains the active return path. To
+activate: choose the owned return host, publish the file with the release signer's
+SHA-256 fingerprint, enable the filter and renderer HTTPS return in a reviewed change,
+then verify with `adb shell pm get-app-links ai.elizaresearch.alphaphone` on an installed
+signed build ([runbook](pilot-acceptance-runbook.md#external-integration-runbooks)).
 
 ## Full AOSP product integration
 

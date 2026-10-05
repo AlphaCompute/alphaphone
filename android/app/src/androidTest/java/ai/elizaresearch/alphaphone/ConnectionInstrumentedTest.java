@@ -103,7 +103,7 @@ public class ConnectionInstrumentedTest {
  }
 
  @Test public void encryptedCredentialsAndHttpSurviveRecreationWithCancellationAndRedirectRejection() throws Exception {
-  assertTrue("HTTP fixture requires debug packaging", BuildConfig.DEBUG);
+  org.junit.Assume.assumeTrue("Loopback HTTP fixtures require a -PELIZA_DEV_ALLOW_TEST_MOCKS=1 debug build", BuildConfig.ELIZA_DEV_ALLOW_TEST_MOCKS);
   String slot = "instrumentation.connection.synthetic.v1";
   String token = "SYNTHETIC-ALPHA-CONNECTION-NOT-A-REAL-TOKEN";
   String value = new JSONObject().put("token", token).put("identityId", "fixture-owner").toString();
@@ -190,7 +190,7 @@ public class ConnectionInstrumentedTest {
   }
  }
  @Test public void enabledViewProfileHttpPreservesAuthenticationAndConditionalRevision() throws Exception {
-  assertTrue("Loopback HTTP requires debug packaging", BuildConfig.DEBUG);
+  org.junit.Assume.assumeTrue("Loopback HTTP fixtures require a -PELIZA_DEV_ALLOW_TEST_MOCKS=1 debug build", BuildConfig.ELIZA_DEV_ALLOW_TEST_MOCKS);
   final String path="/api/client-devices/view-profile";
   final String installation=java.util.UUID.randomUUID().toString();
   final String key="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", bearer="Bearer SYNTHETIC-PROFILE-OWNER";

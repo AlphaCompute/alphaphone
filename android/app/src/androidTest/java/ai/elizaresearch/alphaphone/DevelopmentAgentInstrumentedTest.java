@@ -30,6 +30,7 @@ public class DevelopmentAgentInstrumentedTest {
   fail("Development bridge did not resolve"); return null;
  }
  @Test public void missingAndInvalidPrivateTokenCannotConnectOrChat() throws Exception {
+  org.junit.Assume.assumeTrue("DevelopmentAgent exists only in -PELIZA_DEV_ALLOW_TEST_MOCKS=1 builds",BuildConfig.ELIZA_DEV_ALLOW_TEST_MOCKS);
   android.content.Context context = InstrumentationRegistry.getInstrumentation().getTargetContext();
   File token = new File(context.getFilesDir(),"development-agent-token");
   File backup = new File(context.getFilesDir(),"development-token-test-backup-"+UUID.randomUUID());

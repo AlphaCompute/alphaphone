@@ -92,7 +92,7 @@ public final class AlphaVoiceCloudPlugin extends Plugin {
   if("production".equals(environment))host="api.eliza.app";else if("staging".equals(environment))host="api-staging.eliza.app";else throw new IllegalArgumentException();
   AlphaConnectionPlugin store=(AlphaConnectionPlugin)getBridge().getPlugin("AlphaConnection").getInstance();
   String slot="cloud:"+environment;
-  if(BuildConfig.DEBUG && instrumentationCredentialSlot!=null){if(!instrumentationCredentialSlot.matches("instrumentation\\.[A-Za-z0-9_-]{1,100}"))throw new IllegalArgumentException();slot=instrumentationCredentialSlot;}
+  if(BuildConfig.ELIZA_DEV_ALLOW_TEST_MOCKS && instrumentationCredentialSlot!=null){if(!instrumentationCredentialSlot.matches("instrumentation\\.[A-Za-z0-9_-]{1,100}"))throw new IllegalArgumentException();slot=instrumentationCredentialSlot;}
   JSONObject credential=new JSONObject(store.readCredentialSlot(slot));
   String generation=required(call.getString("credentialId"),128);
   if(!generation.equals(credential.optString("credentialId")))throw new IllegalStateException("Cloud account changed");
@@ -100,7 +100,7 @@ public final class AlphaVoiceCloudPlugin extends Plugin {
   if(token.contains("\r")||token.contains("\n"))throw new IllegalArgumentException();
   if(credential.has("expiresAt")&&credential.getLong("expiresAt")<=System.currentTimeMillis())throw new IllegalStateException();
   String base="https://"+host;
-  if(BuildConfig.DEBUG && instrumentationBaseUrl!=null){java.net.URI test=new java.net.URI(instrumentationBaseUrl);if(!"http".equals(test.getScheme())||!"127.0.0.1".equals(test.getHost())||test.getPort()<1024||test.getRawUserInfo()!=null||test.getRawQuery()!=null||test.getRawFragment()!=null||!"".equals(test.getRawPath()))throw new IllegalArgumentException();base=instrumentationBaseUrl;}
+  if(BuildConfig.ELIZA_DEV_ALLOW_TEST_MOCKS && instrumentationBaseUrl!=null){java.net.URI test=new java.net.URI(instrumentationBaseUrl);if(!"http".equals(test.getScheme())||!"127.0.0.1".equals(test.getHost())||test.getPort()<1024||test.getRawUserInfo()!=null||test.getRawQuery()!=null||test.getRawFragment()!=null||!"".equals(test.getRawPath()))throw new IllegalArgumentException();base=instrumentationBaseUrl;}
   HttpURLConnection c=(HttpURLConnection)new URL(base+"/api/v1/voice/"+route).openConnection();request.connection=c;
   c.setInstanceFollowRedirects(false);c.setConnectTimeout(20000);c.setReadTimeout(120000);c.setUseCaches(false);c.setRequestMethod("POST");c.setDoOutput(true);c.setRequestProperty("Authorization","Bearer "+token);
   if(request.cancelled)throw new IOException();return c;
@@ -109,7 +109,7 @@ public final class AlphaVoiceCloudPlugin extends Plugin {
  private HttpURLConnection connectPaired(PluginCall call,boolean status,Pending request)throws Exception{return connectPaired(call,status,request,false);}
  private HttpURLConnection connectPaired(PluginCall call,boolean status,Pending request,boolean asr)throws Exception{
   String origin=required(call.getString("origin"),2048);java.net.URI uri=new java.net.URI(origin);
-  boolean local=BuildConfig.DEBUG&&"http".equals(uri.getScheme())&&Set.of("127.0.0.1","10.0.2.2").contains(uri.getHost());
+  boolean local=BuildConfig.ELIZA_DEV_ALLOW_TEST_MOCKS&&"http".equals(uri.getScheme())&&Set.of("127.0.0.1","10.0.2.2").contains(uri.getHost());
   if(uri.getHost()==null||(!"https".equals(uri.getScheme())&&!local)||uri.getRawUserInfo()!=null||uri.getRawQuery()!=null||uri.getRawFragment()!=null||!"".equals(uri.getRawPath())||uri.getPort()==0||uri.getPort()>65535)throw new IllegalArgumentException();
   AlphaConnectionPlugin store=(AlphaConnectionPlugin)getBridge().getPlugin("AlphaConnection").getInstance();
   PairedAgentCredential pairedCredential=PairedAgentCredential.resolve(call,store);

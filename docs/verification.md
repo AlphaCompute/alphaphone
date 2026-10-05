@@ -9,7 +9,10 @@ and [pilot runbook](pilot-acceptance-runbook.md) for remaining product acceptanc
 
 Run `npm ci` and `npm run verify` with the toolchain documented in the README.
 Prepare the pinned speech assets using [local speech setup](../scripts/local-speech/README.md),
-then run `npm run android:build` with JDK 21 and the configured Android SDK.
+then run `npm run agent:prepare`, `npm run agent:build-workflow-worker`,
+`npm run agent:stage-android` and `npm run android:build` with JDK 21 and the configured Android SDK. Plain
+`npm run android:build` requires an earlier `npm run agent:prepare` and, for release
+verification, `npm run agent:stage-android`.
 Validate standalone and launcher distributions, each as debug and unsigned release,
 including instrumentation builds, lint and APK inspection. Record the product commit,
 `upstream.lock.json` revision, generated input provenance and APK hashes.

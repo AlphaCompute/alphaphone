@@ -90,7 +90,7 @@ public final class ResidentWorkflowCrashInstrumentedTest {
   // Read-only fixture evidence; unavailable diagnostics must not replace service admission.
   try {
    android.app.ActivityManager manager=context.getSystemService(android.app.ActivityManager.class);
-   JSONObject diagnostic=new JSONObject().put("runtimeMode",context.getSharedPreferences("CapacitorStorage",Context.MODE_PRIVATE).getString("eliza:mobile-runtime-mode",""));
+   JSONObject diagnostic=new JSONObject();
    diagnostic.put("memoryInfoAvailable",manager!=null);
    if(manager!=null){
     android.app.ActivityManager.MemoryInfo memory=new android.app.ActivityManager.MemoryInfo();

@@ -10,7 +10,8 @@ import {developmentIdentity,readDevelopmentIdentity,verifyDevelopmentIdentity,de
 import {developmentCloudKey} from '../browser/development-cloud';
 import {DevelopmentCloudSetup} from '../browser/development-cloud-ui';
 import {developmentCredential,developmentJournal,authorDevelopmentAction} from '../browser/development-actions';
-import {browserDevProfile} from '../browser/dev-profile';
+import {browserDevProfile as devProfileQuery} from '../browser/dev-profile';
+import {testMocksEnabled,devSurfacesEnabled} from '../build-flags';
 import {developmentBridge,developmentName,developmentProfiles,developmentReply,saveDevelopmentReply,type DevelopmentProfile} from '../browser/development-connection';
 import {Capacitor} from '@capacitor/core';
 import {personalIntentDocument,type PersonalIntent} from './cloud-personal-intent';
@@ -18,7 +19,6 @@ import { CloudPersonalSetup, personalIntent, savePersonalIntent, clearPersonalIn
 import { PersonalProtocolError, type CloudPersonalProtocol, type PersonalView, type PersonalOwner } from './cloud-personal-protocol';
 import { holdPhoneInert } from './modal-inert';
 import { pauseHostedBackground } from './hosted-background';
-import { pauseLiveActivityForMock } from './mock-admission';
 import {developmentDeviceStore,developmentActionJournal} from './local-agent-storage';
 import { stopLocalAgent, configureLocalProvider, LocalAgentProtocol, localAgentPackaged, browserLocalAgentEnabled } from './local-agent';
 import type {DeviceRecovery} from "./device-actions";
@@ -52,6 +52,10 @@ export interface ConnectionSnapshot {
 }
 type Active = { kind: 'resident'; remote: LocalAgentProtocol; origin: string; actions?: DeviceActions; workflowProtocol?: 1|2 } | { kind: 'remote' | 'local'; remote: RemoteProtocol; origin: string; actions?: DeviceActions; workflowProtocol?: 1|2 } | { kind: 'cloud'; cloud: CloudProtocol; agentId: string; actions?: DeviceActions; workflowProtocol?: 1|2; phoneTarget?: CloudPhoneTarget; voiceExpiresAt?: number };
 const SELECTION = 'alpha.connection.selection.v1';
+// The development chooser exists only on an explicitly flagged development server.
+const browserDevProfile = devSurfacesEnabled && devProfileQuery;
+/** Production builds offer only the production Cloud environment. */
+const cloudEnvironmentAllowed = (environment: unknown): environment is CloudEnvironment => environment === 'production' || (testMocksEnabled && environment === 'staging');
 const CLOUD_SERVICE = 'alpha.connection.cloud-service.v1';
 const listeners = new Set<() => void>();
 let developmentPageSuspended = false;
@@ -161,9 +165,11 @@ function selection(): Selection | null {
   try {
     const value = JSON.parse(localStorage.getItem(SELECTION) || 'null');
     if(browserDevProfile&&value?.kind==='development'&&developmentProfiles.includes(value.profile))return value;
-    if (value?.kind === 'resident' || value?.kind === 'offline' || value?.kind === 'mock' || value?.kind === 'none') return value;
-    if ((value?.kind === 'remote' || value?.kind === 'local') && typeof value.origin === 'string') return value;
-    if (value?.kind === 'cloud' && ['production', 'staging'].includes(value.environment) && typeof value.agentId === 'string') return value;
+    if (value?.kind === 'resident' || value?.kind === 'offline' || value?.kind === 'none') return value;
+    if (testMocksEnabled && value?.kind === 'mock') return value;
+    if (value?.kind === 'remote' && typeof value.origin === 'string') return value;
+    if (testMocksEnabled && value?.kind === 'local' && typeof value.origin === 'string') return value;
+    if (value?.kind === 'cloud' && cloudEnvironmentAllowed(value.environment) && typeof value.agentId === 'string') return value;
   } catch { /* Invalid nonsecret preferences do not authenticate a connection. */ }
   return null;
 }
@@ -267,7 +273,7 @@ async function connectDevelopment(profile:DevelopmentProfile,signal:AbortSignal)
  const identity=await readDevelopmentIdentity(profile,signal);const client=new LocalAgentProtocol(developmentBridge(profile,identity));const {session,name}=await client.connect(signal);signal.throwIfAborted();const credential=developmentCredential(profile,identity),scope=await actionScope(JSON.stringify([client.origin,session.ownerId,session.agentId,credential.installationId]));const actions=new DeviceActions(session,credential,scope,(path,body,signal)=>client.request(path,body,signal),developmentJournal(profile,identity),(op,id,context,signal,binding,workflowRoute,journalIdentity)=>deviceExecutor(op,id,context,signal,binding,workflowRoute,journalIdentity),(op,id,binding,signal)=>deviceRecovery?deviceRecovery(op,id,binding,signal):Promise.resolve({status:'unknown'}),true,true);await retire();signal.throwIfAborted();await verifyDevelopmentIdentity(identity,signal);const workflowProtocol=2 as const;save({kind:'development',profile,...(identity.account?{account:identity.account}:{})});developmentVoiceExpiresAt=Date.now()+3600000;activate({kind:'resident',remote:client,origin:client.origin,actions,workflowProtocol},session,name);
 }
 async function connectResident(signal: AbortSignal) {
-  if (!await localAgentPackaged()) throw new Error('The local agent is unavailable here. Connect a remote agent, use Eliza Cloud, or continue in mock mode.');
+  if (!await localAgentPackaged()) throw new Error('The local agent is unavailable here. Connect a remote agent, sign in with Eliza Cloud, or continue offline.');
   signal.throwIfAborted();
   const client = new LocalAgentProtocol();
   const { session, name } = await client.connect(signal);
@@ -364,6 +370,19 @@ async function connectCloud(agentId: string, signal: AbortSignal, expectedOwner?
   activate(next,session,agent.name || 'Eliza Cloud agent'); attached=true; update({phoneCapabilityReason:reason});
 }
 
+/**
+ * Production builds have no mock mode. A stored mock choice from an older or test
+ * build becomes "no selection": the chooser opens and nothing resumes on its own.
+ * Paused native collectors stay paused until an explicit connection choice.
+ */
+function migrateLegacyMock(): boolean {
+  let stored: unknown = null;
+  try { stored = JSON.parse(localStorage.getItem(SELECTION) || 'null'); } catch { return false; }
+  if (!stored || typeof stored !== 'object' || (stored as { kind?: unknown }).kind !== 'mock') return false;
+  try { save({ kind: 'none' }); } catch { /* The open chooser still requires an explicit choice. */ }
+  update({ open: true, message: 'This version connects to real agents only. Choose how to connect your agent.' });
+  return true;
+}
 function conversationKey(session: VerifiedSession) { return JSON.stringify([session.origin, session.ownerId, session.agentId]); }
 
 /** Only remove an exact Alpha-generated prefix from restored user prose. */
@@ -492,13 +511,21 @@ export const connectionController = {
     if (startup) return startup;
     startup = (async () => {
       if(browserDevProfile){const saved=selection();if(saved?.kind==='development'){if(saved.account!==(await readDevelopmentIdentity(saved.profile)).account){save({kind:'none'});return;}await work('Restoring development agent…',signal=>connectDevelopment(saved.profile,signal));return;}}
-      if ((!isAndroid && !browserLocalAgentEnabled) || new URLSearchParams(location.search).get('mode') === 'mock') return;
+      if (!testMocksEnabled && migrateLegacyMock()) return;
+      if (testMocksEnabled && ((!isAndroid && !browserLocalAgentEnabled) || new URLSearchParams(location.search).get('mode') === 'mock')) return;
+      if (!testMocksEnabled && !isAndroid && !browserLocalAgentEnabled) {
+        // A production browser build has no on-device agent. Explain the real choices once.
+        let stored: string | null = null;
+        try { stored = localStorage.getItem(SELECTION); } catch { /* Unavailable storage still shows the choice. */ }
+        if (stored === null) { try { save({ kind: 'none' }); } catch { /* The chooser explains the choice either way. */ } update({ open: true, message: '' }); return; }
+      }
       const saved = selection();
       if (saved?.kind === 'offline') return;
       if (saved?.kind === 'mock') { const url = new URL(location.href); url.searchParams.set('mode', 'mock'); location.replace(url.href); return; }
       await work('Restoring your connection…', async signal => {
         const environment = localStorage.getItem(CLOUD_SERVICE);
-        if (environment === 'production' || environment === 'staging') {
+        if (environment === 'staging' && !testMocksEnabled) { localStorage.removeItem(CLOUD_SERVICE); update({ message: 'Sign in with Eliza Cloud to continue.' }); }
+        else if (cloudEnvironmentAllowed(environment)) {
           try { await verifyService(makeCloud(environment), signal); }
           catch (error) { signal.throwIfAborted(); detachService(); update({ message: 'Cloud services need sign-in or retry. Your agent connection is independent.' }); }
         }
@@ -526,9 +553,9 @@ export const connectionController = {
   },
   async stopLocal() { await work('Stopping the local agent…',async()=>{await stopLocalAgent();retire();save({kind:'none'});update({message:'Local agent stopped.'});}); },
   async configureLocal(apiKey:string,model:string) { await work('Saving provider securely…',async()=>{await configureLocalProvider(apiKey,model);update({message:'Provider saved. Start or restart the local agent to use it.'});}); },
-  async authorDevelopment(profile:DevelopmentProfile,json:string){await work('Preparing development action…',async signal=>{await authorDevelopmentAction(profile,json,signal);update({message:'Action queued. Send a chat message to review it on the current screen.'});});},
-  async startDevelopment(profile:DevelopmentProfile){await work('Starting development agent…',signal=>connectDevelopment(profile,signal));},
-  async saveDevelopment(profile:DevelopmentProfile,reply:string){await work('Saving development reply…',async signal=>{await saveDevelopmentReply(profile,reply,signal);update({message:'Development reply saved.'});});},
+  async authorDevelopment(profile:DevelopmentProfile,json:string){if(!devSurfacesEnabled)return;await work('Preparing development action…',async signal=>{await authorDevelopmentAction(profile,json,signal);update({message:'Action queued. Send a chat message to review it on the current screen.'});});},
+  async startDevelopment(profile:DevelopmentProfile){if(!devSurfacesEnabled)return;await work('Starting development agent…',signal=>connectDevelopment(profile,signal));},
+  async saveDevelopment(profile:DevelopmentProfile,reply:string){if(!devSurfacesEnabled)return;await work('Saving development reply…',async signal=>{await saveDevelopmentReply(profile,reply,signal);update({message:'Development reply saved.'});});},
   async startLocal() { await work('Starting the local agent…', signal => { retire(); return connectResident(signal); }); },
   async pair(kind: 'remote' | 'local', origin: string, code: string) {
     await work('Verifying your agent…', signal => { retire(); return connectRemote(kind, origin, code, signal); });
@@ -556,7 +583,7 @@ export const connectionController = {
       await inspectPersonal(signal); });
   },
   cloudEnvironment(environment: CloudEnvironment) {
-    if (operation) return;
+    if (operation || !cloudEnvironmentAllowed(environment)) return;
     clearPersonalSetup(); cloud = makeCloud(environment); update({ agents: [], message: '', error: '' });
   },
   async cloudChoose(id: string) { await work('Verifying your Cloud agent…', signal => { retire(); return connectCloud(id, signal); }); },
@@ -590,7 +617,7 @@ export const connectionController = {
    personalRecovery?.abort();const controller=personalRecovery=new AbortController(),check=()=>{controller.signal.throwIfAborted();if(!personalCurrent(binding,generation))throw Error('Cloud account changed.');};
    try{const domain=await personalIntentDocument(binding.client.owner);check();openDomainRecovery({async capture(signal){check();const value=await domain.capture(signal);check();return value;},async reset(expected,signal){check();await domain.reset(expected,signal);check();}},'Cloud setup intent','Cloud setup intent recovery','Download this account’s exact saved intent before resetting. An uncertain setup may already have started hosting. Check Cloud status first. Reset only clears local recovery; it does not stop hosting, revoke credentials or send another setup request.',controller.signal);}catch{if(!controller.signal.aborted&&personalCurrent(binding,generation))update({error:'Cloud setup recovery could not be opened.'});}
   },
-  async cloudManage(environment:CloudEnvironment){await work('Opening Cloud account…',signal=>openConnectionBrowser(environment==='staging'?'https://cloud-staging.eliza.app/cloud/agents':'https://cloud.eliza.app/cloud/agents',signal));},
+  async cloudManage(environment:CloudEnvironment){await work('Opening Cloud account…',signal=>openConnectionBrowser(testMocksEnabled&&environment==='staging'?'https://cloud-staging.eliza.app/cloud/agents':'https://cloud.eliza.app/cloud/agents',signal));},
   async cloudPersonalConnect(){await personalWork('Verifying your personal Cloud agent…',async(binding,_view,signal)=>{
    const generation=personalGeneration,expected=await personalIntent(binding.client.owner,signal),next=await binding.client.inspect(signal);if(!personalCurrent(binding,generation))return;await publishPersonal(binding,next,expected,generation,signal);
    if(next.kind!=='ready'||state.cloudPersonal?.blocked)throw Error('Your personal Cloud agent is not ready.');
@@ -615,7 +642,9 @@ export const connectionController = {
     });
   },
   async mock() {
+    if (!testMocksEnabled) return;
     await work('Pausing live services before mock mode…', async signal => {
+      const { pauseLiveActivityForMock } = await import('./mock-admission');
       // Retire renderer actions immediately, then await both live native barriers.
       const results=await Promise.allSettled([retire(),pauseLiveActivityForMock()]);
       if(results.some(result=>result.status==='rejected'))throw Error('Live background activity could not be paused. Retry before opening mock mode.');
@@ -829,10 +858,10 @@ export function ConnectionChooser() {
       <label>Agent HTTPS address<input ref={remoteOrigin} type="url" autoCapitalize="none" spellCheck={false} placeholder="https://your-agent.example" required disabled={snapshot.busy} /></label>
       <label>Pairing code<input ref={remoteCode} autoComplete="off" autoCapitalize="characters" placeholder="XXXX-XXXX-XXXX" disabled={snapshot.busy} /></label><p>Use the code shown by your agent. Leave it empty to restore this phone’s saved session.</p><button disabled={snapshot.busy}>Connect remote agent</button>
     </form></details>
-    <details><summary>Local development agent</summary><p>For a development build connected to your computer. Inference still runs on your agent’s configured provider.</p><form onSubmit={event => { event.preventDefault(); void connectionController.pair('local', localOrigin.current?.value || '', localCode.current?.value || ''); if (localCode.current) localCode.current.value = ''; }}>
+    {testMocksEnabled&&<details><summary>Local development agent</summary><p>For a development build connected to your computer. Inference still runs on your agent’s configured provider.</p><form onSubmit={event => { event.preventDefault(); void connectionController.pair('local', localOrigin.current?.value || '', localCode.current?.value || ''); if (localCode.current) localCode.current.value = ''; }}>
       <label>Local agent address<input ref={localOrigin} type="url" defaultValue="http://10.0.2.2:2138" autoCapitalize="none" spellCheck={false} required disabled={snapshot.busy} /></label>
       <label>Pairing code<input ref={localCode} autoComplete="off" autoCapitalize="characters" disabled={snapshot.busy} /></label><button disabled={snapshot.busy}>Connect local agent</button>
-    </form></details>
+    </form></details>}
   </>;
   if(browserDevProfile)return <div className="alpha-connection-scrim"><div className="alpha-connection" role="dialog" aria-modal="true" aria-labelledby="connection-title" tabIndex={-1} ref={panel}>
     <header><h1 id="connection-title">Development connections</h1><button aria-label="Close connection settings" disabled={snapshot.busy} onClick={()=>connectionController.close()}>×</button></header>
@@ -854,18 +883,22 @@ export function ConnectionChooser() {
     <button disabled={snapshot.busy} onClick={()=>void connectionController.offline()}>Continue offline</button>
     <p role="status">{snapshot.message}</p>{(snapshot.error||developmentError)&&<p role="alert">{snapshot.error||developmentError}</p>}{snapshot.busy&&<button onClick={()=>connectionController.cancel()}>Cancel</button>}
   </div></div>;
-  const env = () => environment.current?.value === 'staging' ? 'staging' : 'production';
+  const env = (): CloudEnvironment => testMocksEnabled && environment.current?.value === 'staging' ? 'staging' : 'production';
+  // A production browser build has no on-device agent; say so instead of offering one.
+  const browserOnly = !testMocksEnabled && !isAndroid && !browserLocalAgentEnabled;
   return <div className="alpha-connection-scrim"><div className="alpha-connection" role="dialog" aria-modal="true" aria-labelledby="connection-title" tabIndex={-1} ref={panel}>
     <header><span className="alpha-connection-logo serif">a</span><button aria-label="Close connection settings" disabled={snapshot.busy} onClick={() => connectionController.close()}>×</button></header>
     <h1 id="connection-title" className="serif">Your agent.<br />Your phone.</h1>
-    <p>Run your agent locally, or connect an optional remote agent. Model inference uses the provider configured for that agent.</p>
-    <section><h3>{isAndroid ? 'On-device agent' : 'Agent on this computer'}</h3>
+    <p>{browserOnly ? 'Connect your own remote agent or Eliza Cloud.' : 'Run your agent locally, or connect an optional remote agent.'} Model inference uses the provider configured for that agent.</p>
+    {browserOnly ? <section className="alpha-connection-notice"><h3>This browser has no on-device agent</h3>
+      <p>The web version of Alpha Phone does not run an agent itself. Connect your own remote agent, sign in with Eliza Cloud, or continue offline with local apps such as Notes and Calendar.</p>
+    </section> : <section><h3>{isAndroid ? 'On-device agent' : 'Agent on this computer'}</h3>
       <p>{isAndroid ? 'Agent execution and state stay on this Android device. Hosted inference, when configured, receives your prompts and selected context.' : 'The agent runs on your development computer. This browser is its interface; Android uses the native runtime instead.'}</p>
       {isAndroid && localPackaging==='available' && <details><summary>Model provider</summary><p>Cerebras receives prompts and selected context for inference. Your key is stored using Android Keystore. Saving a new key takes effect after the agent restarts.</p><form onSubmit={event=>{event.preventDefault();const key=providerKey.current?.value||'';const model=providerModel.current?.value||'';if(providerKey.current)providerKey.current.value='';void connectionController.configureLocal(key,model);}}><label>Cerebras API key<input ref={providerKey} type="password" autoComplete="off" required disabled={snapshot.busy}/></label><label>Model<input ref={providerModel} defaultValue="qwen-3.8-27b" required disabled={snapshot.busy}/></label><button disabled={snapshot.busy}>Save provider</button></form></details>}
       <button disabled={snapshot.busy || localPackaging!=='available'} onClick={() => void connectionController.startLocal()}>Start local agent</button>
       {localPackaging==='checking' && <p role="status">Checking local agent availability…</p>}
-      {localPackaging==='unavailable' && <p>The local agent is unavailable in this version. Connect a remote agent, use Eliza Cloud, or continue in mock mode.</p>}
-    </section>
+      {localPackaging==='unavailable' && <p>The local agent is unavailable in this version. Connect a remote agent, sign in with Eliza Cloud, or continue offline.</p>}
+    </section>}
     {snapshot.session && <section className="alpha-connection-current"><strong>{snapshot.name}</strong><span>Connected · {snapshot.kind === 'cloud' ? 'Eliza Cloud' : snapshot.kind === 'resident' ? (isAndroid ? 'On this device' : 'On this computer · development') : snapshot.kind === 'local' ? 'Local development' : 'Remote agent'}</span><button disabled={snapshot.busy} onClick={() => void connectionController.disconnect()}>Disconnect agent</button>{isAndroid && snapshot.kind==='resident' && <button disabled={snapshot.busy} onClick={()=>void connectionController.stopLocal()}>Stop local agent</button>}</section>}
     {!isAndroid&&<button disabled={snapshot.busy} onClick={()=>void recoverConversationChoice()}>Conversation selection recovery</button>}
     {snapshot.session && <details><summary>Conversation history</summary><p>Load from this agent only. Restoring replaces the visible chat and draft; it does not run past actions.</p><button disabled={snapshot.busy} onClick={() => void connectionController.listHistory()}>Load conversations</button>{snapshot.conversations.map(item => <section key={item.id} className="alpha-connection-agent"><strong>{item.title}</strong><button disabled={snapshot.busy} onClick={() => void connectionController.restoreHistory(item.id)}>Restore conversation</button></section>)}</details>}
@@ -876,14 +909,14 @@ export function ConnectionChooser() {
     {snapshot.busy && <button className="alpha-connection-cancel" onClick={() => connectionController.cancel()}>{snapshot.cloudPersonal?.view?'Stop waiting':'Cancel'}</button>}
     <details><summary>Eliza Cloud</summary><p>Connect your personal Eliza. Dedicated hosting requires a reviewed setup before it starts.</p>
       {snapshot.cloudAccount && <section className="alpha-connection-current"><strong>Cloud services connected</strong><span>{snapshot.cloudAccount.environment} · verified account {snapshot.cloudAccount.userId.slice(0, 8)}</span><p>Gmail and speech use this account independently of your agent.</p><button disabled={snapshot.busy} onClick={() => void connectionController.cloudSignOut()}>Sign out of Eliza Cloud</button></section>}
-      <label>Environment<select aria-label="Environment" ref={environment} disabled={snapshot.busy} defaultValue="production" onChange={() => connectionController.cloudEnvironment(env())}><option value="production">Production</option><option value="staging">Staging</option></select></label>
+      {testMocksEnabled&&<label>Environment<select aria-label="Environment" ref={environment} disabled={snapshot.busy} defaultValue="production" onChange={() => connectionController.cloudEnvironment(env())}><option value="production">Production</option><option value="staging">Staging</option></select></label>}
       <div className="alpha-connection-actions"><button disabled={snapshot.busy} onClick={() => void connectionController.cloudLogin(env())}>Sign in with Eliza Cloud</button><button disabled={snapshot.busy} onClick={() => void connectionController.cloudList(env())}>Refresh agent status</button></div>
       {snapshot.cloudAccount&&Capacitor.getPlatform()!=='android'&&<button disabled={snapshot.busy} onClick={()=>void connectionController.cloudPersonalRecovery()}>Cloud setup intent recovery</button>}
       {snapshot.cloudPersonal&&<CloudPersonalSetup setup={snapshot.cloudPersonal} busy={snapshot.busy} onAccept={()=>void connectionController.cloudPersonalAccept()} onDecline={()=>connectionController.cloudPersonalDecline()} onPoll={()=>void connectionController.cloudPersonalPoll()} onFinalize={()=>void connectionController.cloudPersonalFinalize()} onConnect={()=>void connectionController.cloudPersonalConnect()}/>}
       <button disabled={snapshot.busy} onClick={()=>void connectionController.cloudManage(env())}>Manage Cloud account</button>
     </details>
     {pairingOptions}
-    <details><summary>Mock mode</summary><p>Explore the prototype with simulated data and actions. No live agent connection is used.</p><button disabled={snapshot.busy} onClick={() => connectionController.mock()}>Enter mock mode</button></details>
+    {testMocksEnabled&&<details><summary>Mock mode</summary><p>Explore the prototype with simulated data and actions. No live agent connection is used.</p><button disabled={snapshot.busy} onClick={() => connectionController.mock()}>Enter mock mode</button></details>}
     <button className="alpha-connection-offline" disabled={snapshot.busy} onClick={() => void connectionController.offline()}>Continue offline</button>
   </div></div>;
 }

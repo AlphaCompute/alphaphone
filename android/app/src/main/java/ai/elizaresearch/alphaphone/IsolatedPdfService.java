@@ -28,7 +28,7 @@ public final class IsolatedPdfService extends Service {
    close(descriptor);error(reply,request,"PDF request unavailable");return true;
   }
   main.postDelayed(kill,DEADLINE_MS);main.post(memory);
-  boolean block=BuildConfig.DEBUG&&"watchdog".equals(data.getString("fixture"));
+  boolean block=BuildConfig.ELIZA_DEV_ALLOW_TEST_MOCKS&&"watchdog".equals(data.getString("fixture"));
   worker.execute(()->render(descriptor,page,request,reply,block));return true;
  }));
  @Override public IBinder onBind(Intent intent){return android.os.Process.isIsolated()?endpoint.getBinder():null;}

@@ -1,0 +1,81 @@
+{
+  "description": "Libraries statically linked into the tesseract.js-core WebAssembly cores that ship in web-dist/ocr/. The shipped .wasm.js files are byte-identical to the naptha/tesseract.js-core v7.0.0 tag, whose third_party submodules pin the commits below (see its build.sh). License copies were taken from those commits; zlib and libjpeg keep only their license sections. Generation fails when the installed package, a shipped core or a license copy no longer matches.",
+  "package": "tesseract.js-core",
+  "version": "7.0.0",
+  "source": "https://github.com/naptha/tesseract.js-core/tree/v7.0.0",
+  "cores": {
+    "tesseract-core-lstm.wasm.js": "eef5f8b2f8e20e150680b20adaec4a60babafee3adbe8a94583c81fee46e8680",
+    "tesseract-core-simd-lstm.wasm.js": "c58b46a4c796c0b8afccf77591d5b875b6896b45d402bbce8caa6f5362447b38",
+    "tesseract-core-relaxedsimd-lstm.wasm.js": "861a536cf9ef8e63cb644d57bab39c388f37f7d6b6f60024b741c5f6b39a59b3"
+  },
+  "components": [
+    {
+      "name": "Tesseract OCR engine",
+      "version": "5.1.0-288-g2a9c1c4",
+      "license": "Apache-2.0",
+      "source": "https://github.com/Balearica/tesseract/tree/2a9c1c49c360462733c386d2a44fcd22c4e21411",
+      "files": [{"path": "tesseract-Apache-2.0.txt", "upstream": "LICENSE", "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"}]
+    },
+    {
+      "name": "Leptonica image processing library",
+      "version": "1.83.0 (4af068b56a9674da915debea4ed7e1b9885b17e8)",
+      "license": "BSD-2-Clause",
+      "source": "https://github.com/DanBloomberg/leptonica/tree/4af068b56a9674da915debea4ed7e1b9885b17e8",
+      "files": [{"path": "leptonica-license.txt", "upstream": "leptonica-license.txt", "sha256": "87829abb5bbb00b55a107365da89e9a33f86c4250169e5a1e5588505be7d5806"}]
+    },
+    {
+      "name": "Independent JPEG Group libjpeg",
+      "version": "9a (6c0fcb8ddee365e7abc4d332662b06900612e923)",
+      "license": "IJG",
+      "source": "https://github.com/LuaDist/libjpeg/tree/6c0fcb8ddee365e7abc4d332662b06900612e923",
+      "preface": "This software is based in part on the work of the Independent JPEG Group.",
+      "files": [{"path": "libjpeg-README-LEGAL-ISSUES.txt", "upstream": "README (LEGAL ISSUES section)", "sha256": "8bbf0e58ffd246af32f33a6f6e1a3dda17f05f86f3da9456d6e552848ab472c2"}]
+    },
+    {
+      "name": "libpng",
+      "version": "1.6.38.git (a37d4836519517bdce6cb9d956092321eca3e73b)",
+      "license": "libpng-2.0",
+      "source": "https://github.com/glennrp/libpng/tree/a37d4836519517bdce6cb9d956092321eca3e73b",
+      "files": [{"path": "libpng-LICENSE.txt", "upstream": "LICENSE", "sha256": "33ba4e187d8b0c8d7ab2bc2e522bb095219e03089e9aa0122b4fb9eb2b7de82b"}]
+    },
+    {
+      "name": "LibTIFF",
+      "version": "4.3.0 (b51bb157123264e26d34c09cc673d213aea61fc7)",
+      "license": "libtiff",
+      "source": "https://gitlab.com/libtiff/libtiff/-/tree/b51bb157123264e26d34c09cc673d213aea61fc7",
+      "files": [{"path": "libtiff-COPYRIGHT.txt", "upstream": "COPYRIGHT", "sha256": "fbd6fed7938541d2c809c0826225fc85e551fdbfa8732b10f0c87e0847acafd7"}]
+    },
+    {
+      "name": "libwebp",
+      "version": "1.2.2 (20ef03ee351d4ff03fc5ff3ec4804a879d1b9d5c)",
+      "license": "BSD-3-Clause",
+      "source": "https://github.com/webmproject/libwebp/tree/20ef03ee351d4ff03fc5ff3ec4804a879d1b9d5c",
+      "files": [
+        {"path": "libwebp-COPYING.txt", "upstream": "COPYING", "sha256": "5aec868f669e384a22372a4e8a1a6cd7d44c64cd451f960ca69cc170d1e13acf"},
+        {"path": "libwebp-PATENTS.txt", "upstream": "PATENTS", "sha256": "cc3273e0694ea5896145e0677699b53471b03ea43021ddc50e7923fbb9f5023c"}
+      ]
+    },
+    {
+      "name": "GIFLIB",
+      "version": "5.1.4 (fa37672085ce4b3d62c51627ab3c8cf2dda8009a)",
+      "license": "MIT",
+      "source": "https://github.com/mirrorer/giflib/tree/fa37672085ce4b3d62c51627ab3c8cf2dda8009a",
+      "files": [{"path": "giflib-COPYING.txt", "upstream": "COPYING", "sha256": "0c9b7990ecdca88b676db232c226548ac408b279f550d424d996f0d83591dd8e"}]
+    },
+    {
+      "name": "zlib",
+      "version": "1.2.12 (21767c654d31d2dccdde4330529775c6c5fd5389)",
+      "license": "Zlib",
+      "source": "https://github.com/madler/zlib/tree/21767c654d31d2dccdde4330529775c6c5fd5389",
+      "files": [{"path": "zlib-h-license.txt", "upstream": "zlib.h (license comment)", "sha256": "918799ecdb978d256263a2e6e5f24706d8817e642b3555aa9024406172bfc348"}]
+    },
+    {
+      "name": "OpenLibm",
+      "version": "0.8.0 (ae2d91698508701c83cab83714d42a1146dccf85)",
+      "license": "MIT AND ISC AND BSD-2-Clause AND SunPro",
+      "source": "https://github.com/JuliaMath/openlibm/tree/ae2d91698508701c83cab83714d42a1146dccf85",
+      "preface": "Only the static math library is linked; the LGPL-2.1 test files named below are not shipped.",
+      "files": [{"path": "openlibm-LICENSE.md", "upstream": "LICENSE.md", "sha256": "b1843fbf5b03f519a5f0a44fce751bdd1022ae7148614923f9d6293e17a18b17"}]
+    }
+  ]
+}

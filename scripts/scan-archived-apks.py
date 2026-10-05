@@ -19,9 +19,10 @@ if output.exists():
     raise SystemExit("Preserve existing scan evidence")
 manifest = json.loads((archive / "apk-manifest.json").read_text())
 inputs = json.loads((archive / "inputs-before.json").read_text())["files"]
-prefix = "android/app/src/androidTest/java/"
+prefixes = ["android/app/src/androidTest/java/", "android/app/src/testMocks/androidTest/java/"]
 descriptors = [
     ("L" + name[len(prefix):-5] + ";").encode()
+    for prefix in prefixes
     for name in inputs if name.startswith(prefix) and name.endswith(".java")
 ]
 key_path = Path.home() / ".config/alphaphone/cerebras-key"
@@ -36,7 +37,7 @@ patterns = [raw_secret, secret.encode("utf-16le"), base64.b64encode(raw_secret),
 debug_classes = ["DevelopmentAgentPlugin", "DevelopmentVoiceCapture", "SyntheticAutofillService"]
 results = []
 for name in sorted(manifest):
-    if not re.fullmatch(r"(?:standalone|launcher)-(?:debug|release-unsigned)\.apk", name):
+    if not re.fullmatch(r"(?:standalone|launcher)-(?:debug|release|release-unsigned)\.apk", name):
         continue
     apk = archive / name
     raw = apk.read_bytes()
@@ -47,10 +48,13 @@ for name in sorted(manifest):
         members = [package.read(item) for item in package.infolist() if not item.is_dir()]
         dex = b"".join(package.read(item) for item in package.namelist() if re.fullmatch(r"classes\d*\.dex", item))
     secret_absent = all(pattern not in data for data in [raw, *members] for pattern in patterns)
-    release = "release-unsigned" in name
+    release = name.endswith(("-release.apk", "-release-unsigned.apk"))
     test_absent = all(value not in dex for value in descriptors) if release else None
     presence = {value: ("Lai/elizaresearch/alphaphone/" + value + ";").encode() in dex for value in debug_classes}
-    passed = secret_absent and (not release or test_absent) and all(found != release for found in presence.values())
+    # Release never carries developer hooks. Debug carries all of them only when built with
+    # -PELIZA_DEV_ALLOW_TEST_MOCKS=1 (src/testMocks); a flag-off debug carries none.
+    hooks_consistent = not any(presence.values()) if release else len(set(presence.values())) == 1
+    passed = secret_absent and (not release or test_absent) and hooks_consistent
     results.append({"apk": name, "sha256": digest, "archiveHashMatched": True,
                     "providerSecretAbsent": secret_absent, "androidTestClassesAbsent": test_absent,
                     "debugOnlyClassPresence": presence, "passed": passed})

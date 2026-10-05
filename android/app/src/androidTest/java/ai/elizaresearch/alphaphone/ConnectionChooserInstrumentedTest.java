@@ -23,6 +23,7 @@ public class ConnectionChooserInstrumentedTest {
   until(expression);NotesSecureFixture.evaluate("("+expression+").click()");
  }
  @Test public void offlineAndMockAreExplicitAndMockDoesNotChangeSavedNotes()throws Exception{
+  org.junit.Assume.assumeTrue("Mock mode exists only in -PELIZA_DEV_ALLOW_TEST_MOCKS=1 builds",BuildConfig.ELIZA_DEV_ALLOW_TEST_MOCKS);
   try(BoundedActivityScenario<MainActivity> scenario=BoundedActivityScenario.launch(MainActivity.class)){
    until("document.querySelector('[data-screen]')");
    String saved=NotesSecureFixture.evaluate("localStorage.getItem('alpha.connection.selection.v1')");

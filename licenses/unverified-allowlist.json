@@ -1,0 +1,26 @@
+{
+  "description": "Items shipped or staged whose license could not be established from shipped metadata. Listing an item here only lets generation proceed; it is not legal sign-off. Each item stays marked 'license unverified' in the notices until legal review replaces it with a verified license or removes the item.",
+  "entries": [
+    {
+      "name": "Denton typeface",
+      "sha256": "7e9341445b0bf2ec7f75e4a5d4dd4a677e9d2341f67ddcf766db92a21f310e05",
+      "reason": "Commercial typeface by Peregrin Studio imported from the design prototype (apps/app/src/prototype/asset-manifest.json). The font states 'All rights reserved' and names no license; an app/web embedding license must be confirmed or the face replaced before distribution."
+    },
+    {
+      "name": "Piper LJSpeech medium voice model (int8)",
+      "reason": "The pinned voice model card lists the LJ Speech dataset as public domain and the piper-voices repository metadata declares MIT, but the card states no license for the trained voice itself; legal must confirm before the speech bundle ships."
+    },
+    {
+      "name": "Sherpa-ONNX native build dependencies",
+      "reason": "Statically linked native dependencies are discovered during the reproducible speech build and their license files ship inside the hash-pinned model bundle; they are not enumerated in source, so their identifiers are not checked here."
+    },
+    {
+      "name": "On-device elizaOS agent runtime payload",
+      "reason": "Staged only by npm run android:build:local, not by npm run android:build. Its Bun runtime and bundled agent dependency notices must be generated from the pinned upstream lockfile before any local-agent APK is distributed."
+    },
+    {
+      "name": "pdf.js QuickJS sandbox",
+      "reason": "pdfjs-dist ships quickjs-eval.js/.wasm without a license file. The upstream sandbox build and QuickJS itself are believed to be permissively licensed, but no shipped license text establishes it."
+    }
+  ]
+}

@@ -41,7 +41,8 @@ function screen(){
  document.hidden=false;document.documentElement={dataset:{}};document.querySelector=()=>null;
  class Component{componentDidMount(){}componentWillUnmount(){}vset(){}}
  const views={calendar:{render:()=>({}),onLeave(){}}};let zone='UTC';
- const context={createClockHandoffHistory,clockHandoffLegacyKey:'alphaphone:clock-handoff:v1',secureConnectionStore:f.store,localStorage:{getItem:f.legacy},createInlineModal:()=>({ref:()=>{}}),currentClockTimeZone:()=>zone,DailyApps:{clockHandoff:async request=>{effects.push(request);return {action:request.action,status:'opened',message:'Clock opened'};}},crypto:globalThis.crypto,Date,Intl,document,window};
+ // Live handoffs: the adapter is evaluated as a flag-off (production) build.
+ const context={testMocksEnabled:false,createClockHandoffHistory,clockHandoffLegacyKey:'alphaphone:clock-handoff:v1',secureConnectionStore:f.store,localStorage:{getItem:f.legacy},createInlineModal:()=>({ref:()=>{}}),currentClockTimeZone:()=>zone,DailyApps:{clockHandoff:async request=>{effects.push(request);return {action:request.action,status:'opened',message:'Clock opened'};}},crypto:globalThis.crypto,Date,Intl,document,window};
  vm.runInNewContext(adapter+'\nglobalThis.install=installClockAdapter;',context);
  context.install(Component,views,{simulated:false});const component=new Component();component.componentDidMount();
  const view=()=>views.calendar.render({},{}),open=async()=>{await settle();view().openClock();await settle();view().clock.prepare();return view().clock.review.confirm;};

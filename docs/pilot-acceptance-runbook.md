@@ -32,7 +32,8 @@ Perform the following with the release launcher selected as HOME. Qualify the st
 | Boot and design | Cold boot reaches usable Alpha HOME; accessible talk/type controls; exact prototype screens for all retained MVP routes; Back/Home, keyboard, large text and rotation where supported; deferred routes cannot reopen from saved state or agent proposals | Unedited recording plus screen inventory. A mock/reference screenshot alone does not prove live data or native behavior. |
 | Resident startup and chat | Configure the permitted inference route without exposing its credential; start local agent without requiring Cloud login; verify runtime identity; type and speak requests; selected-view context reaches the intended conversation | Native process/IPC evidence and canonical conversation IDs. Disclose hosted Cerebras inference; local orchestration is not offline inference. |
 | Lifecycle and recovery | Background, lock/unlock, lose/restore network, recreate/kill the app, restart the runtime, explicitly stop it and reboot the phone; recover admitted messages/results once under the same owner | No repeat of uncertain external effects, no stale-owner history, no false successful stop/restart. Match the current resident CI worker-survival test separately. |
-| Mock isolation | Enter mock after live services pause; traverse retained routes; exit to deliberate live/offline state | No real provider/device mutation from simulated actions; native system chrome appears once; the mock banner does not obscure primary controls. |
+| Distribution has no mock surfaces | On the installed release candidate (built with `ELIZA_DEV_ALLOW_TEST_MOCKS` off), confirm the connection chooser offers no mock choice; `?mode=mock`, `?fixture=1`, `?mode=dev` and `?start=` have no effect; Settings has no device controls, simulated apps, local development agent (`10.0.2.2:2138`) or Cloud Staging option; `DailyApps.surfaceInfo().developmentBuild` is false | Record `node scripts/verify-apks.mjs` output for the exact APK (no test-mock classes, no cleartext config or fixture-package queries, bundle audit of `assets/public` clean). A rendered absence alone does not prove the bytes are clean, and APK inspection alone does not prove device behavior. |
+| Test-mocks isolation (development builds only) | Only on an `artifacts/test-mocks/` APK installed on a disposable emulator or designated test unit: enter mock after live services pause; traverse retained routes; exit to a deliberate live/offline state | No real provider/device mutation from simulated actions; native system chrome appears once; the mock banner does not obscure primary controls. Never install a test-mocks APK on a pilot unit's acceptance image, and never count its results as distribution evidence. |
 | Speech and Notes | Real human microphone capture, denied permission, transcript review/correction, save/reopen/edit/delete, read aloud, playback interruption, silence and unavailable-engine recovery | Listener confirms speaker output. Repeat on-device STT/TTS without network; agent inference may remain unavailable offline. Prerecorded CPU-model tests do not qualify physical capture. |
 | Calendar | Select an actual authorized account/calendar; create/read/edit/delete a synthetic event, all-day and recurring cases; verify provider readback, time zone and stale edit refusal | UI IDs and provider IDs agree; account isolation; permission denial and interrupted acknowledgement remain recoverable without duplicate events. |
 | Reminders | Create with None and numeric alert lead; reload/edit; receive real delivery; snooze, complete/reopen/cancel, recurrence, reboot and time-zone cases | Due time and alert lead remain distinct; None requests no notification permission and schedules no delivery; notification dismissal is not task completion. Preserve exact receipts. |
@@ -45,6 +46,46 @@ Perform the following with the release launcher selected as HOME. Qualify the st
 | Optional Cloud/remote agent routes | For each retained route in the approved pilot profile, complete real phone exchange and selected owner/agent, remote pairing, revoke/expiry/restart | Record the profile and any explicit scope decision; do not silently waive an earlier requirement. Do not start billable agents without the applicable spending approval. Cloud identity needed for Gmail remains distinct from choosing a remote agent. |
 
 Run wrong-owner, revoked permission, stale target and lost-response cases against designated fixtures. An unexpected result is not a reason to replay a write. Record unknown outcome, inspect the durable receipt/provider state, and recover through the product's intended UI. Do not weaken SELinux, signature checks, browser isolation, capability gates or release security to get a pass.
+
+## Upgrade from earlier mock state
+
+Earlier development builds could persist mock state. Verify upgrade to the distribution
+build separately on a disposable emulator and on a designated physical unit; an emulator
+pass is not device evidence, and neither replaces the other.
+
+1. On the earlier build, create the legacy state: select mock in the chooser (persisting
+   `alpha.connection.selection.v1` as `{kind:'mock'}`), where the earlier build exposed the development profile also create
+   simulated-app data under `alpha.dev.app.*` keys (otherwise seed one such key through
+   the WebView debugging tools of the disposable install and record that it was seeded),
+   and confirm notification collection is paused by mock entry.
+2. Install the distribution APK over it with `adb install -r` (same package and signer).
+3. Expect: the app starts at the connection chooser (selection rewritten to
+   `{kind:'none'}`), no mock surface is reachable, `alpha.dev.app.*` data is not read or
+   displayed by the product, and notification collection stays paused until the user
+   makes an explicit connection choice and resumes it. Existing Notes, reminders and
+   other real records remain intact.
+4. Record the before/after APK hashes, the observed selection value and the collection
+   status. Never clear app data to make this pass.
+
+| Gate | Emulator (disposable) | Physical unit |
+| --- | --- | --- |
+| Saved `{kind:'mock'}` opens chooser | not run | not run |
+| `alpha.dev.app.*` not surfaced; real data preserved | not run | not run |
+| Paused collection not auto-resumed | not run | not run |
+
+## External integration runbooks
+
+Each entry below needs real accounts, keys or domains and cannot be completed from the
+repository. Record operator, date, exact APK/source identity and redacted results.
+
+| Entry | Preconditions | Procedure | Evidence and boundary |
+| --- | --- | --- | --- |
+| Gmail OAuth | Production OAuth client and consent screen approved for the release package/signer; designated test Google account | Authorize from Settings, read a synthetic thread, create a draft, revoke from the Google account, confirm the app returns to recovery without deleting local data; repeat after app restart | Grant/revoke observations and receipt IDs. Browser login alone is insufficient; a real send requires authorization for the exact recipient/message. |
+| Password provider real-site filling | Signed build, verified Proton Pass installed, test vault with synthetic credentials | Choose provider through Android's picker, save and fill a credential on a designated test site, lock/cancel/disable, test wrong-origin and iframe boundaries | Provider-owned UI screenshots without secrets. Setup status does not prove filling; passkeys need separate evidence. |
+| Cerebras key provisioning | Key issued to the pilot program; operator-only channel | Enter the key through the resident agent's provider setup on each unit; confirm the key is stored natively and never appears in logs, screenshots or evidence; rotate once | Provider readiness state and a hosted-inference disclosure check. Do not copy the key into any record. |
+| Signed update | Release signer held by the release owner (`ELIZAOS_KEYSTORE_PATH`, `ELIZAOS_KEYSTORE_PASSWORD`, `ELIZAOS_KEY_ALIAS`, `ELIZAOS_KEY_PASSWORD`); increasing `ELIZAOS_VERSION_CODE` | Install version N, create real data, install signed N+1 over it, verify data and resident startup; run the approved rollback drill | Signer certificate digests and version codes for both APKs. See [Signed update and recovery](#signed-update-and-recovery). |
+| App Links verification | Owned HTTPS return host; `assetlinks.json` generated from `android/app/src/main/assetlinks.template.json` with the release signer fingerprint. The `autoVerify` intent filter is prepared but commented out in the manifest; the `alphaphone://cloud-delegation` custom scheme remains the active return path until it is enabled in a reviewed change | Publish the file, enable the prepared filter with the real host, build and sign, install, check `adb shell pm get-app-links ai.elizaresearch.alphaphone` reports the domain verified, open a link from another app | Verification state per domain. Debug or unsigned builds cannot verify. |
+| Resident redaction re-run | Current distribution APK; synthetic contact and credential fixtures only | Run the resident redaction instrumentation (`ResidentEgressRedactionInstrumentedTest`) on a disposable emulator, then repeat the documented synthetic probes on a designated unit | Leak booleans only, never bodies. Emulator results and device results are separate gates; host redaction checks do not qualify the resident path. |
 
 ## Performance and stability
 

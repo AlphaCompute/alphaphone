@@ -92,7 +92,7 @@ public class AllViewAgentContextInstrumentedTest {
  }
  @Test public void realRepliesCarryEveryMvpViewAndDeferredAppsAreAbsent()throws Exception{
   Assume.assumeTrue("Explicit real context matrix opt-in required","true".equals(InstrumentationRegistry.getArguments().getString("agentContext")));
-  assertTrue(BuildConfig.DEBUG);
+  assertTrue("Loopback HTTP fixtures require a -PELIZA_DEV_ALLOW_TEST_MOCKS=1 debug build",BuildConfig.ELIZA_DEV_ALLOW_TEST_MOCKS);
   File fixture=new File(InstrumentationRegistry.getInstrumentation().getTargetContext().getFilesDir(),"agent-context-pairing.json");
   JSONObject config=new JSONObject(new String(Files.readAllBytes(fixture.toPath()),StandardCharsets.UTF_8));
   assertEquals("http://10.0.2.2:47842",config.getString("origin"));
