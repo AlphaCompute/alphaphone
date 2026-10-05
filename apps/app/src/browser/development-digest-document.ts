@@ -1,7 +1,7 @@
 import {browserDocuments} from './documents';
 import {BrowserDomainDocument} from './domain-document';
 import {browserDevProfile} from './dev-profile';
-import {assertDevelopmentIdentity,type DevelopmentIdentity} from './development-identity';
+import {assertDevelopmentIdentity,verifyDevelopmentIdentity,type DevelopmentIdentity} from './development-identity';
 import type {DevelopmentDelegation} from './digest-delegation';
 import type {DigestResult,DigestSource,DigestLoop} from '../runtime/hosted-digests';
 export type DevelopmentDigestSource=DigestSource&{text:string};
@@ -16,5 +16,5 @@ export function developmentDigestDocument(identity:DevelopmentIdentity){
  const key=`alpha.browser.digests.${identity.namespace}.v1`;return new BrowserDomainDocument(browserDocuments,key,()=>localStorage.getItem(key));
 }
 export async function readDevelopmentDigests(identity:DevelopmentIdentity,signal?:AbortSignal){
- signal?.throwIfAborted();assertDevelopmentIdentity(identity);const data=await developmentDigestDocument(identity).read(initialDevelopmentDigests,signal);signal?.throwIfAborted();assertDevelopmentIdentity(identity);return validateDevelopmentDigests(data);
+ signal?.throwIfAborted();await verifyDevelopmentIdentity(identity,signal);assertDevelopmentIdentity(identity);const data=await developmentDigestDocument(identity).read(initialDevelopmentDigests,signal);signal?.throwIfAborted();await verifyDevelopmentIdentity(identity,signal);assertDevelopmentIdentity(identity);return validateDevelopmentDigests(data);
 }

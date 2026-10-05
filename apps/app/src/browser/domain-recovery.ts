@@ -2,7 +2,7 @@ import {layoutBrowserDialog} from './dialog-layout';
 import type {DomainRecovery,BrowserDomainDocument} from './domain-document';
 let current:HTMLDialogElement|undefined;
 /** Exact-byte backup and explicitly confirmed, revision-checked recovery. */
-export function openDomainRecovery(domain:Pick<BrowserDomainDocument,'capture'|'reset'>,name:'calendar'|'reminders'|'notifications'|'bookmarks'|'alert sound history'|'password provider'|'photo albums'|'device settings'|'device roles'|'digest inbox'|'agent history'|'execution history'|'digest schedules'|'digest authorization'|'Cloud setup',heading:string,description:string,signal?:AbortSignal){
+export function openDomainRecovery(domain:Pick<BrowserDomainDocument,'capture'|'reset'>,name:'calendar'|'reminders'|'notifications'|'bookmarks'|'alert sound history'|'password provider'|'photo albums'|'device settings'|'device roles'|'digest inbox'|'agent history'|'execution history'|'digest schedules'|'digest authorization'|'Cloud setup'|'Cloud account',heading:string,description:string,signal?:AbortSignal){
  if(signal?.aborted||current?.open)return;
  const dialog=current=document.createElement('dialog');dialog.setAttribute('aria-label',heading);dialog.style.cssText='box-sizing:border-box;width:min(400px,94vw);max-height:85dvh;overflow:auto;padding:24px;border:0;border-radius:20px;background:var(--bg,#fff);color:var(--fg,#111);font:16px/1.5 system-ui';
  const previous=document.activeElement as HTMLElement|null,abort=new AbortController();let closed=false,confirming=false,busy=false,captured:DomainRecovery|undefined;
@@ -17,6 +17,8 @@ export function openDomainRecovery(domain:Pick<BrowserDomainDocument,'capture'|'
  reset.onclick=()=>{if(busy||closed||!captured)return;if(!confirming){confirming=true;reset.textContent=`Confirm ${name} reset`;status.textContent=`This clears the active ${name}. Download any copies you want to keep before confirming.`;return;}busy=true;reset.disabled=true;
   void (async()=>{try{if(document.hidden)throw Error('Reset cancelled.');await domain.reset(captured!,abort.signal);if(!closed){status.textContent=`${name[0].toUpperCase()+name.slice(1)} reset. Reloading…`;location.reload();}}catch(error){if(!closed){status.textContent=error instanceof Error?error.message:`Reset could not be confirmed. Reload to inspect the ${name}.`;confirming=false;reset.textContent=`Reset browser ${name}`;reset.disabled=false;}}finally{busy=false;}})();
  };
+ const trapFocus=(event:KeyboardEvent)=>{if(event.key!=='Tab')return;const items=Array.from(dialog.querySelectorAll<HTMLElement>('button:not(:disabled),[tabindex="0"]')).filter(item=>item.getClientRects().length);const first=items[0],last=items.at(-1);if(!first||!last)return;if(event.shiftKey&&(document.activeElement===first||!dialog.contains(document.activeElement))){event.preventDefault();last.focus();}else if(!event.shiftKey&&(document.activeElement===last||!dialog.contains(document.activeElement))){event.preventDefault();first.focus();}};
+ dialog.addEventListener('keydown',trapFocus);
  const retireEvents=['pagehide','launcher-home','alpha:device-state','alpha:dev-incoming-call'];
  const dispose=()=>{if(closed)return;closed=true;abort.abort();signal?.removeEventListener('abort',dispose);dialog.remove();if(current===dialog)current=undefined;window.removeEventListener('alpha-back',back,true);for(const event of retireEvents)window.removeEventListener(event,dispose,true);document.removeEventListener('visibilitychange',visibility);previous?.focus();};
  signal?.addEventListener('abort',dispose,{once:true});

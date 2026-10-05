@@ -1,5 +1,5 @@
 import {browserDevProfile} from './dev-profile';
-import {assertDevelopmentIdentity,developmentIdentity} from './development-identity';
+import {assertDevelopmentIdentity,readDevelopmentIdentity,verifyDevelopmentIdentity} from './development-identity';
 import {BrowserDomainDocument,type DomainRecovery} from './domain-document';
 import {browserDocuments} from './documents';
 import {developmentDigestStore} from '../runtime/local-agent-storage';
@@ -10,7 +10,7 @@ export async function browserDigestStore(session:VerifiedSession,current:()=>boo
  if(!browserDevProfile)throw Error('Development mode required.');
  const selected=JSON.parse(localStorage.getItem('alpha.connection.selection.v1')||'null');
  if(selected?.kind!=='development'||!['local','cloud','remote'].includes(selected.profile))throw Error('Choose a development connection.');
- const identity=developmentIdentity(selected.profile);
+ const identity=await readDevelopmentIdentity(selected.profile,signal);
  if(identity.ownerId!==session.ownerId||identity.agentId!==session.agentId)throw Error('Digest owner changed.');
  const prefix='hosted-digests:v1:'+await actionScope(JSON.stringify([session.origin,session.ownerId,session.agentId]));
  const check=(slot:unknown)=>{
@@ -43,15 +43,15 @@ export async function browserDigestStore(session:VerifiedSession,current:()=>boo
   return row.value;
  };
  const storage=developmentDigestStore(async input=>{
-  check(input.slot);const slot=input.slot as string;
-  if(input.operation==='digestRead'){const state=await domain.read(initial,signal);check(slot);return {value:value(state,slot)};}
+  await verifyDevelopmentIdentity(identity,signal);check(input.slot);const slot=input.slot as string;
+  if(input.operation==='digestRead'){const state=await domain.read(initial,signal);await verifyDevelopmentIdentity(identity,signal);check(slot);return {value:value(state,slot)};}
   if(input.operation!=='digestCompareExchange')throw Error('Unknown digest storage operation.');
   if(input.value!==null&&(typeof input.value!=='string'||new TextEncoder().encode(input.value).length>250000))throw Error('Digest storage exceeds the recovery limit.');
-  return domain.edit(initial,data=>{check(slot);if(value(data,slot)!==input.expectedValue)return {status:'conflict'};data.slots[slot]=JSON.stringify({value:input.value});return {status:'saved'};},signal);
+  return domain.edit(initial,async data=>{await verifyDevelopmentIdentity(identity,signal);check(slot);if(value(data,slot)!==input.expectedValue)return {status:'conflict'};data.slots[slot]=JSON.stringify({value:input.value});return {status:'saved'};},signal);
  });
  const recoverySignal=(request?:AbortSignal)=>signal&&request?AbortSignal.any([signal,request]):signal??request;
  return {...storage,recovery:{
-  async capture(request?:AbortSignal){check(prefix);const result=await domain.capture(recoverySignal(request));check(prefix);return result;},
-  async reset(expected:DomainRecovery,request?:AbortSignal){check(prefix);await domain.reset(expected,recoverySignal(request));check(prefix);},
+  async capture(request?:AbortSignal){await verifyDevelopmentIdentity(identity,recoverySignal(request));check(prefix);const result=await domain.capture(recoverySignal(request));await verifyDevelopmentIdentity(identity,recoverySignal(request));check(prefix);return result;},
+  async reset(expected:DomainRecovery,request?:AbortSignal){await verifyDevelopmentIdentity(identity,recoverySignal(request));check(prefix);await domain.reset(expected,recoverySignal(request));await verifyDevelopmentIdentity(identity,recoverySignal(request));check(prefix);},
  }};
 }
