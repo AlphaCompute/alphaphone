@@ -1,24 +1,3 @@
-import {layoutBrowserDialog} from './dialog-layout';
 import {calendarDocument} from './calendar-store';
-import type {DomainRecovery} from './domain-document';
-let current:HTMLDialogElement|undefined;
-/** Exact-byte backup and explicitly confirmed, revision-checked recovery. */
-export function openCalendarRecovery(){
- if(current?.open)return;
- const dialog=current=document.createElement('dialog');dialog.setAttribute('aria-label','Browser calendar recovery');dialog.style.cssText='box-sizing:border-box;width:min(400px,94vw);max-height:85dvh;overflow:auto;padding:24px;border:0;border-radius:20px;background:var(--bg,#fff);color:var(--fg,#111);font:16px/1.5 system-ui';
- const previous=document.activeElement as HTMLElement|null,abort=new AbortController();let closed=false,confirming=false,busy=false,captured:DomainRecovery|undefined;
- const title=document.createElement('h2');title.textContent='Browser calendar recovery';
- const text=document.createElement('p');text.textContent='Download your saved calendar before resetting. Reset clears active events, preferences and action receipts. An older saved copy stays available as a backup. Close older Alpha tabs before continuing.';
- const status=document.createElement('p');status.setAttribute('role','status');status.textContent='Reading saved calendar…';
- const button=(label:string)=>{const b=document.createElement('button');b.textContent=label;b.style.cssText='min-height:44px;margin:4px;padding:10px;font:inherit';return b;};
- const backup=button('Download calendar backup'),legacy=button('Download older calendar copy'),reset=button('Reset browser calendar'),close=button('Close recovery');backup.disabled=reset.disabled=true;legacy.hidden=true;
- const download=(raw:string,name:string)=>{const url=URL.createObjectURL(new Blob([raw],{type:'application/octet-stream'})),link=document.createElement('a');link.href=url;link.download=name;document.body.append(link);try{link.click();status.textContent='Backup download requested. Check Downloads before resetting.';}finally{link.remove();setTimeout(()=>URL.revokeObjectURL(url),60000);}};
- backup.onclick=()=>{if(captured?.raw!==null&&captured?.raw!==undefined)download(captured.raw,captured.format==='domain'?'Alpha-calendar-recovery.txt':'Alpha-calendar-store-recovery.txt');};
- legacy.onclick=()=>{if(captured?.legacy!==null&&captured?.legacy!==undefined)download(captured.legacy,'Alpha-calendar-older-copy.txt');};
- reset.onclick=()=>{if(busy||closed||!captured)return;if(!confirming){confirming=true;reset.textContent='Confirm calendar reset';status.textContent='This clears the active calendar. Download any copies you want to keep before confirming.';return;}busy=true;reset.disabled=true;
-  void (async()=>{try{if(document.hidden)throw Error('Reset cancelled.');await calendarDocument.reset(captured!,abort.signal);if(!closed){status.textContent='Calendar reset. Reloading…';location.reload();}}catch(error){if(!closed){status.textContent=error instanceof Error?error.message:'Reset could not be confirmed. Reload to inspect the calendar.';confirming=false;reset.textContent='Reset browser calendar';reset.disabled=false;}}finally{busy=false;}})();
- };
- const dispose=()=>{if(closed)return;closed=true;abort.abort();dialog.remove();if(current===dialog)current=undefined;window.removeEventListener('alpha-back',back,true);window.removeEventListener('pagehide',dispose);window.removeEventListener('launcher-home',dispose);document.removeEventListener('visibilitychange',visibility);previous?.focus();};
- const back=(event:Event)=>{event.preventDefault();event.stopImmediatePropagation();dispose();},visibility=()=>{if(document.hidden)dispose();};close.onclick=dispose;dialog.oncancel=e=>{e.preventDefault();dispose();};window.addEventListener('alpha-back',back,true);window.addEventListener('pagehide',dispose);window.addEventListener('launcher-home',dispose);document.addEventListener('visibilitychange',visibility);dialog.append(title,text,backup,legacy,reset,status,close);layoutBrowserDialog(dialog,[close]);(document.querySelector('.os')||document.body).append(dialog);dialog.showModal();close.focus();
- void calendarDocument.capture(abort.signal).then(value=>{if(closed)return;captured=value;backup.disabled=value.raw===null;reset.disabled=value.raw===null&&!value.snapshot;legacy.hidden=value.legacy===null||value.legacy===value.raw;status.textContent=value.legacyChanged?'An older tab changed its saved copy. Download both versions and close older tabs before resetting.':value.format==='unrecognized'?'Saved calendar metadata needs recovery. Download the original saved bytes before resetting.':value.raw===null?'No saved browser calendar.':'Saved data is retained until you confirm a reset.';},()=>{if(!closed)status.textContent='Saved data could not be read. Reset is unavailable.';});
-}
+import {openDomainRecovery} from './domain-recovery';
+export function openCalendarRecovery(){openDomainRecovery(calendarDocument,'calendar','Browser calendar recovery','Download your saved calendar before resetting. Reset clears active events, preferences and action receipts. An older saved copy stays available as a backup. Close older Alpha tabs before continuing.');}

@@ -1,5 +1,6 @@
 import './device-controls.css';
 import {openLocationControls} from './location-simulation';
+import {openReminderRecovery} from './reminder-recovery';
 import {openCalendarRecovery} from './calendar-recovery';
 import {browserDevProfile} from './dev-profile';
 import {showSimulatorRecovery} from './simulator-recovery';
@@ -26,6 +27,7 @@ export function BrowserDeviceControls({command}:{command:(command:Command)=>void
  {browserDevProfile&&<button onClick={()=>{dialog.current?.close();window.dispatchEvent(new Event('alpha:dev-incoming-call'));}}>Incoming call</button>}
  {browserDevProfile&&(['message','email'] as const).map(kind=><button key={kind} onClick={()=>{dialog.current?.close();window.dispatchEvent(new CustomEvent('alpha:dev-incoming-data',{detail:kind}));}}>Incoming {kind}</button>)}
  <button onClick={()=>{dialog.current?.close();openCalendarRecovery();}}>Calendar recovery</button>
+ <button onClick={()=>{dialog.current?.close();openReminderRecovery();}}>Reminder recovery</button>
  {browserDevProfile&&<button onClick={()=>{dialog.current?.close();showSimulatorRecovery();}}>Saved app recovery</button>}
  <button onClick={()=>{dialog.current?.close();void registerPlugin<{compose():Promise<void>}>('AlphaNotifications').compose();}}>Post notification</button>
  {['home','assistant','dialer','sms'].map(value=><button key={value} disabled={savingRole} onClick={()=>{setSavingRole(true);void registerPlugin<{requestRole(input:{role:string}):Promise<unknown>}>('ElizaSystem').requestRole({role:value}).then(()=>setRole(`${value} selected`)).catch(()=>setRole('Role could not be saved. Try again.')).finally(()=>setSavingRole(false));}}>Use as {value}</button>)}
