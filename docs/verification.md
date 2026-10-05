@@ -56,6 +56,20 @@ and runs each exact method in a fresh secondary user. It retains the fixture if
 package termination or cleanup cannot be proven. These synthetic read/draft tests
 do not establish paired-host workflow execution.
 
+Process-restart campaigns use `node scripts/test-native-restart.mjs` with `inbox`,
+`notes`, or `document`, a matching archived APK pair and a new output directory.
+Use the owned-emulator configuration in the README. Require successful prepare,
+restore/verify and cleanup phases; Notes and Inbox reports also require distinct
+process IDs. The selected-file native test asserts that process boundary itself.
+Activity recreation alone is insufficient.
+
+Argument-gated instrumentation methods can be skipped by a full-suite invocation.
+Use the exact method and explicit gate documented in its current runner/test source;
+require matching start/completion identities, a successful terminal result and no
+assumptions. A class listing, source count or `OK` summary does not prove the gated
+flow ran. Tests needing synthetic providers or debug hooks require separately
+archived test-mocks APKs. Their results cannot qualify flag-off production behavior.
+
 Qualify real integrations separately with authorized test accounts and explicit
 user actions. Record account scope without secrets, the actual operation, provider
 readback, cancellation/revocation behavior and ambiguous-outcome reconciliation.
