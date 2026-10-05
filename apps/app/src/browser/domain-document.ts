@@ -2,6 +2,7 @@
 type Snapshot = {revision:string;raw:string|null};
 type Documents = {
  read(key:string,signal?:AbortSignal):Promise<Snapshot|undefined>;
+ readOrCreate(key:string,raw:string|null,signal?:AbortSignal):Promise<Snapshot>;
  compareExchange(key:string,expected:Snapshot|undefined,raw:string|null,signal?:AbortSignal):Promise<Snapshot>;
  edit<R>(key:string,editor:(before:Snapshot|undefined)=>Promise<{raw:string|null;result:R}>,signal?:AbortSignal):Promise<R>;
 };
@@ -41,14 +42,10 @@ export class BrowserDomainDocument {
   const current=await this.documents.read(this.key,signal);
   if(current){const value=envelope(current.raw);unchanged(this.legacy(),value.legacy);return value;}
   // Merely opening an empty domain must not claim a migration or invent data.
-  if(this.legacy()===null)return {version:1,legacy:null,value:null};
-  return this.documents.edit(this.key,async before=>{
-   signal?.throwIfAborted();
-   const legacy=this.legacy();
-   const value:Envelope=before?envelope(before.raw):{version:1,legacy,value:legacy};
-   unchanged(legacy,value.legacy);
-   return {raw:JSON.stringify(value),result:value};
-  },signal);
+  const legacy=this.legacy();
+  if(legacy===null)return {version:1,legacy:null,value:null};
+  const saved=await this.documents.readOrCreate(this.key,JSON.stringify({version:1,legacy,value:legacy}),signal);
+  const value=envelope(saved.raw);unchanged(this.legacy(),value.legacy);return value;
  }
 
  async readRaw(signal?:AbortSignal):Promise<string|null>{return (await this.load(signal)).value;}

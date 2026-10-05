@@ -4,7 +4,8 @@ The browser MVP must retain every committed change and its matching receipt acro
 tabs, reload and cancellation. Web Locks around localStorage do not establish that
 property: the retained rapid-edit regression reproduced a lost WebKit update.
 The browser document store admitted from upstream uses IndexedDB transactions and
-revision compare-and-swap. Alpha supplies domain names and legacy recovery policy.
+revision compare-and-swap. Atomic first imports preserve one revision across concurrent
+readers. Alpha supplies domain names and legacy recovery policy.
 
 ## Domain status
 
@@ -20,8 +21,8 @@ revision compare-and-swap. Alpha supplies domain names and legacy recovery polic
 | Development workflows and digests | `browser/development-workflows.ts`, `browser/development-digests.ts`, `browser/digest-storage.ts` | Legacy. Workflow/run/save receipts and source/result cursors must move as coherent documents. Direct configured-agent reads also require migration. |
 | Development Cloud setup | `browser/development-cloud.ts` | Legacy. Account/session identity and setup state have synchronous callers and explicit recovery behavior. |
 | Device preferences and roles | `browser/device.ts` | Legacy. Brightness, volume, focus and display consumers currently read synchronously; move hydration and refresh before replacing persistence. |
-| Browser bookmarks and notification sound history | `browser/preference-documents.ts`; awaited bookmark reads/writes, cross-tab bookmark refresh and transactional sound claims; separate backup/reset controls | Merged in PR224 at source e9a421f5. All 57 Clock/storage cases pass across Chromium, Firefox and WebKit; repository verification passes 336 tests, TypeScript and web build at recorded upstream pin 8f28122d. Hosted qualification remains separate. Empty reads and unchanged sound polling do not initialize records; older bytes remain available for backup. |
-| Development password provider | `browser/password-provider.ts`, `browser/preference-documents.ts`; asynchronous device status, canonical provider selection, cross-tab retirement and backup/reset | Implementation candidate. Pending dialog reads and sample-fill reads retain cancellation ownership. TypeScript passes; The initial 36-case run had 35 passes and one delayed-read fixture timeout; the corrected fixture and compact large-text layouts are in a combined 54-case three-engine campaign. This is the development sample provider, not real Proton credentials or native autofill acceptance. |
+| Browser bookmarks and notification sound history | `browser/preference-documents.ts`; awaited bookmark reads/writes, cross-tab bookmark refresh and transactional sound claims; separate backup/reset controls | Clock/storage suites cover bookmark refresh, sound receipts and recovery. Empty reads and unchanged sound polling do not initialize records; older bytes remain available for backup. |
+| Development password provider | `browser/password-provider.ts`, `browser/preference-documents.ts`; asynchronous device status, canonical provider selection, cross-tab retirement and backup/reset | Provider lifecycle, storage and compact large-text suites cover pending dialog cancellation, retired sample fills and recovery. This is the development sample provider, not real Proton credentials or native autofill acceptance. |
 | Photo albums | `prototype/browser-camera.ts` | Legacy. Migrate all direct readers/writers and UI initialization, preserving native boundaries. `alpha.browser.albums.v1` holds album names and media membership; photo/video payloads already use a separate IndexedDB store. |
 
 This table covers the shared `readStore`/`editStore` callers, not every localStorage
@@ -56,10 +57,3 @@ journeys across Chromium, Firefox and WebKit, then repository verification and
 current hosted checks. Passing Calendar alone does not close the retained global
 rapid-store regression or qualify another domain. Browser evidence does not prove
 Android process, Keystore, reboot, Doze or physical-device acceptance.
-
-Current integration review passes 336 repository tests, TypeScript/web build,
-81 Chromium cases and 57 Firefox cases, plus standalone and launcher debug/release
-APK builds. The startup regressions first demonstrated 20 writes for 20 concurrent
-policy reads; initialization now writes once. Hosted CI and broader three-engine
-campaigns remain separate pending evidence. This review did not rerun emulator,
-AOSP boot, live-provider or physical-device acceptance.

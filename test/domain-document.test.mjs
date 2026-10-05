@@ -12,6 +12,7 @@ function fixture(raw){
  const copy=value=>structuredClone(value);
  const documents={
   async read(){return copy(snapshot);},
+  async readOrCreate(_key,raw,signal){signal?.throwIfAborted();if(!snapshot)snapshot={revision:String(++revision),raw};return copy(snapshot);},
   async compareExchange(_key,expected,raw,signal){signal?.throwIfAborted();assert.deepEqual(expected,snapshot,'saved document changed');snapshot={revision:String(++revision),raw};return copy(snapshot);},
   async edit(key,callback,signal){signal?.throwIfAborted();const before=await this.read(),next=await callback(before);await this.compareExchange(key,before,next.raw,signal);return next.result;},
  };
@@ -32,6 +33,18 @@ test('migration and edits preserve the exact legacy bytes without a writable mir
 test('empty reads do not claim a migration before legacy data exists',async()=>{
  const f=fixture(null);assert.deepEqual(await f.domain.read(()=>({count:0})),{count:0});assert.equal(f.saved(),undefined);
  f.setLegacy('{"count":7}');assert.deepEqual(await f.domain.read(()=>({count:0})),{count:7});assert.equal(JSON.parse(f.saved().raw).legacy,'{"count":7}');
+});
+
+test('concurrent first readers import once and keep recovery receipts stable',async()=>{
+ const original='  { "count" : 7 }\n',f=fixture(original);
+ const reads=await Promise.all(Array.from({length:20},()=>f.domain.read(()=>({count:0}))));
+ assert.deepEqual(reads,Array.from({length:20},()=>({count:7})));
+ assert.equal(f.saved().revision,'1');
+ const capture=await f.domain.capture();
+ await Promise.all(Array.from({length:20},()=>f.domain.read(()=>({count:0}))));
+ assert.deepEqual(await f.domain.capture(),capture);
+ await f.domain.reset(capture);assert.equal((await f.domain.capture()).raw,null);
+ assert.equal(f.legacy(),original);
 });
 
 test('malformed and empty legacy bytes are retained for backup, never treated as empty data',async()=>{
