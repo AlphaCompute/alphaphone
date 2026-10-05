@@ -1499,7 +1499,7 @@ registerView("calendar", {
       monthOpen: monthOpen, mTitle: MONS[mBase.getMonth()] + (mBase.getFullYear() !== today.getFullYear() ? " " + mBase.getFullYear() : ""),
       mdays: mdays, mPrev: function () { set({ month: (st.month || 0) - 1 }); }, mNext: function () { set({ month: (st.month || 0) + 1 }); },
       closeMonth: function () { set({ month: null }); }, calRows: calRows, chevron: monthOpen ? IC.up : IC.down,
-      detail: !!D, ev: D,
+      detail: !!D && !F, ev: D,
       form: !!F, f: F,
       noop: function () {}
     };

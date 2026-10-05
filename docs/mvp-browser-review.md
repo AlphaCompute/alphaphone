@@ -139,8 +139,7 @@ confirmed reset. Android also offers backup and confirmed reset for readable rec
 draft schemas. Reset compares the exact captured secure-slot bytes; backup uses the
 existing reviewed Android document picker with exact-byte readback. Decryption or
 native read failures leave the record untouched. Physical restart/IME, encrypted-store
-execution and document-provider acceptance remain open. Calendar and
-Reminder unsaved forms remain separate implementation gaps.
+execution and document-provider acceptance remain open. Calendar and Reminder form recovery is tracked separately below.
 
 Assistant draft qualification: consumer `ba3eed32` passed `npm run verify` (657
 tests, type checking, production build and bundle audit), 11 production-surface
@@ -162,7 +161,7 @@ these results do not prove encrypted Android storage or file-provider execution.
 New event and reminder forms now retain their editable fields and original creation
 identities in the transactional draft store. Browser app and development profiles
 use separate bindings; Android selects the existing encrypted slot adapter. Recovery
-is explicit through **Resume unsaved event or reminder** and never saves an item.
+is explicit through **Resume unsaved calendar form** and never saves an item.
 Civil dates are stored independently of relative day offsets, including when an
 open form crosses midnight. Changing time zones prompts a review of the restored
 time. Separate-creation consent is not restored. Existing pending-write journals
@@ -173,8 +172,8 @@ before replacing a retained one. Discard requires confirmation and refuses stale
 receipts, without creating or deleting events. Confirmed saves clear only the matching retained
 form. Storage failure leaves current text available and exposes recovery.
 
-This closes creation-form retention in source; existing-event/reminder edit forms
-and the separate recurring/all-day Calendar editor still need restart recovery.
+Creation forms and inline existing-event/reminder edit forms retain drafts in separate
+slots. The separate recurring/all-day Calendar editor still needs restart recovery.
 Post-save unsaved Inbox edits also remain open. Android execution and physical
 process-death acceptance remain separate from browser qualification.
 
@@ -190,5 +189,21 @@ The 92-case creation/save campaign passed across Chromium, Firefox and WebKit;
 after the discard addition, all 39 form-specific cases passed across those engines.
 Cases cover date rollover, cross-tab conflict, uncertain event/reminder outcomes,
 explicit replacement/discard, oversized edits and damaged-form recovery without
-changing saved events. The restored form was inspected at 412 × 915. Full repository
-verification for this batch is running; no Android build or native execution is claimed.
+changing saved events. The restored form was inspected at 412 × 915. The primary-checkout repository run finished with 658 of 660 tests passing: an
+untracked ownership audit links to removed patches, and its previously staged Android
+payload does not match the current source pin. Integrated verification in the clean
+worktree is pending; no Android build or native execution is claimed.
+
+## Unsaved inline Calendar and Reminder edits
+
+Existing-item edits retain the original Calendar expected fields/revision or exact
+Reminder target separately from editable values. Restoring never creates a new item
+or restores an in-memory mutation attempt. Provider revision checks and the pending
+action journal still govern Save. Civil dates and the original reminder schedule
+rebase together, so a title-only change after midnight does not reschedule it.
+Confirmed saves clear only the matching retained form. Explicit discard cannot
+erase a newer draft from another tab and leaves saved items unchanged.
+
+This is implemented for the inline editor; the separate recurring/all-day modal
+and unsaved Inbox edits remain open. Browser qualification for this batch is in
+progress. Native encrypted storage and process-death behavior remain unqualified.
