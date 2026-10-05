@@ -20,13 +20,13 @@ public final class InboxFixtureConnection extends Plugin {
  @PluginMethod public void cancel(PluginCall call){call.resolve();}
  static String token(){return "synthetic-inbox-only-"+InboxFixtureScope.runId;}
  @PluginMethod public void openExternal(PluginCall call){
-  if(("https://staging.eliza.app/auth/cli-login?session="+LOGIN).equals(call.getString("url")))call.resolve();else call.reject("Fixture rejects external navigation");
+  if(("https://eliza.app/auth/cli-login?session="+LOGIN).equals(call.getString("url")))call.resolve();else call.reject("Fixture rejects external navigation");
  }
  @PluginMethod public void request(PluginCall call){
   if("cleanup".equals(InboxFixtureScope.phase)){call.reject("Fixture cleanup closes all transport");return;}
   try{
    URI url=new URI(call.getString("url"));String path=url.getPath(),method=call.getString("method");
-   if(!"https".equals(url.getScheme())||!"api-staging.eliza.app".equals(url.getHost())||url.getPort()!=-1||url.getRawUserInfo()!=null||url.getFragment()!=null)throw new IllegalArgumentException();
+   if(!"https".equals(url.getScheme())||!"api.eliza.app".equals(url.getHost())||url.getPort()!=-1||url.getRawUserInfo()!=null||url.getFragment()!=null)throw new IllegalArgumentException();
    boolean login=path.equals("/api/auth/cli-session")||path.equals("/api/auth/cli-session/"+LOGIN);
    if(!login&&!(("Bearer "+token()).equals(call.getObject("headers",new JSObject()).optString("Authorization"))))throw new IllegalArgumentException();
    routes.add(method+" "+path);Object data;

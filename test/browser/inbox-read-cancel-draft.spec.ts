@@ -47,3 +47,38 @@ for(const request of ['Load Inbox','Search Gmail','Check connection'])for(const 
  expect(await page.evaluate(()=>JSON.stringify((window as any).cancelMail.slots))).toBe(before);
  expect(await page.evaluate(()=>({aborts:(window as any).cancelMail.aborts,mutations:(window as any).cancelMail.mutations}))).toEqual({aborts:1,mutations:0});
 });
+
+test('Compose waits for the selected account draft read before accepting a click',async({page})=>{
+ await page.goto('/');
+ await page.evaluate(async()=>{
+  const {connectionController:c}=await import('/src/runtime/connection-ui.tsx');
+  const {secureConnectionStore:s}=await import('/src/runtime/native-connection.ts');
+  const f=(window as any).draftAdmission={slots:{},release:null,waiting:false};
+  s.read=async key=>{
+   if(key.startsWith('inbox-drafts:v1:')&&JSON.parse(key.slice('inbox-drafts:v1:'.length))[3]==='b'){
+    f.waiting=true;await new Promise(resolve=>{f.release=resolve;});
+   }
+   return structuredClone(f.slots[key]??null);
+  };
+  s.compareExchange=async(key,prior,next)=>{if(JSON.stringify(f.slots[key]??null)!==JSON.stringify(prior))return {status:'conflict'};f.slots[key]=structuredClone(next);return {status:'saved'};};
+  const client={gmailAccounts:async()=>['a','b'].map(id=>({connectionId:id,label:'Account '+id,connected:true,grantedCapabilities:['google.gmail.triage']})),gmailInboxCapabilities:async()=>({send:false,providerDrafts:false,mailboxMutations:false})};
+  c.getCloudClient=()=>({client,sessionId:'fixture-session',credentialId:'fixture'} as any);
+  const snapshot={...c.getSnapshot(),cloudAccount:{environment:'production',userId:'fixture-owner',sessionId:'fixture-session',credentialId:'fixture'}} as any;c.getSnapshot=()=>snapshot;
+ });
+ await page.getByRole('button',{name:'Inbox',exact:true}).click();
+ await expect(page.getByRole('button',{name:'Load Inbox',exact:true})).toBeVisible();
+ await page.getByRole('button',{name:'Compose',exact:true}).click();
+ await page.getByRole('textbox',{name:'Message',exact:true}).fill('Account a local draft');
+ await page.getByRole('button',{name:'Save draft locally',exact:true}).click();
+ await expect(page.getByRole('status').filter({hasText:'Saved locally on this device'})).toBeVisible();
+ await page.getByRole('button',{name:'Back from draft',exact:true}).click();
+ await page.getByRole('button',{name:'Account b',exact:true}).click();
+ await expect.poll(()=>page.evaluate(()=>(window as any).draftAdmission.waiting)).toBe(true);
+ await expect(page.getByRole('textbox',{name:'Message',exact:true})).toHaveCount(0);
+ await expect(page.getByRole('button',{name:'Compose',exact:true})).toBeDisabled();
+ await page.evaluate(()=>(window as any).draftAdmission.release());
+ await expect(page.getByRole('button',{name:'Compose',exact:true})).toBeEnabled();
+ await page.getByRole('button',{name:'Compose',exact:true}).click();
+ await expect(page.getByRole('textbox',{name:'Message',exact:true})).toHaveValue('');
+ expect(await page.evaluate(()=>Object.values((window as any).draftAdmission.slots).map((draft:any)=>draft.body))).toEqual(['Account a local draft']);
+});

@@ -29,7 +29,7 @@ the required evidence rather than treating a successful APK build as acceptance.
 - [Cloud deployment and authentication findings](docs/cloud-production-validation.md)
 - [Enclave candidate and signing gates](docs/enclave-candidate-validation.md)
 - [Browser autofill and Proton integration](docs/browser-autofill-integration.md)
-- [Calendar and reminder recovery audit](docs/calendar-reminder-audit.md)
+- [Calendar and reminder contracts](docs/calendar-reminder-contract.md)
 
 - [Working PRD](docs/prd.md)
 - [Detailed implementation plan](docs/implementation-plan.md)
@@ -284,7 +284,7 @@ Process-restart acceptance for Inbox, Notes and selected Files uses
 with the same archive, owned-emulator environment and HOME configuration as the
 permission campaign. The shared harness authenticates both APKs, runs exact
 prepare/restore/cleanup methods in a disposable user and records strict phase
-results. Inbox requires a test-mocks APK pair for its closed provider fixture.
+results. Inbox uses a closed synthetic provider transport in the test APK and exercises the production sign-in control.
 These checks do not establish physical-device or real-provider acceptance.
 
 Installed Calendar and reminder upgrade acceptance uses
