@@ -15,7 +15,7 @@ npm run agent:test
 npm run dev:local
 ```
 
-For browser-only source preparation without mobile setup, `npm run agent:prepare -- --source-only` creates the directory reported by the command. In that prepared directory, `bun install --frozen-lockfile --ignore-scripts --filter @elizaos/app --backend=copyfile` installs the locked host dependencies. Set `ALPHA_ELIZA_SOURCE` to that absolute directory when running `npm run dev:local`. This path was exercised against upstream `dda547372918a0fe6ba92cabbea837b64a162d0f`; it does not build or qualify Android. Keep the source guard enabled and do not reuse dependencies through a symlink to another runtime checkout.
+For browser-only source preparation without mobile setup, `npm run agent:prepare -- --source-only` creates the directory reported by the command. In that prepared directory, `bun install --frozen-lockfile --ignore-scripts --filter @elizaos/app --backend=copyfile` installs the locked host dependencies. Set `ALPHA_ELIZA_SOURCE` to that absolute directory when running `npm run dev:local`. This path was exercised against upstream `eba10c3eaad0923e777062b1b946911bc31d7fbd` at consumer `7edcbad1a672f11799119af3dfe83a3a818a4760`; it does not build or qualify Android. Keep the source guard enabled and do not reuse dependencies through a symlink to another runtime checkout.
 
 Before starting, configure `CEREBRAS_API_KEY` in the host environment or the owner-only file `~/.config/alphaphone/cerebras-key`. Do not put it in a `VITE_` variable, checked-in file, browser field, URL or command-line argument. The existing private key file is supported. The current model defaults to `qwen-3.8-27b`.
 
@@ -61,6 +61,35 @@ node scripts/test-real-workflow.mjs
 ```
 
 The helper loads TypeScript through the installed `tsx` loader, accepts only an exact IPv4 loopback HTTP origin, creates a paused synthetic workflow, executes it once, and leaves it paused. It requires one persisted output row for the matching run and task with value `56`, then checks that a second receipt read returns the same result. A finished status without that output fails qualification. It exercises the actual local workflow engine without model inference, tools or communications. Run it against an isolated test profile; it does not qualify native triggers or real-provider workflows.
+
+## Qualified browser host checkpoint — October 5
+
+Consumer `7edcbad1a672f11799119af3dfe83a3a818a4760` and upstream
+`eba10c3eaad0923e777062b1b946911bc31d7fbd` were prepared with the frozen host
+dependency install, without lifecycle scripts or Android packaging. The 21
+runtime workflow/process-host tests passed. `npm run verify` passed TypeScript,
+all 397 repository tests (zero failures or skips), and the renderer build.
+
+The renderer on port 5317 and private host on port 47849 were upgraded together.
+Stopped-profile backups remain private outside the repository. Before/after
+snapshots confirm the same owner, agent and all 17 conversation identifiers;
+authenticated status reports the agent running and both Whisper and Kokoro ready.
+This establishes identifier retention, not a row-by-row database equivalence audit.
+
+The real Chromium speech journey passed in 12.9 seconds (13.4 seconds including
+runner startup): synthetic audio through MediaRecorder, actual host Whisper,
+Kokoro playback, completion, Stop and disconnect. The rendered transcript was
+inspected. The journey sends no chat message and saves no reminder. Its total
+includes several playbacks and is not a six-second voice-latency measurement.
+Local evidence is retained under `artifacts/current-live-runtime/` in the
+qualification checkout: `runtime-contracts.log`, `verify.log`, `live-speech.log`
+and hashed before/after identity snapshots. No credentials or profile contents
+are committed as evidence.
+
+This is a source-bound development checkpoint. It does not establish hosted
+Cerebras task quality, full current-source hosted browser qualification, native
+Android speech, physical microphone quality or device acceptance. Keep these
+gates separate from a working browser host.
 
 ## Android setup
 
