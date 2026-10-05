@@ -4,18 +4,21 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import {spawnSync} from 'node:child_process';
-const scripts={calendar:path.resolve('scripts/test-calendar-regression.mjs'),camera:path.resolve('scripts/test-camera-permission.mjs')};
+const scripts={workflow:path.resolve('scripts/android-workflow-native.mjs'),calendar:path.resolve('scripts/test-calendar-regression.mjs'),camera:path.resolve('scripts/test-native-permissions.mjs'),settings:path.resolve('scripts/test-native-permissions.mjs'),channels:path.resolve('scripts/test-native-permissions.mjs')};
 export function exercise(mode,kind='calendar'){
+ const permissionCampaign=['camera','settings','channels'].includes(kind);
  const root=fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(),'alpha-calendar-runner-')));
  try{
-  const selectedClass={range:'CalendarRangeInstrumentedTest',truncation:'CalendarTruncationInstrumentedTest'}[kind]??'CalendarCreationRecoveryInstrumentedTest';
-  const selectedMethod={camera:'denyingCameraAllowsExplicitRetryWithoutFakePreview',range:'distantDatesLoadRealRowsAndNewestNavigationWins',truncation:'realInstanceLimitCannotClaimAnUnreturnedDateIsFree'}[kind]??'creationRecovery';
+  const selectedClass={settings:'SettingsNativeInstrumentedTest',channels:'NotificationChannelsInstrumentedTest',agent:'CalendarAgentCrudInstrumentedTest',range:'CalendarRangeInstrumentedTest',truncation:'CalendarTruncationInstrumentedTest'}[kind]??'CalendarCreationRecoveryInstrumentedTest';
+  const selectedMethod={settings:'accountsHandoffAndLocationAccuracyReadback',channels:'blockedChannelReadbackUserRecoveryAndRealNotification',agent:'reviewedNativeCreateReadUpdateDeleteAndStaleRevision',camera:'denyingCameraAllowsExplicitRetryWithoutFakePreview',range:'distantDatesLoadRealRowsAndNewestNavigationWins',truncation:'realInstanceLimitCannotClaimAnUnreturnedDateIsFree'}[kind]??'creationRecovery';
   const pkg='ai.elizaresearch.alphaphone',apk=path.join(root,'artifacts/standalone-debug.apk'),testApk=path.join(root,'android/app/build/outputs/apk/androidTest/standalone/debug/app-standalone-debug-androidTest.apk');
   for(const [file,bytes] of [[apk,'app'],[testApk,'test']]){fs.mkdirSync(path.dirname(file),{recursive:true});fs.writeFileSync(file,bytes);}
   const cameraTest=path.join(root,'artifacts/standalone-androidTest.apk');
   fs.copyFileSync(testApk,cameraTest);
   const hash=file=>createHash('sha256').update(fs.readFileSync(file)).digest('hex');
-  fs.writeFileSync(path.join(root,'artifacts/apk-manifest.json'),JSON.stringify({'standalone-debug.apk':hash(apk),'standalone-androidTest.apk':hash(cameraTest)}));
+  const manifest={'standalone-debug.apk':hash(apk),'standalone-androidTest.apk':hash(cameraTest)};
+  for(const kind of ['debug','androidTest']){const name='launcher-'+kind+'.apk';fs.copyFileSync(kind==='debug'?apk:cameraTest,path.join(root,'artifacts',name));manifest[name]=hash(path.join(root,'artifacts',name));}
+  fs.writeFileSync(path.join(root,'artifacts/apk-manifest.json'),JSON.stringify(manifest));
   const jdk=path.join(root,'jdk');fs.mkdirSync(jdk);fs.writeFileSync(path.join(jdk,'release'),'JAVA_VERSION="21.0.1"');
   if(mode==='archive-pin')fs.writeFileSync(cameraTest,'changed');
   if(mode==='companion-pin'){const file=path.join(root,'artifacts/calendar-external/ws.xsoh.etar_57.apk');fs.mkdirSync(path.dirname(file),{recursive:true});fs.writeFileSync(file,'unreviewed APK');}
@@ -47,12 +50,12 @@ else if(a[0]==='pull')fs.copyFileSync(s.files[a[1].slice(6,-4)],a[2]);
 else if(a[0]==='uninstall'){delete s.files[a[1]];save();console.log('Success');}
 else if(a.includes('force-stop')){if(mode==='stop-failure')process.exit(1);}
 else if(a.includes('instrument')){
- const cls=pkg+${JSON.stringify(kind==='camera'?'.CameraFlowInstrumentedTest':'.'+selectedClass)},block=code=>'INSTRUMENTATION_STATUS: class='+cls+'\\nINSTRUMENTATION_STATUS: test=${selectedMethod}\\nINSTRUMENTATION_STATUS: numtests=1\\nINSTRUMENTATION_STATUS_CODE: '+code+'\\n';
+ const selector=a[a.indexOf('class')+1],cls=${kind==='workflow'?"selector.split('#')[0]":"pkg+"+JSON.stringify(kind==='camera'?'.CameraFlowInstrumentedTest':'.'+selectedClass)},method=${kind==='workflow'?"selector.split('#')[1]":JSON.stringify(selectedMethod)},block=code=>'INSTRUMENTATION_STATUS: class='+cls+'\\nINSTRUMENTATION_STATUS: test='+method+'\\nINSTRUMENTATION_STATUS: numtests=1\\nINSTRUMENTATION_STATUS_CODE: '+code+'\\n';
  if(mode==='timeout'||mode==='stop-failure'){console.log(block(1));console.error('fixture transport');process.exit(1);}
  let output=block(1)+block(0)+'OK (1 test)\\nINSTRUMENTATION_CODE: -1\\n';
  if(mode==='summary-only')output='OK (1 test)\\n';
  if(mode==='missing-start')output=block(0)+'OK (1 test)\\nINSTRUMENTATION_CODE: -1\\n';
- if(mode==='wrong-method')output=output.replaceAll('test=${selectedMethod}','test=unrequestedMethod');
+ if(mode==='wrong-method')output=output.replaceAll('test='+method,'test=unrequestedMethod');
  if(mode==='wrong-class')output=output.replaceAll(cls,pkg+'.WrongTest');
  if(mode==='wrong-terminal')output=output.replace('INSTRUMENTATION_CODE: -1','INSTRUMENTATION_CODE: 0');
  if(mode==='duplicate')output=block(1)+block(0)+output;
@@ -61,11 +64,11 @@ else if(a.includes('instrument')){
 else{console.error('Unexpected command '+JSON.stringify(a));process.exit(1);}
 `,{mode:0o700});
   const testClass=mode==='companion-pin'?'CalendarExternalEditorInstrumentedTest':selectedClass;
-  const run=spawnSync(process.execPath,[scripts[kind]??scripts.calendar,...(kind==='camera'?[apk,cameraTest,path.join(root,'output')]:[`--case=${testClass}`,'--variant=standalone',...(mode==='companion-pin'?['--external']:[])])],{cwd:root,env:{...process.env,ALPHA_CALENDAR_TEST_ROOT:root,ALPHA_CALENDAR_TEST_SERIAL:'emulator-5580',ALPHA_CALENDAR_TEST_AVD:'calendar-fixture',ALPHA_CALENDAR_TEST_ABI:'x86_64',ANDROID_HOME:root,ANDROID_SDK_ROOT:root,JAVA_HOME:jdk,ANDROID_SERIAL:'emulator-5580',ALPHA_CAMERA_TEST_AVD:'calendar-fixture',ALPHA_CAMERA_TEST_ABI:'x86_64',ELIZA_DEVICE_LEASE_DIR:path.join(root,'leases')},encoding:'utf8',timeout:120000});
+  const run=spawnSync(process.execPath,[scripts[kind]??scripts.calendar,...(kind==='workflow'?[]:permissionCampaign?[kind,apk,cameraTest,path.join(root,'output')]:[`--case=${testClass}`,'--variant=standalone',...(mode==='companion-pin'?['--external']:[])])],{cwd:root,env:{...process.env,ALPHA_CALENDAR_TEST_ROOT:root,ALPHA_CALENDAR_TEST_SERIAL:'emulator-5580',ALPHA_CALENDAR_TEST_AVD:'calendar-fixture',ALPHA_CALENDAR_TEST_ABI:'x86_64',ANDROID_HOME:root,ANDROID_SDK_ROOT:root,JAVA_HOME:jdk,ANDROID_SERIAL:'emulator-5580',ALPHA_NATIVE_TEST_AVD:'calendar-fixture',ALPHA_NATIVE_TEST_ABI:'x86_64',ALPHA_BUILD_ARCHIVE:path.join(root,'artifacts'),ALPHA_CAMPAIGN_OUTPUT:path.join(root,'test-results/workflow'),ALPHA_WORKFLOW_TEST_AVD:'calendar-fixture',ALPHA_WORKFLOW_TEST_ABI:'x86_64',ELIZA_DEVICE_LEASE_DIR:path.join(root,'leases')},encoding:'utf8',timeout:120000});
   // Source authentication alone can exceed the old whole-fixture deadline.
   // Surface process failures before reading output that may never have been created.
   assert.ifError(run.error);
-  const directory=kind==='camera'?path.join(root,'output'):path.join(root,'test-results',fs.readdirSync(path.join(root,'test-results'))[0],`standalone-${testClass}`);
-  return {code:run.status,stderr:run.stderr,record:fs.existsSync(path.join(directory,'result.json'))?JSON.parse(fs.readFileSync(path.join(directory,'result.json'),'utf8')):null,state:JSON.parse(fs.readFileSync(state)),commands:fs.readFileSync(log,'utf8').trim().split('\n').filter(Boolean).map(JSON.parse),log:fs.existsSync(path.join(directory,'standalone.log'))?fs.readFileSync(path.join(directory,'standalone.log'),'utf8'):''};
+  const directory=kind==='workflow'?path.join(root,'test-results/workflow'):permissionCampaign?path.join(root,'output'):path.join(root,'test-results',fs.readdirSync(path.join(root,'test-results'))[0],`standalone-${testClass}`);
+  return {code:run.status,stderr:run.stderr,record:fs.existsSync(path.join(directory,'result.json'))?JSON.parse(fs.readFileSync(path.join(directory,'result.json'),'utf8')):null,state:JSON.parse(fs.readFileSync(state)),commands:fs.readFileSync(log,'utf8').trim().split('\n').filter(Boolean).map(JSON.parse),log:kind==='workflow'&&fs.existsSync(path.join(directory,'standalone-privateReadResultSurvivesRecreationButNeverExpandsPassiveHistory/standalone.log'))?fs.readFileSync(path.join(directory,'standalone-privateReadResultSurvivesRecreationButNeverExpandsPassiveHistory/standalone.log'),'utf8'):fs.existsSync(path.join(directory,'standalone.log'))?fs.readFileSync(path.join(directory,'standalone.log'),'utf8'):''};
  }finally{fs.rmSync(root,{recursive:true,force:true});}
 }

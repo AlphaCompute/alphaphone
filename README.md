@@ -265,9 +265,11 @@ users and retains uncertain cleanup for explicit recovery. Reports are under
 `test-results/native-calendar-consumer`; fixture builds alone do not prove native acceptance.
 
 The camera denial/retry campaign uses the same leased emulator and disposable-user
-harness. Set `ANDROID_SERIAL`, `ALPHA_CAMERA_TEST_AVD` and
-`ALPHA_CAMERA_TEST_ABI`, then run
-`node scripts/test-camera-permission.mjs APP.apk MATCHING_TEST.apk NEW_OUTPUT`.
+harness. Set `ANDROID_SERIAL`, `ALPHA_NATIVE_TEST_AVD` and
+`ALPHA_NATIVE_TEST_ABI`, then run
+`node scripts/test-native-permissions.mjs camera APP.apk MATCHING_TEST.apk NEW_OUTPUT`.
+Use `settings` or `channels` in place of `camera` for location/Accounts settings
+or notification-channel recovery with the same archived pair and emulator inputs.
 The APKs must be a matching archived standalone or launcher pair with their
 `apk-manifest.json`. Existing package registrations are refused. Permission
 changes affect only the fixture user; unproven package cleanup retains that user

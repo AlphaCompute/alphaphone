@@ -82,6 +82,12 @@ public class ConnectionInstrumentedTest {
    AppNavigation.liveMode();ready();
    JSONObject initial=new JSONObject().put("slot",slot).put("expectedValue",JSONObject.NULL).put("value",first);
    assertEquals("saved",invoke("secureCompareExchange",initial).getJSONObject("value").getString("status"));
+   AlphaCredentialStore backgroundStore=new AlphaCredentialStore(InstrumentationRegistry.getInstrumentation().getTargetContext());
+   assertEquals("Application-context reader uses the same deployed slot",first,backgroundStore.readCredentialSlot(slot));
+   assertTrue(backgroundStore.compareExchangeCredentialSlot(slot,first,second));
+   assertEquals(second,invoke("secureRead",new JSONObject().put("slot",slot)).getJSONObject("value").getString("value"));
+   assertFalse("Stale native completion cannot replace a bridge-visible value",backgroundStore.compareExchangeCredentialSlot(slot,first,"{}"));
+   assertTrue(backgroundStore.compareExchangeCredentialSlot(slot,second,first));
    assertFalse(new String(Files.readAllBytes(stored.toPath()),StandardCharsets.ISO_8859_1).contains("PRIVATE_SYNTHETIC_DRAFT_"));
    assertEquals("conflict",invoke("secureCompareExchange",initial).getJSONObject("value").getString("status"));
    assertEquals("saved",invoke("secureCompareExchange",new JSONObject().put("slot",slot).put("expectedValue",first).put("value",second)).getJSONObject("value").getString("status"));
