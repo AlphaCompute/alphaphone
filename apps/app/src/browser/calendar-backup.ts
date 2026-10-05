@@ -1,11 +1,16 @@
 import type {CalendarRecord} from './calendar-records';
-/** Alpha backup policy: copy reviewed events, never replay historical operation receipts. */
-export function prepareCalendarBackup(raw:string,nextRevision:()=>string){
+function readBackup(raw:string){
  if(new TextEncoder().encode(raw).length>5*1024*1024)throw Error('Calendar backup must be 5 MB or smaller.');
  const fail=():never=>{throw Error('This is not a supported calendar backup. No events were changed.');};
  let value:any;try{value=JSON.parse(raw);}catch{return fail();}
  if(value?.version===1&&typeof value.value==='string'){try{value=JSON.parse(value.value);}catch{return fail();}}
  if(!value||!Array.isArray(value.events)||value.events.length>10000)return fail();
+ return value;
+}
+/** Alpha backup policy: copy reviewed events, never replay historical operation receipts. */
+export function prepareCalendarBackup(raw:string,nextRevision:()=>string){
+ const value=readBackup(raw);
+ const fail=():never=>{throw Error('This is not a supported calendar backup. No events were changed.');};
  const text=(v:unknown,max:number)=>{if(typeof v!=='string'||v.length>max)return fail();return v;};
  const instant=(v:unknown)=>{if(typeof v!=='number'||!Number.isSafeInteger(v)||v< -62135596800000||v>253402214400000)return fail();return v;};
  const ids=new Map<string,string>(),rows=new Map<string,any>(),sourceRevision=nextRevision();
@@ -29,4 +34,30 @@ export function prepareCalendarBackup(raw:string,nextRevision:()=>string){
  // Every restored event receives a fresh identity/revision. Invitations, alerts,
  // creation/action receipts and preferences are not imported from a file.
  return {sourceRevision,events};
+}
+
+/** Explicit best-effort import. A recurring series is an indivisible recovery unit:
+ * a damaged exception must not silently reappear as its original occurrence. */
+export function prepareCalendarSalvage(raw:string,nextRevision:()=>string){
+ const value=readBackup(raw),counts=new Map<string,number>(),groups=new Map<string,number[]>();
+ const validId=(id:unknown):id is string=>typeof id==='string'&&id.length>0&&id.length<=512;
+ for(const row of value.events)if(validId(row?.id))counts.set(row.id,(counts.get(row.id)||0)+1);
+ for(let index=0;index<value.events.length;index++){
+  const row=value.events[index],identity=validId(row?.seriesId)?row.seriesId:validId(row?.id)?row.id:null;
+  // JSON keys distinguish invalid rows from every possible imported identity.
+  const key=JSON.stringify(identity===null?['invalid',index]:['series',identity]);
+  const group=groups.get(key);if(group)group.push(index);else groups.set(key,[index]);
+ }
+ const accepted=new Set<number>(),skipped:{index:number;reason:string}[]=[];
+ for(const indexes of groups.values()){
+  const rows=indexes.map(index=>value.events[index]);
+  const duplicate=rows.some(row=>validId(row?.id)&&(counts.get(row.id)||0)>1);
+  let valid=!duplicate;
+  if(valid)try{prepareCalendarBackup(JSON.stringify({events:rows}),()=> 'validation');}catch{valid=false;}
+  if(valid)for(const index of indexes)accepted.add(index);
+  else for(const index of indexes)skipped.push({index:index+1,reason:duplicate?'Ambiguous duplicate identity':'Invalid event or incomplete recurring series'});
+ }
+ if(!accepted.size)throw Error('No complete valid events or series could be recovered. No events were changed.');
+ const state=prepareCalendarBackup(JSON.stringify({events:value.events.filter((_:unknown,index:number)=>accepted.has(index))}),nextRevision);
+ return {state,skipped:skipped.sort((a,b)=>a.index-b.index)};
 }

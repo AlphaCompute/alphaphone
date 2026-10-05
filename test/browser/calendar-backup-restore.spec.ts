@@ -37,3 +37,35 @@ test('closing recovery while a transaction holds storage cancels the queued rest
 test('a coerced guest response cannot enter the reviewed calendar',async({page})=>{
  const d=await open(page);await choose(d,{events:[{...backup.events[0],who:['Guest'],responses:{Guest:['yes']}}]});await expect(d.getByText('This is not a supported calendar backup. No events were changed.')).toBeVisible();await expect(d.getByRole('button',{name:'Review calendar restore',exact:true})).toBeDisabled();expect(await raw(page)).toBe('damaged original');
 });
+
+const partialLabel='Recover complete valid events and series from a partly damaged backup';
+const partialBackup={events:[backup.events[0],{...backup.events[0],id:'broken',end:0}]};
+test('partial recovery requires opt-in, review and confirmation; changing mode retires approval',async({page},info)=>{
+ const d=await open(page);await choose(d,partialBackup);
+ await expect(d.getByRole('button',{name:'Review calendar restore',exact:true})).toBeDisabled();
+ await d.getByLabel(partialLabel,{exact:true}).check();
+ await expect(d.getByText('1 event record(s) can be recovered; 1 record(s) will be skipped.',{exact:false})).toBeVisible();
+ await expect(d.getByText('Skipped record 2:',{exact:false})).toBeVisible();expect(await raw(page)).toBe('damaged original');
+ await d.getByRole('button',{name:'Review calendar restore',exact:true}).click();
+ await d.getByLabel(partialLabel,{exact:true}).uncheck();
+ await expect(d.getByRole('button',{name:'Confirm calendar restore',exact:true})).toHaveCount(0);
+ await expect(d.getByRole('button',{name:'Review calendar restore',exact:true})).toBeDisabled();
+ await d.getByLabel(partialLabel,{exact:true}).check();
+ await d.getByRole('button',{name:'Review calendar restore',exact:true}).click();
+ await page.screenshot({path:info.outputPath('calendar-partial-review.png')});
+ expect(await raw(page)).toBe('damaged original');await d.getByRole('button',{name:'Confirm calendar restore',exact:true}).click();
+ await expect(d).toHaveCount(0);const state=JSON.parse(await raw(page));expect(state.events).toHaveLength(1);expect(state.events[0].alert).toBeNull();
+ await page.reload();expect(JSON.parse(await raw(page)).events).toHaveLength(1);
+});
+test('closing a partial preview and wholly damaged backups preserve the original bytes',async({page})=>{
+ let d=await open(page);await choose(d,partialBackup);await d.getByLabel(partialLabel,{exact:true}).check();
+ await expect(d.getByRole('button',{name:'Review calendar restore',exact:true})).toBeEnabled();await d.getByRole('button',{name:'Close recovery',exact:true}).click();expect(await raw(page)).toBe('damaged original');
+ d=await open(page);await choose(d,{events:[partialBackup.events[1]]});await d.getByLabel(partialLabel,{exact:true}).check();
+ await expect(d.getByText('No complete valid events or series could be recovered. No events were changed.',{exact:true})).toBeVisible();
+ await expect(d.getByRole('button',{name:'Review calendar restore',exact:true})).toBeDisabled();expect(await raw(page)).toBe('damaged original');
+});
+test('partial restore cannot replace a document changed after capture',async({page})=>{
+ const d=await open(page);await choose(d,partialBackup);await d.getByLabel(partialLabel,{exact:true}).check();await d.getByRole('button',{name:'Review calendar restore',exact:true}).click();
+ await page.evaluate(async()=>{const {calendarDocument}=await import('/src/browser/calendar-store.ts');await calendarDocument.restore(await calendarDocument.capture(),JSON.stringify({sourceRevision:'newer-partial',events:[]}));});
+ await d.getByRole('button',{name:'Confirm calendar restore',exact:true}).click();await expect(d.getByRole('button',{name:'Review calendar restore',exact:true})).toBeEnabled();expect(JSON.parse(await raw(page)).sourceRevision).toBe('newer-partial');
+});

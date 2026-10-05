@@ -11,7 +11,7 @@ readers. Alpha supplies domain names and legacy recovery policy.
 
 | Domain | Source integration | Behavior and verification scope |
 | --- | --- | --- |
-| Calendar | `browser/calendar-store.ts`; async Calendar and digest reads; revision-checked backup/reset and reviewed event-copy restore; cross-tab refresh | Creation/recovery, queued-read cancellation, transaction abort and stable-read-revision browser suites; domain import/recovery unit tests. |
+| Calendar | `browser/calendar-store.ts`; async Calendar and digest reads; revision-checked backup/reset and reviewed event-copy restore with explicit partial recovery of valid independent events and series groups; cross-tab refresh | Creation/recovery, queued-read cancellation, transaction abort and stable-read-revision browser suites; domain import/recovery unit tests. |
 | Hosted digest result notices | `browser/hosted-results.ts`; durable rows and pending-tap token move together; cross-tab notice invalidation | Hosted-result browser suite covers notice flows, duplicate publication, pending taps and failed IndexedDB writes. |
 | Media saved-copy request | `runtime/media-copy-intent.ts`; transactional admission and exact cleanup for photo/video copy receipt recovery | Cancelling before dispatch clears only its own request. Recovery preserves legacy bytes and never deletes or recreates media. |
 | Workflow client pending requests | `runtime/workflow-intents.ts`; captured account document, atomic admission and exact acknowledgement for run, metadata, lifecycle and approval requests | Legacy request bytes remain recoverable; reset does not replay or undo effects. Concurrency and lifecycle cases belong to the owning browser suite. |
