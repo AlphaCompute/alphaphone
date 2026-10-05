@@ -1,6 +1,7 @@
 // Release-policy checks for APK verification, using fabricated aapt dumps.
 // These prove the verifier's decisions only; they are not APK build evidence.
 import test from "node:test";
+import { storageSpecPattern } from "../scripts/storage-specs.mjs";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
@@ -9,7 +10,7 @@ import { execFileSync, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { archiveWebPayload, auditBundle, distributionProblems, manifestFacts, parseSignerDigest, readBuildFlags } from "../scripts/apk.mjs";
 import { buildEnv, gradleFlagArgs, outputDirectory, parseBuildArgs, signingRequested, withDistributionWebRestored } from "../scripts/build-android.mjs";
-import { parseQualifyArgs, summarizePlaywright, verdict, ENGINES } from "../scripts/qualify-head.mjs";
+import { parseQualifyArgs, qualifyPlaywrightReport, verdict, ENGINES, STORAGE_SPECS } from "../scripts/qualify-head.mjs";
 
 const root = path.resolve(import.meta.dirname, "..");
 const PKG = "ai.elizaresearch.alphaphone";
@@ -270,7 +271,7 @@ test("qualification needs every current step to pass on a clean pinned tree", ()
   const passed = { status: "passed" };
   const full = {
     clean: true, upstream: { matches: true }, verify: passed, androidBuild: passed, bundleAudit: passed,
-    storageSpecs: Object.fromEntries(ENGINES.map(engine => [engine, { ...passed, expected: 8, unexpected: 0, flaky: 0, skipped: 0, failures: [] }])),
+    storageSpecs: Object.fromEntries(ENGINES.map(engine => [engine, { ...passed, expected: STORAGE_SPECS.length, unexpected: 0, flaky: 0, skipped: 0, failures: [] }])),
   };
   assert.equal(verdict(full), true);
   for (const incomplete of [{}, { expected: 0 }, { unexpected: 1 }, { flaky: 1 }, { skipped: 1 }, { failures: [{ title: "failed" }] }]) {
@@ -283,11 +284,59 @@ test("qualification needs every current step to pass on a clean pinned tree", ()
   assert.equal(verdict({ ...full, upstream: { matches: false } }), false);
   assert.deepEqual(parseQualifyArgs(["--engines", "firefox"]).engines, ["firefox"]);
   assert.throws(() => parseQualifyArgs(["--engines", "edge"]), /--engines/);
-  const summary = summarizePlaywright({
-    stats: { expected: 3, unexpected: 1, flaky: 0, skipped: 2 },
-    suites: [{ file: "a.spec.ts", specs: [{ title: "t1", file: "a.spec.ts", tests: [{ status: "unexpected" }] }], suites: [] }],
-  });
-  assert.deepEqual(summary, { expected: 3, unexpected: 1, flaky: 0, skipped: 2, failures: [{ file: "a.spec.ts", title: "t1", status: "unexpected" }] });
+
+});
+
+test("the storage inventory selects existing specs on both path formats", () => {
+  assert.equal(new Set(STORAGE_SPECS).size, STORAGE_SPECS.length);
+  for (const file of STORAGE_SPECS) {
+    assert.ok(fs.existsSync(path.join(root,file)),file);
+    assert.equal(storageSpecPattern.test(file),true);
+    assert.equal(storageSpecPattern.test(file.replaceAll("/", "\\")),true);
+  }
+  assert.equal(storageSpecPattern.test("test/browser/not-storage.spec.ts"),false);
+});
+
+function completeBrowserReport() {
+  return {
+    errors: [],
+    stats: { expected: STORAGE_SPECS.length, unexpected: 0, flaky: 0, skipped: 0 },
+    suites: STORAGE_SPECS.map(file => ({ file: path.basename(file), specs: [{
+      title: "storage contract", tests: [{ status: "expected", expectedStatus: "passed", results: [{ status: "passed" }] }],
+    }], suites: [] })),
+  };
+}
+
+test("browser qualification requires every named storage spec and matching terminal counts", () => {
+  const report = completeBrowserReport();
+  assert.deepEqual(qualifyPlaywrightReport(report), { ...report.stats, failures: [] });
+  const missing = structuredClone(report);
+  missing.suites.pop();missing.stats.expected--;
+  assert.throws(() => qualifyPlaywrightReport(missing), /spec was not executed/);
+  const forged = structuredClone(report);forged.stats.expected++;
+  assert.throws(() => qualifyPlaywrightReport(forged), /count disagrees/);
+  assert.throws(() => qualifyPlaywrightReport({ stats: report.stats, suites: [] }), /missing results/);
+  const errors = structuredClone(report);errors.errors.push({message:"worker crashed"});
+  assert.throws(() => qualifyPlaywrightReport(errors), /runner errors/);
+  for (const invalid of [
+    {status:"skipped",expectedStatus:"skipped",results:[{status:"skipped"}]},
+    {status:"expected",expectedStatus:"failed",results:[{status:"failed"}]},
+    {status:"expected",expectedStatus:"passed",results:[]},
+  ]) {
+    const bad = structuredClone(report);bad.suites[0].specs[0].tests=[invalid];
+    assert.throws(() => qualifyPlaywrightReport(bad), /did not pass/);
+  }
+});
+
+test("successful retries remain flaky and cannot qualify Alpha's clean run", () => {
+  const report = completeBrowserReport();
+  report.stats.expected--;report.stats.flaky++;
+  Object.assign(report.suites[0].specs[0].tests[0], {status:"flaky",results:[{status:"failed"},{status:"passed"}]});
+  const summary = qualifyPlaywrightReport(report);
+  assert.equal(summary.flaky, 1);
+  const passed = {status:"passed"};
+  assert.equal(verdict({clean:true,upstream:{matches:true},verify:passed,androidBuild:passed,bundleAudit:passed,
+    storageSpecs:Object.fromEntries(ENGINES.map(engine=>[engine,{...passed,...summary}]))}),false);
 });
 
 // A fake android:sync writes web-dist/build-flags.json from the flag in its environment.
