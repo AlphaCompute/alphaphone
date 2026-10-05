@@ -249,11 +249,13 @@ export function HostedDigestPanel() {
 
 		panel.current?.focus();
 		const back = (event: Event) => {
+            if (document.querySelector("dialog[open]")) return;
 			event.preventDefault();
 			event.stopImmediatePropagation();
 			setOpen(false);
 		};
 		const key = (event: KeyboardEvent) => {
+            if (document.querySelector("dialog[open]")) return;
 			if (event.key === "Escape") back(event);
 			if (event.key === 'Tab' && panel.current) {
 				const items = Array.from(panel.current.querySelectorAll<HTMLElement>('button:not(:disabled),input:not(:disabled),select:not(:disabled),textarea:not(:disabled),summary,a[href]')).filter(item => item.getClientRects().length);
