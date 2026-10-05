@@ -30,8 +30,8 @@ not a claim that every feature or the current main revision has passed acceptanc
 ## Browser storage
 
 The [storage ownership map](browser-storage.md) defines each canonical domain,
-its recovery boundary, independent preference contracts and the remaining native
-Clock handoff persistence gap. Shared IndexedDB
+its recovery boundary, independent preference contracts and native
+Clock handoff history. Shared IndexedDB
 transactions bind changes to receipts and revisions. Initialization must use the
 same serialization boundary as edits and preserve an existing revision.
 
