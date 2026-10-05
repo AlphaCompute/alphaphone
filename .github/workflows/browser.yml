@@ -100,7 +100,8 @@ jobs:
   storage:
     name: Browser storage (${{ matrix.browser }})
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    # WebKit reached test 295 before the old 20-minute job limit cancelled it.
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
