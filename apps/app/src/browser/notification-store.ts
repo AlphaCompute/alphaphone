@@ -15,9 +15,9 @@ if(channel)channel.onmessage=event=>{if(event.data?.key===notificationStorageKey
 const changed=()=>channel?.postMessage({key:notificationStorageKey});
 // Startup polling shares one initialization owner across tabs. Re-read inside
 // this lock before importing legacy bytes or filling missing policy authority.
-const initialize=<T>(read:()=>Promise<T>,signal?:AbortSignal)=>navigator.locks.request(
+const initialize=<T>(read:()=>Promise<T>,signal?:AbortSignal)=>navigator.locks?navigator.locks.request(
  JSON.stringify(['alpha.browser.documents.v1',notificationStorageKey,'initialize']),
- {mode:'exclusive',...(signal?{signal}:{})},read);
+ {mode:'exclusive',...(signal?{signal}:{})},read):read();
 const initial=():NotificationState=>({revision:revision(),epoch:revision(),enabled:false,paused:false,history:false,accessGranted:true,apps:[],events:[],dismissed:[],appEnabled:true,channels:{reminders:true,calendar:true},deviceEvents:[]});
 function normalize(value:NotificationState):NotificationState{
  if(!value||typeof value!=='object'||Array.isArray(value))throw Error('Notification data needs recovery.');
