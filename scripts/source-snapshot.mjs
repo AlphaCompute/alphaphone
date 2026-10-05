@@ -10,7 +10,7 @@ roots.push('android/app/src/launcher','android/app/src/standalone','android/app/
  'android/gradle/wrapper/gradle-wrapper.properties','android/gradle/wrapper/gradle-wrapper.jar',
  'android/gradlew','android/gradlew.bat','android/app/proguard-rules.pro',
  'android/notification-fixture/build.gradle','android/notification-fixture/src',
- 'scripts/build-android.mjs','scripts/toolchain.mjs','scripts/verify-upstream.mjs',
+ 'scripts/build-android.mjs','scripts/android-build-preflight.mjs','scripts/toolchain.mjs','scripts/verify-upstream.mjs',
  'scripts/pinned-upstream-source.mjs','scripts/verify-apks.mjs','scripts/apk.mjs','scripts/source-snapshot.mjs');
 // Generated speech models and the qualified JNI archive are APK inputs, unlike
 // Gradle outputs. Include their bytes so a model/runtime change invalidates the archive.
