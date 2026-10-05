@@ -20,3 +20,8 @@ for(const [name,events] of Object.entries({duplicate:[row,row],badInterval:[{...
 test('malformed, oversized and unsupported documents are rejected without partial salvage',()=>{
  assert.throws(()=>prepareCalendarBackup('{',()=>''));assert.throws(()=>prepareCalendarBackup(' '.repeat(5*1024*1024+1),()=>''),/5 MB/);assert.throws(()=>prepare({}));assert.throws(()=>prepare({events:[row,null]}));
 });
+
+test('rejects non-string RSVP values instead of coercing arrays',()=>{
+ for(const response of [['yes'],{},null,1,true])assert.throws(()=>prepare({events:[{...row,who:['Guest'],responses:{Guest:response}}]}),/supported calendar backup/);
+ assert.equal(prepare({events:[{...row,who:['Guest'],responses:{Guest:'yes'}}]}).events[0].responses.Guest,'yes');
+});

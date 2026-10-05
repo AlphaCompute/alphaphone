@@ -19,7 +19,7 @@ export function prepareCalendarBackup(raw:string,nextRevision:()=>string){
   if(row.who!==undefined&&(!Array.isArray(row.who)||row.who.length>256))return fail();
   const who=(row.who??[]).map((v:unknown)=>text(v,500));
   const responses:Record<string,any>=Object.create(null);
-  if(row.responses!==undefined){if(!row.responses||typeof row.responses!=='object'||Array.isArray(row.responses))return fail();for(const [name,response] of Object.entries(row.responses)){if(!who.includes(name)||!['added','invited','yes','maybe','no'].includes(String(response)))return fail();responses[name]=response;}}
+  if(row.responses!==undefined){if(!row.responses||typeof row.responses!=='object'||Array.isArray(row.responses))return fail();for(const [name,response] of Object.entries(row.responses)){if(!who.includes(name)||typeof response!=='string'||!['added','invited','yes','maybe','no'].includes(response))return fail();responses[name]=response;}}
   if(row.excluded!==undefined&&(!Array.isArray(row.excluded)||row.excluded.length>10000))return fail();
   const excluded=(row.excluded??[]).map(instant);
   const result:CalendarRecord={id:ids.get(row.id)!,calendarId:'local',revision:nextRevision(),title,body:text(row.body??'',16000),location:text(row.location??'',2000),begin,end,timeZone:zone,allDay:row.allDay??false,repeat,who,responses,video:row.video??false,alert:null,excluded};
