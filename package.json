@@ -42,7 +42,7 @@
     "agent:test-workflow-worker": "node scripts/test-workflow-worker.mjs",
     "agent:stage-workflow-worker": "node scripts/stage-workflow-worker.mjs",
     "agent:stage-android": "node scripts/stage-local-agent-runtime.mjs",
-    "android:build:local": "npm run agent:prepare && npm run agent:stage-android && npm run android:build",
+    "android:build:local": "node scripts/android-build-preflight.mjs --before-prepare && npm run agent:prepare && npm run agent:build-workflow-worker && npm run agent:stage-android && npm run android:build",
     "agent:test-device-timing": "node scripts/test-device-timing-source.mjs",
     "upstream:prepare-client": "node scripts/prepare-client-features.mjs",
     "predev": "npm run upstream:prepare-client",

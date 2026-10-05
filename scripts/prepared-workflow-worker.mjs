@@ -25,3 +25,18 @@ export async function buildPreparedWorkflowWorker(root,source,output) {
  if(workerHash(readFileSync(stamp))!==expected.sourceStampSha256||workerHash(readFileSync(lock))!==expected.lockSha256)throw Error('Prepared runtime provenance changed during artifact build');
  return verifyWorkerArtifact(output,expected);
 }
+
+/**
+ * Reuse an existing worker artifact only when it verifies against the currently
+ * admitted prepared source; otherwise build into the fresh default directory.
+ * A stale or foreign artifact is never rebuilt over or relabelled.
+ */
+export async function ensurePreparedWorkflowWorker(root,source,output) {
+ if(existsSync(resolve(output))){
+  const stamp=join(source,'.alpha-runtime-source.json'),lock=join(source,'bun.lock');
+  const expected={sourceStampSha256:workerHash(readFileSync(stamp)),lockSha256:workerHash(readFileSync(lock))};
+  try{return {reused:true,...verifyWorkerArtifact(output,expected)};}
+  catch(error){throw Error(`Existing worker artifact ${output} does not match the prepared runtime source (${error.message}). Move it aside, or set ALPHA_WORKFLOW_WORKER_OUTPUT to a fresh directory under artifacts, then rerun npm run agent:build-workflow-worker.`);}
+ }
+ return {reused:false,...await buildPreparedWorkflowWorker(root,source,output)};
+}

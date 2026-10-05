@@ -154,42 +154,47 @@ Before the first Android build, reproduce the pinned speech runtime and model
 assets using [the local speech build instructions](scripts/local-speech/README.md).
 These generated inputs are intentionally absent from Git. Both ARM64 and x86_64
 runtimes are required; Android CI provisions and validates them on a clean checkout.
+The build requires Android NDK r28c (`28.2.13676358`) and CMake 4.0.3 and refuses other
+versions. A local rebuild does not reproduce the qualified hashes in
+`android/local-speech/runtime-manifest.json` (see the instructions for why), so
+`install-generated.py` refuses it unless `--allow-unqualified-runtime` is passed; APKs
+built with such a runtime are build evidence, not release candidates.
 
 Every Android build also needs the prepared resident runtime source in
 `artifacts/local-agent-resident-<commit>` (from `upstream.lock.json`): Gradle's
 `stageLocalAgentSources` step generates the native agent service classes from it.
-Release verification additionally requires the staged runtime payload. On a clean
-checkout, plain `npm run android:build` therefore stops:
-
-- without `npm run agent:prepare`, Gradle fails in `:app:stageLocalAgentSources`
-  (exit 1) before any APK is built;
-- with preparation but without `npm run agent:stage-android`, the four APKs build but
-  `scripts/verify-packaged-runtime.py` exits 3 for the release APKs (no packaged
-  resident runtime), and `npm run android:build` fails rather than labelling them
-  distributable.
-
-Staging also requires the workflow-worker artifact
-(`artifacts/mobile-workflow-worker-<commit>`), which `npm run android:build:local` does
-not build, and Gradle's `:local-speech:preBuild` requires the speech AAR built by the
-speech instructions above. On a clean checkout use:
+Distribution builds also need the staged runtime payload, which in turn needs the
+workflow-worker artifact (`artifacts/mobile-workflow-worker-<commit>`). On a clean
+checkout, after the speech AAR above, one command does all of it:
 
 ```sh
-# Distributable build: prepare, build the worker, stage the runtime, build and verify.
+# Distributable build: check inputs, prepare, build the worker, stage the runtime,
+# then build and verify all four APKs. Safe to rerun: preparation and the worker
+# artifact are reused only when they verify against the current source.
+npm run android:build:local
+# The same chain step by step:
 npm run agent:prepare
 npm run agent:build-workflow-worker
 npm run agent:stage-android
 npm run android:build
-# Later rebuilds with the same staged inputs:
-npm run android:build:local
 # Developer APKs without the runtime payload (releases recorded distributable:false):
 npm run agent:prepare -- --source-only
 npm run android:build -- --allow-unpackaged-runtime
 ```
 
-`agent:prepare` and `agent:stage-android` run the upstream Turborepo build. When they
-run under an AI coding agent, Turborepo may append its agent-guidance block to the
-prepared checkout's `AGENTS.md`, which the immutable-source check then rejects; run
-them with the agent-detection variables (`AI_AGENT`, `CLAUDECODE` and similar) unset.
+`npm run android:build` first runs `scripts/android-build-preflight.mjs` and stops
+(exit 2), before the web sync and Gradle, naming the command to run when the pinned
+`vendor/eliza` checkout, the installed speech AAR, the prepared runtime source or (for
+distribution builds) the staged runtime payload is missing or stale.
+
+Preparation, worker build and staging run the upstream Turborepo build inside the
+immutable prepared checkout. Turborepo appends an agent-guidance block to a
+repository's `AGENTS.md` when it detects an AI coding agent; these scripts therefore
+start their children without the variables it detects (`AI_AGENT`, `CLAUDECODE`,
+`CLAUDE_CODE`, `CODEX_SANDBOX`, `CURSOR_AGENT`, `CURSOR_TRACE_ID`, `GEMINI_CLI`,
+`AUGMENT_AGENT`, `OPENCODE`, `OPENCODE_CLIENT`, `REPL_ID`), so no manual `unset` is
+needed. Its other detector, a `/opt/.devin` directory, cannot be cleared this way; there
+the source check still rejects the modified checkout.
 
 ```sh
 npm run android:build

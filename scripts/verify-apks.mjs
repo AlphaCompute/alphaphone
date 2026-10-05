@@ -133,7 +133,10 @@ for (const row of release) {
   row.runtime = runtime.runtime;
   // Test-mocks builds and releases without the resident runtime are never
   // distributable. Signing is recorded separately (row.signed).
-  row.distributable = !testMocks && runtime.distributable === true;
+  row.speechQualification = JSON.parse(execFileSync("python3", [
+    "scripts/local-speech/verify-apk-qualification.py", row.file,
+  ], { encoding: "utf8" }));
+  row.distributable = !testMocks && runtime.distributable === true && row.speechQualification.qualified;
 }
 for (const row of results.filter(row => row.mode === "debug"))
   row.runtime = runtimePackaging.find(entry => entry.apk === row.file).runtime;
@@ -175,7 +178,7 @@ fs.writeFileSync(
 console.log(JSON.stringify(results, null, 2));
 const undistributable = release.filter(row => !row.distributable);
 if (undistributable.length)
-  console.warn(`Not distributable: ${undistributable.map(row => `${row.file} (${[row.runtime !== "PACKAGED" && "no packaged runtime", testMocks && "test-mocks build"].filter(Boolean).join(", ")})`).join("; ")}`);
+  console.warn(`Not distributable: ${undistributable.map(row => `${row.file} (${[row.runtime !== "PACKAGED" && "no packaged runtime", testMocks && "test-mocks build", !row.speechQualification.qualified && "unqualified speech runtime"].filter(Boolean).join(", ")})`).join("; ")}`);
 const unsigned = release.filter(row => !row.signed);
 if (unsigned.length)
   console.warn(`Unsigned releases (set ELIZAOS_KEYSTORE_PATH, ELIZAOS_KEYSTORE_PASSWORD, ELIZAOS_KEY_ALIAS and ELIZAOS_KEY_PASSWORD to sign): ${unsigned.map(row => row.file).join(", ")}`);

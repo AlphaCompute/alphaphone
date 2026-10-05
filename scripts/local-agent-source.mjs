@@ -26,6 +26,17 @@ export function assertWorkerOutputSeparation(source,output) {
   if(current===path.dirname(current))break;
  }
 }
+// Turborepo maintains a managed block in the repository-root AGENTS.md whenever it
+// detects an AI coding agent, which would modify the immutable prepared checkout.
+// Its documented opt-out (`"agentGuidance": false`) lives in the upstream turbo.json,
+// which this product never edits, so children in the prepared source run without
+// the variables turbo 2.11 detects (each one verified to trigger the update).
+export const TURBO_AGENT_DETECTION_ENV=Object.freeze(['AI_AGENT','AUGMENT_AGENT','CLAUDECODE','CLAUDE_CODE','CODEX_SANDBOX','CURSOR_AGENT','CURSOR_TRACE_ID','GEMINI_CLI','OPENCODE','OPENCODE_CLIENT','REPL_ID']);
+export function preparedSourceEnv(env=process.env, extra={}) {
+ const result={...env,...extra};
+ for(const name of TURBO_AGENT_DETECTION_ENV)delete result[name];
+ return result;
+}
 export function sourceDirectory(root, env=process.env) {
  const supplied=env.ALPHA_LOCAL_AGENT_SOURCE_DIR;
  if(supplied&&!path.isAbsolute(supplied))throw Error('ALPHA_LOCAL_AGENT_SOURCE_DIR must be absolute');
