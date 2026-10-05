@@ -29,7 +29,13 @@ for (const failure of ['quota', 'concurrent edit'] as const) {
     await page.getByRole('button', { name: 'Back to notes', exact: true }).click();
     await page.getByRole('button', { name: 'Open Recovery note', exact: true }).click();
     await expect(body).toHaveValue('Unsaved text that must not disappear');
-    await page.getByRole('button', { name: 'Recover browser Notes', exact: true }).click();
+    await body.fill('Latest text typed after the failure');
+    await page.getByRole('button', { name: 'Back to notes', exact: true }).click();
+    await page.getByRole('button', { name: 'Open Recovery note', exact: true }).click();
+    await expect(body).toHaveValue('Latest text typed after the failure');
+    const recovery=page.getByRole('button', { name: 'Recover browser Notes', exact: true });
+    expect((await recovery.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+    await recovery.click();
     const dialog=page.getByRole('dialog', { name: 'Browser Notes recovery' });
     const downloaded=page.waitForEvent('download');
     await dialog.getByRole('button', { name: 'Download Notes backup', exact: true }).click();
@@ -37,6 +43,6 @@ for (const failure of ['quota', 'concurrent edit'] as const) {
     for await(const chunk of stream!)chunks.push(Buffer.from(chunk));
     const backup=JSON.parse(Buffer.concat(chunks).toString());
     expect(JSON.parse(backup.saved).currentRaw).toBe(stored);
-    expect(JSON.parse(backup.draft).records.find((note:any)=>note.title==='Recovery note').body).toBe('Unsaved text that must not disappear');
+    expect(JSON.parse(backup.draft).records.find((note:any)=>note.title==='Recovery note').body).toBe('Latest text typed after the failure');
   });
 }

@@ -392,7 +392,13 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
   };
   p.vset = function (key: string, patch: Shell) {
     if (key !== 'notes' || !patch.list) { originalSet.call(this,key,patch);return true; }
-    if (this.notesStorageFailed||!this.notesStore) {this.toast('Notes storage needs recovery before editing.');return false;}
+    if (this.notesStorageFailed||!this.notesStore) {
+      // Recovery can race the next input event. Retain its text only as a draft;
+      // unavailable storage must never turn this edit into an action receipt.
+      this.notesSelectionKey=null;this.notesSelection=null;
+      originalSet.call(this,key,{...patch,storageStatus:'Save unconfirmed. Keep this screen open to preserve unsaved text.'});
+      this.toast('Notes storage needs recovery. Copy or export unsaved text before resetting.');context(this);return false;
+    }
     try {
       if(!isAndroid)patch={...patch,list:stampNoteChanges(this.notesStore.list,patch.list)};
       const pending=this.notesStore.replace(patch.list);
@@ -584,7 +590,7 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
     const out = notesRender({ ...state, record: false }, api);
     out.storageStatus=state.storageStatus;
     out.browserRecovery=!isAndroid&&Boolean((activeShell?.notesStorageFailed&&document.documentElement.dataset.notesStorageState!=='opening')||activeShell?.notesStore?.needsRecovery||state.audioDeletionRecoveryFailed||state.audioDeletionPending?.length);
-    out.openBrowserRecovery=()=>{const shell=activeShell;if(!shell||shell.notesPending)return;notesRecovery?.abort();const controller=notesRecovery=new AbortController();openDomainRecovery({capture:async signal=>{const saved=await browserNotesRecovery.capture(signal);return {...saved,raw:JSON.stringify({saved:saved.raw,draft:shell.notesStore?.raw??null})};},reset:browserNotesRecovery.reset},'Notes','Browser Notes recovery','Download saved Notes and the current editor draft before resetting. Reset starts an empty collection; it does not delete audio files or resolve pending audio deletion. Close other Alpha tabs before continuing.',controller.signal);};
+    out.openBrowserRecovery=()=>{const shell=activeShell;if(!shell||shell.notesPending)return;notesRecovery?.abort();const controller=notesRecovery=new AbortController();openDomainRecovery({capture:async signal=>{const draft=JSON.stringify({...JSON.parse(shell.notesStore?.raw||'{}'),records:shell.vget('notes').list});const saved=await browserNotesRecovery.capture(signal);return {...saved,raw:JSON.stringify({saved:saved.raw,draft})};},reset:browserNotesRecovery.reset},'Notes','Browser Notes recovery','Download saved Notes and the current editor draft before resetting. Reset starts an empty collection; it does not delete audio files or resolve pending audio deletion. Close other Alpha tabs before continuing.',controller.signal);};
     out.openAudioRecovery=async()=>{const shell=activeShell;if(!shell)return;notesRecovery?.abort();const controller=notesRecovery=new AbortController();try{const recovery=await audioDeletionRecovery();if(controller.signal.aborted||activeShell!==shell||!shell.live||shell.S().view!=='notes')return;openDomainRecovery(recovery,'note audio deletion history','Note audio deletion recovery','Download unresolved note/audio deletion records before resetting. Reset forgets recovery records, but does not delete or restore Notes or audio. Check uncertain outcomes before repeating any deletion. Close other Alpha tabs before continuing.',controller.signal);}catch{if(!controller.signal.aborted)api.toast('Audio deletion recovery could not be opened.');}};
     const dictate = async () => {
       try {
