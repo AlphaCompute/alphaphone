@@ -16,6 +16,12 @@ type DeviceEvent = Notice & {source:'external';packageName:string;sourceKey:stri
 type Selection={packageName:string;preview:boolean};
 type Identity = {id:string;revision:string;source?:string};
 const locked=()=>document.hidden||document.documentElement.dataset.devBackground==='true'||!!browserScreenLocked();
+function notificationAction(){
+ const controller=new AbortController(),retire=()=>controller.abort(),hidden=()=>{if(document.hidden)retire();};
+ const events=['alpha-back','pagehide','launcher-home','alpha:device-state','alpha:dev-incoming-call','alpha:browser-open-view'];
+ for(const event of events)window.addEventListener(event,retire,true);document.addEventListener('visibilitychange',hidden);hidden();
+ return {signal:controller.signal,dispose:()=>{for(const event of events)window.removeEventListener(event,retire,true);document.removeEventListener('visibilitychange',hidden);}};
+}
 const noticePolicy=(state:State)=>JSON.stringify([state.revision,state.epoch,state.enabled,state.paused,state.accessGranted,state.appEnabled,state.channels,state.apps]);
 function trim(state:State){state.deviceEvents??=[];state.events=state.history&&state.enabled&&state.accessGranted&&!state.paused?state.events.filter(event=>event.at>Date.now()-86400000).slice(-100):[];state.dismissed=state.dismissed.slice(-500);}
 function record(state:State,row:Notice,event:string){trim(state);if(state.history&&row.packageName){state.events.push({id:crypto.randomUUID(),appLabel:row.appLabel,packageName:row.packageName,at:Date.now(),state:event});trim(state);}}
@@ -79,18 +85,20 @@ export class BrowserNotifications extends WebPlugin {
   return {scope:'browser',calendarStatus,items:nowHidden?items.map(row=>({...row,title:row.appLabel,text:'',canOpen:false})):items};
  }
  private async external(input:Identity,opening:boolean){
+  const action=notificationAction();try{
   const view=await notificationDocument.edit(state=>{
    trim(state);const row=state.deviceEvents!.find(row=>row.id===input.id);
    if(!row||!this.allowed(state,row)||locked()||this.observe(state,row).revision!==input.revision||(!opening&&!row.clearable)||(opening&&!this.observe(state,row).canOpen))throw Error('Notification changed.');
    record(state,row,opening?'opened':'dismissed');
    if(!opening||row.autoCancel)state.deviceEvents=state.deviceEvents!.filter(event=>event.id!==row.id);
    return apps.find(app=>app.packageName===row.packageName)!.view;
-  });
-  if(opening)window.dispatchEvent(new CustomEvent('alpha:browser-open-view',{detail:view}));this.changed();
+  },action.signal);
+  if(opening&&!action.signal.aborted&&!locked())window.dispatchEvent(new CustomEvent('alpha:browser-open-view',{detail:view}));this.changed();
+  }finally{action.dispose();}
  }
  async open(input:Identity){if(input.id.startsWith('focus:'))return this.focusAction(input,true);if(input.source==='own'&&input.id.startsWith('workflow:')){if(!(await this.state()).appEnabled)throw Error('Notifications are disabled.');return actOnWorkflowNotice(input,true);}if(input.source==='hosted')return browserHostedResults.action(input,true);if(input.source==='external')return this.external(input,true);if(locked())throw Error('Unlock to open this notification.');const {items}=await this.list();if(!items.some(row=>row.source==='own'&&row.id===input.id&&row.revision===input.revision))throw Error('Notification changed.');if(input.id.startsWith('calendar:')){await this.calendar.alertAction({...input,open:true});this.changed();return;}window.dispatchEvent(new CustomEvent('alpha:browser-open-view',{detail:'calendar'}));await this.daily.notifyReminder(input.id,input.revision);}
  async dismiss(input:Identity){if(input.id.startsWith('focus:'))return this.focusAction(input,false);if(input.source==='own'&&input.id.startsWith('workflow:')){if(!(await this.state()).appEnabled)throw Error('Notifications are disabled.');return actOnWorkflowNotice(input,false);}if(input.source==='hosted')return browserHostedResults.action(input,false);if(input.source==='external')return this.external(input,false);if(locked())throw Error('Unlock to dismiss this notification.');const {items}=await this.list();if(!items.some(row=>row.source==='own'&&row.id===input.id&&row.revision===input.revision))throw Error('Notification changed.');if(input.id.startsWith('calendar:')){await this.calendar.alertAction({...input,open:false});this.changed();return;}await notificationDocument.edit(state=>{state.dismissed.push(input.revision);trim(state);});this.changed();}
- async focusAction(input:Identity,open:boolean){if(locked()||!(await this.list()).items.some(row=>row.id===input.id&&row.revision===input.revision))throw Error('Notification changed.');await notificationDocument.edit(state=>{state.dismissed.push(input.id);trim(state);});if(open)window.dispatchEvent(new CustomEvent('alpha:browser-open-view',{detail:'messages'}));this.changed();}
+ async focusAction(input:Identity,open:boolean){const action=notificationAction();try{if(locked()||!(await this.list()).items.some(row=>row.id===input.id&&row.revision===input.revision))throw Error('Notification changed.');action.signal.throwIfAborted();await notificationDocument.edit(state=>{if(locked())throw Error('Notification changed.');state.dismissed.push(input.id);trim(state);},action.signal);if(open&&!action.signal.aborted&&!locked())window.dispatchEvent(new CustomEvent('alpha:browser-open-view',{detail:'messages'}));this.changed();}finally{action.dispose();}}
  async clear(input:{items:Identity[]}){if(!Array.isArray(input.items)||input.items.length>100)throw Error('Refresh notifications.');const outcomes=[];for(const item of input.items){try{await this.dismiss(item);outcomes.push({id:item.id,status:'requested'});}catch{outcomes.push({id:item.id,status:'unavailable'});}}return {outcomes};}
  async deviceEvents(){const state=await this.state();return {items:state.deviceEvents!.map(row=>({id:row.id,revision:row.revision,appLabel:row.appLabel,packageName:row.packageName,notificationId:row.sourceKey.slice(row.packageName.length+1),title:row.title,text:row.text,clearable:row.clearable,autoCancel:row.autoCancel,secret:row.secret}))};}
  async removeDeviceEvent(input:{id:string;revision:string}){await notificationDocument.edit(state=>{trim(state);const row=state.deviceEvents!.find(row=>row.id===input.id);if(!row||row.revision!==input.revision)throw Error('The device event changed.');state.deviceEvents=state.deviceEvents!.filter(event=>event.id!==row.id);if(this.allowed(state,row))record(state,row,'removed');});this.changed();}

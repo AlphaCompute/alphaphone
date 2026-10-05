@@ -16,6 +16,7 @@ const changed=()=>channel?.postMessage({key:notificationStorageKey});
 const initial=():NotificationState=>({revision:revision(),epoch:revision(),enabled:false,paused:false,history:false,accessGranted:true,apps:[],events:[],dismissed:[],appEnabled:true,channels:{reminders:true,calendar:true},deviceEvents:[]});
 function normalize(value:NotificationState):NotificationState{
  if(!value||typeof value!=='object'||Array.isArray(value))throw Error('Notification data needs recovery.');
+ if(value.channels!==undefined&&(!value.channels||typeof value.channels!=='object'||Array.isArray(value.channels)))throw Error('Notification channels need recovery.');
  const state={...initial(),...value,channels:{reminders:true,calendar:true,...value.channels},deviceEvents:value.deviceEvents??[]};
  for(const flag of ['enabled','paused','history','accessGranted','appEnabled'] as const)if(typeof state[flag]!=='boolean')throw Error('Notification policy needs recovery.');
  if(typeof state.revision!=='string'||typeof state.epoch!=='string'||!Array.isArray(state.apps)||!Array.isArray(state.events)||!Array.isArray(state.dismissed)||!Array.isArray(state.deviceEvents)||!state.channels||typeof state.channels!=='object'||Object.values(state.channels).some(value=>typeof value!=='boolean'))throw Error('Notification data needs recovery.');

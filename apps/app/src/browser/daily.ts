@@ -73,6 +73,7 @@ export class BrowserDaily extends WebPlugin {
         if(schedule.at<=Date.now()||schedule.recurrence&&initialReminderDue(schedule.recurrence,schedule.at)!==schedule.dueAt)throw Error('Choose a valid future reminder schedule');
         const row:Row={id:input.operationId,title,body,at:schedule.at,dueAt:schedule.dueAt,alertMinutes:schedule.alertMinutes,...(schedule.recurrence?{recurrence:schedule.recurrence}:{}),mode:schedule.alertMinutes===null?'none':'inexact',status:schedule.alertMinutes===null?'pending':await scheduledStatus(),createdAt:Date.now(),occurrenceId:crypto.randomUUID(),revision:revision(),history:[]};
         const result=validateReminderCreateResult(operation,{version:1,kind:operation.type,sourceId:'browser-reminders',reminderId:row.id,occurrenceId:row.occurrenceId,revision:row.revision,status:row.status,at:row.at,dueAt:row.dueAt,alertMinutes:row.alertMinutes,fields:operation.fields},input.operationId);
+        if(document.hidden)throw Error('Return to Alpha to review the reminder.');
         data.reminders.push(row);(data.receipts??={})[input.operationId]={binding,result};return {status:'succeeded',result};
       }
       const row=data.reminders.find(r=>r.id===operation.target.reminderId);
@@ -86,6 +87,7 @@ export class BrowserDaily extends WebPlugin {
       else if(operation.type==='reminder_complete'||operation.type==='reminder_snooze')await decide(row,operation.type==='reminder_complete'?'done':'snooze');
       const result:ReminderResult={...reminderTiming(row),version:1,kind:operation.type,sourceId:'browser-reminders',reminderId:row.id,occurrenceId:row.occurrenceId!,revision:row.revision,status:row.status,at:row.at};
       if(operation.type==='reminder_read_selected')result.fields={title:row.title,body:row.body,schedule:{at:row.alertMinutes===undefined?row.at:row.dueAt!-(row.alertMinutes??0)*60000,recurrence:row.recurrence||null,...reminderTiming(row)}};
+      if(document.hidden)throw Error('Return to Alpha to review the reminder.');
       (data.receipts??={})[input.operationId]={binding,result};return {status:'succeeded',result};
     });
   }

@@ -5,7 +5,7 @@ test('history hides the older download when no older copy exists',async({page})=
  const dialog=page.getByRole('dialog',{name:'Workflow history',exact:true});await expect(dialog.getByRole('link',{name:'Download notification history',exact:true})).toBeVisible();
  await expect(dialog.getByText('Download older notification history',{exact:true})).toBeHidden();
 });
-for(const event of ['launcher-home','alpha:device-state'])test(`notice action cancelled by ${event} cannot commit or navigate later`,async({page})=>{
+for(const event of ['launcher-home','alpha:device-state','alpha:dev-incoming-call'])test(`notice action cancelled by ${event} cannot commit or navigate later`,async({page})=>{
  const before=await page.evaluate(async()=>{
   const n=await import('/src/browser/workflow-notices.ts'),row=await n.publishWorkflowNotice('late-open','Retain notice',new AbortController().signal),edit=n.workflowNoticesDocument.edit.bind(n.workflowNoticesDocument);let navigated=0;
   window.addEventListener('alpha:browser-open-view',()=>navigated++);
