@@ -1385,7 +1385,7 @@ registerView("calendar", {
         var inM = gd.getMonth() === mBase.getMonth();
         var has = on(off).length > 0;
         var cs = off === 0 ? "background:var(--acc);color:#fff" : (off === sel ? "box-shadow:inset 0 0 0 1.5px var(--fg)" : "");
-        mdays.push({ n: gd.getDate(), cs: cs + (inM ? "" : ";opacity:.35"), dot: has ? (off === 0 ? "var(--acct)" : "var(--fg)") : "transparent", pick: function () { set({ day: off, month: null }); }, label: DAYS[gd.getDay()] + " " + MONS[gd.getMonth()] + " " + gd.getDate() });
+        mdays.push({ n: gd.getDate(), cs: cs + (inM || off === 0 ? "" : ";color:var(--mut)"), dot: has ? (off === 0 ? "var(--acct)" : "var(--fg)") : "transparent", pick: function () { set({ day: off, month: null }); }, label: DAYS[gd.getDay()] + " " + MONS[gd.getMonth()] + " " + gd.getDate() });
       })(gd);
     }
     var lastRow = mdays.slice(35).every(function (d) { return d.cs.indexOf("opacity") >= 0; });
@@ -4319,7 +4319,7 @@ registerView("workflows", {
     var cards = list.map(function (f) {
       var last = f.runs && f.runs[0];
       var failed = f.on && last && last.status === "fail";
-      return { name: f.name, short: failed ? "Failed · " + last.sum : f.short, failed: failed, on: f.on, track: api.track(f.on), kx: api.kx(f.on), dim: f.on ? "" : "opacity:.55",
+      return { name: f.name, short: failed ? "Failed · " + last.sum : f.short, failed: failed, on: f.on, track: api.track(f.on), kx: api.kx(f.on), dim: "",
         open: function () { set({ open: f.id, run: null }); }, toggle: toggle(f) };
     });
 
