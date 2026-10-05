@@ -35,6 +35,14 @@ Retain terminal instrumentation results and cleanup outcomes. A build or success
 install cannot substitute for these checks. See the [Android/AOSP guide](android-and-aosp.md)
 and README for isolated Calendar and reminder regression/upgrade campaigns.
 
+For native browser changes, qualify HTTPS navigation, back/forward/reload,
+loading/title/address state, tab/profile isolation, and background/process recovery
+on both variants. Exercise TLS failures, disallowed redirects and offline retry
+against controlled endpoints. Verify renderer/profile capability admission and
+that remote content cannot paint over or receive touches through host controls,
+sheets or the keyboard. Phone geometry and real provider behavior require their
+own evidence; desktop screenshots cannot establish native isolation.
+
 Calendar CRUD cases run through `scripts/test-calendar-regression.mjs` with
 `--case=CalendarCrudInstrumentedTest` or `--case=CalendarAgentCrudInstrumentedTest`.
 Set `ALPHA_CALENDAR_TEST_SERIAL`, `ALPHA_CALENDAR_TEST_AVD`, and
