@@ -47,7 +47,10 @@ else if(a.includes('instrument')){const selector=a[a.indexOf('class')+1],parts=s
 else if(a.includes('start-user')||a.includes('stop-user')||a.includes('grant')||a[1]==='input'||a[1]==='wm'){}
 else {console.error('Unexpected command '+JSON.stringify(a));process.exit(1);}
 `,{mode:0o700});
-  const prefix=`ALPHA_${kind.toUpperCase()}`,run=spawnSync(process.execPath,[path.resolve(`scripts/test-${kind}-upgrade.mjs`),...(bridge?['--bridge']:[])],{encoding:'utf8',timeout:45000,env:{...process.env,ANDROID_HOME:root,ELIZA_DEVICE_LEASE_DIR:path.join(root,'leases'),[`${prefix}_TEST_ROOT`]:root,[`${prefix}_BASELINE_DIR`]:path.join(root,'baseline'),[`${prefix}_TEST_SERIAL`]:'emulator-5596',[`${prefix}_TEST_AVD`]:'owned-fixture',[`${prefix}_TEST_ABI`]:'x86_64'}});
+  const prefix=`ALPHA_${kind.toUpperCase()}`,run=spawnSync(process.execPath,[path.resolve(`scripts/test-${kind}-upgrade.mjs`),...(bridge?['--bridge']:[])],{encoding:'utf8',timeout:120000,env:{...process.env,ANDROID_HOME:root,ELIZA_DEVICE_LEASE_DIR:path.join(root,'leases'),[`${prefix}_TEST_ROOT`]:root,[`${prefix}_BASELINE_DIR`]:path.join(root,'baseline'),[`${prefix}_TEST_SERIAL`]:'emulator-5596',[`${prefix}_TEST_AVD`]:'owned-fixture',[`${prefix}_TEST_ABI`]:'x86_64'}});
+  // Source authentication alone can exceed the old whole-fixture deadline.
+  // Surface process failures before reading output that may never have been created.
+  assert.ifError(run.error);
   const reports=fs.existsSync(path.join(root,'test-results'))?fs.readdirSync(path.join(root,'test-results')).flatMap(dir=>fs.readdirSync(path.join(root,'test-results',dir)).flatMap(variant=>{const file=path.join(root,'test-results',dir,variant,'result.json');return fs.existsSync(file)?[JSON.parse(fs.readFileSync(file,'utf8'))]:[];})):[];
   return {status:run.status,stderr:run.stderr,commands:fs.readFileSync(log,'utf8').trim().split('\n').filter(Boolean).map(JSON.parse),state:JSON.parse(fs.readFileSync(state,'utf8')),reports};
  }finally{fs.rmSync(root,{recursive:true,force:true});}
