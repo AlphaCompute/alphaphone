@@ -150,6 +150,8 @@ instrumentation APKs first. Calendar accepts `--bridge` for its additional nativ
 CRUD check. The shared runner admits both APK pairs, verifies installed hashes,
 uses fresh secondary users and preserves uncertain cleanup for explicit recovery.
 Reports go to `test-results/calendar-upgrade-*` or `test-results/reminder-upgrade-*`.
+Secondary-user setup and teardown use the upstream lifecycle helper under the same
+emulator lease. Missing package-cleanup proof retains the test user for recovery.
 These campaigns require an owned disposable emulator and do not prove device acceptance.
 
 ## AOSP integration
