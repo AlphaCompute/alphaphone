@@ -50,13 +50,13 @@ outstanding browser Clock journal or as proof an alarm was created.
    rendering, but it cannot authorize a mutation or deletion readback.
 2. Move audio-deletion recovery with Notes. Preserve the separate effects lock,
    original note snapshots, unknown audio outcomes and deletion tombstones.
-3. Qualify conversation restart choices in `runtime/conversation-choice.ts` and
+3. Qualify conversation restart choices in `runtime/conversation-selection.ts` and
    both history/send consumers. Writes compare the captured owner choice inside
    the canonical transaction; another owner's entry is retained. Each tab keeps
    its active chat until retirement, when in-memory choices are cleared. A failed
    restart-choice save may retain the verified chat for this session with a
    visible warning. Cache reset does not delete agent conversations or send text.
-   TypeScript and the owning three-engine browser cases pass. Full-product and native qualification remain separate. Connection selection and
+   The strengthened implementation passed TypeScript and the owning three-engine cases before consolidation; merged-source qualification is pending. Full-product and native qualification remain separate. Connection selection and
    Cloud environment preference classification remain separate.
 4. Specify preference winner and refresh semantics, then verify appearance and
    simulated location against those semantics. Avoid creating redundant mirrors.
