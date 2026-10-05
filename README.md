@@ -292,7 +292,10 @@ Installed Calendar and reminder upgrade acceptance uses
 Set `ANDROID_HOME` and the matching `ALPHA_CALENDAR_` or `ALPHA_REMINDER_` variables:
 `BASELINE_DIR` (absolute), `TEST_SERIAL`, `TEST_AVD`, and `TEST_ABI`. Baselines contain
 `standalone-debug.apk` and `launcher-debug.apk`; reminder baselines also require
-`standalone-test.apk` and `launcher-test.apk`. Build current product and
+`standalone-test.apk` and `launcher-test.apk`. Historical reminder test APKs
+are admitted with AndroidJUnitRunner only; pass `--baseline-process-runner` when
+the archived pair also declares Alpha's WorkflowNoticeProcessRunner. Current test
+APKs must declare both known runners. Build current product and
 instrumentation APKs first. Calendar accepts `--bridge` for its additional native
 CRUD check. The shared runner admits both APK pairs, verifies installed hashes,
 uses fresh secondary users and preserves uncertain cleanup for explicit recovery.

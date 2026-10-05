@@ -21,8 +21,8 @@ final class NotesSecureFixture {
  static String evaluateSensitive(String expression)throws Exception{return evaluateInternal(expression,true);}
  private static String evaluateInternal(String expression,boolean sensitive)throws Exception{
   if(!expression.contains("__notesEnvelope"))return sensitive?WebViewTestDriver.evaluateSensitive(expression):WebViewTestDriver.evaluate(expression);
-  // Direct eval is lexically scoped to this one native read snapshot, never a global shim.
-  return WebViewTestDriver.evaluateSensitive("((__notesEnvelope)=>eval("+JSONObject.quote(expression)+"))(JSON.parse("+JSONObject.quote(raw())+"))");
+  // Bind one private native snapshot without eval, which the production CSP forbids.
+  return WebViewTestDriver.evaluateSensitive("((__notesEnvelope)=>("+expression+"))(JSON.parse("+JSONObject.quote(raw())+"))");
  }
  static void replaceRecords(String transform)throws Exception{
   String expected=read();JSONObject saved=new JSONObject(expected),envelope=new JSONObject(saved.getString("currentRaw"));
