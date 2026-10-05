@@ -78,7 +78,7 @@ test('Notes rejects invalid text and cancels an empty file selection without cre
     await (await chooser).setFiles(files);
     await expect(page.getByText('No notes yet. Create a note to get started.')).toBeVisible();
     await expect(page.getByRole('button',{name:'Import text note',exact:true})).toBeEnabled();
-    expect(await page.evaluate(()=>JSON.parse(localStorage.getItem('alphaphone:notes:v2')||'{"records":[]}').records.length)).toBe(0);
+    expect(await page.evaluate(async ()=>JSON.parse((await (await import('/src/runtime/browser-notes-document.ts')).readBrowserNotesRaw())||'{"records":[]}').records.length)).toBe(0);
   }
 });
 test('Scheduled digests traps focus, closes on native Back, and restores the triggering control',async({page})=>{
