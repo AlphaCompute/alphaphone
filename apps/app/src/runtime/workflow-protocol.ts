@@ -6,19 +6,6 @@ export interface RemoteWorkflow { id: string; name: string; description: string;
 /** Upstream host-process reconciliation (plugin-workflow WorkflowExecution.reconciliation). It never replaces the canonical receipt. */
 export type WorkflowRunReconciliation={state:'worker-running'|'outcome-unknown';message:string};
 export interface WorkflowRun { id:string; workflowId:string; status:string; startedAt:string; finished:boolean; versionId:string; stoppedAt?:string; error?:string; output?:string; reconciliation?:WorkflowRunReconciliation; events:Array<{type:string;at:string;node?:string}> }
-/** An interrupted run whose effects cannot be known. The agent does not replay it; neither does this phone. */
-export const runOutcomeUnknown=(run:WorkflowRun)=>!run.finished&&run.reconciliation?.state==='outcome-unknown';
-/** A worker that outlived its host is still being reconciled by the agent. */
-export const runWorkerRunning=(run:WorkflowRun)=>!run.finished&&run.reconciliation?.state==='worker-running';
-/** Typed phone operations that only read selected sources or draft text. Writes, notifications and speech are excluded. */
-export const READ_ONLY_PHONE_OPERATIONS:ReadonlySet<string>=new Set(['supplied_text','selected_notes','calendar_range','contains','compose_draft','model_draft']);
-/** True only for a typed phone workflow whose every step reads or drafts text (a read-only digest). Hosted digests are excluded: the agent admits them only at their scheduled occurrence. */
-export function readOnlyDigestWorkflow(workflow:RemoteWorkflow|null|undefined):boolean{
- if(!workflow||workflow.hostedDigest||workflow.removed)return false;
- const spec=workflow.phoneSpec as {trigger?:{kind?:unknown};steps?:unknown}|undefined;
- if(!spec||typeof spec!=='object'||!Array.isArray(spec.steps)||!spec.steps.length||spec.trigger?.kind!=='manual')return false;
- return spec.steps.every(step=>!!step&&typeof step==='object'&&READ_ONLY_PHONE_OPERATIONS.has(String((step as {operation?:unknown}).operation)));
-}
 function reconciliation(value:unknown):WorkflowRunReconciliation|undefined{
  if(value===undefined||value===null)return undefined;
  if(typeof value!=='object'||Array.isArray(value))throw new Error('Invalid execution reconciliation');

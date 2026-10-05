@@ -5,10 +5,24 @@ import { createWorkflowAuthoring } from './workflow-authoring';
 import { alphaClient, type ActionProposal } from '../runtime/alpha-client';
 import type { WorkflowPhoneReview } from '../runtime/workflow-device-contract';
 import { connectionController } from '../runtime/connection-ui';
-import { WorkflowAdmissionRejected, WorkflowMetadataRejected, WorkflowLifecycleRejected, runOutcomeUnknown, runWorkerRunning, readOnlyDigestWorkflow, type RemoteWorkflow, type WorkflowRun, type WorkflowApproval, type WorkflowApprovalReceipt } from '../runtime/workflow-protocol';
+import { WorkflowAdmissionRejected, WorkflowMetadataRejected, WorkflowLifecycleRejected, type RemoteWorkflow, type WorkflowRun, type WorkflowApproval, type WorkflowApprovalReceipt } from '../runtime/workflow-protocol';
 type Bag=Record<string,any>;
+// Run-state policy stays local to this module (its boundary fixtures evaluate it without imports).
+/** An interrupted run whose effects cannot be known. The agent does not replay it; neither does this phone. */
+const runOutcomeUnknown=(run:WorkflowRun)=>!run.finished&&run.reconciliation?.state==='outcome-unknown';
+/** A worker that outlived its host is still being reconciled by the agent. */
+const runWorkerRunning=(run:WorkflowRun)=>!run.finished&&run.reconciliation?.state==='worker-running';
+/** Typed phone operations that only read selected sources or draft text. Writes, notifications and speech are excluded. */
+const READ_ONLY_PHONE_OPERATIONS:ReadonlySet<string>=new Set(['supplied_text','selected_notes','calendar_range','contains','compose_draft','model_draft']);
+/** True only for a typed phone workflow whose every step reads or drafts text (a read-only digest). Hosted digests are excluded: the agent admits them only at their scheduled occurrence. */
+function readOnlyDigestWorkflow(workflow:RemoteWorkflow|null|undefined):boolean{
+ if(!workflow||workflow.hostedDigest||workflow.removed)return false;
+ const spec=workflow.phoneSpec as {trigger?:{kind?:unknown};steps?:unknown}|undefined;
+ if(!spec||typeof spec!=='object'||!Array.isArray(spec.steps)||!spec.steps.length||spec.trigger?.kind!=='manual')return false;
+ return spec.steps.every(step=>!!step&&typeof step==='object'&&READ_ONLY_PHONE_OPERATIONS.has(String((step as {operation?:unknown}).operation)));
+}
 /** Honest run state. An interrupted worker's effects are unknown; nothing is replayed automatically. */
-export function workflowRunLabel(run:WorkflowRun):string{
+function workflowRunLabel(run:WorkflowRun):string{
  if(runOutcomeUnknown(run))return 'Interrupted — outcome unknown';
  if(runWorkerRunning(run))return 'Worker still running — agent reconciling';
  if(run.finished&&run.reconciliation?.state==='outcome-unknown')return run.status+' · after an interrupted, unknown outcome';
