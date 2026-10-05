@@ -193,7 +193,8 @@ jobs:
   smoke:
     needs: build
     runs-on: ubuntu-24.04
-    timeout-minutes: 55
+    # Distribution also qualifies six isolated-user process-restart scenarios.
+    timeout-minutes: 70
     strategy:
       fail-fast: false
       matrix:
@@ -280,6 +281,7 @@ jobs:
           script: |
             ANDROID_SERIAL=emulator-5554 node scripts/prepare-ci-emulator.mjs
             ANDROID_SERIAL=emulator-5554 ALPHA_DISPOSABLE_WEBVIEW_FIXTURE=api35-default-x86_64 node scripts/prepare-ci-webview.mjs
+            test '${{ matrix.bundle }}' != distribution || ANDROID_SERIAL=emulator-5554 ALPHA_NATIVE_TEST_AVD=test ALPHA_NATIVE_TEST_ABI=x86_64 bash scripts/ci/native-restarts.sh artifacts/smoke-bundle test-results/native-restarts
             ANDROID_SERIAL=emulator-5554 ALPHA_BUILD_ARCHIVE=artifacts/smoke-bundle ALPHA_SMOKE_RESULTS=test-results/${{ matrix.bundle == 'test-mocks' && 'android-test-mocks' || 'android' }} npm run android:smoke
       - uses: actions/upload-artifact@v4
         if: always()
