@@ -1,6 +1,7 @@
 import { DEVELOPMENT_PROPOSAL_VIEWS } from "./development-view-contract.ts";
 import { sanitizePhoneContext } from './phone-context';
 import { registerPlugin } from '../platform-plugins';
+import { testMocksEnabled } from '../build-flags';
 import type {
   ActionProposal,
   AlphaView,
@@ -67,6 +68,7 @@ function validateOperation(
   throw new Error("Unsupported local action proposal.");
 }
 export async function developmentAgentStatus(): Promise<DevelopmentAgentStatus> {
+  if (!testMocksEnabled) return { available: false, configured: false, connected: false, message: "Development agent is unavailable in this build." };
   try {
     return await DevelopmentAgent.status();
   } catch {
@@ -85,6 +87,9 @@ export async function developmentAgentStatus(): Promise<DevelopmentAgentStatus> 
 export async function createDevelopmentTransport(
   dispatch?: DevelopmentLocalDispatcher,
 ): Promise<VerifiedSessionTransport> {
+  // Test-mocks builds only (ELIZA_DEV_ALLOW_TEST_MOCKS=1); product builds never
+  // fall back to the debug transport.
+  if (!testMocksEnabled) throw new Error("Choose an agent connection to send a message.");
   const status = await developmentAgentStatus();
   if (
     !status.available ||
