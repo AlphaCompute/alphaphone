@@ -6,7 +6,7 @@ import {browserDevProfile} from '../browser/dev-profile';
 import type {ImportedCameraImage} from './browser-image-import';
 import {drawCameraFrame} from '../browser/camera-frame';
 import {BrowserVideoCapture} from '../browser/video-capture';
-import {editStore,readStore} from '../browser/store';
+import {albumDocument} from '../browser/preference-documents';
 
 type Row={id:string;kind:'image'|'video';path?:string;duration?:number;operationId?:string;image:string;width:number;height:number;date:number;revision:string;mutationRevision:string;favorite:boolean;trashed:boolean};
 const finder='[aria-label="Viewfinder. Tap to focus, hold to ask Alpha, swipe to change mode"]';
@@ -35,7 +35,7 @@ function pageBoundary(value:string){
  throw Error('Photo page changed. Reopen the library.');
 }
 async function rows(options:{before?:string;trashed?:boolean;album?:string}={},metadata=false){
- const custom=options.album&&!['favorites','videos'].includes(options.album)?readStore<Album[]>('alpha.browser.albums.v1',()=>[]).find(a=>a.id===options.album!.replace(/^custom:/,'')):undefined;
+ const custom=options.album&&!['favorites','videos'].includes(options.album)?(await albumDocument.read<Album[]>(()=>[])).find(a=>a.id===options.album!.replace(/^custom:/,'')):undefined;
  if(options.album&&!['favorites','videos'].includes(options.album)&&!custom)throw Error('Album no longer available.');
  const members=new Set(custom?.memberIds||[]);
  const boundary=options.before?pageBoundary(options.before):undefined;
@@ -161,7 +161,7 @@ export const browserPhotoLibrary={
  async list(options:{before?:string;trashed?:boolean;album?:string}={}){const result=await rows(options);return {items:result.slice(0,40),next:result.length>40?pageCursor(result[39]):''};},
  async read(input:{id:string}){return read(input.id);},
  async summary(){const all=await rows({},true);return {favorites:all.filter(r=>!r.trashed&&r.favorite).length,videos:all.filter(r=>!r.trashed&&r.kind==='video').length,trash:all.filter(r=>r.trashed).length,canFavorite:true};},
- async albums(){const live=new Set((await rows({},true)).filter(row=>!row.trashed).map(row=>row.id));return {items:readStore<Album[]>('alpha.browser.albums.v1',()=>[]).map(album=>({...album,count:album.memberIds.filter(id=>live.has(id)).length}))};},
+ async albums(){const live=new Set((await rows({},true)).filter(row=>!row.trashed).map(row=>row.id));return {items:(await albumDocument.read<Album[]>(()=>[])).map(album=>({...album,count:album.memberIds.filter(id=>live.has(id)).length}))};},
  async shareMany(input:{items:SelectedMedia[]}){
   const items=selectedMedia(input.items);
   const selected=await transaction<Row[]>('readonly',(store,set,fail)=>{const result:Row[]=[];set(result);for(const item of items){const request=store.get(item.id);request.onsuccess=()=>{const row=request.result as Row|undefined;if(!row||!['image','video'].includes(row.kind)||row.mutationRevision!==item.revision||row.trashed){fail(Error('Selection changed. Reselect the items.'));return;}result.push(row);};}});
@@ -181,7 +181,7 @@ export const browserPhotoLibrary={
   if(!['create','rename','delete','add','remove'].includes(String(input.operation)))throw Error('Unknown album operation.');
   const name=typeof input.name==='string'?input.name.trim():'';
   if(['create','rename'].includes(String(input.operation))&&(!name||name.length>80||/[\u0000-\u001f\u007f]/.test(name)))throw Error('Choose an album name between 1 and 80 characters.');
-  return editStore<Album[],{status:string;id:string;revision:string}>('alpha.browser.albums.v1',()=>[],async albums=>{
+  return albumDocument.edit<Album[],{status:string;id:string;revision:string}>(()=>[],async albums=>{
    let media:Row|undefined;
    if(input.operation==='add'||input.operation==='remove'||input.operation==='create'&&(input.mediaId!==undefined||input.mediaRevision!==undefined)){
     if(typeof input.mediaId!=='string'||typeof input.mediaRevision!=='string')throw Error('Select the photo again.');
