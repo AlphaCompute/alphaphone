@@ -8,6 +8,8 @@ const scripts={calendar:path.resolve('scripts/test-calendar-regression.mjs'),cam
 export function exercise(mode,kind='calendar'){
  const root=fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(),'alpha-calendar-runner-')));
  try{
+  const selectedClass={range:'CalendarRangeInstrumentedTest',truncation:'CalendarTruncationInstrumentedTest'}[kind]??'CalendarCreationRecoveryInstrumentedTest';
+  const selectedMethod={camera:'denyingCameraAllowsExplicitRetryWithoutFakePreview',range:'distantDatesLoadRealRowsAndNewestNavigationWins',truncation:'realInstanceLimitCannotClaimAnUnreturnedDateIsFree'}[kind]??'creationRecovery';
   const pkg='ai.elizaresearch.alphaphone',apk=path.join(root,'artifacts/standalone-debug.apk'),testApk=path.join(root,'android/app/build/outputs/apk/androidTest/standalone/debug/app-standalone-debug-androidTest.apk');
   for(const [file,bytes] of [[apk,'app'],[testApk,'test']]){fs.mkdirSync(path.dirname(file),{recursive:true});fs.writeFileSync(file,bytes);}
   const cameraTest=path.join(root,'artifacts/standalone-androidTest.apk');
@@ -45,12 +47,12 @@ else if(a[0]==='pull')fs.copyFileSync(s.files[a[1].slice(6,-4)],a[2]);
 else if(a[0]==='uninstall'){delete s.files[a[1]];save();console.log('Success');}
 else if(a.includes('force-stop')){if(mode==='stop-failure')process.exit(1);}
 else if(a.includes('instrument')){
- const cls=pkg+${JSON.stringify(kind==='camera'?'.CameraFlowInstrumentedTest':'.CalendarCreationRecoveryInstrumentedTest')},block=code=>'INSTRUMENTATION_STATUS: class='+cls+'\\nINSTRUMENTATION_STATUS: test=${kind==='camera'?'denyingCameraAllowsExplicitRetryWithoutFakePreview':'creationRecovery'}\\nINSTRUMENTATION_STATUS: numtests=1\\nINSTRUMENTATION_STATUS_CODE: '+code+'\\n';
+ const cls=pkg+${JSON.stringify(kind==='camera'?'.CameraFlowInstrumentedTest':'.'+selectedClass)},block=code=>'INSTRUMENTATION_STATUS: class='+cls+'\\nINSTRUMENTATION_STATUS: test=${selectedMethod}\\nINSTRUMENTATION_STATUS: numtests=1\\nINSTRUMENTATION_STATUS_CODE: '+code+'\\n';
  if(mode==='timeout'||mode==='stop-failure'){console.log(block(1));console.error('fixture transport');process.exit(1);}
  let output=block(1)+block(0)+'OK (1 test)\\nINSTRUMENTATION_CODE: -1\\n';
  if(mode==='summary-only')output='OK (1 test)\\n';
  if(mode==='missing-start')output=block(0)+'OK (1 test)\\nINSTRUMENTATION_CODE: -1\\n';
- if(mode==='wrong-method')output=output.replaceAll('test=denyingCameraAllowsExplicitRetryWithoutFakePreview','test=unrequestedMethod');
+ if(mode==='wrong-method')output=output.replaceAll('test=${selectedMethod}','test=unrequestedMethod');
  if(mode==='wrong-class')output=output.replaceAll(cls,pkg+'.WrongTest');
  if(mode==='wrong-terminal')output=output.replace('INSTRUMENTATION_CODE: -1','INSTRUMENTATION_CODE: 0');
  if(mode==='duplicate')output=block(1)+block(0)+output;
@@ -58,8 +60,8 @@ else if(a.includes('instrument')){
 }else if(a.includes('start-user')||a.includes('stop-user')||a.includes('grant')||a.includes('revoke')||a.includes('clear-permission-flags')||a[1]==='input'||a[1]==='wm'){}
 else{console.error('Unexpected command '+JSON.stringify(a));process.exit(1);}
 `,{mode:0o700});
-  const testClass=mode==='companion-pin'?'CalendarExternalEditorInstrumentedTest':'CalendarCreationRecoveryInstrumentedTest';
-  const run=spawnSync(process.execPath,[scripts[kind],...(kind==='camera'?[apk,cameraTest,path.join(root,'output')]:[`--case=${testClass}`,'--variant=standalone',...(mode==='companion-pin'?['--external']:[])])],{cwd:root,env:{...process.env,ALPHA_CALENDAR_TEST_ROOT:root,ALPHA_CALENDAR_TEST_SERIAL:'emulator-5580',ALPHA_CALENDAR_TEST_AVD:'calendar-fixture',ALPHA_CALENDAR_TEST_ABI:'x86_64',ANDROID_HOME:root,ANDROID_SDK_ROOT:root,JAVA_HOME:jdk,ANDROID_SERIAL:'emulator-5580',ALPHA_CAMERA_TEST_AVD:'calendar-fixture',ALPHA_CAMERA_TEST_ABI:'x86_64',ELIZA_DEVICE_LEASE_DIR:path.join(root,'leases')},encoding:'utf8',timeout:120000});
+  const testClass=mode==='companion-pin'?'CalendarExternalEditorInstrumentedTest':selectedClass;
+  const run=spawnSync(process.execPath,[scripts[kind]??scripts.calendar,...(kind==='camera'?[apk,cameraTest,path.join(root,'output')]:[`--case=${testClass}`,'--variant=standalone',...(mode==='companion-pin'?['--external']:[])])],{cwd:root,env:{...process.env,ALPHA_CALENDAR_TEST_ROOT:root,ALPHA_CALENDAR_TEST_SERIAL:'emulator-5580',ALPHA_CALENDAR_TEST_AVD:'calendar-fixture',ALPHA_CALENDAR_TEST_ABI:'x86_64',ANDROID_HOME:root,ANDROID_SDK_ROOT:root,JAVA_HOME:jdk,ANDROID_SERIAL:'emulator-5580',ALPHA_CAMERA_TEST_AVD:'calendar-fixture',ALPHA_CAMERA_TEST_ABI:'x86_64',ELIZA_DEVICE_LEASE_DIR:path.join(root,'leases')},encoding:'utf8',timeout:120000});
   // Source authentication alone can exceed the old whole-fixture deadline.
   // Surface process failures before reading output that may never have been created.
   assert.ifError(run.error);

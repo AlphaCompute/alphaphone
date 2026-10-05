@@ -14,3 +14,16 @@ test('Calendar runner retains packages and user when termination is uncertain',(
 test('Calendar runner refuses existing packages before creating a user',()=>{const r=exercise('existing');assert.notEqual(r.code,0);assert.ok(!r.commands.some(a=>a.includes('create-user')||a[0]==='install'));});
 
 test('Calendar external editor rejects an APK that differs from the product pin',()=>{const r=exercise('companion-pin');assert.notEqual(r.code,0);assert.match(r.record.error,/Companion APK differs from its pin/);assert.ok(!r.commands.some(a=>a[0]==='install'));});
+
+for(const [kind,method] of [['range','distantDatesLoadRealRowsAndNewestNavigationWins'],['truncation','realInstanceLimitCannotClaimAnUnreturnedDateIsFree']]){
+ test(`Calendar ${kind} selects its exact native method in an isolated user`,()=>{
+  const r=exercise('pass',kind);assert.equal(r.code,0,r.stderr);assert.equal(r.record.passed,true);
+  const instrument=r.commands.find(a=>a.includes('instrument'));
+  assert.equal(instrument[instrument.indexOf('class')+1],`ai.elizaresearch.alphaphone.${r.record.testClass}#${method}`);
+  assert.ok(instrument.includes('calendarRange'));assert.equal(r.state.created,false);assert.equal(r.state.user,'0');
+  const grants=r.commands.filter(a=>a.includes('grant'));assert.equal(grants.length,2);assert.ok(grants.every(a=>a[a.indexOf('--user')+1]==='10'));
+ });
+ test(`Calendar ${kind} rejects a different method in the requested class`,()=>{
+  const r=exercise('wrong-method',kind);assert.notEqual(r.code,0);assert.equal(r.record.passed,false);assert.equal(r.state.created,false);assert.match(r.log,/unrequestedMethod/);
+ });
+}

@@ -18,7 +18,7 @@ const args=process.argv.slice(2),external=args.includes('--external');
 assert.ok(args.every(arg=>arg==='--external'||/^--(?:case|variant)=.+$/.test(arg)),'Unknown Calendar option');
 assert.equal(new Set(args.map(arg=>arg.split('=')[0])).size,args.length,'Duplicate Calendar option');
 const companion={packageName:'ws.xsoh.etar',apk:path.join(root,'artifacts/calendar-external/ws.xsoh.etar_57.apk'),sha256:'dae01d93c8920aa63845868db2190bcc4aa6ff8410b1289de1ce27b1bb89c599'};
-const cases=external?[['CalendarExternalEditorInstrumentedTest','externalCalendar',1]]:[['CalendarCreationRecoveryInstrumentedTest','calendarCreationRecovery',1],['CalendarFlowInstrumentedTest','calendarFlow',5],['CalendarCrudInstrumentedTest','calendarCrud',2],['CalendarRangeInstrumentedTest','calendarRange',1],['CalendarTruncationInstrumentedTest','calendarRange',1]];
+const cases=external?[['CalendarExternalEditorInstrumentedTest','externalCalendar',1]]:[['CalendarCreationRecoveryInstrumentedTest','calendarCreationRecovery',1],['CalendarFlowInstrumentedTest','calendarFlow',5],['CalendarCrudInstrumentedTest','calendarCrud',2],['CalendarRangeInstrumentedTest','calendarRange',1,'distantDatesLoadRealRowsAndNewestNavigationWins'],['CalendarTruncationInstrumentedTest','calendarRange',1,'realInstanceLimitCannotClaimAnUnreturnedDateIsFree']];
 const requestedCase=args.find(arg=>arg.startsWith('--case='))?.slice(7),requestedVariant=args.find(arg=>arg.startsWith('--variant='))?.slice(10);
 assert.ok(!requestedCase||cases.some(([name])=>name===requestedCase),'Unknown Calendar case');assert.ok(!requestedVariant||['standalone','launcher'].includes(requestedVariant),'Unknown variant');
 const output=path.join(root,'test-results',`calendar-regression-${Date.now()}-${process.pid}`),cancellation=new AbortController(),cancel=()=>cancellation.abort();
@@ -27,7 +27,7 @@ const lease=await acquireDeviceLease(`android:${serial}`,{waitMs:0,ttlMs:Number.
 process.once('SIGINT',cancel);process.once('SIGTERM',cancel);
 try{
  fs.mkdirSync(output,{recursive:true});
- for(const variant of ['standalone','launcher'].filter(v=>!requestedVariant||v===requestedVariant))for(const [testClass,flag,count]of cases.filter(([name])=>!requestedCase||name===requestedCase)){
+ for(const variant of ['standalone','launcher'].filter(v=>!requestedVariant||v===requestedVariant))for(const [testClass,flag,count,testMethod]of cases.filter(([name])=>!requestedCase||name===requestedCase)){
   cancellation.signal.throwIfAborted();
   const directory=path.join(output,`${variant}-${testClass}`);fs.mkdirSync(directory);
   const record={serial,avd,abi,variant,testClass,passed:false};let failure;
@@ -38,7 +38,7 @@ try{
    await withIsolatedAndroidUser({serial,deviceLease:lease,expectedAvdName:avd,homePackage:'com.android.launcher3',name:`calendar-${variant}-${Date.now()}`,signal:cancellation.signal,execute:args=>call(...args),record:state=>{record.userLifecycle=state;persist();},run:async({user})=>{
     record.user=user;
     try{
-     record.result=await runIsolatedAndroidTest({serial,adb,aapt,packageName:pkg,testClass:`${pkg}.${testClass}`,expectedTests:count,requiredAbi:abi,expectedAvdName:avd,androidUser:user,deviceLease:lease,directory,signal:cancellation.signal,commandTimeoutMs:120000,instrumentationTimeoutMs:120000,cleanupTimeoutMs:120000,
+     record.result=await runIsolatedAndroidTest({serial,adb,aapt,packageName:pkg,testClass:`${pkg}.${testClass}`,testMethod,expectedTests:count,requiredAbi:abi,expectedAvdName:avd,androidUser:user,deviceLease:lease,directory,signal:cancellation.signal,commandTimeoutMs:120000,instrumentationTimeoutMs:flag==='calendarRange'?240000:120000,cleanupTimeoutMs:120000,
       variants:[{name:variant,apk:path.join(root,'artifacts',`${variant}-debug.apk`),testApk:path.join(root,'android/app/build/outputs/apk/androidTest',variant,'debug',`app-${variant}-debug-androidTest.apk`)}],companionApks:external?[companion]:[],runnerArgs:['-e',flag,external?'true':'1'],
       evidence:'Alpha Calendar regression in an owned secondary emulator user. No live account acceptance.',
       prepareVariant:()=>{for(const name of [pkg,...(external?[companion.packageName]:[])])for(const permission of ['READ_CALENDAR','WRITE_CALENDAR'])call('shell','pm','grant','--user',String(user),name,`android.permission.${permission}`);},
