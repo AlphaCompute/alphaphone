@@ -2,7 +2,7 @@ import {layoutBrowserDialog} from './dialog-layout';
 import type {DomainRecovery,BrowserDomainDocument} from './domain-document';
 let current:HTMLDialogElement|undefined;
 /** Exact-byte backup and explicitly confirmed, revision-checked recovery. */
-export function openDomainRecovery(domain:Pick<BrowserDomainDocument,'capture'|'reset'>,name:'calendar'|'reminders',heading:string,description:string){
+export function openDomainRecovery(domain:Pick<BrowserDomainDocument,'capture'|'reset'>,name:'calendar'|'reminders'|'notifications',heading:string,description:string){
  if(current?.open)return;
  const dialog=current=document.createElement('dialog');dialog.setAttribute('aria-label',heading);dialog.style.cssText='box-sizing:border-box;width:min(400px,94vw);max-height:85dvh;overflow:auto;padding:24px;border:0;border-radius:20px;background:var(--bg,#fff);color:var(--fg,#111);font:16px/1.5 system-ui';
  const previous=document.activeElement as HTMLElement|null,abort=new AbortController();let closed=false,confirming=false,busy=false,captured:DomainRecovery|undefined;
@@ -15,7 +15,7 @@ export function openDomainRecovery(domain:Pick<BrowserDomainDocument,'capture'|'
  backup.onclick=()=>{if(captured?.raw!==null&&captured?.raw!==undefined)download(captured.raw,captured.format==='domain'?`Alpha-${name}-recovery.txt`:`Alpha-${name}-store-recovery.txt`);};
  legacy.onclick=()=>{if(captured?.legacy!==null&&captured?.legacy!==undefined)download(captured.legacy,`Alpha-${name}-older-copy.txt`);};
  reset.onclick=()=>{if(busy||closed||!captured)return;if(!confirming){confirming=true;reset.textContent=`Confirm ${name} reset`;status.textContent=`This clears the active ${name}. Download any copies you want to keep before confirming.`;return;}busy=true;reset.disabled=true;
-  void (async()=>{try{if(document.hidden)throw Error('Reset cancelled.');await domain.reset(captured!,abort.signal);if(!closed){status.textContent=`${name==='calendar'?'Calendar':'Reminders'} reset. Reloading…`;location.reload();}}catch(error){if(!closed){status.textContent=error instanceof Error?error.message:`Reset could not be confirmed. Reload to inspect the ${name}.`;confirming=false;reset.textContent=`Reset browser ${name}`;reset.disabled=false;}}finally{busy=false;}})();
+  void (async()=>{try{if(document.hidden)throw Error('Reset cancelled.');await domain.reset(captured!,abort.signal);if(!closed){status.textContent=`${name[0].toUpperCase()+name.slice(1)} reset. Reloading…`;location.reload();}}catch(error){if(!closed){status.textContent=error instanceof Error?error.message:`Reset could not be confirmed. Reload to inspect the ${name}.`;confirming=false;reset.textContent=`Reset browser ${name}`;reset.disabled=false;}}finally{busy=false;}})();
  };
  const retireEvents=['pagehide','launcher-home','alpha:device-state','alpha:dev-incoming-call'];
  const dispose=()=>{if(closed)return;closed=true;abort.abort();dialog.remove();if(current===dialog)current=undefined;window.removeEventListener('alpha-back',back,true);for(const event of retireEvents)window.removeEventListener(event,dispose,true);document.removeEventListener('visibilitychange',visibility);previous?.focus();};

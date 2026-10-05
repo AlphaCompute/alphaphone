@@ -41,7 +41,7 @@ for(const change of ['disabled','preview-revoked'] as const)test(`a pending noti
   (window as any).policyList=notifications.list().then(()=>false,error=>error.message==='Notification settings changed. Refresh notifications.');
  });
  await expect.poll(()=>page.evaluate(()=>(window as any).policyListHeld)).toBe(true);
- await page.evaluate(change=>{const key='alpha.browser.notifications.v2',state=JSON.parse(localStorage.getItem(key)!);if(change==='disabled')state.appEnabled=false;else state.apps=[{packageName:'browser.inbox',preview:false}];localStorage.setItem(key,JSON.stringify(state));(window as any).releasePolicyList();},change);
+ await page.evaluate(async change=>{await (await import('/src/browser/notification-store.ts')).notificationDocument.edit(state=>{if(change==='disabled')state.appEnabled=false;else state.apps=[{packageName:'browser.inbox',preview:false}];});(window as any).releasePolicyList();},change);
  expect(await page.evaluate(()=>(window as any).policyList)).toBe(true);
 });
 test('Home after notice commit preserves the receipt without late navigation',async({page})=>{

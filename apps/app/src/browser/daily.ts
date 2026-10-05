@@ -4,28 +4,29 @@ import { BrowserFiles } from './files';
 import { initialReminderDue, nextReminderOccurrence } from './reminder-recurrence';
 import { WebPlugin } from '@capacitor/core';
 import type { Reminder, ClockRequest } from '../daily';
-import { readStore, revision } from './store';
+import { revision } from './store';
+import {notificationState} from './notification-store';
 import {reminderDocument} from './reminder-store';
 type Row=Reminder & {revision:string};
 type State={sourceRevision:string;reminders:Row[];receipts?:Record<string,{binding:string;result:ReminderResult|ReminderCreateResult}>};
 const initial=():State=>({sourceRevision:revision(),reminders:[]});
-function notificationsAllowed(){const state=readStore<{appEnabled?:boolean;channels?:Record<string,boolean>}>('alpha.browser.notifications.v2',()=>readStore('alpha.browser.notification-policy.v1',()=>({})));return state.appEnabled!==false&&state.channels?.reminders!==false;}
-function scheduledStatus():'scheduled'|'permission-denied'{return notificationsAllowed()?'scheduled':'permission-denied';}
+async function notificationsAllowed(){const state=await notificationState();return state.appEnabled&&state.channels.reminders!==false;}
+async function scheduledStatus():Promise<'scheduled'|'permission-denied'>{return await notificationsAllowed()?'scheduled':'permission-denied';}
 function target(data:State,row:Row):ReminderTarget {return {...(row.alertMinutes!==undefined?{timingVersion:2 as const}:{}),sourceId:'browser-reminders',sourceRevision:data.sourceRevision,reminderId:row.id,occurrenceId:row.occurrenceId!,revision:row.revision};}
 function operationBinding(input:{operationId:string;bindingHash:string},operation:ReminderOperation|ReminderCreateOperation) {
   if(!/^[A-Za-z0-9_-]{1,128}$/.test(input.operationId)||!/^[a-f0-9]{64}$/.test(input.bindingHash))throw Error('Invalid reminder operation binding.');
   return JSON.stringify([input.bindingHash,operation]);
 }
-function decide(row:Row,action:'done'|'snooze') {
+async function decide(row:Row,action:'done'|'snooze') {
   const now=Date.now();
   if(action==='snooze'){
     if(row.alertMinutes===null)throw Error('No-alert reminders cannot be snoozed. Edit the alert first.');
     if(row.status==='scheduled'&&row.snoozedAt!==undefined)return 'unchanged';
-    row.at=now+600000;row.snoozedAt=now;row.status=scheduledStatus();
+    row.at=now+600000;row.snoozedAt=now;row.status=await scheduledStatus();
   } else {
     const next=row.recurrence?nextReminderOccurrence(row.recurrence,now):undefined;
     row.history=[...(row.history||[]),{occurrenceId:row.occurrenceId!,dueAt:row.dueAt||row.at,completedAt:now,skippedDates:next?.skippedDates||0}].slice(-32);
-    if(next){row.recurrence!.date=next.date;row.dueAt=next.dueAt;row.at=next.at;row.occurrenceId=crypto.randomUUID();row.status=row.alertMinutes===null?'pending':scheduledStatus();delete row.completedAt;}
+    if(next){row.recurrence!.date=next.date;row.dueAt=next.dueAt;row.at=next.at;row.occurrenceId=crypto.randomUUID();row.status=row.alertMinutes===null?'pending':await scheduledStatus();delete row.completedAt;}
     else {row.status='completed';row.completedAt=now;}
     delete row.snoozedAt;delete row.postedAt;
   }
@@ -42,16 +43,16 @@ export class BrowserDaily extends WebPlugin {
     reminderFields({title:input.title,body:input.body||'',schedule:{at:input.at,recurrence:input.recurrence||null,...(input.dueAt!==undefined||input.alertMinutes!==undefined?{dueAt:input.dueAt,alertMinutes:input.alertMinutes}:{})}});
     const dueAt=input.dueAt??(input.recurrence?initialReminderDue(input.recurrence,input.at):input.at);
     if(input.recurrence&&initialReminderDue(input.recurrence,input.at)!==dueAt)throw Error('Reminder civil time changed');
-    const status=input.alertMinutes===null?'pending':scheduledStatus(),mode=input.alertMinutes===null?'none':'inexact';
-    return reminderDocument.edit(initial,data=>{const previous=data.reminders.find(r=>r.id===input.id);if(previous?.alertMinutes!==undefined&&input.alertMinutes===undefined)throw Error('Explicit reminder timing cannot be discarded');data.reminders=data.reminders.filter(r=>r.id!==input.id);data.reminders.push({...input,body:input.body||'',mode,createdAt:previous?.createdAt||Date.now(),status,occurrenceId:crypto.randomUUID(),dueAt,history:previous?.history||[],revision:revision()});return {status,id:input.id,mode};});
+    const mode=input.alertMinutes===null?'none':'inexact';
+    return reminderDocument.edit(initial,async data=>{const status=input.alertMinutes===null?'pending':await scheduledStatus();const previous=data.reminders.find(r=>r.id===input.id);if(previous?.alertMinutes!==undefined&&input.alertMinutes===undefined)throw Error('Explicit reminder timing cannot be discarded');data.reminders=data.reminders.filter(r=>r.id!==input.id);data.reminders.push({...input,body:input.body||'',mode,createdAt:previous?.createdAt||Date.now(),status,occurrenceId:crypto.randomUUID(),dueAt,history:previous?.history||[],revision:revision()});return {status,id:input.id,mode};});
   }
   async listReminders(){
     const due=(data:State)=>data.reminders.some(row=>row.status==='scheduled'&&row.at<=Date.now());
-    const result=(data:State)=>({reminders:data.reminders.filter(row=>row.status!=='cancelled').map(row=>({...row,target:target(data,row)})),notificationsEnabled:notificationsAllowed()});
+    const result=async(data:State)=>({reminders:data.reminders.filter(row=>row.status!=='cancelled').map(row=>({...row,target:target(data,row)})),notificationsEnabled:await notificationsAllowed()});
     const data=await reminderDocument.read(initial);
     // Polling an unchanged schedule must not mint new reset/recovery revisions.
     if(!due(data))return result(data);
-    return reminderDocument.edit(initial,data=>{for(const row of data.reminders)if(row.status==='scheduled'&&row.at<=Date.now()){row.status=notificationsAllowed()?'posted':'permission-denied';if(row.status==='posted')row.postedAt=Date.now();row.revision=revision();}return result(data);});
+    return reminderDocument.edit(initial,async data=>{for(const row of data.reminders)if(row.status==='scheduled'&&row.at<=Date.now()){row.status=await notificationsAllowed()?'posted':'permission-denied';if(row.status==='posted')row.postedAt=Date.now();row.revision=revision();}return result(data);});
   }
 
   async cancelReminder(input:{id:string;target:ReminderTarget;operationId:string;bindingHash:string}){if(input.target?.reminderId!==input.id)throw Error('Reviewed reminder target required.');const response=await this.operateReminder({...input,operation:{type:'reminder_cancel',target:input.target}});return {status:response.status==='succeeded'?'cancelled':'unknown',id:input.id};}
@@ -62,7 +63,7 @@ export class BrowserDaily extends WebPlugin {
   }
   async operateReminder(input:{operationId:string;bindingHash:string;operation:ReminderOperation|ReminderCreateOperation}) {
     const operation=isReminderCreate(input.operation)?validateReminderCreate(input.operation):validateReminderOperation(input.operation),binding=operationBinding(input,operation);
-    return reminderDocument.edit(initial,data=>{
+    return reminderDocument.edit(initial,async data=>{
       const receipt=data.receipts?.[input.operationId];if(receipt){if(receipt.binding!==binding)throw Error('Reminder receipt binding changed.');return {status:'succeeded',result:receipt.result};}
       if(document.hidden)throw Error('Return to Alpha to review the reminder.');
       if(isReminderCreate(operation)){
@@ -70,7 +71,7 @@ export class BrowserDaily extends WebPlugin {
         if(Object.keys(data.receipts||{}).length>=500)throw Error('Reminder receipt history is full');
         const {title,body,schedule}=operation.fields;
         if(schedule.at<=Date.now()||schedule.recurrence&&initialReminderDue(schedule.recurrence,schedule.at)!==schedule.dueAt)throw Error('Choose a valid future reminder schedule');
-        const row:Row={id:input.operationId,title,body,at:schedule.at,dueAt:schedule.dueAt,alertMinutes:schedule.alertMinutes,...(schedule.recurrence?{recurrence:schedule.recurrence}:{}),mode:schedule.alertMinutes===null?'none':'inexact',status:schedule.alertMinutes===null?'pending':scheduledStatus(),createdAt:Date.now(),occurrenceId:crypto.randomUUID(),revision:revision(),history:[]};
+        const row:Row={id:input.operationId,title,body,at:schedule.at,dueAt:schedule.dueAt,alertMinutes:schedule.alertMinutes,...(schedule.recurrence?{recurrence:schedule.recurrence}:{}),mode:schedule.alertMinutes===null?'none':'inexact',status:schedule.alertMinutes===null?'pending':await scheduledStatus(),createdAt:Date.now(),occurrenceId:crypto.randomUUID(),revision:revision(),history:[]};
         const result=validateReminderCreateResult(operation,{version:1,kind:operation.type,sourceId:'browser-reminders',reminderId:row.id,occurrenceId:row.occurrenceId,revision:row.revision,status:row.status,at:row.at,dueAt:row.dueAt,alertMinutes:row.alertMinutes,fields:operation.fields},input.operationId);
         data.reminders.push(row);(data.receipts??={})[input.operationId]={binding,result};return {status:'succeeded',result};
       }
@@ -79,27 +80,27 @@ export class BrowserDaily extends WebPlugin {
       if(operation.type!=='reminder_read_selected'&&(row.status==='cancelled'||row.status==='completed'&&operation.type!=='reminder_cancel'&&operation.type!=='reminder_update'))throw Error('Reminder is no longer active.');
       if(operation.type==='reminder_update'){
         row.title=operation.fields.title;row.body=operation.fields.body;
-        if(operation.fields.schedule){const schedule=operation.fields.schedule;if(schedule.at<=Date.now())throw Error('Choose a future reminder time.');row.at=schedule.at;row.recurrence=schedule.recurrence||undefined;row.dueAt=schedule.dueAt??(schedule.recurrence?initialReminderDue(schedule.recurrence,schedule.at):schedule.at);if(schedule.recurrence&&initialReminderDue(schedule.recurrence,schedule.at)!==row.dueAt)throw Error('Reminder civil time changed');if(schedule.alertMinutes===undefined)delete row.alertMinutes;else row.alertMinutes=schedule.alertMinutes;row.mode=row.alertMinutes===null?'none':'inexact';row.occurrenceId=crypto.randomUUID();row.status=row.alertMinutes===null?'pending':scheduledStatus();delete row.snoozedAt;delete row.postedAt;delete row.completedAt;}
+        if(operation.fields.schedule){const schedule=operation.fields.schedule;if(schedule.at<=Date.now())throw Error('Choose a future reminder time.');row.at=schedule.at;row.recurrence=schedule.recurrence||undefined;row.dueAt=schedule.dueAt??(schedule.recurrence?initialReminderDue(schedule.recurrence,schedule.at):schedule.at);if(schedule.recurrence&&initialReminderDue(schedule.recurrence,schedule.at)!==row.dueAt)throw Error('Reminder civil time changed');if(schedule.alertMinutes===undefined)delete row.alertMinutes;else row.alertMinutes=schedule.alertMinutes;row.mode=row.alertMinutes===null?'none':'inexact';row.occurrenceId=crypto.randomUUID();row.status=row.alertMinutes===null?'pending':await scheduledStatus();delete row.snoozedAt;delete row.postedAt;delete row.completedAt;}
         row.revision=revision();
       }else if(operation.type==='reminder_cancel'){row.status='cancelled';row.cancelledAt=Date.now();row.revision=revision();}
-      else if(operation.type==='reminder_complete'||operation.type==='reminder_snooze')decide(row,operation.type==='reminder_complete'?'done':'snooze');
+      else if(operation.type==='reminder_complete'||operation.type==='reminder_snooze')await decide(row,operation.type==='reminder_complete'?'done':'snooze');
       const result:ReminderResult={...reminderTiming(row),version:1,kind:operation.type,sourceId:'browser-reminders',reminderId:row.id,occurrenceId:row.occurrenceId!,revision:row.revision,status:row.status,at:row.at};
       if(operation.type==='reminder_read_selected')result.fields={title:row.title,body:row.body,schedule:{at:row.alertMinutes===undefined?row.at:row.dueAt!-(row.alertMinutes??0)*60000,recurrence:row.recurrence||null,...reminderTiming(row)}};
       (data.receipts??={})[input.operationId]={binding,result};return {status:'succeeded',result};
     });
   }
-  async reminderDecision(input:{id:string;occurrenceId:string;action:'done'|'snooze'}){return reminderDocument.edit(initial,data=>{
+  async reminderDecision(input:{id:string;occurrenceId:string;action:'done'|'snooze'}){return reminderDocument.edit(initial,async data=>{
     if(!['done','snooze'].includes(input.action))throw Error('Invalid reminder decision.');
     const row=data.reminders.find(r=>r.id===input.id);if(!row||row.occurrenceId!==input.occurrenceId||['completed','cancelled'].includes(row.status))return {status:'stale'};
-    return {status:decide(row,input.action)};
+    return {status:await decide(row,input.action)};
   });}
   async clockDecision(input:{id:string;revision:string;action:'cancel'|'dismiss'|'snooze';minutes?:number}){
     if(!['cancel','dismiss','snooze'].includes(input.action)||input.action==='snooze'&&(!Number.isInteger(input.minutes)||input.minutes!<1||input.minutes!>60))throw Error('Choose 1 to 60 snooze minutes.');
-    return reminderDocument.edit(initial,data=>{const row=data.reminders.find(r=>r.id===input.id&&r.id.startsWith('alarm_'));if(!row||row.revision!==input.revision)return {status:'stale'};
+    return reminderDocument.edit(initial,async data=>{const row=data.reminders.find(r=>r.id===input.id&&r.id.startsWith('alarm_'));if(!row||row.revision!==input.revision)return {status:'stale'};
       if(input.action==='cancel'){row.status='cancelled';row.cancelledAt=Date.now();row.revision=revision();}
       else if(row.status!=='posted')return {status:'stale'};
-      else if(input.action==='dismiss')decide(row,'done');
-      else{row.at=Date.now()+input.minutes!*60000;row.snoozedAt=Date.now();row.status=scheduledStatus();delete row.postedAt;row.revision=revision();}
+      else if(input.action==='dismiss')await decide(row,'done');
+      else{row.at=Date.now()+input.minutes!*60000;row.snoozedAt=Date.now();row.status=await scheduledStatus();delete row.postedAt;row.revision=revision();}
       return {status:'applied'};
     });
   }
@@ -111,7 +112,7 @@ export class BrowserDaily extends WebPlugin {
     }else if(input.action==='show')window.dispatchEvent(new Event('alpha:clock-open'));
     else{
       if(input.action==='snooze'&&(!Number.isInteger(input.snoozeMinutes)||input.snoozeMinutes<1||input.snoozeMinutes>60))throw Error('Choose 1 to 60 snooze minutes.');
-      await reminderDocument.edit(initial,data=>{for(const row of data.reminders.filter(r=>r.id.startsWith('alarm_')&&r.status==='posted')){if(input.action==='dismiss')decide(row,'done');else if(input.action==='snooze'){row.at=Date.now()+input.snoozeMinutes*60000;row.snoozedAt=Date.now();row.status=scheduledStatus();delete row.postedAt;row.revision=revision();}}});
+      await reminderDocument.edit(initial,async data=>{for(const row of data.reminders.filter(r=>r.id.startsWith('alarm_')&&r.status==='posted')){if(input.action==='dismiss')await decide(row,'done');else if(input.action==='snooze'){row.at=Date.now()+input.snoozeMinutes*60000;row.snoozedAt=Date.now();row.status=await scheduledStatus();delete row.postedAt;row.revision=revision();}}});
     }
     window.dispatchEvent(new Event('alpha:alarms-changed'));return {action:input.action,status:'opened',message:input.action==='set'?'Alarm saved.':input.action==='show'?'Alarms':input.action==='dismiss'?'Alarm dismissed.':'Alarm snoozed.'};
   }
