@@ -147,3 +147,45 @@ The runner requires an OWNER session, ready workflow capability, list/detail
 agreement and the exact inactive arithmetic-only source. Keep the fixture free
 from concurrent edits. Never pass session credentials as token arguments or reuse
 a historical workflow UUID as proof of current admission.
+
+## Ownership and recovery invariants
+
+- Voice preparation captures the initiating view, agent and Cloud identity, and
+  connection mode. Success and failure both recheck ownership before navigation
+  or fallback. Navigation, hidden/pagehide and unmount retire outstanding probes;
+  returning to a view does not revive them. A pending note save locks its reviewed
+  transcript; a late completion cannot close a newer recording or publish an old
+  error. An authorized committed write remains persisted after UI cancellation.
+- Cloud delegation submits completion once, then reconciles through read-only
+  status. Uncertain pending state remains recoverable; no automatic resubmission.
+  Recheck ownership after secure-store operations. Session expiry clears only the
+  matching binding, while ordinary failures must not masquerade as expiry.
+- Gmail reads capture the selected account, grant, session and operation. Retiring
+  them prevents late draft/undo/receipt updates. Cancelling an inbox, search or
+  connection read preserves unsaved edits; full teardown belongs to owner change
+  or unmount. Restoring a grant does not silently fetch or send mail.
+- Authenticated device enrollment negotiates an owner/agent/device-bound view
+  profile revision. Discovery, proposal review and execution all enforce it.
+  Unknown legacy negotiation grants no additional authority. Lost conditional
+  updates are reconciled by reads, never blindly replayed.
+- Notification taps retain opaque encrypted tokens bound to exact owner, agent,
+  execution/occurrence and revision. Opening a tap only resolves its target;
+  it never approves, executes or completes it. Failed capture remains retryable;
+  consumption requires the exact pending token. Bounded ledgers fail closed
+  rather than evicting pending or deduplication history. Public credential APIs
+  must not expose native authority namespaces.
+- Reminder creation persists its identity and original receipt before effects.
+  Due time, alert lead and civil recurrence remain independently reviewed; no-alert
+  records neither request alert permission nor schedule alarms. Edits preserve
+  completed history and require explicit review for another occurrence. Snooze
+  changes delivery time without rewriting the original schedule. Clock handoff
+  receipts distinguish dispatch from confirmed alarm state; targetless actions
+  require manual target selection in Clock.
+
+Qualification must preserve those boundaries: notification recovery sends the
+original PendingIntent once and observes readiness within the existing deadline;
+unknown publication receipts are polled without reposting. Process-death tests
+prove the exact old process is absent and a new process receives the original tap;
+Activity recreation and force-stop are different cases. Native crash diagnostics
+retain only bounded numeric attribution for the exact worker, preserve the primary
+failure and cleanup, and never weaken seccomp or SELinux to obtain a pass.

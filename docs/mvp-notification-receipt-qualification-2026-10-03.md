@@ -1,9 +1,0 @@
-# Notification publication receipt qualification — October 3
-
-Hosted resident run [37116535148](https://github.com/AlphaCompute/alphaphone/actions/runs/37116535148) at `94569c08cf4a723cdbb90b41e7ebd4a50084944c` failed its tap fixture before cold/warm navigation: the first publication returned `unknown`, while the fixture required immediate `succeeded`. This result does not distinguish delayed Android notification visibility from a publication exception. The native worker SIGSYS failure is independent and remains unresolved.
-
-The fixture now dispatches exactly once, then queries the existing authenticated native `workflowReceipt` bridge for up to ten seconds when publication is unknown. Failed or invalid statuses fail immediately; an unconfirmed receipt still fails. It never calls publication again. Production dispatch, durable receipts and unknown-outcome semantics are unchanged. This follows the already-qualified process-death fixture's receipt reconciliation.
-
-On base `f0d0ab5c93e9a88cb2ca69a16f135d849ca8ebf1`, repository verification and both Android distribution builds pass with all 3,896 source identities unchanged during verification. The actual standalone and launcher tap flows pass on the task-owned API 35 Pixel emulator: distinct original notification intents, cold/warm routes, failed capture recovery, consumed-token replay and encrypted-store reconstruction. Both disposable users were removed, Owner 0 restored, product/test packages removed and the stock WebView identity preserved.
-
-Evidence is retained in `test-results/workflow-tap-receipt-f0/` under the main workspace. APK archive manifest SHA256: `f30e3283bdaef6fe4ae61e654eb3069c4591f8797de67998f529acefbaeb100a`. Source manifest SHA256: `c79fcd50b3cb68573b7b186883d87ceb56c6036b83d4a7663b055011733ab97d`. These local flows do not establish a passing hosted rerun, resident runtime execution, visible Computer Use, signed AOSP or physical acceptance.
