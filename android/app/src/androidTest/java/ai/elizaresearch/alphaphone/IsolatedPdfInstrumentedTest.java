@@ -27,7 +27,7 @@ public final class IsolatedPdfInstrumentedTest {
   public void close(){if(bound){bound=false;context.unbindService(this);}Bundle result;while((result=results.poll())!=null){SharedMemory memory=result.getParcelable("pixels");if(memory!=null)memory.close();}}
  }
  @Test public void isolatedPixelsErrorsCancellationAndWatchdog()throws Exception{
-  org.junit.Assume.assumeTrue("Explicit isolated PDF campaign","1".equals(InstrumentationRegistry.getArguments().getString("isolatedPdfNative")));org.junit.Assume.assumeTrue(BuildConfig.DEBUG);
+  org.junit.Assume.assumeTrue("Explicit isolated PDF campaign","1".equals(InstrumentationRegistry.getArguments().getString("isolatedPdfNative")));org.junit.Assume.assumeTrue("Watchdog fixture requires -PELIZA_DEV_ALLOW_TEST_MOCKS=1",BuildConfig.ELIZA_DEV_ALLOW_TEST_MOCKS);
   Context context=InstrumentationRegistry.getInstrumentation().getTargetContext();File valid=new File(context.getCacheDir(),"pdf-fixture-"+UUID.randomUUID()+".pdf"),bad=new File(context.getCacheDir(),"pdf-corrupt-"+UUID.randomUUID()+".pdf");
   try{
    try(InputStream input=InstrumentationRegistry.getInstrumentation().getContext().getAssets().open("inbox-fixtures/synthetic.pdf")){Files.write(valid.toPath(),input.readAllBytes());}Files.write(bad.toPath(),"%PDF-broken".getBytes());

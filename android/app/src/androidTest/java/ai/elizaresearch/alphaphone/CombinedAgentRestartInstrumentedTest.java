@@ -82,7 +82,7 @@ AppNavigation.liveMode();NotesSecureFixture.evaluate(AppNavigation.request("Note
  }
  @Test public void prepareAcrossActualFlows()throws Exception{
   Assume.assumeTrue("Prepare phase only","prepare".equals(InstrumentationRegistry.getArguments().getString("restartPhase")));
-  Assume.assumeTrue("Explicit combined runtime only","1".equals(InstrumentationRegistry.getArguments().getString("combinedAgentRestart")));assertTrue(BuildConfig.DEBUG);
+  Assume.assumeTrue("Explicit combined runtime only","1".equals(InstrumentationRegistry.getArguments().getString("combinedAgentRestart")));assertTrue("Loopback HTTP fixtures require a -PELIZA_DEV_ALLOW_TEST_MOCKS=1 debug build",BuildConfig.ELIZA_DEV_ALLOW_TEST_MOCKS);
   assertFalse("Clean up the existing restart checkpoint before another prepare",stateFile().exists());
   File fixture=new File(InstrumentationRegistry.getInstrumentation().getTargetContext().getFilesDir(),"combined-agent-restart-fixture.json");config=new JSONObject(new String(Files.readAllBytes(fixture.toPath()),StandardCharsets.UTF_8));assertEquals(ORIGIN,config.getString("origin"));assertEquals(UUID.fromString(config.getString("runId")).toString(),config.getString("runId"));
   String title="Combined note "+config.getString("runId"),body="Synthetic combined agent note.";String notes="__notesEnvelope.records.filter(n=>n.title==="+JSONObject.quote(title)+")";
@@ -124,7 +124,7 @@ AppNavigation.liveMode();NotesSecureFixture.evaluate(AppNavigation.request("Note
  private JSONObject loadCheckpoint()throws Exception{JSONObject saved=new JSONObject(new String(Files.readAllBytes(stateFile().toPath()),StandardCharsets.UTF_8));assertEquals(1,saved.getInt("format"));return saved;}
  @Test public void verifyAfterBothProcessesRestart()throws Exception{
   Assume.assumeTrue("Verify phase only","verify".equals(InstrumentationRegistry.getArguments().getString("restartPhase")));
-  Assume.assumeTrue("Explicit combined restart","1".equals(InstrumentationRegistry.getArguments().getString("combinedAgentRestart")));assertTrue(BuildConfig.DEBUG);
+  Assume.assumeTrue("Explicit combined restart","1".equals(InstrumentationRegistry.getArguments().getString("combinedAgentRestart")));assertTrue("Loopback HTTP fixtures require a -PELIZA_DEV_ALLOW_TEST_MOCKS=1 debug build",BuildConfig.ELIZA_DEV_ALLOW_TEST_MOCKS);
   JSONObject saved=loadCheckpoint();assertNotEquals("Real Android process replacement",saved.getInt("phonePid"),android.os.Process.myPid());
   File fixture=new File(stateFile().getParentFile(),"combined-agent-restart-fixture.json");config=new JSONObject(new String(Files.readAllBytes(fixture.toPath()),StandardCharsets.UTF_8));assertFalse("Consumed pairing code is not retained",config.has("code"));assertEquals(saved.getString("runId"),config.getString("runId"));assertEquals(ORIGIN,config.getString("origin"));
   credentialHash=saved.getString("credentialHash");deviceHash=saved.getString("deviceHash");deviceSlot=saved.getString("deviceSlot");
@@ -141,7 +141,7 @@ AppNavigation.liveMode();NotesSecureFixture.evaluate(AppNavigation.request("Note
  }
  @Test public void cleanupOwnedRestartFixture()throws Exception{
   Assume.assumeTrue("Cleanup phase only","cleanup".equals(InstrumentationRegistry.getArguments().getString("restartPhase")));
-  Assume.assumeTrue("Explicit combined restart","1".equals(InstrumentationRegistry.getArguments().getString("combinedAgentRestart")));assertTrue(BuildConfig.DEBUG);
+  Assume.assumeTrue("Explicit combined restart","1".equals(InstrumentationRegistry.getArguments().getString("combinedAgentRestart")));assertTrue("Loopback HTTP fixtures require a -PELIZA_DEV_ALLOW_TEST_MOCKS=1 debug build",BuildConfig.ELIZA_DEV_ALLOW_TEST_MOCKS);
   if(!stateFile().exists())return;JSONObject saved=loadCheckpoint();String title="Combined note "+saved.getString("runId"),body="Synthetic combined agent note.";deviceSlot=saved.getString("deviceSlot");
   try(BoundedActivityScenario<MainActivity> scenario=BoundedActivityScenario.launch(MainActivity.class)){
    until("document.querySelector('.os')",30000);

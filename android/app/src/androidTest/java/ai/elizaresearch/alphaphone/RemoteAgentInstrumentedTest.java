@@ -31,7 +31,7 @@ public class RemoteAgentInstrumentedTest {
  }
  @Test public void realLocalAppHostPairsChatsAndRestoresOnPhone()throws Exception{
   Assume.assumeTrue("Requires explicit localRemote opt-in","true".equals(InstrumentationRegistry.getArguments().getString("localRemote")));
-  assertTrue(BuildConfig.DEBUG);
+  assertTrue("Loopback HTTP fixtures require a -PELIZA_DEV_ALLOW_TEST_MOCKS=1 debug build",BuildConfig.ELIZA_DEV_ALLOW_TEST_MOCKS);
   File fixture=new File(InstrumentationRegistry.getInstrumentation().getTargetContext().getFilesDir(),"local-remote-pairing.json");
   JSONObject config=new JSONObject(new String(Files.readAllBytes(fixture.toPath()),java.nio.charset.StandardCharsets.UTF_8));
   String code=config.getString("code"),origin=config.getString("origin");

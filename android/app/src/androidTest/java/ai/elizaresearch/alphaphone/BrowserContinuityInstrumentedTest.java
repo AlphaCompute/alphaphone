@@ -105,6 +105,7 @@ public final class BrowserContinuityInstrumentedTest {
   }
  }
  @Test public void sameActivityReloadAndMockRoundTripRetireNativeProfiles()throws Exception{
+  org.junit.Assume.assumeTrue("Mock mode exists only in -PELIZA_DEV_ALLOW_TEST_MOCKS=1 builds",BuildConfig.ELIZA_DEV_ALLOW_TEST_MOCKS);
   String token=UUID.randomUUID().toString(),url="https://example.com/?alpha_document_reload="+token;
   BrowserBookmarks store=new BrowserBookmarks(InstrumentationRegistry.getInstrumentation().getTargetContext());
   try(BoundedActivityScenario<MainActivity> scenario=BoundedActivityScenario.launch(MainActivity.class)){

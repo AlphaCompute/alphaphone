@@ -31,7 +31,9 @@ final class StartupDocumentProbe implements AutoCloseable {
  void expectNavigation()throws Exception{
   BoundedActivityScenario.main(()->{awaitingNavigation=true;epoch.navigated();last="Waiting for requested document replacement";});
  }
- String awaitReady(boolean requireLive)throws Exception{
+ String awaitReady(boolean requestLive)throws Exception{
+  // Mock readiness is acceptable only in test-mocks builds; product builds must reach live.
+  final boolean requireLive=requestLive||!BuildConfig.ELIZA_DEV_ALLOW_TEST_MOCKS;
   CountDownLatch done=new CountDownLatch(1);AtomicReference<String> answer=new AtomicReference<>();AtomicReference<Throwable> failure=new AtomicReference<>();
   long remaining=deadline-SystemClock.elapsedRealtime();
   if(remaining<=0)throw new AssertionError("Startup readiness deadline expired: "+last);
