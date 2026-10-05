@@ -10,6 +10,11 @@ final class ClockHistoryFixture implements AutoCloseable {
  private static final String SLOT="clock-handoff:v1:device";
  private String owned;
  ClockHistoryFixture()throws Exception{
+  long end=SystemClock.elapsedRealtime()+20000;
+  while(!"true".equals(WebViewTestDriver.evaluate("Boolean(window.Capacitor?.Plugins?.AlphaConnection)"))){
+   if(SystemClock.elapsedRealtime()>=end)throw new AssertionError("Clock secure bridge did not become ready");
+   SystemClock.sleep(100);
+  }
   assertNull("Use a fixture without existing encrypted Clock history",read());
  }
  private String read()throws Exception{
