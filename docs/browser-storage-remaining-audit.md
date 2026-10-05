@@ -102,3 +102,30 @@ value. An explicit `?theme=` preview remains independent of other-tab changes;
 mock previews retain their separate behavior. Native appearance is unchanged.
 The owning browser suite covers two real tabs, rapid writes, remove/clear,
 malformed values, explicit previews and write failure.
+
+## Browser connection preference retirement
+
+The candidate installs selection/environment storage-event retirement for normal
+browser use as well as development mode. A changed agent target cancels pending
+connection work and retires the active target without writing over the other
+tab's preference. A Cloud-environment change detaches Cloud services and a Cloud
+agent, while leaving an independent local/remote agent intact. Explicit Offline
+and storage clearing also detach the Cloud service. Retired asynchronous work
+cannot reopen the chooser after cancellation. No preference change silently
+starts another login or sends text.
+
+Six new browser tests use a disclosed synthetic identity boundary and two real
+tabs; they make no provider requests and collect no credentials. TypeScript
+passed before integrating current main; all six owning Chromium cases pass
+after integrating merged Notes/main. Cross-engine and full-product qualification
+remain open.
+This covers preference retirement, not actual provider authentication or native
+credential replacement.
+
+The repository run on `6472b2d7` completed with 340 passes and seven failures,
+all reporting subprocess timeouts (including Java compilation and runner
+fixtures). It did not reach the renderer build. The fixture-budget correction
+exposes these causes but does not turn the run into a pass. Full current-source
+verification remains open, and further blanket deadline increases have not been
+made. The old Notes `f4132bdc` browser campaign was explicitly retired when its
+source was superseded; partial results remain diagnostic only.
