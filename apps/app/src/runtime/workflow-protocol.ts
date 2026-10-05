@@ -2,8 +2,30 @@ import {HostedDigestProtocol} from './hosted-digests';
 import { normalizePhoneSpec, assertPhoneCapabilities, parsePhoneCatalog, verifyPhoneValidation, parsePhoneReceipt, type PhoneSpec, type PhoneCatalog } from './phone-workflow-authoring';
 import { parseWorkflowPhoneReview, workflowBytes, type WorkflowDeviceTarget } from './workflow-device-contract';
 /** Source: plugin-workflow routes/workflow-routes.ts. Remote OWNER session only. */
-export interface RemoteWorkflow { id: string; name: string; description: string; active: boolean; removed?:boolean; triggerCleanup?:'pending'|'complete'; versionId: string; steps: Array<{label:string;description?:string}>;phoneSpec?:unknown }
-export interface WorkflowRun { id:string; workflowId:string; status:string; startedAt:string; finished:boolean; versionId:string; stoppedAt?:string; error?:string; output?:string; events:Array<{type:string;at:string;node?:string}> }
+export interface RemoteWorkflow { id: string; name: string; description: string; active: boolean; removed?:boolean; triggerCleanup?:'pending'|'complete'; versionId: string; steps: Array<{label:string;description?:string}>;phoneSpec?:unknown;hostedDigest?:boolean }
+/** Upstream host-process reconciliation (plugin-workflow WorkflowExecution.reconciliation). It never replaces the canonical receipt. */
+export type WorkflowRunReconciliation={state:'worker-running'|'outcome-unknown';message:string};
+export interface WorkflowRun { id:string; workflowId:string; status:string; startedAt:string; finished:boolean; versionId:string; stoppedAt?:string; error?:string; output?:string; reconciliation?:WorkflowRunReconciliation; events:Array<{type:string;at:string;node?:string}> }
+/** An interrupted run whose effects cannot be known. The agent does not replay it; neither does this phone. */
+export const runOutcomeUnknown=(run:WorkflowRun)=>!run.finished&&run.reconciliation?.state==='outcome-unknown';
+/** A worker that outlived its host is still being reconciled by the agent. */
+export const runWorkerRunning=(run:WorkflowRun)=>!run.finished&&run.reconciliation?.state==='worker-running';
+/** Typed phone operations that only read selected sources or draft text. Writes, notifications and speech are excluded. */
+export const READ_ONLY_PHONE_OPERATIONS:ReadonlySet<string>=new Set(['supplied_text','selected_notes','calendar_range','contains','compose_draft','model_draft']);
+/** True only for a typed phone workflow whose every step reads or drafts text (a read-only digest). Hosted digests are excluded: the agent admits them only at their scheduled occurrence. */
+export function readOnlyDigestWorkflow(workflow:RemoteWorkflow|null|undefined):boolean{
+ if(!workflow||workflow.hostedDigest||workflow.removed)return false;
+ const spec=workflow.phoneSpec as {trigger?:{kind?:unknown};steps?:unknown}|undefined;
+ if(!spec||typeof spec!=='object'||!Array.isArray(spec.steps)||!spec.steps.length||spec.trigger?.kind!=='manual')return false;
+ return spec.steps.every(step=>!!step&&typeof step==='object'&&READ_ONLY_PHONE_OPERATIONS.has(String((step as {operation?:unknown}).operation)));
+}
+function reconciliation(value:unknown):WorkflowRunReconciliation|undefined{
+ if(value===undefined||value===null)return undefined;
+ if(typeof value!=='object'||Array.isArray(value))throw new Error('Invalid execution reconciliation');
+ const r=value as Record<string,unknown>;
+ if((r.state!=='worker-running'&&r.state!=='outcome-unknown')||typeof r.message!=='string')throw new Error('Invalid execution reconciliation');
+ return {state:r.state,message:r.message.slice(0,2000)};
+}
 export interface WorkflowApproval {runId:string;workflowId:string;workflowVersionId:string;nodeId:string;iteration:number;requestDigest:string;status:'pending'|'approved'|'denied';title:string;summary:string;operation:string;target:string;account:string;supported:boolean;decidedBy?:string}
 export interface WorkflowApprovalReceipt {runId:string;workflowId:string;workflowVersionId:string;finished:boolean;cancellationRequested:boolean;approvals:WorkflowApproval[]}
 const obj=(value:unknown):Record<string,any>=>{if(!value||typeof value!=='object'||Array.isArray(value))throw new Error('Invalid workflow response');return value as Record<string,any>;};
@@ -47,7 +69,7 @@ export class WorkflowProtocol {
  async savePhone(spec:PhoneSpec,catalog:PhoneCatalog,expected:{mutationId:string;specDigest:string;compilerRevision:string;workflowId?:string;versionId?:string},signal:AbortSignal){const response=obj(await this.request(expected.workflowId?`/api/workflow/workflows/${encodeURIComponent(expected.workflowId)}/phone-spec`:'/api/workflow/phone/workflows',{spec,catalogRevision:catalog.catalogRevision,compilerRevision:catalog.compilerRevision,mutationId:expected.mutationId,...(expected.workflowId?{expectedVersionId:expected.versionId}:{})},signal));return parsePhoneReceipt(response.receipt,expected);}
  async phoneSaveReceipt(expected:{mutationId:string;specDigest:string;compilerRevision:string;workflowId?:string;versionId?:string},signal:AbortSignal){if(!/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(expected.mutationId))throw new Error('Invalid save identity');const result=obj(await this.request(`/api/workflow/phone/mutations/${expected.mutationId}`,undefined,signal));if(result.mutationId!==expected.mutationId)throw new Error('Save identity changed');return result.receipt===null?null:parsePhoneReceipt(result.receipt,expected);}
  constructor(private request:(path:string,body:unknown|undefined,signal:AbortSignal)=>Promise<unknown>){}
- private workflow(value:unknown):RemoteWorkflow {const p=obj(value);if(typeof p.active!=='boolean'||(p.removed!==undefined&&typeof p.removed!=='boolean')||(p.removed===true&&!['pending','complete'].includes(p.triggerCleanup))||!Array.isArray(p.steps??[]))throw new Error('Invalid workflow');return {id:str(p.id),name:str(p.name),description:typeof p.description==='string'?p.description:'',active:p.active,removed:p.removed===true,triggerCleanup:p.triggerCleanup==='pending'?'pending':'complete',versionId:str(p.versionId),...(typeof p.metadata?.elizaPhoneWorkflowSpec==='string'&&p.metadata.elizaPhoneWorkflowSpec.length<=65536?{phoneSpec:JSON.parse(p.metadata.elizaPhoneWorkflowSpec)}:{}),steps:(p.steps??[]).map((x:unknown)=>({label:str(obj(x).label),...(typeof obj(x).description==='string'?{description:obj(x).description}:{})}))};}
+ private workflow(value:unknown):RemoteWorkflow {const p=obj(value);if(typeof p.active!=='boolean'||(p.removed!==undefined&&typeof p.removed!=='boolean')||(p.removed===true&&!['pending','complete'].includes(p.triggerCleanup))||!Array.isArray(p.steps??[]))throw new Error('Invalid workflow');return {id:str(p.id),name:str(p.name),description:typeof p.description==='string'?p.description:'',active:p.active,removed:p.removed===true,triggerCleanup:p.triggerCleanup==='pending'?'pending':'complete',versionId:str(p.versionId),...(typeof p.metadata?.elizaPhoneWorkflowSpec==='string'&&p.metadata.elizaPhoneWorkflowSpec.length<=65536?{phoneSpec:JSON.parse(p.metadata.elizaPhoneWorkflowSpec)}:{}),...(typeof p.metadata?.elizaHostedDigestV1==='string'?{hostedDigest:true}:{}),steps:(p.steps??[]).map((x:unknown)=>({label:str(obj(x).label),...(typeof obj(x).description==='string'?{description:obj(x).description}:{})}))};}
  private runResult(value:unknown):WorkflowRun {
   const p=obj(value);if(typeof p.finished!=='boolean')throw new Error('Invalid execution');
   const id=str(p.id),workflowId=str(p.workflowId);
@@ -56,6 +78,7 @@ export class WorkflowProtocol {
    ...(typeof p.stoppedAt==='string'?{stoppedAt:p.stoppedAt}:{}),
    ...(typeof p.error?.message==='string'?{error:p.error.message.slice(0,2000)}:{}),
    ...(p.output===undefined?{}:{output:workflowOutput(p.output,id)}),
+   ...(()=>{const r=reconciliation(p.reconciliation);return r?{reconciliation:r}:{};})(),
    events:events.slice(-100).map((event:unknown)=>{const e=obj(event);if(e.runId!==id||e.workflowId!==workflowId)throw new Error('Execution event identity mismatch');return {type:str(e.type).slice(0,120),at:str(e.timestamp),...(typeof e.nodeId==='string'?{node:e.nodeId.slice(0,200)}:{})};})};
  }
 
