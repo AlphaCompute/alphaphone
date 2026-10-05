@@ -1,3 +1,4 @@
+import {Capacitor} from '@capacitor/core';
 import {mockAttentionRows} from './mock-attention';
 import {HOME_DEFAULTS} from './model.js';
 import {browserStorageUsage} from '../browser/storage-usage';
@@ -114,6 +115,9 @@ export function installPrototypeHomeBindings(Component: any) {
   const render = p.renderVals;
   p.renderVals = function () {
     const out = render.call(this);
+    let storageAccessWarning='';
+    if(!Capacitor.isNativePlatform())try{if(!window.indexedDB)throw Error();window.localStorage.getItem('alpha.appearance.v1');}catch{storageAccessWarning='Local storage is unavailable. Changes may not be saved. Check browser storage settings and reload.';}
+    const activeView=this.S().view||'home';
     const attention = mockAttentionRows();
     return {
       ...NEUTRAL_HOME,
@@ -121,6 +125,7 @@ export function installPrototypeHomeBindings(Component: any) {
       homeAttentionLabel: attention.length ? `${attention.length} ${attention.length === 1 ? 'item needs' : 'items need'} your attention` : 'Nothing needs your attention', homeAttentionCount: String(attention.length), homeAttentionPeople: attention,
       homePeopleVisibility: attention.length ? 'visible' : 'hidden',
       ...out,
+      activeViewLabel: activeView[0].toUpperCase()+activeView.slice(1), storageAccessWarning,
       // Keep translated/collapsed layers painted for the reference animations,
       // but prevent their controls receiving focus or accessibility navigation.
       homeHidden: !!(out.isView || out.shadeY === '0' || out.panelPE === 'auto' || out.voiceOn),

@@ -4,12 +4,13 @@
 
 Use the exact Inbox composer and detail Reply controls for explicit local drafts.
 No message-send/reply-send/provider-draft endpoint is called for local drafts. Send
-and attachment controls explain their unavailable capability; they do not create
-synthetic Sent entries. Agent replies cannot invoke composer effects.
+and provider-draft actions require separately admitted capabilities and explicit
+provider review. Unsupported capabilities do not create synthetic Sent entries.
+Agent replies cannot invoke composer effects.
 
 Existing `AlphaConnection.secureRead/secureWrite/secureRemove` stores AES-GCM data
 in the app's no-backup directory with Android Keystore, per-slot authenticated
-data, atomic writes/readback, a storage lock, and a 256 KiB ceiling. Reuse this
+data, atomic writes/readback, a storage lock, and an 8 MiB ceiling for Inbox slots. Reuse this
 boundary with an `inbox-drafts:v1:` namespace distinct from credential slots.
 Derive the slot from verified Cloud environment + user ID + organization (when
 present) + exact Gmail connection ID. Never use an email label, transient agent
@@ -17,7 +18,9 @@ identity, or just a renderer-selected account name as ownership authority.
 
 A draft records a random ID, revision, owner/account binding, literal recipient
 addresses, subject, body, and optional reply source message/thread IDs. It does
-not persist read message bodies, bearer credentials, people suggestions, or HTML.
+not persist bearer credentials, people suggestions, approval tokens or selection
+handles. Explicitly forwarded text and reviewed attachment bytes may be included;
+reading an unrelated message does not automatically copy it into a draft.
 Use at most one local draft per Gmail connection;
 explicit replacement/discard must not silently lose an existing draft. Bound
 recipients/subject/body and serialized UTF-8 bytes below the native slot ceiling.
@@ -32,8 +35,12 @@ Explicit Save draft awaits native persistence before showing Saved locally.
 Restore reads/validates the exact current account's slot and updates the composer
 only when account/session/generation still match. Discard asks for confirmation
 when persisted or nonempty, removes only that account's slot, and awaits the
-receipt. Back/leave retains in-memory edits during the view's current lifetime or
-shows an explicit unsaved warning rather than claiming persistence. Account
+receipt. A separate account-bound recovery copy retains unsaved edits, including
+incomplete recipients and the original saved-draft revision. Reopening offers
+**Resume unsaved email**; recovery never sends or prepares a provider operation.
+The recovery status distinguishes completed persistence from pending or failed
+writes. Browser copies use the canonical transactional document store; Android
+uses the existing encrypted Inbox slot namespace. Account
 switch/sign-out hides the prior account's draft immediately; it must not write
 that content into the next account's slot. Successful writes initiated before a
 switch remain bound to their original slot, but cannot update the new UI.
@@ -60,8 +67,8 @@ hydration, repeated save/discard must serialize. Fixture unavailable storage mus
 show failure and keep edits; oversized values fail before a native write.
 Mock reference screens remain fixture-only and make zero native draft calls.
 
-Provider send idempotency, unknown-outcome reconciliation, attachments, full
-remote draft CRUD, and production Gmail acceptance remain separate work. Current
+Provider send idempotency, unknown-outcome reconciliation, attachments and remote
+draft operations have separate implementation and acceptance records. Current
 local backend source returning provider IDs is not proof of deployed behavior.
 
 ## Native process verification
@@ -94,3 +101,20 @@ cleanup phases, exact artifact hashes and process IDs. A different restore PID
 is required. The retained report must prove cleanup as well as successful
 save/restore; compilation alone does not qualify this flow. These are synthetic
 provider tests, distinct from production Gmail, TLS, device and user acceptance.
+
+## Unsaved-edit recovery
+
+The explicitly saved draft and its recovery copy have separate compare-and-exchange
+receipts. A restored copy retains its original saved revision; it cannot replace a
+newer saved draft. The user may explicitly discard those edits and review the latest
+saved copy. Competing recovery writes offer Restore or Replace. Saved-draft writes
+clear only the matching recovery copy; cleanup failure is reported separately from
+the successful local save. Damaged recovery records can be backed up and reset
+without deleting the explicitly saved draft or changing provider mail.
+
+Current browser fixtures cover incomplete addresses, edits after Save, owner
+isolation, cross-tab conflicts, stale saved revisions, discard, damaged storage,
+read cancellation and late account-switch completions with zero provider writes.
+Native encrypted-store execution and physical process-death acceptance for this
+new recovery copy remain separate gates. Large native recovery backups remain
+subject to the reviewed document export size limit.

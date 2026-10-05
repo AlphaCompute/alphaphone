@@ -22,3 +22,7 @@
 .alpha-calendar-editor :is(button,input,textarea,select):focus-visible{outline:3px solid #7777ff;outline-offset:2px}
 
 .alpha-calendar-field :is(input,textarea,select){scroll-margin-block-start:2em}
+@media(max-height:420px){
+ .alpha-calendar-editor textarea{min-height:64px}
+ .alpha-calendar-editor [aria-label="Calendar editor draft recovery"] p{margin:8px 0;font-size:13px}
+}

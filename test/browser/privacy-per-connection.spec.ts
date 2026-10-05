@@ -35,7 +35,7 @@ async function nativeStub(page: Page, scenario: Scenario, options: { strayKeyInS
     w.Capacitor = {
       PluginHeaders: [
         { name: 'Agent', methods: methods(['getStatus', 'start', 'stop', 'request', 'providerStatus']) },
-        { name: 'AlphaConnection', methods: methods(['secureRead', 'secureWrite', 'secureRemove', 'request', 'cancel', 'addListener', 'removeListener', 'pauseNotificationCollection']) },
+        { name: 'AlphaConnection', methods: methods(['secureRead', 'secureWrite','secureCompareExchange', 'secureRemove', 'request', 'cancel', 'addListener', 'removeListener', 'pauseNotificationCollection']) },
         { name: 'AlphaActionJournal', methods: methods(['list']) },
         { name: 'DeviceApps', methods: methods(['buildInfo']) },
         { name: 'AlphaDevice', methods: methods(['snapshot']) },
@@ -62,6 +62,7 @@ async function nativeStub(page: Page, scenario: Scenario, options: { strayKeyInS
         }
         if (plugin === 'AlphaConnection') {
           if (method === 'secureRead') return respond({ value: store.get(input.slot) ?? null });
+          if(method==='secureCompareExchange'){if((store.get(input.slot)??null)!==input.expectedValue)return respond({status:'conflict'});if(input.value===null)store.delete(input.slot);else store.set(input.slot,input.value);return respond({status:'saved'});}
           if (method === 'secureWrite') { store.set(input.slot, input.value); return respond({}); }
           if (method === 'secureRemove') { store.delete(input.slot); return respond({}); }
           if (method === 'request') {

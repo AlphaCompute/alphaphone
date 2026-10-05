@@ -14,7 +14,8 @@
 
 
 <sc-if value="{{isOn}}" hint-placeholder-val="{{false}}">
-<div data-alpha-layer="home" aria-hidden="{{homeHidden}}" inert="{{homeHidden}}" style="position: absolute; inset: 44px 0 0; z-index: 10; display: flex; flex-direction: column; padding: 20px 0 108px; box-sizing: border-box; overflow-y:auto; overflow-x:hidden; scroll-padding-bottom:110px">
+<div data-alpha-layer="home" role="region" aria-label="Home" aria-hidden="{{homeHidden}}" inert="{{homeHidden}}" style="position: absolute; inset: 44px 0 0; z-index: 10; display: flex; flex-direction: column; padding: 20px 0 108px; box-sizing: border-box; overflow-y:auto; overflow-x:hidden; scroll-padding-bottom:110px">
+<sc-if value="{{storageAccessWarning}}" hint-placeholder-val="{{false}}"><p role="alert" class="storage-access-warning">{{storageAccessWarning}}</p></sc-if>
   <div class="scr" style="display: flex; gap: 12px; overflow-x: auto; scroll-snap-type: x mandatory; padding: 0 24px; scroll-padding-left: 24px; touch-action: pan-x; flex-shrink: 0">
     <button onClick="{{goCalendar}}" aria-label="{{homeCalendarLabel}}" style="flex-shrink: 0; scroll-snap-align: start; width: 280px; height: 196px; border-radius: 30px; background: var(--acc); color: #ffffff; padding: 22px; box-sizing: border-box; display: flex; flex-direction: column; justify-content: space-between">
       <div style="display: flex; justify-content: space-between; align-items: center; width: 100%">
@@ -66,7 +67,8 @@
 
 
 <sc-if value="{{isView}}" hint-placeholder-val="{{false}}">
-<div data-alpha-layer="app" aria-hidden="{{appHidden}}" inert="{{appHidden}}" class="enter" style="position: absolute; inset: 0; z-index: 20; background: {{viewBg}}; color: {{viewFg}}; display: flex; flex-direction: column">
+<div data-alpha-layer="app" role="region" aria-label="{{activeViewLabel}}" aria-hidden="{{appHidden}}" inert="{{appHidden}}" class="enter" style="position: absolute; inset: 0; z-index: 20; background: {{viewBg}}; color: {{viewFg}}; display: flex; flex-direction: column">
+<sc-if value="{{storageAccessWarning}}" hint-placeholder-val="{{false}}"><p role="alert" class="storage-access-warning">{{storageAccessWarning}}</p></sc-if>
 
 <sc-if value="{{is.phone}}" hint-placeholder-val="{{false}}">
 <div style="display: flex; flex-direction: column; height: 100%; position: relative">
@@ -663,6 +665,10 @@
         <sc-if value="{{inbox.c.local}}"><button disabled="{{inbox.c.busy}}" onClick="{{inbox.c.attach}}" style="padding:10px 0;text-align:left">Attach one PDF, image or TXT (up to 5 MiB)</button></sc-if>
         <sc-if value="{{inbox.c.canSaveProvider}}"><button onClick="{{inbox.c.saveProvider}}" style="padding:12px 0;text-align:left;color:var(--acct)">Review save to Gmail drafts</button></sc-if>
         <sc-if value="{{inbox.c.local}}"><div role="status" style="font-size:12px;color:var(--mut);padding:8px 0">{{inbox.c.status}}</div></sc-if>
+        <sc-if value="{{inbox.c.local}}"><div role="status" aria-label="Email edit recovery status" style="font-size:12px;color:var(--mut);padding:8px 0">{{inbox.c.retainedStatus}}</div></sc-if>
+        <sc-if value="{{inbox.c.retainedConflict}}"><div><button onClick="{{inbox.c.restoreEdits}}" style="min-height:44px;padding:12px">Restore retained email edits</button><button onClick="{{inbox.c.replaceEdits}}" style="min-height:44px;padding:12px">Replace retained email edits</button></div></sc-if>
+        <sc-if value="{{inbox.c.retainedError}}"><div><button onClick="{{inbox.c.retryEdits}}" style="min-height:44px;padding:12px">Retry email recovery storage</button><button onClick="{{inbox.c.recoverEdits}}" style="min-height:44px;padding:12px">Recover email edits</button></div></sc-if>
+        <sc-if value="{{inbox.c.staleBase}}"><button onClick="{{inbox.c.useLatest}}" style="min-height:44px;padding:12px">Use latest saved draft</button></sc-if>
         <sc-if value="{{inbox.c.confirm}}">
           <div role="dialog" aria-label="Discard local draft" style="padding:16px;background:var(--s2);border-radius:16px">
             <p>Discard this local draft permanently?</p>
@@ -798,7 +804,7 @@
     </div>
   </sc-if>
 
-  <div class="scr" onPointerDown="{{calendar.tlDown}}" onPointerUp="{{calendar.tlUp}}" style="flex-grow: 1; overflow-y: auto; touch-action: pan-y; border-top: 1px solid var(--line)">
+  <div class="scr calendar-timeline" role="region" aria-label="Calendar timeline" tabindex="0" onPointerDown="{{calendar.tlDown}}" onPointerUp="{{calendar.tlUp}}" style="flex-grow: 1; overflow-y: auto; touch-action: pan-y; border-top: 1px solid var(--line)">
     <div style="position: relative; height: 912px; min-height: {{calendar.nativeTimelineHeight}}; margin-bottom: 110px">
       <sc-for list="{{calendar.hours}}" as="h" hint-placeholder-count="16">
         <div style="position: absolute; left: 60px; right: 16px; top: {{h.top}}px; height: 1px; background: var(--line); opacity: .7"></div>
@@ -1092,7 +1098,7 @@
       <button aria-label="Stop and take over" onClick="{{browser.stopAg}}" style="width: 40px; height: 40px; border-radius: 20px; background: #fff; color: #0000FF; display: flex; align-items: center; justify-content: center"><svg class="i" viewBox="0 0 24 24" style="width: 18px; height: 18px"><path d="{{ic.x}}"></path></svg></button>
     </div>
   </sc-if>
-  <div data-bscroll="1" class="scr" style="flex-grow: 1; overflow-y: auto; touch-action: pan-y; position: relative; user-select: text; -webkit-user-select: text">
+  <div data-bscroll="1" role="region" aria-label="Browser page" class="scr" style="flex-grow: 1; overflow-y: auto; touch-action: pan-y; position: relative; user-select: text; -webkit-user-select: text">
     <sc-if value="{{browser.isNews}}" hint-placeholder-val="{{true}}">
       <div style="position: relative; height: 210px; background: {{browser.heroNews}}; overflow: hidden"><div style="display: {{browser.heroArt}}">
         <div style="position: absolute; left: 60px; top: 0; bottom: 0; width: 1px; background: #0000FF"></div>
@@ -1146,7 +1152,7 @@
 
     <sc-if value="{{browser.isNew}}" hint-placeholder-val="{{false}}">
       <div style="padding: 110px 24px 140px; display: flex; flex-direction: column; align-items: center; gap: 30px">
-        <span style="width: 72px; height: 72px; border-radius: 36px; background: var(--s2); display: flex; align-items: center; justify-content: center"><svg class="i" viewBox="0 0 24 24" style="width: 30px; height: 30px"><path d="{{ic.globe}}"></path></svg></span>
+        <span style="width: 72px; height: 72px; border-radius: 36px; background: var(--s2); display: flex; align-items: center; justify-content: center"><svg class="i" viewBox="0 0 24 24" style="width: 30px; height: 30px"><path d="{{ic.globe}}"></path></svg></span><h2 class="serif" style="font-size:28px;margin:0">New tab</h2>
         <button onClick="{{browser.startEdit}}" aria-label="Search or type address" style="width: 100%; height: 56px; border-radius: 28px; background: var(--s2); display: flex; align-items: center; gap: 12px; padding: 0 20px; box-sizing: border-box; color: var(--mut); font-size: 16px">
           <svg class="i" viewBox="0 0 24 24" style="width: 18px; height: 18px"><path d="{{ic.search}}"></path></svg><span>Search or type address</span>
         </button>
@@ -3802,7 +3808,8 @@
 
 
 <sc-if value="{{isOn}}" hint-placeholder-val="{{false}}">
-<div data-alpha-layer="shade" aria-hidden="{{shadeHidden}}" inert="{{shadeHidden}}" style="position: absolute; inset: 0; z-index: 66; background: var(--bg); transform: translateY({{shadeY}}); transition: transform .55s cubic-bezier(.19,1,.22,1); display: flex; flex-direction: column; padding: 56px 14px 0; box-sizing: border-box">
+<div data-alpha-layer="shade" role="region" aria-label="Notifications" aria-hidden="{{shadeHidden}}" inert="{{shadeHidden}}" style="position: absolute; inset: 0; z-index: 66; background: var(--bg); transform: translateY({{shadeY}}); transition: transform .55s cubic-bezier(.19,1,.22,1); display: flex; flex-direction: column; padding: 56px 14px 0; box-sizing: border-box">
+<sc-if value="{{storageAccessWarning}}" hint-placeholder-val="{{false}}"><p role="alert" class="storage-access-warning">{{storageAccessWarning}}</p></sc-if>
   <div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px">
     <sc-for list="{{tiles}}" as="t" hint-placeholder-count="8">
       <button aria-label="{{t.label}}" aria-pressed="{{t.on}}" disabled="{{t.disabled}}" onClick="{{t.toggle}}" style="height: 62px; border-radius: 22px; display: flex; align-items: center; justify-content: center; transition: background .2s, color .2s; {{t.css}}"><svg class="i" viewBox="0 0 24 24"><path d="{{t.d}}"></path></svg></button>

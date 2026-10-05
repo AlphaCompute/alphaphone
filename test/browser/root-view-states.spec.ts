@@ -5,36 +5,23 @@ import { test, expect, type Page, type Locator } from '@playwright/test';
 // role=alert when persistent storage is unavailable, a named landmark for the active view, and
 // keyboard focus that lands on a named control inside it. No new dependency: plain Playwright.
 //
-// KNOWN_GAPS records checks the current product does not meet yet. Such a test still opens the
-// view, then asserts the gap is still present and annotates it as a known gap, so a fix makes the
-// test fail until its entry is removed. The owning view adapters are outside this work package.
 type Check = 'empty' | 'alert' | 'landmark' | 'focus';
 const ROOT = ['Inbox', 'Calendar', 'Browser', 'Camera', 'Photos', 'Maps', 'Notes', 'Files', 'Workflows', 'Settings'] as const;
 type View = typeof ROOT[number] | 'Reminders' | 'Notifications';
 const VIEWS: View[] = [...ROOT, 'Reminders', 'Notifications'];
 const EMPTY: Record<View, RegExp> = {
   Inbox: /Connect Eliza Cloud to use Gmail/,
-  Calendar: /No events|Nothing scheduled/,
+  Calendar: /No visible events|Nothing scheduled/,
   Browser: /No open pages|New tab/,
   Camera: /Camera unavailable or permission denied/,
   Photos: /^No photos$/,
   Maps: /Maps provider not connected/,
   Notes: /No notes yet/,
-  Files: /No files/,
+  Files: /No recent files/,
   Workflows: /Agent connection required/,
   Settings: /Not signed in/,
-  Reminders: /No reminders/,
+  Reminders: /No visible events or reminders/,
   Notifications: /No notifications/,
-};
-const KNOWN_GAPS: Partial<Record<Check, Partial<Record<View, string>>>> = {
-  empty: {
-    Calendar: 'An empty week renders only the time grid; there is no labelled "no events" state.',
-    Browser: 'The new-tab page shows only the address field; there is no labelled empty state.',
-    Files: 'Files lists picker locations; there is no labelled "no files" state.',
-    Reminders: 'Reminders live inside Calendar with no labelled empty reminder state.',
-  },
-  alert: Object.fromEntries(VIEWS.map(view => [view, 'Storage failures are announced with role=status (or not at all), never role=alert.'])),
-  landmark: Object.fromEntries(VIEWS.map(view => [view, 'The active app layer is a plain div; there is no main/region landmark named for the view.'])),
 };
 // Fixture identities from the reference prototype must never appear in a live profile.
 const FIXTURE = [/\bMaya\b/, /\bJordan\b/, /\bNopa\b/, /2,418 items/, /Morning brief/];
@@ -73,12 +60,9 @@ async function themeIsApplied(surface: Locator, theme: 'light' | 'dark') {
   // Dark theme draws light foreground text; light theme draws dark text.
   if (theme === 'dark') expect(luminance).toBeGreaterThan(0.5); else expect(luminance).toBeLessThan(0.5);
 }
-/** Assert the requirement, or for a recorded gap assert that it is still unmet. */
-async function requirement(check: Check, view: View, target: Locator, timeout = 2_000) {
-  const reason = KNOWN_GAPS[check]?.[view];
-  if (!reason) { await expect(target.first()).toBeVisible({ timeout }); return; }
-  test.info().annotations.push({ type: 'known-gap', description: `${check} · ${view}: ${reason}` });
-  await expect(target.first(), `${check} gap for ${view} appears fixed; remove it from KNOWN_GAPS`).not.toBeVisible({ timeout });
+/** Every case enforces its requirement; missing behavior is a failure. */
+async function requirement(_check: Check, _view: View, target: Locator, timeout = 2_000) {
+  await expect(target.first()).toBeVisible({ timeout });
 }
 
 for (const theme of ['light', 'dark'] as const) for (const view of VIEWS) {
@@ -94,10 +78,10 @@ for (const theme of ['light', 'dark'] as const) for (const view of VIEWS) {
 
   test(`${view} ${theme}: blocked storage raises a role=alert`, async ({ page }) => {
     await blockStorage(page);
-    await open(page, view, theme);
+    const surface=await open(page, view, theme);
     // Whatever the alert role, the failure must be visible and must not be hidden behind fixtures.
     await expect(page.locator('[role=status],[role=alert]').filter({ hasText: /could not|unavailable|recovery|retry/i, visible: true }).first()).toBeVisible({ timeout: 5_000 });
-    await requirement('alert', view, page.getByRole('alert').filter({ hasText: /storage|could not|unavailable|recovery|retry/i }), 3_000);
+    await requirement('alert', view, surface.getByRole('alert').filter({ hasText: /storage|could not|unavailable|recovery|retry/i }), 3_000);
   });
 
   test(`${view} ${theme}: active view is a named landmark`, async ({ page }) => {
@@ -116,3 +100,9 @@ for (const theme of ['light', 'dark'] as const) for (const view of VIEWS) {
     expect(name.length, 'focused control has an accessible name').toBeGreaterThan(0);
   });
 }
+
+test('empty Calendar timeline remains reachable and scrollable by keyboard',async({page})=>{
+ await open(page,'Calendar','light');const timeline=page.getByRole('region',{name:'Calendar timeline',exact:true});
+ await timeline.focus();await expect(timeline).toBeFocused();await page.keyboard.press('End');
+ await expect.poll(()=>timeline.evaluate(element=>element.scrollTop)).toBeGreaterThan(0);
+});

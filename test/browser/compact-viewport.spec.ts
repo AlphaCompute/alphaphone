@@ -30,7 +30,7 @@ for (const viewport of [{width:320,height:568},{width:412,height:430},{width:915
 test('Conversation controls survive a keyboard-sized viewport and retain the draft', async ({page},info)=>{
   await page.goto('/');
   await page.getByRole('button',{name:'Open conversation',exact:true}).click();
-  const draft=page.locator('[data-alpha-layer="conversation"] input');
+  const draft=page.locator('[data-alpha-layer="conversation"]').getByRole('textbox');
   await draft.fill('Keep this unsent draft');
   await page.setViewportSize({width:412,height:300});
   const close=page.getByRole('button',{name:'Minimize chat',exact:true});
