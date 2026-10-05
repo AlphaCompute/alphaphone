@@ -13,7 +13,7 @@ for (const scenario of ['confirmed', 'incomplete-timeout'] as const) {
       w.Capacitor = {
         PluginHeaders: [
           { name: 'Agent', methods: methods(['getStatus', 'start', 'stop', 'request']) },
-          { name: 'AlphaConnection', methods: methods(['secureRead', 'secureWrite', 'secureRemove', 'cancel', 'addListener', 'removeListener', 'pauseNotificationCollection']) },
+          { name: 'AlphaConnection', methods: methods(['secureRead', 'secureWrite','secureCompareExchange', 'secureRemove', 'cancel', 'addListener', 'removeListener', 'pauseNotificationCollection']) },
           { name: 'AlphaActionJournal', methods: methods(['list']) },
           { name: 'DeviceApps', methods: methods(['buildInfo']) },
         ],
@@ -39,6 +39,7 @@ for (const scenario of ['confirmed', 'incomplete-timeout'] as const) {
           }
           if (plugin === 'AlphaConnection') {
             if (method === 'secureRead') return { value: store.get(input.slot) ?? null };
+            if(method==='secureCompareExchange'){if((store.get(input.slot)??null)!==input.expectedValue)return {status:'conflict'};if(input.value===null)store.delete(input.slot);else store.set(input.slot,input.value);return {status:'saved'};}
             if (method === 'secureWrite') { store.set(input.slot, input.value); return {}; }
             if (method === 'secureRemove') { store.delete(input.slot); return {}; }
             if (['cancel', 'addListener', 'removeListener', 'pauseNotificationCollection'].includes(method)) return {};

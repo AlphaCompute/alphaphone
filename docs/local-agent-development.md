@@ -205,6 +205,17 @@ This opt-in check uses the configured Cerebras key and sends only synthetic cont
 
 The summary is written to `test-results/local-redaction/result.json`. Successful runs remove their private synthetic profile; failures retain it in the printed temporary directory for diagnosis. SIGINT/SIGTERM stop only the owned process group. This is a real-provider host check, not browser rendering, Android privacy acceptance or proof that every possible secret format is recognized. Default development redaction settings remain unchanged.
 
+## Current host redaction checkpoint (October 5)
+
+Current-source checkpoint, October 5: the isolated command above passed on
+`95924e90a75ec2b14f5835fa5f07d81115ccdb15` at `2026-10-05T21:43:29.723Z`.
+Six synthetic formats, streaming, owner/contact restoration across a distinct
+process restart, and all ten provider-bound wire checks passed. The private test
+profile was removed on success. This qualifies the tested real-Cerebras host
+requests only; approved device actions, broader categories/models and Android
+still need qualification. The ordinary development host remains unchanged with
+both swaps off by default. See the [integrated review](mvp-browser-review.md).
+
 ## Historical host redaction qualification (October 2)
 
 The following dated checkpoints retain earlier failures and repairs. Patch names

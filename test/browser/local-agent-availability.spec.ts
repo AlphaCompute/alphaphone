@@ -13,7 +13,7 @@ for (const mode of ['checking', 'unavailable', 'available'] as const) {
       w.Capacitor = {
         PluginHeaders: [
           { name: 'Agent', methods: methods(['getStatus', 'configureProvider', 'start']) },
-          { name: 'AlphaConnection', methods: methods(['secureRead', 'secureWrite', 'secureRemove', 'request', 'cancel', 'addListener', 'removeListener', 'pauseNotificationCollection']) },
+          { name: 'AlphaConnection', methods: methods(['secureRead', 'secureWrite','secureCompareExchange', 'secureRemove', 'request', 'cancel', 'addListener', 'removeListener', 'pauseNotificationCollection']) },
           { name: 'AlphaHostedResults', methods: methods(['disableBackground','addListener','removeListener','pendingResult','status']) },
           { name: 'AlphaActionJournal', methods: methods(['list']) },
           { name: 'DeviceApps', methods: methods(['buildInfo']) },
@@ -29,6 +29,7 @@ for (const mode of ['checking', 'unavailable', 'available'] as const) {
           }
           if (plugin === 'AlphaConnection') {
             if (method === 'secureRead') return { value: store.get(input.slot) ?? null };
+            if(method==='secureCompareExchange'){if((store.get(input.slot)??null)!==input.expectedValue)return {status:'conflict'};if(input.value===null)store.delete(input.slot);else store.set(input.slot,input.value);return {status:'saved'};}
             if (method === 'secureWrite') { store.set(input.slot, input.value); return {}; }
             if (method === 'secureRemove') { store.delete(input.slot); return {}; }
             if (['cancel','addListener','removeListener','pauseNotificationCollection'].includes(method)) return {};

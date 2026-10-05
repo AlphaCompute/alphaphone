@@ -11,7 +11,7 @@ for (const mode of ['pending', 'wrong-owner', 'expired'] as const) {
       const methods = (names: string[]) => names.map(name => ({ name, rtype: 'promise' }));
       w.Capacitor = {
         PluginHeaders: [
-          { name: 'AlphaConnection', methods: methods(['request', 'cancel', 'secureRead', 'secureWrite', 'secureRemove']) },
+          { name: 'AlphaConnection', methods: methods(['request', 'cancel', 'secureRead', 'secureWrite','secureCompareExchange', 'secureRemove']) },
           { name: 'AlphaActionJournal', methods: methods(['reserve', 'markApplying', 'finish', 'list', 'get']) },
         ],
         nativePromise: async (plugin: string, method: string, input: any) => {
@@ -29,6 +29,7 @@ for (const mode of ['pending', 'wrong-owner', 'expired'] as const) {
           }
           if (plugin !== 'AlphaConnection') throw Error('Unexpected native effect');
           if (method === 'secureRead') return { value: store.get(input.slot) ?? null };
+          if(method==='secureCompareExchange'){if((store.get(input.slot)??null)!==input.expectedValue)return {status:'conflict'};if(input.value===null)store.delete(input.slot);else store.set(input.slot,input.value);return {status:'saved'};}
           if (method === 'secureWrite') { store.set(input.slot, input.value); return {}; }
           if (method === 'secureRemove') { store.delete(input.slot); return {}; }
           if (method === 'cancel') return {};
@@ -79,7 +80,7 @@ for (const mode of ['pending', 'wrong-owner', 'expired'] as const) {
     await local.getByRole('button', { name: 'Connect local agent', exact: true }).click();
     await page.locator('.alpha-connection-scrim').waitFor({ state: 'detached' });
     await page.getByRole('button', { name: 'Type', exact: true }).click();
-    const input = page.locator('[data-alpha-layer="composer"][aria-hidden="false"] input, [data-alpha-layer="conversation"][aria-hidden="false"] input').first();
+    const input = page.locator('[data-alpha-layer="composer"][aria-hidden="false"], [data-alpha-layer="conversation"][aria-hidden="false"]').getByRole('textbox').first();
     await input.fill('Propose a synthetic action; await explicit approval.'); await input.press('Enter');
     await expect(page.getByText('Review navigation request',{exact:true})).toBeVisible();
     const counts = () => page.evaluate(() => {

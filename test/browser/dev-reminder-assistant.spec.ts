@@ -13,7 +13,7 @@ for (const mode of ['create', 'read', 'update', 'complete', 'snooze', 'cancel', 
       const methods = (names: string[]) => names.map(name => ({ name, rtype: 'promise' }));
       w.Capacitor = {
         PluginHeaders: [
-          { name: 'AlphaConnection', methods: methods(['request', 'cancel', 'secureRead', 'secureWrite', 'secureRemove']) },
+          { name: 'AlphaConnection', methods: methods(['request', 'cancel', 'secureRead', 'secureWrite','secureCompareExchange', 'secureRemove']) },
           { name: 'AlphaActionJournal', methods: methods(['reserve', 'markApplying', 'finish', 'get', 'list']) },
         ],
         nativePromise: async (plugin: string, method: string, input: any) => {
@@ -32,6 +32,7 @@ for (const mode of ['create', 'read', 'update', 'complete', 'snooze', 'cancel', 
           }
           if (plugin !== 'AlphaConnection') throw Error('Unexpected native effect');
           if (method === 'secureRead') return { value: store.get(input.slot) ?? null };
+          if(method==='secureCompareExchange'){if((store.get(input.slot)??null)!==input.expectedValue)return {status:'conflict'};if(input.value===null)store.delete(input.slot);else store.set(input.slot,input.value);return {status:'saved'};}
           if (method === 'secureWrite') { store.set(input.slot, input.value); return {}; }
           if (method === 'secureRemove') { store.delete(input.slot); return {}; }
           if (method === 'cancel') return {};
@@ -85,7 +86,7 @@ for (const mode of ['create', 'read', 'update', 'complete', 'snooze', 'cancel', 
     await page.getByRole('button',{name:/^Selected private reminder,/}).click();
     await expect.poll(()=>page.evaluate(()=>document.documentElement.dataset.activeView)).toBe('calendar');
     await page.getByRole('button',{name:'Type',exact:true}).click();
-    const input=page.locator('[data-alpha-layer="composer"][aria-hidden="false"] input, [data-alpha-layer="conversation"][aria-hidden="false"] input').first();
+    const input=page.locator('[data-alpha-layer="composer"][aria-hidden="false"], [data-alpha-layer="conversation"][aria-hidden="false"]').getByRole('textbox').first();
     await input.fill('Review this reminder action before applying it.');await input.press('Enter');
     await expect(page.getByText(/Pending phone actions are available for separate review/)).toBeVisible();
     expect(await page.evaluate(()=>(window as any).calendarSent.metadata.clientDevice.context.selectedObject.kind)).toBe('reminder');
