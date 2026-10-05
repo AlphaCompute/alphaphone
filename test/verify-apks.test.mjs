@@ -270,9 +270,13 @@ test("qualification needs every current step to pass on a clean pinned tree", ()
   const passed = { status: "passed" };
   const full = {
     clean: true, upstream: { matches: true }, verify: passed, androidBuild: passed, bundleAudit: passed,
-    storageSpecs: Object.fromEntries(ENGINES.map(engine => [engine, passed])),
+    storageSpecs: Object.fromEntries(ENGINES.map(engine => [engine, { ...passed, expected: 8, unexpected: 0, flaky: 0, skipped: 0, failures: [] }])),
   };
   assert.equal(verdict(full), true);
+  for (const incomplete of [{}, { expected: 0 }, { unexpected: 1 }, { flaky: 1 }, { skipped: 1 }, { failures: [{ title: "failed" }] }]) {
+    const record = Object.keys(incomplete).length ? { ...full.storageSpecs.chromium, ...incomplete } : passed;
+    assert.equal(verdict({ ...full, storageSpecs: { ...full.storageSpecs, chromium: record } }), false);
+  }
   assert.equal(verdict({ ...full, clean: false }), false);
   assert.equal(verdict({ ...full, androidBuild: { status: "skipped" } }), false);
   assert.equal(verdict({ ...full, storageSpecs: { chromium: passed } }), false);

@@ -74,9 +74,12 @@ export function summarizePlaywright(report) {
 /** Overall verdict: every step ran now and passed on a clean, pinned tree, on all engines. */
 export function verdict(result) {
   const passed = step => step?.status === "passed";
+  const browserPassed = step => passed(step) && Number.isSafeInteger(step.expected) && step.expected > 0
+    && step.unexpected === 0 && step.flaky === 0 && step.skipped === 0
+    && Array.isArray(step.failures) && step.failures.length === 0;
   return Boolean(result.clean && result.upstream?.matches
     && passed(result.verify) && passed(result.androidBuild) && passed(result.bundleAudit)
-    && ENGINES.every(engine => passed(result.storageSpecs?.[engine])));
+    && ENGINES.every(engine => browserPassed(result.storageSpecs?.[engine])));
 }
 
 function git(args) {
