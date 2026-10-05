@@ -1,4 +1,5 @@
 import {isFocusWorkflow,prepareFocus,waitForFocusEnd,waitForFocusReview,type FocusBlock} from './workflow-focus';
+import {devSurfacesEnabled} from '../build-flags';
 import {focusChanged,retireFocusRun} from './focus-state';
 import {withWorkflowResource} from './workflow-resources';
 import {WorkflowTriggerRuntime,hydrateTriggerJob,type TriggerJob} from './workflow-trigger-runtime';
@@ -19,6 +20,7 @@ type Run={id:string;flowId:string|number;definition:string;workflow:Bag;status:s
 const definition=(flow:Bag)=>JSON.stringify({name:flow.name,trig:flow.trig,steps:flow.steps});
 /** Persist intent and each completed local step; never derive success from a label alone. */
 export function installSimulatedWorkflows(view:Bag){
+ if(!devSurfacesEnabled)return Object.assign(()=>{},{connect:(_api:()=>Bag,_ready:()=>boolean)=>{}});
  const device=registerPlugin<any>('AlphaDevice'),calendar=registerPlugin<any>('AlphaCalendar'),files=registerPlugin<any>('AlphaFiles');
  // Keep failed-save warnings outside view state, which navigation resets.
  const runErrors=new Map<string,{runId:string;message:string}>();

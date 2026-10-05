@@ -3,7 +3,7 @@ import {browserDevProfile} from '../browser/dev-profile';
 import {browserScreenLocked} from '../browser/screen-locked';
 import { holdPhoneInert } from './modal-inert';
 import { browserHostedResults } from '../browser/hosted-results';
-import { developmentDigestStore } from './local-agent-storage';
+import { devSurfacesEnabled } from '../build-flags';
 import { browserLocalAgentEnabled } from './local-agent';
 import { NativeResultInbox, configureHostedBackground } from './hosted-background';
 import { createDigestInbox, type ResultInbox } from './digest-inbox';
@@ -38,7 +38,7 @@ export function HostedDigestPanel() {
 		connectionController.subscribe,
 		connectionController.getSnapshot,
 	);
-	const interactiveDevelopment=browserDevProfile&&JSON.parse(localStorage.getItem('alpha.connection.selection.v1')||'null')?.kind==='development';
+	const interactiveDevelopment=devSurfacesEnabled&&browserDevProfile&&JSON.parse(localStorage.getItem('alpha.connection.selection.v1')||'null')?.kind==='development';
 	const [nativeReady,setNativeReady]=useState(false);
 	const [backgroundEnabled,setBackgroundEnabled]=useState(false);
 	const [noticeEnabled,setNoticeEnabled]=useState(false), [focusedRun,setFocusedRun]=useState<string|null>(null), [tap,setTap]=useState<{token:string;runId:string;sessionId:string}|null>(null);
@@ -181,8 +181,8 @@ export function HostedDigestPanel() {
 					));
 			if (disposed) return;
             const client=selected.client.hosted();let inbox:ResultInbox;
-            const development=browserDevProfile&&JSON.parse(localStorage.getItem('alpha.connection.selection.v1')||'null')?.kind==='development';
-            const storage=development?await (await import('../browser/digest-storage')).browserDigestStore(session,()=>!disposed&&connectionController.getSnapshot().session?.sessionId===session.sessionId,controller.signal):!isAndroid&&browserLocalAgentEnabled&&connection.kind==='resident'?developmentDigestStore():secureConnectionStore;
+            const development=devSurfacesEnabled&&browserDevProfile&&JSON.parse(localStorage.getItem('alpha.connection.selection.v1')||'null')?.kind==='development';
+            const storage=development?await (await import('../browser/digest-storage')).browserDigestStore(session,()=>!disposed&&connectionController.getSnapshot().session?.sessionId===session.sessionId,controller.signal):devSurfacesEnabled&&!isAndroid&&browserLocalAgentEnabled&&connection.kind==='resident'?(await import('./local-agent-storage')).developmentDigestStore():secureConnectionStore;
             const notices:HostedResultBinding={scope:slot.slice('hosted-digests:v1:'.length),origin:session.origin,ownerId:session.ownerId,agentId:session.agentId,current:()=>!disposed&&binding.current?.sessionId===session.sessionId&&connectionController.getSnapshot().session?.sessionId===session.sessionId,revalidate:signal=>client.available(signal),history:()=>inbox.history()};
             let ready=false;
             if(isAndroid){

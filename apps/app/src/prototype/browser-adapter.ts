@@ -19,11 +19,31 @@ export function installPrototypeBrowserAdapter(Component: any, views: Record<str
   let shell: any, lastGeometry = '', disposed = false, sharing = false;
   let bookmarkRead: Promise<void> | undefined, bookmarkQueue = Promise.resolve();
   let bookmarkHydrated = false, bookmarkRefreshQueued = false, initialBookmarkRead = false, browserWasActive = false;
+  // Browser-owned bookmark storage reports damaged saved data by failing to
+  // read. The product then offers its exact-byte recovery dialog in Bookmarks.
+  let bookmarkRecovery = false;
+  async function checkBookmarkRecovery() {
+    if (Capacitor.isNativePlatform()) return false;
+    const {bookmarkDocument} = await import('../browser/preference-documents');
+    try { await bookmarkDocument.read<string[]>(() => []); return false; } catch { return true; }
+  }
+  function openBookmarkRecovery() {
+    shell?.vset('browser', {lib: null, menu: false});
+    void import('../browser/preference-recovery').then(m => m.openBookmarkRecovery()).catch(report);
+  }
   function loadBookmarks() {
     if (bookmarkRead) return bookmarkRead;
     bookmarkRead = Browser.bookmarks({session}).then((result: Bag) => {
-      if (!disposed) { shell?.vset('browser', {marks: result.urls}); bookmarkHydrated = true; }
-    }).catch((error: unknown) => { bookmarkHydrated = false; throw error; }).finally(() => { bookmarkRead = undefined; });
+      if (!disposed) { if (bookmarkRecovery) { bookmarkRecovery = false; refresh(); } shell?.vset('browser', {marks: result.urls}); bookmarkHydrated = true; }
+    }).catch(async (error: unknown) => {
+      bookmarkHydrated = false;
+      if (!disposed && await checkBookmarkRecovery().catch(() => false)) {
+        const first = !bookmarkRecovery; bookmarkRecovery = true; refresh();
+        if (first) throw new Error('Saved bookmarks need recovery. Open Bookmarks to recover them.');
+        return;
+      }
+      throw error;
+    }).finally(() => { bookmarkRead = undefined; });
     return bookmarkRead;
   }
   function refreshBookmarks() {
@@ -172,7 +192,7 @@ export function installPrototypeBrowserAdapter(Component: any, views: Record<str
       host:url?.host || 'Search or type address',path:url ? url.pathname + url.search : '', hasLock:Capacitor.isNativePlatform() && !!url && url.protocol==='https:' && !!info?.committed && !info?.loading && !info?.error,
       nativeControls:true,openPasswordProvider:()=>{api.set({menu:false});api.open('settings',{page:'password-provider'});},openDownloads:()=>{api.set({menu:false});void Browser.downloads({session}).catch(report);},reload:()=>{api.set({menu:false});void command('reload');},stopLoading:()=>{api.set({menu:false});void command('stop');},loading:!!info?.loading,goBack:()=>void command('back'),goFwd:()=>void command('forward'),backOp:info?.canBack?1:0.3,fwdOp:info?.canForward?1:0.3,
       startEdit:()=>api.set({editing:true,addr:info?.url||'',menu:false}),onAddrKey:(e:KeyboardEvent)=>{ if(e.key==='Enter'){e.preventDefault();void navigate((e.target as HTMLInputElement).value);} else if(e.key==='Escape')api.set({editing:false}); },
-      toggleMark:()=>{if(!info?.committed || info.loading || info.error || url?.protocol!=='https:'){api.toast('Load an HTTPS page before bookmarking it.');return;}saveBookmark(info.url);},markLabel:s.marks.includes(info?.url)?'Bookmarked':'Bookmark',markFill:s.marks.includes(info?.url)?'currentColor':'none',libRows:(s.lib==='history'?s.visits:s.marks).map((u:string)=>({title:u,host:u,ini:new URL(u).hostname[0],go:()=>void navigate(u),canRemove:s.lib!=='history',removeAria:'Remove bookmark',remove:()=>saveBookmark(u,false)})),libEmpty:!(s.lib==='history'?s.visits:s.marks).length,newTab:openNew,askPage:()=>void askPage(),readAloud:()=>void readPage(),bookNow:unavailable,cfOk:unavailable,openShare:()=>void sharePage(),
+      toggleMark:()=>{if(!info?.committed || info.loading || info.error || url?.protocol!=='https:'){api.toast('Load an HTTPS page before bookmarking it.');return;}saveBookmark(info.url);},markLabel:s.marks.includes(info?.url)?'Bookmarked':'Bookmark',markFill:s.marks.includes(info?.url)?'currentColor':'none',libRows:[...(bookmarkRecovery&&s.lib!=='history'?[{title:'Recover saved bookmarks',host:'Saved bookmarks could not be opened. Their original data is retained.',ini:'!',go:openBookmarkRecovery,canRemove:false,removeAria:'',remove:()=>{}}]:[]),...(s.lib==='history'?s.visits:s.marks).map((u:string)=>({title:u,host:u,ini:new URL(u).hostname[0],go:()=>void navigate(u),canRemove:s.lib!=='history',removeAria:'Remove bookmark',remove:()=>saveBookmark(u,false)}))],libEmpty:!(bookmarkRecovery&&s.lib!=='history')&&!(s.lib==='history'?s.visits:s.marks).length,newTab:openNew,askPage:()=>void askPage(),readAloud:()=>void readPage(),bookNow:unavailable,cfOk:unavailable,openShare:()=>void sharePage(),
       tabCards:s.tabs.map((tab:Bag)=>({title:metadata.get(tab.id)?.title || metadata.get(tab.id)?.url || 'New tab',host:metadata.get(tab.id)?.url||'',css:tab.id===s.cur?'box-shadow:inset 0 0 0 2px var(--acc)':'',prev:'background:var(--s2)',aria:'Switch to '+(metadata.get(tab.id)?.title||'New tab'),closeAria:'Close tab',pick:()=>api.set({cur:tab.id,tabsOpen:false}),close:()=>{ const rest=state().tabs.filter((t:Bag)=>t.id!==tab.id); const fallback='b'+crypto.randomUUID().replaceAll('-','');if(created.has(tab.id))void Browser.close({session,id:tab.id}).catch(report);created.delete(tab.id);metadata.delete(tab.id);api.set({tabs:rest.length?rest:[{id:fallback,hist:['newtab'],pos:0}],cur:state().cur===tab.id?(rest[0]?.id||fallback):state().cur}); }})),
       rootRef:(element:HTMLElement)=>{out.rootRef?.(element); if(!element)return; const viewport=element.querySelector('[data-bscroll]'); if(viewport){viewport.setAttribute('data-native-browser-viewport','true'); viewport.setAttribute('aria-label',info?.error || (info?.loading?'Loading website':'Browser page'));} },
     };

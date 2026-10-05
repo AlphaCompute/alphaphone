@@ -4,6 +4,7 @@ import {browserDigestAccount,validateBrowserDigestSelection,readBrowserDigestSou
 import {developmentDigestDocument,readDevelopmentDigests,validateDevelopmentDigests,initialDevelopmentDigests as initial,type DevelopmentDigestSource as Source,type DevelopmentDigestLoop as Loop} from './development-digest-document';
 import {assertDevelopmentIdentity,verifyDevelopmentIdentity,developmentIdentity,type DevelopmentIdentity} from './development-identity';
 import {revision} from './revision';
+import {devSurfacesEnabled} from '../build-flags';
 const id=(v:unknown):string=>{if(typeof v!=='string'||!/^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/.test(v))throw Error('Invalid digest identity.');return v;};
 function wall(at:number,zone:string){const p=Object.fromEntries(new Intl.DateTimeFormat('en-GB',{timeZone:zone,year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).formatToParts(at).map(x=>[x.type,x.value]));return `${p.year}-${p.month}-${p.day}T${p.hour}:${p.minute}`;}
 function scheduledOccurrence(loop:Loop,minute:number):string|null{
@@ -15,6 +16,7 @@ function scheduledOccurrence(loop:Loop,minute:number):string|null{
 }
 /** Requests and periodic inbox checks advance only the current minute, never a backlog. */
 export async function developmentDigestRequest(identity:DevelopmentIdentity,path:string,body:any,signal?:AbortSignal){
+ if(!devSurfacesEnabled)throw Error('Development profiles are unavailable in this build.');
  const check=async()=>{signal?.throwIfAborted();await verifyDevelopmentIdentity(identity,signal);assertDevelopmentIdentity(identity);const selected=JSON.parse(localStorage.getItem('alpha.connection.selection.v1')||'null');if(selected?.kind!=='development'||selected.profile!==identity.profile)throw Error('Digest connection changed.');};await check();
  const snapshot=await readDevelopmentDigests(identity,signal);await check();
  if(path==='/api/workflow/hosted/sources'&&body===undefined)return {sources:snapshot.sources.map(({text,...source})=>source)};
@@ -68,6 +70,7 @@ export async function developmentDigestRequest(identity:DevelopmentIdentity,path
 
 /** Scheduling is independent of whether the inbox is currently polling delivery. */
 export function startDevelopmentDigestScheduler(current:()=>boolean,signal:AbortSignal){
+ if(!devSurfacesEnabled)return ()=>{};
  const selected=JSON.parse(localStorage.getItem('alpha.connection.selection.v1')||'null');if(selected?.kind!=='development')return ()=>{};
  const identity=developmentIdentity(selected.profile);let running=false;
  const tick=async()=>{if(running||signal.aborted||!current())return;running=true;try{await developmentDigestRequest(identity,'/api/workflow/hosted/tick',undefined,signal);}catch{}finally{running=false;}};

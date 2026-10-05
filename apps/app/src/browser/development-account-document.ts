@@ -1,6 +1,7 @@
 import {browserDocuments} from './documents';
 import {BrowserDomainDocument,type DomainRecovery} from './domain-document';
 import {browserDevProfile} from './dev-profile';
+import {devSurfacesEnabled} from '../build-flags';
 export const developmentCloudKey='alpha.browser.cloud.account.v1';
 export type DevelopmentAccount='first'|'second';
 export type DevelopmentCloudAccount={account:DevelopmentAccount;session:string}|null;
@@ -15,7 +16,7 @@ function decode(data:ReturnType<typeof initial>):DevelopmentCloudAccount{
  const value=data.rawAccount===null?null:JSON.parse(data.rawAccount);
  if(value!==null&&(!value||!valid(value.account)||typeof value.session!=='string'||!/^[a-f0-9-]{36}$/.test(value.session)))throw Error('Development account data needs recovery.');return value;
 }
-function check(signal?:AbortSignal){signal?.throwIfAborted();if(!browserDevProfile)throw Error('Choose development mode.');}
+function check(signal?:AbortSignal){signal?.throwIfAborted();if(!devSurfacesEnabled||!browserDevProfile)throw Error('Choose development mode.');}
 /** Synchronous identity construction uses a previously read snapshot, never storage authority. */
 export function developmentCloudAccount():DevelopmentCloudAccount{check();if(!ready)throw Error('Read the current development account before continuing.');return cache?{...cache}:null;}
 export async function readDevelopmentCloudAccount(signal?:AbortSignal):Promise<DevelopmentCloudAccount>{

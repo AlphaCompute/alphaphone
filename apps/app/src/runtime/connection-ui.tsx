@@ -553,9 +553,9 @@ export const connectionController = {
   },
   async stopLocal() { await work('Stopping the local agent…',async()=>{await stopLocalAgent();retire();save({kind:'none'});update({message:'Local agent stopped.'});}); },
   async configureLocal(apiKey:string,model:string) { await work('Saving provider securely…',async()=>{await configureLocalProvider(apiKey,model);update({message:'Provider saved. Start or restart the local agent to use it.'});}); },
-  async authorDevelopment(profile:DevelopmentProfile,json:string){await work('Preparing development action…',async signal=>{await authorDevelopmentAction(profile,json,signal);update({message:'Action queued. Send a chat message to review it on the current screen.'});});},
-  async startDevelopment(profile:DevelopmentProfile){await work('Starting development agent…',signal=>connectDevelopment(profile,signal));},
-  async saveDevelopment(profile:DevelopmentProfile,reply:string){await work('Saving development reply…',async signal=>{await saveDevelopmentReply(profile,reply,signal);update({message:'Development reply saved.'});});},
+  async authorDevelopment(profile:DevelopmentProfile,json:string){if(!devSurfacesEnabled)return;await work('Preparing development action…',async signal=>{await authorDevelopmentAction(profile,json,signal);update({message:'Action queued. Send a chat message to review it on the current screen.'});});},
+  async startDevelopment(profile:DevelopmentProfile){if(!devSurfacesEnabled)return;await work('Starting development agent…',signal=>connectDevelopment(profile,signal));},
+  async saveDevelopment(profile:DevelopmentProfile,reply:string){if(!devSurfacesEnabled)return;await work('Saving development reply…',async signal=>{await saveDevelopmentReply(profile,reply,signal);update({message:'Development reply saved.'});});},
   async startLocal() { await work('Starting the local agent…', signal => { retire(); return connectResident(signal); }); },
   async pair(kind: 'remote' | 'local', origin: string, code: string) {
     await work('Verifying your agent…', signal => { retire(); return connectRemote(kind, origin, code, signal); });

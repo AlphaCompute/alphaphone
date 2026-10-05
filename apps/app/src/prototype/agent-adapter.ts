@@ -23,7 +23,7 @@ import { isMvpView } from "./mvp-features";
 import { workflowSha, validateWorkflowResult } from '../runtime/workflow-device-contract';
 import { getMapsSelectedObject, clearMapsSelection } from '../maps/agent-context';
 import { alphaClient, type AlphaView } from '../runtime/alpha-client';
-import { createDevelopmentTransport } from '../runtime/development-transport';
+import { testMocksEnabled, devSurfacesEnabled } from '../build-flags';
 import { DailyApps } from '../daily';
 import { isAndroid } from '../native';
 import { registerPlugin } from '../platform-plugins';
@@ -193,12 +193,22 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
         return;
       }
       // An explicit offline choice never falls through to an old development
-      // credential that may still be installed on a test device.
+      // credential that may still be installed on a test device. Without a
+      // saved selection, product builds open the chooser; only test-mocks builds
+      // (web development server, or a native development build) may try the
+      // emulator development transport.
       const preference = localStorage.getItem('alpha.connection.selection.v1');
-      if (preference) {
+      if (!testMocksEnabled || preference || !(Capacitor.isNativePlatform()
+        ? await DailyApps.surfaceInfo().then(info => info.developmentBuild === true, () => false)
+        : devSurfacesEnabled)) {
         connectionController.open();
         throw new Error('Choose an agent connection to send a message.');
       }
+      if (testMocksEnabled) await this.connectDevelopmentTransport();
+    };
+    // Test-mocks builds only; flag-off bundles drop this and its lazy chunk.
+    if (testMocksEnabled) this.connectDevelopmentTransport = async () => {
+      const { createDevelopmentTransport } = await import('../runtime/development-transport');
       const transport = await createDevelopmentTransport(async operation => {
         if (operation.type === 'open_view') {
         if (!['home','reminders','notifications'].includes(operation.view) && !isMvpView(operation.view)) return {status:'failed',summary:'This app is deferred from the MVP'};

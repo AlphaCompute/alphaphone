@@ -17,7 +17,11 @@ const native = registerPlugin<LocalAgentBridge & NativeStreamPort>('Agent');
 // Capacitor proxies synthesize functions for unknown methods. Do not use that
 // proxy to feature-detect streaming before the native IPC adapter implements it.
 const nativeBridge:LocalAgentBridge={start:()=>native.start(),request:input=>native.request(input),stream:(input,signal,onText)=>streamNativeAgent(native,input,signal,onText)};
-export const browserLocalAgentEnabled = import.meta.env?.DEV && import.meta.env?.VITE_LOCAL_AGENT === '1';
+// The host bridge at /__alpha-local-agent exists only on the development server
+// with ELIZA_DEV_ALLOW_TEST_MOCKS=1 (devSurfacesEnabled in build-flags.ts). This
+// module is also imported by Node contract tests, where import.meta.env is absent.
+const developmentBridgeAllowed: boolean = import.meta.env !== undefined && import.meta.env.DEV === true && import.meta.env.VITE_ELIZA_DEV_ALLOW_TEST_MOCKS === '1';
+export const browserLocalAgentEnabled: boolean = developmentBridgeAllowed && import.meta.env.VITE_LOCAL_AGENT === '1';
 export const localAgentAvailable = () => Capacitor.isNativePlatform()
   ? Capacitor.isPluginAvailable('Agent') : browserLocalAgentEnabled;
 /** Packaging availability only; it does not prove startup or inference readiness. */
@@ -26,7 +30,11 @@ export async function localAgentPackaged():Promise<boolean> {
   if(!Capacitor.isNativePlatform())return browserLocalAgentEnabled;
   try{return (await native.getStatus?.())?.packaged===true;}catch{return false;}
 }
-const browserBridge: LocalAgentBridge = {
+const unavailableBridge: LocalAgentBridge = {
+  async start() { throw new Error('On-device agent is unavailable in this browser. Connect a remote agent or use Eliza Cloud.'); },
+  async request() { throw new Error('On-device agent is unavailable in this browser. Connect a remote agent or use Eliza Cloud.'); },
+};
+const browserBridge: LocalAgentBridge | null = developmentBridgeAllowed ? {
   async start() { return { state: 'host-managed' }; },
   async stream(input,signal,onText){
     const bounded=AbortSignal.any([signal,AbortSignal.timeout(120000)]);
@@ -42,7 +50,7 @@ const browserBridge: LocalAgentBridge = {
     if (!response.ok) throw new Error('Local agent development bridge unavailable. Check the development server.');
     return response.json();
   },
-};
+} : null;
 function record(value:unknown):Record<string,any> {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('Invalid local agent response.');
   return value as Record<string,any>;
@@ -60,7 +68,7 @@ export class LocalAgentProtocol {
   private generation = 0;
   private streams = new Set<AbortController>();
   deviceHeaders:Record<string,string>={};
-  constructor(private bridge:LocalAgentBridge = Capacitor.isNativePlatform() ? nativeBridge : browserBridge) {}
+  constructor(private bridge:LocalAgentBridge = Capacitor.isNativePlatform() ? nativeBridge : browserBridge ?? unavailableBridge) {}
   async request(path:string, body:unknown|undefined, signal:AbortSignal, headers:Record<string,string> = {}):Promise<any> {
     signal.throwIfAborted();
     const generation=this.generation;
@@ -96,9 +104,9 @@ export class LocalAgentProtocol {
     this.session={ownerId:identifier(identity.id),agentId:identifier(agent.id),sessionId:crypto.randomUUID(),origin:this.origin};
     return {session:this.session,name:typeof agent.name==='string'?agent.name:'Local agent'};
   }
-  get browserSpeechAvailable(){return browserLocalAgentEnabled&&this.bridge===browserBridge;}
+  get browserSpeechAvailable(){return browserLocalAgentEnabled&&browserBridge!==null&&this.bridge===browserBridge;}
   async speechRequest(audio:Uint8Array|undefined,signal:AbortSignal){
-    if(!this.browserSpeechAvailable||!this.session)throw Error('Connect the local development agent first.');
+    if(!this.browserSpeechAvailable||!this.session)throw Error('Connect the local agent first.');
     const session=this.session,generation=this.generation,controller=new AbortController();
     this.streams.add(controller);
     const bounded=AbortSignal.any([signal,controller.signal]);
@@ -122,7 +130,7 @@ export class LocalAgentProtocol {
     }finally{this.streams.delete(controller);}
   }
   async synthesizeSpeech(text:string,signal:AbortSignal):Promise<Blob>{
-    if(!this.browserSpeechAvailable||!this.session)throw Error('Connect the local development agent first.');
+    if(!this.browserSpeechAvailable||!this.session)throw Error('Connect the local agent first.');
     if(typeof text!=='string'||!text.trim()||text.length>500)throw Error('Local agent speech accepts up to 500 characters per phrase.');
     const session=this.session,generation=this.generation,controller=new AbortController(),requestId=crypto.randomUUID();
     this.streams.add(controller);const bounded=AbortSignal.any([signal,controller.signal]);

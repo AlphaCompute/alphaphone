@@ -1,6 +1,7 @@
 import {createInlineModal} from '../runtime/inline-modal';
 import {currentClockTimeZone} from '../runtime/clock-contract';
 import { DailyApps, type ClockRequest, type ClockResult } from '../daily';
+import { testMocksEnabled } from '../build-flags';
 type Bag=Record<string,any>;
 const KEY='alphaphone:clock-handoff:v1';
 const actions=['set','show','snooze','dismiss'] as const;
@@ -10,7 +11,11 @@ export function installClockAdapter(Component:any,views:Bag,options:{simulated:b
  const draftId=crypto.randomUUID();let draftRevision=0;
  const selection=()=>open?{kind:'clock-draft',id:draftId,revision:String(draftRevision)}:undefined;
  let owner:any,open=false,action:ClockRequest['action']='set',time='07:00',label='',snooze='10',review:ClockRequest|null=null,busy=false,message='',generation=0;
- const simulated=()=>options.simulated||document.documentElement.dataset.connectionMode==='mock';
+ // Mock simulation exists only in test-mocks builds. A flag-off build that is
+ // somehow asked to simulate fails closed instead of opening the real Clock.
+ const mockRequested=()=>options.simulated||document.documentElement.dataset.connectionMode==='mock';
+ const simulated=()=>testMocksEnabled&&mockRequested();
+ const blocked=()=>!testMocksEnabled&&mockRequested();
  const publish=()=>{++draftRevision;owner?.vset('calendar',{});};
  const restore=()=>{
   if(simulated())return;
@@ -40,7 +45,8 @@ export function installClockAdapter(Component:any,views:Bag,options:{simulated:b
  const dispatch=async(request:ClockRequest)=>{
   if(busy||review!==request)return;
   if(document.hidden){message='Return to Alpha Phone and review again.';review=null;publish();return;}
-  if(simulated()){message='Mock mode: Clock request simulated. No alarm was changed and no app was opened.';review=null;publish();return;}
+  if(testMocksEnabled&&simulated()){message='Mock mode: Clock request simulated. No alarm was changed and no app was opened.';review=null;publish();return;}
+  if(blocked()){message='Clock is unavailable without a live connection. No alarm was changed and no app was opened.';review=null;publish();return;}
   if(request.action==='set'&&request.timeZone!==currentClockTimeZone()){message='Phone time zone changed. Review the Clock request again.';review=null;publish();return;}
   const id=crypto.randomUUID(),token=generation;
   try {localStorage.setItem(KEY,JSON.stringify({id,action:request.action,status:'opening',at:new Date().toISOString()}));}
@@ -57,7 +63,7 @@ export function installClockAdapter(Component:any,views:Bag,options:{simulated:b
  };
  views.calendar.render=(state:Bag,api:Bag)=>{
   const out=render(state,api);
-  out.openClock=()=>{if(busy)return;if(options.browser&&!simulated()){void DailyApps.clockHandoff({action:'show',reviewed:true}).catch(()=>api.toast('Clock could not be opened. Try again.'));return;}open=true;review=null;restore();publish();};
+  out.openClock=()=>{if(busy)return;if(options.browser&&!simulated()&&!blocked()){void DailyApps.clockHandoff({action:'show',reviewed:true}).catch(()=>api.toast('Clock could not be opened. Try again.'));return;}open=true;review=null;restore();publish();};
   const currentReview=review;
   out.clock=open?{
    modalRef:modal.ref,title:'Clock',topPadding:simulated()?'76px':'44px',message,busy,isSet:action==='set',isSnooze:action==='snooze',time,label,snooze,
@@ -66,7 +72,7 @@ export function installClockAdapter(Component:any,views:Bag,options:{simulated:b
    actions:actions.map(kind=>({label:kind==='set'?'Set alarm':kind==='show'?'Show alarms':kind==='snooze'?'Snooze':'Dismiss',pick:()=>change(()=>{action=kind;}),css:action===kind?'background:var(--fg);color:var(--bg)':'background:var(--s2);color:var(--fg)'})),
    onTime:(e:Bag)=>change(()=>{time=e.target.value;}),onLabel:(e:Bag)=>change(()=>{label=e.target.value;}),onSnooze:(e:Bag)=>change(()=>{snooze=e.target.value;}),
    prepare:()=>{if(busy)return;try{review=build();message='';}catch(error){message=(error as Error).message;}publish();},
-   review:currentReview?{text:description(currentReview),confirm:()=>dispatch(currentReview),cancel:()=>change(()=>{}),label:simulated()?'Simulate Clock request':'Continue to Clock'}:null,
+   review:currentReview?{text:description(currentReview),confirm:()=>dispatch(currentReview),cancel:()=>change(()=>{}),label:testMocksEnabled&&simulated()?'Simulate Clock request':'Continue to Clock'}:null,
   }:null;
   return out;
  };

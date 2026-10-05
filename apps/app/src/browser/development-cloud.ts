@@ -1,5 +1,6 @@
 import {CloudPersonalProtocol} from '../runtime/cloud-personal-protocol';
 import {revision} from './revision';
+import {devSurfacesEnabled} from '../build-flags';
 import {cloudSetupDocument,type DevelopmentSetup as Setup,type DevelopmentScenario} from './development-cloud-document';
 export type {DevelopmentScenario} from './development-cloud-document';
 import {developmentCloudAccount,readDevelopmentCloudAccount,type DevelopmentCloudAccount as Account} from './development-account-document';
@@ -13,6 +14,7 @@ export async function configureDevelopmentCloud(scenario:DevelopmentScenario,sig
  window.dispatchEvent(new Event('alpha:development-account-changed'));
 }
 export function developmentPersonal(account:NonNullable<Account>){
+ if(!devSurfacesEnabled)throw Error('Choose development mode.');
  const index=account.account==='first'?'1':'2',userId=`00000000-0000-4000-8000-00000000000${index}`,personal=`personal:00000000-0000-5000-8000-00000000000${index}`,target=`10000000-0000-4000-8000-00000000000${index}`,job=`20000000-0000-4000-8000-00000000000${index}`;
  const domain=developmentCloudSetupDocument(account);
  const check=async(signal:AbortSignal)=>{signal.throwIfAborted();const current=await readDevelopmentCloudAccount(signal);if(current?.account!==account.account||current.session!==account.session)throw Error('Development account changed.');};

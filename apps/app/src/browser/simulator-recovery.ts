@@ -1,4 +1,5 @@
 import {layoutBrowserDialog} from './dialog-layout';
+import {devSurfacesEnabled} from '../build-flags';
 type Bag=Record<string,any>;
 type Failure={title:string;raw?:string};
 const failures=new Map<string,Failure>();
@@ -8,6 +9,7 @@ const key=(name:string)=>'alpha.dev.app.'+name;
 const object=(value:unknown):value is Bag=>!!value&&typeof value==='object'&&!Array.isArray(value);
 /** Only persisted fields can enter a simulator; damaged records stay untouched. */
 export function loadSimulatedState(name:string,view:Bag,onRead?:(raw:string|null)=>void){
+ if(!devSurfacesEnabled)return {};
  let raw:string|null|undefined;
  try{
   raw=localStorage.getItem(key(name));onRead?.(raw);if(raw===null)return {};
@@ -23,10 +25,10 @@ export function loadSimulatedState(name:string,view:Bag,onRead?:(raw:string|null
   return saved;
  }catch{failures.set(name,{title:view.title,raw:raw??undefined});return {};}
 }
-export function simulatorNeedsRecovery(name:string){return failures.has(name);}
+export function simulatorNeedsRecovery(name:string){return devSurfacesEnabled&&failures.has(name);}
 let dialog:HTMLDialogElement|undefined;
 export function showSimulatorRecovery(){
- if(dialog?.open)return;
+ if(!devSurfacesEnabled||dialog?.open)return;
  const own=dialog=document.createElement('dialog');own.setAttribute('aria-label','Saved app recovery');own.style.cssText='box-sizing:border-box;width:min(400px,94vw);max-height:85dvh;overflow:auto;border:0;border-radius:22px;padding:24px;background:var(--bg,#fff);color:var(--fg,#111);font:16px/1.5 system-ui';
  const shell=document.querySelector('.os');if(shell){const theme=getComputedStyle(shell);for(const k of ['--bg','--fg','--s2'])own.style.setProperty(k,theme.getPropertyValue(k));}
  const heading=document.createElement('h2');heading.textContent='Saved app recovery';const intro=document.createElement('p');intro.textContent=failures.size?'Some saved development apps could not be opened. Their original data is retained. Other apps remain available.':'Saved development apps are ready.';own.append(heading,intro);

@@ -1,4 +1,5 @@
 import {DailyApps} from '../daily';
+import {devSurfacesEnabled} from '../build-flags';
 import {registerPlugin} from '../platform-plugins';
 import {reviewMailAttachment} from '../runtime/inbox-attachment';
 type Bag=Record<string,any>;
@@ -6,6 +7,7 @@ const attachments=registerPlugin<any>('AlphaMailAttachments');
 const address=(value:unknown):value is string=>typeof value==='string'&&value.length<=254&&/^[^\s<>@,;]+@[^\s<>@,;]+\.[^\s<>@,;]+$/.test(value);
 /** Local development messages never enter a provider transport. */
 export function installSimulatedInbox(view:Bag){
+ if(!devSurfacesEnabled)return;
  const render=view.render,leave=view.onLeave;let busy=false,epoch=0,status='',confirm=false;
  view.onLeave=(...args:any[])=>{epoch++;busy=false;confirm=false;return leave?.(...args);};
  view.render=(state:Bag,api:Bag)=>{const out=render(state,api),repaint=()=>api.set({localMailRevision:Date.now()}),setDraft=(patch:Bag)=>{status='Unsaved local draft';api.set({compose:{...api.get('inbox').compose,...patch}});};
