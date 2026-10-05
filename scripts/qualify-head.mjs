@@ -90,7 +90,8 @@ function main() {
   const root = path.resolve(import.meta.dirname, "..");
   process.chdir(root);
   const sha = git(["rev-parse", "HEAD"]);
-  const status = git(["status", "--porcelain", "--untracked-files=no"]);
+  // Untracked (non-ignored) files can change what builds, so they make the tree dirty too.
+  const status = git(["status", "--porcelain", "--untracked-files=normal"]);
   const lock = JSON.parse(fs.readFileSync("upstream.lock.json", "utf8"));
   const vendorHead = git(["-C", "vendor/eliza", "rev-parse", "HEAD"]);
   const directory = path.join("test-results/qualify", sha);
@@ -182,8 +183,12 @@ function main() {
 
   result.finishedAt = new Date().toISOString();
   result.qualified = verdict(result);
+  // Qualification of the head is not a distribution decision: releases without
+  // the packaged resident runtime (--allow-unpackaged-runtime) stay non-distributable.
+  const releases = (result.androidBuild?.apks ?? []).filter(row => row.mode === "release");
+  result.releasesDistributable = releases.length > 0 && releases.every(row => row.distributable === true);
   write();
-  console.log(`${path.join(directory, "result.json")}: ${result.qualified ? "QUALIFIED" : "NOT QUALIFIED"} (${result.evidenceScope})`);
+  console.log(`${path.join(directory, "result.json")}: ${result.qualified ? "QUALIFIED" : "NOT QUALIFIED"}; releases ${result.releasesDistributable ? "distributable" : "NOT distributable"} (${result.evidenceScope})`);
   if (!result.qualified) process.exitCode = 1;
 }
 
