@@ -81,6 +81,24 @@ No Android build was run for this integrated checkpoint.
 
 ## Browser storage
 
+### Connected host disclosure
+
+The live-browser review found that connected agent memory was still labeled
+"Not connected" and browser About omitted agent location. Privacy and Developer
+now distinguish an absent connection from unreported memory usage. Browser About
+shows the current agent and execution location; browser Models describes speech
+on the development computer. For the resident browser connection, Privacy states
+that prompts and selected context go to the development host and its configured
+inference provider. Unreported provider/model and redaction details remain unknown;
+this does not enable swaps or claim that requests stay local.
+
+The authenticated browser-host fixture and all ten existing per-connection privacy
+cases passed, along with type checking. The settled host Privacy screenshot was
+inspected at 412 × 915. Evidence is in the `alpha-live-settings-review` checkout
+under `artifacts/settings-review/`. The host regression is included in the existing
+CI browser-agent profile step, whose transport is synthetic and cannot contact a
+real inference provider. Physical/native acceptance remains separate.
+
 The [storage ownership map](browser-storage.md) defines each canonical domain,
 its recovery boundary, independent preference contracts and native
 Clock handoff history. Shared IndexedDB

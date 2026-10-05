@@ -54,7 +54,7 @@ jobs:
         if: matrix.shard == 1
         run: |
           node --input-type=module -e "import fs from 'node:fs'; fs.writeFileSync(process.env.RUNNER_TEMP + '/alpha-synthetic-owner-token', 'a'.repeat(64), {mode: 0o600});"
-          PLAYWRIGHT_HTML_OUTPUT_DIR=test-results/browser-agent-profile-report ELIZA_DEV_ALLOW_TEST_MOCKS=1 VITE_LOCAL_AGENT=1 ALPHA_LOCAL_AGENT_TOKEN_FILE="$RUNNER_TEMP/alpha-synthetic-owner-token" ALPHA_LOCAL_AGENT_ORIGIN=http://127.0.0.1:1 npm run test:browser -- test/browser/browser-agent-recording.spec.ts test/browser/browser-agent-tts.spec.ts --grep 'rendered browser recording|local agent TTS|prepared agent audio' --output=test-results/browser-agent-profile
+          PLAYWRIGHT_HTML_OUTPUT_DIR=test-results/browser-agent-profile-report ELIZA_DEV_ALLOW_TEST_MOCKS=1 VITE_LOCAL_AGENT=1 ALPHA_LOCAL_AGENT_TOKEN_FILE="$RUNNER_TEMP/alpha-synthetic-owner-token" ALPHA_LOCAL_AGENT_ORIGIN=http://127.0.0.1:1 npm run test:browser -- test/browser/browser-agent-recording.spec.ts test/browser/browser-agent-tts.spec.ts test/browser/browser-host-disclosure.spec.ts --grep 'rendered browser recording|local agent TTS|prepared agent audio|connected browser host' --output=test-results/browser-agent-profile
       - uses: actions/upload-artifact@v4
         if: always()
         with:

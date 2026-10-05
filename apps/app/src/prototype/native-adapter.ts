@@ -226,10 +226,15 @@ export function installPrototypeNativeAdapters(
     if (module === 'settings') {
       if (result.big === 'Redaction on') Object.assign(result, egressPrivacy(connectionController.getSnapshot()));
       if (result.label === 'Privacy & data') result.val = 'Review';
-      if (result.label === 'Leaves this device') result.val = 'Depends on active services';
+      if (result.label === 'Leaves this device') {
+        const connection=connectionController.getSnapshot();
+        result.val=connection.session&&connection.kind==='resident'&&!Capacitor.isNativePlatform()
+          ? 'Prompts and selected context go to the development host and its configured inference provider'
+          : 'Depends on active services';
+      }
       if (result.label === 'On-device model') result.val = 'Not loaded';
       if (st.page === 'privacy' && ['Microphone','Location','Camera','Contacts'].includes(result.label)) result.val = 'Review access';
-      if (st.page === 'privacy' && result.label === 'Memory') result.val = 'Not connected';
+      if (st.page === 'privacy' && result.label === 'Memory') result.val = connectionController.getSnapshot().session ? 'Usage not reported by agent' : 'Not connected';
       if (st.page === 'privacy' && result.label === 'Activity') result.val = activityValue(connectionController.getSnapshot());
     }
     return result;
