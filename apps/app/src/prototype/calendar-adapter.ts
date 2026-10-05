@@ -1,4 +1,4 @@
-import {openReminderRecovery} from '../browser/reminder-recovery';
+import {openReminderRecovery,openReminderCreationRecovery} from '../browser/reminder-recovery';
 import {openCalendarRecovery} from '../browser/calendar-recovery';
 import { registerPlugin } from '../platform-plugins';
 import { Capacitor } from '@capacitor/core';
@@ -95,7 +95,7 @@ export function installCalendarAdapter(Component: any, views: Bag) {
     out.nativeStatusLabel=[rangeReady&&truncated?'Calendar results incomplete. Some events may be missing.':'',reminderStale?'Reminders may be out of date. Tap to retry.':''].filter(Boolean).join(' ');
     out.nativeStatusRetry=()=>{void refresh(false,true);void owner?.refreshReminders();};
     out.browserRecovery=!Capacitor.isNativePlatform()&&loadFailed&&!loading;out.openBrowserRecovery=openCalendarRecovery;
-    out.reminderRecovery=!Capacitor.isNativePlatform()&&reminderStale;out.openReminderRecovery=openReminderRecovery;
+    out.reminderRecovery=!Capacitor.isNativePlatform()&&reminderStale;out.openReminderRecovery=openReminderRecovery;out.openReminderCreationRecovery=openReminderCreationRecovery;
     if(!rangeReady&&!state.open&&!state.form)out.empty=true;
     const allDay=(state.events||[]).filter((e:Bag)=>e.alphaCalendarId&&e.allDay);
     const day=Number(state.day||0),onDay=(off:number)=>allDay.filter((e:Bag)=>off>=e.off&&off<e.nativeAllDayEndOff);

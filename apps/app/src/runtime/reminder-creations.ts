@@ -4,7 +4,8 @@ import {reminderFields,reminderTiming} from './reminder-contract';
 import {DailyApps,type Reminder} from '../daily';
 export type ReminderCreation={id:string;request:{id:string;title:string;body:string;at:number;recurrence?:Reminder['recurrence'];dueAt?:number;alertMinutes?:number|null};state:'pending'|'found'};
 type Store=Record<string,ReminderCreation>;
-const slot='reminder-creations:v1:device',key='alpha.browser.reminder-creations.v1';
+const slot='reminder-creations:v1:device';
+const browserHistory=()=>import('../browser/reminder-creation-document');
 function valid(value:Store|null):Store{
  if(value===null)return {};
  if(typeof value!=='object'||Array.isArray(value)||Object.keys(value).length>32||new TextEncoder().encode(JSON.stringify(value)).length>128*1024)throw Error('Reminder creation history is full or unavailable');
@@ -14,22 +15,34 @@ function valid(value:Store|null):Store{
  }
  return value;
 }
-const read=async():Promise<Store|null>=>Capacitor.getPlatform()==='android'?secureConnectionStore.read<Store>(slot):JSON.parse(localStorage.getItem(key)||'null');
+const read=async():Promise<Store|null>=>{
+ if(Capacitor.getPlatform()==='android')return secureConnectionStore.read<Store>(slot);
+ const {reminderCreationDocument,emptyReminderCreationArchive,reminderCreationArchiveRaw}=await browserHistory();
+ const raw=reminderCreationArchiveRaw(await reminderCreationDocument.read(emptyReminderCreationArchive));
+ return raw===null?null:JSON.parse(raw);
+};
 export async function reminderCreations(){return valid(await read());}
 async function change(id:string,expected:ReminderCreation|null,value:ReminderCreation|null){
- const write=async()=>{
-  const raw=await read(),all=valid(raw);if(!value&&!all[id])return;
+ const update=(raw:Store|null)=>{
+  const all=valid(raw);if(!value&&!all[id])return raw;
   if(JSON.stringify(all[id]||null)!==JSON.stringify(expected))throw Error('Reminder creation changed');
   const next={...all};if(value)next[id]=value;else delete next[id];
   while(value&&(Object.keys(next).length>32||new TextEncoder().encode(JSON.stringify(next)).length>128*1024)){const retire=Object.keys(next).find(k=>k!==id&&next[k].state==='found');if(!retire)break;delete next[retire];}
-  valid(next);
-  if(Capacitor.getPlatform()==='android'){if((await secureConnectionStore.compareExchange(slot,raw,next)).status!=='saved')throw Error('Reminder creation changed');}
-  else{if(localStorage.getItem(key)!==(raw===null?null:JSON.stringify(raw)))throw Error('Reminder creation changed');localStorage.setItem(key,JSON.stringify(next));}
-  if(JSON.stringify((await reminderCreations())[id]||null)!==JSON.stringify(value))throw Error('Reminder creation save unconfirmed');
+  return valid(next);
  };
- if(Capacitor.getPlatform()==='android')return write();
- if(!navigator.locks?.request)throw Error('Safe reminder creation requires Web Locks');
- return navigator.locks.request(key,{mode:'exclusive'},write);
+ if(Capacitor.getPlatform()==='android'){
+  const raw=await read(),next=update(raw);
+  if(next===raw)return;
+  if((await secureConnectionStore.compareExchange(slot,raw,next)).status!=='saved')throw Error('Reminder creation changed');
+ }else{
+  if(!value&&!(await reminderCreations())[id])return;
+  const {reminderCreationDocument,emptyReminderCreationArchive,reminderCreationArchiveRaw}=await browserHistory();
+  await reminderCreationDocument.edit(emptyReminderCreationArchive,archive=>{
+   const raw=reminderCreationArchiveRaw(archive),next=update(raw===null?null:JSON.parse(raw));
+   archive.raw=next===null?null:JSON.stringify(next);
+  });
+ }
+ if(JSON.stringify((await reminderCreations())[id]||null)!==JSON.stringify(value))throw Error('Reminder creation save unconfirmed');
 }
 export async function retainReminderCreation(row:ReminderCreation){await change(row.id,null,row);}
 /** Only the creating handler, before scheduleReminder was invoked. */
