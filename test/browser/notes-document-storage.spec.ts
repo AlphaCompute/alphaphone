@@ -35,3 +35,27 @@ test('audio deletion readback uses canonical tombstones and reset never restores
 test('audio history reset waits for the effects lock and preserves Notes',async({page})=>{
  await ready(page);await page.evaluate(async()=>{const m=await import('/src/runtime/browser-notes-document.ts'),a=await import('/src/runtime/note-audio-deletions.ts'),store=await m.openBrowserNotes(),note={id:'voice',kind:'voice',title:'Voice',body:'Words',audio:{audioId:'audio',noteId:'voice'}};await store.replace([note]);await a.changeAudioDeletion({id:'delete',target:await store.target('voice'),note,audioId:'audio'},true);const recovery=await a.audioDeletionRecovery(),capture=await recovery.capture();await new Promise<void>(ready=>{void a.withAudioDeletionLock(async()=>{ready();await new Promise<void>(resolve=>(window as any).releaseAudioLock=resolve);});});(window as any).resetAudio=recovery.reset(capture).then(()=>(window as any).resetFinished=true);});await expect.poll(()=>page.evaluate(async()=>(await navigator.locks.query()).pending?.some(l=>l.name==='alpha.notes-audio-effects.v1'))).toBe(true);expect(await page.evaluate(()=>(window as any).resetFinished)).toBeUndefined();await page.evaluate(async()=>{(window as any).releaseAudioLock();await(window as any).resetAudio;});expect(await page.evaluate(async()=>({pending:Object.keys(await(await import('/src/runtime/note-audio-deletions.ts')).pendingAudioDeletions()).length,notes:JSON.parse(await(await import('/src/runtime/browser-notes-document.ts')).readBrowserNotesRaw()).records.length}))).toEqual({pending:0,notes:1});
 });
+
+for(const source of ['v2','v1','daily','malformed'] as const)test(`preserve exact ${source} sources and detect later Notes writes`,async({browser})=>{
+ const context=await browser.newContext(),page=await context.newPage();
+ try{
+ await page.addInitScript(source=>{
+  localStorage.setItem('alpha.connection.selection.v1',JSON.stringify({kind:'offline'}));
+  if(localStorage.getItem('seeded'))return;localStorage.setItem('seeded','yes');
+  const note={id:'retained',kind:'text',title:'Retained',body:'Original bytes',updatedAt:'2026-01-02T03:04:05Z'};
+  if(source==='v2')localStorage.setItem('alphaphone:notes:v2',JSON.stringify({version:2,collectionId:'aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa',records:[note],deleted:[{id:'gone',revision:'r1',operationId:'delete-1'}]},null,2));
+  if(source==='v1')localStorage.setItem('alphaphone:prototype:notes:v1',JSON.stringify([note],null,3));
+  localStorage.setItem('alphaphone:daily:v1',source==='malformed'?' { malformed original ':JSON.stringify({notes:source==='daily'?[note]:[],receipts:[]},null,2));
+ },source);
+ await page.goto('/');await expect(page.locator('html')).toHaveAttribute('data-notes-storage-state',source==='malformed'?'recovery':'ready');
+ const result=await page.evaluate(async(source)=>{
+  const {browserNotesPort:d,browserNotesRecovery:r,openBrowserNotes}=await import('/src/runtime/browser-notes-document.ts');const backup=await r.capture();
+  if(source==='malformed'){await r.reset(backup);return {empty:(await openBrowserNotes()).list.length,backup:backup.raw};}
+  const store=await openBrowserNotes(),before=await d.read(),daily=JSON.parse(localStorage.getItem('alphaphone:daily:v1')!);daily.receipts.push('unrelated');localStorage.setItem('alphaphone:daily:v1',JSON.stringify(daily));await store.assertCurrent();
+  daily.notes.push({id:'new',title:'Late old-tab write'});localStorage.setItem('alphaphone:daily:v1',JSON.stringify(daily));let refused=false;try{await store.assertCurrent();}catch{refused=true;}
+  const current=await r.capture();return {refused,changed:current.legacyChanged,backup:backup.raw,before:before?.raw,empty:null};
+ },source);
+ if(source==='malformed'){expect(result.empty).toBe(0);expect(result.backup).toContain(' { malformed original ');}
+ else{expect(result.refused).toBe(true);expect(result.changed).toBe(true);expect(result.backup).toContain('Original bytes');if(source==='v2'){expect(result.before).toContain('delete-1');expect(result.before).toContain('aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa');}}
+ }finally{await context.close();}
+});
