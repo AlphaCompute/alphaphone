@@ -52,6 +52,11 @@ else if(a.includes('run-as')){
  const text=isEnvelope?JSON.stringify(envelope):id;
  console.log('<map><string name="'+(isEnvelope?'envelope':'id')+'">'+text.replaceAll('&','&amp;').replaceAll('"','&quot;')+'</string></map>');
 }
+else if(a.slice(0,3).join(' ')==='shell dumpsys webviewupdate'){
+ if(mode==='webview-service-failure'){console.error('WebView service unavailable');process.exit(1);}
+ if(s.user!=='10'){console.error('WebView queried outside the owned user');process.exit(1);}
+ console.log(['Current WebView package (name, version): (com.android.webview, 131.0)', 'WebView package dirty: false', 'Any WebView package installed: true', 'Valid package com.android.webview (versionName: 131.0) is installed/enabled for all users', 'Number of relros started: 1', 'Number of relros finished: 1'].join(String.fromCharCode(10)));
+}
 else if(a.slice(0,3).join(' ')==='shell dumpsys package')console.log('Packages:'+String.fromCharCode(10)+'  Package ['+pkg+'] (abc):'+String.fromCharCode(10)+'    User 0: stopped=true'+String.fromCharCode(10)+'    User 10: stopped=false'+String.fromCharCode(10)+'Queries:'+String.fromCharCode(10)+'    User 10:');
 else if(a.includes('notification')&&a.includes('list'))console.log(s.boot?'10|'+pkg+'|0|'+${JSON.stringify(kind==='recurrence-recovery'?'recurring_recovery_fixture':'recovery_fixture')}+'|1010000':'');
 else if(a.includes('revoke')){s.denied=true;s.reminderStatus='permission-denied';save();}

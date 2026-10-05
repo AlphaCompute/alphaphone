@@ -65,6 +65,7 @@ export async function runNativeFixture({
 	try {
 		report = await runIsolatedAndroidUserTest({
 			expectedTests: 1,
+			requireWebView: true,
 			instrumentationTimeoutMs: 240000,
 			...testOptions,
 			serial,
