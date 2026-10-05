@@ -104,7 +104,8 @@ test('the chooser and Settings offer only production connections', async ({ page
   expect(settingsText).not.toMatch(/mock mode/i);
   expect(settingsText).not.toMatch(/staging/i);
   await page.getByText('About', { exact: true }).click();
-  await expect(settings.getByText('Web browser', { exact: true })).toBeVisible();
+  // The About header and the Runtime row both name the web runtime.
+  await expect(settings.getByText('Web browser', { exact: true }).first()).toBeVisible();
   await expect(settings.getByText('Browser development', { exact: true })).toHaveCount(0);
   await expect(settings.getByText(/^\d+\.\d+\.\d+/).first()).toBeVisible();
   await settings.getByText('Open source licenses', { exact: true }).click();
