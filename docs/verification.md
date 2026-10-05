@@ -32,6 +32,16 @@ Retain terminal instrumentation results and cleanup outcomes. A build or success
 install cannot substitute for these checks. See the [Android/AOSP guide](android-and-aosp.md)
 and README for isolated Calendar and reminder regression/upgrade campaigns.
 
+The native workflow campaign uses `node scripts/android-workflow-native.mjs` with
+`ANDROID_SERIAL`, `ALPHA_WORKFLOW_TEST_AVD`, `ALPHA_WORKFLOW_TEST_ABI`, and
+`ALPHA_BUILD_ARCHIVE`. The archive must contain both distributions' debug and
+instrumentation APKs plus their filename-to-SHA256 `apk-manifest.json`. Evidence
+is written to a new `ALPHA_CAMPAIGN_OUTPUT` directory beneath `test-results/`.
+The runner refuses existing product package registrations, leases the emulator,
+and runs each exact method in a fresh secondary user. It retains the fixture if
+package termination or cleanup cannot be proven. These synthetic read/draft tests
+do not establish paired-host workflow execution.
+
 Qualify real integrations separately with authorized test accounts and explicit
 user actions. Record account scope without secrets, the actual operation, provider
 readback, cancellation/revocation behavior and ambiguous-outcome reconciliation.
