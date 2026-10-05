@@ -19,7 +19,8 @@ function swapFixtures() {
     async resolveId(source, importer, options) {
       if (!importer || !/(^|\/)fixtures\.js$/.test(source)) return null;
       const resolved = await this.resolve(source, importer, { ...options, skipSelf: true });
-      return resolved && path.resolve(resolved.id.split('?')[0]) === fixtures ? empty : null;
+      // vite.config.ts already swaps fixtures in a flag-off build; accept either resolution.
+      return resolved && [fixtures, empty].includes(path.resolve(resolved.id.split('?')[0])) ? empty : null;
     },
   };
 }
