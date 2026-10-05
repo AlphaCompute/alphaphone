@@ -1,3 +1,4 @@
+import { testMocksEnabled } from '../build-flags';
 import { Component, type ErrorInfo, type ReactNode } from 'react';
 
 declare const __APP_VERSION__: string;
@@ -33,7 +34,7 @@ export function showRecoveryScreen(kind: FailureKind, error: unknown): void {
   screen.style.cssText = style.screen;
   const panel = document.createElement('div'); panel.style.cssText = style.panel;
   const title = document.createElement('h1'); title.id = 'alpha-recovery-title'; title.textContent = 'Alpha Phone needs to reload';
-  const text = document.createElement('p'); text.textContent = 'Something went wrong while showing this screen. Your saved data was not changed by this error. Reload to continue.';
+  const text = document.createElement('p'); text.textContent = 'Something went wrong while showing this screen. Reload to continue.';
   const reload = document.createElement('button'); reload.type = 'button'; reload.textContent = 'Reload'; reload.style.cssText = style.button; reload.onclick = () => location.reload();
   const details = document.createElement('details');
   const summary = document.createElement('summary'); summary.textContent = 'Diagnostics';
@@ -67,7 +68,7 @@ export function installGlobalErrorRecovery(): void {
   window.addEventListener('unhandledrejection', event => {
     if (!appMounted()) showRecoveryScreen('startup', event.reason);
   });
-  window.addEventListener('alpha:force-render-error', () => { forced = true; window.dispatchEvent(new Event('alpha:render-error-check')); });
+  if (testMocksEnabled) window.addEventListener('alpha:force-render-error', () => { forced = true; window.dispatchEvent(new Event('alpha:render-error-check')); });
 }
 
 let forced = false;
@@ -82,15 +83,15 @@ export class RootErrorBoundary extends Component<{ children: ReactNode }, { fail
   state = { failed: false, diagnostics: '', tick: 0 };
   private check = () => this.setState(current => ({ tick: current.tick + 1 }));
   static getDerivedStateFromError(error: unknown) { return { failed: true, diagnostics: recoveryDiagnostics('render', error) }; }
-  componentDidMount() { window.addEventListener('alpha:render-error-check', this.check); }
-  componentWillUnmount() { window.removeEventListener('alpha:render-error-check', this.check); }
+  componentDidMount() { if (testMocksEnabled) window.addEventListener('alpha:render-error-check', this.check); }
+  componentWillUnmount() { if (testMocksEnabled) window.removeEventListener('alpha:render-error-check', this.check); }
   componentDidCatch(_error: unknown, _info: ErrorInfo) { forced = false; /* Diagnostics exclude component stacks and messages. */ }
   render() {
-    if (!this.state.failed) return <ForcedFailure>{this.props.children}</ForcedFailure>;
+    if (!this.state.failed) return testMocksEnabled ? <ForcedFailure>{this.props.children}</ForcedFailure> : this.props.children;
     return <div className="alpha-recovery" role="alertdialog" aria-labelledby="alpha-recovery-title" style={{ position: 'fixed', inset: 0, zIndex: 2147483000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24, boxSizing: 'border-box', background: '#f7f7f7', color: '#171717', font: '16px/1.5 system-ui,sans-serif' }}>
       <div style={{ maxWidth: 380, width: '100%' }}>
         <h1 id="alpha-recovery-title">Alpha Phone needs to reload</h1>
-        <p>Something went wrong while showing this screen. Your saved data was not changed by this error. Reload to continue.</p>
+        <p>Something went wrong while showing this screen. Reload to continue.</p>
         <button type="button" autoFocus onClick={() => location.reload()} style={{ minHeight: 48, width: '100%', margin: '16px 0 8px', border: 0, borderRadius: 24, background: '#171717', color: '#fff', font: 'inherit', fontWeight: 600 }}>Reload</button>
         <details><summary>Diagnostics</summary><pre style={{ whiteSpace: 'pre-wrap', font: '12px/1.4 ui-monospace,monospace', background: '#ececec', padding: 12, borderRadius: 12 }}>{this.state.diagnostics}</pre></details>
       </div>

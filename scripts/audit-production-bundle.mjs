@@ -8,6 +8,7 @@ import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 
 export const DENYLIST = Object.freeze([
+  'alpha:force-render-error', 'alpha:render-error-check', 'Forced render failure',
   'Enter mock mode', 'Try mock mode', 'Exit mock mode', 'mock-mode-banner', 'Mock mode ·',
   '10.0.2.2:2138', 'cloud-staging', 'api-staging.eliza.app',
   'alpha-dev-tools', 'Development connections', 'Development card', 'Device controls',
