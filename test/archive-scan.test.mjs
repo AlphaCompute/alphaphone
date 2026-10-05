@@ -7,6 +7,7 @@ import { execFileSync, spawnSync } from 'node:child_process';
 
 const root = path.resolve(import.meta.dirname, '..');
 for (const mode of ['signed', 'unsigned', 'signed-test-class']) test(`archive scan admits release names and rejects test code: ${mode}`, t => {
+  fs.mkdirSync(path.join(root, 'test-results'), {recursive:true});
   const dir = fs.mkdtempSync(path.join(root, 'test-results/archive-scan-'));
   t.after(() => fs.rmSync(dir, {recursive:true, force:true}));
   const fixtureHome = path.join(dir, 'fixture-home');
