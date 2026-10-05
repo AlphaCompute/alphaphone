@@ -65,15 +65,17 @@ export function installInboxCloudAdapter(Component: any, views: Record<string, B
       }
     } finally { if (token === generation) { operation = null; if (phase === 'busy') phase = 'ready'; publish(); } }
   }
-  async function refreshAccounts() {
+  async function refreshAccounts(preserveSelection=false) {
     await work('Checking Gmail connection…', async ({ client }, signal, valid) => {
       const result = await client.gmailAccounts(signal);
       if (!valid()) return;
-      accounts = result; messages = []; body = null;
+      const previous=selected;accounts = result;
       if (!accounts.some(a => a.connectionId === selected && a.connected && a.grantedCapabilities.includes('google.gmail.triage'))) selected = accounts.find(a => a.connected && a.grantedCapabilities.includes('google.gmail.triage'))?.connectionId || '';
+      const retained=preserveSelection&&!!selected&&selected===previous;
+      if(!retained){void attachmentNative.cancel().catch(()=>{});attachmentView=null;contextReview=null;thread=null;messages=[];body=null;}
       void provider.bind(selected); void drafts.bind(selected, accounts.find(a => a.connectionId === selected)?.label || '');
-      status = selected ? 'Gmail connected. Tap Load Inbox.' : 'Connect Gmail to read your inbox';
-      publish({ open: null, nativeMailSelection: null });
+      if(!retained)status = selected ? 'Gmail connected. Tap Load Inbox.' : 'Connect Gmail to read your inbox';
+      publish(retained?{}:{ open: null, nativeMailSelection: null });
     });
   }
   async function connect(permission:'read'|'send'|'drafts'|'mailbox'='read') {
@@ -196,7 +198,7 @@ export function installInboxCloudAdapter(Component: any, views: Record<string, B
       const nextAgent = connectionController.getSnapshot().session?.sessionId;
       if (nextAgent !== agentSession) { contextReview=null;agentSession = nextAgent; publish({ nativeMailSelection: null }); }
     });
-    this.inboxResume = DailyApps.addListener('appResumed', () => { if (api?.isActive() && !operation) void refreshAccounts(); }).catch(() => null);
+    this.inboxResume = DailyApps.addListener('appResumed', () => { if (api?.isActive() && !operation) void refreshAccounts(true); }).catch(() => null);
   };
   p.componentWillUnmount = function () {
     this.inboxConnectionUnsubscribe?.(); void this.inboxResume?.then((handle: Bag) => handle?.remove());
