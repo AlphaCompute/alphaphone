@@ -138,3 +138,12 @@ text. Browser damaged-record recovery backs up stored bytes and current text bef
 confirmed reset. Native happy-path storage is wired to the encrypted draft slot, but
 native corruption reset and physical restart/IME acceptance remain open. Calendar and
 Reminder unsaved forms remain separate implementation gaps.
+
+Assistant draft qualification: consumer `ba3eed32` passed `npm run verify` (657
+tests, type checking, production build and bundle audit), 11 production-surface
+browser tests and 13 selected-source summary tests. A subsequent conversation-choice
+fix passed type checking and all 81 owning draft/storage/conversation browser checks
+across Chromium, Firefox and WebKit. It pins the current tab's observed choice,
+including an empty choice, so another tab's saved restart preference cannot move an
+unsent draft before its first send. These remain local results, not hosted CI or
+native/device qualification.
