@@ -1,5 +1,37 @@
-import { defineConfig } from '@playwright/test';
+import { defineConfig, devices } from '@playwright/test';
 const port=Number(process.env.ALPHA_BROWSER_TEST_PORT||5317);
+const productionPort=port+1;
+// Storage-domain specs also run in Firefox and WebKit, whose storage and locking differ.
+const storageSpecs=/(device-storage-migration|password-provider-storage|album-storage-migration|photo-albums|notification-storage-migration|calendar-storage-migration)\.spec\.ts$/;
+const productionSpec=/production-surface\.spec\.ts$/;
+
+// The top-level webServer list is not per-project. Start only the servers that the
+// selected projects use, so the default lane never builds and the production lane
+// never starts a flag-on development server.
+const selected=(()=>{
+  const names:string[]=[];const argv=process.argv;
+  for(let index=0;index<argv.length;index++){
+    if(argv[index]==='--project'&&argv[index+1])names.push(argv[++index]);
+    else if(argv[index].startsWith('--project='))names.push(argv[index].slice('--project='.length));
+  }
+  return names;
+})();
+const needsProduction=!selected.length||selected.includes('production');
+const needsDevelopment=!selected.length||selected.some(name=>name!=='production');
+
+const development={
+  // The development server explicitly opts into test mocks, fixtures and device controls.
+  command: `npm run dev -- --port ${port} --strictPort`, url: `http://127.0.0.1:${port}`, reuseExistingServer: false,
+  env: { ELIZA_DEV_ALLOW_TEST_MOCKS: '1' },
+};
+const production={
+  // A flag-off production build served by vite preview: no mocks, fixtures or developer surfaces.
+  // It is written outside web-dist so it never replaces a release or test-mocks build.
+  command: `npm run upstream:prepare-client && npx vite build --outDir ../../test-results/production-web && npx vite preview --outDir ../../test-results/production-web --host 127.0.0.1 --port ${productionPort} --strictPort`,
+  url: `http://127.0.0.1:${productionPort}`, reuseExistingServer: false, timeout: 180_000,
+  env: { ELIZA_DEV_ALLOW_TEST_MOCKS: '', VITE_ELIZA_DEV_ALLOW_TEST_MOCKS: '', VITE_LOCAL_AGENT: '' },
+};
+
 export default defineConfig({
   testDir: './test/browser',
   timeout: 30_000,
@@ -8,5 +40,11 @@ export default defineConfig({
   reporter: [['list'], ['html', { outputFolder: 'test-results/browser-report', open: 'never' }]],
   outputDir: 'test-results/browser',
   use: { baseURL: `http://127.0.0.1:${port}`, viewport: { width: 412, height: 915 }, screenshot: 'only-on-failure', trace: 'retain-on-failure', reducedMotion: 'reduce' },
-  webServer: { command: `npm run dev -- --port ${port} --strictPort`, url: `http://127.0.0.1:${port}`, reuseExistingServer: false },
+  projects: [
+    { name: 'chromium', testIgnore: productionSpec },
+    { name: 'production', testMatch: productionSpec, use: { baseURL: `http://127.0.0.1:${productionPort}` } },
+    { name: 'firefox', testMatch: storageSpecs, use: { ...devices['Desktop Firefox'], baseURL: `http://127.0.0.1:${port}`, viewport: { width: 412, height: 915 } } },
+    { name: 'webkit', testMatch: storageSpecs, use: { ...devices['Desktop Safari'], baseURL: `http://127.0.0.1:${port}`, viewport: { width: 412, height: 915 } } },
+  ],
+  webServer: [...(needsDevelopment?[development]:[]),...(needsProduction?[production]:[])],
 });
