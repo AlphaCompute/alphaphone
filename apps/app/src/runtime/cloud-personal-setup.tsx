@@ -1,20 +1,7 @@
-import type { PersonalOwner, PersonalView } from './cloud-personal-protocol';
+import type { PersonalView } from './cloud-personal-protocol';
 
 export interface PersonalSetupState { view: PersonalView | null; blocked: boolean; declined: boolean }
-type Intent = { version:1; credentialId:string; phase:'activation'|'cutover'; personalElizaId:string; dedicatedAgentId?:string; state:'attempting'|'accepted' };
-const intentKey=(owner:PersonalOwner)=>'alpha.cloud.personal-setup.v1:'+JSON.stringify([owner.environment,owner.userId,owner.organizationId]);
-/** Nonsecret owner-scoped write intent. Quote authority and credentials never enter renderer storage. */
-export function personalIntent(owner:PersonalOwner):Intent|null {
- const raw=localStorage.getItem(intentKey(owner));if(raw===null)return null;
- const value=JSON.parse(raw);
- if(!value||value.version!==1||typeof value.credentialId!=='string'||!['activation','cutover'].includes(value.phase)||!['attempting','accepted'].includes(value.state)||typeof value.personalElizaId!=='string'||(value.dedicatedAgentId!==undefined&&typeof value.dedicatedAgentId!=='string'))throw Error('Saved Cloud setup needs review. No setup request was sent.');
- return value;
-}
-export function savePersonalIntent(owner:PersonalOwner,intent:Omit<Intent,'version'|'credentialId'>) {
- const key=intentKey(owner),serialized=JSON.stringify({version:1,credentialId:owner.credentialId,...intent});
- localStorage.setItem(key,serialized);if(localStorage.getItem(key)!==serialized)throw Error('Cloud setup could not be saved safely. No new setup request was sent.');
-}
-export function clearPersonalIntent(owner:PersonalOwner){const key=intentKey(owner);localStorage.removeItem(key);if(localStorage.getItem(key)!==null)throw Error('Cloud setup recovery could not be saved. Refresh its status.');}
+export {personalIntent,savePersonalIntent,clearPersonalIntent} from './cloud-personal-intent';
 const money=(value:number)=>new Intl.NumberFormat('en-US',{style:'currency',currency:'USD',maximumFractionDigits:4}).format(value);
 export function CloudPersonalSetup({setup,busy,onAccept,onDecline,onPoll,onFinalize,onConnect}:{setup:PersonalSetupState;busy:boolean;onAccept:()=>void;onDecline:()=>void;onPoll:()=>void;onFinalize:()=>void;onConnect:()=>void}) {
  const view=setup.view;

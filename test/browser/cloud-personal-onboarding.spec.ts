@@ -1,8 +1,9 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, type Page } from '@playwright/test';
 
+async function intentSnapshot(page:Page){return page.evaluate(async()=>{const {personalIntentDocument}=await import('/src/runtime/cloud-personal-intent.ts');return (await personalIntentDocument({environment:'production',userId:'11111111-1111-4111-8111-111111111111',organizationId:'22222222-2222-4222-8222-222222222222',credentialId:'snapshot-only'})).capture();});}
 // Actual connection UI/controller/Cloud protocol; only native HTTP and secure storage are synthetic.
 // No live Cloud account, paid setup, mailbox access or Android permission is used.
-for(const scenario of ['decline','accepted-reload','lost-activation','quote-change','storage-failure','account-switch','definitive-rejection','lost-cutover','stopped-resume','stopped-before-finalize','expired-poll','unavailable-poll'] as const){
+for(const scenario of ['decline','accepted-reload','lost-activation','quote-change','storage-failure','account-switch','definitive-rejection','lost-cutover','stopped-resume','stopped-before-finalize','expired-poll','unavailable-poll','stale-status','unreadable-intent','cancel-after-admission'] as const){
  test(`personal Cloud setup: ${scenario}`,async({page})=>{
   await page.addInitScript((scenario)=>{
    const w=window as any;
@@ -50,17 +51,26 @@ for(const scenario of ['decline','accepted-reload','lost-activation','quote-chan
   expect(await page.evaluate(()=>JSON.parse(localStorage.getItem('fixture.cloud.setup')||'{"activation":0}').activation)).toBe(0);
   await expect(page.getByRole('button',{name:'Create agent',exact:true})).toHaveCount(0);
   if(scenario==='decline'){await page.getByRole('button',{name:'Not now',exact:true}).click();await expect(page.getByText('Cloud account connected. Dedicated setup was not started.',{exact:true}).first()).toBeVisible();await expect(page.getByRole('alert')).toHaveCount(0);expect(await page.evaluate(()=>JSON.parse(localStorage.getItem('fixture.cloud.setup')||'{"activation":0}').activation)).toBe(0);return;}
-  if(scenario==='storage-failure')await page.evaluate(()=>{const original=Storage.prototype.setItem;Storage.prototype.setItem=function(key,value){if(key.startsWith('alpha.cloud.personal-setup.v1:'))throw new DOMException('Fixture full','QuotaExceededError');return original.call(this,key,value);};});
+  if(scenario==='unreadable-intent'){
+   await page.evaluate(async()=>{const {connectionController}=await import('/src/runtime/connection-ui.tsx'),{personalIntentKey}=await import('/src/runtime/cloud-personal-intent.ts');localStorage.setItem(personalIntentKey(connectionController.getSnapshot().cloudAccount as any),' {unreadable intent ');});await page.getByRole('button',{name:'Refresh agent status',exact:true}).click();await expect(page.getByRole('button',{name:'Start Dedicated',exact:true})).toHaveCount(0);await page.getByRole('button',{name:'Cloud setup intent recovery',exact:true}).click();const recovery=page.getByRole('dialog',{name:'Cloud setup intent recovery'});await expect(recovery.getByRole('button',{name:'Download Cloud setup intent backup',exact:true})).toBeEnabled();await expect(recovery).toContainText('may already have started hosting');await page.keyboard.press('Escape');await expect(recovery).toHaveCount(0);expect(await page.evaluate(()=>JSON.parse(localStorage.getItem('fixture.cloud.setup')||'{"activation":0}').activation)).toBe(0);return;
+  }
+  if(scenario==='stale-status'){
+   await page.evaluate(async()=>{const {CloudPersonalProtocol}=await import('/src/runtime/cloud-personal-protocol.ts'),inspect=CloudPersonalProtocol.prototype.inspect;let held=false;CloudPersonalProtocol.prototype.inspect=async function(...args){const result=await inspect.apply(this,args);if(!held){held=true;(window as any).statusQueued=true;await new Promise<void>(resolve=>(window as any).releaseStatus=resolve);}return result;};});await page.getByRole('button',{name:'Refresh agent status',exact:true}).click();await expect.poll(()=>page.evaluate(()=>(window as any).statusQueued)).toBe(true);await page.evaluate(async()=>{const {connectionController}=await import('/src/runtime/connection-ui.tsx'),{savePersonalIntent}=await import('/src/runtime/cloud-personal-intent.ts');await savePersonalIntent(connectionController.getSnapshot().cloudAccount as any,{phase:'activation',personalElizaId:'personal:66666666-6666-5666-8666-666666666666',state:'attempting'},null);(window as any).releaseStatus();});await expect(page.getByRole('button',{name:'Start Dedicated',exact:true})).toHaveCount(0);expect(await page.evaluate(async()=>{const {connectionController}=await import('/src/runtime/connection-ui.tsx');return connectionController.getSnapshot().cloudPersonal?.blocked;})).toBe(true);expect(JSON.parse(JSON.parse((await intentSnapshot(page)).raw!).raw).state).toBe('attempting');expect(await page.evaluate(()=>JSON.parse(localStorage.getItem('fixture.cloud.setup')||'{"activation":0}').activation)).toBe(0);return;
+  }
+  if(scenario==='cancel-after-admission'){
+   await page.evaluate(async()=>{const {browserDocuments}=await import('/src/browser/documents.ts'),edit=browserDocuments.edit.bind(browserDocuments);let held=false;browserDocuments.edit=async(...args)=>{const result=await edit(...args);if(!held&&args[0].startsWith('alpha.cloud.personal-setup.v1:')){held=true;(window as any).admissionSaved=true;await new Promise<void>(resolve=>(window as any).releaseAdmission=resolve);}return result;};});await page.getByRole('button',{name:'Start Dedicated',exact:true}).click();await expect.poll(()=>page.evaluate(()=>(window as any).admissionSaved)).toBe(true);await page.getByRole('button',{name:'Stop waiting',exact:true}).click();await page.evaluate(()=>(window as any).releaseAdmission());await expect.poll(async()=>JSON.parse((await intentSnapshot(page)).raw!)).toEqual({raw:null});expect(await page.evaluate(()=>JSON.parse(localStorage.getItem('fixture.cloud.setup')||'{"activation":0}').activation)).toBe(0);return;
+  }
+  if(scenario==='storage-failure')await page.evaluate(()=>{const original=IDBObjectStore.prototype.put;IDBObjectStore.prototype.put=function(value,key){if(typeof key==='string'&&key.startsWith('alpha.cloud.personal-setup.v1:'))throw new DOMException('Fixture full','QuotaExceededError');return original.call(this,value,key);};});
   if(scenario==='account-switch'){await page.getByLabel('Environment',{exact:true}).selectOption('staging');await expect(review).toHaveCount(0);await expect(page.getByRole('button',{name:'Start Dedicated',exact:true})).toHaveCount(0);expect(await page.evaluate(()=>JSON.parse(localStorage.getItem('fixture.cloud.setup')||'{"activation":0}').activation)).toBe(0);return;}
   await page.getByRole('button',{name:'Start Dedicated',exact:true}).click();
   if(scenario==='storage-failure'){await expect(page.getByRole('alert')).toBeVisible();expect(await page.evaluate(()=>JSON.parse(localStorage.getItem('fixture.cloud.setup')||'{"activation":0}').activation)).toBe(0);return;}
-  if(scenario==='definitive-rejection'){await expect(page.getByRole('alert')).toBeVisible();expect(await page.evaluate(()=>Object.keys(localStorage).filter(key=>key.startsWith('alpha.cloud.personal-setup.v1:')))).toEqual([]);await page.getByRole('button',{name:'Refresh agent status',exact:true}).click();await expect(page.getByRole('button',{name:'Start Dedicated',exact:true})).toBeEnabled();return;}
+  if(scenario==='definitive-rejection'){await expect(page.getByRole('alert')).toBeVisible();expect(JSON.parse((await intentSnapshot(page)).raw!)).toEqual({raw:null});await page.getByRole('button',{name:'Refresh agent status',exact:true}).click();await expect(page.getByRole('button',{name:'Start Dedicated',exact:true})).toBeEnabled();return;}
   if(scenario==='quote-change'){await expect(page.getByText('The hosting terms changed. Review the current quote before continuing.',{exact:true})).toBeVisible();expect(await page.evaluate(()=>JSON.parse(localStorage.getItem('fixture.cloud.setup')!).activation)).toBe(0);await page.getByRole('button',{name:'Start Dedicated',exact:true}).click();}
   if(scenario==='lost-activation')await expect(page.getByRole('button',{name:'Start Dedicated',exact:true})).toBeDisabled();
   else await expect(page.getByText('Dedicated setup accepted',{exact:true})).toBeVisible();
   expect(await page.evaluate(()=>JSON.parse(localStorage.getItem('fixture.cloud.setup')!).activation)).toBe(1);
   if(scenario==='expired-poll'||scenario==='unavailable-poll'){
-   const before=await page.evaluate(()=>Object.fromEntries(Object.keys(localStorage).filter(key=>key.startsWith('alpha.cloud.personal-setup.v1:')).map(key=>[key,localStorage.getItem(key)])));
+   const before=await intentSnapshot(page);
    await page.evaluate(status=>{const s=JSON.parse(localStorage.getItem('fixture.cloud.setup')!);s.authFailure=status;localStorage.setItem('fixture.cloud.setup',JSON.stringify(s));},scenario==='expired-poll'?401:503);
    await page.getByRole('button',{name:'Check setup status',exact:true}).click();
    if(scenario==='expired-poll'){
@@ -68,7 +78,7 @@ for(const scenario of ['decline','accepted-reload','lost-activation','quote-chan
     await expect(page.getByRole('alert')).toContainText('sign-in has expired');
     expect(await page.evaluate(async()=>{const c=(await import('/src/runtime/connection-ui.tsx')).connectionController;return {client:c.getCloudClient(),account:c.getSnapshot().cloudAccount};})).toEqual({client:null,account:null});
    }else await expect(page.getByText('Cloud services connected',{exact:true})).toBeVisible();
-   expect(await page.evaluate(()=>Object.fromEntries(Object.keys(localStorage).filter(key=>key.startsWith('alpha.cloud.personal-setup.v1:')).map(key=>[key,localStorage.getItem(key)])))).toEqual(before);
+   expect(await intentSnapshot(page)).toEqual(before);
    await page.getByRole('button',{name:'Sign in with Eliza Cloud',exact:true}).click();
    await expect(page.getByText('Cloud services connected',{exact:true})).toBeVisible();
    await expect(page.getByText('Dedicated setup accepted',{exact:true})).toBeVisible();
