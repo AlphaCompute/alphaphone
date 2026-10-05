@@ -4,6 +4,11 @@
  *   npm run android:build [-- --allow-unpackaged-runtime]
  *   npm run android:build -- --test-mocks
  *
+ * Inputs are checked first (scripts/android-build-preflight.mjs): the pinned
+ * checkout, the installed speech AAR, the prepared runtime source and, for
+ * distribution builds, the staged resident runtime. `npm run android:build:local`
+ * prepares and stages the runtime before calling this script.
+ *
  * Distribution builds (the default) are always flag-off: ELIZA_DEV_ALLOW_TEST_MOCKS
  * and its VITE_ mirror are removed from every child environment, whatever the
  * caller exported, and Gradle receives -PELIZA_DEV_ALLOW_TEST_MOCKS=0. Outputs go
@@ -16,11 +21,10 @@
  * releases without the staged resident runtime are recorded distributable:false
  * instead of failing the build.
  */
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { androidEnv } from "./toolchain.mjs";
 
 const FLAG = "ELIZA_DEV_ALLOW_TEST_MOCKS";
 const FLAG_ENV_NAMES = [FLAG, `VITE_${FLAG}`, `ORG_GRADLE_PROJECT_${FLAG}`];
@@ -83,8 +87,14 @@ export function withDistributionWebRestored(options, baseEnv, run, body, { root 
 }
 export const signingRequested = env => SIGNING_ENV.every(name => Boolean(env[name]));
 
-function main() {
+async function main() {
   const options = parseBuildArgs(process.argv.slice(2));
+  // Report missing inputs (pinned checkout, speech AAR, prepared/staged runtime)
+  // with the exact command to run, before web sync and a long Gradle build.
+  const preflight = spawnSync(process.execPath, [path.join(import.meta.dirname, "android-build-preflight.mjs"), ...process.argv.slice(2)], { stdio: "inherit" });
+  if (preflight.status !== 0) process.exit(preflight.status ?? 1);
+  // The toolchain resolver lives in the pinned checkout, which the preflight verified.
+  const { androidEnv } = await import("./toolchain.mjs");
   const baseEnv = androidEnv();
   const run = (cmd, args, extra = {}) =>
     execFileSync(cmd, args, { stdio: "inherit", env: buildEnv(baseEnv, options), ...extra });
@@ -228,4 +238,4 @@ function build(options, baseEnv, run) {
     console.log("Test-mocks APKs are for mock-isolation instrumentation only and are never distributable.");
 }
 
-if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) main();
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) await main();

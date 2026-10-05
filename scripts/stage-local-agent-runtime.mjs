@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import {sourceDirectory,workerArtifactDirectory} from './local-agent-source.mjs';
+import {preparedSourceEnv,sourceDirectory,workerArtifactDirectory} from './local-agent-source.mjs';
 import {verifyWorkerArtifact,workerHash} from './workflow-worker-artifact.mjs';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -10,7 +10,8 @@ if(!fs.existsSync(path.join(source,'.alpha-runtime-source.json')))throw Error('R
 execFileSync(process.execPath,[path.join(root,'scripts/prepare-local-agent.mjs'),'--source-only'],{cwd:root,stdio:'inherit'});
 verifyWorkerArtifact(workerArtifactDirectory(root),
  {sourceStampSha256:workerHash(fs.readFileSync(path.join(source,'.alpha-runtime-source.json'))),lockSha256:workerHash(fs.readFileSync(path.join(source,'bun.lock')))});
-const env={...process.env,ELIZA_ANDROID_TARGET_ABIS:'arm64-v8a,x86_64'};
+// Children run inside the immutable prepared source; keep turbo from editing its AGENTS.md.
+const env=preparedSourceEnv(process.env,{ELIZA_ANDROID_TARGET_ABIS:'arm64-v8a,x86_64'});
 execFileSync(process.env.ALPHA_BUN||'bun',['run','--cwd','packages/agent','build:mobile','--target=android'],{cwd:source,env,stdio:'inherit'});
 execFileSync(process.execPath,[path.join(root,'scripts/prepare-local-agent.mjs'),'--source-only'],{cwd:root,stdio:'inherit'});
 // Bun supplies the upstream TypeScript staging module's runtime semantics.

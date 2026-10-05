@@ -49,9 +49,11 @@ jobs:
           python-version: "3.12"
       - name: Install pinned Android native toolchain
         run: |
-          sdkmanager 'platforms;android-36' 'build-tools;36.0.0' 'ndk;28.2.13676358' 'cmake;3.22.1'
+          sdkmanager 'platforms;android-36' 'build-tools;36.0.0' 'ndk;28.2.13676358'
           echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/28.2.13676358" >> "$GITHUB_ENV"
-          echo "$ANDROID_HOME/cmake/3.22.1/bin" >> "$GITHUB_PATH"
+          # The speech wrappers require the CMake release of the qualified build.
+          python3 -m pip install cmake==4.0.3
+          test "$(cmake --version | head -1)" = "cmake version 4.0.3"
       - run: npm ci
       - run: npm run verify
       - run: node --test vendor/eliza/packages/os/scripts/__tests__/stage-launcher-overlay.node.test.ts
@@ -78,7 +80,9 @@ jobs:
         run: |
           python3 scripts/local-speech/prepare-assets.py
           python3 scripts/local-speech/assemble-runtime.py
-          python3 scripts/local-speech/install-generated.py --repository "$GITHUB_WORKSPACE"
+          # A Linux build cannot reproduce the qualified macOS natives; install it as an
+          # explicitly unqualified runtime (these APKs are build evidence only).
+          python3 scripts/local-speech/install-generated.py --repository "$GITHUB_WORKSPACE" --allow-unqualified-runtime
       - name: Prepare pinned native lifecycle sources
         run: node scripts/prepare-local-agent.mjs --source-only
       # Distribution build: flag-off whatever the runner exports. This job stages no
