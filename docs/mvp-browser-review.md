@@ -26,6 +26,14 @@ unchanged across that test. This is host/browser evidence; no Android build or
 physical-device acceptance was performed for this change. See
 [local development](local-agent-development.md) for persistent settings.
 
+The current-main restart at `978694b04a3196ed4e2bfe4afcc67c3aa5a3f890`
+again reported both providers ready and passed the real capture/transcription/
+playback, Stop and disconnect journey in 13.4 seconds including runner startup.
+Hashed snapshots retained the owner, agent and all 18 conversation identifiers.
+Evidence is in `artifacts/calendar-form-review/latest-preview-speech.log`,
+`latest-preview-before.json` and `latest-preview-after.json`. This is total journey
+time, not first-audio latency or physical-device acceptance.
+
 ## Surface inventory
 
 ### Integrated source checkpoint — 2026-10-05
@@ -209,7 +217,12 @@ partly damaged file by default. An explicit recovery checkbox can preview valid
 independent events and recurring-series groups, including the skipped count and
 record positions, before the same separate replacement confirmation. Duplicate
 identities are ambiguous and skipped. A damaged linked exception skips its whole
-series group so it cannot silently return as an original occurrence. Malformed
+series group so it cannot silently return as an original occurrence. Recovery
+connects both explicit series references and generated occurrence identities:
+missing, malformed or inconsistent references cannot detach an exception and
+revive its parent occurrence. Inconsistent links exclude every connected series;
+cyclic references terminate and are rejected. Strict import also rejects a
+generated occurrence identity whose present parent disagrees with its reference. Malformed
 JSON, oversized input and a file with no recoverable group remain rejected.
 Changing the selected file or recovery mode clears the prior confirmation.
 Keep the original backup: recovery does not reconstruct missing or invalid data.
@@ -222,6 +235,12 @@ rendered confirmation preview was inspected. Logs are in the primary checkout at
 `artifacts/calendar-form-review/partial-backup-unit.log`,
 `partial-backup-browser.log` and `partial-backup-typecheck.log`.
 No Android build or native Calendar restoration was performed.
+
+The damaged-reference follow-up reproduced the old defect (parent series restored,
+broken exception skipped) and passed 21 backup unit tests and all 27 restore cases
+across Chromium, Firefox and WebKit, plus type checking. Evidence is
+`artifacts/calendar-form-review/series-links-unit.log`, `series-links-browser.log`
+and `series-links-types.log` in the primary checkout.
 
 Calendar restore qualification: all 36 owning restore/recovery checks passed across
 Chromium, Firefox and WebKit, including reviewed replacement, invalid files, stale

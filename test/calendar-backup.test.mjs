@@ -53,3 +53,23 @@ test('salvage refuses unparseable, oversized, empty and wholly damaged input',()
  for(const value of [{},{events:[]},{events:[null]},{events:[{...row,seriesId:'missing'}]},{events:[row,row]}])assert.throws(()=>salvage(value));
  assert.throws(()=>prepareCalendarSalvage('{',()=>''));assert.throws(()=>prepareCalendarSalvage(' '.repeat(5*1024*1024+1),()=>''),/5 MB/);
 });
+test('damaged or missing exception references cannot revive their parent occurrence',()=>{
+ const occurrence=row.begin+86400000;
+ for(const seriesId of [undefined,null,17,'wrong-parent']){
+  const events=[row,{...row,id:`event:occ:${occurrence}`,seriesId,occurrenceBegin:occurrence,repeat:'none'},{...row,id:'safe',title:'Safe'}];
+  assert.throws(()=>prepare({events}),/supported calendar backup/);
+  const result=salvage({events});
+  assert.deepEqual(result.state.events.map(r=>r.title),['Safe']);assert.deepEqual(result.skipped.map(r=>r.index),[1,2]);
+ }
+});
+test('inconsistent links exclude every connected series, regardless of row order',()=>{
+ const occurrence=row.begin+86400000;
+ const events=[row,{...row,id:'other'},{...row,id:`event:occ:${occurrence}`,seriesId:'other',occurrenceBegin:occurrence,repeat:'none'},{...row,id:'safe',title:'Safe'}];
+ for(const ordered of [events,[...events].reverse()]){
+  const result=salvage({events:ordered});assert.deepEqual(result.state.events.map(r=>r.title),['Safe']);assert.equal(result.skipped.length,3);
+ }
+});
+test('cyclic series links terminate and leave only independent valid records',()=>{
+ const result=salvage({events:[{...row,seriesId:'other'},{...row,id:'other',seriesId:'event'},{...row,id:'safe',title:'Safe'}]});
+ assert.deepEqual(result.state.events.map(r=>r.title),['Safe']);assert.deepEqual(result.skipped.map(r=>r.index),[1,2]);
+});
