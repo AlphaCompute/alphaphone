@@ -409,9 +409,9 @@ function speechEntries(root, templates, errors) {
 
 function payloadEntries() {
   return [
-    {name: 'On-device elizaOS agent runtime payload', version: 'staged only by npm run android:build:local', license: UNVERIFIED,
+    {name: 'On-device elizaOS agent runtime payload', version: 'pinned upstream runtime when present in the APK payload', license: UNVERIFIED,
       source: 'scripts/stage-local-agent-runtime.mjs',
-      text: 'The optional on-device agent payload (Bun runtime and the bundled elizaOS agent with its dependencies) is staged from the pinned upstream source only for local-agent APK builds. Its dependency notices are not generated here.'},
+      text: 'The on-device agent payload (Bun runtime and the bundled elizaOS agent with its dependencies) is staged from pinned upstream source and may be included in standard Android builds. The APK runtime provenance identifies the packaged source. Its dependency notices are not generated here.'},
   ];
 }
 

@@ -16,7 +16,7 @@
     },
     {
       "name": "On-device elizaOS agent runtime payload",
-      "reason": "Staged only by npm run android:build:local, not by npm run android:build. Its Bun runtime and bundled agent dependency notices must be generated from the pinned upstream lockfile before any local-agent APK is distributed."
+      "reason": "The staged runtime can ship in standard Android builds. Its Bun runtime and bundled agent dependency notices must be generated from the pinned upstream lockfile before any APK containing that runtime is distributed."
     },
     {
       "name": "pdf.js QuickJS sandbox",

@@ -4184,13 +4184,13 @@ SOFTWARE.
 
 ==============================================================================
 On-device elizaOS agent runtime payload
-Version: staged only by npm run android:build:local
+Version: pinned upstream runtime when present in the APK payload
 License: license unverified
 Source: scripts/stage-local-agent-runtime.mjs
 
-LICENSE UNVERIFIED. Staged only by npm run android:build:local, not by npm run android:build. Its Bun runtime and bundled agent dependency notices must be generated from the pinned upstream lockfile before any local-agent APK is distributed.
+LICENSE UNVERIFIED. The staged runtime can ship in standard Android builds. Its Bun runtime and bundled agent dependency notices must be generated from the pinned upstream lockfile before any APK containing that runtime is distributed.
 
-The optional on-device agent payload (Bun runtime and the bundled elizaOS agent with its dependencies) is staged from the pinned upstream source only for local-agent APK builds. Its dependency notices are not generated here.
+The on-device agent payload (Bun runtime and the bundled elizaOS agent with its dependencies) is staged from pinned upstream source and may be included in standard Android builds. The APK runtime provenance identifies the packaged source. Its dependency notices are not generated here.
 
 ==============================================================================
 ONNX Runtime
