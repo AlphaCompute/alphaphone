@@ -31,7 +31,7 @@ readers. Alpha supplies domain names and legacy recovery policy.
 
 This table covers the shared `readStore`/`editStore` callers, not every localStorage
 key. Connection selection, prototype state and independent security/operation
-stores require their own ownership and synchronization audit. Do not change a
+stores require their own ownership and synchronization audit. The [remaining persistence audit](browser-storage-remaining-audit.md) identifies their writers, invariants and required verification. Do not change a
 writer while leaving its synchronous reader pointed at legacy bytes. Never add a
 writable localStorage mirror to make old fixtures pass.
 
