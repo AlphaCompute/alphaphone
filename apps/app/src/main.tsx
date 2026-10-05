@@ -1,3 +1,4 @@
+import {installCalendarEditDraftAdapter} from './prototype/calendar-edit-draft-adapter';
 import {installCalendarFormDraftAdapter} from './prototype/calendar-form-draft-adapter';
 // Register browser implementations before any runtime module claims plugin identity.
 import './browser/register';
@@ -73,6 +74,7 @@ if (!fixture) {
   installReminderAdapter(Component, VIEWS);
   installCalendarAdapter(Component, VIEWS);
   installCalendarFormDraftAdapter(Component, VIEWS);
+  installCalendarEditDraftAdapter(Component, VIEWS);
   installPrototypeDataAdapter(Component, VIEWS);
   installNotificationsAdapter(Component);
   installPrototypeVoiceAdapter(Component, VIEWS);

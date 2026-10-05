@@ -184,7 +184,7 @@ export function installReminderAdapter(Component: Bag, views: Bag) {
             if(response.status!=='succeeded'||!response.result)throw Error('Unconfirmed reminder update');
             await acknowledgeReminderDeletion(input,response.result);
             const active=sameEditor();
-            if(active)api.set({form:null});
+            if(active){saveOwner.calendarFormCommitted?.(api.get('calendar').form);api.set({form:null});}
             if(owner===saveOwner&&saveOwner.live){await saveOwner.refreshReminders();api.toast(active?(response.result.status==='pending'?'Saved with no alert.':response.result.status==='permission-denied'?'Saved, notifications disabled. Enable notifications then review this reminder again.':response.result.status==='scheduling-failed'?'Saved, scheduling failed. Review this reminder before retrying.':schedule?'Reminder rescheduled · approximate delivery':'Reminder updated. Schedule unchanged.'):'The reviewed reminder edit was saved. Later draft changes were not saved.');}
           }catch{if(owner===saveOwner&&saveOwner.live)api.toast('Reminder edit is unconfirmed. Check action status in Calendar; it will not be repeated.');}
           finally{
