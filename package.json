@@ -7,7 +7,8 @@
     "node": ">=24"
   },
   "scripts": {
-    "dev": "node scripts/with-test-mocks.mjs vite --host 127.0.0.1",
+    "dev": "node scripts/dev-local.mjs",
+    "dev:ui": "node scripts/with-test-mocks.mjs vite --host 127.0.0.1",
     "dev:maps": "node scripts/maps/dev.mjs",
     "build": "vite build",
     "build:test-mocks": "node scripts/with-test-mocks.mjs vite build",

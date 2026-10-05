@@ -530,6 +530,8 @@ export const connectionController = {
           catch (error) { signal.throwIfAborted(); detachService(); update({ message: 'Cloud services need sign-in or retry. Your agent connection is independent.' }); }
         }
         if (saved?.kind === 'resident') { await connectResident(signal); return; }
+        // `npm run dev` starts the agent on this computer; connect to it on first launch. An explicit choice (including offline) is kept.
+        if (!saved && !isAndroid && browserLocalAgentEnabled) { await connectResident(signal); return; }
         if (!saved || saved.kind === 'none') { update({ open: !service, message: 'Choose where to run your agent.' }); return; }
         if (saved.kind === 'cloud') {
           cloud = makeCloud(saved.environment);
