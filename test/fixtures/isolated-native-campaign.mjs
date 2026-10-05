@@ -4,16 +4,16 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import {spawnSync} from 'node:child_process';
-const scripts={'one-off':path.resolve('scripts/test-reminder-one-off.mjs'),recurrence:path.resolve('scripts/test-reminder-recurrence.mjs'),workflow:path.resolve('scripts/android-workflow-native.mjs'),calendar:path.resolve('scripts/test-calendar-regression.mjs'),camera:path.resolve('scripts/test-native-permissions.mjs'),settings:path.resolve('scripts/test-native-permissions.mjs'),channels:path.resolve('scripts/test-native-permissions.mjs')};
+const scripts={'recovery':path.resolve('scripts/test-reminder-recovery.mjs'),'recurrence-recovery':path.resolve('scripts/test-reminder-recurrence-recovery.mjs'),'one-off':path.resolve('scripts/test-reminder-one-off.mjs'),recurrence:path.resolve('scripts/test-reminder-recurrence.mjs'),workflow:path.resolve('scripts/android-workflow-native.mjs'),calendar:path.resolve('scripts/test-calendar-regression.mjs'),camera:path.resolve('scripts/test-native-permissions.mjs'),settings:path.resolve('scripts/test-native-permissions.mjs'),channels:path.resolve('scripts/test-native-permissions.mjs')};
 export function exercise(mode,kind='calendar'){
  const homePackage=mode==='google-home'?'com.google.android.apps.nexuslauncher':'com.android.launcher3';
  const restartCampaign=['inbox','notes','document'].includes(kind);
- const reminderCampaign=['one-off','recurrence'].includes(kind);
+ const reminderCampaign=['one-off','recurrence','recovery','recurrence-recovery'].includes(kind);
  const permissionCampaign=['camera','settings','channels'].includes(kind);
  const root=fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(),'alpha-calendar-runner-')));
  try{
-  const selectedClass={'one-off':'ReminderOneOffInstrumentedTest',recurrence:'ReminderRecurrenceInstrumentedTest',inbox:'InboxDraftInstrumentedTest',notes:'NotesDocumentInstrumentedTest',document:'SelectedDocumentInstrumentedTest',settings:'SettingsNativeInstrumentedTest',channels:'NotificationChannelsInstrumentedTest',agent:'CalendarAgentCrudInstrumentedTest',range:'CalendarRangeInstrumentedTest',truncation:'CalendarTruncationInstrumentedTest'}[kind]??'CalendarCreationRecoveryInstrumentedTest';
-  const selectedMethod={'one-off':'actualOneOffAlarmSnoozeVisibleDoneHistoryAndReplaySafety',recurrence:'actualAlarmSnoozeAndVisibleDoneAdvanceOnceAndRejectOldOccurrence',inbox:'processPhase',notes:'documentProcessRestartPhase',document:'documentProcessRestartPhase',settings:'accountsHandoffAndLocationAccuracyReadback',channels:'blockedChannelReadbackUserRecoveryAndRealNotification',agent:'reviewedNativeCreateReadUpdateDeleteAndStaleRevision',camera:'denyingCameraAllowsExplicitRetryWithoutFakePreview',range:'distantDatesLoadRealRowsAndNewestNavigationWins',truncation:'realInstanceLimitCannotClaimAnUnreturnedDateIsFree'}[kind]??'creationRecovery';
+  const selectedClass={'recovery':'ReminderRecoveryInstrumentedTest','recurrence-recovery':'ReminderRecurrenceRecoveryInstrumentedTest','one-off':'ReminderOneOffInstrumentedTest',recurrence:'ReminderRecurrenceInstrumentedTest',inbox:'InboxDraftInstrumentedTest',notes:'NotesDocumentInstrumentedTest',document:'SelectedDocumentInstrumentedTest',settings:'SettingsNativeInstrumentedTest',channels:'NotificationChannelsInstrumentedTest',agent:'CalendarAgentCrudInstrumentedTest',range:'CalendarRangeInstrumentedTest',truncation:'CalendarTruncationInstrumentedTest'}[kind]??'CalendarCreationRecoveryInstrumentedTest';
+  const selectedMethod={'recovery':'permissionAndRebootPhase','recurrence-recovery':'permissionAndActualRebootPhase','one-off':'actualOneOffAlarmSnoozeVisibleDoneHistoryAndReplaySafety',recurrence:'actualAlarmSnoozeAndVisibleDoneAdvanceOnceAndRejectOldOccurrence',inbox:'processPhase',notes:'documentProcessRestartPhase',document:'documentProcessRestartPhase',settings:'accountsHandoffAndLocationAccuracyReadback',channels:'blockedChannelReadbackUserRecoveryAndRealNotification',agent:'reviewedNativeCreateReadUpdateDeleteAndStaleRevision',camera:'denyingCameraAllowsExplicitRetryWithoutFakePreview',range:'distantDatesLoadRealRowsAndNewestNavigationWins',truncation:'realInstanceLimitCannotClaimAnUnreturnedDateIsFree'}[kind]??'creationRecovery';
   const pkg='ai.elizaresearch.alphaphone',apk=path.join(root,'artifacts/standalone-debug.apk'),testApk=path.join(root,'android/app/build/outputs/apk/androidTest/standalone/debug/app-standalone-debug-androidTest.apk');
   for(const [file,bytes] of [[apk,'app'],[testApk,'test']]){fs.mkdirSync(path.dirname(file),{recursive:true});fs.writeFileSync(file,bytes);}
   const cameraTest=path.join(root,'artifacts/standalone-androidTest.apk');
@@ -38,6 +38,24 @@ else if(a.includes('ro.build.version.sdk'))console.log('35');
 else if(a.includes('ro.kernel.qemu'))console.log('1');
 else if(a.includes('ro.product.cpu.abi'))console.log('x86_64');
 else if(a.includes('getenforce'))console.log('Enforcing');
+else if(a[0]==='reboot'){s.boot=true;s.user='0';s.reminderStatus='posted';save();}
+else if(a[0]==='wait-for-device'){}
+else if(a.includes('/proc/sys/kernel/random/boot_id'))console.log((s.boot?'22222222':'11111111')+'-1111-4111-8111-111111111111');
+else if(a.includes('sys.boot_completed'))console.log('1');
+else if(a.includes('get-started-user-state'))console.log('RUNNING_UNLOCKED');
+else if(a.includes('run-as')){
+ const id=${JSON.stringify(kind==='recurrence-recovery'?'recurring_recovery_fixture':'recovery_fixture')};
+ const row={id,status:s.reminderStatus??'scheduled',at:1,postedAt:s.boot?2:null,occurrenceId:mode==='changed-occurrence'&&s.denied?'changed':'occurrence',revision:'revision',history:[]};
+ const envelope={version:1,records:{[id]:JSON.stringify(row),[id+'_damaged']:'invalid-json'}};
+ const isEnvelope=a.at(-1)==='shared_prefs/alpha-reminder-envelope-v1.xml';
+ if(!isEnvelope&&!a.at(-1).includes('recovery-test'))throw Error('Retired/unexpected preference file');
+ const text=isEnvelope?JSON.stringify(envelope):id;
+ console.log('<map><string name="'+(isEnvelope?'envelope':'id')+'">'+text.replaceAll('&','&amp;').replaceAll('"','&quot;')+'</string></map>');
+}
+else if(a.slice(0,3).join(' ')==='shell dumpsys package')console.log('Packages:'+String.fromCharCode(10)+'  Package ['+pkg+'] (abc):'+String.fromCharCode(10)+'    User 0: stopped=true'+String.fromCharCode(10)+'    User 10: stopped=false'+String.fromCharCode(10)+'Queries:'+String.fromCharCode(10)+'    User 10:');
+else if(a.includes('notification')&&a.includes('list'))console.log(s.boot?'10|'+pkg+'|0|'+${JSON.stringify(kind==='recurrence-recovery'?'recurring_recovery_fixture':'recovery_fixture')}+'|1010000':'');
+else if(a.includes('revoke')){s.denied=true;s.reminderStatus='permission-denied';save();}
+else if(a.includes('grant')){if(s.denied&&mode==='grant-resumes')s.reminderStatus='scheduled';save();}
 else if(a.includes('get-current-user'))console.log(s.user);
 else if(a.includes('create-user')){s.created=true;save();console.log('Success: created user id 10');}
 else if(a.includes('switch-user')){s.user=a.at(-1);save();}
@@ -54,6 +72,8 @@ else if(a[0]==='pull')fs.copyFileSync(s.files[a[1].slice(6,-4)],a[2]);
 else if(a[0]==='uninstall'){delete s.files[a[1]];save();console.log('Success');}
 else if(a.includes('force-stop')){if(mode==='stop-failure')process.exit(1);}
 else if(a.includes('instrument')){
+ const recoveryPhase=a.includes('reminderPhase')?a[a.indexOf('reminderPhase')+1]:a.includes('recurrencePhase')?a[a.indexOf('recurrencePhase')+1]:null;
+ if(recoveryPhase==='prepare'||recoveryPhase==='prepare-reboot'){s.reminderStatus='scheduled';s.denied=false;save();}
  const selector=a[a.indexOf('class')+1],cls=${kind==='workflow'?"selector.split('#')[0]":"pkg+"+JSON.stringify(kind==='camera'?'.CameraFlowInstrumentedTest':'.'+selectedClass)},method=${kind==='workflow'?"selector.split('#')[1]":JSON.stringify(selectedMethod)},block=code=>'INSTRUMENTATION_STATUS: class='+cls+'\\nINSTRUMENTATION_STATUS: test='+method+'\\nINSTRUMENTATION_STATUS: numtests=${kind==='recurrence'?2:1}\\nINSTRUMENTATION_STATUS_CODE: '+code+'\\n';
  if(mode==='timeout'||mode==='stop-failure'){console.log(block(1));console.error('fixture transport');process.exit(1);}
  const phase=a.includes('inboxPhase')?a[a.indexOf('inboxPhase')+1]:a.includes('notesDocumentPhase')?a[a.indexOf('notesDocumentPhase')+1]:a.includes('documentPhase')?a[a.indexOf('documentPhase')+1]:null;
