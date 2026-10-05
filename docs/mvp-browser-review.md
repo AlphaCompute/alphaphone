@@ -135,8 +135,11 @@ Unsent text is saved to the selected owner/agent/conversation, with offline text
 separate. Restored drafts have no retained selected-source authority and never send
 automatically. Revision conflicts show both copies; failed writes retain editable
 text. Browser damaged-record recovery backs up stored bytes and current text before
-confirmed reset. Native happy-path storage is wired to the encrypted draft slot, but
-native corruption reset and physical restart/IME acceptance remain open. Calendar and
+confirmed reset. Android also offers backup and confirmed reset for readable records with invalid
+draft schemas. Reset compares the exact captured secure-slot bytes; backup uses the
+existing reviewed Android document picker with exact-byte readback. Decryption or
+native read failures leave the record untouched. Physical restart/IME, encrypted-store
+execution and document-provider acceptance remain open. Calendar and
 Reminder unsaved forms remain separate implementation gaps.
 
 Assistant draft qualification: consumer `ba3eed32` passed `npm run verify` (657

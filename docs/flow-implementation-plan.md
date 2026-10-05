@@ -103,9 +103,11 @@ Late reads cannot populate a retired binding. Send waits for pending saves, chec
 current screen/session and clears the saved draft before dispatch; invalidating a known
 clear restores its original text only while that clear's revision remains current.
 Restoring a draft never sends it. Browser corruption recovery downloads original saved
-bytes plus current text before a confirmed revision-checked reset. Native corruption
-reset presentation is not yet implemented; native/device lifecycle acceptance remains
-unqualified.
+bytes plus current text before a confirmed revision-checked reset. Android now exposes the same explicit recovery for readable records with invalid
+draft schemas. It retains the exact secure-slot bytes as the reset receipt and exports
+backups through the existing reviewed document picker. Unreadable ciphertext remains
+untouched and cannot be reset through this flow. Native/device lifecycle and document
+provider acceptance remain unqualified.
 
 Controller/storage and rendered browser campaigns cover the implemented boundaries;
 full repository verification is tracked on the PR. No APK build or physical keyboard,

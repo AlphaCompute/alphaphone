@@ -13,6 +13,8 @@ const native = registerPlugin<{
 }>('AlphaConnection');
 
 export const secureConnectionStore = {
+  async readRaw(slot:string):Promise<string|null> { return (await native.secureRead({slot})).value; },
+  async compareExchangeRaw(slot:string,expectedValue:string|null,value:string|null) { return native.secureCompareExchange({slot,expectedValue,value}); },
   async read<T>(slot:string):Promise<T|null> {
     const result=await native.secureRead({slot});
     return result.value===null ? null : JSON.parse(result.value) as T;
