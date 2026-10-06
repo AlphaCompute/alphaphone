@@ -9,6 +9,29 @@ See [architecture](architecture.md), [MVP scope](mvp-scope-and-gap-report.md) an
 This inventory describes available behavior and remaining qualification. It is
 not a claim that every feature or the current main revision has passed acceptance.
 
+## Notes audio persistence and failure rechecks — 2026-10-06
+
+The Notes audio journey now waits for its edited title, transcript and audio
+reference to reach the durable Notes document before reloading. The earlier
+hosted failure on PR 317 showed the original “Voice note” title after a reload
+that raced asynchronous autosave. Waiting for the actual saved record strengthens
+the test's persistence boundary; it does not change the app or weaken interrupted
+save checks. The complete recording/review/save/reload/play/restore journey passed
+in Chromium, Firefox and WebKit. Quota and concurrent-edit failure cases also
+passed in all three engines (nine total cases). The audio journey is now included
+in the standard cross-browser storage inventory, rather than only Chromium.
+Evidence in the clean verification checkout:
+`artifacts/final-failure-review/notes.log` and `notes-cross.log`.
+
+All 32 failures collected so far from the frozen `31fc1fb0` Chromium campaign
+passed a serial recheck at `f633e490` (2.7 minutes), including the Calendar modal
+assertions fixed by PR 343. The original campaign remains running and retains
+its failed traces; this recheck neither makes that run green nor proves there
+will be no later failures. Evidence: `artifacts/final-failure-review/recheck.log`
+and `failed-cases.json`. The hosted `31fc1fb0` browser failure was limited to the
+three month-picker assertions. The cancelled current-main browser run was retried
+once at `f633e490`; its terminal outcome remains a separate gate.
+
 ## Reminder save refresh ordering — 2026-10-06
 
 After a confirmed reminder edit, the editor now stays visible until refreshed

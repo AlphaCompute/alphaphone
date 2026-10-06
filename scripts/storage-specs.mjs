@@ -24,6 +24,7 @@ export const STORAGE_SPECS = Object.freeze([
   "test/browser/workflow-intent-storage.spec.ts",
   "test/browser/notes-document-storage.spec.ts",
   "test/browser/notes-save-failure.spec.ts",
+  "test/browser/notes-audio-journey.spec.ts",
   "test/browser/note-audio-delete-recovery.spec.ts",
   "test/browser/media-copy-intent-storage.spec.ts",
   "test/browser/conversation-selection-storage.spec.ts",
