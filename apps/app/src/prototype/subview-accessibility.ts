@@ -28,7 +28,12 @@ export function installSubviewAccessibility(views:Bag){
   ['files',['folder','preview'],(out:Bag)=>({listCovered:!!(out.inFolder||out.isPreview),detailCovered:!!out.isPreview})],
  ] as Array<[string,string[],(out:Bag)=>Bag]>){
   const render=views[name].render,focus=focusHistory(),refs=Object.fromEntries(keys.map(key=>[key+'Focus',subviewFocus(focus.read)]));
-  views[name].render=(state:Bag,api:Bag)=>{const out=render(state,api);return {...out,...refs,captureSubviewFocus:focus.capture,...coverage(out)};};
+  let output:Bag={};
+  const deleteModal=name==='photos'?reviewFocus(()=>output.closeSheet?.()):null;
+  views[name].render=(state:Bag,api:Bag)=>{
+   const out=output=render(state,api);deleteModal?.render(!!out.emptyOpen);
+   return {...out,...refs,emptyModal:deleteModal?.ref,captureSubviewFocus:focus.capture,...coverage(out)};
+  };
  }
 
 }
