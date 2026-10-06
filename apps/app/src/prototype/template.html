@@ -506,7 +506,7 @@
 
 
 <sc-if value="{{is.inbox}}" hint-placeholder-val="{{false}}">
-<div style="display: flex; flex-direction: column; height: 100%; position: relative">
+<div onFocusCapture="{{inbox.captureSubviewFocus}}" style="display: flex; flex-direction: column; height: 100%; position: relative">
   <div data-alpha-subview="inbox-list" inert="{{inbox.listCovered}}" aria-hidden="{{inbox.listCovered}}" style="display:flex;flex-direction:column;flex:1;min-height:0">
   <sc-if value="{{inbox.notSearching}}" hint-placeholder-val="{{true}}">
     <div style="display: flex; align-items: center; height: 56px; margin-top: 44px; padding: 0 8px 0 20px; gap: 2px; flex-shrink: 0">
@@ -725,7 +725,8 @@
 
 
 <sc-if value="{{is.calendar}}" hint-placeholder-val="{{false}}">
-<div style="display: flex; flex-direction: column; height: 100%; position: relative">
+<div onFocusCapture="{{calendar.captureSubviewFocus}}" style="display: flex; flex-direction: column; height: 100%; position: relative">
+  <div data-alpha-subview="calendar-list" inert="{{calendar.listCovered}}" aria-hidden="{{calendar.listCovered}}" style="display:flex;flex-direction:column;flex:1;min-height:0">
   <div style="display: flex; align-items: center; height: 56px; margin-top: 44px; padding: 0 8px 0 20px; gap: 2px; flex-shrink: 0">
     <button onClick="{{calendar.toggleMonth}}" aria-label="Month view" aria-expanded="{{calendar.monthOpen}}" style="display: flex; align-items: center; gap: 6px; height: 48px; flex-grow: 1; min-width: 0">
       <h1 class="serif" style="margin: 0; font-size: 32px; letter-spacing: -.01em; white-space: nowrap">{{calendar.month}}</h1>
@@ -744,18 +745,7 @@
   <sc-if value="{{calendar.reminderTapPending}}"><div role="status" style="padding:12px;color:var(--mut)">A reminder notification link is saved.<button class="tap" aria-label="Open saved reminder notification" onClick="{{calendar.checkReminderTap}}" style="padding:8px;color:var(--acc)">Open saved reminder</button><button class="tap" aria-label="Dismiss saved reminder link" onClick="{{calendar.dismissReminderTap}}" style="padding:8px;color:var(--mut)">Dismiss link</button></div></sc-if>
   <sc-if value="{{calendar.reminderCreateUnknown}}"><div role="status" style="padding:12px;color:var(--mut)">{{calendar.reminderCreateUnknown}} new reminder(s) await confirmation.<button class="tap" aria-label="Check new reminder status" onClick="{{calendar.checkReminderCreations}}" style="padding:8px;color:var(--acc)">Check new reminder status</button></div></sc-if>
   <sc-if value="{{calendar.reminderDeleteUnknown}}"><div role="status" style="padding:12px;color:var(--mut)">{{calendar.reminderDeleteUnknown}} reminder action(s) await confirmation.<button class="tap" aria-label="Check reminder action status" onClick="{{calendar.checkReminderDeletions}}" style="padding:8px;color:var(--acc)">Check action status</button></div></sc-if>
-  <sc-if value="{{calendar.clock}}" hint-placeholder-val="{{false}}">
-    <div ref="{{calendar.clock.modalRef}}" role="dialog" aria-modal="true" aria-label="Clock alarms" style="position:absolute;inset:0;z-index:35;background:var(--bg);display:flex;flex-direction:column;padding:{{calendar.clock.topPadding}} 24px 120px;overflow:auto;box-sizing:border-box">
-      <div style="display:flex;align-items:center;gap:12px;margin-bottom:24px"><button class="ib" aria-label="Close Clock" aria-disabled="{{calendar.clock.busy}}" onClick="{{calendar.clock.close}}"><svg class="i" viewBox="0 0 24 24"><path d="{{ic.back}}"></path></svg></button><h2 class="serif" style="font-size:32px;margin:0">Clock</h2></div>
-      <p style="font-size:14px;line-height:1.5;color:var(--mut);margin:0 0 18px">Alarms are managed by your installed Clock app. Check the result there after every request.</p>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:24px"><sc-for list="{{calendar.clock.actions}}" as="item"><button class="tap" onClick="{{item.pick}}" style="padding:14px;border-radius:18px;font-size:15px;font-weight:600;{{item.css}}">{{item.label}}</button></sc-for></div>
-      <sc-if value="{{calendar.clock.isSet}}" hint-placeholder-val="{{true}}"><label style="font-size:14px;display:flex;flex-direction:column;gap:8px;margin-bottom:18px">Alarm time<input aria-label="Alarm time" type="time" value="{{calendar.clock.time}}" onChange="{{calendar.clock.onTime}}" style="font:inherit;font-size:28px;color:var(--fg);background:var(--s2);border:0;border-radius:16px;padding:14px"></label><label style="font-size:14px;display:flex;flex-direction:column;gap:8px;margin-bottom:14px">Label<input aria-label="Alarm label" maxlength="200" value="{{calendar.clock.label}}" onChange="{{calendar.clock.onLabel}}" style="font:inherit;color:var(--fg);background:var(--s2);border:0;border-radius:16px;padding:14px"></label><p style="font-size:13px;color:var(--mut)">Phone time zone: {{calendar.clock.zone}}</p></sc-if>
-      <sc-if value="{{calendar.clock.isSnooze}}" hint-placeholder-val="{{false}}"><label style="font-size:14px;display:flex;flex-direction:column;gap:8px;margin-bottom:18px">Requested snooze minutes<input aria-label="Snooze minutes" type="number" min="1" max="60" value="{{calendar.clock.snooze}}" onChange="{{calendar.clock.onSnooze}}" style="font:inherit;color:var(--fg);background:var(--s2);border:0;border-radius:16px;padding:14px"></label></sc-if>
-      <button class="tap" aria-label="Review Clock request" aria-disabled="{{calendar.clock.busy}}" onClick="{{calendar.clock.prepare}}" style="padding:16px;border-radius:24px;background:var(--acc);color:#fff;font-weight:600;margin-top:12px">Review request</button>
-      <sc-if value="{{calendar.clock.review}}" hint-placeholder-val="{{false}}"><div style="margin-top:18px;padding:18px;border-radius:20px;background:var(--s2)"><p style="font-size:15px;line-height:1.5;margin:0 0 16px">{{calendar.clock.review.text}}</p><button class="tap" aria-label="Confirm Clock request" onClick="{{calendar.clock.review.confirm}}" style="padding:14px 18px;border-radius:20px;background:var(--fg);color:var(--bg);font-weight:600">{{calendar.clock.review.label}}</button><button class="tap" aria-label="Cancel Clock review" onClick="{{calendar.clock.review.cancel}}" style="padding:14px;color:var(--mut)">Cancel</button></div></sc-if>
-      <p role="status" aria-live="polite" style="font-size:14px;line-height:1.5;margin-top:18px">{{calendar.clock.message}}</p>
-    </div>
-  </sc-if>
+
   <sc-if value="{{calendar.formDraftAvailable}}" hint-placeholder-val="{{false}}"><button aria-label="Resume unsaved calendar form" onClick="{{calendar.resumeFormDraft}}" style="margin:0 16px 8px;padding:12px;min-height:44px;border-radius:12px;background:var(--s2);color:var(--fg)">Resume unsaved event or reminder</button><button aria-label="Discard retained calendar form" onClick="{{calendar.discardFormDraft}}" style="margin:0 16px 8px;padding:12px;min-height:44px;border-radius:12px;background:var(--s2);color:var(--fg)">Discard retained form</button></sc-if>
   <sc-if value="{{calendar.editDraftAvailable}}" hint-placeholder-val="{{false}}"><button aria-label="Resume unsaved calendar edits" onClick="{{calendar.resumeEditDraft}}" style="margin:0 16px 8px;padding:12px;min-height:44px;border-radius:12px;background:var(--s2);color:var(--fg)">Resume unsaved changes</button><button aria-label="Discard retained calendar edits" onClick="{{calendar.discardEditDraft}}" style="margin:0 16px 8px;padding:12px;min-height:44px;border-radius:12px;background:var(--s2);color:var(--fg)">Discard retained edits</button></sc-if>
   <sc-if value="{{calendar.formDraftListError}}" hint-placeholder-val="{{false}}"><div role="status" style="padding:12px 24px">Form storage needs review. Current edits are retained.<button onClick="{{calendar.retryFormDraft}}" style="padding:12px">Retry form storage</button><button onClick="{{calendar.recoverFormDraft}}" style="padding:12px">Recover saved form</button></div></sc-if>
@@ -827,6 +817,19 @@
     </div>
   </div>
 
+  </div>
+  <sc-if value="{{calendar.clock}}" hint-placeholder-val="{{false}}">
+    <div ref="{{calendar.clock.modalRef}}" role="dialog" aria-modal="true" aria-label="Clock alarms" style="position:absolute;inset:0;z-index:35;background:var(--bg);display:flex;flex-direction:column;padding:{{calendar.clock.topPadding}} 24px 120px;overflow:auto;box-sizing:border-box">
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:24px"><button class="ib" aria-label="Close Clock" aria-disabled="{{calendar.clock.busy}}" onClick="{{calendar.clock.close}}"><svg class="i" viewBox="0 0 24 24"><path d="{{ic.back}}"></path></svg></button><h2 class="serif" style="font-size:32px;margin:0">Clock</h2></div>
+      <p style="font-size:14px;line-height:1.5;color:var(--mut);margin:0 0 18px">Alarms are managed by your installed Clock app. Check the result there after every request.</p>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:24px"><sc-for list="{{calendar.clock.actions}}" as="item"><button class="tap" onClick="{{item.pick}}" style="padding:14px;border-radius:18px;font-size:15px;font-weight:600;{{item.css}}">{{item.label}}</button></sc-for></div>
+      <sc-if value="{{calendar.clock.isSet}}" hint-placeholder-val="{{true}}"><label style="font-size:14px;display:flex;flex-direction:column;gap:8px;margin-bottom:18px">Alarm time<input aria-label="Alarm time" type="time" value="{{calendar.clock.time}}" onChange="{{calendar.clock.onTime}}" style="font:inherit;font-size:28px;color:var(--fg);background:var(--s2);border:0;border-radius:16px;padding:14px"></label><label style="font-size:14px;display:flex;flex-direction:column;gap:8px;margin-bottom:14px">Label<input aria-label="Alarm label" maxlength="200" value="{{calendar.clock.label}}" onChange="{{calendar.clock.onLabel}}" style="font:inherit;color:var(--fg);background:var(--s2);border:0;border-radius:16px;padding:14px"></label><p style="font-size:13px;color:var(--mut)">Phone time zone: {{calendar.clock.zone}}</p></sc-if>
+      <sc-if value="{{calendar.clock.isSnooze}}" hint-placeholder-val="{{false}}"><label style="font-size:14px;display:flex;flex-direction:column;gap:8px;margin-bottom:18px">Requested snooze minutes<input aria-label="Snooze minutes" type="number" min="1" max="60" value="{{calendar.clock.snooze}}" onChange="{{calendar.clock.onSnooze}}" style="font:inherit;color:var(--fg);background:var(--s2);border:0;border-radius:16px;padding:14px"></label></sc-if>
+      <button class="tap" aria-label="Review Clock request" aria-disabled="{{calendar.clock.busy}}" onClick="{{calendar.clock.prepare}}" style="padding:16px;border-radius:24px;background:var(--acc);color:#fff;font-weight:600;margin-top:12px">Review request</button>
+      <sc-if value="{{calendar.clock.review}}" hint-placeholder-val="{{false}}"><div style="margin-top:18px;padding:18px;border-radius:20px;background:var(--s2)"><p style="font-size:15px;line-height:1.5;margin:0 0 16px">{{calendar.clock.review.text}}</p><button class="tap" aria-label="Confirm Clock request" onClick="{{calendar.clock.review.confirm}}" style="padding:14px 18px;border-radius:20px;background:var(--fg);color:var(--bg);font-weight:600">{{calendar.clock.review.label}}</button><button class="tap" aria-label="Cancel Clock review" onClick="{{calendar.clock.review.cancel}}" style="padding:14px;color:var(--mut)">Cancel</button></div></sc-if>
+      <p role="status" aria-live="polite" style="font-size:14px;line-height:1.5;margin-top:18px">{{calendar.clock.message}}</p>
+    </div>
+  </sc-if>
   <sc-if value="{{calendar.monthOpen}}" hint-placeholder-val="{{false}}">
     <div ref="{{calendar.monthModalRef}}" style="position:absolute;inset:0;z-index:4">
     <button aria-hidden="true" tabindex="-1" onClick="{{calendar.closeMonth}}" style="position:absolute;inset:0;background:var(--scrim);width:100%;height:100%"></button>
@@ -856,7 +859,7 @@
   </sc-if>
 
   <sc-if value="{{calendar.detail}}" hint-placeholder-val="{{false}}">
-    <div class="enter" style="position: absolute; inset: 0; background: var(--bg); display: flex; flex-direction: column; z-index: 4">
+    <div ref="{{calendar.detailFocus}}" data-alpha-subview="calendar-detail" inert="{{calendar.detailCovered}}" aria-hidden="{{calendar.detailCovered}}" class="enter" style="position: absolute; inset: 0; background: var(--bg); display: flex; flex-direction: column; z-index: 4">
       <div style="display: flex; align-items: center; height: 56px; margin-top: 44px; padding: 0 8px; gap: 2px; flex-shrink: 0">
         <button class="ib" aria-label="Back to calendar" onClick="{{calendar.ev.close}}"><svg class="i" viewBox="0 0 24 24"><path d="{{ic.back}}"></path></svg></button>
         <span style="flex-grow: 1"></span>
@@ -947,7 +950,7 @@
   </sc-if>
 
   <sc-if value="{{calendar.form}}" hint-placeholder-val="{{false}}">
-    <div class="enter calendar-draft" style="position: absolute; inset: 0; background: var(--bg); display: flex; flex-direction: column; z-index: 6">
+    <div ref="{{calendar.formFocus}}" data-alpha-subview="calendar-form" class="enter calendar-draft" style="position: absolute; inset: 0; background: var(--bg); display: flex; flex-direction: column; z-index: 6">
       <div style="display: flex; align-items: center; height: 56px; margin-top: 44px; padding: 0 16px 0 8px; gap: 2px; flex-shrink: 0">
         <button class="ib" aria-label="Back to calendar" onClick="{{calendar.f.cancel}}"><svg class="i" viewBox="0 0 24 24"><path d="{{ic.back}}"></path></svg></button>
         <span style="flex-grow: 1"></span>
@@ -1071,7 +1074,8 @@
 
 
 <sc-if value="{{is.browser}}" hint-placeholder-val="{{false}}">
-<div ref="{{browser.rootRef}}" style="display: flex; flex-direction: column; height: 100%; position: relative">
+<div onFocusCapture="{{browser.captureSubviewFocus}}" ref="{{browser.rootRef}}" style="display: flex; flex-direction: column; height: 100%; position: relative">
+  <div data-alpha-subview="browser-list" inert="{{browser.listCovered}}" aria-hidden="{{browser.listCovered}}" style="display:flex;flex-direction:column;flex:1;min-height:0">
   <div style="flex-shrink: 0; display: flex; align-items: center; gap: 2px; height: 56px; margin-top: 44px; padding: 0 6px; position: relative; z-index: 3; background: var(--bg)">
     <sc-if value="{{browser.notEditing}}" hint-placeholder-val="{{true}}">
       <button class="ib" aria-label="Previous page" onClick="{{browser.goBack}}" style="width: 40px; opacity: {{browser.backOp}}"><svg class="i" viewBox="0 0 24 24" style="width: 20px; height: 20px"><path d="{{ic.back}}"></path></svg></button>
@@ -1312,8 +1316,9 @@
     </div>
   </sc-if>
 
+  </div>
   <sc-if value="{{browser.tabsOpen}}" hint-placeholder-val="{{false}}">
-    <div class="enter" style="position: absolute; inset: 0; background: var(--bg); display: flex; flex-direction: column; z-index: 9">
+    <div ref="{{browser.tabsFocus}}" data-alpha-subview="browser-tabs" inert="{{browser.tabsCovered}}" aria-hidden="{{browser.tabsCovered}}" class="enter" style="position: absolute; inset: 0; background: var(--bg); display: flex; flex-direction: column; z-index: 9">
       <div style="display: flex; align-items: center; height: 56px; margin-top: 44px; padding: 0 8px; gap: 4px; flex-shrink: 0">
         <button class="ib" aria-label="Back to page" onClick="{{browser.closeTabs}}"><svg class="i" viewBox="0 0 24 24"><path d="{{ic.back}}"></path></svg></button>
         <h1 class="serif" style="margin: 0; font-size: 26px; flex-grow: 1; letter-spacing: -.01em">{{browser.tabsTitle}}</h1>
@@ -1339,7 +1344,7 @@
   </sc-if>
 
   <sc-if value="{{browser.lib}}" hint-placeholder-val="{{false}}">
-    <div class="enter" style="position: absolute; inset: 0; background: var(--bg); display: flex; flex-direction: column; z-index: 9">
+    <div ref="{{browser.libraryFocus}}" data-alpha-subview="browser-library" class="enter" style="position: absolute; inset: 0; background: var(--bg); display: flex; flex-direction: column; z-index: 9">
       <div style="display: flex; align-items: center; height: 56px; margin-top: 44px; padding: 0 12px 0 8px; gap: 8px; flex-shrink: 0">
         <button class="ib" aria-label="Back to page" onClick="{{browser.closeLib}}"><svg class="i" viewBox="0 0 24 24"><path d="{{ic.back}}"></path></svg></button>
         <div style="display: flex; gap: 2px; padding: 3px; border-radius: 23px; background: var(--s2)">
@@ -1420,16 +1425,16 @@
 
   <sc-if value="{{camera.scanning}}" hint-placeholder-val="{{false}}">
     <div style="position: absolute; left: 0; right: 0; top: 590px; display: flex; justify-content: center; z-index: 2; pointer-events: none">
-      <span style="display: flex; align-items: center; gap: 8px; height: 34px; padding: 0 14px; border-radius: 17px; background: rgba(0,0,0,.5); font-size: 13.5px"><span class="dot" style="width: 7px; height: 7px; border-radius: 4px; background: #ffffff"></span>Looking for a page</span>
+      <span style="display: flex; align-items: center; gap: 8px; height: 34px; padding: 0 14px; border-radius: 17px; background: rgba(0,0,0,.65); font-size: 13.5px"><span class="dot" style="width: 7px; height: 7px; border-radius: 4px; background: #ffffff"></span>Looking for a page</span>
     </div>
   </sc-if>
   <sc-if value="{{camera.scanFound}}" hint-placeholder-val="{{false}}">
     <div class="drop" style="position: absolute; left: 0; right: 0; top: 548px; display: flex; flex-direction: column; align-items: center; gap: 10px; z-index: 2">
-      <span style="display: flex; align-items: center; gap: 8px; height: 30px; padding: 0 12px 0 4px; border-radius: 15px; background: rgba(0,0,0,.55); font-size: 13px"><span style="width: 22px; height: 22px; border-radius: 11px; background: var(--acc); display: flex; align-items: center; justify-content: center; font-family: Denton, Fraunces, Georgia, serif; font-style: italic; font-size: 14px"><span class="al">α</span></span>Open Studio · {{camera.posterDay}}</span>
+      <span style="display: flex; align-items: center; gap: 8px; height: 30px; padding: 0 12px 0 4px; border-radius: 15px; background: rgba(0,0,0,.65); font-size: 13px"><span style="width: 22px; height: 22px; border-radius: 11px; background: var(--acc); display: flex; align-items: center; justify-content: center; font-family: Denton, Fraunces, Georgia, serif; font-style: italic; font-size: 14px"><span class="al">α</span></span>Open Studio · {{camera.posterDay}}</span>
       <div style="display: flex; gap: 8px">
         <button aria-label="Add event" onClick="{{camera.addEvent}}" style="height: 40px; padding: 0 14px 0 12px; border-radius: 20px; background: #ffffff; color: #000000; display: flex; align-items: center; gap: 7px; font-size: 13.5px; font-weight: 600"><svg class="i" viewBox="0 0 24 24" style="width: 17px; height: 17px"><path d="{{ic.cal}}"></path></svg>Add event</button>
-        <button aria-label="Save to Files" onClick="{{camera.saveFiles}}" style="height: 40px; padding: 0 14px 0 12px; border-radius: 20px; background: rgba(0,0,0,.55); color: #ffffff; display: flex; align-items: center; gap: 7px; font-size: 13.5px; font-weight: 600"><svg class="i" viewBox="0 0 24 24" style="width: 17px; height: 17px"><path d="{{ic.folder}}"></path></svg>Save to Files</button>
-        <button aria-label="Open link" onClick="{{camera.openLink}}" style="width: 40px; height: 40px; border-radius: 20px; background: rgba(0,0,0,.55); color: #ffffff; display: flex; align-items: center; justify-content: center"><svg class="i" viewBox="0 0 24 24" style="width: 17px; height: 17px"><path d="{{ic.link}}"></path></svg></button>
+        <button aria-label="Save to Files" onClick="{{camera.saveFiles}}" style="height: 40px; padding: 0 14px 0 12px; border-radius: 20px; background: rgba(0,0,0,.65); color: #ffffff; display: flex; align-items: center; gap: 7px; font-size: 13.5px; font-weight: 600"><svg class="i" viewBox="0 0 24 24" style="width: 17px; height: 17px"><path d="{{ic.folder}}"></path></svg>Save to Files</button>
+        <button aria-label="Open link" onClick="{{camera.openLink}}" style="width: 40px; height: 40px; border-radius: 20px; background: rgba(0,0,0,.65); color: #ffffff; display: flex; align-items: center; justify-content: center"><svg class="i" viewBox="0 0 24 24" style="width: 17px; height: 17px"><path d="{{ic.link}}"></path></svg></button>
       </div>
     </div>
   </sc-if>
@@ -1467,7 +1472,8 @@
 
 
 <sc-if value="{{is.photos}}" hint-placeholder-val="{{false}}">
-<div style="display: flex; flex-direction: column; height: 100%; position: relative">
+<div onFocusCapture="{{photos.captureSubviewFocus}}" style="display: flex; flex-direction: column; height: 100%; position: relative">
+  <div data-alpha-subview="photos-list" inert="{{photos.listCovered}}" aria-hidden="{{photos.listCovered}}" style="display:flex;flex-direction:column;flex:1;min-height:0">
   <sc-if value="{{photos.hdr}}" hint-placeholder-val="{{true}}">
     <div style="display: flex; align-items: center; height: 56px; margin-top: 44px; padding: 0 8px 0 20px; gap: 2px; flex-shrink: 0">
       <h1 class="serif" style="margin: 0; font-size: 32px; flex-grow: 1; letter-spacing: -.01em">{{photos.title}}</h1>
@@ -1591,8 +1597,9 @@
     </div>
   </sc-if>
 
+  </div>
   <sc-if value="{{photos.album}}" hint-placeholder-val="{{false}}">
-    <div class="enter" style="position: absolute; inset: 0; background: var(--bg); display: flex; flex-direction: column; z-index: 4">
+    <div ref="{{photos.albumFocus}}" data-alpha-subview="photos-album" inert="{{photos.albumCovered}}" aria-hidden="{{photos.albumCovered}}" class="enter" style="position: absolute; inset: 0; background: var(--bg); display: flex; flex-direction: column; z-index: 4">
       <div style="display: flex; align-items: center; height: 56px; margin-top: 44px; padding: 0 8px; gap: 2px; flex-shrink: 0">
         <button class="ib" aria-label="Back to albums" onClick="{{photos.alb.close}}"><svg class="i" viewBox="0 0 24 24"><path d="{{ic.back}}"></path></svg></button>
         <h1 class="serif" style="margin: 0 0 0 4px; font-size: 26px; letter-spacing: -.01em; flex-grow: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">{{photos.alb.title}}</h1>
@@ -1631,7 +1638,7 @@
   </sc-if>
 
   <sc-if value="{{photos.selecting}}" hint-placeholder-val="{{false}}">
-    <div style="position: absolute; left: 0; right: 0; bottom: 96px; height: 64px; z-index: 6; background: var(--bg); box-shadow: 0 -1px 0 var(--line); display: flex; align-items: flex-start; justify-content: space-around; padding: 12px 40px 0; box-sizing: border-box; {{photos.selDim}}">
+    <div inert="{{photos.albumCovered}}" aria-hidden="{{photos.albumCovered}}" style="position: absolute; left: 0; right: 0; bottom: 96px; height: 64px; z-index: 6; background: var(--bg); box-shadow: 0 -1px 0 var(--line); display: flex; align-items: flex-start; justify-content: space-around; padding: 12px 40px 0; box-sizing: border-box; {{photos.selDim}}">
       <button class="ib" aria-label="Share selected" onClick="{{photos.selShare}}"><svg class="i" viewBox="0 0 24 24"><path d="{{ic.share}}"></path></svg></button>
       <button class="ib" aria-label="Favorite selected" onClick="{{photos.selFav}}"><svg class="i" viewBox="0 0 24 24"><path d="{{ic.heart}}"></path></svg></button>
       <button class="ib" aria-label="Delete selected" onClick="{{photos.selDel}}"><svg class="i" viewBox="0 0 24 24"><path d="{{ic.trash}}"></path></svg></button>
@@ -1639,7 +1646,7 @@
   </sc-if>
 
   <sc-if value="{{photos.viewing}}" hint-placeholder-val="{{false}}">
-    <div class="fadein" style="position: absolute; inset: 0; z-index: 10; background: #000000; color: #ffffff; overflow: hidden">
+    <div ref="{{photos.viewerFocus}}" data-alpha-subview="photos-viewer" inert="{{photos.viewerCovered}}" aria-hidden="{{photos.viewerCovered}}" class="fadein" style="position: absolute; inset: 0; z-index: 10; background: #000000; color: #ffffff; overflow: hidden">
       <button aria-label="Photo. Tap to show or hide controls, swipe to browse" onClick="{{photos.v.tap}}" onPointerDown="{{photos.v.down}}" onPointerUp="{{photos.v.up}}" style="position: absolute; inset: 0; display: block; touch-action: none">
         <span style="position: absolute; left: 0; right: 0; top: 50%; height: 549px; margin-top: -275px; overflow: hidden; display: block; {{photos.v.slide}}">
           <span style="position: absolute; inset: 0; display: block; background: {{photos.v.bg}}; transform: {{photos.v.tf}}; filter: {{photos.v.flt}}; transition: transform .3s"></span>
@@ -1725,7 +1732,7 @@
   </sc-if>
 
   <sc-if value="{{photos.editing}}" hint-placeholder-val="{{false}}">
-    <div class="fadein" style="position: absolute; inset: 0; z-index: 14; background: #000000; color: #ffffff; display: flex; flex-direction: column">
+    <div ref="{{photos.editFocus}}" data-alpha-subview="photos-edit" class="fadein" style="position: absolute; inset: 0; z-index: 14; background: #000000; color: #ffffff; display: flex; flex-direction: column">
       <div style="display: flex; align-items: center; justify-content: space-between; height: 56px; margin-top: 44px; padding: 0 8px; flex-shrink: 0">
         <button class="ib" aria-label="Cancel edit" onClick="{{photos.v.ed.cancel}}"><svg class="i" viewBox="0 0 24 24"><path d="{{ic.x}}"></path></svg></button>
         <button aria-label="Save edit" disabled="{{photos.v.ed.saveDisabled}}" onClick="{{photos.v.ed.save}}" style="height: 36px; padding: 0 18px; border-radius: 18px; background: var(--acc); color: #ffffff; font-size: 15px; font-weight: 600; margin-right: 8px">Save</button>
@@ -1779,7 +1786,7 @@
   </sc-if>
 
   <sc-if value="{{photos.viewEmpty}}" hint-placeholder-val="{{false}}">
-    <div style="position: absolute; inset: 0; z-index: 10; background: #000000; color: #ffffff">
+    <div ref="{{photos.emptyFocus}}" data-alpha-subview="photos-empty" style="position: absolute; inset: 0; z-index: 10; background: #000000; color: #ffffff">
       <div style="display: flex; align-items: center; height: 56px; margin-top: 44px; padding: 0 8px">
         <button class="ib" aria-label="Back from photo" onClick="{{back}}"><svg class="i" viewBox="0 0 24 24"><path d="{{ic.back}}"></path></svg></button>
       </div>
@@ -2005,11 +2012,12 @@
 
 
 <sc-if value="{{is.notes}}" hint-placeholder-val="{{false}}">
-<div class="notes-layout" style="display: flex; flex-direction: column; height: 100%; position: relative; padding-top: 44px; box-sizing: border-box">
+<div onFocusCapture="{{notes.captureSubviewFocus}}" class="notes-layout" style="display: flex; flex-direction: column; height: 100%; position: relative; padding-top: 44px; box-sizing: border-box">
   <sc-if value="{{notes.audioDeletionUnknown}}"><div role="status" style="padding:8px 24px;font-size:13px">Voice note deletion needs review. No deletion will be repeated.<button class="tap" onClick="{{notes.checkAudioDeletion}}">Check deletion status</button><sc-for list="{{notes.audioDeletionPending}}" as="pending"><div>{{pending.title}} <button class="tap" onClick="{{pending.restore}}">Restore note and recording</button></div></sc-for></div></sc-if>
   <sc-if value="{{notes.browserRecovery}}" hint-placeholder-val="{{false}}"><div style="display:flex;gap:8px;padding:0 24px 6px;flex-wrap:wrap"><button aria-label="Recover browser Notes" onClick="{{notes.openBrowserRecovery}}" style="min-height:44px;padding:10px;border-radius:12px;background:var(--s2);color:var(--fg)">Notes recovery</button><button aria-label="Recover note audio deletion history" onClick="{{notes.openAudioRecovery}}" style="min-height:44px;padding:10px;border-radius:12px;background:var(--s2);color:var(--fg)">Audio deletion recovery</button></div></sc-if>
   <sc-if value="{{notes.storageStatus}}"><div class="notes-storage-status" role="status" aria-live="polite" style="flex-shrink:0;padding:0 24px 6px;font-size:12px;line-height:16px;color:var(--mut);overflow-wrap:anywhere">{{notes.storageStatus}}</div></sc-if>
   <div class="notes-workspace" style="position:relative;display:flex;flex-direction:column;flex:1;min-height:0">
+  <div data-alpha-subview="notes-list" inert="{{notes.listCovered}}" aria-hidden="{{notes.listCovered}}" style="display:flex;flex-direction:column;flex:1;min-height:0">
   <sc-if value="{{notes.notSearching}}" hint-placeholder-val="{{true}}">
     <div style="display: flex; align-items: center; height: 56px; margin-top: 0; padding: 0 8px 0 20px; gap: 2px; flex-shrink: 0">
       <h1 class="serif" style="margin: 0; font-size: 32px; flex-grow: 1; letter-spacing: -.01em">Notes</h1>
@@ -2102,8 +2110,9 @@
   </div>
 
   
+  </div>
   <sc-if value="{{notes.isEdit}}" hint-placeholder-val="{{false}}">
-    <div class="enter note-editor" style="position: absolute; inset: 0; background: var(--bg); display: flex; flex-direction: column; z-index: 4">
+    <div ref="{{notes.editorFocus}}" data-alpha-subview="notes-editor" inert="{{notes.detailCovered}}" aria-hidden="{{notes.detailCovered}}" class="enter note-editor" style="position: absolute; inset: 0; background: var(--bg); display: flex; flex-direction: column; z-index: 4">
       <div style="display: flex; align-items: center; height: 56px; margin-top: 0; padding: 0 8px; gap: 2px; flex-shrink: 0">
         <button class="ib" aria-label="Back to notes" onClick="{{notes.ed.close}}"><svg class="i" viewBox="0 0 24 24"><path d="{{ic.back}}"></path></svg></button>
         <div style="flex-grow: 1"></div>
@@ -2143,7 +2152,7 @@
 
   
   <sc-if value="{{notes.isVoice}}" hint-placeholder-val="{{false}}">
-    <div class="enter" style="position: absolute; inset: 0; background: var(--bg); display: flex; flex-direction: column; z-index: 4">
+    <div ref="{{notes.voiceFocus}}" data-alpha-subview="notes-voice" inert="{{notes.detailCovered}}" aria-hidden="{{notes.detailCovered}}" class="enter" style="position: absolute; inset: 0; background: var(--bg); display: flex; flex-direction: column; z-index: 4">
       <div style="display: flex; align-items: center; height: 56px; margin-top: 0; padding: 0 8px; gap: 2px; flex-shrink: 0">
         <button class="ib" aria-label="Back to notes" onClick="{{notes.vo.close}}"><svg class="i" viewBox="0 0 24 24"><path d="{{ic.back}}"></path></svg></button>
         <div style="flex-grow: 1"></div>
@@ -2212,7 +2221,7 @@
 
   
   <sc-if value="{{notes.isLink}}" hint-placeholder-val="{{false}}">
-    <div class="enter" style="position: absolute; inset: 0; background: var(--bg); display: flex; flex-direction: column; z-index: 4">
+    <div ref="{{notes.linkFocus}}" data-alpha-subview="notes-link" inert="{{notes.detailCovered}}" aria-hidden="{{notes.detailCovered}}" class="enter" style="position: absolute; inset: 0; background: var(--bg); display: flex; flex-direction: column; z-index: 4">
       <div style="display: flex; align-items: center; height: 56px; margin-top: 0; padding: 0 8px; gap: 2px; flex-shrink: 0">
         <button class="ib" aria-label="Back to notes" onClick="{{notes.lk.close}}"><svg class="i" viewBox="0 0 24 24"><path d="{{ic.back}}"></path></svg></button>
         <div style="flex-grow: 1"></div>
@@ -2251,7 +2260,7 @@
 
   
   <sc-if value="{{notes.recording}}" hint-placeholder-val="{{false}}">
-    <div class="enter" style="position: absolute; inset: 0; z-index: 10; background: var(--bg); display: flex; flex-direction: column; padding: 0 24px; box-sizing: border-box">
+    <div ref="{{notes.recordingFocus}}" data-alpha-subview="notes-recording" class="enter" style="position: absolute; inset: 0; z-index: 10; background: var(--bg); display: flex; flex-direction: column; padding: 0 24px; box-sizing: border-box">
       <div style="display: flex; align-items: center; height: 56px; margin: 0 -16px 8px">
         <button class="ib" aria-label="Discard recording" onClick="{{notes.rec.discard}}"><svg class="i" viewBox="0 0 24 24"><path d="{{ic.x}}"></path></svg></button>
       </div>
@@ -2426,7 +2435,8 @@
 
 
 <sc-if value="{{is.files}}" hint-placeholder-val="{{false}}">
-<div style="display: flex; flex-direction: column; height: 100%; position: relative">
+<div onFocusCapture="{{files.captureSubviewFocus}}" style="display: flex; flex-direction: column; height: 100%; position: relative">
+  <div data-alpha-subview="files-list" inert="{{files.listCovered}}" aria-hidden="{{files.listCovered}}" style="display:flex;flex-direction:column;flex:1;min-height:0">
   <sc-if value="{{files.notSearching}}" hint-placeholder-val="{{true}}">
     <div style="display: flex; align-items: center; height: 56px; margin-top: 44px; padding: 0 8px 0 20px; gap: 2px; flex-shrink: 0">
       <h1 class="serif" style="margin: 0; font-size: 32px; flex-grow: 1; letter-spacing: -.01em">Files</h1>
@@ -2491,8 +2501,9 @@
   </sc-if>
 
   
+  </div>
   <sc-if value="{{files.inFolder}}" hint-placeholder-val="{{false}}">
-    <div class="enter" style="position: absolute; inset: 0; background: var(--bg); display: flex; flex-direction: column; z-index: 4">
+    <div ref="{{files.folderFocus}}" data-alpha-subview="files-folder" inert="{{files.detailCovered}}" aria-hidden="{{files.detailCovered}}" class="enter" style="position: absolute; inset: 0; background: var(--bg); display: flex; flex-direction: column; z-index: 4">
       <sc-if value="{{files.notSel}}" hint-placeholder-val="{{true}}">
         <div style="display: flex; align-items: center; height: 56px; margin-top: 44px; padding: 0 8px; gap: 2px; flex-shrink: 0">
           <button class="ib" aria-label="Back to files" onClick="{{files.fd.close}}"><svg class="i" viewBox="0 0 24 24"><path d="{{ic.back}}"></path></svg></button>
@@ -2556,7 +2567,7 @@
 
   
   <sc-if value="{{files.isPreview}}" hint-placeholder-val="{{false}}">
-    <div class="enter" style="position: absolute; inset: 0; background: var(--bg); display: flex; flex-direction: column; z-index: 6">
+    <div ref="{{files.previewFocus}}" data-alpha-subview="files-preview" class="enter" style="position: absolute; inset: 0; background: var(--bg); display: flex; flex-direction: column; z-index: 6">
       <div style="display: flex; align-items: center; height: 56px; margin-top: 44px; padding: 0 8px; gap: 2px; flex-shrink: 0">
         <button class="ib" aria-label="Back" onClick="{{files.pv.close}}"><svg class="i" viewBox="0 0 24 24"><path d="{{ic.back}}"></path></svg></button>
         <div style="flex-grow: 1"></div>
@@ -3021,7 +3032,7 @@
 
 
 <sc-if value="{{is.workflows}}" hint-placeholder-val="{{false}}">
-<div style="display: flex; flex-direction: column; height: 100%; position: relative">
+<div onFocusCapture="{{workflows.captureSubviewFocus}}" style="display: flex; flex-direction: column; height: 100%; position: relative">
   <div data-alpha-subview="workflows-list" inert="{{workflows.listCovered}}" aria-hidden="{{workflows.listCovered}}" style="display:flex;flex-direction:column;flex:1;min-height:0">
   <div style="display: flex; align-items: center; height: 56px; margin-top: 44px; padding: 0 8px 0 20px; gap: 2px; flex-shrink: 0">
     <h1 class="serif" style="margin: 0; font-size: 32px; flex-grow: 1; letter-spacing: -.01em">Workflows</h1>
