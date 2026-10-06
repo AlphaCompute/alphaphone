@@ -1,3 +1,4 @@
+import {installSubviewAccessibility} from './prototype/subview-accessibility';
 import {installCalendarMonthFocus} from './prototype/calendar-month-focus';
 import {installCalendarEditDraftAdapter} from './prototype/calendar-edit-draft-adapter';
 import {installCalendarFormDraftAdapter} from './prototype/calendar-form-draft-adapter';
@@ -90,6 +91,7 @@ if (!fixture) {
 }
 if(devSurfacesEnabled&&simulatedApps)installSimulatedApps(Component,VIEWS,simulatedApps);
 if(developmentAgentWorkflows)installWorkflowAdapter(Component,VIEWS);
+installSubviewAccessibility(VIEWS);
 installCalendarMonthFocus(Component, VIEWS);
 installClockAdapter(Component, VIEWS, { simulated: testMocksEnabled && fixture, browser: !isAndroid });
 /** A browser cannot read or change radios and sensors; show that instead of fixture toggles. */

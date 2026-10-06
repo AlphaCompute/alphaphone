@@ -90,3 +90,5 @@ html,body,#root{margin:0;width:100%;height:100%;overflow:hidden;overscroll-behav
 .storage-access-warning { flex-shrink:0; margin:8px 16px; padding:12px; border:1px solid var(--fg); border-radius:12px; background:var(--bg); color:var(--fg); font-size:14px; line-height:1.4; }
 [data-alpha-layer="app"]>.storage-access-warning { margin-top:48px; }
 .os:has(.calendar-month-dialog) :is([data-alpha-layer="pill"],[data-alpha-layer="composer"]) { visibility:hidden; }
+
+.os:has(.inbox-review-modal) :is([data-alpha-layer="pill"],[data-alpha-layer="composer"]) { visibility:hidden; }
