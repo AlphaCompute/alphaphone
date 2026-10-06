@@ -98,6 +98,45 @@ same keyboard/accessibility inspection rather than interpreting incomplete
 contrast results as success. Camera/photo backgrounds and truncated text also
 need visual contrast review. Evidence: `artifacts/kokoro-cold-review/subviews-audit.json`.
 
+## Remaining core subviews and Camera contrast — 2026-10-05
+
+Calendar event/forms, Browser tabs/library, Photos album/viewer/edit, Notes
+editor/voice/link/recording and Files folder/preview now retire their covered
+controls from keyboard and accessibility navigation. Entering a layer focuses
+its first control. Returning restores its opener; an asynchronous Files refresh
+can replace the original button, so focus is captured before replacement and
+restored only to a unique equivalent control in the original surviving layer.
+The template renderer now forwards focus-capture events. Calendar Clock and
+month dialogs retain their separate modal ownership; Notes storage status stays
+outside the covered list.
+
+Camera zoom and scan overlays now use darker backgrounds. Computed foreground
+and background colors, composited over pure white camera pixels, meet 4.5:1 for
+the four zoom controls and two scan actions. The stable scan capture was visually
+inspected. This does not assess arbitrary text in photographed documents.
+
+All 36 owning Chromium checks passed, including light/dark layers, nested Files
+focus return, Inbox/Workflow regressions and Camera contrast. Earlier iterations
+exposed the asynchronous opener replacement and a missing renderer event mapping;
+both are fixed in the final run. Another 28 affected-flow checks passed for
+photo editing/albums, Camera pixels/video, Calendar month/Clock dialogs and Notes
+storage-status layouts. Type checking and five documentation checks passed.
+Evidence is `artifacts/subview-completion/final-owning.log`, `final-flows.log`,
+`final-types.log` and `final-docs.log`. A wider pre-final campaign passed
+107 cases with one Files focus failure, subsequently covered by the final run.
+The 86-state axe scan after layer isolation reported zero automated violations
+and 40 states with incomplete contrast results. That scan predates the final
+Camera opacity and focus-capture changes. Photos/Notes/Browser/Camera captures
+were inspected; images, gradients and overlapping/truncated text still require
+manual review. No complete accessibility or physical-device acceptance is claimed.
+
+The merged checkpoint `364522d95f36ac85e9a651a435d6984c0875e6fb`
+completed `npm run verify`: 674 tests, zero failures or skips, type checking,
+production build and 245-file production audit passed. This includes PRs 337–339,
+but predates the five-view/Camera changes above. Evidence is
+`artifacts/settings-review/subview-integrated-verify.log` in the clean verification
+checkout. Android builds remain excluded from this browser development campaign.
+
 ## Surface inventory
 
 ### Integrated source checkpoint — 2026-10-05
