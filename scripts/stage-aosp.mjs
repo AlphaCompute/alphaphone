@@ -109,7 +109,7 @@ const output =
 execFileSync(
   "node",
   [
-    "vendor/eliza/packages/os/scripts/distro-android/stage-launcher-overlay.ts",
+    "vendor/eliza/packages/os/scripts/android/stage-launcher-overlay.ts",
     "--descriptor",
     path.resolve(descriptor),
     "--apk",
