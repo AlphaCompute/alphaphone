@@ -142,6 +142,7 @@ export function installReminderAdapter(Component: Bag, views: Bag) {
     out.checkReminderCreations=()=>void owner?.refreshReminders();
     if(out.f) {
       const f=state.form;
+      if(f.cal==='alpha-reminders'&&owner?.reminderSaving)out.f.saveOff=true;
       out.f.cals.push({name:'Reminders',dot:'var(--acc)',css:f.cal==='alpha-reminders'?'background:var(--fg);color:var(--bg)':'background:var(--bg)',pick:()=>api.set({form:{...api.get('calendar').form,cal:'alpha-reminders',repeat:'none',alert:0}})});
       if(f.cal==='alpha-reminders') out.f.save=async()=>{
         if(owner?.reminderSaving)return;
@@ -158,7 +159,7 @@ export function installReminderAdapter(Component: Bag, views: Bag) {
           const signature=draftSignature(current);
           const sameEditor=()=>owner===saveOwner&&saveOwner.live&&!document.hidden&&api.isActive()&&api.get('calendar').form?.reminderEditSession===editSession&&draftSignature(api.get('calendar').form)===signature;
           if(!sameEditor())return;
-          saveOwner.reminderSaving=true;
+          saveOwner.reminderSaving=true;api.set({});
           let createdInput:Bag=null,dispatched=false,editSaved=false;
           try{
             const operation={type:'reminder_update' as const,target:current.reminderEditTarget,fields:{title:current.title.trim(),body:current.notes||'',...(schedule?{schedule}:{})}};
@@ -191,6 +192,7 @@ export function installReminderAdapter(Component: Bag, views: Bag) {
             if(createdInput&&!dispatched)try{await discardUndispatchedReminderDeletion(createdInput);if(editSession.attempt===createdInput)delete editSession.attempt;}catch{/* Preserve uncertain persistence and its exact attempt. */}
             if(owner===saveOwner&&saveOwner.live)try{saveOwner.reminderDeleteUnknown=Object.keys(await pendingReminderDeletions()).length;api.set({reminderDeleteUnknown:saveOwner.reminderDeleteUnknown});}catch{}
             saveOwner.reminderSaving=false;
+            if(owner===saveOwner&&saveOwner.live)api.set({});
             // Keep the editor visible until refreshed targets and the mutation lock settle.
             if(editSaved&&sameEditor()){saveOwner.calendarFormCommitted?.(api.get('calendar').form);api.set({form:null});}
           }
@@ -208,7 +210,7 @@ export function installReminderAdapter(Component: Bag, views: Bag) {
         const dueAt=date.getTime();date.setTime(dueAt-lead*60000);
         if(!current.alphaReminderId){
           const createOwner=owner;if(!createOwner)return;
-          createOwner.reminderSaving=true;
+          createOwner.reminderSaving=true;api.set({});
           const id=current.reminderCreationId||crypto.randomUUID();
           const request={id,title:current.title.trim(),body:current.notes||'',at:date.getTime(),dueAt,alertMinutes,...(recurrence?{recurrence}:{})};
           const signature=JSON.stringify([current.title,current.notes,current.off,current.t,current.repeat,current.alert,current.cal]);
@@ -246,6 +248,7 @@ export function installReminderAdapter(Component: Bag, views: Bag) {
             }
             if(owner===createOwner&&createOwner.live)try{createOwner.reminderCreateUnknown=Object.values(await reminderCreations()).filter(row=>row.state==='pending').length;api.set({reminderCreateUnknown:createOwner.reminderCreateUnknown});}catch{}
             createOwner.reminderSaving=false;
+            if(owner===createOwner&&createOwner.live)api.set({});
           }
           return;
         }
