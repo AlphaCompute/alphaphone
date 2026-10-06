@@ -9,6 +9,158 @@ See [architecture](architecture.md), [MVP scope](mvp-scope-and-gap-report.md) an
 This inventory describes available behavior and remaining qualification. It is
 not a claim that every feature or the current main revision has passed acceptance.
 
+## Final integrated verification checkpoint — 2026-10-06
+
+`npm run verify` passed at `07d5263982662367516ccc87681c2a76efd8c767`:
+674 tests passed, zero failures or skips, type checking, the production build,
+and the 245-file flag-off bundle audit. The test phase took 712.3 seconds.
+This includes the merged reminder refresh-order fix, Notes audio test coverage,
+Photos deletion/overlay changes, map labels and earlier accessibility work.
+The remaining changes in this report update are documentation only. Evidence:
+`artifacts/final-failure-review/integrated-verify.log` in the verification checkout.
+
+The separate full Chromium campaign terminated at its frozen source
+`31fc1fb0918de0107dbf1673a7fec2f63d1c4eec`: **1,928 passed, 32 failed,
+16 skipped, four runner errors**, exit 1, reported duration 14.0 hours. The four
+runner errors are duplicate 300-second shutdown-timeout reports for two workers.
+The prolonged execution's cause is not established. Failed traces and the full
+log remain in the primary checkout's `artifacts/final-browser-31fc/`.
+
+An exact comparison of final failed file/title pairs confirms that all 32 are
+the same cases rechecked successfully at `f633e490` (32 passed, 2.7 minutes).
+Later changes have the owning checks recorded below. This neither turns the
+original failed run green nor establishes a full current-head browser pass.
+The outcome and comparison are recorded in
+`artifacts/final-failure-review/full-browser-summary.json`.
+
+The primary checkout was then fast-forwarded to main `7d3e91e9`; browser dev on
+port 5317 returned HTTP 200. Hosted main run `37481107767` was cancelled after
+its production-surface job passed; cancelled Chromium/storage lanes remain
+unqualified. PR 345's run `37481994845` was still active at this checkpoint.
+Earlier pending-run statements below are historical checkpoints superseded by
+this terminal record.
+
+Remaining work is explicit in [the current requirement matrix](mvp-current-status.md):
+current integrated cross-engine/hosted qualification, the separate unmerged
+runtime upgrade in PR 317, real provider grants and interruption recovery,
+production Maps, native/physical lifecycle and accessibility, release signing,
+installed upgrades and pilot acceptance. Powered-off scheduling remains an
+unresolved scope amendment. No local Android build was performed in this
+browser-focused campaign; host runner fixtures are not device acceptance.
+
+
+## Integrated design review — 2026-10-06
+
+At `7d3e91e9771611effbfc85b89cd70fee35fff5d9`, the refreshed accessibility
+scan covered 86 fixture states (43 root/subviews in light and dark themes) at
+412 × 915. It reported zero automated violations. Forty states retained
+`color-contrast` incomplete results: the checker could not determine backgrounds
+across gradients, photographs, overlap or short glyph/count content. These are
+not automatic passes or confirmed defects.
+
+All 40 corresponding current-source screenshots were then inspected, covering
+Inbox message detail, Calendar event/invitation, Browser booking/agent overlay,
+Camera photo/video/scan, Photos root/viewer/albums/search, Maps root/search/place/
+route/navigation, Notes and Workflows success/failure. No new visible contrast
+defect was identified in those captures. The dark-backed Camera controls, Photos
+badges/viewer controls and illustrated-map label fixes were present. Their owning
+rendered-color checks provide additional measured evidence; visual inspection
+does not establish every pixel's contrast or arbitrary third-party image/page
+readability. Off-screen content, physical screen-reader use and device/user
+acceptance remain separate requirements.
+
+Evidence in the verification checkout: `artifacts/final-failure-review/`
+contains `design-audit.json`, `design-summary.json`, `capture-incomplete.log`,
+40 `incomplete-*.png` captures and ten labelled `contact-*.png` sheets. These
+are mock fixture captures and do not demonstrate real account/provider actions.
+
+
+## Photos image-overlay contrast — 2026-10-06
+
+Photos duration labels and favorite badges now have a translucent dark backing,
+and unselected batch-selection rings use the same backing in both the live
+adapter and fixture. Play and Pause controls also have sufficient backing over
+bright frames. Viewer header/footer gradients remain dark beneath their controls,
+including compact layouts where the image fills the entire viewer.
+
+All 12 owning Chromium cases passed: four light/dark contrast and compact-player
+journeys plus eight existing batch and pagination/recovery cases. The tests
+measure rendered foreground/background contrast composited over a white image
+(at least 4.5:1), exercise Play/Pause/Back and preserve the existing batch-storage
+checks. Type checking and five documentation checks passed. The dark thumbnail capture and compact white-frame viewer were visually
+inspected. Evidence in the verification checkout:
+`artifacts/final-failure-review/photo-badges.log` and `photo-results/`.
+This is browser rendering evidence, not native video decoding or device acceptance.
+
+
+## Notes audio persistence and failure rechecks — 2026-10-06
+
+The Notes audio journey now waits for its edited title, transcript and audio
+reference to reach the durable Notes document before reloading. The earlier
+hosted failure on PR 317 showed the original “Voice note” title after a reload
+that raced asynchronous autosave. Waiting for the actual saved record strengthens
+the test's persistence boundary; it does not change the app or weaken interrupted
+save checks. The complete recording/review/save/reload/play/restore journey passed
+in Chromium, Firefox and WebKit. Quota and concurrent-edit failure cases also
+passed in all three engines (nine total cases). The audio journey is now included
+in the standard cross-browser storage inventory, rather than only Chromium.
+Evidence in the clean verification checkout:
+`artifacts/final-failure-review/notes.log` and `notes-cross.log`.
+
+All 32 failures collected so far from the frozen `31fc1fb0` Chromium campaign
+passed a serial recheck at `f633e490` (2.7 minutes), including the Calendar modal
+assertions fixed by PR 343. The original campaign remains running and retains
+its failed traces; this recheck neither makes that run green nor proves there
+will be no later failures. Evidence: `artifacts/final-failure-review/recheck.log`
+and `failed-cases.json`. The hosted `31fc1fb0` browser failure was limited to the
+three month-picker assertions. The cancelled current-main browser run was retried
+once at `f633e490`; its terminal outcome remains a separate gate.
+
+## Reminder save refresh ordering — 2026-10-06
+
+After a confirmed reminder edit, the editor now stays visible until refreshed
+records and the mutation lock settle. It then closes only if the same editor,
+owner and draft still own the operation. A newer draft or navigation is preserved.
+This extracts the consumer fix from PR 317 without adopting its runtime upgrade.
+The delayed-refresh regression proves the edited record is committed while the
+form remains present, then checks completion against the refreshed occurrence.
+
+All 51 owning reminder/Calendar Chromium cases passed in a single-worker run
+(5.2 minutes), plus five focused cases covering the regression and Calendar
+preferences in the modal month picker. The latter now uses Close/Escape and
+checks opener focus return instead of operating the covered background control.
+Type checking and five documentation checks passed.
+
+The earlier 51-case run had 32 passes, 19 failures and three runner errors across
+7.1 hours, including unusually long delays and browser-launch failures. Preserve
+that failed evidence; the subsequent 51-case run is the successful qualification,
+not an erasure or reinterpretation of the earlier result. Evidence in the clean
+verification checkout: `artifacts/settings-review/reminder-refresh-browser.log`,
+`reminder-serial.log`, `reminder-focused.log`, `reminder-refresh-types.log` and
+`reminder-refresh-docs.log`. The separate full Chromium campaign remains on its
+unchanged source and cannot qualify this later fix.
+
+## Integrated browser checkpoint — 2026-10-06
+
+`npm run verify` finished successfully at
+`79cd5c734f4db3d92fe4421b4255a17185b7f796`: all 674 tests passed, zero
+failures or skips, with type checking, production build and the 245-file
+flag-off bundle audit. The run took 1,112.7 seconds. Its log is
+`artifacts/settings-review/core-subview-integrated-verify.log` in the clean
+verification checkout. This result includes the five-view accessibility and
+Camera contrast changes; it predates the Photos deletion/map-label follow-up
+and the reminder refresh-order change. Those have separate owning evidence.
+
+The full 1,976-case Chromium campaign at
+`31fc1fb0918de0107dbf1673a7fec2f63d1c4eec` is still running. Its source is
+frozen in the primary checkout. Logs and retained traces live in
+`artifacts/final-browser-31fc/`. It has already exposed obsolete Calendar
+month-picker assertions, which attempted to operate the covered button rather
+than the modal's Close control. Its unusually long timeout and browser-launch
+failures remain failures requiring explicit rechecks; they are not passing
+acceptance evidence. Do not substitute this in-progress run for a terminal
+whole-suite result.
+
 ## Photos deletion review and illustrated-map labels — 2026-10-05
 
 Photos' permanent-deletion review previously appeared as a sheet without modal

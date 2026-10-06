@@ -13,7 +13,10 @@ test('calendar preferences synchronize across tabs and failed writes preserve sa
 for(const date of ['2026-02-15T12:00:00Z','2026-08-15T12:00:00Z'])test(`month dialog closes and restores the toggle for pointer and keyboard at large text: ${date}`,async({page},info)=>{
  await page.setViewportSize({width:360,height:640});await page.clock.install({time:new Date(date)});await open(page);
  await page.evaluate(async()=>{const {BrowserDevice}=await import('/src/browser/device.ts');await BrowserDevice.prototype.setTextScale({percent:150});});
- const dialog=page.getByRole('dialog',{name:'Choose calendar date'});const toggle=page.getByRole('button',{name:'Month view',exact:true});await expect(dialog).toBeVisible();
- await page.screenshot({path:info.outputPath('month-open-large-text.png'),animations:'disabled'});await dialog.getByRole('button',{name:'Close month',exact:true}).click();await expect(dialog).toHaveCount(0);await expect(toggle).toHaveAttribute('aria-expanded','false');
- await toggle.focus();await page.keyboard.press('Enter');await expect(dialog).toBeVisible();await page.keyboard.press('Escape');await expect(dialog).toHaveCount(0);await expect(toggle).toHaveAttribute('aria-expanded','false');await expect(toggle).toBeFocused();
+ const toggle=page.getByRole('button',{name:'Month view',exact:true}),dialog=page.getByRole('dialog',{name:'Choose calendar date'});
+ await expect(dialog).toBeVisible();await expect(toggle).toHaveCount(0);
+ await page.screenshot({path:info.outputPath('month-open-large-text.png'),animations:'disabled'});
+ await dialog.getByRole('button',{name:'Close month',exact:true}).click();await expect(dialog).toHaveCount(0);await expect(toggle).toHaveAttribute('aria-expanded','false');await expect(toggle).toBeFocused();
+ await page.keyboard.press('Enter');await expect(dialog).toBeVisible();await expect(toggle).toHaveCount(0);
+ await page.keyboard.press('Escape');await expect(dialog).toHaveCount(0);await expect(toggle).toHaveAttribute('aria-expanded','false');await expect(toggle).toBeFocused();
 });
