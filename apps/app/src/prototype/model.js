@@ -2249,7 +2249,7 @@ registerView("photos", {
       return {
         bg: v.bg, tf: v.tf, flt: v.flt, vid: it.kind === "video" && !selecting, dur: it.dur, fav: !!it.fav && !trashMode && !selecting, selecting: selecting && !trashMode, on: on,
         dim: trashMode ? "opacity:.6" : "",
-        selCss: on ? "background:var(--acc);box-shadow:0 0 0 2px #ffffff" : "background:rgba(0,0,0,.18);box-shadow:inset 0 0 0 2px #ffffff",
+        selCss: on ? "background:var(--acc);box-shadow:0 0 0 2px #ffffff" : "background:rgba(0,0,0,.7);box-shadow:inset 0 0 0 2px #ffffff",
         alt: (trashMode ? "Restore " : "") + (it.kind === "video" ? "Video" : "Photo") + ", " + phDayLabel(it.ts, now) + (it.place ? ", " + it.place : ""),
         tap: function () {
           if (PH_T.fired) { PH_T.fired = false; return; }

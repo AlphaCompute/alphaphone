@@ -9,6 +9,24 @@ See [architecture](architecture.md), [MVP scope](mvp-scope-and-gap-report.md) an
 This inventory describes available behavior and remaining qualification. It is
 not a claim that every feature or the current main revision has passed acceptance.
 
+## Photos image-overlay contrast — 2026-10-06
+
+Photos duration labels and favorite badges now have a translucent dark backing,
+and unselected batch-selection rings use the same backing in both the live
+adapter and fixture. Play and Pause controls also have sufficient backing over
+bright frames. Viewer header/footer gradients remain dark beneath their controls,
+including compact layouts where the image fills the entire viewer.
+
+All 12 owning Chromium cases passed: four light/dark contrast and compact-player
+journeys plus eight existing batch and pagination/recovery cases. The tests
+measure rendered foreground/background contrast composited over a white image
+(at least 4.5:1), exercise Play/Pause/Back and preserve the existing batch-storage
+checks. Type checking and five documentation checks passed. The dark thumbnail capture and compact white-frame viewer were visually
+inspected. Evidence in the verification checkout:
+`artifacts/final-failure-review/photo-badges.log` and `photo-results/`.
+This is browser rendering evidence, not native video decoding or device acceptance.
+
+
 ## Notes audio persistence and failure rechecks — 2026-10-06
 
 The Notes audio journey now waits for its edited title, transcript and audio

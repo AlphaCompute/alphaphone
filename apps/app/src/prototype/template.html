@@ -1526,13 +1526,13 @@
             <button data-owned-media-id="{{p.nativeMediaId}}" aria-label="{{p.alt}}" onClick="{{p.tap}}" onPointerDown="{{p.pd}}" onPointerUp="{{p.pu}}" onPointerLeave="{{p.pu}}" onPointerCancel="{{p.pu}}" style="position: relative; display: block; aspect-ratio: 1; overflow: hidden; background: var(--s2)">
               <span style="position: absolute; left: 0; width: 100%; top: 50%; aspect-ratio: 3 / 4; background: {{p.bg}}; transform: translateY(-50%) {{p.tf}}; filter: {{p.flt}}; transition: transform .2s"></span>
               <sc-if value="{{p.vid}}" hint-placeholder-val="{{false}}">
-                <span style="position: absolute; right: 7px; bottom: 6px; color: #ffffff; font-size: 11.5px; font-weight: 600; display: flex; align-items: center; gap: 3px; text-shadow: 0 1px 3px rgba(0,0,0,.5)"><svg class="i" viewBox="0 0 24 24" style="width: 11px; height: 11px; fill: currentColor"><path d="{{ic.play}}"></path></svg>{{p.dur}}</span>
+                <span class="photo-media-badge" style="position: absolute; right: 7px; bottom: 6px; color: #ffffff; font-size: 11.5px; font-weight: 600; display: flex; align-items: center; gap: 3px; text-shadow: 0 1px 3px rgba(0,0,0,.5)"><svg class="i" viewBox="0 0 24 24" style="width: 11px; height: 11px; fill: currentColor"><path d="{{ic.play}}"></path></svg>{{p.dur}}</span>
               </sc-if>
               <sc-if value="{{p.fav}}" hint-placeholder-val="{{false}}">
-                <svg class="i" viewBox="0 0 24 24" style="position: absolute; left: 7px; bottom: 7px; width: 14px; height: 14px; color: #ffffff; fill: currentColor; filter: drop-shadow(0 1px 2px rgba(0,0,0,.5))"><path d="{{ic.heart}}"></path></svg>
+                <svg class="i photo-favorite-badge" viewBox="0 0 24 24" style="position: absolute; left: 7px; bottom: 7px; width: 20px; height: 20px; color: #ffffff; fill: currentColor"><path d="{{ic.heart}}"></path></svg>
               </sc-if>
               <sc-if value="{{p.selecting}}" hint-placeholder-val="{{false}}">
-                <span style="position: absolute; top: 7px; right: 7px; width: 22px; height: 22px; border-radius: 11px; display: flex; align-items: center; justify-content: center; color: #ffffff; {{p.selCss}}">
+                <span class="photo-selection-badge" style="position: absolute; top: 7px; right: 7px; width: 22px; height: 22px; border-radius: 11px; display: flex; align-items: center; justify-content: center; color: #ffffff; {{p.selCss}}">
                   <sc-if value="{{p.on}}" hint-placeholder-val="{{false}}"><svg class="i" viewBox="0 0 24 24" style="width: 14px; height: 14px; stroke-width: 2.4"><path d="{{ic.check}}"></path></svg></sc-if>
                 </span>
               </sc-if>
@@ -1615,10 +1615,10 @@
             <button data-owned-media-id="{{p.nativeMediaId}}" aria-label="{{p.alt}}" onClick="{{p.tap}}" onPointerDown="{{p.pd}}" onPointerUp="{{p.pu}}" onPointerLeave="{{p.pu}}" onPointerCancel="{{p.pu}}" style="position: relative; display: block; aspect-ratio: 1; overflow: hidden; background: var(--s2); {{p.dim}}">
               <span style="position: absolute; left: 0; width: 100%; top: 50%; aspect-ratio: 3 / 4; background: {{p.bg}}; transform: translateY(-50%) {{p.tf}}; filter: {{p.flt}}; transition: transform .2s"></span>
               <sc-if value="{{p.vid}}" hint-placeholder-val="{{false}}">
-                <span style="position: absolute; right: 7px; bottom: 6px; color: #ffffff; font-size: 11.5px; font-weight: 600; display: flex; align-items: center; gap: 3px; text-shadow: 0 1px 3px rgba(0,0,0,.5)"><svg class="i" viewBox="0 0 24 24" style="width: 11px; height: 11px; fill: currentColor"><path d="{{ic.play}}"></path></svg>{{p.dur}}</span>
+                <span class="photo-media-badge" style="position: absolute; right: 7px; bottom: 6px; color: #ffffff; font-size: 11.5px; font-weight: 600; display: flex; align-items: center; gap: 3px; text-shadow: 0 1px 3px rgba(0,0,0,.5)"><svg class="i" viewBox="0 0 24 24" style="width: 11px; height: 11px; fill: currentColor"><path d="{{ic.play}}"></path></svg>{{p.dur}}</span>
               </sc-if>
               <sc-if value="{{p.selecting}}" hint-placeholder-val="{{false}}">
-                <span style="position: absolute; top: 7px; right: 7px; width: 22px; height: 22px; border-radius: 11px; display: flex; align-items: center; justify-content: center; color: #ffffff; {{p.selCss}}">
+                <span class="photo-selection-badge" style="position: absolute; top: 7px; right: 7px; width: 22px; height: 22px; border-radius: 11px; display: flex; align-items: center; justify-content: center; color: #ffffff; {{p.selCss}}">
                   <sc-if value="{{p.on}}" hint-placeholder-val="{{false}}"><svg class="i" viewBox="0 0 24 24" style="width: 14px; height: 14px; stroke-width: 2.4"><path d="{{ic.check}}"></path></svg></sc-if>
                 </span>
               </sc-if>
@@ -1656,12 +1656,12 @@
         </span>
       </button>
       <sc-if value="{{photos.v.playBtn}}" hint-placeholder-val="{{false}}">
-        <button aria-label="Play video" onClick="{{photos.v.play}}" style="position: absolute; left: 50%; top: 50%; width: 72px; height: 72px; margin: -36px 0 0 -36px; border-radius: 36px; background: rgba(0,0,0,.4); color: #ffffff; display: flex; align-items: center; justify-content: center; z-index: 2"><svg class="i" viewBox="0 0 24 24" style="width: 28px; height: 28px; fill: currentColor"><path d="{{ic.play}}"></path></svg></button>
+        <button class="photo-playback-control" aria-label="Play video" onClick="{{photos.v.play}}" style="position: absolute; left: 50%; top: 50%; width: 72px; height: 72px; margin: -36px 0 0 -36px; border-radius: 36px; background: rgba(0,0,0,.7); color: #ffffff; display: flex; align-items: center; justify-content: center; z-index: 2"><svg class="i" viewBox="0 0 24 24" style="width: 28px; height: 28px; fill: currentColor"><path d="{{ic.play}}"></path></svg></button>
       </sc-if>
       <sc-if value="{{photos.v.playing}}" hint-placeholder-val="{{false}}">
-        <button aria-label="Pause video" onClick="{{photos.v.pause}}" style="position: absolute; left: 50%; top: 50%; width: 72px; height: 72px; margin: -36px 0 0 -36px; border-radius: 36px; color: #ffffff; display: flex; align-items: center; justify-content: center; z-index: 2; opacity: {{photos.v.chromeOp}}; pointer-events: {{photos.v.chromePE}}; transition: opacity .25s"><svg class="i" viewBox="0 0 24 24" style="width: 28px; height: 28px"><path d="{{ic.pause}}"></path></svg></button>
+        <button class="photo-playback-control" aria-label="Pause video" onClick="{{photos.v.pause}}" style="position: absolute; left: 50%; top: 50%; width: 72px; height: 72px; margin: -36px 0 0 -36px; border-radius: 36px; background: rgba(0,0,0,.7); color: #ffffff; display: flex; align-items: center; justify-content: center; z-index: 2; opacity: {{photos.v.chromeOp}}; pointer-events: {{photos.v.chromePE}}; transition: opacity .25s"><svg class="i" viewBox="0 0 24 24" style="width: 28px; height: 28px"><path d="{{ic.pause}}"></path></svg></button>
       </sc-if>
-      <div style="position: absolute; left: 0; right: 0; top: 0; height: 150px; background: linear-gradient(to bottom, rgba(0,0,0,.55), rgba(0,0,0,0)); pointer-events: none; opacity: {{photos.v.chromeOp}}; transition: opacity .25s; z-index: 3">
+      <div style="position: absolute; left: 0; right: 0; top: 0; height: 150px; background: linear-gradient(to bottom, rgba(0,0,0,.8) 100px, rgba(0,0,0,0)); pointer-events: none; opacity: {{photos.v.chromeOp}}; transition: opacity .25s; z-index: 3">
         <div style="display: flex; align-items: center; height: 56px; margin-top: 44px; padding: 0 8px; gap: 6px; pointer-events: {{photos.v.chromePE}}">
           <button class="ib" aria-label="Back from photo" onClick="{{back}}"><svg class="i" viewBox="0 0 24 24"><path d="{{ic.back}}"></path></svg></button>
           <div style="flex-grow: 1; min-width: 0">
@@ -1671,7 +1671,7 @@
           <sc-if value="{{photos.v.notSecure}}" hint-placeholder-val="{{true}}"><button class="ib" aria-label="Ask Alpha about this photo" onClick="{{photos.v.ask}}"><span style="width: 30px; height: 30px; border-radius: 15px; background: rgba(255,255,255,.16); display: flex; align-items: center; justify-content: center; font-family: Denton, Fraunces, Georgia, serif; font-style: italic; font-size: 18px"><span class="al">α</span></span></button></sc-if>
         </div>
       </div>
-      <div style="position: absolute; left: 0; right: 0; bottom: 0; height: 150px; background: linear-gradient(to top, rgba(0,0,0,.55), rgba(0,0,0,0)); pointer-events: none; opacity: {{photos.v.chromeOp}}; transition: opacity .25s; z-index: 3; display: flex; align-items: flex-end">
+      <div style="position: absolute; left: 0; right: 0; bottom: 0; height: 150px; background: linear-gradient(to top, rgba(0,0,0,.8) 90px, rgba(0,0,0,0)); pointer-events: none; opacity: {{photos.v.chromeOp}}; transition: opacity .25s; z-index: 3; display: flex; align-items: flex-end">
         <div style="display: flex; justify-content: space-around; width: 100%; padding: 0 16px 34px; pointer-events: {{photos.v.chromePE}}">
           <sc-if value="{{photos.v.notSecure}}" hint-placeholder-val="{{true}}"><button class="ib" aria-label="Share photo" onClick="{{photos.v.share}}"><svg class="i" viewBox="0 0 24 24"><path d="{{ic.share}}"></path></svg></button></sc-if>
           <button class="ib" aria-label="{{photos.v.favLabel}}" onClick="{{photos.v.fav}}"><svg class="i" viewBox="0 0 24 24" style="{{photos.v.favIcon}}"><path d="{{ic.heart}}"></path></svg></button>
