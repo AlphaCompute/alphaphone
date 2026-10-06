@@ -268,6 +268,32 @@ Browser article and failed-workflow captures. These observations do not establis
 complete contrast or screen-reader acceptance; the unresolved automated findings
 and external requirements in the current status matrix remain open.
 
+## Cold Kokoro startup follow-up — 2026-10-06
+
+At consumer `9cd8f018`, the pinned runtime `cc682e9a` retains upstream
+`4f28daecf2f`, which removes premature retirement of a worker during cold
+initialization while retaining caller cancellation and synthesis/transport bounds.
+The existing development process still used `19afed28`; it was stopped and
+restarted on the admitted `cc682e9a` source at `http://127.0.0.1:5317/`.
+No new runtime patch or timeout increase was necessary, and no current cold
+startup failure reproduced.
+
+Three fresh workers returned valid WAV audio in **1,117, 1,065 and 1,057 ms**,
+without an initialization/status probe. Cancellation during startup followed by
+a successful fresh-worker retry also passed. On the restarted development host,
+the first-request browser playback check passed, followed by real synthetic
+recording → Whisper transcription → Kokoro playback, Stop and disconnect.
+Ten speech startup, lifecycle, configuration and bridge contract tests passed.
+Hashed before/after profile snapshots matched: the same owner, agent and all
+18 conversation IDs were retained.
+
+Evidence is in `artifacts/kokoro-startup-fix/`: `cold-baseline.log`,
+`browser-first.log`, `browser-voice.log`, `contracts.log`, `dev.log`, and the
+profile snapshots. This is fresh-process host/browser evidence, not an evicted
+disk cache, a latency guarantee under CPU contention, or Android/device
+qualification. Earlier loaded-host results and broader test failures remain
+separate evidence; this follow-up does not mark the entire MVP complete.
+
 ## Cold Kokoro requalification — 2026-10-05
 
 The former worker startup retirement failure is resolved in the currently pinned
