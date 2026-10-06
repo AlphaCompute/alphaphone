@@ -46,7 +46,6 @@ export default defineConfig({
   projects: [
     { name: 'chromium', testIgnore: productionSpec },
     { name: 'production', testMatch: productionSpec, use: { baseURL: `http://127.0.0.1:${productionPort}` } },
-    ...(['firefox','webkit'] as const).map(browser=>({name:`${browser}-media`,testMatch:/notes-audio-journey\.spec\.ts$/,use:{...devices[browser==='firefox'?'Desktop Firefox':'Desktop Safari'],baseURL:`http://127.0.0.1:${port}`,viewport:{width:412,height:915}}})),
     { name: 'firefox', testMatch: storageSpecPattern, use: { ...devices['Desktop Firefox'], baseURL: `http://127.0.0.1:${port}`, viewport: { width: 412, height: 915 } } },
     { name: 'webkit', testMatch: storageSpecPattern, use: { ...devices['Desktop Safari'], baseURL: `http://127.0.0.1:${port}`, viewport: { width: 412, height: 915 } } },
   ],

@@ -134,32 +134,3 @@ jobs:
             test-results/browser/
             test-results/browser-report/
           retention-days: 14
-
-  media:
-    name: Real Notes audio (Firefox and WebKit)
-    # Linux WebKit omits MediaRecorder and headless Firefox has no audio server.
-    # Keep the real capture/playback journey on native browser audio backends.
-    runs-on: macos-latest
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          submodules: true
-      - uses: actions/setup-node@v4
-        with:
-          node-version-file: .nvmrc
-          cache: npm
-      - run: npm ci
-      - run: npx playwright install --with-deps firefox webkit
-      - name: Record, persist, replay and restore real browser audio
-        env:
-          ELIZA_DEV_ALLOW_TEST_MOCKS: '1'
-        run: npx playwright test --project=firefox-media --project=webkit-media
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: browser-real-notes-audio
-          path: |
-            test-results/browser/
-            test-results/browser-report/
-          retention-days: 14

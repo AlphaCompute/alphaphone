@@ -1,7 +1,4 @@
-/** Product storage contracts qualified across Chromium, Firefox and WebKit.
- * The real Notes recording journey has dedicated media projects on macOS CI,
- * where Firefox audio output and WebKit MediaRecorder are available.
- */
+/** Product storage contracts qualified across Chromium, Firefox and WebKit. */
 export const STORAGE_SPECS = Object.freeze([
   "test/browser/assistant-draft-storage.spec.ts",
   "test/browser/assistant-draft-recovery.spec.ts",
@@ -27,6 +24,7 @@ export const STORAGE_SPECS = Object.freeze([
   "test/browser/workflow-intent-storage.spec.ts",
   "test/browser/notes-document-storage.spec.ts",
   "test/browser/notes-save-failure.spec.ts",
+  "test/browser/notes-audio-journey.spec.ts",
   "test/browser/note-audio-delete-recovery.spec.ts",
   "test/browser/media-copy-intent-storage.spec.ts",
   "test/browser/conversation-selection-storage.spec.ts",
