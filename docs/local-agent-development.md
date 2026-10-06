@@ -37,6 +37,22 @@ Whisper uses the installed assets described in the review ledger. On macOS, brow
 
 When host Kokoro is configured, the agent starts its native worker and loads the speech sanitizer during startup. The worker verifies assets and synthesizes its readiness phrase before reporting ready. The first Listen request shares an in-progress initialization instead of starting another worker. Failed initialization remains retryable, and cancellation still destroys the native context. Disabled host speech does not preload either component. Local playback also prepares sentence-sized chunks, bounded to 300 characters, so the first audio response does not wait for a complete multi-sentence passage. The entire passage is validated before any chunk is submitted; completion still waits for every chunk and Stop cancels the current request without starting the remainder.
 
+For repeatable cold-process qualification with the installed speech settings, run:
+
+```sh
+ALPHA_ELIZA_SOURCE=/absolute/path/to/prepared/runtime npm run agent:test-cold-kokoro
+```
+
+This Bun check validates the pinned source and assets, exercises three fresh
+workers without a readiness probe, and verifies cold cancellation/recovery. It
+writes `test-results/cold-kokoro/result.json`. It never sends text to a model
+provider and uses only a fixed synthetic phrase. The opt-in browser case
+`first host speech request plays without a readiness probe` in
+`test/browser/browser-agent-recording.spec.ts` additionally checks actual playback;
+set `ALPHA_REAL_KOKORO=1` and point a serverless Playwright configuration at the
+freshly restarted local dev server. Agent readiness is separate from TTS readiness.
+
+
 
 Require both speech providers at startup with:
 
