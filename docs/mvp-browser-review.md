@@ -441,3 +441,20 @@ finished with 1,909 passed, 15 skipped and zero failures (31.6 minutes). The log
 `artifacts/calendar-form-review/current-main-chromium.log` in the primary checkout.
 Its host-only skipped cases require separate profiles, and it predates PR 335 and
 this subview follow-up. It must not be used as full-suite evidence for later code.
+
+### Calendar month-picker focus ownership
+
+The month dropdown previously covered day controls without removing them from
+keyboard or screen-reader navigation. It now has a named modal dialog, its own
+month navigation and close control, contained Tab/Shift+Tab focus, Escape/Back
+handling and focus return. Covered phone controls become inert, and the assistant
+dock stops painting over the picker. Picking a date, closing, or returning Home
+releases ownership; the retired picker cannot consume Back in another app.
+The calendar grid and controls scroll inside the bounded compact-height dialog.
+
+All 103 owning Chromium root-state, Calendar draft and picker checks passed, plus
+type checking. The final dock-visibility correction passed all four picker cases
+(light/dark at 915px and 420px heights); its compact dark screenshot was inspected.
+Evidence in the primary checkout is `artifacts/calendar-form-review/month-focus-*`
+and the `test-results/browser/calendar-month-focus-*` captures. Other overlapping
+subviews and native screen-reader/device behavior retain separate acceptance.

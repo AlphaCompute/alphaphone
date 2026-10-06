@@ -730,10 +730,7 @@
       <svg class="i" viewBox="0 0 24 24" style="width: 18px; height: 18px; color: var(--mut); margin-top: 4px"><path d="{{calendar.chevron}}"></path></svg>
     </button>
     <button class="ib" aria-label="Clock alarms" onClick="{{calendar.openClock}}"><svg class="i" viewBox="0 0 24 24"><path d="{{ic.clock}}"></path></svg></button>
-    <sc-if value="{{calendar.monthOpen}}" hint-placeholder-val="{{false}}">
-      <button class="ib" aria-label="Previous month" onClick="{{calendar.mPrev}}"><svg class="i" viewBox="0 0 24 24"><path d="{{ic.back}}"></path></svg></button>
-      <button class="ib" aria-label="Next month" onClick="{{calendar.mNext}}"><svg class="i" viewBox="0 0 24 24"><path d="{{ic.right}}"></path></svg></button>
-    </sc-if>
+
     <sc-if value="{{calendar.dayMode}}" hint-placeholder-val="{{true}}">
       <sc-if value="{{calendar.notToday}}" hint-placeholder-val="{{false}}">
         <button class="ib" aria-label="Today" onClick="{{calendar.goToday}}"><svg class="i" viewBox="0 0 24 24"><path d="{{ic.calToday}}"></path></svg></button>
@@ -829,8 +826,10 @@
   </div>
 
   <sc-if value="{{calendar.monthOpen}}" hint-placeholder-val="{{false}}">
-    <button aria-label="Close month" onClick="{{calendar.closeMonth}}" style="position: absolute; left: 0; right: 0; top: 100px; bottom: 0; background: var(--scrim); z-index: 3"></button>
-    <div class="drop" style="position: absolute; left: 0; right: 0; top: 100px; z-index: 3; background: var(--bg); border-bottom: 1px solid var(--line); border-radius: 0 0 30px 30px; padding: 4px 12px 18px; box-shadow: 0 18px 30px var(--shc)">
+    <div ref="{{calendar.monthModalRef}}" style="position:absolute;inset:0;z-index:4">
+    <button aria-hidden="true" tabindex="-1" onClick="{{calendar.closeMonth}}" style="position:absolute;inset:0;background:var(--scrim);width:100%;height:100%"></button>
+    <div class="drop calendar-month-dialog" role="dialog" aria-modal="true" aria-label="Choose calendar date" style="position:absolute;left:0;right:0;top:44px;max-height:calc(100% - 64px);overflow:auto;box-sizing:border-box;background:var(--bg);border-radius:28px;padding:12px 16px 20px">
+      <div style="display:flex;align-items:center;gap:4px;margin-bottom:12px"><h2 class="serif" style="font-size:28px;margin:0;flex:1">{{calendar.month}}</h2><button class="ib" aria-label="Previous month" onClick="{{calendar.mPrev}}"><svg class="i" viewBox="0 0 24 24"><path d="{{ic.back}}"></path></svg></button><button class="ib" aria-label="Next month" onClick="{{calendar.mNext}}"><svg class="i" viewBox="0 0 24 24"><path d="{{ic.right}}"></path></svg></button><button class="ib" aria-label="Close month" onClick="{{calendar.closeMonth}}"><svg class="i" viewBox="0 0 24 24"><path d="{{ic.x}}"></path></svg></button></div>
       <div style="display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); row-gap: 2px">
         <sc-for list="{{calendar.mdays}}" as="m" hint-placeholder-count="35">
           <button onClick="{{m.pick}}" aria-label="{{m.label}}" style="display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 2px 0">
@@ -850,6 +849,7 @@
           </div>
         </sc-for>
       </div>
+    </div>
     </div>
   </sc-if>
 
