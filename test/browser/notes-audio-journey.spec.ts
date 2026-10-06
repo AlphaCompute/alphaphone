@@ -26,6 +26,8 @@ test('Notes records, reviews, saves, reloads, plays and restores the same retain
  await page.getByRole('button',{name:'Save note',exact:true}).click();
  await expect(page.getByRole('button',{name:'Play recording',exact:true})).toBeVisible();
  await page.getByRole('textbox',{name:'Title',exact:true}).fill('Browser audio journey');
+ // Reload only after asynchronous title autosave reaches the durable document.
+ await expect.poll(()=>page.evaluate(async()=>{const raw=await(await import('/src/runtime/browser-notes-document.ts')).readBrowserNotesRaw();return raw?JSON.parse(raw).records.some((note:any)=>note.title==='Browser audio journey'&&note.body==='A recorded note saved through the real Notes interface.'&&!!note.audio?.audioId):false;})).toBe(true);
  await page.evaluate(async()=>{const {ctx,osc}=(window as any).fixture;osc.stop();await ctx.close();});
  await page.reload();await page.getByRole('button',{name:'Notes',exact:true}).click();await page.getByRole('button',{name:'Open Browser audio journey',exact:true}).click();
  await expect(page.getByText('A recorded note saved through the real Notes interface.',{exact:true}).first()).toBeVisible();
