@@ -9,7 +9,54 @@ See [architecture](architecture.md), [MVP scope](mvp-scope-and-gap-report.md) an
 This inventory describes available behavior and remaining qualification. It is
 not a claim that every feature or the current main revision has passed acceptance.
 
-## Final integrated verification checkpoint — 2026-10-06
+## Runtime upgrade and integrated verification — 2026-10-06
+
+Main `c5e11759bea895893a91bc6926c78c7282f842a8` incorporates PR 317 and pins
+upstream `19afed2899a2cb72993ca2819481f5fa9d2fb00a`. On that exact source,
+`npm run verify` exited 0: **689 passed, zero failed or skipped**, followed by
+type checking, production build and the 245-file flag-off bundle audit. The test
+phase took 814.6 seconds. Evidence in the verification checkout:
+`artifacts/final-failure-review/runtime-integrated-verify.log`.
+
+The new prepared source passed its admission check, frozen dependency install
+and `npm run agent:test` (21 tests, 82 assertions). Three fresh Kokoro workers
+synthesized valid WAV output in 2,115, 1,684 and 1,902 milliseconds without status
+probes; cancellation during cold startup and recovery in a fresh worker passed.
+Actual first-request browser playback and the synthetic recording → Whisper
+transcript → Kokoro playback journey both passed, including Stop and disconnect.
+These are fresh-process host/browser results, not disk-cache eviction or device
+latency measurements. The browser test totals include agent startup.
+
+Dev on port 5317 now uses this runtime. Before/after snapshots show the same
+owner, agent and 18 conversation identities after restart and voice qualification;
+these snapshots do not hash every existing message. A separate fresh private
+profile passed actual streamed hosted inference, correct synthetic arithmetic,
+owner restoration and exact two-message history after page reload. Its first
+attempt failed at connection before any message; the second attempt passed after
+host startup. This does not establish host process-restart recovery. The isolated
+host was stopped afterward. Evidence remains in the primary checkout under
+`artifacts/final-browser-31fc/runtime-19af-*`.
+
+Hosted run `37485009012` exposed a Linux WebKit environment limitation:
+`notes-audio-journey.spec.ts` failed because `MediaRecorder` is absent, before
+recording. The WebKit storage job is moved to `macos-15`, retaining the complete
+storage inventory and real recording journey. Firefox and Chromium retain Linux
+runners. The unchanged Notes journey passed locally in macOS WebKit (one test,
+15.4 seconds including startup); evidence is `artifacts/final-failure-review/webkit-recorder.log`.
+This runner change needs its own terminal hosted result; the earlier
+run's passing lanes do not qualify the changed workflow. Other lanes were still
+running at this checkpoint. Firefox shard 2 then failed in the same journey:
+its Web Audio context remained suspended despite the user gesture. The Linux
+Firefox jobs now provision PulseAudio with a null output sink so headless audio
+has an actual server; recording still uses the real MediaRecorder. This is a
+candidate environment repair pending the hosted test, not a proven diagnosis.
+No Android build or device acceptance was performed.
+
+The requirement-by-requirement remaining acceptance and external prerequisites
+in [current status](mvp-current-status.md) remain open. Neither these checks nor an
+empty PR queue establish full MVP completion.
+
+## Earlier integrated verification checkpoint — 2026-10-06
 
 `npm run verify` passed at `07d5263982662367516ccc87681c2a76efd8c767`:
 674 tests passed, zero failures or skips, type checking, the production build,
