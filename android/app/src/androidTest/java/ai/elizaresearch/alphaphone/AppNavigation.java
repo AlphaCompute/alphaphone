@@ -25,6 +25,6 @@ final class AppNavigation {
    + "window.dispatchEvent(new Event('alpha-back'));again();};step();})()";
  }
  static String selected(String view) { return "document.documentElement.dataset.activeView==="+JSONObject.quote(view.toLowerCase()); }
- static String composer() { return "document.querySelector('button[aria-label=\"Open conversation\"]')?.parentElement.querySelector('input') || document.querySelector('input[aria-label=\"Message Alpha\"], input[aria-label=\"Message alpha\"]')"; }
+ static String composer() { return "[...document.querySelectorAll('textarea[data-alpha-composer]')].find(e=>!e.disabled&&e.getClientRects().length&&!e.closest('[inert], [aria-hidden=\"true\"]'))"; }
  static String type() { return "document.querySelector('button[aria-label=\"Type\"]')?.click()"; }
 }

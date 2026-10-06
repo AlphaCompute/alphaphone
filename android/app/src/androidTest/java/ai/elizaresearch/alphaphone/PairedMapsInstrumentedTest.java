@@ -34,7 +34,7 @@ public final class PairedMapsInstrumentedTest {
   until("document.querySelector('[data-alpha-layer=conversation]')?.getAttribute('aria-hidden')==='true'",30000);
   until(AppNavigation.selected("Maps"),30000);
  }
- private void send(String prompt)throws Exception{NotesSecureFixture.evaluate(AppNavigation.type());until(AppNavigation.composer(),15000);NotesSecureFixture.evaluate("(()=>{const e=("+AppNavigation.composer()+");Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(e,"+JSONObject.quote(prompt)+");e.dispatchEvent(new Event('input',{bubbles:true}));})()");click("Send");}
+ private void send(String prompt)throws Exception{NotesSecureFixture.evaluate(AppNavigation.type());until(AppNavigation.composer(),15000);NotesSecureFixture.evaluate("(()=>{const e=("+AppNavigation.composer()+");Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value').set.call(e,"+JSONObject.quote(prompt)+");e.dispatchEvent(new Event('input',{bubbles:true}));})()");click("Send");}
 
  private static final String APPROVAL="[...document.querySelectorAll('button')].find(e=>e.textContent.includes('Approve: maps read selected')&&e.getClientRects().length&&!e.disabled)";
  private void input(String label,String value)throws Exception{

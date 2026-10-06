@@ -25,7 +25,7 @@ public class RemoteAgentInstrumentedTest {
  }
  private void message(String prompt,String expected)throws Exception{
   WebViewTestDriver.evaluate(AppNavigation.type());until(AppNavigation.composer(),15000);
-  WebViewTestDriver.evaluate("(()=>{const e=("+AppNavigation.composer()+");Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(e,"+JSONObject.quote(prompt)+");e.dispatchEvent(new Event('input',{bubbles:true}));})()");
+  WebViewTestDriver.evaluate("(()=>{const e=("+AppNavigation.composer()+");Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value').set.call(e,"+JSONObject.quote(prompt)+");e.dispatchEvent(new Event('input',{bubbles:true}));})()");
   WebViewTestDriver.evaluate("document.querySelector('button[aria-label=Send]').click()");
   until("[...document.querySelectorAll('[data-screen] *')].some(e=>e.children.length===0&&e.textContent.trim()==="+JSONObject.quote(expected)+")",120000);
  }

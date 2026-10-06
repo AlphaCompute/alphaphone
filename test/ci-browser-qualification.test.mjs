@@ -5,6 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
+import { videoMethods } from '../scripts/stock-video-evidence.mjs';
 import { candidate } from '../scripts/prepare-ci-webview.mjs';
 const smoke = path.resolve('scripts/android-smoke.mjs');
 const app = 'ai.elizaresearch.alphaphone';
@@ -33,6 +34,12 @@ function exercise(mode) {
    const [cls,method] = selector.split('#');
    return [`INSTRUMENTATION_STATUS: class=${app}.${cls}`, `INSTRUMENTATION_STATUS: test=${method}`, `INSTRUMENTATION_STATUS_CODE: ${code}`];
   });
+  fs.mkdirSync(path.join(dir, 'test-results/stock-video'), {recursive:true});
+  const videoOutput = [...videoMethods.flatMap(method => emit([[`VideoInstrumentedTest#${method}`,1],[`VideoInstrumentedTest#${method}`,0]])), 'OK (2 tests)'].join('\n');
+  const stockReceipt = {status:'passed',serial:'emulator-5554',runId:'fixture-run',runAttempt:'1',provider:{package:'com.android.webview',version:'124.0.6367.219',sha256:'a'.repeat(64)},cleanupVerified:true,artifactHashes:manifest,variants:Object.fromEntries(['standalone','launcher'].map(v=>[v,{instrumentation:videoOutput}]))};
+  if (mode === 'stock-stale') stockReceipt.runId = 'older-run';
+  if (mode === 'stock-wrong-apk') stockReceipt.artifactHashes = {...manifest,'launcher-debug.apk':'b'.repeat(64)};
+  if (mode !== 'stock-missing') fs.writeFileSync(path.join(dir,'test-results/stock-video/result.json'),JSON.stringify(stockReceipt));
   // A shell-only fake avoids launching a new Node runtime for every readback.
   const fake = `#!/bin/sh
 shift 2
@@ -65,7 +72,7 @@ case "$*" in
 esac
 `;
   const adb = path.join(dir, 'sdk/platform-tools/adb'); fs.writeFileSync(adb, fake, { mode: 0o755 });
-  const result = spawnSync(process.execPath, [smoke], { cwd: dir, env: { ...process.env, ANDROID_HOME: path.join(dir, 'sdk'), ANDROID_SDK_ROOT: path.join(dir, 'sdk'), JAVA_HOME: dir, ANDROID_SERIAL: 'emulator-5554', GITHUB_ACTIONS: 'true', RUNNER_ENVIRONMENT: 'github-hosted', ALPHA_BUILD_ARCHIVE: path.join(dir, 'bundle'), ALPHA_SMOKE_RESULTS: path.join(dir, 'output') }, encoding: 'utf8', timeout: 20000 });
+  const result = spawnSync(process.execPath, [smoke], { cwd: dir, env: { ...process.env, ANDROID_HOME: path.join(dir, 'sdk'), ANDROID_SDK_ROOT: path.join(dir, 'sdk'), JAVA_HOME: dir, ANDROID_SERIAL: 'emulator-5554', GITHUB_ACTIONS: 'true', GITHUB_RUN_ID: 'fixture-run', GITHUB_RUN_ATTEMPT: '1', RUNNER_ENVIRONMENT: 'github-hosted', ALPHA_BUILD_ARCHIVE: path.join(dir, 'bundle'), ALPHA_SMOKE_RESULTS: path.join(dir, 'output') }, encoding: 'utf8', timeout: 20000 });
   assert.equal(result.signal, null, result.stderr);
   const phases = ['standalone', 'launcher'].map(v => {const file=path.join(dir, `output/${v}-provider-qualification/result.json`);return fs.existsSync(file)?JSON.parse(fs.readFileSync(file)):null;});
   const summary = JSON.parse(fs.readFileSync(path.join(dir, 'output/result.json')));
@@ -74,11 +81,13 @@ esac
   return { code: result.status, stderr: result.stderr, phases, summary, commands, diagnostics };
  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 }
-test('smoke invokes four actual opt-in classes before each unchanged ordinary suite', () => {
+test('smoke requires stock video evidence before qualifying the complementary browser suite', () => {
  const r=exercise('pass'); assert.equal(r.code,0,r.stderr);assert.equal(r.summary.status,'passed');
  assert.deepEqual(r.phases.map(p=>p.passed),[true,true]);
  for(const p of r.phases){assert.equal(p.cases.length,4);assert.deepEqual(p.providerBefore,p.providerAfter);assert.equal(Object.keys(p.artifactHashes).length,4);}
  const runs=r.commands.filter(a=>a.includes('instrument'));assert.equal(runs.length,4);assert.deepEqual(runs.map(a=>a.includes('browserIsolatedReading')),[true,false,true,false]);assert.deepEqual(runs.map(a=>a.includes('browserSensitiveReading')),[true,false,true,false]);assert.deepEqual(runs.map(a=>a.includes('browserShareLive')),[true,false,true,false]);assert.deepEqual(runs.map(a=>a.includes('clockHandoff')),[false,true,false,true]);assert.ok(runs.every(a=>!a.includes('realClock')&&!a.includes('clockExclusive')));
+ assert.deepEqual(runs.map(a=>a.includes('notClass')),[false,true,false,true]);
+ assert.ok(runs.filter(a=>a.includes('notClass')).every(a=>a[a.indexOf('notClass')+1] === `${app}.VideoInstrumentedTest`));
 });
 for(const mode of ['skip','skip-sensitive','duplicate','wrong-count'])test(`qualification rejects ${mode} while retaining both variant outcomes`,()=>{
  const r=exercise(mode);assert.notEqual(r.code,0);assert.equal(r.summary.status,'failed');assert.deepEqual(r.phases.map(p=>p.passed),[false,false]);
@@ -100,4 +109,9 @@ test('persistently missing hierarchy cannot pass the renderer gate',()=>{
  const r=exercise('hierarchy-missing');assert.notEqual(r.code,0);assert.equal(r.summary.status,'failed');
  assert.match(r.summary.error,/did not render/);
  assert.equal(r.commands.filter(a=>a.includes('uiautomator')).length,10);
+});
+
+for (const mode of ['stock-missing', 'stock-stale', 'stock-wrong-apk']) test(`smoke refuses missing or mismatched stock video proof: ${mode}`, () => {
+ const r = exercise(mode); assert.notEqual(r.code, 0); assert.equal(r.summary.status, 'failed');
+ assert.equal(r.commands.filter(a => a.includes('instrument')).length, 0);
 });

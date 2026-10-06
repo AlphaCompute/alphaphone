@@ -101,7 +101,7 @@ public class LiveAgentInstrumentedTest {
    waitFor(scenario,"document.documentElement.dataset.activeView",10000);navigate(scenario,"Calendar");
    assertNull("No reminder before model request",findReminder(nativeReminders(scenario),title));
    eval(scenario,AppNavigation.type());waitFor(scenario,AppNavigation.composer(),10000);
-   eval(scenario,"(()=>{const e=("+AppNavigation.composer()+");Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(e,"+JSONObject.quote(prompt)+");e.dispatchEvent(new Event('input',{bubbles:true}));})()");
+   eval(scenario,"(()=>{const e=("+AppNavigation.composer()+");Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value').set.call(e,"+JSONObject.quote(prompt)+");e.dispatchEvent(new Event('input',{bubbles:true}));})()");
    waitFor(scenario,"("+AppNavigation.composer()+").value==="+JSONObject.quote(prompt),10000);
    eval(scenario,"document.querySelector('button[aria-label=Send]').click()");
    String proposal="[...document.querySelectorAll('[data-screen] button')].find(b=>b.textContent.includes("+JSONObject.quote("Approve: Create reminder: "+title)+"))";

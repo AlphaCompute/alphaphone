@@ -1,3 +1,4 @@
+import { requireStockVideoEvidence } from "./stock-video-evidence.mjs";
 import { smokeCaseCounts } from "./smoke-case-counts.mjs";
 import { requireFixtureDisplay } from "../vendor/eliza/packages/app/scripts/mobile/android/hosted-fixture/ci-emulator-display.mjs";
 import { candidate as qualifiedProvider } from "./prepare-ci-webview.mjs";
@@ -84,6 +85,11 @@ function providerIdentity() {
 }
 let failure;
 try {
+  if (process.env.GITHUB_ACTIONS === "true") {
+    requireStockVideoEvidence(JSON.parse(fs.readFileSync("test-results/stock-video/result.json")), {
+      serial, runId: process.env.GITHUB_RUN_ID, runAttempt: process.env.GITHUB_RUN_ATTEMPT, artifactHashes, appId: identity.appId,
+    });
+  }
   for (const variant of ["standalone", "launcher"]) {
     run("install", "-r", archive ? path.join(archive, `${variant}-debug.apk`) : `artifacts/${variant}-debug.apk`);
     run(
@@ -154,7 +160,9 @@ try {
     try {
       instrumentation = run(
         "shell", "am", "instrument", "-w", "-r",
-        ...(interceptedClockRequired ? ["-e", "clockHandoff", "1"] : []),
+        // Both video cases already passed on the same APKs under stock WebView.
+        // The separate development provider lacks the MP4 stream codec.
+        ...(interceptedClockRequired ? ["-e", "clockHandoff", "1", "-e", "notClass", `${identity.appId}.VideoInstrumentedTest`] : []),
         `${identity.appId}.test/androidx.test.runner.AndroidJUnitRunner`,
       );
       fs.writeFileSync(`${output}/${variant}-instrumentation.txt`, instrumentation);

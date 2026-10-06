@@ -10,7 +10,7 @@ test('calendar preferences synchronize across tabs and failed writes preserve sa
  await open(page);const other=await context.newPage();await open(other);const toggle=other.getByRole('button',{name:'Show Browser calendar calendar',exact:true});await page.getByRole('button',{name:'Show Browser calendar calendar',exact:true}).click();await expect(toggle).toHaveAttribute('aria-pressed','false');await other.evaluate(()=>{const original=IDBObjectStore.prototype.put;IDBObjectStore.prototype.put=function(value,key){if(key==='alpha.browser.calendar.v1')throw Error('Full');return original.call(this,value,key);};});await toggle.click();await expect(other.getByText('Calendar settings could not be saved. Try again.',{exact:true})).toBeVisible();await expect(toggle).toHaveAttribute('aria-pressed','false');expect(await other.evaluate(async ()=>JSON.parse((await (await import('/src/browser/calendar-store.ts')).calendarDocument.readRaw())!).preferences.visible)).toBe(false);await other.close();
 });
 
-for(const date of ['2026-02-15T12:00:00Z','2026-08-15T12:00:00Z'])test(`month toggle stays reachable for pointer and keyboard at large text: ${date}`,async({page},info)=>{
+for(const date of ['2026-02-15T12:00:00Z','2026-08-15T12:00:00Z'])test(`month dialog closes and restores the toggle for pointer and keyboard at large text: ${date}`,async({page},info)=>{
  await page.setViewportSize({width:360,height:640});await page.clock.install({time:new Date(date)});await open(page);
  await page.evaluate(async()=>{const {BrowserDevice}=await import('/src/browser/device.ts');await BrowserDevice.prototype.setTextScale({percent:150});});
  const toggle=page.getByRole('button',{name:'Month view',exact:true}),dialog=page.getByRole('dialog',{name:'Choose calendar date'});

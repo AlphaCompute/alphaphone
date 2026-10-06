@@ -29,7 +29,7 @@ public class DeviceActionInstrumentedTest {
  }
  private void propose(String prompt,String label)throws Exception {
   NotesSecureFixture.evaluate(AppNavigation.type());until(AppNavigation.composer(),15000);
-  NotesSecureFixture.evaluate("(()=>{const e=("+AppNavigation.composer()+");Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(e,"+JSONObject.quote(prompt)+");e.dispatchEvent(new Event('input',{bubbles:true}));})()");
+  NotesSecureFixture.evaluate("(()=>{const e=("+AppNavigation.composer()+");Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value').set.call(e,"+JSONObject.quote(prompt)+");e.dispatchEvent(new Event('input',{bubbles:true}));})()");
   NotesSecureFixture.evaluate("document.querySelector('button[aria-label=Send]').click()");
   until(approval(label),180000);
  }
@@ -66,7 +66,7 @@ public class DeviceActionInstrumentedTest {
    assertEquals("0",NotesSecureFixture.evaluate("("+notes+").length"));
    NotesSecureFixture.evaluate(AppNavigation.type());until(AppNavigation.composer(),15000);
    String prompt="Use PROPOSE_DEVICE_ACTION to propose exactly one create_note operation for this enrolled phone, with title "+JSONObject.quote(title)+" and body "+JSONObject.quote(body)+". Wait for explicit device approval; do not claim the note is already saved.";
-   NotesSecureFixture.evaluate("(()=>{const e=("+AppNavigation.composer()+");Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(e,"+JSONObject.quote(prompt)+");e.dispatchEvent(new Event('input',{bubbles:true}));})()");
+   NotesSecureFixture.evaluate("(()=>{const e=("+AppNavigation.composer()+");Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value').set.call(e,"+JSONObject.quote(prompt)+");e.dispatchEvent(new Event('input',{bubbles:true}));})()");
    NotesSecureFixture.evaluate("document.querySelector('button[aria-label=Send]').click()");
    String approval="[...document.querySelectorAll('button')].find(e=>e.textContent.includes('Approve: create note')&&e.getClientRects().length)";
    until(approval,180000);assertEquals("No effect before explicit approval","0",NotesSecureFixture.evaluate("("+notes+").length"));
