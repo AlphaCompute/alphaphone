@@ -9,6 +9,38 @@ See [architecture](architecture.md), [MVP scope](mvp-scope-and-gap-report.md) an
 This inventory describes available behavior and remaining qualification. It is
 not a claim that every feature or the current main revision has passed acceptance.
 
+## Final runtime pin and browser speech setup — 2026-10-06
+
+PR 351 merged as `ffa72bcc22ae7990d98bcfd16434db834e0e3c38`, adopting
+`3cca1ee4f1f1e4cd417de7272ba5195263dcb63b`. Its six-file upstream delta adds
+approved-draft spend accounting and account-bound invoice projection, plus an
+upstream Home fixture correction. Alpha's renderer, shared Files/Maps/Notes
+sources and Kokoro worker/service are unchanged. The reviewed pin and notices
+are synchronized in both checkouts.
+
+The admitted prepared source passed its frozen dependency installation, all
+**52 native-host tests**, and **21 resident-agent tests / 82 assertions**. The
+compiler test passed in 13.0 seconds. Before the upgrade, the unchanged compiler
+on `cc682e9a` also passed its scoped retry in 15.5 seconds, and both previously
+timed-out native-runner checks passed their retry. These results do not erase
+the earlier failed full verification under load.
+
+The live browser dev host on port 5317 now runs `3cca1ee4`. A fresh-start browser
+campaign exposed a setup race: the real recording journey connected before the
+agent was running, whereas the first-playback journey already awaited agent
+readiness. Both now use the same bounded readiness check before connecting,
+without querying TTS status or changing speech deadlines. After another fresh
+host restart, all six recording/speech tests passed, including actual synthetic
+recording, Whisper transcription, Kokoro playback, Stop and disconnect. Owner,
+agent and all 18 conversation IDs matched the pre-restart snapshot.
+
+Evidence: `artifacts/final-failure-review/runtime-3cca-agent-tests.log` in the
+verification checkout and `artifacts/kokoro-startup-fix/browser-3cca-recheck.log`
+plus profile snapshots in the primary checkout. The original setup failure is
+retained in `browser-3cca.log`. Full consumer verification is still running at
+the frozen `ffa72bcc` source; hosted browser run `37496422496` is also pending
+completion. No Android build or physical-device acceptance was performed.
+
 ## Audio CI and reminder creation follow-up — 2026-10-06
 
 PR 347 merged as `f628f222`, and PR 348 merged as `cf8f07f4`. The latter

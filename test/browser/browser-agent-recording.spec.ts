@@ -3,7 +3,12 @@ import {readFileSync} from 'node:fs';
 
 test.beforeEach(async({page})=>{await page.addInitScript(()=>localStorage.setItem('alpha.connection.selection.v1',JSON.stringify({kind:'offline'})));});
 async function attach(page:any,real=false){
+ // Wait for agent boot before connecting; this must not warm speech with a status probe.
+ if(real)await expect.poll(async()=>{try{return (await page.request.get('/',{timeout:2000})).ok();}catch{return false;}},{timeout:60000}).toBe(true);
  await page.goto('/');
+ if(real)await expect.poll(()=>page.evaluate(async()=>{
+  try{const response=await fetch('/__alpha-local-agent',{method:'POST',headers:{'Content-Type':'application/json','X-Alpha-Local-Agent':'1'},body:JSON.stringify({path:'/api/agents',method:'GET'})});const envelope=await response.json();const agents=JSON.parse(envelope.body||'{}').agents;return envelope.status===200&&agents?.length===1&&agents[0].status==='running';}catch{return false;}
+ }),{timeout:90000}).toBe(true);
  await page.evaluate(async(real:boolean)=>{
   const {LocalAgentProtocol}=await import('/src/runtime/local-agent.ts');
   const {connectionController}=await import('/src/runtime/connection-ui.tsx');
@@ -95,12 +100,6 @@ test('first host speech request plays without a readiness probe',async({page})=>
  test.setTimeout(150000);
  const speechRequests:string[]=[];
  page.on('request',request=>{if(request.url().endsWith('/__alpha-local-agent')){const input=request.postDataJSON();if(input?.path?.startsWith('/api/tts/'))speechRequests.push(input.path);}});
- // Agent boot is separate from speech readiness; never call TTS status here.
- await expect.poll(async()=>{try{return (await page.request.get('/',{timeout:2000})).ok();}catch{return false;}},{timeout:60000}).toBe(true);
- await page.goto('/');
- await expect.poll(()=>page.evaluate(async()=>{
-  try{const response=await fetch('/__alpha-local-agent',{method:'POST',headers:{'Content-Type':'application/json','X-Alpha-Local-Agent':'1'},body:JSON.stringify({path:'/api/agents',method:'GET'})});const envelope=await response.json();const agents=JSON.parse(envelope.body||'{}').agents;return envelope.status===200&&agents?.length===1&&agents[0].status==='running';}catch{return false;}
- }),{timeout:90000}).toBe(true);
  await attach(page,true);
  const result=await page.evaluate(async()=>{
   const {registerPlugin}=await import('/src/platform-plugins.ts');
