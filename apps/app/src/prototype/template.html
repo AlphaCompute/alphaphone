@@ -1798,8 +1798,9 @@
   </sc-if>
 
   <sc-if value="{{photos.emptyOpen}}" hint-placeholder-val="{{false}}">
-    <button aria-label="Close" onClick="{{photos.closeSheet}}" style="position: absolute; inset: 0; z-index: 20; background: var(--scrim)"></button>
-    <div class="enter" style="position: absolute; left: 0; right: 0; bottom: 0; z-index: 21; background: var(--s1); color: var(--fg); border-radius: 28px 28px 0 0; padding: 12px 24px 44px">
+    <div ref="{{photos.emptyModal}}" class="photo-delete-modal" style="position:absolute;inset:0;z-index:20">
+    <button aria-hidden="true" tabindex="-1" aria-label="Close" onClick="{{photos.closeSheet}}" style="position: absolute; inset: 0; z-index: 20; background: var(--scrim)"></button>
+    <div role="dialog" aria-modal="true" aria-label="Delete photos forever" class="enter" style="position: absolute; left: 0; right: 0; bottom: 0; z-index: 21; max-height:calc(100% - 44px);overflow:auto;box-sizing:border-box; background: var(--s1); color: var(--fg); border-radius: 28px 28px 0 0; padding: 12px 24px 44px">
       <div style="display: flex; justify-content: center; padding-bottom: 14px"><span style="width: 40px; height: 4px; border-radius: 2px; background: var(--mut); opacity: .45"></span></div>
       <div class="serif" style="font-size: 26px; line-height: 1.15">Delete forever?</div>
       <div style="font-size: 14px; color: var(--mut); margin-top: 6px">{{photos.trashCount}}</div>
@@ -1807,6 +1808,7 @@
         <button aria-label="Cancel" disabled="{{photos.mutationBusy}}" onClick="{{photos.closeSheet}}" style="flex: 1; height: 52px; border-radius: 26px; background: var(--s2); font-size: 15px; font-weight: 600; display: flex; align-items: center; justify-content: center">Cancel</button>
         <button aria-label="Delete forever" disabled="{{photos.mutationBusy}}" onClick="{{photos.emptyNow}}" style="flex: 1; height: 52px; border-radius: 26px; background: var(--fg); color: var(--bg); font-size: 15px; font-weight: 600; display: flex; align-items: center; justify-content: center; gap: 8px"><svg class="i" viewBox="0 0 24 24" style="width: 18px; height: 18px"><path d="{{ic.trash}}"></path></svg>Delete</button>
       </div>
+    </div>
     </div>
   </sc-if>
 </div>
@@ -1836,7 +1838,7 @@
       </svg>
     </div>
     <sc-for list="{{maps.labels}}" as="lb" hint-placeholder-count="4">
-      <span style="position: absolute; left: {{lb.l}}px; top: {{lb.top}}px; white-space: nowrap; pointer-events: none; transition: left .6s cubic-bezier(.19,1,.22,1), top .6s cubic-bezier(.19,1,.22,1); {{lb.css}}">{{lb.t}}</span>
+      <span data-alpha-map-label style="position: absolute; left: {{lb.l}}px; top: {{lb.top}}px; white-space: nowrap; pointer-events: none; transition: left .6s cubic-bezier(.19,1,.22,1), top .6s cubic-bezier(.19,1,.22,1); {{lb.css}}">{{lb.t}}</span>
     </sc-for>
     <sc-for list="{{maps.pins}}" as="pn" hint-placeholder-count="3">
       <button aria-label="{{pn.name}}" onClick="{{pn.tap}}" style="position: absolute; left: {{pn.l}}px; top: {{pn.t}}px; width: {{pn.sz}}px; height: {{pn.sz}}px; margin: {{pn.off}}px 0 0 {{pn.off}}px; border-radius: 50%; display: flex; align-items: center; justify-content: center; transition: left .6s cubic-bezier(.19,1,.22,1), top .6s cubic-bezier(.19,1,.22,1); {{pn.css}}"><svg class="i" viewBox="0 0 24 24" style="width: {{pn.isz}}px; height: {{pn.isz}}px"><path d="{{pn.d}}"></path></svg></button>

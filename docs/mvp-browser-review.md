@@ -9,6 +9,34 @@ See [architecture](architecture.md), [MVP scope](mvp-scope-and-gap-report.md) an
 This inventory describes available behavior and remaining qualification. It is
 not a claim that every feature or the current main revision has passed acceptance.
 
+## Photos deletion review and illustrated-map labels — 2026-10-05
+
+Photos' permanent-deletion review previously appeared as a sheet without modal
+semantics or keyboard ownership. It now has a named dialog, initial Cancel focus,
+contained Tab/Shift+Tab navigation, Escape/Back cancellation and focus return.
+The covered album controls are inert and the assistant dock is hidden. Its
+bounded scroll area keeps actions reachable on a 420px-high viewport. The
+existing prepared-deletion identity and explicit confirmation remain unchanged.
+
+All 14 owning Chromium checks passed: the four new light/dark and compact/full
+height deletion journeys, plus the existing capture, album-management and batch
+mutation/recovery cases. Only fresh test-created images were deleted. The compact
+dark review was visually inspected. Type checking passed. Evidence:
+`artifacts/design-final-review/photo-review.log` and `types.log`.
+
+The illustrated map's small labels were faint in both themes. They now use a
+higher-contrast foreground and an opaque terrain-colored backing so intersecting
+roads cannot change their text background. Six root/route/navigation checks
+passed in light and dark themes, measuring at least 4.5:1 from rendered colors;
+both root captures were inspected. This qualifies the app-owned illustration,
+not external map tiles, licensed provider data or physical navigation. Evidence:
+`artifacts/design-final-review/maps.log`.
+
+The manual review also inspected Photos album/search, Calendar invitation,
+Browser article and failed-workflow captures. These observations do not establish
+complete contrast or screen-reader acceptance; the unresolved automated findings
+and external requirements in the current status matrix remain open.
+
 ## Cold Kokoro requalification — 2026-10-05
 
 The former worker startup retirement failure is resolved in the currently pinned
