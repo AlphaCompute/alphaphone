@@ -80,7 +80,7 @@ public class AllViewAgentContextInstrumentedTest {
   }else WebViewTestDriver.evaluate(AppNavigation.type());
   until(AppNavigation.composer(),15000);
   String prompt="Context flow fixture "+marker+" case "+index+". Do not use tools or perform actions. What is "+(base+index)+" plus 1? Reply with only the integer.";
-  WebViewTestDriver.evaluate("(()=>{const e=("+AppNavigation.composer()+");Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(e,"+JSONObject.quote(prompt)+");e.dispatchEvent(new Event('input',{bubbles:true}));})()");
+  WebViewTestDriver.evaluate("(()=>{const e=("+AppNavigation.composer()+");Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value').set.call(e,"+JSONObject.quote(prompt)+");e.dispatchEvent(new Event('input',{bubbles:true}));})()");
   until("document.querySelector('button[aria-label=Send]')&&!document.querySelector('button[aria-label=Send]').disabled",15000);
   String errors="[...document.querySelectorAll('[data-screen] *')].filter(e=>e.children.length===0&&['The agent provider is rate-limiting requests. Wait before sending again. Alpha Phone did not retry your message.','The agent could not complete this response.'].includes(e.textContent.trim())).length";
   String errorsBefore=WebViewTestDriver.evaluate(errors);
