@@ -9,6 +9,32 @@ See [architecture](architecture.md), [MVP scope](mvp-scope-and-gap-report.md) an
 This inventory describes available behavior and remaining qualification. It is
 not a claim that every feature or the current main revision has passed acceptance.
 
+## Integrated design review — 2026-10-06
+
+At `7d3e91e9771611effbfc85b89cd70fee35fff5d9`, the refreshed accessibility
+scan covered 86 fixture states (43 root/subviews in light and dark themes) at
+412 × 915. It reported zero automated violations. Forty states retained
+`color-contrast` incomplete results: the checker could not determine backgrounds
+across gradients, photographs, overlap or short glyph/count content. These are
+not automatic passes or confirmed defects.
+
+All 40 corresponding current-source screenshots were then inspected, covering
+Inbox message detail, Calendar event/invitation, Browser booking/agent overlay,
+Camera photo/video/scan, Photos root/viewer/albums/search, Maps root/search/place/
+route/navigation, Notes and Workflows success/failure. No new visible contrast
+defect was identified in those captures. The dark-backed Camera controls, Photos
+badges/viewer controls and illustrated-map label fixes were present. Their owning
+rendered-color checks provide additional measured evidence; visual inspection
+does not establish every pixel's contrast or arbitrary third-party image/page
+readability. Off-screen content, physical screen-reader use and device/user
+acceptance remain separate requirements.
+
+Evidence in the verification checkout: `artifacts/final-failure-review/`
+contains `design-audit.json`, `design-summary.json`, `capture-incomplete.log`,
+40 `incomplete-*.png` captures and ten labelled `contact-*.png` sheets. These
+are mock fixture captures and do not demonstrate real account/provider actions.
+
+
 ## Photos image-overlay contrast — 2026-10-06
 
 Photos duration labels and favorite badges now have a translucent dark backing,
