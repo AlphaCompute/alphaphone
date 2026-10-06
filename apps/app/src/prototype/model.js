@@ -1385,7 +1385,7 @@ registerView("calendar", {
         var inM = gd.getMonth() === mBase.getMonth();
         var has = on(off).length > 0;
         var cs = off === 0 ? "background:var(--acc);color:#fff" : (off === sel ? "box-shadow:inset 0 0 0 1.5px var(--fg)" : "");
-        mdays.push({ n: gd.getDate(), cs: cs + (inM ? "" : ";opacity:.35"), dot: has ? (off === 0 ? "var(--acct)" : "var(--fg)") : "transparent", pick: function () { set({ day: off, month: null }); }, label: DAYS[gd.getDay()] + " " + MONS[gd.getMonth()] + " " + gd.getDate() });
+        mdays.push({ n: gd.getDate(), cs: cs + (inM || off === 0 ? "" : ";color:var(--mut)"), dot: has ? (off === 0 ? "var(--acct)" : "var(--fg)") : "transparent", pick: function () { set({ day: off, month: null }); }, label: DAYS[gd.getDay()] + " " + MONS[gd.getMonth()] + " " + gd.getDate() });
       })(gd);
     }
     var lastRow = mdays.slice(35).every(function (d) { return d.cs.indexOf("opacity") >= 0; });
@@ -1928,7 +1928,7 @@ registerView("camera", {
       showZoom: !isScan && !front,
       zooms: CAM_ZOOM.map(function (z, i) {
         var on = st.zoom === i;
-        return { label: z[0], aria: "Zoom " + z[0].replace("×", "") + "x", css: on ? "background:#ffffff;color:#000000;width:40px;height:40px;font-size:13px" : "background:rgba(0,0,0,.4);color:#ffffff;width:34px;height:34px;font-size:12px", pick: function () { api.set({ zoom: i }); } };
+        return { label: z[0], aria: "Zoom " + z[0].replace("×", "") + "x", css: on ? "background:#ffffff;color:#000000;width:40px;height:40px;font-size:13px" : "background:rgba(0,0,0,.65);color:#ffffff;width:34px;height:34px;font-size:12px", pick: function () { api.set({ zoom: i }); } };
       }),
       scanFound: isScan && st.found, scanning: isScan && !st.found,
       posterDay: poster.short,
@@ -2664,8 +2664,8 @@ registerView("maps", {
   render: function (st, api) {
     if (st.query && mapsIsAddr(st.query) && !st.place && !st.directions) api.later(function () { var s0 = api.get("maps"); if (s0.query && mapsIsAddr(s0.query) && !s0.place) api.set({ place: "addr:" + s0.query.trim(), query: null, pan: null }); }, 0);
     var dark = api.theme === "dark" || st.nav;
-    var C = dark ? { land: "#101010", minor: "#1C1C1C", major: "#282828", fwy: "#333333", fwyE: "#1A1A1A", water: "#0A1022", park: "#0D1A12", rwy: "#222222", route: "#4A58FF", done: "#3A3A3A", halo: "#101010", label: "#7A7A7A" }
-                 : { land: "#EFEFEC", minor: "#FFFFFF", major: "#FFFFFF", fwy: "#FFFFFF", fwyE: "#D9D9D4", water: "#D3DCEA", park: "#DCE6D4", rwy: "#DADAD6", route: "#0000FF", done: "#B8B8B8", halo: "#EFEFEC", label: "#8A8A86" };
+    var C = dark ? { land: "#101010", minor: "#1C1C1C", major: "#282828", fwy: "#333333", fwyE: "#1A1A1A", water: "#0A1022", park: "#0D1A12", rwy: "#222222", route: "#4A58FF", done: "#3A3A3A", halo: "#101010", label: "#AAAAAA" }
+                 : { land: "#EFEFEC", minor: "#FFFFFF", major: "#FFFFFF", fwy: "#FFFFFF", fwyE: "#D9D9D4", water: "#D3DCEA", park: "#DCE6D4", rwy: "#DADAD6", route: "#0000FF", done: "#B8B8B8", halo: "#EFEFEC", label: "#555555" };
     var mi = mapsModeI(st.mode);
     var place = mapsPlace(st.place);
     var dst = mapsPlace(st.directions);
@@ -2721,7 +2721,7 @@ registerView("maps", {
         tap: function () { if (tapGuard() || mode === "nav" || mode === "dir") return; api.set({ place: id, pan: null }); } };
     });
     var me = navPt ? scr(navPt.x, navPt.y) : scr(MAPS_ME[0], MAPS_ME[1]);
-    var labels = s < 0.62 ? [] : MAPS_LABELS.filter(function (L) { return L.big || !(mode === "dir" || mode === "nav"); }).map(function (L) { var o = scr(L.x, L.y); return { t: L.t, l: o.l, top: o.t, css: "transform: translate(-50%,-50%) rotate(" + (L.r || 0) + "deg); font-size: " + (L.big ? 13 : 11) + "px; " + (L.big ? "letter-spacing: .18em; text-transform: uppercase; font-weight: 600;" : "font-weight: 500;") + " color: " + C.label + "; text-shadow: 0 0 3px " + C.halo + ", 0 0 3px " + C.halo }; });
+    var labels = s < 0.62 ? [] : MAPS_LABELS.filter(function (L) { return L.big || !(mode === "dir" || mode === "nav"); }).map(function (L) { var o = scr(L.x, L.y); return { t: L.t, l: o.l, top: o.t, css: "transform: translate(-50%,-50%) rotate(" + (L.r || 0) + "deg); font-size: " + (L.big ? 13 : 11) + "px; " + (L.big ? "letter-spacing: .18em; text-transform: uppercase; font-weight: 600;" : "font-weight: 500;") + " color: " + C.label + "; background: " + C.halo + "; padding:0 2px; border-radius:2px; text-shadow: 0 0 3px " + C.halo + ", 0 0 3px " + C.halo }; });
 
     /* map pan (release-based) */
     var mapDown = function (e) {
@@ -4319,7 +4319,7 @@ registerView("workflows", {
     var cards = list.map(function (f) {
       var last = f.runs && f.runs[0];
       var failed = f.on && last && last.status === "fail";
-      return { name: f.name, short: failed ? "Failed · " + last.sum : f.short, failed: failed, on: f.on, track: api.track(f.on), kx: api.kx(f.on), dim: f.on ? "" : "opacity:.55",
+      return { name: f.name, short: failed ? "Failed · " + last.sum : f.short, failed: failed, on: f.on, track: api.track(f.on), kx: api.kx(f.on), dim: "",
         open: function () { set({ open: f.id, run: null }); }, toggle: toggle(f) };
     });
 

@@ -9,6 +9,59 @@ See [architecture](architecture.md), [MVP scope](mvp-scope-and-gap-report.md) an
 This inventory describes available behavior and remaining qualification. It is
 not a claim that every feature or the current main revision has passed acceptance.
 
+## Photos deletion review and illustrated-map labels — 2026-10-05
+
+Photos' permanent-deletion review previously appeared as a sheet without modal
+semantics or keyboard ownership. It now has a named dialog, initial Cancel focus,
+contained Tab/Shift+Tab navigation, Escape/Back cancellation and focus return.
+The covered album controls are inert and the assistant dock is hidden. Its
+bounded scroll area keeps actions reachable on a 420px-high viewport. The
+existing prepared-deletion identity and explicit confirmation remain unchanged.
+
+All 14 owning Chromium checks passed: the four new light/dark and compact/full
+height deletion journeys, plus the existing capture, album-management and batch
+mutation/recovery cases. Only fresh test-created images were deleted. The compact
+dark review was visually inspected. Type checking passed. Evidence:
+`artifacts/design-final-review/photo-review.log` and `types.log`.
+
+The illustrated map's small labels were faint in both themes. They now use a
+higher-contrast foreground and an opaque terrain-colored backing so intersecting
+roads cannot change their text background. Six root/route/navigation checks
+passed in light and dark themes, measuring at least 4.5:1 from rendered colors;
+both root captures were inspected. This qualifies the app-owned illustration,
+not external map tiles, licensed provider data or physical navigation. Evidence:
+`artifacts/design-final-review/maps.log`.
+
+The manual review also inspected Photos album/search, Calendar invitation,
+Browser article and failed-workflow captures. These observations do not establish
+complete contrast or screen-reader acceptance; the unresolved automated findings
+and external requirements in the current status matrix remain open.
+
+## Cold Kokoro requalification — 2026-10-05
+
+The former worker startup retirement failure is resolved in the currently pinned
+upstream `95924e90`, which includes `4f28daecf2f`. Cold initialization is owned by
+the requesting lifecycle; it no longer has an independent worker-retirement timer.
+The existing synthesis/transport bounds and cancellation remain enforced. No new
+runtime patch or timeout increase was needed for this requalification.
+
+The new `npm run agent:test-cold-kokoro` check verifies the admitted source and
+installed assets, starts three fresh workers without initialization/status probes,
+and checks actual WAV output. They passed in 2,517, 2,119 and 1,579 milliseconds.
+Cancellation during cold initialization followed by successful synthesis in a new
+worker also passed. These are fresh-process results, not an evicted OS disk cache
+or device latency qualification.
+
+After restarting the real development host, the opt-in browser regression made
+its first TTS request without a speech-status probe and verified actual playback
+and completion (5.5 seconds including runner startup). Agent startup is awaited
+separately. Two initial runner attempts arrived before agent/UI startup and failed
+before sending any speech request; the final check waits for those prerequisites.
+Hashed before/after snapshots preserve the owner, agent and 18 conversation IDs.
+Eight speech startup, worker lifecycle and bridge contract tests passed. Evidence:
+`artifacts/kokoro-cold-review/` and `test-results/cold-kokoro/result.json`.
+This is host/browser evidence; no Android build or device acceptance was run.
+
 ## Local speech restart checkpoint — 2026-10-05
 
 The browser dev launcher now reads owner-only `local-speech.json` defaults from
@@ -33,6 +86,84 @@ Hashed snapshots retained the owner, agent and all 18 conversation identifiers.
 Evidence is in `artifacts/calendar-form-review/latest-preview-speech.log`,
 `latest-preview-before.json` and `latest-preview-after.json`. This is total journey
 time, not first-audio latency or physical-device acceptance.
+
+## Covered subviews and review focus — 2026-10-05
+
+Inbox message/composer and Workflow detail/run/builder screens now remove their
+covered layers from keyboard and accessibility navigation. Opening a subview
+focuses its first control; closing returns to its surviving opener. Inbox email
+sharing, attachment and provider-operation reviews own focus, support Escape,
+and hide the covered assistant dock. The inline modal helper restores focus after
+the renderer releases its own inert flags, preventing attachment exit from
+stranding focus on the page body. This uses the existing review actions; it does
+not add provider writes or automatic retries.
+
+All 77 owning Chromium cases passed, including both themes, compact attachment
+reviews, sharing/provider review focus, retained Inbox edits, account switches,
+workflow authoring/focus behavior, and Calendar/Clock/Files dialog dismissal.
+Type checking and five documentation checks passed. An earlier four-case
+attachment campaign failed the new return-focus assertion; the deferred restore
+fix passed those cases and the final batch. The three older owner-fence assertions
+were corrected to inspect the active new-account receipt instead of the covered
+mailbox button; stale-operation/no-dispatch assertions remain unchanged.
+Evidence is `artifacts/kokoro-cold-review/subview-final.log`, `subview-types.log`
+and `subview-docs.log`. The dark 150-percent-text attachment screenshot was
+visually inspected with exit controls visible and the assistant dock hidden.
+
+The earlier integrated checkpoint at `1d73a298925702a179d497e49b32c86399799cb1`
+completed `npm run verify`: 674 tests passed, no failures or skips, type checking,
+production build and 245-file flag-off bundle audit passed. It predates this
+subview change and PRs 337–338. Evidence:
+`artifacts/settings-review/accessibility-integrated-verify.log` in the clean
+verification checkout.
+
+The follow-up axe-core 4.14.0 scan covers 86 light/dark reference states: zero
+automated violations, with color-contrast results still incomplete in 56 states
+(previously 64). This is not complete contrast or accessibility acceptance.
+Remaining covered-control candidates include Calendar event/forms, Browser tabs,
+Photos viewer, Notes editor/recording and Files folder/preview. They require the
+same keyboard/accessibility inspection rather than interpreting incomplete
+contrast results as success. Camera/photo backgrounds and truncated text also
+need visual contrast review. Evidence: `artifacts/kokoro-cold-review/subviews-audit.json`.
+
+## Remaining core subviews and Camera contrast — 2026-10-05
+
+Calendar event/forms, Browser tabs/library, Photos album/viewer/edit, Notes
+editor/voice/link/recording and Files folder/preview now retire their covered
+controls from keyboard and accessibility navigation. Entering a layer focuses
+its first control. Returning restores its opener; an asynchronous Files refresh
+can replace the original button, so focus is captured before replacement and
+restored only to a unique equivalent control in the original surviving layer.
+The template renderer now forwards focus-capture events. Calendar Clock and
+month dialogs retain their separate modal ownership; Notes storage status stays
+outside the covered list.
+
+Camera zoom and scan overlays now use darker backgrounds. Computed foreground
+and background colors, composited over pure white camera pixels, meet 4.5:1 for
+the four zoom controls and two scan actions. The stable scan capture was visually
+inspected. This does not assess arbitrary text in photographed documents.
+
+All 36 owning Chromium checks passed, including light/dark layers, nested Files
+focus return, Inbox/Workflow regressions and Camera contrast. Earlier iterations
+exposed the asynchronous opener replacement and a missing renderer event mapping;
+both are fixed in the final run. Another 28 affected-flow checks passed for
+photo editing/albums, Camera pixels/video, Calendar month/Clock dialogs and Notes
+storage-status layouts. Type checking and five documentation checks passed.
+Evidence is `artifacts/subview-completion/final-owning.log`, `final-flows.log`,
+`final-types.log` and `final-docs.log`. A wider pre-final campaign passed
+107 cases with one Files focus failure, subsequently covered by the final run.
+The 86-state axe scan after layer isolation reported zero automated violations
+and 40 states with incomplete contrast results. That scan predates the final
+Camera opacity and focus-capture changes. Photos/Notes/Browser/Camera captures
+were inspected; images, gradients and overlapping/truncated text still require
+manual review. No complete accessibility or physical-device acceptance is claimed.
+
+The merged checkpoint `364522d95f36ac85e9a651a435d6984c0875e6fb`
+completed `npm run verify`: 674 tests, zero failures or skips, type checking,
+production build and 245-file production audit passed. This includes PRs 337–339,
+but predates the five-view/Camera changes above. Evidence is
+`artifacts/settings-review/subview-integrated-verify.log` in the clean verification
+checkout. Android builds remain excluded from this browser development campaign.
 
 ## Surface inventory
 
@@ -414,3 +545,47 @@ Firefox and WebKit. Three record validation tests and type checking also passed.
 Combined root verification with the Calendar modal changes is pending. Physical-device
 process recreation, native encrypted-store execution and real Gmail authorization
 and provider outcomes remain unqualified by these browser fixtures.
+
+### Subview accessibility follow-up — October 5
+
+An axe-core 4.14.0 scan of 86 light/dark reference app states found low-contrast
+Calendar event details and adjacent-month dates, faint document-preview labels,
+and dimmed paused-workflow descriptions. Workflow step icons also used labels on
+plain spans without an image role. Event details now retain more foreground
+contrast, adjacent-month dates use the muted text token, preview labels use a
+readable gray, paused descriptions retain full opacity, and step icons have the
+appropriate role. The fixture document preview is not a claim about imported PDF
+accessibility or real document content.
+
+All 22 reference-state rendering tests passed, along with type checking. The
+repeated 86-state audit reported zero automated violations. It still returned
+contrast items requiring manual review in 64 states, primarily because overlays,
+images and partial overlaps prevent automatic background determination; these are
+not passing contrast measurements. Calendar month and document preview captures
+were inspected. Source and evidence are in the `alpha-album-documents` checkout,
+under `artifacts/pr317-browser/subview-*` and
+`test-results/root-accessibility-followup/design-*`. Broad screen-reader,
+keyboard traversal of overlapping subviews and physical accessibility remain open.
+
+The full Chromium campaign at `b021874ffe1085e2ad1f850cbd1d772ee6215043`
+finished with 1,909 passed, 15 skipped and zero failures (31.6 minutes). The log is
+`artifacts/calendar-form-review/current-main-chromium.log` in the primary checkout.
+Its host-only skipped cases require separate profiles, and it predates PR 335 and
+this subview follow-up. It must not be used as full-suite evidence for later code.
+
+### Calendar month-picker focus ownership
+
+The month dropdown previously covered day controls without removing them from
+keyboard or screen-reader navigation. It now has a named modal dialog, its own
+month navigation and close control, contained Tab/Shift+Tab focus, Escape/Back
+handling and focus return. Covered phone controls become inert, and the assistant
+dock stops painting over the picker. Picking a date, closing, or returning Home
+releases ownership; the retired picker cannot consume Back in another app.
+The calendar grid and controls scroll inside the bounded compact-height dialog.
+
+All 103 owning Chromium root-state, Calendar draft and picker checks passed, plus
+type checking. The final dock-visibility correction passed all four picker cases
+(light/dark at 915px and 420px heights); its compact dark screenshot was inspected.
+Evidence in the primary checkout is `artifacts/calendar-form-review/month-focus-*`
+and the `test-results/browser/calendar-month-focus-*` captures. Other overlapping
+subviews and native screen-reader/device behavior retain separate acceptance.

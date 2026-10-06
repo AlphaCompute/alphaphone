@@ -1,6 +1,6 @@
 import {test,expect,type Page} from '@playwright/test';
-// These complete setup journeys include browser startup and multiple persisted transitions.
-// WebKit/Firefox cold starts can consume most of the default 30-second budget.
+// Hosted WebKit can spend 14 seconds creating its first page. Allow the
+// multi-step review/recovery journey to finish without relaxing assertions.
 test.describe.configure({timeout:60_000});
 async function setup(page:Page,scenario:string){await page.goto('/?mode=dev');await page.getByRole('button',{name:'Settings',exact:true}).click();await page.getByRole('button',{name:'Agent connection',exact:true}).click();await page.getByRole('button',{name:'Use development account'}).click();await page.getByText('Development setup scenario',{exact:true}).click();await page.getByRole('combobox',{name:'Setup scenario'}).selectOption(scenario);await page.getByRole('button',{name:'Reset development setup'}).click();await expect(page.getByRole('button',{name:'Reset development setup'})).toBeEnabled();}
 async function finish(page:Page){await expect(page.getByText('Dedicated setup accepted',{exact:true})).toBeVisible();await expect.poll(async()=>{const check=page.getByRole('button',{name:'Check setup status'});await check.click();await expect(check).toBeEnabled();return page.getByRole('button',{name:'Continue setup',exact:true}).count();}).toBe(1);await page.getByRole('button',{name:'Continue setup',exact:true}).click();await expect(page.getByText('Dedicated ready',{exact:true})).toBeVisible();}
