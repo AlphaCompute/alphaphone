@@ -9,6 +9,63 @@ See [architecture](architecture.md), [MVP scope](mvp-scope-and-gap-report.md) an
 This inventory describes available behavior and remaining qualification. It is
 not a claim that every feature or the current main revision has passed acceptance.
 
+## Consolidated current checkpoint — 2026-10-06
+
+The integrated consumer is `72783b3f9b6ad99ef284fe428b6c4bfaf834ce36`, with
+resident runtime `3cca1ee4f1f1e4cd417de7272ba5195263dcb63b`. The implementation
+and six speech-test setup cases are merged. No local Android build was run in
+this browser-focused campaign. The complete MVP is still not accepted: the
+remaining provider, native, physical, release and scope gates below are real
+requirements, not work implied complete by passing browser tests.
+
+| Qualification | Current evidence | Boundary |
+| --- | --- | --- |
+| Consumer source/build | Full `npm run verify` exited 0 at `ffa72bcc`: 689 tests, no failures/skips, type checking, production build and 245-file bundle audit; test phase 350.0 seconds. The later `72783b3f` delta is the six-case speech test readiness fix and documentation. Hosted Chromium shard 3 also completed `npm run verify` at exact `72783b3f`, with 689 tests passed, none failed or skipped (544.1 seconds for tests). | Source/build evidence at both stated revisions; all hosted browser jobs subsequently completed successfully at `72783b3f`. |
+| Resident runtime | Admitted source and frozen host install; 52 native-host tests and 21 resident-agent tests / 82 assertions passed. | Host runtime contracts, not Android IPC or device acceptance. |
+| Speech | Six browser recording/speech cases passed on `3cca1ee4`, including actual synthetic audio through Whisper/Kokoro, playback completion, Stop and disconnect. The identical Kokoro source passed three fresh-worker trials at `cc682e9a` in 1,117 / 1,065 / 1,057 ms, plus cancellation/recovery. | Synthetic host audio; no physical microphone, Bluetooth, device latency or evicted-cache claim. |
+| Default development setup | The main checkout now contains its own admitted `artifacts/local-agent-resident-3cca1ee4f1f1e4cd417de7272ba5195263dcb63b` and frozen host dependencies. Plain `npm run dev`, without a source override, starts that runtime on 47849 and Vite on 5317. First-request playback passed; owner, agent and all 18 conversation IDs matched before/after. | Generated runtime/dependencies remain local ignored artifacts. Profile snapshots compare identities, not every message byte. |
+| Real workflow and persistence | An isolated host executed the arithmetic-only Smithers fixture, persisted `56`, and returned the same result again. A second campaign restarted into a distinct host PID: owner, execution identity, status and exact output survived, and the execution list still contained exactly one run. | Graceful host restart of a completed, paused workflow. No interrupted-write, powered-off scheduling or device-trigger claim. |
+| Outbound privacy | On `3cca1ee4`, six synthetic credential cases passed with contact restoration. Streamed replies and restart recovery passed; all 10 observed provider requests excluded the synthetic raw credentials and contact values. | Explicit redaction-on isolated profile; the user's development host remains at its existing redaction-off configuration. Not Android or universal secret-detection acceptance. |
+| Design | The 86-state light/dark audit and manual inspection of all 40 incomplete-contrast captures remain the design evidence. Since that renderer revision, the only renderer change is Reminder Save's active-mutation disabled state, covered by the 48-case creation/recovery suite. | Fixture design review and scoped behavior checks, not full WCAG, physical screen-reader or user signoff. |
+| Hosted browser checks | [Run `37497023709`](https://github.com/AlphaCompute/alphaphone/actions/runs/37497023709) completed successfully at exact main `72783b3f`. Production surface and all four WebKit/Firefox storage shards passed (184 tests each; 736 total). Chromium shards passed 649 / 656 / 660 tests (1,965 total) in 41.4 / 40.9 / 37.4 minutes. | The main Chromium lane had 16 conditional skips, reconciled below; no Android or real-provider acceptance is implied. |
+
+The 16 conditional Chromium skips are accounted for separately: ten synthetic
+local-agent speech/disclosure cases passed in the hosted companion lane (35.0
+seconds); four `host-reminder-recovery.spec.ts` cases passed locally against the
+real development storage bridge in an isolated private directory (3.4 seconds,
+no skips, no model or user-profile access); and the actual local-host capture and
+first-request Kokoro playback cases passed in the six-case local speech campaign
+above. These are distinct campaigns, not a claim that the main lane had no skips.
+The initial isolated storage attempt failed before tests because its temporary
+configuration used the wrong working directory; correcting that test configuration
+produced the four-case pass. Both logs are retained.
+
+Workflow routes became available about 1.2 seconds after chat readiness in the
+initial isolated check. The first attempt's 404 occurred before workflow creation;
+the successful campaign waited on the read-only workflow list before submitting
+once. It never retried a creation or run request. Chat readiness alone must not
+be treated as proof that every deferred plugin route is available.
+
+The remaining work is enumerated in [current status](mvp-current-status.md) and
+the [pilot acceptance runbook](pilot-acceptance-runbook.md): real Gmail grants
+and authorized sends/recovery; password-provider and passkey behavior; licensed
+HTTPS Maps and navigation; native installed-data, permissions, lifecycle and
+interrupted-workflow qualification; physical speech, latency, accessibility,
+battery and pilot journeys; controlled signing, App Links, signed update/rollback;
+and explicit agreement on powered-off scheduling and messaging scope. Existing
+runbooks and fixtures prepare these gates but do not supply their missing results.
+
+Evidence in the verification checkout is
+`artifacts/final-failure-review/runtime-3cca-verify.log` and
+`runtime-3cca-agent-tests.log`. Primary-checkout evidence is under
+`artifacts/kokoro-startup-fix/`: `browser-3cca-recheck.log`,
+`default-source-prepare.log`, `default-source-install.log`, `default-dev.log`,
+`default-browser.log`, the `default-profile-*.json` snapshots,
+`redaction-3cca.log`, `workflow-3cca-readiness.log`,
+`workflow-3cca-restart.log`, `host-reminder-recovery-recheck.log`, and
+`main-72783-*.log`.
+Failed attempts remain preserved alongside the successful qualifications.
+
 ## Final runtime pin and browser speech setup — 2026-10-06
 
 PR 351 merged as `ffa72bcc22ae7990d98bcfd16434db834e0e3c38`, adopting
