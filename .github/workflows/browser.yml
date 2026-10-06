@@ -123,6 +123,15 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npx playwright install --with-deps ${{ matrix.browser }}
+      - name: Provide an audio server for Firefox recording
+        if: matrix.browser == 'firefox'
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes pulseaudio
+          pulseaudio --start --exit-idle-time=-1
+          pactl load-module module-null-sink sink_name=alpha_test_audio
+          pactl set-default-sink alpha_test_audio
+          pactl info
       - name: Verify canonical storage and asynchronous Cloud setup
         env:
           # Storage specs run against the flag-on development server.

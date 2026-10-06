@@ -45,7 +45,12 @@ runners. The unchanged Notes journey passed locally in macOS WebKit (one test,
 15.4 seconds including startup); evidence is `artifacts/final-failure-review/webkit-recorder.log`.
 This runner change needs its own terminal hosted result; the earlier
 run's passing lanes do not qualify the changed workflow. Other lanes were still
-running at this checkpoint. No Android build or device acceptance was performed.
+running at this checkpoint. Firefox shard 2 then failed in the same journey:
+its Web Audio context remained suspended despite the user gesture. The Linux
+Firefox jobs now provision PulseAudio with a null output sink so headless audio
+has an actual server; recording still uses the real MediaRecorder. This is a
+candidate environment repair pending the hosted test, not a proven diagnosis.
+No Android build or device acceptance was performed.
 
 The requirement-by-requirement remaining acceptance and external prerequisites
 in [current status](mvp-current-status.md) remain open. Neither these checks nor an
