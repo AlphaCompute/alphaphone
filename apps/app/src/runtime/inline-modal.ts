@@ -44,8 +44,13 @@ export function createInlineModal(close:()=>void,returnFocus?:()=>HTMLElement|nu
   dispose=()=>{
    observer.disconnect();document.removeEventListener('keydown',key,true);document.removeEventListener('focusin',contain);
    releases.reverse().forEach(release=>release());
-   const target=previous?.isConnected?previous:returnFocus?.();
-   if(target?.isConnected&&!target.closest('[inert]'))target.focus({preventScroll:true});
+   // Renderer-owned inert flags are removed later in the same DOM commit.
+   // Restore only after that commit, and never steal focus from a replacement.
+   queueMicrotask(()=>{
+    if(mounted||document.activeElement!==document.body&&!dialog.contains(document.activeElement))return;
+    const target=previous?.isConnected?previous:returnFocus?.();
+    if(target?.isConnected&&!target.closest('[inert]'))target.focus({preventScroll:true});
+   });
   };
  };
  return {ref};

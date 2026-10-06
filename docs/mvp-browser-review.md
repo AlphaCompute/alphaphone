@@ -59,6 +59,45 @@ Evidence is in `artifacts/calendar-form-review/latest-preview-speech.log`,
 `latest-preview-before.json` and `latest-preview-after.json`. This is total journey
 time, not first-audio latency or physical-device acceptance.
 
+## Covered subviews and review focus — 2026-10-05
+
+Inbox message/composer and Workflow detail/run/builder screens now remove their
+covered layers from keyboard and accessibility navigation. Opening a subview
+focuses its first control; closing returns to its surviving opener. Inbox email
+sharing, attachment and provider-operation reviews own focus, support Escape,
+and hide the covered assistant dock. The inline modal helper restores focus after
+the renderer releases its own inert flags, preventing attachment exit from
+stranding focus on the page body. This uses the existing review actions; it does
+not add provider writes or automatic retries.
+
+All 77 owning Chromium cases passed, including both themes, compact attachment
+reviews, sharing/provider review focus, retained Inbox edits, account switches,
+workflow authoring/focus behavior, and Calendar/Clock/Files dialog dismissal.
+Type checking and five documentation checks passed. An earlier four-case
+attachment campaign failed the new return-focus assertion; the deferred restore
+fix passed those cases and the final batch. The three older owner-fence assertions
+were corrected to inspect the active new-account receipt instead of the covered
+mailbox button; stale-operation/no-dispatch assertions remain unchanged.
+Evidence is `artifacts/kokoro-cold-review/subview-final.log`, `subview-types.log`
+and `subview-docs.log`. The dark 150-percent-text attachment screenshot was
+visually inspected with exit controls visible and the assistant dock hidden.
+
+The earlier integrated checkpoint at `1d73a298925702a179d497e49b32c86399799cb1`
+completed `npm run verify`: 674 tests passed, no failures or skips, type checking,
+production build and 245-file flag-off bundle audit passed. It predates this
+subview change and PRs 337–338. Evidence:
+`artifacts/settings-review/accessibility-integrated-verify.log` in the clean
+verification checkout.
+
+The follow-up axe-core 4.14.0 scan covers 86 light/dark reference states: zero
+automated violations, with color-contrast results still incomplete in 56 states
+(previously 64). This is not complete contrast or accessibility acceptance.
+Remaining covered-control candidates include Calendar event/forms, Browser tabs,
+Photos viewer, Notes editor/recording and Files folder/preview. They require the
+same keyboard/accessibility inspection rather than interpreting incomplete
+contrast results as success. Camera/photo backgrounds and truncated text also
+need visual contrast review. Evidence: `artifacts/kokoro-cold-review/subviews-audit.json`.
+
 ## Surface inventory
 
 ### Integrated source checkpoint — 2026-10-05

@@ -507,6 +507,7 @@
 
 <sc-if value="{{is.inbox}}" hint-placeholder-val="{{false}}">
 <div style="display: flex; flex-direction: column; height: 100%; position: relative">
+  <div data-alpha-subview="inbox-list" inert="{{inbox.listCovered}}" aria-hidden="{{inbox.listCovered}}" style="display:flex;flex-direction:column;flex:1;min-height:0">
   <sc-if value="{{inbox.notSearching}}" hint-placeholder-val="{{true}}">
     <div style="display: flex; align-items: center; height: 56px; margin-top: 44px; padding: 0 8px 0 20px; gap: 2px; flex-shrink: 0">
       <h1 class="serif" style="margin: 0; font-size: 32px; flex-grow: 1; letter-spacing: -.01em">Inbox</h1>
@@ -571,8 +572,9 @@
     </sc-if>
   </div>
 
+  </div>
   <sc-if value="{{inbox.detail}}" hint-placeholder-val="{{false}}">
-    <div class="enter" style="position: absolute; inset: 0; background: var(--bg); display: flex; flex-direction: column; z-index: 4">
+    <div ref="{{inbox.detailFocus}}" data-alpha-subview="inbox-detail" inert="{{inbox.detailCovered}}" aria-hidden="{{inbox.detailCovered}}" class="enter" style="position: absolute; inset: 0; background: var(--bg); display: flex; flex-direction: column; z-index: 4">
       <div style="display: flex; align-items: center; height: 56px; margin-top: 44px; padding: 0 8px; gap: 2px; flex-shrink: 0">
         <button class="ib" aria-label="Back to inbox" onClick="{{back}}"><svg class="i" viewBox="0 0 24 24"><path d="{{ic.back}}"></path></svg></button>
         <span style="flex-grow: 1"></span>
@@ -626,7 +628,7 @@
   </sc-if>
 
   <sc-if value="{{inbox.composing}}" hint-placeholder-val="{{false}}">
-    <div class="enter" style="position: absolute; inset: 0; background: var(--bg); display: flex; flex-direction: column; z-index: 5">
+    <div ref="{{inbox.composeFocus}}" data-alpha-subview="inbox-composing" inert="{{inbox.composeCovered}}" aria-hidden="{{inbox.composeCovered}}" class="enter" style="position: absolute; inset: 0; background: var(--bg); display: flex; flex-direction: column; z-index: 5">
       <div style="display: flex; align-items: center; height: 56px; margin-top: 44px; padding: 0 12px 0 8px; gap: 2px; flex-shrink: 0">
         <button class="ib" aria-label="Back from draft" onClick="{{back}}"><svg class="i" viewBox="0 0 24 24"><path d="{{ic.back}}"></path></svg></button>
         <span style="flex-grow: 1"></span>
@@ -690,9 +692,9 @@
     </div>
   </sc-if>
 
-  <sc-if value="{{inbox.contextReviewOpen}}"><div class="scr" role="dialog" aria-label="Review email sharing" style="position:absolute;inset:0;z-index:10;background:var(--bg);padding:54px 20px 30px;overflow:auto;box-sizing:border-box"><button onClick="{{inbox.contextReview.close}}" style="padding:10px">Cancel</button><h2 class="serif">Share this email with your agent?</h2><p style="overflow-wrap:anywhere">Destination: {{inbox.contextReview.destination}}</p><p>The complete text below will be sent. Attachments are excluded.</p><div style="white-space:pre-wrap;overflow-wrap:anywhere">{{inbox.contextReview.source}}</div><button disabled="{{inbox.contextReview.busy}}" onClick="{{inbox.contextReview.send}}" style="padding:14px;border-radius:24px;background:var(--acc);color:white">Send reviewed email to agent</button></div></sc-if>
+  <sc-if value="{{inbox.contextReviewOpen}}"><div ref="{{inbox.contextModal}}" class="scr inbox-review-modal" role="dialog" aria-modal="true" aria-label="Review email sharing" style="position:absolute;inset:0;z-index:10;background:var(--bg);padding:54px 20px 30px;overflow:auto;box-sizing:border-box"><button onClick="{{inbox.contextReview.close}}" style="padding:10px">Cancel</button><h2 class="serif">Share this email with your agent?</h2><p style="overflow-wrap:anywhere">Destination: {{inbox.contextReview.destination}}</p><p>The complete text below will be sent. Attachments are excluded.</p><div style="white-space:pre-wrap;overflow-wrap:anywhere">{{inbox.contextReview.source}}</div><button disabled="{{inbox.contextReview.busy}}" onClick="{{inbox.contextReview.send}}" style="padding:14px;border-radius:24px;background:var(--acc);color:white">Send reviewed email to agent</button></div></sc-if>
   <sc-if value="{{inbox.attachmentOpen}}">
-    <div class="inbox-attachment-review" role="dialog" aria-label="Review attachment">
+    <div ref="{{inbox.attachmentModal}}" class="inbox-attachment-review inbox-review-modal" role="dialog" aria-modal="true" aria-label="Review attachment">
       <div class="inbox-attachment-actions"><button onClick="{{inbox.attachment.close}}">Back to message</button><button onClick="{{inbox.attachment.save}}" disabled="{{inbox.attachment.saveDisabled}}">Save to Files</button><sc-if value="{{inbox.attachment.external}}"><button onClick="{{inbox.attachment.open}}">Open reviewed file</button></sc-if></div>
       <div class="scr inbox-attachment-content" role="region" aria-label="Attachment contents" tabindex="0">
         <p role="status">{{inbox.attachment.saveStatus}}</p><h2>{{inbox.attachment.name}}</h2><p style="font-size:12px;overflow-wrap:anywhere">SHA-256 {{inbox.attachment.hash}}</p><div style="white-space:pre-wrap;overflow-wrap:anywhere">{{inbox.attachment.text}}</div>
@@ -700,7 +702,7 @@
     </div>
   </sc-if>
   <sc-if value="{{inbox.providerReview}}">
-    <div class="enter scr" role="dialog" aria-label="Review mail operation" style="position:absolute;inset:0;background:var(--bg);z-index:8;overflow:auto;padding:44px 20px 32px;box-sizing:border-box">
+    <div ref="{{inbox.providerModal}}" class="enter scr inbox-review-modal" role="dialog" aria-modal="true" aria-label="Review mail operation" style="position:absolute;inset:0;background:var(--bg);z-index:8;overflow:auto;padding:44px 20px 32px;box-sizing:border-box">
       <button class="ib" aria-label="Close mail review" onClick="{{inbox.provider.close}}"><svg class="i" viewBox="0 0 24 24"><path d="{{ic.back}}"></path></svg></button>
       <h2 class="serif" style="font-size:30px;font-weight:400">{{inbox.provider.title}}</h2>
       <p role="status">{{inbox.provider.status}}</p>
@@ -3020,6 +3022,7 @@
 
 <sc-if value="{{is.workflows}}" hint-placeholder-val="{{false}}">
 <div style="display: flex; flex-direction: column; height: 100%; position: relative">
+  <div data-alpha-subview="workflows-list" inert="{{workflows.listCovered}}" aria-hidden="{{workflows.listCovered}}" style="display:flex;flex-direction:column;flex:1;min-height:0">
   <div style="display: flex; align-items: center; height: 56px; margin-top: 44px; padding: 0 8px 0 20px; gap: 2px; flex-shrink: 0">
     <h1 class="serif" style="margin: 0; font-size: 32px; flex-grow: 1; letter-spacing: -.01em">Workflows</h1>
     <sc-if value="{{workflows.localHistory}}"><button aria-label="Manage workflow history" onClick="{{workflows.localHistory}}" style="min-height:44px;padding:8px">History</button></sc-if>
@@ -3046,8 +3049,9 @@
   </div>
 
   
+  </div>
   <sc-if value="{{workflows.detail}}" hint-placeholder-val="{{false}}">
-    <div class="enter" style="position: absolute; inset: 0; background: var(--bg); display: flex; flex-direction: column; z-index: 4">
+    <div ref="{{workflows.detailFocus}}" data-alpha-subview="workflows-detail" inert="{{workflows.detailCovered}}" aria-hidden="{{workflows.detailCovered}}" class="enter" style="position: absolute; inset: 0; background: var(--bg); display: flex; flex-direction: column; z-index: 4">
       <div style="display: flex; align-items: center; height: 56px; margin-top: 44px; padding: 0 8px; gap: 2px; flex-shrink: 0">
         <button class="ib" aria-label="Back to workflows" onClick="{{workflows.fd.close}}"><svg class="i" viewBox="0 0 24 24"><path d="{{ic.back}}"></path></svg></button>
         <span style="flex-grow: 1"></span>
@@ -3117,7 +3121,7 @@
 
   
   <sc-if value="{{workflows.runOpen}}" hint-placeholder-val="{{false}}">
-    <div class="enter" style="position: absolute; inset: 0; background: var(--bg); display: flex; flex-direction: column; z-index: 5">
+    <div ref="{{workflows.runFocus}}" data-alpha-subview="workflows-runOpen" inert="{{workflows.runCovered}}" aria-hidden="{{workflows.runCovered}}" class="enter" style="position: absolute; inset: 0; background: var(--bg); display: flex; flex-direction: column; z-index: 5">
       <div style="display: flex; align-items: center; height: 56px; margin-top: 44px; padding: 0 8px; gap: 2px; flex-shrink: 0">
         <button class="ib" aria-label="Back to {{workflows.r.flow}}" onClick="{{workflows.r.close}}"><svg class="i" viewBox="0 0 24 24"><path d="{{ic.back}}"></path></svg></button>
       </div>
@@ -3195,7 +3199,7 @@
 
   
   <sc-if value="{{workflows.builder}}" hint-placeholder-val="{{false}}">
-    <div class="enter" style="position: absolute; inset: 0; background: var(--bg); display: flex; flex-direction: column; z-index: 6">
+    <div ref="{{workflows.builderFocus}}" data-alpha-subview="workflows-builder" class="enter" style="position: absolute; inset: 0; background: var(--bg); display: flex; flex-direction: column; z-index: 6">
       <div style="display: flex; align-items: center; height: 56px; margin-top: 44px; padding: 0 16px 0 8px; gap: 2px; flex-shrink: 0">
         <button class="ib" aria-label="Back to workflows" onClick="{{workflows.b.cancel}}"><svg class="i" viewBox="0 0 24 24"><path d="{{ic.back}}"></path></svg></button>
         <span style="flex-grow: 1"></span>
