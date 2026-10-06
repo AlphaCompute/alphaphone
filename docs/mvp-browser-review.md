@@ -9,6 +9,46 @@ See [architecture](architecture.md), [MVP scope](mvp-scope-and-gap-report.md) an
 This inventory describes available behavior and remaining qualification. It is
 not a claim that every feature or the current main revision has passed acceptance.
 
+## Final integrated verification checkpoint — 2026-10-06
+
+`npm run verify` passed at `07d5263982662367516ccc87681c2a76efd8c767`:
+674 tests passed, zero failures or skips, type checking, the production build,
+and the 245-file flag-off bundle audit. The test phase took 712.3 seconds.
+This includes the merged reminder refresh-order fix, Notes audio test coverage,
+Photos deletion/overlay changes, map labels and earlier accessibility work.
+The remaining changes in this report update are documentation only. Evidence:
+`artifacts/final-failure-review/integrated-verify.log` in the verification checkout.
+
+The separate full Chromium campaign terminated at its frozen source
+`31fc1fb0918de0107dbf1673a7fec2f63d1c4eec`: **1,928 passed, 32 failed,
+16 skipped, four runner errors**, exit 1, reported duration 14.0 hours. The four
+runner errors are duplicate 300-second shutdown-timeout reports for two workers.
+The prolonged execution's cause is not established. Failed traces and the full
+log remain in the primary checkout's `artifacts/final-browser-31fc/`.
+
+An exact comparison of final failed file/title pairs confirms that all 32 are
+the same cases rechecked successfully at `f633e490` (32 passed, 2.7 minutes).
+Later changes have the owning checks recorded below. This neither turns the
+original failed run green nor establishes a full current-head browser pass.
+The outcome and comparison are recorded in
+`artifacts/final-failure-review/full-browser-summary.json`.
+
+The primary checkout was then fast-forwarded to main `7d3e91e9`; browser dev on
+port 5317 returned HTTP 200. Hosted main run `37481107767` was cancelled after
+its production-surface job passed; cancelled Chromium/storage lanes remain
+unqualified. PR 345's run `37481994845` was still active at this checkpoint.
+Earlier pending-run statements below are historical checkpoints superseded by
+this terminal record.
+
+Remaining work is explicit in [the current requirement matrix](mvp-current-status.md):
+current integrated cross-engine/hosted qualification, the separate unmerged
+runtime upgrade in PR 317, real provider grants and interruption recovery,
+production Maps, native/physical lifecycle and accessibility, release signing,
+installed upgrades and pilot acceptance. Powered-off scheduling remains an
+unresolved scope amendment. No local Android build was performed in this
+browser-focused campaign; host runner fixtures are not device acceptance.
+
+
 ## Integrated design review — 2026-10-06
 
 At `7d3e91e9771611effbfc85b89cd70fee35fff5d9`, the refreshed accessibility
