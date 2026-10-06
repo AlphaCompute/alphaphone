@@ -9,6 +9,38 @@ See [architecture](architecture.md), [MVP scope](mvp-scope-and-gap-report.md) an
 This inventory describes available behavior and remaining qualification. It is
 not a claim that every feature or the current main revision has passed acceptance.
 
+## Audio CI and reminder creation follow-up — 2026-10-06
+
+PR 347 merged as `f628f222`, and PR 348 merged as `cf8f07f4`. The latter
+exposes the existing reminder mutation lock in Save's disabled state for both
+creation and edits. Both active checkouts were fast-forwarded to that main
+revision with clean tracked state; the development server remained available.
+
+On PR 347 head `d385cff36168cc87a14174de9c9b1479a1462c31`, hosted run
+`37487494364` passed both WebKit storage shards. Shard 2 passed 184 tests,
+including real Notes recording, retained audio, reload, playback and restore
+(the recording journey took 8.7 seconds). Firefox shard 2 also passed all 184
+tests, including that journey (16.9 seconds). The macOS WebKit runner and Linux
+Firefox PulseAudio environment repair are therefore qualified for this journey.
+Other jobs were still active at this checkpoint; this is not an all-green claim.
+The primary checkout retains `audio-fix-webkit2.log` and `audio-fix-firefox2.log`
+under `artifacts/final-browser-31fc/`.
+
+Combined-main run `37488535523` then found a stale duplicate-creation test:
+it tried an ordinary click on the correctly disabled Save control introduced
+by PR 348. WebKit shard 2 recorded 183 passes and that one failure. The test
+now asserts disabled state, explicitly dispatches the second event to test
+the handler's independent guard, and requires exactly one provider call.
+All 48 creation/recovery cases passed locally across Chromium, Firefox and
+WebKit; evidence is `artifacts/final-failure-review/reminder-create.log` in
+the verification checkout. No production code or timeout was changed.
+
+The isolated real host using runtime `19afed28` was also stopped gracefully
+and restarted. Its one synthetic conversation retained both the question and
+correct answer without another send. Evidence in the primary checkout is
+`artifacts/final-browser-31fc/runtime-19af-chat-restart-result.json`. This is
+graceful host process recovery, not abrupt-death or Android qualification.
+
 ## Runtime upgrade and integrated verification — 2026-10-06
 
 Main `c5e11759bea895893a91bc6926c78c7282f842a8` incorporates PR 317 and pins
