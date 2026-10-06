@@ -9,6 +9,31 @@ See [architecture](architecture.md), [MVP scope](mvp-scope-and-gap-report.md) an
 This inventory describes available behavior and remaining qualification. It is
 not a claim that every feature or the current main revision has passed acceptance.
 
+## Cold Kokoro requalification — 2026-10-05
+
+The former worker startup retirement failure is resolved in the currently pinned
+upstream `95924e90`, which includes `4f28daecf2f`. Cold initialization is owned by
+the requesting lifecycle; it no longer has an independent worker-retirement timer.
+The existing synthesis/transport bounds and cancellation remain enforced. No new
+runtime patch or timeout increase was needed for this requalification.
+
+The new `npm run agent:test-cold-kokoro` check verifies the admitted source and
+installed assets, starts three fresh workers without initialization/status probes,
+and checks actual WAV output. They passed in 2,517, 2,119 and 1,579 milliseconds.
+Cancellation during cold initialization followed by successful synthesis in a new
+worker also passed. These are fresh-process results, not an evicted OS disk cache
+or device latency qualification.
+
+After restarting the real development host, the opt-in browser regression made
+its first TTS request without a speech-status probe and verified actual playback
+and completion (5.5 seconds including runner startup). Agent startup is awaited
+separately. Two initial runner attempts arrived before agent/UI startup and failed
+before sending any speech request; the final check waits for those prerequisites.
+Hashed before/after snapshots preserve the owner, agent and 18 conversation IDs.
+Eight speech startup, worker lifecycle and bridge contract tests passed. Evidence:
+`artifacts/kokoro-cold-review/` and `test-results/cold-kokoro/result.json`.
+This is host/browser evidence; no Android build or device acceptance was run.
+
 ## Local speech restart checkpoint — 2026-10-05
 
 The browser dev launcher now reads owner-only `local-speech.json` defaults from

@@ -51,7 +51,8 @@
     "pretypecheck": "npm run upstream:prepare-client",
     "pretest": "npm run upstream:prepare-client",
     "predev:maps": "npm run upstream:prepare-client",
-    "prebuild:test-mocks": "npm run upstream:prepare-client"
+    "prebuild:test-mocks": "npm run upstream:prepare-client",
+    "agent:test-cold-kokoro": "bun --conditions=eliza-source scripts/test-cold-kokoro.mjs"
   },
   "dependencies": {
     "@capacitor/android": "8.5.2",
