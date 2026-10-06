@@ -159,7 +159,7 @@ export function installReminderAdapter(Component: Bag, views: Bag) {
           const sameEditor=()=>owner===saveOwner&&saveOwner.live&&!document.hidden&&api.isActive()&&api.get('calendar').form?.reminderEditSession===editSession&&draftSignature(api.get('calendar').form)===signature;
           if(!sameEditor())return;
           saveOwner.reminderSaving=true;
-          let createdInput:Bag=null,dispatched=false;
+          let createdInput:Bag=null,dispatched=false,editSaved=false;
           try{
             const operation={type:'reminder_update' as const,target:current.reminderEditTarget,fields:{title:current.title.trim(),body:current.notes||'',...(schedule?{schedule}:{})}};
             const pending=Object.values(await pendingReminderDeletions()).find(input=>Object.entries(operation.target).every(([key,value])=>input.operation.target[key as keyof typeof input.operation.target]===value));
@@ -184,13 +184,15 @@ export function installReminderAdapter(Component: Bag, views: Bag) {
             if(response.status!=='succeeded'||!response.result)throw Error('Unconfirmed reminder update');
             await acknowledgeReminderDeletion(input,response.result);
             const active=sameEditor();
-            if(active){saveOwner.calendarFormCommitted?.(api.get('calendar').form);api.set({form:null});}
+            editSaved=true;
             if(owner===saveOwner&&saveOwner.live){await saveOwner.refreshReminders();api.toast(active?(response.result.status==='pending'?'Saved with no alert.':response.result.status==='permission-denied'?'Saved, notifications disabled. Enable notifications then review this reminder again.':response.result.status==='scheduling-failed'?'Saved, scheduling failed. Review this reminder before retrying.':schedule?'Reminder rescheduled · approximate delivery':'Reminder updated. Schedule unchanged.'):'The reviewed reminder edit was saved. Later draft changes were not saved.');}
           }catch{if(owner===saveOwner&&saveOwner.live)api.toast('Reminder edit is unconfirmed. Check action status in Calendar; it will not be repeated.');}
           finally{
             if(createdInput&&!dispatched)try{await discardUndispatchedReminderDeletion(createdInput);if(editSession.attempt===createdInput)delete editSession.attempt;}catch{/* Preserve uncertain persistence and its exact attempt. */}
             if(owner===saveOwner&&saveOwner.live)try{saveOwner.reminderDeleteUnknown=Object.keys(await pendingReminderDeletions()).length;api.set({reminderDeleteUnknown:saveOwner.reminderDeleteUnknown});}catch{}
             saveOwner.reminderSaving=false;
+            // Keep the editor visible until refreshed targets and the mutation lock settle.
+            if(editSaved&&sameEditor()){saveOwner.calendarFormCommitted?.(api.get('calendar').form);api.set({form:null});}
           }
         };
         if(unchangedSchedule){await saveEdit();return;}

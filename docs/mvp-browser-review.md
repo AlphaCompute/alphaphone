@@ -9,6 +9,51 @@ See [architecture](architecture.md), [MVP scope](mvp-scope-and-gap-report.md) an
 This inventory describes available behavior and remaining qualification. It is
 not a claim that every feature or the current main revision has passed acceptance.
 
+## Reminder save refresh ordering — 2026-10-06
+
+After a confirmed reminder edit, the editor now stays visible until refreshed
+records and the mutation lock settle. It then closes only if the same editor,
+owner and draft still own the operation. A newer draft or navigation is preserved.
+This extracts the consumer fix from PR 317 without adopting its runtime upgrade.
+The delayed-refresh regression proves the edited record is committed while the
+form remains present, then checks completion against the refreshed occurrence.
+
+All 51 owning reminder/Calendar Chromium cases passed in a single-worker run
+(5.2 minutes), plus five focused cases covering the regression and Calendar
+preferences in the modal month picker. The latter now uses Close/Escape and
+checks opener focus return instead of operating the covered background control.
+Type checking and five documentation checks passed.
+
+The earlier 51-case run had 32 passes, 19 failures and three runner errors across
+7.1 hours, including unusually long delays and browser-launch failures. Preserve
+that failed evidence; the subsequent 51-case run is the successful qualification,
+not an erasure or reinterpretation of the earlier result. Evidence in the clean
+verification checkout: `artifacts/settings-review/reminder-refresh-browser.log`,
+`reminder-serial.log`, `reminder-focused.log`, `reminder-refresh-types.log` and
+`reminder-refresh-docs.log`. The separate full Chromium campaign remains on its
+unchanged source and cannot qualify this later fix.
+
+## Integrated browser checkpoint — 2026-10-06
+
+`npm run verify` finished successfully at
+`79cd5c734f4db3d92fe4421b4255a17185b7f796`: all 674 tests passed, zero
+failures or skips, with type checking, production build and the 245-file
+flag-off bundle audit. The run took 1,112.7 seconds. Its log is
+`artifacts/settings-review/core-subview-integrated-verify.log` in the clean
+verification checkout. This result includes the five-view accessibility and
+Camera contrast changes; it predates the Photos deletion/map-label follow-up
+and the reminder refresh-order change. Those have separate owning evidence.
+
+The full 1,976-case Chromium campaign at
+`31fc1fb0918de0107dbf1673a7fec2f63d1c4eec` is still running. Its source is
+frozen in the primary checkout. Logs and retained traces live in
+`artifacts/final-browser-31fc/`. It has already exposed obsolete Calendar
+month-picker assertions, which attempted to operate the covered button rather
+than the modal's Close control. Its unusually long timeout and browser-launch
+failures remain failures requiring explicit rechecks; they are not passing
+acceptance evidence. Do not substitute this in-progress run for a terminal
+whole-suite result.
+
 ## Photos deletion review and illustrated-map labels — 2026-10-05
 
 Photos' permanent-deletion review previously appeared as a sheet without modal
