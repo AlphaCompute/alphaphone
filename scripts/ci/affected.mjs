@@ -1,12 +1,14 @@
 import { execFileSync } from 'node:child_process';
-import { appendFileSync, readFileSync } from 'node:fs';
+import { appendFileSync, readFileSync, existsSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
+
+export const referenceOnly = path => /^(docs\/|design\/)/.test(path) || /^(README\.md|AGENTS\.md|LICENSE|LICENSE\.md)$/.test(path);
 
 // Unknown paths run everything. Only explicitly non-executable reference data is ignored.
 export function affected(paths) {
   const result = { verify: false, browser: false, android: false, prepare: false };
   for (const path of paths) {
-    if (/^(docs\/|design\/)/.test(path) || /^(README\.md|AGENTS\.md|LICENSE|LICENSE\.md)$/.test(path)) continue;
+    if (referenceOnly(path)) continue;
     result.verify = true;
     if (/^test\/browser\//.test(path) || path === 'playwright.config.ts' || path === 'scripts/storage-specs.mjs') {
       result.browser = true;
@@ -30,6 +32,24 @@ export function affected(paths) {
     }
   }
   return result;
+}
+
+// Restrict only an existing-spec-only diff. Renames/deletions, helpers, app inputs,
+// manual runs and unavailable diffs all retain the complete browser inventory.
+export function browserPlan(paths, exists = existsSync) {
+  const changed = paths.filter(path => !referenceOnly(path));
+  const narrow = changed.length > 0 && changed.every(path =>
+    /^test\/browser\/[A-Za-z0-9_/-]+\.spec\.ts$/.test(path) && exists(path));
+  const specs = narrow ? [...new Set(changed)].sort() : [];
+  const development = specs.filter(path => !path.endsWith('/production-surface.spec.ts'));
+  return {
+    browser_specs: JSON.stringify(development),
+    browser_shards: JSON.stringify(narrow ? [1] : [1, 2, 3]),
+    browser_total: narrow ? 1 : 3,
+    browser_development: !narrow || development.length > 0,
+    browser_production: !narrow || specs.some(path => path.endsWith('/production-surface.spec.ts')),
+    browser_speech: !narrow || development.some(path => /\/browser-(agent-recording|agent-tts|host-disclosure)\.spec\.ts$/.test(path)),
+  };
 }
 
 export function changedPaths(base, head, git = (...args) => execFileSync('git', args, { encoding: 'utf8' })) {
@@ -59,6 +79,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
       result = { verify: true, browser: true, android: true, prepare: true };
     }
   }
+  Object.assign(result, browserPlan(paths));
   for (const [key, value] of Object.entries(result)) appendFileSync(process.env.GITHUB_OUTPUT, `${key}=${value}\n`);
   appendFileSync(process.env.GITHUB_STEP_SUMMARY, `### Change selection\n\n${paths.length} changed paths. Missing diff or manual run selects all lanes.\n\n\`\`\`json\n${JSON.stringify(result, null, 2)}\n\`\`\`\n`);
 }
