@@ -51,6 +51,9 @@ test('existing browser-spec-only edits select one shard and the matching project
   assert.equal(plan.browser_development, true);
   assert.equal(plan.browser_production, false);
   assert.equal(plan.browser_speech, false);
+  const larger = browserPlan(['a','b','c','d'].map(name => `test/browser/${name}.spec.ts`), () => true);
+  assert.equal(larger.browser_total, 3);
+  assert.equal(JSON.parse(larger.browser_specs).length, 4);
   const production = browserPlan(['test/browser/production-surface.spec.ts'], () => true);
   assert.equal(production.browser_development, false);
   assert.equal(production.browser_production, true);

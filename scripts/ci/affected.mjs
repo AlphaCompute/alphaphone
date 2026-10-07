@@ -42,10 +42,11 @@ export function browserPlan(paths, exists = existsSync) {
     /^test\/browser\/[A-Za-z0-9_/-]+\.spec\.ts$/.test(path) && exists(path));
   const specs = narrow ? [...new Set(changed)].sort() : [];
   const development = specs.filter(path => !path.endsWith('/production-surface.spec.ts'));
+  const shards = narrow && development.length <= 3 ? [1] : [1, 2, 3];
   return {
     browser_specs: JSON.stringify(development),
-    browser_shards: JSON.stringify(narrow ? [1] : [1, 2, 3]),
-    browser_total: narrow ? 1 : 3,
+    browser_shards: JSON.stringify(shards),
+    browser_total: shards.length,
     browser_development: !narrow || development.length > 0,
     browser_production: !narrow || specs.some(path => path.endsWith('/production-surface.spec.ts')),
     browser_speech: !narrow || development.some(path => /\/browser-(agent-recording|agent-tts|host-disclosure)\.spec\.ts$/.test(path)),

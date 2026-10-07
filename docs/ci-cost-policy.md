@@ -18,8 +18,8 @@ jobs but allocate no build/test runners.
 | Shared source pin, dependencies, unknown paths | Yes | Yes | Yes | Yes |
 | Individual workflow | Yes | Its automatic lane | Its automatic lane | Its automatic lane |
 
-Existing browser-spec-only edits use one Chromium shard and select exact changed
-spec paths. Production-only specs run just the production project; development-only
+Existing browser-spec-only edits select exact changed spec paths. Up to three
+development spec files use one shard; larger edits keep three parallel shards. Production-only specs run just the production project; development-only
 specs skip production and unrelated speech-profile qualification. Shared helpers,
 deleted or renamed specs, application code, dependencies and unavailable diffs keep
 the full inventory. File selectors are validated and escaped, then passed as process
