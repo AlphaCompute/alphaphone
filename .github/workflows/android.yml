@@ -1,7 +1,5 @@
 name: Android foundation
 on:
-  push:
-    branches: [main]
   pull_request:
   workflow_dispatch:
     inputs:
@@ -19,8 +17,12 @@ concurrency:
   group: android-${{ github.ref }}${{ github.event_name == 'workflow_dispatch' && inputs.provider_only && '-provider-only' || '' }}
   cancel-in-progress: true
 jobs:
-  build:
+  changes:
     if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.provider_only) }}
+    uses: ./.github/workflows/changes.yml
+  build:
+    needs: changes
+    if: needs.changes.outputs.android == 'true'
     outputs:
       artifact_id: ${{ steps.apks.outputs.artifact-id }}
       manifest_sha256: ${{ steps.bundle.outputs.manifest_sha256 }}
@@ -40,6 +42,9 @@ jobs:
         with:
           distribution: temurin
           java-version: "21"
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          cache-read-only: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork }}
       - uses: android-actions/setup-android@v3
         with:
           packages: platform-tools
@@ -55,7 +60,9 @@ jobs:
           python3 -m pip install cmake==4.0.3
           test "$(cmake --version | head -1)" = "cmake version 4.0.3"
       - run: npm ci
-      - run: npm run verify
+      - name: Verify standalone manual qualification
+        if: github.event_name == 'workflow_dispatch'
+        run: npm run verify
       - run: node --test vendor/eliza/packages/os/scripts/__tests__/stage-launcher-overlay.node.test.ts
       # Cache only acquisition inputs. Every hit is size/hash verified; generated
       # AARs, extracted sources and models are rebuilt in this clean job.
@@ -136,7 +143,7 @@ jobs:
           name: android-smoke-apks-${{ github.run_id }}-${{ github.run_attempt }}
           path: artifacts/smoke-bundle/
           if-no-files-found: error
-          retention-days: 14
+          retention-days: 3
       # Separate, never-distributable build for the mock-isolation instrumentation
       # suites (loopback fixtures, development agent, peer fixture). It writes only
       # under artifacts/test-mocks/ and leaves the distribution APKs untouched.
@@ -176,13 +183,15 @@ jobs:
           name: android-test-mocks-apks-${{ github.run_id }}-${{ github.run_attempt }}
           path: artifacts/test-mocks-bundle/
           if-no-files-found: error
-          retention-days: 14
+          retention-days: 3
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: android-build-evidence
           path: |
-            artifacts/
+            artifacts/*.json
+            artifacts/aosp/
+            !artifacts/aosp/**/*.apk
             test-results/
             android/app/build/reports/
             .eliza/local-speech/build-*/build.log
@@ -190,7 +199,7 @@ jobs:
             .eliza/local-speech/generated/lexicon-provenance.json
             android/local-speech/runtime-manifest.json
             android/local-speech/src/main/assets/local-speech/v1/manifest.json
-          retention-days: 14
+          retention-days: 3
   # distribution: flag-off debug APKs run the no-mock instrumentation (mock-only
   # cases skip by BuildConfig.ELIZA_DEV_ALLOW_TEST_MOCKS). test-mocks: the separate
   # test-mocks APKs run the mock-isolation suites. Neither is device acceptance.
@@ -200,7 +209,7 @@ jobs:
     # Distribution also qualifies six isolated-user process-restart scenarios.
     timeout-minutes: 70
     strategy:
-      fail-fast: false
+      fail-fast: true
       matrix:
         bundle: [distribution, test-mocks]
     steps:
@@ -296,7 +305,7 @@ jobs:
             test-results/
             !test-results/ci-webview-provider/chromium.zip
             !test-results/ci-webview-provider/SystemWebView.apk
-          retention-days: 14
+          retention-days: 3
   provider-diagnostic:
     if: ${{ github.event_name == 'workflow_dispatch' && inputs.provider_only }}
     runs-on: ubuntu-24.04
@@ -372,4 +381,4 @@ jobs:
             test-results/ci-webview-provider/*.txt
             test-results/android-fixture/*.json
             test-results/emulator-disk-preflight/*.json
-          retention-days: 14
+          retention-days: 3

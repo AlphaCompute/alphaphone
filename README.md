@@ -326,6 +326,9 @@ for signing, default-home policy and the full image verification boundary.
 `apps/app` owns this product's UI. `android` owns its packaging and launcher bridge.
 `vendor/eliza` pins shared platform/native/OS code. `design` preserves the supplied references. Use root npm scripts.
 
-GitHub Actions builds both variants, runs emulator instrumentation and uploads
-artifacts. A successful APK job does not establish full AOSP image or physical
+For affected pull requests, GitHub Actions builds both variants, runs emulator
+instrumentation and uploads artifacts. Repository verification runs once per change;
+main-branch pushes repeat only that inexpensive integration check. Full resident
+qualification and Firefox/macOS WebKit runs are explicit dispatches. See
+[CI cost and qualification policy](docs/ci-cost-policy.md) for selection and commands. A successful APK job does not establish full AOSP image or physical
 hardware acceptance. Use revision-bound CI artifacts and test reports to establish what was actually run.

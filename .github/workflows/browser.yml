@@ -4,22 +4,25 @@ on:
     branches: [main]
   pull_request:
   workflow_dispatch:
+    inputs:
+      cross_browser:
+        description: Also qualify Firefox and macOS WebKit storage (expensive; not the Android engine)
+        type: boolean
+        default: false
 permissions:
   contents: read
 concurrency:
   group: browser-${{ github.ref }}
   cancel-in-progress: true
 jobs:
-  browser:
-    name: Browser MVP (shard ${{ matrix.shard }}/3)
-    runs-on: ubuntu-latest
-    # Includes setup, repository verification, over 600 UI cases and speech checks.
-    # A hosted run reached 617/619 passing cases at the former 45-minute limit.
-    timeout-minutes: 60
-    strategy:
-      fail-fast: false
-      matrix:
-        shard: [1, 2, 3]
+  changes:
+    uses: ./.github/workflows/changes.yml
+  verify:
+    name: Repository verification
+    needs: changes
+    if: needs.changes.outputs.verify == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
         with:
@@ -29,7 +32,6 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
       - run: npm ci
-      - run: npx playwright install --with-deps chromium
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -45,6 +47,27 @@ jobs:
           echo "3ea61b2a06e31edf1c91134fe9106b0ebb16628be169f3db75bc7a2b06b45796  $jar" | sha256sum --check --strict
           echo "ALPHA_JSON_JAR=$jar" >> "$GITHUB_ENV"
       - run: npm run verify
+  browser:
+    needs: changes
+    if: needs.changes.outputs.browser == 'true' && github.event_name != 'push'
+    name: Browser MVP (shard ${{ matrix.shard }}/3)
+    runs-on: ubuntu-latest
+    # Repository verification runs once, in parallel with all browser shards.
+    timeout-minutes: 60
+    strategy:
+      fail-fast: true
+      matrix:
+        shard: [1, 2, 3]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
       - name: Browser MVP on the flag-on development server
         env:
           # Development shards opt into test mocks, fixtures and device controls explicitly.
@@ -64,8 +87,10 @@ jobs:
             test-results/browser-report/
             test-results/browser-agent-profile/
             test-results/browser-agent-profile-report/
-          retention-days: 14
+          retention-days: 3
   production:
+    needs: changes
+    if: needs.changes.outputs.browser == 'true' && github.event_name != 'push'
     name: Browser production surface (flag off)
     runs-on: ubuntu-latest
     timeout-minutes: 25
@@ -96,8 +121,9 @@ jobs:
           path: |
             test-results/browser/
             test-results/browser-report/
-          retention-days: 14
+          retention-days: 3
   storage:
+    if: github.event_name == 'workflow_dispatch' && inputs.cross_browser
     name: Browser storage (${{ matrix.browser }}, shard ${{ matrix.shard }}/2)
     # Linux WebKit lacks MediaRecorder in the hosted build. Run the complete
     # WebKit inventory on macOS so Notes records real audio before storage,
@@ -109,7 +135,7 @@ jobs:
     # each job near 10 minutes; the limit leaves room for runner variance.
     timeout-minutes: 30
     strategy:
-      fail-fast: false
+      fail-fast: true
       matrix:
         browser: [firefox, webkit]
         shard: [1, 2]
@@ -145,4 +171,4 @@ jobs:
           path: |
             test-results/browser/
             test-results/browser-report/
-          retention-days: 14
+          retention-days: 3

@@ -1,0 +1,33 @@
+name: Select affected checks
+on:
+  workflow_call:
+    outputs:
+      verify:
+        value: ${{ jobs.changes.outputs.verify }}
+      browser:
+        value: ${{ jobs.changes.outputs.browser }}
+      android:
+        value: ${{ jobs.changes.outputs.android }}
+      prepare:
+        value: ${{ jobs.changes.outputs.prepare }}
+permissions:
+  contents: read
+jobs:
+  changes:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      verify: ${{ steps.diff.outputs.verify }}
+      browser: ${{ steps.diff.outputs.browser }}
+      android: ${{ steps.diff.outputs.android }}
+      prepare: ${{ steps.diff.outputs.prepare }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          # No 1GB upstream submodule is needed to compare product paths.
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+      - id: diff
+        run: node scripts/ci/affected.mjs
