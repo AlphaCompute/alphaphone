@@ -1,13 +1,11 @@
 name: Resident Android exact source
 on:
-  push:
-    branches: [main, codex/resident-ci-qualification, codex/review-all-prs]
   workflow_dispatch:
 permissions:
   contents: read
 concurrency:
-  group: resident-${{ github.sha }}
-  cancel-in-progress: false
+  group: resident-${{ github.ref }}
+  cancel-in-progress: true
 jobs:
   build:
     # All consumers select the reviewed NDK before unused image SDKs are removed.
@@ -198,15 +196,16 @@ jobs:
         with:
           name: resident-archive-${{ github.sha }}-${{ github.run_id }}
           path: test-results/resident-ci-archive/
+          retention-days: 3
           if-no-files-found: error
       - uses: actions/upload-artifact@v4
         if: always()
         with:
+          retention-days: 3
           name: resident-build-evidence-${{ github.run_id }}
           path: |
             test-results/resident-ci-supervisor/
             test-results/resident-ci/
-            test-results/resident-ci-archive/
             test-results/resident-ci-distribution/
             android/app/build/reports/
   native:
@@ -284,6 +283,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
+          retention-days: 3
           name: resident-native-evidence-${{ github.run_id }}
           path: |
             test-results/resident-ci-supervisor/
@@ -369,6 +369,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
+          retention-days: 3
           name: pending-recovery-ui-evidence-${{ github.run_id }}
           path: |
             test-results/resident-ci-supervisor/

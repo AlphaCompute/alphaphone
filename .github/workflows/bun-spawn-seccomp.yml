@@ -1,21 +1,17 @@
 name: Bun spawn seccomp reproduction
 on:
   workflow_dispatch:
-  push:
-    branches: [main, codex/review-bun-spawn-diagnostic, codex/review-stored-credentials]
-    paths:
-      - .github/workflows/bun-spawn-seccomp.yml
-      - scripts/ci/reproduce-bun-spawn-seccomp.py
-      - upstream.lock.json
-      - vendor/eliza
 permissions:
   contents: read
+concurrency:
+  group: bun-spawn-${{ github.ref }}
+  cancel-in-progress: true
 jobs:
   reproduce:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     strategy:
-      fail-fast: false
+      fail-fast: true
       matrix:
         libc: [glibc, musl]
     steps:
@@ -58,6 +54,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
+          retention-days: 3
           name: bun-spawn-seccomp-${{ matrix.libc }}-${{ github.run_id }}
           path: test-results/bun-spawn-seccomp/
           if-no-files-found: error
