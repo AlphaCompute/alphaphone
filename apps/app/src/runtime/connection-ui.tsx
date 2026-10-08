@@ -836,7 +836,7 @@ export const connectionController = {
       }
       // Generic clients report an observation, never authority or permission.
       // Retain the legacy field while older runtime deployments are supported.
-      const options = { signal: requestSignal, clientMessageId: requestId, metadata: { clientDevice: { context: message.context }, alphaPhone: { context: message.context } } };
+      const options = { signal: requestSignal, clientMessageId: requestId, metadata: { ...(message.context.timeZone===undefined?{}:{uiTimeZone:message.context.timeZone}), clientDevice: { context: message.context }, alphaPhone: { context: message.context } } };
       const progress=(value:string)=>{requestSignal.throwIfAborted();if(generation!==epoch||selected!==active||state.session?.sessionId!==session.sessionId)throw Error('The connection changed.');onText?.(value);};
       const reply = selected.kind === 'cloud' ? await selected.cloud.send(selected.agentId, id, message.text, options) : selected.kind==='resident'?await selected.remote.send(id,message.text,{...options,onText:progress}):await selected.remote.send(id, message.text, options);
       requestSignal.throwIfAborted();
