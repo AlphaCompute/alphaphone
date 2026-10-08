@@ -90,6 +90,28 @@ test('mismatched cache HEAD retains exact Git fetch and checkout fallback',t=>{
  fs.appendFileSync(path.join(f.cache,'packages/example/data.bin'),'next commit');f.git('add','.');f.git('-c','user.name=Fixture','-c','user.email=fixture@example.invalid','commit','-qm','Different cache head');
  const before=f.snapshot(),result=f.run();assert.equal(result.status,0,result.stderr);assert.doesNotMatch(result.stdout,/Seeded/);assert.equal(hash(path.join(f.destination,'packages/example/data.bin')),original);assert.deepEqual(f.snapshot(),before);
 });
+test('matching sparse cache falls back to a complete independent admitted checkout',t=>{
+ const f=fixture(t),original=hash(path.join(f.cache,'packages/example/data.bin'));
+ f.git('sparse-checkout','init','--cone');f.git('sparse-checkout','set','packages/app/scripts/lib');
+ assert.equal(f.git('config','--bool','core.sparseCheckout'),'true');
+ assert.equal(fs.existsSync(path.join(f.cache,'packages/example/data.bin')),false);
+ const snapshot=()=>{
+  const files={};
+  const walk=directory=>{for(const name of fs.readdirSync(directory).sort()){
+   const file=path.join(directory,name),stat=fs.lstatSync(file),relative=path.relative(f.cache,file);
+   files[relative]={mode:stat.mode,value:stat.isSymbolicLink()?fs.readlinkSync(file):stat.isFile()?hash(file):null};
+   if(stat.isDirectory())walk(file);
+  }};walk(f.cache);return files;
+ };
+ const before=snapshot(),result=f.run();assert.equal(result.status,0,result.stderr);assert.doesNotMatch(result.stdout,/Seeded/);
+ assert.equal(hash(path.join(f.destination,'packages/example/data.bin')),original);
+ assert.equal(fs.lstatSync(path.join(f.destination,'packages/example/linked-data')).isSymbolicLink(),true);
+ assert.deepEqual(fs.readdirSync(path.join(f.destination,'packages/example/external')),[]);
+ assert.equal(JSON.parse(fs.readFileSync(path.join(f.destination,'.alpha-runtime-source.json'))).base,f.commit);
+ assert.equal(execFileSync('git',['-C',f.destination,'rev-parse','HEAD'],{encoding:'utf8'}).trim(),f.commit);
+ assert.equal(spawnSync('git',['-C',f.destination,'symbolic-ref','-q','HEAD']).status,1);
+ assert.deepEqual(snapshot(),before);
+});
 test('copy-on-write hints retain correct independent files when the filesystem falls back to normal copying',t=>{
  const f=fixture(t),before=f.snapshot(),preload=path.join(f.directory,'fallback.mjs'),metrics=path.join(f.directory,'copies.json');
  f.write(preload,`import fs from 'node:fs';import child from 'node:child_process';import path from 'node:path';import {syncBuiltinESMExports} from 'node:module';const copy=fs.copyFileSync,run=child.execFileSync,copies=[];let nativeAttempts=0;child.execFileSync=(command,args,options)=>{if(command==='/bin/cp'){nativeAttempts++;throw Object.assign(Error('clone unsupported'),{code:'ENOTSUP'});}return run(command,args,options);};fs.copyFileSync=(source,target,flags)=>{const result=copy(source,target,flags&~fs.constants.COPYFILE_FICLONE),stat=fs.statSync(target);copies.push({target,bytes:fs.statSync(source).size,exclusive:!!(flags&fs.constants.COPYFILE_EXCL),inode:stat.ino,mtime:stat.mtimeMs});return result;};syncBuiltinESMExports();process.on('exit',()=>fs.writeFileSync(${JSON.stringify(metrics)},JSON.stringify({copies,nativeAttempts})));`);

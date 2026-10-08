@@ -71,6 +71,10 @@ export function seedCommittedCache(cache, destination, commit) {
  try {
   if(fs.realpathSync(git(['rev-parse','--show-toplevel']))!==cache||git(['rev-parse','HEAD'])!==commit)return false;
  }catch{return false;} // Not a matching local checkout: retain ordinary Git fetch/checkout.
+ // Sparse working trees do not contain every committed file. Fetched Git objects
+ // remain authoritative; ordinary checkout materializes the complete destination.
+ try{if(git(['config','--bool','--get','core.sparseCheckout'])==='true')return false;}
+ catch(error){if(error.status!==1)throw error;} // An unset option means a full cache.
  if(git(['status','--porcelain','--untracked-files=no']))throw Error('Tracked runtime cache changes must be preserved and reviewed');
  const entries=git(['ls-tree','-r','-z',commit]).split('\0').filter(Boolean);
  const buffer=Buffer.allocUnsafe(1024*1024),regular=[];
