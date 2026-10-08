@@ -102,7 +102,7 @@ async function download(url, destination, expected, attempts = 3) {
 }
 
 /** Acquire any missing or corrupt model file from the pinned revision, then re-verify everything. */
-export async function ensureBrowserSpeechAssets(root = ROOT, env = process.env, log = console.log) {
+export async function ensureBrowserSpeechAssets(root = ROOT, env = process.env, log = console.log, attempts = 3) {
   const config = readConfig(root), directory = modelDirectory(root, env, config);
   for (const entry of config.files) {
     const file = path.join(directory, entry.path), problem = verifyFile(file, entry);
@@ -110,7 +110,11 @@ export async function ensureBrowserSpeechAssets(root = ROOT, env = process.env, 
     if (env.ELIZA_BROWSER_SPEECH_DIR?.trim()) throw new Error(`ELIZA_BROWSER_SPEECH_DIR ${directory}: ${entry.path}: ${problem}`);
     if (problem !== 'missing') fs.rmSync(file, {force: true});
     log(`Acquiring browser speech ${entry.path} (${(entry.bytes / 1e6).toFixed(1)} MB) from ${config.source.repository}@${config.source.revision.slice(0, 12)}`);
-    await download(new URL(entry.path, config.source.url).href, file, entry);
+    try { await download(new URL(entry.path, config.source.url).href, file, entry, attempts); }
+    catch (error) {
+      throw new Error(`${error.message}\nBrowser speech model files are not cached in ${path.relative(root, directory) || directory} and could not be downloaded (offline or blocked?). `
+        + `Connect once and rerun npm run browser-speech:prepare to cache the pinned files, or set ELIZA_BROWSER_SPEECH_DIR to a directory that already holds them (verified, never written).`);
+    }
   }
   const result = browserSpeechFiles(root, env);
   if (result.problems.length) throw new Error(`Browser speech assets are not ready:\n- ${result.problems.join('\n- ')}`);

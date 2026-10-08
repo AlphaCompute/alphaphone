@@ -63,8 +63,11 @@ Total ≈ 56.1 MB (≈ 28.9 MB if the server compresses it), fetched lazily on t
 transcription only and then served from the HTTP cache. Measured against `main` at
 `2f18158a`: `web-dist` grows from 25.7 MB to 82.7 MB (the model, the 57 KB worker chunk loaded
 on first use, and longer license notices); the start-up chunk grows by 2.4 KB (1.1 KB gzip).
-APK web payloads do not grow by the model. The worker verifies every file's size and SHA-256 against the
-build manifest before use.
+APK web payloads do not grow by the model. Before use, the worker verifies the size and SHA-256
+of the encoder, decoder, vocabulary, generation config and ONNX Runtime WebAssembly against the
+build manifest. The 24 KB ONNX Runtime glue module (`ort-wasm-simd-threaded.mjs`) is a same-origin
+script that the runtime imports itself; like the app's own scripts it is verified at build time
+(its hash is in the manifest) but is not re-hashed in the browser.
 
 - `npm run browser-speech:prepare` (run automatically before `build`, `build:test-mocks`, `dev`,
   `dev:ui` and `dev:maps`) downloads missing model files once from the pinned Hugging Face
@@ -73,6 +76,9 @@ build manifest before use.
   A production build fails if any file is missing or does not match its pin. The development
   server serves the files from the same verified sources.
 - The browser never contacts a third party: no CDN, model hub or runtime fetch outside the app.
+  `production-surface.spec.ts` transcribes under the shipped production CSP and fails on any
+  request that leaves the app's origin. The CSP is a `<meta>` tag, which does not govern the
+  worker; the worker's own requests are covered by that origin check, not by the CSP.
 - **Android omits these assets.** `npm run android:sync` prunes `browser-speech/` from the synced
   web payload and APK verification fails if it is packaged; Android uses its native recognizer.
 - Notices: the model entry (OpenAI Whisper MIT, and the conversion's Apache-2.0 model card pinned

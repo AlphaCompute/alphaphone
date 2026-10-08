@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import {
   ROOT, JSON_OUTPUT, TEXT_OUTPUT, ALLOWLIST, UNVERIFIED, KNOWN_LICENSES,
-  generate, collectNotices, productionLockPackages, unknownLicenseTerms, fontNames, fontLicense, parseGradleTree,
+  generate, collectNotices, productionLockPackages, declarationOnlyPackage, unknownLicenseTerms, fontNames, fontLicense, parseGradleTree,
 } from '../scripts/generate-licenses.mjs';
 
 const fresh = generate(ROOT);
@@ -49,6 +49,23 @@ test('every package-lock production dependency is listed once with its declared 
       assert.ok(!npmEntries.some(entry => entry.name === name && entry.version === meta.version), `${name} must not be listed from npm`);
     }
   }
+});
+
+test('declaration-only type packages are not production code, but packages with code are', () => {
+  const production = new Set(productionLockPackages(lock).map(pkg => pkg.name));
+  for (const name of ['@types/node', 'undici-types']) {
+    assert.ok(declarationOnlyPackage(path.join(ROOT, 'node_modules', name)), `${name} holds only declarations`);
+    assert.ok(!production.has(name), `${name} ships no code and must not be listed`);
+  }
+  for (const name of ['react', 'onnxruntime-web', 'protobufjs']) assert.ok(production.has(name), name);
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'alpha-types-'));
+  try {
+    fs.writeFileSync(path.join(dir, 'package.json'), '{}'); fs.writeFileSync(path.join(dir, 'index.d.ts'), 'export {};');
+    assert.equal(declarationOnlyPackage(dir), true);
+    fs.mkdirSync(path.join(dir, 'lib')); fs.writeFileSync(path.join(dir, 'lib', 'index.js'), 'module.exports = 1;');
+    assert.equal(declarationOnlyPackage(dir), false, 'any runtime file makes it a code package');
+    assert.equal(declarationOnlyPackage(path.join(dir, 'missing')), false, 'a missing package is reported, never skipped');
+  } finally { fs.rmSync(dir, {recursive: true, force: true}); }
 });
 
 test('direct product dependencies, fonts, Android, speech, elizaOS and map data are covered', () => {

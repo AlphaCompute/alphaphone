@@ -74,3 +74,21 @@ test('Android sync prunes the browser model from the APK web payload', () => {
   const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8'));
   assert.match(pkg.scripts['android:sync'], /cap sync android && node scripts\/browser-speech-assets\.mjs prune-android$/);
 });
+
+test('offline acquisition without a cache fails with guidance, and leaves no partial files', async () => {
+  const root = temporary();
+  try {
+    const config = readConfig();
+    config.source.url = 'http://127.0.0.1:9/unreachable/';
+    fs.mkdirSync(path.join(root, 'config')); fs.writeFileSync(path.join(root, 'config/browser-speech.json'), JSON.stringify(config));
+    await assert.rejects(ensureBrowserSpeechAssets(root, {}, () => {}, 1), error => {
+      assert.match(error.message, /could not be downloaded \(offline or blocked\?\)/);
+      assert.match(error.message, /npm run browser-speech:prepare/);
+      assert.match(error.message, /ELIZA_BROWSER_SPEECH_DIR/);
+      return true;
+    });
+    const cache = path.join(root, '.eliza/browser-speech', config.source.revision);
+    const leftovers = fs.existsSync(cache) ? fs.readdirSync(cache, {recursive: true}).filter(name => /partial/.test(name)) : [];
+    assert.deepEqual(leftovers, []);
+  } finally { fs.rmSync(root, {recursive: true, force: true}); }
+});
