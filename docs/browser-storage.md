@@ -186,8 +186,16 @@ id. Voice restores use the reviewed audio-restore path; Delete forever, Empty Tr
 and expiry call `AlphaNoteAudio.purge`, which erases bytes and transcript only for
 the operation that trashed the recording, leaves a `purged` receipt, and makes later
 restoration impossible. An unconfirmed voice deletion is never purged while its
-recovery row is pending. Agent-deleted voice notes (whose recording was never
-trashed) restore their text; their audio keeps the earlier orphaned-file behavior.
+recovery row is pending, and a recording that any saved note still references is never
+erased. An approved agent `notes_delete` of a voice note follows the editor protocol:
+the Trash entry and audio recovery row are written before the tombstone commit, and
+the recording then moves to the audio trash under the agent's operation id, so Trash
+restores or erases the note and recording together. If the recording step cannot be
+confirmed after the commit, the recovery row stays for review and the entry is not
+purged. A recording that is already missing or owned by another deletion is left
+untouched and only the note text goes to Trash. The 3-day window uses wall-clock
+epoch time (time-zone changes have no effect); a clock moved backwards delays the
+purge, and a clock moved forwards can advance it.
 
 The owning suites cover independent tabs, stale editors, exact archives,
 malformed recovery, failed writes, lost acknowledgements, deletion receipts,

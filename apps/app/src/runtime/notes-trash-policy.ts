@@ -46,7 +46,12 @@ export function validateNotesTrash(value:unknown):NotesTrashDocument{
 }
 
 export function notesTrashExpiresAt(entry:Pick<NotesTrashEntry,'deletedAt'>){return entry.deletedAt+NOTES_TRASH_RETENTION_MS;}
-/** Expired exactly when three full days have elapsed. A clock moved backwards never extends past now+3 days. */
+/**
+ * Expired exactly when three full days of wall-clock time have elapsed since deletion
+ * (epoch milliseconds, so time-zone and DST changes have no effect). A clock moved
+ * backwards delays the purge rather than advancing it: early erasure is the
+ * unrecoverable failure, so deletedAt is never rewritten from a possibly wrong clock.
+ */
 export function notesTrashExpired(entry:Pick<NotesTrashEntry,'deletedAt'>,now:number){return now>=notesTrashExpiresAt(entry);}
 /** Whole days left, rounded up: 3 right after deletion, 1 during the final day, 0 once due. */
 export function notesTrashDaysLeft(entry:Pick<NotesTrashEntry,'deletedAt'>,now:number){

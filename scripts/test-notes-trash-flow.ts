@@ -49,9 +49,10 @@ assert.deepEqual([0,1,DAY-1,DAY,DAY+1,2*DAY,2*DAY+1,3*DAY-1,3*DAY,4*DAY].map(d=>
 assert.equal(notesTrashDaysLabel(row,t0),'3 days left');
 assert.equal(notesTrashDaysLabel(row,t0+2*DAY+1),'1 day left');
 assert.equal(notesTrashDaysLabel(row,t0+3*DAY),'Deleting permanently');
-// A clock moved backwards never shows or keeps more than the 3-day window.
+// A clock moved backwards never shows more than 3 days and never purges early; the purge waits for the wall clock.
 assert.equal(notesTrashDaysLeft(row,t0-10*DAY),3);
 assert.equal(notesTrashExpired(row,t0-10*DAY),false);
+assert.deepEqual(planNotesTrash({version:1,entries:[row]},new Set(),t0-10*DAY).kept.map(e=>e.id),['op-1']);
 
 // Planning: live notes are stale rows (undo, restore, uncommitted deletion); absent notes expire at 3 days.
 const live=new Set(['list-1']);

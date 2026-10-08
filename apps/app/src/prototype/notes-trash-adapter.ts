@@ -150,7 +150,7 @@ export function installNotesTrashAdapter(Component:Shell,views:Record<string,Bag
   view.trashOpen=!!state.trashOpen;
   view.trashLabel=rows.length?`Trash, ${rows.length} item${rows.length===1?'':'s'}`:'Trash';
   view.trashRows=rows.map(entry=>{
-   const title=entry.note.title||'Untitled';
+   const title=entry.note.title||kindLabel[entry.note.kind]||'Untitled';
    return {id:entry.id,title,kind:kindLabel[entry.note.kind]||'Note',left:notesTrashDaysLabel(entry,now),
     restoreLabel:`Restore ${title}`,deleteLabel:`Delete ${title} forever`,disabled,
     restore:()=>void trash.restore(entry.id),

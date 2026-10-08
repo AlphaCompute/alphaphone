@@ -133,6 +133,9 @@ test('voice notes share the Trash: the recording restores with its note and is e
  });
  const describe=()=>page.evaluate(async()=>{const {registerPlugin}=await import('/src/platform-plugins.ts');return registerPlugin<any>('AlphaNoteAudio').describe({audioId:'trash-audio'});});
  await page.reload();await openNotes(page);
+ const original=(await savedRecords(page)).find((n:any)=>n.id==='trash-voice');
+ const revision=()=>page.evaluate(async()=>{const m=await import('/src/runtime/browser-notes-document.ts');return (await (await m.openBrowserNotes()).target('trash-voice')).revision;});
+ const originalRevision=await revision();
  const remove=async()=>{
   await page.getByRole('button',{name:'Open Voice memo',exact:true}).click();
   await page.getByRole('button',{name:'Delete note',exact:true}).click();
@@ -148,6 +151,9 @@ test('voice notes share the Trash: the recording restores with its note and is e
  await expect(page.getByText('Voice note restored.',{exact:true})).toBeVisible();
  await expect(trash.getByText('Trash is empty.',{exact:true})).toBeVisible();
  expect((await describe()).deletedAt).toBeUndefined();
+ // The voice restore reinstates the exact record: same id, same dates, same reviewed revision.
+ expect((await savedRecords(page)).find((n:any)=>n.id==='trash-voice')).toEqual(original);
+ expect(await revision()).toBe(originalRevision);
  await trash.getByRole('button',{name:'Close Trash',exact:true}).click();
 
  await remove();
@@ -161,4 +167,80 @@ test('voice notes share the Trash: the recording restores with its note and is e
  // An erased recording can never be restored again.
  const op=Object.entries(erased.deletionOperations).find(([,v])=>v==='purged')![0];
  expect(await page.evaluate(async op=>{const {registerPlugin}=await import('/src/platform-plugins.ts');try{await registerPlugin<any>('AlphaNoteAudio').restore({audioId:'trash-audio',noteId:'trash-voice',operationId:op});return 'restored';}catch{return 'refused';}},op)).toBe('refused');
+});
+
+test('an expired voice entry never erases a recording that a saved note still references',async({page})=>{
+ const t0=Date.UTC(2026,9,7,12);
+ await page.clock.install({time:t0});
+ await page.addInitScript(()=>localStorage.setItem('alpha.connection.selection.v1',JSON.stringify({kind:'offline'})));
+ await page.goto('/');
+ await page.evaluate(async()=>{
+  const {openBrowserNotes}=await import('/src/runtime/browser-notes-document.ts');const {retainAudio}=await import('/src/browser/note-audio-store.ts');
+  const audio=await retainAudio('shared-audio','shared-voice','Shared words',{blob:new Blob(['synthetic'],{type:'audio/wav'}),durationMs:1000});
+  await (await openBrowserNotes()).replace([{id:'shared-voice',kind:'voice',title:'Shared memo',body:'Shared words',audio,dur:1,lines:[],summary:[],actions:[]}]);
+ });
+ const describe=()=>page.evaluate(async()=>{const {registerPlugin}=await import('/src/platform-plugins.ts');return registerPlugin<any>('AlphaNoteAudio').describe({audioId:'shared-audio'});});
+ await page.reload();await openNotes(page);
+ await page.getByRole('button',{name:'Open Shared memo',exact:true}).click();
+ await page.getByRole('button',{name:'Delete note',exact:true}).click();
+ await expect(page.getByText('Voice note moved to Trash',{exact:true})).toBeVisible();
+ await expect.poll(async()=>(await describe()).deletedAt).toBeGreaterThan(0);
+ const entry=(await trashEntries(page))[0];
+ // Another saved note now references the same recording (for example, re-associated by a later edit).
+ await page.evaluate(async audio=>{const {openBrowserNotes}=await import('/src/runtime/browser-notes-document.ts');const store=await openBrowserNotes();await store.replace([...store.list,{id:'other-voice',kind:'voice',title:'Other',body:'',audio,dur:1,lines:[],summary:[],actions:[]}]);},entry.note.audio);
+ await page.clock.setSystemTime(entry.deletedAt+3*DAY+60_000);
+ await page.reload();await openNotes(page);
+ await page.getByRole('button',{name:'Open Trash',exact:true}).click();
+ await expect(page.locator('[data-alpha-subview="notes-trash"]').getByText('Voice note · Deleting permanently',{exact:true})).toBeVisible();
+ // Maintenance ran and kept both the row and the recording bytes and transcript.
+ expect((await trashEntries(page)).map((e:any)=>e.id)).toEqual([entry.id]);
+ const kept=await describe();
+ expect(kept.transcript).toBe('Shared words');expect(kept.expired).toBeUndefined();
+ expect(Object.values(kept.deletionOperations)).not.toContain('purged');
+});
+
+test('an approved agent deletion of a voice note moves its recording to Trash with it',async({page})=>{
+ // Test-only seam: expose the module-scoped executor that the Notes shell installs.
+ await page.route(/\/src\/runtime\/connection-ui\.tsx(\?.*)?$/,async route=>{
+  const response=await route.fetch();
+  await route.fulfill({response,body:(await response.text())+'\nwindow.__notesTrashTestExecutor=(...args)=>deviceExecutor(...args);\n'});
+ });
+ await page.addInitScript(()=>localStorage.setItem('alpha.connection.selection.v1',JSON.stringify({kind:'offline'})));
+ await page.goto('/');
+ await page.evaluate(async()=>{
+  const {openBrowserNotes}=await import('/src/runtime/browser-notes-document.ts');const {retainAudio}=await import('/src/browser/note-audio-store.ts');
+  const audio=await retainAudio('agent-audio','agent-voice','Agent words',{blob:new Blob(['synthetic'],{type:'audio/wav'}),durationMs:1000});
+  await (await openBrowserNotes()).replace([{id:'agent-voice',kind:'voice',title:'Agent memo',body:'Agent words',audio,dur:1,lines:[],summary:[],actions:[]}]);
+ });
+ const describe=()=>page.evaluate(async()=>{const {registerPlugin}=await import('/src/platform-plugins.ts');return registerPlugin<any>('AlphaNoteAudio').describe({audioId:'agent-audio'});});
+ await page.reload();await openNotes(page);
+ await expect.poll(()=>page.evaluate(()=>typeof (window as any).__notesTrashTestExecutor)).toBe('function');
+ const original=(await savedRecords(page)).find((n:any)=>n.id==='agent-voice');
+ const operationId='aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee';
+ const result=await page.evaluate(async operationId=>{
+  const {openBrowserNotes}=await import('/src/runtime/browser-notes-document.ts');const {alphaClient}=await import('/src/runtime/alpha-client.ts');
+  const target=await (await openBrowserNotes()).target('agent-voice');
+  return (window as any).__notesTrashTestExecutor({type:'notes_delete',target},operationId,structuredClone(alphaClient.getState().context),new AbortController().signal);
+ },operationId);
+ expect(result.status).toBe('succeeded');
+ // DeviceActions announces every committed Notes operation after journaling it.
+ await page.evaluate(()=>window.dispatchEvent(new CustomEvent('alpha:notes-committed')));
+ await expect(page.getByRole('button',{name:'Open Agent memo',exact:true})).toHaveCount(0);
+ expect((await savedRecords(page)).some((n:any)=>n.id==='agent-voice')).toBe(false);
+ const trashed=await describe();
+ expect(trashed.deletedAt).toBeGreaterThan(0);
+ expect(trashed.activeDeletionOperation).toBe(operationId);
+ expect(trashed.deletionOperations[operationId]).toBe('removed');
+ const entries=await trashEntries(page);
+ expect(entries.map((e:any)=>[e.id,e.audio?.audioId])).toEqual([[operationId,'agent-audio']]);
+ expect(await page.evaluate(async()=>Object.keys(await (await import('/src/runtime/note-audio-deletions.ts')).pendingAudioDeletions()))).toEqual([]);
+
+ // Trash restores the note and its recording together, through the reviewed voice restore path.
+ await page.getByRole('button',{name:'Open Trash',exact:true}).click();
+ const trash=page.locator('[data-alpha-subview="notes-trash"]');
+ await trash.getByRole('button',{name:'Restore Agent memo',exact:true}).click();
+ await expect(page.getByText('Voice note restored.',{exact:true})).toBeVisible();
+ expect((await describe()).deletedAt).toBeUndefined();
+ expect((await savedRecords(page)).find((n:any)=>n.id==='agent-voice')).toEqual(original);
+ expect(await trashEntries(page)).toEqual([]);
 });

@@ -311,8 +311,12 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
             if(index<0)throw Error('Selected note is missing');
             const target=await this.notesStore.target(operation.target.noteId);
             if(JSON.stringify(target)!==JSON.stringify(operation.target))throw Error('Selected note revision changed');
-            await editNotesTrash(doc=>addNotesTrashEntry(doc,{id:operationId,note:list[index],target,index,deletedAt:Date.now()}));
-            const result=await execute();window.dispatchEvent(new Event('alpha:notes-trash-changed'));return result;
+            const note=list[index],voice=this.api('notes')?.trashVoiceNoteWithRecording;
+            // A voice note's recording moves to the audio trash under the same operation id,
+            // so Trash restores or erases the note and its recording together.
+            const result=note.kind==='voice'&&note.audio&&typeof voice==='function'?await voice(note,target,operationId,index,execute):
+              (await editNotesTrash(doc=>addNotesTrashEntry(doc,{id:operationId,note,target,index,deletedAt:Date.now()})),await execute());
+            window.dispatchEvent(new Event('alpha:notes-trash-changed'));return result;
           },signal);
           return {status:'succeeded',summary:operation.type==='notes_read_selected'?'Read the exact selected note with approval.':'Selected Notes change committed.',notesResult};
         }catch(error){
