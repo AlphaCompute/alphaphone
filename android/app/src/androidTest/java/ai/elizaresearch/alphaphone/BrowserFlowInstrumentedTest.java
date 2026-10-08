@@ -212,7 +212,8 @@ public class BrowserFlowInstrumentedTest {
    assertEquals("Private tab cannot read normal-tab storage","null",child("localStorage.getItem('alpha_flow_marker')"));
    child("localStorage.setItem('alpha_flow_private',"+JSONObject.quote(token)+");true");
    assertEquals("Private tab lacks native bridge","true",child("typeof Capacitor==='undefined' && typeof androidBridge==='undefined'"));
-   click("Tabs");click("Close private tab");
+   // Closing a tab leaves the tab switcher open; return to the remaining page.
+   click("Tabs");click("Close private tab");click("Back to page");
    until("!document.querySelector('[aria-label=\"Private tab\"]')");page(two);
    assertEquals("Normal tab cannot read private-tab storage","null",child("localStorage.getItem('alpha_flow_private')"));
    click("Tabs");click("Close tab");

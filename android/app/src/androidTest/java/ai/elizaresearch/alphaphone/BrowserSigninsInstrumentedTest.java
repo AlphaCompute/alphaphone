@@ -59,6 +59,18 @@ public final class BrowserSigninsInstrumentedTest {
  private void fixtureLink(String href,String target)throws Exception{
   browser.child("(()=>{const a=document.createElement('a');a.id='alpha-fixture-link';a.href="+JSONObject.quote(href)+";"+(target==null?"":"a.target="+JSONObject.quote(target)+";")+"a.textContent='Alpha fixture link';a.style.cssText='display:block;font-size:32px;padding:24px';document.body.prepend(a);return true;})()");
  }
+ private boolean mainIn(Stage... stages)throws Exception{AtomicBoolean found=new AtomicBoolean();BoundedActivityScenario.main(()->{for(Stage stage:stages)for(Activity activity:ActivityLifecycleMonitorRegistry.getInstance().getActivitiesInStage(stage))if(activity instanceof MainActivity)found.set(true);});return found.get();}
+ /** Return from the app that received a handoff. The dialer may run in its own
+  * task, so Back can reach the launcher, and Back sent before it owns focus can
+  * reach Alpha itself. Wait for Alpha to be fully covered, then bring its
+  * existing task to the front explicitly. */
+ private void returnToAlpha()throws Exception{
+  for(int i=0;i<100&&!mainIn(Stage.STOPPED);i++)SystemClock.sleep(100);
+  android.content.Context context=InstrumentationRegistry.getInstrumentation().getTargetContext();
+  BoundedActivityScenario.main(()->context.startActivity(new Intent(context,MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK|Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)));
+  for(int i=0;i<100&&!mainIn(Stage.RESUMED);i++)SystemClock.sleep(100);
+  assertTrue("Alpha returned to the foreground",mainIn(Stage.RESUMED));
+ }
  private int liveTabs()throws Exception{
   int[] count=new int[1];WebViewTestDriver.withActivity(MainActivity.class,activity->{try{Object plugin=activity.getBridge().getPlugin("AlphaBrowser").getInstance();java.lang.reflect.Field tabs=plugin.getClass().getDeclaredField("tabs");tabs.setAccessible(true);count[0]=((java.util.Map<?,?>)tabs.get(plugin)).size();}catch(Exception failure){throw new AssertionError(failure);}});return count[0];
  }
@@ -126,8 +138,10 @@ public final class BrowserSigninsInstrumentedTest {
    AppNavigation.liveMode();app("Browser");address(url);page(url);
    browser.child("localStorage.setItem('alpha_opener',"+JSONObject.quote(token)+");true");
    // window.open without a tap is not a user gesture and is blocked.
-   browser.child("window.open("+JSONObject.quote(popup)+");true");
-   ready("document.body.innerText.includes('Blocked a pop-up')");tabs(1);assertEquals(1,liveTabs());
+   // Chromium refuses it before onCreateWindow (JavaScriptCanOpenWindowsAutomatically
+   // is off), so window.open returns null and no tab or WebView is created.
+   assertEquals("Script pop-up refused","true",browser.child("window.open("+JSONObject.quote(popup)+")===null"));
+   SystemClock.sleep(1000);tabs(1);assertEquals(1,liveTabs());
    fixtureLink(popup,"_blank");tap("#alpha-fixture-link");
    tabs(2);page(popup);assertEquals(2,liveTabs());
    assertEquals("Pop-up tab shares the opener's normal profile",JSONObject.quote(token),browser.child("localStorage.getItem('alpha_opener')"));
@@ -161,7 +175,7 @@ public final class BrowserSigninsInstrumentedTest {
     if(!handedOff)SystemClock.sleep(100);
    }
    assertTrue("Dialer opened, or Android reported no handler",handedOff);
-   if(!"true".equals(host("document.body.innerText.includes('No app on this device')")))WebViewTestDriver.pressBack();
+   if(!"true".equals(host("document.body.innerText.includes('No app on this device')")))returnToAlpha();
    app("Browser");page(url);
    assertEquals("Address type error never replaced the page","false",host("document.body.innerText.includes('address type is not supported')"));
   }
@@ -180,7 +194,7 @@ public final class BrowserSigninsInstrumentedTest {
     if(!handedOff)SystemClock.sleep(100);
    }
    assertTrue("Dialer opened from the pop-up, or Android reported no handler",handedOff);
-   if(!"true".equals(host("document.body.innerText.includes('No app on this device')")))WebViewTestDriver.pressBack();
+   if(!"true".equals(host("document.body.innerText.includes('No app on this device')")))returnToAlpha();
    // The empty pop-up closes after its single handoff; the opener page stays.
    app("Browser");tabs(1);page(url);assertEquals(1,liveTabs());
   }
