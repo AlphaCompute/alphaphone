@@ -7,7 +7,8 @@ export interface GmailFailure { kind: GmailFailureKind; message: string }
 const messages: Record<GmailFailureKind, Record<'read' | 'operation', string>> = {
   offline: {
     read: 'You appear to be offline. Gmail was not reached. Retry when you are connected.',
-    operation: 'You appear to be offline. Nothing was changed in Gmail. Check the receipt or retry when you are connected.',
+    // A request may have reached Gmail before the connection dropped, so this does not claim no change.
+    operation: 'You appear to be offline. Gmail may not have received this change. When you are connected, check the saved receipt before trying again.',
   },
   revoked: {
     read: 'Gmail access was revoked or needs authorization again. Reconnect Gmail, then retry.',
