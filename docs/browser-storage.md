@@ -176,7 +176,8 @@ The entry is written ahead of the deletion commit under the shared
 point; maintenance drops an entry whose note is saved again (Undo, restore, or a
 deletion that never committed).
 
-Entries expire exactly 3 days (`NOTES_TRASH_RETENTION_MS`) after `deletedAt`.
+Entries expire exactly 3 days (`NOTES_TRASH_RETENTION_MS`) after `deletedAt`
+([decision P-06](decisions.md#october-7-owner-product-decisions)).
 Maintenance runs at startup, once saved Notes open, and each time Notes opens. It
 reads authoritative storage, only takes the lock when there is work, and is
 idempotent: an interrupted purge is simply repeated. Restore reinserts the
