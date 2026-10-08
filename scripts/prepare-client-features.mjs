@@ -33,6 +33,8 @@ function matches(actual, expected) {
 }
 export const CLIENT_FEATURE_PATHS = [
   'packages/ui/src/platform/browser-document-store.ts',
+  'packages/contracts/src/native-notes-query.ts',
+  'plugins/plugin-assistant/src/services/device-actions/notes-query-result.ts',
   'plugins/plugin-assistant/src/services/device-actions/calendar-contract.ts',
   'plugins/plugin-assistant/src/services/device-actions/device-record-presentation.ts',
   'plugins/plugin-assistant/src/services/device-actions/notes-contract.ts',

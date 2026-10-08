@@ -150,7 +150,7 @@ public final class AlphaConnectionPlugin extends Plugin {
  }
  static boolean validDeviceCapabilities(String value) {
   if(value==null||value.contains("\r")||value.contains("\n"))return false;
-  Set<String> allowed=Set.of("calendar.local-event.v1","calendar.create.v1","calendar.next-read.v1","notes.local-record.v1","reminders.local-record.v1","reminders.local-record.v2","reminders.create.v1","maps.selected-read.v1","clock.handoff.v1");
+  Set<String> allowed=Set.of("calendar.local-event.v1","calendar.create.v1","calendar.next-read.v1","notes.local-record.v1","notes.query.v1","reminders.local-record.v1","reminders.local-record.v2","reminders.create.v1","maps.selected-read.v1","clock.handoff.v1");
   String[] parts=value.split(",",-1);if(parts.length<1||parts.length>allowed.size())return false;
   java.util.HashSet<String> seen=new java.util.HashSet<>();
   for(String part:parts){String token=part.trim();if(!allowed.contains(token)||!seen.add(token))return false;}

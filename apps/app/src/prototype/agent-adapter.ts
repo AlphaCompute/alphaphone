@@ -1,4 +1,6 @@
 import {formatDeviceRecordDateTime} from "../../../../.eliza/client-features/plugins/plugin-assistant/src/services/device-actions/device-record-presentation.ts";
+import {isNativeNotesQuery} from '../../../../.eliza/client-features/packages/contracts/src/native-notes-query.ts';
+import {executeNotesQuery} from './notes-query-executor';
 import {presentDeviceRecordOperation} from '../runtime/device-record-presentation';
 import { passwordSurfaceOpen } from '../passwords/password-manager';
 import {AssistantDraftController} from './assistant-draft-controller';
@@ -338,6 +340,13 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
         }
         return {status:result.status==='unknown'?'unknown':'failed',summary:result.status==='unknown'?'Calendar outcome is unconfirmed. Inspect action history before another action.':result.status==='cancelled'?'Calendar review cancelled. Nothing was changed.':'Calendar target changed, access was denied, or the operation is unsupported. Nothing was changed.'};
       }
+      if(isNativeNotesQuery(operation)){
+        if(this.notesStorageFailed||this.notesPending||!this.notesStore)return {status:'failed',summary:'Notes storage is unavailable. Nothing was shared.'};
+        const ownerSession=connectionController.getSnapshot().session,ownerTarget=JSON.stringify(connectionController.getWorkflowDeviceTarget());
+        const current=()=>{signal.throwIfAborted();context(this);if(!ownerSession||connectionController.getSnapshot().session!==ownerSession||JSON.stringify(connectionController.getWorkflowDeviceTarget())!==ownerTarget||!this.live||this.notesPending||this.notesStorageFailed||document.hidden||expectedContext.sensitive||!['home','notes'].includes(expectedContext.view)||JSON.stringify(alphaClient.getState().context)!==JSON.stringify(expectedContext))throw Error('Notes query or connection changed');};
+        try{return await executeNotesQuery(this.notesStore,operation,operationId,signal,current);
+        }catch{return {status:'failed',summary:'Notes changed or sharing became unavailable. Review the query again; nothing was shared.'};}
+      }
       if(isNotesOperation(operation)){
         try{
           if(this.notesStorageFailed||!this.notesStore)throw Error('Notes storage is unavailable');
@@ -480,7 +489,7 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
     }
     try {
       // A Trash restore reinstates the exact saved record; it is not a content modification.
-      if(!isAndroid&&!options?.exact)patch={...patch,list:stampNoteChanges(this.notesStore.list,patch.list)};
+      if(!options?.exact)patch={...patch,list:stampNoteChanges(this.notesStore.list,patch.list)};
       const pending=this.notesStore.replace(patch.list);
       this.notesPending++;
       this.notesSelectionKey=null;this.notesSelection=null;

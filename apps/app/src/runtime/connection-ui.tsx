@@ -258,6 +258,7 @@ async function connectRemote(kind: 'remote' | 'local', origin: string, code: str
     if (registered.installationId !== credential.installationId || !/^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/.test(registered.enrollmentId)) throw new Error('Device registration was not verified');
     reason = await negotiateEnabledViews(registered.viewProfileVersion, request, signal);
     if(Array.isArray(registered.capabilities)&&registered.capabilities.includes("reminders.local-record.v2"))headers["X-Eliza-Device-Capabilities"]+=",reminders.local-record.v2";else if(Array.isArray(registered.capabilities)&&registered.capabilities.includes("reminders.local-record.v1"))headers["X-Eliza-Device-Capabilities"]+=",reminders.local-record.v1";
+    if(Array.isArray(registered.capabilities)&&registered.capabilities.includes('notes.query.v1'))headers['X-Eliza-Device-Capabilities']+=',notes.query.v1';
     if(Array.isArray(registered.capabilities)&&registered.capabilities.includes('reminders.create.v1'))headers['X-Eliza-Device-Capabilities']+=',reminders.create.v1';
     if(Capacitor.getPlatform()==='android')for(const capability of ['calendar.create.v1','calendar.next-read.v1'])if(registered.capabilities?.includes(capability))headers['X-Eliza-Device-Capabilities']+=','+capability;
     if(Array.isArray(registered.capabilities)&&registered.capabilities.includes("maps.selected-read.v1"))headers["X-Eliza-Device-Capabilities"]+=",maps.selected-read.v1";
@@ -320,6 +321,7 @@ async function connectResident(signal: AbortSignal) {
     if(registered.userTextFormatVersion===1)userTextFormatVersion=1;
     reason = await negotiateEnabledViews(registered.viewProfileVersion, request, signal);
     if(Array.isArray(registered.capabilities)&&registered.capabilities.includes('reminders.local-record.v2'))headers['X-Eliza-Device-Capabilities']+=',reminders.local-record.v2';else if(Array.isArray(registered.capabilities)&&registered.capabilities.includes('reminders.local-record.v1'))headers['X-Eliza-Device-Capabilities']+=',reminders.local-record.v1';
+    if(Array.isArray(registered.capabilities)&&registered.capabilities.includes('notes.query.v1'))headers['X-Eliza-Device-Capabilities']+=',notes.query.v1';
     if(Array.isArray(registered.capabilities)&&registered.capabilities.includes('reminders.create.v1'))headers['X-Eliza-Device-Capabilities']+=',reminders.create.v1';
     if(Capacitor.getPlatform()==='android')for(const capability of ['calendar.create.v1','calendar.next-read.v1'])if(registered.capabilities?.includes(capability))headers['X-Eliza-Device-Capabilities']+=','+capability;
     if(registered.capabilities?.includes('maps.selected-read.v1'))headers['X-Eliza-Device-Capabilities']+=',maps.selected-read.v1';
@@ -375,6 +377,7 @@ async function connectCloud(agentId: string, signal: AbortSignal, expectedOwner?
     if (capability.protocol!==1 || capability.agentId!==agentId || typeof capability.identityId!=='string' || !/^[a-f0-9-]{36}$/.test(capability.identityId) || external?.subject!==identity.userId || external?.organizationId!==identity.organizationId || typeof external?.issuer!=='string' || !external.issuer.startsWith('https://') || device?.protocol!==1 || !Array.isArray(device.capabilities) || !device.capabilities.includes('calendar.local-event.v1')) throw new Error('Cloud runtime owner capability was not verified');
     if(Array.isArray(device?.capabilities)&&device.capabilities.includes("reminders.local-record.v2"))target.headers["X-Eliza-Device-Capabilities"]+=",reminders.local-record.v2";else if(Array.isArray(device?.capabilities)&&device.capabilities.includes("reminders.local-record.v1"))target.headers["X-Eliza-Device-Capabilities"]+=",reminders.local-record.v1";
     if(Capacitor.getPlatform()==='android'&&device?.capabilities?.includes("clock.handoff.v1"))target.headers["X-Eliza-Device-Capabilities"]+=",clock.handoff.v1";
+    if(Array.isArray(device?.capabilities)&&device.capabilities.includes('notes.query.v1'))target.headers['X-Eliza-Device-Capabilities']+=',notes.query.v1';
     if(Array.isArray(device?.capabilities)&&device.capabilities.includes('reminders.create.v1'))target.headers['X-Eliza-Device-Capabilities']+=',reminders.create.v1';
     if(Capacitor.getPlatform()==='android')for(const capability of ['calendar.create.v1','calendar.next-read.v1'])if(device.capabilities.includes(capability))target.headers['X-Eliza-Device-Capabilities']+=','+capability;
     if(Array.isArray(device?.capabilities)&&device.capabilities.includes("maps.selected-read.v1"))target.headers["X-Eliza-Device-Capabilities"]+=",maps.selected-read.v1";

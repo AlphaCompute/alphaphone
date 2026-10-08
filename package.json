@@ -14,7 +14,7 @@
     "build:test-mocks": "node scripts/with-test-mocks.mjs vite build",
     "audit:bundle": "node scripts/audit-production-bundle.mjs web-dist",
     "typecheck": "tsc --noEmit",
-    "test": "node --test --test-concurrency=4 test/*.test.mjs",
+    "test": "node --test --test-concurrency=4 test/*.test.mjs && node --import=tsx scripts/test-notes-query-flow.ts",
     "verify": "npm run typecheck && npm test && npm run build && node scripts/audit-production-bundle.mjs web-dist",
     "android:sync": "npm run build && cap sync android && node scripts/browser-speech-assets.mjs prune-android",
     "android:build": "node scripts/build-android.mjs",
