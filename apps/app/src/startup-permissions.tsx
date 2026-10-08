@@ -51,23 +51,21 @@ export function StartupPermissions() {
   useEffect(() => {
     alive.current = true;
     if (!native) return () => { alive.current = false; };
-    const revisions = {notifications: 0, microphone: 0};
+    let disposed = false;
     const refresh = (key: PermissionKey) => {
-      const current = ++revisions[key];
       void flows[key].refresh().then(value => {
-        if (alive.current && current === revisions[key]) setStates(previous => ({...previous, [key]: value}));
+        if (!disposed && value !== null) setStates(previous => ({...previous, [key]: value}));
       });
     };
     const resume = () => { if (!document.hidden && !actionPending.current) keys.forEach(refresh); };
     keys.forEach(refresh);
     document.addEventListener('visibilitychange', resume);
     let listener: PluginListenerHandle | undefined;
-    let disposed = false;
     void permissions.addListener('appResumed', resume).then(handle => {
       if (disposed) void handle.remove(); else listener = handle;
     }).catch(() => { /* Visibility refresh remains available if the resume bridge is unavailable. */ });
     return () => {
-      disposed = true; alive.current = false; keys.forEach(key => ++revisions[key]);
+      disposed = true; alive.current = false;
       document.removeEventListener('visibilitychange', resume);
       void listener?.remove();
     };
@@ -85,7 +83,10 @@ export function StartupPermissions() {
     setBusy(key);
     const value = states[key] === 'unavailable' ? await flows[key].refresh() : await flows[key].enable();
     actionPending.current = false;
-    if (alive.current) { setStates(previous => ({...previous, [key]: value})); setBusy(null); }
+    if (alive.current) {
+      if (value !== null) setStates(previous => ({...previous, [key]: value}));
+      setBusy(null);
+    }
   }
   if (!visible) return null;
   return <dialog ref={dialog} className="alpha-startup-permissions" aria-labelledby="alpha-permission-title" aria-describedby="alpha-permission-description" onCancel={() => setDismissed(true)}>
