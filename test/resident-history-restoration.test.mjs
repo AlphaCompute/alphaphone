@@ -8,6 +8,7 @@ const key=JSON.stringify(['https://device.alpha.invalid','fixture-owner','fixtur
 const selectionKey='alpha.connection.conversations.v1';
 function fixture() {
   const memory=new Map([[selectionKey,JSON.stringify({[key]:'saved-conversation'})]]),secure=new Map(),calls=[];
+  let credentialReads=0,changeSelectionAt=Infinity;
   let credential={credentialId:'fixture-credential'},readHistory=async()=>({messages:[{id:'u1',role:'user',text:'Earlier question'},{id:'a1',role:'assistant',text:'Earlier answer',actions:[{type:'never-replay'}]}]}),list=async()=>[{id:'saved-conversation',title:'Saved'}];
   class Cloud {
     environment='production';
@@ -21,14 +22,14 @@ function fixture() {
     async listConversations(){calls.push({path:'/api/conversations',method:'GET'});return list();}
     async messages(id){calls.push({path:`/api/conversations/${id}/messages`,method:'GET'});return readHistory();}
   }
-  const box={testMocksEnabled:false,devSurfacesEnabled:false,browserDevProfile:false,devProfileQuery:false,browserLocalAgentEnabled:false,isAndroid:true,Capacitor:{getPlatform:()=> 'android'},CloudProtocol:Cloud,LocalAgentProtocol:Resident,registerPlugin:()=>({}),stopLocalAgent:async()=>{},configureLocalCloudProvider:async()=>{},localAgentPackaged:async()=>true,workflowPresentationProtocol:async()=>1,actionScope:async()=> 'a'.repeat(64),negotiateEnabledViews:async()=>'',DeviceActions:class{},retireClockReviews:async()=>{},pauseHostedBackground:async()=>{},cloudCredentialStore:{read:async()=>credential},secureConnectionStore:{read:async slot=>secure.get(slot)??null,write:async(slot,value)=>secure.set(slot,value)},openConnectionBrowser:()=>{},nativeCloudRequest:()=>{},localStorage:{getItem:k=>memory.get(k)??null,setItem:(k,v)=>memory.set(k,v),removeItem:k=>memory.delete(k)},AbortController,DOMException,crypto,URL,URLSearchParams,console};
+  const box={testMocksEnabled:false,devSurfacesEnabled:false,browserDevProfile:false,devProfileQuery:false,browserLocalAgentEnabled:false,isAndroid:true,Capacitor:{getPlatform:()=> 'android'},CloudProtocol:Cloud,LocalAgentProtocol:Resident,registerPlugin:()=>({}),stopLocalAgent:async()=>{},configureLocalCloudProvider:async()=>{},localAgentPackaged:async()=>true,workflowPresentationProtocol:async()=>1,actionScope:async()=> 'a'.repeat(64),negotiateEnabledViews:async()=>'',DeviceActions:class{},retireClockReviews:async()=>{},pauseHostedBackground:async()=>{},cloudCredentialStore:{read:async()=>{if(++credentialReads===changeSelectionAt)memory.set(selectionKey,JSON.stringify({[key]:'replacement-choice'}));return credential;}},secureConnectionStore:{read:async slot=>secure.get(slot)??null,write:async(slot,value)=>secure.set(slot,value)},openConnectionBrowser:()=>{},nativeCloudRequest:()=>{},localStorage:{getItem:k=>memory.get(k)??null,setItem:(k,v)=>memory.set(k,v),removeItem:k=>memory.delete(k)},AbortController,DOMException,crypto,URL,URLSearchParams,console};
   let selections=fs.readFileSync('apps/app/src/runtime/conversation-selection.ts','utf8').replace(/^import .*;\n/gm,'').replace(/export /g,'');
-  vm.runInNewContext(stripTypeScriptTypes(selections,{mode:'transform'})+'\nglobalThis.selection={captureConversationChoice,selectConversation};',box);
-  Object.assign(box,box.selection);
+  vm.runInNewContext(stripTypeScriptTypes(selections,{mode:'transform'})+'\nglobalThis.selectionApi={captureConversationChoice,selectConversation};',box);
+  Object.assign(box,box.selectionApi);
   let source=fs.readFileSync('apps/app/src/runtime/connection-ui.tsx','utf8').split('export function ConnectionChooser()')[0].replace(/^import .*;\n/gm,'').replace(/export /g,'');
   source+='\nglobalThis.api={controller:connectionController,restoreSaved:restoreSavedResidentHistory,restore:restoreConversationHistory,retire,newSession(){state={...state,session:{...state.session,sessionId:"new-session"}};},replaceService(){service={...service,identity:{...service.identity,sessionId:"new-account-session"}};}};';
   vm.runInNewContext(stripTypeScriptTypes(source,{mode:'transform'}),box);
-  return {api:box.api,calls,memory,history:fn=>{readHistory=fn;},list:fn=>{list=fn;},replaceCredential:()=>{credential={credentialId:'replacement'};}};
+  return {api:box.api,calls,memory,selection:box.selectionApi,changeSelectionOnCredentialRead:offset=>{changeSelectionAt=credentialReads+offset;},history:fn=>{readHistory=fn;},list:fn=>{list=fn;},replaceCredential:()=>{credential={credentialId:'replacement'};}};
 }
 test('production resident startup restores only saved verified prose without replay or preference writes',async()=>{
   const f=fixture(),before=f.memory.get(selectionKey);
@@ -55,6 +56,18 @@ test('account change during membership read blocks the following history request
   const startup=f.api.controller.initialize();await entered.promise;f.replaceCredential();held.resolve();await startup;
   assert.equal(f.api.controller.getSnapshot().history,null);
   assert.equal(f.calls.filter(c=>c.path.endsWith('/messages')).length,0);
+});
+test('selection replacement during the final credential await cannot publish old conversation history',async()=>{
+  const f=fixture();await f.api.controller.initialize();const previous=f.api.controller.getSnapshot().history;
+  f.history(async()=>({messages:[{id:'late-old-conversation',role:'assistant',text:'Old conversation history'}]}));
+  f.changeSelectionOnCredentialRead(4);await f.api.restoreSaved(new AbortController().signal);
+  const state=f.api.controller.getSnapshot();
+  assert.equal(JSON.parse(f.memory.get(selectionKey))[key],'replacement-choice');
+  assert.equal(state.history,previous);assert.match(state.historyError,/could not be restored/);
+  assert.ok(!state.history.messages.some(message=>message.id==='late-old-conversation'));
+});
+test('Android selection capture is synchronous at the publication boundary',()=>{
+  const f=fixture();assert.equal(f.selection.captureConversationChoice(key).id,'saved-conversation');
 });
 for(const mode of ['missing','unsupported','read-failure'])test(`resident ${mode} history retains selection and local app access`,async()=>{
   const f=fixture(),before=f.memory.get(selectionKey);

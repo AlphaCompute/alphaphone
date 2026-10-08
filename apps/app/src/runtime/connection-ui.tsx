@@ -446,9 +446,13 @@ async function restoreConversationHistory(id:string,signal:AbortSignal,automatic
   });
   await assertAccount();
   let saved=true;
-  if(automatic){if(JSON.stringify(await captureConversationChoice(key,signal))!==JSON.stringify(expected))throw Error('Saved conversation selection changed.');}
-  else try{await selectConversation(key,expected,id,signal,assertCurrent);}catch{saved=false;}
+  if(!automatic)try{await selectConversation(key,expected,id,signal,assertCurrent);}catch{saved=false;}
   await assertAccount();
+  if(automatic){
+    const current=Capacitor.getPlatform()==='android'?captureConversationChoice(key,signal):await captureConversationChoice(key,signal);
+    assertCurrent();
+    if(JSON.stringify(current)!==JSON.stringify(expected))throw Error('Saved conversation selection changed.');
+  }
   conversationMemory.set(key,id);
   update({history:{sessionId:session.sessionId,conversationId:id,revision:(state.history?.revision||0)+1,messages,automatic},historyError:'',...(automatic?{}:{open:false}),message:automatic?'Saved conversation restored.':saved?'Returned history restored. Older messages may remain on the agent.':'History restored for this session; restart selection could not be saved.'});
 }
