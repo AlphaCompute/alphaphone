@@ -10,6 +10,15 @@ const hosted = {
 	RUNNER_ENVIRONMENT: "github-hosted",
 	ANDROID_SERIAL: "emulator-5554",
 };
+test("hosted browser restart cases run after provider provisioning and stock video", () => {
+	const workflow = fs.readFileSync(new URL("../.github/workflows/android.yml", import.meta.url), "utf8");
+	const video = workflow.indexOf("node scripts/qualify-stock-video.mjs");
+	const provider = workflow.indexOf("node scripts/prepare-ci-webview.mjs");
+	const restart = workflow.indexOf("bash scripts/ci/native-restarts.sh");
+	const smoke = workflow.indexOf("npm run android:smoke");
+	assert.ok(video >= 0 && provider > video && restart > provider && smoke > restart,
+		"Video requires stock WebView; browser restart and smoke require the pinned provider");
+});
 test("product CLI requires its explicit disposable-fixture switch before SDK lookup", async () => {
 	await assert.rejects(main({ environment: {} }), /Disposable GitHub-hosted/);
 	await assert.rejects(
