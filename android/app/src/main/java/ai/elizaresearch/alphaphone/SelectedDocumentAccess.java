@@ -79,6 +79,15 @@ final class SelectedDocumentAccess {
   }
   return result("unavailable","No saved document selection");
  }
+ /** Reopen one recorded selection by its opaque ID, only while Android still
+  * holds its grant. A revoked grant is forgotten and reported, never repaired. */
+ static synchronized JSObject describeSelected(Context context,String id){
+  initialize(context);
+  if(id==null||!id.matches("[a-f0-9-]{36}")||resolve(id)==null)return result("unavailable","Access to this file ended. Select it again.");
+  try{JSObject value=describe(context,id);value.put("status","selected");value.put("action","files");return value;}
+  catch(SecurityException error){forget(id);return result("unavailable","Access to this file ended. Select it again.");}
+  catch(RuntimeException error){return result("failed","The document provider is unavailable. Try again.");}
+ }
  private static JSObject describe(Context context,String id){
   Uri uri=resolve(id);if(uri==null)throw new IllegalArgumentException();JSObject value=new JSObject();value.put("selectionId",id);value.put("uri",uri.toString());value.put("mimeType",context.getContentResolver().getType(uri));
   try(android.database.Cursor cursor=context.getContentResolver().query(uri,new String[]{android.provider.OpenableColumns.DISPLAY_NAME},null,null,null)){if(cursor==null||!cursor.moveToFirst())throw new IllegalStateException();value.put("name",cursor.getString(0));}

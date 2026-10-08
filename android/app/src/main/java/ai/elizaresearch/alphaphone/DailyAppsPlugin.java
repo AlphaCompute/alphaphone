@@ -54,6 +54,7 @@ public class DailyAppsPlugin extends ai.eliza.plugins.reminders.ReminderPlugin {
  @PluginMethod public void restoreSelected(PluginCall call) {try{call.resolve(SelectedDocumentAccess.restore(getContext()));}catch(RuntimeException error){call.reject("Saved document access is unavailable");}}
  @PluginMethod public void renameSelected(PluginCall call) {call.resolve(SelectedDocumentAccess.rename(getContext(),call.getString("selectionId"),call.getString("name")));}
  @PluginMethod public void pdfSelected(PluginCall call) {call.resolve(SelectedDocumentAccess.pdf(getContext(),call.getString("selectionId"),call.getInt("page",0)));}
+ @PluginMethod public void describeSelected(PluginCall call) {try{call.resolve(SelectedDocumentAccess.describeSelected(getContext(),call.getString("selectionId")));}catch(RuntimeException error){call.reject("Saved document access is unavailable");}}
  @PluginMethod public void readSelected(PluginCall call) {
   call.resolve(SelectedDocumentAccess.read(getContext(), call.getString("selectionId")));
  }
@@ -97,6 +98,20 @@ public class DailyAppsPlugin extends ai.eliza.plugins.reminders.ReminderPlugin {
   Object value = call.getData().opt(key);
   return value instanceof Number ? ((Number)value).doubleValue() : null;
  }
+ /** Category pickers narrow the system picker only; the provider still decides.
+  * A missing list means all documents. Invalid entries refuse the request. */
+ static String[] mimeTypes(PluginCall call) {
+  if (call == null || !call.getData().has("mime")) return new String[0];
+  JSArray raw = call.getArray("mime");
+  if (raw == null || raw.length() < 1 || raw.length() > 12) throw new IllegalArgumentException("Choose up to 12 document types");
+  String[] types = new String[raw.length()];
+  for (int i = 0; i < raw.length(); i++) {
+   String value = raw.optString(i, "");
+   if (!value.matches("[a-z]+/([a-z0-9][a-z0-9.+-]{0,126}|\\*)") && !"*/*".equals(value)) throw new IllegalArgumentException("Unsupported document type");
+   types[i] = value;
+  }
+  return types;
+ }
  private String string(PluginCall call, String key, String fallback) { return call == null ? fallback : call.getString(key, fallback); }
  private Intent intent(String action, PluginCall call) {
   switch (action) {
@@ -105,7 +120,12 @@ public class DailyAppsPlugin extends ai.eliza.plugins.reminders.ReminderPlugin {
    // MVP-DEFERRED: case "contacts": return new Intent(Intent.ACTION_VIEW).setDataAndType(ContactsContract.Contacts.CONTENT_URI, ContactsContract.Contacts.CONTENT_TYPE);
    case "camera": return new Intent(MediaStore.INTENT_ACTION_STILL_IMAGE_CAMERA);
    case "photos": return new Intent(Intent.ACTION_OPEN_DOCUMENT).setType("image/*").addCategory(Intent.CATEGORY_OPENABLE).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION);
-   case "files": return new Intent(Intent.ACTION_OPEN_DOCUMENT).setType("*/*").addCategory(Intent.CATEGORY_OPENABLE).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION | Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION);
+   case "files": {
+    Intent result = new Intent(Intent.ACTION_OPEN_DOCUMENT).setType("*/*").addCategory(Intent.CATEGORY_OPENABLE).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION | Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION);
+    String[] types = mimeTypes(call);
+    if (types.length == 1) result.setType(types[0]); else if (types.length > 1) result.putExtra(Intent.EXTRA_MIME_TYPES, types);
+    return result;
+   }
    case "maps": return new Intent(Intent.ACTION_VIEW, Uri.parse("geo:0,0?q=" + Uri.encode(string(call, "query", ""))));
    case "calendar": return new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_APP_CALENDAR);
    case "calendar-create": case "reminder": {

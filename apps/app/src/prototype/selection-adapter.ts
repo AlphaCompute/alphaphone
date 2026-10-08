@@ -6,6 +6,9 @@ import {reviewContentQuestion} from '../browser/content-question';
 import { installFilesTreeAdapter } from './files-tree-adapter';
 import { Capacitor } from '@capacitor/core';
 import { DailyApps, type NativeResult } from '../daily';
+import { filesIndex } from './files-index';
+/** Native-only reopen of one recorded selection while Android still holds its grant. */
+const selectedFiles=registerPlugin<{describeSelected(input:{selectionId:string}):Promise<NativeResult>}>('DailyApps');
 
 type Bag = Record<string, any>;
 type Selection = { result: NativeResult; status: string; text?: string; pdf?: {page:number;count:number;image:string}; epoch: number };
@@ -24,13 +27,19 @@ export function installSelectedDocumentAdapter(_Component: unknown, views: Recor
   let renameBusy = false;
   const marker = '__native_selected_document';
   let closeQuestion:(()=>void)|undefined;
-  const clear = () => {
+  const release = (id: string) => { void DailyApps.forgetSelected({ selectionId: id }).catch(() => selectedApi?.toast('Document access could not be released. Reopen Files and try again.')); };
+  /** Closing keeps a Recent selection's grant so Recent can reopen it; Forget
+   * (or eviction from Recent) is what releases it. */
+  const clear = (forget = false) => {
     closeQuestion?.();closeQuestion=undefined;
     epoch++;
     const id = current?.result.selectionId;
     current = undefined;
+    filesIndex.setOpen(null);
     window.dispatchEvent(new CustomEvent('alpha-selected-context', { detail: null }));
-    if (id) void DailyApps.forgetSelected({ selectionId: id }).catch(() => selectedApi?.toast('Document access could not be released. Reopen Files and try again.'));
+    if (!id) return;
+    if (forget) { const row = filesIndex.list().find(item => item.selectionId === id); if (row) filesIndex.remove(row.key); }
+    if (forget || !filesIndex.has(id)) release(id);
   };
   const refresh = () => selectedApi?.setView('files', { nativeSelectionEpoch: epoch });
   const open = async (api: Bag) => {
@@ -92,7 +101,7 @@ export function installSelectedDocumentAdapter(_Component: unknown, views: Recor
       const data = render(st, api);
       if(module === 'files' && api.active && !restoreAttempted && Capacitor.isNativePlatform()) {
         restoreAttempted = true; const requestedEpoch = epoch;
-        void DailyApps.restoreSelected().then(result => {if(epoch === requestedEpoch && !current && result.status === 'selected')void accept('files',result,api);}).catch(()=>{});
+        const openId = filesIndex.open(); if (openId) void selectedFiles.describeSelected({ selectionId: openId }).then(result => {if(epoch === requestedEpoch && !current && result.status === 'selected')void accept('files',result,api);}).catch(()=>{});
       }
       if (st.open !== marker || !current) return data;
       const selected = current;
@@ -101,6 +110,7 @@ export function installSelectedDocumentAdapter(_Component: unknown, views: Recor
       const uri = selected.result.uri;
       const image = mime.startsWith('image/') && (uri?.startsWith('content://') || (!Capacitor.isNativePlatform() && uri?.startsWith('blob:'))) ? Capacitor.convertFileSrc(uri) : undefined;
       const close = () => { clear(); api.set({ open: null }); };
+      const forget = () => { clear(true); api.set({ open: null }); };
       const ask=()=>{
         closeQuestion?.();
         closeQuestion=reviewContentQuestion({name:selected.pdf?name+' · page '+(selected.pdf.page+1):name,text:selected.text??'',current:()=>current===selected&&api.get(module).open===marker&&!document.hidden,compose:(draft,source)=>api.composeContentQuestion(draft,source),...(selected.result.selectionId&&['text/plain','application/pdf','image/png','image/jpeg','image/webp'].includes(mime)?{source:async():Promise<Source>=>{const file=await sourceFiles.readSelected({selectionId:selected.result.selectionId!}),checked=await reviewMailAttachment(file);if(current!==selected||checked.sha256!==file.sha256||checked.size!==file.size||file.name!==selected.result.name||file.mimeType!==mime||mime==='text/plain'&&checked.text!==selected.text)throw Error('Source changed');const reference=file.sourceReferenceVersion===1?(await sourceFiles.retainSourceReference({selectionId:selected.result.selectionId!,sha256:checked.sha256})).reference:undefined;if(current!==selected)throw Error('Selection changed');return {version:1,name:file.name,mimeType:file.mimeType,sha256:checked.sha256,size:checked.size,...(reference?{reference}:{})};}}:{}),...(image?{image:async(signal:AbortSignal)=>(await fetch(image,{signal})).blob()}: {})});
@@ -116,7 +126,7 @@ export function installSelectedDocumentAdapter(_Component: unknown, views: Recor
         data.isPreview = true;
         data.pv = {
           needsReselect:selected.result.status === 'renamed-reselect', reselect:async()=>{try{const result=await DailyApps.perform({action:'files'});if(current===selected&&result.status==='selected')await accept('files',result,api);}catch{api.toast('File picker unavailable. Try again.');}},
-          name, nativeSelectionId:selected.result.selectionId, base: name, ext: '', canForget:true, forget:close, meta: mime + ' · selected on this device', d: '',
+          name, nativeSelectionId:selected.result.selectionId, base: name, ext: '', canForget:true, forget, meta: mime + ' · selected on this device', d: '',
           isPages: !image, pages: selected.pdf ? [] : pages, isPdf: !!selected.pdf, pdfImage: selected.pdf?.image || '', pdfLabel: selected.pdf ? 'Page ' + (selected.pdf.page+1) + ' of ' + selected.pdf.count : '', pdfPrevious: () => selected.pdf && selected.pdf.page > 0 ? pdfPage(selected.pdf.page-1,api) : undefined, pdfNext: () => selected.pdf && selected.pdf.page+1 < selected.pdf.count ? pdfPage(selected.pdf.page+1,api) : undefined, pdfHasPrevious: !!selected.pdf && selected.pdf.page > 0, pdfHasNext: !!selected.pdf && selected.pdf.page+1 < selected.pdf.count, paper: '#FFFFFF', isPhoto: !!image,
           photoBg: image ? `url(${JSON.stringify(image)}) center / contain no-repeat` : '', photoSun: 'none',
           isReceipt: false, isAudio: false, isArchive: false, receipt: null, contents: [],
@@ -136,9 +146,11 @@ export function installSelectedDocumentAdapter(_Component: unknown, views: Recor
     const back = definition.back;
     definition.back = (st: Bag, api: Bag) => { if (st.open === marker) { clear(); api.set({ open: null }); return true; } return back?.(st, api); };
   }
-  async function accept(module: string, result: NativeResult, api: Bag) {
+  async function accept(module: string, result: NativeResult, api: Bag, recent: {kind:'selected'}|{kind:'tree';treeId:string}|false = {kind:'selected'}) {
     if (result.status !== 'selected' || !result.selectionId) return;
     clear();
+    if (recent) for (const evicted of filesIndex.record({ ...recent, name: result.name || 'Selected document', mimeType: result.mimeType || 'application/octet-stream', selectionId: result.selectionId })) if (evicted !== result.selectionId) release(evicted);
+    filesIndex.setOpen(result.selectionId);
     const requestEpoch = epoch;
     current = { result, status: 'Reading selected document…', epoch: requestEpoch };
     window.dispatchEvent(new CustomEvent('alpha-selected-context', { detail: { kind: 'document', id: result.selectionId, revision: String(requestEpoch) } }));
