@@ -16,6 +16,35 @@ export interface InboxOperationDependencies {
     gmailOperation(grant: string, request: string, signal: AbortSignal): Promise<GmailInboxReceipt>;
   };
 }
+/** Outgoing attachment limits shared by the composer and the operation check. Servers without the
+ * multi-attachment policy (patches/eliza/0059) publish maximumOutgoing 1. */
+export const outgoingAttachmentLimits = { maximumFiles: 10, maximumTotalBytes: 5 * 1024 * 1024 } as const;
+export function attachmentBytes(file: { dataBase64: string }): number {
+  const padding = file.dataBase64.endsWith('==') ? 2 : file.dataBase64.endsWith('=') ? 1 : 0;
+  return Math.max(0, Math.floor(file.dataBase64.length * 3 / 4) - padding);
+}
+/** Validates an outgoing list: count, duplicate names and the combined byte cap. */
+export function checkOutgoingAttachments(files: readonly { name: string; dataBase64: string }[], policy: { maximumOutgoing: number; maximumTotalBytes: number } = { maximumOutgoing: outgoingAttachmentLimits.maximumFiles, maximumTotalBytes: outgoingAttachmentLimits.maximumTotalBytes }): void {
+  const maximum = Math.min(policy.maximumOutgoing, outgoingAttachmentLimits.maximumFiles);
+  if (files.length > maximum) throw new Error(maximum === 1 ? 'This account accepts one attachment per email.' : `Attach at most ${maximum} files.`);
+  if (new Set(files.map(file => file.name.toLowerCase())).size !== files.length) throw new Error('Two attachments have the same name.');
+  const total = files.reduce((sum, file) => sum + attachmentBytes(file), 0);
+  if (total > Math.min(policy.maximumTotalBytes, outgoingAttachmentLimits.maximumTotalBytes)) throw new Error(`Attachments exceed ${Math.round(Math.min(policy.maximumTotalBytes, outgoingAttachmentLimits.maximumTotalBytes) / 1048576)} MiB in total.`);
+}
+export interface OpaqueMailAttachment { name: string; mimeType: string; dataBase64: string; size: number; sha256: string; opaque: true }
+/** Byte-copy review for a save of any type: the name and encoding are checked and the bytes hashed.
+ * Content is never decoded, previewed or handed to a viewer. */
+export async function reviewOpaqueAttachment(file: { name: string; mimeType: string; dataBase64: string }): Promise<OpaqueMailAttachment> {
+  // biome-ignore lint/suspicious/noControlCharactersInRegex: reject control characters in untrusted names.
+  if (!file || typeof file.name !== 'string' || !file.name.trim() || file.name.length > 120 || /[\\/\x00-\x1f\x7f]/.test(file.name) || file.name === '.' || file.name === '..'
+    || typeof file.dataBase64 !== 'string' || file.dataBase64.length > 7 * 1024 * 1024) throw new Error('Invalid attachment name or encoding');
+  const raw = atob(file.dataBase64);
+  if (btoa(raw) !== file.dataBase64 || raw.length > 5 * 1024 * 1024) throw new Error('Attachment exceeds 5 MiB');
+  const bytes = Uint8Array.from(raw, c => c.charCodeAt(0));
+  const sha256 = Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', bytes)), b => b.toString(16).padStart(2, '0')).join('');
+  const mimeType = typeof file.mimeType === 'string' && /^[a-z0-9][a-z0-9!#$&^_.+-]{0,63}\/[a-z0-9][a-z0-9!#$&^_.+-]{0,63}$/i.test(file.mimeType) ? file.mimeType.toLowerCase() : 'application/octet-stream';
+  return { name: file.name, mimeType, dataBase64: file.dataBase64, size: bytes.length, sha256, opaque: true };
+}
 const digest = async (text: string) => Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(text))),b=>b.toString(16).padStart(2,'0')).join('');
 const copy = <T>(value: T): T => JSON.parse(JSON.stringify(value));
 /** One durable selected-account intent. No recovery path dispatches an effect. */
@@ -54,9 +83,20 @@ export class InboxOperation {
     for(const field of ['kind','mode','subject','bodyText','replyMessageId','draftId','expectedDigest','messageId','expectedHistoryId']) if(record.proposal[field]!==undefined&&JSON.stringify(record.proposal[field])!==JSON.stringify(review[field]))throw new Error('Server changed the requested '+field);
     for(const field of ['to','cc','bcc'])if(record.proposal[field]!==undefined&&JSON.stringify(record.proposal[field])!==JSON.stringify(review[field]))throw new Error('Server changed the reviewed recipients');
     if(typeof review.from!=='string'||!review.from)throw new Error('Unsupported sender');
-    const attachments=record.proposal.attachments||[];if(!Array.isArray(attachments)||attachments.length>1)throw new Error('Unsupported attachments');
+    const attachments=record.proposal.attachments||[];if(!Array.isArray(attachments))throw new Error('Unsupported attachments');
+    checkOutgoingAttachments(attachments as MailAttachment[]);
+    if(attachments.length>1&&!Array.isArray(review.attachments))throw new Error('This server cannot review more than one attachment');
     const checked=await Promise.all(attachments.map(async file=>{const {text,...metadata}=await reviewMailAttachment(file as MailAttachment);return metadata;}));
     if(JSON.stringify(checked)!==JSON.stringify(review.attachments||[]))throw new Error('Server changed the reviewed attachments');
+    // Forwarded source attachments (patches/eliza/0059) stay bound to the selected message and its historyId.
+    const forward=record.proposal.forwardAttachments as {messageId?:unknown;historyId?:unknown;partIds?:unknown}|undefined;
+    if(forward!==undefined){
+     if(record.proposal.mode!=='forward'||!forward||typeof forward.messageId!=='string'||typeof forward.historyId!=='string'||!Array.isArray(forward.partIds)||!forward.partIds.length||forward.partIds.length>outgoingAttachmentLimits.maximumFiles||forward.partIds.some(id=>typeof id!=='string'))throw new Error('Unsupported forwarded attachments');
+     const reviewed=review.forwardedAttachments;
+     if(!Array.isArray(reviewed)||JSON.stringify(reviewed.map((row:Bag)=>row?.partId))!==JSON.stringify(forward.partIds)||review.forwardSource==null||JSON.stringify(review.forwardSource)!==JSON.stringify({messageId:forward.messageId,historyId:forward.historyId})||reviewed.some((row:Bag)=>typeof row.name!=='string'||typeof row.size!=='number'||typeof row.sha256!=='string'||!/^[a-f0-9]{64}$/.test(row.sha256)))throw new Error('Server changed the forwarded attachments');
+     const total=checked.reduce((sum,file)=>sum+file.size,0)+reviewed.reduce((sum:number,row:Bag)=>sum+(row.size as number),0);
+     if(total>outgoingAttachmentLimits.maximumTotalBytes||checked.length+reviewed.length>outgoingAttachmentLimits.maximumFiles)throw new Error('Attachments exceed the reviewed total limit');
+    }else if(review.forwardedAttachments!==undefined&&JSON.stringify(review.forwardedAttachments)!=='[]')throw new Error('Server added forwarded attachments');
     await this.save({...record,review:copy(review),receipt:copy(result.receipt),phase:result.receipt.state==='prepared'?'review':'observed'});
   }
   async confirm() { return this.exclusive(async()=>{
