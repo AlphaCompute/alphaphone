@@ -327,7 +327,7 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
         if(result.status==='applied'){
           const calendarResult=validateCalendarResult(operation,result.result);
           // Return the receipt immediately; DeviceActions must journal it before
-          // any optional UI/provider refresh. Normal view resume refreshes rows.
+          // the existing committed event refreshes native or browser rows.
           return {status:'succeeded',summary:operation.type==='calendar_read_selected'?'Read the exact selected calendar event with approval.':'Calendar operation applied and read back from the provider.',calendarResult};
         }
         return {status:result.status==='unknown'?'unknown':'failed',summary:result.status==='unknown'?'Calendar outcome is unconfirmed. Inspect action history before another action.':result.status==='cancelled'?'Calendar review cancelled. Nothing was changed.':'Calendar target changed, access was denied, or the operation is unsupported. Nothing was changed.'};
