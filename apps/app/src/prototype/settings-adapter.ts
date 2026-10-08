@@ -11,6 +11,7 @@ import { DailyApps } from '../daily';
 import { connectionController } from '../runtime/connection-ui';
 import type { GmailAccount } from '../runtime/cloud-protocol';
 import { disconnectGmailAccount, disconnectMessage, gmailReadable, GMAIL_ACCOUNTS_CHANGED } from '../runtime/gmail-mailbox';
+import { leavePasswordManager, passwordEntryPage, passwordManagerGroups, passwordManagerLifecycle, refreshPasswordManager, PASSWORD_PAGES } from '../passwords/password-manager';
 
 type Bag = Record<string, any>;
 declare const __APP_VERSION__: string;
@@ -151,9 +152,11 @@ export function installSettingsAdapter(Component: any, views: Bag) {
     // Browser-only stores; native Android data has its own platform recovery.
     if(!Capacitor.isNativePlatform()){const next=await recoveryNeeded().catch(()=>[] as RecoveryDomain[]);if(owner!==instance||generation!==token)return;recovery=next;}
     instance.vset('settings', { nativeReadAt: Date.now() });
+    refreshPasswordManager();
   }
   p.componentDidMount = function () {
     mount.call(this); owner = this; void refresh(); void refreshCapabilities();
+    this.passwordLifecycle = passwordManagerLifecycle(changed);
     if(!Capacitor.isNativePlatform()&&!new URLSearchParams(location.search).has('theme')){
       const apply=()=>{try{const theme=localStorage.getItem('alpha.appearance.v1')==='dark'?'dark':'light';this.setState({theme,appearanceStorageRead:{theme}});}catch{/* Keep the current session theme if storage is unavailable. */}};
       this.appearanceStorageListener=(event:StorageEvent)=>{if(event.key==='alpha.appearance.v1'||event.key===null)apply();};
@@ -173,6 +176,8 @@ export function installSettingsAdapter(Component: any, views: Bag) {
   };
   p.componentDidUpdate = function (previousProps: Bag, previousState: Bag) {
     update?.call(this, previousProps, previousState);
+    // Switching away from Settings (Home, another view) locks and forgets the password manager.
+    if (typeof this.S === 'function' && this.S().view !== 'settings') leavePasswordManager();
     const theme = this.state?.theme;
     // The marker travels with React state, so queued external reads cannot echo an older theme.
     const external=this.state?.appearanceStorageRead;
@@ -187,6 +192,7 @@ export function installSettingsAdapter(Component: any, views: Bag) {
     window.removeEventListener('storage',this.appearanceStorageListener);
     window.removeEventListener('pageshow',this.appearanceResumeListener);
     this.settingsConnectionUnsubscribe?.();
+    this.passwordLifecycle?.();
     void this.deviceResume?.then((listener: any) => listener?.remove()); unmount.call(this);
   };
   p.openView = function (key: string, ...args: any[]) {
@@ -244,7 +250,13 @@ export function installSettingsAdapter(Component: any, views: Bag) {
           ...(native?[action('Choose password provider in Android','settings'),...(provider.installation==='installed'?[action('Open Proton Pass','open')]:provider.installation==='absent'?[action('Get Proton Pass from Proton','install')]:[]),{kNav:true,label:'Refresh password provider status',lbl:'Refresh password provider status',chev:true,noAB:true,go:()=>void refresh()}]:[]),
         ]);
         page.groups.push(group([{kNav:true,label:'Password manager',lbl:'Password manager',chev:true,noAB:true,go:()=>api.set({page:'password-provider'})}]));
-        if(state.page==='password-provider')out.stack.push({isTop:false,notTop:true,cls:'enter',z:4,title:'Password manager',hasTitle:true,backLabel:'Back to Settings',back:()=>api.set({page:null}),hero:{},groups:[passwordGroup]});
+        if(PASSWORD_PAGES.includes(state.page)){
+          const helpers={info,group,toast:(message:string)=>api.toast(message),set:(patch:Bag)=>api.set(patch),ic:api.ic||{}};
+          // Alpha's own vault first; Proton Pass stays available as another provider.
+          out.stack.push({isTop:false,notTop:true,cls:'enter',z:4,title:'Password manager',hasTitle:true,backLabel:'Back to Settings',back:()=>{leavePasswordManager();api.set({page:null});},hero:{},groups:[...passwordManagerGroups(helpers),{...passwordGroup,cap:'Other password providers',hasCap:true}]});
+          const entry=state.page==='password-entry'?passwordEntryPage(helpers,()=>api.set({page:'password-provider'})):null;
+          if(entry)out.stack.push(entry);else if(state.page==='password-entry')queueMicrotask(()=>api.set({page:'password-provider'}));
+        }else leavePasswordManager();
         page.groups.push(group([{kNav:true,label:'Scheduled digests',lbl:'Scheduled digests',chev:true,noAB:true,go:()=>window.dispatchEvent(new Event('alpha:hosted-digests'))}]));
         page.groups.push(group([{kNav:true,label:'Agent connection',lbl:'Agent connection',val:connectionController.getSnapshot().name,hasVal:true,chev:true,noAB:true,go:()=>connectionController.open()}]));
         if(testMocksEnabled)page.groups.push(group([{kNav:true,label:'Try mock mode',lbl:'Try mock mode',chev:true,noAB:true,go:()=>connectionController.mock()}]));

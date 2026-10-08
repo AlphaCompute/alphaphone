@@ -44,7 +44,7 @@
     "agent:stage-android": "node scripts/stage-local-agent-runtime.mjs",
     "android:build:local": "node scripts/android-build-preflight.mjs --before-prepare && npm run agent:prepare && npm run agent:build-workflow-worker && npm run agent:stage-android && npm run android:build",
     "agent:test-device-timing": "node scripts/test-device-timing-source.mjs",
-    "upstream:prepare-client": "node scripts/prepare-client-features.mjs",
+    "upstream:prepare-client": "node scripts/prepare-client-features.mjs && node scripts/prepare-eliza-patches.mjs",
     "browser-speech:prepare": "node scripts/browser-speech-assets.mjs ensure",
     "predev": "npm run upstream:prepare-client && npm run browser-speech:prepare",
     "predev:ui": "npm run upstream:prepare-client && npm run browser-speech:prepare",

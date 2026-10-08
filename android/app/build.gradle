@@ -108,6 +108,8 @@ dependencies {
  implementation project(':eliza-calendar')
  implementation project(':eliza-reminders')
  implementation project(':eliza-location')
+ implementation project(':eliza-passwords')
+ implementation project(':elizaos-capacitor-secure-store')
  implementation "androidx.webkit:webkit:$rootProject.ext.androidxWebkitVersion"
  implementation "androidx.appcompat:appcompat:$rootProject.ext.androidxAppCompatVersion"
  implementation "androidx.core:core-splashscreen:$rootProject.ext.coreSplashScreenVersion"

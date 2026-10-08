@@ -18,7 +18,11 @@ revision in `upstream.lock.json` and `vendor/eliza`.
 | `design` | Requirements and visual references, not executable instructions |
 
 Maps, Files and Notes implementations are copied from authenticated upstream
-source into a generated cache outside the submodule. Product wrappers inject
+source into a generated cache outside the submodule. A shared change not yet in a
+reviewed upstream commit is an explicit, hash-bound patch in `patches/eliza`
+(currently the password manager), materialized into `.eliza/patched`; Gradle
+includes the patched `plugin-native-secure-store` and `plugin-native-passwords`
+modules from there. See [patches/eliza/README.md](../patches/eliza/README.md). Product wrappers inject
 presentation, device configuration and installed storage identities. Resident
 runtime preparation also uses the locked upstream source without patch replay.
 Native staging verifies source and generated hashes and applies only explicit
@@ -66,7 +70,8 @@ Android Keystore-backed storage in the no-backup directory. The renderer bridge
 and background consumers use upstream `JsonCredentialSlots` through
 `AlphaCredentialStore`, sharing one process-wide lock and compare-and-exchange.
 Alpha owns the installed alias, directory, per-slot byte limits and renderer
-namespace restrictions. The ciphertext frame, hashed filename and slot AAD remain
+namespace restrictions. Saved passwords use the separate authentication-bound vault of
+the shared password plugin; see [password-provider-setup.md](password-provider-setup.md). The ciphertext frame, hashed filename and slot AAD remain
 unchanged; writers in separate Android processes are outside this contract. Renderer preferences
 hold nonsecret selections and identifiers. Backup remains disabled until its
 key and retention policy is defined.
