@@ -1,4 +1,4 @@
-import {presentDeviceRecordOperation} from '../../../../.eliza/client-features/plugins/plugin-assistant/src/services/device-actions/device-record-presentation.ts';
+import {presentDeviceRecordOperation} from '../runtime/device-record-presentation';
 import {AssistantDraftController} from './assistant-draft-controller';
 import {assistantDraftStore} from '../runtime/assistant-draft-store';
 import {openBrowserNotes,browserNotesRecovery} from '../runtime/browser-notes-document';

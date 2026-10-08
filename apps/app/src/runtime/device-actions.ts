@@ -1,4 +1,4 @@
-import {presentDeviceRecordOperation} from '../../../../.eliza/client-features/plugins/plugin-assistant/src/services/device-actions/device-record-presentation.ts';
+import {presentDeviceRecordOperation} from './device-record-presentation';
 import {isReminderCreate,validateReminderCreate,validateReminderCreateResult,type ReminderCreateOperation,type ReminderCreateResult} from '../../../../.eliza/client-features/plugins/plugin-assistant/src/services/device-actions/reminder-create-contract.ts';
 import {isClockOperation,validateClockOperation,validateClockResult,assertClockTimeZone,describeClockHandoff,type ClockOperation,type ClockHandoffResult} from './clock-contract.ts';
 import { isMapsOperation, validateMapsOperation, validateMapsResult, type MapsOperation, type MapsResult } from './maps-contract';
