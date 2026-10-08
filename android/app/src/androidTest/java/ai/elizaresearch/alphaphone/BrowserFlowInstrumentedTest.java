@@ -192,6 +192,9 @@ public class BrowserFlowInstrumentedTest {
   try(BoundedActivityScenario<MainActivity> scenario=BoundedActivityScenario.launch(MainActivity.class)){
    until("document.documentElement.dataset.activeView");host(AppNavigation.request("Browser"));until(AppNavigation.selected("Browser"));
    address("https://alpha-network-check.invalid/");
+   // The address bar closes only after the native tab exists; typing the next
+   // address before then races that close and loses the text.
+   until("!document.querySelector('input[aria-label=Address]')");
    assertEquals("Uncommitted navigation must not display a secure connection", "false", host("!!document.querySelector('svg[aria-label=\"Secure connection\"]')"));
    address("https://example.com/"+one);page(one);
    until("document.querySelector('svg[aria-label=\"Secure connection\"]')");
