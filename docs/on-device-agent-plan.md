@@ -2,7 +2,7 @@
 
 ## Accepted direction
 
-The user has replaced the Nitro/TEE agent-hosting direction with an agent running on the Android device. This supersedes the earlier cloud-only execution constraint. Nitro provisioning, enclave measurement and KMS admission are no longer prerequisites for the primary agent path. Existing remote services and evidence are retained; this decision does not authorize shutting them down or migrating accounts destructively.
+The user has replaced the Nitro/TEE agent-hosting direction with an agent running on the Android device. This supersedes the earlier requirement that the agent run only in hosted Cloud infrastructure. Nitro provisioning, enclave measurement and KMS admission are no longer prerequisites for the primary agent path. Existing remote services and evidence are retained; this decision does not authorize shutting them down or migrating accounts destructively.
 
 The target puts orchestration, conversation state, tool policy, approvals, receipts and scheduling on the phone. The Alpha renderer remains separate from the runtime and keeps its existing native selected-content boundaries. Cloud login must not be required merely to start the local agent. External accounts still require their own consent, and external inference still requires an explicitly configured provider.
 

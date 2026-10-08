@@ -3,8 +3,13 @@
 Independent Android UI on Eliza, using the Alpha Phone prototype as its design
 reference. The current renderer includes native browser, camera,
 calendar, reminders, selected files and local notes. Phone, SMS, Contacts and Wallet
-entry points are disabled by the documented MVP profile. The connection chooser supports
-the on-device agent, Cloud sign-in, remote pairing and offline use. Mock mode, prototype
+entry points are disabled by the documented MVP profile. Connection choices differ by
+build. The production Android Welcome dialog offers only the on-device agent with Eliza
+Cloud sign-in for inference credits; it has no offline choice and no remote pairing yet,
+so a signed-out phone without network cannot reach Home through it. The production web
+build offers remote pairing, Cloud sign-in and Continue offline, but remote pairing and
+Cloud sign-in depend on the native `AlphaConnection` bridge, which has no web
+implementation yet, so only offline use works there today. Mock mode, prototype
 fixture data, developer device controls and the local development endpoint are
 development surfaces that exist only when the build-time switch
 `ELIZA_DEV_ALLOW_TEST_MOCKS=1` is set (see [build-time switch](#build-time-test-mock-switch)).
