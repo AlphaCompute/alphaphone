@@ -2893,6 +2893,8 @@ async function notesDelete(api, id) {
   var idx = -1; s.list.forEach(function (n, i) { if (n.id === id) idx = i; });
   if (idx < 0) return;
   var note = s.list[idx];
+  // Live Notes move the note to the durable Trash (and offer Undo); fixtures keep the in-memory undo.
+  if (api.moveNoteToTrash) { await api.moveNoteToTrash(note, idx); return; }
   if(await api.set({ list: s.list.filter(function (n) { return n.id !== id; }), open: null, sheet: null, playing: false, dict: false })===false)return;
   notesUndoable(api, note, idx, (note.title || "Note") + " deleted");
 }

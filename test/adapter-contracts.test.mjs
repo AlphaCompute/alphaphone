@@ -8,7 +8,7 @@ for (const script of [
   'test-device-actions.mjs', 'test-workflow-protocol.mjs',
   'test-workflow-ui-flow.mjs', 'test-workflow-approval-ui-flow.mjs',
   'test-workflow-lifecycle-ui-flow.mjs', 'test-workflow-metadata-ui-flow.mjs',
-  'test-notes-store-flow.ts', 'test-notes-action-flow.ts',
+  'test-notes-store-flow.ts', 'test-notes-action-flow.ts', 'test-notes-trash-flow.ts',
 ]) {
   test(`adapter contract: ${script}`, () => {
     execFileSync(process.execPath, ['--import', 'tsx', '--experimental-transform-types', `scripts/${script}`], {

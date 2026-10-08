@@ -25,7 +25,7 @@ for (const theme of ['light', 'dark']) {
     });
   }
 }
-test('Notes create, edit, reload, search and delete', async ({ page }) => {
+test('Notes create, edit, reload, search and delete to Trash', async ({ page }) => {
   await page.goto('/');
   await page.getByRole('button', { name: 'Notes', exact: true }).click();
   await expect(page.getByText('No notes yet. Create a note to get started.')).toBeVisible();
@@ -45,6 +45,10 @@ test('Notes create, edit, reload, search and delete', async ({ page }) => {
   await page.getByRole('button', { name: 'Open Browser audit note', exact: true }).click();
   await page.getByRole('button', { name: 'Delete note', exact: true }).click();
   await expect(page.getByText('No notes yet. Create a note to get started.')).toBeVisible();
+  // Deletion is not immediate erasure: the note waits in Trash for three days.
+  await expect(page.getByText('Browser audit note moved to Trash', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Open Trash', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Restore Browser audit note', exact: true })).toBeVisible();
 });
 for (const [label, text] of [['unicode CRLF', 'Local 🧪 file\r\nExact bytes\n'], ['UTF-8 BOM', '\ufeffLocal 🧪 file\r\nExact bytes\n'], ['empty', '']]) test(`Local text import and exact-byte download: ${label}`, async ({ page }) => {
   await page.goto('/');

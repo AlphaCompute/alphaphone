@@ -2,6 +2,7 @@ import {AssistantDraftController} from './assistant-draft-controller';
 import {assistantDraftStore} from '../runtime/assistant-draft-store';
 import {openBrowserNotes,browserNotesRecovery} from '../runtime/browser-notes-document';
 import {audioDeletionRecovery} from '../runtime/note-audio-deletions';
+import {addNotesTrashEntry,editNotesTrash,withNotesDeletionLock} from '../runtime/notes-trash';
 import {openDomainRecovery} from '../browser/domain-recovery';
 import {reviewSummaryNote} from './summary-note-review';
 import {summarySourceOf as sourceOf,recordingSourceOf,recordingRevision,type SummarySource as Source} from './summary-source';
@@ -302,7 +303,17 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
         try{
           if(this.notesStorageFailed||!this.notesStore)throw Error('Notes storage is unavailable');
           const current=()=>{signal.throwIfAborted();context(this);if(!this.live||document.hidden||JSON.stringify(alphaClient.getState().context)!==JSON.stringify(expectedContext)||expectedContext.sensitive||expectedContext.view!=='notes')throw Error('Selected Notes context changed');};
-          const notesResult=await this.notesStore.execute(operation,operationId,signal,current);
+          const execute=()=>this.notesStore.execute(operation,operationId,signal,current);
+          // An approved agent deletion moves the note to Trash: the restorable copy is
+          // written ahead of the tombstone commit, under the same deletion-effects lock.
+          const notesResult=operation.type!=='notes_delete'?await execute():await withNotesDeletionLock(async()=>{
+            current();const list=this.notesStore.list,index=list.findIndex((n:Shell)=>n.id===operation.target.noteId);
+            if(index<0)throw Error('Selected note is missing');
+            const target=await this.notesStore.target(operation.target.noteId);
+            if(JSON.stringify(target)!==JSON.stringify(operation.target))throw Error('Selected note revision changed');
+            await editNotesTrash(doc=>addNotesTrashEntry(doc,{id:operationId,note:list[index],target,index,deletedAt:Date.now()}));
+            const result=await execute();window.dispatchEvent(new Event('alpha:notes-trash-changed'));return result;
+          },signal);
           return {status:'succeeded',summary:operation.type==='notes_read_selected'?'Read the exact selected note with approval.':'Selected Notes change committed.',notesResult};
         }catch(error){
           const uncertain=error instanceof NotesCommitUncertain;
@@ -413,7 +424,7 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
     this.live = false; alphaClient.disconnect(); window.removeEventListener('alpha-back', this.backHandler); window.removeEventListener('launcher-home', this.homeHandler); window.removeEventListener('alpha-selected-context', this.selectionHandler);
     void this.assistListener?.then((l: Shell) => l?.remove()); originalUnmount.call(this);
   };
-  p.vset = function (key: string, patch: Shell) {
+  p.vset = function (key: string, patch: Shell, options?: {exact?: boolean}) {
     if (key !== 'notes' || !patch.list) { originalSet.call(this,key,patch);return true; }
     if (this.notesStorageFailed||!this.notesStore) {
       // Recovery can race the next input event. Retain its text only as a draft;
@@ -423,7 +434,8 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
       this.toast('Notes storage needs recovery. Copy or export unsaved text before resetting.');context(this);return false;
     }
     try {
-      if(!isAndroid)patch={...patch,list:stampNoteChanges(this.notesStore.list,patch.list)};
+      // A Trash restore reinstates the exact saved record; it is not a content modification.
+      if(!isAndroid&&!options?.exact)patch={...patch,list:stampNoteChanges(this.notesStore.list,patch.list)};
       const pending=this.notesStore.replace(patch.list);
       this.notesPending++;
       this.notesSelectionKey=null;this.notesSelection=null;

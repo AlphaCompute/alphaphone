@@ -37,6 +37,7 @@ import { installPrototypeBrowserAdapter } from './prototype/browser-adapter';
 import { installCalendarAdapter } from './prototype/calendar-adapter';
 import { installSettingsAdapter } from './prototype/settings-adapter';
 import { ConnectionChooser, connectionController } from './runtime/connection-ui';
+import { installNotesTrashAdapter } from './prototype/notes-trash-adapter';
 import { installInboxCloudAdapter } from './prototype/inbox-cloud-adapter';
 import './prototype/prototype.css';
 import './prototype/phone.css';
@@ -81,6 +82,7 @@ if (!fixture) {
   installNotificationsAdapter(Component);
   installPrototypeVoiceAdapter(Component, VIEWS);
   installNotesDocumentAdapter(Component, VIEWS);
+  installNotesTrashAdapter(Component, VIEWS);
   installNoteSourceAdapter(VIEWS);
   installNoteWebSourceAdapter(VIEWS);
   installPrototypeBrowserAdapter(Component, VIEWS);

@@ -134,7 +134,9 @@ For real host inference and speech, follow the separate [local agent setup](docs
 **Settings → Character → Wake assistant** opens the recording UI; recording starts
 only after Start recording is selected.
 
-The web build uses browser-local Notes. Notes text import and export use the browser
+Deleted notes, including voice notes, move to a Trash inside Notes and are erased
+automatically 3 days after deletion; Undo, Restore, Delete forever and Empty Trash are
+available. The web build uses browser-local Notes. Notes text import and export use the browser
 file picker and downloads; browser note storage is unencrypted and is not synced. On
 Android, Notes use the native Keystore-backed secure store.
 The web build is a development and preview surface and the payload packaged into the
