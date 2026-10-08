@@ -39,3 +39,15 @@ test('transcript provenance records only reported engine facts and the route act
   assert.deepEqual(transcriptProvenance({text: 'x'}, {onDevice: false, native: true, paired: true, cloud: false}), {route: 'paired-agent'});
   assert.deepEqual(transcriptProvenance({text: 'x', engine: 7, model: 'm'.repeat(200)}, {onDevice: false, native: true, paired: false, cloud: true}), {route: 'eliza-cloud'});
 });
+
+test('Android permission-denied is the denied state with settings and keyboard guidance', () => {
+  const android = {transcribing: false, browser: false};
+  const denied = voiceFailure(Object.assign(new Error('Microphone permission denied'), {code: 'permission-denied'}), android);
+  assert.equal(denied.kind, 'denied');
+  assert.match(denied.message, /Open app settings/);
+  assert.match(denied.message, /keyboard/);
+  assert.match(denied.message, /Nothing was recorded/);
+  assert.match(voiceFailure(named('NotAllowedError'), {transcribing: false, browser: true}).message, /keyboard/);
+  // A code from a transcription request is not a microphone permission problem.
+  assert.equal(voiceFailure(Object.assign(new Error('x'), {code: 'permission-denied'}), {transcribing: true, browser: false}), null);
+});
