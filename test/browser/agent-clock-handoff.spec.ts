@@ -14,7 +14,8 @@ for (const mode of ['confirm','transcribed','zone','modal','unknown','receipt-lo
       if(mode!=='browser')w.androidBridge={};
       w.Capacitor = {
         PluginHeaders: [
-          {name:'AlphaVoiceCloud',methods:methods(['localSpeechStatus','transcribeLocalRecording','startRecording','stopRecording','releaseLocalSpeech','cancel','cancelRecording','stopPlayback','addListener','removeListener'])},
+          {name:'AlphaNotifications',methods:methods(['status','addListener','removeListener'])},
+          {name:'AlphaVoiceCloud',methods:methods(['checkPermissions','localSpeechStatus','transcribeLocalRecording','startRecording','stopRecording','releaseLocalSpeech','cancel','cancelRecording','stopPlayback','addListener','removeListener'])},
           {name:'DailyApps',methods:methods(['clockHandoff','perform','surfaceInfo','addListener','removeListener'])},
           { name: 'AlphaConnection', methods: methods(['request', 'cancel', 'secureRead', 'secureWrite','secureCompareExchange', 'secureRemove','addListener','removeListener']) },
           { name: 'AlphaActionJournal', methods: methods(['reserve', 'markApplying', 'finish', 'get', 'list','reviewClock','confirmClock','cancelClock']) },
@@ -22,7 +23,8 @@ for (const mode of ['confirm','transcribed','zone','modal','unknown','receipt-lo
         nativeCallback:()=> 'fixture-listener',
         nativePromise: async (plugin: string, method: string, input: any) => {
           if(method==='addListener')return {callbackId:'fixture-listener'};if(method==='removeListener')return {};
-          if(plugin==='AlphaVoiceCloud'){if(method==='localSpeechStatus')return {ready:true,execution:'device'};if(method==='startRecording')return {recordingId:'clock-voice-fixture',maxDurationMs:29000};if(method==='stopRecording')return {recordingId:'clock-voice-fixture',durationMs:1000};if(method==='transcribeLocalRecording')return {text:'Set an alarm for 07:00; await my review.',local:true,execution:'device'};return {};}
+          if(plugin==='AlphaNotifications'&&method==='status')return {permissionGranted:true,appEnabled:true};
+          if(plugin==='AlphaVoiceCloud'){if(method==='checkPermissions')return {microphone:'granted'};if(method==='localSpeechStatus')return {ready:true,execution:'device'};if(method==='startRecording')return {recordingId:'clock-voice-fixture',maxDurationMs:29000};if(method==='stopRecording')return {recordingId:'clock-voice-fixture',durationMs:1000};if(method==='transcribeLocalRecording')return {text:'Set an alarm for 07:00; await my review.',local:true,execution:'device'};return {};}
           if(plugin==='DailyApps'){if(method==='surfaceInfo')return {developmentBuild:true,assistant:false};if(method==='perform')return {status:'selected',transcript:'Set an alarm for 07:00; await my review.'};if(method==='clockHandoff'){fixture.effects++;localStorage.setItem('fixture-effects',String(fixture.effects));if(mode==='unknown')throw Error('Lost native bridge response');return {action:input.action,status:mode==='unavailable'?'unavailable':mode==='denied'?'denied':mode==='failed'?'failed':'opened',message:'Clock request sent'};}throw Error('Unexpected DailyApps method');}
           if (plugin === 'AlphaActionJournal') {
             fixture.journal.push(method);
