@@ -1,3 +1,4 @@
+import {registerPlugin} from '../platform-plugins';
 import {openDomainRecovery} from '../browser/domain-recovery';
 import {browserDevProfile} from '../browser/dev-profile';
 import {browserScreenLocked} from '../browser/screen-locked';
@@ -27,10 +28,13 @@ import {
 } from "./hosted-digests";
 import { DailyApps } from "../daily";
 type Pending = {
-	path: "sources" | "loops" | "sources/revoke";
+	path: "sources" | "loops" | "sources/revoke" | "dossier";
 	body: Record<string, unknown>;
 	summary: string;
+ nativeConsent?:{sourceId:string;scope:Record<string,unknown>;expiresAt:number;expectedBinding:Record<string,unknown>};
 };
+const nativeSources=registerPlugin<{nativeSourceConsent(input:Record<string,unknown>):Promise<Record<string,unknown>>;nativeSourceIdentity(input:{sessionId:string}):Promise<Record<string,unknown>>}>('AlphaHostedResults');
+const nativeCalendars=registerPlugin<{requestWorkflowReadAccess():Promise<{status:string}>;workflowCalendars():Promise<{status:string;calendars:Array<{id:string;name:string;account:string;sourceRevision:string}>}>}>('AlphaCalendar');
 function canSyncResults(){return !document.hidden&&(isAndroid||(document.documentElement.dataset.devBackground!=='true'&&!browserScreenLocked()));}
 export function HostedDigestPanel() {
 	const panel = useRef<HTMLElement>(null);
@@ -39,7 +43,7 @@ export function HostedDigestPanel() {
 		connectionController.getSnapshot,
 	);
 	const interactiveDevelopment=devSurfacesEnabled&&browserDevProfile&&JSON.parse(localStorage.getItem('alpha.connection.selection.v1')||'null')?.kind==='development';
-	const [nativeReady,setNativeReady]=useState(false);
+	const [nativeReady,setNativeReady]=useState(false),[nativeSourceProtocol,setNativeSourceProtocol]=useState(false);
 	const [backgroundEnabled,setBackgroundEnabled]=useState(false);
 	const [noticeEnabled,setNoticeEnabled]=useState(false), [focusedRun,setFocusedRun]=useState<string|null>(null), [tap,setTap]=useState<{token:string;runId:string;sessionId:string}|null>(null);
 	const [open, setOpen] = useState(false),
@@ -62,6 +66,9 @@ export function HostedDigestPanel() {
 		),
 		[morning, setMorning] = useState("08:00"),
 		[evening, setEvening] = useState("18:00");
+ const [nativeLabel,setNativeLabel]=useState('Phone morning sources');
+ const [calendarChoices,setCalendarChoices]=useState<Array<{id:string;name:string;account:string;sourceRevision:string}>>([]),[selectedCalendars,setSelectedCalendars]=useState<string[]>([]),[selectedReminders,setSelectedReminders]=useState(false);
+ useEffect(()=>{setCalendarChoices([]);setSelectedCalendars([]);setSelectedReminders(false);},[connection.session?.sessionId]);
 	const binding = useRef<{
 		storage: DigestStorage;
         recover?:()=>void;
@@ -119,6 +126,8 @@ export function HostedDigestPanel() {
 			signal.throwIfAborted();
 			if (binding.current !== b || document.hidden) return;
 			setAvailable(supported);
+            const nativeSupported=supported&&isAndroid&&connection.kind==='resident'?await b.client.nativeSourcesAvailable(signal):false;
+            if(binding.current!==b)return;setNativeSourceProtocol(nativeSupported);
 			if (!supported) {
 				setMessage("This agent has not enabled scheduled digests.");
 				return;
@@ -285,7 +294,19 @@ export function HostedDigestPanel() {
 			await b.storage.write(b.slot + ":pending", value);
 			if (binding.current !== b) return;
 			setPending(value);
-			await b.client.mutate(value.path, value.body, b.controller.signal);
+			let body=value.body;
+            if(value.nativeConsent){
+              const grant=await nativeSources.nativeSourceConsent({sessionId:b.sessionId,...value.nativeConsent,confirmed:true});
+              if(binding.current!==b)return;
+              body={...body,live:Object.fromEntries(['provider','ownerId','agentId','installationId','enrollmentId','sourceId','revision'].map(key=>[key,grant[key]]))};
+            }
+            if(value.path==='sources/revoke'){
+              const source=sources.find(source=>source.id===body.id);
+              if(source?.live?.provider==='native')await nativeSources.nativeSourceConsent({sessionId:b.sessionId,sourceId:source.live.sourceId,expectedBinding:source.live,revoke:true,confirmed:true});
+              if(binding.current!==b)return;
+            }
+            await b.client.mutate(value.path, body, b.controller.signal);
+            if(value.nativeConsent&&binding.current===b)setSourceId(value.nativeConsent.sourceId);
 			if (binding.current !== b) return;
 			await b.storage.remove(b.slot + ":pending");
 			setPending(null);
@@ -307,6 +328,18 @@ export function HostedDigestPanel() {
 			if (mounted.current) setBusy(false);
 		}
 	}
+ async function loadNativeCalendars(){const b=binding.current;if(!b||busy)return;setBusy(true);try{const permission=await nativeCalendars.requestWorkflowReadAccess();if(permission.status!=='granted')throw Error('Calendar permission was not granted.');const result=await nativeCalendars.workflowCalendars();if(binding.current!==b)return;if(result.status!=='ready')throw Error('Calendar sources unavailable.');setCalendarChoices(result.calendars);}catch(error){if(binding.current===b)setMessage((error as Error).message);}finally{setBusy(false);}}
+ async function reviewNativeSource(){
+  const b=binding.current;if(!b||busy)return;
+  if(!nativeLabel.trim()){setMessage('Name this source selection before reviewing it.');return;}
+  if(selectedCalendars.length>16){setMessage('Choose at most 16 calendars for this source.');return;}
+  if(!selectedCalendars.length&&!selectedReminders){setMessage('Select a calendar or reminders first.');return;}
+  try{new Intl.DateTimeFormat('en',{timeZone:zone}).format(0);if(!Number.isInteger(hours)||hours<1||hours>168)throw Error();}catch{setMessage('Choose a valid time zone and expiry from 1 to 168 hours.');return;}
+  let expectedBinding:Record<string,unknown>;try{expectedBinding=await nativeSources.nativeSourceIdentity({sessionId:b.sessionId});if(binding.current!==b)return;}catch{setMessage('Reconnect the current phone enrollment before reviewing sources.');return;}
+  const sourceId=crypto.randomUUID(),observedAt=new Date().toISOString(),expiresAt=Date.now()+hours*3600000;
+  const scope={calendars:selectedCalendars.map(id=>({id,revision:calendarChoices.find(calendar=>calendar.id===id)!.sourceRevision})),reminders:selectedReminders,timeZone:zone,window:'owner_day_and_overdue_reminders',maximumItems:200,modelEgress:true};
+  setReview({path:'sources',body:{id:sourceId,kind:'tasks',label:nativeLabel.trim(),observedAt,expiresAt:new Date(expiresAt).toISOString(),confirmed:true},nativeConsent:{sourceId,scope,expiresAt,expectedBinding},summary:`Allow ${connection.name||'your on-device agent'} to read the selected sources on this phone until ${new Date(expiresAt).toLocaleString()}?\nCalendars: ${calendarChoices.filter(c=>selectedCalendars.includes(c.id)).map(c=>c.name+' ('+c.account+')').join(', ')||'none'}. Reminders: ${selectedReminders?'open reminders due today and overdue':'excluded'}.\nThe brief uses only event titles and times for the local day in ${zone}, plus selected reminders’ titles, due times and status. At most 200 items; overflow fails. Calendar descriptions, attendees, locations and reminder bodies are excluded.\nThese fields may be sent to this agent’s configured text model. The agent may read these sources while Alpha is in the background or the phone is locked. Recurring reads require a separately reviewed morning schedule. You can revoke the source here. Briefs are saved privately with this agent; phone notifications follow your current result-notification setting. No app writes, inbox reads, messages or voice are authorized.`});
+ }
 	function schedule(template: DigestTemplate, enabled = true) {
 		try {
 			new Intl.DateTimeFormat("en", { timeZone: zone }).format(0);
@@ -352,7 +385,7 @@ export function HostedDigestPanel() {
 				confirmed: true,
 				...(old ? { id: old.id, expectedVersionId: old.versionId } : {}),
 			},
-			summary: `${enabled ? "Enable" : "Pause"} ${template} digest at ${spec.localTime} in ${zone}, every day. Source: ${source.label}, observed ${source.observedAt}, expires ${source.expiresAt}. ${source.live ? "This grants recurring model execution using fresh reads from the reviewed Google account and scope." : "This grants recurring model execution using that snapshot only."} No email delivery or device action is authorized.`,
+			summary: `${enabled ? "Enable" : "Pause"} ${template} digest at ${spec.localTime} in ${zone}, every day. Source: ${source.label}. ${source.live?.provider==='native'?'Permission reviewed':'Observed'} ${source.observedAt}; expires ${source.expiresAt}. ${source.live ? "This grants recurring model execution using fresh reads from the reviewed selected source and scope." : "This grants recurring model execution using that snapshot only."} ${source.live?.provider==='native'?'Save the brief in your agent’s private digest history and use the current phone result-notification setting. Android may delay delivery. ':''}No email delivery or device action is authorized.`,
 		});
 	}
 	const liveBinding = binding.current;
@@ -416,7 +449,8 @@ export function HostedDigestPanel() {
 				) : (
 					available && (
 						<>
-							{liveBinding && <HostedLiveSourcePicker key={liveBinding.sessionId} client={liveBinding.client} scope={liveBinding.notices.scope} signal={liveBinding.controller.signal} current={() => binding.current === liveBinding} busy={busy} review={setReview} />}
+							{isAndroid&&connection.kind==='resident'&&nativeReady&&nativeSourceProtocol&&<details><summary>Selected phone sources</summary><label>Source name<input maxLength={200} value={nativeLabel} onChange={e=>setNativeLabel(e.target.value)}/></label><p>Choose Calendar sources and reminders for a morning brief or an on-demand dossier.</p><button disabled={busy} onClick={()=>void loadNativeCalendars()}>Choose calendars</button>{calendarChoices.map(c=><label key={c.id}><input type="checkbox" checked={selectedCalendars.includes(c.id)} onChange={e=>setSelectedCalendars(ids=>e.target.checked?[...ids,c.id]:ids.filter(id=>id!==c.id))}/>{c.name} · {c.account}</label>)}<label><input type="checkbox" checked={selectedReminders} onChange={e=>setSelectedReminders(e.target.checked)}/>Open phone reminders due today and overdue</label><label>Consent expires in hours<input type="number" min={1} max={168} value={hours} onChange={e=>setHours(Number(e.target.value))}/></label><button disabled={busy} onClick={()=>void reviewNativeSource()}>Review source consent</button></details>}
+                            {liveBinding && <HostedLiveSourcePicker key={liveBinding.sessionId} client={liveBinding.client} scope={liveBinding.notices.scope} signal={liveBinding.controller.signal} current={() => binding.current === liveBinding} busy={busy} review={setReview} />}
 							<details>
 								<summary>Share a snapshot</summary>
 								<p>
@@ -516,6 +550,7 @@ export function HostedDigestPanel() {
 										))}
 								</select>
 							</label>
+{sources.find(s=>s.id===sourceId)?.live?.provider==='native'&&<button disabled={busy} onClick={()=>{const source=sources.find(s=>s.id===sourceId)!;setReview({path:'dossier',body:{sourceId:source.id,sourceRevision:source.revision,mutationId:crypto.randomUUID(),confirmed:true},summary:`Prepare a dossier now from ${source.label}? This sends one fresh read of your reviewed selected phone sources to this agent’s configured text model. It creates no recurring schedule. Model usage is billed by this agent.`});}}>Review on-demand dossier</button>}
 							<label>
 								Time zone
 								<input value={zone} onChange={(e) => setZone(e.target.value)} />
@@ -528,20 +563,20 @@ export function HostedDigestPanel() {
 									onChange={(e) => setMorning(e.target.value)}
 								/>
 							</label>
-							<label>
+{sources.find(source=>source.id===sourceId)?.live?.provider!=='native'&&							<label>
 								Evening
 								<input
 									type="time"
 									value={evening}
 									onChange={(e) => setEvening(e.target.value)}
 								/>
-							</label>
+							</label>}
 							<p>
 								Skipped clock times are missed; repeated times run once at the
 								earlier offset. A missed schedule does not replay a backlog.
 								{interactiveDevelopment ? 'Digests use the configured development reply.' : 'Model usage is billed by the connected agent.'}
 							</p>
-							{(["morning", "evening"] as const).map((t) => (
+							{(["morning", "evening"] as const).filter(t=>t==='morning'||sources.find(source=>source.id===sourceId)?.live?.provider!=='native').map((t) => (
 								<div key={t}>
 									<button disabled={busy} onClick={() => schedule(t)}>
 										Review {t} schedule
@@ -593,7 +628,7 @@ export function HostedDigestPanel() {
 								{result.status}
 							</strong>
 							<span>
-								Snapshot observed {String(result.source.observedAt)}; expires{" "}
+								{result.source.type==='live_selected_native_read'?'Phone sources read':result.source.type==='live_selected_google_read'?'Connected sources read':'Snapshot observed'} {new Date(String(result.source.observedAt)).toLocaleString()}; {result.source.type==='live_selected_native_read'?'permission expires':'expires'}{" "}
 								{String(result.source.expiresAt)}
 							</span>
 							<pre
@@ -606,7 +641,7 @@ export function HostedDigestPanel() {
 							>
 								{digestSummaryText(result)}
 							</pre>
-                            <details><summary>Execution details</summary><pre style={{whiteSpace:'pre-wrap',overflowWrap:'anywhere',font:'inherit',width:'100%'}}>{JSON.stringify(result.output,null,2)}</pre></details>
+                            {result.source.type!=='live_selected_native_read'&&<details><summary>Execution details</summary><pre style={{whiteSpace:'pre-wrap',overflowWrap:'anywhere',font:'inherit',width:'100%'}}>{JSON.stringify(result.output,null,2)}</pre></details>}
 						</article>
 					))}
 			</section>

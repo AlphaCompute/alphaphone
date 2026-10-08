@@ -69,6 +69,8 @@ function liveSelection(value: unknown): HostedLiveSelection {
 	};
 }
 export type DigestTemplate = "morning" | "evening";
+export interface HostedNativeSelection {provider:'native';ownerId:string;agentId:string;installationId:string;enrollmentId:string;sourceId:string;revision:string}
+function nativeSelection(value:unknown):HostedNativeSelection {const v=object(value);if(v.provider!=='native'||Object.keys(v).some(k=>!['provider','ownerId','agentId','installationId','enrollmentId','sourceId','revision'].includes(k)))throw Error('Invalid native source');return {provider:'native',ownerId:boundedIdentity(v.ownerId),agentId:boundedIdentity(v.agentId),installationId:boundedIdentity(v.installationId),enrollmentId:boundedIdentity(v.enrollmentId),sourceId:boundedIdentity(v.sourceId),revision:revision(v.revision)};}
 export interface DigestSource {
 	id: string;
 	revision: string;
@@ -77,7 +79,7 @@ export interface DigestSource {
 	observedAt: string;
 	expiresAt: string;
 	revoked: boolean;
-	live?: HostedLiveSelection;
+	live?: HostedLiveSelection | HostedNativeSelection;
 }
 export interface DigestSpec {
 	version: 1;
@@ -173,6 +175,7 @@ export class HostedDigestProtocol {
 			signal: AbortSignal,
 		) => Promise<unknown>,
 	) {}
+ async nativeSourcesAvailable(signal:AbortSignal):Promise<boolean>{return object(await this.request('/api/workflow/status',undefined,signal)).hostedNativeSourceProtocol===1;}
 	async available(signal: AbortSignal) {
 		return (
 			object(await this.request("/api/workflow/status", undefined, signal))
@@ -272,7 +275,7 @@ export class HostedDigestProtocol {
 				observedAt: date(v.observedAt),
 				expiresAt: date(v.expiresAt),
 				revoked: v.revoked === true,
-				...(v.live === undefined ? {} : { live: liveSelection(v.live) }),
+				...(v.live === undefined ? {} : { live: object(v.live).provider==='native' ? nativeSelection(v.live) : liveSelection(v.live) }),
 			};
 		});
 	}
@@ -288,7 +291,7 @@ export class HostedDigestProtocol {
 		});
 	}
 	async mutate(
-		path: "sources" | "loops" | "sources/revoke",
+		path: "sources" | "loops" | "sources/revoke" | "dossier",
 		body: unknown,
 		signal: AbortSignal,
 	) {

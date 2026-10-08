@@ -24,6 +24,16 @@ public class AlphaHostedResultsPlugin extends Plugin {
  private HostedResultNotices notices(){return HostedDelivery.get(getContext()).notices;}
  private void channel(){new HostedNoticePoster(getContext());}
  private boolean enabled(){return new HostedNoticePoster(getContext()).allowed();}
+ private void sourceForeground()throws Exception {
+  java.util.concurrent.CountDownLatch checked=new java.util.concurrent.CountDownLatch(1);java.util.concurrent.atomic.AtomicBoolean admitted=new java.util.concurrent.atomic.AtomicBoolean();
+  android.os.Handler main=new android.os.Handler(android.os.Looper.getMainLooper());Runnable check=()->{try{admitted.set(getActivity()!=null&&!getActivity().isFinishing()&&!getActivity().isDestroyed()&&getActivity().hasWindowFocus()&&!getContext().getSystemService(android.app.KeyguardManager.class).isDeviceLocked());}finally{checked.countDown();}};
+  if(!main.post(check)||!checked.await(5,java.util.concurrent.TimeUnit.SECONDS)){main.removeCallbacks(check);throw new SecurityException("Phone review unavailable");}if(!admitted.get())throw new SecurityException("Review sources on the unlocked phone");
+ }
+ @PluginMethod public void nativeSourceIdentity(PluginCall call){submit(call,()->{try{String session=call.getString("sessionId");if(session==null)throw new SecurityException();sourceForeground();call.resolve(new JSObject(HostedDelivery.get(getContext()).nativeSource(session,(binding,guard)->binding).toString()));}catch(Exception unavailable){call.reject("Native source identity unavailable");}});}
+ @PluginMethod public void nativeSourceConsent(PluginCall call){submit(call,()->{try{
+  sourceForeground();if(!Boolean.TRUE.equals(call.getBoolean("confirmed")))throw new SecurityException("Review source consent on the unlocked phone");
+  boolean revoke=Boolean.TRUE.equals(call.getBoolean("revoke"));JSONObject result=new NativeDigestHost(getContext()).consent(call.getString("sessionId"),call.getString("sourceId"),revoke?null:call.getObject("scope"),revoke?0:call.getLong("expiresAt",0L),revoke,call.getObject("expectedBinding"),this::sourceForeground);call.resolve(new JSObject(result.toString()));
+ }catch(Exception unavailable){call.reject("Native source consent could not be confirmed. Refresh the current connection.");}});}
  @PluginMethod public void beginBackground(PluginCall call){submit(call,()->{try{HostedDelivery.get(getContext()).begin(call.getString("attemptId"));call.resolve();}catch(Exception error){call.reject("Background reservation unavailable");}});}
  @PluginMethod public void cancelBackground(PluginCall call){java.util.concurrent.CompletableFuture.runAsync(()->{try{HostedDelivery.get(getContext()).cancel(call.getString("attemptId"));call.resolve();}catch(Exception error){call.reject("Background reservation could not be cancelled");}});}
  @PluginMethod public void configureBackground(PluginCall call){submit(call,()->{try{call.resolve(new JSObject(HostedDelivery.get(getContext()).configure(call.getData()).toString()));}catch(Exception error){call.reject("Background delivery needs a verified connection");}});}
