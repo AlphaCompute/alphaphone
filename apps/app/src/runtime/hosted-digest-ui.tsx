@@ -629,7 +629,7 @@ export function HostedDigestPanel() {
 							</strong>
 							<span>
 								{result.source.type==='live_selected_native_read'?'Phone sources read':result.source.type==='live_selected_google_read'?'Connected sources read':'Snapshot observed'} {new Date(String(result.source.observedAt)).toLocaleString()}; {result.source.type==='live_selected_native_read'?'permission expires':'expires'}{" "}
-								{String(result.source.expiresAt)}
+								{new Date(String(result.source.expiresAt)).toLocaleString()}
 							</span>
 							<pre
 								style={{
