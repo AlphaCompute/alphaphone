@@ -166,4 +166,23 @@ public final class BrowserSigninsInstrumentedTest {
    assertEquals("Address type error never replaced the page","false",host("document.body.innerText.includes('address type is not supported')"));
   }
  }
+
+ @Test public void targetBlankAppLinkHandsOffOnceAndClosesItsEmptyPopup()throws Exception{
+  String url="https://example.com/?alpha_blank_tel="+UUID.randomUUID();
+  try(BoundedActivityScenario<MainActivity> scenario=BoundedActivityScenario.launch(MainActivity.class)){
+   AppNavigation.liveMode();app("Browser");address(url);page(url);
+   fixtureLink("tel:+15555550100","_blank");tap("#alpha-fixture-link");
+   boolean handedOff=false;
+   for(int i=0;i<100&&!handedOff;i++){
+    AtomicBoolean paused=new AtomicBoolean();
+    BoundedActivityScenario.main(()->{for(Stage stage:new Stage[]{Stage.PAUSED,Stage.STOPPED})for(Activity activity:ActivityLifecycleMonitorRegistry.getInstance().getActivitiesInStage(stage))if(activity instanceof MainActivity)paused.set(true);});
+    handedOff=paused.get()||"true".equals(host("document.body.innerText.includes('No app on this device can open this link.')"));
+    if(!handedOff)SystemClock.sleep(100);
+   }
+   assertTrue("Dialer opened from the pop-up, or Android reported no handler",handedOff);
+   if(!"true".equals(host("document.body.innerText.includes('No app on this device')")))WebViewTestDriver.pressBack();
+   // The empty pop-up closes after its single handoff; the opener page stays.
+   app("Browser");tabs(1);page(url);assertEquals(1,liveTabs());
+  }
+ }
 }

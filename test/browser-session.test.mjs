@@ -49,6 +49,7 @@ test('normal tabs share one persistent profile that is never the host profile; p
   assert.match(plugin,/PRIVATE_PREFIX = "alpha_private_"/);
   assert.match(plugin,/for\(String name:ProfileStore\.getInstance\(\)\.getAllProfileNames\(\)\) if\(ephemeralProfile\(name\)\)/,'startup deletes only ephemeral profiles');
   assert.match(plugin,/boolean purge=t\.priv&&ephemeralProfile\(t\.profile\)/,'only private profiles are purged on close');
+  assert.match(plugin,/handleOnDestroy\(\) \{[^\n]*ArrayList<Tab> all=new ArrayList<>\(tabs\.values\(\)\);tabs\.clear\(\);/,'Activity destruction clears tabs before purging so shared private profiles are purged');
   assert.doesNotMatch(plugin,/addJavascriptInterface/,'child pages never receive an app bridge');
   assert.match(plugin,/WebStorageCompat\.deleteBrowsingData\(profile\.getWebStorage\(\)/,'Clear browsing data deletes profile data');
   assert.match(plugin,/deleteBrowsingDataForSite/);
@@ -61,6 +62,9 @@ test('pop-ups open as gesture-gated tabs and app links are sanitized',()=>{
   assert.match(plugin,/build\(id,opener\.priv,opener\.profile\)/,'a pop-up stays in its opener profile');
   assert.match(plugin,/BrowserExternalLinks\.external\(target\)\) \{ if \(r\.isForMainFrame\(\)\) handoff\(t, target, r\.hasGesture\(\)\); return true; \}/);
   assert.match(plugin,/if\(intent==null\|\|ownsRoute\(intent\)\)/);
+  assert.match(plugin,/boolean fresh=opener!=null&&!t\.handedOff&&!t\.committed&&t\.lastCommittedUrl\.isEmpty\(\);/,'an empty target=_blank pop-up may hand off once');
+  assert.match(plugin,/if\(fresh\)\{t\.handedOff=true;/,'the pop-up handoff is single use');
+  assert.match(plugin,/if\(!gesture\)\{notice\(t,"Blocked a link to another app/,'other handoffs need a gesture');
   for(const required of ['intent.setComponent(null);intent.setSelector(null);intent.setClipData(null);','intent.setFlags(0);','Intent.ACTION_DIAL','Intent.CATEGORY_BROWSABLE','"alphaphone"'])
     assert.ok(links.includes(required),required);
   assert.doesNotMatch(links,/ACTION_CALL\b(?!")/);

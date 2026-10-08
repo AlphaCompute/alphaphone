@@ -1,6 +1,6 @@
 # Browser continuity and durable bookmarks
 
-By product decision, browser tabs keep sign-ins: normal tabs share one persistent browser profile, and normal tabs and history are restored after a cold start. Private tabs are ephemeral. See [sign-ins, private tabs and site data](prototype-browser-integration.md#sign-ins-private-tabs-and-site-data).
+By the October 7 owner decision, browser tabs keep sign-ins: normal tabs share one persistent browser profile. As an engineering choice that follows from it, normal tabs and history are restored after a cold start. Private tabs are ephemeral. See [sign-ins, private tabs and site data](prototype-browser-integration.md#sign-ins-private-tabs-and-site-data).
 
 The browser retains tabs, selected tab, history and bookmark state across view resets. Normal tabs and history are also saved to disk (below). Overlays still reset and native surfaces still hide on departure.
 

@@ -129,7 +129,7 @@ public class AlphaBrowserPlugin extends Plugin {
   }
  }); }
 
- private static class Tab { BrowserReadingWorld readingWorld; String id, profile, opener, url = "", error = "", finishedUrl = "", lastCommittedUrl = ""; WebView web; FrameLayout frame; TextView message; boolean priv, loading, dead, committed, autofillEnabled; int httpStatus, autofillVirtualId=View.NO_ID; long navigation; Runnable timeout; }
+ private static class Tab { BrowserReadingWorld readingWorld; String id, profile, opener, url = "", error = "", finishedUrl = "", lastCommittedUrl = ""; WebView web; FrameLayout frame; TextView message; boolean priv, handedOff, loading, dead, committed, autofillEnabled; int httpStatus, autofillVirtualId=View.NO_ID; long navigation; Runnable timeout; }
  /** Credentials stay in the framework/provider and the remote document. No bridge API
   * reads fields or replaces Chromium's frame-specific webDomain metadata. */
  private boolean canAutofill(Tab t) {
@@ -318,8 +318,7 @@ public class AlphaBrowserPlugin extends Plugin {
     @Override public void onCloseWindow(WebView window) {
      // Only a pop-up this browser opened may close itself (window.close()).
      if(t.opener==null||tabs.get(t.id)!=t)return;
-     tabs.remove(t.id);dispose(t);
-     JSObject event=new JSObject();event.put("session",session);event.put("id",t.id);notifyListeners("tabClosed",event);
+     tabs.remove(t.id);dispose(t);tabClosed(t.id);
     }
    });
    t.web.setDownloadListener((url,agent,disposition,mime,length) -> {
@@ -362,19 +361,32 @@ public class AlphaBrowserPlugin extends Plugin {
  }
  /** Hand a tapped mailto/tel/intent/market link to Android. The page stays loaded. */
  private void handoff(Tab t,String raw,boolean gesture) {
-  if(paused||destroyed||t.dead||tabs.get(t.id)!=t||!Objects.equals(presentedId,t.id)){return;}
-  if(!gesture){notice(t,"Blocked a link to another app that opened without a tap.");return;}
+  if(paused||destroyed||t.dead||tabs.get(t.id)!=t)return;
+  // A tapped target=_blank link to another app first opens a pop-up tab whose
+  // creation was already gesture-gated in popup(). That still-empty pop-up may
+  // hand off exactly once and then closes, so an opener script cannot reuse it.
+  Tab opener=t.opener==null?null:tabs.get(t.opener);
+  boolean fresh=opener!=null&&!t.handedOff&&!t.committed&&t.lastCommittedUrl.isEmpty();
+  Tab report=fresh?opener:t;
+  if(fresh){t.handedOff=true;if(!Objects.equals(presentedId,t.id)&&!Objects.equals(presentedId,opener.id)){closePopup(t);return;}}
+  else{
+   if(!Objects.equals(presentedId,t.id))return;
+   if(!gesture){notice(t,"Blocked a link to another app that opened without a tap.");return;}
+  }
   Intent intent=BrowserExternalLinks.intentFor(raw,getContext().getPackageName());
-  if(intent==null||ownsRoute(intent)){notice(t,"This link type is not supported.");return;}
+  if(intent==null||ownsRoute(intent)){notice(report,"This link type is not supported.");if(fresh)closePopup(t);return;}
   for(Tab tab:tabs.values())disableAutofill(tab);
-  try{getActivity().startActivity(intent);}
+  try{getActivity().startActivity(intent);if(fresh)closePopup(t);}
   catch(android.content.ActivityNotFoundException missing){
    String fallback=BrowserExternalLinks.fallback(raw);
    if(fallback!=null&&safe(fallback)){t.url=fallback;loading(t);emit(t);if(t.readingWorld!=null)t.readingWorld.prepare(fallback);t.web.loadUrl(fallback);}
-   else notice(t,"No app on this device can open this link.");
+   else{notice(report,"No app on this device can open this link.");if(fresh)closePopup(t);}
   }
-  catch(RuntimeException blocked){notice(t,"This link could not be opened.");}
+  catch(RuntimeException blocked){notice(report,"This link could not be opened.");if(fresh)closePopup(t);}
  }
+ private void tabClosed(String id){JSObject event=new JSObject();event.put("session",session);event.put("id",id);notifyListeners("tabClosed",event);}
+ /** Close a pop-up after its callback returns; a WebView is not destroyed inside its own callback. */
+ private void closePopup(Tab t){navigationHandler.post(()->{if(tabs.get(t.id)!=t)return;tabs.remove(t.id);dispose(t);tabClosed(t.id);});}
  @PluginMethod public void navigate(PluginCall call) { String url=call.getString("url"); if (url==null || !safe(url)) { call.reject("Enter an HTTP or HTTPS address without credentials"); return; } run(call,t -> { t.url=url; loading(t); emit(t); if(t.readingWorld!=null)t.readingWorld.prepare(url); t.web.loadUrl(url); }); }
  @PluginMethod public void command(PluginCall call) { run(call,t -> { String op=call.getString("command"); if ("back".equals(op)) { if(t.web.canGoBack()){loading(t);if(t.readingWorld!=null)t.readingWorld.prepareHistory(-1);t.web.goBack();} } else if ("forward".equals(op)) { if(t.web.canGoForward()){loading(t);if(t.readingWorld!=null)t.readingWorld.prepareHistory(1);t.web.goForward();} } else if ("reload".equals(op)) {loading(t);if(t.readingWorld!=null)t.readingWorld.prepare(t.web.getUrl());t.web.reload();} else if ("stop".equals(op)) { clearTimeout(t); if(!t.committed)fail(t,"Loading stopped. Reload from the menu to try again."); else {t.web.stopLoading();t.loading=false;syncAutofill(t);} } else throw new IllegalArgumentException(); emit(t); }); }
  @PluginMethod public void present(PluginCall call) { getActivity().runOnUiThread(() -> {
@@ -423,7 +435,7 @@ public class AlphaBrowserPlugin extends Plugin {
   if(clearing){call.reject("Browsing data is already being cleared.");return;}
   if(!WebViewFeature.isFeatureSupported(WebViewFeature.MULTI_PROFILE)||!WebViewFeature.isFeatureSupported(WebViewFeature.DELETE_BROWSING_DATA)){call.reject("This Android WebView cannot clear browser data. Update Android System WebView.");return;}
   clearing=true;JSArray closed=new JSArray();
-  for(Tab tab:new ArrayList<>(tabs.values()))if(!tab.priv){tabs.remove(tab.id);dispose(tab);closed.put(tab.id);}
+  for(Tab tab:new ArrayList<>(tabs.values()))if(!tab.priv){tabs.remove(tab.id);dispose(tab);closed.put(tab.id);tabClosed(tab.id);}
   try{sessionStore.clear();}catch(Exception unavailable){clearing=false;call.reject("Browsing history could not be cleared.");return;}
   // WebView.destroy posts native destruction; clear after those tasks.
   navigationHandler.post(()->{
@@ -476,5 +488,7 @@ public class AlphaBrowserPlugin extends Plugin {
   try{if(WebViewFeature.isFeatureSupported(WebViewFeature.MULTI_PROFILE)){androidx.webkit.Profile profile=ProfileStore.getInstance().getProfile(PERSISTENT_PROFILE);if(profile!=null)profile.getCookieManager().flush();}}catch(Exception unavailable){/* Chromium also flushes periodically. */}
  }
  @Override protected void handleOnResume() { paused=false; for(Tab t:tabs.values()) if(!t.dead){t.web.onResume();JSObject event=state(t);event.put("surfaceResumed",true);notifyListeners("stateChanged",event);} }
- @Override protected void handleOnDestroy() { destroyed=true;if(reading!=null)reading.cancel();getBridge().removeWebViewListener(hostNavigation);if(downloads!=null)downloads.destroy();AutofillManager manager=getActivity().getSystemService(AutofillManager.class);if(manager!=null)manager.unregisterCallback(autofillCallback);cancelFile();if(filePicker!=null)filePicker.unregister();if(pageShare!=null)pageShare.unregister();for(Tab t:tabs.values()) dispose(t); tabs.clear(); session=null; }
+ @Override protected void handleOnDestroy() { destroyed=true;if(reading!=null)reading.cancel();getBridge().removeWebViewListener(hostNavigation);if(downloads!=null)downloads.destroy();AutofillManager manager=getActivity().getSystemService(AutofillManager.class);if(manager!=null)manager.unregisterCallback(autofillCallback);cancelFile();if(filePicker!=null)filePicker.unregister();if(pageShare!=null)pageShare.unregister();ArrayList<Tab> all=new ArrayList<>(tabs.values());tabs.clear();
+  // Clear first: a private profile shared with a pop-up is purged only when no tab still uses it.
+  for(Tab t:all) dispose(t); session=null; }
 }

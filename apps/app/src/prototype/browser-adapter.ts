@@ -256,7 +256,8 @@ export function installPrototypeBrowserAdapter(Component: any, views: Record<str
   const definition = views.browser;
   definition.state = { ...definition.state, tabs: [{ id: 'b0', hist: ['newtab'], pos: 0 }], cur: 'b0', marks: [], visits: [], booked: null, ag: null, confirm: null };
   // These are in-memory view-reset keys, not disk persistence. Keep the native
-  // tab identities while visiting other apps; a cold start begins with b0.
+  // tab identities while visiting other apps; a cold start begins with b0 until
+  // restoreSession replaces it with saved normal tabs.
   definition.persist = ['tabs', 'cur', 'marks', 'visits'];
   definition.onLeave = () => {stopReading();hide();};
   definition.reply = () => null;

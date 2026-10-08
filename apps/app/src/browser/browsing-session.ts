@@ -1,5 +1,5 @@
-/** Saved normal browser tabs and history. Product decision: tabs keep sign-ins
- * and are restored after a cold start; private tabs are never saved. Mirrors
+/** Saved normal browser tabs and history. Owner decision: tabs keep sign-ins.
+ * Engineering choice: they are restored after a cold start; private tabs are never saved. Mirrors
  * the bounds of the native encrypted `BrowserSessionStore`. */
 export const MAX_SAVED_TABS = 8, MAX_SAVED_HISTORY = 100, MAX_SAVED_TITLE = 200;
 export type SavedTab = { id: string; url: string; title: string };
