@@ -145,11 +145,12 @@ async function main() {
   // A partial signing set would silently produce unsigned releases; refuse it up front.
   const partial = partialSigningProblem(process.env);
   if (partial) throw new Error(partial);
-  readReleaseSigner();
   // Report missing inputs (pinned checkout, speech AAR, prepared/staged runtime)
   // with the exact command to run, before web sync and a long Gradle build.
   const preflight = spawnSync(process.execPath, [path.join(import.meta.dirname, "android-build-preflight.mjs"), ...process.argv.slice(2)], { stdio: "inherit" });
   if (preflight.status !== 0) process.exit(preflight.status ?? 1);
+  // A malformed release-signer descriptor fails before the long build, not after it.
+  readReleaseSigner();
   // The toolchain resolver lives in the pinned checkout, which the preflight verified.
   const { androidEnv } = await import("./toolchain.mjs");
   const baseEnv = androidEnv();
@@ -184,6 +185,7 @@ function build(options, baseEnv, run) {
   fs.mkdirSync(outDir, { recursive: true });
   fs.rmSync(path.join(outDir, "apk-manifest.json"), { force: true });
   fs.rmSync(path.join(outDir, "mapping"), { recursive: true, force: true });
+  if (!options.testMocks) fs.rmSync(path.join(outDir, "instrumentation"), { recursive: true, force: true });
 
   // Opt-in for constrained builders; retained APKs and source evidence are never cleaned.
   const lowDisk = process.env.ALPHA_ANDROID_LOW_DISK === "1";
@@ -219,9 +221,14 @@ function build(options, baseEnv, run) {
         copy(path.join(dir, `app-${variant}-debug.apk`), path.join(outDir, `${variant}-debug.apk`));
         // The shared Gradle outputs are overwritten by the next build; keep the
         // matching instrumentation APK beside a test-mocks build.
-        if (options.testMocks)
-          copy(path.join(outputs, "apk/androidTest", variant, "debug", `app-${variant}-debug-androidTest.apk`),
-            path.join(outDir, `${variant}-androidTest.apk`));
+        const androidTest = path.join(outputs, "apk/androidTest", variant, "debug", `app-${variant}-debug-androidTest.apk`);
+        if (options.testMocks) copy(androidTest, path.join(outDir, `${variant}-androidTest.apk`));
+        else {
+          // Distribution instrumentation APKs live in a subdirectory so artifacts/*.apk
+          // stays the four distribution APKs (scripts/android-instrumentation.mjs).
+          fs.mkdirSync(path.join(outDir, "instrumentation"), { recursive: true });
+          copy(androidTest, path.join(outDir, "instrumentation", `${variant}-androidTest.apk`));
+        }
         continue;
       }
       const signed = path.join(dir, `app-${variant}-release.apk`);

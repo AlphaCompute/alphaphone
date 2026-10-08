@@ -15,6 +15,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import {
   auditBundle, distributionProblems, extractWebPayload, readBuildFlags, signerDigest, validateApk,
 } from "./apk.mjs";
@@ -158,6 +159,12 @@ for (const variant of ["standalone", "launcher"]) {
   const mapping = path.join(directory, "mapping", `${variant}-release-mapping.txt`);
   mappings[variant] = fs.existsSync(mapping) ? mapping : null;
 }
+// Instrumentation APKs built with these APKs (scripts/android-instrumentation.mjs binds to them).
+const instrumentation = {};
+for (const variant of ["standalone", "launcher"]) {
+  const file = testMocks ? path.join(directory, `${variant}-androidTest.apk`) : path.join(directory, "instrumentation", `${variant}-androidTest.apk`);
+  if (fs.existsSync(file)) instrumentation[variant] = { file, sha256: createHash("sha256").update(fs.readFileSync(file)).digest("hex") };
+}
 let apksignerVersion = null;
 try { apksignerVersion = execFileSync(tool("apksigner"), ["--version"], { encoding: "utf8", env: androidEnv() }).trim(); }
 catch { /* recorded as unknown */ }
@@ -180,6 +187,7 @@ fs.writeFileSync(
         descriptor: { file: RELEASE_SIGNER_FILE, signerSha256: releaseSigner.signerSha256, lastReleaseVersionCode: releaseSigner.lastRelease.versionCode },
       },
       mappings,
+      instrumentation,
       upstream: JSON.parse(fs.readFileSync("upstream.lock.json")),
       results,
       runtimePackaging,
