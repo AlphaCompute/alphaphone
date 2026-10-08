@@ -1,8 +1,8 @@
 {
   "schemaVersion": 1,
-  "date": "2026-10-07",
+  "date": "2026-10-08",
   "upstream": "elizaOS/eliza",
-  "baseCommit": "3cca1ee4f1f1e4cd417de7272ba5195263dcb63b",
+  "baseCommit": "cd12fabd7bfada24f90f1d01e1a4dc8d1a4b095e",
   "patch": "0037-gmail-inbox-read-state.patch",
   "patchSha256": "a88a61696fee91e83f59ef8784646af056b0199964c306f4e45f74e01857a2c4",
   "summary": "Adds reviewed managed Gmail inbox-v1 operation kinds mark-read and mark-unread, capabilities.readState, and additive migration 0535 widening managed_gmail_operation_receipts_kind_check.",
@@ -25,7 +25,8 @@
     "journalIdx": 505,
     "constraint": "managed_gmail_operation_receipts_kind_check (verified by pg_constraint lookup in PGlite test)",
     "dataDeletion": false,
-    "snapshot": "none; neighbouring migrations 0473-0534 have no drizzle snapshot and the table is raw-SQL only"
+    "snapshot": "none; neighbouring migrations 0473-0534 have no drizzle snapshot and the table is raw-SQL only",
+    "prefixFreeOnBase": "0535 is unused on develop cd12fabd (last journal entry 0534_subscription_allowance_invoice_authority, idx 504); no renumbering needed."
   },
   "verification": [
     {
@@ -56,5 +57,39 @@
   "dependencies": "Tests ran with a scratch node_modules (symlinked into the isolated worktree) containing only lockfile-pinned @electric-sql/pglite 0.4.6, drizzle-orm 0.45.3, hono 4.13.9, typescript 6.0.3, @types/bun 1.4.2, @biomejs/biome 2.5.14; no full bun install of the monorepo.",
   "network": "No Google network calls, accounts or credentials; tests use a closed in-process fetch transport and the existing loopback fixtures.",
   "isolation": "Applied and tested only in isolated detached git worktrees of baseCommit under the session scratchpad; never applied to vendor/eliza. Worktree registrations were removed afterwards.",
-  "deployment": "Not upstreamed and not deployed to Eliza Cloud. Production availability requires a reviewed upstream merge, migration 0535 applied, and a Cloud deploy; until then capabilities omit readState."
+  "deployment": "Not upstreamed and not deployed to Eliza Cloud. Production availability requires a reviewed upstream merge, migration 0535 applied, and a Cloud deploy; until then capabilities omit readState. The Cloud deployment stays blocked.",
+  "authoredBaseCommit": "3cca1ee4f1f1e4cd417de7272ba5195263dcb63b",
+  "baseDescription": "elizaOS develop tip on 2026-10-08 (merge of #34458). The patch bytes are unchanged: the five touched files are identical at 3cca1ee4 and at this commit, so the full-index patch regenerated in a clean develop worktree is byte-identical (same sha256).",
+  "requalification": [
+    {
+      "command": "git apply --check -v 0037-gmail-inbox-read-state.patch",
+      "where": "clean sparse detached worktree of cd12fabd7bfada24f90f1d01e1a4dc8d1a4b095e (packages/cloud)",
+      "result": "pass (all 5 files)"
+    },
+    {
+      "command": "git add -A && git diff --cached --full-index (regenerated patch)",
+      "result": "byte-identical to 0037-gmail-inbox-read-state.patch (sha256 a88a61696fee91e83f59ef8784646af056b0199964c306f4e45f74e01857a2c4)"
+    },
+    {
+      "command": "cd packages/cloud/shared && bun test src/lib/services/agent-google-connector/inbox-provider.http.integration.test.ts",
+      "bun": "1.4.2",
+      "result": "8 pass, 0 fail, 164 expect() calls (54.6 s)"
+    },
+    {
+      "command": "cd packages/cloud/shared && node ../scripts/shared/check-migration-prefix-order.ts",
+      "result": "pass (exit 0)"
+    },
+    {
+      "command": "biome check (2.5.14) on inbox-provider.ts, inbox-receipts.ts, inbox-provider.http.integration.test.ts, _journal.json",
+      "result": "pass"
+    },
+    {
+      "command": "series check: 0037 then 0055-0059 applied in order to a second clean worktree of cd12fabd7bfada24f90f1d01e1a4dc8d1a4b095e; bun test inbox-provider.http.integration.test.ts inbox-provider.extensions.test.ts gmail-mime-text.test.ts",
+      "result": "21 pass, 0 fail, 271 expect() calls; migration order check exit 0"
+    },
+    {
+      "note": "A concurrent run on the heavily loaded host (load average ~500) once timed out two PGlite tests at their 20/30 s limits; the same files passed unchanged on rerun. The timeout was host load, not an assertion failure."
+    }
+  ],
+  "upstreamPullRequest": "Not opened. Opening an elizaOS develop pull request publishes to a public repository and needs the owner's explicit approval in chat; the authoring branch exists only in the isolated worktree."
 }

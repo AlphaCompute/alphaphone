@@ -1,0 +1,58 @@
+{
+  "schemaVersion": 1,
+  "date": "2026-10-08",
+  "upstream": "elizaOS/eliza",
+  "baseCommit": "cd12fabd7bfada24f90f1d01e1a4dc8d1a4b095e",
+  "appliesAfter": [
+    "0037-gmail-inbox-read-state.patch"
+  ],
+  "patch": "0055-gmail-message-links.patch",
+  "patchSha256": "83835a851d73d75fd133522c293abaecba4af72adbfc74b6322575e1ea040cba",
+  "summary": "Managed Gmail read and inbox-v1 thread responses return links[]: inert {href,text} anchors extracted from text/html parts.",
+  "filesChanged": [
+    "packages/cloud/shared/src/lib/services/agent-google-connector/gmail.ts",
+    "packages/cloud/shared/src/lib/services/agent-google-connector/inbox-managed.ts",
+    "packages/cloud/shared/src/lib/services/agent-google-connector/inbox-provider.extensions.test.ts",
+    "packages/cloud/shared/src/lib/services/agent-google-connector/inbox-provider.ts",
+    "packages/cloud/shared/src/lib/services/agent-google-connector/shared.ts",
+    "packages/cloud/shared/src/lib/utils/gmail-mime-text.test.ts",
+    "packages/cloud/shared/src/lib/utils/gmail-mime-text.ts"
+  ],
+  "contract": {
+    "read": "GET /api/v1/eliza/google/gmail/read adds links: [{href,text}] (empty when there is no HTML part); older servers omit the field and clients treat it as []",
+    "thread": "inbox-v1 GET /thread messages[].links from normalizeMessage",
+    "extraction": "new pure module packages/cloud/shared/src/lib/utils/gmail-mime-text.ts: <a href> in text/html parts only, comments/script/style removed first, entities decoded, absolute http(s) without userinfo, href <= 2048, deduplicated by destination, at most 50, label reduced to plain text (<= 200 chars, hostname when empty)",
+    "safety": "nothing is fetched or rendered; plain-text URLs are left to the client (Alpha linkifies https URLs and reviews the origin before opening in its Browser)"
+  },
+  "verification": [
+    {
+      "command": "git apply --check 0055-gmail-message-links.patch",
+      "where": "clean worktree of cd12fabd7bfada24f90f1d01e1a4dc8d1a4b095e with 0037-gmail-inbox-read-state.patch applied in order",
+      "result": "pass"
+    },
+    {
+      "command": "cd packages/cloud/shared && bun test src/lib/utils/gmail-mime-text.test.ts (HTML-only fixture, multipart/alternative with plain-text URL, bounds) and inbox-provider.extensions.test.ts (thread links over a closed transport)",
+      "bun": "1.4.2",
+      "result": "pass at the authoring commit of this patch"
+    },
+    {
+      "command": "cd packages/cloud/shared && bun test src/lib/services/agent-google-connector/inbox-provider.http.integration.test.ts src/lib/services/agent-google-connector/inbox-provider.extensions.test.ts src/lib/utils/gmail-mime-text.test.ts",
+      "where": "second clean worktree of cd12fabd7bfada24f90f1d01e1a4dc8d1a4b095e with 0037-gmail-inbox-read-state.patch, 0055-gmail-message-links.patch, 0056-gmail-text-charset.patch, 0057-gmail-search-attachments-trash.patch, 0058-gmail-drafts-list.patch, 0059-gmail-attachments-forward-opaque.patch applied in order",
+      "bun": "1.4.2",
+      "result": "21 pass, 0 fail, 271 expect() calls"
+    },
+    {
+      "command": "tsc (6.0.3, strict, bundler resolution, noUnusedLocals, types bun) over gmail-mime-text.ts, gmail-mime-text.test.ts, inbox-receipts.ts, inbox-operation-routes.ts, inbox-provider.ts, inbox-provider.extensions.test.ts, inbox-provider.http.integration.test.ts",
+      "result": "pass (exit 0) at the 0059 head"
+    },
+    {
+      "command": "biome check (2.5.14) on every changed file",
+      "result": "pass at each commit"
+    }
+  ],
+  "dependencies": "Tests ran with a scratch node_modules symlinked into the isolated worktree, containing only lockfile-pinned @electric-sql/pglite 0.4.6, drizzle-orm 0.45.3, hono 4.13.9, typescript 6.0.3, @types/bun 1.4.2 and @biomejs/biome 2.5.14; no full monorepo install. Files that import @elizaos/core, @elizaos/plugin-google-workspace or the database client (gmail.ts, shared.ts, inbox-managed.ts, google-mcp-shared.ts, the inbox-v1 and read routes) were checked with biome only; their full package typecheck and existing gmail.test.ts were not run because those packages are not installed in the scratch environment.",
+  "network": "No Google network calls, accounts or credentials: a closed in-process fetch transport answers every provider request with synthetic data.",
+  "isolation": "Authored as stacked commits on cd12fabd7bfada24f90f1d01e1a4dc8d1a4b095e in an isolated sparse worktree under the session scratchpad and re-applied in series to a second clean worktree; never applied to vendor/eliza.",
+  "upstreamPullRequest": "Not opened; publishing to elizaOS needs the owner's explicit approval.",
+  "deployment": "Not upstreamed and not deployed to Eliza Cloud. Clients detect the change only through the additive fields and capabilities above; until a reviewed merge and deploy, deployed servers omit them and Alpha keeps the older behavior."
+}
