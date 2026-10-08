@@ -1,5 +1,5 @@
 import {test,expect} from '@playwright/test';
-test.beforeEach(async({page})=>{await page.addInitScript(()=>localStorage.setItem('alpha.connection.selection.v1',JSON.stringify({kind:'offline'})));await page.goto('/?mode=dev');});
+test.beforeEach(async({page})=>{await page.addInitScript(()=>localStorage.setItem('alpha.connection.selection.v1',JSON.stringify({kind:'offline'})));await page.goto('/?mode=dev&tools=1');});
 async function shade(page:any){await page.getByRole('button',{name:'Device controls',exact:true}).click();await page.getByRole('dialog',{name:'Development device controls'}).getByRole('button',{name:'Notifications',exact:true}).click();}
 test('shade and settings share persisted Wi-Fi and Bluetooth state',async({page})=>{
  await shade(page);const wifi=page.getByRole('button',{name:'Wi-Fi',exact:true}),bt=page.getByRole('button',{name:'Bluetooth',exact:true});await expect(wifi).toHaveAttribute('aria-pressed','true');await expect(bt).toHaveAttribute('aria-pressed','false');await wifi.click();await bt.click();await expect(wifi).toHaveAttribute('aria-pressed','false');await expect(bt).toHaveAttribute('aria-pressed','true');await page.reload();await shade(page);await expect(wifi).toHaveAttribute('aria-pressed','false');await expect(bt).toHaveAttribute('aria-pressed','true');

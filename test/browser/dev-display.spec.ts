@@ -1,5 +1,5 @@
 import {test,expect} from '@playwright/test';
-test.beforeEach(async({page})=>{await page.addInitScript(()=>localStorage.setItem('alpha.connection.selection.v1',JSON.stringify({kind:'offline'})));await page.goto('/?mode=dev');});
+test.beforeEach(async({page})=>{await page.addInitScript(()=>localStorage.setItem('alpha.connection.selection.v1',JSON.stringify({kind:'offline'})));await page.goto('/?mode=dev&tools=1');});
 test('text size affects computed typography, persists after reload and scales new content without compounding',async({page})=>{
  const font=()=>page.getByRole('button',{name:'Settings',exact:true}).evaluate(el=>getComputedStyle(el.querySelector('span')||el).fontSize);
  const initial=await font();await page.evaluate(async()=>{const {registerPlugin}=await import('/src/platform-plugins.ts');await registerPlugin<any>('AlphaDevice').setTextScale({percent:150});});await expect.poll(font).toBe(parseFloat(initial)*1.5+'px');await page.reload();await expect.poll(font).toBe(parseFloat(initial)*1.5+'px');

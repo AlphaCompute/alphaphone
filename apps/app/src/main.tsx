@@ -21,7 +21,8 @@ import { installNotesDocumentAdapter } from './prototype/notes-document-adapter'
 import { installPrototypeMapsAdapter } from './prototype/maps-adapter';
 import { installNotificationsAdapter } from './prototype/notifications-adapter';
 import { installWorkflowAdapter } from './prototype/workflow-adapter';
-import { useEffect } from 'react';
+import { useEffect, useSyncExternalStore } from 'react';
+import { StartupPermissions } from './startup-permissions';
 import { createRoot } from 'react-dom/client';
 import { Component, VIEWS } from './prototype/model.js';
 import { installReminderAdapter } from './prototype/reminder-adapter';
@@ -30,7 +31,7 @@ import { installPrototypeNativeAdapters } from './prototype/native-adapter';
 import { installSelectedDocumentAdapter } from './prototype/selection-adapter';
 import { installPrototypeCameraAdapter } from './prototype/camera-adapter';
 import { installPrototypeHomeBindings, installPrototypeDataAdapter } from './prototype/data-adapter';
-import { isAndroid } from './native';
+import { isAndroid, DeviceApps } from './native';
 import { DailyApps } from './daily';
 import { installPrototypeVoiceAdapter } from './prototype/voice-adapter';
 import { installPrototypeBrowserAdapter } from './prototype/browser-adapter';
@@ -105,7 +106,9 @@ function installBrowserCapabilityTiles(Component:any){
   };
 }
 let shell: any;
+let launcherPresentation = false;
 function Phone() {
+  const connection = useSyncExternalStore(connectionController.subscribe, connectionController.getSnapshot);
   useEffect(() => {
     if (isAndroid) void DailyApps.surfaceInfo().then(info => {
       if (Number.isFinite(info.topInset)) document.documentElement.style.setProperty('--native-top-inset', `${info.topInset}px`);
@@ -129,7 +132,7 @@ function Phone() {
     size(); window.addEventListener('resize', size); window.visualViewport?.addEventListener('resize', size);
     return () => { bannerObserver.disconnect(); window.removeEventListener('resize', size); window.visualViewport?.removeEventListener('resize', size); };
   }, []);
-  return <>{BrowserDeviceControls&&!isAndroid&&!mock&&<BrowserDeviceControls command={action=>{
+  return <>{BrowserDeviceControls&&!isAndroid&&!mock&&query.get('tools')==='1'&&<BrowserDeviceControls command={action=>{
     if(!shell)return;
     if(action==='home')window.dispatchEvent(new Event('launcher-home'));
     else if(action==='back')window.dispatchEvent(new Event('alpha-back',{cancelable:true}));
@@ -141,10 +144,15 @@ function Phone() {
     else if(action==='background'){shell.leave();shell.setState({screen:'off',voice:'off',chat:'input',shade:false});document.documentElement.dataset.devBackground='true';window.dispatchEvent(new Event('blur'));}
     else if(action==='resume'){delete document.documentElement.dataset.devBackground;shell.unlock();window.dispatchEvent(new Event('focus'));}
     if(['power','unlock','boot','background','resume'].includes(action))window.dispatchEvent(new Event('alpha:device-state'));
-  }}/>}{testMocksEnabled && mock && <div className="mock-mode-banner" role="status"><span>Mock mode · simulated data and actions</span><button onClick={() => { void connectionController.offline().then(() => { const url = new URL(location.href); url.searchParams.delete('mode'); url.searchParams.delete('start'); location.assign(url.href); }); }}>Exit mock mode</button></div>}<Component phoneSurface nativeSystemChrome={isAndroid} initial={testMocksEnabled && fixture ? query.get('start') || 'home' : 'home'} theme={initialTheme} ref={(value: any) => { shell = value; }} />
-{!fixture && <><ConnectionChooser /><HostedDigestPanel /></>}</>;
+  }}/>}{testMocksEnabled && mock && <div className="mock-mode-banner" role="status"><span>Mock mode · simulated data and actions</span><button onClick={() => { void connectionController.offline().then(() => { const url = new URL(location.href); url.searchParams.delete('mode'); url.searchParams.delete('start'); location.assign(url.href); }); }}>Exit mock mode</button></div>}<Component phoneSurface systemShell={launcherPresentation} nativeSystemChrome={isAndroid || !launcherPresentation} initial={testMocksEnabled && fixture ? query.get('start') || 'home' : 'home'} theme={initialTheme} ref={(value: any) => { shell = value; }} />
+{!fixture && <><ConnectionChooser /><HostedDigestPanel />{!connection.open && <StartupPermissions />}</>}</>;
 }
 async function mountPhone() {
+  // Android owns its system bars; browser defaults to the standalone app.
+  launcherPresentation = isAndroid
+    ? await DeviceApps.buildInfo().then(info => info.launcher === true).catch(() => false)
+    : devSurfacesEnabled && query.get('shell') === 'launcher';
+  document.documentElement.classList.toggle('standalone-app', !launcherPresentation);
   if (testMocksEnabled && mock && isAndroid) {
     const { pauseLiveActivityForMock } = await import('./runtime/mock-admission');
     const root=document.getElementById('root')!;

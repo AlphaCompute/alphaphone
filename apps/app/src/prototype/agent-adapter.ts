@@ -38,6 +38,10 @@ type Shell = any;
 export function installAgentAdapter(Component: Shell, views: Shell) {
   const p = Component.prototype;
   let activeShell:Shell|null=null,notesRecovery:AbortController|null=null;
+  function updateBackAvailability(shell:Shell) {
+    const s=shell.S();
+    document.documentElement.dataset.alphaCanGoBack = String(!!document.querySelector('dialog[open]') || connectionController.getSnapshot().open || !!s.view || s.shade || s.chat === 'sheet' || s.chat === 'full' || s.voice !== 'off');
+  }
   const notesLeave=views.notes.onLeave;
   views.notes.onLeave=(...args:Shell[])=>{notesRecovery?.abort();return notesLeave?.(...args);};
   const originalMount = p.componentDidMount;
@@ -106,12 +110,14 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
       sensitive: view === 'wallet' || s.secure === true || s.screen === 'lock' || s.screen === 'off' || document.hidden || shell.pageSuspended === true || connectionController.getSnapshot().open,
       ...(selected && shell.notesSelection ? { selectedObject: shell.notesSelection } : providerSelection ? { selectedObject: providerSelection } : ['files','photos'].includes(view) && shell.vget(view).open === '__native_selected_document' && shell.selectedContext ? { selectedObject: shell.selectedContext } : {}),
     });
-    document.documentElement.dataset.alphaCanGoBack = String(connectionController.getSnapshot().open || !!s.view || s.shade || s.chat === 'sheet' || s.chat === 'full' || s.voice !== 'off');
+    updateBackAvailability(shell);
   }
   p.componentDidMount = function () {
     activeShell=this;this.notesOpenAbort=new AbortController();
     originalMount.call(this);
     this.live = true;
+    this.dialogBackObserver = new MutationObserver(() => updateBackAvailability(this));
+    this.dialogBackObserver.observe(document.body, {subtree:true, childList:true, attributes:true, attributeFilter:['open']});
     this.composerDraft=new AssistantDraftController(assistantDraftStore,()=>String(this.S().draft||''),text=>{this.reviewedSourceDraft=null;if(this.live)this.setState({draft:text});},()=>{if(this.live)this.setState({});});
     this.refreshDraftBinding=()=>{this.draftBindingAbort?.abort();const controller=this.draftBindingAbort=new AbortController();this.draftBindingTask=connectionController.assistantDraftBinding(controller.signal).then(key=>{if(this.live&&!controller.signal.aborted)return this.composerDraft.open(key);}).catch(()=>{if(this.live&&!controller.signal.aborted)this.composerDraft.unavailable();});};
     this.refreshDraftBinding();
@@ -410,6 +416,7 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
     document.removeEventListener('visibilitychange', this.visibilityHandler);
     window.removeEventListener('pagehide', this.pageHideHandler);
     window.removeEventListener('pageshow', this.pageShowHandler);
+    this.dialogBackObserver?.disconnect();
     this.live = false; alphaClient.disconnect(); window.removeEventListener('alpha-back', this.backHandler); window.removeEventListener('launcher-home', this.homeHandler); window.removeEventListener('alpha-selected-context', this.selectionHandler);
     void this.assistListener?.then((l: Shell) => l?.remove()); originalUnmount.call(this);
   };

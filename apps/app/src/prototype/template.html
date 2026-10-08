@@ -10,10 +10,12 @@
 
 <div data-screen="1" onPointerDown="{{gDown}}" onPointerUp="{{gUp}}" onPointerCancel="{{gCancel}}" style="position: absolute; top: 12px; left: 14px; width: 412px; height: 915px; border-radius: 48px; overflow: hidden; background: var(--bg); color: var(--fg); user-select: none; -webkit-user-select: none; touch-action: none; font-size: 15px">
 
-<div style="position: absolute; top: 13px; left: 195px; width: 22px; height: 22px; border-radius: 11px; background: #000; box-shadow: 0 0 0 1.5px #111; z-index: 99; pointer-events: none"></div>
+<div data-alpha-system-cutout style="position: absolute; top: 13px; left: 195px; width: 22px; height: 22px; border-radius: 11px; background: #000; box-shadow: 0 0 0 1.5px #111; z-index: 99; pointer-events: none"></div>
 
 
 <sc-if value="{{isOn}}" hint-placeholder-val="{{false}}">
+<sc-if value="{{showAppBack}}"><button aria-label="Back to apps" onClick="{{backToApps}}" style="position:absolute;top:0;left:12px;z-index:44;min-height:44px;display:flex;align-items:center;gap:6px;padding:0 8px;color:var(--fg);font-size:14px"><svg class="i" viewBox="0 0 24 24" style="width:18px;height:18px"><path d="{{ic.back}}"></path></svg>Apps</button></sc-if>
+
 <div data-alpha-layer="home" role="region" aria-label="Home" aria-hidden="{{homeHidden}}" inert="{{homeHidden}}" style="position: absolute; inset: 44px 0 0; z-index: 10; display: flex; flex-direction: column; padding: 20px 0 108px; box-sizing: border-box; overflow-y:auto; overflow-x:hidden; scroll-padding-bottom:110px">
 <sc-if value="{{storageAccessWarning}}" hint-placeholder-val="{{false}}"><p role="alert" class="storage-access-warning">{{storageAccessWarning}}</p></sc-if>
   <div class="scr" style="display: flex; gap: 12px; overflow-x: auto; scroll-snap-type: x mandatory; padding: 0 24px; scroll-padding-left: 24px; touch-action: pan-x; flex-shrink: 0">
@@ -3625,7 +3627,7 @@
 <div onClick="{{scrimTap}}" style="position: absolute; inset: 0; z-index: 45; background: var(--scrim); opacity: {{scrimOp}}; pointer-events: {{scrimPE}}; transition: opacity .45s"></div>
 <div data-alpha-layer="conversation" aria-hidden="{{conversationHidden}}" inert="{{conversationHidden}}" style="position: absolute; left: 0; right: 0; bottom: 0; z-index: 50; height: {{panelH}}px; border-radius: {{panelR}}; background: var(--s1); overflow: hidden; display: flex; flex-direction: column; opacity: {{panelOp}}; pointer-events: {{panelPE}}; box-shadow: 0 -1px 0 var(--line), 0 -20px 60px var(--shc); transition: height .55s cubic-bezier(.19,1,.22,1), border-radius .55s, opacity .3s">
   <div style="height: {{panelTop}}px; flex-shrink: 0; transition: height .4s"></div>
-  <button aria-label="Resize chat" onPointerDown="{{grabSw.down}}" onPointerUp="{{grabSw.up}}" onClick="{{grabTap}}" style="height: 26px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; cursor: grab; touch-action: none"><span style="width: 40px; height: 4px; border-radius: 2px; background: var(--mut); opacity: .45"></span></button>
+  <button aria-label="Resize chat" onPointerDown="{{grabSw.down}}" onPointerUp="{{grabSw.up}}" onPointerCancel="{{grabSw.cancel}}" onLostPointerCapture="{{grabSw.cancel}}" onClick="{{grabTap}}" style="height: 26px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; cursor: grab; touch-action: none"><span style="width: 40px; height: 4px; border-radius: 2px; background: var(--mut); opacity: .45"></span></button>
   <div style="display: flex; align-items: center; gap: 12px; padding: 0 10px 8px 20px; flex-shrink: 0">
     <span style="width: 34px; height: 34px; border-radius: 17px; background: var(--acc); color: #fff; display: flex; align-items: center; justify-content: center; font-family: Denton, Fraunces, Georgia, serif; font-style: italic; font-size: 19px"><span class="al">α</span></span>
     <span style="flex-grow: 1; font-weight: 600; font-size: 16px">{{name}}</span>
@@ -3827,6 +3829,7 @@
 <sc-if value="{{isOn}}" hint-placeholder-val="{{false}}">
 <div data-alpha-layer="shade" role="region" aria-label="Notifications" aria-hidden="{{shadeHidden}}" inert="{{shadeHidden}}" style="position: absolute; inset: 0; z-index: 66; background: var(--bg); transform: translateY({{shadeY}}); transition: transform .55s cubic-bezier(.19,1,.22,1); display: flex; flex-direction: column; padding: 56px 14px 0; box-sizing: border-box">
 <sc-if value="{{storageAccessWarning}}" hint-placeholder-val="{{false}}"><p role="alert" class="storage-access-warning">{{storageAccessWarning}}</p></sc-if>
+  <sc-if value="{{systemShell}}">
   <div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px">
     <sc-for list="{{tiles}}" as="t" hint-placeholder-count="8">
       <button aria-label="{{t.label}}" aria-pressed="{{t.on}}" disabled="{{t.disabled}}" onClick="{{t.toggle}}" style="height: 62px; border-radius: 22px; display: flex; align-items: center; justify-content: center; transition: background .2s, color .2s; {{t.css}}"><svg class="i" viewBox="0 0 24 24"><path d="{{t.d}}"></path></svg></button>
@@ -3837,6 +3840,7 @@
     <input type="range" min="0" max="100" value="{{bright}}" disabled="{{deviceSettingsPending}}" onChange="{{onBright}}" aria-label="Brightness">
   </div>
   <sc-if value="{{deviceSettingsMessage}}"><p role="status">{{deviceSettingsMessage}}</p></sc-if>
+  </sc-if>
   <div class="scr alpha-shade-list" style="flex-grow: 1; overflow-y: auto; margin-top: 12px; display: flex; flex-direction: column; gap: 6px; touch-action: pan-y">
     <sc-for list="{{shadeN}}" as="n" hint-placeholder-count="4">
       <div onPointerDown="{{n.down}}" onPointerUp="{{n.up}}" style="display: flex; gap: 12px; padding: 14px 16px; border-radius: 22px; background: var(--s2); transform: translateX({{n.tx}}px); opacity: {{n.op}}; transition: transform .28s cubic-bezier(.19,1,.22,1), opacity .28s; flex-shrink: 0; touch-action: pan-y">

@@ -18,7 +18,7 @@ async function trackCsp(page: Page) {
 
 test('the bundle records production flags and ships a CSP', async ({ page, request }) => {
   expect(await (await request.get('/build-flags.json')).json()).toEqual({ testMocks: false });
-  await page.goto('/');
+  await page.goto('/?tools=1');
   const policy = await page.locator('meta[http-equiv="Content-Security-Policy"]').getAttribute('content');
   for (const directive of ["default-src 'self'", "script-src 'self' 'wasm-unsafe-eval'", "object-src 'none'", "base-uri 'none'"]) expect(policy).toContain(directive);
   expect(policy).not.toContain("'unsafe-eval'");
@@ -63,7 +63,7 @@ test('a stored mock selection on Android opens the chooser and never enters mock
       },
     };
   });
-  await page.goto('/');
+  await page.goto('/?tools=1');
   const chooser = page.locator('.alpha-connection');
   await expect(chooser).toBeVisible();
   await expect(chooser.getByText(/real agents only/)).toBeVisible();
@@ -82,7 +82,7 @@ test('a stored mock selection on Android opens the chooser and never enters mock
 });
 
 test('the chooser and Settings offer only production connections', async ({ page }) => {
-  await page.goto('/');
+  await page.goto('/?tools=1');
   const chooser = page.locator('.alpha-connection');
   // The browser build explains its real options on first run.
   await expect(chooser.getByText('This browser has no on-device agent', { exact: true })).toBeVisible();
@@ -116,14 +116,14 @@ test('the chooser and Settings offer only production connections', async ({ page
 
 test('deferred apps are absent and root views show honest unconnected states', async ({ page }) => {
   await page.addInitScript(offline);
-  await page.goto('/');
+  await page.goto('/?tools=1');
   for (const deferred of ['Phone', 'Messages', 'Contacts', 'Wallet']) await expect(page.getByRole('button', { name: deferred, exact: true })).toHaveCount(0);
   const states: Record<string, RegExp> = {
     Inbox: /Connect Eliza Cloud/, Workflows: /Agent connection required/, Notes: /No notes yet/,
     Photos: /No photos/, Maps: /Maps provider not connected|Search/, Calendar: /\d/, Files: /Choose a document/, Settings: /Agent connection/,
   };
   for (const [view, expected] of Object.entries(states)) {
-    await page.goto('/');
+    await page.goto('/?tools=1');
     await page.getByRole('button', { name: view, exact: true }).click();
     await expect(page.locator('html')).toHaveAttribute('data-active-view', view.toLowerCase());
     await expect(page.locator('[data-screen]')).toContainText(expected);
@@ -133,7 +133,7 @@ test('deferred apps are absent and root views show honest unconnected states', a
 });
 
 test('sending chat without a connection opens the chooser', async ({ page }) => {
-  await page.goto('/');
+  await page.goto('/?tools=1');
   const chooser = page.locator('.alpha-connection');
   await expect(chooser).toBeVisible();
   await chooser.getByRole('button', { name: 'Close connection settings', exact: true }).click();
@@ -149,7 +149,7 @@ test('the CSP admits Home, Notes, Maps, Scan and PDF without violations', async 
   test.setTimeout(120_000);
   const violations = await trackCsp(page);
   await page.addInitScript(offline);
-  await page.goto('/');
+  await page.goto('/?tools=1');
   await expect(page.getByRole('button', { name: 'Notes', exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Notes', exact: true }).click();
   await page.getByRole('button', { name: 'New note', exact: true }).click();
@@ -194,7 +194,7 @@ test('the CSP admits Home, Notes, Maps, Scan and PDF without violations', async 
 
 test('production ignores the development render-failure hook', async ({ page }) => {
   await page.addInitScript(offline);
-  await page.goto('/');
+  await page.goto('/?tools=1');
   const settings = page.getByRole('button', { name: 'Settings', exact: true });
   await expect(settings).toBeVisible();
   await page.evaluate(() => window.dispatchEvent(new Event('alpha:force-render-error')));

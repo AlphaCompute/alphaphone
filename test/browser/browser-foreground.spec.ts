@@ -1,6 +1,6 @@
 import {test,expect} from '@playwright/test';
 test('powered-off browser hides workflow notifications and rejects their actions until unlock',async({page})=>{
- await page.addInitScript(()=>localStorage.setItem('alpha.connection.selection.v1',JSON.stringify({kind:'offline'})));await page.goto('/?mode=dev');
+ await page.addInitScript(()=>localStorage.setItem('alpha.connection.selection.v1',JSON.stringify({kind:'offline'})));await page.goto('/?mode=dev&tools=1');
  const row=await page.evaluate(async()=>{const {publishWorkflowNotice}=await import('/src/browser/workflow-notices.ts');return publishWorkflowNotice('screen-off','Private workflow text',new AbortController().signal);});
  await page.getByRole('button',{name:'Device controls',exact:true}).click();await page.getByRole('button',{name:'Power',exact:true}).click();await page.getByRole('button',{name:'Device controls',exact:true}).click();await page.getByRole('button',{name:'Power',exact:true}).click();await expect(page.getByRole('button',{name:'Wake',exact:true})).toBeVisible();
  // A hidden earlier matching control must not mask the visible Wake control.
