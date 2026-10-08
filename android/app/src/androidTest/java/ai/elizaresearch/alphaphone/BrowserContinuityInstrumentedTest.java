@@ -36,6 +36,8 @@ public final class BrowserContinuityInstrumentedTest {
  private int savedTabs(android.content.Context context,int expected)throws Exception{
   int count=0;for(int i=0;i<100;i++){count=new BrowserSessionStore(context).read().getJSONArray("tabs").length();if(count==expected)break;SystemClock.sleep(100);}return count;
  }
+ /** The persistent normal-tab profile is retained by decision; only ephemeral ones retire. */
+ private static java.util.HashSet<String> ephemeralOnly(java.util.Collection<String> names){java.util.HashSet<String> out=new java.util.HashSet<>();for(String name:names)if(AlphaBrowserPlugin.ephemeralProfile(name))out.add(name);return out;}
  private void saved(BrowserBookmarks store,String url,boolean expected)throws Exception{for(int i=0;i<150;i++){if(store.read().contains(url)==expected)return;SystemClock.sleep(100);}fail("Native encrypted bookmark commit did not match UI action");}
  @Test public void tabsSurviveAppNavigationAndBookmarksSurviveActivityRecreation()throws Exception{
   String token=UUID.randomUUID().toString(),one="https://example.com/?alpha_continuity="+token+"-one",two="https://example.com/?alpha_continuity="+token+"-two",three="https://example.com/?alpha_continuity="+token+"-three";
@@ -166,10 +168,14 @@ public final class BrowserContinuityInstrumentedTest {
     AppNavigation.liveMode();app("Browser");address(url);page(url);click("Menu");click("Bookmark");saved(store,url,true);
     String token=Uri.parse(url).getQueryParameter("alpha_bookmark_restart");
     browser.child("localStorage.setItem('restart_signin',"+JSONObject.quote(token)+");document.cookie='alpha_restart_signin="+token+"; Secure; SameSite=Lax; Path=/; Max-Age=3600';true");
-    click("Menu");click("New private tab");address(url);page(url);
+    // Private tabs need profile-scoped deletion; a provider without it refuses
+    // them visibly while normal tabs (which keep their data) still work.
+    boolean privateSupported=androidx.webkit.WebViewFeature.isFeatureSupported(androidx.webkit.WebViewFeature.DELETE_BROWSING_DATA);
+    click("Menu");click("New private tab");address(url);
+    if(privateSupported)page(url);else ready("document.body.innerText.includes('Private tabs need an Android System WebView')");
     java.util.HashSet<String> ephemeral=new java.util.HashSet<>();for(String name:snapshot().profiles)if(AlphaBrowserPlugin.ephemeralProfile(name))ephemeral.add(name);
-    assertFalse("Private tab uses an ephemeral profile",ephemeral.isEmpty());
-    assertTrue(fixture.edit().putStringSet("profiles",ephemeral).commit());
+    assertEquals("Private tab uses an ephemeral profile exactly when supported",privateSupported,!ephemeral.isEmpty());
+    assertTrue(fixture.edit().putStringSet("profiles",ephemeral).putBoolean("privateSupported",privateSupported).commit());
     assertEquals("Only the normal tab is saved",1,savedTabs(context,1));
     // Closing the scenario pauses the Activity, which flushes sign-in cookies.
    }return;
@@ -178,8 +184,13 @@ public final class BrowserContinuityInstrumentedTest {
   assertNotEquals("Actual new process required",fixture.getInt("pid",-1),android.os.Process.myPid());
   try(BoundedActivityScenario<MainActivity> scenario=BoundedActivityScenario.launchRetainingBrowserSession(MainActivity.class)){
    AppNavigation.liveMode();
-   java.util.Set<String> retired=fixture.getStringSet("profiles",java.util.Collections.emptySet());assertFalse("Exact prior-process profiles recorded",retired.isEmpty());
-   WebViewTestDriver.withActivity(MainActivity.class,activity->{for(String name:retired)assertFalse("Old private profile deleted after real process restart",androidx.webkit.ProfileStore.getInstance().getAllProfileNames().contains(name));});
+   java.util.Set<String> retired=fixture.getStringSet("profiles",java.util.Collections.emptySet());
+   if("verify".equals(phase)&&fixture.getBoolean("privateSupported",true))assertFalse("Exact prior-process private profiles recorded",retired.isEmpty());
+   WebViewTestDriver.withActivity(MainActivity.class,activity->{
+    java.util.List<String> names=androidx.webkit.ProfileStore.getInstance().getAllProfileNames();
+    for(String name:retired)assertFalse("Old private profile deleted after real process restart",names.contains(name));
+    assertTrue("Persistent sign-in profile retained across process restart",names.contains(AlphaBrowserPlugin.PERSISTENT_PROFILE));
+   });
    app("Browser");
    if("verify".equals(phase)){
     // Only the normal tab is restored; the private tab is never saved.
@@ -194,7 +205,7 @@ public final class BrowserContinuityInstrumentedTest {
     ready(button(url));assertTrue("Native store survived process death",store.read().contains(url));click(url);page(url);
     click("Menu");click("Bookmarks and history");click("Bookmarks");ready(button(url));
     host("("+button(url)+").parentElement.querySelector('button[aria-label=\"Remove bookmark\"]').click()");saved(store,url,false);ready("!("+button(url)+")");
-    assertTrue(fixture.edit().putInt("pid",android.os.Process.myPid()).putStringSet("profiles",new java.util.HashSet<>(snapshot().profiles)).commit());
+    assertTrue(fixture.edit().putInt("pid",android.os.Process.myPid()).putStringSet("profiles",ephemeralOnly(snapshot().profiles)).commit());
    }else{
     assertEquals("verifyRemoved",phase);assertFalse("Removal survives another process death",store.read().contains(url));
     // Wait for the asynchronous native hydration to settle via a complete menu

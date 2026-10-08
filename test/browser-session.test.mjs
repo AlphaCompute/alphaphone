@@ -53,6 +53,7 @@ test('normal tabs share one persistent profile that is never the host profile; p
   assert.doesNotMatch(plugin,/addJavascriptInterface/,'child pages never receive an app bridge');
   assert.match(plugin,/WebStorageCompat\.deleteBrowsingData\(profile\.getWebStorage\(\)/,'Clear browsing data deletes profile data');
   assert.match(plugin,/deleteBrowsingDataForSite/);
+  assert.match(plugin,/if \(priv && !WebViewFeature\.isFeatureSupported\(WebViewFeature\.DELETE_BROWSING_DATA\)\)/,'only private tabs require secure deletion at creation');
 });
 
 test('pop-ups open as gesture-gated tabs and app links are sanitized',()=>{
