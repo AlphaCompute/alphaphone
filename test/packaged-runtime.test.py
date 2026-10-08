@@ -80,6 +80,19 @@ class PackagedRuntimeTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'Unexpected packaged worker'):
             verifier.verify(self.package({**self.entries, 'assets/agent/workflow-worker/extra.js': b'extra'}))
 
+    def test_unsupported_dependency_abis_are_rejected_in_debug_and_release(self):
+        for abi in ['armeabi-v7a', 'x86']:
+            for release in [False, True]:
+                with self.subTest(abi=abi, release=release):
+                    entries = {**self.entries, f'lib/{abi}/libdependency.so': b'legacy dependency'}
+                    with self.assertRaisesRegex(ValueError, 'Unexpected packaged ABI'):
+                        verifier.verify(self.package(entries), release=release)
+
+    def test_arm64_only_release_keeps_valid_runtime_admission(self):
+        entries = dict(self.entries)
+        del entries['lib/x86_64/libeliza_bun.so']
+        self.assertEqual(verifier.verify(self.package(entries), release=True)['runtime'], 'PACKAGED')
+
     def test_changed_source_guard_rejects_otherwise_identical_apk(self):
         self.write('scripts/local-agent-source.mjs', b'new guard')
         with self.assertRaisesRegex(ValueError, 'manifest mismatch'):
