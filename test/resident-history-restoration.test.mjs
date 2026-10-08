@@ -9,27 +9,30 @@ const selectionKey='alpha.connection.conversations.v1';
 function fixture() {
   const memory=new Map([[selectionKey,JSON.stringify({[key]:'saved-conversation'})]]),secure=new Map(),calls=[];
   let credentialReads=0,changeSelectionAt=Infinity,pending=async()=>[],approved=0;
+  const admission={identity:0,credits:0,configured:0,connected:0,login:0};
+  let identity=async()=>({userId:'fixture-account'}),balance=5;
   let credential={credentialId:'fixture-credential'},readHistory=async()=>({messages:[{id:'u1',role:'user',text:'Earlier question'},{id:'a1',role:'assistant',text:'Earlier answer',actions:[{type:'never-replay'}]}]}),list=async()=>[{id:'saved-conversation',title:'Saved'}];
   class Cloud {
     environment='production';
-    async identity(){return {userId:'fixture-account'};}
-    async creditBalance(){return {balance:5,credentialId:credential.credentialId};}
+    async identity(){admission.identity++;return identity();}
+    async creditBalance(){admission.credits++;return {balance,credentialId:credential.credentialId};}
+    async login(){admission.login++;throw Error('No new login is permitted');}
   }
   class Resident {
     origin='https://device.alpha.invalid';
-    async connect(){return {session:{origin:this.origin,ownerId:'fixture-owner',agentId:'fixture-agent',sessionId:'fixture-session'},name:'Alpha'};}
+    async connect(){admission.connected++;return {session:{origin:this.origin,ownerId:'fixture-owner',agentId:'fixture-agent',sessionId:'fixture-session'},name:'Alpha'};}
     async request(path,body,signal,headers){signal.throwIfAborted();calls.push({path,method:body===undefined?'GET':'POST'});if(path==='/api/client-devices/register')return {installationId:headers['X-Eliza-Device-Id'],enrollmentId:'fixture-enrollment'};return {};}
     async listConversations(){calls.push({path:'/api/conversations',method:'GET'});return list();}
     async messages(id){calls.push({path:`/api/conversations/${id}/messages`,method:'GET'});return readHistory();}
   }
-  const box={document:{hidden:false},testMocksEnabled:false,devSurfacesEnabled:false,browserDevProfile:false,devProfileQuery:false,browserLocalAgentEnabled:false,isAndroid:true,Capacitor:{getPlatform:()=> 'android'},CloudProtocol:Cloud,LocalAgentProtocol:Resident,registerPlugin:()=>({}),stopLocalAgent:async()=>{},configureLocalCloudProvider:async()=>{},localAgentPackaged:async()=>true,workflowPresentationProtocol:async()=>1,actionScope:async()=> 'a'.repeat(64),negotiateEnabledViews:async()=>'',DeviceActions:class{async pending(context,signal){calls.push({path:'/api/client-devices/proposals',method:'GET'});return pending(context,signal);}async approve(id,context,signal){signal.throwIfAborted();approved++;return {proposalId:id,status:'succeeded',summary:'Fixture approved'};}},retireClockReviews:async()=>{},pauseHostedBackground:async()=>{},cloudCredentialStore:{read:async()=>{if(++credentialReads===changeSelectionAt)memory.set(selectionKey,JSON.stringify({[key]:'replacement-choice'}));return credential;}},secureConnectionStore:{read:async slot=>secure.get(slot)??null,write:async(slot,value)=>secure.set(slot,value)},openConnectionBrowser:()=>{},nativeCloudRequest:()=>{},localStorage:{getItem:k=>memory.get(k)??null,setItem:(k,v)=>memory.set(k,v),removeItem:k=>memory.delete(k)},AbortController,DOMException,crypto,URL,URLSearchParams,console};
+  const box={document:{hidden:false},testMocksEnabled:false,devSurfacesEnabled:false,browserDevProfile:false,devProfileQuery:false,browserLocalAgentEnabled:false,isAndroid:true,Capacitor:{getPlatform:()=> 'android'},CloudProtocol:Cloud,LocalAgentProtocol:Resident,registerPlugin:()=>({}),stopLocalAgent:async()=>{},configureLocalCloudProvider:async()=>{admission.configured++;},localAgentPackaged:async()=>true,workflowPresentationProtocol:async()=>1,actionScope:async()=> 'a'.repeat(64),negotiateEnabledViews:async()=>'',DeviceActions:class{async pending(context,signal){calls.push({path:'/api/client-devices/proposals',method:'GET'});return pending(context,signal);}async approve(id,context,signal){signal.throwIfAborted();approved++;return {proposalId:id,status:'succeeded',summary:'Fixture approved'};}},retireClockReviews:async()=>{},pauseHostedBackground:async()=>{},cloudCredentialStore:{read:async()=>{if(++credentialReads===changeSelectionAt)memory.set(selectionKey,JSON.stringify({[key]:'replacement-choice'}));return credential;}},secureConnectionStore:{read:async slot=>secure.get(slot)??null,write:async(slot,value)=>secure.set(slot,value)},openConnectionBrowser:()=>{},nativeCloudRequest:()=>{},localStorage:{getItem:k=>memory.get(k)??null,setItem:(k,v)=>memory.set(k,v),removeItem:k=>memory.delete(k)},AbortController,DOMException,crypto,URL,URLSearchParams,console};
   let selections=fs.readFileSync('apps/app/src/runtime/conversation-selection.ts','utf8').replace(/^import .*;\n/gm,'').replace(/export /g,'').replace(/\bdocument\b/g,'selectionDocument');
   vm.runInNewContext(stripTypeScriptTypes(selections,{mode:'transform'})+'\nglobalThis.selectionApi={captureConversationChoice,selectConversation};',box);
   Object.assign(box,box.selectionApi);
   let source=fs.readFileSync('apps/app/src/runtime/connection-ui.tsx','utf8').split('export function ConnectionChooser()')[0].replace(/^import .*;\n/gm,'').replace(/export /g,'');
   source+='\nglobalThis.api={controller:connectionController,restoreSaved:restoreSavedResidentHistory,restore:restoreConversationHistory,retire,newSession(){state={...state,session:{...state.session,sessionId:"new-session"}};},replaceService(){service={...service,identity:{...service.identity,sessionId:"new-account-session"}};}};';
   vm.runInNewContext(stripTypeScriptTypes(source,{mode:'transform'}),box);
-  return {api:box.api,calls,memory,pending:fn=>{pending=fn;},approved:()=>approved,document:box.document,selection:box.selectionApi,changeSelectionOnCredentialRead:offset=>{changeSelectionAt=credentialReads+offset;},history:fn=>{readHistory=fn;},list:fn=>{list=fn;},replaceCredential:()=>{credential={credentialId:'replacement'};}};
+  return {api:box.api,calls,memory,admission,identity:fn=>{identity=fn;},balance:value=>{balance=value;},removeCredential:()=>{credential=null;},pending:fn=>{pending=fn;},approved:()=>approved,document:box.document,selection:box.selectionApi,changeSelectionOnCredentialRead:offset=>{changeSelectionAt=credentialReads+offset;},history:fn=>{readHistory=fn;},list:fn=>{list=fn;},replaceCredential:()=>{credential={credentialId:'replacement'};}};
 }
 test('production resident startup restores only saved verified prose without replay or preference writes',async()=>{
   const f=fixture(),before=f.memory.get(selectionKey);
@@ -177,4 +180,36 @@ test('recovered approval stays alive for unchanged context but cancels on source
 test('resume refreshes an existing interrupted review card without duplicating or reviving completed cards',async()=>{
  const f=adapterRecoveryFixture();f.state.msgs.push({id:'existing',from:'agent',text:pendingReview.description,card:{proposalId:pendingReview.id,title:'Approve existing'}},{id:'done',from:'agent',text:'Completed before',card:{proposalId:pendingReview.id,done:true}});
  f.recover();await flushRecovery();assert.equal(f.state.msgs.length,3);assert.equal(f.state.msgs[1].card.recovered,true);assert.equal(f.state.msgs[1].card.proposalSession.sessionId,'fixture-session');assert.equal(f.state.msgs[2].card.done,true);assert.equal(f.state.msgs[2].card.recovered,undefined);
+});
+
+
+test('saved Cloud connection retries transient admission explicitly without login or changing history',async()=>{
+ const f=fixture(),choice=f.memory.get(selectionKey);
+ f.identity(async()=>{throw Object.assign(Error('Transient admission'),{status:503});});
+ await f.api.controller.initialize();
+ let state=f.api.controller.getSnapshot();
+ assert.equal(state.residentSavedCredential,true);assert.equal(state.cloudAccount,null);assert.match(state.error,/temporarily unavailable/);assert.equal(f.admission.connected,0);
+ await f.api.controller.initialize();assert.equal(f.admission.identity,1,'Startup must not retry itself');
+ f.identity(async()=>({userId:'fixture-account'}));
+ await f.api.controller.startLocal();state=f.api.controller.getSnapshot();
+ assert.equal(state.error,'');assert.equal(state.session.ownerId,'fixture-owner');assert.equal(state.history.conversationId,'saved-conversation');assert.equal(f.memory.get(selectionKey),choice);
+ assert.deepEqual(f.admission,{identity:2,credits:1,configured:1,connected:1,login:0});
+});
+test('saved connection retry still refuses missing credentials and empty credits',async()=>{
+ for(const missing of [true,false]){
+  const f=fixture(),choice=f.memory.get(selectionKey);
+  f.identity(async()=>{throw Object.assign(Error('Transient admission'),{status:503});});await f.api.controller.initialize();
+  f.identity(async()=>({userId:'fixture-account'}));
+  if(missing)f.removeCredential();else f.balance(0);
+  await f.api.controller.startLocal();const state=f.api.controller.getSnapshot();
+  assert.equal(state.session,null);assert.equal(f.admission.configured,0);assert.equal(f.admission.connected,0);assert.equal(f.admission.login,0);assert.equal(f.memory.get(selectionKey),choice);
+  if(missing){assert.equal(state.residentSavedCredential,false);assert.match(state.error,/Sign in/);}else{assert.equal(state.residentBalance,0);assert.match(state.message,/Add credits/);}
+ }
+});
+test('double activation of saved connection retry runs admission once',async()=>{
+ const f=fixture();f.identity(async()=>{throw Object.assign(Error('Transient admission'),{status:503});});await f.api.controller.initialize();
+ const entered=Promise.withResolvers(),release=Promise.withResolvers();f.identity(async()=>{entered.resolve();await release.promise;return {userId:'fixture-account'};});
+ const first=f.api.controller.startLocal();await entered.promise;await f.api.controller.startLocal();
+ assert.equal(f.admission.identity,2);assert.equal(f.api.controller.getSnapshot().busy,true);
+ release.resolve();await first;assert.equal(f.admission.connected,1);assert.equal(f.admission.login,0);
 });

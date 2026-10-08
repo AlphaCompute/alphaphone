@@ -41,6 +41,7 @@ export interface CloudServiceSession { environment: CloudEnvironment; userId: st
 export interface RestoredMessage { id: string; from: 'user' | 'agent'; text: string }
 export interface ConnectionSnapshot {
   residentBalance?: number | null;
+  residentSavedCredential?: boolean;
   cloudPersonal?: PersonalSetupState;
   phoneActionsAvailable: boolean; phoneCapabilityReason: string;
   conversations: Array<{ id: string; title: string }>;
@@ -76,6 +77,7 @@ let service: { client: CloudProtocol; identity: CloudServiceSession } | null = n
 function detachService() { clearPersonalSetup(); service = null; update({ cloudAccount: null }); }
 async function verifyService(client: CloudProtocol, signal: AbortSignal) {
   const credential = await cloudCredentialStore.read(client.environment); signal.throwIfAborted();
+  if(isAndroid && !testMocksEnabled)update({residentSavedCredential:!!credential?.credentialId});
   if (!credential?.credentialId) throw new Error('Cloud credentials are unavailable. Sign in again.');
   const identity = await client.identity(signal); signal.throwIfAborted();
   if ((await cloudCredentialStore.read(client.environment))?.credentialId !== credential.credentialId) throw new Error('Cloud account changed. Try again.');
@@ -627,7 +629,7 @@ export const connectionController = {
         await work('Checking your Cloud account…',async signal=>{
           const credential=await cloudCredentialStore.read('production');
           signal.throwIfAborted();
-          if(!credential){update({open:true,residentBalance:null,message:''});return;}
+          if(!credential){update({open:true,residentBalance:null,residentSavedCredential:false,message:''});return;}
           await connectResident(signal);
         });
         return;
@@ -773,7 +775,7 @@ export const connectionController = {
       localStorage.removeItem(CLOUD_SERVICE);
       if (!active) save({ kind: 'none' });
       await (previous?.client ?? cloud).disconnect();
-      update({ agents: [], message: 'Signed out of Eliza Cloud on this phone.' });
+      update({ agents: [], residentSavedCredential:false, message: 'Signed out of Eliza Cloud on this phone.' });
     });
   },
   async mock() {
@@ -976,7 +978,10 @@ export function ConnectionChooser() {
       {typeof snapshot.residentBalance==='number'&&snapshot.residentBalance<=0&&<button disabled={snapshot.busy} onClick={()=>void connectionController.residentTopUp()}>Add credits in Eliza Cloud</button>}
       <button disabled={snapshot.busy} onClick={()=>void connectionController.startLocal()}>{snapshot.residentBalance!=null&&snapshot.residentBalance<=0?'Check credits again':'Continue'}</button>
       <button disabled={snapshot.busy} onClick={()=>void connectionController.cloudSignOut()}>Sign out</button>
-    </>:<button disabled={snapshot.busy} onClick={()=>void connectionController.residentCloudLogin()}>Sign in with Eliza Cloud</button>}
+    </>:<>
+      {snapshot.residentSavedCredential&&<button disabled={snapshot.busy} onClick={()=>void connectionController.startLocal()}>Retry saved connection</button>}
+      <button disabled={snapshot.busy} onClick={()=>void connectionController.residentCloudLogin()}>Sign in with Eliza Cloud</button>
+    </>}
     {snapshot.message&&<p role="status">{snapshot.message}</p>}
     {snapshot.error&&<p role="alert">{snapshot.error}</p>}
     {snapshot.historyError&&<><p role="status">{snapshot.historyError}</p><button disabled={snapshot.busy} onClick={()=>void connectionController.retrySavedHistory()}>Retry saved conversation</button></>}
