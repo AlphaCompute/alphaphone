@@ -10,7 +10,7 @@ const root=path.resolve(import.meta.dirname,'..');
 test('pinned generated secure-store helper reads bounded actual bytes on the Java 8 API',()=>{
   const fixture=fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(),'alpha-frame-test-')));
   try {
-    for(const relative of ['scripts/prepare-local-agent.mjs','scripts/stage-local-agent-sources.mjs','scripts/local-agent-source.mjs','upstream.lock.json','app.config.json']) {
+    for(const relative of ['scripts/prepare-local-agent.mjs','scripts/stage-local-agent-sources.mjs','scripts/local-agent-source.mjs','scripts/copy-file-clone.mjs','upstream.lock.json','app.config.json']) {
       fs.mkdirSync(path.dirname(path.join(fixture,relative)),{recursive:true});
       fs.copyFileSync(path.join(root,relative),path.join(fixture,relative));
     }

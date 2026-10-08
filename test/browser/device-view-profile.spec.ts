@@ -50,7 +50,8 @@ for(const scenario of ['supported','legacy','unsupported','malformed','lost','re
     return {};
    }};
   },scenario);
-  await page.goto('/');await page.getByRole('button',{name:'Settings',exact:true}).click();await page.getByRole('button',{name:/Agent connection/}).click();await page.getByRole('button',{name:'Start local agent',exact:true}).click();await expect(page.locator('.alpha-connection-scrim')).toHaveCount(0);
+  await page.goto('/');await page.getByRole('dialog',{name:'Set up Alpha access'}).getByRole('button',{name:'Not now',exact:true}).click();await page.getByRole('button',{name:'Settings',exact:true}).click();await page.getByRole('button',{name:/Agent connection/}).click();await page.getByRole('button',{name:'Start local agent',exact:true}).click();await expect(page.locator('.alpha-connection-scrim')).toHaveCount(0);
+  await page.getByRole('dialog',{name:'Set up Alpha access'}).getByRole('button',{name:'Not now',exact:true}).click();
   await page.getByRole('button',{name:/Agent connection/}).click();
   const snapshot=await page.evaluate(async()=>{const {connectionController}=await import('/src/runtime/connection-ui.tsx');return connectionController.getSnapshot();});
   expect(snapshot.session?.ownerId).toBe('fixture-owner');

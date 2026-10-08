@@ -53,7 +53,7 @@ export interface ConnectionSnapshot {
   kind: 'offline' | 'remote' | 'local' | 'resident' | 'cloud'; name: string;
   session: VerifiedSession | null; agents: CloudAgent[];
 }
-type Active = { kind: 'resident'; remote: LocalAgentProtocol; origin: string; actions?: DeviceActions; workflowProtocol?: 1|2 } | { kind: 'remote' | 'local'; remote: RemoteProtocol; origin: string; actions?: DeviceActions; workflowProtocol?: 1|2 } | { kind: 'cloud'; cloud: CloudProtocol; agentId: string; actions?: DeviceActions; workflowProtocol?: 1|2; phoneTarget?: CloudPhoneTarget; voiceExpiresAt?: number };
+type Active = { kind: 'resident'; remote: LocalAgentProtocol; origin: string; actions?: DeviceActions; workflowProtocol?: 1|2; userTextFormatVersion?:1 } | { kind: 'remote' | 'local'; remote: RemoteProtocol; origin: string; actions?: DeviceActions; workflowProtocol?: 1|2 } | { kind: 'cloud'; cloud: CloudProtocol; agentId: string; actions?: DeviceActions; workflowProtocol?: 1|2; phoneTarget?: CloudPhoneTarget; voiceExpiresAt?: number };
 const SELECTION = 'alpha.connection.selection.v1';
 // The development chooser exists only on an explicitly flagged development server.
 const browserDevProfile = devSurfacesEnabled && devProfileQuery;
@@ -300,6 +300,7 @@ async function connectResident(signal: AbortSignal) {
   signal.throwIfAborted();
   let actions:DeviceActions|undefined;
   const workflowProtocol=await workflowPresentationProtocol(signal);
+  let userTextFormatVersion:1|undefined;
   let reason='';
   try {
     const store=isAndroid?secureConnectionStore:developmentDeviceStore;
@@ -314,6 +315,7 @@ async function connectResident(signal: AbortSignal) {
     const request=(path:string,body:unknown|undefined,requestSignal:AbortSignal)=>client.request(path,body,requestSignal,headers);
     const registered=await request('/api/client-devices/register',{label:isAndroid?'Alpha Phone':'Alpha browser development',workflowProtocol},signal);
     if(registered.installationId!==credential.installationId||typeof registered.enrollmentId!=='string'||!/^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/.test(registered.enrollmentId))throw Error('Device registration was not verified');
+    if(registered.userTextFormatVersion===1)userTextFormatVersion=1;
     reason = await negotiateEnabledViews(registered.viewProfileVersion, request, signal);
     if(Array.isArray(registered.capabilities)&&registered.capabilities.includes('reminders.local-record.v2'))headers['X-Eliza-Device-Capabilities']+=',reminders.local-record.v2';else if(Array.isArray(registered.capabilities)&&registered.capabilities.includes('reminders.local-record.v1'))headers['X-Eliza-Device-Capabilities']+=',reminders.local-record.v1';
     if(Array.isArray(registered.capabilities)&&registered.capabilities.includes('reminders.create.v1'))headers['X-Eliza-Device-Capabilities']+=',reminders.create.v1';
@@ -324,7 +326,7 @@ async function connectResident(signal: AbortSignal) {
     actions=new DeviceActions(session,credential,await actionScope(JSON.stringify([baseScope,credential.installationId])),request,journal,(op,id,context,effectSignal,bindingHash,workflowRoute,journalIdentity)=>deviceExecutor(op,id,context,effectSignal,bindingHash,workflowRoute,journalIdentity),(op,id,binding,recoverySignal)=>deviceRecovery?deviceRecovery(op,id,binding,recoverySignal):Promise.resolve({status:'unknown'}),headers["X-Eliza-Device-Capabilities"].split(",").includes("reminders.local-record.v2"),headers["X-Eliza-Device-Capabilities"].split(",").includes("reminders.create.v1"));
   } catch(error) {signal.throwIfAborted();reason='Local chat connected. Device actions are unavailable: '+(error instanceof Error?error.message:'Enrollment failed.');}
   save({kind:'resident'});
-  activate({kind:'resident',remote:client,origin:client.origin,actions,workflowProtocol},session,name);
+  activate({kind:'resident',remote:client,origin:client.origin,actions,workflowProtocol,...(userTextFormatVersion?{userTextFormatVersion}:{})},session,name);
   if(reason)update({phoneCapabilityReason:reason});
   if(isAndroid && !testMocksEnabled)await restoreSavedResidentHistory(signal);
 }
@@ -407,7 +409,10 @@ function migrateLegacyMock(): boolean {
 function conversationKey(session: VerifiedSession) { return JSON.stringify([session.origin, session.ownerId, session.agentId]); }
 
 /** Only remove an exact Alpha-generated prefix from restored user prose. */
-function restoredText(text: string): string {
+function restoredText(text: string, userTextFormat?:unknown): string {
+  // An explicit format, including an unknown future value, is never a legacy
+  // transport envelope. Preserve literal authored banners byte for byte.
+  if(userTextFormat!==undefined)return text;
   const marker = '\n[/CURRENT-TURN CLIENT OBSERVATION]\n[USER MESSAGE]\n';
   const end = text.indexOf(marker);
   if (!text.startsWith('[CURRENT-TURN CLIENT OBSERVATION]\n') || end < 0) return text;
@@ -444,7 +449,7 @@ async function restoreConversationHistory(id:string,signal:AbortSignal,automatic
   if(result.messages.length>2000)throw Error('This history is too large to display safely.');
   const messages:RestoredMessage[]=result.messages.filter(item=>item.role==='user'||item.role==='assistant').map(item=>{
     if(typeof item.id!=='string'||!item.id||typeof item.text!=='string'||item.text.length>200000)throw Error('The agent returned invalid history.');
-    return {id:item.id,from:item.role==='user'?'user':'agent',text:item.role==='user'?restoredText(item.text):item.text};
+    return {id:item.id,from:item.role==='user'?'user':'agent',text:item.role==='user'?restoredText(item.text,item.userTextFormat):item.text};
   });
   await assertAccount();
   let saved=true;
@@ -836,11 +841,13 @@ export const connectionController = {
         assertCurrent();conversationMemory.set(key,id);update({});
         if(!saved)update({ message: 'Conversation is connected for this session. Its selection could not be saved for restart.' });
       }
-      // Generic clients report an observation, never authority or permission.
-      // Retain the legacy field while older runtime deployments are supported.
-      const options = { signal: requestSignal, clientMessageId: requestId, metadata: { ...(message.context.timeZone===undefined?{}:{uiTimeZone:message.context.timeZone}), clientDevice: { context: message.context }, alphaPhone: { context: message.context } } };
+      // Only the verified native resident profile negotiates verbatim prose
+      // history. Other hosts retain the existing envelope and legacy alias.
+      const nativeProse=isAndroid&&selected.kind==='resident'&&selected.userTextFormatVersion===1;
+      const wireText=nativeProse?text:message.text;
+      const options = { signal: requestSignal, clientMessageId: requestId, metadata: { ...(message.context.timeZone===undefined?{}:{uiTimeZone:message.context.timeZone}), clientDevice: { context: message.context }, ...(nativeProse?{userTextFormat:'plain-v1'}:{alphaPhone:{context:message.context}}) } };
       const progress=(value:string)=>{requestSignal.throwIfAborted();if(generation!==epoch||selected!==active||state.session?.sessionId!==session.sessionId)throw Error('The connection changed.');onText?.(value);};
-      const reply = selected.kind === 'cloud' ? await selected.cloud.send(selected.agentId, id, message.text, options) : selected.kind==='resident'?await selected.remote.send(id,message.text,{...options,onText:progress}):await selected.remote.send(id, message.text, options);
+      const reply = selected.kind === 'cloud' ? await selected.cloud.send(selected.agentId, id, wireText, options) : selected.kind==='resident'?await selected.remote.send(id,wireText,{...options,onText:progress}):await selected.remote.send(id, wireText, options);
       requestSignal.throwIfAborted();
       if (generation !== epoch) throw new Error('The connection changed.');
       let responseFailure: Error | undefined;
