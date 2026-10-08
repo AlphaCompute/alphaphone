@@ -203,13 +203,14 @@ test('production ignores the development render-failure hook', async ({ page }) 
   await expect(page.getByRole('button', { name: 'Agent connection', exact: true })).toBeVisible();
 });
 
-for (const mode of ['signed-out','empty','unavailable','funded','replaced','unpackaged'] as const) {
+for (const mode of ['signed-out','empty','unavailable','funded','replaced','unpackaged','legacy-offline'] as const) {
  test(`resident billing onboarding: ${mode}`,async({page})=>{
   await page.addInitScript(mode=>{
    const w=window as any;w.androidBridge={};w.residentCalls=[];
    const id='9f1dc45a-4011-4e44-947a-30d999d24fa5';
    const values:Record<string,string>={};let credentialReads=0;
-   if(mode!=='signed-out'&&mode!=='unpackaged')values['cloud:production']=JSON.stringify({token:'synthetic-cloud-key',credentialId:id,expiresAt:Date.now()+60000});
+   if(mode==='legacy-offline')localStorage.setItem('alpha.connection.selection.v1',JSON.stringify({kind:'offline'}));
+   if(mode!=='signed-out'&&mode!=='unpackaged'&&mode!=='legacy-offline')values['cloud:production']=JSON.stringify({token:'synthetic-cloud-key',credentialId:id,expiresAt:Date.now()+60000});
    const methods=(names:string[])=>names.map(name=>({name,rtype:'promise'}));
    w.Capacitor={PluginHeaders:[
     {name:'DeviceApps',methods:methods(['buildInfo'])},
@@ -253,7 +254,8 @@ for (const mode of ['signed-out','empty','unavailable','funded','replaced','unpa
   }
   if(mode==='funded')await expect(page.getByRole('button',{name:'Notes',exact:true})).toBeVisible();
   if(mode==='replaced')await expect(page.getByRole('alert')).toContainText(/account changed/i);
-  if(mode==='unpackaged'){await page.getByRole('button',{name:'Use local apps without AI',exact:true}).click();await expect(page.getByRole('button',{name:'Notes',exact:true})).toBeVisible();}
+  if(mode==='unpackaged'||mode==='legacy-offline'){await expect(page.getByRole('button',{name:'Sign in with Eliza Cloud',exact:true})).toBeVisible();await page.keyboard.press('Escape');await expect(page.getByRole('dialog',{name:'Welcome to Alpha'})).toBeVisible();}
+  await expect(page.getByRole('button',{name:'Use local apps without AI',exact:true})).toHaveCount(0);
   const calls=await page.evaluate(()=>(window as any).residentCalls);
   expect(calls.some((c:any)=>c.url?.includes('/personal/')||c.url?.includes('/upgrade-tier'))).toBe(false);
   const native=calls.filter((c:any)=>c.plugin==='Agent').map((c:any)=>c.method);

@@ -148,6 +148,12 @@ public final class AlphaConnectionPlugin extends Plugin {
   if(seen.contains("reminders.local-record.v1")&&seen.contains("reminders.local-record.v2"))return false;
   return parts.length<=(seen.contains("reminders.create.v1")?6:5);
  }
+ private enum RequestOperation { CLI_CREATE, CLI_POLL, IDENTITY, BALANCE, OTHER }
+ private enum RequestStage { VALIDATE, CONNECT, WRITE, STATUS, READ, PARSE, RESOLVE }
+ /** Never include exception messages, request identifiers or transport data in diagnostics. */
+ private static void debugRequestFailure(RequestOperation operation,RequestStage stage,int status,Exception error) {
+  if(BuildConfig.DEBUG)android.util.Log.d("AlphaConnection", "operation="+operation+" stage="+stage+" status="+status+" exception="+error.getClass().getName());
+ }
  @PluginMethod public void request(PluginCall call) {
   final String id;
   try { id = required(call.getString("requestId"), 256); }
@@ -156,15 +162,27 @@ public final class AlphaConnectionPlugin extends Plugin {
   if (requests.putIfAbsent(id, pending) != null) { call.reject("Request already active"); return; }
   if(!submit(call,() -> {
    HttpURLConnection connection = null;
+   RequestOperation operation=RequestOperation.OTHER;
+   RequestStage stage=RequestStage.VALIDATE;
+   int status=-1;
    try {
     if (pending.cancelled) throw new IllegalStateException();
     URI url = validatedUrl(call.getString("url"), true);
+    {
+     String path=url.getPath();
+     if("/api/auth/cli-session".equals(path))operation=RequestOperation.CLI_CREATE;
+     else if(path!=null&&path.matches("/api/auth/cli-session/[0-9a-fA-F-]{36}"))operation=RequestOperation.CLI_POLL;
+     else if("/api/v1/user".equals(path))operation=RequestOperation.IDENTITY;
+     else if("/api/v1/credits/balance".equals(path))operation=RequestOperation.BALANCE;
+    }
     int responseLimit=url.getPath().startsWith("/api/v1/eliza/google/gmail/inbox-v1/")?8*1024*1024:RESPONSE_LIMIT;
     String method = call.getString("method", "GET");
     if (!Set.of("GET", "POST").contains(method)) throw new IllegalArgumentException();
+    stage=RequestStage.CONNECT;
     connection = (HttpURLConnection) url.toURL().openConnection(); pending.connection = connection;
     connection.setInstanceFollowRedirects(false); connection.setConnectTimeout(20000); connection.setReadTimeout(120000);
     connection.setUseCaches(false); connection.setRequestMethod(method);
+    stage=RequestStage.VALIDATE;
     JSObject headers = call.getObject("headers", new JSObject());
     Iterator<String> names = headers.keys();
     while (names.hasNext()) {
@@ -184,22 +202,30 @@ public final class AlphaConnectionPlugin extends Plugin {
      if (encoded.length > responseLimit) throw new IllegalArgumentException();
      parseJson(body); connection.setDoOutput(true); connection.setFixedLengthStreamingMode(encoded.length);
      if (pending.cancelled) throw new IllegalStateException();
+     stage=RequestStage.WRITE;
      try (java.io.OutputStream output = connection.getOutputStream()) { output.write(encoded); }
     }
     if (pending.cancelled) throw new IllegalStateException();
-    int status = connection.getResponseCode();
+    stage=RequestStage.STATUS;
+    status = connection.getResponseCode();
     if (status >= 300 && status < 400) throw new IllegalArgumentException();
     if (connection.getContentLengthLong() > responseLimit) throw new IllegalArgumentException();
+    stage=RequestStage.READ;
     byte[] bytes;
     try (InputStream input = status >= 400 ? connection.getErrorStream() : connection.getInputStream()) { bytes = readBounded(input, responseLimit); }
     if (pending.cancelled) throw new IllegalStateException();
     Object data = JSONObject.NULL;
     if (bytes.length > 0) {
+     stage=RequestStage.PARSE;
      try { data = parseJson(new String(bytes, StandardCharsets.UTF_8)); }
      catch (Exception error) { if (status < 400) throw error; }
     }
+    stage=RequestStage.RESOLVE;
     JSObject result = new JSObject(); result.put("status", status); result.put("data", data); call.resolve(result);
-   } catch (Exception error) { call.reject(pending.cancelled ? "Request cancelled" : "Connection request failed"); }
+   } catch (Exception error) {
+    debugRequestFailure(operation,stage,status,error);
+    call.reject(pending.cancelled ? "Request cancelled" : "Connection request failed");
+   }
    finally { if (connection != null) connection.disconnect(); requests.remove(id, pending); }
   }))requests.remove(id,pending);
  }

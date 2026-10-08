@@ -532,7 +532,7 @@ export const connectionController = {
     return true;
   },
   open() { update({ open: true, error: '' }); },
-  close() { if (!state.busy) {clearPersonalSetup();update({ open: false });} },
+  close() { if(isAndroid && !testMocksEnabled && !state.session)return; if (!state.busy) {clearPersonalSetup();update({ open: false });} },
   cancel() { operation?.abort(new DOMException('Cancelled', 'AbortError')); cloud.cancelLogin(); },
   async initialize() {
     if (startup) return startup;
@@ -547,7 +547,7 @@ export const connectionController = {
         if (stored === null) { try { save({ kind: 'none' }); } catch { /* The chooser explains the choice either way. */ } update({ open: true, message: '' }); return; }
       }
       const saved = selection();
-      if (isAndroid && !testMocksEnabled && saved?.kind !== 'offline') {
+      if (isAndroid && !testMocksEnabled) {
         await work('Checking your Cloud account…',async signal=>{
           const credential=await cloudCredentialStore.read('production');
           signal.throwIfAborted();
@@ -924,7 +924,6 @@ export function ConnectionChooser() {
     {snapshot.message&&<p role="status">{snapshot.message}</p>}
     {snapshot.error&&<p role="alert">{snapshot.error}</p>}
     {snapshot.busy&&<button onClick={()=>connectionController.cancel()}>Cancel</button>}
-    <button disabled={snapshot.busy} onClick={()=>void connectionController.offline()}>Use local apps without AI</button>
   </div></div>;
   const pairingOptions=<>
     <details><summary>Remote agent</summary><form onSubmit={event => { event.preventDefault(); void connectionController.pair('remote', remoteOrigin.current?.value || '', remoteCode.current?.value || ''); if (remoteCode.current) remoteCode.current.value = ''; }}>

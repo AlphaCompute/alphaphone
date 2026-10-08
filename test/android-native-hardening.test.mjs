@@ -50,7 +50,11 @@ test('main manifest pins an HTTPS-only network policy and drops legacy storage',
 test('development behaviour keys on the test-mocks BuildConfig field, not DEBUG', () => {
   for (const name of ['DailyAppsPlugin', 'AlphaMapsTransportPlugin', 'AlphaConnectionPlugin', 'AlphaVoiceCloudPlugin', 'IsolatedPdfService', 'HostedTransport', 'BrowserReading', 'BrowserDownloads']) {
     const source = read(app + name + '.java');
-    assert.doesNotMatch(source, /BuildConfig\.DEBUG/, name);
+    // DEBUG may gate the closed-field transport diagnostic, never development capabilities.
+    const capabilities = name === 'AlphaConnectionPlugin'
+      ? source.replace(/private static void debugRequestFailure\([^)]*\) \{[^}]*\}/, '')
+      : source;
+    assert.doesNotMatch(capabilities, /BuildConfig\.DEBUG/, name);
     assert.match(source, /BuildConfig\.ELIZA_DEV_ALLOW_TEST_MOCKS/, name);
   }
   assert.match(read(app + 'DailyAppsPlugin.java'), /"developmentBuild", BuildConfig\.ELIZA_DEV_ALLOW_TEST_MOCKS/);
