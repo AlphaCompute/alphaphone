@@ -30,7 +30,7 @@ const development={
 const production={
   // A flag-off production build served by vite preview: no mocks, fixtures or developer surfaces.
   // It is written outside web-dist so it never replaces a release or test-mocks build.
-  command: `npm run upstream:prepare-client && npx vite build --outDir ../../test-results/production-web && npx vite preview --outDir ../../test-results/production-web --host 127.0.0.1 --port ${productionPort} --strictPort`,
+  command: `npm run upstream:prepare-client && npm run browser-speech:prepare && npx vite build --outDir ../../test-results/production-web && node scripts/audit-production-bundle.mjs test-results/production-web && npx vite preview --outDir ../../test-results/production-web --host 127.0.0.1 --port ${productionPort} --strictPort`,
   url: `http://127.0.0.1:${productionPort}`, reuseExistingServer: false, timeout: 180_000,
   env: { ELIZA_DEV_ALLOW_TEST_MOCKS: '', VITE_ELIZA_DEV_ALLOW_TEST_MOCKS: '', VITE_LOCAL_AGENT: '' },
 };

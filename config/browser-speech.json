@@ -1,0 +1,28 @@
+{
+  "description": "Pinned inputs for in-browser English speech recognition. Model files are acquired at build time by scripts/browser-speech-assets.mjs, verified by size and SHA-256, and self-hosted under browser-speech/ in the web build. The browser never fetches them from a third party. Android APKs omit them and use the native on-device recognizer.",
+  "engine": "whisper",
+  "model": "whisper-tiny.en",
+  "language": "en",
+  "source": {
+    "repository": "Xenova/whisper-tiny.en",
+    "revision": "79fb389fc764e7c395bd330e9531d9d32ada7049",
+    "baseModel": "openai/whisper-tiny.en",
+    "url": "https://huggingface.co/Xenova/whisper-tiny.en/resolve/79fb389fc764e7c395bd330e9531d9d32ada7049/",
+    "modelCard": { "path": "licenses/whisper-tiny.en-onnx-MODEL_CARD.md", "sha256": "2f4ddb95ec9d6c6d5f6a1374fc004f45e91f6d7f450ee479f765b8aca47e8b4d" }
+  },
+  "files": [
+    { "role": "encoder", "path": "onnx/encoder_model_quantized.onnx", "bytes": 10124913, "sha256": "8cc3c6f8563d1b3fbd2c5af9f64c2bed8b020bc593c402d1ef53b9f08fbf1b90" },
+    { "role": "decoder", "path": "onnx/decoder_model_merged_quantized.onnx", "bytes": 30727382, "sha256": "dbb2e063b7fbc41d9803b9698f93ecb035c50cbb3fb87b56cb131e4a5eb99059" },
+    { "role": "vocab", "path": "vocab.json", "bytes": 999186, "sha256": "f6bd25a65e4e63ca31360e9fb11c7e4f9a391a78385d640acd814092dd6eee4f" },
+    { "role": "generation", "path": "generation_config.json", "bytes": 1590, "sha256": "132c95ba9db45f4498f2eab3fea7c1d6a174005010f8f6b7d20cfd5e9795996b" }
+  ],
+  "runtime": {
+    "package": "onnxruntime-web",
+    "version": "1.30.0",
+    "notices": { "path": "licenses/onnxruntime-web/ThirdPartyNotices.txt", "sha256": "143764b952fdb1a7c69ce653bfba74a7744d6a8a573bfb73e235fba356c83de3", "source": "https://github.com/microsoft/onnxruntime/blob/v1.30.0/ThirdPartyNotices.txt" },
+    "files": [
+      { "role": "wasm", "path": "dist/ort-wasm-simd-threaded.wasm", "bytes": 14239897, "sha256": "3398c10d07d229bd91b364548e130e0e51a8e5704b88c7c083ebbeb78842dee2" },
+      { "role": "glue", "path": "dist/ort-wasm-simd-threaded.mjs", "bytes": 24381, "sha256": "e13f7f94fc51b4ca72b12faeb1ee95f4ace6dfbc8939bc718aabdc0a27c4299b" }
+    ]
+  }
+}

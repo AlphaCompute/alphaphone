@@ -18,6 +18,18 @@ jobs but allocate no build/test runners.
 | Shared source pin, dependencies, unknown paths | Yes | Yes | Yes | Yes |
 | Individual workflow | Yes | Its automatic lane | Its automatic lane | Its automatic lane |
 
+Existing browser-spec-only edits select exact changed spec paths. Up to three
+development spec files use one shard; larger edits keep three parallel shards. Production-only specs run just the production project; development-only
+specs skip production and unrelated speech-profile qualification. Shared helpers,
+deleted or renamed specs, application code, dependencies and unavailable diffs keep
+the full inventory. File selectors are validated and escaped, then passed as process
+arguments without a shell. This shortcut changes test scope only when no executable
+application/shared input changed.
+
+The production browser server audits the exact freshly built flag-off bundle before
+serving it. CI no longer builds a second unused flag-off bundle in that job. The
+separate test-mocks bundle still receives its own audit.
+
 Repository verification runs once in parallel with Chromium's three shards and
 Android, instead of four times per event. The existing parallel emulator jobs and
 browser shards remain; a failing matrix cancels siblings to limit wasted minutes.
