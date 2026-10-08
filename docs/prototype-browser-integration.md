@@ -46,7 +46,7 @@ All commands retain `{owner, session, epoch, id}`. Native code validates identit
 
 Native WebView history is authoritative for redirects, same-document navigation, forms, and back/forward. Host persistence stores bounded tab identifiers and final safe URLs/bookmarks/history metadata; it must not serialize fixture `hist` as real history. For the first slice, restart restores tabs as unloaded entries requiring explicit selection; do not silently repeat POSTs or effects. Closing the last tab shows the existing new-tab screen.
 
-First-slice decision: use existing per-tab isolated storage and label its limitations in release acceptance; do not market shared sign-in or private browsing. A shared browser-only profile across normal tabs requires a separate upstream profile-ownership change and tests proving it never aliases the Capacitor host profile. Do not choose `storage: shared` without proving that separation. Production persistence/cookie retention remains a release gate until this decision is implemented deliberately.
+First-slice decision (superseded October 7, [decisions](decisions.md#october-7-owner-product-decisions) item 12): use existing per-tab isolated storage and label its limitations in release acceptance. The owner decision now requires normal tabs to keep sign-ins in a persistent profile, with an explicit private-tab option that stays ephemeral. A shared browser-only profile across normal tabs requires a separate upstream profile-ownership change and tests proving it never aliases the Capacitor host profile. Do not choose `storage: shared` without proving that separation. Production persistence/cookie retention remains a release gate until the persistent profile is implemented deliberately.
 
 ## Android policy and lifecycle
 
