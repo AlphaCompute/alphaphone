@@ -1,6 +1,6 @@
 import {test,expect} from '@playwright/test';
 
-for(const request of ['Load Inbox','Search Gmail','Check connection'])for(const saved of [false,true])test(`Cancelling ${request} retains ${saved?'edited saved':'unsaved'} local mail`,async({page})=>{
+for(const request of ['Refresh','Search Gmail','Check connection'])for(const saved of [false,true])test(`Cancelling ${request} retains ${saved?'edited saved':'unsaved'} local mail`,async({page})=>{
  await page.goto('/');
  await page.evaluate(async()=>{
   const {connectionController:c}=await import('/src/runtime/connection-ui.tsx');
@@ -15,7 +15,7 @@ for(const request of ['Load Inbox','Search Gmail','Check connection'])for(const 
   const snapshot={...c.getSnapshot(),cloudAccount:{environment:'production',userId:'fixture-owner',sessionId:'fixture-session',credentialId:'fixture'}} as any;c.getSnapshot=()=>snapshot;
  });
  await page.getByRole('button',{name:'Inbox',exact:true}).click();
- await expect(page.getByRole('button',{name:'Load Inbox',exact:true})).toBeVisible();
+ await expect(page.getByRole('button',{name:'Refresh',exact:true})).toBeVisible();
  await page.getByRole('button',{name:'Compose',exact:true}).click();
  await page.getByPlaceholder('To',{exact:true}).fill('fixture@example.invalid');
  await page.getByPlaceholder('To',{exact:true}).press('Enter');
@@ -61,12 +61,12 @@ test('Compose waits for the selected account draft read before accepting a click
    return structuredClone(f.slots[key]??null);
   };
   s.compareExchange=async(key,prior,next)=>{if(JSON.stringify(f.slots[key]??null)!==JSON.stringify(prior))return {status:'conflict'};f.slots[key]=structuredClone(next);return {status:'saved'};};
-  const client={gmailAccounts:async()=>['a','b'].map(id=>({connectionId:id,label:'Account '+id,connected:true,grantedCapabilities:['google.gmail.triage']})),gmailInboxCapabilities:async()=>({send:false,providerDrafts:false,mailboxMutations:false})};
+  const client={gmailSearch:async()=>({messages:[],syncedAt:'fixture',nextPageToken:null}),gmailAccounts:async()=>['a','b'].map(id=>({connectionId:id,label:'Account '+id,connected:true,grantedCapabilities:['google.gmail.triage']})),gmailInboxCapabilities:async()=>({send:false,providerDrafts:false,mailboxMutations:false})};
   c.getCloudClient=()=>({client,sessionId:'fixture-session',credentialId:'fixture'} as any);
   const snapshot={...c.getSnapshot(),cloudAccount:{environment:'production',userId:'fixture-owner',sessionId:'fixture-session',credentialId:'fixture'}} as any;c.getSnapshot=()=>snapshot;
  });
  await page.getByRole('button',{name:'Inbox',exact:true}).click();
- await expect(page.getByRole('button',{name:'Load Inbox',exact:true})).toBeVisible();
+ await expect(page.getByRole('button',{name:'Refresh',exact:true})).toBeVisible();
  await page.getByRole('button',{name:'Compose',exact:true}).click();
  await page.getByRole('textbox',{name:'Message',exact:true}).fill('Account a local draft');
  await page.getByRole('button',{name:'Save draft locally',exact:true}).click();

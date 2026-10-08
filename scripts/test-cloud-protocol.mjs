@@ -54,9 +54,15 @@ const server = http.createServer(async (req, res) => {
       } else if (req.url === '/api/v1/eliza/google/accounts?side=owner') data = [{ configured: true, connected: true, reason: 'connected', connectionId: grant, grantedCapabilities: ['google.gmail.triage'], identity: { email: 'owner@example.invalid' } }];
       else if (req.url.startsWith('/api/v1/eliza/google/gmail/')) {
         const url = new URL(req.url, 'http://localhost'); assert.equal(url.searchParams.get('grantId'), grant); assert.equal(req.method, 'GET');
-        if (url.pathname.endsWith('/search')) { assert.equal(url.searchParams.get('query'), 'in:inbox'); assert.ok(['25', '50'].includes(url.searchParams.get('maxResults'))); data = { messages: [mail], syncedAt: '2026-09-29T12:00:00Z' }; }
+        if (url.pathname.endsWith('/search')) {
+          assert.ok(['in:inbox', 'in:sent'].includes(url.searchParams.get('query'))); assert.ok(['25', '50'].includes(url.searchParams.get('maxResults')));
+          const pageToken = url.searchParams.get('pageToken');
+          data = { messages: [mail], syncedAt: '2026-09-29T12:00:00Z', ...(mode === 'paged' ? { nextPageToken: pageToken ? null : 'opaque+/token=' } : mode === 'repeat-token' ? { nextPageToken: pageToken } : {}) };
+        }
+        else if (url.pathname.endsWith('/inbox-v1/capabilities')) data = { version: 1, from: 'owner@example.invalid', threads: true, send: false, providerDrafts: false, mailboxMutations: true, attachments: true, providerExactlyOnce: false, atomicDraftReplacement: false, ...(mode === 'read-state' ? { readState: true } : mode === 'bad-read-state' ? { readState: 'yes' } : {}) };
         else { assert.equal(url.searchParams.get('messageId'), mail.externalId); data = { message: mail, bodyText: '<script>plain untrusted email text</script>' }; }
       }
+      else if (req.url === '/api/v1/eliza/google/disconnect') { assert.equal(req.method, 'POST'); assert.deepEqual(body, { side: 'owner', connectionId: grant }); data = mode === 'bad-disconnect' ? {} : { ok: true }; }
       else if (req.url === '/api/v1/eliza/google/status?side=owner') data = { configured: true, connected: false, reason: 'disconnected', connectionId: null, grantedCapabilities: [] };
       else throw new Error('Unexpected synthetic route');
     }
@@ -106,6 +112,19 @@ try {
   assert.equal((await client.gmailSearch(grant, 'in:inbox', signal())).messages[0].id, mail.externalId);
   assert.equal((await client.gmailSearch(grant, 'in:inbox', signal(), 50)).messages[0].id, mail.externalId);
   assert.equal((await client.gmailRead(grant, mail.externalId, signal())).bodyText, '<script>plain untrusted email text</script>');
+  assert.equal((await client.gmailSearch(grant, 'in:inbox', signal())).nextPageToken, null, 'absent cursor means last page');
+  mode = 'paged';
+  const first = await client.gmailSearch(grant, 'in:inbox', signal());
+  assert.equal(first.nextPageToken, 'opaque+/token=');
+  assert.equal((await client.gmailSearch(grant, 'in:sent', signal(), 25, first.nextPageToken)).nextPageToken, null, 'opaque cursor is sent back exactly');
+  mode = 'repeat-token'; await assert.rejects(client.gmailSearch(grant, 'in:inbox', signal(), 25, 'same'), error => error.code === 'invalid-response', 'a repeated cursor cannot loop');
+  await assert.rejects(client.gmailSearch(grant, 'in:inbox', signal(), 25, ''), TypeError);
+  mode = 'ok'; assert.equal((await client.gmailInboxCapabilities(grant, signal())).readState, false, 'older servers do not advertise read state');
+  mode = 'read-state'; assert.equal((await client.gmailInboxCapabilities(grant, signal())).readState, true);
+  mode = 'bad-read-state'; await assert.rejects(client.gmailInboxCapabilities(grant, signal()), error => error.code === 'invalid-response');
+  mode = 'ok'; await client.disconnectGmail(grant, signal());
+  mode = 'bad-disconnect'; await assert.rejects(client.disconnectGmail(grant, signal()), error => error.code === 'invalid-response');
+  mode = 'ok';
   mode = 'foreign-runtime'; await assert.rejects(client.listAgents(signal()), error => error.code === 'invalid-response');
   mode = 'foreign-oauth'; await assert.rejects(client.initiateGmail(signal()), error => error.code === 'invalid-response');
   const readsBeforeOutage = agentReads;
@@ -129,7 +148,7 @@ try {
   mode = 'ok'; await make('staging').login(signal());
   assert.equal(opened.at(-1), `https://staging.eliza.app/auth/cli-login?session=${sessionId}`);
   await client.disconnect();
-  process.stdout.write('PASS: synthetic HTTP Cloud login, credential preference/storage, restart, agent list/detail, dedicated/shared conversation routing and send, Gmail scopes/status/account/search/read, URL rejection, outage without retry, consumed claim, expiry, cancellation and staging routing. No live account acceptance.\n');
+  process.stdout.write('PASS: synthetic HTTP Cloud login, credential preference/storage, restart, agent list/detail, dedicated/shared conversation routing and send, Gmail scopes/status/account/search/read, search paging, read-state capability, disconnect, URL rejection, outage without retry, consumed claim, expiry, cancellation and staging routing. No live account acceptance.\n');
 } finally {
   server.closeAllConnections(); await new Promise(resolve => server.close(resolve));
 }

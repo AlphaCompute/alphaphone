@@ -6,21 +6,93 @@ import {stripTypeScriptTypes} from 'node:module';
 import { InboxOperation } from '../apps/app/src/runtime/inbox-operation.ts';
 import { reviewMailAttachment } from '../apps/app/src/runtime/inbox-attachment.ts';
 import { reviewMailContext, validateMailContext } from '../apps/app/src/runtime/reviewed-mail-context.ts';
-let session='account-a',agent='remote-a',releaseSearch,reads=0,delay=false;
-const listeners=new Set(),mail={id:'mail-1',threadId:'thread',subject:'Fixture',from:'Sender',to:['fixture@example.invalid'],snippet:'Preview',receivedAt:'2026-09-30T00:00:00Z',unread:true};
-const client={gmailAccounts:async()=>[{connectionId:'grant-a',label:'Fixture account',connected:true,grantedCapabilities:['google.gmail.triage']}],gmailSearch:async()=>{reads++;if(delay)return new Promise(resolve=>{releaseSearch=resolve;});return {messages:[mail],syncedAt:'revision'};},gmailRead:async()=>({message:mail,bodyText:'Fixture body'}),initiateGmail:async()=>{throw new Error('No automatic OAuth');}};
-const controller={getCloudClient:()=>session?{client,sessionId:session}:null,getSnapshot:()=>({session:{sessionId:agent}}),subscribe:fn=>{listeners.add(fn);return()=>listeners.delete(fn);},rejectCloudSession:()=>false,open:()=>{}};
-class Shell{constructor(){this.st={q:null};}componentDidMount(){}componentWillUnmount(){}vset(_,p){Object.assign(this.st,p);}}
-const views={inbox:{state:{}}};let source=await readFile(new URL('../apps/app/src/prototype/inbox-cloud-adapter.ts',import.meta.url),'utf8');source=source.replace(/^import .*;\n/gm,'').replace('export function','function')+'\nglobalThis.install=installInboxCloudAdapter;';
-let draftSource=await readFile(new URL('../apps/app/src/prototype/inbox-drafts.ts',import.meta.url),'utf8');draftSource=draftSource.replace(/^import .*;\n/gm,'').replace('export function','function')+'\nglobalThis.inboxDrafts=inboxDrafts;';
-let providerSource=await readFile(new URL('../apps/app/src/prototype/inbox-provider-controls.ts',import.meta.url),'utf8');providerSource=providerSource.replace(/^import .*;\n/gm,'').replace('export function','function')+'\nglobalThis.inboxProviderControls=inboxProviderControls;';
-const sandbox={InboxOperation,reviewMailAttachment,reviewMailContext,validateMailContext,registerPlugin:()=>({cancel:async()=>{}}),crypto:globalThis.crypto,TextEncoder,secureConnectionStore:{read:async()=>null},connectionController:controller,DailyApps:{addListener:async()=>({remove:async()=>{}})},openConnectionBrowser:async()=>{throw new Error('No automatic OAuth');},queueMicrotask,AbortController,Date,console};vm.createContext(sandbox);vm.runInContext('{'+stripTypeScriptTypes(providerSource,{mode:'transform'})+'}',sandbox);vm.runInContext('{'+stripTypeScriptTypes(draftSource,{mode:'transform'})+'}',sandbox);vm.runInContext('{'+stripTypeScriptTypes(source,{mode:'transform'})+'}',sandbox);sandbox.install(Shell,views);
-const shell=new Shell();shell.componentDidMount();const api={get:()=>shell.st,isActive:()=>true,set:p=>shell.vset('inbox',p),toast:()=>{}};const render=()=>views.inbox.render(shell.st,api);const tick=()=>new Promise(r=>setTimeout(r,0));
-render();await tick();assert.equal(reads,0,'status load does not read mailbox');
-render().chips.find(c=>c.label==='Load Inbox').pick();await tick();assert.equal(render().rows.length,1);
+import { CloudProtocolError } from '../apps/app/src/runtime/cloud-protocol.ts';
+import * as mailbox from '../apps/app/src/runtime/gmail-mailbox.ts';
+let session='account-a',agent='remote-a',releaseSearch,delay=false,failNext=null,connected=true,confirmAnswer=true;
+const slots=new Map(),searches=[],disconnects=[],toasts=[],events=[];
+const mail=(id,extra={})=>({id,threadId:'thread-'+id,subject:'Fixture '+id,from:'Sender',fromEmail:'sender@example.invalid',to:['fixture@example.invalid'],snippet:'Preview',receivedAt:'2026-09-30T00:00:00Z',unread:false,...extra});
+const pages={'in:inbox':[[mail('mail-1',{unread:true}),mail('mail-2')],[mail('mail-2'),mail('mail-3')]],'in:sent':[[mail('sent-1',{to:['friend@example.invalid']})]],'from:fixture':[[mail('mail-1')]]};
+const client={
+ gmailAccounts:async()=>[{connectionId:'grant-a',label:'Fixture account',connected,grantedCapabilities:connected?['google.gmail.triage']:[]}],
+ gmailSearch:async(_grant,query,_signal,size,pageToken)=>{searches.push({query,size,pageToken:pageToken??null});if(failNext){const error=failNext;failNext=null;throw error;}
+  const list=pages[query]||[[]],index=pageToken?Number(pageToken.slice(5)):0,result={messages:list[index]||[],syncedAt:'revision',nextPageToken:index+1<list.length?'page-'+(index+1):null};
+  if(delay)return new Promise(resolve=>{releaseSearch=()=>resolve(result);});return result;},
+ gmailRead:async(_grant,id)=>({message:Object.values(pages).flat(2).find(m=>m.id===id),bodyText:'Fixture body'}),
+ disconnectGmail:async(id)=>{disconnects.push(id);connected=false;},
+ initiateGmail:async()=>{throw new Error('No automatic OAuth');},
+};
+const listeners=new Set();
+const controller={getCloudClient:()=>session?{client,sessionId:session}:null,getSnapshot:()=>({session:{sessionId:agent},cloudAccount:session?{environment:'production',userId:'fixture-owner',sessionId:session}:null}),subscribe:fn=>{listeners.add(fn);return()=>listeners.delete(fn);},rejectCloudSession:()=>false,open:()=>{}};
+class Shell{constructor(){this.st={q:null,compose:null};}componentDidMount(){}componentWillUnmount(){}vset(_,p){Object.assign(this.st,p);}}
+const views={inbox:{state:{}}};
+const strip=async(file,name)=>{let source=await readFile(new URL(`../apps/app/src/prototype/${file}`,import.meta.url),'utf8');source=source.replace(/^import .*;\n/gm,'').replace('export function','function')+`\nglobalThis.${name}=${name};`;return '{'+stripTypeScriptTypes(source,{mode:'transform'})+'}';};
+const windowFixture={addEventListener:(name,fn)=>events.push({name,fn}),removeEventListener:()=>{},dispatchEvent:event=>{events.push({dispatched:event.type,detail:event.detail});return true;},confirm:()=>confirmAnswer};
+class CustomEvent{constructor(type,init){this.type=type;this.detail=init?.detail;}}
+const inboxUnsaved=()=>({ready:Promise.resolve(),available:false,conflict:false,error:false,status:'',edit(){},clear:async()=>{},retire(){},resume(){}});
+const sandbox={inboxUnsaved,InboxOperation,reviewMailAttachment,reviewMailContext,validateMailContext,...mailbox,registerPlugin:()=>({cancel:async()=>{}}),crypto:globalThis.crypto,TextEncoder,structuredClone,secureConnectionStore:{read:async key=>slots.get(key)??null,compareExchange:async(key,prior,next)=>{if(JSON.stringify(slots.get(key)??null)!==JSON.stringify(prior))return {status:'conflict'};if(next===null)slots.delete(key);else slots.set(key,next);return {status:'saved'};}},connectionController:controller,DailyApps:{addListener:async()=>({remove:async()=>{}})},openConnectionBrowser:async()=>{throw new Error('No automatic OAuth');},queueMicrotask,setTimeout,AbortController,DOMException,Date,console,window:windowFixture,CustomEvent,document:{documentElement:{dataset:{connectionMode:'live'}}}};
+vm.createContext(sandbox);
+for(const [file,name] of [['inbox-provider-controls.ts','inboxProviderControls'],['inbox-drafts.ts','inboxDrafts'],['inbox-cloud-adapter.ts','installInboxCloudAdapter']])vm.runInContext(await strip(file,name),sandbox);
+sandbox.installInboxCloudAdapter(Shell,views);
+const shell=new Shell();shell.componentDidMount();
+const swipes=new Map();const api={sw:fn=>{const handlers={down(){},up(){}};swipes.set(handlers,fn);return handlers;},swallowed:()=>false,get:()=>shell.st,isActive:()=>true,set:p=>shell.vset('inbox',p),toast:text=>toasts.push(text)};
+const render=()=>views.inbox.render(shell.st,api);const tick=async()=>{for(let i=0;i<6;i++)await new Promise(r=>setTimeout(r,0));};
+const local=value=>JSON.parse(JSON.stringify(value));// vm-realm arrays compare by value
+const chip=label=>{const found=render().chips.find(c=>c.label===label);assert.ok(found,`chip ${label} in ${render().chips.map(c=>c.label)}`);return found;};
+
+render();await tick();
+assert.deepEqual(searches.map(s=>s.query),['in:inbox'],'opening Inbox loads the connected account without another tap');
+assert.equal(render().rows.length,2);assert.equal(views.inbox.badge(),true,'badge reflects a real unread provider message');
+assert.equal(render().hasMore,true,'provider page token offers Load more');
+render().loadMore();await tick();
+assert.deepEqual(searches.at(-1),{query:'in:inbox',size:25,pageToken:'page-1'},'Load more sends the opaque provider page token');
+assert.deepEqual(local(render().rows.map(r=>r.subj)),['Fixture mail-1','Fixture mail-2','Fixture mail-3'],'pages append without duplicates');
+assert.equal(render().hasMore,false,'last page has no Load more');
+render();[...swipes.values()].at(-1)(-120,4);await tick();assert.match(toasts.at(-1),/Authorize mailbox changes/,'swipe without the grant changes nothing');
+chip('Refresh').pick();await tick();assert.deepEqual(searches.at(-1),{query:'in:inbox',size:25,pageToken:null},'Refresh restarts from the first page');
+assert.equal(render().rows.length,2);
 render().rows[0].open();await tick();assert.equal(render().d.body,'Fixture body');
 agent='remote-b';for(const fn of listeners)fn();assert.equal(shell.st.nativeMailSelection,null,'target change clears observation authority');assert.equal(render().d.body,'Fixture body','Cloud mailbox remains independent');
+views.inbox.back(shell.st,api);
+chip('Sent').pick();await tick();assert.equal(searches.at(-1).query,'in:sent','Sent folder uses an in:sent query');
+assert.equal(render().rows[0].name,'To: friend@example.invalid','Sent rows show recipients');assert.equal(views.inbox.badge(),true,'Sent results do not clear the Inbox badge');
+chip('Inbox').pick();await tick();assert.equal(searches.at(-1).query,'in:inbox');
 render().openSearch();assert.equal(render().rows.length,0,'entering search clears prior-query results');render().onQ({target:{value:'from:fixture'}});
-delay=true;render().chips.find(c=>c.label==='Search Gmail').pick();await tick();session='account-b';for(const fn of listeners)fn();releaseSearch({messages:[mail],syncedAt:'stale'});await tick();assert.equal(render().rows.length,0,'late previous-account results discarded');
-render().closeSearch();assert.equal(shell.st.q,null);assert.equal(render().rows.length,0);shell.componentWillUnmount();
-console.log('PASS: Inbox explicit read, independent agent target, query transition clearing, cancelled account switch and stale callback exclusion. Provider fixture only.');
+delay=true;chip('Search Gmail').pick();await tick();session='account-b';for(const fn of listeners)fn();releaseSearch();await tick();assert.equal(render().rows.length,0,'late previous-account results discarded');
+assert.equal(views.inbox.badge(),false,'account change clears the badge');
+delay=false;session='account-a';for(const fn of listeners)fn();render().closeSearch();await tick();assert.equal(shell.st.q,null);
+render();await tick();assert.equal(render().rows.length,2,'re-bound account loads again');
+
+// Classified failures each offer an explicit Retry; nothing retries on its own.
+for(const [error,kind,text] of [[new TypeError('Failed to fetch'),'offline',/offline/],[new CloudProtocolError('http',409),'revoked',/revoked or needs authorization/],[new CloudProtocolError('http',503),'unavailable',/unavailable/]]){
+ failNext=error;const before=searches.length;chip('Refresh').pick();await tick();
+ assert.equal(searches.length,before+1,'one attempt only');assert.match(render().emptyText,text,kind);
+ if(kind==='revoked')chip('Reconnect Gmail');
+ chip('Retry').pick();await tick();assert.equal(searches.length,before+2,'Retry is the explicit second attempt');assert.equal(render().rows.length,2);
+}
+assert.equal(mailbox.classifyGmailFailure(new CloudProtocolError('http',409),'operation').kind,'stale','operation 409 is a stale review');
+assert.equal(mailbox.classifyGmailFailure(new CloudProtocolError('http',500),'read',false).kind,'offline','browser offline wins');
+
+// Content shared from Notes becomes a reviewed local draft, not a silent no-op.
+shell.st.compose={to:'Speaker name',subject:'Shared note',body:'· line one'};render();await tick();render();await tick();
+assert.equal(shell.st.compose,null,'shared compose request is consumed once');
+const composed=render();assert.equal(composed.composing,true,'shared content opens a composer');assert.equal(composed.c.subject,'Shared note');assert.equal(composed.c.body,'· line one');
+assert.deepEqual(local(composed.c.chips),[],'non-address recipients are not guessed');assert.match(composed.c.status,/nothing has been sent/);
+assert.equal(composed.c.multi,false,'From switcher only appears with more than one account');
+assert.deepEqual(local(views.inbox.suggestions(shell.st)),['Help me write this email']);
+views.inbox.back(shell.st,api);composed.c.discard();render().c.confirmDiscard();await tick();
+assert.deepEqual(local(views.inbox.suggestions(shell.st)),['Help me write an email','Help me organize my inbox'],'no unwired inbox automation chips');
+assert.equal(render().composing,false,'discarded shared draft is gone');
+shell.st.compose={subject:'Photo',body:'',attach:['photo-1']};render();await tick();render();await tick();
+assert.equal(render().c.subject,'Photo');assert.deepEqual(local(render().c.atts),[],'prototype item ids are never turned into attachments');assert.match(render().c.status,/not attached automatically/);
+views.inbox.back(shell.st,api);render().c.discard();render().c.confirmDiscard();await tick();
+const discardsBefore=toasts.length;shell.st.compose={subject:'Second share',body:''};render();await tick();render();await tick();assert.equal(render().c.subject,'Second share');
+shell.st.compose={subject:'Third share',body:''};render();await tick();render();await tick();assert.equal(render().c.subject,'Second share','an open draft is never overwritten');assert.match(toasts.slice(discardsBefore).join(' '),/shared content was not added/);
+views.inbox.back(shell.st,api);render().c.discard();render().c.confirmDiscard();await tick();
+
+// Disconnect requires confirmation and reports the read-back state.
+confirmAnswer=false;chip('Disconnect Gmail').pick();await tick();assert.deepEqual(disconnects,[],'cancelled confirmation sends nothing');
+confirmAnswer=true;chip('Disconnect Gmail').pick();await tick();
+assert.deepEqual(disconnects,['grant-a']);assert.match(render().emptyText,/is disconnected/);assert.equal(render().rows.length,0);
+assert.equal(render().chips.some(c=>c.label==='Disconnect Gmail'),false);assert.ok(events.some(e=>e.dispatched==='alpha:gmail-accounts-changed'&&e.detail.source==='inbox'));
+shell.componentWillUnmount();
+console.log('PASS: Inbox auto-load, Refresh, provider paging, Sent folder, unread badge, account/query fences, classified errors with explicit Retry, shared compose prefill, honest chips and confirmed disconnect. Provider fixture only.');

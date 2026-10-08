@@ -50,9 +50,11 @@ export interface GoogleConnection {
 export interface GmailInboxCapabilities {
   version:1; from:string; threads:boolean; send:boolean; providerDrafts:boolean;
   mailboxMutations:boolean; attachments:boolean; providerExactlyOnce:false; atomicDraftReplacement:false;
+  /** Reviewed mark-read/mark-unread operations (patches/eliza/0037). Older servers omit it: false. */
+  readState:boolean;
 }
 export interface GmailInboxReceipt {
-  requestId:string; kind:'send'|'draft-create'|'draft-replace'|'draft-delete'|'archive'|'unarchive'|'trash'|'untrash';
+  requestId:string; kind:'send'|'draft-create'|'draft-replace'|'draft-delete'|'archive'|'unarchive'|'trash'|'untrash'|'mark-read'|'mark-unread';
   reviewDigest:string; state:'prepared'|'dispatched'|'succeeded'|'rejected'|'outcome-unknown';
   providerResult:Record<string,unknown>|null; rejectionCode:string|null;
 }
@@ -373,11 +375,22 @@ export class CloudProtocol {
       from: string(data.from), fromEmail: optionalString(data.fromEmail), to: data.to.map(string), cc: Array.isArray(data.cc)?data.cc.map(string):[], replyTo:optionalString(data.replyTo),
       snippet: data.snippet, receivedAt: string(data.receivedAt), unread: data.isUnread };
   }
-  async gmailSearch(grantId: string, query: string, signal: AbortSignal, maxResults: 25 | 50 = 25): Promise<{ messages: GmailMessage[]; syncedAt: string }> {
+  /** One page of results. `nextPageToken` is the provider's opaque cursor for the same query, or null. */
+  async gmailSearch(grantId: string, query: string, signal: AbortSignal, maxResults: 25 | 50 = 25, pageToken?: string): Promise<{ messages: GmailMessage[]; syncedAt: string; nextPageToken: string | null }> {
+    if (pageToken !== undefined && (typeof pageToken !== "string" || !pageToken || pageToken.length > 4096)) throw new TypeError("Invalid Gmail page token");
     const params = new URLSearchParams({ side: "owner", grantId: string(grantId), query: string(query), maxResults: String(maxResults) });
+    if (pageToken !== undefined) params.set("pageToken", pageToken);
     const data = await this.call(`/api/v1/eliza/google/gmail/search?${params}`, signal, { authenticated: true });
     if (!Array.isArray(data.messages)) throw new CloudProtocolError("invalid-response");
-    return { messages: data.messages.map(value => this.gmailMessage(value)), syncedAt: string(data.syncedAt) };
+    const next = data.nextPageToken;
+    if (next != null && (typeof next !== "string" || !next || next.length > 4096 || next === pageToken)) throw new CloudProtocolError("invalid-response");
+    return { messages: data.messages.map(value => this.gmailMessage(value)), syncedAt: string(data.syncedAt), nextPageToken: next == null ? null : next };
+  }
+  /** Revokes Eliza Cloud's stored Google grant for one owner connection. It does not delete mail and
+   * cannot remove the app from the user's Google Account permissions; callers verify with gmailAccounts. */
+  async disconnectGmail(connectionId: string, signal: AbortSignal): Promise<void> {
+    const data = await this.call("/api/v1/eliza/google/disconnect", signal, { authenticated: true, body: { side: "owner", connectionId: string(connectionId) } });
+    if (data.ok !== true) throw new CloudProtocolError("invalid-response");
   }
   async gmailRead(grantId: string, messageId: string, signal: AbortSignal): Promise<{ message: GmailMessage; bodyText: string }> {
     const params = new URLSearchParams({ side: "owner", grantId: string(grantId), messageId: string(messageId) });
@@ -390,7 +403,8 @@ export class CloudProtocol {
   async gmailInboxCapabilities(grantId:string,signal:AbortSignal):Promise<GmailInboxCapabilities> {
     const data=await this.call(`/api/v1/eliza/google/gmail/inbox-v1/capabilities?${new URLSearchParams({grantId})}`,signal,{authenticated:true});
     if(data.version!==1||data.providerExactlyOnce!==false||data.atomicDraftReplacement!==false||['threads','send','providerDrafts','mailboxMutations','attachments'].some(key=>typeof data[key]!=='boolean'))throw new CloudProtocolError('invalid-response');
-    return {version:1,from:string(data.from),threads:data.threads as boolean,send:data.send as boolean,providerDrafts:data.providerDrafts as boolean,mailboxMutations:data.mailboxMutations as boolean,attachments:data.attachments as boolean,providerExactlyOnce:false,atomicDraftReplacement:false};
+    if(data.readState!==undefined&&typeof data.readState!=='boolean')throw new CloudProtocolError('invalid-response');
+    return {version:1,from:string(data.from),threads:data.threads as boolean,send:data.send as boolean,providerDrafts:data.providerDrafts as boolean,mailboxMutations:data.mailboxMutations as boolean,attachments:data.attachments as boolean,providerExactlyOnce:false,atomicDraftReplacement:false,readState:data.readState===true};
   }
   async gmailThread(grantId:string,threadId:string,signal:AbortSignal,cursor?:{offset:number;historyId:string}) {
     const params=new URLSearchParams({grantId,threadId});if(cursor){params.set('offset',String(cursor.offset));params.set('historyId',cursor.historyId);}
@@ -410,7 +424,7 @@ export class CloudProtocol {
     if(data.id!==draftId||typeof data.providerDigest!=='string'||!/[a-f0-9]{64}/.test(data.providerDigest))throw new CloudProtocolError('invalid-response');return {draftId,messageId:string(data.messageId),providerDigest:data.providerDigest};
   }
   private gmailInboxReceipt(value:unknown,requestId:string):GmailInboxReceipt {
-    const data=object(value);if(data.requestId!==requestId||!['send','draft-create','draft-replace','draft-delete','archive','unarchive','trash','untrash'].includes(String(data.kind))||!['prepared','dispatched','succeeded','rejected','outcome-unknown'].includes(String(data.state))||typeof data.reviewDigest!=='string'||!/^[a-f0-9]{64}$/.test(data.reviewDigest))throw new CloudProtocolError('invalid-response');
+    const data=object(value);if(data.requestId!==requestId||!['send','draft-create','draft-replace','draft-delete','archive','unarchive','trash','untrash','mark-read','mark-unread'].includes(String(data.kind))||!['prepared','dispatched','succeeded','rejected','outcome-unknown'].includes(String(data.state))||typeof data.reviewDigest!=='string'||!/^[a-f0-9]{64}$/.test(data.reviewDigest))throw new CloudProtocolError('invalid-response');
     const providerResult=data.providerResult===null?null:object(data.providerResult);if((data.state==='succeeded')!==(providerResult!==null))throw new CloudProtocolError('invalid-response');
     return {requestId,kind:data.kind as GmailInboxReceipt['kind'],state:data.state as GmailInboxReceipt['state'],reviewDigest:data.reviewDigest,providerResult,rejectionCode:data.rejectionCode===null?null:string(data.rejectionCode)};
   }
