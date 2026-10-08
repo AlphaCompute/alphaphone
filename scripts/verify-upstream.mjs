@@ -13,7 +13,8 @@ if (fs.existsSync(stampFile)) {
 		stamp.patches.length ||
 		stamp.lockSha256 !== hash("upstream.lock.json") ||
 		stamp.preparerSha256 !== hash("scripts/prepare-local-agent.mjs") ||
-		stamp.guardSha256 !== hash("scripts/local-agent-source.mjs")
+		stamp.guardSha256 !== hash("scripts/local-agent-source.mjs") ||
+		stamp.copySha256 !== hash("scripts/copy-file-clone.mjs")
 	)
 		throw new Error(
 			"Staged runtime does not match the pinned source; prepare and stage it before packaging.",
