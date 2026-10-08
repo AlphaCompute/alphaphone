@@ -4,7 +4,9 @@ import assert from 'node:assert/strict';
 import http from 'node:http';
 import { spawnSync } from 'node:child_process';
 if (!process.execArgv.includes('--experimental-transform-types')) process.exit(spawnSync(process.execPath, ['--experimental-transform-types', process.argv[1]], { stdio: 'inherit' }).status ?? 1);
-const { DeviceActions } = await import('../apps/app/src/runtime/device-actions.ts');
+const { DeviceActions, FOREGROUND_OPERATION_TYPES } = await import('../apps/app/src/runtime/device-actions.ts');
+const { FOREGROUND_REVIEW_TYPES } = await import('../.eliza/patched/plugins/plugin-assistant/src/services/device-actions/foreground-review-contract.ts');
+const { calendarAvailability } = await import('../.eliza/patched/plugins/plugin-assistant/src/services/device-actions/calendar-availability-contract.ts');
 const session = { ownerId: 'owner', agentId: 'agent', origin: 'https://agent.example', sessionId: 'session' };
 const credential = { installationId: 'device', enrollmentId: 'enrollment', key: 'a'.repeat(64) };
 let state = 'pending', attemptId, effects = 0, mode = 'ok', claims = 0;
@@ -31,6 +33,79 @@ const journal = {
 const make=()=>new DeviceActions(session,credential,'c'.repeat(64),request,journal,async()=>{assert.equal(records.get('proposal').phase,'applying');effects++;return {status:'succeeded',summary:'Saved fixture note'};});
 const context={view:'notes',revision:2,sensitive:false}, reordered={view:'notes',sensitive:false,revision:2};
 const signal=()=>new AbortController().signal;
+// Pending review: every proposal is parsed and screen-checked on its own.
+async function reviewNoticesAndForeground(){
+ assert.deepEqual([...FOREGROUND_OPERATION_TYPES].sort(),[...FOREGROUND_REVIEW_TYPES].sort());
+ const target={sourceId:'notes',sourceRevision:'d'.repeat(64),noteId:'note-1',revision:'e'.repeat(64)};
+ const tuesday={type:'calendar_availability',start:'2026-10-13T19:00:00.000Z',end:'2026-10-13T20:00:00.000Z',timeZone:'America/New_York'};
+ const make=(id,operation,extra={})=>({id,digest,state:'pending',subjectUserId:'owner',requestedBy:'agent',action:'device_action',expiresAt:new Date(Date.now()+600000).toISOString(),payload:{action:'device_action',version:1,installationId:'device',enrollmentId:'enrollment',operation},execution:null,...extra});
+ let listed=[],posted=[],state={};
+ const request=async(path,body)=>{
+  if(body===undefined)return {proposals:listed};
+  posted.push({path,body});const id=path.split('/')[4],p=listed.find(item=>item.id===id);
+  if(path.endsWith('/claim'))state[id]='executing';else if(path.endsWith('/decision'))state[id]='approved';else if(path.endsWith('/receipt'))state[id]='done';
+  return {proposal:{...p,state:state[id],execution:{attemptId:'attempt'}},digest};
+ };
+ const entries=new Map();
+ const memory={reserve:async input=>{if(entries.has(input.proposalId))return {created:false,entry:entries.get(input.proposalId)};const entry={...input,phase:'reserved'};entries.set(input.proposalId,entry);return {created:true,entry};},markApplying:async input=>Object.assign(entries.get(input.proposalId),{phase:'applying',attemptId:input.attemptId}),finish:async input=>Object.assign(entries.get(input.proposalId),input,{phase:'terminal'}),list:async()=>({entries:[...entries.values()]}),get:async input=>({entry:entries.get(input.proposalId)||null})};
+ const capabilities=['notes.local-record.v1','calendar.local-event.v1','calendar.availability-read.v1','notes.search.v1','device.named-target.v1'];
+ let foregroundCalls=[];
+ const foreground=async(operation,operationId,context,signal,bindingHash,journal)=>{foregroundCalls.push({operation,journal,bindingHash});assert.equal(entries.get(journal.proposalId).phase,'applying');
+  if(operation.type==='calendar_availability')return {status:'succeeded',summary:'Free',foregroundResult:calendarAvailability(operation,2,[{start:'2026-10-13T18:30:00.000Z',end:'2026-10-13T19:30:00.000Z',allDay:false,availability:'free'}])};
+  return {status:'failed',summary:'Cancelled. Nothing was shared.'};};
+ const client=(caps=capabilities,executor=foreground)=>new DeviceActions(session,{...credential,capabilities:caps},'f'.repeat(64),request,memory,async()=>{throw Error('Device executor must not run foreground reviews');},undefined,false,false,executor);
+ const home={view:'home',revision:4,sensitive:false,timeZone:'America/New_York'};
+ // A selected-note action requested from Home is not silently dropped.
+ listed=[make('note-delete',{type:'notes_delete',target}),make('open',{type:'open_view',view:'notes'}),
+  {...make('foreign',{type:'open_view',view:'home'}),subjectUserId:'someone-else'},make('broken',{type:'not_a_device_operation'}),
+  make('finished-broken',{type:'not_a_device_operation'},{state:'done'})];
+ const review=await client().pendingReview(home,signal());
+ assert.deepEqual(review.filter(item=>item.proposal).map(item=>item.proposal.id),['open'],'one invalid proposal does not hide valid siblings');
+ const notices=review.filter(item=>!item.proposal).map(item=>item.notice);
+ assert.equal(notices.length,3,'mismatch plus two invalid pending proposals; completed invalid history stays quiet');
+ assert.match(notices[0],/Open the selected note to review this action\./);
+ assert.ok(notices.slice(1).every(notice=>/could not be shown on this phone/.test(notice)));
+ assert.ok(!notices.join('\n').includes(target.noteId),'notices never expose record identities');
+ assert.deepEqual((await client().pending(home,signal())).map(card=>card.id),['open']);
+ // pending() still fails when nothing is reviewable and a proposal was invalid.
+ listed=[{...make('foreign',{type:'open_view',view:'home'}),subjectUserId:'someone-else'}];
+ await assert.rejects(client().pending(home,signal()),/another identity/);
+ listed=[make('note-delete',{type:'notes_delete',target})];
+ assert.deepEqual(await client().pending(home,signal()),[]);
+ assert.equal((await client().pendingReview({...home,sensitive:true},signal()))[0].notice,'Delete selected note: Unlock the phone to review this action.');
+ // Foreground availability: Home or Calendar, after approval, outside workflow bindings.
+ listed=[make('free-busy',tuesday),make('named',{type:'notes_named',action:'delete',name:'Groceries'}),make('search',{type:'notes_search',query:{kind:'content',text:'passport'}})];
+ const settings={view:'settings',revision:5,sensitive:false,timeZone:'America/New_York'};
+ const away=await client().pendingReview(settings,signal());
+ assert.deepEqual(away.map(item=>item.notice),['Check availability: Open Home or Calendar to review this availability check.','Delete note by name: Return to Home to choose the record for this action.','Search notes: Open Home or Notes to review this Notes search.']);
+ const calendarView=await client().pendingReview({...home,view:'calendar'},signal());
+ assert.deepEqual(calendarView.map(item=>item.proposal?.id??item.notice),['free-busy','Delete note by name: Return to Home to choose the record for this action.','Search notes: Open Home or Notes to review this Notes search.']);
+ const actions=client(),cards=await actions.pending(home,signal());
+ assert.deepEqual(cards.map(card=>card.title),['Check availability','Delete note by name','Search notes']);
+ assert.match(cards[0].description,/You choose which calendars this phone reads\. Only busy times are shared/);
+ assert.match(cards[1].description,/Find “Groceries” in Notes on this phone\. You choose the exact note/);
+ await assert.rejects(actions.approve('free-busy',settings,signal()),/current screen/);
+ const approved=await actions.approve('free-busy',home,signal());
+ assert.equal(approved.status,'succeeded');assert.equal(foregroundCalls.length,1);
+ const receipt=posted.find(item=>item.path.endsWith('free-busy/receipt')).body.receipt;
+ assert.equal(receipt.outcome,'applied');assert.equal(receipt.result.status,'free');assert.equal(receipt.result.transparentIgnored,1);
+ assert.deepEqual(entries.get('free-busy').result.foregroundResult,receipt.result);
+ assert.ok(!JSON.stringify(receipt).includes('title'),'availability receipts carry no event content');
+ // A failed local review returns no content and is journaled as failed.
+ assert.equal((await actions.approve('named',home,signal())).status,'failed');
+ assert.equal(posted.find(item=>item.path.endsWith('named/receipt')).body.receipt.outcome,'failed');
+ // A forged result that widens the window never reaches the agent.
+ const widened=async operation=>({status:'succeeded',summary:'x',foregroundResult:{...calendarAvailability(operation,1,[]),window:{start:operation.start,end:'2026-10-14T20:00:00.000Z',timeZone:operation.timeZone}}});
+ entries.clear();state={};posted=[];listed=[make('free-busy',tuesday)];
+ const forged=client(capabilities,widened);await forged.pending(home,signal());
+ assert.equal((await forged.approve('free-busy',home,signal())).status,'unknown');
+ assert.equal(posted.some(item=>item.path.endsWith('/receipt')),false);
+ // Not negotiated, or no foreground executor: shown as a notice, never as an approvable card.
+ for(const actionsWithout of [client(['notes.local-record.v1']),client(capabilities,null)]){
+  const items=await actionsWithout.pendingReview(home,signal());
+  assert.equal(items[0].proposal,null);assert.match(items[0].notice,/not negotiated/);
+ }
+}
 try {
  const client=make();const cards=await client.pending(context,signal());assert.equal(cards[0].title,'Create note');assert.equal(cards[0].description,'Create note\n“Fixture note”\nExplicit reviewed body');mode='receipt-outage';
  assert.equal((await client.approve('proposal',reordered,signal())).status,'succeeded');assert.equal(effects,1);assert.equal(state,'executing');
@@ -41,5 +116,6 @@ try {
  mode='ok';await make().reconcile('proposal','not_applied',signal());assert.equal(state,'retryable');assert.equal(effects,1);
  records.clear();state='pending';const stale=make();await stale.pending(context,signal());await assert.rejects(stale.approve('proposal',{...context,revision:3},signal()));assert.equal(records.size,0);
  await stale.reject('proposal',signal());assert.equal(state,'rejected');assert.equal(claims,2);
- console.log('PASS: device HTTP decision/claim/receipt, journal-before-effect, receipt recovery across client restart, no duplicate effect, lost-claim reconciliation, context property-order equality/stale rejection, explicit rejection. Synthetic only.');
+ await reviewNoticesAndForeground();
+ console.log('PASS: device HTTP decision/claim/receipt, journal-before-effect, receipt recovery across client restart, no duplicate effect, lost-claim reconciliation, context property-order equality/stale rejection, explicit rejection; visible notices for context-mismatched proposals, per-proposal parse isolation, foreground availability/notes-search/named-target admission. Synthetic only.');
 } finally {server.closeAllConnections();await new Promise(resolve=>server.close(resolve));}
