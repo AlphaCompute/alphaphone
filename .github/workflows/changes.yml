@@ -10,6 +10,18 @@ on:
         value: ${{ jobs.changes.outputs.android }}
       prepare:
         value: ${{ jobs.changes.outputs.prepare }}
+      browser_specs:
+        value: ${{ jobs.changes.outputs.browser_specs }}
+      browser_shards:
+        value: ${{ jobs.changes.outputs.browser_shards }}
+      browser_total:
+        value: ${{ jobs.changes.outputs.browser_total }}
+      browser_development:
+        value: ${{ jobs.changes.outputs.browser_development }}
+      browser_production:
+        value: ${{ jobs.changes.outputs.browser_production }}
+      browser_speech:
+        value: ${{ jobs.changes.outputs.browser_speech }}
 permissions:
   contents: read
 jobs:
@@ -21,6 +33,12 @@ jobs:
       browser: ${{ steps.diff.outputs.browser }}
       android: ${{ steps.diff.outputs.android }}
       prepare: ${{ steps.diff.outputs.prepare }}
+      browser_specs: ${{ steps.diff.outputs.browser_specs }}
+      browser_shards: ${{ steps.diff.outputs.browser_shards }}
+      browser_total: ${{ steps.diff.outputs.browser_total }}
+      browser_development: ${{ steps.diff.outputs.browser_development }}
+      browser_production: ${{ steps.diff.outputs.browser_production }}
+      browser_speech: ${{ steps.diff.outputs.browser_speech }}
     steps:
       - uses: actions/checkout@v4
         with:
