@@ -99,6 +99,19 @@ public class AlphaNoteAudioPlugin extends Plugin {
  @PluginMethod public void state(PluginCall call){main.post(()->{JSObject value=new JSObject();try{value.put("playing",player!=null&&player.isPlaying());value.put("audioId",playingId);value.put("positionMs",player==null?0:player.getCurrentPosition());}catch(RuntimeException error){value.put("playing",false);}call.resolve(value);});}
  @PluginMethod public void remove(PluginCall call){changeDeleted(call,true);}
  @PluginMethod public void restore(PluginCall call){changeDeleted(call,false);}
+ /** Notes Trash expiry or "Delete forever": erase the bytes of a recording this operation already moved to the audio trash. */
+ @PluginMethod public void purge(PluginCall call){main.post(()->{try{synchronized(METADATA_LOCK){
+  String key=id(call.getString("audioId")),operation=operationId(call);JSONObject record=read(key);
+  if(!record.getString("noteId").equals(id(call.getString("noteId"))))throw new IOException();
+  JSONObject receipts=record.optJSONObject("deletionOperations");String prior=receipts==null?"unknown":receipts.optString(operation,"unknown");
+  if(prior.equals("purged")){call.resolve(operationReceipt(record,operation,prior));return;}
+  // Only the operation that owns the current audio trash may erase it. A restored recording is never purged.
+  if(!prior.equals("removed")||record.optLong("deletedAt",0)<=0||!operation.equals(record.optString("activeDeletionOperation")))throw new IOException("Recording is not in this deletion");
+  if(key.equals(playingId))stop();
+  if(audio(key).exists()&&!audio(key).delete())throw new IOException("Recording bytes retained");
+  record.put("transcript","");receipts.put(operation,"purged");record.put("deletionOperations",receipts);
+  write(key,record);call.resolve(operationReceipt(record,operation,"purged"));
+ }}catch(Exception error){call.reject("Saved recording could not be erased");}});}
  private static String operationId(PluginCall call){String value=call.getString("operationId");if(value==null||!value.matches("[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"))throw new IllegalArgumentException();return value;}
  private JSObject operationReceipt(JSONObject record,String operation,String status)throws Exception{JSObject result=new JSObject();result.put("operationId",operation);result.put("audioId",record.getString("audioId"));result.put("noteId",record.getString("noteId"));result.put("status",status);return result;}
  @PluginMethod public void deletionStatus(PluginCall call){try{synchronized(METADATA_LOCK){JSONObject record=read(id(call.getString("audioId")));if(!record.getString("noteId").equals(id(call.getString("noteId"))))throw new IOException();String operation=operationId(call);JSONObject receipts=record.optJSONObject("deletionOperations");call.resolve(operationReceipt(record,operation,receipts==null?"unknown":receipts.optString(operation,"unknown")));}}catch(Exception error){call.reject("Recording operation is unavailable");}}
@@ -108,7 +121,8 @@ public class AlphaNoteAudioPlugin extends Plugin {
   JSONObject receipts=record.optJSONObject("deletionOperations");if(receipts==null)receipts=new JSONObject();
   String prior=receipts.optString(operation,"unknown");
   // Retired operations never regain permission to delete, even after renderer death.
-  if(prior.equals("restored")||(deleted&&prior.equals("removed"))){call.resolve(operationReceipt(record,operation,prior));return;}
+  if(prior.equals("restored")||(deleted&&(prior.equals("removed")||prior.equals("purged")))){call.resolve(operationReceipt(record,operation,prior));return;}
+  if(prior.equals("purged"))throw new IOException("Recording erased");
   if(!receipts.has(operation)&&receipts.length()>=128)throw new IOException("Recording operation history full");
   boolean legacyRestore=!deleted&&record.optLong("deletedAt",0)>0&&!record.has("activeDeletionOperation")&&!record.has("deletionOperations");
   if(record.has("deletedAt")&&!operation.equals(record.optString("activeDeletionOperation"))&&!legacyRestore)throw new IOException("Another deletion owns recording");

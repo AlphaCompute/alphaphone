@@ -1,4 +1,4 @@
-export type AudioRow={audioId:string;noteId:string;durationMs:number;blob:Blob;bytes?:ArrayBuffer;transcript:string;createdAt:number;mimeType:string;deletedAt?:number;expired?:true;deletionOperations?:Record<string,'removed'|'restored'>;activeDeletionOperation?:string};
+export type AudioRow={audioId:string;noteId:string;durationMs:number;blob:Blob;bytes?:ArrayBuffer;transcript:string;createdAt:number;mimeType:string;deletedAt?:number;expired?:true;deletionOperations?:Record<string,'removed'|'restored'|'purged'>;activeDeletionOperation?:string};
 const retention=30*24*60*60*1000;
 let database:Promise<IDBDatabase>|undefined;
 const id=(value:string)=>{if(typeof value!=='string'||!value||value.length>128)throw Error('Invalid recording identity.');};
@@ -31,13 +31,26 @@ export async function changeAudioDeleted(audioId:string,noteId:string,deleted:bo
  id(noteId);operationId(operation);return mutate(audioId,(row,store)=>{
  if(!row||row.noteId!==noteId)throw Error('This recording belongs to another note.');
  const operations=row.deletionOperations||{},prior=operations[operation];
- if(prior==='restored'||(deleted&&prior==='removed'))return receipt(row,operation);
+ if(prior==='restored'||(deleted&&(prior==='removed'||prior==='purged')))return receipt(row,operation);
+ if(prior==='purged'||row.expired)throw Error('This recording has expired.');
  if(!prior&&Object.keys(operations).length>=128)throw Error('Recording operation history full');
  const legacyRestore=!deleted&&!!row.deletedAt&&!('activeDeletionOperation' in row)&&!('deletionOperations' in row);
  if(row.deletedAt&&row.activeDeletionOperation!==operation&&!legacyRestore)throw Error('Another deletion owns recording');
  if(row.deletedAt&&Date.now()-row.deletedAt>retention)throw Error('This recording has expired.');
  if(deleted){row.deletedAt=Date.now();row.activeDeletionOperation=operation;}else{delete row.deletedAt;delete row.activeDeletionOperation;}
  operations[operation]=deleted?'removed':'restored';row.deletionOperations=operations;store.put(stored(row));return receipt(row,operation);
+ });
+}
+/** Notes Trash expiry or "Delete forever": erase bytes and transcript of a recording this operation trashed. Idempotent. */
+export async function purgeAudio(audioId:string,noteId:string,operation:string){
+ id(noteId);operationId(operation);return mutate(audioId,(row,store)=>{
+ if(!row||row.noteId!==noteId)throw Error('This recording belongs to another note.');
+ const operations=row.deletionOperations||{},prior=operations[operation];
+ if(prior==='purged')return receipt(row,operation);
+ if(prior!=='removed'||!row.deletedAt||row.activeDeletionOperation!==operation)throw Error('This recording is not in this deletion.');
+ operations[operation]='purged';
+ store.put(stored({...row,blob:new Blob([]),bytes:new ArrayBuffer(0),transcript:'',expired:true,deletionOperations:operations}));
+ return {audioId:row.audioId,noteId:row.noteId,operationId:operation,status:'purged'};
  });
 }
 export async function migrateAudio(){

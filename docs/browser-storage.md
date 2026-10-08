@@ -163,6 +163,42 @@ reconciliation. Storage transactions alone do not authorize replaying an audio
 effect. Exact backup and confirmed reset are available from Notes; unsaved text
 must be copied or exported before a reset reloads the app.
 
+### Notes Trash
+
+Deleting a note from the editor, through an approved agent `notes_delete`, or as a
+voice note moves it to Trash. Upstream Notes keeps content-free tombstones, so the
+product keeps the restorable copy beside the store (`runtime/notes-trash.ts`): the
+Keystore-encrypted no-backup slot `notes-trash:v1:device` (32 MiB) on Android and the
+canonical browser document `alpha.browser.notes-trash.v1` on the web build. Each
+entry holds the exact record, its reviewed revision (`target`), list position,
+`deletedAt` and, for voice notes, the recording owned by the same deletion operation.
+The entry is written ahead of the deletion commit under the shared
+`alpha.notes-audio-effects.v1` lock, so content survives a crash or restart at any
+point; maintenance drops an entry whose note is saved again (Undo, restore, or a
+deletion that never committed).
+
+Entries expire exactly 3 days (`NOTES_TRASH_RETENTION_MS`) after `deletedAt`
+([decision P-06](decisions.md#october-7-owner-product-decisions)).
+Maintenance runs at startup, once saved Notes open, and each time Notes opens. It
+reads authoritative storage, only takes the lock when there is work, and is
+idempotent: an interrupted purge is simply repeated. Restore reinserts the
+byte-identical record (same id, so the same revision under the store's hash rule;
+browser date stamping is skipped) and refuses to overwrite a saved note with the same
+id. Voice restores use the reviewed audio-restore path; Delete forever, Empty Trash
+and expiry call `AlphaNoteAudio.purge`, which erases bytes and transcript only for
+the operation that trashed the recording, leaves a `purged` receipt, and makes later
+restoration impossible. An unconfirmed voice deletion is never purged while its
+recovery row is pending, and a recording that any saved note still references is never
+erased. An approved agent `notes_delete` of a voice note follows the editor protocol:
+the Trash entry and audio recovery row are written before the tombstone commit, and
+the recording then moves to the audio trash under the agent's operation id, so Trash
+restores or erases the note and recording together. If the recording step cannot be
+confirmed after the commit, the recovery row stays for review and the entry is not
+purged. A recording that is already missing or owned by another deletion is left
+untouched and only the note text goes to Trash. The 3-day window uses wall-clock
+epoch time (time-zone changes have no effect); a clock moved backwards delays the
+purge, and a clock moved forwards can advance it.
+
 The owning suites cover independent tabs, stale editors, exact archives,
 malformed recovery, failed writes, lost acknowledgements, deletion receipts,
 retained unknown outcomes and restoration against newer notes. Browser CI runs
