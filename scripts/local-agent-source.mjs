@@ -78,9 +78,14 @@ export function seedCommittedCache(cache, destination, commit) {
  for(const entry of entries){
   const split=entry.indexOf('\t'),[mode,type,oid]=entry.slice(0,split).split(' '),name=entry.slice(split+1);
   if(split<0||path.isAbsolute(name)||name.split('/').some(part=>!part||part==='.'||part==='..'||part.toLowerCase()==='.git'))throw Error('Unsafe committed runtime path');
-  if(type==='commit'&&mode==='160000')continue;
-  if(type!=='blob'||!['100644','100755','120000'].includes(mode))throw Error('Unsupported committed runtime file');
   const source=path.join(cache,name),target=path.join(destination,name);
+  for(let current=path.dirname(target);current!==destination;current=path.dirname(current))if(present(current)){const dir=fs.lstatSync(current);if(dir.isSymbolicLink()||!dir.isDirectory())throw Error('Unsafe runtime destination parent');}
+  if(type==='commit'&&mode==='160000'){
+   // Ordinary checkout creates an empty uninitialized-submodule directory.
+   // Never copy that submodule's working files or Git metadata from the cache.
+   fs.mkdirSync(path.dirname(target),{recursive:true});fs.mkdirSync(target);continue;
+  }
+  if(type!=='blob'||!['100644','100755','120000'].includes(mode))throw Error('Unsupported committed runtime file');
   for(let current=path.dirname(source);current!==cache;current=path.dirname(current))if(fs.lstatSync(current).isSymbolicLink())throw Error('Linked runtime cache parent');
   const stat=fs.lstatSync(source);
   let link;
@@ -95,7 +100,6 @@ export function seedCommittedCache(cache, destination, commit) {
    try{let length;while((length=fs.readSync(file,buffer,0,buffer.length,null))>0)hash.update(buffer.subarray(0,length));}finally{fs.closeSync(file);}
   }
   if(hash.digest('hex')!==oid)throw Error(`Runtime cache source drift: ${name}`);
-  for(let current=path.dirname(target);current!==destination;current=path.dirname(current))if(present(current)){const dir=fs.lstatSync(current);if(dir.isSymbolicLink()||!dir.isDirectory())throw Error('Unsafe runtime destination parent');}
   fs.mkdirSync(path.dirname(target),{recursive:true});
   if(mode==='120000')fs.symlinkSync(link,target);
   else regular.push({source,destination:target,mode:parseInt(mode,8)&0o777});
