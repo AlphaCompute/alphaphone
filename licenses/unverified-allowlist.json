@@ -16,7 +16,7 @@
     },
     {
       "name": "On-device elizaOS agent runtime payload",
-      "reason": "The staged runtime can ship in standard Android builds. Its Bun runtime and bundled agent dependency notices must be generated from the pinned upstream lockfile before any APK containing that runtime is distributed."
+      "reason": "The staged runtime can ship in standard Android builds. When it is staged, Bun and the bundled agent and workflow-worker npm packages are enumerated from the prepared source; the remaining payload files (musl loader, libstdc++/libgcc_s, PGlite WebAssembly and data, PostgreSQL extensions, models) are not, and need review before any APK containing that runtime is distributed."
     },
     {
       "name": "pdf.js QuickJS sandbox",
