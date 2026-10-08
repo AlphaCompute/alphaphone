@@ -33,7 +33,7 @@ test('native vault code never logs, prints or puts secrets in Intents or bridge 
  }
  const bridge=java['PasswordsPlugin.java'];
  const keys=new Set([...bridge.matchAll(/\b(?:result|item|binding|autofill)\.put\("([A-Za-z]+)"/g)].map(match=>match[1]));
- const allowed=new Set(['autofill','available','biometric','bindings','clearsAfterMs','copied','destination','display','entries','facet','generated','hidesAfterMs','id','kind','label','length','locked','reason','removed','selected','shown','status','supported','unlockRemainingMs','unlockSeconds','unlocked','updatedAt','username']);
+ const allowed=new Set(['autofill','available','biometric','bindings','clearsAfterMs','copied','destination','display','entries','facet','generated','hidesAfterMs','id','kind','label','length','locked','reason','removed','reset','selected','shown','status','supported','unlockRemainingMs','unlockSeconds','unlocked','updatedAt','username']);
  assert.ok(keys.size>=20);
  for(const key of keys){assert.ok(allowed.has(key),`unexpected bridge result key ${key}`);assert.doesNotMatch(key,/password|secret|otp|passkey|credential/i,key);}
  // The only reads of a stored password feed the FLAG_SECURE reveal, the clipboard or the framework Dataset.

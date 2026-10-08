@@ -54,6 +54,7 @@ export function createDevelopmentVault():ElizaPasswordsPlugin & {readonly select
    return input.generate?{id,generated:true as const,length}:{id};
   },
   async remove({id}){need();if(!records.delete(id))throw fail('invalid','Password no longer exists');return {removed:true as const};},
+  async reset(){need();throw fail('invalid','Saved passwords are not damaged');},
   async reveal({id}){need();const r=records.get(id);if(!r)throw fail('invalid','Password no longer exists');surface(r.label,r.secret);return {shown:true as const,hidesAfterMs:30_000};},
   async copy({id}){need();if(!records.get(id))throw fail('invalid','Password no longer exists');return {copied:true as const,clearsAfterMs:45_000};},
   async openAutofillSettings(){selected='this-app';return {status:'opened' as const,destination:'autofill-picker' as const};},

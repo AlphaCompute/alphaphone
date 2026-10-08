@@ -105,15 +105,15 @@ test('browser build without the development profile offers no simulated vault', 
   await expect(page.getByRole('button', { name: 'Unlock passwords', exact: true })).toHaveCount(0);
 });
 
-async function nativeVault(page: Page, options: { leak?: boolean; selected?: string } = {}) {
-  await page.addInitScript(({ leak, selected }) => {
+async function nativeVault(page: Page, options: { leak?: boolean; selected?: string; damaged?: boolean } = {}) {
+  await page.addInitScript(({ leak, selected, damaged }) => {
     const w = window as any; w.androidBridge = {}; localStorage.setItem('alpha.connection.selection.v1', JSON.stringify({ kind: 'offline' }));
-    const f = w.vaultFixture = { calls: [] as any[], locked: true, selected: selected || 'none', entries: [
+    const f = w.vaultFixture = { calls: [] as any[], locked: true, damaged: !!damaged, selected: selected || 'none', entries: [
       { id: 'n1', label: 'Bank app', username: 'holder@example.test', updatedAt: 1, bindings: [{ kind: 'android', facet: `android://${'ab'.repeat(32)}@com.example.bank`, display: 'Bank (com.example.bank)' }] },
     ] as any[], listeners: {} as any };
     const methods = (names: string[]) => names.map(name => ({ name, rtype: 'promise' }));
     w.Capacitor = { PluginHeaders: [
-      { name: 'ElizaPasswords', methods: methods(['status', 'unlock', 'lock', 'list', 'save', 'remove', 'reveal', 'copy', 'openAutofillSettings']) },
+      { name: 'ElizaPasswords', methods: methods(['status', 'unlock', 'lock', 'list', 'save', 'remove', 'reset', 'reveal', 'copy', 'openAutofillSettings']) },
       { name: 'AlphaDevice', methods: methods(['snapshot', 'openPasswordProvider']) },
       { name: 'AlphaConnection', methods: methods(['secureRead', 'addListener', 'removeListener']) },
       { name: 'AlphaHostedResults', methods: methods(['status', 'pendingResult', 'addListener', 'removeListener']) },
@@ -127,6 +127,8 @@ async function nativeVault(page: Page, options: { leak?: boolean; selected?: str
         if (method === 'status') return { available: true, locked: f.locked, unlockRemainingMs: f.locked ? 0 : 50000, unlockSeconds: 60, biometric: true, autofill: { supported: true, selected: f.selected } };
         if (method === 'unlock') { f.locked = false; return { unlocked: true, unlockRemainingMs: 58000 }; }
         if (method === 'lock') { f.locked = true; return { locked: true }; }
+        if (method === 'list' && f.damaged) { f.locked = true; throw Object.assign(new Error('Saved passwords can no longer be decrypted on this device'), { code: 'key-invalidated' }); }
+        if (method === 'reset') { if (f.locked) throw Object.assign(new Error('Unlock saved passwords first'), { code: 'locked' }); if (!f.damaged) throw Object.assign(new Error('Saved passwords are not damaged'), { code: 'invalid' }); f.damaged = false; f.entries = []; return { reset: true }; }
         if (method === 'list') { if (f.locked) throw Object.assign(new Error('Unlock saved passwords first'), { code: 'locked' }); return { entries: leak ? f.entries.map((e: any) => ({ ...e, password: 'synthetic-dev-leak' })) : f.entries }; }
         if (method === 'copy') return { copied: true, clearsAfterMs: 45000 };
         if (method === 'openAutofillSettings') return { status: 'opened', destination: 'autofill-picker' };
@@ -164,6 +166,24 @@ test('native vault: Android unlock, app bindings, copy and autofill picker with 
   // Proton Pass remains an alternative provider on the same page.
   await expect(page.getByText('Other password providers', { exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Get Proton Pass from Proton', exact: true })).toBeVisible();
+});
+
+test('native vault whose key was lost can only be deleted after confirmation and a fresh unlock', async ({ page }) => {
+  await nativeVault(page, { damaged: true });
+  await page.getByRole('button', { name: 'Unlock passwords', exact: true }).click();
+  await expect(page.getByText('Cannot be decrypted on this phone', { exact: true })).toBeVisible();
+  await expect(page.getByText('Saved passwords can no longer be decrypted on this device.', { exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Add password', exact: true })).toHaveCount(0);
+  await page.getByRole('button', { name: 'Delete saved passwords and start over', exact: true }).click();
+  // The first tap only arms the action; nothing is deleted yet.
+  expect(await page.evaluate(() => (window as any).vaultFixture.calls.filter((c: any) => c.method === 'reset').length)).toBe(0);
+  await page.getByRole('button', { name: 'Tap again to delete all saved passwords', exact: true }).click();
+  await expect(page.getByText('Saved passwords were deleted. You can add new ones.', { exact: true })).toBeVisible();
+  const calls: string[] = await page.evaluate(() => (window as any).vaultFixture.calls.map((c: any) => c.method));
+  // Reset follows its own unlock, never the earlier one that discovered the damage.
+  expect(calls.slice(calls.lastIndexOf('reset') - 1, calls.lastIndexOf('reset') + 1)).toEqual(['unlock', 'reset']);
+  await expect(page.getByRole('button', { name: 'Add password', exact: true })).toBeVisible();
+  await expect(page.getByText('No saved passwords', { exact: true })).toBeVisible();
 });
 
 test('native response carrying a secret is refused before anything renders', async ({ page }) => {

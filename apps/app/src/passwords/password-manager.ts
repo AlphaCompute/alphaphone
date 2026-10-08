@@ -26,6 +26,9 @@ let client: PasswordsClient | null | undefined;
 let resolving: Promise<PasswordsClient | null> | undefined;
 let status: PasswordsStatus | null = null, entries: PasswordEntrySummary[] | null = null;
 let query = '', busy = '', notice = '', draft: Draft | null = null, generation = 0, active = false;
+// The vault key was lost or invalidated (for example, the screen lock was removed): the records
+// can never be decrypted, and the only action is a confirmed, freshly unlocked reset.
+let damaged = false, confirmReset = false;
 let expiry: ReturnType<typeof setTimeout> | undefined;
 let notify: () => void = () => {};
 
@@ -66,7 +69,8 @@ async function refresh() {
   } catch (error) {
     if (token !== generation) return;
     const failure = passwordsError(error);
-    if (failure.code === 'locked') locked('Locked after inactivity.'); else notice = failure.message;
+    if (failure.code === 'locked') locked('Locked after inactivity.');
+    else { if (failure.code === 'key-invalidated') { damaged = true; locked(); } notice = failure.message; }
   }
   notify();
 }
@@ -79,6 +83,7 @@ async function run(name: string, task: (vault: PasswordsClient) => Promise<void>
   catch (error) {
     const failure = passwordsError(error);
     if (failure.code === 'locked') locked('Locked after inactivity.');
+    else if (failure.code === 'key-invalidated') { damaged = true; locked(failure.message); }
     else if (draft && (name === 'save' || name === 'remove')) draft.error = failure.message;
     else notice = failure.message;
   } finally { busy = ''; notify(); }
@@ -87,7 +92,7 @@ async function run(name: string, task: (vault: PasswordsClient) => Promise<void>
 /** Leaving the password pages, unmounting or backgrounding locks and forgets everything. */
 export function leavePasswordManager() {
   if (!active) return;
-  active = false; ++generation; query = ''; notice = ''; locked();
+  active = false; ++generation; query = ''; notice = ''; damaged = false; confirmReset = false; locked();
   void resolveClient().then(vault => vault?.lock()).catch(() => {});
 }
 
@@ -150,6 +155,13 @@ export function passwordManagerGroups(helpers: Helpers): Bag[] {
   const head: Bag[] = [];
   if (!status) head.push(helpers.info('Saved passwords', notice || 'Checking…'));
   else if (!status.available) head.push(helpers.info('Saved passwords', status.reason === 'no-screen-lock' ? 'Set a screen lock first' : 'Unavailable on this device'));
+  else if (damaged) {
+    head.push(helpers.info('Vault', 'Cannot be decrypted on this phone'));
+    head.push(nav(busy === 'reset' ? 'Deleting…' : confirmReset ? 'Tap again to delete all saved passwords' : 'Delete saved passwords and start over', () => {
+      if (!confirmReset) { confirmReset = true; notify(); return; }
+      void run('reset', async v => { await v.unlock(); await v.reset(); damaged = false; confirmReset = false; notice = 'Saved passwords were deleted. You can add new ones.'; await refresh(); });
+    }, { sub: 'Their key is gone, so they cannot be recovered' }));
+  }
   else if (status.locked || !entries) {
     head.push(helpers.info('Vault', 'Locked'));
     head.push(nav(busy === 'unlock' ? 'Unlocking…' : 'Unlock passwords', () => void run('unlock', async v => { await v.unlock(); await refresh(); }), { sub: status.biometric ? 'Fingerprint, face or screen lock' : 'Screen lock' }));

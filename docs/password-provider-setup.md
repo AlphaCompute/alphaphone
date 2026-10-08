@@ -7,7 +7,7 @@ available; Android lets the user select exactly one Autofill provider.
 
 ## Integrated password manager
 
-Implementation: upstream candidate `patches/eliza/password-manager.patch` (see
+Implementation: upstream candidate `patches/eliza/0038-password-manager.patch` (see
 [patches/eliza/README.md](../patches/eliza/README.md)), materialized outside `vendor/eliza` into
 `.eliza/patched` by `npm run upstream:prepare-client`. Alpha owns only identity and policy:
 `android/app/src/main/res/values/eliza_passwords.xml` (vault directory `passwords` under the
@@ -22,7 +22,8 @@ biometric allowed, host is a browser), the service declaration in `AndroidManife
 | List and search | Metadata only: name, username, bindings (website host or app label), update time. Search is local over that metadata. |
 | Add, edit, delete | Name, username, one or more exact HTTPS websites (`https://host[:port]`), and a typed (write-only) or natively generated password. App bindings come only from a save capture and can be kept or removed, not hand-entered. Delete needs a second tap. |
 | Generate | Native `SecureRandom`, 16/20/32 characters, every character class present, ambiguous glyphs excluded. The value is stored directly and never returned to the renderer. |
-| Show and copy | Native only. Show opens a FLAG_SECURE dialog that hides after 30 s or when Alpha stops. Copy marks the clip sensitive and clears it after 45 s if it is still Alpha's clip. |
+| Show and copy | Native only. Show opens a FLAG_SECURE dialog that hides after 30 s or when Alpha stops. Copy marks the clip sensitive and clears it after 45 s; while Alpha has focus a clip that is no longer Alpha's is left alone, and in the background (where Android hides the clip description) the clip is cleared without that check. |
+| Damaged vault | If the key is lost or permanently invalidated (for example, the screen lock was removed), the vault is reported as undecryptable. The only action is "Delete saved passwords and start over": two taps and a fresh unlock, and native code refuses it while the vault is still readable. |
 | Set as autofill service | Opens Android's own confirmation (`Settings.ACTION_REQUEST_SET_AUTOFILL_SERVICE` for Alpha's package, falling back to Settings). The status row reports only what `AutofillManager#getAutofillServiceComponentName` reads back on refresh or resume. Opening the screen is never treated as selection. |
 | Fill | Works in other apps and in Alpha's own browser through the Android Autofill framework. See the rules below. |
 | Save | "Save password?" is offered by Android after a sign-in; Alpha's prompt names the site or app and username, and writes only after Save and unlock. Same binding and username updates the existing entry. |
@@ -31,8 +32,9 @@ biometric allowed, host is a browser), the service declaration in `AndroidManife
 Fill rules (implemented in the shared `PasswordFormPolicy`, tested on a JVM):
 
 - A fill request never opens the vault. Android shows one "Fill with a saved password" choice with
-  no values; selecting it opens the FLAG_SECURE picker, which unlocks and lists only entries bound
-  to the exact request subject. Every fill needs that explicit choice.
+  no values; selecting it opens the FLAG_SECURE picker, which always asks for a fresh unlock (an
+  earlier unlock in Settings or another fill is not reused) and lists only entries bound to the
+  exact request subject. Every fill needs that authentication and an explicit choice.
 - Websites: accepted only from a trusted browser. Alpha's browser is trusted only when its
   WebView reports the committed top-level HTTPS origin and it equals the field origin. Any second
   web domain in the structure (a cross-origin frame), non-HTTPS content or mixed native/web login
@@ -40,17 +42,19 @@ Fill rules (implemented in the shared `PasswordFormPolicy`, tested on a JVM):
 - Apps: the framework-reported package, matched only if `PackageManager#hasSigningCertificate`
   confirms the signer recorded at save time (rotation-aware). Alpha's own native UI and its
   renderer WebView are never filled.
-- Matching is exact: `accounts.example.com` and `example.com` are different bindings.
+- Matching is exact: `accounts.example.com` and `example.com` are different bindings. Android's
+  field metadata has no port; in Alpha's browser the committed top-level origin supplies it, so
+  `https://example.com:8443` matches only a binding with that port.
 
 ### Threat model
 
 | Asset / boundary | Protection | Residual risk |
 | --- | --- | --- |
-| Vault at rest | One AES-256-GCM frame (`PasswordVaultFrame`) with host AAD in the no-backup directory; non-exportable Keystore key requiring user authentication and an unlocked device; `allowBackup=false` and data-extraction rules exclude everything. | Root or a compromised OS. StrongBox is not asserted. Removing the screen lock permanently invalidates the key; the vault becomes unreadable (reported as `key-invalidated`). |
+| Vault at rest | One AES-256-GCM frame (`PasswordVaultFrame`, random 96-bit IV generated by Keystore per write) with host AAD in the no-backup directory; non-exportable Keystore key requiring user authentication and an unlocked device; `allowBackup=false` and data-extraction rules exclude everything. | Root or a compromised OS. StrongBox is not asserted. Removing the screen lock permanently invalidates the key; the vault becomes unreadable (reported as `key-invalidated`) and can only be deleted. Because the device credential is always accepted, the key is bound to the lock-screen secure ID, so enrolling a new biometric does not invalidate it (enrolling already requires the credential). Any device unlock also opens the Keystore window; the in-app grant from Alpha's own prompt is still required. |
 | Agent, model, logs, journal, notifications, crash data | No bridge method resolves with a secret; the shared client rebuilds responses from allowlisted fields and rejects any secret-like key; errors never echo input; native code has no logging; nothing is written to view state, storage, toasts, notifications or the action journal; the agent observation is `sensitive` (no view, no selection) on every password page, and the agent client then refuses to send. No agent action, workflow step or backend code can reach the vault bridge (static test). | A password the user is typing exists in renderer memory until save/leave. The agent sees no labels or origins at all in this version. |
-| Fill into the wrong origin | Exact origin/app binding, browser trust, top-level origin check, cross-origin frame refusal, signer verification, one-shot in-memory tokens (Intents carry only a random token), user choice per fill. | Chromium WebView flattening of cross-origin iframe forms under the top-level domain would not be detectable from the structure; real cross-origin iframe behavior needs device qualification. A site's own scripts can read fields the user fills. |
+| Fill into the wrong origin | Exact origin/app binding, browser trust, top-level origin check, cross-origin frame refusal, signer verification, one-shot in-memory tokens (Intents carry only a random token), user choice per fill. | Chromium WebView flattening of cross-origin iframe forms under the top-level domain would not be detectable from the structure; real cross-origin iframe behavior needs device qualification. Field metadata has no port, so a same-host frame on another port is indistinguishable from the top-level document. A site's own scripts can read fields the user fills. |
 | Save capture | Captured values stay in memory behind a one-shot token (5 min), consumed once; nothing is written without Save and unlock. | Process death drops the capture (fails closed). |
-| Reveal / clipboard | FLAG_SECURE, timed hide, sensitive clip flag (Android 13+ hides previews), verified-only clearing. | Other apps with clipboard access on older Android versions; the clip is not cleared if Alpha cannot verify it is still Alpha's. |
+| Reveal / clipboard | FLAG_SECURE, timed hide, sensitive clip flag (Android 13+ hides previews), timed clearing. | Other apps with clipboard access on older Android versions; a clip copied after Alpha's, while Alpha is in the background, is cleared too; a frozen background process clears on its next resume. |
 | Renderer compromise | Cannot read secrets; cannot mint app bindings; can trigger unlock prompts and native reveal/copy only after a real unlock. | A compromised renderer could rename/delete entries while unlocked. |
 
 ### Passkeys

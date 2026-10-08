@@ -5,11 +5,13 @@ import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 // Exports staged changes from a separate authoring clone of the pinned Eliza commit (never
-// vendor/eliza) as patches/eliza/<name>.patch plus its <name>-source.json manifest.
-// Usage: node scripts/export-eliza-patch.mjs <name> <authoring-clone> "<status>"
+// vendor/eliza) as patches/eliza/NNNN-<topic>.patch plus its <topic>-source.json manifest.
+// Usage: node scripts/export-eliza-patch.mjs NNNN-<topic> <authoring-clone> "<status>"
 const root = fileURLToPath(new URL('../', import.meta.url));
 const [name, sourceArgument, status] = process.argv.slice(2);
-if (!/^[a-z0-9-]+$/.test(name || '') || !sourceArgument || !status) throw Error('Usage: export-eliza-patch.mjs <name> <authoring-clone> "<status>"');
+const usage = 'Usage: export-eliza-patch.mjs NNNN-<topic> <authoring-clone> "<status>"';
+if (!/^\d{4}-[a-z0-9]+(-[a-z0-9]+)*$/.test(name || '') || !sourceArgument || !status) throw Error(usage);
+const topic = name.slice(5);
 const source = path.resolve(sourceArgument);
 if (source === path.join(root, 'vendor/eliza')) throw Error('Author patches in a separate clone, never vendor/eliza.');
 const pin = JSON.parse(fs.readFileSync(path.join(root, 'upstream.lock.json'), 'utf8')).commit;
@@ -34,5 +36,5 @@ const patch = git(['diff', '--cached', '--binary', '--full-index']);
 fs.mkdirSync(path.join(root, 'patches/eliza'), { recursive: true });
 fs.writeFileSync(path.join(root, 'patches/eliza', `${name}.patch`), patch);
 const sorted = Object.fromEntries(Object.entries(files).sort(([a], [b]) => a.localeCompare(b)));
-fs.writeFileSync(path.join(root, 'patches/eliza', `${name}-source.json`), JSON.stringify({ baseCommit: pin, patch: `${name}.patch`, sha256: hash(patch), status, basePaths, addedPaths, changed: entries.map(entry => entry.file).sort(), files: sorted }, null, 2) + '\n');
+fs.writeFileSync(path.join(root, 'patches/eliza', `${topic}-source.json`), JSON.stringify({ baseCommit: pin, patch: `${name}.patch`, sha256: hash(patch), status, basePaths, addedPaths, changed: entries.map(entry => entry.file).sort(), files: sorted }, null, 2) + '\n');
 console.log(`Exported ${entries.length} changed upstream files (${Object.keys(sorted).length} in the patched output).`);

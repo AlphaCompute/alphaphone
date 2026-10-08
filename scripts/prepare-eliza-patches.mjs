@@ -6,10 +6,13 @@ import { fileURLToPath } from 'node:url';
 import { upstreamNativeSource } from './upstream-native-source.mjs';
 
 // Materializes explicit, reviewed upstream patches from patches/eliza outside the immutable
-// vendor checkout. Each patch has a <name>-source.json manifest binding it to the Eliza pin,
-// its own SHA-256, the authenticated upstream prefixes it is applied to, and the SHA-256 of
-// every resulting file. vendor/eliza is only read, through the same pin/clean admission as
-// native staging. Output: .eliza/patched (ignored), with a .source.json provenance stamp.
+// vendor checkout. Patches follow the directory's numbered series (NNNN-<topic>.patch, see
+// patches/eliza/README.md). A patch applied to Alpha's build has a <topic>-source.json manifest
+// binding it to the Eliza pin, its own SHA-256, the authenticated upstream prefixes it is
+// applied to, and the SHA-256 of every resulting file; patches are applied in series order.
+// Reference-only patches (<topic>-source-base.json) are qualified in isolated upstream
+// worktrees and are never read here. vendor/eliza is only read, through the same pin/clean
+// admission as native staging. Output: .eliza/patched (ignored), with a .source.json stamp.
 const projectRoot = fileURLToPath(new URL('../', import.meta.url));
 const hash = bytes => createHash('sha256').update(bytes).digest('hex');
 const safeRelative = file => typeof file === 'string' && /^(plugins|packages)\/[A-Za-z0-9._@/-]+$/.test(file) && !file.includes('\\') && file.split('/').every(part => part && part !== '.' && part !== '..');
@@ -43,16 +46,22 @@ const matches = (actual, expected) => JSON.stringify(Object.keys(actual).sort())
 export function readPatchManifests(root = projectRoot) {
   const directory = path.join(root, 'patches/eliza');
   if (!fs.existsSync(directory)) return [];
-  return fs.readdirSync(directory).filter(name => name.endsWith('-source.json')).sort().map(name => {
+  const manifests = fs.readdirSync(directory).filter(name => name.endsWith('-source.json')).map(name => {
     const bytes = fs.readFileSync(path.join(directory, name)), manifest = JSON.parse(bytes);
-    const valid = manifest && /^[a-f0-9]{40}$/.test(manifest.baseCommit) && typeof manifest.patch === 'string' && /^[a-z0-9-]+\.patch$/.test(manifest.patch) &&
-      manifest.patch === name.replace(/-source\.json$/, '.patch') && /^[a-f0-9]{64}$/.test(manifest.sha256) &&
+    const topic = name.replace(/-source\.json$/, '');
+    const valid = manifest && /^[a-z0-9]+(-[a-z0-9]+)*$/.test(topic) && /^[a-f0-9]{40}$/.test(manifest.baseCommit) && typeof manifest.patch === 'string' &&
+      manifest.patch === manifest.patch.match(/^\d{4}-/)?.[0] + topic + '.patch' && /^[a-f0-9]{64}$/.test(manifest.sha256) &&
       Array.isArray(manifest.basePaths) && manifest.basePaths.every(safeRelative) && manifest.files && Object.keys(manifest.files).length &&
       Object.entries(manifest.files).every(([file, digest]) => safeRelative(file) && /^[a-f0-9]{64}$/.test(digest) && manifest.basePaths.concat(manifest.addedPaths || []).some(prefix => file === prefix || file.startsWith(prefix + '/'))) &&
       (manifest.addedPaths || []).every(safeRelative);
     if (!valid) throw Error(`Invalid Eliza patch manifest: patches/eliza/${name}`);
     return { name, manifest, manifestSha256: hash(bytes) };
   });
+  // Series order. One series number names exactly one patch, applied or reference-only.
+  manifests.sort((a, b) => a.manifest.patch.localeCompare(b.manifest.patch));
+  const numbers = fs.readdirSync(directory).filter(name => name.endsWith('.patch')).map(name => name.slice(0, 4));
+  if (new Set(numbers).size !== numbers.length) throw Error('Duplicate Eliza patch series number in patches/eliza');
+  return manifests;
 }
 
 /** Applies every reviewed patch to authenticated pinned source; returns the output directory. */

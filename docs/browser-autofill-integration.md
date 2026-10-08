@@ -25,8 +25,9 @@ Alpha's own provider (`ElizaPasswordAutofillService` from the shared password pl
 only through `CredentialWebView`: when the child is eligible, it adds the committed top-level
 origin (`PasswordFormPolicy.TOP_ORIGIN_EXTRA`, `https://host[:port]` of the presented URL) to
 its own autofill node after Chromium has built the virtual structure. The provider refuses the
-request unless that origin equals the single HTTPS web domain of every web node, so a
-cross-origin frame (a second domain) is never filled. The privileged renderer WebView remains
+request unless that origin's host equals the single HTTPS web domain of every web node, so a
+cross-origin frame (a second domain) is never filled, and uses that origin (with its port, which
+Android's field metadata lacks) as the exact binding to match. The privileged renderer WebView remains
 excluded, and no field values or vault data are added to the agent bridge. Device
 qualification of real Chromium structures (including cross-origin iframes), provider
 selection, unlock/resume and save prompts remains open.

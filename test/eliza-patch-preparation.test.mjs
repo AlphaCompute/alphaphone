@@ -31,7 +31,7 @@ test('patch manifests bind each reviewed patch to the pin, its hash and every ou
   for(const file of manifest.changed)assert.ok(file in manifest.files,file);
  }
  // The upstream candidate is additive to the secure store and adds the passwords plugin.
- const password=manifests.find(item=>item.manifest.patch==='password-manager.patch').manifest;
+ const password=manifests.find(item=>item.manifest.patch==='0038-password-manager.patch').manifest;
  assert.deepEqual(password.addedPaths,['plugins/plugin-native-passwords']);
  assert.ok(password.basePaths.includes('plugins/plugin-native-secure-store'));
 });
@@ -63,7 +63,7 @@ test('pin, patch and manifest tampering are refused without replacing the prepar
  fs.writeFileSync(lock,JSON.stringify({commit:'0'.repeat(40)}));
  assert.throws(()=>prepareElizaPatches({root:directory}),/Requalify/);
  fs.writeFileSync(lock,pin);
- const patch=path.join(directory,'patches/eliza/password-manager.patch');fs.appendFileSync(patch,'\n');
+ const patch=path.join(directory,'patches/eliza/0038-password-manager.patch');fs.appendFileSync(patch,'\n');
  assert.throws(()=>prepareElizaPatches({root:directory}),/hash mismatch/);
  assert.deepEqual(fs.readFileSync(path.join(output,'.source.json')),stamp);
  const manifestFile=path.join(directory,'patches/eliza/password-manager-source.json'),manifest=JSON.parse(fs.readFileSync(manifestFile));
@@ -78,4 +78,20 @@ test('unknown output directories and symlinks are refused',()=>fixture(directory
  fs.rmSync(output,{recursive:true});prepareElizaPatches({root:directory});
  fs.symlinkSync(path.join(directory,'upstream.lock.json'),path.join(output,'link'));
  assert.throws(()=>prepareElizaPatches({root:directory}),/Symlink/);
+}));
+
+test('numbered series: reference-only patches are ignored, unnumbered or duplicate numbers are refused',()=>fixture(directory=>{
+ const eliza=path.join(directory,'patches/eliza');
+ // A reference-only patch (qualified in isolated upstream worktrees) never enters .eliza/patched.
+ fs.writeFileSync(path.join(eliza,'0037-reference-only.patch'),'not applied\n');
+ fs.writeFileSync(path.join(eliza,'reference-only-source-base.json'),JSON.stringify({baseCommit:'0'.repeat(40),patch:'0037-reference-only.patch'}));
+ assert.deepEqual(readPatchManifests(directory).map(item=>item.manifest.patch),['0038-password-manager.patch']);
+ const output=prepareElizaPatches({root:directory});
+ assert.equal(JSON.parse(fs.readFileSync(path.join(output,'.source.json'))).patches.length,1);
+ fs.writeFileSync(path.join(eliza,'0038-duplicate.patch'),'x\n');
+ assert.throws(()=>readPatchManifests(directory),/Duplicate Eliza patch series number/);
+ fs.rmSync(path.join(eliza,'0038-duplicate.patch'));
+ const manifestFile=path.join(eliza,'password-manager-source.json'),manifest=JSON.parse(fs.readFileSync(manifestFile));
+ fs.writeFileSync(manifestFile,JSON.stringify({...manifest,patch:'password-manager.patch'}));
+ assert.throws(()=>readPatchManifests(directory),/Invalid Eliza patch manifest/);
 }));
