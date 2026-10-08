@@ -156,11 +156,11 @@ test('the CSP admits Home, Notes, Maps, Scan and PDF without violations', async 
   await page.getByRole('textbox', { name: 'Title', exact: true }).fill('CSP note');
   await page.getByRole('button', { name: 'Back to notes', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Open CSP note', exact: true })).toBeVisible();
-  await page.getByRole('button', { name: 'Home', exact: true }).click();
+  await page.getByRole('button', { name: 'Back to apps', exact: true }).click();
   await page.getByRole('button', { name: 'Maps', exact: true }).click();
   await expect(page.locator('html')).toHaveAttribute('data-active-view', 'maps');
   await page.waitForTimeout(1000);
-  await page.getByRole('button', { name: 'Home', exact: true }).click();
+  await page.getByRole('button', { name: 'Back to apps', exact: true }).click();
   await page.getByRole('button', { name: 'Camera', exact: true }).click();
   const png = await page.evaluate(async () => {
     const canvas = document.createElement('canvas'); canvas.width = 1200; canvas.height = 600;

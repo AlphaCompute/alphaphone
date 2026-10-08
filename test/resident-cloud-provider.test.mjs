@@ -10,8 +10,8 @@ test('resident Cloud binding validates credentials and keeps provider environmen
  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'alpha-cloud-provider-'));
  const java=process.env.JAVA_HOME||(process.platform==='darwin'?'/opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home':'');
  const bin=name=>java?path.join(java,'bin',name):name;
- const jars=fs.globSync(path.join(os.homedir(),'.gradle/caches/modules-2/files-2.1/org.json/json/*/*/json-*.jar'));
- assert.ok(jars.length,'Existing cached org.json JVM dependency required');
+ const jsonJar=process.env.ALPHA_JSON_JAR||fs.globSync(path.join(os.homedir(),'.gradle/caches/modules-2/files-2.1/org.json/json/20250517/*/json-20250517.jar'))[0];
+ assert.ok(jsonJar&&fs.existsSync(jsonJar),'Set ALPHA_JSON_JAR or install the pinned Gradle JSON test dependency');
  const constants=['CLOUD_PROVIDER_MODEL','CLOUD_PROVIDER_BASE','PROVIDER_MODEL_PATTERN'].map(name=>source.match(new RegExp(' static final String '+name+'=[^;]+;'))[0]).join('\n');
  try{
  fs.writeFileSync(path.join(dir,'CloudProviderTest.java'),`import java.util.*;import org.json.JSONObject;
@@ -94,8 +94,8 @@ ${method(' static void applyProviderEnvironment(')}
   System.out.println("PASS native Cloud credential and provider boundaries");
  }
 }`);
- execFileSync(bin('javac'),['--release','17','-cp',jars[0],'-d',dir,path.join(dir,'CloudProviderTest.java')],{timeout:20000});
- assert.match(execFileSync(bin('java'),['-cp',dir+path.delimiter+jars[0],'CloudProviderTest'],{encoding:'utf8',timeout:20000}),/^PASS native Cloud credential and provider boundaries/);
+ execFileSync(bin('javac'),['--release','17','-cp',jsonJar,'-d',dir,path.join(dir,'CloudProviderTest.java')],{timeout:20000});
+ assert.match(execFileSync(bin('java'),['-cp',dir+path.delimiter+jsonJar,'CloudProviderTest'],{encoding:'utf8',timeout:20000}),/^PASS native Cloud credential and provider boundaries/);
  }finally{fs.rmSync(dir,{recursive:true,force:true});}
 });
 test('Cloud configuration takes a credential reference and stores no copied token',()=>{
