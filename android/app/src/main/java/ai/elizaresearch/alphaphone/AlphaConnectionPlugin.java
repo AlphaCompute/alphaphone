@@ -151,8 +151,11 @@ public final class AlphaConnectionPlugin extends Plugin {
  private enum RequestOperation { CLI_CREATE, CLI_POLL, IDENTITY, BALANCE, OTHER }
  private enum RequestStage { VALIDATE, CONNECT, WRITE, STATUS, READ, PARSE, RESOLVE }
  /** Never include exception messages, request identifiers or transport data in diagnostics. */
- private static void debugRequestFailure(RequestOperation operation,RequestStage stage,int status,Exception error) {
-  if(BuildConfig.DEBUG)android.util.Log.d("AlphaConnection", "operation="+operation+" stage="+stage+" status="+status+" exception="+error.getClass().getName());
+ private static String debugRequestFailure(RequestOperation operation,RequestStage stage,int status,Exception error) {
+  if(!BuildConfig.DEBUG)return null;
+  String code="ALPHA_TRANSPORT:"+operation+":"+stage+":"+status+":"+error.getClass().getName();
+  android.util.Log.d("AlphaConnection",code);
+  return code;
  }
  @PluginMethod public void request(PluginCall call) {
   final String id;
@@ -223,8 +226,8 @@ public final class AlphaConnectionPlugin extends Plugin {
     stage=RequestStage.RESOLVE;
     JSObject result = new JSObject(); result.put("status", status); result.put("data", data); call.resolve(result);
    } catch (Exception error) {
-    debugRequestFailure(operation,stage,status,error);
-    call.reject(pending.cancelled ? "Request cancelled" : "Connection request failed");
+    String code=debugRequestFailure(operation,stage,status,error);
+    call.reject(pending.cancelled ? "Request cancelled" : "Connection request failed",code);
    }
    finally { if (connection != null) connection.disconnect(); requests.remove(id, pending); }
   }))requests.remove(id,pending);

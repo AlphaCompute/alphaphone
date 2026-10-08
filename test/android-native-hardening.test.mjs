@@ -52,7 +52,7 @@ test('development behaviour keys on the test-mocks BuildConfig field, not DEBUG'
     const source = read(app + name + '.java');
     // DEBUG may gate the closed-field transport diagnostic, never development capabilities.
     const capabilities = name === 'AlphaConnectionPlugin'
-      ? source.replace(/private static void debugRequestFailure\([^)]*\) \{[^}]*\}/, '')
+      ? source.replace(/private static String debugRequestFailure\([^)]*\) \{[^}]*\}/, '')
       : source;
     assert.doesNotMatch(capabilities, /BuildConfig\.DEBUG/, name);
     assert.match(source, /BuildConfig\.ELIZA_DEV_ALLOW_TEST_MOCKS/, name);

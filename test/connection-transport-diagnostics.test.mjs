@@ -20,15 +20,26 @@ test('transport diagnostic emits no exception payload and remains silent outside
  ${diagnostic}
  public static void main(String[] args){
   Exception failure=new java.net.SocketTimeoutException("secret-url-session-header-body");
-  debugRequestFailure(RequestOperation.CLI_POLL,RequestStage.READ,200,failure);
+  if(debugRequestFailure(RequestOperation.CLI_POLL,RequestStage.READ,200,failure)!=null)throw new AssertionError("Release code emitted");
   if(android.util.Log.output!=null)throw new AssertionError("Release diagnostic emitted");
   BuildConfig.DEBUG=true;
-  debugRequestFailure(RequestOperation.CLI_POLL,RequestStage.READ,200,failure);
-  if(!"AlphaConnection:operation=CLI_POLL stage=READ status=200 exception=java.net.SocketTimeoutException".equals(android.util.Log.output))throw new AssertionError("Unexpected diagnostic payload");
+  String code=debugRequestFailure(RequestOperation.CLI_POLL,RequestStage.READ,200,failure);
+  if(!"ALPHA_TRANSPORT:CLI_POLL:READ:200:java.net.SocketTimeoutException".equals(code))throw new AssertionError("Unexpected diagnostic code");
+  if(!("AlphaConnection:"+code).equals(android.util.Log.output))throw new AssertionError("Unexpected diagnostic payload");
   if(android.util.Log.output.contains("secret"))throw new AssertionError("Exception payload leaked");
  }
 }`);
  execFileSync(bin('javac'),['-d',dir,path.join(dir,'DiagnosticTest.java')],{timeout:15000});
  execFileSync(bin('java'),['-cp',dir,'DiagnosticTest'],{timeout:15000});
  }finally{fs.rmSync(dir,{recursive:true,force:true});}
+});
+
+test('public probe admits only the closed transport diagnostic grammar',()=>{
+ const source=fs.readFileSync('android/app/src/androidTest/java/ai/elizaresearch/alphaphone/PublicCloudTransportProbeInstrumentedTest.java','utf8');
+ const expression=source.match(/&&\/(\^ALPHA_TRANSPORT:[^\n]+?)\/\.test\(error.code\)/);
+ assert.ok(expression,'Probe diagnostic grammar exists');
+ const allowed=new RegExp(expression[1]);
+ assert.ok(allowed.test('ALPHA_TRANSPORT:CLI_POLL:READ:200:java.net.SocketTimeoutException'));
+ assert.ok(allowed.test('ALPHA_TRANSPORT:OTHER:STATUS:-1:javax.net.ssl.SSLHandshakeException'));
+ for(const code of ['secret', 'ALPHA_TRANSPORT:session-secret:READ:200:java.lang.Exception', 'ALPHA_TRANSPORT:CLI_POLL:URL:200:java.lang.Exception', 'ALPHA_TRANSPORT:CLI_POLL:READ:200:java.lang.Exception secret', 'ALPHA_TRANSPORT:CLI_POLL:READ:200:https://secret.invalid', 'ALPHA_TRANSPORT:CLI_POLL:READ:200:java.lang.Exception\nsecret'])assert.equal(allowed.test(code),false);
 });
