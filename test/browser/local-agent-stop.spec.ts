@@ -32,6 +32,7 @@ for (const scenario of ['confirmed', 'incomplete-timeout'] as const) {
               else if (input.path === '/api/agents') body = { agents: [{ id: 'fixture-agent', name: 'Resident fixture', status: 'running' }] };
               else if (input.path === '/api/client-devices/register') body = { installationId: input.headers['X-Eliza-Device-Id'], enrollmentId: 'fixture-enrollment', capabilities: [] };
               else if (input.path === '/api/conversations') body = { conversations: [] };
+              else if (input.path === '/api/client-devices/proposals') body = { proposals: [] };
               else if (input.path === '/api/workflow/status') body = { status: 'unavailable' };
               else { f.unexpected.push(input.path); throw Error('Unexpected local request'); }
               return { status: 200, body: JSON.stringify(body) };
@@ -56,6 +57,7 @@ for (const scenario of ['confirmed', 'incomplete-timeout'] as const) {
     let chooser = page.locator('.alpha-connection');
     await chooser.getByRole('button', { name: 'Start local agent', exact: true }).click();
     await expect(page.locator('.alpha-connection-scrim')).toHaveCount(0);
+    await page.getByRole('dialog', { name: 'Set up Alpha access' }).getByRole('button', { name: 'Not now', exact: true }).click();
     await page.getByRole('button', { name: 'Settings', exact: true }).click();
     await page.getByRole('button', { name: /Agent connection/ }).click();
     chooser = page.locator('.alpha-connection');
