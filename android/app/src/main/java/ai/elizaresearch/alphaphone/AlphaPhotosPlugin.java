@@ -94,6 +94,32 @@ public class AlphaPhotosPlugin extends Plugin {
    result.put("image",image(id,video,1024));if(video)result.put("path",playback.authorize(uri));call.resolve(result);
   }catch(Exception failure){call.reject("This saved media is no longer available");}
  });}
+ /** Scan mode captures stay in memory. Keep photo is the only path that publishes
+  * one to Photos: exact JPEG bytes, pending until fully written, one result per operation. */
+ @PluginMethod public void keepCapture(PluginCall call){submit(call,()->{
+  String operation=call.getString("operationId","");
+  if(!operation.matches("[a-f0-9-]{36}")){call.reject("Invalid keep request");return;}
+  android.content.SharedPreferences kept=getContext().getSharedPreferences("alpha-kept-scan-captures",0);
+  String previous=kept.getString(operation,null);if(previous!=null){JSObject out=new JSObject();out.put("status","saved");out.put("id",previous);call.resolve(out);return;}
+  byte[] bytes;
+  try{bytes=Base64.decode(call.getString("dataBase64",""),Base64.DEFAULT);}catch(IllegalArgumentException invalid){bytes=new byte[0];}
+  if(bytes.length<4||bytes.length>16*1024*1024||(bytes[0]&255)!=0xFF||(bytes[1]&255)!=0xD8){JSObject out=new JSObject();out.put("status","failed");out.put("message","Only a captured JPEG up to 16 MB can be kept.");call.resolve(out);return;}
+  ContentResolver resolver=getContext().getContentResolver();android.content.ContentValues values=new android.content.ContentValues();
+  values.put(MediaStore.Images.Media.DISPLAY_NAME,"SCAN_"+operation+".jpg");values.put(MediaStore.Images.Media.MIME_TYPE,"image/jpeg");values.put(MediaStore.Images.Media.RELATIVE_PATH,android.os.Environment.DIRECTORY_PICTURES);values.put(MediaStore.Images.Media.IS_PENDING,1);
+  Uri created=null;
+  try{
+   created=resolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI,values);if(created==null)throw new java.io.IOException("Photo could not be created");
+   try(java.io.OutputStream out=resolver.openOutputStream(created,"w")){if(out==null)throw new java.io.IOException();out.write(bytes);}
+   try(java.io.InputStream in=resolver.openInputStream(created)){DocumentExportBytes.verify(in,bytes);}
+   android.content.ContentValues published=new android.content.ContentValues();published.put(MediaStore.Images.Media.IS_PENDING,0);if(resolver.update(created,published,null,null)!=1)throw new java.io.IOException();
+   String id=Long.toString(ContentUris.parseId(created));
+   if(!kept.edit().putString(operation,id).commit())throw new java.io.IOException();
+   JSObject out=new JSObject();out.put("status","saved");out.put("id",id);call.resolve(out);
+  }catch(Exception error){
+   if(created!=null)try{resolver.delete(created,null,null);}catch(RuntimeException ignored){}
+   JSObject out=new JSObject();out.put("status","failed");out.put("message","Photo was not kept. Nothing was added to Photos.");call.resolve(out);
+  }
+ });}
  @PluginMethod public void share(PluginCall call){submit(call,()->{
   try{
    String key=call.getString("id","");long id=id(key);boolean video=key.startsWith("v:");
