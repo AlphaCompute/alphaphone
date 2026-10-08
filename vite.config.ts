@@ -27,7 +27,7 @@ const disabledModuleSource: Record<string, string> = {
   // Only imported dynamically, after a constant-false guard, so an empty module suffices.
   './runtime/mock-admission': 'export {};',
   './mock-admission': 'export {};',
-  // Development password vault (passwords/password-manager.ts, browser dev profile only).
+  // Development password vault, statically imported by passwords/password-manager.ts.
   './dev-vault': 'export const createDevelopmentVault = () => { throw new Error("unavailable"); };',
 };
 const disabledModulePrefix = '\0alpha-disabled-';

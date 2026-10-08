@@ -2,6 +2,8 @@ import { Capacitor } from '@capacitor/core';
 import { registerPlugin } from '../platform-plugins';
 import { devSurfacesEnabled } from '../build-flags';
 import { browserDevProfile } from '../browser/dev-profile';
+// Flag-off builds resolve this to an inert stub (vite.config.ts disabledModuleSource).
+import { createDevelopmentVault } from './dev-vault';
 import { createPasswordsClient, passwordsError, type PasswordsClient } from '../../../../.eliza/patched/plugins/plugin-native-passwords/src/client.ts';
 import { filterEntries, normalizeWebsite } from '../../../../.eliza/patched/plugins/plugin-native-passwords/src/bindings.ts';
 import type { ElizaPasswordsPlugin, PasswordBinding, PasswordEntrySummary, PasswordsStatus } from '../../../../.eliza/patched/plugins/plugin-native-passwords/src/definitions.ts';
@@ -32,7 +34,7 @@ function resolveClient(): Promise<PasswordsClient | null> {
   if (client !== undefined) return Promise.resolve(client);
   resolving ||= (async () => {
     if (Capacitor.isNativePlatform()) client = createPasswordsClient(registerPlugin<ElizaPasswordsPlugin>('ElizaPasswords'));
-    else if (devSurfacesEnabled && browserDevProfile) client = createPasswordsClient((await import('./dev-vault')).createDevelopmentVault());
+    else if (devSurfacesEnabled && browserDevProfile) client = createPasswordsClient(createDevelopmentVault());
     else client = null;
     return client;
   })();
