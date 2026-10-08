@@ -1947,9 +1947,9 @@ THIS SOFTWARE.
 
 ==============================================================================
 elizaOS
-Version: 2.0.4 (5592c586507544523102dad003a192d6e8395c0f)
+Version: 2.0.4 (c4c78682518672785d47b9893cf2787810ed2a1f)
 License: MIT
-Source: https://github.com/elizaOS/eliza/tree/5592c586507544523102dad003a192d6e8395c0f
+Source: https://github.com/elizaOS/eliza/tree/c4c78682518672785d47b9893cf2787810ed2a1f
 
 MIT License
 
@@ -6426,7 +6426,7 @@ SOFTWARE.
 
 ==============================================================================
 Sherpa-ONNX (no-eSpeak Android build)
-Version: 1.13.8 (AAR sha256 528507c0bb58b45db038347a78398b9fbc9b531fb1edba530376b5f3ac88ed9d; ABIs arm64-v8a, x86_64)
+Version: 1.13.8 (AAR sha256 d08bbbd90f24684cf840efcb1cb9cf84a7d8683b7018859f4cb64305b722b26f; ABIs arm64-v8a, x86_64)
 License: Apache-2.0
 Source: https://github.com/k2-fsa/sherpa-onnx/tree/v1.13.8
 
