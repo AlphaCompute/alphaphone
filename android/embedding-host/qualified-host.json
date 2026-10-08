@@ -29,5 +29,32 @@
     }
   ],
   "qualificationReceiptSha256": "3caf49bc48b53cc394fc0df4d21f29b99df2dd7c061d6983ef144905da1a56ef",
-  "jniIdentityRelocated": true
+  "jniIdentityRelocated": true,
+  "inputs": [
+    {
+      "path": "packages/app/scripts/stage-elizavoice-lib.ts",
+      "sourceSha256": "d8716ad5e3f535839606b2bf9bfd42a8bb26630d71873204542d37762b7d120c",
+      "generatedSha256": "d8716ad5e3f535839606b2bf9bfd42a8bb26630d71873204542d37762b7d120c"
+    },
+    {
+      "path": "packages/app/scripts/build-helpers/arm64-simd.ts",
+      "sourceSha256": "b5291bb3c31f2b284691ff7c465de31c7564ea1c1c22e726309661e64a47aee2",
+      "generatedSha256": "b5291bb3c31f2b284691ff7c465de31c7564ea1c1c22e726309661e64a47aee2"
+    },
+    {
+      "path": "packages/app/scripts/build-helpers/verify-fused-symbols.ts",
+      "sourceSha256": "342dd98f6366fdc9f65c1fef499aa39230894d045f2fefd3eb107a709cd84c5f",
+      "generatedSha256": "342dd98f6366fdc9f65c1fef499aa39230894d045f2fefd3eb107a709cd84c5f"
+    },
+    {
+      "path": "packages/app/platforms/android/app/src/main/elizavoice-jni/CMakeLists.txt",
+      "sourceSha256": "34c067672b34f46e1e5b61bd07a0ffe4937baacc1db075b0374de7422f2efc92",
+      "generatedSha256": "34c067672b34f46e1e5b61bd07a0ffe4937baacc1db075b0374de7422f2efc92"
+    },
+    {
+      "path": "packages/app/platforms/android/app/src/main/elizavoice-jni/elizavoice-jni.cpp",
+      "sourceSha256": "5d86016176bf34709fa9a33812b02ed88e36121c7fe6162b754813208aa10cb2",
+      "generatedSha256": "8cd7ae576165991d8b3bb86e8a7723adde169ac057e05c0b80dc2a7549ee7304"
+    }
+  ]
 }
