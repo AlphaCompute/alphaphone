@@ -41,6 +41,12 @@ test('native vault code never logs, prints or puts secrets in Intents or bridge 
  assert.deepEqual(reads,['PasswordFillActivity.java','PasswordsPlugin.java']);
  assert.match(java['PasswordSheet.java'],/FLAG_SECURE/);assert.match(java['SecretSurfaces.java'],/FLAG_SECURE/);
  assert.match(java['SecretSurfaces.java'],/IS_SENSITIVE/);
+ // The fill picker authenticates every time; an earlier unlock is never reused for a fill.
+ const picker=java['PasswordFillActivity.java'],onCreate=picker.slice(picker.indexOf('protected void onCreate'),picker.indexOf('private void unlock()'));
+ assert.match(onCreate,/\n    unlock\(\);\n  \}/);assert.doesNotMatch(onCreate,/unlocked\(\)/);
+ assert.match(java['PasswordUnlock.java'],/long ticket = access\.begin\(\);/);
+ // The clipboard clear also runs in the background, where Android hides the clip description.
+ assert.match(java['SecretSurfaces.java'],/boolean ours = description == null \|\|/);
  // Fill requests never open the vault: offers are built without reading entries.
  assert.doesNotMatch(java['ElizaPasswordAutofillService.java'],/\.use\(|entries\(|\.get\(id/);
 });
