@@ -209,11 +209,13 @@ export function installPrototypeBrowserAdapter(Component: any, views: Record<str
       const saved = await Browser.browsingState({ session });
       if (disposed) return;
       const s = state(); if (!s) return;
-      const next = restoreBrowsing(saved, s, created.size === 0 && s.tabs.length === 1 && !metadata.size);
+      // Never replace a tab the user is already typing into.
+      const next = restoreBrowsing(saved, s, created.size === 0 && s.tabs.length === 1 && !metadata.size && !s.editing);
       // Restored tabs load (an ordinary GET of the last committed address)
       // only when the tab is shown; nothing is resubmitted.
       for (const tab of next.restored) restored.set(tab.id, { url: tab.url, title: tab.title });
-      shell.vset('browser', next.tabs ? { tabs: next.tabs, cur: next.cur, visits: next.visits } : { visits: next.visits });
+      if (next.tabs) shell.vset('browser', { tabs: next.tabs, cur: next.cur, visits: next.visits });
+      else if (next.visits.length !== s.visits.length) shell.vset('browser', { visits: next.visits });
       sessionHydrated = true;
       lastSaved = JSON.stringify(savedSnapshot());
     } catch {
