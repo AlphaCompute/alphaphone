@@ -69,13 +69,14 @@ export function presentDeviceRecordOperation(
       details =
         "Delete this note from this phone. Attached audio files are retained.";
       break;
+    case "calendar_create_local":
     case "calendar_create":
     case "calendar_update": {
       const fields = operation.fields;
       title =
-        operation.type === "calendar_create" ? "Create event" : "Update event";
+        (operation.type === "calendar_create" || operation.type === "calendar_create_local") ? "Create event" : "Update event";
       applied =
-        operation.type === "calendar_create"
+        (operation.type === "calendar_create" || operation.type === "calendar_create_local")
           ? "Created event"
           : "Updated event";
       const timing = `${formatDeviceRecordDateTime(fields.start, fields.timeZone)} – ${formatDeviceRecordDateTime(fields.end, fields.timeZone)} (${fields.timeZone})`;
@@ -88,6 +89,11 @@ export function presentDeviceRecordOperation(
       ].join("\n");
       break;
     }
+    case "calendar_read_next":
+      title = "Share next Calendar event";
+      applied = "Shared the reviewed Calendar search result";
+      details = "Search readable phone calendars from now through the next 30 local days. Review the exact event or no-events-in-window result before sharing its title and times. No calendar changes are authorized.";
+      break;
     case "calendar_read_selected":
       title = "Share selected event";
       applied = "Shared selected event";

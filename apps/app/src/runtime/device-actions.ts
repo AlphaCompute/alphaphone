@@ -5,7 +5,7 @@ import { isMapsOperation, validateMapsOperation, validateMapsResult, type MapsOp
 import { validateMapsSelectedObject } from '../maps/agent-context';
 import {type ReminderOperation,type ReminderResult,isReminderOperation,validateReminderOperation,validateReminderResult} from '../../../../.eliza/client-features/plugins/plugin-assistant/src/services/device-actions/reminder-contract.ts';
 import {type NotesOperation,type NotesResult,isNotesOperation,validateNotesOperation,validateNotesResult} from './notes-contract';
-import {type CalendarOperation,type CalendarResult,isCalendarOperation,validateCalendarOperation,validateCalendarResult} from '../../../../.eliza/client-features/plugins/plugin-assistant/src/services/device-actions/calendar-contract.ts';
+import {type CalendarOperation,type CalendarResult,calendarCapabilityAvailable,isCalendarOperation,validateCalendarOperation,validateCalendarResult} from '../../../../.eliza/client-features/plugins/plugin-assistant/src/services/device-actions/calendar-contract.ts';
 import { isMvpView } from "../prototype/mvp-features";
 import { parseWorkflowBinding, parseWorkflowRead, validateWorkflowResult, assertWorkflowOperation, type WorkflowReadOperation, type WorkflowReadResult, type WorkflowDeviceBinding, type WorkflowPhoneReview } from './workflow-device-contract';
 import type { ActionProposal, ContextEnvelope, OperationReceipt, VerifiedSession } from './alpha-client';
@@ -14,7 +14,7 @@ export type WorkflowPresentationOperation = {type:'post_notification';title:stri
 export type DeviceOperation = ReminderCreateOperation | WorkflowPresentationOperation | ClockOperation | MapsOperation | ReminderOperation | NotesOperation | CalendarOperation | WorkflowReadOperation | { type: 'create_note'; title: string; body: string }
   | { type: 'create_reminder'; title: string; dueAt: string }
   | { type: 'open_view'; view: string } | { type: 'browser_navigate'; url: string };
-export interface DeviceCredential { installationId: string; key: string; enrollmentId?: string }
+export interface DeviceCredential { installationId: string; key: string; enrollmentId?: string; capabilities?: readonly string[] }
 export interface JournalEntry {
   scope: string; proposalId: string; operationId: string; operationHash: string;
   record: Record<string, unknown>; phase: 'reserved' | 'applying' | 'terminal'; attemptId?: string;
@@ -68,6 +68,7 @@ function contextKey(value: ContextEnvelope): string {
   return JSON.stringify([value.view, value.sensitive === true, value.revision, value.timeZone ?? null, selected ? [selected.kind, selected.id, selected.revision ?? null, selected.accountId ?? null,selected.sourceRevision??null,selected.occurrenceId??null] : null]);
 }
 function assertCalendarContext(operation:CalendarOperation,context:ContextEnvelope){
+ if(operation.type==='calendar_create_local'||operation.type==='calendar_read_next'){if(context.sensitive)throw Error('Return to the unlocked phone and review Calendar access');return;}
  const selected=context.selectedObject;
  if(context.view!=='calendar'||context.sensitive||!selected)throw Error('Open the selected calendar source or event');
  if(operation.type==='calendar_create'){
@@ -94,6 +95,7 @@ export class DeviceActions {
     const expiresAt = Date.parse(text(p.expiresAt, 40)), digest = text(p.digest, 64);
     if (!Number.isFinite(expiresAt) || !/^[a-f0-9]{64}$/.test(digest)) throw new Error('Invalid action expiry or digest');
     const workflow=payload.workflow===undefined?undefined:parseWorkflowBinding(payload.workflow),op=validateDeviceOperation(payload.operation);
+    if(isCalendarOperation(op)&&(op.type==='calendar_create_local'||op.type==='calendar_read_next')&&!calendarCapabilityAvailable(op.type,this.credential.capabilities))throw Error('This agent has not negotiated native Calendar creation or discovery. Reconnect to a compatible agent.');
     if(isReminderCreate(op)&&!this.reminderCreate)throw Error('This agent does not support reviewed reminder creation. Reconnect to a compatible agent.');
     if(isReminderOperation(op)&&(op.target.timingVersion===2||op.type==='reminder_update'&&op.fields.schedule?.alertMinutes!==undefined)&&!this.reminderV2)throw Error('This agent does not support this reminder timing. Reconnect to a compatible agent.');
     if((['read_selected_notes','read_calendar_range','post_notification','speak_text'].includes(op.type))&&!workflow)throw new Error('Workflow binding required for phone reads');
@@ -192,7 +194,7 @@ export class DeviceActions {
       // Receipt upload is retried only by the explicit history control.
       try { if(isMapsOperation(p.operation))assertMapsContext(p.operation,context); await this.mutation(p, 'receipt', { attemptId: claimed.attemptId, receipt: { outcome: result.status === 'succeeded' ? 'applied' : result.status === 'failed' ? 'failed' : 'unknown', operationId,...(clockResult?{result:clockResult}:mapsResult?{result:mapsResult}:readResult?{result:readResult}:calendarResult?{result:calendarResult}:notesResult?{result:notesResult}:reminderResult?{result:reminderResult}:{}) } }, signal); }
       catch { return { proposalId, status: result.status, summary: `${result.summary} Server receipt is pending; check action history.` }; }
-      finally {if(typeof window!=='undefined'){if(isCalendarOperation(p.operation)&&p.operation.type!=='calendar_read_selected'&&result.status==='succeeded')window.dispatchEvent(new CustomEvent('alpha:calendar-committed'));if(isNotesOperation(p.operation))window.dispatchEvent(new CustomEvent('alpha:notes-committed'));if(isReminderOperation(p.operation)||isReminderCreate(p.operation)||p.operation.type==='create_reminder')window.dispatchEvent(new CustomEvent('alpha:reminders-committed'));}}
+      finally {if(typeof window!=='undefined'){if(isCalendarOperation(p.operation)&&p.operation.type!=='calendar_read_selected'&&p.operation.type!=='calendar_read_next'&&result.status==='succeeded')window.dispatchEvent(new CustomEvent('alpha:calendar-committed'));if(isNotesOperation(p.operation))window.dispatchEvent(new CustomEvent('alpha:notes-committed'));if(isReminderOperation(p.operation)||isReminderCreate(p.operation)||p.operation.type==='create_reminder')window.dispatchEvent(new CustomEvent('alpha:reminders-committed'));}}
       return { proposalId, status:result.status, summary:result.summary };
     } catch {
       return { proposalId, status: 'unknown', summary: 'Action did not reach a confirmed result. Check action history before requesting it again.' };

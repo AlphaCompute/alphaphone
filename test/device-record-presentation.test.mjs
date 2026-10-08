@@ -42,3 +42,8 @@ test('Notes preserve exact review text and keep receipt text concise',()=>{
  const share=presentDeviceRecordOperation({type:'notes_read_selected',target}),remove=presentDeviceRecordOperation({type:'notes_delete',target});
  assert.equal(share.description,'Share selected note\nSend this note’s exact title and text to the connected agent.');assert.match(remove.description,/Attached audio files are retained\./);assert.doesNotMatch(share.description+remove.description,/private-source|private-note|\{|\}/);assert.deepEqual({fields,target},before);
 });
+
+test('Home Calendar creation and foreground discovery review expose human scope without fabricated IDs',()=>{
+ const value=presentDeviceRecordOperation({type:'calendar_create_local',fields:event.fields});assert.equal(value.title,'Create event');assert.match(value.description,/Calendar review/);assert.doesNotMatch(value.description,/private-source|sourceId|\{|\}/);
+ const read=presentDeviceRecordOperation({type:'calendar_read_next'});assert.match(read.description,/30 local days/);assert.match(read.description,/No calendar changes/);assert.doesNotMatch(read.description,/sourceId|\{|\}/);
+});
