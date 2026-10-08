@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import {createHash} from 'node:crypto';
 import {execFileSync} from 'node:child_process';
-import {copyFileClone} from './copy-file-clone.mjs';
+import {copyFilesClone} from './copy-file-clone.mjs';
 import {verifyCommittedWorkspace} from '../vendor/eliza/packages/app/scripts/lib/immutable-workspace-source.mjs';
 const present=file=>{try{fs.lstatSync(file);return true;}catch(error){if(error.code==='ENOENT')return false;throw error;}};
 export const digest = file => createHash('sha256').update(fs.readFileSync(file)).digest('hex');
@@ -60,7 +60,7 @@ export function verifySource(directory, commit) {
 
 
 /** Cost: one tracked-tree scan and one bounded read of each cache file; one
- * native APFS clone / FICLONE hint per regular file, with normal-copy fallback.
+ * directory/bounded-argv APFS clone batch, or FICLONE per file elsewhere.
  * Cache outputs and Git metadata are never copied. Destination admission stays
  * with verifySource, including a second check against concurrent source changes.
  */
@@ -73,7 +73,7 @@ export function seedCommittedCache(cache, destination, commit) {
  }catch{return false;} // Not a matching local checkout: retain ordinary Git fetch/checkout.
  if(git(['status','--porcelain','--untracked-files=no']))throw Error('Tracked runtime cache changes must be preserved and reviewed');
  const entries=git(['ls-tree','-r','-z',commit]).split('\0').filter(Boolean);
- const buffer=Buffer.allocUnsafe(1024*1024);
+ const buffer=Buffer.allocUnsafe(1024*1024),regular=[];
  let files=0,bytes=0;
  for(const entry of entries){
   const split=entry.indexOf('\t'),[mode,type,oid]=entry.slice(0,split).split(' '),name=entry.slice(split+1);
@@ -98,9 +98,11 @@ export function seedCommittedCache(cache, destination, commit) {
   for(let current=path.dirname(target);current!==destination;current=path.dirname(current))if(present(current)){const dir=fs.lstatSync(current);if(dir.isSymbolicLink()||!dir.isDirectory())throw Error('Unsafe runtime destination parent');}
   fs.mkdirSync(path.dirname(target),{recursive:true});
   if(mode==='120000')fs.symlinkSync(link,target);
-  else {copyFileClone(source,target,{exclusive:true});fs.chmodSync(target,parseInt(mode,8)&0o777);}
+  else regular.push({source,destination:target,mode:parseInt(mode,8)&0o777});
   files++;bytes+=stat.size;
  }
+ copyFilesClone(regular,{exclusive:true});
+ for(const file of regular)fs.chmodSync(file.destination,file.mode);
  if(git(['rev-parse','HEAD'])!==commit||git(['status','--porcelain','--untracked-files=no']))throw Error('Runtime cache changed while preparing source');
  console.log(`Seeded ${files} committed files (${bytes} bytes) with copy-on-write attempts`);
  return true;

@@ -4,8 +4,10 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import {execFileSync,spawnSync} from 'node:child_process';
+import child from 'node:child_process';
+import {syncBuiltinESMExports} from 'node:module';
 import {createHash,randomBytes} from 'node:crypto';
-import {copyFileClone} from '../scripts/copy-file-clone.mjs';
+import {copyFilesClone} from '../scripts/copy-file-clone.mjs';
 const root=path.resolve(import.meta.dirname,'..');
 const hash=file=>createHash('sha256').update(fs.readFileSync(file)).digest('hex');
 function fixture(t){
@@ -16,6 +18,7 @@ function fixture(t){
  write(path.join(cache,'package.json'),JSON.stringify({workspaces:['packages/*']}));write(path.join(cache,'turbo.json'),'{"tasks":{}}');
  write(path.join(cache,'.gitignore'),'ignored/\n');write(path.join(cache,'packages/example/package.json'),'{"name":"fixture"}');
  write(path.join(cache,'packages/example/data.bin'),randomBytes(1024*1024));write(path.join(cache,'packages/example/tool.sh'),'#!/bin/sh\nexit 0\n');fs.chmodSync(path.join(cache,'packages/example/tool.sh'),0o755);
+ for(let index=0;index<40;index++)write(path.join(cache,'packages/example',`extra-${index}.txt`),'small fixture file\n');
  fs.symlinkSync('data.bin',path.join(cache,'packages/example/linked-data'));
  const common=execFileSync('git',['rev-parse','--git-common-dir'],{cwd:root,encoding:'utf8'}).trim();
  const upstreamGit=path.join(path.resolve(root,common),'modules/vendor/eliza');
@@ -74,7 +77,7 @@ for(const mutation of ['bytes','mode','symlink'])test(`cache ${mutation} tamperi
 });
 test('interrupted clone preserves its incomplete destination and cannot be silently reused',t=>{
  const f=fixture(t),before=f.snapshot(),preload=path.join(f.directory,'interrupt.mjs');
- f.write(preload,`import fs from 'node:fs';import child from 'node:child_process';import {syncBuiltinESMExports} from 'node:module';const copy=fs.copyFileSync,run=child.execFileSync;const fail=target=>{fs.writeFileSync(target,'partial');throw Object.assign(Error('simulated disk full'),{code:'ENOSPC'});};fs.copyFileSync=(source,target,flags)=>source.endsWith('/data.bin')?fail(target):copy(source,target,flags);child.execFileSync=(command,args,options)=>command==='/bin/cp'&&args.at(-2).endsWith('/data.bin')?fail(args.at(-1)):run(command,args,options);syncBuiltinESMExports();`);
+ f.write(preload,`import fs from 'node:fs';import child from 'node:child_process';import path from 'node:path';import {syncBuiltinESMExports} from 'node:module';const copy=fs.copyFileSync,run=child.execFileSync;const fail=target=>{fs.writeFileSync(target,'partial');throw Object.assign(Error('simulated disk full'),{code:'ENOSPC'});};fs.copyFileSync=(source,target,flags)=>source.endsWith('/data.bin')?fail(target):copy(source,target,flags);child.execFileSync=(command,args,options)=>command==='/bin/cp'&&args.some(arg=>arg.endsWith('/data.bin'))?fail(path.join(args.at(-1),'data.bin')):run(command,args,options);syncBuiltinESMExports();`);
  const result=f.run({preload});assert.notEqual(result.status,0);assert.match(result.stderr,/simulated disk full/);assert.equal(fs.readFileSync(path.join(f.destination,'packages/example/data.bin'),'utf8'),'partial');assert.equal(fs.existsSync(path.join(f.destination,'.alpha-runtime-source.json')),false);assert.deepEqual(f.snapshot(),before);
  const retry=f.run();assert.notEqual(retry.status,0);assert.match(retry.stderr,/preparation was interrupted/);assert.equal(fs.readFileSync(path.join(f.destination,'packages/example/data.bin'),'utf8'),'partial');
 });
@@ -85,9 +88,9 @@ test('mismatched cache HEAD retains exact Git fetch and checkout fallback',t=>{
 });
 test('copy-on-write hints retain correct independent files when the filesystem falls back to normal copying',t=>{
  const f=fixture(t),before=f.snapshot(),preload=path.join(f.directory,'fallback.mjs'),metrics=path.join(f.directory,'copies.json');
- f.write(preload,`import fs from 'node:fs';import child from 'node:child_process';import {syncBuiltinESMExports} from 'node:module';const copy=fs.copyFileSync,run=child.execFileSync,copies=[];let nativeAttempts=0;child.execFileSync=(command,args,options)=>{if(command==='/bin/cp'){nativeAttempts++;throw Object.assign(Error('clone unsupported'),{code:'ENOTSUP'});}return run(command,args,options);};fs.copyFileSync=(source,target,flags)=>{const result=copy(source,target,flags&~fs.constants.COPYFILE_FICLONE),stat=fs.statSync(target);copies.push({target,bytes:fs.statSync(source).size,exclusive:!!(flags&fs.constants.COPYFILE_EXCL),inode:stat.ino,mtime:stat.mtimeMs});return result;};syncBuiltinESMExports();process.on('exit',()=>fs.writeFileSync(${JSON.stringify(metrics)},JSON.stringify({copies,nativeAttempts})));`);
- const result=f.run({preload});assert.equal(result.status,0,result.stderr);const measured=JSON.parse(fs.readFileSync(metrics)),copies=measured.copies;assert.ok(copies.length>0);assert.ok(copies.every(copy=>copy.exclusive&&fs.statSync(copy.target).ino===copy.inode&&fs.statSync(copy.target).mtimeMs===copy.mtime));if(process.platform==='darwin')assert.equal(measured.nativeAttempts,copies.length);assert.deepEqual(f.snapshot(),before);assert.equal(hash(path.join(f.destination,'packages/example/data.bin')),before.data);
- console.log(JSON.stringify({resourceGraph:{files:copies.length,trackedRegularBytes:copies.reduce((sum,copy)=>sum+copy.bytes,0),oldCheckoutMaterializedBytes:copies.reduce((sum,copy)=>sum+copy.bytes,0),newCloneAttempts:copies.length,normalCopyFallbackVerified:true}}));
+ f.write(preload,`import fs from 'node:fs';import child from 'node:child_process';import path from 'node:path';import {syncBuiltinESMExports} from 'node:module';const copy=fs.copyFileSync,run=child.execFileSync,copies=[];let nativeAttempts=0;child.execFileSync=(command,args,options)=>{if(command==='/bin/cp'){nativeAttempts++;throw Object.assign(Error('clone unsupported'),{code:'ENOTSUP'});}return run(command,args,options);};fs.copyFileSync=(source,target,flags)=>{const result=copy(source,target,flags&~fs.constants.COPYFILE_FICLONE),stat=fs.statSync(target);copies.push({target,bytes:fs.statSync(source).size,exclusive:!!(flags&fs.constants.COPYFILE_EXCL),inode:stat.ino,mtime:stat.mtimeMs});return result;};syncBuiltinESMExports();process.on('exit',()=>fs.writeFileSync(${JSON.stringify(metrics)},JSON.stringify({copies,nativeAttempts})));`);
+ const result=f.run({preload});assert.equal(result.status,0,result.stderr);const measured=JSON.parse(fs.readFileSync(metrics)),copies=measured.copies;assert.ok(copies.length>0);assert.ok(copies.every(copy=>copy.exclusive&&fs.statSync(copy.target).ino===copy.inode&&fs.statSync(copy.target).mtimeMs===copy.mtime));if(process.platform==='darwin')assert.ok(measured.nativeAttempts<copies.length);assert.deepEqual(f.snapshot(),before);assert.equal(hash(path.join(f.destination,'packages/example/data.bin')),before.data);
+ console.log(JSON.stringify({resourceGraph:{files:copies.length,trackedRegularBytes:copies.reduce((sum,copy)=>sum+copy.bytes,0),oldCheckoutMaterializedBytes:copies.reduce((sum,copy)=>sum+copy.bytes,0),nativeCloneProcesses:measured.nativeAttempts,normalCopyFallbackVerified:true}}));
 });
 
 
@@ -95,6 +98,29 @@ test('clone helper provenance changes refuse reuse and existing APK copy semanti
  const f=fixture(t),before=f.snapshot(),result=f.run();assert.equal(result.status,0,result.stderr);
  const helper=path.join(f.consumer,'scripts/copy-file-clone.mjs');fs.appendFileSync(helper,'\n');
  const changed=f.run();assert.notEqual(changed.status,0);assert.match(changed.stderr,/Prepared runtime differs/);assert.deepEqual(f.snapshot(),before);
- const copy=path.join(f.directory,'apk-copy');copyFileClone(path.join(f.cache,'packages/example/data.bin'),copy);assert.equal(hash(copy),before.data);
- assert.throws(()=>copyFileClone(path.join(f.cache,'packages/example/data.bin'),copy,{exclusive:true}),error=>error.code==='EEXIST');assert.equal(hash(copy),before.data);
+ const copy=path.join(f.directory,'apk-copy');copyFilesClone([{source:path.join(f.cache,'packages/example/data.bin'),destination:copy}]);assert.equal(hash(copy),before.data);
+ assert.throws(()=>copyFilesClone([{source:path.join(f.cache,'packages/example/data.bin'),destination:copy}],{exclusive:true}),error=>error.code==='EEXIST');assert.equal(hash(copy),before.data);
+});
+
+
+test('directory batches reduce real clone processes and preserve renamed files and bounded arguments',t=>{
+ const f=fixture(t),before=f.snapshot(),files=f.git('ls-files','-z').split('\0').filter(Boolean).filter(name=>fs.lstatSync(path.join(f.cache,name)).isFile());
+ const baseline=path.join(f.directory,'per-file'),batched=path.join(f.directory,'batched');
+ const entries=directory=>files.map(name=>{const destination=path.join(directory,name);fs.mkdirSync(path.dirname(destination),{recursive:true});return {source:path.join(f.cache,name),destination};});
+ const original=child.execFileSync,calls=[];
+ child.execFileSync=(command,args,options)=>{if(command==='/bin/cp')calls.push(args);return original(command,args,options);};syncBuiltinESMExports();
+ try{
+  const one=entries(baseline),many=entries(batched);
+  let start=performance.now();for(const file of one)copyFilesClone([file],{exclusive:true});const beforeMs=performance.now()-start,beforeProcesses=calls.length;
+  start=performance.now();copyFilesClone(many,{exclusive:true});const afterMs=performance.now()-start,afterProcesses=calls.length-beforeProcesses;
+  for(let index=0;index<one.length;index++)assert.equal(hash(one[index].destination),hash(many[index].destination));
+  if(process.platform==='darwin'){assert.equal(beforeProcesses,files.length);assert.equal(afterProcesses,3);}
+  console.log(JSON.stringify({copyPhase:{files:files.length,beforeProcesses,afterProcesses,beforeMs,afterMs}}));
+  const long=path.join(f.directory,'long-sources'),target=path.join(f.directory,'long-target');fs.mkdirSync(long);fs.mkdirSync(target);
+  const largeBatch=Array.from({length:240},(_,index)=>{const name=`part-${index}-`+'x'.repeat(210)+'.txt',source=path.join(long,name),destination=path.join(target,name);fs.writeFileSync(source,'small');return {source,destination};});
+  const previous=calls.length;copyFilesClone(largeBatch,{exclusive:true});
+  for(const file of largeBatch)assert.equal(fs.readFileSync(file.destination,'utf8'),'small');
+  if(process.platform==='darwin'){assert.ok(calls.length-previous>=2);for(const args of calls.slice(previous))assert.ok(args.reduce((sum,arg)=>sum+Buffer.byteLength(arg)+16,0)<=64*1024);}
+ }finally{child.execFileSync=original;syncBuiltinESMExports();}
+ assert.deepEqual(f.snapshot(),before);
 });

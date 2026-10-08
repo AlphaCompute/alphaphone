@@ -25,7 +25,7 @@ import { execFileSync, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { copyFileClone } from "./copy-file-clone.mjs";
+import { copyFilesClone } from "./copy-file-clone.mjs";
 
 const FLAG = "ELIZA_DEV_ALLOW_TEST_MOCKS";
 const FLAG_ENV_NAMES = [FLAG, `VITE_${FLAG}`, `ORG_GRADLE_PROJECT_${FLAG}`];
@@ -153,7 +153,7 @@ function build(options, baseEnv, run) {
   }
   function copy(source, destination) {
     fs.rmSync(destination, { force: true });
-    copyFileClone(source, destination);
+    copyFilesClone([{ source, destination }]);
   }
   const requested = signingRequested(env);
   function copyVariant(variant, modes = ["debug", "release"]) {
