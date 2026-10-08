@@ -18,6 +18,19 @@ Navigation, tab changes, overlays, document errors, renderer loss, closing and d
 
 Per-tab ephemeral browser profiles remain unchanged. Autofill does not create a shared cookie jar or durable browser login policy. No field values, vault items, credential handles, provider structures or passwords are added to the agent bridge. The current browser agent context remains an opaque tab identity/revision. The website itself necessarily receives fields that the user elects to fill; this is not a promise that website scripts cannot read their own form.
 
+## Alpha password manager
+
+Alpha's own provider (`ElizaPasswordAutofillService` from the shared password plugin, see
+[password-provider-setup.md](password-provider-setup.md)) treats Alpha as a trusted browser
+only through `CredentialWebView`: when the child is eligible, it adds the committed top-level
+origin (`PasswordFormPolicy.TOP_ORIGIN_EXTRA`, `https://host[:port]` of the presented URL) to
+its own autofill node after Chromium has built the virtual structure. The provider refuses the
+request unless that origin equals the single HTTPS web domain of every web node, so a
+cross-origin frame (a second domain) is never filled. The privileged renderer WebView remains
+excluded, and no field values or vault data are added to the agent bridge. Device
+qualification of real Chromium structures (including cross-origin iframes), provider
+selection, unlock/resume and save prompts remains open.
+
 ## Proton Pass qualification
 
 Alpha's [password-provider setup flow](password-provider-setup.md) now exposes installation/publisher, selected-provider and Android support metadata, with explicit picker/open/download handoffs. [Qualification evidence](mvp-reading-provider-qualification.md) distinguishes rendered onboarding from real provider acceptance.
