@@ -12,7 +12,7 @@ function fixture(run) {
  try {
   git(['init','-q']);
   for(const prefix of CLIENT_FEATURE_PATHS) {
-   const file=path.join(vendor,prefix.endsWith('.mjs')?prefix:prefix+'/fixture.ts');
+   const file=path.join(vendor,path.extname(prefix)?prefix:prefix+'/fixture.ts');
    fs.mkdirSync(path.dirname(file),{recursive:true});fs.writeFileSync(file,'export const value = 1;\n');
   }
   // The development launcher imports the shared verifier through its product adapter.
@@ -35,7 +35,7 @@ test('client source rejects changed pin and upstream content without replacing i
  const source=prepareClientFeatures({root}),stamp=fs.readFileSync(path.join(source,'.source.json'));
  fs.writeFileSync(path.join(root,'upstream.lock.json'),JSON.stringify({commit:'0'.repeat(40)}));assert.throws(()=>prepareClientFeatures({root}),/Unexpected upstream source pin/);
  fs.writeFileSync(path.join(root,'upstream.lock.json'),JSON.stringify({commit}));
- fs.appendFileSync(path.join(vendor,CLIENT_FEATURE_PATHS[0],'fixture.ts'),'corrupt');assert.throws(()=>prepareClientFeatures({root}),/dirty|drift/);assert.deepEqual(fs.readFileSync(path.join(source,'.source.json')),stamp);
+ fs.appendFileSync(path.join(vendor,CLIENT_FEATURE_PATHS[0]),'corrupt');assert.throws(()=>prepareClientFeatures({root}),/dirty|drift/);assert.deepEqual(fs.readFileSync(path.join(source,'.source.json')),stamp);
 }));
 test('client source refuses unknown directories and cache symlinks',()=>fixture(({root})=>{
  const source=path.join(root,'.eliza/client-features');fs.mkdirSync(source,{recursive:true});fs.writeFileSync(path.join(source,'keep'),'owned elsewhere');assert.throws(()=>prepareClientFeatures({root}),/unrecognized/);assert.equal(fs.readFileSync(path.join(source,'keep'),'utf8'),'owned elsewhere');
@@ -45,7 +45,7 @@ test('client source cannot follow a linked staging parent',()=>fixture(({root})=
  const outside=path.join(root,'outside');fs.mkdirSync(outside);fs.writeFileSync(path.join(outside,'keep'),'retained');fs.symlinkSync(outside,path.join(root,'.eliza'));assert.throws(()=>prepareClientFeatures({root}),/Nonregular/);assert.deepEqual(fs.readdirSync(outside),['keep']);
 }));
 test('client source rejects committed symlinks and missing source groups',()=>fixture(({root,vendor,git})=>{
- const file=path.join(vendor,CLIENT_FEATURE_PATHS[0],'fixture.ts');fs.unlinkSync(file);fs.symlinkSync('../../outside',file);
+ const file=path.join(vendor,CLIENT_FEATURE_PATHS[0]);fs.unlinkSync(file);fs.symlinkSync('../../outside',file);
  git(['add','.']);git(['-c','user.name=Source fixture','-c','user.email=fixture@example.invalid','commit','-qm','Symlink']);
  fs.writeFileSync(path.join(root,'upstream.lock.json'),JSON.stringify({commit:git(['rev-parse','HEAD'])}));assert.throws(()=>prepareClientFeatures({root}),/Nonregular upstream/);
  fs.unlinkSync(file);git(['add','.']);git(['-c','user.name=Source fixture','-c','user.email=fixture@example.invalid','commit','-qm','Missing source']);

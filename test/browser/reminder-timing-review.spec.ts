@@ -1,3 +1,4 @@
+import {fileURLToPath} from 'node:url';
 import { returnToApps } from './app-navigation';
 import {test,expect} from '@playwright/test';
 test.use({timezoneId:'UTC'});
@@ -28,7 +29,8 @@ for(const repeat of [false,true])test(`no-alert metadata and completion preserve
 });
 test('numeric lead survives snooze, selected read and metadata edit',async({page})=>{
  await create(page,'10 min');const before=await row(page);await page.getByRole('button',{name:'Snooze reminder 10 minutes',exact:true}).click();await expect.poll(async()=> (await row(page)).snoozedAt).toBe(Date.parse('2027-03-13T00:00Z'));
- const read=await page.evaluate(async()=>{const {registerPlugin}=await import('/src/platform-plugins.ts');const {validateReminderResult}=await import('/src/runtime/reminder-contract.ts');const d=registerPlugin<any>('DailyApps'),r=(await d.listReminders()).reminders[0],op={type:'reminder_read_selected',target:r.target};const response=await d.operateReminder({operationId:crypto.randomUUID(),bindingHash:'a'.repeat(64),operation:op});return validateReminderResult(op,response.result);});expect(read.at).toBe(Date.parse('2027-03-13T00:10Z'));expect(read.fields.schedule).toMatchObject({at:before.at,dueAt:before.dueAt,alertMinutes:10});
+ const contractUrl='/@fs'+fileURLToPath(new URL('../../.eliza/client-features/plugins/plugin-assistant/src/services/device-actions/reminder-contract.ts',import.meta.url));
+ const read=await page.evaluate(async(contractUrl)=>{const {registerPlugin}=await import('/src/platform-plugins.ts');const {validateReminderResult}=await import(contractUrl);const d=registerPlugin<any>('DailyApps'),r=(await d.listReminders()).reminders[0],op={type:'reminder_read_selected',target:r.target};const response=await d.operateReminder({operationId:crypto.randomUUID(),bindingHash:'a'.repeat(64),operation:op});return validateReminderResult(op,response.result);},contractUrl);expect(read.at).toBe(Date.parse('2027-03-13T00:10Z'));expect(read.fields.schedule).toMatchObject({at:before.at,dueAt:before.dueAt,alertMinutes:10});
  await page.getByRole('button',{name:'Edit event',exact:true}).click();await page.getByRole('textbox',{name:'Title',exact:true}).fill('Snoozed metadata');await page.getByRole('button',{name:'Save event',exact:true}).click();await expect(page.getByRole('button',{name:'Save event',exact:true})).toHaveCount(0);expect(await row(page)).toMatchObject({at:read.at,dueAt:before.dueAt,alertMinutes:10,occurrenceId:before.occurrenceId});
 });
 test('no-alert edit enables only explicitly reviewed numeric alert',async({page})=>{

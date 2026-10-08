@@ -1,7 +1,7 @@
 import {clockTimeZone} from './clock-contract.ts';
-import {reminderTarget} from './reminder-contract.ts';
+import {reminderTarget} from '../../../../.eliza/client-features/plugins/plugin-assistant/src/services/device-actions/reminder-contract.ts';
 import {notesTarget} from './notes-contract.ts';
-import { calendarSource, calendarTarget } from './calendar-contract.ts';
+import { calendarSource, calendarTarget } from '../../../../.eliza/client-features/plugins/plugin-assistant/src/services/device-actions/calendar-contract.ts';
 import { validateMapsSelectedObject } from '../maps/agent-context.ts';
 import type { ContextEnvelope } from './alpha-client';
 
