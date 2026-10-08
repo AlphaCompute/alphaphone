@@ -1,8 +1,8 @@
-import {isReminderCreate,validateReminderCreateResult} from '../runtime/reminder-create-contract';
+import {isReminderCreate,validateReminderCreateResult} from '../../../../.eliza/client-features/plugins/plugin-assistant/src/services/device-actions/reminder-create-contract.ts';
 import {devSurfacesEnabled} from '../build-flags';
 import type {WorkflowDeviceBinding} from '../runtime/workflow-device-contract';
 import {developmentIdentity,verifyDevelopmentIdentity,assertDevelopmentIdentity,type DevelopmentIdentity} from './development-identity';
-import {isReminderOperation,validateReminderResult} from '../runtime/reminder-contract';
+import {isReminderOperation,validateReminderResult} from '../../../../.eliza/client-features/plugins/plugin-assistant/src/services/device-actions/reminder-contract.ts';
 import {browserDevProfile} from './dev-profile';
 import {readExecutionPart,editExecutionPart,executionPart,type ExecutionDocument} from './development-execution-document';
 import {actionScope,validateDeviceOperation,type DeviceOperation,type ActionJournal,type JournalEntry} from '../runtime/device-actions';

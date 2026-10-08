@@ -2407,7 +2407,7 @@ registerView("photos", {
       }).filter(Boolean),
       apps: [
         ["bubble", "Messages", function () { api.set({ sheet: null, sel: null }); api.open("messages", { compose: true }); }],
-        ["mail", "Mail", function () { api.set({ sheet: null, sel: null }); api.open("inbox", { compose: { subject: nShare > 1 ? nShare + " photos" : "Photo", body: "" } }); }],
+        ["mail", "Mail", function () { api.set({ sheet: null, sel: null }); api.open("inbox", { compose: { subject: nShare > 1 ? nShare + " photos" : "Photo", body: "", attach: shareIds } }); }],
         ["link", "Copy link", function () { api.set({ sheet: null, sel: null }); api.toast("Link copied"); }],
         ["folder", "Files", function () { api.set({ sheet: null, sel: null }); api.toast("Saved to Files"); }]
       ].map(function (a) { return { d: IC[a[0]], label: a[1], go: a[2] }; })
@@ -2893,6 +2893,8 @@ async function notesDelete(api, id) {
   var idx = -1; s.list.forEach(function (n, i) { if (n.id === id) idx = i; });
   if (idx < 0) return;
   var note = s.list[idx];
+  // Live Notes move the note to the durable Trash (and offer Undo); fixtures keep the in-memory undo.
+  if (api.moveNoteToTrash) { await api.moveNoteToTrash(note, idx); return; }
   if(await api.set({ list: s.list.filter(function (n) { return n.id !== id; }), open: null, sheet: null, playing: false, dict: false })===false)return;
   notesUndoable(api, note, idx, (note.title || "Note") + " deleted");
 }
@@ -2951,7 +2953,7 @@ function notesShare(api, n, via) {
   api.set({ sheet: null });
   if (via === "mail" && VIEWS.inbox) return api.open("inbox", { compose: { to: to, subject: n.title || "Note", body: body } });
   if (via === "msg" && VIEWS.messages) return api.open("messages", { compose: to || true, text: line });
-  api.toast(via === "mail" ? "Email draft ready" : "Message draft ready");
+  api.toast(via === "mail" ? "Email is unavailable. No draft was created." : "Messages is unavailable. No draft was created.");
 }
 
 registerView("notes", {
@@ -5207,7 +5209,7 @@ class Component extends DCLogic {
     if (S.shade) { if (dy < -T && ay > ax) this.setState({ shade: false }); else if (ax > ay && ((g.x < 30 && dx > T) || (g.x > 382 && dx < -T))) this.back(); return; }
     if (ay > ax) {
       if (dy > T && g.y < 90) { if (S.secure) return this.toast("Unlock to see notifications"); return this.setState({ shade: true, heads: false }); }
-      if (dy < -T && g.y > 872) return this.goHome();
+      if (this.props.systemShell !== false && dy < -T && g.y > 872) return this.goHome();
       if (S.chat === "sheet" && dy > T) return this.setState({ chat: this.rest() });
       if (!S.view && S.chat !== "sheet" && S.chat !== "full") {
         if (dy < -T) return this.setState({ chat: "sheet" });
@@ -5223,20 +5225,23 @@ class Component extends DCLogic {
       down: function (e) {
         var o = self.scale(e.currentTarget);
         var px = (e.clientX - o.r.left) / o.s, py = (e.clientY - o.r.top) / o.s;
-        if (px < 30 || px > 382 || py < 90 || py > 872) { self.cg = null; return; }   // system gesture zones belong to the shell
+        if (!opts.capture && (px < 30 || px > 382 || py < 90 || py > 872)) { self.cg = null; return; }   // system gesture zones belong to the shell
         // A fresh pointer gesture is a deliberate action, not the previous swipe click.
         self.swallow = 0;
+        if (opts.capture) e.currentTarget.setPointerCapture(e.pointerId);
         e.stopPropagation(); self.cg = { x: e.clientX, y: e.clientY, s: o.s, g: { x: px, y: py, cx: e.clientX, cy: e.clientY, s: o.s } };
       },
       up: function (e) {
         var c = self.cg; if (!c) return; e.stopPropagation(); self.cg = null;
+        if (opts.capture && e.currentTarget.hasPointerCapture(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId);
         var dx = (e.clientX - c.x) / c.s, dy = (e.clientY - c.y) / c.s;
         if (Math.abs(dx) <= 40 && Math.abs(dy) <= 40) return;
         var vertical = Math.abs(dy) > Math.abs(dx);
         if ((opts.axis === "x" && vertical) || (opts.axis === "y" && !vertical)) return self.swipe(c.g, dx, dy);
         self.swallow = Date.now();
         if (fn(dx, dy) === false) self.swipe(c.g, dx, dy);
-      }
+      },
+      cancel: function () { self.cg = null; }
     };
   }
   swallowed() { return Date.now() - (this.swallow || 0) < 350; }
@@ -5452,6 +5457,9 @@ class Component extends DCLogic {
       ic: IC, vars: vars, rootRef: rootRef, frame: th.frame, clock: clock, dateStr: dateStr, name: name,
       isBoot: S.screen === "boot", isOff: S.screen === "off", isLock: S.screen === "lock", isOn: isOn, isView: isView,
       viewBg: imm.dark ? "#000000" : "var(--bg)", viewFg: imm.dark ? "#ffffff" : "var(--fg)", sbColor: sbColor, homeIndicatorColor: out.photos && out.photos.albumManager ? "var(--fg)" : sbColor,
+      systemShell: P.systemShell !== false,
+      showAppBack: P.systemShell === false && isOn && isView && !S.shade && !panelOpen,
+      backToApps: function () { self.goHome(); },
       showStatus: !P.nativeSystemChrome && S.screen !== "boot" && S.screen !== "off" && !imm.noStatus, micLive: S.voice === "listening",
       showIndicator: !P.nativeSystemChrome && (isOn || S.screen === "lock"),
       toast: S.toast, toastOn: !!S.toast, toastUndo: !!S.toastUndo, toastPadR: S.toastUndo ? 5 : 18, doUndo: function () { var f = self.undoFn; self.undoFn = null; self.clear("t"); self.setState({ toast: "", toastUndo: false }); if (f) f(); },
@@ -5481,7 +5489,7 @@ class Component extends DCLogic {
       closeChat: function () { self.setState({ chat: self.rest() }); },
       scrimTap: function () { self.setState({ chat: self.rest() }); },
       grabTap: function () { if (self.swallowed()) return; self.setState({ chat: self.S().chat === "full" ? "sheet" : "full" }); },
-      grabSw: this.sw(function (dx, dy) { var c = self.S().chat; if (dy < 0) self.setState({ chat: "full" }); else self.setState({ chat: c === "full" ? "sheet" : self.rest() }); }),
+      grabSw: this.sw(function (dx, dy) { var c = self.S().chat; if (dy < 0) self.setState({ chat: "full" }); else self.setState({ chat: c === "full" ? "sheet" : self.rest() }); }, { axis: "y", capture: true }),
       cmpSw: this.sw(function (dx, dy) { if (dy < 0) self.setState({ chat: "sheet" }); else if (self.S().view && self.defaultChat(self.S().view) === "hidden") self.setState({ chat: "hidden" }); }),
       pillSw: this.sw(function (dx, dy) { if (dy < 0) self.setState({ chat: "sheet" }); }),
       voiceOn: voiceOn, vShow: vShow, vRing: S.voice === "listening" || S.voice === "speaking",
@@ -5509,7 +5517,7 @@ class Component extends DCLogic {
       bootMark: S.bootStep >= 1 ? 1 : 0, bootMarkY: S.bootStep >= 1 ? 0 : 12, bootTag: S.bootStep >= 2 ? 1 : 0,
       jumps: jumps, subJumps: subJumps, hasSubJumps: subJumps.length > 0, modes: modes, legend: legend,
       fs: fs, notFs: !fs, rootJustify: fs ? "center" : "flex-start",
-      showHint: isOn && S.hint && !S.shade && S.chat !== "sheet" && S.chat !== "full",
+      showHint: P.systemShell !== false && isOn && S.hint && !S.shade && S.chat !== "sheet" && S.chat !== "full",
       homeBar: function () { if (self.swallowed()) return; var S2 = self.S(); if (S2.screen === "lock") return self.unlock(); if (S2.screen === "home") self.goHome(); },
       toggleFs: function () {
         var next = !fs; self.setState({ fs: next });

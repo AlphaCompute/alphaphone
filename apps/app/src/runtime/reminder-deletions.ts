@@ -1,6 +1,6 @@
 import {Capacitor} from '@capacitor/core';
 import {secureConnectionStore} from './native-connection';
-import {validateReminderOperation,validateReminderResult,type ReminderOperation,type ReminderTarget} from './reminder-contract';
+import {validateReminderOperation,validateReminderResult,type ReminderOperation,type ReminderTarget} from '../../../../.eliza/client-features/plugins/plugin-assistant/src/services/device-actions/reminder-contract.ts';
 import {DailyApps} from '../daily';
 export type PendingReminderDeletion={operationId:string;bindingHash:string;operation:Extract<ReminderOperation,{type:'reminder_update'}>|{type:'reminder_cancel'|'reminder_complete'|'reminder_snooze';target:ReminderTarget}};
 const slot='reminder-deletions:v1:device';

@@ -13,10 +13,12 @@ try{
   const listeners=new Map(),prefs=new Map();window.androidBridge={};
   window.bookmarkFixture={reads:0,writes:0,failNext:true,rows:['https://example.com/?fixture=A','https://example.com/?fixture=B'],activeWrites:0,maxWrites:0,releases:[],hold:true,resume:()=>listeners.get('DailyApps:appResumed')?.forEach(cb=>cb({}))};
   const promise=name=>({name,rtype:'promise'}),callback={name:'addListener',rtype:'callback'};
-  window.Capacitor={PluginHeaders:[{name:'AlphaBrowser',methods:['bookmarks','setBookmark','present','close','removeListener'].map(promise).concat(callback)},{name:'DailyApps',methods:['surfaceInfo','removeListener'].map(promise).concat(callback)},{name:'AlphaConnection',methods:['secureRead','secureWrite','secureRemove'].map(promise).concat(callback)}],
+  window.Capacitor={PluginHeaders:[{name:'AlphaNotifications',methods:['status','removeListener'].map(promise).concat(callback)},{name:'AlphaVoiceCloud',methods:['checkPermissions'].map(promise)},{name:'AlphaBrowser',methods:['bookmarks','setBookmark','present','close','removeListener'].map(promise).concat(callback)},{name:'DailyApps',methods:['surfaceInfo','removeListener'].map(promise).concat(callback)},{name:'AlphaConnection',methods:['secureRead','secureWrite','secureRemove'].map(promise).concat(callback)}],
    nativeCallback:(plugin,method,args,cb)=>{const key=plugin+':'+args.eventName;listeners.set(key,[...(listeners.get(key)||[]),cb]);return 'fixture-listener';},
    nativePromise:async(plugin,method,args)=>{
     if(method==='removeListener')return {};
+    if(plugin==='AlphaNotifications'&&method==='status')return {permissionGranted:true,appEnabled:true};
+    if(plugin==='AlphaVoiceCloud'&&method==='checkPermissions')return {microphone:'granted'};
     if(plugin==='DailyApps'&&method==='surfaceInfo')return {assistant:false};
     if(plugin==='AlphaConnection'){if(method==='secureRead')return {value:prefs.get(args.slot)??null};if(method==='secureWrite')prefs.set(args.slot,args.value);if(method==='secureRemove')prefs.delete(args.slot);return {};}
     if(plugin==='AlphaBrowser'){

@@ -1,12 +1,15 @@
+import {presentDeviceRecordOperation} from '../runtime/device-record-presentation';
+import { passwordSurfaceOpen } from '../passwords/password-manager';
 import {AssistantDraftController} from './assistant-draft-controller';
 import {assistantDraftStore} from '../runtime/assistant-draft-store';
 import {openBrowserNotes,browserNotesRecovery} from '../runtime/browser-notes-document';
 import {audioDeletionRecovery} from '../runtime/note-audio-deletions';
+import {addNotesTrashEntry,editNotesTrash,withNotesDeletionLock} from '../runtime/notes-trash';
 import {openDomainRecovery} from '../browser/domain-recovery';
 import {reviewSummaryNote} from './summary-note-review';
 import {summarySourceOf as sourceOf,recordingSourceOf,recordingRevision,type SummarySource as Source} from './summary-source';
 import {reviewAgentClock} from '../runtime/clock-agent-review';
-import {isReminderCreate,validateReminderCreateResult} from '../runtime/reminder-create-contract';
+import {isReminderCreate,validateReminderCreateResult} from '../../../../.eliza/client-features/plugins/plugin-assistant/src/services/device-actions/reminder-create-contract.ts';
 import {publishWorkflowNotice} from '../browser/workflow-notices';
 import {speakLocalText} from '../local-speech-playback';
 import {browserDevProfile} from '../browser/dev-profile';
@@ -15,12 +18,12 @@ import {isClockOperation,assertClockTimeZone,currentClockTimeZone,validateClockR
 import { Capacitor } from '@capacitor/core';
 import { isMapsOperation } from '../runtime/maps-contract';
 import { readMapsSelection } from '../maps/agent-context';
-import {isReminderOperation,validateReminderResult} from '../runtime/reminder-contract';
+import {isReminderOperation,validateReminderResult} from '../../../../.eliza/client-features/plugins/plugin-assistant/src/services/device-actions/reminder-contract.ts';
 import { SecureNotesStore, readLegacyDailyNotes } from '../runtime/notes-secure-store';
 import { secureConnectionStore } from '../runtime/native-connection';
 import {NotesCommitUncertain} from '../runtime/notes-store';
 import {isNotesOperation} from '../runtime/notes-contract';
-import {isCalendarOperation,validateCalendarResult} from '../runtime/calendar-contract';
+import {isCalendarOperation,validateCalendarResult} from '../../../../.eliza/client-features/plugins/plugin-assistant/src/services/device-actions/calendar-contract.ts';
 import { isMvpView } from "./mvp-features";
 import { workflowSha, validateWorkflowResult } from '../runtime/workflow-device-contract';
 import { getMapsSelectedObject, clearMapsSelection } from '../maps/agent-context';
@@ -38,6 +41,10 @@ type Shell = any;
 export function installAgentAdapter(Component: Shell, views: Shell) {
   const p = Component.prototype;
   let activeShell:Shell|null=null,notesRecovery:AbortController|null=null;
+  function updateBackAvailability(shell:Shell) {
+    const s=shell.S();
+    document.documentElement.dataset.alphaCanGoBack = String(!!document.querySelector('dialog[open]') || connectionController.getSnapshot().open || !!s.view || s.shade || s.chat === 'sheet' || s.chat === 'full' || s.voice !== 'off');
+  }
   const notesLeave=views.notes.onLeave;
   views.notes.onLeave=(...args:Shell[])=>{notesRecovery?.abort();return notesLeave?.(...args);};
   const originalMount = p.componentDidMount;
@@ -54,6 +61,33 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
     for(const input of document.querySelectorAll<HTMLTextAreaElement>('textarea[data-alpha-composer]')){
       input.style.height='44px';input.style.height=`${Math.max(44,input.scrollHeight)}px`;
     }
+  }
+  function recoverPendingActions(shell:Shell) {
+    const connection=connectionController.getSnapshot(),currentContext=alphaClient.getState().context;
+    if(shell.pendingActionApproval&&(document.hidden||currentContext.sensitive||connection.open||JSON.stringify(shell.pendingActionApprovalContext)!==JSON.stringify(currentContext)||JSON.stringify(shell.pendingActionApprovalSession)!==JSON.stringify(connection.session)))shell.pendingActionApproval.abort();
+    const blocked=currentContext.view==='workflows'||!shell.live||!connection.session||!connection.phoneActionsAvailable||connection.open||connection.busy||document.hidden||currentContext.sensitive||shell.S().typing||shell.pendingActionApproval;
+    const key=blocked?null:JSON.stringify([connection.session,connection.history?.revision,currentContext]);
+    if(!key)shell.pendingActionRecoveryFailedKey=null;
+    if(shell.pendingActionRecoveryKey===key||key!==null&&shell.pendingActionRecoveryFailedKey===key)return;
+    shell.pendingActionRecoveryFailedKey=null;shell.pendingActionRecoveryKey=key;shell.pendingActionRecoveryAbort?.abort();
+    if(!key)return;
+    const controller=shell.pendingActionRecoveryAbort=new AbortController();
+    const current=()=>shell.live&&!controller.signal.aborted&&shell.pendingActionRecoveryKey===key&&JSON.stringify(connectionController.getSnapshot().session)===JSON.stringify(connection.session)&&JSON.stringify(alphaClient.getState().context)===JSON.stringify(currentContext)&&!document.hidden&&!connectionController.getSnapshot().open&&!connectionController.getSnapshot().busy;
+    void connectionController.pendingActions(currentContext,controller.signal).then(proposals=>{
+      if(!current())return;
+      shell.setState((previous:Shell)=>{
+        if(!current())return null;
+        const ids=new Set(proposals.map(proposal=>proposal.id));
+        const msgs=previous.msgs.map((message:Shell)=>ids.has(message.card?.proposalId)&&!message.card.done&&!message.card.recovered?{...message,card:{...message.card,recovered:true,proposalSession:connection.session}}:message);
+        const existing=new Set(msgs.map((message:Shell)=>message.card?.proposalId));
+        const recovered=proposals.filter(proposal=>!existing.has(proposal.id)).map(proposal=>({id:crypto.randomUUID(),from:'agent',text:proposal.description,card:{type:'generic',icon:'check',title:'Approve: '+proposal.title,sub:'Tap to approve this exact action',proposalId:proposal.id,recovered:true,proposalSession:connection.session}}));
+        return recovered.length||msgs.some((message:Shell,index:number)=>message!==previous.msgs[index])?{msgs:[...msgs,...recovered]}:null;
+      });
+    }).catch(()=>{
+      if(!current())return;
+      shell.pendingActionRecoveryKey=null;shell.pendingActionRecoveryFailedKey=key;
+      shell.toast('Pending actions could not be checked. Return to the app or reopen the selected item to retry.');
+    });
   }
   function context(shell: Shell) {
     const s = shell.S();
@@ -103,15 +137,19 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
       view: (view === 'wallet' ? 'passwords' : view) as AlphaView,
       // Suspension invalidates this turn and approvals, but retains the account
       // and conversation. Visibility is not a claim about Android lock state.
-      sensitive: view === 'wallet' || s.secure === true || s.screen === 'lock' || s.screen === 'off' || document.hidden || shell.pageSuspended === true || connectionController.getSnapshot().open,
+      // Password manager pages pause observation entirely: no view, selection or revision.
+      sensitive: view === 'wallet' || (view === 'settings' && passwordSurfaceOpen(shell.vget('settings'))) || s.secure === true || s.screen === 'lock' || s.screen === 'off' || document.hidden || shell.pageSuspended === true || connectionController.getSnapshot().open,
       ...(selected && shell.notesSelection ? { selectedObject: shell.notesSelection } : providerSelection ? { selectedObject: providerSelection } : ['files','photos'].includes(view) && shell.vget(view).open === '__native_selected_document' && shell.selectedContext ? { selectedObject: shell.selectedContext } : {}),
     });
-    document.documentElement.dataset.alphaCanGoBack = String(connectionController.getSnapshot().open || !!s.view || s.shade || s.chat === 'sheet' || s.chat === 'full' || s.voice !== 'off');
+    updateBackAvailability(shell);
+    recoverPendingActions(shell);
   }
   p.componentDidMount = function () {
     activeShell=this;this.notesOpenAbort=new AbortController();
     originalMount.call(this);
     this.live = true;
+    this.dialogBackObserver = new MutationObserver(() => updateBackAvailability(this));
+    this.dialogBackObserver.observe(document.body, {subtree:true, childList:true, attributes:true, attributeFilter:['open']});
     this.composerDraft=new AssistantDraftController(assistantDraftStore,()=>String(this.S().draft||''),text=>{this.reviewedSourceDraft=null;if(this.live)this.setState({draft:text});},()=>{if(this.live)this.setState({});});
     this.refreshDraftBinding=()=>{this.draftBindingAbort?.abort();const controller=this.draftBindingAbort=new AbortController();this.draftBindingTask=connectionController.assistantDraftBinding(controller.signal).then(key=>{if(this.live&&!controller.signal.aborted)return this.composerDraft.open(key);}).catch(()=>{if(this.live&&!controller.signal.aborted)this.composerDraft.unavailable();});};
     this.refreshDraftBinding();
@@ -128,10 +166,10 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
       }
       const history = connectionController.getSnapshot().history;
       if (history && history.sessionId === session && this.restoredHistory !== history) {
-        this.draftRecoveryAbort?.abort();this.composerDraft.retire();this.reviewedSourceDraft=null;
+        if(!history.automatic){this.draftRecoveryAbort?.abort();this.composerDraft.retire();this.reviewedSourceDraft=null;}
         this.restoredHistory = history;
         alphaClient.disconnect();
-        if (this.live) this.setState({ msgs: history.messages.map(message => ({ ...message, card: null })), draft: '', typing: false, chat: 'full' });
+        if (this.live) this.setState({ msgs: history.messages.map(message => ({ ...message, card: null })), typing: false, ...(history.automatic?{}:{draft:'',chat:'full'}) });
       }
       if (this.live) {context(this);this.refreshDraftBinding();}
     });
@@ -293,8 +331,8 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
         if(result.status==='applied'){
           const calendarResult=validateCalendarResult(operation,result.result);
           // Return the receipt immediately; DeviceActions must journal it before
-          // any optional UI/provider refresh. Normal view resume refreshes rows.
-          return {status:'succeeded',summary:operation.type==='calendar_read_selected'?'Read the exact selected calendar event with approval.':'Calendar operation applied and read back from the provider.',calendarResult};
+          // the existing committed event refreshes native or browser rows.
+          return {status:'succeeded',summary:presentDeviceRecordOperation(operation,expectedContext.timeZone).appliedSummary,calendarResult};
         }
         return {status:result.status==='unknown'?'unknown':'failed',summary:result.status==='unknown'?'Calendar outcome is unconfirmed. Inspect action history before another action.':result.status==='cancelled'?'Calendar review cancelled. Nothing was changed.':'Calendar target changed, access was denied, or the operation is unsupported. Nothing was changed.'};
       }
@@ -302,8 +340,22 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
         try{
           if(this.notesStorageFailed||!this.notesStore)throw Error('Notes storage is unavailable');
           const current=()=>{signal.throwIfAborted();context(this);if(!this.live||document.hidden||JSON.stringify(alphaClient.getState().context)!==JSON.stringify(expectedContext)||expectedContext.sensitive||expectedContext.view!=='notes')throw Error('Selected Notes context changed');};
-          const notesResult=await this.notesStore.execute(operation,operationId,signal,current);
-          return {status:'succeeded',summary:operation.type==='notes_read_selected'?'Read the exact selected note with approval.':'Selected Notes change committed.',notesResult};
+          const execute=()=>this.notesStore.execute(operation,operationId,signal,current);
+          // An approved agent deletion moves the note to Trash: the restorable copy is
+          // written ahead of the tombstone commit, under the same deletion-effects lock.
+          const notesResult=operation.type!=='notes_delete'?await execute():await withNotesDeletionLock(async()=>{
+            current();const list=this.notesStore.list,index=list.findIndex((n:Shell)=>n.id===operation.target.noteId);
+            if(index<0)throw Error('Selected note is missing');
+            const target=await this.notesStore.target(operation.target.noteId);
+            if(JSON.stringify(target)!==JSON.stringify(operation.target))throw Error('Selected note revision changed');
+            const note=list[index],voice=this.api('notes')?.trashVoiceNoteWithRecording;
+            // A voice note's recording moves to the audio trash under the same operation id,
+            // so Trash restores or erases the note and its recording together.
+            const result=note.kind==='voice'&&note.audio&&typeof voice==='function'?await voice(note,target,operationId,index,execute):
+              (await editNotesTrash(doc=>addNotesTrashEntry(doc,{id:operationId,note,target,index,deletedAt:Date.now()})),await execute());
+            window.dispatchEvent(new Event('alpha:notes-trash-changed'));return result;
+          },signal);
+          return {status:'succeeded',summary:presentDeviceRecordOperation(operation,expectedContext.timeZone).appliedSummary,notesResult};
         }catch(error){
           const uncertain=error instanceof NotesCommitUncertain;
           // Cancellation or stale approval before mutation is not a storage failure.
@@ -350,7 +402,7 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
         if (existing) return { status: 'unknown', summary: 'A note already has this action identifier; review it before resolving.' };
         const note = { id: operationId, kind: 'text', title: operation.title, body: operation.body, pinned: false, when: 'Now', createdAt:Date.now(), modifiedAt:Date.now() };
         const saved = await this.vset('notes', { list: [note, ...this.vget('notes').list] });
-        return { status: saved ? 'succeeded' : this.notesCommitUncertain?'unknown':'failed', summary: saved ? `Saved note: ${operation.title}` : 'The note save is unconfirmed. Inspect saved notes before repeating.' };
+        return { status: saved ? 'succeeded' : this.notesCommitUncertain?'unknown':'failed', summary: saved ? presentDeviceRecordOperation(operation,expectedContext.timeZone).appliedSummary : 'The note save is unconfirmed. Inspect saved notes before repeating.' };
       }
       if(isReminderCreate(operation)){
         const support=await DailyApps.surfaceInfo();signal.throwIfAborted();
@@ -359,7 +411,7 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
         const result=await DailyApps.operateReminder({operationId,bindingHash,operation});
         if(result.status!=='succeeded')return {status:'unknown',summary:'Reminder creation outcome is unknown. Check action history; it will not be repeated.'};
         const reminderResult=validateReminderCreateResult(operation,result.result,operationId);
-        return {status:'succeeded',reminderResult,summary:reminderResult.status==='pending'?'Reminder saved with no alert.':reminderResult.status==='scheduled'?'Reminder saved with approximate notification delivery.':reminderResult.status==='permission-denied'?'Reminder saved; notifications are disabled.':'Reminder saved; notification scheduling failed.'};
+        return {status:'succeeded',reminderResult,summary:reminderResult.status==='permission-denied'?'Reminder saved; notifications are disabled.':reminderResult.status==='scheduling-failed'?'Reminder saved; notification scheduling failed.':presentDeviceRecordOperation(operation,expectedContext.timeZone).appliedSummary};
       }
       if(isReminderOperation(operation)){
         signal.throwIfAborted();context(this);if(JSON.stringify(alphaClient.getState().context)!==JSON.stringify(expectedContext)||expectedContext.sensitive||document.hidden)throw Error('Reminder context changed');
@@ -374,7 +426,7 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
         // cancels this context-bound action before it can acknowledge the server.
         if(result.status!=='succeeded')return {status:'unknown',summary:'Reminder outcome requires review. It was not repeated.'};
         const reminderResult=validateReminderResult(operation,result.result);
-        return {status:'succeeded',summary:reminderResult.status==='pending'?'Reminder saved with no alert.':`Reminder ${reminderResult.status}.${Capacitor.isNativePlatform()?' Android delivery is approximate.':''}`,reminderResult};
+        return {status:'succeeded',summary:reminderResult.status==='permission-denied'||reminderResult.status==='scheduling-failed'?`Reminder ${reminderResult.status}.${Capacitor.isNativePlatform()?' Android delivery is approximate.':''}`:presentDeviceRecordOperation(operation,expectedContext.timeZone).appliedSummary,reminderResult};
       }
       if (operation.type === 'create_reminder') {
         const at = Date.parse(operation.dueAt);
@@ -383,7 +435,7 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
         if (result.status !== 'scheduled' || result.id !== operationId) return { status: 'failed', summary: 'Scheduling was not confirmed. Check notification settings and the reminder time.' };
         // Publish the new revision only after the receipt attempt; refreshing here
         // cancels this context-bound action before it can acknowledge the server.
-        return { status: 'succeeded', summary: `Scheduled reminder: ${operation.title}.${Capacitor.isNativePlatform()?' Android may delay delivery.':''}` };
+        return { status: 'succeeded', summary: presentDeviceRecordOperation(operation,expectedContext.timeZone).appliedSummary };
       }
       if (operation.type === 'open_view') {
         if (!['home','reminders','notifications'].includes(operation.view) && !isMvpView(operation.view)) return {status:'failed',summary:'This app is deferred from the MVP'};
@@ -402,6 +454,7 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
   };
   p.componentDidUpdate = function (prev: Shell) { originalUpdate.call(this, prev); context(this); sizeComposer();this.composerDraft?.edit(String(this.S().draft||'')); };
   p.componentWillUnmount = function () {
+    this.pendingActionRecoveryAbort?.abort();this.pendingActionApproval?.abort();
     this.draftRecoveryAbort?.abort();this.composerDraft?.retire(false);this.draftBindingAbort?.abort();
     this.notesOpenAbort?.abort();if(activeShell===this){activeShell=null;notesRecovery?.abort();}
     this.closeSummaryReview?.();
@@ -410,10 +463,11 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
     document.removeEventListener('visibilitychange', this.visibilityHandler);
     window.removeEventListener('pagehide', this.pageHideHandler);
     window.removeEventListener('pageshow', this.pageShowHandler);
+    this.dialogBackObserver?.disconnect();
     this.live = false; alphaClient.disconnect(); window.removeEventListener('alpha-back', this.backHandler); window.removeEventListener('launcher-home', this.homeHandler); window.removeEventListener('alpha-selected-context', this.selectionHandler);
     void this.assistListener?.then((l: Shell) => l?.remove()); originalUnmount.call(this);
   };
-  p.vset = function (key: string, patch: Shell) {
+  p.vset = function (key: string, patch: Shell, options?: {exact?: boolean}) {
     if (key !== 'notes' || !patch.list) { originalSet.call(this,key,patch);return true; }
     if (this.notesStorageFailed||!this.notesStore) {
       // Recovery can race the next input event. Retain its text only as a draft;
@@ -423,7 +477,8 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
       this.toast('Notes storage needs recovery. Copy or export unsaved text before resetting.');context(this);return false;
     }
     try {
-      if(!isAndroid)patch={...patch,list:stampNoteChanges(this.notesStore.list,patch.list)};
+      // A Trash restore reinstates the exact saved record; it is not a content modification.
+      if(!isAndroid&&!options?.exact)patch={...patch,list:stampNoteChanges(this.notesStore.list,patch.list)};
       const pending=this.notesStore.replace(patch.list);
       this.notesPending++;
       this.notesSelectionKey=null;this.notesSelection=null;
@@ -569,7 +624,13 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
     finally { if (this.live) this.setState({ typing: false }); }
   };
   p.agentSay = function (text: string, card?: Shell) {
-    this.setState((previous: Shell) => ({ chat: previous.chat === 'full' ? 'full' : 'sheet', msgs: [...(previous.msgs || []), { id: crypto.randomUUID(), from: 'agent', text, card: card || null }] }));
+    this.setState((previous: Shell) => {
+      const chat = previous.chat === 'full' ? 'full' : 'sheet';
+      // Recovery and a chat reply can publish the same pending action. Decide
+      // inside the state update so either arrival order retains one approval.
+      if (card?.proposalId && (previous.msgs || []).some((message: Shell) => message.card?.proposalId === card.proposalId)) return { chat };
+      return { chat, msgs: [...(previous.msgs || []), { id: crypto.randomUUID(), from: 'agent', text, card: card || null }] };
+    });
   };
   p.reply = function () { return { text: 'Connect an agent to continue.' }; };
   p.cardAct = async function (message: Shell) {
@@ -596,11 +657,18 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
       return;
     }
     if (card.proposalId && !card.done) {
+      if(this.pendingActionApproval)return;
       try {
-        const sessionId = connectionController.getSnapshot().session?.sessionId;
+        context(this);
+        const session=connectionController.getSnapshot().session;
+        if(card.recovered&&JSON.stringify(card.proposalSession)!==JSON.stringify(session))throw Error('The agent changed. Review this action again.');
+        this.pendingActionRecoveryAbort?.abort();
+        const approval=this.pendingActionApproval=new AbortController();
+        this.pendingActionApprovalContext=alphaClient.getState().context;this.pendingActionApprovalSession=session;
+        const sessionId = session?.sessionId;
         const beforeView = this.S().view;
         let receipt;
-        try { receipt = await alphaClient.approve(card.proposalId); }
+        try { receipt = card.recovered?await connectionController.approvePendingAction(card.proposalId,alphaClient.getState().context,approval.signal):await alphaClient.approve(card.proposalId); }
         catch (error) {
           // Navigation may cancel the context-bound chat wait after the effect.
           // Await only that already-started journaled action; never execute again.
@@ -611,7 +679,8 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
         this.setState({ msgs: this.S().msgs.map((m: Shell) => m.id === message.id ? { ...m, card: { ...m.card, done: true, sub: receipt.summary, title: receipt.status === 'succeeded' ? 'Completed' : 'Not completed' } } : m) });
         if (this.S().view !== beforeView) this.toast(receipt.summary);
         else this.agentSay(receipt.summary);
-      } catch (e) { this.agentSay(e instanceof Error ? e.message : 'Action could not complete.'); }
+      } catch (e) { if(this.live&&(!card.recovered||JSON.stringify(card.proposalSession)===JSON.stringify(connectionController.getSnapshot().session)))this.agentSay(e instanceof Error ? e.message : 'Action could not complete.'); }
+      finally {this.pendingActionApproval=null;if(this.live)context(this);}
     } else if (card.go) this.openView(card.go.view, card.go.patch);
   };
   p.startVoice = async function () {

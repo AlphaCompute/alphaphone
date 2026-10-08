@@ -30,6 +30,7 @@ readers. Alpha supplies domain names and legacy recovery policy.
 | Development Cloud account selection | `browser/development-account-document.ts`, `browser/development-identity.ts`; canonical account/session document, invalidated identity snapshot, async admission and restore | Selection publishes only after a committed write. Canonical checks reject stale sessions even without a cross-tab event; delayed hydration cannot replace a newer selection. Exact legacy bytes, malformed-state backup and revision-checked reset remain available. Captured old journals may finish existing receipts but cannot admit new effects. |
 | Conversation restart choices | `runtime/conversation-selection.ts`, history restoration and new conversation creation in `runtime/connection-ui.tsx` | Atomic owner-key updates retain other owners, unique revisions refuse stale same-owner completion, and queued writes recheck connection authority. Exact legacy bytes and browser backup/reset are retained. Active chats stay tab-local until retirement. Owning cases cover competing owners, stale same-owner completions, queued cancellation, recovery and history restoration. Native storage keeps its installed format; native and full-product qualification remain separate. |
 | Device preferences and roles | `browser/device-preferences.ts`, `browser/device.ts`; canonical writes/readback, ordered cache hydration for synchronous rendering/audio, asynchronous sensor admission and role documents | Unavailable settings keep recovery reachable, mute audio and disable sensor access. Device/storage suites cover ordered hydration, concurrent changes and cancellation during settings or location reads. |
+| Browser saved tabs and history | `browser/preference-documents.ts` `alpha.browser.session.v1` (development surface), `BrowserSessionStore` on Android; normal tabs (last committed address, title) and history only, never private tabs | Product decision: tabs keep sign-ins and restore after a cold start. `browser-signins.spec.ts` covers restore, private exclusion and confirmed Clear browsing data. The development frames are sandboxed with opaque origins and keep no cookies; Android site data is covered by native instrumentation. |
 | Browser bookmarks and notification sound history | `browser/preference-documents.ts`; awaited bookmark reads/writes, cross-tab bookmark refresh and transactional sound claims; separate backup/reset controls | Clock/storage suites cover bookmark refresh, sound receipts and recovery. Empty reads and unchanged sound polling do not initialize records; older bytes remain available for backup. |
 | Development password provider | `browser/password-provider.ts`, `browser/preference-documents.ts`; asynchronous device status, canonical provider selection, cross-tab retirement and backup/reset | Provider lifecycle, storage and compact large-text suites cover pending dialog cancellation, retired sample fills and recovery. This is the development sample provider, not real Proton credentials or native autofill acceptance. |
 | Photo albums | `prototype/browser-camera.ts`, `browser/preference-documents.ts`; canonical album names/membership and revision checks, cross-tab catalogue refresh, exact-byte backup/reset | Album/storage suites cover concurrent creation, cross-tab refresh, failed writes and stale recovery. Saved media remains in its existing IndexedDB database; album reset does not delete photos/videos. Album metadata and media bytes are separate transaction domains. `alpha.browser.albums.v1` holds album names and media membership; photo/video payloads already use a separate IndexedDB store. |
@@ -161,6 +162,42 @@ reads the same authoritative Notes envelope as the editor. The independent
 reconciliation. Storage transactions alone do not authorize replaying an audio
 effect. Exact backup and confirmed reset are available from Notes; unsaved text
 must be copied or exported before a reset reloads the app.
+
+### Notes Trash
+
+Deleting a note from the editor, through an approved agent `notes_delete`, or as a
+voice note moves it to Trash. Upstream Notes keeps content-free tombstones, so the
+product keeps the restorable copy beside the store (`runtime/notes-trash.ts`): the
+Keystore-encrypted no-backup slot `notes-trash:v1:device` (32 MiB) on Android and the
+canonical browser document `alpha.browser.notes-trash.v1` on the web build. Each
+entry holds the exact record, its reviewed revision (`target`), list position,
+`deletedAt` and, for voice notes, the recording owned by the same deletion operation.
+The entry is written ahead of the deletion commit under the shared
+`alpha.notes-audio-effects.v1` lock, so content survives a crash or restart at any
+point; maintenance drops an entry whose note is saved again (Undo, restore, or a
+deletion that never committed).
+
+Entries expire exactly 3 days (`NOTES_TRASH_RETENTION_MS`) after `deletedAt`
+([decision P-06](decisions.md#october-7-owner-product-decisions)).
+Maintenance runs at startup, once saved Notes open, and each time Notes opens. It
+reads authoritative storage, only takes the lock when there is work, and is
+idempotent: an interrupted purge is simply repeated. Restore reinserts the
+byte-identical record (same id, so the same revision under the store's hash rule;
+browser date stamping is skipped) and refuses to overwrite a saved note with the same
+id. Voice restores use the reviewed audio-restore path; Delete forever, Empty Trash
+and expiry call `AlphaNoteAudio.purge`, which erases bytes and transcript only for
+the operation that trashed the recording, leaves a `purged` receipt, and makes later
+restoration impossible. An unconfirmed voice deletion is never purged while its
+recovery row is pending, and a recording that any saved note still references is never
+erased. An approved agent `notes_delete` of a voice note follows the editor protocol:
+the Trash entry and audio recovery row are written before the tombstone commit, and
+the recording then moves to the audio trash under the agent's operation id, so Trash
+restores or erases the note and recording together. If the recording step cannot be
+confirmed after the commit, the recovery row stays for review and the entry is not
+purged. A recording that is already missing or owned by another deletion is left
+untouched and only the note text goes to Trash. The 3-day window uses wall-clock
+epoch time (time-zone changes have no effect); a clock moved backwards delays the
+purge, and a clock moved forwards can advance it.
 
 The owning suites cover independent tabs, stale editors, exact archives,
 malformed recovery, failed writes, lost acknowledgements, deletion receipts,

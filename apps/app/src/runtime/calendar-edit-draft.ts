@@ -1,5 +1,5 @@
 import {calendarEditFields,decodeCalendarForm,snapshotCalendarForm} from './calendar-form-draft';
-import {reminderTarget} from './reminder-contract';
+import {reminderTarget} from '../../../../.eliza/client-features/plugins/plugin-assistant/src/services/device-actions/reminder-contract.ts';
 type Form=Record<string,any>;
 const fail=()=>{throw Error('Saved calendar edits need recovery.');};
 const text=(value:any,max=256)=>{if(typeof value!=='string'||!value||value.length>max||value.includes('\0'))fail();return value as string;};

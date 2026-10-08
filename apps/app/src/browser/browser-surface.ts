@@ -1,15 +1,16 @@
 import { WebPlugin } from '@capacitor/core';
-import {bookmarkDocument} from './preference-documents';
+import {bookmarkDocument,browsingSessionDocument} from './preference-documents';
+import {normalizeBrowsing as normalize,type SavedBrowsing as Saved} from './browsing-session';
 
-type Tab = { session: string; id: string; frame: HTMLIFrameElement; container: HTMLDivElement; link: HTMLAnchorElement; status:HTMLParagraphElement; history: string[]; position: number; sequence: number; navigation: number; loading: boolean; committed:boolean; error:string };
+type Tab = { session: string; id: string; private: boolean; frame: HTMLIFrameElement; container: HTMLDivElement; link: HTMLAnchorElement; status:HTMLParagraphElement; history: string[]; position: number; sequence: number; navigation: number; loading: boolean; committed:boolean; error:string };
 /** Unprivileged web surfaces. Remote documents never receive the host bridge. */
 export class BrowserSurface extends WebPlugin {
   private tabs = new Map<string, Tab>();
   private key(input: {session:string;id:string}) { return `${input.session}:${input.id}`; }
   private tab(input: {session:string;id:string}) { const tab=this.tabs.get(this.key(input)); if(!tab)throw Error('Reopen this tab.');return tab; }
   private address(raw:string) { const url=new URL(raw);if(!['https:','http:'].includes(url.protocol)||url.username||url.password)throw Error('Enter an HTTP or HTTPS address.');return url.href; }
-  private emit(tab:Tab) { tab.status.textContent=tab.error;tab.status.hidden=!tab.error;void this.notifyListeners('stateChanged',{session:tab.session,id:tab.id,sequence:++tab.sequence,navigation:tab.navigation,url:tab.history[tab.position],title:tab.history[tab.position],loading:tab.loading,committed:tab.committed,error:tab.error,canBack:tab.position>0,canForward:tab.position<tab.history.length-1}); }
-  async create(input:{session:string;id:string}) {
+  private emit(tab:Tab) { tab.status.textContent=tab.error;tab.status.hidden=!tab.error;void this.notifyListeners('stateChanged',{session:tab.session,id:tab.id,private:tab.private,sequence:++tab.sequence,navigation:tab.navigation,url:tab.history[tab.position],title:tab.history[tab.position],loading:tab.loading,committed:tab.committed,error:tab.error,canBack:tab.position>0,canForward:tab.position<tab.history.length-1}); }
+  async create(input:{session:string;id:string;private?:boolean}) {
     if(this.tabs.has(this.key(input)))return;
     const container=document.createElement('div'),frame=document.createElement('iframe'),link=document.createElement('a'),status=document.createElement('p');
     container.dataset.browserSurface=input.id;
@@ -21,7 +22,7 @@ export class BrowserSurface extends WebPlugin {
     link.textContent='Open in browser ↗';link.target='_blank';link.rel='noopener noreferrer';link.style.cssText='padding:8px 12px;color:var(--fg,#111);font:12px system-ui;text-align:right';
     status.setAttribute('role','status');status.style.cssText='margin:0;padding:12px;font:14px/1.4 system-ui';status.hidden=true;
     container.append(link,status,frame);document.body.append(container);
-    const tab:Tab={...input,frame,container,link,status,history:[],position:-1,sequence:0,navigation:0,loading:false,committed:false,error:''};
+    const tab:Tab={session:input.session,id:input.id,private:!!input.private,frame,container,link,status,history:[],position:-1,sequence:0,navigation:0,loading:false,committed:false,error:''};
     this.tabs.set(this.key(input),tab);
   }
   private load(tab:Tab) {
@@ -52,6 +53,16 @@ export class BrowserSurface extends WebPlugin {
   async bookmarks() {return {urls:await bookmarkDocument.read<string[]>(()=>[])};}
   async setBookmark(input:{url:string;saved:boolean}) {const url=this.address(input.url);return bookmarkDocument.edit<string[],{urls:string[]}>(()=>[],urls=>{const next=urls.filter(value=>value!==url);if(input.saved)next.unshift(url);urls.splice(0,urls.length,...next);return {urls:[...urls]};});}
   async share(input:{session:string;id:string;url:string;navigation:number}) {const tab=this.tab(input);if(!tab.committed||tab.loading||tab.error||document.hidden||tab.container.style.display==='none'||tab.navigation!==input.navigation||tab.history[tab.position]!==input.url)throw Error('The page changed. Share it again.');if(navigator.share)await navigator.share({url:input.url});else await navigator.clipboard.writeText(input.url);}
+  async browsingState() {return browsingSessionDocument.read<Saved>(()=>normalize({})).then(normalize);}
+  async saveBrowsingState(input:Partial<Saved>) {const next=normalize(input);return browsingSessionDocument.edit<Saved,Saved>(()=>normalize({}),state=>{Object.assign(state,next);return next;});}
+  /** Development frames are sandboxed with opaque origins, so they keep no
+   * cookies or site storage; clearing closes normal tabs and saved history. */
+  async clearBrowsingData(input:{session:string}) {
+    const closed:string[]=[];for(const [key,tab] of this.tabs)if(tab.session===input.session&&!tab.private){tab.container.remove();this.tabs.delete(key);closed.push(tab.id);}
+    await browsingSessionDocument.edit<Saved,void>(()=>normalize({}),state=>{Object.assign(state,normalize({}));});
+    return {closed};
+  }
+  async clearSiteData(input:{session:string;id:string;url:string}) {const tab=this.tab(input);if(tab.history[tab.position]!==input.url)throw Error('Load a website before clearing its data.');return {site:new URL(input.url).hostname};}
   async downloads() {window.dispatchEvent(new CustomEvent('alpha:browser-open-view',{detail:'files'}));}
   async cancelReading() {window.speechSynthesis?.cancel();}
 }

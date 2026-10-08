@@ -16,7 +16,21 @@ Alpha retains the prototype's browser chrome. The remote document remains an iso
 
 Navigation, tab changes, overlays, document errors, renderer loss, closing and destruction cancel eligible framework sessions. Cancellation excludes the child, clears native focus, reports the actual virtual-field exit and then cancels; late framework popup callbacks for an ineligible child repeat that revocation. During Activity pause, the child is hidden and ineligible for structure/fill delivery. The same-document session is retained because a password provider can legitimately open its own unlock/authentication Activity; unconditional cancellation on pause would break that flow. Eligibility returns only when the resumed selected document is presented. Real provider unlock/resume still requires device qualification.
 
-Autofill does not itself create a shared cookie jar or durable browser login policy. The October 7 owner decision ([decisions](decisions.md#october-7-owner-product-decisions), P-04 and P-05) supersedes per-tab ephemeral profiles with a persistent sign-in profile plus an explicit ephemeral private tab, and adds an integrated elizaOS password manager with Proton Pass as an optional alternative. No field values, vault items, credential handles, provider structures or passwords are added to the agent bridge. The current browser agent context remains an opaque tab identity/revision. The website itself necessarily receives fields that the user elects to fill; this is not a promise that website scripts cannot read their own form.
+Browser profiles implement the October 7 owner decision ([decisions](decisions.md#october-7-owner-product-decisions), P-04): normal tabs share a persistent profile, so a sign-in completed with autofill persists; private tabs are ephemeral ([sign-ins, private tabs and site data](prototype-browser-integration.md#sign-ins-private-tabs-and-site-data)). Autofill itself stores nothing in Alpha, and the browser does not block the platform autofill framework in either tab type. P-05 adds an integrated elizaOS password manager with Proton Pass as an optional alternative; that is separate work and is not built here. No field values, vault items, credential handles, provider structures or passwords are added to the agent bridge. The current browser agent context remains an opaque tab identity/revision. The website itself necessarily receives fields that the user elects to fill; this is not a promise that website scripts cannot read their own form.
+
+## Alpha password manager
+
+Alpha's own provider (`ElizaPasswordAutofillService` from the shared password plugin, see
+[password-provider-setup.md](password-provider-setup.md)) treats Alpha as a trusted browser
+only through `CredentialWebView`: when the child is eligible, it adds the committed top-level
+origin (`PasswordFormPolicy.TOP_ORIGIN_EXTRA`, `https://host[:port]` of the presented URL) to
+its own autofill node after Chromium has built the virtual structure. The provider refuses the
+request unless that origin's host equals the single HTTPS web domain of every web node, so a
+cross-origin frame (a second domain) is never filled, and uses that origin (with its port, which
+Android's field metadata lacks) as the exact binding to match. The privileged renderer WebView remains
+excluded, and no field values or vault data are added to the agent bridge. Device
+qualification of real Chromium structures (including cross-origin iframes), provider
+selection, unlock/resume and save prompts remains open.
 
 ## Proton Pass qualification
 

@@ -50,7 +50,11 @@ test('main manifest pins an HTTPS-only network policy and drops legacy storage',
 test('development behaviour keys on the test-mocks BuildConfig field, not DEBUG', () => {
   for (const name of ['DailyAppsPlugin', 'AlphaMapsTransportPlugin', 'AlphaConnectionPlugin', 'AlphaVoiceCloudPlugin', 'IsolatedPdfService', 'HostedTransport', 'BrowserReading', 'BrowserDownloads']) {
     const source = read(app + name + '.java');
-    assert.doesNotMatch(source, /BuildConfig\.DEBUG/, name);
+    // DEBUG may gate the closed-field transport diagnostic, never development capabilities.
+    const capabilities = name === 'AlphaConnectionPlugin'
+      ? source.replace(/private static String debugRequestFailure\([^)]*\) \{[^}]*\}/, '')
+      : source;
+    assert.doesNotMatch(capabilities, /BuildConfig\.DEBUG/, name);
     assert.match(source, /BuildConfig\.ELIZA_DEV_ALLOW_TEST_MOCKS/, name);
   }
   assert.match(read(app + 'DailyAppsPlugin.java'), /"developmentBuild", BuildConfig\.ELIZA_DEV_ALLOW_TEST_MOCKS/);
@@ -119,4 +123,57 @@ ${source.slice(start, end).split('\n').filter(line => !/private boolean recoveri
     execFileSync(bin('javac'), ['--release', '11', '-d', dir, path.join(dir, 'RecoveryHarness.java')], {stdio: 'pipe', timeout: 20000});
     assert.match(execFileSync(bin('java'), ['-cp', dir, 'RecoveryHarness'], {encoding: 'utf8', timeout: 10000}), /^PASS renderer recovery/);
   } finally { fs.rmSync(dir, {recursive: true, force: true}); }
+});
+
+test('native content fits real system bars and cutouts without changing launcher or double-counting IME',()=>{
+ const source=read(app+'MainActivity.java');
+ const start=source.indexOf('-> {',source.indexOf('ViewCompat.setOnApplyWindowInsetsListener('))+4;
+ const end=source.indexOf('   return WindowInsetsCompat.CONSUMED;',start);
+ assert.ok(start>4&&end>start);
+ assert.match(source,/onPageLoaded\(WebView view\)[\s\S]*?requestApplyInsets/);
+ const dir=fs.mkdtempSync(path.join(os.tmpdir(),'alpha-insets-'));
+ try{
+  fs.writeFileSync(path.join(dir,'InsetsHarness.java'),`import java.util.*;
+public class InsetsHarness {
+ static class Insets { int left,top,right,bottom; Insets(int l,int t,int r,int b){left=l;top=t;right=r;bottom=b;} }
+ static class WindowInsetsCompat {
+  static class Type {static int ime(){return 1;}static int systemBars(){return 2;}static int displayCutout(){return 4;}}
+  Insets bars,cutout,keyboard;boolean visible;
+  WindowInsetsCompat(Insets b,Insets c,int k){bars=b;cutout=c;keyboard=new Insets(0,0,0,k);visible=k>0;}
+  boolean isVisible(int type){return visible;}
+  Insets getInsets(int types){if(types==1)return keyboard;if(types==2)return bars;return new Insets(Math.max(bars.left,cutout.left),Math.max(bars.top,cutout.top),Math.max(bars.right,cutout.right),Math.max(bars.bottom,cutout.bottom));}
+ }
+ static class BuildConfig {static boolean IS_LAUNCHER;}
+ static class View {int l,t,r,b;int getPaddingLeft(){return l;}int getPaddingTop(){return t;}int getPaddingRight(){return r;}int getPaddingBottom(){return b;}void setPadding(int left,int top,int right,int bottom){l=left;t=top;r=right;b=bottom;}}
+ static class WebView {List<String> scripts=new ArrayList<>();void evaluateJavascript(String value,Object callback){scripts.add(value);}}
+ static class Bridge {WebView web=new WebView();WebView getWebView(){return web;}}
+ static class Metrics {float density=3;}
+ static class Resources {Metrics metrics=new Metrics();Metrics getDisplayMetrics(){return metrics;}}
+ Bridge bridge=new Bridge();Resources resources=new Resources();boolean assistant;int topInsetDp,bottomInsetDp;
+ Bridge getBridge(){return bridge;}Resources getResources(){return resources;}boolean isAssistantSurface(){return assistant;}
+ void apply(View view,WindowInsetsCompat insets){${source.slice(start,end)}}
+ static void check(boolean ok,String message){if(!ok)throw new AssertionError(message);}
+ static Insets zero(){return new Insets(0,0,0,0);}
+ public static void main(String[] args){
+  InsetsHarness h=new InsetsHarness();View v=new View();Insets portrait=new Insets(0,72,0,144);
+  h.apply(v,new WindowInsetsCompat(portrait,zero(),0));
+  check(v.t==72&&v.b==144,"standalone bars must protect top navigation and bottom controls");
+  check(h.topInsetDp==0&&h.bottomInsetDp==0,"already fitted bars must not be reserved twice in CSS");
+  h.apply(v,new WindowInsetsCompat(portrait,new Insets(0,120,0,0),0));check(v.t==120,"cutout may exceed status bar");
+  h.apply(v,new WindowInsetsCompat(portrait,zero(),984));check(v.t==72&&v.b==984,"keyboard replaces bottom bar instead of adding to it");
+  h.apply(v,new WindowInsetsCompat(new Insets(0,0,0,72),new Insets(136,0,0,0),0));check(v.l==136&&v.t==0&&v.b==72,"rotated cutout and resized window update all sides");
+  h.apply(v,new WindowInsetsCompat(portrait,zero(),0));check(v.l==0&&v.t==72&&v.b==144,"portrait clears old landscape padding");
+  BuildConfig.IS_LAUNCHER=true;h.apply(v,new WindowInsetsCompat(portrait,zero(),0));
+  check(v.l==0&&v.t==0&&v.r==0&&v.b==0&&h.topInsetDp==24&&h.bottomInsetDp==48,"launcher retains reference canvas and remaining CSS inset contract");
+  h.apply(v,new WindowInsetsCompat(portrait,zero(),984));check(v.b==984&&h.bottomInsetDp==0,"launcher keeps original keyboard resize");
+  h.assistant=true;h.apply(v,new WindowInsetsCompat(portrait,zero(),0));check(v.t==72&&v.b==144&&h.topInsetDp==0&&h.bottomInsetDp==0,"assistant activity also fits real bars");
+  h.bridge.web.scripts.clear();h.apply(v,new WindowInsetsCompat(portrait,zero(),0));check(h.bridge.web.scripts.size()==2,"new document receives both CSS insets even if values did not change");
+  System.out.println("PASS native insets");
+ }
+}`);
+  const home=process.env.JAVA_HOME||(process.platform==='darwin'?'/opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home':'');
+  const bin=name=>home?path.join(home,'bin',name):name;
+  execFileSync(bin('javac'),['--release','11','-d',dir,path.join(dir,'InsetsHarness.java')],{stdio:'pipe',timeout:20000});
+  assert.match(execFileSync(bin('java'),['-cp',dir,'InsetsHarness'],{encoding:'utf8',timeout:10000}),/^PASS native insets/);
+ }finally{fs.rmSync(dir,{recursive:true,force:true});}
 });

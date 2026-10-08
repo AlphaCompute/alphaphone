@@ -7,16 +7,29 @@ import {browserReadingSource} from '../browser/reading-source';
 import {sensitiveReadingText} from '../browser/reading-sensitive';
 import {webSourceOf} from './summary-source';
 import { connectionController } from '../runtime/connection-ui';
+import { BrowserReviews } from '../browser/review';
+import { browsingSnapshot, restoreBrowsing, MAX_SAVED_TABS as MAX_TABS, MAX_SAVED_HISTORY as MAX_HISTORY } from '../browser/browsing-session';
 type Bag = Record<string, any>;
 const Browser = registerPlugin<any>('AlphaBrowser');
+const newTabId = () => 'b' + crypto.randomUUID().replaceAll('-', '');
 
-/** Public browsing only. Install last, only outside visual fixture mode. */
+/** Public browsing only. Install last, only outside visual fixture mode.
+ * Product decision: normal tabs keep sign-ins (one persistent browser profile),
+ * and their tabs and history are restored after a cold start. Private tabs use
+ * an ephemeral profile and never enter saved tabs or history. */
 export function installPrototypeBrowserAdapter(Component: any, views: Record<string, Bag>) {
   const session = crypto.randomUUID();
   const metadata = new Map<string, Bag>();
   const documentRevisions = new Map<string, number>();
   const created = new Map<string, Promise<any>>();
-  let shell: any, lastGeometry = '', disposed = false, sharing = false;
+  // Cold-start tabs that have not been loaded yet: id -> last committed page.
+  const restored = new Map<string, {url: string; title: string}>();
+  const reviews = new BrowserReviews();
+  let shell: any, lastGeometry = '', disposed = false, sharing = false, confirming = false, clearingData = false;
+  // Saving waits for a successful read so a damaged saved record is never overwritten implicitly.
+  let sessionRead = false, sessionHydrated = false, lastSaved = '', saveQueue = Promise.resolve();
+  const tabOf = (id: string) => state()?.tabs?.find((tab: Bag) => tab.id === id);
+  const isPrivate = (id: string) => !!tabOf(id)?.priv;
   let bookmarkRead: Promise<void> | undefined, bookmarkQueue = Promise.resolve();
   let bookmarkHydrated = false, bookmarkRefreshQueued = false, initialBookmarkRead = false, browserWasActive = false;
   // Browser-owned bookmark storage reports damaged saved data by failing to
@@ -117,11 +130,11 @@ export function installPrototypeBrowserAdapter(Component: any, views: Record<str
     lastGeometry = next;
     void Browser.present({session,id:null}).catch(() => { if(lastGeometry === next) lastGeometry=''; });
   }
-  function ensure(id: string) {
-    if (!created.has(id)) created.set(id, Browser.create({ session, id }).catch((error: unknown) => { created.delete(id); throw error; }));
+  function ensure(id: string, priv = isPrivate(id)) {
+    if (!created.has(id)) created.set(id, Browser.create({ session, id, private: priv }).catch((error: unknown) => { created.delete(id); throw error; }));
     return created.get(id)!;
   }
-  async function navigate(raw: string, newTab = false, approvedSignal?: AbortSignal) {
+  async function navigate(raw: string, newTab = false, approvedSignal?: AbortSignal, privateTab = false) {
     let url: URL;
     try {
       const input = raw.trim();
@@ -139,12 +152,16 @@ export function installPrototypeBrowserAdapter(Component: any, views: Record<str
       }
     } catch { if (approvedSignal) throw new Error('Invalid approved browser destination'); report(new Error('Enter search words or a valid HTTP or HTTPS address without credentials.')); return; }
     const s = state(); if (!s) { if (approvedSignal) throw new Error('Browser unavailable'); return; }
-    const id = newTab ? 'b' + crypto.randomUUID().replaceAll('-', '') : s.cur;
+    const id = newTab ? newTabId() : s.cur, priv = newTab ? privateTab : isPrivate(id);
+    // Keep the last committed address durable while a restored page is loading or fails.
+    const saved = restored.get(id);
+    if (saved) metadata.set(id, { ...metadata.get(id), savedUrl: saved.url, title: saved.title });
+    restored.delete(id);
     try {
-      await ensure(id);
+      await ensure(id, priv);
       approvedSignal?.throwIfAborted();
       if (disposed) { if (approvedSignal) throw new Error('Browser closed'); return; }
-      if (newTab) shell.vset('browser', { tabs: [...state().tabs, { id, hist: ['newtab'], pos: 0 }], cur: id });
+      if (newTab) shell.vset('browser', { tabs: [...state().tabs, { id, hist: ['newtab'], pos: 0, ...(priv ? {priv: true} : {}) }], cur: id });
       metadata.set(id, { ...metadata.get(id), url: url.href, loading: true, committed: false, error: '' });
       documentRevisions.set(id, (documentRevisions.get(id) || 0) + 1);
       shell.vset('browser', { editing: false, tabsOpen: false, menu: false, lib: null, share: false });
@@ -170,10 +187,80 @@ export function installPrototypeBrowserAdapter(Component: any, views: Record<str
       await Browser.share({session,id,navigation:info.navigation,url:info.url});
     } catch(error){report(error);} finally {sharing=false;}
   }
+  /** Remove renderer tabs whose native WebView is already gone. */
+  function forgetTabs(ids: string[]) {
+    for (const id of ids) { created.delete(id); metadata.delete(id); restored.delete(id); }
+    const s = state(); if (!s) return;
+    const rest = s.tabs.filter((tab: Bag) => !ids.includes(tab.id));
+    const tabs = rest.length ? rest : [{ id: newTabId(), hist: ['newtab'], pos: 0 }];
+    shell.vset('browser', { tabs, cur: tabs.some((tab: Bag) => tab.id === s.cur) ? s.cur : tabs[0].id });
+  }
+  function savedSnapshot() {
+    const s = state(); if (!s) return null;
+    return browsingSnapshot(s, id => { const info = metadata.get(id), saved = restored.get(id); return { url: info?.savedUrl || saved?.url, title: info?.title || saved?.title }; });
+  }
+  function saveSession() {
+    if (!sessionHydrated || clearingData || disposed) return;
+    const snapshot = savedSnapshot(); if (!snapshot) return;
+    const next = JSON.stringify(snapshot); if (next === lastSaved) return;
+    lastSaved = next;
+    saveQueue = saveQueue.then(() => disposed || clearingData ? undefined : Browser.saveBrowsingState({ session, ...snapshot })).catch(() => { if (lastSaved === next) lastSaved = ''; });
+  }
+  async function restoreSession() {
+    if (sessionRead) return; sessionRead = true;
+    try {
+      const saved = await Browser.browsingState({ session });
+      if (disposed) return;
+      const s = state(); if (!s) return;
+      const next = restoreBrowsing(saved, s, created.size === 0 && s.tabs.length === 1 && !metadata.size);
+      // Restored tabs load (an ordinary GET of the last committed address)
+      // only when the tab is shown; nothing is resubmitted.
+      for (const tab of next.restored) restored.set(tab.id, { url: tab.url, title: tab.title });
+      shell.vset('browser', next.tabs ? { tabs: next.tabs, cur: next.cur, visits: next.visits } : { visits: next.visits });
+      sessionHydrated = true;
+      lastSaved = JSON.stringify(savedSnapshot());
+    } catch {
+      report(new Error('Saved tabs and history could not be opened. They were kept unchanged; Clear browsing data resets them.'));
+    }
+  }
+  async function confirmBrowser(id: string, title: string, details: string) {
+    shell.vset('browser', { menu: false });
+    confirming = true; lastGeometry = ''; await update();
+    try { return await reviews.confirm(id, title, details, 'Clear data'); }
+    finally { confirming = false; lastGeometry = ''; }
+  }
+  async function clearBrowsingData() {
+    if (clearingData) return;
+    const ok = await confirmBrowser('browser-clear-data', 'Clear browsing data?', 'Deletes cookies and site data, so you will be signed out of websites. Also deletes browsing history and cached files, and closes open tabs. Bookmarks and private tabs are kept.');
+    if (!ok || disposed) return;
+    clearingData = true;
+    try {
+      const result = await Browser.clearBrowsingData({ session });
+      if (disposed) return;
+      const normal = state().tabs.filter((tab: Bag) => !tab.priv).map((tab: Bag) => tab.id);
+      forgetTabs([...new Set([...normal, ...(Array.isArray(result?.closed) ? result.closed : [])])]);
+      shell.vset('browser', { visits: [] });
+      sessionHydrated = true; lastSaved = JSON.stringify(savedSnapshot());
+      shell.toast('Browsing data cleared');
+    } catch (error) { report(error); } finally { clearingData = false; }
+  }
+  async function clearSiteData() {
+    const id = state()?.cur, info = metadata.get(id);
+    let host = '';
+    try { host = new URL(info?.url).hostname; } catch {}
+    if (!host || !info?.committed || info.error) { report(new Error('Load a website before clearing its data.')); return; }
+    const ok = await confirmBrowser('browser-clear-site', `Clear data for ${host}?`, `Deletes cookies and site data for ${host}${isPrivate(id) ? ' in this private tab' : ''}, so you will be signed out of this site. History and bookmarks are kept.`);
+    if (!ok || disposed) return;
+    try {
+      const result = await Browser.clearSiteData({ session, id, url: info.url });
+      if (!disposed) shell.toast(`Cleared data for ${result?.site || host}. Reload the page to continue.`);
+    } catch (error) { report(error); }
+  }
   const definition = views.browser;
   definition.state = { ...definition.state, tabs: [{ id: 'b0', hist: ['newtab'], pos: 0 }], cur: 'b0', marks: [], visits: [], booked: null, ag: null, confirm: null };
   // These are in-memory view-reset keys, not disk persistence. Keep the native
-  // tab identities while visiting other apps; a cold start begins with b0.
+  // tab identities while visiting other apps; a cold start begins with b0 until
+  // restoreSession replaces it with saved normal tabs.
   definition.persist = ['tabs', 'cur', 'marks', 'visits'];
   definition.onLeave = () => {stopReading();hide();};
   definition.reply = () => null;
@@ -186,14 +273,17 @@ export function installPrototypeBrowserAdapter(Component: any, views: Record<str
   definition.render = (s: Bag, api: Bag) => {
     const out = render(s, api), info = metadata.get(s.cur), url = info?.url ? new URL(info.url) : null;
     const unavailable = () => api.toast('This browser currently supports public navigation only.');
-    const openNew = () => { if (s.tabs.length >= 8) { api.toast('Close a tab before opening another.'); return; } const id='b'+crypto.randomUUID().replaceAll('-',''); api.set({ tabs:[...s.tabs,{id,hist:['newtab'],pos:0}],cur:id,tabsOpen:false,editing:true,addr:'' }); };
+    const openNew = (priv = false) => { if (s.tabs.length >= MAX_TABS) { api.toast('Close a tab before opening another.'); return; } const id=newTabId(); api.set({ tabs:[...s.tabs,{id,hist:['newtab'],pos:0,...(priv?{priv:true}:{})}],cur:id,tabsOpen:false,menu:false,editing:true,addr:'' }); };
+    const priv = !!s.tabs.find((tab: Bag) => tab.id === s.cur)?.priv;
+    const known = (id: string) => metadata.get(id) || restored.get(id);
     return { ...out, isNews:false,isEnc:false,isBook:false,isSearch:false,isGeneric:false,isNew:!info,
+      isPrivate:priv,openPrivate:()=>openNew(true),clearData:()=>void clearBrowsingData(),clearSite:()=>void clearSiteData(),canClearSite:!!info?.committed&&!info?.error&&!!url,
       recents:[],sugg:[],people:[],agOn:false,confirm:false,
       host:url?.host || 'Search or type address',path:url ? url.pathname + url.search : '', hasLock:Capacitor.isNativePlatform() && !!url && url.protocol==='https:' && !!info?.committed && !info?.loading && !info?.error,
       nativeControls:true,openPasswordProvider:()=>{api.set({menu:false});api.open('settings',{page:'password-provider'});},openDownloads:()=>{api.set({menu:false});void Browser.downloads({session}).catch(report);},reload:()=>{api.set({menu:false});void command('reload');},stopLoading:()=>{api.set({menu:false});void command('stop');},loading:!!info?.loading,goBack:()=>void command('back'),goFwd:()=>void command('forward'),backOp:info?.canBack?1:0.3,fwdOp:info?.canForward?1:0.3,
       startEdit:()=>api.set({editing:true,addr:info?.url||'',menu:false}),onAddrKey:(e:KeyboardEvent)=>{ if(e.key==='Enter'){e.preventDefault();void navigate((e.target as HTMLInputElement).value);} else if(e.key==='Escape')api.set({editing:false}); },
-      toggleMark:()=>{if(!info?.committed || info.loading || info.error || url?.protocol!=='https:'){api.toast('Load an HTTPS page before bookmarking it.');return;}saveBookmark(info.url);},markLabel:s.marks.includes(info?.url)?'Bookmarked':'Bookmark',markFill:s.marks.includes(info?.url)?'currentColor':'none',libRows:[...(bookmarkRecovery&&s.lib!=='history'?[{title:'Recover saved bookmarks',host:'Saved bookmarks could not be opened. Their original data is retained.',ini:'!',go:openBookmarkRecovery,canRemove:false,removeAria:'',remove:()=>{}}]:[]),...(s.lib==='history'?s.visits:s.marks).map((u:string)=>({title:u,host:u,ini:new URL(u).hostname[0],go:()=>void navigate(u),canRemove:s.lib!=='history',removeAria:'Remove bookmark',remove:()=>saveBookmark(u,false)}))],libEmpty:!(bookmarkRecovery&&s.lib!=='history')&&!(s.lib==='history'?s.visits:s.marks).length,newTab:openNew,askPage:()=>void askPage(),readAloud:()=>void readPage(),bookNow:unavailable,cfOk:unavailable,openShare:()=>void sharePage(),
-      tabCards:s.tabs.map((tab:Bag)=>({title:metadata.get(tab.id)?.title || metadata.get(tab.id)?.url || 'New tab',host:metadata.get(tab.id)?.url||'',css:tab.id===s.cur?'box-shadow:inset 0 0 0 2px var(--acc)':'',prev:'background:var(--s2)',aria:'Switch to '+(metadata.get(tab.id)?.title||'New tab'),closeAria:'Close tab',pick:()=>api.set({cur:tab.id,tabsOpen:false}),close:()=>{ const rest=state().tabs.filter((t:Bag)=>t.id!==tab.id); const fallback='b'+crypto.randomUUID().replaceAll('-','');if(created.has(tab.id))void Browser.close({session,id:tab.id}).catch(report);created.delete(tab.id);metadata.delete(tab.id);api.set({tabs:rest.length?rest:[{id:fallback,hist:['newtab'],pos:0}],cur:state().cur===tab.id?(rest[0]?.id||fallback):state().cur}); }})),
+      toggleMark:()=>{if(!info?.committed || info.loading || info.error || url?.protocol!=='https:'){api.toast('Load an HTTPS page before bookmarking it.');return;}saveBookmark(info.url);},markLabel:s.marks.includes(info?.url)?'Bookmarked':'Bookmark',markFill:s.marks.includes(info?.url)?'currentColor':'none',libRows:[...(bookmarkRecovery&&s.lib!=='history'?[{title:'Recover saved bookmarks',host:'Saved bookmarks could not be opened. Their original data is retained.',ini:'!',go:openBookmarkRecovery,canRemove:false,removeAria:'',remove:()=>{}}]:[]),...(s.lib==='history'?s.visits:s.marks).map((u:string)=>({title:u,host:u,ini:new URL(u).hostname[0],go:()=>void navigate(u),canRemove:s.lib!=='history',removeAria:'Remove bookmark',remove:()=>saveBookmark(u,false)}))],libEmpty:!(bookmarkRecovery&&s.lib!=='history')&&!(s.lib==='history'?s.visits:s.marks).length,newTab:()=>openNew(false),askPage:()=>void askPage(),readAloud:()=>void readPage(),bookNow:unavailable,cfOk:unavailable,openShare:()=>void sharePage(),
+      tabCards:s.tabs.map((tab:Bag)=>{const page=known(tab.id),label=page?.title||(tab.priv?'New private tab':'New tab');return {title:page?.title || page?.url || (tab.priv?'New private tab':'New tab'),host:(tab.priv?'Private · ':'')+(page?.url||''),css:tab.id===s.cur?'box-shadow:inset 0 0 0 2px var(--acc)':'',prev:tab.priv?'background:var(--fg);opacity:.85':'background:var(--s2)',aria:'Switch to '+(tab.priv?'private tab ':'')+label,closeAria:tab.priv?'Close private tab':'Close tab',pick:()=>api.set({cur:tab.id,tabsOpen:false}),close:()=>{ const rest=state().tabs.filter((t:Bag)=>t.id!==tab.id); const fallback=newTabId();if(created.has(tab.id))void Browser.close({session,id:tab.id}).catch(report);created.delete(tab.id);metadata.delete(tab.id);restored.delete(tab.id);api.set({tabs:rest.length?rest:[{id:fallback,hist:['newtab'],pos:0}],cur:state().cur===tab.id?(rest[0]?.id||fallback):state().cur}); }};}),
       rootRef:(element:HTMLElement)=>{out.rootRef?.(element); if(!element)return; const viewport=element.querySelector('[data-bscroll]'); if(viewport){viewport.setAttribute('data-native-browser-viewport','true'); viewport.setAttribute('aria-label',info?.error || (info?.loading?'Loading website':'Browser page'));} },
     };
   };
@@ -201,6 +291,7 @@ export function installPrototypeBrowserAdapter(Component: any, views: Record<str
   Component.prototype.renderVals = function(){shell=this;
     const browserActive = this.S().view === 'browser';
     if (!initialBookmarkRead || (browserActive && !browserWasActive)) { initialBookmarkRead = true; refreshBookmarks(); }
+    if (!sessionRead && this.vget('browser')?.tabs) void restoreSession();
     browserWasActive = browserActive;
     this.browserNavigateApproved = async (raw: string, signal: AbortSignal) => {
       const url = new URL(raw);
@@ -221,7 +312,7 @@ export function installPrototypeBrowserAdapter(Component: any, views: Record<str
         : undefined;
     };
     const S=this.S();const b=this.vget('browser');if(S.view!=='browser'||b.menu||b.editing||b.tabsOpen||b.lib||S.shade||['sheet','full'].includes(S.chat))hide();return oldRender.call(this);};
-  let listener: any, resumeListener: any;
+  let listener: any, resumeListener: any, openedListener: any, closedListener: any, noticeListener: any;
   void DailyApps.addListener('appResumed', () => { if (shell?.S().view === 'browser') refreshBookmarks(); }).then(value => { resumeListener=value; }).catch(()=>{});
   void Browser.addListener('stateChanged',(event:Bag)=>{
     if(event.session!==session || !created.has(event.id) || event.sequence <= (metadata.get(event.id)?.sequence||0))return;
@@ -232,18 +323,32 @@ export function installPrototypeBrowserAdapter(Component: any, views: Record<str
     if(reading && event.id===state()?.cur && (event.loading || event.error || event.navigation!==previous?.navigation || event.url!==previous?.url)) stopReading();
     if ((event.url && event.url !== previous?.url) || (event.loading && !previous?.loading))
       documentRevisions.set(event.id, (documentRevisions.get(event.id) || 0) + 1);
-    metadata.set(event.id,{...metadata.get(event.id),...event});if(event.url && !event.loading && !event.error && state())shell.vset('browser',{visits:[event.url,...state().visits.filter((u:string)=>u!==event.url)].slice(0,50)});refresh();
+    const committedPage = !!event.url && !!event.committed && !event.loading && !event.error;
+    metadata.set(event.id,{...metadata.get(event.id),...event,...(committedPage?{savedUrl:event.url}:{})});
+    // Private tabs never enter history or saved tabs.
+    if(event.url && !event.loading && !event.error && state() && !isPrivate(event.id) && !event.private)shell.vset('browser',{visits:[event.url,...state().visits.filter((u:string)=>u!==event.url)].slice(0,MAX_HISTORY)});refresh();
   }).then((value:any)=>{listener=value;}).catch(()=>{});
+  // target=_blank links and pop-ups that the native browser opened as a tab.
+  void Browser.addListener('tabOpened',(event:Bag)=>{
+    const s=state();if(disposed||event.session!==session||!s||typeof event.id!=='string'||s.tabs.some((tab:Bag)=>tab.id===event.id))return;
+    created.set(event.id,Promise.resolve());documentRevisions.set(event.id,1);
+    shell.vset('browser',{tabs:[...s.tabs,{id:event.id,hist:['newtab'],pos:0,...(event.private?{priv:true}:{})}],cur:event.id,editing:false,tabsOpen:false,menu:false,lib:null,share:false});refresh();
+  }).then((value:any)=>{openedListener=value;}).catch(()=>{});
+  void Browser.addListener('tabClosed',(event:Bag)=>{if(!disposed&&event.session===session&&created.has(event.id))forgetTabs([event.id]);}).then((value:any)=>{closedListener=value;}).catch(()=>{});
+  void Browser.addListener('notice',(event:Bag)=>{if(!disposed&&event.session===session&&typeof event.message==='string')shell?.toast(event.message.slice(0,200));}).then((value:any)=>{noticeListener=value;}).catch(()=>{});
   // A native surface sits above the host WebView. Hide it for every host overlay.
   const update = () => {
     if(disposed)return;
     const s=state(), S=shell?.S();
     const element=document.querySelector('[data-native-browser-viewport]') as HTMLElement|null;
-    const hidden=questionReview || !s || !element || !element.isConnected || !element.getClientRects().length || S?.view!=='browser' || s.editing || s.tabsOpen || s.menu || s.lib || s.share || s.ag || s.confirm || S?.shade || S?.screen !== 'home' || ['sheet','full'].includes(S?.chat) || document.hidden;
+    const hidden=questionReview || confirming || !s || !element || !element.isConnected || !element.getClientRects().length || S?.view!=='browser' || s.editing || s.tabsOpen || s.menu || s.lib || s.share || s.ag || s.confirm || S?.shade || S?.screen !== 'home' || ['sheet','full'].includes(S?.chat) || document.hidden;
     if(reading && (disposed || document.hidden || document.documentElement.hasAttribute('data-dev-background') || S?.screen!=='home' || S?.view!=='browser' || s?.tabsOpen || s?.editing || S?.shade || ['sheet','full'].includes(S?.chat)))stopReading();
     const rect=element?.getBoundingClientRect();
     const composer=document.querySelector('[aria-label="Open conversation"]')?.parentElement?.getBoundingClientRect();
     const height=rect ? Math.max(0,Math.min(rect.bottom,composer && composer.height ? composer.top-8 : rect.bottom)-rect.top) : 0;
+    // A restored cold-start tab loads its last committed page when first shown.
+    if(!hidden && s && restored.has(s.cur) && !created.has(s.cur) && !clearingData){const saved=restored.get(s.cur)!;void navigate(saved.url);}
+    saveSession();
     const payload=hidden || !created.has(s?.cur) ? {session,id:null} : {session,id:s.cur,x:rect!.x,y:rect!.y,width:rect!.width,height};
     const next=JSON.stringify(payload);
     if(next!==lastGeometry){lastGeometry=next;return Browser.present(payload).catch(()=>{lastGeometry='';});}
@@ -254,5 +359,5 @@ export function installPrototypeBrowserAdapter(Component: any, views: Record<str
   const timer=window.setInterval(update,100);
   const visibility = () => { lastGeometry=''; update(); if (!document.hidden && shell?.S().view === 'browser') refreshBookmarks(); };
   window.addEventListener('resize',update);document.addEventListener('visibilitychange',visibility);
-  return ()=>{window.removeEventListener('alpha:bookmarks-document-changed',refreshBookmarks);window.removeEventListener('alpha:browser-open-view',openBrowserView);stopReading();unsubscribeReading();disposed=true;clearInterval(timer);window.removeEventListener('resize',update);document.removeEventListener('visibilitychange',visibility);void resumeListener?.remove();void listener?.remove();for(const id of created.keys())void Browser.close({session,id}).catch(()=>{});};
+  return ()=>{window.removeEventListener('alpha:bookmarks-document-changed',refreshBookmarks);window.removeEventListener('alpha:browser-open-view',openBrowserView);stopReading();unsubscribeReading();disposed=true;clearInterval(timer);window.removeEventListener('resize',update);document.removeEventListener('visibilitychange',visibility);void resumeListener?.remove();void listener?.remove();void openedListener?.remove();void closedListener?.remove();void noticeListener?.remove();for(const id of created.keys())void Browser.close({session,id}).catch(()=>{});};
 }

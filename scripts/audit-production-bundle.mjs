@@ -16,6 +16,7 @@ export const DENYLIST = Object.freeze([
   'emulator development agent', 'Simulate Clock request',
   'Maya Chen', 'Jordan Park', 'Priya Nair', 'Alex Kim', 'you@gmail.example', 'Ritual Coffee',
   'news.example', 'Design review at', 'Unlock for details',
+  'Development vault secret', 'synthetic-dev-',
 ]);
 const TEXT = /\.(?:html?|js|mjs|cjs|css|json|txt|svg|xml|webmanifest)$/i;
 

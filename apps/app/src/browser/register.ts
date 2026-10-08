@@ -34,5 +34,8 @@ if (!Capacitor.isNativePlatform()) {
   registerPlugin('AlphaNotifications', { web: () => notifications });
   new BrowserClock(daily,notifications);
   registerPlugin('AlphaCalendar', { web: () => calendar });
-  registerPlugin('AlphaBrowser', { web: () => new BrowserSurface() });
+  // One instance: Capacitor's lazy loader calls the factory once per concurrent
+  // first call, which would split listeners from the surface that emits events.
+  const browserSurface = new BrowserSurface();
+  registerPlugin('AlphaBrowser', { web: () => browserSurface });
 }

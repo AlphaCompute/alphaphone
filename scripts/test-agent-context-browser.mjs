@@ -16,7 +16,11 @@ try {
   localStorage.setItem('alpha.connection.selection.v1',JSON.stringify({kind:'offline'}));
   const media = { id: 'video-fixture-71', kind: 'video', revision: 'revision-2', width: 640, height: 480, duration: 2, date: 1700000000000, image: 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg"/>', path: 'content://PRIVATE_VIDEO_URI_CANARY', privateCaption: 'PRIVATE_VIDEO_CONTENT_CANARY' };
   const drafts = new Map();
-  window.Capacitor = { PluginHeaders: [{ name: 'AlphaConnection', methods: ['secureRead','secureCompareExchange','addListener','removeListener'].map(name => ({ name, rtype: 'promise' })) }, { name: 'AlphaPhotos', methods: ['list','read'].map(name => ({ name, rtype: 'promise' })) }], nativeCallback:()=> 'fixture-listener', nativePromise: async (plugin, method, input) => {
+  window.Capacitor = { PluginHeaders: [{name:'AlphaNotifications',methods:['status','addListener','removeListener'].map(name=>({name,rtype:'promise'}))},{name:'AlphaVoiceCloud',methods:[{name:'checkPermissions',rtype:'promise'}]},{ name: 'AlphaConnection', methods: ['secureRead','secureCompareExchange','addListener','removeListener'].map(name => ({ name, rtype: 'promise' })) }, { name: 'AlphaPhotos', methods: ['list','read'].map(name => ({ name, rtype: 'promise' })) }], nativeCallback:()=> 'fixture-listener', nativePromise: async (plugin, method, input) => {
+   if(plugin==='AlphaNotifications'&&method==='status')return {permissionGranted:true,appEnabled:true};
+   if(plugin==='AlphaNotifications'&&method==='addListener')return {callbackId:'fixture-listener'};
+   if(plugin==='AlphaNotifications'&&method==='removeListener')return {};
+   if(plugin==='AlphaVoiceCloud'&&method==='checkPermissions')return {microphone:'granted'};
    if(plugin==='AlphaConnection'){
     if(method==='addListener')return {callbackId:'fixture-listener'};
     if(method==='removeListener')return {};

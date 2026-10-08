@@ -9,10 +9,14 @@ for(const entry of ['cold','chooser'] as const)for(const failure of ['none','hos
    const f=w.mockFixture={hosted:true,notifications:true,calls:[] as string[],held:[] as (()=>void)[],fail:failure};
    const methods=(names:string[])=>names.map(name=>({name,rtype:'promise'}));
    w.Capacitor={PluginHeaders:[
+    {name:'AlphaNotifications',methods:methods(['status','crossAppStatus','addListener','removeListener'])},
+    {name:'AlphaVoiceCloud',methods:methods(['checkPermissions'])},
     {name:'AlphaConnection',methods:methods(['pauseNotificationCollection','secureRead','secureWrite','secureRemove','addListener','removeListener'])},
     {name:'AlphaHostedResults',methods:methods(['disableBackground','status','pendingResult','addListener','removeListener'])},
     {name:'Agent',methods:methods(['getStatus'])}, {name:'DeviceApps',methods:methods(['buildInfo'])},
    ],nativePromise:async(plugin:string,method:string,input:any)=>{
+    if(plugin==='AlphaNotifications')return {permissionGranted:true,appEnabled:true};
+    if(plugin==='AlphaVoiceCloud')return {microphone:'granted'};
     if(plugin==='Agent')return {packaged:false,state:'unavailable'};
     if(method==='secureRead')return {value:null};
     if(plugin==='DeviceApps')return {launcher:false,version:'fixture'};
@@ -27,6 +31,7 @@ for(const entry of ['cold','chooser'] as const)for(const failure of ['none','hos
   },{entry,failure});
   await page.goto('/');
   if(entry==='chooser'){
+
    await page.getByRole('button',{name:'Settings',exact:true}).click();
    await page.getByRole('button',{name:/Agent connection/}).click();
    await page.locator('.alpha-connection-scrim summary').filter({hasText:/^Mock mode$/}).click();

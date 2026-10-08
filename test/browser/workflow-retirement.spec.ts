@@ -2,7 +2,7 @@ import {test,expect} from '@playwright/test';
 
 test('workflow retirement does not render against revoked document storage and resumes cleanly',async({page})=>{
  const errors:string[]=[];page.on('pageerror',error=>errors.push(error.message));
- await page.goto('/?mode=dev&workflows=agent');
+ await page.goto('/?mode=dev&workflows=agent&tools=1');
  await expect(page.getByRole('button',{name:'Device controls',exact:true})).toBeVisible();
  await page.evaluate(async()=>{
   const get=Storage.prototype.getItem;

@@ -5,7 +5,7 @@ import {openCalendarMeeting} from './calendar-meeting';
 import {calendarRecord,calendarRange,remapCalendarExclusions,replaceCalendarRecord,deleteCalendarRecord,type CalendarRecord} from './calendar-records';
 import { editCalendarEvent } from './calendar-editor';
 import { BrowserReviews } from './review';
-import { validateCalendarOperation, type CalendarFields, type CalendarResult } from '../runtime/calendar-contract';
+import { validateCalendarOperation, type CalendarFields, type CalendarResult } from '../../../../.eliza/client-features/plugins/plugin-assistant/src/services/device-actions/calendar-contract.ts';
 import { WebPlugin } from '@capacitor/core';
 import { revision } from './revision';
 import {calendarDocument} from './calendar-store';

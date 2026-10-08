@@ -34,7 +34,7 @@ export interface CloudCredentialStore {
  * and return decoded JSON. It must never log headers, bodies, or auth URLs. */
 export interface CloudNativeRequest {
   (input: { url: string; method: "GET" | "POST"; headers: Record<string, string>;
-    body?: unknown; signal: AbortSignal; timeoutMs: number; redirect: "error";
+    body?: unknown; signal: AbortSignal; timeoutMs: number; redirect: "error"; expiresAt?: number;
   }): Promise<{ status: number; data: unknown }>;
 }
 export interface CloudLoginAttempt { sessionId: string; expiresAt: number; browserUrl: string }
@@ -50,9 +50,11 @@ export interface GoogleConnection {
 export interface GmailInboxCapabilities {
   version:1; from:string; threads:boolean; send:boolean; providerDrafts:boolean;
   mailboxMutations:boolean; attachments:boolean; providerExactlyOnce:false; atomicDraftReplacement:false;
+  /** Reviewed mark-read/mark-unread operations (patches/eliza/0037). Older servers omit it: false. */
+  readState:boolean;
 }
 export interface GmailInboxReceipt {
-  requestId:string; kind:'send'|'draft-create'|'draft-replace'|'draft-delete'|'archive'|'unarchive'|'trash'|'untrash';
+  requestId:string; kind:'send'|'draft-create'|'draft-replace'|'draft-delete'|'archive'|'unarchive'|'trash'|'untrash'|'mark-read'|'mark-unread';
   reviewDigest:string; state:'prepared'|'dispatched'|'succeeded'|'rejected'|'outcome-unknown';
   providerResult:Record<string,unknown>|null; rejectionCode:string|null;
 }
@@ -62,7 +64,7 @@ export interface GmailMessage {
   to: string[]; cc?: string[]; replyTo?: string | null; snippet: string; receivedAt: string; unread: boolean;
 }
 export class CloudProtocolError extends Error {
-  constructor(readonly code: "invalid-response" | "http" | "expired" | "credentials-missing" | "credential-consumed" | "login-active", readonly status?: number, readonly data?: unknown) {
+  constructor(readonly code: "invalid-response" | "http" | "expired" | "credentials-missing" | "credential-consumed" | "login-active" | "account-changed", readonly status?: number, readonly data?: unknown) {
     super(`Eliza Cloud ${code}${status ? ` (${status})` : ""}`);
     this.name = "CloudProtocolError";
   }
@@ -124,7 +126,7 @@ export class CloudProtocol {
     if (!authority) throw new Error("This Eliza Cloud environment is unavailable in this build.");
     return authority;
   }
-  private async requestData(path: string, signal: AbortSignal, options: { body?: unknown; authenticated?: boolean; runtimeBase?: string; timeoutMs?: number; headers?: Record<string,string>; credentialId?: string; onStatus?: (status:number)=>void } = {}) {
+  private async requestData(path: string, signal: AbortSignal, options: { body?: unknown; authenticated?: boolean; runtimeBase?: string; timeoutMs?: number; headers?: Record<string,string>; credentialId?: string; expiresAt?: number; onStatus?: (status:number)=>void } = {}) {
     signal.throwIfAborted();
     const headers: Record<string, string> = { Accept: "application/json", ...options.headers };
     if (options.authenticated) {
@@ -138,14 +140,39 @@ export class CloudProtocol {
     if (options.body !== undefined) headers["Content-Type"] = "application/json";
     const response = await this.request({ url: (options.runtimeBase ?? this.authority.api) + path,
       method: options.body === undefined ? "GET" : "POST", headers, body: options.body,
-      signal, timeoutMs: options.timeoutMs ?? 30_000, redirect: "error" });
+      signal, timeoutMs: options.timeoutMs ?? 30_000, redirect: "error", ...(options.expiresAt === undefined ? {} : {expiresAt:options.expiresAt}) });
     signal.throwIfAborted();
     if (response.status < 200 || response.status >= 300) throw new CloudProtocolError("http", response.status, response.data);
     options.onStatus?.(response.status);
     return response.data;
   }
-  private async call(path: string, signal: AbortSignal, options: { body?: unknown; authenticated?: boolean; runtimeBase?: string; timeoutMs?: number; headers?: Record<string,string>; credentialId?: string } = {}) {
+  private async call(path: string, signal: AbortSignal, options: { body?: unknown; authenticated?: boolean; runtimeBase?: string; timeoutMs?: number; headers?: Record<string,string>; credentialId?: string; expiresAt?: number } = {}) {
     return object(await this.requestData(path, signal, options));
+  }
+  /** Account billing only: this never selects, creates or starts a hosted agent.
+   * The credential ID binds the snapshot to one login; balance is not a spend authorization. */
+  async creditBalance(signal: AbortSignal): Promise<{ balance: number; credentialId: string }> {
+    signal.throwIfAborted();
+    const credential = await this.credentials.read(this.environment);
+    signal.throwIfAborted();
+    if (!credential?.credentialId) throw new CloudProtocolError("credentials-missing");
+    const data = await this.call("/api/v1/credits/balance", signal, {
+      authenticated: true, credentialId: credential.credentialId,
+    });
+    const current = await this.credentials.read(this.environment);
+    signal.throwIfAborted();
+    if (current?.credentialId !== credential.credentialId) throw new CloudProtocolError("account-changed");
+    if (current.expiresAt !== undefined && current.expiresAt <= Date.now()) throw new CloudProtocolError("expired");
+    const balance = typeof data.balance === "number" ? data.balance
+      : typeof data.balance === "string" && data.balance.trim() ? Number(data.balance) : NaN;
+    if (!Number.isFinite(balance)) throw new CloudProtocolError("invalid-response");
+    return { balance, credentialId: credential.credentialId };
+  }
+  /** Uses Cloud's existing hosted billing page; no checkout or payment is created here. */
+  async openTopUp(signal: AbortSignal): Promise<void> {
+    signal.throwIfAborted();
+    await this.openExternal(`https://${this.authority.agents}/cloud/billing`, signal);
+    signal.throwIfAborted();
   }
   /** Scoped personal onboarding, using the existing native credential transport. */
   async personal(signal: AbortSignal): Promise<CloudPersonalProtocol> {
@@ -205,13 +232,18 @@ export class CloudProtocol {
       const browserUrl = `${this.authority.web}/auth/cli-login?session=${encodeURIComponent(sessionId)}`;
       onWaiting?.({ sessionId, expiresAt, browserUrl });
       await this.openExternal(browserUrl, controller.signal);
+      if (Date.now() >= expiresAt) throw new CloudProtocolError("expired");
       while (true) {
+        controller.signal.throwIfAborted();
+        if (Date.now() >= expiresAt) throw new CloudProtocolError("expired");
         let response: ObjectValue;
-        try { response = await this.call(`/api/auth/cli-session/${sessionId}`, controller.signal); }
+        try { response = await this.call(`/api/auth/cli-session/${sessionId}`, controller.signal, {expiresAt}); }
         catch (error) {
+          if (Date.now() >= expiresAt) throw new CloudProtocolError("expired");
           if (error instanceof CloudProtocolError && (error.status === 404 || error.status === 410)) throw new CloudProtocolError("expired");
           throw error;
         }
+        if (Date.now() >= expiresAt) throw new CloudProtocolError("expired");
         const data = response.data == null ? response : object(response.data);
         if (data.status === "authenticated") {
           const token = ["token", "accessToken", "stewardToken", "sessionToken", "apiKey"]
@@ -223,6 +255,7 @@ export class CloudProtocol {
           if (data.userId != null) credential.userId = string(data.userId);
           if (data.organizationId != null) credential.organizationId = string(data.organizationId);
           controller.signal.throwIfAborted();
+          if (Date.now() >= expiresAt) throw new CloudProtocolError("expired");
           await this.credentials.write(this.environment, credential, controller.signal);
           return;
         }
@@ -342,11 +375,22 @@ export class CloudProtocol {
       from: string(data.from), fromEmail: optionalString(data.fromEmail), to: data.to.map(string), cc: Array.isArray(data.cc)?data.cc.map(string):[], replyTo:optionalString(data.replyTo),
       snippet: data.snippet, receivedAt: string(data.receivedAt), unread: data.isUnread };
   }
-  async gmailSearch(grantId: string, query: string, signal: AbortSignal, maxResults: 25 | 50 = 25): Promise<{ messages: GmailMessage[]; syncedAt: string }> {
+  /** One page of results. `nextPageToken` is the provider's opaque cursor for the same query, or null. */
+  async gmailSearch(grantId: string, query: string, signal: AbortSignal, maxResults: 25 | 50 = 25, pageToken?: string): Promise<{ messages: GmailMessage[]; syncedAt: string; nextPageToken: string | null }> {
+    if (pageToken !== undefined && (typeof pageToken !== "string" || !pageToken || pageToken.length > 4096)) throw new TypeError("Invalid Gmail page token");
     const params = new URLSearchParams({ side: "owner", grantId: string(grantId), query: string(query), maxResults: String(maxResults) });
+    if (pageToken !== undefined) params.set("pageToken", pageToken);
     const data = await this.call(`/api/v1/eliza/google/gmail/search?${params}`, signal, { authenticated: true });
     if (!Array.isArray(data.messages)) throw new CloudProtocolError("invalid-response");
-    return { messages: data.messages.map(value => this.gmailMessage(value)), syncedAt: string(data.syncedAt) };
+    const next = data.nextPageToken;
+    if (next != null && (typeof next !== "string" || !next || next.length > 4096 || next === pageToken)) throw new CloudProtocolError("invalid-response");
+    return { messages: data.messages.map(value => this.gmailMessage(value)), syncedAt: string(data.syncedAt), nextPageToken: next == null ? null : next };
+  }
+  /** Revokes Eliza Cloud's stored Google grant for one owner connection. It does not delete mail and
+   * cannot remove the app from the user's Google Account permissions; callers verify with gmailAccounts. */
+  async disconnectGmail(connectionId: string, signal: AbortSignal): Promise<void> {
+    const data = await this.call("/api/v1/eliza/google/disconnect", signal, { authenticated: true, body: { side: "owner", connectionId: string(connectionId) } });
+    if (data.ok !== true) throw new CloudProtocolError("invalid-response");
   }
   async gmailRead(grantId: string, messageId: string, signal: AbortSignal): Promise<{ message: GmailMessage; bodyText: string }> {
     const params = new URLSearchParams({ side: "owner", grantId: string(grantId), messageId: string(messageId) });
@@ -359,7 +403,8 @@ export class CloudProtocol {
   async gmailInboxCapabilities(grantId:string,signal:AbortSignal):Promise<GmailInboxCapabilities> {
     const data=await this.call(`/api/v1/eliza/google/gmail/inbox-v1/capabilities?${new URLSearchParams({grantId})}`,signal,{authenticated:true});
     if(data.version!==1||data.providerExactlyOnce!==false||data.atomicDraftReplacement!==false||['threads','send','providerDrafts','mailboxMutations','attachments'].some(key=>typeof data[key]!=='boolean'))throw new CloudProtocolError('invalid-response');
-    return {version:1,from:string(data.from),threads:data.threads as boolean,send:data.send as boolean,providerDrafts:data.providerDrafts as boolean,mailboxMutations:data.mailboxMutations as boolean,attachments:data.attachments as boolean,providerExactlyOnce:false,atomicDraftReplacement:false};
+    if(data.readState!==undefined&&typeof data.readState!=='boolean')throw new CloudProtocolError('invalid-response');
+    return {version:1,from:string(data.from),threads:data.threads as boolean,send:data.send as boolean,providerDrafts:data.providerDrafts as boolean,mailboxMutations:data.mailboxMutations as boolean,attachments:data.attachments as boolean,providerExactlyOnce:false,atomicDraftReplacement:false,readState:data.readState===true};
   }
   async gmailThread(grantId:string,threadId:string,signal:AbortSignal,cursor?:{offset:number;historyId:string}) {
     const params=new URLSearchParams({grantId,threadId});if(cursor){params.set('offset',String(cursor.offset));params.set('historyId',cursor.historyId);}
@@ -379,7 +424,7 @@ export class CloudProtocol {
     if(data.id!==draftId||typeof data.providerDigest!=='string'||!/[a-f0-9]{64}/.test(data.providerDigest))throw new CloudProtocolError('invalid-response');return {draftId,messageId:string(data.messageId),providerDigest:data.providerDigest};
   }
   private gmailInboxReceipt(value:unknown,requestId:string):GmailInboxReceipt {
-    const data=object(value);if(data.requestId!==requestId||!['send','draft-create','draft-replace','draft-delete','archive','unarchive','trash','untrash'].includes(String(data.kind))||!['prepared','dispatched','succeeded','rejected','outcome-unknown'].includes(String(data.state))||typeof data.reviewDigest!=='string'||!/^[a-f0-9]{64}$/.test(data.reviewDigest))throw new CloudProtocolError('invalid-response');
+    const data=object(value);if(data.requestId!==requestId||!['send','draft-create','draft-replace','draft-delete','archive','unarchive','trash','untrash','mark-read','mark-unread'].includes(String(data.kind))||!['prepared','dispatched','succeeded','rejected','outcome-unknown'].includes(String(data.state))||typeof data.reviewDigest!=='string'||!/^[a-f0-9]{64}$/.test(data.reviewDigest))throw new CloudProtocolError('invalid-response');
     const providerResult=data.providerResult===null?null:object(data.providerResult);if((data.state==='succeeded')!==(providerResult!==null))throw new CloudProtocolError('invalid-response');
     return {requestId,kind:data.kind as GmailInboxReceipt['kind'],state:data.state as GmailInboxReceipt['state'],reviewDigest:data.reviewDigest,providerResult,rejectionCode:data.rejectionCode===null?null:string(data.rejectionCode)};
   }

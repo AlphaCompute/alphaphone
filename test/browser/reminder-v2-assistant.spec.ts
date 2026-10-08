@@ -1,3 +1,5 @@
+import {presentDeviceRecordOperation} from '../../apps/app/src/runtime/device-record-presentation.ts';
+import { returnToApps } from './app-navigation';
 import { test, expect } from '@playwright/test';
 
 // Real renderer, pairing, connection controller, proposal parser and journal
@@ -82,7 +84,7 @@ for (const mode of ['read', 'update', 'complete', 'cancel', 'stale', 'recurring-
     await local.getByLabel('Pairing code', { exact: true }).fill('synthetic-code');
     await local.getByRole('button', { name: 'Connect local agent', exact: true }).click();
     await page.locator('.alpha-connection-scrim').waitFor({ state: 'detached' });
-    await page.getByRole('button',{name:'Home',exact:true}).click();
+    await returnToApps(page);
     await page.getByRole('button',{name:'Calendar',exact:true}).click();
     await page.getByRole('button',{name:/^Selected private reminder,/}).click();
     await expect.poll(()=>page.evaluate(()=>document.documentElement.dataset.activeView)).toBe('calendar');
@@ -98,7 +100,7 @@ for (const mode of ['read', 'update', 'complete', 'cancel', 'stale', 'recurring-
       expect(await page.evaluate(()=>(window as any).recoveryFixture.claims)).toBe(0);
       expect(await page.evaluate(()=>(window as any).recoveryFixture.journal)).toEqual([]);
       expect(await page.evaluate(async ()=>JSON.parse((await (await import('/src/browser/reminder-store.ts')).reminderDocument.readRaw())!).reminders[0].status)).toBe('pending');
-      await expect(page.getByText('Approve: reminder complete',{exact:true})).toHaveCount(0);return;
+      await expect(page.getByText('Approve: Complete selected reminder',{exact:true})).toHaveCount(0);return;
     }
     await expect(page.getByText(/Pending phone actions are available for separate review/)).toBeVisible();
     expect(await page.evaluate(()=>(window as any).calendarSent.metadata.clientDevice.context.selectedObject)).toMatchObject({kind:'reminder',timingVersion:2});
@@ -106,12 +108,15 @@ for (const mode of ['read', 'update', 'complete', 'cancel', 'stale', 'recurring-
     expect(JSON.stringify(await page.evaluate(()=>(window as any).calendarSent))).not.toContain('Private reminder details');
     if(mode==='stale')await page.evaluate(async ()=>{await (await import('/src/browser/reminder-store.ts')).reminderDocument.edit(()=>({reminders:[] as any[]}),data=>{data.reminders[0].revision='d'.repeat(64);data.reminders[0].title='Changed elsewhere';});});
     await page.getByRole('button',{name:'Expand chat',exact:true}).click();
-    const approvalLabel=mode.startsWith('create-')?'Approve: reminder create':mode==='create'?'Approve: create reminder':'Approve: reminder '+(mode==='read'?'read selected':mode==='stale'||mode==='recurring-complete'?'complete':mode);
+    const operation=await page.evaluate(()=>(window as any).recoveryFixture.proposal.payload.operation);
+    const presentation=presentDeviceRecordOperation(operation,await page.evaluate(()=>(window as any).calendarSent.metadata.clientDevice.context.timeZone));
+    const approvalLabel='Approve: '+presentation.title;
     await page.getByRole('button',{name:approvalLabel+' Tap to approve this exact action',exact:true}).click();
     await expect.poll(()=>page.evaluate(()=>(window as any).recoveryFixture.receipts)).toBe(1);
     const rows=await page.evaluate(async ()=>JSON.parse((await (await import('/src/browser/reminder-store.ts')).reminderDocument.readRaw())!).reminders);expect(rows).toHaveLength(mode==='create'||mode.startsWith('create-')?2:1);
     const receipt=await page.evaluate(()=>(window as any).calendarRetained);expect(receipt.summary).not.toContain('Android');expect(receipt.status).toBe(mode==='stale'?'failed':'succeeded');
     if(mode.startsWith('create-')){
+      expect(receipt.summary).toBe(presentation.appliedSummary);expect(receipt.summary).not.toContain('Reviewed creation body');expect(receipt.summary).not.toMatch(/delivered|\{|\}/);
       expect(rows[1]).toMatchObject({title:'Assistant created reminder',body:'Reviewed creation body',dueAt:Date.parse('2026-10-02T14:00:00Z'),alertMinutes:mode==='create-lead'?10:null,status:mode==='create-lead'?'scheduled':'pending'});
       expect(receipt.result.reminderResult.reminderId).toBe(rows[1].id);expect(receipt.result.reminderResult.fields.schedule).toEqual((await page.evaluate(()=>(window as any).recoveryFixture.proposal.payload.operation.fields.schedule)));
     }

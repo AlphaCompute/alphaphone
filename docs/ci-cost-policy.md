@@ -8,7 +8,7 @@ select all lanes; they never silently skip checks. No GitHub file-list API or it
 300-file path-filter limit is used. Reference-only changes start small selection
 jobs but allocate no build/test runners.
 
-| Changed input | Repository verification | Chromium + production browser | Android build + emulator | Resident preparation |
+| Changed input | Repository verification | Chromium + production browser | Android build | Resident preparation |
 | --- | --- | --- | --- | --- |
 | README, AGENTS, docs, design references | No | No | No | No |
 | Host tests | Yes | No | No | No |
@@ -31,10 +31,12 @@ serving it. CI no longer builds a second unused flag-off bundle in that job. The
 separate test-mocks bundle still receives its own audit.
 
 Repository verification runs once in parallel with Chromium's three shards and
-Android, instead of four times per event. The existing parallel emulator jobs and
-browser shards remain; a failing matrix cancels siblings to limit wasted minutes.
+Android, instead of four times per event. Browser shards remain parallel; a failing matrix cancels siblings to limit wasted minutes.
+On October 8 the owner requested removal of all smoke tests and checks. The aggregate
+smoke runners, emulator CI jobs, provider diagnostic job and smoke-only APK bundles
+are removed. Distribution APK builds, repository checks and browser regression tests remain.
 Main pushes run affected repository verification, including the production bundle
-audit, but do not repeat PR browser/emulator/native builds. The repository ruleset
+audit, but do not repeat PR browser/native builds. The repository ruleset
 requires PRs. An administrative direct push therefore gets only repository
 verification; explicitly dispatch qualification if one is used.
 
@@ -49,7 +51,7 @@ built fresh. No unverified generated runtime cache replaces qualification.
 Alpha Phone ships Android WebView. Chromium remains automatic for affected PRs.
 Firefox and macOS WebKit are additional portability qualification and are now
 opt-in, including the real macOS audio-recording coverage. Full resident builds
-and emulator campaigns are also opt-in; preparation remains automatic for changes
+are opt-in; focused native campaigns are separate manual runs. Preparation remains automatic for changes
 to shared/build inputs. The Bun seccomp reproduction is a diagnostic, not a routine
 gate. There are no schedules or hidden branch-specific automatic diagnostic runs.
 

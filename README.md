@@ -120,7 +120,7 @@ ignore them and open the live app:
   profile with durable local app data and device controls.
 
 For the complete capability matrix and current verification results, see
-[browser development parity](docs/browser-dev-parity.md). In the development profile, open **Device controls** with the sliders button beside **Tools** or **Dev data** below the phone preview. Its profile buttons switch between app and development data. In **Device controls**, use
+[browser development parity](docs/browser-dev-parity.md). Developer controls are hidden by default, including with `bun run dev`. Add `?tools=1` (or `&tools=1`) to an explicitly enabled development-server URL to show **Tools**. This query cannot enable controls in production builds or on Android. Add `?shell=launcher` only to preview the launcher system presentation; the default preview is the standalone app. In the development profile with tools enabled, open **Device controls** with the sliders button beside **Tools** or **Dev data** below the phone preview. Its profile buttons switch between app and development data. In **Device controls**, use
 Home, Back, Power, Background and Resume to exercise device lifecycle; use Incoming
 call/message/email and Post notification to drive incoming events. Location controls
 provide a saved Home place and manual movement for location-triggered workflows.
@@ -142,7 +142,9 @@ or used. The ~56 MB model is downloaded once at build time by `npm run browser-s
 loaded only on the first transcription. APKs omit it. See
 [in-browser speech recognition](docs/browser-speech-recognition.md).
 
-The web build uses browser-local Notes. Notes text import and export use the browser
+Deleted notes, including voice notes, move to a Trash inside Notes and are erased
+automatically 3 days after deletion; Undo, Restore, Delete forever and Empty Trash are
+available. The web build uses browser-local Notes. Notes text import and export use the browser
 file picker and downloads; browser note storage is unencrypted and is not synced. On
 Android, Notes use the native Keystore-backed secure store.
 The web build is a development and preview surface and the payload packaged into the
@@ -258,15 +260,10 @@ debug-signed or test-mocks builds as production.
 
 ## Emulator verification
 
-```sh
-ANDROID_SERIAL=emulator-5554 npm run android:smoke
-```
-
-Use a disposable emulator. This installs both flavors in turn, runs real WebView
-and native bridge instrumentation, selects and verifies the launcher HOME role,
-and restores the original HOME role. Reports/screenshots go to `test-results/android`.
-CI first prepares a disposable stock-HOME fixture with explicit phone/tablet geometry;
-that setup script refuses to run outside GitHub Actions unless explicitly emulated.
+The aggregate smoke suites and their CI jobs were removed on October 8 at the
+owner's request. APK builds and bundle audits remain required. Focused native
+campaigns below can be run separately on an owned disposable emulator; a build
+does not establish native behavior or HOME-role acceptance.
 
 The independent native Calendar consumer comes from the pinned upstream source.
 Build its app and instrumentation APKs with
@@ -334,8 +331,7 @@ for signing, default-home policy and the full image verification boundary.
 `apps/app` owns this product's UI. `android` owns its packaging and launcher bridge.
 `vendor/eliza` pins shared platform/native/OS code. `design` preserves the supplied references. Use root npm scripts.
 
-For affected pull requests, GitHub Actions builds both variants, runs emulator
-instrumentation and uploads artifacts. Repository verification runs once per change;
+For affected pull requests, GitHub Actions builds both variants and uploads artifacts. Repository verification runs once per change;
 main-branch pushes repeat only that inexpensive integration check. Full resident
 qualification and Firefox/macOS WebKit runs are explicit dispatches. See
 [CI cost and qualification policy](docs/ci-cost-policy.md) for selection and commands. A successful APK job does not establish full AOSP image or physical

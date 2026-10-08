@@ -12,12 +12,16 @@ for(const scenario of ['supported','legacy','unsupported','malformed','lost','re
    const supported=['home','notes','reminders','browser','settings','wallet'];
    if(scenario==='retained')f.profile={version:1,revision:'11111111-1111-4111-8111-111111111111',views:['browser','home','notes','reminders','settings']};
    w.Capacitor={PluginHeaders:[
+    {name:'AlphaNotifications',methods:methods(['status','crossAppStatus','addListener','removeListener'])},
+    {name:'AlphaVoiceCloud',methods:methods(['checkPermissions'])},
     {name:'Agent',methods:methods(['getStatus','start','request'])},
     {name:'AlphaConnection',methods:methods(['secureRead','secureWrite','secureCompareExchange','secureRemove','cancel','addListener','removeListener','pauseNotificationCollection'])},
     {name:'AlphaActionJournal',methods:methods(['list'])},
     {name:'DeviceApps',methods:methods(['buildInfo'])},
     {name:'AlphaHostedResults',methods:methods(['configureBackground','disableBackground','cancelBackground','inboxHistory','status','pendingResult','addListener','removeListener'])},
    ],nativePromise:async(plugin:string,method:string,input:any)=>{
+    if(plugin==='AlphaNotifications')return {permissionGranted:true,appEnabled:true};
+    if(plugin==='AlphaVoiceCloud')return {microphone:'granted'};
     if(plugin==='Agent'){
      if(method==='getStatus')return {packaged:true,state:'ready'};
      if(method==='start')return {state:'ready'};
@@ -47,6 +51,7 @@ for(const scenario of ['supported','legacy','unsupported','malformed','lost','re
    }};
   },scenario);
   await page.goto('/');await page.getByRole('button',{name:'Settings',exact:true}).click();await page.getByRole('button',{name:/Agent connection/}).click();await page.getByRole('button',{name:'Start local agent',exact:true}).click();await expect(page.locator('.alpha-connection-scrim')).toHaveCount(0);
+
   await page.getByRole('button',{name:/Agent connection/}).click();
   const snapshot=await page.evaluate(async()=>{const {connectionController}=await import('/src/runtime/connection-ui.tsx');return connectionController.getSnapshot();});
   expect(snapshot.session?.ownerId).toBe('fixture-owner');

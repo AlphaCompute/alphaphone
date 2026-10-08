@@ -127,6 +127,36 @@ public class NoteAudioInstrumentedTest {
    assertTrue(call("Capacitor.Plugins.AlphaNoteAudio.play("+input+")").has("error"));
   }finally{fixture.delete();new AlphaCredentialStore(context).removeCredentialSlot("note-audio-metadata:v1:"+audioId);for(String suffix:new String[]{".audio",".json",".json.bak",".pending"})new File(context.getNoBackupFilesDir(),"note-audio/"+audioId+suffix).delete();}
  }
+ /** Notes Trash expiry / Delete forever: only the owning deletion erases bytes and transcript, idempotently, and never a live recording. */
+ @Test public void purgeErasesOnlyTheOwningDeletionAndCannotBeRestored()throws Exception {
+  android.content.Context context=InstrumentationRegistry.getInstrumentation().getTargetContext();
+  String audioId=UUID.randomUUID().toString(),noteId=UUID.randomUUID().toString(),operation=UUID.randomUUID().toString(),other=UUID.randomUUID().toString();
+  File fixture=File.createTempFile("audio-purge-",".wav",context.getCacheDir());java.nio.file.Files.write(fixture.toPath(),wav());
+  String input=new JSONObject().put("audioId",audioId).put("noteId",noteId).put("operationId",operation).toString();
+  String foreign=new JSONObject().put("audioId",audioId).put("noteId",noteId).put("operationId",other).toString();
+  String wrongNote=new JSONObject().put("audioId",audioId).put("noteId","wrong-note").put("operationId",operation).toString();
+  File bytes=new File(context.getNoBackupFilesDir(),"note-audio/"+audioId+".audio");
+  try(BoundedActivityScenario<MainActivity> scenario=BoundedActivityScenario.launch(MainActivity.class)){
+   ready();BoundedActivityScenario.main(()->{try{plugin().retain(fixture,audioId,noteId,2000,"Synthetic purge transcript");}catch(Exception e){throw new RuntimeException(e);}});
+   // A live (not trashed) recording is never erased.
+   assertTrue(call("Capacitor.Plugins.AlphaNoteAudio.purge("+input+")").has("error"));assertTrue(bytes.isFile());
+   assertEquals("removed",call("Capacitor.Plugins.AlphaNoteAudio.remove("+input+")").getString("status"));
+   // Another operation, or a different note, cannot erase this deletion's recording.
+   assertTrue(call("Capacitor.Plugins.AlphaNoteAudio.purge("+foreign+")").has("error"));
+   assertTrue(call("Capacitor.Plugins.AlphaNoteAudio.purge("+wrongNote+")").has("error"));
+   assertTrue(bytes.isFile());assertEquals("Synthetic purge transcript",call("Capacitor.Plugins.AlphaNoteAudio.describe("+input+")").getString("transcript"));
+   JSONObject purged=call("Capacitor.Plugins.AlphaNoteAudio.purge("+input+")");
+   assertEquals("purged",purged.getString("status"));assertEquals(operation,purged.getString("operationId"));assertEquals(audioId,purged.getString("audioId"));
+   assertFalse(bytes.exists());assertEquals("",call("Capacitor.Plugins.AlphaNoteAudio.describe("+input+")").getString("transcript"));
+   // Idempotent across recreation; erased audio cannot be restored, re-deleted into a new owner, or played.
+   scenario.recreate();ready();
+   assertEquals("purged",call("Capacitor.Plugins.AlphaNoteAudio.purge("+input+")").getString("status"));
+   assertEquals("purged",call("Capacitor.Plugins.AlphaNoteAudio.deletionStatus("+input+")").getString("status"));
+   assertTrue(call("Capacitor.Plugins.AlphaNoteAudio.restore("+input+")").has("error"));
+   assertEquals("purged",call("Capacitor.Plugins.AlphaNoteAudio.remove("+input+")").getString("status"));
+   assertTrue(call("Capacitor.Plugins.AlphaNoteAudio.play("+input+")").has("error"));
+  }finally{fixture.delete();new AlphaCredentialStore(context).removeCredentialSlot("note-audio-metadata:v1:"+audioId);for(String suffix:new String[]{".audio",".json",".json.bak",".pending"})new File(context.getNoBackupFilesDir(),"note-audio/"+audioId+suffix).delete();}
+ }
  @Test public void optInRetiredDeletionCannotArriveAfterReloadAndRestore()throws Exception {
   org.junit.Assume.assumeTrue("Explicit native audio fence fixture opt-in", "true".equals(InstrumentationRegistry.getArguments().getString("audioFence")));
   android.content.Context context=InstrumentationRegistry.getInstrumentation().getTargetContext();String audioId=UUID.randomUUID().toString(),noteId=UUID.randomUUID().toString(),operation=UUID.randomUUID().toString();

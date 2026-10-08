@@ -19,7 +19,7 @@ const prototypeDirectory = fileURLToPath(new URL('./apps/app/src/prototype/', im
 const fixturesModule = path.join(prototypeDirectory, 'fixtures.js');
 const emptyFixturesModule = path.join(prototypeDirectory, 'fixtures.empty.js');
 
-// Developer and mock modules that main.tsx and the connection UI import behind the flag.
+// Developer and mock modules that main.tsx, the connection UI and the password manager import behind the flag.
 // Flag-off builds resolve them to inert stubs with the same export names, so neither the
 // modules nor an orphan chunk ship. Their call sites are constant-folded away and never run.
 const disabledModuleSource: Record<string, string> = {
@@ -28,6 +28,8 @@ const disabledModuleSource: Record<string, string> = {
   // Only imported dynamically, after a constant-false guard, so an empty module suffices.
   './runtime/mock-admission': 'export {};',
   './mock-admission': 'export {};',
+  // Development password vault, statically imported by passwords/password-manager.ts.
+  './dev-vault': 'export const createDevelopmentVault = () => { throw new Error("unavailable"); };',
 };
 const disabledModulePrefix = '\0alpha-disabled-';
 const srcDirectory = fileURLToPath(new URL('./apps/app/src/', import.meta.url));
@@ -72,7 +74,7 @@ function productionSurface(): Plugin[] {
       resolveId(source, importer) {
         if (flagOn || !importer || !Object.hasOwn(disabledModuleSource, source)) return null;
         const owner = path.relative(srcDirectory, importer.split('?')[0]).split(path.sep).join('/');
-        if (owner !== 'main.tsx' && owner !== 'runtime/connection-ui.tsx') return null;
+        if (owner !== 'main.tsx' && owner !== 'runtime/connection-ui.tsx' && owner !== 'passwords/password-manager.ts') return null;
         // The virtual id carries an index, not the source name, so no chunk is named after it.
         return disabledModulePrefix + Object.keys(disabledModuleSource).indexOf(source);
       },
@@ -126,6 +128,7 @@ export default defineConfig({
   server: { fs: { allow: [
     fileURLToPath(new URL('./apps/app', import.meta.url)),
     fileURLToPath(new URL('./.eliza/client-features', import.meta.url)),
+    fileURLToPath(new URL('./.eliza/patched', import.meta.url)),
     fileURLToPath(new URL('./node_modules', import.meta.url)),
     fileURLToPath(new URL('./vendor/eliza/plugins/plugin-native-system', import.meta.url)),
     fileURLToPath(new URL('./vendor/eliza/plugins/plugin-assistant/src/services/device-actions', import.meta.url)),

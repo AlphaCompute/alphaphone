@@ -9,6 +9,9 @@ import { registerPlugin } from '../platform-plugins';
 import { Capacitor } from '@capacitor/core';
 import { DailyApps } from '../daily';
 import { connectionController } from '../runtime/connection-ui';
+import type { GmailAccount } from '../runtime/cloud-protocol';
+import { disconnectGmailAccount, disconnectMessage, gmailReadable, GMAIL_ACCOUNTS_CHANGED } from '../runtime/gmail-mailbox';
+import { leavePasswordManager, passwordEntryPage, passwordManagerGroups, passwordManagerLifecycle, refreshPasswordManager, PASSWORD_PAGES } from '../passwords/password-manager';
 
 type Bag = Record<string, any>;
 declare const __APP_VERSION__: string;
@@ -77,12 +80,13 @@ export function installSettingsAdapter(Component: any, views: Bag) {
   let passwordOpening=false;
   let recovery: RecoveryDomain[] = [];
   let capabilityAbort: AbortController | null = null;
+  let gmailAccounts: GmailAccount[] = [], gmailBusy = '', gmailNotice = '', settingsApi: Bag | undefined;
   let gmail = 'Not checked', digests = 'Not checked', localSpeech = 'Not checked', speechChecking = false, speechGeneration = 0;
   const changed = () => owner?.vset('settings', { capabilityReadAt: Date.now() });
   async function refreshCapabilities() {
     capabilityAbort?.abort(); const abort = capabilityAbort = new AbortController();
     const cloud = connectionController.getCloudClient(), workflow = connectionController.getWorkflowClient(), instance = owner;
-    gmail = cloud ? 'Checking authorization…' : 'Cloud sign-in required';
+    gmail = cloud ? 'Checking authorization…' : 'Cloud sign-in required'; gmailAccounts = [];
     digests = workflow ? 'Checking agent support…' : 'Connect an agent';
     localSpeech = 'Not checked'; speechChecking = false; ++speechGeneration; changed();
     const timeout = setTimeout(() => { abort.abort(); if (owner === instance && capabilityAbort === abort) { if (gmail === 'Checking authorization…') gmail = 'Authorization not verified'; if (digests === 'Checking agent support…') digests = 'Agent support not verified'; changed(); } }, 10000);
@@ -93,6 +97,7 @@ export function installSettingsAdapter(Component: any, views: Bag) {
           try {
             const accounts = await cloud.client.gmailAccounts(abort.signal);
             if (abort.signal.aborted || owner !== instance || capabilityAbort !== abort || connectionController.getCloudClient()?.sessionId !== cloud.sessionId) return;
+            gmailAccounts = accounts;
             gmail = accounts.some(a => a.connected && a.grantedCapabilities.includes('google.gmail.triage')) ? 'Read access authorized' : 'Authorization required';
           } catch { if (owner === instance && capabilityAbort === abort) gmail = 'Authorization not verified'; }
         })(),
@@ -106,6 +111,23 @@ export function installSettingsAdapter(Component: any, views: Bag) {
         })(),
       ]);
     } finally { clearTimeout(timeout); if (owner === instance && capabilityAbort === abort) changed(); }
+  }
+  /** Explicit, confirmed disconnect followed by a read-back; never retried automatically. */
+  async function disconnectGmail(account: GmailAccount) {
+    const cloud = connectionController.getCloudClient(), instance = owner;
+    if (!cloud || !account.connectionId || gmailBusy) return;
+    if (!window.confirm(`Disconnect ${account.label} from Alpha Phone?\n\nEliza Cloud deletes its stored Gmail access for this account and this phone stops reading it. No mail is deleted. Local drafts stay on this phone until you discard them.`)) return;
+    gmailBusy = account.connectionId; gmailNotice = ''; changed();
+    try {
+      const result = await disconnectGmailAccount(cloud.client, account.connectionId, new AbortController().signal);
+      if (owner !== instance || connectionController.getCloudClient()?.sessionId !== cloud.sessionId) return;
+      if (result.accounts) { gmailAccounts = result.accounts; gmail = result.accounts.some(gmailReadable) ? 'Read access authorized' : 'Authorization required'; }
+      else gmail = 'Authorization not verified';
+      gmailNotice = disconnectMessage(result.outcome, account.label);
+      settingsApi?.toast(gmailNotice);
+      window.dispatchEvent(new CustomEvent(GMAIL_ACCOUNTS_CHANGED, { detail: { source: 'settings' } }));
+    } catch { if (owner === instance) { gmailNotice = disconnectMessage('unconfirmed', account.label); gmail = 'Authorization not verified'; } }
+    finally { gmailBusy = ''; if (owner === instance) changed(); }
   }
   async function checkSpeech() {
     if (speechChecking) return;
@@ -130,9 +152,11 @@ export function installSettingsAdapter(Component: any, views: Bag) {
     // Browser-only stores; native Android data has its own platform recovery.
     if(!Capacitor.isNativePlatform()){const next=await recoveryNeeded().catch(()=>[] as RecoveryDomain[]);if(owner!==instance||generation!==token)return;recovery=next;}
     instance.vset('settings', { nativeReadAt: Date.now() });
+    refreshPasswordManager();
   }
   p.componentDidMount = function () {
     mount.call(this); owner = this; void refresh(); void refreshCapabilities();
+    this.passwordLifecycle = passwordManagerLifecycle(changed);
     if(!Capacitor.isNativePlatform()&&!new URLSearchParams(location.search).has('theme')){
       const apply=()=>{try{const theme=localStorage.getItem('alpha.appearance.v1')==='dark'?'dark':'light';this.setState({theme,appearanceStorageRead:{theme}});}catch{/* Keep the current session theme if storage is unavailable. */}};
       this.appearanceStorageListener=(event:StorageEvent)=>{if(event.key==='alpha.appearance.v1'||event.key===null)apply();};
@@ -152,6 +176,8 @@ export function installSettingsAdapter(Component: any, views: Bag) {
   };
   p.componentDidUpdate = function (previousProps: Bag, previousState: Bag) {
     update?.call(this, previousProps, previousState);
+    // Switching away from Settings (Home, another view) locks and forgets the password manager.
+    if (typeof this.S === 'function' && this.S().view !== 'settings') leavePasswordManager();
     const theme = this.state?.theme;
     // The marker travels with React state, so queued external reads cannot echo an older theme.
     const external=this.state?.appearanceStorageRead;
@@ -166,6 +192,7 @@ export function installSettingsAdapter(Component: any, views: Bag) {
     window.removeEventListener('storage',this.appearanceStorageListener);
     window.removeEventListener('pageshow',this.appearanceResumeListener);
     this.settingsConnectionUnsubscribe?.();
+    this.passwordLifecycle?.();
     void this.deviceResume?.then((listener: any) => listener?.remove()); unmount.call(this);
   };
   p.openView = function (key: string, ...args: any[]) {
@@ -174,6 +201,7 @@ export function installSettingsAdapter(Component: any, views: Bag) {
     return result;
   };
   definition.render = (state: Bag, api: Bag) => {
+    settingsApi = api;
     const out = render({ ...state, acct: null, adding: false, sheet: ['conn', 'voice'].includes(state.sheet?.kind) ? null : state.sheet }, api);
     // Prototype personality values are mock-only until the agent reports them.
     out.persona = 'Voice and agent settings';
@@ -222,12 +250,22 @@ export function installSettingsAdapter(Component: any, views: Bag) {
           ...(native?[action('Choose password provider in Android','settings'),...(provider.installation==='installed'?[action('Open Proton Pass','open')]:provider.installation==='absent'?[action('Get Proton Pass from Proton','install')]:[]),{kNav:true,label:'Refresh password provider status',lbl:'Refresh password provider status',chev:true,noAB:true,go:()=>void refresh()}]:[]),
         ]);
         page.groups.push(group([{kNav:true,label:'Password manager',lbl:'Password manager',chev:true,noAB:true,go:()=>api.set({page:'password-provider'})}]));
-        if(state.page==='password-provider')out.stack.push({isTop:false,notTop:true,cls:'enter',z:4,title:'Password manager',hasTitle:true,backLabel:'Back to Settings',back:()=>api.set({page:null}),hero:{},groups:[passwordGroup]});
+        if(PASSWORD_PAGES.includes(state.page)){
+          const helpers={info,group,toast:(message:string)=>api.toast(message),set:(patch:Bag)=>api.set(patch),ic:api.ic||{}};
+          // Alpha's own vault first; Proton Pass stays available as another provider.
+          out.stack.push({isTop:false,notTop:true,cls:'enter',z:4,title:'Password manager',hasTitle:true,backLabel:'Back to Settings',back:()=>{leavePasswordManager();api.set({page:null});},hero:{},groups:[...passwordManagerGroups(helpers),{...passwordGroup,cap:'Other password providers',hasCap:true}]});
+          const entry=state.page==='password-entry'?passwordEntryPage(helpers,()=>api.set({page:'password-provider'})):null;
+          if(entry)out.stack.push(entry);else if(state.page==='password-entry')queueMicrotask(()=>api.set({page:'password-provider'}));
+        }else leavePasswordManager();
         page.groups.push(group([{kNav:true,label:'Scheduled digests',lbl:'Scheduled digests',chev:true,noAB:true,go:()=>window.dispatchEvent(new Event('alpha:hosted-digests'))}]));
         page.groups.push(group([{kNav:true,label:'Agent connection',lbl:'Agent connection',val:connectionController.getSnapshot().name,hasVal:true,chev:true,noAB:true,go:()=>connectionController.open()}]));
         if(testMocksEnabled)page.groups.push(group([{kNav:true,label:'Try mock mode',lbl:'Try mock mode',chev:true,noAB:true,go:()=>connectionController.mock()}]));
         if(recovery.length)page.groups.push(group([info('Saved data needs recovery','Back up before resetting'),...recovery.map(name=>({kNav:true,label:recoveryActions[name].label,lbl:recoveryActions[name].label,chev:true,noAB:true,go:()=>recoveryActions[name].open()}))]));
         if(state.page==='licenses')out.stack.push({isTop:false,notTop:true,cls:'enter',z:4,title:'Open source licenses',hasTitle:true,backLabel:'Back to Settings',back:()=>api.set({page:null}),hero:{},groups:licenses.status==='ready'?licenses.items.map(item=>group([info(item.name,`${item.version} · ${item.license}`),...(typeof item.source==='string'&&item.source?[{kLog:true,time:'Source',text:item.source}]:[]),...(typeof item.text==='string'&&item.text?[{kLog:true,time:'License',text:item.text}]:[])])):[group([info(licenses.status==='unavailable'?'License notices unavailable':'Loading license notices…',licenses.status==='unavailable'?'Reinstall or update the app to restore them':'')])]});
+        if (owner?.props.systemShell === false) {
+          const systemOnly = new Set(['Wi-Fi', 'Bluetooth', 'Mobile data', 'Battery', 'Sound & vibration']);
+          page.groups = page.groups.map((g:Bag) => ({...g, rows:g.rows.filter((row:Bag) => !systemOnly.has(row.label))})).filter((g:Bag) => g.rows.length);
+        }
         for (const g of page.groups) for (const row of g.rows) if (row.label in topValues) {
           row.val = topValues[row.label]; row.hasVal = true;
         }
@@ -236,7 +274,14 @@ export function installSettingsAdapter(Component: any, views: Bag) {
       if (page.title === 'Accounts') {
         page.groups = [group([info('Eliza Cloud', cloudLabel), { kNav:true, label:'Manage Cloud account', lbl:'Manage Cloud account', chev:true, noAB:true, go:()=>connectionController.open() }, nav('Device accounts in Android', 'accounts')])];
       } else if (page.title === 'Connections') {
-        page.groups = [group([info('Gmail', gmail), { kNav:true, label:'Open Inbox', lbl:'Open Inbox', chev:true, noAB:true, go:()=>api.open('inbox') }, info('Other connectors', 'Not connected')])];
+        const connected = gmailAccounts.filter(a => a.connected && a.connectionId);
+        page.groups = [group([info('Gmail', gmail),
+          ...connected.map(a => info(a.label, gmailReadable(a) ? 'Connected · read access' : 'Connected · read access not granted')),
+          ...(gmailNotice ? [info('Last change', gmailNotice)] : []),
+          { kNav:true, label:'Open Inbox', lbl:'Open Inbox', chev:true, noAB:true, go:()=>api.open('inbox') },
+          ...connected.map(a => { const label = `Disconnect ${a.label}`; return { kNav:true, label, lbl:gmailBusy === a.connectionId ? 'Disconnecting…' : label, chev:true, noAB:true, go:()=>void disconnectGmail(a) }; }),
+          { kNav:true, label:'Check Gmail connection', lbl:'Check Gmail connection', chev:true, noAB:true, go:()=>{ gmailNotice = ''; void refreshCapabilities(); } },
+          info('Other connectors', 'Not connected')])];
       } else if (state.page === 'character' && page.hero?.kChar === true) {
         // The reference character page deliberately has no visible title.
         page.groups = browserDevProfile?[group([

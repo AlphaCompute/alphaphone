@@ -3,13 +3,17 @@ import {reviewContentQuestion} from '../browser/content-question';
 import {recordingLevels} from '../browser/audio-levels';
 import {browserDevProfile} from '../browser/dev-profile';
 import {pendingAudioDeletions,withAudioDeletionLock,changeAudioDeletion,audioDeletionNoteState,type AudioDeletion} from '../runtime/note-audio-deletions';
+import {addNotesTrashEntry,editNotesTrash,notesTrashExpired,readNotesTrash,removeNotesTrashEntries,savedNotes,type NotesTrashEntry} from '../runtime/notes-trash';
+import type {NotesTarget} from '../runtime/notes-contract';
+const audioOperation=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 import { installLocalSpeechPlayback, stopLocalSpeechPlayback } from './local-speech-playback';
 import { registerPlugin } from '../platform-plugins';
 import { Capacitor, type PluginListenerHandle } from '@capacitor/core';
 import { createOnDeviceVoice, type SpeechProgressEvent } from '../runtime/local-voice';
 import { voiceFailure, transcriptProvenance, speechProgressMessage, type VoiceFailure, type TranscriptProvenance } from '../runtime/voice-states';
 import { createPairedVoice } from '../runtime/paired-voice';
-import { createCloudVoice } from '../runtime/cloud-voice';
+import { createCloudVoice, cloudVoiceFailure } from '../runtime/cloud-voice';
+import { selectVoiceRoute } from '../runtime/voice-selection';
 import { connectionController } from '../runtime/connection-ui';
 type Bag = Record<string, any>;
 type Clip = { recordingId: string; durationMs: number };
@@ -33,6 +37,7 @@ const noteAudio = registerPlugin<{
   remove(input: { audioId: string; noteId: string; operationId:string }): Promise<unknown>;
   deletionStatus(input:{audioId:string;noteId:string;operationId:string}):Promise<{audioId:string;noteId:string;operationId:string;status:string}>;
   restore(input: { audioId: string; noteId: string; operationId:string }): Promise<unknown>;
+  purge(input: { audioId: string; noteId: string; operationId:string }): Promise<{audioId:string;noteId:string;operationId:string;status:string}>;
 }>('AlphaNoteAudio');
 
 /** Real voice state presented in the prototype Notes recording canvas. */
@@ -46,13 +51,17 @@ export function installPrototypeVoiceAdapter(Component: any, views: Record<strin
     // The prototype setView callback discards vset's persistence receipt.
     if (key === 'notes') {
       value.voiceNoteActive=()=>this.live&&this.S().view==='notes';
-      value.saveVoiceNote = async (patch: Bag) => await this.vset('notes', patch) === true;
+      value.saveVoiceNote = async (patch: Bag, options?: {exact?: boolean}) => await this.vset('notes', patch, options) === true;
       value.reviewAudioDeletion=async(note:Bag)=>{
         if(!this.live||this.notesStorageFailed||this.notesPending||!this.notesStore)throw Error('Notes needs recovery');
         const target=await this.notesStore.target(note.id);
         if(JSON.stringify(this.notesStore.list.find((n:Bag)=>n.id===note.id))!==JSON.stringify(note))throw Error('Note changed');
         return target;
       };
+      // Notes Trash hooks. Voice notes share one Trash with text notes; the recording follows its note.
+      value.restoreTrashedVoice=(entry:NotesTrashEntry)=>restoreDeletion(trashRow(entry),value,entry.index);
+      value.purgeTrashedVoice=(entry:NotesTrashEntry)=>purgeTrashedRecording(entry);
+      value.trashVoiceNoteWithRecording=<T,>(note:Bag,target:NotesTarget,operationId:string,index:number,commit:()=>Promise<T>)=>trashVoiceNoteWithRecording(note,target,operationId,index,commit);
       value.commitAudioNoteDeletion=async(row:AudioDeletion,authorized:()=>void)=>{
         if(this.notesStorageFailed||this.notesPending)throw Error('Notes needs recovery');
         await this.notesStore.execute({type:'notes_delete',target:row.target},row.id,new AbortController().signal,authorized);
@@ -108,9 +117,10 @@ export function installPrototypeVoiceAdapter(Component: any, views: Record<strin
     if (close) { stage = 'closed'; draft = ''; destination = undefined; chatDestination = undefined; failure = ''; recognized = undefined; }
     refresh();
   }
-  function enter(target?: DictationTarget, preparedLocal?: ReturnType<typeof createOnDeviceVoice>, route: 'device' | 'agent' | 'manual' = 'device') {
+  function enter(target?: DictationTarget, preparedLocal?: ReturnType<typeof createOnDeviceVoice>, preference: 'default' | 'device' | 'agent' | 'manual' = 'default') {
+    const selected = selectVoiceRoute(preference), route = selected === 'cloud' ? 'agent' : selected;
     stopLocalSpeechPlayback(); cleanup(); reprepare = false; destination = target; saveId = target?.id || crypto.randomUUID(); stage = 'ready'; error = ''; failure = ''; recognized = undefined; draft = ''; selectedRoute = route;
-    cloudMode = !browserDevProfile && connectionController.getCloudEnvironment() !== null;
+    cloudMode = selected === 'cloud';
     deviceOnly = browserDevProfile || !cloudMode && (localStorage.getItem('alpha.connection.selection.v1') !== null || !Capacitor.isPluginAvailable('DevelopmentAgent'));
     driver = cloudMode ? createCloudVoice() : deviceOnly ? deviceVoice : voice;
     onDeviceVoice = route === 'device' || browserDevProfile && route === 'agent' ? preparedLocal || createOnDeviceVoice() : null;
@@ -163,7 +173,7 @@ export function installPrototypeVoiceAdapter(Component: any, views: Record<strin
       progress = undefined;
       const kind = voiceFailure(reason, { transcribing: stage === 'transcribing', browser: !Capacitor.isNativePlatform() });
       if (kind) { failure = kind.kind; error = kind.message; stage = stage === 'review' ? 'review' : clip ? 'recorded' : 'ready'; stopClock(); return; }
-      error = onDeviceReady ? 'On-device speech unavailable. Keep recordings under 30 seconds and use English text under 500 characters for playback. Your recording is retained.' : pairedAsrReady ? 'Agent Whisper transcription unavailable. Your recording is retained; check the selected agent and retry explicitly.' : deviceOnly ? 'Recording unavailable. Check microphone access and available device storage, then retry.' : cloudMode ? 'Cloud voice unavailable. Check microphone access, your Cloud account and the connection, then retry.' : 'Voice unavailable. Check microphone access and the local development service, then retry.'; stage = stage === 'review' ? 'review' : clip ? 'recorded' : 'ready'; stopClock(); } }
+      error = (cloudMode && cloudVoiceFailure(reason)) || (onDeviceReady ? 'On-device speech unavailable. Keep recordings under 30 seconds and use English text under 500 characters for playback. Your recording is retained.' : pairedAsrReady ? 'Agent Whisper transcription unavailable. Your recording is retained; check the selected agent and retry explicitly.' : deviceOnly ? 'Recording unavailable. Check microphone access and available device storage, then retry.' : cloudMode ? 'Cloud voice unavailable. Check microphone access, your Cloud account and the connection, then retry.' : 'Voice unavailable. Check microphone access and the local development service, then retry.'); stage = stage === 'review' ? 'review' : clip ? 'recorded' : 'ready'; stopClock(); } }
     finally { if (token === generation) { busy = false; refresh(); } }
   }
   async function start(token: number) {
@@ -274,7 +284,7 @@ export function installPrototypeVoiceAdapter(Component: any, views: Record<strin
     const token = generation, controller = new AbortController();
     playback = controller; playing = true; error = ''; refresh();
     try { await speaker.speak(draft, controller.signal); }
-    catch { if (token === generation && !controller.signal.aborted) error = 'Audio could not be played by the selected voice service. Your transcript is still available.'; }
+    catch (failure) { if (token === generation && !controller.signal.aborted) error = (cloudMode && cloudVoiceFailure(failure)) || 'Audio could not be played by the selected voice service. Your transcript is still available.'; }
     finally { if (token === generation) { playback = undefined; playing = false; refresh(); } }
   }
   const originalStartVoice = Component.prototype.startVoice;
@@ -299,6 +309,7 @@ export function installPrototypeVoiceAdapter(Component: any, views: Record<strin
       && (this.S().view || null) === view && this.live !== false
       && !document.hidden && !connectionController.getSnapshot().open;
     if (!current()) return;
+    if (selectVoiceRoute() === 'cloud') { this.openView('notes'); enter(undefined, undefined, 'agent'); chatDestination = { shell: this, view }; refresh(); return; }
     const local = createOnDeviceVoice();
     if (local) {
       try {
@@ -328,10 +339,70 @@ export function installPrototypeVoiceAdapter(Component: any, views: Record<strin
     const result=await noteAudio.deletionStatus({audioId:row.audioId,noteId:row.note.id,operationId:row.id});
     if(result.audioId!==row.audioId||result.noteId!==row.note.id||result.operationId!==row.id||result.status!==status)throw Error('Audio operation unconfirmed');
   }
-  async function restoreDeletion(row:AudioDeletion,current:Bag){
-    if(deletionBusy)return;deletionBusy=true;
+  const trashRow=(entry:NotesTrashEntry):AudioDeletion=>{
+    if(!entry.audio||!entry.target)throw Error('This Trash entry has no recording');
+    return {id:entry.id,target:entry.target,note:entry.note,audioId:entry.audio.audioId};
+  };
+  /** Caller holds the deletion-effects lock. Erases the recording only when its own operation trashed it. */
+  async function purgeTrashedRecording(entry:NotesTrashEntry){
+    if(!entry.audio)return true;
+    // An unconfirmed deletion stays under review; it is never purged out from under its recovery row.
+    if((await pendingAudioDeletions())[entry.id])return false;
+    const row=trashRow(entry);
+    // Never erase a recording that a saved note still references (live again, or re-associated).
+    // A Notes reset replaces the collection identity, so the tombstone alone cannot be required.
+    if((await savedNotes()).some(n=>n.id===row.note.id||n.audio?.audioId===row.audioId))return false;
+    const result=await noteAudio.purge({audioId:row.audioId,noteId:row.note.id,operationId:row.id});
+    if(result.audioId!==row.audioId||result.noteId!==row.note.id||result.operationId!==row.id||result.status!=='purged')throw Error('Recording erase unconfirmed');
+    return true;
+  }
+  /**
+   * Approved agent deletion of a voice note. Caller holds the deletion-effects lock.
+   * Same protocol as the editor delete: Trash row and recovery row before the tombstone
+   * commit, then the recording moves to the audio trash under the same operation id, so
+   * Trash restores or purges note and recording together. A failure after the commit
+   * leaves the recovery row for review; it never repeats a possibly completed effect.
+   */
+  async function trashVoiceNoteWithRecording<T>(note:Bag,target:NotesTarget,operationId:string,index:number,commit:()=>Promise<T>):Promise<T>{
+    const audioId=note.audio?.audioId;let row:AudioDeletion|undefined;
+    if(typeof audioId==='string'&&audioId&&note.audio?.noteId===note.id&&audioOperation.test(operationId)){
+      if(Object.values(await pendingAudioDeletions()).some(x=>x.note.id===note.id))throw Error('A deletion of this voice note needs review first');
+      const metadata=await noteAudio.describe({audioId}).catch(()=>null);
+      // A recording that is already gone or owned elsewhere is left alone; the note text still goes to Trash.
+      if(metadata&&metadata.noteId===note.id&&metadata.audioId===audioId&&!metadata.deletedAt)row={id:operationId,target,note:note as AudioDeletion['note'],audioId};
+    }
+    await editNotesTrash(doc=>addNotesTrashEntry(doc,{id:operationId,note:note as NotesTrashEntry['note'],target,index,deletedAt:Date.now(),...(row?{audio:{audioId:row.audioId}}:{})}));
+    if(!row)return commit();
+    await changeAudioDeletion(row,true);
+    let result:T;
+    try{result=await commit();}catch(error){
+      // Proven unchanged: retire the recovery row. Otherwise it stays for review.
+      try{if(await audioDeletionNoteState(row)==='original')await changeAudioDeletion(row,false);}catch{/* Retained for review. */}
+      throw error;
+    }
+    try{
+      if(await audioDeletionNoteState(row)!=='deleted')throw Error('Saved note changed');
+      const retained=await noteAudio.describe({audioId:row.audioId});
+      if(retained.noteId!==row.note.id||retained.audioId!==row.audioId)throw Error('Recording association changed');
+      const dispatched={...row,audioRequested:true as const};await changeAudioDeletion(row,false,dispatched);row=dispatched;
+      if(!retained.deletedAt)try{await noteAudio.remove({audioId:row.audioId,noteId:row.note.id,operationId:row.id});}catch{/* Readback only. */}
+      const removed=await noteAudio.describe({audioId:row.audioId});
+      if(removed.noteId!==row.note.id||!removed.deletedAt)throw Error('Recording deletion unconfirmed');
+      await deletionReceipt(row,'removed');
+      await changeAudioDeletion(row,false);
+    }catch{/* The committed note deletion stands; the recovery row keeps the recording under review. */}
+    return result;
+  }
+  async function dropTrashEntry(id:string){
+    if((await readNotesTrash()).entries.some(entry=>entry.id===id))await editNotesTrash(doc=>removeNotesTrashEntries(doc,[id]));
+    window.dispatchEvent(new Event('alpha:notes-trash-changed'));
+  }
+  async function restoreDeletion(row:AudioDeletion,current:Bag,index=0):Promise<boolean>{
+    if(deletionBusy)return false;deletionBusy=true;let done=false;
     try{await withAudioDeletionLock(async()=>{
       if(!current.voiceNoteActive()||document.hidden)throw Error('Open Notes to restore');
+      const trashEntry=(await readNotesTrash()).entries.find(entry=>entry.id===row.id);
+      if(trashEntry&&notesTrashExpired(trashEntry,Date.now()))throw Error('Trash retention expired');
       const state=await audioDeletionNoteState(row);
       if(state==='changed')throw Error('A newer note must be preserved');
       if(current.storageReady?.()===false)throw Error('Reopen Notes first');
@@ -347,12 +418,17 @@ export function installPrototypeVoiceAdapter(Component: any, views: Record<strin
       if(!current.voiceNoteActive()||document.hidden)throw Error('Open Notes to restore');
       if(state==='deleted'){
         const list=current.get('notes').list;
-        if(list.some((n:Bag)=>n.id===row.note.id)||await current.saveVoiceNote({list:[row.note,...list]})!==true)throw Error('Restore unconfirmed');
+        // Reinstate the exact reviewed record (same id and revision) near its old position.
+        if(list.some((n:Bag)=>n.id===row.note.id))throw Error('Restore unconfirmed');
+        const next=list.slice();next.splice(Math.min(Math.max(0,index),next.length),0,structuredClone(row.note));
+        if(await current.saveVoiceNote({list:next},{exact:true})!==true)throw Error('Restore unconfirmed');
       }
       if((await pendingAudioDeletions())[row.id])await changeAudioDeletion(row,false);
-      current.toast('Voice note restored.');
+      await dropTrashEntry(row.id);
+      done=true;current.toast('Voice note restored.');
     });}catch{current.toast('Restore is unconfirmed. Reopen Notes and check deletion status. No newer note was replaced.');}
     finally{deletionBusy=false;void refreshDeletionStatus(current);}
+    return done;
   }
   async function refreshDeletionStatus(current:Bag){
     if(deletionRefresh)return;deletionRefresh=true;
@@ -418,6 +494,10 @@ export function installPrototypeVoiceAdapter(Component: any, views: Record<strin
           if(metadata.noteId!==reviewed.id||metadata.audioId!==reviewed.audio.audioId||metadata.deletedAt)throw Error('Recording association changed');
           if(!active())return;
           row={id:crypto.randomUUID(),target,note:reviewed,audioId:reviewed.audio.audioId};
+          // Write-ahead Trash copy: the note text and its recording stay restorable for three days.
+          // Maintenance drops it again if the deletion below never commits.
+          const index=Math.max(0,(current.get('notes').list||[]).findIndex((n:Bag)=>n.id===reviewed.id));
+          await editNotesTrash(doc=>addNotesTrashEntry(doc,{id:row!.id,note:reviewed,target,index,deletedAt:Date.now(),audio:{audioId:reviewed.audio.audioId}}));
           await changeAudioDeletion(row,true);
           const authorized=()=>{if(!active())throw Error('Review changed');};
           try{await current.commitAudioNoteDeletion(row,authorized);}catch{
@@ -436,7 +516,8 @@ export function installPrototypeVoiceAdapter(Component: any, views: Record<strin
           await deletionReceipt(row,'removed');
           await changeAudioDeletion(row,false);
           if(active())current.set({open:null});
-          current.toast('Voice note deleted', {undo:()=>void restoreDeletion(row!,current)});
+          window.dispatchEvent(new Event('alpha:notes-trash-changed'));
+          current.toast('Voice note moved to Trash', {undo:()=>void restoreDeletion(row!,current,index)});
         });} catch {current.toast('Deletion is unconfirmed. Check deletion status; no deletion will be repeated.');}
         finally{deletionBusy=false;void refreshDeletionStatus(current);}
       })(); };

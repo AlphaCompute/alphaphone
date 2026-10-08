@@ -56,7 +56,7 @@ public class BrowserFlowInstrumentedTest {
    });
   }catch(Throwable error){evidence.append("; native-diagnostic-unavailable:").append(error.getClass().getSimpleName());}
   try{
-   evidence.append("; host=").append(host("JSON.stringify({activeView:document.documentElement.dataset.activeView,mode:document.documentElement.dataset.connectionMode,addressPresent:!!document.querySelector('input[aria-label=Address]'),connectionDialog:!!document.querySelector('.alpha-connection-scrim'),isolatedProfilesRejected:document.body.innerText.includes('This Android WebView does not support isolated browser profiles'),secureClearRejected:document.body.innerText.includes('This Android WebView cannot securely clear retired browser data'),createRejected:document.body.innerText.includes('Could not create an isolated browser tab'),identityRejected:document.body.innerText.includes('Invalid browser identity'),sessionRejected:document.body.innerText.includes('Expired browser session'),tabLimitRejected:document.body.innerText.includes('Close a tab before opening another')})"));
+   evidence.append("; host=").append(host("JSON.stringify({activeView:document.documentElement.dataset.activeView,mode:document.documentElement.dataset.connectionMode,addressPresent:!!document.querySelector('input[aria-label=Address]'),connectionDialog:!!document.querySelector('.alpha-connection-scrim'),isolatedProfilesRejected:document.body.innerText.includes('This Android WebView does not support isolated browser profiles'),privateTabRejected:document.body.innerText.includes('Private tabs need an Android System WebView'),createRejected:document.body.innerText.includes('Could not create an isolated browser tab'),identityRejected:document.body.innerText.includes('Invalid browser identity'),sessionRejected:document.body.innerText.includes('Expired browser session'),tabLimitRejected:document.body.innerText.includes('Close a tab before opening another')})"));
   }catch(Throwable error){evidence.append("; host-diagnostic-unavailable:").append(error.getClass().getSimpleName());}
   try{evidence.append("; child=").append(child("JSON.stringify({protocol:location.protocol,ready:document.readyState,body:!!document.body})"));}
   catch(Throwable error){evidence.append("; child-diagnostic-unavailable:").append(error.getClass().getSimpleName());}
@@ -187,7 +187,7 @@ public class BrowserFlowInstrumentedTest {
    click("Menu");until("!document.querySelector('button[aria-label=\"Stop loading\"]')");
   }finally{server.close();worker.shutdownNow();}
  }
- @Test public void realHttpsHistoryMenuAndIndependentTabStorage()throws Exception{
+ @Test public void realHttpsHistoryMenuSharedNormalStorageAndPrivateTabIsolation()throws Exception{
   String token=UUID.randomUUID().toString(),one="?alpha_flow="+token+"-one",two="?alpha_flow="+token+"-two";
   try(BoundedActivityScenario<MainActivity> scenario=BoundedActivityScenario.launch(MainActivity.class)){
    until("document.documentElement.dataset.activeView");host(AppNavigation.request("Browser"));until(AppNavigation.selected("Browser"));
@@ -201,9 +201,20 @@ public class BrowserFlowInstrumentedTest {
    click("Menu");until("document.querySelector('button[aria-label=\"Reload page\"]')");
    for(int i=0;i<50&&!"null".equals(child("true"));i++)SystemClock.sleep(100);
    assertEquals("Native page must hide behind host menu","null",child("true"));click("Reload page");page(two);
+   // Product decision: normal tabs share one persistent browser profile.
    click("Tabs");click("New tab");address("https://example.com/"+one);page(one);
-   assertEquals("New tab has isolated origin storage","null",child("localStorage.getItem('alpha_flow_marker')"));
+   assertEquals("Normal tabs share site storage",JSONObject.quote(token),child("localStorage.getItem('alpha_flow_marker')"));
    assertEquals("New tab also lacks native bridge","true",child("typeof Capacitor==='undefined' && typeof androidBridge==='undefined'"));
+   assertEquals("Host never sees website storage","null",host("localStorage.getItem('alpha_flow_marker')"));
+   // A private tab has its own ephemeral profile in both directions.
+   click("Tabs");click("New private tab");address("https://example.com/"+two);page(two);
+   until("document.querySelector('[aria-label=\"Private tab\"]')");
+   assertEquals("Private tab cannot read normal-tab storage","null",child("localStorage.getItem('alpha_flow_marker')"));
+   child("localStorage.setItem('alpha_flow_private',"+JSONObject.quote(token)+");true");
+   assertEquals("Private tab lacks native bridge","true",child("typeof Capacitor==='undefined' && typeof androidBridge==='undefined'"));
+   click("Tabs");click("Close private tab");
+   until("!document.querySelector('[aria-label=\"Private tab\"]')");page(two);
+   assertEquals("Normal tab cannot read private-tab storage","null",child("localStorage.getItem('alpha_flow_private')"));
    click("Tabs");click("Close tab");
   }
  }
