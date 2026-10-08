@@ -18,7 +18,7 @@ async function trackCsp(page: Page) {
 
 test('the bundle records production flags and ships a CSP', async ({ page, request }) => {
   expect(await (await request.get('/build-flags.json')).json()).toEqual({ testMocks: false });
-  await page.goto('/');
+  await page.goto('/?tools=1');
   const policy = await page.locator('meta[http-equiv="Content-Security-Policy"]').getAttribute('content');
   for (const directive of ["default-src 'self'", "script-src 'self' 'wasm-unsafe-eval'", "object-src 'none'", "base-uri 'none'"]) expect(policy).toContain(directive);
   expect(policy).not.toContain("'unsafe-eval'");
@@ -63,10 +63,10 @@ test('a stored mock selection on Android opens the chooser and never enters mock
       },
     };
   });
-  await page.goto('/');
+  await page.goto('/?tools=1');
   const chooser = page.locator('.alpha-connection');
   await expect(chooser).toBeVisible();
-  await expect(chooser.getByText(/real agents only/)).toBeVisible();
+  await expect(chooser.getByRole('button',{name:'Sign in with Eliza Cloud',exact:true})).toBeVisible();
   await expect(page.locator('html')).toHaveAttribute('data-connection-mode', 'live');
   await expect(page.locator('.mock-mode-banner')).toHaveCount(0);
   expect(new URL(page.url()).searchParams.has('mode')).toBe(false);
@@ -82,7 +82,7 @@ test('a stored mock selection on Android opens the chooser and never enters mock
 });
 
 test('the chooser and Settings offer only production connections', async ({ page }) => {
-  await page.goto('/');
+  await page.goto('/?tools=1');
   const chooser = page.locator('.alpha-connection');
   // The browser build explains its real options on first run.
   await expect(chooser.getByText('This browser has no on-device agent', { exact: true })).toBeVisible();
@@ -116,14 +116,14 @@ test('the chooser and Settings offer only production connections', async ({ page
 
 test('deferred apps are absent and root views show honest unconnected states', async ({ page }) => {
   await page.addInitScript(offline);
-  await page.goto('/');
+  await page.goto('/?tools=1');
   for (const deferred of ['Phone', 'Messages', 'Contacts', 'Wallet']) await expect(page.getByRole('button', { name: deferred, exact: true })).toHaveCount(0);
   const states: Record<string, RegExp> = {
     Inbox: /Connect Eliza Cloud/, Workflows: /Agent connection required/, Notes: /No notes yet/,
     Photos: /No photos/, Maps: /Maps provider not connected|Search/, Calendar: /\d/, Files: /Choose a document/, Settings: /Agent connection/,
   };
   for (const [view, expected] of Object.entries(states)) {
-    await page.goto('/');
+    await page.goto('/?tools=1');
     await page.getByRole('button', { name: view, exact: true }).click();
     await expect(page.locator('html')).toHaveAttribute('data-active-view', view.toLowerCase());
     await expect(page.locator('[data-screen]')).toContainText(expected);
@@ -133,7 +133,7 @@ test('deferred apps are absent and root views show honest unconnected states', a
 });
 
 test('sending chat without a connection opens the chooser', async ({ page }) => {
-  await page.goto('/');
+  await page.goto('/?tools=1');
   const chooser = page.locator('.alpha-connection');
   await expect(chooser).toBeVisible();
   await chooser.getByRole('button', { name: 'Close connection settings', exact: true }).click();
@@ -149,18 +149,18 @@ test('the CSP admits Home, Notes, Maps, Scan and PDF without violations', async 
   test.setTimeout(120_000);
   const violations = await trackCsp(page);
   await page.addInitScript(offline);
-  await page.goto('/');
+  await page.goto('/?tools=1');
   await expect(page.getByRole('button', { name: 'Notes', exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Notes', exact: true }).click();
   await page.getByRole('button', { name: 'New note', exact: true }).click();
   await page.getByRole('textbox', { name: 'Title', exact: true }).fill('CSP note');
   await page.getByRole('button', { name: 'Back to notes', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Open CSP note', exact: true })).toBeVisible();
-  await page.getByRole('button', { name: 'Home', exact: true }).click();
+  await page.getByRole('button', { name: 'Back to apps', exact: true }).click();
   await page.getByRole('button', { name: 'Maps', exact: true }).click();
   await expect(page.locator('html')).toHaveAttribute('data-active-view', 'maps');
   await page.waitForTimeout(1000);
-  await page.getByRole('button', { name: 'Home', exact: true }).click();
+  await page.getByRole('button', { name: 'Back to apps', exact: true }).click();
   await page.getByRole('button', { name: 'Camera', exact: true }).click();
   const png = await page.evaluate(async () => {
     const canvas = document.createElement('canvas'); canvas.width = 1200; canvas.height = 600;
@@ -194,7 +194,7 @@ test('the CSP admits Home, Notes, Maps, Scan and PDF without violations', async 
 
 test('production ignores the development render-failure hook', async ({ page }) => {
   await page.addInitScript(offline);
-  await page.goto('/');
+  await page.goto('/?tools=1');
   const settings = page.getByRole('button', { name: 'Settings', exact: true });
   await expect(settings).toBeVisible();
   await page.evaluate(() => window.dispatchEvent(new Event('alpha:force-render-error')));
@@ -230,3 +230,63 @@ test('production browser speech: self-hosted Whisper transcribes under the shipp
   expect(foreign).toEqual([]);
   expect(await violations()).toEqual([]);
 });
+for (const mode of ['signed-out','empty','unavailable','funded','replaced','unpackaged','legacy-offline'] as const) {
+ test(`resident billing onboarding: ${mode}`,async({page})=>{
+  await page.addInitScript(mode=>{
+   const w=window as any;w.androidBridge={};w.residentCalls=[];
+   const id='9f1dc45a-4011-4e44-947a-30d999d24fa5';
+   const values:Record<string,string>={};let credentialReads=0;
+   if(mode==='legacy-offline')localStorage.setItem('alpha.connection.selection.v1',JSON.stringify({kind:'offline'}));
+   if(mode!=='signed-out'&&mode!=='unpackaged'&&mode!=='legacy-offline')values['cloud:production']=JSON.stringify({token:'synthetic-cloud-key',credentialId:id,expiresAt:Date.now()+60000});
+   const methods=(names:string[])=>names.map(name=>({name,rtype:'promise'}));
+   w.Capacitor={PluginHeaders:[
+    {name:'DeviceApps',methods:methods(['buildInfo'])},
+    {name:'Agent',methods:methods(['getStatus','start','stop','configureCloudProvider','request'])},
+    {name:'AlphaConnection',methods:methods(['secureRead','secureWrite','secureRemove','secureCompareExchange','request','cancel','openExternal'])},
+    {name:'AlphaNotifications',methods:methods(['status','crossAppStatus','addListener','removeListener'])},
+    {name:'AlphaVoiceCloud',methods:methods(['checkPermissions'])},
+   ],nativePromise:async(plugin:string,method:string,input:any)=>{
+    w.residentCalls.push({plugin,method,path:input?.path,url:input?.url});
+    if(plugin==='DeviceApps')return{launcher:false,version:'billing-fixture'};
+    if(plugin==='AlphaNotifications')return{permissionGranted:true,appEnabled:true};
+    if(plugin==='AlphaVoiceCloud')return{microphone:'granted'};
+    if(plugin==='Agent'){
+     if(method==='getStatus')return{packaged:mode!=='unpackaged',state:'stopped',serviceActive:false,socketListening:false};
+     if(method==='request'){
+      const body=input.path==='/api/auth/me'?{identity:{id,kind:'owner'},access:{role:'OWNER',mode:'local'}}:
+       input.path==='/api/agents'?{agents:[{id,name:'Alpha',status:'running'}]}:
+       input.path==='/api/conversations'?{conversations:[]}:{};
+      return {status:200,body:JSON.stringify(body)};
+     }
+     return {};
+    }
+    if(method==='secureRead'){if(input.slot==='cloud:production'&&++credentialReads===5&&mode==='replaced')values[input.slot]=JSON.stringify({token:'synthetic-replacement-key',credentialId:'f04d4d24-6978-42a2-a968-995d76debf77',expiresAt:Date.now()+60000});return{value:values[input.slot]??null};}
+    if(method==='secureWrite'){values[input.slot]=input.value;return{};}
+    if(method==='secureRemove'){delete values[input.slot];return{};}
+    if(method==='request'){
+     const path=new URL(input.url).pathname;
+     if(path==='/api/v1/user')return{status:200,data:{success:true,data:{id}}};
+     if(path==='/api/v1/credits/balance')return mode==='unavailable'?{status:503,data:{error:'temporary'}}:{status:200,data:{balance:mode==='funded'||mode==='replaced'?5:0}};
+     throw Error('Unexpected Cloud route: '+path);
+    }
+    return {};
+   }};
+  },mode);
+  await page.goto('/');
+  if(mode==='signed-out')await expect(page.getByRole('button',{name:'Sign in with Eliza Cloud',exact:true})).toBeVisible();
+  if(mode==='empty')await expect(page.getByRole('button',{name:'Add credits in Eliza Cloud',exact:true})).toBeVisible();
+  if(mode==='unavailable'){
+   await expect(page.getByRole('alert')).toContainText(/unavailable|starting/i);
+   await expect(page.getByRole('button',{name:'Add credits in Eliza Cloud',exact:true})).toHaveCount(0);
+  }
+  if(mode==='funded')await expect(page.getByRole('button',{name:'Notes',exact:true})).toBeVisible();
+  if(mode==='replaced')await expect(page.getByRole('alert')).toContainText(/account changed/i);
+  if(mode==='unpackaged'||mode==='legacy-offline'){await expect(page.getByRole('button',{name:'Sign in with Eliza Cloud',exact:true})).toBeVisible();await page.keyboard.press('Escape');await expect(page.getByRole('dialog',{name:'Welcome to Alpha'})).toBeVisible();}
+  await expect(page.getByRole('button',{name:'Use local apps without AI',exact:true})).toHaveCount(0);
+  const calls=await page.evaluate(()=>(window as any).residentCalls);
+  expect(calls.some((c:any)=>c.url?.includes('/personal/')||c.url?.includes('/upgrade-tier'))).toBe(false);
+  const native=calls.filter((c:any)=>c.plugin==='Agent').map((c:any)=>c.method);
+  if(mode==='funded')expect(native.indexOf('stop')).toBeLessThan(native.indexOf('configureCloudProvider'));
+  else expect(native).not.toContain('start');
+ });
+}

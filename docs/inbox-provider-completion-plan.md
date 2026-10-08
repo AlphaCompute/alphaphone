@@ -1,10 +1,26 @@
 # Inbox provider completion
 
-September 30, 2026. This is remaining implementation work, not acceptance evidence. The existing prototype remains the visual contract; offline encrypted local drafts must continue working independently of Cloud authentication.
+Email/Gmail is in MVP scope (owner decision [P-02](decisions.md#october-7-owner-product-decisions), October 7, 2026). This plan dates from September 30. The current boundary below records what the October 7 change implemented. It is still not acceptance evidence: real OAuth, Cloud deployment and a real mailbox remain open. The existing prototype remains the visual contract; offline encrypted local drafts must continue working independently of Cloud authentication.
 
-## Verified boundary
+## Current boundary (October 7)
 
-`apps/app/src/prototype/inbox-cloud-adapter.ts` currently exposes bounded account-scoped search and single-message reading, plus encrypted local compose/reply drafts. Its archive/delete/forward actions deliberately do not mutate mail. `runtime/cloud-protocol.ts` consumes `/api/v1/eliza/google/accounts`, `/gmail/search` and `/gmail/read` under the managed owner connector. Current source in `~/v3/packages/cloud/api/v1/eliza/google/gmail/read/route.ts` authenticates the organization/user and delegates the selected grant to the managed connector. This route is not a thread, attachment or sending contract. Local source inspection does not establish the deployed Worker revision.
+The cloud adapter (`apps/app/src/prototype/inbox-cloud-adapter.ts`) and `runtime/cloud-protocol.ts` now provide the following against the managed owner connector:
+- account-scoped search with the provider's opaque `nextPageToken` (Load more) and an `in:sent` Sent view;
+- automatic load on open, plus Refresh;
+- threads and single-message reads;
+- reviewed send, provider draft, archive/trash/undo and attachment operations through `inbox-v1`, with durable receipts and no automatic re-send;
+- `POST /api/v1/eliza/google/disconnect` behind a confirmation and a read-back (`runtime/gmail-mailbox.ts`), exposed in Inbox and Settings → Connections;
+- classified offline, revoked-grant and stale (409) failures, each with an explicit Retry;
+- Notes sharing into a prefilled local draft;
+- a From switcher for more than one connected account.
+
+The upstream inbox-v1 operations could not change read state, so [`patches/eliza/0037-gmail-inbox-read-state.patch`](../patches/eliza/0037-gmail-inbox-read-state.patch) adds reviewed `mark-read`/`mark-unread` kinds, a `readState` capability and the receipt-kind migration. It was tested in an isolated upstream worktree and is not deployed. Until a deployed server advertises `readState`, opening a message does not mark it read, and the Home unread badge reflects loaded Inbox pages only.
+
+The September 30 findings below are kept as written for their date.
+
+## Verified boundary (September 30)
+
+At that time `apps/app/src/prototype/inbox-cloud-adapter.ts` exposed bounded account-scoped search and single-message reading, plus encrypted local compose/reply drafts. Its archive/delete/forward actions deliberately did not mutate mail. `runtime/cloud-protocol.ts` consumed `/api/v1/eliza/google/accounts`, `/gmail/search` and `/gmail/read` under the managed owner connector. Current source in `~/v3/packages/cloud/api/v1/eliza/google/gmail/read/route.ts` authenticates the organization/user and delegates the selected grant to the managed connector. This route is not a thread, attachment or sending contract. Local source inspection does not establish the deployed Worker revision.
 
 Gmail provides full-thread retrieval through [threads.get](https://developers.google.com/workspace/gmail/api/reference/rest/v1/users.threads/get). Its [draft resource](https://developers.google.com/workspace/gmail/api/reference/rest/v1/users.drafts) has an immutable draft ID, replacement update, send, and permanent draft deletion. [messages.send](https://developers.google.com/workspace/gmail/api/reference/rest/v1/users.messages/send) returns a Message on success and sends to the MIME recipient headers. The inspected send contract does not advertise an idempotency-key parameter. Therefore Alpha must not infer exactly-once delivery from its own request ID.
 

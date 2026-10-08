@@ -21,6 +21,10 @@ public final class AlphaLocalAgentPlugin extends Plugin {
  private static long expiresAt;
  private static final Object lifecycleLock=new Object(), enrollmentLock=new Object();
  private static long lifecycleEpoch;
+ private static String startRequestId;
+ private static long startRequestEpoch;
+ private static boolean startOwnsLaunch;
+ private final java.util.Set<String> cancelledStarts=new java.util.HashSet<>();
  private static boolean accepting=true,stopping;
  private volatile boolean disposed;
  private static final java.util.Set<PluginCall> pending=new java.util.HashSet<>();
@@ -56,11 +60,82 @@ public final class AlphaLocalAgentPlugin extends Plugin {
  @PluginMethod public void configureProvider(PluginCall call) {
   if(!runtimePackaged()){call.reject("On-device agent is unavailable in this version. Connect a remote agent or use Eliza Cloud.");return;}
   String key=call.getString("apiKey",""),model=call.getString("model","");
-  if(key.length()<8||key.length()>1024||key.matches(".*[\\r\\n\\s].*")||!model.matches("[A-Za-z0-9][A-Za-z0-9._/-]{0,127}")){call.reject("Enter a valid Cerebras key and model.");return;}
+  if(!validProviderToken(key,1024)||!model.matches("[A-Za-z0-9][A-Za-z0-9._/-]{0,127}")){call.reject("Enter a valid Cerebras key and model.");return;}
   workers.execute(()->{try{
    new AlphaCredentialStore(getContext()).writeCredentialSlot("local-agent-provider:v1",new JSONObject().put("key",key).put("model",model).toString());
    call.resolve(new JSObject().put("configured",true));
   }catch(Exception error){call.reject("Provider could not be saved securely.");}});
+ }
+ static final String CLOUD_PROVIDER_MODEL="cerebras/qwen-3.8-27b";
+ static final String CLOUD_PROVIDER_BASE="https://api.eliza.app/api/v1";
+ /** Binds an existing account credential; no bearer value crosses this method's renderer API. */
+ @PluginMethod public void configureCloudProvider(PluginCall call) {
+  if(!runtimePackaged()){call.reject("On-device agent is unavailable in this version.");return;}
+  String credentialId=call.getString("credentialId",""),model=call.getString("model","");
+  if(!CLOUD_PROVIDER_MODEL.equals(model)){call.reject("Choose a supported Cloud model.");return;}
+  try{workers.execute(()->{try{
+   bindCloudProvider(new AlphaCredentialStore(getContext()),credentialId,model);
+   call.resolve(new JSObject().put("configured",true));
+  }catch(Exception unavailable){call.reject("Cloud account changed or is unavailable. Sign in again before starting the local agent.");}});}
+  catch(java.util.concurrent.RejectedExecutionException closed){call.reject("Local agent bridge is closed.");}
+ }
+ /** Preserve the previous selection when admission loses its account, without replacing a newer selection. */
+ static void bindCloudProvider(AlphaCredentialStore store,String credentialId,String model) throws Exception {
+  if(!CLOUD_PROVIDER_MODEL.equals(model))throw new IllegalArgumentException();
+  String previous=store.readCredentialSlot("local-agent-provider:v1");
+  cloudProviderToken(store.readCredentialSlot("cloud:production"),credentialId,System.currentTimeMillis());
+  // A unique revision distinguishes two concurrent admissions for the same account/model.
+  String binding=new JSONObject().put("provider","elizacloud").put("credentialId",credentialId).put("model",model)
+   .put("revision",java.util.UUID.randomUUID().toString()).toString();
+  if(!store.compareExchangeCredentialSlot("local-agent-provider:v1",previous,binding))throw new IllegalStateException();
+  try{
+   cloudProviderToken(store.readCredentialSlot("cloud:production"),credentialId,System.currentTimeMillis());
+   if(!binding.equals(store.readCredentialSlot("local-agent-provider:v1")))throw new IllegalStateException();
+  }catch(Exception unavailable){
+   store.compareExchangeCredentialSlot("local-agent-provider:v1",binding,previous);
+   throw unavailable;
+  }
+ }
+ static boolean validProviderToken(String token,int maximumLength) {
+  if(token==null||token.length()<8||token.length()>maximumLength)return false;
+  // HTTP bearer credentials are visible ASCII; reject all whitespace/control characters, including CR/LF runs.
+  for(int i=0;i<token.length();i++)if(token.charAt(i)<=0x20||token.charAt(i)>=0x7f)return false;
+  return true;
+ }
+ static String cloudProviderToken(String saved,String credentialId,long now) throws Exception {
+  if(credentialId==null||!java.util.UUID.fromString(credentialId).toString().equalsIgnoreCase(credentialId)||saved==null)throw new IllegalArgumentException();
+  JSONObject credential=new JSONObject(saved);
+  if(!credentialId.equals(credential.opt("credentialId")))throw new IllegalArgumentException();
+  Object token=credential.opt("token");
+  if(!(token instanceof String)||!validProviderToken((String)token,16384))throw new IllegalArgumentException();
+  if(credential.has("expiresAt")){
+   Object expiry=credential.opt("expiresAt");
+   if(!(expiry instanceof Number)||!Double.isFinite(((Number)expiry).doubleValue())||((Number)expiry).doubleValue()<=now)throw new IllegalArgumentException();
+  }
+  return (String)token;
+ }
+ /** Select exactly one billing authority at process launch; never accept UI balance as authorization. */
+ static void applyProviderEnvironment(JSONObject provider,String cloudSaved,java.util.Map<String,String> env,long now) throws Exception {
+  String kind=provider.optString("provider","cerebras"),model=provider.getString("model");
+  if("elizacloud".equals(kind)){
+   if(!CLOUD_PROVIDER_MODEL.equals(model))throw new IllegalArgumentException();
+   String token=cloudProviderToken(cloudSaved,provider.getString("credentialId"),now);
+   for(String key:new String[]{"CEREBRAS_API_KEY","CEREBRAS_BASE_URL","CEREBRAS_MODEL","CEREBRAS_SMALL_MODEL","CEREBRAS_LARGE_MODEL","OPENAI_API_KEY","OPENAI_BASE_URL","ELIZA_PROVIDER"})env.remove(key);
+   env.put("ELIZAOS_CLOUD_API_KEY",token);
+   env.put("ELIZAOS_CLOUD_BASE_URL",CLOUD_PROVIDER_BASE);
+   env.put("ELIZAOS_CLOUD_USE_INFERENCE","true");
+   env.put("ELIZAOS_CLOUD_SMALL_MODEL",model);
+   env.put("ELIZAOS_CLOUD_LARGE_MODEL",model);
+  }else if("cerebras".equals(kind)){
+   String key=provider.getString("key");
+   if(!model.matches(PROVIDER_MODEL_PATTERN)||!validProviderToken(key,1024))throw new IllegalArgumentException();
+   for(String name:new String[]{"ELIZAOS_CLOUD_API_KEY","ELIZAOS_CLOUD_BASE_URL","ELIZAOS_CLOUD_SMALL_MODEL","ELIZAOS_CLOUD_LARGE_MODEL"})env.remove(name);
+   env.put("CEREBRAS_API_KEY",key);
+   env.put("CEREBRAS_MODEL",model);
+   env.put("CEREBRAS_SMALL_MODEL",model);
+   env.put("CEREBRAS_LARGE_MODEL",model);
+   env.put("ELIZAOS_CLOUD_USE_INFERENCE","false");
+  }else throw new IllegalArgumentException();
  }
  static final String PROVIDER_MODEL_PATTERN="[A-Za-z0-9][A-Za-z0-9._/-]{0,127}";
  /** Settings may show which hosted provider and model are configured; the key never leaves native storage. */
@@ -68,17 +143,40 @@ public final class AlphaLocalAgentPlugin extends Plugin {
   JSObject result=new JSObject().put("provider","cerebras").put("configured",false);
   if(saved==null)return result;
   try{
-   String model=new JSONObject(saved).optString("model","");
-   if(model.matches(PROVIDER_MODEL_PATTERN))result.put("configured",true).put("model",model);
+   JSONObject provider=new JSONObject(saved);
+   String model=provider.optString("model",""),kind=provider.optString("provider","cerebras");
+   if("elizacloud".equals(kind)){result.put("provider","elizacloud");if(CLOUD_PROVIDER_MODEL.equals(model))result.put("configured",true).put("model",model);}
+   else if("cerebras".equals(kind)&&model.matches(PROVIDER_MODEL_PATTERN))result.put("configured",true).put("model",model);
   }catch(org.json.JSONException malformed){/* Report unconfigured, never the stored value. */}
   return result;
  }
  @PluginMethod public void providerStatus(PluginCall call) {
   try{workers.execute(()->{
-   try{call.resolve(providerIdentity(new AlphaCredentialStore(getContext()).readCredentialSlot("local-agent-provider:v1")));}
+   try{
+    AlphaCredentialStore store=new AlphaCredentialStore(getContext());
+    String saved=store.readCredentialSlot("local-agent-provider:v1");
+    JSObject status=providerIdentity(saved);
+    if("elizacloud".equals(status.optString("provider"))&&status.optBoolean("configured")){
+     try{cloudProviderToken(store.readCredentialSlot("cloud:production"),new JSONObject(saved).optString("credentialId"),System.currentTimeMillis());}
+     catch(Exception unavailable){status.put("configured",false);}
+    }
+    call.resolve(status);
+   }
    catch(Exception unavailable){call.reject("Provider status unavailable.");}
   });}
   catch(java.util.concurrent.RejectedExecutionException closed){call.reject("Local agent bridge is closed.");}
+ }
+ /** The shared service activates its bionic host from this same packaged engine/JNI pair. */
+ static void configureLocalEmbeddings(File nativeDirectory,File filesDirectory,java.util.Map<String,String> env) {
+  File model=new File(filesDirectory,".eliza/local-inference/models/bge-small-en-v1.5-f16.gguf");
+  if(!new File(nativeDirectory,"libelizainference.so").isFile()||!new File(nativeDirectory,"libelizavoicejni.so").isFile()||!model.isFile())return;
+  // The APK build guard pins these native bytes and the BGE model. BgeEmbeddingSession
+  // verifies the actual extracted model and vector space before native inference.
+  env.put("ELIZAOS_CLOUD_USE_EMBEDDINGS","false");
+  env.put("ELIZA_DISABLE_LOCAL_EMBEDDINGS","false");
+  env.put("ELIZA_LOCAL_EMBEDDING_ENABLED","1");
+  env.put("ELIZA_LOCAL_EMBEDDING_MODEL_PATH",model.getAbsolutePath());
+  env.put("ELIZA_LOCAL_EMBEDDING_DIMENSIONS","384");
  }
  static void configureEnvironment(Context context,java.util.Map<String,String> env) throws java.io.IOException {
   env.remove("ELIZA_MOBILE_WORKFLOWS");
@@ -94,13 +192,12 @@ public final class AlphaLocalAgentPlugin extends Plugin {
   String saved=new AlphaCredentialStore(context).readCredentialSlot("local-agent-provider:v1");
   if(saved==null)throw new IllegalStateException("Configure a model provider before starting the local agent");
   JSONObject provider=new JSONObject(saved);
-  env.put("CEREBRAS_API_KEY",provider.getString("key"));
-  env.put("CEREBRAS_MODEL",provider.getString("model"));
-  env.put("CEREBRAS_SMALL_MODEL",provider.getString("model"));
-  env.put("CEREBRAS_LARGE_MODEL",provider.getString("model"));
-  env.put("ELIZAOS_CLOUD_USE_INFERENCE","false");
+  applyProviderEnvironment(provider,"elizacloud".equals(provider.optString("provider"))?new AlphaCredentialStore(context).readCredentialSlot("cloud:production"):null,env,System.currentTimeMillis());
+  configureLocalEmbeddings(new File(context.getApplicationInfo().nativeLibraryDir),context.getFilesDir(),env);
   env.put("ELIZA_DISABLE_PERSONAL_ASSISTANT","1");
   env.put("ELIZA_DISTRIBUTION_PROFILE","store");
+  // A packaged app has no repository character file to discover above its workspace.
+  env.put("ELIZA_DISABLE_LOCAL_CHARACTER","1");
   // Pseudonymize secrets and PII using the pinned upstream runtime.
   env.put("ELIZA_SECRET_SWAP_ENABLED","true");
   env.put("ELIZA_PII_SWAP_ENABLED","true");
@@ -117,6 +214,8 @@ public final class AlphaLocalAgentPlugin extends Plugin {
   } catch(Exception error) {throw new java.io.IOException("Local model provider unavailable");}
  }
  @PluginMethod public void start(PluginCall call) {
+  String requestId=call.getString("requestId");
+  if(requestId!=null&&!requestId.matches("[a-f0-9-]{36}")){call.reject("Invalid startup request");return;}
   try {
    if(!runtimePackaged()){call.reject("On-device agent is unavailable in this version. Connect a remote agent or use Eliza Cloud.");return;}
    if(new AlphaCredentialStore(getContext()).readCredentialSlot("local-agent-provider:v1")==null){call.reject("Configure your model provider before starting the local agent.");return;}
@@ -126,15 +225,20 @@ public final class AlphaLocalAgentPlugin extends Plugin {
    long admitted=-1;
    for(int attempt=0;attempt<3;attempt++){
     final long observedEpoch;
-    final boolean needsShutdownObservation;
-    synchronized(lifecycleLock){observedEpoch=lifecycleEpoch;needsShutdownObservation=stopping;}
-    JSONObject nativeState=needsShutdownObservation?ElizaAgentService.getLocalAgentBootState(getContext()):null;
     synchronized(lifecycleLock){
+     if(requestId!=null&&cancelledStarts.remove(requestId)){call.reject("Local startup cancelled");return;}
+     if(cancelledStarts.size()>=128){call.reject("Startup cancellation capacity reached; reopen the app.");return;}
+     observedEpoch=lifecycleEpoch;
+    }
+    JSONObject nativeState=ElizaAgentService.getLocalAgentBootState(getContext());
+    synchronized(lifecycleLock){
+     if(requestId!=null&&cancelledStarts.remove(requestId)){call.reject("Local startup cancelled");return;}
      if(observedEpoch!=lifecycleEpoch)continue;
      if(disposed){call.reject("Local agent bridge is closed.");return;}
      if(stopping&&shutdownConfirmed(nativeState))stopping=false;
      if(stopping){call.reject("Local agent is stopping; wait for stopped status before starting.");return;}
      invalidateCalls();admitted=++lifecycleEpoch;accepting=true;clearEnrollment();pending.add(call);
+     startRequestId=requestId;startRequestEpoch=admitted;startOwnsLaunch=shutdownConfirmed(nativeState);
      ElizaAgentService.start(getContext());break;
     }
    }
@@ -158,6 +262,25 @@ public final class AlphaLocalAgentPlugin extends Plugin {
    });
   }catch(Exception error){synchronized(lifecycleLock){pending.remove(call);}call.reject("The on-device agent could not start. Try again or connect another agent.");}
  }
+ /** Only the current startup caller may retire a launch it created; reused services are never stopped here. */
+ @PluginMethod public void cancelStart(PluginCall call) {
+  String requestId=call.getString("requestId","");
+  if(!requestId.matches("[a-f0-9-]{36}")){call.reject("Invalid startup request");return;}
+  synchronized(lifecycleLock){
+   if(requestId.equals(startRequestId)&&startRequestEpoch==lifecycleEpoch){
+    boolean stopOwned=startOwnsLaunch;
+    startRequestId=null;startOwnsLaunch=false;
+    invalidateCalls();++lifecycleEpoch;clearEnrollment();
+    if(stopOwned){
+     accepting=false;stopping=true;
+     try{ElizaAgentService.stop(getContext());}
+     catch(Exception uncertain){call.reject("Owned startup cancellation requested; check shutdown status.");return;}
+    }
+   }else if(cancelledStarts.size()<128)cancelledStarts.add(requestId);
+   else {call.reject("Startup cancellation capacity reached; reopen the app.");return;}
+   call.resolve();
+  }
+ }
  static String startupRefusalMessage(String reason){
   if("ipc-recovery-retention-limit".equals(reason))return "Local startup is blocked because retained recovery records reached their limit. Your records were preserved. Waiting or repeated starts will not clear this limit. Use another connection while recovery records are reviewed; do not clear app data.";
   if("ipc-recovery-required".equals(reason))return "Local startup could not safely identify an interrupted agent or workflow. Your records were preserved. Use another connection while the runtime is inspected; do not clear app data or rerun unfinished work.";
@@ -180,7 +303,7 @@ public final class AlphaLocalAgentPlugin extends Plugin {
     final long observedEpoch;
     synchronized(lifecycleLock){observedEpoch=lifecycleEpoch;}
     // Native socket observation must never delay stop's epoch invalidation.
-    JSObject status=packaged?new JSObject(ElizaAgentService.getLocalAgentBootState(getContext()).toString()):new JSObject().put("state","unavailable");
+    JSObject status=new JSObject(ElizaAgentService.getLocalAgentBootState(getContext()).toString());
     synchronized(lifecycleLock){
      if(observedEpoch!=lifecycleEpoch)continue;
      if(stopping||!accepting){
@@ -196,6 +319,7 @@ public final class AlphaLocalAgentPlugin extends Plugin {
  }
  @PluginMethod public void stop(PluginCall call) {
   synchronized(lifecycleLock){
+   startRequestId=null;startOwnsLaunch=false;
    invalidateCalls();++lifecycleEpoch;accepting=false;stopping=true;clearEnrollment();
    try{ElizaAgentService.stop(getContext());call.resolve(new JSObject().put("state","stopping"));}
    catch(Exception unavailable){call.reject("Stop requested locally, but native shutdown could not be confirmed. Check runtime status.");}

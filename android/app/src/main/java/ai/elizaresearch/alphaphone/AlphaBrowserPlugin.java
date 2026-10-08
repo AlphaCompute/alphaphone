@@ -8,6 +8,7 @@ import android.view.ViewGroup;
 import android.view.ViewStructure;
 import android.view.autofill.AutofillManager;
 import android.view.autofill.AutofillValue;
+import ai.eliza.plugins.passwords.PasswordFormPolicy;
 import android.util.SparseArray;
 import android.webkit.*;
 import android.widget.FrameLayout;
@@ -131,7 +132,9 @@ public class AlphaBrowserPlugin extends Plugin {
 
  private static class Tab { BrowserReadingWorld readingWorld; String id, profile, opener, url = "", error = "", finishedUrl = "", lastCommittedUrl = ""; WebView web; FrameLayout frame; TextView message; boolean priv, handedOff, loading, dead, committed, autofillEnabled; int httpStatus, autofillVirtualId=View.NO_ID; long navigation; Runnable timeout; }
  /** Credentials stay in the framework/provider and the remote document. No bridge API
-  * reads fields or replaces Chromium's frame-specific webDomain metadata. */
+  * reads fields or replaces Chromium's frame-specific webDomain metadata. The only addition
+  * is the committed top-level origin, which the password provider requires to equal the
+  * field origin so cross-origin frames are never filled. */
  private boolean canAutofill(Tab t) {
   return !paused && !t.dead && t.committed && !t.loading && t.error.isEmpty()
     && Objects.equals(presentedId,t.id) && t.web.isShown()
@@ -173,7 +176,11 @@ public class AlphaBrowserPlugin extends Plugin {
   private final Tab tab;
   CredentialWebView(Tab tab) { super(getActivity());this.tab=tab; }
   @Override public void onProvideAutofillVirtualStructure(ViewStructure structure,int flags) {
-   if(canAutofill(tab))super.onProvideAutofillVirtualStructure(structure,flags);
+   if(canAutofill(tab)) {
+    super.onProvideAutofillVirtualStructure(structure,flags);
+    String origin=topOrigin(tab.url);
+    if(origin!=null && structure.getExtras()!=null)structure.getExtras().putString(PasswordFormPolicy.TOP_ORIGIN_EXTRA,origin);
+   }
    else structure.setChildCount(0);
   }
   @Override public void onProvideAutofillStructure(ViewStructure structure,int flags) {
@@ -183,6 +190,14 @@ public class AlphaBrowserPlugin extends Plugin {
   @Override public void autofill(SparseArray<AutofillValue> values) {
    if(canAutofill(tab))super.autofill(values);
   }
+ }
+ /** Exact https://host[:port] of the committed document, or null. */
+ static String topOrigin(String url) {
+  Uri uri=Uri.parse(url==null?"":url);
+  String host=uri.getHost();
+  if(!"https".equalsIgnoreCase(uri.getScheme()) || host==null || host.isEmpty() || uri.getUserInfo()!=null)return null;
+  int port=uri.getPort();
+  return "https://"+host.toLowerCase(java.util.Locale.ROOT)+(port==-1||port==443?"":":"+port);
  }
  private void clearTimeout(Tab t) { if(t.timeout!=null) navigationHandler.removeCallbacks(t.timeout); t.timeout=null; }
  private void loading(Tab t) { loading(t,false); }

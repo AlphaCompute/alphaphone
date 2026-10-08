@@ -147,7 +147,7 @@ def check_against_record(workspace, repository, allow_unqualified):
         raise ToolchainMismatch(f'{archive} does not match {generated_path}; rerun assemble-runtime.')
     differences = record_differences(generated, recorded)
     if not differences:
-        return ('Native libraries match the qualified record. The AAR container hash still differs '
+        return ('Native libraries match the reviewed byte record. This does not admit speech functional acceptance. The AAR container hash may differ '
                 '(ZIP entry times), so the installed runtime-manifest.json records the local container '
                 'hash: do not commit that change.')
     summary = '\n'.join('  - ' + line for line in differences)

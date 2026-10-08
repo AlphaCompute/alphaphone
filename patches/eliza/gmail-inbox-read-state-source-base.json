@@ -1,0 +1,60 @@
+{
+  "schemaVersion": 1,
+  "date": "2026-10-07",
+  "upstream": "elizaOS/eliza",
+  "baseCommit": "3cca1ee4f1f1e4cd417de7272ba5195263dcb63b",
+  "patch": "0037-gmail-inbox-read-state.patch",
+  "patchSha256": "a88a61696fee91e83f59ef8784646af056b0199964c306f4e45f74e01857a2c4",
+  "summary": "Adds reviewed managed Gmail inbox-v1 operation kinds mark-read and mark-unread, capabilities.readState, and additive migration 0535 widening managed_gmail_operation_receipts_kind_check.",
+  "filesChanged": [
+    "packages/cloud/shared/src/db/migrations/0535_managed_gmail_read_state_operations.sql",
+    "packages/cloud/shared/src/db/migrations/meta/_journal.json",
+    "packages/cloud/shared/src/lib/services/agent-google-connector/inbox-provider.ts",
+    "packages/cloud/shared/src/lib/services/agent-google-connector/inbox-receipts.ts",
+    "packages/cloud/shared/src/lib/services/agent-google-connector/inbox-provider.http.integration.test.ts"
+  ],
+  "contract": {
+    "proposal": "{kind:'mark-read'|'mark-unread', messageId, expectedHistoryId}; fields allowlist, providerId(messageId), text(expectedHistoryId,100,true); requireScope(modify) else 403; GET /messages/{id}?format=minimal; id/historyId mismatch -> 409 'Selected message changed; review its current labels'",
+    "review": "{kind, messageId, expectedHistoryId, from: grant.email}; digest = inboxDigest(JSON.stringify(review))",
+    "perform": "POST /messages/{id}/modify with {removeLabelIds:['UNREAD']} (mark-read) or {addLabelIds:['UNREAD']} (mark-unread); readback labelIds must exclude/include UNREAD else throws (receipt outcome-unknown, never replayed)",
+    "result": "{messageId, labelIds, historyId: result.historyId ?? null, unread: boolean}",
+    "capabilities": "readState: supported('modify'); older servers omit it and clients treat absence as false"
+  },
+  "migration": {
+    "file": "0535_managed_gmail_read_state_operations.sql",
+    "journalIdx": 505,
+    "constraint": "managed_gmail_operation_receipts_kind_check (verified by pg_constraint lookup in PGlite test)",
+    "dataDeletion": false,
+    "snapshot": "none; neighbouring migrations 0473-0534 have no drizzle snapshot and the table is raw-SQL only"
+  },
+  "verification": [
+    {
+      "command": "git apply --check -v 0037-gmail-inbox-read-state.patch",
+      "where": "clean detached worktree of baseCommit",
+      "result": "pass (all 5 files); git apply --check -R also passes after apply"
+    },
+    {
+      "command": "cd packages/cloud/shared && bun test src/lib/services/agent-google-connector/inbox-provider.http.integration.test.ts",
+      "bun": "1.4.2",
+      "result": "8 pass, 0 fail, 164 expect() calls (6 pre-existing + 2 new tests); rerun after applying the patch file to a second clean worktree: 8 pass, 0 fail",
+      "negativeControl": "with base inbox-provider.ts restored: 7 pass, 1 fail (new read-state test)"
+    },
+    {
+      "command": "tsc -p <scratch tsconfig: strict, bundler resolution, types bun> over inbox-receipts.ts, inbox-operation-routes.ts, inbox-provider.ts, inbox-provider.http.integration.test.ts",
+      "typescript": "6.0.3",
+      "result": "pass (exit 0); full package 'bun run typecheck' was not run because the full monorepo install was not performed"
+    },
+    {
+      "command": "biome check (2.5.14) on the three touched TypeScript files and _journal.json",
+      "result": "pass"
+    },
+    {
+      "command": "cd packages/cloud/shared && node ../scripts/shared/check-migration-prefix-order.ts",
+      "result": "pass (exit 0)"
+    }
+  ],
+  "dependencies": "Tests ran with a scratch node_modules (symlinked into the isolated worktree) containing only lockfile-pinned @electric-sql/pglite 0.4.6, drizzle-orm 0.45.3, hono 4.13.9, typescript 6.0.3, @types/bun 1.4.2, @biomejs/biome 2.5.14; no full bun install of the monorepo.",
+  "network": "No Google network calls, accounts or credentials; tests use a closed in-process fetch transport and the existing loopback fixtures.",
+  "isolation": "Applied and tested only in isolated detached git worktrees of baseCommit under the session scratchpad; never applied to vendor/eliza. Worktree registrations were removed afterwards.",
+  "deployment": "Not upstreamed and not deployed to Eliza Cloud. Production availability requires a reviewed upstream merge, migration 0535 applied, and a Cloud deploy; until then capabilities omit readState."
+}

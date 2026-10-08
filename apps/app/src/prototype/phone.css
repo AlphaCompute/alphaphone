@@ -99,3 +99,6 @@ html,body,#root{margin:0;width:100%;height:100%;overflow:hidden;overscroll-behav
 .photo-media-badge,.photo-favorite-badge { background:rgba(0,0,0,.7);box-sizing:border-box; }
 .photo-media-badge { padding:2px 4px;border-radius:8px; }
 .photo-favorite-badge { padding:3px;border-radius:50%; }
+
+/* Standalone Alpha uses Android system chrome, including in its app preview. */
+.standalone-app [data-alpha-system-cutout]{display:none}

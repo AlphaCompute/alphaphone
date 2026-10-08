@@ -12,6 +12,8 @@ for (const scenario of ['confirmed', 'incomplete-timeout'] as const) {
       const methods = (names: string[]) => names.map(name => ({ name, rtype: 'promise' }));
       w.Capacitor = {
         PluginHeaders: [
+    {name:'AlphaNotifications',methods:methods(['status','crossAppStatus','addListener','removeListener'])},
+    {name:'AlphaVoiceCloud',methods:methods(['checkPermissions'])},
           { name: 'Agent', methods: methods(['getStatus', 'start', 'stop', 'request']) },
           { name: 'AlphaConnection', methods: methods(['secureRead', 'secureWrite','secureCompareExchange', 'secureRemove', 'cancel', 'addListener', 'removeListener', 'pauseNotificationCollection']) },
           { name: 'AlphaActionJournal', methods: methods(['list']) },
@@ -19,7 +21,9 @@ for (const scenario of ['confirmed', 'incomplete-timeout'] as const) {
         ],
         nativePromise: async (plugin: string, method: string, input: any) => {
           const f = w.stopFixture;
-          if (plugin === 'Agent') {
+          if(plugin==='AlphaNotifications')return {permissionGranted:true,appEnabled:true};
+    if(plugin==='AlphaVoiceCloud')return {microphone:'granted'};
+    if (plugin === 'Agent') {
             if (method === 'getStatus') {
               if (f.stops) { f.polls++; return { packaged: true, ...f.status }; }
               return { packaged: true, state: 'stopped', serviceActive: false, socketListening: false };
@@ -32,6 +36,7 @@ for (const scenario of ['confirmed', 'incomplete-timeout'] as const) {
               else if (input.path === '/api/agents') body = { agents: [{ id: 'fixture-agent', name: 'Resident fixture', status: 'running' }] };
               else if (input.path === '/api/client-devices/register') body = { installationId: input.headers['X-Eliza-Device-Id'], enrollmentId: 'fixture-enrollment', capabilities: [] };
               else if (input.path === '/api/conversations') body = { conversations: [] };
+              else if (input.path === '/api/client-devices/proposals') body = { proposals: [] };
               else if (input.path === '/api/workflow/status') body = { status: 'unavailable' };
               else { f.unexpected.push(input.path); throw Error('Unexpected local request'); }
               return { status: 200, body: JSON.stringify(body) };

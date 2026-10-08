@@ -2,7 +2,8 @@ import {test,expect} from '@playwright/test';
 
 for(const theme of ['light','dark'])test(`${theme} album manager owns keyboard focus and restores the photo control`,async({page})=>{
  await page.addInitScript(()=>localStorage.setItem('alpha.connection.selection.v1',JSON.stringify({kind:'offline'})));
- await page.goto(`/?theme=${theme}`);
+ // This reference case checks the launcher Home indicator and Home dismissal.
+ await page.goto(`/?shell=launcher&theme=${theme}`);
  await page.evaluate(async()=>{const {importBrowserPhoto}=await import('/src/prototype/browser-camera.ts');const canvas=document.createElement('canvas');canvas.width=100;canvas.height=80;canvas.getContext('2d')!.fillRect(0,0,100,80);await importBrowserPhoto({original:new File([],'fixture.jpg'),image:canvas.toDataURL('image/jpeg'),width:100,height:80},new AbortController().signal);});
  await page.getByRole('button',{name:'Photos',exact:true}).click();
  await page.getByRole('button',{name:/Captured photo/}).click();

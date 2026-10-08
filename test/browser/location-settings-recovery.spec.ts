@@ -2,7 +2,7 @@ import {test,expect,type Page} from '@playwright/test';
 const key='alpha.dev.location.v1',broken=' \n { broken location bytes 🌍 ';
 async function open(page:Page,raw=broken){
  await page.addInitScript(({key,raw})=>{localStorage.setItem('alpha.connection.selection.v1',JSON.stringify({kind:'offline'}));localStorage.setItem(key,raw);},{key,raw});
- await page.goto('/?mode=dev');await page.getByRole('button',{name:'Device controls',exact:true}).click();await page.getByRole('dialog',{name:'Development device controls'}).getByRole('button',{name:'Location',exact:true}).click();
+ await page.goto('/?mode=dev&tools=1');await page.getByRole('button',{name:'Device controls',exact:true}).click();await page.getByRole('dialog',{name:'Development device controls'}).getByRole('button',{name:'Location',exact:true}).click();
  return page.getByRole('dialog',{name:'Development location'});
 }
 for(const raw of [broken,'',JSON.stringify({mode:'coordinates',latitude:200})])test(`unreadable location retains exact backup and requires confirmed replacement: ${JSON.stringify(raw)}`,async({page},info)=>{
@@ -34,7 +34,7 @@ test('invalid coordinates are refused and edits require a new confirmation',asyn
 });
 test('unavailable saved places do not erase existing Home and Work bindings',async({page})=>{
  const value={mode:'coordinates',latitude:1,longitude:2,accuracy:5,homeId:'retained-home',radius:200,workId:'retained-work',workRadius:300};
- await page.addInitScript(({key,value})=>{localStorage.setItem('alpha.connection.selection.v1',JSON.stringify({kind:'offline'}));localStorage.setItem(key,JSON.stringify(value));},{key,value});await page.goto('/?mode=dev');
+ await page.addInitScript(({key,value})=>{localStorage.setItem('alpha.connection.selection.v1',JSON.stringify({kind:'offline'}));localStorage.setItem(key,JSON.stringify(value));},{key,value});await page.goto('/?mode=dev&tools=1');
  await page.evaluate(async()=>{const {SavedPlaces}=await import('/src/maps/saved-places.ts');SavedPlaces.prototype.read=()=>{throw Error('Unavailable places');};});
  await page.getByRole('button',{name:'Device controls',exact:true}).click();await page.getByRole('dialog',{name:'Development device controls'}).getByRole('button',{name:'Location',exact:true}).click();const dialog=page.getByRole('dialog',{name:'Development location'});
  await expect(dialog.getByLabel('Home place',{exact:true})).toBeDisabled();await expect(dialog.getByLabel('Work place',{exact:true})).toBeDisabled();await dialog.getByLabel('Latitude',{exact:true}).fill('3');await dialog.getByRole('button',{name:'Save location',exact:true}).click();await expect(dialog).toHaveCount(0);

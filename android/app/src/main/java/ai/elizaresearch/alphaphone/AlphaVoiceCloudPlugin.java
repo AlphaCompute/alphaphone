@@ -145,13 +145,17 @@ public final class AlphaVoiceCloudPlugin extends Plugin {
   Pending request=new Pending();synchronized(pending){if(destroyed||draining||!pending.isEmpty()){if(!destroyed&&!draining&&Boolean.FALSE.equals(call.getBoolean("replace",true)))call.reject("Speaker is in use","playback-busy");else call.reject("Voice request already active or unavailable");return;}pending.put(id,request);}
   Runnable deadline=request::cancel;main.postDelayed(deadline,120000);
   try{workers.execute(()->{
-   try{if(request.cancelled)throw new IOException();work.run(request);}catch(Exception error){request.failure=request.cancelled?"Voice request cancelled":"Voice request failed";}
+   try{if(request.cancelled)throw new IOException();work.run(request);}catch(Exception error){request.failure=request.cancelled?"Voice request cancelled":"Voice request failed";if(!request.cancelled&&error instanceof VoiceHttpException)request.failureCode="voice-http-"+((VoiceHttpException)error).status;}
    finally{try{if(request.connection!=null)request.connection.disconnect();}catch(RuntimeException error){request.failure="Voice request cleanup failed";}finally{pending.remove(id,request);main.removeCallbacks(deadline);}}
    // A continuation may submit immediately when this resolves: release admission first.
    if(request.cancelled||destroyed)call.reject("Voice request cancelled");else if(request.failure!=null){if(request.failureCode!=null)call.reject(request.failure,request.failureCode);else call.reject(request.failure);}else if(request.result==null)call.reject("Voice request failed");else call.resolve(request.result);
   });}catch(RejectedExecutionException error){main.removeCallbacks(deadline);pending.remove(id,request);call.reject("Voice unavailable");}
  }
- private static void successful(HttpURLConnection c)throws Exception{int status=c.getResponseCode();if(status<200||status>=300)throw new IOException();}
+ private static final class VoiceHttpException extends IOException {
+  final int status;
+  VoiceHttpException(int status){super("Voice HTTP request failed");this.status=status;}
+ }
+ private static void successful(HttpURLConnection c)throws Exception{int status=c.getResponseCode();if(status<200||status>=300)throw new VoiceHttpException(status);}
  @PluginMethod public void transcribeRecording(PluginCall call){submit(call,request->{
   String recordingId=required(call.getString("recordingId"),256);File file=capture.selected(recordingId);if(file==null)throw new IOException();
   // Copy the chosen bounded draft before upload; cancellation cannot substitute another recording.

@@ -23,15 +23,20 @@ python3 scripts/local-speech/assemble-runtime.py
 python3 scripts/local-speech/install-generated.py --repository "$PWD"
 ```
 
-Both qualified ABIs, source/model hashes, licensing notices and no-eSpeak checks
+Both admitted ABI byte inventories, source/model hashes, licensing notices and no-eSpeak checks
 remain required. Generated AAR/models are installed into `android/local-speech`.
 APK builds remain separate from actual microphone, synthesis, playback and device
 acceptance. See the upstream README and the product verification ledger.
 
 ## Qualified runtime and reproducibility
 
-`android/local-speech/runtime-manifest.json` records the runtime that was qualified on
-a device. It was built on macOS with NDK r28c and Homebrew CMake 4.0.3 in the workspace
+`android/local-speech/runtime-manifest.json` describes the installed AAR. The reviewed
+native identity is stored separately in `qualified-runtime-manifest.json`.
+
+The prior native record is preserved byte-for-byte in
+`android/local-speech/baselines/qualified-runtime-manifest-before-20261008.json`.
+Its ABI fields recorded `deviceExecuted: false`; they do not prove native execution.
+It was built on macOS with NDK r28c and Homebrew CMake 4.0.3 in the workspace
 `/Users/shawwalters/Documents/alphaphone/test-results/mvp-local-speech-staging`. Its
 bytes depend on more than the source and model hashes:
 
@@ -67,12 +72,31 @@ installs nothing. `--allow-unqualified-runtime` installs the local runtime anywa
 it for its Linux builds): the installer then rewrites `runtime-manifest.json` to describe
 the local build, which Gradle's `:local-speech:preBuild` requires. APKs built this way are
 build evidence only, not release candidates, and that manifest change must never be
-committed. Recording a new qualified runtime needs a reviewed rebuild and device
-qualification, not a hash update.
+committed. Recording a new native identity requires reviewed provenance and explicit execution
+evidence; functional and release acceptance remain separate.
 
 The reviewed native-byte baseline is `android/local-speech/qualified-runtime-manifest.json`.
-The installer never overwrites it: `runtime-manifest.json` describes the installed local
-AAR and can differ. Release APK verification hashes the actual packaged native libraries
-against the reviewed baseline and records `speechQualification`; any mismatch or missing
-ABI forces `distributable: false`, including in the resident CI build. Updating the
-reviewed baseline requires separate native qualification, not a successful local rebuild.
+Its version-2 record admits the rebuilt JNI/ONNX Runtime bytes for resident QA after
+source, no-eSpeak, alignment and immutable model checks. ARM64 JNI/model execution was
+observed on Android. x86_64 remains build-only (`deviceExecuted: false`). The old and
+new JNI hashes differ; matching sizes and a path-remapped build do not prove bit equality.
+The record retains exact input, APK, test and evidence hashes without account/device identifiers.
+
+The canonical `LocalSpeechInstrumentedTest` ran two tests without microphone capture,
+network or playback: the holder reuse/release test passed, while the synthesis-to-ASR
+round-trip failed at the keyword `lazy` (`lady's dog` was recognized). Its assertion was
+not changed. Saved PCM diagnostics recognized `lazy` with both resamplers and after the
+original human/silence sequence; they do not replace the failed float-path test or
+establish a causal fix. `functionalAcceptance.passed` remains **false**.
+
+The installer continues to compare every native member with the reviewed byte record
+and refuses mismatches without installing anything. It never overwrites that record.
+An exact-byte QA installation is permitted even while functional acceptance is failed;
+no `--allow-unqualified-runtime` flag is needed for this admitted candidate.
+
+APK verification reports `byteMatch` and `functionalPassed` separately. `qualified` is
+true only if native bytes match **and** schema version 2 records an explicit functional
+pass for every packaged ABI. Failed, missing, malformed or unsupported acceptance
+records fail closed. `scripts/verify-apks.mjs` requires both gates, so exact native bytes
+alone cannot set `distributable: true`. Source/build/JNI QA may proceed; this admission
+does not establish local speech quality, full product readiness or a release decision.

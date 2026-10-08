@@ -25,6 +25,7 @@ import { execFileSync, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { copyFilesClone } from "./copy-file-clone.mjs";
 
 const FLAG = "ELIZA_DEV_ALLOW_TEST_MOCKS";
 const FLAG_ENV_NAMES = [FLAG, `VITE_${FLAG}`, `ORG_GRADLE_PROJECT_${FLAG}`];
@@ -52,8 +53,8 @@ export function buildEnv(base, { testMocks }) {
   return env;
 }
 
-export function gradleFlagArgs({ testMocks }) {
-  return [`-P${FLAG}=${testMocks ? "1" : "0"}`];
+export function gradleFlagArgs({ testMocks, allowUnpackagedRuntime = false }) {
+  return [`-P${FLAG}=${testMocks ? "1" : "0"}`, `-PELIZA_ALLOW_UNPACKAGED_RUNTIME=${allowUnpackagedRuntime ? "1" : "0"}`];
 }
 
 export const outputDirectory = ({ testMocks }) => (testMocks ? "artifacts/test-mocks" : "artifacts");
@@ -133,7 +134,7 @@ function build(options, baseEnv, run) {
   function cleanPackagingIntermediates() {
     if (fs.realpathSync(process.cwd()) !== root)
       throw new Error("Low-disk build must run from this product checkout");
-    const categories = ["assets", "compressed_assets", "merged_native_libs", "stripped_native_libs"];
+    const categories = ["assets", "compressed_assets", "merged_native_libs", "merged_jni_libs", "stripped_native_libs"];
     const targets = categories.map(name => path.join(root, "android/app/build/intermediates", name));
     // Preflight every ancestor before deleting anything. rmSync removes nested links
     // themselves, never their targets; a linked category or ancestor is rejected.
@@ -152,12 +153,7 @@ function build(options, baseEnv, run) {
   }
   function copy(source, destination) {
     fs.rmSync(destination, { force: true });
-    // Node's reflink hint can fall back to a full copy on macOS. Use APFS
-    // cloning there so distributing four APKs does not duplicate their bytes.
-    if (process.platform === "darwin") {
-      try { run("/bin/cp", ["-c", source, destination]); }
-      catch { fs.copyFileSync(source, destination); }
-    } else fs.copyFileSync(source, destination, fs.constants.COPYFILE_FICLONE);
+    copyFilesClone([{ source, destination }]);
   }
   const requested = signingRequested(env);
   function copyVariant(variant, modes = ["debug", "release"]) {

@@ -99,3 +99,18 @@ test('native pop-up tabs, window closes and notices reach the rendered browser',
  await page.evaluate(async()=>{const {registerPlugin}=await import('/src/platform-plugins.ts');await (registerPlugin<any>('AlphaBrowser') as any).notifyListeners('tabOpened',{session:'stale',id:'pStale',private:false});});
  await expect(page.getByRole('button',{name:'Tabs',exact:true})).toHaveText('1');
 });
+
+
+test('a restored tab keeps its committed address while a reload is interrupted',async({page})=>{
+ await openBrowser(page);await navigate(page,'retained');
+ await expect.poll(async()=>(await saved(page)).tabs.map((tab:any)=>tab.url)).toEqual(['https://signins.example/retained']);
+ let requested=false;
+ await page.route('https://signins.example/retained',async route=>{requested=true;await route.abort();});
+ await page.reload();await openBrowser(page);
+ await expect.poll(()=>requested).toBe(true);
+ await expect(page.locator('[data-browser-surface]:visible')).toHaveCount(1);
+ await expect.poll(async()=>(await saved(page)).tabs.map((tab:any)=>tab.url)).toEqual(['https://signins.example/retained']);
+ await page.reload();await openBrowser(page);
+ await expect(page.getByRole('button',{name:'Tabs',exact:true})).toHaveText('1');
+ expect((await saved(page)).tabs[0].url).toBe('https://signins.example/retained');
+});

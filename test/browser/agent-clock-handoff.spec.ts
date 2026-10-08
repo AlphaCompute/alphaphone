@@ -1,3 +1,4 @@
+import { returnToApps } from './app-navigation';
 import { test, expect } from '@playwright/test';
 
 // Real renderer, pairing, connection controller, proposal parser and journal
@@ -13,7 +14,8 @@ for (const mode of ['confirm','transcribed','zone','modal','unknown','receipt-lo
       if(mode!=='browser')w.androidBridge={};
       w.Capacitor = {
         PluginHeaders: [
-          {name:'AlphaVoiceCloud',methods:methods(['localSpeechStatus','transcribeLocalRecording','startRecording','stopRecording','releaseLocalSpeech','cancel','cancelRecording','stopPlayback','addListener','removeListener'])},
+          {name:'AlphaNotifications',methods:methods(['status','addListener','removeListener'])},
+          {name:'AlphaVoiceCloud',methods:methods(['checkPermissions','localSpeechStatus','transcribeLocalRecording','startRecording','stopRecording','releaseLocalSpeech','cancel','cancelRecording','stopPlayback','addListener','removeListener'])},
           {name:'DailyApps',methods:methods(['clockHandoff','perform','surfaceInfo','addListener','removeListener'])},
           { name: 'AlphaConnection', methods: methods(['request', 'cancel', 'secureRead', 'secureWrite','secureCompareExchange', 'secureRemove','addListener','removeListener']) },
           { name: 'AlphaActionJournal', methods: methods(['reserve', 'markApplying', 'finish', 'get', 'list','reviewClock','confirmClock','cancelClock']) },
@@ -21,7 +23,8 @@ for (const mode of ['confirm','transcribed','zone','modal','unknown','receipt-lo
         nativeCallback:()=> 'fixture-listener',
         nativePromise: async (plugin: string, method: string, input: any) => {
           if(method==='addListener')return {callbackId:'fixture-listener'};if(method==='removeListener')return {};
-          if(plugin==='AlphaVoiceCloud'){if(method==='localSpeechStatus')return {ready:true,execution:'device'};if(method==='startRecording')return {recordingId:'clock-voice-fixture',maxDurationMs:29000};if(method==='stopRecording')return {recordingId:'clock-voice-fixture',durationMs:1000};if(method==='transcribeLocalRecording')return {text:'Set an alarm for 07:00; await my review.',local:true,execution:'device'};return {};}
+          if(plugin==='AlphaNotifications'&&method==='status')return {permissionGranted:true,appEnabled:true};
+          if(plugin==='AlphaVoiceCloud'){if(method==='checkPermissions')return {microphone:'granted'};if(method==='localSpeechStatus')return {ready:true,execution:'device'};if(method==='startRecording')return {recordingId:'clock-voice-fixture',maxDurationMs:29000};if(method==='stopRecording')return {recordingId:'clock-voice-fixture',durationMs:1000};if(method==='transcribeLocalRecording')return {text:'Set an alarm for 07:00; await my review.',local:true,execution:'device'};return {};}
           if(plugin==='DailyApps'){if(method==='surfaceInfo')return {developmentBuild:true,assistant:false};if(method==='perform')return {status:'selected',transcript:'Set an alarm for 07:00; await my review.'};if(method==='clockHandoff'){fixture.effects++;localStorage.setItem('fixture-effects',String(fixture.effects));if(mode==='unknown')throw Error('Lost native bridge response');return {action:input.action,status:mode==='unavailable'?'unavailable':mode==='denied'?'denied':mode==='failed'?'failed':'opened',message:'Clock request sent'};}throw Error('Unexpected DailyApps method');}
           if (plugin === 'AlphaActionJournal') {
             fixture.journal.push(method);
@@ -100,7 +103,7 @@ for (const mode of ['confirm','transcribed','zone','modal','unknown','receipt-lo
     await local.getByRole('button', { name: 'Connect local agent', exact: true }).click();
     await page.locator('.alpha-connection-scrim').waitFor({ state: 'detached' });
     };await connect();
-    if(mode==='browser')await page.getByRole('button',{name:'Home',exact:true}).click();
+    if(mode==='browser')await returnToApps(page);
     const input=page.getByRole('textbox',{name:'Ask Alpha',exact:true});
     if(mode==='transcribed'){await page.getByRole('button',{name:'Talk',exact:true}).first().click();await page.getByRole('button',{name:'Start recording',exact:true}).click();await page.getByRole('button',{name:'Stop recording',exact:true}).click();await page.getByRole('button',{name:'Transcribe on this phone',exact:true}).click();await page.getByRole('button',{name:'Use in conversation',exact:true}).click();await expect(page.getByRole('textbox',{name:'Message Alpha',exact:true})).toHaveValue('Set an alarm for 07:00; await my review.');await page.getByRole('textbox',{name:'Message Alpha',exact:true}).press('Enter');}
     else {await input.fill(mode==='show'?'Show my alarms':mode==='snooze'?'Snooze ringing alarms for ten minutes':mode==='dismiss'?'Dismiss the ringing alarm':'Set an alarm for 07:00; await my review.');await input.press('Enter');}
@@ -123,7 +126,7 @@ for (const mode of ['confirm','transcribed','zone','modal','unknown','receipt-lo
       expect(await page.evaluate(()=>(window as any).recoveryFixture.effects)).toBe(0);return;
     }
     await page.getByText('Approve: clock handoff',{exact:true}).click();
-    if(mode==='zone'){await expect(page.getByText('Phone time zone changed. Review the Clock request again.',{exact:true}).first()).toBeVisible();expect(await page.evaluate(()=>(window as any).recoveryFixture.effects)).toBe(0);return;}
+    if(mode==='zone'){await expect(page.getByText('This action is no longer pending for the current screen. Open its original selection and review again.',{exact:true}).first()).toBeVisible();expect(await page.evaluate(()=>(window as any).recoveryFixture.effects)).toBe(0);return;}
 
     if(mode==='review-cancel'){
       await expect.poll(()=>page.evaluate(()=>(window as any).recoveryFixture.receipts)).toBe(1);

@@ -1,6 +1,6 @@
-import {isReminderCreate,validateReminderCreate,validateReminderCreateResult} from './reminder-create-contract';
+import {isReminderCreate,validateReminderCreate,validateReminderCreateResult} from '../../../../.eliza/client-features/plugins/plugin-assistant/src/services/device-actions/reminder-create-contract.ts';
 import {actionScope} from './device-actions';
-import {isReminderOperation,validateReminderOperation,validateReminderResult} from './reminder-contract';
+import {isReminderOperation,validateReminderOperation,validateReminderResult} from '../../../../.eliza/client-features/plugins/plugin-assistant/src/services/device-actions/reminder-contract.ts';
 import type {ActionJournal} from './device-actions';
 // The host storage bridge exists only on the development server with
 // ELIZA_DEV_ALLOW_TEST_MOCKS=1 (devSurfacesEnabled in build-flags.ts). Node

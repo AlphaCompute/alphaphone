@@ -50,7 +50,7 @@ public class ReminderDeletionStorageInstrumentedTest {
  @Test public void reminderDeletionSlotUsesEncryptedCompareExchange() throws Exception {
   org.junit.Assume.assumeTrue("Explicit pending action storage fixture required","1".equals(InstrumentationRegistry.getArguments().getString("pendingActionStorageFixture")));
   assertTrue(BuildConfig.DEBUG);assertTrue("Owned secondary test user required",android.os.Process.myUid()/100000>0);
-  for(String slot:new String[]{"reminder-deletions:v1:device","reminder-creations:v1:device","notes-audio-deletions:v1:device"})verifySlot(slot);
+  for(String slot:new String[]{"reminder-deletions:v1:device","reminder-creations:v1:device","notes-audio-deletions:v1:device","notes-trash:v1:device"})verifySlot(slot);
  }
  /** Valid JSON with non-ASCII content: byte capacity cannot be mistaken for syntax rejection. */
  private String jsonAtBytes(int bytes) throws Exception {
@@ -74,6 +74,8 @@ public class ReminderDeletionStorageInstrumentedTest {
     assertEquals("conflict",invoke("secureCompareExchange",new JSONObject().put("slot",slot).put("expectedValue",JSONObject.NULL).put("value","{}")).getJSONObject("value").getString("status"));
     scenario.recreate();ready();
     assertEquals(value,invoke("secureRead",new JSONObject().put("slot",slot)).getJSONObject("value").getString("value"));
+    // The 32 MiB Notes Trash slot shares the encrypted no-backup store; its capacity is not pushed through the bridge here.
+    if(slot.equals("notes-trash:v1:device"))return;
     int limit=slot.equals("notes-audio-deletions:v1:device")?1024*1024:262144;
     String boundary=jsonAtBytes(limit),oversized=jsonAtBytes(limit+1);
     assertEquals("saved",invoke("secureCompareExchange",new JSONObject().put("slot",slot).put("expectedValue",value).put("value",boundary)).getJSONObject("value").getString("status"));

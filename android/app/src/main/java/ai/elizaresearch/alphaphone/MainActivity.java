@@ -9,6 +9,7 @@ import android.webkit.WebSettings;
 import android.webkit.WebView;
 import androidx.activity.OnBackPressedCallback;
 import androidx.core.splashscreen.SplashScreen;
+import androidx.core.graphics.Insets;
 import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowCompat;
 import androidx.core.view.WindowInsetsCompat;
@@ -38,6 +39,10 @@ public class MainActivity extends BridgeActivity {
   return recoveriesInWindow > RECOVERY_BUDGET ? RECOVERY_BACKOFF_MS : 0L;
  }
  private final WebViewListener rendererRecovery = new WebViewListener() {
+  @Override public void onPageLoaded(WebView view) {
+   if (getBridge() != null && view == getBridge().getWebView())
+    ViewCompat.requestApplyInsets(getWindow().getDecorView());
+  }
   @Override public boolean onRenderProcessGone(WebView view, RenderProcessGoneDetail detail) {
    if (getBridge() == null || view != getBridge().getWebView()) return false;
    // A dead renderer leaves the HOME surface blank and, unhandled, kills the app process.
@@ -74,6 +79,7 @@ public class MainActivity extends BridgeActivity {
   registerPlugin(AlphaNoteDocumentsPlugin.class);
   registerPlugin(AlphaNotificationsPlugin.class);
   registerPlugin(AlphaHostedResultsPlugin.class);
+  registerPlugin(ai.eliza.plugins.passwords.PasswordsPlugin.class);
   if (BuildConfig.ELIZA_DEV_ALLOW_TEST_MOCKS) {
    // Present only in debug builds made with -PELIZA_DEV_ALLOW_TEST_MOCKS=1 (src/testMocks).
    try { registerPlugin(Class.forName("ai.elizaresearch.alphaphone.DevelopmentAgentPlugin").asSubclass(com.getcapacitor.Plugin.class)); }
@@ -90,8 +96,8 @@ public class MainActivity extends BridgeActivity {
   WebView.setWebContentsDebuggingEnabled(BuildConfig.DEBUG);
   getBridge().getWebView().getSettings().setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
   AlphaDevicePlugin.applyTextScale(this);
-  // The reference layouts include system-bar space. Draw behind the real bars,
-  // and resize for the IME only; the renderer never draws fake battery/network UI.
+  // Launcher reference layouts include system-bar space. Standalone and assist
+  // content must fit inside the real bars/cutout, including enforced edge-to-edge.
   WindowCompat.setDecorFitsSystemWindows(getWindow(), false);
   getWindow().setStatusBarColor(android.graphics.Color.TRANSPARENT);
   getWindow().setNavigationBarColor(android.graphics.Color.TRANSPARENT);
@@ -99,16 +105,22 @@ public class MainActivity extends BridgeActivity {
   ViewCompat.setOnApplyWindowInsetsListener(getWindow().getDecorView(), (view, insets) -> {
    int bottom = insets.isVisible(WindowInsetsCompat.Type.ime())
      ? insets.getInsets(WindowInsetsCompat.Type.ime()).bottom : 0;
-   int nextInset = bottom > 0 ? 0 : Math.round(insets.getInsets(WindowInsetsCompat.Type.systemBars()).bottom / getResources().getDisplayMetrics().density);
-   topInsetDp = Math.round(insets.getInsets(WindowInsetsCompat.Type.systemBars()).top / getResources().getDisplayMetrics().density);
+   boolean fitContent = !BuildConfig.IS_LAUNCHER || isAssistantSurface();
+   Insets bars = insets.getInsets(WindowInsetsCompat.Type.systemBars());
+   Insets safe = insets.getInsets(WindowInsetsCompat.Type.systemBars() | WindowInsetsCompat.Type.displayCutout());
+   int left = fitContent ? safe.left : 0, top = fitContent ? safe.top : 0, right = fitContent ? safe.right : 0;
+   bottom = Math.max(bottom, fitContent ? safe.bottom : 0);
+   // These are the remaining CSS insets. Do not reserve already padded bars twice.
+   int nextInset = fitContent || bottom > 0 ? 0 : Math.round(bars.bottom / getResources().getDisplayMetrics().density);
+   topInsetDp = fitContent ? 0 : Math.round(bars.top / getResources().getDisplayMetrics().density);
    getBridge().getWebView().evaluateJavascript("document.documentElement?.style.setProperty('--native-top-inset','" + topInsetDp + "px')", null);
-   if (view.getPaddingBottom() != bottom) view.setPadding(0, 0, 0, bottom);
-   if (bottomInsetDp != nextInset) {
-    bottomInsetDp = nextInset;
-    getBridge().getWebView().evaluateJavascript("document.documentElement?.style.setProperty('--native-bottom-inset','" + bottomInsetDp + "px')", null);
-   }
+   if (view.getPaddingLeft() != left || view.getPaddingTop() != top || view.getPaddingRight() != right || view.getPaddingBottom() != bottom)
+    view.setPadding(left, top, right, bottom);
+   bottomInsetDp = nextInset;
+   getBridge().getWebView().evaluateJavascript("document.documentElement?.style.setProperty('--native-bottom-inset','" + bottomInsetDp + "px')", null);
    return WindowInsetsCompat.CONSUMED;
   });
+  ViewCompat.requestApplyInsets(getWindow().getDecorView());
   getOnBackPressedDispatcher().addCallback(this, new OnBackPressedCallback(true) {
    @Override public void handleOnBackPressed() {
     if (BuildConfig.DEBUG) android.util.Log.d("AlphaNavigation", "Back dispatched");

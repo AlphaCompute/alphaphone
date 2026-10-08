@@ -1,6 +1,6 @@
 import {test,expect} from '@playwright/test';
 for(const theme of ['light','dark'])test(`${theme} Clock review owns focus and leaves no hidden modal on Home`,async({page})=>{
- await page.goto(`/?mode=mock&theme=${theme}`);
+ await page.goto(`/?mode=mock&shell=launcher&theme=${theme}`);
  await page.getByRole('button',{name:'Calendar',exact:true}).click();
  const opener=page.getByRole('button',{name:'Clock alarms',exact:true});await opener.click();
  const dialog=page.getByRole('dialog',{name:'Clock alarms',exact:true});

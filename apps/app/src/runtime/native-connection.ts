@@ -3,13 +3,13 @@ import type { CloudNativeRequest, CloudCredentialStore, CloudCredential } from '
 import type { RemoteRequester, RemoteCredentialStore } from './remote-protocol';
 
 const native = registerPlugin<{
-  request(input: { requestId: string; url: string; method: string; headers: Record<string,string>; body?: string }): Promise<{status:number;data:unknown}>;
+  request(input: { requestId: string; url: string; method: string; headers: Record<string,string>; body?: string; expiresAt?: number }): Promise<{status:number;data:unknown}>;
   cancel(input:{requestId:string}):Promise<void>;
   secureRead(input:{slot:string}):Promise<{value:string|null}>;
   secureWrite(input:{slot:string;value:string}):Promise<void>;
   secureCompareExchange(input:{slot:string;expectedValue:string|null;value:string|null}):Promise<{status:"saved"|"conflict"}>;
   secureRemove(input:{slot:string}):Promise<void>;
-  openExternal(input:{url:string}):Promise<void>;
+  openExternal(input:{url:string;requestId:string}):Promise<void>;
 }>('AlphaConnection');
 
 export const secureConnectionStore = {
@@ -53,10 +53,11 @@ export const nativeCloudRequest:CloudNativeRequest=async input=>{
   const interrupted=new Promise<never>((_,reject)=>{rejectAbort=reject;});
   const cancel=()=>{void native.cancel({requestId}).catch(()=>{});rejectAbort(input.signal.reason||new DOMException('Cancelled','AbortError'));};
   input.signal.addEventListener('abort',cancel,{once:true});
-  const timer=setTimeout(()=>{void native.cancel({requestId}).catch(()=>{});rejectAbort(new Error('Connection timed out'));},input.timeoutMs);
+  const timerMs=input.expiresAt===undefined?input.timeoutMs:Math.max(1,Math.min(input.expiresAt-Date.now(),2_147_483_647));
+  const timer=setTimeout(()=>{void native.cancel({requestId}).catch(()=>{});rejectAbort(new Error('Connection timed out'));},timerMs);
   try {
     // Issue first, then check again: native cancel targets an already-dispatched ID.
-    const response=native.request({requestId,url:input.url,method:input.method,headers:input.headers,...(input.body===undefined?{}:{body:JSON.stringify(input.body)})});
+    const response=native.request({requestId,url:input.url,method:input.method,headers:input.headers,...(input.expiresAt===undefined?{}:{expiresAt:input.expiresAt}),...(input.body===undefined?{}:{body:JSON.stringify(input.body)})});
     if(input.signal.aborted)cancel();
     return await Promise.race([response,interrupted]);
   }finally{clearTimeout(timer);input.signal.removeEventListener('abort',cancel);}
@@ -67,5 +68,15 @@ export const nativeRemoteRequest:RemoteRequester=async input=>{
   return {status:response.status,body:response.data};
 };
 export async function openConnectionBrowser(url:string,signal:AbortSignal) {
-  signal.throwIfAborted();await native.openExternal({url});signal.throwIfAborted();
+  signal.throwIfAborted();
+  const requestId=crypto.randomUUID();
+  let rejectAbort:(reason:unknown)=>void=()=>{};
+  const interrupted=new Promise<never>((_,reject)=>{rejectAbort=reject;});
+  const cancel=()=>{void native.cancel({requestId}).catch(()=>{});rejectAbort(signal.reason||new DOMException('Cancelled','AbortError'));};
+  signal.addEventListener('abort',cancel,{once:true});
+  try{
+    const opened=native.openExternal({url,requestId});
+    if(signal.aborted)cancel();
+    await Promise.race([opened,interrupted]);signal.throwIfAborted();
+  }finally{signal.removeEventListener('abort',cancel);}
 }

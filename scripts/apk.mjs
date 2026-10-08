@@ -18,6 +18,8 @@ export const EXPORTED_COMPONENTS = Object.freeze({
   "ai.elizaresearch.alphaphone.MainActivity": null,
   "ai.elizaresearch.alphaphone.AlphaAssistActivity": null,
   "ai.elizaresearch.alphaphone.AlphaNotificationListener": "android.permission.BIND_NOTIFICATION_LISTENER_SERVICE",
+  // Alpha's password vault as an Android Autofill provider (shared plugin-native-passwords).
+  "ai.eliza.plugins.passwords.ElizaPasswordAutofillService": "android.permission.BIND_AUTOFILL_SERVICE",
   "androidx.work.impl.background.systemjob.SystemJobService": "android.permission.BIND_JOB_SERVICE",
   "androidx.work.impl.diagnostics.DiagnosticsReceiver": "android.permission.DUMP",
   "androidx.profileinstaller.ProfileInstallReceiver": "android.permission.DUMP",

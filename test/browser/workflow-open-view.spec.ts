@@ -1,3 +1,4 @@
+import { returnToApps } from './app-navigation';
 import { test, expect } from '@playwright/test';
 
 // Real renderer, pairing, connection controller, proposal parser and journal
@@ -97,7 +98,7 @@ for (const mode of ['pending', 'wrong-owner', 'expired'] as const) {
       // Explicit sync may resend the identical receipt, without replaying navigation.
       const afterNavigation=await counts();expect([0,1]).toContain(afterNavigation.receipts);
       expect({...afterNavigation,receipts:0}).toEqual({ posts: 1, decisions: 1, claims: 1, receipts: 0, workflowLists: 1, journal: ['reserve', 'markApplying', 'finish'] });
-      await page.getByRole('button',{name:'Home',exact:true}).click();
+      await returnToApps(page);
       await page.getByRole('button',{name:'Settings',exact:true}).click();
       await page.getByRole('button',{name:'Agent connection',exact:true}).click();
       await page.getByText('Phone action history',{exact:true}).click();

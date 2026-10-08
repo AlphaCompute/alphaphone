@@ -1,5 +1,5 @@
-import type {ReminderCreateOperation,ReminderCreateResult} from './runtime/reminder-create-contract';
-import type {ReminderOperation,ReminderTarget,ReminderResult} from './runtime/reminder-contract';
+import type {ReminderCreateOperation,ReminderCreateResult} from '../../../.eliza/client-features/plugins/plugin-assistant/src/services/device-actions/reminder-create-contract.ts';
+import type {ReminderOperation,ReminderTarget,ReminderResult} from '../../../.eliza/client-features/plugins/plugin-assistant/src/services/device-actions/reminder-contract.ts';
 import { registerPlugin } from './platform-plugins';
 import { type PluginListenerHandle } from '@capacitor/core';
 export type Action =

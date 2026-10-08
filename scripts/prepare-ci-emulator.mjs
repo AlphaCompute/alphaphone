@@ -96,7 +96,7 @@ if (holder !== "com.android.launcher3")
 // served window even though the WebView can execute JavaScript.
 // This entire AVD is a disposable CI fixture. A plugged-only stay-awake flag
 // does not establish that Android currently considers the emulator charging.
-// Pin its current user's idle timeout for this bounded 40-minute smoke job.
+// Pin its current user's idle timeout for this bounded emulator session.
 const fixtureUser = run("shell", "am", "get-current-user").trim();
 if (!/^\d+$/.test(fixtureUser)) throw new Error("Unknown CI fixture user");
 const priorTimeout = run("shell", "settings", "--user", fixtureUser, "get", "system", "screen_off_timeout").trim();

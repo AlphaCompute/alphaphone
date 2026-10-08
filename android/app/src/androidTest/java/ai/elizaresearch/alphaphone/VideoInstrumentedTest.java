@@ -48,6 +48,19 @@ public class VideoInstrumentedTest {
  }
  private void permission(){
   for(String permission:new String[]{Manifest.permission.CAMERA,Manifest.permission.RECORD_AUDIO}) InstrumentationRegistry.getInstrumentation().getUiAutomation().grantRuntimePermission(context().getPackageName(),permission);
+  if(android.os.Build.VERSION.SDK_INT>=33)InstrumentationRegistry.getInstrumentation().getUiAutomation().grantRuntimePermission(context().getPackageName(),Manifest.permission.POST_NOTIFICATIONS);
+ }
+ private void admitAccount()throws Exception{
+  if(BuildConfig.ELIZA_DEV_ALLOW_TEST_MOCKS){AppNavigation.liveMode();return;}
+  until("[...document.querySelectorAll('.alpha-connection button')].some(b=>b.textContent.trim()==='Sign in with Eliza Cloud'&&!b.disabled)");
+  try(java.io.InputStream input=InstrumentationRegistry.getInstrumentation().getContext().getAssets().open("video-account-fixture.js")){
+   eval(new String(input.readAllBytes(),java.nio.charset.StandardCharsets.UTF_8));
+  }
+  // Use the production control and identity/balance/provider binding path.
+  // Only its account/runtime boundary is synthetic; Camera/Photos remain native.
+  eval("[...document.querySelectorAll('.alpha-connection button')].find(b=>b.textContent.trim()==='Sign in with Eliza Cloud').click()");
+  until("!document.querySelector('.alpha-connection-scrim')");
+  assertEquals("Production account admission reached native startup","true",eval("window.__alphaVideoAccount.calls.includes('/api/v1/user')&&window.__alphaVideoAccount.calls.includes('/api/v1/credits/balance')&&window.__alphaVideoAccount.calls.includes('configureCloudProvider')&&window.__alphaVideoAccount.calls.includes('start')"));
  }
  private void begin()throws Exception{
   navigate("Camera");until("document.querySelector('[data-alpha-camera-screen]')");
@@ -64,7 +77,7 @@ public class VideoInstrumentedTest {
  @Test public void recordsDurableVideoAndPrototypeControlsDriveRealPlayback()throws Exception{
   permission();Set<Uri> before=owned();
   try(BoundedActivityScenario<MainActivity>s=BoundedActivityScenario.launch(MainActivity.class)){
-   begin();click("Stop recording");until("document.body.innerText.includes('Video saved to Android Photos.')");
+   admitAccount();begin();click("Stop recording");until("document.body.innerText.includes('Video saved to Android Photos.')");
    Set<Uri> created=owned();created.removeAll(before);assertEquals("One finalized video",1,created.size());assertMedia(created.iterator().next());
    click("Open last photo");until(AppNavigation.selected("Photos"));until("document.body.innerText.includes('Captured video')");
    click("Play video");until("(()=>{const v=document.querySelector('video[data-alpha-captured-video]');return v&&!v.paused&&v.currentTime>0.2&&v.videoWidth>0})()");
@@ -76,7 +89,7 @@ public class VideoInstrumentedTest {
    until("window.__videoRange?.done");assertEquals("Range fetch failed: "+eval("JSON.stringify(window.__videoRange)")+" nativeBefore="+rangeBaseline+" nativeAfter="+playbackDiagnostics(),"false",eval("!!window.__videoRange.error"));assertEquals("Real nonzero byte range", "206",eval("window.__videoRange.status"));assertArrayEquals("Exact selected byte range",java.util.Arrays.copyOfRange(prefix,16,32),android.util.Base64.decode((String)new org.json.JSONTokener(eval("window.__videoRange.bytes")).nextValue(),android.util.Base64.DEFAULT));assertEquals("\"16\"",eval("window.__videoRange.length"));
    click("Play video");until("!document.querySelector('video[data-alpha-captured-video]')?.paused");
    click("Back from photo");until("!document.querySelector('video[data-alpha-captured-video]')");
-   navigate("Home");s.recreate();navigate("Photos");
+   navigate("Home");s.recreate();admitAccount();navigate("Photos");
    click("Albums");click("Videos");
    String savedVideoId="native-camera-v:"+ContentUris.parseId(created.iterator().next());
    String savedVideoSelector="document.querySelector('[data-owned-media-id=\""+savedVideoId+"\"]')";
@@ -88,7 +101,7 @@ public class VideoInstrumentedTest {
  @Test public void leavingCameraFinalizesInsteadOfRecordingInBackground()throws Exception{
   permission();Set<Uri> before=owned();
   try(BoundedActivityScenario<MainActivity>s=BoundedActivityScenario.launch(MainActivity.class)){
-   begin();navigate("Home");until("!document.querySelector('[data-alpha-camera-screen]')");
+   admitAccount();begin();navigate("Home");until("!document.querySelector('[data-alpha-camera-screen]')");
    long end=SystemClock.elapsedRealtime()+30000;Set<Uri> created;
    do{created=owned();created.removeAll(before);if(!created.isEmpty())break;SystemClock.sleep(100);}while(SystemClock.elapsedRealtime()<end);
    assertEquals("Leaving finalizes one video",1,created.size());assertMedia(created.iterator().next());

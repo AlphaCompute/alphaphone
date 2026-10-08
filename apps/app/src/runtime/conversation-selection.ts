@@ -20,10 +20,11 @@ export async function conversationSelectionDocument(){
  if(Capacitor.getPlatform()==='android')throw Error('Browser conversation recovery is unavailable on this device.');
  return document??=import('../browser/json-domain-document').then(({BrowserJsonDomainDocument})=>new BrowserJsonDomainDocument(conversationSelectionKey));
 }
-export async function captureConversationChoice(key:string,signal?:AbortSignal){
+/** Android's selection read stays synchronous so its publication fence has no await gap. */
+export function captureConversationChoice(key:string,signal?:AbortSignal){
  signal?.throwIfAborted();
- const values=Capacitor.getPlatform()==='android'?JSON.parse(localStorage.getItem(conversationSelectionKey)||'null'):await(await conversationSelectionDocument()).readJson(signal);
- signal?.throwIfAborted();return choice(validate(values),key);
+ if(Capacitor.getPlatform()==='android')return choice(validate(JSON.parse(localStorage.getItem(conversationSelectionKey)||'null')),key);
+ return conversationSelectionDocument().then(document=>document.readJson(signal)).then(values=>{signal?.throwIfAborted();return choice(validate(values),key);});
 }
 /** Update one captured owner's restart choice. Visible chats remain tab-local. */
 export async function selectConversation(key:string,expected:ConversationChoice|null,id:string,signal:AbortSignal,assertCurrent:()=>void){

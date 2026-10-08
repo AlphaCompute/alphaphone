@@ -8,6 +8,8 @@ async function nativeFixture(page:any,installation='installed',selection='none')
   const f=w.passwordFixture={installation,selection,support:'available',calls:[] as string[],fail:false,unexpected:false,listeners:{} as any};
   const methods=(names:string[])=>names.map(name=>({name,rtype:'promise'}));
   w.Capacitor={PluginHeaders:[
+   {name:'AlphaNotifications',methods:methods(['status','crossAppStatus','addListener','removeListener'])},
+   {name:'AlphaVoiceCloud',methods:methods(['checkPermissions'])},
    {name:'AlphaDevice',methods:methods(['snapshot','openPasswordProvider'])},
    {name:'AlphaConnection',methods:methods(['secureRead','addListener','removeListener'])},
    {name:'AlphaHostedResults',methods:methods(['status','pendingResult','addListener','removeListener'])},
@@ -15,6 +17,8 @@ async function nativeFixture(page:any,installation='installed',selection='none')
    {name:'DeviceApps',methods:methods(['buildInfo'])},
    {name:'DailyApps',methods:[...methods(['surfaceInfo','removeListener']),{name:'addListener',rtype:'callback'}]},
   ],nativeCallback:(plugin:string,method:string,input:any,callback:any)=>{f.listeners[input.eventName]??=[];f.listeners[input.eventName].push(callback);return 'fixture-listener';},nativePromise:async(plugin:string,method:string,input:any)=>{
+   if(plugin==='AlphaNotifications')return {permissionGranted:true,appEnabled:true};
+   if(plugin==='AlphaVoiceCloud')return {microphone:'granted'};
    if(plugin==='AlphaDevice'&&method==='snapshot')return {passwordProvider:{installation:f.installation,selection:f.selection,support:f.support}};
    if(plugin==='AlphaDevice'&&method==='openPasswordProvider'){f.calls.push(input.action);if(f.fail)throw Error('no handler');return {status:f.unexpected?'unknown':'opened'};}
    if(method==='secureRead')return {value:null};

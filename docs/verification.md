@@ -33,7 +33,8 @@ see [visual verification](prototype-visual-verification.md).
 
 ## Android and integrations
 
-Use an owned disposable emulator for `npm run android:smoke`. Exercise both APK
+Aggregate smoke suites and CI smoke jobs were removed at the owner's request.
+For separate native acceptance, use an owned disposable emulator to exercise both APK
 variants, native bridge behavior and actual launcher HOME selection and restoration.
 Retain terminal instrumentation results and cleanup outcomes. A build or successful
 install cannot substitute for these checks. See the [Android/AOSP guide](android-and-aosp.md)
@@ -87,10 +88,8 @@ restore/verify and cleanup phases; Notes and Inbox reports also require distinct
 process IDs. Selected-file, text-scale, folder and bookmark native tests assert process boundaries themselves.
 The bookmark case also force-stops before `verifyRemoved`, requiring removal to
 survive a second process restart.
-Activity recreation alone is insufficient. The distribution Android CI lane runs
-all six text-scale/folder/bookmark checks through `scripts/ci/native-restarts.sh`
-before its smoke suite installs product packages. It provisions the pinned
-[development WebView](ci-webview-provider.md) first; the stock API 35 provider
+Activity recreation alone is insufficient. These campaigns are no longer automatic CI
+checks. Browser campaigns require a supported WebView; the stock API 35 provider
 lacks the browsing-data deletion capability required by bookmark navigation.
 Retain provider admission and native phase evidence separately.
 

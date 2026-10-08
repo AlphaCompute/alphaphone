@@ -2,7 +2,7 @@ import type {LocalAgentProtocol} from '../runtime/local-agent';
 import {browserSpeechConnection as connectionController} from './agent-speech';
 import {recordingPcmSamples,recordingPcmWav} from './recording-pcm';
 import {browserMediaVolume} from './audio-settings';
-import {audioRecord,audioMetadata,retainAudio,changeAudioDeleted,audioDeletionStatus,migrateAudio} from './note-audio-store';
+import {audioRecord,audioMetadata,retainAudio,changeAudioDeleted,audioDeletionStatus,migrateAudio,purgeAudio} from './note-audio-store';
 import { BrowserSpeechRecognizer } from './speech-recognizer';
 import { speechError } from './speech-protocol';
 import { silentRecording } from './whisper-engine';
@@ -168,6 +168,7 @@ export class BrowserVoice extends WebPlugin {
  async deletionStatus(input:{audioId:string;noteId:string;operationId:string}){return audioDeletionStatus(input.audioId,input.noteId,input.operationId);}
  async remove(input:{audioId:string;noteId:string;operationId:string}){const result=await changeAudioDeleted(input.audioId,input.noteId,true,input.operationId);if(result.status==='removed'){if([this.audioId,this.pendingAudioId].includes(input.audioId))await this.stopPlayback();this.audioChanges?.postMessage({audioId:input.audioId,deleted:true});}return result;}
  async restore(input:{audioId:string;noteId:string;operationId:string}){return changeAudioDeleted(input.audioId,input.noteId,false,input.operationId);}
+ async purge(input:{audioId:string;noteId:string;operationId:string}){if([this.audioId,this.pendingAudioId].includes(input.audioId))await this.stopPlayback();return purgeAudio(input.audioId,input.noteId,input.operationId);}
  private async withAgentSpeech<T>(run:(signal:AbortSignal)=>Promise<T>){
   this.speechRequest?.abort();const controller=this.speechRequest=new AbortController();
   try{return await run(controller.signal);}finally{if(this.speechRequest===controller)this.speechRequest=undefined;}

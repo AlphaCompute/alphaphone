@@ -1,6 +1,6 @@
 import test from 'node:test';import assert from 'node:assert/strict';import {readFileSync} from 'node:fs';import {stripTypeScriptTypes} from 'node:module';
 const url=file=>'data:text/javascript;base64,'+Buffer.from(stripTypeScriptTypes(readFileSync(file,'utf8'))).toString('base64');
-let code=stripTypeScriptTypes(readFileSync('apps/app/src/runtime/calendar-edit-draft.ts','utf8')).replace("'./calendar-form-draft'",JSON.stringify(url('apps/app/src/runtime/calendar-form-draft.ts'))).replace("'./reminder-contract'",JSON.stringify(url('apps/app/src/runtime/reminder-contract.ts')));
+let code=stripTypeScriptTypes(readFileSync('apps/app/src/runtime/calendar-edit-draft.ts','utf8')).replace("'./calendar-form-draft'",JSON.stringify(url('apps/app/src/runtime/calendar-form-draft.ts'))).replace("'../../../../.eliza/client-features/plugins/plugin-assistant/src/services/device-actions/reminder-contract.ts'",JSON.stringify(url('.eliza/client-features/plugins/plugin-assistant/src/services/device-actions/reminder-contract.ts')));
 const {encodeCalendarEdit,decodeCalendarEdit}=await import('data:text/javascript;base64,'+Buffer.from(code).toString('base64'));
 const fields={id:'calendar:item',title:'Unsaved title',notes:'Unsaved body',where:'Room',off:1,t:10,d:1,video:false,who:[],cal:'native:local',repeat:'none',alert:null};
 const expected={title:'Original',body:'Original body',location:'Room',begin:1,end:2,revision:'original-revision'};

@@ -3,7 +3,7 @@ import {test,expect,type Page} from '@playwright/test';
 // the app that owns them, never only from the development Device controls.
 async function boot(page:Page,key:string,raw:string){
  await page.addInitScript(([key,raw])=>{localStorage.setItem('alpha.connection.selection.v1',JSON.stringify({kind:'offline'}));if(!sessionStorage.getItem('seeded')){localStorage.setItem(key,raw);sessionStorage.setItem('seeded','1');}},[key,raw]);
- await page.goto('/');
+ await page.goto('/?tools=1');
 }
 async function noDevTools(page:Page){await expect(page.locator('.alpha-dev-controls[open]')).toHaveCount(0);}
 
@@ -33,9 +33,9 @@ test('damaged photo albums are recovered from Photos albums without Device contr
 });
 
 test('healthy stores show no recovery entry',async({page})=>{
- await page.addInitScript(()=>localStorage.setItem('alpha.connection.selection.v1',JSON.stringify({kind:'offline'})));await page.goto('/');
+ await page.addInitScript(()=>localStorage.setItem('alpha.connection.selection.v1',JSON.stringify({kind:'offline'})));await page.goto('/?tools=1');
  await page.getByRole('button',{name:'Browser',exact:true}).click();await page.getByRole('button',{name:'Menu',exact:true}).click();await page.getByRole('button',{name:'Bookmarks and history',exact:true}).click();
  await expect(page.getByText('Nothing here yet')).toBeVisible();await expect(page.getByRole('button',{name:'Recover saved bookmarks',exact:true})).toHaveCount(0);
- await page.goto('/');await page.getByRole('button',{name:'Photos',exact:true}).click();await page.getByRole('button',{name:'Albums',exact:true}).click();
+ await page.goto('/?tools=1');await page.getByRole('button',{name:'Photos',exact:true}).click();await page.getByRole('button',{name:'Albums',exact:true}).click();
  await expect(page.getByRole('button',{name:'Favorites',exact:true})).toBeVisible();await expect(page.getByRole('button',{name:'Recover albums',exact:true})).toHaveCount(0);
 });

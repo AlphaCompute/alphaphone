@@ -10,10 +10,12 @@
 
 <div data-screen="1" onPointerDown="{{gDown}}" onPointerUp="{{gUp}}" onPointerCancel="{{gCancel}}" style="position: absolute; top: 12px; left: 14px; width: 412px; height: 915px; border-radius: 48px; overflow: hidden; background: var(--bg); color: var(--fg); user-select: none; -webkit-user-select: none; touch-action: none; font-size: 15px">
 
-<div style="position: absolute; top: 13px; left: 195px; width: 22px; height: 22px; border-radius: 11px; background: #000; box-shadow: 0 0 0 1.5px #111; z-index: 99; pointer-events: none"></div>
+<div data-alpha-system-cutout style="position: absolute; top: 13px; left: 195px; width: 22px; height: 22px; border-radius: 11px; background: #000; box-shadow: 0 0 0 1.5px #111; z-index: 99; pointer-events: none"></div>
 
 
 <sc-if value="{{isOn}}" hint-placeholder-val="{{false}}">
+<sc-if value="{{showAppBack}}"><button aria-label="Back to apps" onClick="{{backToApps}}" style="position:absolute;top:0;left:12px;z-index:44;min-height:44px;display:flex;align-items:center;gap:6px;padding:0 8px;color:var(--fg);font-size:14px"><svg class="i" viewBox="0 0 24 24" style="width:18px;height:18px"><path d="{{ic.back}}"></path></svg>Apps</button></sc-if>
+
 <div data-alpha-layer="home" role="region" aria-label="Home" aria-hidden="{{homeHidden}}" inert="{{homeHidden}}" style="position: absolute; inset: 44px 0 0; z-index: 10; display: flex; flex-direction: column; padding: 20px 0 108px; box-sizing: border-box; overflow-y:auto; overflow-x:hidden; scroll-padding-bottom:110px">
 <sc-if value="{{storageAccessWarning}}" hint-placeholder-val="{{false}}"><p role="alert" class="storage-access-warning">{{storageAccessWarning}}</p></sc-if>
   <div class="scr" style="display: flex; gap: 12px; overflow-x: auto; scroll-snap-type: x mandatory; padding: 0 24px; scroll-padding-left: 24px; touch-action: pan-x; flex-shrink: 0">
@@ -53,7 +55,7 @@
       <button onClick="{{a.open}}" aria-label="{{a.label}}" style="display: flex; flex-direction: column; align-items: center; gap: 8px">
         <span class="tap" style="position: relative; width: 64px; height: 64px; border-radius: 22px; background: var(--s2); display: flex; align-items: center; justify-content: center">
           <svg class="i" viewBox="0 0 24 24" style="width: 30px; height: 30px"><path d="{{a.d}}"></path></svg>
-          <sc-if value="{{a.badge}}" hint-placeholder-val="{{false}}"><span style="position: absolute; top: 12px; right: 12px; width: 8px; height: 8px; border-radius: 4px; background: var(--acc)"></span></sc-if>
+          <sc-if value="{{a.badge}}" hint-placeholder-val="{{false}}"><span class="app-badge" style="position: absolute; top: 12px; right: 12px; width: 8px; height: 8px; border-radius: 4px; background: var(--acc)"></span></sc-if>
         </span>
         <span style="font-size: 12px; color: var(--mut)">{{a.label}}</span>
       </button>
@@ -555,6 +557,9 @@
         </button>
       </div>
     </sc-for>
+    <sc-if value="{{inbox.hasMore}}" hint-placeholder-val="{{false}}">
+      <button onClick="{{inbox.loadMore}}" style="display: block; margin: 12px auto; height: 44px; padding: 0 20px; border-radius: 22px; background: var(--s2); color: var(--fg); font-size: 14px; font-weight: 600">Load more</button>
+    </sc-if>
     <sc-if value="{{inbox.empty}}" hint-placeholder-val="{{false}}">
       <div style="display: flex; flex-direction: column; align-items: center; gap: 12px; padding-top: 110px; color: var(--mut)">
         <svg class="i" viewBox="0 0 24 24" style="width: 28px; height: 28px"><path d="{{inbox.emptyIcon}}"></path></svg>
@@ -580,6 +585,7 @@
         <span style="flex-grow: 1"></span>
         <button class="ib" aria-label="Reply" onClick="{{inbox.d.reply}}"><svg class="i" viewBox="0 0 24 24" style="width: 20px; height: 20px"><path d="{{ic.reply}}"></path></svg></button>
         <sc-if value="{{inbox.d.canReplyAll}}"><button aria-label="Reply all" onClick="{{inbox.d.replyAll}}" style="padding:8px;font-size:12px">Reply all</button></sc-if>
+        <sc-if value="{{inbox.d.canToggleRead}}" hint-placeholder-val="{{false}}"><button onClick="{{inbox.d.toggleRead}}" style="padding:8px;font-size:12px">{{inbox.d.readLabel}}</button></sc-if>
         <button class="ib" aria-label="Forward" onClick="{{inbox.d.forward}}"><svg class="i" viewBox="0 0 24 24" style="width: 20px; height: 20px"><path d="{{ic.inboxFwd}}"></path></svg></button>
         <sc-if value="{{inbox.d.canArchive}}" hint-placeholder-val="{{true}}">
           <button class="ib" aria-label="Archive" onClick="{{inbox.d.archive}}"><svg class="i" viewBox="0 0 24 24" style="width: 20px; height: 20px"><path d="{{ic.archive}}"></path></svg></button>
@@ -714,6 +720,7 @@
       <sc-if value="{{inbox.provider.canEditDraft}}"><button disabled="{{inbox.provider.busy}}" onClick="{{inbox.provider.editDraft}}" style="padding:14px">Edit this Gmail draft</button><button disabled="{{inbox.provider.busy}}" onClick="{{inbox.provider.deleteDraft}}" style="padding:14px">Review permanent draft deletion</button></sc-if>
       <sc-if value="{{inbox.provider.canUndo}}"><button disabled="{{inbox.provider.busy}}" onClick="{{inbox.provider.undo}}" style="padding:14px">Review undo mailbox change</button></sc-if>
       <sc-if value="{{inbox.provider.replacementWarning}}"><p style="font-size:12px;color:var(--mut)">Another client can change this Gmail draft after review. Replacement cannot be guaranteed atomic.</p></sc-if><sc-if value="{{inbox.provider.deletionWarning}}"><p style="font-size:12px;color:var(--mut)">This permanently deletes the selected Gmail draft.</p></sc-if>
+      <sc-if value="{{inbox.provider.canRetry}}"><button disabled="{{inbox.provider.busy}}" onClick="{{inbox.provider.retry}}" style="padding:14px">{{inbox.provider.retryLabel}}</button></sc-if>
       <button disabled="{{inbox.provider.busy}}" onClick="{{inbox.provider.check}}" style="padding:14px">Check saved receipt</button>
       <sc-if value="{{inbox.provider.canReload}}"><button disabled="{{inbox.provider.busy}}" onClick="{{inbox.provider.reload}}" style="padding:14px">Reload exact review</button></sc-if>
       <sc-if value="{{inbox.provider.canClear}}"><p style="font-size:12px;color:var(--mut)">The local draft stays on this device. If this operation succeeded, sending that draft again creates another message.</p><button disabled="{{inbox.provider.busy}}" onClick="{{inbox.provider.clear}}" style="padding:14px">{{inbox.provider.clearLabel}}</button></sc-if>
@@ -2031,6 +2038,7 @@
       <h1 class="serif" style="margin: 0; font-size: 32px; flex-grow: 1; letter-spacing: -.01em">Notes</h1>
       <button class="ib" aria-label="Record and transcribe" onClick="{{notes.record}}"><svg class="i" viewBox="0 0 24 24" style="width: 20px; height: 20px"><path d="{{ic.notesWave}}"></path></svg></button>
       <sc-if value="{{notes.canImportText}}"><button class="ib" aria-label="Import text note" disabled="{{notes.documentBusy}}" onClick="{{notes.importText}}"><svg class="i" viewBox="0 0 24 24"><path d="M12 3v12M7 10l5 5 5-5M5 16v5h14v-5"></path></svg></button></sc-if>
+      <sc-if value="{{notes.trashAvailable}}" hint-placeholder-val="{{false}}"><button class="ib" aria-label="Open Trash" title="{{notes.trashLabel}}" onClick="{{notes.openTrash}}"><svg class="i" viewBox="0 0 24 24"><path d="{{ic.trash}}"></path></svg></button></sc-if>
       <button class="ib" aria-label="New note" onClick="{{notes.newNote}}"><svg class="i" viewBox="0 0 24 24" style="width: 20px; height: 20px"><path d="{{ic.plus}}"></path></svg></button>
     </div>
   </sc-if>
@@ -2249,7 +2257,52 @@
     </div>
   </sc-if>
 
-  
+  <sc-if value="{{notes.trashOpen}}" hint-placeholder-val="{{false}}">
+    <div ref="{{notes.trashFocus}}" data-alpha-subview="notes-trash" inert="{{notes.trashCovered}}" aria-hidden="{{notes.trashCovered}}" class="enter" style="position: absolute; inset: 0; background: var(--bg); display: flex; flex-direction: column; z-index: 4">
+      <div style="display: flex; align-items: center; height: 56px; padding: 0 8px; gap: 2px; flex-shrink: 0">
+        <button class="ib" aria-label="Close Trash" onClick="{{notes.closeTrash}}"><svg class="i" viewBox="0 0 24 24"><path d="{{ic.back}}"></path></svg></button>
+        <h1 class="serif" style="margin: 0 0 0 4px; font-size: 32px; flex-grow: 1; letter-spacing: -.01em">Trash</h1>
+        <button class="tap" aria-label="Empty Trash" disabled="{{notes.trashEmptyDisabled}}" onClick="{{notes.emptyTrash}}" style="min-height: 44px; padding: 0 14px; border-radius: 22px; background: var(--s2); color: var(--fg); font-size: 14px; font-weight: 600">Empty Trash</button>
+      </div>
+      <div class="scr" style="flex-grow: 1; overflow-y: auto; touch-action: pan-y; padding: 4px 16px 190px; box-sizing: border-box">
+        <p style="margin: 0 8px 14px; font-size: 14px; line-height: 20px; color: var(--mut)">Deleted notes stay here for 3 days, then they are deleted permanently.</p>
+        <sc-if value="{{notes.trashError}}"><div role="status" style="margin: 0 8px 12px; font-size: 13px; color: var(--mut)">{{notes.trashError}}</div></sc-if>
+        <sc-if value="{{notes.trashNone}}" hint-placeholder-val="{{false}}">
+          <div style="display: flex; flex-direction: column; align-items: center; gap: 10px; padding-top: 90px; color: var(--mut)">
+            <svg class="i" viewBox="0 0 24 24" style="width: 28px; height: 28px"><path d="{{ic.trash}}"></path></svg>
+            <div style="font-size: 15px">Trash is empty.</div>
+          </div>
+        </sc-if>
+        <ul aria-label="Notes in Trash" style="list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px">
+          <sc-for list="{{notes.trashRows}}" as="t" hint-placeholder-count="2">
+            <li style="padding: 14px 16px; border-radius: 20px; background: var(--s1)">
+              <div style="font-size: 16px; font-weight: 600; overflow-wrap: anywhere">{{t.title}}</div>
+              <div style="font-size: 13px; color: var(--mut); margin-top: 2px">{{t.kind}} · {{t.left}}</div>
+              <div style="display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px">
+                <button class="tap" aria-label="{{t.restoreLabel}}" disabled="{{t.disabled}}" onClick="{{t.restore}}" style="min-height: 44px; padding: 0 16px; border-radius: 22px; background: var(--acc); color: #fff; font-size: 14px; font-weight: 600">Restore</button>
+                <button class="tap" aria-label="{{t.deleteLabel}}" disabled="{{t.disabled}}" onClick="{{t.erase}}" style="min-height: 44px; padding: 0 16px; border-radius: 22px; background: var(--s2); color: var(--fg); font-size: 14px; font-weight: 600">Delete forever</button>
+              </div>
+            </li>
+          </sc-for>
+        </ul>
+      </div>
+    </div>
+  </sc-if>
+  <sc-if value="{{notes.trashConfirmOpen}}" hint-placeholder-val="{{false}}">
+    <div ref="{{notes.emptyModal}}" class="photo-delete-modal" style="position:absolute;inset:0;z-index:20">
+    <button aria-hidden="true" tabindex="-1" aria-label="Close" onClick="{{notes.trashCancel}}" style="position: absolute; inset: 0; z-index: 20; background: var(--scrim)"></button>
+    <div role="dialog" aria-modal="true" aria-label="{{notes.trashConfirmTitle}}" class="enter" style="position: absolute; left: 0; right: 0; bottom: 0; z-index: 21; max-height:calc(100% - 44px);overflow:auto;box-sizing:border-box; background: var(--s1); color: var(--fg); border-radius: 28px 28px 0 0; padding: 12px 24px 44px">
+      <div style="display: flex; justify-content: center; padding-bottom: 14px"><span style="width: 40px; height: 4px; border-radius: 2px; background: var(--mut); opacity: .45"></span></div>
+      <div class="serif" style="font-size: 26px; line-height: 1.15">{{notes.trashConfirmTitle}}</div>
+      <div style="font-size: 14px; color: var(--mut); margin-top: 6px; overflow-wrap: anywhere">{{notes.trashConfirmText}}</div>
+      <div style="display: flex; gap: 10px; margin-top: 24px">
+        <button aria-label="Cancel" disabled="{{notes.trashBusy}}" onClick="{{notes.trashCancel}}" style="flex: 1; height: 52px; border-radius: 26px; background: var(--s2); font-size: 15px; font-weight: 600; display: flex; align-items: center; justify-content: center">Cancel</button>
+        <button aria-label="{{notes.trashConfirmLabel}}" disabled="{{notes.trashBusy}}" onClick="{{notes.trashConfirmGo}}" style="flex: 1; height: 52px; border-radius: 26px; background: var(--fg); color: var(--bg); font-size: 15px; font-weight: 600; display: flex; align-items: center; justify-content: center; gap: 8px"><svg class="i" viewBox="0 0 24 24" style="width: 18px; height: 18px"><path d="{{ic.trash}}"></path></svg>{{notes.trashConfirmText2}}</button>
+      </div>
+    </div>
+    </div>
+  </sc-if>
+
   <sc-if value="{{notes.shareSheet}}" hint-placeholder-val="{{false}}">
     <button aria-label="Close share" onClick="{{notes.closeSheet}}" style="position: absolute; inset: 0; z-index: 8; background: var(--scrim)"></button>
     <div class="enter" style="position: absolute; left: 0; right: 0; bottom: 0; z-index: 9; background: var(--bg); border-radius: 28px 28px 0 0; padding: 8px 20px 40px; box-shadow: 0 -10px 40px var(--shc)">
@@ -3632,7 +3685,7 @@
 <div onClick="{{scrimTap}}" style="position: absolute; inset: 0; z-index: 45; background: var(--scrim); opacity: {{scrimOp}}; pointer-events: {{scrimPE}}; transition: opacity .45s"></div>
 <div data-alpha-layer="conversation" aria-hidden="{{conversationHidden}}" inert="{{conversationHidden}}" style="position: absolute; left: 0; right: 0; bottom: 0; z-index: 50; height: {{panelH}}px; border-radius: {{panelR}}; background: var(--s1); overflow: hidden; display: flex; flex-direction: column; opacity: {{panelOp}}; pointer-events: {{panelPE}}; box-shadow: 0 -1px 0 var(--line), 0 -20px 60px var(--shc); transition: height .55s cubic-bezier(.19,1,.22,1), border-radius .55s, opacity .3s">
   <div style="height: {{panelTop}}px; flex-shrink: 0; transition: height .4s"></div>
-  <button aria-label="Resize chat" onPointerDown="{{grabSw.down}}" onPointerUp="{{grabSw.up}}" onClick="{{grabTap}}" style="height: 26px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; cursor: grab; touch-action: none"><span style="width: 40px; height: 4px; border-radius: 2px; background: var(--mut); opacity: .45"></span></button>
+  <button aria-label="Resize chat" onPointerDown="{{grabSw.down}}" onPointerUp="{{grabSw.up}}" onPointerCancel="{{grabSw.cancel}}" onLostPointerCapture="{{grabSw.cancel}}" onClick="{{grabTap}}" style="height: 26px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; cursor: grab; touch-action: none"><span style="width: 40px; height: 4px; border-radius: 2px; background: var(--mut); opacity: .45"></span></button>
   <div style="display: flex; align-items: center; gap: 12px; padding: 0 10px 8px 20px; flex-shrink: 0">
     <span style="width: 34px; height: 34px; border-radius: 17px; background: var(--acc); color: #fff; display: flex; align-items: center; justify-content: center; font-family: Denton, Fraunces, Georgia, serif; font-style: italic; font-size: 19px"><span class="al">α</span></span>
     <span style="flex-grow: 1; font-weight: 600; font-size: 16px">{{name}}</span>
@@ -3834,6 +3887,7 @@
 <sc-if value="{{isOn}}" hint-placeholder-val="{{false}}">
 <div data-alpha-layer="shade" role="region" aria-label="Notifications" aria-hidden="{{shadeHidden}}" inert="{{shadeHidden}}" style="position: absolute; inset: 0; z-index: 66; background: var(--bg); transform: translateY({{shadeY}}); transition: transform .55s cubic-bezier(.19,1,.22,1); display: flex; flex-direction: column; padding: 56px 14px 0; box-sizing: border-box">
 <sc-if value="{{storageAccessWarning}}" hint-placeholder-val="{{false}}"><p role="alert" class="storage-access-warning">{{storageAccessWarning}}</p></sc-if>
+  <sc-if value="{{systemShell}}">
   <div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px">
     <sc-for list="{{tiles}}" as="t" hint-placeholder-count="8">
       <button aria-label="{{t.label}}" aria-pressed="{{t.on}}" disabled="{{t.disabled}}" onClick="{{t.toggle}}" style="height: 62px; border-radius: 22px; display: flex; align-items: center; justify-content: center; transition: background .2s, color .2s; {{t.css}}"><svg class="i" viewBox="0 0 24 24"><path d="{{t.d}}"></path></svg></button>
@@ -3844,6 +3898,7 @@
     <input type="range" min="0" max="100" value="{{bright}}" disabled="{{deviceSettingsPending}}" onChange="{{onBright}}" aria-label="Brightness">
   </div>
   <sc-if value="{{deviceSettingsMessage}}"><p role="status">{{deviceSettingsMessage}}</p></sc-if>
+  </sc-if>
   <div class="scr alpha-shade-list" style="flex-grow: 1; overflow-y: auto; margin-top: 12px; display: flex; flex-direction: column; gap: 6px; touch-action: pan-y">
     <sc-for list="{{shadeN}}" as="n" hint-placeholder-count="4">
       <div onPointerDown="{{n.down}}" onPointerUp="{{n.up}}" style="display: flex; gap: 12px; padding: 14px 16px; border-radius: 22px; background: var(--s2); transform: translateX({{n.tx}}px); opacity: {{n.op}}; transition: transform .28s cubic-bezier(.19,1,.22,1), opacity .28s; flex-shrink: 0; touch-action: pan-y">

@@ -121,6 +121,14 @@ test("debug-class inputs fail in manifest or dex", () => {
   assert.ok(distributionProblems(peer, { mode: "debug" }).problems.some(p => /peerfixture/.test(p)));
 });
 
+test("the password Autofill provider ships only behind BIND_AUTOFILL_SERVICE", () => {
+  const name = "ai.eliza.plugins.passwords.ElizaPasswordAutofillService";
+  const guarded = apk({ xml: xmltree({ extraComponents: [["service", name, { exported: true, permission: "android.permission.BIND_AUTOFILL_SERVICE" }]] }) });
+  assert.deepEqual(distributionProblems(guarded, { mode: "release" }).problems.filter(p => p.includes(name)), []);
+  const open = apk({ xml: xmltree({ extraComponents: [["service", name, { exported: true }]] }) });
+  assert.ok(distributionProblems(open, { mode: "release" }).problems.some(p => p === `Exported ${name} must require android.permission.BIND_AUTOFILL_SERVICE`));
+});
+
 test("mock-string manifest inputs fail", () => {
   const mock = apk({ xml: xmltree({ extraPermissions: ["android.permission.ACCESS_MOCK_LOCATION"], extraComponents: [["service", `${PKG}.MockLocationService`, {}]] }) });
   const { problems } = distributionProblems(mock, { mode: "release" });
@@ -200,11 +208,11 @@ test("distribution builds strip every form of the flag; --test-mocks sets it and
   assert.equal(off.VITE_ELIZA_DEV_ALLOW_TEST_MOCKS, undefined);
   assert.equal(off.ORG_GRADLE_PROJECT_ELIZA_DEV_ALLOW_TEST_MOCKS, undefined);
   assert.equal(off.PATH, "/bin");
-  assert.deepEqual(gradleFlagArgs({ testMocks: false }), ["-PELIZA_DEV_ALLOW_TEST_MOCKS=0"]);
+  assert.deepEqual(gradleFlagArgs({ testMocks: false }), ["-PELIZA_DEV_ALLOW_TEST_MOCKS=0", "-PELIZA_ALLOW_UNPACKAGED_RUNTIME=0"]);
   assert.equal(outputDirectory({ testMocks: false }), "artifacts");
   const on = parseBuildArgs(["--test-mocks"]);
   assert.equal(buildEnv({}, on).ELIZA_DEV_ALLOW_TEST_MOCKS, "1");
-  assert.deepEqual(gradleFlagArgs(on), ["-PELIZA_DEV_ALLOW_TEST_MOCKS=1"]);
+  assert.deepEqual(gradleFlagArgs(on), ["-PELIZA_DEV_ALLOW_TEST_MOCKS=1", "-PELIZA_ALLOW_UNPACKAGED_RUNTIME=0"]);
   assert.equal(outputDirectory(on), "artifacts/test-mocks");
   assert.equal(parseBuildArgs(["--allow-unpackaged-runtime"]).allowUnpackagedRuntime, true);
   assert.throws(() => parseBuildArgs(["--mock"]), /Unknown option/);

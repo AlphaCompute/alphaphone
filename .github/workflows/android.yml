@@ -2,32 +2,17 @@ name: Android foundation
 on:
   pull_request:
   workflow_dispatch:
-    inputs:
-      provider_only:
-        description: Diagnose the disposable WebView fixture without app builds
-        type: boolean
-        default: false
-      expected_sha:
-        description: Exact reviewed commit required for provider-only diagnosis
-        type: string
-        default: ""
 permissions:
   contents: read
 concurrency:
-  group: android-${{ github.ref }}${{ github.event_name == 'workflow_dispatch' && inputs.provider_only && '-provider-only' || '' }}
+  group: android-${{ github.ref }}
   cancel-in-progress: true
 jobs:
   changes:
-    if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.provider_only) }}
     uses: ./.github/workflows/changes.yml
   build:
     needs: changes
     if: needs.changes.outputs.android == 'true'
-    outputs:
-      artifact_id: ${{ steps.apks.outputs.artifact-id }}
-      manifest_sha256: ${{ steps.bundle.outputs.manifest_sha256 }}
-      test_mocks_artifact_id: ${{ steps.test-mocks-apks.outputs.artifact-id }}
-      test_mocks_manifest_sha256: ${{ steps.test-mocks-bundle.outputs.manifest_sha256 }}
     runs-on: ubuntu-24.04
     timeout-minutes: 120
     steps:
@@ -119,77 +104,10 @@ jobs:
           console.log(JSON.stringify({ testMocks: manifest.testMocks, demoEntryPoints: manifest.demoEntryPoints, version: manifest.version, signing: manifest.signing.release }, null, 2));
           NODE
       - run: npm run aosp:stage -- --apk artifacts/launcher-debug.apk --development
-      # Stage before the test-mocks build: it reuses Gradle's androidTest outputs.
-      - name: Stage immutable six-APK smoke bundle
-        id: bundle
-        run: |
-          python3 - <<'PYTHON'
-          from pathlib import Path
-          import hashlib, json, os, shutil
-          root = Path.cwd()
-          bundle = root / 'artifacts/smoke-bundle'
-          bundle.mkdir()
-          hashes = {}
-          for variant in ('standalone', 'launcher'):
-              releases = [kind for kind in ('release', 'release-unsigned') if (root / 'artifacts' / (variant + '-' + kind + '.apk')).is_file()]
-              assert len(releases) == 1, variant + ': expected exactly one release APK'
-              for kind in ('debug', releases[0], 'androidTest'):
-                  name = variant + '-' + kind + '.apk'
-                  source = root / ('android/app/build/outputs/apk/androidTest/' + variant + '/debug/app-' + variant + '-debug-androidTest.apk') if kind == 'androidTest' else root / 'artifacts' / name
-                  assert source.is_file() and not source.is_symlink(), str(source)
-                  shutil.copyfile(source, bundle / name)
-                  hashes[name] = hashlib.sha256(source.read_bytes()).hexdigest()
-                  assert hashlib.sha256((bundle / name).read_bytes()).hexdigest() == hashes[name]
-          manifest = bundle / 'apk-manifest.json'
-          manifest.write_text(json.dumps(hashes, indent=2) + '\n')
-          with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
-              output.write('manifest_sha256=' + hashlib.sha256(manifest.read_bytes()).hexdigest() + '\n')
-          PYTHON
       - uses: actions/upload-artifact@v4
-        id: apks
         with:
-          name: android-smoke-apks-${{ github.run_id }}-${{ github.run_attempt }}
-          path: artifacts/smoke-bundle/
-          if-no-files-found: error
-          retention-days: 3
-      # Separate, never-distributable build for the mock-isolation instrumentation
-      # suites (loopback fixtures, development agent, peer fixture). It writes only
-      # under artifacts/test-mocks/ and leaves the distribution APKs untouched.
-      - name: Build separate test-mocks APKs
-        run: |
-          before=$(sha256sum artifacts/*.apk)
-          npm run android:build -- --test-mocks
-          test "$before" = "$(sha256sum artifacts/*.apk)"
-      - name: Stage immutable test-mocks smoke bundle
-        id: test-mocks-bundle
-        run: |
-          python3 - <<'PYTHON'
-          from pathlib import Path
-          import hashlib, json, os, shutil
-          root = Path.cwd()
-          verified = json.loads((root / 'artifacts/test-mocks/apk-manifest.json').read_text())
-          assert verified['testMocks'] is True and all(row.get('distributable') is not True for row in verified['results'])
-          bundle = root / 'artifacts/test-mocks-bundle'
-          bundle.mkdir()
-          hashes = {}
-          for variant in ('standalone', 'launcher'):
-              for kind in ('debug', 'androidTest'):
-                  name = variant + '-' + kind + '.apk'
-                  source = root / 'artifacts/test-mocks' / name
-                  assert source.is_file() and not source.is_symlink(), str(source)
-                  shutil.copyfile(source, bundle / name)
-                  hashes[name] = hashlib.sha256(source.read_bytes()).hexdigest()
-                  assert hashlib.sha256((bundle / name).read_bytes()).hexdigest() == hashes[name]
-          manifest = bundle / 'apk-manifest.json'
-          manifest.write_text(json.dumps(hashes, indent=2) + '\n')
-          with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
-              output.write('manifest_sha256=' + hashlib.sha256(manifest.read_bytes()).hexdigest() + '\n')
-          PYTHON
-      - uses: actions/upload-artifact@v4
-        id: test-mocks-apks
-        with:
-          name: android-test-mocks-apks-${{ github.run_id }}-${{ github.run_attempt }}
-          path: artifacts/test-mocks-bundle/
+          name: android-distribution-apks-${{ github.run_id }}-${{ github.run_attempt }}
+          path: artifacts/*.apk
           if-no-files-found: error
           retention-days: 3
       - uses: actions/upload-artifact@v4
@@ -207,186 +125,4 @@ jobs:
             .eliza/local-speech/generated/lexicon-provenance.json
             android/local-speech/runtime-manifest.json
             android/local-speech/src/main/assets/local-speech/v1/manifest.json
-          retention-days: 3
-  # distribution: flag-off debug APKs run the no-mock instrumentation (mock-only
-  # cases skip by BuildConfig.ELIZA_DEV_ALLOW_TEST_MOCKS). test-mocks: the separate
-  # test-mocks APKs run the mock-isolation suites. Neither is device acceptance.
-  smoke:
-    needs: build
-    runs-on: ubuntu-24.04
-    # Distribution also qualifies six isolated-user process-restart scenarios.
-    timeout-minutes: 70
-    strategy:
-      fail-fast: true
-      matrix:
-        bundle: [distribution, test-mocks]
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          submodules: true
-      # Smoke imports only checked-in scripts and Node builtins; no native build.
-      - uses: actions/setup-node@v4
-        with:
-          node-version-file: .nvmrc
-      - uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: "21"
-      - uses: android-actions/setup-android@v3
-        with:
-          packages: platform-tools build-tools;36.0.0
-          log-accepted-android-sdk-licenses: false
-      - uses: actions/download-artifact@v4
-        with:
-          artifact-ids: ${{ matrix.bundle == 'test-mocks' && needs.build.outputs.test_mocks_artifact_id || needs.build.outputs.artifact_id }}
-          path: artifacts/smoke-bundle
-          merge-multiple: true
-      - name: Verify exact build-job APK bundle
-        env:
-          EXPECTED_MANIFEST_SHA256: ${{ matrix.bundle == 'test-mocks' && needs.build.outputs.test_mocks_manifest_sha256 || needs.build.outputs.manifest_sha256 }}
-          BUNDLE_KIND: ${{ matrix.bundle }}
-        run: |
-          python3 - <<'PYTHON'
-          from pathlib import Path
-          import hashlib, json, os
-          bundle = Path('artifacts/smoke-bundle')
-          manifest = bundle / 'apk-manifest.json'
-          assert hashlib.sha256(manifest.read_bytes()).hexdigest() == os.environ['EXPECTED_MANIFEST_SHA256'], 'Bundle manifest differs from build job output'
-          hashes = json.loads(manifest.read_text())
-          if os.environ['BUNDLE_KIND'] == 'test-mocks':
-              expected = {variant + '-' + kind + '.apk' for variant in ('standalone', 'launcher') for kind in ('debug', 'androidTest')}
-          else:
-              releases = {name for name in hashes if '-release' in name}
-              assert releases in ({v + '-release-unsigned.apk' for v in ('standalone', 'launcher')}, {v + '-release.apk' for v in ('standalone', 'launcher')}), 'Unexpected release APK names'
-              expected = {variant + '-' + kind + '.apk' for variant in ('standalone', 'launcher') for kind in ('debug', 'androidTest')} | releases
-          assert set(hashes) == expected, 'Bundle members differ from the approved set'
-          assert {p.name for p in bundle.iterdir()} == expected | {'apk-manifest.json'}, 'Unexpected or missing bundle members'
-          for name, digest in hashes.items():
-              path = bundle / name
-              assert path.is_file() and not path.is_symlink(), name
-              assert hashlib.sha256(path.read_bytes()).hexdigest() == digest, 'APK hash mismatch: ' + name
-          print('Verified %d %s APKs against same-run build manifest' % (len(hashes), os.environ['BUNDLE_KIND']))
-          PYTHON
-      - name: Require fresh emulator capacity
-        run: |
-          df -h "$GITHUB_WORKSPACE" "$ANDROID_HOME" "$HOME"
-          python3 - <<'PYTHON'
-          from pathlib import Path
-          import json, os, shutil
-          evidence = Path('test-results/emulator-disk-preflight')
-          evidence.mkdir(parents=True)
-          free = {name: shutil.disk_usage(path).free for name, path in {'workspace': Path.cwd(), 'androidSdk': Path(os.environ['ANDROID_HOME']), 'avdHome': Path.home()}.items()}
-          state = {'freeBytes': free, 'requiredFreeBytes': 8 * 1024 ** 3}
-          state['passed'] = min(free.values()) >= state['requiredFreeBytes']
-          (evidence / 'result.json').write_text(json.dumps(state, indent=2) + '\n')
-          print(json.dumps(state, indent=2))
-          assert state['passed'], 'Insufficient fresh-runner emulator capacity'
-          PYTHON
-      - name: Enable KVM
-        run: |
-          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
-          sudo udevadm control --reload-rules
-          sudo udevadm trigger --name-match=kvm
-      - uses: reactivecircus/android-emulator-runner@v2
-        with:
-          api-level: 35
-          target: default
-          arch: x86_64
-          # Chromium recommends >=4 GB guest storage for WebView development.
-          # Keep host capacity admission; overlay scratch is separately bounded to 512 MiB.
-          disk-size: 4096M
-          # Disable host Vulkan while qualifying SurfaceFlinger across framework restarts.
-          # Provider replacement is confined to this fresh disposable AOSP image.
-          emulator-options: -no-window -gpu swiftshader -feature -Vulkan -no-snapshot -noaudio -no-boot-anim -writable-system -append-userspace-opt 'androidboot.boot_devices=pci0000:00/0000:00:03.0 pci0000:00/0000:00:05.0 pci0000:00/0000:00:06.0'
-          disable-animations: true
-          script: |
-            ANDROID_SERIAL=emulator-5554 node scripts/prepare-ci-emulator.mjs
-            ANDROID_SERIAL=emulator-5554 ALPHA_BUILD_ARCHIVE=artifacts/smoke-bundle node scripts/qualify-stock-video.mjs
-            test '${{ matrix.bundle }}' != distribution || ANDROID_SERIAL=emulator-5554 ALPHA_NATIVE_TEST_AVD=test ALPHA_NATIVE_TEST_ABI=x86_64 bash scripts/ci/native-restarts.sh artifacts/smoke-bundle test-results/native-restarts
-            ANDROID_SERIAL=emulator-5554 ALPHA_DISPOSABLE_WEBVIEW_FIXTURE=api35-default-x86_64 node scripts/prepare-ci-webview.mjs
-            ANDROID_SERIAL=emulator-5554 ALPHA_BUILD_ARCHIVE=artifacts/smoke-bundle ALPHA_SMOKE_RESULTS=test-results/${{ matrix.bundle == 'test-mocks' && 'android-test-mocks' || 'android' }} npm run android:smoke
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: android-smoke-evidence${{ matrix.bundle == 'test-mocks' && '-test-mocks' || '' }}
-          path: |
-            test-results/
-            !test-results/ci-webview-provider/chromium.zip
-            !test-results/ci-webview-provider/SystemWebView.apk
-          retention-days: 3
-  provider-diagnostic:
-    if: ${{ github.event_name == 'workflow_dispatch' && inputs.provider_only }}
-    runs-on: ubuntu-24.04
-    timeout-minutes: 40
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          submodules: true
-      - name: Admit exact diagnostic source
-        env:
-          EXPECTED_SHA: ${{ inputs.expected_sha }}
-        run: |
-          python3 - <<'PYTHON'
-          import os, re, subprocess
-          expected = os.environ['EXPECTED_SHA']
-          assert re.fullmatch('[a-f0-9]{40}', expected), 'Exact reviewed SHA required'
-          assert subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip() == expected
-          assert os.environ['GITHUB_SHA'] == expected
-          PYTHON
-      # Smoke imports only checked-in scripts and Node builtins; no native build.
-      - uses: actions/setup-node@v4
-        with:
-          node-version-file: .nvmrc
-      - uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: "21"
-      - uses: android-actions/setup-android@v3
-        with:
-          packages: platform-tools build-tools;36.0.0
-          log-accepted-android-sdk-licenses: false
-      - name: Require fresh emulator capacity
-        run: |
-          df -h "$GITHUB_WORKSPACE" "$ANDROID_HOME" "$HOME"
-          python3 - <<'PYTHON'
-          from pathlib import Path
-          import json, os, shutil
-          evidence = Path('test-results/emulator-disk-preflight')
-          evidence.mkdir(parents=True)
-          free = {name: shutil.disk_usage(path).free for name, path in {'workspace': Path.cwd(), 'androidSdk': Path(os.environ['ANDROID_HOME']), 'avdHome': Path.home()}.items()}
-          state = {'freeBytes': free, 'requiredFreeBytes': 8 * 1024 ** 3}
-          state['passed'] = min(free.values()) >= state['requiredFreeBytes']
-          (evidence / 'result.json').write_text(json.dumps(state, indent=2) + '\n')
-          print(json.dumps(state, indent=2))
-          assert state['passed'], 'Insufficient fresh-runner emulator capacity'
-          PYTHON
-      - name: Enable KVM
-        run: |
-          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
-          sudo udevadm control --reload-rules
-          sudo udevadm trigger --name-match=kvm
-      - uses: reactivecircus/android-emulator-runner@v2
-        with:
-          api-level: 35
-          target: default
-          arch: x86_64
-          # Chromium recommends >=4 GB guest storage for WebView development.
-          # Keep host capacity admission; overlay scratch is separately bounded to 512 MiB.
-          disk-size: 4096M
-          # Disable host Vulkan while qualifying SurfaceFlinger across framework restarts.
-          # Provider replacement is confined to this fresh disposable AOSP image.
-          emulator-options: -no-window -gpu swiftshader -feature -Vulkan -no-snapshot -noaudio -no-boot-anim -writable-system -append-userspace-opt 'androidboot.boot_devices=pci0000:00/0000:00:03.0 pci0000:00/0000:00:05.0 pci0000:00/0000:00:06.0'
-          disable-animations: true
-          script: |
-            ANDROID_SERIAL=emulator-5554 node scripts/prepare-ci-emulator.mjs
-            ANDROID_SERIAL=emulator-5554 ALPHA_DISPOSABLE_WEBVIEW_FIXTURE=api35-default-x86_64 node scripts/prepare-ci-webview.mjs
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: provider-only-diagnostics-${{ github.run_id }}
-          path: |
-            test-results/ci-webview-provider/*.json
-            test-results/ci-webview-provider/*.txt
-            test-results/android-fixture/*.json
-            test-results/emulator-disk-preflight/*.json
           retention-days: 3

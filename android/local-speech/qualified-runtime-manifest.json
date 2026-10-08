@@ -1,6 +1,9 @@
 {
+  "schemaVersion": 2,
+  "admission": "reviewed-native-identity-for-qa",
+  "recordedAt": "2026-10-08T03:43:44.613905+00:00",
   "noEspeak": true,
-  "aarSha256": "528507c0bb58b45db038347a78398b9fbc9b531fb1edba530376b5f3ac88ed9d",
+  "aarSha256": "d08bbbd90f24684cf840efcb1cb9cf84a7d8683b7018859f4cb64305b722b26f",
   "qualifiedAbis": [
     {
       "abi": "arm64-v8a",
@@ -12,10 +15,10 @@
         {
           "file": "libsherpa-onnx-jni.so",
           "bytes": 4042512,
-          "sha256": "d68006be99032779d7f4a2dcf70ea361b8856081cd9ffa73c7139fc76f2187a0",
+          "sha256": "4f7b23a6b43ed75f66bf61ae6d2af00d9cc2b619f10822176c8c3bcef98a6061",
           "pageAlignment": 16384,
-          "unstrippedSha256": "044c6cb70b7352cfbf47af354918291d092ba7608a7669ac7ef0d7b679f1029f",
-          "unstrippedBytes": 81207176
+          "unstrippedSha256": "dd8dcc644f293c6571f397fe7a28a08b37202627824b0564fff2e3db2fa9df65",
+          "unstrippedBytes": 79681960
         },
         {
           "file": "libonnxruntime.so",
@@ -24,8 +27,8 @@
           "pageAlignment": 16384
         }
       ],
-      "aarSha256": "c4244a5013714e3cd67d946ee86f2f2ce846feb3f17220230bb4dea8ef1d9cb4",
-      "deviceExecuted": false,
+      "aarSha256": "3c52bb15ce752d385e496dd2180623f8d8b1f9dc151157febdd5868f655e763d",
+      "deviceExecuted": true,
       "debugSymbolsStripped": true
     },
     {
@@ -38,10 +41,10 @@
         {
           "file": "libsherpa-onnx-jni.so",
           "bytes": 4394840,
-          "sha256": "eb80e317c47f02b163bdd3f3954b29c044415090de270f20a7502c033f7d1c6a",
+          "sha256": "87b16837b465ca9eff50779ff4c185bde36d7743464eebd97994dec822a7777f",
           "pageAlignment": 16384,
-          "unstrippedSha256": "6ab17f817e8a35d0fb1dc691c1062f492c9e50c2fdf895413a07dfa3ea9f1c1e",
-          "unstrippedBytes": 80257992
+          "unstrippedSha256": "ed70eda4b6eaf6776f9da3b0f4e9682649927a43570a8121344b1d9db1e0482c",
+          "unstrippedBytes": 78703720
         },
         {
           "file": "libonnxruntime.so",
@@ -50,9 +53,116 @@
           "pageAlignment": 16384
         }
       ],
-      "aarSha256": "10652ef8e17eae7a350ef1ce38f04e4d8e5bdf82eac15ef97f10c7cd12980aa1",
+      "aarSha256": "286c0f0289526d6f79c19cb8b75b318934a614aa6e8aae0027add8ec44ee02a5",
       "deviceExecuted": false,
       "debugSymbolsStripped": true
     }
+  ],
+  "previousBaseline": {
+    "path": "android/local-speech/baselines/qualified-runtime-manifest-before-20261008.json",
+    "sha256": "2d26c0f3646674ecfa4df8a75b3226a0fc929081720923ed70c233e433662a0a",
+    "bitEquivalentToRebuild": false
+  },
+  "provenance": {
+    "upstreamCommit": "5592c586507544523102dad003a192d6e8395c0f",
+    "toolchain": {
+      "host": "macOS arm64",
+      "ndk": "28.2.13676358",
+      "cmake": "4.0.3",
+      "jobsPerABI": 2,
+      "ABIOrder": [
+        "arm64-v8a",
+        "x86_64"
+      ],
+      "strip": "llvm-strip --strip-unneeded",
+      "filePrefixRemap": "qualified historical build prefix",
+      "buildIDLimitation": "GNU build IDs retain object-path/ThinLTO dependence; no build-ID-only equivalence claim without original binaries"
+    },
+    "sourceVerification": {
+      "regularFiles": 6329,
+      "onlyChanges": "sherpa-no-espeak-manifest.json",
+      "passed": true
+    },
+    "modelManifestSha256": "57786add0060283beeb138cada620189e72f11dff48acaa405670fa3d9f940dd",
+    "modelAndNoticeFiles": 26,
+    "modelAndNoticeBytes": 126655206,
+    "modelHashes": {
+      "asr/encoder.onnx": "0ce578b827c94a961aacb8fa14b02f096504b337e5c94be37c36238cbe3e8bc6",
+      "asr/decoder.onnx": "06c0e6ff6348d427e51839219d1c886c18cfdf411e629e33f5e1679bff9c1527",
+      "asr/tokens.txt": "306cd27f03c1a714eca7108e03d66b7dc042abe8c258b44c199a7ed9838dd930",
+      "tts/model.onnx": "206a8403baad4df7642156918a6ebe205798290d82f24d0d0119d7afa8a2738e",
+      "tts/tokens.txt": "ef3a7e4a8d1af0c9d4dc45aaae1a6242ebe24a7ed6f3d025a49eb29682784c6d",
+      "tts/lexicon.txt": "25254fa1bfa8dbab38513f16e7f63ec1fc9e87efa303611c6d7b585ebbcaebed"
+    },
+    "canonicalTest": "android/app/src/androidTest/java/ai/elizaresearch/alphaphone/LocalSpeechInstrumentedTest.java",
+    "canonicalTestSha256": "fc05574dfb68b703a5e21422ae6bffe22c1cda3773a088f80cda2c80d4b8f550",
+    "canonicalTestUnchanged": true,
+    "evidenceDigests": {
+      "dualABIBuildReceipt": "26bbfae2e60fe1110759ce88f3777d6e0ec98ac64d39d9ea4edacbbb1005c9e8",
+      "physicalNativeReceipt": "af948427441706be8468949f2ae26a8af88fb24777fa31dd2a1db3567e23e1db",
+      "canonicalInstrumentationLog": "895b61f8635b0acdac2555c0210cc001a64c9923a692cfdd7499fb7cd67599d9",
+      "holderResult": "464eed10d25c77b07f29ae37a4d20b8c5dd6721fabbafdfec5671632ec5ffe35",
+      "speechResult": "47acbd34cc4b93a7a4eb52d705aafae6fb47bdc4422f5d40410ccc7e440a6270",
+      "preservedSynthesisWAV": "7b5a531ed6e01e10c6fc62058bba19807b75c2ed0b7909fc688fa6e582c592b8",
+      "resampleDiagnosticReceipt": "d7131e2472430d197305ad283e44073fe64fcee6faaed54f27fde2b1aa87e19a",
+      "sequenceResult": "69079fc2faaede4224d4d42d2a5d69ea1396a7b13a03cc32208f5cdbfcf35b40",
+      "sequenceInstrumentationLog": "d22f5c8201055cfaea416556de84eca8f9898f77bc62f6f0ddac11c599409d45"
+    }
+  },
+  "nativeExecution": {
+    "arm64-v8a": {
+      "deviceClass": "physical Android 16 ARM64",
+      "passed": true,
+      "scope": "JNI load, real Whisper/Piper model sessions, prerecorded recognition, finite PCM synthesis, holder reuse/release/reopen and use-after-close rejection",
+      "appAPKSha256": "14e6b8c1558b97061739b3f277a5c150f9ac1d3830e613cf67eafd1030a7d7f7",
+      "canonicalTestAPKSha256": "2721feabe1edf389d0e2abf3633a7b08c6099907189c290f05d5b399111ddaaf",
+      "actualModelLoads": 2,
+      "microphoneCapture": false,
+      "speakerPlayback": false,
+      "CloudCalls": false
+    },
+    "x86_64": {
+      "passed": false,
+      "state": "not-executed",
+      "scope": "source/build/no-eSpeak/alignment only"
+    }
+  },
+  "functionalAcceptance": {
+    "passed": false,
+    "state": "failed",
+    "suite": "LocalSpeechInstrumentedTest",
+    "testsExecuted": 2,
+    "testsSkipped": 0,
+    "testsPassed": 1,
+    "testsFailed": 1,
+    "abis": {
+      "arm64-v8a": {
+        "passed": false,
+        "state": "failed",
+        "failure": "Synthesized speech recognizes lazy",
+        "input": "The quick brown fox jumps over the lazy dog.",
+        "observedTranscript": "The quick brown fox jumps over the lady's dog.",
+        "originalFloatSamplesRetained": false,
+        "holderTestPassed": true,
+        "remainingFirstTestCases": "not reached after keyword assertion"
+      },
+      "x86_64": {
+        "passed": false,
+        "state": "not-executed"
+      }
+    },
+    "diagnostics": {
+      "savedPCMLinearTranscript": "The quick brown fox jumps over the lazy dog.",
+      "savedPCMFilteredTranscript": "The quick brown fox jumps over the lazy dog.",
+      "savedPCMAfterOriginalASRSequence": "The quick brown fox jumps over the lazy dog.",
+      "conclusion": "Diagnostics do not replace the failed canonical float assertion; no resampler/quantization fix or state-contamination cause established"
+    }
+  },
+  "acceptanceLimits": [
+    "Reviewed byte identity and actual ARM64 JNI execution only; not a full speech functional pass or release acceptance",
+    "x86_64 runtime execution is unverified",
+    "Different JNI hashes from archived baseline; no bit-equivalence claim",
+    "No microphone/speaker perceptual/physical playback acceptance",
+    "Exact packaged native byte match cannot waive failed or missing functional acceptance"
   ]
 }

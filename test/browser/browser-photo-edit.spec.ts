@@ -1,3 +1,4 @@
+import { returnToApps } from './app-navigation';
 import {test,expect,type Page} from '@playwright/test';
 
 // Controlled source pixels in real IndexedDB; the production editor/canvas and UI are used.
@@ -130,6 +131,6 @@ for(const mode of ['failed','cancelled'])test(`photo copy waits for durable requ
 test('a late pending-request read cannot open an editor after Home',async({page})=>{
  await seed(page);await page.getByRole('button',{name:'Photos',exact:true}).click();await page.getByRole('button',{name:/^Captured photo /}).click();
  await page.evaluate(async()=>{const {browserDocuments}=await import('/src/browser/documents.ts'),read=browserDocuments.read;browserDocuments.read=async function(key,signal){if(key==='alpha.photos.pending-copy.v1'){browserDocuments.read=read;const result=await read.call(this,key,signal);await new Promise<void>(resolve=>(window as any).releaseCopyRead=resolve);return result;}return read.call(this,key,signal);};});
- await page.getByRole('button',{name:'Edit photo',exact:true}).click();await expect.poll(()=>page.evaluate(()=>typeof(window as any).releaseCopyRead)).toBe('function');await page.getByRole('button',{name:'Home',exact:true}).click();await page.evaluate(()=>(window as any).releaseCopyRead());await expect(page.getByRole('button',{name:'Save edit',exact:true})).toHaveCount(0);
+ await page.getByRole('button',{name:'Edit photo',exact:true}).click();await expect.poll(()=>page.evaluate(()=>typeof(window as any).releaseCopyRead)).toBe('function');await returnToApps(page);await page.evaluate(()=>(window as any).releaseCopyRead());await expect(page.getByRole('button',{name:'Save edit',exact:true})).toHaveCount(0);
  await page.getByRole('button',{name:'Photos',exact:true}).click();await expect(page.getByRole('button',{name:'Save edit',exact:true})).toHaveCount(0);
 });
