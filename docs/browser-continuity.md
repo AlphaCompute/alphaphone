@@ -14,8 +14,12 @@ Cold startup restores bookmarks, saved normal tabs and history. Saved tabs and h
 
 ## Android provider capability
 
-Native browser creation requires `WebViewFeature.DELETE_BROWSING_DATA` for
-profile-scoped browsing-data purging. Detect the feature at runtime rather than
+Private tabs, Clear browsing data and Clear data for this site require
+`WebViewFeature.DELETE_BROWSING_DATA` for profile-scoped browsing-data deletion;
+without it they are refused with an update message. Normal tabs keep their data
+by decision P-04 and need only `MULTI_PROFILE`, `GET_WEB_VIEW_RENDERER` and
+multi-process mode, so they still open on such a provider; the user then cannot
+clear their data from the browser until the WebView is updated. Detect the feature at runtime rather than
 assuming support from an Android API or WebView version. Production requires a
 maintained, trusted WebView provider and its update policy. A development emulator
 provider or a successful APK build does not qualify the shipping provider.

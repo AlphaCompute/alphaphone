@@ -251,7 +251,9 @@ public class AlphaBrowserPlugin extends Plugin {
   if (tabs.size() >= 8) { call.reject("Close a tab before opening another"); return; }
   if (clearing && !priv) { call.reject("Browsing data is being cleared. Try again in a moment."); return; }
   if (!WebViewFeature.isFeatureSupported(WebViewFeature.MULTI_PROFILE) || !WebViewFeature.isFeatureSupported(WebViewFeature.GET_WEB_VIEW_RENDERER)) { call.reject("This Android WebView does not support isolated browser profiles"); return; }
-  if (!WebViewFeature.isFeatureSupported(WebViewFeature.DELETE_BROWSING_DATA)) { call.reject("This Android WebView cannot securely clear browser data. Update Android System WebView to browse."); return; }
+  // Normal tabs keep their data by decision P-04, so only private tabs depend on
+  // secure profile-scoped deletion when they close.
+  if (priv && !WebViewFeature.isFeatureSupported(WebViewFeature.DELETE_BROWSING_DATA)) { call.reject("Private tabs need an Android System WebView that can securely delete their data. Update Android System WebView to use private tabs."); return; }
   try { call.resolve(state(build(id, priv, priv ? namespace + "_" + id : PERSISTENT_PROFILE))); }
   catch (Exception e) { call.reject("Could not create an isolated browser tab"); }
  }); }
