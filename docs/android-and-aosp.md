@@ -39,7 +39,9 @@ receive the source set. Without `--test-mocks` the build script removes both
 environment. Test-mocks APKs are never distribution or acceptance artifacts.
 Instrumentation cases that need a loopback HTTP fixture server or the DevelopmentAgent
 plugin assume `BuildConfig.ELIZA_DEV_ALLOW_TEST_MOCKS`: flag-off distribution debug
-APKs skip them, and the CI test-mocks smoke lane runs them.
+APKs skip them. The CI job that ran them on test-mocks APKs was removed on October 8 with
+the other smoke suites, so they now run only in a direct instrumentation run of a
+test-mocks build on an owned disposable emulator.
 
 Release variants are minified and resource-shrunk with R8 using
 `android/app/proguard-rules.pro`, which keeps Capacitor plugin reflection targets,
