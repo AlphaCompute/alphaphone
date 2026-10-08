@@ -499,6 +499,32 @@ export const connectionController = {
     actionReceipts.set(proposal.id, { sessionId, result });
     return result;
   },
+  async pendingActions(context:ContextEnvelope,signal:AbortSignal):Promise<ActionProposal[]> {
+    const selected=active,session=state.session,generation=epoch,history=state.history;
+    if(!selected?.actions||!session||state.open||state.busy||document.hidden||context.sensitive)return [];
+    const account=selected.kind==='resident'&&isAndroid&&!testMocksEnabled?service:null;
+    if(selected.kind==='resident'&&isAndroid&&!testMocksEnabled&&!account)throw Error('Cloud account is unavailable.');
+    const current=()=>{signal.throwIfAborted();if(generation!==epoch||selected!==active||state.session!==session||state.history!==history||state.open||state.busy||document.hidden||account&&(service!==account||state.cloudAccount?.sessionId!==account.identity.sessionId))throw Error('The agent or conversation changed.');};
+    const checkAccount=async()=>{current();if(account){const credential=await cloudCredentialStore.read(account.identity.environment);current();if(credential?.credentialId!==account.identity.credentialId||credential.expiresAt!==undefined&&credential.expiresAt<=Date.now())throw Error('Cloud account changed or expired.');}};
+    const key=conversationKey(session),choice=await captureConversationChoice(key,signal);
+    await checkAccount();
+    const proposals=await selected.actions.pending(context,signal);
+    await checkAccount();
+    const after=Capacitor.getPlatform()==='android'?captureConversationChoice(key,signal):await captureConversationChoice(key,signal);
+    current();if(JSON.stringify(choice)!==JSON.stringify(after))throw Error('Saved conversation selection changed.');
+    return proposals;
+  },
+  async approvePendingAction(id:string,context:ContextEnvelope,signal:AbortSignal):Promise<OperationReceipt> {
+    // Refresh authenticated state and exact source preconditions at the tap. No
+    // cached chat prose or prior approval can authorize a recovered proposal.
+    const selected=active,session=state.session;
+    const proposals=await this.pendingActions(context,signal);
+    signal.throwIfAborted();
+    if(active!==selected||state.session!==session)throw Error('The agent changed.');
+    const proposal=proposals.find(proposal=>proposal.id===id);
+    if(!proposal)throw Error('This action is no longer pending for the current screen. Open its original selection and review again.');
+    return this.execute(proposal,context,signal);
+  },
   getWorkflowPresentationProtocol():1|2 { return active?.actions ? active.workflowProtocol ?? 1 : 1; },
   getWorkflowDeviceTarget(){const selected=active;if(!selected||!selected.actions||!selected.actions.credential.enrollmentId)return null;return {installationId:selected.actions.credential.installationId,enrollmentId:selected.actions.credential.enrollmentId};},
   async workflowPhoneActions(review:WorkflowPhoneReview,context:ContextEnvelope,signal:AbortSignal){

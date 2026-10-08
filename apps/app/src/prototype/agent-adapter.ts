@@ -59,6 +59,33 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
       input.style.height='44px';input.style.height=`${Math.max(44,input.scrollHeight)}px`;
     }
   }
+  function recoverPendingActions(shell:Shell) {
+    const connection=connectionController.getSnapshot(),currentContext=alphaClient.getState().context;
+    if(shell.pendingActionApproval&&(document.hidden||currentContext.sensitive||connection.open||JSON.stringify(shell.pendingActionApprovalContext)!==JSON.stringify(currentContext)||JSON.stringify(shell.pendingActionApprovalSession)!==JSON.stringify(connection.session)))shell.pendingActionApproval.abort();
+    const blocked=currentContext.view==='workflows'||!shell.live||!connection.session||!connection.phoneActionsAvailable||connection.open||connection.busy||document.hidden||currentContext.sensitive||shell.S().typing||shell.pendingActionApproval;
+    const key=blocked?null:JSON.stringify([connection.session,connection.history?.revision,currentContext]);
+    if(!key)shell.pendingActionRecoveryFailedKey=null;
+    if(shell.pendingActionRecoveryKey===key||key!==null&&shell.pendingActionRecoveryFailedKey===key)return;
+    shell.pendingActionRecoveryFailedKey=null;shell.pendingActionRecoveryKey=key;shell.pendingActionRecoveryAbort?.abort();
+    if(!key)return;
+    const controller=shell.pendingActionRecoveryAbort=new AbortController();
+    const current=()=>shell.live&&!controller.signal.aborted&&shell.pendingActionRecoveryKey===key&&JSON.stringify(connectionController.getSnapshot().session)===JSON.stringify(connection.session)&&JSON.stringify(alphaClient.getState().context)===JSON.stringify(currentContext)&&!document.hidden&&!connectionController.getSnapshot().open&&!connectionController.getSnapshot().busy;
+    void connectionController.pendingActions(currentContext,controller.signal).then(proposals=>{
+      if(!current())return;
+      shell.setState((previous:Shell)=>{
+        if(!current())return null;
+        const ids=new Set(proposals.map(proposal=>proposal.id));
+        const msgs=previous.msgs.map((message:Shell)=>ids.has(message.card?.proposalId)&&!message.card.done&&!message.card.recovered?{...message,card:{...message.card,recovered:true,proposalSession:connection.session}}:message);
+        const existing=new Set(msgs.map((message:Shell)=>message.card?.proposalId));
+        const recovered=proposals.filter(proposal=>!existing.has(proposal.id)).map(proposal=>({id:crypto.randomUUID(),from:'agent',text:proposal.description,card:{type:'generic',icon:'check',title:'Approve: '+proposal.title,sub:'Tap to approve this exact action',proposalId:proposal.id,recovered:true,proposalSession:connection.session}}));
+        return recovered.length||msgs.some((message:Shell,index:number)=>message!==previous.msgs[index])?{msgs:[...msgs,...recovered]}:null;
+      });
+    }).catch(()=>{
+      if(!current())return;
+      shell.pendingActionRecoveryKey=null;shell.pendingActionRecoveryFailedKey=key;
+      shell.toast('Pending actions could not be checked. Return to the app or reopen the selected item to retry.');
+    });
+  }
   function context(shell: Shell) {
     const s = shell.S();
     const view = s.view || 'home';
@@ -111,6 +138,7 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
       ...(selected && shell.notesSelection ? { selectedObject: shell.notesSelection } : providerSelection ? { selectedObject: providerSelection } : ['files','photos'].includes(view) && shell.vget(view).open === '__native_selected_document' && shell.selectedContext ? { selectedObject: shell.selectedContext } : {}),
     });
     updateBackAvailability(shell);
+    recoverPendingActions(shell);
   }
   p.componentDidMount = function () {
     activeShell=this;this.notesOpenAbort=new AbortController();
@@ -408,6 +436,7 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
   };
   p.componentDidUpdate = function (prev: Shell) { originalUpdate.call(this, prev); context(this); sizeComposer();this.composerDraft?.edit(String(this.S().draft||'')); };
   p.componentWillUnmount = function () {
+    this.pendingActionRecoveryAbort?.abort();this.pendingActionApproval?.abort();
     this.draftRecoveryAbort?.abort();this.composerDraft?.retire(false);this.draftBindingAbort?.abort();
     this.notesOpenAbort?.abort();if(activeShell===this){activeShell=null;notesRecovery?.abort();}
     this.closeSummaryReview?.();
@@ -603,11 +632,18 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
       return;
     }
     if (card.proposalId && !card.done) {
+      if(this.pendingActionApproval)return;
       try {
-        const sessionId = connectionController.getSnapshot().session?.sessionId;
+        context(this);
+        const session=connectionController.getSnapshot().session;
+        if(card.recovered&&JSON.stringify(card.proposalSession)!==JSON.stringify(session))throw Error('The agent changed. Review this action again.');
+        this.pendingActionRecoveryAbort?.abort();
+        const approval=this.pendingActionApproval=new AbortController();
+        this.pendingActionApprovalContext=alphaClient.getState().context;this.pendingActionApprovalSession=session;
+        const sessionId = session?.sessionId;
         const beforeView = this.S().view;
         let receipt;
-        try { receipt = await alphaClient.approve(card.proposalId); }
+        try { receipt = card.recovered?await connectionController.approvePendingAction(card.proposalId,alphaClient.getState().context,approval.signal):await alphaClient.approve(card.proposalId); }
         catch (error) {
           // Navigation may cancel the context-bound chat wait after the effect.
           // Await only that already-started journaled action; never execute again.
@@ -618,7 +654,8 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
         this.setState({ msgs: this.S().msgs.map((m: Shell) => m.id === message.id ? { ...m, card: { ...m.card, done: true, sub: receipt.summary, title: receipt.status === 'succeeded' ? 'Completed' : 'Not completed' } } : m) });
         if (this.S().view !== beforeView) this.toast(receipt.summary);
         else this.agentSay(receipt.summary);
-      } catch (e) { this.agentSay(e instanceof Error ? e.message : 'Action could not complete.'); }
+      } catch (e) { if(this.live&&(!card.recovered||JSON.stringify(card.proposalSession)===JSON.stringify(connectionController.getSnapshot().session)))this.agentSay(e instanceof Error ? e.message : 'Action could not complete.'); }
+      finally {this.pendingActionApproval=null;if(this.live)context(this);}
     } else if (card.go) this.openView(card.go.view, card.go.patch);
   };
   p.startVoice = async function () {
