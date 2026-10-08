@@ -1,0 +1,30 @@
+package ai.elizaresearch.alphaphone;
+import org.json.*;
+import java.nio.file.*;
+import java.time.*;
+import java.util.*;
+public final class NativeDigestSourcesTest {
+ interface Work{void run()throws Exception;}
+ static void require(boolean value){if(!value)throw new AssertionError();}
+ static void rejects(Work work)throws Exception{try{work.run();}catch(Exception expected){return;}throw new AssertionError("Expected rejection");}
+ public static void main(String[] args)throws Exception {
+  Path dir=Files.createTempDirectory("native-digest-");Object lock=new Object();long[] now={Instant.parse("2026-10-08T15:41:19.576Z").toEpochMilli()};
+  NativeDigestSources.Storage storage=new NativeDigestSources.Storage(){public String read(String key)throws Exception{Path p=dir.resolve(HostedResultNotices.hash(key));return Files.exists(p)?Files.readString(p):null;}public void write(String key,String value)throws Exception{Files.writeString(dir.resolve(HostedResultNotices.hash(key)),value);}};
+  JSONObject binding=new JSONObject().put("ownerId","owner").put("agentId","agent").put("installationId","installation").put("enrollmentId","enrollment");
+  JSONObject scope=new JSONObject().put("calendars",new JSONArray().put(new JSONObject().put("id","1").put("revision","a".repeat(64)))).put("reminders",true).put("timeZone","America/Los_Angeles").put("window","owner_day_and_overdue_reminders").put("maximumItems",4).put("modelEgress",true);
+  NativeDigestSources sources=new NativeDigestSources(storage,lock,()->now[0]);JSONObject grant=sources.approve(binding,"source",scope,now[0]+7*86400000L,now[0],()->{});String revision=grant.getString("revision");
+  Path grantFile;try(var files=Files.list(dir)){grantFile=files.findFirst().orElseThrow();}String original=Files.readString(grantFile);JSONObject corrupt=new JSONObject(original);corrupt.getJSONObject("scope").put("calendars",new JSONArray().put(new JSONObject().put("id","2").put("revision","b".repeat(64))));Files.writeString(grantFile,corrupt.toString());rejects(()->sources.current(binding,"source",revision,now[0],()->{}));Files.writeString(grantFile,original);
+  NativeDigestSources restarted=new NativeDigestSources(storage,lock,()->now[0]);int[] reads={0};String[] range={null,null};
+  NativeDigestSources.Reader reader=new NativeDigestSources.Reader(){public JSONArray calendar(JSONArray ids,String start,String end,int maximum,String startDate,String endDateExclusive)throws Exception{reads[0]++;require(ids.length()==1&&ids.getJSONObject(0).getString("id").equals("1"));range[0]=start;range[1]=end;return new JSONArray().put(new JSONObject().put("calendarId","1").put("title","Selected"));}public JSONArray reminders()throws Exception{return new JSONArray().put(new JSONObject().put("id","reminder").put("title","Due today").put("dueAt",now[0]).put("at",now[0]-600000).put("body","Private body excluded").put("status","scheduled")).put(new JSONObject().put("id","done").put("title","Completed").put("at",now[0]).put("status","completed")).put(new JSONObject().put("id","later").put("title","Future").put("at",now[0]+86400000).put("status","scheduled"));}};
+  JSONObject result=restarted.read(binding,"source",revision,now[0],now[0],reader,()->{});require(result.getJSONArray("reminders").length()==1&&!result.toString().contains("Private body"));require(result.getJSONArray("reminders").getJSONObject(0).getString("dueAt").equals("2026-10-08T15:41:19.576Z"));require(range[0].equals("2026-10-08T07:00:00.000Z")&&range[1].equals("2026-10-09T07:00:00.000Z"));
+  for(String field:new String[]{"ownerId","agentId","installationId","enrollmentId"}){JSONObject wrong=new JSONObject(binding.toString()).put(field,"other");rejects(()->restarted.read(wrong,"source",revision,now[0],now[0],reader,()->{}));}rejects(()->restarted.read(binding,"source","bad",now[0],now[0],reader,()->{}));
+  rejects(()->sources.approve(binding,"no-egress",new JSONObject(scope.toString()).put("modelEgress",false),now[0]+1000,now[0],()->{}));rejects(()->sources.approve(binding,"zone",new JSONObject(scope.toString()).put("timeZone","Pacific/Wrong"),now[0]+1000,now[0],()->{}));
+  JSONObject small=new JSONObject(scope.toString()).put("maximumItems",1);JSONObject smallGrant=sources.approve(binding,"small",small,now[0]+86400000,now[0],()->{});rejects(()->sources.read(binding,"small",smallGrant.getString("revision"),now[0],now[0],reader,()->{}));
+  for(String date:new String[]{"2026-03-08T15:00:00Z","2026-11-01T16:00:00Z"}){now[0]=Instant.parse(date).toEpochMilli();String source=date.substring(0,10);JSONObject dst=sources.approve(binding,source,scope,now[0]+86400000,now[0],()->{});sources.read(binding,source,dst.getString("revision"),now[0],now[0],reader,()->{});long hours=Duration.between(Instant.parse(range[0]),Instant.parse(range[1])).toHours();require(hours==(date.contains("03-08")?23:25));}
+  now[0]=Instant.parse("2026-10-08T15:41:19.576Z").toEpochMilli();NativeDigestSources.Reader racing=new NativeDigestSources.Reader(){public JSONArray calendar(JSONArray ids,String a,String b,int m,String startDate,String endDateExclusive)throws Exception{restarted.revoke(binding,"source",()->{});return reader.calendar(ids,a,b,m,startDate,endDateExclusive);}public JSONArray reminders()throws Exception{return reader.reminders();}};
+  rejects(()->sources.read(binding,"source",revision,now[0],now[0],racing,()->{}));int before=reads[0];rejects(()->sources.read(binding,"source",revision,now[0],now[0],reader,()->{}));require(reads[0]==before);rejects(()->sources.approve(binding,"source",scope,now[0]+7*86400000L,now[0],()->{}));
+  now[0]+=86400001;rejects(()->sources.read(binding,"small",smallGrant.getString("revision"),now[0],now[0],reader,()->{}));
+  try(var files=Files.list(dir)){for(Path p:(Iterable<Path>)files::iterator)Files.delete(p);}Files.delete(dir);
+  System.out.println("PASS native digest sources: durable consent/restart, tenant/enrollment fences, revocation during read, selected scope, due-time projection, DST, overflow, expiry and egress");
+ }
+}

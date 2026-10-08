@@ -113,6 +113,7 @@ export default defineConfig({
   optimizeDeps: { include: ['onnxruntime-web/wasm'] },
   resolve: {
     alias: {
+      "@elizaos/contracts/native-notes-query": fileURLToPath(new URL("./.eliza/client-features/packages/contracts/src/native-notes-query.ts",import.meta.url)),
       // The external-WebAssembly build: the bundled variant would make Vite emit a second,
       // unverified copy of the 14 MB runtime into assets/ (and so into every APK).
       "onnxruntime-web/wasm": fileURLToPath(new URL("./node_modules/onnxruntime-web/dist/ort.wasm.min.mjs", import.meta.url)),

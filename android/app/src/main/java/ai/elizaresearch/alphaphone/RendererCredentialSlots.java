@@ -3,7 +3,7 @@ package ai.elizaresearch.alphaphone;
 /** Public credential storage must not bypass native journal/provider state machines. */
 final class RendererCredentialSlots {
  private static final String[] NATIVE_NAMESPACES = {
-  "resident-results", "local-agent-provider", "workflow-notice-taps",
+  "native-digest-source", "resident-results", "local-agent-provider", "workflow-notice-taps",
   "workflow-notice-delivery", "action-journal", "hosted-background",
   "hosted-digests", "hosted-notices", "note-audio-metadata", "reminder-taps"
  };

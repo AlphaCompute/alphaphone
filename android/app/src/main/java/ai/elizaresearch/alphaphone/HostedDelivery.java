@@ -20,6 +20,16 @@ final class HostedDelivery {
    public JSONObject exchange(JSONObject request)throws Exception{return new JSONObject(ElizaAgentService.requestLocalAgent(request.toString()));}
   },guard::check);
  }
+ interface NativeSourceWork {JSONObject run(JSONObject binding,NativeDigestSources.Guard guard)throws Exception;}
+ JSONObject nativeSource(String expectedSession,NativeSourceWork work)throws Exception {
+  JSONObject b; synchronized(gate){b=active();if(!"resident".equals(b.optString("mode"))||!b.optBoolean("enabled")||expectedSession!=null&&!expectedSession.equals(b.optString("sessionId")))throw new SecurityException("Native source connection unavailable");}
+  String generation=b.getString("generation");
+  try(HostedInbox.DeliveryTransport t=openTransport(b,()->check(generation))){
+   t.verify();JSONObject device=new JSONObject(store.read(b.getString("deviceSlot")));
+   JSONObject binding=new JSONObject().put("ownerId",b.getString("ownerId")).put("agentId",b.getString("agentId")).put("installationId",device.getString("installationId")).put("enrollmentId",device.getString("enrollmentId"));
+   NativeDigestSources.Guard guard=()->{check(generation);t.check();};guard.check();JSONObject result=work.run(binding,guard);guard.check();return result;
+  }
+ }
  private JSONObject active()throws Exception {String raw=store.read(ACTIVE);return raw==null?new JSONObject():new JSONObject(raw);}
  void check(String generation)throws Exception {synchronized(gate){JSONObject a=active();if(!generation.equals(a.optString("generation"))||!a.optBoolean("enabled"))throw new HostedDeliveryCancelled();}}
  private String reserve(String attemptId)throws Exception {String generation=UUID.randomUUID().toString();synchronized(gate){store.write(ACTIVE,new JSONObject().put("generation",generation).put("enabled",false).put("status","paused").put("attemptId",attemptId).toString());HostedInbox.DeliveryTransport t=transport;if(t!=null)t.close();store.remove("resident-results:v1:credential");}HostedDeliveryWorker.cancel(context);return generation;}

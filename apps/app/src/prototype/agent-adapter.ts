@@ -1,3 +1,6 @@
+import {formatDeviceRecordDateTime} from "../../../../.eliza/client-features/plugins/plugin-assistant/src/services/device-actions/device-record-presentation.ts";
+import {isNativeNotesQuery} from '../../../../.eliza/client-features/packages/contracts/src/native-notes-query.ts';
+import {executeNotesQuery} from './notes-query-executor';
 import {presentDeviceRecordOperation} from '../runtime/device-record-presentation';
 import { passwordSurfaceOpen } from '../passwords/password-manager';
 import {AssistantDraftController} from './assistant-draft-controller';
@@ -325,6 +328,7 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
         return {status:'succeeded',summary:'Shared the exact selected Maps snapshot with approval. Navigation was not started.',mapsResult};
       }
       if(isCalendarOperation(operation)){
+        if(operation.type==='calendar_create_local'||operation.type==='calendar_read_next'){if(Capacitor.getPlatform()!=='android'||expectedContext.sensitive||document.hidden)throw Error('Foreground Android Calendar is required');const permission=await registerPlugin<{requestAccess():Promise<{status:string}>;requestWorkflowReadAccess():Promise<{status:string}>}>('AlphaCalendar')[operation.type==='calendar_create_local'?'requestAccess':'requestWorkflowReadAccess']();signal.throwIfAborted();context(this);if(permission.status!=='granted'||JSON.stringify(alphaClient.getState().context)!==JSON.stringify(expectedContext))throw Error('Calendar permission or phone context changed');}
         const calendar=registerPlugin<{executeAgent(input:{operation:unknown;operationId:string}):Promise<{status:string;result?:unknown}>;cancelAgent(input:{operationId:string}):Promise<unknown>}>('AlphaCalendar');
         const cancel=()=>{void calendar.cancelAgent({operationId}).catch(()=>{});};signal.addEventListener('abort',cancel,{once:true});
         let result:{status:string;result?:unknown};try{signal.throwIfAborted();result=await calendar.executeAgent({operation,operationId});}finally{signal.removeEventListener('abort',cancel);}
@@ -332,9 +336,16 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
           const calendarResult=validateCalendarResult(operation,result.result);
           // Return the receipt immediately; DeviceActions must journal it before
           // the existing committed event refreshes native or browser rows.
-          return {status:'succeeded',summary:presentDeviceRecordOperation(operation,expectedContext.timeZone).appliedSummary,calendarResult};
+          return {status:'succeeded',summary:calendarResult.kind==='calendar_read_next'?(calendarResult.event?`Shared ${calendarResult.event.timing==='ongoing'?'the ongoing all-day':'the next'} Calendar event “${calendarResult.event.title}”.`:`No events found from ${formatDeviceRecordDateTime(calendarResult.window.start,calendarResult.window.timeZone)} to ${formatDeviceRecordDateTime(calendarResult.window.end,calendarResult.window.timeZone)} (${calendarResult.window.timeZone}), the reviewed 30-local-day window.`):presentDeviceRecordOperation(operation,expectedContext.timeZone).appliedSummary,calendarResult};
         }
         return {status:result.status==='unknown'?'unknown':'failed',summary:result.status==='unknown'?'Calendar outcome is unconfirmed. Inspect action history before another action.':result.status==='cancelled'?'Calendar review cancelled. Nothing was changed.':'Calendar target changed, access was denied, or the operation is unsupported. Nothing was changed.'};
+      }
+      if(isNativeNotesQuery(operation)){
+        if(this.notesStorageFailed||this.notesPending||!this.notesStore)return {status:'failed',summary:'Notes storage is unavailable. Nothing was shared.'};
+        const ownerSession=connectionController.getSnapshot().session,ownerTarget=JSON.stringify(connectionController.getWorkflowDeviceTarget());
+        const current=()=>{signal.throwIfAborted();context(this);if(!ownerSession||connectionController.getSnapshot().session!==ownerSession||JSON.stringify(connectionController.getWorkflowDeviceTarget())!==ownerTarget||!this.live||this.notesPending||this.notesStorageFailed||document.hidden||expectedContext.sensitive||!['home','notes'].includes(expectedContext.view)||JSON.stringify(alphaClient.getState().context)!==JSON.stringify(expectedContext))throw Error('Notes query or connection changed');};
+        try{return await executeNotesQuery(this.notesStore,operation,operationId,signal,current);
+        }catch{return {status:'failed',summary:'Notes changed or sharing became unavailable. Review the query again; nothing was shared.'};}
       }
       if(isNotesOperation(operation)){
         try{
@@ -478,7 +489,7 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
     }
     try {
       // A Trash restore reinstates the exact saved record; it is not a content modification.
-      if(!isAndroid&&!options?.exact)patch={...patch,list:stampNoteChanges(this.notesStore.list,patch.list)};
+      if(!options?.exact)patch={...patch,list:stampNoteChanges(this.notesStore.list,patch.list)};
       const pending=this.notesStore.replace(patch.list);
       this.notesPending++;
       this.notesSelectionKey=null;this.notesSelection=null;
