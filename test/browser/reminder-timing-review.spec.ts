@@ -1,3 +1,5 @@
+import {fileURLToPath} from 'node:url';
+import { returnToApps } from './app-navigation';
 import {test,expect} from '@playwright/test';
 test.use({timezoneId:'UTC'});
 for(const alert of ['10 min','None'])test(`one-time reminder preserves reviewed alert ${alert} after reload`,async({page})=>{
@@ -27,7 +29,8 @@ for(const repeat of [false,true])test(`no-alert metadata and completion preserve
 });
 test('numeric lead survives snooze, selected read and metadata edit',async({page})=>{
  await create(page,'10 min');const before=await row(page);await page.getByRole('button',{name:'Snooze reminder 10 minutes',exact:true}).click();await expect.poll(async()=> (await row(page)).snoozedAt).toBe(Date.parse('2027-03-13T00:00Z'));
- const read=await page.evaluate(async()=>{const {registerPlugin}=await import('/src/platform-plugins.ts');const {validateReminderResult}=await import('/src/runtime/reminder-contract.ts');const d=registerPlugin<any>('DailyApps'),r=(await d.listReminders()).reminders[0],op={type:'reminder_read_selected',target:r.target};const response=await d.operateReminder({operationId:crypto.randomUUID(),bindingHash:'a'.repeat(64),operation:op});return validateReminderResult(op,response.result);});expect(read.at).toBe(Date.parse('2027-03-13T00:10Z'));expect(read.fields.schedule).toMatchObject({at:before.at,dueAt:before.dueAt,alertMinutes:10});
+ const contractUrl='/@fs'+fileURLToPath(new URL('../../.eliza/client-features/plugins/plugin-assistant/src/services/device-actions/reminder-contract.ts',import.meta.url));
+ const read=await page.evaluate(async(contractUrl)=>{const {registerPlugin}=await import('/src/platform-plugins.ts');const {validateReminderResult}=await import(contractUrl);const d=registerPlugin<any>('DailyApps'),r=(await d.listReminders()).reminders[0],op={type:'reminder_read_selected',target:r.target};const response=await d.operateReminder({operationId:crypto.randomUUID(),bindingHash:'a'.repeat(64),operation:op});return validateReminderResult(op,response.result);},contractUrl);expect(read.at).toBe(Date.parse('2027-03-13T00:10Z'));expect(read.fields.schedule).toMatchObject({at:before.at,dueAt:before.dueAt,alertMinutes:10});
  await page.getByRole('button',{name:'Edit event',exact:true}).click();await page.getByRole('textbox',{name:'Title',exact:true}).fill('Snoozed metadata');await page.getByRole('button',{name:'Save event',exact:true}).click();await expect(page.getByRole('button',{name:'Save event',exact:true})).toHaveCount(0);expect(await row(page)).toMatchObject({at:read.at,dueAt:before.dueAt,alertMinutes:10,occurrenceId:before.occurrenceId});
 });
 test('no-alert edit enables only explicitly reviewed numeric alert',async({page})=>{
@@ -75,7 +78,7 @@ for(const version of ['missing','malformed','error'])test(`older native timing s
 test('late native timing admission cannot dispatch after draft navigation',async({page})=>{
  await page.addInitScript(()=>localStorage.setItem('alpha.connection.selection.v1',JSON.stringify({kind:'offline'})));await page.clock.setFixedTime(new Date('2027-03-13T00:00Z'));await page.goto('/');await page.getByRole('button',{name:'Calendar',exact:true}).click();
  await page.evaluate(async()=>{const {BrowserDaily}=await import('/src/browser/daily.ts');(window as any).timingDispatches=0;BrowserDaily.prototype.surfaceInfo=async()=>new Promise(resolve=>{(window as any).releaseTiming=()=>resolve({developmentBuild:true,assistant:false,reminderTimingVersion:2});});BrowserDaily.prototype.scheduleReminder=async()=>{(window as any).timingDispatches++;throw Error('Must not dispatch');};});
- await page.getByRole('button',{name:'New event',exact:true}).click();await page.getByRole('textbox',{name:'Title',exact:true}).fill('Late admission');await page.getByRole('button',{name:'Reminders',exact:true}).click();await page.getByRole('button',{name:'Save event',exact:true}).click();await expect.poll(()=>page.evaluate(()=>typeof (window as any).releaseTiming)).toBe('function');await page.getByRole('button',{name:'Back to calendar',exact:true}).last().click();await page.getByRole('button',{name:'Home',exact:true}).click();await page.evaluate(()=>(window as any).releaseTiming());
+ await page.getByRole('button',{name:'New event',exact:true}).click();await page.getByRole('textbox',{name:'Title',exact:true}).fill('Late admission');await page.getByRole('button',{name:'Reminders',exact:true}).click();await page.getByRole('button',{name:'Save event',exact:true}).click();await expect.poll(()=>page.evaluate(()=>typeof (window as any).releaseTiming)).toBe('function');await page.getByRole('button',{name:'Back to calendar',exact:true}).last().click();await returnToApps(page);await page.evaluate(()=>(window as any).releaseTiming());
  expect(await page.evaluate(()=>(window as any).timingDispatches)).toBe(0);expect(await page.evaluate(async()=>Object.keys(await (await import('/src/runtime/reminder-creations.ts')).reminderCreations()).length)).toBe(0);
 });
 

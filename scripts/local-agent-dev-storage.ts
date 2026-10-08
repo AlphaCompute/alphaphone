@@ -1,5 +1,5 @@
-import {isReminderCreate,validateReminderCreate,validateReminderCreateResult} from '../apps/app/src/runtime/reminder-create-contract.ts';
-import {validateReminderOperation,validateReminderResult} from '../apps/app/src/runtime/reminder-contract.ts';
+import {isReminderCreate,validateReminderCreate,validateReminderCreateResult} from '../.eliza/client-features/plugins/plugin-assistant/src/services/device-actions/reminder-create-contract.ts';
+import {validateReminderOperation,validateReminderResult} from '../.eliza/client-features/plugins/plugin-assistant/src/services/device-actions/reminder-contract.ts';
 import {mkdirSync,readFileSync,writeFileSync,renameSync,existsSync,chmodSync} from 'node:fs';
 import {join} from 'node:path';
 import {createHash,randomUUID} from 'node:crypto';

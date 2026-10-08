@@ -1,5 +1,5 @@
-import {isReminderCreate,validateReminderCreate,validateReminderCreateResult,type ReminderCreateOperation,type ReminderCreateResult} from '../runtime/reminder-create-contract';
-import { validateReminderOperation, reminderFields, reminderTiming, type ReminderOperation, type ReminderResult, type ReminderTarget } from '../runtime/reminder-contract';
+import {isReminderCreate,validateReminderCreate,validateReminderCreateResult,type ReminderCreateOperation,type ReminderCreateResult} from '../../../../.eliza/client-features/plugins/plugin-assistant/src/services/device-actions/reminder-create-contract.ts';
+import { validateReminderOperation, reminderFields, reminderTiming, type ReminderOperation, type ReminderResult, type ReminderTarget } from '../../../../.eliza/client-features/plugins/plugin-assistant/src/services/device-actions/reminder-contract.ts';
 import { BrowserFiles } from './files';
 import { initialReminderDue, nextReminderOccurrence } from './reminder-recurrence';
 import { WebPlugin } from '@capacitor/core';

@@ -1,6 +1,6 @@
 import {test,expect,Page} from '@playwright/test';
 async function ring(page:Page){await page.getByRole('button',{name:'Device controls',exact:true}).click();await page.getByRole('button',{name:'Incoming call',exact:true}).click();}
-test.beforeEach(async({page})=>{await page.addInitScript(()=>localStorage.setItem('alpha.connection.selection.v1',JSON.stringify({kind:'offline'})));await page.goto('/?mode=dev');});
+test.beforeEach(async({page})=>{await page.addInitScript(()=>localStorage.setItem('alpha.connection.selection.v1',JSON.stringify({kind:'offline'})));await page.goto('/?mode=dev&tools=1');});
 test('device incoming call accepts and ends as one incoming history entry',async({page})=>{
  await ring(page);await expect(page.getByRole('button',{name:'Accept',exact:true})).toBeVisible();await ring(page);await page.getByRole('button',{name:'Accept',exact:true}).click();await ring(page);await expect(page.getByRole('button',{name:'Decline',exact:true})).toHaveCount(0);await page.getByRole('button',{name:'End call',exact:true}).click();const rows=await page.evaluate(()=>JSON.parse(localStorage.getItem('alpha.dev.app.phone')!).recents.filter((r:any)=>r.at));expect(rows).toHaveLength(1);expect(rows[0]).toMatchObject({pid:'maya',dir:'in'});await page.reload();await page.getByRole('button',{name:'Phone',exact:true}).click();await expect(page.getByRole('button',{name:'End call',exact:true})).toHaveCount(0);
 });

@@ -50,7 +50,7 @@ export function stageWorkerArtifact(source,destination,expected={}) {
   writeFileSync(join(temporary,'files.sha256'),index);
   if(existsSync(target)){renameSync(target,backup);moved=true;}
   try{renameSync(temporary,target);}catch(error){if(moved)renameSync(backup,target);throw error;}
-  if(moved)rmSync(backup,{recursive:true});
+  if(moved)rmSync(backup,{recursive:true,maxRetries:3,retryDelay:100});
   return {files:verified.files.length,bytes:verified.bytes,indexSha256:workerHash(Buffer.from(index))};
- }finally{rmSync(temporary,{recursive:true,force:true});}
+ }finally{rmSync(temporary,{recursive:true,force:true,maxRetries:3,retryDelay:100});}
 }

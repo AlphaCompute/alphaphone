@@ -1,7 +1,7 @@
 import {test,expect} from '@playwright/test';
 import {readFile} from 'node:fs/promises';
 const key='alpha.browser.calendar.v1',raw='{broken calendar';
-test.beforeEach(async({page})=>{await page.addInitScript(({key,raw})=>{localStorage.setItem('alpha.connection.selection.v1',JSON.stringify({kind:'offline'}));if(!sessionStorage.getItem('calendar-recovery-seed')){localStorage.setItem(key,raw);localStorage.setItem('unrelated-recovery-test','retain');sessionStorage.setItem('calendar-recovery-seed','1');}},{key,raw});await page.goto('/');});
+test.beforeEach(async({page})=>{await page.addInitScript(({key,raw})=>{localStorage.setItem('alpha.connection.selection.v1',JSON.stringify({kind:'offline'}));if(!sessionStorage.getItem('calendar-recovery-seed')){localStorage.setItem(key,raw);localStorage.setItem('unrelated-recovery-test','retain');sessionStorage.setItem('calendar-recovery-seed','1');}},{key,raw});await page.goto('/?tools=1');});
 async function open(page:any){await page.getByRole('button',{name:'Device controls',exact:true}).click();await page.getByRole('button',{name:'Calendar recovery',exact:true}).click();return page.getByRole('dialog',{name:'Browser calendar recovery'});}
 test('backup preserves damaged bytes and reviewed reset restores an empty usable calendar',async({page},info)=>{
  await page.getByRole('button',{name:'Open your calendar',exact:true}).click();await page.getByRole('button',{name:'Recover browser calendar',exact:true}).click();const d=page.getByRole('dialog',{name:'Browser calendar recovery'});const downloading=page.waitForEvent('download');await d.getByRole('button',{name:'Download calendar backup'}).click();const download=await downloading;expect(await readFile((await download.path())!,'utf8')).toBe(raw);

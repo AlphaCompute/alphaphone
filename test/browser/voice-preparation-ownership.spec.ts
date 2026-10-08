@@ -1,3 +1,4 @@
+import { returnToApps } from './app-navigation';
 import {test,expect} from '@playwright/test';
 for(const change of ['navigation','return','owner','none'] as const)test(`voice preparation rejection respects ${change}`,async({page})=>{
  await page.addInitScript(()=>localStorage.setItem('alpha.connection.selection.v1',JSON.stringify({kind:'offline'})));
@@ -13,7 +14,7 @@ for(const change of ['navigation','return','owner','none'] as const)test(`voice 
  });
  await page.getByRole('button',{name:'Talk',exact:true}).click();await expect.poll(()=>page.evaluate(()=>(window as any).preparation.probes)).toBe(1);
  if(change==='navigation'||change==='return')await page.getByRole('button',{name:'Settings',exact:true}).click();
- if(change==='return')await page.getByRole('button',{name:'Home',exact:true}).click();
+ if(change==='return')await returnToApps(page);
  if(change==='owner')await page.evaluate(()=>{(window as any).preparation.owner='replacement-owner';});
  await page.evaluate(async()=>{(window as any).preparation.reject();await new Promise<void>(r=>requestAnimationFrame(()=>requestAnimationFrame(()=>r())));});
  if(change==='none')await expect(page.getByRole('button',{name:'Discard recording',exact:true})).toBeVisible();

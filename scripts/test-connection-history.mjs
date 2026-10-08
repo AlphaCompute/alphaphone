@@ -12,6 +12,7 @@ const { CloudProtocol, CloudProvisionAcceptedError } = await import('../apps/app
 const { phoneContextMessage } = await import('../apps/app/src/runtime/phone-context.ts');
 const user = '11111111-1111-4111-8111-111111111111', agent = '22222222-2222-4222-8222-222222222222';
 const conversation = '33333333-3333-4333-8333-333333333333';
+const sentBodies=[];
 let credential = { token: 'synthetic-token', credentialId: 'synthetic-generation' }, historyReads = 0, sends = 0;
 const observed = phoneContextMessage('Earlier user text', { view: 'inbox', revision: 2, sensitive: false }).text;
 const server = http.createServer(async (req, res) => {
@@ -23,7 +24,7 @@ const server = http.createServer(async (req, res) => {
   else if (req.url.endsWith('/api/conversations')) data = { conversations: [{ id: conversation, title: 'Saved conversation' }] };
   else if (req.url.endsWith(`/api/conversations/${conversation}/messages`)) {
     if (req.method === 'GET') { historyReads++; data = { messages: [{ id: 'u1', role: 'user', text: observed }, { id: 'a1', role: 'assistant', text: 'Earlier answer', actions: [{ type: 'unsafe' }] }] }; }
-    else { sends++; data = { text: 'New answer', agentName: 'Fixture' }; }
+    else { const chunks=[];for await(const chunk of req)chunks.push(chunk);sentBodies.push(JSON.parse(Buffer.concat(chunks).toString('utf8')));sends++; data = { text: 'New answer', agentName: 'Fixture' }; }
   } else { status = 404; data = {}; }
   res.writeHead(status, { 'content-type': 'application/json' }); res.end(JSON.stringify(data));
 });
@@ -74,6 +75,17 @@ try {
   assert.equal(sends, 0, 'restoring history never sends or executes actions');
   await controller.send('New question', { view: 'home', revision: 1, sensitive: false }, 'synthetic-id', new AbortController().signal);
   assert.equal(sends, 1, 'next send uses the explicitly restored conversation');
+  assert.equal(Object.hasOwn(sentBodies[0].metadata,'uiTimeZone'),false,'Unknown current device zone is omitted');
+  for(const timeZone of ['America/Los_Angeles','Asia/Kolkata']){
+    await controller.send('Current device zone question',{view:'home',revision:2,sensitive:false,timeZone},'zone-'+timeZone,new AbortController().signal);
+    const wire=sentBodies.at(-1).metadata;
+    assert.equal(wire.uiTimeZone,timeZone,'CURRENT_TIME receives the current validated device zone on the actual HTTP request');
+    assert.equal(wire.clientDevice.context.timeZone,timeZone);assert.equal(wire.alphaPhone.context.timeZone,timeZone);
+  }
+  assert.equal(sends,3);
+  await assert.rejects(controller.send('Invalid zone',{view:'home',revision:3,sensitive:false,timeZone:'Not/A_Zone'},'invalid-zone',new AbortController().signal));
+  assert.equal(sends,3,'An invalid timezone cannot reach the transport');
+
   const beforeRetirements=clockRetirements;
   let releaseClockRetirement;heldClockRetirement=new Promise(resolve=>{releaseClockRetirement=resolve;});
   const retirementStarted=new Promise(resolve=>{clockRetirementStarted=resolve;});
@@ -89,5 +101,5 @@ try {
   assert.equal(controller.rejectCloudSession('stale-session', { status: 401 }), false);
   assert.equal(controller.rejectCloudSession(bound.sessionId, { status: 401 }), true);
   assert.equal(controller.getCloudClient(), null);
-  console.log('PASS: real Cloud protocol/controller HTTP history membership, context stripping, action exclusion, next-send binding, separate service disconnect and scoped rejection. Synthetic only.');
+  console.log('PASS: real Cloud protocol/controller HTTP history membership, context stripping, action exclusion, next-send binding, current device timezone metadata and omission, separate service disconnect and scoped rejection. Synthetic only.');
 } finally { server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); }

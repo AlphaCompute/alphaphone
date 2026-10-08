@@ -3,6 +3,14 @@ import { registerPlugin } from '../platform-plugins';
 import { type PluginListenerHandle } from '@capacitor/core';
 import { connectionController } from './connection-ui';
 
+/** Native status codes retain recovery meaning without exposing a provider response body. */
+export function cloudVoiceFailure(error: unknown): string | null {
+  const code = error && typeof error === 'object' && 'code' in error ? error.code : undefined;
+  if (code === 'voice-http-401' || code === 'voice-http-403') return 'Sign in to Eliza Cloud again in Settings, then retry voice.';
+  if (code === 'voice-http-402') return 'Cloud voice needs credits. Add credits in Settings, then retry.';
+  return null;
+}
+
 export type VoiceClip = { recordingId: string; durationMs: number };
 const native = registerPlugin<{
   startRecording(): Promise<{ recordingId: string; maxDurationMs: number }>;

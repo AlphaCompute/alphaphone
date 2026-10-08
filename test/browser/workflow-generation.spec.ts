@@ -1,3 +1,4 @@
+import { returnToApps } from './app-navigation';
 import {test,expect,type Page} from '@playwright/test';
 async function setup(page:Page,mode='normal'){
  await page.goto('/?mode=dev&workflows=agent');
@@ -13,7 +14,7 @@ async function setup(page:Page,mode='normal'){
    return {spec:canonical,specDigest:await workflowSha(canonical),catalogRevision:body.catalogRevision,compilerRevision:body.compilerRevision,active:false};
   });return generate.apply(client,args);};
  },mode);
- await page.getByRole('button',{name:'Settings',exact:true}).click();await page.getByRole('button',{name:'Agent connection',exact:true}).click();await page.getByRole('button',{name:'Connect development profile'}).click();await page.getByRole('button',{name:'Home',exact:true}).click();await page.getByRole('button',{name:'Workflows',exact:true}).click();await page.getByRole('button',{name:'New workflow',exact:true}).click();await page.getByRole('textbox',{name:'Workflow name',exact:true}).fill('Retained original draft');await page.getByRole('button',{name:/Describe it to/}).click();
+ await page.getByRole('button',{name:'Settings',exact:true}).click();await page.getByRole('button',{name:'Agent connection',exact:true}).click();await page.getByRole('button',{name:'Connect development profile'}).click();await returnToApps(page);await page.getByRole('button',{name:'Workflows',exact:true}).click();await page.getByRole('button',{name:'New workflow',exact:true}).click();await page.getByRole('textbox',{name:'Workflow name',exact:true}).fill('Retained original draft');await page.getByRole('button',{name:/Describe it to/}).click();
 }
 const counts=(page:Page)=>page.evaluate(async()=>{const data=(await (await import('/src/browser/development-execution-document.ts')).readExecutionPart({namespace:'local'} as any,'workflows',()=>({workflows:[],receipts:[],runs:[]})));return {workflows:data.workflows.length,runs:(data.runs||[]).length,calls:(window as any).generationFixture.calls.length};});
 test('generated draft requires review, local adoption and separate confirmed Save',async({page},info)=>{
@@ -42,7 +43,7 @@ test('generation protocol rejects enrollment, scope, capability, digest and acti
  });expect(rejected).toBe(7);
 });
 test('leaving during generation ignores the late response and restores the prior local draft',async({page})=>{
- await setup(page,'delayed');await page.getByRole('textbox',{name:'Workflow request',exact:true}).fill('Build a draft');await page.getByRole('button',{name:'Generate workflow draft',exact:true}).click();await expect.poll(async()=>(await counts(page)).calls).toBe(1);await page.getByRole('button',{name:'Home',exact:true}).click();await page.evaluate(async()=>(window as any).generationFixture.release());await page.getByRole('button',{name:'Workflows',exact:true}).click();await page.getByRole('button',{name:'New workflow',exact:true}).click();await expect(page.getByRole('textbox',{name:'Workflow name',exact:true})).toHaveValue('Retained original draft');await expect(page.getByRole('region',{name:'Generated draft',exact:true})).toHaveCount(0);expect((await counts(page)).workflows).toBe(0);
+ await setup(page,'delayed');await page.getByRole('textbox',{name:'Workflow request',exact:true}).fill('Build a draft');await page.getByRole('button',{name:'Generate workflow draft',exact:true}).click();await expect.poll(async()=>(await counts(page)).calls).toBe(1);await returnToApps(page);await page.evaluate(async()=>(window as any).generationFixture.release());await page.getByRole('button',{name:'Workflows',exact:true}).click();await page.getByRole('button',{name:'New workflow',exact:true}).click();await expect(page.getByRole('textbox',{name:'Workflow name',exact:true})).toHaveValue('Retained original draft');await expect(page.getByRole('region',{name:'Generated draft',exact:true})).toHaveCount(0);expect((await counts(page)).workflows).toBe(0);
 });
 
 test('editing the request during generation discards its late response',async({page})=>{
@@ -64,7 +65,7 @@ for(const outcome of ['saved','failed','left'])test(`Generation waits for durabl
  await page.getByRole('button',{name:'Generate workflow draft',exact:true}).click();
  expect((await counts(page)).calls).toBe(0);
  await expect(page.getByRole('textbox',{name:'Workflow name',exact:true})).toBeVisible();
- if(outcome==='left')await page.getByRole('button',{name:'Home',exact:true}).click();
+ if(outcome==='left')await returnToApps(page);
  await page.evaluate(async()=>(window as any).releaseDraft());
  if(outcome==='saved'){await expect(page.getByRole('region',{name:'Generated draft',exact:true})).toBeVisible();expect((await counts(page)).calls).toBe(1);}
  else if(outcome==='failed'){await expect(page.getByRole('textbox',{name:'Workflow name',exact:true})).toHaveValue('Retain pending private draft');await expect(page.getByText(/Resolve local draft storage|Synthetic draft storage failure/).first()).toBeVisible();expect((await counts(page)).calls).toBe(0);}

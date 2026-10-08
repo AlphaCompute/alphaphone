@@ -1,5 +1,5 @@
 import {test,expect,type Page} from '@playwright/test';
-async function boot(page:Page){await page.addInitScript(()=>localStorage.setItem('alpha.connection.selection.v1',JSON.stringify({kind:'offline'})));await page.goto('/');}
+async function boot(page:Page){await page.addInitScript(()=>localStorage.setItem('alpha.connection.selection.v1',JSON.stringify({kind:'offline'})));await page.goto('/?tools=1');}
 test('two tabs retain all concurrently created albums across reload',async({page,context})=>{
  await boot(page);const other=await context.newPage();await other.goto('/');await Promise.all([page,other].map((tab,index)=>tab.evaluate(async index=>{const {browserPhotoLibrary:p}=await import('/src/prototype/browser-camera.ts');for(let i=0;i<10;i++)await p.changeAlbum({operation:'create',name:`Album ${index}-${i}`});},index)));await page.reload();expect(await page.evaluate(async()=>{const {browserPhotoLibrary:p}=await import('/src/prototype/browser-camera.ts');return new Set((await p.albums()).items.map(row=>row.name)).size;})).toBe(20);expect(await page.evaluate(()=>localStorage.getItem('alpha.browser.albums.v1'))).toBeNull();
 });

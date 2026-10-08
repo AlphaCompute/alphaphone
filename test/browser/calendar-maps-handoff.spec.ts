@@ -1,3 +1,4 @@
+import { returnToApps } from './app-navigation';
 import {test,expect,type Page} from '@playwright/test';
 const address='12 Market Street, Test Town';
 async function event(page:Page,configured=true,deferred=false){
@@ -31,5 +32,5 @@ test('a late event-address response cannot replace a newer Maps search',async({p
  await event(page,true,true);await expect.poll(()=>page.evaluate(()=>typeof (window as any).releaseTravelSearch)).toBe('function');const query=page.getByRole('textbox',{name:'Search places',exact:true});await query.fill('Replacement address');await query.press('Enter');await expect(page.getByRole('button',{name:/^Replacement West entrance/}).first()).toBeVisible();await page.evaluate(()=>(window as any).releaseTravelSearch());await expect(query).toHaveValue('Replacement address');await expect(page.getByRole('button',{name:/^West entrance/})).toHaveCount(0);expect(await page.evaluate(()=>(window as any).travelQueries)).toEqual([address,'Replacement address']);
 });
 test('leaving during an event-address search prevents late results and automatic replay',async({page})=>{
- await event(page,true,true);await expect.poll(()=>page.evaluate(()=>typeof (window as any).releaseTravelSearch)).toBe('function');await page.getByRole('button',{name:'Home',exact:true}).click();await page.evaluate(()=>(window as any).releaseTravelSearch());await expect(page.getByRole('button',{name:'Calendar',exact:true})).toBeVisible();await page.getByRole('button',{name:'Maps',exact:true}).click();await expect(page.getByRole('textbox',{name:'Search places',exact:true})).toBeVisible();await expect(page.getByRole('button',{name:/^West entrance/})).toHaveCount(0);expect(await page.evaluate(()=>(window as any).travelQueries)).toEqual([address]);
+ await event(page,true,true);await expect.poll(()=>page.evaluate(()=>typeof (window as any).releaseTravelSearch)).toBe('function');await returnToApps(page);await page.evaluate(()=>(window as any).releaseTravelSearch());await expect(page.getByRole('button',{name:'Calendar',exact:true})).toBeVisible();await page.getByRole('button',{name:'Maps',exact:true}).click();await expect(page.getByRole('textbox',{name:'Search places',exact:true})).toBeVisible();await expect(page.getByRole('button',{name:/^West entrance/})).toHaveCount(0);expect(await page.evaluate(()=>(window as any).travelQueries)).toEqual([address]);
 });

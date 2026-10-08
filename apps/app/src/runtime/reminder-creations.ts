@@ -1,6 +1,6 @@
 import {Capacitor} from '@capacitor/core';
 import {secureConnectionStore} from './native-connection';
-import {reminderFields,reminderTiming} from './reminder-contract';
+import {reminderFields,reminderTiming} from '../../../../.eliza/client-features/plugins/plugin-assistant/src/services/device-actions/reminder-contract.ts';
 import {DailyApps,type Reminder} from '../daily';
 export type ReminderCreation={id:string;request:{id:string;title:string;body:string;at:number;recurrence?:Reminder['recurrence'];dueAt?:number;alertMinutes?:number|null};state:'pending'|'found'};
 type Store=Record<string,ReminderCreation>;

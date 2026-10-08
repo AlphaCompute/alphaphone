@@ -1,3 +1,4 @@
+import { returnToApps } from './app-navigation';
 import {test,expect} from '@playwright/test';
 test.use({timezoneId:'UTC'});
 for(const action of ['done','snooze'] as const)for(const mode of ['fresh','stale','duplicate','response-loss','reload-loss','late-stale','navigate','unknown-same-target','navigate-after-dispatch'] as const)test(`reviewed reminder ${action}: ${mode}`,async({page})=>{
@@ -16,7 +17,7 @@ for(const action of ['done','snooze'] as const)for(const mode of ['fresh','stale
  },{mode,action});
  const button=page.getByRole('button',{name:action==='done'?'Complete reminder occurrence':'Snooze reminder 10 minutes',exact:true});await button.click();
  if(mode==='navigate-after-dispatch'){
-  await expect.poll(()=>page.evaluate(()=>typeof(window as any).releaseDecision)).toBe('function');await page.getByRole('button',{name:'Back to calendar',exact:true}).last().click();await page.getByRole('button',{name:'Home',exact:true}).click();await page.evaluate(()=>(window as any).releaseDecision());await expect.poll(()=>page.evaluate(async ()=>Object.keys(JSON.parse((await (await import('/src/browser/reminder-store.ts')).reminderDocument.readRaw())!).receipts||{}).length)).toBe(1);await expect(page.locator('html')).toHaveAttribute('data-active-view','home');return;
+  await expect.poll(()=>page.evaluate(()=>typeof(window as any).releaseDecision)).toBe('function');await page.getByRole('button',{name:'Back to calendar',exact:true}).last().click();await returnToApps(page);await page.evaluate(()=>(window as any).releaseDecision());await expect.poll(()=>page.evaluate(async ()=>Object.keys(JSON.parse((await (await import('/src/browser/reminder-store.ts')).reminderDocument.readRaw())!).receipts||{}).length)).toBe(1);await expect(page.locator('html')).toHaveAttribute('data-active-view','home');return;
  }
  if(mode==='duplicate'){await expect.poll(()=>page.evaluate(()=>typeof(window as any).releaseDecision)).toBe('function');await button.click();await page.evaluate(()=>(window as any).releaseDecision());}
  if(mode==='navigate'){await expect.poll(()=>page.evaluate(()=>typeof(window as any).releaseRetention)).toBe('function');await page.getByRole('button',{name:'Back to calendar',exact:true}).last().click();await page.evaluate(()=>(window as any).releaseRetention());await expect.poll(()=>page.evaluate(async()=>Object.keys(await (await import('/src/runtime/reminder-deletions.ts')).pendingReminderDeletions()).length)).toBe(0);expect(await page.evaluate(()=>(window as any).dispatches)).toBe(0);return;}

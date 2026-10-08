@@ -34,7 +34,7 @@ export interface CloudCredentialStore {
  * and return decoded JSON. It must never log headers, bodies, or auth URLs. */
 export interface CloudNativeRequest {
   (input: { url: string; method: "GET" | "POST"; headers: Record<string, string>;
-    body?: unknown; signal: AbortSignal; timeoutMs: number; redirect: "error";
+    body?: unknown; signal: AbortSignal; timeoutMs: number; redirect: "error"; expiresAt?: number;
   }): Promise<{ status: number; data: unknown }>;
 }
 export interface CloudLoginAttempt { sessionId: string; expiresAt: number; browserUrl: string }
@@ -62,7 +62,7 @@ export interface GmailMessage {
   to: string[]; cc?: string[]; replyTo?: string | null; snippet: string; receivedAt: string; unread: boolean;
 }
 export class CloudProtocolError extends Error {
-  constructor(readonly code: "invalid-response" | "http" | "expired" | "credentials-missing" | "credential-consumed" | "login-active", readonly status?: number, readonly data?: unknown) {
+  constructor(readonly code: "invalid-response" | "http" | "expired" | "credentials-missing" | "credential-consumed" | "login-active" | "account-changed", readonly status?: number, readonly data?: unknown) {
     super(`Eliza Cloud ${code}${status ? ` (${status})` : ""}`);
     this.name = "CloudProtocolError";
   }
@@ -124,7 +124,7 @@ export class CloudProtocol {
     if (!authority) throw new Error("This Eliza Cloud environment is unavailable in this build.");
     return authority;
   }
-  private async requestData(path: string, signal: AbortSignal, options: { body?: unknown; authenticated?: boolean; runtimeBase?: string; timeoutMs?: number; headers?: Record<string,string>; credentialId?: string; onStatus?: (status:number)=>void } = {}) {
+  private async requestData(path: string, signal: AbortSignal, options: { body?: unknown; authenticated?: boolean; runtimeBase?: string; timeoutMs?: number; headers?: Record<string,string>; credentialId?: string; expiresAt?: number; onStatus?: (status:number)=>void } = {}) {
     signal.throwIfAborted();
     const headers: Record<string, string> = { Accept: "application/json", ...options.headers };
     if (options.authenticated) {
@@ -138,14 +138,39 @@ export class CloudProtocol {
     if (options.body !== undefined) headers["Content-Type"] = "application/json";
     const response = await this.request({ url: (options.runtimeBase ?? this.authority.api) + path,
       method: options.body === undefined ? "GET" : "POST", headers, body: options.body,
-      signal, timeoutMs: options.timeoutMs ?? 30_000, redirect: "error" });
+      signal, timeoutMs: options.timeoutMs ?? 30_000, redirect: "error", ...(options.expiresAt === undefined ? {} : {expiresAt:options.expiresAt}) });
     signal.throwIfAborted();
     if (response.status < 200 || response.status >= 300) throw new CloudProtocolError("http", response.status, response.data);
     options.onStatus?.(response.status);
     return response.data;
   }
-  private async call(path: string, signal: AbortSignal, options: { body?: unknown; authenticated?: boolean; runtimeBase?: string; timeoutMs?: number; headers?: Record<string,string>; credentialId?: string } = {}) {
+  private async call(path: string, signal: AbortSignal, options: { body?: unknown; authenticated?: boolean; runtimeBase?: string; timeoutMs?: number; headers?: Record<string,string>; credentialId?: string; expiresAt?: number } = {}) {
     return object(await this.requestData(path, signal, options));
+  }
+  /** Account billing only: this never selects, creates or starts a hosted agent.
+   * The credential ID binds the snapshot to one login; balance is not a spend authorization. */
+  async creditBalance(signal: AbortSignal): Promise<{ balance: number; credentialId: string }> {
+    signal.throwIfAborted();
+    const credential = await this.credentials.read(this.environment);
+    signal.throwIfAborted();
+    if (!credential?.credentialId) throw new CloudProtocolError("credentials-missing");
+    const data = await this.call("/api/v1/credits/balance", signal, {
+      authenticated: true, credentialId: credential.credentialId,
+    });
+    const current = await this.credentials.read(this.environment);
+    signal.throwIfAborted();
+    if (current?.credentialId !== credential.credentialId) throw new CloudProtocolError("account-changed");
+    if (current.expiresAt !== undefined && current.expiresAt <= Date.now()) throw new CloudProtocolError("expired");
+    const balance = typeof data.balance === "number" ? data.balance
+      : typeof data.balance === "string" && data.balance.trim() ? Number(data.balance) : NaN;
+    if (!Number.isFinite(balance)) throw new CloudProtocolError("invalid-response");
+    return { balance, credentialId: credential.credentialId };
+  }
+  /** Uses Cloud's existing hosted billing page; no checkout or payment is created here. */
+  async openTopUp(signal: AbortSignal): Promise<void> {
+    signal.throwIfAborted();
+    await this.openExternal(`https://${this.authority.agents}/cloud/billing`, signal);
+    signal.throwIfAborted();
   }
   /** Scoped personal onboarding, using the existing native credential transport. */
   async personal(signal: AbortSignal): Promise<CloudPersonalProtocol> {
@@ -205,13 +230,18 @@ export class CloudProtocol {
       const browserUrl = `${this.authority.web}/auth/cli-login?session=${encodeURIComponent(sessionId)}`;
       onWaiting?.({ sessionId, expiresAt, browserUrl });
       await this.openExternal(browserUrl, controller.signal);
+      if (Date.now() >= expiresAt) throw new CloudProtocolError("expired");
       while (true) {
+        controller.signal.throwIfAborted();
+        if (Date.now() >= expiresAt) throw new CloudProtocolError("expired");
         let response: ObjectValue;
-        try { response = await this.call(`/api/auth/cli-session/${sessionId}`, controller.signal); }
+        try { response = await this.call(`/api/auth/cli-session/${sessionId}`, controller.signal, {expiresAt}); }
         catch (error) {
+          if (Date.now() >= expiresAt) throw new CloudProtocolError("expired");
           if (error instanceof CloudProtocolError && (error.status === 404 || error.status === 410)) throw new CloudProtocolError("expired");
           throw error;
         }
+        if (Date.now() >= expiresAt) throw new CloudProtocolError("expired");
         const data = response.data == null ? response : object(response.data);
         if (data.status === "authenticated") {
           const token = ["token", "accessToken", "stewardToken", "sessionToken", "apiKey"]
@@ -223,6 +253,7 @@ export class CloudProtocol {
           if (data.userId != null) credential.userId = string(data.userId);
           if (data.organizationId != null) credential.organizationId = string(data.organizationId);
           controller.signal.throwIfAborted();
+          if (Date.now() >= expiresAt) throw new CloudProtocolError("expired");
           await this.credentials.write(this.environment, credential, controller.signal);
           return;
         }

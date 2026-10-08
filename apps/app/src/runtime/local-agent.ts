@@ -6,10 +6,12 @@ import { readLocalAgentStream } from './local-agent-stream';
 import { streamNativeAgent, type NativeStreamPort } from './local-agent-native-stream';
 
 export interface LocalAgentBridge {
-  start(): Promise<unknown>;
+  start(input?:{requestId:string}): Promise<unknown>;
+  cancelStart?(input:{requestId:string}):Promise<unknown>;
   stop?():Promise<unknown>;
   getStatus?():Promise<{packaged?:boolean;state?:string;serviceActive?:boolean;socketListening?:boolean}>;
   configureProvider?(input:{apiKey:string;model:string}):Promise<unknown>;
+  configureCloudProvider?(input:{credentialId:string;model:string}):Promise<unknown>;
   request(input: { path: string; audioBase64?:string;requestId?:string;ownerId?:string; method: 'GET' | 'POST'; headers: Record<string,string>; body?: string; timeoutMs: number }, signal?:AbortSignal): Promise<{status:number;body?:string}>;
   stream?(input:{path:string;ownerId:string;headers:Record<string,string>;body:string},signal:AbortSignal,onText:(text:string)=>void):Promise<RemoteChatReply>;
 }
@@ -85,24 +87,34 @@ export class LocalAgentProtocol {
   }
   async connect(signal:AbortSignal) {
     signal.throwIfAborted();
-    const generation=this.generation;
+    const generation=this.generation,requestId=crypto.randomUUID();
     let cancel:()=>void=()=>{};
-    const cancelled=new Promise<never>((_,reject)=>{cancel=()=>reject(signal.reason||new DOMException('Cancelled','AbortError'));});
+    let dispatched=false,cancellationSent=false;
+    const cancelOwned=()=>{if(dispatched&&!cancellationSent){cancellationSent=true;void this.bridge.cancelStart?.({requestId}).catch(()=>{});}};
+    const cancelled=new Promise<never>((_,reject)=>{cancel=()=>{cancelOwned();reject(signal.reason||new DOMException('Cancelled','AbortError'));};});
     signal.addEventListener('abort',cancel,{once:true});
-    try{await Promise.race([this.bridge.start(),cancelled]);}finally{signal.removeEventListener('abort',cancel);}
+    try{
+    dispatched=true;
+    const started=this.bridge.start({requestId});
+    if(signal.aborted)cancel();
+    await Promise.race([started,cancelled]);
     signal.throwIfAborted();
     if(generation!==this.generation)throw Error('Local agent connection changed.');
     const who=record(await this.request('/api/auth/me',undefined,signal));
+    signal.throwIfAborted();
     const identity=record(who.identity),access=record(who.access);
     // Only the explicitly selected native/host bridge may establish local trust.
     if(identity.kind!=='owner'||access.role!=='OWNER'||!['local','session'].includes(access.mode))throw new Error('The local runtime did not verify local owner access.');
     const result=record(await this.request('/api/agents',undefined,signal));
+    signal.throwIfAborted();
     if(!Array.isArray(result.agents)||result.agents.length!==1)throw new Error('The local runtime must expose exactly one agent.');
     const agent=record(result.agents[0]);
     if(agent.status!=='running')throw Error('The local agent is still starting. Try again when it is ready.');
     if(generation!==this.generation)throw Error('Local agent connection changed.');
     this.session={ownerId:identifier(identity.id),agentId:identifier(agent.id),sessionId:crypto.randomUUID(),origin:this.origin};
     return {session:this.session,name:typeof agent.name==='string'?agent.name:'Local agent'};
+    }catch(error){cancelOwned();throw error;}
+    finally{signal.removeEventListener('abort',cancel);}
   }
   get browserSpeechAvailable(){return browserLocalAgentEnabled&&browserBridge!==null&&this.bridge===browserBridge;}
   async speechRequest(audio:Uint8Array|undefined,signal:AbortSignal){
@@ -189,6 +201,13 @@ export async function configureLocalProvider(apiKey:string,model:string) {
   if(!await localAgentPackaged())throw Error('On-device agent is unavailable in this version. Connect a remote agent or use Eliza Cloud.');
   if(!native.configureProvider)throw Error('Model provider setup is unavailable.');
   return native.configureProvider({apiKey,model});
+}
+
+export async function configureLocalCloudProvider(credentialId:string) {
+  if(!Capacitor.isNativePlatform() || !await localAgentPackaged()) throw Error('The on-device runtime is unavailable in this build.');
+  await stopLocalAgent();
+  if(!native.configureCloudProvider)throw Error('Cloud billing is unavailable in this version.');
+  await native.configureCloudProvider({credentialId,model:'cerebras/qwen-3.8-27b'});
 }
 
 export async function stopLocalAgent() {

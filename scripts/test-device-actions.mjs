@@ -32,7 +32,7 @@ const make=()=>new DeviceActions(session,credential,'c'.repeat(64),request,journ
 const context={view:'notes',revision:2,sensitive:false}, reordered={view:'notes',sensitive:false,revision:2};
 const signal=()=>new AbortController().signal;
 try {
- const client=make();await client.pending(context,signal());mode='receipt-outage';
+ const client=make();const cards=await client.pending(context,signal());assert.equal(cards[0].title,'Create note');assert.equal(cards[0].description,'Create note\n“Fixture note”\nExplicit reviewed body');mode='receipt-outage';
  assert.equal((await client.approve('proposal',reordered,signal())).status,'succeeded');assert.equal(effects,1);assert.equal(state,'executing');
  mode='ok';await make().syncReceipts(signal());assert.equal(state,'done');assert.equal(effects,1);
  // Even a stale server pending response after restart cannot repeat a journaled effect.

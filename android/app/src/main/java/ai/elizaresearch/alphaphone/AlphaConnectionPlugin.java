@@ -25,7 +25,9 @@ import org.json.JSONTokener;
 @CapacitorPlugin(name = "AlphaConnection")
 public final class AlphaConnectionPlugin extends Plugin {
  private volatile Uri delegationCallback;
- @Override public void load() { super.load(); captureDelegationCallback(getActivity().getIntent()); }
+ private final Object foregroundLock=new Object();
+ private boolean foreground;
+ @Override public void load() { super.load(); synchronized(foregroundLock){foreground=getActivity().getLifecycle().getCurrentState().isAtLeast(androidx.lifecycle.Lifecycle.State.RESUMED)||getActivity().hasWindowFocus();}captureDelegationCallback(getActivity().getIntent()); }
  @Override protected void handleOnNewIntent(Intent intent) { super.handleOnNewIntent(intent); captureDelegationCallback(intent); }
  private void captureDelegationCallback(Intent intent) {
   Uri uri = intent == null ? null : intent.getData();
@@ -66,7 +68,13 @@ public final class AlphaConnectionPlugin extends Plugin {
  private static final class Pending {
   volatile boolean cancelled;
   volatile HttpURLConnection connection;
-  void cancel() { cancelled = true; HttpURLConnection current = connection; if (current != null) current.disconnect(); }
+  volatile PluginCall browserCall;
+  volatile boolean browserLaunched,browserPaused;
+  synchronized void cancel() { cancelled = true; HttpURLConnection current = connection; if (current != null) current.disconnect(); if(browserCall!=null){PluginCall call=browserCall;browserCall=null;call.reject("Request cancelled");} }
+  synchronized void paused(){if(browserCall!=null&&browserLaunched)browserPaused=true;}
+  synchronized boolean returned(){if(browserCall==null||!browserPaused||cancelled)return false;PluginCall call=browserCall;browserCall=null;call.resolve();return true;}
+  synchronized void launch(Runnable action){if(cancelled||browserCall==null)return;browserLaunched=true;try{action.run();}catch(RuntimeException unavailable){PluginCall call=browserCall;browserCall=null;call.reject("Authentication browser unavailable");}}
+
  }
  private static String required(String value, int max) {
   if (value == null || value.isEmpty() || value.length() > max) throw new IllegalArgumentException();
@@ -148,6 +156,15 @@ public final class AlphaConnectionPlugin extends Plugin {
   if(seen.contains("reminders.local-record.v1")&&seen.contains("reminders.local-record.v2"))return false;
   return parts.length<=(seen.contains("reminders.create.v1")?6:5);
  }
+ private enum RequestOperation { CLI_CREATE, CLI_POLL, IDENTITY, BALANCE, OTHER }
+ private enum RequestStage { VALIDATE, CONNECT, WRITE, STATUS, READ, PARSE, RESOLVE }
+ /** Never include exception messages, request identifiers or transport data in diagnostics. */
+ private static String debugRequestFailure(RequestOperation operation,RequestStage stage,int status,Exception error) {
+  if(!BuildConfig.DEBUG)return null;
+  String code="ALPHA_TRANSPORT:"+operation+":"+stage+":"+status+":"+error.getClass().getName();
+  android.util.Log.d("AlphaConnection",code);
+  return code;
+ }
  @PluginMethod public void request(PluginCall call) {
   final String id;
   try { id = required(call.getString("requestId"), 256); }
@@ -156,15 +173,36 @@ public final class AlphaConnectionPlugin extends Plugin {
   if (requests.putIfAbsent(id, pending) != null) { call.reject("Request already active"); return; }
   if(!submit(call,() -> {
    HttpURLConnection connection = null;
+   RequestOperation operation=RequestOperation.OTHER;
+   RequestStage stage=RequestStage.VALIDATE;
+   int status=-1;
    try {
     if (pending.cancelled) throw new IllegalStateException();
     URI url = validatedUrl(call.getString("url"), true);
+    {
+     String path=url.getPath();
+     if("/api/auth/cli-session".equals(path))operation=RequestOperation.CLI_CREATE;
+     else if(path!=null&&path.matches("/api/auth/cli-session/[0-9a-fA-F-]{36}"))operation=RequestOperation.CLI_POLL;
+     else if("/api/v1/user".equals(path))operation=RequestOperation.IDENTITY;
+     else if("/api/v1/credits/balance".equals(path))operation=RequestOperation.BALANCE;
+    }
     int responseLimit=url.getPath().startsWith("/api/v1/eliza/google/gmail/inbox-v1/")?8*1024*1024:RESPONSE_LIMIT;
     String method = call.getString("method", "GET");
     if (!Set.of("GET", "POST").contains(method)) throw new IllegalArgumentException();
+    if("GET".equals(method)&&("api.eliza.app".equals(url.getHost())||"api-staging.eliza.app".equals(url.getHost()))&&url.getPath().matches("/api/auth/cli-session/[0-9a-fA-F-]{36}")){
+     // Gate only future dispatch. A claim already sent must finish and may be saved while backgrounded.
+     long expiresAt=call.getLong("expiresAt",System.currentTimeMillis()+30000);
+     synchronized(foregroundLock){
+      while(!foreground&&!pending.cancelled&&!destroyed){long remaining=expiresAt-System.currentTimeMillis();if(remaining<=0)throw new java.net.SocketTimeoutException();foregroundLock.wait(remaining);}
+      if(pending.cancelled||destroyed)throw new IllegalStateException();
+      if(System.currentTimeMillis()>=expiresAt)throw new java.net.SocketTimeoutException();
+     }
+    }
+    stage=RequestStage.CONNECT;
     connection = (HttpURLConnection) url.toURL().openConnection(); pending.connection = connection;
-    connection.setInstanceFollowRedirects(false); connection.setConnectTimeout(20000); connection.setReadTimeout(120000);
+    connection.setInstanceFollowRedirects(false); connection.setConnectTimeout(20000); connection.setReadTimeout(operation==RequestOperation.CLI_POLL?30000:120000);
     connection.setUseCaches(false); connection.setRequestMethod(method);
+    stage=RequestStage.VALIDATE;
     JSObject headers = call.getObject("headers", new JSObject());
     Iterator<String> names = headers.keys();
     while (names.hasNext()) {
@@ -184,27 +222,37 @@ public final class AlphaConnectionPlugin extends Plugin {
      if (encoded.length > responseLimit) throw new IllegalArgumentException();
      parseJson(body); connection.setDoOutput(true); connection.setFixedLengthStreamingMode(encoded.length);
      if (pending.cancelled) throw new IllegalStateException();
+     stage=RequestStage.WRITE;
      try (java.io.OutputStream output = connection.getOutputStream()) { output.write(encoded); }
     }
     if (pending.cancelled) throw new IllegalStateException();
-    int status = connection.getResponseCode();
+    stage=RequestStage.STATUS;
+    status = connection.getResponseCode();
     if (status >= 300 && status < 400) throw new IllegalArgumentException();
     if (connection.getContentLengthLong() > responseLimit) throw new IllegalArgumentException();
+    stage=RequestStage.READ;
     byte[] bytes;
     try (InputStream input = status >= 400 ? connection.getErrorStream() : connection.getInputStream()) { bytes = readBounded(input, responseLimit); }
     if (pending.cancelled) throw new IllegalStateException();
     Object data = JSONObject.NULL;
     if (bytes.length > 0) {
+     stage=RequestStage.PARSE;
      try { data = parseJson(new String(bytes, StandardCharsets.UTF_8)); }
      catch (Exception error) { if (status < 400) throw error; }
     }
+    stage=RequestStage.RESOLVE;
     JSObject result = new JSObject(); result.put("status", status); result.put("data", data); call.resolve(result);
-   } catch (Exception error) { call.reject(pending.cancelled ? "Request cancelled" : "Connection request failed"); }
+   } catch (Exception error) {
+    String code=debugRequestFailure(operation,stage,status,error);
+    if(code!=null)try{getContext().getSharedPreferences("alpha-transport-diagnostics",android.content.Context.MODE_PRIVATE).edit().putString("lastFailure",code).apply();}
+    catch(RuntimeException ignored){/* Diagnostic storage must not mask the transport failure. */}
+    call.reject(pending.cancelled ? "Request cancelled" : "Connection request failed",code);
+   }
    finally { if (connection != null) connection.disconnect(); requests.remove(id, pending); }
   }))requests.remove(id,pending);
  }
  @PluginMethod public void cancel(PluginCall call) {
-  String id = call.getString("requestId", ""); Pending pending = requests.get(id); if (pending != null) pending.cancel(); call.resolve();
+  String id = call.getString("requestId", ""); Pending pending = requests.get(id); if (pending != null) { boolean browser=pending.browserCall!=null||pending.browserLaunched;pending.cancel();if(browser)requests.remove(id,pending); } synchronized(foregroundLock){foregroundLock.notifyAll();}call.resolve();
  }
  @PluginMethod public void openExternal(PluginCall call) {
   try {
@@ -213,15 +261,34 @@ public final class AlphaConnectionPlugin extends Plugin {
    if (!(host.equals("eliza.app") || host.endsWith(".eliza.app") || host.equals("accounts.google.com"))) throw new IllegalArgumentException();
    if (url.getPort() != -1 && url.getPort() != 443) throw new IllegalArgumentException();
    Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(url.toASCIIString())); intent.addCategory(Intent.CATEGORY_BROWSABLE);
-   getActivity().runOnUiThread(() -> {
+   boolean cliLogin=("eliza.app".equals(host)||"staging.eliza.app".equals(host))&&"/auth/cli-login".equals(url.getPath());
+   if(cliLogin){
+    String id=required(call.getString("requestId"),256);
+    Pending pending=new Pending();pending.browserCall=call;
+    if(destroyed){call.reject("Connection closed");return;}
+    if(requests.putIfAbsent(id,pending)!=null){call.reject("Request already active");return;}
+    // Register before launching: the native pause belongs to this browser handoff.
+    getActivity().runOnUiThread(()->{
+     if(destroyed){pending.cancel();requests.remove(id,pending);return;}
+     pending.launch(()->getActivity().startActivity(intent));
+     if(pending.browserCall==null)requests.remove(id,pending);
+    });
+   }else getActivity().runOnUiThread(() -> {
     try { getActivity().startActivity(intent); call.resolve(); }
     catch (RuntimeException error) { call.reject("Authentication browser unavailable"); }
    });
   } catch (Exception error) { call.reject("Unsupported authentication URL"); }
  }
+ @Override protected void handleOnPause(){synchronized(foregroundLock){foreground=false;}for(Pending pending:requests.values())pending.paused();super.handleOnPause();}
+ @Override protected void handleOnResume(){
+  super.handleOnResume();
+  synchronized(foregroundLock){foreground=true;foregroundLock.notifyAll();}
+  for(java.util.Map.Entry<String,Pending> entry:requests.entrySet())if(entry.getValue().returned())requests.remove(entry.getKey(),entry.getValue());
+ }
  @Override protected void handleOnDestroy() {
   destroyed=true;
   for (Pending pending : requests.values()) pending.cancel();
-  workers.shutdownNow(); super.handleOnDestroy();
+  synchronized(foregroundLock){foregroundLock.notifyAll();}
+  requests.clear();workers.shutdownNow(); super.handleOnDestroy();
  }
 }

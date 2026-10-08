@@ -20,7 +20,7 @@ import { PersonalProtocolError, type CloudPersonalProtocol, type PersonalView, t
 import { holdPhoneInert } from './modal-inert';
 import { pauseHostedBackground } from './hosted-background';
 import {developmentDeviceStore,developmentActionJournal} from './local-agent-storage';
-import { stopLocalAgent, configureLocalProvider, LocalAgentProtocol, localAgentPackaged, browserLocalAgentEnabled } from './local-agent';
+import { stopLocalAgent, configureLocalProvider, configureLocalCloudProvider, LocalAgentProtocol, localAgentPackaged, browserLocalAgentEnabled } from './local-agent';
 import type {DeviceRecovery} from "./device-actions";
 import type { WorkflowPhoneReview } from './workflow-device-contract';
 import { AlphaClientError } from './alpha-client';
@@ -40,10 +40,13 @@ type Selection = {kind:'development';profile:DevelopmentProfile;account?:string}
 export interface CloudServiceSession { environment: CloudEnvironment; userId: string; organizationId?: string; sessionId: string; credentialId: string }
 export interface RestoredMessage { id: string; from: 'user' | 'agent'; text: string }
 export interface ConnectionSnapshot {
+  residentBalance?: number | null;
+  residentSavedCredential?: boolean;
   cloudPersonal?: PersonalSetupState;
   phoneActionsAvailable: boolean; phoneCapabilityReason: string;
   conversations: Array<{ id: string; title: string }>;
-  history: { sessionId: string; conversationId: string; revision: number; messages: RestoredMessage[] } | null;
+  history: { sessionId: string; conversationId: string; revision: number; messages: RestoredMessage[]; automatic: boolean } | null;
+  historyError?: string;
   actionHistory: Array<{ id: string; state: string; description: string }>;
   cloudAccount: CloudServiceSession | null;
   open: boolean; busy: boolean; message: string; error: string;
@@ -74,6 +77,7 @@ let service: { client: CloudProtocol; identity: CloudServiceSession } | null = n
 function detachService() { clearPersonalSetup(); service = null; update({ cloudAccount: null }); }
 async function verifyService(client: CloudProtocol, signal: AbortSignal) {
   const credential = await cloudCredentialStore.read(client.environment); signal.throwIfAborted();
+  if(isAndroid && !testMocksEnabled)update({residentSavedCredential:!!credential?.credentialId});
   if (!credential?.credentialId) throw new Error('Cloud credentials are unavailable. Sign in again.');
   const identity = await client.identity(signal); signal.throwIfAborted();
   if ((await cloudCredentialStore.read(client.environment))?.credentialId !== credential.credentialId) throw new Error('Cloud account changed. Try again.');
@@ -147,7 +151,7 @@ function retire(name = 'Offline') {
   sending?.abort(new DOMException('The connection changed.', 'AbortError'));
   sending = null;
   active = null;
-  update({ phoneActionsAvailable:false, phoneCapabilityReason:'', session: null, kind: 'offline', name, conversations: [], history: null, actionHistory: [] });
+  update({ phoneActionsAvailable:false, phoneCapabilityReason:'', session: null, kind: 'offline', name, conversations: [], history: null, historyError:'', actionHistory: [] });
   return retirement;
 }
 function persistOffline(): string {
@@ -204,7 +208,7 @@ function activate(next: Active, session: VerifiedSession, name: string) {
   actionReceipts.clear();
   conversationMemory.clear();
   epoch++; sending?.abort(new DOMException('The connection changed.', 'AbortError')); sending = null; active = next;
-  update({ phoneActionsAvailable:!!next.actions, conversations: [], history: null, kind: next.kind, name, session, open: false, message: 'Connected', error: '' });
+  update({ phoneActionsAvailable:!!next.actions, conversations: [], history: null, historyError: '', kind: next.kind, name, session, open: false, message: 'Connected', error: '' });
 }
 async function remoteIdentity(remote: RemoteProtocol, signal: AbortSignal) {
   const credential = await remoteCredentialStore.read(remote.origin);
@@ -272,7 +276,23 @@ async function connectDevelopment(profile:DevelopmentProfile,signal:AbortSignal)
  // This explicitly gated browser fixture implements reminder v2; real peers still negotiate it.
  const identity=await readDevelopmentIdentity(profile,signal);const client=new LocalAgentProtocol(developmentBridge(profile,identity));const {session,name}=await client.connect(signal);signal.throwIfAborted();const credential=developmentCredential(profile,identity),scope=await actionScope(JSON.stringify([client.origin,session.ownerId,session.agentId,credential.installationId]));const actions=new DeviceActions(session,credential,scope,(path,body,signal)=>client.request(path,body,signal),developmentJournal(profile,identity),(op,id,context,signal,binding,workflowRoute,journalIdentity)=>deviceExecutor(op,id,context,signal,binding,workflowRoute,journalIdentity),(op,id,binding,signal)=>deviceRecovery?deviceRecovery(op,id,binding,signal):Promise.resolve({status:'unknown'}),true,true);await retire();signal.throwIfAborted();await verifyDevelopmentIdentity(identity,signal);const workflowProtocol=2 as const;save({kind:'development',profile,...(identity.account?{account:identity.account}:{})});developmentVoiceExpiresAt=Date.now()+3600000;activate({kind:'resident',remote:client,origin:client.origin,actions,workflowProtocol},session,name);
 }
+async function admitCloudResident(signal:AbortSignal):Promise<boolean> {
+  cloud = makeCloud('production');
+  await verifyService(cloud,signal);
+  const account=service;
+  const credits=await cloud.creditBalance(signal);
+  signal.throwIfAborted();
+  if(!account || service!==account || credits.credentialId!==account.identity.credentialId)throw Error('Cloud account changed. Sign in again.');
+  update({residentBalance:credits.balance});
+  if(credits.balance<=0){await stopLocalAgent();await retire();update({open:true,message:'Add credits to use your agent. Your saved data stays on this device.'});return false;}
+  await configureLocalCloudProvider(credits.credentialId);
+  signal.throwIfAborted();
+  if(service!==account || (await cloudCredentialStore.read('production'))?.credentialId!==account.identity.credentialId)throw Error('Cloud account changed. Sign in again.');
+  return true;
+}
+
 async function connectResident(signal: AbortSignal) {
+  if(isAndroid && !testMocksEnabled && !await admitCloudResident(signal))return;
   if (!await localAgentPackaged()) throw new Error('The local agent is unavailable here. Connect a remote agent, sign in with Eliza Cloud, or continue offline.');
   signal.throwIfAborted();
   const client = new LocalAgentProtocol();
@@ -306,6 +326,7 @@ async function connectResident(signal: AbortSignal) {
   save({kind:'resident'});
   activate({kind:'resident',remote:client,origin:client.origin,actions,workflowProtocol},session,name);
   if(reason)update({phoneCapabilityReason:reason});
+  if(isAndroid && !testMocksEnabled)await restoreSavedResidentHistory(signal);
 }
 async function connectCloud(agentId: string, signal: AbortSignal, expectedOwner?: string, expectedOrigin?:string, expectedPersonalOwner?:Readonly<PersonalOwner>) {
   const client=cloud;
@@ -403,6 +424,54 @@ async function conversationList(selected: Active, signal: AbortSignal) {
   return list.map(item => ({ id: item.id, title: typeof item.title === 'string' && item.title ? item.title : 'Conversation' }));
 }
 
+async function restoreConversationHistory(id:string,signal:AbortSignal,automatic:boolean) {
+  const selected=active,session=state.session,generation=epoch;
+  if(!selected||!session)throw Error('Connect an agent first.');
+  const account=selected.kind==='resident'&&isAndroid&&!testMocksEnabled?service:null;
+  if(selected.kind==='resident'&&isAndroid&&!testMocksEnabled&&!account)throw Error('Cloud account is unavailable.');
+  const assertCurrent=()=>{signal.throwIfAborted();if(generation!==epoch||selected!==active||state.session?.sessionId!==session.sessionId||account&&(service!==account||state.cloudAccount?.sessionId!==account.identity.sessionId))throw Error('The agent or account changed.');};
+  const assertAccount=async()=>{
+    assertCurrent();
+    if(account){const credential=await cloudCredentialStore.read(account.identity.environment);assertCurrent();if(credential?.credentialId!==account.identity.credentialId||credential.expiresAt!==undefined&&credential.expiresAt<=Date.now())throw Error('Cloud account changed or expired.');}
+  };
+  const key=conversationKey(session),expected=await captureConversationChoice(key,signal);
+  await assertAccount();
+  if(automatic&&expected?.id!==id)throw Error('Saved conversation selection changed.');
+  const list=await conversationList(selected,signal);await assertAccount();
+  if(!list.some(item=>item.id===id))throw Error('This conversation is no longer available to this agent.');
+  const result=selected.kind==='cloud'?await selected.cloud.messages(selected.agentId,id,signal):await selected.remote.messages(id,signal);
+  assertCurrent();
+  if(result.messages.length>2000)throw Error('This history is too large to display safely.');
+  const messages:RestoredMessage[]=result.messages.filter(item=>item.role==='user'||item.role==='assistant').map(item=>{
+    if(typeof item.id!=='string'||!item.id||typeof item.text!=='string'||item.text.length>200000)throw Error('The agent returned invalid history.');
+    return {id:item.id,from:item.role==='user'?'user':'agent',text:item.role==='user'?restoredText(item.text):item.text};
+  });
+  await assertAccount();
+  let saved=true;
+  if(!automatic)try{await selectConversation(key,expected,id,signal,assertCurrent);}catch{saved=false;}
+  await assertAccount();
+  if(automatic){
+    const current=Capacitor.getPlatform()==='android'?captureConversationChoice(key,signal):await captureConversationChoice(key,signal);
+    assertCurrent();
+    if(JSON.stringify(current)!==JSON.stringify(expected))throw Error('Saved conversation selection changed.');
+  }
+  conversationMemory.set(key,id);
+  update({history:{sessionId:session.sessionId,conversationId:id,revision:(state.history?.revision||0)+1,messages,automatic},historyError:'',...(automatic?{}:{open:false}),message:automatic?'Saved conversation restored.':saved?'Returned history restored. Older messages may remain on the agent.':'History restored for this session; restart selection could not be saved.'});
+}
+async function restoreSavedResidentHistory(signal:AbortSignal) {
+  const selected=active,session=state.session,generation=epoch;
+  if(!selected||!session)return;
+  try{
+    const saved=await captureConversationChoice(conversationKey(session),signal);signal.throwIfAborted();
+    if(generation!==epoch||selected!==active||state.session!==session)return;
+    if(saved)await restoreConversationHistory(saved.id,signal,true);
+  }catch(error){
+    signal.throwIfAborted();
+    if(generation!==epoch||selected!==active||state.session!==session)return;
+    update({historyError:'Saved conversation could not be restored. Your selected conversation was kept. Retry from Agent connection.',message:'Connected. Saved history needs another check.'});
+  }
+}
+
 /** Shared controller for the chat adapter. Snapshot contains no credentials.
  * subscribe/getSnapshot expose connection changes; send uses server-bound identity
  * and one persisted conversation per origin+owner+agent. It never executes proposals.
@@ -431,6 +500,32 @@ export const connectionController = {
     const result = selected.actions.approve(proposal.id, context, signal);
     actionReceipts.set(proposal.id, { sessionId, result });
     return result;
+  },
+  async pendingActions(context:ContextEnvelope,signal:AbortSignal):Promise<ActionProposal[]> {
+    const selected=active,session=state.session,generation=epoch,history=state.history;
+    if(!selected?.actions||!session||state.open||state.busy||document.hidden||context.sensitive)return [];
+    const account=selected.kind==='resident'&&isAndroid&&!testMocksEnabled?service:null;
+    if(selected.kind==='resident'&&isAndroid&&!testMocksEnabled&&!account)throw Error('Cloud account is unavailable.');
+    const current=()=>{signal.throwIfAborted();if(generation!==epoch||selected!==active||state.session!==session||state.history!==history||state.open||state.busy||document.hidden||account&&(service!==account||state.cloudAccount?.sessionId!==account.identity.sessionId))throw Error('The agent or conversation changed.');};
+    const checkAccount=async()=>{current();if(account){const credential=await cloudCredentialStore.read(account.identity.environment);current();if(credential?.credentialId!==account.identity.credentialId||credential.expiresAt!==undefined&&credential.expiresAt<=Date.now())throw Error('Cloud account changed or expired.');}};
+    const key=conversationKey(session),choice=await captureConversationChoice(key,signal);
+    await checkAccount();
+    const proposals=await selected.actions.pending(context,signal);
+    await checkAccount();
+    const after=Capacitor.getPlatform()==='android'?captureConversationChoice(key,signal):await captureConversationChoice(key,signal);
+    current();if(JSON.stringify(choice)!==JSON.stringify(after))throw Error('Saved conversation selection changed.');
+    return proposals;
+  },
+  async approvePendingAction(id:string,context:ContextEnvelope,signal:AbortSignal):Promise<OperationReceipt> {
+    // Refresh authenticated state and exact source preconditions at the tap. No
+    // cached chat prose or prior approval can authorize a recovered proposal.
+    const selected=active,session=state.session;
+    const proposals=await this.pendingActions(context,signal);
+    signal.throwIfAborted();
+    if(active!==selected||state.session!==session)throw Error('The agent changed.');
+    const proposal=proposals.find(proposal=>proposal.id===id);
+    if(!proposal)throw Error('This action is no longer pending for the current screen. Open its original selection and review again.');
+    return this.execute(proposal,context,signal);
   },
   getWorkflowPresentationProtocol():1|2 { return active?.actions ? active.workflowProtocol ?? 1 : 1; },
   getWorkflowDeviceTarget(){const selected=active;if(!selected||!selected.actions||!selected.actions.credential.enrollmentId)return null;return {installationId:selected.actions.credential.installationId,enrollmentId:selected.actions.credential.enrollmentId};},
@@ -515,7 +610,7 @@ export const connectionController = {
     return true;
   },
   open() { update({ open: true, error: '' }); },
-  close() { if (!state.busy) {clearPersonalSetup();update({ open: false });} },
+  close() { if(isAndroid && !testMocksEnabled && !state.session)return; if (!state.busy) {clearPersonalSetup();update({ open: false });} },
   cancel() { operation?.abort(new DOMException('Cancelled', 'AbortError')); cloud.cancelLogin(); },
   async initialize() {
     if (startup) return startup;
@@ -530,6 +625,15 @@ export const connectionController = {
         if (stored === null) { try { save({ kind: 'none' }); } catch { /* The chooser explains the choice either way. */ } update({ open: true, message: '' }); return; }
       }
       const saved = selection();
+      if (isAndroid && !testMocksEnabled) {
+        await work('Checking your Cloud account…',async signal=>{
+          const credential=await cloudCredentialStore.read('production');
+          signal.throwIfAborted();
+          if(!credential){update({open:true,residentBalance:null,residentSavedCredential:false,message:''});return;}
+          await connectResident(signal);
+        });
+        return;
+      }
       if (saved?.kind === 'offline') return;
       if (saved?.kind === 'mock') { const url = new URL(location.href); url.searchParams.set('mode', 'mock'); location.replace(url.href); return; }
       await work('Restoring your connection…', async signal => {
@@ -559,6 +663,13 @@ export const connectionController = {
   },
   async offline() {
     if (operation) return;
+    if(isAndroid && !testMocksEnabled){
+      await work('Stopping AI while keeping your local apps available…',async()=>{
+        await stopLocalAgent();await retire();detachService();
+        const error=persistOffline();update({open:Boolean(error),error,message:''});
+      });
+      return;
+    }
     retire(); detachService();
     const error = persistOffline();
     update({ open: Boolean(error), error, message: '' });
@@ -572,7 +683,20 @@ export const connectionController = {
   async pair(kind: 'remote' | 'local', origin: string, code: string) {
     await work('Verifying your agent…', signal => { retire(); return connectRemote(kind, origin, code, signal); });
   },
+  async residentCloudLogin() {
+    await work('Opening Eliza Cloud sign-in…',async signal=>{
+      // A running process retains its environment; stop it before replacing credentials.
+      await stopLocalAgent(); await retire(); detachService();
+      update({residentBalance:null}); cloud=makeCloud('production');
+      await cloud.login(signal,()=>update({message:'Finish signing in to Eliza Cloud in your browser, then return here.'}));
+      await connectResident(signal);
+    });
+  },
+  async residentTopUp() {
+    await work('Opening Cloud billing…',signal=>makeCloud('production').openTopUp(signal));
+  },
   async cloudLogin(environment: CloudEnvironment) {
+    if(isAndroid && !testMocksEnabled){await connectionController.residentCloudLogin();return;}
     await work('Opening Eliza Cloud sign-in…', async signal => {
       // A login can replace the environment's secure token with a different
       // account. Detach the old identity before any token can be replaced.
@@ -646,11 +770,12 @@ export const connectionController = {
   },
   async cloudSignOut() {
     await work('Signing out of Cloud services…', async () => {
+      if(isAndroid && !testMocksEnabled){await stopLocalAgent();await retire();update({residentBalance:null});}
       const previous = service; detachCloudTarget(); detachService();
       localStorage.removeItem(CLOUD_SERVICE);
       if (!active) save({ kind: 'none' });
       await (previous?.client ?? cloud).disconnect();
-      update({ agents: [], message: 'Signed out of Eliza Cloud on this phone.' });
+      update({ agents: [], residentSavedCredential:false, message: 'Signed out of Eliza Cloud on this phone.' });
     });
   },
   async mock() {
@@ -677,29 +802,9 @@ export const connectionController = {
   },
   async restoreHistory(id: string) {
     if (sending) { update({ error: 'Wait for the current reply before restoring history.' }); return; }
-    await work('Verifying and restoring conversation…', async signal => {
-      const selected = active, session = state.session, generation = epoch;
-      if (!selected || !session) throw new Error('Connect an agent first.');
-      const key=conversationKey(session),expected=await captureConversationChoice(key,signal);
-      const assertCurrent=()=>{signal.throwIfAborted();if(generation!==epoch||selected!==active||state.session?.sessionId!==session.sessionId)throw Error('The agent changed.');};
-      assertCurrent();
-      const list = await conversationList(selected, signal);
-      if (!list.some(item => item.id === id)) throw new Error('This conversation is no longer available to this agent.');
-      const result = selected.kind === 'cloud' ? await selected.cloud.messages(selected.agentId, id, signal) : await selected.remote.messages(id, signal);
-      signal.throwIfAborted();
-      if (generation !== epoch) throw new Error('The agent changed.');
-      if (result.messages.length > 2000) throw new Error('This history is too large to display safely.');
-      const messages: RestoredMessage[] = result.messages.filter(item => item.role === 'user' || item.role === 'assistant').map(item => {
-        if (typeof item.id !== 'string' || !item.id || typeof item.text !== 'string' || item.text.length > 200000) throw new Error('The agent returned invalid history.');
-        return { id: item.id, from: item.role === 'user' ? 'user' : 'agent', text: item.role === 'user' ? restoredText(item.text) : item.text };
-      });
-      let saved = true;
-      try { await selectConversation(key,expected,id,signal,assertCurrent); } catch { saved = false; }
-      assertCurrent();conversationMemory.set(key,id);
-      update({ history: { sessionId: session.sessionId, conversationId: id, revision: (state.history?.revision || 0) + 1, messages }, open: false,
-        message: saved ? 'Returned history restored. Older messages may remain on the agent.' : 'History restored for this session; restart selection could not be saved.' });
-    });
+    await work('Verifying and restoring conversation…',signal=>restoreConversationHistory(id,signal,false));
   },
+  async retrySavedHistory(){if(sending)return;await work('Checking saved conversation…',signal=>restoreSavedResidentHistory(signal));},
   async send(text: string, context: ContextEnvelope, requestId: string, signal: AbortSignal, onText?:(text:string)=>void): Promise<{ text: string; proposals?: ActionProposal[] }> {
     if (operation) throw new Error('Finish the connection or history operation before sending.');
     const message = phoneContextMessage(text, context);
@@ -733,7 +838,7 @@ export const connectionController = {
       }
       // Generic clients report an observation, never authority or permission.
       // Retain the legacy field while older runtime deployments are supported.
-      const options = { signal: requestSignal, clientMessageId: requestId, metadata: { clientDevice: { context: message.context }, alphaPhone: { context: message.context } } };
+      const options = { signal: requestSignal, clientMessageId: requestId, metadata: { ...(message.context.timeZone===undefined?{}:{uiTimeZone:message.context.timeZone}), clientDevice: { context: message.context }, alphaPhone: { context: message.context } } };
       const progress=(value:string)=>{requestSignal.throwIfAborted();if(generation!==epoch||selected!==active||state.session?.sessionId!==session.sessionId)throw Error('The connection changed.');onText?.(value);};
       const reply = selected.kind === 'cloud' ? await selected.cloud.send(selected.agentId, id, message.text, options) : selected.kind==='resident'?await selected.remote.send(id,message.text,{...options,onText:progress}):await selected.remote.send(id, message.text, options);
       requestSignal.throwIfAborted();
@@ -865,6 +970,23 @@ export function ConnectionChooser() {
     return () => { document.removeEventListener('keydown', key); window.removeEventListener('alpha-back', back, true); releaseInert(); previous?.focus(); };
   }, [snapshot.open, snapshot.busy]);
   if (!snapshot.open) return null;
+  if(isAndroid && !testMocksEnabled)return <div className="alpha-connection-scrim"><div className="alpha-connection" role="dialog" aria-modal="true" aria-labelledby="connection-title" tabIndex={-1} ref={panel}>
+    <header><h1 id="connection-title">Welcome to Alpha</h1></header>
+    <p>Your agent runs on this phone. Sign in to Eliza Cloud to use your account credits for AI.</p>
+    {snapshot.cloudAccount ? <>
+      {typeof snapshot.residentBalance==='number'&&<p>{snapshot.residentBalance>0?'Credits available':'Add credits to continue'}</p>}
+      {typeof snapshot.residentBalance==='number'&&snapshot.residentBalance<=0&&<button disabled={snapshot.busy} onClick={()=>void connectionController.residentTopUp()}>Add credits in Eliza Cloud</button>}
+      <button disabled={snapshot.busy} onClick={()=>void connectionController.startLocal()}>{snapshot.residentBalance!=null&&snapshot.residentBalance<=0?'Check credits again':'Continue'}</button>
+      <button disabled={snapshot.busy} onClick={()=>void connectionController.cloudSignOut()}>Sign out</button>
+    </>:<>
+      {snapshot.residentSavedCredential&&<button disabled={snapshot.busy} onClick={()=>void connectionController.startLocal()}>Retry saved connection</button>}
+      <button disabled={snapshot.busy} onClick={()=>void connectionController.residentCloudLogin()}>Sign in with Eliza Cloud</button>
+    </>}
+    {snapshot.message&&<p role="status">{snapshot.message}</p>}
+    {snapshot.error&&<p role="alert">{snapshot.error}</p>}
+    {snapshot.historyError&&<><p role="status">{snapshot.historyError}</p><button disabled={snapshot.busy} onClick={()=>void connectionController.retrySavedHistory()}>Retry saved conversation</button></>}
+    {snapshot.busy&&<button onClick={()=>connectionController.cancel()}>Cancel</button>}
+  </div></div>;
   const pairingOptions=<>
     <details><summary>Remote agent</summary><form onSubmit={event => { event.preventDefault(); void connectionController.pair('remote', remoteOrigin.current?.value || '', remoteCode.current?.value || ''); if (remoteCode.current) remoteCode.current.value = ''; }}>
       <label>Agent HTTPS address<input ref={remoteOrigin} type="url" autoCapitalize="none" spellCheck={false} placeholder="https://your-agent.example" required disabled={snapshot.busy} /></label>

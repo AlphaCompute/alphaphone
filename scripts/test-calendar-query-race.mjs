@@ -18,7 +18,7 @@ class Shell {
 }
 let source=fs.readFileSync(new URL('../apps/app/src/prototype/calendar-adapter.ts',import.meta.url),'utf8').replace(/^import .*\n/gm,'').replace("const calendar = registerPlugin<any>('AlphaCalendar');",'').replace('export function installCalendarAdapter','function installCalendarAdapter');
 source=stripTypeScriptTypes(source);
-vm.runInNewContext(source+'\ninstallCalendarAdapter(Shell,views);',{openCalendarRecovery:()=>{throw Error('Browser recovery must not open in native fixture');},openReminderRecovery:()=>{throw Error('Browser reminder recovery must not open in native fixture');},openReminderActionRecovery:()=>{throw Error('Browser action recovery must not open in native fixture');},openReminderCreationRecovery:()=>{throw Error('Browser reminder creation recovery must not open in native fixture');},Capacitor:{getPlatform:()=> 'android',isNativePlatform:()=>true},calendar,DailyApps,Shell,views,Date,queueMicrotask,console});
+vm.runInNewContext(source+'\ninstallCalendarAdapter(Shell,views);',{window:new EventTarget(),openCalendarRecovery:()=>{throw Error('Browser recovery must not open in native fixture');},openReminderRecovery:()=>{throw Error('Browser reminder recovery must not open in native fixture');},openReminderActionRecovery:()=>{throw Error('Browser action recovery must not open in native fixture');},openReminderCreationRecovery:()=>{throw Error('Browser reminder creation recovery must not open in native fixture');},Capacitor:{getPlatform:()=> 'android',isNativePlatform:()=>true},calendar,DailyApps,Shell,views,Date,queueMicrotask,console});
 shell=new Shell();shell.componentDidMount();
 assert.equal(calls.length,1);const initial=calls[0];
 // Change the real adapter's visible range away and back before A settles.
