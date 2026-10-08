@@ -100,3 +100,47 @@ pass for every packaged ABI. Failed, missing, malformed or unsupported acceptanc
 records fail closed. `scripts/verify-apks.mjs` requires both gates, so exact native bytes
 alone cannot set `distributable: true`. Source/build/JNI QA may proceed; this admission
 does not establish local speech quality, full product readiness or a release decision.
+
+## Requalify an independent rebuild
+
+A second machine cannot reproduce the recorded JNI bytes (build ID, ZIP times; see above), so
+`install-generated.py` refuses its runtime. `requalify-runtime.py` is the reviewed path that
+admits such a rebuild into `qualified-runtime-manifest.json` without weakening either gate:
+
+```sh
+# 1. Rebuild with the pinned NDK r28c and CMake 4.0.3 (commands above, through assemble-runtime.py).
+# 2. Record the candidate: native bytes, no-eSpeak checks, AAR hash, upstream pin, hashes of the
+#    pinned tooling and these wrappers, the NDK source.properties and the cmake executable, and the
+#    SHA-256 of the canonical test.
+python3 scripts/local-speech/requalify-runtime.py record --ndk "$ANDROID_NDK_HOME"
+# 3. Build a non-distributable APK and test APK with that runtime (install-generated.py
+#    --allow-unqualified-runtime; never commit the runtime-manifest.json it writes), disable
+#    networking on a disposable device or emulator of each ABI, then run the unchanged
+#    LocalSpeechInstrumentedTest there. The device must be named; none is chosen for you.
+python3 scripts/local-speech/requalify-runtime.py run --serial <device> \
+  --apk android/app/build/outputs/apk/standalone/debug/app-standalone-debug.apk \
+  --test-apk android/app/build/outputs/apk/androidTest/standalone/debug/app-standalone-debug-androidTest.apk
+#    (or `ingest --abi ABI --apk APP.apk --log am-instrument-r.log --evidence local-speech-evidence/`
+#    for a run made elsewhere)
+# 4. Admit once every rebuilt ABI passed. The previous record is kept under baselines/.
+python3 scripts/local-speech/requalify-runtime.py admit --reviewer "<who reviewed the evidence>"
+```
+
+An ABI passes only when both canonical tests ran and passed (`am instrument -r` codes), the
+run completed without failures, `result.json` and `holder-result.json` record a CPU pass, the
+APK carries exactly the candidate's native bytes for that ABI, the device reports that ABI,
+and the canonical test is byte-identical to the one recorded. `admit` refuses while any ABI is
+missing or failed, so `verify-apk-qualification.py` and `scripts/verify-apks.mjs` keep marking
+an APK distributable only when every packaged ABI has a functional pass. Commit the new record,
+its baseline copy and the candidate's evidence digests for review. An Apple Silicon host
+cannot run an x86_64 Android emulator; the x86_64 run needs an x86_64 host or device.
+`test/local-speech-requalify.test.py` covers these rules with synthetic inputs.
+
+### Float-path diagnostics (release-05)
+
+`VoiceFloatPathDiagnosticInstrumentedTest` (opt-in `-e localSpeech 1`, networking off) records,
+next to the canonical evidence, how the in-process float buffer given to ASR differs from the
+saved 16-bit PCM: peak, clipped samples, exact zeros, the 32767/32768 write gain, quantization
+error, and the transcript of each variant through the canonical linear resampler, and it keeps
+both float buffers as float32 files. It asserts only that this evidence was produced; the
+canonical test and its keyword assertions stay unchanged.
