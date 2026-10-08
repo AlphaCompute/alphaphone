@@ -126,6 +126,8 @@ tasks.named('preBuild').configure { dependsOn stageLocalAgentSources }
 // The shared bionic host is packaged only from the reviewed consumer artifact and BGE pin.
 def verifyEmbeddingHost = tasks.register('verifyEmbeddingHost', Exec) {
  workingDir rootProject.projectDir.parentFile
- commandLine 'node', 'scripts/stage-embedding-host.mjs', '--verify'
+ def args = ['node', 'scripts/stage-embedding-host.mjs', '--verify']
+ if (project.findProperty('ALPHA_ALLOW_UNPACKAGED_RUNTIME') == '1') args += '--allow-unpackaged-runtime'
+ commandLine args
 }
 tasks.named('preBuild').configure { dependsOn verifyEmbeddingHost }

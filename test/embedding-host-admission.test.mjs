@@ -5,7 +5,7 @@ import path from 'node:path';
 import os from 'node:os';
 import {createHash} from 'node:crypto';
 import {execFileSync} from 'node:child_process';
-import {verifyEmbeddingHost} from '../scripts/stage-embedding-host.mjs';
+import {verifyEmbeddingHost, verifyEmbeddingInputs} from '../scripts/stage-embedding-host.mjs';
 const root=path.resolve(import.meta.dirname,'..');
 const git=(directory,...args)=>execFileSync('git',['-C',directory,...args],{encoding:'utf8',stdio:['ignore','pipe','pipe']}).trim();
 const qualified=JSON.parse(fs.readFileSync(path.join(root,'android/embedding-host/qualified-host.json'),'utf8'));
@@ -17,7 +17,10 @@ function fixture({currentOnly=false}={}){
   fs.mkdirSync(vendor);git(vendor,'init');
   for(const row of qualified.inputs){const file=path.join(vendor,row.path);fs.mkdirSync(path.dirname(file),{recursive:true});fs.writeFileSync(file,execFileSync('git',['-C',path.join(root,'vendor/eliza'),'show','HEAD:'+row.path]));}
  }else{
-  execFileSync('git',['clone','--shared','--no-checkout',path.join(root,'vendor/eliza'),vendor],{stdio:'pipe'});
+  fs.mkdirSync(vendor);git(vendor,'init');
+  // Borrow only the checked-out objects; cloning a partial source can fetch unrelated history.
+  const objects=git(path.join(root,'vendor/eliza'),'rev-parse','--path-format=absolute','--git-path','objects');
+  fs.writeFileSync(path.join(vendor,'.git/objects/info/alternates'),objects+'\n');
   git(vendor,'sparse-checkout','init','--no-cone');
   git(vendor,'sparse-checkout','set','--no-cone',...qualified.inputs.map(row=>'/'+row.path),'/plugins/plugin-local-inference/native/llama.cpp');
   git(vendor,'checkout','--detach',JSON.parse(fs.readFileSync(path.join(dir,'upstream.lock.json'),'utf8')).commit);
@@ -48,16 +51,11 @@ test('a valid native set does not bypass the pinned local model admission',()=>{
  const f=fixture();try{assert.throws(()=>verifyEmbeddingHost(f.dir),/BGE384 model missing/);const model=path.join(f.dir,qualified.model.path);fs.mkdirSync(path.dirname(model),{recursive:true});fs.writeFileSync(model,'incorrect model');assert.throws(()=>verifyEmbeddingHost(f.dir),/BGE384 model missing or changed/);}finally{f.close();}
 });
 
-function useQualifiedBytes(f){
- for(const row of qualified.libraries)fs.copyFileSync(path.join(root,'android/app/src/main/jniLibs/arm64-v8a',row.name),path.join(f.dir,'android/app/src/main/jniLibs/arm64-v8a',row.name));
- const model=path.join(f.dir,qualified.model.path);fs.mkdirSync(path.dirname(model),{recursive:true});fs.copyFileSync(path.join(root,qualified.model.path),model);
- fs.writeFileSync(path.join(f.dir,'android/embedding-host/qualified-host.json'),JSON.stringify(qualified));
-}
 test('text-only pin change reuses exact reviewed native bytes without relabeling the built pin',()=>{
  const f=fixture();try{
-  useQualifiedBytes(f);
   const current=JSON.parse(fs.readFileSync(path.join(f.dir,'upstream.lock.json'),'utf8')).commit;
-  assert.notEqual(current,qualified.pin);assert.equal(verifyEmbeddingHost(f.dir).pin,qualified.pin);
+  assert.notEqual(current,qualified.pin);assert.doesNotThrow(()=>verifyEmbeddingInputs(f.dir,qualified));
+  assert.equal(JSON.parse(fs.readFileSync(path.join(f.dir,'android/embedding-host/qualified-host.json'),'utf8')).pin,qualified.pin);
  }finally{f.close();}
 });
 test('every changed committed native build input is refused even when the runtime lock matches',()=>{
@@ -86,8 +84,20 @@ test('missing, incomplete or altered native qualification cannot admit a new sou
 
 test('current-only shallow native inputs admit reviewed bytes without fetching the historical build pin',()=>{
  const f=fixture({currentOnly:true});try{
-  useQualifiedBytes(f);assert.equal(git(f.vendor,'rev-parse','--is-shallow-repository'),'true');
+  assert.equal(git(f.vendor,'rev-parse','--is-shallow-repository'),'true');
   assert.throws(()=>git(f.vendor,'cat-file','-e',qualified.pin));
-  assert.equal(verifyEmbeddingHost(f.dir).pin,qualified.pin);
+  assert.doesNotThrow(()=>verifyEmbeddingInputs(f.dir,qualified));
  }finally{f.close();}
+});
+
+test('explicit unpackaged builds admit absence, never a partial resident payload or host',()=>{
+ const dir=fs.mkdtempSync(path.join(os.tmpdir(),'alpha-embed-unpackaged-'));
+ try{
+  assert.deepEqual(verifyEmbeddingHost(dir,{allowAbsentRuntime:true}),{status:'not-packaged',distributable:false});
+  assert.throws(()=>verifyEmbeddingHost(dir));
+  for(const relative of ['android/app/src/main/assets/agent/alpha-source.json','android/app/src/main/assets/agent/agent-bundle.js','android/app/src/main/assets/agent/workflow-worker/manifest.json','android/app/src/main/jniLibs/arm64-v8a/libelizainference.so','android/app/src/main/jniLibs/x86_64/libelizavoicejni.so']){
+   const file=path.join(dir,relative);fs.mkdirSync(path.dirname(file),{recursive:true});fs.writeFileSync(file,'partial');
+   assert.throws(()=>verifyEmbeddingHost(dir,{allowAbsentRuntime:true}));fs.unlinkSync(file);
+  }
+ }finally{fs.rmSync(dir,{recursive:true,force:true});}
 });

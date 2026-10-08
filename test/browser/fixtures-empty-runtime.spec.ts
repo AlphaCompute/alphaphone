@@ -45,7 +45,7 @@ test('Files root shows explicit empty copy instead of seeded files', async ({ pa
 
 test('notification shade has no seeded notices, no Enclave lock tile and neutral unknown tiles', async ({ page }) => {
   const { errors } = await withEmptyFixtures(page);
-  await page.goto('/');
+  await page.goto('/?shell=launcher');
   await expect(page.getByRole('button', { name: 'Inbox', exact: true })).toBeVisible();
   const box = (await page.locator('[data-screen]').boundingBox())!;
   const scale = box.width / 412;

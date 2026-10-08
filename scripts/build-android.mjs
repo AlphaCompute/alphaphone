@@ -52,8 +52,8 @@ export function buildEnv(base, { testMocks }) {
   return env;
 }
 
-export function gradleFlagArgs({ testMocks }) {
-  return [`-P${FLAG}=${testMocks ? "1" : "0"}`];
+export function gradleFlagArgs({ testMocks, allowUnpackagedRuntime = false }) {
+  return [`-P${FLAG}=${testMocks ? "1" : "0"}`, `-PALPHA_ALLOW_UNPACKAGED_RUNTIME=${allowUnpackagedRuntime ? "1" : "0"}`];
 }
 
 export const outputDirectory = ({ testMocks }) => (testMocks ? "artifacts/test-mocks" : "artifacts");

@@ -12,7 +12,7 @@ const forkPath='plugins/plugin-local-inference/native/llama.cpp';
 const inputPaths=['packages/app/scripts/stage-elizavoice-lib.ts','packages/app/scripts/build-helpers/arm64-simd.ts','packages/app/scripts/build-helpers/verify-fused-symbols.ts','packages/app/platforms/android/app/src/main/elizavoice-jni/CMakeLists.txt','packages/app/platforms/android/app/src/main/elizavoice-jni/elizavoice-jni.cpp'];
 const isCommit=value=>typeof value==='string'&&/^[a-f0-9]{40}$/.test(value)&&value!=='0'.repeat(40);
 /** A new runtime pin may reuse reviewed binaries only when every native build input is exact. */
-function verifyEmbeddingInputs(productRoot,qualification) {
+export function verifyEmbeddingInputs(productRoot,qualification) {
  const pin=JSON.parse(fs.readFileSync(path.join(productRoot,'upstream.lock.json'),'utf8')).commit;
  const identity=JSON.parse(fs.readFileSync(path.join(productRoot,'app.config.json'),'utf8')).appId;
  if(!isCommit(pin)||!isCommit(qualification.pin)||!isCommit(qualification.forkPin)||qualification.identity!==identity||qualification.abi!=='arm64-v8a')throw Error('Embedding host source or identity admission changed');
@@ -33,7 +33,16 @@ function verifyEmbeddingInputs(productRoot,qualification) {
  } catch(error){throw Error('Embedding host source admission changed: '+error.message,{cause:error});}
 }
 /** Build admission reads exact staged bytes; it never downloads or repairs a missing artifact. */
-export function verifyEmbeddingHost(productRoot) {
+export function verifyEmbeddingHost(productRoot,{allowAbsentRuntime=false}={}) {
+ // The explicit unpackaged developer build has no agent to use this host. Never
+ // admit a partial resident payload or a partially staged native host this way.
+ if(allowAbsentRuntime){
+  const runtime=['alpha-source.json','agent-bundle.js','workflow-worker/manifest.json'];
+  const native=names.flatMap(name=>['arm64-v8a','x86_64'].map(abi=>'android/app/src/main/jniLibs/'+abi+'/'+name));
+  const files=[...runtime.map(name=>'android/app/src/main/assets/agent/'+name),...native];
+  if(files.every(file=>!fs.existsSync(path.join(productRoot,file))))return {status:'not-packaged',distributable:false};
+ }
+
  const manifest=JSON.parse(fs.readFileSync(path.join(productRoot,'android/embedding-host/qualified-host.json'),'utf8'));
  if(!/^[a-f0-9]{64}$/.test(manifest.qualificationReceiptSha256)||manifest.jniIdentityRelocated!==true)throw Error('Embedding host qualification missing or changed');
  verifyEmbeddingInputs(productRoot,manifest);
@@ -50,7 +59,7 @@ export function verifyEmbeddingHost(productRoot) {
 }
 if(process.argv[1]&&path.resolve(process.argv[1])===fileURLToPath(import.meta.url)){
  const args=process.argv.slice(2);
- if(args.length===1&&args[0]==='--verify'){verifyEmbeddingHost(root);console.log('Qualified ARM64 embedding host and BGE384 bytes verified. No device execution claimed.');}
+ if(args[0]==='--verify'&&(args.length===1||args.length===2&&args[1]==='--allow-unpackaged-runtime')){const result=verifyEmbeddingHost(root,{allowAbsentRuntime:args.includes('--allow-unpackaged-runtime')});console.log(result.status==='not-packaged'?'No resident embedding host packaged; developer APK only.':'Qualified ARM64 embedding host and BGE384 bytes verified. No device execution claimed.');}
  else if(args.length===2&&args[0]==='--receipt'){
   const receipt=JSON.parse(fs.readFileSync(args[1],'utf8'));
   const identity=JSON.parse(fs.readFileSync(path.join(root,'app.config.json'),'utf8')).appId;
