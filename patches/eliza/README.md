@@ -43,19 +43,18 @@ patch and its manifest, and point consumers back at `vendor/eliza`.
 | --- | --- | --- |
 | `0038-password-manager.patch` (`password-manager-source.json`) | Adds `plugins/plugin-native-passwords` (vault client, Android Autofill provider, fill/save activities, JVM and instrumentation tests) and extends `plugin-native-secure-store` (`PasswordVaultStore.KeyPolicy`, named multi-binding entries, unrecoverable-vault reset, `PasswordFacets`, `PasswordVaultFrame`, tests); registers the new package in `packages/scripts/native-capacitor-scaffold.json`. | Candidate for elizaOS `develop`; not submitted upstream. |
 
-## Reference-only Gmail patch
+## Reference patches
 
-`0037-gmail-inbox-read-state.patch` (base `3cca1ee4f1f1e4cd417de7272ba5195263dcb63b`) adds the
+These change only Eliza Cloud server code (`packages/cloud`), which the phone does not build, so
+they have a `-source-base.json` manifest and are never materialized into client source.
+
+`0037-gmail-inbox-read-state.patch` (`gmail-inbox-read-state-source-base.json`, base `3cca1ee4f1f1e4cd417de7272ba5195263dcb63b`) adds the
 reviewed managed Gmail inbox-v1 kinds `mark-read` and `mark-unread`, `capabilities.readState`,
 and additive migration `0535_managed_gmail_read_state_operations` (widens
 `managed_gmail_operation_receipts_kind_check`). It has not been upstreamed or deployed to
 Eliza Cloud. Until it is, servers omit `readState`, and the client treats that as false.
 
-This patch changes only Eliza Cloud server code (`packages/cloud`), which the phone does not
-build. Its manifest is deliberately named `*-source-base.json`, not `*-source.json`, so a client
-patch materializer that reads `*-source.json` manifests does not apply it to client source.
-
-## Apply and test
+### Apply and test (0037)
 
 ```sh
 BASE=3cca1ee4f1f1e4cd417de7272ba5195263dcb63b
