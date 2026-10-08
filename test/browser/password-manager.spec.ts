@@ -232,7 +232,7 @@ test('leaving Settings for another view locks the development vault', async ({ p
   await page.getByRole('button', { name: 'Unlock passwords', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Open Example sign-in', exact: true })).toBeVisible();
   expect(await page.evaluate(async () => (await import('/src/passwords/password-manager.ts')).passwordManagerHoldsEntries())).toBe(true);
-  await page.getByRole('button', { name: 'Home', exact: true }).click();
+  await page.getByRole('button', { name: 'Back to apps', exact: true }).click();
   await expect.poll(async () => (await agentContext(page)).view).not.toBe('settings');
   // Locked and forgotten as soon as Settings is left, not only when it is reopened.
   expect(await page.evaluate(async () => (await import('/src/passwords/password-manager.ts')).passwordManagerHoldsEntries())).toBe(false);

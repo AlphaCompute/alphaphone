@@ -1,5 +1,5 @@
 import {
- addNotesTrashEntry,editNotesTrash,notesTrashDaysLabel,planNotesTrash,readNotesTrash,removeNotesTrashEntries,
+ addNotesTrashEntry,editNotesTrash,notesTrashDaysLabel,notesTrashExpired,planNotesTrash,readNotesTrash,removeNotesTrashEntries,
  restoreNotesTrashEntry,savedNoteIds,sortedNotesTrash,withNotesDeletionLock,type NotesTrashEntry,
 } from '../runtime/notes-trash';
 type Bag=Record<string,any>;
@@ -72,8 +72,10 @@ export function installNotesTrashAdapter(Component:Shell,views:Record<string,Bag
  async function restore(shell:Shell,id:string){
   if(busy)return;busy=true;shell.vset('notes',{trashBusy:true});
   try{
+   await runMaintenance(shell);
    const entry=(await readNotesTrash()).entries.find(x=>x.id===id);
    if(!entry){shell.toast('This note is no longer in Trash.');return;}
+   if(notesTrashExpired(entry,Date.now())){shell.toast('This note has expired and cannot be restored. Permanent deletion will be retried.');return;}
    if(entry.audio){
     // The recording follows its note through the reviewed voice restore path.
     const hook=voice(shell).restoreTrashedVoice;
@@ -84,6 +86,7 @@ export function installNotesTrashAdapter(Component:Shell,views:Record<string,Bag
     if(!ready(shell))throw Error('Notes storage needs recovery');
     const current=(await readNotesTrash()).entries.find(x=>x.id===id);
     if(!current)return 'gone';
+    if(notesTrashExpired(current,Date.now()))throw Error('Trash retention expired');
     if((await savedNoteIds()).has(current.note.id)){await editNotesTrash(doc=>removeNotesTrashEntries(doc,[id]));return 'live';}
     const list=restoreNotesTrashEntry(shell.notesStore.list,current);
     if(await shell.vset('notes',{list},{exact:true})!==true)throw Error('Restore unconfirmed');

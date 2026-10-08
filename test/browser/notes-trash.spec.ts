@@ -104,7 +104,7 @@ test('Trash purges exactly three days after deletion, at startup and when Notes 
 
  // Past the boundary, opening Notes purges without a restart.
  await page.clock.setSystemTime(deletedAt+3*DAY+60_000);
- await page.getByRole('button',{name:'Home',exact:true}).click();
+ await page.getByRole('button',{name:'Back to apps',exact:true}).click();
  await openNotes(page);
  await expect.poll(()=>trashEntries(page).then(e=>e.map((x:any)=>x.note.title))).toEqual(['Later']);
  await page.getByRole('button',{name:'Open Trash',exact:true}).click();
@@ -159,7 +159,7 @@ test('voice notes share the Trash: the recording restores with its note and is e
  await remove();
  const deletedAt=(await trashEntries(page))[0].deletedAt;
  await page.clock.setSystemTime(deletedAt+3*DAY+60_000);
- await page.getByRole('button',{name:'Home',exact:true}).click();await openNotes(page);
+ await page.getByRole('button',{name:'Back to apps',exact:true}).click();await openNotes(page);
  await expect.poll(()=>trashEntries(page)).toEqual([]);
  const erased=await describe();
  expect(erased.transcript).toBe('');expect(erased.expired).toBe(true);
@@ -243,4 +243,18 @@ test('an approved agent deletion of a voice note moves its recording to Trash wi
  expect((await describe()).deletedAt).toBeUndefined();
  expect((await savedRecords(page)).find((n:any)=>n.id==='agent-voice')).toEqual(original);
  expect(await trashEntries(page)).toEqual([]);
+});
+
+
+test('an already open Trash cannot restore a note after the retention deadline',async({page})=>{
+ await page.clock.install({time:Date.UTC(2026,9,7,12)});
+ await page.goto('/');await openNotes(page);
+ await createNote(page,'Deadline','Must not return after expiry');await deleteNote(page,'Deadline');
+ const entry=(await trashEntries(page))[0];
+ await page.getByRole('button',{name:'Open Trash',exact:true}).click();
+ await expect(page.getByRole('button',{name:'Restore Deadline',exact:true})).toBeVisible();
+ await page.clock.setSystemTime(entry.deletedAt+3*DAY);
+ await page.getByRole('button',{name:'Restore Deadline',exact:true}).click();
+ await expect.poll(()=>trashEntries(page)).toEqual([]);
+ expect((await savedRecords(page)).some((note:any)=>note.id===entry.note.id)).toBe(false);
 });

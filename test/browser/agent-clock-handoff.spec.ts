@@ -126,7 +126,7 @@ for (const mode of ['confirm','transcribed','zone','modal','unknown','receipt-lo
       expect(await page.evaluate(()=>(window as any).recoveryFixture.effects)).toBe(0);return;
     }
     await page.getByText('Approve: clock handoff',{exact:true}).click();
-    if(mode==='zone'){await expect(page.getByText('Phone time zone changed. Review the Clock request again.',{exact:true}).first()).toBeVisible();expect(await page.evaluate(()=>(window as any).recoveryFixture.effects)).toBe(0);return;}
+    if(mode==='zone'){await expect(page.getByText('This action is no longer pending for the current screen. Open its original selection and review again.',{exact:true}).first()).toBeVisible();expect(await page.evaluate(()=>(window as any).recoveryFixture.effects)).toBe(0);return;}
 
     if(mode==='review-cancel'){
       await expect.poll(()=>page.evaluate(()=>(window as any).recoveryFixture.receipts)).toBe(1);

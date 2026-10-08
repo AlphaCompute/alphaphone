@@ -3,7 +3,7 @@ import {reviewContentQuestion} from '../browser/content-question';
 import {recordingLevels} from '../browser/audio-levels';
 import {browserDevProfile} from '../browser/dev-profile';
 import {pendingAudioDeletions,withAudioDeletionLock,changeAudioDeletion,audioDeletionNoteState,type AudioDeletion} from '../runtime/note-audio-deletions';
-import {addNotesTrashEntry,editNotesTrash,readNotesTrash,removeNotesTrashEntries,savedNotes,type NotesTrashEntry} from '../runtime/notes-trash';
+import {addNotesTrashEntry,editNotesTrash,notesTrashExpired,readNotesTrash,removeNotesTrashEntries,savedNotes,type NotesTrashEntry} from '../runtime/notes-trash';
 import type {NotesTarget} from '../runtime/notes-contract';
 const audioOperation=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 import { installLocalSpeechPlayback, stopLocalSpeechPlayback } from './local-speech-playback';
@@ -401,6 +401,8 @@ export function installPrototypeVoiceAdapter(Component: any, views: Record<strin
     if(deletionBusy)return false;deletionBusy=true;let done=false;
     try{await withAudioDeletionLock(async()=>{
       if(!current.voiceNoteActive()||document.hidden)throw Error('Open Notes to restore');
+      const trashEntry=(await readNotesTrash()).entries.find(entry=>entry.id===row.id);
+      if(trashEntry&&notesTrashExpired(trashEntry,Date.now()))throw Error('Trash retention expired');
       const state=await audioDeletionNoteState(row);
       if(state==='changed')throw Error('A newer note must be preserved');
       if(current.storageReady?.()===false)throw Error('Reopen Notes first');

@@ -153,6 +153,9 @@ export function installPrototypeBrowserAdapter(Component: any, views: Record<str
     } catch { if (approvedSignal) throw new Error('Invalid approved browser destination'); report(new Error('Enter search words or a valid HTTP or HTTPS address without credentials.')); return; }
     const s = state(); if (!s) { if (approvedSignal) throw new Error('Browser unavailable'); return; }
     const id = newTab ? newTabId() : s.cur, priv = newTab ? privateTab : isPrivate(id);
+    // Keep the last committed address durable while a restored page is loading or fails.
+    const saved = restored.get(id);
+    if (saved) metadata.set(id, { ...metadata.get(id), savedUrl: saved.url, title: saved.title });
     restored.delete(id);
     try {
       await ensure(id, priv);
@@ -344,7 +347,7 @@ export function installPrototypeBrowserAdapter(Component: any, views: Record<str
     const composer=document.querySelector('[aria-label="Open conversation"]')?.parentElement?.getBoundingClientRect();
     const height=rect ? Math.max(0,Math.min(rect.bottom,composer && composer.height ? composer.top-8 : rect.bottom)-rect.top) : 0;
     // A restored cold-start tab loads its last committed page when first shown.
-    if(!hidden && s && restored.has(s.cur) && !created.has(s.cur) && !clearingData){const saved=restored.get(s.cur)!;restored.delete(s.cur);void navigate(saved.url);}
+    if(!hidden && s && restored.has(s.cur) && !created.has(s.cur) && !clearingData){const saved=restored.get(s.cur)!;void navigate(saved.url);}
     saveSession();
     const payload=hidden || !created.has(s?.cur) ? {session,id:null} : {session,id:s.cur,x:rect!.x,y:rect!.y,width:rect!.width,height};
     const next=JSON.stringify(payload);
