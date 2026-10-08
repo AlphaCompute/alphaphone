@@ -208,11 +208,11 @@ test("distribution builds strip every form of the flag; --test-mocks sets it and
   assert.equal(off.VITE_ELIZA_DEV_ALLOW_TEST_MOCKS, undefined);
   assert.equal(off.ORG_GRADLE_PROJECT_ELIZA_DEV_ALLOW_TEST_MOCKS, undefined);
   assert.equal(off.PATH, "/bin");
-  assert.deepEqual(gradleFlagArgs({ testMocks: false }), ["-PELIZA_DEV_ALLOW_TEST_MOCKS=0", "-PALPHA_ALLOW_UNPACKAGED_RUNTIME=0"]);
+  assert.deepEqual(gradleFlagArgs({ testMocks: false }), ["-PELIZA_DEV_ALLOW_TEST_MOCKS=0", "-PELIZA_ALLOW_UNPACKAGED_RUNTIME=0"]);
   assert.equal(outputDirectory({ testMocks: false }), "artifacts");
   const on = parseBuildArgs(["--test-mocks"]);
   assert.equal(buildEnv({}, on).ELIZA_DEV_ALLOW_TEST_MOCKS, "1");
-  assert.deepEqual(gradleFlagArgs(on), ["-PELIZA_DEV_ALLOW_TEST_MOCKS=1", "-PALPHA_ALLOW_UNPACKAGED_RUNTIME=0"]);
+  assert.deepEqual(gradleFlagArgs(on), ["-PELIZA_DEV_ALLOW_TEST_MOCKS=1", "-PELIZA_ALLOW_UNPACKAGED_RUNTIME=0"]);
   assert.equal(outputDirectory(on), "artifacts/test-mocks");
   assert.equal(parseBuildArgs(["--allow-unpackaged-runtime"]).allowUnpackagedRuntime, true);
   assert.throws(() => parseBuildArgs(["--mock"]), /Unknown option/);

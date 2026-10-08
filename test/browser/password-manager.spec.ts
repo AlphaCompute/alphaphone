@@ -113,6 +113,8 @@ async function nativeVault(page: Page, options: { leak?: boolean; selected?: str
     ] as any[], listeners: {} as any };
     const methods = (names: string[]) => names.map(name => ({ name, rtype: 'promise' }));
     w.Capacitor = { PluginHeaders: [
+      {name:'AlphaNotifications',methods:methods(['status','crossAppStatus','addListener','removeListener'])},
+      {name:'AlphaVoiceCloud',methods:methods(['checkPermissions'])},
       { name: 'ElizaPasswords', methods: methods(['status', 'unlock', 'lock', 'list', 'save', 'remove', 'reset', 'reveal', 'copy', 'openAutofillSettings']) },
       { name: 'AlphaDevice', methods: methods(['snapshot', 'openPasswordProvider']) },
       { name: 'AlphaConnection', methods: methods(['secureRead', 'addListener', 'removeListener']) },
@@ -122,6 +124,8 @@ async function nativeVault(page: Page, options: { leak?: boolean; selected?: str
       { name: 'DailyApps', methods: [...methods(['surfaceInfo', 'removeListener']), { name: 'addListener', rtype: 'callback' }] },
     ], nativeCallback: (plugin: string, method: string, input: any, callback: any) => { f.listeners[input.eventName] ??= []; f.listeners[input.eventName].push(callback); return 'listener'; },
     nativePromise: async (plugin: string, method: string, input: any) => {
+      if(plugin==='AlphaNotifications')return {permissionGranted:true,appEnabled:true};
+      if(plugin==='AlphaVoiceCloud')return {microphone:'granted'};
       if (plugin === 'ElizaPasswords') {
         f.calls.push({ method, input });
         if (method === 'status') return { available: true, locked: f.locked, unlockRemainingMs: f.locked ? 0 : 50000, unlockSeconds: 60, biometric: true, autofill: { supported: true, selected: f.selected } };

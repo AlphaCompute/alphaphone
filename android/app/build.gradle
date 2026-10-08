@@ -127,7 +127,7 @@ tasks.named('preBuild').configure { dependsOn stageLocalAgentSources }
 def verifyEmbeddingHost = tasks.register('verifyEmbeddingHost', Exec) {
  workingDir rootProject.projectDir.parentFile
  def args = ['node', 'scripts/stage-embedding-host.mjs', '--verify']
- if (project.findProperty('ALPHA_ALLOW_UNPACKAGED_RUNTIME') == '1') args += '--allow-unpackaged-runtime'
+ if (project.findProperty('ELIZA_ALLOW_UNPACKAGED_RUNTIME') == '1') args += '--allow-unpackaged-runtime'
  commandLine args
 }
 tasks.named('preBuild').configure { dependsOn verifyEmbeddingHost }

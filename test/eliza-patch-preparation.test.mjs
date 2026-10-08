@@ -83,8 +83,8 @@ test('unknown output directories and symlinks are refused',()=>fixture(directory
 test('numbered series: reference-only patches are ignored, unnumbered or duplicate numbers are refused',()=>fixture(directory=>{
  const eliza=path.join(directory,'patches/eliza');
  // A reference-only patch (qualified in isolated upstream worktrees) never enters .eliza/patched.
- fs.writeFileSync(path.join(eliza,'0037-reference-only.patch'),'not applied\n');
- fs.writeFileSync(path.join(eliza,'reference-only-source-base.json'),JSON.stringify({baseCommit:'0'.repeat(40),patch:'0037-reference-only.patch'}));
+ fs.writeFileSync(path.join(eliza,'9999-reference-only.patch'),'not applied\n');
+ fs.writeFileSync(path.join(eliza,'reference-only-source-base.json'),JSON.stringify({baseCommit:'0'.repeat(40),patch:'9999-reference-only.patch'}));
  assert.deepEqual(readPatchManifests(directory).map(item=>item.manifest.patch),['0038-password-manager.patch']);
  const output=prepareElizaPatches({root:directory});
  assert.equal(JSON.parse(fs.readFileSync(path.join(output,'.source.json'))).patches.length,1);
