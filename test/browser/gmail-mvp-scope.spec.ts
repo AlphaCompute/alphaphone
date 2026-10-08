@@ -7,10 +7,10 @@ async function setup(page:Page,options:Options={}){
   const {connectionController:c}=await import('/src/runtime/connection-ui.tsx');
   const {secureConnectionStore:s}=await import('/src/runtime/native-connection.ts');
   const {CloudProtocolError}=await import('/src/runtime/cloud-protocol.ts');
-  const w=window as any,slots:Record<string,unknown>={};
+  const w=window as any,slots:Record<string,unknown>={};w.gmSlots=slots;
   s.read=async(key:string)=>structuredClone(slots[key]??null) as any;
   s.compareExchange=async(key:string,prior:unknown,next:unknown)=>{if(JSON.stringify(slots[key]??null)!==JSON.stringify(prior))return {status:'conflict'};if(next===null)delete slots[key];else slots[key]=structuredClone(next);return {status:'saved'};};
-  const f=w.gm={searches:[] as any[],prepares:[] as any[],dispatches:[] as any[],disconnects:[] as string[],fail:null as any,stale:false,
+  const f=w.gm={searches:[] as any[],prepares:[] as any[],dispatches:[] as any[],disconnects:[] as string[],fail:null as any,failCursor:false,stale:false,gate:null as Promise<void>|null,dispatchState:'succeeded',
    accounts:(options.accounts||['owner@example.test']).map((label,i)=>({connectionId:'grant-'+i,label,configured:true,connected:true,reason:'connected',grantedCapabilities:['google.gmail.triage']}))};
   const mail=(id:string,extra:Record<string,unknown>={})=>({id,threadId:'thread-'+id,subject:'Subject '+id,from:'Sender '+id,fromEmail:'sender@example.test',to:['owner@example.test'],cc:[],replyTo:null,snippet:'Preview '+id,receivedAt:'2026-10-06T12:00:00Z',unread:false,...extra});
   const inbox=Array.from({length:options.pages?.inbox??1},(_,page)=>[mail('in-'+page+'-a',{unread:page===0}),mail('in-'+page+'-b')]);
@@ -24,6 +24,7 @@ async function setup(page:Page,options:Options={}){
    gmailSearch:async(grant:string,query:string,_signal:AbortSignal,size:number,pageToken?:string)=>{
     f.searches.push({grant,query,size,pageToken:pageToken??null});
     if(f.fail){const kind=f.fail;f.fail=null;if(kind==='offline')throw new TypeError('Failed to fetch');throw new CloudProtocolError('http',kind);}
+    if(pageToken&&f.failCursor){f.failCursor=false;throw new CloudProtocolError('http',400,{error:'Invalid Gmail page token.'});}
     const pages=store[query]||[[]],index=pageToken?Number(pageToken.split(':')[1]):0;
     return {messages:pages[index]||[],syncedAt:'sync',nextPageToken:index+1<pages.length?'cursor:'+(index+1):null};
    },
@@ -38,6 +39,8 @@ async function setup(page:Page,options:Options={}){
    },
    gmailDispatchOperation:async(_grant:string,requestId:string,reviewDigest:string,proposal:any)=>{
     f.dispatches.push(proposal);
+    if(f.gate)await f.gate;
+    if(f.dispatchState!=='succeeded'){const receipt={...receipts[requestId],state:f.dispatchState,providerResult:null,reviewDigest};receipts[requestId]=receipt;return receipt;}
     const receipt={...receipts[requestId],state:'succeeded',providerResult:{messageId:proposal.messageId,labelIds:[],historyId:'h2-'+proposal.messageId,...(proposal.kind.startsWith('mark-')?{unread:proposal.kind==='mark-unread'}:{})},reviewDigest};
     receipts[requestId]=receipt;return receipt;
    },
@@ -204,4 +207,69 @@ test('single-account compose has no From switcher',async({page})=>{
  await page.getByRole('button',{name:'Compose',exact:true}).click();
  await expect(page.getByRole('textbox',{name:'Subject',exact:true})).toBeVisible();
  await expect(page.getByRole('button',{name:'From account',exact:true})).toHaveCount(0);
+});
+
+test('re-opening Inbox reloads the list instead of showing an empty mailbox',async({page})=>{
+ await setup(page);
+ await page.getByRole('button',{name:'Inbox',exact:true}).click();
+ await expect(page.getByText('Subject in-0-b',{exact:true})).toBeVisible();
+ await page.evaluate(()=>window.dispatchEvent(new Event('launcher-home')));
+ await page.getByRole('button',{name:'Inbox',exact:true}).click();
+ await expect(page.getByText('Subject in-0-b',{exact:true})).toBeVisible();
+ expect((await gm(page)).searches.map((s:any)=>s.pageToken)).toEqual([null,null]);
+});
+
+test('mark-read is sent once per message even when it is reopened during or after an unconfirmed outcome',async({page})=>{
+ await setup(page);
+ await page.evaluate(()=>{const f=(window as any).gm;f.gate=new Promise<void>(resolve=>{f.release=resolve;});f.dispatchState='outcome-unknown';});
+ await page.getByRole('button',{name:'Inbox',exact:true}).click();
+ const row=page.getByRole('button',{name:'Unread, Sender in-0-a, Subject in-0-a',exact:true});
+ await row.click();
+ await expect(page.getByText('Body of in-0-a',{exact:true})).toBeVisible();
+ await expect.poll(async()=>(await gm(page)).dispatches.length).toBe(1);
+ await page.getByRole('button',{name:'Back to inbox',exact:true}).click();
+ await row.click();
+ await expect(page.getByText('Body of in-0-a',{exact:true})).toBeVisible();
+ await page.evaluate(()=>(window as any).gm.release());
+ await page.getByRole('button',{name:'Back to inbox',exact:true}).click();
+ await expect(row).toBeVisible();
+ await row.click();
+ await expect(page.getByText('Body of in-0-a',{exact:true})).toBeVisible();
+ await page.waitForTimeout(200);
+ const f=await gm(page);
+ expect(f.prepares).toEqual([{kind:'mark-read',messageId:'in-0-a',expectedHistoryId:'h-in-0-a'}]);
+ expect(f.dispatches).toEqual([{kind:'mark-read',messageId:'in-0-a',expectedHistoryId:'h-in-0-a'}]);
+});
+
+test('a failed Load more drops the stale cursor and Retry reloads from the first page without duplicates',async({page})=>{
+ await setup(page,{pages:{inbox:2}});
+ await page.getByRole('button',{name:'Inbox',exact:true}).click();
+ await expect(page.getByText('Subject in-0-b',{exact:true})).toBeVisible();
+ await page.evaluate(()=>(window as any).gm.failCursor=true);
+ await page.getByRole('button',{name:'Load more',exact:true}).click();
+ await expect(page.getByRole('button',{name:'Retry',exact:true})).toBeVisible();
+ await expect(page.getByText('Subject in-0-b',{exact:true})).toBeVisible();
+ await expect(page.getByRole('button',{name:'Load more',exact:true})).toHaveCount(0);
+ await page.getByRole('button',{name:'Retry',exact:true}).click();
+ await page.getByRole('button',{name:'Load more',exact:true}).click();
+ await expect(page.getByText('Subject in-1-b',{exact:true})).toBeVisible();
+ await expect(page.getByText('Subject in-0-b',{exact:true})).toHaveCount(1);
+ expect((await gm(page)).searches.map((s:any)=>s.pageToken)).toEqual([null,'cursor:1',null,'cursor:1']);
+});
+
+test('From switcher returns the email to its account when the other account already has a local draft',async({page})=>{
+ await setup(page,{accounts:['first@example.test','second@example.test']});
+ await page.evaluate(()=>{const owner=JSON.stringify(['production','fixture-owner','','grant-1']);(window as any).gmSlots['inbox-drafts:v1:'+owner]={version:1,id:'saved-1',revision:'rev-1',owner,to:[],subject:'Second saved',body:'Kept'};});
+ await page.getByRole('button',{name:'Inbox',exact:true}).click();
+ await expect(page.getByRole('button',{name:'Refresh',exact:true})).toBeVisible();
+ await page.getByRole('button',{name:'Compose',exact:true}).click();
+ await page.getByRole('textbox',{name:'Subject',exact:true}).fill('Stays subject');
+ await page.getByRole('textbox',{name:'Message',exact:true}).fill('Stays body');
+ await page.getByRole('button',{name:'From account',exact:true}).click();
+ await expect(page.getByText(/already has a local draft, so this email stays with first@example\.test/).first()).toBeVisible();
+ await expect(page.getByRole('button',{name:'From account',exact:true})).toContainText('From first@example.test');
+ await expect(page.getByRole('textbox',{name:'Subject',exact:true})).toHaveValue('Stays subject');
+ await expect(page.getByRole('textbox',{name:'Message',exact:true})).toHaveValue('Stays body');
+ const f=await gm(page);expect(f.prepares).toEqual([]);
+ expect((await page.evaluate(()=>(window as any).gmSlots['inbox-drafts:v1:'+JSON.stringify(['production','fixture-owner','','grant-1'])])).subject).toBe('Second saved');
 });

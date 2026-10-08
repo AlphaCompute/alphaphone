@@ -23,7 +23,15 @@ export function installInboxCloudAdapter(Component: any, views: Record<string, B
   // Only a boolean leaves this closure: the Home badge reflects the last loaded Inbox page(s).
   let hasUnread = false;
   let failure: { kind: GmailFailureKind; retry: () => void } | null = null;
-  let pendingCompose: ComposePrefill | null = null, lastCompose: unknown = null, disconnecting = false;
+  // A moved email (From switcher) names its target account and how to return it to the source.
+  type PendingCompose = ComposePrefill & { account?: string; returnTo?: GmailAccount; restore?: () => void };
+  let pendingCompose: PendingCompose | null = null, lastCompose: unknown = null, disconnecting = false, resumeDraftFor = '';
+  // Read-state requests are keyed by account and message. One may be in flight per message, and an
+  // automatic mark-read whose outcome was not confirmed is never sent again for that message.
+  const readStateInFlight = new Set<string>(), readStateUnconfirmed = new Set<string>();
+  let seenCursors = new Set<string>();
+  /** Drops a pending moved email back to its source account (in memory, rewritten on rebind). */
+  const returnPending = () => { pendingCompose?.restore?.(); pendingCompose = null; };
   let thread: {id:string;previousOffsets:number[];offset:number;historyId:string;nextOffset:number|null;total:number;messages:{message:GmailMessage;bodyText:string;historyId:string|null;attachments?:{partId:string;name:string;mimeType:string;size:number;supported:boolean}[]}[]}|null=null;
   let contextReview:ReviewedMailContext|null=null,contextBusy=false;
   let attachmentView:{name:string;text:string;hash:string;external:boolean;open:()=>void;save:()=>void;saveDisabled:boolean;saveStatus:string}|null=null;
@@ -53,7 +61,8 @@ export function installInboxCloudAdapter(Component: any, views: Record<string, B
     void attachmentNative.cancel().catch(()=>{});contextReview=null;attachmentView=null;provider.reset(); drafts.reset();
     generation++; operation?.abort(); operation = null;
     thread=null; accounts = []; messages = []; selected = ''; loadedQuery = ''; nextPageToken = null; body = null; phase = 'idle'; revision = '';
-    hasUnread = false; failure = null; pendingCompose = null; disconnecting = false;
+    hasUnread = false; failure = null; pendingCompose = null; disconnecting = false; resumeDraftFor = '';
+    readStateInFlight.clear(); readStateUnconfirmed.clear(); seenCursors = new Set();
     status = 'Connect Eliza Cloud to use Gmail';
     publish({ mails: [], sent: [], open: null, compose: null, nativeMailSelection: null });
   }
@@ -107,8 +116,9 @@ export function installInboxCloudAdapter(Component: any, views: Record<string, B
     // Opening Inbox or connecting an account shows its messages without another tap.
     if (loadAfter && api?.isActive()) await load();
   }
-  function selectAccount(a: GmailAccount) {
-    if (operation) return;
+  function selectAccount(a: GmailAccount, force = false) {
+    if (operation && !force) return;
+    if (operation) { generation++; operation.abort(); operation = null; phase = 'ready'; }
     void attachmentNative.cancel().catch(()=>{});contextReview=null;attachmentView=null;selected = gmailReadable(a) ? a.connectionId! : ''; void provider.bind(selected); void drafts.bind(selected, a.label); messages = []; body = null; thread = null; nextPageToken = null; loadedQuery = ''; failure = null;
     status = selected ? 'Loading Gmail…' : 'This account needs Gmail authorization';
     publish({ open: null, nativeMailSelection: null });
@@ -116,12 +126,18 @@ export function installInboxCloudAdapter(Component: any, views: Record<string, B
   }
   /** Continues an open new email under the next connected account. Nothing is sent or saved remotely. */
   async function switchFrom() {
-    const eligible = readable(); if (operation || eligible.length < 2) return;
-    const previous = eligible.find(a => a.connectionId === selected), next = eligible[(eligible.findIndex(a => a.connectionId === selected) + 1) % eligible.length];
+    const eligible = readable(); if (operation || disconnecting || eligible.length < 2) return;
+    const index = eligible.findIndex(a => a.connectionId === selected), previous = eligible[index], next = eligible[(index + 1) % eligible.length];
+    if (!previous || next.connectionId === previous.connectionId) return;
     const content = await drafts.transfer(); if (!content) return;
-    const { savedRemains, ...moved } = content;
-    selectAccount(next);
-    pendingCompose = { ...moved, status: `From changed to ${next.label}. Review before sending; nothing has been sent.${savedRemains ? ` A saved local copy remains with ${previous?.label || 'the previous account'}.` : ''}` };
+    const { savedRemains, restore, ...moved } = content;
+    // The account changed while the draft was being moved: keep it with the account it came from.
+    if (selected !== previous.connectionId || disconnecting) { restore(); resumeDraftFor = previous.connectionId!; selectAccount(previous, true); return; }
+    // A read that started meanwhile must not keep the composer on the previous account.
+    selectAccount(next, true);
+    returnPending();
+    pendingCompose = { ...moved, moved: true, account: next.connectionId!, returnTo: previous, restore,
+      status: `From changed to ${next.label}. Review before sending; nothing has been sent.${savedRemains ? ` A saved local copy remains with ${previous.label}.` : ''}` };
     publish();
   }
   async function disconnect() {
@@ -160,17 +176,26 @@ export function installInboxCloudAdapter(Component: any, views: Record<string, B
     const accountId = selected, query = currentQuery();
     const pageToken = more && query === loadedQuery ? nextPageToken : null;
     if (more && !pageToken) return;
+    if (operation) return;
+    // A cursor is used once. If its page fails (for example an expired cursor), Load more is not
+    // offered again with it; Retry reloads the list from the first page instead.
+    if (pageToken) nextPageToken = null;
     await work(more ? 'Loading more messages…' : 'Loading Gmail…', async ({ client }, signal, valid) => {
       const result = await client.gmailSearch(accountId, query, signal, 25, pageToken || undefined);
       if (!valid() || selected !== accountId || currentQuery() !== query) return;
       const seen = new Set(pageToken ? messages.map(m => m.id) : []);
       messages = pageToken ? [...messages, ...result.messages.filter(m => !seen.has(m.id))] : result.messages;
-      loadedQuery = query; nextPageToken = result.nextPageToken ?? null; revision = result.syncedAt;
+      if (!pageToken) seenCursors = new Set();
+      // A provider cursor that repeats would page forever; treat it as the end of the results.
+      const next = result.nextPageToken ?? null;
+      nextPageToken = next && !seenCursors.has(next) ? next : null;
+      if (nextPageToken) seenCursors.add(nextPageToken);
+      loadedQuery = query; revision = result.syncedAt;
       recountUnread();
       if (!pageToken) body = null;
       status = messages.length ? `${messages.length} messages loaded` : query === 'in:inbox' ? 'Your Inbox is empty' : query === 'in:sent' ? 'No sent messages' : 'No messages match this search';
       publish(pageToken ? {} : { open: null, nativeMailSelection: null });
-    }, () => void load(more), more);
+    }, () => void load(), more);
   }
   function setFolder(next: 'inbox' | 'sent') {
     if (folder === next && !api?.get('inbox')?.q && messages.length) return;
@@ -184,8 +209,13 @@ export function installInboxCloudAdapter(Component: any, views: Record<string, B
     const binding = connectionController.getCloudClient(), accountId = selected;
     if (!binding || !accountId || !provider.capabilities()?.readState) { if (explicit) api?.toast('This account cannot change read state here. Nothing was changed.'); return; }
     const current = () => accountId === selected && binding.sessionId === connectionController.getCloudClient()?.sessionId;
+    const key = JSON.stringify([accountId, message.id]);
+    if (readStateInFlight.has(key)) { if (explicit) api?.toast('A read-state change for this message is still in progress.'); return; }
+    if (!explicit && readStateUnconfirmed.has(key)) return;
+    readStateInFlight.add(key);
     try {
       const result = await setGmailReadState(binding.client, accountId, { messageId: message.id, expectedHistoryId: historyId, unread }, new AbortController().signal);
+      if (!result) readStateUnconfirmed.add(key); else readStateUnconfirmed.delete(key);
       if (!current()) return;
       if (!result) { if (explicit) api?.toast('Read state was not confirmed. Refresh to check it before trying again.'); return; }
       const update = (m: GmailMessage) => m.id === message.id ? { ...m, unread } : m;
@@ -194,7 +224,11 @@ export function installInboxCloudAdapter(Component: any, views: Record<string, B
       if (body?.message.id === message.id) body = { ...body, message: update(body.message), historyId: result.historyId ?? body.historyId };
       if (explicit) api?.toast(unread ? 'Marked unread in Gmail' : 'Marked read in Gmail');
       publish();
-    } catch (error) { if (explicit && current()) api?.toast(classifyGmailFailure(error, 'operation').message); }
+    } catch (error) {
+      // Any failure may have reached Gmail; an automatic mark-read is not sent again for this message.
+      readStateUnconfirmed.add(key);
+      if (explicit && current()) api?.toast(classifyGmailFailure(error, 'operation').message);
+    } finally { readStateInFlight.delete(key); }
   }
   /** Swipe left routes to the same reviewed archive flow as the message view. */
   async function swipeArchive(message: GmailMessage) {
@@ -275,7 +309,7 @@ export function installInboxCloudAdapter(Component: any, views: Record<string, B
     return { to: list(value.to), subject: typeof value.subject === 'string' ? value.subject : '', body: typeof value.body === 'string' ? value.body : '',
       status: attached ? 'Shared draft. The shared items are not attached automatically; use Attach to choose a file. Review before sending; nothing has been sent.' : 'Shared draft. Review before sending; nothing has been sent.' };
   }
-  view.onLeave = () => { pendingCompose = null; void attachmentNative.cancel().catch(()=>{}); contextReview=null;attachmentView=null;generation++; operation?.abort(); operation = null; drafts.close(); messages = []; body = null; publish({ open: null, nativeMailSelection: null }); };
+  view.onLeave = () => { returnPending(); resumeDraftFor = ''; if (connectionController.getCloudClient()) { phase = 'idle'; loadedQuery = ''; nextPageToken = null; failure = null; } void attachmentNative.cancel().catch(()=>{}); contextReview=null;attachmentView=null;generation++; operation?.abort(); operation = null; drafts.close(); messages = []; body = null; publish({ open: null, nativeMailSelection: null }); };
   view.render = (st: Bag, current: Bag) => {
     api = current;
     const binding = connectionController.getCloudClient();
@@ -286,13 +320,22 @@ export function installInboxCloudAdapter(Component: any, views: Record<string, B
       css: on ? 'background:var(--fg);color:var(--bg)' : 'background:var(--s2);color:var(--fg)', pick: action });
     if (st.compose && typeof st.compose === 'object' && st.compose !== lastCompose) {
       const incoming = lastCompose = st.compose;
-      pendingCompose = shared(incoming);
+      returnPending(); pendingCompose = shared(incoming);
       queueMicrotask(() => { if (api?.get('inbox')?.compose === incoming) publish({ compose: null }); });
     }
-    if (pendingCompose && selected && drafts.ready) {
+    if (pendingCompose && selected && drafts.ready && (!pendingCompose.account || pendingCompose.account === selected)) {
       const prefill = pendingCompose; pendingCompose = null;
-      queueMicrotask(() => { drafts.begin(undefined, undefined, '', prefill); });
+      queueMicrotask(() => {
+        if (drafts.begin(undefined, undefined, '', prefill) || !prefill.returnTo) return;
+        // The other account already holds a draft or retained edits; the moved email goes back.
+        const target = accounts.find(a => a.connectionId === prefill.account)?.label || 'The other account';
+        prefill.restore?.();
+        const back = accounts.find(a => a.connectionId === prefill.returnTo!.connectionId && gmailReadable(a));
+        if (back) { resumeDraftFor = back.connectionId!; selectAccount(back, true); }
+        api?.toast(`${target} already has a local draft, so this email stays with ${prefill.returnTo!.label}. Nothing has been sent.`);
+      });
     }
+    if (resumeDraftFor && resumeDraftFor === selected && drafts.ready) { resumeDraftFor = ''; queueMicrotask(() => { if (drafts.hasDraft) drafts.begin(); }); }
     const sentView = loadedQuery === 'in:sent';
     const chips: Bag[] = binding ? [
       ...(failure ? [chip('Retry', failure.retry)] : []),

@@ -8,14 +8,16 @@ import { connectionController } from '../runtime/connection-ui';
 import type { GmailMessage } from '../runtime/cloud-protocol';
 type Bag = Record<string, any>;
 /** Content handed to a new composer: shared from another app or moved to another From account. */
-export type ComposePrefill = {to:string[];cc?:string[];bcc?:string[];subject:string;body:string;attachments?:MailAttachment[];status?:string};
+export type ComposePrefill = {to:string[];cc?:string[];bcc?:string[];subject:string;body:string;attachments?:MailAttachment[];status?:string;
+ /** Set for an email moved by the From switcher: a refusal is reported by the caller, which returns it. */
+ moved?:boolean};
 type Draft = {version:1;id:string;revision:string;owner:string;to:string[];cc?:string[];bcc?:string[];attachments?:MailAttachment[];provider?:{draftId:string;providerDigest:string};subject:string;body:string;mode?:'compose'|'reply'|'reply-all'|'forward';reply?:{messageId:string;threadId:string}};
 const address=(v:string)=>v.length<=254&&/^[^\s<>@,;]+@[^\s<>@,;]+\.[^\s<>@,;]+$/.test(v);
 const valid=(v:any,owner:string):v is Draft=>!!v&&v.version===1&&v.owner===owner&&typeof v.id==='string'&&typeof v.revision==='string'&&Array.isArray(v.to)&&v.to.length<=20&&v.to.every((a:any)=>typeof a==='string'&&address(a))&&[v.cc||[],v.bcc||[]].every((list:any)=>Array.isArray(list)&&list.length<=20&&list.every((a:any)=>typeof a==='string'&&address(a)))&&typeof v.subject==='string'&&v.subject.length<=998&&!/[\r\n]/.test(v.subject)&&typeof v.body==='string'&&v.body.length<=64000&&(!v.reply||(typeof v.reply.messageId==='string'&&typeof v.reply.threadId==='string'));
 /** Local encrypted drafts remain separate from explicitly reviewed provider operations. */
 export function inboxDrafts(publish:()=>void,toast:(text:string)=>void, provider?:{prepare(proposal:Bag):Promise<void>;capabilities():{send:boolean;providerDrafts:boolean;from?:string}|null}) {
  let owner='',session='',epoch=0,saved:Draft|null=null,draft:Draft|null=null;
- const pendingEdits=new Map<string,{draft:Draft;toQ:string;baseRevision:string|null}>();
+ const pendingEdits=new Map<string,{draft:Draft;toQ:string;baseRevision:string|null;persist?:boolean}>();
  let retained:ReturnType<typeof inboxUnsaved>|null=null,baseRevision:string|null=null,staleBase=false;
  function persist(){if(draft)retained?.edit({version:1,owner,baseRevision,draft:structuredClone(draft),toQ});}
  function restoreRetained(value:any){draft=structuredClone(value.draft);toQ=value.toQ;baseRevision=value.baseRevision;staleBase=baseRevision!==(saved?.revision||null);open=true;confirm=false;status=staleBase?'The saved local draft changed. Review the latest saved copy before saving these edits.':'Retained email edits restored. Review before provider actions.';publish();}
@@ -33,15 +35,16 @@ export function inboxDrafts(publish:()=>void,toast:(text:string)=>void, provider
   if(!owner)return;
   const token=epoch, key=slot();loading=true;status='Checking local draft…';publish();
   try{const value=await secureConnectionStore.read<Draft>(key);if(token!==epoch)return;
-   if(value!==null&&!valid(value,owner))throw Error();saved=value;const pending=pendingEdits.get(owner);draft=pending?.draft||null;toQ=pending?.toQ||'';baseRevision=pending?pending.baseRevision:value?.revision||null;staleBase=!!pending&&baseRevision!==(saved?.revision||null);const recovery=retained=inboxUnsaved(owner,publish,restored=>{if(token===epoch)restoreRetained(restored);});await recovery.ready;if(token!==epoch)return;ready=true;status=draft?'Edits retained for this account':value?'Saved draft on this device':'No saved local draft';
+   if(value!==null&&!valid(value,owner))throw Error();saved=value;const pending=pendingEdits.get(owner);draft=pending?.draft||null;toQ=pending?.toQ||'';baseRevision=pending?pending.baseRevision:value?.revision||null;staleBase=!!pending&&baseRevision!==(saved?.revision||null);const recovery=retained=inboxUnsaved(owner,publish,restored=>{if(token===epoch)restoreRetained(restored);});await recovery.ready;if(token!==epoch)return;ready=true;if(pending?.persist){pendingEdits.set(owner,{...pending,persist:false});persist();}status=draft?'Edits retained for this account':value?'Saved draft on this device':'No saved local draft';
   }catch{if(token===epoch)status='Local draft storage unavailable. Retry connection to reload.';}
   if(token===epoch){loading=false;publish();}
  }
  function begin(reply?:GmailMessage,mode:'reply'|'reply-all'|'forward'='reply',forwardedBody='',prefill?:ComposePrefill):boolean{
   if(!ready||busy){toast(status||'Connect a Gmail account first.');return false;}
-  if(draft){if(prefill){toast('Finish, save or discard the open email draft first. The shared content was not added.');return false;}open=true;confirm=false;publish();return true;}
-  if(retained?.available){toast(prefill?'Resume the retained email edits first. The shared content was not added.':'Resume the retained email edits before creating another.');return false;}
-  if(saved){toast(prefill?'Restore or discard the saved local draft first. The shared content was not added.':'Restore or discard the saved local draft before creating another.');return false;}
+  const refuse=(text:string)=>{if(!prefill?.moved)toast(text);return false;};
+  if(draft){if(prefill)return refuse('Finish, save or discard the open email draft first. The shared content was not added.');open=true;confirm=false;publish();return true;}
+  if(retained?.available)return refuse(prefill?'Resume the retained email edits first. The shared content was not added.':'Resume the retained email edits before creating another.');
+  if(saved)return refuse(prefill?'Restore or discard the saved local draft first. The shared content was not added.':'Restore or discard the saved local draft before creating another.');
   if(prefill&&!reply){
    const clean=(list:unknown)=>Array.isArray(list)?[...new Set(list.filter((a):a is string=>typeof a==='string'&&address(a.trim())).map(a=>a.trim()))].slice(0,20):[];
    draft={version:1,id:crypto.randomUUID(),revision:crypto.randomUUID(),owner,mode:'compose',to:clean(prefill.to),cc:clean(prefill.cc),bcc:clean(prefill.bcc),subject:String(prefill.subject||'').replace(/[\r\n]+/g,' ').slice(0,998),body:String(prefill.body||'').slice(0,64000),...(prefill.attachments?.length?{attachments:structuredClone(prefill.attachments.slice(0,1))}:{})};
@@ -57,11 +60,15 @@ export function inboxDrafts(publish:()=>void,toast:(text:string)=>void, provider
  }
  /** Moves an open new email out of this account so it can continue under another From account.
   * Replies and provider drafts belong to their mailbox and are never moved. */
- async function transfer():Promise<(ComposePrefill&{savedRemains:boolean})|null>{
+ async function transfer():Promise<(ComposePrefill&{savedRemains:boolean;restore:()=>void})|null>{
   if(!draft||busy)return null;
   if(draft.reply||draft.provider||(draft.mode&&draft.mode!=='compose')){toast('Replies, forwards and Gmail drafts stay with the account they came from.');return null;}
   if(toQ.trim()){toast('Add or clear the address you are typing before changing the From account.');return null;}
-  const content={to:[...draft.to],cc:[...(draft.cc||[])],bcc:[...(draft.bcc||[])],subject:draft.subject,body:draft.body,attachments:structuredClone(draft.attachments||[]),savedRemains:!!saved};
+  const from=owner,kept={draft:structuredClone(draft),toQ:'',baseRevision};
+  // If the other account cannot take it, the email goes back here: rebinding this owner reopens it
+  // from memory and writes a fresh recovery copy, so it is never silently lost.
+  const restore=()=>{pendingEdits.set(from,{...structuredClone(kept),persist:true});};
+  const content={to:[...draft.to],cc:[...(draft.cc||[])],bcc:[...(draft.bcc||[])],subject:draft.subject,body:draft.body,attachments:structuredClone(draft.attachments||[]),savedRemains:!!saved,restore};
   const token=epoch;try{await retained?.clear();}catch{if(token===epoch)toast('Retained email edits changed. Review recovery before changing the From account.');return null;}
   if(token!==epoch)return null;
   pendingEdits.delete(owner);draft=null;open=false;confirm=false;baseRevision=null;staleBase=false;toQ='';publish();return content;
@@ -83,7 +90,7 @@ export function inboxDrafts(publish:()=>void,toast:(text:string)=>void, provider
  async function attach(){if(!draft||busy)return;const token=epoch;let selectionId:string|undefined;busy=true;publish();try{const selected=await DailyApps.perform({action:'files'});selectionId=selected.selectionId;if(token!==epoch)return;if(selected.status==='cancelled')return;if(selected.status!=='selected'||!selected.selectionId||!selected.name)throw new Error('Select one supported document or image');const file=await attachmentNative.readSelected({selectionId:selected.selectionId});const checked=await reviewMailAttachment(file);if(checked.sha256!==file.sha256||checked.size!==file.size)throw new Error('Selected file changed');if(token!==epoch)return;draft!.attachments=[{name:file.name,mimeType:file.mimeType,dataBase64:file.dataBase64}];status='Attachment selected locally. Nothing uploaded until provider review.';persist();}catch(error){if(token===epoch)toast(error instanceof Error?error.message:'Attachment unavailable');}finally{if(selectionId)await DailyApps.forgetSelected({selectionId}).catch(()=>{});if(token===epoch){busy=false;publish();}}}
  function edit(key:'subject'|'body',value:string){if(draft&&!busy){draft[key]=value;status='Unsaved local draft';persist();publish();}}
  return {
-  bind,reset,begin,transfer,setFromSwitch(value:typeof fromSwitch){fromSwitch=value;},get ready(){return ready&&!busy;},
+  bind,reset,begin,transfer,setFromSwitch(value:typeof fromSwitch){fromSwitch=value;},get ready(){return ready&&!busy;},get hasDraft(){return !!draft;},
   async editProvider(proposal:Bag,reference:{draftId:string;providerDigest:string}){if(retained?.available&&!draft){toast('Resume retained email edits before editing another provider draft.');return false;}if(!ready||busy){toast('Local draft storage unavailable');return false;}if(draft&&(draft.body!==proposal.bodyText||draft.subject!==proposal.subject||JSON.stringify(draft.to)!==JSON.stringify(proposal.to)||JSON.stringify(draft.cc||[])!==JSON.stringify(proposal.cc||[])||JSON.stringify(draft.bcc||[])!==JSON.stringify(proposal.bcc||[])||JSON.stringify(draft.attachments||[])!==JSON.stringify(proposal.attachments||[])))return false;draft={version:1,id:crypto.randomUUID(),revision:crypto.randomUUID(),owner,to:[...proposal.to],cc:[...(proposal.cc||[])],bcc:[...(proposal.bcc||[])],subject:proposal.subject,body:proposal.bodyText,mode:proposal.mode,attachments:proposal.attachments||[],provider:reference,...(proposal.replyMessageId?{reply:{messageId:proposal.replyMessageId,threadId:''}}:{})};baseRevision=saved?.revision||null;staleBase=false;open=true;confirm=false;status='Editing provider draft. Save locally to preserve edits. Gmail replacement is not atomic.';publish();await update();return saved?.provider?.draftId===reference.draftId&&saved?.provider?.providerDigest===reference.providerDigest;},
   close(){if(!open)return false;if(busy){toast('Wait for the local draft update.');return true;}open=false;confirm=false;if(status==='Unsaved local draft')toast(retained?.status||'Edits remain in this session.');publish();return true;},
   chips(chip:(label:string,action:()=>void)=>Bag){return ready?[

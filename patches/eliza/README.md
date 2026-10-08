@@ -22,6 +22,10 @@ and additive migration `0535_managed_gmail_read_state_operations` (widens
 `managed_gmail_operation_receipts_kind_check`). It has not been upstreamed or deployed to
 Eliza Cloud. Until it is, servers omit `readState`, and the client treats that as false.
 
+This patch changes only Eliza Cloud server code (`packages/cloud`), which the phone does not
+build. Its manifest is deliberately named `*-source-base.json`, not `*-source.json`, so a client
+patch materializer that reads `*-source.json` manifests does not apply it to client source.
+
 ## Apply and test
 
 ```sh
