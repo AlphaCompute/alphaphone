@@ -134,10 +134,10 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
       }
       const history = connectionController.getSnapshot().history;
       if (history && history.sessionId === session && this.restoredHistory !== history) {
-        this.draftRecoveryAbort?.abort();this.composerDraft.retire();this.reviewedSourceDraft=null;
+        if(!history.automatic){this.draftRecoveryAbort?.abort();this.composerDraft.retire();this.reviewedSourceDraft=null;}
         this.restoredHistory = history;
         alphaClient.disconnect();
-        if (this.live) this.setState({ msgs: history.messages.map(message => ({ ...message, card: null })), draft: '', typing: false, chat: 'full' });
+        if (this.live) this.setState({ msgs: history.messages.map(message => ({ ...message, card: null })), typing: false, ...(history.automatic?{}:{draft:'',chat:'full'}) });
       }
       if (this.live) {context(this);this.refreshDraftBinding();}
     });

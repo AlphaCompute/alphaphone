@@ -44,7 +44,8 @@ export interface ConnectionSnapshot {
   cloudPersonal?: PersonalSetupState;
   phoneActionsAvailable: boolean; phoneCapabilityReason: string;
   conversations: Array<{ id: string; title: string }>;
-  history: { sessionId: string; conversationId: string; revision: number; messages: RestoredMessage[] } | null;
+  history: { sessionId: string; conversationId: string; revision: number; messages: RestoredMessage[]; automatic: boolean } | null;
+  historyError?: string;
   actionHistory: Array<{ id: string; state: string; description: string }>;
   cloudAccount: CloudServiceSession | null;
   open: boolean; busy: boolean; message: string; error: string;
@@ -148,7 +149,7 @@ function retire(name = 'Offline') {
   sending?.abort(new DOMException('The connection changed.', 'AbortError'));
   sending = null;
   active = null;
-  update({ phoneActionsAvailable:false, phoneCapabilityReason:'', session: null, kind: 'offline', name, conversations: [], history: null, actionHistory: [] });
+  update({ phoneActionsAvailable:false, phoneCapabilityReason:'', session: null, kind: 'offline', name, conversations: [], history: null, historyError:'', actionHistory: [] });
   return retirement;
 }
 function persistOffline(): string {
@@ -205,7 +206,7 @@ function activate(next: Active, session: VerifiedSession, name: string) {
   actionReceipts.clear();
   conversationMemory.clear();
   epoch++; sending?.abort(new DOMException('The connection changed.', 'AbortError')); sending = null; active = next;
-  update({ phoneActionsAvailable:!!next.actions, conversations: [], history: null, kind: next.kind, name, session, open: false, message: 'Connected', error: '' });
+  update({ phoneActionsAvailable:!!next.actions, conversations: [], history: null, historyError: '', kind: next.kind, name, session, open: false, message: 'Connected', error: '' });
 }
 async function remoteIdentity(remote: RemoteProtocol, signal: AbortSignal) {
   const credential = await remoteCredentialStore.read(remote.origin);
@@ -323,6 +324,7 @@ async function connectResident(signal: AbortSignal) {
   save({kind:'resident'});
   activate({kind:'resident',remote:client,origin:client.origin,actions,workflowProtocol},session,name);
   if(reason)update({phoneCapabilityReason:reason});
+  if(isAndroid && !testMocksEnabled)await restoreSavedResidentHistory(signal);
 }
 async function connectCloud(agentId: string, signal: AbortSignal, expectedOwner?: string, expectedOrigin?:string, expectedPersonalOwner?:Readonly<PersonalOwner>) {
   const client=cloud;
@@ -418,6 +420,50 @@ function restoredText(text: string): string {
 async function conversationList(selected: Active, signal: AbortSignal) {
   const list = selected.kind === 'cloud' ? await selected.cloud.listConversations(selected.agentId, signal) : await selected.remote.listConversations(signal);
   return list.map(item => ({ id: item.id, title: typeof item.title === 'string' && item.title ? item.title : 'Conversation' }));
+}
+
+async function restoreConversationHistory(id:string,signal:AbortSignal,automatic:boolean) {
+  const selected=active,session=state.session,generation=epoch;
+  if(!selected||!session)throw Error('Connect an agent first.');
+  const account=selected.kind==='resident'&&isAndroid&&!testMocksEnabled?service:null;
+  if(selected.kind==='resident'&&isAndroid&&!testMocksEnabled&&!account)throw Error('Cloud account is unavailable.');
+  const assertCurrent=()=>{signal.throwIfAborted();if(generation!==epoch||selected!==active||state.session?.sessionId!==session.sessionId||account&&(service!==account||state.cloudAccount?.sessionId!==account.identity.sessionId))throw Error('The agent or account changed.');};
+  const assertAccount=async()=>{
+    assertCurrent();
+    if(account){const credential=await cloudCredentialStore.read(account.identity.environment);assertCurrent();if(credential?.credentialId!==account.identity.credentialId||credential.expiresAt!==undefined&&credential.expiresAt<=Date.now())throw Error('Cloud account changed or expired.');}
+  };
+  const key=conversationKey(session),expected=await captureConversationChoice(key,signal);
+  await assertAccount();
+  if(automatic&&expected?.id!==id)throw Error('Saved conversation selection changed.');
+  const list=await conversationList(selected,signal);await assertAccount();
+  if(!list.some(item=>item.id===id))throw Error('This conversation is no longer available to this agent.');
+  const result=selected.kind==='cloud'?await selected.cloud.messages(selected.agentId,id,signal):await selected.remote.messages(id,signal);
+  assertCurrent();
+  if(result.messages.length>2000)throw Error('This history is too large to display safely.');
+  const messages:RestoredMessage[]=result.messages.filter(item=>item.role==='user'||item.role==='assistant').map(item=>{
+    if(typeof item.id!=='string'||!item.id||typeof item.text!=='string'||item.text.length>200000)throw Error('The agent returned invalid history.');
+    return {id:item.id,from:item.role==='user'?'user':'agent',text:item.role==='user'?restoredText(item.text):item.text};
+  });
+  await assertAccount();
+  let saved=true;
+  if(automatic){if(JSON.stringify(await captureConversationChoice(key,signal))!==JSON.stringify(expected))throw Error('Saved conversation selection changed.');}
+  else try{await selectConversation(key,expected,id,signal,assertCurrent);}catch{saved=false;}
+  await assertAccount();
+  conversationMemory.set(key,id);
+  update({history:{sessionId:session.sessionId,conversationId:id,revision:(state.history?.revision||0)+1,messages,automatic},historyError:'',...(automatic?{}:{open:false}),message:automatic?'Saved conversation restored.':saved?'Returned history restored. Older messages may remain on the agent.':'History restored for this session; restart selection could not be saved.'});
+}
+async function restoreSavedResidentHistory(signal:AbortSignal) {
+  const selected=active,session=state.session,generation=epoch;
+  if(!selected||!session)return;
+  try{
+    const saved=await captureConversationChoice(conversationKey(session),signal);signal.throwIfAborted();
+    if(generation!==epoch||selected!==active||state.session!==session)return;
+    if(saved)await restoreConversationHistory(saved.id,signal,true);
+  }catch(error){
+    signal.throwIfAborted();
+    if(generation!==epoch||selected!==active||state.session!==session)return;
+    update({historyError:'Saved conversation could not be restored. Your selected conversation was kept. Retry from Agent connection.',message:'Connected. Saved history needs another check.'});
+  }
 }
 
 /** Shared controller for the chat adapter. Snapshot contains no credentials.
@@ -724,29 +770,9 @@ export const connectionController = {
   },
   async restoreHistory(id: string) {
     if (sending) { update({ error: 'Wait for the current reply before restoring history.' }); return; }
-    await work('Verifying and restoring conversation…', async signal => {
-      const selected = active, session = state.session, generation = epoch;
-      if (!selected || !session) throw new Error('Connect an agent first.');
-      const key=conversationKey(session),expected=await captureConversationChoice(key,signal);
-      const assertCurrent=()=>{signal.throwIfAborted();if(generation!==epoch||selected!==active||state.session?.sessionId!==session.sessionId)throw Error('The agent changed.');};
-      assertCurrent();
-      const list = await conversationList(selected, signal);
-      if (!list.some(item => item.id === id)) throw new Error('This conversation is no longer available to this agent.');
-      const result = selected.kind === 'cloud' ? await selected.cloud.messages(selected.agentId, id, signal) : await selected.remote.messages(id, signal);
-      signal.throwIfAborted();
-      if (generation !== epoch) throw new Error('The agent changed.');
-      if (result.messages.length > 2000) throw new Error('This history is too large to display safely.');
-      const messages: RestoredMessage[] = result.messages.filter(item => item.role === 'user' || item.role === 'assistant').map(item => {
-        if (typeof item.id !== 'string' || !item.id || typeof item.text !== 'string' || item.text.length > 200000) throw new Error('The agent returned invalid history.');
-        return { id: item.id, from: item.role === 'user' ? 'user' : 'agent', text: item.role === 'user' ? restoredText(item.text) : item.text };
-      });
-      let saved = true;
-      try { await selectConversation(key,expected,id,signal,assertCurrent); } catch { saved = false; }
-      assertCurrent();conversationMemory.set(key,id);
-      update({ history: { sessionId: session.sessionId, conversationId: id, revision: (state.history?.revision || 0) + 1, messages }, open: false,
-        message: saved ? 'Returned history restored. Older messages may remain on the agent.' : 'History restored for this session; restart selection could not be saved.' });
-    });
+    await work('Verifying and restoring conversation…',signal=>restoreConversationHistory(id,signal,false));
   },
+  async retrySavedHistory(){if(sending)return;await work('Checking saved conversation…',signal=>restoreSavedResidentHistory(signal));},
   async send(text: string, context: ContextEnvelope, requestId: string, signal: AbortSignal, onText?:(text:string)=>void): Promise<{ text: string; proposals?: ActionProposal[] }> {
     if (operation) throw new Error('Finish the connection or history operation before sending.');
     const message = phoneContextMessage(text, context);
@@ -923,6 +949,7 @@ export function ConnectionChooser() {
     </>:<button disabled={snapshot.busy} onClick={()=>void connectionController.residentCloudLogin()}>Sign in with Eliza Cloud</button>}
     {snapshot.message&&<p role="status">{snapshot.message}</p>}
     {snapshot.error&&<p role="alert">{snapshot.error}</p>}
+    {snapshot.historyError&&<><p role="status">{snapshot.historyError}</p><button disabled={snapshot.busy} onClick={()=>void connectionController.retrySavedHistory()}>Retry saved conversation</button></>}
     {snapshot.busy&&<button onClick={()=>connectionController.cancel()}>Cancel</button>}
   </div></div>;
   const pairingOptions=<>
