@@ -76,6 +76,8 @@ try {
   await controller.send('New question', { view: 'home', revision: 1, sensitive: false }, 'synthetic-id', new AbortController().signal);
   assert.equal(sends, 1, 'next send uses the explicitly restored conversation');
   assert.equal(Object.hasOwn(sentBodies[0].metadata,'uiTimeZone'),false,'Unknown current device zone is omitted');
+  assert.equal(sentBodies[0].text,phoneContextMessage('New question',{view:'home',revision:1,sensitive:false}).text,'Unverified Cloud/browser path retains its legacy text envelope');
+  assert.deepEqual(sentBodies[0].metadata.alphaPhone,sentBodies[0].metadata.clientDevice);assert.equal(Object.hasOwn(sentBodies[0].metadata,'userTextFormat'),false);
   for(const timeZone of ['America/Los_Angeles','Asia/Kolkata']){
     await controller.send('Current device zone question',{view:'home',revision:2,sensitive:false,timeZone},'zone-'+timeZone,new AbortController().signal);
     const wire=sentBodies.at(-1).metadata;
