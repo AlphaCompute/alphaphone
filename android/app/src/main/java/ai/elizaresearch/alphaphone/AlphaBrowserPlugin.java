@@ -23,11 +23,21 @@ import androidx.activity.result.contract.ActivityResultContracts;
 import android.content.Intent;
 import java.util.*;
 
-/** Public navigation only. Child WebViews deliberately have no app JavaScript interface. */
+/** Public navigation only. Child WebViews deliberately have no app JavaScript interface.
+ * Product decision: normal tabs share one persistent browser-only profile so
+ * sign-ins, cookies and site storage survive tab close and app restart, like a
+ * normal browser. That profile is never the Capacitor host's default profile.
+ * Private tabs use ephemeral profiles that are purged on close and at startup. */
 @CapacitorPlugin(name = "AlphaBrowser")
 public class AlphaBrowserPlugin extends Plugin {
+ /** Durable profile shared by every normal tab. Never "Default" (the host's). */
+ static final String PERSISTENT_PROFILE = "alpha_browser_v1";
+ static final String PRIVATE_PREFIX = "alpha_private_";
+ /** Builds before the sign-in decision gave every tab an ephemeral profile. */
+ static final String LEGACY_PREFIX = "alpha_public_";
+ static boolean ephemeralProfile(String name) { return name != null && (name.startsWith(PRIVATE_PREFIX) || name.startsWith(LEGACY_PREFIX)); }
  private final Map<String, Tab> tabs = new HashMap<>();
- private String namespace = "alpha_public_" + UUID.randomUUID().toString().replace("-", "");
+ private String namespace = PRIVATE_PREFIX + UUID.randomUUID().toString().replace("-", "");
  private final WebViewListener hostNavigation = new WebViewListener() {
   @Override public void onPageStarted(WebView view) {
    // This callback belongs only to the privileged host document, not child pages.
@@ -37,10 +47,12 @@ public class AlphaBrowserPlugin extends Plugin {
  private void resetHostDocument() {
   presentedId=null;cancelFile();if(reading!=null)reading.cancel();
   if(downloads!=null)downloads.dismissDialogs();
-  for(Tab tab:tabs.values())dispose(tab);
-  tabs.clear();session=null;
-  // A failed deletion must never make the next document reuse an old profile.
-  namespace="alpha_public_"+UUID.randomUUID().toString().replace("-", "");
+  ArrayList<Tab> all=new ArrayList<>(tabs.values());tabs.clear();
+  // Private profiles are purged; the persistent profile keeps its sign-ins.
+  for(Tab tab:all)dispose(tab);
+  session=null;
+  // A failed deletion must never make the next document reuse an old private profile.
+  namespace=PRIVATE_PREFIX+UUID.randomUUID().toString().replace("-", "");
  }
  private String session;
  private long sequence;
@@ -50,6 +62,8 @@ public class AlphaBrowserPlugin extends Plugin {
  private BrowserDownloads downloads;
  private BrowserReading reading;
  private BrowserBookmarks bookmarks;
+ private BrowserSessionStore sessionStore;
+ private boolean clearing;
  private final AutofillManager.AutofillCallback autofillCallback=new AutofillManager.AutofillCallback() {
   @Override public void onAutofillEvent(View view,int virtualId,int event) { autofillEvent(view,virtualId,event); }
   @Override public void onAutofillEvent(View view,int event) { autofillEvent(view,View.NO_ID,event); }
@@ -81,6 +95,7 @@ public class AlphaBrowserPlugin extends Plugin {
   pageShare=getActivity().getActivityResultRegistry().register("alpha-browser-share",new ActivityResultContracts.StartActivityForResult(),result->{shareOutstanding=false;});
   downloads=new BrowserDownloads(getActivity());
   bookmarks=new BrowserBookmarks(getActivity());
+  sessionStore=new BrowserSessionStore(getActivity());
   profileRetirement=getContext().getSharedPreferences("alpha-browser-retired-profiles",0);
   // Capacitor constructs plugins before Builder.create replaces its listener
   // list. Register on the next main-loop turn so that replacement cannot erase
@@ -105,14 +120,16 @@ public class AlphaBrowserPlugin extends Plugin {
   // Chromium keeps loaded profile instances until process exit. Delete retired
   // shells before this process loads any child profile; one failure must not
   // prevent cleanup of other independently retired profiles.
-  for(String name:ProfileStore.getInstance().getAllProfileNames()) if(name.startsWith("alpha_public_")) {
+  // Only private and legacy per-tab profiles are ephemeral. The persistent
+  // normal-tab profile is retained across restarts by product decision.
+  for(String name:ProfileStore.getInstance().getAllProfileNames()) if(ephemeralProfile(name)) {
    try { ProfileStore.getInstance().deleteProfile(name);
     if(!ProfileStore.getInstance().getAllProfileNames().contains(name))profileRetirement.edit().remove(name).apply();
    } catch(Exception unavailable) { profileRetirement.edit().putString(name,"pending").apply(); }
   }
  }); }
 
- private static class Tab { BrowserReadingWorld readingWorld; String id, profile, url = "", error = "", finishedUrl = "", lastCommittedUrl = ""; WebView web; FrameLayout frame; TextView message; boolean loading, dead, committed, autofillEnabled; int httpStatus, autofillVirtualId=View.NO_ID; long navigation; Runnable timeout; }
+ private static class Tab { BrowserReadingWorld readingWorld; String id, profile, opener, url = "", error = "", finishedUrl = "", lastCommittedUrl = ""; WebView web; FrameLayout frame; TextView message; boolean priv, handedOff, loading, dead, committed, autofillEnabled; int httpStatus, autofillVirtualId=View.NO_ID; long navigation; Runnable timeout; }
  /** Credentials stay in the framework/provider and the remote document. No bridge API
   * reads fields or replaces Chromium's frame-specific webDomain metadata. */
  private boolean canAutofill(Tab t) {
@@ -188,16 +205,19 @@ public class AlphaBrowserPlugin extends Plugin {
   if(fileTab==t)cancelFile();
   clearTimeout(t);
   if(t.frame != null && t.frame.getParent() != null) ((ViewGroup)t.frame.getParent()).removeView(t.frame);
-  if(t.profile != null) {
+  // Normal tabs keep the shared persistent profile. A private profile is purged
+  // only once no live tab (for example its pop-up) still uses it.
+  boolean purge=t.priv&&ephemeralProfile(t.profile)&&tabs.values().stream().noneMatch(other->other!=t&&Objects.equals(other.profile,t.profile));
+  if(purge) {
    // Retirement is durable even if the asynchronous purge or process stops.
    profileRetirement.edit().putString(t.profile,"pending").commit();
    retiredProfiles.put(t.profile,"pending");
    while(retiredProfiles.size()>256)retiredProfiles.remove(retiredProfiles.keySet().iterator().next());
   }
   android.webkit.WebStorage storage=null;
-  try {
-   androidx.webkit.Profile profile=t.dead&&t.profile!=null?ProfileStore.getInstance().getProfile(t.profile):WebViewCompat.getProfile(t.web);
-   if(profile!=null&&t.profile!=null&&t.profile.startsWith("alpha_public_")&&t.profile.equals(profile.getName()))storage=profile.getWebStorage();
+  if(purge) try {
+   androidx.webkit.Profile profile=t.dead?ProfileStore.getInstance().getProfile(t.profile):WebViewCompat.getProfile(t.web);
+   if(profile!=null&&ephemeralProfile(profile.getName())&&t.profile.equals(profile.getName()))storage=profile.getWebStorage();
   } catch(Exception unavailable) { /* Pending startup cleanup remains. */ }
   if(!t.dead) {
    t.web.stopLoading();t.web.setWebViewClient(new WebViewClient());t.web.setWebChromeClient(null);
@@ -218,7 +238,7 @@ public class AlphaBrowserPlugin extends Plugin {
   try { Uri u = Uri.parse(value); return ("https".equalsIgnoreCase(u.getScheme()) || "http".equalsIgnoreCase(u.getScheme())) && u.getHost() != null && u.getUserInfo() == null && !value.contains("\n") && !value.contains("\r"); } catch (Exception e) { return false; }
  }
  private void fail(Tab t, String message) { disableAutofill(t); clearTimeout(t); t.error = message; t.loading = false; t.committed = false; t.web.stopLoading(); t.web.setVisibility(View.INVISIBLE); t.message.setText(message); t.message.setVisibility(View.VISIBLE); emit(t); }
- private JSObject state(Tab t) { JSObject s = new JSObject(); s.put("session", session); s.put("id", t.id); s.put("sequence", ++sequence); s.put("navigation", String.valueOf(t.navigation)); s.put("url", t.url); s.put("title", t.dead ? "" : t.web.getTitle()); s.put("loading", t.loading); s.put("committed", t.committed); s.put("httpStatus", t.httpStatus); s.put("progress", t.dead ? 0 : t.web.getProgress()); s.put("canBack", !t.dead && t.web.canGoBack()); s.put("canForward", !t.dead && t.web.canGoForward()); s.put("error", t.error); return s; }
+ private JSObject state(Tab t) { JSObject s = new JSObject(); s.put("session", session); s.put("id", t.id); s.put("sequence", ++sequence); s.put("navigation", String.valueOf(t.navigation)); s.put("url", t.url); s.put("title", t.dead ? "" : t.web.getTitle()); s.put("loading", t.loading); s.put("committed", t.committed); s.put("httpStatus", t.httpStatus); s.put("progress", t.dead ? 0 : t.web.getProgress()); s.put("canBack", !t.dead && t.web.canGoBack()); s.put("canForward", !t.dead && t.web.canGoForward()); s.put("error", t.error); s.put("private", t.priv); return s; }
  private void emit(Tab t) { if (tabs.get(t.id) == t) notifyListeners("stateChanged", state(t)); }
  private void run(PluginCall call, java.util.function.Consumer<Tab> action) { getActivity().runOnUiThread(() -> { if (!Objects.equals(session, call.getString("session"))) { call.reject("Expired browser session"); return; } Tab t = tabs.get(call.getString("id")); if (t == null || t.dead) { call.reject("Browser tab is unavailable"); return; } try { action.accept(t); call.resolve(state(t)); } catch (Exception e) { call.reject("Browser operation failed"); } }); }
  @PluginMethod public void create(PluginCall call) { getActivity().runOnUiThread(() -> {
@@ -226,15 +246,24 @@ public class AlphaBrowserPlugin extends Plugin {
   if (requested == null || id == null || !id.matches("[A-Za-z0-9_-]{1,80}")) { call.reject("Invalid browser identity"); return; }
   if (session != null && !session.equals(requested)) { call.reject("Expired browser session"); return; }
   session = requested;
-  if (tabs.containsKey(id)) { call.resolve(state(tabs.get(id))); return; }
+  boolean priv = Boolean.TRUE.equals(call.getBoolean("private", false));
+  if (tabs.containsKey(id)) { Tab existing = tabs.get(id); if (existing.priv != priv) { call.reject("Browser tab identity changed"); return; } call.resolve(state(existing)); return; }
   if (tabs.size() >= 8) { call.reject("Close a tab before opening another"); return; }
+  if (clearing && !priv) { call.reject("Browsing data is being cleared. Try again in a moment."); return; }
   if (!WebViewFeature.isFeatureSupported(WebViewFeature.MULTI_PROFILE) || !WebViewFeature.isFeatureSupported(WebViewFeature.GET_WEB_VIEW_RENDERER)) { call.reject("This Android WebView does not support isolated browser profiles"); return; }
-  if (!WebViewFeature.isFeatureSupported(WebViewFeature.DELETE_BROWSING_DATA)) { call.reject("This Android WebView cannot securely clear retired browser data. Update Android System WebView to browse."); return; }
-  Tab t = new Tab(); t.id = id; t.web = new CredentialWebView(t);
+  if (!WebViewFeature.isFeatureSupported(WebViewFeature.DELETE_BROWSING_DATA)) { call.reject("This Android WebView cannot securely clear browser data. Update Android System WebView to browse."); return; }
+  try { call.resolve(state(build(id, priv, priv ? namespace + "_" + id : PERSISTENT_PROFILE))); }
+  catch (Exception e) { call.reject("Could not create an isolated browser tab"); }
+ }); }
+ /** One child WebView in the given browser-only profile. Pop-ups pass their
+  * opener's profile so a site's sign-in window shares its session. */
+ private Tab build(String id, boolean priv, String profileName) throws Exception {
+  Tab t = new Tab(); t.id = id; t.priv = priv; t.web = new CredentialWebView(t);
   try {
    // setProfile creates a missing profile. Chromium retains loaded profile
-   // shells until process exit; retirement purges data before startup deletion.
-   t.profile = namespace + "_" + id; WebViewCompat.setProfile(t.web, t.profile);
+   // shells until process exit; private retirement purges data before startup deletion.
+   if (profileName == null || "Default".equals(profileName) || (priv != ephemeralProfile(profileName))) throw new IllegalStateException();
+   t.profile = profileName; WebViewCompat.setProfile(t.web, t.profile);
    // Check mode before loading any remote page; inspect its renderer after a
    // navigation has committed rather than rejecting an unstarted WebView.
    if (!WebViewFeature.isFeatureSupported(WebViewFeature.MULTI_PROCESS) || !WebViewCompat.isMultiProcessEnabled()) throw new IllegalStateException();
@@ -244,7 +273,13 @@ public class AlphaBrowserPlugin extends Plugin {
    t.frame = new FrameLayout(getActivity()); t.frame.setClipChildren(true); t.frame.setVisibility(View.GONE); t.frame.addView(t.web, new FrameLayout.LayoutParams(-1,-1));
    t.message = new TextView(getActivity()); t.message.setPadding(24,24,24,24); t.message.setBackgroundColor(0xfffafafa); t.message.setTextColor(0xff222222); t.message.setVisibility(View.GONE); t.frame.addView(t.message, new FrameLayout.LayoutParams(-1,-1));
    t.web.setWebViewClient(new WebViewClient() {
-    @Override public boolean shouldOverrideUrlLoading(WebView v, WebResourceRequest r) { if (!safe(r.getUrl().toString())) { if (r.isForMainFrame()) fail(t,"This address type is not supported."); return true; } return false; }
+    @Override public boolean shouldOverrideUrlLoading(WebView v, WebResourceRequest r) {
+     String target = r.getUrl().toString();
+     // mailto/tel/intent/market belong to other apps. The current page stays.
+     if (BrowserExternalLinks.external(target)) { if (r.isForMainFrame()) handoff(t, target, r.hasGesture()); return true; }
+     if (!safe(target)) { if (r.isForMainFrame()) fail(t,"This address type is not supported."); return true; }
+     return false;
+    }
     @Override public WebResourceResponse shouldInterceptRequest(WebView v, WebResourceRequest r) { if (r.isForMainFrame() && !safe(r.getUrl().toString())) return new WebResourceResponse("text/plain","UTF-8",new java.io.ByteArrayInputStream(new byte[0])); return null; }
     @Override public void onPageStarted(WebView v, String url, Bitmap icon) { if (!safe(url)) { fail(t,"This address type is not supported."); return; } t.url=url; if(t.readingWorld!=null)t.readingWorld.pageStarted(url); loading(t,true); emit(t); }
     @Override public void onPageCommitVisible(WebView v, String url) {
@@ -253,7 +288,7 @@ public class AlphaBrowserPlugin extends Plugin {
      clearTimeout(t); t.lastCommittedUrl=url; t.committed=true; t.loading=!(url.equals(t.finishedUrl) || v.getProgress()==100); t.url=url; t.message.setVisibility(View.GONE); t.web.setVisibility(View.VISIBLE); syncAutofill(t); emit(t);
     }
     @Override public void onPageFinished(WebView v, String url) { if (!t.error.isEmpty() || !safe(url) || !url.equals(t.url)) return; t.finishedUrl=url; if(t.committed) { clearTimeout(t); t.loading=false; syncAutofill(t); emit(t); } }
-    @Override public void onReceivedHttpAuthRequest(WebView v, HttpAuthHandler handler, String host, String realm) { handler.cancel(); fail(t,"Sign-in is not supported in this public browsing slice."); }
+    @Override public void onReceivedHttpAuthRequest(WebView v, HttpAuthHandler handler, String host, String realm) { handler.cancel(); fail(t,"This site asks for a browser password prompt (HTTP authentication), which is not supported."); }
     @Override public void onReceivedSslError(WebView v, SslErrorHandler handler, SslError error) { handler.cancel(); fail(t,"Secure connection failed. The certificate was not accepted."); }
     @Override public void onReceivedError(WebView v, WebResourceRequest r, WebResourceError e) { if (r.isForMainFrame()) { if (BuildConfig.DEBUG) android.util.Log.w("AlphaBrowser", "Main-frame network failure code=" + e.getErrorCode()); fail(t,"Page could not load. Check the address and connection, then reload."); } }
     @Override public void onReceivedHttpError(WebView v, WebResourceRequest r, WebResourceResponse response) {
@@ -279,7 +314,12 @@ public class AlphaBrowserPlugin extends Plugin {
      catch(Exception unavailable){pickerOutstanding=false;cancelFile();}
      return true;
     }
-    @Override public boolean onCreateWindow(WebView v,boolean dialog,boolean gesture,android.os.Message message) { return false; }
+    @Override public boolean onCreateWindow(WebView v,boolean dialog,boolean gesture,android.os.Message message) { return popup(t,gesture,message); }
+    @Override public void onCloseWindow(WebView window) {
+     // Only a pop-up this browser opened may close itself (window.close()).
+     if(t.opener==null||tabs.get(t.id)!=t)return;
+     tabs.remove(t.id);dispose(t);tabClosed(t.id);
+    }
    });
    t.web.setDownloadListener((url,agent,disposition,mime,length) -> {
     if(paused||t.dead||!Objects.equals(presentedId,t.id)||tabs.get(t.id)!=t)return;
@@ -290,9 +330,63 @@ public class AlphaBrowserPlugin extends Plugin {
     long revision=t.navigation;
     downloads.request(t.id,url,disposition,mime,length,()->!paused&&!t.dead&&tabs.get(t.id)==t&&t.navigation==revision&&Objects.equals(presentedId,t.id));emit(t);
    });
-   ((ViewGroup)getActivity().findViewById(android.R.id.content)).addView(t.frame); tabs.put(id,t); call.resolve(state(t));
-  } catch (Exception e) { dispose(t); call.reject("Could not create an isolated browser tab"); }
- }); }
+   ((ViewGroup)getActivity().findViewById(android.R.id.content)).addView(t.frame); tabs.put(id,t); return t;
+  } catch (Exception e) { dispose(t); throw e; }
+ }
+ private void notice(Tab t,String message) { if(tabs.get(t.id)!=t)return; JSObject event=new JSObject(); event.put("session",session); event.put("id",t.id); event.put("message",message); notifyListeners("notice",event); }
+ /** target=_blank links and window.open open a new tab in the opener's profile.
+  * Only a user gesture in the selected, committed tab may open one; the opener
+  * is untrusted, so the new tab gets the same policy and no app bridge. */
+ private boolean popup(Tab opener,boolean gesture,android.os.Message message) {
+  if(paused||destroyed||opener.dead||tabs.get(opener.id)!=opener||!Objects.equals(presentedId,opener.id)||!opener.committed||!opener.error.isEmpty()){return false;}
+  if(!gesture){notice(opener,"Blocked a pop-up that opened without a tap.");return false;}
+  if(tabs.size()>=8){notice(opener,"Close a tab to open this link in a new tab.");return false;}
+  if(!(message.obj instanceof WebView.WebViewTransport))return false;
+  String id="p"+UUID.randomUUID().toString().replace("-","");
+  Tab child;
+  try{child=build(id,opener.priv,opener.profile);}catch(Exception unavailable){notice(opener,"This link could not open in a new tab.");return false;}
+  child.opener=opener.id;
+  loading(child);
+  ((WebView.WebViewTransport)message.obj).setWebView(child.web);message.sendToTarget();
+  JSObject event=new JSObject();event.put("session",session);event.put("id",id);event.put("opener",opener.id);event.put("private",child.priv);
+  notifyListeners("tabOpened",event);emit(child);
+  return true;
+ }
+ private boolean ownsRoute(Intent intent) {
+  String own=getContext().getPackageName();
+  if(own.equals(intent.getPackage()))return true;
+  for(android.content.pm.ResolveInfo info:getContext().getPackageManager().queryIntentActivities(intent,0))
+   if(info.activityInfo!=null&&own.equals(info.activityInfo.packageName))return true;
+  return false;
+ }
+ /** Hand a tapped mailto/tel/intent/market link to Android. The page stays loaded. */
+ private void handoff(Tab t,String raw,boolean gesture) {
+  if(paused||destroyed||t.dead||tabs.get(t.id)!=t)return;
+  // A tapped target=_blank link to another app first opens a pop-up tab whose
+  // creation was already gesture-gated in popup(). That still-empty pop-up may
+  // hand off exactly once and then closes, so an opener script cannot reuse it.
+  Tab opener=t.opener==null?null:tabs.get(t.opener);
+  boolean fresh=opener!=null&&!t.handedOff&&!t.committed&&t.lastCommittedUrl.isEmpty();
+  Tab report=fresh?opener:t;
+  if(fresh){t.handedOff=true;if(!Objects.equals(presentedId,t.id)&&!Objects.equals(presentedId,opener.id)){closePopup(t);return;}}
+  else{
+   if(!Objects.equals(presentedId,t.id))return;
+   if(!gesture){notice(t,"Blocked a link to another app that opened without a tap.");return;}
+  }
+  Intent intent=BrowserExternalLinks.intentFor(raw,getContext().getPackageName());
+  if(intent==null||ownsRoute(intent)){notice(report,"This link type is not supported.");if(fresh)closePopup(t);return;}
+  for(Tab tab:tabs.values())disableAutofill(tab);
+  try{getActivity().startActivity(intent);if(fresh)closePopup(t);}
+  catch(android.content.ActivityNotFoundException missing){
+   String fallback=BrowserExternalLinks.fallback(raw);
+   if(fallback!=null&&safe(fallback)){t.url=fallback;loading(t);emit(t);if(t.readingWorld!=null)t.readingWorld.prepare(fallback);t.web.loadUrl(fallback);}
+   else{notice(report,"No app on this device can open this link.");if(fresh)closePopup(t);}
+  }
+  catch(RuntimeException blocked){notice(report,"This link could not be opened.");if(fresh)closePopup(t);}
+ }
+ private void tabClosed(String id){JSObject event=new JSObject();event.put("session",session);event.put("id",id);notifyListeners("tabClosed",event);}
+ /** Close a pop-up after its callback returns; a WebView is not destroyed inside its own callback. */
+ private void closePopup(Tab t){navigationHandler.post(()->{if(tabs.get(t.id)!=t)return;tabs.remove(t.id);dispose(t);tabClosed(t.id);});}
  @PluginMethod public void navigate(PluginCall call) { String url=call.getString("url"); if (url==null || !safe(url)) { call.reject("Enter an HTTP or HTTPS address without credentials"); return; } run(call,t -> { t.url=url; loading(t); emit(t); if(t.readingWorld!=null)t.readingWorld.prepare(url); t.web.loadUrl(url); }); }
  @PluginMethod public void command(PluginCall call) { run(call,t -> { String op=call.getString("command"); if ("back".equals(op)) { if(t.web.canGoBack()){loading(t);if(t.readingWorld!=null)t.readingWorld.prepareHistory(-1);t.web.goBack();} } else if ("forward".equals(op)) { if(t.web.canGoForward()){loading(t);if(t.readingWorld!=null)t.readingWorld.prepareHistory(1);t.web.goForward();} } else if ("reload".equals(op)) {loading(t);if(t.readingWorld!=null)t.readingWorld.prepare(t.web.getUrl());t.web.reload();} else if ("stop".equals(op)) { clearTimeout(t); if(!t.committed)fail(t,"Loading stopped. Reload from the menu to try again."); else {t.web.stopLoading();t.loading=false;syncAutofill(t);} } else throw new IllegalArgumentException(); emit(t); }); }
  @PluginMethod public void present(PluginCall call) { getActivity().runOnUiThread(() -> {
@@ -319,6 +413,53 @@ public class AlphaBrowserPlugin extends Plugin {
   if(!BrowserBookmarks.valid(url)||saved==null){call.reject("Only HTTPS addresses without embedded credentials can be bookmarked.");return;}
   try{call.resolve(bookmarkResult(bookmarks.change(url,saved)));}catch(Exception unavailable){call.reject("Bookmark could not be saved. The device stores up to 100 bookmarks; existing data was not changed.");}
  }); }
+ @PluginMethod public void browsingState(PluginCall call) { getActivity().runOnUiThread(()->{
+  if(!bookmarkSession(call))return;
+  try{call.resolve(JSObject.fromJSONObject(sessionStore.read()));}catch(Exception unavailable){call.reject("Saved tabs and history could not be read. They were not changed.");}
+ }); }
+ /** Normal tabs and history only; the renderer never sends private tabs. */
+ @PluginMethod public void saveBrowsingState(PluginCall call) { getActivity().runOnUiThread(()->{
+  if(!bookmarkSession(call))return;
+  if(clearing){call.reject("Browsing data is being cleared.");return;}
+  try{
+   org.json.JSONObject state=new org.json.JSONObject();
+   state.put("history",call.getArray("history",new JSArray()));state.put("tabs",call.getArray("tabs",new JSArray()));state.put("cur",call.getString("cur",""));
+   call.resolve(JSObject.fromJSONObject(sessionStore.write(state)));
+  }catch(Exception unavailable){call.reject("Tabs and history could not be saved.");}
+ }); }
+ /** Clear browsing data: cookies and site data, history and cache of the
+  * persistent normal-tab profile. Open normal tabs close first so a live page
+  * cannot rewrite its data; private tabs are unaffected. Bookmarks remain. */
+ @PluginMethod public void clearBrowsingData(PluginCall call) { getActivity().runOnUiThread(()->{
+  if(!bookmarkSession(call))return;
+  if(clearing){call.reject("Browsing data is already being cleared.");return;}
+  if(!WebViewFeature.isFeatureSupported(WebViewFeature.MULTI_PROFILE)||!WebViewFeature.isFeatureSupported(WebViewFeature.DELETE_BROWSING_DATA)){call.reject("This Android WebView cannot clear browser data. Update Android System WebView.");return;}
+  clearing=true;JSArray closed=new JSArray();
+  for(Tab tab:new ArrayList<>(tabs.values()))if(!tab.priv){tabs.remove(tab.id);dispose(tab);closed.put(tab.id);tabClosed(tab.id);}
+  try{sessionStore.clear();}catch(Exception unavailable){clearing=false;call.reject("Browsing history could not be cleared.");return;}
+  // WebView.destroy posts native destruction; clear after those tasks.
+  navigationHandler.post(()->{
+   try{
+    androidx.webkit.Profile profile=ProfileStore.getInstance().getOrCreateProfile(PERSISTENT_PROFILE);
+    CookieManager cookies=profile.getCookieManager();
+    cookies.removeAllCookies(removed->{
+     try{WebStorageCompat.deleteBrowsingData(profile.getWebStorage(),()->{cookies.flush();clearing=false;JSObject result=new JSObject();result.put("closed",closed);call.resolve(result);});}
+     catch(Exception unavailable){clearing=false;call.reject("Website data could not be cleared.");}
+    });
+   }catch(Exception unavailable){clearing=false;call.reject("Website data could not be cleared.");}
+  });
+ }); }
+ /** Cookies and storage for the selected tab's site (registrable domain) only. */
+ @PluginMethod public void clearSiteData(PluginCall call) { getActivity().runOnUiThread(()->{
+  if(!Objects.equals(session,call.getString("session"))){call.reject("Expired browser session");return;}
+  Tab t=tabs.get(call.getString("id"));
+  if(t==null||t.dead||!safe(t.url)||!Objects.equals(call.getString("url"),t.url)){call.reject("Load a website before clearing its data.");return;}
+  if(!WebViewFeature.isFeatureSupported(WebViewFeature.DELETE_BROWSING_DATA)){call.reject("This Android WebView cannot clear site data.");return;}
+  try{
+   String[] site=new String[1];
+   site[0]=WebStorageCompat.deleteBrowsingDataForSite(WebViewCompat.getProfile(t.web).getWebStorage(),Uri.parse(t.url).getHost(),()->{JSObject result=new JSObject();result.put("site",site[0]);call.resolve(result);});
+  }catch(Exception unavailable){call.reject("Site data could not be cleared.");}
+ }); }
  @PluginMethod public void reviewQuestion(PluginCall call) { reviewPage(call,true); }
  @PluginMethod public void reviewReading(PluginCall call) { reviewPage(call,false); }
  private void reviewPage(PluginCall call,boolean question) { getActivity().runOnUiThread(()->{
@@ -341,7 +482,13 @@ public class AlphaBrowserPlugin extends Plugin {
  }); }
  @PluginMethod public void downloads(PluginCall call) { getActivity().runOnUiThread(()->{String requested=call.getString("session");if(requested==null||(session!=null&&!Objects.equals(session,requested))){call.reject("Expired browser session");return;}session=requested;for(Tab tab:tabs.values())disableAutofill(tab);downloads.show();call.resolve();}); }
  @PluginMethod public void close(PluginCall call) { getActivity().runOnUiThread(() -> { if (!Objects.equals(session,call.getString("session"))) { call.reject("Expired browser session"); return; } Tab t=tabs.remove(call.getString("id")); if(t!=null) dispose(t); call.resolve(); }); }
- @Override protected void handleOnPause() { paused=true;if(reading!=null)reading.cancel(); for(Tab t:tabs.values()) { syncAutofill(t); t.frame.setVisibility(View.GONE); if(!t.dead)t.web.onPause(); } }
+ @Override protected void handleOnPause() { paused=true;if(reading!=null)reading.cancel();flushCookies(); for(Tab t:tabs.values()) { syncAutofill(t); t.frame.setVisibility(View.GONE); if(!t.dead)t.web.onPause(); } }
+ /** Persist normal-tab sign-in cookies promptly; the process may be killed in background. */
+ private void flushCookies() {
+  try{if(WebViewFeature.isFeatureSupported(WebViewFeature.MULTI_PROFILE)){androidx.webkit.Profile profile=ProfileStore.getInstance().getProfile(PERSISTENT_PROFILE);if(profile!=null)profile.getCookieManager().flush();}}catch(Exception unavailable){/* Chromium also flushes periodically. */}
+ }
  @Override protected void handleOnResume() { paused=false; for(Tab t:tabs.values()) if(!t.dead){t.web.onResume();JSObject event=state(t);event.put("surfaceResumed",true);notifyListeners("stateChanged",event);} }
- @Override protected void handleOnDestroy() { destroyed=true;if(reading!=null)reading.cancel();getBridge().removeWebViewListener(hostNavigation);if(downloads!=null)downloads.destroy();AutofillManager manager=getActivity().getSystemService(AutofillManager.class);if(manager!=null)manager.unregisterCallback(autofillCallback);cancelFile();if(filePicker!=null)filePicker.unregister();if(pageShare!=null)pageShare.unregister();for(Tab t:tabs.values()) dispose(t); tabs.clear(); session=null; }
+ @Override protected void handleOnDestroy() { destroyed=true;if(reading!=null)reading.cancel();getBridge().removeWebViewListener(hostNavigation);if(downloads!=null)downloads.destroy();AutofillManager manager=getActivity().getSystemService(AutofillManager.class);if(manager!=null)manager.unregisterCallback(autofillCallback);cancelFile();if(filePicker!=null)filePicker.unregister();if(pageShare!=null)pageShare.unregister();ArrayList<Tab> all=new ArrayList<>(tabs.values());tabs.clear();
+  // Clear first: a private profile shared with a pop-up is purged only when no tab still uses it.
+  for(Tab t:all) dispose(t); session=null; }
 }

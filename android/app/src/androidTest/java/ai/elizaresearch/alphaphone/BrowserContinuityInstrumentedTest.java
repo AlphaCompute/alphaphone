@@ -6,11 +6,14 @@ import androidx.test.platform.app.InstrumentationRegistry;
 import org.json.JSONObject;
 import org.junit.Test;
 import org.junit.runner.RunWith;
+import android.net.Uri;
 import java.util.UUID;
 import static org.junit.Assert.*;
 
 /** Real renderer controls and isolated HTTPS WebViews; native encrypted bookmark
- * readback is an independent witness. Activity recreation is not process death. */
+ * and session readback are independent witnesses. Activity recreation is not
+ * process death. Product decision: normal tabs share one persistent profile
+ * (sign-ins survive), tabs and history are restored; private tabs are ephemeral. */
 @RunWith(AndroidJUnit4.class)
 public final class BrowserContinuityInstrumentedTest {
  private final BrowserFlowInstrumentedTest browser=new BrowserFlowInstrumentedTest();
@@ -30,6 +33,9 @@ public final class BrowserContinuityInstrumentedTest {
   for(int i=0;i<300;i++){if("true".equals(browser.child("location.href==="+JSONObject.quote(url)+" && document.readyState==='complete' && document.title==='Example Domain' && typeof Capacitor==='undefined'")))return;SystemClock.sleep(100);}fail("Actual isolated HTTPS document not restored; "+browser.diagnostics());
   ready("document.querySelector('svg[aria-label=\"Secure connection\"]')");
  }
+ private int savedTabs(android.content.Context context,int expected)throws Exception{
+  int count=0;for(int i=0;i<100;i++){count=new BrowserSessionStore(context).read().getJSONArray("tabs").length();if(count==expected)break;SystemClock.sleep(100);}return count;
+ }
  private void saved(BrowserBookmarks store,String url,boolean expected)throws Exception{for(int i=0;i<150;i++){if(store.read().contains(url)==expected)return;SystemClock.sleep(100);}fail("Native encrypted bookmark commit did not match UI action");}
  @Test public void tabsSurviveAppNavigationAndBookmarksSurviveActivityRecreation()throws Exception{
   String token=UUID.randomUUID().toString(),one="https://example.com/?alpha_continuity="+token+"-one",two="https://example.com/?alpha_continuity="+token+"-two",three="https://example.com/?alpha_continuity="+token+"-three";
@@ -40,7 +46,7 @@ public final class BrowserContinuityInstrumentedTest {
    address(two);page(two);click("Menu");click("Bookmark");saved(store,two,true);
    String sealed=context.getSharedPreferences("alpha-browser-bookmarks",0).getString("sealed","");assertFalse("Explicit URL is encrypted at rest",sealed.contains(token));assertFalse(sealed.isEmpty());
    click("Tabs");click("New tab");address(three);page(three);
-   assertEquals("Independent tab profile","null",browser.child("localStorage.getItem('alpha_continuity')"));
+   assertEquals("Normal tabs share the persistent profile",JSONObject.quote(token),browser.child("localStorage.getItem('alpha_continuity')"));
    app("Notes");app("Browser");page(three);
    ready("("+button("Tabs")+").textContent.trim()==='2'");
    click("Tabs");host("(()=>{const b=[...document.querySelectorAll('button[aria-label^=\"Switch to \"]')].find(e=>e.textContent.includes("+JSONObject.quote(two)+"));if(b)b.click();})()");page(two);
@@ -48,9 +54,14 @@ public final class BrowserContinuityInstrumentedTest {
    click("Previous page");page(one);click("Next page");page(two);
    click("Menu");click("Bookmarks and history");click("Bookmarks");ready(button(two));click(two);page(two);
    assertEquals("No host access to website storage","null",host("localStorage.getItem('alpha_continuity')"));
+   assertEquals("Both normal tabs saved",2,savedTabs(context,2));
+   assertFalse("Saved tabs and history are encrypted at rest",context.getSharedPreferences("alpha-browser-session",0).getString("sealed","").contains(token));
    scenario.recreate();AppNavigation.liveMode();app("Browser");
-   ready("("+button("Tabs")+").textContent.trim()==='1'");
-   assertEquals("Recreated renderer does not automatically reopen saved websites","null",browser.child("true"));
+   ready("("+button("Tabs")+").textContent.trim()==='2'");
+   // The selected restored tab reloads its last committed page; site storage persisted.
+   page(two);
+   assertEquals("Site storage survives Activity recreation",JSONObject.quote(token),browser.child("localStorage.getItem('alpha_continuity')"));
+   click("Menu");click("Bookmarks and history");click("History");ready(button(one));ready(button(three));click("Back to page");
    click("Menu");click("Bookmarks and history");click("Bookmarks");ready(button(two));
    host("("+button(two)+").parentElement.querySelector('button[aria-label=\"Remove bookmark\"]').click()");saved(store,two,false);ready("!("+button(two)+")");
    scenario.recreate();AppNavigation.liveMode();app("Browser");click("Menu");click("Bookmarks and history");click("Bookmarks");
@@ -76,6 +87,8 @@ public final class BrowserContinuityInstrumentedTest {
    for(android.view.View frame:before.frames)assertNull("Old native surface detached",frame.getParent());
   });
   for(String profile:before.profiles){
+   // The persistent normal-tab profile is retained by product decision.
+   if(!AlphaBrowserPlugin.ephemeralProfile(profile))continue;
    java.util.concurrent.atomic.AtomicBoolean purged=new java.util.concurrent.atomic.AtomicBoolean();
    for(int i=0;i<200&&!purged.get();i++){
     WebViewTestDriver.withActivity(MainActivity.class,activity->{try{
@@ -104,24 +117,36 @@ public final class BrowserContinuityInstrumentedTest {
    finally{WebViewTestDriver.withActivity(MainActivity.class,activity->{probe.get().stopLoading();probe.get().destroy();});}
   }
  }
+ private void privateFixture(String url,String token)throws Exception{
+  address(url);page(url);ready("document.querySelector('[aria-label=\"Private tab\"]')");
+  browser.child("localStorage.setItem('reload_private',"+JSONObject.quote(token)+");document.cookie='alpha_reload_private="+token+"; Secure; SameSite=Lax; Path=/';true");
+  assertEquals("Private fixture stored before purge",JSONObject.quote(token),browser.child("localStorage.getItem('reload_private')"));assertEquals("Cookie fixture stored before purge","true",browser.child("document.cookie.includes('alpha_reload_private="+token+"')"));
+  assertEquals("Private tab cannot read normal-tab storage","null",browser.child("localStorage.getItem('reload_signin')"));
+ }
  @Test public void sameActivityReloadAndMockRoundTripRetireNativeProfiles()throws Exception{
   org.junit.Assume.assumeTrue("Mock mode exists only in -PELIZA_DEV_ALLOW_TEST_MOCKS=1 builds",BuildConfig.ELIZA_DEV_ALLOW_TEST_MOCKS);
   String token=UUID.randomUUID().toString(),url="https://example.com/?alpha_document_reload="+token;
   BrowserBookmarks store=new BrowserBookmarks(InstrumentationRegistry.getInstrumentation().getTargetContext());
   try(BoundedActivityScenario<MainActivity> scenario=BoundedActivityScenario.launch(MainActivity.class)){
-   AppNavigation.liveMode();app("Browser");address(url);page(url);browser.child("localStorage.setItem('reload_private',"+JSONObject.quote(token)+");document.cookie='alpha_reload_private="+token+"; Secure; SameSite=Lax; Path=/';true");
-   assertEquals("Private fixture stored before purge",JSONObject.quote(token),browser.child("localStorage.getItem('reload_private')"));assertEquals("Cookie fixture stored before purge","true",browser.child("document.cookie.includes('alpha_reload_private="+token+"')"));
-   click("Menu");click("Bookmark");saved(store,url,true);BrowserSnapshot first=snapshot();assertEquals(1,first.frames.size());
+   // Normal tab: a sign-in-style cookie and storage that must survive host reloads.
+   AppNavigation.liveMode();app("Browser");address(url);page(url);browser.child("localStorage.setItem('reload_signin',"+JSONObject.quote(token)+");document.cookie='alpha_reload_signin="+token+"; Secure; SameSite=Lax; Path=/; Max-Age=3600';true");
+   click("Menu");click("Bookmark");saved(store,url,true);
+   // Private tab: ephemeral data that must be purged.
+   click("Menu");click("New private tab");privateFixture(url,token);
+   BrowserSnapshot first=snapshot();assertEquals(2,first.frames.size());
    String origin=host("performance.timeOrigin");WebViewTestDriver.navigateHostDocument("location.reload()",true);ready("performance.timeOrigin!=="+origin+"&&document.documentElement.dataset.activeView==='home'");resetVerified(first,url);
-   app("Browser");address(url);page(url);assertEquals("New document cannot reuse old site storage","null",browser.child("localStorage.getItem('reload_private')"));
-   click("Menu");click("Bookmarks and history");click("Bookmarks");ready(button(url));click(url);page(url);browser.child("localStorage.setItem('reload_private',"+JSONObject.quote(token)+");document.cookie='alpha_reload_private="+token+"; Secure; SameSite=Lax; Path=/';true");BrowserSnapshot second=snapshot();
+   app("Browser");page(url);
+   assertEquals("Normal-tab storage survives the host reload",JSONObject.quote(token),browser.child("localStorage.getItem('reload_signin')"));
+   assertEquals("Normal-tab cookie survives the host reload","true",browser.child("document.cookie.includes('alpha_reload_signin="+token+"')"));
+   assertEquals("Normal tab never sees private data","null",browser.child("localStorage.getItem('reload_private')"));
+   click("Menu");click("New private tab");privateFixture(url,token);BrowserSnapshot second=snapshot();
    app("Settings");ready("window.__alphaTestNavigation?.status==='complete'");click("Agent connection");ready("document.querySelector('.alpha-connection-scrim')");
    host("[...document.querySelectorAll('.alpha-connection summary')].find(e=>e.textContent==='Mock mode').click()");
    WebViewTestDriver.navigateHostDocument("[...document.querySelectorAll('.alpha-connection button')].find(e=>e.textContent.trim()==='Enter mock mode').click()",false);
    ready("document.documentElement.dataset.connectionMode==='mock'&&document.querySelector('.mock-mode-banner')");resetVerified(second,url);
    assertEquals("Mock renderer does not receive private bookmark URL","false",host("document.body.textContent.includes("+JSONObject.quote(token)+")"));
    WebViewTestDriver.navigateHostDocument("document.querySelector('.mock-mode-banner button').click()",true);ready("document.documentElement.dataset.connectionMode==='live'&&!document.querySelector('.mock-mode-banner')");
-   assertSame(first.activity,snapshot().activity);app("Browser");address(url);page(url);assertEquals("Fresh browser after mock exit","null",browser.child("localStorage.getItem('reload_private')"));
+   assertSame(first.activity,snapshot().activity);app("Browser");click("Menu");click("New private tab");address(url);page(url);assertEquals("Fresh private profile after mock exit","null",browser.child("localStorage.getItem('reload_private')"));
    click("Menu");click("Bookmarks and history");click("Bookmarks");ready(button(url));
   }finally{if(store.read().contains(url))store.change(url,false);}
  }
@@ -131,24 +156,39 @@ public final class BrowserContinuityInstrumentedTest {
   android.content.Context context=InstrumentationRegistry.getInstrumentation().getTargetContext();BrowserBookmarks store=new BrowserBookmarks(context);
   android.content.SharedPreferences fixture=context.getSharedPreferences("browser-bookmark-restart-fixture",0);
   if("cleanup".equals(phase)){
-   String owned=fixture.getString("url",null);if(owned!=null&&store.read().contains(owned))store.change(owned,false);assertTrue(fixture.edit().clear().commit());return;
+   String owned=fixture.getString("url",null);if(owned!=null&&store.read().contains(owned))store.change(owned,false);
+   new BrowserSessionStore(context).clear();assertTrue(fixture.edit().clear().commit());return;
   }
   if("prepare".equals(phase)){
    assertFalse("Clean previous owned fixture first",fixture.contains("url"));String url="https://example.com/?alpha_bookmark_restart="+UUID.randomUUID();
    assertTrue(fixture.edit().putString("url",url).putInt("pid",android.os.Process.myPid()).commit());
    try(BoundedActivityScenario<MainActivity> scenario=BoundedActivityScenario.launch(MainActivity.class)){
     AppNavigation.liveMode();app("Browser");address(url);page(url);click("Menu");click("Bookmark");saved(store,url,true);
-    assertTrue(fixture.edit().putStringSet("profiles",new java.util.HashSet<>(snapshot().profiles)).commit());
+    String token=Uri.parse(url).getQueryParameter("alpha_bookmark_restart");
+    browser.child("localStorage.setItem('restart_signin',"+JSONObject.quote(token)+");document.cookie='alpha_restart_signin="+token+"; Secure; SameSite=Lax; Path=/; Max-Age=3600';true");
+    click("Menu");click("New private tab");address(url);page(url);
+    java.util.HashSet<String> ephemeral=new java.util.HashSet<>();for(String name:snapshot().profiles)if(AlphaBrowserPlugin.ephemeralProfile(name))ephemeral.add(name);
+    assertFalse("Private tab uses an ephemeral profile",ephemeral.isEmpty());
+    assertTrue(fixture.edit().putStringSet("profiles",ephemeral).commit());
+    assertEquals("Only the normal tab is saved",1,savedTabs(context,1));
+    // Closing the scenario pauses the Activity, which flushes sign-in cookies.
    }return;
   }
   assertTrue("Owned fixture prepared",fixture.contains("url"));String url=fixture.getString("url","");
   assertNotEquals("Actual new process required",fixture.getInt("pid",-1),android.os.Process.myPid());
-  try(BoundedActivityScenario<MainActivity> scenario=BoundedActivityScenario.launch(MainActivity.class)){
+  try(BoundedActivityScenario<MainActivity> scenario=BoundedActivityScenario.launchRetainingBrowserSession(MainActivity.class)){
    AppNavigation.liveMode();
    java.util.Set<String> retired=fixture.getStringSet("profiles",java.util.Collections.emptySet());assertFalse("Exact prior-process profiles recorded",retired.isEmpty());
-   WebViewTestDriver.withActivity(MainActivity.class,activity->{for(String name:retired)assertFalse("Old native profile deleted after real process restart",androidx.webkit.ProfileStore.getInstance().getAllProfileNames().contains(name));});
-   app("Browser");ready("("+button("Tabs")+").textContent.trim()==='1'");
-   assertEquals("No automatic browsing on process start","null",browser.child("true"));
+   WebViewTestDriver.withActivity(MainActivity.class,activity->{for(String name:retired)assertFalse("Old private profile deleted after real process restart",androidx.webkit.ProfileStore.getInstance().getAllProfileNames().contains(name));});
+   app("Browser");
+   if("verify".equals(phase)){
+    // Only the normal tab is restored; the private tab is never saved.
+    ready("("+button("Tabs")+").textContent.trim()==='1'");page(url);
+    String token=Uri.parse(url).getQueryParameter("alpha_bookmark_restart");
+    assertEquals("Sign-in storage survives process death",JSONObject.quote(token),browser.child("localStorage.getItem('restart_signin')"));
+    assertEquals("Sign-in cookie survives process death","true",browser.child("document.cookie.includes('alpha_restart_signin="+token+"')"));
+    assertFalse("Private tab absent after restart",Boolean.parseBoolean(host("!!document.querySelector('[aria-label=\"Private tab\"]')")));
+   }
    click("Menu");click("Bookmarks and history");click("Bookmarks");
    if("verify".equals(phase)){
     ready(button(url));assertTrue("Native store survived process death",store.read().contains(url));click(url);page(url);

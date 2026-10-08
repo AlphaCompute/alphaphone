@@ -4,7 +4,7 @@ import {browserScreenLocked} from './screen-locked';
 export class BrowserReviews {
   private pending = new Map<string, () => void>();
   cancel(id: string) { this.pending.get(id)?.(); }
-  async confirm(id: string, title: string, details: string): Promise<boolean> {
+  async confirm(id: string, title: string, details: string, confirmLabel = 'Confirm'): Promise<boolean> {
     if (this.pending.has(id) || document.hidden || document.documentElement.dataset.devBackground==='true' || browserScreenLocked()) return false;
     const previous = document.activeElement as HTMLElement | null;
     return new Promise(resolve => {
@@ -16,7 +16,7 @@ export class BrowserReviews {
       const heading = document.createElement('h2'); heading.textContent = title;
       const body = document.createElement('p'); body.textContent = details; body.style.whiteSpace = 'pre-wrap';
       const cancel = document.createElement('button'); cancel.textContent = 'Cancel';
-      const approve = document.createElement('button'); approve.textContent = 'Confirm';
+      const approve = document.createElement('button'); approve.textContent = confirmLabel;
 
       let settled = false;
       const finish = (confirmed: boolean) => {

@@ -16,6 +16,8 @@ function document(key:string,event:string){
  };
 }
 export const bookmarkDocument=document('alpha.browser.bookmarks.v1','alpha:bookmarks-document-changed');
+/** Normal-tab history and restorable tabs; private tabs are never written. */
+export const browsingSessionDocument=document('alpha.browser.session.v1','alpha:browser-session-document-changed');
 export const alertSoundDocument=document('alpha.browser.alert-sounds.v1','alpha:alert-sounds-document-changed');
 
 export const passwordProviderDocument=document('alpha.browser.password-provider.v1','alpha:password-provider-document-changed');
