@@ -78,7 +78,8 @@ class SpeechToolchainTest(unittest.TestCase):
             for abi, data in natives.items():
                 jar.writestr(f'jni/{abi}/libsherpa-onnx-jni.so', data)
                 abis.append({'abi': abi, 'native': [{'file': 'libsherpa-onnx-jni.so', 'bytes': len(data), 'sha256': sha(data)}]})
-        generated = {'noEspeak': True, 'aarSha256': 'local', 'qualifiedAbis': abis}
+        generated = {'schemaVersion': 2, 'noEspeak': True, 'aarSha256': 'local', 'qualifiedAbis': abis,
+                     'functionalAcceptance': {'passed': True, 'abis': {abi: {'passed': True} for abi in natives}}}
         (module / 'runtime-manifest.json').write_text(json.dumps(generated))
         return workspace, repository, generated
 
@@ -90,7 +91,7 @@ class SpeechToolchainTest(unittest.TestCase):
         workspace, repository, generated = self.runtime({'arm64-v8a': b'arm', 'x86_64': b'x86'})
         self.record(repository, {**generated, 'aarSha256': 'recorded-container'})
         message = toolchain.check_against_record(workspace, repository, False)
-        self.assertIn('match the qualified record', message)
+        self.assertIn('match the reviewed byte record', message)
         self.assertIn('do not commit', message)
 
     def test_differing_natives_are_refused_unless_explicitly_allowed(self):
@@ -141,6 +142,51 @@ class SpeechToolchainTest(unittest.TestCase):
         self.assertFalse(module.qualify(apk, record, ('arm64-v8a', 'x86_64'))['qualified'])
         write(b'changed', None)
         self.assertFalse(module.qualify(apk, record)['qualified'])
+
+    def test_matching_apk_bytes_cannot_admit_failed_missing_or_unexecuted_functional_acceptance(self):
+        spec = importlib.util.spec_from_file_location('apk_qualification', ROOT / 'scripts/local-speech/verify-apk-qualification.py')
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        _, _, record = self.runtime({'arm64-v8a': b'arm', 'x86_64': b'x86'})
+        apk = self.dir / 'candidate.apk'
+        with zipfile.ZipFile(apk, 'w') as archive:
+            archive.writestr('lib/arm64-v8a/libsherpa-onnx-jni.so', b'arm')
+            archive.writestr('lib/x86_64/libsherpa-onnx-jni.so', b'x86')
+        for acceptance in [None, {}, {'passed': False}, {'passed': 'true'},
+                           {'passed': True}, {'passed': True, 'abis': {'arm64-v8a': {'passed': True}}},
+                           {'passed': True, 'abis': {'arm64-v8a': {'passed': True}, 'x86_64': {'passed': False}}}]:
+            candidate = {**record, 'functionalAcceptance': acceptance}
+            result = module.qualify(apk, candidate)
+            self.assertTrue(result['byteMatch'], acceptance)
+            self.assertFalse(result['functionalPassed'], acceptance)
+            self.assertFalse(result['qualified'], acceptance)
+            self.assertTrue(result['functionalDifferences'], acceptance)
+        for schema in [None, 1, 3, '2']:
+            result = module.qualify(apk, {**record, 'schemaVersion': schema})
+            self.assertTrue(result['byteMatch'])
+            self.assertFalse(result['qualified'])
+        # A complete reviewed pass can admit only unchanged packaged bytes.
+        result = module.qualify(apk, record)
+        self.assertTrue(result['byteMatch'])
+        self.assertTrue(result['functionalPassed'])
+        self.assertTrue(result['qualified'])
+        with zipfile.ZipFile(apk, 'w') as archive:
+            archive.writestr('lib/arm64-v8a/libsherpa-onnx-jni.so', b'changed')
+        result = module.qualify(apk, record)
+        self.assertFalse(result['byteMatch'])
+        self.assertFalse(result['qualified'])
+
+    def test_failed_functional_gate_does_not_bypass_exact_byte_installer_admission(self):
+        workspace, repository, generated = self.runtime({'arm64-v8a': b'arm', 'x86_64': b'x86'})
+        recorded = {**generated, 'functionalAcceptance': {'passed': False}}
+        self.record(repository, recorded)
+        # Installing reviewed native identities is allowed for QA even when
+        # distribution is blocked. It must still compare exact native bytes.
+        toolchain.check_against_record(workspace, repository, False)
+        recorded['qualifiedAbis'][0]['native'][0]['sha256'] = sha(b'changed')
+        self.record(repository, recorded)
+        with self.assertRaises(SystemExit):
+            toolchain.check_against_record(workspace, repository, False)
 
     def test_assembled_archive_must_match_its_generated_manifest(self):
         workspace, repository, generated = self.runtime({'arm64-v8a': b'arm', 'x86_64': b'x86'})

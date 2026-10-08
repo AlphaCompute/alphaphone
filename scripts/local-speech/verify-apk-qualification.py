@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Compare actual APK native bytes with the separately reviewed speech record."""
+"""Report native byte admission separately from reviewed speech functional acceptance."""
 import hashlib
 import json
 from pathlib import Path
@@ -27,7 +27,26 @@ def qualify(apk, record, required_abis=('arm64-v8a',)):
                 data = archive.read(name)
                 if len(data) != native['bytes'] or hashlib.sha256(data).hexdigest() != native['sha256']:
                     differences.append(name + ': differs from reviewed native bytes')
-    return {'qualified': not differences, 'differences': differences}
+    byte_match = not differences
+    functional = record.get('functionalAcceptance')
+    functional_differences = []
+    if record.get('schemaVersion') != 2:
+        functional_differences.append('No supported reviewed functional-acceptance record')
+    if not isinstance(functional, dict) or functional.get('passed') is not True:
+        functional_differences.append('Speech functional acceptance is not passed')
+    accepted_abis = functional.get('abis') if isinstance(functional, dict) else None
+    for abi in sorted(packaged_abis):
+        accepted = accepted_abis.get(abi) if isinstance(accepted_abis, dict) else None
+        if not isinstance(accepted, dict) or accepted.get('passed') is not True:
+            functional_differences.append(abi + ': speech functional acceptance is not passed')
+    functional_passed = not functional_differences
+    return {
+        'byteMatch': byte_match,
+        'functionalPassed': functional_passed,
+        'qualified': byte_match and functional_passed,
+        'differences': differences,
+        'functionalDifferences': functional_differences,
+    }
 
 
 if __name__ == '__main__':
