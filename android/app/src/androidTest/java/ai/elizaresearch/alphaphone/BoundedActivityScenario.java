@@ -78,7 +78,14 @@ final class BoundedActivityScenario<T extends Activity> implements AutoCloseable
   dispatch.await(done,"Main lifecycle command");
   if(error.get()!=null)throw new AssertionError("Lifecycle command failed",error.get());
  }
+ /** Browser tabs are restored after a cold start by product decision. A test
+  * launch starts from no saved tabs or history so earlier tests cannot change
+  * which page opens; restart tests opt out with launchRetainingBrowserSession. */
  static <T extends Activity> BoundedActivityScenario<T> launch(Class<T> type)throws Exception{
+  if(type==MainActivity.class)new BrowserSessionStore(InstrumentationRegistry.getInstrumentation().getTargetContext()).clear();
+  return launchRetainingBrowserSession(type);
+ }
+ static <T extends Activity> BoundedActivityScenario<T> launchRetainingBrowserSession(Class<T> type)throws Exception{
   return launch(new Intent(InstrumentationRegistry.getInstrumentation().getTargetContext(),type));
  }
  @SuppressWarnings("unchecked")
