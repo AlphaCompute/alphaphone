@@ -10,6 +10,8 @@ if (!process.execArgv.includes('--experimental-transform-types')) {
 }
 const { CloudProtocol, CloudProvisionAcceptedError } = await import('../apps/app/src/runtime/cloud-protocol.ts');
 const { phoneContextMessage } = await import('../apps/app/src/runtime/phone-context.ts');
+const { RemoteProtocol } = await import('../apps/app/src/runtime/remote-protocol.ts');
+const { presentDeviceRecordOperation } = await import('../apps/app/src/runtime/device-record-presentation.ts');
 const user = '11111111-1111-4111-8111-111111111111', agent = '22222222-2222-4222-8222-222222222222';
 const conversation = '33333333-3333-4333-8333-333333333333';
 const sentBodies=[];
@@ -29,6 +31,50 @@ const server = http.createServer(async (req, res) => {
   res.writeHead(status, { 'content-type': 'application/json' }); res.end(JSON.stringify(data));
 });
 await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+// Synthetic paired remote agent: 260 persisted messages (more than one 200-message window),
+// keyset paging, device/session revocation, and a held send for Stop reconciliation.
+const remoteOwner='44444444-4444-4444-8444-444444444444',remoteAgent='55555555-5555-4555-8555-555555555555',remoteConversation='66666666-6666-4666-8666-666666666666';
+const remoteMessages=Array.from({length:260},(_,index)=>({id:`77777777-7777-4777-8777-${String(index).padStart(12,'0')}`,role:index%2?'assistant':'user',text:`Synthetic message ${index}`,timestamp:1_000+index}));
+const remote={tokens:new Set(),revoked:new Set(),pairs:0,pages:[],deviceRevokes:0,logouts:0,held:null};
+const remoteServer=http.createServer(async(req,res)=>{
+  const chunks=[];for await(const chunk of req)chunks.push(chunk);const body=chunks.length?JSON.parse(Buffer.concat(chunks).toString('utf8')):undefined;
+  const url=new URL(req.url,'https://agent.example'),token=(req.headers.authorization||'').replace(/^Bearer /,'');
+  const reply=(status,data)=>{res.writeHead(status,{'content-type':'application/json'});res.end(JSON.stringify(data));};
+  if(url.pathname==='/api/auth/status')return reply(200,{required:true,authenticated:false,pairingEnabled:true,instanceId:'remote-instance',bootstrapRequired:false,expiresAt:null});
+  if(url.pathname==='/api/auth/pair'){remote.pairs++;const issued=`remote-token-${remote.pairs}`;remote.tokens.add(issued);return reply(200,{token:issued,identityId:remoteOwner,instanceId:'remote-instance',access:'owner'});}
+  if(!remote.tokens.has(token)||remote.revoked.has(token))return reply(401,{});
+  if(url.pathname==='/api/auth/me')return reply(200,{identity:{id:remoteOwner,kind:'owner',displayName:'Remote owner'},session:{id:token,kind:'machine',expiresAt:Date.now()+3_600_000},access:{role:'OWNER',mode:'session'}});
+  if(url.pathname==='/api/agents')return reply(200,{agents:[{id:remoteAgent,name:'Remote fixture',status:'running'}]});
+  if(url.pathname==='/api/client-devices/register')return reply(200,{installationId:req.headers['x-eliza-device-id'],enrollmentId:'remote-enrollment',capabilities:[]});
+  if(url.pathname==='/api/client-devices/revoke'){assert.ok(req.headers['x-eliza-device-key'],'device revocation proves the installation key');remote.deviceRevokes++;return reply(200,{revoked:true});}
+  if(url.pathname==='/api/auth/logout'){remote.logouts++;remote.revoked.add(token);return reply(200,{ok:true});}
+  if(url.pathname==='/api/conversations')return reply(200,{conversations:[{id:remoteConversation,title:'Long conversation'}]});
+  if(url.pathname===`/api/conversations/${remoteConversation}/messages`&&req.method==='GET'){
+    if(!url.searchParams.has('before'))return reply(200,{messages:remoteMessages.slice(-200)});
+    const before=Number(url.searchParams.get('before')),beforeId=url.searchParams.get('beforeId'),limit=Number(url.searchParams.get('limit')||50);
+    remote.pages.push({before,beforeId,limit});
+    const older=remoteMessages.filter(item=>item.timestamp<before||(item.timestamp===before&&item.id<beforeId)).sort((a,b)=>b.timestamp-a.timestamp);
+    return reply(200,{messages:older.slice(0,limit).reverse(),hasMore:older.length>limit});
+  }
+  if(url.pathname===`/api/conversations/${remoteConversation}/messages`&&req.method==='POST'){
+    // Held: the phone stops waiting; the agent still finishes and persists the reply.
+    const user={id:'88888888-8888-4888-8888-000000000001',role:'user',text:body.text,timestamp:Date.now()};
+    remoteMessages.push(user);
+    remote.held=()=>{remoteMessages.push({id:'88888888-8888-4888-8888-000000000002',role:'assistant',text:'Finished after Stop',timestamp:Date.now()+1,replyToMessageId:user.id});reply(200,{text:'Finished after Stop',agentName:'Remote fixture'});};
+    return;
+  }
+  reply(404,{});
+});
+await new Promise(resolve => remoteServer.listen(0, '127.0.0.1', resolve));
+const nativeRemoteRequest=async input=>{
+  const url=new URL(input.url);assert.equal(url.origin,'https://agent.example');
+  const response=await fetch(`http://127.0.0.1:${remoteServer.address().port}${url.pathname}${url.search}`,{method:input.method,headers:input.headers,body:input.body,signal:input.signal});
+  return {status:response.status,body:await response.json()};
+};
+const remoteSaved=new Map(),deviceSlots=new Map();
+const remoteCredentialStore={read:async origin=>remoteSaved.get(origin)??null,write:async record=>{remoteSaved.set(record.origin,record);},remove:async origin=>{remoteSaved.delete(origin);}};
+let actionEntries=[];const reconciled=[];
+class DeviceActions{constructor(_session,credential,scope){this.credential=credential;this.scope=scope;}async pending(){return [];}async history(){return actionEntries;}async reject(id){actionEntries=actionEntries.map(entry=>entry.id===id?{...entry,state:'rejected'}:entry);}async reconcile(id,outcome){reconciled.push([id,outcome]);actionEntries=actionEntries.filter(entry=>entry.id!==id);}async syncReceipts(){}}
 const memory = new Map();
 const nativeCloudRequest = async input => {
   const url = new URL(input.url);
@@ -38,7 +84,9 @@ const nativeCloudRequest = async input => {
 };
 let clockRetirements=0,heldClockRetirement=null,clockRetirementStarted=null;
 const retireClockReviews=async()=>{clockRetirements++;clockRetirementStarted?.();if(heldClockRetirement)await heldClockRetirement;};
-const sandbox = { retireClockReviews, workflowPresentationProtocol:async()=>2, browserDevProfile:false, devProfileQuery:false, testMocksEnabled:false, devSurfacesEnabled:false, secureConnectionStore:{read:async()=>null,write:async()=>{},remove:async()=>{}}, pauseHostedBackground:async()=>{}, configureHostedBackground:async()=>{}, registerPlugin: () => ({}), CloudProtocol, CloudProvisionAcceptedError, phoneContextMessage, nativeCloudRequest,
+const sandbox = { retireClockReviews, workflowPresentationProtocol:async()=>2, browserDevProfile:false, devProfileQuery:false, testMocksEnabled:false, devSurfacesEnabled:false, secureConnectionStore:{read:async slot=>deviceSlots.get(slot)??null,write:async(slot,value)=>{deviceSlots.set(slot,value);},remove:async slot=>{deviceSlots.delete(slot);}},
+  RemoteProtocol, remoteCredentialStore, nativeRemoteRequest, DeviceActions, presentDeviceRecordOperation, actionScope:async value=>Buffer.from(value).toString('base64url').slice(0,32), negotiateEnabledViews:async()=>'',
+  Capacitor:{getPlatform:()=>'web'}, setTimeout:(callback,ms)=>setTimeout(callback,ms===15000?20:ms), clearTimeout, Intl, Date, Buffer, pauseHostedBackground:async()=>{}, configureHostedBackground:async()=>{}, registerPlugin: () => ({}), CloudProtocol, CloudProvisionAcceptedError, phoneContextMessage, nativeCloudRequest,
   cloudCredentialStore: { read: async () => credential, write: async (_environment, value) => { credential = value; }, clear: async () => { credential = null; } },
   openConnectionBrowser: async () => { throw new Error('Unexpected browser effect'); },
   isAndroid: false, localStorage: { getItem: key => memory.get(key) ?? null, setItem: (key, value) => memory.set(key, value), removeItem: key => memory.delete(key) },
@@ -103,5 +151,61 @@ try {
   assert.equal(controller.rejectCloudSession('stale-session', { status: 401 }), false);
   assert.equal(controller.rejectCloudSession(bound.sessionId, { status: 401 }), true);
   assert.equal(controller.getCloudClient(), null);
-  console.log('PASS: real Cloud protocol/controller HTTP history membership, context stripping, action exclusion, next-send binding, current device timezone metadata and omission, separate service disconnect and scoped rejection. Synthetic only.');
-} finally { server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); }
+
+  // Paired remote agent: connect, page more than one window, restore on reconnect, revoke.
+  await controller.pair('remote','https://agent.example','REMOTE-CODE');
+  assert.equal(controller.getSnapshot().error,'','remote pairing succeeds');
+  assert.equal(controller.getSnapshot().kind,'remote');
+  assert.equal(controller.getSnapshot().history,null,'nothing is restored before a conversation is chosen');
+  await controller.listHistory();
+  await controller.restoreHistory(remoteConversation);
+  let history=controller.getSnapshot().history;
+  assert.equal(history.messages.length,260,'older pages are read until hasMore is false');
+  assert.equal(JSON.stringify(history.messages.map(item=>item.text)),JSON.stringify(remoteMessages.map(item=>item.text)),'pages join oldest first without duplicates');
+  assert.equal(controller.getSnapshot().historyPartial,false);
+  assert.deepEqual(remote.pages.map(page=>[page.before,page.beforeId,page.limit]),[[1060,remoteMessages[60].id,200]],'one keyset page covers the remaining 60 messages');
+  const firstToken=remoteSaved.get('https://agent.example').token;
+  // Reconnect (a fresh pairing on the same agent) restores the saved conversation automatically.
+  await controller.disconnect();
+  assert.equal(remote.deviceRevokes,1,'disconnect revokes the device enrollment');
+  assert.equal(remote.logouts,1,'disconnect revokes the owner session');
+  assert.match(controller.getSnapshot().message,/revoked on the agent/);
+  assert.equal(remoteSaved.size,0,'local remote credential removed after revocation');
+  assert.equal([...deviceSlots.keys()].filter(key=>key.startsWith('device:')).length,0,'device installation key deleted');
+  const replay=await nativeRemoteRequest({url:'https://agent.example/api/auth/me',method:'GET',headers:{Authorization:`Bearer ${firstToken}`}});
+  assert.equal(replay.status,401,'the old bearer is rejected after disconnect');
+  remote.pages.length=0;
+  await controller.pair('remote','https://agent.example','REMOTE-CODE');
+  history=controller.getSnapshot().history;
+  assert.equal(history?.automatic,true,'remote connect restores the saved conversation');
+  assert.equal(history.messages.length,260);
+  assert.equal(remote.pages.length,1);
+
+  // Activity uses plain-language presentation, never operation JSON.
+  actionEntries=[{id:'proposal-1',state:'reconciliation_required',operation:{type:'create_note',title:'Groceries',body:'Milk'},local:{status:'unknown',phase:'applying',applyingAt:Date.UTC(2026,9,8,15,30)}},{id:'proposal-2',state:'pending',operation:{type:'post_notification',title:'Digest',body:'Ready'}}];
+  await controller.actionHistory();
+  const presented=controller.getSnapshot().actionHistory;
+  assert.equal(presented[0].title,'Create note');assert.match(presented[0].detail,/Groceries/);assert.ok(presented[0].timestamp,'local-time timestamp');
+  assert.equal(presented[1].title,'Post notification');
+  for(const entry of presented)assert.equal(entry.description.includes('{"type"'),false,'no operation JSON in Activity');
+  await controller.rejectProposal('proposal-2');
+  assert.equal(controller.getSnapshot().actionHistory.find(entry=>entry.id==='proposal-2').state,'rejected');
+  await controller.reconcile('proposal-1',true);
+  assert.deepEqual(reconciled,[['proposal-1','applied']]);
+
+  // Stop: no cancel route exists upstream, so one later read shows the reply if it finished.
+  const stop=new AbortController();
+  const stopped=controller.send('Please finish anyway',{view:'home',revision:9,sensitive:false},'stop-request',stop.signal);
+  const until=(check,label)=>new Promise((resolve,reject)=>{const deadline=Date.now()+10_000;const wait=()=>check()?resolve():Date.now()>deadline?reject(Error('Timed out: '+label)):setTimeout(wait,10);wait();});
+  await until(()=>remote.held,'held send');
+  stop.abort();await assert.rejects(stopped);
+  assert.match(controller.getSnapshot().replyNotice,/may still finish/);
+  remote.held();
+  await until(()=>!/may still finish/.test(controller.getSnapshot().replyNotice),'stopped reply check');
+  assert.equal(controller.getSnapshot().replyNotice,'','the single check found the finished reply');
+  history=controller.getSnapshot().history;
+  assert.equal(history.messages.at(-1).text,'Finished after Stop','the finished reply appears once');
+  assert.equal(history.messages.filter(item=>item.text==='Finished after Stop').length,1);
+  await controller.disconnect();
+  console.log('PASS: real Cloud protocol/controller HTTP history membership, context stripping, action exclusion, next-send binding, current device timezone metadata and omission, separate service disconnect and scoped rejection; remote pairing, keyset history paging over 260 messages, restore on reconnect, device/session revocation with old-bearer 401, plain action presentation, reject/reconcile controller API and single Stop reconciliation. Synthetic only.');
+} finally { server.closeAllConnections(); remoteServer.closeAllConnections(); await new Promise(resolve => server.close(resolve)); await new Promise(resolve => remoteServer.close(resolve)); }

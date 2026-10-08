@@ -1,7 +1,7 @@
 import { registerPlugin } from '../platform-plugins';
 import { Capacitor } from '@capacitor/core';
 import type { VerifiedSession } from './alpha-client';
-import type { RemoteChatReply, RemoteConversation } from './remote-protocol';
+import { messagePageQuery, type MessagePage, type RemoteChatReply, type RemoteConversation } from './remote-protocol';
 import { readLocalAgentStream } from './local-agent-stream';
 import { streamNativeAgent, type NativeStreamPort } from './local-agent-native-stream';
 
@@ -11,6 +11,8 @@ export interface LocalAgentBridge {
   stop?():Promise<unknown>;
   getStatus?():Promise<{packaged?:boolean;state?:string;serviceActive?:boolean;socketListening?:boolean}>;
   configureProvider?(input:{apiKey:string;model:string}):Promise<unknown>;
+  providerStatus?():Promise<{provider?:unknown;configured?:unknown;model?:unknown}>;
+  clearProvider?():Promise<{configured?:unknown}>;
   configureCloudProvider?(input:{credentialId:string;model:string}):Promise<unknown>;
   request(input: { path: string; audioBase64?:string;requestId?:string;ownerId?:string; method: 'GET' | 'POST'; headers: Record<string,string>; body?: string; timeoutMs: number }, signal?:AbortSignal): Promise<{status:number;body?:string}>;
   stream?(input:{path:string;ownerId:string;headers:Record<string,string>;body:string},signal:AbortSignal,onText:(text:string)=>void):Promise<RemoteChatReply>;
@@ -172,35 +174,82 @@ export class LocalAgentProtocol {
     const value=record((await this.json('/api/conversations',{title},signal)).conversation);
     return {...value,id:identifier(value.id)};
   }
-  async messages(id:string,signal?:AbortSignal):Promise<{messages:Record<string,unknown>[]}> {
-    const value=await this.json(`/api/conversations/${encodeURIComponent(identifier(id))}/messages`,undefined,signal);
+  async messages(id:string,signal?:AbortSignal,page?:MessagePage):Promise<{messages:Record<string,unknown>[];hasMore?:boolean}> {
+    const value=await this.json(`/api/conversations/${encodeURIComponent(identifier(id))}/messages${messagePageQuery(page)}`,undefined,signal);
     if(!Array.isArray(value.messages))throw new Error('Invalid local conversation history.');
-    return {messages:value.messages.map(record)};
+    return {messages:value.messages.map(record),...(typeof value.hasMore==='boolean'?{hasMore:value.hasMore}:{})};
   }
+  /** Streams render progress. If the stream drops before its terminal frame, the same request is
+   * repeated once without streaming under the same clientMessageId: the agent returns the durable
+   * outcome recorded for that key (or waits for the in-flight turn) and never runs a second turn.
+   * Stop and connection changes are never retried. */
   async send(id:string,text:string,options:{metadata?:Record<string,unknown>;clientMessageId?:string;signal?:AbortSignal;onText?:(text:string)=>void}={}):Promise<RemoteChatReply> {
+    const path=`/api/conversations/${encodeURIComponent(identifier(id))}/messages`;
+    const body={text,channelType:'DM',metadata:options.metadata,clientMessageId:options.clientMessageId};
     if(this.bridge.stream&&options.onText){
       if(!this.session)throw Error('Start the local agent first.');
       const controller=new AbortController();this.streams.add(controller);
       const generation=this.generation,session=this.session,signal=options.signal?AbortSignal.any([options.signal,controller.signal]):controller.signal;
-      try{
       const valid=()=>{signal.throwIfAborted();if(generation!==this.generation||session!==this.session)throw Error('Local agent connection changed.');};
-      valid();
-      const result=await this.bridge.stream({path:`/api/conversations/${encodeURIComponent(identifier(id))}/messages/stream`,ownerId:session.ownerId,headers:this.deviceHeaders,
-        body:JSON.stringify({text,channelType:'DM',streamProtocol:'delta-v2',metadata:options.metadata,clientMessageId:options.clientMessageId})},signal,value=>{valid();options.onText!(value);});
-      valid();return result;
+      try{
+        valid();
+        const result=await this.bridge.stream({path:`${path}/stream`,ownerId:session.ownerId,headers:this.deviceHeaders,
+          body:JSON.stringify({...body,streamProtocol:'delta-v2'})},signal,value=>{valid();options.onText!(value);});
+        valid();return result;
+      }catch(error){
+        valid();
+        if(!options.clientMessageId||(error&&typeof error==='object'&&'status' in error&&typeof error.status==='number'&&error.status<500))throw error;
+        this.recoveries++;
+        const recovered=await this.json(path,body,signal);valid();
+        if(typeof recovered.text!=='string'||typeof recovered.agentName!=='string')throw new Error('Invalid local agent reply.');
+        return recovered as RemoteChatReply;
       }finally{this.streams.delete(controller);}
     }
-    const value=await this.json(`/api/conversations/${encodeURIComponent(identifier(id))}/messages`,{text,channelType:'DM',metadata:options.metadata,clientMessageId:options.clientMessageId},options.signal);
+    const value=await this.json(path,body,options.signal);
     if(typeof value.text!=='string'||typeof value.agentName!=='string')throw new Error('Invalid local agent reply.');
     return value as RemoteChatReply;
   }
+  /** Persisted-reply reads after dropped streams; exposed for contract tests and diagnostics. */
+  recoveries=0;
 }
 
-export async function configureLocalProvider(apiKey:string,model:string) {
+/** Hosted inference stays on Qwen through Cerebras; the model is not user-selectable. */
+export const LOCAL_PROVIDER_MODEL='qwen-3.8-27b';
+export interface LocalProviderStatus { configured:boolean; provider:'cerebras'|'elizacloud'; model?:string }
+export function providerStatusLabel(status:LocalProviderStatus|null|undefined):string {
+  if(!status)return 'Provider status unavailable';
+  if(!status.configured)return status.provider==='elizacloud'?'Not configured · Eliza Cloud sign-in required':'Not configured';
+  return `Configured · ${status.provider==='elizacloud'?'Eliza Cloud':'cerebras'} · ${status.model||LOCAL_PROVIDER_MODEL}`;
+}
+function parseProviderStatus(value:unknown):LocalProviderStatus {
+  const row=record(value);
+  const provider=row.provider==='elizacloud'?'elizacloud':row.provider==='cerebras'?'cerebras':null;
+  if(!provider||typeof row.configured!=='boolean'||(row.model!==undefined&&typeof row.model!=='string'))throw Error('Invalid provider status.');
+  // Native reports `cerebras/qwen-3.8-27b` for Cloud billing; show the model name only.
+  const model=typeof row.model==='string'?row.model.replace(/^cerebras\//,''):undefined;
+  return {configured:row.configured,provider,...(model?{model}:{})};
+}
+/** The native bridge verifies the key against Cerebras before it reports success; the key itself
+ * never returns to the renderer. */
+export async function configureLocalProvider(apiKey:string,model:string=LOCAL_PROVIDER_MODEL) {
   if(!Capacitor.isNativePlatform())throw Error('Configure the development provider on the host.');
   if(!await localAgentPackaged())throw Error('On-device agent is unavailable in this version. Connect a remote agent or use Eliza Cloud.');
   if(!native.configureProvider)throw Error('Model provider setup is unavailable.');
+  if(model!==LOCAL_PROVIDER_MODEL)throw Error(`Alpha Phone uses ${LOCAL_PROVIDER_MODEL} on Cerebras.`);
   return native.configureProvider({apiKey,model});
+}
+export async function localProviderStatus():Promise<LocalProviderStatus> {
+  if(!Capacitor.isNativePlatform()||!native.providerStatus)throw Error('Provider status is unavailable here.');
+  return parseProviderStatus(await native.providerStatus());
+}
+/** Removes the stored key and reads native status back; success requires configured:false. */
+export async function clearLocalProvider():Promise<LocalProviderStatus> {
+  if(!Capacitor.isNativePlatform()||!native.clearProvider)throw Error('Provider removal is unavailable in this version.');
+  const cleared=await native.clearProvider();
+  if(record(cleared).configured!==false)throw Error('The provider key could not be confirmed removed.');
+  const status=await localProviderStatus();
+  if(status.configured&&status.provider==='cerebras')throw Error('The provider key could not be confirmed removed.');
+  return status;
 }
 
 export async function configureLocalCloudProvider(credentialId:string) {

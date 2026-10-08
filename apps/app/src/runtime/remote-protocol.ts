@@ -221,17 +221,65 @@ export class RemoteProtocol {
     const conversation = object(value.conversation);
     return { ...conversation, id: string(conversation.id) };
   }
-  async messages(id: string, signal?: AbortSignal): Promise<{ messages: Record<string, unknown>[]; hasMore?: boolean }> {
-    const value = object(await this.authorized(`/api/conversations/${encodeURIComponent(string(id))}/messages`, "GET", undefined, signal));
+  /** One page. Without `page`, the agent's recent window; with it, messages strictly older than
+   * the cursor (`?before=<createdAt>&beforeId=<id>`). Only the older-page read reports hasMore. */
+  async messages(id: string, signal?: AbortSignal, page?: MessagePage): Promise<{ messages: Record<string, unknown>[]; hasMore?: boolean }> {
+    const value = object(await this.authorized(`/api/conversations/${encodeURIComponent(string(id))}/messages${messagePageQuery(page)}`, "GET", undefined, signal));
     if (!Array.isArray(value.messages)) throw new RemoteProtocolError("invalid_response");
     return { messages: value.messages.map(object), ...(typeof value.hasMore === "boolean" ? { hasMore: value.hasMore } : {}) };
   }
+  /** Revoke this phone's device enrollment and owner session on the agent, then forget them here.
+   * Revocation failures are reported after the local credential is removed; the caller tells the
+   * user to remove the device on the agent. Device headers are supplied by the enrollment owner. */
+  async revoke(deviceHeaders: Record<string, string> | null, signal?: AbortSignal): Promise<{ device: boolean; session: boolean }> {
+    if (this.authBusy) throw new RemoteProtocolError("authentication_in_progress");
+    const credential = this.credential ?? await this.store.read(this.origin);
+    const result = { device: false, session: false };
+    if (credential?.token) {
+      const attempt = async (path: string, headers: Record<string, string>) => {
+        try {
+          const response = await this.request({ url: this.origin + path, method: "POST", headers: { Accept: "application/json", "Content-Type": "application/json", Authorization: `Bearer ${credential.token}`, ...headers }, body: "{}", signal });
+          // 401 means the session is already unusable, which is the goal of revocation.
+          return (response.status >= 200 && response.status < 300) || response.status === 401;
+        } catch { signal?.throwIfAborted(); return false; }
+      };
+      if (deviceHeaders) result.device = await attempt("/api/client-devices/revoke", deviceHeaders);
+      result.session = await attempt("/api/auth/logout", {});
+    }
+    await this.disconnect();
+    return result;
+  }
+  /** A dropped response (transport failure or gateway timeout) is reconciled once by repeating the
+   * identical request with the same clientMessageId; the agent returns its durable outcome for that
+   * key instead of running a second turn. Cancellation is never retried. */
   async send(id: string, text: string, options: { metadata?: Record<string, unknown>; clientMessageId?: string; signal?: AbortSignal } = {}): Promise<RemoteChatReply> {
-    const value = object(await this.authorized(`/api/conversations/${encodeURIComponent(string(id))}/messages`, "POST", {
-      text: string(text), channelType: "DM", ...(options.metadata ? { metadata: options.metadata } : {}), ...(options.clientMessageId ? { clientMessageId: options.clientMessageId } : {}),
-    }, options.signal));
+    const path = `/api/conversations/${encodeURIComponent(string(id))}/messages`;
+    const body = { text: string(text), channelType: "DM", ...(options.metadata ? { metadata: options.metadata } : {}), ...(options.clientMessageId ? { clientMessageId: options.clientMessageId } : {}) };
+    let raw: unknown;
+    try { raw = await this.authorized(path, "POST", body, options.signal); }
+    catch (error) {
+      if (!options.clientMessageId || options.signal?.aborted || !droppedResponse(error)) throw error;
+      raw = await this.authorized(path, "POST", body, options.signal);
+    }
+    const value = object(raw);
     if (typeof value.text !== "string" || typeof value.agentName !== "string") throw new RemoteProtocolError("invalid_response");
     // Preserve terminal failures and ignored/interrupted turns for the UI; never synthesize success.
     return value as RemoteChatReply;
   }
+}
+export interface MessagePage { before: number; beforeId?: string; limit?: number }
+const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+export function messagePageQuery(page?: MessagePage): string {
+  if (!page) return "";
+  if (!Number.isSafeInteger(page.before) || page.before < 0) throw new RemoteProtocolError("invalid_cursor");
+  const query = new URLSearchParams({ before: String(page.before) });
+  if (page.beforeId !== undefined) { if (!uuidPattern.test(page.beforeId)) throw new RemoteProtocolError("invalid_cursor"); query.set("beforeId", page.beforeId); }
+  if (page.limit !== undefined) { if (!Number.isSafeInteger(page.limit) || page.limit < 1 || page.limit > 200) throw new RemoteProtocolError("invalid_cursor"); query.set("limit", String(page.limit)); }
+  return "?" + query.toString();
+}
+/** The request may have reached the agent but its reply did not reach this phone. */
+export function droppedResponse(error: unknown): boolean {
+  if (error instanceof DOMException && error.name === "AbortError") return false;
+  if (error instanceof RemoteProtocolError) return error.status === 502 || error.status === 504;
+  return true;
 }

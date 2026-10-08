@@ -282,11 +282,68 @@ for (const mode of ['signed-out','empty','unavailable','funded','replaced','unpa
   if(mode==='funded')await expect(page.getByRole('button',{name:'Notes',exact:true})).toBeVisible();
   if(mode==='replaced')await expect(page.getByRole('alert')).toContainText(/account changed/i);
   if(mode==='unpackaged'||mode==='legacy-offline'){await expect(page.getByRole('button',{name:'Sign in with Eliza Cloud',exact:true})).toBeVisible();await page.keyboard.press('Escape');await expect(page.getByRole('dialog',{name:'Welcome to Alpha'})).toBeVisible();}
-  await expect(page.getByRole('button',{name:'Use local apps without AI',exact:true})).toHaveCount(0);
+  // Every unconnected state offers the honest offline path; a connected agent closes Welcome.
+  await expect(page.getByRole('button',{name:'Use local apps without AI',exact:true})).toHaveCount(mode==='funded'?0:1);
+  if(mode==='unavailable')await expect(page.getByRole('button',{name:'Retry',exact:true})).toBeVisible();
+  if(mode!=='funded'){
+   await page.getByRole('button',{name:'Use local apps without AI',exact:true}).click();
+   await expect(page.getByRole('dialog',{name:'Welcome to Alpha'})).toHaveCount(0);
+   for(const view of ['Notes','Calendar']){
+    await page.getByRole('button',{name:view,exact:true}).click();
+    await expect(page.locator('html')).toHaveAttribute('data-active-view',view.toLowerCase());
+    await page.evaluate(()=>window.dispatchEvent(new Event('launcher-home')));
+    await expect(page.locator('html')).toHaveAttribute('data-active-view','home');
+   }
+   expect(await page.evaluate(()=>JSON.parse(localStorage.getItem('alpha.connection.selection.v1')!))).toEqual({kind:'offline',localApps:true});
+  }
   const calls=await page.evaluate(()=>(window as any).residentCalls);
   expect(calls.some((c:any)=>c.url?.includes('/personal/')||c.url?.includes('/upgrade-tier'))).toBe(false);
   const native=calls.filter((c:any)=>c.plugin==='Agent').map((c:any)=>c.method);
   if(mode==='funded')expect(native.indexOf('stop')).toBeLessThan(native.indexOf('configureCloudProvider'));
   else expect(native).not.toContain('start');
+  // Choosing local apps stops a packaged runtime and never configures inference.
+  if(mode!=='funded'){expect(native).not.toContain('configureCloudProvider');if(mode!=='unpackaged')expect(native).toContain('stop');}
  });
 }
+test('resident local apps without AI persist across restart and can be closed and reopened',async({page})=>{
+ await page.addInitScript(()=>{
+  const w=window as any;w.androidBridge={};w.residentCalls=[];
+  const methods=(names:string[])=>names.map(name=>({name,rtype:'promise'}));
+  w.Capacitor={PluginHeaders:[
+   {name:'DeviceApps',methods:methods(['buildInfo'])},
+   {name:'Agent',methods:methods(['getStatus','start','stop','request'])},
+   {name:'AlphaConnection',methods:methods(['secureRead','secureWrite','secureRemove','secureCompareExchange','request','cancel','openExternal'])},
+   {name:'AlphaNotifications',methods:methods(['status','crossAppStatus','addListener','removeListener'])},
+   {name:'AlphaVoiceCloud',methods:methods(['checkPermissions'])},
+  ],nativePromise:async(plugin:string,method:string,input:any)=>{
+   w.residentCalls.push({plugin,method,url:input?.url});
+   if(plugin==='AlphaVoiceCloud')return{microphone:'granted'};
+   if(plugin==='DeviceApps')return{launcher:false,version:'local-apps-fixture'};
+   if(plugin==='AlphaNotifications')return{permissionGranted:true,appEnabled:true};
+   if(plugin==='Agent'&&method==='getStatus')return{packaged:true,state:'stopped',serviceActive:false,socketListening:false};
+   if(method==='secureRead')return{value:null};
+   // Network is off: every Cloud request fails.
+   if(plugin==='AlphaConnection'&&method==='request')throw Error('Connection request failed');
+   return {};
+  }};
+ });
+ await page.goto('/');
+ const welcome=page.getByRole('dialog',{name:'Welcome to Alpha'});
+ await expect(welcome).toBeVisible();
+ await page.keyboard.press('Escape');
+ await expect(welcome).toBeVisible();
+ await welcome.getByRole('button',{name:'Use local apps without AI',exact:true}).click();
+ await expect(welcome).toHaveCount(0);
+ await page.reload();
+ await expect(page.getByRole('button',{name:'Notes',exact:true})).toBeVisible();
+ await expect(welcome).toHaveCount(0);
+ const calls=await page.evaluate(()=>(window as any).residentCalls);
+ expect(calls.filter((c:any)=>c.plugin==='Agent').map((c:any)=>c.method)).not.toContain('start');
+ expect(calls.filter((c:any)=>c.method==='request')).toEqual([]);
+ await page.getByRole('button',{name:'Settings',exact:true}).click();
+ await page.getByRole('button',{name:/Agent connection/}).click();
+ await expect(welcome).toBeVisible();
+ await expect(welcome.getByRole('button',{name:'Sign in with Eliza Cloud',exact:true})).toBeVisible();
+ await page.keyboard.press('Escape');
+ await expect(welcome).toHaveCount(0);
+});
