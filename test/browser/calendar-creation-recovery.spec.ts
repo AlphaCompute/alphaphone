@@ -1,3 +1,4 @@
+import { returnToApps } from './app-navigation';
 import {test,expect,type Page} from '@playwright/test';
 async function start(page:Page){await page.addInitScript(()=>localStorage.setItem('alpha.connection.selection.v1',JSON.stringify({kind:'offline'})));await page.goto('/?mode=dev');await page.getByRole('button',{name:'Calendar',exact:true}).click();}
 async function draft(page:Page,title:string){const replace=async(dialog:any)=>{expect(dialog.message()).toBe('Replace the retained unsaved form with a new event?');await dialog.accept();};page.on('dialog',replace);try{await page.getByRole('button',{name:'New event',exact:true}).click();}finally{page.off('dialog',replace);}await page.getByRole('textbox',{name:'Title',exact:true}).fill(title);}
@@ -32,7 +33,7 @@ test('leaving the form while creation receipt admission is pending cannot dispat
 });
 for(const leave of ['draft','home'] as const)test(`late committed save does not replace a newer ${leave}`,async({page})=>{
  await start(page);await page.evaluate(async()=>{const {BrowserCalendar}=await import('/src/browser/calendar.ts');const original=BrowserCalendar.prototype.save;BrowserCalendar.prototype.save=async function(input:any){const result=await original.call(this,input);await new Promise<void>(resolve=>{(window as any).releaseSavedCreation=resolve;});return result;};});await draft(page,'Late original');await page.getByRole('button',{name:'Save event',exact:true}).click();await expect.poll(()=>page.evaluate(async()=>typeof (window as any).releaseSavedCreation)).toBe('function');
- if(leave==='draft'){await page.getByRole('button',{name:'Back to calendar',exact:true}).click();await draft(page,'New draft stays');}else await page.getByRole('button',{name:'Home',exact:true}).click();
+ if(leave==='draft'){await page.getByRole('button',{name:'Back to calendar',exact:true}).click();await draft(page,'New draft stays');}else await returnToApps(page);
  await page.evaluate(async()=>(window as any).releaseSavedCreation());await page.waitForTimeout(200);
  if(leave==='draft')await expect(page.getByRole('textbox',{name:'Title',exact:true})).toHaveValue('New draft stays');else await expect(page.getByRole('button',{name:'Calendar',exact:true})).toBeVisible();expect(await count(page)).toBe(1);
 });

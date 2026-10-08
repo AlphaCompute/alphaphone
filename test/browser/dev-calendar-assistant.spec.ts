@@ -1,3 +1,4 @@
+import { returnToApps } from './app-navigation';
 import { test, expect } from '@playwright/test';
 
 // Real renderer, pairing, connection controller, proposal parser and journal
@@ -80,7 +81,7 @@ for (const mode of ['confirm', 'cancel', 'read', 'update', 'delete'] as const) {
     await local.getByLabel('Pairing code', { exact: true }).fill('synthetic-code');
     await local.getByRole('button', { name: 'Connect local agent', exact: true }).click();
     await page.locator('.alpha-connection-scrim').waitFor({ state: 'detached' });
-    await page.getByRole('button',{name:'Home',exact:true}).click();
+    await returnToApps(page);
     const creating=mode==='confirm'||mode==='cancel';
 
     await page.getByRole('button',{name:'Calendar',exact:true}).click();

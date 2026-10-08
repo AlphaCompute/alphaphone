@@ -1,3 +1,4 @@
+import { returnToApps } from './app-navigation';
 import {test,expect} from '@playwright/test';
 for(const mode of ['lost-audio','unknown-audio','lost-notes','large-lost-notes','stale-before','stale-after','stale-recreated','navigate'] as const)test(`voice note deletion ${mode}`,async({page})=>{
  await page.addInitScript(()=>localStorage.setItem('alpha.connection.selection.v1',JSON.stringify({kind:'offline'})));
@@ -21,7 +22,7 @@ for(const mode of ['lost-audio','unknown-audio','lost-notes','large-lost-notes',
   if(mode==='stale-before'){const data=JSON.parse((await (await import('/src/runtime/browser-notes-document.ts')).readBrowserNotesRaw())!);data.records[0].body='Newer revision';(await (await import('/src/runtime/browser-notes-document.ts')).browserNotesPort.compareExchange((await (await import('/src/runtime/browser-notes-document.ts')).browserNotesPort.read())!,JSON.stringify(data)));}
  },mode);
  await page.getByRole('button',{name:'Delete note',exact:true}).click();
- if(mode==='navigate'){await expect.poll(()=>page.evaluate(()=>typeof(window as any).releaseDelete)).toBe('function');await page.getByRole('button',{name:'Home',exact:true}).click();await page.evaluate(()=>(window as any).releaseDelete());await expect(page.getByRole('button',{name:'Notes',exact:true})).toBeVisible();}
+ if(mode==='navigate'){await expect.poll(()=>page.evaluate(()=>typeof(window as any).releaseDelete)).toBe('function');await returnToApps(page);await page.evaluate(()=>(window as any).releaseDelete());await expect(page.getByRole('button',{name:'Notes',exact:true})).toBeVisible();}
  if(mode==='lost-audio'||mode==='navigate'){await expect.poll(()=>page.evaluate(()=>(window as any).audioDeletes)).toBe(1);await expect.poll(()=>page.evaluate(async ()=>Object.keys(JSON.parse(JSON.stringify(await (await import('/src/runtime/note-audio-deletions.ts')).pendingAudioDeletions())||'{}')).length)).toBe(0);expect(await page.evaluate(async ()=>JSON.parse((await (await import('/src/runtime/browser-notes-document.ts')).readBrowserNotesRaw())!).records.length)).toBe(0);}
  else if(mode.startsWith('stale')){await expect(page.getByText(/Deletion is unconfirmed/).first()).toBeVisible();expect(await page.evaluate(()=>(window as any).audioDeletes)).toBe(0);expect(await page.evaluate(async ()=>JSON.parse((await (await import('/src/runtime/browser-notes-document.ts')).readBrowserNotesRaw())!).records[0].body)).toBe('Newer revision');}
  else {

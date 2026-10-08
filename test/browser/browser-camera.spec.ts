@@ -1,3 +1,4 @@
+import { returnToApps } from './app-navigation';
 import {test,expect} from '@playwright/test';
 
 // A synthetic canvas stream supplies only the camera permission boundary; encoding and IndexedDB are real.
@@ -82,7 +83,7 @@ test('leaving Camera while permission is pending stops a late stream without reo
  });
  await page.goto('/');await page.getByRole('button',{name:'Camera',exact:true}).click();
  await expect.poll(()=>page.evaluate(()=>typeof (window as any).releaseCamera)).toBe('function');
- await page.getByRole('button',{name:'Home',exact:true}).click();
+ await returnToApps(page);
  await expect(page.getByRole('button',{name:'Camera',exact:true})).toBeVisible();
  await page.evaluate(()=>(window as any).releaseCamera());
  await expect.poll(()=>page.evaluate(()=>(window as any).lateCameraStream.getTracks().every((t:MediaStreamTrack)=>t.readyState==='ended'))).toBe(true);

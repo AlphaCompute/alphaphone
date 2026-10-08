@@ -1,3 +1,4 @@
+import { returnToApps } from './app-navigation';
 import {test,expect} from '@playwright/test';
 for(const next of ['event','home','new-draft'] as const)test(`late Calendar deletion preserves newer ${next}`,async({page})=>{
  await page.addInitScript(()=>localStorage.setItem('alpha.connection.selection.v1',JSON.stringify({kind:'offline'})));
@@ -18,7 +19,7 @@ for(const next of ['event','home','new-draft'] as const)test(`late Calendar dele
  await expect.poll(()=>page.evaluate(()=>typeof(window as any).deleteCompletion.release)).toBe('function');
  await page.getByRole('button',{name:'Back to calendar',exact:true}).click();
  if(next==='event')await page.getByRole('button',{name:/^Keep event B,/}).click();
- if(next==='home')await page.getByRole('button',{name:'Home',exact:true}).click();
+ if(next==='home')await returnToApps(page);
  if(next==='new-draft'){await page.getByRole('button',{name:'New event',exact:true}).click();await page.getByRole('textbox',{name:'Title',exact:true}).fill('New unsaved event');}
  await page.evaluate(async()=>{(window as any).deleteCompletion.release();await new Promise(resolve=>setTimeout(resolve,0));});
  await expect.poll(()=>page.evaluate(()=>(window as any).deleteCompletion.done)).toBe(true);

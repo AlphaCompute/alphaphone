@@ -1,3 +1,4 @@
+import { returnToApps } from './app-navigation';
 import {test,expect,type Page} from '@playwright/test';
 // A synthetic agent in the page answers workflow routes. Interrupted runs carry upstream
 // plugin-workflow `reconciliation: {state:'outcome-unknown'}`; every request is recorded.
@@ -35,7 +36,7 @@ async function setup(page:Page){
   const client=new WorkflowProtocol((path,body)=>request(path,body));const original=c.getWorkflowClient.bind(c);
   c.getWorkflowClient=()=>{const binding=original();return binding?{...binding,client}:binding;};
  });
- await page.getByRole('button',{name:'Home',exact:true}).click();await page.getByRole('button',{name:'Workflows',exact:true}).click();
+ await returnToApps(page);await page.getByRole('button',{name:'Workflows',exact:true}).click();
 }
 const posts=(page:Page,suffix:string)=>page.evaluate(suffix=>(window as any).agentRequests.filter((r:any)=>r.method==='POST'&&r.path.endsWith(suffix)).length,suffix);
 const status=(page:Page)=>page.getByRole('status',{name:'Workflow run status',exact:true});

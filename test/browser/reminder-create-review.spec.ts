@@ -1,3 +1,4 @@
+import { returnToApps } from './app-navigation';
 import {test,expect} from '@playwright/test';
 test.use({timezoneId:'UTC'});
 const unknown='Reminder creation is unconfirmed. Check new reminder status in Calendar; it will not be created again automatically.';
@@ -35,7 +36,7 @@ for(const mode of ['fresh','double','response-loss','reload-loss','mismatch','mi
   }else{
    await page.getByRole('button',{name:'Back to calendar',exact:true}).last().click();
    if(mode==='newer-draft'){await newForm();await page.getByRole('textbox',{name:'Title',exact:true}).fill('Newer draft preserved');}
-   else await page.getByRole('button',{name:'Home',exact:true}).click();
+   else await returnToApps(page);
   }
   await page.evaluate(()=>(window as any).releaseCreate());
  }

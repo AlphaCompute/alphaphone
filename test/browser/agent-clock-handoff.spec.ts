@@ -1,3 +1,4 @@
+import { returnToApps } from './app-navigation';
 import { test, expect } from '@playwright/test';
 
 // Real renderer, pairing, connection controller, proposal parser and journal
@@ -100,7 +101,7 @@ for (const mode of ['confirm','transcribed','zone','modal','unknown','receipt-lo
     await local.getByRole('button', { name: 'Connect local agent', exact: true }).click();
     await page.locator('.alpha-connection-scrim').waitFor({ state: 'detached' });
     };await connect();
-    if(mode==='browser')await page.getByRole('button',{name:'Home',exact:true}).click();
+    if(mode==='browser')await returnToApps(page);
     const input=page.getByRole('textbox',{name:'Ask Alpha',exact:true});
     if(mode==='transcribed'){await page.getByRole('button',{name:'Talk',exact:true}).first().click();await page.getByRole('button',{name:'Start recording',exact:true}).click();await page.getByRole('button',{name:'Stop recording',exact:true}).click();await page.getByRole('button',{name:'Transcribe on this phone',exact:true}).click();await page.getByRole('button',{name:'Use in conversation',exact:true}).click();await expect(page.getByRole('textbox',{name:'Message Alpha',exact:true})).toHaveValue('Set an alarm for 07:00; await my review.');await page.getByRole('textbox',{name:'Message Alpha',exact:true}).press('Enter');}
     else {await input.fill(mode==='show'?'Show my alarms':mode==='snooze'?'Snooze ringing alarms for ten minutes':mode==='dismiss'?'Dismiss the ringing alarm':'Set an alarm for 07:00; await my review.');await input.press('Enter');}

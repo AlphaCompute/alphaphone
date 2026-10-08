@@ -1,3 +1,4 @@
+import { returnToApps } from './app-navigation';
 import { test, expect } from '@playwright/test';
 
 // Real renderer, pairing, connection controller, proposal parser and journal
@@ -82,7 +83,7 @@ for (const mode of ['place', 'route', 'stale-before-approval', 'stale-after-read
       const place={providerId:'fixture-region',id:'fixture-place',name:'Private fixture destination',coordinate:point,attribution:'Fixture attribution',fetchedAt:Date.now()};
       configureMapsProvider({status:'configured',providerId:'fixture-region',connectionId:'conn_fixture_region_123456',revision:'fixture1',capabilities:{map:false,search:true,placeDetails:true,modes:['drive','walk','bicycle'],traffic:'none',transit:'none',offline:{map:false,search:false,routing:false}}},{providerId:'fixture-region',connectionId:'conn_fixture_region_123456',search:async()=>[place],detail:async()=>place,route:async(from,to,mode)=>({providerId:'fixture-region',id:'fixture-route',from,to,mode,geometry:[from,to],distanceMeters:307,durationSeconds:223,steps:[{instruction:'Fixture turn',coordinate:to,distanceMeters:307}],attribution:'Fixture attribution',fetchedAt:Date.now(),traffic:'none'})});
     });
-    await page.getByRole('button',{name:'Home',exact:true}).click();
+    await returnToApps(page);
     await page.getByRole('button',{name:'Maps',exact:true}).click();
     const query=page.getByRole('textbox',{name:'Search places',exact:true});
     await query.fill('Private fixture destination');await query.press('Enter');
