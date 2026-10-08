@@ -134,7 +134,7 @@ export function installPrototypeBrowserAdapter(Component: any, views: Record<str
     if (!created.has(id)) created.set(id, Browser.create({ session, id, private: priv }).catch((error: unknown) => { created.delete(id); throw error; }));
     return created.get(id)!;
   }
-  async function navigate(raw: string, newTab = false, approvedSignal?: AbortSignal, privateTab = false) {
+  async function navigate(raw: string, newTab = false, approvedSignal?: AbortSignal, privateTab = false, background = false) {
     let url: URL;
     try {
       const input = raw.trim();
@@ -164,7 +164,9 @@ export function installPrototypeBrowserAdapter(Component: any, views: Record<str
       if (newTab) shell.vset('browser', { tabs: [...state().tabs, { id, hist: ['newtab'], pos: 0, ...(priv ? {priv: true} : {}) }], cur: id });
       metadata.set(id, { ...metadata.get(id), url: url.href, loading: true, committed: false, error: '' });
       documentRevisions.set(id, (documentRevisions.get(id) || 0) + 1);
-      shell.vset('browser', { editing: false, tabsOpen: false, menu: false, lib: null, share: false });
+      // A background (restored-tab) load must not close a menu or switcher the
+      // user opened while its native tab was being created.
+      if (!background) shell.vset('browser', { editing: false, tabsOpen: false, menu: false, lib: null, share: false });
       await Browser.navigate({ session, id, url: url.href });
       refresh();
     } catch (error) { if (approvedSignal) throw error; report(error); }
@@ -212,11 +214,13 @@ export function installPrototypeBrowserAdapter(Component: any, views: Record<str
       const saved = await Browser.browsingState({ session });
       if (disposed) return;
       const s = state(); if (!s) return;
-      const next = restoreBrowsing(saved, s, created.size === 0 && s.tabs.length === 1 && !metadata.size);
+      // Never replace a tab the user is already typing into.
+      const next = restoreBrowsing(saved, s, created.size === 0 && s.tabs.length === 1 && !metadata.size && !s.editing);
       // Restored tabs load (an ordinary GET of the last committed address)
       // only when the tab is shown; nothing is resubmitted.
       for (const tab of next.restored) restored.set(tab.id, { url: tab.url, title: tab.title });
-      shell.vset('browser', next.tabs ? { tabs: next.tabs, cur: next.cur, visits: next.visits } : { visits: next.visits });
+      if (next.tabs) shell.vset('browser', { tabs: next.tabs, cur: next.cur, visits: next.visits });
+      else if (next.visits.length !== s.visits.length) shell.vset('browser', { visits: next.visits });
       sessionHydrated = true;
       lastSaved = JSON.stringify(savedSnapshot());
     } catch {
@@ -347,7 +351,7 @@ export function installPrototypeBrowserAdapter(Component: any, views: Record<str
     const composer=document.querySelector('[aria-label="Open conversation"]')?.parentElement?.getBoundingClientRect();
     const height=rect ? Math.max(0,Math.min(rect.bottom,composer && composer.height ? composer.top-8 : rect.bottom)-rect.top) : 0;
     // A restored cold-start tab loads its last committed page when first shown.
-    if(!hidden && s && restored.has(s.cur) && !created.has(s.cur) && !clearingData){const saved=restored.get(s.cur)!;void navigate(saved.url);}
+    if(!hidden && s && restored.has(s.cur) && !created.has(s.cur) && !clearingData){const saved=restored.get(s.cur)!;void navigate(saved.url,false,undefined,false,true);}
     saveSession();
     const payload=hidden || !created.has(s?.cur) ? {session,id:null} : {session,id:s.cur,x:rect!.x,y:rect!.y,width:rect!.width,height};
     const next=JSON.stringify(payload);
