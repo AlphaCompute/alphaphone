@@ -260,15 +260,10 @@ debug-signed or test-mocks builds as production.
 
 ## Emulator verification
 
-```sh
-ANDROID_SERIAL=emulator-5554 npm run android:smoke
-```
-
-Use a disposable emulator. This installs both flavors in turn, runs real WebView
-and native bridge instrumentation, selects and verifies the launcher HOME role,
-and restores the original HOME role. Reports/screenshots go to `test-results/android`.
-CI first prepares a disposable stock-HOME fixture with explicit phone/tablet geometry;
-that setup script refuses to run outside GitHub Actions unless explicitly emulated.
+The aggregate smoke suites and their CI jobs were removed on October 8 at the
+owner's request. APK builds and bundle audits remain required. Focused native
+campaigns below can be run separately on an owned disposable emulator; a build
+does not establish native behavior or HOME-role acceptance.
 
 The independent native Calendar consumer comes from the pinned upstream source.
 Build its app and instrumentation APKs with
@@ -336,8 +331,7 @@ for signing, default-home policy and the full image verification boundary.
 `apps/app` owns this product's UI. `android` owns its packaging and launcher bridge.
 `vendor/eliza` pins shared platform/native/OS code. `design` preserves the supplied references. Use root npm scripts.
 
-For affected pull requests, GitHub Actions builds both variants, runs emulator
-instrumentation and uploads artifacts. Repository verification runs once per change;
+For affected pull requests, GitHub Actions builds both variants and uploads artifacts. Repository verification runs once per change;
 main-branch pushes repeat only that inexpensive integration check. Full resident
 qualification and Firefox/macOS WebKit runs are explicit dispatches. See
 [CI cost and qualification policy](docs/ci-cost-policy.md) for selection and commands. A successful APK job does not establish full AOSP image or physical
