@@ -5,14 +5,14 @@ import {readFileSync} from 'node:fs';
 import {stripTypeScriptTypes} from 'node:module';
 
 // The real recognizer source against a scripted worker: ownership, cancellation and late results.
-function harness() {
+function harness(idleMs = 200) {
   const workers = [];
   class FakeWorker { constructor() { this.posted = []; this.terminated = false; workers.push(this); } postMessage(message, transfer) { this.posted.push({message, transfer}); } terminate() { this.terminated = true; } emit(data) { if (!this.terminated) this.onmessage?.({data}); } }
   const protocol = readFileSync(new URL('../apps/app/src/browser/speech-protocol.ts', import.meta.url), 'utf8').replaceAll('export function', 'function');
   const source = readFileSync(new URL('../apps/app/src/browser/speech-recognizer.ts', import.meta.url), 'utf8').replace(/^import .*\n/gm, '').replace('export class', 'class').replace('import.meta.url', "'https://app.test/assets/'");
-  const context = {DOMException, crypto, Float32Array, URL, Promise, Error, Object};
+  const context = {DOMException, crypto, Float32Array, URL, Promise, Error, Object, setTimeout, clearTimeout};
   vm.runInNewContext(stripTypeScriptTypes(protocol, {mode: 'transform'}) + '\n' + stripTypeScriptTypes(source, {mode: 'transform'}) + '\nglobalThis.Recognizer=BrowserSpeechRecognizer;', context);
-  const recognizer = new context.Recognizer(() => 'https://app.test/browser-speech/manifest.json', () => new FakeWorker());
+  const recognizer = new context.Recognizer(() => 'https://app.test/browser-speech/manifest.json', () => new FakeWorker(), idleMs);
   return {recognizer, workers};
 }
 const result = {text: 'Hello there', noSpeech: false, engine: 'whisper', model: 'whisper-tiny.en', modelRevision: 'r', runtime: 'ort', language: 'en'};
@@ -70,4 +70,21 @@ test('a replacement request and stop() retire the active one; load failures disc
   const fifth = settle(recognizer.transcribe(new Float32Array(1), new AbortController().signal));
   workers[3].emit({type: 'result', id: workers[3].posted[0].message.id, text: 7, noSpeech: false});
   assert.equal((await fifth).error.code, 'recognition-failed', 'malformed results are rejected');
+});
+
+test('an idle model is released after the idle period; a new request in time keeps it', async () => {
+  const {recognizer, workers} = harness(40);
+  const answer = worker => worker.emit({type: 'result', id: worker.posted.at(-1).message.id, ...result});
+  const first = recognizer.transcribe(new Float32Array(1), new AbortController().signal); answer(workers[0]); await first;
+  await new Promise(resolve => setTimeout(resolve, 15));
+  const second = recognizer.transcribe(new Float32Array(1), new AbortController().signal);
+  await new Promise(resolve => setTimeout(resolve, 50));
+  assert.equal(workers[0].terminated, false, 'an active request is never released as idle');
+  answer(workers[0]); await second;
+  assert.equal(workers.length, 1);
+  await new Promise(resolve => setTimeout(resolve, 80));
+  assert.equal(workers[0].terminated, true, 'the idle worker is terminated');
+  const third = recognizer.transcribe(new Float32Array(1), new AbortController().signal);
+  assert.equal(workers.length, 2, 'the next request starts a fresh worker'); answer(workers[1]); await third;
+  recognizer.cancel();
 });

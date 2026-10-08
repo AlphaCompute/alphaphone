@@ -4,21 +4,26 @@ const cancelled=()=>new DOMException('Transcription cancelled','AbortError');
 /**
  * Owns the speech worker. One request at a time; cancelling terminates the worker, which
  * stops model download and inference immediately and makes late results impossible.
- * A finished request leaves the verified model loaded for the next recording.
+ * A finished request leaves the verified model loaded for the next recording, until it has been
+ * idle for idleMs; then the worker is terminated so an unused model never stays resident.
  */
 export class BrowserSpeechRecognizer {
  private worker?:Worker;
  private active?:{id:string;reject:(error:unknown)=>void};
- constructor(private manifestUrl=()=>new URL('browser-speech/manifest.json',document.baseURI).href,private create=()=>new Worker(new URL('./speech-worker.ts',import.meta.url),{type:'module',name:'alpha-speech'})){}
+ private idle?:ReturnType<typeof setTimeout>;
+ constructor(private manifestUrl=()=>new URL('browser-speech/manifest.json',document.baseURI).href,private create=()=>new Worker(new URL('./speech-worker.ts',import.meta.url),{type:'module',name:'alpha-speech'}),private idleMs=5*60_000){}
+ private clearIdle(){if(this.idle!==undefined)clearTimeout(this.idle);this.idle=undefined;}
+ private scheduleIdle(){this.clearIdle();if(!this.worker)return;this.idle=setTimeout(()=>{this.idle=undefined;if(!this.active){this.worker?.terminate();this.worker=undefined;}},this.idleMs);}
  /** Stop the current request, if any. Its worker is terminated; an idle model stays loaded. */
  stop(){if(this.active)this.cancel();}
  get busy(){return !!this.active;}
  /** Stop the current request (if any) and discard the loaded model. */
- cancel(){const active=this.active;this.active=undefined;this.worker?.terminate();this.worker=undefined;active?.reject(cancelled());}
+ cancel(){this.clearIdle();const active=this.active;this.active=undefined;this.worker?.terminate();this.worker=undefined;active?.reject(cancelled());}
  transcribe(samples:Float32Array,signal:AbortSignal,progress:(value:SpeechProgress)=>void=()=>{}):Promise<BrowserTranscript>{
   if(signal.aborted)return Promise.reject(cancelled());
   // A replacement request retires the previous one; an idle worker keeps its model.
   if(this.active)this.cancel();
+  this.clearIdle();
   return new Promise<BrowserTranscript>((resolve,reject)=>{
    const id=crypto.randomUUID();let worker:Worker;
    const finish=(error?:unknown,value?:BrowserTranscript)=>{
@@ -29,6 +34,7 @@ export class BrowserSpeechRecognizer {
      if((error as {code?:string}).code==='model-load-failed'||error instanceof DOMException){worker.terminate();if(this.worker===worker)this.worker=undefined;}
      reject(error);
     }else resolve(value!);
+    this.scheduleIdle();
    };
    const abort=()=>{if(this.active?.id===id)this.cancel();};
    try{worker=this.worker??=this.create();}catch(error){reject(speechError('model-load-failed',error instanceof Error?error.message:'Speech worker unavailable'));return;}

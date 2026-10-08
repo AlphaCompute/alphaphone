@@ -31,7 +31,9 @@ manual path.
 Cancellation, a hidden page (`visibilitychange`) or `pagehide` terminate the worker immediately,
 which stops the download and inference. The recorder's generation token rejects any late result,
 and returning to the foreground prepares the same route again. A finished transcription leaves
-the verified model loaded in the worker for the next recording.
+the verified model loaded in the worker for the next recording; after five idle minutes the
+worker is terminated so an unused model does not stay resident (the next transcription loads it
+again, normally from the HTTP cache).
 
 ## Provenance
 
