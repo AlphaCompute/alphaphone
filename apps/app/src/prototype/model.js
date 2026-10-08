@@ -2407,7 +2407,7 @@ registerView("photos", {
       }).filter(Boolean),
       apps: [
         ["bubble", "Messages", function () { api.set({ sheet: null, sel: null }); api.open("messages", { compose: true }); }],
-        ["mail", "Mail", function () { api.set({ sheet: null, sel: null }); api.open("inbox", { compose: { subject: nShare > 1 ? nShare + " photos" : "Photo", body: "" } }); }],
+        ["mail", "Mail", function () { api.set({ sheet: null, sel: null }); api.open("inbox", { compose: { subject: nShare > 1 ? nShare + " photos" : "Photo", body: "", attach: shareIds } }); }],
         ["link", "Copy link", function () { api.set({ sheet: null, sel: null }); api.toast("Link copied"); }],
         ["folder", "Files", function () { api.set({ sheet: null, sel: null }); api.toast("Saved to Files"); }]
       ].map(function (a) { return { d: IC[a[0]], label: a[1], go: a[2] }; })
@@ -2951,7 +2951,7 @@ function notesShare(api, n, via) {
   api.set({ sheet: null });
   if (via === "mail" && VIEWS.inbox) return api.open("inbox", { compose: { to: to, subject: n.title || "Note", body: body } });
   if (via === "msg" && VIEWS.messages) return api.open("messages", { compose: to || true, text: line });
-  api.toast(via === "mail" ? "Email draft ready" : "Message draft ready");
+  api.toast(via === "mail" ? "Email is unavailable. No draft was created." : "Messages is unavailable. No draft was created.");
 }
 
 registerView("notes", {

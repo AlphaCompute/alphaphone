@@ -16,8 +16,8 @@ listed in [browser-dev-parity.md](browser-dev-parity.md) and
   recovery in place of powered-off execution remains an explicit product decision.
   Optional remote execution needs separate qualification.
 - Notes, Calendar, Reminders, Browser/password-provider integration, notifications,
-  assistance, workflows, digests, Files and capture remain in scope. Gmail remains
-  an integration gap. Phone, SMS, Contacts and Wallet are deferred by MVP policy;
+  assistance, workflows, digests, Files, capture and Email/Gmail are in scope (Email
+  confirmed October 7, 2026). Phone, SMS, Contacts and Wallet are deferred by MVP policy;
   development fixtures do not change that scope.
 - Production builds are the live app. Mock mode, prototype fixtures, the development
   profile, device controls, simulated apps and debug-only native hooks exist only in
@@ -41,7 +41,7 @@ listed in [browser-dev-parity.md](browser-dev-parity.md) and
 | Notify and Speak | Native delivery ledger and executor; browser transactional notices and exact receipt recovery without reposting. | Native OS posting/audio and interrupted-delivery acceptance. Uncertain speech must not be replayed or inferred complete. |
 | Digests and schedules | Local schedules, retained results, client-scoped acknowledgement and explicit outcome-unknown records after interrupted work. | Real-provider interruption, native lock/battery/Doze, physical power loss and account-source routing. Preserving an unknown outcome does not establish automatic completion after a worker crash. |
 | Browser and passwords | Isolated native browsing, reviewed reading, sensitive-source rejection and provider setup/status. Password entry and filling stay with Android/provider. | Real-site password/passkey/autofill and installed isolated-world/consent behavior. Setup UI does not prove filling succeeds. |
-| Gmail and accounts | Owner/grant-aware contracts and controlled provider-boundary coverage. | Real authorization, durable results, revoke/recovery and ambiguous sends. External messages require explicit recipient/message authorization. |
+| Email/Gmail (MVP) | Owner/grant-aware contracts with controlled provider-boundary coverage. Inbox loads on open and has Refresh, provider-cursor paging (Load more) and a Sent view (`in:sent`). It offers a confirmed disconnect, in Inbox and Settings → Connections, that reads back the account state. Failures are classified as offline, revoked or stale, each with an explicit Retry. Left swipe and the archive button both go through the reviewed archive flow. Share by email from Notes opens a prefilled local draft. Compose has a From switcher when more than one account is connected. The Home unread badge reflects loaded Inbox data. Opening a message marks it read through the reviewed `mark-read`/`mark-unread` operation when the server advertises `readState`. | Real Google OAuth (the code exchange currently returns 401), deployment of the managed Cloud routes, including the [read-state patch](../patches/eliza/0037-gmail-inbox-read-state.patch), and a real mailbox: send/reply, label changes, revoke and response-loss recovery. Ambiguous sends are never retried. Shared Files/Photos items are not attached automatically. External messages require explicit recipient/message authorization. |
 | Files, camera, scans and media | Selected import/export, exact-byte media, scan correction and reviewed searchable PDF flows. | Native provider/camera/storage access, real data volumes, OCR quality, languages/fonts and product usability. |
 | Poster to Calendar (J01) | Suggestions for explicit English dates, times, same-day ranges and labeled venues. With the device clock as reference, year-less and weekday dates, today/tomorrow, and printed IANA or UTC-offset times (converted, with the source zone shown) are suggested; dated posters without a time are suggested all-day and repeat wording is an unticked hint. Every inference is listed; separate Calendar review and Save remain the only write. Ambiguous numeric dates and zone abbreviations stay blank. | Arbitrary-photo OCR quality, broader languages and phrasing, and native provider acceptance. Suggestions never authorize saving. |
 | Document analysis (J03) | Selected-content review, separate editable summary-note approval and verified source references. Changed/deleted source files fail closed. Native references use existing selected-document access only. | Live Gmail retrieval, installed permission retention/revocation, cross-process reopening and broad PDF/image task quality. Fingerprint-only sources require reselection. |
@@ -95,7 +95,9 @@ These cannot be completed in software from this repository; they are prepared bu
 - App Links: publishing `assetlinks.json` on an owned domain with the release signer
   fingerprint, and verifying it on an installed signed build.
 - Gmail OAuth: production client/consent configuration and a real account grant,
-  revoke and recovery ([runbook](pilot-acceptance-runbook.md)).
+  revoke and recovery ([runbook](pilot-acceptance-runbook.md)). Deployment of the managed
+  Gmail Cloud routes, including `patches/eliza/0037-gmail-inbox-read-state.patch`
+  (read state stays unavailable until the server advertises `readState`).
 - Cerebras key provisioning for the resident agent on pilot devices, without exposing the
   key in evidence.
 - Password provider real-site save/fill/passkey on a recognized browser and signed build.
@@ -103,7 +105,7 @@ These cannot be completed in software from this repository; they are prepared bu
   physical navigation.
 - Emulator and physical-device upgrade from earlier installs that saved mock state.
 - Resident redaction re-run on current APKs; physical speech, latency, battery and soak.
-- Stakeholder decisions (powered-off scheduling, Email scope), legal review of licence
+- Stakeholder decisions (powered-off scheduling), legal review of licence
   notices, and the four-unit physical pilot.
 
 The [completion plan](mvp-completion-plan.md),

@@ -53,7 +53,7 @@
       <button onClick="{{a.open}}" aria-label="{{a.label}}" style="display: flex; flex-direction: column; align-items: center; gap: 8px">
         <span class="tap" style="position: relative; width: 64px; height: 64px; border-radius: 22px; background: var(--s2); display: flex; align-items: center; justify-content: center">
           <svg class="i" viewBox="0 0 24 24" style="width: 30px; height: 30px"><path d="{{a.d}}"></path></svg>
-          <sc-if value="{{a.badge}}" hint-placeholder-val="{{false}}"><span style="position: absolute; top: 12px; right: 12px; width: 8px; height: 8px; border-radius: 4px; background: var(--acc)"></span></sc-if>
+          <sc-if value="{{a.badge}}" hint-placeholder-val="{{false}}"><span class="app-badge" style="position: absolute; top: 12px; right: 12px; width: 8px; height: 8px; border-radius: 4px; background: var(--acc)"></span></sc-if>
         </span>
         <span style="font-size: 12px; color: var(--mut)">{{a.label}}</span>
       </button>
@@ -555,6 +555,9 @@
         </button>
       </div>
     </sc-for>
+    <sc-if value="{{inbox.hasMore}}" hint-placeholder-val="{{false}}">
+      <button onClick="{{inbox.loadMore}}" style="display: block; margin: 12px auto; height: 44px; padding: 0 20px; border-radius: 22px; background: var(--s2); color: var(--fg); font-size: 14px; font-weight: 600">Load more</button>
+    </sc-if>
     <sc-if value="{{inbox.empty}}" hint-placeholder-val="{{false}}">
       <div style="display: flex; flex-direction: column; align-items: center; gap: 12px; padding-top: 110px; color: var(--mut)">
         <svg class="i" viewBox="0 0 24 24" style="width: 28px; height: 28px"><path d="{{inbox.emptyIcon}}"></path></svg>
@@ -580,6 +583,7 @@
         <span style="flex-grow: 1"></span>
         <button class="ib" aria-label="Reply" onClick="{{inbox.d.reply}}"><svg class="i" viewBox="0 0 24 24" style="width: 20px; height: 20px"><path d="{{ic.reply}}"></path></svg></button>
         <sc-if value="{{inbox.d.canReplyAll}}"><button aria-label="Reply all" onClick="{{inbox.d.replyAll}}" style="padding:8px;font-size:12px">Reply all</button></sc-if>
+        <sc-if value="{{inbox.d.canToggleRead}}" hint-placeholder-val="{{false}}"><button onClick="{{inbox.d.toggleRead}}" style="padding:8px;font-size:12px">{{inbox.d.readLabel}}</button></sc-if>
         <button class="ib" aria-label="Forward" onClick="{{inbox.d.forward}}"><svg class="i" viewBox="0 0 24 24" style="width: 20px; height: 20px"><path d="{{ic.inboxFwd}}"></path></svg></button>
         <sc-if value="{{inbox.d.canArchive}}" hint-placeholder-val="{{true}}">
           <button class="ib" aria-label="Archive" onClick="{{inbox.d.archive}}"><svg class="i" viewBox="0 0 24 24" style="width: 20px; height: 20px"><path d="{{ic.archive}}"></path></svg></button>
@@ -714,6 +718,7 @@
       <sc-if value="{{inbox.provider.canEditDraft}}"><button disabled="{{inbox.provider.busy}}" onClick="{{inbox.provider.editDraft}}" style="padding:14px">Edit this Gmail draft</button><button disabled="{{inbox.provider.busy}}" onClick="{{inbox.provider.deleteDraft}}" style="padding:14px">Review permanent draft deletion</button></sc-if>
       <sc-if value="{{inbox.provider.canUndo}}"><button disabled="{{inbox.provider.busy}}" onClick="{{inbox.provider.undo}}" style="padding:14px">Review undo mailbox change</button></sc-if>
       <sc-if value="{{inbox.provider.replacementWarning}}"><p style="font-size:12px;color:var(--mut)">Another client can change this Gmail draft after review. Replacement cannot be guaranteed atomic.</p></sc-if><sc-if value="{{inbox.provider.deletionWarning}}"><p style="font-size:12px;color:var(--mut)">This permanently deletes the selected Gmail draft.</p></sc-if>
+      <sc-if value="{{inbox.provider.canRetry}}"><button disabled="{{inbox.provider.busy}}" onClick="{{inbox.provider.retry}}" style="padding:14px">{{inbox.provider.retryLabel}}</button></sc-if>
       <button disabled="{{inbox.provider.busy}}" onClick="{{inbox.provider.check}}" style="padding:14px">Check saved receipt</button>
       <sc-if value="{{inbox.provider.canReload}}"><button disabled="{{inbox.provider.busy}}" onClick="{{inbox.provider.reload}}" style="padding:14px">Reload exact review</button></sc-if>
       <sc-if value="{{inbox.provider.canClear}}"><p style="font-size:12px;color:var(--mut)">The local draft stays on this device. If this operation succeeded, sending that draft again creates another message.</p><button disabled="{{inbox.provider.busy}}" onClick="{{inbox.provider.clear}}" style="padding:14px">{{inbox.provider.clearLabel}}</button></sc-if>
