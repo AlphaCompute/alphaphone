@@ -14,7 +14,47 @@ The cloud adapter (`apps/app/src/prototype/inbox-cloud-adapter.ts`) and `runtime
 - Notes sharing into a prefilled local draft;
 - a From switcher for more than one connected account.
 
-The upstream inbox-v1 operations could not change read state, so [`patches/eliza/0037-gmail-inbox-read-state.patch`](../patches/eliza/0037-gmail-inbox-read-state.patch) adds reviewed `mark-read`/`mark-unread` kinds, a `readState` capability and the receipt-kind migration. It was tested in an isolated upstream worktree and is not deployed. Until a deployed server advertises `readState`, opening a message does not mark it read, and the Home unread badge reflects loaded Inbox pages only.
+The upstream inbox-v1 operations could not change read state, so [`patches/eliza/0037-gmail-inbox-read-state.patch`](../patches/eliza/0037-gmail-inbox-read-state.patch) adds reviewed `mark-read`/`mark-unread` kinds, a `readState` capability and the receipt-kind migration. It was tested in an isolated upstream worktree and is not deployed. Until a deployed server advertises `readState`, opening a message does not mark it read.
+
+## October 8 additions
+
+0037 was requalified on elizaOS `develop` `cd12fabd` (October 8): migration prefix 0535 is still free, the
+patch applies unchanged and is byte-identical when regenerated there, the PGlite integration test passes
+(8 pass) and `check-migration-prefix-order` passes. No elizaOS pull request has been opened, and no Cloud
+deployment exists. Five further reference patches extend the managed connector; each records its contract
+and verification in its `-source-base.json` and applies in series after 0037:
+
+| Patch | Adds | Client use when a server advertises it |
+| --- | --- | --- |
+| [0055](../patches/eliza/0055-gmail-message-links.patch) | `links[]` (href, text) from HTML parts on read and thread | Tappable link list under the body |
+| [0056](../patches/eliza/0056-gmail-text-charset.patch) | Text parts decoded with their declared charset | Correct ISO-8859-1/Windows-1252 bodies |
+| [0057](../patches/eliza/0057-gmail-search-attachments-trash.patch) | `hasAttachments` on search rows; `in:trash` search; `searchTrash` | Paperclip on rows; Trash folder |
+| [0058](../patches/eliza/0058-gmail-drafts-list.patch) | Drafts list and exact draft content; `draftsList` | Drafts folder; open a draft to edit and replace it after review |
+| [0059](../patches/eliza/0059-gmail-attachments-forward-opaque.patch) | Up to 10 attachments under 5 MiB total; forward with source attachments; opaque byte copy | Add/remove files one by one; forward lists original files; Save to Files for other types |
+
+Independently of these patches, the client now:
+- publishes a Home summary through `inboxAttention()` (`not-connected`, `loading`, `ready`, `error` or
+  `stale`, with an unread count, the account label and a time) and `openInbox()`, without subjects,
+  senders or bodies;
+- runs one bounded `in:inbox is:unread` metadata query (at most 10 rows) on cold start, on resume and
+  after leaving Inbox, never two at once and never within 5 minutes of the previous one. Leaving Inbox
+  marks the badge stale instead of showing the old value. New-mail notifications remain blocked on A-05;
+- turns plain-text `https` URLs in a body into the same link list. A link opens only in Alpha's Browser,
+  only for HTTPS, and only after a confirmation that names the destination site and warns when the link
+  text names a different site. Nothing is fetched to render a message;
+- shows today's mail with a time, offers Archive (`in:archive`) for every account, and offers Drafts and
+  Trash only when the server advertises them;
+- adds "Use in email" for agent text (`view.useInEmail`), which opens a local draft for the selected
+  account, as a reply when a message is open. Nothing is sent; the normal composer and provider review
+  apply. The "Help me organize my inbox" suggestion is removed;
+- adds `CloudProtocol.revokeSession()`, which uses Cloud's self-revocation route
+  (`DELETE /api/v1/api-keys/current`) when the host transport allows `DELETE` and otherwise reports
+  `{supported:false}`. The local credential is cleared either way. The Android transport admits only GET
+  and POST today, so no revocation is sent on Android yet.
+
+The generic `runtime/gmail-mailbox.ts` helpers (failure classification, confirmed disconnect, reviewed
+read state) take their client as an input and are candidates for an upstream client package together
+with the 0055-0059 series; that contribution has not been submitted.
 
 The September 30 findings below are kept as written for their date.
 

@@ -38,6 +38,12 @@ public final class AlphaMailAttachmentsPlugin extends Plugin {
    case "text/plain":ok=lower.endsWith(".txt")&&StandardCharsets.UTF_8.newDecoder().onMalformedInput(CodingErrorAction.REPORT).decode(ByteBuffer.wrap(data)).toString().indexOf('\0')<0;break;
   }if(!ok)throw new IllegalArgumentException("File MIME/name/content is unsupported");
  }
+ /** Opaque byte copy (any type) for Save to Files only: the name is checked, the bytes are never
+  * interpreted, previewed or handed to a viewer. */
+ static void validateOpaque(String name,byte[] data){
+  if(name==null||name.length()>120||name.isBlank()||name.equals(".")||name.equals("..")||name.matches(".*[\\\\/\\p{Cntrl}].*")||data.length>MAX_BYTES)throw new IllegalArgumentException("Invalid name or file exceeds 5 MiB");
+ }
+ static String opaqueMime(String mime){return mime!=null&&mime.matches("(?i)[a-z0-9][a-z0-9!#$&^_.+-]{0,63}/[a-z0-9][a-z0-9!#$&^_.+-]{0,63}")?mime.toLowerCase(Locale.ROOT):"application/octet-stream";}
  private static byte[] read(InputStream in)throws IOException{ByteArrayOutputStream out=new ByteArrayOutputStream();byte[] block=new byte[16384];int n;while((n=in.read(block))!=-1){if(out.size()+n>MAX_BYTES)throw new IOException("File exceeds 5 MiB");out.write(block,0,n);}return out.toByteArray();}
  @PluginMethod public void readSelected(PluginCall call){int token=generation.get();worker.execute(()->{try{Uri uri=SelectedDocumentAccess.resolve(call.getString("selectionId"));if(uri==null)throw new SecurityException();String name;try(android.database.Cursor row=getContext().getContentResolver().query(uri,new String[]{OpenableColumns.DISPLAY_NAME},null,null,null)){if(row==null||!row.moveToFirst())throw new IOException();name=row.getString(0);}String mime=getContext().getContentResolver().getType(uri);byte[] data;try(InputStream in=getContext().getContentResolver().openInputStream(uri)){if(in==null)throw new IOException();data=read(in);}validate(name,mime,data);if(token!=generation.get())throw new CancellationException();JSObject result=new JSObject();result.put("name",name);result.put("mimeType",mime);result.put("size",data.length);result.put("sourceReferenceVersion",1);result.put("sha256",hash(data));result.put("dataBase64",android.util.Base64.encodeToString(data,android.util.Base64.NO_WRAP));call.resolve(result);}catch(Exception error){call.reject("Select a valid PDF, PNG, JPEG, WebP or UTF-8 TXT file up to 5 MiB. Selection cancelled or unavailable.");}});}
  private void revoke(File file){try{Uri uri=FileProvider.getUriForFile(getContext(),getContext().getPackageName()+".mailattachments",file);getContext().revokeUriPermission(uri,Intent.FLAG_GRANT_READ_URI_PERMISSION);}catch(RuntimeException ignored){}file.delete();}
@@ -64,13 +70,13 @@ public final class AlphaMailAttachmentsPlugin extends Plugin {
  private JSObject saveResult(String status,String message){JSObject result=new JSObject();result.put("status",status);result.put("message",message);return result;}
  private byte[] reviewedBytes(PluginCall call)throws Exception{
   String encoded=call.getString("dataBase64");if(encoded==null||encoded.length()>7*1024*1024||!Boolean.TRUE.equals(call.getBoolean("reviewed")))throw new IllegalArgumentException();
-  byte[] bytes=android.util.Base64.decode(encoded,android.util.Base64.NO_WRAP);validate(call.getString("name"),call.getString("mimeType"),bytes);if(!hash(bytes).equals(call.getString("sha256")))throw new SecurityException();return bytes;
+  byte[] bytes=android.util.Base64.decode(encoded,android.util.Base64.NO_WRAP);if(Boolean.TRUE.equals(call.getBoolean("opaque")))validateOpaque(call.getString("name"),bytes);else validate(call.getString("name"),call.getString("mimeType"),bytes);if(!hash(bytes).equals(call.getString("sha256")))throw new SecurityException();return bytes;
  }
  @PluginMethod public void saveReviewed(PluginCall call){
   if(!saving.compareAndSet(false,true)){call.reject("An attachment save is already pending.");return;}int token=generation.get();
   try{worker.execute(()->{try{reviewedBytes(call);main.post(()->{
    try{if(token!=generation.get()||getActivity()==null||!getActivity().hasWindowFocus())throw new CancellationException();exports.put(call,token);
-    Intent intent=new Intent(Intent.ACTION_CREATE_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType(call.getString("mimeType")).putExtra(Intent.EXTRA_TITLE,call.getString("name")).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION|Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
+    Intent intent=new Intent(Intent.ACTION_CREATE_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType(Boolean.TRUE.equals(call.getBoolean("opaque"))?opaqueMime(call.getString("mimeType")):call.getString("mimeType")).putExtra(Intent.EXTRA_TITLE,call.getString("name")).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION|Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
     startActivityForResult(call,intent,"savedReviewed");
    }catch(Exception error){exports.remove(call);saving.set(false);call.resolve(saveResult("cancelled","Save destination unavailable or review closed."));}
   });}catch(Exception error){saving.set(false);call.reject("Review valid attachment bytes before saving.");}});}catch(RejectedExecutionException error){saving.set(false);call.reject("Attachment service closed.");}
