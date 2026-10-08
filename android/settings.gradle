@@ -17,16 +17,17 @@ include ':local-speech'
 include ':eliza-network-policy'
 project(':eliza-network-policy').projectDir = new File('../vendor/eliza/plugins/plugin-native-network-policy/android')
 
-include ':eliza-calendar'
-project(':eliza-calendar').projectDir = new File('../vendor/eliza/plugins/plugin-native-calendar/android')
 
 include ':eliza-reminders'
 project(':eliza-reminders').projectDir = new File('../vendor/eliza/plugins/plugin-native-reminders/android')
 
-// Reviewed upstream candidate applied outside vendor/eliza (patches/eliza/0038-password-manager.patch).
+// Reviewed upstream candidates applied outside vendor/eliza (patches/eliza/NNNN-*.patch).
 // npm run upstream:prepare-client (run by npm run build / android:build) materializes it.
 if (!new File(settingsDir, '../.eliza/patched/.source.json').isFile())
  throw new GradleException('Patched Eliza source is not prepared. Run: npm run upstream:prepare-client')
+// Calendar carries patches/eliza/0039-calendar-source-identity.patch (read-package source identity).
+include ':eliza-calendar'
+project(':eliza-calendar').projectDir = new File('../.eliza/patched/plugins/plugin-native-calendar/android')
 include ':elizaos-capacitor-secure-store'
 project(':elizaos-capacitor-secure-store').projectDir = new File('../.eliza/patched/plugins/plugin-native-secure-store/android')
 include ':eliza-passwords'
