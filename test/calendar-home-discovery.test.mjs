@@ -1,3 +1,7 @@
+import {execFileSync} from "node:child_process";
+import {mkdtemp,writeFile,rm} from "node:fs/promises";
+import {tmpdir} from "node:os";
+import {join} from "node:path";
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -38,4 +42,30 @@ test('old capability, locked or changed Home context never executes a new Calend
 test('unapproved extra discovery content cannot become an applied upload',async()=>{
  const f=fixture({type:'calendar_read_next'}),signal=new AbortController().signal,pending=await f.actions.pending(context,signal);f.result={...f.result,privateNotes:'unapproved content'};
  const result=await f.actions.approve(pending[0].id,context,signal);assert.equal(result.status,'unknown');assert.equal(f.uploads.length,0);assert.equal(f.journal.filter(x=>x.phase==='terminal').length,0);
+});
+
+test('actual native request header guard admits negotiated Calendar capabilities and rejects unknown or conflicting grants',async()=>{
+ const source=fs.readFileSync('android/app/src/main/java/ai/elizaresearch/alphaphone/AlphaConnectionPlugin.java','utf8'),start=source.indexOf(' static boolean validDeviceCapabilities(');let depth=0,end=-1;for(let i=source.indexOf('{',start);i<source.length;i++){if(source[i]==='{')depth++;if(source[i]==='}'&&--depth===0){end=i+1;break;}}assert.ok(start>=0&&end>start);
+ const dir=await mkdtemp(join(tmpdir(),'calendar-capability-')),java=process.env.JAVA_HOME||'/opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home';
+ try{await writeFile(join(dir,'CalendarCapabilityProof.java'),`import java.util.Set;public final class CalendarCapabilityProof {${source.slice(start,end)} static void check(boolean value){if(!value)throw new AssertionError();}public static void main(String[] args){String old="calendar.local-event.v1,notes.local-record.v1,reminders.local-record.v2,reminders.create.v1,maps.selected-read.v1,clock.handoff.v1";check(validDeviceCapabilities(old));check(validDeviceCapabilities(old+",calendar.create.v1,calendar.next-read.v1"));check(!validDeviceCapabilities(old+",FutureModelDeviceCapabilities"));check(!validDeviceCapabilities(old+",calendar.next-read.v1,calendar.next-read.v1"));check(!validDeviceCapabilities(old+",reminders.local-record.v1"));check(!validDeviceCapabilities(old+",unknown"));check(!validDeviceCapabilities(old+"\\n"));System.out.println("PASS exact native Calendar capability guard");}}`);execFileSync(join(java,'bin/javac'),['--release','11','-d',dir,join(dir,'CalendarCapabilityProof.java')]);assert.match(execFileSync(join(java,'bin/java'),['-cp',dir,'CalendarCapabilityProof'],{encoding:'utf8'}),/PASS exact native Calendar capability guard/);}finally{await rm(dir,{recursive:true,force:true});}
+});
+
+test('actual native journal finish uses typed Calendar kinds, immutable operation identity and existing size gates',{skip:!process.env.ALPHA_JSON_JAR},async()=>{
+ const source=fs.readFileSync('android/app/src/main/java/ai/elizaresearch/alphaphone/AlphaActionJournalPlugin.java','utf8');
+ const utilities=source.slice(source.indexOf(' private static String key('),source.indexOf(' private void work('));
+ const marker='@PluginMethod public void finish(PluginCall call){work(call,true,(store,scope,id)->{',start=source.indexOf(marker)+marker.length,end=source.indexOf('\n });}',start);assert.ok(start>=marker.length&&end>start);
+ const dir=await mkdtemp(join(tmpdir(),'calendar-journal-')),java=process.env.JAVA_HOME||'/opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home',jar=process.env.ALPHA_JSON_JAR;
+ try{
+  const proof=`import java.util.*;import org.json.*;public final class CalendarJournalProof {
+ static class JSObject extends JSONObject{} static class PluginCall {JSONObject value;PluginCall(JSONObject value){this.value=value;}String getString(String key){return value.optString(key,null);}JSONObject getObject(String key){return value.optJSONObject(key);}}static class AlphaConnectionPlugin {Map<String,String> values=new HashMap<>();String readCredentialSlot(String key){return values.get(key);}void writeCredentialSlot(String key,String value){values.put(key,value);}}
+ ${utilities}
+ static JSObject finish(PluginCall call,AlphaConnectionPlugin store,String scope,String id)throws Exception{${source.slice(start,end)}}
+ static void check(boolean value){if(!value)throw new AssertionError();}interface Work{void run()throws Exception;}static void rejects(Work work)throws Exception{try{work.run();}catch(IllegalArgumentException expected){return;}throw new AssertionError("Malformed native journal receipt admitted");}
+ static AlphaConnectionPlugin applying(String type)throws Exception{AlphaConnectionPlugin store=new AlphaConnectionPlugin();JSONObject fields=new JSONObject().put("description","x".repeat(16000));JSONObject operation=new JSONObject().put("type",type).put("fields",fields);JSONObject entry=new JSONObject().put("operationId","native-op").put("phase","applying").put("record",new JSONObject().put("operation",operation));store.writeCredentialSlot(key("scope","proposal"),entry.toString());return store;}
+ static JSONObject result(String type)throws Exception {return new JSONObject().put("operationId","native-op").put("calendarResult",type.equals("calendar_create_local")?new JSONObject().put("version",1).put("kind",type).put("sourceId","1").put("eventId","2").put("revision","a".repeat(64)):new JSONObject().put("version",1).put("kind",type).put("window",new JSONObject().put("start","2026-10-08T19:00:00.000Z").put("end","2026-11-07T08:00:00.000Z").put("timeZone","America/Los_Angeles")).put("event",JSONObject.NULL));}
+ static PluginCall call(JSONObject result)throws Exception {return new PluginCall(new JSONObject().put("status","succeeded").put("summary","Reviewed Calendar result").put("result",result));}
+ public static void main(String[] args)throws Exception{for(String type:new String[]{"calendar_create_local","calendar_read_next"}){AlphaConnectionPlugin store=applying(type);JSONObject result=result(type);check(result.toString().length()<8000);finish(call(result),store,"scope","proposal");JSONObject saved=read(store,"scope","proposal");check(saved.getString("phase").equals("terminal"));check(sameJson(saved.getJSONObject("result"),result));check(saved.getJSONObject("record").getJSONObject("operation").getJSONObject("fields").getString("description").length()==16000);finish(call(result),store,"scope","proposal");
+ JSONObject badKind=result(type);badKind.getJSONObject("calendarResult").put("kind","calendar_delete");rejects(()->finish(call(badKind),applying(type),"scope","proposal"));JSONObject badId=result(type).put("operationId","other-op");rejects(()->finish(call(badId),applying(type),"scope","proposal"));JSONObject badVersion=result(type);badVersion.getJSONObject("calendarResult").put("version",2);rejects(()->finish(call(badVersion),applying(type),"scope","proposal"));rejects(()->finish(call(null),applying(type),"scope","proposal"));JSONObject oversized=result(type);oversized.getJSONObject("calendarResult").put("padding","x".repeat(80000));rejects(()->finish(call(oversized),applying(type),"scope","proposal"));}System.out.println("PASS actual native Calendar journal small receipt, full approved body retention, mismatch and size gates");}}`;
+  await writeFile(join(dir,'CalendarJournalProof.java'),proof);execFileSync(join(java,'bin/javac'),['--release','11','-cp',jar,'-d',dir,join(dir,'CalendarJournalProof.java')]);assert.match(execFileSync(join(java,'bin/java'),['-cp',dir+':'+jar,'CalendarJournalProof'],{encoding:'utf8'}),/PASS actual native Calendar journal/);
+ }finally{await rm(dir,{recursive:true,force:true});}
 });

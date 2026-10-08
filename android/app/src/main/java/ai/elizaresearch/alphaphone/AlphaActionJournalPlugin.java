@@ -79,7 +79,7 @@ public final class AlphaActionJournalPlugin extends Plugin {
   JSONObject result=call.getObject("result");
   JSONObject retainedOperation=entry.getJSONObject("record").optJSONObject("operation");
   if("succeeded".equals(status)&&entry.getJSONObject("record").has("workflow")&&retainedOperation!=null&&Set.of("read_selected_notes","read_calendar_range").contains(retainedOperation.optString("type"))&&result==null)throw new IllegalArgumentException();
-  if("succeeded".equals(status)&&retainedOperation!=null&&Set.of("clock_handoff","maps_read_selected","notes_read_selected","notes_update","notes_delete","reminder_create","reminder_read_selected","reminder_update","reminder_complete","reminder_snooze","reminder_cancel").contains(retainedOperation.optString("type"))&&result==null)throw new IllegalArgumentException();
+  if("succeeded".equals(status)&&retainedOperation!=null&&Set.of("calendar_create_local","calendar_read_next","clock_handoff","maps_read_selected","notes_read_selected","notes_update","notes_delete","reminder_create","reminder_read_selected","reminder_update","reminder_complete","reminder_snooze","reminder_cancel").contains(retainedOperation.optString("type"))&&result==null)throw new IllegalArgumentException();
   if(result!=null){
    JSONObject record=entry.getJSONObject("record"),operation=record.optJSONObject("operation");String type=operation==null?"":operation.optString("type");boolean workflowRead=record.has("workflow")&&Set.of("read_selected_notes","read_calendar_range").contains(type);
    if("clock_handoff".equals(type)){
@@ -113,7 +113,7 @@ public final class AlphaActionJournalPlugin extends Plugin {
     if(result.length()!=(result.has("notesResult")?2:1)||!entry.getString("operationId").equals(result.optString("operationId")))throw new IllegalArgumentException();
     JSONObject note=result.optJSONObject("notesResult");if("succeeded".equals(status)){if(note==null||!type.equals(note.optString("kind"))||note.optInt("version")!=1)throw new IllegalArgumentException();}else if(note!=null)throw new IllegalArgumentException();
     if(result.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8).length>150000)throw new IllegalArgumentException();
-   }else if(Set.of("calendar_create","calendar_read_selected","calendar_update","calendar_delete").contains(type)){
+   }else if(Set.of("calendar_create_local","calendar_read_next","calendar_create","calendar_read_selected","calendar_update","calendar_delete").contains(type)){
     if(result.length()!=(result.has("calendarResult")?2:1)||!entry.getString("operationId").equals(result.optString("operationId")))throw new IllegalArgumentException();
     JSONObject calendar=result.optJSONObject("calendarResult");if("succeeded".equals(status)){if(calendar==null||!type.equals(calendar.optString("kind"))||calendar.optInt("version")!=1)throw new IllegalArgumentException();}else if(calendar!=null)throw new IllegalArgumentException();
     if(result.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8).length>80000)throw new IllegalArgumentException();
