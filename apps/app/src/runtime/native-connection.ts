@@ -2,7 +2,7 @@ import { registerPlugin } from '../platform-plugins';
 import type { CloudNativeRequest, CloudCredentialStore, CloudCredential } from './cloud-protocol';
 import type { RemoteRequester, RemoteCredentialStore } from './remote-protocol';
 
-const native = registerPlugin<{
+export interface ConnectionPort {
   request(input: { requestId: string; url: string; method: string; headers: Record<string,string>; body?: string; expiresAt?: number }): Promise<{status:number;data:unknown}>;
   cancel(input:{requestId:string}):Promise<void>;
   secureRead(input:{slot:string}):Promise<{value:string|null}>;
@@ -10,7 +10,132 @@ const native = registerPlugin<{
   secureCompareExchange(input:{slot:string;expectedValue:string|null;value:string|null}):Promise<{status:"saved"|"conflict"}>;
   secureRemove(input:{slot:string}):Promise<void>;
   openExternal(input:{url:string;requestId:string}):Promise<void>;
-}>('AlphaConnection');
+}
+/** Secret storage for the web build's connection slots only. Values are AES-GCM encrypted with a
+ * non-extractable key held in IndexedDB; without IndexedDB they live in memory for this page only.
+ * This is not Android Keystore: any script running on this origin can use the key. */
+export interface BrowserSecretBackend {
+  read(slot:string):Promise<string|null>;
+  /** Atomic within this origin: replaces only when the current value equals expected. */
+  compareExchange(slot:string,expected:string|null|undefined,value:string|null):Promise<boolean>;
+}
+/** Web slots are limited to agent connection credentials. Other renderer stores keep their own
+ * browser documents and must not silently start writing secrets here. */
+export const browserConnectionSlot=(slot:unknown):string=>{
+  if(typeof slot!=='string'||!slot||slot.length>1024||!/^(remote|cloud|device|cloud-runtime):[^\s]+$/.test(slot))throw new Error('This secure slot is unavailable in the browser.');
+  return slot;
+};
+export function memorySecretBackend():BrowserSecretBackend{
+  const values=new Map<string,string>();
+  return {
+    async read(slot){return values.get(slot)??null;},
+    async compareExchange(slot,expected,value){if(expected!==undefined&&(values.get(slot)??null)!==expected)return false;if(value===null)values.delete(slot);else values.set(slot,value);return true;},
+  };
+}
+const SECRET_DATABASE='alpha-connection-secrets.v1';
+function idb<T>(request:IDBRequest<T>):Promise<T>{return new Promise((resolve,reject)=>{request.onsuccess=()=>resolve(request.result);request.onerror=()=>reject(request.error);});}
+/** IndexedDB values are {iv,data}; the CryptoKey is structured-cloned and never exported. */
+export function indexedDbSecretBackend(factory:IDBFactory=indexedDB,subtle:SubtleCrypto=crypto.subtle):BrowserSecretBackend{
+  let opened:Promise<{db:IDBDatabase;key:CryptoKey}>|null=null;
+  const open=()=>opened??=(async()=>{
+    const request=factory.open(SECRET_DATABASE,1);
+    request.onupgradeneeded=()=>{const db=request.result;if(!db.objectStoreNames.contains('keys'))db.createObjectStore('keys');if(!db.objectStoreNames.contains('slots'))db.createObjectStore('slots');};
+    const db=await idb(request);
+    let key=await idb(db.transaction('keys','readonly').objectStore('keys').get('aes')) as CryptoKey|undefined;
+    if(!key){
+      const generated=await subtle.generateKey({name:'AES-GCM',length:256},false,['encrypt','decrypt']);
+      const tx=db.transaction('keys','readwrite'),store=tx.objectStore('keys');
+      // Another tab may have generated first; keep whichever key is stored.
+      const existing=await idb(store.get('aes')) as CryptoKey|undefined;
+      if(!existing)store.put(generated,'aes');
+      await new Promise<void>((resolve,reject)=>{tx.oncomplete=()=>resolve();tx.onerror=()=>reject(tx.error);tx.onabort=()=>reject(tx.error);});
+      key=existing??generated;
+    }
+    return {db,key};
+  })().catch(error=>{opened=null;throw error;});
+  const decrypt=async(key:CryptoKey,stored:unknown,slot:string):Promise<string|null>=>{
+    if(stored===undefined)return null;
+    const value=stored as {iv?:unknown;data?:unknown};
+    if(!(value?.iv instanceof Uint8Array)||!(value.data instanceof ArrayBuffer))throw new Error('Stored connection secret is invalid.');
+    return new TextDecoder().decode(await subtle.decrypt({name:'AES-GCM',iv:value.iv as Uint8Array<ArrayBuffer>,additionalData:new TextEncoder().encode(slot)},key,value.data));
+  };
+  const locked=<T>(slot:string,work:()=>Promise<T>):Promise<T>=>typeof navigator!=='undefined'&&navigator.locks?navigator.locks.request(`${SECRET_DATABASE}:${slot}`,work) as Promise<T>:work();
+  return {
+    async read(slot){const {db,key}=await open();return decrypt(key,await idb(db.transaction('slots','readonly').objectStore('slots').get(slot)),slot);},
+    compareExchange(slot,expected,value){return locked(slot,async()=>{
+      const {db,key}=await open();
+      if(expected!==undefined&&await decrypt(key,await idb(db.transaction('slots','readonly').objectStore('slots').get(slot)),slot)!==expected)return false;
+      let record:{iv:Uint8Array;data:ArrayBuffer}|null=null;
+      if(value!==null){const iv=crypto.getRandomValues(new Uint8Array(12));record={iv,data:await subtle.encrypt({name:'AES-GCM',iv,additionalData:new TextEncoder().encode(slot)},key,new TextEncoder().encode(value))};}
+      const tx=db.transaction('slots','readwrite'),store=tx.objectStore('slots');
+      if(record)store.put(record,slot);else store.delete(slot);
+      await new Promise<void>((resolve,reject)=>{tx.oncomplete=()=>resolve();tx.onerror=()=>reject(tx.error);tx.onabort=()=>reject(tx.error);});
+      return true;
+    });},
+  };
+}
+function webSecrets():BrowserSecretBackend{
+  if(typeof indexedDB==='undefined'||typeof crypto==='undefined'||!crypto.subtle)return memorySecretBackend();
+  const durable=indexedDbSecretBackend(),fallback=memorySecretBackend();
+  let degraded=false;
+  // Private windows can refuse IndexedDB. Keep this page usable without claiming persistence.
+  const use=async<T>(work:(backend:BrowserSecretBackend)=>Promise<T>)=>{if(degraded)return work(fallback);try{return await work(durable);}catch(error){if(error instanceof DOMException&&['InvalidStateError','UnknownError','SecurityError','NotSupportedError'].includes(error.name)){degraded=true;return work(fallback);}throw error;}};
+  return {read:slot=>use(backend=>backend.read(slot)),compareExchange:(slot,expected,value)=>use(backend=>backend.compareExchange(slot,expected,value))};
+}
+/** Plain-HTTP loopback agents are a test-mocks surface; flag-off bundles accept HTTPS only. */
+const webDevelopmentHttp:boolean=import.meta.env!==undefined&&import.meta.env.VITE_ELIZA_DEV_ALLOW_TEST_MOCKS==='1';
+const allowedHeaders=new Set(['accept','content-type','authorization','x-eliza-device-id','x-eliza-device-key','x-eliza-device-capabilities','x-eliza-phone-protocol']);
+/** Browser AlphaConnection: HTTPS fetch without redirects or cookies, connection-slot secret storage
+ * and a new-tab Cloud sign-in. A remote agent must allow this page's origin with CORS. */
+export function createBrowserConnection(options:{fetch?:typeof fetch;secrets?:BrowserSecretBackend;open?:(url:string)=>boolean;allowHttp?:boolean}={}):ConnectionPort{
+  const requests=new Map<string,AbortController>();
+  const doFetch=options.fetch??((input,init)=>fetch(input,init));
+  let secrets=options.secrets;
+  const store=()=>secrets??=webSecrets();
+  const queue=new Map<string,Promise<unknown>>();
+  const serialSlot=<T>(slot:string,work:()=>Promise<T>):Promise<T>=>{const previous=queue.get(slot)??Promise.resolve();const result=previous.then(work,work);const tail=result.catch(()=>{});queue.set(slot,tail);void tail.then(()=>{if(queue.get(slot)===tail)queue.delete(slot);});return result;};
+  const allowHttp=options.allowHttp??webDevelopmentHttp;
+  return {
+    async request(input){
+      if(typeof input?.requestId!=='string'||!input.requestId||input.requestId.length>256||requests.has(input.requestId))throw new Error('Invalid request');
+      let url:URL;try{url=new URL(input.url);}catch{throw new Error('Connection request failed');}
+      const loopback=['localhost','127.0.0.1','[::1]'].includes(url.hostname);
+      if(url.username||url.password||!(url.protocol==='https:'||(allowHttp&&loopback&&url.protocol==='http:')))throw new Error('Connection request failed');
+      if(input.method!=='GET'&&input.method!=='POST')throw new Error('Connection request failed');
+      if(input.method==='GET'&&input.body!==undefined)throw new Error('Connection request failed');
+      const headers=new Headers();
+      for(const [name,value] of Object.entries(input.headers||{})){if(!allowedHeaders.has(name.toLowerCase())||typeof value!=='string'||value.length>16384||/[\r\n]/.test(value))throw new Error('Connection request failed');headers.set(name,value);}
+      if(input.body!==undefined)JSON.parse(input.body);
+      const controller=new AbortController();requests.set(input.requestId,controller);
+      try{
+        const response=await doFetch(url.href,{method:input.method,headers,body:input.body,signal:controller.signal,redirect:'error',credentials:'omit',cache:'no-store',referrerPolicy:'no-referrer',mode:'cors'});
+        if(response.type==='opaqueredirect'||response.status>=300&&response.status<400)throw new Error('Connection request failed');
+        const text=await response.text();
+        if(text.length>2*1024*1024)throw new Error('Connection request failed');
+        let data:unknown=null;
+        if(text){try{data=JSON.parse(text);}catch(error){if(response.status<400)throw error;}}
+        return {status:response.status,data};
+      }catch(error){throw new Error(controller.signal.aborted?'Request cancelled':'Connection request failed',{cause:error});}
+      finally{requests.delete(input.requestId);}
+    },
+    async cancel(input){requests.get(input?.requestId)?.abort();},
+    async secureRead(input){const slot=browserConnectionSlot(input?.slot);return {value:await serialSlot(slot,()=>store().read(slot))};},
+    async secureWrite(input){const slot=browserConnectionSlot(input?.slot);if(typeof input.value!=='string')throw new Error('Invalid secure value');await serialSlot(slot,()=>store().compareExchange(slot,undefined,input.value));},
+    async secureCompareExchange(input){const slot=browserConnectionSlot(input?.slot);return {status:await serialSlot(slot,()=>store().compareExchange(slot,input.expectedValue??null,input.value??null))?'saved':'conflict'};},
+    async secureRemove(input){const slot=browserConnectionSlot(input?.slot);await serialSlot(slot,()=>store().compareExchange(slot,undefined,null));},
+    async openExternal(input){
+      const url=new URL(input.url);
+      if(url.protocol!=='https:')throw new Error('Only HTTPS sign-in pages can be opened.');
+      // A new tab keeps this page polling. A blocked pop-up is reported instead of navigating away.
+      const opened=options.open?options.open(url.href):(()=>{const target=window.open(url.href,'_blank');if(target)target.opener=null;return !!target;})();
+      if(!opened)throw new Error('Allow pop-ups for Alpha Phone, then select Sign in with Eliza Cloud again.');
+    },
+  };
+}
+let browserConnection:ConnectionPort|undefined;
+// Capacitor keeps the first registration. browser/register.ts imports this module first, so the
+// web build gets this implementation while Android keeps the native plugin.
+const native = registerPlugin<ConnectionPort>('AlphaConnection',{web:()=>browserConnection??=createBrowserConnection()});
 
 export const secureConnectionStore = {
   async readRaw(slot:string):Promise<string|null> { return (await native.secureRead({slot})).value; },
