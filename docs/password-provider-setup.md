@@ -1,5 +1,7 @@
 # Password manager and provider setup
 
+October 7 owner decision ([decisions](decisions.md#october-7-owner-product-decisions), P-05): an integrated password manager is in scope as a reusable elizaOS upstream component consumed by Alpha. Proton Pass, described below, remains an optional alternative provider. The implementation below is decided and built, not yet accepted on a device (see Evidence boundary).
+
 Settings → Password manager (also opened from the Browser menu) now has two parts: Alpha's own
 **integrated password manager**, built on the shared upstream `plugin-native-passwords` plugin,
 and **Other password providers**, the existing Proton Pass setup/status flow. Both remain
@@ -36,7 +38,7 @@ Fill rules (implemented in the shared `PasswordFormPolicy`, tested on a JVM):
   earlier unlock in Settings or another fill is not reused) and lists only entries bound to the
   exact request subject. Every fill needs that authentication and an explicit choice.
 - Websites: accepted only from a trusted browser. Alpha's browser is trusted only when its
-  WebView reports the committed top-level HTTPS origin and it equals the field origin. Any second
+  WebView reports the committed top-level HTTPS origin and its host equals the field domain. Any second
   web domain in the structure (a cross-origin frame), non-HTTPS content or mixed native/web login
   fields refuses the whole request. No third-party browser is trusted by default.
 - Apps: the framework-reported package, matched only if `PackageManager#hasSigningCertificate`
