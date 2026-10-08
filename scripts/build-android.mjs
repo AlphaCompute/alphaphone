@@ -133,7 +133,7 @@ function build(options, baseEnv, run) {
   function cleanPackagingIntermediates() {
     if (fs.realpathSync(process.cwd()) !== root)
       throw new Error("Low-disk build must run from this product checkout");
-    const categories = ["assets", "compressed_assets", "merged_native_libs", "stripped_native_libs"];
+    const categories = ["assets", "compressed_assets", "merged_native_libs", "merged_jni_libs", "stripped_native_libs"];
     const targets = categories.map(name => path.join(root, "android/app/build/intermediates", name));
     // Preflight every ancestor before deleting anything. rmSync removes nested links
     // themselves, never their targets; a linked category or ancestor is rejected.
