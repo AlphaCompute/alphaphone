@@ -21,6 +21,10 @@ public final class AlphaLocalAgentPlugin extends Plugin {
  private static long expiresAt;
  private static final Object lifecycleLock=new Object(), enrollmentLock=new Object();
  private static long lifecycleEpoch;
+ private static String startRequestId;
+ private static long startRequestEpoch;
+ private static boolean startOwnsLaunch;
+ private final java.util.Set<String> cancelledStarts=new java.util.HashSet<>();
  private static boolean accepting=true,stopping;
  private volatile boolean disposed;
  private static final java.util.Set<PluginCall> pending=new java.util.HashSet<>();
@@ -162,6 +166,18 @@ public final class AlphaLocalAgentPlugin extends Plugin {
   });}
   catch(java.util.concurrent.RejectedExecutionException closed){call.reject("Local agent bridge is closed.");}
  }
+ /** The shared service activates its bionic host from this same packaged engine/JNI pair. */
+ static void configureLocalEmbeddings(File nativeDirectory,File filesDirectory,java.util.Map<String,String> env) {
+  File model=new File(filesDirectory,".eliza/local-inference/models/bge-small-en-v1.5-f16.gguf");
+  if(!new File(nativeDirectory,"libelizainference.so").isFile()||!new File(nativeDirectory,"libelizavoicejni.so").isFile()||!model.isFile())return;
+  // The APK build guard pins these native bytes and the BGE model. BgeEmbeddingSession
+  // verifies the actual extracted model and vector space before native inference.
+  env.put("ELIZAOS_CLOUD_USE_EMBEDDINGS","false");
+  env.put("ELIZA_DISABLE_LOCAL_EMBEDDINGS","false");
+  env.put("ELIZA_LOCAL_EMBEDDING_ENABLED","1");
+  env.put("ELIZA_LOCAL_EMBEDDING_MODEL_PATH",model.getAbsolutePath());
+  env.put("ELIZA_LOCAL_EMBEDDING_DIMENSIONS","384");
+ }
  static void configureEnvironment(Context context,java.util.Map<String,String> env) throws java.io.IOException {
   env.remove("ELIZA_MOBILE_WORKFLOWS");
   java.io.InputStream workerIndex=null;
@@ -177,6 +193,7 @@ public final class AlphaLocalAgentPlugin extends Plugin {
   if(saved==null)throw new IllegalStateException("Configure a model provider before starting the local agent");
   JSONObject provider=new JSONObject(saved);
   applyProviderEnvironment(provider,"elizacloud".equals(provider.optString("provider"))?new AlphaCredentialStore(context).readCredentialSlot("cloud:production"):null,env,System.currentTimeMillis());
+  configureLocalEmbeddings(new File(context.getApplicationInfo().nativeLibraryDir),context.getFilesDir(),env);
   env.put("ELIZA_DISABLE_PERSONAL_ASSISTANT","1");
   env.put("ELIZA_DISTRIBUTION_PROFILE","store");
   // A packaged app has no repository character file to discover above its workspace.
@@ -197,6 +214,8 @@ public final class AlphaLocalAgentPlugin extends Plugin {
   } catch(Exception error) {throw new java.io.IOException("Local model provider unavailable");}
  }
  @PluginMethod public void start(PluginCall call) {
+  String requestId=call.getString("requestId");
+  if(requestId!=null&&!requestId.matches("[a-f0-9-]{36}")){call.reject("Invalid startup request");return;}
   try {
    if(!runtimePackaged()){call.reject("On-device agent is unavailable in this version. Connect a remote agent or use Eliza Cloud.");return;}
    if(new AlphaCredentialStore(getContext()).readCredentialSlot("local-agent-provider:v1")==null){call.reject("Configure your model provider before starting the local agent.");return;}
@@ -206,15 +225,20 @@ public final class AlphaLocalAgentPlugin extends Plugin {
    long admitted=-1;
    for(int attempt=0;attempt<3;attempt++){
     final long observedEpoch;
-    final boolean needsShutdownObservation;
-    synchronized(lifecycleLock){observedEpoch=lifecycleEpoch;needsShutdownObservation=stopping;}
-    JSONObject nativeState=needsShutdownObservation?ElizaAgentService.getLocalAgentBootState(getContext()):null;
     synchronized(lifecycleLock){
+     if(requestId!=null&&cancelledStarts.remove(requestId)){call.reject("Local startup cancelled");return;}
+     if(cancelledStarts.size()>=128){call.reject("Startup cancellation capacity reached; reopen the app.");return;}
+     observedEpoch=lifecycleEpoch;
+    }
+    JSONObject nativeState=ElizaAgentService.getLocalAgentBootState(getContext());
+    synchronized(lifecycleLock){
+     if(requestId!=null&&cancelledStarts.remove(requestId)){call.reject("Local startup cancelled");return;}
      if(observedEpoch!=lifecycleEpoch)continue;
      if(disposed){call.reject("Local agent bridge is closed.");return;}
      if(stopping&&shutdownConfirmed(nativeState))stopping=false;
      if(stopping){call.reject("Local agent is stopping; wait for stopped status before starting.");return;}
      invalidateCalls();admitted=++lifecycleEpoch;accepting=true;clearEnrollment();pending.add(call);
+     startRequestId=requestId;startRequestEpoch=admitted;startOwnsLaunch=shutdownConfirmed(nativeState);
      ElizaAgentService.start(getContext());break;
     }
    }
@@ -237,6 +261,25 @@ public final class AlphaLocalAgentPlugin extends Plugin {
     rejectPending(call,"Local agent startup did not complete. Check runtime status; no chat was sent.");
    });
   }catch(Exception error){synchronized(lifecycleLock){pending.remove(call);}call.reject("The on-device agent could not start. Try again or connect another agent.");}
+ }
+ /** Only the current startup caller may retire a launch it created; reused services are never stopped here. */
+ @PluginMethod public void cancelStart(PluginCall call) {
+  String requestId=call.getString("requestId","");
+  if(!requestId.matches("[a-f0-9-]{36}")){call.reject("Invalid startup request");return;}
+  synchronized(lifecycleLock){
+   if(requestId.equals(startRequestId)&&startRequestEpoch==lifecycleEpoch){
+    boolean stopOwned=startOwnsLaunch;
+    startRequestId=null;startOwnsLaunch=false;
+    invalidateCalls();++lifecycleEpoch;clearEnrollment();
+    if(stopOwned){
+     accepting=false;stopping=true;
+     try{ElizaAgentService.stop(getContext());}
+     catch(Exception uncertain){call.reject("Owned startup cancellation requested; check shutdown status.");return;}
+    }
+   }else if(cancelledStarts.size()<128)cancelledStarts.add(requestId);
+   else {call.reject("Startup cancellation capacity reached; reopen the app.");return;}
+   call.resolve();
+  }
  }
  static String startupRefusalMessage(String reason){
   if("ipc-recovery-retention-limit".equals(reason))return "Local startup is blocked because retained recovery records reached their limit. Your records were preserved. Waiting or repeated starts will not clear this limit. Use another connection while recovery records are reviewed; do not clear app data.";
@@ -276,6 +319,7 @@ public final class AlphaLocalAgentPlugin extends Plugin {
  }
  @PluginMethod public void stop(PluginCall call) {
   synchronized(lifecycleLock){
+   startRequestId=null;startOwnsLaunch=false;
    invalidateCalls();++lifecycleEpoch;accepting=false;stopping=true;clearEnrollment();
    try{ElizaAgentService.stop(getContext());call.resolve(new JSObject().put("state","stopping"));}
    catch(Exception unavailable){call.reject("Stop requested locally, but native shutdown could not be confirmed. Check runtime status.");}

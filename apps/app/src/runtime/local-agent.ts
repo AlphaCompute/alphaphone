@@ -6,7 +6,8 @@ import { readLocalAgentStream } from './local-agent-stream';
 import { streamNativeAgent, type NativeStreamPort } from './local-agent-native-stream';
 
 export interface LocalAgentBridge {
-  start(): Promise<unknown>;
+  start(input?:{requestId:string}): Promise<unknown>;
+  cancelStart?(input:{requestId:string}):Promise<unknown>;
   stop?():Promise<unknown>;
   getStatus?():Promise<{packaged?:boolean;state?:string;serviceActive?:boolean;socketListening?:boolean}>;
   configureProvider?(input:{apiKey:string;model:string}):Promise<unknown>;
@@ -86,24 +87,34 @@ export class LocalAgentProtocol {
   }
   async connect(signal:AbortSignal) {
     signal.throwIfAborted();
-    const generation=this.generation;
+    const generation=this.generation,requestId=crypto.randomUUID();
     let cancel:()=>void=()=>{};
-    const cancelled=new Promise<never>((_,reject)=>{cancel=()=>reject(signal.reason||new DOMException('Cancelled','AbortError'));});
+    let dispatched=false,cancellationSent=false;
+    const cancelOwned=()=>{if(dispatched&&!cancellationSent){cancellationSent=true;void this.bridge.cancelStart?.({requestId}).catch(()=>{});}};
+    const cancelled=new Promise<never>((_,reject)=>{cancel=()=>{cancelOwned();reject(signal.reason||new DOMException('Cancelled','AbortError'));};});
     signal.addEventListener('abort',cancel,{once:true});
-    try{await Promise.race([this.bridge.start(),cancelled]);}finally{signal.removeEventListener('abort',cancel);}
+    try{
+    dispatched=true;
+    const started=this.bridge.start({requestId});
+    if(signal.aborted)cancel();
+    await Promise.race([started,cancelled]);
     signal.throwIfAborted();
     if(generation!==this.generation)throw Error('Local agent connection changed.');
     const who=record(await this.request('/api/auth/me',undefined,signal));
+    signal.throwIfAborted();
     const identity=record(who.identity),access=record(who.access);
     // Only the explicitly selected native/host bridge may establish local trust.
     if(identity.kind!=='owner'||access.role!=='OWNER'||!['local','session'].includes(access.mode))throw new Error('The local runtime did not verify local owner access.');
     const result=record(await this.request('/api/agents',undefined,signal));
+    signal.throwIfAborted();
     if(!Array.isArray(result.agents)||result.agents.length!==1)throw new Error('The local runtime must expose exactly one agent.');
     const agent=record(result.agents[0]);
     if(agent.status!=='running')throw Error('The local agent is still starting. Try again when it is ready.');
     if(generation!==this.generation)throw Error('Local agent connection changed.');
     this.session={ownerId:identifier(identity.id),agentId:identifier(agent.id),sessionId:crypto.randomUUID(),origin:this.origin};
     return {session:this.session,name:typeof agent.name==='string'?agent.name:'Local agent'};
+    }catch(error){cancelOwned();throw error;}
+    finally{signal.removeEventListener('abort',cancel);}
   }
   get browserSpeechAvailable(){return browserLocalAgentEnabled&&browserBridge!==null&&this.bridge===browserBridge;}
   async speechRequest(audio:Uint8Array|undefined,signal:AbortSignal){

@@ -120,3 +120,10 @@ def stageLocalAgentSources = tasks.register('stageLocalAgentSources', Exec) {
  commandLine 'node', 'scripts/stage-local-agent-sources.mjs'
 }
 tasks.named('preBuild').configure { dependsOn stageLocalAgentSources }
+
+// The shared bionic host is packaged only from the reviewed consumer artifact and BGE pin.
+def verifyEmbeddingHost = tasks.register('verifyEmbeddingHost', Exec) {
+ workingDir rootProject.projectDir.parentFile
+ commandLine 'node', 'scripts/stage-embedding-host.mjs', '--verify'
+}
+tasks.named('preBuild').configure { dependsOn verifyEmbeddingHost }

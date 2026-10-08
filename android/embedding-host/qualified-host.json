@@ -1,0 +1,33 @@
+{
+  "pin": "5592c586507544523102dad003a192d6e8395c0f",
+  "forkPin": "ea8b3f2dfc2641dea3e6238bc6dd99595584b076",
+  "identity": "ai.elizaresearch.alphaphone",
+  "abi": "arm64-v8a",
+  "model": {
+    "path": "android/app/src/main/assets/agent/models/bge-small-en-v1.5-f16.gguf",
+    "sha256": "f0b2fef971e8366438bfd2d9aefea1b0115919389448806d290237f638bae999",
+    "dimensions": 384
+  },
+  "libraries": [
+    {
+      "name": "libelizainference.so",
+      "sha256": "29793dd385ac8742e90562ebe45d00b6c8e157127ccce8e03201f3ce30cf95c5",
+      "bytes": 6199248,
+      "alignment16KiB": true
+    },
+    {
+      "name": "libelizavoicejni.so",
+      "sha256": "6ec9c94b10febe6c1c2946f8c8212f9da393c20ac3c46413749e912a4f48753d",
+      "bytes": 1016376,
+      "alignment16KiB": true
+    },
+    {
+      "name": "libc++_shared.so",
+      "sha256": "35e56d209d7f28a79bf1e263cbf1e4bafc5038448dea0a954cba0423a28f0f6b",
+      "bytes": 1304848,
+      "alignment16KiB": true
+    }
+  ],
+  "qualificationReceiptSha256": "3caf49bc48b53cc394fc0df4d21f29b99df2dd7c061d6983ef144905da1a56ef",
+  "jniIdentityRelocated": true
+}
