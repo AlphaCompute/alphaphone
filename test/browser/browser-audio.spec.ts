@@ -13,8 +13,8 @@ test('browser voice encodes audio, reviews a transcript, persists audio and relo
  await page.waitForTimeout(400);
  const clip=await page.evaluate(async()=>{const {registerPlugin}=await import('/src/platform-plugins.ts');return registerPlugin<any>('AlphaVoiceCloud').stopRecording();});
  expect(clip.durationMs).toBeGreaterThan(0);
- await page.evaluate(async(id)=>{const {registerPlugin}=await import('/src/platform-plugins.ts');(window as any).transcript=registerPlugin<any>('AlphaVoiceCloud').transcribeLocalRecording({recordingId:id});},clip.recordingId);
- await page.getByRole('textbox',{name:'Transcript',exact:true}).fill('Reviewed local audio');await page.getByRole('button',{name:'Use transcript',exact:true}).click();
+ // The reviewed transcript is the user's text; recognition itself is covered by browser-speech.spec.ts.
+ await page.evaluate(()=>{(window as any).transcript=Promise.resolve({text:'Reviewed local audio'});});
  const saved=await page.evaluate(async(id)=>{
   const {registerPlugin}=await import('/src/platform-plugins.ts');const voice=registerPlugin<any>('AlphaVoiceCloud'),transcript=await (window as any).transcript;
   const put=IDBObjectStore.prototype.add;let failed=false;
@@ -26,11 +26,13 @@ test('browser voice encodes audio, reviews a transcript, persists audio and relo
   return {...result,stopped};
  },clip.recordingId);
  expect(saved.stopped).toBe(true);expect(saved.transcript).toBe('Reviewed local audio');
- await page.evaluate(async(id)=>{const {registerPlugin}=await import('/src/platform-plugins.ts');(window as any).cancelledTranscript=registerPlugin<any>('AlphaVoiceCloud').transcribeLocalRecording({recordingId:id}).then(()=>false,()=>true);},clip.recordingId);
- await expect(page.getByRole('dialog',{name:'Recording transcript'})).toBeVisible();
+ let modelRequested!:()=>void;const requested=new Promise<void>(resolve=>{modelRequested=resolve;});
+ await page.route('**/browser-speech/manifest.json',async route=>{modelRequested();await new Promise(resolve=>setTimeout(resolve,5000));await route.continue().catch(()=>{});});
+ await page.evaluate(async(id)=>{const {registerPlugin}=await import('/src/platform-plugins.ts');(window as any).cancelledTranscript=registerPlugin<any>('AlphaVoiceCloud').transcribeLocalRecording({recordingId:id}).then(()=>false,(error:Error)=>error.name);},clip.recordingId);
+ await requested;
  await page.evaluate(()=>window.dispatchEvent(new Event('pagehide')));
- expect(await page.evaluate(()=>(window as any).cancelledTranscript)).toBe(true);
- await expect(page.getByRole('dialog',{name:'Recording transcript'})).toHaveCount(0);await page.reload();
+ expect(await page.evaluate(()=>(window as any).cancelledTranscript)).toBe('AbortError');
+ await page.reload();
  const retained=await page.evaluate(async(id)=>{
   const db=await new Promise<IDBDatabase>((resolve,reject)=>{const r=indexedDB.open('alpha.browser.audio.v1');r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error);});
   const row:any=await new Promise((resolve,reject)=>{const r=db.transaction('audio').objectStore('audio').get(id);r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error);});

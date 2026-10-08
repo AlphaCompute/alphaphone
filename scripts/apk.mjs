@@ -73,6 +73,9 @@ export function distributionProblems(apk, { mode, testMocks = false } = {}) {
     problems.push("WRITE_EXTERNAL_STORAGE is requested");
   const maps = apk.names.filter(name => name.startsWith("assets/") && name.endsWith(".map"));
   if (maps.length) problems.push(`Source maps are packaged: ${maps.slice(0, 3).join(", ")}`);
+  // Android recognizes speech natively; the browser build's Whisper model must not ride along.
+  const browserSpeech = apk.names.filter(name => name.startsWith("assets/public/browser-speech/"));
+  if (browserSpeech.length) problems.push(`Browser speech model assets are packaged: ${browserSpeech.slice(0, 3).join(", ")}`);
   if (!apk.names.includes("assets/public/licenses/third-party-notices.json"))
     problems.push("assets/public/licenses/third-party-notices.json is missing");
   if (facts.versionCode === null)
