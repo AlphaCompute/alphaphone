@@ -1,6 +1,13 @@
 name: Resident Android exact source
 on:
   workflow_dispatch:
+  # Optional automatic PACKAGED qualification. Both triggers are inert unless the
+  # repository variable ELIZA_RESIDENT_QUALIFICATION is "push" (every main commit)
+  # or "nightly" (once a day, default branch only). See docs/ci-cost-policy.md.
+  push:
+    branches: [main]
+  schedule:
+    - cron: "23 6 * * *"
 permissions:
   contents: read
 concurrency:
@@ -8,6 +15,10 @@ concurrency:
   cancel-in-progress: true
 jobs:
   build:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'push' && vars.ELIZA_RESIDENT_QUALIFICATION == 'push') ||
+      (github.event_name == 'schedule' && vars.ELIZA_RESIDENT_QUALIFICATION == 'nightly')
     # All consumers select the reviewed NDK before unused image SDKs are removed.
     env:
       ANDROID_NDK: /usr/local/lib/android/sdk/ndk/28.2.13676358

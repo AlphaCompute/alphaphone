@@ -21,7 +21,7 @@ export function affected(paths) {
     } else if (path === '.github/workflows/resident-prepare.yml') {
       result.prepare = true;
     } else if (/^\.github\/workflows\/(resident-android|bun-spawn-seccomp)\.yml$/.test(path)) {
-      // These explicit qualification/diagnostic workflows have no automatic jobs.
+      // Explicit qualification/diagnostics; resident push/nightly runs are opt-in by repository variable.
     } else if (/^android\//.test(path)) {
       result.android = true;
     } else if (/^apps\/app\//.test(path)) {
@@ -36,19 +36,22 @@ export function affected(paths) {
 
 // Restrict only an existing-spec-only diff. Renames/deletions, helpers, app inputs,
 // manual runs and unavailable diffs all retain the complete browser inventory.
+// Must match productionSpec in playwright.config.ts.
+export const productionSpec = /(production-surface|\.production)\.spec\.ts$/;
+export const selectableSpec = /^test\/browser\/[A-Za-z0-9_/-]+(\.production)?\.spec\.ts$/;
+
 export function browserPlan(paths, exists = existsSync) {
   const changed = paths.filter(path => !referenceOnly(path));
-  const narrow = changed.length > 0 && changed.every(path =>
-    /^test\/browser\/[A-Za-z0-9_/-]+\.spec\.ts$/.test(path) && exists(path));
+  const narrow = changed.length > 0 && changed.every(path => selectableSpec.test(path) && exists(path));
   const specs = narrow ? [...new Set(changed)].sort() : [];
-  const development = specs.filter(path => !path.endsWith('/production-surface.spec.ts'));
+  const development = specs.filter(path => !productionSpec.test(path));
   const shards = narrow && development.length <= 3 ? [1] : [1, 2, 3];
   return {
     browser_specs: JSON.stringify(development),
     browser_shards: JSON.stringify(shards),
     browser_total: shards.length,
     browser_development: !narrow || development.length > 0,
-    browser_production: !narrow || specs.some(path => path.endsWith('/production-surface.spec.ts')),
+    browser_production: !narrow || specs.some(path => productionSpec.test(path)),
     browser_speech: !narrow || development.some(path => /\/browser-(agent-recording|agent-tts|host-disclosure)\.spec\.ts$/.test(path)),
   };
 }

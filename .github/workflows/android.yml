@@ -1,12 +1,16 @@
 name: Android foundation
 on:
+  # Main pushes rebuild both variants so a broken merge is visible on main itself.
+  push:
+    branches: [main]
   pull_request:
   workflow_dispatch:
 permissions:
   contents: read
 concurrency:
   group: android-${{ github.ref }}
-  cancel-in-progress: true
+  # Superseded PR runs are cancelled; every main commit keeps its own result.
+  cancel-in-progress: ${{ github.event_name != 'push' }}
 jobs:
   changes:
     uses: ./.github/workflows/changes.yml
@@ -107,7 +111,10 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: android-distribution-apks-${{ github.run_id }}-${{ github.run_attempt }}
-          path: artifacts/*.apk
+          # R8 mappings travel with the exact APKs they deobfuscate.
+          path: |
+            artifacts/*.apk
+            artifacts/mapping/*.txt
           if-no-files-found: error
           retention-days: 3
       - uses: actions/upload-artifact@v4
@@ -126,3 +133,21 @@ jobs:
             android/local-speech/runtime-manifest.json
             android/local-speech/src/main/assets/local-speech/v1/manifest.json
           retention-days: 3
+  # Stable required check. The ruleset in docs/ci-cost-policy.md requires this job:
+  # it passes when the change gate did not select Android and fails when the
+  # selected build failed, was cancelled or did not run.
+  result:
+    name: Android foundation result
+    needs: [changes, build]
+    if: always()
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: scripts/ci
+      - env:
+          SELECTED: ${{ needs.changes.outputs.android }}
+          CHANGES: ${{ needs.changes.result }}
+          BUILD: ${{ needs.build.result }}
+        run: node scripts/ci/required-result.mjs "changes=$CHANGES" "build=$BUILD:$SELECTED"
