@@ -1,3 +1,4 @@
+import { passwordSurfaceOpen } from '../passwords/password-manager';
 import {AssistantDraftController} from './assistant-draft-controller';
 import {assistantDraftStore} from '../runtime/assistant-draft-store';
 import {openBrowserNotes,browserNotesRecovery} from '../runtime/browser-notes-document';
@@ -103,7 +104,8 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
       view: (view === 'wallet' ? 'passwords' : view) as AlphaView,
       // Suspension invalidates this turn and approvals, but retains the account
       // and conversation. Visibility is not a claim about Android lock state.
-      sensitive: view === 'wallet' || s.secure === true || s.screen === 'lock' || s.screen === 'off' || document.hidden || shell.pageSuspended === true || connectionController.getSnapshot().open,
+      // Password manager pages pause observation entirely: no view, selection or revision.
+      sensitive: view === 'wallet' || (view === 'settings' && passwordSurfaceOpen(shell.vget('settings'))) || s.secure === true || s.screen === 'lock' || s.screen === 'off' || document.hidden || shell.pageSuspended === true || connectionController.getSnapshot().open,
       ...(selected && shell.notesSelection ? { selectedObject: shell.notesSelection } : providerSelection ? { selectedObject: providerSelection } : ['files','photos'].includes(view) && shell.vget(view).open === '__native_selected_document' && shell.selectedContext ? { selectedObject: shell.selectedContext } : {}),
     });
     document.documentElement.dataset.alphaCanGoBack = String(connectionController.getSnapshot().open || !!s.view || s.shade || s.chat === 'sheet' || s.chat === 'full' || s.voice !== 'off');

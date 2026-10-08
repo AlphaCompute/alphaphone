@@ -1,0 +1,221 @@
+import { Capacitor } from '@capacitor/core';
+import { registerPlugin } from '../platform-plugins';
+import { devSurfacesEnabled } from '../build-flags';
+import { browserDevProfile } from '../browser/dev-profile';
+import { createPasswordsClient, passwordsError, type PasswordsClient } from '../../../../.eliza/patched/plugins/plugin-native-passwords/src/client.ts';
+import { filterEntries, normalizeWebsite } from '../../../../.eliza/patched/plugins/plugin-native-passwords/src/bindings.ts';
+import type { ElizaPasswordsPlugin, PasswordBinding, PasswordEntrySummary, PasswordsStatus } from '../../../../.eliza/patched/plugins/plugin-native-passwords/src/definitions.ts';
+
+/**
+ * Settings → Password manager over the shared plugin-native-passwords vault.
+ *
+ * Secrets boundary: the renderer only ever holds a password the user is typing for this form
+ * (module memory, cleared on save, leave, lock and background). Native responses are metadata,
+ * revalidated by the shared client. Nothing here is written to view state, storage, the agent
+ * context, logs or toasts. While any password page is open the agent observation is paused
+ * (see passwordSurfaceOpen in agent-adapter.ts).
+ */
+type Bag = Record<string, any>;
+type Draft = { id?: string; label: string; username: string; website: string; keep: PasswordBinding[]; password: string; generate: boolean; length: number; confirmDelete: boolean; error: string };
+export const PASSWORD_PAGES: readonly string[] = ['password-provider', 'password-entry'];
+export const passwordSurfaceOpen = (settings: Bag | undefined | null) => PASSWORD_PAGES.includes(String(settings?.page || ''));
+
+let client: PasswordsClient | null | undefined;
+let resolving: Promise<PasswordsClient | null> | undefined;
+let status: PasswordsStatus | null = null, entries: PasswordEntrySummary[] | null = null;
+let query = '', busy = '', notice = '', draft: Draft | null = null, generation = 0, active = false;
+let expiry: ReturnType<typeof setTimeout> | undefined;
+let notify: () => void = () => {};
+
+/** Native vault on Android; the flag-only development vault in the browser dev profile; else none. */
+function resolveClient(): Promise<PasswordsClient | null> {
+  if (client !== undefined) return Promise.resolve(client);
+  resolving ||= (async () => {
+    if (Capacitor.isNativePlatform()) client = createPasswordsClient(registerPlugin<ElizaPasswordsPlugin>('ElizaPasswords'));
+    else if (devSurfacesEnabled && browserDevProfile) client = createPasswordsClient((await import('./dev-vault')).createDevelopmentVault());
+    else client = null;
+    return client;
+  })();
+  return resolving;
+}
+
+function clearSecrets() { if (draft) draft.password = ''; draft = null; }
+function locked(message = '') {
+  entries = null; clearSecrets(); if (status) status = { ...status, locked: true, unlockRemainingMs: 0 };
+  if (expiry) clearTimeout(expiry); expiry = undefined; notice = message;
+}
+
+async function refresh() {
+  const token = ++generation, vault = await resolveClient();
+  if (!vault || token !== generation) { notify(); return; }
+  try {
+    const next = await vault.status();
+    if (token !== generation) return;
+    status = next;
+    if (next.locked) locked(notice);
+    else {
+      const list = await vault.list();
+      if (token !== generation) return;
+      entries = list;
+      if (expiry) clearTimeout(expiry);
+      // Reflect the native unlock window; native code enforces it independently.
+      expiry = setTimeout(() => { locked('Locked after inactivity.'); notify(); }, Math.max(1000, next.unlockRemainingMs));
+    }
+  } catch (error) {
+    if (token !== generation) return;
+    const failure = passwordsError(error);
+    if (failure.code === 'locked') locked('Locked after inactivity.'); else notice = failure.message;
+  }
+  notify();
+}
+
+async function run(name: string, task: (vault: PasswordsClient) => Promise<void>) {
+  const vault = await resolveClient();
+  if (!vault || busy) return;
+  busy = name; notice = ''; notify();
+  try { await task(vault); }
+  catch (error) {
+    const failure = passwordsError(error);
+    if (failure.code === 'locked') locked('Locked after inactivity.');
+    else if (draft && (name === 'save' || name === 'remove')) draft.error = failure.message;
+    else notice = failure.message;
+  } finally { busy = ''; notify(); }
+}
+
+/** Leaving the password pages, unmounting or backgrounding locks and forgets everything. */
+export function leavePasswordManager() {
+  if (!active) return;
+  active = false; ++generation; query = ''; notice = ''; locked();
+  void resolveClient().then(vault => vault?.lock()).catch(() => {});
+}
+
+export function passwordManagerLifecycle(changed: () => void) {
+  notify = changed;
+  const hidden = () => { if (document.hidden) { leavePasswordManager(); notify(); } };
+  document.addEventListener('visibilitychange', hidden);
+  window.addEventListener('pagehide', leavePasswordManager);
+  return () => { document.removeEventListener('visibilitychange', hidden); window.removeEventListener('pagehide', leavePasswordManager); leavePasswordManager(); };
+}
+
+/** True while the password pages hold an unlocked listing (metadata only). */
+export const passwordManagerHoldsEntries = () => active && entries !== null;
+
+/** Called by the Settings refresh (open, resume, explicit refresh) while the page is shown. */
+export function refreshPasswordManager() { if (active) void refresh(); }
+
+interface Helpers { info(label: string, val: string): Bag; group(rows: Bag[]): Bag; toast(message: string): void; set(patch: Bag): void; ic: Bag }
+
+const nav = (label: string, go: () => void, extra: Bag = {}): Bag => ({ kNav: true, label, lbl: extra.aria || label, chev: !extra.val, noAB: true, go, hasSub: !!extra.sub, sub: extra.sub || '', hasVal: !!extra.val, val: extra.val || '', busy: !!busy });
+const button = (label: string, go: () => void, primary = false, disabled = false): Bag => ({ kBtn: true, label, go, dis: disabled || !!busy, noAB: true, css: primary && !disabled ? 'background:var(--acc);color:#fff' : 'background:var(--s2)' });
+const input = (ic: Bag, label: string, placeholder: string, type: string, value: string, change: (value: string) => void, icon = 'lock'): Bag => ({ kInput: true, label, ph: placeholder, type, value, d: ic[icon] || ic.lock, hasIcon: true, noAB: true, change: (event: Event) => change((event.target as HTMLInputElement).value) });
+const captioned = (helpers: Helpers, cap: string, rows: Bag[], plain = false): Bag => ({ ...helpers.group(rows), ...(plain ? { css: 'display:flex;flex-direction:column;gap:10px' } : {}), cap, hasCap: !!cap });
+const bindingText = (entry: PasswordEntrySummary) => entry.bindings.map(binding => binding.display).join(', ') || 'No website';
+
+function openEntry(helpers: Helpers, entry: PasswordEntrySummary | null) {
+  clearSecrets();
+  draft = { id: entry?.id, label: entry?.label || '', username: entry?.username || '', website: '', keep: entry ? [...entry.bindings] : [], password: '', generate: false, length: 20, confirmDelete: false, error: '' };
+  helpers.set({ page: 'password-entry' });
+}
+
+function save(helpers: Helpers) {
+  const current = draft; if (!current) return;
+  current.error = '';
+  let websites: string[];
+  try { websites = current.website.split(/[\s,]+/).filter(Boolean).map(normalizeWebsite); }
+  catch (error) { current.error = (error as Error).message; notify(); return; }
+  if (!current.label.trim()) { current.error = 'Enter a name.'; notify(); return; }
+  if (!websites.length && !current.keep.length) { current.error = 'Add at least one website.'; notify(); return; }
+  if (!current.id && !current.generate && !current.password) { current.error = 'Enter or generate a password.'; notify(); return; }
+  const secret = current.generate ? undefined : current.password || undefined;
+  current.password = '';
+  void run('save', async vault => {
+    const result = await vault.save({ ...(current.id ? { id: current.id } : {}), label: current.label.trim(), username: current.username, websites, keepBindings: current.keep.map(binding => binding.facet), ...(current.generate ? { generate: { length: current.length } } : secret ? { password: secret } : {}) });
+    if (draft !== current) return;
+    draft = null;
+    notice = result.generated ? `Saved with a new ${result.length}-character password.` : 'Password saved.';
+    helpers.set({ page: 'password-provider' });
+    await refresh();
+  });
+}
+
+/** Rows for Settings → Password manager, placed above the other-provider (Proton) section. */
+export function passwordManagerGroups(helpers: Helpers): Bag[] {
+  if (!active) { active = true; notice = ''; void refresh(); }
+  const vault = client;
+  if (vault === undefined) return [captioned(helpers, 'Alpha Phone passwords', [helpers.info('Saved passwords', 'Checking…')])];
+  if (vault === null) return [captioned(helpers, 'Alpha Phone passwords', [helpers.info('Saved passwords', 'Available in the Android app')])];
+  const groups: Bag[] = [];
+  const head: Bag[] = [];
+  if (!status) head.push(helpers.info('Saved passwords', notice || 'Checking…'));
+  else if (!status.available) head.push(helpers.info('Saved passwords', status.reason === 'no-screen-lock' ? 'Set a screen lock first' : 'Unavailable on this device'));
+  else if (status.locked || !entries) {
+    head.push(helpers.info('Vault', 'Locked'));
+    head.push(nav(busy === 'unlock' ? 'Unlocking…' : 'Unlock passwords', () => void run('unlock', async v => { await v.unlock(); await refresh(); }), { sub: status.biometric ? 'Fingerprint, face or screen lock' : 'Screen lock' }));
+  } else {
+    head.push(helpers.info('Vault', `Unlocked · locks after ${status.unlockSeconds || 60} s or when you leave`));
+    head.push(nav('Lock passwords', () => void run('lock', async v => { await v.lock(); locked(); })));
+  }
+  if (notice) head.push(helpers.info('Status', notice));
+  groups.push(captioned(helpers, 'Alpha Phone passwords', head));
+  if (status && !status.locked && entries) {
+    groups.push(captioned(helpers, '', [input(helpers.ic, 'Search passwords', 'Search passwords', 'search', query, value => { query = value; notify(); }, 'search'), button('Add password', () => openEntry(helpers, null), true)], true));
+    const shown = filterEntries(entries, query);
+    groups.push(helpers.group(shown.length ? shown.map(entry => nav(entry.label, () => openEntry(helpers, entry), { sub: `${entry.username || 'No username'} · ${bindingText(entry)}`, aria: `Open ${entry.label}` })) : [helpers.info(entries.length ? 'No matching passwords' : 'No saved passwords', '')]));
+  }
+  if (status) {
+    const selection = { 'this-app': 'Alpha Phone passwords', other: 'Another provider', none: 'None selected', unknown: 'Not checked' }[status.autofill.selected];
+    groups.push(captioned(helpers, 'Autofill', [
+      helpers.info('Autofill service', status.autofill.supported === false ? 'Unavailable for this device or user' : selection),
+      ...(status.autofill.supported === false ? [] : [nav(busy === 'autofill' ? 'Opening…' : 'Set as autofill service', () => void run('autofill', async v => {
+        const result = await v.openAutofillSettings();
+        helpers.toast(result.destination === 'autofill-picker' ? 'Confirm Alpha Phone passwords in Android, then return here.' : 'Opened Android settings. Search for autofill to choose a provider.');
+      }), { sub: 'Android asks you to confirm' })]),
+      nav('Refresh autofill status', () => void refresh()),
+    ]));
+  }
+  return groups;
+}
+
+/** The add/edit page, or null when no entry is open. */
+export function passwordEntryPage(helpers: Helpers, back: () => void): Bag | null {
+  const current = draft;
+  if (!current || !entries) return null;
+  const set = (patch: Partial<Draft>) => { Object.assign(current, patch, { error: '' }); notify(); };
+  const groups: Bag[] = [
+    captioned(helpers, '', [
+      input(helpers.ic, 'Name', 'Name', 'text', current.label, value => set({ label: value }), 'user'),
+      input(helpers.ic, 'Username', 'Username or email', 'text', current.username, value => set({ username: value }), 'mail'),
+    ], true),
+    captioned(helpers, 'Websites and apps', [
+      ...current.keep.map(binding => nav(binding.display, () => set({ keep: current.keep.filter(item => item.facet !== binding.facet) }), { sub: binding.kind === 'android' ? 'App · verified publisher' : 'Website', val: 'Remove', aria: `Remove ${binding.display}` })),
+      input(helpers.ic, 'Add website', 'example.com', 'url', current.website, value => set({ website: value }), 'globe'),
+    ]),
+    captioned(helpers, 'Password', current.generate ? [
+      helpers.info('New password', `${current.length} characters, generated on this phone when you save`),
+      { kSeg: true, label: 'Length', noAB: true, opts: [16, 20, 32].map(length => ({ label: String(length), on: current.length === length, aria: `Length: ${length}`, css: current.length === length ? 'background:var(--acc);color:#fff' : 'color:var(--mut)', pick: () => set({ length }) })) },
+      nav('Type a password instead', () => set({ generate: false })),
+    ] : [
+      input(helpers.ic, 'Password', current.id ? 'Leave empty to keep the current password' : 'Password', 'password', current.password, value => set({ password: value })),
+      nav('Generate a strong password', () => set({ generate: true, password: '' })),
+    ]),
+  ];
+  if (current.id) {
+    const id = current.id;
+    groups.push(helpers.group([
+      nav('Show password', () => void run('reveal', async v => { await v.reveal(id); }), { sub: 'Shown by Android, hidden after 30 s' }),
+      nav('Copy password', () => void run('copy', async v => { const r = await v.copy(id); helpers.toast(`Copied. Cleared from the clipboard after ${Math.round(r.clearsAfterMs / 1000)} s.`); })),
+    ]));
+  }
+  const actions: Bag[] = [];
+  if (current.error) actions.push(helpers.info('Not saved', current.error));
+  actions.push(button(busy === 'save' ? 'Saving…' : 'Save', () => save(helpers), true));
+  if (current.id) {
+    const id = current.id;
+    actions.push(button(current.confirmDelete ? 'Tap again to delete' : 'Delete password', () => {
+      if (!current.confirmDelete) { set({ confirmDelete: true }); return; }
+      void run('remove', async v => { await v.remove(id); if (draft === current) draft = null; notice = 'Password deleted.'; helpers.set({ page: 'password-provider' }); await refresh(); });
+    }));
+  }
+  groups.push(captioned(helpers, '', actions, true));
+  return { isTop: false, notTop: true, cls: 'enter', z: 5, title: current.id ? 'Edit password' : 'New password', hasTitle: true, backLabel: 'Back to Password manager', back: () => { clearSecrets(); back(); }, hero: {}, groups };
+}
