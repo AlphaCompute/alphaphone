@@ -6,7 +6,7 @@ Mock mode, prototype fixtures, the development profile, device controls, simulat
 
 ## October 7 owner decisions
 
-The product owner's 2026-10-07 decisions are recorded in [decisions](decisions.md#october-7-owner-product-decisions) (items 9–16) and applied below: voice is reviewed and sent by the user; Gmail/Email is in MVP scope and Telegram/Discord are deferred; cross-app notification mirroring stays opt-in, off by default and is not an MVP gate; browser tabs keep sign-ins with an explicit ephemeral private tab; an integrated password manager is an elizaOS upstream component with Proton Pass optional; deleted text notes go to a Trash that empties after 3 days; the browser build gets speech recognition (local preferred, cloud only by disclosed opt-in); OCR is English only for now. Powered-off scheduling (A-09) and the manual-send latency method (A-10) remain open.
+The product owner's 2026-10-07 decisions are recorded in [decisions](decisions.md#october-7-owner-product-decisions) (P-01 to P-08) and applied below: voice is reviewed and sent by the user; Gmail/Email is in MVP scope and Telegram/Discord are deferred; cross-app notification mirroring stays opt-in, off by default and is not an MVP gate; browser tabs keep sign-ins with an explicit ephemeral private tab; an integrated password manager is an elizaOS upstream component with Proton Pass optional; deleted text notes go to a Trash that empties after 3 days; the browser build gets speech recognition (local preferred, cloud only by disclosed opt-in); OCR is English only for now. Powered-off scheduling (A-09) and the manual-send latency method (A-10) remain open.
 
 ## Resident agent and browser development
 

@@ -1,6 +1,6 @@
 # Password-provider setup
 
-October 7 owner decision ([decisions](decisions.md#october-7-owner-product-decisions), item 13): an integrated password manager is in scope as a reusable elizaOS upstream component consumed by Alpha. Proton Pass, described below, remains an optional alternative provider.
+October 7 owner decision ([decisions](decisions.md#october-7-owner-product-decisions), P-05): an integrated password manager is in scope as a reusable elizaOS upstream component consumed by Alpha. Proton Pass, described below, remains an optional alternative provider.
 
 Alpha Settings → Password manager reports a read-only Android snapshot. The Browser menu opens the same detail page. The UI distinguishes an absent, disabled, publisher-unrecognized or verified Proton package; no provider, another provider, or Proton selection; and Android autofill availability. Unknown observations remain unknown. A selected package is named as verified Proton only when its publisher matches the pinned certificate. A disabled verified package is labeled disabled.
 

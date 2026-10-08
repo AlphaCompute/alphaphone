@@ -2,7 +2,7 @@
 
 Source implementation added September 30; **not yet built or device accepted**. Existing Build75 channel recovery remains acceptance for Alpha Phone's own notifications only. New source implements opt-in listener access, selected app signing identities, transient previews, active snapshot actions, separately consented encrypted metadata history, and native mock pause before activation. The synthetic companion flow and runner below are pending root-owned execution. This source status must not be reported as cross-app acceptance.
 
-October 7 engineering disposition ([decisions](decisions.md#october-7-owner-product-decisions), item 11): keep this feature strictly opt-in and off by default, outside onboarding, limited to user-selected apps with previews hidden when locked, and clearly disclosed. It is not an MVP acceptance gate. Re-evaluate it before any Play Store distribution because of notification-listener policy.
+October 7 engineering disposition ([decisions](decisions.md#october-7-owner-product-decisions), P-03): keep this feature strictly opt-in and off by default, outside onboarding, limited to user-selected apps with previews hidden when locked, and clearly disclosed. It is not an MVP acceptance gate. Re-evaluate it before any Play Store distribution because of notification-listener policy.
 
 ## Current implementation and exact prototype
 
