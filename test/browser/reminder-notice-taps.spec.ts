@@ -9,11 +9,15 @@ for(const mode of ['recover','stale','read-failure','draft-race','navigation-rac
   const f=w.reminderTapFixture={mode,pending:{token:'original-token',target,retained:!['stale','dismiss-stale'].includes(mode)},consumed:[] as string[],reads:0,allow:mode==='chooser-close'||localStorage.getItem('tap-fixture-recover')==='1',release:null as any};
   const methods=(names:string[])=>names.map(name=>({name,rtype:'promise'}));
   w.Capacitor={PluginHeaders:[
+   {name:'AlphaNotifications',methods:methods(['status','crossAppStatus','addListener','removeListener'])},
+   {name:'AlphaVoiceCloud',methods:methods(['checkPermissions'])},
    {name:'DailyApps',methods:methods(['surfaceInfo','pendingReminderTap','consumeReminderTap','dismissReminderTap','listReminders','addListener','removeListener'])},
    {name:'DeviceApps',methods:methods(['buildInfo'])},
    {name:'AlphaConnection',methods:methods(['secureRead','secureWrite','secureRemove','addListener','removeListener'])},
    {name:'AlphaHostedResults',methods:methods(['disableBackground','addListener','removeListener'])},
   ],nativePromise:async(plugin:string,method:string,input:any)=>{
+   if(plugin==='AlphaNotifications')return {permissionGranted:true,appEnabled:true};
+   if(plugin==='AlphaVoiceCloud')return {microphone:'granted'};
    if(plugin==='DailyApps'){
     if(method==='surfaceInfo')return {developmentBuild:true,assistant:false,reminderTapVersion:1};
     if(method==='pendingReminderTap'){f.reads++;return f.allow?f.pending:{};}

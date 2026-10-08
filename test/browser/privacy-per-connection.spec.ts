@@ -34,6 +34,8 @@ async function nativeStub(page: Page, scenario: Scenario, options: { strayKeyInS
     const methods = (names: string[]) => names.map(name => ({ name, rtype: 'promise' }));
     w.Capacitor = {
       PluginHeaders: [
+        { name: 'AlphaNotifications', methods: methods(['status','crossAppStatus','addListener','removeListener']) },
+        { name: 'AlphaVoiceCloud', methods: methods(['checkPermissions']) },
         { name: 'Agent', methods: methods(['getStatus', 'start', 'stop', 'request', 'providerStatus']) },
         { name: 'AlphaConnection', methods: methods(['secureRead', 'secureWrite','secureCompareExchange', 'secureRemove', 'request', 'cancel', 'addListener', 'removeListener', 'pauseNotificationCollection']) },
         { name: 'AlphaActionJournal', methods: methods(['list']) },
@@ -41,6 +43,8 @@ async function nativeStub(page: Page, scenario: Scenario, options: { strayKeyInS
         { name: 'AlphaDevice', methods: methods(['snapshot']) },
       ],
       nativePromise: async (plugin: string, method: string, input: any) => {
+        if (plugin === 'AlphaNotifications') return {permissionGranted:true,appEnabled:true};
+        if (plugin === 'AlphaVoiceCloud') return {microphone:'granted'};
         const f = w.privacyFixture;
         const respond = (value: unknown) => { f.calls.push({ plugin, method, input, value }); return value; };
         if (plugin === 'Agent') {
@@ -120,13 +124,13 @@ for (const { scenario, redaction, model } of cases) test(`Privacy, Models and Ab
   for (const other of Object.values(REDACTION)) if (other !== redaction) expect(text).not.toContain(other);
   for (const row of fixtureActivity) expect(text).not.toMatch(row);
 
-  await page.getByRole('button', { name: 'Back', exact: false }).first().click();
+  await page.getByRole('button', { name: 'Back to Settings', exact: true }).click();
   await page.getByRole('button', { name: 'Models', exact: true }).click();
   await expect(page.locator('.st-page, body').getByText(model, { exact: true }).first()).toBeVisible();
   text = await page.locator('body').innerText();
   if (scenario !== 'resident') expect(text).not.toContain('Cerebras · ');
 
-  await page.getByRole('button', { name: 'Back', exact: false }).first().click();
+  await page.getByRole('button', { name: 'Back to Settings', exact: true }).click();
   await page.getByRole('button', { name: 'About', exact: true }).click();
   await expect(page.getByText(model, { exact: true }).first()).toBeVisible();
   const fixture = await page.evaluate(() => (window as any).privacyFixture);
@@ -142,7 +146,7 @@ test('provider key never reaches renderer state, bridge payloads or test output'
   await openSettings(page, 'Models');
   await expect(page.getByText('Cerebras · qwen-3.8-27b', { exact: true }).first()).toBeVisible();
   for (const tab of ['About', 'Privacy & data']) {
-    await page.getByRole('button', { name: 'Back', exact: false }).first().click();
+    await page.getByRole('button', { name: 'Back to Settings', exact: true }).click();
     await page.getByRole('button', { name: tab, exact: true }).click();
   }
   await expect(page.getByText(REDACTION.resident, { exact: true })).toBeVisible();

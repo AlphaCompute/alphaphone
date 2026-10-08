@@ -10,14 +10,17 @@ for(const scenario of ['two','other-owner','wrong-version','unconfirmed','naviga
    const f=w.deliveryFixture={configured:0,cancelled:0,disabled:[] as string[],nativeSync:0,foregroundSync:0,polling:true,enabled:false,notifications:false,events:[] as string[],input:null as any,release:null as any,holdRetire:false,retireRelease:null as any,mockHold:false,mockReleases:{} as Record<string,()=>void>,removed:[] as string[]};
    const methods=(names:string[])=>names.map(name=>({name,rtype:'promise'}));
    w.Capacitor={PluginHeaders:[
-    {name:'AlphaNotifications',methods:methods(['pendingWorkflowTap','consumeWorkflowTap','addListener','removeListener'])},
+    {name:'AlphaVoiceCloud',methods:methods(['checkPermissions'])},
+    {name:'AlphaNotifications',methods:methods(['status','crossAppStatus','pendingWorkflowTap','consumeWorkflowTap','addListener','removeListener'])},
     {name:'Agent',methods:methods(['getStatus','start','request'])},
     {name:'AlphaConnection',methods:methods(['secureRead','secureWrite','secureCompareExchange','secureRemove','cancel','addListener','removeListener','pauseNotificationCollection'])},
     {name:'AlphaActionJournal',methods:methods(['list'])},
     {name:'DeviceApps',methods:methods(['buildInfo'])},
     {name:'AlphaHostedResults',methods:methods(['beginBackground','cancelBackground','configureBackground','disableBackground','inboxHistory','syncInbox','status','setBackgroundPolling','enable','pendingResult','addListener','removeListener'])},
    ],nativePromise:async(plugin:string,method:string,input:any)=>{
+    if(plugin==='AlphaVoiceCloud')return {microphone:'granted'};
     if(plugin==='AlphaNotifications'){
+     if(method==='status'||method==='crossAppStatus')return {permissionGranted:true,appEnabled:true};
      if(method==='pendingWorkflowTap'){f.pendingReads=(f.pendingReads||0)+1;return f.taps?.[0]||{};}
      if(method==='consumeWorkflowTap'){f.consumed=(f.consumed||[]);if(f.taps[0]?.token!==input.token)throw Error('Changed');f.consumed.push(input.token);f.taps.shift();return {};}
      return {};

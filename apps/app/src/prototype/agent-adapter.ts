@@ -624,7 +624,13 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
     finally { if (this.live) this.setState({ typing: false }); }
   };
   p.agentSay = function (text: string, card?: Shell) {
-    this.setState((previous: Shell) => ({ chat: previous.chat === 'full' ? 'full' : 'sheet', msgs: [...(previous.msgs || []), { id: crypto.randomUUID(), from: 'agent', text, card: card || null }] }));
+    this.setState((previous: Shell) => {
+      const chat = previous.chat === 'full' ? 'full' : 'sheet';
+      // Recovery and a chat reply can publish the same pending action. Decide
+      // inside the state update so either arrival order retains one approval.
+      if (card?.proposalId && (previous.msgs || []).some((message: Shell) => message.card?.proposalId === card.proposalId)) return { chat };
+      return { chat, msgs: [...(previous.msgs || []), { id: crypto.randomUUID(), from: 'agent', text, card: card || null }] };
+    });
   };
   p.reply = function () { return { text: 'Connect an agent to continue.' }; };
   p.cardAct = async function (message: Shell) {

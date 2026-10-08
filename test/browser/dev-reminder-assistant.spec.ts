@@ -1,4 +1,4 @@
-import {presentDeviceRecordOperation} from '../../vendor/eliza/plugins/plugin-assistant/src/services/device-actions/device-record-presentation.ts';
+import {presentDeviceRecordOperation} from '../../apps/app/src/runtime/device-record-presentation.ts';
 import { returnToApps } from './app-navigation';
 import { test, expect } from '@playwright/test';
 
