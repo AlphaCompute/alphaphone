@@ -18,7 +18,7 @@ import static org.junit.Assert.*;
 public final class BrowserContinuityInstrumentedTest {
  private final BrowserFlowInstrumentedTest browser=new BrowserFlowInstrumentedTest();
  private String host(String script)throws Exception{return WebViewTestDriver.evaluate(script);}
- private void ready(String predicate)throws Exception{for(int i=0;i<200;i++){if("true".equals(host("Boolean("+predicate+")")))return;SystemClock.sleep(100);}fail("Browser continuity control/state missing");}
+ private void ready(String predicate)throws Exception{for(int i=0;i<200;i++){if("true".equals(host("Boolean("+predicate+")")))return;SystemClock.sleep(100);}fail("Browser continuity control/state missing: "+predicate.substring(0,Math.min(200,predicate.length()))+"; "+browser.diagnostics());}
  private String button(String label){return "[...document.querySelectorAll('[data-screen] button')].find(e=>e.getAttribute('aria-label')==="+JSONObject.quote(label)+")";}
  private void click(String label)throws Exception{ready(button(label));host("("+button(label)+").click()");}
  private void app(String label)throws Exception{host(AppNavigation.request(label));ready(AppNavigation.selected(label));}
@@ -148,7 +148,7 @@ public final class BrowserContinuityInstrumentedTest {
    ready("document.documentElement.dataset.connectionMode==='mock'&&document.querySelector('.mock-mode-banner')");resetVerified(second,url);
    assertEquals("Mock renderer does not receive private bookmark URL","false",host("document.body.textContent.includes("+JSONObject.quote(token)+")"));
    WebViewTestDriver.navigateHostDocument("document.querySelector('.mock-mode-banner button').click()",true);ready("document.documentElement.dataset.connectionMode==='live'&&!document.querySelector('.mock-mode-banner')");
-   assertSame(first.activity,snapshot().activity);app("Browser");click("Menu");click("New private tab");address(url);page(url);assertEquals("Fresh private profile after mock exit","null",browser.child("localStorage.getItem('reload_private')"));
+   assertSame(first.activity,snapshot().activity);app("Browser");page(url);click("Menu");click("New private tab");address(url);page(url);assertEquals("Fresh private profile after mock exit","null",browser.child("localStorage.getItem('reload_private')"));
    click("Menu");click("Bookmarks and history");click("Bookmarks");ready(button(url));
   }finally{if(store.read().contains(url))store.change(url,false);}
  }
