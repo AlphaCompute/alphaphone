@@ -1,0 +1,11 @@
+export type BrowserSpeechFile = {role: string; published: string; source: string; bytes: number; sha256: string};
+export type BrowserSpeechConfig = {engine: string; model: string; language: string; source: {repository: string; revision: string; url: string}; runtime: {package: string; version: string}; files: Array<{role: string; path: string; bytes: number; sha256: string}>};
+export const ROOT: string;
+export const CONFIG: string;
+export const PUBLISHED: string;
+export function readConfig(root?: string): BrowserSpeechConfig;
+export function modelDirectory(root?: string, env?: Record<string, string | undefined>, config?: BrowserSpeechConfig): string;
+export function browserSpeechFiles(root?: string, env?: Record<string, string | undefined>): {config: BrowserSpeechConfig; directory: string; files: BrowserSpeechFile[]; problems: string[]};
+export function browserSpeechManifest(config: BrowserSpeechConfig, files: BrowserSpeechFile[]): Record<string, unknown>;
+export function ensureBrowserSpeechAssets(root?: string, env?: Record<string, string | undefined>, log?: (message: string) => void): Promise<{config: BrowserSpeechConfig; directory: string; files: BrowserSpeechFile[]; problems: string[]}>;
+export function pruneAndroidBrowserSpeech(root?: string): boolean;

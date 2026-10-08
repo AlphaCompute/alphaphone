@@ -130,6 +130,14 @@ jobs:
           python3 -m pip install cmake==4.0.3
           test "$(cmake --version | head -1)" = "cmake version 4.0.3"
       - run: python3 scripts/ci/resident-phase.py --name product-install --seconds 600 npm ci
+      # Pinned in-browser speech model (size/hash verified on every use; Android prunes it).
+      - uses: actions/cache@v4
+        with:
+          path: .eliza/browser-speech
+          key: browser-speech-${{ hashFiles('config/browser-speech.json') }}
+      - name: Acquire verified browser speech model
+        timeout-minutes: 10
+        run: npm run browser-speech:prepare
       - run: node --test vendor/eliza/packages/os/scripts/__tests__/stage-launcher-overlay.node.test.ts
       # Cache only acquisition inputs. Every hit is size/hash verified; generated
       # AARs, extracted sources and models are rebuilt in this clean job.
