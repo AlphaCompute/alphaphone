@@ -66,7 +66,7 @@ test('a stored mock selection on Android opens the chooser and never enters mock
   await page.goto('/?tools=1');
   const chooser = page.locator('.alpha-connection');
   await expect(chooser).toBeVisible();
-  await expect(chooser.getByText(/real agents only/)).toBeVisible();
+  await expect(chooser.getByRole('button',{name:'Sign in with Eliza Cloud',exact:true})).toBeVisible();
   await expect(page.locator('html')).toHaveAttribute('data-connection-mode', 'live');
   await expect(page.locator('.mock-mode-banner')).toHaveCount(0);
   expect(new URL(page.url()).searchParams.has('mode')).toBe(false);
@@ -202,3 +202,62 @@ test('production ignores the development render-failure hook', async ({ page }) 
   await expect(page.getByRole('alertdialog')).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Agent connection', exact: true })).toBeVisible();
 });
+
+for (const mode of ['signed-out','empty','unavailable','funded','replaced','unpackaged'] as const) {
+ test(`resident billing onboarding: ${mode}`,async({page})=>{
+  await page.addInitScript(mode=>{
+   const w=window as any;w.androidBridge={};w.residentCalls=[];
+   const id='9f1dc45a-4011-4e44-947a-30d999d24fa5';
+   const values:Record<string,string>={};let credentialReads=0;
+   if(mode!=='signed-out'&&mode!=='unpackaged')values['cloud:production']=JSON.stringify({token:'synthetic-cloud-key',credentialId:id,expiresAt:Date.now()+60000});
+   const methods=(names:string[])=>names.map(name=>({name,rtype:'promise'}));
+   w.Capacitor={PluginHeaders:[
+    {name:'DeviceApps',methods:methods(['buildInfo'])},
+    {name:'Agent',methods:methods(['getStatus','start','stop','configureCloudProvider','request'])},
+    {name:'AlphaConnection',methods:methods(['secureRead','secureWrite','secureRemove','secureCompareExchange','request','cancel','openExternal'])},
+    {name:'AlphaNotifications',methods:methods(['status','crossAppStatus','addListener','removeListener'])},
+    {name:'AlphaVoiceCloud',methods:methods(['checkPermissions'])},
+   ],nativePromise:async(plugin:string,method:string,input:any)=>{
+    w.residentCalls.push({plugin,method,path:input?.path,url:input?.url});
+    if(plugin==='DeviceApps')return{launcher:false,version:'billing-fixture'};
+    if(plugin==='AlphaNotifications')return{permissionGranted:true,appEnabled:true};
+    if(plugin==='AlphaVoiceCloud')return{microphone:'granted'};
+    if(plugin==='Agent'){
+     if(method==='getStatus')return{packaged:mode!=='unpackaged',state:'stopped',serviceActive:false,socketListening:false};
+     if(method==='request'){
+      const body=input.path==='/api/auth/me'?{identity:{id,kind:'owner'},access:{role:'OWNER',mode:'local'}}:
+       input.path==='/api/agents'?{agents:[{id,name:'Alpha',status:'running'}]}:
+       input.path==='/api/conversations'?{conversations:[]}:{};
+      return {status:200,body:JSON.stringify(body)};
+     }
+     return {};
+    }
+    if(method==='secureRead'){if(input.slot==='cloud:production'&&++credentialReads===5&&mode==='replaced')values[input.slot]=JSON.stringify({token:'synthetic-replacement-key',credentialId:'f04d4d24-6978-42a2-a968-995d76debf77',expiresAt:Date.now()+60000});return{value:values[input.slot]??null};}
+    if(method==='secureWrite'){values[input.slot]=input.value;return{};}
+    if(method==='secureRemove'){delete values[input.slot];return{};}
+    if(method==='request'){
+     const path=new URL(input.url).pathname;
+     if(path==='/api/v1/user')return{status:200,data:{success:true,data:{id}}};
+     if(path==='/api/v1/credits/balance')return mode==='unavailable'?{status:503,data:{error:'temporary'}}:{status:200,data:{balance:mode==='funded'||mode==='replaced'?5:0}};
+     throw Error('Unexpected Cloud route: '+path);
+    }
+    return {};
+   }};
+  },mode);
+  await page.goto('/');
+  if(mode==='signed-out')await expect(page.getByRole('button',{name:'Sign in with Eliza Cloud',exact:true})).toBeVisible();
+  if(mode==='empty')await expect(page.getByRole('button',{name:'Add credits in Eliza Cloud',exact:true})).toBeVisible();
+  if(mode==='unavailable'){
+   await expect(page.getByRole('alert')).toContainText(/unavailable|starting/i);
+   await expect(page.getByRole('button',{name:'Add credits in Eliza Cloud',exact:true})).toHaveCount(0);
+  }
+  if(mode==='funded')await expect(page.getByRole('button',{name:'Notes',exact:true})).toBeVisible();
+  if(mode==='replaced')await expect(page.getByRole('alert')).toContainText(/account changed/i);
+  if(mode==='unpackaged'){await page.getByRole('button',{name:'Use local apps without AI',exact:true}).click();await expect(page.getByRole('button',{name:'Notes',exact:true})).toBeVisible();}
+  const calls=await page.evaluate(()=>(window as any).residentCalls);
+  expect(calls.some((c:any)=>c.url?.includes('/personal/')||c.url?.includes('/upgrade-tier'))).toBe(false);
+  const native=calls.filter((c:any)=>c.plugin==='Agent').map((c:any)=>c.method);
+  if(mode==='funded')expect(native.indexOf('stop')).toBeLessThan(native.indexOf('configureCloudProvider'));
+  else expect(native).not.toContain('start');
+ });
+}

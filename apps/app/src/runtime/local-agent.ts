@@ -10,6 +10,7 @@ export interface LocalAgentBridge {
   stop?():Promise<unknown>;
   getStatus?():Promise<{packaged?:boolean;state?:string;serviceActive?:boolean;socketListening?:boolean}>;
   configureProvider?(input:{apiKey:string;model:string}):Promise<unknown>;
+  configureCloudProvider?(input:{credentialId:string;model:string}):Promise<unknown>;
   request(input: { path: string; audioBase64?:string;requestId?:string;ownerId?:string; method: 'GET' | 'POST'; headers: Record<string,string>; body?: string; timeoutMs: number }, signal?:AbortSignal): Promise<{status:number;body?:string}>;
   stream?(input:{path:string;ownerId:string;headers:Record<string,string>;body:string},signal:AbortSignal,onText:(text:string)=>void):Promise<RemoteChatReply>;
 }
@@ -189,6 +190,13 @@ export async function configureLocalProvider(apiKey:string,model:string) {
   if(!await localAgentPackaged())throw Error('On-device agent is unavailable in this version. Connect a remote agent or use Eliza Cloud.');
   if(!native.configureProvider)throw Error('Model provider setup is unavailable.');
   return native.configureProvider({apiKey,model});
+}
+
+export async function configureLocalCloudProvider(credentialId:string) {
+  if(!Capacitor.isNativePlatform() || !await localAgentPackaged()) throw Error('The on-device runtime is unavailable in this build.');
+  await stopLocalAgent();
+  if(!native.configureCloudProvider)throw Error('Cloud billing is unavailable in this version.');
+  await native.configureCloudProvider({credentialId,model:'cerebras/qwen-3.8-27b'});
 }
 
 export async function stopLocalAgent() {

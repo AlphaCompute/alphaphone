@@ -62,7 +62,7 @@ export interface GmailMessage {
   to: string[]; cc?: string[]; replyTo?: string | null; snippet: string; receivedAt: string; unread: boolean;
 }
 export class CloudProtocolError extends Error {
-  constructor(readonly code: "invalid-response" | "http" | "expired" | "credentials-missing" | "credential-consumed" | "login-active", readonly status?: number, readonly data?: unknown) {
+  constructor(readonly code: "invalid-response" | "http" | "expired" | "credentials-missing" | "credential-consumed" | "login-active" | "account-changed", readonly status?: number, readonly data?: unknown) {
     super(`Eliza Cloud ${code}${status ? ` (${status})` : ""}`);
     this.name = "CloudProtocolError";
   }
@@ -146,6 +146,31 @@ export class CloudProtocol {
   }
   private async call(path: string, signal: AbortSignal, options: { body?: unknown; authenticated?: boolean; runtimeBase?: string; timeoutMs?: number; headers?: Record<string,string>; credentialId?: string } = {}) {
     return object(await this.requestData(path, signal, options));
+  }
+  /** Account billing only: this never selects, creates or starts a hosted agent.
+   * The credential ID binds the snapshot to one login; balance is not a spend authorization. */
+  async creditBalance(signal: AbortSignal): Promise<{ balance: number; credentialId: string }> {
+    signal.throwIfAborted();
+    const credential = await this.credentials.read(this.environment);
+    signal.throwIfAborted();
+    if (!credential?.credentialId) throw new CloudProtocolError("credentials-missing");
+    const data = await this.call("/api/v1/credits/balance", signal, {
+      authenticated: true, credentialId: credential.credentialId,
+    });
+    const current = await this.credentials.read(this.environment);
+    signal.throwIfAborted();
+    if (current?.credentialId !== credential.credentialId) throw new CloudProtocolError("account-changed");
+    if (current.expiresAt !== undefined && current.expiresAt <= Date.now()) throw new CloudProtocolError("expired");
+    const balance = typeof data.balance === "number" ? data.balance
+      : typeof data.balance === "string" && data.balance.trim() ? Number(data.balance) : NaN;
+    if (!Number.isFinite(balance)) throw new CloudProtocolError("invalid-response");
+    return { balance, credentialId: credential.credentialId };
+  }
+  /** Uses Cloud's existing hosted billing page; no checkout or payment is created here. */
+  async openTopUp(signal: AbortSignal): Promise<void> {
+    signal.throwIfAborted();
+    await this.openExternal(`https://${this.authority.agents}/cloud/billing`, signal);
+    signal.throwIfAborted();
   }
   /** Scoped personal onboarding, using the existing native credential transport. */
   async personal(signal: AbortSignal): Promise<CloudPersonalProtocol> {

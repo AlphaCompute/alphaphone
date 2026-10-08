@@ -20,7 +20,7 @@ import { PersonalProtocolError, type CloudPersonalProtocol, type PersonalView, t
 import { holdPhoneInert } from './modal-inert';
 import { pauseHostedBackground } from './hosted-background';
 import {developmentDeviceStore,developmentActionJournal} from './local-agent-storage';
-import { stopLocalAgent, configureLocalProvider, LocalAgentProtocol, localAgentPackaged, browserLocalAgentEnabled } from './local-agent';
+import { stopLocalAgent, configureLocalProvider, configureLocalCloudProvider, LocalAgentProtocol, localAgentPackaged, browserLocalAgentEnabled } from './local-agent';
 import type {DeviceRecovery} from "./device-actions";
 import type { WorkflowPhoneReview } from './workflow-device-contract';
 import { AlphaClientError } from './alpha-client';
@@ -40,6 +40,7 @@ type Selection = {kind:'development';profile:DevelopmentProfile;account?:string}
 export interface CloudServiceSession { environment: CloudEnvironment; userId: string; organizationId?: string; sessionId: string; credentialId: string }
 export interface RestoredMessage { id: string; from: 'user' | 'agent'; text: string }
 export interface ConnectionSnapshot {
+  residentBalance?: number | null;
   cloudPersonal?: PersonalSetupState;
   phoneActionsAvailable: boolean; phoneCapabilityReason: string;
   conversations: Array<{ id: string; title: string }>;
@@ -272,7 +273,23 @@ async function connectDevelopment(profile:DevelopmentProfile,signal:AbortSignal)
  // This explicitly gated browser fixture implements reminder v2; real peers still negotiate it.
  const identity=await readDevelopmentIdentity(profile,signal);const client=new LocalAgentProtocol(developmentBridge(profile,identity));const {session,name}=await client.connect(signal);signal.throwIfAborted();const credential=developmentCredential(profile,identity),scope=await actionScope(JSON.stringify([client.origin,session.ownerId,session.agentId,credential.installationId]));const actions=new DeviceActions(session,credential,scope,(path,body,signal)=>client.request(path,body,signal),developmentJournal(profile,identity),(op,id,context,signal,binding,workflowRoute,journalIdentity)=>deviceExecutor(op,id,context,signal,binding,workflowRoute,journalIdentity),(op,id,binding,signal)=>deviceRecovery?deviceRecovery(op,id,binding,signal):Promise.resolve({status:'unknown'}),true,true);await retire();signal.throwIfAborted();await verifyDevelopmentIdentity(identity,signal);const workflowProtocol=2 as const;save({kind:'development',profile,...(identity.account?{account:identity.account}:{})});developmentVoiceExpiresAt=Date.now()+3600000;activate({kind:'resident',remote:client,origin:client.origin,actions,workflowProtocol},session,name);
 }
+async function admitCloudResident(signal:AbortSignal):Promise<boolean> {
+  cloud = makeCloud('production');
+  await verifyService(cloud,signal);
+  const account=service;
+  const credits=await cloud.creditBalance(signal);
+  signal.throwIfAborted();
+  if(!account || service!==account || credits.credentialId!==account.identity.credentialId)throw Error('Cloud account changed. Sign in again.');
+  update({residentBalance:credits.balance});
+  if(credits.balance<=0){await stopLocalAgent();await retire();update({open:true,message:'Add credits to use your agent. Your saved data stays on this device.'});return false;}
+  await configureLocalCloudProvider(credits.credentialId);
+  signal.throwIfAborted();
+  if(service!==account || (await cloudCredentialStore.read('production'))?.credentialId!==account.identity.credentialId)throw Error('Cloud account changed. Sign in again.');
+  return true;
+}
+
 async function connectResident(signal: AbortSignal) {
+  if(isAndroid && !testMocksEnabled && !await admitCloudResident(signal))return;
   if (!await localAgentPackaged()) throw new Error('The local agent is unavailable here. Connect a remote agent, sign in with Eliza Cloud, or continue offline.');
   signal.throwIfAborted();
   const client = new LocalAgentProtocol();
@@ -530,6 +547,15 @@ export const connectionController = {
         if (stored === null) { try { save({ kind: 'none' }); } catch { /* The chooser explains the choice either way. */ } update({ open: true, message: '' }); return; }
       }
       const saved = selection();
+      if (isAndroid && !testMocksEnabled && saved?.kind !== 'offline') {
+        await work('Checking your Cloud account…',async signal=>{
+          const credential=await cloudCredentialStore.read('production');
+          signal.throwIfAborted();
+          if(!credential){update({open:true,residentBalance:null,message:''});return;}
+          await connectResident(signal);
+        });
+        return;
+      }
       if (saved?.kind === 'offline') return;
       if (saved?.kind === 'mock') { const url = new URL(location.href); url.searchParams.set('mode', 'mock'); location.replace(url.href); return; }
       await work('Restoring your connection…', async signal => {
@@ -559,6 +585,13 @@ export const connectionController = {
   },
   async offline() {
     if (operation) return;
+    if(isAndroid && !testMocksEnabled){
+      await work('Stopping AI while keeping your local apps available…',async()=>{
+        await stopLocalAgent();await retire();detachService();
+        const error=persistOffline();update({open:Boolean(error),error,message:''});
+      });
+      return;
+    }
     retire(); detachService();
     const error = persistOffline();
     update({ open: Boolean(error), error, message: '' });
@@ -572,7 +605,20 @@ export const connectionController = {
   async pair(kind: 'remote' | 'local', origin: string, code: string) {
     await work('Verifying your agent…', signal => { retire(); return connectRemote(kind, origin, code, signal); });
   },
+  async residentCloudLogin() {
+    await work('Opening Eliza Cloud sign-in…',async signal=>{
+      // A running process retains its environment; stop it before replacing credentials.
+      await stopLocalAgent(); await retire(); detachService();
+      update({residentBalance:null}); cloud=makeCloud('production');
+      await cloud.login(signal,()=>update({message:'Finish signing in to Eliza Cloud in your browser, then return here.'}));
+      await connectResident(signal);
+    });
+  },
+  async residentTopUp() {
+    await work('Opening Cloud billing…',signal=>makeCloud('production').openTopUp(signal));
+  },
   async cloudLogin(environment: CloudEnvironment) {
+    if(isAndroid && !testMocksEnabled){await connectionController.residentCloudLogin();return;}
     await work('Opening Eliza Cloud sign-in…', async signal => {
       // A login can replace the environment's secure token with a different
       // account. Detach the old identity before any token can be replaced.
@@ -646,6 +692,7 @@ export const connectionController = {
   },
   async cloudSignOut() {
     await work('Signing out of Cloud services…', async () => {
+      if(isAndroid && !testMocksEnabled){await stopLocalAgent();await retire();update({residentBalance:null});}
       const previous = service; detachCloudTarget(); detachService();
       localStorage.removeItem(CLOUD_SERVICE);
       if (!active) save({ kind: 'none' });
@@ -865,6 +912,20 @@ export function ConnectionChooser() {
     return () => { document.removeEventListener('keydown', key); window.removeEventListener('alpha-back', back, true); releaseInert(); previous?.focus(); };
   }, [snapshot.open, snapshot.busy]);
   if (!snapshot.open) return null;
+  if(isAndroid && !testMocksEnabled)return <div className="alpha-connection-scrim"><div className="alpha-connection" role="dialog" aria-modal="true" aria-labelledby="connection-title" tabIndex={-1} ref={panel}>
+    <header><h1 id="connection-title">Welcome to Alpha</h1></header>
+    <p>Your agent runs on this phone. Sign in to Eliza Cloud to use your account credits for AI.</p>
+    {snapshot.cloudAccount ? <>
+      {typeof snapshot.residentBalance==='number'&&<p>{snapshot.residentBalance>0?'Credits available':'Add credits to continue'}</p>}
+      {typeof snapshot.residentBalance==='number'&&snapshot.residentBalance<=0&&<button disabled={snapshot.busy} onClick={()=>void connectionController.residentTopUp()}>Add credits in Eliza Cloud</button>}
+      <button disabled={snapshot.busy} onClick={()=>void connectionController.startLocal()}>{snapshot.residentBalance!=null&&snapshot.residentBalance<=0?'Check credits again':'Continue'}</button>
+      <button disabled={snapshot.busy} onClick={()=>void connectionController.cloudSignOut()}>Sign out</button>
+    </>:<button disabled={snapshot.busy} onClick={()=>void connectionController.residentCloudLogin()}>Sign in with Eliza Cloud</button>}
+    {snapshot.message&&<p role="status">{snapshot.message}</p>}
+    {snapshot.error&&<p role="alert">{snapshot.error}</p>}
+    {snapshot.busy&&<button onClick={()=>connectionController.cancel()}>Cancel</button>}
+    <button disabled={snapshot.busy} onClick={()=>void connectionController.offline()}>Use local apps without AI</button>
+  </div></div>;
   const pairingOptions=<>
     <details><summary>Remote agent</summary><form onSubmit={event => { event.preventDefault(); void connectionController.pair('remote', remoteOrigin.current?.value || '', remoteCode.current?.value || ''); if (remoteCode.current) remoteCode.current.value = ''; }}>
       <label>Agent HTTPS address<input ref={remoteOrigin} type="url" autoCapitalize="none" spellCheck={false} placeholder="https://your-agent.example" required disabled={snapshot.busy} /></label>

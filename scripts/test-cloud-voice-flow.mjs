@@ -4,13 +4,13 @@ import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import { readFile } from 'node:fs/promises';
 import { stripTypeScriptTypes } from 'node:module';
-let selectionKind = 'remote';
+let selectionKind = 'remote', snapshotKind = 'remote';
 let pairedEnabled=false, pairedAsr=false, pairedUploads=0, speeches=0, speechSignal, pairedDelay=false, pairedRelease, pairedSignal;const paired={ready:async()=>true,transcriptionReady:async()=>pairedAsr,transcribe:async(_,signal)=>{pairedUploads++;pairedSignal=signal;if(pairedDelay)return new Promise(resolve=>{pairedRelease=resolve;});return{text:'Actual selected-provider transcript fixture',local:true,provider:'standalone-whisper.cpp'};},speak:async(_,signal)=>{speeches++;speechSignal=signal;return new Promise((_,reject)=>signal.addEventListener('abort',()=>reject(new Error('cancelled')),{once:true}));}};
 let account = 'cloud-session', agent = 'remote-session', starts=0, uploads=0, sends=0;
 const listeners=new Set();
 let releaseTranscript; let delayTranscript=false; let audioSaves=0;
 const driver={stop:async()=>{},saveRecording:async value=>{audioSaves++;return {audioId:value.recordingId,noteId:value.noteId,durationMs:1000,transcript:value.transcript};},startRecording:async()=>{starts++;return {recordingId:'clip',maxDurationMs:59000};},stopRecording:async()=>({recordingId:'clip',durationMs:1000}),transcribeRecording:async()=>{uploads++;if(delayTranscript)return new Promise(resolve=>{releaseTranscript=resolve;});return {text:'Fixture transcript',local:false};},cancelRecording:async()=>{},cancel:async()=>{},addListener:async()=>({remove:async()=>{}}),speak:async()=>{}};
-const controller={getPairedVoiceBinding:()=>pairedEnabled?{sessionId:agent}:null,getCloudEnvironment:()=>account?'production':null,getCloudClient:()=>account?{sessionId:account}:null,getSnapshot:()=>({kind:'remote',session:{sessionId:agent}}),subscribe:fn=>{listeners.add(fn);return()=>listeners.delete(fn);}};
+const controller={getPairedVoiceBinding:()=>pairedEnabled?{sessionId:agent}:null,getCloudEnvironment:()=>account?'production':null,getCloudClient:()=>account?{sessionId:account}:null,getSnapshot:()=>({kind:snapshotKind,session:{sessionId:agent}}),subscribe:fn=>{listeners.add(fn);return()=>listeners.delete(fn);}};
 class Shell {constructor(){this.state={view:'home',draft:''};this.notes={list:[]};this.messages=[];}S(){return this.state;}setState(p){Object.assign(this.state,p);}openView(view){this.state.view=view;}goHome(){this.state.view=null;}toast(t){this.messages.push(t);}vset(_,patch){if(this.failPersistence)return false;Object.assign(this.notes,patch);return true;}api(){return {get:()=>this.notes,setView:(_,patch)=>Object.assign(this.notes,patch)};}startVoice(){throw new Error('Should not use legacy voice');}send(){sends++;}componentWillUnmount(){} }
 const views={notes:{render:()=>({ed:{}}),back:()=>false,onLeave:()=>{}}};
 let noteEditor=null;
@@ -18,6 +18,12 @@ let source=await readFile(new URL('../apps/app/src/prototype/voice-adapter.ts',i
 source=source.replace(/^import .*;\n/gm,'').replace('export function','function')+'\nglobalThis.install=installPrototypeVoiceAdapter;';
 const sandbox={browserDevProfile:false,createOnDeviceVoice:()=>null,createPairedVoice:()=>pairedEnabled?paired:null,connectionController:controller,createCloudVoice:()=>driver,registerPlugin:()=>driver,Capacitor:{isNativePlatform:()=>true,isPluginAvailable:()=>true},localStorage:{getItem:()=>JSON.stringify({kind:selectionKind})},document:{documentElement:{dataset:{}},querySelector:()=>noteEditor,addEventListener(){},removeEventListener(){}},window:{addEventListener(){},removeEventListener(){}},setInterval,clearInterval,Date,crypto,AbortController,console};
 const playback=(await readFile(new URL('../apps/app/src/prototype/local-speech-playback.ts',import.meta.url),'utf8')).replace(/^import .*;\n/gm,'').replaceAll('export function','function');
+sandbox.testMocksEnabled=true;
+for(const [file,name] of [['voice-selection.ts','selectVoiceRoute'],['cloud-voice.ts','cloudVoiceFailure']]) {
+ const policy=(await readFile(new URL('../apps/app/src/runtime/'+file,import.meta.url),'utf8')).replace(/^import .*;\n/gm,'').replaceAll('export function','function').replaceAll('export type','type');
+ vm.runInNewContext('{'+stripTypeScriptTypes(policy,{mode:'transform'})+'\nglobalThis.'+name+'='+name+';}',sandbox);
+}
+sandbox.createCloudVoice=()=>driver; // Preserve this scenario's native-boundary fixture.
 vm.runInNewContext('{'+stripTypeScriptTypes(playback,{mode:'transform'})+'\nglobalThis.installLocalSpeechPlayback=installLocalSpeechPlayback;globalThis.stopLocalSpeechPlayback=stopLocalSpeechPlayback;}',sandbox);
 vm.runInNewContext(stripTypeScriptTypes(source,{mode:'transform'}),sandbox);
 sandbox.install(Shell,views);
@@ -69,5 +75,13 @@ render().rec.onTranscript({target:{value:'Explicit paired playback'}});render().
 agent='replacement-agent';for(const fn of listeners)fn();await tick();assert.equal(speechSignal.aborted,true);assert.equal(render().rec,undefined,'switching agent cancels playback and closes old draft');
 pairedAsr=true;await shell.startVoice();render().rec.changeRoute();await tick();render().rec.stop();await tick();render().rec.stop();await tick();assert.equal(pairedUploads,0,'microphone start/stop never uploads to agent');assert.equal(render().rec.primaryLabel,'Transcribe with agent Whisper');render().rec.stop();await tick();assert.equal(pairedUploads,1);assert.equal(render().rec.transcript,'Actual selected-provider transcript fixture');render().rec.stop();await tick();assert.equal(shell.state.draft,'Actual selected-provider transcript fixture');assert.equal(sends,0,'transcription never sends chat implicitly');
 pairedDelay=true;render().record();render().rec.changeRoute();await tick();render().rec.stop();await tick();render().rec.stop();await tick();render().rec.stop();await tick();assert.equal(typeof pairedRelease,'function');agent='third-agent';for(const fn of listeners)fn();assert.equal(pairedSignal.aborted,true);pairedRelease({text:'Late wrong-account text',local:true});await tick();assert.equal(render().rec,undefined);assert.equal(shell.state.draft,'Actual selected-provider transcript fixture');
+// Production resident uses the same Cloud default for Notes and composer, without starting audio.
+selectionKind='resident';snapshotKind='resident';account='resident-cloud-account';pairedEnabled=false;
+sandbox.testMocksEnabled=false;sandbox.Capacitor.getPlatform=()=> 'android';
+const startsBeforeResident=starts,uploadsBeforeResident=uploads;
+render().record();assert.equal(render().rec.primaryDisabled,false);assert.equal(render().rec.routeLabel,'Use on-device voice');render().rec.discard();
+await shell.startVoice();assert.equal(render().rec.primaryDisabled,false);assert.equal(render().rec.routeLabel,'Use on-device voice');
+assert.equal(starts,startsBeforeResident,'choosing resident Cloud voice must not start recording');assert.equal(uploads,uploadsBeforeResident,'choosing resident Cloud voice must not upload audio');
+render().rec.changeRoute();assert.equal(render().rec.primaryDisabled,true,'explicit unavailable local choice must not fall back to Cloud');
 shell.componentWillUnmount();
 console.log('PASS: remote+Cloud composer mic, explicit record/stop/upload stages, editable draft without remote send, durable audio+edited transcript save with persistence retry, Notes records/saves manual transcripts offline/local/remote with zero uploads; paired Whisper composer requires capability and explicit upload, produces a draft without auto-send, and cancels stale transcription; offline composer stays provider-gated; dictation replaces the saved selection without changing text-note type or retaining audio, preserves transcript after save failure, and rejects concurrent note changes. Native/provider fixture only.');

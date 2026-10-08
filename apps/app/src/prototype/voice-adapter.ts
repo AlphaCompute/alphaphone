@@ -8,7 +8,8 @@ import { registerPlugin } from '../platform-plugins';
 import { Capacitor, type PluginListenerHandle } from '@capacitor/core';
 import { createOnDeviceVoice } from '../runtime/local-voice';
 import { createPairedVoice } from '../runtime/paired-voice';
-import { createCloudVoice } from '../runtime/cloud-voice';
+import { createCloudVoice, cloudVoiceFailure } from '../runtime/cloud-voice';
+import { selectVoiceRoute } from '../runtime/voice-selection';
 import { connectionController } from '../runtime/connection-ui';
 type Bag = Record<string, any>;
 type Clip = { recordingId: string; durationMs: number };
@@ -103,9 +104,10 @@ export function installPrototypeVoiceAdapter(Component: any, views: Record<strin
     if (close) { stage = 'closed'; draft = ''; destination = undefined; chatDestination = undefined; }
     refresh();
   }
-  function enter(target?: DictationTarget, preparedLocal?: ReturnType<typeof createOnDeviceVoice>, route: 'device' | 'agent' | 'manual' = 'device') {
+  function enter(target?: DictationTarget, preparedLocal?: ReturnType<typeof createOnDeviceVoice>, preference: 'default' | 'device' | 'agent' | 'manual' = 'default') {
+    const selected = selectVoiceRoute(preference), route = selected === 'cloud' ? 'agent' : selected;
     stopLocalSpeechPlayback(); cleanup(); destination = target; saveId = target?.id || crypto.randomUUID(); stage = 'ready'; error = ''; draft = ''; selectedRoute = route;
-    cloudMode = !browserDevProfile && connectionController.getCloudEnvironment() !== null;
+    cloudMode = selected === 'cloud';
     deviceOnly = browserDevProfile || !cloudMode && (localStorage.getItem('alpha.connection.selection.v1') !== null || !Capacitor.isPluginAvailable('DevelopmentAgent'));
     driver = cloudMode ? createCloudVoice() : deviceOnly ? deviceVoice : voice;
     onDeviceVoice = route === 'device' || browserDevProfile && route === 'agent' ? preparedLocal || createOnDeviceVoice() : null;
@@ -148,7 +150,7 @@ export function installPrototypeVoiceAdapter(Component: any, views: Record<strin
     if (busy) return;
     busy = true; error = ''; const token = generation; refresh();
     try { await task(token); }
-    catch { if (token === generation) { error = onDeviceReady ? 'On-device speech unavailable. Keep recordings under 30 seconds and use English text under 500 characters for playback. Your recording is retained.' : pairedAsrReady ? 'Agent Whisper transcription unavailable. Your recording is retained; check the selected agent and retry explicitly.' : deviceOnly ? 'Recording unavailable. Check microphone access and available device storage, then retry.' : cloudMode ? 'Cloud voice unavailable. Check microphone access, your Cloud account and the connection, then retry.' : 'Voice unavailable. Check microphone access and the local development service, then retry.'; stage = stage === 'review' ? 'review' : clip ? 'recorded' : 'ready'; stopClock(); } }
+    catch (failure) { if (token === generation) { error = (cloudMode && cloudVoiceFailure(failure)) || (onDeviceReady ? 'On-device speech unavailable. Keep recordings under 30 seconds and use English text under 500 characters for playback. Your recording is retained.' : pairedAsrReady ? 'Agent Whisper transcription unavailable. Your recording is retained; check the selected agent and retry explicitly.' : deviceOnly ? 'Recording unavailable. Check microphone access and available device storage, then retry.' : cloudMode ? 'Cloud voice unavailable. Check microphone access, your Cloud account and the connection, then retry.' : 'Voice unavailable. Check microphone access and the local development service, then retry.'); stage = stage === 'review' ? 'review' : clip ? 'recorded' : 'ready'; stopClock(); } }
     finally { if (token === generation) { busy = false; refresh(); } }
   }
   async function start(token: number) {
@@ -255,7 +257,7 @@ export function installPrototypeVoiceAdapter(Component: any, views: Record<strin
     const token = generation, controller = new AbortController();
     playback = controller; playing = true; error = ''; refresh();
     try { await speaker.speak(draft, controller.signal); }
-    catch { if (token === generation && !controller.signal.aborted) error = 'Audio could not be played by the selected voice service. Your transcript is still available.'; }
+    catch (failure) { if (token === generation && !controller.signal.aborted) error = (cloudMode && cloudVoiceFailure(failure)) || 'Audio could not be played by the selected voice service. Your transcript is still available.'; }
     finally { if (token === generation) { playback = undefined; playing = false; refresh(); } }
   }
   const originalStartVoice = Component.prototype.startVoice;
@@ -280,6 +282,7 @@ export function installPrototypeVoiceAdapter(Component: any, views: Record<strin
       && (this.S().view || null) === view && this.live !== false
       && !document.hidden && !connectionController.getSnapshot().open;
     if (!current()) return;
+    if (selectVoiceRoute() === 'cloud') { this.openView('notes'); enter(undefined, undefined, 'agent'); chatDestination = { shell: this, view }; refresh(); return; }
     const local = createOnDeviceVoice();
     if (local) {
       try {
