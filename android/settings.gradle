@@ -22,3 +22,12 @@ project(':eliza-calendar').projectDir = new File('../vendor/eliza/plugins/plugin
 
 include ':eliza-reminders'
 project(':eliza-reminders').projectDir = new File('../vendor/eliza/plugins/plugin-native-reminders/android')
+
+// Reviewed upstream candidate applied outside vendor/eliza (patches/eliza/password-manager.patch).
+// npm run upstream:prepare-client (run by npm run build / android:build) materializes it.
+if (!new File(settingsDir, '../.eliza/patched/.source.json').isFile())
+ throw new GradleException('Patched Eliza source is not prepared. Run: npm run upstream:prepare-client')
+include ':elizaos-capacitor-secure-store'
+project(':elizaos-capacitor-secure-store').projectDir = new File('../.eliza/patched/plugins/plugin-native-secure-store/android')
+include ':eliza-passwords'
+project(':eliza-passwords').projectDir = new File('../.eliza/patched/plugins/plugin-native-passwords/android')

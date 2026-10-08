@@ -114,6 +114,14 @@ test("debug-class inputs fail in manifest or dex", () => {
   assert.ok(distributionProblems(peer, { mode: "debug" }).problems.some(p => /peerfixture/.test(p)));
 });
 
+test("the password Autofill provider ships only behind BIND_AUTOFILL_SERVICE", () => {
+  const name = "ai.eliza.plugins.passwords.ElizaPasswordAutofillService";
+  const guarded = apk({ xml: xmltree({ extraComponents: [["service", name, { exported: true, permission: "android.permission.BIND_AUTOFILL_SERVICE" }]] }) });
+  assert.deepEqual(distributionProblems(guarded, { mode: "release" }).problems.filter(p => p.includes(name)), []);
+  const open = apk({ xml: xmltree({ extraComponents: [["service", name, { exported: true }]] }) });
+  assert.ok(distributionProblems(open, { mode: "release" }).problems.some(p => p === `Exported ${name} must require android.permission.BIND_AUTOFILL_SERVICE`));
+});
+
 test("mock-string manifest inputs fail", () => {
   const mock = apk({ xml: xmltree({ extraPermissions: ["android.permission.ACCESS_MOCK_LOCATION"], extraComponents: [["service", `${PKG}.MockLocationService`, {}]] }) });
   const { problems } = distributionProblems(mock, { mode: "release" });
