@@ -66,7 +66,13 @@ public final class AlphaConnectionPlugin extends Plugin {
  private static final class Pending {
   volatile boolean cancelled;
   volatile HttpURLConnection connection;
-  void cancel() { cancelled = true; HttpURLConnection current = connection; if (current != null) current.disconnect(); }
+  volatile PluginCall browserCall;
+  volatile boolean browserLaunched,browserPaused;
+  synchronized void cancel() { cancelled = true; HttpURLConnection current = connection; if (current != null) current.disconnect(); if(browserCall!=null){PluginCall call=browserCall;browserCall=null;call.reject("Request cancelled");} }
+  synchronized void paused(){if(browserCall!=null&&browserLaunched)browserPaused=true;}
+  synchronized boolean returned(){if(browserCall==null||!browserPaused||cancelled)return false;PluginCall call=browserCall;browserCall=null;call.resolve();return true;}
+  synchronized void launch(Runnable action){if(cancelled||browserCall==null)return;browserLaunched=true;try{action.run();}catch(RuntimeException unavailable){PluginCall call=browserCall;browserCall=null;call.reject("Authentication browser unavailable");}}
+
  }
  private static String required(String value, int max) {
   if (value == null || value.isEmpty() || value.length() > max) throw new IllegalArgumentException();
@@ -235,7 +241,7 @@ public final class AlphaConnectionPlugin extends Plugin {
   }))requests.remove(id,pending);
  }
  @PluginMethod public void cancel(PluginCall call) {
-  String id = call.getString("requestId", ""); Pending pending = requests.get(id); if (pending != null) pending.cancel(); call.resolve();
+  String id = call.getString("requestId", ""); Pending pending = requests.get(id); if (pending != null) { boolean browser=pending.browserCall!=null||pending.browserLaunched;pending.cancel();if(browser)requests.remove(id,pending); } call.resolve();
  }
  @PluginMethod public void openExternal(PluginCall call) {
   try {
@@ -244,15 +250,32 @@ public final class AlphaConnectionPlugin extends Plugin {
    if (!(host.equals("eliza.app") || host.endsWith(".eliza.app") || host.equals("accounts.google.com"))) throw new IllegalArgumentException();
    if (url.getPort() != -1 && url.getPort() != 443) throw new IllegalArgumentException();
    Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(url.toASCIIString())); intent.addCategory(Intent.CATEGORY_BROWSABLE);
-   getActivity().runOnUiThread(() -> {
+   boolean cliLogin=("eliza.app".equals(host)||"staging.eliza.app".equals(host))&&"/auth/cli-login".equals(url.getPath());
+   if(cliLogin){
+    String id=required(call.getString("requestId"),256);
+    Pending pending=new Pending();pending.browserCall=call;
+    if(destroyed){call.reject("Connection closed");return;}
+    if(requests.putIfAbsent(id,pending)!=null){call.reject("Request already active");return;}
+    // Register before launching: the native pause belongs to this browser handoff.
+    getActivity().runOnUiThread(()->{
+     if(destroyed){pending.cancel();requests.remove(id,pending);return;}
+     pending.launch(()->getActivity().startActivity(intent));
+     if(pending.browserCall==null)requests.remove(id,pending);
+    });
+   }else getActivity().runOnUiThread(() -> {
     try { getActivity().startActivity(intent); call.resolve(); }
     catch (RuntimeException error) { call.reject("Authentication browser unavailable"); }
    });
   } catch (Exception error) { call.reject("Unsupported authentication URL"); }
  }
+ @Override protected void handleOnPause(){for(Pending pending:requests.values())pending.paused();super.handleOnPause();}
+ @Override protected void handleOnResume(){
+  super.handleOnResume();
+  for(java.util.Map.Entry<String,Pending> entry:requests.entrySet())if(entry.getValue().returned())requests.remove(entry.getKey(),entry.getValue());
+ }
  @Override protected void handleOnDestroy() {
   destroyed=true;
   for (Pending pending : requests.values()) pending.cancel();
-  workers.shutdownNow(); super.handleOnDestroy();
+  requests.clear();workers.shutdownNow(); super.handleOnDestroy();
  }
 }

@@ -9,7 +9,7 @@ const native = registerPlugin<{
   secureWrite(input:{slot:string;value:string}):Promise<void>;
   secureCompareExchange(input:{slot:string;expectedValue:string|null;value:string|null}):Promise<{status:"saved"|"conflict"}>;
   secureRemove(input:{slot:string}):Promise<void>;
-  openExternal(input:{url:string}):Promise<void>;
+  openExternal(input:{url:string;requestId:string}):Promise<void>;
 }>('AlphaConnection');
 
 export const secureConnectionStore = {
@@ -67,5 +67,15 @@ export const nativeRemoteRequest:RemoteRequester=async input=>{
   return {status:response.status,body:response.data};
 };
 export async function openConnectionBrowser(url:string,signal:AbortSignal) {
-  signal.throwIfAborted();await native.openExternal({url});signal.throwIfAborted();
+  signal.throwIfAborted();
+  const requestId=crypto.randomUUID();
+  let rejectAbort:(reason:unknown)=>void=()=>{};
+  const interrupted=new Promise<never>((_,reject)=>{rejectAbort=reject;});
+  const cancel=()=>{void native.cancel({requestId}).catch(()=>{});rejectAbort(signal.reason||new DOMException('Cancelled','AbortError'));};
+  signal.addEventListener('abort',cancel,{once:true});
+  try{
+    const opened=native.openExternal({url,requestId});
+    if(signal.aborted)cancel();
+    await Promise.race([opened,interrupted]);signal.throwIfAborted();
+  }finally{signal.removeEventListener('abort',cancel);}
 }
