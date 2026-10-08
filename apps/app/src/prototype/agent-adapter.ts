@@ -1,3 +1,4 @@
+import {presentDeviceRecordOperation} from '../../../../.eliza/client-features/plugins/plugin-assistant/src/services/device-actions/device-record-presentation.ts';
 import {AssistantDraftController} from './assistant-draft-controller';
 import {assistantDraftStore} from '../runtime/assistant-draft-store';
 import {openBrowserNotes,browserNotesRecovery} from '../runtime/browser-notes-document';
@@ -328,7 +329,7 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
           const calendarResult=validateCalendarResult(operation,result.result);
           // Return the receipt immediately; DeviceActions must journal it before
           // the existing committed event refreshes native or browser rows.
-          return {status:'succeeded',summary:operation.type==='calendar_read_selected'?'Read the exact selected calendar event with approval.':'Calendar operation applied and read back from the provider.',calendarResult};
+          return {status:'succeeded',summary:presentDeviceRecordOperation(operation,expectedContext.timeZone).appliedSummary,calendarResult};
         }
         return {status:result.status==='unknown'?'unknown':'failed',summary:result.status==='unknown'?'Calendar outcome is unconfirmed. Inspect action history before another action.':result.status==='cancelled'?'Calendar review cancelled. Nothing was changed.':'Calendar target changed, access was denied, or the operation is unsupported. Nothing was changed.'};
       }
@@ -337,7 +338,7 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
           if(this.notesStorageFailed||!this.notesStore)throw Error('Notes storage is unavailable');
           const current=()=>{signal.throwIfAborted();context(this);if(!this.live||document.hidden||JSON.stringify(alphaClient.getState().context)!==JSON.stringify(expectedContext)||expectedContext.sensitive||expectedContext.view!=='notes')throw Error('Selected Notes context changed');};
           const notesResult=await this.notesStore.execute(operation,operationId,signal,current);
-          return {status:'succeeded',summary:operation.type==='notes_read_selected'?'Read the exact selected note with approval.':'Selected Notes change committed.',notesResult};
+          return {status:'succeeded',summary:presentDeviceRecordOperation(operation,expectedContext.timeZone).appliedSummary,notesResult};
         }catch(error){
           const uncertain=error instanceof NotesCommitUncertain;
           // Cancellation or stale approval before mutation is not a storage failure.
@@ -384,7 +385,7 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
         if (existing) return { status: 'unknown', summary: 'A note already has this action identifier; review it before resolving.' };
         const note = { id: operationId, kind: 'text', title: operation.title, body: operation.body, pinned: false, when: 'Now', createdAt:Date.now(), modifiedAt:Date.now() };
         const saved = await this.vset('notes', { list: [note, ...this.vget('notes').list] });
-        return { status: saved ? 'succeeded' : this.notesCommitUncertain?'unknown':'failed', summary: saved ? `Saved note: ${operation.title}` : 'The note save is unconfirmed. Inspect saved notes before repeating.' };
+        return { status: saved ? 'succeeded' : this.notesCommitUncertain?'unknown':'failed', summary: saved ? presentDeviceRecordOperation(operation,expectedContext.timeZone).appliedSummary : 'The note save is unconfirmed. Inspect saved notes before repeating.' };
       }
       if(isReminderCreate(operation)){
         const support=await DailyApps.surfaceInfo();signal.throwIfAborted();
@@ -393,7 +394,7 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
         const result=await DailyApps.operateReminder({operationId,bindingHash,operation});
         if(result.status!=='succeeded')return {status:'unknown',summary:'Reminder creation outcome is unknown. Check action history; it will not be repeated.'};
         const reminderResult=validateReminderCreateResult(operation,result.result,operationId);
-        return {status:'succeeded',reminderResult,summary:reminderResult.status==='pending'?'Reminder saved with no alert.':reminderResult.status==='scheduled'?'Reminder saved with approximate notification delivery.':reminderResult.status==='permission-denied'?'Reminder saved; notifications are disabled.':'Reminder saved; notification scheduling failed.'};
+        return {status:'succeeded',reminderResult,summary:reminderResult.status==='permission-denied'?'Reminder saved; notifications are disabled.':reminderResult.status==='scheduling-failed'?'Reminder saved; notification scheduling failed.':presentDeviceRecordOperation(operation,expectedContext.timeZone).appliedSummary};
       }
       if(isReminderOperation(operation)){
         signal.throwIfAborted();context(this);if(JSON.stringify(alphaClient.getState().context)!==JSON.stringify(expectedContext)||expectedContext.sensitive||document.hidden)throw Error('Reminder context changed');
@@ -408,7 +409,7 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
         // cancels this context-bound action before it can acknowledge the server.
         if(result.status!=='succeeded')return {status:'unknown',summary:'Reminder outcome requires review. It was not repeated.'};
         const reminderResult=validateReminderResult(operation,result.result);
-        return {status:'succeeded',summary:reminderResult.status==='pending'?'Reminder saved with no alert.':`Reminder ${reminderResult.status}.${Capacitor.isNativePlatform()?' Android delivery is approximate.':''}`,reminderResult};
+        return {status:'succeeded',summary:reminderResult.status==='permission-denied'||reminderResult.status==='scheduling-failed'?`Reminder ${reminderResult.status}.${Capacitor.isNativePlatform()?' Android delivery is approximate.':''}`:presentDeviceRecordOperation(operation,expectedContext.timeZone).appliedSummary,reminderResult};
       }
       if (operation.type === 'create_reminder') {
         const at = Date.parse(operation.dueAt);
@@ -417,7 +418,7 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
         if (result.status !== 'scheduled' || result.id !== operationId) return { status: 'failed', summary: 'Scheduling was not confirmed. Check notification settings and the reminder time.' };
         // Publish the new revision only after the receipt attempt; refreshing here
         // cancels this context-bound action before it can acknowledge the server.
-        return { status: 'succeeded', summary: `Scheduled reminder: ${operation.title}.${Capacitor.isNativePlatform()?' Android may delay delivery.':''}` };
+        return { status: 'succeeded', summary: presentDeviceRecordOperation(operation,expectedContext.timeZone).appliedSummary };
       }
       if (operation.type === 'open_view') {
         if (!['home','reminders','notifications'].includes(operation.view) && !isMvpView(operation.view)) return {status:'failed',summary:'This app is deferred from the MVP'};

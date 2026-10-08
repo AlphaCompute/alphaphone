@@ -1,3 +1,4 @@
+import {presentDeviceRecordOperation} from '../../vendor/eliza/plugins/plugin-assistant/src/services/device-actions/device-record-presentation.ts';
 import { returnToApps } from './app-navigation';
 import { test, expect } from '@playwright/test';
 
@@ -94,7 +95,8 @@ for (const mode of ['read', 'update', 'delete', 'cancel', 'stale'] as const) {
     expect(await page.evaluate(()=>(window as any).calendarSent.metadata.clientDevice.context.selectedObject.kind)).toBe('calendar-event');
     const before=await page.evaluate(async ()=>JSON.parse((await (await import('/src/browser/calendar-store.ts')).calendarDocument.readRaw())!).events);expect(before).toHaveLength(1);
     expect(JSON.stringify(await page.evaluate(()=>(window as any).calendarSent))).not.toContain('Private description');
-    await page.getByText('Approve: calendar '+(mode==='read'?'read selected':mode==='delete'?'delete':'update'),{exact:true}).click();
+    const operation=await page.evaluate(()=>(window as any).recoveryFixture.proposal.payload.operation);
+    await page.getByText('Approve: '+presentDeviceRecordOperation(operation,'UTC').title,{exact:true}).click();
     const review=page.getByRole('dialog',{name:mode==='read'?'Share calendar event with agent?':'Review calendar change'});
     await expect(review).toBeVisible();await expect(review).toContainText(mode==='read'||mode==='delete'?'Selected private event':'Assistant planned event');
     await expect(review).toContainText('This occurrence only');

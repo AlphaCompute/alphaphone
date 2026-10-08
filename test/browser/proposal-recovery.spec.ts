@@ -109,7 +109,7 @@ for (const mode of ['pending', 'wrong-owner', 'expired', 'wrong-reminder-context
     expect(await counts()).toEqual({ posts: 1, decisions: 0, claims: 0, receipts: 0, effects: 0, journal: [] });
     if (mode === 'pending') {
       await expect(page.getByText(/Pending phone actions are available for separate review/)).toBeVisible();
-      await page.getByText('Approve: create note', { exact: true }).click();
+      await page.getByText('Approve: Create note', { exact: true }).click();
       await expect(page.getByText('Synthetic approved effect recorded', { exact: true }).last()).toBeVisible();
       expect(await counts()).toEqual({ posts: 1, decisions: 1, claims: 1, receipts: 1, effects: 1, journal: ['reserve', 'markApplying', 'finish'] });
     } else {

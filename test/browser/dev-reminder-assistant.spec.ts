@@ -1,3 +1,4 @@
+import {presentDeviceRecordOperation} from '../../vendor/eliza/plugins/plugin-assistant/src/services/device-actions/device-record-presentation.ts';
 import { returnToApps } from './app-navigation';
 import { test, expect } from '@playwright/test';
 
@@ -95,7 +96,8 @@ for (const mode of ['create', 'read', 'update', 'complete', 'snooze', 'cancel', 
     expect(JSON.stringify(await page.evaluate(()=>(window as any).calendarSent))).not.toContain('Private reminder details');
     if(mode==='stale')await page.evaluate(async ()=>{await (await import('/src/browser/reminder-store.ts')).reminderDocument.edit(()=>({reminders:[] as any[]}),data=>{data.reminders[0].revision='d'.repeat(64);data.reminders[0].title='Changed elsewhere';});});
     await page.getByRole('button',{name:'Expand chat',exact:true}).click();
-    const approvalLabel=mode==='create'?'Approve: create reminder':'Approve: reminder '+(mode==='read'?'read selected':mode==='stale'||mode==='recurring-complete'?'complete':mode);
+    const operation=await page.evaluate(()=>(window as any).recoveryFixture.proposal.payload.operation);
+    const approvalLabel='Approve: '+presentDeviceRecordOperation(operation,'UTC').title;
     await page.getByRole('button',{name:approvalLabel+' Tap to approve this exact action',exact:true}).click();
     await expect.poll(()=>page.evaluate(()=>(window as any).recoveryFixture.receipts)).toBe(1);
     const rows=await page.evaluate(async ()=>JSON.parse((await (await import('/src/browser/reminder-store.ts')).reminderDocument.readRaw())!).reminders);expect(rows).toHaveLength(mode==='create'?2:1);
