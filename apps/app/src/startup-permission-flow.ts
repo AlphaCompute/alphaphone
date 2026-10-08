@@ -1,12 +1,10 @@
-export type PermissionAccess = { granted: boolean; enabled: boolean };
 export type StartupPermissionState = 'checking' | 'request' | 'settings' | 'ready' | 'unavailable';
-export interface StartupPermissionBridge {
-  status(): Promise<PermissionAccess>;
+/** Requests occur only from an explicit tap; a denial never schedules another prompt. */
+export function createStartupPermissionFlow(bridge: {
+  status(): Promise<{granted: boolean; enabled: boolean}>;
   request(): Promise<unknown>;
   openSettings(): Promise<unknown>;
-}
-/** Requests occur only from an explicit tap; a denial never schedules another prompt. */
-export function createStartupPermissionFlow(bridge: StartupPermissionBridge) {
+}) {
   let attempted = false;
   let pending = false;
   let state: StartupPermissionState = 'checking';
