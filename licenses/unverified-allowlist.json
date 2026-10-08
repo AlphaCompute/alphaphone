@@ -21,6 +21,10 @@
     {
       "name": "pdf.js QuickJS sandbox",
       "reason": "pdfjs-dist ships quickjs-eval.js/.wasm without a license file. The upstream sandbox build and QuickJS itself are believed to be permissively licensed, but no shipped license text establishes it."
+    },
+    {
+      "name": "ONNX Runtime Web WebAssembly (statically linked components)",
+      "reason": "The onnxruntime-web WebAssembly binary used for in-browser speech statically links third-party libraries listed in ONNX Runtime's ThirdPartyNotices.txt (pinned at v1.30.0 and shipped verbatim here). Those notices span several licenses and are not enumerated per component, so their identifiers are not checked here; legal must review before the web build is distributed."
     }
   ]
 }

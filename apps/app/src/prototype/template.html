@@ -2308,7 +2308,7 @@
 
   
   <sc-if value="{{notes.recording}}" hint-placeholder-val="{{false}}">
-    <div ref="{{notes.recordingFocus}}" data-alpha-subview="notes-recording" class="enter" style="position: absolute; inset: 0; z-index: 10; background: var(--bg); display: flex; flex-direction: column; padding: 0 24px; box-sizing: border-box">
+    <div ref="{{notes.recordingFocus}}" data-alpha-subview="notes-recording" data-voice-state="{{notes.rec.state}}" class="enter" style="position: absolute; inset: 0; z-index: 10; background: var(--bg); display: flex; flex-direction: column; padding: 0 24px; box-sizing: border-box">
       <div style="display: flex; align-items: center; height: 56px; margin: 0 -16px 8px">
         <button class="ib" aria-label="Discard recording" onClick="{{notes.rec.discard}}"><svg class="i" viewBox="0 0 24 24"><path d="{{ic.x}}"></path></svg></button>
       </div>
@@ -2330,6 +2330,7 @@
         </sc-for>
       </div>
       <sc-if value="{{notes.rec.manualChoice}}"><button class="tap" onClick="{{notes.rec.recordOnly}}" style="padding:12px 16px;border-radius:24px;background:var(--s2);color:var(--fg);font-size:14px;margin-bottom:8px">Record without transcription</button></sc-if>
+      <sc-if value="{{notes.rec.typeChoice}}"><button class="tap" onClick="{{notes.rec.typeInstead}}" style="padding:12px 16px;border-radius:24px;background:var(--s2);color:var(--fg);font-size:14px;margin-bottom:8px">Type transcript instead</button></sc-if>
         <sc-if value="{{notes.rec.routeChoice}}"><button aria-label="{{notes.rec.routeLabel}}" onClick="{{notes.rec.changeRoute}}" style="align-self:center;min-height:56px;flex-shrink:0;border:0;border-radius:20px;padding:10px 16px;background:var(--s2);color:var(--fg);font:inherit">{{notes.rec.routeLabel}}</button></sc-if>
       <div style="display: flex; align-items: center; justify-content: center; gap: 40px; padding: 20px 0 56px; flex-shrink: 0">
         <span style="width: 60px; height: 60px"></span>

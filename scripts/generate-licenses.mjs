@@ -79,12 +79,39 @@ export function unknownLicenseTerms(expression) {
   return bad;
 }
 
-/** Production packages in package-lock: not dev, not optional platform binaries, not links. */
-export function productionLockPackages(lock) {
+/**
+ * True when an installed package holds only TypeScript declarations and package metadata, so
+ * no code from it can reach any bundle. protobufjs (via onnxruntime-web) declares @types/node,
+ * and with it undici-types, as a regular dependency; npm therefore records them as production.
+ */
+const METADATA_FILE = /^(package\.json|readme(\..*)?|license(\..*)?|licence(\..*)?|changelog(\..*)?|notice(\..*)?|.*\.md)$/i;
+export function declarationOnlyPackage(dir) {
+  let files = 0;
+  const walk = current => {
+    for (const entry of fs.readdirSync(current, {withFileTypes: true})) {
+      const child = path.join(current, entry.name);
+      if (entry.isDirectory()) { if (entry.name === 'node_modules') continue; if (!walk(child)) return false; continue; }
+      if (!entry.isFile()) return false;
+      if (/\.d\.[cm]?ts$/.test(entry.name)) { files++; continue; }
+      if (current === dir && METADATA_FILE.test(entry.name)) continue;
+      return false;
+    }
+    return true;
+  };
+  if (!fs.existsSync(path.join(dir, 'package.json'))) return false;
+  return walk(dir) && files > 0;
+}
+
+/**
+ * Production packages in package-lock: not dev, not optional platform binaries, not links, and
+ * not declaration-only type packages (which ship no code).
+ */
+export function productionLockPackages(lock, root = ROOT) {
   const out = [];
   for (const [key, meta] of Object.entries(lock.packages || {})) {
     if (!key || meta.dev || meta.optional || meta.devOptional || meta.link) continue;
     if (!key.startsWith('node_modules/')) continue;
+    if (declarationOnlyPackage(path.join(root, key))) continue;
     const name = meta.name || key.slice(key.lastIndexOf('node_modules/') + 'node_modules/'.length);
     out.push({key, name, version: meta.version, license: meta.license, resolved: meta.resolved});
   }
@@ -199,7 +226,7 @@ function listFonts(root, dir) {
 function npmEntries(root, templates, errors) {
   const lock = readJson(root, 'package-lock.json');
   const entries = [];
-  for (const pkg of productionLockPackages(lock)) {
+  for (const pkg of productionLockPackages(lock, root)) {
     const dir = path.join(root, pkg.key);
     if (!fs.existsSync(path.join(dir, 'package.json'))) { errors.push(`${pkg.name}@${pkg.version}: not installed at ${pkg.key}; run npm ci`); continue; }
     const manifest = JSON.parse(fs.readFileSync(path.join(dir, 'package.json'), 'utf8'));
@@ -207,9 +234,10 @@ function npmEntries(root, templates, errors) {
     const license = pkg.license || (typeof manifest.license === 'string' ? manifest.license : '');
     let text = licenseFilesText(dir);
     if (!text) {
-      if (license !== 'MIT') { errors.push(`${pkg.name}@${pkg.version}: no license file shipped for ${license || 'undeclared license'}`); continue; }
+      const template = license === 'MIT' ? templates.mit : license === 'ISC' ? templates.isc : '';
+      if (!template) { errors.push(`${pkg.name}@${pkg.version}: no license file shipped for ${license || 'undeclared license'}`); continue; }
       const author = packageAuthor(manifest);
-      text = `The npm package ships no license file. Its package.json declares the MIT License${author ? `; author: ${author}` : ''}. The standard MIT terms follow.\n\n${templates.mit}`;
+      text = `The npm package ships no license file. Its package.json declares the ${license} License${author ? `; author: ${author}` : ''}. The standard ${license} terms follow.\n\n${template}`;
     }
     entries.push({name: pkg.name, version: pkg.version, license, source: pkg.resolved || `https://www.npmjs.com/package/${pkg.name}/v/${pkg.version}`, text});
   }
@@ -407,6 +435,30 @@ function speechEntries(root, templates, errors) {
   ];
 }
 
+/** In-browser speech (web build only; Android omits these assets and uses its native recognizer). */
+export const BROWSER_SPEECH_CONFIG = 'config/browser-speech.json';
+function browserSpeechEntries(root, templates, errors) {
+  if (!exists(root, BROWSER_SPEECH_CONFIG)) return [];
+  const config = readJson(root, BROWSER_SPEECH_CONFIG);
+  const pinned = item => {
+    if (!exists(root, item.path)) { errors.push(`${item.path}: missing`); return ''; }
+    const bytes = fs.readFileSync(path.join(root, item.path));
+    if (sha256(bytes) !== item.sha256) errors.push(`${item.path} does not match its sha256 in ${BROWSER_SPEECH_CONFIG}`);
+    return normalizeText(bytes.toString('utf8'));
+  };
+  const files = config.files.map(file => `${file.path} (sha256 ${file.sha256})`).join('\n');
+  return [
+    {name: `OpenAI Whisper tiny.en speech recognition model (int8 ONNX conversion by ${config.source.repository}, web build)`, version: `${config.source.repository}@${config.source.revision}`,
+      license: 'MIT AND Apache-2.0', source: `https://huggingface.co/${config.source.repository}/tree/${config.source.revision}\nFiles shipped under browser-speech/ in the web build:\n${files}`,
+      text: `OpenAI Whisper (model weights and code):\n${normalizeText(read(root, 'licenses/whisper-MIT.txt'))}\n\nONNX conversion model card (declares apache-2.0):\n${pinned(config.source.modelCard)}\n\n${templates.apache}`},
+    {name: 'ONNX Runtime Web WebAssembly (statically linked components)', version: `${config.runtime.package} ${config.runtime.version}`, license: UNVERIFIED,
+      source: config.runtime.notices.source,
+      // The onnxruntime-web and onnxruntime-common npm packages ship no license file; ONNX
+      // Runtime's own MIT license carries the Microsoft copyright notice their entries lack.
+      text: `ONNX Runtime (MIT; the same LICENSE at every release):\n${normalizeText(read(root, 'licenses/onnxruntime-MIT.txt'))}\n\nONNX Runtime ThirdPartyNotices.txt for the components statically linked into the WebAssembly:\n${pinned(config.runtime.notices)}`},
+  ];
+}
+
 function payloadEntries() {
   return [
     {name: 'On-device elizaOS agent runtime payload', version: 'pinned upstream runtime when present in the APK payload', license: UNVERIFIED,
@@ -442,6 +494,7 @@ export function collectNotices(root = ROOT) {
   const errors = [];
   const templates = {
     mit: normalizeText(read(root, 'licenses/MIT.txt')),
+    isc: normalizeText(read(root, 'licenses/ISC.txt')),
     apache: normalizeText(read(root, 'licenses/Apache-2.0.txt')),
     ofl: normalizeText(read(root, 'licenses/OFL-1.1.txt')),
   };
@@ -454,6 +507,7 @@ export function collectNotices(root = ROOT) {
     elizaEntry(root),
     ...androidEntries(root, templates, errors),
     ...speechEntries(root, templates, errors),
+    ...browserSpeechEntries(root, templates, errors),
     ...payloadEntries(),
     ...mapDataEntries(root),
   ];

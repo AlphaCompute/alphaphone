@@ -19,6 +19,9 @@ source=source.replace(/^import .*;\n/gm,'').replace('export function','function'
 const sandbox={browserDevProfile:false,createOnDeviceVoice:()=>null,createPairedVoice:()=>pairedEnabled?paired:null,connectionController:controller,createCloudVoice:()=>driver,registerPlugin:()=>driver,Capacitor:{isNativePlatform:()=>true,isPluginAvailable:()=>true},localStorage:{getItem:()=>JSON.stringify({kind:selectionKind})},document:{documentElement:{dataset:{}},querySelector:()=>noteEditor,addEventListener(){},removeEventListener(){}},window:{addEventListener(){},removeEventListener(){}},setInterval,clearInterval,Date,crypto,AbortController,console};
 const playback=(await readFile(new URL('../apps/app/src/prototype/local-speech-playback.ts',import.meta.url),'utf8')).replace(/^import .*;\n/gm,'').replaceAll('export function','function');
 vm.runInNewContext('{'+stripTypeScriptTypes(playback,{mode:'transform'})+'\nglobalThis.installLocalSpeechPlayback=installLocalSpeechPlayback;globalThis.stopLocalSpeechPlayback=stopLocalSpeechPlayback;}',sandbox);
+// The adapter's pure state helpers run as real source, not a stub.
+const voiceStates=(await readFile(new URL('../apps/app/src/runtime/voice-states.ts',import.meta.url),'utf8')).replaceAll('export function','function');
+vm.runInNewContext('{'+stripTypeScriptTypes(voiceStates,{mode:'transform'})+'\nglobalThis.voiceFailure=voiceFailure;globalThis.transcriptProvenance=transcriptProvenance;globalThis.speechProgressMessage=speechProgressMessage;}',sandbox);
 vm.runInNewContext(stripTypeScriptTypes(source,{mode:'transform'}),sandbox);
 sandbox.install(Shell,views);
 const shell=new Shell(), api=()=>({...shell.api('notes'),ic:{check:'',mic:'',stop:'',play:'',x:''},set:patch=>Object.assign(shell.notes,patch)});
