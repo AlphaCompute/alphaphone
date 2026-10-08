@@ -227,6 +227,8 @@ public final class AlphaConnectionPlugin extends Plugin {
     JSObject result = new JSObject(); result.put("status", status); result.put("data", data); call.resolve(result);
    } catch (Exception error) {
     String code=debugRequestFailure(operation,stage,status,error);
+    if(code!=null)try{getContext().getSharedPreferences("alpha-transport-diagnostics",android.content.Context.MODE_PRIVATE).edit().putString("lastFailure",code).apply();}
+    catch(RuntimeException ignored){/* Diagnostic storage must not mask the transport failure. */}
     call.reject(pending.cancelled ? "Request cancelled" : "Connection request failed",code);
    }
    finally { if (connection != null) connection.disconnect(); requests.remove(id, pending); }

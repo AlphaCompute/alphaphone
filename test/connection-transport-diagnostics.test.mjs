@@ -36,7 +36,7 @@ test('transport diagnostic emits no exception payload and remains silent outside
 
 test('public probe admits only the closed transport diagnostic grammar',()=>{
  const source=fs.readFileSync('android/app/src/androidTest/java/ai/elizaresearch/alphaphone/PublicCloudTransportProbeInstrumentedTest.java','utf8');
- const expression=source.match(/&&\/(\^ALPHA_TRANSPORT:[^\n]+?)\/\.test\(error.code\)/);
+ const expression=source.match(/TRANSPORT_CODE_PATTERN="(\^ALPHA_TRANSPORT:[^"]+)"/);
  assert.ok(expression,'Probe diagnostic grammar exists');
  const allowed=new RegExp(expression[1]);
  assert.ok(allowed.test('ALPHA_TRANSPORT:CLI_POLL:READ:200:java.net.SocketTimeoutException'));
