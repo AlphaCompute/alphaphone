@@ -185,3 +185,14 @@ if that route is chosen. No vendor edit is required for this plan.
 The existing Dictate → Apply transcript path now captures the text selection and complete original note revision before recording. Applying replaces only that selection, preserves the existing note type/title/pin and other fields, and discards the transient recording. The separate Record and transcribe → Save note path still creates a retained voice note. Review copy describes the difference without adding a new control.
 
 Concurrent note changes block application; persistence failure retains the reviewed transcript for explicit retry. The host adapter flow fixture verifies selected-range insertion, text-note preservation, no retained audio, save failure/retry and concurrent-edit refusal. This is synthetic recording/provider evidence. `NoteAudioInstrumentedTest#dictationReplacesSelectionAndKeepsTextNoteAcrossRecreation` adds actual Android recording with a manually entered transcript, selection insertion and recreation readback; this flow and the other three native audio flows passed on both Build55 variants. Exact logs are in `test-results/prototype-build55/native-updates/`; that combined matrix still failed the separate browser reload-namespace case. This does not claim live speech recognition.
+
+## Browser build recognition (2026-10-07)
+
+The web build no longer asks for a manually typed transcript on the **Record and transcribe**
+route: **Transcribe in this browser** runs Whisper tiny.en locally in a worker (English only),
+then opens the same editable Review state. Nothing is auto-sent or auto-saved. Distinct
+denied, no-microphone, no-speech, model-loading/load-failure and recognition-failure states,
+**Type transcript instead**, worker termination on cancel/background and saved transcript
+provenance are described in [browser-speech-recognition.md](browser-speech-recognition.md).
+The former browser transcript dialog (Chrome on-device `SpeechRecognition` or typing) was
+removed; **Record without transcription** remains the manual path. Android is unchanged.
