@@ -64,3 +64,34 @@ test('cancel and expiry interrupt a pending native handoff and late return canno
   f.resume();await new Promise(r=>setImmediate(r));assert.equal(polls,0);
  }
 });
+
+test('native later foreground admission waits, expires or cancels before dispatch',()=>{
+ const source=fs.readFileSync('android/app/src/main/java/ai/elizaresearch/alphaphone/AlphaConnectionPlugin.java','utf8');
+ const start=source.indexOf('     synchronized(foregroundLock){',source.indexOf('// Gate only future dispatch.'));
+ assert.ok(start>=0);let end=source.indexOf('{',start),depth=1;
+ while(depth&&++end<source.length){if(source[end]==='{')depth++;else if(source[end]==='}')depth--;}
+ const block=source.slice(start,end+1);
+ const dir=fs.mkdtempSync(path.join(os.tmpdir(),'alpha-poll-admission-'));
+ const home=process.env.JAVA_HOME||(process.platform==='darwin'?'/opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home':'');const bin=name=>home?path.join(home,'bin',name):name;
+ try{
+ fs.writeFileSync(path.join(dir,'PollAdmissionTest.java'),`public class PollAdmissionTest {
+ final Object foregroundLock=new Object();boolean foreground,destroyed;volatile int dispatched;
+ static class Pending{volatile boolean cancelled;}
+ void request(Pending pending,long expiresAt)throws Exception {${block}dispatched++;}
+ void resume(){synchronized(foregroundLock){foreground=true;foregroundLock.notifyAll();}}
+ public static void main(String[] args)throws Exception {
+  PollAdmissionTest first=new PollAdmissionTest();Pending pending=new Pending();
+  Thread worker=new Thread(()->{try{first.request(pending,System.currentTimeMillis()+10000);}catch(Exception e){throw new AssertionError(e);}});worker.start();Thread.sleep(30);
+  if(first.dispatched!=0)throw new AssertionError("Background poll dispatched");first.resume();worker.join(1000);if(worker.isAlive()||first.dispatched!=1)throw new AssertionError("Return failed");
+  first.foreground=false;Pending next=new Pending();Thread later=new Thread(()->{try{first.request(next,System.currentTimeMillis()+10000);}catch(Exception e){throw new AssertionError(e);}});later.start();Thread.sleep(30);if(first.dispatched!=1)throw new AssertionError("Later background poll dispatched");first.resume();later.join(1000);if(later.isAlive()||first.dispatched!=2)throw new AssertionError("Later return failed");
+  for(String mode:new String[]{"expiry","cancel","destroy"}){
+   PollAdmissionTest state=new PollAdmissionTest();Pending p=new Pending();java.util.concurrent.atomic.AtomicReference<Exception> error=new java.util.concurrent.atomic.AtomicReference<>();
+   Thread waiting=new Thread(()->{try{state.request(p,System.currentTimeMillis()+(mode.equals("expiry")?40:10000));}catch(Exception e){error.set(e);}});waiting.start();Thread.sleep(20);
+   if(!mode.equals("expiry")){synchronized(state.foregroundLock){if(mode.equals("cancel"))p.cancelled=true;else state.destroyed=true;state.foregroundLock.notifyAll();}}
+   waiting.join(1000);if(waiting.isAlive()||error.get()==null||state.dispatched!=0)throw new AssertionError("Invalid wait admission");state.resume();if(state.dispatched!=0)throw new AssertionError("Stale wait dispatched");
+  }
+ }
+}`);
+ execFileSync(bin('javac'),['-d',dir,path.join(dir,'PollAdmissionTest.java')],{timeout:15000});execFileSync(bin('java'),['-cp',dir,'PollAdmissionTest'],{timeout:15000});
+ }finally{fs.rmSync(dir,{recursive:true,force:true});}
+});

@@ -25,7 +25,9 @@ import org.json.JSONTokener;
 @CapacitorPlugin(name = "AlphaConnection")
 public final class AlphaConnectionPlugin extends Plugin {
  private volatile Uri delegationCallback;
- @Override public void load() { super.load(); captureDelegationCallback(getActivity().getIntent()); }
+ private final Object foregroundLock=new Object();
+ private boolean foreground;
+ @Override public void load() { super.load(); synchronized(foregroundLock){foreground=getActivity().getLifecycle().getCurrentState().isAtLeast(androidx.lifecycle.Lifecycle.State.RESUMED)||getActivity().hasWindowFocus();}captureDelegationCallback(getActivity().getIntent()); }
  @Override protected void handleOnNewIntent(Intent intent) { super.handleOnNewIntent(intent); captureDelegationCallback(intent); }
  private void captureDelegationCallback(Intent intent) {
   Uri uri = intent == null ? null : intent.getData();
@@ -187,9 +189,18 @@ public final class AlphaConnectionPlugin extends Plugin {
     int responseLimit=url.getPath().startsWith("/api/v1/eliza/google/gmail/inbox-v1/")?8*1024*1024:RESPONSE_LIMIT;
     String method = call.getString("method", "GET");
     if (!Set.of("GET", "POST").contains(method)) throw new IllegalArgumentException();
+    if("GET".equals(method)&&("api.eliza.app".equals(url.getHost())||"api-staging.eliza.app".equals(url.getHost()))&&url.getPath().matches("/api/auth/cli-session/[0-9a-fA-F-]{36}")){
+     // Gate only future dispatch. A claim already sent must finish and may be saved while backgrounded.
+     long expiresAt=call.getLong("expiresAt",System.currentTimeMillis()+30000);
+     synchronized(foregroundLock){
+      while(!foreground&&!pending.cancelled&&!destroyed){long remaining=expiresAt-System.currentTimeMillis();if(remaining<=0)throw new java.net.SocketTimeoutException();foregroundLock.wait(remaining);}
+      if(pending.cancelled||destroyed)throw new IllegalStateException();
+      if(System.currentTimeMillis()>=expiresAt)throw new java.net.SocketTimeoutException();
+     }
+    }
     stage=RequestStage.CONNECT;
     connection = (HttpURLConnection) url.toURL().openConnection(); pending.connection = connection;
-    connection.setInstanceFollowRedirects(false); connection.setConnectTimeout(20000); connection.setReadTimeout(120000);
+    connection.setInstanceFollowRedirects(false); connection.setConnectTimeout(20000); connection.setReadTimeout(operation==RequestOperation.CLI_POLL?30000:120000);
     connection.setUseCaches(false); connection.setRequestMethod(method);
     stage=RequestStage.VALIDATE;
     JSObject headers = call.getObject("headers", new JSObject());
@@ -241,7 +252,7 @@ public final class AlphaConnectionPlugin extends Plugin {
   }))requests.remove(id,pending);
  }
  @PluginMethod public void cancel(PluginCall call) {
-  String id = call.getString("requestId", ""); Pending pending = requests.get(id); if (pending != null) { boolean browser=pending.browserCall!=null||pending.browserLaunched;pending.cancel();if(browser)requests.remove(id,pending); } call.resolve();
+  String id = call.getString("requestId", ""); Pending pending = requests.get(id); if (pending != null) { boolean browser=pending.browserCall!=null||pending.browserLaunched;pending.cancel();if(browser)requests.remove(id,pending); } synchronized(foregroundLock){foregroundLock.notifyAll();}call.resolve();
  }
  @PluginMethod public void openExternal(PluginCall call) {
   try {
@@ -268,14 +279,16 @@ public final class AlphaConnectionPlugin extends Plugin {
    });
   } catch (Exception error) { call.reject("Unsupported authentication URL"); }
  }
- @Override protected void handleOnPause(){for(Pending pending:requests.values())pending.paused();super.handleOnPause();}
+ @Override protected void handleOnPause(){synchronized(foregroundLock){foreground=false;}for(Pending pending:requests.values())pending.paused();super.handleOnPause();}
  @Override protected void handleOnResume(){
   super.handleOnResume();
+  synchronized(foregroundLock){foreground=true;foregroundLock.notifyAll();}
   for(java.util.Map.Entry<String,Pending> entry:requests.entrySet())if(entry.getValue().returned())requests.remove(entry.getKey(),entry.getValue());
  }
  @Override protected void handleOnDestroy() {
   destroyed=true;
   for (Pending pending : requests.values()) pending.cancel();
+  synchronized(foregroundLock){foregroundLock.notifyAll();}
   requests.clear();workers.shutdownNow(); super.handleOnDestroy();
  }
 }
