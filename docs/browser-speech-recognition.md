@@ -5,7 +5,10 @@ Web (WebAssembly)** in a dedicated worker. Recorded audio never leaves the devic
 network traffic is the one-time download of the model files from this app's own origin. This
 matches Android, which runs Whisper tiny.en on the device through sherpa-onnx.
 
-**English only.** Like OCR, recognition is English-only for now; the recorder states this before
+This implements decision **P-07** in [decisions.md](decisions.md) (local, in-browser recognition;
+no cloud speech route is added).
+
+**English only.** Like OCR (decision **P-08**), recognition is English-only for now; the recorder states this before
 recording. Other languages are a separate model and product decision.
 
 ## Flow (no auto-send)
