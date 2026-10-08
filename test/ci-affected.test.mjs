@@ -41,3 +41,43 @@ test('complete Git diff preserves deleted paths and both sides of a rename into 
     assert.throws(() => changedPaths('0'.repeat(40), head, git));
   } finally { rmSync(cwd, { recursive: true, force: true }); }
 });
+
+test('existing browser-spec-only edits select one shard and the matching projects', async () => {
+  const { browserPlan } = await import('../scripts/ci/affected.mjs');
+  const plan = browserPlan(['README.md', 'test/browser/notes-save-failure.spec.ts'], () => true);
+  assert.equal(plan.browser_shards, '[1]');
+  assert.equal(plan.browser_total, 1);
+  assert.equal(plan.browser_specs, '["test/browser/notes-save-failure.spec.ts"]');
+  assert.equal(plan.browser_development, true);
+  assert.equal(plan.browser_production, false);
+  assert.equal(plan.browser_speech, false);
+  const larger = browserPlan(['a','b','c','d'].map(name => `test/browser/${name}.spec.ts`), () => true);
+  assert.equal(larger.browser_total, 3);
+  assert.equal(JSON.parse(larger.browser_specs).length, 4);
+  const production = browserPlan(['test/browser/production-surface.spec.ts'], () => true);
+  assert.equal(production.browser_development, false);
+  assert.equal(production.browser_production, true);
+  assert.equal(browserPlan(['test/browser/browser-agent-tts.spec.ts'], () => true).browser_speech, true);
+});
+test('shared inputs, helpers, deleted specs and unavailable diffs preserve the full suite', async () => {
+  const { browserPlan } = await import('../scripts/ci/affected.mjs');
+  for (const paths of [[], ['test/browser/helpers.ts'], ['test/browser/notes.spec.ts','apps/app/src/main.tsx'], ['test/browser/deleted.spec.ts']]) {
+    const plan = browserPlan(paths, path => !path.includes('deleted'));
+    assert.equal(plan.browser_total, 3);
+    assert.equal(plan.browser_specs, '[]');
+    assert.equal(plan.browser_production, true);
+    assert.equal(plan.browser_speech, true);
+  }
+});
+test('browser selector arguments are exact paths, not shell fragments or unescaped regexes', async () => {
+  const { browserArguments } = await import('../scripts/ci/run-browser.mjs');
+  const args = browserArguments('["test/browser/notes.spec.ts"]', ['--list'], () => true);
+  const regex = new RegExp(args[3]);
+  assert.ok(regex.test('/workspace/test/browser/notes.spec.ts'));
+  assert.ok(!regex.test('/workspace/test/browser/notesXspecYts'));
+  assert.ok(!regex.test('/workspace/test/browser/notes.spec.ts.extra'));
+  for (const raw of ['null', '{}', '["--help"]', '["test/browser/../../bad.spec.ts"]', '["test/browser/$(id).spec.ts"]']) {
+    assert.throws(() => browserArguments(raw, [], () => true));
+  }
+  assert.throws(() => browserArguments('["test/browser/deleted.spec.ts"]', [], () => false));
+});
