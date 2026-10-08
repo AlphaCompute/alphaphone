@@ -25,6 +25,9 @@ for(const [file,name] of [['voice-selection.ts','selectVoiceRoute'],['cloud-voic
 }
 sandbox.createCloudVoice=()=>driver; // Preserve this scenario's native-boundary fixture.
 vm.runInNewContext('{'+stripTypeScriptTypes(playback,{mode:'transform'})+'\nglobalThis.installLocalSpeechPlayback=installLocalSpeechPlayback;globalThis.stopLocalSpeechPlayback=stopLocalSpeechPlayback;}',sandbox);
+// The adapter's pure state helpers run as real source, not a stub.
+const voiceStates=(await readFile(new URL('../apps/app/src/runtime/voice-states.ts',import.meta.url),'utf8')).replaceAll('export function','function');
+vm.runInNewContext('{'+stripTypeScriptTypes(voiceStates,{mode:'transform'})+'\nglobalThis.voiceFailure=voiceFailure;globalThis.transcriptProvenance=transcriptProvenance;globalThis.speechProgressMessage=speechProgressMessage;}',sandbox);
 vm.runInNewContext(stripTypeScriptTypes(source,{mode:'transform'}),sandbox);
 sandbox.install(Shell,views);
 const shell=new Shell(), api=()=>({...shell.api('notes'),ic:{check:'',mic:'',stop:'',play:'',x:''},set:patch=>Object.assign(shell.notes,patch)});

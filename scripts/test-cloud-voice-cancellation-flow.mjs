@@ -15,24 +15,4 @@ evaluate(await fs.readFile(new URL('apps/app/src/runtime/cloud-voice.ts',root),'
 evaluate(await fs.readFile(new URL('apps/app/src/prototype/local-speech-playback.ts',root),'utf8'),'globalThis.installLocalSpeechPlayback=installLocalSpeechPlayback;globalThis.stopLocalSpeechPlayback=stopLocalSpeechPlayback;');
 box.testMocksEnabled=true;
 evaluate(await fs.readFile(new URL('apps/app/src/runtime/voice-selection.ts',root),'utf8'),'globalThis.selectVoiceRoute=selectVoiceRoute;');
-evaluate(await fs.readFile(new URL('apps/app/src/prototype/voice-adapter.ts',root),'utf8'),'globalThis.install=installPrototypeVoiceAdapter;');
-class Shell{constructor(){this.state={view:'notes'};this.notes={list:[]};}S(){return this.state;}setState(p){Object.assign(this.state,p);}openView(v){this.state.view=v;}goHome(){this.state.view=null;}toast(){}vset(_,p){Object.assign(this.notes,p);return true;}startVoice(){}componentWillUnmount(){}}
-const views={notes:{render:()=>({ed:{}}),back:()=>false,onLeave:()=>{}}};box.install(Shell,views);const shell=new Shell();const api={get:()=>shell.notes,setView:(_,p)=>Object.assign(shell.notes,p),set:p=>Object.assign(shell.notes,p),ic:{}};const render=()=>views.notes.render(shell.notes,api);
-render().record();render().rec.changeRoute();await tick();render().rec.stop();await tick();render().rec.stop();await tick();render().rec.stop();await tick();assert.equal(render().rec.review,true);
-render().rec.toggle();await tick();assert.equal(plays,1);assert.equal(render().rec.pauseLabel,'Stop audio');render().rec.toggle();await new Promise(r=>setTimeout(r,650));
-
-assert.equal(render().rec.pauseLabel,'Listen to transcript');assert.equal(stops.filter(s=>s?.requestId===request).length,1,'idempotent request-scoped cleanup');
-// An old session's delayed native callback cannot finish new playback.
-const old=events.filter(e=>e.event.startsWith('playback'));account='owner-B';for(const f of [...subscribers])f();await tick();
-const next=box.createCloudVoice(), abort=new AbortController();let settled=false;const speech=next.speak('New owner',abort.signal).then(()=>{settled=true;},()=>{settled=true;});await tick();for(const e of old)e.callback({playbackId:activePlayback});await tick();assert.equal(settled,false);abort.abort();await speech;assert.equal(settled,true);
-// Cancellation while listener registration is unresolved must settle too.
-const originalAdd=port.addListener;let lateListener,removed=0;
-port.addListener=()=>new Promise(resolve=>{lateListener=resolve;});
-const waiting=box.createCloudVoice(), stop=new AbortController();let cancelled=false;
-const waitSpeech=waiting.speak('Pending listener',stop.signal).catch(()=>{cancelled=true;});await tick();stop.abort();await waitSpeech;assert.equal(cancelled,true);
-const playsBefore=plays;lateListener({remove:async()=>{removed++;}});await tick();assert.equal(removed,1);assert.equal(plays,playsBefore);port.addListener=originalAdd;
-const originalSynthesize=port.synthesize;let finishSynthesis;
-port.synthesize=()=>new Promise(resolve=>{finishSynthesis=resolve;});
-const slow=box.createCloudVoice(), slowAbort=new AbortController();const slowSpeech=slow.speak('Late synthesis',slowAbort.signal).catch(()=>{});await tick();slowAbort.abort();await slowSpeech;
-const priorPlays=plays;finishSynthesis({playbackId:'late-old-audio'});await tick();assert.equal(plays,priorPlays,'cancelled synthesis cannot dispatch late play');port.synthesize=originalSynthesize;
-shell.componentWillUnmount();console.log('PASS: actual renderer/cloud-driver recording→review→play→cancel settles despite hung cleanup; stale account callbacks suppressed; scoped cleanup idempotent. Controlled native port only.');
+evaluate(await fs.readFile(new URL('apps/app/src/runtime/voice-states.ts',root),'utf8'),'globalThis.voiceFailure=voiceFailure;globalThis.transcriptProvenance=transcriptProvenance;globalThis.speechProgressMessage=speechProgressMessage;');

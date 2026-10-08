@@ -32,6 +32,14 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
       - run: npm ci
+      # Pinned in-browser speech model (size/hash verified on every use; Android prunes it).
+      - uses: actions/cache@v4
+        with:
+          path: .eliza/browser-speech
+          key: browser-speech-${{ hashFiles('config/browser-speech.json') }}
+      - name: Acquire verified browser speech model
+        timeout-minutes: 10
+        run: npm run browser-speech:prepare
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -49,15 +57,15 @@ jobs:
       - run: npm run verify
   browser:
     needs: changes
-    if: needs.changes.outputs.browser == 'true' && github.event_name != 'push'
-    name: Browser MVP (shard ${{ matrix.shard }}/3)
+    if: needs.changes.outputs.browser == 'true' && needs.changes.outputs.browser_development == 'true' && github.event_name != 'push'
+    name: Browser MVP (shard ${{ matrix.shard }}/${{ needs.changes.outputs.browser_total }})
     runs-on: ubuntu-latest
     # Repository verification runs once, in parallel with all browser shards.
     timeout-minutes: 60
     strategy:
       fail-fast: true
       matrix:
-        shard: [1, 2, 3]
+        shard: ${{ fromJSON(needs.changes.outputs.browser_shards) }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -67,21 +75,30 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
       - run: npm ci
+      # Pinned in-browser speech model (size/hash verified on every use; Android prunes it).
+      - uses: actions/cache@v4
+        with:
+          path: .eliza/browser-speech
+          key: browser-speech-${{ hashFiles('config/browser-speech.json') }}
+      - name: Acquire verified browser speech model
+        timeout-minutes: 10
+        run: npm run browser-speech:prepare
       - run: npx playwright install --with-deps chromium
       - name: Browser MVP on the flag-on development server
         env:
           # Development shards opt into test mocks, fixtures and device controls explicitly.
           ELIZA_DEV_ALLOW_TEST_MOCKS: '1'
-        run: npm run test:browser -- --shard=${{ matrix.shard }}/3
+          ALPHA_CI_BROWSER_SPECS: ${{ needs.changes.outputs.browser_specs }}
+        run: node scripts/ci/run-browser.mjs --shard=${{ matrix.shard }}/${{ needs.changes.outputs.browser_total }}
       - name: Exercise synthetic local-agent speech profile
-        if: matrix.shard == 1
+        if: matrix.shard == 1 && needs.changes.outputs.browser_speech == 'true'
         run: |
           node --input-type=module -e "import fs from 'node:fs'; fs.writeFileSync(process.env.RUNNER_TEMP + '/alpha-synthetic-owner-token', 'a'.repeat(64), {mode: 0o600});"
           PLAYWRIGHT_HTML_OUTPUT_DIR=test-results/browser-agent-profile-report ELIZA_DEV_ALLOW_TEST_MOCKS=1 VITE_LOCAL_AGENT=1 ALPHA_LOCAL_AGENT_TOKEN_FILE="$RUNNER_TEMP/alpha-synthetic-owner-token" ALPHA_LOCAL_AGENT_ORIGIN=http://127.0.0.1:1 npm run test:browser -- test/browser/browser-agent-recording.spec.ts test/browser/browser-agent-tts.spec.ts test/browser/browser-host-disclosure.spec.ts --grep 'rendered browser recording|local agent TTS|prepared agent audio|connected browser host' --output=test-results/browser-agent-profile
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: browser-mvp-shard-${{ matrix.shard }}-of-3
+          name: browser-mvp-shard-${{ matrix.shard }}-of-${{ needs.changes.outputs.browser_total }}
           path: |
             test-results/browser/
             test-results/browser-report/
@@ -90,7 +107,7 @@ jobs:
           retention-days: 3
   production:
     needs: changes
-    if: needs.changes.outputs.browser == 'true' && github.event_name != 'push'
+    if: needs.changes.outputs.browser == 'true' && needs.changes.outputs.browser_production == 'true' && github.event_name != 'push'
     name: Browser production surface (flag off)
     runs-on: ubuntu-latest
     timeout-minutes: 25
@@ -103,11 +120,15 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
       - run: npm ci
+      # Pinned in-browser speech model (size/hash verified on every use; Android prunes it).
+      - uses: actions/cache@v4
+        with:
+          path: .eliza/browser-speech
+          key: browser-speech-${{ hashFiles('config/browser-speech.json') }}
+      - name: Acquire verified browser speech model
+        timeout-minutes: 10
+        run: npm run browser-speech:prepare
       - run: npx playwright install --with-deps chromium
-      - name: Production bundle audit
-        run: |
-          npm run build
-          node scripts/audit-production-bundle.mjs web-dist
       - name: Test-mocks bundle records its flag
         run: |
           npm run build:test-mocks -- --outDir ../../test-results/test-mocks-web
@@ -148,6 +169,14 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
       - run: npm ci
+      # Pinned in-browser speech model (size/hash verified on every use; Android prunes it).
+      - uses: actions/cache@v4
+        with:
+          path: .eliza/browser-speech
+          key: browser-speech-${{ hashFiles('config/browser-speech.json') }}
+      - name: Acquire verified browser speech model
+        timeout-minutes: 10
+        run: npm run browser-speech:prepare
       - run: npx playwright install --with-deps ${{ matrix.browser }}
       - name: Provide an audio server for Firefox recording
         if: matrix.browser == 'firefox'

@@ -30,11 +30,15 @@ Inputs:
   `onnxruntime-MIT.txt`, `whisper-MIT.txt`, `cmudict-BSD-2-Clause.txt`,
   `piper-ljspeech-medium-MODEL_CARD.txt` and `piper-voices-README.md` must match the SHA-256 values
   in `vendor/eliza/packages/app/scripts/local-speech/reference-manifest.json`.
+- `config/browser-speech.json` for the web build's in-browser speech recognition:
+  `whisper-tiny.en-onnx-MODEL_CARD.md` (the pinned ONNX conversion's model card) and
+  `onnxruntime-web/ThirdPartyNotices.txt` (ONNX Runtime v1.30.0, for the libraries statically
+  linked into the shipped WebAssembly) must match the SHA-256 values recorded there.
 - `vendor/eliza/LICENSE` at the commit pinned by `upstream.lock.json` (read only).
 - `ODbL-1.0.txt` for OpenStreetMap-derived map data served by the configured Maps endpoint.
 
-Generic texts: `Apache-2.0.txt`, `MIT.txt` (used only when an MIT npm package ships no license
-file), `OFL-1.1.txt`. `mediabunny-MPL-2.0.txt` and `tessdata-APACHE-2.0.txt` remain the sources for
+Generic texts: `Apache-2.0.txt`, `MIT.txt` and `ISC.txt` (used only when an MIT or ISC npm package
+ships no license file), `OFL-1.1.txt`. `mediabunny-MPL-2.0.txt` and `tessdata-APACHE-2.0.txt` remain the sources for
 the existing mediabunny and OCR notices.
 
 `unverified-allowlist.json` lists items whose license could not be established from shipped
