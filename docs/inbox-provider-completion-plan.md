@@ -1,6 +1,6 @@
 # Inbox provider completion
 
-Email/Gmail is in MVP scope (product decision, October 7, 2026). This plan dates from September 30. The current boundary below records what the October 7 change implemented. It is still not acceptance evidence: real OAuth, Cloud deployment and a real mailbox remain open. The existing prototype remains the visual contract; offline encrypted local drafts must continue working independently of Cloud authentication.
+Email/Gmail is in MVP scope (owner decision [P-02](decisions.md#october-7-owner-product-decisions), October 7, 2026). This plan dates from September 30. The current boundary below records what the October 7 change implemented. It is still not acceptance evidence: real OAuth, Cloud deployment and a real mailbox remain open. The existing prototype remains the visual contract; offline encrypted local drafts must continue working independently of Cloud authentication.
 
 ## Current boundary (October 7)
 
