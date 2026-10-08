@@ -32,6 +32,14 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
       - run: npm ci
+      # Pinned in-browser speech model (size/hash verified on every use; Android prunes it).
+      - uses: actions/cache@v4
+        with:
+          path: .eliza/browser-speech
+          key: browser-speech-${{ hashFiles('config/browser-speech.json') }}
+      - name: Acquire verified browser speech model
+        timeout-minutes: 10
+        run: npm run browser-speech:prepare
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -67,6 +75,14 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
       - run: npm ci
+      # Pinned in-browser speech model (size/hash verified on every use; Android prunes it).
+      - uses: actions/cache@v4
+        with:
+          path: .eliza/browser-speech
+          key: browser-speech-${{ hashFiles('config/browser-speech.json') }}
+      - name: Acquire verified browser speech model
+        timeout-minutes: 10
+        run: npm run browser-speech:prepare
       - run: npx playwright install --with-deps chromium
       - name: Browser MVP on the flag-on development server
         env:
@@ -103,6 +119,14 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
       - run: npm ci
+      # Pinned in-browser speech model (size/hash verified on every use; Android prunes it).
+      - uses: actions/cache@v4
+        with:
+          path: .eliza/browser-speech
+          key: browser-speech-${{ hashFiles('config/browser-speech.json') }}
+      - name: Acquire verified browser speech model
+        timeout-minutes: 10
+        run: npm run browser-speech:prepare
       - run: npx playwright install --with-deps chromium
       - name: Production bundle audit
         run: |
@@ -148,6 +172,14 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
       - run: npm ci
+      # Pinned in-browser speech model (size/hash verified on every use; Android prunes it).
+      - uses: actions/cache@v4
+        with:
+          path: .eliza/browser-speech
+          key: browser-speech-${{ hashFiles('config/browser-speech.json') }}
+      - name: Acquire verified browser speech model
+        timeout-minutes: 10
+        run: npm run browser-speech:prepare
       - run: npx playwright install --with-deps ${{ matrix.browser }}
       - name: Provide an audio server for Firefox recording
         if: matrix.browser == 'firefox'

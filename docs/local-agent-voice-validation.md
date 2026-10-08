@@ -60,7 +60,10 @@ different protocol. It is not ASR on this paired runtime. Paired native voice UI
 still needs authenticated binary requests, AAC-to-mono-PCM-WAV conversion,
 account/lifecycle cancellation and real playback testing, gated by selected
 server capability. Cloud voice remains separately account/authentication gated.
-Local Notes audio plus manual transcript is already a separate supported flow.
+Local Notes audio plus manual transcript is already a separate supported flow. The browser
+build now also transcribes locally with in-browser Whisper tiny.en
+([browser-speech-recognition.md](browser-speech-recognition.md)); the development local-agent
+route above stays an explicit, flag-only alternative.
 
 ## Notes playback implementation (next Android verification)
 

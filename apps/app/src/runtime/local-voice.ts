@@ -1,14 +1,18 @@
 import { planLocalSpeech } from './local-speech-text';
 import { speakLocalText } from '../local-speech-playback';
 import { registerPlugin } from '../platform-plugins';
-import { Capacitor } from '@capacitor/core';
+import { Capacitor, type PluginListenerHandle } from '@capacitor/core';
 import { connectionController } from './connection-ui';
 const native = registerPlugin<{
   localSpeechStatus(input: { requestId: string }): Promise<{ ready: boolean; execution: string }>;
-  transcribeLocalRecording(input: { recordingId: string; requestId: string }): Promise<{ text: string; local: true; execution: string }>;
+  transcribeLocalRecording(input: { recordingId: string; requestId: string }): Promise<LocalTranscript>;
+  addListener(event: 'speechProgress', callback: (event: SpeechProgressEvent) => void): Promise<PluginListenerHandle>;
   releaseLocalSpeech(): Promise<void>;
   cancel(input: { requestId: string }): Promise<void>;
 }>('AlphaVoiceCloud');
+/** Provenance reported with a transcript. The browser build reports its Whisper engine and model. */
+export type LocalTranscript = { text: string; local: true; execution: string; route?: string; engine?: string; model?: string; modelRevision?: string; runtime?: string; language?: string };
+export type SpeechProgressEvent = { requestId?: string; phase: 'download'; loaded: number; total: number } | { requestId?: string; phase: 'initialize' | 'transcribe' };
 let releaseWatcherInstalled = false;
 function installReleaseWatcher() {
   if (releaseWatcherInstalled) return;
@@ -46,7 +50,16 @@ export function createOnDeviceVoice() {
   }
   return {
     async ready(signal: AbortSignal) { return operation(signal, async (requestId, interrupted) => { const result = await Promise.race([native.localSpeechStatus({ requestId }), interrupted]); return result.ready === true && result.execution === (Capacitor.isNativePlatform()?'device':'browser'); }); },
-    async transcribe(recordingId: string, signal: AbortSignal) { return operation(signal, async (requestId, interrupted) => { const result = await Promise.race([native.transcribeLocalRecording({ recordingId, requestId }), interrupted]); if (result.execution !== (Capacitor.isNativePlatform()?'device':'browser') || result.local !== true || typeof result.text !== 'string' || !result.text.trim()) throw new Error('No usable on-device transcript'); return result; }); },
+    async transcribe(recordingId: string, signal: AbortSignal, progress?: (event: SpeechProgressEvent) => void) { return operation(signal, async (requestId, interrupted) => {
+      // Progress is advisory and bound to this request; a missing listener never blocks transcription.
+      let handle: PluginListenerHandle | undefined, closed = false;
+      if (progress) void native.addListener('speechProgress', event => { if (!closed && event?.requestId === requestId) progress(event); }).then(value => { if (closed) void value.remove(); else handle = value; }, () => {});
+      try {
+        const result = await Promise.race([native.transcribeLocalRecording({ recordingId, requestId }), interrupted]);
+        if (result.execution !== (Capacitor.isNativePlatform()?'device':'browser') || result.local !== true || typeof result.text !== 'string' || !result.text.trim()) throw new Error('No usable on-device transcript');
+        return result;
+      } finally { closed = true; void handle?.remove(); }
+    }); },
     async speak(text: string, signal: AbortSignal) {
       const chunks = planLocalSpeech(text);
       return operation(signal, async (_requestId, interrupted, ownedSignal) => {

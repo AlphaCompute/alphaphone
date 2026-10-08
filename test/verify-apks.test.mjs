@@ -87,6 +87,13 @@ test("clean flag-off release and debug inputs pass", () => {
   assert.deepEqual(distributionProblems(apk({ xml: xmltree({ debuggable: true }) }), { mode: "debug" }).problems, []);
 });
 
+test("browser speech model assets never ship in an APK", () => {
+  for (const mode of ["debug", "release"]) {
+    const { problems } = distributionProblems(apk({ names: [...NAMES, "assets/public/browser-speech/manifest.json", "assets/public/browser-speech/ort/ort-wasm-simd-threaded.wasm"] }), { mode });
+    assert.ok(problems.some(p => /Browser speech model assets are packaged: assets\/public\/browser-speech\/manifest\.json/.test(p)), problems.join("\n"));
+  }
+});
+
 test("cleartext-enabled inputs fail in every distribution APK", () => {
   for (const mode of ["debug", "release"]) {
     const { problems } = distributionProblems(apk({ xml: xmltree({ cleartext: true }) }), { mode });

@@ -60,6 +60,14 @@ jobs:
           python3 -m pip install cmake==4.0.3
           test "$(cmake --version | head -1)" = "cmake version 4.0.3"
       - run: npm ci
+      # Pinned in-browser speech model (size/hash verified on every use; Android prunes it).
+      - uses: actions/cache@v4
+        with:
+          path: .eliza/browser-speech
+          key: browser-speech-${{ hashFiles('config/browser-speech.json') }}
+      - name: Acquire verified browser speech model
+        timeout-minutes: 10
+        run: npm run browser-speech:prepare
       - name: Verify standalone manual qualification
         if: github.event_name == 'workflow_dispatch'
         run: npm run verify

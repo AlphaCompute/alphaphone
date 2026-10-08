@@ -202,3 +202,31 @@ test('production ignores the development render-failure hook', async ({ page }) 
   await expect(page.getByRole('alertdialog')).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Agent connection', exact: true })).toBeVisible();
 });
+
+test('production browser speech: self-hosted Whisper transcribes under the shipped CSP without third-party requests', async ({ page }) => {
+  test.setTimeout(120000);
+  const { readFileSync } = await import('node:fs');
+  const encoded = readFileSync(new URL('../../design-assets/video/narration/voice.wav', import.meta.url)).toString('base64');
+  const violations = await trackCsp(page);
+  const foreign: string[] = [];
+  page.on('request', request => { const url = new URL(request.url()); if (!['127.0.0.1', 'localhost'].includes(url.hostname) && !['data:', 'blob:'].includes(url.protocol)) foreign.push(request.url()); });
+  await page.addInitScript(offline);
+  await page.goto('/');
+  await page.evaluate(async encoded => {
+    const ctx = new AudioContext(), buffer = await ctx.decodeAudioData(Uint8Array.from(atob(encoded), c => c.charCodeAt(0)).buffer);
+    document.addEventListener('click', () => { void ctx.resume(); }, { capture: true });
+    (window as any).spoken = buffer.duration;
+    Object.defineProperty(navigator, 'mediaDevices', { configurable: true, value: { getUserMedia: async () => { const sink = ctx.createMediaStreamDestination(), source = ctx.createBufferSource(); source.buffer = buffer; source.connect(sink); await ctx.resume(); setTimeout(() => source.start(), 150); return sink.stream; } } });
+  }, encoded);
+  await page.getByRole('button', { name: 'Notes', exact: true }).click();
+  await page.getByRole('button', { name: 'Record and transcribe', exact: true }).click();
+  await page.getByRole('button', { name: 'Start recording', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Stop recording', exact: true })).toBeVisible();
+  await page.waitForTimeout(await page.evaluate(() => (window as any).spoken as number) * 1000 + 500);
+  await page.getByRole('button', { name: 'Stop recording', exact: true }).click();
+  await page.getByRole('button', { name: 'Transcribe in this browser', exact: true }).click();
+  const review = page.getByRole('textbox', { name: 'Review transcript', exact: true });
+  await expect(review).toHaveValue(/hold the side key to talk/i, { timeout: 90000 });
+  expect(foreign).toEqual([]);
+  expect(await violations()).toEqual([]);
+});
