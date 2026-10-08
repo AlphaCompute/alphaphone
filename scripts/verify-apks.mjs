@@ -19,6 +19,7 @@ import {
   auditBundle, distributionProblems, extractWebPayload, readBuildFlags, signerDigest, validateApk,
 } from "./apk.mjs";
 import { androidEnv, tool } from "./toolchain.mjs";
+import { readReleaseSigner, releaseAdmission, RELEASE_SIGNER_FILE } from "./build-android.mjs";
 
 const USAGE = "Usage: node scripts/verify-apks.mjs [--test-mocks] [--allow-unpackaged-runtime]";
 const args = process.argv.slice(2);
@@ -113,6 +114,15 @@ const release = results.filter(row => row.mode === "release");
 if (release.some(row => row.signed) && !release.every(row => row.signed))
   throw new Error("Only one release APK is signed");
 
+// A release is distributable only when signed by the committed release signer with
+// a versionCode above the last recorded release. A mismatch fails verification.
+const releaseSigner = readReleaseSigner();
+for (const row of release) {
+  row.releaseAdmission = releaseAdmission(row, releaseSigner);
+  if (!testMocks && row.releaseAdmission.failures.length)
+    throw new Error(`Release signing admission failed for ${row.file}: ${row.releaseAdmission.failures.join("; ")}`);
+}
+
 // Debug keeps the original report-only semantics; releases need the runtime.
 const runtimeArgs = [
   ...(allowUnpackaged || testMocks ? ["--allow-unpackaged-runtime"] : []),
@@ -136,7 +146,9 @@ for (const row of release) {
   row.speechQualification = JSON.parse(execFileSync("python3", [
     "scripts/local-speech/verify-apk-qualification.py", row.file,
   ], { encoding: "utf8" }));
-  row.distributable = !testMocks && runtime.distributable === true && row.speechQualification.byteMatch === true && row.speechQualification.functionalPassed === true && row.speechQualification.qualified === true;
+  row.distributable = !testMocks && row.signed === true && row.releaseAdmission.signerMatches === true &&
+    row.releaseAdmission.blockers.length === 0 && row.releaseAdmission.failures.length === 0 &&
+    runtime.distributable === true && row.speechQualification.byteMatch === true && row.speechQualification.functionalPassed === true && row.speechQualification.qualified === true;
 }
 for (const row of results.filter(row => row.mode === "debug"))
   row.runtime = runtimePackaging.find(entry => entry.apk === row.file).runtime;
@@ -165,6 +177,7 @@ fs.writeFileSync(
         release: release.every(row => row.signed) ? { signed: true, signerSha256: release[0].signerSha256 } : { signed: false },
         debugSignerSha256: results.find(row => row.mode === "debug").signerSha256,
         apksigner: apksignerVersion,
+        descriptor: { file: RELEASE_SIGNER_FILE, signerSha256: releaseSigner.signerSha256, lastReleaseVersionCode: releaseSigner.lastRelease.versionCode },
       },
       mappings,
       upstream: JSON.parse(fs.readFileSync("upstream.lock.json")),
@@ -178,7 +191,7 @@ fs.writeFileSync(
 console.log(JSON.stringify(results, null, 2));
 const undistributable = release.filter(row => !row.distributable);
 if (undistributable.length)
-  console.warn(`Not distributable: ${undistributable.map(row => `${row.file} (${[row.runtime !== "PACKAGED" && "no packaged runtime", testMocks && "test-mocks build", !row.speechQualification.byteMatch && "speech native bytes not admitted", !row.speechQualification.functionalPassed && "speech functional acceptance pending or failed"].filter(Boolean).join(", ")})`).join("; ")}`);
+  console.warn(`Not distributable: ${undistributable.map(row => `${row.file} (${[row.runtime !== "PACKAGED" && "no packaged runtime", testMocks && "test-mocks build", !row.speechQualification.byteMatch && "speech native bytes not admitted", !row.speechQualification.functionalPassed && "speech functional acceptance pending or failed", ...row.releaseAdmission.blockers].filter(Boolean).join(", ")})`).join("; ")}`);
 const unsigned = release.filter(row => !row.signed);
 if (unsigned.length)
   console.warn(`Unsigned releases (set ELIZAOS_KEYSTORE_PATH, ELIZAOS_KEYSTORE_PASSWORD, ELIZAOS_KEY_ALIAS and ELIZAOS_KEY_PASSWORD to sign): ${unsigned.map(row => row.file).join(", ")}`);

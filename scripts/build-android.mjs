@@ -86,10 +86,66 @@ export function withDistributionWebRestored(options, baseEnv, run, body, { root 
     }
   }
 }
-export const signingRequested = env => SIGNING_ENV.every(name => Boolean(env[name]));
+const signingValue = (env, name) => typeof env[name] === "string" && env[name].trim() !== "";
+export const signingRequested = env => SIGNING_ENV.every(name => signingValue(env, name));
+
+/** Names (never values) of the signing variables a partial ELIZAOS_* set lacks; null when none or all are set. */
+export function partialSigningProblem(env) {
+  const missing = SIGNING_ENV.filter(name => !signingValue(env, name));
+  if (missing.length === 0 || missing.length === SIGNING_ENV.length) return null;
+  return `Incomplete release signing environment: missing ${missing.join(", ")}. Set all of ${SIGNING_ENV.join(", ")} or none.`;
+}
+
+export const RELEASE_SIGNER_FILE = "android/release-signer.json";
+const hex64 = /^[0-9a-f]{64}$/;
+
+/** Validate the committed release-signer descriptor. */
+export function validateReleaseSigner(descriptor) {
+  const problems = [];
+  if (!descriptor || descriptor.schema !== 1) problems.push("schema must be 1");
+  const signer = descriptor?.signerSha256;
+  if (signer !== "unset" && !(typeof signer === "string" && hex64.test(signer)))
+    problems.push("signerSha256 must be 'unset' or a lowercase 64-hex certificate digest");
+  const last = descriptor?.lastRelease;
+  if (!last || typeof last !== "object") problems.push("lastRelease is required");
+  else if (last.versionCode !== null && !(Number.isInteger(last.versionCode) && last.versionCode > 0))
+    problems.push("lastRelease.versionCode must be null or a positive integer");
+  if (problems.length) throw new Error(`${RELEASE_SIGNER_FILE} is invalid: ${problems.join("; ")}`);
+  return descriptor;
+}
+
+export function readReleaseSigner(root = process.cwd()) {
+  return validateReleaseSigner(JSON.parse(fs.readFileSync(path.join(root, RELEASE_SIGNER_FILE), "utf8")));
+}
+
+/**
+ * Release admission against the descriptor. `failures` stop verification (a signed
+ * release with a different certificate or a non-advancing versionCode); `blockers`
+ * keep an otherwise valid release distributable:false (unsigned, signer unset,
+ * an unsigned build that does not advance the recorded versionCode).
+ */
+export function releaseAdmission({ signed, signerSha256, versionCode }, descriptor) {
+  validateReleaseSigner(descriptor);
+  const failures = [];
+  const blockers = [];
+  if (!signed) blockers.push("unsigned release");
+  if (descriptor.signerSha256 === "unset") blockers.push(`release signer is unset in ${RELEASE_SIGNER_FILE}`);
+  else if (signed && signerSha256 !== descriptor.signerSha256)
+    failures.push(`release signer ${signerSha256 ?? "unknown"} does not match ${RELEASE_SIGNER_FILE} ${descriptor.signerSha256}`);
+  const last = descriptor.lastRelease.versionCode;
+  if (last !== null && !(Number.isInteger(versionCode) && versionCode > last)) {
+    const message = `versionCode ${versionCode} is not greater than the last recorded release ${last}`;
+    (signed ? failures : blockers).push(message);
+  }
+  return { failures, blockers, signerMatches: signed && descriptor.signerSha256 !== "unset" && signerSha256 === descriptor.signerSha256 };
+}
 
 async function main() {
   const options = parseBuildArgs(process.argv.slice(2));
+  // A partial signing set would silently produce unsigned releases; refuse it up front.
+  const partial = partialSigningProblem(process.env);
+  if (partial) throw new Error(partial);
+  readReleaseSigner();
   // Report missing inputs (pinned checkout, speech AAR, prepared/staged runtime)
   // with the exact command to run, before web sync and a long Gradle build.
   const preflight = spawnSync(process.execPath, [path.join(import.meta.dirname, "android-build-preflight.mjs"), ...process.argv.slice(2)], { stdio: "inherit" });
