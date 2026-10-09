@@ -16,7 +16,8 @@
 <sc-if value="{{isOn}}" hint-placeholder-val="{{false}}">
 <sc-if value="{{showAppBack}}"><button data-alpha-app-back-fallback aria-label="Back to apps" onClick="{{backToApps}}" style="position:absolute;top:0;left:12px;z-index:44;min-height:44px;display:flex;align-items:center;gap:6px;padding:0 8px;color:var(--fg);font-size:14px"><svg class="i" viewBox="0 0 24 24" style="width:18px;height:18px"><path d="{{ic.back}}"></path></svg>Apps</button></sc-if>
 
-<div data-alpha-layer="home" onFocusCapture="{{focusAppContent}}" role="region" aria-label="Home" aria-hidden="{{homeHidden}}" inert="{{homeHidden}}" style="position: absolute; inset: 44px 0 0; z-index: 10; display: flex; flex-direction: column; padding: 20px 0 108px; box-sizing: border-box; overflow-y:auto; overflow-x:hidden; scroll-padding-bottom:110px">
+<div data-alpha-layer="home" onFocusCapture="{{focusAppContent}}" role="region" aria-label="Home" aria-hidden="{{homeHidden}}" inert="{{homeHidden}}" style="position: absolute; inset: 44px 0 0; z-index: 10; box-sizing: border-box; overflow-y:auto; overflow-x:hidden; scroll-padding-bottom:110px">
+<div data-alpha-home-layout style="min-height:100%;display:flex;flex-direction:column;padding:20px 0 108px;box-sizing:border-box">
 <sc-if value="{{storageAccessWarning}}" hint-placeholder-val="{{false}}"><p role="alert" class="storage-access-warning">{{storageAccessWarning}}</p></sc-if>
   <div class="scr" style="display: flex; gap: 12px; overflow-x: auto; scroll-snap-type: x mandatory; padding: 0 24px; scroll-padding-left: 24px; touch-action: pan-x; flex-shrink: 0">
     <button onClick="{{goCalendar}}" aria-label="{{homeCalendarLabel}}" style="flex-shrink: 0; scroll-snap-align: start; width: 280px; height: 196px; border-radius: 30px; background: var(--acc); color: #ffffff; padding: 22px; box-sizing: border-box; display: flex; flex-direction: column; justify-content: space-between">
@@ -66,6 +67,8 @@
   </div>
 
   <div style="flex-grow: 1; min-height: 16px"></div>
+</div>
+<div data-alpha-home-clearance aria-hidden="true"></div>
 </div>
 </sc-if>
 
