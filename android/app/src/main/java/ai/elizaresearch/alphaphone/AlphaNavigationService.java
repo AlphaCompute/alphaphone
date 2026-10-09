@@ -75,10 +75,13 @@ public final class AlphaNavigationService extends Service {
   return true;
  }
 
- /** Ends the session if it is still active. Returns false when it already stopped. */
+ /** Ends the session if it is still active. Returns false when it already stopped.
+  * The service is told through a command rather than stopService: a start that is still
+  * queued must reach startForeground first, or the platform treats the start as broken. */
  static boolean stop(Context context, String session, String reason) {
   if (!finish(session, reason)) return false;
-  context.stopService(new Intent(context, AlphaNavigationService.class));
+  try { context.startService(intent(context, ACTION_STOP, session).putExtra(EXTRA_REASON, reason)); }
+  catch (RuntimeException backgroundRestricted) { context.stopService(new Intent(context, AlphaNavigationService.class)); }
   return true;
  }
 
@@ -102,22 +105,26 @@ public final class AlphaNavigationService extends Service {
   return clean.length() > 200 ? clean.substring(0, 200) : clean;
  }
 
+ /** The session this service instance last entered the foreground for. */
+ private String owned;
+
  @Override public IBinder onBind(Intent intent) { return null; }
 
  @Override public int onStartCommand(Intent intent, int flags, int startId) {
   String action = intent == null ? null : intent.getAction();
   String session = intent == null ? null : intent.getStringExtra(EXTRA_SESSION);
   if (ACTION_STOP.equals(action)) {
-   // Notification Stop: the renderer hears it through the bridge listener once.
+   // Notification Stop: the renderer hears it through the bridge listener once. An app stop
+   // already finished the session; a stop of a replaced session leaves its successor running.
    finish(session, intent.getStringExtra(EXTRA_REASON) == null ? "notification" : intent.getStringExtra(EXTRA_REASON));
-   end();
+   if (activeSession() == null) end(startId);
    return START_NOT_STICKY;
   }
   String current = activeSession();
   boolean live = session != null && session.equals(current) && (ACTION_START.equals(action) || ACTION_UPDATE.equals(action));
   if (!live && !ACTION_START.equals(action)) {
    // A stale or replayed update never revives a stopped session.
-   if (current == null) end();
+   if (current == null) end(startId);
    return START_NOT_STICKY;
   }
   // A start command always enters the foreground first (the platform requires it), then a
@@ -129,28 +136,30 @@ public final class AlphaNavigationService extends Service {
   } catch (RuntimeException refused) {
    // Missing location permission or a background start restriction: no silent continuation.
    finish(session, "refused");
-   end();
+   end(startId);
    return START_NOT_STICKY;
   }
-  if (!live) end();
+  if (live) owned = session; else end(startId);
   return START_NOT_STICKY;
  }
 
  @Override public void onTaskRemoved(Intent rootIntent) {
   finish(null, "task-removed");
-  end();
+  end(-1);
   super.onTaskRemoved(rootIntent);
  }
 
  @Override public void onDestroy() {
-  // The system can destroy the service without a command; report that stop as well.
-  finish(null, "destroyed");
+  // The system can destroy the service without a command; report that stop as well. Only the
+  // session this instance served: a destroy that trails a stop must not end its successor.
+  if (owned != null) finish(owned, "destroyed");
   super.onDestroy();
  }
 
- private void end() {
-  if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) stopForeground(STOP_FOREGROUND_REMOVE);
-  stopSelf();
+ /** Leaves the foreground and stops unless a newer command (a new Start) has arrived since. */
+ private void end(int startId) {
+  stopForeground(STOP_FOREGROUND_REMOVE);
+  if (startId < 0) stopSelf(); else stopSelf(startId);
  }
 
  private Notification notification(String title, String text, String session) {

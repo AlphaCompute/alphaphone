@@ -28,7 +28,7 @@ export function installPrototypeMapsAdapter(_Component: unknown, views: Record<s
   let unsubscribe: (() => void) | undefined, selected: Selection | undefined;
   let plane: MapPlane | undefined, planeElement: HTMLElement | undefined, initialized=false, directions=false, originText='', navigating=false, navDistance=0, arrived=false;
   // Origin picking reuses the results sheet; navigation state is per explicit Start.
-  let originMode=false, navStep=0, navFix: Position | undefined, navRouteId='', follow=true, offRoute=false, rerouting=false, navSession=0, backgroundRunning=false;
+  let originMode=false, navStep=0, navFix: Position | undefined, navRouteId='', follow=true, offRoute=false, rerouting=false, navSession=0, backgroundRunning=false, rerouteCleared=false;
   const navigationLocation=new NativeMapsLocation();
   const background=new BackgroundNavigation(registerPlugin<NavigationBridge>('AlphaMapsTransport'),()=>Capacitor.isNativePlatform());
   let query = '', searching = false, message = '', disposed = false, revision = 0, locating = false;
@@ -76,7 +76,9 @@ export function installPrototypeMapsAdapter(_Component: unknown, views: Record<s
     unsubscribe = controller.subscribe(next => {
       if(navigating&&rerouting){
         // An explicit reroute keeps the session; the new route replaces the old one.
-        if(next.route.phase==='ready'&&next.route.value){rerouting=false;navStep=0;navRouteId=next.route.value.id;navigationVoice.pause();message='New route ready.';}
+        // Only a route planned after the reroute request replaced the old one is accepted.
+        if(next.route.phase!=='ready'&&next.route.phase!=='error')rerouteCleared=true;
+        else if(next.route.phase==='ready'&&next.route.value&&rerouteCleared){rerouting=false;navStep=0;navRouteId=next.route.value.id;navigationVoice.pause();message='New route ready.';}
         else if(next.route.phase==='error'){void stopGuidance().catch(()=>{});}
       }
       else if(navigating&&(next.route.phase!=='ready'||next.route.value?.id!==navRouteId)){void stopGuidance().catch(()=>{});}
@@ -292,7 +294,7 @@ export function installPrototypeMapsAdapter(_Component: unknown, views: Record<s
       };
       const reroute=()=>{
         const from=navFix?.coordinate;if(!navigating||!from||rerouting)return;
-        rerouting=true;offRoute=false;navigationVoice.pause();originText=coordLabel(from);message='Planning a new route from here…';
+        rerouting=true;rerouteCleared=false;offRoute=false;navigationVoice.pause();originText=coordLabel(from);message='Planning a new route from here…';
         void ensure().reroute(from);invalidate();
       };
       data.dr={name:selected.label,close:()=>back(),min:route?Math.max(1,Math.round(route.durationSeconds/60))+' min':snapshot.route.phase==='loading'?'Planning…':'No route',meta:route?(route.distanceMeters/1000).toFixed(1)+' km · no live traffic':'Regional route',via:route?(snapshot.originLabel?'From '+snapshot.originLabel+' · ':'')+(route.steps[0]?.instruction||''):'Choose a real origin to calculate a route.',shareLabel:'Share route',shareEta:()=>{if(route&&snapshot.route.phase==='ready'){const target=selected;share(routeShare(target!.label,route),()=>!disposed&&!!api?.isActive()&&selected===target&&!!directions&&state?.route.phase==='ready'&&state.route.value===route);}},
@@ -303,7 +305,11 @@ export function installPrototypeMapsAdapter(_Component: unknown, views: Record<s
         const session=++navSession;message='Waiting for a fresh location fix. Foreground guidance only.';
         // Screen-off continuation only where the native session is available; the
         // notification's Stop ends this exact session once.
-        void background.start(`Route to ${selected!.label}`,'Waiting for location',reason=>{if(session!==navSession||!navigating)return;lifecycle.backgroundStops++;message=reason==='notification'?'Navigation stopped from the notification.':'Navigation stopped.';end();}).then(running=>{if(session!==navSession||!navigating){if(running)void background.stop();return;}backgroundRunning=running;if(running&&!navFix)message='Waiting for a fresh location fix. Guidance continues with the screen off.';invalidate();});
+        void background.start(`Route to ${selected!.label}`,'Waiting for location',reason=>{if(session!==navSession||!navigating)return;lifecycle.backgroundStops++;
+          // Only the notification's Stop is the user ending navigation. A refused or system-ended
+          // service drops back to foreground-only guidance, which a hidden page then releases.
+          if(reason==='notification'){message='Navigation stopped from the notification.';end();return;}
+          backgroundRunning=false;message='Screen-off guidance is unavailable. Foreground guidance only.';if(document.hidden)release();else invalidate();}).then(running=>{if(session!==navSession||!navigating){if(running)void background.stop();return;}backgroundRunning=running;if(running&&!navFix)message='Waiting for a fresh location fix. Guidance continues with the screen off.';invalidate();});
         void navigationLocation.start(false,onFix,error=>{if(session!==navSession)return;message=failure(error).message;void stopGuidance().catch(()=>{});invalidate();});invalidate();
        },
        nav:{going:!arrived,arrived,dist:arrived?'Arrived':view?view.distance:rerouting?'Rerouting…':'Locating…',street:arrived?selected.label:view?view.instruction:rerouting?'Planning a new route from here':'Waiting for location',icon:view?.icon||PIN,hasThen:!!view?.hasThen,thenD:view?.thenIcon||'',thenText:view?.thenText||'',

@@ -85,9 +85,12 @@ test('numbered series: reference-only patches are ignored, unnumbered or duplica
  // A reference-only patch (qualified in isolated upstream worktrees) never enters .eliza/patched.
  fs.writeFileSync(path.join(eliza,'9999-reference-only.patch'),'not applied\n');
  fs.writeFileSync(path.join(eliza,'reference-only-source-base.json'),JSON.stringify({baseCommit:'0'.repeat(40),patch:'9999-reference-only.patch'}));
- assert.deepEqual(readPatchManifests(directory).map(item=>item.manifest.patch),['0038-password-manager.patch']);
+ // Every applied manifest (and only those) enters the series, in series-number order.
+ const applied=fs.readdirSync(eliza).filter(name=>name.endsWith('-source.json')).map(name=>JSON.parse(fs.readFileSync(path.join(eliza,name))).patch).sort();
+ assert.ok(applied.includes('0038-password-manager.patch'));assert.ok(!applied.includes('9999-reference-only.patch'));
+ assert.deepEqual(readPatchManifests(directory).map(item=>item.manifest.patch),applied);
  const output=prepareElizaPatches({root:directory});
- assert.equal(JSON.parse(fs.readFileSync(path.join(output,'.source.json'))).patches.length,1);
+ assert.equal(JSON.parse(fs.readFileSync(path.join(output,'.source.json'))).patches.length,applied.length);
  fs.writeFileSync(path.join(eliza,'0038-duplicate.patch'),'x\n');
  assert.throws(()=>readPatchManifests(directory),/Duplicate Eliza patch series number/);
  fs.rmSync(path.join(eliza,'0038-duplicate.patch'));
