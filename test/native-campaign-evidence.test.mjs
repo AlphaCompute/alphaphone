@@ -2,14 +2,14 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {exercise} from './fixtures/isolated-native-campaign.mjs';
 const run=mode=>exercise(mode,'workflow');
-test('workflow campaign runs all eight exact cases in disposable users and scopes permissions',()=>{
- const r=run('pass');assert.equal(r.code,0,r.stderr);assert.equal(r.record.results.length,8);
+test('workflow campaign runs all ten exact cases in disposable users and scopes permissions',()=>{
+ const r=run('pass');assert.equal(r.code,0,r.stderr);assert.equal(r.record.results.length,10);
  assert.ok(r.record.results.every(row=>row.passed&&row.userLifecycle.removed));
  assert.equal(r.state.user,'0');assert.equal(r.state.created,false);assert.deepEqual(r.state.files,{});
- const calls=r.commands.filter(a=>a.includes('instrument'));assert.equal(calls.length,8);
- assert.equal(new Set(calls.map(a=>a[a.indexOf('class')+1])).size,4);
+ const calls=r.commands.filter(a=>a.includes('instrument'));assert.equal(calls.length,10);
+ assert.equal(new Set(calls.map(a=>a[a.indexOf('class')+1])).size,5);
  const permissions=r.commands.filter(a=>a.includes('grant')||a.includes('revoke')||a.includes('clear-permission-flags'));
- assert.equal(permissions.length,32);assert.ok(permissions.every(a=>a[a.indexOf('--user')+1]==='10'));
+ assert.equal(permissions.length,40);assert.ok(permissions.every(a=>a[a.indexOf('--user')+1]==='10'));
 });
 for(const mode of ['summary-only','missing-start','wrong-method','wrong-class','skipped','wrong-terminal','duplicate'])test(`workflow rejects ${mode} evidence and cleans its fixture`,()=>{
  const r=run(mode);assert.notEqual(r.code,0);assert.equal(r.record.results[0].passed,false);assert.equal(r.state.created,false);assert.equal(r.state.user,'0');assert.match(r.log,/OK \(1 test\)/);
