@@ -130,7 +130,8 @@ final class BrowserDownloads {
   String origin=origin(raw);
   boolean signedIn=cookieAllowed(raw,source.pageOrigin);
   String details="From: "+origin+"\nFile: "+name+"\nAdvertised size: "+size(length)+"\n\nSave to Downloads? The final size may differ. "
-   +(signedIn?"Your sign-in for this site is used for this download only.":"Website sign-in is not shared with other sites.")+privateNote(source.priv);
+   +(signedIn?"Your sign-in for this site is used for this download only.":"Website sign-in is not shared with other sites.")+privateNote(source.priv)
+   +(signedIn&&source.priv?" Closing this tab before the download finishes cancels it.":"");
   review(source.tab,"Download file?",details,()->{
    if(!current.getAsBoolean()){message("The source page changed. Start the download again.");return;}
    try{
@@ -265,14 +266,30 @@ final class BrowserDownloads {
   return uri;
  }
  void cancelReview(String tab){if(Objects.equals(pendingTab,tab)&&pending!=null)pending.dismiss();}
- /** A private tab closed: forget its in-memory entries. The files stay in Downloads. */
- void forgetPrivate(String tab){boolean changed=owned.values().removeIf(item->item.optBoolean("private",false)&&tab.equals(item.optString("tab")));if(changed&&update!=null)update.run();}
- /** Clear browsing data: the browser's download list (normal and private). Files and OS transfers remain. */
- void clearHistory(){owned.clear();persist();if(listing!=null){listing.dismiss();listing=null;}}
- /** Clear data for this site: entries whose origin host is the cleared site or its subdomain. */
+ /** Removing an entry that is still being fetched by the app stops that fetch: its sign-in
+  * cookie is never sent again (on a redirect hop) once the entry, its tab or its site data is gone,
+  * and nothing keeps downloading where the user can no longer see or cancel it. */
+ private boolean removeEntries(java.util.function.Predicate<JSONObject> match){
+  boolean changed=false;
+  for(Iterator<Map.Entry<Long,JSONObject>> it=owned.entrySet().iterator();it.hasNext();){
+   Map.Entry<Long,JSONObject> entry=it.next();if(!match.test(entry.getValue()))continue;
+   if(entry.getKey()<0&&entry.getValue().optBoolean("running",false))cancelled.add(entry.getKey());
+   it.remove();changed=true;
+  }
+  return changed;
+ }
+ /** A private tab closed: forget its in-memory entries and stop its unfinished signed-in fetches.
+  * Files already saved stay in Downloads. */
+ void forgetPrivate(String tab){boolean changed=removeEntries(item->item.optBoolean("private",false)&&tab.equals(item.optString("tab")));if(changed&&update!=null)update.run();}
+ /** Clear browsing data: the browser's download list (normal and private); unfinished signed-in
+  * fetches stop. Saved files and OS transfers (which never carry a cookie) remain. */
+ void clearHistory(){removeEntries(item->true);persist();if(listing!=null){listing.dismiss();listing=null;}}
+ /** Clear data for this site: entries whose origin host is the cleared site or its subdomain;
+  * their unfinished signed-in fetches stop. */
  void clearSite(String site){
   if(site==null||site.isEmpty())return;String domain=site.toLowerCase(Locale.ROOT);
-  owned.values().removeIf(item->{String host=Uri.parse(item.optString("origin")).getHost();return host!=null&&(host.equals(domain)||host.endsWith("."+domain));});persist();
+  boolean changed=removeEntries(item->{String host=Uri.parse(item.optString("origin")).getHost();return host!=null&&(host.equals(domain)||host.endsWith("."+domain));});persist();
+  if(changed&&update!=null)update.run();
  }
  void show(){
   if(listing!=null){listing.dismiss();listing=null;}

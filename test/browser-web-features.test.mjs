@@ -35,6 +35,11 @@ test('download cookies come only from the requesting tab, for its exact origin',
   assert.match(downloads, /if\(cookieAllowed\(url\.toString\(\),pageOrigin\)\)connection\.setRequestProperty\("Cookie",cookie\);/, 'each hop gets the cookie only for the exact page origin');
   assert.match(downloads, /if\(!allowed\(Uri\.parse\(next\.toString\(\)\)\)\)throw new Refused/, 'a redirect to a non-HTTPS address is refused');
   assert.match(downloads, /!item\.optBoolean\("private",false\)&&!item\.optBoolean\("running",false\)\)records\.put\(item\)/, 'running entries are never persisted');
+  // Closing a private tab, Clear browsing data and Clear data for this site stop an unfinished
+  // signed-in fetch, so its copied cookie is never sent on a later redirect hop.
+  assert.match(downloads, /if\(entry\.getKey\(\)<0&&entry\.getValue\(\)\.optBoolean\("running",false\)\)cancelled\.add\(entry\.getKey\(\)\);/);
+  for (const method of ['void forgetPrivate(String tab){boolean changed=removeEntries(', 'void clearHistory(){removeEntries(', 'boolean changed=removeEntries(item->{String host=']) assert.ok(downloads.includes(method), method);
+  assert.doesNotMatch(downloads, /owned\.clear\(\)|owned\.values\(\)\.removeIf/, 'every bulk removal goes through removeEntries');
 });
 
 test('page-created files are captured in an isolated world and saved only after review', () => {
@@ -53,6 +58,7 @@ test('site permissions are origin-bound prompts, stored only for normal tabs and
   assert.equal((plugin.match(/if\(!t\.priv\)for\(String kind:wanted\)try\{sessionStore\.setPermission/g) || []).length, 2, 'private tabs never store decisions');
   assert.match(plugin, /callback\.invoke\(requested,granted\.contains\("location"\),false\)/, 'WebView never retains a geolocation grant');
   assert.match(plugin, /if\(page==null\|\|!page\.equals\(asked\)/, 'embedded cross-origin requests are refused');
+  assert.match(plugin, /!page\.equals\(BrowserDownloads\.origin\(t\.web\.getUrl\(\)\)\)\)return null;/, 'same-document navigations (pushState, fragments) keep the page origin');
   assert.match(plugin, /runtimePermissions\.launch\(missing\.toArray/, 'chained to the Android runtime permission');
   assert.match(plugin, /if\(!t\.priv\)try\{sessionStore\.clearPermissionsForSite\(cleared\);\}/);
   assert.match(store, /seal\(bounded\)/, 'decisions are sealed with the Keystore key');

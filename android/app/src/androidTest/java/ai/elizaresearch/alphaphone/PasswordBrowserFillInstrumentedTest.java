@@ -37,7 +37,9 @@ import static org.junit.Assert.*;
  * accepts the framework Save offer and the provider's own Save prompt with a device-credential
  * unlock, then on a fresh load fills the same origin only after another unlock and an explicit
  * choice. A login form inside a cross-origin iframe (example.org) is focused and must receive no
- * offer. All values are synthetic and the saved entry is deleted.
+ * offer. All values are synthetic. Cleanup deletes the saved entry when the vault is still unlocked
+ * (the fill unlock leaves a short window); after an earlier failure it can remain, locked, until
+ * removed in Settings.
  *
  * <p>Unlock needs a secure lock screen. On an emulator without one the test sets a synthetic PIN
  * and clears it afterwards (that invalidates any earlier auth-bound vault key on that emulator);

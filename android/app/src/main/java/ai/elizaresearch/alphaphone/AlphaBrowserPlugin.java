@@ -455,7 +455,8 @@ public class AlphaBrowserPlugin extends Plugin {
  /** Only a secure top-level page may be asked, and only for its own origin. */
  private String permissionOrigin(Tab t,String requested){
   String page=BrowserDownloads.origin(t.lastCommittedUrl),asked=BrowserDownloads.origin(requested);
-  if(page==null||!page.equals(asked)||!Objects.equals(t.lastCommittedUrl,t.web.getUrl()))return null;
+  // Same-document changes (pushState, fragments) keep the origin, so compare origins, not URLs.
+  if(page==null||!page.equals(asked)||!page.equals(BrowserDownloads.origin(t.web.getUrl())))return null;
   Uri uri=Uri.parse(page);
   boolean secure="https".equals(uri.getScheme())||(BuildConfig.ELIZA_DEV_ALLOW_TEST_MOCKS&&("127.0.0.1".equals(uri.getHost())||"localhost".equals(uri.getHost())));
   return secure?page:null;
