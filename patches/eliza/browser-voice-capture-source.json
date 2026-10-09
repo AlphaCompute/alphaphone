@@ -1,0 +1,28 @@
+{
+  "baseCommit": "45242af234e7f3d55c433f327798e7cb2130e06e",
+  "patch": "0066-browser-voice-capture.patch",
+  "sha256": "6781e6b50d034b18a8ce204105c50388f8c5c720aeec0ea5dfefd9cde85985ee",
+  "status": "Candidate for elizaOS develop: generic browser voice capture and PCM16 conversion in @elizaos/voice (src/browser-capture) with host microphone admission; authored at 45242af; not submitted upstream; Alpha consumption of these files is pending",
+  "basePaths": [],
+  "addedPaths": [
+    "packages/voice/src/browser-capture/README.md",
+    "packages/voice/src/browser-capture/audio-capture.ts",
+    "packages/voice/src/browser-capture/browser-capture.test.ts",
+    "packages/voice/src/browser-capture/index.ts",
+    "packages/voice/src/browser-capture/recording-pcm.ts"
+  ],
+  "changed": [
+    "packages/voice/src/browser-capture/README.md",
+    "packages/voice/src/browser-capture/audio-capture.ts",
+    "packages/voice/src/browser-capture/browser-capture.test.ts",
+    "packages/voice/src/browser-capture/index.ts",
+    "packages/voice/src/browser-capture/recording-pcm.ts"
+  ],
+  "files": {
+    "packages/voice/src/browser-capture/audio-capture.ts": "e2f6a3386b43161301afbaef7d6dd49624245784bd698e2251e9aa48939328b8",
+    "packages/voice/src/browser-capture/browser-capture.test.ts": "f50db980b41f504518b9607d88648934d7dc070bb7e210b5d68833409afadcae",
+    "packages/voice/src/browser-capture/index.ts": "7af08759bbd5903aae2dbf59f4be03ae527906925c3c0e71113e481d1231a165",
+    "packages/voice/src/browser-capture/README.md": "2381ad64568c7e1aaf0db9409c65791adf6c92c4558d2d703f195c563cebbcf2",
+    "packages/voice/src/browser-capture/recording-pcm.ts": "433ea1c7f5b1d203b728e1bd06d3b15e7a68bccd69f456f75fb1edb875025751"
+  }
+}
