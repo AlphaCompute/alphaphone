@@ -144,3 +144,30 @@ saved 16-bit PCM: peak, clipped samples, exact zeros, the 32767/32768 write gain
 error, and the transcript of each variant through the canonical linear resampler, and it keeps
 both float buffers as float32 files. It asserts only that this evidence was produced; the
 canonical test and its keyword assertions stay unchanged.
+
+**Root cause and fix.** The pinned `LocalSpeechEngine` left sherpa-onnx's VITS defaults
+(noise 0.667, noise_w 0.8). The Piper graph feeds them to two unseeded `RandomNormalLike`
+nodes, so every `synthesize` call rendered a new waveform for the same text, and a share of
+those renderings misarticulate words. The failed run's `lady's dog` is one such draw: the
+saved PCM of that same synthesis recognized `lazy`, so the draw sat on Whisper's decision
+boundary, where a 76 dB quantization difference flips the transcript. Resampling, gain and
+clipping are not the cause (peak below 0.46, no clipped samples, float and saved-PCM ASR inputs
+agree in 119 of 120 renderings).
+
+`float-path-replica.py` reproduces the canonical path on a host from the qualified model bytes
+(sherpa-onnx 1.13.8 Whisper recognizer, ONNX Runtime 1.30.0 for the VITS graph, the no-eSpeak
+lexicon framing). Recorded on macOS arm64, 2026-10-08:
+
+| VITS noise, noise_w | Renderings | Every keyword recognized | Repeat synthesis identical |
+| --- | --- | --- | --- |
+| 0.667, 0.8 (pinned engine) | 120 | 94 (16 heard `lady`) | no |
+| 0.333, 0.333 | 60 | 57 | no |
+| 0.2, 0.2 | 60 | 60 | no |
+| 0, 0 (patch 0066) | 60 | 60 | yes |
+
+Patch `0066-local-speech-deterministic-synthesis` sets noise and noise_w to 0 and length to 1,
+so each text has one repeatable rendering; `android/local-speech/build.gradle` compiles the
+patched engine from `.eliza/patched` over the pinned module. Host results are evidence for the
+cause only. They are not Android execution: the unchanged `LocalSpeechInstrumentedTest` must
+still pass per ABI on a device or emulator of that ABI before `functionalAcceptance` records a
+pass, and a model, runtime or engine change re-runs it.
