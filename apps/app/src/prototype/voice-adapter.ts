@@ -105,6 +105,7 @@ export function installPrototypeVoiceAdapter(Component: any, views: Record<strin
   let playback: AbortController | undefined, playing = false;
   type ChatDestination={shell:any;view:string|null;chat:string;draft:string;reply:unknown;edit:unknown;binding:string;opener?:HTMLElement};
   let chatDestination:ChatDestination|undefined;
+  let ownedNavigation:{chat:ChatDestination;view:string;detent:string;applying:boolean;turnId:string;context?:import('../runtime/alpha-client').ContextEnvelope}|undefined;
   let conversationVoice:BatchVoiceConversation<Clip>|undefined;
   let conversationState:BatchVoiceState={phase:'idle'};
   let conversationSpeech:Promise<void>|undefined;
@@ -117,6 +118,7 @@ export function installPrototypeVoiceAdapter(Component: any, views: Record<strin
   const refresh = () => chatDestination ? chatDestination.shell.setState({}) : api?.setView('notes', { nativeVoiceRevision: Date.now() });
   const stopClock = () => { if (tick) clearInterval(tick); tick = undefined; };
   function cleanup(close = true,publish=true) {
+    ownedNavigation=undefined;
     const hadCapture=!!recordingId||!!startingCapture||!!clip;
     const previousChat=chatDestination;const chatShell=previousChat?.shell,previousConversation=conversationVoice,previousSpeech=conversationSpeech,previousNotesSpeech=notesSpeech;conversationVoice=undefined;conversationPrepared=undefined;
     const conversationStopped=previousConversation?.stop();
@@ -330,10 +332,33 @@ export function installPrototypeVoiceAdapter(Component: any, views: Record<strin
     document.documentElement.dataset.connectionMode,
   ]);
   function chatCurrent(){
-    const chat=chatDestination;if(!chat)return false;const state=chat.shell.S();
+    const chat=chatDestination;if(!chat)return false;const state=chat.shell.S(),view=state.view||'home',owned=ownedNavigation?.chat===chat?ownedNavigation:undefined;
+    let contextCurrent=!conversationPrepared||chat.shell.voiceConversationCurrent(conversationPrepared);
+    // Only the claimed destination may transition before its React callback pins the exact ACK context.
+    if(!contextCurrent&&owned&&view===owned.view&&conversationPrepared){try{const actual=chat.shell.voiceConversationContext(conversationPrepared.binding);contextCurrent=actual.view===owned.view&&(owned.context?JSON.stringify(actual)===JSON.stringify(owned.context):owned.view!==(chat.view||'home'));}catch{contextCurrent=false;}}
     return chat.shell.live!==false&&!document.hidden&&!connectionController.getSnapshot().open
-      &&['sheet','full'].includes(state.chat)&&(state.view||null)===chat.view&&String(state.draft||'')===chat.draft
-      &&chat.shell.messageReplyTarget===chat.reply&&chat.shell.messageEditTarget===chat.edit&&composerBinding()===chat.binding&&(!conversationPrepared||chat.shell.voiceConversationCurrent(conversationPrepared));
+      &&['sheet','full'].includes(state.chat)&&((state.view||null)===chat.view||!!owned&&view===owned.view)&&String(state.draft||'')===chat.draft
+      &&chat.shell.messageReplyTarget===chat.reply&&chat.shell.messageEditTarget===chat.edit&&composerBinding()===chat.binding&&contextCurrent;
+  }
+  function navigationContinuation(chat:ChatDestination,token:number,turnId:string):import('../runtime/alpha-client').VoiceNavigationContinuation{
+    let held:typeof ownedNavigation,attempted=false;
+    return {
+      async apply(view,check,commit){
+        attempted=true;check();if(chat.shell.voiceSendTurnId!==turnId||token!==generation||chatDestination!==chat||!chatCurrent()||ownedNavigation)throw Error('Voice navigation changed.');
+        held={chat,view,detent:chat.shell.S().chat,applying:true,turnId};ownedNavigation=held;
+        let pending:Promise<boolean>;try{pending=commit(held.detent,value=>{if(chat.shell.voiceSendTurnId!==turnId||ownedNavigation!==held||token!==generation||chatDestination!==chat)throw Error('Voice navigation changed.');const actual=chat.shell.voiceConversationContext(conversationPrepared!.binding);if(value.view!==held!.view||JSON.stringify(actual)!==JSON.stringify(value))throw Error('Voice navigation changed.');held!.context=value;});}finally{held.applying=false;}
+        const switched=await pending;
+        if(!switched||ownedNavigation!==held||token!==generation||chatDestination!==chat||!chatCurrent())return false;
+        return !!held.context;
+      },
+      finish(delivered){
+        if(!attempted)return;
+        attempted=false;
+        if(!held||chat.shell.voiceSendTurnId!==turnId||ownedNavigation!==held||token!==generation||chatDestination!==chat)return;
+        if(!delivered||!held.context||!chatCurrent()||(chat.shell.S().view||'home')!==held.view){cleanup();return;}
+        try{const next=chat.shell.voiceConversationContext(conversationPrepared!.binding);if(next.view!==held.view||JSON.stringify(next)!==JSON.stringify(held.context))throw Error('Voice navigation changed.');chat.view=held.view==='home'?null:held.view;conversationPrepared={...conversationPrepared!,context:next};ownedNavigation=undefined;return next;}catch{cleanup();return;}
+      },
+    };
   }
   function cancelChat(keyboard=false){
     const chat=chatDestination;if(!chat){if(retirement)retirement.returnChat=keyboard?'input':retirement.returnChat;return;}cleanup();
@@ -344,13 +369,14 @@ export function installPrototypeVoiceAdapter(Component: any, views: Record<strin
       if(opener&&!opener.closest('[inert]'))opener.focus({preventScroll:true});
     });
   }
-  // Navigation retires the recorder before the app's normal action proceeds.
+  // User navigation retires media; only the exact synchronous claimed projection retains it.
   for (const method of ['openView', 'goHome', 'back']) {
     const original = Component.prototype[method];
     if (typeof original === 'function') Component.prototype[method] = function (...args: any[]) {
 
       if(retirement?.shell===this&&method==='back'){this.toast('Voice media is still stopping.');return;}
-      if(chatDestination?.shell===this){if(method==='back'){cancelChat();return;}cleanup();}
+      const owned=ownedNavigation;const ownEffect=owned?.applying&&owned.chat.shell===this&&(method==='goHome'?owned.view==='home':method==='openView'&&args[0]===owned.view);
+      if(chatDestination?.shell===this&&!ownEffect){if(method==='back'){cancelChat();return;}cleanup();}
       return original.apply(this,args);
     };
   }
@@ -397,7 +423,7 @@ export function installPrototypeVoiceAdapter(Component: any, views: Record<strin
       const previous=conversationVoice;conversationVoice=undefined;await previous?.stop();current();
       const conversation:BatchVoiceConversation<Clip>=new BatchVoiceConversation<Clip>({
         conversationId:prepared.binding.conversationId,assertCurrent:current,
-        capture:input=>captureConversationAudio(selected,current,input),
+        capture:input=>{current();conversationPrepared={...conversationPrepared!,context:chat.shell.voiceConversationContext(prepared.binding)};current();return captureConversationAudio(selected,current,input);},
         transcribe:async(value,signal)=>{
           signal.throwIfAborted();current();const request=crypto.randomUUID();requestId=request;
           let interrupt!:(error:unknown)=>void;const cancelled=new Promise<never>((_,reject)=>interrupt=reject);
@@ -405,7 +431,7 @@ export function installPrototypeVoiceAdapter(Component: any, views: Record<strin
           try{current();const result=await Promise.race([selected.transcribeRecording({recordingId:value.recordingId,requestId:request}),cancelled]);signal.throwIfAborted();current();conversationLastTranscript=result.text;return result.text;}
           finally{signal.removeEventListener('abort',abort);if(requestId===request)requestId=undefined;}
         },
-        send:async input=>{input.signal.throwIfAborted();current();const result=await chat.shell.sendVoiceTurn({...input,...prepared,assertCurrent:current});input.signal.throwIfAborted();current();conversationLastReply=result.text;return result;},
+        send:async input=>{input.signal.throwIfAborted();current();const turn={...conversationPrepared!};const result=await chat.shell.sendVoiceTurn({...input,...turn,assertCurrent:current,navigation:navigationContinuation(chat,token,input.turnId)});input.signal.throwIfAborted();current();conversationLastReply=result.text;return result;},
         speak:async input=>{input.signal.throwIfAborted();current();const pending=selected.speak(input.text,input.signal,()=>{current();input.onStarted();});conversationSpeech=pending;try{await pending;input.signal.throwIfAborted();current();}catch(failure){if((failure as {code?:string})?.code==='speech-cleanup-unconfirmed'){mediaUnconfirmed=failure;stopping=Promise.reject(failure);void stopping.catch(()=>{});}throw failure;}finally{if(conversationSpeech===pending)conversationSpeech=undefined;}},
         onState:value=>{if(token!==generation||chatDestination!==chat||conversationVoice!==conversation)return;conversationState=value;if(value.phase==='error')error=cloudVoiceFailure(value.error)||'Voice stopped. Check your connection and conversation history before trying again.';if(value.phase==='listening'){stopClock();tick=setInterval(refresh,250);}else stopClock();refresh();},
       });
@@ -717,7 +743,7 @@ export function installPrototypeVoiceAdapter(Component: any, views: Record<strin
   const immersive = notes.immersive;
   notes.immersive = (state: Bag, current: Bag) => stage !== 'closed'&&!chatDestination ? { noPill: true } : immersive?.(state, current);
   notes.back = (state: Bag, current: Bag) => { if (stage !== 'closed'&&!chatDestination) { cleanup(); return true; } return back?.(state, current); };
-  notes.onLeave = (current: Bag) => { closeTranscriptQuestion?.();cleanup(); leave?.(current); };
+  notes.onLeave = (current: Bag) => { closeTranscriptQuestion?.();if(!ownedNavigation?.applying)cleanup(); leave?.(current); };
   const visibility = () => {
     // Speech preparation is foreground-only; returning prepares the same route again.
     if (!document.hidden) { if (reprepare && stage === 'ready' && !busy) { reprepare = false; reopen(error); } return; }

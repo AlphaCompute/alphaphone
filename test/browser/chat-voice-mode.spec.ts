@@ -28,6 +28,7 @@ async function setup(page:Page,signed=true,theme='light'){
   BrowserVoice.prototype.stopPlayback=async()=>{};
   Component.prototype.prepareVoiceConversation=async function(signal:any){signal.throwIfAborted();return {binding:{conversationId:'synthetic-room',session:{sessionId:'synthetic-agent'},connectionEpoch:1},context:{view:this.S().view||'home',revision:1,sensitive:false}};};
   Component.prototype.voiceConversationCurrent=()=>true;
+  Component.prototype.voiceConversationContext=function(){return {view:this.S().view||'home',revision:1,sensitive:false};};
   Component.prototype.sendVoiceTurn=async(input:any)=>{input.signal.throwIfAborted();input.assertCurrent();f.sends++;f.sent=input.text;return {requestId:input.turnId,conversationId:'synthetic-room',userMessageId:'user-'+f.sends,assistantMessageId:'assistant-'+f.sends,text:'Synthetic matching reply.',complete:true};};
   const render=Component.prototype.renderVals;Component.prototype.renderVals=function(){f.shell=this;return render.call(this);};c.close();
  },signed);

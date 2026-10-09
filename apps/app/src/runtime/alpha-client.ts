@@ -67,6 +67,11 @@ export interface ConversationMessageTarget {
 export type VoiceTurnSignal = import('../../../../.eliza/client-features/packages/voice/src/respond-gate.ts').VoiceTurnSignal;
 export type ChatChannel = 'DM' | 'VOICE_DM';
 export interface VoiceConversationBinding { conversationId:string;session:VerifiedSession;connectionEpoch:number }
+/** Local host projection invoked only inside the canonical claimed view effect. Never wire metadata or authority. */
+export interface VoiceNavigationContinuation {
+ apply(view:string,current:()=>void,commit:(chat:string,onCommitted:(context:ContextEnvelope)=>void)=>Promise<boolean>):Promise<boolean>;
+ finish(delivered:boolean):ContextEnvelope|undefined;
+}
 export interface AgentReply {
   messageId?: string;
   userMessageId?: string;

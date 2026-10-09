@@ -130,19 +130,22 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
       scheduleExpiry();
     });
   }
-  function openInternalView(shell:Shell,target:string):boolean {
+  function openInternalView(shell:Shell,target:string,chat?:string):boolean {
     if(!['home','reminders','notifications'].includes(target)&&!isMvpView(target))return false;
     const view=target==='reminders'?'calendar':target;
     if(view!=='home'&&!views[view])return false;
-    if(view==='home')shell.goHome();else shell.openView(view);
+    if(view==='home')shell.goHome(chat);else shell.openView(view,undefined,chat);
     return true;
   }
-  async function deliverChatNavigation(shell:Shell,navigation:ReturnType<typeof connectionController.captureViewNavigation>,results:readonly unknown[]|undefined,current?:()=>void){
+  async function deliverChatNavigation(shell:Shell,navigation:ReturnType<typeof connectionController.captureViewNavigation>,results:readonly unknown[]|undefined,current?:()=>void,continuation?:import('../runtime/alpha-client').VoiceNavigationContinuation){
     if(!navigation||!results?.length)return false;
     const attempt={...navigation.attempt,current:()=>{navigation.attempt.current();current?.();}};
-    const delivered=await navigation.client.deliver(results,attempt,(view,check)=>new Promise<boolean>((resolve,reject)=>{
-      try{check();if(!openInternalView(shell,view)){resolve(false);return;}shell.setState({},()=>{context(shell);resolve(shell.live&&(shell.S().view||'home')===view);});}catch(error){reject(error);}
-    }));
+    const delivered=await navigation.client.deliver(results,attempt,(view,check)=>{
+      const commit=(chat?:string,onCommitted?:(value:import('../runtime/alpha-client').ContextEnvelope)=>void)=>new Promise<boolean>((resolve,reject)=>{
+        try{check();if(!openInternalView(shell,view,chat)){resolve(false);return;}shell.setState({},()=>{try{context(shell);const switched=shell.live&&(shell.S().view||'home')===view;if(switched)onCommitted?.(alphaClient.getState().context);resolve(switched);}catch(error){reject(error);}});}catch(error){reject(error);}
+      });
+      return continuation?continuation.apply(view,check,commit):commit();
+    });
     if(delivered.status==='delivered')shell.toast(`Opened ${delivered.label}.`);else if(delivered.status==='unknown')shell.toast('Could not confirm the screen change. Check your screen.');
     return delivered.status==='delivered';
   }
@@ -671,6 +674,7 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
     return out;
   };
   p.voiceConversationCurrent = function(prepared:{binding:import('../runtime/alpha-client').VoiceConversationBinding;context:import('../runtime/alpha-client').ContextEnvelope}){return !alphaClient.getState().context.sensitive&&connectionController.voiceConversationCurrent(prepared.binding)&&JSON.stringify(alphaClient.getState().context)===JSON.stringify(prepared.context);};
+  p.voiceConversationContext = function(binding:import('../runtime/alpha-client').VoiceConversationBinding){const value=alphaClient.getState().context;if(!this.live||document.hidden||value.sensitive||!connectionController.voiceConversationCurrent(binding))throw Error('The voice conversation changed.');return value;};
   p.prepareVoiceConversation = async function(signal:AbortSignal){
     if(!connectionController.getSnapshot().session)throw Error('Connect an agent in Settings to start a voice conversation.');
     signal.throwIfAborted();context(this);if(alphaClient.getState().context.sensitive)throw Error('Return to Home or another app before starting voice.');const expected=JSON.stringify(alphaClient.getState().context);
@@ -681,9 +685,9 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
     if(!this.live||document.hidden||!connectionController.voiceConversationCurrent(binding)||JSON.stringify(alphaClient.getState().context)!==expected)throw Error('The voice conversation changed.');
     return {binding,context:alphaClient.getState().context};
   };
-  p.sendVoiceTurn = async function(input:{text:string;turnId:string;voiceTurnSignal:import('../runtime/alpha-client').VoiceTurnSignal;signal:AbortSignal;binding:import('../runtime/alpha-client').VoiceConversationBinding;context:import('../runtime/alpha-client').ContextEnvelope;assertCurrent:()=>void}){
-    const {text,turnId,signal,binding}=input;
-    const belongs=()=>{try{signal.throwIfAborted();input.assertCurrent();return this.live&&!document.hidden&&connectionController.voiceConversationCurrent(binding)&&JSON.stringify(alphaClient.getState().context)===JSON.stringify(input.context);}catch{return false;}};
+  p.sendVoiceTurn = async function(input:{text:string;turnId:string;voiceTurnSignal:import('../runtime/alpha-client').VoiceTurnSignal;signal:AbortSignal;binding:import('../runtime/alpha-client').VoiceConversationBinding;context:import('../runtime/alpha-client').ContextEnvelope;assertCurrent:()=>void;navigation?:import('../runtime/alpha-client').VoiceNavigationContinuation}){
+    const {text,turnId,signal,binding}=input;let acceptedContext=input.context;
+    const belongs=()=>{try{signal.throwIfAborted();input.assertCurrent();return this.live&&!document.hidden&&connectionController.voiceConversationCurrent(binding)&&JSON.stringify(alphaClient.getState().context)===JSON.stringify(acceptedContext);}catch{return false;}};
     const current=()=>{signal.throwIfAborted();input.assertCurrent();context(this);if(!belongs())throw Error('The voice conversation changed.');};
     current();if(alphaClient.getState().pending||this.S().typing||this.draftSendPending)throw Error('Wait for the current conversation turn.');
     this.voiceSendTurnId=turnId;
@@ -696,9 +700,11 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
       for(const proposal of reply.proposals||[])this.agentSay(proposal.description,{type:'generic',icon:'check',title:'Approve: '+proposal.title,sub:'Tap to approve this exact action',proposalId:proposal.id,expiresAt:proposal.expiresAt},undefined,belongs);
       if(!reply.messageId||!reply.userMessageId||!identity||identity.conversationId!==binding.conversationId||JSON.stringify(identity.session)!==JSON.stringify(binding.session)||!reply.text.trim())throw Error('The voice reply could not be matched to this conversation. Check history before speaking again.');
       await new Promise<void>(resolve=>this.setState((previous:Shell)=>belongs()?{msgs:[...previous.msgs.filter((m:Shell)=>m.id!==streamId).map((m:Shell)=>m.id===userId?{...m,id:reply.userMessageId,messageBinding:identity}:m),{id:reply.messageId,from:'agent',text:reply.text,messageBinding:identity,streaming:false}]}:null,resolve));current();
-      await deliverChatNavigation(this,navigation,reply.actionResults,current);
+      const delivered=await deliverChatNavigation(this,navigation,reply.actionResults,current,input.navigation);
+      const nextContext=input.navigation?.finish(delivered);if(nextContext)acceptedContext=nextContext;
       current();return {requestId:turnId,conversationId:identity.conversationId,userMessageId:reply.userMessageId,assistantMessageId:reply.messageId,text:reply.text,complete:true};
     }catch(error){
+      input.navigation?.finish(false);
       if(streamed&&this.live)this.setState((previous:Shell)=>this.voiceSendTurnId===turnId&&connectionController.voiceConversationCurrent(binding,false)?{msgs:previous.msgs.map((m:Shell)=>m.id===streamId?{...m,streaming:false,interrupted:true}:m)}:null);
       throw error;
     }finally{if(this.voiceSendTurnId===turnId&&this.live)await new Promise<void>(resolve=>this.setState(()=>this.voiceSendTurnId===turnId&&connectionController.voiceConversationCurrent(binding,false)?{typing:false}:null,()=>{if(this.voiceSendTurnId===turnId)this.voiceSendTurnId=undefined;resolve();}));}

@@ -5200,10 +5200,10 @@ class Component extends DCLogic {
     this.later(function () { self.setState({ hint: true }); }, 700, "hint");
     this.later(function () { self.setState({ hint: false }); }, 3600, "hint");
   }
-  goHome() {
+  goHome(chat) {
     this.clear("hint"); this.leave();
     if (this.S().secure) return this.setState({ secure: false, screen: "lock", view: null, shade: false, chat: "input", hint: false, heads: false, stack: [] });
-    this.setState({ view: null, shade: false, chat: "input", hint: false, heads: false, stack: [] });
+    this.setState({ view: null, shade: false, chat: chat === "sheet" || chat === "full" ? chat : "input", hint: false, heads: false, stack: [] });
   }
   openView(k, patch, chat, opts) {
     if (!isMvpView(k)) return this.toast("This app is deferred from the MVP");
