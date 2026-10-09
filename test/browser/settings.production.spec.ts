@@ -49,6 +49,8 @@ test('every production Settings control has a real effect, never a toast alone',
   await openSettings(page);
   const row=current(page).getByRole('button',{name:label,exact:true}).first();
   if(!await row.isVisible())continue;
+  // Reset per control, so an earlier download never counts as this control's effect.
+  downloads.length=0;
   const before=await snapshot(page);await row.click();await page.waitForTimeout(400);
   const after=await snapshot(page);visited.push(label);
   const effect=after.pages!==before.pages||after.view!==before.view||after.dialogs>before.dialogs||after.text!==before.text||downloads.length>0;

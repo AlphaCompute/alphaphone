@@ -66,7 +66,7 @@ test('Settings shows HOME and assistant role state and reads it back after a dec
  await settings(page);
  await expect(app(page).getByText('Home app',{exact:true})).toBeVisible();
  await expect(app(page).getByText('Another app',{exact:true})).toBeVisible();
- await expect(app(page).getByText('None selected',{exact:true})).toBeVisible();
+ await expect(app(page).getByText('Not Alpha Phone',{exact:true})).toBeVisible();
  const make=app(page).getByRole('button',{name:'Make Alpha your Home app',exact:true});
  const reads=await calls(page,'ElizaSystem','getStatus');
  await make.click();

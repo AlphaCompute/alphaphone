@@ -91,7 +91,9 @@ export function roleValue(row: RoleRow | undefined): string {
   if (!row) return 'Unavailable';
   if (!row.available) return 'Not available on this device';
   if (row.held) return 'Alpha Phone';
-  return row.holders.length ? 'Another app' : 'None selected';
+  // Holder lookups are best effort (package visibility, the system resolver "android"), so an
+  // empty answer never claims that no app holds the role.
+  return row.holders.some(holder => holder !== 'android' && holder !== 'ai.elizaresearch.alphaphone') ? 'Another app' : 'Not Alpha Phone';
 }
 
 /** Keep the reference settings components; never present fixture device facts. */

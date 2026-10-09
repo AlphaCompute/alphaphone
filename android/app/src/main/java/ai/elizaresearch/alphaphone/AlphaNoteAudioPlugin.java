@@ -50,6 +50,7 @@ public class AlphaNoteAudioPlugin extends Plugin {
  static final String NOTES_TRASH_SLOT="notes-trash:v1:device",NOTES_SLOT="notes-records:v1:device",PENDING_AUDIO_SLOT="notes-audio-deletions:v1:device";
  private static final String TRASH_PREFIX="{\"version\":1,\"entries\":[",TRASH_SUFFIX="]}";
  private static final String TRASH_WORK="alpha-notes-trash-backstop";
+ private static final Object SWEEP_LOCK=new Object();
  private static final String OPERATION="[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}";
 
  /** Periodic best-effort upkeep while Alpha is closed; the renderer remains the primary purge path. */
@@ -73,7 +74,9 @@ public class AlphaNoteAudioPlugin extends Plugin {
   * Returns the number of entries removed.
   */
  static int sweepExpiredTrash(android.content.Context context,long now)throws Exception{
-  synchronized(METADATA_LOCK){
+  // Sweeps serialize among themselves. METADATA_LOCK, which the main-thread plugin methods also
+  // take, is held only while one recording is erased, never while large slots are decrypted.
+  synchronized(SWEEP_LOCK){
    AlphaCredentialStore store=new AlphaCredentialStore(context);
    String raw=store.readCredentialSlot(NOTES_TRASH_SLOT);if(raw==null)return 0;
    java.util.List<String> spans=trashEntrySpans(raw);if(spans==null||spans.isEmpty())return 0;
@@ -90,7 +93,8 @@ public class AlphaNoteAudioPlugin extends Plugin {
     JSONObject audio=entry.optJSONObject("audio");
     if(due&&audio!=null){
      String audioId=audio.optString("audioId");
-     due=!pending.has(id)&&!liveAudio.contains(audioId)&&purgeTrashedLocked(context,store,audioId,noteId,id);
+     due=!pending.has(id)&&!liveAudio.contains(audioId);
+     if(due)synchronized(METADATA_LOCK){due=purgeTrashedLocked(context,store,audioId,noteId,id);}
     }
     if(due)removed++;else kept.add(span);
    }
