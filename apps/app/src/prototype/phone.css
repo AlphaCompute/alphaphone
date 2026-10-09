@@ -119,6 +119,7 @@ html,body,#root{margin:0;width:100%;height:100%;overflow:hidden;overscroll-behav
 .standalone-app [data-alpha-home-layout]{padding-top:12px!important}
 
 [data-alpha-message-text][role="button"] { cursor: pointer; }
+[data-alpha-message-text] { white-space:pre-wrap; overflow-wrap:anywhere; }
 [data-screen]:has([data-alpha-layer="conversation"]:not([inert])) { touch-action:pan-y!important; }
 [data-alpha-transcript] { overflow-anchor:none; }
 [data-alpha-transcript]>div { flex-shrink:0; }

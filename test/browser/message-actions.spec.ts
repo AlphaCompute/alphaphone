@@ -3,13 +3,13 @@ test.use({hasTouch:true});
 const answer='Synthetic reply for message actions.';
 const agent=(page:Page)=>page.locator('[data-alpha-message-text]').filter({hasText:answer});
 const menu=(page:Page)=>page.getByRole('menu',{name:'Message actions'});
-async function conversation(page:Page,theme='light'){
+async function conversation(page:Page,theme='light',reply=answer){
  await page.goto('/?mode=dev&theme='+theme);
- await page.evaluate(async()=>{
+ await page.evaluate(async reply=>{
   Object.defineProperty(navigator,'clipboard',{configurable:true,value:{writeText:async(text:string)=>{(window as any).copiedMessage=text;}}});
   const {connectionController:c}=await import('/src/runtime/connection-ui.tsx');await c.initialize();await c.startDevelopment('local');
-  const {LocalAgentProtocol}=await import('/src/runtime/local-agent.ts');LocalAgentProtocol.prototype.send=async(room)=>{(window as any).messageActionsRoom=room;return {text:'Synthetic reply for message actions.'};};
- });
+  const {LocalAgentProtocol}=await import('/src/runtime/local-agent.ts');LocalAgentProtocol.prototype.send=async(room)=>{(window as any).messageActionsRoom=room;return {text:reply};};
+ },reply);
  const input=page.getByRole('textbox',{name:'Ask Alpha',exact:true});await input.fill('My original request');await input.press('Enter');await expect(agent(page)).toBeVisible();
  // Raw CDP touches bypass Playwright actionability. Wait for the opening sheet
  // to settle and receive input before measuring coordinates; no click is sent.
@@ -22,6 +22,16 @@ for(const theme of ['light','dark'])test(`tap reveals quiet actions and copies e
  await expect(menu(page).getByRole('menuitem',{name:'Copy',exact:true}).locator('[data-alpha-icon]')).toHaveAttribute('data-alpha-icon','/icons/lucide/copy.svg');
  await page.screenshot({path:info.outputPath('message-actions-'+theme+'.png'),animations:'disabled'});
  await page.getByRole('textbox',{name:'Message Alpha',exact:true}).click();await expect(menu(page)).toHaveCount(0);
+});
+test('quoted message retains visible paragraphs, indentation and exact clipboard bytes',async({page},info)=>{
+ const exact='  '+answer+'\n\n  Keep two spaces.\n\tUnicode: α — 🙂.  \n';
+ await conversation(page,'light',exact);const message=agent(page);
+ expect(await message.textContent()).toBe(exact);
+ await expect(message).toHaveCSS('white-space','pre-wrap');
+ expect(await message.innerText()).toContain('\n\n  Keep two spaces.');
+ await message.click();await menu(page).getByRole('menuitem',{name:'Copy',exact:true}).click();
+ await expect.poll(()=>page.evaluate(()=>(window as any).copiedMessage)).toBe(exact);
+ await page.screenshot({path:info.outputPath('message-verbatim-formatting.png'),animations:'disabled'});
 });
 test('keyboard focus, arrow navigation and Escape return to the selected message',async({page})=>{
  await conversation(page);await agent(page).focus();await agent(page).press('Enter');await expect(menu(page).getByRole('menuitem',{name:'Copy',exact:true})).toBeFocused();
@@ -36,9 +46,16 @@ test('long press reveals actions, pointer movement cancels a held gesture',async
 test('copy denial stays in the menu and does not change the original messages',async({page})=>{
  await conversation(page);await page.evaluate(()=>Object.defineProperty(navigator,'clipboard',{configurable:true,value:{writeText:async()=>{throw Error('Denied');}}}));await agent(page).click();await menu(page).getByRole('menuitem',{name:'Copy',exact:true}).click();await expect(page.getByRole('status').filter({hasText:'Copy unavailable.'})).toBeVisible();await expect(agent(page)).toHaveText(answer);await expect(page.locator('[data-alpha-message-text]').filter({hasText:'My original request'})).toHaveText('My original request');
 });
-test('Read aloud invokes the existing speech path; fixture blocks all audio',async({page})=>{
- await conversation(page);await page.evaluate(async()=>{const {BrowserVoice}=await import('/src/browser/voice.ts');BrowserVoice.prototype.localSpeechStatus=async()=>({ready:true,execution:'browser',route:'browser'});BrowserVoice.prototype.synthesizeLocal=async(input)=>{(window as any).messageSpeechText=input.text;throw Error('Synthetic audio blocked');};});
- await agent(page).click();await menu(page).getByRole('menuitem',{name:'Read aloud'}).click();await expect.poll(()=>page.evaluate(()=>(window as any).messageSpeechText)).toBe(answer);await expect(page.getByRole('status').filter({hasText:'Synthetic audio blocked'})).toBeVisible();
+test('Read aloud uses the selected Cloud account; fixture blocks all audio',async({page})=>{
+ await conversation(page);await page.evaluate(async()=>{
+  const w=window as any,{connectionController:c}=await import('/src/runtime/connection-ui.tsx'),{BrowserVoice}=await import('/src/browser/voice.ts');w.localSpeechCalls=0;
+  c.getCloudEnvironment=()=> 'production';c.getCloudClient=()=>({sessionId:'synthetic-cloud-session',credentialId:'synthetic-cloud-credential',client:{}} as any);
+  BrowserVoice.prototype.synthesize=async(input)=>{w.messageSpeechInput=input;throw Error('Synthetic audio blocked');};
+  BrowserVoice.prototype.localSpeechStatus=async()=>{w.localSpeechCalls++;return {ready:true,execution:'browser',route:'browser'};};
+  BrowserVoice.prototype.synthesizeLocal=async()=>{w.localSpeechCalls++;throw Error('Unexpected local fallback');};
+ });
+ await agent(page).click();await menu(page).getByRole('menuitem',{name:'Read aloud'}).click();await expect.poll(()=>page.evaluate(()=>(window as any).messageSpeechInput?.text)).toBe(answer);await expect(page.getByRole('status').filter({hasText:'Synthetic audio blocked'})).toBeVisible();
+ expect(await page.evaluate(()=>{const w=window as any;return {environment:w.messageSpeechInput.environment,credentialId:w.messageSpeechInput.credentialId,localCalls:w.localSpeechCalls};})).toEqual({environment:'production',credentialId:'synthetic-cloud-credential',localCalls:0});
 });
 test('user messages copy without unsupported playback, reply or edit controls',async({page})=>{
  await conversation(page);await page.locator('[data-alpha-message-text]').filter({hasText:'My original request'}).click();await expect(menu(page).getByRole('menuitem',{name:'Read aloud'})).toHaveCount(0);await expect(menu(page).getByRole('menuitem',{name:'Reply'})).toHaveCount(0);await expect(menu(page).getByRole('menuitem',{name:'Edit'})).toHaveCount(0);await menu(page).getByRole('menuitem',{name:'Copy',exact:true}).click();await expect.poll(()=>page.evaluate(()=>(window as any).copiedMessage)).toBe('My original request');
