@@ -864,7 +864,7 @@ export const connectionController = {
       throw error;
     } finally {if(operation===controller){operation=null;update({busy:false});}}
   },
-  async send(text: string, context: ContextEnvelope, requestId: string, signal: AbortSignal, onText?:(text:string)=>void,replyTo?:ConversationMessageTarget): Promise<{ messageId?:string;userMessageId?:string;messageBinding?:{conversationId:string;session:VerifiedSession};text: string; proposals?: ActionProposal[]; actionResults?:readonly unknown[] }> {
+  async send(text: string, context: ContextEnvelope, requestId: string, signal: AbortSignal, onText?:(text:string)=>void,replyTo?:ConversationMessageTarget,onReplyReady?:(results:readonly unknown[]|undefined)=>void): Promise<{ messageId?:string;userMessageId?:string;messageBinding?:{conversationId:string;session:VerifiedSession};text: string; proposals?: ActionProposal[]; actionResults?:readonly unknown[] }> {
     if (operation) throw new Error('Finish the connection or history operation before sending.');
     if(replyTo&&!this.messageTargetCurrent(replyTo))throw Error('The reply target belongs to a different conversation.');
     const message = phoneContextMessage(text, context);
@@ -904,7 +904,8 @@ export const connectionController = {
       const wireText=nativeProse?text:message.text;
       const options = { signal: requestSignal, clientMessageId: requestId, metadata: { ...(replyTo?{replyToMessageId:replyTo.messageId}:{}), ...(message.context.timeZone===undefined?{}:{uiTimeZone:message.context.timeZone}), clientDevice: { context: message.context }, ...boundNavigation()?.metadata(context), ...(nativeProse?{userTextFormat:'plain-v1'}:{alphaPhone:{context:message.context}}) } };
       const progress=(value:string)=>{requestSignal.throwIfAborted();if(generation!==epoch||selected!==active||state.session?.sessionId!==session.sessionId)throw Error('The connection changed.');onText?.(value);};
-      const reply = selected.kind === 'cloud' ? await selected.cloud.send(selected.agentId, id, wireText, options) : selected.kind==='resident'?await selected.remote.send(id,wireText,{...options,onText:progress}):await selected.remote.send(id, wireText, options);
+      const replyReady=(results:readonly unknown[]|undefined)=>{assertCurrent();onReplyReady?.(results);};
+      const reply = selected.kind === 'cloud' ? await selected.cloud.send(selected.agentId, id, wireText, options) : selected.kind==='resident'?await selected.remote.send(id,wireText,{...options,onText:progress,onReplyReady:replyReady}):await selected.remote.send(id, wireText, options);
       requestSignal.throwIfAborted();
       if (generation !== epoch) throw new Error('The connection changed.');
       let responseFailure: Error | undefined;

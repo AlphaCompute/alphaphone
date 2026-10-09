@@ -86,6 +86,7 @@ export interface VerifiedSessionTransport {
     context: ContextEnvelope;
     signal: AbortSignal;
     onText?:(text:string)=>void;
+    onReplyReady?:(results:readonly unknown[]|undefined)=>void;
     replyTo?: ConversationMessageTarget;
   }): Promise<AgentReply>;
   /** Server must revalidate ownership, context/preconditions, approval and dedupe. */
@@ -323,7 +324,7 @@ export class AlphaClient {
       return reply.text;
     },signal,automatic);
   }
-  async send(text: string, onText?:(text:string)=>void, replyTo?:ConversationMessageTarget): Promise<AgentReply> {
+  async send(text: string, onText?:(text:string)=>void, replyTo?:ConversationMessageTarget,onReplyReady?:(results:readonly unknown[]|undefined)=>void): Promise<AgentReply> {
     if (!text.trim()) throw new Error("Enter a message.");
     return this.run(async (transport, context, signal) => {
       let accepting=true;let result:AgentReply;
@@ -333,6 +334,7 @@ export class AlphaClient {
         ...(replyTo?{replyTo}:{}),
         context,
         signal,
+        onReplyReady:results=>{if(!accepting||signal.aborted||this.transport!==transport||this.context.revision!==context.revision)return;onReplyReady?.(results);},
         onText:value=>{if(!accepting||signal.aborted)return;if(typeof value!=='string'||value.length>200000)throw new AlphaClientError('invalid-response','Invalid streamed reply.');onText?.(value);},
       }); } finally {accepting=false;}
       if (signal.aborted)

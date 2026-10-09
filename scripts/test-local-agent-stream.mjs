@@ -6,6 +6,7 @@ import http from 'node:http';
 import {createLocalAgentDevHandler} from './local-agent-dev-bridge.ts';
 import {readLocalAgentStream} from '../apps/app/src/runtime/local-agent-stream.ts';
 import {AlphaClient} from '../apps/app/src/runtime/alpha-client.ts';
+import {streamNativeAgent} from '../apps/app/src/runtime/local-agent-native-stream.ts';
 const encoder=new TextEncoder(),signal=new AbortController().signal;
 const event=value=>`data: ${JSON.stringify(value)}\n\n`;
 function response(text,size=1){const bytes=encoder.encode(text);return new Response(new ReadableStream({start(c){for(let i=0;i<bytes.length;i+=size)c.enqueue(bytes.slice(i,i+size));c.close();}}),{headers:{'content-type':'text/event-stream'}});}
@@ -75,3 +76,28 @@ const navigationClient=new AlphaClient();let automaticEffects=0;
 navigationClient.attachVerifiedTransport({session:{ownerId:'owner',agentId:'agent',sessionId:'navigation-session',origin:'https://agent.example'},send:async()=>({text:navWire.text,actionResults:navWire.actionResults}),execute:async()=>{automaticEffects++;throw Error('Navigation must not auto-approve device actions');}});
 const navigationReply=await navigationClient.send('Open Notes');assert.deepEqual(navigationReply.actionResults,[handoff]);assert.equal(automaticEffects,0);
 console.log('PASS terminal navigation metadata survives the existing stream/client boundary without executing device approvals.');
+
+// reply_ready finalizes generation metadata, not persistence or navigation.
+const prepared={actionName:'VIEWS_SHOW',success:true,values:{mode:'show',viewId:'notes',viewPath:'/notes',viewType:'gui',label:'Notes',completedActionDelivered:false,completedActionHandoffId:'ready-handoff',navigationPrepared:true,navigationBinding:{requestId:'ready-handoff',clientId:'owned-client',viewId:'notes',viewType:'gui',installationId:'owned-installation'}}};
+const ready=event({type:'reply_ready',fullText:'PRIVATE_READY_PROSE',actionResults:[{actionName:'NOTES_GET',success:true,data:{body:'PRIVATE_NOTE_BODY'}},prepared]});
+let retained,readyCalls=0;
+await assert.rejects(readLocalAgentStream(response(event({type:'tool',actionResults:[prepared]})+ready+ready+event({type:'error',message:'PRIVATE_FAILURE'})),signal,()=>{throw Error('Ready prose must not render');},value=>{retained=value;readyCalls++;}),/interrupted/);
+assert.equal(readyCalls,1);assert.equal(retained.length,1);assert.equal(retained[0].values.navigationBinding.requestId,'ready-handoff');assert.doesNotMatch(JSON.stringify(retained),/PRIVATE_/);
+const readyTerminal=event({type:'done',fullText:'Opening Notes.',agentName:'Fixture',actionResults:[prepared]});
+await readLocalAgentStream(response(ready+readyTerminal),signal,()=>{},value=>{retained=value;});
+assert.equal(retained[0].values.viewId,'notes');
+for(const ending of [event({type:'done',fullText:'Correction',agentName:'Fixture',actionResults:[]}),event({type:'reply_ready',fullText:'Correction',actionResults:[]}),event({type:'done',fullText:'Failure',agentName:'Fixture',actionResults:[prepared],failureKind:'interrupted'})]){
+ retained=undefined;try{await readLocalAgentStream(response(ready+ending),signal,()=>{},value=>{retained=value;});}catch{}assert.equal(retained,undefined,'A contradictory/failing terminal snapshot revokes ready navigation');
+}
+const readyClient=new AlphaClient();let lateReady,clientReady;readyClient.attachVerifiedTransport({session:{ownerId:'owner',agentId:'agent',sessionId:'ready-session',origin:'https://agent.example'},send:async({onReplyReady})=>{lateReady=onReplyReady;onReplyReady([prepared]);assert.equal(readyClient.getState().pending,true);throw Error('PRIVATE_PERSISTENCE_FAILURE');},execute:async()=>{throw Error('No device effects');}});
+await assert.rejects(readyClient.send('Open Notes',undefined,undefined,value=>{clientReady=value;}),error=>error.code==='transport-failed'&&!error.message.includes('PRIVATE_'));assert.equal(readyClient.getState().pending,false);assert.deepEqual(clientReady,[prepared]);lateReady(undefined);assert.deepEqual(clientReady,[prepared],'Late callbacks cannot erase a settled ready receipt');
+console.log('PASS reply-ready navigation retention, privacy, disagreement revocation and settled client fences.');
+
+for(const mode of ['interrupted','invalid-native','done']){
+ let emit,id,observed,retainedNative;const seen=new Promise(resolve=>{observed=resolve;});let finished=false;
+ const port={async addListener(_name,callback){emit=callback;return {async remove(){}};},async cancelStream(){},async requestStream(input){id=input.streamId;emit({streamId:id,event:{type:'response',status:200,headers:{'content-type':'text/event-stream'}}});emit({streamId:id,event:{type:'chunk',dataBase64:Buffer.from(ready).toString('base64')}});return {streamId:id};}};
+ const work=streamNativeAgent(port,{path:'/api/conversations/fixture/messages/stream',ownerId:'owner',headers:{},body:'{}'},signal,()=>{},value=>{retainedNative=value;if(value)observed();});void work.then(()=>{finished=true;},()=>{finished=true;});await seen;assert.equal(finished,false,'Ready metadata does not settle the native stream');
+ if(mode==='done'){emit({streamId:id,event:{type:'chunk',dataBase64:Buffer.from(readyTerminal).toString('base64')}});emit({streamId:id,event:{type:'complete'}});assert.equal((await work).text,'Opening Notes.');assert.ok(retainedNative);}
+ else{emit({streamId:id,event:mode==='interrupted'?{type:'complete',error:'PRIVATE_NATIVE_FAILURE'}:{type:'unknown'}});await assert.rejects(work,error=>!error.message.includes('PRIVATE_'));assert.equal(!!retainedNative,mode==='interrupted');}
+}
+console.log('PASS actual native adapter drains ready metadata, retains interruptions and revokes invalid native frames.');

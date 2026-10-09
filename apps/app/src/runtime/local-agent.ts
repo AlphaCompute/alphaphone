@@ -13,12 +13,12 @@ export interface LocalAgentBridge {
   configureProvider?(input:{apiKey:string;model:string}):Promise<unknown>;
   configureCloudProvider?(input:{credentialId:string;model:string}):Promise<unknown>;
   request(input: { path: string; audioBase64?:string;requestId?:string;ownerId?:string; method: 'GET' | 'POST'; headers: Record<string,string>; body?: string; timeoutMs: number }, signal?:AbortSignal): Promise<{status:number;body?:string}>;
-  stream?(input:{path:string;ownerId:string;headers:Record<string,string>;body:string},signal:AbortSignal,onText:(text:string)=>void):Promise<RemoteChatReply>;
+  stream?(input:{path:string;ownerId:string;headers:Record<string,string>;body:string},signal:AbortSignal,onText:(text:string)=>void,onReplyReady?:(results:readonly unknown[]|undefined)=>void):Promise<RemoteChatReply>;
 }
 const native = registerPlugin<LocalAgentBridge & NativeStreamPort>('Agent');
 // Capacitor proxies synthesize functions for unknown methods. Do not use that
 // proxy to feature-detect streaming before the native IPC adapter implements it.
-const nativeBridge:LocalAgentBridge={start:()=>native.start(),request:input=>native.request(input),stream:(input,signal,onText)=>streamNativeAgent(native,input,signal,onText)};
+const nativeBridge:LocalAgentBridge={start:()=>native.start(),request:input=>native.request(input),stream:(input,signal,onText,onReplyReady)=>streamNativeAgent(native,input,signal,onText,onReplyReady)};
 // The host bridge at /__alpha-local-agent exists only on the development server
 // with ELIZA_DEV_ALLOW_TEST_MOCKS=1 (devSurfacesEnabled in build-flags.ts). This
 // module is also imported by Node contract tests, where import.meta.env is absent.
@@ -38,11 +38,11 @@ const unavailableBridge: LocalAgentBridge = {
 };
 const browserBridge: LocalAgentBridge | null = developmentBridgeAllowed ? {
   async start() { return { state: 'host-managed' }; },
-  async stream(input,signal,onText){
+  async stream(input,signal,onText,onReplyReady){
     const bounded=AbortSignal.any([signal,AbortSignal.timeout(120000)]);
     const response=await fetch('/__alpha-local-agent',{method:'POST',headers:{'Content-Type':'application/json','X-Alpha-Local-Agent':'1'},
       body:JSON.stringify({...input,method:'POST',stream:true}),signal:bounded,redirect:'error'});
-    return readLocalAgentStream(response,bounded,onText);
+    return readLocalAgentStream(response,bounded,onText,onReplyReady);
   },
   async request(input, signal) {
     const response = await fetch('/__alpha-local-agent', {
@@ -181,7 +181,7 @@ export class LocalAgentProtocol {
     if(!Array.isArray(value.messages))throw new Error('Invalid local conversation history.');
     return {messages:value.messages.map(record)};
   }
-  async send(id:string,text:string,options:{metadata?:Record<string,unknown>;clientMessageId?:string;signal?:AbortSignal;onText?:(text:string)=>void}={}):Promise<RemoteChatReply> {
+  async send(id:string,text:string,options:{metadata?:Record<string,unknown>;clientMessageId?:string;signal?:AbortSignal;onText?:(text:string)=>void;onReplyReady?:(results:readonly unknown[]|undefined)=>void}={}):Promise<RemoteChatReply> {
     if(this.bridge.stream&&options.onText){
       if(!this.session)throw Error('Start the local agent first.');
       const controller=new AbortController();this.streams.add(controller);
@@ -190,7 +190,7 @@ export class LocalAgentProtocol {
       const valid=()=>{signal.throwIfAborted();if(generation!==this.generation||session!==this.session)throw Error('Local agent connection changed.');};
       valid();
       const result=await this.bridge.stream({path:`/api/conversations/${encodeURIComponent(identifier(id))}/messages/stream`,ownerId:session.ownerId,headers:this.deviceHeaders,
-        body:JSON.stringify({text,channelType:'DM',streamProtocol:'delta-v2',metadata:options.metadata,clientMessageId:options.clientMessageId})},signal,value=>{valid();options.onText!(value);});
+        body:JSON.stringify({text,channelType:'DM',streamProtocol:'delta-v2',metadata:options.metadata,clientMessageId:options.clientMessageId})},signal,value=>{valid();options.onText!(value);},results=>{valid();options.onReplyReady?.(results);});
       valid();return result;
       }finally{this.streams.delete(controller);}
     }

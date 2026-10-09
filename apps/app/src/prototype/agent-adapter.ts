@@ -250,7 +250,7 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
       if (connection.session) {
         alphaClient.attachVerifiedTransport({
           session: connection.session,
-          send: ({ text, context, requestId, signal, onText, replyTo }) => connectionController.send(text, context, requestId, signal, onText,replyTo),
+          send: ({ text, context, requestId, signal, onText, replyTo, onReplyReady }) => connectionController.send(text, context, requestId, signal, onText,replyTo,onReplyReady),
           // Remote text is not authority to execute device actions. This path
           // accepts chat only until the server supports verified proposals.
           execute: ({ proposal, context, signal }) => connectionController.execute(proposal, context, signal),
@@ -651,17 +651,24 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
     const streamedId=crypto.randomUUID(),userMessageId=crypto.randomUUID();let streamed=false;
     const replaceStream=(value:string,streaming=true)=>this.setState((previous:Shell)=>({msgs:previous.msgs.map((message:Shell)=>message.id===streamedId?{...message,text:value,streaming}:message)}));
     this.setState({ msgs: [...s.msgs, { id: userMessageId, from: 'user', text }], draft: '', typing: true, chat: s.chat === 'full' ? 'full' : 'sheet', shade: false });
+    let navigation:ReturnType<typeof connectionController.captureViewNavigation>|undefined,readyNavigation:readonly unknown[]|undefined;
+    const deliverNavigation=async(results:readonly unknown[]|undefined)=>{
+      if(!navigation||!results?.length)return false;
+      const delivered=await navigation.client.deliver(results,navigation.attempt,(view,current)=>new Promise<boolean>((resolve,reject)=>{
+        try{current();if(!openInternalView(this,view)){resolve(false);return;}this.setState({},()=>{context(this);resolve(this.live&&(this.S().view||'home')===view);});}catch(error){reject(error);}
+      }));if(delivered.status==='delivered')this.toast(`Opened ${delivered.label}.`);else if(delivered.status==='unknown')this.toast('Could not confirm the screen change. Check your screen.');return delivered.status==='delivered';
+    };
     try {
       await this.connectAgent(); context(this);
       if (alphaClient.getState().context.revision !== revision) throw new Error('The active screen changed. Please send your request again.');
       if(expectedSession&&(JSON.stringify(connectionController.getSnapshot().session)!==JSON.stringify(expectedSession)||document.hidden))throw new Error('Agent changed. Review this message again.');
       const sourceSession=connectionController.getSnapshot().session;
-      const navigation=connectionController.captureViewNavigation(alphaClient.getState().context);
+      navigation=connectionController.captureViewNavigation(alphaClient.getState().context);
       const reply = await alphaClient.send(text,value=>{
         if(!this.live)return;
         if(streamed)replaceStream(value);
         else{streamed=true;this.setState((previous:Shell)=>({msgs:[...previous.msgs,{id:streamedId,from:'agent',text:value,card:null,streaming:true}]}));}
-      },replyTarget);
+      },replyTarget,results=>{readyNavigation=results;});
       if (!this.live) return;
       const identity=reply.messageBinding;
       if(streamed)this.setState((previous:Shell)=>({msgs:previous.msgs.map((m:Shell)=>m.id===streamedId?{...m,id:reply.messageId||m.id,messageBinding:reply.messageId?identity:undefined,text:reply.text,streaming:false}:m)}));else this.agentSay(reply.text,undefined,reply.messageId&&identity?{id:reply.messageId,messageBinding:identity}:undefined);
@@ -669,14 +676,17 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
       if(this.messageReplyTarget===replyTarget)this.messageReplyTarget=undefined;
       if(sourceDraft&&sourceSession&&JSON.stringify(sourceSession)===JSON.stringify(connectionController.getSnapshot().session))this.agentSay('Review this answer before saving it with its source.',{type:'generic',icon:'note',title:'Review summary note',sub:sourceDraft.name,sourceSummary:{source:sourceDraft,text:reply.text,session:sourceSession}});
       for (const proposal of reply.proposals || []) this.agentSay(proposal.description, { type: 'generic', icon: 'check', title: 'Approve: ' + proposal.title, sub: 'Tap to approve this exact action', proposalId: proposal.id });
-      if(navigation&&reply.actionResults?.length){
-        try{const delivered=await navigation.client.deliver(reply.actionResults,navigation.attempt,(view,current)=>new Promise<boolean>((resolve,reject)=>{
-          try{current();if(!openInternalView(this,view)){resolve(false);return;}this.setState({},()=>{context(this);resolve(this.live&&(this.S().view||'home')===view);});}catch(error){reject(error);}
-        }));if(delivered.status==='delivered')this.toast(`Opened ${delivered.label}.`);else if(delivered.status==='unknown')this.toast('Could not confirm the screen change. Check your screen.');}
-        catch(error){if(this.live)this.toast(error instanceof AlphaClientError?error.message:'Could not confirm the screen change. Check your screen.');}
+      try{await deliverNavigation(reply.actionResults);}catch(error){if(this.live)this.toast(error instanceof AlphaClientError?error.message:'Could not confirm the screen change. Check your screen.');}
+    } catch (e) {
+      let opened=false;
+      // reply_ready is authoritative generation metadata, not saved history.
+      // Drain the stream first so our own view change cannot cancel its persistence.
+      if(this.live&&e instanceof AlphaClientError&&e.code==='transport-failed'&&readyNavigation){try{opened=await deliverNavigation(readyNavigation);}catch{}}
+      if(this.live){const message=opened?'The screen opened, but the conversation response was interrupted. Check history before sending again.':e instanceof Error?e.message:'The agent could not complete this request.';
+        if(streamed)this.setState((previous:Shell)=>({msgs:previous.msgs.map((item:Shell)=>item.id===streamedId?{...item,streaming:false,interrupted:true,text:`${item.text}\n\nResponse interrupted. ${message}`} :item)}));
+        else if(opened)this.setState((previous:Shell)=>({msgs:[...previous.msgs,{id:crypto.randomUUID(),from:'agent',text:message,card:null}]}));else this.agentSay(message);
       }
-
-    } catch (e) { if (this.live) {const message=e instanceof Error?e.message:'The agent could not complete this request.';if(streamed)this.setState((previous:Shell)=>({msgs:previous.msgs.map((item:Shell)=>item.id===streamedId?{...item,streaming:false,interrupted:true,text:`${item.text}\n\nResponse interrupted. ${message}`} :item)}));else this.agentSay(message);} }
+    }
     finally { if (this.live) this.setState({ typing: false }); }
   };
   p.agentSay = function (text: string, card?: Shell, identity?:{id:string;messageBinding:{conversationId:string;session:unknown}}) {

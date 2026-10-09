@@ -1,28 +1,50 @@
+import {findViewActionHandoff} from '../../../../.eliza/client-features/packages/core/src/views/view-action-handoff.ts';
 import type {RemoteChatReply} from './remote-protocol';
 
-/** Render text only. Tool/status frames never become proposals or approvals. */
-export async function readLocalAgentStream(response:Response, signal:AbortSignal, onText:(text:string)=>void):Promise<RemoteChatReply> {
+/** Only finalized, navigation-only reply_ready snapshots can be retained.
+ * Tool/status frames and prose never become effects; durable completion remains done. */
+function preparedNavigation(results:unknown):readonly unknown[]|undefined {
+ if(!Array.isArray(results))return;
+ for(let i=results.length-1;i>=0;i--){
+  const result=results[i],handoff=findViewActionHandoff([result]);
+  if(!handoff?.navigationPrepared||!handoff.navigationBinding)continue;
+  const values=result.values;
+  if(!values||typeof values!=='object'||Array.isArray(values)||Object.keys(values).some(key=>!['mode','viewId','viewPath','viewType','label','completedActionDelivered','completedActionHandoffId','navigationPrepared','navigationBinding'].includes(key))||values.completedActionDelivered===true||values.viewType!=='gui')return;
+  return Object.freeze([Object.freeze({actionName:'VIEWS',success:true,values:Object.freeze({mode:'show',viewId:handoff.viewId,...(handoff.viewPath?{viewPath:handoff.viewPath}:{}),viewType:'gui',...(typeof values.label==='string'&&values.label.length<=256?{label:values.label}:{}),completedActionDelivered:false,completedActionHandoffId:handoff.completedActionHandoffId,navigationPrepared:true,navigationBinding:Object.freeze(handoff.navigationBinding)})})]);
+ }
+}
+export async function readLocalAgentStream(response:Response, signal:AbortSignal, onText:(text:string)=>void,onReplyReady?:(results:readonly unknown[]|undefined)=>void):Promise<RemoteChatReply> {
  if(!response.ok)throw Object.assign(Error(`Local agent request failed (HTTP ${response.status}).`),{status:response.status});
  if(!response.headers.get('content-type')?.startsWith('text/event-stream')||!response.body)throw Error('Invalid local stream response');
  const reader=response.body.getReader(),decoder=new TextDecoder('utf-8',{fatal:true});
- let text='',received=0,lineParts:string[]=[],lines:string[]=[];
+ let text='',received=0,lineParts:string[]=[],lines:string[]=[],readySeen=false,readyKey:string|undefined;
+ const invalid=(message:string):never=>{onReplyReady?.(undefined);throw Error(message);};
  const abort=()=>{void reader.cancel().catch(()=>{});};
  signal.addEventListener('abort',abort,{once:true});
  function frame(raw:string):RemoteChatReply|undefined {
   const data=raw.split('\n').filter(line=>line.startsWith('data:')).map(line=>line.slice(5).replace(/^ /,'')).join('\n');
   if(!data)return;
-  const value=JSON.parse(data);
-  if(!value||typeof value!=='object'||Array.isArray(value))throw Error('Invalid stream event');
-  if(value.type==='error')throw Error('Local agent response interrupted. Check conversation and action history before retrying.');
+  let value;try{value=JSON.parse(data);}catch{return invalid('Invalid stream event');}
+  if(!value||typeof value!=='object'||Array.isArray(value))return invalid('Invalid stream event');
+  if(value.type==='error'){if(value.terminalFailure||value.failureKind||value.actionResults!==undefined)onReplyReady?.(undefined);throw Error('Local agent response interrupted. Check conversation and action history before retrying.');}
+  if(value.type==='reply_ready'){
+   if(typeof value.fullText!=='string'||value.fullText.length>200000||(value.actionResults!==undefined&&!Array.isArray(value.actionResults)))return invalid('Invalid reply-ready snapshot');
+   const navigation=preparedNavigation(value.actionResults),key=navigation?JSON.stringify(navigation):undefined;
+   if(readySeen&&key!==readyKey)return invalid('Reply-ready navigation changed');
+   if(!readySeen){readySeen=true;readyKey=key;signal.throwIfAborted();if(navigation)onReplyReady?.(navigation);}
+  }
   if(value.type==='token'){
    if(typeof value.fullText==='string')text=value.fullText;
    else if(typeof value.text==='string')text+=value.text;
-   else throw Error('Invalid stream text');
-   if(text.length>200000)throw Error('Local reply exceeds display limit');
+   else return invalid('Invalid stream text');
+   if(text.length>200000)return invalid('Local reply exceeds display limit');
    signal.throwIfAborted();onText(text);
   }
   if(value.type==='done'){
-   if(typeof value.fullText!=='string'||value.fullText.length>200000||typeof value.agentName!=='string')throw Error('Invalid terminal reply');
+   if(typeof value.fullText!=='string'||value.fullText.length>200000||typeof value.agentName!=='string')return invalid('Invalid terminal reply');
+   const navigation=preparedNavigation(value.actionResults),key=navigation?JSON.stringify(navigation):undefined;
+   if(readySeen&&key!==readyKey)return invalid('Terminal navigation disagrees with reply-ready snapshot');
+   if(value.terminalFailure||value.failureKind)onReplyReady?.(undefined);
    return {...value,text:value.fullText} as RemoteChatReply;
   }
  }
@@ -30,8 +52,8 @@ export async function readLocalAgentStream(response:Response, signal:AbortSignal
   while(true){
    signal.throwIfAborted();const part=await reader.read();signal.throwIfAborted();
    if(part.done)throw Error('Local agent stream ended without a completed reply. Check history before retrying.');
-   received+=part.value.byteLength;if(received>2*1024*1024)throw Error('Local stream exceeds limit');
-   const chunk=decoder.decode(part.value,{stream:true});let start=0,boundary;
+   received+=part.value.byteLength;if(received>2*1024*1024)return invalid('Local stream exceeds limit');
+   let chunk;try{chunk=decoder.decode(part.value,{stream:true});}catch{return invalid('Invalid stream encoding');}let start=0,boundary;
    // Scan only new data. Re-scanning an accumulated frame is quadratic when
    // a server fragments a long token or terminal event into tiny chunks.
    while((boundary=chunk.indexOf('\n',start))!==-1){
