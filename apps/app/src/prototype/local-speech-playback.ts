@@ -12,7 +12,7 @@ let cancelOwner: object | undefined;
 /** Stops message Listen, a spoken reply and note read-aloud. */
 export function stopLocalSpeechPlayback() { cancelCurrent?.(); cancelCurrent = undefined; cancelOwner = undefined; stopSpeaking(); }
 type Shell = any;
-type Reading = { id: string; text: string; controller?: AbortController; message: string };
+type Reading = { id: string; text: string; controller?: AbortController; message: string; users: Set<string> };
 
 const speechBinding = () => JSON.stringify([connectionController.getSnapshot().session?.sessionId, connectionController.getCloudClient()?.sessionId, document.documentElement.dataset.connectionMode]);
 /**
@@ -94,7 +94,9 @@ export function installLocalSpeechPlayback(Component: Shell) {
     stopLocalSpeechPlayback(); stop(shell);
     const cloud = selectVoiceRoute() === 'cloud';
     const voice = cloud ? createCloudVoice() : createOnDeviceVoice(); if (!voice) return;
-    const controller = new AbortController(), state: Reading = { id, text, controller, message: cloud ? 'Preparing Cloud voice using your account credits.' : 'Preparing speech on this phone. Nothing is uploaded.' };
+    // User messages already present; only a user message sent after this reading began stops it.
+    const users = new Set<string>((shell.S().msgs || []).filter((m: Shell) => m.from === 'user').map((m: Shell) => String(m.id)));
+    const controller = new AbortController(), state: Reading = { id, text, controller, users, message: cloud ? 'Preparing Cloud voice using your account credits.' : 'Preparing speech on this phone. Nothing is uploaded.' };
     states.set(shell, state); cancelOwner = shell; cancelCurrent = () => { stop(shell); refresh(shell); }; refresh(shell);
     try {
       if ('ready' in voice) {
@@ -157,8 +159,8 @@ export function installLocalSpeechPlayback(Component: Shell) {
   p.componentDidUpdate = function (...args: unknown[]) {
     const state = states.get(this), value = this.S();
     if (state && (!['sheet', 'full'].includes(value.chat) || !(value.msgs || []).some((m: Shell) => m.id === state.id && m.text === state.text))) { stop(this); refresh(this); }
-    // A new user message stops a reply that is still being read.
-    if (state?.controller && (value.msgs || []).some((m: Shell, i: number, all: Shell[]) => m.from === 'user' && i > all.findIndex(x => x.id === state.id))) { stop(this); refresh(this); }
+    // A user message sent after the reading began stops it; earlier messages never do.
+    if (state?.controller && (value.msgs || []).some((m: Shell) => m.from === 'user' && !state.users.has(String(m.id)))) { stop(this); refresh(this); }
     followVoiceTurn(this);
     return update?.apply(this, args);
   };

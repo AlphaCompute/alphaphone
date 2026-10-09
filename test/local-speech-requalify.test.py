@@ -86,11 +86,11 @@ class RequalifyTest(unittest.TestCase):
             (folder / name).write_text(json.dumps({'pass': passed, 'execution': 'android-process-cpu'}))
         return folder
 
-    def ingest(self, abi, results, apk=None, passed=True, complete=True):
+    def ingest(self, abi, results, apk=None, passed=True, complete=True, device_abi=None):
         log_file = self.dir / f'{abi}.log'
         log_file.write_text(log(results, complete))
         try:
-            requalify.main(['ingest', *self.common, '--abi', abi, '--apk', str(apk or self.apk(abi)), '--log', str(log_file), '--evidence', str(self.evidence(abi, passed))])
+            requalify.main(['ingest', *self.common, '--abi', abi, '--device-abi', device_abi or abi, '--apk', str(apk or self.apk(abi)), '--log', str(log_file), '--evidence', str(self.evidence(abi, passed))])
         except SystemExit as exit:
             return exit.code
         return 0
@@ -132,6 +132,12 @@ class RequalifyTest(unittest.TestCase):
         self.assertEqual(self.ingest('x86_64', dict(both, modelHolderReusesAndReleasesOnItsWorker=-3)), 3)
         self.assertEqual(self.ingest('x86_64', both, complete=False), 3)
         self.assertEqual(self.ingest('x86_64', both, passed=False), 3)
+        # A run on another ABI's device cannot pass this ABI, and an ingest must name its device ABI.
+        self.assertEqual(self.ingest('x86_64', both, device_abi='arm64-v8a'), 3)
+        log_file = self.dir / 'unnamed.log'
+        log_file.write_text(log(both))
+        with self.assertRaises(SystemExit):
+            requalify.main(['ingest', *self.common, '--abi', 'x86_64', '--apk', str(self.apk('x86_64')), '--log', str(log_file), '--evidence', str(self.evidence('x86_64'))])
         other = self.apk('x86_64', {'libsherpa-onnx-jni.so': b'other', 'libonnxruntime.so': NATIVES['x86_64']['libonnxruntime.so']})
         self.assertEqual(self.ingest('x86_64', both, apk=other), 3)
         candidate = json.loads((self.dir / 'workspace/requalification/candidate.json').read_text())

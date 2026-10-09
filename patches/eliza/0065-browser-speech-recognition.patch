@@ -43,10 +43,10 @@ index d51566796ff07151b6425261bd5990ca3fefbc66..3f569c30c75d5f402bb6627b840855a0
    "scripts": {
 diff --git a/packages/voice/src/browser-speech/browser-speech.test.ts b/packages/voice/src/browser-speech/browser-speech.test.ts
 new file mode 100644
-index 0000000000000000000000000000000000000000..24b34876b51c8798ad4003b2eabd32d7545e3ccc
+index 0000000000000000000000000000000000000000..0963896d1dd022504058ac56845613a275e6b965
 --- /dev/null
 +++ b/packages/voice/src/browser-speech/browser-speech.test.ts
-@@ -0,0 +1,108 @@
+@@ -0,0 +1,122 @@
 +import { describe, expect, it } from "vitest";
 +import { BrowserSpeechRecognizer } from "./speech-recognizer.ts";
 +import { installSpeechWorker } from "./speech-worker.ts";
@@ -153,6 +153,20 @@ index 0000000000000000000000000000000000000000..24b34876b51c8798ad4003b2eabd32d7
 +    listener?.({ data: { type: "transcribe", id: "a", manifestUrl: "https://host.test/speech/manifest.json", samples: new Float32Array(1600) } } as MessageEvent);
 +    await new Promise((resolve) => setTimeout(resolve, 10));
 +    expect(messages).toEqual([{ type: "error", id: "a", code: "model-load-failed", message: "Unsupported speech model manifest" }]);
++  });
++  it("refuses a model file from another origin before fetching it", async () => {
++    const messages: unknown[] = [], fetched: string[] = [];
++    let listener: ((event: MessageEvent) => void) | undefined;
++    const runtime = { env: { wasm: {} }, InferenceSession: { create: async () => { throw Error("must not load"); } }, Tensor: class {} } as never;
++    const file = (path: string) => ({ path, bytes: 1, sha256: "0".repeat(64) });
++    const manifest = { version: 1, engine: "whisper", model: "m", revision: "r", language: "en", runtime: "ort",
++      files: { encoder: file("encoder.onnx"), decoder: file("decoder.onnx"), vocab: file("vocab.json"), generation: file("generation.json"), wasm: file("ort.wasm"), glue: file("https://other.test/ort.mjs") } };
++    installSpeechWorker({ postMessage: (message) => messages.push(message), addEventListener: (_type, value) => { listener = value as never; } }, runtime,
++      (async (input: RequestInfo | URL) => { fetched.push(String(input)); return new Response(JSON.stringify(manifest), { status: 200 }); }) as typeof fetch);
++    listener?.({ data: { type: "transcribe", id: "b", manifestUrl: "https://host.test/speech/manifest.json", samples: new Float32Array(1600) } } as MessageEvent);
++    await new Promise((resolve) => setTimeout(resolve, 10));
++    expect(fetched).toEqual(["https://host.test/speech/manifest.json"]);
++    expect(messages.at(-1)).toEqual({ type: "error", id: "b", code: "model-load-failed", message: "Speech model file is not served by this host" });
 +  });
 +});
 diff --git a/packages/voice/src/browser-speech/index.ts b/packages/voice/src/browser-speech/index.ts
@@ -273,10 +287,10 @@ index 0000000000000000000000000000000000000000..9e1909b62bc23aa18e9b5ce7ccb60358
 +}
 diff --git a/packages/voice/src/browser-speech/speech-worker.ts b/packages/voice/src/browser-speech/speech-worker.ts
 new file mode 100644
-index 0000000000000000000000000000000000000000..bad2ddf6d3aee12545c75d9b2a038ee0ff419e33
+index 0000000000000000000000000000000000000000..e58086a6fc761683660a04c52d94c7bf2a45ab5e
 --- /dev/null
 +++ b/packages/voice/src/browser-speech/speech-worker.ts
-@@ -0,0 +1,62 @@
+@@ -0,0 +1,65 @@
 +import {createWhisperRecognizer,type WhisperGeneration,type WhisperRuntime} from './whisper-engine.ts';
 +import type {SpeechManifest,SpeechWorkerRequest,SpeechWorkerMessage} from './speech-protocol.ts';
 +
@@ -298,8 +312,10 @@ index 0000000000000000000000000000000000000000..bad2ddf6d3aee12545c75d9b2a038ee0
 +export function installSpeechWorker(scope:SpeechWorkerScope,ort:SpeechOnnxRuntime,fetcher:typeof fetch=(input,init)=>fetch(input,init)){
 + let recognizer:Promise<{manifest:SpeechManifest;transcribe:(samples:Float32Array)=>Promise<{text:string;noSpeech:boolean}>}>|undefined;
 + const post=(message:SpeechWorkerMessage)=>scope.postMessage(message);
++ // Every model file, including the WebAssembly glue, must come from the manifest's own origin.
++ const sameOrigin=(path:string,base:string)=>{const url=new URL(path,base);if(url.origin!==new URL(base).origin)throw Error('Speech model file is not served by this host');return url;};
 + async function fetchVerified(base:string,file:{path:string;bytes:number;sha256:string},progress:(bytes:number)=>void){
-+  const response=await fetcher(new URL(file.path,base),{credentials:'same-origin',cache:'default'});
++  const response=await fetcher(sameOrigin(file.path,base),{credentials:'same-origin',cache:'default'});
 +  if(!response.ok||!response.body)throw Error(`Speech model file unavailable (${response.status})`);
 +  const output=new Uint8Array(file.bytes),reader=response.body.getReader();let offset=0;
 +  for(;;){const {done,value}=await reader.read();if(done)break;if(offset+value.length>file.bytes)throw Error('Speech model file is larger than recorded');output.set(value,offset);offset+=value.length;progress(value.length);}
@@ -313,12 +329,13 @@ index 0000000000000000000000000000000000000000..bad2ddf6d3aee12545c75d9b2a038ee0
 +  const manifest=await response.json() as SpeechManifest;
 +  if(manifest?.version!==1||manifest.engine!=='whisper'||manifest.language!=='en'||!manifest.files)throw Error('Unsupported speech model manifest');
 +  const files=manifest.files,total=Object.values(files).reduce((sum,file)=>sum+file.bytes,0);let loaded=0;
++  const glue=sameOrigin(files.glue.path,manifestUrl).href;
 +  post({type:'progress',id,phase:'download',loaded,total});
 +  const progress=(bytes:number)=>{loaded+=bytes;post({type:'progress',id,phase:'download',loaded,total});};
 +  const [wasm,encoder,decoder,vocab,generation]=await Promise.all([files.wasm,files.encoder,files.decoder,files.vocab,files.generation].map(file=>fetchVerified(manifestUrl,file,progress)));
 +  post({type:'progress',id,phase:'initialize'});
 +  ort.env.wasm.numThreads=1;ort.env.wasm.proxy=false;ort.env.wasm.wasmBinary=wasm.buffer;
-+  ort.env.wasm.wasmPaths={mjs:new URL(files.glue.path,manifestUrl).href};
++  ort.env.wasm.wasmPaths={mjs:glue};
 +  const decodeJson=(bytes:Uint8Array)=>JSON.parse(new TextDecoder().decode(bytes));
 +  const engine=await createWhisperRecognizer(ort,{encoder,decoder,vocab:decodeJson(vocab) as Record<string,number>,generation:decodeJson(generation) as WhisperGeneration});
 +  return {manifest,transcribe:(samples:Float32Array)=>engine.transcribe(samples)};

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Aggregate exported per-turn voice timing records (apps/app/src/runtime/voice-timing.ts).
 //
-//   node scripts/aggregate-voice-latency.mjs export-1.json [export-2.json ...] [--warm 20] [--cold 5] [--out summary.json]
+//   node scripts/aggregate-voice-latency.mjs export-1.json [export-2.json ...] [--warm N>=20] [--cold N>=5] [--out summary.json]
 //
 // Phases are measured from marks on one device clock, in milliseconds:
 //   recognition         transcript-ready - recording-end
@@ -19,11 +19,13 @@ import fs from 'node:fs';
 const order = ['recording-end', 'transcript-ready', 'send', 'first-token', 'final-reply', 'first-audio'];
 const routes = new Set(['on-device', 'browser', 'local-agent', 'eliza-cloud', 'paired-agent', 'development-agent', 'manual']);
 
+/** The sample counts the measurement plan requires. Options can raise them, never lower them. */
+export const minimumSamples = Object.freeze({ warm: 20, cold: 5 });
 export function parseArguments(argv) {
-  const options = { files: [], warm: 20, cold: 5, out: null };
+  const options = { files: [], warm: minimumSamples.warm, cold: minimumSamples.cold, out: null };
   for (let i = 0; i < argv.length; i++) {
     const value = argv[i];
-    if (value === '--warm' || value === '--cold') { const n = Number(argv[++i]); if (!Number.isInteger(n) || n < 1) throw new Error(`${value} needs a positive integer`); options[value.slice(2)] = n; }
+    if (value === '--warm' || value === '--cold') { const n = Number(argv[++i]); const key = value.slice(2); if (!Number.isInteger(n) || n < minimumSamples[key]) throw new Error(`${value} needs an integer of at least ${minimumSamples[key]}`); options[key] = n; }
     else if (value === '--out') { options.out = argv[++i]; if (!options.out) throw new Error('--out needs a path'); }
     else if (value.startsWith('--')) throw new Error(`Unknown option ${value}`);
     else options.files.push(value);
@@ -71,7 +73,8 @@ export function phases(row) {
 /** A complete sample reached the final reply through every earlier mark. */
 export const complete = row => !row.outcome && order.slice(0, 5).every(key => row.marks[key] !== undefined);
 
-export function aggregate(exports, required = { warm: 20, cold: 5 }) {
+export function aggregate(exports, requested = minimumSamples) {
+  const required = { warm: Math.max(minimumSamples.warm, requested.warm ?? 0), cold: Math.max(minimumSamples.cold, requested.cold ?? 0) };
   const { records, invalid } = collectRecords(exports);
   const usable = records.filter(complete), cohorts = {};
   for (const name of ['warm', 'cold']) {

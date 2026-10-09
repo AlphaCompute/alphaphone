@@ -120,7 +120,7 @@ python3 scripts/local-speech/requalify-runtime.py record --ndk "$ANDROID_NDK_HOM
 python3 scripts/local-speech/requalify-runtime.py run --serial <device> \
   --apk android/app/build/outputs/apk/standalone/debug/app-standalone-debug.apk \
   --test-apk android/app/build/outputs/apk/androidTest/standalone/debug/app-standalone-debug-androidTest.apk
-#    (or `ingest --abi ABI --apk APP.apk --log am-instrument-r.log --evidence local-speech-evidence/`
+#    (or `ingest --abi ABI --device-abi ABI --apk APP.apk --log am-instrument-r.log --evidence local-speech-evidence/`
 #    for a run made elsewhere)
 # 4. Admit once every rebuilt ABI passed. The previous record is kept under baselines/.
 python3 scripts/local-speech/requalify-runtime.py admit --reviewer "<who reviewed the evidence>"
@@ -128,7 +128,7 @@ python3 scripts/local-speech/requalify-runtime.py admit --reviewer "<who reviewe
 
 An ABI passes only when both canonical tests ran and passed (`am instrument -r` codes), the
 run completed without failures, `result.json` and `holder-result.json` record a CPU pass, the
-APK carries exactly the candidate's native bytes for that ABI, the device reports that ABI,
+APK carries exactly the candidate's native bytes for that ABI, the device ABI is that ABI (read with adb by `run`, stated with `--device-abi` for `ingest`),
 and the canonical test is byte-identical to the one recorded. `admit` refuses while any ABI is
 missing or failed, so `verify-apk-qualification.py` and `scripts/verify-apks.mjs` keep marking
 an APK distributable only when every packaged ABI has a functional pass. Commit the new record,

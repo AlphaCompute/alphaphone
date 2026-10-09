@@ -80,6 +80,10 @@ test('the aggregator requires 20 warm and 5 cold complete samples and reports A-
     fs.writeFileSync(file, JSON.stringify(exported));
     const out = JSON.parse(execFileSync(process.execPath, ['scripts/aggregate-voice-latency.mjs', file], {encoding: 'utf8'}));
     assert.equal(out.sufficient, true);
+    // The required counts can be raised but never lowered below 20 warm and 5 cold.
+    assert.throws(() => execFileSync(process.execPath, ['scripts/aggregate-voice-latency.mjs', file, '--warm', '1'], {stdio: 'pipe'}), error => error.status === 1);
+    assert.throws(() => execFileSync(process.execPath, ['scripts/aggregate-voice-latency.mjs', file, '--cold', '30'], {stdio: 'pipe'}), error => error.status === 2);
+    assert.equal(aggregate([exported], {warm: 1, cold: 1}).cohorts.warm.required, 20);
     fs.writeFileSync(file, '{"format":"other"}');
     assert.throws(() => execFileSync(process.execPath, ['scripts/aggregate-voice-latency.mjs', file], {stdio: 'pipe'}), error => error.status === 1);
   } finally { fs.rmSync(dir, {recursive: true, force: true}); }

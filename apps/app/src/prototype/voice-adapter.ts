@@ -126,12 +126,14 @@ export function installPrototypeVoiceAdapter(Component: any, views: Record<strin
     clip = undefined; recordingId = undefined;
     progress = undefined;
     if (close) { stage = 'closed'; draft = ''; destination = undefined; chatDestination = undefined; failure = ''; recognized = undefined; }
-    if (turnHandedOff) turnHandedOff = false; else abandonVoiceTurn();
+    // A turn handed to the composer stays active until it is sent, edited or replaced; returning
+    // to the original view runs Notes' onLeave, which cleans up again and must not abandon it.
+    if (!turnHandedOff) abandonVoiceTurn();
     refresh();
   }
   /** Timing route names match transcript provenance. */
   const timingRoute = () => onDeviceReady ? (Capacitor.isNativePlatform() ? 'on-device' : connectionController.getBrowserSpeechAgent() ? 'local-agent' : 'browser') : cloudMode ? 'eliza-cloud' : pairedAsrReady ? 'paired-agent' : deviceOnly ? 'manual' : 'development-agent';
-  const recordingEnded = () => { if (!chatDestination) return; const route = timingRoute(); beginVoiceTurn({ route, cold: !warmVoiceRoutes.has(route) }); };
+  const recordingEnded = () => { if (!chatDestination) return; const route = timingRoute(); turnHandedOff = false; beginVoiceTurn({ route, cold: !warmVoiceRoutes.has(route) }); };
   /** Return to the screen voice entry started from without resetting its state. */
   const returnTo = (shell: any, view: string | null) => { if (view) shell.openView(view, null, null, { keepState: true, restore: true }); else shell.goHome(); };
   function enter(target?: DictationTarget, preparedLocal?: ReturnType<typeof createOnDeviceVoice>, preference: 'default' | 'device' | 'agent' | 'manual' = 'default') {
@@ -558,7 +560,11 @@ export function installPrototypeVoiceAdapter(Component: any, views: Record<strin
     // Read aloud uses only the qualified local speech route. Closing, leaving or editing the note stops it.
     const readNote = (current.get('notes').list || []).find((item: Bag) => item.id === state.open);
     const readText = noteSpeechText(readNote), activeReading = currentNoteReading();
-    if (activeReading?.noteId && (!readNote || activeReading.noteId !== readNote.id || activeReading.text !== readText)) stopSpeaking();
+    // The read note was closed or changed. Stop after this render: stopping updates the view state.
+    if (activeReading?.noteId && (!readNote || activeReading.noteId !== readNote.id || activeReading.text !== readText)) {
+      const stale = activeReading;
+      void Promise.resolve().then(() => { const now = currentNoteReading(); if (now && now.noteId === stale.noteId && now.text === stale.text) stopSpeaking(); });
+    }
     if (result.ed) {
       const note = readNote, text = readText, mine = !!note && currentNoteReading()?.noteId === note.id;
       const ed = result.ed, onBody = ed.onBody, onTitle = ed.onTitle;

@@ -10,7 +10,7 @@ new qualified-runtime-manifest.json, preserving the previous record under baseli
   record      --ndk NDK [--cmake CMAKE] [--workspace W]       candidate from the generated runtime
   run         --serial S --apk APP.apk --test-apk TEST.apk [--candidate C]
                                                               run LocalSpeechInstrumentedTest, ingest it
-  ingest      --abi ABI --apk APP.apk --log LOG --evidence DIR [--candidate C]
+  ingest      --abi ABI --device-abi ABI --apk APP.apk --log LOG --evidence DIR [--candidate C]
                                                               ingest a run made elsewhere
   admit       --reviewer TEXT [--candidate C]                 write the reviewed record
 
@@ -195,7 +195,11 @@ def ingest(args, log_text=None):
             problems.append(f'{name} does not record a pass')
         if value.get('execution') != 'android-process-cpu':
             problems.append(f'{name} does not record on-device CPU execution')
-    if args.device_abi and args.device_abi != abi:
+    # The canonical evidence does not name its ABI, so the run's device ABI must be stated:
+    # `run` reads it from the device; an ingested run names it with --device-abi.
+    if not args.device_abi:
+        problems.append('the device ABI of this run is not recorded (--device-abi)')
+    elif args.device_abi != abi:
         problems.append(f'device ABI {args.device_abi} is not {abi}')
     digests['instrumentationLog'] = sha_bytes(log_text.encode())
     passed = not problems
@@ -204,6 +208,7 @@ def ingest(args, log_text=None):
         'testsExecuted': sum(1 for value in results.values() if value in ('passed', 'failed')),
         'testsPassed': sum(1 for value in results.values() if value == 'passed'),
         'appAPKSha256': sha_file(args.apk), 'evidenceDigests': digests,
+        'deviceAbi': args.device_abi or None, 'deviceAbiSource': getattr(args, 'device_abi_source', 'operator'),
         **({'problems': problems} if problems else {}),
     }
     if passed:
@@ -225,7 +230,7 @@ def run(args):
     if not args.serial:
         raise SystemExit('Name the disposable test device with --serial; no default device is used.')
     abi = adb(args.serial, 'shell', 'getprop', 'ro.product.cpu.abi').strip()
-    args.abi, args.device_abi = abi, abi
+    args.abi, args.device_abi, args.device_abi_source = abi, abi, 'adb getprop ro.product.cpu.abi'
     adb(args.serial, 'install', '-r', '-t', args.apk)
     adb(args.serial, 'install', '-r', '-t', args.test_apk)
     adb(args.serial, 'shell', 'rm', '-rf', EVIDENCE)
@@ -296,8 +301,8 @@ def main(argv=None):
     elif args.command == 'run':
         sys.exit(0 if run(args) else 3)
     elif args.command == 'ingest':
-        if not (args.abi and args.apk and args.log and args.evidence):
-            parser.error('ingest needs --abi, --apk, --log and --evidence')
+        if not (args.abi and args.apk and args.log and args.evidence and args.device_abi):
+            parser.error('ingest needs --abi, --device-abi, --apk, --log and --evidence')
         sys.exit(0 if ingest(args) else 3)
     else:
         admit(args)

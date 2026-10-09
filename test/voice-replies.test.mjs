@@ -94,6 +94,20 @@ test('a spoken reply can be cancelled from its Stop reading control and by the n
   assert.equal(f.signals[1].aborted, true, 'a new user message stops the reply being read');
 });
 
+test('Listen on an earlier reply is not stopped by user messages that were already there', async () => {
+  const f = fixture(); f.hold = true;
+  f.say({id: 'u1', from: 'user', text: 'First'}); f.say({id: 'a1', from: 'agent', text: 'Earlier reply.'});
+  f.say({id: 'u2', from: 'user', text: 'Second'}); f.say({id: 'a2', from: 'agent', text: 'Latest reply.'});
+  // renderVals lists newest first: index 2 is the earlier reply.
+  f.shell.renderVals().msgs[2].localSpeech(); await tick(); await tick();
+  assert.deepEqual(f.spoken.map(item => item.text), ['Earlier reply.']);
+  f.shell.setState({}); await tick();
+  assert.equal(f.signals[0].aborted, false, 'an older user message does not stop Listen');
+  assert.equal(f.shell.renderVals().msgs[2].localSpeechLabel, 'Stop reading');
+  f.say({id: 'u3', from: 'user', text: 'Third'}); await tick();
+  assert.equal(f.signals[0].aborted, true, 'a user message sent after Listen began stops it');
+});
+
 test('stale, edited, interrupted or other-conversation replies are never spoken', async () => {
   for (const scenario of ['edited', 'newer-turn', 'interrupted', 'conversation', 'closed', 'late']) {
     const f = fixture(); f.box.setSpeakReplies(true);
