@@ -97,6 +97,24 @@ test('an empty installed-app list says so and offers no Phone shortcut without a
   await expect(drawer.getByRole('button', { name: /^Open / })).toHaveCount(0);
 });
 
+test('typing a search while the installed-app list is still loading still shows the results', async ({ page }) => {
+  await nativeStub(page, { apps: [{ packageName: 'com.android.settings', label: 'Settings' }, { packageName: 'com.android.chrome', label: 'Chrome' }] });
+  // Hold the list read until the user has typed.
+  await page.addInitScript(() => {
+    const w = window as any; const original = w.Capacitor.nativePromise;
+    w.Capacitor.nativePromise = (plugin: string, method: string, options: any) => plugin === 'DeviceApps' && method === 'list'
+      ? new Promise(resolve => { w.releaseList = () => resolve(original(plugin, method, options)); }) : original(plugin, method, options);
+  });
+  await page.goto('/');
+  await page.getByRole('button', { name: 'All apps', exact: true }).click();
+  const drawer = page.getByRole('dialog', { name: 'All apps', exact: true });
+  await expect(drawer.getByText('Reading installed apps…', { exact: true })).toBeVisible();
+  await drawer.getByRole('searchbox', { name: 'Search apps', exact: true }).fill('chr');
+  await page.evaluate(() => (window as any).releaseList());
+  await expect(drawer.getByRole('button', { name: 'Open Chrome', exact: true })).toBeVisible();
+  await expect(drawer.getByText('Reading installed apps…', { exact: true })).toHaveCount(0);
+});
+
 test('startup permission "Not now" survives a cold start, and a denied prompt is not requested again', async ({ page }) => {
   await nativeStub(page, { notifications: { permissionGranted: false, appEnabled: false }, microphone: 'granted' });
   await page.goto('/');
@@ -116,9 +134,12 @@ test('startup permission "Not now" survives a cold start, and a denied prompt is
   await page.waitForTimeout(500);
   await expect(panel).toHaveCount(0);
 
-  // Reopened (the Settings entry point): the denied permission goes to Android settings, no prompt.
-  await page.evaluate(async () => { const { reopenStartupPermissions } = await import('/src/startup-permission-flow.ts'); reopenStartupPermissions(); });
+  // Reopened from Settings: the denied permission goes to Android settings, no prompt.
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  await expect(page.locator('html')).toHaveAttribute('data-active-view', 'settings');
+  await page.getByRole('button', { name: 'Set up Alpha access', exact: true }).click();
   await expect(panel).toBeVisible();
+  expect((await page.evaluate(() => JSON.parse(localStorage.getItem('alpha.startup-permissions.v1') || 'null'))).dismissed).toBe(false);
   await expect(panel.getByRole('button', { name: 'Manage notifications in Android', exact: true })).toBeVisible();
   expect(await calls(page, 'DailyApps', 'requestPermissions')).toEqual([]);
 });

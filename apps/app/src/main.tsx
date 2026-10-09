@@ -23,6 +23,7 @@ import { installNotificationsAdapter } from './prototype/notifications-adapter';
 import { installWorkflowAdapter } from './prototype/workflow-adapter';
 import { useEffect, useSyncExternalStore } from 'react';
 import { StartupPermissions } from './startup-permissions';
+import { reopenStartupPermissions } from './startup-permission-flow';
 import { createRoot } from 'react-dom/client';
 import { Component, VIEWS } from './prototype/model.js';
 import { installReminderAdapter } from './prototype/reminder-adapter';
@@ -133,10 +134,12 @@ function Phone() {
       const tools = devSurfacesEnabled && !isAndroid && !mock ? document.querySelector<HTMLElement>('.alpha-dev-tools') : null;
       const toolsInset = tools ? Math.max(56, Math.ceil(tools.getBoundingClientRect().height + (parseFloat(getComputedStyle(tools).bottom) || 0) + 2)) : 0;
       const available = Math.max(1, height - banner - (desktop ? 48 : 0) - toolsInset);
-      // Orientation comes from the screen, not the viewport, so a soft keyboard (adjustResize)
-      // never flips the layout. Landscape scales by the screen's shorter side so rotating keeps the
-      // same type size; the longer side becomes extra canvas (Home and the composer side by side).
-      const landscape = !desktop && window.screen.width > window.screen.height;
+      // Orientation comes from the screen, so a soft keyboard (adjustResize) shrinking the
+      // viewport never flips a portrait layout. The window must be landscape too: a narrow browser
+      // window on a landscape monitor, or a portrait split-screen pane, keeps the phone layout.
+      // Landscape scales by the screen's shorter side so rotating keeps the same type size; the
+      // longer side becomes extra canvas (Home and the composer side by side).
+      const landscape = !desktop && window.screen.width > window.screen.height && window.innerWidth > window.innerHeight;
       const scale = desktop ? Math.min(1, available / 915) : landscape ? Math.max(0.1, Math.min(window.innerWidth, window.screen.height) / 412) : window.innerWidth / 412;
       // Width follows the viewport in CSS, so a rotation never leaves the canvas wider than the
       // screen before this handler runs (a wider canvas would widen the mobile layout viewport).
@@ -165,7 +168,7 @@ function Phone() {
     else if(action==='background'){shell.leave();shell.setState({screen:'off',voice:'off',chat:'input',shade:false});document.documentElement.dataset.devBackground='true';window.dispatchEvent(new Event('blur'));}
     else if(action==='resume'){delete document.documentElement.dataset.devBackground;shell.unlock();window.dispatchEvent(new Event('focus'));}
     if(['power','unlock','boot','background','resume'].includes(action))window.dispatchEvent(new Event('alpha:device-state'));
-  }}/>}{testMocksEnabled && mock && <div className="mock-mode-banner" role="status"><span>Mock mode · simulated data and actions</span><button onClick={() => { void connectionController.offline().then(() => { const url = new URL(location.href); url.searchParams.delete('mode'); url.searchParams.delete('start'); location.assign(url.href); }); }}>Exit mock mode</button></div>}<Component phoneSurface assistantSurface={assistantSurface} onCloseAssistant={closeAssistant} systemShell={launcherPresentation} nativeSystemChrome={isAndroid || !launcherPresentation} initial={testMocksEnabled && fixture ? query.get('start') || 'home' : 'home'} theme={initialTheme} ref={(value: any) => { shell = value; }} />
+  }}/>}{testMocksEnabled && mock && <div className="mock-mode-banner" role="status"><span>Mock mode · simulated data and actions</span><button onClick={() => { void connectionController.offline().then(() => { const url = new URL(location.href); url.searchParams.delete('mode'); url.searchParams.delete('start'); location.assign(url.href); }); }}>Exit mock mode</button></div>}<Component phoneSurface assistantSurface={assistantSurface} onCloseAssistant={closeAssistant} onReopenStartupAccess={isAndroid && !fixture && !assistantSurface ? reopenStartupPermissions : undefined} systemShell={launcherPresentation} nativeSystemChrome={isAndroid || !launcherPresentation} initial={testMocksEnabled && fixture ? query.get('start') || 'home' : 'home'} theme={initialTheme} ref={(value: any) => { shell = value; }} />
 {!fixture && <><ConnectionChooser />{!assistantSurface && <><HostedDigestPanel />{!connection.open && <StartupPermissions />}</>}</>}</>;
 }
 /** Android's locale and 24-hour setting; WebView Intl alone does not follow the latter. */

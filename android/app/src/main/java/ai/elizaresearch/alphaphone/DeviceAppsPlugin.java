@@ -108,19 +108,22 @@ public class DeviceAppsPlugin extends Plugin {
  }
 
  static String iconFor(PackageManager packages, String packageName) {
+  Bitmap bitmap = null;
   try {
-   Drawable drawable = packages.getApplicationIcon(packageName);
-   Bitmap bitmap = Bitmap.createBitmap(ICON_PX, ICON_PX, Bitmap.Config.ARGB_8888);
+   // A copy: the package manager may share one Drawable, and its bounds must not change for others.
+   Drawable drawable = packages.getApplicationIcon(packageName).mutate();
+   bitmap = Bitmap.createBitmap(ICON_PX, ICON_PX, Bitmap.Config.ARGB_8888);
    Canvas canvas = new Canvas(bitmap);
    drawable.setBounds(0, 0, ICON_PX, ICON_PX);
    drawable.draw(canvas);
    ByteArrayOutputStream out = new ByteArrayOutputStream();
    if (!bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)) return null;
-   bitmap.recycle();
    return "data:image/png;base64," + Base64.encodeToString(out.toByteArray(), Base64.NO_WRAP);
   } catch (PackageManager.NameNotFoundException | RuntimeException error) {
    // A removed package or an unrenderable drawable keeps its label-only entry.
    return null;
+  } finally {
+   if (bitmap != null) bitmap.recycle();
   }
  }
 }

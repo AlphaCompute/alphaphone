@@ -42,9 +42,12 @@ export function StartupPermissions() {
   const [states, setStates] = useState<Record<PermissionKey, StartupPermissionState>>({notifications: 'checking', microphone: 'checking'});
   // "Not now" survives the chooser unmounting this panel and a cold start, until Settings reopens it.
   const [dismissed, setDismissedState] = useState(() => readStartupPermissionMemory().dismissed);
-  const setDismissed = (value: boolean) => { writeStartupPermissionMemory({dismissed: value}); setDismissedState(value); };
+  // Reopened from Settings: show the panel even when every access is already allowed, so the
+  // Settings row always answers with the current state.
+  const [reopened, setReopened] = useState(false);
+  const setDismissed = (value: boolean) => { writeStartupPermissionMemory({dismissed: value}); setDismissedState(value); if (value) setReopened(false); };
   useEffect(() => {
-    const reopen = () => setDismissedState(readStartupPermissionMemory().dismissed);
+    const reopen = () => { setDismissedState(readStartupPermissionMemory().dismissed); setReopened(true); };
     window.addEventListener(STARTUP_PERMISSIONS_REOPEN, reopen);
     return () => window.removeEventListener(STARTUP_PERMISSIONS_REOPEN, reopen);
   }, []);
@@ -53,7 +56,7 @@ export function StartupPermissions() {
   const alive = useRef(false);
   const actionPending = useRef(false);
   const native = Capacitor.getPlatform() === 'android';
-  const visible = native && !dismissed && keys.some(key => states[key] !== 'checking' && states[key] !== 'ready');
+  const visible = native && !dismissed && (reopened ? keys.every(key => states[key] !== 'checking') : keys.some(key => states[key] !== 'checking' && states[key] !== 'ready'));
 
   useEffect(() => {
     alive.current = true;
@@ -108,6 +111,6 @@ export function StartupPermissions() {
         <div className="alpha-startup-permission-actions"><button type="button" disabled={busy !== null} onClick={() => void enable(key)}>{busy === key ? 'Checking…' : states[key] === 'settings' ? `Manage ${key} in Android` : states[key] === 'unavailable' ? `Check ${key} again` : `Enable ${key}`}</button></div>
       </>}
     </section>)}
-    <div className="alpha-startup-permission-actions"><button type="button" onClick={() => setDismissed(true)}>Not now</button></div>
+    <div className="alpha-startup-permission-actions"><button type="button" onClick={() => setDismissed(true)}>{keys.every(key => states[key] === 'ready') ? 'Done' : 'Not now'}</button></div>
   </dialog>;
 }

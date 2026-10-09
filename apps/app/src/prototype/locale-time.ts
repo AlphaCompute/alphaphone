@@ -56,6 +56,14 @@ export function formatHours(hours: number, options: {dayPeriod?: boolean; compac
   if (options.compact && date.getMinutes() === 0) return formatHour(date.getHours());
   return options.dayPeriod === false ? formatClock(date) : formatTime(date);
 }
+/** Decimal-hour range: "3:00 – 4:00 PM", "11:00 AM – 1:00 PM", "15:00 – 16:00". The start's day
+ * period is dropped only when it trails and both ends share it; 24-hour formats have none. */
+export function formatHoursRange(start: number, end: number) {
+  const a = formatHours(start), b = formatHours(end);
+  const bareA = formatHours(start, {dayPeriod: false}), bareB = formatHours(end, {dayPeriod: false});
+  const periodA = a.replace(bareA, '').trim(), periodB = b.replace(bareB, '').trim();
+  return `${periodA && periodA === periodB && a.startsWith(bareA) ? bareA : a} – ${b}`;
+}
 /** Hour label: "9 AM" / "09". */
 export function formatHour(hour: number) { return clean(format({hour: 'numeric'}).format(new Date(2000, 0, 1, hour))); }
 export function weekdayName(date: Date, width: 'long' | 'short' | 'narrow' = 'long') { return format({weekday: width}).format(date); }

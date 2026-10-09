@@ -57,3 +57,19 @@ test('the conversation docks beside Home in landscape and its controls stay on s
   await reachable(page, page.getByRole('button', { name: 'Minimize chat', exact: true }));
   await reachable(page, panel.getByRole('textbox'));
 });
+
+test.describe('a narrow window on a landscape monitor', () => {
+  test.use({ hasTouch: false, isMobile: false, viewport: { width: 500, height: 900 } });
+  test('keeps the portrait phone layout: only a landscape window on a landscape screen docks side by side', async ({ page }) => {
+    // A 1920x1080 monitor (Chromium ignores the screen option outside mobile emulation).
+    await page.addInitScript(() => {
+      Object.defineProperty(Screen.prototype, 'width', { configurable: true, get: () => 1920 });
+      Object.defineProperty(Screen.prototype, 'height', { configurable: true, get: () => 1080 });
+    });
+    await page.goto('/');
+    await expect(page.locator('[data-alpha-layer="home"]')).toBeVisible();
+    expect(await page.evaluate(() => [screen.width, screen.height, innerWidth < innerHeight])).toEqual([1920, 1080, true]);
+    await expect(page.locator('html')).not.toHaveClass(/alpha-landscape/);
+    await reachable(page, page.getByRole('button', { name: 'Settings', exact: true }));
+  });
+});

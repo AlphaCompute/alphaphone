@@ -12,7 +12,7 @@ import {
 import { isMvpView, DEFERRED_MVP_VIEWS, deferredMvpPrompt } from "./mvp-features";
 import React from "react";
 import { DCLogic } from "./dc-lite.js";
-import { WEEKDAYS, MONTHS, formatTime, formatClock, formatHours, formatHour, weekdayName, formatShortDate, formatLongDate, formatMonthDay, formatMonthTitle } from "./locale-time";
+import { WEEKDAYS, MONTHS, formatTime, formatClock, formatHours, formatHoursRange, formatHour, weekdayName, formatShortDate, formatLongDate, formatMonthDay, formatMonthTitle } from "./locale-time";
 
 
 var IC = {
@@ -1098,11 +1098,7 @@ var CAL_PENDING = null;
 var CAL_H0 = 7, CAL_H1 = 23, CAL_PX = 56;
 
 function calAmpm(t) { t = ((t % 24) + 24) % 24; return formatHours(t); }
-function calRange(t, d) {
-  var a = calAmpm(t), b = calAmpm(t + d);
-  if (a.slice(-2) === b.slice(-2)) a = a.slice(0, -3);
-  return a + " – " + b;
-}
+function calRange(t, d) { return formatHoursRange(((t % 24) + 24) % 24, (((t + d) % 24) + 24) % 24); }
 function calDur(d) { var h = Math.floor(d), m = Math.round((d - h) * 60); return (h ? h + " h" : "") + (h && m ? " " : "") + (m ? m + " min" : ""); }
 function calDate(api, off) { var d = new Date(api.now); d.setHours(12, 0, 0, 0); d.setDate(d.getDate() + off); return d; }
 function calDow(api, off) { return (calDate(api, off).getDay() + 6) % 7; }
@@ -4729,8 +4725,10 @@ registerView("settings", {
         { rows: [
           stNav({ d: IC.stAt, label: "Accounts", val: String(accts.length), go: go("accounts") }),
           stNav({ d: IC.link, label: "Connections", val: nConn ? String(nConn) : "", go: go("connections") }),
-          stNav({ d: IC.shield, label: "Privacy & data", val: st.cloud ? "Fallback on" : "Redaction on", go: go("privacy") })
-        ] },
+          stNav({ d: IC.shield, label: "Privacy & data", val: st.cloud ? "Fallback on" : "Redaction on", go: go("privacy") }),
+          // Android: the startup access panel again after its "Not now" (notifications, microphone).
+          api.reopenStartupAccess ? stNav({ d: IC.bell, label: "Set up Alpha access", go: api.reopenStartupAccess }) : null
+        ].filter(Boolean) },
         { rows: [
           stNav({ d: IC.wifi, label: "Wi-Fi", val: S.q.wifi ? (ST_NETS.filter(function (n) { return n.id === st.wifiCur; })[0] || { name: "On" }).name : "Off", go: go("wifi") }),
           stNav({ d: IC.bt, label: "Bluetooth", val: S.q.bt ? (btOnDev ? btOnDev.name : "On") : "Off", go: go("bluetooth") }),
@@ -5102,6 +5100,8 @@ class Component extends DCLogic {
       get: function (other) { return self.vget(other); },
       setView: function (other, p) { self.vset(other, p); },
       shell: function (p) { self.setState(p); },
+      // Android only: shows the startup access panel again after its "Not now" (main.tsx).
+      reopenStartupAccess: typeof (self.props || {}).onReopenStartupAccess === "function" ? function () { self.props.onReopenStartupAccess(); } : null,
       open: function (view, p, chat) { self.openView(view, p, chat, { push: self.S().view === k && view !== k }); },
       home: function () { self.goHome(); },
       toast: function (m, opts) { self.toast(m, opts); },
@@ -5186,8 +5186,9 @@ class Component extends DCLogic {
     // openView(view, { keepState: true }) is shorthand for the keepState option.
     if (patch && patch.keepState === true && Object.keys(patch).length === 1) { opts = Object.assign({}, opts, { keepState: true }); patch = null; }
     // keepState returns to a view exactly as it was left (open note, event, email or tab and its
-    // selection revision): no onLeave of the current view and no reset of the target's state.
-    if (opts && opts.keepState && VIEWS[k]) { if (patch) this.vset(k, patch); this.setState({ screen: "home", view: k, shade: false, heads: false, drawer: false, drawerQ: "", chat: chat || this.defaultChat(k) }); return; }
+    // selection revision): the target's state is not reset. A different current view still gets
+    // its onLeave, so its camera, recording or timers stop exactly as on any other switch.
+    if (opts && opts.keepState && VIEWS[k]) { if (this.S().view !== k) this.leave(); if (patch) this.vset(k, patch); this.setState({ screen: "home", view: k, shade: false, heads: false, drawer: false, drawerQ: "", chat: chat || this.defaultChat(k) }); return; }
     if (opts && opts.keepStack) { var S0 = this.S(); if (S0.view !== k) { this.leave(); } this.setState({ screen: "home", view: k, shade: false, heads: false, chat: chat || this.defaultChat(k) }); return; }
     if (!VIEWS[k]) return;
     var S = this.S(); opts = opts || {};

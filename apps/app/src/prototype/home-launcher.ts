@@ -71,7 +71,9 @@ export function createLauncher(bridge: LauncherBridge, changed: () => void, opti
       try { await bridge.openDefault({role: 'dial'}); update({launching: null}); }
       catch (error) { update({launching: null, launchError: `${label} could not be opened. ${message(error)}`}); }
     },
-    reset() { generation++; state = {...state, launching: null, launchError: null}; },
+    /** Drops a stale launch error (new search or reopened drawer). An in-flight read keeps its
+     * generation, so typing while apps load never strands the drawer in its loading state. */
+    clearError() { if (state.launchError) state = {...state, launchError: null}; },
   };
 }
 export type Launcher = ReturnType<typeof createLauncher>;
@@ -83,7 +85,7 @@ export function installHomeLauncher(Component: any, bridge: LauncherBridge, opti
   let owner: any = null;
   const launcher = createLauncher(bridge, () => owner?.setState({launcherRevision: Date.now()}), options);
   p.componentDidMount = function (...args: any[]) { owner = this; return mount?.apply(this, args); };
-  p.openAllApps = function () { this.setState({drawer: true, drawerQ: ''}); launcher.reset(); void launcher.load(); };
+  p.openAllApps = function () { this.setState({drawer: true, drawerQ: ''}); void launcher.load(); };
   p.renderVals = function () {
     const out = render.call(this), S = this.S(), self = this;
     const snap = launcher.snapshot(), query = String(S.drawerQ || '');
@@ -103,7 +105,7 @@ export function installHomeLauncher(Component: any, bridge: LauncherBridge, opti
       : !rows.length ? `No apps match “${query.trim()}”.` : '';
     return {...out, drawerOpen: !!S.drawer && !!out.isOn && !out.isView, launcher: {
       open: () => self.openAllApps(), close: () => self.setState({drawer: false, drawerQ: ''}),
-      query, onQuery: (event: any) => { launcher.reset(); self.setState({drawerQ: event.target.value}); },
+      query, onQuery: (event: any) => { launcher.clearError(); self.setState({drawerQ: event.target.value}); },
       rows, hasRows: rows.length > 0, dial, hasDial: !!dial, status, hasStatus: !!status, failed: snap.status === 'failed',
       retry: () => void launcher.load(), launchError: snap.launchError || '', hasLaunchError: !!snap.launchError,
       count: snap.status === 'ready' ? `${rows.length} ${rows.length === 1 ? 'app' : 'apps'}` : '',

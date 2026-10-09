@@ -82,8 +82,18 @@ test('launch failures stay visible and repeated taps during a launch are ignored
   release(); await first;
   assert.equal(launcher.snapshot().launching, null);
   assert.equal(launcher.snapshot().launchError, 'Chrome could not be opened. App is unavailable');
-  launcher.reset();
+  launcher.clearError();
   assert.equal(launcher.snapshot().launchError, null);
+});
+test('typing a search while apps are still loading does not strand the drawer in its loading state', async () => {
+  let release;
+  const {launcher} = stub({list: () => new Promise(resolve => { release = resolve; })});
+  const loading = launcher.load();
+  assert.equal(launcher.snapshot().status, 'loading');
+  launcher.clearError();
+  release({apps}); await loading;
+  assert.equal(launcher.snapshot().status, 'ready');
+  assert.equal(launcher.snapshot().apps.length, 4);
 });
 test('a stale list read cannot overwrite a newer one', async () => {
   const pending = [];
