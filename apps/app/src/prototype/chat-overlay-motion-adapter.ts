@@ -253,6 +253,13 @@ export function installChatOverlayMotion(Component: Shell) {
 				if (!shell.swallowed()) return action?.(...args);
 			};
 		}
+		const grabTap = out.grabTap;
+		out.grabTap = (event: MouseEvent) => {
+			if (event.detail === 0) {
+				retire(shell, false);
+				shell.setState({ chat: shell.S().chat === "full" ? "sheet" : "full" });
+			} else grabTap(event);
+		};
 		out.closeChat = () => {
 			retire(shell, false);
 			shell.setState({ chat: "hidden" });
