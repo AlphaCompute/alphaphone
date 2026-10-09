@@ -77,6 +77,7 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
     if(!key)shell.pendingActionRecoveryFailedKey=null;
     if(shell.pendingActionRecoveryKey===key||key!==null&&shell.pendingActionRecoveryFailedKey===key)return;
     shell.pendingActionRecoveryFailedKey=null;shell.pendingActionRecoveryKey=key;shell.pendingActionRecoveryAbort?.abort();
+    clearTimeout(shell.pendingActionExpiryTimer);shell.pendingActionExpiryTimer=null;
     if(!key)return;
     const controller=shell.pendingActionRecoveryAbort=new AbortController();
     const current=()=>shell.live&&!controller.signal.aborted&&shell.pendingActionRecoveryKey===key&&JSON.stringify(connectionController.getSnapshot().session)===JSON.stringify(connection.session)&&JSON.stringify(alphaClient.getState().context)===JSON.stringify(currentContext)&&!document.hidden&&!connectionController.getSnapshot().open&&!connectionController.getSnapshot().busy;
@@ -84,12 +85,31 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
       if(!current())return;
       shell.setState((previous:Shell)=>{
         if(!current())return null;
-        const ids=new Set(proposals.map(proposal=>proposal.id));
-        const msgs=previous.msgs.map((message:Shell)=>ids.has(message.card?.proposalId)&&!message.card.done&&!message.card.recovered?{...message,card:{...message.card,recovered:true,proposalSession:connection.session}}:message);
+        const pending=new Map(proposals.map(proposal=>[proposal.id,proposal]));
+        const msgs=previous.msgs.map((message:Shell)=>{
+          const card=message.card;
+          if(!card?.proposalId||card.done)return message;
+          const proposal=pending.get(card.proposalId);
+          if(proposal){
+            if(card.recovered&&!card.reviewUnavailable&&card.expiresAt===proposal.expiresAt)return message;
+            return {...message,card:{...card,recovered:true,proposalSession:connection.session,expiresAt:proposal.expiresAt,reviewUnavailable:false,title:'Approve: '+proposal.title,sub:'Tap to approve this exact action'}};
+          }
+          // Absence can also mean different source preconditions. It proves no
+          // rejection or execution; preserve the history and disable only review.
+          if(card.reviewUnavailable)return message;
+          return {...message,card:{...card,reviewUnavailable:true,title:'Review unavailable',sub:'Not pending for this screen. Open the original selection to check again.'}};
+        });
         const existing=new Set(msgs.map((message:Shell)=>message.card?.proposalId));
-        const recovered=proposals.filter(proposal=>!existing.has(proposal.id)).map(proposal=>({id:crypto.randomUUID(),from:'agent',text:proposal.description,card:{type:'generic',icon:'check',title:'Approve: '+proposal.title,sub:'Tap to approve this exact action',proposalId:proposal.id,recovered:true,proposalSession:connection.session}}));
+        const recovered=proposals.filter(proposal=>!existing.has(proposal.id)).map(proposal=>({id:crypto.randomUUID(),from:'agent',text:proposal.description,card:{type:'generic',icon:'check',title:'Approve: '+proposal.title,sub:'Tap to approve this exact action',proposalId:proposal.id,expiresAt:proposal.expiresAt,recovered:true,proposalSession:connection.session}}));
         return recovered.length||msgs.some((message:Shell,index:number)=>message!==previous.msgs[index])?{msgs:[...msgs,...recovered]}:null;
       });
+      const nearest=Math.min(...proposals.map(proposal=>proposal.expiresAt));
+      if(current()&&Number.isFinite(nearest)&&nearest>Date.now())shell.pendingActionExpiryTimer=setTimeout(()=>{
+        shell.pendingActionExpiryTimer=null;
+        if(!current())return;
+        shell.setState((previous:Shell)=>({msgs:previous.msgs.map((message:Shell)=>message.card?.proposalId&&!message.card.done&&!message.card.reviewUnavailable&&message.card.expiresAt<=Date.now()?{...message,card:{...message.card,reviewUnavailable:true,title:'Review expired',sub:'This review has expired. Request a new action if still needed.'}}:message)}));
+        shell.pendingActionRecoveryKey=null;recoverPendingActions(shell);
+      },Math.min(2147483647,Math.ceil(nearest-Date.now())+1));
     }).catch(()=>{
       if(!current())return;
       shell.pendingActionRecoveryKey=null;shell.pendingActionRecoveryFailedKey=key;
@@ -475,7 +495,7 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
   p.componentDidUpdate = function (prev: Shell) { originalUpdate.call(this, prev); context(this); sizeComposer();this.composerDraft?.edit(String(this.S().draft||''));const selected=this.messageReplyTarget||this.messageEditTarget;if(selected&&(JSON.stringify(selected.session)!==JSON.stringify(connectionController.getSnapshot().session)||!this.S().msgs.some((m:Shell)=>m.id===selected.messageId&&m.text===selected.text))){cancelMessageContext(this);this.setState({});} };
   p.componentWillUnmount = function () {
     cancelMessageContext(this);connectionController.cancelViewNavigation();
-    this.pendingActionRecoveryAbort?.abort();this.pendingActionApproval?.abort();
+    this.pendingActionRecoveryAbort?.abort();this.pendingActionApproval?.abort();clearTimeout(this.pendingActionExpiryTimer);
     this.draftRecoveryAbort?.abort();this.composerDraft?.retire(false);this.draftBindingAbort?.abort();
     this.notesOpenAbort?.abort();if(activeShell===this){activeShell=null;notesRecovery?.abort();}
     this.closeSummaryReview?.();
@@ -675,7 +695,7 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
       if(reply.userMessageId&&identity)this.setState((previous:Shell)=>({msgs:previous.msgs.map((m:Shell)=>m.id===userMessageId?{...m,id:reply.userMessageId,messageBinding:identity}:m)}));
       if(this.messageReplyTarget===replyTarget)this.messageReplyTarget=undefined;
       if(sourceDraft&&sourceSession&&JSON.stringify(sourceSession)===JSON.stringify(connectionController.getSnapshot().session))this.agentSay('Review this answer before saving it with its source.',{type:'generic',icon:'note',title:'Review summary note',sub:sourceDraft.name,sourceSummary:{source:sourceDraft,text:reply.text,session:sourceSession}});
-      for (const proposal of reply.proposals || []) this.agentSay(proposal.description, { type: 'generic', icon: 'check', title: 'Approve: ' + proposal.title, sub: 'Tap to approve this exact action', proposalId: proposal.id });
+      for (const proposal of reply.proposals || []) this.agentSay(proposal.description, { type: 'generic', icon: 'check', title: 'Approve: ' + proposal.title, sub: 'Tap to approve this exact action', proposalId: proposal.id, expiresAt: proposal.expiresAt });
       try{await deliverNavigation(reply.actionResults);}catch(error){if(this.live)this.toast(error instanceof AlphaClientError?error.message:'Could not confirm the screen change. Check your screen.');}
     } catch (e) {
       let opened=false;
@@ -723,7 +743,10 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
       return;
     }
     if (card.proposalId && !card.done) {
-      if(this.pendingActionApproval)return;
+      if(card.reviewUnavailable||this.pendingActionApproval)return;
+      if(card.expiresAt<=Date.now()){
+        this.setState((previous:Shell)=>({msgs:previous.msgs.map((m:Shell)=>m.id===message.id?{...m,card:{...m.card,reviewUnavailable:true,title:'Review expired',sub:'This review has expired. Request a new action if still needed.'}}:m)}));return;
+      }
       try {
         context(this);
         const session=connectionController.getSnapshot().session;

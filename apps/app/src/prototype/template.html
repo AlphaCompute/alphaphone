@@ -3856,7 +3856,7 @@
             </sc-if>
 
             <sc-if value="{{m.cGeneric}}" hint-placeholder-val="{{false}}">
-              <button onClick="{{m.act}}" style="display: flex; align-items: center; gap: 14px; padding: 14px; border-radius: 22px; background: var(--s2); text-align: left">
+              <button disabled="{{m.c.reviewUnavailable}}" onClick="{{m.act}}" style="display: flex; align-items: center; gap: 14px; padding: 14px; border-radius: 22px; background: var(--s2); text-align: left">
                 <span style="width: 46px; height: 46px; border-radius: 16px; background: var(--acc); color: #fff; display: flex; align-items: center; justify-content: center; flex-shrink: 0"><svg class="i" viewBox="0 0 24 24"><path d="{{m.gIcon}}"></path></svg></span>
                 <div style="flex-grow: 1; min-width: 0"><div style="font-size: 16px; font-weight: 600">{{m.c.title}}</div><div style="font-size: 13px; color: var(--mut); margin-top: 2px">{{m.c.sub}}</div></div>
                 <svg class="i" viewBox="0 0 24 24" style="width: 18px; height: 18px; color: var(--mut)"><path d="{{ic.right}}"></path></svg>

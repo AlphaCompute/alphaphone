@@ -12,6 +12,15 @@ test('queued development action executes once only after review and preserves it
 test('rejecting a proposal persists without executing or reserving an effect',async({page})=>{
  await setup(page);await queue(page);await page.getByRole('button',{name:'Refresh actions'}).click();await page.getByRole('button',{name:'Reject proposal'}).click();await expect.poll(async()=>(await state(page)).proposals[0].state).toBe('rejected');expect((await state(page)).journal).toHaveLength(0);
 });
+test('rejected chat review becomes unavailable after refresh and cannot dispatch',async({page})=>{
+ await setup(page);await queue(page);await chat(page);
+ const before=(await state(page)).proposals[0];
+ await page.evaluate(async()=>{const {connectionController}=await import('/src/runtime/connection-ui.tsx');connectionController.open();});
+ await page.getByText('Development device actions',{exact:true}).click();await page.getByRole('button',{name:'Refresh actions'}).click();await page.getByRole('button',{name:'Reject proposal'}).click();
+ await expect.poll(async()=>(await state(page)).proposals[0].state).toBe('rejected');await page.getByRole('button',{name:'Close connection settings'}).click();
+ const unavailable=page.getByRole('button',{name:/Review unavailable/});await expect(unavailable).toBeVisible();await expect(unavailable).toBeDisabled();await expect(page.getByText('Approve: Create note',{exact:true})).toHaveCount(0);
+ expect((await state(page)).proposals[0].id).toBe(before.id);expect((await state(page)).journal).toHaveLength(0);
+});
 test('invalid operations and failed queue persistence cannot publish proposals',async({page})=>{
  await setup(page);await page.getByRole('textbox',{name:'Action JSON'}).fill('{"type":"send_money","amount":100}');await page.getByRole('button',{name:'Queue action for review'}).click();await expect(page.getByRole('alert')).toBeVisible();expect(await page.evaluate(async key=>(await (await import('/src/browser/documents.ts')).browserDocuments.read(key))??null,key)).toBeNull();await page.getByRole('textbox',{name:'Action JSON'}).fill('{"type":"open_view","view":"notes"}');await page.evaluate(key=>{const put=IDBObjectStore.prototype.put;IDBObjectStore.prototype.put=function(v,k){if(k===key)throw Error('Full');return put.call(this,v,k);};},key);await page.getByRole('button',{name:'Queue action for review'}).click();await expect(page.getByRole('alert')).toBeVisible();expect(await page.evaluate(async key=>(await (await import('/src/browser/documents.ts')).browserDocuments.read(key))??null,key)).toBeNull();
 });

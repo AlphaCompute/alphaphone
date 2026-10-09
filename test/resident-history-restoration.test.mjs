@@ -151,11 +151,13 @@ test('recovered approval rereads exact pending identity before existing journale
 function adapterRecoveryFixture() {
  const source=fs.readFileSync('apps/app/src/prototype/agent-adapter.ts','utf8'),start=source.indexOf('  function recoverPendingActions('),end=source.indexOf('  function context(',start);
  let context={...reviewContext},connection={session:{sessionId:'fixture-session',ownerId:'owner',agentId:'agent',origin:'https://fixture.invalid'},history:{revision:1},phoneActionsAvailable:true,open:false,busy:false},read=async()=>[pendingReview];
+ const timers=new Map();let timerId=0,now=Date.now();
+ class ClockDate extends Date{static now(){return now;}}
  const calls=[],toasts=[],document={hidden:false},state={msgs:[{id:'saved',from:'agent',text:'Queued for review',card:null}],draft:'Unsent draft',chat:'full',typing:false};
  const shell={live:true,S:()=>state,toast:text=>toasts.push(text),setState(update){const patch=typeof update==='function'?update(state):update;if(patch)Object.assign(state,patch);}};
- const box={document,crypto,AbortController,alphaClient:{getState:()=>({context})},connectionController:{getSnapshot:()=>connection,pendingActions:async(c,signal)=>{calls.push({context:c,signal});return read(c,signal);}}};
+ const box={Date:ClockDate,setTimeout:(fn,delay)=>{const id=++timerId;timers.set(id,{fn,at:now+delay});return id;},clearTimeout:id=>timers.delete(id),document,crypto,AbortController,alphaClient:{getState:()=>({context})},connectionController:{getSnapshot:()=>connection,pendingActions:async(c,signal)=>{calls.push({context:c,signal});return read(c,signal);}}};
  vm.runInNewContext(stripTypeScriptTypes(source.slice(start,end))+'\nglobalThis.recover=recoverPendingActions;',box);
- return {shell,state,calls,toasts,document,recover:()=>box.recover(shell),read:fn=>{read=fn;},context:patch=>{context={...context,...patch};},connection:patch=>{connection={...connection,...patch};}};
+ return {shell,state,calls,toasts,document,timers,advance:ms=>{now+=ms;for(const [id,timer] of [...timers])if(timer.at<=now){timers.delete(id);timer.fn();}},recover:()=>box.recover(shell),read:fn=>{read=fn;},context:patch=>{context={...context,...patch};},connection:patch=>{connection={...connection,...patch};}};
 }
 const flushRecovery=()=>new Promise(resolve=>setImmediate(resolve));
 test('adapter rehydrates existing cards once, dedupes restored proposals and preserves prose/draft',async()=>{
@@ -191,6 +193,46 @@ test('recovered approval stays alive for unchanged context but cancels on source
 test('resume refreshes an existing interrupted review card without duplicating or reviving completed cards',async()=>{
  const f=adapterRecoveryFixture();f.state.msgs.push({id:'existing',from:'agent',text:pendingReview.description,card:{proposalId:pendingReview.id,title:'Approve existing'}},{id:'done',from:'agent',text:'Completed before',card:{proposalId:pendingReview.id,done:true}});
  f.recover();await flushRecovery();assert.equal(f.state.msgs.length,3);assert.equal(f.state.msgs[1].card.recovered,true);assert.equal(f.state.msgs[1].card.proposalSession.sessionId,'fixture-session');assert.equal(f.state.msgs[2].card.done,true);assert.equal(f.state.msgs[2].card.recovered,undefined);
+});
+
+
+test('successful refresh retires stale approval without changing history IDs or claiming a result',async()=>{
+ const f=adapterRecoveryFixture();f.recover();await flushRecovery();
+ const before=f.state.msgs[1],done={id:'completed',text:'Confirmed result',card:{proposalId:'completed-id',done:true,title:'Completed'}};f.state.msgs.push(done);
+ f.read(async()=>[]);f.connection({history:{revision:2}});f.recover();await flushRecovery();
+ const after=f.state.msgs[1];assert.equal(after.id,before.id);assert.equal(after.text,before.text);assert.equal(after.card.proposalId,before.card.proposalId);
+ assert.equal(after.card.reviewUnavailable,true);assert.equal(after.card.title,'Review unavailable');assert.equal(after.card.done,undefined);assert.equal(f.state.msgs[2],done);
+ assert.equal(f.state.draft,'Unsent draft');assert.equal(f.timers.size,0);
+ // A context-filtered proposal may become reviewable again, with the same card ID.
+ f.read(async()=>[pendingReview]);f.context({revision:10});f.recover();await flushRecovery();
+ assert.equal(f.state.msgs[1].id,before.id);assert.equal(f.state.msgs[1].card.reviewUnavailable,false);assert.equal(f.state.msgs[1].card.title,'Approve: '+pendingReview.title);assert.equal(f.state.msgs.length,3);
+});
+test('failed refresh preserves pending review and never invents rejection or completion',async()=>{
+ const f=adapterRecoveryFixture();f.recover();await flushRecovery();const before=f.state.msgs[1];
+ f.read(async()=>{throw Error('Offline');});f.connection({history:{revision:2}});f.recover();await flushRecovery();
+ assert.equal(f.state.msgs[1],before);assert.equal(before.card.reviewUnavailable,undefined);assert.equal(f.toasts.length,1);assert.equal(f.timers.size,0);
+});
+test('one nearest expiry timer disables expired review without execution or repeated polling',async()=>{
+ const f=adapterRecoveryFixture(),deadline=Date.now()+10000;
+ const proposals=[{...pendingReview,expiresAt:deadline},{...pendingReview,id:'later-review',expiresAt:deadline+20000}];
+ f.read(async()=>proposals);f.recover();await flushRecovery();assert.equal(f.timers.size,1);
+ f.read(async()=>[proposals[1]]);f.advance(10002);await flushRecovery();
+ assert.equal(f.state.msgs[1].card.title,'Review expired');assert.equal(f.state.msgs[1].card.reviewUnavailable,true);assert.equal(f.state.msgs[1].card.done,undefined);
+ assert.equal(f.state.msgs[2].card.reviewUnavailable,undefined);assert.equal(f.calls.length,2);assert.equal(f.timers.size,1);
+ f.recover();await flushRecovery();assert.equal(f.calls.length,2);
+});
+for(const mode of ['session','context','hidden','unmount'])test(`expiry callback cannot alter cards after ${mode}`,async()=>{
+ const f=adapterRecoveryFixture();f.read(async()=>[{...pendingReview,expiresAt:Date.now()+10000}]);f.recover();await flushRecovery();const before=f.state.msgs[1];
+ if(mode==='session')f.connection({session:{sessionId:'replacement'}});if(mode==='context')f.context({revision:10});if(mode==='hidden')f.document.hidden=true;if(mode==='unmount')f.shell.live=false;
+ f.advance(10002);await flushRecovery();assert.equal(f.state.msgs[1],before);assert.equal(f.calls.length,1);
+});
+test('unavailable and expired card taps never enter the approval path',async()=>{
+ const source=fs.readFileSync('apps/app/src/prototype/agent-adapter.ts','utf8'),start=source.indexOf('  p.cardAct ='),end=source.indexOf('  p.startVoice =',start),p={};
+ vm.runInNewContext(stripTypeScriptTypes(source.slice(start,end)),{p,Date});
+ const unavailable={id:'unavailable',card:{proposalId:'p',reviewUnavailable:true}},expired={id:'expired',card:{proposalId:'q',expiresAt:Date.now()-1}},state={msgs:[unavailable,expired]};
+ const shell={S:()=>state,setState:update=>Object.assign(state,update(state))};
+ await p.cardAct.call(shell,unavailable);await p.cardAct.call(shell,expired);
+ assert.equal(state.msgs[0],unavailable);assert.equal(state.msgs[1].card.reviewUnavailable,true);assert.equal(state.msgs[1].card.title,'Review expired');
 });
 
 
