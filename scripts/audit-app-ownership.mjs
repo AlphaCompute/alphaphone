@@ -43,7 +43,8 @@ try {
 } catch { admitted = null; }
 const files = [];
 function visit(directory) {
-  for (const entry of fs.readdirSync(directory, { withFileTypes: true }).sort((a,b)=>a.name.localeCompare(b.name))) {
+  // A fixed collation locale keeps --check independent of the machine's LANG/LC_ALL.
+  for (const entry of fs.readdirSync(directory, { withFileTypes: true }).sort((a,b)=>a.name.localeCompare(b.name, 'en'))) {
     const full = path.join(directory, entry.name);
     if (entry.isDirectory()) { visit(full); continue; }
     const file = path.relative(root, full).split(path.sep).join('/');

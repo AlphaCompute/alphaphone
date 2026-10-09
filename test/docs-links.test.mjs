@@ -1,7 +1,9 @@
 // Every product script path and npm script named in README.md and docs/ must exist.
 // Paths that are relative to the pinned upstream checkout (for example
 // `packages/os/browser/scripts/...` written as `scripts/...` beside a vendor path)
-// are accepted only when that file really exists under vendor/eliza.
+// are accepted only when that file really exists under vendor/eliza and the same
+// document names the upstream directory that holds it, so a deleted product script
+// cannot pass merely because some upstream package has a file at the same suffix.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -24,13 +26,26 @@ const read = file => fs.readFileSync(path.join(root, file), 'utf8');
 const lineOf = (text, index) => text.slice(0, index).split('\n').length;
 
 let vendorFiles;
-function vendorRelative(reference) {
+function listVendorFiles() {
   if (vendorFiles === undefined) {
     const listed = spawnSync('git', ['-C', path.join(root, 'vendor/eliza'), 'ls-files', '-z'], { encoding: 'utf8', maxBuffer: 1 << 28 });
     vendorFiles = listed.status === 0 ? listed.stdout.split('\0').filter(Boolean) : [];
   }
-  const suffix = `/${reference.replace(/\/$/, '')}`;
-  return vendorFiles.some(file => `/${file}`.endsWith(suffix) || `/${file}`.includes(`${suffix}/`));
+  return vendorFiles;
+}
+
+/** True when `reference` names an upstream file or directory whose containing upstream directory `text` also names. */
+export function vendorRelativeInContext(reference, text, files) {
+  const target = reference.replace(/\/$/, '');
+  return files.some(file => {
+    const segments = file.split('/');
+    return segments.some((_, index) => {
+      const rest = segments.slice(index).join('/');
+      if (rest !== target && !rest.startsWith(`${target}/`)) return false;
+      const prefix = segments.slice(0, index).join('/');
+      return prefix ? text.includes(`${prefix}/`) : text.includes('vendor/eliza');
+    });
+  });
 }
 
 export function scriptReferences(text) {
@@ -49,6 +64,16 @@ test('reference extraction ignores longer vendor paths and keeps product paths',
   assert.deepEqual(npmScriptReferences('Run `npm run verify` then npm run android:build -- --x.').map(item => item.name), ['verify', 'android:build']);
 });
 
+test('an upstream-relative script path needs its upstream directory named in the same document', () => {
+  const files = ['packages/os/browser/scripts/chromium-component.mjs', 'packages/app/scripts/mobile/context.ts', 'scripts/release.mjs'];
+  assert.equal(vendorRelativeInContext('scripts/chromium-component.mjs', 'See `packages/os/browser/README.md`.', files), true);
+  assert.equal(vendorRelativeInContext('scripts/chromium-component.mjs', 'Run `scripts/chromium-component.mjs`.', files), false);
+  assert.equal(vendorRelativeInContext('scripts/mobile', 'Upstream `packages/app/app.config.ts`.', files), true);
+  assert.equal(vendorRelativeInContext('scripts/mobile/con', 'Upstream `packages/app/app.config.ts`.', files), false);
+  assert.equal(vendorRelativeInContext('scripts/release.mjs', 'Run it here.', files), false);
+  assert.equal(vendorRelativeInContext('scripts/release.mjs', 'In `vendor/eliza`, run it.', files), true);
+});
+
 // Stale references in documents this check does not yet own. Each entry must still be
 // stale; remove it as soon as the document is corrected.
 const knownStale = new Map([
@@ -61,7 +86,7 @@ test('every scripts/... path in README.md and docs/ exists in this repository or
     const text = read(file);
     for (const { reference, index } of scriptReferences(text)) {
       if (fs.existsSync(path.join(root, reference))) continue;
-      if (vendorRelative(reference)) continue;
+      if (vendorRelativeInContext(reference, text, listVendorFiles())) continue;
       if (knownStale.has(`${file}|${reference}`)) { stillStale.add(`${file}|${reference}`); continue; }
       failures.push(`${file}:${lineOf(text, index)}: ${reference}`);
     }
