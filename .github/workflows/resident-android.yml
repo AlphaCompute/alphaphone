@@ -210,6 +210,8 @@ jobs:
       - name: Anchor exact archive manifest
         id: freeze
         run: echo "sha256=$(sha256sum test-results/resident-ci-archive/apk-manifest.json | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+      # build-archive.mjs retains each release R8 mapping (<variant>-release-mapping.txt,
+      # hashed in release-mappings.json) beside the APKs, so both archives carry them.
       - uses: actions/upload-artifact@v4
         id: apks
         with:

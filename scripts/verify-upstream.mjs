@@ -39,6 +39,8 @@ if (!reachabilityOnly && argv.includes("--record-reachability")) {
 		mergeBase: compare.merge_base,
 		pinOnlyCommits: compare.commits,
 		pullRequests: Array.isArray(previous.pullRequests) ? previous.pullRequests : [],
+		// Hand-maintained PR bookkeeping survives a refresh of the compare.
+		...(previous.pendingPullRequest ? { pendingPullRequest: previous.pendingPullRequest } : {}),
 	};
 	fs.writeFileSync(REACHABILITY_RECORD, `${JSON.stringify(record, null, 2)}\n`);
 	console.log(`Recorded ${REACHABILITY_RECORD}: ${record.status}, ahead ${record.aheadBy}, behind ${record.behindBy}`);
