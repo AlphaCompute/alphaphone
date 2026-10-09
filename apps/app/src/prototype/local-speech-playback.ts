@@ -52,8 +52,10 @@ async function readNote(text: string, owner: { noteId?: string }): Promise<'fini
   stopLocalSpeechPlayback();
   const passage = typeof text === 'string' ? text.trim() : '';
   if (!passage || passage.length > 16000) return 'unsupported';
-  // Native local speech admits only supported English text; refuse before any audio.
-  if (Capacitor.isNativePlatform()) { try { planLocalSpeech(passage); } catch { return 'unsupported'; } }
+  // The same preflight as message Listen, on every platform: text with credentials, card
+  // numbers, links or unsupported characters is refused before any audio or local-agent
+  // request. The browser still speaks the original passage; the native engine speaks its plan.
+  try { planLocalSpeech(passage); } catch { return 'unsupported'; }
   const voice = createOnDeviceVoice(); if (!voice) return 'unavailable';
   const reading: NoteReading = { noteId: owner.noteId, text: passage, controller: new AbortController(), state: 'preparing' };
   noteReading = reading; noteReadingChanged();

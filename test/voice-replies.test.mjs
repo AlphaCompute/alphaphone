@@ -145,6 +145,18 @@ test('note read-aloud uses only the local route, reports state and stops on requ
   assert.equal(f.spoken.length, 2);
 });
 
+test('browser note read-aloud applies the Listen preflight before any audio or local-agent request', async () => {
+  const f = fixture({native: false});
+  const screened = [];
+  f.box.planLocalSpeech = text => { screened.push(text); if (/password|https?:/i.test(text)) throw Error('Refused'); return [text]; };
+  assert.equal(await f.box.speakNote('Wifi. password: hunter2', {noteId: 'secret'}), 'unsupported');
+  assert.equal(await f.box.speakNote('Read https://example.test later', {noteId: 'link'}), 'unsupported');
+  assert.equal(f.spoken.length, 0, 'refused text never reaches the speech engine');
+  assert.equal(await f.box.speakNote('Groceries. Milk and eggs', {noteId: 'ok'}), 'finished');
+  assert.deepEqual(f.spoken, [{text: 'Groceries. Milk and eggs', execution: 'browser'}]);
+  assert.equal(screened.length, 3);
+});
+
 test('starting another reading or message playback stops note read-aloud', async () => {
   const f = fixture(); f.hold = true;
   const first = f.box.speakNote('First note', {noteId: 'a'});
