@@ -3701,8 +3701,10 @@
   <div style="height: {{panelTop}}px; flex-shrink: 0; transition: height .4s"></div>
   <button aria-label="Resize chat" onPointerDown="{{grabSw.down}}" onPointerMove="{{grabSw.move}}" onPointerUp="{{grabSw.up}}" onPointerCancel="{{grabSw.cancel}}" onLostPointerCapture="{{grabSw.lost}}" onClick="{{grabTap}}" style="height: 44px; flex-shrink: 0; display: flex; align-items: flex-end; justify-content: center; padding:0 0 2px; box-sizing:border-box; cursor: grab; touch-action: none"><span style="width: 40px; height: 4px; border-radius: 2px; background: var(--mut); opacity: .45"></span></button>
   <div data-alpha-chat-header style="display: flex; align-items: center; gap: 12px; padding: 0 10px 4px 20px; flex-shrink: 0">
-    <span style="width: 34px; height: 34px; border-radius: 17px; background: var(--acc); color: #fff; display: flex; align-items: center; justify-content: center; font-family: Denton, Fraunces, Georgia, serif; font-style: italic; font-size: 19px"><span class="alpha-compute-mark" aria-hidden="true"></span></span>
-    <span style="flex-grow: 1; font-weight: 600; font-size: 16px">{{name}}</span>
+    <button class="tap" data-alpha-chat-home aria-label="Go Home" onClick="{{backToApps}}" style="display:flex;align-items:center;gap:12px;flex:1;min-width:0;min-height:44px;text-align:left;border-radius:12px">
+      <span style="width:34px;height:34px;border-radius:17px;flex-shrink:0;background:var(--acc);color:#fff;display:flex;align-items:center;justify-content:center"><span class="alpha-compute-mark" aria-hidden="true"></span></span>
+      <span style="font-weight:600;font-size:16px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{name}}</span>
+    </button>
     <sc-if value="{{canStopReply}}" hint-placeholder-val="{{false}}"><button class="tap" aria-label="Stop reply" onClick="{{stopReply}}" style="min-height:44px;padding:0 12px;color:var(--acct);font-weight:600">Stop</button></sc-if>
     <button class="ib" aria-label="{{sizeLabel}}" onClick="{{grabTap}}"><svg class="i" viewBox="0 0 24 24" style="width: 18px; height: 18px"><path d="{{sizeIcon}}"></path></svg></button>
     <button class="ib" aria-label="Minimize chat" onClick="{{closeChat}}"><svg class="i" viewBox="0 0 24 24" style="width: 20px; height: 20px"><path d="{{ic.down}}"></path></svg></button>

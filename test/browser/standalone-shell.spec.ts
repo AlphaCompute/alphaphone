@@ -185,3 +185,26 @@ for(const viewport of [{width:412,height:915},{width:1440,height:500}])for(const
  await expect(input).toBeFocused();await expect(input).toHaveValue('');await expect(page.getByRole('button',{name:'Resize chat',exact:true})).toHaveCount(0);await input.evaluate(el=>(el as HTMLTextAreaElement).blur());
  await pull(true);await expect(page.getByRole('button',{name:'Resize chat',exact:true})).toBeVisible();await expect(page.getByRole('textbox',{name:'Message Alpha',exact:true})).toHaveValue('');await page.screenshot({animations:'disabled',path:test.info().outputPath(`empty-placeholder-${pointer}.png`)});await cdp?.detach();
 });
+
+for(const view of ['Settings','Notes','Files'])test(`${view} keeps its app header painted behind the chat sheet and usable after dismiss`,async({page},info)=>{
+ await page.setViewportSize({width:412,height:915});await page.goto('/');await page.getByRole('button',{name:view,exact:true}).click();
+ const app=page.locator('[data-alpha-layer="app"]'),back=app.locator('button[aria-label="Back to apps"]'),header=back.locator('xpath=ancestor::*[@data-alpha-app-header][1]');
+ const before=await header.boundingBox();await page.getByRole('button',{name:'Open conversation',exact:true}).click();await expect(page.getByRole('button',{name:'Expand chat',exact:true})).toBeVisible();
+ await expect(back).toHaveCount(1);await expect(back).toBeVisible();await expect(app).toHaveAttribute('inert','');await expect(app).toHaveAttribute('aria-hidden','true');expect((await back.boundingBox())!.height).toBeGreaterThanOrEqual(44);expect((await header.boundingBox())!.x).toBeCloseTo(before!.x,1);
+ // Keep modal background controls out of keyboard navigation; only their painting changes.
+ await expect(app.getByRole('button',{name:'Back to apps',exact:true})).toHaveCount(0);await page.screenshot({path:info.outputPath('header-behind-sheet.png'),animations:'disabled'});
+ await page.getByRole('button',{name:'Expand chat',exact:true}).click();await expect(back).toHaveCount(1);await expect(app).toHaveAttribute('inert','');await page.getByRole('button',{name:'Minimize chat',exact:true}).click();
+ await expect(app.getByRole('button',{name:'Back to apps',exact:true})).toBeVisible();await back.press('Enter');await expect(page.getByRole('button',{name:'Calendar',exact:true})).toBeVisible();
+});
+for(const key of ['Enter','Space'])test(`chat Alpha brand returns Home with ${key} and keeps the unsent draft`,async({page})=>{
+ await page.goto('/');await page.getByRole('button',{name:'Notes',exact:true}).click();await page.getByRole('button',{name:'Open conversation',exact:true}).click();await page.getByRole('textbox',{name:'Message Alpha',exact:true}).fill('Keep this exact unsent draft');
+ await page.locator('[data-alpha-layer=conversation]').evaluate(element=>Promise.all(element.getAnimations().map(animation=>animation.finished.catch(()=>{}))));
+ const brand=page.getByRole('button',{name:'Go Home',exact:true});await expect(brand).toHaveCount(1);await expect(brand).toContainText('Alpha');expect((await brand.boundingBox())!.height).toBeGreaterThanOrEqual(44);await brand.focus();await brand.press(key);
+ await expect(page.locator('html')).toHaveAttribute('data-active-view','home');await expect(page.getByRole('button',{name:'Notes',exact:true})).toBeVisible();await expect(page.getByRole('textbox',{name:'Ask Alpha',exact:true})).toHaveValue('Keep this exact unsent draft');await expect(page.getByRole('button',{name:'Resize chat',exact:true})).toHaveCount(0);
+});
+test('a completed grabber drag cannot activate the chat Home brand through a late click',async({page})=>{
+ await page.goto('/');await page.getByRole('button',{name:'Notes',exact:true}).click();await page.getByRole('button',{name:'Open conversation',exact:true}).click();const handle=page.getByRole('button',{name:'Resize chat',exact:true});await handle.click({trial:true});
+ // Dispatch the late click in the same event turn as pointerup, inside the existing gesture fence.
+ await handle.evaluate(element=>{const b=element.getBoundingClientRect(),point={bubbles:true,pointerId:97,pointerType:'mouse',button:0,isPrimary:true,clientX:b.x+b.width/2,clientY:b.y+b.height/2};element.dispatchEvent(new PointerEvent('pointerdown',point));element.dispatchEvent(new PointerEvent('pointermove',{...point,clientY:point.clientY-120}));element.dispatchEvent(new PointerEvent('pointerup',{...point,clientY:point.clientY-120}));document.querySelector<HTMLButtonElement>('[data-alpha-chat-home]')!.click();});
+ await expect(page.locator('html')).toHaveAttribute('data-active-view','notes');await expect(page.getByRole('button',{name:'Shrink chat',exact:true})).toBeVisible();
+});

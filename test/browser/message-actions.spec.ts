@@ -93,3 +93,10 @@ test('Home shows clean Calendar and Workflows tiles with Inbox last',async({page
  await page.screenshot({path:info.outputPath('home-clean-tiles.png'),animations:'disabled'});
  await page.evaluate(async()=>{const {BrowserCalendar}=await import('/src/browser/calendar.ts');await new BrowserCalendar().save({calendarId:'local',title:'Synthetic Home calendar check',begin:Date.now()+3600000,end:Date.now()+7200000,creationId:crypto.randomUUID()});});await page.reload();await expect(home.getByRole('button',{name:'Open calendar event: Synthetic Home calendar check',exact:true})).toContainText('Synthetic Home calendar check');await page.screenshot({path:info.outputPath('home-next-event.png'),animations:'disabled'});
 });
+
+test('chat brand Home preserves the existing conversation and unsent draft',async({page})=>{
+ await conversation(page);await page.getByRole('button',{name:'Minimize chat',exact:true}).click();await page.getByRole('button',{name:'Notes',exact:true}).click();await page.getByRole('button',{name:'Open conversation',exact:true}).click();
+ await page.getByRole('textbox',{name:'Message Alpha',exact:true}).fill('Unsent after the original response');await page.getByRole('button',{name:'Go Home',exact:true}).click();
+ await expect(page.locator('html')).toHaveAttribute('data-active-view','home');await expect(page.getByRole('textbox',{name:'Ask Alpha',exact:true})).toHaveValue('Unsent after the original response');await page.getByRole('button',{name:'Open conversation',exact:true}).click();
+ await expect(agent(page)).toHaveText(answer);await expect(page.locator('[data-alpha-message-text]').filter({hasText:'My original request'})).toHaveText('My original request');await expect(page.getByRole('textbox',{name:'Message Alpha',exact:true})).toHaveValue('Unsent after the original response');
+});
