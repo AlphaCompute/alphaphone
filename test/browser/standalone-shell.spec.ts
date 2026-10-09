@@ -60,3 +60,19 @@ test('an open modal owns native Back without leaving the app', async ({page}) =>
   await expect(page.locator('dialog[open]')).toHaveCount(0);
   await expect(page.locator('html')).toHaveAttribute('data-alpha-can-go-back','false');
 });
+
+
+test('standalone Home scrolls to the screen edge without a simulated status-bar gap',async({page},testInfo)=>{
+  await page.setViewportSize({width:412,height:640});
+  await page.goto('/');
+  const home=page.locator('[data-alpha-layer="home"]'),screen=page.locator('[data-screen="1"]');
+  await expect(page.getByRole('button',{name:'Calendar',exact:true})).toBeVisible();
+  const bounds=await home.boundingBox(),usable=await screen.boundingBox();
+  expect(bounds!.y).toBeCloseTo(usable!.y,1);
+  expect(bounds!.height).toBeCloseTo(usable!.height,1);
+  const tile=await home.getByRole('button').first().boundingBox();
+  expect(tile!.y-bounds!.y).toBeLessThan(16);
+  await home.evaluate(node=>{node.scrollTop=80;});
+  expect((await home.boundingBox())!.y).toBeCloseTo(usable!.y,1);
+  await page.screenshot({path:testInfo.outputPath('home-scrolled-fullscreen.png')});
+});

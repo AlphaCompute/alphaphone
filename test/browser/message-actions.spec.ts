@@ -1,4 +1,5 @@
 import {test,expect,type Page} from '@playwright/test';
+test.use({hasTouch:true});
 const answer='Synthetic reply for message actions.';
 const agent=(page:Page)=>page.locator('[data-alpha-message-text]').filter({hasText:answer});
 const menu=(page:Page)=>page.getByRole('menu',{name:'Message actions'});

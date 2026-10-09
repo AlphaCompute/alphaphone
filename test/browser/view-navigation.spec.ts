@@ -20,7 +20,9 @@ const source = [
 	.map(compile)
 	.join("\n");
 async function setup(page: import("@playwright/test").Page) {
-	await page.setContent('<main id="screen">Home</main>');
+	// Native WebView and localhost are secure contexts; about:blank is not.
+	await page.route('**/__navigation-fixture',route=>route.fulfill({contentType:'text/html',body:'<main id="screen">Home</main>'}));
+	await page.goto('/__navigation-fixture');
 	await page.addScriptTag({
 		type: "module",
 		content:
