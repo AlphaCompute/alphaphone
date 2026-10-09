@@ -5,7 +5,7 @@ async function nativeContent(page:any,url:string,insets:{top:number;bottom:numbe
   localStorage.setItem('alpha.connection.selection.v1',JSON.stringify({kind:'offline'}));
   const w=window as any;w.androidBridge={};
   const names=['DailyApps','AlphaBrowser','AlphaConnection','AlphaDevice','AlphaLocalAgent','AlphaHostedResults','AlphaVoiceCloud','AlphaNotifications','ElizaSystem','AlphaCalendar','AlphaNoteDocuments','AlphaNoteAudio','AlphaFiles','AlphaPhotos','DeviceApps','ElizaLocation','AlphaActionJournal'];
-  const methods=['addListener','removeListener','surfaceInfo','readPending','readPendingResult','readDelegationCallback','readSecret','secureRead','secureWrite','secureRemove','get','status','getStatus','getState','state','permissionState','permissions','list','listCalendars','listEvents','listReminders','listBookmarks','getBookmarks','settings','getSettings','buildInfo','capabilities','query','read','readJournal','getPending','readSelection'];
+  const methods=['addListener','removeListener','surfaceInfo','readPending','readPendingResult','readDelegationCallback','readSecret','secureRead','secureWrite','secureRemove','get','status','getStatus','getState','state','permissionState','permissions','list','listCalendars','listEvents','listReminders','listBookmarks','getBookmarks','bookmarks','settings','getSettings','buildInfo','capabilities','query','read','readJournal','getPending','readSelection'];
   w.Capacitor={Plugins:{},PluginHeaders:names.map(name=>({name,methods:methods.map(name=>({name,rtype:name==='addListener'?'callback':'promise'}))})),nativeCallback:()=> 'fixture-callback',nativePromise:async(_plugin:string,method:string)=>{
    if(method==='surfaceInfo')return {topInset:0,bottomInset:0}; // MainActivity already fits standalone content.
    if(method==='buildInfo')return {launcher:false};
@@ -45,4 +45,36 @@ test('native cutout and keyboard-sized resizes preserve reachable large-text sta
  await back.evaluate((node:any)=>{node.style.fontSize='28px';});
  await expect.poll(async()=>{const b=(await back.boundingBox())!;return b.y>=32&&b.y+b.height<=320&&b.x+b.width<=360;}).toBe(true);
  await back.focus();await back.press('Enter');await expect(frame.getByRole('button',{name:'Calendar',exact:true})).toBeVisible();
+});
+
+test('wide native standalone keeps a usable transcript and touch navigation at normal density',async({browser},testInfo)=>{
+ const context=await browser.newContext({viewport:{width:890,height:400},hasTouch:true,isMobile:true,recordVideo:{dir:testInfo.outputPath('video')}});
+ const page=await context.newPage();
+ try{
+  const frame=await nativeContent(page,testInfo.project.use.baseURL as string,{top:0,bottom:24,left:0,right:0},890,400);
+  await frame.locator('[data-screen]').evaluate(screen=>{
+   const events:any[]=[];(window as any).touchEvents=events;
+   for(const type of ['pointerdown','pointermove','pointerup','pointercancel','gotpointercapture','lostpointercapture','click'])screen.addEventListener(type,event=>{const e=event as PointerEvent;events.push({type,label:(e.target as Element)?.closest('button')?.getAttribute('aria-label'),x:e.clientX,y:e.clientY,pointerType:e.pointerType,half:screen.getAttribute('data-alpha-chat-half')});},true);
+  });
+  const open=frame.getByRole('button',{name:'Open conversation',exact:true});
+  // Cancellation must retire the exact native listener before a later touch.
+  await open.dispatchEvent('pointerdown',{pointerId:91,pointerType:'touch',isPrimary:true,button:0,clientX:47,clientY:311});
+  await open.dispatchEvent('pointercancel',{pointerId:91,pointerType:'touch',isPrimary:true});
+  expect(await open.evaluate(node=>{const event=new Event('touchstart',{bubbles:true,cancelable:true});node.dispatchEvent(event);return event.defaultPrevented;})).toBe(false);
+  await open.tap();
+  try{await expect(frame.locator('[data-screen]')).toHaveAttribute('data-alpha-chat-half','true');}
+  finally{await testInfo.attach('native-touch-events',{body:JSON.stringify(await frame.locator('[data-screen]').evaluate(()=>(window as any).touchEvents)),contentType:'application/json'});}
+  await frame.getByRole('button',{name:'Expand chat',exact:true}).tap();
+  const transcript=frame.locator('[data-alpha-transcript]');
+  await expect.poll(()=>transcript.evaluate(e=>e.clientHeight)).toBeGreaterThanOrEqual(80);
+  const screen=await frame.locator('[data-screen]').boundingBox();
+  expect(screen!.width).toBeGreaterThanOrEqual(880);
+  const header=await frame.getByRole('button',{name:'Go Home',exact:true}).boundingBox();
+  const content=await transcript.boundingBox();
+  expect(content!.y).toBeGreaterThanOrEqual(header!.y+header!.height);
+  await page.screenshot({path:testInfo.outputPath('native-wide-chat.png'),animations:'disabled'});
+  await frame.getByRole('button',{name:'Minimize chat',exact:true}).tap();
+  await open.tap();
+  await expect(frame.locator('[data-screen]')).toHaveAttribute('data-alpha-chat-half','true');
+ }finally{await context.close();}
 });

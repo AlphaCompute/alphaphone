@@ -118,6 +118,7 @@ function Phone() {
   const [pullSurface,setPullSurface]=useState({input:true,scale:1});
   const chatPullBinding=usePullGesture({
     swipeEnabled:false,
+    preventTouchCompatibilityEvents:true,
     distanceThreshold:(pullSurface.input?24:DEFAULT_PULL_DISTANCE)*pullSurface.scale,
     velocityThreshold:DEFAULT_PULL_VELOCITY*pullSurface.scale,
     onDrag:offset=>shell?.paintChatMotion(offset),
@@ -141,8 +142,12 @@ function Phone() {
       const tools = devSurfacesEnabled && !isAndroid && !mock ? document.querySelector<HTMLElement>('.alpha-dev-tools') : null;
       const toolsInset = tools ? Math.max(56, Math.ceil(tools.getBoundingClientRect().height + (parseFloat(getComputedStyle(tools).bottom) || 0) + 2)) : 0;
       const available = Math.max(1, height - banner - (desktop ? 48 : 0) - toolsInset);
-      const scale = desktop ? Math.min(1, available / 915) : window.innerWidth / 412;
+      // Standalone Android uses the available width without magnifying the
+      // portrait canvas in landscape. Keep the launcher presentation unchanged.
+      const fluidNative = isAndroid && !launcherPresentation;
+      const scale = desktop ? Math.min(1, available / 915) : fluidNative ? Math.min(1, window.innerWidth / 412) : window.innerWidth / 412;
       document.documentElement.style.setProperty('--phone-scale', String(scale));
+      document.documentElement.style.setProperty('--phone-width', `${fluidNative ? window.innerWidth / scale : 412}px`);
       document.documentElement.style.setProperty('--phone-height', `${desktop ? 915 : available / scale}px`);
       document.documentElement.style.setProperty('--phone-left', `${desktop ? (window.innerWidth - 412 * scale) / 2 : 0}px`);
       document.documentElement.style.setProperty('--phone-top', `${banner + (desktop ? 24 : 0)}px`);
