@@ -99,8 +99,8 @@ export function installChatOverlayMotion(Component: Shell) {
 		window.addEventListener("pagehide", this.cancelChatMotion);
 		document.addEventListener("visibilitychange", this.chatMotionVisibility);
 	};
-	p.componentDidUpdate = function (previous: Shell) {
-		update?.call(this, previous);
+	p.componentDidUpdate = function (...args: Shell[]) {
+		update?.apply(this, args);
 		const drag: Drag | undefined = this.chatMotion,
 			s = this.S();
 		if (
