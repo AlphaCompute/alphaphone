@@ -24,8 +24,8 @@ final class HostedNoticePoster implements HostedResultNotices.Poster {
  public void post(String key){
   Intent open=new Intent(context,MainActivity.class).setAction(ACTION).setData(Uri.parse(PREFIX+key)).addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP|Intent.FLAG_ACTIVITY_SINGLE_TOP);
   PendingIntent tap=PendingIntent.getActivity(context,0,open,PendingIntent.FLAG_IMMUTABLE|PendingIntent.FLAG_UPDATE_CURRENT);
-  Notification redacted=new Notification.Builder(context,CHANNEL).setSmallIcon(android.R.drawable.ic_popup_reminder).setContentTitle("Alpha Phone result").setContentText("Open Alpha Phone to review.").build();
-  Notification notice=new Notification.Builder(context,CHANNEL).setSmallIcon(android.R.drawable.ic_popup_reminder).setContentTitle("Scheduled result ready").setContentText("Open Alpha Phone to review with the matching account.").setVisibility(Notification.VISIBILITY_PRIVATE).setPublicVersion(redacted).setContentIntent(tap).setOnlyAlertOnce(true).setAutoCancel(true).setCategory(Notification.CATEGORY_STATUS).build();
+  Notification redacted=new Notification.Builder(context,CHANNEL).setSmallIcon(R.drawable.notification_icon).setContentTitle("Alpha Phone result").setContentText("Open Alpha Phone to review.").build();
+  Notification notice=new Notification.Builder(context,CHANNEL).setSmallIcon(R.drawable.notification_icon).setContentTitle("Scheduled result ready").setContentText("Open Alpha Phone to review with the matching account.").setVisibility(Notification.VISIBILITY_PRIVATE).setPublicVersion(redacted).setContentIntent(tap).setOnlyAlertOnce(true).setAutoCancel(true).setCategory(Notification.CATEGORY_STATUS).build();
   manager().notify(key,0,notice);
  }
 }
