@@ -402,7 +402,7 @@ export function HostedDigestPanel() {
 				aria-labelledby="digest-title"
 			>
 				<header>
-					<span className="alpha-connection-logo serif">a</span>
+					<span className="alpha-connection-logo alpha-compute-mark" aria-label="Alpha Compute"/>
 					<button
 						aria-label="Close scheduled digests"
 						onClick={() => setOpen(false)}
