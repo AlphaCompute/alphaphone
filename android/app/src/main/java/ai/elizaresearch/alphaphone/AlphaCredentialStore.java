@@ -46,7 +46,7 @@ final class AlphaCredentialStore {
   String saved=slots.read(LocalAgentProviderAdmission.PROVIDER_SLOT);
   if(saved==null)return;
   org.json.JSONObject provider=new org.json.JSONObject(saved);
-  if("elizacloud".equals(provider.optString("provider"))&&changedSlot.equals("cloud:"+provider.optString("environment","production")))
+  if(changedSlot.equals("cloud:"+provider.optString("environment","production")))
    slots.write(LocalAgentProviderAdmission.PROVIDER_SLOT,LocalAgentProviderAdmission.withoutAdmission(saved));
  }
  /** Only explicit, validated native provider configuration may establish admission identity. */
