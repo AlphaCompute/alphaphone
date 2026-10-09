@@ -19,15 +19,26 @@ final class LocalAgentProviderAdmission {
  static String withoutAdmission(String saved)throws Exception {
   JSONObject provider=new JSONObject(saved);provider.remove(GENERATION);provider.remove(FINGERPRINT);return provider.toString();
  }
+ private static JSONArray cloudIdentity(String saved,String expectedId)throws Exception {
+  String token=AlphaLocalAgentPlugin.cloudProviderToken(saved,expectedId,System.currentTimeMillis());
+  JSONObject credential=new JSONObject(saved);
+  return new JSONArray().put("production").put(expectedId).put(credential.opt("userId")).put(credential.opt("organizationId")).put(token);
+ }
+ /** Metadata/reserialization is not credential replacement; invalid or removed records never match. */
+ static boolean sameCloudCredential(String before,String after){
+  try{
+   String id=new JSONObject(before).getString("credentialId");
+   return cloudIdentity(before,id).toString().equals(cloudIdentity(after,id).toString());
+  }catch(Exception unavailable){return false;}
+ }
  private static String fingerprint(JSONObject selected,String cloud)throws Exception {
   String kind=selected.optString("provider","cerebras"),model=selected.getString("model");
   JSONArray identity=new JSONArray().put(1).put(kind).put(model);
   if("elizacloud".equals(kind)){
    if(!AlphaLocalAgentPlugin.CLOUD_PROVIDER_MODEL.equals(model)||!"production".equals(selected.optString("environment","production")))throw new IllegalArgumentException();
    String id=selected.getString("credentialId");
-   String token=AlphaLocalAgentPlugin.cloudProviderToken(cloud,id,System.currentTimeMillis());
-   JSONObject credential=new JSONObject(cloud);
-   identity.put("production").put(id).put(credential.opt("userId")).put(credential.opt("organizationId")).put(token);
+   JSONArray credentialIdentity=cloudIdentity(cloud,id);
+   for(int index=0;index<credentialIdentity.length();index++)identity.put(credentialIdentity.get(index));
   }else if("cerebras".equals(kind)){
    String key=selected.getString("key");
    if(!model.matches(AlphaLocalAgentPlugin.PROVIDER_MODEL_PATTERN)||!AlphaLocalAgentPlugin.validProviderToken(key,1024))throw new IllegalArgumentException();

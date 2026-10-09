@@ -70,6 +70,9 @@ public class AdmissionTest {
   final int[] unrelatedReads={0};JsonCredentialSlots.onRead=n->{if(n.equals("notes-records:v1:device"))unrelatedReads[0]++;};store.writeCredentialSlot("notes-records:v1:device","[]");JsonCredentialSlots.onRead=n->{};check(unrelatedReads[0]==0&&unchanged.equals(generation()),"Unrelated slot write acquired/read provider data");cases++;
   AlphaLocalAgentPlugin.bindDirectProvider(store,"synthetic-direct-key","model-a");String directAccount=generation();store.writeCredentialSlot(CLOUD,credential("replacement-token","other-owner"));check(generation()==null,"Account replacement retained direct-provider grant");store.writeCredentialSlot(CLOUD,original);AlphaLocalAgentPlugin.bindDirectProvider(store,"synthetic-direct-key","model-a");check(!directAccount.equals(generation()),"Restored account revived direct-provider grant");cases++;
   directAccount=generation();store.removeCredentialSlot(CLOUD);check(generation()==null,"Logout retained direct-provider grant");store.writeCredentialSlot(CLOUD,original);AlphaLocalAgentPlugin.bindDirectProvider(store,"synthetic-direct-key","model-a");check(!directAccount.equals(generation()),"Logout restore revived direct-provider grant");cases++;
+  bind();String logical=generation();String reordered="{\\"organizationId\\":\\"synthetic-org\\",\\"userId\\":\\"synthetic-owner\\",\\"token\\":\\"synthetic-token\\",\\"credentialId\\":\\""+ID+"\\"}";store.writeCredentialSlot(CLOUD,reordered);check(logical.equals(generation()),"Reserialization retired identical logical credential");cases++;
+  String metadataOnly=new JSONObject(original).put("expiresAt",System.currentTimeMillis()+600000).put("email","synthetic@example.invalid").put("refreshedAt",System.currentTimeMillis()).toString();store.writeCredentialSlot(CLOUD,metadataOnly);check(logical.equals(generation()),"Metadata/valid expiry update retired identical credential");bind();check(logical.equals(generation()),"Restore after metadata update retired generation");cases++;
+  store.writeCredentialSlot(CLOUD,new JSONObject(metadataOnly).put("expiresAt",1).toString());check(generation()==null,"Expired credential retained grant");store.writeCredentialSlot(CLOUD,metadataOnly);check(generation()==null,"Valid metadata restoration revived expired grant");bind();check(!logical.equals(generation()),"Expired grant was reminted");cases++;
   System.out.println("PASS "+cases+" native admission ownership cases");
  }
 }`));
@@ -78,7 +81,7 @@ public class AdmissionTest {
  assert.ok(fs.existsSync(androidJar),'Cached Android API jar required');
  execFileSync(path.join(java,'bin/javac'),['--release','17','-cp',androidJar,'-d',path.join(dir,'android-api'),...sourceFiles.filter(p=>!p.endsWith('/AdmissionTest.java'))],{timeout:20000});
  const result=execFileSync(path.join(java,'bin/java'),['-cp',dir+path.delimiter+jar,'ai.elizaresearch.alphaphone.AdmissionTest'],{encoding:'utf8',timeout:20000});
- assert.match(result,/PASS 24 native admission ownership cases/);
+ assert.match(result,/PASS 27 native admission ownership cases/);
  t.diagnostic(result.trim());
  }finally{fs.rmSync(dir,{recursive:true,force:true});}
 });

@@ -27,12 +27,12 @@ final class AlphaCredentialStore {
  void writeCredentialSlot(String name,String value)throws Exception{
   synchronized(JsonCredentialSlots.LOCK){
    if(("cloud:production".equals(name)||"cloud:staging".equals(name))
-      &&!java.util.Objects.equals(slots.read(name),value))invalidateProviderAdmission(name);
+      &&!java.util.Objects.equals(slots.read(name),value))invalidateProviderAdmission(name,value);
    slots.write(name,LocalAgentProviderAdmission.PROVIDER_SLOT.equals(name)?LocalAgentProviderAdmission.withoutAdmission(value):value);
   }
  }
  void removeCredentialSlot(String name)throws Exception{
-  synchronized(JsonCredentialSlots.LOCK){invalidateProviderAdmission(name);slots.remove(name);}
+  synchronized(JsonCredentialSlots.LOCK){invalidateProviderAdmission(name,null);slots.remove(name);}
  }
  boolean compareExchangeCredentialSlot(String name,String expected,String value)throws Exception{
   synchronized(JsonCredentialSlots.LOCK){
@@ -41,13 +41,16 @@ final class AlphaCredentialStore {
    return true;
   }
  }
- private void invalidateProviderAdmission(String changedSlot)throws Exception{
+ private void invalidateProviderAdmission(String changedSlot,String replacement)throws Exception{
   if(!"cloud:production".equals(changedSlot)&&!"cloud:staging".equals(changedSlot))return;
   String saved=slots.read(LocalAgentProviderAdmission.PROVIDER_SLOT);
   if(saved==null)return;
   org.json.JSONObject provider=new org.json.JSONObject(saved);
-  if(changedSlot.equals("cloud:"+provider.optString("environment","production")))
-   slots.write(LocalAgentProviderAdmission.PROVIDER_SLOT,LocalAgentProviderAdmission.withoutAdmission(saved));
+  if(!changedSlot.equals("cloud:"+provider.optString("environment","production")))return;
+  String previous=slots.read(changedSlot);
+  if(replacement!=null&&LocalAgentProviderAdmission.currentGeneration(saved,previous)!=null
+     &&LocalAgentProviderAdmission.sameCloudCredential(previous,replacement))return;
+  slots.write(LocalAgentProviderAdmission.PROVIDER_SLOT,LocalAgentProviderAdmission.withoutAdmission(saved));
  }
  /** Only explicit, validated native provider configuration may establish admission identity. */
  String compareExchangeProviderAdmission(String expected,String selection,String credentialSlot,String expectedCredential)throws Exception{
