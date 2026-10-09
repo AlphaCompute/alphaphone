@@ -79,6 +79,7 @@ test('the web build pairs a synthetic HTTPS remote agent, sends one message and 
   await page.getByRole('button', { name: 'Open conversation', exact: true }).click();
   await expect(page.getByText('Synthetic remote reply', { exact: true })).toBeVisible();
   await expect(page.getByText('Hello from the web build', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Minimize chat', exact: true }).click();
 
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
   await page.getByRole('button', { name: /Agent connection/ }).click();
