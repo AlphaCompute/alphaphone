@@ -89,6 +89,11 @@
     },
     {
       "note": "A concurrent run on the heavily loaded host (load average ~500) once timed out two PGlite tests at their 20/30 s limits; the same files passed unchanged on rerun. The timeout was host load, not an assertion failure."
+    },
+    {
+      "command": "git fetch --depth 50 https://github.com/elizaOS/eliza.git develop; git diff --stat cd12fabd7bfada24f90f1d01e1a4dc8d1a4b095e 903a1bc4effaa36558a1b933c8098186c1620a5f; GIT_INDEX_FILE=<scratch> git read-tree 903a1bc4e && git apply --cached 0037 0055 0056 0057 0058 0059 (in order); git write-tree",
+      "date": "2026-10-08",
+      "result": "develop advanced to 903a1bc4effaa36558a1b933c8098186c1620a5f (5 commits after cd12fabd); its tree is identical to cd12fabd (empty diff), 0535 is still unused, all six patches apply in series order, and the resulting tree (50d4ee5347ad69c874ae24dd8cdc6ab06d0d902b) equals the tree of the authored series commit tested above, so the bun integration test and migration order results above hold unchanged for this tip. The tests were not rerun at 903a1bc4."
     }
   ],
   "upstreamPullRequest": "Not opened. Opening an elizaOS develop pull request publishes to a public repository and needs the owner's explicit approval in chat; the authoring branch exists only in the isolated worktree."
