@@ -99,10 +99,23 @@ async function client(origin, token) {
 export async function evaluate({ origin, token, cases = CASES, now = () => new Date() }) {
   const { call, negotiated } = await client(loopback(origin), token);
   const seen = new Set((await call('/api/client-devices/proposals')).proposals.map(p => p.id));
+  // Rejects every unseen proposal. Called before each case and at the end, so a late or
+  // orphaned proposal (for example after a timed-out turn) is rejected and counted as stray,
+  // never attributed to the next case.
+  const sweep = async () => {
+    let stray = 0;
+    for (const proposal of (await call('/api/client-devices/proposals')).proposals.filter(p => !seen.has(p.id))) {
+      seen.add(proposal.id); stray++;
+      if (proposal.state === 'pending') await call(`/api/client-devices/proposals/${encodeURIComponent(proposal.id)}/decision`, { digest: proposal.digest, decision: 'reject' });
+    }
+    return stray;
+  };
   const rows = [];
+  let strayProposals = 0;
   for (const item of cases) {
     const row = { id: item.id, expect: item.expect };
     try {
+      strayProposals += await sweep();
       const { conversation } = await call('/api/conversations', { title: `Clarification eval ${item.id}` });
       const context = { view: item.view, revision: 1, sensitive: false, timeZone: 'America/New_York' };
       const reply = await call(`/api/conversations/${encodeURIComponent(conversation.id)}/messages`, { text: item.text, channelType: 'DM', metadata: { uiTimeZone: context.timeZone, clientDevice: { context } }, clientMessageId: randomUUID() });
@@ -117,31 +130,40 @@ export async function evaluate({ origin, token, cases = CASES, now = () => new D
     }
     rows.push(row);
   }
-  return { version: 1, kind: 'device-action-clarification', recordedAt: now().toISOString(), model: AGENT_MODEL, negotiatedCapabilities: negotiated, source: sourceBinding(), summary: summarize(rows), rows };
+  strayProposals += await sweep();
+  return { version: 1, kind: 'device-action-clarification', recordedAt: now().toISOString(), model: AGENT_MODEL, negotiatedCapabilities: negotiated, source: sourceBinding(), summary: { ...summarize(rows), strayProposals }, rows };
 }
 
 async function selfTest() {
   // Synthetic agent: asks back for ambiguous text, proposes for the controls.
   const token = 'synthetic-eval-token', proposals = [];
+  let late = false;
   const server = http.createServer(async (req, res) => {
     let raw = ''; for await (const chunk of req) raw += chunk;
     const body = raw ? JSON.parse(raw) : undefined, send = value => { res.writeHead(200, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(value)); };
     assert.equal(req.headers.authorization, `Bearer ${token}`);
     if (req.url === '/api/client-devices/register') return send({ installationId: req.headers['x-eliza-device-id'], enrollmentId: 'enrollment', capabilities: CAPABILITIES.slice(0, 4) });
-    if (req.url === '/api/client-devices/proposals') return send({ proposals });
+    if (req.url === '/api/client-devices/proposals') {
+      send({ proposals: proposals.map(p => ({ ...p })) });
+      // Arrives just after this case's listing: the next sweep must reject it as stray.
+      if (late) { late = false; proposals.push({ id: 'late', digest: 'd', state: 'pending', payload: { operation: { type: 'notes_named' } } }); }
+      return;
+    }
     if (req.url === '/api/conversations') return send({ conversation: { id: 'c' + proposals.length + Math.random().toString(16).slice(2) } });
     if (req.url.endsWith('/decision')) { const p = proposals.find(item => req.url.includes(item.id)); assert.equal(body.decision, 'reject'); p.state = 'rejected'; return send({ proposal: p, digest: p.digest }); }
     if (req.url.endsWith('/messages')) {
       assert.equal(body.metadata.clientDevice.context.sensitive, false);
       if (/tomorrow|passport|called/.test(body.text)) { proposals.push({ id: 'p' + proposals.length, digest: 'd', state: 'pending', payload: { operation: { type: 'calendar_availability' } } }); return send({ text: 'Review it on your phone.' }); }
-      return send({ text: body.text === 'Delete it.' ? 'Which item would you like to delete?' : 'Could you tell me which one, and when?' });
+      // A late proposal from an earlier turn lands after this reply: it is stray, not this case's.
+      if (body.text === 'Delete it.') { late = true; return send({ text: 'Which item would you like to delete?' }); }
+      return send({ text: 'Could you tell me which one, and when?' });
     }
     res.writeHead(404); res.end('{}');
   });
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
   try {
     const result = await evaluate({ origin: `http://127.0.0.1:${server.address().port}`, token });
-    assert.deepEqual(result.summary, { ambiguous: { cases: 8, clarifyingQuestionRate: 1, proposalRate: 0 }, controls: { cases: 3, proposalRate: 1, clarifyingQuestionRate: 0 }, errors: 0 });
+    assert.deepEqual(result.summary, { ambiguous: { cases: 8, clarifyingQuestionRate: 1, proposalRate: 0 }, controls: { cases: 3, proposalRate: 1, clarifyingQuestionRate: 0 }, errors: 0, strayProposals: 1 });
     assert.ok(proposals.every(p => p.state === 'rejected'), 'every caused proposal is rejected');
     assert.deepEqual(result.negotiatedCapabilities, CAPABILITIES.slice(0, 4));
     assert.match(result.source.caseSet, /^[a-f0-9]{64}$/);
@@ -149,7 +171,7 @@ async function selfTest() {
     assert.equal(classify({ proposals: 0, reply: 'Done.' }), 'other');
     assert.equal(classify({ proposals: 0, reply: '' }), 'empty');
     assert.throws(() => loopback('https://agent.example.com'), /loopback/);
-    console.log('PASS clarification eval harness: classification, per-case conversations, rejection of every caused proposal, loopback-only origin and source binding. Synthetic agent only; not a model result.');
+    console.log('PASS clarification eval harness: classification, per-case conversations, rejection of every caused proposal (late ones counted as stray, never misattributed), loopback-only origin and source binding. Synthetic agent only; not a model result.');
   } finally { server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); }
 }
 
