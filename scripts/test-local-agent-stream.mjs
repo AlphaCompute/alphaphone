@@ -40,6 +40,12 @@ const proxy=http.createServer(createLocalAgentDevHandler({origin:`http://127.0.0
 const origin=`http://127.0.0.1:${proxy.address().port}`,input={path:'/api/conversations/thread/messages/stream',method:'POST',ownerId:'owner',stream:true,headers:{'X-Eliza-Device-Id':'device'},body:JSON.stringify({text:'Synthetic',streamProtocol:'delta-v2'})};
 const invoke=(body=input,requestSignal)=>fetch(origin,{method:'POST',headers:{Origin:origin,'content-type':'application/json','X-Alpha-Local-Agent':'1'},body:JSON.stringify(body),signal:requestSignal});
 try{
+ const navigationInput={path:'/api/views/interact-claim',method:'POST',ownerId:'owner',body:JSON.stringify({requestId:'owned-handoff'})};
+ assert.equal((await invoke(navigationInput)).status,200);
+ assert.equal((await invoke({...navigationInput,ownerId:'wrong'})).status,409);
+ assert.equal((await invoke({...navigationInput,ownerId:undefined})).status,400);
+ assert.equal((await invoke({...navigationInput,method:'GET',body:undefined})).status,400);
+ assert.equal((await invoke({...navigationInput,path:'/api/views/interact'})).status,400);
  assert.equal((await invoke({...input,ownerId:'wrong'})).status,409);assert.equal(requests,0);
  assert.equal((await invoke({...input,path:'/api/auth/me'})).status,400);
  assert.equal((await invoke({...input,stream:false})).status,400);
@@ -58,3 +64,13 @@ await client.send('Hello',text=>values.push(text));late('Late');assert.deepEqual
 client.disconnect();client.attachVerifiedTransport({session:{ownerId:'owner',agentId:'agent',sessionId:'new',origin:'https://agent.example'},send:({onText})=>{late=onText;return new Promise(r=>{resolveSend=r;});},execute:async()=>{throw Error('No action');}});
 const stale=client.send('Cancel',text=>values.push(text));client.cancel();late('Stale');resolveSend({text:'Too late'});await assert.rejects(stale);assert.deepEqual(values,['Progress']);
 console.log('Streaming framing, progress, terminal validation, interruption, owner binding, no replay, upstream cancellation and stale callback checks passed.');
+
+// Navigation is carried only by the authenticated terminal result; status/tool
+// frames and prose are never instructions to switch views or approve effects.
+const handoff={actionName:'VIEWS',success:true,values:{mode:'show',viewId:'notes',navigationPrepared:true,completedActionHandoffId:'owned-handoff'}};
+const navWire=await readLocalAgentStream(response(event({type:'tool',actionResults:[{...handoff,values:{...handoff.values,viewId:'wallet'}}]})+event({type:'done',fullText:'Opening Notes.',agentName:'Fixture',actionResults:[handoff]})),signal,()=>{});
+assert.deepEqual(navWire.actionResults,[handoff]);
+const navigationClient=new AlphaClient();let automaticEffects=0;
+navigationClient.attachVerifiedTransport({session:{ownerId:'owner',agentId:'agent',sessionId:'navigation-session',origin:'https://agent.example'},send:async()=>({text:navWire.text,actionResults:navWire.actionResults}),execute:async()=>{automaticEffects++;throw Error('Navigation must not auto-approve device actions');}});
+const navigationReply=await navigationClient.send('Open Notes');assert.deepEqual(navigationReply.actionResults,[handoff]);assert.equal(automaticEffects,0);
+console.log('PASS terminal navigation metadata survives the existing stream/client boundary without executing device approvals.');

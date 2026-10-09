@@ -1,3 +1,4 @@
+import {AlphaClientError} from '../runtime/alpha-client';
 import {formatDeviceRecordDateTime} from "../../../../.eliza/client-features/plugins/plugin-assistant/src/services/device-actions/device-record-presentation.ts";
 import {isNativeNotesQuery} from '../../../../.eliza/client-features/packages/contracts/src/native-notes-query.ts';
 import {executeNotesQuery} from './notes-query-executor';
@@ -91,6 +92,13 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
       shell.pendingActionRecoveryKey=null;shell.pendingActionRecoveryFailedKey=key;
       shell.toast('Pending actions could not be checked. Return to the app or reopen the selected item to retry.');
     });
+  }
+  function openInternalView(shell:Shell,target:string):boolean {
+    if(!['home','reminders','notifications'].includes(target)&&!isMvpView(target))return false;
+    const view=target==='reminders'?'calendar':target;
+    if(view!=='home'&&!views[view])return false;
+    if(view==='home')shell.goHome();else shell.openView(view);
+    return true;
   }
   function context(shell: Shell) {
     const s = shell.S();
@@ -207,7 +215,7 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
       originalSet.call(this,'notes',{list:[],storageStatus:'Saved notes need recovery. Original data retained.'});this.toast('Saved notes could not be opened. No new edits are allowed.');}});
     this.notesCommittedHandler=()=>{if(this.live&&this.notesStore&&!this.notesStorageFailed&&!this.notesPending){this.notesRaw=this.notesStore.raw;originalSet.call(this,'notes',{list:this.notesStore.list,storageStatus:isAndroid?'Note text encrypted on this device':''});context(this);}};
     window.addEventListener('alpha:notes-committed',this.notesCommittedHandler);
-    this.visibilityHandler = () => { if (this.live) context(this); };
+    this.visibilityHandler = () => { if(document.hidden)connectionController.cancelViewNavigation();if (this.live) context(this); };
     this.pageHideHandler = () => { notesRecovery?.abort();this.pageSuspended = true; if (this.live) context(this); };
     this.pageShowHandler = () => { this.pageSuspended = false; if (this.live) context(this); };
     document.addEventListener('visibilitychange', this.visibilityHandler);
@@ -219,10 +227,10 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
       const dialog = Array.from(document.querySelectorAll<HTMLDialogElement>('dialog[open]')).at(-1);
       if (dialog) { event.preventDefault(); event.stopImmediatePropagation(); if(dialog.dispatchEvent(new Event('cancel',{cancelable:true})))dialog.close(); return; }
       if (document.querySelector<HTMLElement>('.os')?.inert) return;
-      alphaClient.cancel(); this.back();
+      connectionController.cancelViewNavigation();alphaClient.cancel(); this.back();
     };
     window.addEventListener('alpha-back', this.backHandler);
-    this.homeHandler = () => { alphaClient.cancel(); this.goHome(); };
+    this.homeHandler = () => { connectionController.cancelViewNavigation();alphaClient.cancel(); this.goHome(); };
     window.addEventListener('launcher-home', this.homeHandler);
     this.selectionHandler = (event: CustomEvent) => { this.selectedContext = event.detail; context(this); };
     window.addEventListener('alpha-selected-context', this.selectionHandler);
@@ -307,6 +315,7 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
       const result=await DailyApps.reminderOperationReceipt({operation,operationId,bindingHash});signal.throwIfAborted();
       return result.status==='succeeded'?{status:'succeeded',reminderResult:isReminderCreate(operation)?validateReminderCreateResult(operation,result.result,operationId):validateReminderResult(operation,result.result)}:{status:'unknown'};
     });
+    connectionController.setNavigationContext(()=>this.live?alphaClient.getState().context:null);
     connectionController.setDeviceExecutor(async (operation, operationId, expectedContext, signal, bindingHash, workflowRoute, journalIdentity) => {
       signal.throwIfAborted(); context(this);
       if (!this.live || JSON.stringify(alphaClient.getState().context) !== JSON.stringify(expectedContext)) throw new Error('Phone context changed');
@@ -449,12 +458,8 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
         return { status: 'succeeded', summary: presentDeviceRecordOperation(operation,expectedContext.timeZone).appliedSummary };
       }
       if (operation.type === 'open_view') {
-        if (!['home','reminders','notifications'].includes(operation.view) && !isMvpView(operation.view)) return {status:'failed',summary:'This app is deferred from the MVP'};
-        // Navigation changes the view epoch; journal completion still runs after
-        // this synchronous effect even if the conversation cancels its wait.
-        const view = operation.view === 'reminders' ? 'calendar' : operation.view;
-        if (view !== 'home' && !views[view]) return { status: 'failed', summary: 'This view is unavailable.' };
-        if (view === 'home') this.goHome(); else this.openView(view);
+        // Navigation changes the view epoch; journal completion still runs after it.
+        if(!openInternalView(this,operation.view))return {status:'failed',summary:'This view is unavailable.'};
         return { status: 'succeeded', summary: `Opened ${operation.view} on this phone.` };
       }
       if (!this.browserNavigateApproved) return { status: 'failed', summary: 'Approved browser navigation is unavailable. No page opened.' };
@@ -465,6 +470,7 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
   };
   p.componentDidUpdate = function (prev: Shell) { originalUpdate.call(this, prev); context(this); sizeComposer();this.composerDraft?.edit(String(this.S().draft||'')); };
   p.componentWillUnmount = function () {
+    connectionController.cancelViewNavigation();
     this.pendingActionRecoveryAbort?.abort();this.pendingActionApproval?.abort();
     this.draftRecoveryAbort?.abort();this.composerDraft?.retire(false);this.draftBindingAbort?.abort();
     this.notesOpenAbort?.abort();if(activeShell===this){activeShell=null;notesRecovery?.abort();}
@@ -592,7 +598,7 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
       if(event.key==='Enter'&&!event.shiftKey&&!event.isComposing&&!event.nativeEvent?.isComposing&&event.keyCode!==229){event.preventDefault();void this.send();}
     };
     out.canStopReply=!!this.S().typing&&alphaClient.getState().pending;
-    out.stopReply=()=>alphaClient.cancel();
+    out.stopReply=()=>{connectionController.cancelViewNavigation();alphaClient.cancel();};
     if (isAndroid) {
       out.showStatus = false; out.showIndicator = false;
       const style = out.sbColor === '#ffffff' || out.sbColor === '#FFFFFF' ? SystemBarsStyle.Dark : SystemBarsStyle.Light;
@@ -622,6 +628,7 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
       if (alphaClient.getState().context.revision !== revision) throw new Error('The active screen changed. Please send your request again.');
       if(expectedSession&&(JSON.stringify(connectionController.getSnapshot().session)!==JSON.stringify(expectedSession)||document.hidden))throw new Error('Agent changed. Review this message again.');
       const sourceSession=connectionController.getSnapshot().session;
+      const navigation=connectionController.captureViewNavigation(alphaClient.getState().context);
       const reply = await alphaClient.send(text,value=>{
         if(!this.live)return;
         if(streamed)replaceStream(value);
@@ -631,6 +638,13 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
       if(streamed)replaceStream(reply.text,false);else this.agentSay(reply.text);
       if(sourceDraft&&sourceSession&&JSON.stringify(sourceSession)===JSON.stringify(connectionController.getSnapshot().session))this.agentSay('Review this answer before saving it with its source.',{type:'generic',icon:'note',title:'Review summary note',sub:sourceDraft.name,sourceSummary:{source:sourceDraft,text:reply.text,session:sourceSession}});
       for (const proposal of reply.proposals || []) this.agentSay(proposal.description, { type: 'generic', icon: 'check', title: 'Approve: ' + proposal.title, sub: 'Tap to approve this exact action', proposalId: proposal.id });
+      if(navigation&&reply.actionResults?.length){
+        try{const delivered=await navigation.client.deliver(reply.actionResults,navigation.attempt,(view,current)=>new Promise<boolean>((resolve,reject)=>{
+          try{current();if(!openInternalView(this,view)){resolve(false);return;}this.setState({},()=>{context(this);resolve(this.live&&(this.S().view||'home')===view);});}catch(error){reject(error);}
+        }));if(delivered.status==='delivered')this.toast(`Opened ${delivered.label}.`);else if(delivered.status==='unknown')this.toast('Could not confirm the screen change. Check your screen.');}
+        catch(error){if(this.live)this.toast(error instanceof AlphaClientError?error.message:'Could not confirm the screen change. Check your screen.');}
+      }
+
     } catch (e) { if (this.live) {const message=e instanceof Error?e.message:'The agent could not complete this request.';if(streamed)this.setState((previous:Shell)=>({msgs:previous.msgs.map((item:Shell)=>item.id===streamedId?{...item,streaming:false,interrupted:true,text:`${item.text}\n\nResponse interrupted. ${message}`} :item)}));else this.agentSay(message);} }
     finally { if (this.live) this.setState({ typing: false }); }
   };

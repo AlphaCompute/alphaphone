@@ -106,7 +106,7 @@ export class CloudProtocol {
   private phoneTarget: CloudPhoneTarget | null = null;
   setPhoneTarget(target: CloudPhoneTarget | null) { this.phoneTarget = target; }
   async phoneRequest(target: CloudPhoneTarget, path: string, signal: AbortSignal, body?: unknown): Promise<Record<string,unknown>> {
-    if (!/^\/api\/(?:client-devices|workflow|conversations)(?:\/|\?|$)/.test(path) || path.includes('..') || /[\\#\s]/.test(path)) throw new Error('Invalid phone route');
+    if (!(/^\/api\/(?:client-devices|workflow|conversations)(?:\/|\?|$)/.test(path)||/^\/api\/views\/interact-(claim|result)$/.test(path)) || path.includes('..') || /[\\#\s]/.test(path)) throw new Error('Invalid phone route');
     const credential = await this.credentials.read(this.environment); signal.throwIfAborted();
     if (!credential || credential.credentialId !== target.credentialId) throw new Error('Cloud account changed');
     const identity = await this.identity(signal);
@@ -344,6 +344,7 @@ export class CloudProtocol {
     if (typeof response.text !== "string" || typeof response.agentName !== "string") throw new CloudProtocolError("invalid-response");
     if (response.terminalFailure || response.failureKind) throw new CloudProtocolError("invalid-response");
     return { text: response.text, agentName: response.agentName,
+      ...(Array.isArray(response.actionResults)?{actionResults:response.actionResults}:{}),
       ...(response.interrupted === true ? { interrupted: true } : {}),
       ...(response.noResponseReason === "ignored" ? { noResponseReason: "ignored" as const } : {}) };
   }

@@ -59,6 +59,7 @@ export interface ActionProposal {
 }
 export interface AgentReply {
   text: string;
+  actionResults?: readonly unknown[];
   proposals?: ActionProposal[];
 }
 export interface OperationReceipt {
@@ -358,6 +359,7 @@ export class AlphaClient {
       this.proposals = next;
       return {
         text: result.text,
+        ...(Array.isArray(result.actionResults)?{actionResults:result.actionResults}:{}),
         proposals: [...next.values()].map((p) => ({ ...p })),
       };
     });

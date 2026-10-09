@@ -32,6 +32,11 @@ function matches(actual, expected) {
     Object.entries(expected).every(([file, digest]) => actual[file] === digest);
 }
 export const CLIENT_FEATURE_PATHS = [
+  'packages/core/src/events.ts',
+  'packages/core/src/i18n/language.ts',
+  'packages/core/src/views/view-interact-protocol.ts',
+  'packages/core/src/views/view-action-handoff.ts',
+  'packages/core/src/views/completed-action-navigation.ts',
   'packages/ui/src/platform/browser-document-store.ts',
   'packages/contracts/src/native-notes-query.ts',
   'plugins/plugin-assistant/src/services/device-actions/notes-query-result.ts',

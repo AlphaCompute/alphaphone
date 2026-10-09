@@ -1,3 +1,4 @@
+import {ViewNavigationClient} from './view-navigation';
 import {captureConversationChoice,selectConversation,conversationSelectionDocument} from './conversation-selection';
 import {developmentDigestDocument} from '../browser/development-digest-document';
 import {developmentExecutionDocument} from '../browser/development-execution-document';
@@ -53,7 +54,8 @@ export interface ConnectionSnapshot {
   kind: 'offline' | 'remote' | 'local' | 'resident' | 'cloud'; name: string;
   session: VerifiedSession | null; agents: CloudAgent[];
 }
-type Active = { kind: 'resident'; remote: LocalAgentProtocol; origin: string; actions?: DeviceActions; workflowProtocol?: 1|2; userTextFormatVersion?:1 } | { kind: 'remote' | 'local'; remote: RemoteProtocol; origin: string; actions?: DeviceActions; workflowProtocol?: 1|2 } | { kind: 'cloud'; cloud: CloudProtocol; agentId: string; actions?: DeviceActions; workflowProtocol?: 1|2; phoneTarget?: CloudPhoneTarget; voiceExpiresAt?: number };
+type DeviceRequest=(path:string,body:unknown|undefined,signal:AbortSignal)=>Promise<unknown>;
+type Active = ({ kind: 'resident'; remote: LocalAgentProtocol; origin: string; actions?: DeviceActions; workflowProtocol?: 1|2; userTextFormatVersion?:1 } | { kind: 'remote' | 'local'; remote: RemoteProtocol; origin: string; actions?: DeviceActions; workflowProtocol?: 1|2 } | { kind: 'cloud'; cloud: CloudProtocol; agentId: string; actions?: DeviceActions; workflowProtocol?: 1|2; phoneTarget?: CloudPhoneTarget; voiceExpiresAt?: number }) & { request?:DeviceRequest; viewNavigation?:ViewNavigationClient };
 const SELECTION = 'alpha.connection.selection.v1';
 // The development chooser exists only on an explicitly flagged development server.
 const browserDevProfile = devSurfacesEnabled && devProfileQuery;
@@ -69,6 +71,7 @@ let sending: AbortController | null = null;
 let developmentVoiceExpiresAt=0;
 const conversationMemory = new Map<string, string>();
 const actionReceipts = new Map<string, { sessionId: string; result: Promise<OperationReceipt> }>();
+let navigationContext:(()=>ContextEnvelope|null)|undefined;
 let deviceRecovery: DeviceRecovery | undefined;
 let deviceExecutor: DeviceExecutor = async () => ({ status: 'failed', summary: 'Device action executor is unavailable.' });
 const actionJournal = registerPlugin<ActionJournal>('AlphaActionJournal');
@@ -145,6 +148,7 @@ function retire(name = 'Offline') {
   const retirement=Promise.allSettled([state.session?pauseHostedBackground(state.session.sessionId):Promise.resolve(),retireClockReviews()]).then(results=>{const failed=results.find(result=>result.status==='rejected');if(failed?.status==='rejected')throw failed.reason;});
   void retirement.catch(()=>update({error:'Background delivery could not be retired. Reconnect to reset it.'}));
   if (active?.kind === 'cloud') { active.cloud.setPhoneTarget(null); if (state.session) void secureConnectionStore.remove(`cloud-runtime:${state.session.sessionId}`).catch(()=>{}); }
+  active?.viewNavigation?.dispose();
   actionReceipts.clear();
   conversationMemory.clear();
   epoch++;
@@ -205,6 +209,7 @@ async function work(message: string, action: (signal: AbortSignal) => Promise<vo
   finally { if (operation === controller) operation = null; update({ busy: false }); }
 }
 function activate(next: Active, session: VerifiedSession, name: string) {
+  active?.viewNavigation?.dispose();
   actionReceipts.clear();
   conversationMemory.clear();
   epoch++; sending?.abort(new DOMException('The connection changed.', 'AbortError')); sending = null; active = next;
@@ -234,6 +239,7 @@ async function connectRemote(kind: 'remote' | 'local', origin: string, code: str
   const verified = remote.session!;
   const session = { ownerId: verified.identityId, agentId: agent.id, sessionId: crypto.randomUUID(), origin: remote.origin };
   let actions: DeviceActions | undefined;
+  let deviceRequest:DeviceRequest|undefined;
   let reason = "";
   const workflowProtocol=await workflowPresentationProtocol(signal);
   try {
@@ -268,9 +274,10 @@ async function connectRemote(kind: 'remote' | 'local', origin: string, code: str
     deviceHeaders = headers;
     credential.capabilities=headers["X-Eliza-Device-Capabilities"].split(",");
     actions = new DeviceActions(session, credential, await actionScope(JSON.stringify([baseScope, credential.installationId])), request, actionJournal, (op, id, context, effectSignal, bindingHash, workflowRoute, journalIdentity) => deviceExecutor(op, id, context, effectSignal, bindingHash, workflowRoute, journalIdentity),(op,id,binding,signal)=>deviceRecovery?deviceRecovery(op,id,binding,signal):Promise.resolve({status:"unknown"}),headers["X-Eliza-Device-Capabilities"].split(",").includes("reminders.local-record.v2"),headers["X-Eliza-Device-Capabilities"].split(",").includes("reminders.create.v1"));
+    deviceRequest=request;
   } catch { signal.throwIfAborted(); reason = "Chat connected. Phone action enrollment was not confirmed. Reconnect to review its status."; }
   save({ kind, origin: remote.origin });
-  activate({ kind, remote, origin: remote.origin, actions, workflowProtocol }, session, agent.name);
+  activate({ kind, remote, origin: remote.origin, actions, workflowProtocol, request:deviceRequest }, session, agent.name);
   if (reason) update({phoneCapabilityReason: reason});
 
 }
@@ -302,6 +309,7 @@ async function connectResident(signal: AbortSignal) {
   const { session, name } = await client.connect(signal);
   signal.throwIfAborted();
   let actions:DeviceActions|undefined;
+  let deviceRequest:DeviceRequest|undefined;
   const workflowProtocol=await workflowPresentationProtocol(signal);
   let userTextFormatVersion:1|undefined;
   let reason='';
@@ -330,9 +338,10 @@ async function connectResident(signal: AbortSignal) {
     client.deviceHeaders=headers;
     credential.capabilities=headers["X-Eliza-Device-Capabilities"].split(",");
     actions=new DeviceActions(session,credential,await actionScope(JSON.stringify([baseScope,credential.installationId])),request,journal,(op,id,context,effectSignal,bindingHash,workflowRoute,journalIdentity)=>deviceExecutor(op,id,context,effectSignal,bindingHash,workflowRoute,journalIdentity),(op,id,binding,recoverySignal)=>deviceRecovery?deviceRecovery(op,id,binding,recoverySignal):Promise.resolve({status:'unknown'}),headers["X-Eliza-Device-Capabilities"].split(",").includes("reminders.local-record.v2"),headers["X-Eliza-Device-Capabilities"].split(",").includes("reminders.create.v1"));
+    deviceRequest=request;
   } catch(error) {signal.throwIfAborted();reason='Local chat connected. Device actions are unavailable: '+(error instanceof Error?error.message:'Enrollment failed.');}
   save({kind:'resident'});
-  activate({kind:'resident',remote:client,origin:client.origin,actions,workflowProtocol,...(userTextFormatVersion?{userTextFormatVersion}:{})},session,name);
+  activate({kind:'resident',remote:client,origin:client.origin,actions,workflowProtocol,request:deviceRequest,...(userTextFormatVersion?{userTextFormatVersion}:{})},session,name);
   if(reason)update({phoneCapabilityReason:reason});
   if(isAndroid && !testMocksEnabled)await restoreSavedResidentHistory(signal);
 }
@@ -389,6 +398,7 @@ async function connectCloud(agentId: string, signal: AbortSignal, expectedOwner?
     credential.enrollmentId=registered.enrollmentId; await secureConnectionStore.write(slot,credential); signal.throwIfAborted();
     credential.capabilities=target.headers["X-Eliza-Device-Capabilities"].split(",");
     next.actions=new DeviceActions(session,credential,await actionScope(JSON.stringify([baseScope,credential.installationId])),request,actionJournal,(op,id,context,effectSignal,bindingHash,workflowRoute,journalIdentity)=>deviceExecutor(op,id,context,effectSignal,bindingHash,workflowRoute,journalIdentity),(op,id,binding,signal)=>deviceRecovery?deviceRecovery(op,id,binding,signal):Promise.resolve({status:"unknown"}),target.headers["X-Eliza-Device-Capabilities"].split(",").includes("reminders.local-record.v2"),target.headers["X-Eliza-Device-Capabilities"].split(",").includes("reminders.create.v1"));
+    next.request=request;
     next.phoneTarget=target; next.voiceExpiresAt=Math.min(auth.expiresAt ?? Infinity,Date.now()+30*60*1000);
     await secureConnectionStore.write(`cloud-runtime:${session.sessionId}`,{environment:cloud.environment,credentialId:auth.credentialId,origin:session.origin,agentId,ownerId:session.ownerId,userId:identity.userId,organizationId:identity.organizationId,sessionId:session.sessionId,expiresAt:next.voiceExpiresAt});
     signal.throwIfAborted(); cloud.setPhoneTarget(target); reason=profileReason;
@@ -486,6 +496,12 @@ async function restoreSavedResidentHistory(signal:AbortSignal) {
   }
 }
 
+function boundNavigation():ViewNavigationClient|undefined {
+ const selected=active,session=state.session,generation=epoch;
+ if(!selected?.request||!session||!navigationContext)return undefined;
+ return selected.viewNavigation??=new ViewNavigationClient(selected.request,()=>active===selected&&state.session===session&&epoch===generation&&!state.open&&!state.busy,()=>navigationContext?.()??null);
+}
+
 /** Shared controller for the chat adapter. Snapshot contains no credentials.
  * subscribe/getSnapshot expose connection changes; send uses server-bound identity
  * and one persisted conversation per origin+owner+agent. It never executes proposals.
@@ -504,6 +520,9 @@ export const connectionController = {
     return JSON.stringify([session.origin,session.ownerId,session.agentId,conversationMemory.get(key)||null]);
   },
   setDeviceRecovery(recovery: DeviceRecovery) { deviceRecovery=recovery; },
+  cancelViewNavigation(){active?.viewNavigation?.cancel();},
+  setNavigationContext(read:()=>ContextEnvelope|null){navigationContext=read;},
+  captureViewNavigation(context:ContextEnvelope){const client=boundNavigation();return client?{client,attempt:client.capture(context)}:undefined;},
   setDeviceExecutor(executor: DeviceExecutor) { deviceExecutor = executor; },
   async execute(proposal: ActionProposal, context: ContextEnvelope, signal: AbortSignal): Promise<OperationReceipt> {
     const selected = active;
@@ -819,7 +838,7 @@ export const connectionController = {
     await work('Verifying and restoring conversation…',signal=>restoreConversationHistory(id,signal,false));
   },
   async retrySavedHistory(){if(sending)return;await work('Checking saved conversation…',signal=>restoreSavedResidentHistory(signal));},
-  async send(text: string, context: ContextEnvelope, requestId: string, signal: AbortSignal, onText?:(text:string)=>void): Promise<{ text: string; proposals?: ActionProposal[] }> {
+  async send(text: string, context: ContextEnvelope, requestId: string, signal: AbortSignal, onText?:(text:string)=>void): Promise<{ text: string; proposals?: ActionProposal[]; actionResults?:readonly unknown[] }> {
     if (operation) throw new Error('Finish the connection or history operation before sending.');
     const message = phoneContextMessage(text, context);
     if (sending) throw new Error('Wait for the current reply before sending another message.');
@@ -854,7 +873,7 @@ export const connectionController = {
       // history. Other hosts retain the existing envelope and legacy alias.
       const nativeProse=isAndroid&&selected.kind==='resident'&&selected.userTextFormatVersion===1;
       const wireText=nativeProse?text:message.text;
-      const options = { signal: requestSignal, clientMessageId: requestId, metadata: { ...(message.context.timeZone===undefined?{}:{uiTimeZone:message.context.timeZone}), clientDevice: { context: message.context }, ...(nativeProse?{userTextFormat:'plain-v1'}:{alphaPhone:{context:message.context}}) } };
+      const options = { signal: requestSignal, clientMessageId: requestId, metadata: { ...(message.context.timeZone===undefined?{}:{uiTimeZone:message.context.timeZone}), clientDevice: { context: message.context }, ...boundNavigation()?.metadata(context), ...(nativeProse?{userTextFormat:'plain-v1'}:{alphaPhone:{context:message.context}}) } };
       const progress=(value:string)=>{requestSignal.throwIfAborted();if(generation!==epoch||selected!==active||state.session?.sessionId!==session.sessionId)throw Error('The connection changed.');onText?.(value);};
       const reply = selected.kind === 'cloud' ? await selected.cloud.send(selected.agentId, id, wireText, options) : selected.kind==='resident'?await selected.remote.send(id,wireText,{...options,onText:progress}):await selected.remote.send(id, wireText, options);
       requestSignal.throwIfAborted();
@@ -881,7 +900,7 @@ export const connectionController = {
       if (responseFailure && !proposals?.length) throw responseFailure;
       return { text: responseFailure
         ? `${responseFailure.message} Pending phone actions are available for separate review. Nothing has been approved or performed automatically.`
-        : reply.text, ...(proposals ? { proposals } : {}) };
+        : reply.text, ...(proposals ? { proposals } : {}), ...(!responseFailure&&Array.isArray(reply.actionResults)?{actionResults:reply.actionResults}:{}) };
     } catch (error) {
       if (error && typeof error === 'object' && 'status' in error && error.status === 429) {
         throw new AlphaClientError('transport-failed', 'The agent provider is rate-limiting requests. Wait before sending again. Alpha Phone did not retry your message.');

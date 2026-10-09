@@ -384,7 +384,7 @@ public final class AlphaLocalAgentPlugin extends Plugin {
  }
  @PluginMethod public void request(PluginCall call) {
   String path=call.getString("path",""),method=call.getString("method","GET"),body=call.getString("body");
-  if(path.contains("..")||path.contains("%")||path.contains("\\")||!path.matches("^/api/(auth/me|agents|status|conversations(/[A-Za-z0-9_-]+(/messages)?)?|client-devices/[A-Za-z0-9_/-]+|workflow(/[A-Za-z0-9_/?=&-]+)?)$")||!(method.equals("GET")||method.equals("POST"))||(method.equals("GET")&&body!=null)||(body!=null&&body.length()>2*1024*1024)){
+  if((path.startsWith("/api/views/")&&!method.equals("POST"))||path.contains("..")||path.contains("%")||path.contains("\\")||!path.matches("^/api/(auth/me|agents|status|conversations(/[A-Za-z0-9_-]+(/messages)?)?|views/interact-(claim|result)|client-devices/[A-Za-z0-9_/-]+|workflow(/[A-Za-z0-9_/?=&-]+)?)$")||!(method.equals("GET")||method.equals("POST"))||(method.equals("GET")&&body!=null)||(body!=null&&body.length()>2*1024*1024)){
    call.reject("Unsupported local agent request.");return;
   }
   JSONObject headers=call.getObject("headers");
