@@ -24,7 +24,7 @@ test('chat handle captures an upward and downward drag outside its bounds', asyn
   const handle=page.getByRole('button',{name:'Resize chat',exact:true});
   await expect(handle).toBeVisible();
   const panel=page.locator('[data-alpha-layer=conversation]');
-  await expect.poll(()=>panel.evaluate(el=>parseFloat(getComputedStyle(el).height))).toBe(await page.evaluate(()=>{const h=document.querySelector<HTMLElement>('[data-screen]')!.clientHeight;return Math.min(h,Math.max(200,h-72),Math.max(200,Math.round(h*.46)));}));
+  await expect.poll(()=>panel.evaluate(el=>parseFloat(getComputedStyle(el).height))).toBe(await page.evaluate(()=>{const h=document.querySelector<HTMLElement>('[data-screen]')!.clientHeight;return Math.min(h,Math.max(200,h-72),Math.max(200,Math.round(h*.6)));}));
   let box=(await handle.boundingBox())!;
   await page.mouse.move(box.x+box.width/2,box.y+box.height/2);
   await page.mouse.down();
@@ -38,7 +38,7 @@ test('chat handle captures an upward and downward drag outside its bounds', asyn
   await page.mouse.move(box.x+box.width/2,box.y+220,{steps:12});
   await page.mouse.up();
   await expect(page.getByRole('button',{name:'Expand chat',exact:true})).toBeVisible();
-  await expect.poll(()=>panel.evaluate(el=>parseFloat(getComputedStyle(el).height))).toBe(await page.evaluate(()=>{const h=document.querySelector<HTMLElement>('[data-screen]')!.clientHeight;return Math.min(h,Math.max(200,h-72),Math.max(200,Math.round(h*.46)));}));
+  await expect.poll(()=>panel.evaluate(el=>parseFloat(getComputedStyle(el).height))).toBe(await page.evaluate(()=>{const h=document.querySelector<HTMLElement>('[data-screen]')!.clientHeight;return Math.min(h,Math.max(200,h-72),Math.max(200,Math.round(h*.6)));}));
 });
 
 

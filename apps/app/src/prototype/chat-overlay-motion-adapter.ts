@@ -3,7 +3,6 @@ import {
 	OVERLAY_EASE,
 } from "../../../../.eliza/client-features/packages/ui/src/components/shell/chat-overlay-motion.ts";
 import {
-	resolveChatPanelHalfDetentHeight,
 	resolveChatPanelLayout,
 } from "../../../../.eliza/client-features/packages/ui/src/components/shell/chat-panel-layout.ts";
 
@@ -57,7 +56,7 @@ export function installChatOverlayMotion(Component: Shell) {
 			full,
 			half: Math.min(
 				inset,
-				Math.max(200, resolveChatPanelHalfDetentHeight(viewportH, inset)),
+				Math.max(200, Math.round(viewportH * 0.6)),
 			),
 			scale: screen ? screen.getBoundingClientRect().height / viewportH : 1,
 		};
