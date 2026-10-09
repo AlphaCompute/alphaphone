@@ -8,7 +8,7 @@ for(const theme of ['light','dark'])test(`compact large text preserves Files car
  expect(await workflow.evaluate(el=>el.scrollWidth-el.clientWidth)).toBeLessThanOrEqual(1);expect(await workflow.getByText('Workflows',{exact:true}).evaluate(el=>{const range=document.createRange();range.selectNodeContents(el);return range.getClientRects().length;})).toBe(1);await page.screenshot({path:info.outputPath('home-workflow-large-text.png')});
  await workflow.focus();await page.keyboard.press('Enter');await expect(page.locator('html')).toHaveAttribute('data-active-view','workflows');
  await returnToApps(page);await page.getByRole('button',{name:'Files',exact:true}).click();
- const cards=page.getByRole('button',{name:/^(Downloads|Documents|Receipts|Recordings|Photos|Browser files|Import folder|Saved folder)$/});
+ const cards=page.getByRole('button',{name:/^(Downloads|Documents|Receipts|Recordings|Photos|App files|Import folder|Saved folder)$/});
  expect(await cards.count()).toBe(8);
  for(const card of await cards.all()){
   await card.scrollIntoViewIfNeeded();

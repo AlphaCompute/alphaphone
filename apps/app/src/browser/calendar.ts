@@ -13,7 +13,7 @@ type EventRow=CalendarRecord;
 type CreationReceipt={binding:string;result:{status:"saved";id:string;calendarId:string;creationId:string};acknowledged:boolean};
 type State={creations?:Record<string,CreationReceipt>;alertDismissed?:Record<string,number>;preferences?:{visible:boolean;color:'acc'|'fg'|'mut'};sourceRevision:string;events:EventRow[];receipts?:Record<string,{binding:string;result:CalendarResult}>};
 const initial=():State=>({sourceRevision:revision(),events:[]});
-const source={id:'local',name:'Browser calendar',account:'Alpha Phone',local:true,writable:true};
+const source={id:'local',name:'App calendar',account:'Alpha Phone',local:true,writable:true};
 const matches=(row:EventRow,expected:Partial<EventRow>|undefined)=>!!expected&&(!expected.revision||expected.revision===row.revision)&&(['title','body','location','begin','end'] as const).every(k=>row[k]===expected[k]);
 export class BrowserCalendar extends WebPlugin {
   private reviews=new BrowserReviews();

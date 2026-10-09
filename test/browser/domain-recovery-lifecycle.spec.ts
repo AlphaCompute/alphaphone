@@ -20,6 +20,6 @@ for(const name of ['calendar','reminders'] as const)for(const event of ['alpha:d
   await expect(page.getByRole('dialog',{name:'Recovery lifecycle'})).toHaveCount(0);
   // A retired read must not reopen its dialog or prevent another recovery session.
   await page.evaluate(async()=>{const {openCalendarRecovery}=await import('/src/browser/calendar-recovery.ts');openCalendarRecovery();});
-  await expect(page.getByRole('dialog',{name:'Browser calendar recovery'})).toBeVisible();
+  await expect(page.getByRole('dialog',{name:'App calendar recovery'})).toBeVisible();
  });
 }

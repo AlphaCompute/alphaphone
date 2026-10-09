@@ -117,7 +117,7 @@ export function installSettingsAdapter(Component: any, views: Bag) {
   async function disconnectGmail(account: GmailAccount) {
     const cloud = connectionController.getCloudClient(), instance = owner;
     if (!cloud || !account.connectionId || gmailBusy) return;
-    if (!window.confirm(`Disconnect ${account.label} from Alpha Phone?\n\nEliza Cloud deletes its stored Gmail access for this account and this phone stops reading it. No mail is deleted. Local drafts stay on this phone until you discard them.`)) return;
+    if (!window.confirm(`Disconnect ${account.label} from Alpha Phone?\n\nEliza Cloud deletes its stored Gmail access for this account and this app stops reading it. No mail is deleted. Local drafts stay in this app until you discard them.`)) return;
     gmailBusy = account.connectionId; gmailNotice = ''; changed();
     try {
       const result = await disconnectGmailAccount(cloud.client, account.connectionId, new AbortController().signal);
@@ -223,7 +223,7 @@ export function installSettingsAdapter(Component: any, views: Bag) {
       'Accounts': account ? 'Eliza Cloud connected' : 'Not signed in', 'Connections': gmail,
       'Battery': percent, 'Models': target, 'About': facts.appVersion || 'Unavailable',
       'Notifications': typeof delivery.appEnabled !== 'boolean' ? 'Unavailable' : !delivery.appEnabled || !delivery.permissionGranted ? 'App notifications off' : delivery.channels?.some((c:Bag)=>c.blocked||c.groupBlocked) ? 'Some channels blocked' : 'App notifications allowed',
-      'Sound & vibration': Capacitor.isNativePlatform()?'Android settings':'Browser device settings',
+      'Sound & vibration': Capacitor.isNativePlatform()?'Android settings':'App sound settings',
     };
     for (const page of out.stack) {
       if (page.isTop) {
@@ -360,7 +360,7 @@ export function installSettingsAdapter(Component: any, views: Bag) {
       } else if (page.title === 'Privacy & data') {
         const permissionLabels=new Set(['Microphone','Location','Camera','Contacts']);
         const permissionValue=(label:string)=>{
-          if(!Capacitor.isNativePlatform())return ({granted:'Granted in browser',prompt:'Ask when used',denied:'Blocked in browser',unknown:'Managed by browser'} as Bag)[facts.permissionStates?.[label]]??'Managed by browser';
+          if(!Capacitor.isNativePlatform())return ({granted:'Granted for this app',prompt:'Ask when used',denied:'Blocked by your system',unknown:'Managed by your system'} as Bag)[facts.permissionStates?.[label]]??'Managed by your system';
           if(typeof facts.permissions?.[label]!=='boolean')return 'Unavailable';
           if(label==='Location')return facts.locationAccess==='precise'?'Precise location allowed':facts.locationAccess==='approximate'?'Approximate location allowed':'Not allowed';
           return facts.permissions[label]?'Allowed for Alpha':'Not allowed';
@@ -392,7 +392,7 @@ export function installSettingsAdapter(Component: any, views: Bag) {
       for(const page of out.stack){
         if(page.title==='About')page.groups=[group([info('Alpha Phone',buildVersion),info('Runtime',devSurfacesEnabled?'Development preview':'Web app'),info('Agent execution',runtimeLocation),info('Agent',target),info('Inference model','Not reported by agent'),info('Storage','App storage')]),group([licensesRow()])];
       }
-      const browserLabels=(value:any):any=>{if(typeof value==='string')return value.replaceAll('Manage brightness in Android','Brightness').replaceAll('Manage sound in Android','Sound settings').replaceAll('Unavailable','Browser managed').replaceAll('Manage in Android','Browser device').replaceAll('in Android','in browser').replaceAll('Android settings','Browser device settings').replaceAll('Android Calendar','Browser calendar').replaceAll('Android device information','Browser device information').replaceAll('Android developer settings','Browser developer settings').replaceAll('Device accounts in Android','Browser accounts').replaceAll('On this phone','In this app').replaceAll('on this phone','in this app').replaceAll('Android access not granted','Development event access off').replaceAll('Waiting for Android listener','Waiting for local events').replaceAll('Selected apps connected','Selected development apps connected').replaceAll('Android battery policies may delay alerts','Alerts appear while Alpha is open').replaceAll('Native setting unavailable','Browser setting').replaceAll('Wi-Fi transport · network names stay in Android settings','Development network');if(Array.isArray(value))return value.map(browserLabels);if(value&&typeof value==='object')return Object.fromEntries(Object.entries(value).map(([k,v])=>[k,browserLabels(v)]));return value;};
+      const browserLabels=(value:any):any=>{if(typeof value==='string')return value.replaceAll('Manage brightness in Android','Brightness').replaceAll('Manage sound in Android','Sound settings').replace(/^Unavailable$/,'Managed by your system').replaceAll('Manage in Android','App settings').replaceAll('Device accounts in Android','System accounts').replaceAll('Wi-Fi transport · network names stay in Android settings','Network names stay in system settings').replaceAll('in Android','in system settings').replaceAll('Android settings','System settings').replaceAll('Android Calendar','App calendar').replaceAll('Android device information','System information').replaceAll('Android developer settings','App development settings').replaceAll('On this phone','In this app').replaceAll('on this phone','in this app').replaceAll('Android access not granted','Development event access off').replaceAll('Waiting for Android listener','Waiting for local events').replaceAll('Selected apps connected','Selected development apps connected').replaceAll('Android battery policies may delay alerts','Alerts appear while Alpha is open').replaceAll('Native setting unavailable','Managed by your system');if(Array.isArray(value))return value.map(browserLabels);if(value&&typeof value==='object')return Object.fromEntries(Object.entries(value).map(([k,v])=>[k,browserLabels(v)]));return value;};
       return browserLabels(out);
     }
     return out;

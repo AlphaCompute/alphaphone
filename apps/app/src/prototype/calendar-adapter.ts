@@ -59,7 +59,7 @@ export function installCalendarAdapter(Component: any, views: Bag) {
       currentOwner.nativeCalendarRows=result.events.map(mapEvent);
       await currentOwner.refreshReminders();
       if(request)currentOwner.calendarWriteUncertain=false;
-    }catch{if(owner===currentOwner&&token===generation){loadedKey='';loadFailed=true;status=Capacitor.isNativePlatform()?'Calendar range could not be loaded. Open device calendars to retry.':'Browser calendar could not be loaded. Retry or open Calendar recovery.';}}
+    }catch{if(owner===currentOwner&&token===generation){loadedKey='';loadFailed=true;status=Capacitor.isNativePlatform()?'Calendar range could not be loaded. Open device calendars to retry.':'App calendar could not be loaded. Retry or open Calendar recovery.';}}
     finally{if(runningToken===token){loading=false;if(token!==generation&&attemptedKey===range.key)attemptedKey='';}if(owner===currentOwner){currentOwner.vset('calendar',{nativeCalendarStatus:status});if(desired?.key!==attemptedKey)schedule();}}
   }
   // One presentation seam over the existing display sources/preferences. These

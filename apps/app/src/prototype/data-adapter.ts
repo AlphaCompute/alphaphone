@@ -39,7 +39,7 @@ export function installPrototypeDataAdapter(Component: any, views: Record<string
   let storageUsage={storageW:'0%',storageText:'App storage',storageBarStyle:'display:none'},storageActive=false,storagePending=false,storageEpoch=0;
   const filesLeave=views.files?.onLeave;
   if(browserDevProfile&&views.files)views.files.onLeave=(...args:any[])=>{storageActive=false;storagePending=false;storageEpoch++;return filesLeave?.(...args);};
-  const refreshStorage=async(api:Bag)=>{if(storagePending||!api.isActive()||document.hidden)return;storagePending=true;const epoch=storageEpoch;try{const usage=await browserStorageUsage();if(epoch===storageEpoch&&api.isActive()){storageUsage=usage;api.set({browserStorageRevision:Date.now()});}}catch{if(epoch===storageEpoch&&api.isActive()){storageUsage={storageW:'0%',storageText:'Open Browser files to refresh storage',storageBarStyle:'display:none'};api.set({browserStorageRevision:Date.now()});}}finally{if(epoch===storageEpoch)storagePending=false;}};
+  const refreshStorage=async(api:Bag)=>{if(storagePending||!api.isActive()||document.hidden)return;storagePending=true;const epoch=storageEpoch;try{const usage=await browserStorageUsage();if(epoch===storageEpoch&&api.isActive()){storageUsage=usage;api.set({browserStorageRevision:Date.now()});}}catch{if(epoch===storageEpoch&&api.isActive()){storageUsage={storageW:'0%',storageText:'Open App files to refresh storage',storageBarStyle:'display:none'};api.set({browserStorageRevision:Date.now()});}}finally{if(epoch===storageEpoch)storagePending=false;}};
   wrap('files', (out,_state,api) => {
     if(browserDevProfile&&api.isActive()&&!storageActive){storageActive=true;void refreshStorage(api);api.every(()=>void refreshStorage(api),2000);}
     return ({
