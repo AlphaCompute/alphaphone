@@ -157,7 +157,8 @@ function adapterRecoveryFixture() {
  const shell={live:true,S:()=>state,toast:text=>toasts.push(text),setState(update,complete){const patch=typeof update==='function'?update(state):update;if(patch)Object.assign(state,patch);complete?.();}};
  const box={Date:ClockDate,setTimeout:(fn,delay)=>{const id=++timerId;timers.set(id,{fn,at:now+delay});return id;},clearTimeout:id=>timers.delete(id),document,crypto,AbortController,alphaClient:{getState:()=>({context})},connectionController:{getSnapshot:()=>connection,pendingActions:async(c,signal)=>{calls.push({context:c,signal});return read(c,signal);}}};
  vm.runInNewContext(stripTypeScriptTypes(source.slice(start,end))+'\nglobalThis.recover=recoverPendingActions;',box);
- return {shell,state,calls,toasts,document,timers,advance:ms=>{now+=ms;for(const [id,timer] of [...timers])if(timer.at<=now){timers.delete(id);timer.fn();}},recover:()=>box.recover(shell),read:fn=>{read=fn;},context:patch=>{context={...context,...patch};},connection:patch=>{connection={...connection,...patch};}};
+ // Deadlines and advances share this clock, including time spent compiling the VM fixture.
+ return {shell,state,calls,toasts,document,timers,now:()=>now,advance:ms=>{now+=ms;for(const [id,timer] of [...timers])if(timer.at<=now){timers.delete(id);timer.fn();}},recover:()=>box.recover(shell),read:fn=>{read=fn;},context:patch=>{context={...context,...patch};},connection:patch=>{connection={...connection,...patch};}};
 }
 const flushRecovery=()=>new Promise(resolve=>setImmediate(resolve));
 test('adapter rehydrates existing cards once, dedupes restored proposals and preserves prose/draft',async()=>{
@@ -218,7 +219,7 @@ test('failed refresh preserves pending review and never invents rejection or com
  assert.equal(f.state.msgs[1],before);assert.equal(before.card.reviewUnavailable,undefined);assert.equal(f.toasts.length,1);assert.equal(f.timers.size,1);
 });
 test('one nearest expiry timer disables expired review without execution or repeated polling',async()=>{
- const f=adapterRecoveryFixture(),deadline=Date.now()+10000;
+ const f=adapterRecoveryFixture(),deadline=f.now()+10000;
  const proposals=[{...pendingReview,expiresAt:deadline},{...pendingReview,id:'later-review',expiresAt:deadline+20000}];
  f.read(async()=>proposals);f.recover();await flushRecovery();assert.equal(f.timers.size,1);
  f.read(async()=>[proposals[1]]);f.advance(10002);await flushRecovery();
@@ -227,7 +228,7 @@ test('one nearest expiry timer disables expired review without execution or repe
  f.recover();await flushRecovery();assert.equal(f.calls.length,2);
 });
 test('later known expiry still retires locally when the first expiry refresh fails offline',async()=>{
- const f=adapterRecoveryFixture(),deadline=Date.now()+10000;
+ const f=adapterRecoveryFixture(),deadline=f.now()+10000;
  f.read(async()=>[{...pendingReview,expiresAt:deadline},{...pendingReview,id:'later-review',expiresAt:deadline+20000}]);f.recover();await flushRecovery();
  f.read(async()=>{throw Error('Offline');});f.advance(10002);await flushRecovery();
  assert.equal(f.state.msgs[1].card.title,'Review expired');assert.equal(f.state.msgs[2].card.reviewUnavailable,undefined);assert.equal(f.calls.length,2);assert.equal(f.timers.size,1);assert.equal(f.toasts.length,1);
@@ -235,12 +236,12 @@ test('later known expiry still retires locally when the first expiry refresh fai
  assert.equal(f.state.msgs[2].card.title,'Review expired');assert.equal(f.state.msgs[2].card.reviewUnavailable,true);assert.equal(f.state.msgs[2].card.done,undefined);assert.equal(f.calls.length,2);assert.equal(f.timers.size,0);assert.equal(f.toasts.length,1);
 });
 for(const mode of ['session','context','hidden','unmount'])test(`expiry callback cannot alter cards after ${mode}`,async()=>{
- const f=adapterRecoveryFixture();f.read(async()=>[{...pendingReview,expiresAt:Date.now()+10000}]);f.recover();await flushRecovery();const before=f.state.msgs[1];
+ const f=adapterRecoveryFixture();f.read(async()=>[{...pendingReview,expiresAt:f.now()+10000}]);f.recover();await flushRecovery();const before=f.state.msgs[1];
  if(mode==='session')f.connection({session:{sessionId:'replacement'}});if(mode==='context')f.context({revision:10});if(mode==='hidden')f.document.hidden=true;if(mode==='unmount')f.shell.live=false;
  f.advance(10002);await flushRecovery();assert.equal(f.state.msgs[1],before);assert.equal(f.calls.length,1);
 });
 for(const mode of ['context','session'])test(`deferred expiry state update is discarded after ${mode} changes`,async()=>{
- const f=adapterRecoveryFixture();f.read(async()=>[{...pendingReview,expiresAt:Date.now()+10000}]);f.recover();await flushRecovery();const before=f.state.msgs[1];
+ const f=adapterRecoveryFixture();f.read(async()=>[{...pendingReview,expiresAt:f.now()+10000}]);f.recover();await flushRecovery();const before=f.state.msgs[1];
  let queued,completed;f.shell.setState=(update,complete)=>{queued=update;completed=complete;};f.advance(10002);assert.equal(typeof queued,'function');
  if(mode==='context')f.context({revision:10});else f.connection({session:{sessionId:'replacement'}});
  assert.equal(queued(f.state),null);completed();await flushRecovery();assert.equal(f.state.msgs[1],before);assert.equal(f.calls.length,1);
