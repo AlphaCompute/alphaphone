@@ -22,7 +22,7 @@ import { Capacitor } from '@capacitor/core';
 import { isMapsOperation } from '../runtime/maps-contract';
 import { readMapsSelection } from '../maps/agent-context';
 import {isReminderOperation,validateReminderResult} from '../../../../.eliza/client-features/plugins/plugin-assistant/src/services/device-actions/reminder-contract.ts';
-import { SecureNotesStore, readLegacyDailyNotes, notesDraftBase, applyNotesDraft, NotesStorageFull, SECURE_NOTES_SLOT, SECURE_NOTES_DRAFT_SLOT, type NotesDraft, type NotesDraftReason } from '../runtime/notes-secure-store';
+import { SecureNotesStore, readLegacyDailyNotes, notesDraftBase, applyNotesDraft, notesDraftConflicts, NotesStorageFull, SECURE_NOTES_SLOT, SECURE_NOTES_DRAFT_SLOT, type NotesDraft, type NotesDraftReason } from '../runtime/notes-secure-store';
 import { secureConnectionStore } from '../runtime/native-connection';
 import {NotesCommitUncertain,isStorageFull} from '../runtime/notes-store';
 import {isNotesOperation} from '../runtime/notes-contract';
@@ -122,7 +122,7 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
     const savedRaw=typeof shell.notesRaw==='string'?shell.notesRaw:'';
     shell.notesDraftTask=Promise.resolve(shell.notesDraftTask).then(async()=>{
       let saved:Shell[]=[];try{const parsed=JSON.parse(savedRaw).records;if(Array.isArray(parsed))saved=parsed;}catch{/* no saved collection */}
-      shell.notesDraftSaved=await SecureNotesStore.saveDraft(secureConnectionStore,{base:await notesDraftBase(savedRaw),reason,list:records,saved});
+      shell.notesDraftSaved=await SecureNotesStore.saveDraft(secureConnectionStore,{base:await notesDraftBase(savedRaw),reason,list:records,saved,own:shell.notesDraftSaved,kept:shell.notesDraftKept});
       notesDataset('notesDraftState','saved');
       if(shell.live&&shell.notesStorageFailed)originalSet.call(shell,'notes',{storageStatus:failedNotesStatus(shell,true)});
     }).catch(()=>{
@@ -136,10 +136,22 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
     try{draft=known??await SecureNotesStore.readDraft(secureConnectionStore);}
     catch{shell.notesDraftUnreadable=true;notesDataset('notesDraftState','unreadable');if(shell.live)originalSet.call(shell,'notes',{storageStatus:'An unsaved Notes draft could not be read. Open Notes recovery to download it.'});return;}
     shell.notesDraftDeferred=null;
+    // Until it is cleared, a later failed save merges this draft instead of replacing it.
+    shell.notesDraftKept=draft;
     if(!draft||!shell.live||!shell.notesStore||shell.notesStorageFailed||shell.notesPending)return;
-    const current=shell.notesStore.list,next=applyNotesDraft(current,draft);
+    const current=shell.notesStore.list,next=applyNotesDraft(current,draft),conflicts=notesDraftConflicts(current,draft);
+    // A note edited again since the draft was kept keeps its newer saved text; the draft stays
+    // encrypted on this device for export from Notes recovery instead of overwriting it.
+    const conflicted=()=>{
+      shell.notesDraftConflict=true;notesDataset('notesDraftState','conflict');
+      if(shell.live){originalSet.call(shell,'notes',{storageStatus:'Some unsaved changes from an earlier session conflict with newer edits. Your newer notes were kept. Open Notes recovery to download the older changes.'});context(shell);}
+    };
     // An uncertain commit that did complete leaves nothing to apply.
-    if(JSON.stringify(next)===JSON.stringify(current)){await SecureNotesStore.clearDraft(secureConnectionStore,draft).catch(()=>false);notesDataset('notesDraftState','none');return;}
+    if(JSON.stringify(next)===JSON.stringify(current)){
+      if(conflicts.length){conflicted();return;}
+      if(await SecureNotesStore.clearDraft(secureConnectionStore,draft).catch(()=>false))shell.notesDraftKept=null;
+      notesDataset('notesDraftState','none');return;
+    }
     // Retrying a full collection before anything was freed would fail again and lock editing.
     if(draft.reason==='storage-full'&&draft.base===await notesDraftBase(shell.notesStore.raw)){
       shell.notesDraftDeferred=draft;notesDataset('notesDraftState','deferred');
@@ -147,7 +159,8 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
     }
     notesDataset('notesDraftState','resuming');
     if(await shell.vset('notes',{list:next},{exact:true})!==true)return;// A new draft was kept by the failed save.
-    await SecureNotesStore.clearDraft(secureConnectionStore,draft).catch(()=>false);
+    if(conflicts.length){conflicted();if(shell.live)shell.toast('Recovered some unsaved Notes changes. Others conflict with newer edits.');return;}
+    if(await SecureNotesStore.clearDraft(secureConnectionStore,draft).catch(()=>false))shell.notesDraftKept=null;
     notesDataset('notesDraftState','resumed');
     if(shell.live){originalSet.call(shell,'notes',{storageStatus:'Recovered unsaved changes from your last session and saved them on this device.'});shell.toast('Recovered unsaved Notes changes.');}
   }
@@ -169,6 +182,8 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
         if(value===null)throw Error(collection?'No saved Notes collection to reset.':'No unsaved Notes draft to clear.');
         if((await secureConnectionStore.compareExchangeRaw(slot,value,null)).status!=='saved')throw Error('Saved Notes changed. Close recovery and review again.');
         captures.delete(snapshot!);
+        // A cleared draft is no longer kept, merged or offered for recovery.
+        if(!collection){shell.notesDraftKept=null;shell.notesDraftSaved=null;shell.notesDraftDeferred=null;shell.notesDraftConflict=false;shell.notesDraftUnreadable=false;notesDataset('notesDraftState','none');}
       },
     },collection?'Notes':'Notes draft',collection?'Notes recovery':'Unsaved Notes recovery',collection
       ?'Download the encrypted Notes collection and any unsaved draft before resetting. Reset clears only the damaged Notes collection on this device so Notes can open again; the unsaved draft, recordings and Trash are kept.'
@@ -302,7 +317,8 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
       document.documentElement.dataset.notesStorageState='ready';
       this.notesStorageFailed=false;this.notesRaw=this.notesStore.raw;
       originalSet.call(this,'notes',{list:this.notesStore.list,storageStatus:isAndroid?'Note text encrypted on this device':''});context(this);
-      if(isAndroid)await resumeNotesDraft(this);
+      // A draft problem never marks the opened collection as failed.
+      if(isAndroid)await resumeNotesDraft(this).catch(()=>{notesDataset('notesDraftState','failed');});
     })().catch((error)=>{if(this.live){this.notesOpenFailed=true;
       // Fixed diagnostic categories only: never expose parser/native error text or saved content.
       const categories:Record<string,string>={
@@ -766,7 +782,12 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
         const result = await elizaSystem.setFlashlight({ enabled: this.flashlightOn !== true });
         if (!result?.available) { this.flashlightAvailable = false; this.flashlightOn = undefined; this.toast('This phone has no flashlight Alpha can control.'); }
         else this.flashlightOn = result.enabled === true;
-      } catch { this.flashlightOn = undefined; this.toast('The flashlight state could not be confirmed.'); }
+      } catch (error) {
+        this.flashlightOn = undefined;
+        // ElizaSystem refuses definitively when the phone has no controllable flashlight: hide the tile.
+        if (/does not have an available flashlight|requires Android 6/.test(error instanceof Error ? error.message : '')) { this.flashlightAvailable = false; this.toast('This phone has no flashlight Alpha can control.'); }
+        else this.toast('The flashlight state could not be confirmed.');
+      }
       if (this.live) this.setState((previous: Shell) => ({ q: { ...previous.q, tileFacts: { ...(previous.q?.tileFacts || {}), torch: this.flashlightOn } } }));
       if (this.flashlightOn === undefined && this.live) this.setState((previous: Shell) => { const tileFacts = { ...(previous.q?.tileFacts || {}) }; delete tileFacts.torch; return { q: { ...previous.q, tileFacts } }; });
       return;
@@ -934,7 +955,7 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
     out.storageStatus=state.storageStatus;
     const failed=Boolean((activeShell?.notesStorageFailed&&document.documentElement.dataset.notesStorageState!=='opening')||activeShell?.notesStore?.needsRecovery);
     // Android offers the same export and reset for a damaged collection, a kept draft or a full store.
-    out.browserRecovery=isAndroid?Boolean(failed||activeShell?.notesDraftUnreadable||activeShell?.notesDraftDeferred):Boolean(failed||state.audioDeletionRecoveryFailed||state.audioDeletionPending?.length);
+    out.browserRecovery=isAndroid?Boolean(failed||activeShell?.notesDraftUnreadable||activeShell?.notesDraftDeferred||activeShell?.notesDraftConflict):Boolean(failed||state.audioDeletionRecoveryFailed||state.audioDeletionPending?.length);
     out.openBrowserRecovery=()=>{const shell=activeShell;if(!shell||shell.notesPending)return;notesRecovery?.abort();const controller=notesRecovery=new AbortController();if(isAndroid){openNativeNotesRecovery(shell,controller.signal);return;}openDomainRecovery({capture:async signal=>{const draft=JSON.stringify({...JSON.parse(shell.notesStore?.raw||'{}'),records:shell.vget('notes').list});const saved=await browserNotesRecovery.capture(signal);return {...saved,raw:JSON.stringify({saved:saved.raw,draft})};},reset:browserNotesRecovery.reset},'Notes','Browser Notes recovery','Download saved Notes and the current editor draft before resetting. Reset starts an empty collection; it does not delete audio files or resolve pending audio deletion. Close other Alpha tabs before continuing.',controller.signal);};
     out.openAudioRecovery=async()=>{const shell=activeShell;if(!shell)return;notesRecovery?.abort();const controller=notesRecovery=new AbortController();try{const recovery=await audioDeletionRecovery();if(controller.signal.aborted||activeShell!==shell||!shell.live||shell.S().view!=='notes')return;openDomainRecovery(recovery,'note audio deletion history','Note audio deletion recovery','Download unresolved note/audio deletion records before resetting. Reset forgets recovery records, but does not delete or restore Notes or audio. Check uncertain outcomes before repeating any deletion. Close other Alpha tabs before continuing.',controller.signal);}catch{if(!controller.signal.aborted)api.toast('Audio deletion recovery could not be opened.');}};
     const dictate = async () => {

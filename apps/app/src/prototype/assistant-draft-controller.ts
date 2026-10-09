@@ -76,16 +76,21 @@ export class AssistantDraftController {
  /** Dispatch was accepted (or may have been): clear the durable copy of the sent text only. */
  async commit(){
   const held=this.held;if(!held)return;this.held=undefined;
-  const b=held.binding,current=this.active===b;
+  const b=held.binding;
   if(!b.ready||b.failed)return;
-  await b.queue;
-  const remaining=current?this.text():'';
-  try{
-   b.record=await b.store!.save(b.record,remaining);if(current){b.last=remaining;if(remaining)this.publish({message:'Draft saved locally.'});}
-   // A reopened binding for the same conversation shares this receipt.
-   const peer=held.peer;if(peer&&this.active===peer&&!peer.failed){peer.record=b.record;}
-  }
-  catch{b.failed=true;if(this.active===b){this.publish({opening:false,conflict:false,error:true,message:'Message sent, but its saved draft could not be cleared. Review it before sending again.'});}}
+  // Serialized with this binding's draft writes: typing that resumes as the reply arrives is
+  // queued after this clear instead of racing it with the same expected record.
+  const task=b.queue.then(async()=>{
+   if(b.failed)return;
+   const current=this.active===b,remaining=current?this.text():'';
+   try{
+    b.record=await b.store!.save(b.record,remaining);if(current){b.last=remaining;if(remaining)this.publish({message:'Draft saved locally.'});}
+    // A reopened binding for the same conversation shares this receipt.
+    const peer=held.peer;if(peer&&this.active===peer&&!peer.failed){peer.record=b.record;}
+   }
+   catch{b.failed=true;if(this.active===b){this.publish({opening:false,conflict:false,error:true,message:'Message sent, but its saved draft could not be cleared. Review it before sending again.'});}}
+  });
+  b.queue=task;await task;
  }
  async consume(expectedText:string,current:()=>boolean=()=>true){
   const b=this.active;if(!b?.ready||b.failed||this.state.consuming)throw Error('Review local draft storage before sending.');

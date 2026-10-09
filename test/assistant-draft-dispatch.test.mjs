@@ -38,3 +38,9 @@ test('a connection change before dispatch keeps the text saved with its conversa
  f.c.retire();f.set('');f.c.release();
  assert.equal(f.get(),'Unsent words');assert.equal(f.saved().text,'Unsent words');assert.match(f.c.state.message,/back in the composer/);
 });
+test('typing as the reply arrives is queued after the commit, never racing it into a conflict',async()=>{
+ const f=fixture();f.external('Sent text');await f.c.open('one');await f.c.hold('Sent text');f.set('');await tick();
+ const committing=f.c.commit();f.set('Typed during commit');await committing;await tick();await tick();
+ assert.equal(f.c.state.conflict,false);assert.equal(f.c.state.error,false);
+ assert.equal(f.saved().text,'Typed during commit');assert.equal(f.get(),'Typed during commit');
+});
