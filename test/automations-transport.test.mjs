@@ -3,14 +3,24 @@ import assert from 'node:assert/strict';
 import {readFile,mkdtemp,writeFile,rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
-import {execFileSync} from 'node:child_process';
+import {execFileSync,spawnSync} from 'node:child_process';
 import {createServer} from 'node:http';
 import vm from 'node:vm';
 import {stripTypeScriptTypes} from 'node:module';
-import {automationsRouteAllowed} from '../apps/app/src/runtime/automations-route-policy.ts';
-import {CloudProtocol} from '../apps/app/src/runtime/cloud-protocol.ts';
-import {LocalAgentProtocol} from '../apps/app/src/runtime/local-agent.ts';
-import {createLocalAgentDevHandler} from '../scripts/local-agent-dev-bridge.ts';
+
+
+
+
+// The normal package command is plain node --test; production TS includes parameter properties.
+if(!process.execArgv.some((arg,index)=>arg==='--import'&&process.execArgv[index+1]==='tsx')){
+ const child=spawnSync(process.execPath,['--import','tsx',process.argv[1]],{stdio:'inherit',timeout:60000});
+ if(child.error)throw child.error;
+ process.exit(child.status??1);
+}
+const {automationsRouteAllowed}=await import('../apps/app/src/runtime/automations-route-policy.ts');
+const {CloudProtocol}=await import('../apps/app/src/runtime/cloud-protocol.ts');
+const {LocalAgentProtocol}=await import('../apps/app/src/runtime/local-agent.ts');
+const {createLocalAgentDevHandler}=await import('../scripts/local-agent-dev-bridge.ts');
 const owner='11111111-1111-4111-8111-111111111111',org='22222222-2222-4222-8222-222222222222',agent='33333333-3333-4333-8333-333333333333';
 const valid=[['GET','/api/automations'],['GET','/api/lifeops/reminders'],['GET','/api/lifeops/scheduled-tasks?ownerVisibleOnly=1'],['GET','/api/lifeops/scheduled-tasks/task:one.2'],['POST','/api/lifeops/definitions'],['PUT','/api/lifeops/definitions/reminder-1'],['POST','/api/lifeops/occurrences/occurrence-1/snooze'],['POST','/api/triggers'],['GET','/api/triggers/prompt-1'],['GET','/api/triggers/prompt-1/runs'],['PUT','/api/triggers/prompt-1'],['DELETE','/api/triggers/prompt-1'],['POST','/api/triggers/prompt-1/execute'],...['snooze','skip','complete','dismiss','escalate','acknowledge','edit','reopen','fire'].map(a=>['POST',`/api/lifeops/scheduled-tasks/task-1/${a}`])];
 const invalid=[['PUT','/api/config'],['DELETE','/api/workflow/workflows/id'],['POST','/api/automations'],['GET','/api/triggers'],['GET','/api/lifeops/scheduled-tasks'],['GET','/api/lifeops/scheduled-tasks?ownerVisibleOnly=0'],['GET','/api/lifeops/scheduled-tasks?ownerVisibleOnly=1&ownerId=other'],['POST','/api/lifeops/scheduled-tasks/id/unknown'],['DELETE','/api/lifeops/definitions/id'],['PATCH','/api/triggers/id'],['GET','https://other/api/automations'],['GET','/api/triggers/%2e%2e'],['GET','/api/triggers/id%2fruns'],['GET','/api/triggers/a..b'],['GET','/api/triggers/id?other=1'],['GET','/api/triggers/id#fragment'],['GET','/api/triggers/id\n'],['GET','/api/triggers/id\\runs'],['GET','/api/triggers/.id'],['GET','/api/triggers/'+ 'a'.repeat(201)]];
