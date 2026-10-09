@@ -70,7 +70,7 @@ public class NativeAuthFlow {
 });
 
 
-test('actual native navigation admission requires a nonblank owner before lifecycle enqueue',()=>{
+test('actual native navigation and edit admission require a nonblank owner before lifecycle enqueue',()=>{
  const source=fs.readFileSync(path.join(root,'android/app/src/main/java/ai/elizaresearch/alphaphone/AlphaLocalAgentPlugin.java'),'utf8');
  const start=source.indexOf('public void request(PluginCall call) {');
  const admission=source.slice(start,source.indexOf('  JSONObject headers=call.getObject("headers");',start));
@@ -92,18 +92,18 @@ public class NavigationAdmission {
  static void check(boolean value){if(!value)throw new AssertionError();}
  public static void main(String[] args){
   NavigationAdmission host=new NavigationAdmission();
-  for(String route:new String[]{"/api/views/interact-claim","/api/views/interact-result"}){
+  for(String route:new String[]{"/api/views/interact-claim","/api/views/interact-result","/api/conversations/owned-room/messages/truncate"}){
    for(Object owner:new Object[]{null,"","  ",42}){PluginCall call=new PluginCall(route,"POST",owner);int before=host.admitted;host.request(call);check(call.rejected==1&&host.admitted==before);}
    for(String method:new String[]{"GET","DELETE"}){PluginCall call=new PluginCall(route,method,"owner");int before=host.admitted;host.request(call);check(call.rejected==1&&host.admitted==before);}
    PluginCall call=new PluginCall(route,"POST","owner");int before=host.admitted;host.request(call);check(call.rejected==0&&host.admitted==before+1);
   }
   for(String route:new String[]{"/api/views/interact","/api/views/interact-claim?x=1","/api/views/interact-result/extra"}){PluginCall call=new PluginCall(route,"POST","owner");int before=host.admitted;host.request(call);check(call.rejected==1&&host.admitted==before);}
   PluginCall bootstrap=new PluginCall("/api/auth/me","GET",null);int before=host.admitted;host.request(bootstrap);check(bootstrap.rejected==0&&host.admitted==before+1);
-  System.out.println("PASS actual native navigation admission owner, method, closed routes and legacy bootstrap");
+  System.out.println("PASS actual native navigation and edit admission owner, method, closed routes and legacy bootstrap");
  }
 }`);
   const java=process.env.JAVA_HOME||(process.platform==='darwin'?'/opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home':'');const binary=name=>java?path.join(java,'bin',name):name;
   execFileSync(binary('javac'),['--release','8','-d',fixture,path.join(fixture,'NavigationAdmission.java')],{timeout:20000});
-  assert.match(execFileSync(binary('java'),['-cp',fixture,'NavigationAdmission'],{encoding:'utf8',timeout:20000}),/^PASS actual native navigation admission/);
+  assert.match(execFileSync(binary('java'),['-cp',fixture,'NavigationAdmission'],{encoding:'utf8',timeout:20000}),/^PASS actual native navigation and edit admission/);
  }finally{fs.rmSync(fixture,{recursive:true,force:true});}
 });

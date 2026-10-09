@@ -79,14 +79,12 @@ export function installPrototypeDataAdapter(Component: any, views: Record<string
       .filter((item: Bag) => Number.isFinite(item.begin) && Number.isFinite(item.end) && (item.event.nativeEvent?.allDay?item.end>now:item.end>=now))
       .sort((a: Bag, b: Bag) => a.begin - b.begin)[0];
     const day = agenda ? new Date(agenda.begin) : null;
-    const time = day ? (agenda.begin <= now ? (agenda.event.nativeEvent?.allDay?'All day':'Now') : day.toDateString() === new Date(now).toDateString()
-      ? day.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
-      : day.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' })) : 'Calendar';
+    const dateLabel = (day || new Date(now)).toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' });
     return {
       ...out, shadeN: [], lockSum: [], showHeads: false,
       sugg: suggestions.map(label => ({ label, go: () => this.send(label) })),
       homeCalendarLabel: agenda ? `Open calendar event: ${agenda.event.title}` : 'Open your calendar',
-      homeCalendarTime: time, homeCalendarTitle: agenda?.event.title || (this.vget('calendar').nativeCalendarStatus === 'Device calendars connected' ? 'No upcoming events' : 'See your events'),
+      homeCalendarTime: dateLabel, homeCalendarTitle: agenda?.event.title || (this.vget('calendar').nativeCalendarStatus === 'Device calendars connected' ? 'No upcoming events' : 'See your events'),
       homeAttentionLabel: browserDevProfile?'Open Inbox: '+unread+' unread email'+(unread===1?'':'s'):'Accounts are not connected', homeAttentionCount: browserDevProfile?String(unread):'—',
       homeAttentionPeople: [],
       homeWorkflowLabel: 'Open workflows', homeWorkflowTitle: 'Workflows', homeWorkflowTime: 'Routines and automations', homePeopleVisibility: 'hidden',
