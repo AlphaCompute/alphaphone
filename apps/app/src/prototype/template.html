@@ -1087,16 +1087,18 @@
 <sc-if value="{{is.browser}}" hint-placeholder-val="{{false}}">
 <div onFocusCapture="{{browser.captureSubviewFocus}}" ref="{{browser.rootRef}}" style="display: flex; flex-direction: column; height: 100%; position: relative">
   <div data-alpha-subview="browser-list" inert="{{browser.listCovered}}" aria-hidden="{{browser.listCovered}}" style="display:flex;flex-direction:column;flex:1;min-height:0">
-  <div data-alpha-app-header="main" style="flex-shrink: 0; display: flex; align-items: center; gap: 2px; height: 56px; margin-top: 44px; padding: 0 6px; position: relative; z-index: 3; background: var(--bg)">
+  <div data-alpha-app-header="main" data-alpha-browser-header style="flex-shrink: 0; display: flex; align-items: center; gap: 2px; height: 56px; margin-top: 44px; padding: 0 6px; position: relative; z-index: 3; background: var(--bg)">
     <sc-if value="{{showAppBack}}"><button class="app-header-back" aria-label="Back to apps" onClick="{{backToApps}}"><svg class="i" viewBox="0 0 24 24"><path d="{{ic.back}}"></path></svg></button></sc-if>
     <sc-if value="{{browser.notEditing}}" hint-placeholder-val="{{true}}">
-      <button class="ib" aria-label="Previous page" onClick="{{browser.goBack}}" style="width: 40px; opacity: {{browser.backOp}}"><svg class="i" viewBox="0 0 24 24" style="width: 20px; height: 20px"><path d="{{ic.back}}"></path></svg></button>
-      <button class="ib" aria-label="Next page" onClick="{{browser.goFwd}}" style="width: 40px; opacity: {{browser.fwdOp}}"><svg class="i" viewBox="0 0 24 24" style="width: 20px; height: 20px"><path d="{{ic.right}}"></path></svg></button>
       <button aria-label="Edit address" onClick="{{browser.startEdit}}" style="flex-grow: 1; min-width: 0; height: 44px; border-radius: 22px; background: var(--s2); display: flex; align-items: center; gap: 0; padding: 0 14px; font-size: 14px; margin: 0 2px">
         <sc-if value="{{browser.isPrivate}}" hint-placeholder-val="{{false}}"><span role="img" aria-label="Private tab" style="flex-shrink: 0; margin-right: 8px; padding: 2px 8px; border-radius: 10px; background: var(--fg); color: var(--bg); font-size: 11.5px; font-weight: 700; letter-spacing: .02em">Private</span></sc-if>
         <sc-if value="{{browser.hasLock}}" hint-placeholder-val="{{true}}"><svg role="img" aria-label="Secure connection" class="i" viewBox="0 0 24 24" style="width: 13px; height: 13px; color: var(--mut); margin-right: 6px"><path d="{{ic.lock}}"></path></svg></sc-if>
         <span style="min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; {{browser.hostCss}}">{{browser.host}}</span><span style="color: var(--mut); white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{browser.path}}</span>
       </button>
+      <div class="browser-page-controls" role="group" aria-label="Page navigation">
+      <button class="ib" aria-label="Previous page" onClick="{{browser.goBack}}" style="width: 40px; opacity: {{browser.backOp}}"><svg class="i" viewBox="0 0 24 24" style="width: 20px; height: 20px"><path d="{{ic.back}}"></path></svg></button>
+      <button class="ib" aria-label="Next page" onClick="{{browser.goFwd}}" style="width: 40px; opacity: {{browser.fwdOp}}"><svg class="i" viewBox="0 0 24 24" style="width: 20px; height: 20px"><path d="{{ic.right}}"></path></svg></button>
+      </div>
       <button class="ib" aria-label="Tabs" onClick="{{browser.openTabs}}"><span style="min-width: 21px; height: 21px; border: 1.6px solid currentColor; border-radius: 7px; font-size: 11.5px; font-weight: 700; display: flex; align-items: center; justify-content: center; padding: 0 3px; box-sizing: border-box">{{browser.nTabs}}</span></button>
       <button class="ib" aria-label="Menu" onClick="{{browser.toggleMenu}}"><svg class="i" viewBox="0 0 24 24" style="stroke-width: 3"><path d="{{ic.more}}"></path></svg></button>
     </sc-if>
