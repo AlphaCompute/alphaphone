@@ -5,21 +5,23 @@ import {tmpdir} from 'node:os';
 import {join,resolve} from 'node:path';
 import {spawnSync,execFileSync} from 'node:child_process';
 
-function launch({route,override,swaps,existingToken=true,runtimeConfigUpdate=false}={}) {
+function launch({route,override,swaps,existingToken=true,runtimeConfigUpdate=false,repeat=false}={}) {
  const dir=mkdtempSync(join(tmpdir(),'alpha-model-')),profile=join(dir,'profile'),source=join(dir,'source'),receipt=join(dir,'models.json'),childReceipt=join(dir,'child.json'),bun=join(dir,'fake-bun');
  mkdirSync(profile);mkdirSync(join(source,'packages/app/src/runtime'),{recursive:true});writeFileSync(join(source,'packages/app/src/runtime/dev-server.ts'),'');
  execFileSync('git',['init','-q',source]);execFileSync('git',['-C',source,'-c','user.name=Fixture','-c','user.email=fixture@example.invalid','commit','--allow-empty','-qm','fixture']);
- writeFileSync(bun,`#!/usr/bin/env node\nconst fs=require('node:fs');fs.writeFileSync(${JSON.stringify(childReceipt)},JSON.stringify({pid:process.pid,token:process.env.ELIZA_API_TOKEN,nativeViews:JSON.parse(process.env.ELIZA_NATIVE_VIEW_DECLARATIONS),swaps:{secret:process.env.ELIZA_SECRET_SWAP_ENABLED??null,pii:process.env.ELIZA_PII_SWAP_ENABLED??null},config:JSON.parse(fs.readFileSync(process.env.ELIZA_CONFIG_PATH,'utf8'))}));fs.writeFileSync(${JSON.stringify(receipt)},JSON.stringify(Object.fromEntries(['CEREBRAS_MODEL','CEREBRAS_SMALL_MODEL','CEREBRAS_LARGE_MODEL'].map(k=>[k,process.env[k]]))));${runtimeConfigUpdate?"fs.writeFileSync(process.env.ELIZA_CONFIG_PATH,JSON.stringify({...JSON.parse(fs.readFileSync(process.env.ELIZA_CONFIG_PATH,'utf8')),runtimeSelection:'retained'}));":''}`,{mode:0o700});
+ writeFileSync(bun,`#!/usr/bin/env node\nconst fs=require('node:fs');fs.writeFileSync(${JSON.stringify(childReceipt)},JSON.stringify({pid:process.pid,hostRevision:process.env.ELIZA_HOST_CONTEXT_REVISION,token:process.env.ELIZA_API_TOKEN,nativeViews:JSON.parse(process.env.ELIZA_NATIVE_VIEW_DECLARATIONS),swaps:{secret:process.env.ELIZA_SECRET_SWAP_ENABLED??null,pii:process.env.ELIZA_PII_SWAP_ENABLED??null},config:JSON.parse(fs.readFileSync(process.env.ELIZA_CONFIG_PATH,'utf8'))}));fs.writeFileSync(${JSON.stringify(receipt)},JSON.stringify(Object.fromEntries(['CEREBRAS_MODEL','CEREBRAS_SMALL_MODEL','CEREBRAS_LARGE_MODEL'].map(k=>[k,process.env[k]]))));${runtimeConfigUpdate?"fs.writeFileSync(process.env.ELIZA_CONFIG_PATH,JSON.stringify({...JSON.parse(fs.readFileSync(process.env.ELIZA_CONFIG_PATH,'utf8')),runtimeSelection:'retained'}));":''}`,{mode:0o700});
  const tokenPath=join(profile,'owner-token'),retainedToken='a'.repeat(64);if(existingToken)writeFileSync(tokenPath,retainedToken,{mode:0o600});
  const config=join(profile,'eliza.json');if(route)writeFileSync(config,JSON.stringify({serviceRouting:{llmText:route},fixtureKeep:'preserve'}),{mode:0o600});
  const before=existsSync(config)?readFileSync(config,'utf8'):null;
  let ownedLivePid;
  const env={...process.env,ALPHA_LOCAL_ASR:'off',ALPHA_LOCAL_TTS:'off',ALPHA_ELIZA_SOURCE:source,ALPHA_REMOTE_PROFILE:profile,ALPHA_REMOTE_PORT:'47999',ALPHA_BUN:bun,CEREBRAS_API_KEY:'synthetic-fixture-key'};for(const key of ['ELIZA_SECRET_SWAP_ENABLED','ELIZA_PII_SWAP_ENABLED','CEREBRAS_MODEL'])delete env[key];Object.assign(env,swaps||{});if(override!==undefined)env.CEREBRAS_MODEL=override;
  try {
-  const result=spawnSync(process.execPath,[resolve('scripts/start-local-remote.mjs')],{env,encoding:'utf8',timeout:15000});
+  let result=spawnSync(process.execPath,[resolve('scripts/start-local-remote.mjs')],{env,encoding:'utf8',timeout:15000});
+  const firstChild=existsSync(childReceipt)?JSON.parse(readFileSync(childReceipt,'utf8')):null;
+  if(repeat){assert.equal(result.status,0,result.stderr);result=spawnSync(process.execPath,[resolve('scripts/start-local-remote.mjs')],{env,encoding:'utf8',timeout:15000});}
   const child=existsSync(childReceipt)?JSON.parse(readFileSync(childReceipt,'utf8')):null;let childAlive=false;if(child)try{process.kill(child.pid,0);childAlive=true;ownedLivePid=child.pid;}catch(error){if(error.code!=='ESRCH')throw error;}
   const launchRecord=join(profile,'process.json');
-  return {status:result.status,error:result.stderr,child,launch:existsSync(launchRecord)?JSON.parse(readFileSync(launchRecord,'utf8')):null,childAlive,retainedToken,token:readFileSync(tokenPath,'utf8'),models:existsSync(receipt)?JSON.parse(readFileSync(receipt,'utf8')):null,before,after:existsSync(config)?readFileSync(config,'utf8'):null};
+  return {status:result.status,error:result.stderr,firstChild,child,launch:existsSync(launchRecord)?JSON.parse(readFileSync(launchRecord,'utf8')):null,childAlive,retainedToken,token:readFileSync(tokenPath,'utf8'),models:existsSync(receipt)?JSON.parse(readFileSync(receipt,'utf8')):null,before,after:existsSync(config)?readFileSync(config,'utf8'):null};
  } finally {if(ownedLivePid){try{process.kill(ownedLivePid,'SIGKILL');}catch(error){if(error.code!=='ESRCH')throw error;}}rmSync(dir,{recursive:true,force:true});}
 }
 test('new local profile uses the selected model consistently in saved routing and child environment',()=>{
@@ -72,4 +74,13 @@ test('backend forwards swaps as false unless explicitly true, and resident Andro
 
 test('local host uses the product-owned native route policy rather than inherited caller environment',()=>{
  const r=launch({swaps:{ELIZA_NATIVE_VIEW_DECLARATIONS:JSON.stringify([{id:'wallet',label:'Wallet',path:'/wallet'}])}});assert.equal(r.status,0,r.error);assert.deepEqual(r.child.nativeViews,JSON.parse(readFileSync(resolve('config/native-view-declarations.json'),'utf8')));assert.deepEqual(r.child.nativeViews.map(view=>view.id),['photos','maps','camera']);
+});
+
+test('local host owns a fresh nonsecret retirement revision on each launch of the same profile',()=>{
+ const r=launch({route:{backend:'cerebras',transport:'direct',smallModel:'small',largeModel:'large'},repeat:true,swaps:{ELIZA_HOST_CONTEXT_REVISION:'forged-caller-revision'}});
+ assert.equal(r.status,0,r.error);
+ for(const child of [r.firstChild,r.child]){assert.match(child.hostRevision,/^boot:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);assert.doesNotMatch(child.hostRevision,/synthetic-fixture-key|forged-caller-revision/);}
+ assert.notEqual(r.firstChild.hostRevision,r.child.hostRevision);
+ assert.equal(r.firstChild.token,r.retainedToken);assert.equal(r.child.token,r.retainedToken);
+ assert.equal(r.after,r.before);assert.equal(r.childAlive,false);
 });
