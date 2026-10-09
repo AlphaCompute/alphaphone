@@ -86,10 +86,10 @@ export function installPrototypeDataAdapter(Component: any, views: Record<string
       ...out, shadeN: [], lockSum: [], showHeads: false,
       sugg: suggestions.map(label => ({ label, go: () => this.send(label) })),
       homeCalendarLabel: agenda ? `Open calendar event: ${agenda.event.title}` : 'Open your calendar',
-      homeCalendarTime: time, homeCalendarTitle: agenda?.event.title || 'Your calendar',
+      homeCalendarTime: time, homeCalendarTitle: agenda?.event.title || (this.vget('calendar').nativeCalendarStatus === 'Device calendars connected' ? 'No upcoming events' : 'See your events'),
       homeAttentionLabel: browserDevProfile?'Open Inbox: '+unread+' unread email'+(unread===1?'':'s'):'Accounts are not connected', homeAttentionCount: browserDevProfile?String(unread):'—',
       homeAttentionPeople: [],
-      homeWorkflowLabel: 'Open workflows', homeWorkflowTitle: 'Workflows', homeWorkflowTime: 'Review', homePeopleVisibility: 'hidden',
+      homeWorkflowLabel: 'Open workflows', homeWorkflowTitle: 'Workflows', homeWorkflowTime: 'Routines and automations', homePeopleVisibility: 'hidden',
       goCalendar: () => this.openView('calendar', agenda ? {open:agenda.event.id, day:agenda.event.off, openDay:agenda.event.off} : undefined),
       goFlows: () => this.openView('workflows'),
       goTriage: () => browserDevProfile?this.openView('inbox',{acct:'all',open:null,q:null}):this.toast('Connect your accounts to review what needs your attention.'),
@@ -103,8 +103,8 @@ export function installPrototypeDataAdapter(Component: any, views: Record<string
 
 /** Neutral Home card values used when no fixture defaults are bundled. */
 const NEUTRAL_HOME = {
-  homeCalendarLabel: 'Open your calendar', homeCalendarTime: 'Calendar', homeCalendarTitle: 'Your calendar',
-  homeWorkflowLabel: 'Open workflows', homeWorkflowTitle: 'Workflows', homeWorkflowTime: 'Review',
+  homeCalendarLabel: 'Open your calendar', homeCalendarTime: 'Calendar', homeCalendarTitle: 'See your events',
+  homeWorkflowLabel: 'Open workflows', homeWorkflowTitle: 'Workflows', homeWorkflowTime: 'Routines and automations',
 };
 
 /** Call in both fixture and production before mounting. Fixture builds keep the
