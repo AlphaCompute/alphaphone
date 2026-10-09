@@ -47,7 +47,7 @@ public class SelectedDocumentInstrumentedTest {
   eval(scenario,"(" + target + ").click()");
  }
  Uri fixture(ContentResolver resolver, String name, String text) throws Exception {return fixtureBytes(resolver,name,"text/plain",text.getBytes(StandardCharsets.UTF_8));}
- private Uri fixtureBytes(ContentResolver resolver,String name,String mime,byte[] bytes)throws Exception {
+ Uri fixtureBytes(ContentResolver resolver,String name,String mime,byte[] bytes)throws Exception {
   ContentValues values = new ContentValues();
   values.put(MediaStore.Downloads.DISPLAY_NAME, name);
   values.put(MediaStore.Downloads.MIME_TYPE, mime);

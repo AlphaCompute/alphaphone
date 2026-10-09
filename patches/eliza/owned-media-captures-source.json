@@ -1,0 +1,26 @@
+{
+  "baseCommit": "45242af234e7f3d55c433f327798e7cb2130e06e",
+  "patch": "0074-owned-media-captures.patch",
+  "sha256": "a31e030b7aa44bba5d18b44dbf69519b0d5b63224d63f50bf071210e520d23fa",
+  "status": "Candidate for elizaOS develop; adds owned capture keep and owned-media selections to plugins/plugin-native-media on top of 0073; JVM tests pass at 45242af; not yet consumed by Alpha's Gradle build; not submitted upstream",
+  "basePaths": [],
+  "addedPaths": [
+    "plugins/plugin-native-media"
+  ],
+  "changed": [
+    "plugins/plugin-native-media/android/src/main/java/ai/eliza/plugins/media/CaptureAdmission.java",
+    "plugins/plugin-native-media/android/src/main/java/ai/eliza/plugins/media/OwnedCaptures.java",
+    "plugins/plugin-native-media/android/src/main/java/ai/eliza/plugins/media/OwnedMediaSelection.java",
+    "plugins/plugin-native-media/docs/captures.md",
+    "plugins/plugin-native-media/test/native-host/OwnedCapturesTest.java",
+    "plugins/plugin-native-media/test/native-host/owned-captures.node.mjs"
+  ],
+  "files": {
+    "plugins/plugin-native-media/android/src/main/java/ai/eliza/plugins/media/CaptureAdmission.java": "f3e5f390dfb490b28d3c50d1357199cbd988c6ce65049bba6e948eb4b458d68a",
+    "plugins/plugin-native-media/android/src/main/java/ai/eliza/plugins/media/OwnedCaptures.java": "8ea8f9c1a5ea1bc6acefeca0766a44763a0232a14e4c33e0737ed6c60445dc57",
+    "plugins/plugin-native-media/android/src/main/java/ai/eliza/plugins/media/OwnedMediaSelection.java": "36d165986a413b9e6ce0ae6e095689c5be258da348ae60deffcf3fe7c2ee9085",
+    "plugins/plugin-native-media/docs/captures.md": "a81c14305aa5b69e80db19e76d3bec07a028e370abb486abad139abbeb067c29",
+    "plugins/plugin-native-media/test/native-host/owned-captures.node.mjs": "f004bbcef431662405992807de0f16c6f99f3ce1310037c1bef35e21ba9bd5bc",
+    "plugins/plugin-native-media/test/native-host/OwnedCapturesTest.java": "a8d69127f9925c3dbbf29899bbf459d6edb2d5aaab716375498101a7c23f9ead"
+  }
+}
