@@ -37,7 +37,9 @@
   <intent><action android:name="android.speech.action.RECOGNIZE_SPEECH"/></intent>
   <intent><action android:name="android.settings.SETTINGS"/></intent>
   <intent><action android:name="android.settings.APP_NOTIFICATION_SETTINGS"/></intent>
-  <!-- MVP-DEFERRED: <intent><action android:name="android.intent.action.DIAL"/><data android:scheme="tel"/></intent> -->
+  <!-- Home Phone shortcut: resolve and open the user's dialer with an empty dial pad. Alpha's own
+       Phone view, calls and call permissions stay MVP-DEFERRED. -->
+  <intent><action android:name="android.intent.action.DIAL"/><data android:scheme="tel"/></intent>
   <!-- MVP-DEFERRED: <intent><action android:name="android.intent.action.SENDTO"/><data android:scheme="smsto"/></intent> -->
   <!-- MVP-DEFERRED: <intent><action android:name="android.intent.action.VIEW"/><data android:scheme="content" android:host="com.android.contacts" android:mimeType="vnd.android.cursor.dir/contact"/></intent> -->
   <intent><action android:name="android.intent.action.SET_ALARM"/></intent>
@@ -47,10 +49,13 @@
  </queries>
  <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
  <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+ <!-- Turn-by-turn guidance keeps running with the screen off only while the user navigates. -->
+ <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
  <application android:name=".AlphaApplication" android:label="@string/app_name" android:icon="@drawable/app_icon" android:allowBackup="false" android:dataExtractionRules="@xml/data_extraction_rules" android:supportsRtl="true" android:usesCleartextTraffic="false" android:networkSecurityConfig="@xml/network_security_config" android:theme="@style/AppTheme">
   <service android:name=".ElizaAgentService" android:exported="false" android:foregroundServiceType="specialUse">
    <property android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE" android:value="User-started local personal agent runtime" />
   </service>
+  <service android:name=".AlphaNavigationService" android:exported="false" android:foregroundServiceType="location" />
   <activity android:name=".AlphaMailPdfActivity" android:exported="false" android:theme="@android:style/Theme.Material.Light.NoActionBar" android:label="PDF attachment" />
   <service android:name=".IsolatedPdfService" android:exported="false" android:isolatedProcess="true" android:process=":isolated_pdf" android:stopWithTask="true" />
   <provider android:name=".AlphaMailFileProvider" android:authorities="${applicationId}.mailattachments" android:exported="false" android:grantUriPermissions="true"><meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/mail_attachment_paths"/></provider>
