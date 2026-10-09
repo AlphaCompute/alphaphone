@@ -1,7 +1,9 @@
 // Product-owned generated inputs; engine and build policy come from the exact Eliza pin plus
 // the applied patches in patches/eliza. `npm run upstream:prepare-client` materializes patched
 // module files under .eliza/patched; they replace the same paths of the pinned module here.
-def pinnedSpeechSource = file('../../vendor/eliza/packages/app/platforms/android/local-speech')
+// The pinned module directory (also read by scripts/generate-licenses.mjs):
+ext.elizaSpeechSourceDir = file('../../vendor/eliza/packages/app/platforms/android/local-speech')
+def pinnedSpeechSource = ext.elizaSpeechSourceDir
 def patchedRoot = file('../../.eliza/patched')
 def patchedSpeechSource = new File(patchedRoot, 'packages/app/platforms/android/local-speech')
 if (!new File(patchedRoot, '.source.json').isFile())
