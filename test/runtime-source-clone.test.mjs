@@ -20,8 +20,7 @@ function fixture(t){
  write(path.join(cache,'packages/example/data.bin'),randomBytes(1024*1024));write(path.join(cache,'packages/example/tool.sh'),'#!/bin/sh\nexit 0\n');fs.chmodSync(path.join(cache,'packages/example/tool.sh'),0o755);
  for(let index=0;index<40;index++)write(path.join(cache,'packages/example',`extra-${index}.txt`),'small fixture file\n');
  fs.symlinkSync('data.bin',path.join(cache,'packages/example/linked-data'));
- const common=execFileSync('git',['rev-parse','--git-common-dir'],{cwd:root,encoding:'utf8'}).trim();
- const upstreamGit=path.join(path.resolve(root,common),'modules/vendor/eliza');
+ const upstreamGit=execFileSync('git',['rev-parse','--absolute-git-dir'],{cwd:path.join(root,'vendor/eliza'),encoding:'utf8'}).trim();
  const upstreamPin=JSON.parse(fs.readFileSync(path.join(root,'upstream.lock.json'))).commit;
  for(const name of ['immutable-workspace-source.mjs','committed-source.mjs']){
   const relative='packages/app/scripts/lib/'+name;
