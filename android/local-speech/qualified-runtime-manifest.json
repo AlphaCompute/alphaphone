@@ -144,7 +144,8 @@
         "observedTranscript": "The quick brown fox jumps over the lady's dog.",
         "originalFloatSamplesRetained": false,
         "holderTestPassed": true,
-        "remainingFirstTestCases": "not reached after keyword assertion"
+        "remainingFirstTestCases": "not reached after keyword assertion",
+        "engineAtRun": "pinned LocalSpeechEngine (VITS noise 0.667, noise_w 0.8), before patch 0066"
       },
       "x86_64": {
         "passed": false,
@@ -164,5 +165,33 @@
     "Different JNI hashes from archived baseline; no bit-equivalence claim",
     "No microphone/speaker perceptual/physical playback acceptance",
     "Exact packaged native byte match cannot waive failed or missing functional acceptance"
-  ]
+  ],
+  "requalificationCandidate": {
+    "path": "android/local-speech/requalification/candidate-20261009.json",
+    "sha256": "42c9d7470b1a62ccf104c32d7770ee6254fb8d3ed81570a7094b67dd60a73100",
+    "aarSha256": "f24a1f682e67bd234f38f4498ee7d7093f643401927e7ad6043e4cfbc45e4ca5",
+    "state": "not-admitted",
+    "reason": "requalify-runtime.py admit refuses until every rebuilt ABI passes the unchanged canonical test; x86_64 has not executed",
+    "canonicalTestSha256": "fc05574dfb68b703a5e21422ae6bffe22c1cda3773a088f80cda2c80d4b8f550",
+    "abis": {
+      "arm64-v8a": {
+        "passed": true,
+        "state": "passed",
+        "deviceClass": "Android Emulator arm64, networking disabled",
+        "testsPassed": 2,
+        "engine": "with patch 0066",
+        "appAPKSha256": "0d49e71ae86e8bcb83717914201ba28e06b9ea759b0e881328e804f2cd2740b6"
+      },
+      "x86_64": {
+        "passed": false,
+        "state": "not-executed",
+        "blocker": "needs an x86_64 host or device"
+      }
+    },
+    "limits": [
+      "Rebuilt natives (build-ID difference from this record), not the reviewed bytes above",
+      "Emulator CPU execution only; no physical device, microphone, speaker or perceptual acceptance",
+      "Does not change functionalAcceptance of this record or any APK distributable state"
+    ]
+  }
 }

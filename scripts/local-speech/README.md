@@ -171,3 +171,14 @@ patched engine from `.eliza/patched` over the pinned module. Host results are ev
 cause only. They are not Android execution: the unchanged `LocalSpeechInstrumentedTest` must
 still pass per ABI on a device or emulator of that ABI before `functionalAcceptance` records a
 pass, and a model, runtime or engine change re-runs it.
+
+**Android result (2026-10-09).** With patch 0066 compiled in, the unchanged canonical test
+(SHA-256 `fc05574d…`) passed both tests on an arm64-v8a Android 16 emulator with networking
+off (`OK (2 tests)`; synthesis transcript `The quick brown fox jumps over the lazy dog.`). It ran
+through `requalify-runtime.py run` against an independent rebuild of the runtime (AAR
+`f24a1f68…`, JNI differing from the reviewed record), so it is recorded as the
+`requalificationCandidate` in `qualified-runtime-manifest.json`, with the full candidate under
+`android/local-speech/requalification/`. `admit` refuses it: x86_64 has not executed (an Apple
+Silicon host cannot run an x86_64 image). The reviewed record's own `functionalAcceptance` stays
+failed and no APK is distributable. Still open: the x86_64 run, and an arm64 physical-device
+run of the canonical test with the engine fix.

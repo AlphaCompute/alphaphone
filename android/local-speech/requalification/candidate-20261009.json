@@ -1,0 +1,111 @@
+{
+  "schemaVersion": 2,
+  "admission": "requalification-candidate",
+  "recordedAt": "2026-10-09T18:00:01.423323+00:00",
+  "noEspeak": true,
+  "aarSha256": "f24a1f682e67bd234f38f4498ee7d7093f643401927e7ad6043e4cfbc45e4ca5",
+  "qualifiedAbis": [
+    {
+      "abi": "arm64-v8a",
+      "sourceArchiveSha256": "b0374cc56dbc186d442ae73d5de743bb092470b640c4c50ce7b029044c0c4fa8",
+      "patchSha256": "5d1f0891961e97228e788f907a4174fdfc93a044530d5f2f3bec74d887e2b4f6",
+      "noEspeakSources": true,
+      "noEspeakSymbols": true,
+      "native": [
+        {
+          "file": "libsherpa-onnx-jni.so",
+          "bytes": 4042512,
+          "sha256": "a9aa73acf4d1886ad9368d9fc225abb86a73901d0a187c29084659a541e25240",
+          "pageAlignment": 16384,
+          "unstrippedSha256": "16f9da259a892c3307c09d1a0b0b5cd6045034da60f101e5276cf6c063864f10",
+          "unstrippedBytes": 81207160
+        },
+        {
+          "file": "libonnxruntime.so",
+          "bytes": 22249560,
+          "sha256": "33847ad43bffe204699fd4a27f7f3603452a8cdaf2f9a44983a0bc31ffcf2da1",
+          "pageAlignment": 16384
+        }
+      ],
+      "aarSha256": "5a77628721175abe926fb529d568b376b94c9ee4d8a06c7bf9a81e49cabf3d02",
+      "debugSymbolsStripped": true,
+      "deviceExecuted": true
+    },
+    {
+      "abi": "x86_64",
+      "sourceArchiveSha256": "b0374cc56dbc186d442ae73d5de743bb092470b640c4c50ce7b029044c0c4fa8",
+      "patchSha256": "5d1f0891961e97228e788f907a4174fdfc93a044530d5f2f3bec74d887e2b4f6",
+      "noEspeakSources": true,
+      "noEspeakSymbols": true,
+      "native": [
+        {
+          "file": "libsherpa-onnx-jni.so",
+          "bytes": 4394840,
+          "sha256": "22bb3fdd316548fa42e96328b6858e6def3a981b151814c84141b3f2ad7ef8e9",
+          "pageAlignment": 16384,
+          "unstrippedSha256": "502a078f4f62fa5b3dd59d4c2cc4a985177fdb1ca86de735ca4404c2bc99b5d7",
+          "unstrippedBytes": 80257976
+        },
+        {
+          "file": "libonnxruntime.so",
+          "bytes": 25581120,
+          "sha256": "087e84297cad64acb823c3d901d6e0cc934e91add7cdb20da802cd1c0bea5c3e",
+          "pageAlignment": 16384
+        }
+      ],
+      "aarSha256": "ce98981e2e09dbff8be48fca9c91e7dc1844aab3e1fc6ad323744e57a441a87b",
+      "debugSymbolsStripped": true,
+      "deviceExecuted": false
+    }
+  ],
+  "provenance": {
+    "upstreamCommit": "45242af234e7f3d55c433f327798e7cb2130e06e",
+    "rebuild": "independent",
+    "toolingTreeSha256": "756584b6f5e8ae1d1a58d45d0fc6b4028bf57d097f39bc3399b6ee8f9d25366f",
+    "wrapperTreeSha256": "a85f1304df3758b6a13528d056dc8945a428b033c2e87d4a5e78b42e5aeb1ad3",
+    "toolchain": {
+      "host": "Darwin arm64",
+      "ndk": "28.2.13676358",
+      "ndkSourcePropertiesSha256": "c00aa236fdb205e9be9edd9e2169763e48aca52735efff4e16f34205d49783b5",
+      "cmake": "4.0.3",
+      "cmakeExecutableSha256": "e1816918a5b0ae87d520a0c503fe61b97e0b6bcd7d98388334d843dd8123b17a",
+      "filePrefixRemap": "/Users/shawwalters/Documents/alphaphone/test-results/mvp-local-speech-staging"
+    },
+    "canonicalTest": "android/app/src/androidTest/java/ai/elizaresearch/alphaphone/LocalSpeechInstrumentedTest.java",
+    "canonicalTestSha256": "fc05574dfb68b703a5e21422ae6bffe22c1cda3773a088f80cda2c80d4b8f550",
+    "differsFromPreviousRecord": [
+      "arm64-v8a/libsherpa-onnx-jni.so: built a9aa73acf4d1886ad9368d9fc225abb86a73901d0a187c29084659a541e25240 (4042512 bytes), recorded 4f7b23a6b43ed75f66bf61ae6d2af00d9cc2b619f10822176c8c3bcef98a6061 (4042512 bytes)",
+      "x86_64/libsherpa-onnx-jni.so: built 22bb3fdd316548fa42e96328b6858e6def3a981b151814c84141b3f2ad7ef8e9 (4394840 bytes), recorded 87b16837b465ca9eff50779ff4c185bde36d7743464eebd97994dec822a7777f (4394840 bytes)"
+    ]
+  },
+  "functionalAcceptance": {
+    "passed": false,
+    "state": "incomplete",
+    "suite": "LocalSpeechInstrumentedTest",
+    "abis": {
+      "arm64-v8a": {
+        "passed": true,
+        "state": "passed",
+        "executedAt": "2026-10-09T18:01:13.752268+00:00",
+        "testsExecuted": 2,
+        "testsPassed": 2,
+        "appAPKSha256": "0d49e71ae86e8bcb83717914201ba28e06b9ea759b0e881328e804f2cd2740b6",
+        "evidenceDigests": {
+          "result.json": "4dcefeca8e1b2c5886bbac78cdb4d46086bccf5d5c36eb8026282347b7491d3c",
+          "holder-result.json": "e7505e911b26674d522517c91fa44ea794280acc9ae7039e696bdd56d8b40cbe",
+          "instrumentationLog": "59cb742b034a1db830723c64c67438732fcf50c66bbe3b67146b48c35b80c001"
+        },
+        "deviceAbi": "arm64-v8a",
+        "deviceAbiSource": "adb getprop ro.product.cpu.abi",
+        "deviceClass": "Android Emulator arm64 (Android 16 userdebug system image, ro.kernel.qemu=1), networking disabled",
+        "engine": "LocalSpeechEngine with patches/eliza/0066-local-speech-deterministic-synthesis",
+        "synthesisTranscript": "The quick brown fox jumps over the lazy dog."
+      },
+      "x86_64": {
+        "passed": false,
+        "state": "not-executed",
+        "blocker": "No x86_64 Android device or emulator: an Apple Silicon host cannot run an x86_64 system image"
+      }
+    }
+  }
+}
