@@ -167,3 +167,21 @@ export function describeClockHandoff(op:ClockOperation):string{
 }
 
 export function validateClockResult(operation:ClockOperation,value:unknown):ClockResult{const status=(value as any)?.status;return validateClockOutcome(operation,value,status==='opened'?'applied':status==='unknown'?'unknown':'failed');}
+
+/** Reviewed set request with a repeat (AlarmClock.EXTRA_DAYS); renderer shape with `reviewed: true`. */
+export type ClockSetRequest={action:'set';hour:number;minute:number;label:string;timeZone:string;reviewed:true;days?:ClockDay[]};
+export type ClockDraftRequest=ClockSetRequest|{action:'snooze';snoozeMinutes:number;reviewed:true}|{action:'show'|'dismiss';reviewed:true};
+/** Pure request builder; an empty repeat is a one-time alarm. */
+export function buildClockRequest(input:{action:'set'|'show'|'snooze'|'dismiss';time:string;label:string;snooze:string;days:readonly number[]},timeZone:string):ClockDraftRequest{
+ const {action,time,label,snooze}=input;
+ if(action==='set'){
+  if(!/^([01]\d|2[0-3]):[0-5]\d$/.test(time)||label.length>200||label.includes('\0'))throw Error('Choose a valid time and a label up to 200 characters.');
+  const [hour,minute]=time.split(':').map(Number),repeat=[...input.days].sort((a,b)=>a-b);
+  return {action,hour,minute,label:label.trim(),timeZone,reviewed:true,...(repeat.length?{days:clockDays(repeat)}:{})};
+ }
+ if(action==='snooze'){
+  if(!/^\d{1,2}$/.test(snooze)||Number(snooze)<1||Number(snooze)>60)throw Error('Choose 1 to 60 snooze minutes.');
+  return {action,snoozeMinutes:Number(snooze),reviewed:true};
+ }
+ return {action,reviewed:true};
+}

@@ -71,7 +71,7 @@ test.describe('reminder lifecycle',()=>{
  });
  test('Clock repeat days are validated and carried in the reviewed request',async({page})=>{
   const result=await page.evaluate(async()=>{
-   const {buildClockRequest}=await import('/src/prototype/clock-adapter.ts'),{validateClockOperation,describeClockHandoff}=await import('/src/runtime/clock-contract.ts');
+   const {buildClockRequest,validateClockOperation,describeClockHandoff}=await import('/src/runtime/clock-contract.ts');
    const once=buildClockRequest({action:'set',time:'07:30',label:'Run',snooze:'10',days:[]},'UTC');
    const weekdays=buildClockRequest({action:'set',time:'07:30',label:'Run',snooze:'10',days:[6,2,4,3,5]},'UTC');
    let invalid=0;for(const days of [[0],[8],[2,2],[1.5],[]])try{validateClockOperation({type:'clock_handoff',action:'set',hour:7,minute:30,label:'Run',timeZone:'UTC',days});}catch{invalid++;}
