@@ -16,12 +16,14 @@ const digest=async text=>Array.from(new Uint8Array(await crypto.subtle.digest('S
 // vm-realm values compare by JSON value.
 const deq=(actual,expected,message)=>assert.deepEqual(actual===undefined?undefined:JSON.parse(JSON.stringify(actual)),expected,message);
 const b64=text=>Buffer.from(text).toString('base64');
-const today=new Date();today.setHours(9,41,0,0);
+// The adapter compares against the fixture clock below, so "today" is that clock's local day.
+const FIXTURE_NOW=Date.UTC(2026,9,8,12);
+const today=new Date(FIXTURE_NOW);today.setHours(9,41,0,0);
 const mail=(id,extra={})=>({id,threadId:'thread-'+id,subject:'Fixture '+id,from:'Sender',fromEmail:'sender@example.invalid',to:['owner@example.invalid'],snippet:'Preview',receivedAt:'2026-09-30T00:00:00Z',unread:false,...extra});
 const inboxPage=[mail('m1',{unread:true,hasAttachments:true,receivedAt:today.toISOString()}),mail('m2',{unread:true}),mail('m3')];
 
 function scenario({caps={},accounts=null}={}){
- let session='session-a',clock=Date.UTC(2026,9,8,12),probeFail=null,probeGate=null;
+ let session='session-a',clock=FIXTURE_NOW,probeFail=null,probeGate=null;
  const calls=[],toasts=[],prepared=[],dispatched=[],opened=[],saved=[],navigations=[],confirms=[],resume=[];let confirmAnswer=true;
  const defaultAccounts=[{connectionId:'grant-a',label:'Fixture account',connected:true,grantedCapabilities:['google.gmail.triage']}];
  const capabilities={version:1,from:'owner@example.invalid',threads:true,send:true,providerDrafts:true,mailboxMutations:true,attachments:true,providerExactlyOnce:false,atomicDraftReplacement:false,readState:false,draftsList:false,forwardAttachments:false,opaqueAttachments:false,searchTrash:false,attachmentPolicy:{maximumOutgoing:1,maximumBytes:5242880,maximumTotalBytes:5242880},...caps};
