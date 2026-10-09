@@ -101,13 +101,14 @@ const searches=t=>t.calls.filter(c=>Array.isArray(c)&&c[0]==='search');
  assert.match(rows[0].time,/9:41|09:41/,'today shows a time');assert.doesNotMatch(rows[1].time,/:/,'older mail shows a date');
  // Leaving marks the summary stale; the leave probe is subject to the same floor.
  t.setActive(false);t.views.inbox.onLeave();
- assert.equal(t.views.inbox.badge(),false,'onLeave never keeps an old badge');assert.equal(t.attention().state,'stale');
+ assert.equal(t.attention().state,'stale');assert.equal(t.views.inbox.badge(),true,'a just-loaded value stays visible while younger than the floor');
  await t.tick();assert.equal(t.views.inbox.badge(),true,'the leave probe confirms the current unread state');
  assert.equal(searches(t).filter(c=>c[1]==='in:inbox is:unread').length,3,'leaving after the floor probes once');
  assert.equal(t.attention().state,'ready');
  t.views.inbox.onLeave();await t.tick();
  assert.equal(t.attention().state,'stale','a second leave inside the floor stays stale');
  assert.equal(searches(t).filter(c=>c[1]==='in:inbox is:unread').length,3);
+ assert.equal(t.views.inbox.badge(),true);t.advance(5*60*1000);assert.equal(t.views.inbox.badge(),false,'a stale value older than the floor is never shown');
  t.sandbox.openInbox();deq(JSON.parse(JSON.stringify(t.shell.opened)),[['inbox',{open:null,q:null}]],'openInbox opens the Inbox list for goTriage');
  t.setSession(null);await t.tick();assert.equal(t.attention().state,'not-connected','signing out clears the summary');
  t.shell.componentWillUnmount();

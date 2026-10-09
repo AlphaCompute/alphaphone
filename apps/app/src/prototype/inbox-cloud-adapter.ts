@@ -20,8 +20,11 @@ export interface InboxAttention {
 let attention: InboxAttention = { state: 'not-connected', unread: 0, unreadMore: false, source: null, updatedAt: null };
 const attentionListeners = new Set<() => void>();
 let openInboxHandler: (() => void) | null = null;
+/** When the summary last became `ready` (a completed in:inbox load or probe). */
+let attentionFreshAt = 0;
 function setAttention(next: Partial<InboxAttention>) {
   const value = { ...attention, ...next };
+  if (value.state === 'ready') attentionFreshAt = Date.now();
   if (JSON.stringify(value) === JSON.stringify(attention)) return;
   attention = value;
   for (const listener of [...attentionListeners]) { try { listener(); } catch { /* a listener failure never blocks Inbox */ } }
@@ -444,7 +447,7 @@ export function installInboxCloudAdapter(Component: any, views: Record<string, B
     if (st.q != null) { changeQuery(null); return true; }
     return false;
   };
-  view.badge = () => hasUnread && attention.state === 'ready';
+  view.badge = () => hasUnread && (attention.state === 'ready' || (attention.state === 'stale' && Date.now() - attentionFreshAt < INBOX_PROBE_FLOOR_MS));
   // Mail content is never sent to the agent automatically, so chips ask only for help the agent can give.
   // Sharing one message goes through the explicit "Review email with agent" review.
   view.suggestions = (st: Bag) => drafts.render().composing ? ['Help me write this email'] : st.open != null ? ['Help me write a reply'] : ['Help me write an email'];
@@ -464,9 +467,10 @@ export function installInboxCloudAdapter(Component: any, views: Record<string, B
       status: attached ? 'Shared draft. The shared items are not attached automatically; use Attach to choose a file. Review before sending; nothing has been sent.' : 'Shared draft. Review before sending; nothing has been sent.' };
   }
   view.onLeave = () => {
-    // Leaving Inbox: the list is dropped, so the badge is stale until the next bounded probe.
+    // Leaving Inbox drops the list, so the summary is stale. The badge keeps the last value only while
+    // it is younger than the probe floor; the next bounded probe (allowed once the floor passes) refreshes it.
     if (attention.state === 'ready' || attention.state === 'loading') setAttention({ state: 'stale' });
-    hasUnread = false; queueMicrotask(() => void probeUnread());
+    queueMicrotask(() => void probeUnread());
     returnPending(); resumeDraftFor = ''; if (connectionController.getCloudClient()) { phase = 'idle'; loadedQuery = ''; nextPageToken = null; failure = null; } void attachmentNative.cancel().catch(()=>{}); contextReview=null;attachmentView=null;generation++; operation?.abort(); operation = null; drafts.close(); messages = []; body = null; publish({ open: null, nativeMailSelection: null }); };
   view.render = (st: Bag, current: Bag) => {
     api = current;
