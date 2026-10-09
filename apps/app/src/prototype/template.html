@@ -1006,8 +1006,8 @@
           <div style="display: flex; align-items: center; gap: 14px; height: 56px; padding: 0 12px 0 16px; border-radius: 16px; background: var(--s2)">
             <svg class="i" viewBox="0 0 24 24" style="color: var(--mut); flex-shrink: 0"><path d="{{ic.video}}"></path></svg>
             <span style="flex-grow: 1; font-size: 16px">Video link</span>
-            <button aria-label="Video link" aria-pressed="{{calendar.f.video}}" onClick="{{calendar.f.toggleVideo}}" style="position: relative; width: 52px; height: 32px; border-radius: 16px; flex-shrink: 0; transition: background .25s; {{calendar.f.vTrack}}">
-              <span style="position: absolute; top: 3px; left: 3px; width: 26px; height: 26px; border-radius: 13px; background: #ffffff; box-shadow: 0 1px 3px rgba(0,0,0,.2); transition: transform .25s cubic-bezier(.19,1,.22,1); transform: translateX({{calendar.f.vKx}}px)"></span>
+            <button class="calendar-video-switch" role="switch" aria-label="Video link" aria-checked="{{calendar.f.video}}" onClick="{{calendar.f.toggleVideo}}">
+              <span class="calendar-video-track" aria-hidden="true" style="{{calendar.f.vTrack}}"><span class="calendar-video-thumb" style="transform: translateX({{calendar.f.vKx}}px)"></span></span>
             </button>
           </div>
 
