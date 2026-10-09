@@ -11,6 +11,9 @@ async function conversation(page:Page,theme='light'){
   const {LocalAgentProtocol}=await import('/src/runtime/local-agent.ts');LocalAgentProtocol.prototype.send=async()=>({text:'Synthetic reply for message actions.'});
  });
  const input=page.getByRole('textbox',{name:'Ask Alpha',exact:true});await input.fill('My original request');await input.press('Enter');await expect(agent(page)).toBeVisible();
+ // Raw CDP touches bypass Playwright actionability. Wait for the opening sheet
+ // to settle and receive input before measuring coordinates; no click is sent.
+ await agent(page).click({trial:true});
 }
 for(const theme of ['light','dark'])test(`tap reveals quiet actions and copies exact message: ${theme}`,async({page},info)=>{
  await conversation(page,theme);await expect(menu(page)).toHaveCount(0);await expect(page.getByText('Listen with Cloud',{exact:true})).toHaveCount(0);await expect(page.getByText('Listen on phone',{exact:true})).toHaveCount(0);
@@ -25,6 +28,7 @@ test('keyboard focus, arrow navigation and Escape return to the selected message
 });
 test('long press reveals actions, pointer movement cancels a held gesture',async({page})=>{
  await conversation(page);const b=await agent(page).boundingBox(),cdp=await page.context().newCDPSession(page),point={x:b!.x+20,y:b!.y+10};
+ await expect(menu(page)).toHaveCount(0);expect(await agent(page).evaluate((element,point)=>element.contains(document.elementFromPoint(point.x,point.y)),point)).toBe(true);
  await cdp.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[point]});await expect(menu(page)).toBeVisible();await cdp.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});await expect(menu(page)).toBeVisible();await menu(page).getByRole('menuitem',{name:'Close message actions'}).click();
  await agent(page).dispatchEvent('pointerdown',{pointerType:'touch',clientX:30,clientY:30});await agent(page).dispatchEvent('pointermove',{pointerType:'touch',clientX:60,clientY:30});await page.waitForTimeout(550);await expect(menu(page)).toHaveCount(0);
 });
