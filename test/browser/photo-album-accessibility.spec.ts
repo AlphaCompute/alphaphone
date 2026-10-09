@@ -1,4 +1,6 @@
+import {guardCalendarFixture as guardNoMedia} from './calendar-draft-readiness';
 import {test,expect} from '@playwright/test';
+test.beforeEach(async({context,page})=>{await guardNoMedia(context);await page.route(/^https?:\/\/(?!127\.0\.0\.1:|localhost:)/,route=>route.abort());});
 
 for(const theme of ['light','dark'])test(`${theme} album manager owns keyboard focus and restores the photo control`,async({page})=>{
  await page.addInitScript(()=>localStorage.setItem('alpha.connection.selection.v1',JSON.stringify({kind:'offline'})));
