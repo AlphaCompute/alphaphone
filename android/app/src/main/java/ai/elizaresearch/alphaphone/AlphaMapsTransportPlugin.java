@@ -10,7 +10,10 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.zip.GZIPInputStream;
 
 /** Debug regional-data bridge only. No cookies, auth, arbitrary proxy or TLS bypass.
- * Release Maps uses its explicitly configured HTTPS endpoint directly. */
+ * Release Maps uses its explicitly configured HTTPS endpoint directly.
+ * The navigation methods (all builds) own the screen-off session of AlphaNavigationService:
+ * the renderer starts it only from an explicit Start, mirrors the next instruction, and
+ * hears exactly one navigationStopped event when the notification's Stop ends it. */
 @CapacitorPlugin(name="AlphaMapsTransport")
 public final class AlphaMapsTransportPlugin extends Plugin {
  private final ConcurrentHashMap<String,Pending> pending=new ConcurrentHashMap<>();
@@ -60,5 +63,31 @@ public final class AlphaMapsTransportPlugin extends Plugin {
   }catch(RejectedExecutionException busy){pending.remove(id,job);job.cancel("Regional service is busy; try again");}
  }
  @PluginMethod public void cancel(PluginCall call){String id=call.getString("requestId");Pending job=id==null?null:pending.get(id);if(job!=null){job.cancel("Regional request cancelled");pending.remove(id,job);}else if(id!=null&&id.matches("[a-zA-Z0-9_-]{1,80}")){long now=android.os.SystemClock.elapsedRealtime();earlyCancelled.entrySet().removeIf(e->now-e.getValue()>30000);if(earlyCancelled.size()<64)earlyCancelled.put(id,now);}call.resolve();}
- @Override protected void handleOnDestroy(){destroyed=true;for(Pending job:pending.values())job.cancel("Regional transport closed");workers.shutdownNow();deadlines.shutdownNow();closers.shutdown();pending.clear();earlyCancelled.clear();}
+ private final AlphaNavigationService.StopListener navigationStops=(session,reason)->{JSObject event=new JSObject();event.put("sessionId",session);event.put("reason",reason);notifyListeners("navigationStopped",event);};
+ @Override public void load(){AlphaNavigationService.setStopListener(navigationStops);}
+ private static String text(PluginCall call,String name){String value=call.getString(name,"");return value==null?"":value.length()>200?value.substring(0,200):value;}
+ @PluginMethod public void navigationAvailability(PluginCall call){JSObject result=new JSObject();result.put("background",AlphaNavigationService.declared(getContext()));result.put("activeSessionId",AlphaNavigationService.activeSession());call.resolve(result);}
+ @PluginMethod public void startNavigation(PluginCall call){
+  String session=call.getString("sessionId");
+  if(session==null||!session.matches(AlphaNavigationService.SESSION_PATTERN)){call.reject("Invalid navigation session");return;}
+  if(!AlphaNavigationService.declared(getContext())){call.reject("Background navigation is unavailable in this build","unavailable");return;}
+  if(!AlphaNavigationService.locationGranted(getContext())){call.reject("Location permission is required for background navigation","permission-denied");return;}
+  // One session at a time: a new explicit Start retires the previous one first.
+  String previous=AlphaNavigationService.activeSession();if(previous!=null)AlphaNavigationService.stop(getContext(),previous,"replaced");
+  try{AlphaNavigationService.start(getContext(),session,text(call,"title"),text(call,"text"));call.resolve();}
+  catch(RuntimeException refused){AlphaNavigationService.stop(getContext(),session,"refused");call.reject("Background navigation could not start","unavailable");}
+ }
+ @PluginMethod public void updateNavigation(PluginCall call){
+  String session=call.getString("sessionId");JSObject result=new JSObject();
+  try{result.put("active",session!=null&&AlphaNavigationService.update(getContext(),session,text(call,"title"),text(call,"text")));}catch(RuntimeException unavailable){result.put("active",false);}
+  call.resolve(result);
+ }
+ @PluginMethod public void stopNavigation(PluginCall call){
+  String session=call.getString("sessionId");JSObject result=new JSObject();
+  result.put("stopped",session!=null&&AlphaNavigationService.stop(getContext(),session,"app"));call.resolve(result);
+ }
+ @Override protected void handleOnDestroy(){
+  // Guidance lives in this renderer; without it the session must not keep a stale notification.
+  AlphaNavigationService.clearStopListener(navigationStops);String active=AlphaNavigationService.activeSession();if(active!=null)AlphaNavigationService.stop(getContext(),active,"renderer-closed");
+  destroyed=true;for(Pending job:pending.values())job.cancel("Regional transport closed");workers.shutdownNow();deadlines.shutdownNow();closers.shutdown();pending.clear();earlyCancelled.clear();}
 }
