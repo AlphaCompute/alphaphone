@@ -85,12 +85,13 @@ export function installPrototypeDataAdapter(Component: any, views: Record<string
       sugg: suggestions.map(label => ({ label, go: () => this.send(label) })),
       homeCalendarLabel: agenda ? `Open calendar event: ${agenda.event.title}` : 'Open your calendar',
       homeCalendarTime: dateLabel, homeCalendarTitle: agenda?.event.title || (this.vget('calendar').nativeCalendarStatus === 'Device calendars connected' ? 'No upcoming events' : 'See your events'),
-      homeAttentionLabel: browserDevProfile?'Open Inbox: '+unread+' unread email'+(unread===1?'':'s'):'Accounts are not connected', homeAttentionCount: browserDevProfile?String(unread):'—',
+      homeAttentionLabel: browserDevProfile?'Open Inbox: '+unread+' unread email'+(unread===1?'':'s'):'Open Inbox', homeAttentionCount: browserDevProfile?String(unread):'—',
+      homeInboxTitle: browserDevProfile ? (unread ? `${unread} unread` : 'No unread messages') : 'Inbox', homeInboxStatus: browserDevProfile ? 'Open your messages' : 'View email accounts',
       homeAttentionPeople: [],
       homeWorkflowLabel: 'Open workflows', homeWorkflowTitle: 'Workflows', homeWorkflowTime: 'Routines and automations', homePeopleVisibility: 'hidden',
       goCalendar: () => this.openView('calendar', agenda ? {open:agenda.event.id, day:agenda.event.off, openDay:agenda.event.off} : undefined),
       goFlows: () => this.openView('workflows'),
-      goTriage: () => browserDevProfile?this.openView('inbox',{acct:'all',open:null,q:null}):this.toast('Connect your accounts to review what needs your attention.'),
+      goTriage: () => this.openView('inbox',{acct:'all',open:null,q:null}),
       clearAll: () => this.setState({ shade: false }),
     };
   };

@@ -18,7 +18,7 @@ export function installInboxCloudAdapter(Component: any, views: Record<string, B
   view.state = { ...view.state, mails: [], sent: [], open: null, compose: null, q: null, nativeMailSelection: null };
   view.reply = () => null;
   let shell: Bag | undefined, api: Bag | undefined;
-  let accounts: GmailAccount[] = [], messages: GmailMessage[] = [];
+  let accounts: GmailAccount[] = [], messages: GmailMessage[] = [], accountsChecked = false;
   let loadedQuery = '', nextPageToken: string | null = null, folder: 'inbox' | 'sent' = 'inbox';
   // Only a boolean leaves this closure: the Home badge reflects the last loaded Inbox page(s).
   let hasUnread = false;
@@ -60,7 +60,7 @@ export function installInboxCloudAdapter(Component: any, views: Record<string, B
   function clear() {
     void attachmentNative.cancel().catch(()=>{});contextReview=null;attachmentView=null;provider.reset(); drafts.reset();
     generation++; operation?.abort(); operation = null;
-    thread=null; accounts = []; messages = []; selected = ''; loadedQuery = ''; nextPageToken = null; body = null; phase = 'idle'; revision = '';
+    thread=null; accounts = []; accountsChecked = false; messages = []; selected = ''; loadedQuery = ''; nextPageToken = null; body = null; phase = 'idle'; revision = '';
     hasUnread = false; failure = null; pendingCompose = null; disconnecting = false; resumeDraftFor = '';
     readStateInFlight.clear(); readStateUnconfirmed.clear(); seenCursors = new Set();
     status = 'Connect Eliza Cloud to use Gmail';
@@ -104,7 +104,7 @@ export function installInboxCloudAdapter(Component: any, views: Record<string, B
     await work('Checking Gmail connection…', async ({ client }, signal, valid) => {
       const result = await client.gmailAccounts(signal);
       if (!valid()) return;
-      const previous=selected;accounts = result;
+      const previous=selected;accounts = result; accountsChecked = true;
       if (!accounts.some(a => a.connectionId === selected && a.connected && a.grantedCapabilities.includes('google.gmail.triage'))) selected = accounts.find(a => a.connected && a.grantedCapabilities.includes('google.gmail.triage'))?.connectionId || '';
       const retained=preserveSelection&&!!selected&&selected===previous;
       if(!retained){void attachmentNative.cancel().catch(()=>{});attachmentView=null;contextReview=null;thread=null;messages=[];body=null;}
@@ -298,6 +298,13 @@ export function installInboxCloudAdapter(Component: any, views: Record<string, B
     return false;
   };
   view.badge = () => hasUnread;
+  // Home uses only already-authorized cached metadata; opening Home never reads mail.
+  const homeRender = p.renderVals;
+  p.renderVals = function () {
+    const out = homeRender.call(this), connected = readable().length > 0;
+    return {...out, homeInboxTitle: hasUnread ? 'Unread messages' : 'Inbox',
+      homeInboxStatus: failure ? 'Open to reconnect or retry' : connected ? 'Open your messages' : accountsChecked ? 'Add an email account' : 'View email accounts'};
+  };
   // Mail content is never sent to the agent automatically, so chips ask only for help the agent can give.
   // Sharing one message goes through the explicit "Review email with agent" review.
   view.suggestions = (st: Bag) => drafts.render().composing ? ['Help me write this email'] : st.open != null ? ['Help me write a reply'] : ['Help me write an email', 'Help me organize my inbox'];
