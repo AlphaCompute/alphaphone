@@ -36,6 +36,11 @@ try {
  await page.getByRole('button', { name: 'Photos', exact: true }).click();
  await page.getByRole('button', { name: /^Captured video / }).click();
  await page.getByRole('button', { name: 'Ask Alpha about this photo', exact: true }).click();
+ // Ask opens the local content review first; only reviewed, synthetic text reaches the composer.
+ const review = page.getByRole('dialog', { name: 'Ask about selected content' });
+ await review.getByRole('textbox', { name: 'Content excerpt' }).fill('Synthetic description of the selected video frame');
+ await review.getByRole('button', { name: 'Use in conversation', exact: true }).click();
+ await review.waitFor({ state: 'detached' });
  await page.evaluate(async () => {
   const { alphaClient } = await import('/src/runtime/alpha-client.ts');
   const { phoneContextMessage } = await import('/src/runtime/phone-context.ts');

@@ -9,6 +9,7 @@ import { registerPlugin } from '../platform-plugins';
 import { Capacitor } from '@capacitor/core';
 import { DailyApps } from '../daily';
 import { connectionController } from '../runtime/connection-ui';
+import { chooseVoiceRoute, cloudSpeechDisclosure, speakRepliesEnabled, setSpeakReplies, voicePreferenceKeys, voiceRoutePreference } from '../runtime/voice-selection';
 import type { GmailAccount } from '../runtime/cloud-protocol';
 import { disconnectGmailAccount, disconnectMessage, gmailReadable, GMAIL_ACCOUNTS_CHANGED } from '../runtime/gmail-mailbox';
 import { clearCrashLog, describeCrashEntry, readCrashLog, type CrashLog } from '../runtime/crash-log';
@@ -258,6 +259,8 @@ export function installSettingsAdapter(Component: any, views: Bag) {
       if (next !== lastBinding) { lastBinding = next; void refreshCapabilities(); }
     });
     this.deviceResume = DailyApps.addListener('appResumed', () => { void refresh(); void refreshCapabilities(); }).catch(() => null);
+    this.voicePreferencesListener = () => changed();
+    window.addEventListener(voicePreferenceKeys().event, this.voicePreferencesListener);
   };
   p.componentDidUpdate = function (previousProps: Bag, previousState: Bag) {
     update?.call(this, previousProps, previousState);
@@ -277,6 +280,7 @@ export function installSettingsAdapter(Component: any, views: Bag) {
     window.removeEventListener('storage',this.appearanceStorageListener);
     window.removeEventListener('pageshow',this.appearanceResumeListener);
     this.settingsConnectionUnsubscribe?.();
+    window.removeEventListener(voicePreferenceKeys().event, this.voicePreferencesListener);
     this.passwordLifecycle?.();
     void this.deviceResume?.then((listener: any) => listener?.remove()); unmount.call(this);
   };
@@ -299,6 +303,18 @@ export function installSettingsAdapter(Component: any, views: Bag) {
     const info = (label: string, val: string): Bag => ({ kInfo: true, label, val, hasVal: true, noAB: true });
     const nav = (label: string, page: string): Bag => ({ kNav: true, label, lbl: label, chev: true, noAB: true, go: manage(page) });
     const group = (rows: Bag[]) => ({ css: 'background:var(--s2);padding:4px 0', rows });
+    // Speech route and Speak replies. On this device is the default; Cloud needs a signed-in account
+    // and an explicit choice after the credit disclosure. Speak replies is off unless turned on.
+    const speechRows = (): Bag[] => {
+      const route = voiceRoutePreference(), saved = (ok: boolean) => { if (!ok) api.toast('This speech setting could not be saved. Nothing changed.'); changed(); };
+      const rows: Bag[] = [info('Speech', route === 'cloud' ? 'Eliza Cloud (uses credits)' : 'On this device')];
+      if (route === 'cloud') rows.push({ kNav:true, label:'Use on-device speech', lbl:'Use on-device speech', chev:true, noAB:true, go:()=>saved(chooseVoiceRoute('device')) });
+      else if (account) rows.push({ kNav:true, label:'Use Eliza Cloud speech (uses credits)', lbl:'Use Eliza Cloud speech (uses credits)', chev:true, noAB:true, go:()=>{ if (window.confirm(`${cloudSpeechDisclosure()} Use Eliza Cloud speech?`)) saved(chooseVoiceRoute('cloud', { disclosed: 'cloud-speech-uses-credits' })); } });
+      else rows.push(info('Eliza Cloud speech', 'Cloud sign-in required'));
+      const speak = speakRepliesEnabled();
+      rows.push({ kNav:true, label:'Speak replies', lbl:'Speak replies', val:speak ? 'On' : 'Off', hasVal:true, chev:true, noAB:true, go:()=>saved(setSpeakReplies(!speak)) });
+      return rows;
+    };
     const problemCount = crashLog ? crashLog.entries.length : null;
     const problemsRow = (): Bag => ({ kNav:true, label:'Problem log', lbl:'Problem log', val: problemCount === null ? 'Unavailable' : problemCount ? `${problemCount} recorded` : 'None recorded', hasVal:true, chev:true, noAB:true, go:()=>{ api.set({ page:'problems' }); void refresh(); } });
     const diagnosticsRow = (): Bag => ({ kNav:true, label:'Export diagnostics', lbl: diagnosticsBusy ? 'Preparing diagnostics…' : 'Export diagnostics', chev:true, noAB:true, go:()=>void exportDiagnostics(api) });
@@ -393,7 +409,7 @@ export function installSettingsAdapter(Component: any, views: Bag) {
           {kNav:true,label:'Open conversation',lbl:'Open conversation',chev:true,noAB:true,go:()=>api.composeContentQuestion('')},
           {kNav:true,label:'Agent connection',lbl:'Agent connection',chev:true,noAB:true,go:()=>connectionController.open()},
           {kNav:true,label:'Scheduled digests',lbl:'Scheduled digests',chev:true,noAB:true,go:()=>window.dispatchEvent(new Event('alpha:hosted-digests'))},
-        ])]:[group([info('Cloud speech', account ? 'Check in voice controls' : 'Cloud sign-in required'), info('Wake word', 'Not available'), { kNav:true, label:'Scheduled digests', lbl:'Scheduled digests', val:digests, hasVal:true, chev:true, noAB:true, go:()=>window.dispatchEvent(new Event('alpha:hosted-digests')) }, info('Personality settings', 'Managed by your agent')])];
+        ])]:[group([...speechRows(), info('Wake word', 'Not available'), { kNav:true, label:'Scheduled digests', lbl:'Scheduled digests', val:digests, hasVal:true, chev:true, noAB:true, go:()=>window.dispatchEvent(new Event('alpha:hosted-digests')) }, info('Personality settings', 'Managed by your agent')])];
       } else if (page.title === 'Battery') {
         page.hero = { ...page.hero, big: percent, sub: typeof facts.charging === 'boolean' ? facts.charging ? 'Charging' : 'On battery' : 'Battery reading unavailable', hasMeter: typeof facts.batteryPercent === 'number', meter: facts.batteryPercent ?? 0 };
         page.groups = [group([info('Battery saver', typeof facts.powerSave === 'boolean' ? facts.powerSave ? 'On' : 'Off' : 'Unavailable'), nav('Manage battery in Android', 'battery')])];

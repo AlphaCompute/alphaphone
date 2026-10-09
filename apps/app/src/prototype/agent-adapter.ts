@@ -851,7 +851,9 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
         if (this.live) {
           // The agent may have received this message. Offer a history check, never a blind resend.
           const check={type:'generic',icon:'info',title:'Check for reply',sub:'Reload this conversation from the agent. Nothing is sent again.',checkReply:{sessionId}};
-          if(streamed)this.setState((previous:Shell)=>({msgs:previous.msgs.map((item:Shell)=>item.id===streamedId?{...item,streaming:false,interrupted:true,text:`${item.text}\n\nResponse interrupted. ${message}`} :item)}));else this.agentSay(message);
+          if(streamed)this.setState((previous:Shell)=>({msgs:previous.msgs.map((item:Shell)=>item.id===streamedId?{...item,streaming:false,interrupted:true,text:`${item.text}\n\nResponse interrupted. ${message}`} :item)}));
+          // An error after dispatch is not a reply: marked interrupted so voice timing abandons the turn and it is never read aloud.
+          else this.setState((previous:Shell)=>({chat:previous.chat==='full'?'full':'sheet',msgs:[...(previous.msgs||[]),{id:crypto.randomUUID(),from:'agent',text:message,card:null,interrupted:true}]}));
           this.agentSay('Your message may have reached the agent. Check before sending it again.',check);
         }
       }

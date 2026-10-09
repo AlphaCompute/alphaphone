@@ -986,11 +986,11 @@ export const connectionController = {
       const previous = service; detachCloudTarget(); detachService();
       localStorage.removeItem(CLOUD_SERVICE);
       if (!active) save({ kind: 'none' });
-      const client = (previous?.client ?? cloud) as CloudProtocol & { revokeSession?: (signal: AbortSignal) => Promise<void> };
-      // Server-side revocation needs CloudProtocol.revokeSession; until Cloud offers it, only this
-      // phone's token is removed and the copy says so.
+      const client = (previous?.client ?? cloud) as CloudProtocol;
+      // Only a confirmed server-side revocation counts. A transport or server that does not offer
+      // the route ({supported:false}) or a failed request removes this phone's token only, and the copy says so.
       let revoked = false;
-      if (typeof client.revokeSession === 'function') { try { await client.revokeSession(signal); revoked = true; } catch { signal.throwIfAborted(); } }
+      if (typeof client.revokeSession === 'function') { try { const result = await client.revokeSession(signal); revoked = result?.supported === true && result.revoked === true; } catch { signal.throwIfAborted(); } }
       await client.disconnect();
       update({ agents: [], residentSavedCredential:false, message: revoked ? 'Signed out of Eliza Cloud. This sign-in was revoked.' : 'Signed out of Eliza Cloud on this phone. The sign-in token was removed here; Eliza Cloud did not confirm revoking it.' });
     });

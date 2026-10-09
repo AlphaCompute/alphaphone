@@ -6,6 +6,7 @@ import {notesTrashPolicy} from '../runtime/notes-trash-policy';
 import {maintainNotesTrash} from '../../../../.eliza/patched/plugins/plugin-notes/src/client/notes-trash-maintenance.ts';
 import {scheduleNotesTrashMaintenance} from '../../../../.eliza/patched/plugins/plugin-notes/src/client/notes-trash-schedule.ts';
 import {DailyApps} from '../daily';
+import {isStorageFull} from '../runtime/notes-store';
 type Bag=Record<string,any>;
 type Shell=any;
 const kindLabel:Record<string,string>={text:'Note',list:'Checklist',voice:'Voice note',link:'Link'};
@@ -74,7 +75,7 @@ export function installNotesTrashAdapter(Component:Shell,views:Record<string,Bag
     return await shell.vset('notes',{list,open:null,sheet:null,playing:false,dict:false})===true;
    });
    if(!saved)return false;
-  }catch{shell.toast('Could not move this note to Trash. Nothing was deleted.');return false;}
+  }catch(error){shell.toast(isStorageFull(error)?'Trash is full. Empty Trash in Notes, then delete again. Nothing was deleted.':'Could not move this note to Trash. Nothing was deleted.');return false;}
   void load(shell);
   shell.toast(`${note.title||kindLabel[note.kind]||'Note'} moved to Trash`,{undo:()=>void restore(shell,entry!.id)});
   return true;

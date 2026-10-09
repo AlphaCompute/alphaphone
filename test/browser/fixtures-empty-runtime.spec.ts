@@ -38,7 +38,7 @@ test('Files root shows explicit empty copy instead of seeded files', async ({ pa
   const { errors } = await withEmptyFixtures(page);
   await page.goto('/');
   await page.getByRole('button', { name: 'Files', exact: true }).click();
-  await expect(page.getByText('No recent files. Files you open or save appear here.', { exact: true })).toBeVisible();
+  await expect(page.getByText('No recent files. Files you open here or save from scans appear here.', { exact: true })).toBeVisible();
   await expect(page.getByText('218 GB free')).toHaveCount(0);
   expect(errors).toEqual([]);
 });

@@ -54,6 +54,10 @@ export function installReminderAdapter(Component: Bag, views: Bag) {
     } catch {if(current())shell.vset('calendar',{reminderTapPending:true});}
     finally{tapBusy=false;if(tapRequested){tapRequested=false;queueMicrotask(()=>void checkReminderTap(true));}}
   }
+  /** Home agenda rows for due, unhandled reminders (data-adapter reads this). Title, calendar id and due instant only. */
+  p.overdueReminders = function () {
+    return overdueReminders(this.reminderRows||[]).map(r=>{const row=reminderEvents([r])[0];return row?{id:row.id,title:r.title,off:row.off,at:dueOf(r)}:null;}).filter(Boolean);
+  };
   p.refreshReminders = async function (openId?: string, occurrenceId?: string) {
     // Resume and calendar refresh may supersede the notification's fetch.
     // Keep its navigation intent until the latest successful fetch consumes it.

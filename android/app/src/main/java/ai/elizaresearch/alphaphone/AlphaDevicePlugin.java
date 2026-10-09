@@ -96,6 +96,8 @@ public final class AlphaDevicePlugin extends Plugin {
    case "notifications":action=Settings.ACTION_APP_NOTIFICATION_SETTINGS;break;
    case "privacy":action=Settings.ACTION_APPLICATION_DETAILS_SETTINGS;break;
    case "default-apps":action=Settings.ACTION_MANAGE_DEFAULT_APPS_SETTINGS;break;
+   // Do not disturb: the platform Zen mode page; an image without it rejects and the tile falls back to Settings.
+   case "dnd":action="android.settings.ZEN_MODE_SETTINGS";break;
    default:call.reject("Unsupported settings page");return;
   }
   Intent intent=new Intent(action);

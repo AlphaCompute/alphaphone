@@ -31,7 +31,7 @@ import { installAgentAdapter } from './prototype/agent-adapter';
 import { installPrototypeNativeAdapters } from './prototype/native-adapter';
 import { installSelectedDocumentAdapter } from './prototype/selection-adapter';
 import { installPrototypeCameraAdapter } from './prototype/camera-adapter';
-import { installPrototypeHomeBindings, installPrototypeDataAdapter } from './prototype/data-adapter';
+import { installPrototypeHomeBindings, installPrototypeDataAdapter, setHomeSources, HOME_SOURCES_CHANGED } from './prototype/data-adapter';
 import { isAndroid, DeviceApps } from './native';
 import { DailyApps } from './daily';
 import { installPrototypeVoiceAdapter } from './prototype/voice-adapter';
@@ -40,7 +40,8 @@ import { installCalendarAdapter } from './prototype/calendar-adapter';
 import { installSettingsAdapter } from './prototype/settings-adapter';
 import { ConnectionChooser, connectionController } from './runtime/connection-ui';
 import { installNotesTrashAdapter } from './prototype/notes-trash-adapter';
-import { installInboxCloudAdapter } from './prototype/inbox-cloud-adapter';
+import { installInboxCloudAdapter, inboxAttention, subscribeInboxAttention } from './prototype/inbox-cloud-adapter';
+import { latestRetainedDigest, subscribeRetainedDigest } from './runtime/hosted-digests';
 import { installHomeLauncher } from './prototype/home-launcher';
 import { setLocalePreferences } from './prototype/locale-time';
 import './prototype/prototype.css';
@@ -93,6 +94,16 @@ if (!fixture) {
   installSettingsAdapter(Component, VIEWS);
   if(!isAndroid){if(devSurfacesEnabled)installBrowserDeviceAdapter(Component);else installBrowserCapabilityTiles(Component);}
   if(!browserDevProfile) installInboxCloudAdapter(Component, VIEWS);
+  // Home cards read only the provider summaries: unread count, account label and read time for
+  // mail, and the latest retained brief. Nothing here starts a read or a run.
+  if(!browserDevProfile){
+    const homeSourcesChanged=()=>window.dispatchEvent(new Event(HOME_SOURCES_CHANGED));
+    subscribeInboxAttention(homeSourcesChanged);subscribeRetainedDigest(homeSourcesChanged);
+    setHomeSources({
+      attention:()=>{const value=inboxAttention();return {state:value.state,unread:value.unread,...(value.source?{source:value.source}:{}),...(value.updatedAt?{updatedAt:value.updatedAt}:{})};},
+      brief:latestRetainedDigest,
+    });
+  }
   if(!browserDevProfile) installWorkflowAdapter(Component, VIEWS);
 }
 if(devSurfacesEnabled&&simulatedApps)installSimulatedApps(Component,VIEWS,simulatedApps);
