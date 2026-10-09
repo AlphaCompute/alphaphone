@@ -122,6 +122,6 @@ try{
  await page.getByRole('button',{name:'Website',exact:true}).waitFor();
  evidence.placeDetail={openingHours:detail.openingHours,phone:true,website:true};
 
- assert.deepEqual(errors,[]);fs.writeFileSync(path.join(dir,'renderer.json'),JSON.stringify({passed:true,delayedRealDetail:true,...evidence,requests,scope:'Real Chromium renderer + local OSM provider + Chromium geolocation fixes; native GPS, screen-off and Android untested'},null,2));
+ assert.deepEqual(errors,[]);fs.writeFileSync(path.join(dir,'renderer.json'),JSON.stringify({passed:true,delayedRealDetail:true,...evidence,requests,scope:'Real Chromium renderer + local OSM provider + development coordinate location source (?mode=dev); native GPS, screen-off and Android untested'},null,2));
  console.log('PASS real map tiles/search pins/delayed-detail route/modes/out-of-region/stale-route clearing/named origin/cancelled origin search/maneuver guidance/position marker/place detail');
 }catch(error){console.log(JSON.stringify({errors,requests:requests.slice(-20),state:await root().innerText().catch(()=>''),planes:await page.locator('[data-alpha-map-plane]').count()}));throw error;}finally{await browser.close();}
