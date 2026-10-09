@@ -79,6 +79,7 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
   p.cancelReadReplyCompletions=function(onlyProposalId?:string){
     for(const [proposalId,lease] of this.readReplyLeases||[]){
       if(onlyProposalId!==undefined&&proposalId!==onlyProposalId)continue;
+      if(this.pendingActionApprovalProposalId===proposalId)this.pendingActionApproval?.abort();
       if(lease.phase==='cancelled'||lease.phase==='done')continue;
       lease.phase='cancelled';lease.controller.abort();
       void connectionController.cancelReadReply(lease.binding).catch(()=>{});
@@ -862,6 +863,7 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
         if(card.recovered&&JSON.stringify(card.proposalSession)!==JSON.stringify(session))throw Error('The agent changed. Review this action again.');
         this.pendingActionRecoveryAbort?.abort();
         const approval=this.pendingActionApproval=new AbortController();
+        this.pendingActionApprovalProposalId=card.proposalId;
         this.pendingActionApprovalContext=alphaClient.getState().context;this.pendingActionApprovalSession=session;
         const sessionId = session?.sessionId;
         const beforeView = this.S().view;
@@ -884,8 +886,8 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
           if (this.S().view !== beforeView) this.toast(receipt.summary);
           else this.agentSay(receipt.summary);
         }
-      } catch (e) { const readLease=this.readReplyLeases?.get(card.proposalId);if(this.live&&(!readLease||connectionController.readReplyCurrent(readLease.binding))&&(!card.recovered||JSON.stringify(card.proposalSession)===JSON.stringify(connectionController.getSnapshot().session)))this.agentSay(e instanceof Error ? e.message : 'Action could not complete.'); }
-      finally {this.pendingActionApproval=null;if(this.live)context(this);}
+      } catch (e) { const readLease=this.readReplyLeases?.get(card.proposalId);if(this.live&&(!readLease||readLease.phase!=='cancelled'&&connectionController.readReplyCurrent(readLease.binding))&&(!card.recovered||JSON.stringify(card.proposalSession)===JSON.stringify(connectionController.getSnapshot().session)))this.agentSay(e instanceof Error ? e.message : 'Action could not complete.'); }
+      finally {this.pendingActionApproval=null;this.pendingActionApprovalProposalId=null;if(this.live)context(this);}
     } else if (card.go) this.openView(card.go.view, card.go.patch);
   };
   p.startVoice = async function () {
@@ -895,7 +897,7 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
       else this.toast(result.message || 'Speech recognition is unavailable on this device.');
     } catch { this.toast('Speech recognition is unavailable on this device.'); }
   };
-  p.stopVoice = function () { this.cancelReadReplyCompletions?.();alphaClient.cancel(); this.setState({ voice: 'off', typing: false }); };
+  p.stopVoice = function () { this.pendingActionApproval?.abort();this.cancelReadReplyCompletions?.();alphaClient.cancel(); this.setState({ voice: 'off', typing: false }); };
   views.notes.render = function (state: Shell, api: Shell) {
     const out = notesRender({ ...state, record: false }, api);
     out.storageStatus=state.storageStatus;
