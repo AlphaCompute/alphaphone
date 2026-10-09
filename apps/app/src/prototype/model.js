@@ -12,6 +12,7 @@ import {
 import { isMvpView, DEFERRED_MVP_VIEWS, deferredMvpPrompt } from "./mvp-features";
 import React from "react";
 import { DCLogic } from "./dc-lite.js";
+import { WEEKDAYS, MONTHS, formatTime, formatClock, formatHours, formatHour, weekdayName, formatShortDate, formatLongDate, formatMonthDay, formatMonthTitle } from "./locale-time";
 
 
 var IC = {
@@ -82,8 +83,9 @@ var IC = {
 };
 var DARK = { bg: "#000000", s1: "#0B0B0B", s2: "#151515", s3: "#262626", line: "#262626", fg: "#FFFFFF", mut: "#8F8F8F", acct: "#8A93FF", scrim: "rgba(0,0,0,.55)", frame: "#161616", shc: "rgba(0,0,0,.45)" };
 var LIGHT = { bg: "#FFFFFF", s1: "#FAFAFA", s2: "#F3F3F3", s3: "#E6E6E6", line: "#E3E3E3", fg: "#000000", mut: "#6B6B6B", acct: "#0000FF", scrim: "rgba(0,0,0,.18)", frame: "#DCDCDC", shc: "rgba(0,0,0,.12)" };
-var DAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
-var MONS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+// Device-locale names (Sunday-first, January-first), refilled when locale preferences change.
+var DAYS = WEEKDAYS;
+var MONS = MONTHS;
 
 /* People (PEOPLE) and generated photography (IMG) come from ./fixtures.js. Production
    builds swap in empty values, so every lookup below tolerates a missing entry. */
@@ -101,7 +103,8 @@ function scriptedReply(view, t) {
 function person(id) { for (var i = 0; i < PEOPLE.length; i++) if (PEOPLE[i].id === id) return PEOPLE[i]; return null; }
 function cap(s) { return s.charAt(0).toUpperCase() + s.slice(1); }
 function pad2(n) { return String(n).padStart(2, "0"); }
-function fmtT(t) { var h = Math.floor(t); var m = Math.round((t - h) * 60); var hh = h % 12 || 12; return hh + ":" + pad2(m); }
+/* Time of day without a day period ("3:30" / "15:30"), in the device locale and hour cycle. */
+function fmtT(t) { return formatHours(t, { dayPeriod: false }); }
 
 /* Each app registers itself here. See CONTRACT.md. */
 var VIEWS = {};
@@ -148,10 +151,10 @@ function pnRel(ms, now) {
   var d = new Date(ms); var n = new Date(now);
   var day = function (x) { return new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime(); };
   var diff = Math.round((day(n) - day(d)) / 864e5);
-  if (diff === 0) return fmtT(d.getHours() + d.getMinutes() / 60) + (d.getHours() < 12 ? " AM" : " PM");
+  if (diff === 0) return formatTime(d);
   if (diff === 1) return "Yesterday";
   if (diff < 7) return DAYS[d.getDay()];
-  return MONS[d.getMonth()].slice(0, 3) + " " + d.getDate();
+  return formatMonthDay(d);
 }
 function pnAt(e, now) { return e.at || (now - (e.ago || 0) * 60000); }
 function pnDur(s) { return s < 60 ? s + " s" : Math.round(s / 60) + " min"; }
@@ -469,7 +472,7 @@ function msgFirst(p) { return String(p.name).split(" ")[0]; }
 function msgFmt(k) {
   if (k < 0) return "Yesterday";
   var h = Math.floor(k / 60) % 24, m = k % 60;
-  return (h % 12 || 12) + ":" + pad2(m) + (h < 12 ? " AM" : " PM");
+  return formatHours(h + m / 60);
 }
 function msgMaxK(threads) { var mx = 0; Object.keys(threads).forEach(function (p) { threads[p].forEach(function (m) { if (m.k > mx) mx = m.k; }); }); return mx; }
 function msgNowK(api, threads) { var d = api.now; return Math.max(d.getHours() * 60 + d.getMinutes(), msgMaxK(threads) + 1); }
@@ -769,7 +772,7 @@ function inboxFind(api, word) {
   if (!word) return null; word = word.toLowerCase();
   return inboxPeople(api).filter(function (p) { return p.id === word || p.name.toLowerCase().split(" ")[0] === word || p.name.toLowerCase() === word; })[0] || null;
 }
-function inboxClock(d) { var h = d.getHours(); return (h % 12 || 12) + ":" + pad2(d.getMinutes()) + (h < 12 ? " AM" : " PM"); }
+function inboxClock(d) { return formatTime(d); }
 function inboxLive(st) { return (st.mails || []).filter(function (m) { return !m.arch && !m.del; }); }
 function inboxMail(st, id) {
   var l = (st.mails || []).concat(st.sent || []);
@@ -1094,7 +1097,7 @@ var CAL_ALERT = [[null, "None"], [0, "At start"], [10, "10 min"], [60, "1 hour"]
 var CAL_PENDING = null;
 var CAL_H0 = 7, CAL_H1 = 23, CAL_PX = 56;
 
-function calAmpm(t) { t = ((t % 24) + 24) % 24; var h = Math.floor(t); var m = Math.round((t - h) * 60); if (m === 60) { h++; m = 0; } return (h % 12 || 12) + ":" + pad2(m) + " " + (h >= 12 && h < 24 ? "PM" : "AM"); }
+function calAmpm(t) { t = ((t % 24) + 24) % 24; return formatHours(t); }
 function calRange(t, d) {
   var a = calAmpm(t), b = calAmpm(t + d);
   if (a.slice(-2) === b.slice(-2)) a = a.slice(0, -3);
@@ -1105,7 +1108,7 @@ function calDate(api, off) { var d = new Date(api.now); d.setHours(12, 0, 0, 0);
 function calDow(api, off) { return (calDate(api, off).getDay() + 6) % 7; }
 function calDayName(api, off) {
   if (off === 0) return "Today"; if (off === 1) return "Tomorrow"; if (off === -1) return "Yesterday";
-  var d = calDate(api, off); return DAYS[d.getDay()].slice(0, 3) + ", " + MONS[d.getMonth()].slice(0, 3) + " " + d.getDate();
+  var d = calDate(api, off); return formatShortDate(d);
 }
 function calOccurs(e, off, api) {
   if (e.off === off) return true;
@@ -1360,7 +1363,7 @@ registerView("calendar", {
         open: function () { if (api.swallowed()) return; set({ open: e.id, openDay: sel }); }
       };
     });
-    var hours = []; for (var h = CAL_H0; h <= CAL_H1; h++) hours.push({ top: (h - CAL_H0) * CAL_PX + 8, label: h === 12 ? "Noon" : (h % 12 || 12) + (h < 12 ? " am" : " pm"), lt: (h - CAL_H0) * CAL_PX });
+    var hours = []; for (var h = CAL_H0; h <= CAL_H1; h++) hours.push({ top: (h - CAL_H0) * CAL_PX + 8, label: formatHour(h), lt: (h - CAL_H0) * CAL_PX });
     var nowT = api.now.getHours() + api.now.getMinutes() / 60;
     var sw = api.sw(function (dx, dy) { if (Math.abs(dx) < Math.abs(dy) * 1.2) return false; set({ day: sel + (dx < 0 ? 1 : -1) }); }, { axis: "x" });
     var tlDown = sw.down, tlUp = sw.up;
@@ -1442,7 +1445,7 @@ registerView("calendar", {
       var first = Math.min(0, f.off);
       for (var k = first; k < first + 21; k++) (function (k) {
         var dt = calDate(api, k); var act = k === f.off;
-        dayChips.push({ top: k === 0 ? "Today" : DAYS[dt.getDay()].slice(0, 3), n: dt.getDate(), css: act ? "background:var(--acc);color:#fff" : "background:var(--s2)", pick: function () { fp({ off: k }); }, label: calDayName(api, k) });
+        dayChips.push({ top: k === 0 ? "Today" : weekdayName(dt, "short"), n: dt.getDate(), css: act ? "background:var(--acc);color:#fff" : "background:var(--s2)", pick: function () { fp({ off: k }); }, label: calDayName(api, k) });
       })(k);
       var chosen = f.who.map(function (id) { var p = calPerson(api, id); return { ini: p.ini, first: p.name.split(" ")[0], label: "Remove " + p.name, remove: function () { fp({ who: f.who.filter(function (x) { return x !== id; }) }); } }; });
       var q = (f.pq || "").toLowerCase().trim();
@@ -1486,7 +1489,7 @@ registerView("calendar", {
 
     return {
       attendeeChoices: calPeople(api).map(function (person) { return { id: person.id, name: person.name }; }),
-      month: monthOpen ? MONS[mBase.getMonth()] + (mBase.getFullYear() !== today.getFullYear() ? " " + mBase.getFullYear() : "") : MONS[selDate.getMonth()] + (selDate.getFullYear() !== today.getFullYear() ? " " + selDate.getFullYear() : ""),
+      month: monthOpen ? formatMonthTitle(mBase, mBase.getFullYear() !== today.getFullYear()) : formatMonthTitle(selDate, selDate.getFullYear() !== today.getFullYear()),
       dayMode: !monthOpen,
       dayName: calDayName(api, sel),
       emptyText: sel === 0 ? "Nothing scheduled today" : "Free all day", week: week, events: events, hours: hours, empty: evs.length === 0,
@@ -1496,7 +1499,7 @@ registerView("calendar", {
       toggleMonth: function () { set({ month: monthOpen ? null : 0 }); },
       newEvent: function () { var nx = sel === 0 ? Math.min(21, Math.ceil(nowT + 0.01)) : 10; set({ form: Object.assign(formFrom(null, sel), { t: nx }), month: null }); },
       hasInvites: invites.length > 0 && !monthOpen, invites: invites,
-      monthOpen: monthOpen, mTitle: MONS[mBase.getMonth()] + (mBase.getFullYear() !== today.getFullYear() ? " " + mBase.getFullYear() : ""),
+      monthOpen: monthOpen, mTitle: formatMonthTitle(mBase, mBase.getFullYear() !== today.getFullYear()),
       mdays: mdays, mPrev: function () { set({ month: (st.month || 0) - 1 }); }, mNext: function () { set({ month: (st.month || 0) + 1 }); },
       closeMonth: function () { set({ month: null }); }, calRows: calRows, chevron: monthOpen ? IC.up : IC.down,
       detail: !!D && !F, ev: D,
@@ -1827,7 +1830,7 @@ function camScene(st) { return st.mode === "scan" ? "poster" : (st.front ? "self
 function camFigs(st) { return st.mode !== "scan" && st.front ? [[50, 2.2]] : null; }
 function camPoster(now) {
   var d = new Date(now); var add = (5 - d.getDay() + 7) % 7 || 7; d.setDate(d.getDate() + add);
-  return { day: DAYS[d.getDay()].slice(0, 3) + ", " + MONS[d.getMonth()].slice(0, 3) + " " + d.getDate(), short: DAYS[d.getDay()].slice(0, 3) + " 6 PM" };
+  return { day: formatShortDate(d), short: weekdayName(d, "short") + " " + formatHours(18) };
 }
 function camSave(api, item) {
   var ph = api.get("photos");
@@ -2069,10 +2072,10 @@ function phAgo(ts, now) { var a = new Date(ts); a.setHours(0, 0, 0, 0); var b = 
 function phDayLabel(ts, now) {
   var n = phAgo(ts, now); var d = new Date(ts);
   if (n === 0) return "Today"; if (n === 1) return "Yesterday"; if (n > 1 && n < 7) return DAYS[d.getDay()];
-  return MONS[d.getMonth()].slice(0, 3) + " " + d.getDate() + (d.getFullYear() !== new Date(now).getFullYear() ? ", " + d.getFullYear() : "");
+  return formatMonthDay(d, d.getFullYear() !== new Date(now).getFullYear());
 }
-function phTime(ts) { var d = new Date(ts); return fmtT(d.getHours() + d.getMinutes() / 60) + (d.getHours() < 12 ? " AM" : " PM"); }
-function phFullDate(ts) { var d = new Date(ts); return DAYS[d.getDay()] + ", " + MONS[d.getMonth()].slice(0, 3) + " " + d.getDate(); }
+function phTime(ts) { return formatTime(new Date(ts)); }
+function phFullDate(ts) { return formatLongDate(new Date(ts)); }
 function phFirst(api, id) { var p = api.person(id); return p ? p.name.split(" ")[0] : id; }
 function phPersonWord(w) { w = (w || "").toLowerCase(); if (w === "father" || w === "dad") return person("dad"); for (var i = 0; i < PEOPLE.length; i++) { var p = PEOPLE[i]; if (p.id === w || p.name.split(" ")[0].toLowerCase() === w) return p; } return null; }
 function phLatest(list, kind) { var l = phSort(list).filter(function (it) { return it.kind === (kind || "photo"); }); return l[0] || null; }
@@ -2271,7 +2274,14 @@ registerView("photos", {
     /* library */
     var fq = st.filter ? st.filter.q : null;
     var words = st.searching ? phWords(st.q) : [];
-    var shown = list.filter(function (it) { return phMatch(it, fq) && phLiveMatch(it, words, now); });
+    // Search also covers device captures the camera adapter provides as library-shaped items
+    // (st.captures: { id, ts, kind, desc?, place?, ... }), without duplicating library entries.
+    var pool = list;
+    if ((st.searching || fq) && Array.isArray(st.captures) && st.captures.length) {
+      var known = {}; list.forEach(function (it) { known[it.id] = true; });
+      pool = list.concat(st.captures.filter(function (it) { return it && typeof it.id === "string" && Number.isFinite(it.ts) && !known[it.id]; }));
+    }
+    var shown = pool.filter(function (it) { return phMatch(it, fq) && phLiveMatch(it, words, now); });
     var seqIds = shown.map(function (it) { return it.id; });
     var groups = []; var gi = {};
     shown.forEach(function (it) {
@@ -2517,9 +2527,9 @@ function mapsAddr(a) {
 }
 function mapsModeI(m) { for (var i = 0; i < MAPS_MODES.length; i++) if (MAPS_MODES[i][0] === m) return i; return 0; }
 function mapsFmtMin(m) { m = Math.max(1, Math.round(m)); if (m >= 60) { var h = Math.floor(m / 60), r = m % 60; return h + " h" + (r ? " " + r : ""); } return m + " min"; }
-function mapsClock(d) { var h = d.getHours(); return (h % 12 || 12) + ":" + pad2(d.getMinutes()) + " " + (h < 12 ? "AM" : "PM"); }
+function mapsClock(d) { return formatTime(d); }
 function mapsEta(api, min) { return mapsClock(new Date(api.now.getTime() + min * 60000)); }
-function mapsHr(t) { var h = Math.floor(t), m = Math.round((t - h) * 60); return (h % 12 || 12) + (m ? ":" + pad2(m) : "") + " " + (h < 12 || h === 24 ? "AM" : "PM"); }
+function mapsHr(t) { return formatHours(t, { compact: true }); }
 function mapsHours(p, now) {
   if (p.open === "none") return null;
   if (!p.open) return { open: true, text: "24 hours" };
@@ -2865,7 +2875,7 @@ var NOTES_WAVE = []; (function () { for (var i = 0; i < 56; i++) NOTES_WAVE.push
 var NT = { pend: false, recI: null, playI: null, dicI: null, dIdx: 0, undoT: null };
 
 function notesFmt(sec) { sec = Math.max(0, Math.floor(sec)); return Math.floor(sec / 60) + ":" + pad2(sec % 60); }
-function notesNowLabel(d) { var h = d.getHours(); return (h % 12 || 12) + ":" + pad2(d.getMinutes()) + (h < 12 ? " AM" : " PM"); }
+function notesNowLabel(d) { return formatTime(d); }
 function notesFind(list, id) { for (var i = 0; i < list.length; i++) if (list[i].id === id) return list[i]; return null; }
 function notesUpd(api, id, patch) {
   var s = api.get("notes");
@@ -3778,9 +3788,9 @@ function walMoney(a) { return "$" + a.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g
 function walDay(d, now) {
   if (d === 0) return "Today"; if (d === 1) return "Yesterday";
   var dt = new Date(now.getTime() - d * 86400000);
-  return d < 7 ? DAYS[dt.getDay()] : MONS[dt.getMonth()].slice(0, 3) + " " + dt.getDate();
+  return d < 7 ? DAYS[dt.getDay()] : formatMonthDay(dt);
 }
-function walDate(off, now) { var dt = new Date(now.getTime() + off * 86400000); return DAYS[dt.getDay()].slice(0, 3) + ", " + MONS[dt.getMonth()].slice(0, 3) + " " + dt.getDate(); }
+function walDate(off, now) { return formatShortDate(new Date(now.getTime() + off * 86400000)); }
 function walCard(cards, id) { for (var i = 0; i < cards.length; i++) if (cards[i].id === id) return cards[i]; return null; }
 function walDefault(cards) { for (var i = 0; i < cards.length; i++) if (cards[i].def) return cards[i]; return cards[cards.length - 1] || null; }
 function walPayable(cards) { return cards.filter(function (c) { return !c.locked; }); }
@@ -4091,7 +4101,7 @@ var WF_EVENTS = [["A deep-work event starts", ["Calendar"]], ["An event ends", [
 var WF_PLACES = ["I arrive home", "I leave home", "I arrive at work"];
 
 
-function wfAmpm(t) { var h = Math.floor(t), m = Math.round((t - h) * 60); return (h % 12 || 12) + ":" + pad2(m) + " " + (h >= 12 ? "PM" : "AM"); }
+function wfAmpm(t) { return formatHours(t); }
 function wfTrigText(tr, api) {
   if (!tr) return "";
   if (tr.kind === "time") return (tr.days || "Every day") + " at " + wfAmpm(tr.t == null ? 18 : tr.t);
@@ -4583,7 +4593,7 @@ registerView("settings", {
   immersive: function (st) { return st.sheet ? { noPill: true } : null; },
   suggestions: function (st) {
     if (st.page === "accounts") return ["Connect my work email", "What can Alpha see?"];
-    if (st.page === "privacy") return ["What can Alpha see?", "Wipe your memory"];
+    if (st.page === "privacy") return ["What can Alpha see?"];
     if (st.page === "wifi") return (copy("settings").wifiSuggestions || []).concat(["Turn off Wi-Fi"]);
     if (st.page === "character") return ["Make your replies shorter", "Call yourself Nova"];
     return ["Turn on dark mode", "Connect my work email", "What can Alpha see?"];
@@ -4785,8 +4795,8 @@ registerView("settings", {
             stNav({ d: IC.flow, label: "Workflow runs", go: function () { api.open("workflows"); } })
           ] },
           { rows: [
-            stRow("kInfo", { label: "Memory", val: st.memWiped ? "Empty" : (ST_DEVICE ? ST_DEVICE.runtime.memorySize : "Unavailable") }),
-            stNav({ d: IC.trash, label: "Wipe memory", danger: true, noChev: true, go: function () { set({ sheet: { kind: "wipe" } }); } })
+            // No "Wipe memory" action: there is no reviewed memory-erase path to call, so none is offered.
+            stRow("kInfo", { label: "Memory", val: st.memWiped ? "Empty" : (ST_DEVICE ? ST_DEVICE.runtime.memorySize : "Unavailable") })
           ] }
         ] });
     } else if (P === "wifi") {
@@ -5027,7 +5037,7 @@ var BASE = {
   // Quick-settings facts; tiles stay neutral until a fact is known.
   q: Object.assign({}, QUICK_SETTINGS),
   nGone: [], nSlide: null, bright: 70, theme: null, fs: null, now: Date.now(),
-  charName: "Alpha", vs: {}, secure: false, stack: [], toastUndo: false,
+  charName: "Alpha", vs: {}, secure: false, stack: [], toastUndo: false, drawer: false, drawerQ: "",
   msgs: []
 };
 
@@ -5044,7 +5054,14 @@ class Component extends DCLogic {
     var G = this.G || {}; Object.keys(G).forEach(function (k) { G[k].forEach(clearTimeout); });
     var I = this.I || {}; Object.keys(I).forEach(function (k) { I[k].forEach(clearInterval); });
   }
-  S() { var value = Object.assign({}, BASE, this.state || {}); if (DEFERRED_MVP_VIEWS.has(value.view)) value.view = null; value.stack = (value.stack || []).filter(isMvpView); value.heads = false; return value; }
+  S() {
+    var value = Object.assign({}, BASE, this.state || {}); if (DEFERRED_MVP_VIEWS.has(value.view)) value.view = null; value.stack = (value.stack || []).filter(isMvpView); value.heads = false;
+    // The ACTION_ASSIST surface is the conversation itself: it never rests on Home's composer or grid.
+    if (this.props && this.props.assistantSurface && !value.view && (value.chat === "input" || value.chat === "hidden")) value.chat = "full";
+    if (this.props && this.props.assistantSurface) value.drawer = false;
+    return value;
+  }
+  closeAssistant() { this.leave(); if (this.props && this.props.onCloseAssistant) this.props.onCloseAssistant(); }
   later(fn, ms, grp) { grp = grp || "g"; this.G = this.G || {}; var id = setTimeout(fn, ms); (this.G[grp] = this.G[grp] || []).push(id); return id; }
   clear(grp) { this.G = this.G || {}; (this.G[grp] || []).forEach(clearTimeout); this.G[grp] = []; }
   every(fn, ms, grp) { this.I = this.I || {}; var id = setInterval(fn, ms); (this.I[grp] = this.I[grp] || []).push(id); return id; }
@@ -5162,10 +5179,15 @@ class Component extends DCLogic {
   goHome() {
     this.clear("hint"); this.leave();
     if (this.S().secure) return this.setState({ secure: false, screen: "lock", view: null, shade: false, chat: "input", hint: false, heads: false, stack: [] });
-    this.setState({ view: null, shade: false, chat: "input", hint: false, heads: false, stack: [] });
+    this.setState({ view: null, shade: false, chat: "input", hint: false, heads: false, stack: [], drawer: false, drawerQ: "" });
   }
   openView(k, patch, chat, opts) {
     if (!isMvpView(k)) return this.toast("This app is deferred from the MVP");
+    // openView(view, { keepState: true }) is shorthand for the keepState option.
+    if (patch && patch.keepState === true && Object.keys(patch).length === 1) { opts = Object.assign({}, opts, { keepState: true }); patch = null; }
+    // keepState returns to a view exactly as it was left (open note, event, email or tab and its
+    // selection revision): no onLeave of the current view and no reset of the target's state.
+    if (opts && opts.keepState && VIEWS[k]) { if (patch) this.vset(k, patch); this.setState({ screen: "home", view: k, shade: false, heads: false, drawer: false, drawerQ: "", chat: chat || this.defaultChat(k) }); return; }
     if (opts && opts.keepStack) { var S0 = this.S(); if (S0.view !== k) { this.leave(); } this.setState({ screen: "home", view: k, shade: false, heads: false, chat: chat || this.defaultChat(k) }); return; }
     if (!VIEWS[k]) return;
     var S = this.S(); opts = opts || {};
@@ -5179,12 +5201,14 @@ class Component extends DCLogic {
       var busy = m.ongoing && m.ongoing(cur, this.api(k));
       if (busy || opts.restore) { if (patch) this.vset(k, patch); } else this.vreset(k, patch);
     } else if (patch) { this.vset(k, patch); }
-    this.setState({ screen: "home", view: k, shade: false, heads: false, chat: chat || this.defaultChat(k), stack: stack });
+    this.setState({ screen: "home", view: k, shade: false, heads: false, drawer: false, drawerQ: "", chat: chat || this.defaultChat(k), stack: stack });
     this.homeHint();
   }
   back() {
     var S = this.S();
     if (S.shade) return this.setState({ shade: false });
+    if (this.props && this.props.assistantSurface && !S.view && S.voice === "off") return this.closeAssistant();
+    if (S.drawer && !S.view) return this.setState({ drawer: false, drawerQ: "" });
     if (S.voice !== "off") return this.stopVoice();
     if (S.chat === "full") return this.setState({ chat: "sheet" });
     if (S.chat === "sheet") return this.setState({ chat: this.rest() });
@@ -5358,9 +5382,9 @@ class Component extends DCLogic {
         Object.keys(palette).forEach(function (k) { el.parentElement.style.setProperty("--connection-" + k, palette[k]); });
       }
     };
-    var d = new Date(S.now); var hr = d.getHours();
-    var clock = (hr % 12 || 12) + ":" + pad2(d.getMinutes());
-    var dateStr = DAYS[d.getDay()] + ", " + MONS[d.getMonth()].slice(0, 3) + " " + d.getDate();
+    var d = new Date(S.now);
+    var clock = formatClock(d);
+    var dateStr = formatLongDate(d);
     var name = S.charName || "Alpha";
     var isOn = S.screen === "home"; var v = S.view; var isView = isOn && !!v;
     var voiceOn = S.voice !== "off";
@@ -5374,6 +5398,9 @@ class Component extends DCLogic {
     ORDER.forEach(function (k) { is[k] = isView && v === k; });
     out.is = is;
     if (isView && mod && mod.render) out[v] = mod.render(st, this.api(v));
+    // Compose attach copy follows the provider adapter's attachment limit (c.attachLabel); one
+    // reviewed file until an adapter reports more.
+    if (v === "inbox" && out.inbox && out.inbox.c && !out.inbox.c.attachLabel) out.inbox.c = Object.assign({}, out.inbox.c, { attachLabel: "Attach one PDF, image or TXT (up to 5 MiB)" });
 
     var apps = ORDER.filter(function (k) { return !VIEWS[k].hidden; }).map(function (k) {
       var def = VIEWS[k];
@@ -5391,7 +5418,9 @@ class Component extends DCLogic {
       .concat([["torch", IC.torch, "Flashlight"]]);
     var tiles = tileDefs.map(function (t) {
       // Without a known fact the tile has no on/off state (no aria-pressed, neutral colors).
-      var known = typeof S.q[t[0]] === "boolean"; var on = known ? S.q[t[0]] : undefined;
+      // Native tile facts (S.q.tileFacts, from AlphaDevice.snapshot()) replace the reference values when present.
+      var facts = S.q.tileFacts && typeof S.q.tileFacts === "object" ? S.q.tileFacts : null;
+      var known = facts ? typeof facts[t[0]] === "boolean" : typeof S.q[t[0]] === "boolean"; var on = known ? (facts ? facts[t[0]] : S.q[t[0]]) : undefined;
       return { d: t[1], label: t[2], on: on, css: on ? "background:var(--acc);color:#fff" : "background:var(--s2);color:var(--fg)", toggle: function () {
         var q = Object.assign({}, self.S().q); q[t[0]] = !q[t[0]];
         if (t[0] === "plane") { if (q.plane) { self.prePlane = { wifi: q.wifi, bt: q.bt }; q.wifi = false; q.bt = false; } else if (self.prePlane) { q.wifi = self.prePlane.wifi; q.bt = self.prePlane.bt; } }
@@ -5452,7 +5481,10 @@ class Component extends DCLogic {
       if (o) ongoing = { label: o.label, icon: IC[o.icon] || IC.dot, color: o.color || "var(--acc)", open: function () { self.openView(k, null, null, { restore: true }); } };
     });
 
+    var assistantOnly = !!P.assistantSurface;
+    var closeAssistant = function () { self.closeAssistant(); };
     return Object.assign(out, {
+      assistantSurface: assistantOnly, notAssistantSurface: !assistantOnly, closeAssistant: closeAssistant,
       mvpMessages: isMvpView("messages"),
       ic: IC, vars: vars, rootRef: rootRef, frame: th.frame, clock: clock, dateStr: dateStr, name: name,
       isBoot: S.screen === "boot", isOff: S.screen === "off", isLock: S.screen === "lock", isOn: isOn, isView: isView,
@@ -5463,14 +5495,13 @@ class Component extends DCLogic {
       showStatus: !P.nativeSystemChrome && S.screen !== "boot" && S.screen !== "off" && !imm.noStatus, micLive: S.voice === "listening",
       showIndicator: !P.nativeSystemChrome && (isOn || S.screen === "lock"),
       toast: S.toast, toastOn: !!S.toast, toastUndo: !!S.toastUndo, toastPadR: S.toastUndo ? 5 : 18, doUndo: function () { var f = self.undoFn; self.undoFn = null; self.clear("t"); self.setState({ toast: "", toastUndo: false }); if (f) f(); },
-      hasOngoing: !!ongoing && isOn, ongoing: ongoing || {}, sbWifi: S.q.wifi, sbPlane: S.q.plane, apps: apps, toastBottom: imm.toastBottom || ((isOn && (S.chat === "input" || (S.chat === "hidden" && !imm.noPill))) ? 104 : 40),
+      hasOngoing: !!ongoing && isOn, ongoing: ongoing || {}, sbWifi: S.q.wifi, sbPlane: S.q.plane, apps: assistantOnly ? [] : apps, toastBottom: imm.toastBottom || ((isOn && (S.chat === "input" || (S.chat === "hidden" && !imm.noPill))) ? 104 : 40),
       goCalendar: function () { self.openView("calendar", copy("shell").homeCalendar || null); },
       goTriage: function () { self.send("What needs me?"); },
       goFlows: function () { self.openView("workflows", copy("shell").homeWorkflow || null); },
       goSettings: function () { self.openView("settings"); },
-      tiles: tiles, bright: S.bright, onBright: function (e) { self.setState({ bright: +e.target.value }); }, shadeN: shadeN, shadeY: isOn && S.shade ? "0" : "-100%",
+      tiles: tiles, bright: S.bright, onBright: function () { self.openView("settings", { page: "display" }); }, shadeN: shadeN, shadeY: isOn && S.shade ? "0" : "-100%",
       closeShade: function () { self.setState({ shade: false }); }, clearAll: function () { self.setState({ nGone: NOTIFS.map(function (n) { return n.id; }), shade: false }); },
-      lockSum: LOCK_SUM.map(function (x) { return { view: x.view, d: IC[x.icon] || IC.bell, label: x.label, c: S.nGone.indexOf(x.notif) < 0 ? x.count : 0 }; }).filter(function (x) { return isMvpView(x.view) && x.c > 0; }),
       lockCamera: function () { self.setState({ screen: "home", secure: true }); self.openView("camera"); },
       msgs: msgs, typing: S.typing, sugg: sugg, showSugg: panelOpen && !S.draft && !S.typing && !voiceOn,
       panelComposer: panelOpen && !voiceOn,
@@ -5486,8 +5517,8 @@ class Component extends DCLogic {
       sendNow: function () { self.send(); },
       openSheet: function () { if (self.swallowed()) return; self.setState({ chat: "sheet" }); },
       toInput: function () { self.setState({ chat: "input" }); },
-      closeChat: function () { self.setState({ chat: self.rest() }); },
-      scrimTap: function () { self.setState({ chat: self.rest() }); },
+      closeChat: function () { if (assistantOnly && !self.S().view) return self.closeAssistant(); self.setState({ chat: self.rest() }); },
+      scrimTap: function () { if (assistantOnly && !self.S().view) return self.closeAssistant(); self.setState({ chat: self.rest() }); },
       grabTap: function () { if (self.swallowed()) return; self.setState({ chat: self.S().chat === "full" ? "sheet" : "full" }); },
       grabSw: this.sw(function (dx, dy) { var c = self.S().chat; if (dy < 0) self.setState({ chat: "full" }); else self.setState({ chat: c === "full" ? "sheet" : self.rest() }); }, { axis: "y", capture: true }),
       cmpSw: this.sw(function (dx, dy) { if (dy < 0) self.setState({ chat: "sheet" }); else if (self.S().view && self.defaultChat(self.S().view) === "hidden") self.setState({ chat: "hidden" }); }),
@@ -5496,7 +5527,6 @@ class Component extends DCLogic {
       vTextCss: S.voice === "thinking" ? "color:var(--mut)" : "", vBarColor: S.voice === "thinking" ? "var(--line)" : "var(--acc)", vPlay: S.voice === "thinking" ? "paused" : "running", bars: bars,
       startVoice: function () { self.startVoice(); }, stopVoice: function () { self.stopVoice(); },
       voiceToType: function () { var vt = self.S().vtext; self.stopVoice(); self.setState({ chat: self.S().screen === "home" ? "sheet" : self.S().chat, draft: vt }); },
-      showHeads: isOn && S.heads && !S.shade && !!HEADS, headsBanner: HEADS || {},
       headsSw: this.sw(function () { self.setState({ heads: false }); }),
       headsOpen: function () { if (self.swallowed() || !HEADS) return; self.openView("messages", { thread: HEADS.pid }); },
       headsOk: function () { self.setState({ heads: false }); if (HEADS) self.toast(HEADS.confirmed); },
