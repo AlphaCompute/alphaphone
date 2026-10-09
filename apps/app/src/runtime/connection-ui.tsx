@@ -1,3 +1,4 @@
+import {automationsRouteAllowed, type AutomationsMethod} from './automations-route-policy.ts';
 import {iconStyle} from '../icon-style';
 import {validateUuid} from '../../../../vendor/eliza/packages/core/src/utils/uuid';
 import type {ConversationMessageTarget} from './alpha-client';
@@ -73,6 +74,7 @@ let active: Active | null = null, operation: AbortController | null = null;
 let startup: Promise<void> | null = null, epoch = 0;
 let sending: AbortController | null = null;
 let developmentVoiceExpiresAt=0;
+const automationsRequests = new Set<AbortController>();
 const conversationMemory = new Map<string, string>();
 const actionReceipts = new Map<string, { sessionId: string; result: Promise<OperationReceipt> }>();
 let navigationContext:(()=>ContextEnvelope|null)|undefined;
@@ -81,7 +83,7 @@ let deviceExecutor: DeviceExecutor = async () => ({ status: 'failed', summary: '
 const actionJournal = registerPlugin<ActionJournal>('AlphaActionJournal');
 let cloud = makeCloud('production');
 let service: { client: CloudProtocol; identity: CloudServiceSession } | null = null;
-function detachService() { clearPersonalSetup(); service = null; update({ cloudAccount: null }); }
+function detachService() { for(const request of automationsRequests)request.abort(new DOMException('Cloud account changed','AbortError')); clearPersonalSetup(); service = null; update({ cloudAccount: null }); }
 async function verifyService(client: CloudProtocol, signal: AbortSignal) {
   const credential = await cloudCredentialStore.read(client.environment); signal.throwIfAborted();
   if(isAndroid && !testMocksEnabled)update({residentSavedCredential:!!credential?.credentialId});
@@ -155,6 +157,7 @@ function retire(name = 'Offline') {
   active?.viewNavigation?.dispose();
   actionReceipts.clear();
   conversationMemory.clear();
+  for(const request of automationsRequests)request.abort(new DOMException('The connection changed','AbortError'));
   epoch++;
   sending?.abort(new DOMException('The connection changed.', 'AbortError'));
   sending = null;
@@ -216,6 +219,7 @@ function activate(next: Active, session: VerifiedSession, name: string) {
   active?.viewNavigation?.dispose();
   actionReceipts.clear();
   conversationMemory.clear();
+  for(const request of automationsRequests)request.abort(new DOMException('The connection changed','AbortError'));
   epoch++; sending?.abort(new DOMException('The connection changed.', 'AbortError')); sending = null; active = next;
   update({ phoneActionsAvailable:!!next.actions, conversations: [], history: null, historyError: '', kind: next.kind, name, session, open: false, message: 'Connected', error: '' });
 }
@@ -610,6 +614,32 @@ export const connectionController = {
       await active.actions.reconcile(id, outcome, signal);
       update({ actionHistory: [], message: 'Review recorded. Refresh action history; no action was repeated.' });
     });
+  },
+  getAutomationsClient(): {sessionId:string;scope?:string;request:(path:string,method:AutomationsMethod,body:unknown|undefined,signal:AbortSignal)=>Promise<unknown>} | null {
+    const selected=active,session=state.session,generation=epoch;
+    if(!selected||!session||(selected.kind==='cloud'&&!selected.phoneTarget))return null;
+    return {sessionId:session.sessionId,scope:selected.actions?.scope,request:async(path,method,body,signal)=>{
+      if(!automationsRouteAllowed(path,method)||((method==='GET'||method==='DELETE')&&body!==undefined))throw Error('Unsupported automation request');
+      const controller=new AbortController(),bounded=AbortSignal.any([signal,controller.signal]);automationsRequests.add(controller);
+      const current=()=>{bounded.throwIfAborted();if(generation!==epoch||selected!==active||session!==state.session)throw new DOMException('The connection changed','AbortError');};
+      try{
+        current();
+        let result:unknown;
+        if(selected.kind==='cloud')result=await selected.cloud.phoneRequest(selected.phoneTarget!,path,bounded,body,method);
+        else if(selected.kind==='resident')result=await selected.remote.request(path,body,bounded,{},method);
+        else {
+          const credential=await remoteCredentialStore.read(selected.origin);current();
+          if(!credential||credential.identityId!==session.ownerId||credential.expiresAt<=Date.now())throw Error('Pair the agent again');
+          const response=await nativeRemoteRequest({url:selected.origin+path,method,headers:{Accept:'application/json','Content-Type':'application/json',Authorization:`Bearer ${credential.token}`},...(body===undefined?{}:{body:JSON.stringify(body)}),signal:bounded});current();
+          const latest=await remoteCredentialStore.read(selected.origin);current();
+          if(!latest||latest.token!==credential.token||latest.identityId!==session.ownerId||latest.expiresAt<=Date.now())throw new DOMException('The paired account changed','AbortError');
+          if(response.status<200||response.status>=300)throw new WorkflowHttpError(response.status,response.body);
+          result=response.body;
+        }
+        current();return result;
+      }catch(error){if(error instanceof CloudProtocolError&&error.status)throw new WorkflowHttpError(error.status,error.data);if(error&&typeof error==='object'&&'status' in error&&typeof error.status==='number'&&!(error instanceof WorkflowHttpError))throw new WorkflowHttpError(error.status,'data' in error?error.data:undefined);throw error;}
+      finally{automationsRequests.delete(controller);}
+    }};
   },
   getWorkflowClient(): { client: WorkflowProtocol; sessionId: string; scope?:string } | null {
     const selected = active, session = state.session;

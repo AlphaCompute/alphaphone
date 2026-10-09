@@ -1,3 +1,4 @@
+import {automationsRouteAllowed, isAutomationsPath, type AutomationsMethod} from './automations-route-policy.ts';
 import { registerPlugin } from '../platform-plugins';
 import { Capacitor } from '@capacitor/core';
 import type { VerifiedSession } from './alpha-client';
@@ -12,7 +13,7 @@ export interface LocalAgentBridge {
   getStatus?():Promise<{packaged?:boolean;state?:string;serviceActive?:boolean;socketListening?:boolean}>;
   configureProvider?(input:{apiKey:string;model:string}):Promise<unknown>;
   configureCloudProvider?(input:{credentialId:string;model:string}):Promise<unknown>;
-  request(input: { path: string; audioBase64?:string;requestId?:string;ownerId?:string; method: 'GET' | 'POST'; headers: Record<string,string>; body?: string; timeoutMs: number }, signal?:AbortSignal): Promise<{status:number;body?:string}>;
+  request(input: { path: string; audioBase64?:string;requestId?:string;ownerId?:string; method: AutomationsMethod; headers: Record<string,string>; body?: string; timeoutMs: number }, signal?:AbortSignal): Promise<{status:number;body?:string}>;
   stream?(input:{path:string;ownerId:string;headers:Record<string,string>;body:string},signal:AbortSignal,onText:(text:string)=>void,onReplyReady?:(results:readonly unknown[]|undefined)=>void):Promise<RemoteChatReply>;
 }
 const native = registerPlugin<LocalAgentBridge & NativeStreamPort>('Agent');
@@ -71,14 +72,16 @@ export class LocalAgentProtocol {
   private streams = new Set<AbortController>();
   deviceHeaders:Record<string,string>={};
   constructor(private bridge:LocalAgentBridge = Capacitor.isNativePlatform() ? nativeBridge : browserBridge ?? unavailableBridge) {}
-  async request(path:string, body:unknown|undefined, signal:AbortSignal, headers:Record<string,string> = {}):Promise<any> {
+  async request(path:string, body:unknown|undefined, signal:AbortSignal, headers:Record<string,string> = {}, method:AutomationsMethod = body===undefined?'GET':'POST'):Promise<any> {
     signal.throwIfAborted();
+    if (isAutomationsPath(path) ? !automationsRouteAllowed(path,method) || !this.session : !['GET','POST'].includes(method)) throw Error('Invalid local automation request');
+    if ((method==='GET'||method==='DELETE') && body!==undefined) throw Error('Invalid local request body');
     const generation=this.generation;
     let cancel:()=>void=()=>{};
     const cancelled=new Promise<never>((_,reject)=>{cancel=()=>reject(signal.reason||new DOMException('Cancelled','AbortError'));});
     signal.addEventListener('abort',cancel,{once:true});
     let response:{status:number;body?:string};
-    try { response=await Promise.race([this.bridge.request({path,...(this.session?{ownerId:this.session.ownerId}:{}),method:body===undefined?'GET':'POST',headers:{Accept:'application/json',...this.deviceHeaders,...headers},
+    try { response=await Promise.race([this.bridge.request({path,...(this.session?{ownerId:this.session.ownerId}:{}),method,headers:{Accept:'application/json',...this.deviceHeaders,...headers},
       ...(body===undefined?{}:{body:JSON.stringify(body)}),timeoutMs:120000},signal),cancelled]); } finally { signal.removeEventListener('abort',cancel); }
     signal.throwIfAborted();
     if(generation!==this.generation)throw new Error('Local agent connection changed.');

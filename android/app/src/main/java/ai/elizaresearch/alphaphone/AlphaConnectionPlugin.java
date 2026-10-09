@@ -189,7 +189,8 @@ public final class AlphaConnectionPlugin extends Plugin {
     }
     int responseLimit=url.getPath().startsWith("/api/v1/eliza/google/gmail/inbox-v1/")?8*1024*1024:RESPONSE_LIMIT;
     String method = call.getString("method", "GET");
-    if (!Set.of("GET", "POST").contains(method)) throw new IllegalArgumentException();
+    String route=url.getRawPath()+(url.getRawQuery()==null?"":"?"+url.getRawQuery());
+    if((AutomationsRoutes.owns(url.getPath())||AutomationsRoutes.owns(route))?!AutomationsRoutes.allowed(route,method):!Set.of("GET","POST").contains(method))throw new IllegalArgumentException();
     if("GET".equals(method)&&("api.eliza.app".equals(url.getHost())||"api-staging.eliza.app".equals(url.getHost()))&&url.getPath().matches("/api/auth/cli-session/[0-9a-fA-F-]{36}")){
      // Gate only future dispatch. A claim already sent must finish and may be saved while backgrounded.
      long expiresAt=call.getLong("expiresAt",System.currentTimeMillis()+30000);
@@ -218,7 +219,7 @@ public final class AlphaConnectionPlugin extends Plugin {
     }
     String body = call.getString("body");
     if (body != null) {
-     if (!"POST".equals(method)) throw new IllegalArgumentException();
+     if (!("POST".equals(method)||"PUT".equals(method)&&AutomationsRoutes.allowed(route,method))) throw new IllegalArgumentException();
      byte[] encoded = body.getBytes(StandardCharsets.UTF_8);
      if (encoded.length > responseLimit) throw new IllegalArgumentException();
      parseJson(body); connection.setDoOutput(true); connection.setFixedLengthStreamingMode(encoded.length);

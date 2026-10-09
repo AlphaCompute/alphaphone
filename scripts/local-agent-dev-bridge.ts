@@ -1,3 +1,4 @@
+import {automationsRouteAllowed, isAutomationsPath} from '../apps/app/src/runtime/automations-route-policy.ts';
 import {dirname,join} from 'node:path';
 import {once} from 'node:events';
 import {localAgentStorage} from './local-agent-dev-storage.ts';
@@ -12,6 +13,7 @@ const ASR_PATH='/api/asr/whisper';
 const TTS_PATH='/api/tts/kokoro';
 export function localAgentPathAllowed(path:unknown):path is string {
   if(typeof path!=='string'||path.length>2048||/[\\#%\r\n]/.test(path)||path.includes('..'))return false;
+  if(isAutomationsPath(path))return ['GET','POST','PUT','DELETE'].some(method=>automationsRouteAllowed(path,method));
   if(path===ASR_PATH||path===ASR_PATH+'/status'||path===TTS_PATH||path===TTS_PATH+'/status')return true;
   return /^\/api\/(auth\/me|agents|status|conversations(?:\/[A-Za-z0-9_-]+(?:\/messages(?:\/(?:stream|truncate))?)?)?|views\/interact-(claim|result)|client-devices\/[A-Za-z0-9_/-]+|workflow(?:\/[A-Za-z0-9_/?=&-]+)?)$/.test(path);
 }
@@ -58,10 +60,10 @@ export function createLocalAgentDevHandler(options:{origin:string;tokenFile:stri
       const speech=asr||tts,ttsAudio=input.path===TTS_PATH&&input.method==='POST';
       if(size>LIMIT&&!(input.path===ASR_PATH&&input.method==='POST')){fail(413,'Request too large');return;}
       if(input.storage){const result=localAgentStorage(join(dirname(options.tokenFile),'browser-device'),input.storage);res.writeHead(200,{'Content-Type':'application/json','Cache-Control':'no-store'});res.end(JSON.stringify(result));return;}
-      if(!localAgentPathAllowed(input.path)||!['GET','POST'].includes(input.method)||
+      if(!localAgentPathAllowed(input.path)||(isAutomationsPath(input.path)?!automationsRouteAllowed(input.path,input.method)||typeof input.ownerId!=='string'||!input.ownerId.trim():!['GET','POST'].includes(input.method))||
          ((input.path.startsWith('/api/views/')||input.path.endsWith('/messages/truncate'))&&(input.method!=='POST'||typeof input.ownerId!=='string'||!input.ownerId.trim()))||
          (input.body!==undefined&&typeof input.body!=='string')||
-         (input.method==='GET'&&input.body!==undefined)) {fail(400,'Unsupported local request');return;}
+         (['GET','DELETE'].includes(input.method)&&input.body!==undefined)) {fail(400,'Unsupported local request');return;}
       let audio:Buffer|undefined;
       if(asr){
         if(typeof input.ownerId!=='string'||!input.ownerId||input.storage||input.stream||input.body!==undefined){fail(400,'Invalid speech request');return;}

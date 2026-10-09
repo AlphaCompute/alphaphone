@@ -1,3 +1,4 @@
+import {automationsRouteAllowed, isAutomationsPath, type AutomationsMethod} from './automations-route-policy.ts';
 import { CloudPersonalProtocol, PersonalProtocolError } from './cloud-personal-protocol.ts';
 import { reviewMailAttachment, type MailAttachment } from './inbox-attachment.ts';
 /** Narrow Alpha adapter for Eliza Cloud. Contracts inspected in v3's
@@ -33,7 +34,7 @@ export interface CloudCredentialStore {
 /** The native adapter must enforce the timeout and AbortSignal, reject redirects,
  * and return decoded JSON. It must never log headers, bodies, or auth URLs. */
 export interface CloudNativeRequest {
-  (input: { url: string; method: "GET" | "POST"; headers: Record<string, string>;
+  (input: { url: string; method: AutomationsMethod; headers: Record<string, string>;
     body?: unknown; signal: AbortSignal; timeoutMs: number; redirect: "error"; expiresAt?: number;
   }): Promise<{ status: number; data: unknown }>;
 }
@@ -105,15 +106,18 @@ export interface CloudPhoneTarget {
 export class CloudProtocol {
   private phoneTarget: CloudPhoneTarget | null = null;
   setPhoneTarget(target: CloudPhoneTarget | null) { this.phoneTarget = target; }
-  async phoneRequest(target: CloudPhoneTarget, path: string, signal: AbortSignal, body?: unknown): Promise<Record<string,unknown>> {
-    if (!(/^\/api\/(?:client-devices|workflow|conversations)(?:\/|\?|$)/.test(path)||/^\/api\/views\/interact-(claim|result)$/.test(path)) || path.includes('..') || /[\\#\s]/.test(path)) throw new Error('Invalid phone route');
+  async phoneRequest(target: CloudPhoneTarget, path: string, signal: AbortSignal, body?: unknown, method: AutomationsMethod = body === undefined ? 'GET' : 'POST'): Promise<Record<string,unknown>> {
+    signal.throwIfAborted();
+    const automation = isAutomationsPath(path);
+    if (automation ? !automationsRouteAllowed(path, method) : !['GET','POST'].includes(method) || !(/^\/api\/(?:client-devices|workflow|conversations)(?:\/|\?|$)/.test(path)||/^\/api\/views\/interact-(claim|result)$/.test(path)) || path.includes('..') || /[\\#\s]/.test(path)) throw new Error('Invalid phone route');
+    if ((method === 'GET' || method === 'DELETE') && body !== undefined) throw new Error('Invalid phone request body');
     const credential = await this.credentials.read(this.environment); signal.throwIfAborted();
     if (!credential || credential.credentialId !== target.credentialId) throw new Error('Cloud account changed');
     const identity = await this.identity(signal);
     if (identity.userId !== target.userId || identity.organizationId !== target.organizationId) throw new Error('Cloud owner changed');
     const agent = await this.agentDetail(target.agentId, signal);
     if (agent.runtimeUrl !== target.origin || !['dedicated-lazy','dedicated-always','custom'].includes(agent.executionTier || '')) throw new Error('Verified dedicated runtime unavailable');
-    const result = await this.call(path, signal, {authenticated:true,runtimeBase:target.origin,body,timeoutMs:120000,headers:{...target.headers,'X-Eliza-Phone-Protocol':'1'},credentialId:target.credentialId});
+    const result = await this.call(path, signal, {authenticated:true,runtimeBase:target.origin,body,method,timeoutMs:120000,headers:{...target.headers,'X-Eliza-Phone-Protocol':'1'},credentialId:target.credentialId});
     if ((await this.credentials.read(this.environment))?.credentialId !== target.credentialId) throw new Error('Cloud account changed');
     signal.throwIfAborted(); return result;
   }
@@ -126,7 +130,7 @@ export class CloudProtocol {
     if (!authority) throw new Error("This Eliza Cloud environment is unavailable in this build.");
     return authority;
   }
-  private async requestData(path: string, signal: AbortSignal, options: { body?: unknown; authenticated?: boolean; runtimeBase?: string; timeoutMs?: number; headers?: Record<string,string>; credentialId?: string; expiresAt?: number; onStatus?: (status:number)=>void } = {}) {
+  private async requestData(path: string, signal: AbortSignal, options: { body?: unknown; method?: AutomationsMethod; authenticated?: boolean; runtimeBase?: string; timeoutMs?: number; headers?: Record<string,string>; credentialId?: string; expiresAt?: number; onStatus?: (status:number)=>void } = {}) {
     signal.throwIfAborted();
     const headers: Record<string, string> = { Accept: "application/json", ...options.headers };
     if (options.authenticated) {
@@ -139,14 +143,14 @@ export class CloudProtocol {
     }
     if (options.body !== undefined) headers["Content-Type"] = "application/json";
     const response = await this.request({ url: (options.runtimeBase ?? this.authority.api) + path,
-      method: options.body === undefined ? "GET" : "POST", headers, body: options.body,
+      method: options.method ?? (options.body === undefined ? "GET" : "POST"), headers, body: options.body,
       signal, timeoutMs: options.timeoutMs ?? 30_000, redirect: "error", ...(options.expiresAt === undefined ? {} : {expiresAt:options.expiresAt}) });
     signal.throwIfAborted();
     if (response.status < 200 || response.status >= 300) throw new CloudProtocolError("http", response.status, response.data);
     options.onStatus?.(response.status);
     return response.data;
   }
-  private async call(path: string, signal: AbortSignal, options: { body?: unknown; authenticated?: boolean; runtimeBase?: string; timeoutMs?: number; headers?: Record<string,string>; credentialId?: string; expiresAt?: number } = {}) {
+  private async call(path: string, signal: AbortSignal, options: { body?: unknown; method?: AutomationsMethod; authenticated?: boolean; runtimeBase?: string; timeoutMs?: number; headers?: Record<string,string>; credentialId?: string; expiresAt?: number } = {}) {
     return object(await this.requestData(path, signal, options));
   }
   /** Account billing only: this never selects, creates or starts a hosted agent.
