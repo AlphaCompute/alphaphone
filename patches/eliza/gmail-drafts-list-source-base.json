@@ -1,0 +1,83 @@
+{
+  "schemaVersion": 1,
+  "date": "2026-10-09",
+  "upstream": "elizaOS/eliza",
+  "baseCommit": "5513606ca720e256f609de302b52088d2a5f509f",
+  "appliesAfter": [
+    "0037-gmail-inbox-read-state.patch",
+    "0055-gmail-message-links.patch",
+    "0056-gmail-text-charset.patch",
+    "0057-gmail-search-attachments-trash.patch"
+  ],
+  "patch": "0058-gmail-drafts-list.patch",
+  "patchSha256": "fab60fc38aa2d948373094f256dab7c59329785d49ed31b651f8405223ff3a08",
+  "summary": "inbox-v1 adds a provider drafts list and exact draft content so a client can open a Gmail draft and replace it through the existing reviewed draft-replace operation.",
+  "filesChanged": [
+    "packages/cloud/api/v1/eliza/google/gmail/inbox-v1/route.ts",
+    "packages/cloud/shared/src/lib/services/agent-google-connector/inbox-provider.extensions.test.ts",
+    "packages/cloud/shared/src/lib/services/agent-google-connector/inbox-provider.ts"
+  ],
+  "contract": {
+    "list": "GET /inbox-v1/drafts?grantId&pageToken -> {version:1, drafts:[{draftId,messageId,subject,to,snippet,updatedAt}], nextPageToken}; 25 per page, draft scope (compose/modify), metadata only (no body or attachment bytes), repeated or oversized cursors refused",
+    "content": "GET /inbox-v1/draft?grantId&draftId&content=1 -> {id,messageId,providerDigest,content:{to,cc,bcc,subject,bodyText,plainText,threaded,attachmentCount}}; providerDigest is the existing raw-MIME digest; the raw and full reads must name the same draft message id or 409 (one snapshot); threaded = In-Reply-To or References present; plainText false for HTML-only drafts",
+    "capabilities": "draftsList = draft scope; older servers omit it",
+    "mutations": "none; editing still uses the reviewed draft-replace kind with expectedDigest and acceptNonAtomicReplacement"
+  },
+  "verification": [
+    {
+      "command": "git apply --check 0058-gmail-drafts-list.patch",
+      "where": "clean worktree of cd12fabd7bfada24f90f1d01e1a4dc8d1a4b095e with 0037-gmail-inbox-read-state.patch, 0055-gmail-message-links.patch, 0056-gmail-text-charset.patch, 0057-gmail-search-attachments-trash.patch applied in order",
+      "result": "pass"
+    },
+    {
+      "command": "cd packages/cloud/shared && bun test inbox-provider.extensions.test.ts: list paging, metadata, Windows-1252 draft body, reply/HTML-only/attachment flags, changed snapshot -> 409, GET-only requests",
+      "bun": "1.4.2",
+      "result": "pass at the authoring commit of this patch"
+    },
+    {
+      "command": "cd packages/cloud/shared && bun test src/lib/services/agent-google-connector/inbox-provider.http.integration.test.ts src/lib/services/agent-google-connector/inbox-provider.extensions.test.ts src/lib/utils/gmail-mime-text.test.ts",
+      "where": "second clean worktree of cd12fabd7bfada24f90f1d01e1a4dc8d1a4b095e with 0037-gmail-inbox-read-state.patch, 0055-gmail-message-links.patch, 0056-gmail-text-charset.patch, 0057-gmail-search-attachments-trash.patch, 0058-gmail-drafts-list.patch, 0059-gmail-attachments-forward-opaque.patch applied in order",
+      "bun": "1.4.2",
+      "result": "21 pass, 0 fail, 271 expect() calls"
+    },
+    {
+      "command": "tsc (6.0.3, strict, bundler resolution, noUnusedLocals, types bun) over gmail-mime-text.ts, gmail-mime-text.test.ts, inbox-receipts.ts, inbox-operation-routes.ts, inbox-provider.ts, inbox-provider.extensions.test.ts, inbox-provider.http.integration.test.ts",
+      "result": "pass (exit 0) at the 0059 head"
+    },
+    {
+      "command": "biome check (2.5.14) on every changed file",
+      "result": "pass at each commit"
+    }
+  ],
+  "dependencies": "Tests ran with a scratch node_modules symlinked into the isolated worktree, containing only lockfile-pinned @electric-sql/pglite 0.4.6, drizzle-orm 0.45.3, hono 4.13.9, typescript 6.0.3, @types/bun 1.4.2 and @biomejs/biome 2.5.14; no full monorepo install. Files that import @elizaos/core, @elizaos/plugin-google-workspace or the database client (gmail.ts, shared.ts, inbox-managed.ts, google-mcp-shared.ts, the inbox-v1 and read routes) were checked with biome only; their full package typecheck and existing gmail.test.ts were not run because those packages are not installed in the scratch environment.",
+  "network": "No Google network calls, accounts or credentials: a closed in-process fetch transport answers every provider request with synthetic data.",
+  "isolation": "Authored as stacked commits on cd12fabd7bfada24f90f1d01e1a4dc8d1a4b095e in an isolated sparse worktree under the session scratchpad and re-applied in series to a second clean worktree; never applied to vendor/eliza.",
+  "upstreamPullRequest": "Not opened; publishing to elizaOS needs the owner's explicit approval.",
+  "deployment": "Not upstreamed and not deployed to Eliza Cloud. Clients detect the change only through the additive fields and capabilities above; until a reviewed merge and deploy, deployed servers omit them and Alpha keeps the older behavior.",
+  "previousBaseCommit": "cd12fabd7bfada24f90f1d01e1a4dc8d1a4b095e",
+  "requalification": [
+    {
+      "date": "2026-10-09",
+      "base": "5513606ca720e256f609de302b52088d2a5f509f (elizaOS develop tip on 2026-10-09)",
+      "upstreamDrift": "develop changed gmail.ts, shared.ts and inbox-v1/route.ts after cd12fabd (personal Google context consent: personalContextRead on managed fetches, requirePrivateOwnerAccess in the inbox-v1 identity); migration prefix 0535 is still unused (last is 0534).",
+      "command": "git rebase --onto 5513606ca cd12fabd7 (the six stacked series commits) in an isolated sparse worktree; git diff --full-index <commit>^ <commit> per patch",
+      "result": "clean three-way rebase, no conflicts; patch regenerated (context/index lines only), sha256 d0166852b587 -> fab60fc38aa2",
+      "applyCheck": "GIT_INDEX_FILE=<scratch> git read-tree 5513606ca; git apply --cached 0037-gmail-inbox-read-state.patch 0055-gmail-message-links.patch 0056-gmail-text-charset.patch 0057-gmail-search-attachments-trash.patch 0058-gmail-drafts-list.patch in order: pass; full-series tree a688798f85c929512375173d2a1da62080fe3014 equals the tested worktree tree",
+      "tests": "cd packages/cloud/shared && bun test (1.4.2) src/lib/services/agent-google-connector/inbox-provider.http.integration.test.ts src/lib/services/agent-google-connector/inbox-provider.extensions.test.ts src/lib/utils/gmail-mime-text.test.ts with the whole series applied: 21 pass, 0 fail, 271 expect() calls",
+      "migrationOrder": "cd packages/cloud/shared && node ../scripts/shared/check-migration-prefix-order.ts: pass (exit 0)",
+      "lint": "biome check (2.5.14) on all 12 changed files: pass",
+      "typecheck": "tsc (6.0.3, scratch strict config) over the changed shared files: no errors in patch-added code; module-resolution errors from uninstalled monorepo packages and one pre-existing implicit any at gmail.ts readManagedGoogleGmailMessage attachments map (upstream line, not this series) remain because the full monorepo is not installed"
+    },
+    {
+      "date": "2026-10-09",
+      "base": "5513606ca720e256f609de302b52088d2a5f509f",
+      "reason": "Review fix in 0055: the anchor, comment and script/style regexes backtracked quadratically on unclosed markup (a 1 MB hostile HTML body cost tens of seconds of server CPU per read); replaced by a linear forward scan and a tokenized href read, with linear-time and attribute-confusion tests. Later patches were cherry-picked unchanged.",
+      "result": "patch byte-identical; recorded because the series it applies after changed",
+      "applyCheck": "GIT_INDEX_FILE=<scratch> git read-tree 5513606ca; git apply --check --cached then git apply --cached 0037, 0055, 0056, 0057, 0058, 0059 in order: pass; full-series tree 0ebbae94e0cc9b1401065633135e3a64467d92bd equals the tested worktree tree",
+      "tests": "cd packages/cloud/shared && bun test (1.4.2) src/lib/services/agent-google-connector/inbox-provider.http.integration.test.ts src/lib/services/agent-google-connector/inbox-provider.extensions.test.ts src/lib/utils/gmail-mime-text.test.ts with the whole series applied: 23 pass, 0 fail, 277 expect() calls",
+      "migrationOrder": "cd packages/cloud/shared && node ../scripts/shared/check-migration-prefix-order.ts: pass (exit 0)",
+      "lint": "biome check (2.5.14) on all 12 changed files: pass",
+      "typecheck": "same scratch tsc config: no errors in gmail-mime-text.ts or its test; the remaining errors are the same module-resolution files as before"
+    }
+  ]
+}

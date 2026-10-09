@@ -14,7 +14,67 @@ The cloud adapter (`apps/app/src/prototype/inbox-cloud-adapter.ts`) and `runtime
 - Notes sharing into a prefilled local draft;
 - a From switcher for more than one connected account.
 
-The upstream inbox-v1 operations could not change read state, so [`patches/eliza/0037-gmail-inbox-read-state.patch`](../patches/eliza/0037-gmail-inbox-read-state.patch) adds reviewed `mark-read`/`mark-unread` kinds, a `readState` capability and the receipt-kind migration. It was tested in an isolated upstream worktree and is not deployed. Until a deployed server advertises `readState`, opening a message does not mark it read, and the Home unread badge reflects loaded Inbox pages only.
+The upstream inbox-v1 operations could not change read state, so [`patches/eliza/0037-gmail-inbox-read-state.patch`](../patches/eliza/0037-gmail-inbox-read-state.patch) adds reviewed `mark-read`/`mark-unread` kinds, a `readState` capability and the receipt-kind migration. It was tested in an isolated upstream worktree and is not deployed. Until a deployed server advertises `readState`, opening a message does not mark it read.
+
+## October 8 additions
+
+0037 was requalified on elizaOS `develop` `cd12fabd` (October 8): migration prefix 0535 is still free, the
+patch applies unchanged and is byte-identical when regenerated there, the PGlite integration test passes
+(8 pass) and `check-migration-prefix-order` passes. On October 9 the whole series (0037, 0055-0059) was
+rebased onto `develop` `5513606c`, which had changed `gmail.ts`, `shared.ts` and the inbox-v1 route for
+personal Google context consent. The rebase was clean, 0037 and 0056 are byte-identical, 0055 and
+0057-0059 changed only in context and index lines, 0535 is still free, and the series' bun tests (21 pass),
+the migration order check and biome pass there; each manifest's `requalification` entry records this.
+A review the same day found that 0055's regex-based link scan backtracked quadratically on unclosed
+markup (a hostile 1 MB HTML email cost tens of seconds of server CPU per read) and could take a
+`data-href` as the link. 0055 now scans anchors in one linear pass and reads the first real `href`
+attribute; 0056 and 0057 were regenerated with new test-file context only, and the series' bun tests
+(23 pass), the migration order check and biome pass on `5513606c`.
+No elizaOS pull request has been opened, and no Cloud deployment exists. Five further reference patches extend the managed connector; each records its contract
+and verification in its `-source-base.json` and applies in series after 0037:
+
+| Patch | Adds | Client use when a server advertises it |
+| --- | --- | --- |
+| [0055](../patches/eliza/0055-gmail-message-links.patch) | `links[]` (href, text) from HTML parts on read and thread | Tappable link list under the body |
+| [0056](../patches/eliza/0056-gmail-text-charset.patch) | Text parts decoded with their declared charset | Correct ISO-8859-1/Windows-1252 bodies |
+| [0057](../patches/eliza/0057-gmail-search-attachments-trash.patch) | `hasAttachments` on search rows; `in:trash` search; `searchTrash` | Paperclip on rows; Trash folder |
+| [0058](../patches/eliza/0058-gmail-drafts-list.patch) | Drafts list and exact draft content; `draftsList` | Drafts folder; open a draft to edit and replace it after review |
+| [0059](../patches/eliza/0059-gmail-attachments-forward-opaque.patch) | Up to 10 attachments under 5 MiB total; forward with source attachments; opaque byte copy | Add/remove files one by one; forward lists original files; Save to Files for other types |
+
+Independently of these patches, the client now:
+- publishes a Home summary through `inboxAttention()` (`not-connected`, `loading`, `ready`, `error` or
+  `stale`, with an unread count, the account label and a time) and `openInbox()`, without subjects,
+  senders or bodies. Home does not read it yet: `data-adapter.ts` (owned by the shell/Home package) still
+  has to set its attention fields from `inboxAttention()` and call `openInbox()` from triage;
+- runs one bounded `in:inbox is:unread` metadata query (at most 10 rows) on cold start, on resume and
+  after leaving Inbox, never two at once and never within 5 minutes of the previous one. The first probe
+  after start or an account change also lists the accounts once to find the grant. A probe answer that
+  arrives after an open Inbox has loaded its list is dropped. Leaving Inbox marks the summary stale; the
+  badge keeps a stale value only while it is younger than 5 minutes. New-mail notifications remain blocked
+  on A-05;
+- turns plain-text `https` URLs in a body into the same link list (`inbox.d.links`). A link opens only in
+  Alpha's Browser, only for HTTPS, and only after a confirmation that names the destination site and warns
+  when the link text names a different site. Nothing is fetched to render a message. `template.html` does
+  not render `inbox.d.links` yet, so the list is not visible until the shell package adds those buttons;
+- shows today's mail with a time, offers Archive (`in:archive`) for every account, and offers Drafts and
+  Trash only when the server advertises them;
+- adds "Use in email" for agent text (`view.useInEmail`), which opens a local draft for the selected
+  account, as a reply when a message is open. Nothing is sent; the normal composer and provider review
+  apply. No control calls it yet: the agent reply UI (`agent-adapter.ts`/`template.html`, other packages)
+  must add the button. The "Help me organize my inbox" suggestion is removed;
+- adds `CloudProtocol.revokeSession()`, which uses Cloud's self-revocation route
+  (`DELETE /api/v1/api-keys/current`) when the host transport allows `DELETE` and otherwise reports
+  `{supported:false}`. The local credential is cleared either way. The Android transport admits only GET
+  and POST today, so no revocation is sent on Android yet.
+
+Known limit of 0058 editing: the editable content is the draft's text/plain part and literal recipient
+addresses. A draft that also has a text/html alternative (Gmail's usual form) is offered for editing, and
+replacing it after review keeps only the plain text and drops recipient display names. Reply drafts,
+drafts with attachments and HTML-only drafts stay in Gmail.
+
+The generic `runtime/gmail-mailbox.ts` helpers (failure classification, confirmed disconnect, reviewed
+read state) take their client as an input and are candidates for an upstream client package together
+with the 0055-0059 series; that contribution has not been submitted.
 
 The September 30 findings below are kept as written for their date.
 

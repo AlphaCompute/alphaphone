@@ -1,0 +1,243 @@
+diff --git a/packages/cloud/shared/src/lib/utils/gmail-mime-text.test.ts b/packages/cloud/shared/src/lib/utils/gmail-mime-text.test.ts
+index 13368f966c6382fcbb1ea3c13e55ca4c5da35c51..a8047c4e44dcfa6792ad000eb39499f44a081d6d 100644
+--- a/packages/cloud/shared/src/lib/utils/gmail-mime-text.test.ts
++++ b/packages/cloud/shared/src/lib/utils/gmail-mime-text.test.ts
+@@ -1,5 +1,11 @@
+ import { expect, test } from "bun:test";
+-import { extractGmailHtmlLinks, safeGmailLinkHref } from "./gmail-mime-text";
++import {
++  decodeGmailPart,
++  extractGmailBodyText,
++  extractGmailHtmlLinks,
++  gmailPartCharset,
++  safeGmailLinkHref,
++} from "./gmail-mime-text";
+ 
+ const part = (mimeType: string, text: string) => ({
+   mimeType,
+@@ -76,3 +82,58 @@ test("hostile markup is scanned in linear time", () => {
+     expect(performance.now() - started).toBeLessThan(5_000);
+   }
+ });
++
++const encoded = (bytes: number[], contentType?: string, mimeType = "text/plain") => ({
++  mimeType,
++  ...(contentType ? { headers: [{ name: "Content-Type", value: contentType }] } : {}),
++  body: { data: Buffer.from(bytes).toString("base64url") },
++});
++
++test("0056: ISO-8859-1 text part decodes with its declared charset", () => {
++  const latin1 = [
++    ...Buffer.from("Caf"),
++    0xe9,
++    0x20,
++    0xe0,
++    0x20,
++    ...Buffer.from("cr"),
++    0xe8,
++    ...Buffer.from("me"),
++  ];
++  const part = encoded(latin1, 'text/plain; charset="ISO-8859-1"');
++  expect(gmailPartCharset(part)).toBe("iso-8859-1");
++  expect(decodeGmailPart(part)).toBe("Café à crème");
++  expect(extractGmailBodyText({ mimeType: "multipart/alternative", parts: [part] })).toBe(
++    "Café à crème",
++  );
++  // Without the charset the same bytes are invalid UTF-8 and become replacement characters.
++  expect(decodeGmailPart(encoded(latin1))).toContain("�");
++});
++
++test("0056: Windows-1252 smart quotes, dash and euro decode exactly", () => {
++  const cp1252 = [
++    0x93,
++    ...Buffer.from("Quote"),
++    0x94,
++    0x20,
++    0x96,
++    0x20,
++    0x80,
++    ...Buffer.from("5"),
++    0x85,
++  ];
++  const part = encoded(cp1252, "text/plain; charset=windows-1252; format=flowed");
++  expect(gmailPartCharset(part)).toBe("windows-1252");
++  expect(decodeGmailPart(part)).toBe("“Quote” – €5…");
++});
++
++test("0056: HTML part charset applies to links; unknown charsets fall back to UTF-8", () => {
++  const html = [...Buffer.from('<a href="https://example.org/">Men'), 0xfa, ...Buffer.from("</a>")];
++  expect(
++    extractGmailHtmlLinks(encoded(html, "text/html; charset=iso-8859-1", "text/html")),
++  ).toEqual([{ href: "https://example.org/", text: "Menú" }]);
++  const utf8 = [...Buffer.from("Menú ✓")];
++  expect(decodeGmailPart(encoded(utf8, "text/plain; charset=x-unknown-charset"))).toBe("Menú ✓");
++  expect(decodeGmailPart(encoded(utf8, "text/plain; charset=UTF-8"))).toBe("Menú ✓");
++  expect(decodeGmailPart(encoded(utf8))).toBe("Menú ✓");
++});
+diff --git a/packages/cloud/shared/src/lib/utils/gmail-mime-text.ts b/packages/cloud/shared/src/lib/utils/gmail-mime-text.ts
+index e77f5095b42ef22fa5fd971be0d3ddaf0ab40c77..982cf4a752095852ea1bbccd6efc1e521ace4bc8 100644
+--- a/packages/cloud/shared/src/lib/utils/gmail-mime-text.ts
++++ b/packages/cloud/shared/src/lib/utils/gmail-mime-text.ts
+@@ -17,9 +17,98 @@ export interface GmailMessageLink {
+ const MAX_PARTS = 200;
+ export const MAX_GMAIL_LINKS = 50;
+ 
+-/** Decodes a Gmail part body (base64url) as UTF-8. */
+-export function decodeGmailPartData(data: string): string {
+-  return new TextDecoder("utf-8").decode(Buffer.from(data, "base64url"));
++// Windows-1252 bytes 0x80-0x9f (ISO-8859-1 maps them to C1 controls). Undefined bytes stay as-is.
++const WINDOWS_1252_HIGH = [
++  0x20ac, 0x81, 0x201a, 0x0192, 0x201e, 0x2026, 0x2020, 0x2021, 0x02c6, 0x2030, 0x0160, 0x2039,
++  0x0152, 0x8d, 0x017d, 0x8f, 0x90, 0x2018, 0x2019, 0x201c, 0x201d, 0x2022, 0x2013, 0x2014, 0x02dc,
++  0x2122, 0x0161, 0x203a, 0x0153, 0x9d, 0x017e, 0x0178,
++];
++const LATIN1_LABELS = new Set([
++  "iso-8859-1",
++  "iso8859-1",
++  "iso_8859-1",
++  "latin1",
++  "latin-1",
++  "l1",
++  "us-ascii",
++  "ascii",
++  "windows-1252",
++  "cp1252",
++  "x-cp1252",
++  "cp819",
++  "ibm819",
++]);
++function decodeWindows1252(bytes: Uint8Array): string {
++  let out = "";
++  for (const byte of bytes)
++    out += String.fromCharCode(
++      byte >= 0x80 && byte <= 0x9f ? WINDOWS_1252_HIGH[byte - 0x80] : byte,
++    );
++  return out;
++}
++
++/** The `charset` parameter of a part's Content-Type header, lower-cased, or null. */
++export function gmailPartCharset(part: GmailPayloadPart | null | undefined): string | null {
++  const header = part?.headers?.find((row) => row?.name?.toLowerCase() === "content-type")?.value;
++  if (typeof header !== "string") return null;
++  const match = /;\s*charset\s*=\s*(?:"([^"]{1,64})"|([^\s;"]{1,64}))/i.exec(header);
++  const label = (match?.[1] ?? match?.[2])?.trim().toLowerCase();
++  return label || null;
++}
++
++/**
++ * Decodes base64url part data with its declared charset. ISO-8859-1, US-ASCII and Windows-1252
++ * decode as Windows-1252 (the WHATWG mapping, available even where TextDecoder lacks legacy
++ * encodings); other labels use TextDecoder when the runtime supports them. Unknown labels and
++ * undeclared charsets fall back to UTF-8.
++ */
++export function decodeGmailPartData(data: string, charset: string | null = null): string {
++  const bytes = Buffer.from(data, "base64url");
++  const label = charset?.toLowerCase() ?? "utf-8";
++  if (LATIN1_LABELS.has(label)) return decodeWindows1252(bytes);
++  if (label !== "utf-8" && label !== "utf8") {
++    try {
++      return new TextDecoder(label).decode(bytes);
++    } catch {
++      // Unsupported or invalid label: UTF-8 below.
++    }
++  }
++  return new TextDecoder("utf-8").decode(bytes);
++}
++
++/** Decodes one part's inline body with its own declared charset. */
++export function decodeGmailPart(part: GmailPayloadPart): string {
++  return typeof part.body?.data === "string"
++    ? decodeGmailPartData(part.body.data, gmailPartCharset(part))
++    : "";
++}
++
++/**
++ * The first displayable body: the payload's own data, else text/plain then text/html among the
++ * parts (recursing into multipart containers), each decoded with its declared charset.
++ */
++export function extractGmailBodyText(
++  payload: GmailPayloadPart | null | undefined,
++  depth = 0,
++): string {
++  if (!payload || depth > 20) return "";
++  if (typeof payload.body?.data === "string") return decodeGmailPart(payload);
++  if (!Array.isArray(payload.parts)) return "";
++  for (const mimeType of ["text/plain", "text/html"]) {
++    for (const part of payload.parts) {
++      if (part?.mimeType === mimeType && typeof part.body?.data === "string")
++        return decodeGmailPart(part);
++      if (part?.mimeType?.startsWith("multipart/")) {
++        const nested = extractGmailBodyText(part, depth + 1);
++        if (nested) return nested;
++      }
++    }
++  }
++  for (const part of payload.parts) {
++    const nested = extractGmailBodyText(part, depth + 1);
++    if (nested) return nested;
++  }
++  return "";
+ }
+ 
+ function walk(payload: GmailPayloadPart, visit: (part: GmailPayloadPart) => void): void {
+@@ -143,7 +232,7 @@ function hrefAttribute(attributes: string): string | null {
+  */
+ export function extractGmailHtmlLinks(
+   payload: GmailPayloadPart | null | undefined,
+-  decode: (part: GmailPayloadPart) => string = (part) => decodeGmailPartData(part.body?.data ?? ""),
++  decode: (part: GmailPayloadPart) => string = decodeGmailPart,
+ ): GmailMessageLink[] {
+   if (!payload) return [];
+   const links: GmailMessageLink[] = [];
+diff --git a/packages/cloud/shared/src/lib/utils/google-mcp-shared.ts b/packages/cloud/shared/src/lib/utils/google-mcp-shared.ts
+index c657b79a95d7b2d8ba4f6fab3b5f05f433f06fd3..b9cc0a2d1261bd20c38f961679ae7638227ea174 100644
+--- a/packages/cloud/shared/src/lib/utils/google-mcp-shared.ts
++++ b/packages/cloud/shared/src/lib/utils/google-mcp-shared.ts
+@@ -5,6 +5,7 @@
+  * for mapper, validation, and fetch-wrapper logic.
+  */
+ 
++import { extractGmailBodyText, type GmailPayloadPart } from "./gmail-mime-text";
+ import { logger } from "./logger";
+ 
+ // ── Constants ────────────────────────────────────────────────────────────────
+@@ -75,37 +76,9 @@ export function sanitizeHeaderValue(value: string): string {
+   return value.replace(/[\r\n]/g, "");
+ }
+ 
+-type EmailPart = {
+-  body?: { data?: string };
+-  mimeType?: string;
+-  parts?: EmailPart[];
+-};
+-
++/** Charset-aware: each part is decoded with its declared Content-Type charset (UTF-8 fallback). */
+ export function extractBody(payload: Record<string, unknown>): string {
+-  const current = payload as EmailPart;
+-  const bodyData = current.body?.data;
+-  if (typeof bodyData === "string") {
+-    return Buffer.from(bodyData, "base64").toString("utf-8");
+-  }
+-  if (Array.isArray(current.parts)) {
+-    for (const mimeType of ["text/plain", "text/html"]) {
+-      for (const part of current.parts) {
+-        const partBodyData = part.body?.data;
+-        if (part.mimeType === mimeType && typeof partBodyData === "string") {
+-          return Buffer.from(partBodyData, "base64").toString("utf-8");
+-        }
+-        if (part.mimeType?.startsWith("multipart/")) {
+-          const nested = extractBody(part as Record<string, unknown>);
+-          if (nested) return nested;
+-        }
+-      }
+-    }
+-    for (const part of current.parts) {
+-      const nested = extractBody(part as Record<string, unknown>);
+-      if (nested) return nested;
+-    }
+-  }
+-  return "";
++  return extractGmailBodyText(payload as GmailPayloadPart);
+ }
+ 
+ // ── Mappers ──────────────────────────────────────────────────────────────────
