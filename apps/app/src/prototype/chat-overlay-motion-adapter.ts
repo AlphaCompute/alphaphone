@@ -1,11 +1,11 @@
+import { TAP_SLOP } from "../../../../.eliza/client-features/packages/ui/src/gestures/constants";
 import {
 	clamp01,
 	OVERLAY_EASE,
 } from "../../../../.eliza/client-features/packages/ui/src/components/shell/chat-overlay-motion.ts";
-import {
-	resolveChatPanelLayout,
-} from "../../../../.eliza/client-features/packages/ui/src/components/shell/chat-panel-layout.ts";
+import { resolveChatPanelLayout } from "../../../../.eliza/client-features/packages/ui/src/components/shell/chat-panel-layout.ts";
 
+const PANEL_TRANSITION = `height .42s cubic-bezier(${OVERLAY_EASE.join(",")}), border-radius .42s, opacity .2s`;
 type Shell = any;
 type Mode = "hidden" | "input" | "sheet" | "full";
 type Drag = {
@@ -14,16 +14,15 @@ type Drag = {
 	mode: Mode;
 	view: unknown;
 	screen: unknown;
+	offset: number;
 	y: number;
-	lastY: number;
-	lastAt: number;
-	velocity: number;
 	scale: number;
 	start: number;
 	height: number;
 	full: number;
 	half: number;
 	moved: boolean;
+	tap?: () => void;
 };
 /** Product gesture binding over shared pure geometry; never owns transcript or editable-control gestures. */
 export function installChatOverlayMotion(Component: Shell) {
@@ -54,10 +53,7 @@ export function installChatOverlayMotion(Component: Shell) {
 		}).panelMaxH;
 		return {
 			full,
-			half: Math.min(
-				inset,
-				Math.max(200, Math.round(viewportH * 0.6)),
-			),
+			half: Math.min(inset, Math.max(200, Math.round(viewportH * 0.6))),
 			scale: screen ? screen.getBoundingClientRect().height / viewportH : 1,
 		};
 	}
@@ -65,7 +61,29 @@ export function installChatOverlayMotion(Component: Shell) {
 		const drag: Drag | undefined = shell.chatMotion;
 		shell.chatMotion = undefined;
 		if (!drag) return;
-		if (drag.moved) shell.swallow = Date.now();
+		if (drag.moved) {
+			shell.swallow = Date.now();
+			// Cancellation can precede React's first preview commit; restore direct
+			// paints explicitly instead of relying on an unchanged virtual style diff.
+			const panel = document.querySelector<HTMLElement>(
+					'[data-alpha-layer="conversation"]',
+				),
+				geometry = bounds(),
+				mode = shell.S().chat;
+			if (panel) {
+				panel.style.height = `${mode === "full" ? geometry.full : mode === "sheet" ? geometry.half : 0}px`;
+				panel.style.transition = PANEL_TRANSITION;
+			}
+			const input = document.querySelector<HTMLElement>(
+				"[data-alpha-input-bar]",
+			);
+			if (input)
+				for (const name of ["transform", "opacity", "transition", "animation"])
+					input.style.removeProperty(name);
+			document
+				.querySelector<HTMLElement>('[data-alpha-layer="pill"]>div')
+				?.style.removeProperty("opacity");
+		}
 		if (drag.owner.hasPointerCapture(drag.id))
 			drag.owner.releasePointerCapture(drag.id);
 		if (redraw && shell.live !== false) shell.setState({});
@@ -102,6 +120,80 @@ export function installChatOverlayMotion(Component: Shell) {
 		document.removeEventListener("visibilitychange", this.chatMotionVisibility);
 		unmount?.call(this);
 	};
+
+	p.tapChatMotion = function () {
+		const d: Drag | undefined = this.chatMotion;
+		if (!d) return;
+		const action = d.tap;
+		retire(this, false);
+		if (action) {
+			action();
+			this.swallow = Date.now();
+		} else this.setState({});
+	};
+	p.paintChatMotion = function (offset: number) {
+		const d: Drag | undefined = this.chatMotion;
+		if (!d || this.live === false || document.hidden) return;
+		const shell = this,
+			delta = -offset / d.scale;
+		if (!d.moved && Math.abs(delta) < TAP_SLOP) return;
+		const firstMove = !d.moved;
+		d.moved = true;
+		d.offset = offset;
+		d.height =
+			d.mode === "input" && delta > 0
+				? 0
+				: clamp01((d.start - delta) / Math.max(1, d.full)) * d.full;
+		// The shared hook coalesces these direct paints once per frame; rebuilding the app
+		// per movement would put React work between the finger and the sheet.
+		const panel = document.querySelector<HTMLElement>(
+			'[data-alpha-layer="conversation"]',
+		);
+		if (panel) {
+			panel.style.transition = "none";
+			panel.style.height = `${d.height}px`;
+		}
+		const pill = document.querySelector<HTMLElement>(
+			'[data-alpha-layer="pill"]>div',
+		);
+		if (pill)
+			pill.style.opacity = String(1 - clamp01(d.height / Math.max(1, d.half)));
+		if (d.mode === "input") {
+			const input = document.querySelector<HTMLElement>(
+				"[data-alpha-input-bar]",
+			);
+			if (input) {
+				input.style.transform = `translateY(${delta}px)`;
+				input.style.opacity = String(
+					1 - clamp01(Math.abs(delta) / Math.max(80, d.half)),
+				);
+				input.style.transition = "none";
+				input.style.animation = "none";
+			}
+		}
+		if (firstMove) shell.setState({});
+	};
+	p.settleChatMotion = function (direction: "up" | "down") {
+		const d: Drag | undefined = this.chatMotion;
+		if (!d) return;
+		if (Math.abs(d.offset / d.scale) < TAP_SLOP) {
+			retire(this);
+			return;
+		}
+		const next =
+			direction === "up"
+				? d.mode === "sheet" || d.height > (d.half + d.full) / 2
+					? "full"
+					: "sheet"
+				: d.mode === "full" &&
+						d.height > d.half / 2 &&
+						-d.offset / d.scale <= d.half
+					? "sheet"
+					: "hidden";
+		retire(this, false);
+		this.swallow = Date.now();
+		this.setState({ chat: next });
+	};
 	p.renderVals = function () {
 		const out = render.call(this),
 			shell = this,
@@ -115,15 +207,13 @@ export function installChatOverlayMotion(Component: Shell) {
 				: s.chat === "sheet"
 					? geometry.half
 					: 0);
-		out.panelTransition = drag?.moved
-			? "none"
-			: `height .42s cubic-bezier(${OVERLAY_EASE.join(",")}), border-radius .42s, opacity .2s`;
+		out.panelTransition = drag?.moved ? "none" : PANEL_TRANSITION;
 		out.pillDragStyle = drag?.moved
 			? `opacity:${1 - clamp01(drag.height / Math.max(1, drag.half))}`
 			: "";
 		out.inputDragStyle =
 			drag?.mode === "input" && drag.moved
-				? `transform:translateY(${(drag.lastY - drag.y) / drag.scale}px);opacity:${1 - clamp01(Math.abs(drag.lastY - drag.y) / drag.scale / Math.max(80, drag.half))};transition:none;animation:none`
+				? `transform:translateY(${-drag.offset / drag.scale}px);opacity:${1 - clamp01(Math.abs(drag.offset / drag.scale) / Math.max(80, drag.half))};transition:none;animation:none`
 				: "";
 		if (drag?.moved && (drag.mode !== "input" || drag.height > 0)) {
 			out.conversationHidden = false;
@@ -132,6 +222,7 @@ export function installChatOverlayMotion(Component: Shell) {
 			out.panelPE = "auto";
 			out.panelR = drag.height >= drag.full ? "0px" : "30px 30px 0 0";
 		}
+		const binding = shell.props.chatPullBinding;
 		const handlers = {
 			down(event: PointerEvent) {
 				if (
@@ -151,20 +242,30 @@ export function installChatOverlayMotion(Component: Shell) {
 						))
 				)
 					return;
+				if (
+					!binding ||
+					document.hidden ||
+					shell.live === false ||
+					shell.S().voice !== "off"
+				)
+					return;
 				event.stopPropagation();
 				const g = bounds(),
 					mode = shell.S().chat as Mode,
-					target =
-						event.target instanceof Element
-							? event.target.closest("button")
-							: null,
-					owner =
-						target instanceof HTMLElement &&
-						event.currentTarget instanceof HTMLElement &&
-						event.currentTarget.contains(target)
-							? target
-							: (event.currentTarget as HTMLElement);
-				owner.setPointerCapture(event.pointerId);
+					owner = event.currentTarget as HTMLElement,
+					label = (event.target as Element)
+						?.closest("button")
+						?.getAttribute("aria-label"),
+					tap =
+						label === "Open conversation"
+							? out.openSheet
+							: label === "Type"
+								? out.toInput
+								: label === "Talk"
+									? out.startVoice
+									: label === "Resize chat"
+										? () => out.grabTap({ detail: 1 })
+										: undefined;
 				shell.swallow = 0;
 				shell.chatMotion = {
 					id: event.pointerId,
@@ -172,10 +273,8 @@ export function installChatOverlayMotion(Component: Shell) {
 					mode,
 					view: shell.S().view,
 					screen: shell.S().screen,
+					offset: 0,
 					y: event.clientY,
-					lastY: event.clientY,
-					lastAt: event.timeStamp,
-					velocity: 0,
 					scale: g.scale || 1,
 					start:
 						mode === "full"
@@ -194,91 +293,29 @@ export function installChatOverlayMotion(Component: Shell) {
 					full: g.full,
 					half: g.half,
 					moved: false,
+					tap,
 				} satisfies Drag;
+				binding.onPointerDown(event);
 			},
 			move(event: PointerEvent) {
-				const d: Drag | undefined = shell.chatMotion;
-				if (!d || event.pointerId !== d.id) return;
+				if (shell.chatMotion?.id !== event.pointerId) return;
 				event.stopPropagation();
-				const delta = (event.clientY - d.y) / d.scale;
-				if (!d.moved && Math.abs(delta) < 8) return;
-				event.preventDefault();
-				const firstMove = !d.moved;
-				d.moved = true;
-				const dt = event.timeStamp - d.lastAt;
-				if (dt > 0) d.velocity = (event.clientY - d.lastY) / d.scale / dt;
-				d.lastY = event.clientY;
-				d.lastAt = event.timeStamp;
-				d.height =
-					d.mode === "input" && delta > 0
-						? 0
-						: clamp01((d.start - delta) / Math.max(1, d.full)) * d.full;
-				// Paint subsequent pointer positions directly: rebuilding the entire app
-				// per movement would put React work between the finger and the sheet.
-				const panel = document.querySelector<HTMLElement>(
-					'[data-alpha-layer="conversation"]',
-				);
-				if (panel) {
-					panel.style.transition = "none";
-					panel.style.height = `${d.height}px`;
-				}
-				const pill = document.querySelector<HTMLElement>(
-					'[data-alpha-layer="pill"]>div',
-				);
-				if (pill)
-					pill.style.opacity = String(
-						1 - clamp01(d.height / Math.max(1, d.half)),
-					);
-				if (d.mode === "input") {
-					const input = document.querySelector<HTMLElement>(
-						"[data-alpha-input-bar]",
-					);
-					if (input) {
-						input.style.transform = `translateY(${delta}px)`;
-						input.style.opacity = String(
-							1 - clamp01(Math.abs(delta) / Math.max(80, d.half)),
-						);
-						input.style.transition = "none";
-						input.style.animation = "none";
-					}
-				}
-				if (firstMove) shell.setState({});
+				binding.onPointerMove(event);
 			},
 			up(event: PointerEvent) {
-				const d: Drag | undefined = shell.chatMotion;
-				if (!d || event.pointerId !== d.id) return;
+				if (shell.chatMotion?.id !== event.pointerId) return;
 				event.stopPropagation();
-				if (event.clientY !== d.lastY) handlers.move(event);
-				if (event.timeStamp - d.lastAt > 120) d.velocity = 0;
-				const delta = (event.clientY - d.y) / d.scale,
-					deliberate =
-						d.moved &&
-						Math.abs(delta) >= 8 &&
-						(Math.abs(delta) >= 40 || Math.abs(d.velocity) >= 0.6);
-				let next = d.mode;
-				if (deliberate) {
-					if (delta < 0)
-						next =
-							d.mode === "sheet" || d.height > (d.half + d.full) / 2
-								? "full"
-								: "sheet";
-					else
-						next =
-							d.mode === "full" &&
-							d.height > d.half / 2 &&
-							!(delta > d.half && d.velocity > 0.6)
-								? "sheet"
-								: "hidden";
-				}
-				retire(shell, false);
-				if (d.moved) {
-					event.preventDefault();
-					shell.swallow = Date.now();
-					shell.setState({ chat: next });
-				}
+				// A browser can coalesce every move into release. Supply the product's
+				// final paint; the shared hook still owns release intent and settlement.
+				const d: Drag = shell.chatMotion;
+				if (!d.moved) shell.paintChatMotion(d.y - event.clientY);
+				binding.onPointerUp(event);
 			},
 			cancel(event: PointerEvent) {
-				if (shell.chatMotion?.id === event.pointerId) retire(shell);
+				binding?.onPointerCancel(event);
+			},
+			lost(event: PointerEvent) {
+				binding?.onLostPointerCapture(event);
 			},
 		};
 		out.grabSw = handlers;

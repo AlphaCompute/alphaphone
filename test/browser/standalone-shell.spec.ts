@@ -1,3 +1,4 @@
+import {DEFAULT_PULL_DISTANCE} from '../../.eliza/client-features/packages/ui/src/gestures/constants';
 import { test, expect } from '@playwright/test';
 
 test.beforeEach(async ({ page }) => {
@@ -25,6 +26,21 @@ test('chat handle captures an upward and downward drag outside its bounds', asyn
   await expect(handle).toBeVisible();
   const panel=page.locator('[data-alpha-layer=conversation]');
   await expect.poll(()=>panel.evaluate(el=>parseFloat(getComputedStyle(el).height))).toBe(await page.evaluate(()=>{const h=document.querySelector<HTMLElement>('[data-screen]')!.clientHeight;return Math.min(h,Math.max(200,h-72),Math.max(200,Math.round(h*.6)));}));
+  const burst=await handle.evaluate(async element=>{
+    const panel=document.querySelector<HTMLElement>('[data-alpha-layer="conversation"]')!,box=element.getBoundingClientRect(),x=box.x+box.width/2,y=box.y+box.height/2,before=panel.style.height;
+    const dispatch=(type:string,dy:number)=>element.dispatchEvent(new PointerEvent(type,{bubbles:true,pointerId:71,pointerType:'mouse',isPrimary:true,button:0,clientX:x,clientY:y+dy}));
+    dispatch('pointerdown',0);for(let dy=10;dy<=80;dy+=10)dispatch('pointermove',dy);
+    const synchronous=panel.style.height;await new Promise(requestAnimationFrame);const painted=panel.style.height;dispatch('pointercancel',80);return {before,synchronous,painted};
+  });
+  expect(burst.synchronous).toBe(burst.before);expect(burst.painted).not.toBe(burst.before);
+  await expect.poll(()=>panel.evaluate(el=>parseFloat(getComputedStyle(el).height))).toBe(await page.evaluate(()=>{const h=document.querySelector<HTMLElement>('[data-screen]')!.clientHeight;return Math.min(h,Math.max(200,h-72),Math.max(200,Math.round(h*.6)));}));
+  await handle.evaluate(element=>{
+    const box=element.getBoundingClientRect(),x=box.x+box.width/2,y=box.y+box.height/2;
+    for(const [type,dy] of [['pointerdown',0],['pointerup',-120]] as const)element.dispatchEvent(new PointerEvent(type,{bubbles:true,pointerId:72,pointerType:'mouse',isPrimary:true,button:0,clientX:x,clientY:y+dy}));
+  });
+  await expect(page.getByRole('button',{name:'Shrink chat',exact:true})).toBeVisible();
+  await page.getByRole('button',{name:'Shrink chat',exact:true}).press('Enter');
+  await expect(page.getByRole('button',{name:'Expand chat',exact:true})).toBeVisible();
   await handle.click({trial:true});
   let box=(await handle.boundingBox())!;
   await page.mouse.move(box.x+box.width/2,box.y+box.height/2);
@@ -129,7 +145,7 @@ test('an incoming view change retires a captured drag without reopening chat on 
 });
 
 for(const origin of ['background','alpha'] as const)for(const direction of ['down','up'] as const)test(`input bar ${origin} drag ${direction} follows the pointer and preserves the draft`,async({page})=>{
- await page.goto('/');await expect(page.getByRole('textbox',{name:'Ask Alpha',exact:true})).toBeVisible();const input=page.getByRole('textbox',{name:'Ask Alpha',exact:true});await input.fill('Keep this unsent draft');const bar=page.locator('[data-alpha-input-bar]');await bar.getByRole('button',{name:'Open conversation',exact:true}).click({trial:true});const before=(await bar.boundingBox())!,alpha=bar.getByRole('button',{name:'Open conversation',exact:true}),a=(await alpha.boundingBox())!,x=origin==='background'?before.x+3:a.x+a.width/2,y=origin==='background'?before.y+before.height/2:a.y+a.height/2,delta=direction==='down'?45:-120;
+ await page.goto('/');await expect(page.getByRole('textbox',{name:'Ask Alpha',exact:true})).toBeVisible();const input=page.getByRole('textbox',{name:'Ask Alpha',exact:true});await input.fill('Keep this unsent draft');const bar=page.locator('[data-alpha-input-bar]');await bar.getByRole('button',{name:'Open conversation',exact:true}).click({trial:true});const before=(await bar.boundingBox())!,alpha=bar.getByRole('button',{name:'Open conversation',exact:true}),a=(await alpha.boundingBox())!,x=origin==='background'?before.x+3:a.x+a.width/2,y=origin==='background'?before.y+before.height/2:a.y+a.height/2,delta=direction==='down'?DEFAULT_PULL_DISTANCE+8:-120;
  await page.evaluate(()=>{(window as any).motionClicks=0;document.addEventListener('click',event=>{const button=(event.target as Element)?.closest('button');if(button&&['Send','Talk'].includes(button.getAttribute('aria-label')||'')){(window as any).motionClicks++;event.preventDefault();event.stopImmediatePropagation();}},true);});
  await page.mouse.move(x,y);await page.mouse.down();await page.mouse.move(x,y+delta,{steps:10});await expect.poll(async()=>Math.abs((await bar.boundingBox())!.y-before.y)).toBeGreaterThan(30);expect(await bar.evaluate(el=>getComputedStyle(el).transitionProperty)).toBe('none');await page.mouse.up();
  if(direction==='down'){await expect(page.getByRole('button',{name:'Type',exact:true})).toBeVisible();await expect(page.getByRole('button',{name:'Resize chat',exact:true})).toHaveCount(0);await page.getByRole('button',{name:'Type',exact:true}).click();await expect(page.getByRole('textbox',{name:'Ask Alpha',exact:true})).toHaveValue('Keep this unsent draft');}

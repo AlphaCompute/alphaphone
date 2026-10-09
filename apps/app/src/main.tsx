@@ -1,3 +1,4 @@
+import {usePullGesture} from "../../../.eliza/client-features/packages/ui/src/components/shell/use-pull-gesture";
 import {installChatOverlayMotion} from './prototype/chat-overlay-motion-adapter';
 import {installSubviewAccessibility} from './prototype/subview-accessibility';
 import {installCalendarMonthFocus} from './prototype/calendar-month-focus';
@@ -112,6 +113,15 @@ function installBrowserCapabilityTiles(Component:any){
 let shell: any;
 let launcherPresentation = false;
 function Phone() {
+  const chatPullBinding=usePullGesture({
+    swipeEnabled:false,
+    onDrag:offset=>shell?.paintChatMotion(offset),
+    onPullUp:()=>shell?.settleChatMotion('up'),
+    onPullDown:()=>shell?.settleChatMotion('down'),
+    onDragReset:()=>{if(shell?.chatMotion?.moved)shell.cancelChatMotion();},
+    onTap:()=>shell?.tapChatMotion(),
+    onCancel:()=>shell?.cancelChatMotion(),
+  });
   const connection = useSyncExternalStore(connectionController.subscribe, connectionController.getSnapshot);
   useEffect(() => {
     if (isAndroid) void DailyApps.surfaceInfo().then(info => {
@@ -148,7 +158,7 @@ function Phone() {
     else if(action==='background'){shell.leave();shell.setState({screen:'off',voice:'off',chat:'input',shade:false});document.documentElement.dataset.devBackground='true';window.dispatchEvent(new Event('blur'));}
     else if(action==='resume'){delete document.documentElement.dataset.devBackground;shell.unlock();window.dispatchEvent(new Event('focus'));}
     if(['power','unlock','boot','background','resume'].includes(action))window.dispatchEvent(new Event('alpha:device-state'));
-  }}/>}{testMocksEnabled && mock && <div className="mock-mode-banner" role="status"><span>Mock mode · simulated data and actions</span><button onClick={() => { void connectionController.offline().then(() => { const url = new URL(location.href); url.searchParams.delete('mode'); url.searchParams.delete('start'); location.assign(url.href); }); }}>Exit mock mode</button></div>}<Component phoneSurface systemShell={launcherPresentation} nativeSystemChrome={isAndroid || !launcherPresentation} initial={testMocksEnabled && fixture ? query.get('start') || 'home' : 'home'} theme={initialTheme} ref={(value: any) => { shell = value; }} />
+  }}/>}{testMocksEnabled && mock && <div className="mock-mode-banner" role="status"><span>Mock mode · simulated data and actions</span><button onClick={() => { void connectionController.offline().then(() => { const url = new URL(location.href); url.searchParams.delete('mode'); url.searchParams.delete('start'); location.assign(url.href); }); }}>Exit mock mode</button></div>}<Component chatPullBinding={chatPullBinding} phoneSurface systemShell={launcherPresentation} nativeSystemChrome={isAndroid || !launcherPresentation} initial={testMocksEnabled && fixture ? query.get('start') || 'home' : 'home'} theme={initialTheme} ref={(value: any) => { shell = value; }} />
 {!fixture && <><ConnectionChooser /><HostedDigestPanel />{!connection.open && <StartupPermissions />}</>}</>;
 }
 async function mountPhone() {
