@@ -59,9 +59,24 @@ Fill rules (implemented in the shared `PasswordFormPolicy`, tested on a JVM):
 | Reveal / clipboard | FLAG_SECURE, timed hide, sensitive clip flag (Android 13+ hides previews), timed clearing. | Other apps with clipboard access on older Android versions; a clip copied after Alpha's, while Alpha is in the background, is cleared too; a frozen background process clears on its next resume. |
 | Renderer compromise | Cannot read secrets; cannot mint app bindings; can trigger unlock prompts and native reveal/copy only after a real unlock. | A compromised renderer could rename/delete entries while unlocked. |
 
+### Export and import (upstream candidate 0060)
+
+`patches/eliza/0060-password-transfer.patch` (reference manifest
+`password-transfer-source-base.json`) adds a separate native plugin, `ElizaPasswordTransfer`, on
+top of 0038. Export locks the vault, asks for a fresh screen-lock/biometric authentication, states
+that the CSV file is not encrypted, and writes only to a document the user picks. Import reads a
+user-picked CSV (Chrome, Firefox, Bitwarden and Proton layouts), binds each row to exactly one
+HTTPS origin, lists those origins for review and only adds entries; `http`, app (`android://`) and
+invalid rows, in-file duplicates and already-saved website/username pairs are skipped. The bridge
+resolves with counts only. JVM tests (`PasswordCsvTest`) and a compile of the module pass; nothing
+has run on a device. It is not yet materialized into Alpha's build: Settings shows Import and
+Export only when the host registers the plugin, which it does not yet.
+
 ### Passkeys
 
-Not implemented. The plugin is designed to add an Android Credential Manager provider
+Alpha's browser enables WebView browser-mode WebAuthn where the provider supports it, so sites can
+reach Android Credential Manager and any passkey provider the user has. Alpha's own passkey
+provider is not implemented. The plugin is designed to add an Android Credential Manager provider
 (`CredentialProviderService`, API 34+): RP-ID–bound credentials verified against
 `CallingAppInfo` (privileged-browser allowlist or app signature/Digital Asset Links), keys held
 under the same authenticated custody, signing only after BiometricPrompt. Remaining work is listed
@@ -76,6 +91,14 @@ boundary tests; Playwright covers the Settings UI with the flag-only development
 instrumentation sources compile; they do not establish real BiometricPrompt, provider selection,
 WebView/Chromium fill, cross-origin iframe, save prompt or physical-device acceptance. The
 production bundle audit refuses the development vault strings.
+
+Browser save and fill through Alpha's own browser: **implemented, device acceptance pending.**
+`AlphaBrowserPlugin.CredentialWebView` reports the committed top-level origin and Chromium's
+WebView autofill component raises the framework save and fill requests; no Alpha code calls
+`AutofillManager.commit()`. The acceptance test (`PasswordBrowserFillInstrumentedTest`: select
+`ElizaPasswordAutofillService`, sign into a local HTTPS form, see Save, fill after unlock on a
+fresh load, and no offer to a cross-origin iframe) is not written yet; until it passes on both
+distribution variants this row stays pending.
 
 ## Other password providers (Proton Pass)
 Alpha Settings → Password manager reports a read-only Android snapshot. The Browser menu opens the same detail page. The UI distinguishes an absent, disabled, publisher-unrecognized or verified Proton package; no provider, another provider, or Proton selection; and Android autofill availability. Unknown observations remain unknown. A selected package is named as verified Proton only when its publisher matches the pinned certificate. A disabled verified package is labeled disabled.
