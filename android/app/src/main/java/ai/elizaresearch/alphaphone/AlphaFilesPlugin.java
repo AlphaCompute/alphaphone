@@ -69,15 +69,20 @@ public class AlphaFilesPlugin extends Plugin {
   if(folder==null)return result("unavailable","Choose a folder in Android to browse its contents.");
   JSObject details=describe(folder);if(!details.optBoolean("directory"))return result("unsupported","This selection is not a folder.");
   folder.touched=++touch;
-  Uri children=DocumentsContract.buildChildDocumentsUriUsingTree(tree,DocumentsContract.getDocumentId(folder.uri));JSArray rows=new JSArray();boolean truncated=false;int total=0;
+  Uri children=DocumentsContract.buildChildDocumentsUriUsingTree(tree,DocumentsContract.getDocumentId(folder.uri));JSArray rows=new JSArray();boolean truncated=false,full=false;int total=0;
   try(Cursor cursor=resolver().query(children,new String[]{DocumentsContract.Document.COLUMN_DOCUMENT_ID},null,null,null)){
    if(cursor==null)throw new IllegalStateException();
    total=cursor.getCount();if(offset>0&&!cursor.moveToPosition(offset-1))offset=total;
-   while(cursor.moveToNext()){if(rows.length()>=PAGE){truncated=true;break;}Uri uri=DocumentsContract.buildDocumentUriUsingTree(tree,cursor.getString(0));Entry child=authorize(uri,folder.id);rows.put(describe(child));}
+   while(cursor.moveToNext()){
+    if(rows.length()>=PAGE){truncated=true;break;}Uri uri=DocumentsContract.buildDocumentUriUsingTree(tree,cursor.getString(0));Entry child;
+    // Listed entries of this folder stay operable, so a folder larger than the session bound stops here honestly.
+    try{child=authorize(uri,folder.id);}catch(IllegalStateException limit){truncated=true;full=true;break;}
+    rows.put(describe(child));
+   }
   }
   int shown=offset+rows.length();
-  JSObject out=result("ready",truncated?"Showing "+shown+" of "+total+" entries. Load more to continue.":"Folder loaded from Android.");out.put("folder",details);out.put("entries",rows);out.put("truncated",truncated);out.put("rootId",rootId);out.put("offset",offset);out.put("total",total);
-  if(truncated)out.put("cursor",folder.id+":"+shown);return out;
+  JSObject out=result("ready",full?"Showing "+shown+" of "+total+" entries. This folder is too large to browse further here. Open a subfolder or choose a smaller folder.":truncated?"Showing "+shown+" of "+total+" entries. Load more to continue.":"Folder loaded from Android.");out.put("folder",details);out.put("entries",rows);out.put("truncated",truncated);out.put("rootId",rootId);out.put("offset",offset);out.put("total",total);
+  if(truncated&&!full)out.put("cursor",folder.id+":"+shown);return out;
  }
  @PluginMethod public void choose(PluginCall call){
   if(!picking.compareAndSet(false,true)){call.resolve(result("busy","A folder picker is already open."));return;}

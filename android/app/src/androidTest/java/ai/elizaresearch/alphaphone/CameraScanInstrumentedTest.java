@@ -107,11 +107,12 @@ public class CameraScanInstrumentedTest {
    click("Scan document");until(dialog("Review scan document"));clickText("Load saved draft");until(dialog("Review scan document")+"?.querySelectorAll('img').length===3",30000);
    clickText("Save searchable PDF");until(dialog("Review searchable PDF"));
    clickText("Save reviewed searchable PDF");nativeSave();
-   until(dialog("Review scan document")+"?.textContent.match(/saved|verified/i)",60000);
+   // The loaded-draft status also says "saved"; wait for the provider's verified export receipt.
+   until(dialog("Review scan document")+"?.textContent.includes('exact bytes verified')",60000);
    assertEquals("No page was published to Photos",before,ownedImages());
    listing=shell("ls -1 /sdcard/Download/");
   }finally{for(Uri uri:fixtures)resolver.delete(uri,null,null);}
-  String exported=null;for(String line:listing.split("\n"))if(line.trim().startsWith("Alpha document")&&line.trim().endsWith(".pdf"))exported=line.trim();
+  String exported=null;for(String line:listing.split("\n"))if(line.trim().startsWith("Alpha searchable document ")&&line.trim().endsWith(".pdf"))exported=line.trim();
   assertNotNull("SAF wrote the reviewed PDF to Downloads: "+listing,exported);
   try{
    String pdf=shell("cat '/sdcard/Download/"+exported+"'");assertTrue("Real PDF bytes",pdf.startsWith("%PDF-"));

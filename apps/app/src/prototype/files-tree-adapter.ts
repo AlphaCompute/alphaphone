@@ -6,7 +6,7 @@ import { filesIndex, compareFilesEntries, matchesFileQuery, sortLabel, typeLabel
 type Bag=Record<string,any>;
 type Entry={id:string;parentId?:string;name:string;mimeType:string;directory:boolean;size:number;modified?:number;modifiedAt?:number;revision:string;canCreate:boolean;canRename:boolean;canDelete:boolean;canMove:boolean};
 type Outcome={id:string;status:string;message:string};
-type Listing={status:string;message:string;folder?:Entry;entries?:Entry[];rootId?:string;entry?:Entry;cursor?:string;total?:number;outcomes?:Outcome[]};
+type Listing={status:string;message:string;folder?:Entry;entries?:Entry[];rootId?:string;entry?:Entry;cursor?:string;total?:number;truncated?:boolean;outcomes?:Outcome[]};
 /** Category tiles open the system picker narrowed to a type; the provider decides. */
 const CATEGORIES:Record<string,{mime?:string[];hint:string}>={
  Documents:{mime:['application/pdf','application/msword','application/vnd.openxmlformats-officedocument.wordprocessingml.document','application/vnd.ms-excel','application/vnd.openxmlformats-officedocument.spreadsheetml.sheet','application/vnd.ms-powerpoint','application/vnd.openxmlformats-officedocument.presentationml.presentation','application/vnd.oasis.opendocument.text','text/plain','application/rtf'],hint:'Choose a document · PDF or Office'},
@@ -46,12 +46,12 @@ export function installFilesTreeAdapter(views:Bag,accept:(module:string,result:N
  /** journeys-14: the folder being browsed is an agent-selectable object. Only the
   * opaque tree ID and its revision are shared, never a path or provider URI. */
  const folderContext=(folder?:Entry)=>window.dispatchEvent(new CustomEvent('alpha-folder-context',{detail:folder?{kind:'folder',id:folder.id,revision:folder.revision}:null}));
- const apply=(value:Listing)=>{if(value.status==='ready'){listing=value;resetSelection();status=value.cursor?value.message:value.message.includes('250')?value.message:'';folderContext(value.folder);}else{status=value.message;if(value.status==='revoked'||value.status==='unavailable'){listing=undefined;selected=undefined;selectedCapability=undefined;folderContext();clearSelected();api?.set({open:null});if(value.status==='revoked')filesIndex.revokeTree();}}repaint();};
+ const apply=(value:Listing)=>{if(value.status==='ready'){listing=value;resetSelection();status=value.cursor||value.truncated||value.message.includes('250')?value.message:'';folderContext(value.folder);}else{status=value.message;if(value.status==='revoked'||value.status==='unavailable'){listing=undefined;selected=undefined;selectedCapability=undefined;folderContext();clearSelected();api?.set({open:null});if(value.status==='revoked')filesIndex.revokeTree();}}repaint();};
  async function loadMore(){
   const current=listing;if(busy||!current?.cursor||!current.folder)return;busy=true;repaint();
   try{const value=await tree.list({id:current.folder.id,cursor:current.cursor});
    if(listing!==current)return;
-   if(value.status==='ready'&&value.folder?.id===current.folder.id){const seen=new Set((current.entries||[]).map(e=>e.id));listing={...value,entries:[...(current.entries||[]),...(value.entries||[]).filter(e=>!seen.has(e.id))]};status=value.cursor?value.message:'';}
+   if(value.status==='ready'&&value.folder?.id===current.folder.id){const seen=new Set((current.entries||[]).map(e=>e.id));listing={...value,entries:[...(current.entries||[]),...(value.entries||[]).filter(e=>!seen.has(e.id))]};status=value.cursor||value.truncated?value.message:'';}
    else{status=value.message||'Refresh this folder before loading more.';if(value.status==='revoked')apply(value);}
   }catch{status='More entries could not load. Refresh the folder.';}
   finally{busy=false;repaint();}
