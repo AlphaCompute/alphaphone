@@ -1,3 +1,4 @@
+import type {ChatChannel} from './alpha-client';
 import {automationsRouteAllowed, isAutomationsPath, type AutomationsMethod} from './automations-route-policy.ts';
 import { CloudPersonalProtocol, PersonalProtocolError } from './cloud-personal-protocol.ts';
 import { reviewMailAttachment, type MailAttachment } from './inbox-attachment.ts';
@@ -347,12 +348,12 @@ export class CloudProtocol {
   /** Never replay a send automatically. Shared Cloud currently ignores metadata;
    * the dedicated host accepts it. Caller must not treat shared context as delivered. */
   async send(agentId: string, conversationId: string, text: string,
-    options: { metadata?: Record<string, unknown>; clientMessageId?: string; signal: AbortSignal },
+    options: { metadata?: Record<string, unknown>; clientMessageId?: string; channelType?:ChatChannel; signal: AbortSignal },
   ): Promise<{ text: string; agentName: string; messageId?:string;userMessageId?:string;actionResults?:readonly unknown[];interrupted?: boolean; noResponseReason?: "ignored"; failureKind?: unknown; terminalFailure?: unknown }> {
     if (!text.trim()) throw new TypeError("Message must not be empty");
     const response = await this.runtimeCall(agentId,
       `/api/conversations/${encodeURIComponent(string(conversationId))}/messages`, options.signal,
-      { text, channelType: "DM", ...(options.metadata ? { metadata: options.metadata } : {}),
+      { text, channelType: options.channelType ?? "DM", ...(options.metadata ? { metadata: options.metadata } : {}),
         ...(options.clientMessageId ? { clientMessageId: options.clientMessageId } : {}) });
     if (typeof response.text !== "string" || typeof response.agentName !== "string") throw new CloudProtocolError("invalid-response");
     if (response.terminalFailure || response.failureKind) throw new CloudProtocolError("invalid-response");

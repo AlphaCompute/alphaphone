@@ -4,11 +4,17 @@ import { createOnDeviceVoice } from '../runtime/local-voice';
 import { createCloudVoice, cloudVoiceFailure } from '../runtime/cloud-voice';
 import { selectVoiceRoute } from '../runtime/voice-selection';
 
-let cancelCurrent: (() => void) | undefined;
+let cancelCurrent: (() => Promise<void>|void) | undefined;
 let cancelOwner: object | undefined;
-export function stopLocalSpeechPlayback() { cancelCurrent?.(); cancelCurrent = undefined; cancelOwner = undefined; }
+let speechRetirement:Promise<void>|undefined;
+function retainSpeechRetirement(pending:Promise<void>){
+ const previous=speechRetirement;
+ const drain=Promise.all([previous,pending.catch(error=>{if(error?.code==='speech-cleanup-unconfirmed')throw error;})]).then(()=>{});
+ speechRetirement=drain;void drain.then(()=>{if(speechRetirement===drain)speechRetirement=undefined;},()=>{});return drain;
+}
+export function stopLocalSpeechPlayback() { const pending=cancelCurrent?.(); cancelCurrent = undefined; cancelOwner = undefined;return pending?retainSpeechRetirement(Promise.resolve(pending)):speechRetirement; }
 type Shell = any;
-type Reading = { id: string; text: string; controller?: AbortController; message: string };
+type Reading = { id: string; text: string; pending?:Promise<void>;controller?: AbortController; message: string };
 /** Message actions use the existing speech route; playback always requires a user gesture. */
 export function installLocalSpeechPlayback(Component: Shell) {
   const p = Component.prototype, original = p.renderVals, mount = p.componentDidMount, update = p.componentDidUpdate, unmount = p.componentWillUnmount;
@@ -40,16 +46,17 @@ export function installLocalSpeechPlayback(Component: Shell) {
     items[next]?.focus();
   }
   const refresh = (shell: Shell) => { if (shell.live !== false) shell.setState({ localSpeechRevision: Date.now() }); };
-  const stop = (shell: Shell) => { const old = states.get(shell); old?.controller?.abort(); states.delete(shell); if (cancelOwner === shell) { cancelCurrent = undefined; cancelOwner = undefined; } };
+  const stop = (shell: Shell) => { const old = states.get(shell); old?.controller?.abort(); if(old?.pending)retainSpeechRetirement(old.pending);states.delete(shell); if (cancelOwner === shell) { cancelCurrent = undefined; cancelOwner = undefined; } };
   async function listen(shell: Shell, id: string, text: string) {
     const old = states.get(shell);
     if (old?.id === id && old.controller) { stop(shell); refresh(shell); return; }
-    stopLocalSpeechPlayback(); stop(shell);
+    try{const retiring=shell.stopVoiceConversation?.();if(retiring)await retiring;const previousSpeech=stopLocalSpeechPlayback();if(previousSpeech)await previousSpeech;}catch{shell.toast('Audio retirement could not be confirmed. Close the app before starting audio again.');return;}
+    stop(shell);
     const cloud = selectVoiceRoute() === 'cloud';
     if (cloud && (!connectionController.getCloudEnvironment() || !connectionController.getCloudClient()?.credentialId)) { connectionController.openCloudAccount(); return; }
     const voice = cloud ? createCloudVoice() : createOnDeviceVoice(); if (!voice) return;
     const controller = new AbortController(), state: Reading = { id, text, controller, message: cloud ? 'Preparing audio…' : 'Preparing audio on this phone…' };
-    states.set(shell, state); cancelOwner = shell; cancelCurrent = () => { stop(shell); refresh(shell); }; refresh(shell);
+    states.set(shell, state); cancelOwner = shell; cancelCurrent = () => { stop(shell); refresh(shell);return state.pending; }; refresh(shell);
     try {
       if ('ready' in voice) {
         planLocalSpeech(text);
@@ -57,9 +64,10 @@ export function installLocalSpeechPlayback(Component: Shell) {
       }
       if (controller.signal.aborted || states.get(shell) !== state) return;
       state.message = 'Reading aloud…'; refresh(shell);
-      await voice.speak(text, controller.signal);
+      const pending=state.pending=voice.speak(text, controller.signal);await pending;
       if (states.get(shell) === state) { state.controller = undefined; state.message = 'Finished reading.'; refresh(shell); }
     } catch (error) {
+      if((error as {code?:string})?.code==='speech-cleanup-unconfirmed'&&state.pending)retainSpeechRetirement(state.pending);
       if (states.get(shell) !== state) return;
       state.controller = undefined;
       const recovery = cloud ? cloudVoiceFailure(error) : null;

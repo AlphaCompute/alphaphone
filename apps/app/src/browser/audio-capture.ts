@@ -1,4 +1,4 @@
-import {startRecordingMeter} from './audio-levels';
+import {startRecordingMeter,recordingMetrics} from './audio-levels';
 import {BrowserMicrophone} from './sensor-policy';
 type Clip = {recordingId:string;durationMs:number};
 type Session = {
@@ -15,6 +15,7 @@ export class BrowserAudioCapture {
  private clips=new Map<string,{blob:Blob;durationMs:number}>();
  constructor(private stopped:(event:{recordingId:string;durationMs:number|null})=>void){}
  get(id:string){return this.clips.get(id);}
+ metrics(id:string){if(this.current?.id!==id||this.current.settled)throw Error('Recording changed.');return {recordingId:id,...recordingMetrics(id)};}
  clear(){this.cancel();this.clips.clear();}
  cancel(){
   this.microphone?.close();this.microphone=undefined;

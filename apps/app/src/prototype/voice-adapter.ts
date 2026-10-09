@@ -1,3 +1,4 @@
+import {BatchVoiceConversation,type BatchVoiceState} from '../../../../.eliza/client-features/packages/ui/src/voice/batch-conversation.ts';
 import {recordingRevision} from './summary-source';
 import {reviewContentQuestion} from '../browser/content-question';
 import {recordingLevels} from '../browser/audio-levels';
@@ -77,13 +78,14 @@ export function installPrototypeVoiceAdapter(Component: any, views: Record<strin
   // Distinct failure kinds keep their own guidance; progress belongs to the current transcription.
   let failure: VoiceFailure | '' = '', progress: SpeechProgressEvent | undefined;
   let recognized: { text: string; provenance: TranscriptProvenance } | undefined;
+  let savedStarting:Promise<void>|undefined;
   let savedPlaying: string | undefined, savedPosition = 0, savedEpoch = 0, savedTick: ReturnType<typeof setInterval> | undefined;
-  const stopSaved = () => { const owned = savedPlaying !== undefined; ++savedEpoch; savedPlaying = undefined; savedPosition = 0; if (savedTick) clearInterval(savedTick); savedTick = undefined; if (owned) void noteAudio.stop().catch(() => {}); };
+  const stopSaved = () => { const owned = savedPlaying !== undefined; ++savedEpoch; savedPlaying = undefined; savedPosition = 0; if (savedTick) clearInterval(savedTick); savedTick = undefined; if (owned) {const pending=savedStarting;stopping=stopping.then(async()=>{try{await pending;}catch{}await noteAudio.stop();}).catch(failure=>{mediaUnconfirmed=failure;throw failure;});void stopping.catch(()=>{});} };
   async function playSaved(note: Bag) {
     if (savedPlaying === note.audio.audioId) { stopSaved(); refresh(); return; }
     stopSaved(); const epoch = savedEpoch; savedPlaying = note.audio.audioId; refresh();
     try {
-      await noteAudio.play({ audioId: note.audio.audioId });
+      await stopping;if(epoch!==savedEpoch)return;const pending=savedStarting=noteAudio.play({ audioId: note.audio.audioId });try{await pending;}finally{if(savedStarting===pending)savedStarting=undefined;}
       if (epoch !== savedEpoch) return;
       savedTick = setInterval(() => { void noteAudio.state().then(value => { if (epoch !== savedEpoch) return; if (!value.playing || value.audioId !== savedPlaying) { stopSaved(); refresh(); return; } savedPosition = value.positionMs; refresh(); }).catch(() => { if (epoch === savedEpoch) { stopSaved(); refresh(); } }); }, 250);
     } catch { if (epoch === savedEpoch) { stopSaved(); api?.toast('This saved recording could not be played. The transcript is still available.'); refresh(); } }
@@ -103,10 +105,21 @@ export function installPrototypeVoiceAdapter(Component: any, views: Record<strin
   let playback: AbortController | undefined, playing = false;
   type ChatDestination={shell:any;view:string|null;chat:string;draft:string;reply:unknown;edit:unknown;binding:string;opener?:HTMLElement};
   let chatDestination:ChatDestination|undefined;
+  let conversationVoice:BatchVoiceConversation<Clip>|undefined;
+  let conversationState:BatchVoiceState={phase:'idle'};
+  let conversationSpeech:Promise<void>|undefined;
+  let notesSpeech:Promise<void>|undefined;
+  let conversationPrepared:{binding:import('../runtime/alpha-client').VoiceConversationBinding;context:import('../runtime/alpha-client').ContextEnvelope}|undefined;
+  let conversationLevels:number[]=[];
+  let conversationLastTranscript='',conversationLastReply='';
+  let mediaUnconfirmed:unknown;
+  let retirement:{shell:any;phase:'stopping'|'error';returnChat:string;view:string|null;binding:string;panelChat:string;promise:Promise<void>}|undefined;
   const refresh = () => chatDestination ? chatDestination.shell.setState({}) : api?.setView('notes', { nativeVoiceRevision: Date.now() });
   const stopClock = () => { if (tick) clearInterval(tick); tick = undefined; };
   function cleanup(close = true,publish=true) {
-    const chatShell=chatDestination?.shell;
+    const hadCapture=!!recordingId||!!startingCapture||!!clip;
+    const previousChat=chatDestination;const chatShell=previousChat?.shell,previousConversation=conversationVoice,previousSpeech=conversationSpeech,previousNotesSpeech=notesSpeech;conversationVoice=undefined;conversationPrepared=undefined;
+    const conversationStopped=previousConversation?.stop();
     closeTranscriptQuestion?.();
     ++generation; readiness?.abort(); readiness = undefined; transcription?.abort(); transcription = undefined; pairedVoice = null; onDeviceVoice = null; onDeviceReady = false; preparingLocal = false; preparingPaired = false; pairedReady = false; pairedAsrReady = false; busy = false; stopClock(); stopSaved();
     if (requestId) void driver.cancel({ requestId }).catch(() => {});
@@ -115,14 +128,19 @@ export function installPrototypeVoiceAdapter(Component: any, views: Record<strin
     if (listener) void listener.remove(); listener = undefined;
     const previous = driver;
     const pendingStart=startingCapture;
-    stopping = stopping.then(async () => { if(pendingStart)try{await pendingStart;}catch{}try { await previous.cancelRecording(); } catch {} });
+    stopping = stopping.then(async () => { await conversationStopped;await previousSpeech?.catch(error=>{if(error?.code==='speech-cleanup-unconfirmed')throw error;});await previousNotesSpeech?.catch(error=>{if(error?.code==='speech-cleanup-unconfirmed')throw error;});if(pendingStart)try{await pendingStart;}catch{}try { await previous.cancelRecording(); } catch(error) {if(hadCapture||previousConversation)throw error;} });
+    stopping=stopping.catch(failure=>{mediaUnconfirmed=failure;throw failure;});void stopping.catch(()=>{});
+    if(chatShell&&(previousConversation||previousSpeech||hadCapture)){
+      const held:NonNullable<typeof retirement>={shell:chatShell,phase:'stopping',returnChat:previousChat!.chat,view:previousChat!.view,binding:previousChat!.binding,panelChat:chatShell.S().chat,promise:stopping};retirement=held;
+      void stopping.then(()=>{if(retirement!==held)return;retirement=undefined;if(chatShell.live!==false)chatShell.setState((state:any)=>({...(composerBinding()===held.binding&&(state.view||null)===held.view&&state.chat===held.panelChat?{chat:held.returnChat}:{})}));},()=>{if(retirement!==held)return;held.phase='error';if(chatShell.live!==false)chatShell.setState({});});
+    }
     clip = undefined; recordingId = undefined;
     progress = undefined;
     if (close) { stage = 'closed'; draft = ''; destination = undefined; chatDestination = undefined; failure = ''; recognized = undefined; }
     if(publish){if(chatShell)chatShell.setState({});else refresh();}
   }
   function enter(target?: DictationTarget, preparedLocal?: ReturnType<typeof createOnDeviceVoice>, preference: 'default' | 'device' | 'agent' | 'manual' = 'default', chat?:ChatDestination) {
-    const selected = selectVoiceRoute(preference), route = selected === 'cloud' ? 'agent' : selected;
+    const selected = chat ? 'cloud' : selectVoiceRoute(preference), route = selected === 'cloud' ? 'agent' : selected;
     const previousChat=chatDestination;
     stopLocalSpeechPlayback(); cleanup(true,!chat); chatDestination=chat;reprepare = false; destination = target; saveId = target?.id || crypto.randomUUID(); stage = 'ready'; error = ''; failure = ''; recognized = undefined; draft = ''; selectedRoute = route;
     if(previousChat&&!chat)previousChat.shell.setState({chat:previousChat.chat});
@@ -299,9 +317,10 @@ export function installPrototypeVoiceAdapter(Component: any, views: Record<strin
     if (!speaker || !draft.trim()) return;
     const token = generation, controller = new AbortController();
     playback = controller; playing = true; error = ''; refresh();
-    try { await speaker.speak(draft, controller.signal); }
-    catch (failure) { if (token === generation && !controller.signal.aborted) error = (cloudMode && cloudVoiceFailure(failure)) || 'Audio could not be played by the selected voice service. Your transcript is still available.'; }
-    finally { if (token === generation) { playback = undefined; playing = false; refresh(); } }
+    const pending=notesSpeech=speaker.speak(draft, controller.signal);
+    try { await pending; }
+    catch (failure) { if((failure as {code?:string})?.code==='speech-cleanup-unconfirmed'){mediaUnconfirmed=failure;stopping=Promise.reject(failure);void stopping.catch(()=>{});}if (token === generation && !controller.signal.aborted) error = (cloudMode && cloudVoiceFailure(failure)) || 'Audio could not be played by the selected voice service. Your transcript is still available.'; }
+    finally { if(notesSpeech===pending)notesSpeech=undefined;if (token === generation) { playback = undefined; playing = false; refresh(); } }
   }
   const composerBinding = () => JSON.stringify([
     connectionController.getSnapshot().session?.sessionId,
@@ -313,11 +332,12 @@ export function installPrototypeVoiceAdapter(Component: any, views: Record<strin
   function chatCurrent(){
     const chat=chatDestination;if(!chat)return false;const state=chat.shell.S();
     return chat.shell.live!==false&&!document.hidden&&!connectionController.getSnapshot().open
-      &&(state.view||null)===chat.view&&String(state.draft||'')===chat.draft
-      &&chat.shell.messageReplyTarget===chat.reply&&chat.shell.messageEditTarget===chat.edit&&composerBinding()===chat.binding;
+      &&['sheet','full'].includes(state.chat)&&(state.view||null)===chat.view&&String(state.draft||'')===chat.draft
+      &&chat.shell.messageReplyTarget===chat.reply&&chat.shell.messageEditTarget===chat.edit&&composerBinding()===chat.binding&&(!conversationPrepared||chat.shell.voiceConversationCurrent(conversationPrepared));
   }
   function cancelChat(keyboard=false){
-    const chat=chatDestination;if(!chat)return;cleanup();
+    const chat=chatDestination;if(!chat){if(retirement)retirement.returnChat=keyboard?'input':retirement.returnChat;return;}cleanup();
+    if(retirement&&retirement.shell===chat.shell){retirement.returnChat=keyboard?(chat.chat==='full'?'full':'input'):chat.chat;chat.shell.setState({chat:chat.shell.S().chat==='full'?'full':'sheet'});return;}
     chat.shell.setState({chat:keyboard?(chat.chat==='full'?'full':'input'):chat.chat},()=>{
       if(chat.shell.live===false||connectionController.getSnapshot().open||(chat.shell.S().view||null)!==chat.view)return;
       const opener=chat.opener?.isConnected?chat.opener:document.querySelector<HTMLElement>('[data-alpha-composer], [data-alpha-layer="pill"] button[aria-label="Talk"]');
@@ -329,17 +349,87 @@ export function installPrototypeVoiceAdapter(Component: any, views: Record<strin
     const original = Component.prototype[method];
     if (typeof original === 'function') Component.prototype[method] = function (...args: any[]) {
 
+      if(retirement?.shell===this&&method==='back'){this.toast('Voice media is still stopping.');return;}
       if(chatDestination?.shell===this){if(method==='back'){cancelChat();return;}cleanup();}
       return original.apply(this,args);
     };
   }
+  async function captureConversationAudio(selected:ReturnType<typeof createCloudVoice>,current:()=>void,input:{signal:AbortSignal;onActivity:(value:{peak:number;rms?:number})=>void;onEnd:(error?:unknown)=>void}){
+    let active=true,recording=false,id:string|undefined,ended:Clip|undefined,problem:unknown,endId:string|undefined,handle:PluginListenerHandle|undefined,poll:ReturnType<typeof setTimeout>|undefined,cancelling:Promise<void>|undefined;
+    const check=()=>{input.signal.throwIfAborted();current();};
+    const detach=async()=>{if(poll)clearTimeout(poll);poll=undefined;if(handle){const previous=handle;handle=undefined;await previous.remove();}};
+    const cancel=()=>{if(cancelling)return cancelling;active=false;recording=false;input.signal.removeEventListener('abort',aborted);cancelling=(async()=>{try{await detach();}finally{await selected.cancelRecording();}})();return cancelling;};
+    const aborted=()=>{recording=false;if(poll)clearTimeout(poll);void selected.cancelRecording().catch(()=>{});};
+    input.signal.addEventListener('abort',aborted,{once:true});if(input.signal.aborted)aborted();
+    try{
+      await stopping;check();
+      handle=await selected.addListener('recordingStopped',value=>{
+        if(!active||input.signal.aborted||id&&value.recordingId!==id)return;
+        if(!value.recordingId)return;
+        endId=value.recordingId;if(Number.isFinite(value.durationMs))ended=value;else problem=Error('Microphone capture was interrupted.');
+        if(id){recording=false;if(poll)clearTimeout(poll);input.onEnd(problem);}
+      });check();
+      const pending=selected.startRecording();startingCapture=pending;
+      let result:Awaited<typeof pending>;try{result=await pending;}finally{if(startingCapture===pending)startingCapture=undefined;}
+      check();id=result.recordingId;recordingId=id;started=Date.now();recording=true;conversationLevels=[];
+      if(endId&&endId!==id){ended=undefined;problem=undefined;}
+      const sample=async()=>{
+        if(!active||!recording||input.signal.aborted)return;
+        try{check();const value=await selected.getRecordingMetrics(id!);check();if(!active||!recording)return;conversationLevels=[...conversationLevels.slice(-43),value.peak];input.onActivity(value);refresh();if(active&&recording&&!input.signal.aborted)poll=setTimeout(()=>{void sample();},50);}
+        catch(error){if(!active||input.signal.aborted)return;recording=false;problem=error;input.onEnd(error);}
+      };
+      if(ended||problem){recording=false;input.onEnd(problem);}else void sample();
+      return {
+        stop:async()=>{check();recording=false;await detach();check();if(problem)throw problem;const value=ended??await selected.stopRecording();check();if(value.recordingId!==id||!Number.isFinite(value.durationMs))throw Error('Recording identity changed.');clip=value;return value;},
+        cancel,
+      };
+    }catch(error){await cancel();throw error;}
+  }
+  async function beginConversation(){
+    const chat=chatDestination;if(!chat||!chatCurrent())return;
+    const token=generation;
+    if(cloudConnectRequired){conversationState={phase:'error'};error='Sign in to Eliza Cloud to use voice.';refresh();return;}
+    const controller=new AbortController();readiness=controller;conversationState={phase:'starting'};error='';refresh();
+    const current=()=>{controller.signal.throwIfAborted();if(token!==generation||chatDestination!==chat||!chatCurrent())throw new DOMException('Voice conversation changed','AbortError');};
+    try{
+      current();const prepared=await chat.shell.prepareVoiceConversation(controller.signal);current();conversationPrepared=prepared;current();
+      const selected=createCloudVoice();driver=selected;cloudMode=true;
+      const previous=conversationVoice;conversationVoice=undefined;await previous?.stop();current();
+      const conversation:BatchVoiceConversation<Clip>=new BatchVoiceConversation<Clip>({
+        conversationId:prepared.binding.conversationId,assertCurrent:current,
+        capture:input=>captureConversationAudio(selected,current,input),
+        transcribe:async(value,signal)=>{
+          signal.throwIfAborted();current();const request=crypto.randomUUID();requestId=request;
+          let interrupt!:(error:unknown)=>void;const cancelled=new Promise<never>((_,reject)=>interrupt=reject);
+          const abort=()=>{void selected.cancel({requestId:request}).catch(()=>{});interrupt(signal.reason??new DOMException('Transcription cancelled','AbortError'));};signal.addEventListener('abort',abort,{once:true});if(signal.aborted)abort();
+          try{current();const result=await Promise.race([selected.transcribeRecording({recordingId:value.recordingId,requestId:request}),cancelled]);signal.throwIfAborted();current();conversationLastTranscript=result.text;return result.text;}
+          finally{signal.removeEventListener('abort',abort);if(requestId===request)requestId=undefined;}
+        },
+        send:async input=>{input.signal.throwIfAborted();current();const result=await chat.shell.sendVoiceTurn({...input,...prepared,assertCurrent:current});input.signal.throwIfAborted();current();conversationLastReply=result.text;return result;},
+        speak:async input=>{input.signal.throwIfAborted();current();const pending=selected.speak(input.text,input.signal,()=>{current();input.onStarted();});conversationSpeech=pending;try{await pending;input.signal.throwIfAborted();current();}catch(failure){if((failure as {code?:string})?.code==='speech-cleanup-unconfirmed'){mediaUnconfirmed=failure;stopping=Promise.reject(failure);void stopping.catch(()=>{});}throw failure;}finally{if(conversationSpeech===pending)conversationSpeech=undefined;}},
+        onState:value=>{if(token!==generation||chatDestination!==chat||conversationVoice!==conversation)return;conversationState=value;if(value.phase==='error')error=cloudVoiceFailure(value.error)||'Voice stopped. Check your connection and conversation history before trying again.';if(value.phase==='listening'){stopClock();tick=setInterval(refresh,250);}else stopClock();refresh();},
+      });
+      conversationVoice=conversation;await conversation.start();current();
+    }catch(failure){if(token!==generation||controller.signal.aborted)return;conversationState={phase:'error',error:failure};error=cloudVoiceFailure(failure)||(failure instanceof Error?failure.message:'Voice could not start.');refresh();}
+  }
+  Component.prototype.stopVoiceConversation = function(){if(chatDestination?.shell===this){cancelChat();return stopping;}if(retirement&&retirement.shell===this)return retirement.promise;if(mediaUnconfirmed)return stopping;};
   Component.prototype.startVoice = async function () {
     if(this.live===false||document.hidden||connectionController.getSnapshot().open||chatDestination?.shell===this)return;
+    if(retirement||mediaUnconfirmed){this.toast('Voice media has not finished stopping. Close the app if this continues.');return;}
+    if(stage!=='closed'){this.toast('Finish or discard the Notes recording before starting a voice conversation.');return;}
     const state=this.S();
     const chat:ChatDestination={shell:this,view:state.view||null,chat:state.chat,draft:String(state.draft||''),reply:this.messageReplyTarget,edit:this.messageEditTarget,binding:composerBinding(),...(typeof HTMLElement!=='undefined'&&document.activeElement instanceof HTMLElement?{opener:document.activeElement}:{})};
-    this.setState({chat:state.chat==='full'?'full':'sheet',voice:'off'},()=>document.querySelector<HTMLElement>('[data-alpha-chat-recorder] button')?.focus({preventScroll:true}));
-    enter(undefined,undefined,'default',chat);
+    const readingStopped=stopLocalSpeechPlayback();
+    enter(undefined,undefined,'default',chat);stopping=Promise.all([stopping,Promise.resolve(readingStopped)]).then(()=>{}).catch(failure=>{mediaUnconfirmed=failure;throw failure;});void stopping.catch(()=>{});conversationLastTranscript='';conversationLastReply='';const token=generation;
+    await new Promise<void>(resolve=>this.setState({chat:state.chat==='full'?'full':'sheet',voice:'off'},()=>{document.querySelector<HTMLElement>('[data-alpha-chat-recorder] button')?.focus({preventScroll:true});if(chatDestination===chat&&generation===token)void beginConversation().finally(resolve);else resolve();}));
   };
+  function conversationRecorderView(icons:Bag){
+    const token=generation,chat=chatDestination,owned=()=>token===generation&&chatDestination===chat&&chatCurrent();
+    const phase=conversationState.phase,live=phase==='listening',seconds=live?(Date.now()-started)/1000:(clip?.durationMs||0)/1000;
+    const messages:Record<string,string>={idle:'Voice conversation stopped.',starting:'Starting voice conversation…',listening:'Listening. Pause when finished. Speech is transcribed with Eliza Cloud and sent to this conversation; matching replies play aloud.',transcribing:'Transcribing your speech with Eliza Cloud…',thinking:'Waiting for your agent’s reply…','preparing-speech':'Preparing the matching reply with Eliza Cloud…',speaking:'Alpha is speaking. The microphone is off.',error:error||'Voice stopped. Check history before starting again.'};
+    const primary=()=>{if(!owned())return;if(mediaUnconfirmed){cancelChat();return;}if(cloudConnectRequired){cleanup();connectionController.openCloudAccount();}else if(!connectionController.getSnapshot().session){cleanup();connectionController.open();}else if(phase==='error')void beginConversation();else cancelChat();};
+    return {state:phase,clock:`${Math.floor(seconds/60)}:${String(Math.floor(seconds%60)).padStart(2,'0')}`,live,levels:conversationLevels.map(peak=>({h:4+Math.round(44*peak)})),lines:[{t:error||messages[phase]}],review:false,typeChoice:false,lastTranscript:conversationLastTranscript,lastReply:conversationLastReply,primaryLabel:mediaUnconfirmed?'Stop voice conversation':cloudConnectRequired?'Connect Eliza Cloud':!connectionController.getSnapshot().session?'Connect agent':phase==='error'?'Start voice conversation':'Stop voice conversation',primaryIcon:cloudConnectRequired?icons.user:phase==='error'?icons.mic:icons.stop,primaryDisabled:false,stop:primary,discard:()=>{if(owned())cancelChat();},keyboard:()=>{if(owned())cancelChat(true);}};
+  }
   async function deletionReceipt(row:AudioDeletion,status:'removed'|'restored'){
     const result=await noteAudio.deletionStatus({audioId:row.audioId,noteId:row.note.id,operationId:row.id});
     if(result.audioId!==row.audioId||result.noteId!==row.note.id||result.operationId!==row.id||result.status!==status)throw Error('Audio operation unconfirmed');
@@ -609,18 +699,20 @@ export function installPrototypeVoiceAdapter(Component: any, views: Record<strin
   }
   const originalVals=Component.prototype.renderVals;
   Component.prototype.renderVals=function(){
-    const out=originalVals.call(this),active=chatDestination?.shell===this&&stage!=='closed'&&chatCurrent();
-    out.chatRecorder=active?recorderView(out.ic||{}):null;out.showChatHistory=!active;out.chatVoiceActive=active;out.chatHistoryStyle=active?'display:none':'';
+    const out=originalVals.call(this),retiring=retirement?.shell===this,active=retiring||chatDestination?.shell===this&&stage!=='closed'&&chatCurrent();
+    const hold=()=>{if(retirement?.shell===this)this.toast('Voice media is still stopping. Close the app if it cannot finish.');};
+    out.chatRecorder=retiring?{state:retirement!.phase,clock:'Voice',live:false,levels:[],lines:[{t:retirement!.phase==='error'?'Could not confirm voice media stopped. Close the app before starting voice again.':'Stopping the microphone and audio…'}],review:false,typeChoice:false,primaryLabel:'Stop voice conversation',primaryIcon:out.ic?.stop,primaryDisabled:false,stop:hold,discard:hold,keyboard:()=>{if(retirement&&retirement.shell===this){retirement.returnChat='input';hold();}}}:active?conversationRecorderView(out.ic||{}):null;out.showChatHistory=!active;out.chatVoiceActive=active;out.chatHistoryStyle=active?'display:none':'';
+    if(retiring){out.conversationHidden=false;out.panelOp=1;out.panelPE='auto';if(!out.panelH)out.panelH=560;}
     if(active){
-      out.panelComposer=false;out.showSugg=false;out.showComposer=false;out.showPill=false;
-      const close=out.closeChat;out.closeChat=()=>{cleanup();close?.();};
+      out.panelComposer=false;out.showSugg=false;out.showComposer=false;out.showPill=false;out.canStopReply=false;
+      out.closeChat=()=>retiring?hold():cancelChat();
     }
     return out;
   };
   const updated=Component.prototype.componentDidUpdate;
   Component.prototype.componentDidUpdate=function(...args:any[]){
     updated?.apply(this,args);
-    if(chatDestination?.shell===this&&(!chatCurrent()||!['sheet','full'].includes(this.S().chat)))cleanup();
+    if(chatDestination?.shell===this){if(!chatCurrent()||!['sheet','full'].includes(this.S().chat))cleanup();else conversationVoice?.recheck();}
   };
   const immersive = notes.immersive;
   notes.immersive = (state: Bag, current: Bag) => stage !== 'closed'&&!chatDestination ? { noPill: true } : immersive?.(state, current);

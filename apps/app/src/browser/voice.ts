@@ -24,7 +24,7 @@ export class BrowserVoice extends WebPlugin {
  private capture=new BrowserAudioCapture(event=>{void this.notifyListeners('recordingStopped',event);});
  private recognizer=new BrowserSpeechRecognizer();
  private speech=new Map<string,string>();
- private agentAudio=new Map<string,{blob:Blob;agent?:LocalAgentProtocol;sessionId:string;cloud?:{environment:string;credentialId:string}}>();
+ private agentAudio=new Map<string,{blob:Blob;requestId?:string;agent?:LocalAgentProtocol;sessionId:string;cloud?:{environment:string;credentialId:string}}>();
  private audio?:HTMLAudioElement;
  private audioId?:string;
  private pendingAudioId?:string;
@@ -48,6 +48,7 @@ export class BrowserVoice extends WebPlugin {
   // Readiness never downloads the model; it is fetched from this app on the first transcription.
   return {ready:!!navigator.mediaDevices?.getUserMedia&&typeof MediaRecorder!=='undefined'&&typeof Worker!=='undefined'&&typeof WebAssembly!=='undefined',execution:'browser',route:'browser',engine:'whisper',model:'whisper-tiny.en',language:'en'};
  });}
+ getRecordingMetrics(input:{recordingId:string}){return Promise.resolve(this.capture.metrics(input.recordingId));}
  startRecording(input:{maxDurationMs?:number}={}){return this.capture.start(input);}
  stopRecording(){return this.capture.stop();}
  async cancelRecording(){this.capture.cancel();}
@@ -90,7 +91,7 @@ export class BrowserVoice extends WebPlugin {
   return this.withAgentSpeech(async signal=>{
    const binding=await this.cloudBinding(input),response=await browserCloudVoice(input,'tts',input.text,signal),blob=await response.blob();signal.throwIfAborted();binding.current();
    if(!blob.size||blob.size>8*1024*1024||!['audio/mpeg','audio/mp3','audio/wav'].includes(blob.type.split(';')[0]))throw Error('Eliza Cloud returned no usable speech.');
-   const playbackId=crypto.randomUUID();this.agentAudio.set(playbackId,{blob,sessionId:binding.sessionId,cloud:{environment:input.environment,credentialId:input.credentialId}});
+   const playbackId=crypto.randomUUID();this.agentAudio.set(playbackId,{blob,requestId:input.requestId,sessionId:binding.sessionId,cloud:{environment:input.environment,credentialId:input.credentialId}});
    while(this.agentAudio.size>8)this.agentAudio.delete(this.agentAudio.keys().next().value!);
    return {playbackId};
   },input.requestId);
@@ -180,12 +181,13 @@ export class BrowserVoice extends WebPlugin {
   }catch(error){if(this.audio===audio)finish('playbackFailed');throw error;}
   }catch(error){if(current()){const playbackId=this.activeSpeechId;this.activeSpeechId=undefined;if(playbackId)void this.notifyListeners('playbackFailed',{playbackId,message:error instanceof Error?error.message:'Speech playback failed.'});await this.stopPlayback();}throw error;}
  }
- async stopPlayback(input?:{playbackId:string}){
-  if(input&&this.activeSpeechId!==input.playbackId)return;
+ async stopPlayback(input?:{playbackId?:string;requestId?:string}){
+  if(input?.requestId&&(!this.activeSpeechId||this.agentAudio.get(this.activeSpeechId)?.requestId!==input.requestId))return;
+  if(input?.playbackId&&this.activeSpeechId!==input.playbackId)return;
   const stopped=this.activeSpeechId;this.activeSpeechId=undefined;
   ++this.playbackGeneration;this.pendingAudioId=undefined;this.playbackAbort?.abort();this.playbackAbort=undefined;
-  if(this.utterance){this.utterance.onend=null;this.utterance.onerror=null;this.utterance=undefined;}
-  window.speechSynthesis?.cancel();if(this.audio)this.releaseAudio(this.audio);
+  if(this.utterance){this.utterance.onend=null;this.utterance.onerror=null;this.utterance=undefined;window.speechSynthesis?.cancel();}
+  if(this.audio)this.releaseAudio(this.audio);
   if(stopped)void this.notifyListeners('playbackStopped',{playbackId:stopped});
  }
  stop(){return this.stopPlayback();}
@@ -205,7 +207,15 @@ export class BrowserVoice extends WebPlugin {
   this.speechRequest?.abort();const controller=this.speechRequest=new AbortController();this.speechRequestId=requestId;
   try{return await run(controller.signal);}finally{if(this.speechRequest===controller)this.speechRequest=undefined;}
  }
- async cancel(input?:{requestId?:string}){if(input?.requestId&&input.requestId!==this.speechRequestId)return;this.speechRequest?.abort();this.speechRequest=undefined;this.recognizer.stop();this.capture.cancel();await this.stopPlayback();}
+ async cancel(input?:{requestId?:string}){
+  if(input?.requestId){
+   if(input.requestId===this.speechRequestId){this.speechRequest?.abort();this.speechRequest=undefined;this.speechRequestId=undefined;}
+   await this.stopPlayback({requestId:input.requestId});
+   for(const [id,audio] of this.agentAudio)if(audio.requestId===input.requestId)this.agentAudio.delete(id);
+   return;
+  }
+  this.speechRequest?.abort();this.speechRequest=undefined;this.speechRequestId=undefined;this.recognizer.stop();this.capture.cancel();await this.stopPlayback();
+ }
  async releaseLocalSpeech(){await this.cancel();this.recognizer.cancel();this.speech.clear();this.agentAudio.clear();this.capture.clear();}
 }
 function playbackWait<T>(work:Promise<T>,signal:AbortSignal):Promise<T>{

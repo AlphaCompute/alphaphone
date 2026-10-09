@@ -137,6 +137,15 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
     if(view==='home')shell.goHome();else shell.openView(view);
     return true;
   }
+  async function deliverChatNavigation(shell:Shell,navigation:ReturnType<typeof connectionController.captureViewNavigation>,results:readonly unknown[]|undefined,current?:()=>void){
+    if(!navigation||!results?.length)return false;
+    const attempt={...navigation.attempt,current:()=>{navigation.attempt.current();current?.();}};
+    const delivered=await navigation.client.deliver(results,attempt,(view,check)=>new Promise<boolean>((resolve,reject)=>{
+      try{check();if(!openInternalView(shell,view)){resolve(false);return;}shell.setState({},()=>{context(shell);resolve(shell.live&&(shell.S().view||'home')===view);});}catch(error){reject(error);}
+    }));
+    if(delivered.status==='delivered')shell.toast(`Opened ${delivered.label}.`);else if(delivered.status==='unknown')shell.toast('Could not confirm the screen change. Check your screen.');
+    return delivered.status==='delivered';
+  }
   function context(shell: Shell) {
     const s = shell.S();
     const view = s.view || 'home';
@@ -284,7 +293,7 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
       if (connection.session) {
         alphaClient.attachVerifiedTransport({
           session: connection.session,
-          send: ({ text, context, requestId, signal, onText, replyTo, onReplyReady }) => connectionController.send(text, context, requestId, signal, onText,replyTo,onReplyReady),
+          send: ({ text, context, requestId, signal, onText, replyTo, onReplyReady, channelType, expectedConversationId,voiceTurnSignal }) => connectionController.send(text, context, requestId, signal, onText,replyTo,onReplyReady,channelType,expectedConversationId,voiceTurnSignal),
           // Remote text is not authority to execute device actions. This path
           // accepts chat only until the server supports verified proposals.
           execute: ({ proposal, context, signal }) => connectionController.execute(proposal, context, signal),
@@ -660,7 +669,40 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
     out.onBright = () => void DailyApps.perform({ action: 'settings' }).catch(() => this.toast('Android settings is unavailable.'));
     return out;
   };
+  p.voiceConversationCurrent = function(prepared:{binding:import('../runtime/alpha-client').VoiceConversationBinding;context:import('../runtime/alpha-client').ContextEnvelope}){return !alphaClient.getState().context.sensitive&&connectionController.voiceConversationCurrent(prepared.binding)&&JSON.stringify(alphaClient.getState().context)===JSON.stringify(prepared.context);};
+  p.prepareVoiceConversation = async function(signal:AbortSignal){
+    if(!connectionController.getSnapshot().session)throw Error('Connect an agent in Settings to start a voice conversation.');
+    signal.throwIfAborted();context(this);if(alphaClient.getState().context.sensitive)throw Error('Return to Home or another app before starting voice.');const expected=JSON.stringify(alphaClient.getState().context);
+    const binding=await connectionController.prepareVoiceConversation(signal);signal.throwIfAborted();
+    await this.draftBindingTask;signal.throwIfAborted();context(this);
+    if(!this.live||document.hidden||!connectionController.voiceConversationCurrent(binding)||JSON.stringify(alphaClient.getState().context)!==expected)throw Error('The voice conversation changed.');
+    await this.connectAgent();signal.throwIfAborted();
+    return {binding,context:alphaClient.getState().context};
+  };
+  p.sendVoiceTurn = async function(input:{text:string;turnId:string;voiceTurnSignal:import('../runtime/alpha-client').VoiceTurnSignal;signal:AbortSignal;binding:import('../runtime/alpha-client').VoiceConversationBinding;context:import('../runtime/alpha-client').ContextEnvelope;assertCurrent:()=>void}){
+    const {text,turnId,signal,binding}=input;
+    const belongs=()=>{try{signal.throwIfAborted();input.assertCurrent();return this.live&&!document.hidden&&connectionController.voiceConversationCurrent(binding)&&JSON.stringify(alphaClient.getState().context)===JSON.stringify(input.context);}catch{return false;}};
+    const current=()=>{signal.throwIfAborted();input.assertCurrent();context(this);if(!belongs())throw Error('The voice conversation changed.');};
+    current();if(alphaClient.getState().pending||this.S().typing||this.draftSendPending)throw Error('Wait for the current conversation turn.');
+    this.voiceSendTurnId=turnId;
+    const navigation=connectionController.captureViewNavigation(input.context),userId=crypto.randomUUID(),streamId=crypto.randomUUID();let streamed=false;
+    try{
+      await new Promise<void>(resolve=>this.setState((previous:Shell)=>belongs()?{msgs:[...previous.msgs,{id:userId,from:'user',text}],typing:true}:null,resolve));
+      current();
+      const reply=await alphaClient.send(text,value=>{current();streamed=true;this.setState((previous:Shell)=>belongs()?{msgs:previous.msgs.some((m:Shell)=>m.id===streamId)?previous.msgs.map((m:Shell)=>m.id===streamId?{...m,text:value}:m):[...previous.msgs,{id:streamId,from:'agent',text:value,streaming:true}]}:null);},undefined,undefined,{channelType:'VOICE_DM',requestId:turnId,signal,expectedConversationId:binding.conversationId,voiceTurnSignal:input.voiceTurnSignal});
+      current();const identity=reply.messageBinding;
+      for(const proposal of reply.proposals||[])this.agentSay(proposal.description,{type:'generic',icon:'check',title:'Approve: '+proposal.title,sub:'Tap to approve this exact action',proposalId:proposal.id,expiresAt:proposal.expiresAt},undefined,belongs);
+      if(!reply.messageId||!reply.userMessageId||!identity||identity.conversationId!==binding.conversationId||JSON.stringify(identity.session)!==JSON.stringify(binding.session)||!reply.text.trim())throw Error('The voice reply could not be matched to this conversation. Check history before speaking again.');
+      await new Promise<void>(resolve=>this.setState((previous:Shell)=>belongs()?{msgs:[...previous.msgs.filter((m:Shell)=>m.id!==streamId).map((m:Shell)=>m.id===userId?{...m,id:reply.userMessageId,messageBinding:identity}:m),{id:reply.messageId,from:'agent',text:reply.text,messageBinding:identity,streaming:false}]}:null,resolve));current();
+      await deliverChatNavigation(this,navigation,reply.actionResults,current);
+      current();return {requestId:turnId,conversationId:identity.conversationId,userMessageId:reply.userMessageId,assistantMessageId:reply.messageId,text:reply.text,complete:true};
+    }catch(error){
+      if(streamed&&this.live)this.setState((previous:Shell)=>this.voiceSendTurnId===turnId&&connectionController.voiceConversationCurrent(binding,false)?{msgs:previous.msgs.map((m:Shell)=>m.id===streamId?{...m,streaming:false,interrupted:true}:m)}:null);
+      throw error;
+    }finally{if(this.voiceSendTurnId===turnId&&this.live)await new Promise<void>(resolve=>this.setState(()=>this.voiceSendTurnId===turnId&&connectionController.voiceConversationCurrent(binding,false)?{typing:false}:null,()=>{if(this.voiceSendTurnId===turnId)this.voiceSendTurnId=undefined;resolve();}));}
+  };
   p.send = async function (argument?: string, expectedSession?: {sessionId:string;agentId:string;ownerId:string;origin:string}) {
+    const retiring=this.stopVoiceConversation?.();if(retiring)await retiring;
     let s = this.S(); const text = String(argument ?? s.draft).trim();
     if (!text || s.typing || this.draftSendPending) return;
     const editTarget:ConversationMessageTarget|undefined=this.messageEditTarget,replyTarget:ConversationMessageTarget|undefined=this.messageReplyTarget,editView=s.view;
@@ -686,12 +728,7 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
     const replaceStream=(value:string,streaming=true)=>this.setState((previous:Shell)=>({msgs:previous.msgs.map((message:Shell)=>message.id===streamedId?{...message,text:value,streaming}:message)}));
     this.setState({ msgs: [...s.msgs, { id: userMessageId, from: 'user', text }], draft: '', typing: true, chat: s.chat === 'full' ? 'full' : 'sheet', shade: false });
     let navigation:ReturnType<typeof connectionController.captureViewNavigation>|undefined,readyNavigation:readonly unknown[]|undefined;
-    const deliverNavigation=async(results:readonly unknown[]|undefined)=>{
-      if(!navigation||!results?.length)return false;
-      const delivered=await navigation.client.deliver(results,navigation.attempt,(view,current)=>new Promise<boolean>((resolve,reject)=>{
-        try{current();if(!openInternalView(this,view)){resolve(false);return;}this.setState({},()=>{context(this);resolve(this.live&&(this.S().view||'home')===view);});}catch(error){reject(error);}
-      }));if(delivered.status==='delivered')this.toast(`Opened ${delivered.label}.`);else if(delivered.status==='unknown')this.toast('Could not confirm the screen change. Check your screen.');return delivered.status==='delivered';
-    };
+    const deliverNavigation=(results:readonly unknown[]|undefined)=>deliverChatNavigation(this,navigation,results);
     try {
       await this.connectAgent(); context(this);
       if (alphaClient.getState().context.revision !== revision) throw new Error('The active screen changed. Please send your request again.');
@@ -723,8 +760,9 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
     }
     finally { if (this.live) this.setState({ typing: false }); }
   };
-  p.agentSay = function (text: string, card?: Shell, identity?:{id:string;messageBinding:{conversationId:string;session:unknown}}) {
+  p.agentSay = function (text: string, card?: Shell, identity?:{id:string;messageBinding:{conversationId:string;session:unknown}},current?:()=>boolean) {
     this.setState((previous: Shell) => {
+      if(current&&!current())return null;
       const chat = previous.chat === 'full' ? 'full' : 'sheet';
       // Recovery and a chat reply can publish the same pending action. Decide
       // inside the state update so either arrival order retains one approval.

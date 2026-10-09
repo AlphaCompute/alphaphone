@@ -1,3 +1,4 @@
+import {markTtsPlaybackStarted,markTtsPlaybackEnded} from '../../../../.eliza/client-features/packages/ui/src/voice/tts-playback-activity.ts';
 import { playOwnedSpeech } from '../local-speech-playback';
 import { registerPlugin } from '../platform-plugins';
 import { type PluginListenerHandle } from '@capacitor/core';
@@ -15,6 +16,7 @@ export type VoiceClip = { recordingId: string; durationMs: number };
 const native = registerPlugin<{
   startRecording(): Promise<{ recordingId: string; maxDurationMs: number }>;
   stopRecording(): Promise<VoiceClip>;
+  getRecordingMetrics(input:{recordingId:string}):Promise<{recordingId:string;peak:number;rms?:number}>;
   cancelRecording(): Promise<void>;
   transcribeRecording(input: { recordingId: string; requestId: string; environment: string; credentialId: string }): Promise<{ text: string; local: false }>;
   synthesize(input: { text: string; requestId: string; environment: string; credentialId: string }): Promise<{ playbackId: string }>;
@@ -38,6 +40,7 @@ export function createCloudVoice() {
   return {
     cloud: true as const,
     async startRecording() { check(); const result = await native.startRecording(); check(); return result; },
+    async getRecordingMetrics(recordingId:string){check();const value=await native.getRecordingMetrics({recordingId});check();if(value.recordingId!==recordingId||!Number.isFinite(value.peak)||value.peak<0||value.peak>1||(value.rms!==undefined&&(!Number.isFinite(value.rms)||value.rms<0||value.rms>1)))throw Error('Recording metrics were not verified.');return value;},
     async stopRecording() { check(); const result = await native.stopRecording(); check(); return result; },
     async transcribeRecording(input: { recordingId: string; requestId: string }) {
       check(); const result = await native.transcribeRecording({ ...input, environment, credentialId }); check();
@@ -49,12 +52,13 @@ export function createCloudVoice() {
     addListener: (event: 'recordingStopped', callback: (clip: VoiceClip) => void) => native.addListener(event, value => {
       try { check(); callback(value); } catch { /* Stale account events never update the new account. */ }
     }),
-    async speak(text: string, signal: AbortSignal) {
+    async speak(text: string, signal: AbortSignal,onStarted?:()=>void) {
       check();signal.throwIfAborted();const owned=new AbortController(),cancel=()=>owned.abort(signal.reason),current=()=>{check();if(document.hidden||connectionController.getSnapshot().open)throw new DOMException('Voice review changed','AbortError');};
       const changed=()=>{try{current();}catch(error){owned.abort(error);}};
       const unsubscribe=connectionController.subscribe(changed);document.addEventListener('visibilitychange',changed);signal.addEventListener('abort',cancel,{once:true});if(signal.aborted)cancel();
-      try{await playOwnedSpeech(native,owned.signal,requestId=>native.synthesize({text,requestId,environment,credentialId}),current);}
-      finally{unsubscribe();document.removeEventListener('visibilitychange',changed);signal.removeEventListener('abort',cancel);}
+      let marked=false;
+      try{await playOwnedSpeech(native,owned.signal,requestId=>native.synthesize({text,requestId,environment,credentialId}),current,()=>{current();if(onStarted)onStarted();else{marked=true;markTtsPlaybackStarted();}},true);}
+      finally{if(marked)markTtsPlaybackEnded();unsubscribe();document.removeEventListener('visibilitychange',changed);signal.removeEventListener('abort',cancel);}
     },
   };
 }

@@ -64,6 +64,9 @@ export interface ConversationMessageTarget {
   text: string;
   from: 'user' | 'agent';
 }
+export type VoiceTurnSignal = import('../../../../.eliza/client-features/packages/voice/src/respond-gate.ts').VoiceTurnSignal;
+export type ChatChannel = 'DM' | 'VOICE_DM';
+export interface VoiceConversationBinding { conversationId:string;session:VerifiedSession;connectionEpoch:number }
 export interface AgentReply {
   messageId?: string;
   userMessageId?: string;
@@ -83,6 +86,9 @@ export interface VerifiedSessionTransport {
   send(input: {
     requestId: string;
     text: string;
+    channelType?: ChatChannel;
+    expectedConversationId?: string;
+    voiceTurnSignal?: VoiceTurnSignal;
     context: ContextEnvelope;
     signal: AbortSignal;
     onText?:(text:string)=>void;
@@ -324,12 +330,14 @@ export class AlphaClient {
       return reply.text;
     },signal,automatic);
   }
-  async send(text: string, onText?:(text:string)=>void, replyTo?:ConversationMessageTarget,onReplyReady?:(results:readonly unknown[]|undefined)=>void): Promise<AgentReply> {
+  async send(text: string, onText?:(text:string)=>void, replyTo?:ConversationMessageTarget,onReplyReady?:(results:readonly unknown[]|undefined)=>void,options?:{channelType:ChatChannel;requestId?:string;signal?:AbortSignal;expectedConversationId?:string;voiceTurnSignal?:VoiceTurnSignal}): Promise<AgentReply> {
     if (!text.trim()) throw new Error("Enter a message.");
+    if(options?.channelType==='VOICE_DM'&&replyTo)throw Error("A voice turn cannot resend or edit a selected message.");
     return this.run(async (transport, context, signal) => {
       let accepting=true;let result:AgentReply;
       try { result = await transport.send({
-        requestId: crypto.randomUUID(),
+        requestId: options?.requestId ?? crypto.randomUUID(),
+        ...(options?{channelType:options.channelType,expectedConversationId:options.expectedConversationId,voiceTurnSignal:options.voiceTurnSignal}:{}),
         text: text.trim(),
         ...(replyTo?{replyTo}:{}),
         context,
@@ -379,7 +387,7 @@ export class AlphaClient {
         ...(Array.isArray(result.actionResults)?{actionResults:result.actionResults}:{}),
         proposals: [...next.values()].map((p) => ({ ...p })),
       };
-    });
+    },options?.signal);
   }
   /** Call only after the user reviews and explicitly approves this exact proposal. */
   async approve(proposalId: string): Promise<OperationReceipt> {

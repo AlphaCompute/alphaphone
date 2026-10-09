@@ -1,7 +1,7 @@
 import {automationsRouteAllowed, isAutomationsPath, type AutomationsMethod} from './automations-route-policy.ts';
 import { registerPlugin } from '../platform-plugins';
 import { Capacitor } from '@capacitor/core';
-import type { VerifiedSession } from './alpha-client';
+import type { VerifiedSession, ChatChannel } from './alpha-client';
 import type { RemoteChatReply, RemoteConversation } from './remote-protocol';
 import { readLocalAgentStream } from './local-agent-stream';
 import { streamNativeAgent, type NativeStreamPort } from './local-agent-native-stream';
@@ -184,7 +184,7 @@ export class LocalAgentProtocol {
     if(!Array.isArray(value.messages))throw new Error('Invalid local conversation history.');
     return {messages:value.messages.map(record)};
   }
-  async send(id:string,text:string,options:{metadata?:Record<string,unknown>;clientMessageId?:string;signal?:AbortSignal;onText?:(text:string)=>void;onReplyReady?:(results:readonly unknown[]|undefined)=>void}={}):Promise<RemoteChatReply> {
+  async send(id:string,text:string,options:{metadata?:Record<string,unknown>;clientMessageId?:string;channelType?:ChatChannel;signal?:AbortSignal;onText?:(text:string)=>void;onReplyReady?:(results:readonly unknown[]|undefined)=>void}={}):Promise<RemoteChatReply> {
     if(this.bridge.stream&&options.onText){
       if(!this.session)throw Error('Start the local agent first.');
       const controller=new AbortController();this.streams.add(controller);
@@ -193,11 +193,11 @@ export class LocalAgentProtocol {
       const valid=()=>{signal.throwIfAborted();if(generation!==this.generation||session!==this.session)throw Error('Local agent connection changed.');};
       valid();
       const result=await this.bridge.stream({path:`/api/conversations/${encodeURIComponent(identifier(id))}/messages/stream`,ownerId:session.ownerId,headers:this.deviceHeaders,
-        body:JSON.stringify({text,channelType:'DM',streamProtocol:'delta-v2',metadata:options.metadata,clientMessageId:options.clientMessageId})},signal,value=>{valid();options.onText!(value);},results=>{valid();options.onReplyReady?.(results);});
+        body:JSON.stringify({text,channelType:options.channelType??'DM',streamProtocol:'delta-v2',metadata:options.metadata,clientMessageId:options.clientMessageId})},signal,value=>{valid();options.onText!(value);},results=>{valid();options.onReplyReady?.(results);});
       valid();return result;
       }finally{this.streams.delete(controller);}
     }
-    const value=await this.json(`/api/conversations/${encodeURIComponent(identifier(id))}/messages`,{text,channelType:'DM',metadata:options.metadata,clientMessageId:options.clientMessageId},options.signal);
+    const value=await this.json(`/api/conversations/${encodeURIComponent(identifier(id))}/messages`,{text,channelType:options.channelType??'DM',metadata:options.metadata,clientMessageId:options.clientMessageId},options.signal);
     if(typeof value.text!=='string'||typeof value.agentName!=='string')throw new Error('Invalid local agent reply.');
     return value as RemoteChatReply;
   }

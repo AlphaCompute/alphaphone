@@ -63,6 +63,7 @@ public final class AlphaVoiceCloudPlugin extends Plugin {
  }
  @PermissionCallback private void microphonePermission(PluginCall call){Long e=permissionEpochs.remove(call.getCallbackId());if(e==null||e!=epoch.get()){call.reject("Recording cancelled");return;}if(getPermissionState("microphone")!=PermissionState.GRANTED){call.reject("Microphone permission denied");return;}start(call,e);}
  private void start(PluginCall call,long e){main.post(()->{if(destroyed||isDraining()||e!=epoch.get()){call.reject("Recording cancelled");return;}try{int limit=call.getInt("maxDurationMs",59000);if(limit!=29000&&limit!=59000)throw new IllegalArgumentException("Unsupported capture duration");call.resolve(capture.start(limit));}catch(Exception error){call.reject("Microphone could not start");}});}
+ @PluginMethod public void getRecordingMetrics(PluginCall call){main.post(()->{try{call.resolve(capture.metrics(call.getString("recordingId")));}catch(RuntimeException error){call.reject("Recording metrics are no longer available");}});}
  @PluginMethod public void stopRecording(PluginCall call){main.post(()->{try{call.resolve(capture.stop());}catch(Exception error){call.reject("Recording could not be saved");}});}
  @PluginMethod public void saveRecording(PluginCall call){getActivity().runOnUiThread(()->{try{String key=call.getString("recordingId");AlphaNoteAudioPlugin store=(AlphaNoteAudioPlugin)getBridge().getPlugin("AlphaNoteAudio").getInstance();call.resolve(capture.retain(store,key,call.getString("noteId"),call.getString("transcript")));}catch(Exception error){call.reject("The recording could not be saved. Keep this draft and retry.");}});}
  private boolean isDraining(){synchronized(pending){return draining;}}
@@ -236,13 +237,18 @@ final class AlphaCloudVoiceCapture {
    recorder.setAudioChannels(1); recorder.setAudioSamplingRate(16000); recorder.setAudioEncodingBitRate(64000);
    recorder.setOutputFile(file.getAbsolutePath()); recorder.setMaxDuration(maxDurationMs); recorder.setMaxFileSize(4 * 1024 * 1024);
    recorder.setOnInfoListener((source, what, extra) -> {
-    if (what == android.media.MediaRecorder.MEDIA_RECORDER_INFO_MAX_DURATION_REACHED || what == android.media.MediaRecorder.MEDIA_RECORDER_INFO_MAX_FILESIZE_REACHED) stopAutomatically();
+    synchronized(this){if(recorder!=source)return;if (what == android.media.MediaRecorder.MEDIA_RECORDER_INFO_MAX_DURATION_REACHED || what == android.media.MediaRecorder.MEDIA_RECORDER_INFO_MAX_FILESIZE_REACHED) stopAutomatically();}
    });
-   recorder.setOnErrorListener((source, what, extra) -> { synchronized(this) { cancel(); } JSObject result=new JSObject();result.put("status","failed");result.put("message","Recording stopped because Android reported a microphone error");events.accept(result); });
+   recorder.setOnErrorListener((source, what, extra) -> { JSObject result=new JSObject();synchronized(this) {if(recorder!=source)return;result.put("recordingId",id);cancel();}result.put("status","failed");result.put("message","Recording stopped because Android reported a microphone error");events.accept(result); });
    recorder.prepare(); recorder.start(); startedAt = android.os.SystemClock.elapsedRealtime();
-   deadline = this::stopAutomatically; handler.postDelayed(deadline,maxDurationMs);
+   final String ownedId=id;deadline=()->{synchronized(this){if(!ownedId.equals(id))return;stopAutomatically();}}; handler.postDelayed(deadline,maxDurationMs);
    JSObject result = new JSObject(); result.put("status","recording"); result.put("recordingId",id); result.put("maxDurationMs",maxDurationMs); return result;
   } catch (IOException | RuntimeException error) { cancel(); throw error; }
+ }
+ /** Genuine peak from the already-owned microphone capture; no second stream or inferred RMS. */
+ synchronized JSObject metrics(String recordingId) {
+  if(recorder==null||id==null||!id.equals(recordingId))throw new IllegalStateException("Recording changed");
+  JSObject result=new JSObject();result.put("recordingId",id);result.put("peak",Math.max(0,Math.min(1,recorder.getMaxAmplitude()/32767.0)));return result;
  }
  synchronized JSObject stop() {
   if (recorder == null) throw new IllegalStateException("No recording is active");
@@ -255,8 +261,9 @@ final class AlphaCloudVoiceCapture {
  }
  synchronized void stopAutomatically() {
   if (recorder == null) return;
+  final String ownedId=id;
   try { events.accept(stop()); }
-  catch (RuntimeException error) { JSObject result=new JSObject();result.put("status","failed");result.put("message","Recording could not be saved");events.accept(result); }
+  catch (RuntimeException error) { JSObject result=new JSObject();result.put("recordingId",ownedId);result.put("status","failed");result.put("message","Recording could not be saved");events.accept(result); }
  }
  synchronized JSObject retain(AlphaNoteAudioPlugin store,String recordingId,String noteId,String transcript)throws Exception {File chosen=selected(recordingId);if(chosen==null)throw new IllegalStateException();return store.retain(chosen,recordingId,noteId,durationMs,transcript);}
  synchronized File selected(String recordingId) {
