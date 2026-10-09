@@ -1,7 +1,7 @@
 import {automationsRouteAllowed, type AutomationsMethod} from './automations-route-policy.ts';
 import {iconStyle} from '../icon-style';
 import {validateUuid} from '../../../../vendor/eliza/packages/core/src/utils/uuid';
-import type {ConversationMessageTarget, ChatChannel, VoiceConversationBinding,VoiceTurnSignal} from './alpha-client';
+import type {ConversationMessageTarget, ChatChannel, VoiceConversationBinding,VoiceTurnSignal,ReadReplyBinding,NativeNotesReadReplyHint} from './alpha-client';
 import {ViewNavigationClient} from './view-navigation';
 import {captureConversationChoice,selectConversation,conversationSelectionDocument} from './conversation-selection';
 import {developmentDigestDocument} from '../browser/development-digest-document';
@@ -77,13 +77,16 @@ let developmentVoiceExpiresAt=0;
 const automationsRequests = new Set<AbortController>();
 const conversationMemory = new Map<string, string>();
 const actionReceipts = new Map<string, { sessionId: string; result: Promise<OperationReceipt> }>();
+const readReplyOwners=new Map<ReadReplyBinding,{actions:DeviceActions;proposalId:string;digest:string;cancelled:boolean}>();
+function retireReadReplies(){for(const binding of [...readReplyOwners.keys()])void connectionController.cancelReadReply(binding).catch(()=>{});}
 let navigationContext:(()=>ContextEnvelope|null)|undefined;
 let deviceRecovery: DeviceRecovery | undefined;
 let deviceExecutor: DeviceExecutor = async () => ({ status: 'failed', summary: 'Device action executor is unavailable.' });
+let deviceReadReview:((proposal:ActionProposal,context:ContextEnvelope,signal:AbortSignal)=>Promise<void>)|undefined;
 const actionJournal = registerPlugin<ActionJournal>('AlphaActionJournal');
 let cloud = makeCloud('production');
 let service: { client: CloudProtocol; identity: CloudServiceSession } | null = null;
-function detachService() { for(const request of automationsRequests)request.abort(new DOMException('Cloud account changed','AbortError')); clearPersonalSetup(); service = null; update({ cloudAccount: null }); }
+function detachService() { retireReadReplies();for(const request of automationsRequests)request.abort(new DOMException('Cloud account changed','AbortError')); clearPersonalSetup(); service = null; update({ cloudAccount: null }); }
 async function verifyService(client: CloudProtocol, signal: AbortSignal, expected?:{credentialId:string;credentialReference?:string}) {
   const credential = await cloudCredentialStore.read(client.environment); signal.throwIfAborted();
   if(expected&&(credential?.credentialId!==expected.credentialId||credential?.credentialReference!==expected.credentialReference))throw new Error('Cloud account changed. Try again.');
@@ -153,6 +156,7 @@ function makeCloud(environment: CloudEnvironment) { return new CloudProtocol(env
 function update(patch: Partial<ConnectionSnapshot>) { state = { ...state, ...patch }; if (!developmentPageSuspended) listeners.forEach(listener => listener()); }
 function save(selection: Selection) { localStorage.setItem(SELECTION, JSON.stringify(selection)); }
 function retire(name = 'Offline') {
+  retireReadReplies();
   const retirement=Promise.allSettled([state.session?pauseHostedBackground(state.session.sessionId):Promise.resolve(),retireClockReviews()]).then(results=>{const failed=results.find(result=>result.status==='rejected');if(failed?.status==='rejected')throw failed.reason;});
   void retirement.catch(()=>update({error:'Background delivery could not be retired. Reconnect to reset it.'}));
   if (active?.kind === 'cloud') { active.cloud.setPhoneTarget(null); if (state.session) void secureConnectionStore.remove(`cloud-runtime:${state.session.sessionId}`).catch(()=>{}); }
@@ -218,6 +222,7 @@ async function work(message: string, action: (signal: AbortSignal) => Promise<vo
   finally { if (operation === controller) operation = null; update({ busy: false }); }
 }
 function activate(next: Active, session: VerifiedSession, name: string) {
+  retireReadReplies();
   active?.viewNavigation?.dispose();
   actionReceipts.clear();
   conversationMemory.clear();
@@ -547,13 +552,21 @@ export const connectionController = {
   setNavigationContext(read:()=>ContextEnvelope|null){navigationContext=read;},
   captureViewNavigation(context:ContextEnvelope){const client=boundNavigation();return client?{client,attempt:client.capture(context)}:undefined;},
   setDeviceExecutor(executor: DeviceExecutor) { deviceExecutor = executor; },
+  setDeviceReadReview(review:(proposal:ActionProposal,context:ContextEnvelope,signal:AbortSignal)=>Promise<void>){deviceReadReview=review;},
   async execute(proposal: ActionProposal, context: ContextEnvelope, signal: AbortSignal): Promise<OperationReceipt> {
     const selected = active;
     if (!selected || !selected.actions) return { proposalId: proposal.id, status: 'denied', summary: 'This connection does not support verified phone actions.' };
-    const sessionId = state.session!.sessionId;
+    const session=state.session!,sessionId=session.sessionId,generation=epoch,account=JSON.stringify(service?.identity??null),conversation=conversationMemory.get(conversationKey(session)),review=deviceReadReview;
     const prior = actionReceipts.get(proposal.id);
     if (prior?.sessionId === sessionId) return prior.result;
-    const result = selected.actions.approve(proposal.id, context, signal);
+    const result = (async()=>{
+      if(proposal.privateNotesRead){
+        if(!review)throw Error('Notes review is unavailable. Nothing was shared.');
+        await review(proposal,context,signal);signal.throwIfAborted();
+        if(selected!==active||generation!==epoch||state.session!==session||conversationMemory.get(conversationKey(session))!==conversation||JSON.stringify(service?.identity??null)!==account||document.hidden||state.open)throw Error('The Notes review changed. Nothing was shared.');
+      }
+      return selected.actions!.approve(proposal.id, context, signal);
+    })();
     actionReceipts.set(proposal.id, { sessionId, result });
     return result;
   },
@@ -605,6 +618,27 @@ export const connectionController = {
     if (!sessionId || state.session?.sessionId !== sessionId || tracked?.sessionId !== sessionId) return null;
     const receipt = await tracked.result;
     return state.session?.sessionId === sessionId ? receipt : null;
+  },
+  readReplyBinding(conversationId:string,proposalId:string,digest:string):ReadReplyBinding {
+    const session=state.session;
+    if(!active?.actions||!session||state.open||document.hidden||conversationMemory.get(conversationKey(session))!==conversationId)throw Error('Return to the original conversation to review this Notes request.');
+    const binding={conversationId,session:{...session},connectionEpoch:epoch,cloudAccount:JSON.stringify(service?.identity??null)};
+    readReplyOwners.set(binding,{actions:active.actions,proposalId,digest,cancelled:false});return binding;
+  },
+  readReplyCurrent(binding:ReadReplyBinding){
+    return !!readReplyOwners.get(binding)&&!readReplyOwners.get(binding)!.cancelled&&this.voiceConversationCurrent(binding,false)&&binding.cloudAccount===JSON.stringify(service?.identity??null)&&!state.open&&!document.hidden;
+  },
+  async completeReadReply(hint:NativeNotesReadReplyHint,binding:ReadReplyBinding,signal:AbortSignal){
+    const selected=active,account=service,owned=readReplyOwners.get(binding);
+    const current=()=>{signal.throwIfAborted();if(!selected?.actions||owned?.actions!==selected.actions||owned.proposalId!==hint.proposalId||owned.digest!==hint.digest||active!==selected||!this.readReplyCurrent(binding)||hint.conversationId!==binding.conversationId)throw Error('The original Notes conversation changed.');};
+    const checkAccount=async()=>{current();if(account){const credential=await cloudCredentialStore.read(account.identity.environment);current();if(credential?.credentialId!==account.identity.credentialId||credential.expiresAt!==undefined&&credential.expiresAt<=Date.now())throw Error('Cloud account changed or expired.');}};
+    await checkAccount();
+    current();const reply=await selected!.actions!.completeReadReply(hint,signal);await checkAccount();return reply;
+  },
+  async cancelReadReply(binding:ReadReplyBinding){
+    const owned=readReplyOwners.get(binding);if(!owned||owned.cancelled)return;
+    owned.cancelled=true;
+    try{await owned.actions.cancelReadReply(owned.proposalId,owned.digest,new AbortController().signal);}finally{readReplyOwners.delete(binding);}
   },
   async actionHistory(sync = false) {
     await work('Reading phone action history…', async signal => {

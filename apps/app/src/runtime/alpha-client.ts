@@ -1,5 +1,7 @@
 /** Browser-safe boundary. The composition root supplies an authenticated transport;
  * this module neither invents endpoints nor handles credentials. */
+import type {NativeNotesReadReplyOrigin,NativeNotesReadReplyHint} from '../../../../.eliza/client-features/packages/contracts/src/native-notes-query.ts';
+export type {NativeNotesReadReply,NativeNotesReadReplyHint} from '../../../../.eliza/client-features/packages/contracts/src/native-notes-query.ts';
 export type AlphaView =
   | "home"
   | "assistant"
@@ -48,6 +50,10 @@ export interface ContextEnvelope extends ViewContext {
 }
 export interface ActionProposal {
   id: string;
+  /** Server-retained original request correlation, never approval authority. */
+  readReply?: {origin:NativeNotesReadReplyOrigin;digest:string};
+  /** Derived by the owning SDK from a validated Notes read operation. */
+  privateNotesRead?:true;
   title: string;
   /** Human-readable exact target/action review. Must contain no secret values. */
   description: string;
@@ -67,6 +73,7 @@ export interface ConversationMessageTarget {
 export type VoiceTurnSignal = import('@elizaos/voice/turn').VoiceTurnSignal;
 export type ChatChannel = 'DM' | 'VOICE_DM';
 export interface VoiceConversationBinding { conversationId:string;session:VerifiedSession;connectionEpoch:number }
+export interface ReadReplyBinding extends VoiceConversationBinding {cloudAccount:string}
 /** Local host projection invoked only inside the canonical claimed view effect. Never wire metadata or authority. */
 export interface VoiceNavigationContinuation {
  apply(view:string,current:()=>void,commit:(chat:string,onCommitted:(context:ContextEnvelope)=>void)=>Promise<boolean>):Promise<boolean>;
@@ -84,6 +91,8 @@ export interface OperationReceipt {
   proposalId: string;
   status: "succeeded" | "denied" | "cancelled" | "failed" | "unknown";
   summary: string;
+  /** Present only after a confirmed applied native read receipt. */
+  readReply?:NativeNotesReadReplyHint;
 }
 export interface VerifiedSessionTransport {
   /** Must be server-verified, not derived from a user-entered owner ID. */

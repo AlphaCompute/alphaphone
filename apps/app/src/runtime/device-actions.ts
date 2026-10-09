@@ -1,4 +1,4 @@
-import {isNativeNotesQuery,validateNativeNotesQuery,NOTES_QUERY_CAPABILITY,type NativeNotesQueryOperation} from '../../../../.eliza/client-features/packages/contracts/src/native-notes-query.ts';
+import {isNativeNotesQuery,validateNativeNotesQuery,NOTES_QUERY_CAPABILITY,validateNativeNotesReadReplyOrigin,validateNativeNotesReadReplyHint,validateNativeNotesReadReply,type NativeNotesReadReplyOrigin,type NativeNotesReadReplyHint,type NativeNotesReadReply,type NativeNotesQueryOperation} from '../../../../.eliza/client-features/packages/contracts/src/native-notes-query.ts';
 import {validateNotesQueryResult,type NotesQueryResult} from '../../../../.eliza/client-features/plugins/plugin-assistant/src/services/device-actions/notes-query-result.ts';
 import {presentDeviceRecordOperation} from './device-record-presentation';
 import {isReminderCreate,validateReminderCreate,validateReminderCreateResult,type ReminderCreateOperation,type ReminderCreateResult} from '../../../../.eliza/client-features/plugins/plugin-assistant/src/services/device-actions/reminder-create-contract.ts';
@@ -35,7 +35,7 @@ export interface WorkflowNoticeRoute {scope:string;origin:string;ownerId:string;
 export interface DeviceJournalIdentity {scope:string;proposalId:string}
 export type DeviceExecutor = (operation: DeviceOperation, operationId: string, context: ContextEnvelope, signal: AbortSignal, bindingHash: string, workflowRoute?:WorkflowNoticeRoute,journalIdentity?:DeviceJournalIdentity) => Promise<{ status: 'succeeded' | 'failed' | 'unknown'; summary: string; readResult?: WorkflowReadResult; calendarResult?:CalendarResult; notesResult?:NotesResult|NotesQueryResult; reminderResult?:ReminderResult|ReminderCreateResult; mapsResult?:MapsResult;clockResult?:ClockHandoffResult }>;
 export type DeviceRecovery = (operation:DeviceOperation,operationId:string,bindingHash:string,signal:AbortSignal)=>Promise<{status:string;reminderResult?:ReminderResult|ReminderCreateResult}>;
-interface Proposal { id: string; digest: string; state: string; expiresAt: number; operation: DeviceOperation; workflow?:WorkflowDeviceBinding; attemptId?: string }
+interface Proposal { id: string; digest: string; state: string; expiresAt: number; operation: DeviceOperation; workflow?:WorkflowDeviceBinding; attemptId?: string;readReplyOrigin?:NativeNotesReadReplyOrigin }
 const views = new Set(['home','notes','reminders','browser','calendar','files','photos','camera','maps','inbox','settings','workflows']);
 function object(value: unknown): Record<string, any> { if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('Invalid device action response'); return value as Record<string, any>; }
 function text(value: unknown, max = 128): string { if (typeof value !== 'string' || !value.trim() || value.length > max || value.includes('\0')) throw new Error('Invalid device action field'); return value; }
@@ -89,6 +89,7 @@ export async function actionScope(value: string): Promise<string> {
  * can enter this boundary. A durable journal gates every device effect. */
 export class DeviceActions {
   private proposals = new Map<string, { proposal: Proposal; context: ContextEnvelope; workflowReview?:WorkflowPhoneReview }>();
+  private readReplies = new Map<string,{digest:string;origin:NativeNotesReadReplyOrigin;hint?:NativeNotesReadReplyHint;consumed?:boolean}>();
   private busy = false;
   constructor(readonly session: VerifiedSession, readonly credential: DeviceCredential, readonly scope: string,
     private request: (path: string, body: unknown | undefined, signal: AbortSignal) => Promise<unknown>,
@@ -104,7 +105,9 @@ export class DeviceActions {
     if(isReminderCreate(op)&&!this.reminderCreate)throw Error('This agent does not support reviewed reminder creation. Reconnect to a compatible agent.');
     if(isReminderOperation(op)&&(op.target.timingVersion===2||op.type==='reminder_update'&&op.fields.schedule?.alertMinutes!==undefined)&&!this.reminderV2)throw Error('This agent does not support this reminder timing. Reconnect to a compatible agent.');
     if((['read_selected_notes','read_calendar_range','post_notification','speak_text'].includes(op.type))&&!workflow)throw new Error('Workflow binding required for phone reads');
-    return { id: id(p.id), digest, state: text(p.state, 32), expiresAt, operation:op,...(workflow?{workflow}:{}), ...(p.execution?.attemptId ? { attemptId: id(p.execution.attemptId) } : {}) };
+    const readReplyOrigin=p.readReplyOrigin===undefined?undefined:validateNativeNotesReadReplyOrigin(p.readReplyOrigin);
+    if(readReplyOrigin&&(workflow||!isNativeNotesQuery(op)&&op.type!=='notes_read_selected'))throw Error('Unexpected original Notes reply');
+    return { id: id(p.id), digest, state: text(p.state, 32), expiresAt, operation:op,...(workflow?{workflow}:{}), ...(p.execution?.attemptId ? { attemptId: id(p.execution.attemptId) } : {}),...(readReplyOrigin?{readReplyOrigin}:{}) };
   }
   async list(signal: AbortSignal): Promise<Proposal[]> {
     const response = object(await this.request('/api/client-devices/proposals', undefined, signal));
@@ -131,10 +134,11 @@ export class DeviceActions {
       if(isNotesOperation(proposal.operation))assertNotesContext(proposal.operation,context);
       if(isCalendarOperation(proposal.operation))assertCalendarContext(proposal.operation,context);
       this.proposals.set(proposal.id, { proposal, context: structuredClone(context) });
+      if(proposal.readReplyOrigin&&!this.readReplies.has(proposal.id))this.readReplies.set(proposal.id,{digest:proposal.digest,origin:proposal.readReplyOrigin});
       const op = proposal.operation;
       const record = isReminderCreate(op)||isReminderOperation(op)||isNotesOperation(op)||isCalendarOperation(op)||op.type==='create_note'||op.type==='create_reminder'?presentDeviceRecordOperation(op,context.timeZone):undefined;
       const description = isNativeNotesQuery(op)?(op.query.kind==='title'?`Look for the title “${op.query.text}” locally. Choose and review one note before sharing its text.`:`Find the latest ${op.query.by} note locally. Unknown dates or ties require your choice; only the chosen note is shared.`):record?.description ?? (isClockOperation(op) ? describeClockHandoff(op) : isMapsOperation(op) ? 'Send the exact selected place location or route endpoints, mode and distance to the connected agent. This shares location information. It does not start navigation.' : op.type === 'open_view' ? `Open ${op.view} on this phone` : op.type==='browser_navigate'?`Open browser destination ${op.url}`:'Workflow phone read');
-      return { id: proposal.id, title: record?.title ?? op.type.replaceAll('_', ' '), description, expiresAt: proposal.expiresAt, contextRevision: context.revision };
+      return { id: proposal.id, title: record?.title ?? op.type.replaceAll('_', ' '), description, expiresAt: proposal.expiresAt, contextRevision: context.revision,...(isNativeNotesQuery(op)||op.type==='notes_read_selected'?{privateNotesRead:true as const}:{}),...(proposal.readReplyOrigin?{readReply:{origin:structuredClone(proposal.readReplyOrigin),digest:proposal.digest}}:{}) };
     });
   }
   async pendingForWorkflow(review:WorkflowPhoneReview,context:ContextEnvelope,signal:AbortSignal):Promise<ActionProposal[]> {
@@ -201,13 +205,31 @@ export class DeviceActions {
       await this.journal.finish({ scope: this.scope, proposalId, status:result.status, summary:result.summary, result: { operationId,...(clockResult?{clockResult}:{}),...(mapsResult?{mapsResult}:{}),...(readResult?{readResult}:{}),...(calendarResult?{calendarResult}:{}),...(notesResult?{notesResult}:{}),...(reminderResult?{reminderResult}:{}) } });
       // A completed device effect is journaled even if the UI epoch was cancelled.
       // Receipt upload is retried only by the explicit history control.
-      try { if(isMapsOperation(p.operation))assertMapsContext(p.operation,context); await this.mutation(p, 'receipt', { attemptId: claimed.attemptId, receipt: { outcome: result.status === 'succeeded' ? 'applied' : result.status === 'failed' ? 'failed' : 'unknown', operationId,...(clockResult?{result:clockResult}:mapsResult?{result:mapsResult}:readResult?{result:readResult}:calendarResult?{result:calendarResult}:notesResult?{result:notesResult}:reminderResult?{result:reminderResult}:{}) } }, signal); }
+      let confirmed:Proposal;
+      try { if(isMapsOperation(p.operation))assertMapsContext(p.operation,context); confirmed=await this.mutation(p, 'receipt', { attemptId: claimed.attemptId, receipt: { outcome: result.status === 'succeeded' ? 'applied' : result.status === 'failed' ? 'failed' : 'unknown', operationId,...(clockResult?{result:clockResult}:mapsResult?{result:mapsResult}:readResult?{result:readResult}:calendarResult?{result:calendarResult}:notesResult?{result:notesResult}:reminderResult?{result:reminderResult}:{}) } }, signal); }
       catch { return { proposalId, status: result.status, summary: `${result.summary} Server receipt is pending; check action history.` }; }
       finally {if(typeof window!=='undefined'){if(isCalendarOperation(p.operation)&&p.operation.type!=='calendar_read_selected'&&p.operation.type!=='calendar_read_next'&&result.status==='succeeded')window.dispatchEvent(new CustomEvent('alpha:calendar-committed'));if(isNotesOperation(p.operation))window.dispatchEvent(new CustomEvent('alpha:notes-committed'));if(isReminderOperation(p.operation)||isReminderCreate(p.operation)||p.operation.type==='create_reminder')window.dispatchEvent(new CustomEvent('alpha:reminders-committed'));}}
-      return { proposalId, status:result.status, summary:result.summary };
+      const retained=this.readReplies.get(proposalId);
+      const readReply=result.status==='succeeded'&&notesResult&&p.readReplyOrigin&&confirmed.state==='done'&&confirmed.attemptId===claimed.attemptId&&retained&&!retained.consumed&&retained.digest===p.digest&&JSON.stringify(retained.origin)===JSON.stringify(p.readReplyOrigin)?validateNativeNotesReadReplyHint({...p.readReplyOrigin,proposalId,digest:p.digest,attemptId:claimed.attemptId}):undefined;
+      if(readReply)retained!.hint=readReply;
+      return { proposalId, status:result.status, summary:result.summary,...(readReply?{readReply}:{}) };
     } catch {
       return { proposalId, status: 'unknown', summary: 'Action did not reach a confirmed result. Check action history before requesting it again.' };
     } finally { this.busy = false; }
+  }
+  async completeReadReply(hint:NativeNotesReadReplyHint,signal:AbortSignal):Promise<NativeNotesReadReply>{
+    const valid=validateNativeNotesReadReplyHint(hint),retained=this.readReplies.get(valid.proposalId);
+    if(!retained||retained.consumed||JSON.stringify(retained.hint)!==JSON.stringify(valid))throw Error('This original Notes answer is unavailable. Check conversation history.');
+    signal.throwIfAborted();retained.consumed=true;
+    const response=object(await this.request(`/api/client-devices/proposals/${valid.proposalId}/read-completion`,valid,signal));signal.throwIfAborted();
+    const reply=validateNativeNotesReadReply(response.reply);
+    if(reply.requestId!==valid.requestId||reply.conversationId!==valid.conversationId||reply.inReplyTo!==valid.inReplyTo||reply.messageId===valid.inReplyTo)throw Error('The original Notes answer changed. Check conversation history.');
+    return reply;
+  }
+  async cancelReadReply(proposalId:string,digest:string,signal:AbortSignal):Promise<void>{
+    const retained=this.readReplies.get(proposalId);if(!retained||retained.digest!==digest)return;
+    retained.consumed=true;
+    signal.throwIfAborted();await this.request(`/api/client-devices/proposals/${proposalId}/cancel-read-completion`,{digest},signal);
   }
   async reject(proposalId: string, signal: AbortSignal): Promise<void> {
     const p = (await this.list(signal)).find(item => item.id === proposalId);

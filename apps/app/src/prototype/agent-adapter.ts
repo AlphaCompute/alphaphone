@@ -69,6 +69,38 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
       input.style.height='44px';input.style.height=`${Math.max(44,input.scrollHeight)}px`;
     }
   }
+  function retainReadReply(shell:Shell,proposal:import('../runtime/alpha-client').ActionProposal,identity?:{conversationId:string;session:unknown},userMessageId?:string){
+    const read=proposal.readReply;if(!read||shell.readReplyLeases?.has(proposal.id))return;
+    const origin=read.origin;
+    const original=identity&&userMessageId===origin.inReplyTo&&identity.conversationId===origin.conversationId||shell.S().msgs.some((message:Shell)=>message.id===origin.inReplyTo&&message.from==='user'&&message.messageBinding?.conversationId===origin.conversationId&&JSON.stringify(message.messageBinding.session)===JSON.stringify(connectionController.getSnapshot().session));
+    if(!original)return;
+    try{const binding=connectionController.readReplyBinding(origin.conversationId,proposal.id,read.digest);shell.readReplyLeases??=new Map();shell.readReplyLeases.set(proposal.id,{origin:structuredClone(origin),digest:read.digest,binding,controller:new AbortController(),phase:'pending'});}catch{}
+  }
+  p.cancelReadReplyCompletions=function(onlyProposalId?:string){
+    for(const [proposalId,lease] of this.readReplyLeases||[]){
+      if(onlyProposalId!==undefined&&proposalId!==onlyProposalId)continue;
+      if(lease.phase==='cancelled'||lease.phase==='done')continue;
+      lease.phase='cancelled';lease.controller.abort();
+      void connectionController.cancelReadReply(lease.binding).catch(()=>{});
+    }
+  };
+  async function completeReadReply(shell:Shell,receipt:import('../runtime/alpha-client').OperationReceipt){
+    const hint=receipt.readReply,lease=hint&&shell.readReplyLeases?.get(hint.proposalId);
+    if(!hint||!lease||lease.phase!=='pending')return false;
+    const current=()=>{lease.controller.signal.throwIfAborted();if(!shell.live||document.hidden||alphaClient.getState().context.sensitive||!connectionController.readReplyCurrent(lease.binding)||hint.digest!==lease.digest||JSON.stringify({version:hint.version,requestId:hint.requestId,conversationId:hint.conversationId,inReplyTo:hint.inReplyTo})!==JSON.stringify(lease.origin)||!shell.S().msgs.some((m:Shell)=>m.id===hint.inReplyTo&&m.from==='user'&&m.messageBinding?.conversationId===hint.conversationId&&JSON.stringify(m.messageBinding.session)===JSON.stringify(lease.binding.session)))throw Error('The original Notes conversation changed.');};
+    current();lease.phase='completing';
+    try{
+      const reply=await connectionController.completeReadReply(hint,lease.binding,lease.controller.signal);current();
+      await new Promise<void>(resolve=>shell.setState((previous:Shell)=>{
+        try{current();}catch{return null;}
+        if(previous.msgs.some((m:Shell)=>m.id===reply.messageId))return null;
+        return {msgs:[...previous.msgs,{id:reply.messageId,from:'agent',text:reply.text,messageBinding:{conversationId:reply.conversationId,session:lease.binding.session},inReplyTo:reply.inReplyTo,card:null}]};
+      },resolve));current();lease.phase='done';shell.resumeReadReplyVoice?.(hint,reply);return true;
+    }catch(error){
+      if(lease.phase!=='cancelled')lease.phase='unconfirmed';
+      throw error;
+    }
+  }
   function recoverPendingActions(shell:Shell) {
     const connection=connectionController.getSnapshot(),currentContext=alphaClient.getState().context;
     if(shell.pendingActionApproval&&(document.hidden||currentContext.sensitive||connection.open||JSON.stringify(shell.pendingActionApprovalContext)!==JSON.stringify(currentContext)||JSON.stringify(shell.pendingActionApprovalSession)!==JSON.stringify(connection.session)))shell.pendingActionApproval.abort();
@@ -103,6 +135,7 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
     };
     void connectionController.pendingActions(currentContext,controller.signal).then(proposals=>{
       if(!current())return;
+      for(const proposal of proposals)if(proposal.readReply)retainReadReply(shell,proposal);
       shell.setState((previous:Shell)=>{
         if(!current())return null;
         const pending=new Map(proposals.map(proposal=>[proposal.id,proposal]));
@@ -111,8 +144,8 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
           if(!card?.proposalId||card.done)return message;
           const proposal=pending.get(card.proposalId);
           if(proposal){
-            if(card.recovered&&!card.reviewUnavailable&&card.expiresAt===proposal.expiresAt&&JSON.stringify(card.proposalSession)===JSON.stringify(connection.session))return message;
-            return {...message,card:{...card,recovered:true,proposalSession:connection.session,expiresAt:proposal.expiresAt,reviewUnavailable:false,title:'Approve: '+proposal.title,sub:'Tap to approve this exact action'}};
+            if(card.recovered&&!card.reviewUnavailable&&card.expiresAt===proposal.expiresAt&&card.privateNotesRead===proposal.privateNotesRead&&JSON.stringify(card.proposalSession)===JSON.stringify(connection.session))return message;
+            return {...message,card:{...card,recovered:true,proposalSession:connection.session,privateNotesRead:proposal.privateNotesRead,expiresAt:proposal.expiresAt,reviewUnavailable:false,title:'Approve: '+proposal.title,sub:'Tap to approve this exact action'}};
           }
           // Absence can also mean different source preconditions. It proves no
           // rejection or execution; preserve the history and disable only review.
@@ -120,7 +153,7 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
           return {...message,card:{...card,reviewUnavailable:true,title:'Review unavailable',sub:'Not pending for this screen. Open the original selection to check again.'}};
         });
         const existing=new Set(msgs.map((message:Shell)=>message.card?.proposalId));
-        const recovered=proposals.filter(proposal=>!existing.has(proposal.id)).map(proposal=>({id:crypto.randomUUID(),from:'agent',text:proposal.description,card:{type:'generic',icon:'check',title:'Approve: '+proposal.title,sub:'Tap to approve this exact action',proposalId:proposal.id,expiresAt:proposal.expiresAt,recovered:true,proposalSession:connection.session}}));
+        const recovered=proposals.filter(proposal=>!existing.has(proposal.id)).map(proposal=>({id:crypto.randomUUID(),from:'agent',text:proposal.description,card:{type:'generic',icon:'check',title:'Approve: '+proposal.title,sub:'Tap to approve this exact action',proposalId:proposal.id,privateNotesRead:proposal.privateNotesRead,expiresAt:proposal.expiresAt,recovered:true,proposalSession:connection.session}}));
         return recovered.length||msgs.some((message:Shell,index:number)=>message!==previous.msgs[index])?{msgs:[...msgs,...recovered]}:null;
       },()=>{if(current())scheduleExpiry();});
     }).catch(()=>{
@@ -201,6 +234,7 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
       sensitive: view === 'wallet' || (view === 'settings' && passwordSurfaceOpen(shell.vget('settings'))) || s.secure === true || s.screen === 'lock' || s.screen === 'off' || document.hidden || shell.pageSuspended === true || connectionController.getSnapshot().open,
       ...(selected && shell.notesSelection ? { selectedObject: shell.notesSelection } : providerSelection ? { selectedObject: providerSelection } : ['files','photos'].includes(view) && shell.vget(view).open === '__native_selected_document' && shell.selectedContext ? { selectedObject: shell.selectedContext } : {}),
     });
+    if(alphaClient.getState().context.sensitive||[...(shell.readReplyLeases?.values()||[])].some((lease:any)=>lease.phase!=='cancelled'&&lease.phase!=='done'&&!connectionController.readReplyCurrent(lease.binding)))shell.cancelReadReplyCompletions?.();
     updateBackAvailability(shell);
     recoverPendingActions(shell);
   }
@@ -367,6 +401,11 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
       return result.status==='succeeded'?{status:'succeeded',reminderResult:isReminderCreate(operation)?validateReminderCreateResult(operation,result.result,operationId):validateReminderResult(operation,result.result)}:{status:'unknown'};
     });
     connectionController.setNavigationContext(()=>this.live?alphaClient.getState().context:null);
+    connectionController.setDeviceReadReview(async(proposal,expectedContext,signal)=>{
+      if(typeof this.prepareDeviceReadReview!=='function')throw Error('Notes review is unavailable. Nothing was shared.');
+      await this.prepareDeviceReadReview(proposal.id,proposal.readReply?.digest,signal);signal.throwIfAborted();context(this);
+      if(!this.live||document.hidden||JSON.stringify(alphaClient.getState().context)!==JSON.stringify(expectedContext))throw Error('The Notes review changed. Nothing was shared.');
+    });
     connectionController.setDeviceExecutor(async (operation, operationId, expectedContext, signal, bindingHash, workflowRoute, journalIdentity) => {
       signal.throwIfAborted(); context(this);
       if (!this.live || JSON.stringify(alphaClient.getState().context) !== JSON.stringify(expectedContext)) throw new Error('Phone context changed');
@@ -523,6 +562,7 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
   };
   p.componentDidUpdate = function (prev: Shell) { originalUpdate.call(this, prev); context(this); sizeComposer();this.composerDraft?.edit(String(this.S().draft||''));const selected=this.messageReplyTarget||this.messageEditTarget;if(selected&&(JSON.stringify(selected.session)!==JSON.stringify(connectionController.getSnapshot().session)||!this.S().msgs.some((m:Shell)=>m.id===selected.messageId&&m.text===selected.text))){cancelMessageContext(this);this.setState({});} };
   p.componentWillUnmount = function () {
+    this.cancelReadReplyCompletions?.();
     cancelMessageContext(this);connectionController.cancelViewNavigation();
     this.pendingActionRecoveryAbort?.abort();this.pendingActionApproval?.abort();clearTimeout(this.pendingActionExpiryTimer);
     this.draftRecoveryAbort?.abort();this.composerDraft?.retire(false);this.draftBindingAbort?.abort();
@@ -699,12 +739,15 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
       current();
       const reply=await alphaClient.send(text,value=>{current();streamed=true;this.setState((previous:Shell)=>belongs()?{msgs:previous.msgs.some((m:Shell)=>m.id===streamId)?previous.msgs.map((m:Shell)=>m.id===streamId?{...m,text:value}:m):[...previous.msgs,{id:streamId,from:'agent',text:value,streaming:true}]}:null);},undefined,undefined,{channelType:'VOICE_DM',requestId:turnId,signal,expectedConversationId:binding.conversationId,voiceTurnSignal:input.voiceTurnSignal});
       current();const identity=reply.messageBinding;
-      for(const proposal of reply.proposals||[])this.agentSay(proposal.description,{type:'generic',icon:'check',title:'Approve: '+proposal.title,sub:'Tap to approve this exact action',proposalId:proposal.id,expiresAt:proposal.expiresAt},undefined,belongs);
       if(!reply.messageId||!reply.userMessageId||!identity||identity.conversationId!==binding.conversationId||JSON.stringify(identity.session)!==JSON.stringify(binding.session)||!reply.text.trim())throw Error('The voice reply could not be matched to this conversation. Check history before speaking again.');
       await new Promise<void>(resolve=>this.setState((previous:Shell)=>belongs()?{msgs:[...previous.msgs.filter((m:Shell)=>m.id!==streamId).map((m:Shell)=>m.id===userId?{...m,id:reply.userMessageId,messageBinding:identity}:m),{id:reply.messageId,from:'agent',text:reply.text,messageBinding:identity,streaming:false}]}:null,resolve));current();
       const delivered=await deliverChatNavigation(this,navigation,reply.actionResults,current,input.navigation);
       const nextContext=input.navigation?.finish(delivered);if(nextContext)acceptedContext=nextContext;
-      current();return {requestId:turnId,conversationId:identity.conversationId,userMessageId:reply.userMessageId,assistantMessageId:reply.messageId,text:reply.text,complete:true};
+      current();
+      const awaiting=reply.proposals?.filter(proposal=>proposal.readReply?.origin.requestId===turnId&&proposal.readReply.origin.conversationId===identity.conversationId&&proposal.readReply.origin.inReplyTo===reply.userMessageId);
+      if(awaiting&&awaiting.length>1)throw Error('More than one Notes review was returned. Use action history.');
+      for(const proposal of reply.proposals||[]){retainReadReply(this,proposal,identity,reply.userMessageId);this.agentSay(proposal.description,{type:'generic',icon:'check',title:'Approve: '+proposal.title,sub:'Tap to approve this exact action',proposalId:proposal.id,privateNotesRead:proposal.privateNotesRead,expiresAt:proposal.expiresAt},undefined,belongs);}
+      return {requestId:turnId,conversationId:identity.conversationId,userMessageId:reply.userMessageId,assistantMessageId:reply.messageId,text:reply.text,complete:!reply.proposals?.length,...(reply.proposals?.length?{reviewRequired:true}:{}),...(awaiting?.length?{awaitingUserInput:{proposalId:awaiting[0].id,digest:awaiting[0].readReply!.digest}}:{})};
     }catch(error){
       input.navigation?.finish(false);
       if(streamed&&this.live)this.setState((previous:Shell)=>this.voiceSendTurnId===turnId&&connectionController.voiceConversationCurrent(binding,false)?{msgs:previous.msgs.map((m:Shell)=>m.id===streamId?{...m,streaming:false,interrupted:true}:m)}:null);
@@ -760,7 +803,7 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
       if(reply.userMessageId&&identity)this.setState((previous:Shell)=>({msgs:previous.msgs.map((m:Shell)=>m.id===userMessageId?{...m,id:reply.userMessageId,messageBinding:identity}:m)}));
       if(this.messageReplyTarget===replyTarget)this.messageReplyTarget=undefined;
       if(sourceDraft&&sourceSession&&JSON.stringify(sourceSession)===JSON.stringify(connectionController.getSnapshot().session))this.agentSay('Review this answer before saving it with its source.',{type:'generic',icon:'note',title:'Review summary note',sub:sourceDraft.name,sourceSummary:{source:sourceDraft,text:reply.text,session:sourceSession}});
-      for (const proposal of reply.proposals || []) this.agentSay(proposal.description, { type: 'generic', icon: 'check', title: 'Approve: ' + proposal.title, sub: 'Tap to approve this exact action', proposalId: proposal.id, expiresAt: proposal.expiresAt });
+      for (const proposal of reply.proposals || []) {retainReadReply(this,proposal,identity,reply.userMessageId);this.agentSay(proposal.description, { type: 'generic', icon: 'check', title: 'Approve: ' + proposal.title, sub: 'Tap to approve this exact action', proposalId: proposal.id, privateNotesRead:proposal.privateNotesRead, expiresAt: proposal.expiresAt });}
       try{await deliverNavigation(reply.actionResults);}catch(error){if(this.live)this.toast(error instanceof AlphaClientError?error.message:'Could not confirm the screen change. Check your screen.');}
     } catch (e) {
       let opened=false;
@@ -823,6 +866,7 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
         const sessionId = session?.sessionId;
         const beforeView = this.S().view;
         let receipt;
+        const readLease=this.readReplyLeases?.get(card.proposalId);
         try { receipt = card.recovered?await connectionController.approvePendingAction(card.proposalId,alphaClient.getState().context,approval.signal):await alphaClient.approve(card.proposalId); }
         catch (error) {
           // Navigation may cancel the context-bound chat wait after the effect.
@@ -830,11 +874,17 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
           receipt = await connectionController.actionReceipt(card.proposalId, sessionId);
           if (!receipt) throw error;
         }
-        if (!this.live || connectionController.getSnapshot().session?.sessionId !== sessionId) return;
-        this.setState({ msgs: this.S().msgs.map((m: Shell) => m.id === message.id ? { ...m, card: { ...m.card, done: true, sub: receipt.summary, title: receipt.status === 'succeeded' ? 'Completed' : 'Not completed' } } : m) });
-        if (this.S().view !== beforeView) this.toast(receipt.summary);
-        else this.agentSay(receipt.summary);
-      } catch (e) { if(this.live&&(!card.recovered||JSON.stringify(card.proposalSession)===JSON.stringify(connectionController.getSnapshot().session)))this.agentSay(e instanceof Error ? e.message : 'Action could not complete.'); }
+        if (!this.live || JSON.stringify(connectionController.getSnapshot().session)!==JSON.stringify(session)||readLease&&!connectionController.readReplyCurrent(readLease.binding)) return;
+        this.setState((previous:Shell)=>this.live&&JSON.stringify(connectionController.getSnapshot().session)===JSON.stringify(session)&&(!readLease||connectionController.readReplyCurrent(readLease.binding))?{ msgs: previous.msgs.map((m: Shell) => m.id === message.id ? { ...m, card: { ...m.card, done: true, sub: receipt.summary, title: receipt.status === 'succeeded' ? 'Completed' : 'Not completed' } } : m) }:null);
+        if(receipt.readReply&&this.readReplyLeases?.has(receipt.proposalId)){
+          try{await completeReadReply(this,receipt);}
+          catch{if(this.live&&readLease?.phase==='unconfirmed')this.setState((previous:Shell)=>this.live&&readLease.phase==='unconfirmed'&&connectionController.readReplyCurrent(readLease.binding)?{msgs:previous.msgs.map((m:Shell)=>m.id===message.id?{...m,card:{...m.card,sub:receipt.summary+' The answer is unconfirmed. Check conversation history before trying again.'}}:m)}:null);}
+        }else {
+          if(receipt.status!=='succeeded'){this.cancelReadReplyCompletions?.(receipt.proposalId);this.retireReadReplyVoice?.(receipt.proposalId);}
+          if (this.S().view !== beforeView) this.toast(receipt.summary);
+          else this.agentSay(receipt.summary);
+        }
+      } catch (e) { const readLease=this.readReplyLeases?.get(card.proposalId);if(this.live&&(!readLease||connectionController.readReplyCurrent(readLease.binding))&&(!card.recovered||JSON.stringify(card.proposalSession)===JSON.stringify(connectionController.getSnapshot().session)))this.agentSay(e instanceof Error ? e.message : 'Action could not complete.'); }
       finally {this.pendingActionApproval=null;if(this.live)context(this);}
     } else if (card.go) this.openView(card.go.view, card.go.patch);
   };
@@ -845,7 +895,7 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
       else this.toast(result.message || 'Speech recognition is unavailable on this device.');
     } catch { this.toast('Speech recognition is unavailable on this device.'); }
   };
-  p.stopVoice = function () { alphaClient.cancel(); this.setState({ voice: 'off', typing: false }); };
+  p.stopVoice = function () { this.cancelReadReplyCompletions?.();alphaClient.cancel(); this.setState({ voice: 'off', typing: false }); };
   views.notes.render = function (state: Shell, api: Shell) {
     const out = notesRender({ ...state, record: false }, api);
     out.storageStatus=state.storageStatus;
