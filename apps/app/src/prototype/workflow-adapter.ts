@@ -119,7 +119,7 @@ export function installWorkflowAdapter(Component:any,views:Bag){
   const out=values.call(this),binding=connectionController.getWorkflowClient(),current=binding?.sessionId===listSession&&listPhase==='ready',saved=current?flows.filter(flow=>!flow.removed):[],rows=saved.slice(0,2);
   return {...out,homeWorkflowRows:rows.map(flow=>({name:flow.name,status:flow.active?'Enabled':'Paused'})),homeWorkflowHasRows:rows.length>0,
    homeWorkflowTitle:rows.length?'':!binding?'Connect your agent':listPhase==='failed'?'Couldn’t load workflows':listPhase==='ready'?'No workflows yet':'Loading workflows…',
-   homeWorkflowTime:!binding?'Tap to connect':listPhase==='failed'?'Tap to retry':listPhase!=='ready'?'':saved.length>2?`+${saved.length-2} more`:saved.length?'View '+(saved.length===1?'workflow':'workflows'):'Create a workflow',
+   homeWorkflowTime:!binding?'Tap to connect':listPhase==='failed'?'Tap to retry':listPhase!=='ready'?'':saved.length>2?`+${saved.length-2} more`:saved.length?'View '+(saved.length===1?'workflow':'workflows'):'',
    homeWorkflowLabel:!binding?'Connect agent for workflows':listPhase==='failed'?'Retry workflows':'Open workflows',
    goFlows:()=>{if(!binding){connectionController.open();return;}if(listPhase==='failed'){void refresh();return;}if(!operation)phase='idle';this.openView('workflows');}
   };

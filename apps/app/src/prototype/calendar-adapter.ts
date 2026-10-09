@@ -67,7 +67,7 @@ export function installCalendarAdapter(Component: any, views: Bag) {
   views.calendar.displaySources=()=>{
     const currentOwner=owner,native=Capacitor.isNativePlatform();
     const current=()=>owner===currentOwner&&!!currentOwner?.live&&!document.hidden;
-    return {native,loading,status,error:loadFailed,ready:!!loadedKey&&!loadFailed,
+    return {native,loading,status,error:loadFailed,ready:!!loadedKey&&loadedKey===desired?.key&&!loadFailed&&!loading,truncated,
       connect:()=>{if(current()&&!loading)void refresh(true);},
       sources:(loadFailed?[]:calendars).map(c=>({id:c.id,name:!native&&c.local?'In this app':c.name||'Unnamed calendar',account:!native&&c.local?'Saved on this device':c.account||'Device calendar',on:c.visible!==false,color:c.color,
         change:async(action:'visibility'|'color')=>{if(!current()||loading||!calendars.includes(c)||native)return;try{await calendar.changePreferences({action});}catch{if(current())currentOwner.toast('Calendar settings could not be saved. Try again.');}}

@@ -70,8 +70,10 @@ export function installPrototypeDataAdapter(Component: any, views: Record<string
     const suggestions = ['Create a note', 'Set a reminder', first];
     const unread=browserDevProfile?(this.vget('inbox').mails||[]).filter((mail:Bag)=>mail.unread&&!mail.arch&&!mail.del).length:0;
     const now = Date.now();
+    const calendarSource = views.calendar.displaySources?.();
     const agenda = (this.vget('calendar').events || [])
       .filter((event: Bag) => event.reminderStatus !== 'completed')
+      .filter((event: Bag) => !event.alphaCalendarId || calendarSource?.ready)
       .map((event: Bag) => {
         const instant=(value:number)=>{const date=new Date(value);return event.nativeEvent?.allDay?new Date(date.getUTCFullYear(),date.getUTCMonth(),date.getUTCDate()).getTime():Number(value);};
         return {event,begin:instant(event.nativeEvent?.begin??event.reminderAt),end:instant(event.nativeEvent?.end??event.reminderAt)};
@@ -84,7 +86,7 @@ export function installPrototypeDataAdapter(Component: any, views: Record<string
       ...out, shadeN: [], lockSum: [], showHeads: false,
       sugg: suggestions.map(label => ({ label, go: () => this.send(label) })),
       homeCalendarLabel: agenda ? `Open calendar event: ${agenda.event.title}` : 'Open your calendar',
-      homeCalendarTime: dateLabel, homeCalendarTitle: agenda?.event.title || (this.vget('calendar').nativeCalendarStatus === 'Device calendars connected' ? 'No upcoming events' : 'See your events'),
+      homeCalendarTime: dateLabel, homeCalendarTitle: agenda?.event.title || (calendarSource?.loading ? 'Loading events…' : calendarSource?.ready ? calendarSource.truncated ? 'Calendar results limited' : 'No upcoming events' : calendarSource ? 'Calendar unavailable' : 'Loading events…'),
       homeAttentionLabel: browserDevProfile?'Open Inbox: '+unread+' unread email'+(unread===1?'':'s'):'Open Inbox', homeAttentionCount: browserDevProfile?String(unread):'—',
       homeInboxTitle: browserDevProfile ? (unread ? `${unread} unread` : 'No unread messages') : 'Inbox', homeInboxStatus: browserDevProfile ? 'Open your messages' : 'View email accounts',
       homeAttentionPeople: [],
@@ -102,7 +104,7 @@ export function installPrototypeDataAdapter(Component: any, views: Record<string
 
 /** Neutral Home card values used when no fixture defaults are bundled. */
 const NEUTRAL_HOME = {
-  homeCalendarLabel: 'Open your calendar', homeCalendarTime: 'Calendar', homeCalendarTitle: 'See your events',
+  homeCalendarLabel: 'Open your calendar', homeCalendarTime: 'Calendar', homeCalendarTitle: 'Loading events…',
   homeWorkflowLabel: 'Open workflows', homeWorkflowTitle: 'Workflows', homeWorkflowTime: 'Routines and automations',
 };
 
