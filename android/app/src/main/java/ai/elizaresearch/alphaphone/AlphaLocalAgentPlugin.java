@@ -383,8 +383,8 @@ public final class AlphaLocalAgentPlugin extends Plugin {
   }
  }
  @PluginMethod public void request(PluginCall call) {
-  String path=call.getString("path",""),method=call.getString("method","GET"),body=call.getString("body");
-  if((path.startsWith("/api/views/")&&!method.equals("POST"))||path.contains("..")||path.contains("%")||path.contains("\\")||!path.matches("^/api/(auth/me|agents|status|conversations(/[A-Za-z0-9_-]+(/messages)?)?|views/interact-(claim|result)|client-devices/[A-Za-z0-9_/-]+|workflow(/[A-Za-z0-9_/?=&-]+)?)$")||!(method.equals("GET")||method.equals("POST"))||(method.equals("GET")&&body!=null)||(body!=null&&body.length()>2*1024*1024)){
+  String path=call.getString("path",""),method=call.getString("method","GET"),body=call.getString("body"),expectedOwner=call.getString("ownerId");
+  if((path.startsWith("/api/views/")&&(!method.equals("POST")||expectedOwner==null||expectedOwner.trim().isEmpty()))||path.contains("..")||path.contains("%")||path.contains("\\")||!path.matches("^/api/(auth/me|agents|status|conversations(/[A-Za-z0-9_-]+(/messages)?)?|views/interact-(claim|result)|client-devices/[A-Za-z0-9_/-]+|workflow(/[A-Za-z0-9_/?=&-]+)?)$")||!(method.equals("GET")||method.equals("POST"))||(method.equals("GET")&&body!=null)||(body!=null&&body.length()>2*1024*1024)){
    call.reject("Unsupported local agent request.");return;
   }
   JSONObject headers=call.getObject("headers");
@@ -392,7 +392,6 @@ public final class AlphaLocalAgentPlugin extends Plugin {
   try{synchronized(lifecycleLock){epoch=admittedEpoch();pending.add(call);}}catch(Superseded stale){call.reject("Local agent is stopped or unavailable.","LOCAL_AGENT_EPOCH_CHANGED");return;}
   try{workers.execute(()->{try{
    String token=enroll(epoch);
-   String expectedOwner=call.getString("ownerId");
    synchronized(lifecycleLock){requireCurrent(epoch);if(expectedOwner!=null&&!expectedOwner.equals(ownerIdentity)){resolveCurrent(call,epoch,new JSObject().put("status",409).put("body","{\"error\":\"Local owner changed; reconnect before continuing\"}"));return;}}
    requireCurrent(epoch);
    JSONObject result=raw(path,method,body,token,headers);

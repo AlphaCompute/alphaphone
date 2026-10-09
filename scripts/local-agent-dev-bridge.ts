@@ -59,7 +59,7 @@ export function createLocalAgentDevHandler(options:{origin:string;tokenFile:stri
       if(size>LIMIT&&!(input.path===ASR_PATH&&input.method==='POST')){fail(413,'Request too large');return;}
       if(input.storage){const result=localAgentStorage(join(dirname(options.tokenFile),'browser-device'),input.storage);res.writeHead(200,{'Content-Type':'application/json','Cache-Control':'no-store'});res.end(JSON.stringify(result));return;}
       if(!localAgentPathAllowed(input.path)||!['GET','POST'].includes(input.method)||
-         (input.path.startsWith('/api/views/')&&(input.method!=='POST'||typeof input.ownerId!=='string'))||
+         (input.path.startsWith('/api/views/')&&(input.method!=='POST'||typeof input.ownerId!=='string'||!input.ownerId.trim()))||
          (input.body!==undefined&&typeof input.body!=='string')||
          (input.method==='GET'&&input.body!==undefined)) {fail(400,'Unsupported local request');return;}
       let audio:Buffer|undefined;

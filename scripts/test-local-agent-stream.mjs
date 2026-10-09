@@ -44,6 +44,7 @@ try{
  assert.equal((await invoke(navigationInput)).status,200);
  assert.equal((await invoke({...navigationInput,ownerId:'wrong'})).status,409);
  assert.equal((await invoke({...navigationInput,ownerId:undefined})).status,400);
+ for(const ownerId of ['', '  ', 42])assert.equal((await invoke({...navigationInput,ownerId})).status,400);
  assert.equal((await invoke({...navigationInput,method:'GET',body:undefined})).status,400);
  assert.equal((await invoke({...navigationInput,path:'/api/views/interact'})).status,400);
  assert.equal((await invoke({...input,ownerId:'wrong'})).status,409);assert.equal(requests,0);
