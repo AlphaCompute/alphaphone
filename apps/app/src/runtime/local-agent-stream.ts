@@ -28,6 +28,7 @@ export async function readLocalAgentStream(response:Response, signal:AbortSignal
   if(!value||typeof value!=='object'||Array.isArray(value))return invalid('Invalid stream event');
   if(value.type==='error'){if(value.terminalFailure||value.failureKind||value.actionResults!==undefined)onReplyReady?.(undefined);throw Error('Local agent response interrupted. Check conversation and action history before retrying.');}
   if(value.type==='reply_ready'){
+   if(value.terminalFailure!==undefined||value.failureKind!==undefined)return invalid('Reply-ready snapshot is not successful');
    if(typeof value.fullText!=='string'||value.fullText.length>200000||(value.actionResults!==undefined&&!Array.isArray(value.actionResults)))return invalid('Invalid reply-ready snapshot');
    const navigation=preparedNavigation(value.actionResults),key=navigation?JSON.stringify(navigation):undefined;
    if(readySeen&&key!==readyKey)return invalid('Reply-ready navigation changed');

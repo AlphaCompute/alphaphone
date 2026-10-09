@@ -39,7 +39,8 @@ export async function streamNativeAgent(port:NativeStreamPort,input:{path:string
     if(bytes>2*1024*1024)throw Error('Native stream exceeds limit');
     controller.enqueue(Uint8Array.from(binary,c=>c.charCodeAt(0)));
    }else if(event.type==='complete'){
-    if(event.error||!responded){interrupted=!!event.error&&responded;throw Error('Response interrupted. Outcome unknown; check history before retrying.');}
+    if(event.error!==undefined&&typeof event.error!=='string')throw Error('Invalid native stream completion');
+    if(typeof event.error==='string'||!responded){interrupted=typeof event.error==='string'&&responded;throw Error('Response interrupted. Outcome unknown; check history before retrying.');}
     terminal=true;resolveTerminal();controller.close();
    }else throw Error('Invalid native stream event');
   }catch(error){fail(error instanceof Error?error:Error('Invalid native stream'),!interrupted);}

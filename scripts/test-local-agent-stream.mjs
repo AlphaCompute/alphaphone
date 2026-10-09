@@ -93,11 +93,16 @@ const readyClient=new AlphaClient();let lateReady,clientReady;readyClient.attach
 await assert.rejects(readyClient.send('Open Notes',undefined,undefined,value=>{clientReady=value;}),error=>error.code==='transport-failed'&&!error.message.includes('PRIVATE_'));assert.equal(readyClient.getState().pending,false);assert.deepEqual(clientReady,[prepared]);lateReady(undefined);assert.deepEqual(clientReady,[prepared],'Late callbacks cannot erase a settled ready receipt');
 console.log('PASS reply-ready navigation retention, privacy, disagreement revocation and settled client fences.');
 
-for(const mode of ['interrupted','invalid-native','done']){
+for(const mode of ['interrupted','invalid-native','malformed-complete','done']){
  let emit,id,observed,retainedNative;const seen=new Promise(resolve=>{observed=resolve;});let finished=false;
  const port={async addListener(_name,callback){emit=callback;return {async remove(){}};},async cancelStream(){},async requestStream(input){id=input.streamId;emit({streamId:id,event:{type:'response',status:200,headers:{'content-type':'text/event-stream'}}});emit({streamId:id,event:{type:'chunk',dataBase64:Buffer.from(ready).toString('base64')}});return {streamId:id};}};
  const work=streamNativeAgent(port,{path:'/api/conversations/fixture/messages/stream',ownerId:'owner',headers:{},body:'{}'},signal,()=>{},value=>{retainedNative=value;if(value)observed();});void work.then(()=>{finished=true;},()=>{finished=true;});await seen;assert.equal(finished,false,'Ready metadata does not settle the native stream');
  if(mode==='done'){emit({streamId:id,event:{type:'chunk',dataBase64:Buffer.from(readyTerminal).toString('base64')}});emit({streamId:id,event:{type:'complete'}});assert.equal((await work).text,'Opening Notes.');assert.ok(retainedNative);}
- else{emit({streamId:id,event:mode==='interrupted'?{type:'complete',error:'PRIVATE_NATIVE_FAILURE'}:{type:'unknown'}});await assert.rejects(work,error=>!error.message.includes('PRIVATE_'));assert.equal(!!retainedNative,mode==='interrupted');}
+ else{emit({streamId:id,event:mode==='interrupted'?{type:'complete',error:'PRIVATE_NATIVE_FAILURE'}:mode==='malformed-complete'?{type:'complete',error:{failure:'not a transport string'}}:{type:'unknown'}});await assert.rejects(work,error=>!error.message.includes('PRIVATE_'));assert.equal(!!retainedNative,mode==='interrupted');}
 }
 console.log('PASS actual native adapter drains ready metadata, retains interruptions and revokes invalid native frames.');
+
+for(const failure of [{terminalFailure:{code:'MODEL_OUTPUT_INCOMPLETE'}},{failureKind:'interrupted'}]){
+ for(const prefix of ['',ready]){retained=undefined;await assert.rejects(readLocalAgentStream(response(prefix+event({type:'reply_ready',fullText:'PRIVATE_FAILED_READY',actionResults:[prepared],...failure})),signal,()=>{},value=>{retained=value;}),/not successful/);assert.equal(retained,undefined);}
+}
+console.log('PASS failure-marked ready snapshots and malformed native completions revoke retained navigation.');
