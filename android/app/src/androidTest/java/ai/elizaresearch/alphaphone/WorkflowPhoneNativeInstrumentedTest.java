@@ -63,4 +63,33 @@ public final class WorkflowPhoneNativeInstrumentedTest {
    }
   }catch(Exception|AssertionError failure){primary=failure;throw failure;}finally{try{for(int i=0;i<2;i++){Uri row=i==0?selected:other;if(row!=null){String owner=i==0?account:otherAccount;Uri cleanup=CalendarContract.Calendars.CONTENT_URI.buildUpon().appendQueryParameter(CalendarContract.CALLER_IS_SYNCADAPTER,"true").appendQueryParameter(CalendarContract.Calendars.ACCOUNT_NAME,owner).appendQueryParameter(CalendarContract.Calendars.ACCOUNT_TYPE,CalendarContract.ACCOUNT_TYPE_LOCAL).build();assertEquals(1,resolver.delete(cleanup,CalendarContract.Calendars._ID+"=? AND "+CalendarContract.Calendars.ACCOUNT_NAME+"=? AND "+CalendarContract.Calendars.ACCOUNT_TYPE+"=?",new String[]{Long.toString(ContentUris.parseId(row)),owner,CalendarContract.ACCOUNT_TYPE_LOCAL}));}}}catch(Exception|AssertionError cleanup){if(primary!=null)primary.addSuppressed(cleanup);else throw cleanup;}}
  }
+ /** Real CalendarProvider: one reviewed source serves morning and evening reads with distinct occurrences and windows. */
+ @Test public void morningAndEveningShareOneCalendarSourceWithDistinctWindows()throws Exception{
+  enabled();Context context=InstrumentationRegistry.getInstrumentation().getTargetContext();for(String permission:new String[]{Manifest.permission.READ_CALENDAR,Manifest.permission.WRITE_CALENDAR})assertEquals("Runner must preserve and grant fixture permissions",android.content.pm.PackageManager.PERMISSION_GRANTED,context.checkSelfPermission(permission));
+  ContentResolver resolver=context.getContentResolver();String account="Alpha digest fixture "+UUID.randomUUID();Uri selected=null;Throwable primary=null;
+  try{selected=calendar(resolver,account);long day=Instant.parse("2026-10-01T00:00:00Z").toEpochMilli();event(resolver,selected,"Shared calendar meeting",day+9*3600000L,day+10*3600000L);
+   String id=Long.toString(ContentUris.parseId(selected)),revision=null;
+   try(BoundedActivityScenario<MainActivity> scenario=BoundedActivityScenario.launch(MainActivity.class)){
+    AppNavigation.liveMode();js(AppNavigation.request("Workflows"));ready(AppNavigation.selected("Workflows"));ready("window.__alphaTestNavigation?.status==='complete'");
+    JSONArray calendars=call("Capacitor.Plugins.AlphaCalendar.workflowCalendars()").getJSONArray("calendars");for(int i=0;i<calendars.length();i++)if(id.equals(calendars.getJSONObject(i).getString("id")))revision=calendars.getJSONObject(i).getString("sourceRevision");
+   }
+   assertNotNull("Fixture calendar revision",revision);
+   Map<String,String> slots=new HashMap<>();NativeDigestSources sources=new NativeDigestSources(new NativeDigestSources.Storage(){public String read(String key){return slots.get(key);}public void write(String key,String value){slots.put(key,value);}},new Object());
+   JSONObject binding=new JSONObject().put("ownerId","owner").put("agentId","agent").put("installationId","installation").put("enrollmentId","enrollment");
+   JSONObject scope=new JSONObject().put("calendars",new JSONArray().put(new JSONObject().put("id",id).put("revision",revision))).put("reminders",true).put("timeZone","UTC").put("window","owner_day_and_overdue_reminders").put("maximumItems",20).put("modelEgress",true);
+   long now=System.currentTimeMillis();assertThrows(SecurityException.class,()->sources.approve(binding,"too-long",scope,now+7*86400000L+1,now,()->{}));
+   JSONObject grant=sources.approve(binding,"shared",scope,now+7*86400000L,now,()->{});String grantRevision=grant.getString("revision");
+   long morningAt=day+8*3600000L,eveningAt=day+18*3600000L;
+   NativeDigestSources.Reader reader=new NativeDigestSources.Reader(){
+    public JSONArray calendar(JSONArray ids,String start,String end,int maximum,String startDate,String endDateExclusive)throws Exception{return ai.eliza.plugins.calendar.read.SelectedCalendarReader.readOwnerDay(resolver,ids,start,end,maximum,startDate,endDateExclusive);}
+    // Synthetic reminder rows in the engine's list() shape, including an upgraded one-off legacy alarm.
+    public JSONArray reminders()throws Exception{return new JSONArray().put(new JSONObject().put("id","legacy").put("title","Upgraded alarm").put("at",day+7*3600000L).put("dueAt",day+7*3600000L).put("legacyAlarm",true).put("status","posted")).put(new JSONObject().put("id","done").put("title","Done today").put("at",day+11*3600000L).put("dueAt",day+11*3600000L).put("status","completed").put("completedAt",day+12*3600000L));}
+   };
+   JSONObject morning=sources.read(binding,"shared",grantRevision,morningAt,now,"morning",reader,()->{}),evening=sources.read(binding,"shared",grantRevision,eveningAt,now,"evening",reader,()->{});
+   assertNotEquals(morning.getString("occurrence"),evening.getString("occurrence"));assertFalse(morning.has("template"));assertEquals("evening",evening.getString("template"));
+   assertEquals(1,morning.getJSONArray("events").length());assertEquals(morning.getJSONArray("events").toString(),evening.getJSONArray("events").toString());assertEquals("Shared calendar meeting",evening.getJSONArray("events").getJSONObject(0).getString("title"));assertFalse(evening.toString().contains("Private description"));
+   assertEquals(1,morning.getJSONArray("reminders").length());assertEquals("legacy",morning.getJSONArray("reminders").getJSONObject(0).getString("id"));
+   assertEquals(2,evening.getJSONArray("reminders").length());assertEquals("completed",evening.getJSONArray("reminders").getJSONObject(1).getString("status"));
+  }catch(Exception|AssertionError failure){primary=failure;throw failure;}finally{try{if(selected!=null){Uri cleanup=CalendarContract.Calendars.CONTENT_URI.buildUpon().appendQueryParameter(CalendarContract.CALLER_IS_SYNCADAPTER,"true").appendQueryParameter(CalendarContract.Calendars.ACCOUNT_NAME,account).appendQueryParameter(CalendarContract.Calendars.ACCOUNT_TYPE,CalendarContract.ACCOUNT_TYPE_LOCAL).build();assertEquals(1,resolver.delete(cleanup,CalendarContract.Calendars._ID+"=? AND "+CalendarContract.Calendars.ACCOUNT_NAME+"=? AND "+CalendarContract.Calendars.ACCOUNT_TYPE+"=?",new String[]{Long.toString(ContentUris.parseId(selected)),account,CalendarContract.ACCOUNT_TYPE_LOCAL}));}}catch(Exception|AssertionError cleanup){if(primary!=null)primary.addSuppressed(cleanup);else throw cleanup;}}
+ }
 }
