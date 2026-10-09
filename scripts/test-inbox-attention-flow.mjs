@@ -21,14 +21,14 @@ const mail=(id,extra={})=>({id,threadId:'thread-'+id,subject:'Fixture '+id,from:
 const inboxPage=[mail('m1',{unread:true,hasAttachments:true,receivedAt:today.toISOString()}),mail('m2',{unread:true}),mail('m3')];
 
 function scenario({caps={},accounts=null}={}){
- let session='session-a',clock=Date.UTC(2026,9,8,12),probeFail=null;
+ let session='session-a',clock=Date.UTC(2026,9,8,12),probeFail=null,probeGate=null;
  const calls=[],toasts=[],prepared=[],dispatched=[],opened=[],saved=[],navigations=[],confirms=[],resume=[];let confirmAnswer=true;
  const defaultAccounts=[{connectionId:'grant-a',label:'Fixture account',connected:true,grantedCapabilities:['google.gmail.triage']}];
  const capabilities={version:1,from:'owner@example.invalid',threads:true,send:true,providerDrafts:true,mailboxMutations:true,attachments:true,providerExactlyOnce:false,atomicDraftReplacement:false,readState:false,draftsList:false,forwardAttachments:false,opaqueAttachments:false,searchTrash:false,attachmentPolicy:{maximumOutgoing:1,maximumBytes:5242880,maximumTotalBytes:5242880},...caps};
  const bodies={m1:{bodyText:'See https://docs.example.org/plan?x=1. and the old http://insecure.example.net page',links:[{href:'https://tracker.attacker.invalid/r',text:'www.bank.example.com'},{href:'https://docs.example.org/plan?x=1',text:'the plan'}],attachments:[{partId:'1',name:'report.docx',mimeType:'application/vnd.openxmlformats-officedocument.wordprocessingml.document',size:12,supported:false},{partId:'2',name:'notes.txt',mimeType:'text/plain',size:5,supported:true}]}};
  const client={
   gmailAccounts:async()=>{calls.push('accounts');return accounts||defaultAccounts;},
-  gmailSearch:async(_grant,query,_signal,size,pageToken)=>{calls.push(['search',query,size,pageToken??null]);if(query==='in:inbox is:unread'&&probeFail){throw probeFail;}
+  gmailSearch:async(_grant,query,_signal,size,pageToken)=>{calls.push(['search',query,size,pageToken??null]);if(query==='in:inbox is:unread'&&probeGate)await probeGate;if(query==='in:inbox is:unread'&&probeFail){throw probeFail;}
    if(query==='in:inbox is:unread')return {messages:inboxPage.filter(m=>m.unread),syncedAt:'2026-10-08T12:00:00Z',nextPageToken:null};
    if(query==='in:inbox')return {messages:inboxPage,syncedAt:'2026-10-08T12:01:00Z',nextPageToken:null};
    return {messages:query==='in:archive'?[mail('arch-1')]:query==='in:trash'?[mail('trash-1')]:[],syncedAt:'2026-10-08T12:02:00Z',nextPageToken:null};},
@@ -62,7 +62,7 @@ function scenario({caps={},accounts=null}={}){
   DailyApps:{addListener:async(name,fn)=>{if(name==='appResumed')resume.push(fn);return {remove:async()=>{}};},perform:async()=>({status:'selected',selectionId:'sel-'+(selectionCount++),name:'file'}),forgetSelected:async()=>{}},
   openConnectionBrowser:async()=>{throw new Error('No OAuth');},queueMicrotask,setTimeout,AbortController,DOMException,console,window:windowFixture,CustomEvent:class{constructor(t,i){this.type=t;this.detail=i?.detail;}},document:{documentElement:{dataset:{connectionMode:'live'}}},atob,btoa};
  return {sandbox,client,calls,toasts,prepared,dispatched,opened,saved,navigations,confirms,resume,views,Shell,listeners,slots,
-  setSession:v=>{session=v;for(const fn of listeners)fn();},advance:ms=>{clock+=ms;},failProbe:e=>{probeFail=e;},answer:v=>{confirmAnswer=v;}};
+  setSession:v=>{session=v;for(const fn of listeners)fn();},advance:ms=>{clock+=ms;},gate:()=>{let open;probeGate=new Promise(r=>{open=r;});return ()=>{probeGate=null;open();};},failProbe:e=>{probeFail=e;},answer:v=>{confirmAnswer=v;}};
 }
 async function boot(options){
  const s=scenario(options);vm.createContext(s.sandbox);
@@ -91,6 +91,7 @@ const searches=t=>t.calls.filter(c=>Array.isArray(c)&&c[0]==='search');
  t.advance(5*60*1000);t.failProbe(Object.assign(new Error('Service unavailable'),{name:'CloudProtocolError',code:'http',status:503}));
  for(const fn of t.resume)fn();for(const fn of t.resume)fn();await t.tick();
  assert.equal(searches(t).length,2,'one probe per resume after the floor, never two in flight');
+ assert.equal(t.calls.filter(c=>c==='accounts').length,1,'a later resume reuses the resolved account: only the unread query is sent');
  assert.equal(t.attention().state,'error');assert.equal(t.views.inbox.badge(),false,'a failed probe never shows an old badge');
  t.failProbe(null);t.advance(5*60*1000);
  // Opening Inbox loads in:inbox; its unread rows set the summary.
@@ -111,6 +112,16 @@ const searches=t=>t.calls.filter(c=>Array.isArray(c)&&c[0]==='search');
  assert.equal(t.views.inbox.badge(),true);t.advance(5*60*1000);assert.equal(t.views.inbox.badge(),false,'a stale value older than the floor is never shown');
  t.sandbox.openInbox();deq(JSON.parse(JSON.stringify(t.shell.opened)),[['inbox',{open:null,q:null}]],'openInbox opens the Inbox list for goTriage');
  t.setSession(null);await t.tick();assert.equal(t.attention().state,'not-connected','signing out clears the summary');
+ t.shell.componentWillUnmount();
+}
+// 1b. A probe answer that arrives after an open Inbox loaded in:inbox never replaces the loaded summary.
+{
+ const t=await boot();const release=t.gate();
+ t.mount();await t.tick();assert.equal(t.attention().state,'loading');
+ t.setActive(true);t.render();await t.tick();
+ deq(t.attention(),{state:'ready',unread:2,unreadMore:false,source:'Fixture account',updatedAt:'2026-10-08T12:01:00Z'},'the loaded list sets the summary');
+ release();await t.tick();
+ assert.equal(t.attention().updatedAt,'2026-10-08T12:01:00Z','the late probe answer is dropped');
  t.shell.componentWillUnmount();
 }
 // 2. No readable account: not-connected without a mail query.

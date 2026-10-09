@@ -35,18 +35,24 @@ and verification in its `-source-base.json` and applies in series after 0037:
 Independently of these patches, the client now:
 - publishes a Home summary through `inboxAttention()` (`not-connected`, `loading`, `ready`, `error` or
   `stale`, with an unread count, the account label and a time) and `openInbox()`, without subjects,
-  senders or bodies;
+  senders or bodies. Home does not read it yet: `data-adapter.ts` (owned by the shell/Home package) still
+  has to set its attention fields from `inboxAttention()` and call `openInbox()` from triage;
 - runs one bounded `in:inbox is:unread` metadata query (at most 10 rows) on cold start, on resume and
-  after leaving Inbox, never two at once and never within 5 minutes of the previous one. Leaving Inbox
-  marks the badge stale instead of showing the old value. New-mail notifications remain blocked on A-05;
-- turns plain-text `https` URLs in a body into the same link list. A link opens only in Alpha's Browser,
-  only for HTTPS, and only after a confirmation that names the destination site and warns when the link
-  text names a different site. Nothing is fetched to render a message;
+  after leaving Inbox, never two at once and never within 5 minutes of the previous one. The first probe
+  after start or an account change also lists the accounts once to find the grant. A probe answer that
+  arrives after an open Inbox has loaded its list is dropped. Leaving Inbox marks the summary stale; the
+  badge keeps a stale value only while it is younger than 5 minutes. New-mail notifications remain blocked
+  on A-05;
+- turns plain-text `https` URLs in a body into the same link list (`inbox.d.links`). A link opens only in
+  Alpha's Browser, only for HTTPS, and only after a confirmation that names the destination site and warns
+  when the link text names a different site. Nothing is fetched to render a message. `template.html` does
+  not render `inbox.d.links` yet, so the list is not visible until the shell package adds those buttons;
 - shows today's mail with a time, offers Archive (`in:archive`) for every account, and offers Drafts and
   Trash only when the server advertises them;
 - adds "Use in email" for agent text (`view.useInEmail`), which opens a local draft for the selected
   account, as a reply when a message is open. Nothing is sent; the normal composer and provider review
-  apply. The "Help me organize my inbox" suggestion is removed;
+  apply. No control calls it yet: the agent reply UI (`agent-adapter.ts`/`template.html`, other packages)
+  must add the button. The "Help me organize my inbox" suggestion is removed;
 - adds `CloudProtocol.revokeSession()`, which uses Cloud's self-revocation route
   (`DELETE /api/v1/api-keys/current`) when the host transport allows `DELETE` and otherwise reports
   `{supported:false}`. The local credential is cleared either way. The Android transport admits only GET

@@ -30,7 +30,7 @@ export function inboxDrafts(publish:()=>void,toast:(text:string)=>void, provider
  // The retained recovery record (runtime/inbox-unsaved-record.ts) does not yet admit forwarded source
  // attachments, so its copy omits them; the explicitly saved local draft keeps them.
  function persist(){if(draft){const {forward:_forward,...copy}=structuredClone(draft);retained?.edit({version:1,owner,baseRevision,draft:copy,toQ});}}
- function restoreRetained(value:any){draft=structuredClone(value.draft);toQ=value.toQ;baseRevision=value.baseRevision;staleBase=baseRevision!==(saved?.revision||null);open=true;confirm=false;status=staleBase?'The saved local draft changed. Review the latest saved copy before saving these edits.':'Retained email edits restored. Review before provider actions.';publish();}
+ function restoreRetained(value:any){draft=structuredClone(value.draft);toQ=value.toQ;baseRevision=value.baseRevision;staleBase=baseRevision!==(saved?.revision||null);open=true;confirm=false;status=staleBase?'The saved local draft changed. Review the latest saved copy before saving these edits.':draft?.mode==='forward'?'Retained forward edits restored without any original attachments; forward the message again to include them. Review before provider actions.':'Retained email edits restored. Review before provider actions.';publish();}
  let loading=false,ready=false,busy=false,open=false,confirm=false,toQ='',label='',status='';
  let fromSwitch:{count():number;cycle():void}|null=null;
  const slot=()=>`inbox-drafts:v1:${owner}`;
