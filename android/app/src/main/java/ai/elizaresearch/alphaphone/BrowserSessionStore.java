@@ -59,19 +59,62 @@ final class BrowserSessionStore {
   result.put("history",history).put("tabs",tabs).put("cur",ids.contains(cur)?cur:"");
   return result;
  }
+ private String seal(JSONObject value)throws Exception{
+  Cipher cipher=Cipher.getInstance("AES/GCM/NoPadding");cipher.init(Cipher.ENCRYPT_MODE,key());
+  byte[] encrypted=cipher.doFinal(value.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8));
+  return Base64.encodeToString(cipher.getIV(),Base64.NO_WRAP)+":"+Base64.encodeToString(encrypted,Base64.NO_WRAP);
+ }
+ private JSONObject open(String packed)throws Exception{
+  String[] parts=packed.split(":",-1);if(parts.length!=2||packed.length()>2000000)throw new IllegalStateException();
+  Cipher cipher=Cipher.getInstance("AES/GCM/NoPadding");cipher.init(Cipher.DECRYPT_MODE,key(),new GCMParameterSpec(128,Base64.decode(parts[0],Base64.NO_WRAP)));
+  return new JSONObject(new String(cipher.doFinal(Base64.decode(parts[1],Base64.NO_WRAP)),java.nio.charset.StandardCharsets.UTF_8));
+ }
  synchronized JSONObject read()throws Exception{
   String packed=preferences.getString("sealed",null);
   if(packed==null)return normalize(new JSONObject());
-  String[] parts=packed.split(":",-1);if(parts.length!=2||packed.length()>2000000)throw new IllegalStateException();
-  Cipher cipher=Cipher.getInstance("AES/GCM/NoPadding");cipher.init(Cipher.DECRYPT_MODE,key(),new GCMParameterSpec(128,Base64.decode(parts[0],Base64.NO_WRAP)));
-  return normalize(new JSONObject(new String(cipher.doFinal(Base64.decode(parts[1],Base64.NO_WRAP)),java.nio.charset.StandardCharsets.UTF_8)));
+  return normalize(open(packed));
  }
  synchronized JSONObject write(JSONObject state)throws Exception{
   JSONObject canonical=normalize(state);
-  Cipher cipher=Cipher.getInstance("AES/GCM/NoPadding");cipher.init(Cipher.ENCRYPT_MODE,key());
-  byte[] encrypted=cipher.doFinal(canonical.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8));
-  if(!preferences.edit().putString("sealed",Base64.encodeToString(cipher.getIV(),Base64.NO_WRAP)+":"+Base64.encodeToString(encrypted,Base64.NO_WRAP)).commit())throw new IllegalStateException();
+  if(!preferences.edit().putString("sealed",seal(canonical)).commit())throw new IllegalStateException();
   return canonical;
  }
  synchronized void clear(){if(!preferences.edit().remove("sealed").commit())throw new IllegalStateException();}
+
+ /* Website permission decisions for the persistent normal-tab profile only:
+  * {"https://host[:port]":{"camera":true,"microphone":false,"location":true}}.
+  * Private tabs never read or write them. Origins reveal visited sites, so the
+  * record is sealed with the same Keystore key. Bounded to MAX_PERMISSION_ORIGINS. */
+ static final int MAX_PERMISSION_ORIGINS=200;
+ static final java.util.Set<String> PERMISSION_KINDS=java.util.Set.of("camera","microphone","location");
+ static boolean validOrigin(String origin){return origin!=null&&origin.length()<=300&&origin.matches("https?://[a-z0-9.\\-\\[\\]:]+");}
+ synchronized JSONObject permissions(){
+  String packed=preferences.getString("permissions",null);
+  if(packed==null)return new JSONObject();
+  // A damaged record grants nothing: every site is asked again.
+  try{return open(packed);}catch(Exception damaged){return new JSONObject();}
+ }
+ /** Stored decision, or null when the site must be asked. */
+ synchronized Boolean permission(String origin,String kind){
+  JSONObject site=permissions().optJSONObject(origin);
+  return site==null||!site.has(kind)?null:site.optBoolean(kind,false);
+ }
+ synchronized void setPermission(String origin,String kind,boolean allowed)throws Exception{
+  if(!validOrigin(origin)||!PERMISSION_KINDS.contains(kind))throw new IllegalArgumentException();
+  JSONObject all=permissions(),site=all.optJSONObject(origin);if(site==null)site=new JSONObject();
+  site.put(kind,allowed);all.remove(origin);
+  // Insertion order is oldest first; drop the oldest origins beyond the bound.
+  JSONObject bounded=new JSONObject();java.util.ArrayList<String> names=new java.util.ArrayList<>();java.util.Iterator<String> keys=all.keys();while(keys.hasNext())names.add(keys.next());
+  for(int i=Math.max(0,names.size()-(MAX_PERMISSION_ORIGINS-1));i<names.size();i++)bounded.put(names.get(i),all.get(names.get(i)));
+  bounded.put(origin,site);
+  if(!preferences.edit().putString("permissions",seal(bounded)).commit())throw new IllegalStateException();
+ }
+ synchronized void clearPermissions(){if(!preferences.edit().remove("permissions").commit())throw new IllegalStateException();}
+ /** Remove decisions for a registrable domain and its subdomains (Clear data for this site). */
+ synchronized void clearPermissionsForSite(String site)throws Exception{
+  if(site==null||site.isEmpty())return;String domain=site.toLowerCase(java.util.Locale.ROOT);
+  JSONObject all=permissions(),kept=new JSONObject();java.util.Iterator<String> keys=all.keys();
+  while(keys.hasNext()){String origin=keys.next();String host=Uri.parse(origin).getHost();if(host!=null&&(host.equals(domain)||host.endsWith("."+domain)))continue;kept.put(origin,all.get(origin));}
+  if(!preferences.edit().putString("permissions",seal(kept)).commit())throw new IllegalStateException();
+ }
 }
