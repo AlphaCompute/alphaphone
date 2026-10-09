@@ -1,18 +1,37 @@
 #!/usr/bin/env python3
 """Loopback-only regional maps gateway; bounded requests, no public API fallback."""
 from dataset_manifest import verify, snapshot
-import http.server,urllib.parse,urllib.request,sqlite3,json,pathlib,os,time,math,hashlib
+import http.server,urllib.parse,urllib.request,sqlite3,json,pathlib,os,time,math,hashlib,re
 ROOT=pathlib.Path(os.environ.get('ALPHA_MAPS_DATA',str(pathlib.Path.home()/'.local/share/alphaphone-maps/monaco'))).resolve()
 ATTR='© OpenStreetMap contributors (ODbL); OpenMapTiles (CC-BY 4.0)'
 BOUNDS=[7.409,43.724,7.449,43.752]
 PROVIDER='alpha-osm-monaco'
 REV,DATASET=verify(ROOT)
+# GraphHopper instruction sign -> provider-neutral maneuver (plugin-maps MANEUVERS).
+SIGNS={-98:'u-turn',-8:'u-turn',8:'u-turn',-7:'keep-left',7:'keep-right',-3:'sharp-left',-2:'left',-1:'slight-left',0:'continue',1:'slight-right',2:'right',3:'sharp-right',4:'arrive',5:'continue',6:'roundabout',-6:'continue'}
+def maneuver(index,step):
+ sign=step.get('sign')
+ if index==0 and sign==0:return 'depart'
+ return SIGNS.get(sign)
+def details(tags):
+ # Only well-formed source values; malformed tags are omitted, never guessed.
+ value={}
+ phone=(tags.get('phone') or '').split(';')[0].strip()
+ if phone and re.fullmatch(r'[+0-9() .-]{3,80}',phone):value['phone']=phone
+ website=(tags.get('website') or '').split(';')[0].strip()
+ if website and len(website)<=2048:
+  parts=urllib.parse.urlsplit(website)
+  if parts.scheme in ('http','https') and parts.netloc and '@' not in parts.netloc:value['website']=website
+ hours=(tags.get('opening_hours') or '').strip()
+ if hours and len(hours)<=255 and not re.search(r'[\x00-\x1f]',hours):value['openingHours']=hours
+ return value
 def inside(p):return len(p)==2 and all(math.isfinite(v) for v in p) and BOUNDS[0]<=p[1]<=BOUNDS[2] and BOUNDS[1]<=p[0]<=BOUNDS[3]
-def place(row):
+def place(row,detail=False):
  ident,name,lat,lon,tags=row;tags=json.loads(tags)
  value={'providerId':PROVIDER,'id':ident,'name':name,'coordinate':{'latitude':lat,'longitude':lon},'attribution':ATTR,'fetchedAt':int(time.time()*1000)}
  address=' '.join(filter(None,[tags.get('addr:housenumber'),tags.get('addr:street'),tags.get('addr:city')]))
  if address:value['address']=address
+ if detail:value.update(details(tags))
  return value
 class Handler(http.server.BaseHTTPRequestHandler):
  def log_message(self,*args):pass # Queries/coordinates are not access-log data.
@@ -41,7 +60,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
    if parsed.path in ['/search','/place']:
     with sqlite3.connect((ROOT/'places.sqlite').as_uri()+'?mode=ro&immutable=1',uri=True) as db:
      if parsed.path=='/place':
-      rows=db.execute('SELECT * FROM places WHERE id=?',(query.get('id',[''])[0][:512],)).fetchall();return self.answer(place(rows[0]) if rows else None)
+      rows=db.execute('SELECT * FROM places WHERE id=?',(query.get('id',[''])[0][:512],)).fetchall();return self.answer(place(rows[0],True) if rows else None)
      text=query.get('q',[''])[0].strip()
      if not text or len(text)>300:return self.answer([])
      # Parameters and escaped LIKE wildcards; named places, not global geocoding.
@@ -65,7 +84,12 @@ class Handler(http.server.BaseHTTPRequestHandler):
      if len(raw)>2*1024*1024:raise ValueError()
     result=json.loads(raw);route=result['paths'][0];coords=route['points']['coordinates']
     def point(p):return {'latitude':p[1],'longitude':p[0]}
-    steps=[{'instruction':s['text'],'coordinate':point(coords[s['interval'][0]]),'distanceMeters':s['distance']} for s in route['instructions']]
+    steps=[]
+    for index,s in enumerate(route['instructions']):
+     step={'instruction':s['text'],'coordinate':point(coords[s['interval'][0]]),'distanceMeters':s['distance']}
+     kind=maneuver(index,s)
+     if kind:step['maneuver']=kind
+     steps.append(step)
     return self.answer({'providerId':PROVIDER,'id':'route_'+hashlib.sha256(params.encode()).hexdigest()[:20],'from':{'latitude':start[0],'longitude':start[1]},'to':{'latitude':end[0],'longitude':end[1]},'mode':mode,'geometry':[point(p) for p in coords],'distanceMeters':route['distance'],'durationSeconds':route['time']/1000,'steps':steps,'attribution':ATTR,'fetchedAt':int(time.time()*1000),'traffic':'none'})
    self.answer({'error':'Not found'},404)
   except urllib.error.HTTPError:self.answer({'error':'No route available for these endpoints.'},422)
