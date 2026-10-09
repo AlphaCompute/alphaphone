@@ -15,6 +15,8 @@ export const DeviceApps = registerPlugin<{
   /** Opens the role's handler with no data (an empty dial pad for 'dial'). */
   openDefault(options: { role: DefaultAppRole }): Promise<void>;
   buildInfo(): Promise<{ launcher: boolean; version: string }>;
+  /** How the Activity was opened; `assistant` for ACTION_ASSIST or the 'alpha.assistant' extra. */
+  launchInfo(): Promise<{ assistant: boolean }>;
   /** Device locale (BCP 47) and Android's 24-hour setting. */
   localeInfo(): Promise<{ locale: string; hour24: boolean }>;
 }>("DeviceApps");

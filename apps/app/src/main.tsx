@@ -179,9 +179,17 @@ async function mountPhone() {
     ? await DeviceApps.buildInfo().then(info => info.launcher === true).catch(() => false)
     : devSurfacesEnabled && query.get('shell') === 'launcher';
   if (isAndroid) {
-    assistantSurface = await DailyApps.surfaceInfo().then(info => info.assistant === true).catch(() => false);
+    // AlphaAssistActivity (surfaceInfo) or an Activity opened with the 'alpha.assistant' extra.
+    const [surface, launch] = await Promise.all([
+      DailyApps.surfaceInfo().then(info => info.assistant === true).catch(() => false),
+      DeviceApps.launchInfo().then(info => info.assistant === true).catch(() => false),
+    ]);
+    assistantSurface = surface || launch;
     await applyDeviceLocale();
     document.addEventListener('visibilitychange', () => { if (!document.hidden) void applyDeviceLocale().then(() => shell?.setState({ localeRevision: Date.now() })); });
+  } else if (devSurfacesEnabled && query.get('surface') === 'assistant') {
+    // Development server only: preview the ACTION_ASSIST surface without an Android host.
+    assistantSurface = true;
   }
   document.documentElement.classList.toggle('alpha-assistant-surface', assistantSurface);
   document.documentElement.classList.toggle('standalone-app', !launcherPresentation);

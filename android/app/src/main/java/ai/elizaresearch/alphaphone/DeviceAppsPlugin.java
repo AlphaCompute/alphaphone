@@ -22,6 +22,15 @@ public class DeviceAppsPlugin extends Plugin {
  @PluginMethod public void buildInfo(PluginCall call) {
   JSObject value = new JSObject(); value.put("launcher", BuildConfig.IS_LAUNCHER); value.put("version", BuildConfig.VERSION_NAME); call.resolve(value);
  }
+ /** Intent extra set when the Activity was opened for ACTION_ASSIST (AlphaAssistActivity). */
+ static final String EXTRA_ASSISTANT = "alpha.assistant";
+ /** How this Activity was opened: `assistant` is true only for the ACTION_ASSIST entry. */
+ @PluginMethod public void launchInfo(PluginCall call) {
+  android.app.Activity activity = getActivity();
+  Intent intent = activity == null ? null : activity.getIntent();
+  boolean assistant = intent != null && (Intent.ACTION_ASSIST.equals(intent.getAction()) || intent.getBooleanExtra(EXTRA_ASSISTANT, false));
+  JSObject value = new JSObject(); value.put("assistant", assistant); call.resolve(value);
+ }
  @PluginMethod public void localeInfo(PluginCall call) {
   JSObject value = new JSObject();
   value.put("locale", java.util.Locale.getDefault().toLanguageTag());
