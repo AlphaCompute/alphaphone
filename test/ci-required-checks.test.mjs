@@ -39,6 +39,9 @@ test('Android foundation runs on main pushes and both workflows end in the requi
   const android = read('.github/workflows/android.yml');
   assert.match(android, /^on:\n(?:.*\n)*?  push:\n    branches: \[main\]\n/m);
   assert.match(android, /cancel-in-progress: \$\{\{ github\.event_name != 'push' \}\}/);
+  // A shared group would still cancel a pending main run when another push arrives.
+  for (const [name, text] of [['android', android], ['browser', read('.github/workflows/browser.yml')]])
+    assert.match(text, new RegExp(`group: ${name}-\\$\\{\\{ github\\.event_name == 'push' && github\\.sha \\|\\| github\\.ref \\}\\}`), name);
   assert.match(android, /name: Android foundation result\n    needs: \[changes, build\]\n    if: always\(\)/);
   assert.match(android, /artifacts\/mapping\/\*\.txt/);
   const browser = read('.github/workflows/browser.yml');
@@ -48,6 +51,8 @@ test('Android foundation runs on main pushes and both workflows end in the requi
   const resident = read('.github/workflows/resident-android.yml');
   assert.match(resident, /vars\.ELIZA_RESIDENT_QUALIFICATION == 'push'/);
   assert.match(resident, /vars\.ELIZA_RESIDENT_QUALIFICATION == 'nightly'/);
+  // Push and nightly runs never share a group with, or cancel, a dispatched qualification.
+  assert.match(resident, /group: resident-\$\{\{ github\.event_name == 'workflow_dispatch' && github\.ref \|\| format\('\{0\}-\{1\}', github\.event_name, github\.sha\) \}\}\n  cancel-in-progress: \$\{\{ github\.event_name == 'workflow_dispatch' \}\}/);
 });
 
 test('documented ruleset is the committed ruleset and requires exactly the stable check names', () => {

@@ -8,8 +8,9 @@ on:
 permissions:
   contents: read
 concurrency:
-  group: android-${{ github.ref }}
-  # Superseded PR runs are cancelled; every main commit keeps its own result.
+  # Superseded PR runs are cancelled. Each main push gets its own group: a shared
+  # group would still cancel a queued main run when a third push arrives.
+  group: android-${{ github.event_name == 'push' && github.sha || github.ref }}
   cancel-in-progress: ${{ github.event_name != 'push' }}
 jobs:
   changes:

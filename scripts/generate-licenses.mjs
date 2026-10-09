@@ -6,9 +6,15 @@
 //   node scripts/generate-licenses.mjs --refresh-android  re-resolve the Gradle release/debug runtime
 //                                                         classpath into licenses/android-runtime-classpath.json
 //
-// When a resident runtime is staged (android/app/src/main/assets/agent), Bun and every npm package
-// bundled into the agent (from the bundle's module paths, resolved in the prepared lockfile source)
-// and the workflow worker (its dependencies.json) are listed too; --check prints them.
+//   node scripts/generate-licenses.mjs --packaged-runtime  also list Bun and every npm package bundled
+//                                                         into the staged agent (from the bundle's module
+//                                                         paths, resolved in the prepared lockfile source)
+//                                                         and workflow worker (its dependencies.json)
+//
+// Runtime enumeration is explicit: a staged runtime in a development checkout never changes the
+// committed notices. A PACKAGED distribution build regenerates them after staging with
+// --packaged-runtime (resident-android.yml). Without a flag, --check and generate() use the mode
+// the shipped notices were generated in, and --check also lists the staged runtime when present.
 //
 // Every entry has exactly {name, version, license, source, text}. Any license expression outside
 // KNOWN_LICENSES fails generation. Fonts, models and payloads whose license cannot be established
@@ -508,7 +514,7 @@ function runtimePackageEntry(dir, bundle, templates, errors) {
 
 function bunEntry(provenance, templates) {
   const {version, revision} = provenance.bun ?? {};
-  return {name: 'Bun JavaScript runtime (libeliza_bun.so)', version: `${version} (oven-sh/bun ${revision})`, license: UNVERIFIED,
+  return {name: BUN_ENTRY, version: `${version} (oven-sh/bun ${revision})`, license: UNVERIFIED,
     source: `https://github.com/oven-sh/bun/tree/${revision}`,
     text: [
       `Bun ${version}, built from oven-sh/bun revision ${revision}, is packaged as libeliza_bun.so for ${(provenance.bun?.architectures ?? []).join(' and ')} and runs the on-device agent.`,
@@ -572,14 +578,21 @@ export function runtimeEntries(root, templates, errors, {agentDir = path.join(ro
   return entries;
 }
 
-function payloadEntries(root) {
-  const packaged = packagedRuntimePresent(root);
+export const BUN_ENTRY = 'Bun JavaScript runtime (libeliza_bun.so)';
+
+/** True when the shipped notices were generated with --packaged-runtime (they list Bun). */
+export function shippedPackagedRuntime(root = ROOT) {
+  if (!exists(root, JSON_OUTPUT)) return false;
+  try { return readJson(root, JSON_OUTPUT).some(entry => entry?.name === BUN_ENTRY); } catch { return false; }
+}
+
+function payloadEntries(packaged) {
   return [
     {name: 'On-device elizaOS agent runtime payload', version: 'pinned upstream runtime when present in the APK payload', license: UNVERIFIED,
       source: 'scripts/stage-local-agent-runtime.mjs',
       text: packaged
         ? 'The staged on-device agent payload is present. Bun and every npm package bundled into the agent and the workflow worker are listed as separate entries. The remaining payload files (musl loader, libstdc++ and libgcc_s runtime libraries, PGlite WebAssembly and data, PostgreSQL extensions and models) are not enumerated here.'
-        : 'The on-device agent payload (Bun runtime and the bundled elizaOS agent with its dependencies) is staged from pinned upstream source and may be included in standard Android builds. No staged runtime was present when these notices were generated, so its Bun and dependency notices are not listed; an APK with a PACKAGED runtime ships notices regenerated after staging.'},
+        : 'The on-device agent payload (Bun runtime and the bundled elizaOS agent with its dependencies) is staged from pinned upstream source and may be included in standard Android builds. These notices were generated without the staged runtime, so its Bun and dependency notices are not listed. A PACKAGED distribution build regenerates them after staging with node scripts/generate-licenses.mjs --packaged-runtime (resident-android.yml); an APK built without that step does not carry them.'},
   ];
 }
 
@@ -590,10 +603,10 @@ function mapDataEntries(root) {
 
 // ---------------------------------------------------------------- assembly
 
-function applyAllowlist(root, entries, errors) {
+function applyAllowlist(root, entries, errors, packagedRuntime) {
   const allowlist = exists(root, ALLOWLIST) ? readJson(root, ALLOWLIST) : {entries: []};
   // Items that exist only in a staged runtime are reviewed in their own list, read only then.
-  if (packagedRuntimePresent(root) && exists(root, RUNTIME_ALLOWLIST))
+  if (packagedRuntime && exists(root, RUNTIME_ALLOWLIST))
     allowlist.entries = [...allowlist.entries, ...readJson(root, RUNTIME_ALLOWLIST).entries];
   const used = new Set();
   for (const entry of entries) {
@@ -609,8 +622,10 @@ function applyAllowlist(root, entries, errors) {
   for (const item of allowlist.entries) if (!used.has(item)) errors.push(`${ALLOWLIST}: stale entry ${item.name}${item.sha256 ? ` (${item.sha256})` : ''}`);
 }
 
-export function collectNotices(root = ROOT) {
+export function collectNotices(root = ROOT, {packagedRuntime = shippedPackagedRuntime(root)} = {}) {
   const errors = [];
+  if (packagedRuntime && !packagedRuntimePresent(root))
+    errors.push(`--packaged-runtime needs a staged runtime in ${AGENT_ASSETS}; run npm run agent:stage-android first`);
   const templates = {
     mit: normalizeText(read(root, 'licenses/MIT.txt')),
     isc: normalizeText(read(root, 'licenses/ISC.txt')),
@@ -627,8 +642,8 @@ export function collectNotices(root = ROOT) {
     ...androidEntries(root, templates, errors),
     ...speechEntries(root, templates, errors),
     ...browserSpeechEntries(root, templates, errors),
-    ...payloadEntries(root),
-    ...runtimeEntries(root, templates, errors),
+    ...payloadEntries(packagedRuntime),
+    ...(packagedRuntime ? runtimeEntries(root, templates, errors) : []),
     ...mapDataEntries(root),
   ];
   for (const entry of entries) {
@@ -636,7 +651,7 @@ export function collectNotices(root = ROOT) {
     if (bad.length) errors.push(`${entry.name}@${entry.version}: unknown license ${bad.join(', ')}`);
     if (!entry.text || !entry.text.trim()) errors.push(`${entry.name}@${entry.version}: empty notice text`);
   }
-  applyAllowlist(root, entries, errors);
+  applyAllowlist(root, entries, errors, packagedRuntime);
   const clean = entries.map(({name, version, license, source, text}) => ({name, version, license, source, text: normalizeText(text)}))
     .sort((a, b) => a.name.localeCompare(b.name, 'en') || a.version.localeCompare(b.version, 'en'));
   return {entries: clean, errors};
@@ -668,8 +683,8 @@ export function renderText(entries) {
   return `${header}\n\n${blocks.join('\n\n')}\n`;
 }
 
-export function generate(root = ROOT) {
-  const {entries, errors} = collectNotices(root);
+export function generate(root = ROOT, options = {}) {
+  const {entries, errors} = collectNotices(root, options);
   return {entries, errors, json: renderJson(entries), text: renderText(entries)};
 }
 
@@ -680,11 +695,21 @@ async function main(argv) {
     const snapshot = refreshAndroidClasspath(ROOT, androidEnv());
     console.log(`Resolved ${snapshot.coordinates.length} Android runtime coordinates into ${ANDROID_CLASSPATH}`);
   }
-  const {entries, errors, json, text} = generate(ROOT);
-  if (packagedRuntimePresent(ROOT)) {
-    const bundled = entries.filter(entry => /^Bundled in the on-device /.test(entry.text));
-    const bun = entries.find(entry => entry.name.startsWith('Bun JavaScript runtime'));
-    console.log(`PACKAGED runtime notices: ${bun ? `${bun.name} ${bun.version}` : 'Bun MISSING'}; ${bundled.length} bundled agent/workflow-worker npm packages.`);
+  // Writing defaults to the committed (no runtime) form; --check follows the shipped form.
+  const packagedRuntime = argv.includes('--packaged-runtime') || (check && shippedPackagedRuntime(ROOT));
+  const {entries, errors, json, text} = generate(ROOT, {packagedRuntime});
+  const summarize = (rows, label) => {
+    const bundled = rows.filter(entry => /^Bundled in the on-device /.test(entry.text));
+    const bun = rows.find(entry => entry.name === BUN_ENTRY);
+    console.log(`${label}: ${bun ? `${bun.name} ${bun.version}` : 'Bun MISSING'}; ${bundled.length} bundled agent/workflow-worker npm packages.`);
+  };
+  if (packagedRuntime) summarize(entries, 'PACKAGED runtime notices');
+  else if (check && packagedRuntimePresent(ROOT)) {
+    // List what a PACKAGED distribution of this staged runtime would ship, without
+    // comparing it to the committed (no runtime) notices.
+    const staged = collectNotices(ROOT, {packagedRuntime: true});
+    summarize(staged.entries, 'Staged runtime (not in the committed notices; use --packaged-runtime for a distribution)');
+    for (const error of staged.errors) console.warn(`Staged runtime notice problem: ${error}`);
   }
   if (errors.length) {
     console.error(`Third-party notice generation failed:\n- ${errors.join('\n- ')}`);

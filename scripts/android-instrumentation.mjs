@@ -139,8 +139,9 @@ export function admitApks(apkDir, variant, { testMocks }) {
   const appSha256 = sha(app), testSha256 = sha(test);
   const row = manifest.results?.find(entry => entry.variant === variant && entry.mode === "debug");
   if (!row || row.sha256 !== appSha256) throw new Error(`${app} does not match the verified ${manifestFile} row`);
+  // verify-apks records the instrumentation APK built with this app; an unrecorded one is not bound to it.
   const recordedTest = manifest.instrumentation?.[variant]?.sha256;
-  if (recordedTest !== undefined && recordedTest !== testSha256) throw new Error(`${test} does not match ${manifestFile}`);
+  if (recordedTest !== testSha256) throw new Error(`${test} does not match the instrumentation APK recorded in ${manifestFile}; rebuild and re-verify`);
   return [
     { variant, role: "app", file: app, sha256: appSha256, versionCode: row.versionCode, testMocks },
     { variant, role: "test", file: test, sha256: testSha256, testMocks },
@@ -169,6 +170,14 @@ async function main() {
     return `${result.stdout ?? ""}${allowFailure ? result.stderr ?? "" : ""}`;
   };
 
+  // The shared device lease is held before the emulator is inspected, so another
+  // runner cannot install between the admission checks and this run's installs.
+  const { acquireDeviceLease, deviceLeaseStateDir } = await import("../vendor/eliza/packages/app/scripts/lib/device-lease.ts");
+  const lease = await acquireDeviceLease(`android:${serial}`, { waitMs: 0, ttlMs: Number.MAX_SAFE_INTEGER, stateDir: deviceLeaseStateDir(process.env) });
+  try { await runLeased({ options, serial, adb }); } finally { lease.release(); }
+}
+
+async function runLeased({ options, serial, adb }) {
   // Admission before any installation.
   const avd = adb(["emu", "avd", "name"]).split(/\r?\n/)[0].trim();
   if (avd !== options.avd) throw new Error(`Serial ${serial} runs AVD ${JSON.stringify(avd)}, not ${options.avd}`);
@@ -185,8 +194,6 @@ async function main() {
   fs.mkdirSync(path.dirname(output), { recursive: true });
   fs.mkdirSync(output); // Fresh directory: never mix with older evidence.
 
-  const { acquireDeviceLease, deviceLeaseStateDir } = await import("../vendor/eliza/packages/app/scripts/lib/device-lease.ts");
-  const lease = await acquireDeviceLease(`android:${serial}`, { waitMs: 0, ttlMs: Number.MAX_SAFE_INTEGER, stateDir: deviceLeaseStateDir(process.env) });
   const classes = [];
   const installed = [];
   const emulator = { avd, abi: prop("ro.product.cpu.abi"), sdk: prop("ro.build.version.sdk"), serialSha256: createHash("sha256").update(serial).digest("hex") };
@@ -235,7 +242,6 @@ async function main() {
   } finally {
     // Remove only what this run installed.
     for (const pkg of [...new Set(installed)].reverse()) adb(["uninstall", pkg], { allowFailure: true });
-    lease.release();
   }
   const result = writeInstrumentationRecord(path.join(output, "results.json"), {
     runId, createdAt: new Date().toISOString(), commit, dirty, testMocks: options.testMocks, emulator,

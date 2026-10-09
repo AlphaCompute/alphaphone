@@ -95,6 +95,10 @@ test("APK admission binds the app to the verify-apks manifest and the test APK t
     assert.equal(app.sha256, sha("app"));
     assert.equal(testApk.sha256, sha("test"));
     assert.throws(() => admitApks(dir, "standalone", { testMocks: true }), /testMocks/);
+    // A test APK the manifest does not record is not bound to this app build.
+    fs.writeFileSync(path.join(dir, "apk-manifest.json"), JSON.stringify({ ...manifest, instrumentation: {} }));
+    assert.throws(() => admitApks(dir, "standalone", { testMocks: false }), /instrumentation APK recorded/);
+    fs.writeFileSync(path.join(dir, "apk-manifest.json"), JSON.stringify(manifest));
     fs.writeFileSync(path.join(dir, "standalone-debug.apk"), "changed");
     assert.throws(() => admitApks(dir, "standalone", { testMocks: false }), /does not match/);
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }

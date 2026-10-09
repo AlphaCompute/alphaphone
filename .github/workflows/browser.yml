@@ -12,7 +12,8 @@ on:
 permissions:
   contents: read
 concurrency:
-  group: browser-${{ github.ref }}
+  # Superseded PR runs are cancelled; each main push keeps its own run (see android.yml).
+  group: browser-${{ github.event_name == 'push' && github.sha || github.ref }}
   cancel-in-progress: ${{ github.event_name != 'push' }}
 jobs:
   changes:

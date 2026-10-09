@@ -43,7 +43,7 @@ updates that unit in place: the pulled installed APK and the new APK must have t
 apksigner certificate and the new versionCode must be greater; the app is stopped, its
 data domains are read back as per-file SHA-256 inventories, `adb install -r` runs, and the
 uid, first-install time and every domain must be unchanged (the app is not started in
-between). Android allows that data readback only for debuggable builds, so on a release
+between). A readback walk that fails, or that finds no app data to compare, fails the update. Android allows that data readback only for debuggable builds, so on a release
 unit the update record states that only package identity was read back. The result is
 appended to the unit record. Rollback is not offered; the rollback design remains blocked.
 

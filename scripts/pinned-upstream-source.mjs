@@ -49,7 +49,9 @@ export function assessDevelopReachability(record, pin) {
 	const consistent =
 		(record.status === "identical") === (record.aheadBy === 0 && record.behindBy === 0) &&
 		(record.aheadBy === 0) === ["identical", "behind"].includes(record.status) &&
-		(record.aheadBy === 0) === (record.pinOnlyCommits.length === 0);
+		// Merge commits are not listed, so an ahead pin may have no non-merge commits.
+		(record.aheadBy > 0 || record.pinOnlyCommits.length === 0) &&
+		record.pinOnlyCommits.length <= record.aheadBy;
 	if (!consistent)
 		return { ok: false, reachable: false, reason: "invalid", message: `${REACHABILITY_RECORD} status, counts and commit list disagree.` };
 	if (record.head !== pin)

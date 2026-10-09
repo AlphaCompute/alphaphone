@@ -21,6 +21,7 @@ import {
 } from "./apk.mjs";
 import { androidEnv, tool } from "./toolchain.mjs";
 import { readReleaseSigner, releaseAdmission, RELEASE_SIGNER_FILE } from "./build-android.mjs";
+import { BUN_ENTRY } from "./generate-licenses.mjs";
 
 const USAGE = "Usage: node scripts/verify-apks.mjs [--test-mocks] [--allow-unpackaged-runtime]";
 const args = process.argv.slice(2);
@@ -63,6 +64,13 @@ for (const variant of ["standalone", "launcher"])
     // Shared web bundle audit on the exact packaged payload.
     const payload = extractWebPayload(file);
     let flags;
+    // A PACKAGED distribution must ship notices regenerated with --packaged-runtime (Bun and
+    // the bundled agent/worker packages); the committed notices carry only the umbrella entry.
+    let runtimeNotices = false;
+    try {
+      const notices = path.join(payload.public, "licenses", "third-party-notices.json");
+      runtimeNotices = fs.existsSync(notices) && JSON.parse(fs.readFileSync(notices, "utf8")).some(entry => entry?.name === BUN_ENTRY);
+    } catch { runtimeNotices = false; }
     try {
       flags = readBuildFlags(payload.public);
       if (flags.testMocks !== testMocks)
@@ -91,6 +99,7 @@ for (const variant of ["standalone", "launcher"])
       exportedComponents: facts.exported.map(component => component.name).sort(),
       testMocks: flags?.testMocks ?? null,
       bundleAudit: problems.length ? "failed" : "passed",
+      runtimeNotices,
     });
   }
 if (failures.length)
@@ -149,7 +158,7 @@ for (const row of release) {
   ], { encoding: "utf8" }));
   row.distributable = !testMocks && row.signed === true && row.releaseAdmission.signerMatches === true &&
     row.releaseAdmission.blockers.length === 0 && row.releaseAdmission.failures.length === 0 &&
-    runtime.distributable === true && row.speechQualification.byteMatch === true && row.speechQualification.functionalPassed === true && row.speechQualification.qualified === true;
+    runtime.distributable === true && row.runtimeNotices === true && row.speechQualification.byteMatch === true && row.speechQualification.functionalPassed === true && row.speechQualification.qualified === true;
 }
 for (const row of results.filter(row => row.mode === "debug"))
   row.runtime = runtimePackaging.find(entry => entry.apk === row.file).runtime;
@@ -199,7 +208,7 @@ fs.writeFileSync(
 console.log(JSON.stringify(results, null, 2));
 const undistributable = release.filter(row => !row.distributable);
 if (undistributable.length)
-  console.warn(`Not distributable: ${undistributable.map(row => `${row.file} (${[row.runtime !== "PACKAGED" && "no packaged runtime", testMocks && "test-mocks build", !row.speechQualification.byteMatch && "speech native bytes not admitted", !row.speechQualification.functionalPassed && "speech functional acceptance pending or failed", ...row.releaseAdmission.blockers].filter(Boolean).join(", ")})`).join("; ")}`);
+  console.warn(`Not distributable: ${undistributable.map(row => `${row.file} (${[row.runtime !== "PACKAGED" && "no packaged runtime", testMocks && "test-mocks build", !row.speechQualification.byteMatch && "speech native bytes not admitted", !row.speechQualification.functionalPassed && "speech functional acceptance pending or failed", !row.runtimeNotices && "notices lack the packaged runtime (run node scripts/generate-licenses.mjs --packaged-runtime after staging)", ...row.releaseAdmission.blockers].filter(Boolean).join(", ")})`).join("; ")}`);
 const unsigned = release.filter(row => !row.signed);
 if (unsigned.length)
   console.warn(`Unsigned releases (set ELIZAOS_KEYSTORE_PATH, ELIZAOS_KEYSTORE_PASSWORD, ELIZAOS_KEY_ALIAS and ELIZAOS_KEY_PASSWORD to sign): ${unsigned.map(row => row.file).join(", ")}`);

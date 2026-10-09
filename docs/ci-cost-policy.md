@@ -38,8 +38,9 @@ are removed. Distribution APK builds, repository checks and browser regression t
 Main pushes run affected repository verification, including the production bundle
 audit, and the affected Android foundation build of both variants, so a merge that
 breaks packaging is visible on the exact main commit. They do not repeat PR browser
-shards. Main-push runs are never cancelled by a later push; PR runs still cancel
-superseded runs. The repository ruleset requires PRs.
+shards. Each main push runs in its own concurrency group, so a later push neither
+cancels it nor drops it while queued; PR runs still cancel superseded runs. Resident
+push and nightly runs use their own groups too and never cancel a dispatched run. The repository ruleset requires PRs.
 
 The production browser project runs `test/browser/production-surface.spec.ts` and every
 `test/browser/<name>.production.spec.ts` against the flag-off build. A package that
@@ -55,7 +56,7 @@ and **Android foundation result** (needs the change gate and `build`). An aggreg
 passes when every lane the change gate selected succeeded and unselected lanes were
 skipped; a selected lane that failed, was cancelled or was skipped fails it
 (`scripts/ci/required-result.mjs`). Reference-only changes therefore stay mergeable
-without starting runners.
+with only the change gate and the two short aggregate jobs.
 
 The ruleset below (`scripts/ci/required-checks-ruleset.json`, integration 15368 is
 GitHub Actions) requires those two aggregates and Repository verification on the

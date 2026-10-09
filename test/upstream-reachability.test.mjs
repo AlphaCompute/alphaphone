@@ -15,6 +15,8 @@ test('develop reaches the pin only when the recorded compare has no pin-only com
   assert.equal(diverged.reachable, false);
   assert.equal(diverged.reason, 'unreachable');
   assert.match(diverged.message, /cccccccccc fix\(x\): y/);
+  // Merge commits are not listed: an ahead pin with only merge commits is still unreachable.
+  assert.equal(assessDevelopReachability({ ...base, status: 'ahead', aheadBy: 1, behindBy: 0, pinOnlyCommits: [] }, pin).reason, 'unreachable');
 });
 
 test('a missing, malformed, inconsistent or stale record never reports reachable', () => {
@@ -23,6 +25,8 @@ test('a missing, malformed, inconsistent or stale record never reports reachable
   assert.equal(assessDevelopReachability({ ...base, status: 'behind', aheadBy: 1, behindBy: 1, pinOnlyCommits: [] }, pin).reason, 'invalid');
   assert.equal(assessDevelopReachability({ ...base, status: 'identical', aheadBy: 0, behindBy: 4, pinOnlyCommits: [] }, pin).reason, 'invalid');
   assert.equal(assessDevelopReachability({ ...base, status: 'behind', aheadBy: 0, behindBy: 1, pinOnlyCommits: [] }, 'd'.repeat(40)).reason, 'stale');
+  assert.equal(assessDevelopReachability({ ...base, status: 'behind', aheadBy: 0, behindBy: 1, pinOnlyCommits: [{ sha: 'c'.repeat(40), subject: 'x' }] }, pin).reason, 'invalid');
+  assert.equal(assessDevelopReachability({ ...base, status: 'diverged', aheadBy: 1, behindBy: 1, pinOnlyCommits: [{ sha: 'c'.repeat(40), subject: 'x' }, { sha: 'e'.repeat(40), subject: 'y' }] }, pin).reason, 'invalid');
 });
 
 test('mode is warn by default and configurable by flag or ELIZA_ variable', () => {

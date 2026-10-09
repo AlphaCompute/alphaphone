@@ -6,7 +6,7 @@ import os from "node:os";
 import path from "node:path";
 import { createHash } from "node:crypto";
 import { admitUnitApk, packageFacts, parseUnitArgs } from "../scripts/provision-unit.mjs";
-import { compareDomains, parseDomainInventory, updateAdmission } from "../scripts/pilot-update.mjs";
+import { compareDomains, DOMAIN_SCRIPT, parseDomainInventory, readbackInventory, unitApkMismatch, updateAdmission } from "../scripts/pilot-update.mjs";
 
 const sha = text => createHash("sha256").update(text).digest("hex");
 const SIGNER = "a".repeat(64);
@@ -61,4 +61,24 @@ test("package facts, update admission and data-domain readback", () => {
   after.shared_prefs["shared_prefs/a.xml"] = "4".repeat(64);
   after.databases = { "databases/new.db": "5".repeat(64) };
   assert.deepEqual(compareDomains(before, after), ["databases/new.db appeared", "files/notes.json was lost", "shared_prefs/a.xml changed"]);
+});
+
+test("data readback never mistakes a failed or refused walk for an unchanged inventory", () => {
+  // One single-quoted device-shell word: no single quotes inside, patterns double-quoted.
+  assert.ok(!DOMAIN_SCRIPT.includes("'"));
+  assert.match(DOMAIN_SCRIPT, /! -path "\.\/cache\/\*"/);
+  assert.match(DOMAIN_SCRIPT, /echo "READBACK_EXIT=\$\?"$/);
+  const ok = readbackInventory(`${"1".repeat(64)}  ./files/a.json\nREADBACK_EXIT=0\n`);
+  assert.deepEqual(Object.keys(ok), ["files"]);
+  assert.throws(() => readbackInventory("find: ./cache/b: unknown primary or operator\nREADBACK_EXIT=1\n"), /exit 1/);
+  assert.throws(() => readbackInventory(""), /exit missing/);
+  assert.equal(readbackInventory("\nrun-as: package not debuggable: ai.elizaresearch.alphaphone"), null);
+});
+
+test("an update keeps the unit's provisioned variant and build type", () => {
+  const unit = { apk: { variant: "launcher", build: "release" } };
+  assert.equal(unitApkMismatch(unit, { variant: "launcher", build: "release" }), null);
+  assert.match(unitApkMismatch(unit, { variant: "standalone", build: "release" }), /provisioned with the launcher release/);
+  assert.match(unitApkMismatch(unit, { variant: "launcher", build: "debug" }), /same --variant and --build/);
+  assert.match(unitApkMismatch({}, { variant: "launcher", build: "release" }), /unknown/);
 });

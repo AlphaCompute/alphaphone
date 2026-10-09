@@ -65,12 +65,28 @@ export function updateAdmission({ installedVersionCode, installedSigner, newVers
   return problems;
 }
 
+/** Both variants share one package id, so an update never switches the unit's variant or build type. */
+export function unitApkMismatch(unit, apk) {
+  if (unit?.apk?.variant === apk.variant && unit?.apk?.build === apk.build) return null;
+  return `provisioned with the ${unit?.apk?.variant ?? "unknown"} ${unit?.apk?.build ?? "unknown"} APK, not ${apk.variant} ${apk.build}; pass the same --variant and --build`;
+}
+
+// Excludes caches and code-cache, which Android may clear at any time. adb joins the
+// arguments into one device-shell command line, so the script is one single-quoted word
+// whose patterns use double quotes (never globbed by either shell), and it ends with the
+// inner exit status so a failed walk can never read as an empty, unchanged inventory.
+export const DOMAIN_SCRIPT = 'find . -type f ! -path "./cache/*" ! -path "./code_cache/*" -exec sha256sum {} + ; echo "READBACK_EXIT=$?"';
+
+/** Parse one readback; null when run-as is refused (non-debuggable), throws when the walk failed. */
+export function readbackInventory(output) {
+  if (/run-as: package not debuggable|is not debuggable|Package .* is unknown/.test(output)) return null;
+  const exit = /^READBACK_EXIT=(\d+)\s*$/m.exec(output)?.[1];
+  if (exit !== "0") throw new Error(`App-data readback failed (exit ${exit ?? "missing"}): ${output.trim().split(/\r?\n/).slice(-3).join(" | ")}`);
+  return parseDomainInventory(output);
+}
+
 function readDomains(adb) {
-  // Excludes caches and code-cache, which Android may clear at any time.
-  const script = "find . -type f ! -path './cache/*' ! -path './code_cache/*' -exec sha256sum {} +";
-  const result = adb(["shell", "run-as", PACKAGE, "sh", "-c", `'${script}'`], { allowFailure: true });
-  if (/run-as: package not debuggable|is not debuggable|Package .* is unknown/.test(result)) return null;
-  return parseDomainInventory(result);
+  return readbackInventory(adb(["shell", "run-as", PACKAGE, "sh", "-c", `'${DOMAIN_SCRIPT}'`], { allowFailure: true, withStderr: true }));
 }
 
 async function main() {
@@ -83,6 +99,8 @@ async function main() {
   if (!fs.existsSync(recordFile)) throw new Error(`${recordFile} is missing; provision the unit with scripts/provision-unit.mjs first`);
   const unit = JSON.parse(fs.readFileSync(recordFile, "utf8"));
   const apk = admitUnitApk(options.apkManifest, options);
+  const mismatch = unitApkMismatch(unit, apk);
+  if (mismatch) throw new Error(`Unit ${options.alias}: ${mismatch}`);
   const adb = adbFor(options.serial);
   const device = deviceFacts(adb, options.serial);
   if (device.serialSha256 !== unit.device?.serialSha256) throw new Error(`Serial does not belong to unit ${options.alias}`);
@@ -112,7 +130,11 @@ async function main() {
   if (after.versionCode !== apk.versionCode) failures.push(`installed versionCode ${after.versionCode} is not ${apk.versionCode}`);
   if (after.userId !== before.userId) failures.push("package uid changed (data would be unreachable)");
   if (after.firstInstallTime !== before.firstInstallTime) failures.push("first-install time changed (the update replaced the install)");
-  if (domainsBefore) failures.push(...compareDomains(domainsBefore, domainsAfter ?? {}));
+  if (domainsBefore) {
+    // An empty inventory would make the byte-identical check vacuous.
+    if (!Object.values(domainsBefore).some(files => Object.keys(files).length)) failures.push("no app data was found before the update; the readback proves nothing");
+    failures.push(...compareDomains(domainsBefore, domainsAfter ?? {}));
+  }
   const update = {
     createdAt: new Date().toISOString(),
     from: { versionCode: before.versionCode, versionName: before.versionName, signerSha256: installedSigner },

@@ -95,10 +95,11 @@ export function apkRuntimeIdentity(apk) {
 }
 
 export function adbFor(serial) {
-  return (args, { timeout = 120_000, allowFailure = false } = {}) => {
+  return (args, { timeout = 120_000, allowFailure = false, withStderr = false } = {}) => {
     const result = spawnSync("adb", ["-s", serial, ...args], { encoding: "utf8", timeout, maxBuffer: 64 << 20 });
     if (!allowFailure && (result.error || result.status !== 0)) throw new Error(`adb ${args.slice(0, 3).join(" ")} failed: ${result.error?.message ?? (result.stderr || result.stdout).trim()}`);
-    return (result.stdout ?? "").trim();
+    // withStderr keeps device-side refusals (such as run-as on a release) visible to the caller.
+    return `${result.stdout ?? ""}${withStderr ? `\n${result.stderr ?? ""}` : ""}`.trim();
   };
 }
 

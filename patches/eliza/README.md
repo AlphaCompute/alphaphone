@@ -53,7 +53,7 @@ different patch set. Native-only patches (such as 0038) are not overlaid.
 New patches are written in a separate authoring clone or worktree at the pin (never
 `vendor/eliza`), exported with `node scripts/export-eliza-patch.mjs`, and must apply in series
 order on top of every lower-numbered applied patch already on `main`. Series numbers for the
-current round are reserved by owner: 0039-0044 calendar, reminders and clock; 0045-0049 assistant
+current round are reserved by work package (planning reservations, not patches that exist): 0039-0044 calendar, reminders and clock; 0045-0049 assistant
 device actions; 0050-0054 workflow digests; 0055-0059 Gmail inbox and Cloud (reference
 patches); 0060-0064 browser and password manager; 0065-0066 voice; 0067-0069 Maps; 0070-0072
 settings and diagnostics; 0073-0074 media; 0075-0076 shell and launcher; 0077-0078 connection

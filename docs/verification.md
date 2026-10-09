@@ -19,9 +19,13 @@ including instrumentation builds, lint and APK inspection. A partial `ELIZAOS_KE
 is signed by the certificate recorded in `android/release-signer.json` (`unset` until the
 release keys exist) and its versionCode exceeds that file's last recorded release; a signed
 release with another certificate or a non-advancing versionCode fails verification.
-`node scripts/generate-licenses.mjs --check` lists Bun and every npm package bundled into the
-agent and workflow worker when a PACKAGED runtime is staged; without one, the shipped
-notices carry only the umbrella runtime entry. Record the product commit,
+The committed notices carry only the umbrella runtime entry, so a staged runtime in a
+development checkout never makes them stale. `node scripts/generate-licenses.mjs --packaged-runtime`
+adds Bun (with its JavaScriptCore LGPL notice and source offer) and every npm package bundled
+into the staged agent and workflow worker; the resident workflow runs it after staging, and an
+APK built without that step does not carry those notices, and `verify-apks` never marks such a
+release distributable. `--check` lists the staged runtime's
+entries when one is present. Record the product commit,
 `upstream.lock.json` revision, generated input provenance and APK hashes.
 Unsigned release APKs require controlled signing before distribution.
 

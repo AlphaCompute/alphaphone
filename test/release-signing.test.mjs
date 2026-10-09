@@ -53,4 +53,7 @@ test("verify-apks requires signed:true and the descriptor match for distributabl
   const source = fs.readFileSync("scripts/verify-apks.mjs", "utf8");
   assert.match(source, /row\.distributable = !testMocks && row\.signed === true && row\.releaseAdmission\.signerMatches === true/);
   assert.match(source, /Release signing admission failed/);
+  // A PACKAGED distribution must ship the regenerated runtime notices (Bun and bundled packages).
+  assert.match(source, /runtime\.distributable === true && row\.runtimeNotices === true/);
+  assert.match(source, /entry\?\.name === BUN_ENTRY/);
 });

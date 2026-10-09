@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { agentBundlePackageDirs, collectNotices, packagedRuntimePresent, runtimeEntries, ROOT } from '../scripts/generate-licenses.mjs';
+import { agentBundlePackageDirs, BUN_ENTRY, collectNotices, packagedRuntimePresent, runtimeEntries, ROOT, shippedPackagedRuntime } from '../scripts/generate-licenses.mjs';
 
 const templates = { mit: 'MIT terms', isc: 'ISC terms', apache: 'Apache terms' };
 
@@ -86,9 +86,26 @@ test('without a staged runtime only the umbrella payload entry is shipped', t =>
   assert.deepEqual(runtimeEntries(root, templates, []), []);
 });
 
-test('this checkout lists Bun exactly when a PACKAGED runtime is staged', () => {
-  const { entries } = collectNotices(ROOT);
-  const bun = entries.some(entry => entry.name === 'Bun JavaScript runtime (libeliza_bun.so)');
-  assert.equal(bun, packagedRuntimePresent(ROOT));
-  assert.ok(entries.some(entry => entry.name === 'On-device elizaOS agent runtime payload'));
+test('runtime enumeration is explicit: a staged runtime never changes the committed notices', () => {
+  const isBun = entry => entry.name === BUN_ENTRY;
+  // The committed notices are generated without --packaged-runtime, so a development
+  // checkout with a staged runtime still matches them (test/licenses.test.mjs).
+  assert.equal(shippedPackagedRuntime(ROOT), false);
+  const committed = collectNotices(ROOT);
+  assert.equal(committed.entries.some(isBun), false);
+  assert.ok(committed.entries.some(entry => entry.name === 'On-device elizaOS agent runtime payload'));
+  const packaged = collectNotices(ROOT, { packagedRuntime: true });
+  if (packagedRuntimePresent(ROOT)) assert.ok(packaged.entries.some(isBun));
+  else assert.ok(packaged.errors.some(error => /--packaged-runtime needs a staged runtime/.test(error)), 'refuses without a staged runtime');
+});
+
+test('generation follows the shipped mode, and --packaged-runtime is wired into the PACKAGED build', t => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'alpha-shipped-mode-'));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  assert.equal(shippedPackagedRuntime(root), false, 'no shipped notices');
+  fs.mkdirSync(path.join(root, 'apps/app/public/licenses'), { recursive: true });
+  fs.writeFileSync(path.join(root, 'apps/app/public/licenses/third-party-notices.json'), JSON.stringify([{ name: BUN_ENTRY }]));
+  assert.equal(shippedPackagedRuntime(root), true);
+  const resident = fs.readFileSync(path.join(ROOT, '.github/workflows/resident-android.yml'), 'utf8');
+  assert.match(resident, /node scripts\/generate-licenses\.mjs --packaged-runtime\n/);
 });
