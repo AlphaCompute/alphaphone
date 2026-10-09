@@ -16,6 +16,13 @@ function reminderWallTime(off:number,hours:number):Date|null {
 /** Native reminders use the reference calendar form, timeline and detail sheet. */
 export function installReminderAdapter(Component: Bag, views: Bag) {
   const p = Component.prototype, mount = p.componentDidMount, unmount = p.componentWillUnmount;
+  // Open the same native reminder form from Calendar or the unified automation list.
+  // This creates a draft only; the existing Save flow owns storage and scheduling.
+  p.newDeviceReminderDraft=function(){
+    const date=new Date();date.setHours(date.getHours()+1,0,0,0);
+    const today=new Date();today.setHours(0,0,0,0);const day=new Date(date);day.setHours(0,0,0,0);
+    this.vset('calendar',{month:null,open:null,form:{id:null,title:'',off:Math.round((day.getTime()-today.getTime())/86400000),t:date.getHours(),d:1,where:'',video:false,who:[],cal:'alpha-reminders',repeat:'none',alert:0,notes:''}});
+  };
   const render = views.calendar.render;
   views.calendar.state = { ...views.calendar.state, events: [] };
   let owner: Bag;

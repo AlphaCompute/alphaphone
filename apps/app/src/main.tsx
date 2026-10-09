@@ -24,6 +24,7 @@ import { installNotesDocumentAdapter } from './prototype/notes-document-adapter'
 import { installPrototypeMapsAdapter } from './prototype/maps-adapter';
 import { installNotificationsAdapter } from './prototype/notifications-adapter';
 import { installWorkflowAdapter } from './prototype/workflow-adapter';
+import { installAutomationsAdapter } from './prototype/automations-adapter';
 import { useEffect, useState, useSyncExternalStore } from 'react';
 import { StartupPermissions } from './startup-permissions';
 import { createRoot } from 'react-dom/client';
@@ -93,10 +94,10 @@ if (!fixture) {
   installSettingsAdapter(Component, VIEWS);
   if(!isAndroid){if(devSurfacesEnabled)installBrowserDeviceAdapter(Component);else installBrowserCapabilityTiles(Component);}
   if(!browserDevProfile) installInboxCloudAdapter(Component, VIEWS);
-  if(!browserDevProfile) installWorkflowAdapter(Component, VIEWS);
+  if(!browserDevProfile) {installWorkflowAdapter(Component, VIEWS);installAutomationsAdapter(Component,VIEWS);}
 }
 if(devSurfacesEnabled&&simulatedApps)installSimulatedApps(Component,VIEWS,simulatedApps);
-if(developmentAgentWorkflows)installWorkflowAdapter(Component,VIEWS);
+if(developmentAgentWorkflows){installWorkflowAdapter(Component,VIEWS);installAutomationsAdapter(Component,VIEWS);}
 installSubviewAccessibility(VIEWS);
 installCalendarMonthFocus(Component, VIEWS);
 installChatOverlayMotion(Component);

@@ -3109,15 +3109,27 @@
 
 
 <sc-if value="{{is.workflows}}" hint-placeholder-val="{{false}}">
-<div onFocusCapture="{{workflows.captureSubviewFocus}}" style="display: flex; flex-direction: column; height: 100%; position: relative">
+<div onFocusCapture="{{workflows.captureSubviewFocus}}" style="display: flex; flex-direction: column; height: 100%; position: relative; background:var(--bg)">
   <div data-alpha-subview="workflows-list" inert="{{workflows.listCovered}}" aria-hidden="{{workflows.listCovered}}" style="display:flex;flex-direction:column;flex:1;min-height:0">
   <div data-alpha-app-header="main" style="display: flex; align-items: center; height: 56px; margin-top: 44px; padding: 0 8px 0 20px; gap: 2px; flex-shrink: 0">
     <sc-if value="{{showAppBack}}"><button class="app-header-back" aria-label="Back to apps" onClick="{{backToApps}}"><svg class="i" viewBox="0 0 24 24"><path d="{{ic.back}}"></path></svg></button></sc-if>
     <h1 data-alpha-app-title class="serif" style="margin: 0; font-size: 32px; flex-grow: 1; letter-spacing: -.01em">Workflows</h1>
     <sc-if value="{{workflows.localHistory}}"><button aria-label="Manage workflow history" onClick="{{workflows.localHistory}}" style="min-height:44px;padding:8px">History</button></sc-if>
-    <button class="ib" aria-label="New workflow" onClick="{{workflows.newFlow}}"><svg class="i" viewBox="0 0 24 24"><path d="{{ic.plus}}"></path></svg></button>
+    <button class="ib" aria-label="New automation" onClick="{{workflows.newFlow}}"><svg class="i" viewBox="0 0 24 24"><path d="{{ic.plus}}"></path></svg></button>
   </div>
+  <sc-if value="{{workflows.automation}}">
+    <nav class="automation-filters" aria-label="Filter automations">
+      <sc-for list="{{workflows.automation.filters}}" as="filter"><button aria-pressed="{{filter.selected}}" onClick="{{filter.pick}}">{{filter.name}}</button></sc-for>
+    </nav>
+  </sc-if>
   <div class="scr" data-alpha-app-scroll="workflows" style="flex-grow: 1; overflow-y: auto; padding: 8px 16px 120px; display: flex; flex-direction: column; gap: 10px; touch-action: pan-y">
+    <sc-if value="{{workflows.automation}}">
+      <sc-if value="{{workflows.automation.loading}}"><p class="automation-status" role="status">Refreshing automations…</p></sc-if>
+      <sc-if value="{{workflows.automation.message}}"><p class="automation-status" role="status">{{workflows.automation.message}}</p></sc-if>
+      <sc-for list="{{workflows.automation.issues}}" as="issue"><p class="automation-status" role="alert">{{issue.message}}</p></sc-for>
+      <sc-if value="{{workflows.automation.empty}}"><p class="automation-status">{{workflows.automation.emptyLabel}}</p></sc-if>
+      <div class="automation-actions" style="margin-top:0"><button disabled="{{workflows.automation.busy}}" onClick="{{workflows.automation.refresh}}">Refresh</button></div>
+    </sc-if>
     <sc-for list="{{workflows.cards}}" as="f" hint-placeholder-count="4">
       <div style="display: flex; align-items: flex-start; gap: 12px; padding: 18px 16px 18px 20px; border-radius: 24px; background: var(--s2); flex-shrink: 0">
         <button onClick="{{f.open}}" style="flex-grow: 1; min-width: 0; text-align: left; {{f.dim}}">
@@ -3135,10 +3147,39 @@
         <sc-if value="{{f.statusLabel}}"><span style="font-size:13px;color:var(--mut);padding-top:3px">{{f.statusLabel}}</span></sc-if>
       </div>
     </sc-for>
+    <sc-for list="{{workflows.automation.managementCards}}" as="control"><button class="automation-management" onClick="{{control.open}}"><span>{{control.name}}</span><span>{{control.short}}</span><svg class="i" viewBox="0 0 24 24"><path d="{{ic.right}}"></path></svg></button></sc-for>
   </div>
 
   
   </div>
+  <sc-if value="{{workflows.automation.detail}}">
+    <section ref="{{workflows.detailFocus}}" data-alpha-subview="automations-detail" class="automation-detail" aria-label="{{workflows.automation.title}}">
+      <div data-alpha-app-header="detail" class="automation-detail-header"><button class="ib" aria-label="Back to automations" disabled="{{workflows.automation.busy}}" onClick="{{workflows.automation.close}}"><svg class="i" viewBox="0 0 24 24"><path d="{{ic.back}}"></path></svg></button></div>
+      <div class="automation-detail-body scr">
+        <h2 class="serif">{{workflows.automation.title}}</h2>
+        <sc-if value="{{workflows.automation.creating}}"><div class="automation-new">
+          <button disabled="{{workflows.automation.agentUnavailable}}" onClick="{{workflows.automation.createWorkflow}}">Workflow<span>Build reviewed steps on this agent</span></button>
+          <button disabled="{{workflows.automation.agentUnavailable}}" onClick="{{workflows.automation.createPrompt}}">Prompt automation<span>Save paused, then review its schedule</span></button>
+          <button disabled="{{workflows.automation.agentUnavailable}}" onClick="{{workflows.automation.createReminder}}">Agent reminder<span>A one-time in-app reminder on this agent</span></button>
+          <button onClick="{{workflows.automation.createDeviceReminder}}">Reminder on this phone<span>Use Calendar and this phone’s notification settings</span></button>
+        </div></sc-if>
+        <sc-if value="{{workflows.automation.source}}"><p class="automation-status">{{workflows.automation.source}} · {{workflows.automation.status}}</p></sc-if>
+        <sc-if value="{{workflows.automation.schedule}}"><p>{{workflows.automation.schedule}}</p></sc-if>
+        <sc-if value="{{workflows.automation.description}}"><p>{{workflows.automation.description}}</p></sc-if>
+        <sc-if value="{{workflows.automation.editing}}">
+          <sc-if value="{{workflows.automation.prompt}}"><div class="automation-filters" style="padding:0" aria-label="Prompt schedule"><sc-for list="{{workflows.automation.scheduleKinds}}" as="kind"><button aria-pressed="{{kind.selected}}" disabled="{{workflows.automation.busy}}" onClick="{{kind.pick}}">{{kind.label}}</button></sc-for></div></sc-if>
+          <div class="automation-fields"><sc-for list="{{workflows.automation.fields}}" as="field"><label><span>{{field.label}}</span><sc-if value="{{field.singleLine}}"><input type="{{field.type}}" value="{{field.value}}" disabled="{{workflows.automation.busy}}" onChange="{{field.change}}" /></sc-if><sc-if value="{{field.multiline}}"><textarea rows="5" value="{{field.value}}" disabled="{{workflows.automation.busy}}" onChange="{{field.change}}"></textarea></sc-if></label></sc-for></div>
+          <sc-if value="{{workflows.automation.prompt}}"><p class="automation-status" style="margin-top:18px">New prompts are saved paused. Enabling a schedule requires a separate review and does not grant access to phone data.</p></sc-if>
+          <div class="automation-actions"><button class="primary" disabled="{{workflows.automation.busy}}" onClick="{{workflows.automation.save}}">{{workflows.automation.saveLabel}}</button><button disabled="{{workflows.automation.busy}}" onClick="{{workflows.automation.close}}">Cancel</button></div>
+        </sc-if>
+        <sc-if value="{{workflows.automation.locked}}"><p role="alert">An earlier action has an unknown outcome. Refresh its record or execution history before repeating it.</p></sc-if>
+        <div class="automation-actions"><sc-for list="{{workflows.automation.actions}}" as="action"><button disabled="{{action.disabled}}" onClick="{{action.run}}">{{action.label}}</button></sc-for></div>
+        <sc-if value="{{workflows.automation.review}}"><div class="automation-review" role="group" aria-label="Review automation action"><p>{{workflows.automation.reviewLabel}} on the currently connected agent? The agent’s existing permissions and scheduling rules still apply.</p><div class="automation-actions"><button class="primary" onClick="{{workflows.automation.confirm}}">Confirm {{workflows.automation.reviewLabel}}</button><button onClick="{{workflows.automation.cancelReview}}">Keep unchanged</button></div></div></sc-if>
+        <sc-if value="{{workflows.automation.message}}"><p role="status">{{workflows.automation.message}}</p></sc-if>
+        <sc-for list="{{workflows.automation.history}}" as="entry"><p class="automation-status">{{entry}}</p></sc-for>
+      </div>
+    </section>
+  </sc-if>
   <sc-if value="{{workflows.detail}}" hint-placeholder-val="{{false}}">
     <div ref="{{workflows.detailFocus}}" data-alpha-subview="workflows-detail" inert="{{workflows.detailCovered}}" aria-hidden="{{workflows.detailCovered}}" class="enter" style="position: absolute; inset: 0; background: var(--bg); display: flex; flex-direction: column; z-index: 4">
       <div data-alpha-app-header="detail" style="display: flex; align-items: center; height: 56px; margin-top: 44px; padding: 0 8px; gap: 2px; flex-shrink: 0">
