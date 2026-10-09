@@ -10,7 +10,7 @@ for(const name of ['calendar','reminders'] as const)for(const event of ['alpha:d
    openDomainRecovery({capture:signal=>phase==='capture'?pending(signal):Promise.resolve(recovery),reset:(_,signal)=>new Promise<void>((resolve,reject)=>{(window as any).recoverySignal=signal;(window as any).releaseRecovery=()=>{if(signal?.aborted)reject(signal.reason);else resolve();};})},name,'Recovery lifecycle','Test recovery');
   },{name,phase});
   if(phase==='reset'){
-   await page.getByRole('button',{name:`Reset browser ${name}`,exact:true}).click();
+   await page.getByRole('button',{name:`Reset app ${name}`,exact:true}).click();
    await page.getByRole('button',{name:`Confirm ${name} reset`,exact:true}).click();
   }
   await expect.poll(()=>page.evaluate(()=>Boolean((window as any).recoverySignal))).toBe(true);

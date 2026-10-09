@@ -27,6 +27,6 @@ test('unreadable history offers exact backup and explicit reset without scheduli
  await page.screenshot({path:testInfo.outputPath('reminder-creation-recovery.png')});
  await expect(dialog).toContainText('may already exist');await expect(dialog).toContainText('does not cancel or remove reminders');
  const pending=page.waitForEvent('download');await dialog.getByRole('button',{name:'Download reminder creation history backup',exact:true}).click();const stream=await (await pending).createReadStream(),chunks:Buffer[]=[];for await(const chunk of stream!)chunks.push(Buffer.from(chunk));expect(JSON.parse(Buffer.concat(chunks).toString())).toEqual({raw:' {broken creation history '});
- await dialog.getByRole('button',{name:'Reset browser reminder creation history',exact:true}).click();await dialog.getByRole('button',{name:'Confirm reminder creation history reset',exact:true}).click();await expect(dialog).toHaveCount(0);
+ await dialog.getByRole('button',{name:'Reset app reminder creation history',exact:true}).click();await dialog.getByRole('button',{name:'Confirm reminder creation history reset',exact:true}).click();await expect(dialog).toHaveCount(0);
  expect(await page.evaluate(async key=>{const {reminderCreations}=await import('/src/runtime/reminder-creations.ts'),{BrowserDaily}=await import('/src/browser/daily.ts');return {history:await reminderCreations(),scheduled:(await new BrowserDaily().listReminders()).reminders.length,legacy:localStorage.getItem(key)};},key)).toEqual({history:{},scheduled:0,legacy:' {broken creation history '});
 });
