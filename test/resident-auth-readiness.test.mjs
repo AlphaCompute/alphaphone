@@ -77,7 +77,8 @@ test('actual native navigation and edit admission require a nonblank owner befor
  assert.ok(admission.startsWith('public void request(')&&admission.includes('call.reject('));
  const fixture=fs.mkdtempSync(path.join(os.tmpdir(),'alpha-navigation-admission-'));
  try{
-  fs.writeFileSync(path.join(fixture,'NavigationAdmission.java'),String.raw`import java.util.*;
+  fs.writeFileSync(path.join(fixture,'NavigationAdmission.java'),String.raw`package ai.elizaresearch.alphaphone;
+import java.util.*;
 public class NavigationAdmission {
  int admitted;
  static class PluginCall {
@@ -103,7 +104,8 @@ public class NavigationAdmission {
  }
 }`);
   const java=process.env.JAVA_HOME||(process.platform==='darwin'?'/opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home':'');const binary=name=>java?path.join(java,'bin',name):name;
-  execFileSync(binary('javac'),['--release','8','-d',fixture,path.join(fixture,'NavigationAdmission.java')],{timeout:20000});
-  assert.match(execFileSync(binary('java'),['-cp',fixture,'NavigationAdmission'],{encoding:'utf8',timeout:20000}),/^PASS actual native navigation and edit admission/);
+  const routes=path.join(root,'android/app/src/main/java/ai/elizaresearch/alphaphone/AutomationsRoutes.java');
+  execFileSync(binary('javac'),['--release','8','-d',fixture,routes,path.join(fixture,'NavigationAdmission.java')],{timeout:20000});
+  assert.match(execFileSync(binary('java'),['-cp',fixture,'ai.elizaresearch.alphaphone.NavigationAdmission'],{encoding:'utf8',timeout:20000}),/^PASS actual native navigation and edit admission/);
  }finally{fs.rmSync(fixture,{recursive:true,force:true});}
 });
