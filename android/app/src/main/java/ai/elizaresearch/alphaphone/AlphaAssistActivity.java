@@ -15,7 +15,9 @@ public final class AlphaAssistActivity extends MainActivity {
   setIntent(clean);
   super.onNewIntent(clean);
  }
+ /** The only extra: a product-set launch flag the renderer may read. Caller extras are dropped. */
+ static final String EXTRA_ASSISTANT = "alpha.assistant";
  private Intent cleanIntent() {
-  return new Intent(this, AlphaAssistActivity.class).setAction(Intent.ACTION_ASSIST);
+  return new Intent(this, AlphaAssistActivity.class).setAction(Intent.ACTION_ASSIST).putExtra(EXTRA_ASSISTANT, true);
  }
 }
