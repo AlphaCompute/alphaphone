@@ -3158,9 +3158,9 @@
       <div class="automation-detail-body scr">
         <h2 class="serif">{{workflows.automation.title}}</h2>
         <sc-if value="{{workflows.automation.creating}}"><div class="automation-new">
-          <button disabled="{{workflows.automation.agentUnavailable}}" onClick="{{workflows.automation.createWorkflow}}">Workflow<span>Build reviewed steps on this agent</span></button>
-          <button disabled="{{workflows.automation.agentUnavailable}}" onClick="{{workflows.automation.createPrompt}}">Prompt automation<span>Save paused, then review its schedule</span></button>
-          <button disabled="{{workflows.automation.agentUnavailable}}" onClick="{{workflows.automation.createReminder}}">Agent reminder<span>A one-time in-app reminder on this agent</span></button>
+          <button disabled="{{workflows.automation.agentUnavailable}}" onClick="{{workflows.automation.createWorkflow}}">Workflow<span>{{workflows.automation.workflowDescription}}</span></button>
+          <button disabled="{{workflows.automation.agentUnavailable}}" onClick="{{workflows.automation.createPrompt}}">Prompt automation<span>{{workflows.automation.promptDescription}}</span></button>
+          <button disabled="{{workflows.automation.agentReminderUnavailable}}" onClick="{{workflows.automation.createReminder}}">Agent reminder<span>{{workflows.automation.agentReminderDescription}}</span></button>
           <button onClick="{{workflows.automation.createDeviceReminder}}">Reminder on this phone<span>Use Calendar and this phone’s notification settings</span></button>
         </div></sc-if>
         <sc-if value="{{workflows.automation.source}}"><p class="automation-status">{{workflows.automation.source}} · {{workflows.automation.status}}</p></sc-if>
@@ -3170,7 +3170,7 @@
           <sc-if value="{{workflows.automation.prompt}}"><div class="automation-filters" style="padding:0" aria-label="Prompt schedule"><sc-for list="{{workflows.automation.scheduleKinds}}" as="kind"><button aria-pressed="{{kind.selected}}" disabled="{{workflows.automation.busy}}" onClick="{{kind.pick}}">{{kind.label}}</button></sc-for></div></sc-if>
           <div class="automation-fields"><sc-for list="{{workflows.automation.fields}}" as="field"><label><span>{{field.label}}</span><sc-if value="{{field.singleLine}}"><input type="{{field.type}}" value="{{field.value}}" disabled="{{workflows.automation.busy}}" onChange="{{field.change}}" /></sc-if><sc-if value="{{field.multiline}}"><textarea rows="5" value="{{field.value}}" disabled="{{workflows.automation.busy}}" onChange="{{field.change}}"></textarea></sc-if></label></sc-for></div>
           <sc-if value="{{workflows.automation.prompt}}"><p class="automation-status" style="margin-top:18px">New prompts are saved paused. Enabling a schedule requires a separate review and does not grant access to phone data.</p></sc-if>
-          <div class="automation-actions"><button class="primary" disabled="{{workflows.automation.busy}}" onClick="{{workflows.automation.save}}">{{workflows.automation.saveLabel}}</button><button disabled="{{workflows.automation.busy}}" onClick="{{workflows.automation.close}}">Cancel</button></div>
+          <div class="automation-actions"><button class="primary" disabled="{{workflows.automation.saveDisabled}}" onClick="{{workflows.automation.save}}">{{workflows.automation.saveLabel}}</button><button disabled="{{workflows.automation.busy}}" onClick="{{workflows.automation.close}}">Cancel</button></div>
         </sc-if>
         <sc-if value="{{workflows.automation.locked}}"><p role="alert">An earlier action has an unknown outcome. Refresh its record or execution history before repeating it.</p></sc-if>
         <div class="automation-actions"><sc-for list="{{workflows.automation.actions}}" as="action"><button disabled="{{action.disabled}}" onClick="{{action.run}}">{{action.label}}</button></sc-for></div>
