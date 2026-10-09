@@ -168,3 +168,20 @@ test('tiny Alpha input jitter remains a click; header is closer without shrinkin
 for(const target of ['Send','Talk'])test(`an input Alpha drag released over ${target} never synthesizes its click`,async({page})=>{
  await page.goto('/');await expect(page.getByRole('textbox',{name:'Ask Alpha',exact:true})).toBeVisible();if(target==='Send')await page.getByRole('textbox',{name:'Ask Alpha',exact:true}).fill('Never send from a drag');const bar=page.locator('[data-alpha-input-bar]');await bar.getByRole('button',{name:'Open conversation',exact:true}).click({trial:true});const alpha=(await bar.getByRole('button',{name:'Open conversation',exact:true}).boundingBox())!,button=(await bar.getByRole('button',{name:target,exact:true}).boundingBox())!;await page.evaluate(target=>{(window as any).lateInputAction=0;document.addEventListener('click',event=>{if((event.target as Element)?.closest(`button[aria-label="${target}"]`)){(window as any).lateInputAction++;event.preventDefault();event.stopImmediatePropagation();}},true);},target);await page.mouse.move(alpha.x+alpha.width/2,alpha.y+alpha.height/2);await page.mouse.down();await page.mouse.move(alpha.x+alpha.width/2,alpha.y+alpha.height/2-90,{steps:9});await page.mouse.move(button.x+button.width/2,button.y+button.height/2,{steps:9});await page.mouse.up();expect(await page.evaluate(()=>(window as any).lateInputAction)).toBe(0);await expect(page.getByRole('textbox',{name:'Ask Alpha',exact:true})).toHaveValue(target==='Send'?'Never send from a drag':'');
 });
+
+for(const viewport of [{width:412,height:915},{width:1440,height:500}])for(const pointer of ['mouse','touch'] as const)test(`empty placeholder ${pointer} short pull and tap at ${viewport.width}x${viewport.height}`,async({page})=>{
+ await page.setViewportSize(viewport);await page.goto('/');const input=page.getByRole('textbox',{name:'Ask Alpha',exact:true});await expect(input).toBeVisible();
+ const cdp=pointer==='touch'?await page.context().newCDPSession(page):null;
+ async function pull(up:boolean){
+  await input.click({trial:true});const box=(await input.boundingBox())!,scale=await page.locator('[data-screen]').evaluate(el=>el.getBoundingClientRect().height/(el as HTMLElement).clientHeight),x=box.x+box.width/2,y=box.y+box.height/2,delta=(up?-32:32)*scale;
+  expect(y+Math.max(0,delta)).toBeLessThan(viewport.height);
+  if(cdp)await cdp.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x,y,id:1}]});else{await page.mouse.move(x,y);await page.mouse.down();}
+  for(let step=1;step<=6;step++){await page.waitForTimeout(65);if(cdp)await cdp.send('Input.dispatchTouchEvent',{type:'touchMove',touchPoints:[{x,y:y+delta*step/6,id:1}]});else await page.mouse.move(x,y+delta*step/6);}
+  await expect(input).not.toBeFocused();
+  if(cdp)await cdp.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});else await page.mouse.up();
+ }
+ await pull(false);await expect(page.getByRole('button',{name:'Type',exact:true})).toBeVisible();await expect(page.getByRole('button',{name:'Resize chat',exact:true})).toHaveCount(0);await page.getByRole('button',{name:'Type',exact:true}).click();await expect(input).toHaveValue('');
+ if(cdp){const box=(await input.boundingBox())!,x=box.x+box.width/2,y=box.y+box.height/2;await cdp.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x,y,id:1}]});await cdp.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});}else await input.click();
+ await expect(input).toBeFocused();await expect(input).toHaveValue('');await expect(page.getByRole('button',{name:'Resize chat',exact:true})).toHaveCount(0);await input.evaluate(el=>(el as HTMLTextAreaElement).blur());
+ await pull(true);await expect(page.getByRole('button',{name:'Resize chat',exact:true})).toBeVisible();await expect(page.getByRole('textbox',{name:'Message Alpha',exact:true})).toHaveValue('');await page.screenshot({animations:'disabled',path:test.info().outputPath(`empty-placeholder-${pointer}.png`)});await cdp?.detach();
+});

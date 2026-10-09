@@ -232,10 +232,15 @@ export function installChatOverlayMotion(Component: Shell) {
 					!["hidden", "input", "sheet", "full"].includes(shell.S().chat)
 				)
 					return;
-				// Input motion belongs only to its background and Alpha button.
-				// Textarea, editable, Send and Talk targets keep their native behavior.
+				// Empty placeholder text is also a handle. Authored text, Send and Talk
+				// retain their native editing and activation behavior.
+				const emptyInput =
+					event.target instanceof HTMLTextAreaElement &&
+					event.target.value.length === 0 &&
+					String(out.draft || "").length === 0;
 				if (
 					shell.S().chat === "input" &&
+					!emptyInput &&
 					(!(event.target instanceof Element) ||
 						!event.target.closest(
 							"[data-alpha-input-drag-background],[data-alpha-input-drag-alpha]",
@@ -250,14 +255,16 @@ export function installChatOverlayMotion(Component: Shell) {
 				)
 					return;
 				event.stopPropagation();
+				if (emptyInput) event.preventDefault();
 				const g = bounds(),
 					mode = shell.S().chat as Mode,
 					owner = event.currentTarget as HTMLElement,
 					label = (event.target as Element)
 						?.closest("button")
 						?.getAttribute("aria-label"),
-					tap =
-						label === "Open conversation"
+					tap = emptyInput
+						? () => owner.focus()
+						: label === "Open conversation"
 							? out.openSheet
 							: label === "Type"
 								? out.toInput
@@ -295,6 +302,10 @@ export function installChatOverlayMotion(Component: Shell) {
 					moved: false,
 					tap,
 				} satisfies Drag;
+				shell.props.configureChatPull({
+					input: mode === "input",
+					scale: g.scale || 1,
+				});
 				binding.onPointerDown(event);
 			},
 			move(event: PointerEvent) {
@@ -321,6 +332,17 @@ export function installChatOverlayMotion(Component: Shell) {
 		out.grabSw = handlers;
 		out.pillSw = handlers;
 		out.inputSw = handlers;
+		out.inputComposerTouchAction =
+			String(out.draft || "").length === 0 ? "none" : "pan-y";
+		out.inputComposerPointer = (event: PointerEvent) => {
+			if (
+				event.target instanceof HTMLTextAreaElement &&
+				event.target.value.length === 0 &&
+				String(out.draft || "").length === 0
+			)
+				handlers.down(event);
+			else out.composerPointer(event);
+		};
 		// A captured drag may end over a former pill button. It must not synthesize
 		// a second action (including Type/Talk) after committing its detent.
 		for (const name of ["openSheet", "toInput", "startVoice"]) {

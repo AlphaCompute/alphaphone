@@ -1,3 +1,4 @@
+import {DEFAULT_PULL_DISTANCE,DEFAULT_PULL_VELOCITY} from "../../../.eliza/client-features/packages/ui/src/gestures/constants";
 import {usePullGesture} from "../../../.eliza/client-features/packages/ui/src/components/shell/use-pull-gesture";
 import {installChatOverlayMotion} from './prototype/chat-overlay-motion-adapter';
 import {installSubviewAccessibility} from './prototype/subview-accessibility';
@@ -23,7 +24,7 @@ import { installNotesDocumentAdapter } from './prototype/notes-document-adapter'
 import { installPrototypeMapsAdapter } from './prototype/maps-adapter';
 import { installNotificationsAdapter } from './prototype/notifications-adapter';
 import { installWorkflowAdapter } from './prototype/workflow-adapter';
-import { useEffect, useSyncExternalStore } from 'react';
+import { useEffect, useState, useSyncExternalStore } from 'react';
 import { StartupPermissions } from './startup-permissions';
 import { createRoot } from 'react-dom/client';
 import { Component, VIEWS } from './prototype/model.js';
@@ -113,8 +114,11 @@ function installBrowserCapabilityTiles(Component:any){
 let shell: any;
 let launcherPresentation = false;
 function Phone() {
+  const [pullSurface,setPullSurface]=useState({input:true,scale:1});
   const chatPullBinding=usePullGesture({
     swipeEnabled:false,
+    distanceThreshold:(pullSurface.input?24:DEFAULT_PULL_DISTANCE)*pullSurface.scale,
+    velocityThreshold:DEFAULT_PULL_VELOCITY*pullSurface.scale,
     onDrag:offset=>shell?.paintChatMotion(offset),
     onPullUp:()=>shell?.settleChatMotion('up'),
     onPullDown:()=>shell?.settleChatMotion('down'),
@@ -158,7 +162,7 @@ function Phone() {
     else if(action==='background'){shell.leave();shell.setState({screen:'off',voice:'off',chat:'input',shade:false});document.documentElement.dataset.devBackground='true';window.dispatchEvent(new Event('blur'));}
     else if(action==='resume'){delete document.documentElement.dataset.devBackground;shell.unlock();window.dispatchEvent(new Event('focus'));}
     if(['power','unlock','boot','background','resume'].includes(action))window.dispatchEvent(new Event('alpha:device-state'));
-  }}/>}{testMocksEnabled && mock && <div className="mock-mode-banner" role="status"><span>Mock mode · simulated data and actions</span><button onClick={() => { void connectionController.offline().then(() => { const url = new URL(location.href); url.searchParams.delete('mode'); url.searchParams.delete('start'); location.assign(url.href); }); }}>Exit mock mode</button></div>}<Component chatPullBinding={chatPullBinding} phoneSurface systemShell={launcherPresentation} nativeSystemChrome={isAndroid || !launcherPresentation} initial={testMocksEnabled && fixture ? query.get('start') || 'home' : 'home'} theme={initialTheme} ref={(value: any) => { shell = value; }} />
+  }}/>}{testMocksEnabled && mock && <div className="mock-mode-banner" role="status"><span>Mock mode · simulated data and actions</span><button onClick={() => { void connectionController.offline().then(() => { const url = new URL(location.href); url.searchParams.delete('mode'); url.searchParams.delete('start'); location.assign(url.href); }); }}>Exit mock mode</button></div>}<Component configureChatPull={(surface:{input:boolean;scale:number})=>setPullSurface(current=>current.input===surface.input&&current.scale===surface.scale?current:surface)} chatPullBinding={chatPullBinding} phoneSurface systemShell={launcherPresentation} nativeSystemChrome={isAndroid || !launcherPresentation} initial={testMocksEnabled && fixture ? query.get('start') || 'home' : 'home'} theme={initialTheme} ref={(value: any) => { shell = value; }} />
 {!fixture && <><ConnectionChooser /><HostedDigestPanel />{!connection.open && <StartupPermissions />}</>}</>;
 }
 async function mountPhone() {
