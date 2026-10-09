@@ -8,6 +8,7 @@ import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.json.JSONObject;
 import org.junit.After;
+import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import static org.junit.Assert.*;
@@ -21,7 +22,13 @@ public class LocalAgentProviderInstrumentedTest {
   Context context = InstrumentationRegistry.getInstrumentation().getTargetContext();
   return new AlphaCredentialStore(context);
  }
- @After public void clear() throws Exception { store().removeCredentialSlot(SLOT); }
+ /** A device or shared emulator may hold a real provider binding; keep it byte-for-byte. */
+ private String saved;
+ @Before public void keep() throws Exception { saved = store().readCredentialSlot(SLOT); store().removeCredentialSlot(SLOT); }
+ @After public void restore() throws Exception {
+  AlphaCredentialStore store = store();
+  if (saved == null) store.removeCredentialSlot(SLOT); else store.writeCredentialSlot(SLOT, saved);
+ }
 
  @Test public void cerebrasResponsesAreInterpretedWithoutEchoingTheBody() {
   String listed = "{\"object\":\"list\",\"data\":[{\"id\":\"llama-4\"},{\"id\":\"qwen-3.8-27b\"}]}";

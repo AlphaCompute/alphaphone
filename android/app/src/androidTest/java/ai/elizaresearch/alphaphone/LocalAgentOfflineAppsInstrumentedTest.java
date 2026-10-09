@@ -55,11 +55,12 @@ public class LocalAgentOfflineAppsInstrumentedTest {
   } finally {
    shell("svc wifi enable"); shell("svc data enable");
    if (savedCloud != null) store.writeCredentialSlot("cloud:production", savedCloud);
-   if (savedSelection != null && !"null".equals(savedSelection)) {
-    try (BoundedActivityScenario<MainActivity> restore = BoundedActivityScenario.launch(MainActivity.class)) {
-     until("document.querySelector('[data-screen]')");
-     WebViewTestDriver.evaluate("localStorage.setItem('" + SELECTION + "'," + savedSelection + ")");
-    }
+   // Restore the previous connection choice, including "none saved".
+   try (BoundedActivityScenario<MainActivity> restore = BoundedActivityScenario.launch(MainActivity.class)) {
+    until("document.querySelector('[data-screen]')");
+    WebViewTestDriver.evaluate(savedSelection != null && !"null".equals(savedSelection)
+     ? "localStorage.setItem('" + SELECTION + "'," + savedSelection + ")"
+     : "localStorage.removeItem('" + SELECTION + "')");
    }
   }
  }
