@@ -34,7 +34,7 @@
     }
   ],
   "notRun": "No Gradle build of the browser-surface module, no instrumentation, no device or emulator run. Alpha does not consume these classes yet. No upstream PR has been opened.",
-  "notIncluded": "Planned 0063 (generic persistent/ephemeral profile tabs, session store and bookmarks) and 0064 (download review UI, external links and autofill eligibility) are not written.",
+  "notIncluded": "Profile-tab persistence, bookmarks and session-store policy are in 0063 (browser-surface-session-policy-source-base.json); external links and autofill eligibility are in 0064 (browser-surface-link-autofill-policy-source-base.json). Download review UI and WebView profile views stay host code.",
   "network": "None. Synthetic values only.",
   "isolation": "Authored in a separate clone of baseCommit; never applied to vendor/eliza.",
   "deployment": "Not upstreamed. Candidate for elizaOS develop."

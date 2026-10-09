@@ -1,0 +1,39 @@
+{
+  "schemaVersion": 1,
+  "date": "2026-10-09",
+  "upstream": "elizaOS/eliza",
+  "baseCommit": "45242af234e7f3d55c433f327798e7cb2130e06e",
+  "stackedOn": "0063-browser-surface-session-policy.patch",
+  "patch": "0064-browser-surface-link-autofill-policy.patch",
+  "patchSha256": "e914eed801231d931397a70664467285d5fd37088e87e55d4729f00d5ab173e3",
+  "summary": "Third slice of the browser-surface generalization (comms-30 / release-22): external-link handoff policy and autofill eligibility as pure-JVM classes in plugins/plugin-native-browser-surface. BrowserExternalLinkPolicy decides mailto (SENDTO), tel (DIAL, never a call), market (VIEW) and intent: (VIEW only; other actions, forbidden data schemes, the host's own schemes and package refused) handoffs for tapped links only, and validates https browser_fallback_url values. BrowserAutofillEligibility states when a tab may take part in the platform autofill framework (selected, shown, running, committed, finished https document without error, engine URL equal to the recorded document) and that only a page-initiated main-frame navigation of an eligible tab commits the session; every other end cancels and pause keeps it.",
+  "filesChanged": [
+    "plugins/plugin-native-browser-surface/android/src/main/java/ai/eliza/plugins/browsersurface/BrowserAutofillEligibility.java",
+    "plugins/plugin-native-browser-surface/android/src/main/java/ai/eliza/plugins/browsersurface/BrowserExternalLinkPolicy.java",
+    "plugins/plugin-native-browser-surface/test/native-host/BrowserLinkAutofillPolicyTest.java",
+    "plugins/plugin-native-browser-surface/test/native-host/link-autofill-policy.node.mjs"
+  ],
+  "contract": {
+    "BrowserExternalLinkPolicy": "external(raw) for mailto/tel/intent/market (scheme syntax checked, case-insensitive). decide(raw, userGesture, intentAction, intentDataScheme, intentPackage, ownPackage, hostSchemes) -> SEND_TO | DIAL | VIEW | REFUSE; no gesture, > 4096 chars or control characters refuse; intent: allows only a null or VIEW action, refuses data schemes file/content/javascript/data/blob/about/intent/android-app/empty and the host's own schemes, and the host's own package. fallback(value): https, host, no user info, no whitespace/control, else null.",
+    "BrowserAutofillEligibility": "eligible(TabState) false when paused, closed, overlay, not selected, not shown, uncommitted, loading, load error, non-https document or engine URL different from the document URL. end(reason, wasEligible): COMMIT only for PAGE_MAIN_FRAME_NAVIGATION of an eligible tab; CANCEL for user-entered address, tab switch, overlay, load error, renderer gone, close; null (keep) for PAUSE."
+  },
+  "hostKeeps": "Parsing intent: URIs with the platform parser, building a fresh implicit Intent (no page component, selector, clip data, flags or extras; browsable category for VIEW), refusing a resolved target in its own package, the not-handled notice and loading the fallback; the AutofillManager calls (exclusion, notifyViewExited/visibility, cancel/commit), the committed-origin structure and the download review UI, which stays host UI.",
+  "notIncluded": "Download review UI is not moved: its wording and dialogs are host chrome; its policy is in 0062. Generic profile tab views (WebView profile creation/deletion) stay host code because they depend on androidx.webkit ProfileStore; 0063 holds the persistence policy.",
+  "applicationModel": "Reference only (not materialized into .eliza/patched). Adds new files only; applies after 0038, 0060, 0062 and 0063 in series (also on a clean base). Alpha's BrowserExternalLinks and AlphaBrowserPlugin.canAutofill keep their equivalent logic until this lands upstream and Alpha consumes the module.",
+  "verification": [
+    {
+      "command": "git apply --check 0064-browser-surface-link-autofill-policy.patch (clean checkout of baseCommit), and in series: git apply 0038-password-manager.patch && git apply 0060-password-transfer.patch && git apply 0062-browser-surface-web-policy.patch && git apply 0063-browser-surface-session-policy.patch && git apply --check 0064-browser-surface-link-autofill-policy.patch",
+      "where": "--shared clones of baseCommit under the session scratchpad",
+      "result": "pass"
+    },
+    {
+      "command": "JAVA_HOME=<JDK 21> node --test plugins/plugin-native-browser-surface/test/native-host/link-autofill-policy.node.mjs",
+      "where": "authoring clone at baseCommit with the patch staged, and again in the series clone with 0038, 0060, 0062, 0063 and 0064 applied (together with web-policy.node.mjs)",
+      "result": "pass: 2 tests (BrowserLinkAutofillPolicyTest 72 assertions; no Android, logging or network imports)"
+    }
+  ],
+  "notRun": "No Gradle build of the browser-surface module, no instrumentation, no device or emulator run. Alpha does not consume these classes yet. No upstream PR has been opened.",
+  "network": "None. Synthetic values only.",
+  "isolation": "Authored in a separate clone of baseCommit; never applied to vendor/eliza.",
+  "deployment": "Not upstreamed. Candidate for elizaOS develop."
+}
