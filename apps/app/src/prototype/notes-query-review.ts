@@ -4,11 +4,11 @@ import {holdPhoneInert} from '../runtime/modal-inert';
 type Dialog={dialog:HTMLDialogElement;content:HTMLElement;footer:HTMLElement;close:(value:unknown,error?:unknown)=>void};
 /** One modal review on the phone surface: inert background, focus return, and closing
  * (with null) on cancel, Back, abort, background or page hide. */
-function openReview<T>(label:string,signal:AbortSignal,build:(dialog:Dialog)=>HTMLElement|null):Promise<T|null>{
+function openReview<T>(label:string,region:string,signal:AbortSignal,build:(dialog:Dialog)=>HTMLElement|null):Promise<T|null>{
  return new Promise((resolve,reject)=>{
   const previous=document.activeElement as HTMLElement|null,dialog=document.createElement('dialog');dialog.className='note-source-dialog';dialog.setAttribute('aria-label',label);
   const theme=document.querySelector('.os');if(theme){const style=getComputedStyle(theme);for(const token of ['bg','fg'])dialog.style.setProperty('--source-'+token,style.getPropertyValue('--'+token));}
-  const content=document.createElement('div');content.className='note-source-content';content.tabIndex=0;content.setAttribute('role','region');content.setAttribute('aria-label',label);
+  const content=document.createElement('div');content.className='note-source-content';content.tabIndex=0;content.setAttribute('role','region');content.setAttribute('aria-label',region);
   const footer=document.createElement('footer');
   let done=false;const release=holdPhoneInert(document.querySelector<HTMLElement>('.os'));
   const close=(value:unknown,error?:unknown)=>{if(done)return;done=true;signal.removeEventListener('abort',abort);document.removeEventListener('visibilitychange',visibility);window.removeEventListener('pagehide',abort);window.removeEventListener('alpha-back',back,true);dialog.remove();release();if(previous?.isConnected)previous.focus();error?reject(error):resolve(value as T|null);};
@@ -29,7 +29,7 @@ function noteSelect(candidates:NoteRecord[]){
 }
 /** Local candidates never leave this dialog. Only an explicit record choice is returned. */
 export function reviewNotesQuery(candidates:NoteRecord[],explanation:string,signal:AbortSignal,current:()=>void):Promise<string|null>{
- current();return openReview<string>('Choose a note to share',signal,({content,footer,close})=>{
+ current();return openReview<string>('Choose a note to share','Note preview',signal,({content,footer,close})=>{
   const select=noteSelect(candidates),preview=document.createElement('pre');preview.style.whiteSpace='pre-wrap';
   const share=button('Share this note');share.disabled=true;const cancel=button('Cancel');
   select.onchange=()=>{const note=candidates.find(note=>note.id===select.value);preview.textContent=typeof note?.body==='string'?note.body:'This note has no shareable text in the current Notes read contract.';share.disabled=!note||typeof note.body!=='string';};
@@ -40,7 +40,7 @@ export function reviewNotesQuery(candidates:NoteRecord[],explanation:string,sign
 }
 /** Shows the exact titles that would be shared. Returns true only on explicit approval. */
 export async function reviewNoteTitles(titles:string[],truncated:boolean,signal:AbortSignal,current:()=>void):Promise<boolean>{
- current();const approved=await openReview<boolean>('Review note titles to share',signal,({content,footer,close})=>{
+ current();const approved=await openReview<boolean>('Review note titles to share','Note titles',signal,({content,footer,close})=>{
   const list=document.createElement('ul');for(const title of titles){const item=document.createElement('li');item.textContent=title;list.append(item);}
   const share=button(`Share ${titles.length} title${titles.length===1?'':'s'}`),cancel=button('Cancel');
   share.onclick=()=>{try{current();close(true);}catch(error){close(null,error);}};cancel.onclick=()=>close(null);
@@ -52,7 +52,7 @@ export async function reviewNoteTitles(titles:string[],truncated:boolean,signal:
  * The owner picks the exact note, sees it, and confirms the named change for that note. */
 export function reviewNamedNote(candidates:NoteRecord[],operation:Extract<NamedTargetOperation,{type:'notes_named'}>,signal:AbortSignal,current:()=>void):Promise<string|null>{
  current();const remove=operation.action==='delete';
- return openReview<string>(remove?'Choose the note to delete':'Choose the note to update',signal,({content,footer,close})=>{
+ return openReview<string>(remove?'Choose the note to delete':'Choose the note to update','Note preview',signal,({content,footer,close})=>{
   const select=noteSelect(candidates),preview=document.createElement('pre');preview.style.whiteSpace='pre-wrap';
   const confirm=button(remove?'Move to Trash':'Save changes');confirm.disabled=true;const cancel=button('Cancel');
   const change=remove?paragraph('The note moves to Trash and is erased after 3 days unless you restore it.'):paragraph(`New title: “${operation.fields.title}”\n${operation.fields.body}`);change.style.whiteSpace='pre-wrap';
