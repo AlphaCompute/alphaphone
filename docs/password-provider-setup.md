@@ -94,11 +94,19 @@ production bundle audit refuses the development vault strings.
 
 Browser save and fill through Alpha's own browser: **implemented, device acceptance pending.**
 `AlphaBrowserPlugin.CredentialWebView` reports the committed top-level origin and Chromium's
-WebView autofill component raises the framework save and fill requests; no Alpha code calls
-`AutofillManager.commit()`. The acceptance test (`PasswordBrowserFillInstrumentedTest`: select
-`ElizaPasswordAutofillService`, sign into a local HTTPS form, see Save, fill after unlock on a
-fresh load, and no offer to a cross-origin iframe) is not written yet; until it passes on both
-distribution variants this row stays pending.
+WebView autofill component raises the framework fill request. A page-initiated main-frame
+navigation of the selected tab (a sign-in form usually navigates) ends its framework session
+with `AutofillManager.commit()` instead of `cancel()`, so the provider can offer Save; overlays,
+pause, tab switches, closing and user-entered addresses still cancel. The acceptance test is
+`PasswordBrowserFillInstrumentedTest` (distribution variants, real HTTPS `example.com` with an
+instrumentation-injected form whose submit handler navigates without sending the fields): it
+selects `ElizaPasswordAutofillService`, types a synthetic sign-in, accepts the framework Save
+offer and the provider's Save prompt with a device-credential unlock, then on a fresh load fills
+only after another unlock and an explicit choice, and focuses a login form inside a cross-origin
+`example.org` iframe that must get no offer. On an emulator without a lock screen it sets and
+afterwards clears a synthetic PIN; elsewhere it needs `passwordFillPin`. The test is written and
+compiled; it has not run on an emulator or device, so this row stays pending until it passes on
+both distribution variants.
 
 ## Other password providers (Proton Pass)
 Alpha Settings → Password manager reports a read-only Android snapshot. The Browser menu opens the same detail page. The UI distinguishes an absent, disabled, publisher-unrecognized or verified Proton package; no provider, another provider, or Proton selection; and Android autofill availability. Unknown observations remain unknown. A selected package is named as verified Proton only when its publisher matches the pinned certificate. A disabled verified package is labeled disabled.

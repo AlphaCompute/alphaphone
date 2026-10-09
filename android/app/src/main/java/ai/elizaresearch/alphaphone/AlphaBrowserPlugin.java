@@ -186,6 +186,18 @@ public class AlphaBrowserPlugin extends Plugin {
   if(manager!=null)manager.cancel();
   t.autofillVirtualId=View.NO_ID;
  }
+ /** A page-initiated main-frame navigation (a sign-in form submission usually navigates)
+  * ends the selected tab's framework session with commit() instead of cancel(), so the
+  * selected provider can offer Save for the values the user typed. The provider still asks
+  * the user; nothing is stored here. Overlays, pause, tab switch, close and user-entered
+  * addresses keep cancelling. */
+ private void commitAutofill(Tab t) {
+  t.autofillEnabled=false;
+  AutofillManager manager=getActivity().getSystemService(AutofillManager.class);
+  if(manager!=null)manager.commit();
+  t.web.setImportantForAutofill(View.IMPORTANT_FOR_AUTOFILL_NO_EXCLUDE_DESCENDANTS);
+  t.autofillVirtualId=View.NO_ID;
+ }
  private void disableAutofill(Tab t) {
   if(t.autofillEnabled)cancelAutofill(t);
   else t.web.setImportantForAutofill(View.IMPORTANT_FOR_AUTOFILL_NO_EXCLUDE_DESCENDANTS);
@@ -228,7 +240,8 @@ public class AlphaBrowserPlugin extends Plugin {
  private void loading(Tab t) { loading(t,false); }
  private void loading(Tab t,boolean startedCallback) {
   if(reading!=null)reading.cancel();
-  disableAutofill(t);
+  if(startedCallback&&t.autofillEnabled&&!paused&&Objects.equals(presentedId,t.id))commitAutofill(t);
+  else disableAutofill(t);
   if(downloads!=null)downloads.cancelReview(t.id);
   if(t.capture!=null)t.capture.cancel();
   clearFind(t);

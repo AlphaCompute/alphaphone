@@ -72,3 +72,13 @@ test('passkeys use WebView browser mode where supported and are reported where n
   assert.match(plugin, /WebSettingsCompat\.setWebAuthenticationSupport\(settings,WebSettingsCompat\.WEB_AUTHENTICATION_SUPPORT_FOR_BROWSER\)/);
   assert.match(plugin, /Passkeys are not available in this browser on this device\./);
 });
+
+test('a page-initiated navigation commits the selected tab autofill session so the provider can offer Save', () => {
+  assert.match(plugin, /if\(startedCallback&&t\.autofillEnabled&&!paused&&Objects\.equals\(presentedId,t\.id\)\)commitAutofill\(t\);\n\s*else disableAutofill\(t\);/);
+  assert.match(plugin, /private void commitAutofill\(Tab t\) \{\n\s*t\.autofillEnabled=false;\n\s*AutofillManager manager=getActivity\(\)\.getSystemService\(AutofillManager\.class\);\n\s*if\(manager!=null\)manager\.commit\(\);/);
+  assert.equal((plugin.match(/commitAutofill\(/g) || []).length, 2, 'commit is used only on page-started navigation; overlays, pause and tab changes cancel');
+  const fill = read('android/app/src/androidTest/java/ai/elizaresearch/alphaphone/PasswordBrowserFillInstrumentedTest.java');
+  assert.match(fill, /ai\.eliza\.plugins\.passwords\.ElizaPasswordAutofillService/);
+  assert.match(fill, /No password offer for a cross-origin iframe/);
+  assert.match(fill, /event\.preventDefault\(\);location\.href=/, 'the synthetic sign-in never submits its fields to the network');
+});
