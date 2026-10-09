@@ -5,4 +5,11 @@
 
 .alpha-connection textarea{resize:vertical;min-height:100px}
 
+/* A returning account needs a brief check, not the first-run welcome screen. */
+.alpha-connection-resume{align-self:center;max-height:100%}
+.alpha-connection-resume h1{font-size:30px;line-height:1.15;letter-spacing:-.02em;margin:8px 0 12px;overflow-wrap:anywhere}
+.alpha-connection-resume p{overflow-wrap:anywhere}
+.alpha-connection-native .alpha-connection-actions{gap:6px}
+.alpha-connection-resume .alpha-connection-cancel{margin-top:6px}
+
 .alpha-cloud-account-summary strong,.alpha-cloud-account-summary span{min-width:0;overflow-wrap:anywhere}
