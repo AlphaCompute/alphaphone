@@ -19,7 +19,7 @@ for(const status of ['storage-full','past','permission-denied','failed'] as cons
   await expect(page.getByText(message,{exact:true}).last()).toBeVisible();
   await expect.poll(()=>page.evaluate(()=>(window as any).creates)).toBe(attempt);
   // Each refusal is retired after readback; nothing remains pending and the draft stays open.
-  expect(await page.evaluate(async()=>Object.values(await (await import('/src/runtime/reminder-creations.ts')).reminderCreations()).filter(row=>row.state==='pending').length)).toBe(0);
+  await expect.poll(()=>page.evaluate(async()=>Object.values(await (await import('/src/runtime/reminder-creations.ts')).reminderCreations()).filter(row=>row.state==='pending').length)).toBe(0);
   await expect(page.getByRole('textbox',{name:'Title',exact:true})).toHaveValue('Refused reminder');
   await expect(save).toBeEnabled();
  }
