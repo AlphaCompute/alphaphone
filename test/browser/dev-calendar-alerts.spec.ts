@@ -1,5 +1,7 @@
+import {guardCalendarFixture as guardNoMedia} from './calendar-draft-readiness';
 import { returnToApps } from './app-navigation';
 import {test,expect} from '@playwright/test';
+test.beforeEach(async({context})=>guardNoMedia(context));
 test.beforeEach(async({page})=>{await page.clock.setFixedTime(new Date('2026-10-02T12:00:00Z'));await page.addInitScript(()=>localStorage.setItem('alpha.connection.selection.v1',JSON.stringify({kind:'offline'})));await page.goto('/?mode=dev&tools=1');});
 async function notices(page:any){return page.evaluate(async()=>{const {registerPlugin}=await import('/src/platform-plugins.ts');return (await registerPlugin<any>('AlphaNotifications').list()).items.filter((n:any)=>n.id.startsWith('calendar:'));});}
 test('rendered Calendar alert becomes due and opens the exact event from the shade',async({page})=>{
