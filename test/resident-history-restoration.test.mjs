@@ -103,14 +103,21 @@ for(const mode of ['credential','account','session','epoch','abort','selection']
 test('automatic and manual adapter restoration preserve their different draft and view behavior',()=>{
   const source=fs.readFileSync('apps/app/src/prototype/agent-adapter.ts','utf8');
   const start=source.indexOf('      const history = connectionController.getSnapshot().history;'),end=source.indexOf('      if (this.live) {context(this);',start);
-  assert.ok(start>=0&&end>start);
-  for(const automatic of [true,false]){
-    let retired=0;const state={draft:'Unsent text',chat:'input',view:'notes',typing:true};
+  const helperStart=source.indexOf('  function cancelMessageContext('),helperEnd=source.indexOf('  function messageTarget(',helperStart);
+  assert.ok(start>=0&&end>start);assert.ok(helperStart>=0&&helperEnd>helperStart);
+  const helper=stripTypeScriptTypes(source.slice(helperStart,helperEnd));
+  for(const automatic of [true,false])for(const kind of ['reply','edit']){
+    let retired=0,disconnected=0;const cancelled=[];
+    const state={draft:'Unsent text',chat:'input',view:'notes',typing:true};
     const history={sessionId:'fixture-session',automatic,messages:[{id:'old',from:'agent',text:'Saved reply'}]};
-    const shell={live:true,composerDraft:{retire(){retired++;}},setState(patch){Object.assign(state,patch);}};
-    vm.runInNewContext('(function(){'+source.slice(start,end)+'}).call(shell)',{shell,session:'fixture-session',connectionController:{getSnapshot:()=>({history})},alphaClient:{disconnect(){}}});
+    const target={messageId:'owned-message',conversationId:'owned-conversation',session:{sessionId:'fixture-session'}},reviewedSource={draft:'Unsent text',source:{id:'owned-source'}},recovery=new AbortController();
+    const shell={live:true,[kind==='edit'?'messageEditTarget':'messageReplyTarget']:target,reviewedSourceDraft:reviewedSource,draftRecoveryAbort:recovery,composerDraft:{retire(){retired++;}},setState(patch){Object.assign(state,patch);}};
+    vm.runInNewContext(helper+'\n(function(){'+source.slice(start,end)+'}).call(shell)',{shell,session:'fixture-session',connectionController:{getSnapshot:()=>({history})},alphaClient:{disconnect(){disconnected++;}},messageReviews:{cancel:id=>cancelled.push(id)}});
     assert.equal(state.view,'notes');assert.equal(state.msgs[0].text,'Saved reply');assert.equal(state.msgs[0].card,null);
-    assert.equal(state.draft,automatic?'Unsent text':'');assert.equal(state.chat,automatic?'input':'full');assert.equal(retired,automatic?0:1);
+    assert.equal(state.draft,automatic?'Unsent text':'');assert.equal(state.chat,automatic?'input':'full');assert.equal(retired,automatic?0:1);assert.equal(disconnected,1);
+    assert.equal(recovery.signal.aborted,!automatic);assert.equal(shell.reviewedSourceDraft,automatic?reviewedSource:null);
+    assert.equal(shell.messageEditTarget,automatic&&kind==='edit'?target:undefined);assert.equal(shell.messageReplyTarget,automatic&&kind==='reply'?target:undefined);
+    assert.deepEqual(cancelled,!automatic&&kind==='edit'?['edit-message-owned-message']:[]);
   }
 });
 
